@@ -618,6 +618,30 @@ def _find_stamped_panel_body(import_group):
     return None
 
 
+def _find_stamped_component(import_group):
+    """F35 item 12: the ONE target every carving sketch (every art-layer sketch, the Bricks SVG
+    sketch of item 11) is created in -- the 'Stamped' occurrence's own component under
+    import_group, if any was sent this Send. None if no Stamped variant was selected, the SAME
+    'resolve Stamped, never silently fall back to Clean or root' convention
+    _find_stamped_panel_body already established for the decal's own body lookup (reusing
+    _find_clean_stamped the same way), just returning the component a SKETCH lives in instead of
+    a body. Callers must log and skip rather than falling back to root_comp on a None -- a carving
+    sketch in root or Clean is exactly the bug this item fixes, not an acceptable degradation."""
+    if not import_group:
+        return None
+    try:
+        targets = _find_clean_stamped(import_group, depth=0)
+    except Exception:
+        return None
+    for occ in targets:
+        try:
+            if (occ.component.name or '') == 'Stamped':
+                return occ.component
+        except Exception:
+            continue
+    return None
+
+
 def _largest_area_face(body):
     """H23 item 69's own correction: a sculpted terrain's highest Z POINT can land on a small rim
     facet (a tie between it and the true top face), picking the wrong one -- largest AREA is the
@@ -1783,10 +1807,18 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                         body_target = primary_imported_occurrence.component
                     elif last_imported_occurrences:
                         body_target = last_imported_occurrences[0].component
-                        
-                    sketch_target = current_import_group.component if _in_active_design(des, current_import_group) else root_comp
-                    _send_progress('Projecting SVG Artwork...')
-                    self._import_all_svg_layers(sketch_target, body_target, stamp_data, orientation, params, des)
+
+                    # F35 item 12: every carving sketch goes in the Stamped (Carved) component,
+                    # never root, never Clean -- the stamp cuts THAT body, so a sketch anywhere
+                    # else is at best orphaned, at worst confusing stray geometry in root/Clean.
+                    # No Carved component this Send (e.g. only Clean was sent) -> log + skip,
+                    # never fall back to root (_find_stamped_component's own declared contract).
+                    sketch_target = _find_stamped_component(current_import_group)
+                    if sketch_target is None:
+                        _log('SVG Stamp Import/Project skipped: no Stamped (Carved) component in this Send.')
+                    else:
+                        _send_progress('Projecting SVG Artwork...')
+                        self._import_all_svg_layers(sketch_target, body_target, stamp_data, orientation, params, des)
                 except Exception as e:
                     _log(f'SVG Stamp Import/Project failed: {e}')
 

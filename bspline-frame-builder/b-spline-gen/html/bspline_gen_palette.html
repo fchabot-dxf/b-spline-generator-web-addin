@@ -870,262 +870,6 @@
         </div>
       </div>
 
-      <!-- F34 item 1 (Fred): the Photo tools get their OWN top-level tab,
-           next to Filter etc., not nested inside it (main/photo-panel.js).
-           ALWAYS visible/clickable (unlike the old Filter-nested sub-panel)
-           -- picking a pattern or loading your own photo here switches
-           noiseType to 'photo' itself (main/photo-panel.js's own
-           switchToPhotoFilter()), same as picking "Photo" from the Filter
-           panel's own dropdown. Effect params (Depth/Scale/Offset/Rotation/
-           Repeat) are declared `tweaks` (core/noise/photo.js) and stay in
-           the Filter panel's own shared "Edit Filter" panel -- that
-           mechanism is common to every filter (Moon/Mars/etc. included),
-           not something to duplicate or relocate here. -->
-      <div class="panel panel-photo">
-        <div class="panel-header collapsed" onclick="togglePanel(this)">🖼️ PHOTO</div>
-        <div class="panel-body hidden">
-          <label class="cad-label">Patterns</label>
-          <div id="photoPatternRow" class="photo-pattern-row"></div>
-
-          <label class="cad-label">Load my own</label>
-          <input type="file" id="photoFileInput" accept="image/png,image/jpeg" style="width:100%; font-size:11px; margin-bottom:10px;">
-
-          <canvas id="photoPreviewCanvas" width="220" height="160" class="photo-preview-canvas"></canvas>
-          <div style="font-size:10px; opacity:0.6; text-align:center; margin:-4px 0 12px;">dimmed = mirrored by Symmetry, not sampled directly</div>
-
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Prepare</label>
-          <div style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;">
-            <button type="button" id="photoBtnRotate" class="cad-btn">⟳ Rotate 90°</button>
-            <button type="button" id="photoBtnFlipH" class="cad-btn">⇋ Flip H</button>
-            <button type="button" id="photoBtnFlipV" class="cad-btn">⇅ Flip V</button>
-            <button type="button" id="photoBtnUndo" class="cad-btn">Undo</button>
-          </div>
-          <label class="cad-label">Straighten (degrees)</label>
-          <div class="cad-slider-row" style="margin-bottom:10px;">
-            <input type="range" id="photoStraightenSlider" class="cad-slider" min="-45" max="45" step="0.5" value="0">
-            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoStraighten" value="0"></div>
-          </div>
-          <label class="cad-label">Crop (%)</label>
-          <div style="display:flex; gap:4px; margin-bottom:6px;">
-            <input type="number" id="photoCropX" value="0" min="0" max="100" step="1" style="width:25%;" title="Left">
-            <input type="number" id="photoCropY" value="0" min="0" max="100" step="1" style="width:25%;" title="Top">
-            <input type="number" id="photoCropW" value="100" min="1" max="100" step="1" style="width:25%;" title="Width">
-            <input type="number" id="photoCropH" value="100" min="1" max="100" step="1" style="width:25%;" title="Height">
-          </div>
-          <button type="button" id="photoBtnApplyCrop" class="cad-btn" style="width:100%; margin-bottom:14px;">Apply Crop</button>
-
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Edit</label>
-          <label class="cad-label">Levels — Black point</label>
-          <div class="cad-slider-row" style="margin-bottom:8px;">
-            <input type="range" id="photoLevelsBlackSlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
-            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoLevelsBlack" value="0"></div>
-          </div>
-          <label class="cad-label">Levels — White point</label>
-          <div class="cad-slider-row" style="margin-bottom:8px;">
-            <input type="range" id="photoLevelsWhiteSlider" class="cad-slider" min="0" max="1" step="0.01" value="1">
-            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoLevelsWhite" value="1"></div>
-          </div>
-          <label class="cad-label">Levels — Midpoint (gamma)</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="photoLevelsMidSlider" class="cad-slider" min="0.2" max="3" step="0.05" value="1">
-            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoLevelsMid" value="1"></div>
-          </div>
-          <label class="cad-label">Brightness</label>
-          <div class="cad-slider-row" style="margin-bottom:8px;">
-            <input type="range" id="photoBrightnessSlider" class="cad-slider" min="-0.5" max="0.5" step="0.01" value="0">
-            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoBrightness" value="0"></div>
-          </div>
-          <label class="cad-label">Contrast</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="photoContrastSlider" class="cad-slider" min="-0.9" max="3" step="0.05" value="0">
-            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoContrast" value="0"></div>
-          </div>
-          <label class="cad-label">Blur</label>
-          <div class="cad-slider-row" style="margin-bottom:14px;">
-            <input type="range" id="photoBlurSlider" class="cad-slider" min="0" max="8" step="1" value="0">
-            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoBlur" value="0"></div>
-          </div>
-
-          <!-- Fred: "a cute 2-state segmented toggle", not a plain checkbox -- drives the
-               same `invert` setting (core/photo/ops.js), no new state. -->
-          <label class="cad-label">Relief</label>
-          <div class="relief-toggle" id="photoReliefToggle" style="margin-bottom:4px;">
-            <button type="button" class="relief-toggle-btn active" id="photoBtnReliefRaised" title="Light areas raised, dark areas as grooves">
-              <svg viewBox="0 0 24 12" width="28" height="12" aria-hidden="true">
-                <rect x="0" y="6" width="5" height="6"/><rect x="6" y="3" width="5" height="9"/>
-                <rect x="12" y="6" width="5" height="6"/><rect x="18" y="3" width="5" height="9"/>
-              </svg>
-              <span>Raised</span>
-            </button>
-            <button type="button" class="relief-toggle-btn" id="photoBtnReliefCarved" title="Inverted: dark areas raised, light areas as grooves">
-              <svg viewBox="0 0 24 12" width="28" height="12" aria-hidden="true">
-                <rect x="0" y="0" width="5" height="6"/><rect x="6" y="0" width="5" height="9"/>
-                <rect x="12" y="0" width="5" height="6"/><rect x="18" y="0" width="5" height="9"/>
-              </svg>
-              <span>Carved</span>
-            </button>
-          </div>
-
-          <!-- F34 item 3 (Fred: "height wouldn't ever be more than 1/4 for
-               now"): the PHYSICAL carve depth (same real P.carveZ every other
-               filter uses), just scoped here to a photo-appropriate range --
-               distinct from the "Depth" effect param below, which is a
-               unitless relief-strength multiplier, not a real dimension. -->
-          <label class="cad-label">Max Height (in)</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="photoReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
-            <div class="cad-stepper" style="width:60px;"><input type="number" id="photoReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
-          </div>
-
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin:8px 0 4px;">Effect params</label>
-          <div id="photoTweaksBody">
-            <!-- Populated at runtime by core/noise/tweaks-ui.js → renderTweaksPanel() --
-                 a SECOND render target for the SAME schema/state the Filter panel's own
-                 "⚙️ Edit Filter" panel uses (registerTweaksTarget), not a copy. -->
-          </div>
-
-          <!-- F34 item 3: writes the live edits+tweaks+Max Height back into
-               the loaded pattern's own `settings` (data/photo-patterns.json),
-               downloaded as an updated file for the advisor to apply -- same
-               "save a real file" idiom as Settings > Save log. Disabled for a
-               user's own upload (main/photo-panel.js's syncSaveButtonState). -->
-          <button type="button" id="photoBtnSaveToPattern" class="cad-btn cad-btn-secondary" style="width:100%; margin-top:14px;" disabled>💾 Save settings to this pattern</button>
-        </div>
-      </div>
-
-      <!-- F35 item 1: the Brick tab -- a declared tool list (Brush/Wall/Frame,
-           main/brick-panel.js's own BRICK_TOOLS array), a set picker, and the
-           common controls every tool shares. Output lands on the editor's own
-           "Bricks" layer (editor/editor-brick-tool.js), carved into the
-           terrain via the SAME generic stamp-layer pipeline every other
-           carved layer already uses. -->
-      <div class="panel panel-brick">
-        <div class="panel-header collapsed" onclick="togglePanel(this)">🧱 BRICK</div>
-        <div class="panel-body hidden">
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Set</label>
-          <div style="display:flex; gap:6px; margin-bottom:12px;">
-            <button type="button" id="brickSetRed" class="cad-btn brick-set-btn active" title="Red brick (Masonry)">Red Brick</button>
-            <!-- F35 item 4 (c): un-greyed -- f3's item 74 built the fieldstone layout this set needs. -->
-            <button type="button" id="brickSetWhite" class="cad-btn brick-set-btn" title="White rocks (fieldstone, Masonry)">White Rocks</button>
-          </div>
-
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Tool</label>
-          <div id="brickToolList" style="display:flex; gap:6px; margin-bottom:12px;">
-            <!-- Populated at runtime by main/brick-panel.js's declared BRICK_TOOLS list. -->
-          </div>
-          <div id="brickToolHint" style="font-size:10px; opacity:0.65; margin:-6px 0 12px;"></div>
-
-          <!-- T86 item 7 (Fred: "a brush line can have a few brick patterns, maybe 2 and 3
-               bricks wide"): the Brush band-preset picker -- core/bricks/library.js's own
-               declared BRUSH_PRESETS, straddling the drawn stroke's own centreline. -->
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Brush band preset</label>
-          <div id="brickBrushPresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
-            <!-- Populated at runtime by main/brick-panel.js's declared BRUSH_PRESET_LIST. -->
-          </div>
-
-          <!-- F35 item 7 (advisor-approved proposal): the Wall pattern picker -- every
-               core/bricks/library.js BRICK_PATTERNS key (stretcher/stack/soldier/header/flemish/
-               herringbone/basketweave), one shared table also meant for Frame bands once f3's own
-               contour-bands rebuild lands (main/brick-panel.js's own WALL_PATTERN_LIST comment). -->
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
-          <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
-            <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
-          </div>
-
-          <!-- F35 item 4 (advisor): a Frame band-preset picker. Only 3 of
-               the 5 named presets exist in library.js's own FRAME_PRESETS
-               today -- see main/brick-panel.js's own FRAME_PRESET_LIST
-               comment for which 2 are still missing. -->
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
-          <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
-            <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
-          </div>
-
-          <!-- F35 item 8: per-band pattern picker -- one row per band in the current preset, each
-               offering every core/bricks/library.js BRICK_PATTERNS key (herringbone/basketweave
-               disabled, "Wall only for now"). Bricks placed via band-course.js's (u,v) generator,
-               built on f3's own bandFrameAt hook (main 8286930). -->
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Band patterns</label>
-          <div id="brickFrameBandPatternList" style="margin-bottom:12px;">
-            <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
-          </div>
-
-          <!-- F35 item 5 review (Fred, via advisor correction): "frame thickness" is the LENGTH of
-               the bricks across a Frame band (a soldier band's own width IS the brick length) --
-               NOT a proportional band-width scaler. Frame-only: Wall/Brush keep the set's own
-               unmodified brick length (main/brick-panel.js's resolveFrameBrickSet). -->
-          <label class="cad-label">Frame brick length (in)</label>
-          <div class="cad-slider-row" style="margin-bottom:10px;">
-            <input type="range" id="brickFrameLengthSlider" class="cad-slider" min="0.5" max="1.5" step="0.05" value="0.75">
-            <div class="cad-stepper" style="width:60px;"><input type="number" id="brickFrameLength" value="0.75" min="0.5" max="1.5" step="0.05"></div>
-          </div>
-
-          <label class="cad-label">Scale</label>
-          <div class="cad-slider-row" style="margin-bottom:10px;">
-            <input type="range" id="brickScaleSlider" class="cad-slider" min="0.5" max="2" step="0.05" value="1">
-            <div class="cad-stepper" style="width:60px;"><input type="number" id="brickScale" value="1"></div>
-          </div>
-
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Grout</label>
-          <div style="display:flex; gap:4px; margin-bottom:6px;">
-            <div style="flex:1;">
-              <label class="cad-label" style="font-size:10px;">Width (in)</label>
-              <input type="number" id="brickGroutWidth" value="0.06" min="0" max="0.5" step="0.005" style="width:100%;">
-            </div>
-            <div style="flex:1;">
-              <label class="cad-label" style="font-size:10px;">Depth (in)</label>
-              <input type="number" id="brickGroutDepth" value="0.05" min="0" max="0.25" step="0.005" style="width:100%;">
-            </div>
-          </div>
-          <div class="relief-toggle" id="brickGroutProfileToggle" style="margin-bottom:12px;">
-            <button type="button" class="relief-toggle-btn" id="brickBtnGroutRecessed" title="Joints carved below the surrounding surface (not yet visually implemented)"><span>Recessed</span></button>
-            <button type="button" class="relief-toggle-btn active" id="brickBtnGroutFlush" title="Joints sit flush with the base surface"><span>Flush</span></button>
-          </div>
-
-          <label class="cad-label">Relief</label>
-          <div class="relief-toggle" id="brickReliefToggle" style="margin-bottom:12px;">
-            <button type="button" class="relief-toggle-btn active" id="brickBtnReliefRaised" title="Bricks raised above the surface"><span>Raised</span></button>
-            <button type="button" class="relief-toggle-btn" id="brickBtnReliefCarved" title="Bricks carved into the surface"><span>Carved</span></button>
-          </div>
-
-          <label class="cad-label">Max Height (in)</label>
-          <div class="cad-slider-row" style="margin-bottom:12px;">
-            <input type="range" id="brickReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
-            <div class="cad-stepper" style="width:60px;"><input type="number" id="brickReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
-          </div>
-
-          <label class="cad-label">Suppression</label>
-          <div class="cad-slider-row" style="margin-bottom:10px;">
-            <input type="range" id="brickSuppressionSlider" class="cad-slider" min="0" max="0.9" step="0.01" value="0">
-            <div class="cad-stepper" style="width:60px;"><input type="number" id="brickSuppression" value="0"></div>
-          </div>
-
-          <label class="cad-label">Clumping</label>
-          <div class="cad-slider-row" style="margin-bottom:10px;">
-            <input type="range" id="brickClumpingSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.3">
-            <div class="cad-stepper" style="width:60px;"><input type="number" id="brickClumping" value="0.3"></div>
-          </div>
-
-          <label class="cad-label">Seed</label>
-          <div style="display:flex; gap:6px; margin-bottom:4px;">
-            <input type="number" id="brickSeed" value="1" style="flex:1;">
-            <button type="button" id="brickBtnRandomSeed" class="cad-btn" title="Random seed">🎲</button>
-          </div>
-
-          <!-- F35 item 2: wired to the EXISTING terrain.js `isolateSkeleton`
-               param (already a real, functioning P key -- bypasses the
-               active filter with a flat 0.5, so only the skeleton/macro
-               shape carves -- just never had a UI control). Default stays
-               OFF (Fred: "just offer it"); the note tells the user why
-               they'd want it on, rather than defaulting it on for them. -->
-          <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:10px;">
-            <input type="checkbox" id="isolateSkeleton">
-            <span>Hide filter texture</span>
-          </label>
-          <div style="font-size:10px; opacity:0.65; margin:2px 0 4px;">Bricks read best with this on -- the active filter's own fine noise otherwise competes with brick-scale detail.</div>
-        </div>
-      </div>
-
       <!-- 5. Vector Stamping -->
       <div class="panel panel-stamp">
         <div class="panel-header collapsed" onclick="togglePanel(this)">📐 VECTOR STAMPING</div>
@@ -1971,11 +1715,16 @@
         <div style="display:flex; align-items:center; gap:10px;">
           <!-- Fred: "I don't think it's useful to have the layer drop down in the header" --
                the active-layer pill is gone; the Layers panel already shows the active layer. -->
-          <!-- FB-APP F8: [Frame | Artwork] modes (main/frame-panel.js). Frame = the
-               frame's template + params with the live cut profile; Artwork = the editor. -->
+          <!-- FB-APP F8 + F35 item 10: [Frame | Artwork | Photo | Brick] -- a declared tab registry
+               (main/editor-tabs.js), each tab swapping BOTH its own left toolbar (the vertical icon
+               rail) and its own right panel. Frame = the frame's template + params with the live cut
+               profile; Artwork = the general draw tools; Photo/Brick = their own former sidebar
+               sections, moved here (Fred: each uses a completely different toolbar). -->
           <div id="editorModeTabs" role="tablist" style="display:flex; border:1px solid #ccc; border-radius:3px; overflow:hidden;">
             <button type="button" id="editorTabFrame" role="tab" data-editor-tab="frame" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Frame</button>
             <button type="button" id="editorTabArtwork" role="tab" data-editor-tab="artwork" class="editor-fillmode-btn active" style="font-size:11px; padding:3px 12px; border:none;">Artwork</button>
+            <button type="button" id="editorTabPhoto" role="tab" data-editor-tab="photo" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Photo</button>
+            <button type="button" id="editorTabBrick" role="tab" data-editor-tab="brick" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Brick</button>
           </div>
         </div>
         <div class="editor-header-actions" style="display:flex; gap:8px; align-items:center;">
@@ -2015,7 +1764,11 @@
       </div>
 
       <!-- Editor Properties Bar -->
-      <div class="editor-toolbar-top" style="height: 38px; background: #fff; border-bottom: 1px solid var(--cad-border-standard); display: flex; align-items: center; padding: 0 12px; gap: 16px; flex-shrink: 0; overflow: hidden;">
+      <!-- F35 item 10 follow-up (advisor): this bar (Stroke width/Color/Grid/Style) only applies to
+           hand-drawn Artwork shapes -- shown on the Artwork tab only, hidden for Frame/Photo/Brick
+           (main/editor-tabs.js's own setEditorTab; not one of EDITOR_TABS' own toolbar/panel pairs
+           since it isn't a tab, just shared styling chrome for ONE of them). -->
+      <div class="editor-toolbar-top" id="editorToolbarTop" style="height: 38px; background: #fff; border-bottom: 1px solid var(--cad-border-standard); display: flex; align-items: center; padding: 0 12px; gap: 16px; flex-shrink: 0; overflow: hidden;">
         <div id="editorStrokeGroup" style="display:flex; align-items:center; gap:8px;">
           <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Stroke</span>
           <div class="stepper-container" style="display:flex; align-items:center; background:#f9f9f9; border:1px solid #ccc; border-radius:3px; height:24px; padding:0 2px;">
@@ -2153,6 +1906,21 @@
       <!-- Main Workspace -->
       <div class="cad-modal-body" style="display:flex; flex:1; overflow:hidden; position:relative;">
         <aside class="editor-sidebar" style="width:44px; background:#fdfdfd; border-right:1px solid var(--cad-border-standard); display:flex; flex-direction:column; align-items:center; padding-top:12px; gap:8px; z-index:10;">
+          <!-- F35 item 10: the Frame tab has no tools of its own -- shape editing is plain handle
+               drags on the canvas (editor-frame-profile.js), the same way it always worked; an empty
+               toolbar here is the honest declaration of that, not a placeholder. -->
+          <div id="editorToolbarFrame" style="display:none;"></div>
+          <!-- F35 item 10: Photo's own toolbar -- picking a tool shows just that tool's own settings
+               in #editorPhotoPanel (main/photo-panel.js's own declared PHOTO_TOOLS), mirroring how
+               these 4 top-level tabs themselves work, one level deeper. -->
+          <div id="editorToolbarPhoto" style="display:none; flex-direction:column; align-items:center; gap:8px;">
+            <!-- Populated at runtime by main/photo-panel.js's declared PHOTO_TOOLS. -->
+          </div>
+          <!-- F35 item 10: Brick's own toolbar -- main/brick-panel.js's existing declared BRICK_TOOLS
+               list, moved here from the old sidebar's horizontal row (renderToolList's own target
+               container, same function, same click behaviour -- only the container moved). -->
+          <div id="editorToolbarBrick" style="display:none; flex-direction:column; align-items:center; gap:8px;"></div>
+          <div id="editorToolbarArtwork" style="display:flex; flex-direction:column; align-items:center; gap:8px;">
           <button id="toolSelect" class="tool-btn active" title="Select (V)" data-key="v"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:black; stroke:white; stroke-width:0.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
           <button id="toolNode" class="tool-btn" title="Nodes (A)" data-key="a"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:white; stroke:black; stroke-width:1.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
           <!-- workflow audit #2 (phone): the lattice tools, scissors and stripe come first -- on a phone the row scrolls
@@ -2210,6 +1978,7 @@
               <path d="M4 12h16M12 4v16"/>
             </svg>
           </button>
+          </div>
         </aside>
 
         <!-- Canvas -->
@@ -3125,6 +2894,238 @@
               </div>
             </div>
             <div id="editorFrameNote" style="color:#666;">Generate a random frame shape, then tweak it: drag a curve (or its blue dot) to change its roundness, or a square to move it. Changing the template resets them.</div>
+          </div>
+        </aside>
+
+        <!-- F35 item 10: the Photo tab's own right panel (moved from the sidebar's panel-photo,
+             F34 item 1) -- common controls (pattern/load/preview/relief/height/tweaks/save) stay
+             visible regardless of which Photo tool is active; each tool's own settings live in their
+             own photoToolSection_* div, shown/hidden by main/photo-panel.js's selectPhotoTool. -->
+        <aside class="editor-layers-panel" id="editorPhotoPanel" style="display:none;">
+          <div class="layers-header"><span>Photo</span></div>
+          <div style="padding:10px; display:flex; flex-direction:column; gap:4px; font-size:11px;">
+            <label class="cad-label">Patterns</label>
+            <div id="photoPatternRow" class="photo-pattern-row"></div>
+
+            <label class="cad-label">Load my own</label>
+            <input type="file" id="photoFileInput" accept="image/png,image/jpeg" style="width:100%; font-size:11px; margin-bottom:10px;">
+
+            <canvas id="photoPreviewCanvas" width="220" height="160" class="photo-preview-canvas"></canvas>
+            <div style="font-size:10px; opacity:0.6; text-align:center; margin:-4px 0 12px;">dimmed = mirrored by Symmetry, not sampled directly</div>
+
+            <div id="photoToolSection_crop" style="display:none;">
+              <label class="cad-label">Crop (%)</label>
+              <div style="display:flex; gap:4px; margin-bottom:6px;">
+                <input type="number" id="photoCropX" value="0" min="0" max="100" step="1" style="width:25%;" title="Left">
+                <input type="number" id="photoCropY" value="0" min="0" max="100" step="1" style="width:25%;" title="Top">
+                <input type="number" id="photoCropW" value="100" min="1" max="100" step="1" style="width:25%;" title="Width">
+                <input type="number" id="photoCropH" value="100" min="1" max="100" step="1" style="width:25%;" title="Height">
+              </div>
+              <button type="button" id="photoBtnApplyCrop" class="cad-btn" style="width:100%; margin-bottom:14px;">Apply Crop</button>
+            </div>
+
+            <div id="photoToolSection_straighten" style="display:none;">
+              <label class="cad-label">Straighten (degrees)</label>
+              <div class="cad-slider-row" style="margin-bottom:10px;">
+                <input type="range" id="photoStraightenSlider" class="cad-slider" min="-45" max="45" step="0.5" value="0">
+                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoStraighten" value="0"></div>
+              </div>
+            </div>
+
+            <div id="photoToolSection_rotateFlip" style="display:none;">
+              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Rotate / Flip</label>
+              <div style="display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap;">
+                <button type="button" id="photoBtnRotate" class="cad-btn">⟳ Rotate 90°</button>
+                <button type="button" id="photoBtnFlipH" class="cad-btn">⇋ Flip H</button>
+                <button type="button" id="photoBtnFlipV" class="cad-btn">⇅ Flip V</button>
+                <button type="button" id="photoBtnUndo" class="cad-btn">Undo</button>
+              </div>
+            </div>
+
+            <div id="photoToolSection_levels" style="display:none;">
+              <label class="cad-label">Levels — Black point</label>
+              <div class="cad-slider-row" style="margin-bottom:8px;">
+                <input type="range" id="photoLevelsBlackSlider" class="cad-slider" min="0" max="1" step="0.01" value="0">
+                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoLevelsBlack" value="0"></div>
+              </div>
+              <label class="cad-label">Levels — White point</label>
+              <div class="cad-slider-row" style="margin-bottom:8px;">
+                <input type="range" id="photoLevelsWhiteSlider" class="cad-slider" min="0" max="1" step="0.01" value="1">
+                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoLevelsWhite" value="1"></div>
+              </div>
+              <label class="cad-label">Levels — Midpoint (gamma)</label>
+              <div class="cad-slider-row" style="margin-bottom:12px;">
+                <input type="range" id="photoLevelsMidSlider" class="cad-slider" min="0.2" max="3" step="0.05" value="1">
+                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoLevelsMid" value="1"></div>
+              </div>
+              <label class="cad-label">Brightness</label>
+              <div class="cad-slider-row" style="margin-bottom:8px;">
+                <input type="range" id="photoBrightnessSlider" class="cad-slider" min="-0.5" max="0.5" step="0.01" value="0">
+                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoBrightness" value="0"></div>
+              </div>
+              <label class="cad-label">Contrast</label>
+              <div class="cad-slider-row" style="margin-bottom:12px;">
+                <input type="range" id="photoContrastSlider" class="cad-slider" min="-0.9" max="3" step="0.05" value="0">
+                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoContrast" value="0"></div>
+              </div>
+            </div>
+
+            <div id="photoToolSection_blur" style="display:none;">
+              <label class="cad-label">Blur</label>
+              <div class="cad-slider-row" style="margin-bottom:14px;">
+                <input type="range" id="photoBlurSlider" class="cad-slider" min="0" max="8" step="1" value="0">
+                <div class="cad-stepper" style="width:60px;"><input type="number" id="photoBlur" value="0"></div>
+              </div>
+            </div>
+
+            <!-- Fred: "a cute 2-state segmented toggle", not a plain checkbox -- drives the
+                 same `invert` setting (core/photo/ops.js), no new state. -->
+            <label class="cad-label">Relief</label>
+            <div class="relief-toggle" id="photoReliefToggle" style="margin-bottom:4px;">
+              <button type="button" class="relief-toggle-btn active" id="photoBtnReliefRaised" title="Light areas raised, dark areas as grooves">
+                <svg viewBox="0 0 24 12" width="28" height="12" aria-hidden="true">
+                  <rect x="0" y="6" width="5" height="6"/><rect x="6" y="3" width="5" height="9"/>
+                  <rect x="12" y="6" width="5" height="6"/><rect x="18" y="3" width="5" height="9"/>
+                </svg>
+                <span>Raised</span>
+              </button>
+              <button type="button" class="relief-toggle-btn" id="photoBtnReliefCarved" title="Inverted: dark areas raised, light areas as grooves">
+                <svg viewBox="0 0 24 12" width="28" height="12" aria-hidden="true">
+                  <rect x="0" y="0" width="5" height="6"/><rect x="6" y="0" width="5" height="9"/>
+                  <rect x="12" y="0" width="5" height="6"/><rect x="18" y="0" width="5" height="9"/>
+                </svg>
+                <span>Carved</span>
+              </button>
+            </div>
+
+            <!-- F34 item 3 (Fred: "height wouldn't ever be more than 1/4 for
+                 now"): the PHYSICAL carve depth (same real P.carveZ every other
+                 filter uses), just scoped here to a photo-appropriate range --
+                 distinct from the "Depth" effect param below, which is a
+                 unitless relief-strength multiplier, not a real dimension. -->
+            <label class="cad-label">Max Height (in)</label>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
+              <input type="range" id="photoReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
+              <div class="cad-stepper" style="width:60px;"><input type="number" id="photoReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
+            </div>
+
+            <label class="cad-label" style="font-weight:600; opacity:0.75; margin:8px 0 4px;">Effect params</label>
+            <div id="photoTweaksBody">
+              <!-- Populated at runtime by core/noise/tweaks-ui.js → renderTweaksPanel() --
+                   a SECOND render target for the SAME schema/state the Filter panel's own
+                   "⚙️ Edit Filter" panel uses (registerTweaksTarget), not a copy. -->
+            </div>
+
+            <!-- F34 item 3: writes the live edits+tweaks+Max Height back into
+                 the loaded pattern's own `settings` (data/photo-patterns.json),
+                 downloaded as an updated file for the advisor to apply -- same
+                 "save a real file" idiom as Settings > Save log. Disabled for a
+                 user's own upload (main/photo-panel.js's syncSaveButtonState). -->
+            <button type="button" id="photoBtnSaveToPattern" class="cad-btn cad-btn-secondary" style="width:100%; margin-top:14px;" disabled>💾 Save settings to this pattern</button>
+          </div>
+        </aside>
+
+        <!-- F35 item 10: the Brick tab's own right panel (moved from the sidebar's panel-brick) --
+             the TOOL list itself (Brush/Wall/Frame) now lives in #editorToolbarBrick (the left rail);
+             everything else here is the "common controls every tool shares" main/brick-panel.js's own
+             header already describes. -->
+        <aside class="editor-layers-panel" id="editorBrickPanel" style="display:none;">
+          <div class="layers-header"><span>Brick</span></div>
+          <div style="padding:10px; display:flex; flex-direction:column; gap:4px; font-size:11px;">
+            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Set</label>
+            <div style="display:flex; gap:6px; margin-bottom:12px;">
+              <button type="button" id="brickSetRed" class="cad-btn brick-set-btn active" title="Red brick (Masonry)">Red Brick</button>
+              <button type="button" id="brickSetWhite" class="cad-btn brick-set-btn" title="White rocks (fieldstone, Masonry)">White Rocks</button>
+            </div>
+
+            <div id="brickToolHint" style="font-size:10px; opacity:0.65; margin:0 0 12px;"></div>
+
+            <!-- T86 item 7 (Fred: "a brush line can have a few brick patterns, maybe 2 and 3
+                 bricks wide"): the Brush band-preset picker -- core/bricks/library.js's own
+                 declared BRUSH_PRESETS, straddling the drawn stroke's own centreline. -->
+            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Brush band preset</label>
+            <div id="brickBrushPresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+              <!-- Populated at runtime by main/brick-panel.js's declared BRUSH_PRESET_LIST. -->
+            </div>
+
+            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
+            <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+              <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
+            </div>
+
+            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
+            <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+              <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
+            </div>
+
+            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Band patterns</label>
+            <div id="brickFrameBandPatternList" style="margin-bottom:12px;">
+              <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
+            </div>
+
+            <label class="cad-label">Frame brick length (in)</label>
+            <div class="cad-slider-row" style="margin-bottom:10px;">
+              <input type="range" id="brickFrameLengthSlider" class="cad-slider" min="0.5" max="1.5" step="0.05" value="0.75">
+              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickFrameLength" value="0.75" min="0.5" max="1.5" step="0.05"></div>
+            </div>
+
+            <label class="cad-label">Scale</label>
+            <div class="cad-slider-row" style="margin-bottom:10px;">
+              <input type="range" id="brickScaleSlider" class="cad-slider" min="0.5" max="2" step="0.05" value="1">
+              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickScale" value="1"></div>
+            </div>
+
+            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Grout</label>
+            <div style="display:flex; gap:4px; margin-bottom:6px;">
+              <div style="flex:1;">
+                <label class="cad-label" style="font-size:10px;">Width (in)</label>
+                <input type="number" id="brickGroutWidth" value="0.06" min="0" max="0.5" step="0.005" style="width:100%;">
+              </div>
+              <div style="flex:1;">
+                <label class="cad-label" style="font-size:10px;">Depth (in)</label>
+                <input type="number" id="brickGroutDepth" value="0.05" min="0" max="0.25" step="0.005" style="width:100%;">
+              </div>
+            </div>
+            <div class="relief-toggle" id="brickGroutProfileToggle" style="margin-bottom:12px;">
+              <button type="button" class="relief-toggle-btn" id="brickBtnGroutRecessed" title="Joints carved below the surrounding surface (not yet visually implemented)"><span>Recessed</span></button>
+              <button type="button" class="relief-toggle-btn active" id="brickBtnGroutFlush" title="Joints sit flush with the base surface"><span>Flush</span></button>
+            </div>
+
+            <label class="cad-label">Relief</label>
+            <div class="relief-toggle" id="brickReliefToggle" style="margin-bottom:12px;">
+              <button type="button" class="relief-toggle-btn active" id="brickBtnReliefRaised" title="Bricks raised above the surface"><span>Raised</span></button>
+              <button type="button" class="relief-toggle-btn" id="brickBtnReliefCarved" title="Bricks carved into the surface"><span>Carved</span></button>
+            </div>
+
+            <label class="cad-label">Max Height (in)</label>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
+              <input type="range" id="brickReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
+              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
+            </div>
+
+            <label class="cad-label">Suppression</label>
+            <div class="cad-slider-row" style="margin-bottom:10px;">
+              <input type="range" id="brickSuppressionSlider" class="cad-slider" min="0" max="0.9" step="0.01" value="0">
+              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickSuppression" value="0"></div>
+            </div>
+
+            <label class="cad-label">Clumping</label>
+            <div class="cad-slider-row" style="margin-bottom:10px;">
+              <input type="range" id="brickClumpingSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.3">
+              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickClumping" value="0.3"></div>
+            </div>
+
+            <label class="cad-label">Seed</label>
+            <div style="display:flex; gap:6px; margin-bottom:4px;">
+              <input type="number" id="brickSeed" value="1" style="flex:1;">
+              <button type="button" id="brickBtnRandomSeed" class="cad-btn" title="Random seed">🎲</button>
+            </div>
+
+            <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+              <input type="checkbox" id="isolateSkeleton">
+              <span>Hide filter texture</span>
+            </label>
+            <div style="font-size:10px; opacity:0.65; margin:2px 0 4px;">Bricks read best with this on -- the active filter's own fine noise otherwise competes with brick-scale detail.</div>
           </div>
         </aside>
 

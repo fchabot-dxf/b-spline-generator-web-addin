@@ -232,10 +232,16 @@ function step(d,fromX){{ if(!set.length||stepping) return; const f=lb.querySelec
 document.getElementById('lbClose').addEventListener('click',ev=>{{ev.stopPropagation();slideClose(0);}});
 document.addEventListener('click',ev=>{{ if(drawOn && ev.target.closest('dialog')) return; const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog') && !ev.target.closest('#lbClose') && !moved){{
     if(lastPtr==='mouse' && ev.target!==im){{ slideClose(0); }}           // mouse: click outside the image closes
-    else if(zs===1){{ step(ev.clientX<innerWidth/2?-1:1); }} }} }});
+    else {{ tapAt(ev.clientX, ev.clientY); }} }} }});
+// double tap / double click zooms in (2.5x at that spot) or back out (Fred); a single tap still steps images at 1x,
+// delayed by the double-tap window so the first tap of a double never steps
+let tapT=null, tapP=null;
+function tapAt(x,y){{ if(tapT && Math.hypot(x-tapP.x,y-tapP.y)<40){{ clearTimeout(tapT); tapT=null;
+    if(zs>1) zr(); else zoomAt(2.5,x,y); return; }}
+  tapP={{x,y}}; tapT=setTimeout(()=>{{ tapT=null; if(zs===1) step(x<innerWidth/2?-1:1); }},280); }}
 document.addEventListener('keydown',ev=>{{ if(lb.open){{ if(ev.key==='ArrowRight'){{step(1);ev.preventDefault();}} else if(ev.key==='ArrowLeft'){{step(-1);ev.preventDefault();}} return; }}
   const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
-// zoom + pan: pinch + one-finger pan (touch), wheel + drag (mouse); no double-tap (Fred); swipe changes image only at 1x; swipe changes image only at 1x
+// zoom + pan: pinch + one-finger pan (touch), wheel + drag (mouse); double tap / double click toggles 2.5x zoom (Fred, reversing the earlier no-double-tap); swipe changes image only at 1x; swipe changes image only at 1x
 let zs=1, zx=0, zy=0, moved=false, x0=null, y0=null, pd=0, ps=1, drag=null;
 function za(){{ const tf='translate('+zx+'px,'+zy+'px) scale('+zs+')'; im.style.transform=tf; if(typeof ink!=='undefined') ink.style.transform=tf; im.style.cursor=zs>1?'grab':''; }}
 function zr(){{ zs=1; zx=0; zy=0; za(); }}
@@ -243,17 +249,22 @@ im.style.transformOrigin='center center'; im.style.transition='none';
 function zoomAt(ns,cx,cy){{ const r=im.getBoundingClientRect(), ox=cx-(r.left+r.width/2), oy=cy-(r.top+r.height/2);
   ns=Math.max(1,Math.min(6,ns)); const k=ns/zs; zx=zx*k-ox*(k-1); zy=zy*k-oy*(k-1); zs=ns; if(zs===1){{zx=0;zy=0;}} za(); }}
 const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+const mid=t=>({{x:(t[0].clientX+t[1].clientX)/2,y:(t[0].clientY+t[1].clientY)/2}});
+// two fingers = pinch AND pan, in normal and markup mode (Fred): the image point under the fingers' start midpoint stays under their current midpoint
+let m0=null, zx0=0, zy0=0, C0=null;
+function twoFinger(t){{ const m=mid(t), ns=Math.max(1,Math.min(6,ps*dist(t)/pd));
+  const ux=(m0.x-C0.x-zx0)/ps, uy=(m0.y-C0.y-zy0)/ps; zs=ns; zx=m.x-C0.x-ns*ux; zy=m.y-C0.y-ns*uy; za(); }}
 lb.addEventListener('touchstart',ev=>{{ if(drawOn && ev.touches.length<2) return; moved=false;
-  if(ev.touches.length===2){{ pd=dist(ev.touches); ps=zs; x0=null; return; }}
+  if(ev.touches.length===2){{ pd=dist(ev.touches); ps=zs; x0=null; m0=mid(ev.touches); zx0=zx; zy0=zy;
+    const r=im.getBoundingClientRect(); C0={{x:r.left+r.width/2-zx, y:r.top+r.height/2-zy}}; return; }}
   x0=ev.touches[0].clientX; y0=ev.touches[0].clientY; drag={{x:zx,y:zy}}; }},{{passive:true}});
 lb.addEventListener('touchmove',ev=>{{ if(drawOn && !(ev.touches.length===2 && pd)) return;
-  if(ev.touches.length===2&&pd){{ const c={{x:(ev.touches[0].clientX+ev.touches[1].clientX)/2,y:(ev.touches[0].clientY+ev.touches[1].clientY)/2}};
-    zoomAt(ps*dist(ev.touches)/pd,c.x,c.y); moved=true; ev.preventDefault(); return; }}
+  if(ev.touches.length===2&&pd&&m0){{ twoFinger(ev.touches); moved=true; ev.preventDefault(); return; }}
   if(zs===1&&x0!==null&&ev.touches.length===1){{ const ddy=ev.touches[0].clientY-y0, ddx=ev.touches[0].clientX-x0; if(ddy>0&&ddy>Math.abs(ddx)){{ fig.style.transform='translateY('+ddy+'px)'; moved=true; ev.preventDefault(); return; }}
     if(Math.abs(ddx)>Math.abs(ddy)&&!stepping){{ fig.style.transform='translateX('+ddx+'px)'; moved=true; ev.preventDefault(); return; }} }}
   if(zs>1&&x0!==null&&drag){{ zx=drag.x+ev.touches[0].clientX-x0; zy=drag.y+ev.touches[0].clientY-y0; za(); moved=true; ev.preventDefault(); }} }},{{passive:false}});
 lb.addEventListener('touchend',ev=>{{ if(drawOn && !pd) return;
-  if(ev.touches.length>0) return; setTimeout(()=>{{moved=false;}},350); if(pd){{ pd=0; x0=null; return; }}
+  if(ev.touches.length>0) return; setTimeout(()=>{{moved=false;}},350); if(pd){{ pd=0; m0=null; x0=null; return; }}
   if(x0===null) return; const dx=ev.changedTouches[0].clientX-x0, dy=ev.changedTouches[0].clientY-y0; x0=null;
   if(zs===1 && dy>90 && dy>Math.abs(dx)){{ moved=true; slideClose(dy); return; }}
   if(zs===1 && Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)){{ step(dx<0?1:-1,dx); moved=true; ev.preventDefault(); return; }}

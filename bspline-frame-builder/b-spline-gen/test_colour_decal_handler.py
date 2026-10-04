@@ -169,6 +169,36 @@ class TestFindStampedPanelBody:
         assert bsg._find_stamped_panel_body(None) is None
 
 
+class TestFindStampedComponent:
+    """F35 item 12: _find_stamped_component is _find_stamped_panel_body's own sibling (same
+    _find_clean_stamped search, same 'resolve Stamped, never fall back to Clean or root'
+    contract) -- every carving sketch's own target, not a decal concern, but reusing this file's
+    own already-established fakes rather than duplicating them in a new file for one small class."""
+    def test_finds_the_stamped_component(self):
+        body = _FakeBody('panel', solid=True)
+        occ = _stamped_occ(body)
+        group = _import_group([occ])
+        assert bsg._find_stamped_component(group) is occ.component
+
+    def test_none_when_only_clean_was_sent_never_falls_back_to_it(self):
+        clean_occ = _FakeOcc('Clean', bodies=[_FakeBody('panel')])
+        group = _import_group([clean_occ])
+        assert bsg._find_stamped_component(group) is None
+
+    def test_none_for_an_empty_import_group(self):
+        assert bsg._find_stamped_component(_import_group([])) is None
+        assert bsg._find_stamped_component(None) is None
+
+    def test_stamped_nested_under_a_non_matching_wrapper_is_still_found(self):
+        """_find_clean_stamped's own recursive search -- Stamped doesn't have to be a DIRECT
+        child of import_group, matching the real import tree's own nesting."""
+        body = _FakeBody('panel', solid=True)
+        stamped = _stamped_occ(body)
+        wrapper = _FakeOcc('some wrapper', children=[stamped])
+        group = _import_group([wrapper])
+        assert bsg._find_stamped_component(group) is stamped.component
+
+
 class TestLargestAreaFace:
     def test_picks_the_largest_not_the_first_or_last(self):
         faces = [_FakeFace(8.4), _FakeFace(363.6), _FakeFace(1.2)]

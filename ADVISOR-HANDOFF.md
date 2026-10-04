@@ -18,10 +18,10 @@ From the outgoing advisor (session `b-spline-generator-web-addin-54`) to the new
 
 | Seat | Session | Worktree / branch | Epoch | Seat lock | Doing now |
 |---|---|---|---|---|---|
-| A | `b-spline-generator-web-addin-f3` | main checkout / `main` | 6 | f3 | H23 item 15: Template 10 Fusion fix |
-| B | `b-spline-generator-web-addin-b5` | `-lane-b` / `lane-b` | 9 | b5 | T82 item 1: finish Template 7, then T82 item 3 |
-| C | `b-spline-generator-web-addin-de` | `-fb-app` / `fb-app` | 5 | de | F30 item 3: taper copies |
-| spare | `-39`, `-d3` | none | none | none | PARKED (no wait, no edits, no Fusion) |
+| A | `b-spline-generator-web-addin-39` | main checkout / `main` | 7 | 39 | H23 item 78: Template 18 Arched Head (diagram first) -- f3 DECOMMISSIONED 17fe1c6 |
+| B | `b-spline-generator-web-addin-d3` | `-lane-b` / `lane-b` | 10 | d3 | T86 item 4b: brick engine on every template (b5 decommissioned f4375d1) |
+| C | `b-spline-generator-web-addin-de` | `-fb-app` / `fb-app` | 5 | de | F35 item 12 (carving sketches in Carved, fieldstone) then 11 (bricks SVG on Send) |
+| spare | none | none | none | none | b5 + f3 DECOMMISSIONED 2026-10-04 |
 
 Decommissioned, all signed with 🪦 except `af`, which is closed: af, 66, d6, 55, 4a (archived 2026-10-03, never had a task).
 

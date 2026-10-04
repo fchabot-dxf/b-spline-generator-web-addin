@@ -10418,3 +10418,240 @@ Full suite green: 203 files / 3775 tests. Commit by explicit path, push, report 
 the picker is wired to the proven path, frameBricksFor is gone, band-course.js stays parked/unused
 exactly as instructed, and the real live app now matches the clean preview shots b5's own T86 item 2
 already produced independently.
+
+## F35 item 10: move Photo + Brick sidebar sections into their own editor tabs -- [Frame][Artwork][Photo][Brick]
+
+Fred's own dispatch (via the advisor), with a HOLD/RESUME mid-flight: first "move Brick into a tab",
+then an addition ("and photo"), then Fred said "wait" (paused, no code touched), then RESUMED with his
+own reasoning spelled out: Photo and Brick are HEADER tabs because each uses a COMPLETELY DIFFERENT
+TOOLBAR, not just a different settings panel -- so each of the 4 tabs swaps BOTH its own left toolbar
+(the vertical icon rail) AND its own right panel together, declared as data; the canvas/board/3D
+preview stay shared and layers stay visible across every tab (only Frame dims the artwork, unchanged).
+
+**The existing [Frame|Artwork] switch was NOT a declared registry** -- confirmed by reading it first,
+not assumed: `main/frame-panel.js`'s own `setEditorTab` was a hardcoded 2-way boolean toggling two
+fixed element IDs. Generalizing it into a real 4-way registry needed a new home, not a 3rd special
+case bolted onto a file whose own header already scopes it to "the sidebar FRAME section" -- new
+`main/editor-tabs.js` declares `EDITOR_TABS` (`{id, label, drawerLabel, buttonId, panelId, toolbarId}`
+x4) and the generic switch (toggle `.active`, show/hide each tab's own panel + toolbar pair). It
+dispatches an `editorTabChanged` CustomEvent (the SAME declared-event-bridge convention this app
+already uses, e.g. `bricksGenerated`) rather than importing frame-panel.js/photo-panel.js/
+brick-panel.js directly -- each of those three keeps its OWN reaction to entering its own tab, with
+zero ownership creep onto each other's behaviour. `frame-panel.js` now listens for the event and keeps
+only its own Frame-specific side effects (the view-only shield, `setEditorFocus` dimming, dropping
+hover state, redrawing the shape handles) that used to live inside the old `setEditorTab` itself;
+`setEditorFocus` already treated anything non-'frame' as the 'artwork' case internally, so Photo/Brick
+got the correct (full-opacity, unlocked) treatment with NO changes needed there.
+
+**Left-rail toolbar per tab** (`#editorToolbarFrame/Artwork/Photo/Brick`, one shown at a time inside
+the SAME 44px-wide rail `<aside>`, no 4 separate asides to keep each one's layout styling in sync):
+Artwork's own existing tool buttons (Select/Node/Lattice/.../Flatten) just got wrapped in a named div,
+byte-identical otherwise. Frame's own toolbar is declared EMPTY -- shape editing is plain handle drags
+on the canvas (`editor-frame-profile.js`), no mode to arm, so an empty rail is the honest declaration
+of that, not a placeholder. Brick's own already-declared `BRICK_TOOLS` list (Brush/Wall/Frame/
+Scissors/Stripe) now renders INTO this rail instead of the old sidebar's horizontal icon+label row --
+same `renderToolList`/`selectTool` functions, only the target container and each button's own class
+changed (icon-only `.tool-btn`, label moved to the `title` tooltip, matching the rail's established
+convention). Photo needed a genuinely NEW declared list (nothing in this codebase names Crop/
+Straighten/Rotate-Flip/Levels/Blur as discrete tools before) -- `PHOTO_TOOLS` in `main/photo-panel.js`,
+the SAME `{id,label,icon,hint}` shape `BRICK_TOOLS` already established, each one showing/hiding its
+own `#photoToolSection_<id>` div in the right panel; everything that ISN'T tool-specific (pattern row,
+load-your-own, preview, Relief, Max Height, effect params, Save-to-pattern) stays always-visible,
+mirroring the EXACT "common controls every tool shares" split `brick-panel.js`'s own header already
+documents -- not a new UX pattern invented here, the one precedent already in this codebase applied a
+second time.
+
+**Right panel per tab**: `#editorFramePanel`/`#editorLayersPanel` (pre-existing, untouched) plus two
+new sibling `<aside class="editor-layers-panel">`s, `#editorPhotoPanel` and `#editorBrickPanel`, holding
+the MOVED markup from the old sidebar `panel-photo`/`panel-brick` blocks -- every element ID preserved
+exactly, so `main/photo-panel.js`'s and `main/brick-panel.js`'s own existing `document.getElementById`
+wiring needed ZERO changes beyond the new tool-list/tab-button additions above; both panels' own
+`init*Panel()` already ran at app-init time against this SAME static (always-present, just
+hidden-until-opened) modal markup, the identical assumption `frame-panel.js`'s own init already relied
+on, confirmed live (no console errors). The old sidebar `panel-photo`/`panel-brick` blocks (248 lines,
+including their own comment headers describing the NOW-obsolete sidebar placement) are deleted
+entirely, not just hidden -- no duplicate controls left behind anywhere.
+
+**MEASURED gap in my own first pass, caught by the full suite, not left silent**: removing the old
+`setEditorTab`/`getEditorTab` from `frame-panel.js` broke `tests/frame-tabs.test.js`, which imports
+BOTH by name from that file -- my own grep for "who else imports this" had only checked the app's own
+`html/` tree, not `tests/`. Fixed by re-exporting both from `editor-tabs.js`'s own bindings (one line
+each, `export { getEditorTab };`), not duplicating logic. A SECOND, more interesting regression from
+the same test: the mobile drawer's own side-panel label used to hardcode 'Frame'/'Layers' for the old
+2-way toggle; my first generalization used the tab's own `label` field instead, which is CORRECT for
+Photo/Brick (their panel IS titled Photo/Brick) but WRONG for Artwork (its own panel is titled
+"Layers", not "Artwork", a real pre-existing distinction the test caught). Fixed with an explicit
+`drawerLabel` field per tab entry, separate from `label` -- declared data correcting a declared-data
+shortcut, not a special case in the switching code itself.
+
+**Live-verified** (headless Chrome, template select -> open editor -> click each of the 4 tab
+buttons): all 4 tabs show exactly one visible toolbar + one visible panel each (checked via
+`getComputedStyle` on all 8 containers at every tab, not just eyeballed), zero console errors/
+exceptions at either width. Screenshots at 390 and 1366 for all 4 tabs (8 total,
+`shots/seatC/f35item10_tab_<frame|artwork|photo|brick>_<390|1366>.png`): Frame's params + live handles,
+Artwork's full draw-tool rail + Layers list (byte-identical to before), Photo's new 5-icon rail with
+Crop shown by default (its own right panel showing pattern row/preview/crop controls/relief/height/
+tweaks), Brick's new 5-icon rail (Brush/Wall/Frame/Scissors/Stripe) with its own full settings panel
+(Set/Wall pattern/Frame band preset/Band patterns/length/Scale/Grout/Relief/Height/Suppression/
+Clumping/Seed) -- the identical content the old sidebar panel held, now living in its own tab.
+
+Full suite green: 204 files / 3780 tests (up from 203/3775 -- `tests/frame-tabs.test.js` already
+existed and is unchanged in count, no new test file added this item; the full suite was already run
+once mid-fix to catch the two regressions above, then again clean after both fixes). Commit by
+explicit path, push, report back to the advisor: the design as RESUMED (declared per-tab toolbar +
+panel, both sidebar sections removed with no duplicates, screenshots of all 4 tabs at both widths).
+
+## F35 item 10 follow-up: 2 polish fixes from the advisor's own 1:1 review of the merged tabs
+
+(1) The Artwork top toolbar (Stroke width/Color/Grid/Style) was still showing on Photo/Brick/Frame --
+it only applies to hand-drawn Artwork shapes, so it's meaningless (and visually confusing) elsewhere.
+Gave it `id="editorToolbarTop"` and one more rule in `editor-tabs.js`'s own `setEditorTab` (show only
+when `_editorTab==='artwork'`) -- not a 5th entry in `EDITOR_TABS` since it isn't a tab's own content,
+just shared chrome for one of them.
+
+(2) The Frame band preset picker only ever showed 3 presets (`single_soldier`/`soldier_stretcher`/
+`three_band`) via a hand-maintained `FRAME_PRESET_LIST` array in brick-panel.js, whose own header
+comment already named the reason: only 3 of 5 named presets existed in library.js's own
+`FRAME_PRESETS` at the time it was written. Since then 5 MORE landed there (`butt_frame`,
+`quoin_corners`, `double_course`, `header_band`, `mixed_bands`) and the hand-copied list never caught
+up -- exactly the "a reusable concept deserves ONE declared source" lesson this project already
+applies via `WALL_PATTERN_LABELS`/`WALL_PATTERN_LIST` a few lines above it in the SAME file. Replaced
+it with the identical pattern: `Object.keys(FRAME_PRESETS).map(id => ({id, label: FRAME_PRESET_LABELS[id] || id}))`,
+so a new preset declared in library.js shows up here automatically, with its own key as a fallback
+label if nobody's named it a nicer one yet.
+
+Live-verified: top toolbar now hidden on Frame/Photo/Brick, shown on Artwork; the Brick tab's own
+Frame band preset list now shows all 8 real presets. Re-shot all 8 tab screenshots (the top-toolbar
+fix changes what they show). Full suite green: 205 files / 3784 tests.
+
+## F35 item 12: carving sketches go in the Carved component; Fieldstone in the Wall picker
+
+**(b) Fieldstone, done first (small, app-only).** `fieldstoneLayout` (layouts/fieldstone.js, f3's own
+item 74) was already a real `fill-shape.js` LAYOUTS entry -- a Poisson-disc Voronoi tiling, reading
+only `brickLengthIn`/`grout.widthIn`, nothing White-Rocks-specific -- but had no `BRICK_PATTERNS` key,
+so the Wall picker could never select it; White Rocks only rendered it via its own set-level default
+`layout:'fieldstone'`, invisibly. Added `fieldstone: { kind: 'tile2d' }` to `BRICK_PATTERNS`
+(library.js) -- the exact same `kind` herringbone/basketweave already use, so `applyWallPattern`'s own
+existing tile2d branch (`input.set = {...input.set, layout: pattern}`) and the Wall/Frame-band pickers
+(both already read `Object.keys(BRICK_PATTERNS)` directly) needed ZERO other code changes. Live-
+verified the exact claim "usable with either set": Red Brick (set 1, normally rectangular bond) +
+Fieldstone now renders real Voronoi stone shapes textured with RED BRICK photos -- a capability that
+flatly didn't exist before (fieldstone was only ever reachable via White Rocks). Screenshot:
+`shots/seatC/f35item12b_fieldstone_redbrick.png`.
+
+**(a) Carving sketches land in the Stamped (Carved) component, never root, never Clean.** Read
+`b-spline-gen.py` (the Fusion add-in) before touching it: `sketch_target` (line 1787, inside
+`_handle_generate`'s SVG-stamping block) was `current_import_group.component` ("B-Spline Set", the
+WHOLE Send's own container) or `root_comp` -- never the Stamped/Carved sub-component the stamp
+actually cuts (`body_target`, correctly resolved just above it). "Carved"/"Clean" aren't Fusion
+components named that in this code at all -- they arrive from the imported STEP file loosely named
+(e.g. "Stamped v3") and get normalized to the canonical strings `'Stamped'`/`'Clean'` by
+`_normalize_occurrence`; there is no stored reference, only a name-match search
+(`_find_clean_stamped`, recursive, case-insensitive substring).
+
+The exact "resolve Stamped, never fall back" convention already existed one function away:
+`_find_stamped_panel_body` (used by the H23 item 71 colour decal, already shipped and tested) does
+this same search for the decal's own BODY target. Declared the ONE helper the dispatch asked for,
+`_find_stamped_component`, as that function's direct sibling (same `_find_clean_stamped` search,
+returns the Stamped occurrence's own `.component` instead of a body) -- not a new mechanism. Fixed
+line 1787 to call it, and to LOG + SKIP (never import any art-layer sketch at all) when it returns
+`None` (no Stamped/Carved component in this Send), per the dispatch's own explicit rule --
+`_apply_colour_decal` (the sibling feature, called a few lines later in the SAME function) already
+establishes this exact "skip, don't fall back" precedent and does NOT re-check `_in_active_design`
+at this point in the flow, so I didn't add it here either (would have been an inconsistency with the
+already-shipped, already-tested sibling at the identical point in the Send).
+
+Tests: `TestFindStampedComponent` in `test_colour_decal_handler.py` (the natural home -- the sibling
+helper's own tests already live there, reusing its exact fakes rather than standing up a new file's
+worth of Fusion-API stubs for one small class): finds Stamped, never falls back to Clean, None for an
+empty import group, finds Stamped nested under a non-matching wrapper occurrence (matching
+`_find_clean_stamped`'s own real recursive behaviour, not assumed). PROVEN non-vacuous, not just
+asserted: temporarily stubbed the new helper to always return `None` and confirmed exactly the 2
+tests that assert a real match FAILED (the 2 "never falls back" tests correctly stayed green, since
+they already expect `None`) -- restored from a saved copy (not HEAD, uncommitted) and purged
+`__pycache__` before re-confirming green, per this project's own mutation-testing discipline. Full
+suite across all 3 pytest roots green: 116 (b-spline-gen) + 1122 passed/25 skipped (bspline-frame-
+builder) + 32 (tools).
+
+**NOT YET DONE**: the dispatch's own live-Fusion step ("one live Send in Fusion... sketch tree
+screenshot showing Carved > sketches, Clean untouched, root clean") -- the fusion360-bridge MCP is not
+connected in this session, and per standing protocol a live Fusion check needs the holder file
+coordinated with the advisor first ("ask me for the Fusion holder for the probe," the dispatch's own
+words) before touching the live app at all. Flagging this explicitly in the pass-back rather than
+skipping it silently or guessing at the Fusion-side result.
+
+## H23 item 78b: Template 10 target (Fred's reconstruction) vs the current app default -- diagram only, stopped for OK
+
+Seat A epoch 7 (seat 39). Original dispatch (H23 item 78) was a new Template 18 "Arched Head"; the
+advisor redirected mid-task (cross-session message + `handoff.py amend`, both say the same thing):
+there is no new template -- Template 10 ITSELF must become Fred's own narrow-head + arched-top
+reconstruction. No Template-18 work had been committed when the redirect arrived (only reading files
+so far), so nothing to drop.
+
+**Read the prior history on this exact question first (WORK-LOG-fb-app.md, 2026-10-01, H23 item 19)
+before building anything**, since it's directly relevant: an earlier seat (C) built an app-side-only
+version of this same reconstruction (`b31f5ed`, F29 item 2) by repurposing `hourglassConstruction`'s
+existing `topInset`/`cornerRadiusTop`/`cornerRadiusBottom` knobs plus a new `archCornerAngle` concept
+replacing `archRise` (archRise alone "built wrong in Fusion" once combined with a narrow top, per that
+commit's own message). Item 19 then found the COMMITTED Fusion phase code was never actually changed
+to match, and that commit was later dropped (`57443e2`, "dropping b31f5ed's superseded T10 shape") to
+avoid shipping an app preview that disagreed with what Fusion would actually build. Today's dispatch
+(78b) resolves the ambiguity that left open: Fred has now explicitly confirmed the reconstruction IS
+the intended target, and wants target-vs-current shown before any code changes resume.
+
+**Decided NOT to reuse `b31f5ed`'s `archCornerAngle` approach for this diagram.** It was reverted,
+its closed-form angle-to-rise formula isn't in the current tree, and it's exactly the piece item 19
+flagged as unproven in Fusion. Fred's own dump
+(`~/.bspline-status/shots/fred/t10_fred_reconstructed_sketch_dump_2026-10-01.txt`) already gives
+every arc's start/centre/end plus a 4th point known to lie on the curve, in absolute (fraction-of-W/H)
+form -- ground truth, no formula needed -- so the target shape is built directly from that, and the
+current shape is built from the REAL production path (`paramsFromShapeModel` + `generateSilhouette`
+against the committed `frame-defs.json` `shapeModel`, the same call the app's own Frame tab preview
+makes). Two independently-sourced shapes, no shared code path between them, so an error in one can't
+hide an error in the other.
+
+New script: `tools/repro/h23_item78b_t10_target_vs_current.mjs`. Converts the dump's board-centre,
+y-up fractions into `generateSilhouette`'s own frame (safe-zone top-left origin, y DOWN) -- derived
+algebraically, then VERIFIED against the real `generateSilhouette` output (the dump's own `bottom_edge`
+corners land exactly on the two keypoints the real T10 call produces for its own bottom edge: `(w,h)`
+and `(0,h)`). Each target arc is reconstructed from (start, centre, end) with the dump's 4th "mid"
+point used only to pick the sweep DIRECTION (same `onSweep` technique f30/f31/t84's own `bulgeArc`
+uses) -- never trusted for the radius, so a bad transcription would show as a radius spread, not a
+silently-wrong curve. All 7 distinct arcs' 3 independently-computed radii agree to within 0.0007in.
+
+**Caught my own bug via the non-vacuous continuity check, not by eyeballing the render**: first pass
+wired `horn_TL`'s start point wrong (copy-paste from the wrong intermediate variable), producing a
+0.51in gap between `arc_shoulder_L` and `horn_TL` -- the scripted continuity check (same "every
+piece's end must exactly meet the next piece's start" check f30/f31/t84 already use) caught it
+immediately; after the fix the worst gap is 0.00045in, consistent with the dump's own 4-decimal
+rounding, not a real defect. `outlineDefects` is clean (`[]`) for both shapes.
+
+**Tooling note for the next session that screenshots an HTML/SVG diagram from THIS machine/seat**:
+the established CDP pattern (`tools/repro/t86_item3_shoulder_preview.mjs`'s `spawn` + WebSocket +
+`Page.captureScreenshot`) fails here -- chrome.exe exits immediately with status 21 and no stderr,
+confirmed identical whether launched via async `spawn` or sync `execFileSync`. The SAME chrome.exe
+invocation works fine launched from bash job control directly. Isolated the actual cause: RELATIVE
+`--user-data-dir`/`--screenshot` path arguments -- once both are resolved to absolute paths before
+being handed to `execFileSync`, Chrome's own single-shot `--screenshot=<path>` CLI flag (no CDP/
+WebSocket needed at all) works reliably. This script uses that simpler path; left a comment at the
+call site rather than touching `t86_item3`'s own script (unrelated, not broken on whatever machine it
+was last run on).
+
+Rendered both shapes at 7x9 side by side (board + safe-zone dashed outline, filled outline, captioned)
+to `bspline-frame-builder/scratch/h23_item78b/h23_item78b_t10_target_vs_current.png`, then published to
+the shared status folder: `C:/Users/danse/.bspline-status/shots/seatA/h23_item78b_t10_target_vs_current.png`.
+Visually confirms the two shapes are clearly different in exactly the way the dispatch describes: the
+current default is a full-width (±hw) gentle dome over Template 1's own modest hourglass pinch;
+Fred's reconstruction is a much narrower (±0.2735W, roughly 60% of the current head width) vertical-
+sided head topped by a taller, tighter arch, over a visibly deeper, rounder waist pinch.
+
+**Stopping here per the dispatch** -- no template code, `frame-defs.json`, or Fusion phase touched.
+Nothing committed to app/Fusion geometry; only the new diagram script (and this log entry) committed.
+Waiting for Fred's OK on the target before scoping the actual rebuild (new handle: head/top width;
+`archRise` with the `MIN_ARCH_RISE_IN` 1/8in floor or a revived `archCornerAngle`, whichever Fusion
+actually builds cleanly this time -- that choice needs a live Fusion check either way, which needs
+the holder file, which needs the advisor).
+
+Full suite not re-run this turn (diagram-only change, no app/test code touched; same "a style tweak
+does not need 1,500 tests" gate-tiering rule). `node tools/repro/h23_item78b_t10_target_vs_current.mjs
+<repoRoot> [outDir]` re-runs cleanly end to end (verified twice from a clean scratch dir).
