@@ -19892,3 +19892,48 @@ calls made) -- seat de (or whoever needs it) can have it freely, nothing to rele
 Screenshot: `C:/Users/danse/.bspline-status/shots/seatA/h23_item78b_t10_target_vs_current.png`
 (target vs the shipped/clamped default, 7x9) -- re-run `node
 tools/repro/h23_item78b_t10_target_vs_current.mjs <repoRoot> [outDir]` any time to regenerate it.
+
+## H23 item 78b, Step 1: rounder shoulder (Fred OK'd ~0.9in) -- BOTH guards now clear, surprising finding
+
+Seat A epoch 7 (seat 39), un-parked turn 540, working on branch `t10-reconstruction` (never main
+until complete -- the advisor reverted the prior commit, f00a37d, off main for exactly that reason:
+it took T10 off the live site by hiding a shape that was previously working; memory note saved).
+Set up a dedicated worktree (`../b-spline-generator-web-addin-t10-reconstruction`, a node_modules
+junction to the main checkout's own install rather than a full separate `npm install`) so this
+branch's edits never touch the main checkout other seats may be using.
+
+**Raised `cornerRadiusTopOfHw` from 0.10554 (Fred's own exact sketch value) to 0.27692 (0.9in at
+7x9, Fred-approved)** in `template_10/template_data.py`. Bisected the real undercut threshold first
+(not guessed): clears at ~0.88in, so 0.9in gives a small margin. Updated the template's own comment
+to explain BOTH reasons the shoulder is rounder than the sketch -- the known resolve-order clamp gap
+(still unfixed, still flagged for the advisor/Fred, same numbers as the prior entry) AND this new,
+separate, Fred-approved manufacturability adjustment.
+
+**Surprising, worth flagging plainly: the no-hook guard is ALSO clear now** -- regenerated properly
+through `gen_frame_defs.py` (not a hand-patched `frame-defs.json`, which is what my own PRIOR
+bisection used and is why it wrongly reported the hook guard still broken at the old shoulder size).
+A hand-patched JSON only touches the ONE field poked at; the real generator also updates the
+`notch`/`cornerR` fields the hook check's own geometry actually depends on, so the hand-patched probe
+was checking an internally-INCONSISTENT shape, not the real one. **Lesson for next time: never
+trust a guard result against a hand-edited `frame-defs.json` -- regenerate for real first.** MEASURED
+twice, two different ways (a direct JS probe against the regenerated `frame-defs.json`, AND the
+project's own `_frameRecordBreaksNoHookRule`/`outlineHasUndercut` calls via a happy-dom-shimmed
+script): both clear, 7x9, with the 0.9in shoulder. NOT yet checked at 9x12 or other sizes -- that's
+still open, and `FRAME_HIDDEN` stays `True` until it's confirmed broadly, per the dispatch's own
+"un-hide only when all green" gate (left untouched this turn, on purpose -- this pass is Step 1,
+render-and-ask-Fred, not Step 2's un-hide decision).
+
+Full fast-tier suite re-run in the worktree (same files as the prior entry): 180 passed / 32 skipped
+/ 0 failed. `gen_frame_defs.py --check`: fresh.
+
+**Rendered the 3-way comparison** the dispatch asked for (old/live T10, new/rounder-shoulder T10,
+Fred's exact sketch, all at 7x9, with the NEW shape's own guard status captioned in the render
+itself) -- new script `tools/repro/h23_item78b_step1_rounder_shoulder.mjs` (kept separate from the
+original diagram-only script, which stays as the durable record of that earlier step). The old
+shape's own resolved params came from main's own committed `frame-defs.json` (post-revert), hard-
+coded in the new script since this worktree no longer carries the old shape anywhere live.
+Screenshot: `C:/Users/danse/.bspline-status/shots/seatA/h23_item78b_step1_rounder_shoulder.png`.
+
+**Stopping here per the dispatch -- passing back for Fred's look before Step 2** (hook-guard
+robustness at other sizes, Fusion phases, goldens, matrix, un-hide, merge). Nothing pushed to main;
+this commit stays on `t10-reconstruction`.

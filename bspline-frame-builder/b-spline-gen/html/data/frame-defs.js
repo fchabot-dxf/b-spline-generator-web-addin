@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "9c1234a56013c1dd9642dc72eed8462640bdf429a90a7e44a68aa5c879b39bf8",
+  "sourceHash": "9e845ec2e4e2fc4571914a97bf695b528deb6ee70b293ed0239d7735ef8e2bfe",
   "templates": [
     {
       "features": [
@@ -2022,7 +2022,7 @@ export default {
           },
           "cornerRTop": {
             "hh": 0.0,
-            "hw": 0.10554
+            "hw": 0.27692
           },
           "depth": {
             "hh": 0.0,
@@ -2057,7 +2057,7 @@ export default {
           "archRiseOfHw": 0.19419,
           "baseModel": "provisional_diamond_top_hourglass_pinch_model (Template 11's own side algebra)",
           "cornerRadiusBottomOfHw": 0.39705,
-          "cornerRadiusTopOfHw": 0.10554,
+          "cornerRadiusTopOfHw": 0.27692,
           "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
           "topInsetOfHw": 0.41092,
           "waistCenterYOfHh": 0.27784,

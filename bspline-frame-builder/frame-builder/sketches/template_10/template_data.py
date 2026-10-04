@@ -159,22 +159,25 @@ FRAME_SHAPE_EXTRACTOR = "hourglass_narrow_arched_head"
 # still works (dispatch: "keep taper/seed behaviour working"), it's just not pre-applied by default
 # any more.
 FRAME_PROVISIONAL_SHAPE = {
-    "waistReachOfHw": 0.77292, "cornerRadiusTopOfHw": 0.10554, "cornerRadiusBottomOfHw": 0.39705,
+    "waistReachOfHw": 0.77292, "cornerRadiusTopOfHw": 0.27692, "cornerRadiusBottomOfHw": 0.39705,
     "waistCenterYOfHh": 0.27784, "waistRadiusOfHw": 0.21726, "topInsetOfHw": 0.41092, "archRiseOfHw": 0.19419,
 }
-# KNOWN GAP (H23 item 78b, flagged for the advisor/Fred, not fixed here): `cornerRadiusTopOfHw` above
-# (0.10554, Fred's own exact sketch value -- verified: `hourglassConstruction` called directly with it
-# reproduces the dump's own shoulder centre/radius exactly) does NOT reach the app today. The JS resolve
-# path (editor-shape-lattice-generator.js `_resolveParams`) builds `cornerRadiusTop`'s own feasible
-# range BEFORE `topInset` is resolved (PARAM_ORDER.hourglass order, kept on purpose -- reordering it
-# shifts the Generate seed-salt index of every later key, for every hourglass template), so the range
-# floor is computed as if topInset were still 0, clamping the shoulder up to ~0.1934 x hw (a visibly
-# rounder corner than the dump's own tight one). Tried an early, range-clamped PEEK at `topInset` inside
-# `_resolveParams` to fix it without touching PARAM_ORDER's own order/salt -- it fixes T10, but ALSO
-# changes Template 3's own SHIPPED default shoulder radius at 12x6 (0.7220 -> 0.4277 in) and 5.51x1.97
-# (0.2246 -> 0.1250 in), a real product-visible change to an existing template this worker can't approve
-# alone. Left declared at the CORRECT value here (not the clamped one) so a future, Fred-approved fix to
-# the resolve order needs no further change here -- T10 will simply start rendering it correctly.
+# H23 item 78b, ROUNDER SHOULDER (Fred approved, turn 540): `cornerRadiusTopOfHw` is 0.27692 (0.9in at
+# 7x9), not Fred's own exact sketch value (0.10554, 0.343in). Two reasons, not one:
+# (1) the JS resolve path (editor-shape-lattice-generator.js `_resolveParams`) clamps an explicit
+#     cornerRadiusTop BEFORE `topInset` is resolved (PARAM_ORDER.hourglass order, kept on purpose --
+#     reordering it shifts the Generate seed-salt index of every later key, for every hourglass
+#     template), so the exact value would render rounder than declared regardless (~0.1934 x hw, a
+#     separate, still-open architecture gap -- fixing it for real also changes Template 3's own SHIPPED
+#     shoulder radius at 2 board sizes, flagged for the advisor/Fred, not resolved here).
+# (2) MEASURED directly (bisected in the t10-reconstruction worktree): the exact sketch value is an
+#     UNDERCUT at frame_thickness=0.75in (`outlineHasUndercut` -- the shoulder's drawn radius has to
+#     clear the frame band's own width or the offset band crosses itself). The undercut clears at
+#     ~0.88in; 0.9in (this value) gives a small margin. Fred approved this rounder shoulder rather than
+#     a thinner frame band or a wider sketch.
+# The SEPARATE no-hook guard (`_frameRecordBreaksNoHookRule`, frame-panel.js) is STILL broken at this
+# value (confirmed, not assumed) -- raising the shoulder radius alone does not fix it; root cause not
+# yet found (H23 item 78b step 2, not this pass). `FRAME_HIDDEN` stays True until it is.
 
 # H23 item 78b: hidden from the template picker again (same mechanism F29 item 1 used for the OLD shape's
 # own Fusion-build defect) -- the APP preview above already draws the NEW narrow-head+arch shape, but the
