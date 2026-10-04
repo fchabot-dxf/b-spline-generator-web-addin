@@ -6,18 +6,17 @@ import { pathToFileURL } from 'node:url';
 import { writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import os from 'node:os';
+import { tessellate, templatePrimitives as buildTemplatePrimitives } from './t86_item4_matrix_lib.mjs';
 
 const [ROOT_ARG, OUT_DIR] = process.argv.slice(2);
 mkdirSync(OUT_DIR, { recursive: true });
 
 const appRoot = new URL(`file:///${ROOT_ARG.replace(/\\/g, '/').replace(/\/$/, '')}/bspline-frame-builder/b-spline-gen/html/`);
-const { frameContourSilhouette } = await import(appRoot + 'editor/contour-from-frame.js');
+const { frameCutProfile } = await import(appRoot + 'editor/editor-frame-profile.js');
 const { normalizeFrameRecord } = await import(appRoot + 'core/frame-record.js');
 const FRAME_DEFS = (await import(appRoot + 'data/frame-defs.js')).default;
 const { bricksContourBands } = await import(appRoot + 'core/bricks/contour-bands.js');
 const { BRICK_SETS, FRAME_PRESETS } = await import(appRoot + 'core/bricks/library.js');
-const { inwardSignFor } = await import(appRoot + 'core/bricks/geometry.js');
-const { radialSignAt } = await import(appRoot + 'core/bricks/arc-voussoir.js');
 
 const SET = BRICK_SETS[0];
 const TEMPLATE_IDS = FRAME_DEFS.templates.map((t) => t.id).sort((a, b) => {
@@ -25,43 +24,16 @@ const TEMPLATE_IDS = FRAME_DEFS.templates.map((t) => t.id).sort((a, b) => {
   return na - nb;
 });
 
-function tessellate(primitives) {
-  const points = [];
-  for (const prim of primitives) {
-    if (prim.type === 'arc') {
-      for (let k = 0; k < 16; k++) {
-        const t = prim.theta1 + ((prim.theta2 - prim.theta1) * k) / 16;
-        points.push({ x: prim.cx + prim.r * Math.cos(t), y: prim.cy + prim.r * Math.sin(t) });
-      }
-    } else points.push(prim.p0);
-  }
-  return points;
-}
+// T86 item 4 harness bug fix: was its own duplicate `templatePrimitives`, sourced from
+// `frameContourSilhouette(frame, 0, 0)` -- confirmed wrong for template_16/17 (see
+// t86_item4_matrix_lib.mjs's own header on `templatePrimitives` for the measured root cause: a
+// genuine `outline-offset.js` collapse bug at distance=0, not a harness-only issue). Reuses the
+// SAME corrected, `frameCutProfile`-sourced function the matrix runner uses now, declared ONCE
+// rather than duplicated a second time in this file.
 function templatePrimitives(templateId, W, H) {
-  const record = normalizeFrameRecord({ templateId });
-  const frame = { defs: FRAME_DEFS, record, board: { widthIn: W, heightIn: H } };
-  const sil = frameContourSilhouette(frame, 0, 0);
-  const raw = sil.primitives.map((prim, i) => {
-    if (prim.type === 'L') {
-      const next = sil.primitives[(i + 1) % sil.primitives.length];
-      const p1 = next.type === 'L' ? next.p0 : { x: next.cx + next.rx * Math.cos(next.theta1), y: next.cy + next.ry * Math.sin(next.theta1) };
-      return { type: 'line', p0: prim.p0, p1 };
-    }
-    return { type: 'arc', cx: prim.cx, cy: prim.cy, r: prim.rx, theta1: prim.theta1, theta2: prim.theta1 + prim.dTheta };
-  });
-  const inwardSign = inwardSignFor(tessellate(raw));
-  return raw.map((prim) => {
-    if (prim.type === 'line') {
-      const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y, len = Math.hypot(dx, dy);
-      return { ...prim, nx: (-dy / len) * inwardSign, ny: (dx / len) * inwardSign };
-    }
-    const midT = (prim.theta1 + prim.theta2) / 2;
-    const mid = { x: prim.cx + prim.r * Math.cos(midT), y: prim.cy + prim.r * Math.sin(midT) };
-    const direction = Math.sign(prim.theta2 - prim.theta1) || 1;
-    const tangent = { tx: -Math.sin(midT) * direction, ty: Math.cos(midT) * direction };
-    const radialSign = radialSignAt(tangent, mid.x, mid.y, prim.cx, prim.cy, inwardSign);
-    return { ...prim, radialSign };
-  });
+  const { primitives, error } = buildTemplatePrimitives(FRAME_DEFS, normalizeFrameRecord, frameCutProfile, templateId, W, H);
+  if (error) throw new Error(error);
+  return primitives;
 }
 
 const PALETTE = ['#c0392b', '#2980b9', '#27ae60', '#d35400', '#8e44ad', '#16a085'];

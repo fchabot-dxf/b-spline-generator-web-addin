@@ -3,13 +3,14 @@
 //
 // Usage: node tools/repro/t86_item4_matrix_run.mjs <repoRoot> <outDir>
 import { writeFileSync, mkdirSync } from 'node:fs';
-import { measureCase, templatePrimitives, verdict, withCornerStyle } from './t86_item4_matrix_lib.mjs';
+import { measureCase, templatePrimitives, checkContourConsistency, verdict, withCornerStyle } from './t86_item4_matrix_lib.mjs';
 
 const [ROOT_ARG, OUT_DIR] = process.argv.slice(2);
 mkdirSync(OUT_DIR, { recursive: true });
 
 const appRoot = new URL(`file:///${ROOT_ARG.replace(/\\/g, '/').replace(/\/$/, '')}/bspline-frame-builder/b-spline-gen/html/`);
 const { frameContourSilhouette } = await import(appRoot + 'editor/contour-from-frame.js');
+const { frameCutProfile } = await import(appRoot + 'editor/editor-frame-profile.js');
 const { normalizeFrameRecord } = await import(appRoot + 'core/frame-record.js');
 const FRAME_DEFS = (await import(appRoot + 'data/frame-defs.js')).default;
 const { BRICK_SETS, FRAME_PRESETS } = await import(appRoot + 'core/bricks/library.js');
@@ -24,15 +25,18 @@ const SIZES = [[7, 9], [9, 12]];
 // pre-existing demo preset, not part of either dispatch) excluded, matching the advisor's own count.
 const PRESET_NAMES = ['single_soldier', 'soldier_stretcher', 'double_course', 'quoin_corners', 'header_band', 'butt_frame', 'mixed_bands'];
 
+const contourIssues = [];
 const rows = [];
 let n = 0;
 for (const templateId of TEMPLATE_IDS) {
   for (const [W, H] of SIZES) {
-    const { primitives, error } = templatePrimitives(FRAME_DEFS, normalizeFrameRecord, frameContourSilhouette, templateId, W, H);
+    const { primitives, error } = templatePrimitives(FRAME_DEFS, normalizeFrameRecord, frameCutProfile, templateId, W, H);
     if (error) {
       rows.push({ templateId, W, H, preset: '(contour)', cornerStyle: '-', pass: false, reasons: [`CONTOUR_ERROR: ${error}`] });
       continue;
     }
+    const check = checkContourConsistency(FRAME_DEFS, normalizeFrameRecord, frameCutProfile, frameContourSilhouette, templateId, W, H, primitives);
+    if (!check.ok) contourIssues.push({ templateId, W, H, issues: check.issues });
     for (const presetName of PRESET_NAMES) {
       const baseBands = FRAME_PRESETS[presetName];
       for (const cornerStyle of ['native', 'butt']) {
@@ -58,6 +62,9 @@ console.log(`\n${rows.length} total cases, ${failed.length} failed, ${rows.lengt
 const lines = [];
 lines.push(`T86 item 4 matrix -- ${rows.length} cases (${TEMPLATE_IDS.length} templates x ${SIZES.length} sizes x ${PRESET_NAMES.length} presets x 2 corner styles)`);
 lines.push(`${failed.length} FAILED, ${rows.length - failed.length} passed\n`);
+lines.push(`CONTOUR CONSISTENCY CHECK: ${contourIssues.length} template/size combos disagree with frameCutProfile's own ground truth`);
+for (const ci of contourIssues) lines.push(`  ${ci.templateId} ${ci.W}x${ci.H}: ${ci.issues.join('; ')}`);
+lines.push('');
 lines.push('FAILURES:');
 for (const r of failed) {
   lines.push(`  ${r.templateId} ${r.W}x${r.H} ${r.preset}/${r.cornerStyle}: ${r.reasons.join('; ')}`);
