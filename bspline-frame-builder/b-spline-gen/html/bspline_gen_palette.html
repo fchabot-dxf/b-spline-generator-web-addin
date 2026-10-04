@@ -1024,6 +1024,16 @@
             <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
           </div>
 
+          <!-- F35 item 5 review (Fred, via advisor correction): "frame thickness" is the LENGTH of
+               the bricks across a Frame band (a soldier band's own width IS the brick length) --
+               NOT a proportional band-width scaler. Frame-only: Wall/Brush keep the set's own
+               unmodified brick length (main/brick-panel.js's resolveFrameBrickSet). -->
+          <label class="cad-label">Frame brick length (in)</label>
+          <div class="cad-slider-row" style="margin-bottom:10px;">
+            <input type="range" id="brickFrameLengthSlider" class="cad-slider" min="0.5" max="1.5" step="0.05" value="0.75">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="brickFrameLength" value="0.75" min="0.5" max="1.5" step="0.05"></div>
+          </div>
+
           <label class="cad-label">Scale</label>
           <div class="cad-slider-row" style="margin-bottom:10px;">
             <input type="range" id="brickScaleSlider" class="cad-slider" min="0.5" max="2" step="0.05" value="1">

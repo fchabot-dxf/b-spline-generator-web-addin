@@ -81,6 +81,14 @@ export const DEFAULT = {
       // Frame tool bands with -- a key, not the bands array itself, so it
       // always tracks library.js's own current declaration.
       frameBandPreset: 'single_soldier',
+      // F35 item 5 review (Fred, via advisor correction): "frame thickness" =
+      // the LENGTH of the bricks across a Frame band (a soldier band's own
+      // width IS the brick length) -- a per-frame brick-length OVERRIDE, not
+      // a band-width scaler. Starts at Set 1's own declared brickLengthIn
+      // (library.js), same "real number on first use" convention as
+      // grout/reliefIn above; resets to the newly-picked set's own
+      // brickLengthIn on a set switch (main/brick-panel.js's selectSet).
+      frameBrickLengthIn: 0.75,
     },
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.
