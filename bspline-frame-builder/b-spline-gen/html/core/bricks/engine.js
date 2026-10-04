@@ -22,7 +22,10 @@ import { brickTopHeight } from './height-profile.js';
  *   (H23 item 76: `primitives` is the frame contour's own RAW lines+arcs, passed through to
  *   bricksContourBands verbatim -- see that function's own header; `set`, F35 item 5 review: an
  *   OPTIONAL override used for the frame bands ONLY, defaulting to the top-level `input.set` when
- *   omitted -- Wall's own bricksFillShape call below always uses `input.set`, never this)
+ *   omitted -- Wall's own bricksFillShape call below always uses `input.set`, never this. T86
+ *   item 14: Wall's own interior ALWAYS resolves against `frame.primitives` whenever it's present,
+ *   even with `bands: []` or omitted -- only a `frame` that's ITSELF omitted/null falls back to
+ *   `boardOutline`.)
  * @param {number} [input.suppression=0]
  * @param {number} [input.topBias=0.8]
  * @param {number} [input.clumping=0.3]
@@ -49,14 +52,29 @@ export function generateBricks(input) {
 
   let interiorOutline = boardOutline;
   let frameBricks = [];
-  if (frame && frame.bands && frame.bands.length) {
+  // T86 item 14 (Fred: a Wall with no Frame bands was filling `boardOutline` -- in the live app,
+  // ALWAYS a plain bounding rectangle (editor-brick-tool.js's own `boardPolygon`), never the
+  // template's own true (often non-rectangular: hourglass waists, tapered sides, arched tops)
+  // contour. `frame.primitives` carries that true contour whenever a frame/template resolved AT
+  // ALL (main/brick-panel.js's own `resolveFrameGeom`, called unconditionally on every generate,
+  // independent of whether the Frame KIND is actually being laid) -- the old `frame.bands.length`
+  // gate threw it away the instant bands was empty (preset 'none', or just Wall used alone),
+  // falling back to the rectangle and leaking bricks into every concave notch/cutaway the
+  // template's own silhouette doesn't actually cover. MEASURED (tests/bricks-engine.test.js, this
+  // item): on real templates (7x9/9x12), the template's own area is only 55-84% of its bounding
+  // rectangle, and 22-50% of Wall's own bricks landed outside the true contour before this fix.
+  // Gate on `frame.primitives` instead -- `bricksContourBands` with an EMPTY `bands` list already
+  // returns `innerPath` unchanged (0 bands = nothing to shrink by), so this is a strict
+  // generalisation: identical result whenever `frame.primitives` happens to equal `boardOutline`
+  // (every existing rectangular-fixture test), a real fix whenever it doesn't.
+  if (frame && frame.primitives && frame.primitives.length) {
     // F35 item 5 review: frame.set is an OPTIONAL Frame-only override (Fred's
     // own "frame thickness" = the brick LENGTH across a band) -- defaults to
     // the top-level `set` so every existing caller (nothing passed frame.set
     // before this) is unaffected; Wall's own bricksFillShape call below
     // always keeps the top-level `set`, never this override.
     const frameSet = frame.set || set;
-    const res = bricksContourBands(frame.primitives, frame.bands, { set: frameSet, seed, scale });
+    const res = bricksContourBands(frame.primitives, frame.bands || [], { set: frameSet, seed, scale });
     frameBricks = res.bricks;
     interiorOutline = res.innerPath;
   }

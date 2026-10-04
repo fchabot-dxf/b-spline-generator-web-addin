@@ -324,10 +324,12 @@ export const BRICK_PATTERNS = Object.freeze({
  */
 export const FRAME_PRESETS = Object.freeze({
   // F35 item 12 follow-up (Fred): the Frame band preset's own OFF switch -- an EMPTY band list,
-  // not a special case anywhere downstream: engine.js's own generateBricks already treats
-  // `frame.bands.length === 0` as "no frame" (`if (frame && frame.bands && frame.bands.length)`,
-  // written for the omitted-frame case, applies here unchanged), so Wall fills right up to the
-  // board/frame's own true outer contour, exactly as if no Frame tool had ever run.
+  // not a special case anywhere downstream: zero bands means `bricksContourBands` has nothing to
+  // shrink by, so its own `innerPath` comes back as the frame contour unchanged -- Wall fills
+  // right up to the frame's own true outer contour, with no decorative band drawn along it. (T86
+  // item 14: engine.js's own generateBricks used to collapse this all the way to the plain
+  // rectangular `boardOutline` instead -- fixed to gate on `frame.primitives` existing at all, not
+  // on `frame.bands.length`, so this preset's own true contour survives.)
   none: [],
   single_soldier: [{ widthIn: 0.75, pattern: 'soldier' }],
   soldier_stretcher: [

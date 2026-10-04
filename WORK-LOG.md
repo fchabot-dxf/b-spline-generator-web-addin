@@ -21321,3 +21321,61 @@ merge parents confirmed `d0b0bd8`/`5cf0a4c` as predicted).
 **Commit** (merge commit 473c319, default merge message, no conflicts remaining). My crash fix
 (5f6ee88) and the rest of this session's work is now reachable from main once the advisor merges
 lane-b. Passing back.
+
+## T86 item 14: Wall with no Frame bands was filling the plain bounding rectangle, not the template's own true contour -- root-caused, fixed, MEASURED (d3)
+
+**Dispatch (turn 329, queue after the merge): item 14 -> 15 -> 17 -> 13 -> 16(c) -> 10.** Picked up
+item 14 first. `NEXT-SESSION-lane-b.md` and `ADVISOR-HANDOFF.md` are both stale for this queue
+(the former still shows T83 item 1/Template 11, the latter an old "T86 item 4b" snapshot) -- flagging
+honestly rather than silently treating either as current; worked from the advisor's own turn-329 note
+as the live spec instead.
+
+**Root-caused, not guessed.** `editor-brick-tool.js`'s own `boardPolygon(editor)` -- the ONLY source
+of `input.boardOutline` in the live app -- is ALWAYS a plain rectangle (`editor._mW`/`_mH`), never the
+frame template's own real silhouette (hourglass waists, tapered sides, arched tops: this app's whole
+reason for existing). The template's own TRUE contour only ever reaches the engine via `input.frame.
+primitives` (`main/brick-panel.js`'s own `resolveFrameGeom`, which calls `frameContourSilhouette`
+UNCONDITIONALLY on every single `generateBricks()` -- independent of whether the Frame KIND is even
+being laid). But `engine.js`'s own `generateBricks` only ever READ `frame.primitives` behind a
+`frame.bands.length` gate -- the instant bands was empty (Frame preset 'none', or simply Wall used
+alone with no Frame element on canvas, both resolve `bands: []`), it fell all the way back to
+`boardOutline`, discarding the already-resolved true contour and filling the full rectangle instead.
+
+**MEASURED the real scale of it** (scratch probe, 4 templates, 7x9/9x12): a template's own real area
+runs 55-84% of its bounding rectangle's area; with the pre-fix fallback, 22-50% of Wall's own bricks
+had a centroid landing OUTSIDE the template's true contour (template_18: 186/370, literally half).
+
+**This is NOT a contradiction of the earlier F35 item 12 decision** ("Wall picker's own 'none' pattern
+... fills right up to the board/frame's own true outer contour, exactly as if no Frame tool had ever
+run") -- that comment's own "board/frame's own true outer contour" phrase conflated two different
+things that happen to coincide on every existing test fixture (all rectangular) but nowhere else:
+`boardOutline` (always a rectangle) and `frame.primitives` (the template's real shape). Item 14 is
+that comment's own intent, finally correctly implemented, not a reversal of it.
+
+**Fix** (`engine.js`): gate on `frame && frame.primitives && frame.primitives.length` instead of
+`frame.bands.length`, and pass `frame.bands || []` through to `bricksContourBands` (which already
+returns `innerPath` UNCHANGED when there's nothing to shrink by -- verified, not assumed, by the
+existing F35-item-12 rectangular-fixture test still passing unmodified). Strict generalisation: on
+any fixture where `frame.primitives` happens to equal `boardOutline` (every current test, and the
+'none'-preset regression test both sides of this fix), identical output; everywhere else, the real
+fix. Updated the stale library.js `FRAME_PRESETS.none` comment and the engine.js JSDoc to match.
+
+**New regression test** (`tests/bricks-engine.test.js`): a notched non-rectangular `frame.primitives`
+well inside a much bigger rectangular `boardOutline` (the rectangular fixture used everywhere else in
+this file can't distinguish the two shapes -- confirmed, then wrote one that can). MEASURED failing
+against the pre-fix code (`git stash` on just `engine.js`): every Wall brick landed in the bigger
+rectangle, several centroids inside the notch itself. Passes post-fix.
+
+**Verified**: targeted run (11/11, bricks-engine.test.js), the brick-layout fast tier (110/111 --
+1 timeout in `bricks-fieldstone.test.js`'s own coverage test under parallel load, confirmed a known
+system-load flake, standalone re-run clean 7/7, unrelated file, not touched this turn), then a full
+suite gate given this touches core `engine.js` (244 files / 4194/4194, clean).
+
+**Shots**: `tools/repro/t86_item14_wall_no_bands_preview.mjs` (new, mirrors the item-6 fieldstone
+preview's own headless-Chrome pattern) -- template_1 (hourglass), BEFORE (Wall over the plain
+rectangle, 370 bricks spilling straight across both waist notches, the template's own true contour
+drawn in red for reference) / AFTER (Wall over `frame.primitives`, 309 bricks, cleanly conforming to
+the waist) -- `~/.bspline-status/shots/seatB/t86_item14_{before,after}.png`.
+
+**Commit** (`engine.js`, `library.js`'s comment, `tests/bricks-engine.test.js`, the new preview tool;
+this entry). Passing back with shots; picking up item 15 (cut course + the 16(b) gaps sweep) next.
