@@ -362,7 +362,19 @@
     /* UX2: the one status line for Fusion traffic. Token colors only —
        [hidden] collapses it via the browser's own default, so nothing
        here sets `display` and fights that. */
+    /* F35 item 16 follow-up (Fred: reuse the existing loading signal for brick generation / the
+       height-mask pass / slow resolution rebuilds -- ALL of which happen while the Brick editor tab
+       is open): measured live that this status line, in plain document flow, was rendering entirely
+       BEHIND the SVG editor's own full-viewport modal overlay (editor.css's own .cad-modal-overlay,
+       z-index 9999) -- correct text, correct timing, zero visible effect for exactly the case this
+       feature exists for. `position:fixed` + a z-index above the modal's own fixes that; harmless
+       outside the modal too (hidden by default, and the status text itself is brief/transient). */
     .fusion-status {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 10000;
       padding: 3px 12px;
       font-size: 11px;
       background: var(--cad-bg-secondary);

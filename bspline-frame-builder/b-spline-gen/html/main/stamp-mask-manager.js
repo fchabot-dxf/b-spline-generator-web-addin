@@ -9,6 +9,7 @@ import { frameWindowGeometry } from '../editor/contour-from-frame.js';
 import { rectContains } from '../core/inset-window.js';
 import { isBricksLayer } from '../editor/editor-brick-tool.js';
 import { rasterizeBrickHeightMask } from '../editor/editor-brick-height-mask.js';
+import { withLoadingStage } from '../core/loading-signal.js';
 
 // Monotonic counter incremented on every refresh. Each in-flight
 // rasterize captures the value at start; if it doesn't match at finish,
@@ -153,7 +154,7 @@ export async function updateStampMasks(nx, nz) {
     // content but produces a per-grid-point-varying mask. See
     // editor-brick-height-mask.js's own header.
     const result = isBricksLayer(eLayer)
-      ? await rasterizeBrickHeightMask(editor, eLayer, nx, nz, P.widthIn, P.heightIn)
+      ? await withLoadingStage('heightMask', () => rasterizeBrickHeightMask(editor, eLayer, nx, nz, P.widthIn, P.heightIn))
       : await rasterizeSvg(
           applyLayerTransform(svg, layerTransform, P.widthIn, P.heightIn),
           nx,

@@ -11721,3 +11721,91 @@ Fred/the advisor's own judgment rather than one this diagnostic pass should deci
 panel, nothing highlighted), `f35item16_brick_tab_fixed_wall_tool_1366.png` (Wall tool strongly
 highlighted, ONLY Wall-pattern + common sections visible, the grout hint showing correctly),
 `f35item16_brick_wall_frame_repro_full.png` + `..._shoulder_closeup.png` (item 4's repro).
+
+(Per Fred's own follow-up DM after seeing this: the shoulder fan stays as-is -- voussoirs, he liked
+the corner pieces. Confirms the diagnostic framing above was the right call.)
+
+## F35 item 16, turn 173: the loading/busy signal for heavier geometry
+
+Advisor's formal turn-173 dispatch, first of "one per turn, pass back after each": "the existing
+LOADING signal... must also cover brick generation, the height-mask + photo-surface pass, and
+rebuilds at fine resolutions (Masonry 0.015/0.011 take 4-8s). Show it when the work takes > ~250ms...
+with a short label of the current stage... keep the UI responsive (yield between stages)... declare
+the stages as data... reuse it, don't invent a new one."
+
+**Research before writing a line of code**: an Explore agent mapped the WHOLE existing signal
+landscape first. Key finding: there is currently NO busy indicator of any kind during a plain live-
+preview rebuild -- no spinner, no status text, nothing. `#bottomStatusBar` and the sculpt notices
+(`core/engine/rebuild.js`'s own `updateStatusBar`/`updateSculptNotice`) are DEAD CODE -- their target
+elements don't exist in any HTML, so that code never runs. The ONE real, already-reusable surface is
+`core/fusion-bridge.js`'s `setFusionStatus(text, kind)` (writes `#fusion-status`), already used for a
+non-Fusion-specific warning (`main/export-flow.js`'s own `_reportDeclinedOutlines`, whose comment
+calls it "the app's one reusable status-line surface... rather than inventing new UI") -- confirming
+exactly what to reuse. Also found: `rebuild()` and the brick height-mask rasterizer are the two
+genuinely slow, call-site-scattered operations (rebuild() has ~15 call sites across main/ and core/);
+brick GENERATION itself (`_generateAndDraw`) is fully synchronous but inherently fast regardless of
+resolution (brick count depends on board/brick-size geometry, never on mesh resolution).
+
+**New `core/loading-signal.js`**: `LOADING_STAGES` declared as data (`bricks`/`heightMask`/`rebuild`,
+the last with a label FUNCTION of ctx so "Building surface 0.015″…" can report the live resolution
+value, matching Fred's own example wording exactly) -- a future slow operation (the queued Flat-mode
+per-brick plane fit) is one more entry here, not a new mechanism. `withLoadingStage(stageId, fn, ctx)`
+only calls `setFusionStatus` if `fn` is STILL running after 250ms (Fred's own number) -- no flicker
+for the common fast case -- and always clears it (only if IT was the one that showed something,
+never blindly) when `fn` settles, success or failure.
+
+**Wired at 3 call sites**: `core/engine/rebuild.js` wraps its own body (stage `rebuild`, ctx =
+`{spacing: P.spacing}}` -- ONE place covers all ~15 existing call sites, not 15 individual wraps);
+`main/stamp-mask-manager.js` wraps specifically the brick-layer's own `rasterizeBrickHeightMask` call
+(stage `heightMask` -- the generic SVG rasterizer for other layers is untouched, not part of this ask);
+`main/brick-panel.js` wraps all 4 `runBricks(...)` call sites (stage `bricks`).
+
+**"Keep the UI responsive" -- real yields, not just a label**: a label showing >250ms into a FULLY
+SYNCHRONOUS call would never actually paint until the synchronous work already finished, defeating
+the point. `rebuild()` already yields between its own phases (pre-existing `yieldToMain`, untouched).
+`editor/editor-brick-height-mask.js`'s own per-grid-point loop (up to ~525,000 iterations at Masonry
+max, fully synchronous before this) did not -- added a periodic `await` yield every 32 rows
+(`YIELD_EVERY_N_ROWS`), same one-line `setTimeout(resolve,0)` convention as rebuild.js's own. Pure
+timing change, zero output difference -- confirmed directly (see tests below), not assumed. No new
+import needed (a bare `setTimeout` has no `core/state.js` dependency, so this stays inside the
+existing "editor/ never imports core/state.js" boundary brick-panel.js's own header already documents).
+
+**A real bug found and fixed while live-verifying, not assumed working from the code alone**: on the
+first live check, `setFusionStatus`'s own text/timing were all correct (confirmed by polling
+`#fusion-status`'s DOM state directly: "Carving relief…" at the right moment, then "Building surface
+0.011″…", then cleared -- textbook correct) but NOTHING was visible on screen. `#fusion-status` sits
+in plain document flow, a sibling of `<main>`, with no `position`/`z-index` of its own -- entirely
+behind the SVG editor's own full-viewport modal (`editor.css`'s `.cad-modal-overlay`, `z-index: 9999
+!important`) the ENTIRE TIME the Brick tab (where every one of these three stages actually fires) is
+open. Correct text, correct timing, zero visible effect for exactly the case this feature exists for.
+Fixed with `position: fixed; top/left/right: 0; z-index: 10000` on `.fusion-status` -- confirmed via
+`document.elementFromPoint` that it's now the topmost element at its own position, and via a real
+screenshot (not just DOM state) that the text is visually on screen, floating above the open editor.
+
+**Tests**, 3 new files (22 tests): `tests/loading-signal.test.js` (11) -- stage data, no-flicker-under-
+threshold (fake timers), shows+clears correctly, dynamic ctx label, clears on rejection too, unknown
+stage id is a safe no-op. `tests/brick-height-mask-yield.test.js` (3) -- a large nz genuinely does NOT
+resolve synchronously (real yielding, not decorative), output is byte-identical regardless of how many
+yields a pass takes, a real brick fixture actually registers as stamped (not a vacuous empty-mask
+test). Mutation-tested: the 250ms threshold test fails exactly when `SHOW_THRESHOLD_MS` is zeroed
+(the other "settles back to hidden eventually" tests correctly stay green, since that property holds
+regardless of the threshold -- confirms the threshold test specifically is the one load-bearing check);
+the yield-detection test fails exactly when the yield line is removed, the two output-correctness
+tests correctly stay green. Full suite green: 222 files / 3949 tests.
+
+**Live-verified end to end** (headless Chrome, real Masonry-max rebuild, 295 real bricks): polled
+`#fusion-status` every 400ms through a real `applyParam('spacing', 0.011)` -- observed exactly
+"Carving relief…" (t+400ms) -> cleared (t+800ms) -> "Building surface 0.011″…" (t+1200-1600ms) ->
+cleared (t+2000ms onward), matching the design precisely. Screenshot (a rapid back-to-back sequence
+was needed to actually catch the ~400ms visible window; a single well-aimed capture kept landing in a
+gap) confirms it's visually on screen, floating correctly above the open Brick editor tab:
+`.bspline-status/shots/seatC/f35item16_loading_signal_building_surface.png`.
+
+Heads-up noted, not yet acted on (affects FUTURE turns, not this one): spare 88 is fixing a real bug
+on `fix-brick-buttons` (discrete brick buttons never regenerated, `notifyChange`-only) by renaming
+`_commitBrickSlider` to a shared `commitBrickSetting()`; separately, Fred changed policy mid-session --
+bricks no longer auto-rebuild from the EDITOR (mark pending + a sticky Generate button instead), but
+DO still auto-rebuild from the MAIN SIDEBAR's own quick settings once that split lands. Advisor asked
+to merge main into fb-app after 88 merges, and to use `commitBrickSetting()`/88's own new per-binding
+commit-mode mechanism for any new brick control from here on. Not relevant to this turn's own 4
+`runBricks` call sites (unchanged in SHAPE, just wrapped) until that merge actually happens.
