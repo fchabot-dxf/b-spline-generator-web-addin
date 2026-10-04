@@ -12267,3 +12267,41 @@ passed, 0 failed. Live: a scripted brush stroke striped into 4 runs -> sets 1/3/
 band -> 1/1/1/1. Shot shots/seat37/f35item16_c6_stripe_brick_styles.png.
 Control matrix (Fred's new rule): asked 88 for the file + format with my 9 new controls and their
 expected {pending, canvas, 3D}; rows to follow once it exists.
+
+## turn 193 (seat C = 37): PRIORITY -- Send dropped ALL art when no Carved component (item 12 regression)
+
+Fred's live Send 16:21: stamp layers=4, none carving -> only Clean sent -> "SVG Stamp Import/Project
+skipped: no Stamped (Carved) component" -> every art sketch dropped. Cause: F35 item 12 (50025a6) sent
+EVERY art-layer sketch to the Carved component and skipped them all without one; the payload gave Python
+no way to tell carving layers from the rest (config was {profile, depth} only).
+**Fix (e9b9acc), declared:** export-flow.js sends `config.carve = isCarvingLayer(l)` per layer and
+`bricks.carve = isCarved(Bricks layer)`. b-spline-gen.py: `_svg_layer_import_plan` records `carves` (absent
+key = real depth, the old assumption); `_assign_sketch_targets` (pure, run by _ordered_svg_layer_import_plan)
+sets each step's `target` 'carved' | 'root' -- a kind-split pattern (incl. its Lattice Boundary, same
+patternId) stays in ONE component, carved if any of its kinds carves, since its kinds project each other
+and share a plane. The handler passes {'carved': _find_stamped_component(group), 'root': the group's own
+component (pre-item-12's exact target)}; _import_all_svg_layers skips ONLY steps whose target is None and
+logs which. _apply_bricks_sketch follows the same rule (carve absent = carving = item 11's behaviour) and
+clears an older 'Bricks' sketch from BOTH homes so toggling carve never leaves a stale copy.
+Tests: new test_sketch_targets.py (10): plan targets (carve/no-carve/depth fallback/pattern grouping both
+ways), the advisor's case (no Stamped + 1 non-carving layer -> 1 root sketch, nothing logged as skipped),
+carving-only skipped, both homes with a Stamped variant, bricks root / Stamped / no-key. 8/10 fail against
+the old b-spline-gen.py (the 2 passing pin preserved behaviour). b-spline-gen pytest 138, frame-builder
+pytest 1287 (+25 skipped), JS export/send 38 -- all passed, 0 failed. The JS payload field itself is not
+unit-covered (the full executeExport needs a live editor + preview); covered by the live run below.
+**Live in Fusion** (holder 37 granted by the advisor, ONE call, fingerprinted scratch doc closed by its own
+handle, worktree module loaded as 'scratch37_bsg', sys.path + sys.modules restored: 0 modules left over,
+4 docs before/after). Note: the scratch doc first lacked widthIn/heightIn parameters and the import failed
+on a PRE-EXISTING eager default in _import_single_layer_svg (`params.get('widthIn', board['widthIn'])`
+evaluates board['widthIn'] even when params has it) -- a real Send's design always has them; added them,
+flagging the latent KeyError rather than changing it here.
+| case | B-Spline Set (root) | Stamped |
+|---|---|---|
+| no Stamped variant: L1 carve off, L2 carve on, Bricks carve off | "Source - L1" (4 curves), "Bricks" (4) | -- (L2 logged "skipped carving sketches only") |
+| Stamped added: L3 carve on, L4 carve off | + "Source - L4" (4) | "Source - L3" (4) |
+**Hidden layer (advisor's extra case):** editor/layers.js's declared truth table makes visibility the master:
+isExported = visible, isCarved = visible && carve. So a HIDDEN layer is not exported at all (no sketch, by
+design of that table), while a VISIBLE layer with carve OFF is exported and not carved -> root (the live L1/L4
+case). If Fred wants hidden layers' art to still arrive as sketches, that is a change to isExported (a
+product decision) -- not made here.
+Holder written back to 'none'.
