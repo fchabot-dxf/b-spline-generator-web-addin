@@ -18786,7 +18786,7 @@ the 1:1 close-up makes the reversal obvious at true scale; template_1 confirms t
 at its own 4 straight corners while both waist fillets correctly fall back to mitre, band-coloured
 wedges included.
 
-**Commit `[pending]`, pushed to origin/lane-b.** LAPPED is DONE: built exactly to the advisor's own
+**Commit `1f4b267`, pushed to origin/lane-b.** LAPPED is DONE: built exactly to the advisor's own
 decided scope (no speculative geometry beyond what was asked for), mutation-tested including a
 direct equivalence check against BUTT, verified end to end through the real preset, previews
 confirm the interlock visually. Continuing straight into BLOCK next, as directed.
