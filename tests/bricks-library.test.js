@@ -83,11 +83,20 @@ describe('BRICK_SETS', () => {
 });
 
 describe('FRAME_PRESETS', () => {
-  it('declares exactly the 3 named presets, each a non-empty band list with widthIn > 0', () => {
-    expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['single_soldier', 'soldier_stretcher', 'three_band'].sort());
+  it('declares exactly the 4 named presets, each a non-empty band list with widthIn > 0', () => {
+    // T86 item 1: butt_frame joins the 3 original mitre-only presets, declaring the FIRST non-mitre
+    // cornerStyle; lapped/block each add their own preset(s) here in their own later items.
+    expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['butt_frame', 'single_soldier', 'soldier_stretcher', 'three_band'].sort());
     for (const bands of Object.values(FRAME_PRESETS)) {
       expect(bands.length).toBeGreaterThan(0);
       for (const b of bands) expect(b.widthIn).toBeGreaterThan(0);
+    }
+  });
+
+  it('butt_frame declares cornerStyle "butt"; every other preset stays silent (defaults to mitre)', () => {
+    expect(FRAME_PRESETS.butt_frame.every((b) => b.cornerStyle === 'butt')).toBe(true);
+    for (const name of ['single_soldier', 'soldier_stretcher', 'three_band']) {
+      expect(FRAME_PRESETS[name].every((b) => b.cornerStyle === undefined)).toBe(true);
     }
   });
 });

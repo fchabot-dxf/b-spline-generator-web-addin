@@ -294,6 +294,12 @@ export const BRICK_PATTERNS = Object.freeze({
  * at brickHeightIn) so what ships matches what's declared, with three_band's own middle band
  * genuinely 3 courses deep (demonstrating the multi-row stacking, not just a single wide brick).
  */
+/**
+ * T86 item 1 (Fred's sketch, shots/fred/fred_sketch_butt_corner.jpg): `cornerStyle` on a band is
+ * the per-corner TREATMENT contour-bands.js's own ribbonPieces call reads (default 'mitre' when a
+ * band declares none, matching every preset above) -- 'butt' is the first non-mitre style built;
+ * 'lapped'/'block' land in their own later items, each adding their own preset(s) here alongside.
+ */
 export const FRAME_PRESETS = Object.freeze({
   single_soldier: [{ widthIn: 0.75, pattern: 'soldier' }],
   soldier_stretcher: [
@@ -305,6 +311,7 @@ export const FRAME_PRESETS = Object.freeze({
     { widthIn: 0.6, pattern: 'stretcher' },
     { widthIn: 0.75, pattern: 'soldier' },
   ],
+  butt_frame: [{ widthIn: 0.75, pattern: 'soldier', cornerStyle: 'butt' }],
 });
 
 export function brickSetById(id) {

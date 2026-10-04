@@ -132,7 +132,10 @@ function allRibbonPieces(primitives, bands) {
     const rows = Math.max(1, Math.round(band.widthIn / naturalWidth));
     for (let row = 0; row < rows; row++) {
       const d0 = depthSoFar + naturalWidth * row, d1 = depthSoFar + naturalWidth * (row + 1);
-      const built = ribbonPieces(primitives, d0, d1, SET, band.pattern, pitch, SET.grout.widthIn, 1, 'frame', nextId);
+      const built = ribbonPieces(
+        primitives, d0, d1, SET, band.pattern, pitch, SET.grout.widthIn, 1, 'frame', nextId,
+        band.cornerStyle || 'mitre',
+      );
       pieces = pieces.concat(built.pieces);
       nextId = built.nextId;
     }
@@ -228,4 +231,101 @@ describe('ribbonPieces on REAL template geometry (H23 item 76, advisor-dispatche
       expect(worst, 'worst pairwise overlap fraction').toBeLessThan(0.35);
     });
   }
+});
+
+describe('ribbonPieces with cornerStyle="butt" (T86 item 1)', () => {
+  // CCW square, (0,0)->(10,0)->(10,10)->(0,10), inwardSign=+1 -- primitives[0]=bottom (horizontal,
+  // "through" at both its own corners), primitives[1]=right (vertical, "butt" at both), [2]=top
+  // (horizontal, through), [3]=left (vertical, butt) -- every corner in a plain rectangle is exactly
+  // one horizontal + one vertical primitive, so this fixture exercises all 4 butt joints at once.
+  function square() {
+    const pts = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+    const inwardSign = inwardSignFor(pts);
+    const line = (p0, p1) => {
+      const dx = p1.x - p0.x, dy = p1.y - p0.y, len = Math.hypot(dx, dy);
+      return { type: 'line', p0, p1, nx: (-dy / len) * inwardSign, ny: (dx / len) * inwardSign };
+    };
+    return [line(pts[0], pts[1]), line(pts[1], pts[2]), line(pts[2], pts[3]), line(pts[3], pts[0])];
+  }
+
+  const D0 = 0, D1 = SET.brickLengthIn, GROUT = SET.grout.widthIn; // 0, 0.75, 0.034
+
+  it('every piece is simple and inside the board', () => {
+    const primitives = square();
+    const { pieces } = ribbonPieces(primitives, D0, D1, SET, 'soldier', SET.brickHeightIn, GROUT, 1, 'test', 0, 'butt');
+    expect(pieces.length).toBeGreaterThan(0);
+    for (const p of pieces) {
+      expect(isSimplePolygon(p.polygon), `piece ${p.id} is self-intersecting`).toBe(true);
+      for (const pt of p.polygon) {
+        expect(pt.x).toBeGreaterThanOrEqual(-1e-6);
+        expect(pt.x).toBeLessThanOrEqual(10 + 1e-6);
+        expect(pt.y).toBeGreaterThanOrEqual(-1e-6);
+        expect(pt.y).toBeLessThanOrEqual(10 + 1e-6);
+      }
+    }
+  });
+
+  it('the horizontal (through) band runs the full 0..10 span, uninterrupted', () => {
+    // bottom (primitives[0]): both its own corners are met by a VERTICAL (butt) neighbour, so
+    // bottom is "through" at both ends -- no clip at all, same as this project's own pre-existing
+    // "null joint" convention. HAND-COMPUTED (not read back from the engine): the pieces' own
+    // combined x-extent must reach exactly 0 and 10, not stop short at some clipped position.
+    // Discriminate by which band a piece's own DEPTH span belongs to (every piece in a band spans
+    // that band's full [d0,d1] in its cross-direction) -- an "every point's y stays under D1" test
+    // alone also accidentally admits a bottom-run end piece whose own narrow x-sliver happens to sit
+    // past x=10-D1 (MEASURED: caught this exact false-positive while writing this test).
+    const primitives = square();
+    const { pieces } = ribbonPieces(primitives, D0, D1, SET, 'soldier', SET.brickHeightIn, GROUT, 1, 'test', 0, 'butt');
+    const bottomPieces = pieces.filter((p) => {
+      const ys = p.polygon.map((pt) => pt.y);
+      return Math.min(...ys) <= 1e-6 && Math.max(...ys) >= D1 - 1e-6;
+    });
+    const xs = bottomPieces.flatMap((p) => p.polygon.map((pt) => pt.x));
+    expect(Math.min(...xs)).toBeCloseTo(0, 6);
+    expect(Math.max(...xs)).toBeCloseTo(10, 6);
+  });
+
+  it('the vertical (butt) band is square-cut exactly one grout gap past the through band\'s own inner edge', () => {
+    // right (primitives[1]): HAND-COMPUTED expected span -- the through bands' own d1 edge sits at
+    // y=D1 (bottom) and y=10-D1 (top); one grout gap further AWAY from each corner (into right's own
+    // middle) gives right's own usable y-range as exactly [D1+GROUT, 10-D1-GROUT].
+    const primitives = square();
+    const { pieces } = ribbonPieces(primitives, D0, D1, SET, 'soldier', SET.brickHeightIn, GROUT, 1, 'test', 0, 'butt');
+    const rightPieces = pieces.filter((p) => {
+      const xs = p.polygon.map((pt) => pt.x);
+      return Math.min(...xs) <= 10 - D1 + 1e-6 && Math.max(...xs) >= 10 - 1e-6;
+    });
+    expect(rightPieces.length).toBeGreaterThan(0);
+    const ys = rightPieces.flatMap((p) => p.polygon.map((pt) => pt.y));
+    expect(Math.min(...ys)).toBeCloseTo(D1 + GROUT, 6);
+    expect(Math.max(...ys)).toBeCloseTo(10 - D1 - GROUT, 6);
+  });
+
+  it('no overlap between the through and butt bands at a corner (a real grout gap, not a seam)', () => {
+    const primitives = square();
+    const { pieces } = ribbonPieces(primitives, D0, D1, SET, 'soldier', SET.brickHeightIn, GROUT, 1, 'test', 0, 'butt');
+    for (let i = 0; i < pieces.length; i++) {
+      for (let j = i + 1; j < pieces.length; j++) {
+        const A = bbox(pieces[i].polygon), B = bbox(pieces[j].polygon);
+        if (A.maxX < B.minX - 1e-6 || B.maxX < A.minX - 1e-6 || A.maxY < B.minY - 1e-6 || B.maxY < A.minY - 1e-6) continue;
+        expect(overlapFraction(pieces[i].polygon, pieces[j].polygon), `${pieces[i].id} vs ${pieces[j].id}`).toBe(0);
+      }
+    }
+  });
+
+  it('template_1 (arcs present): butt falls back to mitre at every arc-involved corner -- still simple, 0 outside the board', () => {
+    const primitives = realPrimitives('template_1', 7, 9);
+    const pieces = allRibbonPieces(primitives, FRAME_PRESETS.butt_frame);
+    expect(pieces.length).toBeGreaterThan(0);
+    let notSimple = 0, outOfBounds = 0;
+    for (const p of pieces) {
+      if (!isSimplePolygon(p.polygon)) notSimple++;
+      for (const pt of p.polygon) {
+        const dx = Math.max(0 - pt.x, pt.x - 7, 0), dy = Math.max(0 - pt.y, pt.y - 9, 0);
+        if (Math.max(dx, dy) > 0.001) outOfBounds++;
+      }
+    }
+    expect(notSimple, `${notSimple} self-intersecting pieces`).toBe(0);
+    expect(outOfBounds, `${outOfBounds} vertices outside the board`).toBe(0);
+  });
 });

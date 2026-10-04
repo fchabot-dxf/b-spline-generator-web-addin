@@ -41,7 +41,7 @@
  * collected into `pieces` right after whichever primitive owns that joint as its own `jointEnd`
  * (preserving build-order == walk-order, which other code relies on).
  */
-import { curveIntersection } from './curve-intersect.js';
+import { curveIntersection, lineLineIntersection } from './curve-intersect.js';
 import { clipToHalfPlane, signedArea } from './geometry.js';
 import { planCornerRun, mergeSlivers, pickSample } from './piece-plan.js';
 import { isArcFeasible, voussoirPieces } from './arc-voussoir.js';
@@ -123,6 +123,72 @@ function tangentAt(prim, point) {
 }
 function stepFrom(point, tangent, signedStep) {
   return { x: point.x + tangent.x * signedStep, y: point.y + tangent.y * signedStep };
+}
+
+const BUTT_PARALLEL_DOT = 0.999; // H23 item 76 cont. (butt corner): tangents this close to parallel
+// (|dot| >= this) aren't a genuine corner at all -- a straight run split across two primitives, or a
+// smooth continuation -- so there's no "through" vs "butt" side to pick; falls back to the ordinary
+// mitre, which degenerates harmlessly to a near-straight seam on its own at this angle anyway.
+
+/**
+ * T86 item 1 (Fred's sketch, shots/fred/fred_sketch_butt_corner.jpg): the BUTT corner style, built
+ * per the architecture plan this item inherited (WORK-LOG's own "H23 item 76 cont. -- butt corner"
+ * entry) -- a line-line corner is NOT symmetric like a mitre: the "through" primitive (whichever of
+ * the two is MORE horizontal at the corner, `|tangent.x|` closer to 1 -- "through=horizontal" per the
+ * sketch) runs uninterrupted to its own natural endpoint; the "butt" primitive (the other one) gets a
+ * SQUARE cut (perpendicular to ITS OWN tangent, never the mitre bisector) against the through band's
+ * own d1 (inner) edge, with one grout gap between the butt band's cut end and that inner face.
+ *
+ * Returns `null` when there's no well-defined square cut (the two tangents are parallel, or the
+ * through/butt lines don't meet) -- the caller falls back to the ordinary symmetric mitre, same as
+ * the already-declared "arc-involved corners fall back to mitre" rule (this function is only ever
+ * tried for a line-line corner to begin with; see its own caller).
+ */
+function buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint) {
+  const tPrev = tangentAt(primitives[prevIdx], o);
+  const tCur = tangentAt(primitives[curIdx], o);
+  if (Math.abs(tPrev.x * tCur.x + tPrev.y * tCur.y) >= BUTT_PARALLEL_DOT) return null; // not a genuine corner
+  const throughIdx = Math.abs(tPrev.x) >= Math.abs(tCur.x) ? prevIdx : curIdx;
+  const buttIdx = throughIdx === prevIdx ? curIdx : prevIdx;
+  const through = primitives[throughIdx], butt = primitives[buttIdx];
+  const buttTangent = tangentAt(butt, o); // depth-independent for a line primitive
+  const throughD1 = offsetPrimitive(through, d1); // through's own INNER edge, this row's own d1
+  const cut0 = lineLineIntersection(
+    { x: throughD1.p0.x, y: throughD1.p0.y }, { x: throughD1.p1.x - throughD1.p0.x, y: throughD1.p1.y - throughD1.p0.y },
+    o, buttTangent,
+  );
+  if (!cut0) return null; // the through band's own d1 edge runs parallel to the butt primitive -- degenerate, fall back to mitre
+  // one grout gap, stepping AWAY from the corner along the butt primitive's own tangent (whichever
+  // sign that is -- `cut0` can land either side of `o` depending on the corner's own geometry).
+  const awaySign = Math.sign((cut0.x - o.x) * buttTangent.x + (cut0.y - o.y) * buttTangent.y) || 1;
+  const cutPoint = stepFrom(cut0, buttTangent, nominalJoint * awaySign);
+  const keepRef = stepFrom(cutPoint, buttTangent, awaySign); // further into the butt band's own run
+  const square = { point: cutPoint, q: cutPoint, dirX: butt.nx, dirY: butt.ny, keepRefAsStart: keepRef, keepRefAsEnd: keepRef, trustO: true };
+  // `forThrough` is NOT literal `null`: `linePieces`' own CLIP_EPS_IN safety-margin extension fires
+  // whenever a side has no joint at all (the genuinely-open-path-end case, assumed harmless there --
+  // MEASURED here that it is NOT harmless for a real closed-contour corner: it pushed the through
+  // band's own end 0.02in past the true board edge, since there is no mitre to clip back to). A
+  // `trustO:false` sentinel whose own `q` is `o` itself (this joint's own d0 point, which for the
+  // THROUGH primitive genuinely IS one of its own unoffset endpoints) reuses the EXISTING
+  // dropped-primitive "skip the extension AND the clip, the patch/outline owns this edge" path
+  // instead -- `project(o)` is exactly 0 or totalLen either way (perpendicular offsetting never
+  // changes a point's own tangential projection), so `sStart`/`sEnd` land exactly on the primitive's
+  // own true endpoint, not past it.
+  const throughSentinel = { point: o, q: o, dirX: 0, dirY: 0, keepRefAsStart: o, keepRefAsEnd: o, trustO: false };
+  return { throughIdx, forThrough: throughSentinel, forButt: square, isButt: true };
+}
+
+/** Resolve a `jointBefore` entry to the object a specific primitive (`idx`) should actually clip
+ *  against. An ordinary (mitre) joint is returned as-is, read identically by both its neighbours
+ *  (today's established symmetric convention). A butt joint (`.isButt`) is asymmetric: the through
+ *  primitive gets its own `trustO:false` sentinel (no clip, no CLIP_EPS_IN extension either -- runs
+ *  to its own exact natural endpoint, see `buildButtJoint`'s own header), the butt primitive gets
+ *  the square-cut line -- same object either way regardless of whether `idx` is this joint's own
+ *  `prevIdx` or `curIdx`, since `buildButtJoint` already set both `keepRefAsStart`/`keepRefAsEnd` to
+ *  the one physically-correct reference point for that single primitive. */
+function jointFor(joint, idx) {
+  if (!joint || !joint.isButt) return joint;
+  return idx === joint.throughIdx ? joint.forThrough : joint.forButt;
 }
 
 const EXTENSION_ARC_STEPS = 10; // a smoothness floor for the dropped-arc extension points below, same
@@ -353,9 +419,13 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
  * @param {number} pitch — one whole piece's own along-run length
  * @param {number} nominalJoint — the set's own declared grout.widthIn
  * @param {number} seed @param {string} pieceId @param {number} startId
+ * @param {'mitre'|'butt'} [cornerStyle='mitre'] — T86 item 1: 'butt' tries the asymmetric
+ *   through/butt square-cut joint (see `buildButtJoint`'s own header) at every genuine line-line
+ *   corner with no dropped primitive between its two neighbours; every other corner (arc-involved,
+ *   a dropped primitive, or a near-parallel non-corner) still gets the ordinary mitre, same as today.
  * @returns {{ pieces: Array, nextId: number }}
  */
-export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId) {
+export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre') {
   const n = primitives.length;
   const liveIndices = [];
   for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives[i], d1)) liveIndices.push(i);
@@ -385,6 +455,16 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     let trustO = true, droppedIdx = null;
     for (let idx = (prevIdx + 1) % n; idx !== curIdx; idx = (idx + 1) % n) {
       if (primitiveLiveAtDepth(primitives[idx], d0)) { trustO = false; droppedIdx = idx; break; }
+    }
+    // T86 item 1: a butt corner only ever applies at a genuine, undropped, line-line joint -- a
+    // dropped primitive between the neighbours (almost always a fillet/arc) and any arc-involved
+    // corner both declare straight to the ordinary mitre below (the architecture plan's own "arc-
+    // involved corners fall back to mitre"). `buildButtJoint` itself also returns null (same
+    // fallback) for a near-parallel non-corner or a degenerate through/butt intersection.
+    if (cornerStyle === 'butt' && droppedIdx === null
+        && primitives[prevIdx].type === 'line' && primitives[curIdx].type === 'line') {
+      const butt = buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint);
+      if (butt) return butt;
     }
     // the SAME joint, approached by its own two DIFFERENT primitives, must keep OPPOSITE sides of
     // its own mitre line (each keeps only its own half of the cut) -- `keepRefAsStart` (stepping
@@ -419,8 +499,11 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
   for (let k = 0; k < m; k++) {
     const idx = liveIndices[k];
     const prim = primitives[idx];
-    const jointStart = jointBefore[k];
-    const jointEnd = jointBefore[(k + 1) % m];
+    // T86 item 1: `jointFor` resolves a butt joint to the SIDE this specific primitive owns (`null`
+    // for the through side, the square cut for the butt side); an ordinary mitre joint is returned
+    // unchanged, read identically by both neighbours exactly as before this item.
+    const jointStart = jointFor(jointBefore[k], idx);
+    const jointEnd = jointFor(jointBefore[(k + 1) % m], idx);
     const built = prim.type === 'line'
       ? linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set, seed, pieceId, nextId)
       : (() => {

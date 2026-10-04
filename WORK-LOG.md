@@ -18543,3 +18543,74 @@ joint.
 into the same shared code 4 reverted attempts already needed for the
 fillet case, under reduced remaining room this session. The advisor's
 own "one style per commit... across turns" already sanctions this.
+
+## T86 item 1: BUTT corner style -- built, tested, live previews (b5, taking over from f3)
+
+Built f3's own 4-step plan above, mostly as traced -- one real deviation from it, caught by a test
+rather than assumed away (see below). LAPPED and BLOCK, plus the 6 FRAME_PRESETS, are their own
+later steps of this same item (the dispatch's own "one style per commit" structure); this turn is
+BUTT only, complete and live-verified on its own terms.
+
+**`primitive-ribbon.js`:** `ribbonPieces` takes an 11th, optional `cornerStyle` param
+(`'mitre'` default -- every existing call site/test, none of which passes it, keeps today's exact
+behaviour unchanged). At a genuine, undropped, line-line corner (arc-involved and dropped-primitive
+corners still fall straight to the ordinary mitre, per the plan's own rule), `buildButtJoint` picks
+`throughIdx` (whichever neighbour is MORE horizontal, `|tangent.x|` closer to 1, "through=horizontal"
+per Fred's sketch) and builds an asymmetric joint: the through side gets a sentinel that runs it to
+its own exact natural endpoint; the butt side gets a square-cut line (direction = the butt
+primitive's own NORMAL, never the mitre bisector) positioned one grout gap past the through band's
+own d1 (inner) edge. `jointFor(joint, idx)` resolves which side a specific primitive reads at the
+main per-primitive loop -- an ordinary mitre joint is unaffected (returned as-is, read identically
+by both neighbours, exactly as before this item).
+
+**The one real deviation from the plan, caught by a test, not assumed:** the plan said the through
+side gets literal `null` ("reusing the ALREADY-EXISTING 'null = no clip' path"). Built it that way
+first -- the new tests immediately caught the through band's own end landing 0.02in PAST the true
+board edge. Cause: `linePieces`' own `CLIP_EPS_IN` safety-margin extension (a small oversize-then-
+clip-back margin, meant for a piece whose flat end is tangent to a REAL mitre line) fires for ANY
+side with no joint at all, including a genuinely-open-path free end -- which this codebase's own
+closed contours never actually produce in practice, so this path had never been really exercised
+before. A butt corner's own through side IS a real "no clip" case on an always-closed contour, and
+there's no mitre to clip back to, so the extension just oversizes past the board. Fixed by giving the
+through side a `trustO:false` sentinel (reusing the EXISTING dropped-primitive "skip the extension
+AND the clip" path instead of literal `null`) whose own `q` is `o` itself -- mathematically exact
+either way, since offsetting a primitive perpendicular to its own tangent never changes a point's
+own TANGENTIAL projection, which is the only thing `linePieces` reads from it.
+
+**`contour-bands.js` / `library.js`:** a band now declares its own optional `cornerStyle` (default
+'mitre', threaded straight into its own `ribbonPieces` call). New preset `butt_frame` (one soldier
+band, `cornerStyle:'butt'`) -- the first of the dispatch's own 6 FRAME_PRESETS; the other 5 land with
+LAPPED/BLOCK in their own later steps. Updated the one existing `FRAME_PRESETS` test that asserted
+"exactly 3" presets (now 4, with its own new assertion that only `butt_frame` declares a
+`cornerStyle` at all).
+
+**Verification (the plan's own step 4: square fixture first, then a real template):** 5 new tests in
+`tests/bricks-primitive-ribbon.test.js`, mutation-tested -- 4 of 5 fail against the pre-fix engine
+(confirmed via `git stash`), the 5th fails a different, equally real way (`FRAME_PRESETS.butt_frame`
+doesn't exist yet). HAND-COMPUTED on the CCW square fixture (every corner there is exactly one
+horizontal + one vertical primitive, so all 4 joints exercise the asymmetric path at once): worked
+the expected numbers by hand first (through band's own full [0,10] span; butt band's own clipped
+span `[D1+GROUT, 10-D1-GROUT]` = `[0.784, 9.216]` at this set's own brickLengthIn=0.75/grout=0.034) --
+the tests assert those exact values, not just "looks reasonable". Also: no overlap between through
+and butt pieces at any corner (grid-sampled, same technique bricks-contour-bands.test.js's own
+overlap tests use), and `template_1` (its own concave-waist arcs) with `butt_frame`: every piece
+simple, 0 vertices outside the board -- confirms the arc-fallback-to-mitre rule holds on real,
+non-trivial geometry, not just the synthetic square. Full project suite green after: `vitest` 200
+files/3687 tests, 0 failures (includes this item's own 6 new tests: 5 in
+bricks-primitive-ribbon.test.js, 1 in bricks-library.test.js).
+
+**Live previews** (the dispatch's own ask: "T1 + a square + a 1:1 corner per style"), rendered via a
+new tool, `tools/repro/t86_item1_butt_preview.mjs` -- computes real `bricksContourBands` output (the
+SAME portable engine code, no mock), draws it as SVG, screenshots via headless Chrome (raw CDP, this
+project's own established pattern). Saved to `shots/seatB/t86_item1_butt_{square,template_1,
+square_corner_closeup}.png`: the square shows all 4 horizontal/vertical pairs correctly through/butt
+(top+bottom run full-width uninterrupted; left+right are square-cut at both ends with a visible grout
+gap); template_1 shows the 4 straight corners butt-styled while BOTH concave waist fillets correctly
+fall back to mitre (the radial wedge pieces, untouched by this item); the 1:1 close-up makes the
+actual grout gap at one corner visible at true scale.
+
+**Commit `[pending]`, pushed to origin/lane-b.** BUTT is DONE: built per the inherited plan (one real
+deviation, caught by a test and fixed at the cause, not papered over), mutation-tested, verified on
+both a hand-computed synthetic fixture and real template geometry, full suite green, previews
+rendered. No Fusion needed this item (JS-only, as dispatched). Passing back for review before
+starting LAPPED.
