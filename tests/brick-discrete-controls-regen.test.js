@@ -792,3 +792,23 @@ describe('turn 201: the Raised brush (a Brush variant; Level + modes in its own 
     expect(runBricks).not.toHaveBeenCalled();
   });
 });
+
+describe('F35 item 13: the Wall pattern picker is an engine-drawn icon grid, grouped into families', () => {
+  beforeEach(() => setup('wall'));
+  it('every pattern appears once, in a family row, icon only with the name as tooltip', async () => {
+    const { BRICK_PATTERNS } = await import('../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js');
+    const families = [...$('brickPatternList').querySelectorAll('.brick-pattern-family')].map((r) => r.dataset.family);
+    expect(families).toEqual(['bonds', 'herringbone', 'basketweave', 'fieldstone']);
+    const btns = [...$('brickPatternList').querySelectorAll('button')];
+    expect(btns.map((b) => b.id.replace('brickPattern_', '')).sort()).toEqual(Object.keys(BRICK_PATTERNS).sort());
+    const hb = $('brickPattern_herringbone');
+    expect(hb.title).toBe('Herringbone');
+    expect(hb.querySelector('svg')).not.toBeNull();
+    expect(hb.textContent.trim()).toBe('');
+  });
+  it('the sidebar quick Wall pattern row shows the same icons (name as tooltip); the Set row stays text', () => {
+    expect($('brickQuick_pattern_flemish').querySelector('svg')).not.toBeNull();
+    expect($('brickQuick_pattern_flemish').title).toBe('Flemish');
+    expect($('brickQuick_set_1').textContent).toBe('Red Brick');
+  });
+});

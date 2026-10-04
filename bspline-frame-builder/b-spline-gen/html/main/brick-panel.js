@@ -22,7 +22,7 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
 import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS,
-  BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor,
+  BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
 } from '../editor/editor-brick-tool.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { BRICK_CONTROL_REQUIRES, requirementMet } from './brick-control-requires.js';
@@ -974,17 +974,52 @@ const WALL_PATTERN_LABELS = {
 };
 const WALL_PATTERN_LIST = Object.keys(BRICK_PATTERNS).map((id) => ({ id, label: WALL_PATTERN_LABELS[id] || id }));
 
+/** F35 item 13 (Fred's sheets: "group the picker into families"): the Wall pattern picker's FAMILIES, in
+ *  order. Any BRICK_PATTERNS key not listed lands in the last family ('More'), so a new pattern is never
+ *  lost from the picker. Combinations / Tiles join here as their patterns land. */
+const WALL_PATTERN_FAMILIES = [
+  { id: 'bonds', label: 'Bonds', patterns: ['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish'] },
+  { id: 'herringbone', label: 'Herringbone', patterns: ['herringbone'] },
+  { id: 'basketweave', label: 'Basketweave', patterns: ['basketweave'] },
+  { id: 'fieldstone', label: 'Fieldstone', patterns: ['fieldstone'] },
+  { id: 'more', label: 'More', patterns: [] },
+];
+function wallPatternFamilies() {
+  const listed = new Set(WALL_PATTERN_FAMILIES.flatMap((f) => f.patterns));
+  const extra = WALL_PATTERN_LIST.map((p) => p.id).filter((id) => !listed.has(id));
+  return WALL_PATTERN_FAMILIES
+    .map((f) => ({ ...f, patterns: (f.id === 'more' ? [...f.patterns, ...extra] : f.patterns).filter((id) => BRICK_PATTERNS[id]) }))
+    .filter((f) => f.patterns.length);
+}
+const _patternLabel = (id) => WALL_PATTERN_LABELS[id] || id;
+
 function renderWallPatternList(container) {
   if (!container) return;
   container.innerHTML = '';
-  for (const pattern of WALL_PATTERN_LIST) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'cad-btn';
-    btn.id = `brickPattern_${pattern.id}`;
-    btn.textContent = pattern.label;
-    btn.addEventListener('click', () => setWallPattern(pattern.id));
-    container.appendChild(btn);
+  // F35 item 13: an engine-drawn ICON grid, one row per family, icons only (the name is the tooltip)
+  container.style.flexDirection = 'column';
+  for (const family of wallPatternFamilies()) {
+    const label = document.createElement('div');
+    label.className = 'brick-pattern-family-label';
+    label.textContent = family.label;
+    label.style.cssText = 'font-size:9px; opacity:0.6; text-transform:uppercase; letter-spacing:0.05em; margin:2px 0;';
+    const row = document.createElement('div');
+    row.className = 'brick-pattern-family';
+    row.dataset.family = family.id;
+    row.style.cssText = 'display:flex; gap:4px; flex-wrap:wrap; margin-bottom:6px;';
+    for (const id of family.patterns) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cad-btn brick-pattern-icon';
+      btn.id = `brickPattern_${id}`;
+      btn.title = _patternLabel(id);
+      btn.setAttribute('aria-label', _patternLabel(id));
+      btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
+      btn.innerHTML = wallPatternIconSvg(id) || _patternLabel(id);
+      btn.addEventListener('click', () => setWallPattern(id));
+      row.appendChild(btn);
+    }
+    container.append(label, row);
   }
 }
 
@@ -1134,7 +1169,7 @@ const BRICK_QUICK_SETTINGS = [
     isCurrent: (c) => c.id === P.brickSettings.setId, apply: (c) => selectSet(c.id, 'auto') },
   { id: 'size', label: 'Brick size', choices: () => BRICK_SIZE_PRESETS,
     isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
-  { id: 'pattern', label: 'Wall pattern', choices: () => WALL_PATTERN_LIST,
+  { id: 'pattern', label: 'Wall pattern', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternIconSvg(c.id, 24),
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
   { id: 'frameBands', label: 'Frame bands', choices: () => FRAME_PRESET_LIST,
     isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
@@ -1156,7 +1191,10 @@ function renderQuickSettings(container) {
       btn.type = 'button';
       btn.className = 'cad-btn';
       btn.id = quickButtonId(row, choice);
-      btn.textContent = choice.label;
+      // F35 item 13: a visual row (iconFor) shows icons only, the name as the tooltip
+      const icon = row.iconFor && row.iconFor(choice);
+      if (icon) { btn.innerHTML = icon; btn.title = choice.label; btn.setAttribute('aria-label', choice.label); btn.style.padding = '2px'; }
+      else btn.textContent = choice.label;
       btn.addEventListener('click', () => row.apply(choice));
       list.appendChild(btn);
     }
