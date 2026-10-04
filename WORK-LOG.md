@@ -19329,7 +19329,7 @@ confirms the fix is scoped to the dropped-primitive transitions only). Published
 `shots/seatB/` and `~/.bspline-status/shots/seatB/` (the item-2-follow-up-#1 auto-publish step
 covers both scripts now).
 
-**Commit `[pending]`, push to origin/lane-b to follow.** Also noticed in passing: lane-b picked up a
+**Commit `febee04`, pushed to origin/lane-b.** Also noticed in passing: lane-b picked up a
 merge bringing in de's own `fb-app` commit (`a3ed945`, "wire picker to b5's sequence API, retire
 frameBricksFor") -- de acted on the retirement recommendation from my own T86 item 2 DM; not my own
 work, just confirming the cross-branch coordination landed. Passing back to the advisor with the full
