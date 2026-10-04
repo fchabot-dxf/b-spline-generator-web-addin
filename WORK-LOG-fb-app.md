@@ -9894,3 +9894,83 @@ those dimensions, not an implementation shortfall, and equally true (if never te
 own existing patterns.
 
 Commit, push, pass back.
+
+### F35 item 7 correction (advisor, 1:1 review): herringbone/basketweave rebuilt closed-form
+
+Advisor reviewed `f35item7_06/07.png` at 1:1: herringbone read as "a jumble of diagonal bricks with
+crossings and gaps, not a continuous zig-zag"; basketweave read as "irregular clusters of 2-4 bricks
+with holes, not a checkerboard of squares." Correct call -- a greedy pack cannot produce a regular
+weave. Also flagged the 71% coverage finding as pointing at a REAL problem: Set 1's own grout (0.06in
+on a 0.2in brick height = 30%) is much wider than a real brick's own joint:height ratio (~17%).
+Instructed: rebuild both CLOSED-FORM (exact formulas, not packing), and make grout proportional
+(~0.17 x brickHeightIn) and scale it with brick size.
+
+**Grout, done exactly as specified.** `library.js`: Set 1's `grout.widthIn` 0.06 -> 0.034 (0.17 x
+0.2), with the comment's own reasoning corrected (the original 0.06 was measured as a fraction of
+brickLengthIn, not brickHeightIn -- a different, less relevant ratio). `scaledSet` (library.js):
+now ALSO scales `grout.widthIn` by the same factor as brickLengthIn/brickHeightIn -- a genuine,
+documented behaviour change from the original "grout width unaffected" rule (`tests/bricks-scale-
+grout.test.js` updated to assert the NEW behaviour, not reverted).
+
+**basketweave.js -- REBUILT, now matches the advisor's exact spec, verified at 1:1.** Deleted the
+greedy packer entirely. New construction: an L x L grid (L = brickLengthIn), `n = round(L/(W+g))`
+bricks per square (Set 1 -> n=3, "a 3-brick basketweave", exactly as named), squares alternate
+horizontal/vertical by (i+j) checkerboard parity, each square's own n bricks packed edge-to-edge at
+an exact pitch (L/n) to fill it precisely (never stretched -- the same "snap to a whole number of
+rows" convention contour-bands.js already uses for Frame bands). Adjacent squares meet FLUSH (the
+advisor's own "unit square side = L", not L+grout) -- `shots/seatC/f35item7_07_basketweave.png`
+(re-shot, examined at 1:1): a genuine, regular checkerboard of squares, zero holes, zero irregular
+clusters.
+
+**herringbone.js -- REBUILT closed-form, materially improved, but an honest limitation remains.**
+Deleted the greedy packer. MEASURED, not assumed, before building: the textbook single-brick "V"
+chevron (each brick's end touching the next perpendicular brick's side in one continuous zigzag)
+tiles EXACTLY only when brickLengthIn = 2 x brickHeightIn -- verified directly (a hand-built 2-brick
+repeat unit, bottom-aligned H+V, closes with zero gap/overlap at that ratio, confirmed both by area
+conservation and by code). Set 1's own real ratio (3.75:1) does NOT close that way: a systematic
+offset search (every translation of a single verified H-V-H-V staircase, both top- and
+bottom-aligned, searched over a 20x20 grid of candidate offsets) found ZERO offsets achieving both
+zero overlap and real coverage -- this is a genuine geometric fact about this ratio, not a tuning
+gap. GENERALISED instead, closed-form: each "column" is `n = round(L/(W+g))` horizontal bricks (the
+SAME formula basketweave's own `n` uses) stacked to exactly fill one L-tall column, paired with ONE
+vertical brick beside it; columns repeat along a row, consecutive rows offset by their own
+cross-width for a stepped diagonal look. Verified: zero overlap, correct closed-form geometry
+(`shots/seatC/f35item7_06_herringbone.png`, examined at 1:1) -- no more random crossings/gaps, a
+genuinely REGULAR weave. **Honest gap:** this reads as a stepped diagonal weave, not the classic
+single-brick "V" chevron -- at Set 1's own 3.75:1 ratio, getting the textbook chevron look would need
+a more complex multi-piece notch-filling scheme (filling the irregular remaining space between a
+stacked H-column and its neighbour with correctly-mitred partial pieces, not a clean repeat unit) --
+real further geometry work, not attempted here given the ratio-driven mathematical ceiling already
+measured. Flagging this plainly rather than presenting the stepped-weave result as the chevron look.
+
+**Tests** (`tests/bricks-weave-layouts.test.js`, rewritten, 16 tests): replaced the generic
+"grout-on-every-edge" ceiling with a PATTERN-SPECIFIC ceiling function for each construction
+(basketweave's own intra-square-only grout since squares are deliberately flush; herringbone's own
+per-repeat-unit area), since the generic formula wrongly flagged correct, intentional flush
+boundaries as "exceeding the mathematical maximum" once the real closed-form geometry was in place.
+Grout-tolerance check now accepts EITHER real grout (+-10% of declared) OR a deliberately flush
+(near-zero) boundary, both genuine features of these two constructions by design -- previously it
+only recognised uniform grout everywhere, which doesn't match either pattern's own actual structure.
+All 16 pass.
+
+**Side effect found and fixed, not silently absorbed:** lowering Set 1's declared grout shifted a
+KNOWN, pre-existing float-epsilon seam artifact in `bricksContourBands`'s own corner-mitre handling
+(documented in `tests/bricks-contour-bands.test.js`'s own comments as already having shifted once
+before, from f3's H23 item 76 FILL_FRACTIONS change) from 0.0338 to 0.068, just over that test's own
+0.05 threshold. Verified directly (not assumed) this is the SAME benign seam, not a new bug: pulled
+the exact offending brick pair, confirmed one triangle's hull lies entirely in `{y<=x}` and the
+other entirely in `{y>=x}` -- they share only the mitre line itself, zero true area. Bumped the
+threshold to 0.08 (still well over an order of magnitude below the pre-fix bug's own 30-80%), with
+the test's own comment updated to record this as the SECOND time this exact seam has shifted.
+
+Full suite green: 198 files / 3633 tests.
+
+Re-shot all 4 new patterns at 1:1 per the advisor's own request --
+`shots/seatC/f35item7_0{4,5,6,7}_*.png`. header/flemish unchanged (already confirmed good).
+basketweave: fixed, matches spec exactly. herringbone: fixed (closed-form, regular, zero overlap)
+but does not achieve the classic chevron look at Set 1's own brick ratio -- flagged honestly above,
+not claimed as the textbook pattern it isn't.
+
+Commit, push, pass back with the herringbone limitation named explicitly and a question: accept the
+stepped-weave result as "herringbone" for now, or invest in the more complex notch-filling
+construction needed for the true chevron at this ratio?
