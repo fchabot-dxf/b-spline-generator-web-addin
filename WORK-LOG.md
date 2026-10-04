@@ -20742,6 +20742,132 @@ this entry). Passing back: the exact reported repro is fixed and verified; the f
 provable physical bound, not a pattern-matched special case) and the regression test proves it closes
 a WIDER bug than the one specific report named. Ready to pick up "rustic running" next unless there's
 a different priority.
+
+## T86 item 16(a): big-brick crash fixed -- TOP PRIORITY amendment, root-caused and fixed; (b)/(c)/(d) measured and honestly deferred, not chased on an unreliable test (d3)
+
+**A large amendment batch landed mid-session (items 13-17) with item 16 marked TOP PRIORITY,
+explicitly ahead of 13/14/15. Picked it up immediately**, also fixing a real timing flake in my own
+`tests/bricks-fieldstone.test.js` first (seat 37 report, turn 199: the overlap/coverage/histogram
+tests each independently re-ran `fieldstoneLayout` for the same 18 (template,seed) combos -- computed
+once and shared across all three assertions instead; slowest test dropped from ~6s, flaky over
+vitest's 5s default under parallel load, to 211ms. Separate commit, pushed first.)
+
+**(a) CRASH, reproduced and root-caused exactly**: `TypeError: Cannot read properties of null
+(reading 'x')` at `bond.js:141`, on T9 at brickLengthIn 1/1.25/1.5 (confirmed directly; T18 at 1.25
+was also reported but didn't reproduce with this file's own board/preset choice -- see below).
+`innerPath` itself contained a literal `null` entry. Traced to `primitive-ribbon.js`'s own
+`boundaryAtDepth`: `jointPointAt`'s own `curveIntersection` can genuinely fail to find a crossing
+once a frame band is deep enough that two neighbouring primitives' own offset-at-depth curves no
+longer meet near the true original junction (MEASURED: happens once the band depth exceeds roughly
+half the local gap, at a narrow waist/neck -- exactly what a BIGGER brick does here, since
+`brickLengthIn` also sets the Soldier band's own depth). Every OTHER joint-consuming call site in
+that file already defensively checks for a failed joint (`if (!jointWithPrev || !jointWithNext)
+...`); this one pushed the result straight into the returned boundary with no check at all.
+
+**Two attempts, the first reverted and logged, not silently discarded.** First: drop BOTH primitives
+flanking any failed joint and rebuild -- the SAME shape as fieldstone.js's own "never drop a cell"
+fix from the item 6 rework (remove what doesn't work, let the rest re-settle). MEASURED on the real
+repro: it cascades. Dropping two primitives routinely exposes a NEW joint between their own former
+neighbours, which also fails, and so on until the live set empties out entirely -- an honest empty
+boundary, never a crash, but the WHOLE Wall fill disappearing (confirmed: 0 cells on template_9 at
+all three sizes) is its own kind of total void, a worse outcome than a localised imperfection.
+Replaced with a LOCAL fallback instead: when the true mitred joint can't be found, that ONE corner
+uses its own simple (non-mitred) offset endpoint -- no neighbour intersection, just the offset
+curve's own end -- rather than removing real geometry. Every primitive stays in the boundary; only
+the specific corner where the true mitre doesn't exist gets an approximate point. Re-measured:
+template_9 now produces 60/45/30 cells at brickLengthIn 1/1.25/1.5 (sensible counts, not a cascade to
+empty), zero crashes, zero overlap.
+
+**New `tests/bricks-big-brick-robustness.test.js`: the advisor's own declared sweep (T1/T9/T12/T18 x
+brickLengthIn 0.75/1/1.25/1.5), asserting no throw and no pairwise cell overlap.** Proven
+non-vacuous: ran this exact file against the pre-fix `primitive-ribbon.js` (git stash) -- T9 failed
+with the exact reported crash at 1.25 and 1.5. Full suite re-verified clean: 3892/3892 (this file
+touches `primitive-ribbon.js`, used extensively by Frame bands throughout this whole session's own
+earlier work, so this was checked carefully, not just assumed safe).
+
+**(b)/(c)/(d) measured directly, scope HONESTLY limited rather than half-fixed.** Before deciding
+what to assert, swept all 16 (template,size) combos for pairwise overlap (bbox-prefiltered, exact via
+`polygonIntersection`) AND a neighbour-gap check (via `bondLayout`'s own `cell.neighbors`). Overlap:
+0% everywhere (bondLayout's own rectangular grid has no overlap mechanism to begin with -- the crash
+really was the main risk there). Gap: came back NOISY in a way that isn't trustworthy yet -- T1/T12
+show 0.22-0.31in neighbour gaps even at brickLengthIn=0.75, a size never reported as having this
+problem, which looks like `bondLayout`'s own `findOverlap` (nearest-by-x-distance) occasionally
+pairing two cells ACROSS a genuine board-outline notch rather than measuring a true "wall doesn't
+reach the band" defect -- not cleanly separated from the real (b) issue in the time available, so NOT
+asserted as a regression gate (an unreliable check that happens to pass is worse than an honest gap
+in coverage -- it reads as verified when it isn't). T18 also produced 0 cells at EVERY size tried
+with this file's own 7x9/single-Soldier setup, rather than the advisor's own specific "collides at
+1in" symptom -- this file's own board/preset choice evidently doesn't match the advisor's exact T18
+repro conditions. Documented all of this directly in the new test file's own header rather than
+claiming broader coverage than what was actually verified.
+
+**Not touched this pass**: (b) wall-vs-band gaps at 1.25/1.5in on T1/T12, (c) T18 neck-band collision
+at 1in (same family as items 9/12's own medial-line rule, per the advisor's own note), (d) one
+missing T1 brick near the top-right at 0.75/1in. Each needs its own focused investigation with a
+RELIABLE measurement technique (the neighbour-gap approach above isn't it) before a fix is attempted
+-- flagging for a fresh pass rather than guessing.
+
+**Also received, mid-task**: a tier-calibration finding from seat 88 (T86 item 17 prep) -- White
+rocks' fieldstone `GATE_AREA_SHARES` (this session's own item 6 calibration) underfills the medium
+tier by 11-13 points and overfills large by 5-8 points on "ordinary" shapes (T1/T12, and T9 at a
+WIDE flange); the existing pooled test in `tests/bricks-fieldstone.test.js` only passed because its
+own T9 fixture happened to use a NARROW flange that skews medium-heavy, masking the broader
+miscalibration. Seat 88 pinned the fixture (branch `fix-fieldstone-fixture`, engine untouched) and
+handed the actual recalibration back -- queued as my own next piece of work, likely folded into item
+17's own prep since that item builds directly on this same calibration.
+
+**Commit** (`primitive-ribbon.js`'s own `boundaryAtDepth` fix, the new
+`tests/bricks-big-brick-robustness.test.js`, this entry). Passing back: item 16(a) -- the TOP
+PRIORITY crash -- is fixed, root-caused, and verified non-vacuous; (b)/(c)/(d) are measured and
+explicitly NOT claimed as fixed, each flagged for its own focused pass. Picking up the
+GATE_AREA_SHARES recalibration (seat 88's finding) next, then item 17 prep, then back to 14/15/13 per
+the standing queue.
+
+## fieldstone GATE_AREA_SHARES recalibrated (seat 88 finding, T86 item 17 prep): medium was chronically underfilled on "ordinary" shapes -- today's own item 6 calibration was tuned on too narrow a template set, redone against a broader one (d3)
+
+**Seat 88 (item 17 prep) found a real miscalibration in today's own item 6 rework**: White rocks'
+fieldstone measured large/medium/small split ran 55-58% / 22-24% / 20-21% on T1 7x9, T12 7x9, and T9
+9x12 at its own wide flange -- medium 11-13 points under the declared 35% target, large 5-8 points
+over, both outside the declared +/-10. `tests/bricks-fieldstone.test.js`'s own pooled check only
+passed because its T9 fixture happened to use a NARROW-flange variant that skews medium-heavy,
+masking the broader problem -- seat 88 pinned that fixture (branch `fix-fieldstone-fixture`, engine
+untouched) and handed the actual recalibration back, correctly identifying it as this side's own
+work.
+
+**Root cause: today's earlier `GATE_AREA_SHARES` calibration was tuned against only 3 templates
+(1/2/5, all 7x9)** -- too narrow a set to catch that the point-count-to-area-share relationship
+varies meaningfully by template shape, not just by brick set. Redone against a BROADER 6-template
+sweep (1/2/5/9/12/15, mixed 7x9/9x12 board sizes) this time, specifically to avoid repeating the
+exact same narrow-generalisation mistake: MEASURED the old `[0.16,0.35,0.49]` shares giving
+large=50/53% medium=28/27% small=22/20% (Red brick/White rocks) on this broader set -- medium
+already running 7-8 points low even here, confirming the problem wasn't specific to seat 88's own
+combos. Re-derived from the same `radius^2` efficiency-ratio approach item 6 originally used, then
+tuned by direct measurement (not a one-shot formula -- the point-count-to-area relationship is
+nonlinear and set-dependent, same lesson as every other calibration in this file): landed on
+`[0.13, 0.55, 0.32]`, giving Red brick 44.5/35.9/19.7% and White rocks 48.3/32.8/18.9% on the broad
+sweep -- both sets comfortably inside +/-10 of 50/35/15 now, not just one.
+
+**Re-verified directly against seat 88's own exact reported combos** (not just my own broader set):
+White rocks T1 7x9 moved from 55.0/24.2/20.8% to 47.9/32.1/20.1%; T12 7x9 from 58.3/22.1/19.6% to
+47.9/33.2/19.0%; T9 9x12 (default/wide flange) from 57.0/23.1/20.0% to 49.0/33.3/17.7% -- medium up
+9-11 points on every one of seat 88's own named problem cases, large down 8-10 points, all three now
+within the declared tolerance on the EXACT shapes that exposed the original miscalibration, not just
+on a different sample that happens to average out.
+
+**MEASURED, full `tests/bricks-fieldstone.test.js` 7/7 still green** (zero overlap, coverage, and the
+pooled histogram check all unaffected by the recalibration -- this only moves WHERE the noise field's
+own candidate draws land, not the power-diagram's own no-overlap guarantee or the grout-shrink
+coverage math). Full suite spot-checked (bricks-fieldstone/bricks-real-template-contours/bricks-
+library/bricks-geometry, 66/66) and a full-suite run attempted twice -- both runs hit DIFFERENT
+unrelated flaky timeouts (frame-3d-sweep.test.js, frame-bartop-drawn.test.js, neither touching
+fieldstone.js), both confirmed passing standalone; system load from many repeated heavy suite runs
+this session, not a regression from this change.
+
+**Commit** (`fieldstone.js`'s own `GATE_AREA_SHARES` update + comment). Messaged seat 88 directly
+with the before/after numbers on their own exact combos; their fixture pin can stay as historical
+context or be unpinned, their call. Picking up item 17 (large-stones slider) prep next, building on
+this now-broader-verified calibration.
+
 ## H23 item 78c, turn 550: archRise_max and topInset_max root-caused and fixed, T10's archRise_min fixed as a bonus, 18-case live matrix all-BUILT, T18 UN-HIDDEN -- one significant finding flagged, not fixed
 
 Seat 39, turn 550. Advisor's dispatch (Fred's own "moderate ranges" precedent): (1) archRise_max --
@@ -21162,3 +21288,36 @@ Released the Fusion holder (`fusion_holder.txt` -> `none`).
 
 Stopping here per the dispatch's own "then stop; you've earned the rest" -- not proceeding to item 81
 (T10 archRise_min + apex drift) without a fresh dispatch.
+
+## Amendment: merged origin/main into lane-b (WORK-LOG.md + tests/bricks-fieldstone.test.js conflict), both sides kept (d3)
+
+**Amendment dispatch**: "MERGE CONFLICT: lane-b vs main in tests/bricks-fieldstone.test.js (your
+timing-flake fix bf75ad8 vs 88's abc0a34 fixture pin) + WORK-LOG.md. git merge origin/main into
+lane-b, keep BOTH (88's fixture + your timeouts), run vitest, push, then pass back or DM me."
+
+**WORK-LOG.md**: a plain union conflict (two seats' independent entries landing back to back) --
+resolved by keeping both halves in full, HEAD's entries then origin/main's, markers stripped, no
+content changed.
+
+**tests/bricks-fieldstone.test.js**: the 3 marked conflicts (overlap/coverage/histogram `it` blocks)
+were the easy part -- all three resolved to keep MY `runs`-based reads (bf75ad8's shared
+once-per-combo computation), since origin/main's inline-recompute version is now redundant once
+`runs` carries the right data. **The real work was unmarked**: git auto-merged the `CASES` array
+itself clean (origin/main's commit abc0a34 added a 5th `seeds` element per case -- `{}`for T1/T12,
+`{ flangeHeight: 0.4 }` for T9, pinning it against main's own new 0.7 default), but my own `runs`
+precompute loop at line ~102 still destructured `CASES` as a 4-tuple and called `realContour(templateId,
+W, H)` with no seeds -- NOT a conflict git could see (different lines), but it would have silently
+dropped seat 88's own fixture pin, defeating the entire point of their commit. Caught by reading the
+merged CASES declaration against the unmarked `runs` loop rather than trusting "no conflict markers
+here = fine." Fixed: `for (const [name, templateId, W, H, seeds] of CASES)` / `realContour(templateId,
+W, H, seeds)`.
+
+**Verified**: `npx vitest run` on the 6 brick-layout test files (87/87), then a full suite run
+(243 files / 4189/4189) -- both clean post-merge, including main's own substantial independent
+progress since the merge-base (T9 flangeHeight 0.7 default, new plane-fit.js/loading-signal.js/
+adaptive-mesh.js, engine.js/height-profile.js changes). Pushed (`d0b0bd8..473c319 lane-b -> lane-b`,
+merge parents confirmed `d0b0bd8`/`5cf0a4c` as predicted).
+
+**Commit** (merge commit 473c319, default merge message, no conflicts remaining). My crash fix
+(5f6ee88) and the rest of this session's work is now reachable from main once the advisor merges
+lane-b. Passing back.
