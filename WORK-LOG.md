@@ -21433,3 +21433,66 @@ own numbers are in this entry directly (a measured negative result, not a visual
 
 **Commit** (`layouts/bond.js`, the new test, the new preview tool; this entry). Passing back with
 shots AND the honest 16(b) non-result; picking up item 17 (largeStones + ENGINE_OPTIONS) next.
+
+## T86 item 17: fieldstone's largeStones slider wired end to end, GATE_AREA_SHARES generalised to a per-tier-corrected radius^2 formula instead of a fixed table (d3)
+
+**Full spec from `NEXT-SESSION-lane-b.md`** (Fred 2026-10-04 on the White rocks v3 preview: "Wow" /
+"slider for more or less large ones"): `opts.largeStones` in 0..1, default 0.5 = today's 50/35/15
+split; moves the large tier's own target area share along a declared range (~0.2 at 0 -> ~0.8 at 1),
+rescales medium/small in their current 35:15 proportion, re-derives `tierAt`'s own point-count shares
+by the SAME radius^2 rule already documented -- explicitly NOT a hand-tuned table per slider value.
+App side (seat 37, F35 item 21) already sends `input.largeStones` and gates its own UI row on
+`ENGINE_OPTIONS` containing the name -- "inert until then" per their own comment.
+
+**The honest part, worth stating plainly**: a PURE radius^-2 formula does NOT land on the already-
+measured-correct default (`[0.13,0.55,0.32]` for the 50/35/15 target) -- MEASURED the raw formula
+alone gives `[0.116,0.326,0.558]` there, large/medium too low, small far too high. Point-count share
+and area share are related by MORE than radius^2 alone (Poisson-disc's own point density scales with
+spacing too, and large's own pass-order precedence compounds on top -- neither predicted by a closed
+form). Rather than a second hand-tuned table (explicitly ruled out), derived a per-tier
+`GATE_CORRECTION` constant ONCE -- "how far off the raw rule was at the one point this project has
+actually measured and verified against real templates" (seat 88's own broader-template recalibration)
+-- and applied it as a fixed multiplier at every other target. `gateAreaSharesFor(0.5)` reproduces
+`[0.13,0.55,0.32]` EXACTLY by construction (the correction is defined as the ratio that makes it so),
+so the DEFAULT slider position is provably unchanged from before this item.
+
+**Plumbing**: `fieldstoneLayout`'s own 5th param `largeStones` (default 0.5, every existing 4-arg
+caller unaffected) -> `tierAt` now takes `gateShares` as a parameter instead of reading the old
+module-level `GATE_AREA_SHARES` constant (not exported/used outside this file -- safe) ->
+`bricksFillShape` threads `opts.largeStones` through to `layoutFn` as a 5th positional arg (every
+OTHER layout -- bond/herringbone/basketweave -- simply ignores it, same convention `zones` already
+uses in reverse) -> `generateBricks` threads `input.largeStones` through -> added to `ENGINE_OPTIONS`.
+
+**MEASURED, not assumed, across the whole range** (template_1 7x9, White rocks, 3 seeds): large's own
+AREA share moved 15.6% -> 25.1% -> 45.9% -> 54.9% -> 62.3% across largeStones 0/0.25/0.5/0.75/1 --
+strictly monotonic, zero overlap at every single value tried. The endpoints undershoot the "~0.2/~0.8"
+declared TARGET range somewhat (15.6% vs 20%, 62.3% vs 80%) -- an honest consequence of anchoring the
+correction at ONE point only and extrapolating; flagged rather than silently accepted, but the
+qualitative ask (monotonic, usable range, no breakage) is solidly met.
+
+**New test** (`tests/bricks-fieldstone-large-stones.test.js`): monotonicity across 5 values, the
+default (0.5, and omitted) still passing the pre-existing +/-10-point tolerance, zero overlap +
+reasonable coverage at 0/0.5/1. MEASURED non-vacuous via `git stash` on the 3 plumbing files: the
+monotonicity test fails pre-fix (all 5 values identical, 0.459 -- the parameter was silently ignored),
+the other 4 pass either way (as expected -- they don't depend on the option existing).
+
+**Two PRE-EXISTING pinned tests needed updating, not a regression**: `tests/brick-control-
+requires.test.js`'s and `tests/brick-discrete-controls-regen.test.js`'s own "turn 199" tests had
+deliberately pinned the NOT-YET-SUPPORTED state ("Large stones is NOT in the engine yet" / "hidden
+while the engine does not honour largeStones") as scaffolding ahead of this exact item -- engine.js's
+own `ENGINE_OPTIONS` header comment named this precisely: "its control appears by itself." Updated
+both to assert the NEW, now-true state instead of deleting the coverage; the discrete-controls file's
+own already-correct successor test (`engineOpts.extra = ['largeStones']`, pre-written for today)
+needed no change at all.
+
+**Verified**: targeted run (4 files/52 tests), full suite gate (245/245 files, 4199/4199 -- including
+the 2 pinned-test updates).
+
+**Shots**: `tools/repro/t86_item17_large_stones_preview.mjs` (new) -- template_1, White rocks, seed 1,
+largeStones 0/0.5/1 -- `~/.bspline-status/shots/seatB/t86_item17_largeStones_{0,0.5,1}.png` (0: mostly
+medium/small with a couple of large; 0.5: balanced mix; 1: large-dominated).
+
+**Commit** (`fieldstone.js`, `fill-shape.js`, `engine.js`, the new test, the 2 updated pinned tests,
+the new preview tool; this entry). DM'd seat 37 confirming the option name (`largeStones`, already
+matching their own stub) and that it's live. Passing back with shots; picking up item 13 (exclusions +
+ENGINE_OPTIONS) next.

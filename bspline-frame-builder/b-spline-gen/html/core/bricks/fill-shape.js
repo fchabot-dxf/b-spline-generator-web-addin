@@ -43,6 +43,8 @@ const LAYOUTS = Object.freeze({
  * @param {{bond?:'running'|'stack'|'soldier', rows?:number, heightIn?:number}[]} [opts.zones]
  * @param {number} [opts.scale=1] — uniform multiplier on the set's own brick length/height (grout unaffected)
  * @param {number} opts.seed
+ * @param {number} [opts.largeStones] — T86 item 17: fieldstoneLayout-only (ignored by every other
+ *   layout here, same as `opts.zones` is bond-only); see its own header for the declared range.
  * @returns {{ bricks: Array }}
  */
 export function bricksFillShape(polygon, holes, opts) {
@@ -54,7 +56,7 @@ export function bricksFillShape(polygon, holes, opts) {
 
   const layoutFn = LAYOUTS[set.layout];
   if (!layoutFn) return { bricks: [] };
-  const { cells: allCells } = layoutFn(polygon, set, opts.zones, seed);
+  const { cells: allCells } = layoutFn(polygon, set, opts.zones, seed, opts.largeStones);
   const cells = (holes && holes.length)
     ? allCells.filter((c) => !holes.some((h) => pointInPolygon(c.cx, c.cy, h)))
     : allCells;

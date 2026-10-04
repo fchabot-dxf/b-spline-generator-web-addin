@@ -678,13 +678,10 @@ describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fiel
     expect(shown('brickSharedSet')).toBe(true);
     expect(shown('brickSharedLayout')).toBe(true);
   });
-  it('turn 199: hidden while the engine does not honour largeStones, even for a fieldstone wall', () => {
-    engineOpts.extra = [];
-    $('brickSetWhite').click();
-    expect(shown('brickLargeStonesRow')).toBe(false);
-  });
   it('the Large stones row shows only for a fieldstone wall (White Rocks, or the Fieldstone pattern)', () => {
-    engineOpts.extra = ['largeStones']; // the engine honours it (T86 item 17)
+    // T86 item 17 shipped: `largeStones` is now really in ENGINE_OPTIONS (the mock's own `extra`
+    // scaffold -- see its header comment -- is a no-op here now, kept only so a future option can
+    // reuse the same pre-staging pattern without copying it back in).
     $('brickSetRed').click();
     expect(shown('brickLargeStonesRow')).toBe(false); // red brick, stretcher
     $('brickSetWhite').click();
