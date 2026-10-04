@@ -11190,3 +11190,53 @@ check); (2) Escape on the Brick tab -> `brickTool_brush` active = false, `editor
 `'select'`; (3) Escape on the Photo tab -> `editor._currentMode` = `'select'`, no crash; (4) Draw
 tool active on Artwork before Escape; (5) Escape on Artwork -> `toolSelect` active = true,
 `editor._currentMode` = `'select'`. Zero console errors across all 5 checks.
+
+## F35 perf item, part 1: remove auto-spacing-tighten -> detection-only hint; skip brick regen on non-brick commits
+
+Per the advisor's downgrade ("Fred: resolution is his own responsibility via the resolution panel... the
+perf quick win is just: skip brick regen on non-brick commits").
+
+**Removed** `ensureFineEnoughMesh` (main/brick-panel.js) -- it used to call `applyParam('spacing',
+targetSpacing)` whenever bricks existed and `P.spacing` was coarser than `groutWidthIn/3`, silently
+overriding the user's own Resolution-panel choice. Replaced with `updateSpacingHint`, DETECTION
+ONLY -- never writes `P.spacing` -- showing a plain message ("Grout joints need spacing <= X in to
+carve cleanly (current Y)") in BOTH the Resolution panel (`#spacingGroutHint`, new) and the Brick
+tab's own Grout section (`#brickGroutSpacingHint`, new) whenever real bricks exist
+(`[data-brick-gen="1"]` present anywhere) and the current spacing is too coarse. Re-evaluated on
+`'bricksGenerated'` and on the Resolution panel's own `#spacing` select changing (deferred one tick
+via `setTimeout(0)`, since this listener's registration order relative to whatever generic
+param-input binding actually writes `P.spacing` isn't declared anywhere -- this guarantees the hint
+reads the POST-change value regardless of order, not whichever one happened to run first).
+
+**The actual perf fix**: `regenerateOwnedBrickElements` (editor-brick-tool.js) used to remove-and-
+redraw EVERY brush-owned brick polygon on EVERY `editorCommit`, even ones that never touched a
+brick spine at all (e.g. dragging an unrelated artwork node) -- a full DOM scan, per-chain
+`bricksForBrushStroke`, and a fresh polygon (with its own pattern-fill lookup) per brick, on every
+commit anywhere in the editor. Added a cheap fingerprint of exactly the spine content this function
+reads (element id, endpoints, stripe id, settings JSON -- every input its own output depends on):
+when a commit's fingerprint matches the LAST one, the redraw would produce byte-identical output,
+so it's skipped entirely -- an exact optimization, not a heuristic approximation.
+
+**Tests**: `tests/brick-spacing-hint.test.js` (4 new) -- hidden with no bricks, shows in both
+places when bricks exist and spacing is too coarse (never mutates `P.spacing`), stays hidden when
+spacing is already fine, re-evaluates live on the Resolution select's own change. Mutation-tested
+(forcing `show=true` unconditionally fails exactly the 2 tests that assert "hidden", the other 2
+correctly stay green). `tests/bricks-regen-perf.test.js` (4 new) -- a bare layer is a cheap no-op;
+a real spine draws real polygons then an IDENTICAL second call makes zero new `polygon()` calls and
+leaves the same brick objects in place; a genuinely moved endpoint redraws; a genuinely different
+settings snapshot on the same endpoints also redraws (not just position matters). Mutation-tested
+(disabling the fingerprint check fails exactly the one test asserting the skip). Full suite green:
+211 files / 3849 tests.
+
+**Live-verified** (headless Chrome, T1): drew a Brush stroke (3 owned bricks), tagged them with a
+probe attribute, dispatched an unrelated `editorCommit` (an artwork circle drawn on a different
+layer) -- all 3 probe-tagged elements survived untouched (3 probed, 3 owned, same objects, not
+recreated). Then drew a genuinely NEW second brush stroke -- owned brick count correctly grew from
+3 to 6, confirming real content changes still redraw.
+
+Not yet done: the measured spacing/scale grid the advisor asked for next (real carved 3D close-ups
+across a spacing x scale matrix, to word the hint's own threshold from Fred's marks rather than the
+existing "3 samples across the groove" rule used here) -- current hint wording may need revision
+once that lands. Also queued, arrived after this: Fred wants brick SIZE in real inches (0.375"-8",
+replacing the 0.5-2x scale multiplier) with a "Life size" preset, to be added as a column in that
+same grid -- not started yet.

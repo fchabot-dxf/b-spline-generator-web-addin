@@ -714,6 +714,17 @@ export function reconstructChains(segments) {
  *  untouched -- they stay the separate, fire-and-forget regime item 1
  *  already built (their own "spine" is the live board/frame contour itself,
  *  not a drawn element, so they have nothing here to react to). */
+// F35 (Fred, perf: "the app lags once a brick layer exists" -- the quick win: "skip brick regen
+// on non-brick commits"): regenerateOwnedBrickElements used to remove-and-redraw EVERY brush-owned
+// brick on EVERY editorCommit, even one that never touched a brick spine at all (e.g. dragging an
+// unrelated artwork node) -- a full DOM scan + per-chain bricksForBrushStroke + a fresh polygon
+// (with its own pattern-fill lookup) per brick, on every single commit anywhere in the editor.
+// A cheap fingerprint of the spine content this function ACTUALLY reads (element id, endpoints,
+// stripe id, settings JSON -- every input its own output depends on) lets an unrelated commit
+// skip that work entirely: if none of it changed, the redraw would produce byte-identical output,
+// so skipping is exact, not a heuristic approximation.
+let _lastSpineFingerprint = null;
+
 export function regenerateOwnedBrickElements(editor) {
   if (!editor || !editor._sketchLayer) return;
   const layer = (editor._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
@@ -721,6 +732,13 @@ export function regenerateOwnedBrickElements(editor) {
 
   const children = editor._sketchLayer.children().toArray();
   const spineEls = children.filter((el) => el.attr(BRICK_ATTR) === SPINE_KIND);
+
+  const fingerprint = spineEls.map((el) => {
+    const [a, b] = pieceEnds(el);
+    return `${el.attr(BRICK_ELEMENT_ATTR)}|${a.x},${a.y},${b.x},${b.y}|${el.attr(STRIPE_ATTR) || ''}|${el.attr(BRICK_SETTINGS_ATTR) || ''}`;
+  }).join(';');
+  if (fingerprint === _lastSpineFingerprint) return;
+  _lastSpineFingerprint = fingerprint;
 
   const byElement = new Map();
   for (const el of spineEls) {

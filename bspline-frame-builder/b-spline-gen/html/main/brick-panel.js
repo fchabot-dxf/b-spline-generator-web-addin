@@ -22,7 +22,6 @@ import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimit
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
-import { applyParam } from './param-manager.js';
 import { setEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
 
@@ -580,26 +579,40 @@ function resolveFrameBrickSet() {
   return { ...base, brickLengthIn: overrideLength, brickHeightIn: overrideLength * aspect };
 }
 
-// Advisor review (turn 131, round 2): a grout groove needs the terrain's own
-// mesh to sample it at least 2-3 times across, or it reads as a blur rather
-// than a visible line -- a 0.06in groove needs P.spacing <= ~0.02in, well
-// finer than this app's own 0.05in default (tuned for smooth terrain, not
-// brick-scale features). Only TIGHTENS spacing (never loosens a user's own
-// already-finer setting), and only when real brick content actually exists
-// (editor-brick-tool.js's own 'bricksGenerated' event) -- not a blanket
-// global default change for users who never touch the Brick tab.
-const SAMPLES_ACROSS_GROUT = 3;
+// F35 (Fred: "resolution is his own responsibility via the resolution panel" -- REVERSING the
+// earlier auto-tighten below): a grout groove needs the terrain's own mesh to sample it at least
+// 2-3 times across, or it reads as a blur rather than a visible line -- a 0.06in groove needs
+// P.spacing <= ~0.02in, well finer than this app's own 0.05in default (tuned for smooth terrain,
+// not brick-scale features). This USED to auto-tighten P.spacing itself (applyParam('spacing', ...))
+// whenever bricks existed; Fred ruled that his own call to make, not automatic. Detection only now
+// -- never writes P.spacing -- surfacing a plain, non-blocking hint instead, in both the Resolution
+// panel (#spacingGroutHint) and the Brick tab's own Grout section (#brickGroutSpacingHint), so
+// whichever one the user happens to be looking at explains why joints might look blurred.
+const GROUT_SAMPLES_ACROSS = 3;
 
-function ensureFineEnoughMesh(groutWidthIn) {
-  if (!(groutWidthIn > 0)) return;
-  const targetSpacing = groutWidthIn / SAMPLES_ACROSS_GROUT;
-  if (P.spacing > targetSpacing) {
-    applyParam('spacing', targetSpacing);
+function updateSpacingHint(groutWidthIn) {
+  const gw = groutWidthIn ?? P.brickSettings.grout.widthIn;
+  const bricksExist = document.querySelectorAll('[data-brick-gen="1"]').length > 0;
+  const targetSpacing = gw > 0 ? gw / GROUT_SAMPLES_ACROSS : null;
+  const show = bricksExist && targetSpacing != null && P.spacing > targetSpacing;
+  const msg = show
+    ? `Grout joints need spacing ≤ ${targetSpacing.toFixed(3)} in to carve cleanly (current ${P.spacing})`
+    : '';
+  for (const id of ['spacingGroutHint', 'brickGroutSpacingHint']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.textContent = msg;
+    el.style.display = show ? '' : 'none';
   }
 }
 
 export function initBrickPanel() {
-  document.addEventListener('bricksGenerated', (e) => ensureFineEnoughMesh(e.detail?.groutWidthIn));
+  document.addEventListener('bricksGenerated', (e) => updateSpacingHint(e.detail?.groutWidthIn));
+  // setTimeout(0): this listener's own registration order relative to the generic param-input
+  // binding that actually writes P.spacing isn't declared anywhere -- deferring one tick guarantees
+  // P.spacing already reflects the new value by the time the hint re-reads it, regardless of order.
+  document.getElementById('spacing')?.addEventListener('change', () => setTimeout(() => updateSpacingHint(), 0));
+  updateSpacingHint();
 
   document.getElementById('editorTabBrick')?.addEventListener('click', () => setEditorTab('brick'));
   renderToolList(document.getElementById('editorToolbarBrick'));

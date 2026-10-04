@@ -1338,6 +1338,11 @@
           <div class="cad-status-text" style="font-size:10px; opacity:0.6; margin-top:6px;">
             Higher spacing = faster performance, lower detail.
           </div>
+          <!-- F35 (Fred: "resolution is his own responsibility" -- detection only, never changes
+               the value): shown only when bricks exist and the current spacing is too coarse to
+               carve the grout joints cleanly. Populated at runtime by main/brick-panel.js's
+               updateSpacingHint. -->
+          <div id="spacingGroutHint" style="display:none; font-size:10px; color:#b8860b; margin-top:6px;"></div>
         </div>
       </div>
     </aside>
@@ -3105,6 +3110,10 @@
               <button type="button" class="relief-toggle-btn" id="brickBtnGroutRecessed" title="Joints carved below the surrounding surface (not yet visually implemented)"><span>Recessed</span></button>
               <button type="button" class="relief-toggle-btn active" id="brickBtnGroutFlush" title="Joints sit flush with the base surface"><span>Flush</span></button>
             </div>
+            <!-- F35 (Fred: detection only, never changes the value): the SAME hint as the
+                 Resolution panel's own #spacingGroutHint, shown here too since this is where a
+                 user is most likely to be looking when grout width changes. -->
+            <div id="brickGroutSpacingHint" style="display:none; font-size:10px; color:#b8860b; margin:0 0 12px;"></div>
 
             <label class="cad-label">Relief</label>
             <div class="relief-toggle" id="brickReliefToggle" style="margin-bottom:12px;">
