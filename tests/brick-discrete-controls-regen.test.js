@@ -24,7 +24,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 
 import {
   initBrickPanel, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
-  setBrickTopMode,
+  setBrickTopMode, setSurfaceStyle,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, runBricksPreview } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
@@ -48,6 +48,7 @@ const FIXTURE = `
   <button id="brickBtnGroutRecessed"></button><button id="brickBtnGroutFlush"></button>
   <button id="brickBtnReliefRaised"></button><button id="brickBtnReliefCarved"></button>
   <button id="brickBtnTopOrganic" class="active"></button><button id="brickBtnTopFlat"></button>
+  <div id="brickSurfaceStyleToggle"></div>
   <input id="brickReliefHeightSlider" type="range" min="0" max="1" step="0.001"><input id="brickReliefHeight">
   <input id="brickSuppressionSlider" type="range"><input id="brickSuppression">
   <input id="brickClumpingSlider" type="range"><input id="brickClumping">
@@ -198,6 +199,36 @@ describe("F35 item 18: brick top Flat | Organic is a 3D-only ('surface') setting
     setBrickTopMode('flat');
     expect(P.brickSettings.brickTopMode).toBe('flat');
     expect(notify).toHaveBeenCalledWith('commit');
+    expect(runBricks).not.toHaveBeenCalled();
+  });
+});
+
+describe("F35 item 18 (2): the Surface style (Clean | Weathered) is a 3D-only ('surface') setting", () => {
+  let notify;
+  beforeEach(() => {
+    P.brickSettings.surfaceStyle = 'clean';
+    setup('wall');
+    notify = vi.fn();
+    window.svgEditor._notifyChange = notify;
+  });
+  it('one button per declared style, Clean active by default', () => {
+    expect($('brickSurfaceStyle_clean')).not.toBeNull();
+    expect($('brickSurfaceStyle_weathered')).not.toBeNull();
+    expect($('brickSurfaceStyle_clean').classList.contains('active')).toBe(true);
+  });
+  it('Weathered: saved, toggles, re-masks at once, never re-lays, never pending', () => {
+    $('brickSurfaceStyle_weathered').click();
+    expect(P.brickSettings.surfaceStyle).toBe('weathered');
+    expect($('brickSurfaceStyle_weathered').classList.contains('active')).toBe(true);
+    expect($('brickSurfaceStyle_clean').classList.contains('active')).toBe(false);
+    expect(notify).toHaveBeenCalledWith('commit');
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(pending()).toBe(false);
+  });
+  it('an unknown id falls back to Clean (the sidebar entry point)', () => {
+    setSurfaceStyle('weathered');
+    setSurfaceStyle('bogus');
+    expect(P.brickSettings.surfaceStyle).toBe('clean');
     expect(runBricks).not.toHaveBeenCalled();
   });
 });

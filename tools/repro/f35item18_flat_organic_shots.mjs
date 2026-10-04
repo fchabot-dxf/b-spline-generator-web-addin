@@ -7,7 +7,11 @@
 //   node tools/repro/f35item18_flat_organic_shots.mjs <outDir> <paletteUrl> [port]
 // <paletteUrl> e.g. http://127.0.0.1:8838/b-spline-gen/html/bspline_gen_palette.html
 //              (serve from bspline-frame-builder/ so ../../ CSS resolves)
-// Env: SIZE_IN (brick length, default 1.5), SPACING (default 0.03), PEAK (P.peakShape override, optional)
+// Env: SIZE_IN (brick length, default 1.5), SPACING (default 0.03), PEAK (P.peakShape override, optional),
+//      VARIANTS (name:buttonId,... clicked in order, one shot each; default the Organic/Flat pair --
+//      e.g. VARIANTS=clean:brickSurfaceStyle_clean,weathered:brickSurfaceStyle_weathered for item 18 (2)),
+//      RADIUS (camera distance override, inches), TARGET (camera target "x,y" in board-centred inches),
+//      TILT (camera tilt from straight down, radians; default 1.05)
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
@@ -69,9 +73,13 @@ const setup = await evalJS(`(async()=>{
 // One mode: set it through the real toggle, then an explicit awaited mask + rebuild (the toggle's own
 // change pipeline also fires; waiting out rebuild.isRebuilding keeps the timed call real -- see
 // brick_resolution_grid_shots.mjs), then measure per-brick planarity of the base from the real heights.
-const runMode = (mode) => evalJS(`(async()=>{
+const VARIANTS = (process.env.VARIANTS || 'organic:brickBtnTopOrganic,flat:brickBtnTopFlat').split(',').map((v) => v.split(':'));
+const RADIUS = process.env.RADIUS ? Number(process.env.RADIUS) : null;
+const [TX, TY] = (process.env.TARGET || '0,0').split(',').map(Number);
+const TILT = Number(process.env.TILT || 1.05);
+const runMode = (buttonId) => evalJS(`(async()=>{
   const W = ms => new Promise(r=>setTimeout(r,ms));
-  document.getElementById('${mode === 'flat' ? 'brickBtnTopFlat' : 'brickBtnTopOrganic'}').click();
+  document.getElementById('${buttonId}').click();
   await W(2500);
   const { P, lastResult } = await import('./core/state.js');
   const { resolveGrid } = await import('./core/terrain.js');
@@ -108,9 +116,9 @@ const runMode = (mode) => evalJS(`(async()=>{
   const max = (a) => Math.max(...a), med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
   // camera: a low oblique close-up on the board centre
   const p = window.__preview, o = p._orbit, T = p._THREE;
-  o._targetOrb.q.setFromEuler(new T.Euler(1.05, 0, 0.6, 'ZXY'));
-  o._targetOrb.r = Math.min(9, Math.max(3, ${SIZE_IN} * 3.4));
-  o._targetOrb.target.set(0, 0, 0);
+  o._targetOrb.q.setFromEuler(new T.Euler(${TILT}, 0, 0.6, 'ZXY'));
+  o._targetOrb.r = ${RADIUS ?? `Math.min(9, Math.max(3, ${SIZE_IN} * 3.4))`};
+  o._targetOrb.target.set(${TX}, ${TY}, 0);
   o._orb.q.copy(o._targetOrb.q); o._orb.r = o._targetOrb.r; o._orb.target.copy(o._targetOrb.target);
   p._camera.position.addVectors(o._orb.target, new T.Vector3(0, 0, o._orb.r).applyQuaternion(o._orb.q));
   p._camera.quaternion.copy(o._orb.q);
@@ -118,6 +126,8 @@ const runMode = (mode) => evalJS(`(async()=>{
   p._needsRender = true;
   await W(400);
   return JSON.stringify({
+    surface: P.brickSettings.surfaceStyle, recessedJointPoints: m.body.filter((v, k) => m.isStamped[k] && v < 0).length,
+    jointRecessIn: (() => { const r = [...m.body].map((v, k) => (m.isStamped[k] && v < 0 ? v * depth : 0)).filter((v) => v < 0); return r.length ? +(r.reduce((a, b) => a + b, 0) / r.length).toFixed(4) : 0; })(),
     mode: P.brickSettings.brickTopMode, maskHasFlatTop: !!m.flatTop, nx: grid.nx, nz: grid.nz, bricksMeasured: per.length, depth,
     baseResidualIn: { max: +max(per.map((q) => q.base)).toFixed(5), median: +med(per.map((q) => q.base)).toFixed(5) },
     terrainResidualIn: { max: +max(per.map((q) => q.terrain)).toFixed(5), median: +med(per.map((q) => q.terrain)).toFixed(5) },
@@ -125,11 +135,11 @@ const runMode = (mode) => evalJS(`(async()=>{
 })()`);
 
 const out = { setup: JSON.parse(setup || '{}'), sizeIn: SIZE_IN, spacing: SPACING };
-const rawO = await runMode("organic"); if (typeof rawO !== "string") { console.log("RAW", JSON.stringify(rawO), errors); ws.close(); chrome.kill(); process.exit(1); }
-out.organic = JSON.parse(rawO);
-await snap(`${OUT_DIR}/f35item18_organic_${SIZE_IN}in.png`);
-out.flat = JSON.parse((await runMode('flat')) || 'null');
-await snap(`${OUT_DIR}/f35item18_flat_${SIZE_IN}in.png`);
+for (const [name, buttonId] of VARIANTS) {
+  const raw = await runMode(buttonId);
+  out[name] = typeof raw === 'string' ? JSON.parse(raw) : null;
+  await snap(`${OUT_DIR}/f35item18_${name}_${SIZE_IN}in${RADIUS ? `_r${RADIUS}` : ''}${process.env.TILT ? `_t${TILT}` : ''}.png`);
+}
 out.errors = errors.slice(0, 5);
 console.log(JSON.stringify(out, null, 1));
 ws.close(); chrome.kill();

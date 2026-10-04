@@ -98,6 +98,9 @@ export const DEFAULT = {
       // under its footprint (core/engine/apply-stamp-layers.js). Grout stays draped in both. A saved
       // session without the key reads as organic (only === 'flat' is Flat), so nothing moves on load.
       brickTopMode: 'organic',
+      // F35 item 18 (2): the brick SURFACE STYLE, an editor/brick-surface-styles.js key ('clean' |
+      // 'weathered'). Clean = the set's own declared look; a saved session without the key is Clean.
+      surfaceStyle: 'clean',
       suppression: 0,
       clumping: 0.3,
       seed: 1,

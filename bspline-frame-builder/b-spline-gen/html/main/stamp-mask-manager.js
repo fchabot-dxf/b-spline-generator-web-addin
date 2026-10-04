@@ -156,7 +156,9 @@ export async function updateStampMasks(nx, nz) {
     // editor-brick-height-mask.js's own header.
     const result = isBricksLayer(eLayer)
       ? await withLoadingStage('heightMask', () => rasterizeBrickHeightMask(editor, eLayer, nx, nz, P.widthIn, P.heightIn,
-          { topMode: P.brickSettings && P.brickSettings.brickTopMode })) // F35 item 18: Flat | Organic brick tops
+          { topMode: P.brickSettings && P.brickSettings.brickTopMode, // F35 item 18: Flat | Organic brick tops
+            surfaceStyle: P.brickSettings && P.brickSettings.surfaceStyle, // F35 item 18 (2): Clean | Weathered
+            groutWidthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.widthIn }))
       : await rasterizeSvg(
           applyLayerTransform(svg, layerTransform, P.widthIn, P.heightIn),
           nx,
