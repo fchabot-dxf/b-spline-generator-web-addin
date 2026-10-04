@@ -21083,3 +21083,82 @@ no `template_9/template_data.py` edit; waiting for Fred's own pick (or a differe
 **Commits this stretch, all on `t19-arched-tapered-sides`:** `bc3c7a0` (the two diagram/matrix
 scripts), `3310fac` (un-hide), `740c4cb` (merge). Passing back: T19 is fully live-verified and
 un-hidden, ready for the advisor's own merge; item 79's diagram is ready for Fred's OK.
+
+## H23 item 79, turn 560: Fred picked flangeHeight 0.7 -- shipped on a fresh branch, auto-clamp
+already covers "ask before guards" with zero new code, an unexpected 12x6 build fix found and
+reconciled with a pre-existing divergence class, live-verified at 7x9/9x12
+
+Branch `t9-taller-flanges` from `origin/main`. **Feasibility check FIRST, per the dispatch's own
+ask-before-guards instruction.** Queried `frameParamRanges` live across every declared board size
+before writing anything: 0.7 sits inside the feasible band at 7x9 (ceiling 0.735) and 9x12 (0.804),
+but is ABOVE 12x6's own ceiling (0.591) and 5.51x1.97/9x7's (0.654). What happens there was already
+answered by existing code, not a new guard: `editor-frame-profile.js`'s own `frameCutProfile` already
+runs every drawn default through `clampToFrameRanges` (T6/T9's own pre-existing mechanism, confirmed
+empirically in `frame-template-9.test.js`'s own "the clamp only touches the iShape keys" test) --
+requesting 0.7 just draws exactly 0.7 where the board has room and silently clamps DOWN to the
+board's own ceiling where it doesn't, with zero defects anywhere this turn's own sweep touched. No
+new clamp/validation code needed or written -- the "ask before guards" question resolved to "already
+declared," not "needs building."
+
+**The literal, not just the declared default, had to change.** `T9.shapeModel.provisional` is
+`undefined` (a REAL fit, `fittedFrom: ['12x6','6x9','7x9']`) -- unlike T18/T19's still-provisional
+models, editing `FRAME_PROVISIONAL_SHAPE` alone would do nothing until the goldens it's fitted from
+are re-recorded against a phase file whose own literal actually encodes 0.7. Re-derived
+`p02_02_loop.py`'s own `0.283333` shoulder-Y fraction (16 occurrences) the SAME way the shipped
+value was computed -- `(hh - flangeHeight_inches) / heightIn` at 7x9 (hh=4.25, flangeHeight=0.7*4.25
+=2.975) -> `0.141667` -- and confirmed the method first by reproducing the OLD `0.283333` exactly
+from the OLD 0.4 default before trusting it on the new one.
+
+**Re-recorded all 3 of T9's own goldens live (7x9/6x9/12x6)** via `record_frame_parity.py`. 7x9/6x9:
+clean, all 12 bars, same shape as before just taller flanges. **12x6: an unplanned, genuine fix** --
+this board's build was PREVIOUSLY broken (0 of 12 bars; H23 item 13's own `KNOWN_BROKEN_BUILD` entry:
+the old 0.4 default clamped UP to the opening-rule FLOOR there, the exact regime where the frame
+enclosure's own inner-offset miter resolution failed at 2 corners). The new default clamps DOWN to
+the CEILING instead -- a different, healthier flange height -- and the re-recorded golden now builds
+all 12 bars, healthy, no malformed curves. Removed `template_9_12x6` from `KNOWN_BROKEN_BUILD` in
+BOTH `test_frame_parity_goldens.py` and its mirrored `test_fb_fix.py::_KNOWN_BROKEN_GOLDENS` (the
+Python-side gate), with the fix cited in both comments.
+
+**First course-correction this turn, caught by actually running the gate rather than asserting the
+docstring:** that removal alone made `test_frame_parity_goldens.py` and `frame-parity-app.test.js`
+both FAIL -- the app's own clamped prediction (flangeHeight fraction 0.591, 1.625in at 12x6's hh=
+2.75in) no longer matches the newly-built golden's own RAW, unclamped flange (1.983in, measured
+directly off `sketch2_shape_outline`'s `flange_side_R`/`flange_side_BL`) within the usual 0.1in
+tolerance -- gaps of 0.358in (outline) / 0.238in (inner), both exceeding tolerance even though the
+real fit's own `maxResidualIn` stayed 0.008. Root cause, confirmed by direct measurement rather than
+re-reasoning: the recorded golden is built UNSEEDED straight from the phase file's own fixed literal
+fraction (no board-size clamp awareness at all, by construction), while the app's own drawn default
+goes through `clampToFrameRanges` -- the SAME divergence class `CLAMP_DIVERGENT_OUTLINE`/`_INNER`
+already names for Template 6's own tab-height floor clamp (H23 item 4), just the opposite bound
+(ceiling here, not floor) and a different template. Not a new bug, not a construction defect --
+added `template_9_12x6` to both existing sets instead of re-excluding it as "broken," with the exact
+measured numbers (1.983in raw vs 1.625in clamped, 0.358in/0.238in gaps) written into the shared
+docstring so the next reader doesn't have to re-derive them.
+
+**Updated `frame-template-9.test.js`'s two hardcoded tests** to the new live-measured values (7x9
+flange 2.97854in, was 1.70186) and flipped the 12x6 test's own logic/comment from "clamped up to the
+floor" to "clamped down to the ceiling" (1.625in exactly, matching `frameParamRanges(...).flangeHeight
+.max`) -- the old test's floor-clamp assertion would have silently passed on the wrong mechanism if
+left unchanged, since both directions produce *a* clamped value, just via opposite bounds.
+
+**Live Fusion build check, 7x9 and 9x12 (the dispatch's own two explicit sizes), via
+`record_frame_parity.py`** (holder was already mine from the golden re-record): both 12/12 bars,
+`timelineHealthy: true`, no degenerate slivers (volumes 1.34-4.31in^3 at 7x9, 1.83-5.81in^3 at 9x12).
+Screenshots visually near-identical in relative proportions between the two sizes -- expected, not a
+bug: neither size clamps (`flangeHeight` resolves to 0.7008/0.7004, both ~= the true 0.7 default) and
+Fusion's own `isFitView` normalizes away the absolute scale difference. Shots: `~/.bspline-status/
+shots/seatA/1656_F3_parity_template_9_{7x9,9x12}.png`.
+
+**Merge check before merging `origin/main`** (3 new commits landed mid-turn, an unrelated brick-tool
+feature): `git diff` of origin/main's own new commits against the merge-base touched ZERO files this
+turn's work touched -- confirmed by diffing merge-base..origin/main specifically, not just eyeballing
+the stat (the earlier HEAD..origin/main stat was misleading -- it was showing MY OWN uncommitted T9
+diff in reverse, not origin/main's). Merged clean; diffed pre-merge-tip vs merged-HEAD for every file
+this turn touched -- byte-identical, nothing silently reverted. Full gate re-run post-merge: 186/186 JS
+(T9's own 2 files + the 3 newly-merged brick test files), 1047/1047 Python (1 PRE-EXISTING unrelated
+failure elsewhere was NOT hit; the only remaining red before commit was the known golden-freshness
+commit-timestamp gotcha, which resolves once the goldens are committed alongside the phase file).
+Released the Fusion holder (`fusion_holder.txt` -> `none`).
+
+Stopping here per the dispatch's own "then stop; you've earned the rest" -- not proceeding to item 81
+(T10 archRise_min + apex drift) without a fresh dispatch.
