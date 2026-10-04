@@ -232,10 +232,16 @@ function step(d,fromX){{ if(!set.length||stepping) return; const f=lb.querySelec
 document.getElementById('lbClose').addEventListener('click',ev=>{{ev.stopPropagation();slideClose(0);}});
 document.addEventListener('click',ev=>{{ if(drawOn && ev.target.closest('dialog')) return; const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog') && !ev.target.closest('#lbClose') && !moved){{
     if(lastPtr==='mouse' && ev.target!==im){{ slideClose(0); }}           // mouse: click outside the image closes
-    else if(zs===1){{ step(ev.clientX<innerWidth/2?-1:1); }} }} }});
+    else {{ tapAt(ev.clientX, ev.clientY); }} }} }});
+// double tap / double click zooms in (2.5x at that spot) or back out (Fred); a single tap still steps images at 1x,
+// delayed by the double-tap window so the first tap of a double never steps
+let tapT=null, tapP=null;
+function tapAt(x,y){{ if(tapT && Math.hypot(x-tapP.x,y-tapP.y)<40){{ clearTimeout(tapT); tapT=null;
+    if(zs>1) zr(); else zoomAt(2.5,x,y); return; }}
+  tapP={{x,y}}; tapT=setTimeout(()=>{{ tapT=null; if(zs===1) step(x<innerWidth/2?-1:1); }},280); }}
 document.addEventListener('keydown',ev=>{{ if(lb.open){{ if(ev.key==='ArrowRight'){{step(1);ev.preventDefault();}} else if(ev.key==='ArrowLeft'){{step(-1);ev.preventDefault();}} return; }}
   const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
-// zoom + pan: pinch + one-finger pan (touch), wheel + drag (mouse); no double-tap (Fred); swipe changes image only at 1x; swipe changes image only at 1x
+// zoom + pan: pinch + one-finger pan (touch), wheel + drag (mouse); double tap / double click toggles 2.5x zoom (Fred, reversing the earlier no-double-tap); swipe changes image only at 1x; swipe changes image only at 1x
 let zs=1, zx=0, zy=0, moved=false, x0=null, y0=null, pd=0, ps=1, drag=null;
 function za(){{ const tf='translate('+zx+'px,'+zy+'px) scale('+zs+')'; im.style.transform=tf; if(typeof ink!=='undefined') ink.style.transform=tf; im.style.cursor=zs>1?'grab':''; }}
 function zr(){{ zs=1; zx=0; zy=0; za(); }}
