@@ -51,6 +51,11 @@ import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-
 const BRICK_TOOLS = [
   { id: 'brush', buttonId: 'brickTool_brush', label: 'Brush', icon: '✏️', settingsSection: 'brickBrushSection',
     hint: 'Click here, then drag a stroke on the canvas to lay bricks along it.' },
+  // F35 item 16 (turn 201): the RAISED BRUSH -- a variant of Brush (`variantOf`: the same brickBrush mode,
+  // same stroke machinery) whose strokes carry `strokeOverrides` (its Level + mode), frozen per stroke.
+  { id: 'raisedBrush', buttonId: 'brickTool_raisedBrush', label: 'Raised brush', icon: '⏫', settingsSection: 'brickRaisedSection',
+    variantOf: 'brush', strokeOverrides: () => ({ levelIn: P.brickSettings.raisedLevelIn, strokeMode: P.brickSettings.raisedMode }),
+    hint: 'Drag a stroke: bricks laid proud of the others by Level.' },
   // `generates` (audit C9): Generate re-lays this tool's output, so the pinned Generate shows for it.
   // Brush/Scissors/Stripe act on drawn strokes, whose settings freeze at draw time.
   // `lays` (audit C1): the ONE element kind this tool lays (editor-brick-tool.js BRICK_KINDS). Picking the
@@ -333,6 +338,49 @@ export function setStripeStyle(slot, styleId) {
   if (editor) { editor._brickSettings = P.brickSettings; commitEdit(editor); }
 }
 
+/** turn 201: the Raised brush's modes, declared. 'grout' needs the engine's grout cut (BRICK_CONTROL_REQUIRES
+ *  hides it until core/bricks ENGINE_OPTIONS lists 'groutCut'). */
+const RAISED_BRUSH_MODES = [
+  { id: 'bricks', label: 'Raised bricks', title: 'Lay bricks along the stroke, proud of the others by Level' },
+  { id: 'grout', label: 'Grout cut', title: 'Cut grout joints through the existing bricks wherever the stroke goes' },
+];
+
+function renderRaisedModeToggle(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const mode of RAISED_BRUSH_MODES) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'relief-toggle-btn';
+    btn.id = `brickRaisedMode_${mode.id}`;
+    btn.title = mode.title;
+    const span = document.createElement('span');
+    span.textContent = mode.label;
+    btn.appendChild(span);
+    btn.addEventListener('click', () => setRaisedMode(mode.id));
+    container.appendChild(btn);
+  }
+}
+
+function syncRaisedSection() {
+  for (const mode of RAISED_BRUSH_MODES) {
+    const btn = document.getElementById(`brickRaisedMode_${mode.id}`);
+    if (!btn) continue;
+    btn.classList.toggle('active', mode.id === P.brickSettings.raisedMode);
+    btn.style.display = _hiddenUntilMet(btn.id) ? 'none' : '';
+  }
+  const lvl = document.getElementById('brickRaisedLevel');
+  if (lvl && document.activeElement !== lvl) lvl.value = Number.isFinite(P.brickSettings.raisedLevelIn) ? P.brickSettings.raisedLevelIn : 0.0625;
+}
+
+/** turn 201: a Raised-brush setting -- read at the next stroke (frozen per stroke), never pending the Wall. */
+export function setRaisedMode(modeId) {
+  if (!RAISED_BRUSH_MODES.some((m) => m.id === modeId) || _hiddenUntilMet(`brickRaisedMode_${modeId}`)) return;
+  P.brickSettings.raisedMode = modeId;
+  syncRaisedSection();
+  notifyChange();
+}
+
 export function setBrickTopMode(mode, commit = 'surface') {
   P.brickSettings.brickTopMode = mode === 'flat' ? 'flat' : 'organic';
   syncBrickTopToggle();
@@ -502,6 +550,7 @@ function syncControlsFromState() {
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', s.grout.profile === 'flush');
   syncReliefToggle();
   syncControlRequires();
+  syncRaisedSection();
   syncBrickTopToggle();
   syncSurfaceStyleToggle();
   syncFrameOffsetControls();
@@ -610,7 +659,7 @@ function syncControlRequires() {
 
 /** Settings keys a Wall/Frame layout never reads -- a Brush stroke's own settings freeze at draw
  *  time, so changing them never makes the Wall/Frame layout pending. */
-const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 'stripeStyles'];
+const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 'stripeStyles', 'raisedLevelIn', 'raisedMode'];
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
 const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'elementLevelIn'];
@@ -1024,8 +1073,10 @@ function selectTool(id) {
     console.warn('Brick tool: open the SVG editor first (Edit Artwork) -- no editor instance yet.');
     return;
   }
-  if (id === 'brush') {
+  const tool = BRICK_TOOLS.find((t) => t.id === id);
+  if (id === 'brush' || (tool && tool.variantOf === 'brush')) {
     editor._brickSettings = P.brickSettings; // same object, mutated in place -- see header
+    editor._brickStrokeOverrides = (tool && tool.strokeOverrides) || null; // turn 201: a variant's own stroke fields
     editor.setMode('brickBrush');
     return;
   }
@@ -1265,6 +1316,13 @@ export function initBrickPanel() {
   document.getElementById('brickBtnTopOrganic')?.addEventListener('click', () => setBrickTopMode('organic'));
   document.getElementById('brickBtnTopFlat')?.addEventListener('click', () => setBrickTopMode('flat'));
   renderSurfaceStyleToggle(document.getElementById('brickSurfaceStyleToggle'));
+  renderRaisedModeToggle(document.getElementById('brickRaisedModeToggle'));
+  document.getElementById('brickRaisedLevel')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    if (!Number.isFinite(v)) return;
+    P.brickSettings.raisedLevelIn = v;
+    notifyChange();
+  });
   renderStripeBrickStyles(document.getElementById('stripeBrickStyles'));
   document.getElementById('stripeThree')?.addEventListener('change', () => { syncStripeBrickStyles(); });
   document.addEventListener('editorTabChanged', () => syncStripePanelContext());

@@ -15,6 +15,8 @@ export const BRICK_CONTROL_REQUIRES = [
     why: 'Grout depth is the recess depth -- no effect while the grout is Flush' },
   { controls: ['brickLargeStonesRow'], requires: { engineOption: 'largeStones' }, hides: true,
     why: 'Large stones needs the fieldstone engine option (seat B, T86 item 17) -- hidden until the engine reads it' },
+  { controls: ['brickRaisedMode_grout'], requires: { engineOption: 'groutCut' }, hides: true,
+    why: 'Grout mode cuts joints with the engine\'s bricksGroutCut (seat B, T86 item 10) -- hidden until it exists' },
 ];
 
 /** Is `requires` met, given the DOM node of its control? (null control = met: never grey on a missing node) */

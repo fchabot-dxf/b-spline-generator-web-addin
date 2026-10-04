@@ -34,7 +34,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 
 import {
   initBrickPanel, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
-  setBrickTopMode, setSurfaceStyle, setStripeStyle,
+  setBrickTopMode, setSurfaceStyle, setStripeStyle, setRaisedMode,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, runBricksPreview, buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
@@ -66,6 +66,7 @@ const FIXTURE = `
   <div id="brickSurfaceStyleToggle"></div>
   <div id="brickSurfaceWearRow" style="display:none;"><input type="range" id="brickSurfaceWearSlider" min="0" max="1" step="0.05"><input id="brickSurfaceWear"></div>
   <div id="brickQuickSettings"></div>
+  <div id="brickRaisedSection"><div id="brickRaisedModeToggle"></div><input id="brickRaisedLevel"></div>
   <div id="brickSharedSet"></div><div id="brickSharedLayout"></div>
   <div id="brickLargeStonesRow" style="display:none;"><input type="range" id="brickLargeStonesSlider" min="0" max="1" step="0.05"><input id="brickLargeStones"></div>
   <span id="stripeColoursLabel">Colours</span><input type="checkbox" id="stripeThree"><button id="stripeColorsReset"></button>
@@ -747,6 +748,47 @@ describe('turn 197 (88): a number box applies while typing, once the typing paus
     expect(notify).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(notify).toHaveBeenCalledTimes(1);
+    expect(runBricks).not.toHaveBeenCalled();
+  });
+});
+
+describe('turn 201: the Raised brush (a Brush variant; Level + modes in its own section)', () => {
+  beforeEach(() => {
+    P.brickSettings.raisedLevelIn = 0.0625;
+    P.brickSettings.raisedMode = 'bricks';
+    engineOpts.extra = [];
+    setup('wall');
+    window.svgEditor.setMode = vi.fn();
+  });
+  it('its own tool button; picking it arms the brush mode with live stroke overrides (Level + mode)', () => {
+    $('brickTool_raisedBrush').click();
+    expect(window.svgEditor.setMode).toHaveBeenCalledWith('brickBrush');
+    expect(window.svgEditor._brickSettings).toBe(P.brickSettings);
+    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ levelIn: 0.0625, strokeMode: 'bricks' });
+    fire('brickRaisedLevel', 0.125, 'input'); // changed AFTER picking the tool: the next stroke still gets it
+    expect(window.svgEditor._brickStrokeOverrides().levelIn).toBe(0.125);
+    expect($('brickRaisedSection').style.display).not.toBe('none');
+  });
+  it('the plain Brush clears the overrides', () => {
+    $('brickTool_raisedBrush').click();
+    $('brickTool_brush').click();
+    expect(window.svgEditor._brickStrokeOverrides).toBe(null);
+  });
+  it('Grout mode is hidden until the engine lists groutCut, then pickable', () => {
+    $('brickTool_raisedBrush').click();
+    expect($('brickRaisedMode_grout').style.display).toBe('none');
+    setRaisedMode('grout');
+    expect(P.brickSettings.raisedMode).toBe('bricks'); // refused while hidden
+    engineOpts.extra = ['groutCut'];
+    $('brickTool_wall').click(); $('brickTool_raisedBrush').click();
+    setRaisedMode('grout');
+    expect(P.brickSettings.raisedMode).toBe('grout');
+    engineOpts.extra = [];
+  });
+  it('Raised brush settings never make the Wall pending', () => {
+    $('brickTool_raisedBrush').click();
+    fire('brickRaisedLevel', 0.1, 'input');
+    expect(pending()).toBe(false);
     expect(runBricks).not.toHaveBeenCalled();
   });
 });

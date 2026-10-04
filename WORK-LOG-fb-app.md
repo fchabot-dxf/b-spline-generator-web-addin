@@ -12406,3 +12406,28 @@ requires: { engineOption: 'groutCut' } (hidden until seat B lists it in ENGINE_O
 the editor side = a cut element with its own spine (same spine/regenerate machinery as brush strokes)
 applied after layout. Building the 'bricks'-only toggle alone would be a one-option toggle -- skip until
 the engine lands, or build now hidden: your call.
+
+## turn 201 (seat C = 37): the RAISED BRUSH (2 modes, mode 2 hidden until seat B's grout cut)
+
+Declared as a BRICK_TOOLS VARIANT of Brush (advisor): `{ id: 'raisedBrush', variantOf: 'brush',
+settingsSection: 'brickRaisedSection', strokeOverrides: () => ({ levelIn, strokeMode }) }` -- the same
+brickBrush mode and stroke machinery; selectTool arms any `variantOf: 'brush'` the same way and hands the
+editor `_brickStrokeOverrides` (a FUNCTION, read at stroke finish, so a Level changed after picking the tool
+still applies; the plain Brush clears it). brickBrushHandler.finish merges the overrides into THIS stroke's
+frozen settings snapshot. Settings `raisedLevelIn` (0.0625 = 1/16 in, Fred's accent default) and
+`raisedMode` ('bricks' | 'grout') -- brush-only keys (never pend the Wall).
+Mode 1: `bricksForStroke` (new, exported; regenerateOwnedBrickElements uses it) lifts every brick of a stroke
+by its own `levelIn` (heightOffset -> the height mask), per stroke, not per kind.
+Mode 2 GROUT CUT: seat B's bricksGroutCut (T86 item 10) does not exist yet -> STUB: a grout-mode stroke keeps
+its spine and lays no bricks; its mode button is hidden by BRICK_CONTROL_REQUIRES
+{ engineOption: 'groutCut' }, hides: true (appears by itself when seat B lists 'groutCut' in ENGINE_OPTIONS);
+setRaisedMode refuses a hidden mode. Placement: the mode picker (rendered from RAISED_BRUSH_MODES) and Level
+live in the Raised brush's OWN section.
+Tests: new tests/brick-raised-brush.test.js (3: plain unchanged; Level lifts every brick by exactly 0.0625;
+grout lays none); panel +4 (button arms brickBrush with live overrides incl. a later Level change; plain Brush
+clears them; grout hidden/refused until the engine lists groutCut, then pickable; never pending). The
+requires-data test now accepts ids main/brick-panel.js renders from a declared prefix. 7 new tests fail on the
+previous sources. Fast tier 73 files, 790 passed, 0 failed.
+Live (served fb-app): a plain and a Raised stroke, 4 bricks each; mean height offset -0.0057 vs +0.0568 in
+(difference 0.0625 = the Level); grout mode hidden; section shown. Shot shots/seat37/f35item16_raised_brush.png.
+Matrix: tools/brick-matrix is still not on origin/main -> rows owed (item 20, 21, Raised brush), listed for 88.

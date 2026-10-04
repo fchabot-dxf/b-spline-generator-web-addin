@@ -14,7 +14,10 @@ describe('BRICK_CONTROL_REQUIRES', () => {
   it('every id is a real palette control, every satisfied form is supported', () => {
     const html = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
     for (const r of BRICK_CONTROL_REQUIRES) {
-      for (const id of [...r.controls, r.requires.control].filter(Boolean)) expect(html).toContain(`id="${id}"`);
+      // a static palette id, or one main/brick-panel.js renders from a declared list (`prefix_${...}`)
+      const panel = readFileSync('bspline-frame-builder/b-spline-gen/html/main/brick-panel.js', 'utf8');
+      const exists = (id) => html.includes(`id="${id}"`) || panel.includes(`\`${id.slice(0, id.lastIndexOf('_') + 1)}\${`);
+      for (const id of [...r.controls, r.requires.control].filter(Boolean)) expect(exists(id), id).toBe(true);
       if (r.requires.engineOption) continue; // an engine option, not a control state
       expect(Object.keys(r.requires.satisfied).some((k) => ['gt', 'active', 'checked'].includes(k))).toBe(true);
       expect(r.why).toBeTruthy();

@@ -612,7 +612,12 @@ export const brickBrushHandler = {
     if (preview) preview.remove(); // the live-feedback stroke, never the committed result
     if (points.length < 2) return; // a tap, not a stroke -- nothing to bake
 
-    const settings = editor._brickSettings;
+    // F35 item 16 (turn 201): a brush VARIANT (the Raised brush) adds its own per-stroke fields --
+    // `levelIn` (laid proud by that much) and `strokeMode` -- through editor._brickStrokeOverrides (a
+    // function, read here at finish so a Level changed after picking the tool still applies). They are
+    // frozen into THIS stroke's own settings snapshot like every other brush setting.
+    const overrides = typeof editor._brickStrokeOverrides === 'function' ? editor._brickStrokeOverrides() : null;
+    const settings = editor._brickSettings ? { ...editor._brickSettings, ...(overrides || {}) } : null;
     if (!settings) return;
     const layer = ensureBricksLayer(editor);
     applyBrickLayerTooling(layer, settings);
@@ -819,6 +824,18 @@ export function reconstructChains(segments) {
 // so skipping is exact, not a heuristic approximation.
 let _lastSpineFingerprint = null;
 
+/** turn 201: the bricks ONE brush stroke lays, from its own frozen settings. A GROUT-mode stroke (the Raised
+ *  brush's mode 2) lays none -- it CUTS joints through existing bricks with seat B's bricksGroutCut (T86
+ *  item 10); STUB until the engine has it (the mode is hidden until ENGINE_OPTIONS lists 'groutCut'), so
+ *  the stroke keeps its spine and draws nothing. `levelIn` (the Raised brush's Level) lifts every brick of
+ *  the stroke by that much (its heightOffset, read by the height mask). Exported for tests. */
+export function bricksForStroke(points, settings) {
+  if (settings.strokeMode === 'grout') return [];
+  const level = Number(settings.levelIn) || 0;
+  const bricks = bricksForBrushStroke(points, settings, toBrickOpts(settings));
+  return level ? bricks.map((b) => ({ ...b, heightOffset: (b.heightOffset || 0) + level })) : bricks;
+}
+
 export function regenerateOwnedBrickElements(editor) {
   if (!editor || !editor._sketchLayer) return;
   const layer = (editor._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
@@ -858,7 +875,7 @@ export function regenerateOwnedBrickElements(editor) {
       const settings = chain.cycleIndex == null
         ? chain.settings
         : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
-      const bricks = bricksForBrushStroke(chain.points, settings, toBrickOpts(settings));
+      const bricks = bricksForStroke(chain.points, settings);
       const ownerId = `${elementId}:${chainIdx}`;
       for (const b of bricks) {
         drawBrick(editor, layer, b, 'brush', settings.setId, settings.seed, settings.reliefIn).attr(BRICK_OWNER_ATTR, ownerId);
