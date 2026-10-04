@@ -18474,3 +18474,72 @@ brick-panel.js's own hardcoded preset-list UI update) is realistically
 its own multi-turn item, not a tail end of this one. Parking here
 with concrete options rather than pushing into unverified geometry
 tired.
+
+---
+
+## H23 item 76 cont. -- butt corner: architecture plan, not yet built (f3)
+
+**Dispatch (turn 532, advisor):** gate answered -- build BUTT first
+("per Fred's sketch, through=horizontal"), LAPPED and BLOCK confirmed
+next (own separate turns/commits, advisor's own "one style per commit
+is fine across turns"), STEPPED dropped (advisor's own suggestion, not
+Fred's). 6 presets total incl. soldier/soldier-stretcher (existing).
+
+**Why no code landed this turn:** traced the exact insertion point in
+`ribbonPieces` (primitive-ribbon.js:358-415) before writing anything,
+per this session's own standing rule (verify the real mechanism before
+touching it, not after). Found a real architectural blocker worth
+recording rather than working around hastily:
+
+`jointBefore[k]` is today ONE object, SHARED symmetrically by both
+neighbouring primitives (`curIdx`'s own `jointStart` AND `prevIdx`'s
+own `jointEnd` both read the SAME `mitreLine(o,q,...)` object, clipping
+against the SAME line from opposite sides via `keepRefAsStart`/
+`keepRefAsEnd`). A mitre is inherently symmetric (same line, both
+sides), so this works. A BUTT corner is NOT symmetric by definition:
+the "through" primitive gets NO clip at all (its own run continues to
+its natural endpoint, per the sketch), while the "butt" primitive gets
+a square cut against the through-band's own d1 (inner) edge line --
+two primitives, two genuinely different treatments at the SAME joint.
+The current single-shared-object convention has no way to express
+"null for one side, a real clip line for the other" -- it would need
+either the joint object itself to become asymmetric (a `{forPrev,
+forCur}` pair instead of one shared `{point,q,dirX,dirY,...}`), or the
+MAIN per-primitive loop (:417-430, where `jointStart`/`jointEnd` are
+currently just `jointBefore[k]`/`jointBefore[(k+1)%m]` directly) to
+select differently per side based on a new `throughSide` tag on the
+joint.
+
+**Concrete plan for the next turn (not started):**
+1. In `ribbonPieces`' `jointBefore` map: when `opts.cornerStyle ===
+   'butt'` and this joint is a genuine corner (not tangent-continuous),
+   determine `throughIdx` = whichever of `prevIdx`/`curIdx` has the
+   MORE horizontal tangent at `o` (|tx| closer to 1) -- "through=
+   horizontal" per the sketch. Build a SQUARE-cut joint: a line through
+   a point on the through-primitive's own d1-offset curve, direction =
+   the BUTT primitive's own normal (perpendicular to ITS tangent, not
+   the bisector), `q` likewise at d1. Store as `{ square: {point, q,
+   dirX, dirY, keepRef}, throughIdx }` rather than the plain mitre
+   shape.
+2. In the main loop (:417-430): when a joint carries `.square`, pass
+   `null` for the through-side primitive's own jointStart/jointEnd
+   (reusing the ALREADY-EXISTING "null = no clip" path tangent-
+   continuous transitions already use -- confirmed real, not assumed:
+   `linePieces`' own `sStart`/`sEnd` fall back to `0`/`totalLen` when
+   `jointStart`/`jointEnd` is falsy) and the `.square` object (adapted
+   to that primitive's own `trustO`-shaped expectations) for the butt
+   side.
+3. `voussoirPieces` (arc-voussoir.js) needs the SAME two-sided
+   selection change for any butt corner involving an arc -- scope
+   question for next turn: T1/a-square's own declared rectangular
+   corners (where butt-frame will actually be tested, per the preview
+   ask) are line-line; worth explicitly checking whether any arc
+   touches a butt corner before deciding whether arc support is in
+   scope for the first landing or a declared follow-up.
+4. Verify on the SQUARE fixture first (hand-computable exactly, same
+   discipline as the band-pattern hook's own tests), THEN T1.
+
+**Capacity note:** stopping here deliberately rather than rushing this
+into the same shared code 4 reverted attempts already needed for the
+fillet case, under reduced remaining room this session. The advisor's
+own "one style per commit... across turns" already sanctions this.
