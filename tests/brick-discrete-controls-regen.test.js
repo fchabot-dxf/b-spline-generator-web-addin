@@ -621,3 +621,35 @@ describe('audit C6: the Brick tab Stripe picks a brick STYLE per run (A/B/C thum
     expect(P.brickSettings.stripeStyles[0]).toBe('red_bricks');
   });
 });
+
+describe('turn 195: Generate failure, and item 20 (a brush stroke change makes the Wall pending)', () => {
+  beforeEach(() => setup('wall'));
+  it('an engine throw: error toast, Generate reports failure, the layout stays pending', () => {
+    $('brickPattern_herringbone').click();
+    runBricks.mockImplementationOnce(() => { throw new Error('engine boom'); });
+    $('brickGenerate').click();
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast.mock.calls[0][1]).toBe('error');
+    expect(showToast.mock.calls[0][0]).toMatch(/previous bricks are kept/);
+    expect(pending()).toBe(true);
+  });
+  it('with a Wall laid, adding a brush stroke (an editor commit) marks it pending; Generate clears it', () => {
+    const node = document.createElement('div');
+    const wall = document.createElement('polygon');
+    wall.setAttribute('data-brick-gen', '1'); wall.setAttribute('data-brick', 'wall');
+    node.appendChild(wall);
+    window.svgEditor._sketchLayer = { node, children: () => ({ toArray: () => [] }) };
+    $('brickGenerate').click(); // lays with the wall present: its key now covers the (empty) brush set
+    expect(pending()).toBe(false);
+    const stroke = document.createElement('polygon');
+    stroke.setAttribute('data-brick-gen', '1'); stroke.setAttribute('data-brick', 'brush'); stroke.setAttribute('points', '1,1 2,1 2,1.3 1,1.3');
+    node.appendChild(stroke);
+    document.dispatchEvent(new CustomEvent('editorCommit', { detail: { editor: window.svgEditor } }));
+    expect(pending()).toBe(true);
+    $('brickGenerate').click();
+    expect(pending()).toBe(false);
+    stroke.remove(); // deleting the stroke: pending again
+    document.dispatchEvent(new CustomEvent('editorCommit', { detail: { editor: window.svgEditor } }));
+    expect(pending()).toBe(true);
+  });
+});

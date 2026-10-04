@@ -3196,6 +3196,10 @@
             </div>
 
             <!-- F35 item 16 follow-up: shown only while Frame is the active tool (syncFrameSection). -->
+            <!-- turn 195: the Stripe tool's own section -- main/editor-tabs.js (modeHosts) moves the stripe
+                 settings (#editorStripePanelBody) in here while the Brick tab is active: one panel, not two -->
+            <div id="brickStripeSection" style="display:none;"></div>
+
             <div id="brickFrameSection">
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
               <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">

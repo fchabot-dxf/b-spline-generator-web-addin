@@ -54,7 +54,7 @@ import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, bricksContourBands, generateBricks } from '../core/bricks/index.js';
+import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon } from '../core/bricks/index.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS } from '../core/bricks/library.js';
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
@@ -326,10 +326,49 @@ function applyWallPattern(input, settings) {
  *  composer still runs with the frame (when one resolves), so a Wall laid alone keeps the SAME
  *  frame-interior clip it always had. Default both = the original behaviour. */
 export const BRICK_KINDS = ['wall', 'frame'];
+
+/** F35 item 20 (brush over wall, Fred / audit C10 option B: the wall flows AROUND a brush stroke): every
+ *  brush brick on the canvas is an exclusion for the Wall fill -- `input.exclusions = [{polygon}]`, board
+ *  inches, the signature agreed with seat B (d3, T86 item 13: the engine DROPS any wall piece overlapping
+ *  an exclusion). Read straight off the DOM, same as the height mask does. */
+export function brushExclusions(editor) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll) return [];
+  return [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="brush"]`)].map((n) => ({
+    polygon: (n.getAttribute('points') || '').trim().split(/\s+/).filter(Boolean).map((p) => {
+      const [x, y] = p.split(',').map(Number);
+      return { x, y };
+    }),
+  })).filter((e) => e.polygon.length >= 3);
+}
+
+/** STUB until the engine honours `input.exclusions` (it then returns `exclusionsApplied: true` and this
+ *  is skipped): drop every wall piece that OVERLAPS an exclusion -- the SAME test seat B declared for the
+ *  engine (d3: "edges crossing OR either shape containing a vertex of the other"), so the stub and the
+ *  engine agree on what goes. (A centroid-only test was tried first and MEASURED wrong live: a wall row
+ *  whose centres sat 0.02 in outside a brush stroke stayed, visibly overlapping it.) Exported for tests. */
+function _segmentsCross(a, b, c, d) {
+  const o = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const d1 = o(c, d, a), d2 = o(c, d, b), d3 = o(a, b, c), d4 = o(a, b, d);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0)) && d1 !== 0 && d2 !== 0 && d3 !== 0 && d4 !== 0;
+}
+export function polygonsOverlap(p, q) {
+  if (p.some((v) => pointInPolygon(v.x, v.y, q)) || q.some((v) => pointInPolygon(v.x, v.y, p))) return true;
+  for (let i = 0; i < p.length; i++) {
+    const a = p[i], b = p[(i + 1) % p.length];
+    for (let j = 0; j < q.length; j++) {
+      if (_segmentsCross(a, b, q[j], q[(j + 1) % q.length])) return true;
+    }
+  }
+  return false;
+}
+export function dropExcludedWallBricks(bricks, exclusions) {
+  if (!exclusions || !exclusions.length) return bricks;
+  return bricks.filter((b) => !exclusions.some((e) => polygonsOverlap(b.polygon, e.polygon)));
+}
+
 function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const layer = ensureBricksLayer(editor);
-  for (const kind of kinds) clearGenerated(editor, layer, kind);
-  applyBrickLayerTooling(layer, settings);
 
   const input = {
     boardOutline: boardPolygon(editor),
@@ -341,8 +380,16 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   };
   if (frameGeom) input.frame = frameGeom;
   applyWallPattern(input, settings);
+  const exclusions = kinds.includes('wall') ? brushExclusions(editor) : [];
+  if (exclusions.length) input.exclusions = exclusions;
 
-  const { bricks, frameBricks } = generateBricks(input);
+  // Turn 195: the engine runs BEFORE anything is cleared -- if it throws, the bricks already on the
+  // canvas stay exactly as they were (the caller reports the failure).
+  const result = generateBricks(input);
+  const bricks = result.exclusionsApplied ? result.bricks : dropExcludedWallBricks(result.bricks, exclusions);
+  const { frameBricks } = result;
+  for (const kind of kinds) clearGenerated(editor, layer, kind);
+  applyBrickLayerTooling(layer, settings);
   const lays = (kind) => kinds.includes(kind);
   if (lays('frame')) drawBricks(editor, layer, frameBricks, 'frame', settings.setId, settings.seed, settings.reliefIn);
   if (lays('wall')) drawBricks(editor, layer, bricks, 'wall', settings.setId, settings.seed, settings.reliefIn);

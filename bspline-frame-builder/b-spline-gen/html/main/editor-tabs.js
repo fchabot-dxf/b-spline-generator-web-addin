@@ -21,6 +21,8 @@
 // Shape Lattice mode carried into the Brick tab ran lattice gestures there. main/global-events.js
 // returns the editor to Select (the Esc path) when the new tab doesn't list the current mode.
 // cut/stripe are shared: Artwork's Cut/Stripe tools and Brick's Scissors/Stripe arm the same modes.
+import { TOOLBAR_GROUPS } from '../editor/editor-ui.js';
+
 export const EDITOR_TABS = [
   { id: 'frame', label: 'Frame', drawerLabel: 'Frame', buttonId: 'editorTabFrame', panelId: 'editorFramePanel', toolbarId: 'editorToolbarFrame',
     modes: ['select'] },
@@ -29,8 +31,36 @@ export const EDITOR_TABS = [
   { id: 'photo', label: 'Photo', drawerLabel: 'Photo', buttonId: 'editorTabPhoto', panelId: 'editorPhotoPanel', toolbarId: 'editorToolbarPhoto',
     modes: ['select'] },
   { id: 'brick', label: 'Brick', drawerLabel: 'Brick', buttonId: 'editorTabBrick', panelId: 'editorBrickPanel', toolbarId: 'editorToolbarBrick',
-    modes: ['select', 'brickBrush', 'cut', 'stripe'] },
+    modes: ['select', 'brickBrush', 'cut', 'stripe'],
+    // `modeHosts` (turn 195, advisor: "one contextual panel"): which panel a mode's settings open in, per
+    // tab. Here the stripe mode's settings (#editorStripePanelBody) live INSIDE this tab's own panel
+    // (#brickStripeSection, shown for the Stripe tool) instead of opening a second side column. A tab
+    // without an entry keeps the mode's own panel (Artwork's Stripe is unchanged).
+    modeHosts: { stripe: { content: 'editorStripePanelBody', host: 'brickStripeSection', panel: 'editorStripePanel' } } },
 ];
+
+/** Apply EDITOR_TABS' `modeHosts` for the active tab: its hosted content moves into the tab's own host;
+ *  every other hosted block goes back to its own declared `panel` (its home). The mode's side panel then
+ *  re-evaluates its declared visibility (editor-ui.js TOOLBAR_GROUPS: it shows only while it holds its
+ *  own content). Homes are declared, never remembered, so a rebuilt DOM can't leave a stale one. */
+export function applyModeHosts(tab = _editorTab) {
+  const panels = new Set();
+  for (const t of EDITOR_TABS) {
+    for (const h of Object.values(t.modeHosts || {})) {
+      panels.add(h.panel);
+      const content = document.getElementById(h.content);
+      const target = document.getElementById(t.id === tab ? h.host : h.panel);
+      if (content && target && content.parentElement !== target) target.appendChild(content);
+    }
+  }
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  const mode = editor && editor._currentMode;
+  for (const panelId of panels) {
+    const visible = TOOLBAR_GROUPS[panelId];
+    const node = document.getElementById(panelId);
+    if (node && visible) node.classList.toggle('hidden', !visible(mode, null, mode));
+  }
+}
 
 let _editorTab = 'artwork';
 
@@ -80,6 +110,7 @@ export function setEditorTab(tab) {
     if (!el) continue;
     el.style.display = visibleGroups ? (visibleGroups.includes(groupId) ? 'flex' : 'none') : '';
   }
+  applyModeHosts(_editorTab);
   document.dispatchEvent(new CustomEvent('editorTabChanged', { detail: { tab: _editorTab } }));
   return _editorTab;
 }
