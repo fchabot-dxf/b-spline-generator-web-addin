@@ -59,6 +59,17 @@ describe('mountIconSelect over a <select>', () => {
     expect(t1.querySelector('[data-icon="template_1"]')).not.toBeNull();
     expect(t1.textContent.trim()).toBe(''); // no visible name text, only the icon
   });
+  it('turn 207: the open grid is FIXED under its button (an overflow:hidden parent -- the sidebar -- clipped it); a scroll closes it', () => {
+    const btn = button();
+    btn.getBoundingClientRect = () => ({ left: 30, right: 70, top: 100, bottom: 140, width: 40, height: 40, x: 30, y: 100 });
+    btn.click();
+    const grid = root.querySelector('.icon-select-grid');
+    expect(grid.style.position).toBe('fixed');
+    expect(grid.style.top).toBe('140px');
+    expect(grid.style.left).toBe('30px');
+    window.dispatchEvent(new Event('scroll'));
+    expect(grid.style.display).toBe('none');
+  });
   it('a pick sets the select and fires its own change, exactly once', () => {
     button().click();
     options()[2].click();
@@ -68,5 +79,20 @@ describe('mountIconSelect over a <select>', () => {
     button().click();
     options()[2].click(); // the same value again: no change
     expect(changes).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('turn 207: a select inside a .cad-nested-input (the sidebar) mounts its dropdown AFTER that box', () => {
+  it('the 24px overflow-hidden box would clip the 40px button: the wrap is its next sibling and the box hides', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<div class="cad-nested-input" style="margin-bottom:12px"><select><option value="a">A</option></select></div>';
+    document.body.appendChild(root);
+    const host = root.querySelector('.cad-nested-input');
+    const wrap = mountIconSelect(root.querySelector('select'), { iconFor: () => null, label: 'X' });
+    expect(host.nextElementSibling).toBe(wrap);
+    expect(host.contains(wrap)).toBe(false);
+    expect(host.style.display).toBe('none');
+    expect(wrap.style.marginBottom).toBe('12px');
+    root.remove();
   });
 });

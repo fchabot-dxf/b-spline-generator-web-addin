@@ -12659,3 +12659,60 @@ Committed item 15 first (82f3755), then the audit, as the amendment said.
 - **Heads-up for the merge:** d3 (lane-b d9e3936, T86 item 17) edited brick-control-requires.test.js and the
   regen test's "turn 199" block, which this pass also touches: expect a textual overlap there.
 - Server 8851 (my own task) stopped.
+
+### turn 207 (amendments, folded in) -- Rectangle choice, 1 in default, hidden layers ship, the Frame follows its frame (seat 37)
+
+Read on the peek before passing: 8 amendments. The cursor one was cancelled by the next. Items 22 (design note
+first) and 23 (incl. the White Rocks -> Fieldstone fold) are next turns. Folded in here:
+- **'None' -> 'Rectangle'.** `NO_FRAME_CHOICE = { value: '', label: 'Rectangle' }` is declared in
+  main/frame-panel.js, where the options are built. Its icon is `boardOutlineIconSvg()`
+  (editor/frame-template-icon.js): the board's outline in the template icons' own box and colours. The sidebar
+  FRAME header reads "— Rectangle" too. The value underneath is unchanged ('' = no frame shape).
+  - FOUND while shooting it: the SIDEBAR template dropdown (turn 203) never showed its grid. The select sits in
+    a `.cad-nested-input` (24 px, overflow hidden), which clipped the absolute grid AND the 40 px button.
+    Turn 203's "live" check clicked options by script and never looked.
+  - Fix in main/icon-select.js: the grid is `position: fixed` under its button on open (a scroll closes it), and
+    a select inside a .cad-nested-input mounts its dropdown AFTER that box, which hides. Measured live: the
+    element at the grid's point is now its icon (was the sidebar); shot shows the full button + grid.
+- **Default brick size 1 in** (new boards; a saved board keeps its own). core/state.js DEFAULT is
+  brickLengthIn 1, and a declared `1″` preset (id 'one') sits between ¾ and 1½, so the default shows as
+  picked: live, a fresh board has 1 in and brickQuick_size_one active. Two pinned tests updated (the default ==
+  the set's 0.75; exactly 5 presets).
+- **Hidden layers ship on Send** (Fred: hidden is display-only). `isExported(l)` = every layer; a carved one
+  still needs `visible` (isCarved unchanged), so a hidden carve layer goes to ROOT and does not cut.
+  - Changing isExported ALSO changed two DISPLAY gates that read it: the outline preview (via showsOutline) and
+    the boundary guide (3 tests went red, rightly). A new `isShown(l)` (= visible) is declared for display, and
+    those two read it. Export follows Fred's rule; the canvas still hides hidden layers.
+  - The SVG Download reads isExported too, so it now includes hidden layers. That follows "hidden is
+    display-only"; say if the download should keep the old rule.
+  - Pinned tests updated: the truth table (+ isShown), and 3 export-flow cases.
+- **The Frame follows its frame (88's finding + Fred's "recalculate").**
+  - setFrameRecord, the one place the record changes, now fires `frameRecordChanged`.
+  - The laid key now carries the frame record + board size (`#frame:`), since the Frame bands follow the frame
+    and the Wall fills its interior.
+  - Editor open: a template/shape change = pending, and Generate re-lays. Editor closed (sidebar): an automatic
+    re-lay of the laid kinds.
+  - A Frame element ON the canvas is always re-laid; with no contour left it lays nothing, i.e. CLEARS.
+  - Bands = None clears through the same path.
+  - The listener is wired ONCE per page: it re-lays, and the tests' repeated initBrickPanel stacked 90 copies.
+  - Live: editor change -> pending (98/106 unchanged), Generate -> 93/97. Sidebar template change -> re-laid at
+    once (98/106). Sidebar Rectangle -> frame 0, wall 225 (whole board). Bands None -> frame 0, wall 188.
+  - One-time effect: a board laid BEFORE this change has a stamped key without `#frame:`, so it shows the
+    Generate dot once after this ships (Generate clears it).
+  - 'Template -> Rectangle clears the Frame' is my reading of "re-laid for the new shape" with Offset on (there
+    is no contour). Offset off still lays along the board edge.
+- **Tests:**
+  - New: frame-rectangle-choice (4); a turn-207 frame block in the regen file (4).
+  - icon-select: a fixed grid + scroll-close test, and a nested-input mount test.
+  - Size: the 1 in default highlighted.
+  - isShown in the truth table.
+  - Non-vacuous: against the pre-amendment sources 18/19 of the new / changed tests fail. The 1 that passes is
+    "no laid bricks: a frame change re-lays nothing", which was already true (it pins an absence).
+- **Fast tier** (120 files: brick / frame / export / layer / guide / outline / size / snapshot / io / requires):
+  **1980/1980**.
+- **Matrix, full --parallel on the final tip:** 62 rows, **0 FAIL**. One earlier parallel run had 3 FAIL in the
+  wall group: Basketweave "MISSING", then None and Stretcher as knock-ons. The wall group alone was 24/24, and
+  the full re-run 62/0 -- a parallel-load flake for 88. Persistence group 24/24.
+- **Shot:** shots/seat37/turn207_template_picker_rectangle.png (the sidebar: header "— Rectangle", the Rectangle
+  button, the open grid).
+- Server 8851 (my own task) stopped.

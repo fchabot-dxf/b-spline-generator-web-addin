@@ -20,6 +20,7 @@
 import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
+import { isEditorOpen } from '../core/history.js';
 import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS,
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
@@ -82,6 +83,7 @@ const BRICK_TOOLS = [
 ];
 
 let _activeTool = null;
+let _frameListenerWired = false;
 
 function notifyChange() { saveLastSession(); }
 
@@ -123,6 +125,7 @@ export function selectSet(setId, commit = 'generate') {
 const BRICK_SIZE_PRESETS = [
   { id: 'eighth3', label: '⅜″', lengthIn: 0.375 },
   { id: 'quarter3', label: '¾″', lengthIn: 0.75 },
+  { id: 'one', label: '1″', lengthIn: 1 }, // Fred (turn 207): the new-board default, so it shows as picked
   { id: 'half1', label: '1½″', lengthIn: 1.5 },
   { id: 'three', label: '3″', lengthIn: 3 },
   { id: 'life', label: 'Life 8″', lengthIn: 8 },
@@ -788,9 +791,15 @@ function _brushKey() {
   if (!node?.querySelector?.('[data-brick-gen="1"][data-brick="wall"]')) return '';
   return brushExclusions(editor).map((e) => e.polygon.map((p) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ')).sort().join('|');
 }
+/** Turn 207 (Fred / 88's finding: after a template change the old Frame bricks stayed, and would still carve):
+ *  the Frame bands follow the frame, and the Wall fills its interior -- so the FRAME RECORD (template, its
+ *  params and seeds) and the board size are part of what was laid. A change makes the layout pending in the
+ *  editor and re-lays it in the sidebar ('frameRecordChanged', below). */
+const _frameKey = () => JSON.stringify({ frame: P.frame || null, w: P.widthIn, h: P.heightIn });
 const _layoutKey = () => {
   const brush = _brushKey();
-  return brush ? `${_settingsKey()}#brush:${brush}` : _settingsKey();
+  const base = `${_settingsKey()}#frame:${_frameKey()}`;
+  return brush ? `${base}#brush:${brush}` : base;
 };
 // Audit B1-B3: the settings the Wall/Frame bricks on the canvas were laid with live ON the Bricks
 // layer (`brickLaidKey`, stamped by runBricks before its undo commit, persisted with the layer
@@ -881,7 +890,9 @@ function _layBricks(editor, frameGeom, kinds) {
 function _kindsToLay(editor, frameGeom) {
   const present = _presentKinds(editor);
   const active = BRICK_TOOLS.find((t) => t.id === _activeTool);
-  return BRICK_KINDS.filter((kind) => (present.includes(kind) || (active && active.lays === kind)) && (kind !== 'frame' || !!frameGeom));
+  // a Frame element ON the canvas is always re-laid: with no frame contour left (template Rectangle, Offset on)
+  // that lays nothing, i.e. clears it -- stale bands must not stay and carve (turn 207)
+  return BRICK_KINDS.filter((kind) => (present.includes(kind) || (active && active.lays === kind)) && (kind !== 'frame' || !!frameGeom || present.includes('frame')));
 }
 
 /** Generate: re-lay the Wall/Frame bricks with the CURRENT settings -- whatever Wall/Frame bricks
@@ -1550,6 +1561,17 @@ export function initBrickPanel() {
   // the Wall's laid key now covers the brush footprints (_brushKey)
   document.addEventListener('editorCommit', () => { syncGeneratePending(); syncControlRequires(); syncStartHint(); });
   document.addEventListener('bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
+  // turn 207: the frame changed (template, shape) -- the usual rule: re-lay at once from the sidebar (editor
+  // closed), mark pending in the editor (Generate re-lays; a template with no contour clears the Frame)
+  // wired ONCE per page: it RE-LAYS, so a second copy (initBrickPanel run again, e.g. in tests) would re-lay twice
+  if (!_frameListenerWired) {
+    _frameListenerWired = true;
+    document.addEventListener('frameRecordChanged', () => {
+      const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+      if (!isEditorOpen() && _presentKinds(editor).length) generateBricks();
+      else syncGeneratePending();
+    });
+  }
   // Audit B1 + v2 N2: P.brickSettings was replaced (Cancel, session restore, project load, global undo --
   // app-init.js announceBrickSettingsRestored). A load swaps in a NEW object: an armed Brush keeps
   // reading the editor's own reference, so it is re-pointed too.

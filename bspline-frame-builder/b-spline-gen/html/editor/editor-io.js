@@ -49,8 +49,7 @@ function serializeEditor(editor, { forRaster = false } = {}) {
 }
 
 /** T27: the SVG DOWNLOAD (saveWithTextCopies, below) exports isExported()
- *  layers only — same rule the editor canvas and the 3D vector overlay
- *  (seat A) read. This does NOT touch serializeEditor itself, which every
+ *  layers only (turn 207: every layer -- Fred, hidden is display-only). This does NOT touch serializeEditor itself, which every
  *  OTHER caller (the regular save/persist path, saveForRasterization,
  *  getLayerSvg) needs to keep including hidden layers for — per that
  *  function's own docstring, hidden-layer content must survive

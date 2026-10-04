@@ -123,9 +123,16 @@ describe('the real #brickSizeSlider element drives inches through the log mappin
 });
 
 describe('brick size presets (F35 item 16 follow-up: widened from 3 to 5 points)', () => {
-  it('renders exactly the 5 declared presets, one button each', () => {
+  it('renders exactly the 6 declared presets, one button each (turn 207: + 1in, the new default)', () => {
     const buttons = document.querySelectorAll('#brickSizePresetList button');
-    expect(buttons.length).toBe(5);
+    expect(buttons.length).toBe(6);
+    expect(document.getElementById('brickSizePreset_one').textContent).toBe('1″');
+  });
+  it('the 1in new-board default (core/state.js DEFAULT) shows as the picked preset', async () => {
+    const { DEFAULT } = await import('../bspline-frame-builder/b-spline-gen/html/core/state.js');
+    expect(DEFAULT.brickSettings.brickLengthIn).toBe(1);
+    expect(document.getElementById('brickSizePreset_one').classList.contains('active')).toBe(true); // setup: 1in
+    expect([...document.querySelectorAll('#brickSizePresetList .active')]).toHaveLength(1);
   });
 
   it('clicking a preset sets the exact inches value, both controls, and highlights only that preset', () => {

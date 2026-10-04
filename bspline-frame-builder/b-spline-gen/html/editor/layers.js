@@ -139,7 +139,15 @@ export function applyToolingDefaults(layer) {
 export function isCarved(l) {
   return !!l && l.visible !== false && l.carve !== false;
 }
+/** Fred (turn 207): hidden is DISPLAY-ONLY -- every art layer ships on Send, visible or hidden (a carved one
+ *  to the Carved component, the rest to root: isCarved, above, still needs `visible`). The SVG download reads
+ *  the same gate. */
 export function isExported(l) {
+  return !!l;
+}
+/** Turn 207: is the layer SHOWN on the canvas (display only -- the outline preview, the boundary guide)?
+ *  Export no longer reads `visible` (isExported, above); display still does. */
+export function isShown(l) {
   return !!l && l.visible !== false;
 }
 export function showsColor(l) {
@@ -148,8 +156,8 @@ export function showsColor(l) {
 /** SE12 T36: whether a layer's export should include its OUTLINE geometry
  *  (the derived offset shape — Slice 3's preview and Slice 4's export swap
  *  are what will actually READ this; neither is built yet). Gated the
- *  same shape as the three above: master `visible` (via isExported) must
- *  hold, and the layer's own pick must not be the default 'centerline'
+ *  same shape as the three above: the layer is SHOWN (isShown -- this gate drives the canvas preview),
+ *  and the layer's own pick must not be the default 'centerline'
  *  (which means "no outline," same as every document saved before this
  *  field existed). `l.fusionGeometry || 'centerline'`, not a bare field
  *  read: every REAL layer has already been through applyToolingDefaults
@@ -160,7 +168,7 @@ export function showsColor(l) {
  *  (a test mock, a future call site) reads as "no outline," the field's
  *  own declared default, not the opposite. */
 export function showsOutline(l) {
-  return isExported(l) && (l.fusionGeometry || 'centerline') !== 'centerline';
+  return isShown(l) && (l.fusionGeometry || 'centerline') !== 'centerline';
 }
 
 export function getElementLayer(node) {
@@ -499,7 +507,7 @@ export function setLayerVisible(editor, id, visible) {
   // _notifyChange (widespread pre-existing pattern across this file and
   // several others, not something to sweep in this turn's scope; flagged
   // in WORK-LOG). Fixed HERE specifically because visibility is the one
-  // field that actually changes showsOutline's result (isExported gates
+  // field that actually changes showsOutline's result (isShown gates
   // on it) — routing through _notifyChange('commit') keeps the exact
   // same onChange-triggered pipeline this already ran, and additionally
   // refreshes the outline preview through the same mechanism edits use.

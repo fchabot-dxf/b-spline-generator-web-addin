@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   renderLayerList, renderLayersPanel, applyLayerState, addLayer,
-  isCarved, isExported, showsColor, isOnVisibleLayer,
+  isCarved, isExported, isShown, showsColor, isOnVisibleLayer,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 
 function mockEditor(layers, activeLayer) {
@@ -244,15 +244,15 @@ describe('renderLayersPanel: the editor panel and the sidebar never disagree', (
 });
 
 // T27: the declared truth table every gate rewires to — visible is the
-// master; carve/showColor only take effect when it's true.
+// master for carve/showColor; turn 207 (Fred): hidden is display-only, so EVERY layer is exported.
 describe('isCarved / isExported / showsColor — the declared truth table', () => {
   const cases = [
     { visible: true,  carve: true,  showColor: true,  wantCarved: true,  wantExported: true,  wantShows: true  },
     { visible: true,  carve: false, showColor: true,  wantCarved: false, wantExported: true,  wantShows: true  },
     { visible: true,  carve: true,  showColor: false, wantCarved: true,  wantExported: true,  wantShows: false },
     { visible: true,  carve: false, showColor: false, wantCarved: false, wantExported: true,  wantShows: false },
-    { visible: false, carve: true,  showColor: true,  wantCarved: false, wantExported: false, wantShows: false },
-    { visible: false, carve: false, showColor: false, wantCarved: false, wantExported: false, wantShows: false },
+    { visible: false, carve: true,  showColor: true,  wantCarved: false, wantExported: true,  wantShows: false },
+    { visible: false, carve: false, showColor: false, wantCarved: false, wantExported: true,  wantShows: false },
   ];
   cases.forEach(({ visible, carve, showColor, wantCarved, wantExported, wantShows }) => {
     it(`visible=${visible} carve=${carve} showColor=${showColor} -> isCarved=${wantCarved} isExported=${wantExported} showsColor=${wantShows}`, () => {
@@ -260,6 +260,7 @@ describe('isCarved / isExported / showsColor — the declared truth table', () =
       expect(isCarved(layer)).toBe(wantCarved);
       expect(isExported(layer)).toBe(wantExported);
       expect(showsColor(layer)).toBe(wantShows);
+      expect(isShown(layer)).toBe(visible); // turn 207: display follows visible, export does not
     });
   });
 });

@@ -40,6 +40,7 @@ import { runBricks, runBricksPreview, buildRibbonPrimitives } from '../bspline-f
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { frameContext } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
+import { setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
 import { deselectTool } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
@@ -958,5 +959,55 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
     expect(shown('brickStartHint')).toBe(false);
     setEditorTab('artwork');
     expect(shown('brickStartHint')).toBe(false);
+  });
+});
+
+describe('turn 207 (Fred / 88): the Frame element (and the Wall in it) follows the frame record', () => {
+  let modal;
+  const openEditor = (open) => {
+    modal = modal || Object.assign(document.createElement('div'), { id: 'svgEditorModal' });
+    if (!modal.isConnected) document.body.appendChild(modal);
+    modal.style.display = open ? '' : 'none';
+  };
+  afterEach(() => { modal?.remove(); modal = null; P.frame = null; });
+
+  it('editor open: a template change marks the laid Wall/Frame PENDING (no re-lay); Generate re-lays and clears it', () => {
+    setup('wall');
+    openEditor(true);
+    setFrameRecord({ templateId: 'template_3', params: {} });
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(pending()).toBe(true);
+    $('brickGenerate').click();
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    expect(pending()).toBe(false);
+  });
+
+  it('editor closed (sidebar): a template change re-lays the laid kinds at once, never pending', () => {
+    setup('wall');
+    openEditor(false);
+    setFrameRecord({ templateId: 'template_3', params: {} });
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    expect(runBricks.mock.calls[0][3].kinds).toEqual(['wall']);
+    expect(pending()).toBe(false);
+  });
+
+  it('no laid bricks: a frame change re-lays nothing', () => {
+    setup('brush');
+    openEditor(false);
+    setFrameRecord({ templateId: 'template_3', params: {} });
+    expect(runBricks).not.toHaveBeenCalled();
+  });
+
+  it('Frame bricks on the canvas with NO frame contour left (template Rectangle, Offset on): Generate re-lays the Frame kind with no frame = clears it', () => {
+    setup('frame');
+    frameContext.mockImplementation(() => null);
+    try {
+      $('brickGenerate').click();
+      const call = runBricks.mock.calls.at(-1);
+      expect(call[3].kinds).toContain('frame');
+      expect(call[2]).toBeFalsy(); // no frame geometry -> the engine lays no frame bricks
+    } finally {
+      frameContext.mockImplementation(() => ({}));
+    }
   });
 });

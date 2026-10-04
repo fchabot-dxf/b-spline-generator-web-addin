@@ -105,12 +105,12 @@ describe('export-flow: activeStampLayers / exportableStampLayers (single-store: 
     expect(active[0].svg).toContain('data-layer');
   });
 
-  it('a HIDDEN layer is never exportable, even though P.stampLayers (unused now) would say otherwise', () => {
+  it('turn 207 (Fred: hidden is display-only): a HIDDEN layer still ships on Send', () => {
     window.svgEditor = mockEditor([
       { id: '0', visible: false, depth: 0.2, profile: 'square', content: '<rect data-layer="0"/>', mask: { body: new Float32Array(4) } },
     ]);
 
-    expect(exportableStampLayers()).toHaveLength(0);
+    expect(exportableStampLayers()).toHaveLength(1);
   });
 
   // T27 FINAL: visible is the MASTER — carve only takes effect while
@@ -126,13 +126,13 @@ describe('export-flow: activeStampLayers / exportableStampLayers (single-store: 
     expect(exportableStampLayers()).toHaveLength(1); // still shown -> still ships as artwork
   });
 
-  it('T27: visible:false + carve:true (default) -> NOT carving (visible is the master), never exportable', () => {
+  it('T27 + turn 207: visible:false + carve:true (default) -> NOT carving (visible is the master), still shipped (to root)', () => {
     window.svgEditor = mockEditor([
       { id: '0', visible: false, depth: 0.2, profile: 'square', content: '<rect data-layer="0"/>', mask: { body: new Float32Array(4) } },
     ]);
 
     expect(activeStampLayers()).toHaveLength(0);     // hidden -> isCarved false even though carve defaults true
-    expect(exportableStampLayers()).toHaveLength(0); // hidden -> never shipped
+    expect(exportableStampLayers()).toHaveLength(1); // turn 207: hidden is display-only -> shipped
   });
 
   it('does not count an EMPTY layer (no content, no mask)', () => {
@@ -222,7 +222,7 @@ describe('export-flow: activeStampLayers / exportableStampLayers (single-store: 
     ]);
     window.svgEditor = editor;
 
-    expect(exportableStampLayers()).toHaveLength(0); // starts hidden, per DEFAULT.stampLayers[2]-style layers
+    expect(exportableStampLayers()).toHaveLength(1); // starts hidden -- turn 207: hidden layers ship too
 
     setLayerVisible(editor, '2', true); // the real function svg-source.js's Browse handler calls
 

@@ -186,5 +186,10 @@ export function setFrameRecord(patch) {
   P.frame = normalizeFrameRecord({ ...cur, ...reset, ...patch });
   saveLastSession();
   markDirty();
+  // turn 207 (Fred / 88): the bricks laid on this frame (Frame bands, and the Wall filling its interior) follow
+  // it -- main/brick-panel.js re-lays them (sidebar) or marks them pending (editor)
+  if (typeof document !== 'undefined') {
+    document.dispatchEvent(new CustomEvent('frameRecordChanged', { detail: { templateChanged: 'templateId' in reset || ('templateId' in patch && patch.templateId !== cur.templateId) } }));
+  }
   return P.frame;
 }

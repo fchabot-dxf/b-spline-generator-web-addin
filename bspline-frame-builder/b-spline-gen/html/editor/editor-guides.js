@@ -24,7 +24,7 @@
 import { GUIDE_ROLE, latticeBoundaryGuide } from './editor-lattice-boundary.js';
 import { boardRegion } from './editor-shape-lattice-interaction.js';
 import { _ownedOnLayer } from './editor-lattice-pattern.js';
-import { isExported } from './layers.js';
+import { isShown } from './layers.js';
 
 export const GUIDE_LAYER_ID = 'guide-layer';
 /** The DOM mark of a drawn guide (tests and DOM readers key off this). */
@@ -47,7 +47,7 @@ export function editorGuides(editor) {
     // across the kind-layers in `pattern.layers`.
     const ids = [layer.id, ...Object.values(layer.pattern.layers || {})];
     const kindLayers = ids.map((id) => layers.find((l) => l.id === id)).filter(Boolean);
-    if (!kindLayers.some(isExported)) continue;
+    if (!kindLayers.some(isShown)) continue; // a canvas guide: display, so `visible` (turn 207)
     if (!ids.some((id) => _ownedOnLayer(editor, id).length)) continue;
     guides.push({ ...latticeBoundaryGuide(layer.pattern, region), layerId: layer.id });
   }

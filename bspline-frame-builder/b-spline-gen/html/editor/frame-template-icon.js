@@ -35,3 +35,12 @@ export function templateIconSvg(defs, templateId, size = 28) {
   _cache.set(key, svg);
   return svg;
 }
+
+/** Fred (turn 207): the NO-frame choice reads 'Rectangle' and shows the board's own outline -- a plain
+ *  rectangle drawn in the same box, colours and stroke as the template icons (no bars: there is no frame). */
+export function boardOutlineIconSvg(size = 28) {
+  const { widthIn: w, heightIn: h } = TEMPLATE_ICON_BOARD;
+  const width = Math.round((size * w) / h);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${size}" viewBox="0 0 ${w} ${h}" aria-hidden="true">`
+    + `<rect x="0.3" y="0.3" width="${w - 0.6}" height="${h - 0.6}" fill="none" stroke="#5c3d22" stroke-width="0.4"/></svg>`;
+}

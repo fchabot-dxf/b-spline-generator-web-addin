@@ -90,12 +90,12 @@ export const DEFAULT = {
       // F35 item 16 (Fred: "I'd rather they all have the same size" -- replacing the old 0.5-2x
       // Scale multiplier AND the separate frameBrickLengthIn override that used to live here):
       // ONE global brick LENGTH in real inches (0.375-8), shared by Wall, every Frame band, and
-      // Brush -- starts at Set 1's own declared brickLengthIn (library.js), same "real number on
-      // first use" convention grout/reliefIn below already follow. A set switch keeps it (F35 item 16:
-      // a real-world size the user picked; main/brick-panel.js selectSet).
+      // Brush. Fred (turn 207): a NEW board starts at 1 in (it used to start at Set 1's own declared
+      // 0.75); a saved board keeps its own. A set switch keeps it (F35 item 16: a real-world size the
+      // user picked; main/brick-panel.js selectSet).
       // A legacy saved session's own `scale` migrates via brickLengthIn = its set's own declared
       // length x that scale, once, on load (main/brick-panel.js).
-      brickLengthIn: 0.75,
+      brickLengthIn: 1,
       // width/depth from Set 1 (audit C4). profile stays 'flush' (Set 1 declares 'recessed', which now
       // really recesses the joints -- making it the default would change every new board's relief).
       grout: { widthIn: DEFAULT_BRICK_SET.grout.widthIn, depthIn: DEFAULT_BRICK_SET.grout.depthIn, profile: 'flush' },
