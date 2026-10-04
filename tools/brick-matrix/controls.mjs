@@ -5,8 +5,12 @@
 // advisor: "make the web matrix a permanent automated test ... so the merge gate runs it".
 //
 // kind:
-//   'editor'    a Brick-tab (editor) control: change -> pending dot? -> Generate -> canvas changed? ->
-//               Apply -> 3D (heightmap) changed?
+//   'editor'    a Brick-tab (editor) control. F35 item 27 (Fred: the editor re-lays AT ONCE, like the sidebar;
+//               seat 37, fb-app 9eb45d2): change -> canvas changed at once (read right after the change, NO
+//               Generate click, so a setting that waits for Generate fails) -> Apply -> 3D changed? Nothing is
+//               ever pending any more.
+//   'relay'     Generate itself ("re-lay now"): the canvas is disturbed by hand, Generate must restore exactly
+//               the layout the current settings produce
 //   'editor3d'  an editor control that is 3D-only ('surface' commit): change -> Apply -> 3D changed?
 //   'brush'     a Brush setting (frozen into each stroke at draw time): the SAME stroke drawn before and
 //               after the change must differ
@@ -19,6 +23,7 @@
 // tool:   the Brick tool that must be active for an 'editor'/'editor3d' row (its settings section shows)
 // do:     { click: id } | { set: id, value, event }   (event: 'input' | 'change')
 // expect: { pending, canvas, threeD }: true / false = must / must not change; null = not checked.
+//   commit: 'at once' -- the canvas is read straight after the change (no Generate click).
 // requires: { control, satisfied, why } -- the setting only has an effect while ANOTHER control is in a
 //   given state (satisfied: { gt: n } on a number input's value, or { active: true } on a button). While it
 //   is NOT satisfied the control must be greyed out (disabled, tooltip = why) and the row checks exactly that;
@@ -27,7 +32,9 @@
 //   A control the user can change is expected to do something visible -- a row that changes nothing
 //   (e.g. Clumping while Suppression is 0) FAILS on purpose: it is a control that "does nothing".
 const E = (pending, canvas, threeD) => ({ pending, canvas, threeD });
-const LAYOUT = E(true, true, true);      // a 2D layout setting: pending, re-laid on Generate, new relief
+const AT_ONCE = { commit: 'at once' };
+const LAYOUT = { ...E(false, true, true), ...AT_ONCE };       // a 2D layout setting: re-laid at once, new relief (F35 item 27)
+const LEVEL = { ...E(false, null, true), ...AT_ONCE };        // a brick level: at once, relief only
 const SURFACE = E(false, null, true);    // a 3D-only setting: never pending, new relief
 const AUTO = E(false, true, true);       // a sidebar quick setting: re-lays at once
 const click = (id) => ({ click: id });
@@ -50,8 +57,8 @@ export const BRICK_CONTROLS = [
   { name: 'Wall pattern: Stretcher', kind: 'editor', tool: 'wall', do: click('brickPattern_stretcher'), expect: LAYOUT },
   // Level (audit v2 N6, seat 37): an editor Level change now shows the Generate dot; Generate keeps the 2D
   // layout (Level is a height), Apply builds it -- so pending + 3D, canvas not checked
-  { name: 'Wall Level +1/8', kind: 'editor', tool: 'wall', do: set('brickLevel_wall', 0.125), expect: E(true, null, true), introducedBy: '90a1483' },
-  { name: 'Wall Level 0', kind: 'editor', tool: 'wall', do: set('brickLevel_wall', 0), expect: E(true, null, true), introducedBy: '90a1483' },
+  { name: 'Wall Level +1/8', kind: 'editor', tool: 'wall', do: set('brickLevel_wall', 0.125), expect: LEVEL, introducedBy: '90a1483' },
+  { name: 'Wall Level 0', kind: 'editor', tool: 'wall', do: set('brickLevel_wall', 0), expect: LEVEL, introducedBy: '90a1483' },
   // F35 item 15 (seat 37): raised accents on the Wall -- 3D-only (never pending); the 2D shows an outline only
   { name: 'Raised accents: Course bands', kind: 'editor3d', tool: 'wall', do: click('brickAccent_courseBand'), expect: SURFACE, introducedBy: '82f3755' },
   { name: 'Accent level -1/16', kind: 'editor3d', tool: 'wall', do: set('brickAccentLevel', -0.0625), expect: SURFACE, introducedBy: '82f3755' },
@@ -67,14 +74,15 @@ export const BRICK_CONTROLS = [
   { name: 'Clumping 0.1 (Suppression 0)', kind: 'editor', tool: 'wall', do: set('brickClumping', 0.1), expect: LAYOUT, requires: NEEDS_SUPPRESSION },
   { name: 'Seed 77', kind: 'editor', tool: 'wall', do: set('brickSeed', 77, 'input'), expect: LAYOUT },
   { name: 'Random seed', kind: 'editor', tool: 'wall', do: click('brickBtnRandomSeed'), expect: LAYOUT },
+  { name: 'Generate re-lays now (wall)', kind: 'relay', tool: 'wall', do: click('brickGenerate'), expect: { restores: true }, introducedBy: '9eb45d2' },
   // ---- editor, Frame tool
   { name: 'Frame preset: 3-band', kind: 'editor', tool: 'frame', do: click('brickFramePreset_three_band'), expect: LAYOUT },
   { name: 'Band 1 pattern: Header', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_header'), expect: LAYOUT },
   { name: 'Frame offset distance 0.25', kind: 'editor', tool: 'frame', do: set('brickFrameOffsetDistance', 0.25), expect: LAYOUT },
   { name: 'Frame offset off', kind: 'editor', tool: 'frame', do: click('brickFrameOffsetOn'), expect: LAYOUT },
   { name: 'Frame offset on', kind: 'editor', tool: 'frame', do: click('brickFrameOffsetOn'), expect: LAYOUT },
-  { name: 'Frame Level -1/8', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', -0.125), expect: E(true, null, true), introducedBy: '90a1483' },
-  { name: 'Frame Level 0', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', 0), expect: E(true, null, true), introducedBy: '90a1483' },
+  { name: 'Frame Level -1/8', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', -0.125), expect: LEVEL, introducedBy: '90a1483' },
+  { name: 'Frame Level 0', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', 0), expect: LEVEL, introducedBy: '90a1483' },
   { name: 'Frame preset: None', kind: 'editor', tool: 'frame', do: click('brickFramePreset_none'), expect: LAYOUT },
   { name: 'Frame preset: Soldier', kind: 'editor', tool: 'frame', do: click('brickFramePreset_single_soldier'), expect: LAYOUT },
   // ---- Brush settings (new strokes)

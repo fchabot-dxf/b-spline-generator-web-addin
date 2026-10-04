@@ -138,6 +138,19 @@ async function heightsSettled(prev, maxMs = 30000) {
   }
   return last;
 }
+// The canvas after an at-once re-lay: poll until it has moved off `before` and then held still for two
+// polls (the re-lay is async), or until CANVAS_SETTLE_MS -- unchanged by then means it did not re-lay.
+const CANVAS_SETTLE_MS = 10000;
+async function canvasSettled(before) {
+  let last = await js(CANVAS), still = 0;
+  for (let t = 0; t < CANVAS_SETTLE_MS; t += 300) {
+    await sleep(300);
+    const now = await js(CANVAS);
+    still = now === last ? still + 1 : 0; last = now;
+    if (now !== before && still >= 2) break;
+  }
+  return last;
+}
 const editorOpen = () => js(`getComputedStyle(document.getElementById('svgEditorModal')).display !== 'none'`);
 async function openBrickTool(tool) {
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
@@ -221,12 +234,34 @@ try {
       const p0 = await isPending();
       const result = await act(c.do);
       const p = (await isPending()) && !p0;
-      if (c.kind === 'editor' && await js(`!!document.getElementById('brickGenerate')?.offsetParent`)) await click('brickGenerate', 1800);
-      const c1 = await js(CANVAS);
+      // 'at once' (F35 item 27): read the canvas straight after the change, never via Generate -- a setting
+      // that only lands on Generate must FAIL here. Otherwise the old path: Generate, then read.
+      const atOnce = c.expect.commit === 'at once';
+      if (!atOnce && c.kind === 'editor' && await js(`!!document.getElementById('brickGenerate')?.offsetParent`)) await click('brickGenerate', 1800);
+      const c1 = atOnce ? await canvasSettled(c0) : await js(CANVAS);
       await apply();
       const z1 = await heightsSettled(Z);
       await record(c, { result, pending: p, canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 } });
       Z = z1;
+    } else if (c.kind === 'relay') {
+      // Generate = "re-lay now": take one brick of the tool's kind off the canvas by hand, then Generate must
+      // put back exactly the layout the current settings make (canonical canvas hash equal to before).
+      await openBrickTool(c.tool);
+      // the baseline is what the current settings lay (one Generate first): a reopened editor shows the
+      // saved board, whose canonical hash can differ after the save/load round trip (MEASURED on fb-app
+      // 9eb45d2: reopened 274#rsmdu4, the settings' own layout 274#1cbr1o)
+      const cPrev = await js(CANVAS);
+      await act(c.do);
+      const c0 = await canvasSettled(cPrev);
+      const removed = await js(`(()=>{ const n=window.svgEditor?._sketchLayer?.node.querySelector('[data-brick=${JSON.stringify(c.tool)}]'); if(!n) return false; n.remove(); return true; })()`);
+      const cGap = await js(CANVAS);
+      const result = await act(c.do);
+      const c1 = await canvasSettled(cGap);
+      const ok = removed && cGap !== c0 && c1 === c0;
+      rows.push({ name: c.name, kind: c.kind, tool: c.tool, result, observed: { removed, disturbed: cGap !== c0, restored: c1 === c0 }, expect: c.expect,
+        verdict: { pending: 'n/a', canvas: ok ? 'PASS' : 'FAIL', threeD: 'n/a' }, hashes: { c0, cGap, c1 } });
+      console.log(`${ok ? 'pass' : 'FAIL'}  ${c.name.padEnd(34)} brick removed ${removed}, canvas restored ${c1 === c0}`);
+      if (!ok) await shot(`FAIL_${c.name.replace(/[^a-z0-9]+/gi, '_')}`);
     } else if (c.kind === 'brush') {
       const brushTool = c.tool || 'brush'; // e.g. 'raisedBrush' -- any stroke-drawing Brick tool
       await openBrickTool(brushTool);
