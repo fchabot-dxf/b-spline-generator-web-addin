@@ -18609,7 +18609,7 @@ gap); template_1 shows the 4 straight corners butt-styled while BOTH concave wai
 fall back to mitre (the radial wedge pieces, untouched by this item); the 1:1 close-up makes the
 actual grout gap at one corner visible at true scale.
 
-**Commit `[pending]`, pushed to origin/lane-b.** BUTT is DONE: built per the inherited plan (one real
+**Commit `9e29bbb`, pushed to origin/lane-b.** BUTT is DONE: built per the inherited plan (one real
 deviation, caught by a test and fixed at the cause, not papered over), mutation-tested, verified on
 both a hand-computed synthetic fixture and real template geometry, full suite green, previews
 rendered. No Fusion needed this item (JS-only, as dispatched). Passing back for review before
