@@ -135,6 +135,42 @@ if (Array.isArray(appRequires)) {
 }
 export const REQUIRES_SOURCE = Array.isArray(appRequires) ? 'app (main/brick-control-requires.js)' : 'matrix fallback (controls.mjs NEEDS_*)';
 
+// ---- persistence (audit v2 N1/N2, advisor 2026-10-04): the matrix missed the bug Fred hit. A non-default
+// board is laid through the UI and applied; then after a RELOAD, and again after a project SAVE AS -> LOAD
+// (the real Project Manager modal, its cloud API answered by an in-page stand-in so nothing leaves the
+// machine), every control must SHOW the board's value and the canvas must show its bricks PAINTED (each
+// brick's fill resolves to a <pattern> that exists).
+//   setup:  UI actions, in order ({ tool } picks a Brick tool; { apply: true } presses Apply)
+//   panel:  { name, active: id } -- that button is the highlighted choice; { name, value: [id, n] } -- that
+//           field reads n
+//   bricks: { name, kind } -- the canvas holds bricks of that kind and every one of them is painted
+export const PERSIST_BOARD = {
+  setup: [
+    { tool: 'wall' }, click('brickSetWhite'), click('brickPattern_herringbone'), click('brickSizePreset_half1'),
+    set('brickLevel_wall', 0.0625), click('brickGenerate'),
+    { tool: 'frame' }, click('brickFramePreset_three_band'), click('brickGenerate'),
+    { tool: 'brush' }, { stroke: [[0.3, 0.45], [0.7, 0.45]] },
+    { apply: true },
+    { sidebar: true }, click('brickSurfaceStyle_weathered'), set('brickReliefHeight', 0.2),
+  ],
+  panel: [
+    { name: 'Set: White Rocks', active: 'brickSetWhite' },
+    { name: 'Wall pattern: Herringbone', active: 'brickPattern_herringbone' },
+    { name: 'Brick size 1.5', value: ['brickSize', 1.5] },
+    { name: 'Wall Level 1/16', value: ['brickLevel_wall', 0.0625] },
+    { name: 'Frame preset: 3-band', active: 'brickFramePreset_three_band' },
+    { name: 'Surface: Weathered', active: 'brickSurfaceStyle_weathered' },
+    { name: 'Max Height 0.2', value: ['brickReliefHeight', 0.2] },
+    { name: 'Quick set: White Rocks', active: 'brickQuick_set_3' },
+    { name: 'Quick pattern: Herringbone', active: 'brickQuick_pattern_herringbone' },
+  ],
+  bricks: [
+    { name: 'Wall bricks painted', kind: 'wall' },
+    { name: 'Frame bricks painted', kind: 'frame' },
+    { name: 'Brush bricks painted', kind: 'brush' },
+  ],
+};
+
 // ---- layout (Fred, live: "Wall is missing the generate button"): in the drawer layout (phone, or a Fusion
 // palette docked narrower than editor/breakpoints.js MOBILE_MAX_PX) the drawer opens at PEEK height; the
 // tool's Generate must still show IN FULL there. One row per viewport x tool.
