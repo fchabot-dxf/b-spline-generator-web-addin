@@ -1,24 +1,30 @@
 /**
- * core/bricks/layouts/herringbone.js — PORTABLE (see rng.js). F35 item 7, REBUILT per advisor
- * review (a greedy-packed first version read as "a jumble of diagonal bricks with crossings and
- * gaps" at 1:1): a CLOSED-FORM construction, not packing.
+ * core/bricks/layouts/herringbone.js — PORTABLE (see rng.js). F35 item 7, REBUILT a second time per
+ * advisor correction: the textbook 90-degree chevron DOES tile exactly for ANY brickLengthIn:
+ * brickHeightIn ratio, not only 2:1 — this file's own prior header claimed otherwise, from a
+ * narrower single-brick-per-step search; that claim was WRONG and is retracted here. The advisor's
+ * own exact construction, independently verified (zero overlap; coverage == the exact
+ * (L/(L+g)) * (W/(W+g)) grout ceiling, at Set 1's real 3.75:1 — the same ceiling every correctly-
+ * grouted rectangular pattern is bounded by, so this construction wastes NO area beyond the grout
+ * itself):
  *
- * MEASURED, not textbook-assumed: the classic chevron "V" herringbone (each brick's own end
- * touching the next perpendicular brick's side, in a single zigzag) tiles EXACTLY only when
- * brickLengthIn = 2 x brickHeightIn -- verified directly: at that ratio, a horizontal brick's own
- * "notch" (the region above it, up to the matching vertical brick's own height) is EXACTLY one more
- * brick's worth of height, closing the tiling with zero gap or overlap. Set 1's own real ratio
- * (3.75:1) does NOT close that way -- confirmed by a systematic offset search (bricks-weave-
- * layouts.test.js's own dev history) that found no valid single-brick-per-step staircase for this
- * ratio. GENERALISED instead: each "column" is `n = round(brickLengthIn / (brickHeightIn+grout))`
- * horizontal bricks stacked to EXACTLY fill one brickLengthIn-tall column (the SAME formula
- * basketweave.js's own `n` uses, snapped to a whole number of rows, never stretched), paired with
- * ONE vertical brick beside it; columns repeat along the row, and each row is offset from the next
- * by its own cross-width so the whole thing reads as a genuine stepped diagonal weave -- NOT the
- * textbook single-brick chevron (an honest, measured limitation at this brick ratio, flagged to the
- * advisor alongside the live screenshot, not silently presented as the classic look).
+ *   w = brickHeightIn + grout, l = brickLengthIn + grout
+ *   H_i = horizontal brick (L x W), bottom-left corner at (i*w, i*w)
+ *   V_i = vertical brick (W x L), bottom-left corner at ((i-1)*w, i*w)
+ *   the whole {H_i, V_i} staircase repeats by k*(-l, l) for every integer k — a single staircase is
+ *   only one diagonal thread; the k-replication is what actually fills the plane.
+ *   the whole pattern is then rotated 45 degrees for the classic chevron look (the bricks themselves
+ *   run diagonally, the look the dispatch asked for) — verified at 0 degrees too (the "straight"/
+ *   90-degree herringbone, bricks axis-aligned), but only 45 is wired up since nothing asked for the
+ *   other variant.
+ *
+ * No extra grout "shrink" is applied on top of this — measured directly against specific neighbor
+ * pairs, the construction above already leaves exactly `grout` between every adjacent brick; an
+ * extra shrink would double the joint.
  */
 import { clipPolygonToBoard, rectPolygon } from '../geometry.js';
+
+const ROTATION_DEG = 45; // the "classic" chevron look; see this file's own header
 
 /**
  * @param {{x:number,y:number}[]} boardOutline — closed polygon, board inches
@@ -28,35 +34,43 @@ import { clipPolygonToBoard, rectPolygon } from '../geometry.js';
  */
 export function herringboneLayout(boardOutline, set, _zones) {
   const L = set.brickLengthIn, W = set.brickHeightIn, g = set.grout.widthIn;
-  const n = Math.max(1, Math.round(L / (W + g)));
-  const pitch = L / n;
-  const crossWidth = Math.max(0, pitch - g);
-  const colPitch = L + g + W + g; // one H-stack column + one V brick, end to end
+  const w = W + g, l = L + g;
+  const theta = (ROTATION_DEG * Math.PI) / 180;
+  const ct = Math.cos(theta), st = Math.sin(theta);
 
   const xs = boardOutline.map((p) => p.x), ys = boardOutline.map((p) => p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-  const rowPitch = L + g;
-  const rCount = Math.ceil((maxY - minY) / rowPitch) + 2;
-  const colCount = Math.ceil((maxX - minX) / colPitch) + 2;
+  const margin = 2 * L;
+  const corners = [
+    [minX - margin, minY - margin], [maxX + margin, minY - margin],
+    [minX - margin, maxY + margin], [maxX + margin, maxY + margin],
+  ];
+  // Inverse-rotate the (expanded) board bbox into pattern space to find which i/k range actually
+  // reaches it: u = x+y advances by 2w per i, z = y-x advances by 2l per k (see header formula).
+  let uMin = Infinity, uMax = -Infinity, zMin = Infinity, zMax = -Infinity;
+  for (const [wx, wy] of corners) {
+    const lx = ct * wx + st * wy, ly = -st * wx + ct * wy;
+    const u = lx + ly, z = ly - lx;
+    if (u < uMin) uMin = u; if (u > uMax) uMax = u;
+    if (z < zMin) zMin = z; if (z > zMax) zMax = z;
+  }
+  const iLo = Math.floor(uMin / (2 * w)) - 2, iHi = Math.ceil(uMax / (2 * w)) + 2;
+  const kLo = Math.floor(zMin / (2 * l)) - 2, kHi = Math.ceil(zMax / (2 * l)) + 2;
 
   const cells = [];
   let nextId = 0;
-  for (let r = -1; r <= rCount; r++) {
-    const rowY = minY + r * rowPitch;
-    const rowXOffset = r * crossWidth; // a progressive (not fixed half-unit) stagger -- reads as a
-    // stepped diagonal rather than a static repeating grid; see this file's own header.
-    for (let c = -1; c <= colCount; c++) {
-      const colX = minX + rowXOffset + c * colPitch;
-      for (let i = 0; i < n; i++) {
-        const cx = colX + L / 2, cy = rowY + i * pitch + crossWidth / 2;
-        const poly = rectPolygon(cx, cy, L / 2, crossWidth / 2, 1, 0);
-        const clipped = clipPolygonToBoard(poly, boardOutline, { x: cx, y: cy });
-        if (clipped.length >= 3) cells.push({ id: nextId++, polygon: clipped, courseIndex: r, cx, cy, neighbors: {} });
+  for (let k = kLo; k <= kHi; k++) {
+    const originX = k * -l, originY = k * l;
+    for (let i = iLo; i <= iHi; i++) {
+      const hcx = originX + i * w + L / 2, hcy = originY + i * w + W / 2;
+      const vcx = originX + (i - 1) * w + W / 2, vcy = originY + i * w + L / 2;
+      for (const [cx, cy, dx, dy] of [[hcx, hcy, 1, 0], [vcx, vcy, 0, 1]]) {
+        const wcx = ct * cx - st * cy, wcy = st * cx + ct * cy;
+        const wdx = ct * dx - st * dy, wdy = st * dx + ct * dy;
+        const poly = rectPolygon(wcx, wcy, L / 2, W / 2, wdx, wdy);
+        const clipped = clipPolygonToBoard(poly, boardOutline, { x: wcx, y: wcy });
+        if (clipped.length >= 3) cells.push({ id: nextId++, polygon: clipped, courseIndex: k, cx: wcx, cy: wcy, neighbors: {} });
       }
-      const vx = colX + L + g + W / 2, vy = rowY + L / 2;
-      const vPoly = rectPolygon(vx, vy, L / 2, W / 2, 0, 1);
-      const vClipped = clipPolygonToBoard(vPoly, boardOutline, { x: vx, y: vy });
-      if (vClipped.length >= 3) cells.push({ id: nextId++, polygon: vClipped, courseIndex: r, cx: vx, cy: vy, neighbors: {} });
     }
   }
   return { cells };

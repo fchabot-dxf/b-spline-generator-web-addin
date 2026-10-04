@@ -9974,3 +9974,42 @@ not claimed as the textbook pattern it isn't.
 Commit, push, pass back with the herringbone limitation named explicitly and a question: accept the
 stepped-weave result as "herringbone" for now, or invest in the more complex notch-filling
 construction needed for the true chevron at this ratio?
+
+---
+
+**F35 item 7 follow-up -- herringbone.js REBUILT a second time, "2:1 only" claim RETRACTED.** The
+advisor disputed my prior finding directly, with an exact formula, and asked me to verify it myself
+before implementing -- did exactly that, not a silent defer either way.
+
+Formula (w=brickHeightIn+grout, l=brickLengthIn+grout): `H_i` = horizontal brick (LxW), bottom-left
+corner at `(i*w, i*w)`; `V_i` = vertical brick (WxL), bottom-left corner at `((i-1)*w, i*w)`; the
+whole `{H_i,V_i}` staircase repeats by `k*(-l,l)` for every integer k; rotate 45 degrees for the
+classic look.
+
+First pass at verifying this gave a FALSE negative (14.8% coverage, looked gappy) -- root-caused as
+MY OWN test-region/range artifact, not a construction flaw: a single staircase (one k) is only a
+thin diagonal thread, and my coverage-test window/i-range didn't actually reach into where the
+k-replication filled the plane densely. Caught this by computing the real `u=x+y` (per-i) and
+`z=y-x` (per-k) relationships the construction advances by, sizing the i/k ranges to actually cover
+the test board, and re-measuring: **zero overlaps (SAT-verified, both 0 degrees and 45 degrees), and
+coverage == `(L/(L+g))*(W/(W+g))` EXACTLY** -- the same geometric grout-ceiling every correctly-
+grouted rectangular pattern is bounded by (first derived in the original item-7 review) -- at Set 1's
+own real 3.75:1 ratio. Also verified directly: no additional grout "shrink" is needed, the
+construction's own neighbor gaps already measure exactly `g` (checked specific adjacent pairs by
+hand) -- an extra shrink on top would double the joint.
+
+**My original "2:1 only" claim (previous WORK-LOG entry, now superseded) was WRONG.** It came from a
+narrower search (single-brick-per-step staircase offsets only) that doesn't cover this construction's
+actual repeat structure -- the advisor's own H_i/V_i + k-replication generalizes correctly to any
+L:W ratio, exactly as claimed. Retracting it here rather than leaving it stand uncorrected.
+
+Replaced `herringbone.js`'s stepped-column implementation with this construction (rotated 45 degrees
+by default, matching the dispatch's own original "bricks at 45" wording and the advisor's "classic"
+label; the 0-degree "straight" variant verified too but not wired up, nothing asked for it).
+`tests/bricks-weave-layouts.test.js`'s `herringboneCeiling` updated to the generic ceiling formula
+(this construction has no flush boundaries, unlike basketweave's deliberate one) -- all 16 weave
+tests still pass; full suite re-run green, 198 files / 3633 tests.
+
+Re-shot live: `shots/seatC/f35item7_06_herringbone.png` -- a genuine 90-degree chevron herringbone,
+correctly clipped to the board's curved outline, grout visible throughout. Matches the advisor's own
+`herringbone_proof.png` reference.
