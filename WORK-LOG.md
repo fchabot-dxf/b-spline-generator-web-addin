@@ -21024,3 +21024,62 @@ goldens + pinning test), `44201db` (parity exclusion). Passing back for the advi
 decision, with two things to carry forward: whether to un-hide now or after a broader matrix, and the
 unseeded-taper-bake gap (Finding 2) as a possible follow-up alongside the already-queued H23 item 79
 (T9 taller flanges) and item 81 (T10 archRise_min + apex drift).
+
+## H23 item 80, continued: T19's own 22-case live matrix, all-BUILT -- un-hidden; H23 item 79's own diagram
+
+Seat 39, same session, direct advisor DM (T19 merged to main as -20/-23, T10/T18 confirmed untouched):
+"run T18's full matrix on T19 and un-hide it if clean (diagram + shots), then item 79."
+
+**The 22-case matrix (5 handles x {min, max} + default, x {7x9, 9x12}): all-BUILT.** New
+`tools/repro/h23_item80_t19_matrix_payloads.mjs` (the SAME bisection-against-the-no-hook-guard
+methodology `h23_item78c_t18_matrix_payloads.mjs` already used, generalized to 5 handles). Zero JS-side
+defects across all 22. Live: 22/22 -- 4 bars, `sketch_3` built, healthy, every case, including
+`topInset_max`/`taperAngle_max` at both sizes (the two combinations most likely to interact badly,
+given this item's own earlier findings about `topInset`+arch extremes). Screenshots (the two most
+taper/narrow-relevant cases, confirmed visually sane -- a clearly tapered head at `taperAngle_max`, a
+clearly narrow one at `topInset_max`): `~/.bspline-status/shots/seatA/
+h23_item80_matrix_template_19_{taperAngle_max,topInset_max}_9x12.png`.
+
+**3 cases hit a transient false failure mid-matrix -- confirmed session-degradation noise, not a real
+bug, via the fusion360-quirks skill's own already-documented pattern.** `topInset_min/max_9x12` and
+`waistReach_min_9x12` all failed identically (`sketch_3` never created, no exception) right after
+resuming from a Fusion-holder handoff (seat 88 redeployed `beefec7` from the main checkout mid-matrix,
+a separate, verified-safe action -- confirmed `beefec7` IS origin/main's own current HEAD and the main
+checkout was already clean there, not a repeat of the earlier stale-checkout incident). Even the
+DEFAULT 9x12 case -- which had built clean minutes earlier -- failed the same way on a bare re-check,
+confirming this was never about the 3 specific handle values: a general, session-level degradation.
+The skill's own entry ("a long session with many scratch-document create/close cycles can quietly
+degrade Fusion's own state... resolved immediately by a plain add-in stop()/run()") predicted exactly
+this. A plain `stop()`/`run()` (no redeploy) fixed it instantly -- the default case re-passed
+immediately, then all 3 originally-failed cases re-ran clean too. This is now a THIRD independent
+confirmation of that skill entry's own pattern (it already said "MEASURED TWICE").
+
+**Mid-matrix, handed the Fusion holder to seat 88 twice for higher-priority live tests** (Fred's own
+"brick tab params do nothing" bug, then a redeploy), each time confirming zero open scratch docs
+first and picking the matrix back up immediately after. Answered an incident question honestly and
+precisely rather than guessing: confirmed (by code path, not just timing) that two stray
+`_handle_generate` calls seat 88 found in the log were NOT from my own matrix work -- that function
+lives in `b-spline-gen.py`'s own palette Send-button handler, a completely different path from the
+`frame_engine_core`/`fb_engine.solid_coordinator` functions I call directly.
+
+**Un-hidden.** `FRAME_HIDDEN -> False`; `tests/frame-hidden-template.test.js`'s `HIDDEN_IDS` emptied,
+`frame-template-19.test.js`'s own hidden assertion flipped. Full gate green: 4147 JS / 1047 Python
+(the full suite's own default timeout now passes clean too -- `frame-bartop-drawn.test.js`'s earlier
+flake was genuinely fixed upstream this turn, `origin/main`'s own `fix-bartop-timeout` merge, confirmed
+by re-running after merging it in). Merged `origin/main` again first (clean, confirmed byte-identical
+against my own pre-merge tip). Pushed; did not redeploy again (no further live verification needed
+after un-hiding -- the advisor's own merge will pick this up).
+
+**H23 item 79 (T9 taller flanges): diagram produced, no template change.** No prior write-up existed
+to work from beyond the dispatch's own three words -- investigated T9's own current state first:
+`flangeHeightOfHh = 0.4` (the shipped default) sits close to the feasible range's own FLOOR
+(0.365-0.40 at 6x9/7x9, 0.270 at 9x12), with plenty of headroom to its own ceiling (0.735-0.804) --
+consistent with "Fred wants it taller." `tools/repro/
+h23_item79_template9_taller_flanges_proposal.mjs`: 4 panels at 7x9 (the shipped 0.4, then 0.5/0.6/0.7
+across the available room), all defect-free. Screenshot: `~/.bspline-status/shots/seatA/
+h23_item79_template9_taller_flanges_proposal.png`. Stopped here, same discipline as every proposal --
+no `template_9/template_data.py` edit; waiting for Fred's own pick (or a different value).
+
+**Commits this stretch, all on `t19-arched-tapered-sides`:** `bc3c7a0` (the two diagram/matrix
+scripts), `3310fac` (un-hide), `740c4cb` (merge). Passing back: T19 is fully live-verified and
+un-hidden, ready for the advisor's own merge; item 79's diagram is ready for Fred's OK.
