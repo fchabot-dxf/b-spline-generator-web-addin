@@ -200,19 +200,33 @@ function boardPolygon(editor) {
 /** The set the user's CURRENT settings actually resolve to: the library's own
  *  declared entry (setForId) with the grout WIDTH override applied (the one
  *  field every tool's own settings panel lets the user override directly).
- *  Exported so main/brick-panel.js's own Frame-brick-length override (F35
- *  item 5 review) can start from the SAME resolved set Wall/Brush already
- *  use, instead of a second, independent `brickSetById` call that would
- *  silently drop the user's own current grout-width override. */
+ *  Exported so main/brick-panel.js can start from the SAME resolved set
+ *  Wall/Brush already use, instead of a second, independent `brickSetById`
+ *  call that would silently drop the user's own current grout-width
+ *  override. NEVER applies the global brick-length override (toBrickOpts'
+ *  own `scale`, below, is how that reaches the engine) -- this is the
+ *  UNSCALED base every `scale` multiplier is computed relative to. */
 export function resolvedSetFor(settings) {
   const base = setForId(settings.setId);
   return { ...base, grout: { ...base.grout, widthIn: settings.grout.widthIn } };
 }
 
+/** F35 item 16 (Fred: "I'd rather they all have the same size"): the ONE global brick length
+ *  (inches) -- replacing the old per-tool 0.5-2x Scale multiplier AND the separate Frame-only
+ *  frameBrickLengthIn override -- expressed as the `scale` multiplier the 3 core engines
+ *  (along-path/fill-shape/contour-bands, via `scaledSet`) already take, relative to the ACTIVE
+ *  set's own declared brickLengthIn. Wall, every Frame band, and Brush all resolve through this
+ *  SAME function now, so picking a brick length affects every tool identically -- there is no
+ *  more a separate Frame-only length to keep in sync with it. */
+export function scaleFor(settings) {
+  const base = setForId(settings.setId);
+  return settings.brickLengthIn && base.brickLengthIn ? settings.brickLengthIn / base.brickLengthIn : 1;
+}
+
 function toBrickOpts(settings) {
   return {
     set: resolvedSetFor(settings),
-    scale: settings.scale,
+    scale: scaleFor(settings),
     suppression: settings.suppression,
     clumping: settings.clumping,
     seed: settings.seed,
@@ -294,13 +308,16 @@ function applyWallPattern(input, settings) {
  *  no clipping between them. Using the one real composer instead of two
  *  separate calls means Wall is ALWAYS clipped to whatever the frame's true
  *  interior is (when a frame resolves), with no overlap, regardless of
- *  which button the user clicked. `frameGeom` is `{primitives, bands, set}`
+ *  which button the user clicked. `frameGeom` is `{primitives, bands}`
  *  (main/brick-panel.js's own resolveFrameGeom) or null/undefined (no usable
  *  frame -- Wall alone fills the whole board, same as before Frame
- *  existed); its own `set` (main/brick-panel.js's resolveFrameBrickSet, F35
- *  item 5 review) is a Frame-ONLY brick-length override, passed through
- *  generateBricks' own optional `frame.set` -- the `set` built here stays
- *  what Wall's own interior fill always used. */
+ *  existed). F35 item 16: Frame bands no longer carry their own `set`
+ *  override -- `scale` (derived from the ONE global brick length, below) is
+ *  passed straight through to `generateBricks`, which already threads it to
+ *  BOTH the Wall fill and the Frame bands identically (its own
+ *  `frame.set || set` fallback picks the top-level `set` here, same as
+ *  Wall), so every tool resolves the same brick length with no separate
+ *  per-tool override left to keep in sync. */
 function _generateAndDraw(editor, settings, frameGeom) {
   const layer = ensureBricksLayer(editor);
   clearGenerated(editor, layer, 'wall');
@@ -310,7 +327,7 @@ function _generateAndDraw(editor, settings, frameGeom) {
   const input = {
     boardOutline: boardPolygon(editor),
     set: resolvedSetFor(settings),
-    scale: settings.scale,
+    scale: scaleFor(settings),
     suppression: settings.suppression,
     clumping: settings.clumping,
     seed: settings.seed,

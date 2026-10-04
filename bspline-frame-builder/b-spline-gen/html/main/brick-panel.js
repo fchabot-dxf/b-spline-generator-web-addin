@@ -18,7 +18,7 @@
  * `window.svgEditor` fresh at the point of use instead of caching it.
  */
 import { P, saveLastSession } from '../core/state.js';
-import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, resolvedSetFor } from '../editor/editor-brick-tool.js';
+import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
@@ -64,16 +64,63 @@ function syncSetPicker() {
  *  declared default (Set 3's own fieldstone joints are genuinely wider,
  *  0.12in vs Set 1's measured 0.06in) -- otherwise the slider would silently
  *  keep showing/using the PREVIOUS set's own width after a switch, which
- *  `toBrickOpts` always applies verbatim regardless of which set is active. */
+ *  `toBrickOpts` always applies verbatim regardless of which set is active.
+ *  F35 item 16: brickLengthIn is now a GLOBAL, absolute real-world size --
+ *  deliberately NOT reset here (unlike the old Frame-only frameBrickLengthIn
+ *  it replaced, which WAS force-synced to the new set on every switch): a
+ *  user who picked "2 inch bricks" means 2 inches regardless of which photo
+ *  texture is applied, the same way Wall/Brush's own old relative Scale
+ *  multiplier never needed a reset either. */
 function selectSet(setId) {
   const set = brickSetById(setId);
   if (!set) return;
   P.brickSettings.setId = setId;
   P.brickSettings.grout.widthIn = set.grout.widthIn;
-  P.brickSettings.frameBrickLengthIn = set.brickLengthIn;
   syncSetPicker();
   syncControlsFromState();
   notifyChange();
+}
+
+/** F35 item 16 (Fred, "replacing the 0.5-2x multiplier with a BRICK SIZE control in inches"):
+ *  quick-access real-world sizes, declared as data -- a new preset is one more entry here, no UI
+ *  rework. "Life size" is a real US brick's own actual length (8in x 2.25in); quarter/half are
+ *  plain fractions of that, giving the picker a sensible visual/physical progression rather than
+ *  arbitrary round numbers. */
+const BRICK_SIZE_PRESETS = [
+  { id: 'quarter', label: '¼ size', lengthIn: 2 },
+  { id: 'half', label: '½ size', lengthIn: 4 },
+  { id: 'life', label: 'Life size (8″×2¼″)', lengthIn: 8 },
+];
+const BRICK_SIZE_MIN_IN = 0.375;
+const BRICK_SIZE_MAX_IN = 8;
+
+function renderBrickSizePresetList(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const preset of BRICK_SIZE_PRESETS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cad-btn';
+    btn.id = `brickSizePreset_${preset.id}`;
+    btn.textContent = preset.label;
+    btn.addEventListener('click', () => setBrickSize(preset.lengthIn));
+    container.appendChild(btn);
+  }
+}
+
+function syncBrickSizePresetButtons() {
+  for (const preset of BRICK_SIZE_PRESETS) {
+    document.getElementById(`brickSizePreset_${preset.id}`)?.classList.toggle('active', preset.lengthIn === P.brickSettings.brickLengthIn);
+  }
+}
+
+function setBrickSize(lengthIn) {
+  const v = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, lengthIn));
+  P.brickSettings.brickLengthIn = v;
+  setPair('brickSizeSlider', 'brickSize', v);
+  syncBrickSizePresetButtons();
+  notifyChange();
+  _scheduleLivePreview();
 }
 
 function setGroutProfile(profile) {
@@ -177,7 +224,8 @@ function syncControlsFromState() {
   syncWallPatternButtons();
   renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
   syncFrameBandPatternButtons();
-  setPair('brickScaleSlider', 'brickScale', s.scale);
+  setPair('brickSizeSlider', 'brickSize', s.brickLengthIn);
+  syncBrickSizePresetButtons();
   document.getElementById('brickGroutWidth').value = s.grout.widthIn;
   document.getElementById('brickGroutDepth').value = s.grout.depthIn;
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', s.grout.profile === 'recessed');
@@ -187,7 +235,6 @@ function syncControlsFromState() {
   setPair('brickSuppressionSlider', 'brickSuppression', s.suppression);
   setPair('brickClumpingSlider', 'brickClumping', s.clumping);
   document.getElementById('brickSeed').value = s.seed;
-  setPair('brickFrameLengthSlider', 'brickFrameLength', s.frameBrickLengthIn);
   syncProfileToggle();
   syncOrientationToggle();
   syncBrushSection();
@@ -531,7 +578,7 @@ const BRUSH_PRESET_LIST = [
   { id: 'flemish_soldier_flemish_3', label: '3-wide (Flemish / Soldier / Flemish)' },
 ];
 
-/** The current frame's own contour, as `{primitives, bands, set}` for
+/** The current frame's own contour, as `{primitives, bands}` for
  *  generateBricks/bricksContourBands -- or null when no real frame resolves (no template selected,
  *  or the offset is degenerate). H23 item 76 (the primitive-ribbon.js rebuild): `sil.primitives`
  *  converts DIRECTLY to raw lines+arcs via buildRibbonPrimitives -- no polyline, no declared corner
@@ -544,7 +591,12 @@ const BRUSH_PRESET_LIST = [
  *  index the user hasn't touched. T86 item 2: every pattern now builds through the SAME
  *  `bricksContourBands` call (generateBricks' own composer, via `runBricks`) -- no per-band engine
  *  split any more (editor-brick-tool.js's own now-retired `frameBricksFor`), so this function just
- *  builds the real band list, nothing else. */
+ *  builds the real band list, nothing else.
+ *
+ *  F35 item 16: no longer returns its own `set` override (the retired resolveFrameBrickSet, Frame's
+ *  own brick-length-only special case) -- Frame bands now resolve the SAME global brick length as
+ *  Wall/Brush, via `scale` (editor-brick-tool.js's own scaleFor), which generateBricks already
+ *  threads to both uniformly. */
 function resolveFrameGeom(editor) {
   const ctx = frameContext(editor);
   const sil = ctx ? frameContourSilhouette(ctx, 0, 0) : { error: 'noFrame' };
@@ -553,30 +605,7 @@ function resolveFrameGeom(editor) {
   const basePreset = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
   const overrides = P.brickSettings.frameBandPatterns || [];
   const bands = basePreset.map((band, i) => (overrides[i] ? { ...band, pattern: overrides[i] } : band));
-  return { primitives, bands, set: resolveFrameBrickSet() };
-}
-
-/** F35 item 5 review (Fred, via advisor correction): "frame thickness" = the
- *  LENGTH of the bricks across a Frame band (a soldier band's own width IS
- *  the brick length) -- a per-frame brick-length OVERRIDE, not a band-width
- *  scaler. `brickHeightIn` is recomputed to keep the set's own declared
- *  aspect ratio, so the brick's own proportions never distort. Returns the
- *  base set UNCHANGED when the override equals its own declared length (the
- *  default, reset on every set switch -- selectSet above) so every OTHER
- *  caller of this set (Wall's own interior fill, via generateBricks' own
- *  top-level `input.set`) is completely unaffected -- this is carried
- *  separately as frameGeom's own `set`, generateBricks' optional
- *  `frame.set` override. */
-function resolveFrameBrickSet() {
-  // resolvedSetFor (editor-brick-tool.js), NOT a raw brickSetById -- so this
-  // starts from the SAME grout-width-overridden set Wall/Brush already use
-  // (runBricks' own `input.set`), rather than silently dropping the user's
-  // current grout-width slider value for Frame bricks specifically.
-  const base = resolvedSetFor(P.brickSettings);
-  const overrideLength = P.brickSettings.frameBrickLengthIn;
-  if (!overrideLength || overrideLength === base.brickLengthIn) return base;
-  const aspect = base.brickHeightIn / base.brickLengthIn;
-  return { ...base, brickLengthIn: overrideLength, brickHeightIn: overrideLength * aspect };
+  return { primitives, bands };
 }
 
 // F35 (Fred: "resolution is his own responsibility via the resolution panel" -- REVERSING the
@@ -623,13 +652,15 @@ export function initBrickPanel() {
   syncBrushPresetButtons();
   renderWallPatternList(document.getElementById('brickPatternList'));
   syncWallPatternButtons();
+  renderBrickSizePresetList(document.getElementById('brickSizePresetList'));
+  syncBrickSizePresetButtons();
 
   document.getElementById('brickSetRed')?.addEventListener('click', () => selectSet(1));
   // F35 item 4 (c): White Rocks (Set 3, f3's item 74 fieldstone layout) is
   // now real -- un-greyed, selectable like Red Brick.
   document.getElementById('brickSetWhite')?.addEventListener('click', () => selectSet(3));
 
-  bindSlider('brickScaleSlider', 'brickScale', 'scale');
+  bindSlider('brickSizeSlider', 'brickSize', 'brickLengthIn');
   bindGroutField('brickGroutWidth', 'widthIn');
   bindGroutField('brickGroutDepth', 'depthIn');
   document.getElementById('brickBtnGroutRecessed')?.addEventListener('click', () => setGroutProfile('recessed'));
@@ -643,7 +674,6 @@ export function initBrickPanel() {
   bindSlider('brickReliefHeightSlider', 'brickReliefHeight', 'reliefIn');
   bindSlider('brickSuppressionSlider', 'brickSuppression', 'suppression');
   bindSlider('brickClumpingSlider', 'brickClumping', 'clumping');
-  bindSlider('brickFrameLengthSlider', 'brickFrameLength', 'frameBrickLengthIn');
   document.getElementById('brickSeed')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10);
     if (!Number.isFinite(v)) return;

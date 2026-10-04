@@ -33,6 +33,36 @@ describe('generateBricks', () => {
     expect(framed.bricks.length).toBeLessThan(noFrame.bricks.length);
   });
 
+  // F35 item 16 (Fred: "I'd rather they all have the same size"): Frame bands no longer carry
+  // their own `frame.set` brick-length override (main/brick-panel.js's now-retired
+  // resolveFrameBrickSet) -- they must pick up the SAME top-level `scale` as Wall, via
+  // generateBricks' own `frame.set || set` fallback, with NO frame.set provided at all (exactly
+  // what every real caller now sends).
+  it('with no frame.set override, Frame bands scale IDENTICALLY to Wall via the shared top-level scale', () => {
+    const board = rect(9, 12);
+    const frame = { primitives: rectPrimitives(9, 12), bands: FRAME_PRESETS.single_soldier };
+    const base = generateBricks({ boardOutline: board, set: SET, seed: 1, frame });
+    const doubled = generateBricks({ boardOutline: board, set: SET, seed: 1, frame, scale: 2 });
+
+    expect(doubled.frameBricks.length).toBeGreaterThan(0);
+    const bbox = (poly) => ({
+      w: Math.max(...poly.map((p) => p.x)) - Math.min(...poly.map((p) => p.x)),
+      h: Math.max(...poly.map((p) => p.y)) - Math.min(...poly.map((p) => p.y)),
+    });
+    // Same precedent as bricks-scale-grout.test.js's own contour-bands check: the first few pieces
+    // of a long soldier run can be corner-fit, not a plain scaled whole piece -- pick one safely
+    // past that (both runs have 10+ plain pieces per side at this board size).
+    const b0 = bbox(base.frameBricks.filter((b) => !b.id.includes('corner'))[5].polygon);
+    const d0 = bbox(doubled.frameBricks.filter((b) => !b.id.includes('corner'))[5].polygon);
+    expect(Math.max(d0.w, d0.h)).toBeCloseTo(Math.max(b0.w, b0.h) * 2, 1);
+
+    // And Wall's own fill scaled by the exact same factor, from the exact same `scale` -- proving
+    // Wall and Frame are reading ONE shared value, not two independently-derived ones.
+    const wb0 = bbox(base.bricks[0].polygon), wd0 = bbox(doubled.bricks[0].polygon);
+    expect(wd0.w).toBeCloseTo(wb0.w * 2, 6);
+    expect(wd0.h).toBeCloseTo(wb0.h * 2, 6);
+  });
+
   it('threads zones through to the fill', () => {
     const board = rect(9, 12);
     const plain = generateBricks({ boardOutline: board, set: SET, seed: 1 });

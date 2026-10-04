@@ -120,11 +120,12 @@ export const BRICK_SETS = Object.freeze([
     // F35 item 7 review (advisor): the original 0.06 was measured as a fraction of brickLengthIn
     // (0.085 of the brick RUN, off a column-redness profile) -- against brickHeightIn (0.2) that's
     // 30%, much wider than a real brick's own joint:height ratio (3/8in on a 2.25in brick ≈ 17%).
-    // REVISED to 0.17 x brickHeightIn (0.17 x 0.2 = 0.034, the advisor's own "~0.035in" target) --
-    // this ratio is what `scaledSet`'s own grout-scaling now preserves when the user's Scale slider
-    // changes brickHeightIn, so grout stays proportionally correct at any brick size, not a fixed
-    // absolute width. depthIn is NOT measured (no depth data from a flat photo) -- a declared
-    // default, comfortably inside reliefIn's own 0.125 budget.
+    // REVISED to 0.17 x brickHeightIn (0.17 x 0.2 = 0.034, the advisor's own "~0.035in" target).
+    // F35 item 16 (Fred, reversing the item 7 rule this ratio used to feed): this 0.17 ratio now
+    // only ever SEEDS the one GLOBAL grout width the first time a board gets bricks -- it no longer
+    // rescales with brick size afterward (scaledSet, this file, never touches grout at all).
+    // depthIn is NOT measured (no depth data from a flat photo) -- a declared default, comfortably
+    // inside reliefIn's own 0.125 budget.
     grout: { widthIn: 0.034, depthIn: 0.05, profile: 'recessed' },
     // H23 item 72 (Fred): brick relief height in inches, default 0.125, NEVER more than 0.25 --
     // jitter/undulation must stay inside this budget (total brick top <= reliefIn), the user's
@@ -403,11 +404,15 @@ export function enabledPieces(catalogue = PIECE_CATALOGUE) {
  * untouched. `scale` omitted or 1 returns `set` itself (no allocation) so the common, unscaled path
  * stays cheap.
  *
- * F35 item 7 review (advisor, REVISING the original "grout width unaffected" rule): grout.widthIn
- * now scales WITH the brick, same factor as length/height -- so a set's own measured
- * grout:brickHeightIn RATIO (library.js's own declared default, e.g. Set 1's 0.17) stays correct at
- * any Scale slider value, instead of a fixed absolute width reading proportionally wider on a
- * shrunk brick or thinner on an enlarged one.
+ * F35 item 16 (Fred, REVERSING F35 item 7's own revision below): grout width is ONE GLOBAL value
+ * in inches (`P.brickSettings.grout.widthIn`, main/brick-panel.js) that does NOT move when brick
+ * size changes -- the set's own declared grout:brickHeightIn ratio (e.g. Set 1's 0.17) only ever
+ * SEEDS that global value once, the first time a board gets bricks; after that the user's own
+ * grout width is independent of brick size, same as a real mason doesn't re-measure the joint
+ * every time the brick supplier changes. `scaledSet` itself never touches `grout` at all now --
+ * item 7's own "scale it WITH the brick" rule is exactly what this reverses; the caller
+ * (toBrickOpts) is the one place that still overrides `grout.widthIn`, from the global value
+ * directly, regardless of `scale`.
  */
 export function scaledSet(set, scale) {
   if (!scale || scale === 1) return set;
@@ -415,6 +420,5 @@ export function scaledSet(set, scale) {
     ...set,
     brickLengthIn: set.brickLengthIn * scale,
     brickHeightIn: set.brickHeightIn * scale,
-    grout: { ...set.grout, widthIn: set.grout.widthIn * scale },
   };
 }

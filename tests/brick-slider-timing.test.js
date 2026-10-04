@@ -27,14 +27,14 @@ const FIXTURE = `
   <div id="brickFrameBandPatternList"></div>
   <button id="brickSetRed"></button>
   <button id="brickSetWhite"></button>
-  <input id="brickScaleSlider" type="range" min="0.5" max="2" step="0.05" value="1"><input id="brickScale" type="number" value="1">
+  <div id="brickSizePresetList"></div>
+  <input id="brickSizeSlider" type="range" min="0.375" max="8" step="0.025" value="0.75"><input id="brickSize" type="number" value="0.75">
   <input id="brickGroutWidth"><input id="brickGroutDepth">
   <button id="brickBtnGroutRecessed"></button><button id="brickBtnGroutFlush"></button>
   <button id="brickBtnReliefRaised"></button><button id="brickBtnReliefCarved"></button>
   <input id="brickReliefHeightSlider" type="range"><input id="brickReliefHeight">
   <input id="brickSuppressionSlider" type="range"><input id="brickSuppression">
   <input id="brickClumpingSlider" type="range"><input id="brickClumping">
-  <input id="brickFrameLengthSlider" type="range"><input id="brickFrameLength">
   <input id="brickSeed"><button id="brickBtnRandomSeed"></button>
 `;
 
@@ -71,7 +71,7 @@ beforeEach(() => {
   // returns null for ANY editor here, regardless of its own shape. setMode is a no-op stub purely so
   // selecting the Brush tool (one test below) doesn't throw -- this file never arms Brush drawing itself.
   window.svgEditor = { setMode: () => {} };
-  P.brickSettings.scale = 1;
+  P.brickSettings.brickLengthIn = 1;
   // A bigger step than afterEach's own drain advance below, so this test's starting `t` never lands
   // exactly on (or before) the `_lastLiveAt` the PREVIOUS test's drain just set.
   _timeBase += 10_000_000;
@@ -94,34 +94,34 @@ afterEach(() => {
 
 describe('Brick slider timing: live preview while dragging, full commit on release', () => {
   it('dragging (input) never calls the full commit; it schedules exactly one live-preview frame', () => {
-    setAndFire('brickScaleSlider', 1.2, 'input');
+    setAndFire('brickSizeSlider', 1.2, 'input');
     expect(runBricks).not.toHaveBeenCalled();
     expect(raf.pendingCount()).toBe(1);
     expect(runBricksPreview).not.toHaveBeenCalled(); // not until the frame actually runs
   });
 
   it('once the rAF frame elapses, the live preview runs with the CURRENT P.brickSettings', () => {
-    setAndFire('brickScaleSlider', 1.4, 'input');
+    setAndFire('brickSizeSlider', 1.4, 'input');
     raf.runPending();
     expect(runBricksPreview).toHaveBeenCalledTimes(1);
-    expect(P.brickSettings.scale).toBe(1.4);
+    expect(P.brickSettings.brickLengthIn).toBe(1.4);
     expect(runBricksOutlinePreview).not.toHaveBeenCalled();
   });
 
   it('several raw ticks before the frame fires collapse into ONE preview call, using the LATEST value (latest wins)', () => {
-    setAndFire('brickScaleSlider', 1.1, 'input');
-    setAndFire('brickScaleSlider', 1.2, 'input');
-    setAndFire('brickScaleSlider', 1.3, 'input');
+    setAndFire('brickSizeSlider', 1.1, 'input');
+    setAndFire('brickSizeSlider', 1.2, 'input');
+    setAndFire('brickSizeSlider', 1.3, 'input');
     expect(raf.pendingCount()).toBe(1); // the 2nd/3rd ticks saw a frame already queued, no new one scheduled
     raf.runPending();
     expect(runBricksPreview).toHaveBeenCalledTimes(1);
-    expect(P.brickSettings.scale).toBe(1.3);
+    expect(P.brickSettings.brickLengthIn).toBe(1.3);
   });
 
   it('release ("change") cancels any pending live frame and commits via the full runBricks exactly once', () => {
-    setAndFire('brickScaleSlider', 1.5, 'input');
+    setAndFire('brickSizeSlider', 1.5, 'input');
     expect(raf.pendingCount()).toBe(1);
-    setAndFire('brickScaleSlider', 1.5, 'change');
+    setAndFire('brickSizeSlider', 1.5, 'change');
     expect(raf.pendingCount()).toBe(0); // the pending live frame was cancelled, not left to also fire
     expect(runBricks).toHaveBeenCalledTimes(1);
     raf.runPending(); // even if something were still queued, nothing further should fire
@@ -135,20 +135,20 @@ describe('Brick slider timing: live preview while dragging, full commit on relea
 
   it('while Brush is the active tool, dragging never calls the live preview at all (nothing to preview -- frozen per-element settings)', () => {
     document.getElementById('brickTool_brush').click();
-    setAndFire('brickScaleSlider', 1.6, 'input');
+    setAndFire('brickSizeSlider', 1.6, 'input');
     raf.runPending();
     expect(runBricksPreview).not.toHaveBeenCalled();
     expect(runBricksOutlinePreview).not.toHaveBeenCalled();
-    setAndFire('brickScaleSlider', 1.6, 'change');
+    setAndFire('brickSizeSlider', 1.6, 'change');
     expect(runBricks).not.toHaveBeenCalled();
   });
 
   it('Frame tool with no usable frame on this board: no live preview, and release does not call runBricks either (matches the Frame button\'s own existing guard)', () => {
     document.getElementById('brickTool_frame').click();
-    setAndFire('brickScaleSlider', 1.6, 'input');
+    setAndFire('brickSizeSlider', 1.6, 'input');
     raf.runPending();
     expect(runBricksPreview).not.toHaveBeenCalled();
-    setAndFire('brickScaleSlider', 1.6, 'change');
+    setAndFire('brickSizeSlider', 1.6, 'change');
     expect(runBricks).not.toHaveBeenCalled();
   });
 
@@ -157,23 +157,23 @@ describe('Brick slider timing: live preview while dragging, full commit on relea
     // code measures (end - t0) around that exact call, so this is a direct simulation of "this tick
     // took 70ms", not a guess at how many performance.now() reads happen or in what order.
     runBricksPreview.mockImplementationOnce(() => { t += 70; });
-    setAndFire('brickScaleSlider', 1.1, 'input');
+    setAndFire('brickSizeSlider', 1.1, 'input');
     raf.runPending(); // tick 1: measures 70ms > 50 -> _dragSlow = true
     expect(runBricksPreview).toHaveBeenCalledTimes(1);
     expect(runBricksOutlinePreview).not.toHaveBeenCalled();
 
     t += 200; // clear the 100ms throttle gate for the next tick
-    setAndFire('brickScaleSlider', 1.2, 'input'); // same drag, not yet released
+    setAndFire('brickSizeSlider', 1.2, 'input'); // same drag, not yet released
     raf.runPending(); // tick 2: _dragSlow is set -> outline-only, the real preview is not touched
     expect(runBricksOutlinePreview).toHaveBeenCalledTimes(1);
     expect(runBricksPreview).toHaveBeenCalledTimes(1); // unchanged since tick 1
 
-    setAndFire('brickScaleSlider', 1.2, 'change'); // commit: resets the slow flag for the NEXT drag
+    setAndFire('brickSizeSlider', 1.2, 'change'); // commit: resets the slow flag for the NEXT drag
     runBricksPreview.mockClear();
     runBricksOutlinePreview.mockClear();
 
     t += 200;
-    setAndFire('brickScaleSlider', 1.4, 'input'); // a new drag
+    setAndFire('brickSizeSlider', 1.4, 'input'); // a new drag
     raf.runPending(); // tick 3: fresh drag, runBricksPreview is a plain no-op again (fast) -> stays not-slow
     expect(runBricksPreview).toHaveBeenCalledTimes(1); // back to the real preview, not outline-only
     expect(runBricksOutlinePreview).not.toHaveBeenCalled();

@@ -11240,3 +11240,86 @@ existing "3 samples across the groove" rule used here) -- current hint wording m
 once that lands. Also queued, arrived after this: Fred wants brick SIZE in real inches (0.375"-8",
 replacing the 0.5-2x scale multiplier) with a "Life size" preset, to be added as a column in that
 same grid -- not started yet.
+
+## F35 item 16, part 1: GLOBAL brick size (Fred: "I'd rather they all have the same size")
+
+Per the advisor's final settled spec, after a couple of rapid DM revisions on top of the earlier
+"brick size in inches, per-element" ask: brick SIZE is global, exactly like grout -- one
+`P.brickSettings.brickLengthIn` (inches, 0.375"-8", height follows the set's own aspect) drives Wall,
+every Frame band, AND Brush. The per-element `scale` multiplier and the separate Frame-only
+`frameBrickLengthIn` override are BOTH removed outright, not deprecated alongside.
+
+**A real discrepancy found and fixed, not assumed from the advisor's own earlier claim**: the
+advisor's DM said grout-scaling-with-brick-size was "already reversed and merged to main (a2d44d8)".
+After merging main, `library.js`'s `scaledSet` still multiplied `grout.widthIn` by `scale`, and the
+existing `tests/bricks-scale-grout.test.js` still asserted that behavior -- grepped and re-read the
+file directly rather than trusting the claim, confirmed the reversal had never actually landed in
+code. Fixed it now (removed grout from `scaledSet`'s return entirely; the new design makes the
+question moot anyway since grout is a flat global width, same as before). Along the way, the OTHER
+existing tests in that same file (the `bricksAlongPath`/`bricksFillShape`/`bricksContourBands`
+engines) already showed `grout.widthIn` is read from `opts.set.grout.widthIn` directly for real joint
+math, never from the scaled copy -- so `scaledSet`'s own grout-scaling was dead code all along, not
+just stale-but-harmless. Also fixed a stale comment next to Set 1's own grout declaration that still
+described the old (never fully wired) "grout scales with brick" rationale.
+
+**Data/state layer**: `core/state.js`'s `P.brickSettings.scale: 1` + `frameBrickLengthIn: 0.75`
+replaced by one `brickLengthIn: 0.75`. New migration `brick-scale-to-brickLengthIn`
+(`main/app-init.js`'s `MIGRATIONS`): converts a saved design's old `scale` into the new absolute
+`brickLengthIn` via `setForId(p.brickSettings.setId).brickLengthIn * scale` (falls back to set 1 if
+the saved `setId` is missing/unknown), drops both old keys. 4 new tests in
+`tests/migrations.test.js` cover set 1 and set 3 base lengths, the no-op case
+(`brickLengthIn` already present), and a safe no-op on a settings object with neither key.
+
+**Engine-facing layer**: new exported `scaleFor(settings)` in `editor/editor-brick-tool.js` --
+`settings.brickLengthIn / setForId(settings.setId).brickLengthIn` -- the ONE place the new absolute
+inches value is converted back into the engine's existing relative `scale` multiplier
+(`generateBricks`'s own `input.scale`, unchanged). Wired into both `toBrickOpts` and
+`_generateAndDraw`, so Wall and Frame derive their multiplier from literally the same function call
+shape, not two independent paths.
+
+**Frame no longer carries its own override**: removed `resolveFrameBrickSet()` from
+`main/brick-panel.js` entirely (it used to look up `P.brickSettings.frameBrickLengthIn` and build a
+separate `set` object just for Frame bands); `resolveFrameGeom()` now returns only
+`{primitives, bands}`. Frame bands fall through to `generateBricks`'s own pre-existing
+`const frameSet = frame.set || set;` line (core/bricks/engine.js:50) -- this is NEW load-bearing
+behavior now that nothing ever passes `frame.set`, so it needed its own direct test (see below).
+
+**UI**: `bspline_gen_palette.html`'s separate "Frame brick length" slider and "Scale" slider (0.5x-2x)
+both replaced by one "Brick size (in)" slider (`#brickSizeSlider`/`#brickSize`, 0.375-8, step 0.025)
+plus a `#brickSizePresetList` button row. Presets are declared data,
+`BRICK_SIZE_PRESETS = [{id:'quarter', label:'¼ size', lengthIn:2}, {id:'half', lengthIn:4},
+{id:'life', label:'Life size (8"x2 1/4")', lengthIn:8}]`, rendered/synced by new
+`renderBrickSizePresetList`/`syncBrickSizePresetButtons`/`setBrickSize(lengthIn)` in brick-panel.js
+(clamps to [0.375, 8], writes `P.brickSettings.brickLengthIn`, syncs the slider pair + preset
+button highlight, triggers the normal live-preview path). `selectSet(setId)` deliberately no longer
+resets `brickLengthIn` on a brick-set switch (the whole point of "global" is that it survives a set
+change, unlike the old per-set-relative `scale`).
+
+**New test, `tests/bricks-engine.test.js`** ("with no frame.set override, Frame bands scale
+IDENTICALLY to Wall via the shared top-level scale"): calls `generateBricks` twice on the same
+9x12 board + `FRAME_PRESETS.single_soldier`, once with no `scale` and once with `scale: 2`, with NO
+`frame.set` in either call (matching every real caller now). Asserts a mid-run (not corner-fit)
+frame brick's own bounding box doubles, AND that Wall's own first brick doubles by the exact same
+factor from the exact same input -- proving Wall and Frame read one shared value, not two
+independently-derived ones. Mutation-tested: dropped `scale` from the `bricksContourBands` call at
+engine.js:51 (restoring the pre-fix behavior) -- re-ran this file alone, exactly the 1 new test
+failed (0.75 vs expected 1.5), the other 9 stayed green. Restored from a pre-mutation copy, confirmed
+`git diff` on engine.js was empty before moving on.
+
+**Suite**: full run green, 211 files / 3854 tests (was 3853 before this test; the
+`tests/brick-slider-timing.test.js` fixture/`setAndFire` calls were already updated from
+`brickScaleSlider`/`P.brickSettings.scale` to `brickSizeSlider`/`P.brickSettings.brickLengthIn` in
+the same turn as the UI change, including adding the fixture's `#brickSizePresetList` div and
+dropping the now-nonexistent `brickFrameLengthSlider` fixture line).
+
+Not yet done (explicitly deferred, per the advisor's own sequencing): (1) checking the frame-band
+depth and fill-set floor behavior at 8" ("life size") on a 7x9 board -- the advisor's own ask,
+"a few bricks across must still lay out cleanly; report what happens" -- not yet investigated; (2)
+the frame-band-depth-vs-neck-narrowness hint ("Frame bands are deeper than the neck allows -- try
+stretcher bands"); (3) the measured resolution grid screenshot, rows = spacing, cols = global brick
+size (0.375/0.75/1.5/3/8), labeled with rebuild time + point count; (4) relocating Brick size + Grout
+into a toolbar-anchored "Bricks & grout" popover (no such popover component exists yet -- folded into
+item 16's own broader toolbar restructuring); (5) item 16's remaining scope (Wall/Frame as selectable
+tools/elements, contextual panel, Brick tab's empty-selection state = the shared Layers panel, base
+Level per element, Raised brush mode 2). No live Fusion/Chrome verification done yet this turn --
+state/engine/UI change confirmed by the unit suite only.

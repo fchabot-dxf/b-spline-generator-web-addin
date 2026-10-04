@@ -3083,16 +3083,16 @@
               <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
             </div>
 
-            <label class="cad-label">Frame brick length (in)</label>
-            <div class="cad-slider-row" style="margin-bottom:10px;">
-              <input type="range" id="brickFrameLengthSlider" class="cad-slider" min="0.5" max="1.5" step="0.05" value="0.75">
-              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickFrameLength" value="0.75" min="0.5" max="1.5" step="0.05"></div>
+            <!-- F35 item 16 (Fred: "I'd rather they all have the same size"): ONE global brick
+                 SIZE in real inches, replacing the old separate Frame-brick-length override and
+                 the 0.5-2x Scale multiplier -- shared by Wall, every Frame band, and Brush. -->
+            <label class="cad-label">Brick size (in)</label>
+            <div class="cad-slider-row" style="margin-bottom:6px;">
+              <input type="range" id="brickSizeSlider" class="cad-slider" min="0.375" max="8" step="0.025" value="0.75">
+              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickSize" value="0.75" min="0.375" max="8" step="0.025"></div>
             </div>
-
-            <label class="cad-label">Scale</label>
-            <div class="cad-slider-row" style="margin-bottom:10px;">
-              <input type="range" id="brickScaleSlider" class="cad-slider" min="0.5" max="2" step="0.05" value="1">
-              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickScale" value="1"></div>
+            <div id="brickSizePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+              <!-- Populated at runtime by main/brick-panel.js's declared BRICK_SIZE_PRESETS. -->
             </div>
 
             <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Grout</label>

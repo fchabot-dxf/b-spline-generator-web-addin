@@ -577,3 +577,34 @@ describe('runMigrations: contour-from-frame-outer-edge', () => {
     expect(P.editorSvg).toBe(first);
   });
 });
+
+describe('runMigrations: brick-scale-to-brickLengthIn (F35 item 16)', () => {
+  it('converts a legacy scale into brickLengthIn, relative to the active set\'s own declared length, and strips both legacy fields', () => {
+    // Set 1's own declared brickLengthIn is 0.75 (core/bricks/library.js) -- scale 2 on Set 1 means
+    // the board was showing 1.5in bricks; that's what must survive the migration unchanged.
+    const P = { brickSettings: { setId: 1, scale: 2, frameBrickLengthIn: 1.1, grout: { widthIn: 0.06 } } };
+    runMigrations(P);
+    expect(P.brickSettings.brickLengthIn).toBeCloseTo(1.5, 9);
+    expect(P.brickSettings.scale).toBeUndefined();
+    expect(P.brickSettings.frameBrickLengthIn).toBeUndefined();
+  });
+
+  it('uses Set 3\'s own declared length (1.1) when that was the active set, not Set 1\'s', () => {
+    const P = { brickSettings: { setId: 3, scale: 0.5, grout: { widthIn: 0.06 } } };
+    runMigrations(P);
+    expect(P.brickSettings.brickLengthIn).toBeCloseTo(0.55, 9);
+  });
+
+  it('a save that already has brickLengthIn is left completely alone (not re-derived from a stale scale)', () => {
+    const P = { brickSettings: { setId: 1, scale: 2, brickLengthIn: 3, grout: { widthIn: 0.06 } } };
+    runMigrations(P);
+    expect(P.brickSettings.brickLengthIn).toBe(3);
+  });
+
+  it('a fresh save with no brickSettings at all, or no legacy scale field, is a safe no-op', () => {
+    expect(() => runMigrations({})).not.toThrow();
+    const P = { brickSettings: { setId: 1, brickLengthIn: 0.75, grout: { widthIn: 0.06 } } };
+    runMigrations(P);
+    expect(P.brickSettings.brickLengthIn).toBe(0.75);
+  });
+});
