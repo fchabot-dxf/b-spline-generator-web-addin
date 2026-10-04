@@ -9411,3 +9411,58 @@ are DOM/colour wiring verified live, same precedent as the rest of this module; 
 unit-test).
 
 Commit, push, pass back with (b)'s scope and the 2 missing frame presets as explicit questions.
+
+### CORRECTION (advisor-caught, turn 141 out-of-band message): the three_band screenshot above was
+### NOT clean, and my own claim it was does not hold up on re-examination.
+
+The advisor read `f35item4_03_frame_three_band.png` at full resolution and found bands spilling past
+the board edge, overlapping brick masses, and scattered shards -- the opposite of what I wrote above
+("fans cleanly... no sunburst/wedge gaps"). That claim was made from a glance, not a 1:1 look, and the
+test session that produced it had NOT been cleared (White Rocks Wall, then a striped Brush stroke, then
+Frame/three_band, all in one continuous document) -- a direct violation of this engagement's own
+"verify pixels, don't eyeball" discipline. Retracting it here.
+
+**Re-reproduced on a genuinely clean document** (fresh editor load, zero prior elements -- confirmed
+`existingChildCount:0` before touching anything): the chaos is STILL THERE. Test contamination is
+ruled out as the (sole) cause -- the bug is real and present with nothing else on the canvas.
+`shots/seatC/f35item4_repro_clean_three_band_full.png` (examined at 1:1, not a glance): a radiating
+"sunburst" of wedge-shaped shards exactly at the hourglass waist, plus red brick fill bleeding past
+the board's own silhouette into the background near the top on both sides.
+
+**Isolated which layer is at fault by running the SAME clean template through each preset in order
+of cumulative inward depth** (`single_soldier` 0.75in total, `soldier_stretcher` 0.95in,
+`three_band` 2.1in) and measuring brick bboxes against the board's own `[0,boardW]x[0,boardH]`
+extent, not just eyeballing:
+```
+single_soldier:     112 frame bricks, 0 out-of-bounds                    shots/f35item4_diag_single_soldier.png
+soldier_stretcher:  150 frame bricks, 0 out-of-bounds (visible small shards growing at the waist)
+                                                                            shots/f35item4_diag_soldier_stretcher.png
+three_band:         674 frame bricks, 144 out-of-bounds, max overshoot 3.90in (!) on X, 0 on Y
+                                                                            shots/f35item4_diag_three_band.png
+```
+The artifact is absent (by this bbox measure) at 1 band, small-but-visible as tiny wedge shards at 2
+bands, and total chaos at 3 bands with bricks overshooting the board edge by up to 3.9in of the
+board's own 7in width. It scales with CUMULATIVE band depth, concentrates exactly at the concave
+waist, and reproduces identically with zero other canvas content -- this rules out (1) adapter
+board-inches/closed-loop/offset-direction bugs (the adapter's own `resolveFrameGeom`/
+`primitivesToPolyline` output was pulled directly and is a single correctly-closed, correctly-wound
+polyline at every preset depth; only the DEPTH passed to `bricksContourBands` changes between runs)
+and (2) leftover test-session elements (ruled out by the clean-doc repro). This is **(3): a genuine
+`core/bricks` `bricksContourBands` engine limitation** in its own multi-band inward-offset loop, on a
+concave contour, once the cumulative offset grows large relative to the waist's local curvature. (Fit
+the waist's own circular arc from the real extracted contour: radius ~1.30in -- the three_band
+preset's own cumulative depth of 2.1in exceeds it; single_soldier's 0.75in does not, matching the
+measured scaling exactly.) This reads as a DIFFERENT, deeper case of the same family of issue behind
+the concave "sunburst" f3 already fixed in item 74 -- that fix evidently holds for a single shallow
+offset but not for `bricksContourBands`'s own repeated re-offsetting of an already-offset curve
+across multiple bands.
+
+Sent f3 the exact reproduction input (the real extracted `sil`-derived contour polyline + corner
+indices for template_1 at 7x9, and the three FRAME_PRESETS band arrays) directly via SendMessage, so
+they can run `bricksContourBands` standalone without going through the editor at all.
+
+**Status: item 4's `three_band`/multi-band Frame output is NOT ready to deploy** -- matches the
+advisor's own hold. `single_soldier` (the DEFAULT preset) is clean by this same measurement and safe
+to deploy on its own; `soldier_stretcher`/`three_band` should stay blocked until f3 lands a fix.
+Flagging this distinction explicitly rather than blocking the whole Frame tool, since the default
+single-band case is the one most users will actually hit first.
