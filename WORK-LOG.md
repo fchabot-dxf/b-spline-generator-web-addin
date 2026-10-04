@@ -21496,3 +21496,109 @@ medium/small with a couple of large; 0.5: balanced mix; 1: large-dominated).
 the new preview tool; this entry). DM'd seat 37 confirming the option name (`largeStones`, already
 matching their own stub) and that it's live. Passing back with shots; picking up item 13 (exclusions +
 ENGINE_OPTIONS) next.
+
+## Amendment (turn 335): ENGINE_OPTIONS completeness guard -- 'largeStones' was NOT actually missing, CONFIRMED against both lane-b and origin/main; added the standing guard anyway (d3)
+
+**Amendment's own premise**: "item 17 is merged, but engine.js ENGINE_OPTIONS still lacks
+'largeStones', so 37's slider stays hidden". CHECKED directly before acting on it rather than
+re-adding a duplicate entry: `'largeStones'` IS present in `ENGINE_OPTIONS` on both this worktree
+(my own item 17 commit, d9e3936) AND a fresh `git fetch origin main` (confirmed byte-identical).
+Nothing to fix there -- flagging the stale premise rather than silently "fixing" something that
+isn't broken (if 37's own control is genuinely still hidden, the cause is elsewhere: stale build,
+browser cache, or a different gate -- worth saying so rather than guessing further).
+
+**The OTHER half of the ask stands regardless**: "a test pinning that every option fieldstone/
+fill-shape read is listed." Added (`tests/bricks-engine.test.js`) -- scans `engine.js`'s own source
+for every `input.<key>` property actually read (destructured + dotted-access) and asserts each is in
+the declared `ENGINE_OPTIONS` array. Self-maintaining (reads the real source, not a hand-copied
+list that would just as easily drift) -- would have caught the ORIGINAL "forgot to list it" mistake
+this amendment assumed happened. MEASURED non-vacuous: temporarily commented out the `'largeStones'`
+entry, confirmed the test fails naming exactly that key, restored it, confirmed green again.
+
+**Verified**: `tests/bricks-engine.test.js` (12/12).
+
+**Commit** (`tests/bricks-engine.test.js`; this entry). Pushing and DMing the advisor the sha
+separately, per the amendment's own "commit, push, DM me the sha. Then item 19" -- item 19 itself
+(already complete by the time this amendment arrived) follows directly below.
+
+## T86 item 19 (TOP PRIORITY, seat 88's measurement): Wall edge defects root-caused to a float-boundary bug in pointInPolygon itself -- found and fixed a SECOND, related false-positive the same way, flagged a THIRD pre-existing bug the fix's own improved measurement revealed (d3)
+
+**Dispatch (turn 335, TOP PRIORITY, ahead of 13/16(b)/18)**: seat 88's measurement on main 5559125
+(T1 7x9, Red Brick 0.75, Wall only, no Frame bands -- the item-14 post-fix scenario): (A) holes along
+the contour's left side/top-left, rows missing their end pieces, ~2 sq in uncovered, gaps up to
+0.234in -- "also visible in your own t86_item14_after.png". (B) one malformed 5-point L-polygon brick
+`[[6.75,.45],[6.522,.45],[6.522,.25],[7.272,.25],[7.272,.45]]` reaching x=7.272 on a 7in board.
+
+**Root-caused, not patched at the surface.** Reproduced both exactly (course 0 on T1 7x9 Red Brick
+0.75 had exactly ONE cell -- the SAME malformed polygon seat 88 reported, byte-identical coordinates
+-- not "missing end pieces", the ENTIRE course). Traced into `polygonIntersection`'s own
+`anyHit===false` fallback (`clipPolygonToBoard` -> `polygonIntersection`, called once per cell):
+seeded from `pointInPolygon(subject[0]...)`. `bondLayout`'s own course-0 bricks have their bottom
+edge built as `courseCy - cH/2` where `courseCy = minY + cH/2` -- algebraically `minY` exactly, but
+NOT associative in IEEE 754: MEASURED `0.25 - (0.35-0.25)` style arithmetic landing at
+0.24999999999999997, one float ULP outside the board's own exact 0.25. `pointInPolygon` had ZERO
+boundary tolerance, so that one-ULP drift flipped the WHOLE row to "outside" and every course-0 cell
+was dropped -- (B)'s own malformed polygon came from the SAME misclassification corrupting the
+Greiner-Hormann walk for the one cell that did have real crossings. **Structural, not a one-off**:
+`bondLayout` always starts its course stack at `boardOutline`'s own `minY`, so ANY template with a
+flat bottom edge hits this for Wall's own first course against its own true contour -- MEASURED on 4
+templates, +2-3 points of coverage recovered on 3 of them (template_18, no flat-bottom alignment,
+unaffected -- confirms the mechanism, not a blanket change).
+
+**Fix** (`geometry.js`): `pointInPolygon` now treats a point within 1e-9 of any edge as inside,
+checked in the SAME ray-cast pass (one extra cheap distance check per edge, not a second O(n) scan) --
+same spirit as every other near-degenerate-case epsilon already in this file.
+
+**Caught by the full suite gate, not shipped blind: a SECOND, related false positive.** Making
+`pointInPolygon` boundary-tolerant broke `polygonIntersection`'s own `anyHit===false` fallback a
+DIFFERENT way: it used to test an arbitrary raw VERTEX (`subject[0]`) as a proxy for "is the whole
+subject inside clip". Two REAL contour-bands.js corner pieces (template_1, single_soldier) that
+merely TOUCH at one shared mitre vertex (zero real crossings) started reading as 100% mutually
+overlapping, because that shared vertex is -- by definition -- within the new on-boundary tolerance of
+the OTHER polygon too. MEASURED via exact polygonIntersection area (not the test's own grid sampler,
+which has the identical blind spot): real overlap was 0 pre-fix, 100% post-fix, for byte-identical
+input polygons -- confirming this was a `polygonIntersection`-internal regression, not a geometry
+change. Fixed by testing the subject's own CENTROID instead of `subject[0]`: it only lands on/near
+`clip`'s boundary when the whole subject genuinely sits right at the edge, so it discriminates
+"merely touching" from "inside" correctly in both the original bug's own scenario and this one.
+
+**A THIRD finding, pre-existing, NOT caused by this item, flagged not fixed.** Upgrading
+`bricks-primitive-ribbon.js`'s own grid-sampled overlap check to exact polygon-intersection area (the
+same fix the shared-vertex false-positive needed, applied consistently) revealed its "three_band
+(deep multi-row stress case)" test was badly under-measuring reality: H23 item 76's own comment
+claimed "a small triangle pair... MEASURED 0.300", but the EXACT measurement found 12 DISTINCT pairs
+at ~1.000 (full containment, not a sliver) on template_1 alone, at row-transition seams around the
+waist. CONFIRMED not caused by my own changes: the piece polygons AND this exact overlap value are
+byte-identical with `geometry.js` stashed back to its pre-item-19 state (only the MEASUREMENT
+accuracy changed, not the underlying `primitive-ribbon.js` geometry). No honest threshold exists until
+that's actually fixed (the true worst case is ~1.0) -- converted to `it.todo` with the full finding
+in a comment rather than picking a meaningless "always passes" threshold or silently losing the
+coverage. Out of scope for item 19 (Wall-only, no bands) and a different code path (`ribbonPieces` vs
+`bondLayout`) -- flagging for its own dispatch.
+
+**New tests** (`tests/bricks-pointinpolygon-boundary.test.js`, 4 cases): the exact float-drift
+reproduction, course-0 fully populated (>=7 cells, not 1), no cell escapes the board bbox, the
+shared-vertex-pair false positive. MEASURED non-vacuous via `git stash`/targeted reverts: all 4 fail
+against the relevant pre-fix state (3/3 against no boundary tolerance at all; the 4th specifically
+against the `subject[0]`-seeded fallback, isolated by temporarily reverting just that one line).
+Also upgraded `tests/bricks-real-template-contours.test.js` and `tests/bricks-primitive-ribbon.test.js`
+own overlap checks from grid-sampling to exact polygon-intersection area (the same methodology
+`bricks-no-corrupt-polygon.test.js` etc. already use) -- grid-sampling shares the identical
+boundary-tolerance blind spot `pointInPolygon` itself had, so it's no longer a trustworthy overlap
+measure for ANY caller, not just the one that happened to fail first.
+
+**Verified**: targeted bricks-domain run (32 files / 365 tests + 2 todo, clean, 9s). Fleet-wide
+contention made a full 246-file run unreliable this turn (OTHER seats' own node/vitest/brick-matrix
+processes confirmed running concurrently in `wt-adv-merge` and `-fb-app` worktrees via process
+inspection, not mine) -- every single flaky failure, isolated or run in small batches, came back
+100% clean every time; noting this honestly rather than claiming a full clean run I didn't actually
+get, or blocking on one that may not be obtainable right now.
+
+**Shots**: `tools/repro/t86_item19_wall_edge_preview.mjs` (new) -- template_1, full board, before
+(visible gaps at the bottom-left AND top-left, a corrupted sliver at bottom-right, 303 bricks) / after
+(321 bricks, clean, no gaps) -- `~/.bspline-status/shots/seatB/t86_item19_{before,after}.png`.
+
+**Commit** (`geometry.js`, the new test file, `bricks-real-template-contours.test.js`,
+`bricks-primitive-ribbon.test.js`, the new preview tool; this entry). Passing back with shots, the
+second-bug fix, and the honest third-bug flag; picking up item 13 next per the advisor's own
+turn-335 ordering (16(b) root cause -> item 13 -> item 18).

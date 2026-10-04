@@ -26,7 +26,7 @@ import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-de
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
-import { pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { pointInPolygon, polygonIntersection, signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { bondLayout } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/layouts/bond.js';
@@ -96,7 +96,7 @@ describe('bricksContourBands on REAL template geometry (H23 item 74, convex + co
       }
     });
 
-    it(`${name}: no two bricks substantially overlap (grid-sampled, cell-centre)`, () => {
+    it(`${name}: no two bricks substantially overlap (exact polygon-intersection area)`, () => {
       const { primitives } = realContour(templateId, W, H);
       const { bricks } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
       const bbox = (poly) => {
@@ -104,35 +104,32 @@ describe('bricksContourBands on REAL template geometry (H23 item 74, convex + co
         return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
       };
       const boxes = bricks.map((b) => bbox(b.polygon));
-      const GRID = 10;
-      const overlapFraction = (subject, other) => {
-        const { minX, maxX, minY, maxY } = bbox(subject);
-        let inSubject = 0, inBoth = 0;
-        for (let i = 0; i < GRID; i++) {
-          for (let j = 0; j < GRID; j++) {
-            const x = minX + (maxX - minX) * (i + 0.5) / GRID, y = minY + (maxY - minY) * (j + 0.5) / GRID;
-            if (!pointInPolygon(x, y, subject)) continue;
-            inSubject++;
-            if (pointInPolygon(x, y, other)) inBoth++;
-          }
-        }
-        return inSubject ? inBoth / inSubject : 0;
-      };
-      let worst = 0;
+      // T86 item 19 follow-up: this used to grid-sample with `pointInPolygon` (10x10 cell-centre
+      // samples per brick) -- MEASURED to false-positive on two pieces that merely TOUCH at a shared
+      // mitre vertex (zero real area overlap) once `pointInPolygon` itself learned to treat an
+      // on-boundary point as inside (T86 item 19's own fix, needed for a real bondLayout bug). Exact
+      // polygon-intersection AREA is immune to that -- the same methodology every other overlap
+      // check in this codebase already uses (bricks-no-corrupt-polygon.test.js etc.), and the one
+      // that caught the genuine item-19-adjacent regression this grid sampler couldn't tell apart
+      // from a false positive.
+      let worst = 0, worstPair = '';
       for (let i = 0; i < bricks.length; i++) {
         for (let j = i + 1; j < bricks.length; j++) {
           const A = boxes[i], B = boxes[j];
           if (A.maxX < B.minX - 1e-6 || B.maxX < A.minX - 1e-6 || A.maxY < B.minY - 1e-6 || B.maxY < A.minY - 1e-6) continue;
-          worst = Math.max(worst, overlapFraction(bricks[i].polygon, bricks[j].polygon));
+          const inter = polygonIntersection(bricks[i].polygon, bricks[j].polygon);
+          if (inter.length < 3) continue;
+          const interArea = Math.abs(signedArea(inter));
+          const smaller = Math.min(Math.abs(signedArea(bricks[i].polygon)), Math.abs(signedArea(bricks[j].polygon)));
+          const frac = smaller > 0 ? interArea / smaller : 0;
+          if (frac > worst) { worst = frac; worstPair = `${bricks[i].id}/${bricks[j].id}`; }
         }
       }
       // A KNOWN, bounded residual (same root cause documented in bricks-contour-bands.test.js's own
       // "no void near a corner" test): independent per-piece half-plane clipping doesn't always
-      // perfectly coordinate with a neighbour's OWN additional corner-reach clip on a tight curve --
-      // MEASURED up to ~10% on T12's own waist (a small triangle pair), vs the ORIGINAL pre-fix bug's
-      // own 30-80% on this exact kind of check. 0.15 catches a real regression by 2-5x while not
-      // flagging this already-understood, visually-confirmed-small imperfection (see WORK-LOG).
-      expect(worst, 'worst pairwise overlap fraction').toBeLessThan(0.15);
+      // perfectly coordinate with a neighbour's OWN additional corner-reach clip on a tight curve.
+      // 0.15 catches a real regression while not flagging this already-understood, small imperfection.
+      expect(worst, `worst pairwise overlap fraction (${worstPair})`).toBeLessThan(0.15);
     });
 
     it(`${name}: no gap between consecutive bricks is wider than the set's own grout width`, () => {

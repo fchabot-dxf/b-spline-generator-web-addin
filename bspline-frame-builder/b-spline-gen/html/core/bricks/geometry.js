@@ -4,12 +4,41 @@
  * every layout + the frame placer.
  */
 
+const ON_EDGE_EPS_SQ = 1e-18; // (1e-9 in)^2 -- see pointInPolygon's own header for why this exists
+
+/** Squared distance from `(x,y)` to the SEGMENT `a`-`b` (clamped projection, not the infinite line). */
+function distSqToSegment(x, y, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1e-18) { const ex = x - a.x, ey = y - a.y; return ex * ex + ey * ey; }
+  let t = ((x - a.x) * dx + (y - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const ex = x - (a.x + t * dx), ey = y - (a.y + t * dy);
+  return ex * ex + ey * ey;
+}
+
 /** Standard ray-casting point-in-polygon (works for convex AND concave simple polygons -- board
- *  outlines in this app include concave shapes, e.g. an hourglass waist). */
+ *  outlines in this app include concave shapes, e.g. an hourglass waist).
+ *
+ *  T86 item 19 (seat 88's measurement, T1 7x9 Wall-only): a point BUILT to land exactly on a
+ *  polygon edge can drift by a float ULP to either side of it -- MEASURED: `bondLayout`'s own
+ *  course-0 bricks (bottom edge built as `minY + cH/2 - cH/2`, algebraically `minY` but not
+ *  associative in IEEE 754) landed at 0.24999999999999997 against the board's own exact 0.25,
+ *  JUST outside. The ray-cast below has zero boundary tolerance, so that one-ULP drift flipped the
+ *  WHOLE row to "outside", not "inside", and every course-0 cell in it was silently dropped --
+ *  structural, not a one-off: `bondLayout` always starts its course stack at `boardOutline`'s own
+ *  `minY`, so ANY template with a flat bottom edge hits this for Wall's own first course. Fixed by
+ *  treating "within a tiny absolute distance of an edge" as inside, same spirit as every other
+ *  near-degenerate case this file already guards with a small epsilon (segmentIntersection's own
+ *  1e-9, clipToHalfPlane's own tolerances) -- checked in the SAME pass as the ray-cast, not a
+ *  separate O(n) scan, so a typical (clearly inside/outside) call pays only one cheap extra
+ *  distance check per edge, not a second full loop. */
 export function pointInPolygon(x, y, polygon) {
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].x, yi = polygon[i].y, xj = polygon[j].x, yj = polygon[j].y;
+    const pi = polygon[i], pj = polygon[j];
+    if (distSqToSegment(x, y, pj, pi) <= ON_EDGE_EPS_SQ) return true;
+    const xi = pi.x, yi = pi.y, xj = pj.x, yj = pj.y;
     const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
     if (intersect) inside = !inside;
   }
@@ -269,7 +298,17 @@ export function polygonIntersection(subject, clip) {
     }
   }
   if (!anyHit) {
-    return pointInPolygon(subject[0].x, subject[0].y, clip) ? subject.slice() : [];
+    // T86 item 19 follow-up (MEASURED: two real contour-bands.js corner pieces, sharing exactly one
+    // VERTEX and nothing else, started reading as 100% overlapping): testing `subject[0]` -- an
+    // arbitrary raw VERTEX -- stopped being a safe proxy for "is the whole subject inside clip" the
+    // moment `pointInPolygon` itself (above) learned to treat an on-boundary point as inside (needed
+    // for the ORIGINAL item 19 bug, a brick whose edge coincides with the board's own edge by float
+    // drift). Two polygons that merely TOUCH at a shared vertex/edge (zero real crossings, same as a
+    // genuinely nested pair) now both hit the SAME `anyHit=false` branch, but only one of them
+    // should read as "inside". The CENTROID isn't on the boundary unless the whole subject
+    // genuinely sits right at the edge, so it keeps discriminating correctly in both cases.
+    const c = polygonCentroid(subject);
+    return pointInPolygon(c.x, c.y, clip) ? subject.slice() : [];
   }
   for (const list of onSubject) list.sort((p, q) => p.t - q.t);
   for (const list of onClip) list.sort((p, q) => p.t - q.t);
