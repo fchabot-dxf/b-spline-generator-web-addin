@@ -18,7 +18,7 @@
  * `window.svgEditor` fresh at the point of use instead of caching it.
  */
 import { P, saveLastSession } from '../core/state.js';
-import { runBricks, primitivesToPolyline } from '../editor/editor-brick-tool.js';
+import { runBricks, primitivesToPolyline, buildArcSegments, resolvedSetFor } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, brickSetById } from '../core/bricks/library.js';
@@ -69,6 +69,7 @@ function selectSet(setId) {
   if (!set) return;
   P.brickSettings.setId = setId;
   P.brickSettings.grout.widthIn = set.grout.widthIn;
+  P.brickSettings.frameBrickLengthIn = set.brickLengthIn;
   syncSetPicker();
   syncControlsFromState();
   notifyChange();
@@ -116,6 +117,7 @@ function syncControlsFromState() {
   setPair('brickSuppressionSlider', 'brickSuppression', s.suppression);
   setPair('brickClumpingSlider', 'brickClumping', s.clumping);
   document.getElementById('brickSeed').value = s.seed;
+  setPair('brickFrameLengthSlider', 'brickFrameLength', s.frameBrickLengthIn);
 }
 
 function bindSlider(sliderId, numberId, key, parse = parseFloat) {
@@ -270,7 +272,35 @@ function resolveFrameGeom(editor) {
   if (sil.error) return null;
   const { points, cornerIndices } = primitivesToPolyline(sil.primitives, sil.corners);
   const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
-  return { path: points, cornerIndices, bands };
+  // H23 item 76 / F35 item 4 correction: TRUE circular arcs (the waist, shoulder
+  // fillets, ...) declared from the real primitive data, so bricksContourBands
+  // builds them as exact voussoirs instead of falling back to its pre-item-76
+  // corner-mitre approximation -- see buildArcSegments' own header for why.
+  const arcSegments = buildArcSegments(sil.primitives, points);
+  return { path: points, cornerIndices, bands, arcSegments, set: resolveFrameBrickSet() };
+}
+
+/** F35 item 5 review (Fred, via advisor correction): "frame thickness" = the
+ *  LENGTH of the bricks across a Frame band (a soldier band's own width IS
+ *  the brick length) -- a per-frame brick-length OVERRIDE, not a band-width
+ *  scaler. `brickHeightIn` is recomputed to keep the set's own declared
+ *  aspect ratio, so the brick's own proportions never distort. Returns the
+ *  base set UNCHANGED when the override equals its own declared length (the
+ *  default, reset on every set switch -- selectSet above) so every OTHER
+ *  caller of this set (Wall's own interior fill, via generateBricks' own
+ *  top-level `input.set`) is completely unaffected -- this is carried
+ *  separately as frameGeom's own `set`, generateBricks' optional
+ *  `frame.set` override. */
+function resolveFrameBrickSet() {
+  // resolvedSetFor (editor-brick-tool.js), NOT a raw brickSetById -- so this
+  // starts from the SAME grout-width-overridden set Wall/Brush already use
+  // (runBricks' own `input.set`), rather than silently dropping the user's
+  // current grout-width slider value for Frame bricks specifically.
+  const base = resolvedSetFor(P.brickSettings);
+  const overrideLength = P.brickSettings.frameBrickLengthIn;
+  if (!overrideLength || overrideLength === base.brickLengthIn) return base;
+  const aspect = base.brickHeightIn / base.brickLengthIn;
+  return { ...base, brickLengthIn: overrideLength, brickHeightIn: overrideLength * aspect };
 }
 
 // Advisor review (turn 131, round 2): a grout groove needs the terrain's own
@@ -314,6 +344,7 @@ export function initBrickPanel() {
   bindSlider('brickReliefHeightSlider', 'brickReliefHeight', 'reliefIn');
   bindSlider('brickSuppressionSlider', 'brickSuppression', 'suppression');
   bindSlider('brickClumpingSlider', 'brickClumping', 'clumping');
+  bindSlider('brickFrameLengthSlider', 'brickFrameLength', 'frameBrickLengthIn');
   document.getElementById('brickSeed')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10);
     if (!Number.isFinite(v)) return;

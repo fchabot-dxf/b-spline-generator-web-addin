@@ -57,6 +57,8 @@ import { STRIPE_ATTR } from './editor-stripe-tool.js';
 import { bricksAlongPath, generateBricks } from '../core/bricks/index.js';
 import { brickSetById } from '../core/bricks/library.js';
 import { brickFillPaint } from './editor-brick-surface.js';
+import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
+import { radialSignAt } from '../core/bricks/arc-voussoir.js';
 
 export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-spine'
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
@@ -195,9 +197,21 @@ function boardPolygon(editor) {
   return [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
 }
 
+/** The set the user's CURRENT settings actually resolve to: the library's own
+ *  declared entry (setForId) with the grout WIDTH override applied (the one
+ *  field every tool's own settings panel lets the user override directly).
+ *  Exported so main/brick-panel.js's own Frame-brick-length override (F35
+ *  item 5 review) can start from the SAME resolved set Wall/Brush already
+ *  use, instead of a second, independent `brickSetById` call that would
+ *  silently drop the user's own current grout-width override. */
+export function resolvedSetFor(settings) {
+  const base = setForId(settings.setId);
+  return { ...base, grout: { ...base.grout, widthIn: settings.grout.widthIn } };
+}
+
 function toBrickOpts(settings) {
   return {
-    set: { ...setForId(settings.setId), grout: { ...setForId(settings.setId).grout, widthIn: settings.grout.widthIn } },
+    set: resolvedSetFor(settings),
     scale: settings.scale,
     suppression: settings.suppression,
     clumping: settings.clumping,
@@ -223,18 +237,21 @@ function setForId(id) {
  *  separate calls means Wall is ALWAYS clipped to whatever the frame's true
  *  interior is (when a frame resolves), with no overlap, regardless of
  *  which button the user clicked. `frameGeom` is `{path, cornerIndices,
- *  bands}` or null/undefined (no usable frame -- Wall alone fills the whole
- *  board, same as before Frame existed). */
+ *  bands, arcSegments, set}` or null/undefined (no usable frame -- Wall
+ *  alone fills the whole board, same as before Frame existed); its own
+ *  `set` (main/brick-panel.js's resolveFrameBrickSet, F35 item 5 review) is
+ *  a Frame-ONLY brick-length override, passed through generateBricks' own
+ *  optional `frame.set` -- the `set` built here stays what Wall's own
+ *  interior fill always used. */
 export function runBricks(editor, settings, frameGeom) {
   const layer = ensureBricksLayer(editor);
   clearGenerated(editor, layer, 'wall');
   clearGenerated(editor, layer, 'frame');
   applyBrickLayerTooling(layer, settings);
 
-  const set = { ...setForId(settings.setId), grout: { ...setForId(settings.setId).grout, widthIn: settings.grout.widthIn } };
   const input = {
     boardOutline: boardPolygon(editor),
-    set,
+    set: resolvedSetFor(settings),
     scale: settings.scale,
     suppression: settings.suppression,
     clumping: settings.clumping,
@@ -312,6 +329,46 @@ export function primitivesToPolyline(primitives, corners) {
   });
   const cornerIndices = points.length ? rawCornerIndices.map((idx) => idx % points.length) : [];
   return { points, cornerIndices };
+}
+
+/** F35 item 4 correction (H23 item 76): the declared `arcSegments`
+ *  `bricksContourBands`/`bricksAlongPath` need for TRUE circular-arc brick
+ *  construction (arc-voussoir.js) -- one per 'A' primitive, with centre/
+ *  radius/angle read DIRECTLY off the real frame primitive data (never
+ *  re-fitted from the tessellated polyline) and `radialSign` from the
+ *  tessellated path's own local tangent plus the path's GLOBAL inward sign
+ *  (`radialSignAt` -- the exact function the advisor's review fixed after the
+ *  first version conflated per-arc convex/concave with the path's own global
+ *  inward direction; reused verbatim here rather than re-derived, the same
+ *  bug class). Ported from tests/bricks-real-template-contours.test.js's own
+ *  `buildArcSegments` (f3's own reference implementation, written specifically
+ *  so this adapter could port it verbatim -- "this is what the real Brick-tab
+ *  adapter would also need to build... not yet done there"). Without this,
+ *  bricksContourBands falls back to its pre-H23-item-76 corner-mitre path,
+ *  which is the multi-band concave-offset bug the advisor caught in item 4. */
+export function buildArcSegments(primitives, points) {
+  const closedPts = points.concat([points[0]]);
+  const cum = cumulativeLengths(closedPts);
+  const inwardSign = inwardSignFor(points); // ONE global fact about the whole path, not per-arc
+  const segments = [];
+  let offset = 0;
+  for (const prim of primitives || []) {
+    const nPts = prim.type === 'A' ? ARC_STEPS : 1;
+    if (prim.type === 'A') {
+      const startIndex = offset;
+      const endIndex = offset + nPts; // may equal points.length (wraparound), valid for cum[]
+      const theta1 = prim.theta1, theta2 = prim.theta1 + prim.dTheta;
+      const sMid = cum[startIndex] + 0.01;
+      const a = pointAtArcLength(closedPts, cum, sMid - 0.005, true);
+      const b = pointAtArcLength(closedPts, cum, sMid + 0.005, true);
+      const tx = b.x - a.x, ty = b.y - a.y, tl = Math.hypot(tx, ty) || 1;
+      const mid = pointAtArcLength(closedPts, cum, sMid, true);
+      const radialSign = radialSignAt({ tx: tx / tl, ty: ty / tl }, mid.x, mid.y, prim.cx, prim.cy, inwardSign);
+      segments.push({ startIndex, endIndex, cx: prim.cx, cy: prim.cy, r: prim.rx, theta1, theta2, radialSign });
+    }
+    offset += nPts;
+  }
+  return segments;
 }
 
 /** The Brush tool's mode handler (editor._currentMode === 'brickBrush'):

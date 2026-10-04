@@ -9588,3 +9588,101 @@ crop+grid) -- they will not pixel-align exactly, acceptable for a subtle bump te
 meant to register as flat-shaded colour.
 
 Commit, push, pass back.
+
+### F35 item 5 review (advisor): arcSegments adapter wiring, red-brick surface tuning, Frame Brick Length
+
+Advisor merged item 5 (b7c610f) and dispatched three follow-ups in one message: (1) build the
+arcSegments adapter wiring NOW (f3's H23 item 76 fix landed on main but the live app couldn't see it
+yet), (2) red brick's surface detail reads too strong ("spiky bark, grout barely shows") -- lower
+surfaceShare and blur the detail, (3) a NEW Frame Brick Length control (corrected mid-dispatch by
+Fred via the advisor: this is a per-frame BRICK LENGTH override, not a proportional band-width
+scaler).
+
+**(1) arcSegments wiring -- DONE, and this is what actually closes out the item-4 correction.**
+Merged origin/main first (fast-forward, b7c610f -- f3's H23 item 76: arc-voussoir.js's true-circle
+brick construction + the radialSignAt sign fix). f3's own `tests/bricks-real-template-contours.test.js`
+already had a reference `buildArcSegments(primitives, points)` helper written specifically so this
+adapter could port it verbatim ("this is what the real Brick-tab adapter would also need to build...
+not yet done there") -- ported it into editor-brick-tool.js almost unchanged (same
+cumulativeLengths/pointAtArcLength/inwardSignFor/radialSignAt imports, same startIndex/endIndex/cx/cy/
+r/theta1/theta2/radialSign shape bricksContourBands' own JSDoc declares). `resolveFrameGeom` (main/
+brick-panel.js) now calls it and includes `arcSegments` in the returned frameGeom; `generateBricks`
+(engine.js) got one additive line passing `frame.arcSegments` through to its own `bricksContourBands`
+call (every existing caller omits it, defaults to `[]`, zero behavior change for them).
+
+MEASURED, not assumed: re-ran the SAME band-depth diagnostic from the item-4 correction above
+(single_soldier/soldier_stretcher/three_band on a clean template_1 document) --
+```
+single_soldier:     106 frame bricks, 0 out-of-bounds   (was 112/0 -- comparable, true arcs now)
+soldier_stretcher:  140 frame bricks, 0 out-of-bounds   (was 150/0)
+three_band:         302 frame bricks, 0 out-of-bounds   (was 674/144, max overshoot 3.9in!)
+```
+`three_band` -- the exact broken case from the correction -- is now clean. `shots/seatC/
+f35item4_diag_three_band.png` (re-shot post-fix, looked at full before calling it done): true
+concentric circular-arc courses around the waist, no spillage, no self-intersecting chaos. Small
+wedge-shaped GAPS remain near the convex shoulder fillets at the deepest course -- NOT a new bug:
+arc-voussoir.js's own `isArcFeasible` deliberately skips a band row when the fillet's true radius
+(~0.62in on T1/T12) can't fit that row's own depth, an honest gap rather than garbage geometry, and
+f3's own code comments say collapsing that into a mitred join was attempted and reverted THIS SAME
+turn (a different regression). Not this adapter's bug to fix, and not silently claimed fixed.
+
+**(2) Red brick surface tuning -- done, numerically verified, with an honest caveat.** Lowered Set
+1's `heightProfile.surfaceShare` 0.3 -> 0.12 (library.js) and added a LIGHT box-blur (radius 1) on
+the high-pass detail signal itself in editor-brick-surface.js's `computeDetailGrid` (separate from
+the heavy de-lighting blur) -- softens single-cell spikes per the advisor's own "blur the de-lit
+sample slightly" wording. Verified the amplitude change took effect in the REAL running code, not
+just the edited file: `brickTopHeight` with a synthetic max-detail (+1) callback now adds only
+0.015in (reliefIn x 0.12) vs what would have been 0.0375in at the old 0.3 -- confirmed via direct
+import, not inferred. HONEST CAVEAT: re-shot `f35item5_01_red_3d_closeup.png` and it still reads
+fairly rough/textured. Isolated why (same mutation-test technique as the correction above): set
+surfaceShare to 0 and re-rendered -- STILL similarly rough, confirming (again, now with the lower
+default too) that the dominant "spiky" contributor is f3's own declared shoulder/crown geometry
+(edgeRadiusIn=0.035, crown=0.12 -- H23 item 73(c), referenced against Fred's own
+brick_3d_compare.png), not the photo-detail layer, which is now a quite small +-0.015in wobble on
+top. Did exactly what was asked (surfaceShare + blur, both verified); flagging rather than silently
+implying this alone fully answers "grout barely shows" -- if the look still needs to change further,
+the shoulder/crown VALUES themselves are the lever, not this item's own surfaceShare knob.
+
+**(3) Frame Brick Length -- NEW feature, built to the advisor's corrected spec, not the original
+dispatch wording.** Fred's correction: "frame thickness" = the LENGTH of the bricks across a frame
+band (a soldier band's own width IS the brick length; stretcher: width = brick height, length along
+the path) -- a per-frame BRICK LENGTH override (0.5-1.5in), brick height following the set's own
+aspect, NOT a proportional band-width scaler.
+- `P.brickSettings.frameBrickLengthIn` (core/state.js): starts at Set 1's own declared 0.75in (same
+  "real number on first use" convention as grout/reliefIn); `selectSet` resets it to the newly-picked
+  set's own `brickLengthIn` on every switch, same pattern as the existing grout-width reset.
+- New slider+stepper in the Brick tab's Frame section (`brickFrameLengthSlider`/`brickFrameLength`,
+  0.5-1.5in, step 0.05), bound the same way every other brick slider is.
+- `main/brick-panel.js`'s new `resolveFrameBrickSet()`: starts from `resolvedSetFor(P.brickSettings)`
+  (a function newly EXPORTED from editor-brick-tool.js, replacing two pre-existing, independently-
+  hand-rolled copies of the exact same "set + grout-width-override" construction in that file's own
+  `toBrickOpts`/`runBricks` -- found this duplication while wiring the override through and fixed it
+  as part of the same change, not separately: using a bare `brickSetById` here instead would have
+  silently dropped the user's own current grout-width slider value for Frame bricks only, a new,
+  easy-to-miss inconsistency). When the override differs from the base set's own `brickLengthIn`,
+  returns a copy with `brickLengthIn` overridden and `brickHeightIn` recomputed to preserve the SAME
+  aspect ratio -- otherwise returns the base set unchanged (byte-identical to today whenever the
+  slider sits at its own reset default, which is the common case).
+- `generateBricks` (engine.js): one additive `frame.set || set` line -- an optional Frame-ONLY
+  override, Wall's own `bricksFillShape` call keeps using the top-level `set` always. Every existing
+  caller (nothing ever passed `frame.set` before) is unaffected.
+
+MEASURED live (template_1, single_soldier, clean doc), not assumed -- ran Frame at 0.75 (default), 0.5
+(short), 1.3 (long), reading each brick's own live bbox area back, not inferred from the code:
+```
+length=0.75 (default): frame median area 0.150  == wall median area 0.150  (byte-identical, no override)
+length=0.5  (short):    frame median area 0.0667 (0.5 x 0.2*0.5/0.75=0.1333, aspect-correct), wall STILL 0.150
+length=1.3  (long):     frame median area 0.4507 (1.3 x 0.2*1.3/0.75=0.3467, aspect-correct), wall STILL 0.150
+```
+Wall's own median area never moved -- confirms the override is genuinely Frame-only. Brick COUNT
+shifted (296 bricks at 0.5in vs 68 at 1.3in) -- confirms "courses/fit adjusts", never a stretched
+brick. 0 out-of-bounds at every length tested. `shots/seatC/f35item5_framelen_{00_default_075,
+01_short_050,02_long_130}.png` -- the long-length shot visibly shows a noticeably thicker, longer-
+coursed Frame band against an unchanged interior Wall coursing.
+
+Full suite green: 197 files / 3617 tests (+1 file/+12 tests from the origin/main merge; no new tests
+this round -- (1) is covered by f3's own already-landed arc-voussoir tests plus the live diagnostic
+above, (2)/(3) are DOM/numeric-readback verified live, same precedent as the rest of this module).
+
+Replied to f3 confirming the adapter now sees their fix end-to-end (0/144 out-of-bounds on the exact
+case they fixed). Commit, push, pass back.
