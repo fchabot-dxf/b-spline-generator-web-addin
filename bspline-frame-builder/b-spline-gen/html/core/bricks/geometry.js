@@ -251,7 +251,7 @@ function segmentIntersection(p1, p2, p3, p4) {
  * already treats this function's own return as ONE polygon). No crossings at all means `subject` is
  * either entirely inside `clip` (returned as-is) or entirely outside (empty).
  */
-function polygonIntersection(subject, clip) {
+export function polygonIntersection(subject, clip) {
   const n = subject.length, m = clip.length;
   if (n < 3 || m < 3) return [];
   const onSubject = subject.map(() => []);

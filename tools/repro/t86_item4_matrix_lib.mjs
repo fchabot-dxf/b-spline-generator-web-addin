@@ -6,7 +6,7 @@
 import { inwardSignFor, pointInPolygon } from '../../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { radialSignAt } from '../../bspline-frame-builder/b-spline-gen/html/core/bricks/arc-voussoir.js';
 import { bricksContourBands } from '../../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
-import { BRICK_PATTERNS } from '../../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { BRICK_PATTERNS, scaledSet } from '../../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { axisLen, courseHeightFor } from '../../bspline-frame-builder/b-spline-gen/html/core/bricks/layouts/bond.js';
 
 export function tessellate(primitives, steps = 24) {
@@ -170,7 +170,15 @@ function distToPolygon(pt, poly) {
  *  recovers each band's own true piece count -- used to slice the REAL combined-bands piece array by
  *  band without re-deriving `bricksContourBands`'s own internal loop. */
 function bandInfo(primitives, bands, opts) {
-  const L = opts.set.brickLengthIn, H = opts.set.brickHeightIn;
+  // T86 item 11: a real BUG in this matrix's own ratio check, not in the engine -- `opts.set`'s own
+  // declared brickLengthIn/brickHeightIn are the UNSCALED base values; `bricksContourBands` (called
+  // right below, same `opts`) applies `scaledSet(opts.set, opts.scale)` internally before building a
+  // single piece, so every REAL piece is already correctly scaled -- this nominal reference wasn't,
+  // comparing a scale^2-sized real piece against a fixed, scale=1 "nominal" and reporting the
+  // mismatch as if it were a growing defect. MEASURED directly (a scratch check against a
+  // CORRECTLY scaled nominal): `template_1`'s own `single_soldier` ratio is EXACTLY 1.0 at every
+  // scale tested (1, 1.5, 2) -- the engine was never broken; only this matrix's own reference was.
+  const { brickLengthIn: L, brickHeightIn: H } = scaledSet(opts.set, opts.scale);
   return bands.map((band) => {
     const patternDef = BRICK_PATTERNS[band.pattern || 'stretcher'] || BRICK_PATTERNS.stretcher;
     const naturalWidth = courseHeightFor(patternDef, L, H);
