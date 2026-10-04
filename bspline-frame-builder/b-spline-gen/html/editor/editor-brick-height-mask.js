@@ -18,9 +18,10 @@
  * editor-brick-tool.js's own drawBrick) is the only place that's always
  * current regardless of which tool drew what.
  */
-import { buildSpatialIndex, sampleHeight, brickSetById } from '../core/bricks/index.js';
+import { buildSpatialIndex, sampleHeight, brickSetById, pointInPolygon } from '../core/bricks/index.js';
 import { preloadSetDetail, sampleDetailAtFor } from './editor-brick-surface.js';
 import { BRICK_GEN_ATTR } from './editor-brick-tool.js';
+import { surfaceStyleById, styledSet, styledDetail, styleTopJitter } from './brick-surface-styles.js';
 
 // F35 item 16 follow-up (Fred: "keep the UI responsive... yield between stages if they block the
 // main thread"): at Masonry/Masonry max resolution this loop runs up to ~525,000 iterations fully
@@ -76,26 +77,58 @@ function collectLiveBrickGroups(editor, layer) {
  *  which this file does NOT touch). `fillet` stays all-zero (bricks have no
  *  edge-fillet concept); `isStamped` follows body>0, matching every other
  *  rasterizer's own convention. */
-export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, heightIn) {
+/** F35 item 18 (1), brick top FLAT | ORGANIC: `opts.topMode === 'flat'` also returns
+ *  `flatTop = { brickOf, count }` -- `brickOf[k]` = which brick covers grid point k (0..count-1),
+ *  -1 for grout/outside. That is ALL Flat needs from here: the plane each brick sits on is fitted
+ *  LATER, by core/engine/apply-stamp-layers.js, against the terrain as it is at THAT rebuild. Baking
+ *  terrain heights into the mask instead would go stale: a terrain slider or a sculpt stroke
+ *  rebuilds WITHOUT re-rasterizing masks (main/param-manager.js applyParam). body/isStamped are
+ *  the same in both modes except that in Flat every point inside a brick counts as stamped, so a
+ *  brick top never has a draped hole where its profile reaches 0. Organic: no flatTop, unchanged.
+ *
+ *  F35 item 18 (2): `opts.surfaceStyle` (brick-surface-styles.js; absent/unknown = Clean = exactly
+ *  the set's own look) restyles every brick: heightProfile overrides on the set, pit contrast on the
+ *  photo detail, an extra seeded per-brick top offset, and -- `jointDepthIn` -- JOINTS recessed below
+ *  the ground: a non-brick point within one grout width (`opts.groutWidthIn`) of a brick, probed at
+ *  the 4 axis offsets (any joint angle has one axis reaching across it). Elsewhere (no brick nearby)
+ *  stays untouched, so the board outside the brickwork never sinks. */
+export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, heightIn, opts = {}) {
   const body = new Float32Array(nx * nz);
   const fillet = new Float32Array(nx * nz);
   const isStamped = new Uint8Array(nx * nz);
+  const flat = opts.topMode === 'flat';
+  const brickOf = flat ? new Int32Array(nx * nz).fill(-1) : null;
   const groups = collectLiveBrickGroups(editor, layer);
-  if (!groups.length) return { body, fillet, isStamped, metrics: null };
+  if (!groups.length) return { body, fillet, isStamped, metrics: null, ...(flat ? { flatTop: { brickOf, count: 0 } } : {}) };
 
   await Promise.all(groups.map((g) => preloadSetDetail(g.setId)));
 
+  const style = surfaceStyleById(opts.surfaceStyle);
+  let brickCount = 0;
   const built = groups.map((g) => {
     const librarySet = brickSetById(g.setId) || brickSetById(1);
-    const set = g.relief ? { ...librarySet, reliefIn: g.relief } : librarySet;
+    const set = styledSet(g.relief ? { ...librarySet, reliefIn: g.relief } : librarySet, style);
+    for (const b of g.bricks) b.heightOffset += styleTopJitter(style, g.seed, b.id);
     const cellSizeIn = Math.max(set.brickLengthIn || 1, set.brickHeightIn || 1) * 2;
+    const base = brickCount;
+    brickCount += g.bricks.length;
     return {
       set,
       index: buildSpatialIndex(g.bricks, cellSizeIn),
       result: { bricks: g.bricks, frameBricks: [], seed: g.seed },
-      sampleDetailAt: sampleDetailAtFor(g.setId),
+      sampleDetailAt: styledDetail(sampleDetailAtFor(g.setId), style),
+      // Flat: brick object -> its number across ALL groups (the brickOf value)
+      brickNo: flat ? new Map(g.bricks.map((b, n) => [b, base + n])) : null,
     };
   });
+
+  const jointDepthIn = style.jointDepthIn || 0;
+  const reach = opts.groutWidthIn > 0 ? opts.groutWidthIn : ((built[0].set.grout && built[0].set.grout.widthIn) || 0.034);
+  const inAnyBrick = (px, py) => built.some((g) => g.index.query(px, py).some((c) => pointInPolygon(px, py, c.polygon)));
+  const isJoint = (x, y) => inAnyBrick(x + reach, y) || inAnyBrick(x - reach, y) || inAnyBrick(x, y + reach) || inAnyBrick(x, y - reach);
+  // body is normalised by the depth the compositor multiplies it by (layer.depth), so the recess is
+  // jointDepthIn DOWN for Raised and Carved alike
+  const depthNorm = Number.isFinite(layer.depth) && Math.abs(layer.depth) > 1e-6 ? layer.depth : (built[0].set.reliefIn || 0.125);
 
   const iSpan = Math.max(1, nx - 1), jSpan = Math.max(1, nz - 1);
   for (let j = 0; j < nz; j++) {
@@ -105,6 +138,16 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
       const x = (i / iSpan) * widthIn;
       const k = j * nx + i;
       for (const g of built) {
+        if (flat) {
+          // the SAME first-match order sampleHeight itself uses, so the brick found here is the one
+          // whose profile sampleHeight returns
+          const b = g.index.query(x, y).find((c) => pointInPolygon(x, y, c.polygon));
+          if (!b) continue;
+          brickOf[k] = g.brickNo.get(b);
+          body[k] = sampleHeight(g.result, g.index, x, y, g.set, 0, g.sampleDetailAt) / (g.set.reliefIn || 1);
+          isStamped[k] = 1;
+          break;
+        }
         const h = sampleHeight(g.result, g.index, x, y, g.set, 0, g.sampleDetailAt);
         if (h > 0) {
           body[k] = h / (g.set.reliefIn || 1);
@@ -112,7 +155,11 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
           break;
         }
       }
+      if (jointDepthIn > 0 && !isStamped[k] && isJoint(x, y)) {
+        body[k] = -jointDepthIn / depthNorm;
+        isStamped[k] = 1;
+      }
     }
   }
-  return { body, fillet, isStamped, metrics: null };
+  return { body, fillet, isStamped, metrics: null, ...(flat ? { flatTop: { brickOf, count: brickCount } } : {}) };
 }

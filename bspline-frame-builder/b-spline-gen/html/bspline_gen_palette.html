@@ -3183,6 +3183,17 @@
               <button type="button" class="relief-toggle-btn" id="brickBtnReliefCarved" title="Bricks carved into the surface"><span>Carved</span></button>
             </div>
 
+            <!-- F35 item 18 (1): brick top FLAT | ORGANIC (a 3D-only setting: applies at once, no Generate) -->
+            <label class="cad-label">Brick top</label>
+            <div class="relief-toggle" id="brickTopModeToggle" style="margin-bottom:12px;">
+              <button type="button" class="relief-toggle-btn active" id="brickBtnTopOrganic" title="Each brick's top follows the terrain under it"><span>Organic</span></button>
+              <button type="button" class="relief-toggle-btn" id="brickBtnTopFlat" title="Each brick is a flat block tilted to the average slope under it; joints still follow the terrain"><span>Flat</span></button>
+            </div>
+
+            <!-- F35 item 18 (2): brick SURFACE style, buttons rendered from editor/brick-surface-styles.js (3D-only, applies at once) -->
+            <label class="cad-label">Surface</label>
+            <div class="relief-toggle" id="brickSurfaceStyleToggle" style="margin-bottom:12px;"></div>
+
             <label class="cad-label">Max Height (in)</label>
             <div class="cad-slider-row" style="margin-bottom:12px;">
               <input type="range" id="brickReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">

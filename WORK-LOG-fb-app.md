@@ -11809,3 +11809,218 @@ DO still auto-rebuild from the MAIN SIDEBAR's own quick settings once that split
 to merge main into fb-app after 88 merges, and to use `commitBrickSetting()`/88's own new per-binding
 commit-mode mechanism for any new brick control from here on. Not relevant to this turn's own 4
 `runBricks` call sites (unchanged in SHAPE, just wrapped) until that merge actually happens.
+
+## F35 item 16, turn 175: Brick/Photo sidebar split + Flat/Organic + Weathered -- IN PROGRESS
+
+Merged origin/main first (`e31e5c3`, 88's `fix-brick-buttons`, commit 10ece6b -- the sticky Generate
+button + per-binding auto/generate commit mode). Conflict in brick-panel.js resolved per 88's own
+DM guidance: `generateBricks()` keeps main's `lay`/`_markLaidNow` structure, with my loading-signal
+`withLoadingStage` wrapped around its one `runBricks` call; the two `selectTool` call sites (wall/
+frame) keep both `_markLaidNow` (main) and `withLoadingStage` (fb-app). Full suite green after the
+merge: 223 files / 3971 tests.
+
+**This turn bundles three asks from the advisor's own rapid DM sequence**: (1) the Brick/Photo
+sidebar split (3D settings move to the main sidebar; the editor tab keeps only 2D/layout controls;
+"each control lives in exactly ONE place" except 4-5 quick 2D settings the sidebar ALSO gets, shared
+state, two entry points, per a later refinement DM); (2) Brick-top Flat/Organic (the height adapter);
+(3) a declared 'Weathered' preset matching Fred's own target-look reference images. Each is
+substantial on its own; this is a large, multi-part turn still in progress -- what's done and the
+full design for what remains are both recorded here so continuing (this session or a fresh one) does
+not need to re-derive the architecture analysis below.
+
+**Done and tested**: new `core/bricks/plane-fit.js` -- `fitPlane(points)`, a plain least-squares
+plane `z = a*x + b*y + c` through a handful of 3D points (standard 3x3 normal-equations solve,
+Cramer's rule), with a safe degenerate fallback (fewer than 3 effectively-distinct points, or a
+singular system) to a level plane at the mean sampled height -- never NaN. Pure geometry, zero
+brick-specific knowledge, zero DOM/state dependency -- callable from editor/editor-brick-height-
+mask.js with no import-boundary issue.
+
+**A real bug caught by the test suite itself, not a deliberate mutation**: the FIRST version of
+`fitPlane`'s own `detC` (Cramer's rule, the 3rd unknown) had a transcription error -- `sy * sxz`
+where the correct cofactor term is `syz * sx` (two DIFFERENT sums: "sum of y times sum of x*z" vs
+"sum of y*z times sum of x" -- easy to swap by eye, exactly why a ground-truth test matters more than
+re-reading the algebra). `a`/`b` came back exactly right (2 and -3 on a known `z=2x-3y+5` plane) but
+`c` read 13.75 instead of 5 -- caught immediately by the EXACT-plane test (tight tolerance, 1e-6),
+fixed, re-verified. Mutation-tested separately too (forcing the degenerate flat-fallback
+unconditionally): exactly the 2 tests that depend on a real non-zero slope failed, the level/
+degenerate/collinear tests correctly stayed green. 5 tests, `tests/bricks-plane-fit.test.js`. Full
+suite green: 224 files / 3976 tests.
+
+**The architecture problem this feature runs into, worked out but NOT yet implemented**: "fit a
+plane to the TERRAIN under a brick's footprint" needs the terrain's own height field -- but
+`editor/editor-brick-height-mask.js`'s `rasterizeBrickHeightMask` runs during `main/stamp-mask-
+manager.js`'s `updateStampMasks`, which is a SEPARATE pass that happens BEFORE `core/engine/
+rebuild.js`'s own `rebuild()` even starts (confirmed by reading `refreshAllStampMasks`: it calls
+`updateStampMasks` THEN `scheduleRebuild(rebuild)` -- the two are not the same call, often not even
+the same tick). The terrain heightmap doesn't exist yet at mask-rasterization time; it's `rebuild()`
+own `buildHeights()` that generates it, strictly AFTER masks are already rasterized. Not circular,
+but a real ordering gap: the CLEAN (pre-stamp) terrain is independent of the brick mask, so it CAN be
+computed standalone for Flat mode's own purposes --it just isn't today.
+
+**The planned fix** (not yet written): `main/stamp-mask-manager.js` (which already imports `P` and
+already sits in the "main/ bridges state to editor" layer, so this doesn't cross any import
+boundary) computes a STANDALONE clean heightmap via `core/terrain.js`'s own `generateHeightmap({
+...P, nx, nz, edgeMargin }, { mask: null })` -- the SAME call `rebuild.js`'s `buildHeights` already
+makes -- gated behind `P.brickSettings.brickTopMode === 'flat'` (zero extra cost in the default
+Organic mode), and passes the resulting Float32Array into `rasterizeBrickHeightMask` as a new
+parameter. `editor-brick-height-mask.js` itself gains ZERO new imports (a plain array in, same as
+every other parameter it already takes) -- the existing "editor/ never imports core/state.js"
+boundary (brick-panel.js's own header) stays intact.
+
+**The planned combine math** (derived, not yet coded): confirmed directly from `core/engine/apply-
+stamp-layers.js:92` (`stampedHeights[k] += bodyVal * layerDepth + ...`) and `editor/editor-brick-
+tool.js:123` (`layer.depth = settings.invert ? -settings.reliefIn : settings.reliefIn`) that the
+compositor's own formula is `finalHeight = terrainHeight + body[k] * (sign * reliefIn)` where `sign
+= invert ? -1 : +1`. For Flat mode, the target is `finalHeight = planeFit(x,y) + sign * reliefRaw(u,v)`
+(reliefRaw = `brickTopHeight`'s own existing 0..reliefMaxIn output, UNCHANGED -- same shoulder/crown/
+chip/photo-detail shape in both modes, only the SUBSTRATE it sits on differs). Solving for `body[k]`:
+`body[k] = sign * (planeFit(x,y) - terrainHeight(x,y)) / reliefIn + reliefRaw(u,v) / reliefIn`. Grout
+points (outside every brick polygon, `sampleHeight` returns `jointHeightIn`, typically 0) are
+UNTOUCHED by this -- the substitution only ever applies on the "inside a brick" branch, so grout
+stays draped to the real terrain in BOTH modes with no special-casing needed.
+
+**The planned per-brick plane cache**: one pass over each LIVE brick group's own bricks (before the
+main per-grid-point loop), sampling the terrain heightmap at each brick's own polygon corners + its
+centroid (nearest-grid-point lookup, same `(x,y)->i,j` mapping the main loop already uses), calling
+`fitPlane` once per brick, cached by brick id -- "cached it per brick" per the advisor's own ask,
+since it's the SAME plane for every grid point inside that one brick's footprint.
+
+**Not yet started**: threading `P.brickSettings.brickTopMode` ('organic' default | 'flat') through
+to the rasterizer -- per the established "DOM is the source of truth, grouped by (set,seed,reliefIn)"
+convention (`collectLiveBrickGroups`'s own header), this should be a NEW per-brick DOM attribute
+(`drawBrick` stamps it at draw time, same as `data-brick-relief`), not a direct `core/state.js` read
+from inside editor/ -- keeps the same boundary, and naturally supports a future per-stroke override
+if that's ever wanted, even though today every stroke reads the one global setting. Also not started:
+the declared 'Weathered' preset (worn/noise-displaced brick edges, per-brick height jitter, pit-
+contrast surface detail, deep/dark grout via existing grout-depth+recessed-profile fields) and the
+full Brick/Photo sidebar HTML restructuring (moving Relief/height/grout-depth-profile/surface-detail/
+Hide-filter-texture/the resolution hint OUT of the editor tab into a new main-sidebar BRICK 3D
+section, plus the quick-2D-settings mirror wired through 88's own `selectSet(id,'auto')` etc., plus
+the equivalent PHOTO split).
+
+**Capacity note, stated plainly per the worker protocol's own convention rather than quietly pushing
+through**: this turn bundles three substantial features (a new cross-cutting terrain dependency for
+the mask rasterizer, a tuned multi-parameter weathering preset, and a real UI reorganization across
+two tabs + a new sidebar section) that each warrant their own careful implementation + mutation-
+tested verification + live-rendered close-ups, on top of an already long session (turns 171-175, each
+shipped, tested, and pushed in full). The PURE-MATH, hardest-to-get-subtly-wrong piece (plane
+fitting) is done, tested, and a real bug in it was caught before it could propagate anywhere. Rather
+than rushing the remaining, more failure-prone pieces (an untested terrain-threading change touching
+3 files, a weathering preset whose "rightness" depends on comparing against Fred's own reference
+images, and a UI move spanning two tabs) in the same breath, committing this clean foundation now and
+flagging the honest remaining scope for the next turn/session.
+
+## F35 item 18 part (1), turn 177 (seat C = 37, epoch 6): brick top FLAT | ORGANIC
+
+Took seat C from de (out of capacity) and continued de's T175 plan, part (1) only.
+
+**Changed de's plan at one point, with a measured reason.** de's plan had stamp-mask-manager build a
+standalone clean heightmap and bake `plane - terrain` into the brick mask. That goes STALE: a terrain
+slider (peakShape, density, seed...) or a sculpt stroke rebuilds WITHOUT re-rasterizing masks
+(main/param-manager.js applyParam: only gridChanged/stampMaskParams call refreshAllStampMasks, every
+other key just schedules rebuild). Flat bricks would then sit on the OLD ground until the next
+mask refresh. So the split is instead:
+- mask time (editor/editor-brick-height-mask.js, `opts.topMode === 'flat'`): only WHICH brick covers
+  each grid point, `flatTop = { brickOf: Int32Array (-1 = grout), count }`. Brick lookup is the
+  engine's own exported index.query + pointInPolygon, first match, the SAME order sampleHeight uses,
+  so no engine (core/bricks, seat B) change was needed. In Flat every point inside a brick is
+  isStamped (no draped hole where the profile reaches 0). Organic: no flatTop, body byte-identical.
+- composite time (core/engine/apply-stamp-layers.js, new `flatBrickPlaneHeights`): each brick's
+  least-squares plane (de's core/bricks/plane-fit.js, unchanged maths) over EVERY grid point the brick
+  covers, fitted to the heights below this layer at THIS rebuild, centred on the brick in grid units.
+  A Flat brick point: `plane + body*depth + fillet` (terrain replaced, suppression moot). Grout falls
+  through the normal path, so it stays draped in both modes with no special case.
+- the inset-window hole also clears `brickOf` (stamp-mask-manager clearStampMaskInWindow).
+
+**Setting + UI.** `P.brickSettings.brickTopMode` ('organic' default; only `=== 'flat'` is Flat, so a
+saved session without the key loads unchanged). An Organic | Flat toggle under Relief in the editor's
+Brick tab (where the other 3D brick settings live today; part (3) moves them to the sidebar together).
+Declared a third BRICK_COMMIT mode, `surface`: a 3D-only key (SURFACE_ONLY_SETTING_KEYS) never re-lays,
+never marks Generate pending, and re-masks at once via the editor's own change pipeline
+(`_notifyChange('commit')` -> app-init onChange -> refreshAllStampMasks). `setBrickTopMode(mode, commit='surface')`
+is the sidebar's entry point too. Also corrected plane-fit.js's header, which my change made wrong
+(it named the rasterizer as the plane's consumer and assumed corner+centroid samples).
+
+**Tests.** New tests/brick-top-flat.test.js (7): brickOf names each brick and -1 in the joint, Organic
+has no flatTop and the same body; window hole clears brickOf; a planar terrain is reproduced exactly;
+on hills the result is planar and equals fitPlane; applyStampLayers Flat = one plane per brick (minus
+profile) while Organic is not, joints identical; SAME mask + changed terrain lands bricks on the NEW
+ground (the staleness guard); Carved (negative depth). tests/brick-discrete-controls-regen.test.js +3:
+toggle saves/re-masks/never re-lays/never pending; a pending layout change stays pending across it;
+sidebar entry point. Non-vacuous: against HEAD's sources 6 fail + 3 cannot run (their setup needs
+flatTop); the 2 that pass on HEAD pin existing behaviour (pending stays pending; old panel has no
+button). Mutation (compositor ignores the planes, `planeZ = null`): 3/7 of brick-top-flat fail
+(the staleness test was strengthened with a planarity check after it first passed that mutation).
+Fast tier: 40 brick/stamp/rebuild/palette/state/mask spec files, 423 passed, 0 failed.
+
+**Live, real app (served fb-app worktree, headless Chrome, real Wall+Frame bricks on T1 7x9, spacing
+0.03, measured from lastResult.heights: max distance of each brick's base, height minus body*depth,
+from one plane):**
+
+| brick length | bricks measured | Organic base (max / median in) | Flat base | terrain under bricks |
+|---|---|---|---|---|
+| 3 in | 36 | 0.358 / 0.170 | 0 / 0 | 0.377 / 0.189 |
+| 0.75 in | 291 | 0.128 / 0.050 | 0 / 0 | 0.159 / 0.057 |
+
+Shots: shots/seat37/f35item18_{organic,flat}_{3,0.75}in.png (script tools/repro/f35item18_flat_organic_shots.mjs,
+SIZE_IN/SPACING env). Visible at 3 in: steep brick sides show the grid's sawtooth where a plane meets
+draped grout up to ~0.37 in away -- a sampling artifact of near-vertical walls, more visible in Flat than
+Organic; not changed here.
+
+**ENGINE BUG found, NOT fixed (core/bricks Wall layout, seat B):** on T1 7x9 at brick length 1.5 in
+exactly one Wall brick (data-brick-id=5, sample rw_22) has a CORRUPT 39-point polygon covering the whole
+interior (bbox 1.41,1.75 - 5.59,7.25, area 13.97 sq in vs 0.6 for a normal brick). It starts like a
+normal brick and wanders. Pre-existing: in Organic it silently swallows the interior Wall bricks (no
+joints visible in the centre); Flat just makes it obvious (one giant flat plane). 0.75 in and 3 in
+are clean. Reproduce: Wall tool on the default board, setBrickSize(1.5,'auto'), list
+[data-brick-gen="1"] polygons by area.
+
+Processes: my http.server (8838) and headless Chromes are stopped before the pass.
+
+## F35 item 18 part (2), turn 179 (seat C = 37): brick SURFACE style, Clean | Weathered, as data
+
+**Declared** in a new editor/brick-surface-styles.js, `BRICK_SURFACE_STYLES` (rendered into the Brick
+tab's new Surface toggle, one button per entry). Clean declares NOTHING, so it is exactly the set's own
+library look (proved byte-identical below). Weathered = overrides read by the mask rasterizer:
+- `profileScale`: multipliers on the SET's own heightProfile (edgeRadiusIn x1.8, crown x0.5, chipRate
+  x5, chipSizeIn x1.8, surfaceShare x2.5; chipRate/surfaceShare capped at 1). Multipliers, not
+  absolutes, so Set 3's bigger declared profile keeps its own proportions;
+- `profileSet`: edgeNoiseIn 0.015 / edgeNoiseScaleIn 0.06 = worn RAGGED edges (below);
+- `pitGain` 1.8: the photo detail's negative half (pits/cracks) amplified, positive half kept;
+- `topJitterIn` 0.012: extra seeded per-brick top offset (seed + brick id), on top of the layout's own;
+- `jointDepthIn` 0.03: joints recessed below the ground. A joint = a non-brick grid point with a brick
+  within one grout width at one of the 4 axis offsets (any joint angle has an axis reaching across it).
+  Points with no brick nearby are untouched, so the board outside the brickwork never sinks. Body is
+  normalised by layer.depth, so joints go DOWN for Raised and Carved alike.
+
+**Engine touch, agreed with seat B first** (d3, turn 317: "Go ahead, add them yourself"): two optional
+heightProfile fields in core/bricks/height-profile.js, `edgeNoiseIn`/`edgeNoiseScaleIn` -- the shoulder's
+distance-to-edge perturbed by noise2d.js valueNoise2 in board space. Default 0 = exactly the old
+shoulder; chips and crown still read the true distance. No other core/bricks change; no library set
+declares them, so every existing look is unchanged.
+
+**Setting + UI.** `P.brickSettings.surfaceStyle` ('clean'; unknown/missing = Clean). Joins
+SURFACE_ONLY_SETTING_KEYS with brickTopMode: committed with 'surface' (re-masks at once, never re-lays,
+never marks Generate pending). `setSurfaceStyle(id, commit='surface')` = the sidebar entry point (3).
+Not merged with the existing Recessed/Flush grout buttons (still "not yet visually implemented"): the
+style's jointDepthIn is its own field. Flagging for the advisor whether Recessed should reuse the joint
+recess code now that it exists.
+
+**Tests.** New tests/brick-surface-style.test.js (9): Clean/unknown/missing = Clean and identity;
+Weathered scales the set's own profile, caps fractions, leaves the frozen library set alone; pit gain
+negative-only; jitter seeded, bounded, varies; edgeNoise absent/0 = plain shoulder, on = the shoulder
+line wanders along an edge, never above full height, interior untouched; rasterizer Clean (explicit,
+unknown, absent) byte-identical to no style; Weathered joint recessed by exactly jointDepthIn, open
+board untouched, bricks changed; Carved joint still goes down. tests/brick-discrete-controls-regen +3
+(buttons from data, toggle saves/re-masks/never pending, unknown id -> Clean). Mutations: joint recess
+off -> 2/9 fail; edge noise off -> 1/9 fail; restored -> 9/9. Fast tier: 41 files, 435 passed, 0 failed.
+
+**Live** (served fb-app, headless Chrome, real Wall+Frame on T1 7x9, brick 0.75 in, spacing 0.015):
+Weathered recesses 76,683 joint points at a mean 0.030 in, Clean 0. Shots:
+shots/seat37/f35item18_{clean,weathered}_0.75in_r2.2_t0.55.png. Weathered reads clearly worn (ragged
+edges, pitted faces, deeper joints) and probably HEAVY for Fred's taste -- every value is one declared
+number; a 3x3 grid for Fred to mark is the cheap next tuning step if wanted. Unverified: a low oblique
+view at the board edge showed a few thin needle spikes; not reproduced in the top-down view, not chased.
+
+Script: tools/repro/f35item18_flat_organic_shots.mjs is now generic (VARIANTS name:buttonId list, RADIUS,
+TARGET, TILT env). Server PID 16604 (mine) killed by PID; no listeners left.

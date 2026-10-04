@@ -303,6 +303,66 @@ describe('initLatticeSideColumn', () => {
   });
 });
 
+// Fred (2026-10-04): "Generate in the Brick tab makes a lattice". The Brick tab shows
+// #editorLayersPanel while no brick tool is picked, and the editor mode can stay 'shapeLattice'
+// across the tab switch -- so the pinned lattice Generate sat exactly where the Brick tab's own
+// Generate appears. A lattice mount is scoped to its declared tab (TOOL_PANEL_MOUNTS[mode].tab).
+describe('lattice mounts are scoped to the Artwork tab', () => {
+  let editor;
+  const fireTab = (tab) => document.dispatchEvent(new CustomEvent('editorTabChanged', { detail: { tab } }));
+  beforeEach(() => {
+    buildFixture();
+    setDesktop(true);
+    editor = { _lattice: { drawKind: 'select' } };
+    initLatticeSideColumn(editor);
+  });
+  afterEach(() => {
+    fireTab('artwork'); // module-level tab state: leave it at the default for every other test
+    document.body.innerHTML = '';
+  });
+
+  it.each(['lattice', 'shapeLattice'])('%s: leaving Artwork unmounts its Generate from #editorLayersPanel and hides its own panel', (mode) => {
+    const generateId = mode === 'lattice' ? 'latticeGenerate' : 'shapeLatticeGenerate';
+    const panelId = mode === 'lattice' ? 'editorLatticePanel' : 'editorShapeLatticePanel';
+    fireModeChanged(editor, mode);
+    const layersPanel = document.getElementById('editorLayersPanel');
+    expect(layersPanel.contains(document.getElementById(generateId))).toBe(true);
+
+    fireTab('brick');
+    expect(layersPanel.contains(document.getElementById(generateId))).toBe(false);
+    expect(layersPanel.querySelector('.sticky-actions')).toBeNull();
+    expect(Array.from(layersPanel.children).map((c) => c.id || c.className)).toEqual(['layers-header', 'editorLayersList']);
+    expect(document.getElementById(panelId).style.display).toBe('none');
+  });
+
+  it('a lattice mode entered while another tab is active never mounts', () => {
+    fireTab('brick');
+    fireModeChanged(editor, 'shapeLattice');
+    const layersPanel = document.getElementById('editorLayersPanel');
+    expect(layersPanel.contains(document.getElementById('shapeLatticeGenerate'))).toBe(false);
+    expect(document.getElementById('editorShapeLatticePanel').style.display).toBe('none');
+  });
+
+  it('returning to Artwork re-mounts the pinned Generate (Artwork unchanged)', () => {
+    fireModeChanged(editor, 'shapeLattice');
+    fireTab('brick');
+    fireTab('artwork');
+    const gen = document.getElementById('shapeLatticeGenerate');
+    expect(document.getElementById('editorLayersPanel').contains(gen)).toBe(true);
+    expect(gen.parentElement.className).toBe('lattice-side-column-pinned-slot sticky-actions');
+    expect(document.getElementById('editorShapeLatticePanel').style.display).toBe('none');
+  });
+
+  it('back in Artwork in a non-lattice mode, the lattice panels get no inline override (editor-ui.js decides)', () => {
+    fireModeChanged(editor, 'shapeLattice');
+    fireTab('brick');
+    fireModeChanged(editor, 'select');
+    fireTab('artwork');
+    expect(document.getElementById('editorShapeLatticePanel').style.display).toBe('');
+    expect(document.getElementById('editorLatticePanel').style.display).toBe('');
+  });
+});
+
 // UI3 (Fred: "like in main side bar, make lattice section collapsible") —
 // same key prefix editor-drawer.js's own former mobile-only mechanism
 // declared (bspline.editor.drawerSection.<title>), now wired here on

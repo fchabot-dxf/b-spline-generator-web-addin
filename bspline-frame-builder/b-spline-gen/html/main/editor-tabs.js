@@ -16,11 +16,20 @@
 // (the tab button's own text) because Artwork's panel is actually titled "Layers" (pre-existing,
 // tests/frame-tabs.test.js's own expectation), not "Artwork"; Photo/Brick have no such distinction
 // (their own panel IS titled Photo/Brick), so `drawerLabel` just repeats `label` there.
+// `modes`: the editor gesture modes (editor-interaction.js modeHandlers keys) this tab's own tools
+// arm. Fred (2026-10-04): a tool mode never outlives a switch to a tab that doesn't own it -- a
+// Shape Lattice mode carried into the Brick tab ran lattice gestures there. main/global-events.js
+// returns the editor to Select (the Esc path) when the new tab doesn't list the current mode.
+// cut/stripe are shared: Artwork's Cut/Stripe tools and Brick's Scissors/Stripe arm the same modes.
 export const EDITOR_TABS = [
-  { id: 'frame', label: 'Frame', drawerLabel: 'Frame', buttonId: 'editorTabFrame', panelId: 'editorFramePanel', toolbarId: 'editorToolbarFrame' },
-  { id: 'artwork', label: 'Artwork', drawerLabel: 'Layers', buttonId: 'editorTabArtwork', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork' },
-  { id: 'photo', label: 'Photo', drawerLabel: 'Photo', buttonId: 'editorTabPhoto', panelId: 'editorPhotoPanel', toolbarId: 'editorToolbarPhoto' },
-  { id: 'brick', label: 'Brick', drawerLabel: 'Brick', buttonId: 'editorTabBrick', panelId: 'editorBrickPanel', toolbarId: 'editorToolbarBrick' },
+  { id: 'frame', label: 'Frame', drawerLabel: 'Frame', buttonId: 'editorTabFrame', panelId: 'editorFramePanel', toolbarId: 'editorToolbarFrame',
+    modes: ['select'] },
+  { id: 'artwork', label: 'Artwork', drawerLabel: 'Layers', buttonId: 'editorTabArtwork', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
+    modes: ['select', 'node', 'text', 'draw', 'line', 'rect', 'circle', 'erase', 'lattice', 'shapeLattice', 'cut', 'stripe'] },
+  { id: 'photo', label: 'Photo', drawerLabel: 'Photo', buttonId: 'editorTabPhoto', panelId: 'editorPhotoPanel', toolbarId: 'editorToolbarPhoto',
+    modes: ['select'] },
+  { id: 'brick', label: 'Brick', drawerLabel: 'Brick', buttonId: 'editorTabBrick', panelId: 'editorBrickPanel', toolbarId: 'editorToolbarBrick',
+    modes: ['select', 'brickBrush', 'cut', 'stripe'] },
 ];
 
 let _editorTab = 'artwork';
