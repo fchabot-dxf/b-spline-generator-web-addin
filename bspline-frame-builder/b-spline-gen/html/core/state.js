@@ -101,6 +101,13 @@ export const DEFAULT = {
       // soldier_stretcher, keeps band 0's own override). Only course/course-alternating kinds are
       // meaningful here (main/brick-panel.js's own FRAME_BAND_PATTERN_LIST greys out the rest).
       frameBandPatterns: [],
+      // F35 item 10 follow-up (Fred): the Brush tool's own settings, shown only when Brush is the
+      // active tool (main/brick-panel.js). `orientation` already had real engine support
+      // (core/bricks/along-path.js's own opts.orientation); `profile` ('bricks' = Stripped,
+      // 'continuous') already existed as a Stripe-cycle override (editor-brick-tool.js's own
+      // toBrickOpts already reads `settings.profile`) but had no direct UI control before now.
+      orientation: 'stretcher',
+      profile: 'bricks',
     },
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.

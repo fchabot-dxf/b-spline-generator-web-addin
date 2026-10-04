@@ -42,6 +42,38 @@ describe('generateBricks', () => {
     });
     expect(JSON.stringify(plain.bricks)).not.toEqual(JSON.stringify(zoned.bricks));
   });
+
+  // F35 item 12 follow-up (Fred): the Wall picker's own 'none' pattern (editor-brick-tool.js's
+  // applyWallPattern sets this flag) -- Wall produces zero bricks, Frame is untouched.
+  it('skipWallFill produces zero wall bricks but leaves a frame\'s own bricks untouched', () => {
+    const board = rect(9, 12);
+    const withWall = generateBricks({
+      boardOutline: board, set: SET, seed: 1,
+      frame: { primitives: rectPrimitives(9, 12), bands: FRAME_PRESETS.single_soldier },
+    });
+    const noWall = generateBricks({
+      boardOutline: board, set: SET, seed: 1, skipWallFill: true,
+      frame: { primitives: rectPrimitives(9, 12), bands: FRAME_PRESETS.single_soldier },
+    });
+    expect(withWall.bricks.length).toBeGreaterThan(0);
+    expect(noWall.bricks).toEqual([]);
+    expect(noWall.frameBricks.length).toBe(withWall.frameBricks.length);
+  });
+
+  // F35 item 12 follow-up: FRAME_PRESETS.none (an empty band list) is the Frame band preset's own
+  // OFF switch -- generateBricks' own existing `bands.length` check (written for the omitted-frame
+  // case) already handles it with no special code: zero frame bricks, Wall fills to the board's own
+  // true outer contour (the SAME result as passing no frame at all).
+  it('FRAME_PRESETS.none (empty bands) behaves exactly like no frame at all', () => {
+    const board = rect(9, 12);
+    const noFrameAtAll = generateBricks({ boardOutline: board, set: SET, seed: 1 });
+    const noneFrame = generateBricks({
+      boardOutline: board, set: SET, seed: 1,
+      frame: { primitives: rectPrimitives(9, 12), bands: FRAME_PRESETS.none },
+    });
+    expect(noneFrame.frameBricks).toEqual([]);
+    expect(noneFrame.bricks.length).toBe(noFrameAtAll.bricks.length);
+  });
 });
 
 describe('buildSpatialIndex', () => {

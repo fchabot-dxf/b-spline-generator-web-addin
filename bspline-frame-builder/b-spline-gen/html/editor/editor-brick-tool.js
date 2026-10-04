@@ -221,6 +221,11 @@ function toBrickOpts(settings) {
     // keeps defaulting to bricksAlongPath's own 'bricks' -- no behavior
     // change for Wall/Frame or an un-striped Brush stroke.
     profile: settings.profile || 'bricks',
+    // F35 item 10 follow-up: the Brush panel's own Orientation toggle -- bricksAlongPath already
+    // declared this opt (along-path.js), only Brush's own UI control was missing. Wall/Frame never
+    // read this (bricksFillShape/bricksContourBands have their own, unrelated pattern mechanisms),
+    // so defaulting it here is harmless for every other caller.
+    orientation: settings.orientation || 'stretcher',
   };
 }
 
@@ -234,16 +239,19 @@ function setForId(id) {
  *  Dispatches on the pattern's own declared `kind`: 'course'/'course-alternating' patterns
  *  (stretcher/stack/soldier/header/flemish) still go through bond.js's own zone mechanism (one
  *  zone, the whole fill, using this pattern); 'tile2d' patterns (herringbone/basketweave) are a
- *  different ALGORITHM entirely, selected via `set.layout` (fill-shape.js's own LAYOUTS table) --
- *  mutates `input` in place (`input.zones` or overrides `input.set`), same style
- *  resolveFrameBrickSet already uses for its own Frame-only override. Leaves `input` untouched for
- *  an unrecognised/omitted pattern (falls through to bondLayout's own default single stretcher
- *  zone, byte-identical to pre-item-7 behaviour). */
+ *  different ALGORITHM entirely, selected via `set.layout` (fill-shape.js's own LAYOUTS table);
+ *  F35 item 12 follow-up: 'none' sets `input.skipWallFill` (generateBricks' own declared flag,
+ *  checked ONCE there rather than every caller re-deriving "is the Wall off" for itself) -- mutates
+ *  `input` in place, same style resolveFrameBrickSet already uses for its own Frame-only override.
+ *  Leaves `input` untouched for an unrecognised/omitted pattern (falls through to bondLayout's own
+ *  default single stretcher zone, byte-identical to pre-item-7 behaviour). */
 function applyWallPattern(input, settings) {
   const pattern = settings.pattern;
   const def = pattern && BRICK_PATTERNS[pattern];
   if (!def) return;
-  if (def.kind === 'tile2d') {
+  if (def.kind === 'none') {
+    input.skipWallFill = true;
+  } else if (def.kind === 'tile2d') {
     input.set = { ...input.set, layout: pattern };
   } else {
     input.zones = [{ pattern }];

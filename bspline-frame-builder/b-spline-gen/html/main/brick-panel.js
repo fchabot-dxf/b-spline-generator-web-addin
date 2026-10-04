@@ -95,6 +95,50 @@ function setInvert(on) {
   notifyChange();
 }
 
+/** F35 item 10 follow-up: the Brush tool's own Profile/Orientation toggles --
+ *  same 2-state `.relief-toggle` convention as Relief above. Both settings
+ *  already had real engine support (bricksAlongPath's own opts.profile/
+ *  opts.orientation) with no UI control before now; like every other
+ *  Brick-tab setting these affect NEW strokes going forward only -- there is
+ *  no existing mechanism in this codebase to rewrite an already-drawn
+ *  element's own stored BRICK_SETTINGS_ATTR snapshot (see editor-brick-tool.js's
+ *  own regenerateOwnedBrickElements), so Orientation/Profile follow the same
+ *  precedent Scale/Grout/Relief/etc. already set rather than inventing a new
+ *  "edit an existing element" capability nothing else here has either. */
+function syncProfileToggle() {
+  const continuous = P.brickSettings.profile === 'continuous';
+  document.getElementById('brickBtnProfileStripped')?.classList.toggle('active', !continuous);
+  document.getElementById('brickBtnProfileContinuous')?.classList.toggle('active', continuous);
+}
+
+function setProfile(v) {
+  P.brickSettings.profile = v;
+  syncProfileToggle();
+  notifyChange();
+}
+
+function syncOrientationToggle() {
+  const soldier = P.brickSettings.orientation === 'soldier';
+  document.getElementById('brickBtnOrientationStretcher')?.classList.toggle('active', !soldier);
+  document.getElementById('brickBtnOrientationSoldier')?.classList.toggle('active', soldier);
+}
+
+function setOrientation(v) {
+  P.brickSettings.orientation = v;
+  syncOrientationToggle();
+  notifyChange();
+}
+
+/** Shown only while Brush is the active tool (BRICK_TOOLS' own
+ *  `settingsSection` field is reserved for exactly this per-tool-section
+ *  concept but unused elsewhere yet -- Brush is the first tool that needs
+ *  one, so this stays a direct `_activeTool === 'brush'` check rather than
+ *  generalizing settingsSection for a single consumer). */
+function syncBrushSection() {
+  const el = document.getElementById('brickBrushSection');
+  if (el) el.style.display = _activeTool === 'brush' ? '' : 'none';
+}
+
 function setPair(sliderId, numberId, v) {
   const s = document.getElementById(sliderId);
   const n = document.getElementById(numberId);
@@ -122,6 +166,9 @@ function syncControlsFromState() {
   setPair('brickClumpingSlider', 'brickClumping', s.clumping);
   document.getElementById('brickSeed').value = s.seed;
   setPair('brickFrameLengthSlider', 'brickFrameLength', s.frameBrickLengthIn);
+  syncProfileToggle();
+  syncOrientationToggle();
+  syncBrushSection();
 }
 
 function bindSlider(sliderId, numberId, key, parse = parseFloat) {
@@ -174,6 +221,7 @@ function syncToolButtons() {
   const hint = BRICK_TOOLS.find((t) => t.id === _activeTool);
   const hintEl = document.getElementById('brickToolHint');
   if (hintEl) hintEl.textContent = hint ? hint.hint : '';
+  syncBrushSection();
 }
 
 function renderFramePresetList(container) {
@@ -212,7 +260,7 @@ function syncFramePresetButtons() {
  *  keys directly rather than a second, hand-maintained list, so a pattern added to BRICK_PATTERNS
  *  later needs no change here. */
 const WALL_PATTERN_LABELS = {
-  stretcher: 'Stretcher', stack: 'Stack', soldier: 'Soldier', header: 'Header',
+  none: 'None', stretcher: 'Stretcher', stack: 'Stack', soldier: 'Soldier', header: 'Header',
   flemish: 'Flemish', herringbone: 'Herringbone', basketweave: 'Basketweave',
   fieldstone: 'Fieldstone',
 };
@@ -267,9 +315,9 @@ function renderFrameBandPatternList(container) {
       btn.className = 'cad-btn';
       btn.id = `brickFrameBandPattern_${i}_${pattern.id}`;
       btn.textContent = pattern.label;
-      if (def && def.kind === 'tile2d') {
+      if (def && (def.kind === 'tile2d' || def.kind === 'none')) {
         btn.disabled = true;
-        btn.title = 'Wall only for now';
+        btn.title = def.kind === 'none' ? 'A band needs a real pattern -- use the Frame band preset\'s own None instead' : 'Wall only for now';
         btn.style.opacity = '0.4';
       } else {
         btn.addEventListener('click', () => {
@@ -357,6 +405,7 @@ function selectTool(id) {
  *  "a reusable concept deserves one declared source, not a second copy that rots" lesson this
  *  project already applies elsewhere. A preset without its own label here just shows its own key. */
 const FRAME_PRESET_LABELS = {
+  none: 'None',
   single_soldier: 'Soldier',
   soldier_stretcher: 'Soldier + Stretcher',
   three_band: 'Soldier / Stretcher / Soldier',
@@ -457,6 +506,10 @@ export function initBrickPanel() {
   document.getElementById('brickBtnGroutFlush')?.addEventListener('click', () => setGroutProfile('flush'));
   document.getElementById('brickBtnReliefRaised')?.addEventListener('click', () => setInvert(false));
   document.getElementById('brickBtnReliefCarved')?.addEventListener('click', () => setInvert(true));
+  document.getElementById('brickBtnProfileStripped')?.addEventListener('click', () => setProfile('bricks'));
+  document.getElementById('brickBtnProfileContinuous')?.addEventListener('click', () => setProfile('continuous'));
+  document.getElementById('brickBtnOrientationStretcher')?.addEventListener('click', () => setOrientation('stretcher'));
+  document.getElementById('brickBtnOrientationSoldier')?.addEventListener('click', () => setOrientation('soldier'));
   bindSlider('brickReliefHeightSlider', 'brickReliefHeight', 'reliefIn');
   bindSlider('brickSuppressionSlider', 'brickSuppression', 'suppression');
   bindSlider('brickClumpingSlider', 'brickClumping', 'clumping');

@@ -10655,3 +10655,161 @@ the holder file, which needs the advisor).
 Full suite not re-run this turn (diagram-only change, no app/test code touched; same "a style tweak
 does not need 1,500 tests" gate-tiering rule). `node tools/repro/h23_item78b_t10_target_vs_current.mjs
 <repoRoot> [outDir]` re-runs cleanly end to end (verified twice from a clean scratch dir).
+## F35 item 12 follow-up: a 'None' OFF switch for Wall and Frame band preset
+
+Fred: "the Wall and the Frame each need an OFF state" -- Wall=None means no wall bricks (frame only);
+Frame band preset=None means no frame bands (wall fills to the board/frame contour). Both declared as
+DATA, not an if-branch per button, per the dispatch's own instruction.
+
+**Frame band preset=None was free**: `FRAME_PRESETS.none = []` (an empty band list). `generateBricks`
+(engine.js) already had `if (frame && frame.bands && frame.bands.length)` -- written for the
+omitted-frame case, but an EMPTY array fails that check identically, so zero frame bricks and
+`interiorOutline = boardOutline` (unchanged) fall out with ZERO code changes anywhere downstream.
+`FRAME_PRESET_LIST` already reads `Object.keys(FRAME_PRESETS)` directly (this round's own earlier
+fix), so the button appeared with no UI code either -- just a label.
+
+**Wall pattern=None needed one new declared flag**: `BRICK_PATTERNS.none = { kind: 'none' }` (the Wall
+picker already reads `Object.keys(BRICK_PATTERNS)` too). `applyWallPattern` (editor-brick-tool.js)
+sets `input.skipWallFill = true` for this `kind` (matching its own existing `tile2d`/course-kind
+dispatch, just one more case); `generateBricks` checks that ONE flag once, skipping `bricksFillShape`
+entirely when set -- Frame is completely untouched (the `skipWallFill` check is scoped to the Wall
+call only). Since 'none' is now a `BRICK_PATTERNS` key, it also auto-appeared in the per-band Frame
+picker (which reads the SAME `WALL_PATTERN_LIST`) -- disabled it there alongside `tile2d` entries
+("a band needs a real pattern"), the identical treatment that list already gives herringbone/
+basketweave, not a new mechanism.
+
+Tests: `FRAME_PRESETS.none` asserted empty and excluded from the "every preset has non-empty bands"
+check (bricks-library.test.js); `bricksContourBands` with `FRAME_PRESETS.none` asserted to yield
+ZERO bricks, not "produced no bricks" treated as a failure (bricks-contour-bands.test.js); two new
+`generateBricks` tests (bricks-engine.test.js): `skipWallFill` zeroes Wall while leaving Frame's own
+brick count identical to the non-skipped case, and `FRAME_PRESETS.none` behaves byte-identically to
+passing no `frame` object at all. Full suite green: 205 files / 3786 tests.
+
+Live-verified both scenarios on T1 (three_band preset): Wall=None with Frame still active -- 0 wall
+pieces, 300 frame pieces (the 3-band perimeter clearly visible, terrain showing through the interior
+where Wall bricks used to be); Frame=None with Wall=stretcher -- 0 frame pieces, 332 wall pieces (a
+plain brick wall filling right up to the board's own hourglass contour, no frame band at all). Zero
+console errors either way. Screenshots: `shots/seatC/f35item12_wall_none.png`,
+`f35item12_frame_none.png`.
+
+## F35 item 10 follow-up: Brush section -- Profile [Stripped|Continuous] + Orientation [Stretcher|Soldier]
+
+Fred's next DM batch (folded in before item 11, per the advisor): the Brush tool needed its own
+settings section in the Brick tab panel, shown only while Brush is the active tool. Two pieces
+landed this round; the pattern-picker piece (reusing the Frame tool's own band-list UI, brush
+presets 1/2/3-wide) stays a declared, greyed placeholder pending d3's T86 item 7 (the shared
+band-pattern engine) -- nothing to generalize yet with only one real width.
+
+**Both options already existed in the engine with zero UI exposure.** `bricksAlongPath`
+(core/bricks/along-path.js) already declared `opts.orientation` ('stretcher'|'soldier') and
+`opts.profile` ('bricks'|'continuous'|'ridge', 'ridge' throwing not-yet-implemented) -- this was
+pure UI wiring, no engine change. The advisor's dispatch calls the `'bricks'` profile value
+"Stripped" colloquially; the UI label says Stripped/Continuous while the stored value stays the
+existing declared constant (`'bricks'`/`'continuous'`), not a rename.
+
+**Where the settings live, and why NOT a new per-element edit mechanism.** Investigated whether
+"regenerate on change" meant live-editing an ALREADY-DRAWN brush element's own settings. It
+doesn't exist anywhere in this codebase for ANY Brick-tab setting -- Scale/Grout/Relief/etc. all
+only ever affect NEW strokes going forward (`brickBrushHandler.finish()` freezes a JSON snapshot of
+`P.brickSettings` into each stroke's own `BRICK_SETTINGS_ATTR` at draw time; Stripe's own
+`settingsVariantForCycle` is a computed-fresh-every-regenerate override, not a rewrite of that
+snapshot). Orientation/Profile follow the SAME established precedent -- two new global
+`P.brickSettings` fields (`orientation: 'stretcher'`, `profile: 'bricks'`, state.js), read by
+`toBrickOpts` (editor-brick-tool.js) into every NEW stroke's frozen settings -- rather than
+inventing a first-of-its-kind "edit an existing element" capability nothing else here needed either.
+Flagging this for the advisor/Fred: an already-drawn stroke's Profile/Orientation can only be
+changed by re-drawing it, same as Scale or Grout today.
+
+**UI**: a new `#brickBrushSection` block in `bspline_gen_palette.html`, inserted right after
+`#brickToolHint` and before the Wall-pattern picker (inside `#editorBrickPanel`) -- two
+`.relief-toggle`/`.relief-toggle-btn` pairs (the SAME convention `#brickReliefToggle`/
+`#brickGroutProfileToggle` already use), default Stripped/Stretcher active. The Width row is a
+labeled, disabled 3-button placeholder (1-wide Stretcher active, 2-wide/3-wide greyed with a
+tooltip naming d3's T86 item 7 as the gate) -- named rather than silently omitted, per Fred's own
+"queued, pending X" convention elsewhere in this panel.
+
+**Wiring** (main/brick-panel.js): `syncProfileToggle`/`setProfile`/`syncOrientationToggle`/
+`setOrientation` mirror `syncReliefToggle`/`setInvert` exactly. `syncBrushSection()` toggles
+`#brickBrushSection`'s display based on `_activeTool === 'brush'` -- called from `syncToolButtons()`
+(every tool switch, including on init) and from `syncControlsFromState()` (a reloaded session
+restoring a non-default profile/orientation reflects onto the buttons immediately, not just on the
+next tool switch).
+
+**Tests** (`tests/brick-brush-section.test.js`, new file, minimal jsdom fixture for
+`initBrickPanel()`): section hidden by default, shown on Brush, hidden again on Wall; defaults
+Stripped/Stretcher active; both toggles write the correct `P.brickSettings` field and flip both
+buttons' `active` class; a pre-set non-default state is reflected on re-init (the reload case).
+Mutation-tested: commented out both `addEventListener` wiring lines, re-ran -- exactly 2/5 tests
+failed (the two toggle-click tests; the other 3 test unrelated behavior and correctly stayed green),
+confirming they're not vacuous. Restored from a pre-mutation copy (byte-diffed identical after
+restore) rather than `git checkout`, since the Brush-section edits were uncommitted at mutation
+time. Full suite green: 205 files / 3786 tests (ran before the mutation probe); re-ran the 4 directly
+affected files after restoring (40/40 green).
+
+**Live-verified** via headless Chrome, driving `getModeHandler('brickBrush')`'s own
+start/update/finish directly (dynamic-imported from editor-interaction.js in-page) rather than
+synthesizing pixel-coordinate pointer events -- exercises the exact same code path real mouse
+drags dispatch into, with no dependency on canvas pan/zoom state. Confirmed: clicking Brush shows
+the section (`getComputedStyle().display` flips block/none correctly on Wall/Frame too); a stroke
+drawn at Stripped/Stretcher defaults produces 5 separate brick polygons; switching Profile to
+Continuous and drawing a second stroke produces one unbroken polygon band (visually confirmed in
+the screenshot, not just by brick count); Orientation toggle writes through
+(`P.brickSettings.orientation === 'soldier'` after the click). Zero console errors/exceptions
+throughout. Screenshots: `shots/seatC/f35item10b_brush_stripped.png` (five jointed bricks),
+`f35item10b_brush_continuous.png` (one unbroken band drawn below it, same stroke shape).
+
+Not yet done from this DM batch: the Brush pattern-picker's real band-list UI (deliberately a
+placeholder, see above), and the slider commit-timing / live-2D-preview-during-drag work (not
+started).
+
+## Bug fix (d3's find, dispatched ahead of item 11): outline-offset.js t=0 collapses T16/T17
+
+d3 found that `offsetOutlineInward(primitives, 0)` -- "Offset from frame" at its own live default
+distance (0) -- collapsed 3 of T16/T17's (Arched Funnel/Tulip) 6 primitives (both upper sides + the
+arch) into a single point, instead of returning the outline unchanged. Measured with the templates'
+own real geometry (`frameCutProfile` + `offsetOutlineInward` direct, both boards): **the failure is
+isolated to EXACTLY t=0** -- t=1e-6 through t=0.25 all come back with zero collapses on both
+templates. This matters because it rules out "small offsets are generally unreliable" (the dispatch's
+own hedge) as the actual scope; the real bug is a boundary case at the single value t=0.
+
+**Root cause**: at t=0 every offset "carrier" (outline-offset.js's own `_carrier`) is exactly the
+ORIGINAL line/circle, so a corner joint's true solution is one of `_intersect`'s own 2 candidate
+roots, AT ZERO distance from `ref` (the un-offset joint). But `_intersect`'s `onOffset` filter calls
+`_inside(q, poly)` -- a ray-cast point-in-polygon test -- evaluated AT a VERTEX of that same
+tessellated polygon, which is exactly the one place a ray-cast's left/right convention is undefined.
+At t=0 this can reject the true (zero-distance) root and keep only the far, wrong one of the 2-root
+circle/line intersection, which the `_join`/`offsetOutlineInward` "backwards" check then reads as
+that piece's own joints having crossed -- marking it (and, cascading, its neighbours) `collapsed`.
+Every OTHER tested t (even 1e-6) moves the carriers just enough that the ambiguous-vertex case never
+arises.
+
+**Fix** (`bspline-frame-builder/b-spline-gen/html/editor/outline-offset.js`): `offsetOutlineInward`
+now special-cases `Math.abs(t) < 1e-9` as an exact identity -- returns a CLONE of the input
+primitives (never the same objects, so callers stay free to mutate the result) without running the
+joint solver at all. This is mathematically exact (an offset by 0 is the identity by definition) and
+touches nothing about the solver's behavior at any other t -- confirmed by the full existing
+outline-offset/contour-from-frame/frame-parity-app suites staying green (209 tests) with no
+assertions changed.
+
+**Tests** (both files, mutation-tested together: commenting out the t=0 fast path made exactly 9 of
+133 tests fail -- the 9 new ones below, nothing pre-existing -- then restored from a pre-mutation
+copy, confirmed byte-identical):
+- `tests/outline-offset.test.js`: a line+arc outline (the same corner KIND that broke -- a line-arc
+  joint, not just all-line) at t=0 returns every primitive unchanged (type, coordinates, radii) with
+  zero `collapsed`, and the returned objects are clones, not the original references.
+- `tests/contour-from-frame.test.js`, two new `describe` blocks:
+  1. Every template, all 3 board sizes, `frameContourSilhouette(frame, 0, 0)` (distance 0, SW=0 --
+     the TRUE t=0 edge; the existing "T84 item 6" suite's own SW=0.07 never actually reaches t=0, so
+     it could not have caught this) matches the un-offset `frameCutProfile`'s own primitive count and
+     bounding box exactly -- t=0 can never legitimately collapse anything, so this is a hard
+     invariant, not an empirical observation.
+  2. T16/T17 specifically, at the dispatch's own named distances (0, 0.1, 0.25): all 6 primitives
+     survive every one, per this codebase's own already-declared invariant (contour-from-frame.js:
+     "T16/T17: every joint is a real corner, nothing ever collapses there").
+
+Full suite green: 206 files / 3811 tests.
+
+**Live-verified**: Shape Lattice pattern on T16 and T17, "Offset from frame" checked, distance 0 --
+both show a single smooth, closed, unbroken contour tracing the full funnel/hourglass outline (no
+stray point, no gap, no sharp jump). Screenshots: `shots/seatC/f8_offset0_fix_t16_arched_funnel.png`,
+`f8_offset0_fix_t17_tulip.png`.
