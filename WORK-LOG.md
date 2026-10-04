@@ -19611,3 +19611,66 @@ item-4b dispatch (inset-window surround + wall hole, frame suppression, item-5 b
 started -- recommend (C) above, which puts them next. No commit of engine code this sub-session (the
 only candidate diff was reverted); this WORK-LOG entry plus the saved-but-unshipped diff/matrix files
 are the record. Passing back to the advisor with the gate above.
+
+## T86 matrix HARNESS bug: template_16/17 drew wrong (3-primitive pointed arch) -- root-caused to a real `outline-offset.js` bug, harness fixed (d3)
+
+Fred's own finding: `t86_item4_templates.png` drew template_16/17 as plain pointed gothic arches,
+not their real arch+straight-or-concave-sides+waist+bulging-lower-curves+flat-base shape. Dispatched
+as a quick check before item 7: find which (wrong primitives fed in, or the engine dropping their
+upper primitives), fix it, re-run those rows, add a harness check (contour area/bbox match), treat
+T16/T17's existing matrix rows as invalid until fixed.
+
+**Root cause, MEASURED precisely, and it is NOT a harness-only bug.** `t86_item4_matrix_lib.mjs`'s
+own `templatePrimitives` built its primitives from `frameContourSilhouette(frame, 0, 0)` --
+`contour-from-frame.js`'s own "Offset from frame" chokepoint, not a plain contour reader.
+`frameCutProfile`'s own primitives (the template's TRUE, un-offset cut profile) correctly return
+ALL 6 of T16/T17's own declared bars (2 straight/concave upper sides, 2 lower bulge arcs, 1 flat
+base, 1 single-piece arch -- matching their own design exactly, dumped and counted directly).
+Feeding those SAME 6 primitives through `offsetOutlineInward(primitives, 0)` -- offset **ZERO**,
+nothing should ever collapse -- nonetheless collapsed 3 of the 6 (both upper sides AND the arch) to
+the literal SAME degenerate point `(3.5, 4.348)`, leaving exactly the 3-primitive arc-line-arc shape
+Fred saw rendered. A genuine bug in `outline-offset.js`'s own collapse detection for this specific
+topology (plausibly a tangent-chain miscount at the shape's own apex), confirmed independent of this
+harness by reproducing it directly against `frameCutProfile`'s own output, bypassing the harness's
+conversion step entirely.
+
+**This is a live PRODUCTION bug, not just a harness artifact** -- `CONTOUR_FROM_FRAME_DEFAULTS`
+declares `distance: 0` as the Shape Lattice "Offset from frame" feature's own DEFAULT, so any real
+user turning that toggle on for Template 16 or 17 and leaving the distance at its default hits this
+exact same collapse. Not fixed here (would be its own `outline-offset.js` dive, a different file
+than anything else this item touches) -- flagging for its own separately-scoped dispatch; the
+2026-10-02 "Offset from frame doesn't work on T16/T17" item (T84 item 6) fixed a DIFFERENT, already-
+closed defect in the same area (the `corners` array missing declared miter joints) and did not touch
+this one, since it never exercised `distance=0` specifically.
+
+**Harness fix**: `templatePrimitives` (now exported with a 4th `frameCutProfile`-shaped param in
+place of `frameContourSilhouette`) reads `frameCutProfile` directly -- this harness only ever asked
+for `distance=0` (no offset) in the first place, so reading the un-offset source directly is the
+more correct path, not a workaround. `t86_item4_contact_sheet.mjs` had its OWN duplicate of the same
+(buggy) function -- deleted, now imports the one corrected copy from `t86_item4_matrix_lib.mjs`
+(declare once, not twice).
+
+**Harness check added, aimed at the right target.** Checking the matrix's own primitives against
+`frameContourSilhouette` (Fred's own suggested check) would be circular now that it's the one just
+proven unreliable -- `checkContourConsistency` instead re-tessellates `frameCutProfile` INDEPENDENTLY
+(a different walk of the same ground truth) and compares area/bbox against it, which still catches a
+real CONVERSION bug (a dropped segment, a wrong next-point lookup) even though it can no longer catch
+a bug inside `frameCutProfile` itself. It ALSO separately reports whether `frameContourSilhouette`
+agrees with that same ground truth -- a GENERAL detector for this exact class of bug (not a
+template_16/17-specific patch): run against the full matrix, it flags EXACTLY the 4 known-bad
+combos (`template_16`/`template_17` x 7x9/9x12) and nothing else, confirming no other template hides
+the same defect.
+
+**Verification.** `frameCutProfile`-sourced primitives for T16/T17: 6 primitives (matches design),
+correct area (37.2/34.4 in^2 at 7x9) and bbox (board-sized), builds 117/119 clean `single_soldier`
+pieces with no crash. Full item-4 matrix re-run: **143/476 failed (down from 154)** -- a real,
+measured improvement from fixing ONLY the contour source, nothing else changed. Full test suite:
+3784/3784 passed (this change touches only `tools/repro/`, no engine code). Contact-sheet PNG
+re-render attempted but headless Chrome would not connect in this session (`NO CDP`, unrelated to
+this fix -- a pre-existing infra issue, not chased); verified instead by reading the regenerated
+SVG's own vector data directly -- T16/T17's own cells now show a multi-point tessellated outline
+(arcs with many sample points, not 3 bare corners), confirming the real shape renders.
+
+**Commit (this entry + the 3 `tools/repro/` files) to follow.** Proceeding to item 7 (brush
+patterns) as ordered. The `outline-offset.js` distance=0 collapse bug is a separate, flagged finding
+for the advisor to scope -- not blocking item 7, which never calls through `frameContourSilhouette`.
