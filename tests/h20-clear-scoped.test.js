@@ -19,7 +19,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { VectorEditor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor.js';
-import { resetArtworkToFresh } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
+import { resetArtworkToFresh, sync3DBackground } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 import { registerActionTools } from '../bspline-frame-builder/b-spline-gen/html/editor/tools/action-tools.js';
 import { setFrameClearHandler } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 
@@ -197,6 +197,45 @@ describe('H20 item 3: editorClear is scoped to the active tab', () => {
     expect(editor._sketchLayer.children().toArray()).toHaveLength(sketchChildrenBefore);
 
     setFrameClearHandler(null);
+    delete window.confirm;
+  });
+
+  it('F35 (Fred: "Clear leaves a ghost of the old content"): never snapshots the STALE background ' +
+    'synchronously -- #svgEditorTopView has not been repainted yet at the moment Clear runs, so a ' +
+    'synchronous sync3DBackground() call there is guaranteed to capture the pre-Clear terrain. The ' +
+    'real repaint only happens via the async commitEdit -> onChange -> remask -> rebuild chain, ' +
+    'which already calls sync3DBackground itself once the terrain is actually recomputed', () => {
+    setupDom();
+    const canvas = document.createElement('canvas');
+    canvas.id = 'svgEditorTopView';
+    document.body.appendChild(canvas);
+    window.confirm = vi.fn(() => true);
+    const editor = makeEditor();
+    editor._editorTab = 'artwork';
+    editor._draw = {}; // sync3DBackground's own `editor._draw` truthiness guard
+    editor._guideLayer = { clear: () => {} }; // short-circuits refreshGuides' own _draw.group() call -- unrelated to this test
+    const chainable = () => ({ fill: () => chainable(), stroke: () => chainable(), size: () => chainable(), attr: () => chainable() });
+    editor._bgLayer = { clear: vi.fn(), image: vi.fn(() => chainable()), rect: vi.fn(() => chainable()) };
+    editor.fitView = () => {};
+    editor.resetSelectionTransform = () => {};
+    editor.flattenSelectionTransform = () => {};
+    editor.deleteSelected = () => {};
+    registerActionTools(editor);
+
+    document.getElementById('editorClear').click();
+
+    // Synchronous assertion: nothing in editorClear's own call stack may paint the background --
+    // if it did (the pre-fix bug), this would already show a call by the time .click() returns,
+    // since nothing here awaits a microtask in between.
+    expect(editor._bgLayer.image).not.toHaveBeenCalled();
+    expect(editor._bgLayer.clear).not.toHaveBeenCalled();
+
+    // Confirms the fixture itself is wired correctly (not vacuously passing because sync3DBackground
+    // would no-op anyway): calling it FOR REAL on this same editor does reach _bgLayer.
+    sync3DBackground(editor);
+    expect(editor._bgLayer.image).toHaveBeenCalledTimes(1);
+
+    canvas.remove();
     delete window.confirm;
   });
 

@@ -10910,3 +10910,61 @@ Live-verified (headless Chrome, T1, Brush tool): Orientation buttons render visi
 under the default Stripped profile; d3's real 3-entry preset list (1/2/3-wide) renders correctly
 alongside; switching to Continuous un-dims and enables Orientation. Screenshots:
 `shots/seatC/f35item10b_brush_merged_stripped.png`, `f35item10b_brush_merged_continuous.png`.
+
+## Bug fix (Fred, "do it next"): Clear leaves a ghost of the old content
+
+Clicking Clear in the editor emptied the drawn content but a ghost of the old terrain/background
+stayed visible. Investigated the 3 named suspects (brick elements, height mask, background render)
+rather than guessing which one: `regenerateOwnedBrickElements` (editor-brick-tool.js) and the brick
+height-mask rasterizer (editor-brick-height-mask.js) are both already fully stateless -- they re-read
+the live DOM every call, no cache to invalidate. The ACTUAL bug was in the background render, and it's
+an ORDERING bug, not a cache-invalidation one.
+
+**Root cause**: `action-tools.js`'s `editorClear` handler (Artwork tab) called `sync3DBackground(editor)`
+SYNCHRONOUSLY, one line before `commitEdit(editor)`. `sync3DBackground` doesn't recompute anything --
+it just `toDataURL()`s whatever `#svgEditorTopView` CURRENTLY shows and stamps that bitmap into the
+background layer. At the point Clear calls it, nothing has told that canvas the content changed yet,
+so it always captured the STALE, pre-Clear terrain. The only thing that ever actually repaints
+`#svgEditorTopView` is the async chain `commitEdit -> _notifyChange('commit') -> onChange -> 
+runChangePipeline('commit') -> remask -> scheduleRebuild (50ms debounce) -> rebuild() ->
+updateEditorTopView()` -- which calls `sync3DBackground` itself, correctly, once the terrain is
+actually recomputed. So the explicit call in Clear was both redundant with that AND guaranteed to
+paint something wrong in the meantime. (The exact same stale-then-corrected idiom exists at 2 other
+call sites in this codebase, `editor.js` `setModelMetrics` and `editor-io.js` `open()` -- not touched
+here, out of scope for this fix, but worth knowing about if a similar ghost ever shows up elsewhere.)
+
+Checked `_restoreState()` (undo/redo) too, per the dispatch's "undo of Clear must bring it all back":
+it never calls `sync3DBackground` at all, relying on the SAME async chain Clear now relies on after
+this fix -- so undo was never making this WORSE, and needed no separate fix.
+
+**Fix**: removed the premature `sync3DBackground(editor)` call from `editorClear` (and its now-unused
+import) -- Clear now relies on the exact same async commit chain every other edit (draw, delete, ...)
+already correctly relies on, with no special-cased extra call.
+
+Considered also touching `editor-brick-surface.js`'s `PATTERN_IDS` cache + its `<defs data-brick-defs>`
+block (lives on the root `<svg>`, a sibling of `_sketchLayer`, so `_sketchLayer.clear()` never removes
+it) -- on inspection this is a content-addressed cache (keyed by set/sample/flip, not by DOM element),
+so a surviving `<pattern>` after Clear is still perfectly valid and gets correctly reused by the next
+brick draw using the same sample; it's bounded by the small, fixed sample catalog size, not unbounded
+per Clear cycle. Concluded this is a real but harmless, invisible, already-correct cache -- not the
+reported bug, and not touched (no speculative fix for something that isn't actually broken).
+
+**Test** (`tests/h20-clear-scoped.test.js`, extended): a mock editor with a spy-able `_bgLayer`
+(`.image`/`.clear`/`.rect`) and a real `#svgEditorTopView` canvas fixture -- asserts `_bgLayer.image`/
+`.clear` are never called SYNCHRONOUSLY within `editorClear`'s own call stack (the precise historical
+bug), then calls the real `sync3DBackground(editor)` directly afterward to prove the fixture itself is
+live (not vacuously passing because the mock no-ops). Mutation-tested: restored the old premature call,
+re-ran -- exactly 1 of 7 tests in the file failed (the new one), confirming it's not vacuous; restored
+from a pre-mutation copy, re-confirmed green. Full suite green: 208 files / 3831 tests.
+
+**Live-verified** (headless Chrome, T1, Wall bricks seeded -- a real photo-textured brick fill with
+real relief carve depth, the most visually obvious case): before Clear, the canvas shows the full red-
+brick wall fill; after Clear + the async rebuild settling (~1.2s margin, well past the 50ms debounce),
+the canvas shows a flat, featureless board -- no brick texture, no leftover relief bump, matching a
+genuinely fresh board. Zero console errors. Screenshots: `shots/seatC/clear_ghost_fix_before.png`,
+`clear_ghost_fix_after.png`.
+
+Not yet separately re-verified on the Photo tab specifically (the dispatch asked for "every tab") --
+the fix is in the one shared Artwork-tab Clear path every tab's own Clear eventually funnels through
+(Brick/Photo content all lives in `_sketchLayer` same as Artwork), so it should already cover them,
+but a dedicated Photo-tab screenshot is still open.
