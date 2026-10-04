@@ -20079,3 +20079,107 @@ rather than extending this already-long session into a fifth distinct investigat
 advisor with: item 9's own headline fix confirmed (92% -> 0%), 3 small residual overlaps flagged for
 a decision, the scale crash fixed, and the broader scale-sensitivity + grout-width-contradicts-Fred
 findings flagged for scoping, not fixed here.
+
+## H23 item 78c, live Fusion step: goldens + a real seeded build, both sizes -- 7x9 reveals a genuine waist-opening conflict, not a bug
+
+Seat A epoch 7 (seat 39), turn 544 continued. Advisor granted the Fusion holder (fusion_holder.txt
+= 39). Merged origin/main into `t10-reconstruction` first (required -- the branch was behind,
+deploying it as-is would have rolled back Fred's own live add-in work since the branch split).
+
+**A real, near-miss caught during the merge, not after:** the merge's own 3-way diff silently
+DROPPED my `frame_shape_fit.py`/`frame_definition.py` additions (the T18 provisional-model
+infrastructure) and my `tests/frame-defs.test.js` fix. Not a merge-tool failure -- correct, textbook
+3-way-merge behaviour: `main`'s own revert commit (5540fcf) deleted those exact hunks relative to
+the merge-base (f00a37d, my own earlier commit), and because MY branch never touched those hunks
+again after inheriting them from that same base, git saw "my side: unchanged from base; their side:
+deleted" and applied the deletion -- my own DELIBERATE decision (26441c6: "kept the shared
+provisional-model infrastructure... Template 18 needs the exact same mechanism") was invisible to
+git because it was expressed as "leave this alone," not as a textual edit. **Caught it by diffing
+`c082c9f` (my pre-merge tip) against the post-merge working tree for every file I'd touched since the
+merge-base, not by trusting a clean (no-conflict) merge result.** Restored the 3 affected files via
+`git checkout c082c9f -- <path>`. Full suite re-verified green after (3883 JS + 1290 Python) before
+pushing. **Lesson: a clean 3-way merge can silently revert a deliberate "keep this, don't touch it"
+decision whenever the OTHER branch's history contains an edit to the same hunk your branch never
+re-touched -- diff your OWN pre-merge tip against the merged result for everything you care about,
+don't trust "no conflicts" as "nothing was lost."**
+
+**A second, much bigger discovery, SEPARATE from my own branch's work and likely affecting every
+seat's recent live Fusion checks: the Fusion Python process has been silently serving STALE code
+from a completely different worktree.** After stop -> deploy -> run, `fb_engine.template_resolver`
+(and, it turned out, ALL 27 `fb_engine.*` submodules) still resolved to
+`b-spline-generator-web-addin-lane-b`'s own checkout, not the freshly-deployed AddIns copy --
+`template_18` was invisible to `get_available_templates()` even after `reset_registry()`. Root
+cause, confirmed by reading `sys.modules`/`sys.path` directly rather than guessing: **once a
+PACKAGE (`fb_engine`, the bare name) is cached in `sys.modules`, Python resolves every submodule
+import (`fb_engine.template_resolver`, `fb_engine.frame_definition`, ...) via that cached package's
+OWN `__path__` attribute, never re-consulting `sys.path` -- so a stale top-level package import,
+however old, silently serves every submodule under it forever, regardless of how many times the
+add-in itself is stopped/redeployed/run.** `sys.path` itself also carries ~75 entries accumulated
+from unrelated seats' sessions (lane-b, the main checkout, `bsg-fusion-scratch`, ...) going back who
+knows how long, with STALE entries positioned BEFORE the deployed AddIns path. **Fix applied this
+turn** (one script, both problems at once): stripped every non-deployed `frame-builder`/
+`b-spline-gen`/etc. entry out of `sys.path`, purged every `fb_engine*` entry from `sys.modules`,
+re-imported fresh, then did one more clean stop/run cycle. Verified: `fb_engine.template_resolver.
+__file__`, `frame_engine_core.__file__`, and `fb_engine.frame_shape_fit.__file__` all correctly
+pointed at the deployed copy afterward, and `template_18` was discoverable. **This was NOT specific
+to my own branch or template -- it's a standing hazard for this whole long-running Fusion process,
+shared by every seat that's ever redirected it to a different worktree.** Flagging for the advisor:
+worth a `fusion360-quirks` entry and/or a standard "purge fb_engine* from sys.modules + strip stale
+sys.path entries" step before trusting ANY live Fusion result on a machine/session this old, not
+just mine.
+
+**Goldens recorded, both sizes, fully healthy:** `record_case('template_18', 7, 9)` and `(..., 9,
+12)` via `record_frame_parity.py` -- 19 curves, 4 bars, `timelineHealthy: true` at both. NOTE for
+whoever writes the real `_hourglass_narrow_arched_head` extractor later: these goldens are the
+template's own UNSEEDED/bootstrap build (`record_case` sends no `ui_data`/seeds at all), which uses
+the PHASE FILES' own hardcoded default skeleton-pin positions (copied verbatim from Template 10,
+so Template 10's OWN default proportions) -- NOT my declared `FRAME_PROVISIONAL_SHAPE` values. The
+two are expected to differ; the goldens are for fitting a real `hw,hh -> feature` model once a real
+extractor exists, not for confirming the app's own intended default shape. Scratch output (not
+committed -- the extractor needing them is still a stub):
+`bspline-frame-builder/scratch/h23_item78c_goldens/template_18_{7x9,9x12}.json`.
+
+**The REAL intended shape -- a genuinely seeded build via `build_sketch_logic_v3` + the app's own
+`seedGeometry` payload (the actual Send path, not `record_frame_parity.py`'s simplified harness)**:
+computed `frameSeedGeometry` in Node (confirmed the payload carries the right independent radii --
+`seed_rad_shoulder_R.radius` 0.8999..., `seed_rad_hip_R.radius` 1.2904... -- before sending anything
+to Fusion), then built both sizes live.
+- **9x12: clean.** `healthy: true`, `fullyConstrained: false` (same as every other template --
+  expected, the trim/surround geometry is never meant to be fully constrained), arc radii exactly
+  matching the seed (shoulder 1.1769, waist 0.9234, hip 1.6875, arch/top_edge 3.365), **4 correctly
+  separate named bars** (frame_top/left/right/bottom, left and right volumes identical by symmetry).
+  Screenshot: `~/.bspline-status/shots/seatA/h23_item78c_t18_seeded_9x12.png`.
+- **7x9: builds "healthy" but only 2 bars, not 4** (frame_top, frame_bottom -- frame_left/frame_right
+  missing). Investigated, not just flagged: `sk3.profiles.count` is 6 (the sketch-level profile
+  detection is fine), but only 2 bodies extrude. **Root cause found and numerically confirmed, not
+  guessed:** the waist's own OPENING (the gap between the left and right side bars' own OUTER edges
+  at the pinch) is `2 * (hw*(1-waistReach) - frame_thickness)` -- the SAME formula `tests/frame-
+  gen.test.js`'s own `FRAME_MIN_OPENING_IN` guard already enforces for Templates 1-5's own waistReach
+  handle (0.25in minimum). At 7x9 (hw=3.25) with Fred's own declared `waistReachOfHw=0.77292` and
+  `frame_thickness=0.75`: opening = **-0.024in** -- NEGATIVE, meaning the two bars' own outer edges
+  are already past each other at the pinch before any margin at all. At 9x12 (hw=4.25): opening =
+  **+0.430in**, comfortably clear. This is NOT a phase-copy bug, NOT a bar-naming bug, NOT a
+  module-caching artifact -- it's a genuine, board-size-dependent geometric conflict between Fred's
+  own exact waist proportion (kept unchanged per the dispatch -- "only the shoulder radius changes")
+  and the 0.75in default frame thickness, physically causing Fusion to merge the two touching solids
+  into one. **This specific guard (`FRAME_MIN_OPENING_IN`, 2D) is currently checked for Templates
+  1-5's own interactive drag handle only (`frameParamRanges`, frame-handles.js) -- it is NOT part of
+  the generic `feasibleParamRanges`/`_resolveParams` path my provisional shape resolves through, so
+  nothing caught this before the live build did.** Screenshot (2-bar result, for reference):
+  `~/.bspline-status/shots/seatA/h23_item78c_t18_seeded_7x9.png`.
+
+**Gate for the advisor/Fred, not resolved here:** Fred's own waist proportion doesn't fit a 0.75in
+frame at 7x9 with this head design. Options: (a) accept a thinner frame_thickness default for T18 at
+small sizes (contradicts the project's own "frame_thickness 0.75 everywhere" convention); (b) widen
+the waist slightly (changes Fred's own kept proportion -- exactly what this dispatch said not to
+touch); (c) accept 7x9 as a known-unsupported size for this template (T9/T10 already have a
+`_KNOWN_BROKEN_BUILD`-style precedent for a size that doesn't build); (d) something else Fred
+prefers. Not picking one unilaterally -- this changes either Fred's own approved proportions or a
+project-wide convention, both squarely a gate.
+
+**Fusion holder released** (`fusion_holder.txt` -> `none`) per the advisor's own instructions. No
+scratch documents leaked (checked `app.documents` after -- only Fred's own pre-existing open docs
+remain). `FRAME_HIDDEN` stays `True`; nothing merged to main; this commit stays on
+`t10-reconstruction`. **Live matrix not run beyond these 2 seeded cases** (capacity, and the 7x9
+finding above needs Fred's own call before a broader sweep is worth the time) -- the dispatch's own
+"run the live matrix (BUILT criteria)" is NOT complete; flagging plainly rather than claiming it is.
