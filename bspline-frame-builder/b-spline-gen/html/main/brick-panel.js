@@ -179,6 +179,19 @@ export function setInvert(on, commit = 'generate') {
   commitBrickSetting(commit);
 }
 
+/** F35 item 18 (1): brick top FLAT | ORGANIC -- same 2-state `.relief-toggle` as Relief above. */
+function syncBrickTopToggle() {
+  const flat = P.brickSettings.brickTopMode === 'flat';
+  document.getElementById('brickBtnTopOrganic')?.classList.toggle('active', !flat);
+  document.getElementById('brickBtnTopFlat')?.classList.toggle('active', flat);
+}
+
+export function setBrickTopMode(mode, commit = 'surface') {
+  P.brickSettings.brickTopMode = mode === 'flat' ? 'flat' : 'organic';
+  syncBrickTopToggle();
+  commitBrickSetting(commit);
+}
+
 /** F35 item 10 follow-up: the Brush tool's own Profile/Orientation toggles --
  *  same 2-state `.relief-toggle` convention as Relief above. Both settings
  *  already had real engine support (bricksAlongPath's own opts.profile/
@@ -269,6 +282,7 @@ function syncControlsFromState() {
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', s.grout.profile === 'recessed');
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', s.grout.profile === 'flush');
   syncReliefToggle();
+  syncBrickTopToggle();
   setPair('brickReliefHeightSlider', 'brickReliefHeight', s.reliefIn);
   setPair('brickSuppressionSlider', 'brickSuppression', s.suppression);
   setPair('brickClumpingSlider', 'brickClumping', s.clumping);
@@ -333,7 +347,19 @@ const BRICK_COMMIT = {
     onDrag: () => { notifyChange(); _scheduleLivePreview(); },
     onRelease: () => { notifyChange(); generateBricks(); },
   },
+  // F35 item 18: a 3D-only setting (SURFACE_ONLY_SETTING_KEYS below) -- the 2D layout is unchanged,
+  // so nothing to re-lay and nothing pending: just re-mask the heights through the editor's own
+  // change pipeline (main/app-init.js onChange -> refreshAllStampMasks), from either entry point.
+  surface: {
+    onDrag: () => { notifyChange(); _remaskSurface(); },
+    onRelease: () => { notifyChange(); _remaskSurface(); },
+  },
 };
+
+function _remaskSurface() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (editor && typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+}
 
 /** The one entry point every brick-setting control calls after writing P.brickSettings. */
 export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
@@ -343,9 +369,13 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
 /** Settings keys a Wall/Frame layout never reads -- a Brush stroke's own settings freeze at draw
  *  time, so changing them never makes the Wall/Frame layout pending. */
 const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation'];
+/** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
+ *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode'];
+const LAYOUT_IGNORED_SETTING_KEYS = [...BRUSH_ONLY_SETTING_KEYS, ...SURFACE_ONLY_SETTING_KEYS];
 // Top-level keys only (the replacer's `this` is the holder) -- grout.profile is a Wall/Frame setting.
 const _layoutKey = () => JSON.stringify(P.brickSettings, function (k, v) {
-  return this === P.brickSettings && BRUSH_ONLY_SETTING_KEYS.includes(k) ? undefined : v;
+  return this === P.brickSettings && LAYOUT_IGNORED_SETTING_KEYS.includes(k) ? undefined : v;
 });
 // The settings the Wall/Frame bricks on the canvas were last laid with. null = nothing changed yet
 // this session (e.g. bricks restored from a saved session): not pending. A change made while it is
@@ -851,6 +881,8 @@ export function initBrickPanel() {
   document.getElementById('brickBtnGroutFlush')?.addEventListener('click', () => setGroutProfile('flush'));
   document.getElementById('brickBtnReliefRaised')?.addEventListener('click', () => setInvert(false));
   document.getElementById('brickBtnReliefCarved')?.addEventListener('click', () => setInvert(true));
+  document.getElementById('brickBtnTopOrganic')?.addEventListener('click', () => setBrickTopMode('organic'));
+  document.getElementById('brickBtnTopFlat')?.addEventListener('click', () => setBrickTopMode('flat'));
   document.getElementById('brickBtnProfileStripped')?.addEventListener('click', () => setProfile('bricks'));
   document.getElementById('brickBtnProfileContinuous')?.addEventListener('click', () => setProfile('continuous'));
   document.getElementById('brickBtnOrientationStretcher')?.addEventListener('click', () => setOrientation('stretcher'));

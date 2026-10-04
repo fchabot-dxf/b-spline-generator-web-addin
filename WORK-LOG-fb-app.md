@@ -11909,3 +11909,70 @@ than rushing the remaining, more failure-prone pieces (an untested terrain-threa
 3 files, a weathering preset whose "rightness" depends on comparing against Fred's own reference
 images, and a UI move spanning two tabs) in the same breath, committing this clean foundation now and
 flagging the honest remaining scope for the next turn/session.
+
+## F35 item 18 part (1), turn 177 (seat C = 37, epoch 6): brick top FLAT | ORGANIC
+
+Took seat C from de (out of capacity) and continued de's T175 plan, part (1) only.
+
+**Changed de's plan at one point, with a measured reason.** de's plan had stamp-mask-manager build a
+standalone clean heightmap and bake `plane - terrain` into the brick mask. That goes STALE: a terrain
+slider (peakShape, density, seed...) or a sculpt stroke rebuilds WITHOUT re-rasterizing masks
+(main/param-manager.js applyParam: only gridChanged/stampMaskParams call refreshAllStampMasks, every
+other key just schedules rebuild). Flat bricks would then sit on the OLD ground until the next
+mask refresh. So the split is instead:
+- mask time (editor/editor-brick-height-mask.js, `opts.topMode === 'flat'`): only WHICH brick covers
+  each grid point, `flatTop = { brickOf: Int32Array (-1 = grout), count }`. Brick lookup is the
+  engine's own exported index.query + pointInPolygon, first match, the SAME order sampleHeight uses,
+  so no engine (core/bricks, seat B) change was needed. In Flat every point inside a brick is
+  isStamped (no draped hole where the profile reaches 0). Organic: no flatTop, body byte-identical.
+- composite time (core/engine/apply-stamp-layers.js, new `flatBrickPlaneHeights`): each brick's
+  least-squares plane (de's core/bricks/plane-fit.js, unchanged maths) over EVERY grid point the brick
+  covers, fitted to the heights below this layer at THIS rebuild, centred on the brick in grid units.
+  A Flat brick point: `plane + body*depth + fillet` (terrain replaced, suppression moot). Grout falls
+  through the normal path, so it stays draped in both modes with no special case.
+- the inset-window hole also clears `brickOf` (stamp-mask-manager clearStampMaskInWindow).
+
+**Setting + UI.** `P.brickSettings.brickTopMode` ('organic' default; only `=== 'flat'` is Flat, so a
+saved session without the key loads unchanged). An Organic | Flat toggle under Relief in the editor's
+Brick tab (where the other 3D brick settings live today; part (3) moves them to the sidebar together).
+Declared a third BRICK_COMMIT mode, `surface`: a 3D-only key (SURFACE_ONLY_SETTING_KEYS) never re-lays,
+never marks Generate pending, and re-masks at once via the editor's own change pipeline
+(`_notifyChange('commit')` -> app-init onChange -> refreshAllStampMasks). `setBrickTopMode(mode, commit='surface')`
+is the sidebar's entry point too. Also corrected plane-fit.js's header, which my change made wrong
+(it named the rasterizer as the plane's consumer and assumed corner+centroid samples).
+
+**Tests.** New tests/brick-top-flat.test.js (7): brickOf names each brick and -1 in the joint, Organic
+has no flatTop and the same body; window hole clears brickOf; a planar terrain is reproduced exactly;
+on hills the result is planar and equals fitPlane; applyStampLayers Flat = one plane per brick (minus
+profile) while Organic is not, joints identical; SAME mask + changed terrain lands bricks on the NEW
+ground (the staleness guard); Carved (negative depth). tests/brick-discrete-controls-regen.test.js +3:
+toggle saves/re-masks/never re-lays/never pending; a pending layout change stays pending across it;
+sidebar entry point. Non-vacuous: against HEAD's sources 6 fail + 3 cannot run (their setup needs
+flatTop); the 2 that pass on HEAD pin existing behaviour (pending stays pending; old panel has no
+button). Mutation (compositor ignores the planes, `planeZ = null`): 3/7 of brick-top-flat fail
+(the staleness test was strengthened with a planarity check after it first passed that mutation).
+Fast tier: 40 brick/stamp/rebuild/palette/state/mask spec files, 423 passed, 0 failed.
+
+**Live, real app (served fb-app worktree, headless Chrome, real Wall+Frame bricks on T1 7x9, spacing
+0.03, measured from lastResult.heights: max distance of each brick's base, height minus body*depth,
+from one plane):**
+
+| brick length | bricks measured | Organic base (max / median in) | Flat base | terrain under bricks |
+|---|---|---|---|---|
+| 3 in | 36 | 0.358 / 0.170 | 0 / 0 | 0.377 / 0.189 |
+| 0.75 in | 291 | 0.128 / 0.050 | 0 / 0 | 0.159 / 0.057 |
+
+Shots: shots/seat37/f35item18_{organic,flat}_{3,0.75}in.png (script tools/repro/f35item18_flat_organic_shots.mjs,
+SIZE_IN/SPACING env). Visible at 3 in: steep brick sides show the grid's sawtooth where a plane meets
+draped grout up to ~0.37 in away -- a sampling artifact of near-vertical walls, more visible in Flat than
+Organic; not changed here.
+
+**ENGINE BUG found, NOT fixed (core/bricks Wall layout, seat B):** on T1 7x9 at brick length 1.5 in
+exactly one Wall brick (data-brick-id=5, sample rw_22) has a CORRUPT 39-point polygon covering the whole
+interior (bbox 1.41,1.75 - 5.59,7.25, area 13.97 sq in vs 0.6 for a normal brick). It starts like a
+normal brick and wanders. Pre-existing: in Organic it silently swallows the interior Wall bricks (no
+joints visible in the centre); Flat just makes it obvious (one giant flat plane). 0.75 in and 3 in
+are clean. Reproduce: Wall tool on the default board, setBrickSize(1.5,'auto'), list
+[data-brick-gen="1"] polygons by area.
+
+Processes: my http.server (8838) and headless Chromes are stopped before the pass.

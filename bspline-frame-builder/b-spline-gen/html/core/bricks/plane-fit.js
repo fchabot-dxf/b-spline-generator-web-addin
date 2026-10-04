@@ -2,16 +2,16 @@
  * core/bricks/plane-fit.js — F35 item 16 follow-up (Fred's target look): the "Flat" brick-top mode
  * -- each brick is a rigid flat block tilted to the terrain's own AVERAGE slope under its footprint,
  * rather than bending to follow every local bump ("Organic", today's only behaviour). A plain
- * least-squares plane fit through a handful of terrain samples, pure geometry with no brick-specific
- * knowledge -- editor/editor-brick-height-mask.js is the one place that knows how to turn a fitted
- * plane into a final per-point height (see its own header for why the terrain/grout-stays-draped
- * split lives there, not here).
+ * least-squares plane fit through terrain samples, pure geometry with no brick-specific knowledge.
+ * F35 item 18: core/engine/apply-stamp-layers.js (flatBrickPlaneHeights) is the one caller -- it fits
+ * each brick's plane at composite time over every grid point the brick covers, against the live
+ * terrain (see its header for why not at mask time), and keeps grout draped.
  */
 
 /**
  * Least-squares plane z = a*x + b*y + c through `points` ({x,y,z}[]). Standard normal-equations
- * solve (3x3, Cramer's rule) -- `points.length` is always small here (a brick's own corners + its
- * centroid), so no need for anything more elaborate.
+ * solve (3x3, Cramer's rule), O(points) -- the caller centres x/y on the brick so the system stays
+ * well conditioned at any grid resolution.
  *
  * Degenerate inputs (fewer than 3 points, or a singular system -- e.g. every sample at the exact
  * same point) fall back to a FLAT, level plane at the mean sampled height: still a valid "least

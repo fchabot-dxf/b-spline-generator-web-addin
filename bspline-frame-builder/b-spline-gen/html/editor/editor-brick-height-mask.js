@@ -18,7 +18,7 @@
  * editor-brick-tool.js's own drawBrick) is the only place that's always
  * current regardless of which tool drew what.
  */
-import { buildSpatialIndex, sampleHeight, brickSetById } from '../core/bricks/index.js';
+import { buildSpatialIndex, sampleHeight, brickSetById, pointInPolygon } from '../core/bricks/index.js';
 import { preloadSetDetail, sampleDetailAtFor } from './editor-brick-surface.js';
 import { BRICK_GEN_ATTR } from './editor-brick-tool.js';
 
@@ -76,24 +76,39 @@ function collectLiveBrickGroups(editor, layer) {
  *  which this file does NOT touch). `fillet` stays all-zero (bricks have no
  *  edge-fillet concept); `isStamped` follows body>0, matching every other
  *  rasterizer's own convention. */
-export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, heightIn) {
+/** F35 item 18 (1), brick top FLAT | ORGANIC: `opts.topMode === 'flat'` also returns
+ *  `flatTop = { brickOf, count }` -- `brickOf[k]` = which brick covers grid point k (0..count-1),
+ *  -1 for grout/outside. That is ALL Flat needs from here: the plane each brick sits on is fitted
+ *  LATER, by core/engine/apply-stamp-layers.js, against the terrain as it is at THAT rebuild. Baking
+ *  terrain heights into the mask instead would go stale: a terrain slider or a sculpt stroke
+ *  rebuilds WITHOUT re-rasterizing masks (main/param-manager.js applyParam). body/isStamped are
+ *  the same in both modes except that in Flat every point inside a brick counts as stamped, so a
+ *  brick top never has a draped hole where its profile reaches 0. Organic: no flatTop, unchanged. */
+export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, heightIn, opts = {}) {
   const body = new Float32Array(nx * nz);
   const fillet = new Float32Array(nx * nz);
   const isStamped = new Uint8Array(nx * nz);
+  const flat = opts.topMode === 'flat';
+  const brickOf = flat ? new Int32Array(nx * nz).fill(-1) : null;
   const groups = collectLiveBrickGroups(editor, layer);
-  if (!groups.length) return { body, fillet, isStamped, metrics: null };
+  if (!groups.length) return { body, fillet, isStamped, metrics: null, ...(flat ? { flatTop: { brickOf, count: 0 } } : {}) };
 
   await Promise.all(groups.map((g) => preloadSetDetail(g.setId)));
 
+  let brickCount = 0;
   const built = groups.map((g) => {
     const librarySet = brickSetById(g.setId) || brickSetById(1);
     const set = g.relief ? { ...librarySet, reliefIn: g.relief } : librarySet;
     const cellSizeIn = Math.max(set.brickLengthIn || 1, set.brickHeightIn || 1) * 2;
+    const base = brickCount;
+    brickCount += g.bricks.length;
     return {
       set,
       index: buildSpatialIndex(g.bricks, cellSizeIn),
       result: { bricks: g.bricks, frameBricks: [], seed: g.seed },
       sampleDetailAt: sampleDetailAtFor(g.setId),
+      // Flat: brick object -> its number across ALL groups (the brickOf value)
+      brickNo: flat ? new Map(g.bricks.map((b, n) => [b, base + n])) : null,
     };
   });
 
@@ -105,6 +120,16 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
       const x = (i / iSpan) * widthIn;
       const k = j * nx + i;
       for (const g of built) {
+        if (flat) {
+          // the SAME first-match order sampleHeight itself uses, so the brick found here is the one
+          // whose profile sampleHeight returns
+          const b = g.index.query(x, y).find((c) => pointInPolygon(x, y, c.polygon));
+          if (!b) continue;
+          brickOf[k] = g.brickNo.get(b);
+          body[k] = sampleHeight(g.result, g.index, x, y, g.set, 0, g.sampleDetailAt) / (g.set.reliefIn || 1);
+          isStamped[k] = 1;
+          break;
+        }
         const h = sampleHeight(g.result, g.index, x, y, g.set, 0, g.sampleDetailAt);
         if (h > 0) {
           body[k] = h / (g.set.reliefIn || 1);
@@ -114,5 +139,5 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
       }
     }
   }
-  return { body, fillet, isStamped, metrics: null };
+  return { body, fillet, isStamped, metrics: null, ...(flat ? { flatTop: { brickOf, count: brickCount } } : {}) };
 }
