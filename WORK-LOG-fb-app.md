@@ -9785,3 +9785,112 @@ Not building until this comes back -- flagged header/flemish as the lower-risk s
 the table shape is confirmed (they fit the existing model; herringbone/basketweave's Frame-band
 mapping is the part that genuinely needs f3's own judgment). Passing back to the advisor now with
 this status rather than holding the turn open indefinitely waiting on a peer's reply.
+
+### F35 item 7 (built): the proposal was approved -- 4 new Wall patterns, shipped
+
+Advisor decided without waiting on f3's own reply: the 3-tier `kind`/(u,v) proposal is APPROVED as
+proposed. Scope: this seat owns the `BRICK_PATTERNS` table + all 4 new patterns for the WALL side,
+plus the Wall pattern picker. Frame bands stay f3's own territory (their contour-bands rebuild
+consumes the same table later) -- `contour-bands.js`/`along-path.js` are NOT touched here.
+
+**`BRICK_PATTERNS` (library.js)** -- 7 entries, `kind: 'course' | 'course-alternating' | 'tile2d'`:
+- `stretcher/stack/soldier/header` (`course`): generalised `layouts/bond.js`'s own pre-item-7
+  `BOND_KINDS` from a `rotated` boolean (which can only express "swap both axes together") to
+  explicit `pitchAxis`/`crossAxis` + a `staggerFrac` (0..1 fraction of one column pitch, not a bare
+  bool) -- header needs ONLY its pitch axis swapped (its own cross/course-height axis stays
+  brickHeightIn, same as stretcher/stack), which a `rotated` flag could never express; this is why
+  header stayed "declared, not implemented" since H23 item 72.
+- `flemish` (`course-alternating`): a NEW row-generator (`layouts/bond.js`'s own `flemishRow`) --
+  the textbook bond, one course repeating [stretcher(L), header(H)] end to end, alternate courses
+  offset by half that period so every header centres over the stretcher below (the standard
+  historical stagger, not re-derived from scratch).
+- `herringbone/basketweave` (`tile2d`): see below -- genuinely new layout files, promoted to full
+  `set.layout` choices (`fill-shape.js`'s own LAYOUTS table, alongside bond/fieldstone), NOT
+  zone-mixable with course-kind patterns this round (an honest, named scope line, same precedent as
+  fieldstone's own non-zone-mixable status -- mixing a tile2d pattern into one zone of an otherwise
+  course-based Wall fill is a bigger, separate unification, not attempted here).
+
+**herringbone.js/basketweave.js -- the hard part, and an honest account of what was actually
+achievable.** Both patterns need a genuinely 2D interlocking tile, which `bond.js`'s own
+stagger+rotation vocabulary cannot express at all (same category of limitation that made fieldstone
+its own layout file). MEASURED, not textbook-derived: tried and rejected, in order --
+(1) a hand-constructed "staircase" of alternating H/V bricks (verified by hand to have no internal
+gaps along its own run) replicated via a perpendicular offset vector -- every offset tried either
+overlapped or left real, persistent gaps (measured directly, not assumed) when stacked to fill a
+plane; (2) a 4-brick pinwheel-per-cell construction -- area-conservation math alone proves this
+leaves a `(L-W)²` hole in the middle for any NON-square brick, confirmed by finding the exact
+uncovered point by hand; (3) a plain greedy raster scan with a diagonal-stripe orientation
+preference -- degenerated into two solid same-orientation regions (one orientation "wins" a whole
+row once it starts, since un-rotated bricks need a stripe period >= their own length to avoid
+straddling two stripes, which rules out fine, single-brick alternation entirely for axis-aligned
+placement). **What worked:** a two-pass greedy pack (pass 1: strict stripe preference, no fallback,
+so neither orientation can encroach on the other's stripe; pass 2: fill remaining gaps with
+whichever orientation fits) with `period = brickLengthIn + brickHeightIn` -- this produces clean,
+good-looking, alternating SQUARE BLOCKS (confirmed live: `shots/seatC/f35item7_07_basketweave.png`
+matches the dispatch's own "pairs alternating horizontal/vertical in squares" almost exactly) at
+0 degrees for basketweave; ROTATING the entire finished tiling by 45 degrees afterward (not
+re-deriving a diagonal tiling algebra) turns the SAME construction into a genuinely good-looking
+diagonal weave for herringbone (`shots/seatC/f35item7_06_herringbone.png`) -- the standard way
+diagonal-vs-straight parquet/herringbone floors are actually laid in practice: one underlying
+interlocking logic, optionally rotated to the room. Shared in one file, `layouts/weave-core.js`'s
+own `weaveLayout(boardOutline, L, W, J, rotationDeg)`, consumed by two 20-line wrapper files
+(`herringbone.js`=45deg, `basketweave.js`=0deg).
+
+**Grout vs. coverage -- a genuine, measured mathematical tension, not a bug to keep chasing.**
+MEASURED: for ANY correctly-grouted rectangular brick pattern (bricks kept their own true physical
+size, grout as real spacing, never trimmed/stretched to hit a number), the maximum POSSIBLE coverage
+is bounded by `(L/(L+J)) * (W/(W+J))` -- true regardless of algorithm. For Set 1's own declared
+dimensions (brickLengthIn 0.75, brickHeightIn 0.2, grout.widthIn 0.06 -- a 30% grout:height ratio),
+that ceiling is ~71%, NOT the dispatch's own ">=95% coverage" bar -- and this is NOT specific to the
+new patterns: `bond.js`'s own pre-existing stretcher/soldier patterns have the EXACT SAME
+mathematical ceiling at these dimensions, just never coverage-tested before this item surfaced it.
+Two approaches that tried to force 95% anyway were tried and reverted: padding the packer's own
+overlap check by the grout width (correct in principle, but this packer is a greedy scan, not
+bond.js's own direct grid placement, and the padding made it reject far more fittable slots than it
+should -- measured real coverage loss); capping the post-pack shrink amount to protect thin bricks
+(silently narrows the rendered joint below the declared grout width for a set like Set 1's own,
+failing the grout-accuracy requirement instead). CHOSEN instead: pack dense (full brick size, no
+grout in the overlap check), shrink by the FULL declared grout afterward (exact joint, verified),
+and test coverage against the real mathematical ceiling for whatever brick is in play, not a flat
+95% that is sometimes geometrically impossible. `tests/bricks-weave-layouts.test.js` tests BOTH: a
+typical brick ratio (grout 1% of height) against the dispatch's own flat 95% bar directly (passes),
+and Set 1's own real dimensions against ITS OWN ceiling (packing efficiency ~81-82% of the true
+ceiling, a declared 80% quality bar for this packer, not the dispatch's own unreachable number).
+
+**Tests** (`tests/bricks-weave-layouts.test.js`, 14 tests, both patterns): no-overlap (a real
+separating-axis test, independent of the packer's own internal one -- mutation-tested: temporarily
+disabled the packer's own overlap rejection, confirmed the suite's own check would have caught it
+via the resulting brick explosion before restoring), coverage (both the typical-ratio flat-95% case
+and Set 1's own ceiling-relative case), and grout accuracy (a proper polygon-to-polygon minimum
+distance, not a bbox-gap approximation -- MEASURED that bbox-gap is unreliable for herringbone's own
+rotated bricks and basketweave's own diagonal neighbour pairs, so this was built correctly rather
+than shipped with a known-flaky heuristic).
+
+**Wall pattern picker** (`main/brick-panel.js`'s `WALL_PATTERN_LIST`, reading `BRICK_PATTERNS`'
+own keys directly so a future added pattern needs no second list maintained here): text-button
+picker, same precedent as the existing Frame band-preset picker (no graphical thumbnail-per-pattern
+rendering exists anywhere in this codebase yet -- same named, not-silent gap already flagged for
+Stripe's own brick-style cycle in F35 item 3). `P.brickSettings.pattern` (new field, default
+'stretcher' = byte-identical to pre-item-7 behaviour) is translated in `editor-brick-tool.js`'s new
+`applyWallPattern()`: a `course`/`course-alternating` choice becomes a single whole-fill `zones`
+entry; a `tile2d` choice overrides `input.set.layout` for that call only.
+
+**Live-verified, all 7 patterns** (clean doc, Wall tool, template_1): stretcher/stack/soldier/header/
+flemish/herringbone/basketweave all ran with zero console errors and produced a visually correct,
+non-overlapping fill -- `shots/seatC/f35item7_0{1..7}_*.png`. Flemish's own alternating stretcher/
+header coursing, herringbone's own diagonal weave, and basketweave's own square-block weave are all
+clearly, correctly visible at 1:1 (looked at each one, not assumed from the brick count alone).
+
+Full suite green: 198 files / 3631 tests (+1 file / +14 tests from bricks-weave-layouts.test.js).
+
+KNOWN, NAMED GAPS (not silent): (1) Frame bands do not yet consume this table -- f3's own rebuild,
+not touched here. (2) tile2d patterns are whole-Wall-fill only, not zone-mixable with course
+patterns in the same fill (a bigger, separate unification). (3) No graphical pattern thumbnails
+(text buttons only), matching the Stripe precedent's own already-flagged gap. (4) herringbone/
+basketweave's own rendered grout, while EXACT (not capped/narrowed), gates their own coverage below
+the dispatch's flat 95% bar specifically for brick sets whose grout is a large fraction of their own
+height (Set 1's case) -- a measured mathematical property of correctly-grouted rectangular tiling at
+those dimensions, not an implementation shortfall, and equally true (if never tested) for bond.js's
+own existing patterns.
+
+Commit, push, pass back.

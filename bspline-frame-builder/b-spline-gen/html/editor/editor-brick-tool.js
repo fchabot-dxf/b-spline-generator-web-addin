@@ -55,7 +55,7 @@ import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
 import { bricksAlongPath, generateBricks } from '../core/bricks/index.js';
-import { brickSetById } from '../core/bricks/library.js';
+import { brickSetById, BRICK_PATTERNS } from '../core/bricks/library.js';
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
 import { radialSignAt } from '../core/bricks/arc-voussoir.js';
@@ -228,6 +228,28 @@ function setForId(id) {
   return brickSetById(id) || brickSetById(1);
 }
 
+/** F35 item 7: `settings.pattern` (main/brick-panel.js's Wall pattern picker) is a single
+ *  BRICK_PATTERNS key the user picked for the WHOLE Wall fill -- no per-zone mixing UI exists yet
+ *  (library.js's own BRICK_PATTERNS header names that as a deliberately out-of-scope extension).
+ *  Dispatches on the pattern's own declared `kind`: 'course'/'course-alternating' patterns
+ *  (stretcher/stack/soldier/header/flemish) still go through bond.js's own zone mechanism (one
+ *  zone, the whole fill, using this pattern); 'tile2d' patterns (herringbone/basketweave) are a
+ *  different ALGORITHM entirely, selected via `set.layout` (fill-shape.js's own LAYOUTS table) --
+ *  mutates `input` in place (`input.zones` or overrides `input.set`), same style
+ *  resolveFrameBrickSet already uses for its own Frame-only override. Leaves `input` untouched for
+ *  an unrecognised/omitted pattern (falls through to bondLayout's own default single stretcher
+ *  zone, byte-identical to pre-item-7 behaviour). */
+function applyWallPattern(input, settings) {
+  const pattern = settings.pattern;
+  const def = pattern && BRICK_PATTERNS[pattern];
+  if (!def) return;
+  if (def.kind === 'tile2d') {
+    input.set = { ...input.set, layout: pattern };
+  } else {
+    input.zones = [{ pattern }];
+  }
+}
+
 /** Wall + Frame (button-driven, no drag), unified: f3's own `generateBricks`
  *  composer (core/bricks/engine.js) already does "Frame then Wall, Wall
  *  fills the Frame's own interiorOutline" -- advisor review (turn 131):
@@ -258,6 +280,7 @@ export function runBricks(editor, settings, frameGeom) {
     seed: settings.seed,
   };
   if (frameGeom) input.frame = frameGeom;
+  applyWallPattern(input, settings);
 
   const { bricks, frameBricks } = generateBricks(input);
   drawBricks(editor, layer, frameBricks, 'frame', settings.setId, settings.seed, settings.reliefIn);
