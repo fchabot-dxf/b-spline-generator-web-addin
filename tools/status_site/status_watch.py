@@ -243,17 +243,22 @@ im.style.transformOrigin='center center'; im.style.transition='none';
 function zoomAt(ns,cx,cy){{ const r=im.getBoundingClientRect(), ox=cx-(r.left+r.width/2), oy=cy-(r.top+r.height/2);
   ns=Math.max(1,Math.min(6,ns)); const k=ns/zs; zx=zx*k-ox*(k-1); zy=zy*k-oy*(k-1); zs=ns; if(zs===1){{zx=0;zy=0;}} za(); }}
 const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+const mid=t=>({{x:(t[0].clientX+t[1].clientX)/2,y:(t[0].clientY+t[1].clientY)/2}});
+// two fingers = pinch AND pan, in normal and markup mode (Fred): the image point under the fingers' start midpoint stays under their current midpoint
+let m0=null, zx0=0, zy0=0, C0=null;
+function twoFinger(t){{ const m=mid(t), ns=Math.max(1,Math.min(6,ps*dist(t)/pd));
+  const ux=(m0.x-C0.x-zx0)/ps, uy=(m0.y-C0.y-zy0)/ps; zs=ns; zx=m.x-C0.x-ns*ux; zy=m.y-C0.y-ns*uy; za(); }}
 lb.addEventListener('touchstart',ev=>{{ if(drawOn && ev.touches.length<2) return; moved=false;
-  if(ev.touches.length===2){{ pd=dist(ev.touches); ps=zs; x0=null; return; }}
+  if(ev.touches.length===2){{ pd=dist(ev.touches); ps=zs; x0=null; m0=mid(ev.touches); zx0=zx; zy0=zy;
+    const r=im.getBoundingClientRect(); C0={{x:r.left+r.width/2-zx, y:r.top+r.height/2-zy}}; return; }}
   x0=ev.touches[0].clientX; y0=ev.touches[0].clientY; drag={{x:zx,y:zy}}; }},{{passive:true}});
 lb.addEventListener('touchmove',ev=>{{ if(drawOn && !(ev.touches.length===2 && pd)) return;
-  if(ev.touches.length===2&&pd){{ const c={{x:(ev.touches[0].clientX+ev.touches[1].clientX)/2,y:(ev.touches[0].clientY+ev.touches[1].clientY)/2}};
-    zoomAt(ps*dist(ev.touches)/pd,c.x,c.y); moved=true; ev.preventDefault(); return; }}
+  if(ev.touches.length===2&&pd&&m0){{ twoFinger(ev.touches); moved=true; ev.preventDefault(); return; }}
   if(zs===1&&x0!==null&&ev.touches.length===1){{ const ddy=ev.touches[0].clientY-y0, ddx=ev.touches[0].clientX-x0; if(ddy>0&&ddy>Math.abs(ddx)){{ fig.style.transform='translateY('+ddy+'px)'; moved=true; ev.preventDefault(); return; }}
     if(Math.abs(ddx)>Math.abs(ddy)&&!stepping){{ fig.style.transform='translateX('+ddx+'px)'; moved=true; ev.preventDefault(); return; }} }}
   if(zs>1&&x0!==null&&drag){{ zx=drag.x+ev.touches[0].clientX-x0; zy=drag.y+ev.touches[0].clientY-y0; za(); moved=true; ev.preventDefault(); }} }},{{passive:false}});
 lb.addEventListener('touchend',ev=>{{ if(drawOn && !pd) return;
-  if(ev.touches.length>0) return; setTimeout(()=>{{moved=false;}},350); if(pd){{ pd=0; x0=null; return; }}
+  if(ev.touches.length>0) return; setTimeout(()=>{{moved=false;}},350); if(pd){{ pd=0; m0=null; x0=null; return; }}
   if(x0===null) return; const dx=ev.changedTouches[0].clientX-x0, dy=ev.changedTouches[0].clientY-y0; x0=null;
   if(zs===1 && dy>90 && dy>Math.abs(dx)){{ moved=true; slideClose(dy); return; }}
   if(zs===1 && Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)){{ step(dx<0?1:-1,dx); moved=true; ev.preventDefault(); return; }}
