@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "08dad359eb4166807d364332b6e7d3edb93ff7399eea0bedb5cd297e37df7505",
+  "sourceHash": "739deec8ac9424f7a619909fb6697283173194db57255a8fb3459c35ee5d0cc1",
   "templates": [
     {
       "features": [
@@ -3056,12 +3056,10 @@
                         "side": "left"
                       }
                     },
-                    {
-                      "SeedFrom": {
-                        "id": "top_edge",
-                        "side": "short-arc-mid"
-                      }
-                    },
+                    [
+                      "0.001",
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.25 in"
+                    ],
                     {
                       "SeedFrom": {
                         "id": "top_edge",
