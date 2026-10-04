@@ -83,16 +83,37 @@ function selectSet(setId) {
 
 /** F35 item 16 (Fred, "replacing the 0.5-2x multiplier with a BRICK SIZE control in inches"):
  *  quick-access real-world sizes, declared as data -- a new preset is one more entry here, no UI
- *  rework. "Life size" is a real US brick's own actual length (8in x 2.25in); quarter/half are
- *  plain fractions of that, giving the picker a sensible visual/physical progression rather than
- *  arbitrary round numbers. */
+ *  rework. Advisor follow-up (Fred: "is scale easy?" -- the linear slider crammed every everyday
+ *  size into ~15% of the travel): the preset list itself was widened from 3 points (2/4/8in) to the
+ *  5 values that actually span the control's own min/max, matching the measured resolution grid's
+ *  own columns (shots/seatC/resolution_scale_grid.png) -- "Life size" is a real US brick's own
+ *  actual length (8in x 2.25in). */
 const BRICK_SIZE_PRESETS = [
-  { id: 'quarter', label: '¼ size', lengthIn: 2 },
-  { id: 'half', label: '½ size', lengthIn: 4 },
-  { id: 'life', label: 'Life size (8″×2¼″)', lengthIn: 8 },
+  { id: 'eighth3', label: '⅜″', lengthIn: 0.375 },
+  { id: 'quarter3', label: '¾″', lengthIn: 0.75 },
+  { id: 'half1', label: '1½″', lengthIn: 1.5 },
+  { id: 'three', label: '3″', lengthIn: 3 },
+  { id: 'life', label: 'Life 8″', lengthIn: 8 },
 ];
 const BRICK_SIZE_MIN_IN = 0.375;
 const BRICK_SIZE_MAX_IN = 8;
+
+/** The range input's OWN raw value is a LOG position (0..BRICK_SIZE_SLIDER_STEPS), never the real
+ *  inches value -- a plain linear 0.375-8in slider put every everyday size (0.375-1.5in) in the
+ *  first ~15% of the handle's travel, since 8in is >20x the minimum (Fred's own "is scale easy?"
+ *  review). `#brickSize` (the number stepper) stays in REAL inches throughout, exact, never
+ *  log-mapped -- only the draggable handle's own position is remapped, via these two inverse
+ *  functions, so dragging feels evenly spaced across the whole 0.375-8in range. */
+export const BRICK_SIZE_SLIDER_STEPS = 1000;
+export function brickSizeToSliderPos(inches) {
+  const clamped = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, inches));
+  const t = Math.log(clamped / BRICK_SIZE_MIN_IN) / Math.log(BRICK_SIZE_MAX_IN / BRICK_SIZE_MIN_IN);
+  return Math.round(t * BRICK_SIZE_SLIDER_STEPS);
+}
+export function sliderPosToBrickSize(pos) {
+  const t = Math.min(BRICK_SIZE_SLIDER_STEPS, Math.max(0, pos)) / BRICK_SIZE_SLIDER_STEPS;
+  return BRICK_SIZE_MIN_IN * Math.pow(BRICK_SIZE_MAX_IN / BRICK_SIZE_MIN_IN, t);
+}
 
 function renderBrickSizePresetList(container) {
   if (!container) return;
@@ -117,10 +138,20 @@ function syncBrickSizePresetButtons() {
 function setBrickSize(lengthIn) {
   const v = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, lengthIn));
   P.brickSettings.brickLengthIn = v;
-  setPair('brickSizeSlider', 'brickSize', v);
+  syncBrickSizeControls(v);
   syncBrickSizePresetButtons();
   notifyChange();
   _scheduleLivePreview();
+}
+
+/** Writes the real inches value `v` to BOTH controls -- the slider's own raw DOM value is its LOG
+ *  position (brickSizeToSliderPos), never `v` itself; `#brickSize` (the number stepper) gets `v`
+ *  directly, exact, same as every other bound control here. */
+function syncBrickSizeControls(v) {
+  const slider = document.getElementById('brickSizeSlider');
+  const number = document.getElementById('brickSize');
+  if (slider) slider.value = String(brickSizeToSliderPos(v));
+  if (number) number.value = String(v);
 }
 
 function setGroutProfile(profile) {
@@ -224,7 +255,7 @@ function syncControlsFromState() {
   syncWallPatternButtons();
   renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
   syncFrameBandPatternButtons();
-  setPair('brickSizeSlider', 'brickSize', s.brickLengthIn);
+  syncBrickSizeControls(s.brickLengthIn);
   syncBrickSizePresetButtons();
   document.getElementById('brickGroutWidth').value = s.grout.widthIn;
   document.getElementById('brickGroutDepth').value = s.grout.depthIn;
@@ -308,6 +339,30 @@ function bindSlider(sliderId, numberId, key, parse = parseFloat) {
   slider?.addEventListener('change', (e) => commit(e.target.value));
   number?.addEventListener('input', (e) => apply(e.target.value));
   number?.addEventListener('change', (e) => commit(e.target.value));
+}
+
+/** Brick size's own binder, not the shared bindSlider above: the slider's raw DOM value is a LOG
+ *  position (brickSizeToSliderPos/sliderPosToBrickSize), while `#brickSize` (the number stepper)
+ *  stays real inches throughout -- the two controls no longer share one raw value the way every
+ *  other bindSlider pair does, so this mirrors bindSlider's own input/change-commit shape with that
+ *  one difference instead of forcing a log-aware `parse` through the generic helper. */
+function bindBrickSizeControls() {
+  const slider = document.getElementById('brickSizeSlider');
+  const number = document.getElementById('brickSize');
+  const apply = (v) => {
+    if (!Number.isFinite(v)) return;
+    const clamped = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, v));
+    if (slider) slider.value = String(brickSizeToSliderPos(clamped));
+    if (number) number.value = String(clamped);
+    P.brickSettings.brickLengthIn = clamped;
+    notifyChange();
+    _scheduleLivePreview();
+  };
+  const commit = (v) => { apply(v); _commitBrickSlider(); };
+  slider?.addEventListener('input', (e) => apply(sliderPosToBrickSize(parseFloat(e.target.value))));
+  slider?.addEventListener('change', (e) => commit(sliderPosToBrickSize(parseFloat(e.target.value))));
+  number?.addEventListener('input', (e) => apply(parseFloat(e.target.value)));
+  number?.addEventListener('change', (e) => commit(parseFloat(e.target.value)));
 }
 
 function bindGroutField(id, key) {
@@ -660,7 +715,7 @@ export function initBrickPanel() {
   // now real -- un-greyed, selectable like Red Brick.
   document.getElementById('brickSetWhite')?.addEventListener('click', () => selectSet(3));
 
-  bindSlider('brickSizeSlider', 'brickSize', 'brickLengthIn');
+  bindBrickSizeControls();
   bindGroutField('brickGroutWidth', 'widthIn');
   bindGroutField('brickGroutDepth', 'depthIn');
   document.getElementById('brickBtnGroutRecessed')?.addEventListener('click', () => setGroutProfile('recessed'));

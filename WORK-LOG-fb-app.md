@@ -11413,3 +11413,60 @@ screenshot/numbers against what should have been there, not assumed from the cod
 frame-band-depth-vs-neck-narrowness hint and the resolution hint's own wording (this grid was the
 prerequisite measurement for both); (2) the rest of item 16 (Wall/Frame as tools, contextual panel,
 shared Layers empty-state, Level, Raised brush, toolbar popover relocation).
+
+## F35 item 16 follow-up: brick-size slider goes logarithmic (Fred: "is scale easy?")
+
+Mid-task DM from the advisor, arriving while the resolution grid above was already underway (done in
+this same turn, after the grid): the plain linear 0.375-8in slider put every everyday size
+(0.375-1.5in) in the first ~15% of the handle's own travel, since 8in is >20x the minimum -- Fred's
+own usability read on the control. Fix: the `#brickSizeSlider` range input's own raw DOM value is now
+a LOG position (0-1000, `BRICK_SIZE_SLIDER_STEPS`), converted to/from real inches by two new pure,
+exported functions in `main/brick-panel.js` -- `brickSizeToSliderPos(inches)` /
+`sliderPosToBrickSize(pos)`. `#brickSize` (the number stepper) is untouched -- real inches, exact,
+throughout, per the advisor's own explicit "the number box stays exact."
+
+**Binding**: the shared `bindSlider` helper assumes the slider and number box carry the SAME raw
+value, which no longer holds here -- added a dedicated `bindBrickSizeControls()` (same input-live-
+preview / change-commits shape as `bindSlider`, just routing the slider's own raw value through
+`sliderPosToBrickSize` first). `setBrickSize(lengthIn)` (the preset-click path) and
+`syncControlsFromState()` both now call a new `syncBrickSizeControls(v)` that writes the slider's log
+position and the number box's exact inches separately, replacing the old single `setPair(...)` call
+(which wrote the same raw value to both -- no longer correct once they diverge).
+
+**Presets widened from 3 to 5** (Fred's own spec in the same DM): `BRICK_SIZE_PRESETS` was
+`[2, 4, 8]` ("¼/½/Life size", arbitrary fractions of 8in) -- now `[0.375, 0.75, 1.5, 3, 8]`
+("⅜″/¾″/1½″/3″/Life 8″"), the same 5 values as the resolution grid's own columns above, so the
+control's quick-picks match the exact points Fred already has real renders of.
+
+**Tests**, new file `tests/brick-size-log-slider.test.js` (10 tests): pure round-trip/endpoint/
+monotonic coverage for `brickSizeToSliderPos`/`sliderPosToBrickSize` (both newly exported
+specifically to be unit-testable, same precedent as `scaleFor` earlier this item), PLUS one test
+that encodes the actual bug being fixed directly -- asserts 1.5in's own slider position covers more
+than 40% of the travel (a linear mapping gives ~14.7%, matching Fred's own "~15%" read). Also: the
+real `#brickSizeSlider` element drives the correct inches through the log mapping; `#brickSize`
+stays exact independent of the slider's own quantization; setting via either control re-syncs the
+other; all 5 presets render, commit the exact value, and highlight correctly. Mutation-tested:
+reverted `brickSizeToSliderPos`/`sliderPosToBrickSize` to a plain linear map -- exactly the 1 test
+built to catch this (the "40% of travel" one) failed (14.8% vs expected >40%), the other 9 (round-
+trip/endpoints/monotonic/integration/presets) stayed green, confirming those alone would NOT have
+caught this specific regression. Restored from a pre-mutation copy. `tests/brick-slider-timing.test.js`
+(the pre-existing drag-timing suite) now drives `#brickSize` instead of `#brickSizeSlider` for its
+own interactions -- both route through the identical apply/commit functions in
+`bindBrickSizeControls`, so the throttle/live-preview/commit behavior under test is unchanged; only
+the element used to fire the events changed, since the slider's raw value is no longer plain inches.
+Full suite green: 212 files / 3864 tests (was 211/3854).
+
+**Screenshots** (per the advisor's own ask, "none exist yet"): `brick_size_control_1366.png` /
+`_390.png` (headless Chrome, Brick tab, Wall tool) -- copied to
+`.bspline-status/shots/seatC/f35item16_brick_size_log_slider_{1366,390}.png`. The mobile (390) shot
+needed one extra step not obvious from the desktop case: the Brick tab's controls live in
+`editor/editor-drawer.js`'s own bottom drawer, collapsed to a ~96px "peek" height by default -- a
+real user drags it open (`splitter.js`'s drag/snap gesture); the screenshot script instead sets
+`#editorMobileDrawer`'s height directly to the drawer's own 88vh "full" snap fraction, which is
+harmless on desktop (that wrapper is `display:contents` there per editor-drawer.js's own header, so
+setting its height has no visual effect) and avoids simulating the real drag for what is just a
+one-off screenshot need.
+
+Not yet done: relocating Brick size + Grout into the toolbar-anchored "Bricks & grout" popover (still
+queued from item 16's own earlier scope, unaffected by this slider change); the frame-depth-vs-neck
+hint and resolution hint wording (next, per the advisor's turn-171 dispatch).

@@ -3085,10 +3085,15 @@
 
             <!-- F35 item 16 (Fred: "I'd rather they all have the same size"): ONE global brick
                  SIZE in real inches, replacing the old separate Frame-brick-length override and
-                 the 0.5-2x Scale multiplier -- shared by Wall, every Frame band, and Brush. -->
+                 the 0.5-2x Scale multiplier -- shared by Wall, every Frame band, and Brush.
+                 Advisor follow-up (Fred: "is scale easy?"): the SLIDER's own raw value is a LOG
+                 position, 0-1000, mapped to 0.375-8in by main/brick-panel.js's own
+                 brickSizeToSliderPos/sliderPosToBrickSize -- a plain linear 0.375-8in range put
+                 every everyday size in the first ~15% of the handle's travel. #brickSize (the
+                 number box) stays real inches, exact, unchanged. -->
             <label class="cad-label">Brick size (in)</label>
             <div class="cad-slider-row" style="margin-bottom:6px;">
-              <input type="range" id="brickSizeSlider" class="cad-slider" min="0.375" max="8" step="0.025" value="0.75">
+              <input type="range" id="brickSizeSlider" class="cad-slider" min="0" max="1000" step="1" value="226">
               <div class="cad-stepper" style="width:60px;"><input type="number" id="brickSize" value="0.75" min="0.375" max="8" step="0.025"></div>
             </div>
             <div id="brickSizePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
