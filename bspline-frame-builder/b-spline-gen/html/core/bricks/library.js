@@ -332,9 +332,9 @@ export const FRAME_PRESETS = Object.freeze({
   // 'header' directly (declared piece-length sequences, see contour-bands.js's own header) -- the
   // de-measured "1.2-1.5in before band-course.js degrades" caution no longer applies to THIS path at
   // all (confirmed: no bending/oversampling possible, every piece comes from the same exact clip
-  // math soldier/stretcher always used); it still applies to the LIVE app's own current routing
-  // until `editor-brick-tool.js`'s own `frameBricksFor` is updated to stop sending header/flemish/
-  // stack through the now-superseded band-course.js (de's own call, not made here -- see WORK-LOG).
+  // math soldier/stretcher always used). `editor-brick-tool.js`'s own `frameBricksFor` special-case
+  // (de's) is RETIRED (F35 item 8 round 4) -- the live app now always routes header/flemish/stack
+  // through this same `bricksContourBands` path, so the caution above no longer applies anywhere.
   header_band: [{ widthIn: 0.6, pattern: 'header' }],
   // T86 item 2: the dispatch's own preview combination -- header (outer, a tight decorative band),
   // flemish (middle, the alternating stretcher/header look), soldier (inner) -- in ONE frame,

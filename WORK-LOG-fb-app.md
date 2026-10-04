@@ -10378,3 +10378,43 @@ what WAS verified about this engine, not as a currently-exercised live path.
 
 **Waiting on**: b5's own `sequence` input to `planCornerRun` (advisor: "I'll DM" when it's ready). No
 further band-course.js work until then -- re-arming the worker wait now.
+
+## F35 item 8 round 4: unparked -- wire the picker to b5's sequence API, retire frameBricksFor
+
+b5's own T86 item 2 (`planCornerRun(runLength, pitch, nominalJoint, fractions, sequence, forcedFStart)`,
+merged to main as 5acae95) landed `bricksContourBands` consuming `BRICK_PATTERNS`'s own declared
+`kind`/`pitchAxis`/`crossAxis`/`staggerFrac` for EVERY pattern -- header/flemish/stack now build through
+the SAME proven primitive-ribbon path soldier/stretcher always used (voussoirs, mitres, corner styles
+all for free, no second engine). Merged `origin/main` into `fb-app` (clean, no conflicts) -- full suite
+green 203/3775 immediately after.
+
+**Retired `frameBricksFor`'s entire per-band engine split** (`editor-brick-tool.js`): `NEW_ENGINE_PATTERNS`,
+the function itself, and the now-unused `band-course.js`/`bricksContourBands` imports, all deleted.
+`generateBricks` (engine.js) already calls `bricksContourBands(frame.primitives, frame.bands, ...)`
+with the frame's own FULL band list -- since that function now handles every pattern correctly, its own
+`frameBricks` return value needed no further routing at all. `runBricks` simplifies to `const { bricks,
+frameBricks } = generateBricks(input);` directly. Updated the stale cross-file comments this touched
+(`library.js`'s own `header_band` note, `brick-panel.js`'s picker/`resolveFrameGeom` headers) that
+described the now-retired split, rather than leaving them pointing at code that no longer exists.
+`band-course.js` itself and its own test file are UNTOUCHED, left parked exactly as the advisor said.
+
+**Re-verified via the real live app** (headless Chrome, template select -> open editor -> Frame band
+preset -> per-band pattern buttons -> Frame tool -- the real UI, same as every prior round) with the
+SAME `three_band` preset + band0->header/band1->flemish overrides (band2 stays the preset's own default
+soldier) used throughout this item: 659 real `[data-brick="frame"]` pieces, max single piece area 0.172
+sq in (a normal brick is 0.15), zero self-intersecting (bowtie) polygons -- dramatically cleaner than
+every prior round's own live-app result, with no further band-course.js-class defects to chase.
+
+**Screenshots** (`shots/seatC/`, all three overwritten -- the live app's own actual rendering engine
+changed, so round 2/3's shots no longer reflect what ships): `f35item8_full_1366.png` (the real app,
+1366px, photo-texture, header+flemish+the default soldier, Wall's own interior fill included as real
+unconditional behaviour); `f35item8_corner_closeup.png` (flat-coloured from the SAME live data, clean
+mitred corner, consistent piece widths, no slivers/overlaps/gaps); `f35item8_waist_closeup.png`
+(same technique, the full S-curve across all 3 bands, clean voussoir coursing, no bending, no gaps --
+regenerated even though round 2's own waist shot was approved, since THAT shot was band-course.js's own
+geometry, which no longer runs in the live app at all).
+
+Full suite green: 203 files / 3775 tests. Commit by explicit path, push, report back to the advisor:
+the picker is wired to the proven path, frameBricksFor is gone, band-course.js stays parked/unused
+exactly as instructed, and the real live app now matches the clean preview shots b5's own T86 item 2
+already produced independently.

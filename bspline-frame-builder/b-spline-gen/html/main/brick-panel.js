@@ -239,7 +239,7 @@ function syncWallPatternButtons() {
  *  offering every BRICK_PATTERNS key (the same table/labels the Wall picker above reads). 'tile2d'
  *  entries (herringbone/basketweave) are disabled here -- bricks must never stretch around a curve,
  *  and tile2d-on-a-curve is still an open design (library.js's own BRICK_PATTERNS header names it
- *  that way, core/bricks/band-course.js only ever handles 'course'/'course-alternating' kinds).
+ *  that way; `bricksContourBands`, T86 item 2, only ever handles 'course'/'course-alternating' kinds).
  *  Fully re-rendered (not just re-synced) whenever the band PRESET changes, since a different preset
  *  can have a different band COUNT. */
 function renderFrameBandPatternList(container) {
@@ -368,8 +368,10 @@ const FRAME_PRESET_LIST = [
  *  F35 item 8: each declared band's own `pattern` is overridden by the per-band picker's own choice
  *  (`frameBandPatterns[i]`) when one was made for that index -- a NEW array (never mutates
  *  FRAME_PRESETS' own frozen entries), falling back to the preset's own declared pattern for any
- *  index the user hasn't touched. editor-brick-tool.js's own `frameBricksFor` decides PER BAND which
- *  engine a given pattern needs (see its own header) -- this function just builds the real band list. */
+ *  index the user hasn't touched. T86 item 2: every pattern now builds through the SAME
+ *  `bricksContourBands` call (generateBricks' own composer, via `runBricks`) -- no per-band engine
+ *  split any more (editor-brick-tool.js's own now-retired `frameBricksFor`), so this function just
+ *  builds the real band list, nothing else. */
 function resolveFrameGeom(editor) {
   const ctx = frameContext(editor);
   const sil = ctx ? frameContourSilhouette(ctx, 0, 0) : { error: 'noFrame' };

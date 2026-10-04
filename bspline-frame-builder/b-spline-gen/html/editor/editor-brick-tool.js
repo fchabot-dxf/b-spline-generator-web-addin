@@ -55,8 +55,6 @@ import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
 import { bricksAlongPath, generateBricks } from '../core/bricks/index.js';
-import { bricksContourBands } from '../core/bricks/contour-bands.js';
-import { bandCourseBricks, resolveBandRows } from '../core/bricks/band-course.js';
 import { brickSetById, BRICK_PATTERNS } from '../core/bricks/library.js';
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
@@ -252,70 +250,6 @@ function applyWallPattern(input, settings) {
   }
 }
 
-/** F35 item 8: `bricksContourBands` (f3's contour-bands.js, deliberately UNTOUCHED here) only ever
- *  understands a binary soldier/stretcher switch, sizing anything else (header/flemish/stack) AS IF
- *  it were stretcher-shaped -- wrong piece shapes, but still CORRECT depth accounting (every one of
- *  those patterns shares stretcher's own `crossAxis:'height'`). These are the patterns it cannot
- *  render correctly at all, so a band using one of them NEEDS band-course.js's own (u,v)-driven
- *  generator -- 'soldier'/'stretcher'/unset stay on the legacy path, which stays MORE ROBUST at real
- *  depth (see frameBricksFor's own header for the measured reason). */
-const NEW_ENGINE_PATTERNS = new Set(['header', 'flemish', 'stack']);
-
-/** Splits `bands` into RUNS of consecutive same-engine bands (preserving outer -> inner order) and
- *  renders each run with whichever engine it needs, positioned at the correct cumulative depth --
- *  never a single whole-frame engine switch. MEASURED why this matters, not a style preference:
- *  band-course.js approximates a brick's own inner edge by projecting from its OUTER-edge sample's
- *  own local normal (unlike `bricksContourBands`'s exact analytic offsetting, which tracks a
- *  primitive DROPPING OUT at depth via `isArcFeasible`/`primitiveLiveAtDepth`) -- correct on a
- *  straight run and for a shallow row, but it can show real, substantial overlap once a band's own
- *  CUMULATIVE depth approaches a template's own tightest local feature. Confirmed directly on T1's
- *  own shoulder fillet: even the UNTOUCHED default three_band preset (soldier/stretcher/soldier, no
- *  user override at all) measured ~11.8 sq in of real overlap area through band-course.js alone,
- *  while the SAME preset through the unmodified `bricksContourBands` stays clean (its own few
- *  "overlapping" pairs there are float-epsilon mitre-seam noise, total area ~0.003 sq in -- the same
- *  benign class of noise `tests/bricks-contour-bands.test.js` already documents elsewhere). A single
- *  "any override -> whole frame on the new engine" gate (the first version of this integration)
- *  therefore regressed the EXISTING three_band preset the moment the user touched ANY band's own
- *  pattern, even one left at its own default -- this per-RUN split keeps every band that doesn't
- *  need the new engine on the proven path, regardless of what else in the same frame was overridden.
- *
- *  A LEGACY run is positioned via a count-and-slice trick (not a distance calculation):
- *  `bricksContourBands` has no "start at this depth" parameter, but its own bands are processed in
- *  strict outer -> inner ARRAY ORDER, and a given band's own piece count/geometry is independent of
- *  what follows it -- calling it once with just the PRECEDING bands (their real pattern if legacy-
- *  compatible, 'stretcher' as an exact depth-equivalent placeholder otherwise) gives the exact piece
- *  COUNT to skip, then calling it again with [preceding..., ...thisRun] and slicing from that count
- *  onward yields exactly this run's own bricks, correctly positioned. A NEW-ENGINE run needs no such
- *  trick: band-course.js is this project's own file, so it simply takes the accumulated depth
- *  directly via its own `startDepth` option. */
-function frameBricksFor(frameGeom, settings, input, legacyFrameBricks) {
-  const { primitives, bands } = frameGeom;
-  const set = frameGeom.set || input.set;
-  if (!bands.some((b) => NEW_ENGINE_PATTERNS.has(b.pattern))) return legacyFrameBricks; // pure legacy, untouched
-
-  const L = set.brickLengthIn, H = set.brickHeightIn;
-  const bricks = [];
-  let i = 0;
-  while (i < bands.length) {
-    const useNew = NEW_ENGINE_PATTERNS.has(bands[i].pattern);
-    let j = i;
-    while (j < bands.length && NEW_ENGINE_PATTERNS.has(bands[j].pattern) === useNew) j++;
-    const run = bands.slice(i, j);
-    if (useNew) {
-      let startDepth = 0;
-      for (let k = 0; k < i; k++) { const r = resolveBandRows(bands[k], L, H); startDepth += r.naturalWidth * r.rows; }
-      bricks.push(...bandCourseBricks(primitives, run, set, { seed: settings.seed, startDepth }).bricks);
-    } else {
-      const padding = bands.slice(0, i).map((b) => (NEW_ENGINE_PATTERNS.has(b.pattern) ? { ...b, pattern: 'stretcher' } : b));
-      const paddingCount = padding.length ? bricksContourBands(primitives, padding, { set, seed: settings.seed }).bricks.length : 0;
-      const combined = bricksContourBands(primitives, [...padding, ...run], { set, seed: settings.seed }).bricks;
-      bricks.push(...combined.slice(paddingCount));
-    }
-    i = j;
-  }
-  return bricks;
-}
-
 /** Wall + Frame (button-driven, no drag), unified: f3's own `generateBricks`
  *  composer (core/bricks/engine.js) already does "Frame then Wall, Wall
  *  fills the Frame's own interiorOutline" -- advisor review (turn 131):
@@ -348,8 +282,7 @@ export function runBricks(editor, settings, frameGeom) {
   if (frameGeom) input.frame = frameGeom;
   applyWallPattern(input, settings);
 
-  const { bricks, frameBricks: legacyFrameBricks } = generateBricks(input);
-  const frameBricks = frameGeom ? frameBricksFor(frameGeom, settings, input, legacyFrameBricks) : legacyFrameBricks;
+  const { bricks, frameBricks } = generateBricks(input);
   drawBricks(editor, layer, frameBricks, 'frame', settings.setId, settings.seed, settings.reliefIn);
   drawBricks(editor, layer, bricks, 'wall', settings.setId, settings.seed, settings.reliefIn);
   commitEdit(editor);
