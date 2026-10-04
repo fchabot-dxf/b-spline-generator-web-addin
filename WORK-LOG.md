@@ -19890,3 +19890,66 @@ rather than extending this already-long session into a fifth distinct investigat
 advisor with: item 9's own headline fix confirmed (92% -> 0%), 3 small residual overlaps flagged for
 a decision, the scale crash fixed, and the broader scale-sensitivity + grout-width-contradicts-Fred
 findings flagged for scoping, not fixed here.
+
+## T86 item 11: scale-sensitive corner sizing -- root cause was a MEASUREMENT bug, not an engine bug; fixed. Life-size scale (4in/8in) found a real, bigger, separate issue, flagged not fixed (d3)
+
+**Root-caused exactly as the dispatch asked, and the answer is good news: the engine was never
+broken.** `t86_item4_matrix_lib.mjs`'s own `bandInfo` (the ratio-check helper) computed its "nominal
+piece area" from `opts.set.brickLengthIn`/`brickHeightIn` DIRECTLY -- the UNSCALED base values --
+while `bricksContourBands` (called two lines below, with the SAME `opts`) already applies
+`scaledSet(opts.set, opts.scale)` internally before building a single real piece. Every actual piece
+was always correctly scaled; only the matrix's own REFERENCE value wasn't, so it compared a
+scale^2-sized real piece against a fixed, scale=1 "nominal" and reported the growing mismatch as a
+defect. **MEASURED directly, bypassing the buggy helper entirely**: `template_1`'s own
+`single_soldier` ratio is EXACTLY 1.0 at scale 1, 1.5, AND 2 -- confirmed across `template_2/4/9/15`
+x `single_soldier`/`soldier_stretcher`/`mixed_bands` too, every ratio landing in the ordinary 1.0-1.2
+range already expected at scale=1. Fixed with a one-line change (`scaledSet` applied to the SAME
+set `bandInfo` already reads), re-verified: full suite 3795/3795, main item-4 matrix unchanged at
+146/476 (expected -- `scaledSet(set,1)` is a no-op, so nothing at the matrix's own default scale
+moves at all).
+
+**The advisor's own follow-up (scale now reaches LIFE SIZE -- 4in/8in bricks) found a real, separate
+issue the measurement-bug fix does NOT cover.** Built a quick scratch check (scale = desired-inches /
+0.75, the set's own base length) across `template_1/2/9/15` at 7x9/9x12, `single_soldier`/
+`soldier_stretcher`, at true 4in and 8in brick sizes. Ratios are fine (confirming the fix above is
+real and correct) but pairwise OVERLAP is frequently severe -- 0.5 to 1.0 (full containment) on
+MULTIPLE templates, not a measurement artifact (overlap fraction never depended on the buggy
+nominal). **Root-caused one directly** (`template_1`, `single_soldier`, 4in bricks, the classic
+hourglass): the SOLDIER band's own depth is now 4in on a 7x9 board -- deep enough that BOTH of
+`template_1`'s own shoulder fillets (convex arcs, r=0.623) drop out at this depth while the WAIST
+arc (concave, r=0.68) stays live throughout (confirmed directly: `liveAtD0=true` for all three,
+`liveAtD1` true/FALSE/true for shoulder/waist/shoulder) -- giving TWO SEPARATE notch joints (line-0
+to arc-waist via the dropped first shoulder, arc-waist to line-4 via the dropped second shoulder),
+each individually a LINE-ARC pair, not the LINE-LINE pair `buildNotchJoint` (item 9) was built for.
+`buildNotchJoint`'s own `D`/medial-line construction is gated to `prevPrim.type==='line' &&
+curPrim.type==='line'` -- for a line-arc pair it correctly falls through to the un-clamped,
+independent-corners construction (CASE 1), but that construction carries the EXACT SAME latent
+assumption item 9's own WORK-LOG already named for line-line pairs: two independently-sized corners
+can overlap once the row's own depth exceeds what the actual gap can support, REGARDLESS of whether
+the two flanking neighbours are lines or arcs. Item 9's own medial-line fix is a real, correct answer
+to this but was SCOPED to the one primitive-type combination the dispatch and the main matrix (max
+scale 2) actually exercised; life-size bricks (scale ~5.3-10.7 on these templates) exercise the
+LINE-ARC (and plausibly ARC-ARC) version of the identical underlying problem, which has NOT been
+built.
+
+**NOT fixed this item -- a clear scope boundary, not an oversight.** Generalizing the medial-line
+construction to an arc-involved pair is a GENUINELY different, substantial piece of geometry (an
+arc's own "medial" boundary against a facing line or another arc is a different formula than two
+parallel lines' own simple perpendicular-bisector case -- `buildNotchJoint`'s existing `D`/
+`medialDepth`/`jointPointAt`-at-medialDepth construction does not generalize by substitution), and
+building it carries the SAME risk profile item 9's own work already measured (multiple false starts,
+a net-regression attempt, several rounds of fix-measure-fix before landing correctly) -- not a
+same-turn addendum on top of everything else this session already built and verified. Recommending
+it as its own fresh-capacity item (the natural next: "T86 item 12 -- converging rows for arc-involved
+pairs, life-size scale"), reusing item 9's own measured playbook (isolate on one real template first,
+non-vacuous test, full matrix before shipping) rather than starting from zero.
+
+**Also still true from the earlier scale-matrix entry, unresolved by this item (not this item's own
+scope either):** grout width scaling itself is being handled as a UI/data decision (de's own item
+16, per the advisor's "it becomes one global value in inches" ruling) -- the engine already just
+takes whatever `grout.widthIn` it's given, no engine change needed on this side.
+
+**Commit** (`t86_item4_matrix_lib.mjs`'s own one-line fix, this entry). Passing back: item 11's own
+dispatched question is answered and fixed (it was a tooling bug); the life-size follow-up surfaced a
+real, scoped, NOT-yet-built generalization of item 9's own work, flagged for its own item rather than
+attempted here.
