@@ -10255,3 +10255,97 @@ sliver/varied-length corners) fixed and re-shot as asked; soldier's own separate
 limitation (unaffected by this round's scope) still open and named; a third defect (the isolated
 false-corner gap) found and fixed along the way, not part of the original ask but found while
 verifying the other two at 1:1.
+
+## F35 item 8, round 3: advisor correction -- demands real-app proof + checks whether soldier's own
+## limitation is actually a BLOCKER in the app's own default. Found and fixed TWO further real defects
+## (a self-intersecting-quad bug and a severe wraparound bug) that round 2's own verification missed.
+
+The advisor accepted round 2's waist shot but rejected the corner shot (a tightly-centred crop showing
+mostly blank canvas) and asked for proof from the REAL live app, not just the flat-colour data
+renderer: one full T1 frame at 1366px with header + flemish + the app's own DEFAULT soldier band, plus
+a properly-composed 1:1 corner crop (>=600px, the whole mitre visible). Separately: "check whether the
+soldier overlap appears in the default single-soldier frame -- if so, it's a blocker" (round 2 had
+named soldier's 3.4 sq in overlap as a known, not-yet-closed limitation without checking whether it's
+actually the app's own shipped default).
+
+**Soldier WAS the real default, and the "3.4 sq in" figure undersold its own real cause.**
+`FRAME_PRESETS.single_soldier` (`{widthIn:0.75, pattern:'soldier'}`) is read DIRECTLY in a new test,
+not hand-copied, and IS exactly the depth that exposed the problem. Root cause, found by checking
+`isSimplePolygon` on `pieceQuad`'s own output rather than trusting the overlap number: on a CONCAVE arc
+whose radius is smaller than a piece's own `dv` (T1's waist, r=0.68in, vs soldier's 0.75in row depth --
+a real combination, not contrived), projecting each end sample inward by its own local normal pushes
+PAST the arc's own centre of curvature, producing a genuinely SELF-INTERSECTING (bowtie) quad. That
+bowtie wasn't just a visual defect -- fed into this file's own `overlapArea` as the CLIP operand, it
+broke `clipConvex`'s half-plane test the same way a repeated-vertex polygon already had (see round 2's
+own `AREA_TOLERANCE` entry), so the originally-reported "3.4 sq in" was itself partly a measurement
+artifact, not all real geometry. Fixed in `pieceQuad` itself: the naive quad is checked with
+`isSimplePolygon` (geometry.js, an EXISTING general utility, not hand-rolled here), and if it fails,
+the piece's own inner depth is bisected down to the largest value that keeps it simple -- the piece
+gracefully stops short of the band's nominal depth in just this narrow danger zone instead of twisting.
+Re-measured: `single_soldier` on T1 dropped from "3.4 sq in" (partly fictitious) to a genuine 0.037 sq
+in -- the SAME small, bounded class every other course pattern already sits in. The test file's own
+soldier-specific carve-out (a separate, looser tolerance) is GONE; it uses the same `AREA_TOLERANCE` as
+everyone else now, and a new test reads `FRAME_PRESETS.single_soldier` directly so it breaks if that
+declaration ever drifts from what's actually verified.
+
+**A SEPARATE, much more severe bug surfaced only once a REAL multi-band stack was driven through the
+actual live app** -- round 2's own verification never exercised this. Live-driving T1 with
+header+flemish+soldier via headless Chrome (template select -> open editor -> Frame band preset ->
+per-band pattern buttons -> Frame tool, the real UI, not state injection) and extracting the live
+page's own actual `<polygon data-brick="frame">` elements (not the flat-data re-render used before)
+showed a piece 1.03 sq in in area -- ~7x a real brick -- stretching 6.57in diagonally across almost the
+whole board. Traced to `buildRun`/`buildFlemishRun`'s own run-length formula for the LAST run of a lap
+(the one that wraps from the final corner back to the first): `endCorner.u - startCorner.u > 0 ?
+endCorner.u - startCorner.u : endCorner.u - u0` -- since `u0 === startCorner.u` ALWAYS (set by the
+caller), the "else" branch is the IDENTICAL expression to the condition already shown false, so it
+produced the SAME negative value instead of the wrapped length (`+ perimeter`). `buildRun` has a
+`Math.max(chordLength, ...)` floor that partly masked this (producing an UNDERSIZED wrap run -> small
+gaps, which is what round 2's own 3-band soldier shots showed and were wrongly attributed entirely to
+the bowtie defect); `buildFlemishRun` has no such floor, so flemish's own wrap run went fully negative,
+and `Math.round(negative/period)` clamped to a count of 1 with a hugely NEGATIVE `scaledPeriod`, placing
+a sub-unit's own far edge ~17in in the wrong direction before clipping -- the giant diagonal piece.
+Fixed by threading `perimeter` into both functions and computing the wrap span correctly
+(`+ perimeter` when the raw subtraction goes negative), exactly what "wrapping past the seam" means.
+
+**Why this stayed hidden through two full rounds of area-based overlap testing**: a wrong piece sitting
+mostly in otherwise-EMPTY board space doesn't overlap anything, so a pure overlap-area suite is
+structurally blind to "is this piece itself a sane size." Added a cheap, direct check instead (every
+piece's own area < 2 brick-areas) across all patterns/fixtures, PLUS a dedicated regression test that
+reproduces the exact real `frameBricksFor` cumulative-depth sequence (header's own real depth, read via
+`resolveBandRows` rather than hand-guessed -- see below) -- both confirmed to fail pre-fix and pass
+post-fix, not just asserted.
+
+**A mistake of my own that nearly hid the dedicated regression test's own value**: first wrote it with
+a hand-guessed `startDepth: 0.75` for the flemish band following header, reasoning "header is one row
+at its own 0.75in brickLengthIn" -- WRONG. `BRICK_PATTERNS.header`'s own declared `crossAxis` is
+`'height'` (0.2in), not `'length'` -- a 0.75in-wide header band is actually 4 rows of 0.2in (`rows =
+round(0.75/0.2) = 4`, real cumulative depth 0.8in, not 0.75in). At the wrong hand-guessed depth the test
+didn't reproduce the bug at all (the malformed wrap piece happened to clip away to nothing at that
+specific, slightly-wrong corner geometry) -- only reading `resolveBandRows` directly for the REAL depth
+reproduced it. Same lesson as the declare-over-hand-roll habit this project already leans on: a
+hand-derived number is a second copy of something the code already computes, and it silently drifted.
+
+**Re-verified the live app's own full render is clean** (headless Chrome, T1 at 7x9, `three_band`
+preset, band 0 -> header, band 1 -> flemish, band 2 left at its own default soldier -- the literal
+"header + flemish + the default soldier" the advisor asked for): extracted the live page's own real
+`<polygon data-brick="frame">` elements directly (first attempt also swept up `data-brick="wall"`
+pieces -- the Wall tool's own interior fill, clipped to the frame's interior, is ALWAYS drawn alongside
+Frame bricks by `runBricks` whenever a frame exists, regardless of which button was clicked; filtering
+to `[data-brick="frame"]` isolates just the bands this task is actually about). Max single piece area
+0.175 sq in (a normal brick is 0.15) -- no bowties, no wraparound artifacts. Re-rendered flat-coloured
+from that same live data for a clear read, matching the Node-computed cross-check exactly.
+
+**Screenshots** (`shots/seatC/`): `f35item8_full_1366.png` -- the full live app at 1366px, photo-texture,
+header+flemish+soldier, as Fred actually sees it (Wall's own interior fill included, since that's real,
+unconditional app behaviour, not something a screenshot should hide). `f35item8_corner_closeup.png` --
+re-shot larger and off-centre from the tip (615x615px, not 300px of mostly-blank canvas) so the full
+mitre is visible with real surrounding context; `f35item8_waist_closeup.png` is UNCHANGED from round 2
+(already explicitly approved: "real bricks now, no bending, nice") -- neither of this round's two fixes
+touches header/flemish's own waist-row construction, only soldier's own deep-row clamping and the
+cross-band wraparound seam, so re-shooting it would show identical geometry.
+
+Full suite green: 202 files / 3746 tests. Commit by explicit path, push, report back to the advisor: single_soldier's own overlap is
+now genuinely closed (not just bounded); the wraparound bug (a severe, previously-undetected defect,
+not part of either round's original ask) found and fixed along the way, with a non-vacuous regression
+test proving both the failure and the fix; the live-app screenshots the advisor explicitly asked for,
+honestly showing Wall's own interior fill since that's real unconditional behaviour, not staged away.

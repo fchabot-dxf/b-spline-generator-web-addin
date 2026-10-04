@@ -10,8 +10,8 @@ import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-de
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
-import { bandCourseBricks } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/band-course.js';
-import { BRICK_SETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { bandCourseBricks, resolveBandRows } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/band-course.js';
+import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 
 const SET = BRICK_SETS[0]; // brickLengthIn 0.75, brickHeightIn 0.2, grout.widthIn 0.034
 
@@ -174,6 +174,43 @@ describe('bandCourseBricks (F35 item 8) -- exact geometry on a plain square', ()
     const soldierDepth = Math.max(...bricks.filter((b) => Math.max(...b.polygon.map((p) => p.y)) <= SET.brickLengthIn + 0.05).map((b) => Math.max(...b.polygon.map((p) => p.y))));
     expect(soldierDepth).toBeCloseTo(SET.brickLengthIn, 2); // band 1's own inner edge == band 2's own outer edge
   });
+
+  // F35 item 8, advisor round 3: the wraparound bug (see buildRun/buildFlemishRun's own header) was
+  // ACTUALLY exposed in a header-THEN-flemish stack, flemish's own row starting at header's REAL
+  // cumulative depth -- header's own `crossAxis` is 'height' (0.2in), not 'length', so a 0.75in-wide
+  // header band is 4 ROWS of 0.2in (`resolveBandRows`, read directly here rather than hand-computing
+  // "0.75" again, which is exactly the wrong assumption that first hid this regression from its own
+  // author). MEASURED that an ISOLATED single flemish band at startDepth=0, or at a hand-guessed wrong
+  // depth, does NOT reproduce it (the malformed wrap-run piece happens to get clipped away to nothing
+  // by coincidence of a DIFFERENT corner/joint geometry) -- this dedicated test reproduces the EXACT
+  // real `frameBricksFor` cumulative-depth sequence, confirmed to fail pre-fix (a 1.03 sq in piece,
+  // ~7x a real brick) and pass post-fix.
+  it('header-then-flemish stack (real cumulative startDepth) has no implausibly large piece on T1', () => {
+    const headerBand = { widthIn: 0.75, pattern: 'header' };
+    const { rows: headerRows, naturalWidth: headerNaturalWidth } = resolveBandRows(headerBand, SET.brickLengthIn, SET.brickHeightIn);
+    const realStartDepth = headerNaturalWidth * headerRows;
+    const { bricks: headerBricks } = bandCourseBricks(T1_PRIMITIVES, [headerBand], SET, { seed: 1 });
+    const { bricks: flemishBricks } = bandCourseBricks(T1_PRIMITIVES, [{ widthIn: 0.6, pattern: 'flemish' }], SET, { seed: 1, startDepth: realStartDepth });
+    expect(headerBricks.length).toBeGreaterThan(10);
+    expect(flemishBricks.length).toBeGreaterThan(10);
+    const maxPlausibleArea = SET.brickLengthIn * SET.brickHeightIn * 2;
+    for (const b of flemishBricks) expect(polygonArea(b.polygon)).toBeLessThan(maxPlausibleArea);
+  });
+
+  // F35 item 8 (advisor, 3rd round): "check whether the soldier overlap appears in the default
+  // single-soldier frame (if so, it's a blocker)" -- `FRAME_PRESETS.single_soldier` IS this app's own
+  // default Frame band preset, read directly (not a hand-copied stand-in) so this test breaks if that
+  // declaration ever changes. On T1 (real template, concave waist) this is exactly the configuration
+  // that exposed `pieceQuad`'s own bowtie defect (see its header) before the depth-clamping fix.
+  it('FRAME_PRESETS.single_soldier (the app\'s own default) has no real overlap on T1', () => {
+    const { bricks } = bandCourseBricks(T1_PRIMITIVES, FRAME_PRESETS.single_soldier, SET, { seed: 3 });
+    expect(bricks.length).toBeGreaterThan(10);
+    let totalArea = 0;
+    for (let i = 0; i < bricks.length; i++) for (let j = i + 1; j < bricks.length; j++) {
+      totalArea += overlapArea(bricks[i].polygon, bricks[j].polygon);
+    }
+    expect(totalArea).toBeLessThan(SET.brickLengthIn * SET.brickHeightIn * 1.0);
+  });
 });
 
 for (const [fixtureLabel, primitives] of [['plain square', SQUARE_PRIMITIVES], ['T1 (hourglass, concave waist)', T1_PRIMITIVES]]) {
@@ -186,27 +223,41 @@ for (const [fixtureLabel, primitives] of [['plain square', SQUARE_PRIMITIVES], [
         expect(bricks.length).toBeGreaterThan(10);
       });
 
-      // F35 item 8 follow-up (advisor review, 2nd round): `soldier` -- a row depth equal to a full
-      // brickLengthIn (0.75in), far deeper than that pattern's own 0.2in pitch -- is a NAMED, NOT YET
-      // CLOSED exception: MEASURED total overlap area 3.4 sq in on T1 (more than one whole brick),
-      // concentrated at corners where several consecutive deep pieces all reach into the same mitre's
-      // own true reach. Every OTHER course-kind pattern here is bounded by the much smaller row-to-row
-      // concave-arc effect `AREA_TOLERANCE` documents above it -- reported honestly, not silently
-      // patched over with a looser bound that would also hide a REAL regression in those patterns.
-      it(pattern === 'soldier'
-        ? 'soldier: KNOWN LIMITATION, not yet closed -- deep-row corner overlap stays bounded (documented, not silently hidden)'
-        : `${pattern}: no two bricks overlap beyond negligible float-epsilon noise (area-based, not a boolean flag)`, () => {
+      // F35 item 8, advisor round 3: MEASURED a severe wraparound bug (the LAST run of a lap, which
+      // wraps from the final corner back to the first, computed a negative/garbage run length -- see
+      // `buildRun`/`buildFlemishRun`'s own header) that produced a single piece 1.03 sq in in area
+      // (~7x a real brick) stretching 6.57in diagonally across the whole board. The existing overlap
+      // checks above NEVER caught this: a wrong piece sitting mostly in otherwise-EMPTY board space
+      // doesn't overlap anything, so a pure overlap-area suite is structurally blind to "is this piece
+      // itself a sane size" -- this check closes that gap directly and cheaply.
+      it(`${pattern}: no single piece is implausibly large (catches the wraparound-run class of bug)`, () => {
+        const maxPlausibleArea = SET.brickLengthIn * SET.brickHeightIn * 2; // generous: 2 whole bricks
+        for (const b of bricks) {
+          expect(polygonArea(b.polygon)).toBeLessThan(maxPlausibleArea);
+        }
+      });
+
+      // F35 item 8 follow-up (advisor review, 3rd round): `soldier` -- a row depth equal to a full
+      // brickLengthIn (0.75in) -- was a NAMED, not-yet-closed exception (MEASURED total overlap area
+      // "3.4 sq in" at the time). Re-investigated after the advisor flagged it as a potential blocker
+      // (it IS the app's own `single_soldier` default preset's real depth) and found the true root
+      // cause was NOT the mitre-reach explanation originally given: `pieceQuad` was producing a
+      // genuinely SELF-INTERSECTING (bowtie) quad wherever a piece's own `dv` approached or exceeded
+      // the LOCAL radius of curvature on a concave arc (T1's waist, r=0.68in, is tighter than
+      // soldier's own 0.75in depth) -- confirmed directly with `isSimplePolygon`, and that bowtie was
+      // ALSO why the originally-reported "3.4 sq in" was itself inflated (a self-intersecting polygon
+      // fed into this very file's own `overlapArea` as the clip operand breaks its half-plane test the
+      // same way a repeated-vertex polygon already did -- see `clipConvex`'s own header). Fixed at the
+      // source (`pieceQuad`'s own depth-clamping, see its header) -- soldier now measures in the SAME
+      // small, bounded class as every other course-kind pattern here, so it no longer needs (or gets)
+      // a separate tolerance.
+      it(`${pattern}: no two bricks overlap beyond negligible float-epsilon noise (area-based, not a boolean flag)`, () => {
         let totalArea = 0, maxArea = 0;
         for (let i = 0; i < bricks.length; i++) for (let j = i + 1; j < bricks.length; j++) {
           const oa = overlapArea(bricks[i].polygon, bricks[j].polygon);
           if (oa > 1e-9) { totalArea += oa; if (oa > maxArea) maxArea = oa; }
         }
-        if (pattern === 'soldier') {
-          // not closed yet -- just confirm it hasn't gotten WORSE than what was measured and reported.
-          expect(totalArea).toBeLessThan(SET.brickLengthIn * SET.brickHeightIn * 30);
-        } else {
-          expect(totalArea).toBeLessThan(AREA_TOLERANCE);
-        }
+        expect(totalArea).toBeLessThan(AREA_TOLERANCE);
       });
 
       // A brick's own NEAREST neighbour is often the next ROW's brick directly across the row

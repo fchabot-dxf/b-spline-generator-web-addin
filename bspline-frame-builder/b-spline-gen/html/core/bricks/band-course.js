@@ -43,7 +43,7 @@
 import { bandFrameAt } from './contour-bands.js';
 import { BRICK_PATTERNS, FILL_FRACTIONS } from './library.js';
 import { pickSample, planCornerRun } from './piece-plan.js';
-import { clipToHalfPlane } from './geometry.js';
+import { clipToHalfPlane, isSimplePolygon } from './geometry.js';
 import { mulberry32, seedFor } from './rng.js';
 import { axisLen } from './layouts/bond.js';
 
@@ -222,12 +222,38 @@ function makePiece(polygon, set, seed, idRef) {
 /** One piece's own quad, built DIRECTLY from its own two outer-edge samples (exact, no subdivision --
  *  a piece never "bends": its own 4 corners are exactly these, nothing more) plus each sample's own
  *  local normal for the inner corners (exact on a line; accurate on an arc whenever the piece's own
- *  length is small relative to the arc's radius, true for every brick-scale band here). */
+ *  length is small relative to the arc's radius, true for every brick-scale band here).
+ *
+ *  MEASURED (F35 item 8, advisor round 3): on a CONCAVE arc whose own radius is smaller than `dv`
+ *  (T1's own waist fillet, r=0.68in, vs `soldier`'s own row depth, 0.75in -- a real, not contrived,
+ *  combination: `soldier` is this app's own DEFAULT single-band preset), projecting each end sample
+ *  inward by its own LOCAL normal pushes PAST the arc's own centre of curvature, and the two inner
+ *  points cross -- a genuine self-intersecting (bowtie) quad, not just an inaccuracy. This is the
+ *  classic inset-offset-past-the-radius problem (the legacy path's own `isArcFeasible`/
+ *  `primitiveLiveAtDepth` exists for exactly this), confirmed directly here (`isSimplePolygon` false,
+ *  and a visible, measured defect at 1:1). Rather than porting that machinery, this piece's own INNER
+ *  depth is capped at the largest value (found by bisection on the one monotonic failure mode a smooth
+ *  normal field produces here: the quad is simple up to some critical depth and self-intersecting
+ *  beyond it) that keeps it simple -- the piece gracefully stops short of the band's nominal depth in
+ *  just this narrow danger zone instead of twisting into a bowtie; everywhere else (dv comfortably
+ *  under the local radius) this is a no-op, exactly reproducing the original construction. */
 function pieceQuad(sample, uA, uB, v0, dv) {
   const pA = sample(uA, v0), pB = sample(uB, v0);
   const outerA = { x: pA.x, y: pA.y }, outerB = { x: pB.x, y: pB.y };
-  const innerA = { x: pA.x + pA.nx * dv, y: pA.y + pA.ny * dv };
-  const innerB = { x: pB.x + pB.nx * dv, y: pB.y + pB.ny * dv };
+  const innerAt = (d) => [
+    { x: pA.x + pA.nx * d, y: pA.y + pA.ny * d },
+    { x: pB.x + pB.nx * d, y: pB.y + pB.ny * d },
+  ];
+  let [innerA, innerB] = innerAt(dv);
+  if (!isSimplePolygon([outerA, outerB, innerB, innerA])) {
+    let lo = 0, hi = dv;
+    for (let iter = 0; iter < 30; iter++) {
+      const mid = (lo + hi) / 2;
+      const [testA, testB] = innerAt(mid);
+      if (isSimplePolygon([outerA, outerB, testB, testA])) lo = mid; else hi = mid;
+    }
+    [innerA, innerB] = innerAt(lo);
+  }
   return [outerA, outerB, innerB, innerA];
 }
 
@@ -240,15 +266,26 @@ function pieceQuad(sample, uA, uB, v0, dv) {
  *  (depth = a full brickLengthIn, 0.75in, far deeper than that pattern's own 0.2in pitch) that several
  *  consecutive pieces near a corner each reach into the corner's own true mitre reach, not just the
  *  one piece immediately at it; a piece that never reaches a mitre line is simply returned unchanged. */
-function buildRun(sample, u0, startCorner, endCorner, v0, dv, pitch, J, set, seed, idRef) {
+function buildRun(sample, u0, startCorner, endCorner, v0, dv, pitch, J, set, seed, idRef, perimeter) {
   // MEASURED bug: `u1-u0` inherits each corner's own `u` ESTIMATE, accurate only to within about half
   // a corner-scan step -- tiny, but enough to leave a small gap/overlap at the run's own far end. The
   // two corner POINTS are each an exact line-intersection (independent of scan resolution); their own
   // Euclidean distance is the run's true length WHEN it's a single straight line, and a close-enough
   // approximation otherwise (the real arc-length-via-`u` value, `endCorner.u - u0`, is used for the
   // actual piece PLACEMENT below -- this distance is only the PLANNING input to `planCornerRun`).
+  //
+  // MEASURED bug (F35 item 8, advisor round 3): the LAST run of a lap wraps from the final corner back
+  // to the first one, where `endCorner.u` (near 0) is numerically SMALLER than `startCorner.u` (near
+  // `perimeter`) -- `endCorner.u - startCorner.u > 0` is false there, but the "else" branch
+  // (`endCorner.u - u0`) is the SAME expression as `endCorner.u - startCorner.u` (`u0 === startCorner.u`
+  // always, see the caller), so it produced the SAME negative value instead of the wrapped length. A
+  // negative `runLength` reaching `buildFlemishRun` (no `Math.max` floor there, unlike this function)
+  // produced a single piece spanning almost the entire wrong direction around the loop -- confirmed
+  // directly: a "brick" with 1.03 sq in area (~7x a real one) stretching 6.57in diagonally across the
+  // board. Fixed by adding `perimeter` in the wrap case, exactly what "wrapping past the seam" means.
+  const trueSpan = endCorner.u - startCorner.u > 0 ? endCorner.u - startCorner.u : endCorner.u - startCorner.u + perimeter;
   const chordLength = Math.hypot(endCorner.point.x - startCorner.point.x, endCorner.point.y - startCorner.point.y);
-  const trueU1 = u0 + (endCorner.u - startCorner.u > 0 ? endCorner.u - startCorner.u : endCorner.u - u0);
+  const trueU1 = u0 + trueSpan;
   const runLength = Math.max(chordLength, trueU1 - u0); // never SHORTER than the true arc length
   const { lengths, jointWidth } = planCornerRun(runLength, pitch, J, FILL_FRACTIONS);
   const jointStart = buildJoint(startCorner), jointEnd = buildJoint(endCorner);
@@ -271,9 +308,10 @@ function buildRun(sample, u0, startCorner, endCorner, v0, dv, pitch, J, set, see
  *  number" convention used throughout this codebase) -- each sub-unit built the SAME way `buildRun`
  *  builds a course-kind piece (`pieceQuad`, clipped at both ends), since `planCornerRun` itself only
  *  ever plans a single uniform pitch and can't be reused directly for an alternating sequence. */
-function buildFlemishRun(sample, u0, startCorner, endCorner, v0, dv, L, H, J, set, seed, idRef) {
-  const trueU1 = u0 + (endCorner.u - startCorner.u > 0 ? endCorner.u - startCorner.u : endCorner.u - u0);
-  const runLength = trueU1 - u0;
+function buildFlemishRun(sample, u0, startCorner, endCorner, v0, dv, L, H, J, set, seed, idRef, perimeter) {
+  // See buildRun's own header for the wraparound bug this fixes the SAME way.
+  const trueSpan = endCorner.u - startCorner.u > 0 ? endCorner.u - startCorner.u : endCorner.u - startCorner.u + perimeter;
+  const runLength = trueSpan;
   const period = L + J + H + J;
   const count = Math.max(1, Math.round(runLength / period));
   const scaledPeriod = runLength / count;
@@ -348,8 +386,8 @@ export function bandCourseBricks(primitives, bands, set, opts) {
         const startCorner = corners[i], endCorner = corners[(i + 1) % corners.length];
         const u0 = startCorner.u;
         const pieces = kind === 'course-alternating'
-          ? buildFlemishRun(sample, u0, startCorner, endCorner, v0, dv, L, H, J, set, seed, idRef)
-          : buildRun(sample, u0, startCorner, endCorner, v0, dv, pitch, J, set, seed, idRef);
+          ? buildFlemishRun(sample, u0, startCorner, endCorner, v0, dv, L, H, J, set, seed, idRef, perimeter)
+          : buildRun(sample, u0, startCorner, endCorner, v0, dv, pitch, J, set, seed, idRef, perimeter);
         bricks.push(...pieces);
       }
     }
