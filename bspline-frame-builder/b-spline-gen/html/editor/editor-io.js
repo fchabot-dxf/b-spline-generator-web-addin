@@ -17,6 +17,7 @@ import { clearSnapCursor, clearGridHover } from './editor-grid.js';
 import { dbg } from '../core/debug.js';
 import { OUTLINE_KINDS } from './editor-outline-preview.js';
 import { drawFrameProfile } from './editor-frame-profile.js';
+import { repaintBricks } from './editor-brick-tool.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
  *  layer-restore regressions stay observable. Console output is quiet by
@@ -48,8 +49,7 @@ function serializeEditor(editor, { forRaster = false } = {}) {
 }
 
 /** T27: the SVG DOWNLOAD (saveWithTextCopies, below) exports isExported()
- *  layers only — same rule the editor canvas and the 3D vector overlay
- *  (seat A) read. This does NOT touch serializeEditor itself, which every
+ *  layers only (turn 207: every layer -- Fred, hidden is display-only). This does NOT touch serializeEditor itself, which every
  *  OTHER caller (the regular save/persist path, saveForRasterization,
  *  getLayerSvg) needs to keep including hidden layers for — per that
  *  function's own docstring, hidden-layer content must survive
@@ -1050,6 +1050,8 @@ export function open(editor, svgString, w, h) {
 
     // a document saved before the z-order rule (or by an older build) is put in order on open
     syncLayerZOrder(editor);
+    // Audit v2 N1: brick fills point at <pattern>s outside the saved document -- re-derive them
+    repaintBricks(editor);
     // Capture the post-load state as the baseline. The first user edit
     // pushes state #2, and Ctrl+Z restores #1 (this freshly-loaded state)
     // — so even an edit applied to the very first stroke is reversible.

@@ -21,6 +21,7 @@
 import { buildSpatialIndex, sampleHeight, brickSetById, pointInPolygon } from '../core/bricks/index.js';
 import { preloadSetDetail, sampleDetailAtFor } from './editor-brick-surface.js';
 import { BRICK_GEN_ATTR, BRICK_ATTR } from './editor-brick-tool.js';
+import { accentedBrickIndices } from './brick-accents.js';
 import { surfaceStyleById, styledSet, styledDetail, styleTopJitter, styleAtWear } from './brick-surface-styles.js';
 
 // F35 item 16 follow-up (Fred: "keep the UI responsive... yield between stages if they block the
@@ -65,6 +66,7 @@ function collectLiveBrickGroups(editor, layer, levels = {}) {
       flip: n.getAttribute('data-brick-flip') === '1',
       // F35 item 16: + the element's LEVEL (opts.levels, keyed by its kind: wall | frame | brush ...)
       heightOffset: (Number(n.getAttribute('data-brick-height-offset')) || 0) + (Number(levels[n.getAttribute(BRICK_ATTR)]) || 0),
+      kind: n.getAttribute(BRICK_ATTR),
     });
   });
   return [...groups.values()];
@@ -103,6 +105,13 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
   const flat = opts.topMode === 'flat';
   const brickOf = flat ? new Int32Array(nx * nz).fill(-1) : null;
   const groups = collectLiveBrickGroups(editor, layer, opts.levels);
+  // F35 item 15: the raised ACCENT lifts its Wall bricks by its Level (brick-accents.js, the same rule the
+  // 2D highlight shows), over the WHOLE wall (its zone is measured on the wall's own extent)
+  const accent = opts.accent;
+  if (accent && accent.preset && accent.preset !== 'none' && Number(accent.levelIn)) {
+    const wall = groups.flatMap((g) => g.bricks.filter((b) => b.kind === 'wall'));
+    for (const k of accentedBrickIndices(wall, accent, { seed: opts.accentSeed || 1 })) wall[k].heightOffset += Number(accent.levelIn);
+  }
   if (!groups.length) return { body, fillet, isStamped, metrics: null, ...(flat ? { flatTop: { brickOf, count: 0 } } : {}) };
 
   await Promise.all(groups.map((g) => preloadSetDetail(g.setId)));

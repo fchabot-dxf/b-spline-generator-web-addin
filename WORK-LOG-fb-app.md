@@ -12484,3 +12484,270 @@ No core/ file touched by this turn.
 Live (served 8851, headless Chrome): 9 buttons, all with an svg, families [Bonds, Herringbone, Basketweave,
 Fieldstone], the active pattern outlined. Shot: shots/seat37/f35item13_pattern_icon_grid.png.
 Server 8851 (my own task) stopped.
+
+### turn 207 -- F35 item 15: raised accents (10 presets + Custom "Click bricks"), and the d3 layout list (seat 37)
+
+**For d3 (lane-b), verbatim: item 13's engine layouts + rotation, and item 14's tile engine.** Each row = an
+id, a one-line description, and the advisor's decision from NEXT-SESSION-fb-app.md (BUILD / DROPPED). The
+Wall picker shows any new BRICK_PATTERNS key with an engine-drawn icon for free (wallPatternIconSvg); an
+unlisted key lands in the 'More' family until WALL_PATTERN_FAMILIES names it. Families will be
+Bonds / Herringbone / Basketweave / Random / Tiles (advisor decision).
+```js
+// F35 item 13 (Fred's sheets 1+2) -- core/bricks/layouts, closed-form, fill set + clip, never stretched
+const ITEM13_LAYOUTS = [
+  { id: 'rotation',            build: true,  family: '*',           desc: 'a declared `rotation` 0 / 45 / 90 deg for EVERY pattern (sheet: vertical running bond = running at 90; 45deg running bond; 90 vs 45 herringbone) -- an option, not a layout' },
+  { id: 'stackedHorizontal',   build: true,  family: 'bonds',       desc: 'N soldier rows then 1 stretcher course, repeating (course-alternating; N as data, default 3)' },
+  { id: 'stackedVariation',    build: false, family: 'bonds',       desc: 'a grid of square units, each 2 bricks side by side, orientation random per unit (seeded) -- DROPPED' },
+  { id: 'chevron',             build: true,  family: 'herringbone', desc: 'parallelogram bricks with 45deg diagonal-cut ends meeting in V columns (ends cut from the fill set)' },
+  { id: 'basketweaveOptions',  build: true,  family: 'basketweave', desc: 'bricksPerUnit option (2 or 3; today auto from the ratio). The STAGGERED variation (unit rows offset by half a unit) -- DROPPED' },
+  { id: 'basketweaveStacked',  build: false, family: 'basketweave', desc: 'a diagonal basketweave band crossing a stacked field -- DROPPED' },
+  { id: 'basketweaveDouble',   build: true,  family: 'basketweave', desc: 'single vs DOUBLE basketweave = 1-pair vs 2-pair units (bricksPerUnit)' },
+  { id: 'boxedBasketweave1',   build: true,  family: 'basketweave', desc: 'each basketweave unit framed by a ring of bricks (sheet 2, variant 1)' },
+  { id: 'boxedBasketweave2',   build: false, family: 'basketweave', desc: 'the sheet\'s second boxed variant -- DROPPED' },
+  { id: 'spanishBond',         build: false, family: 'bonds',       desc: 'the sheet\'s interlocking unit -- DROPPED' },
+  { id: 'comboRunningBasket',  build: false, family: 'bonds',       desc: 'alternating bands of running-bond courses and basketweave units -- DROPPED' },
+  { id: 'comboStackRunning',   build: true,  family: 'bonds',       desc: 'stacked soldier courses alternating with running-bond courses' },
+];
+// F35 item 14 (Fred's 3rd sheet, ref_paver_tile_sheet.jpg) -- a 'Tiles' family: periodic tilings with
+// NON-rectangular units, closed-form, the same grout/clip/texture pipeline (each unit a centre-cropped
+// sample, never stretched); unit size = the set's brick length (scale applies); rotation applies.
+const ITEM14_TILES = [
+  { id: 'tileSquare',          build: true,  desc: 'plain square grid' },
+  { id: 'tileOctagonSquare',   build: true,  desc: 'octagon + small square (truncated square tiling); ONE octagon:square ratio (advisor), as data' },
+  { id: 'tileSquareDiamond',   build: true,  desc: 'large squares with small diamond inserts at the corners (corner-clipped squares)' },
+  { id: 'tileHexagon',         build: true,  desc: 'regular hexagons' },
+  { id: 'tileLozenge',         build: false, desc: 'elongated rhombus lattice -- DROPPED' },
+  { id: 'tilePinwheel',        build: true,  desc: 'framed square: a square unit ringed by 4 bricks (hopscotch-like, sheet top-right)' },
+];
+```
+(Square grid (a) is not in the advisor's BUILD list by name; listed as build because the sheet opens with
+it and it is the trivial case -- strike it if the decision meant to drop it.) The app side of item 14 (the
+Tiles family row, icons) needs nothing new: it appears from BRICK_PATTERNS like item 13's.
+
+**Item 15 -- what was built.** Accents are a 3D (height) concern, so they follow Level's path, not the layout's:
+- editor/brick-accents.js (new, pure): ACCENT_MOTIFS (checker, everyNth, staircase, pyramid, zigzag,
+  courseBand, crenellation, random) and the 10 ACCENT_PRESETS as data (a motif + params + zone = the lower
+  third). (course, column) are DERIVED from brick positions here (no engine op, nothing hidden): the course
+  pitch is the typical vertical step between brick centres, the column pitch the typical step along a course.
+  Measured trap: with floor(x/pitch + 0.25) alone, a staggered course's right-edge half brick shared a column
+  with its neighbour; columns now strictly increase along a course.
+- The ZONE is measured over the wall's own extent, not the board: a Wall inside a frame, or a later wall
+  element anywhere, gets ITS lower third.
+- Custom "Click bricks": clicks are stored as board POINTS (P.brickSettings.accent.clicks), so after a re-lay
+  (new pattern, size, seed) each one raises whichever brick now lies under it; a click on a raised brick
+  removes its point; a click on grout does nothing. Canvas mode 'brickAccentClick' (editor-interaction.js
+  modeHandlers + the Brick tab's declared modes) reads the UNSNAPPED pointer.
+- The height mask lifts exactly the accented Wall bricks by accent.levelIn (default +1/16 in, - = recessed);
+  the 2D canvas outlines the same bricks in amber (one rule, accentedBrickIndices, for both). A first dark
+  outline was MEASURED unreadable against the photo's own dark joints in the shot -> amber, thicker.
+- UI (Wall section, per the placement rule): "Raised accents" = None + the 10 presets as engine-drawn icons
+  (accentIconSvg lays a stretcher wall with the real engine and draws the raised bricks dark with a shadow;
+  icons only, name as tooltip), a "Click bricks" toggle, and "Accent level (in)" (hidden for None).
+- 'accent' is in SURFACE_ONLY_SETTING_KEYS: a pick or level change re-masks, never re-lays, never pending.
+  A saved session without the key has no accents (byte-identical mask, tested).
+
+**Sheet coverage (ref_accent_brick_levels.jpg, 4x4 cells, r=row c=col), approximate:** r1c1 checker-like dots
+-> Checker; r1c2 diagonal singles -> Staircase; r1c3 alternate bricks in 3 courses -> Crenellation; r1c4 same
+in bands -> Crenellation; r2c1 multi-step stairs -> Double staircase; r2c2 stepped triangle -> Pyramid; r2c3 two
+full courses -> Double course bands; r2c4 sparse singles -> Sparse dots; r3c1 sparse in a course -> Sparse dots;
+r3c2 alternate in 2 courses -> Crenellation; r3c3 zigzag -> Zigzag; r4c1 course bands -> Course bands; r4c2
+dense checker -> Checker; r4c3 soldier course band -> Course bands (the soldier course itself is a layout
+thing). NOT covered: r3c4 + r4c4 = U/box corbel shapes (dropped by the advisor decision). Random 15% is not on
+the sheet (it is in the decision). So 14 of 16 cells are covered; the 2 U/box cells would be a new motif (data
++ one rule).
+
+Tests: new tests/brick-accents.test.js (23: grid from a real engine wall -- lower-third cells only, course 0 at
+the bottom, no gaps, no shared column; 10 presets, unique, each raises bricks only inside its zone, all
+distinct; Course bands = whole courses; the zone follows the wall not the board; none/unknown/null = nothing;
+Custom toggle + re-map after a re-lay at another size; icons engine-drawn + distinct; the height mask lifts the
+clicked brick by exactly levelIn, its neighbour unchanged; none = byte-identical). brick-discrete-controls-regen
+gains an "F35 item 15" block (3: the icon grid; 3D-only, never pending; Click bricks arms/disarms the mode).
+Non-vacuous: old wiring + new module -> panel block fails 3/3; only the old height mask -> mask test fails 1/1;
+only the column fix removed -> the column test fails 1/1. (Run against the full pre-change tree, both files
+fail at import.) Restored from my own copies, cmp-checked.
+Fast tier (brick/accent/icon/tab/mask/state/interaction, 55 files): 628 passed, 0 failed.
+Live (served 8851, headless Chrome, real editor DOM + the real height mask): 11 buttons all with icons;
+Pyramid / Course bands / Zigzag raise 7 / 21 / 5 bricks, each lifted by exactly 0.0625 in in the mask, Generate
+never pending; Click bricks: a real mouse click raised 1 brick, a second click lowered it. No page errors.
+Shot: shots/seat37/f35item15_grid_and_3_presets.png (+ the separate grid/applied shots).
+Seen, not mine, NOT fixed: the Brick panel scrolls sideways for every tool because the Random-seed button
+overflows it by 59-74 px (measured per tool).
+Matrix: 'accent' is a new Brick control -> a controls.mjs row is owed once tools/brick-matrix is on main.
+Server 8851 (my own task) stopped.
+
+### turn 207 (amendment) -- audit v2 (AUDIT-BRICK-TAB-v2.md): N1 N2 fixed + N3 N4 N5 N6 N7 N9 N11 N12, matrix rows (seat 37)
+
+Committed item 15 first (82f3755), then the audit, as the amendment said.
+- **N1: bricks invisible after a reload or a project load.** A brick's fill is derived from its own attributes
+  (set, sample, flip, written by drawBrick), but its `<pattern>` lives in the editor's outer `<defs>`, outside
+  the saved document. `repaintBricks(editor)` re-derives every fill (and re-creates its pattern) from those
+  attributes, and editor-io.js `open()` calls it on every load: reload, project load, Cancel. Download SVG still
+  carries the dangling fill urls; that was not in this fix and was not driven.
+- **N2: panels showed the defaults after a reload or load.** One announcement, `announceBrickSettingsRestored()`
+  in app-init.js, fires whenever P.brickSettings is REPLACED from outside the panel: Cancel (as before), the
+  session restore in initApp, and snapshot-manager's applySnapshot (a project load AND a global undo). The panel
+  re-syncs every control, editor and sidebar, plus the pending state. It also re-points
+  `editor._brickSettings`, because a load swaps in a NEW object and an armed Brush would keep the old one.
+- **Evidence (88's persistence group, branch matrix-persistence, run with `--root` on my tree):**
+  24/24 FAIL with N1+N2 reverted, 24/24 pass with them, and 24/24 again on the merged tip. Reload AND project
+  load (Save As -> fresh app -> Load), 9 panel controls + wall / frame / brush painted per phase.
+- **N3: White Rocks.** Declared in main/brick-control-requires.js. The 5 course bonds (editor + sidebar quick
+  row) grey out with the reason while White Rocks is active, and the band-pattern list + heading HIDE.
+  Herringbone, Basketweave, Fieldstone and None stay. A test checks the greyed list against BRICK_PATTERNS'
+  course / course-alternating kinds.
+- **N4: stuck Generate dot.** Nothing is pending while no Wall/Frame bricks are on the canvas (a brush-only
+  board). Live: a real 4-brick stroke, then a size + set change -> no dot.
+- **N5: sidebar controls on a board with no bricks.** A new requirement form, `requires: { fact: 'bricksLaid' }`:
+  the panel supplies ctx.facts, and a missing fact counts as met (the Node matrix passes none). A new
+  `within: [container]` greys the data-rendered buttons inside the quick-settings and surface-style rows. The
+  fact = Wall/Frame bricks on the live canvas, OR in the saved drawing (P.editorSvg) before the editor has loaded
+  it after a reload. A visible note sits at the top of the sidebar section.
+  - While here, syncControlRequires was fixed: a control under TWO rules (Grout depth: Recessed + bricks laid)
+    took the LAST rule's state, so a met rule could un-grey an unmet one. Now any unmet rule greys it.
+  - A greyed control's OWN tooltip (an icon's name) is kept aside and restored, instead of deleted.
+- **N6: Level.** Interpreted "show pending" literally: Level left SURFACE_ONLY_SETTING_KEYS, so it is in the
+  laid key and an editor change shows the Generate dot (Generate keeps the 2D, Apply builds the 3D). The old
+  test "Level is 3D-only ... never pending" was rewritten for N6. Accents stay 3D-only: they have their 2D outline.
+- **N7: Scissors** declares `sharedRows: false`, like Stripe (turn 197).
+- **N9: Frame tool with no frame.** Generate shows a toast (FRAME_NEEDS_A_FRAME) saying to pick a template or
+  turn Offset from frame off. Live: the exact text appeared.
+- **N11: start hint.** Shown in the Brick tab with no tool picked on a board with no bricks. Its text comes from
+  BRICK_TOOLS: "Pick ✏️ Brush, 🧱 Wall or ⬚ Frame in the toolbar to start laying bricks."
+- **N12: Seed row.** A `.brick-seed-row` rule lets the JS-wrapped stepper fill what the dice leaves (it never
+  shrank, and its number input defaults to about 150 px). Live: panel scrollWidth 220 = clientWidth (was 293);
+  the dice ends at 1361 inside the 1400 panel.
+- **Checked, not changed:**
+  - C10 is fixed: item 20, the wall flows around brush strokes (measured 193 -> 185 earlier).
+  - N10: the Wall pattern lists are icons now (item 13). The Frame band presets (9) and per-band patterns (9 per
+    band) are still text. Brush presets are 3 (not a long list).
+  - N8 is Fred's question; not touched.
+- **REGRESSION found and fixed in the same pass.** 82f3755 (item 15) factored the icon drawing into a helper
+  with a second `attrs` parameter. The pattern icons pass the helper straight to `.map()`, so the INDEX became
+  `<polygon0 ...>` and every wall-pattern icon drew nothing (seen in this turn's shots).
+  - The item-13 test only counted the text `<polygon`, so it stayed green. Both icon tests now count REAL
+    parsed elements (DOMParser), and the old helper fails them (mutation-checked).
+  - Do not merge 82f3755 without 90a1483.
+- **Merge:** merged origin/main into fb-app (clean, 19 commits: tools/brick-matrix, lane-b T86 14/15/16a).
+- **Matrix (tools/brick-matrix/controls.mjs, now on main):**
+  - The Level rows become kind 'editor', E(true, null, true), introducedBy 90a1483 (N6).
+  - New rows: Raised accents Course bands / Accent level -1/16 / None (editor3d, introducedBy 82f3755), and
+    Raised brush level 1/8 + Raised brush mode Grout (kind 'brush', tool 'raisedBrush', introducedBy 0f45668;
+    Grout = greyed/hidden while the engine lacks groutCut).
+  - The import loop skips fact rules: they name no control to copy, and the page judges them.
+  - Full matrix on the merged tip: **62 rows, 0 FAIL, 0 page errors** (238 s, --parallel).
+  - Item 20 (brush over wall) needs a new kind (88), and Click bricks is a canvas gesture: both stay unit/live
+    tests.
+  - PERSIST_BOARD (88's branch) could add an accent preset + Accent level panel row. Left to 88 / the advisor;
+    the branch is not merged here.
+- **Tests:**
+  - New: brick-repaint (2), brick-control-requires-v2 (3), an "audit v2" block in brick-discrete-controls-regen
+    (8: N2 N3 N4 N5 x2 N7 N9 N11), snapshot-manager (2: load + undo announce, after the new settings are in P).
+  - Updated for the new rules: the regen fixture's mocked Generate now leaves the laid kinds' bricks on the
+    canvas, as the real one does.
+  - Non-vacuous: against the pre-audit sources the 13 new audit tests fail 13/13. Removing the announce call
+    fails the snapshot pair 2/2. The old icon helper fails the tightened icon test.
+- **Fast tier** (61-63 files, brick / accent / icon / tabs / mask / state / snapshot / app-init / io / requires):
+  705/705 before the merge, **715/715** after it.
+- **Live** (served 8851, fresh profile, headless Chrome): N5 note + 25/25 quick buttons greyed on a fresh board,
+  enabled after a Wall Generate. N11 hint shown. N4 no dot. N3 greyed + reason, restored to "Stretcher" on Red.
+  N12 fits. N6 "Generate •" then clean. N9 toast. 0 page errors.
+- **Greyed ICON buttons looked enabled.** The first N3 shot showed greyed White Rocks bonds identical to the
+  enabled ones (measured: icon opacity 1). `.cad-btn:disabled` greys a button's TEXT, and an svg keeps its
+  colours. styles/base.css adds `.cad-btn:disabled > svg { opacity: 0.3 }`; re-measured 0.3 live.
+- **Shots:** shots/seat37/audit2fix_{n5_sidebar_no_bricks, n11_start_hint, n3_white_rocks_greyed, n12_seed_row}.png,
+  re-taken after the icon fix and the fade.
+- **Heads-up for the merge:** d3 (lane-b d9e3936, T86 item 17) edited brick-control-requires.test.js and the
+  regen test's "turn 199" block, which this pass also touches: expect a textual overlap there.
+- Server 8851 (my own task) stopped.
+
+### turn 207 (amendments, folded in) -- Rectangle choice, 1 in default, hidden layers ship, the Frame follows its frame (seat 37)
+
+Read on the peek before passing: 8 amendments. The cursor one was cancelled by the next. Items 22 (design note
+first) and 23 (incl. the White Rocks -> Fieldstone fold) are next turns. Folded in here:
+- **'None' -> 'Rectangle'.** `NO_FRAME_CHOICE = { value: '', label: 'Rectangle' }` is declared in
+  main/frame-panel.js, where the options are built. Its icon is `boardOutlineIconSvg()`
+  (editor/frame-template-icon.js): the board's outline in the template icons' own box and colours. The sidebar
+  FRAME header reads "— Rectangle" too. The value underneath is unchanged ('' = no frame shape).
+  - FOUND while shooting it: the SIDEBAR template dropdown (turn 203) never showed its grid. The select sits in
+    a `.cad-nested-input` (24 px, overflow hidden), which clipped the absolute grid AND the 40 px button.
+    Turn 203's "live" check clicked options by script and never looked.
+  - Fix in main/icon-select.js: the grid is `position: fixed` under its button on open (a scroll closes it), and
+    a select inside a .cad-nested-input mounts its dropdown AFTER that box, which hides. Measured live: the
+    element at the grid's point is now its icon (was the sidebar); shot shows the full button + grid.
+- **Default brick size 1 in** (new boards; a saved board keeps its own). core/state.js DEFAULT is
+  brickLengthIn 1, and a declared `1″` preset (id 'one') sits between ¾ and 1½, so the default shows as
+  picked: live, a fresh board has 1 in and brickQuick_size_one active. Two pinned tests updated (the default ==
+  the set's 0.75; exactly 5 presets).
+- **Hidden layers ship on Send** (Fred: hidden is display-only). `isExported(l)` = every layer; a carved one
+  still needs `visible` (isCarved unchanged), so a hidden carve layer goes to ROOT and does not cut.
+  - Changing isExported ALSO changed two DISPLAY gates that read it: the outline preview (via showsOutline) and
+    the boundary guide (3 tests went red, rightly). A new `isShown(l)` (= visible) is declared for display, and
+    those two read it. Export follows Fred's rule; the canvas still hides hidden layers.
+  - The SVG Download reads isExported too, so it now includes hidden layers. That follows "hidden is
+    display-only"; say if the download should keep the old rule.
+  - Pinned tests updated: the truth table (+ isShown), and 3 export-flow cases.
+- **The Frame follows its frame (88's finding + Fred's "recalculate").**
+  - setFrameRecord, the one place the record changes, now fires `frameRecordChanged`.
+  - The laid key now carries the frame record + board size (`#frame:`), since the Frame bands follow the frame
+    and the Wall fills its interior.
+  - Editor open: a template/shape change = pending, and Generate re-lays. Editor closed (sidebar): an automatic
+    re-lay of the laid kinds.
+  - A Frame element ON the canvas is always re-laid; with no contour left it lays nothing, i.e. CLEARS.
+  - Bands = None clears through the same path.
+  - The listener is wired ONCE per page: it re-lays, and the tests' repeated initBrickPanel stacked 90 copies.
+  - Live: editor change -> pending (98/106 unchanged), Generate -> 93/97. Sidebar template change -> re-laid at
+    once (98/106). Sidebar Rectangle -> frame 0, wall 225 (whole board). Bands None -> frame 0, wall 188.
+  - One-time effect: a board laid BEFORE this change has a stamped key without `#frame:`, so it shows the
+    Generate dot once after this ships (Generate clears it).
+  - 'Template -> Rectangle clears the Frame' is my reading of "re-laid for the new shape" with Offset on (there
+    is no contour). Offset off still lays along the board edge.
+- **Tests:**
+  - New: frame-rectangle-choice (4); a turn-207 frame block in the regen file (4).
+  - icon-select: a fixed grid + scroll-close test, and a nested-input mount test.
+  - Size: the 1 in default highlighted.
+  - isShown in the truth table.
+  - Non-vacuous: against the pre-amendment sources 18/19 of the new / changed tests fail. The 1 that passes is
+    "no laid bricks: a frame change re-lays nothing", which was already true (it pins an absence).
+- **Fast tier** (120 files: brick / frame / export / layer / guide / outline / size / snapshot / io / requires):
+  **1980/1980**.
+- **Matrix, full --parallel on the final tip:** 62 rows, **0 FAIL**. One earlier parallel run had 3 FAIL in the
+  wall group: Basketweave "MISSING", then None and Stretcher as knock-ons. The wall group alone was 24/24, and
+  the full re-run 62/0 -- a parallel-load flake for 88. Persistence group 24/24.
+- **Shot:** shots/seat37/turn207_template_picker_rectangle.png (the sidebar: header "— Rectangle", the Rectangle
+  button, the open grid).
+- Server 8851 (my own task) stopped.
+
+### turn 207 (last amendments, folded in) -- Recessed + Flat defaults, "Brick editor" button (seat 37)
+
+The second amendment batch (7). Folded in here: the two new defaults and the Brick editor button. Items 24
+(icons: an icon sheet first), 25 (2D/3D pill) and 26 (sidebar resize) are NEXT turns, in that order; then the
+item 22 design note; then item 23.
+- **Defaults (new boards only):** grout profile RECESSED (depth stays Set 1's 0.05 in), brick top FLAT.
+  core/state.js DEFAULT. Saved boards keep theirs: loadLastSession and a project load REPLACE P.brickSettings
+  whole, and every reader compares explicitly (`=== 'flat'`, `=== 'recessed'`), so an older board without
+  brickTopMode still reads Organic.
+  - The Weathered -> Recessed / Clean -> restore logic holds from Recessed: Weathered stores no "before", and
+    Clean leaves Recessed (tested).
+  - Pinned: brick-default-grout (Recessed, 0.05, Flat).
+  - Matrix: the sidebar-3d pairs now first move AWAY from the defaults (Organic then Flat; Flush, depth
+    greyed, then Recessed, depth). Clicking the default first changes nothing, which would FAIL the row.
+- **"Brick editor" button,** the first thing in the sidebar BRICK section. It is declared beside the FRAME
+  section's "Edit frame" in main/frame-panel.js `OPEN_EDITOR_BUTTONS` ({id, tab}): both open the same editor
+  (btnStampEdit's path) on their tab, replacing Edit frame's one-off listener. Same look as Edit frame.
+  - Matrix: a new kind 'opens' in tools/brick-matrix (controls.mjs doc + run.mjs runner, grouped with
+    sidebar-quick). It clicks the button and checks that the editor opened on the declared tab, then Applies.
+    Row 'Brick editor button', introducedBy 979ada1: PASS (opened, tab brick).
+- **Non-vacuous:** the 4 new tests (default pins + 3 button tests) fail 4/4 against the previous sources.
+- **Matrix -- the final tip: full --parallel 63 rows, 0 FAIL** (out-full5); **persistence 24/24** (baseline 204
+  bricks = my tree's 1 in default).
+  - Along the way, three runs showed FAILs in the wall group, a different set each time (Basketweave "MISSING";
+    Suppression 0 + Clumping; the two Level rows). The wall-alone run with the Level FAILs is PROVEN to have
+    run on ANOTHER build:
+    - its baseline was 329 bricks (the old 3/4 in default), while my tree lays 204;
+    - its accent rows were "skipped: not in this build".
+  - Its http port was evidently held by another process (another seat's matrix from an older checkout?).
+    run.mjs does not fail when its own server cannot bind, so it silently drives a foreign app.
+  - For 88: fail when the server cannot bind, or check the served build (e.g. fetch a file and compare it
+    with --root).
+- Main-checkout incident (the advisor's DM): not mine. The advisor stashed the outside agent's edits; my
+  8edb723 "frame follows its frame" stands; BRICK_COMMIT untouched until the advisor confirms Fred's wish.

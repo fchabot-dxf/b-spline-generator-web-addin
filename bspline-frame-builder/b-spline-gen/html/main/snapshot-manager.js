@@ -6,7 +6,7 @@ import { updateStampMasks } from './stamp-mask-manager.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { resolveGrid } from '../core/terrain.js';
 import { AppState } from './app-state.js';
-import { runMigrations, editorRestoreSvg, refreshDrape } from './app-init.js';
+import { runMigrations, editorRestoreSvg, refreshDrape, announceBrickSettingsRestored } from './app-init.js';
 import { syncFramePanel } from './frame-panel.js';
 import { updateSculptToolButtons } from './param-manager.js';
 
@@ -54,6 +54,7 @@ export async function applySnapshot(snap, preview, { source } = {}) {
   });
   if (source === 'load') { P.activeSculptLayer = null; syncUItoParam('activeSculptLayer', null); if (typeof document !== 'undefined') updateSculptToolButtons(); }
   syncFramePanel();
+  announceBrickSettingsRestored(); // audit v2 N2: a load / global undo replaced P.brickSettings
   setUndoRestoring(false);
   // a global undo/redo of the stock size: the drawing follows the board (app-init _resyncEditorToStock -- a no-op
   // when the size did not change; a load reopens the editor itself, below)

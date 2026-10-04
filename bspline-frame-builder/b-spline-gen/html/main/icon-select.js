@@ -35,12 +35,18 @@ export function mountIconSelect(select, { iconFor, label = '' }) {
   const grid = document.createElement('div');
   grid.className = 'icon-select-grid';
   grid.setAttribute('role', 'listbox');
-  grid.style.cssText = 'display:none; position:absolute; z-index:10001; top:100%; left:0; background:#fff; border:1px solid #ccc;'
+  // position:fixed, placed under the button on open: the sidebar's picker sits in a .cad-nested-input
+  // (overflow:hidden), which CLIPPED an absolutely positioned grid -- the list was invisible there (turn 207)
+  grid.style.cssText = 'display:none; position:fixed; z-index:10001; background:#fff; border:1px solid #ccc;'
     + ' border-radius:4px; padding:4px; box-shadow:0 2px 8px rgba(0,0,0,0.15); grid-template-columns:repeat(4, 40px); gap:4px;'
     + ' width:max-content;'; // 4 x 40 px fits the 236 px side panels (measured live: 5 auto columns overflowed it)
   wrap.append(button, grid);
   select.style.display = 'none';
-  select.insertAdjacentElement('afterend', wrap);
+  // a select inside a .cad-nested-input (the sidebar's: a 24 px box, overflow hidden) would clip the 40 px
+  // button -- the dropdown goes AFTER that box, which hides with its select (turn 207)
+  const host = select.closest('.cad-nested-input') || select;
+  if (host !== select) { wrap.style.marginBottom = host.style.marginBottom; host.style.display = 'none'; }
+  host.insertAdjacentElement('afterend', wrap);
   MOUNTED.set(select, { button, iconFor, label });
 
   const close = () => { grid.style.display = 'none'; };
@@ -67,9 +73,15 @@ export function mountIconSelect(select, { iconFor, label = '' }) {
       grid.appendChild(b);
     }
     grid.style.display = 'grid';
+    const r = button.getBoundingClientRect();
+    const w = grid.getBoundingClientRect().width;
+    grid.style.left = `${Math.max(4, Math.min(r.left, (window.innerWidth || r.left + w) - w - 4))}px`;
+    grid.style.top = `${r.bottom}px`;
   };
   button.addEventListener('click', () => (grid.style.display === 'none' ? open() : close()));
   document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) close(); });
+  // a fixed grid would float away from its button: any scroll closes it
+  window.addEventListener('scroll', (e) => { if (!grid.contains(e.target)) close(); }, true);
   refreshIconSelect(select);
   return wrap;
 }

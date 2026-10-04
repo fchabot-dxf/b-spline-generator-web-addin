@@ -34,7 +34,11 @@ import { inputProfileFor } from '../editor/editor-input.js';
 import { FRAME_HANDLE_RADIUS } from '../editor/editor-frame-profile.js';
 import { insetWindowGeometry, insetWindowOuterRect } from '../core/inset-window.js';
 import { mountIconSelect, refreshIconSelect } from './icon-select.js';
-import { templateIconSvg } from '../editor/frame-template-icon.js';
+import { templateIconSvg, boardOutlineIconSvg } from '../editor/frame-template-icon.js';
+
+/** Fred (turn 207): the template picker's no-frame choice -- the board's own rectangle (value '' = no frame
+ *  shape, unchanged underneath), labelled and drawn as such instead of a 'None' text cell. */
+export const NO_FRAME_CHOICE = Object.freeze({ value: '', label: 'Rectangle' });
 
 /** F9: how close (screen px) a press must land to grab a frame shape handle -- the FLOOR (a mouse). Audit
  *  (batch 1): the reach is now the pointer's own, the same `handlePx * 1.8` Shape Lattice's identical handles
@@ -211,6 +215,10 @@ function _syncTemplateSelect(sel, templateId) {
 }
 
 let _openEditorOn = null;
+export const OPEN_EDITOR_BUTTONS = Object.freeze([
+  { id: 'btnEditFrameShape', tab: 'frame' },
+  { id: 'btnEditBricks', tab: 'brick' },
+]);
 
 /** A frame template's name as shown: numbered (Fred: "Number the other frames too") -- "Template 1 - Hourglass"
  *  -> "1. Hourglass"; a name without the "Template N - " prefix is shown as is. */
@@ -323,7 +331,7 @@ export function syncFramePanel() {
     }
   }
   if ($('frameSettings')) $('frameSettings').style.display = tpl ? '' : 'none';
-  if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${frameLabel(tpl)}` : '— none';
+  if ($('frameSummary')) $('frameSummary').textContent = tpl ? `— ${frameLabel(tpl)}` : `— ${NO_FRAME_CHOICE.label}`;
 
   const warn = $('frameFitWarning');
   if (warn) {
@@ -812,7 +820,7 @@ export function initFramePanel() {
   if (!tplSel || !woodSel) return;
 
   for (const sel of [tplSel, $('editorFrameTemplate')].filter(Boolean)) {
-    sel.appendChild(_option('', 'None'));
+    sel.appendChild(_option(NO_FRAME_CHOICE.value, NO_FRAME_CHOICE.label));
     // F29 item 1: a hidden template (its own shape isn't ready yet) is never OFFERED for a new pick; a saved
     // record already on one still loads and draws fine (findFrameTemplate searches the full list) -- its own
     // option is added back in just for that record by _syncTemplateSelect below, never left there otherwise.
@@ -824,7 +832,7 @@ export function initFramePanel() {
   // advisor turn 203 (Fred's rule): the template list is a long VISUAL list -> an icon dropdown, icons drawn
   // by the frame engine from each template's own outline (editor/frame-template-icon.js), the name as tooltip.
   for (const sel of [tplSel, $('editorFrameTemplate')].filter(Boolean)) {
-    mountIconSelect(sel, { iconFor: (v) => templateIconSvg(FRAME_DEFS, v), label: 'Frame template' });
+    mountIconSelect(sel, { iconFor: (v) => (v === NO_FRAME_CHOICE.value ? boardOutlineIconSvg() : templateIconSvg(FRAME_DEFS, v)), label: 'Frame template' });
   }
   $('editorFrameTemplate')?.addEventListener('change', (e) => editFrame({ templateId: e.target.value || null, params: {} }));
   $('editorFrameGenerate')?.addEventListener('click', () => generateFrame());
@@ -882,7 +890,9 @@ export function initFramePanel() {
     $(g.sizeW)?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, w: v })));
     $(g.sizeH)?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, h: v })));
   }
-  $('btnEditFrameShape')?.addEventListener('click', () => { _openEditorOn = 'frame'; $('btnStampEdit')?.click(); });
+  // The sidebar sections' open-the-editor buttons, declared: each opens the SAME editor (btnStampEdit's own
+  // path) on its own tab. Turn 207 (Fred): the BRICK section's "Brick editor" joins the Frame section's.
+  for (const { id, tab } of OPEN_EDITOR_BUTTONS) $(id)?.addEventListener('click', () => { _openEditorOn = tab; $('btnStampEdit')?.click(); });
   _wireHandleDrag();
   _wireWindowDrag();
   // The fit warning (and the editor's profile) depend on the board size.

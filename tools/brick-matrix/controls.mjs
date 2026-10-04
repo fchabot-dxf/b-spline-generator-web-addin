@@ -13,6 +13,8 @@
 //   'sidebar'   a main-sidebar Brick control ('auto' commit): change -> canvas? -> 3D? (no Generate)
 //   'stripe'    a Stripe-panel brick-style pick: a fresh brush stroke is striped (count 4), then the pick
 //               must re-style the striped runs at once (canvas), never pending
+//   'opens'     a main-sidebar button that opens the editor: expect { tab } = the editor tab it must open on
+//               (seat 37, turn 207); the row closes the editor again (Apply)
 // introducedBy: the commit that added the control -- on a build without it the row is SKIPPED, not failed.
 // tool:   the Brick tool that must be active for an 'editor'/'editor3d' row (its settings section shows)
 // do:     { click: id } | { set: id, value, event }   (event: 'input' | 'change')
@@ -46,8 +48,14 @@ export const BRICK_CONTROLS = [
   { name: 'Large stones 0.6 (Fieldstone)', kind: 'editor', tool: 'wall', do: set('brickLargeStones', 0.6), expect: LAYOUT, introducedBy: '88c7616' },
   { name: 'Wall pattern: None', kind: 'editor', tool: 'wall', do: click('brickPattern_none'), expect: LAYOUT },
   { name: 'Wall pattern: Stretcher', kind: 'editor', tool: 'wall', do: click('brickPattern_stretcher'), expect: LAYOUT },
-  { name: 'Wall Level +1/8', kind: 'editor3d', tool: 'wall', do: set('brickLevel_wall', 0.125), expect: SURFACE },
-  { name: 'Wall Level 0', kind: 'editor3d', tool: 'wall', do: set('brickLevel_wall', 0), expect: SURFACE },
+  // Level (audit v2 N6, seat 37): an editor Level change now shows the Generate dot; Generate keeps the 2D
+  // layout (Level is a height), Apply builds it -- so pending + 3D, canvas not checked
+  { name: 'Wall Level +1/8', kind: 'editor', tool: 'wall', do: set('brickLevel_wall', 0.125), expect: E(true, null, true), introducedBy: '90a1483' },
+  { name: 'Wall Level 0', kind: 'editor', tool: 'wall', do: set('brickLevel_wall', 0), expect: E(true, null, true), introducedBy: '90a1483' },
+  // F35 item 15 (seat 37): raised accents on the Wall -- 3D-only (never pending); the 2D shows an outline only
+  { name: 'Raised accents: Course bands', kind: 'editor3d', tool: 'wall', do: click('brickAccent_courseBand'), expect: SURFACE, introducedBy: '82f3755' },
+  { name: 'Accent level -1/16', kind: 'editor3d', tool: 'wall', do: set('brickAccentLevel', -0.0625), expect: SURFACE, introducedBy: '82f3755' },
+  { name: 'Raised accents: None', kind: 'editor3d', tool: 'wall', do: click('brickAccent_none'), expect: SURFACE, introducedBy: '82f3755' },
   { name: 'Brick size preset 1-1/2', kind: 'editor', tool: 'wall', do: click('brickSizePreset_half1'), expect: LAYOUT },
   { name: 'Brick size stepper 1.0', kind: 'editor', tool: 'wall', do: set('brickSize', 1), expect: LAYOUT },
   { name: 'Brick size slider (log 500)', kind: 'editor', tool: 'wall', do: set('brickSizeSlider', 500), expect: LAYOUT },
@@ -65,8 +73,8 @@ export const BRICK_CONTROLS = [
   { name: 'Frame offset distance 0.25', kind: 'editor', tool: 'frame', do: set('brickFrameOffsetDistance', 0.25), expect: LAYOUT },
   { name: 'Frame offset off', kind: 'editor', tool: 'frame', do: click('brickFrameOffsetOn'), expect: LAYOUT },
   { name: 'Frame offset on', kind: 'editor', tool: 'frame', do: click('brickFrameOffsetOn'), expect: LAYOUT },
-  { name: 'Frame Level -1/8', kind: 'editor3d', tool: 'frame', do: set('brickLevel_frame', -0.125), expect: SURFACE },
-  { name: 'Frame Level 0', kind: 'editor3d', tool: 'frame', do: set('brickLevel_frame', 0), expect: SURFACE },
+  { name: 'Frame Level -1/8', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', -0.125), expect: E(true, null, true), introducedBy: '90a1483' },
+  { name: 'Frame Level 0', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', 0), expect: E(true, null, true), introducedBy: '90a1483' },
   { name: 'Frame preset: None', kind: 'editor', tool: 'frame', do: click('brickFramePreset_none'), expect: LAYOUT },
   { name: 'Frame preset: Soldier', kind: 'editor', tool: 'frame', do: click('brickFramePreset_single_soldier'), expect: LAYOUT },
   // ---- Brush settings (new strokes)
@@ -75,6 +83,10 @@ export const BRICK_CONTROLS = [
   { name: 'Brush profile: Stripped', kind: 'brush', do: click('brickBtnProfileStripped'), expect: E(false, true, null) },
   { name: 'Brush preset: 2-wide', kind: 'brush', do: click('brickBrushPreset_stretcher_2_running'), expect: E(false, true, null) },
   { name: 'Brush preset: 1-wide', kind: 'brush', do: click('brickBrushPreset_stretcher_1'), expect: E(false, true, null) },
+  // F35 item 16 (seat 37): the Raised brush -- its Level lifts each new stroke's bricks (data-brick-height-offset);
+  // its Grout mode waits for the engine's groutCut (main/brick-control-requires.js hides it until then)
+  { name: 'Raised brush level 1/8', kind: 'brush', tool: 'raisedBrush', do: set('brickRaisedLevel', 0.125, 'input'), expect: E(false, true, null), introducedBy: '0f45668' },
+  { name: 'Raised brush mode: Grout', kind: 'brush', tool: 'raisedBrush', do: click('brickRaisedMode_grout'), expect: E(false, true, null), introducedBy: '0f45668' },
   // ---- Stripe panel brick-style picks (seat 37, fb-app 702876d)
   { name: 'Stripe A: White continuous', kind: 'stripe', do: click('stripeBrickStyle_A_white_continuous'), expect: STRIPE, introducedBy: '702876d' },
   { name: 'Stripe B: Red continuous', kind: 'stripe', do: click('stripeBrickStyle_B_red_continuous'), expect: STRIPE, introducedBy: '702876d' },
@@ -88,17 +100,20 @@ export const BRICK_CONTROLS = [
   { name: 'Quick frame bands: 3-band', kind: 'sidebar', do: click('brickQuick_frameBands_three_band'), expect: AUTO },
   { name: 'Relief: Carved', kind: 'sidebar', do: click('brickBtnReliefCarved'), expect: SURFACE },
   { name: 'Relief: Raised', kind: 'sidebar', do: click('brickBtnReliefRaised'), expect: SURFACE },
-  { name: 'Brick top: Flat', kind: 'sidebar', do: click('brickBtnTopFlat'), expect: SURFACE },
+  // turn 207: a new board starts Flat + Recessed (core/state.js), so each pair first moves AWAY from the default
   { name: 'Brick top: Organic', kind: 'sidebar', do: click('brickBtnTopOrganic'), expect: SURFACE },
+  { name: 'Brick top: Flat', kind: 'sidebar', do: click('brickBtnTopFlat'), expect: SURFACE },
   { name: 'Surface: Weathered', kind: 'sidebar', do: click('brickSurfaceStyle_weathered'), expect: SURFACE },
   { name: 'Wear 0.9 (Weathered)', kind: 'sidebar', do: set('brickSurfaceWear', 0.9), expect: SURFACE },
   { name: 'Surface: Clean', kind: 'sidebar', do: click('brickSurfaceStyle_clean'), expect: SURFACE },
   { name: 'Max Height 0.2', kind: 'sidebar', do: set('brickReliefHeight', 0.2), expect: SURFACE },
-  { name: 'Grout: Recessed', kind: 'sidebar', do: click('brickBtnGroutRecessed'), expect: SURFACE },
-  { name: 'Grout depth 0.1 (Recessed)', kind: 'sidebar', do: set('brickGroutDepth', 0.1), expect: SURFACE, requires: NEEDS_RECESSED },
   { name: 'Grout: Flush', kind: 'sidebar', do: click('brickBtnGroutFlush'), expect: SURFACE },
   { name: 'Grout depth 0.05 (Flush)', kind: 'sidebar', do: set('brickGroutDepth', 0.05), expect: SURFACE, requires: NEEDS_RECESSED },
+  { name: 'Grout: Recessed', kind: 'sidebar', do: click('brickBtnGroutRecessed'), expect: SURFACE },
+  { name: 'Grout depth 0.1 (Recessed)', kind: 'sidebar', do: set('brickGroutDepth', 0.1), expect: SURFACE, requires: NEEDS_RECESSED },
   { name: 'Hide filter texture', kind: 'sidebar', do: click('isolateSkeleton'), expect: SURFACE },
+  // turn 207 (Fred): the BRICK section's "Brick editor" button opens the editor on the Brick tab
+  { name: 'Brick editor button', kind: 'opens', do: click('btnEditBricks'), expect: { tab: 'brick' }, introducedBy: '979ada1' },
 ];
 
 // The APP's own declaration wins when it exists (seat 37: main/brick-control-requires.js, a pure data
@@ -113,7 +128,9 @@ if (Array.isArray(appRequires)) {
   for (const row of BRICK_CONTROLS) {
     const target = row.do.click || row.do.set;
     const decl = appRequires.find((d) => (d.controls || []).includes(target));
-    if (decl) row.requires = { control: decl.requires.control, satisfied: decl.requires.satisfied, why: decl.why };
+    // a board-fact rule (requires.fact, e.g. 'bricksLaid') names no control to copy: the page judges it
+    // (run.mjs appRule -> the app's requirementMet) and the matrix always runs on a laid board
+    if (decl && decl.requires.control) row.requires = { control: decl.requires.control, satisfied: decl.requires.satisfied, why: decl.why };
   }
 }
 export const REQUIRES_SOURCE = Array.isArray(appRequires) ? 'app (main/brick-control-requires.js)' : 'matrix fallback (controls.mjs NEEDS_*)';
