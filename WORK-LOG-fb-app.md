@@ -11597,3 +11597,50 @@ setting (per-brick plane-fit, cached, grout stays draped); the Frame Template se
 icon-per-template custom listbox; and a Brick/Photo sidebar-vs-editor-tab 3D/2D control split. All
 four arrived as DMs during this turn's own work and are queued as explicit next items, in the order
 the advisor named them.
+
+## F35 item 16 follow-up: per-tab top-toolbar GROUPS (Brick's Brush lost its Grid/Snap controls)
+
+Small, explicitly-sequenced fix (advisor: "Small; do it next"): the earlier UX-unification turn's own
+fix (commit 2245810, this same item) hid the ENTIRE top toolbar (`#editorToolbarTop` -- Stroke/
+Color/Grid/FillMode/Font/Expand) outside the Artwork tab, on the reasoning that it was "shared
+styling chrome for ONE of them." That went too far: Brick's own Brush tool draws strokes on the
+canvas and genuinely needs GRID (SHOW/GRID-snap/GEOM-snap + spacing) -- the exact same shared
+control + state Artwork's own drawing tools already use -- which the blanket hide took away too.
+
+**Fix, declared per tab, not a second hand-rolled branch**: `main/editor-tabs.js` gained
+`TOOLBAR_TOP_GROUPS_BY_TAB` (`brick: ['editorGridGroup']`, `photo: []`, `frame: []`) and
+`ALL_TAB_GATED_TOOLBAR_GROUPS` (the 6 real groups; `editorTouchActionsGroup` deliberately excluded --
+its own visibility is purely a `(pointer:coarse)` CSS media query, independent of mode OR tab by
+design, per editor-ui.js's own TOOLBAR_GROUPS doc comment). `setEditorTab` now always shows the bar
+itself and sets an INLINE `style.display` on each gated group for non-Artwork tabs; for Artwork, it
+clears the inline style back to `''` instead of setting anything. This composes correctly with
+editor-ui.js's existing PER-MODE visibility system (`TOOLBAR_GROUPS`, a separate, already-declared
+table keyed by mode, toggling a `.hidden` class with `!important`) without needing to import or call
+into it: the `.hidden` class is never touched by this new code, so it keeps tracking whatever mode
+Artwork was last in, completely undisturbed, the whole time a non-Artwork tab is active (confirmed by
+actually checking `base.css`'s `.hidden { display: none !important; }` rather than assuming an inline
+style and a `!important` class interact safely) -- returning to Artwork needs no re-sync call at all,
+just clearing the override lets the untouched class state show through exactly as it was.
+
+**Tests**, new `tests/editor-tabs-toolbar-groups.test.js` (5): Brick shows Grid only; Photo/Frame
+show nothing; Artwork clears every inline override and leaves a PRE-EXISTING `.hidden` class (seeded
+in the fixture to simulate editor-ui.js's own table having already hidden Font/Expand for some mode)
+completely untouched; a round-trip Artwork -> Brick -> Artwork proves the restore needs no re-sync;
+TouchActionsGroup is never touched on any tab. Mutation-tested (reverted to the old blanket-hide
+behavior) -- exactly the 3 tests checking per-tab group visibility failed, Artwork and TouchActions
+stayed green (both were already satisfied by the old code too, correctly not flagging a difference
+that doesn't exist for them). Full suite green: 216 files / 3895 tests.
+
+**Live-verified** (headless Chrome, Brick tab, Brush tool, both 1366 and 390 widths): GRID group
+(SHOW/GRID/GEOM + the 1/4" spacing dropdown) visible and functional, Stroke/Color correctly hidden,
+Brush tool correctly shows its strong active highlight (confirms the earlier cross-tab highlight fix,
+commit 2245810, is intact on this branch). Screenshots:
+`.bspline-status/shots/seatC/f35item16_brick_tab_grid_group_{1366,390}.png`.
+
+Not yet done, queued next (per the advisor's own explicit re-prioritization, ahead of the rest of
+item 16): a 4-part Brick-tab usability bug report from Fred's own live use (tool rail icons/
+highlighting -- to be CONFIRMED against this branch's current code, not assumed broken; the settings
+panel showing every section at once instead of being contextual; the Layers panel not appearing with
+nothing selected; and a reported bad brick layout -- wall bricks running under/over frame bands,
+shards fanning at the shoulders -- to reproduce and diagnose as either already-fixed or a real
+wall/frame clip bug).

@@ -25,6 +25,27 @@ export const EDITOR_TABS = [
 
 let _editorTab = 'artwork';
 
+// F35 item 16 follow-up (Fred: hiding the WHOLE top toolbar on non-Artwork tabs went too far --
+// Brick's own Brush tool needs the GRID group (SHOW/GRID-snap/GEOM-snap + spacing) to draw strokes,
+// the exact same shared control + P-state editor-ui.js's own TOOLBAR_GROUPS table already drives for
+// Artwork). Declared per tab, data not a hand-rolled branch per group, so a future tab/group pairing
+// is one more entry here. 'artwork' is deliberately NOT a key: its own groups stay entirely owned by
+// editor-ui.js's existing per-MODE `.hidden`-class system (TOOLBAR_GROUPS) -- this table only ever
+// sets an INLINE style.display on top of that, and clears it back to '' on return to Artwork, so the
+// untouched `.hidden` class state (which never stopped applying underneath) shows through exactly as
+// it was, with no re-sync call needed. editorTouchActionsGroup is excluded from BOTH the all-list and
+// every tab's own list -- its own visibility is entirely a (pointer:coarse) CSS media query,
+// independent of mode OR tab by design (editor-ui.js's own TOOLBAR_GROUPS doc comment).
+const ALL_TAB_GATED_TOOLBAR_GROUPS = [
+  'editorStrokeGroup', 'editorColorGroup', 'editorGridGroup', 'editorFillModeGroup',
+  'editorFontGroup', 'editorExpandGroup',
+];
+const TOOLBAR_TOP_GROUPS_BY_TAB = {
+  brick: ['editorGridGroup'],
+  photo: [],
+  frame: [],
+};
+
 export function setEditorTab(tab) {
   const match = EDITOR_TABS.find((t) => t.id === tab);
   _editorTab = match ? match.id : 'artwork';
@@ -39,11 +60,17 @@ export function setEditorTab(tab) {
   // Mobile: the editor's bottom drawer labels its side panel; name it for the active tab.
   const drawerTab = document.getElementById('editorDrawerTab-layers');
   if (drawerTab) drawerTab.textContent = EDITOR_TABS.find((t) => t.id === _editorTab)?.drawerLabel || 'Layers';
-  // F35 item 10 follow-up (advisor): Stroke/Color/Grid/Style only applies to hand-drawn Artwork
-  // shapes -- shown on the Artwork tab only, not one of the per-tab toolbar/panel pairs above since
-  // it isn't a tab's own content, just shared styling chrome for ONE of them.
+  // F35 item 10 follow-up (advisor): the top toolbar's own GROUPS are shared chrome, not one tab's
+  // content -- the bar itself now always shows (whenever any tab needs at least one group); WHICH
+  // groups show is the per-tab table above.
   const topToolbar = document.getElementById('editorToolbarTop');
-  if (topToolbar) topToolbar.style.display = _editorTab === 'artwork' ? 'flex' : 'none';
+  if (topToolbar) topToolbar.style.display = 'flex';
+  const visibleGroups = TOOLBAR_TOP_GROUPS_BY_TAB[_editorTab]; // undefined for 'artwork'
+  for (const groupId of ALL_TAB_GATED_TOOLBAR_GROUPS) {
+    const el = document.getElementById(groupId);
+    if (!el) continue;
+    el.style.display = visibleGroups ? (visibleGroups.includes(groupId) ? 'flex' : 'none') : '';
+  }
   document.dispatchEvent(new CustomEvent('editorTabChanged', { detail: { tab: _editorTab } }));
   return _editorTab;
 }
