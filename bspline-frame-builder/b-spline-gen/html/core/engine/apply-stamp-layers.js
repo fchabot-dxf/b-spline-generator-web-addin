@@ -22,6 +22,35 @@
 
 import { gaussianSmooth } from '../gaussian.js';
 import { dbg } from '../debug.js';
+import { fitPlane } from '../bricks/plane-fit.js';
+
+/**
+ * F35 item 18 (1), brick top FLAT: per grid point, the height of the plane its brick sits on --
+ * NaN where no brick covers it. `brickOf` comes from the brick mask (editor-brick-height-mask.js);
+ * each brick's plane is the least-squares fit (core/bricks/plane-fit.js) of `heights` over EVERY
+ * grid point the brick covers -- the terrain as it is at THIS rebuild, so a terrain/sculpt change
+ * that rebuilds without re-rasterizing the mask still lands each brick on the new ground. Fitted
+ * in grid units centred on the brick (well conditioned at any resolution); a brick covering fewer
+ * than 3 non-collinear points falls back to fitPlane's level plane at its mean height.
+ */
+export function flatBrickPlaneHeights(heights, brickOf, count, nx) {
+  const out = new Float32Array(heights.length).fill(NaN);
+  if (!brickOf || !(count > 0)) return out;
+  const members = Array.from({ length: count }, () => []);
+  for (let k = 0; k < brickOf.length; k++) {
+    const b = brickOf[k];
+    if (b >= 0 && b < count) members[b].push(k);
+  }
+  for (const ks of members) {
+    if (!ks.length) continue;
+    let mi = 0, mj = 0;
+    for (const k of ks) { mi += k % nx; mj += Math.floor(k / nx); }
+    mi /= ks.length; mj /= ks.length;
+    const plane = fitPlane(ks.map((k) => ({ x: (k % nx) - mi, y: Math.floor(k / nx) - mj, z: heights[k] })));
+    for (const k of ks) out[k] = plane.eval((k % nx) - mi, Math.floor(k / nx) - mj);
+  }
+  return out;
+}
 
 export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
   const { stampDepth = 0, stampEdgeFilletRadius = 0 } = defaults;
@@ -78,10 +107,20 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
       ? m.metrics.effectiveFilletIn
       : (eLayer.edgeFilletRadius ?? layer.edgeFilletRadius ?? stampEdgeFilletRadius);
     const filletAmplitude = layerSign * Math.min(filletRadius, Math.abs(layerDepth));
+    // Flat brick tops: fitted against the heights BELOW this layer (terrain + earlier layers), the
+    // same base an Organic brick drapes onto
+    const flatTop = (m && m.flatTop && m.flatTop.brickOf && m.flatTop.brickOf.length === nx * nz) ? m.flatTop : null;
+    const planeZ = flatTop ? flatBrickPlaneHeights(stampedHeights, flatTop.brickOf, flatTop.count, nx) : null;
 
     for (let k = 0; k < nx * nz; k++) {
       const bodyVal   = body[k];
       const filletVal = fillet ? fillet[k] : 0;
+      // a Flat brick point: its brick's plane REPLACES the terrain under it (suppression is moot);
+      // grout (NaN) falls through and stays draped, exactly as in Organic
+      if (planeZ && !Number.isNaN(planeZ[k])) {
+        stampedHeights[k] = planeZ[k] + bodyVal * layerDepth + filletVal * filletAmplitude;
+        continue;
+      }
       const stamped   = isStamped ? isStamped[k] : (bodyVal > 1e-6);
       if (!stamped && bodyVal < 1e-6 && filletVal < 1e-6) continue;
 

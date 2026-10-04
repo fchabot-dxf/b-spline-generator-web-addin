@@ -24,6 +24,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 
 import {
   initBrickPanel, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
+  setBrickTopMode,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, runBricksPreview } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
@@ -46,6 +47,7 @@ const FIXTURE = `
   <input id="brickGroutWidth"><input id="brickGroutDepth">
   <button id="brickBtnGroutRecessed"></button><button id="brickBtnGroutFlush"></button>
   <button id="brickBtnReliefRaised"></button><button id="brickBtnReliefCarved"></button>
+  <button id="brickBtnTopOrganic" class="active"></button><button id="brickBtnTopFlat"></button>
   <input id="brickReliefHeightSlider" type="range" min="0" max="1" step="0.001"><input id="brickReliefHeight">
   <input id="brickSuppressionSlider" type="range"><input id="brickSuppression">
   <input id="brickClumpingSlider" type="range"><input id="brickClumping">
@@ -163,5 +165,39 @@ describe("Main sidebar ('auto'): the same setters re-lay straight away", () => {
     change();
     expect(runBricks).toHaveBeenCalledTimes(1);
     expect(pending()).toBe(false);
+  });
+});
+
+describe("F35 item 18: brick top Flat | Organic is a 3D-only ('surface') setting", () => {
+  let notify;
+  beforeEach(() => {
+    P.brickSettings.brickTopMode = 'organic';
+    setup('wall');
+    notify = vi.fn();
+    window.svgEditor._notifyChange = notify;
+  });
+  it('the Flat button: saved, toggles, re-masks at once, never re-lays, never pending', () => {
+    $('brickBtnTopFlat').click();
+    expect(P.brickSettings.brickTopMode).toBe('flat');
+    expect($('brickBtnTopFlat').classList.contains('active')).toBe(true);
+    expect($('brickBtnTopOrganic').classList.contains('active')).toBe(false);
+    expect(notify).toHaveBeenCalledWith('commit');
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(pending()).toBe(false);
+    $('brickBtnTopOrganic').click();
+    expect(P.brickSettings.brickTopMode).toBe('organic');
+    expect(notify).toHaveBeenCalledTimes(2);
+    expect(pending()).toBe(false);
+  });
+  it('a pending layout change stays pending (and only that) across a Flat toggle', () => {
+    $('brickPattern_herringbone').click();
+    $('brickBtnTopFlat').click();
+    expectPendingThenGenerate((c) => expect(c[1].pattern).toBe('herringbone'));
+  });
+  it('the sidebar entry point (default commit) behaves the same', () => {
+    setBrickTopMode('flat');
+    expect(P.brickSettings.brickTopMode).toBe('flat');
+    expect(notify).toHaveBeenCalledWith('commit');
+    expect(runBricks).not.toHaveBeenCalled();
   });
 });

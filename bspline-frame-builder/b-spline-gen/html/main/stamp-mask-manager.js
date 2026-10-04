@@ -75,6 +75,7 @@ export function clearStampMaskInWindow(result, hole, nx, nz, widthIn, heightIn) 
       result.body[k] = 0;
       result.fillet[k] = 0;
       result.isStamped[k] = 0;
+      if (result.flatTop) result.flatTop.brickOf[k] = -1; // F35 item 18: no Flat brick top in the hole either
     }
   }
   return result;
@@ -154,7 +155,8 @@ export async function updateStampMasks(nx, nz) {
     // content but produces a per-grid-point-varying mask. See
     // editor-brick-height-mask.js's own header.
     const result = isBricksLayer(eLayer)
-      ? await withLoadingStage('heightMask', () => rasterizeBrickHeightMask(editor, eLayer, nx, nz, P.widthIn, P.heightIn))
+      ? await withLoadingStage('heightMask', () => rasterizeBrickHeightMask(editor, eLayer, nx, nz, P.widthIn, P.heightIn,
+          { topMode: P.brickSettings && P.brickSettings.brickTopMode })) // F35 item 18: Flat | Organic brick tops
       : await rasterizeSvg(
           applyLayerTransform(svg, layerTransform, P.widthIn, P.heightIn),
           nx,
