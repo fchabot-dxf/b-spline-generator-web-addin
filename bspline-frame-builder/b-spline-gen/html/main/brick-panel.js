@@ -349,20 +349,23 @@ function selectTool(id) {
   }
 }
 
-/** F35 item 4 (advisor): a Frame band-preset picker above the band list.
- *  The advisor's own dispatch named 5 presets (soldier, soldier-stretcher,
- *  double-course, quoin-corners, header-band) -- only 3 are actually
- *  declared in library.js's own FRAME_PRESETS today (single_soldier,
- *  soldier_stretcher, three_band); quoin-corners/header-band don't exist
- *  yet (not f3's own fault -- the dispatch named a FUTURE state). Mapped
- *  the 3 real ones to readable labels here rather than inventing placeholder
- *  pattern data for the missing 2, which isn't this adapter's call to
- *  design; flagged to the advisor in the pass-back instead. */
-const FRAME_PRESET_LIST = [
-  { id: 'single_soldier', label: 'Soldier' },
-  { id: 'soldier_stretcher', label: 'Soldier + Stretcher' },
-  { id: 'three_band', label: 'Soldier / Stretcher / Soldier' },
-];
+/** F35 item 4 (advisor) + item 10 follow-up: a Frame band-preset picker above the band list, read
+ *  directly from library.js's own declared FRAME_PRESETS keys (same WALL_PATTERN_LABELS/
+ *  WALL_PATTERN_LIST precedent below) -- a hand-maintained parallel list here had already drifted
+ *  once (only showing 3 of the now-8 declared presets after more landed on main), the exact
+ *  "a reusable concept deserves one declared source, not a second copy that rots" lesson this
+ *  project already applies elsewhere. A preset without its own label here just shows its own key. */
+const FRAME_PRESET_LABELS = {
+  single_soldier: 'Soldier',
+  soldier_stretcher: 'Soldier + Stretcher',
+  three_band: 'Soldier / Stretcher / Soldier',
+  butt_frame: 'Soldier (butt corners)',
+  quoin_corners: 'Soldier (quoin corners)',
+  double_course: 'Soldier x2 (lapped)',
+  header_band: 'Header',
+  mixed_bands: 'Header / Flemish / Soldier',
+};
+const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
 
 /** The current frame's own contour, as `{primitives, bands, set}` for
  *  generateBricks/bricksContourBands -- or null when no real frame resolves (no template selected,

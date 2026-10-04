@@ -39,6 +39,11 @@ export function setEditorTab(tab) {
   // Mobile: the editor's bottom drawer labels its side panel; name it for the active tab.
   const drawerTab = document.getElementById('editorDrawerTab-layers');
   if (drawerTab) drawerTab.textContent = EDITOR_TABS.find((t) => t.id === _editorTab)?.drawerLabel || 'Layers';
+  // F35 item 10 follow-up (advisor): Stroke/Color/Grid/Style only applies to hand-drawn Artwork
+  // shapes -- shown on the Artwork tab only, not one of the per-tab toolbar/panel pairs above since
+  // it isn't a tab's own content, just shared styling chrome for ONE of them.
+  const topToolbar = document.getElementById('editorToolbarTop');
+  if (topToolbar) topToolbar.style.display = _editorTab === 'artwork' ? 'flex' : 'none';
   document.dispatchEvent(new CustomEvent('editorTabChanged', { detail: { tab: _editorTab } }));
   return _editorTab;
 }

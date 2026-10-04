@@ -10500,3 +10500,26 @@ existed and is unchanged in count, no new test file added this item; the full su
 once mid-fix to catch the two regressions above, then again clean after both fixes). Commit by
 explicit path, push, report back to the advisor: the design as RESUMED (declared per-tab toolbar +
 panel, both sidebar sections removed with no duplicates, screenshots of all 4 tabs at both widths).
+
+## F35 item 10 follow-up: 2 polish fixes from the advisor's own 1:1 review of the merged tabs
+
+(1) The Artwork top toolbar (Stroke width/Color/Grid/Style) was still showing on Photo/Brick/Frame --
+it only applies to hand-drawn Artwork shapes, so it's meaningless (and visually confusing) elsewhere.
+Gave it `id="editorToolbarTop"` and one more rule in `editor-tabs.js`'s own `setEditorTab` (show only
+when `_editorTab==='artwork'`) -- not a 5th entry in `EDITOR_TABS` since it isn't a tab's own content,
+just shared chrome for one of them.
+
+(2) The Frame band preset picker only ever showed 3 presets (`single_soldier`/`soldier_stretcher`/
+`three_band`) via a hand-maintained `FRAME_PRESET_LIST` array in brick-panel.js, whose own header
+comment already named the reason: only 3 of 5 named presets existed in library.js's own
+`FRAME_PRESETS` at the time it was written. Since then 5 MORE landed there (`butt_frame`,
+`quoin_corners`, `double_course`, `header_band`, `mixed_bands`) and the hand-copied list never caught
+up -- exactly the "a reusable concept deserves ONE declared source" lesson this project already
+applies via `WALL_PATTERN_LABELS`/`WALL_PATTERN_LIST` a few lines above it in the SAME file. Replaced
+it with the identical pattern: `Object.keys(FRAME_PRESETS).map(id => ({id, label: FRAME_PRESET_LABELS[id] || id}))`,
+so a new preset declared in library.js shows up here automatically, with its own key as a fallback
+label if nobody's named it a nicer one yet.
+
+Live-verified: top toolbar now hidden on Frame/Photo/Brick, shown on Artwork; the Brick tab's own
+Frame band preset list now shows all 8 real presets. Re-shot all 8 tab screenshots (the top-toolbar
+fix changes what they show). Full suite green: 205 files / 3784 tests.
