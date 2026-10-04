@@ -18655,7 +18655,7 @@ depended on the old sliver-prone tie-break). Re-ran the T86 item 1 square/templa
 (`shots/seatB/t86_item1_butt_*.png`): the through band is now fully uniform whole bricks end to end;
 the butt band's own smallest piece is 0.1in (a balanced 1/2-fraction), the 0.05in sliver gone.
 
-**Commit `[pending]`, pushed to origin/lane-b.** Fixed at the cause (the shared planner, not a
+**Commit `83b8025`, pushed to origin/lane-b.** Fixed at the cause (the shared planner, not a
 butt-only workaround), mutation-tested, verified against both hand-computed numbers and the real
 previews that surfaced the issue, full suite green. Continuing straight into LAPPED next, as
 directed.
