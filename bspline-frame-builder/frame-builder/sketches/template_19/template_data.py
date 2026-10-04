@@ -138,9 +138,19 @@ FRAME_FEATURES = COMMON_FRAME_FEATURES
 # "taperAngleDeg": 8.0}` resolves Template 18's own provisional model first (every one of its own
 # features -- waistReach/cornerRadiusTop/cornerRadiusBottom/waistCenterY/waistRadius/topInset/
 # archRise/waistOpeningFtIn -- kept verbatim) then layers `taperAngle` on top
-# (frame_shape_fit.provisional_taper_model). No `shapeExtractor` override: like T12/T13, this
-# template has no recorded Fusion goldens of its own yet, so it stays on this provisional model --
-# same honest "declared, not a real fit" choice those two already made.
+# (frame_shape_fit.provisional_taper_model).
+#
+# `shapeExtractor` override IS needed here, unlike T12/T13: MEASURED (this item, after recording this
+# template's own first-ever goldens) -- omitting it, T12/T13's own stated reason ("the plain hourglass
+# extractor's own validity check already rejects a tapered shoulder") does NOT hold for this template:
+# the generic `_hourglass` extractor doesn't check for `topInset`/`archRise` at all, so it silently
+# "succeeded" at a REAL fit from these goldens -- and in doing so completely DROPPED archRise/topInset/
+# cornerRTop/cornerRBottom/waistOpeningFtIn (every feature that makes this template's own head what it
+# is), extracting only the base 5 Template-1-style features from the wrong curves entirely. Reusing
+# Template 18's own dedicated stub extractor (`_hourglass_narrow_arched_head`, always `return False,
+# {}` until someone writes the real one -- its own docstring already explains why) correctly forces
+# this template back onto its provisional model instead, the same safety T18 itself already has.
+FRAME_SHAPE_EXTRACTOR = "hourglass_narrow_arched_head"
 FRAME_PROVISIONAL_SHAPE = {"from": "template_18", "taperAngleDeg": 8.0}
 
 # H23 item 80: hidden from the template picker until the Fusion phases are confirmed live (goldens at
@@ -190,6 +200,7 @@ def get_template_logic(ui_data=None):
             "handles": [dict(h) for h in FRAME_HANDLES],
             "handleMigrations": {k: list(v) for k, v in FRAME_HANDLE_MIGRATIONS.items()},
             "seedMap": [dict(e) for e in FRAME_SEED_MAP],
+            "shapeExtractor": FRAME_SHAPE_EXTRACTOR,
             "provisionalShape": dict(FRAME_PROVISIONAL_SHAPE),
             "hidden": FRAME_HIDDEN,
         },
