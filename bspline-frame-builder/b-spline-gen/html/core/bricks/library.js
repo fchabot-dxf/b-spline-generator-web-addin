@@ -294,6 +294,17 @@ export const BRICK_PATTERNS = Object.freeze({
  * at brickHeightIn) so what ships matches what's declared, with three_band's own middle band
  * genuinely 3 courses deep (demonstrating the multi-row stacking, not just a single wide brick).
  */
+/**
+ * T86 item 1 (Fred's sketch, shots/fred/fred_sketch_butt_corner.jpg): `cornerStyle` on a band is
+ * the per-corner TREATMENT contour-bands.js's own ribbonPieces call reads (default 'mitre' when a
+ * band declares none, matching every preset above) -- 'butt' and 'lapped' are the same asymmetric
+ * through/butt construction (see primitive-ribbon.js's own `buildButtJoint` header); 'lapped' flips
+ * which side is through on every other BAND (advisor's own decision, turn 291) -- a single-band
+ * lapped frame is identical to 'butt' by construction, so `double_course` below declares 2 bands,
+ * the minimum that actually shows the alternation. 'block' inserts a solid quoin unit (from the
+ * declared "White rocks" set, `BRICK_SETS[2]`, regardless of the band's own set) at the same
+ * corners instead -- `quoin_corners` below.
+ */
 export const FRAME_PRESETS = Object.freeze({
   single_soldier: [{ widthIn: 0.75, pattern: 'soldier' }],
   soldier_stretcher: [
@@ -304,6 +315,12 @@ export const FRAME_PRESETS = Object.freeze({
     { widthIn: 0.75, pattern: 'soldier' },
     { widthIn: 0.6, pattern: 'stretcher' },
     { widthIn: 0.75, pattern: 'soldier' },
+  ],
+  butt_frame: [{ widthIn: 0.75, pattern: 'soldier', cornerStyle: 'butt' }],
+  quoin_corners: [{ widthIn: 0.75, pattern: 'soldier', cornerStyle: 'block' }],
+  double_course: [
+    { widthIn: 0.75, pattern: 'soldier', cornerStyle: 'lapped' },
+    { widthIn: 0.75, pattern: 'soldier', cornerStyle: 'lapped' },
   ],
 });
 

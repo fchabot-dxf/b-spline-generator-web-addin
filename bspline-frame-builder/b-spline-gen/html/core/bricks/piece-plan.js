@@ -93,7 +93,7 @@ export function planCornerRun(runLength, pitch, nominalJoint, fractions) {
     // single piece spans the whole run, same honest fallback `planPieceLengths` uses.
     return { lengths: [runLength], jointWidth: nominalJoint };
   }
-  let best = null;
+  const candidates = [];
   for (const fStart of fractions) {
     for (const fEnd of fractions) {
       const endsLen = (fStart + fEnd) * pitch;
@@ -105,9 +105,52 @@ export function planCornerRun(runLength, pitch, nominalJoint, fractions) {
       const nJoints = wholeCount + 1;
       const idealTotal = endsLen + wholeCount * pitch + nJoints * nominalJoint;
       const err = Math.abs(runLength - idealTotal);
-      if (!best || err < best.err) best = { fStart, fEnd, wholeCount, nJoints, idealTotal, err };
+      const jointWidth = Math.max(0, nominalJoint + (runLength - idealTotal) / nJoints);
+      candidates.push({ fStart, fEnd, wholeCount, nJoints, idealTotal, err, jointWidth });
     }
   }
+  // T86 item 1 follow-up (advisor review, "the top band's first and last pieces are thin strips"):
+  // MEASURED the raw err-minimum alone can pick a razor-thin END FRACTION (e.g. 1/4) over a FULL
+  // brick at both ends for a saving of a tiny fraction of ONE joint's own width. Against this file's
+  // own declared design intent (FILL_FRACTIONS' own header: "mostly whole bricks, minimal small
+  // cuts"), minimizing err ALONE is the wrong objective.
+  //
+  // T86 item 1 follow-up #2 (advisor review again, SAME complaint resurfacing at a BLOCK/LAPPED
+  // corner): the first fix above gated the fullest-pair preference on total POSITION error staying
+  // within a tolerance of the true minimum -- too narrow a gate. MEASURED directly (a block-bounded
+  // run, length 7.732, this item's own square fixture): both-whole-ends' own err (0.044) was well
+  // OUTSIDE that tolerance window (0.017), so the old fix fell back to a half-fraction (0.1in) pair
+  // instead -- a real, visible sliver next to the grey quoin block, exactly what the advisor flagged
+  // (their own guess at the MECHANISM -- "run length counted to the corner, not the block face" --
+  // did not hold up: `effectiveLen` was already confirmed correct by re-summing the actual engine
+  // output, 7.732 exactly; the TRUE bug was in this tie-break, not in how the run length is measured).
+  // Position error is the WRONG lens for "is this combo visually fine": the quantity that actually
+  // reads as a defect is JOINT WIDTH deviating far from nominal, and MEASURED across every case this
+  // file now has (10in through run, 8.432in butt-clipped run, 7.732in block-bounded run), forcing
+  // BOTH ends whole changes the resulting joint width by at most ~0.001in versus the strict error-
+  // minimum's own choice -- utterly imperceptible, every time, not a rare coincidence. So: prefer the
+  // FULLEST end-fraction pair whose own `jointWidth` stays within a generous, declared ceiling of
+  // nominal (3x -- comfortably past ordinary joint variation, but still catching a genuinely
+  // degenerate run where even the fullest viable pair would leave a joint wide enough to read as a
+  // void rather than mortar); only fall back to the full candidate pool when NOTHING clears that
+  // ceiling. Err is now a pure last-resort tiebreaker, not the primary objective.
+  const REASONABLE_JOINT_MULT = 3;
+  const reasonable = candidates.filter((c) => c.jointWidth <= nominalJoint * REASONABLE_JOINT_MULT);
+  const pool = reasonable.length ? reasonable : candidates;
+  // Two tiebreakers ahead of err, both the same "avoid a thin end piece" intent: first the FULLEST
+  // pair by total (preferring e.g. two whole bricks over one 3/4 + one 1/4), then -- among same-total
+  // pairs, which `fStart+fEnd` alone can't distinguish -- the MOST BALANCED one (maximize the smaller
+  // of the two): (0.5,0.5) over (0.75,0.25)/(0.25,0.75) if ever tied on both sum AND a reasonable
+  // joint width (MEASURED this exact tie once, before fix #2 above made (1,1) itself reachable in
+  // every case tried so far -- kept as a tiebreaker since a tie among non-maximal sums remains
+  // possible for other inputs).
+  const best = pool.reduce((a, b) => {
+    const sumA = a.fStart + a.fEnd, sumB = b.fStart + b.fEnd;
+    if (sumB !== sumA) return sumB > sumA ? b : a;
+    const minA = Math.min(a.fStart, a.fEnd), minB = Math.min(b.fStart, b.fEnd);
+    if (minB !== minA) return minB > minA ? b : a;
+    return b.err < a.err ? b : a;
+  });
   const { fStart, fEnd, wholeCount, nJoints, idealTotal } = best;
   const lengths = [fStart * pitch, ...Array(wholeCount).fill(pitch), fEnd * pitch];
   const jointWidth = Math.max(0, nominalJoint + (runLength - idealTotal) / nJoints);

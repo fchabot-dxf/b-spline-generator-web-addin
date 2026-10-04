@@ -14517,3 +14517,35 @@ leakage: `app.documents` held exactly the 4 protected docs before and after.
 WORK-LOG entry). T85 item 3 is DONE: the real product bug is fixed at the cause (not papered over),
 mutation-tested, and live-verified on every case the dispatch named. Passing back and messaging the
 advisor now. Fusion released.
+
+## Lane B — Turn (epoch 9) — T85 item 4: window range-end main-bar disruption — confirmed overlap-only, closing, no fix
+
+One short pass, per the dispatch's own framing: does the window's own `largest`/`offCentre` range
+ends disrupt the MAIN frame's bar split ONLY when the window crosses/touches the opening (already
+closed under Class A, Fred's "my responsibility" ruling), or does it ALSO happen with the window
+clear of it (a real, different bug needing the same declarative-fix treatment)?
+
+**Checked geometrically (no Fusion), every remaining case.** All 6 cases still showing main-bar
+disruption after item 2+3's fixes: `template_1/10/16` at `window_largest_7x9` and
+`window_offCentre_7x9`. `largest` sets the window to the FULL board size (`w=W, h=H`) -- its outer
+edge coincides with the board edge itself, trivially crossing every bar and the opening; no
+measurement needed. `offCentre` pushes a normally-sized window into its own clamped corner --
+measured its actual board-local rect against each template's own `frameInnerProfile` with a dense
+edge sample (60 points per side, not just the 4 corners -- the same method that caught item 2's
+waist-pinch case corner tests alone would have missed): for `template_1`/`template_10`/`template_16`
+at 7x9, the clamped rect is `x:[4.667,7] y:[0,3]`, pushed flush against the board's own top-right
+edges -- every sampled point on it sits OUTSIDE each template's own inner opening. **Every one of
+the 6 remaining cases crosses or touches the main frame directly; none occurs with the window clear
+of the opening.**
+
+Also noted, not a new finding needing its own fix: `template_1`'s two cases show the SAME main-bar
+overbuild (14/4, 12/4 bodies) but with ZERO `NOT BUILT` lines (unlike T10/T16's 1-2 lines each) --
+T1's extra fragments happen to touch the main `inner` boundary too, so they're silently absorbed by
+the existing T82 item 7 opening-tolerance rather than raising. Different downstream path, same root
+cause (the window crossing the frame), already covered by the same closed ruling.
+
+**No fix applied -- correctly so.** This closes T85 item 4 on the dispatch's own stated terms: the
+disruption is confirmed overlap-only in every remaining instance, so it falls under the ruling
+already closed for Class A. No WORK-LOG code diff this item; reporting the confirmation and closing.
+Fusion untouched (no live check needed -- this was a pure geometry read against already-committed
+profile code).
