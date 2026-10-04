@@ -1015,6 +1015,15 @@
           </div>
           <div id="brickToolHint" style="font-size:10px; opacity:0.65; margin:-6px 0 12px;"></div>
 
+          <!-- F35 item 7 (advisor-approved proposal): the Wall pattern picker -- every
+               core/bricks/library.js BRICK_PATTERNS key (stretcher/stack/soldier/header/flemish/
+               herringbone/basketweave), one shared table also meant for Frame bands once f3's own
+               contour-bands rebuild lands (main/brick-panel.js's own WALL_PATTERN_LIST comment). -->
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
+          <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+            <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
+          </div>
+
           <!-- F35 item 4 (advisor): a Frame band-preset picker. Only 3 of
                the 5 named presets exist in library.js's own FRAME_PRESETS
                today -- see main/brick-panel.js's own FRAME_PRESET_LIST

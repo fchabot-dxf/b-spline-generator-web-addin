@@ -21,7 +21,7 @@ import { P, saveLastSession } from '../core/state.js';
 import { runBricks, buildRibbonPrimitives, resolvedSetFor } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
-import { FRAME_PRESETS, brickSetById } from '../core/bricks/library.js';
+import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
 import { applyParam } from './param-manager.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
@@ -107,6 +107,7 @@ function syncControlsFromState() {
   const s = P.brickSettings;
   syncSetPicker();
   syncFramePresetButtons();
+  syncWallPatternButtons();
   setPair('brickScaleSlider', 'brickScale', s.scale);
   document.getElementById('brickGroutWidth').value = s.grout.widthIn;
   document.getElementById('brickGroutDepth').value = s.grout.depthIn;
@@ -188,6 +189,43 @@ function renderFramePresetList(container) {
 function syncFramePresetButtons() {
   for (const preset of FRAME_PRESET_LIST) {
     document.getElementById(`brickFramePreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.frameBandPreset);
+  }
+}
+
+/** F35 item 7 (advisor-approved proposal): the Wall pattern picker -- every BRICK_PATTERNS key
+ *  (library.js) that applies to a whole-fill Wall pattern, text-button list (same precedent as
+ *  FRAME_PRESET_LIST above; a real graphical thumbnail-per-pattern is a declared, not-yet-built
+ *  follow-up -- see editor-brick-tool.js's own STYLE_CYCLE comment for the SAME "no thumbnail
+ *  rendering exists in this codebase yet" gap already flagged for Stripe). Reads the table's own
+ *  keys directly rather than a second, hand-maintained list, so a pattern added to BRICK_PATTERNS
+ *  later needs no change here. */
+const WALL_PATTERN_LABELS = {
+  stretcher: 'Stretcher', stack: 'Stack', soldier: 'Soldier', header: 'Header',
+  flemish: 'Flemish', herringbone: 'Herringbone', basketweave: 'Basketweave',
+};
+const WALL_PATTERN_LIST = Object.keys(BRICK_PATTERNS).map((id) => ({ id, label: WALL_PATTERN_LABELS[id] || id }));
+
+function renderWallPatternList(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const pattern of WALL_PATTERN_LIST) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cad-btn';
+    btn.id = `brickPattern_${pattern.id}`;
+    btn.textContent = pattern.label;
+    btn.addEventListener('click', () => {
+      P.brickSettings.pattern = pattern.id;
+      syncWallPatternButtons();
+      notifyChange();
+    });
+    container.appendChild(btn);
+  }
+}
+
+function syncWallPatternButtons() {
+  for (const pattern of WALL_PATTERN_LIST) {
+    document.getElementById(`brickPattern_${pattern.id}`)?.classList.toggle('active', pattern.id === P.brickSettings.pattern);
   }
 }
 
@@ -324,6 +362,8 @@ export function initBrickPanel() {
   syncToolButtons();
   renderFramePresetList(document.getElementById('brickFramePresetList'));
   syncFramePresetButtons();
+  renderWallPatternList(document.getElementById('brickPatternList'));
+  syncWallPatternButtons();
 
   document.getElementById('brickSetRed')?.addEventListener('click', () => selectSet(1));
   // F35 item 4 (c): White Rocks (Set 3, f3's item 74 fieldstone layout) is

@@ -116,15 +116,16 @@ export const BRICK_SETS = Object.freeze([
     // GROUT (advisor, Fred: "every Masonry set and layout has a GROUT parameter... ONE shared
     // declared group used by all Masonry"): widthIn is the layout's own joint gap (what every
     // layout/band/brush reads); depthIn/profile are the height-map adapter's own concern (a recess
-    // below the brick face, never the raised-bead profile -- Fred didn't pick that one). widthIn
-    // MEASURED from a column-redness profile on the closeup photo (2 clean head-joint runs, median
-    // 108px, vs median brick run 1278px -> ratio 0.085); 0.75in * 0.085 = 0.064, rounded to 0.06.
-    // (The wall photo gave a noisier 0.14 on a single scanline -- perspective skew on that angled
-    // shot; the closeup's more fronto-parallel measurement is trusted instead, per "measure, don't
-    // re-reason": when two measurements disagree, prefer the better-conditioned one, don't average
-    // them away.) depthIn is NOT measured (no depth data from a flat photo) -- a declared default,
-    // comfortably inside reliefIn's own 0.125 budget.
-    grout: { widthIn: 0.06, depthIn: 0.05, profile: 'recessed' },
+    // below the brick face, never the raised-bead profile -- Fred didn't pick that one).
+    // F35 item 7 review (advisor): the original 0.06 was measured as a fraction of brickLengthIn
+    // (0.085 of the brick RUN, off a column-redness profile) -- against brickHeightIn (0.2) that's
+    // 30%, much wider than a real brick's own joint:height ratio (3/8in on a 2.25in brick ≈ 17%).
+    // REVISED to 0.17 x brickHeightIn (0.17 x 0.2 = 0.034, the advisor's own "~0.035in" target) --
+    // this ratio is what `scaledSet`'s own grout-scaling now preserves when the user's Scale slider
+    // changes brickHeightIn, so grout stays proportionally correct at any brick size, not a fixed
+    // absolute width. depthIn is NOT measured (no depth data from a flat photo) -- a declared
+    // default, comfortably inside reliefIn's own 0.125 budget.
+    grout: { widthIn: 0.034, depthIn: 0.05, profile: 'recessed' },
     // H23 item 72 (Fred): brick relief height in inches, default 0.125, NEVER more than 0.25 --
     // jitter/undulation must stay inside this budget (total brick top <= reliefIn), the user's
     // own control clamped at reliefMaxIn. Replaces an earlier, unrelated `jointDepthIn` guess.
@@ -226,14 +227,61 @@ export const BRICK_SETS = Object.freeze([
 ]);
 
 /**
+ * F35 item 7 (advisor-approved proposal, agreed with f3 by DM since f3 owns contour-bands/Frame
+ * bands): ONE declared pattern table, shared by Wall (layouts/bond.js's own zones) and -- once f3's
+ * own contour-bands rebuild lands -- Frame bands, so both read the SAME names/parameters instead of
+ * two independent, never-unified vocabularies (the pre-item-7 state: bond.js's own BOND_KINDS vs.
+ * along-path.js's bare `orientation==='soldier'` ternary). A pattern is placed in local (u,v) space
+ * -- u=along a course/band, v=across it -- and each CONSUMER supplies its own (u,v) frame: Wall's
+ * is the identity (u=x, v=y, layouts/bond.js below); a Frame band's is its own path-local frame
+ * (arc-length + perpendicular offset, f3's own territory, not built here).
+ *
+ * `kind` tags which cell-generation family a pattern needs:
+ *   'course'             — one row of UNIFORMLY-pitched bricks, the pre-item-7 model generalised
+ *                          from a `rotated` boolean to explicit `pitchAxis`/`crossAxis` axes (either
+ *                          'length'|'height' into brickLengthIn/brickHeightIn) + a `staggerFrac`
+ *                          (0..1, a FRACTION of one column pitch, not a bare bool) applied to every
+ *                          odd course. Covers stretcher/stack/soldier (the pre-item-7 three) AND
+ *                          header (needs ONLY its pitch axis swapped, unlike soldier which swaps
+ *                          both -- a plain `rotated` flag could never express this, see
+ *                          layouts/bond.js's own header for the full reasoning).
+ *   'course-alternating' — one course repeats a DECLARED sequence of differently-sized units
+ *                          instead of one uniform brick (flemish: stretcher then header, period
+ *                          L+J+H+J), with alternate courses offset by half that period -- the
+ *                          textbook flemish-bond stagger (layouts/bond.js's own flemishRow).
+ *   'tile2d'              — genuinely two-dimensional placement that cannot reduce to stacked rows
+ *                          at all (herringbone's 45-degree diagonal weave, basketweave's alternating
+ *                          horizontal/vertical pairs) -- same category of limitation that made
+ *                          fieldstone its own layout FILE rather than a bond.js variant; each gets
+ *                          its own `core/bricks/layouts/<name>.js`, dispatched by `set.layout` (NOT
+ *                          zone-mixable with course-kind patterns this round -- an honest, named
+ *                          scope line matching fieldstone's own precedent, not a silent gap: mixing
+ *                          a tile2d pattern into one zone of an otherwise course-based Wall fill is
+ *                          a bigger, separate unification not attempted here).
+ */
+export const BRICK_PATTERNS = Object.freeze({
+  stretcher: { kind: 'course', pitchAxis: 'length', crossAxis: 'height', staggerFrac: 0.5 },
+  stack: { kind: 'course', pitchAxis: 'length', crossAxis: 'height', staggerFrac: 0 },
+  soldier: { kind: 'course', pitchAxis: 'height', crossAxis: 'length', staggerFrac: 0 },
+  // header: same pitch axis as soldier (brickHeightIn -- a near-square footprint reads right only
+  // with a tight pitch), but its OWN cross/course-height axis is ALSO brickHeightIn (soldier's own
+  // cross axis is brickLengthIn, since a soldier brick stands its full length upright) -- the one
+  // combination a `rotated` boolean could never express. staggerFrac 0.5: real header-bond coursing
+  // staggers the same as running bond, a declared convention (not measured off a photo reference).
+  header: { kind: 'course', pitchAxis: 'height', crossAxis: 'height', staggerFrac: 0.5 },
+  // flemish: see layouts/bond.js's own flemishRow for the exact repeat-unit/stagger construction --
+  // the textbook alternating-stretcher-and-header bond, no further parameters needed here (the unit
+  // sequence itself isn't user-tunable, matching how stretcher/soldier/etc. have no exposed knobs).
+  flemish: { kind: 'course-alternating' },
+  herringbone: { kind: 'tile2d' },
+  basketweave: { kind: 'tile2d' },
+});
+
+/**
  * H23 item 72, frame refinement (Fred: "patterns of different width"): the brick-contour FRAME is
- * a declared list of BANDS, outside -> in, each its own width + pattern. `pattern` is one of:
- *   'stretcher' — brick length runs ALONG the contour (pitch = brickLengthIn, row width = brickHeightIn)
- *   'soldier'   — brick length runs ACROSS the band, perpendicular to the contour (pitch = brickHeightIn, row width = brickLengthIn)
- *   'header'    — brick's short (height) face out, same packing rhythm as soldier but the brick's
- *                 own HEIGHT also spans the band width (a near-square footprint), not the full length
- *                 (DECLARED, not yet implemented by along-path.js's own orientation switch -- no
- *                 preset below uses it).
+ * a declared list of BANDS, outside -> in, each its own width + pattern -- `pattern` is any
+ * `BRICK_PATTERNS` key above (today: 'stretcher'/'soldier'; 'header' is declared there but not yet
+ * implemented by along-path.js's own orientation switch, so no preset below uses it yet).
  * `widthIn` is SNAPPED by contour-bands.js to the nearest whole number of that pattern's own
  * brick-row width (never stretched) -- the values below are chosen to land exactly on that
  * rounding (0.75 = one soldier row at this set's own brickLengthIn, 0.2/0.6 = 1/3 stretcher rows
@@ -262,13 +310,23 @@ export function enabledPieces(catalogue = PIECE_CATALOGUE) {
 }
 
 /**
- * Advisor (Fred): "every entry point takes opts.scale (uniform multiplier on the set's brick
- * length and height, default 1; grout width unaffected)". A scaled COPY of `set` -- never mutates
- * the declared original -- with `brickLengthIn`/`brickHeightIn` multiplied and every other field
- * (grout, relief, samples, engine, ...) carried over untouched. `scale` omitted or 1 returns `set`
- * itself (no allocation) so the common, unscaled path stays cheap.
+ * A scaled COPY of `set` -- never mutates the declared original -- with `brickLengthIn`/
+ * `brickHeightIn` multiplied and every other field (relief, samples, engine, ...) carried over
+ * untouched. `scale` omitted or 1 returns `set` itself (no allocation) so the common, unscaled path
+ * stays cheap.
+ *
+ * F35 item 7 review (advisor, REVISING the original "grout width unaffected" rule): grout.widthIn
+ * now scales WITH the brick, same factor as length/height -- so a set's own measured
+ * grout:brickHeightIn RATIO (library.js's own declared default, e.g. Set 1's 0.17) stays correct at
+ * any Scale slider value, instead of a fixed absolute width reading proportionally wider on a
+ * shrunk brick or thinner on an enlarged one.
  */
 export function scaledSet(set, scale) {
   if (!scale || scale === 1) return set;
-  return { ...set, brickLengthIn: set.brickLengthIn * scale, brickHeightIn: set.brickHeightIn * scale };
+  return {
+    ...set,
+    brickLengthIn: set.brickLengthIn * scale,
+    brickHeightIn: set.brickHeightIn * scale,
+    grout: { ...set.grout, widthIn: set.grout.widthIn * scale },
+  };
 }

@@ -17,13 +17,20 @@
  */
 import { bondLayout } from './layouts/bond.js';
 import { fieldstoneLayout } from './layouts/fieldstone.js';
+import { herringboneLayout } from './layouts/herringbone.js';
+import { basketweaveLayout } from './layouts/basketweave.js';
 import { assignPieces } from './pieces.js';
 import { computeSuppressedCells } from './suppression.js';
 import { assignSamples } from './samples.js';
 import { pointInPolygon } from './geometry.js';
 import { PIECE_CATALOGUE, enabledPieces, scaledSet } from './library.js';
 
-const LAYOUTS = Object.freeze({ bond: bondLayout, fieldstone: fieldstoneLayout });
+// F35 item 7: herringbone/basketweave are 'tile2d' BRICK_PATTERNS (library.js) promoted to full
+// `set.layout` choices, same tier as 'bond'/'fieldstone' -- not zone-mixable with course-kind
+// patterns this round (an honest, named scope line; see library.js's own BRICK_PATTERNS header).
+const LAYOUTS = Object.freeze({
+  bond: bondLayout, fieldstone: fieldstoneLayout, herringbone: herringboneLayout, basketweave: basketweaveLayout,
+});
 
 /**
  * @param {{x:number,y:number}[]} polygon — closed outer polygon, board inches
