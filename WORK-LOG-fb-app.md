@@ -10876,3 +10876,37 @@ Wall bricks seeded (171 pieces at scale 1.0), firing a bare `input` event on `#b
 scale 1.5 should produce) -- confirming the live-preview tier really redraws from a raw drag tick,
 not just on release. Firing `change` afterward left the count unchanged (66, stable), confirming the
 full commit reproduces the same, correct result. Zero console errors.
+
+## Post-merge: Brush Orientation vs d3's T86 item 7 band presets
+
+Merged `origin/main` (d3's brush band-preset work, T86 item 7, already conflict-resolved against my
+own Profile/Orientation toggles by the advisor on main) into fb-app -- clean auto-merge, no manual
+conflict resolution needed; full suite green 208/3830 straight after.
+
+Per the advisor's own ask ("decide which wins, or disable orientation when a multi-row preset is
+picked, or disable orientation"): traced `bricksForBrushStroke` (editor-brick-tool.js, the merged
+code) rather than guessing. Finding: `opts.orientation` (my toggle) and a brush preset's own per-band
+`pattern` field never actually COLLIDE in the engine -- `bricksForBrushStroke` reads `orientation`
+ONLY on the `profile:'continuous'` path (`bricksAlongPath`); the DEFAULT Stripped path (every
+`brushBandPreset`, including the 1-wide stretcher one, not just 2/3-wide) goes through
+`bricksContourBands` instead, which derives each band's own brick orientation from its OWN pattern
+name and never reads `opts.orientation` at all. So Orientation isn't in conflict with the preset --
+it's simply INERT for Stripped, full stop (not a "multi-row only" issue as the dispatch assumed).
+
+Fix: `main/brick-panel.js`'s new `syncOrientationAvailability()` disables both Orientation buttons
+(with an explanatory tooltip) whenever `profile !== 'continuous'`, called from both
+`syncProfileToggle` and `syncOrientationToggle` so it stays correct regardless of which one last
+changed. Added the matching `.relief-toggle-btn:disabled` CSS rule (`styles/layout-app.css`) -- it
+had none before, so a disabled toggle button would have looked identical to an enabled one.
+
+Updated `tests/brick-brush-section.test.js`'s own Orientation test (it predated this fix and clicked
+Orientation while Stripped was active, which no longer does anything -- correctly caught by the new
+disabled-button behavior): now asserts disabled-under-Stripped, clicking does nothing, switching to
+Continuous enables it and the toggle works, switching back to Stripped disables it again. Full suite
+green: 208 files / 3830 tests (one `frame-gen.test.js` failure on the first run was a pre-existing,
+unrelated random-seed flake -- reproduced green in isolation and on a full clean re-run).
+
+Live-verified (headless Chrome, T1, Brush tool): Orientation buttons render visibly dimmed/disabled
+under the default Stripped profile; d3's real 3-entry preset list (1/2/3-wide) renders correctly
+alongside; switching to Continuous un-dims and enables Orientation. Screenshots:
+`shots/seatC/f35item10b_brush_merged_stripped.png`, `f35item10b_brush_merged_continuous.png`.

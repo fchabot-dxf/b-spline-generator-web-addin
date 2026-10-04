@@ -109,6 +109,7 @@ function syncProfileToggle() {
   const continuous = P.brickSettings.profile === 'continuous';
   document.getElementById('brickBtnProfileStripped')?.classList.toggle('active', !continuous);
   document.getElementById('brickBtnProfileContinuous')?.classList.toggle('active', continuous);
+  syncOrientationAvailability();
 }
 
 function setProfile(v) {
@@ -117,10 +118,31 @@ function setProfile(v) {
   notifyChange();
 }
 
+/** T86 item 7 merge note (advisor asked: "decide which wins, or disable orientation when a
+ *  multi-row preset is picked"): traced `bricksForBrushStroke` (editor-brick-tool.js) -- it reads
+ *  `opts.orientation` ONLY on the `profile:'continuous'` path (bricksAlongPath); the Stripped path
+ *  (the DEFAULT profile, every brushBandPreset including the 1-wide stretcher one) goes through
+ *  `bricksContourBands` instead, which derives each band's own brick orientation from ITS pattern
+ *  name (stretcher/soldier/flemish), never reading `opts.orientation` at all. So the two settings
+ *  never actually COLLIDE in the engine -- Orientation is simply INERT for Stripped, every preset,
+ *  not just multi-row ones. Disabling it there (rather than leaving a control that silently does
+ *  nothing) is the honest fix; Continuous keeps it fully live. */
+function syncOrientationAvailability() {
+  const inert = P.brickSettings.profile !== 'continuous';
+  const title = inert ? 'Only affects the Continuous profile -- Stripped\'s own band pattern already sets each row\'s orientation' : '';
+  for (const id of ['brickBtnOrientationStretcher', 'brickBtnOrientationSoldier']) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    btn.disabled = inert;
+    btn.title = title;
+  }
+}
+
 function syncOrientationToggle() {
   const soldier = P.brickSettings.orientation === 'soldier';
   document.getElementById('brickBtnOrientationStretcher')?.classList.toggle('active', !soldier);
   document.getElementById('brickBtnOrientationSoldier')?.classList.toggle('active', soldier);
+  syncOrientationAvailability();
 }
 
 function setOrientation(v) {

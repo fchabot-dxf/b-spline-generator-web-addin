@@ -300,6 +300,14 @@ aside {
     opacity: 1;
 }
 
+/* F35 item 10 follow-up: a toggle whose choice has no effect in the current context (e.g. Brush
+   Orientation while the Stripped profile's own band pattern already decides each row's orientation)
+   reads as disabled rather than silently doing nothing. */
+.relief-toggle-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 /* =========================================================================
    5. ck_ constraint toggles (b-spline-gen)
    ========================================================================= */
