@@ -95,6 +95,50 @@ function setInvert(on) {
   notifyChange();
 }
 
+/** F35 item 10 follow-up: the Brush tool's own Profile/Orientation toggles --
+ *  same 2-state `.relief-toggle` convention as Relief above. Both settings
+ *  already had real engine support (bricksAlongPath's own opts.profile/
+ *  opts.orientation) with no UI control before now; like every other
+ *  Brick-tab setting these affect NEW strokes going forward only -- there is
+ *  no existing mechanism in this codebase to rewrite an already-drawn
+ *  element's own stored BRICK_SETTINGS_ATTR snapshot (see editor-brick-tool.js's
+ *  own regenerateOwnedBrickElements), so Orientation/Profile follow the same
+ *  precedent Scale/Grout/Relief/etc. already set rather than inventing a new
+ *  "edit an existing element" capability nothing else here has either. */
+function syncProfileToggle() {
+  const continuous = P.brickSettings.profile === 'continuous';
+  document.getElementById('brickBtnProfileStripped')?.classList.toggle('active', !continuous);
+  document.getElementById('brickBtnProfileContinuous')?.classList.toggle('active', continuous);
+}
+
+function setProfile(v) {
+  P.brickSettings.profile = v;
+  syncProfileToggle();
+  notifyChange();
+}
+
+function syncOrientationToggle() {
+  const soldier = P.brickSettings.orientation === 'soldier';
+  document.getElementById('brickBtnOrientationStretcher')?.classList.toggle('active', !soldier);
+  document.getElementById('brickBtnOrientationSoldier')?.classList.toggle('active', soldier);
+}
+
+function setOrientation(v) {
+  P.brickSettings.orientation = v;
+  syncOrientationToggle();
+  notifyChange();
+}
+
+/** Shown only while Brush is the active tool (BRICK_TOOLS' own
+ *  `settingsSection` field is reserved for exactly this per-tool-section
+ *  concept but unused elsewhere yet -- Brush is the first tool that needs
+ *  one, so this stays a direct `_activeTool === 'brush'` check rather than
+ *  generalizing settingsSection for a single consumer). */
+function syncBrushSection() {
+  const el = document.getElementById('brickBrushSection');
+  if (el) el.style.display = _activeTool === 'brush' ? '' : 'none';
+}
+
 function setPair(sliderId, numberId, v) {
   const s = document.getElementById(sliderId);
   const n = document.getElementById(numberId);
@@ -122,6 +166,9 @@ function syncControlsFromState() {
   setPair('brickClumpingSlider', 'brickClumping', s.clumping);
   document.getElementById('brickSeed').value = s.seed;
   setPair('brickFrameLengthSlider', 'brickFrameLength', s.frameBrickLengthIn);
+  syncProfileToggle();
+  syncOrientationToggle();
+  syncBrushSection();
 }
 
 function bindSlider(sliderId, numberId, key, parse = parseFloat) {
@@ -174,6 +221,7 @@ function syncToolButtons() {
   const hint = BRICK_TOOLS.find((t) => t.id === _activeTool);
   const hintEl = document.getElementById('brickToolHint');
   if (hintEl) hintEl.textContent = hint ? hint.hint : '';
+  syncBrushSection();
 }
 
 function renderFramePresetList(container) {
@@ -458,6 +506,10 @@ export function initBrickPanel() {
   document.getElementById('brickBtnGroutFlush')?.addEventListener('click', () => setGroutProfile('flush'));
   document.getElementById('brickBtnReliefRaised')?.addEventListener('click', () => setInvert(false));
   document.getElementById('brickBtnReliefCarved')?.addEventListener('click', () => setInvert(true));
+  document.getElementById('brickBtnProfileStripped')?.addEventListener('click', () => setProfile('bricks'));
+  document.getElementById('brickBtnProfileContinuous')?.addEventListener('click', () => setProfile('continuous'));
+  document.getElementById('brickBtnOrientationStretcher')?.addEventListener('click', () => setOrientation('stretcher'));
+  document.getElementById('brickBtnOrientationSoldier')?.addEventListener('click', () => setOrientation('soldier'));
   bindSlider('brickReliefHeightSlider', 'brickReliefHeight', 'reliefIn');
   bindSlider('brickSuppressionSlider', 'brickSuppression', 'suppression');
   bindSlider('brickClumpingSlider', 'brickClumping', 'clumping');

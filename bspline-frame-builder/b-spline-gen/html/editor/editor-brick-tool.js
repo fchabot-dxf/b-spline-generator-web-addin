@@ -221,6 +221,11 @@ function toBrickOpts(settings) {
     // keeps defaulting to bricksAlongPath's own 'bricks' -- no behavior
     // change for Wall/Frame or an un-striped Brush stroke.
     profile: settings.profile || 'bricks',
+    // F35 item 10 follow-up: the Brush panel's own Orientation toggle -- bricksAlongPath already
+    // declared this opt (along-path.js), only Brush's own UI control was missing. Wall/Frame never
+    // read this (bricksFillShape/bricksContourBands have their own, unrelated pattern mechanisms),
+    // so defaulting it here is harmless for every other caller.
+    orientation: settings.orientation || 'stretcher',
   };
 }
 

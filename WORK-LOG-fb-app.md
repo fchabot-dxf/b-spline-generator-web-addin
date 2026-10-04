@@ -10616,3 +10616,73 @@ where Wall bricks used to be); Frame=None with Wall=stretcher -- 0 frame pieces,
 plain brick wall filling right up to the board's own hourglass contour, no frame band at all). Zero
 console errors either way. Screenshots: `shots/seatC/f35item12_wall_none.png`,
 `f35item12_frame_none.png`.
+
+## F35 item 10 follow-up: Brush section -- Profile [Stripped|Continuous] + Orientation [Stretcher|Soldier]
+
+Fred's next DM batch (folded in before item 11, per the advisor): the Brush tool needed its own
+settings section in the Brick tab panel, shown only while Brush is the active tool. Two pieces
+landed this round; the pattern-picker piece (reusing the Frame tool's own band-list UI, brush
+presets 1/2/3-wide) stays a declared, greyed placeholder pending d3's T86 item 7 (the shared
+band-pattern engine) -- nothing to generalize yet with only one real width.
+
+**Both options already existed in the engine with zero UI exposure.** `bricksAlongPath`
+(core/bricks/along-path.js) already declared `opts.orientation` ('stretcher'|'soldier') and
+`opts.profile` ('bricks'|'continuous'|'ridge', 'ridge' throwing not-yet-implemented) -- this was
+pure UI wiring, no engine change. The advisor's dispatch calls the `'bricks'` profile value
+"Stripped" colloquially; the UI label says Stripped/Continuous while the stored value stays the
+existing declared constant (`'bricks'`/`'continuous'`), not a rename.
+
+**Where the settings live, and why NOT a new per-element edit mechanism.** Investigated whether
+"regenerate on change" meant live-editing an ALREADY-DRAWN brush element's own settings. It
+doesn't exist anywhere in this codebase for ANY Brick-tab setting -- Scale/Grout/Relief/etc. all
+only ever affect NEW strokes going forward (`brickBrushHandler.finish()` freezes a JSON snapshot of
+`P.brickSettings` into each stroke's own `BRICK_SETTINGS_ATTR` at draw time; Stripe's own
+`settingsVariantForCycle` is a computed-fresh-every-regenerate override, not a rewrite of that
+snapshot). Orientation/Profile follow the SAME established precedent -- two new global
+`P.brickSettings` fields (`orientation: 'stretcher'`, `profile: 'bricks'`, state.js), read by
+`toBrickOpts` (editor-brick-tool.js) into every NEW stroke's frozen settings -- rather than
+inventing a first-of-its-kind "edit an existing element" capability nothing else here needed either.
+Flagging this for the advisor/Fred: an already-drawn stroke's Profile/Orientation can only be
+changed by re-drawing it, same as Scale or Grout today.
+
+**UI**: a new `#brickBrushSection` block in `bspline_gen_palette.html`, inserted right after
+`#brickToolHint` and before the Wall-pattern picker (inside `#editorBrickPanel`) -- two
+`.relief-toggle`/`.relief-toggle-btn` pairs (the SAME convention `#brickReliefToggle`/
+`#brickGroutProfileToggle` already use), default Stripped/Stretcher active. The Width row is a
+labeled, disabled 3-button placeholder (1-wide Stretcher active, 2-wide/3-wide greyed with a
+tooltip naming d3's T86 item 7 as the gate) -- named rather than silently omitted, per Fred's own
+"queued, pending X" convention elsewhere in this panel.
+
+**Wiring** (main/brick-panel.js): `syncProfileToggle`/`setProfile`/`syncOrientationToggle`/
+`setOrientation` mirror `syncReliefToggle`/`setInvert` exactly. `syncBrushSection()` toggles
+`#brickBrushSection`'s display based on `_activeTool === 'brush'` -- called from `syncToolButtons()`
+(every tool switch, including on init) and from `syncControlsFromState()` (a reloaded session
+restoring a non-default profile/orientation reflects onto the buttons immediately, not just on the
+next tool switch).
+
+**Tests** (`tests/brick-brush-section.test.js`, new file, minimal jsdom fixture for
+`initBrickPanel()`): section hidden by default, shown on Brush, hidden again on Wall; defaults
+Stripped/Stretcher active; both toggles write the correct `P.brickSettings` field and flip both
+buttons' `active` class; a pre-set non-default state is reflected on re-init (the reload case).
+Mutation-tested: commented out both `addEventListener` wiring lines, re-ran -- exactly 2/5 tests
+failed (the two toggle-click tests; the other 3 test unrelated behavior and correctly stayed green),
+confirming they're not vacuous. Restored from a pre-mutation copy (byte-diffed identical after
+restore) rather than `git checkout`, since the Brush-section edits were uncommitted at mutation
+time. Full suite green: 205 files / 3786 tests (ran before the mutation probe); re-ran the 4 directly
+affected files after restoring (40/40 green).
+
+**Live-verified** via headless Chrome, driving `getModeHandler('brickBrush')`'s own
+start/update/finish directly (dynamic-imported from editor-interaction.js in-page) rather than
+synthesizing pixel-coordinate pointer events -- exercises the exact same code path real mouse
+drags dispatch into, with no dependency on canvas pan/zoom state. Confirmed: clicking Brush shows
+the section (`getComputedStyle().display` flips block/none correctly on Wall/Frame too); a stroke
+drawn at Stripped/Stretcher defaults produces 5 separate brick polygons; switching Profile to
+Continuous and drawing a second stroke produces one unbroken polygon band (visually confirmed in
+the screenshot, not just by brick count); Orientation toggle writes through
+(`P.brickSettings.orientation === 'soldier'` after the click). Zero console errors/exceptions
+throughout. Screenshots: `shots/seatC/f35item10b_brush_stripped.png` (five jointed bricks),
+`f35item10b_brush_continuous.png` (one unbroken band drawn below it, same stroke shape).
+
+Not yet done from this DM batch: the Brush pattern-picker's real band-list UI (deliberately a
+placeholder, see above), and the slider commit-timing / live-2D-preview-during-drag work (not
+started).
