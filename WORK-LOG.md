@@ -18614,3 +18614,48 @@ deviation, caught by a test and fixed at the cause, not papered over), mutation-
 both a hand-computed synthetic fixture and real template geometry, full suite green, previews
 rendered. No Fusion needed this item (JS-only, as dispatched). Passing back for review before
 starting LAPPED.
+
+## T86 item 1 follow-up: sliver end pieces -- fixed in the SHARED planner, not a butt-only patch
+
+The advisor's own review (turn 289) asked to "apply the fill rule... to butt runs too" -- MEASURED
+first (not assumed) before writing anything, since the dispatch's own premise turned out to be only
+half right: the declared fill rule (end pieces from `{1,3/4,1/2,1/4}`, "nothing below 1/4") WAS
+already shared/applied identically to butt runs -- `ribbonPieces`' own butt joints only change WHICH
+object `linePieces` reads, never `planCornerRun`'s own interior planning. Confirmed directly:
+`planCornerRun(10, 0.2, 0.034, FILL_FRACTIONS)` (the square fixture's own through-band run) returns a
+0.05in (1/4-fraction) end piece via the DEFAULT `cornerStyle='mitre'` path too, run on the SAME
+primitives unmodified by this item. The real gap was in `planCornerRun` itself, pre-existing,
+shared by every corner style: it minimizes raw positioning error with NO preference for fuller end
+pieces, so it can pick a razor-thin 1/4-fraction end over two WHOLE bricks for a saving as small as
+0.016in across a 10in run (MEASURED: the (1,1) whole-ends combo costs 0.028in error vs the winning
+(0.5,0.25) combo's 0.012in -- both already tiny, the difference invisible in the joint spacing, the
+resulting thin end very much not). At a mitre corner this was mostly hidden by the diagonal clip (a
+1/4-fraction piece still gets its own full mitre triangle); at a BUTT corner's own plain square cut,
+the same thin fraction is just a bare 0.05in rectangle, so the advisor caught it where a mitre's own
+clip had been quietly absorbing the same underlying choice all along.
+
+**Fix (`piece-plan.js`, `planCornerRun`):** among every `(fStart,fEnd)` combo whose own positioning
+error stays within a declared TOLERANCE (half the set's own nominal grout width) of the true
+minimum, prefer the fullest pair (max `fStart+fEnd`); among same-total ties the raw minimum alone
+can't break (MEASURED a genuine 3-way tie on the square fixture's own butt/right band -- `(3/4,1/4)`,
+`(1/2,1/2)`, `(1/4,3/4)`, all summing to 1 brick at the identical error), prefer the MOST BALANCED
+split (max the smaller of the two) over a lopsided one that still hides a 1/4-fraction sliver at one
+end. A genuinely forced thin end (no fuller combo fits within tolerance at all, or the run is too
+short for anything else) still uses it -- this is a tiebreaker among otherwise-equal fits, not a
+blanket ban on the declared 1/4 fraction. Shared by every corner style (mitre included), not special-
+cased to butt -- the same objective applies everywhere this function is used.
+
+**Verification.** New `tests/bricks-piece-plan.test.js`, 3 tests, hand-computed exact expected
+lengths (not read back from the engine) for the SAME two run-lengths the square fixture's own through
+and butt bands actually hit, plus one confirming a genuinely-forced thin end still uses it (not a
+blanket ban). Mutation-tested: 2/3 fail against the pre-fix code (via `git stash`), the 3rd correctly
+unaffected (the floor case this fix doesn't touch). Full `vitest`: 200 files/3687 tests, 0 failures,
+both before AND after this follow-up (no existing hand-verified mitre test's own expected numbers
+depended on the old sliver-prone tie-break). Re-ran the T86 item 1 square/template_1/closeup previews
+(`shots/seatB/t86_item1_butt_*.png`): the through band is now fully uniform whole bricks end to end;
+the butt band's own smallest piece is 0.1in (a balanced 1/2-fraction), the 0.05in sliver gone.
+
+**Commit `[pending]`, pushed to origin/lane-b.** Fixed at the cause (the shared planner, not a
+butt-only workaround), mutation-tested, verified against both hand-computed numbers and the real
+previews that surfaced the issue, full suite green. Continuing straight into LAPPED next, as
+directed.

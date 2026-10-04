@@ -93,7 +93,7 @@ export function planCornerRun(runLength, pitch, nominalJoint, fractions) {
     // single piece spans the whole run, same honest fallback `planPieceLengths` uses.
     return { lengths: [runLength], jointWidth: nominalJoint };
   }
-  let best = null;
+  const candidates = [];
   for (const fStart of fractions) {
     for (const fEnd of fractions) {
       const endsLen = (fStart + fEnd) * pitch;
@@ -105,9 +105,40 @@ export function planCornerRun(runLength, pitch, nominalJoint, fractions) {
       const nJoints = wholeCount + 1;
       const idealTotal = endsLen + wholeCount * pitch + nJoints * nominalJoint;
       const err = Math.abs(runLength - idealTotal);
-      if (!best || err < best.err) best = { fStart, fEnd, wholeCount, nJoints, idealTotal, err };
+      candidates.push({ fStart, fEnd, wholeCount, nJoints, idealTotal, err });
     }
   }
+  // T86 item 1 follow-up (advisor review, "the top band's first and last pieces are thin strips"):
+  // MEASURED the raw err-minimum alone can pick a razor-thin END FRACTION (e.g. 1/4) over a FULL
+  // brick at both ends for a saving of a tiny fraction of ONE joint's own width (runLength=10,
+  // pitch=0.2, nominalJoint=0.034: the strict-best combo's own err is 0.012in: both-whole-ends costs
+  // only 0.028in -- a 0.016in difference across a 10in run, invisible in the joint spacing, while the
+  // resulting 0.05in sliver end piece is NOT invisible). Against this file's own declared design
+  // intent (FILL_FRACTIONS' own header: "mostly whole bricks, minimal small cuts"), minimizing err
+  // ALONE is the wrong objective on its own -- among every combo whose own err stays within a
+  // declared TOLERANCE of the true best, prefer the FULLEST end pieces (max fStart+fEnd), falling
+  // back to the lower err as a tiebreaker. TOLERANCE is half the set's own nominal joint width: any
+  // difference smaller than that is already below what a real joint's own natural variation absorbs
+  // (MEASURED: every within-tolerance combo here still keeps its own jointWidth within ~2% of
+  // nominal, nowhere near visually distinguishable). Affects every corner style sharing this
+  // function (mitre included) -- the SAME objective, not a butt-only special case.
+  const minErr = Math.min(...candidates.map((c) => c.err));
+  const tolerance = nominalJoint * 0.5;
+  const within = candidates.filter((c) => c.err <= minErr + tolerance);
+  // Two tiebreakers ahead of err, both the same "avoid a thin end piece" intent: first the FULLEST
+  // pair by total (preferring e.g. two whole bricks over one 3/4 + one 1/4), then -- among same-total
+  // pairs, which `fStart+fEnd` alone can't distinguish -- the MOST BALANCED one (maximize the smaller
+  // of the two): (0.5,0.5) over (0.75,0.25)/(0.25,0.75) even though all three sum to 1 and tie on err,
+  // since the latter two still produce one 1/4-fraction sliver the balanced split avoids entirely
+  // (MEASURED: this exact tie on the right band's own run, runLength=8.432 in the T86 item 1 square
+  // fixture -- without this second tiebreaker the thin end survived the fix above).
+  const best = within.reduce((a, b) => {
+    const sumA = a.fStart + a.fEnd, sumB = b.fStart + b.fEnd;
+    if (sumB !== sumA) return sumB > sumA ? b : a;
+    const minA = Math.min(a.fStart, a.fEnd), minB = Math.min(b.fStart, b.fEnd);
+    if (minB !== minA) return minB > minA ? b : a;
+    return b.err < a.err ? b : a;
+  });
   const { fStart, fEnd, wholeCount, nJoints, idealTotal } = best;
   const lengths = [fStart * pitch, ...Array(wholeCount).fill(pitch), fEnd * pitch];
   const jointWidth = Math.max(0, nominalJoint + (runLength - idealTotal) / nJoints);
