@@ -19441,6 +19441,6 @@ unilateral change here) and the optional frame/window suppression toggle (de wir
 the advisor's own note) are BOTH real, declared scope, not forgotten -- flagging for the advisor to
 sequence rather than guessing at a window-contour design unreviewed.
 
-**Commit `[pending]`, push to origin/lane-b to follow.** Replying to the advisor with the matrix
+**Commit `c4e3ca6`, pushed to origin/lane-b.** Replying to the advisor with the matrix
 table, the 4 fixes (3 engine + 1 measurement), the before/after count at each step
 (283->202->175->154), and the categorized remainder for the next turn's own triage.
