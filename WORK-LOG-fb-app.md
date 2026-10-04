@@ -11031,3 +11031,96 @@ canvas is fully visible below a compact, horizontally-scrollable icon row on eve
 handles, not a left-rail toolbar, unaffected by and unrelated to this fix). Screenshots:
 `shots/seatC/f35_mobile_fix_390_{artwork,frame,photo,brick}.png`,
 `f35_mobile_fix_768_{artwork,frame,photo,brick}.png`.
+
+## F35 item 11: SEND BRICKS WITH THE B-SPLINE
+
+Built app/Python-side per the dispatch (Fred: "I just want it sent with bspline", no lock button, no
+line-by-line API drawing), then did the Fusion probe + combined live Send check while holding Fusion.
+
+**JS side** (`main/export-flow.js`): new `_bricksLayerSvg(editor)` -- finds the editor's "Bricks"
+layer, reads it via the SAME `getLayerSvg(..., {geometry:'fusion'})` every art layer already uses,
+then filters to `BRICK_GEN_ATTR='1'` children only. This second filter is needed because the Bricks
+layer also carries each Brush stroke's own invisible SPINE `<line>` (hit-testing/regenerate anchor,
+never real geometry) on the SAME layer -- the generic by-LAYER filter can't tell spine from real
+brick fill apart, so this strips it out afterward rather than teaching the generic layer-export path
+brick-specific knowledge no other caller needs. `sendToFusion` bakes the result through
+`bakeSvgForCarving(raw, P.widthIn, P.heightIn, 96)` -- byte-identical convention to every art layer,
+no new scale/offset math -- and adds it to the payload as `stamp.bricks`, with the SAME tri-state
+contract H23 item 71's decal already established: `null` = no instruction (append), `{enabled:false}`
+= explicit "remove whatever Bricks sketch exists" (sent whenever this Send genuinely has none),
+`{enabled:true, svg}` = replace it with this.
+
+**Caught before it shipped**: `stamp.enabled` (the existing SVG-stamping toggle) is
+`exportableStampLayers().length > 0` -- i.e. gated on hand-drawn ART layers specifically. A board
+with bricks and ZERO art layers would have `stamp.enabled = false`, and Python's own SVG-stamping
+block only runs `self._import_all_svg_layers(...)` inside `if stamp_data.get('enabled')` -- so
+nesting the bricks call in there too would have silently dropped bricks-only boards. Fixed by placing
+`self._apply_bricks_sketch(...)` at the SAME independence level as `_apply_colour_decal` (both inside
+`if not is_preview`, neither gated on `stamp_data.enabled`) -- the exact precedent that already solves
+this for the decal, for the identical reason.
+
+**Python side** (`b-spline-gen.py`): `BRICKS_SKETCH_NAME = 'Bricks'` + `_remove_named_sketch`
+(mirrors `_remove_named_decal`'s exact shape, for a component's `.sketches` instead of `.decals`).
+New method `_apply_bricks_sketch`: resolves the target via the EXISTING `_find_stamped_component`
+(item 12's own function, already proven correct -- never falls back to root/Clean), removes any
+existing 'Bricks' sketch unconditionally before adding (item 68/71's own proven dedupe-before-add
+fix), then calls `_import_single_layer_svg` with a NEW optional `full_name` param (defaults to
+`None`, every existing caller untouched) so the sketch is named EXACTLY `'Bricks'` rather than that
+function's own `f"Source - {sketch_name}"` template. "MUST NEVER RAISE" -- identical discipline to
+the decal, one outer try/except.
+
+**Tests**: `tests/export-flow.test.js` (4 new, `_bricksLayerSvg`) -- no Bricks layer, spine-only
+(empty), mixed spine+real-pieces (keeps pieces, strips spine), wrong-layer content never leaks in.
+Mutation-tested (disabling the BRICK_GEN_ATTR filter fails exactly the 2 tests that depend on it).
+`bspline-frame-builder/b-spline-gen/test_bricks_sketch_handler.py` (12 new, Python) -- reuses
+`test_colour_decal_handler.py`'s own Fusion-API fakes (`_FakeBody`/`_FakeFace`/`_FakeOcc`/
+`_import_group`/`_stamped_occ`) for body/face/occurrence resolution, adding sketch/construction-plane/
+import-manager fakes the decal's own suite never needed. Covers the full tri-state contract (no key /
+explicit None / disabled / enabled), no-Stamped-component skip, exact-name assertion ('Bricks', not
+'Source - Bricks'), re-Send replaces not duplicates, a Fusion-API crash never propagates, and lands in
+Stamped specifically (never Clean). Mutation-tested (disabling the dedupe-before-add fails exactly the
+re-Send test). Full suites green: JS 208 files / 3835 tests, Python 128 tests (both repo-wide, not
+just the new files).
+
+**Fusion probe + combined live Send check** (holder held throughout, both scratch docs
+fingerprinted + closed via their own handle, never by name/count):
+1. Generated a REAL baked Bricks SVG via the live app's own pipeline (`_bricksLayerSvg` +
+   `bakeSvgForCarving`, not hand-written) -- a Wall fill at scale 2 on T1, 91 polygons, viewBox
+   `-336 -432 672 864` (confirms the `carveMatrix` convention: ×96dpi, centered at origin, exactly
+   `widthIn*dpi` × `heightIn*dpi`).
+2. Isolated 3 real polygons into a minimal probe file. First attempt at building it with a naive
+   regex (`<polygon[^>]*>`) produced malformed, unclosed/nested XML (matched only the opening tag,
+   not the full `<polygon>...</polygon>` pair) -- caught by validating with `xml.etree.ElementTree`
+   BEFORE spending a Fusion call on it, not after a cryptic Fusion-side failure (which is exactly
+   what the first real attempt produced: "failed to import SVG", a pure client-side bug, not a
+   Fusion quirk).
+3. **Scale/units, numerically verified, not just "looked right"**: imported the 3-polygon SVG into a
+   fresh scratch sketch via the EXACT production call (`importManager.createSVGImportOptions` +
+   `svg_options.scale = 1.0`, matching `_import_single_layer_svg`'s own existing art-layer
+   convention). Computed polygon 1's expected real-world area by hand from its own baked coordinates
+   (a right triangle, two 86.553px legs -> 0.40644 in^2 -> 2.6224 cm^2) and compared to Fusion's own
+   measured profile area: **2.62214 cm^2 -- matches to within 0.001%.** Confirms the existing
+   art-layer scale/units convention carries over exactly to `<polygon>` geometry with zero changes
+   needed, and that Fusion's importer builds correct closed profiles from `<polygon>` despite each
+   one's dangling `fill="url(#brickfill-...)"` reference (the pattern `<defs>` never gets exported --
+   by-layer filtering has no `data-layer` on it -- but fill is cosmetic to Fusion's geometry import,
+   confirmed empirically, not just assumed).
+4. **Combined Send check**: built a second scratch doc with a REAL `B-Spline Set` -> `Stamped` +
+   `Clean` component tree (real occurrences, real bodies, real design parameters for widthIn/heightIn
+   -- not fakes), then called the deployed `_find_stamped_component`/`_find_stamped_panel_body`/
+   `_largest_area_face` plus `_compute_artwork_plane`/`_import_single_layer_svg` (the add-in running
+   in Fusion hasn't been redeployed with this turn's new code, so this probe used the ALREADY-DEPLOYED
+   methods directly, with an inline copy of the new `_remove_named_sketch` logic, rather than
+   redeploying someone else's live Fusion session mid-session). Result: the Bricks sketch landed in
+   Stamped (`["Sketch1", "Source - BricksCheck3"]`), Clean stayed at exactly its own original
+   `["Sketch1"]` (zero new sketches), root stayed at `[]`. Re-ran the remove-before-add + import
+   sequence a second time (simulating re-Send): removed exactly 1 existing sketch first, then
+   Stamped's own sketch list was STILL exactly `["Sketch1", "Source - BricksCheck3"]` -- never 2,
+   confirming replace-not-duplicate against a real Fusion tree, not just the Python fakes. Both
+   scratch docs closed by their own handle after a fingerprint-name check.
+   Screenshot: `shots/seatC/f35item11_bricks_sketch_fusion.png` (the 3-polygon probe sketch floating
+   above the Stamped/Clean test bodies, isometric view).
+
+Not yet done: redeploying the real add-in with this turn's code (so the NEW `full_name='Bricks'`
+exact-naming and the `stamp.enabled`-independence fix run for real inside an actual Send from the
+web UI) -- that's the advisor's own call, not mine to do unprompted mid-session.
