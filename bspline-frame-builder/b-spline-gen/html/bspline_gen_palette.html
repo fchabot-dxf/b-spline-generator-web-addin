@@ -993,6 +993,93 @@
         </div>
       </div>
 
+      <!-- F35 item 1: the Brick tab -- a declared tool list (Brush/Wall/Frame,
+           main/brick-panel.js's own BRICK_TOOLS array), a set picker, and the
+           common controls every tool shares. Output lands on the editor's own
+           "Bricks" layer (editor/editor-brick-tool.js), carved into the
+           terrain via the SAME generic stamp-layer pipeline every other
+           carved layer already uses. -->
+      <div class="panel panel-brick">
+        <div class="panel-header collapsed" onclick="togglePanel(this)">🧱 BRICK</div>
+        <div class="panel-body hidden">
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Set</label>
+          <div style="display:flex; gap:6px; margin-bottom:12px;">
+            <button type="button" id="brickSetRed" class="cad-btn brick-set-btn active" title="Red brick (Masonry)">Red Brick</button>
+            <button type="button" id="brickSetWhite" class="cad-btn brick-set-btn" title="Coming later" disabled>White Rocks<br><span style="font-size:9px; opacity:0.7;">(coming)</span></button>
+          </div>
+
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Tool</label>
+          <div id="brickToolList" style="display:flex; gap:6px; margin-bottom:12px;">
+            <!-- Populated at runtime by main/brick-panel.js's declared BRICK_TOOLS list. -->
+          </div>
+          <div id="brickToolHint" style="font-size:10px; opacity:0.65; margin:-6px 0 12px;"></div>
+
+          <label class="cad-label">Scale</label>
+          <div class="cad-slider-row" style="margin-bottom:10px;">
+            <input type="range" id="brickScaleSlider" class="cad-slider" min="0.5" max="2" step="0.05" value="1">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="brickScale" value="1"></div>
+          </div>
+
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Grout</label>
+          <div style="display:flex; gap:4px; margin-bottom:6px;">
+            <div style="flex:1;">
+              <label class="cad-label" style="font-size:10px;">Width (in)</label>
+              <input type="number" id="brickGroutWidth" value="0.06" min="0" max="0.5" step="0.005" style="width:100%;">
+            </div>
+            <div style="flex:1;">
+              <label class="cad-label" style="font-size:10px;">Depth (in)</label>
+              <input type="number" id="brickGroutDepth" value="0.05" min="0" max="0.25" step="0.005" style="width:100%;">
+            </div>
+          </div>
+          <div class="relief-toggle" id="brickGroutProfileToggle" style="margin-bottom:12px;">
+            <button type="button" class="relief-toggle-btn" id="brickBtnGroutRecessed" title="Joints carved below the surrounding surface (not yet visually implemented)"><span>Recessed</span></button>
+            <button type="button" class="relief-toggle-btn active" id="brickBtnGroutFlush" title="Joints sit flush with the base surface"><span>Flush</span></button>
+          </div>
+
+          <label class="cad-label">Relief</label>
+          <div class="relief-toggle" id="brickReliefToggle" style="margin-bottom:12px;">
+            <button type="button" class="relief-toggle-btn active" id="brickBtnReliefRaised" title="Bricks raised above the surface"><span>Raised</span></button>
+            <button type="button" class="relief-toggle-btn" id="brickBtnReliefCarved" title="Bricks carved into the surface"><span>Carved</span></button>
+          </div>
+
+          <label class="cad-label">Max Height (in)</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="brickReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="brickReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
+          </div>
+
+          <label class="cad-label">Suppression</label>
+          <div class="cad-slider-row" style="margin-bottom:10px;">
+            <input type="range" id="brickSuppressionSlider" class="cad-slider" min="0" max="0.9" step="0.01" value="0">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="brickSuppression" value="0"></div>
+          </div>
+
+          <label class="cad-label">Clumping</label>
+          <div class="cad-slider-row" style="margin-bottom:10px;">
+            <input type="range" id="brickClumpingSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.3">
+            <div class="cad-stepper" style="width:60px;"><input type="number" id="brickClumping" value="0.3"></div>
+          </div>
+
+          <label class="cad-label">Seed</label>
+          <div style="display:flex; gap:6px; margin-bottom:4px;">
+            <input type="number" id="brickSeed" value="1" style="flex:1;">
+            <button type="button" id="brickBtnRandomSeed" class="cad-btn" title="Random seed">🎲</button>
+          </div>
+
+          <!-- F35 item 2: wired to the EXISTING terrain.js `isolateSkeleton`
+               param (already a real, functioning P key -- bypasses the
+               active filter with a flat 0.5, so only the skeleton/macro
+               shape carves -- just never had a UI control). Default stays
+               OFF (Fred: "just offer it"); the note tells the user why
+               they'd want it on, rather than defaulting it on for them. -->
+          <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+            <input type="checkbox" id="isolateSkeleton">
+            <span>Hide filter texture</span>
+          </label>
+          <div style="font-size:10px; opacity:0.65; margin:2px 0 4px;">Bricks read best with this on -- the active filter's own fine noise otherwise competes with brick-scale detail.</div>
+        </div>
+      </div>
+
       <!-- 5. Vector Stamping -->
       <div class="panel panel-stamp">
         <div class="panel-header collapsed" onclick="togglePanel(this)">📐 VECTOR STAMPING</div>
