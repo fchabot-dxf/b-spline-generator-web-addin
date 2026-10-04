@@ -12,6 +12,7 @@ import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen
 import { inwardSignFor, pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { radialSignAt } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/arc-voussoir.js';
 import { ribbonPieces } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/primitive-ribbon.js';
+import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
 
 const SET = BRICK_SETS[0];
 const ARC_STEPS = 16;
@@ -126,7 +127,7 @@ function realPrimitives(templateId, W, H) {
 
 function allRibbonPieces(primitives, bands) {
   let pieces = [], depthSoFar = 0, nextId = 0;
-  for (const band of bands) {
+  bands.forEach((band, bandIndex) => {
     const naturalWidth = band.pattern === 'soldier' ? SET.brickLengthIn : SET.brickHeightIn;
     const pitch = band.pattern === 'soldier' ? SET.brickHeightIn : SET.brickLengthIn;
     const rows = Math.max(1, Math.round(band.widthIn / naturalWidth));
@@ -134,13 +135,13 @@ function allRibbonPieces(primitives, bands) {
       const d0 = depthSoFar + naturalWidth * row, d1 = depthSoFar + naturalWidth * (row + 1);
       const built = ribbonPieces(
         primitives, d0, d1, SET, band.pattern, pitch, SET.grout.widthIn, 1, 'frame', nextId,
-        band.cornerStyle || 'mitre',
+        band.cornerStyle || 'mitre', bandIndex,
       );
       pieces = pieces.concat(built.pieces);
       nextId = built.nextId;
     }
     depthSoFar += naturalWidth * rows;
-  }
+  });
   return pieces;
 }
 
@@ -316,6 +317,99 @@ describe('ribbonPieces with cornerStyle="butt" (T86 item 1)', () => {
   it('template_1 (arcs present): butt falls back to mitre at every arc-involved corner -- still simple, 0 outside the board', () => {
     const primitives = realPrimitives('template_1', 7, 9);
     const pieces = allRibbonPieces(primitives, FRAME_PRESETS.butt_frame);
+    expect(pieces.length).toBeGreaterThan(0);
+    let notSimple = 0, outOfBounds = 0;
+    for (const p of pieces) {
+      if (!isSimplePolygon(p.polygon)) notSimple++;
+      for (const pt of p.polygon) {
+        const dx = Math.max(0 - pt.x, pt.x - 7, 0), dy = Math.max(0 - pt.y, pt.y - 9, 0);
+        if (Math.max(dx, dy) > 0.001) outOfBounds++;
+      }
+    }
+    expect(notSimple, `${notSimple} self-intersecting pieces`).toBe(0);
+    expect(outOfBounds, `${outOfBounds} vertices outside the board`).toBe(0);
+  });
+});
+
+describe('ribbonPieces with cornerStyle="lapped" (T86 item 1, advisor decision turn 291)', () => {
+  // Same square fixture as the butt describe block above.
+  function square() {
+    const pts = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+    const inwardSign = inwardSignFor(pts);
+    const line = (p0, p1) => {
+      const dx = p1.x - p0.x, dy = p1.y - p0.y, len = Math.hypot(dx, dy);
+      return { type: 'line', p0, p1, nx: (-dy / len) * inwardSign, ny: (dx / len) * inwardSign };
+    };
+    return [line(pts[0], pts[1]), line(pts[1], pts[2]), line(pts[2], pts[3]), line(pts[3], pts[0])];
+  }
+  const D0 = 0, D1 = SET.brickLengthIn, GROUT = SET.grout.widthIn;
+
+  it('bandIndex=0 (even) is identical to "butt" -- the advisor\'s own "a single-band lapped frame equals butt"', () => {
+    const primitives = square();
+    const butt = ribbonPieces(primitives, D0, D1, SET, 'soldier', SET.brickHeightIn, GROUT, 1, 'test', 0, 'butt');
+    const lapped = ribbonPieces(primitives, D0, D1, SET, 'soldier', SET.brickHeightIn, GROUT, 1, 'test', 0, 'lapped', 0);
+    expect(lapped.pieces.length).toBe(butt.pieces.length);
+    for (let i = 0; i < butt.pieces.length; i++) {
+      expect(lapped.pieces[i].polygon).toEqual(butt.pieces[i].polygon);
+    }
+  });
+
+  it('bandIndex=1 (odd) FLIPS which sides are through -- the horizontal bottom band is now square-cut, the vertical right band now runs full length', () => {
+    const primitives = square();
+    const { pieces } = ribbonPieces(primitives, D0, D1, SET, 'soldier', SET.brickHeightIn, GROUT, 1, 'test', 0, 'lapped', 1);
+    // bottom (was through at bandIndex=0): now the lapped/butt side -- its own x-extent must stop
+    // short of the board edges by one grout gap past the (now-through) side bands' own d1 edge.
+    const bottom = pieces.filter((p) => {
+      const ys = p.polygon.map((pt) => pt.y);
+      return Math.min(...ys) <= 1e-6 && Math.max(...ys) >= D1 - 1e-6;
+    });
+    const xs = bottom.flatMap((p) => p.polygon.map((pt) => pt.x));
+    expect(Math.min(...xs)).toBeCloseTo(D1 + GROUT, 6);
+    expect(Math.max(...xs)).toBeCloseTo(10 - D1 - GROUT, 6);
+    // right (was butt at bandIndex=0): now runs the FULL [0,10] span uninterrupted.
+    const right = pieces.filter((p) => {
+      const xs2 = p.polygon.map((pt) => pt.x);
+      return Math.min(...xs2) <= 10 - D1 + 1e-6 && Math.max(...xs2) >= 10 - 1e-6;
+    });
+    const ys = right.flatMap((p) => p.polygon.map((pt) => pt.y));
+    expect(Math.min(...ys)).toBeCloseTo(0, 6);
+    expect(Math.max(...ys)).toBeCloseTo(10, 6);
+  });
+
+  it('FRAME_PRESETS.double_course (2 bands) alternates end to end through bricksContourBands, not just the raw ribbonPieces call', () => {
+    const primitives = square();
+    const { bricks } = bricksContourBands(primitives, FRAME_PRESETS.double_course, { set: SET, seed: 1 });
+    expect(bricks.length).toBeGreaterThan(0);
+    for (const p of bricks) {
+      expect(isSimplePolygon(p.polygon), `piece ${p.id} is self-intersecting`).toBe(true);
+      for (const pt of p.polygon) {
+        expect(pt.x).toBeGreaterThanOrEqual(-1e-6);
+        expect(pt.x).toBeLessThanOrEqual(10 + 1e-6);
+        expect(pt.y).toBeGreaterThanOrEqual(-1e-6);
+        expect(pt.y).toBeLessThanOrEqual(10 + 1e-6);
+      }
+    }
+    // band 0 (depth [0,0.75]): bottom pieces reach the full [0,10] span (through).
+    const band0Bottom = bricks.filter((p) => {
+      const ys = p.polygon.map((pt) => pt.y);
+      return Math.min(...ys) <= 1e-6 && Math.max(...ys) >= D1 - 1e-6;
+    });
+    const xs0 = band0Bottom.flatMap((p) => p.polygon.map((pt) => pt.x));
+    expect(Math.min(...xs0)).toBeCloseTo(0, 6);
+    expect(Math.max(...xs0)).toBeCloseTo(10, 6);
+    // band 1 (depth [0.75,1.5]): bottom pieces are now the lapped/clipped side, NOT the full span.
+    const band1Bottom = bricks.filter((p) => {
+      const ys = p.polygon.map((pt) => pt.y);
+      return Math.min(...ys) <= D1 + 1e-6 && Math.max(...ys) >= 2 * D1 - 1e-6;
+    });
+    const xs1 = band1Bottom.flatMap((p) => p.polygon.map((pt) => pt.x));
+    expect(Math.min(...xs1)).toBeGreaterThan(0.01); // clipped short of the board edge, unlike band 0
+    expect(Math.max(...xs1)).toBeLessThan(9.99);
+  });
+
+  it('template_1 (arcs present): lapped also falls back to mitre at every arc-involved corner -- still simple, 0 outside the board', () => {
+    const primitives = realPrimitives('template_1', 7, 9);
+    const pieces = allRibbonPieces(primitives, FRAME_PRESETS.double_course);
     expect(pieces.length).toBeGreaterThan(0);
     let notSimple = 0, outOfBounds = 0;
     for (const p of pieces) {

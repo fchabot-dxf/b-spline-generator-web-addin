@@ -79,7 +79,7 @@ function enrichPrimitives(primitives, inwardSign) {
 /**
  * @param {({type:'line', p0:{x,y}, p1:{x,y}}|{type:'arc', cx:number, cy:number, r:number, theta1:number, theta2:number})[]} primitives
  *   — the closed contour's own ordered RAW primitives, depth-0 (the true board/frame outline).
- * @param {{widthIn:number, pattern:'soldier'|'stretcher', cornerStyle?:'mitre'|'butt'}[]} bands — outer -> inner
+ * @param {{widthIn:number, pattern:'soldier'|'stretcher', cornerStyle?:'mitre'|'butt'|'lapped'}[]} bands — outer -> inner
  * @param {object} opts
  * @param {object} opts.set — a library.BRICK_SETS entry
  * @param {number} [opts.scale=1] — uniform multiplier on the set's own brick length/height (grout unaffected)
@@ -112,7 +112,7 @@ export function bricksContourBands(primitives, bands, opts) {
       const d0 = depthSoFar + naturalWidth * row, d1 = depthSoFar + naturalWidth * (row + 1);
       const { pieces, nextId: afterId } = ribbonPieces(
         enriched, d0, d1, set, pattern, pitch, set.grout.widthIn,
-        seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle,
+        seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
       );
       bricks.push(...pieces);
       nextId = afterId;

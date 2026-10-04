@@ -18739,3 +18739,54 @@ silently either way.
 
 No code this turn beyond the BUTT follow-up above. Passing back for review of this plan before
 building LAPPED, same as f3's own BUTT plan got before item 1's own code landed.
+
+## T86 item 1, LAPPED: built per the advisor's own decision (turn 291) -- no new geometry needed
+
+The advisor settled the open question simply, narrower than the plan above's own "physically
+crosses the corner" reading: LAPPED is the EXACT SAME asymmetric through/butt construction BUTT
+already built, with one difference -- which side is "through" ALTERNATES by BAND INDEX (band 0
+horizontal-through, band 1 vertical-through, band 2 horizontal-through, ...), so a multi-band
+frame's own bands interlock at each corner like courses in a real lapped corner. A single-band
+lapped frame is identical to butt, by construction. No cross-corner piece extension, no new
+`queenCloser` geometry this step (stays declared for later, per the advisor's own note).
+
+**`primitive-ribbon.js`:** `buildButtJoint` takes a new `flipThrough` param -- normally (false) picks
+`throughIdx` by `|tangent.x|` exactly as BUTT already does; when true, inverts the choice (the less-
+horizontal primitive becomes through instead). `ribbonPieces` takes a 12th, optional `bandIndex`
+param (default 0, only read when `cornerStyle==='lapped'`); the corner-building code computes
+`flipThrough = cornerStyle==='lapped' && bandIndex % 2 === 1` and passes it through. `cornerStyle:
+'butt'` is completely unaffected (never reads `bandIndex`, `flipThrough` always false there).
+
+**`contour-bands.js`:** threads its own already-in-scope `bandIndex` (the `bands.forEach((band,
+bandIndex) => ...)` loop) into the `ribbonPieces` call as the new 12th argument -- one line.
+
+**`library.js`:** new preset `double_course` -- 2 soldier bands, both `cornerStyle:'lapped'` (the
+minimum that shows the alternation at all, per the advisor's own "a single-band lapped frame equals
+butt").
+
+**Verification.** 4 new tests in `tests/bricks-primitive-ribbon.test.js`: (1) `bandIndex=0` produces
+geometry IDENTICAL to plain `'butt'`, piece-for-piece (`toEqual` on every polygon) -- a direct check
+of the advisor's own "equals butt" claim, not just "looks similar"; (2) `bandIndex=1` HAND-COMPUTED:
+the bottom band (through at index 0) is now the clipped side (`[D1+GROUT, 10-D1-GROUT]`, the SAME
+numbers BUTT's own right-band test already established) while the right band (butt at index 0) now
+runs the full `[0,10]` span; (3) the real `FRAME_PRESETS.double_course` through `bricksContourBands`
+end to end (not just a raw `ribbonPieces` call) -- band 0's own bottom reaches the full span, band
+1's own bottom (at the deeper depth) does not; (4) `template_1`'s own arcs still fall back to mitre
+under `'lapped'`, same as they do under `'butt'`. Mutation-tested: all 6 new assertions (4 tests plus
+2 updated `FRAME_PRESETS` tests) fail against the pre-item code via `git stash`. Full `vitest`: 201
+files/3694 tests, 0 failures.
+
+**Live previews**, a new tool (`tools/repro/t86_item1_lapped_preview.mjs`, calling `ribbonPieces`
+directly per band so each band's own pieces can be coloured separately -- red=band 0, blue=band 1,
+the SAME depth bookkeeping `contour-bands.js` itself uses, not a re-derivation of it): saved to
+`shots/seatB/t86_item1_lapped_{square,template_1,square_corner_closeup}.png`. The square shows the
+textbook interlock at all 4 corners -- band 0's horizontal top/bottom run full-width while its
+vertical left/right are clipped, band 1 REVERSES (vertical runs full-height, horizontal clipped);
+the 1:1 close-up makes the reversal obvious at true scale; template_1 confirms the same alternation
+at its own 4 straight corners while both waist fillets correctly fall back to mitre, band-coloured
+wedges included.
+
+**Commit `[pending]`, pushed to origin/lane-b.** LAPPED is DONE: built exactly to the advisor's own
+decided scope (no speculative geometry beyond what was asked for), mutation-tested including a
+direct equivalence check against BUTT, verified end to end through the real preset, previews
+confirm the interlock visually. Continuing straight into BLOCK next, as directed.

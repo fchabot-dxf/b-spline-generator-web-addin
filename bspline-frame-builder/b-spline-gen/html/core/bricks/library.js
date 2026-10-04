@@ -297,8 +297,11 @@ export const BRICK_PATTERNS = Object.freeze({
 /**
  * T86 item 1 (Fred's sketch, shots/fred/fred_sketch_butt_corner.jpg): `cornerStyle` on a band is
  * the per-corner TREATMENT contour-bands.js's own ribbonPieces call reads (default 'mitre' when a
- * band declares none, matching every preset above) -- 'butt' is the first non-mitre style built;
- * 'lapped'/'block' land in their own later items, each adding their own preset(s) here alongside.
+ * band declares none, matching every preset above) -- 'butt' and 'lapped' are the same asymmetric
+ * through/butt construction (see primitive-ribbon.js's own `buildButtJoint` header); 'lapped' flips
+ * which side is through on every other BAND (advisor's own decision, turn 291) -- a single-band
+ * lapped frame is identical to 'butt' by construction, so `double_course` below declares 2 bands,
+ * the minimum that actually shows the alternation. 'block' lands in its own later item.
  */
 export const FRAME_PRESETS = Object.freeze({
   single_soldier: [{ widthIn: 0.75, pattern: 'soldier' }],
@@ -312,6 +315,10 @@ export const FRAME_PRESETS = Object.freeze({
     { widthIn: 0.75, pattern: 'soldier' },
   ],
   butt_frame: [{ widthIn: 0.75, pattern: 'soldier', cornerStyle: 'butt' }],
+  double_course: [
+    { widthIn: 0.75, pattern: 'soldier', cornerStyle: 'lapped' },
+    { widthIn: 0.75, pattern: 'soldier', cornerStyle: 'lapped' },
+  ],
 });
 
 export function brickSetById(id) {

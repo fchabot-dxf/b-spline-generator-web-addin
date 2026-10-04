@@ -135,20 +135,29 @@ const BUTT_PARALLEL_DOT = 0.999; // H23 item 76 cont. (butt corner): tangents th
  * per the architecture plan this item inherited (WORK-LOG's own "H23 item 76 cont. -- butt corner"
  * entry) -- a line-line corner is NOT symmetric like a mitre: the "through" primitive (whichever of
  * the two is MORE horizontal at the corner, `|tangent.x|` closer to 1 -- "through=horizontal" per the
- * sketch) runs uninterrupted to its own natural endpoint; the "butt" primitive (the other one) gets a
- * SQUARE cut (perpendicular to ITS OWN tangent, never the mitre bisector) against the through band's
- * own d1 (inner) edge, with one grout gap between the butt band's cut end and that inner face.
+ * sketch, or the OPPOSITE when `flipThrough` is set -- see below) runs uninterrupted to its own
+ * natural endpoint; the "butt" primitive (the other one) gets a SQUARE cut (perpendicular to ITS OWN
+ * tangent, never the mitre bisector) against the through band's own d1 (inner) edge, with one grout
+ * gap between the butt band's cut end and that inner face.
+ *
+ * T86 item 1, LAPPED (advisor's own decision, turn 291): LAPPED is this exact SAME construction with
+ * one difference -- which side is "through" ALTERNATES by band index (band 0 horizontal-through, band
+ * 1 vertical-through, band 2 horizontal-through, ...), so a multi-band frame's own bands interlock at
+ * each corner like courses in a real lapped corner (a single-band lapped frame is identical to BUTT,
+ * by construction -- `flipThrough` false on band 0 either way). `flipThrough` is the caller's own
+ * `bandIndex % 2 === 1`, decided in `ribbonPieces`, never guessed here.
  *
  * Returns `null` when there's no well-defined square cut (the two tangents are parallel, or the
  * through/butt lines don't meet) -- the caller falls back to the ordinary symmetric mitre, same as
  * the already-declared "arc-involved corners fall back to mitre" rule (this function is only ever
  * tried for a line-line corner to begin with; see its own caller).
  */
-function buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint) {
+function buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipThrough) {
   const tPrev = tangentAt(primitives[prevIdx], o);
   const tCur = tangentAt(primitives[curIdx], o);
   if (Math.abs(tPrev.x * tCur.x + tPrev.y * tCur.y) >= BUTT_PARALLEL_DOT) return null; // not a genuine corner
-  const throughIdx = Math.abs(tPrev.x) >= Math.abs(tCur.x) ? prevIdx : curIdx;
+  const prevMoreHorizontal = Math.abs(tPrev.x) >= Math.abs(tCur.x);
+  const throughIdx = (prevMoreHorizontal !== !!flipThrough) ? prevIdx : curIdx;
   const buttIdx = throughIdx === prevIdx ? curIdx : prevIdx;
   const through = primitives[throughIdx], butt = primitives[buttIdx];
   const buttTangent = tangentAt(butt, o); // depth-independent for a line primitive
@@ -419,13 +428,19 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
  * @param {number} pitch — one whole piece's own along-run length
  * @param {number} nominalJoint — the set's own declared grout.widthIn
  * @param {number} seed @param {string} pieceId @param {number} startId
- * @param {'mitre'|'butt'} [cornerStyle='mitre'] — T86 item 1: 'butt' tries the asymmetric
- *   through/butt square-cut joint (see `buildButtJoint`'s own header) at every genuine line-line
- *   corner with no dropped primitive between its two neighbours; every other corner (arc-involved,
- *   a dropped primitive, or a near-parallel non-corner) still gets the ordinary mitre, same as today.
+ * @param {'mitre'|'butt'|'lapped'} [cornerStyle='mitre'] — T86 item 1: 'butt'/'lapped' try the
+ *   asymmetric through/butt square-cut joint (see `buildButtJoint`'s own header) at every genuine
+ *   line-line corner with no dropped primitive between its two neighbours; every other corner
+ *   (arc-involved, a dropped primitive, or a near-parallel non-corner) still gets the ordinary mitre,
+ *   same as today. 'lapped' is the exact same construction with the through side flipped on every
+ *   other `bandIndex` (the advisor's own decision, turn 291: "band 0 horizontal-through, band 1
+ *   vertical-through, ..." -- a single-band lapped frame is identical to 'butt' by construction).
+ * @param {number} [bandIndex=0] — only read when `cornerStyle==='lapped'`; the caller's own band
+ *   index (`contour-bands.js`'s own `bandIndex`, NOT `row` -- the alternation is band-to-band, per
+ *   the advisor's own decision, not row-to-row within one band).
  * @returns {{ pieces: Array, nextId: number }}
  */
-export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre') {
+export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0) {
   const n = primitives.length;
   const liveIndices = [];
   for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives[i], d1)) liveIndices.push(i);
@@ -456,14 +471,15 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     for (let idx = (prevIdx + 1) % n; idx !== curIdx; idx = (idx + 1) % n) {
       if (primitiveLiveAtDepth(primitives[idx], d0)) { trustO = false; droppedIdx = idx; break; }
     }
-    // T86 item 1: a butt corner only ever applies at a genuine, undropped, line-line joint -- a
-    // dropped primitive between the neighbours (almost always a fillet/arc) and any arc-involved
+    // T86 item 1: a butt/lapped corner only ever applies at a genuine, undropped, line-line joint --
+    // a dropped primitive between the neighbours (almost always a fillet/arc) and any arc-involved
     // corner both declare straight to the ordinary mitre below (the architecture plan's own "arc-
     // involved corners fall back to mitre"). `buildButtJoint` itself also returns null (same
     // fallback) for a near-parallel non-corner or a degenerate through/butt intersection.
-    if (cornerStyle === 'butt' && droppedIdx === null
+    if ((cornerStyle === 'butt' || cornerStyle === 'lapped') && droppedIdx === null
         && primitives[prevIdx].type === 'line' && primitives[curIdx].type === 'line') {
-      const butt = buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint);
+      const flipThrough = cornerStyle === 'lapped' && bandIndex % 2 === 1;
+      const butt = buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipThrough);
       if (butt) return butt;
     }
     // the SAME joint, approached by its own two DIFFERENT primitives, must keep OPPOSITE sides of
