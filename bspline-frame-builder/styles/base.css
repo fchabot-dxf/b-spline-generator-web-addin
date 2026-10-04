@@ -1491,6 +1491,11 @@ input[type="number"]:disabled {
     border: var(--cad-border-width) solid #d9d9d9;
     cursor: default;
 }
+/* audit v2 N3: an ICON button (engine-drawn svg) keeps its colours under the grey text style above -- a
+   greyed White Rocks bond looked exactly like an enabled one (measured: opacity 1). Fade the icon itself. */
+.cad-btn:disabled > svg {
+    opacity: 0.3;
+}
 
 .cad-select-button {
     border: var(--cad-border-width) solid var(--cad-border-soft);

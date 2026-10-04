@@ -12574,3 +12574,88 @@ Seen, not mine, NOT fixed: the Brick panel scrolls sideways for every tool becau
 overflows it by 59-74 px (measured per tool).
 Matrix: 'accent' is a new Brick control -> a controls.mjs row is owed once tools/brick-matrix is on main.
 Server 8851 (my own task) stopped.
+
+### turn 207 (amendment) -- audit v2 (AUDIT-BRICK-TAB-v2.md): N1 N2 fixed + N3 N4 N5 N6 N7 N9 N11 N12, matrix rows (seat 37)
+
+Committed item 15 first (82f3755), then the audit, as the amendment said.
+- **N1: bricks invisible after a reload or a project load.** A brick's fill is derived from its own attributes
+  (set, sample, flip, written by drawBrick), but its `<pattern>` lives in the editor's outer `<defs>`, outside
+  the saved document. `repaintBricks(editor)` re-derives every fill (and re-creates its pattern) from those
+  attributes, and editor-io.js `open()` calls it on every load: reload, project load, Cancel. Download SVG still
+  carries the dangling fill urls; that was not in this fix and was not driven.
+- **N2: panels showed the defaults after a reload or load.** One announcement, `announceBrickSettingsRestored()`
+  in app-init.js, fires whenever P.brickSettings is REPLACED from outside the panel: Cancel (as before), the
+  session restore in initApp, and snapshot-manager's applySnapshot (a project load AND a global undo). The panel
+  re-syncs every control, editor and sidebar, plus the pending state. It also re-points
+  `editor._brickSettings`, because a load swaps in a NEW object and an armed Brush would keep the old one.
+- **Evidence (88's persistence group, branch matrix-persistence, run with `--root` on my tree):**
+  24/24 FAIL with N1+N2 reverted, 24/24 pass with them, and 24/24 again on the merged tip. Reload AND project
+  load (Save As -> fresh app -> Load), 9 panel controls + wall / frame / brush painted per phase.
+- **N3: White Rocks.** Declared in main/brick-control-requires.js. The 5 course bonds (editor + sidebar quick
+  row) grey out with the reason while White Rocks is active, and the band-pattern list + heading HIDE.
+  Herringbone, Basketweave, Fieldstone and None stay. A test checks the greyed list against BRICK_PATTERNS'
+  course / course-alternating kinds.
+- **N4: stuck Generate dot.** Nothing is pending while no Wall/Frame bricks are on the canvas (a brush-only
+  board). Live: a real 4-brick stroke, then a size + set change -> no dot.
+- **N5: sidebar controls on a board with no bricks.** A new requirement form, `requires: { fact: 'bricksLaid' }`:
+  the panel supplies ctx.facts, and a missing fact counts as met (the Node matrix passes none). A new
+  `within: [container]` greys the data-rendered buttons inside the quick-settings and surface-style rows. The
+  fact = Wall/Frame bricks on the live canvas, OR in the saved drawing (P.editorSvg) before the editor has loaded
+  it after a reload. A visible note sits at the top of the sidebar section.
+  - While here, syncControlRequires was fixed: a control under TWO rules (Grout depth: Recessed + bricks laid)
+    took the LAST rule's state, so a met rule could un-grey an unmet one. Now any unmet rule greys it.
+  - A greyed control's OWN tooltip (an icon's name) is kept aside and restored, instead of deleted.
+- **N6: Level.** Interpreted "show pending" literally: Level left SURFACE_ONLY_SETTING_KEYS, so it is in the
+  laid key and an editor change shows the Generate dot (Generate keeps the 2D, Apply builds the 3D). The old
+  test "Level is 3D-only ... never pending" was rewritten for N6. Accents stay 3D-only: they have their 2D outline.
+- **N7: Scissors** declares `sharedRows: false`, like Stripe (turn 197).
+- **N9: Frame tool with no frame.** Generate shows a toast (FRAME_NEEDS_A_FRAME) saying to pick a template or
+  turn Offset from frame off. Live: the exact text appeared.
+- **N11: start hint.** Shown in the Brick tab with no tool picked on a board with no bricks. Its text comes from
+  BRICK_TOOLS: "Pick ✏️ Brush, 🧱 Wall or ⬚ Frame in the toolbar to start laying bricks."
+- **N12: Seed row.** A `.brick-seed-row` rule lets the JS-wrapped stepper fill what the dice leaves (it never
+  shrank, and its number input defaults to about 150 px). Live: panel scrollWidth 220 = clientWidth (was 293);
+  the dice ends at 1361 inside the 1400 panel.
+- **Checked, not changed:**
+  - C10 is fixed: item 20, the wall flows around brush strokes (measured 193 -> 185 earlier).
+  - N10: the Wall pattern lists are icons now (item 13). The Frame band presets (9) and per-band patterns (9 per
+    band) are still text. Brush presets are 3 (not a long list).
+  - N8 is Fred's question; not touched.
+- **REGRESSION found and fixed in the same pass.** 82f3755 (item 15) factored the icon drawing into a helper
+  with a second `attrs` parameter. The pattern icons pass the helper straight to `.map()`, so the INDEX became
+  `<polygon0 ...>` and every wall-pattern icon drew nothing (seen in this turn's shots).
+  - The item-13 test only counted the text `<polygon`, so it stayed green. Both icon tests now count REAL
+    parsed elements (DOMParser), and the old helper fails them (mutation-checked).
+  - Do not merge 82f3755 without 90a1483.
+- **Merge:** merged origin/main into fb-app (clean, 19 commits: tools/brick-matrix, lane-b T86 14/15/16a).
+- **Matrix (tools/brick-matrix/controls.mjs, now on main):**
+  - The Level rows become kind 'editor', E(true, null, true), introducedBy 90a1483 (N6).
+  - New rows: Raised accents Course bands / Accent level -1/16 / None (editor3d, introducedBy 82f3755), and
+    Raised brush level 1/8 + Raised brush mode Grout (kind 'brush', tool 'raisedBrush', introducedBy 0f45668;
+    Grout = greyed/hidden while the engine lacks groutCut).
+  - The import loop skips fact rules: they name no control to copy, and the page judges them.
+  - Full matrix on the merged tip: **62 rows, 0 FAIL, 0 page errors** (238 s, --parallel).
+  - Item 20 (brush over wall) needs a new kind (88), and Click bricks is a canvas gesture: both stay unit/live
+    tests.
+  - PERSIST_BOARD (88's branch) could add an accent preset + Accent level panel row. Left to 88 / the advisor;
+    the branch is not merged here.
+- **Tests:**
+  - New: brick-repaint (2), brick-control-requires-v2 (3), an "audit v2" block in brick-discrete-controls-regen
+    (8: N2 N3 N4 N5 x2 N7 N9 N11), snapshot-manager (2: load + undo announce, after the new settings are in P).
+  - Updated for the new rules: the regen fixture's mocked Generate now leaves the laid kinds' bricks on the
+    canvas, as the real one does.
+  - Non-vacuous: against the pre-audit sources the 13 new audit tests fail 13/13. Removing the announce call
+    fails the snapshot pair 2/2. The old icon helper fails the tightened icon test.
+- **Fast tier** (61-63 files, brick / accent / icon / tabs / mask / state / snapshot / app-init / io / requires):
+  705/705 before the merge, **715/715** after it.
+- **Live** (served 8851, fresh profile, headless Chrome): N5 note + 25/25 quick buttons greyed on a fresh board,
+  enabled after a Wall Generate. N11 hint shown. N4 no dot. N3 greyed + reason, restored to "Stretcher" on Red.
+  N12 fits. N6 "Generate •" then clean. N9 toast. 0 page errors.
+- **Greyed ICON buttons looked enabled.** The first N3 shot showed greyed White Rocks bonds identical to the
+  enabled ones (measured: icon opacity 1). `.cad-btn:disabled` greys a button's TEXT, and an svg keeps its
+  colours. styles/base.css adds `.cad-btn:disabled > svg { opacity: 0.3 }`; re-measured 0.3 live.
+- **Shots:** shots/seat37/audit2fix_{n5_sidebar_no_bricks, n11_start_hint, n3_white_rocks_greyed, n12_seed_row}.png,
+  re-taken after the icon fix and the fade.
+- **Heads-up for the merge:** d3 (lane-b d9e3936, T86 item 17) edited brick-control-requires.test.js and the
+  regen test's "turn 199" block, which this pass also touches: expect a textual overlap there.
+- Server 8851 (my own task) stopped.
