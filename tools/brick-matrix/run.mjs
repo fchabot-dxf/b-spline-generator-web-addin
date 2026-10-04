@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,30 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'persistence'];
+
+// The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
+// localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
+// Only that URL prefix is intercepted; everything else goes to the real fetch.
+const CLOUD_STAND_IN = `(() => {
+  const KEY = 'brickMatrixCloudStandIn';
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; } };
+  const keep = (m) => localStorage.setItem(KEY, JSON.stringify(m));
+  const real = window.fetch.bind(window);
+  window.fetch = async (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input.url;
+    const api = window.BSPLINE_PRESETS_API_URL ? String(window.BSPLINE_PRESETS_API_URL).replace(/[/]+$/, '') : null;
+    if (!api || !url.startsWith(api + '/projects')) return real(input, init);
+    const m = load(); const method = String(init.method || 'GET').toUpperCase();
+    const name = decodeURIComponent(url.slice((api + '/projects').length).split('?')[0].replace(/^[/]/, ''));
+    const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json' } });
+    if (method === 'PUT' && name) { const savedAt = Date.now(); m[name] = { body: init.body, savedAt }; keep(m); return json({ ok: true, savedAt }); }
+    if (method === 'GET' && !name) return json({ items: Object.entries(m).map(([n, v]) => ({ name: n, savedAt: v.savedAt })) });
+    if (method === 'GET' && m[name]) return new Response(m[name].body, { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (method === 'DELETE' && name) { delete m[name]; keep(m); return json({ ok: true }); }
+    return json({ error: 'not found (brick-matrix cloud stand-in)' }, 404);
+  };
+})();`;
 const groupOf = (c) => (c.kind === 'sidebar' ? (c.do.click?.startsWith('brickQuick_') ? 'sidebar-quick' : 'sidebar-3d')
   : c.kind === 'brush' || c.kind === 'stripe' ? 'brush' : c.tool);
 
@@ -162,6 +185,7 @@ async function record(c, obs) {
 
 try {
   await send('Runtime.enable'); await send('Page.enable');
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: CLOUD_STAND_IN });
   await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html` });
   for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; }
@@ -261,6 +285,8 @@ try {
       Z = z1;
     }
   }
+  // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
+  if (!arg('group') || arg('group') === 'persistence') await runPersistence();
 } catch (e) {
   pageErrors.push(`run error: ${e.message}`); // e.g. setup failed -- reported, exit 1
   console.log(`ERROR  ${e.message}`);
@@ -274,6 +300,75 @@ try {
   process.exit(fails.length || pageErrors.length ? 1 : 0);
 }
 
+// ---------------------------------------------------------------- persistence (hoisted)
+async function waitApp() {
+  for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; }
+  await sleep(3000);
+}
+async function openBrickTab() {
+  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
+  await click('editorTabBrick', 1000);
+}
+async function runPersistence() {
+  // 1. lay the declared board through the UI, applied
+  for (const step of PERSIST_BOARD.setup) {
+    if (step.tool) { await openBrickTool(step.tool); continue; }
+    if (step.stroke) { await click('brickTool_brush', 300); await drag(step.stroke); continue; }
+    if (step.apply) { await apply(); await heightsSettled(null); continue; }
+    if (step.sidebar) {
+      if (await editorOpen()) await apply();
+      await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+      continue;
+    }
+    if (step.click === 'brickGenerate') { await click('brickGenerate', 1800); continue; }
+    await act(step);
+  }
+  await sleep(2000);
+  // 2. a reload
+  await send('Page.reload', {}); await waitApp();
+  await checkPersisted('reload');
+  // 3. project Save As -> (fresh app) -> Load, through the real Project Manager modal (cloud stand-in)
+  if (await editorOpen()) await apply();
+  await click('btnOpenProjectManager', 1500);
+  await click('fmBtnSaveAs', 1200);
+  await js(`(async()=>{ const i=document.querySelector('.pm-prompt-input'); if(!i) return 'no prompt'; i.value='brick-matrix-persist'; document.querySelector('.pm-prompt-ok').click(); await new Promise(r=>setTimeout(r,4000)); return 'ok'; })()`);
+  const saved = await js(`Object.keys(JSON.parse(localStorage.getItem('brickMatrixCloudStandIn')||'{}'))`);
+  console.log('project saved to the stand-in:', JSON.stringify(saved));
+  // a fresh app: drop the app's own saved session (keep only the stand-in's store), reload -> defaults
+  await js(`(()=>{ const keep=localStorage.getItem('brickMatrixCloudStandIn'); localStorage.clear(); if (keep) localStorage.setItem('brickMatrixCloudStandIn', keep); return 1; })()`);
+  await send('Page.reload', {}); await waitApp();
+  await click('btnOpenProjectManager', 2500);
+  const picked = await js(`(async()=>{ const it=[...document.querySelectorAll('#fmProjectList [data-name]')].find(e=>e.getAttribute('data-name')==='brick-matrix-persist'); if(!it) return 'not listed'; it.click(); await new Promise(r=>setTimeout(r,500)); document.getElementById('fmBtnLoad').click(); await new Promise(r=>setTimeout(r,6000)); return 'loaded'; })()`);
+  console.log('project load:', picked);
+  await checkPersisted('project load');
+}
+async function checkPersisted(phase) {
+  await openBrickTab();
+  // evidence: what the app's STATE holds -- a FAIL with the right state here means the panel/canvas lost it
+  const st = await js(`(async()=>{ const { P } = await import('./core/state.js'); const s=P.brickSettings||{};
+    return JSON.stringify({ setId: s.setId, pattern: s.pattern, brickLengthIn: s.brickLengthIn, frameBandPreset: s.frameBandPreset,
+      surfaceStyle: s.surfaceStyle, reliefIn: s.reliefIn, elementLevelIn: s.elementLevelIn }); })()`);
+  console.log(`state after ${phase}: ${st}`);
+  for (const p of PERSIST_BOARD.panel) {
+    const shown = p.active
+      ? await js(`!!document.getElementById(${JSON.stringify(p.active)})?.classList.contains('active')`)
+      : await js(`(()=>{ const e=document.getElementById(${JSON.stringify(p.value[0])}); return !!e && Math.abs(Number(e.value) - ${p.value[1]}) < 1e-6; })()`);
+    persistRow(`Persist (${phase}): ${p.name}`, shown, p.active ? `active ${p.active}` : `${p.value[0]} = ${p.value[1]}`);
+  }
+  for (const b of PERSIST_BOARD.bricks) {
+    const r = JSON.parse(await js(`JSON.stringify((()=>{ const ns=[...(window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="${b.kind}"]') || [])];
+      const painted=ns.filter((n)=>{ const f=n.getAttribute('fill')||''; const m=f.match(/url[(]#([^)]+)[)]/); return !m || !!document.getElementById(m[1]); }).length;
+      return { n: ns.length, painted }; })())`));
+    persistRow(`Persist (${phase}): ${b.name}`, r.n > 0 && r.painted === r.n, `${r.painted}/${r.n} painted`);
+  }
+  await shot(`persist_${phase.replace(/[^a-z]+/gi, '_')}`);
+}
+function persistRow(name, ok, detail) {
+  rows.push({ name, kind: 'persist', result: 'ok', observed: { detail }, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', persists: ok ? 'PASS' : 'FAIL' } });
+  console.log(`${ok ? 'pass' : 'FAIL'}  ${name.padEnd(48)} ${detail}`);
+}
+
 // ---------------------------------------------------------------- report (hoisted; shared by --parallel)
 function failRows(rows) {
   return rows.filter((r) => Object.values(r.verdict).includes('FAIL') || !(['ok', 'requires unmet'].includes(r.result) || String(r.result).startsWith('skipped')));
@@ -281,8 +376,8 @@ function failRows(rows) {
 function writeReport(rows, pageErrors) {
   const fails = failRows(rows);
   writeFileSync(path.join(OUT, 'brick-matrix.json'), JSON.stringify({ requiresSource: REQUIRES_SOURCE, rows, pageErrors }, null, 1));
-  const md = ['| Control | Kind | Pending | Canvas | 3D | Greyed out (requires) |', '|---|---|---|---|---|---|',
-    ...rows.map((r) => `| ${r.name} | ${r.kind}${r.tool ? ' (' + r.tool + ')' : ''} | ${r.verdict.pending} | ${r.verdict.canvas} | ${r.verdict.threeD} | ${r.verdict.greyedOut || ''} |`)];
+  const md = ['| Control | Kind | Pending | Canvas | 3D | Greyed out (requires) | Persists |', '|---|---|---|---|---|---|---|',
+    ...rows.map((r) => `| ${r.name} | ${r.kind}${r.tool ? ' (' + r.tool + ')' : ''} | ${r.verdict.pending} | ${r.verdict.canvas} | ${r.verdict.threeD} | ${r.verdict.greyedOut || ''} | ${r.verdict.persists || ''} |`)];
   const NL = String.fromCharCode(10);
   writeFileSync(path.join(OUT, 'brick-matrix.md'), md.join(NL) + NL + NL + `${fails.length} FAIL row(s); page errors: ${pageErrors.length}` + NL);
 }
