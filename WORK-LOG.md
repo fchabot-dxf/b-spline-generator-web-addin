@@ -19090,7 +19090,7 @@ template_1_corner_closeup,template_1_waist_closeup}.png`. Waist close-up locatio
 board), not eyeballed. All 5 confirm clean mitres at both square and T1 true corners, and a clean
 voussoir fan through the waist fillet with no visible defect at preview scale.
 
-**Commit `[pending]`, push to origin/lane-b to follow.** DMing de with the new `sequence`/
+**Commit `76a861d`, pushed to origin/lane-b.** DMing de with the new `sequence`/
 `forcedFStart` API (now exported via `core/bricks/index.js`'s `ribbonPieces`) and recommending --
 not performing -- the retirement of `editor-brick-tool.js`'s own `frameBricksFor`/
 `NEW_ENGINE_PATTERNS` special-casing for header/flemish/stack, since `bricksContourBands` now handles
