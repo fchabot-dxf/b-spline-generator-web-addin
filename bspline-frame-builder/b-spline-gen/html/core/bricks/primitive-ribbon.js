@@ -996,13 +996,50 @@ const BOUNDARY_ARC_STEPS = 16; // a smoothness floor for the TESSELLATED polylin
  * `bricksContourBands`' own `innerPath` (the Wall tool's own starting boundary) -- never fed back
  * into any ribbon construction itself, which always works from the ORIGINAL, depth-0 primitives.
  */
+/** `prim`'s own SIMPLE (non-mitred) endpoint at `depth` -- just the offset curve's own endpoint,
+ *  no intersection with a neighbour involved. Used only as `boundaryAtDepth`'s own fallback when
+ *  the TRUE mitred joint can't be found (see its own header) -- a local, approximate corner there
+ *  is far better than dropping real geometry over one bad joint. */
+function simpleEndpointAtDepth(prim, depth) {
+  const off = offsetPrimitive(prim, depth);
+  return prim.type === 'line' ? off.p1 : { x: off.cx + off.r * Math.cos(prim.theta2), y: off.cy + off.r * Math.sin(prim.theta2) };
+}
+
 export function boundaryAtDepth(primitives, depth) {
   const n = primitives.length;
   const liveIndices = [];
   for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives, i, depth)) liveIndices.push(i);
   if (liveIndices.length === 0) return [];
   const m = liveIndices.length;
-  const joints = liveIndices.map((curIdx, k) => jointPointAt(primitives, liveIndices[(k - 1 + m) % m], curIdx, depth));
+
+  // T86 item 16 (advisor dispatch, Fred: "bigger bricks break the engine" -- a real, reproduced
+  // crash: core/bricks/layouts/bond.js:141 <- fill-shape.js <- engine.js, on several real templates
+  // at larger brick sizes). A primitive can be LIVE (primitiveLiveAtDepth, above) but still have no
+  // valid MITRED joint with its own live neighbour at this depth -- `jointPointAt`'s own
+  // `curveIntersection` can fail to find a crossing once the band is deep enough that the two
+  // primitives' own offset-at-depth curves no longer actually meet near the true original junction
+  // (MEASURED: happens when the band depth exceeds roughly half the local gap, at a narrow waist or
+  // neck). This used to push that `null` straight into the returned boundary -- silently corrupting
+  // `innerPath` many calls before the actual crash (`boardOutline.map(p=>p.x)` in bond.js), with
+  // nothing at the crash site pointing back to where the bad data came from.
+  //
+  // FIRST fix tried here (reverted, logged): drop BOTH primitives flanking any failed joint and
+  // rebuild, the same shape as fieldstone.js's own "never drop a cell" fix. MEASURED on the actual
+  // repro (template_9, brickLengthIn 1/1.25/1.5): it cascades -- dropping two primitives routinely
+  // exposes a NEW joint between their own former neighbours, which also fails, and so on until the
+  // live set empties out entirely (an honest empty boundary, never a crash, but far more aggressive
+  // than the advisor's own "the band yields WHERE it can't fit" wording asked for -- the whole Wall
+  // fill disappearing is its own kind of "void", not a fix for one). Replaced with a LOCAL fallback
+  // instead: when a joint fails, use that ONE corner's own simple (non-mitred) offset endpoint --
+  // `simpleEndpointAtDepth`, just the offset curve's own end, no neighbour intersection involved --
+  // rather than removing real geometry. Every primitive stays in the boundary; only the one corner
+  // where the true mitre doesn't exist gets a locally-approximate (not perfectly mitred) point
+  // instead of a crash.
+  const joints = new Array(m);
+  for (let k = 0; k < m; k++) {
+    const prevIdx = liveIndices[(k - 1 + m) % m], curIdx = liveIndices[k];
+    joints[k] = jointPointAt(primitives, prevIdx, curIdx, depth) || simpleEndpointAtDepth(primitives[prevIdx], depth);
+  }
 
   const points = [];
   for (let k = 0; k < m; k++) {
