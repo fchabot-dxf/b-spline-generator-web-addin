@@ -19506,3 +19506,108 @@ of the "cross-row/multi-band" category remain queued behind it.
 **No commit this sub-session** -- diagnosis only, no engine change yet; nothing to verify or ship
 until the fix itself is built. Passing back to the advisor with the root cause, the proposed design,
 and the capacity note above.
+
+## T86 item 4b: dropped-line architecture attempted and REVERTED (net regression on the full matrix) -- a deeper cause found, GATE (d3)
+
+Picked up from the above diagnosis (turn 309, `af27368`). Built the extension exactly as scoped --
+`primitiveLiveAtDepth(primitives, idx, depth)` now tests a LINE's own feasibility too (mirroring
+`isArcFeasible`'s role: project its own two REAL immediate-neighbour joints at this depth onto its
+own tangent; infeasible when the effective run between them drops below a declared floor,
+`MIN_LINE_RUN_IN`) -- and extended `buildPatch`'s own kiteFan to bridge a dropped LINE the same way
+it already bridges a dropped ARC (no curve to tessellate, so the patch's own middle run is empty;
+`A`/`B` contribute the only new points).
+
+**First-order bug, found and fixed within this same attempt:** a dropped line's own two flanking
+neighbours are `template_9`'s own TOP and NOTCH-TOP edges -- PARALLEL to each other (a notch, not a
+bevel: extending two parallel sides never makes them meet, unlike extending the two sides a rounded
+fillet replaces, which always meet at the fillet's own original sharp corner). The direct
+prevIdx/curIdx skip-intersection this file's own joint map tries first came back `null` (parallel
+lines truly have none), and returning "no joint" there let BOTH flanking primitives run to their own
+full UNCLIPPED nominal length -- a 100% overlap, each one's own entire excess landing on the other's.
+Fixed with a new `buildNotchJoint` (mirrors `buildBlockJoint`'s own independent `forPrev`/`forCur`
+pair): each flanking primitive gets its OWN real, non-fictitious mitre joint with the dropped
+primitive directly, plus a quad `kiteFan` for the dropped primitive's own residual sliver. The
+quad's own vertex order needed a SECOND fix after the first version also self-intersected: right at
+its own feasibility floor, the two flanking corners' relative order along the dropped primitive's
+own length can differ between the row's outer edge (d0) and inner edge (d1) -- MEASURED directly
+(the two "closing" edges of the naive `[oA,oB,qB,qA]` order crossed at `t=0.505` on this exact case)
+-- `tangentialProjection` now orders each depth's own pair independently before building the quad,
+which kept it simple either way.
+
+**The HEADLINE bug (template_9's own 92% `soldier_stretcher` overlap, the dispatch's own named
+target) is NOT a joint-clipping bug at all, and this architecture does not fix it.** With both of the
+above fixes in place, the exact pre-fix 92% overlap (`frame-165`/`frame-167`) reproduced BYTE-
+IDENTICAL -- not a coincidence: at this row's own depth (0.75-0.95), the TOP edge's own offset band
+and the NOTCH-TOP edge's own offset band have themselves converged to within 0.0019in of each other
+-- they are no longer "two rows meeting at a corner needing a clip", they are close to being THE SAME
+ROW, counted twice, independently, by two unrelated primitives. No joint-level clip choice changes
+that. Tried the one alternative this architecture naturally offers -- `trustO:false` (q-only sizing,
+the SAME fallback the dropped-ARC case already uses) -- and MEASURED it makes this specific case
+WORSE (100%, not 92%): since both flanking primitives are horizontal and tile in the SAME absolute
+direction near the shared seam, q-only sizing gives each one's own boundary-adjacent brick the exact
+SAME span, a clean 100% duplicate instead of a messy 92% one. Reverted to `trustO:true` (no worse
+than the pre-existing baseline on this one case).
+
+**Ran the full item-4 matrix (`tools/repro/t86_item4_matrix_run.mjs`, 476 cases) before committing to
+anything, per the dispatch's own item 3 -- and it settled the question**: with this architecture (incl.
+the `trustO:true` choice), 159/476 failed vs. baseline's 154/476 -- 1 case newly PASSED
+(`template_5` 9x12 `double_course`/native) but 6 newly FAILED elsewhere (`template_5` 7x9
+`double_course`+`mixed_bands`, `template_9` 9x12 `mixed_bands` x2, `template_15` 7x9
+`double_course` x2 -- several at `max piece ratio` 3.75x, a real oversized-piece defect, not a
+measurement artifact). **Net regression**, and on templates/presets that have nothing to do with the
+dispatched case. Root cause of THESE 6 not chased (would be a second rabbit hole on top of the first)
+-- `lineLiveAtDepth` most likely flags a line infeasible on a row where it should stay live for a
+reason specific to those templates/presets, but that's a guess, not a measurement.
+
+**Decision: REVERTED the whole architecture** (`git checkout` on `primitive-ribbon.js`, confirmed
+back to baseline: 76 brick tests pass, matrix back to 154/476 failed). The attempted diff is saved,
+unshipped, at `bspline-frame-builder/scratch/t86_item4b_attempted_fix.diff` (plus the two matrix runs
+at `bspline-frame-builder/scratch/t86_item4b_matrix/{before,after_attempted}.txt`) for whoever picks
+this up next -- the notch-joint + quad-ordering half of it IS a real, tested, non-regressing fix in
+isolation (it closes a genuine latent bug: a self-intersecting kite quad, and before that, two fully
+unclipped runs) and may be worth keeping once the deeper issue below is actually addressed, but
+shipping it alone, as scoped, is a net loss.
+
+**GATE -- this needs a decision, not another attempt from me this session:** the real fix has to
+address two flanking rows having PHYSICALLY CONVERGED, not just "meeting at a corner". Options,
+as I see them:
+  (A) Detect when two flanking primitives' own row-strips overlap in physical space (not just share a
+      joint), and suppress one side's own pieces across the whole converged zone (which side yields
+      needs a declared, general rule -- e.g. always the side whose own primitive index is larger --
+      not a per-template choice). Smallest blast radius, but the suppressed side may show a visible
+      asymmetry at the seam.
+  (B) Recognize the converged zone at the CONTOUR level, before per-row `ribbonPieces` even runs --
+      once a connecting primitive is short enough that ANY row past some depth will converge its two
+      neighbours, build that whole zone (potentially spanning multiple bands/rows) as one unified
+      construction instead of two independent rows plus a patch. Bigger change, touches
+      `contour-bands.js`'s own row loop, but is the more honest shape of the problem.
+  (C) Ship nothing new this item; leave `lineLiveAtDepth` unbuilt, accept the pre-existing 92%
+      overlap as a KNOWN, already-measured residual (same spirit as the already-tolerated ~10-15%
+      curve-clip imperfection documented in `bricks-real-template-contours.test.js`), and move the
+      remaining item-4b sub-tasks (inset-window surround, frame suppression, item 5 brush crossings --
+      none of which depend on this fix) up instead.
+**Capacity note, stated plainly:** this sub-session is the one that found the architecture does not
+work as scoped, including building, measuring, and reverting it -- a full cycle, not a partial one,
+but it leaves nothing new to ship. Recommend (C) now (unblocks the rest of item 4b's own list, all
+independent of this) with (A) or (B) as their own later, separately-dispatched task once scoped by
+the advisor; a fresh session for whichever is chosen either way, same reasoning as every prior
+"don't rush it at the tail" note on this item.
+
+**header_band's own 0.125 min-ratio on `template_3` (item 4b's point 2): narrowed, not yet fixed.**
+Ran b5's own `scratch/check_header_band_t3.mjs`. The smallest piece, `frame-130` (ratio 0.125, exactly
+HALF the 0.25 floor), is a 3-VERTEX right-triangle corner clip (legs 0.1in x 0.1in,
+`[[5.832,0.45],[5.832,0.55],[5.732,0.55]]`) -- a corner-adjacent piece clipped down to a sliver
+triangle that `mergeSlivers` failed to absorb into its neighbour. Confirmed (again) this is NOT the
+dropped-short-line mechanism above: no short line anywhere near this corner. Not root-caused further
+this session (would be a third rabbit hole) -- recommend its own small, separately-scoped dispatch
+(suspect: a `mergeSlivers` call on `header_band`'s own very narrow 0.6in pitch isn't being reached for
+a CORNER-adjacent span the way it is for an ordinary mid-run span, or the corner clip itself produces
+a 3-vertex sliver `mergeSlivers`' own area-based neighbour-merge doesn't recognize as adjacent to;
+needs the same hand-verified, non-vacuous-test treatment as every other fix in this file).
+
+**Item-4 matrix: unchanged this session (154/476 failed, same as the last committed state) --
+reported per the dispatch's own item 3, since the attempted fix was reverted.** Items 4/5/6 of the
+item-4b dispatch (inset-window surround + wall hole, frame suppression, item-5 brush crossings) not
+started -- recommend (C) above, which puts them next. No commit of engine code this sub-session (the
+only candidate diff was reverted); this WORK-LOG entry plus the saved-but-unshipped diff/matrix files
+are the record. Passing back to the advisor with the gate above.
