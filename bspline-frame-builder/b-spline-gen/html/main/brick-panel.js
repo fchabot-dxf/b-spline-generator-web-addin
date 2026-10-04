@@ -78,14 +78,14 @@ function syncSetPicker() {
  *  user who picked "2 inch bricks" means 2 inches regardless of which photo
  *  texture is applied, the same way Wall/Brush's own old relative Scale
  *  multiplier never needed a reset either. */
-function selectSet(setId) {
+export function selectSet(setId, commit = 'generate') {
   const set = brickSetById(setId);
   if (!set) return;
   P.brickSettings.setId = setId;
   P.brickSettings.grout.widthIn = set.grout.widthIn;
   syncSetPicker();
   syncControlsFromState();
-  notifyChange();
+  commitBrickSetting(commit);
 }
 
 /** F35 item 16 (Fred, "replacing the 0.5-2x multiplier with a BRICK SIZE control in inches"):
@@ -142,13 +142,12 @@ function syncBrickSizePresetButtons() {
   }
 }
 
-function setBrickSize(lengthIn) {
+export function setBrickSize(lengthIn, commit = 'generate') {
   const v = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, lengthIn));
   P.brickSettings.brickLengthIn = v;
   syncBrickSizeControls(v);
   syncBrickSizePresetButtons();
-  notifyChange();
-  _scheduleLivePreview();
+  commitBrickSetting(commit);
 }
 
 /** Writes the real inches value `v` to BOTH controls -- the slider's own raw DOM value is its LOG
@@ -161,11 +160,11 @@ function syncBrickSizeControls(v) {
   if (number) number.value = String(v);
 }
 
-function setGroutProfile(profile) {
+export function setGroutProfile(profile, commit = 'generate') {
   P.brickSettings.grout.profile = profile;
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', profile === 'recessed');
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', profile === 'flush');
-  notifyChange();
+  commitBrickSetting(commit);
 }
 
 function syncReliefToggle() {
@@ -174,10 +173,10 @@ function syncReliefToggle() {
   document.getElementById('brickBtnReliefCarved')?.classList.toggle('active', inverted);
 }
 
-function setInvert(on) {
+export function setInvert(on, commit = 'generate') {
   P.brickSettings.invert = on;
   syncReliefToggle();
-  notifyChange();
+  commitBrickSetting(commit);
 }
 
 /** F35 item 10 follow-up: the Brush tool's own Profile/Orientation toggles --
@@ -317,20 +316,89 @@ function _scheduleLivePreview() {
   });
 }
 
-function _commitBrickSlider() {
+/** Fred (2026-10-04): WHERE a brick-setting change comes from decides how it is committed --
+ *  declared per control binding, never an ad-hoc if at the call site. Same P.brickSettings underneath.
+ *  - 'generate': the editor's Brick tab. The change is saved and the layout is only marked PENDING;
+ *    the sticky Generate button (#brickGenerate) is the one thing that re-lays it. No live preview
+ *    either -- a preview would re-lay the canvas without a Generate press.
+ *  - 'auto': the main sidebar's quick settings. The change re-lays straight away (brick layout +
+ *    layer tooling -> height/3D, via runBricks), with the live 2D preview while a slider drags.
+ *  onDrag = a slider/field's raw 'input' tick; onRelease = a slider's 'change' or a discrete click. */
+const BRICK_COMMIT = {
+  generate: {
+    onDrag: () => { notifyChange(); _noteSettingChanged(); },
+    onRelease: () => { notifyChange(); _noteSettingChanged(); },
+  },
+  auto: {
+    onDrag: () => { notifyChange(); _scheduleLivePreview(); },
+    onRelease: () => { notifyChange(); generateBricks(); },
+  },
+};
+
+/** The one entry point every brick-setting control calls after writing P.brickSettings. */
+export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
+  (BRICK_COMMIT[commit] || BRICK_COMMIT.generate)[phase]();
+}
+
+/** Settings keys a Wall/Frame layout never reads -- a Brush stroke's own settings freeze at draw
+ *  time, so changing them never makes the Wall/Frame layout pending. */
+const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation'];
+// Top-level keys only (the replacer's `this` is the holder) -- grout.profile is a Wall/Frame setting.
+const _layoutKey = () => JSON.stringify(P.brickSettings, function (k, v) {
+  return this === P.brickSettings && BRUSH_ONLY_SETTING_KEYS.includes(k) ? undefined : v;
+});
+// The settings the Wall/Frame bricks on the canvas were last laid with. null = nothing changed yet
+// this session (e.g. bricks restored from a saved session): not pending. A change made while it is
+// null can't be compared, so it becomes UNKNOWN_LAID -- pending until the next Generate.
+const UNKNOWN_LAID = '\u0000unknown';
+let _drawnLayoutKey = null;
+
+function isGeneratePending() {
+  return _drawnLayoutKey !== null && _layoutKey() !== _drawnLayoutKey;
+}
+
+function _noteSettingChanged() {
+  if (_drawnLayoutKey === null) _drawnLayoutKey = UNKNOWN_LAID;
+  syncGeneratePending();
+}
+
+function syncGeneratePending() {
+  const btn = document.getElementById('brickGenerate');
+  if (!btn) return;
+  const pending = isGeneratePending();
+  btn.textContent = pending ? 'Generate \u2022' : 'Generate';
+  btn.classList.toggle('pending', pending);
+  btn.title = pending ? 'Brick settings changed -- press Generate to re-lay the bricks' : 'Re-lay the Wall/Frame bricks';
+}
+
+function _markLaidNow() {
+  _drawnLayoutKey = _layoutKey();
+  syncGeneratePending();
+}
+
+function _hasLaidWallOrFrame(editor) {
+  const node = editor?._sketchLayer?.node;
+  return !!node?.querySelector?.('[data-brick-gen="1"][data-brick="wall"], [data-brick-gen="1"][data-brick="frame"]');
+}
+
+/** Generate: re-lay the Wall/Frame bricks with the CURRENT settings -- whatever Wall/Frame bricks
+ *  are already on the canvas, or the active Wall/Frame tool's own output (Frame needs a usable
+ *  frame). Wall and Frame are laid together by one runBricks call (editor-brick-tool.js), so there
+ *  is no per-element subset to pick. Brush strokes are untouched (frozen at draw time). */
+export function generateBricks() {
   _cancelLivePreview();
   _dragSlow = false;
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  if (!editor) return;
-  if (_activeTool === 'wall') {
-    withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, resolveFrameGeom(editor)));
-  } else if (_activeTool === 'frame') {
-    const frameGeom = resolveFrameGeom(editor);
-    if (frameGeom) withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom));
-  }
+  if (!editor) return false;
+  const frameGeom = resolveFrameGeom(editor);
+  const lay = _hasLaidWallOrFrame(editor) || _activeTool === 'wall' || (_activeTool === 'frame' && !!frameGeom);
+  if (!lay) return false;
+  withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom));
+  _markLaidNow();
+  return true;
 }
 
-function bindSlider(sliderId, numberId, key, parse = parseFloat) {
+export function bindSlider(sliderId, numberId, key, parse = parseFloat, commit = 'generate') {
   const slider = document.getElementById(sliderId);
   const number = document.getElementById(numberId);
   const apply = (raw) => {
@@ -339,14 +407,14 @@ function bindSlider(sliderId, numberId, key, parse = parseFloat) {
     if (slider) slider.value = String(v);
     if (number) number.value = String(v);
     P.brickSettings[key] = v;
-    notifyChange();
-    _scheduleLivePreview();
+    return true;
   };
-  const commit = (raw) => { apply(raw); _commitBrickSlider(); };
-  slider?.addEventListener('input', (e) => apply(e.target.value));
-  slider?.addEventListener('change', (e) => commit(e.target.value));
-  number?.addEventListener('input', (e) => apply(e.target.value));
-  number?.addEventListener('change', (e) => commit(e.target.value));
+  const drag = (raw) => { if (apply(raw)) commitBrickSetting(commit, 'onDrag'); };
+  const release = (raw) => { if (apply(raw)) commitBrickSetting(commit, 'onRelease'); };
+  slider?.addEventListener('input', (e) => drag(e.target.value));
+  slider?.addEventListener('change', (e) => release(e.target.value));
+  number?.addEventListener('input', (e) => drag(e.target.value));
+  number?.addEventListener('change', (e) => release(e.target.value));
 }
 
 /** Brick size's own binder, not the shared bindSlider above: the slider's raw DOM value is a LOG
@@ -354,31 +422,31 @@ function bindSlider(sliderId, numberId, key, parse = parseFloat) {
  *  stays real inches throughout -- the two controls no longer share one raw value the way every
  *  other bindSlider pair does, so this mirrors bindSlider's own input/change-commit shape with that
  *  one difference instead of forcing a log-aware `parse` through the generic helper. */
-function bindBrickSizeControls() {
+function bindBrickSizeControls(commit = 'generate') {
   const slider = document.getElementById('brickSizeSlider');
   const number = document.getElementById('brickSize');
   const apply = (v) => {
-    if (!Number.isFinite(v)) return;
+    if (!Number.isFinite(v)) return false;
     const clamped = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, v));
     if (slider) slider.value = String(brickSizeToSliderPos(clamped));
     if (number) number.value = String(clamped);
     P.brickSettings.brickLengthIn = clamped;
-    notifyChange();
-    _scheduleLivePreview();
+    return true;
   };
-  const commit = (v) => { apply(v); _commitBrickSlider(); };
-  slider?.addEventListener('input', (e) => apply(sliderPosToBrickSize(parseFloat(e.target.value))));
-  slider?.addEventListener('change', (e) => commit(sliderPosToBrickSize(parseFloat(e.target.value))));
-  number?.addEventListener('input', (e) => apply(parseFloat(e.target.value)));
-  number?.addEventListener('change', (e) => commit(parseFloat(e.target.value)));
+  const drag = (v) => { if (apply(v)) commitBrickSetting(commit, 'onDrag'); };
+  const release = (v) => { if (apply(v)) commitBrickSetting(commit, 'onRelease'); };
+  slider?.addEventListener('input', (e) => drag(sliderPosToBrickSize(parseFloat(e.target.value))));
+  slider?.addEventListener('change', (e) => release(sliderPosToBrickSize(parseFloat(e.target.value))));
+  number?.addEventListener('input', (e) => drag(parseFloat(e.target.value)));
+  number?.addEventListener('change', (e) => release(parseFloat(e.target.value)));
 }
 
-function bindGroutField(id, key) {
+function bindGroutField(id, key, commit = 'generate') {
   document.getElementById(id)?.addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     if (!Number.isFinite(v)) return;
     P.brickSettings.grout[key] = v;
-    notifyChange();
+    commitBrickSetting(commit, 'onDrag');
   });
 }
 
@@ -436,17 +504,19 @@ function renderFramePresetList(container) {
     btn.className = 'cad-btn';
     btn.id = `brickFramePreset_${preset.id}`;
     btn.textContent = preset.label;
-    btn.addEventListener('click', () => {
-      P.brickSettings.frameBandPreset = preset.id;
-      syncFramePresetButtons();
-      // F35 item 8: a different preset can have a different BAND COUNT, so the per-band pattern
-      // picker is fully re-rendered here (not just re-synced) every time the preset changes.
-      renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
-      syncFrameBandPatternButtons();
-      notifyChange();
-    });
+    btn.addEventListener('click', () => setFrameBandPreset(preset.id));
     container.appendChild(btn);
   }
+}
+
+export function setFrameBandPreset(presetId, commit = 'generate') {
+  P.brickSettings.frameBandPreset = presetId;
+  syncFramePresetButtons();
+  // F35 item 8: a different preset can have a different BAND COUNT, so the per-band pattern
+  // picker is fully re-rendered here (not just re-synced) every time the preset changes.
+  renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
+  syncFrameBandPatternButtons();
+  commitBrickSetting(commit);
 }
 
 function syncFramePresetButtons() {
@@ -507,13 +577,15 @@ function renderWallPatternList(container) {
     btn.className = 'cad-btn';
     btn.id = `brickPattern_${pattern.id}`;
     btn.textContent = pattern.label;
-    btn.addEventListener('click', () => {
-      P.brickSettings.pattern = pattern.id;
-      syncWallPatternButtons();
-      notifyChange();
-    });
+    btn.addEventListener('click', () => setWallPattern(pattern.id));
     container.appendChild(btn);
   }
+}
+
+export function setWallPattern(patternId, commit = 'generate') {
+  P.brickSettings.pattern = patternId;
+  syncWallPatternButtons();
+  commitBrickSetting(commit);
 }
 
 function syncWallPatternButtons() {
@@ -556,7 +628,7 @@ function renderFrameBandPatternList(container) {
           if (!P.brickSettings.frameBandPatterns) P.brickSettings.frameBandPatterns = [];
           P.brickSettings.frameBandPatterns[i] = pattern.id;
           syncFrameBandPatternButtons();
-          notifyChange();
+          commitBrickSetting();
         });
       }
       row.appendChild(btn);
@@ -601,6 +673,7 @@ function selectTool(id) {
     // way the Frame tool does; runBricks clips Wall to it via generateBricks
     // when one is usable, and simply fills the whole board when there isn't.
     withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, resolveFrameGeom(editor)));
+    _markLaidNow();
     notifyChange();
     return;
   }
@@ -611,6 +684,7 @@ function selectTool(id) {
       return;
     }
     withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom));
+    _markLaidNow();
     notifyChange();
     return;
   }
@@ -788,14 +862,18 @@ export function initBrickPanel() {
     const v = parseInt(e.target.value, 10);
     if (!Number.isFinite(v)) return;
     P.brickSettings.seed = v;
-    notifyChange();
+    commitBrickSetting('generate', 'onDrag');
   });
-  document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => {
-    const v = Math.floor(Math.random() * 1000000);
-    P.brickSettings.seed = v;
-    document.getElementById('brickSeed').value = v;
-    notifyChange();
-  });
+  document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => setSeed(Math.floor(Math.random() * 1000000)));
+  document.getElementById('brickGenerate')?.addEventListener('click', () => generateBricks());
 
   syncControlsFromState();
+  syncGeneratePending();
+}
+
+export function setSeed(v, commit = 'generate') {
+  P.brickSettings.seed = v;
+  const field = document.getElementById('brickSeed');
+  if (field) field.value = v;
+  commitBrickSetting(commit);
 }
