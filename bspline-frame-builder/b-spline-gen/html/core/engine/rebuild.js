@@ -23,6 +23,7 @@ import { generateHeightmap, resolveGrid } from '../terrain.js';
 import { checkPreBounds, countPostIntersections, resampleDelta } from '../sculpt.js';
 import { sendFusionMeshPreview } from '../fusion-bridge.js';
 import { updateEditorTopView } from '../render-topview.js';
+import { withLoadingStage } from '../loading-signal.js';
 
 import { applyStampLayers } from './apply-stamp-layers.js';
 import { buildThickenData } from './build-thicken-data.js';
@@ -39,53 +40,55 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
     rebuild.isRebuilding = true;
 
     try {
-        const statusBar = document.getElementById('bottomStatusBar');
-        const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
+        await withLoadingStage('rebuild', async () => {
+            const statusBar = document.getElementById('bottomStatusBar');
+            const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
 
-        await yieldToMain();
-        reconcileSculptDeltas(nx, nz);
-
-        // ── Stroke fast-path ─────────────────────────────────────────────────
-        // If a sculpt drag is active and the cached baseline matches the current
-        // grid size, skip the heavy work and just push the new top heights to
-        // the preview. The full rebuild re-runs at onSculptStrokeEnd, which
-        // clears strokeCache.
-        if (canTakeStrokeFastPath(nx, nz)) {
-            handleStrokeFastPath(preview, nx, nz);
             await yieldToMain();
-            return;
-        }
+            reconcileSculptDeltas(nx, nz);
 
-        await yieldToMain();
-        const { heights, cleanHeights, baseHeights, generated } = buildHeights(nx, nz);
-        setLastResult({ ...generated, heights, cleanHeights, baseHeights, nx, nz });
+            // ── Stroke fast-path ─────────────────────────────────────────────
+            // If a sculpt drag is active and the cached baseline matches the
+            // current grid size, skip the heavy work and just push the new top
+            // heights to the preview. The full rebuild re-runs at
+            // onSculptStrokeEnd, which clears strokeCache.
+            if (canTakeStrokeFastPath(nx, nz)) {
+                handleStrokeFastPath(preview, nx, nz);
+                await yieldToMain();
+                return;
+            }
 
-        await yieldToMain();
-        const thicken = buildThickenData(heights, nx, nz, P, {
-            extraThickenThinMask,
-            postDelta,
-        });
-        lastResult.thickenData = thicken.data;
+            await yieldToMain();
+            const { heights, cleanHeights, baseHeights, generated } = buildHeights(nx, nz);
+            setLastResult({ ...generated, heights, cleanHeights, baseHeights, nx, nz });
 
-        await yieldToMain();
-        applySculptNotices(generated.heights, thicken, nx, nz);
+            await yieldToMain();
+            const thicken = buildThickenData(heights, nx, nz, P, {
+                extraThickenThinMask,
+                postDelta,
+            });
+            lastResult.thickenData = thicken.data;
 
-        if (preview) {
-            preview.update(
-                heights, nx, nz, P.widthIn, P.heightIn, P.carveZ,
-                thicken.data?.meshColours, thicken.data?.worstPts ?? [], P.showLeaders,
-                thicken.data?.offsetPts, P.stampRelief,
-                thicken.data?.thinPts ?? [], thicken.data?.intersectPts ?? [],
-                P.thickenWireframe, thicken.data?.botColours, P.flatShading,
-            );
-            updatePreviewSculptMode(preview, scheduleRebuild);
-        }
+            await yieldToMain();
+            applySculptNotices(generated.heights, thicken, nx, nz);
 
-        await yieldToMain();
-        updateEditorTopView(heights, nx, nz);
-        if (isFusionMode) sendFusionMeshPreview(preview);
+            if (preview) {
+                preview.update(
+                    heights, nx, nz, P.widthIn, P.heightIn, P.carveZ,
+                    thicken.data?.meshColours, thicken.data?.worstPts ?? [], P.showLeaders,
+                    thicken.data?.offsetPts, P.stampRelief,
+                    thicken.data?.thinPts ?? [], thicken.data?.intersectPts ?? [],
+                    P.thickenWireframe, thicken.data?.botColours, P.flatShading, P.adaptiveDisplay,
+                );
+                updatePreviewSculptMode(preview, scheduleRebuild);
+            }
 
-        if (statusBar) updateStatusBar(statusBar, thicken, nx, nz);
+            await yieldToMain();
+            updateEditorTopView(heights, nx, nz);
+            if (isFusionMode) sendFusionMeshPreview(preview);
+
+            if (statusBar) updateStatusBar(statusBar, thicken, nx, nz);
+        }, { spacing: P.spacing });
     } finally {
         rebuild.isRebuilding = false;
         if (rebuild.pendingRebuild) {
@@ -158,7 +161,7 @@ function handleStrokeFastPath(preview, nx, nz) {
         thickenData?.meshColours, thickenData?.worstPts ?? [], P.showLeaders,
         thickenData?.offsetPts, P.stampRelief,
         thickenData?.thinPts ?? [], thickenData?.intersectPts ?? [],
-        P.thickenWireframe, thickenData?.botColours, P.flatShading,
+        P.thickenWireframe, thickenData?.botColours, P.flatShading, P.adaptiveDisplay,
     );
     // NOTE: deliberately skipping updatePreviewSculptMode — it would call
     // setSculptMode → _clearSculptOverlays on every tick, and the sculpt

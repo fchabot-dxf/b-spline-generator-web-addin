@@ -17,28 +17,53 @@
  * initBrickPanel() runs at app start. Every tool action below reads
  * `window.svgEditor` fresh at the point of use instead of caching it.
  */
-import { P, saveLastSession } from '../core/state.js';
-import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives } from '../editor/editor-brick-tool.js';
+import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
+import { withLoadingStage } from '../core/loading-signal.js';
+import { showToast } from '../core/toast.js';
+import {
+  runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS,
+  BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor,
+} from '../editor/editor-brick-tool.js';
+import { commitEdit } from '../editor/editor-commit.js';
+import { BRICK_CONTROL_REQUIRES, requirementMet } from './brick-control-requires.js';
+import { ENGINE_OPTIONS } from '../core/bricks/index.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
+import { rectToPrimitives } from '../core/inset-window.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
-import { setEditorTab } from './editor-tabs.js';
+import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
+import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
- * entries plus their engine function, no UI rework"). `settingsSection` is
- * reserved for a future per-tool settings block (Wall's zones, Frame's band
- * picker) -- null for now, every tool uses only the common controls below.
+ * entries plus their engine function, no UI rework"). `settingsSection` names
+ * the DOM id of that tool's own settings block, shown ONLY while it's the
+ * active tool (syncToolSections, below) -- null for a tool with none of its
+ * own (Scissors/Stripe act on an existing stroke, no settings to show).
+ * F35 item 16 follow-up (Fred, live use: "shows every section at once, can't
+ * tell what applies"): Brush was the only consumer when this field was first
+ * declared (a direct `_activeTool === 'brush'` check, not worth generalizing
+ * for one); Wall and Frame needing the exact same treatment is the 3rd
+ * consumer that justifies the declared table this always meant to become.
  * `run` is this file's own entry point for that tool (not re-exported --
  * core/bricks/ itself stays engine-agnostic of "how a UI triggers it"). */
 const BRICK_TOOLS = [
-  { id: 'brush', buttonId: 'brickTool_brush', label: 'Brush', icon: '✏️', settingsSection: null,
+  { id: 'brush', buttonId: 'brickTool_brush', label: 'Brush', icon: '✏️', settingsSection: 'brickBrushSection',
     hint: 'Click here, then drag a stroke on the canvas to lay bricks along it.' },
-  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: null,
-    hint: 'Fills the whole board with bricks.' },
-  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '🖼️', settingsSection: null,
-    hint: 'Bands of bricks along the current frame\'s own contour.' },
+  // F35 item 16 (turn 201): the RAISED BRUSH -- a variant of Brush (`variantOf`: the same brickBrush mode,
+  // same stroke machinery) whose strokes carry `strokeOverrides` (its Level + mode), frozen per stroke.
+  { id: 'raisedBrush', buttonId: 'brickTool_raisedBrush', label: 'Raised brush', icon: '⏫', settingsSection: 'brickRaisedSection',
+    variantOf: 'brush', strokeOverrides: () => ({ levelIn: P.brickSettings.raisedLevelIn, strokeMode: P.brickSettings.raisedMode }),
+    hint: 'Drag a stroke: bricks laid proud of the others by Level.' },
+  // `generates` (audit C9): Generate re-lays this tool's output, so the pinned Generate shows for it.
+  // Brush/Scissors/Stripe act on drawn strokes, whose settings freeze at draw time.
+  // `lays` (audit C1): the ONE element kind this tool lays (editor-brick-tool.js BRICK_KINDS). Picking the
+  // tool only shows its settings (audit C2); Generate lays it.
+  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true, lays: 'wall',
+    hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Press Generate to lay it.' },
+  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame',
+    hint: 'Bands of bricks along the frame\'s contour (or the board\'s edge with Offset from frame off). Press Generate to lay them.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
   // (editor-cut-tool.js) with zero changes needed there. Only applies to
@@ -47,7 +72,9 @@ const BRICK_TOOLS = [
   // not an oversight).
   { id: 'scissors', buttonId: 'brickTool_scissors', label: 'Scissors', icon: '✂️', settingsSection: null,
     hint: 'Tap a brush stroke to split it -- each piece regenerates its own bricks independently once moved apart.' },
-  { id: 'stripe', buttonId: 'brickTool_stripe', label: 'Stripe', icon: '📏', settingsSection: null,
+  // sharedRows: false (turn 197) -- a stripe pick restyles EXISTING strokes, so the panel's shared rows
+  // (BRICK_SHARED_SECTIONS: Set, Brick size .. Seed) don't apply and are hidden
+  { id: 'stripe', buttonId: 'brickTool_stripe', label: 'Stripe', icon: '📏', settingsSection: 'brickStripeSection', sharedRows: false,
     hint: 'Tap a brush stroke to split it into alternating brick-style runs.' },
 ];
 
@@ -58,6 +85,8 @@ function notifyChange() { saveLastSession(); }
 function syncSetPicker() {
   document.getElementById('brickSetRed')?.classList.toggle('active', P.brickSettings.setId === 1);
   document.getElementById('brickSetWhite')?.classList.toggle('active', P.brickSettings.setId === 3);
+  syncQuickSettings();
+  syncLargeStonesRow();
 }
 
 /** Switching sets also resets the grout WIDTH field to that set's own
@@ -71,14 +100,14 @@ function syncSetPicker() {
  *  user who picked "2 inch bricks" means 2 inches regardless of which photo
  *  texture is applied, the same way Wall/Brush's own old relative Scale
  *  multiplier never needed a reset either. */
-function selectSet(setId) {
+export function selectSet(setId, commit = 'generate') {
   const set = brickSetById(setId);
   if (!set) return;
   P.brickSettings.setId = setId;
   P.brickSettings.grout.widthIn = set.grout.widthIn;
   syncSetPicker();
   syncControlsFromState();
-  notifyChange();
+  commitBrickSetting(commit);
 }
 
 /** F35 item 16 (Fred, "replacing the 0.5-2x multiplier with a BRICK SIZE control in inches"):
@@ -133,15 +162,15 @@ function syncBrickSizePresetButtons() {
   for (const preset of BRICK_SIZE_PRESETS) {
     document.getElementById(`brickSizePreset_${preset.id}`)?.classList.toggle('active', preset.lengthIn === P.brickSettings.brickLengthIn);
   }
+  syncQuickSettings();
 }
 
-function setBrickSize(lengthIn) {
+export function setBrickSize(lengthIn, commit = 'generate') {
   const v = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, lengthIn));
   P.brickSettings.brickLengthIn = v;
   syncBrickSizeControls(v);
   syncBrickSizePresetButtons();
-  notifyChange();
-  _scheduleLivePreview();
+  commitBrickSetting(commit);
 }
 
 /** Writes the real inches value `v` to BOTH controls -- the slider's own raw DOM value is its LOG
@@ -154,11 +183,16 @@ function syncBrickSizeControls(v) {
   if (number) number.value = String(v);
 }
 
-function setGroutProfile(profile) {
+function _writeGroutProfile(profile) {
   P.brickSettings.grout.profile = profile;
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', profile === 'recessed');
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', profile === 'flush');
-  notifyChange();
+}
+
+export function setGroutProfile(profile, commit = 'surface') { // F35 item 18: height-only (the joint recess)
+  _writeGroutProfile(profile);
+  delete P.brickSettings.groutProfileBeforeStyle; // the user's own pick wins over a style's restore
+  commitBrickSetting(commit);
 }
 
 function syncReliefToggle() {
@@ -167,10 +201,240 @@ function syncReliefToggle() {
   document.getElementById('brickBtnReliefCarved')?.classList.toggle('active', inverted);
 }
 
-function setInvert(on) {
+export function setInvert(on, commit = 'generate') {
   P.brickSettings.invert = on;
   syncReliefToggle();
+  commitBrickSetting(commit);
+}
+
+/** F35 item 18 (1): brick top FLAT | ORGANIC -- same 2-state `.relief-toggle` as Relief above. */
+function syncBrickTopToggle() {
+  const flat = P.brickSettings.brickTopMode === 'flat';
+  document.getElementById('brickBtnTopOrganic')?.classList.toggle('active', !flat);
+  document.getElementById('brickBtnTopFlat')?.classList.toggle('active', flat);
+}
+
+/** F35 item 16: the Frame tool's offset from frame -- the band contour moves, so it is a LAYOUT setting
+ *  ('generate': pending until Generate, like every other editor Brick-tab setting). */
+export function setFrameOffset({ on, distance }, commit = 'generate') {
+  const cur = P.brickSettings.frameOffset || { on: true, distance: 0 };
+  const d = Number(distance);
+  P.brickSettings.frameOffset = { on: on === undefined ? cur.on !== false : !!on, distance: Number.isFinite(d) ? d : (cur.distance || 0) };
+  syncFrameOffsetControls();
+  commitBrickSetting(commit);
+}
+
+function syncFrameOffsetControls() {
+  const off = P.brickSettings.frameOffset || { on: true, distance: 0 };
+  const box = document.getElementById('brickFrameOffsetOn');
+  const dist = document.getElementById('brickFrameOffsetDistance');
+  if (box) box.checked = off.on !== false;
+  if (dist) { dist.value = off.distance || 0; dist.disabled = off.on === false; }
+}
+
+/** F35 item 16: an element's LEVEL (height offset, inches) -- read only by the height mask, so 3D-only
+ *  ('surface': re-mask at once, never re-lay, never pending). One input per kind: #brickLevel_<kind>. */
+export function setElementLevel(kind, levelIn, commit = 'surface') {
+  const v = Number(levelIn);
+  if (!Number.isFinite(v)) return;
+  P.brickSettings.elementLevelIn = { ...(P.brickSettings.elementLevelIn || {}), [kind]: v };
+  syncElementLevels();
+  commitBrickSetting(commit);
+}
+
+function syncElementLevels() {
+  const levels = P.brickSettings.elementLevelIn || {};
+  for (const kind of BRICK_KINDS) {
+    const el = document.getElementById(`brickLevel_${kind}`);
+    if (el && document.activeElement !== el) el.value = levels[kind] || 0;
+  }
+}
+
+/** Audit C6: the Stripe panel in the Brick tab -- its A/B/C slots pick a brick STYLE (thumbnails from
+ *  BRICK_STRIPE_STYLES), Artwork's colour swatches/presets/reset are hidden. Elsewhere it is untouched. */
+const STRIPE_SLOTS = ['A', 'B', 'C'];
+const _thumbOf = (style) => { const set = brickSetById(style.setId); return set && set.samples && set.samples[0] ? set.samples[0].image : ''; };
+
+function renderStripeBrickStyles(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  STRIPE_SLOTS.forEach((slot, i) => {
+    const row = document.createElement('div');
+    row.id = `stripeBrickSlot_${slot}`;
+    row.style.cssText = 'display:flex; align-items:center; gap:4px;';
+    const tag = document.createElement('span');
+    tag.textContent = slot;
+    tag.style.cssText = 'width:12px; font-weight:600;';
+    row.appendChild(tag);
+    for (const style of BRICK_STRIPE_STYLES) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = `stripeBrickStyle_${slot}_${style.id}`;
+      btn.title = style.label;
+      btn.className = 'stripe-brick-style-btn';
+      btn.style.cssText = 'flex:1; height:30px; padding:2px; border:1px solid #ccc; border-radius:3px; background:#fff; cursor:pointer; position:relative;';
+      const img = document.createElement('img');
+      img.src = _thumbOf(style);
+      img.alt = style.label;
+      img.style.cssText = 'width:100%; height:100%; object-fit:cover; display:block;'
+        + (style.profile === 'continuous' ? ' filter:blur(0.6px) saturate(0.85);' : '');
+      btn.appendChild(img);
+      if (style.profile === 'continuous') {
+        const band = document.createElement('span'); // "one band": no joints
+        band.textContent = '=';
+        band.style.cssText = 'position:absolute; right:2px; bottom:0; font-size:10px; font-weight:700; color:#fff; text-shadow:0 0 2px #000;';
+        btn.appendChild(band);
+      }
+      btn.addEventListener('click', () => setStripeStyle(i, style.id));
+      row.appendChild(btn);
+    }
+    container.appendChild(row);
+  });
+}
+
+function syncStripeBrickStyles() {
+  const picks = P.brickSettings.stripeStyles || DEFAULT_STRIPE_STYLE_PICKS;
+  const useC = !!document.getElementById('stripeThree')?.checked;
+  STRIPE_SLOTS.forEach((slot, i) => {
+    const row = document.getElementById(`stripeBrickSlot_${slot}`);
+    if (row) row.style.display = i < 2 || useC ? 'flex' : 'none';
+    for (const style of BRICK_STRIPE_STYLES) {
+      const btn = document.getElementById(`stripeBrickStyle_${slot}_${style.id}`);
+      if (!btn) continue;
+      const on = (picks[i] || DEFAULT_STRIPE_STYLE_PICKS[i]) === style.id;
+      btn.classList.toggle('active', on);
+      btn.style.outline = on ? '2px solid #0078d4' : 'none';
+    }
+  });
+}
+
+function syncStripePanelContext() {
+  const brick = getEditorTab() === 'brick';
+  const show = (id, on, display = '') => { const el = document.getElementById(id); if (el) el.style.display = on ? display : 'none'; };
+  show('stripeColorPresets', !brick, 'flex');
+  show('stripeColorSwatches', !brick, 'flex');
+  show('stripeColorsReset', !brick);
+  show('stripeBrickStyles', brick, 'flex');
+  const label = document.getElementById('stripeColoursLabel');
+  if (label) label.textContent = brick ? 'Brick styles' : 'Colours';
+  const hint = document.getElementById('stripeTargetHint');
+  if (hint) {
+    if (hint.dataset.artworkText == null) hint.dataset.artworkText = hint.textContent;
+    hint.textContent = brick ? 'Tap a brush stroke to split it into runs; each run takes brick style A / B (/ C), in order. Tap it again to re-stripe.' : hint.dataset.artworkText;
+  }
+  if (brick) syncStripeBrickStyles();
+}
+
+/** Audit C6: pick slot `slot`'s (0 = A) brick style. Brush strokes only (never pending the Wall/Frame);
+ *  re-commits so every striped run shows the new pick at once (regenerateOwnedBrickElements on commit). */
+export function setStripeStyle(slot, styleId) {
+  if (!BRICK_STRIPE_STYLES.some((s) => s.id === styleId)) return;
+  const picks = [...(P.brickSettings.stripeStyles || DEFAULT_STRIPE_STYLE_PICKS)];
+  picks[slot] = styleId;
+  P.brickSettings.stripeStyles = picks;
+  syncStripeBrickStyles();
   notifyChange();
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (editor) { editor._brickSettings = P.brickSettings; commitEdit(editor); }
+}
+
+/** turn 201: the Raised brush's modes, declared. 'grout' needs the engine's grout cut (BRICK_CONTROL_REQUIRES
+ *  hides it until core/bricks ENGINE_OPTIONS lists 'groutCut'). */
+const RAISED_BRUSH_MODES = [
+  { id: 'bricks', label: 'Raised bricks', title: 'Lay bricks along the stroke, proud of the others by Level' },
+  { id: 'grout', label: 'Grout cut', title: 'Cut grout joints through the existing bricks wherever the stroke goes' },
+];
+
+function renderRaisedModeToggle(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const mode of RAISED_BRUSH_MODES) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'relief-toggle-btn';
+    btn.id = `brickRaisedMode_${mode.id}`;
+    btn.title = mode.title;
+    const span = document.createElement('span');
+    span.textContent = mode.label;
+    btn.appendChild(span);
+    btn.addEventListener('click', () => setRaisedMode(mode.id));
+    container.appendChild(btn);
+  }
+}
+
+function syncRaisedSection() {
+  for (const mode of RAISED_BRUSH_MODES) {
+    const btn = document.getElementById(`brickRaisedMode_${mode.id}`);
+    if (!btn) continue;
+    btn.classList.toggle('active', mode.id === P.brickSettings.raisedMode);
+    btn.style.display = _hiddenUntilMet(btn.id) ? 'none' : '';
+  }
+  const lvl = document.getElementById('brickRaisedLevel');
+  if (lvl && document.activeElement !== lvl) lvl.value = Number.isFinite(P.brickSettings.raisedLevelIn) ? P.brickSettings.raisedLevelIn : 0.0625;
+}
+
+/** turn 201: a Raised-brush setting -- read at the next stroke (frozen per stroke), never pending the Wall. */
+export function setRaisedMode(modeId) {
+  if (!RAISED_BRUSH_MODES.some((m) => m.id === modeId) || _hiddenUntilMet(`brickRaisedMode_${modeId}`)) return;
+  P.brickSettings.raisedMode = modeId;
+  syncRaisedSection();
+  notifyChange();
+}
+
+export function setBrickTopMode(mode, commit = 'surface') {
+  P.brickSettings.brickTopMode = mode === 'flat' ? 'flat' : 'organic';
+  syncBrickTopToggle();
+  commitBrickSetting(commit);
+}
+
+/** F35 item 18 (2): the Surface style toggle, one button per declared BRICK_SURFACE_STYLES entry. */
+function renderSurfaceStyleToggle(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const style of Object.values(BRICK_SURFACE_STYLES)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'relief-toggle-btn';
+    btn.id = `brickSurfaceStyle_${style.id}`;
+    btn.title = style.title;
+    const label = document.createElement('span');
+    label.textContent = style.label;
+    btn.appendChild(label);
+    btn.addEventListener('click', () => setSurfaceStyle(style.id));
+    container.appendChild(btn);
+  }
+}
+
+function syncSurfaceStyleToggle() {
+  const current = surfaceStyleById(P.brickSettings.surfaceStyle);
+  for (const style of Object.values(BRICK_SURFACE_STYLES)) {
+    document.getElementById(`brickSurfaceStyle_${style.id}`)?.classList.toggle('active', style.id === current.id);
+  }
+  // the Wear slider shows only for a style that declares `wear` (Weathered)
+  const row = document.getElementById('brickSurfaceWearRow');
+  if (row) row.style.display = current.wear ? '' : 'none';
+  if (current.wear) {
+    const w = Number.isFinite(P.brickSettings.surfaceWear) ? P.brickSettings.surfaceWear : current.wear.default;
+    setPair('brickSurfaceWearSlider', 'brickSurfaceWear', w);
+  }
+}
+
+export function setSurfaceStyle(styleId, commit = 'surface') {
+  const style = surfaceStyleById(styleId);
+  P.brickSettings.surfaceStyle = style.id;
+  // the style's declared grout profile (Weathered -> Recessed); a style without one restores what it replaced
+  const s = P.brickSettings;
+  if (style.groutProfile) {
+    if (s.grout.profile !== style.groutProfile) {
+      if (s.groutProfileBeforeStyle == null) s.groutProfileBeforeStyle = s.grout.profile;
+      _writeGroutProfile(style.groutProfile);
+    }
+  } else if (s.groutProfileBeforeStyle != null) {
+    _writeGroutProfile(s.groutProfileBeforeStyle);
+    delete s.groutProfileBeforeStyle;
+  }
+  syncSurfaceStyleToggle();
+  commitBrickSetting(commit);
 }
 
 /** F35 item 10 follow-up: the Brush tool's own Profile/Orientation toggles --
@@ -229,14 +493,37 @@ function setOrientation(v) {
   notifyChange();
 }
 
-/** Shown only while Brush is the active tool (BRICK_TOOLS' own
- *  `settingsSection` field is reserved for exactly this per-tool-section
- *  concept but unused elsewhere yet -- Brush is the first tool that needs
- *  one, so this stays a direct `_activeTool === 'brush'` check rather than
- *  generalizing settingsSection for a single consumer). */
-function syncBrushSection() {
-  const el = document.getElementById('brickBrushSection');
-  if (el) el.style.display = _activeTool === 'brush' ? '' : 'none';
+/** Shows ONLY the active tool's own settings section (BRICK_TOOLS' own declared
+ *  `settingsSection`), hides every other tool's -- Scissors/Stripe have none (null), so
+ *  selecting either hides Brush/Wall/Frame's sections with nothing of their own to show. */
+/** Turn 197: the panel's shared rows -- shown for every tool unless it declares `sharedRows: false`. */
+const BRICK_SHARED_SECTIONS = ['brickSharedSet', 'brickSharedLayout'];
+
+function syncToolSections() {
+  for (const tool of BRICK_TOOLS) {
+    if (!tool.settingsSection) continue;
+    const el = document.getElementById(tool.settingsSection);
+    if (el) el.style.display = tool.id === _activeTool ? '' : 'none';
+  }
+  const active = BRICK_TOOLS.find((t) => t.id === _activeTool);
+  const shared = !active || active.sharedRows !== false;
+  for (const id of BRICK_SHARED_SECTIONS) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = shared ? '' : 'none';
+  }
+}
+
+/** F35 item 21: the Large stones row shows only while the Wall's layout is fieldstone. */
+const _hiddenUntilMet = (id) => {
+  const rule = BRICK_CONTROL_REQUIRES.find((r) => r.hides && r.controls.includes(id));
+  return !!rule && !requirementMet(rule.requires, document.getElementById(rule.requires.control), { engineOptions: ENGINE_OPTIONS });
+};
+
+function syncLargeStonesRow() {
+  const row = document.getElementById('brickLargeStonesRow');
+  // fieldstone walls only, AND only once the engine honours the option (turn 199: never a dead control)
+  if (row) row.style.display = wallLayoutFor(P.brickSettings) === 'fieldstone' && !_hiddenUntilMet('brickLargeStonesRow') ? '' : 'none';
+  setPair('brickLargeStonesSlider', 'brickLargeStones', Number.isFinite(P.brickSettings.largeStones) ? P.brickSettings.largeStones : 0.5);
 }
 
 function setPair(sliderId, numberId, v) {
@@ -262,20 +549,27 @@ function syncControlsFromState() {
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', s.grout.profile === 'recessed');
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', s.grout.profile === 'flush');
   syncReliefToggle();
+  syncControlRequires();
+  syncRaisedSection();
+  syncBrickTopToggle();
+  syncSurfaceStyleToggle();
+  syncFrameOffsetControls();
+  syncElementLevels();
   setPair('brickReliefHeightSlider', 'brickReliefHeight', s.reliefIn);
   setPair('brickSuppressionSlider', 'brickSuppression', s.suppression);
   setPair('brickClumpingSlider', 'brickClumping', s.clumping);
   document.getElementById('brickSeed').value = s.seed;
   syncProfileToggle();
   syncOrientationToggle();
-  syncBrushSection();
+  syncToolSections();
 }
 
-/** F35 item 10 follow-up (Fred, folded in with the slider-timing ask): a Brick-tab slider
- *  regenerates on RELEASE ('change': blur/Enter/mouse-up), not on every raw drag tick ('input') --
- *  but WITH a live, throttled 2D-only preview while dragging so the canvas doesn't sit stale for
- *  the length of the drag. Declared ONCE here -- every bindSlider call site below shares this one
- *  mechanism, not a per-slider copy. Wall/Frame only: a Brush stroke's own settings are frozen at
+/** F35 item 10 follow-up (Fred, folded in with the slider-timing ask): an 'auto'-committed brick
+ *  slider (the main sidebar's -- BRICK_COMMIT below) regenerates on RELEASE ('change': blur/Enter/
+ *  mouse-up), not on every raw drag tick ('input'), WITH a live, throttled 2D-only preview while
+ *  dragging. The editor Brick tab's own sliders are 'generate' bindings: no preview, no re-lay,
+ *  they only mark Generate pending (audit K4: this header used to describe them as re-laying).
+ *  Declared ONCE here -- every bindSlider call site below shares this one mechanism. Wall/Frame only: a Brush stroke's own settings are frozen at
  *  draw time (no existing "edit an already-drawn element" mechanism, see the Brush-section header
  *  above), so there is nothing for a slider to live-preview while Brush is the active tool. */
 const LIVE_PREVIEW_INTERVAL_MS = 100; // ~10/sec, Fred's own spec
@@ -294,7 +588,7 @@ function _runLivePreview() {
   if (_activeTool === 'frame' && !frameGeom) return; // Frame tool, no usable frame: nothing to preview
   if (_dragSlow) { runBricksOutlinePreview(editor); return; }
   const t0 = performance.now();
-  runBricksPreview(editor, P.brickSettings, frameGeom); // Wall: frameGeom may legitimately be undefined (whole-board fill)
+  runBricksPreview(editor, P.brickSettings, frameGeom, _kindsToLay(editor, frameGeom)); // Wall: frameGeom may be undefined (whole-board fill)
   if (performance.now() - t0 > SLOW_PREVIEW_MS) _dragSlow = true; // this drag only -- commit resets it
 }
 
@@ -309,20 +603,194 @@ function _scheduleLivePreview() {
   });
 }
 
-function _commitBrickSlider() {
-  _cancelLivePreview();
-  _dragSlow = false;
+/** Fred (2026-10-04): WHERE a brick-setting change comes from decides how it is committed --
+ *  declared per control binding, never an ad-hoc if at the call site. Same P.brickSettings underneath.
+ *  - 'generate': the editor's Brick tab. The change is saved and the layout is only marked PENDING;
+ *    the sticky Generate button (#brickGenerate) is the one thing that re-lays it. No live preview
+ *    either -- a preview would re-lay the canvas without a Generate press.
+ *  - 'auto': the main sidebar's quick settings. The change re-lays straight away (brick layout +
+ *    layer tooling -> height/3D, via runBricks), with the live 2D preview while a slider drags.
+ *  onDrag = a slider/field's raw 'input' tick; onRelease = a slider's 'change' or a discrete click. */
+const BRICK_COMMIT = {
+  generate: {
+    onDrag: () => { notifyChange(); _noteSettingChanged(); },
+    onRelease: () => { notifyChange(); _noteSettingChanged(); },
+  },
+  auto: {
+    onDrag: () => { notifyChange(); _scheduleLivePreview(); },
+    onRelease: () => { notifyChange(); generateBricks(); },
+  },
+  // F35 item 18: a 3D-only setting (SURFACE_ONLY_SETTING_KEYS below) -- the 2D layout is unchanged,
+  // so nothing to re-lay and nothing pending: just re-mask the heights through the editor's own
+  // change pipeline (main/app-init.js onChange -> refreshAllStampMasks), from either entry point.
+  // a drag tick only saves; the re-mask (the expensive height pass) runs once on release
+  surface: {
+    onDrag: () => { notifyChange(); },
+    onRelease: () => { notifyChange(); _remaskSurface(); },
+  },
+};
+
+function _remaskSurface() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  if (!editor) return;
-  if (_activeTool === 'wall') {
-    runBricks(editor, P.brickSettings, resolveFrameGeom(editor));
-  } else if (_activeTool === 'frame') {
-    const frameGeom = resolveFrameGeom(editor);
-    if (frameGeom) runBricks(editor, P.brickSettings, frameGeom);
+  if (editor && typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+}
+
+/** The one entry point every brick-setting control calls after writing P.brickSettings. */
+export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
+  (BRICK_COMMIT[commit] || BRICK_COMMIT.generate)[phase]();
+  syncControlRequires();
+}
+
+/** Audit (88's matrix): grey out every control whose declared requirement is unmet
+ *  (main/brick-control-requires.js) -- disabled, with the reason as its tooltip. */
+function syncControlRequires() {
+  for (const rule of BRICK_CONTROL_REQUIRES) {
+    if (rule.hides) continue; // hidden-while-unmet rules are applied by the control's own row sync
+    const met = requirementMet(rule.requires, document.getElementById(rule.requires.control));
+    for (const id of rule.controls) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      el.disabled = !met;
+      if (!met) el.title = rule.why;
+      else if (el.title === rule.why) el.removeAttribute('title');
+    }
   }
 }
 
-function bindSlider(sliderId, numberId, key, parse = parseFloat) {
+/** Settings keys a Wall/Frame layout never reads -- a Brush stroke's own settings freeze at draw
+ *  time, so changing them never makes the Wall/Frame layout pending. */
+const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 'stripeStyles', 'raisedLevelIn', 'raisedMode'];
+/** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
+ *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'elementLevelIn'];
+/** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
+const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
+const LAYOUT_IGNORED_SETTING_KEYS = [...BRUSH_ONLY_SETTING_KEYS, ...SURFACE_ONLY_SETTING_KEYS];
+// The replacer's `this` is the holder: top-level keys, plus the grout group's own surface-only keys.
+const _settingsKey = () => JSON.stringify(P.brickSettings, function (k, v) {
+  if (this === P.brickSettings && LAYOUT_IGNORED_SETTING_KEYS.includes(k)) return undefined;
+  if (this === P.brickSettings.grout && SURFACE_ONLY_GROUT_KEYS.includes(k)) return undefined;
+  return v;
+});
+/** F35 item 20: the Wall flows around the brush strokes, so its layout ALSO depends on them -- the
+ *  brush footprints (every brush brick's points) join the laid key while a Wall is on the canvas.
+ *  Adding, editing or deleting a stroke then makes the Wall pending (editor) like any layout setting. */
+function _brushKey() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  const node = editor?._sketchLayer?.node;
+  if (!node?.querySelector?.('[data-brick-gen="1"][data-brick="wall"]')) return '';
+  return brushExclusions(editor).map((e) => e.polygon.map((p) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ')).sort().join('|');
+}
+const _layoutKey = () => {
+  const brush = _brushKey();
+  return brush ? `${_settingsKey()}#brush:${brush}` : _settingsKey();
+};
+// Audit B1-B3: the settings the Wall/Frame bricks on the canvas were laid with live ON the Bricks
+// layer (`brickLaidKey`, stamped by runBricks before its undo commit, persisted with the layer
+// roster), so undo/redo, Cancel and reload all carry them -- module memory did not. No key on the
+// layer (no bricks laid, or bricks saved before this field): a change made then can't be compared,
+// so it stays pending until the next Generate.
+let _changedWhileUnknown = false;
+
+function _laidLayoutKey() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  const layer = (editor?._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
+  return layer?.brickLaidKey ?? null;
+}
+
+function isGeneratePending() {
+  const laid = _laidLayoutKey();
+  return laid === null ? _changedWhileUnknown : _layoutKey() !== laid;
+}
+
+function _noteSettingChanged() {
+  if (_laidLayoutKey() === null) _changedWhileUnknown = true;
+  syncGeneratePending();
+}
+
+/** Audit C3/C11: where else the pending state shows, so it stays visible with no tool picked (the
+ *  Brick panel then gives way to Layers) and at the phone drawer's peek height. Marked with the
+ *  `data-brick-pending` attribute; editor.css draws the dot. */
+const PENDING_INDICATORS = [
+  { id: 'editorTabBrick', when: () => true },
+  { id: 'editorDrawerTab-layers', when: () => getEditorTab() === 'brick' }, // the drawer's label for the ACTIVE tab
+];
+
+function syncGeneratePending() {
+  const pending = isGeneratePending();
+  for (const ind of PENDING_INDICATORS) {
+    document.getElementById(ind.id)?.toggleAttribute('data-brick-pending', pending && ind.when());
+  }
+  const btn = document.getElementById('brickGenerate');
+  if (!btn) return;
+  btn.textContent = pending ? 'Generate \u2022' : 'Generate';
+  btn.classList.toggle('pending', pending);
+  btn.title = pending ? 'Brick settings changed -- press Generate to re-lay the bricks' : 'Re-lay the Wall/Frame bricks';
+}
+
+/** Lay the given element kinds with the current settings, stamping their key on the Bricks layer. */
+function _layBricks(editor, frameGeom, kinds) {
+  // Turn 195: an engine throw keeps the previous bricks (runBricks computes before it clears) and says
+  // so -- never an empty canvas with no message. The layout stays pending (nothing new was laid).
+  let failed = null;
+  withLoadingStage('bricks', () => {
+    try { runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey(), kinds }); }
+    catch (e) { failed = e; }
+  });
+  if (failed) {
+    console.error('Brick Generate failed:', failed);
+    showToast(`Generate failed -- the previous bricks are kept (${(failed && failed.message) || failed})`, 'error');
+    syncGeneratePending();
+    return false;
+  }
+  _changedWhileUnknown = false;
+  syncGeneratePending();
+  // Audit C8: the layer's visibility is the user's choice, so it is not flipped back on -- but a
+  // re-lay nobody can see must not pass silently.
+  const layer = (editor._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
+  if (layer && layer.visible === false) showToast('Bricks re-laid on the hidden Bricks layer -- show it in Layers to see them', 'warn');
+}
+
+/** Audit C1: what Generate lays -- every element kind already on the canvas, plus the active tool's
+ *  own kind (BRICK_TOOLS `lays`). Frame needs a usable frame. A Wall alone never brings Frame bands. */
+function _kindsToLay(editor, frameGeom) {
+  const node = editor?._sketchLayer?.node;
+  const present = (kind) => !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`);
+  const active = BRICK_TOOLS.find((t) => t.id === _activeTool);
+  return BRICK_KINDS.filter((kind) => (present(kind) || (active && active.lays === kind)) && (kind !== 'frame' || !!frameGeom));
+}
+
+/** Generate: re-lay the Wall/Frame bricks with the CURRENT settings -- whatever Wall/Frame bricks
+ *  are already on the canvas, or the active Wall/Frame tool's own output (Frame needs a usable
+ *  frame). Wall and Frame are laid together by one runBricks call (editor-brick-tool.js), so there
+ *  is no per-element subset to pick. Brush strokes are untouched (frozen at draw time). */
+export function generateBricks() {
+  _cancelLivePreview();
+  _dragSlow = false;
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!editor) return false;
+  const frameGeom = resolveFrameGeom(editor);
+  const kinds = _kindsToLay(editor, frameGeom);
+  if (!kinds.length) return false;
+  return _layBricks(editor, frameGeom, kinds) !== false;
+}
+
+/** Turn 197 (88's matrix): a NUMBER BOX applies while typing, like a slider's release -- for a commit
+ *  that applies at once ('surface' re-mask, 'auto' re-lay), each keystroke saves and the apply runs once
+ *  typing pauses for NUMBER_BOX_SETTLE_MS (a re-mask per keystroke would be the expensive height pass).
+ *  'generate' boxes already mark pending on every keystroke. */
+const NUMBER_BOX_SETTLE_MS = 400;
+const APPLIES_AT_ONCE = new Set(['surface', 'auto']);
+function settleAfterTyping(commit) {
+  if (!APPLIES_AT_ONCE.has(commit)) return () => {};
+  let timer = null;
+  return () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => commitBrickSetting(commit, 'onRelease'), NUMBER_BOX_SETTLE_MS);
+  };
+}
+
+export function bindSlider(sliderId, numberId, key, parse = parseFloat, commit = 'generate') {
   const slider = document.getElementById(sliderId);
   const number = document.getElementById(numberId);
   const apply = (raw) => {
@@ -331,14 +799,15 @@ function bindSlider(sliderId, numberId, key, parse = parseFloat) {
     if (slider) slider.value = String(v);
     if (number) number.value = String(v);
     P.brickSettings[key] = v;
-    notifyChange();
-    _scheduleLivePreview();
+    return true;
   };
-  const commit = (raw) => { apply(raw); _commitBrickSlider(); };
-  slider?.addEventListener('input', (e) => apply(e.target.value));
-  slider?.addEventListener('change', (e) => commit(e.target.value));
-  number?.addEventListener('input', (e) => apply(e.target.value));
-  number?.addEventListener('change', (e) => commit(e.target.value));
+  const drag = (raw) => { if (apply(raw)) commitBrickSetting(commit, 'onDrag'); };
+  const release = (raw) => { if (apply(raw)) commitBrickSetting(commit, 'onRelease'); };
+  const settle = settleAfterTyping(commit);
+  slider?.addEventListener('input', (e) => drag(e.target.value));
+  slider?.addEventListener('change', (e) => release(e.target.value));
+  number?.addEventListener('input', (e) => { drag(e.target.value); settle(); });
+  number?.addEventListener('change', (e) => release(e.target.value));
 }
 
 /** Brick size's own binder, not the shared bindSlider above: the slider's raw DOM value is a LOG
@@ -346,32 +815,35 @@ function bindSlider(sliderId, numberId, key, parse = parseFloat) {
  *  stays real inches throughout -- the two controls no longer share one raw value the way every
  *  other bindSlider pair does, so this mirrors bindSlider's own input/change-commit shape with that
  *  one difference instead of forcing a log-aware `parse` through the generic helper. */
-function bindBrickSizeControls() {
+function bindBrickSizeControls(commit = 'generate') {
   const slider = document.getElementById('brickSizeSlider');
   const number = document.getElementById('brickSize');
   const apply = (v) => {
-    if (!Number.isFinite(v)) return;
+    if (!Number.isFinite(v)) return false;
     const clamped = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, v));
     if (slider) slider.value = String(brickSizeToSliderPos(clamped));
     if (number) number.value = String(clamped);
     P.brickSettings.brickLengthIn = clamped;
-    notifyChange();
-    _scheduleLivePreview();
+    return true;
   };
-  const commit = (v) => { apply(v); _commitBrickSlider(); };
-  slider?.addEventListener('input', (e) => apply(sliderPosToBrickSize(parseFloat(e.target.value))));
-  slider?.addEventListener('change', (e) => commit(sliderPosToBrickSize(parseFloat(e.target.value))));
-  number?.addEventListener('input', (e) => apply(parseFloat(e.target.value)));
-  number?.addEventListener('change', (e) => commit(parseFloat(e.target.value)));
+  const drag = (v) => { if (apply(v)) commitBrickSetting(commit, 'onDrag'); };
+  const release = (v) => { if (apply(v)) commitBrickSetting(commit, 'onRelease'); };
+  slider?.addEventListener('input', (e) => drag(sliderPosToBrickSize(parseFloat(e.target.value))));
+  slider?.addEventListener('change', (e) => release(sliderPosToBrickSize(parseFloat(e.target.value))));
+  number?.addEventListener('input', (e) => drag(parseFloat(e.target.value)));
+  number?.addEventListener('change', (e) => release(parseFloat(e.target.value)));
 }
 
-function bindGroutField(id, key) {
-  document.getElementById(id)?.addEventListener('input', (e) => {
+function bindGroutField(id, key, commit = 'generate') {
+  const write = (e, phase) => {
     const v = parseFloat(e.target.value);
     if (!Number.isFinite(v)) return;
     P.brickSettings.grout[key] = v;
-    notifyChange();
-  });
+    commitBrickSetting(commit, phase);
+  };
+  const settle = settleAfterTyping(commit);
+  document.getElementById(id)?.addEventListener('input', (e) => { write(e, 'onDrag'); settle(); });
+  document.getElementById(id)?.addEventListener('change', (e) => write(e, 'onRelease')); // typed value settled
 }
 
 /** F35 item 10: this list now renders into the left-rail toolbar
@@ -390,7 +862,32 @@ function syncToolButtons() {
   const hint = BRICK_TOOLS.find((t) => t.id === _activeTool);
   const hintEl = document.getElementById('brickToolHint');
   if (hintEl) hintEl.textContent = hint ? hint.hint : '';
-  syncBrushSection();
+  syncToolSections();
+  syncEmptySelectionPanel();
+  syncGenerateVisibility();
+}
+
+/** Audit C9: the pinned Generate shows only for a tool it applies to (BRICK_TOOLS' `generates`). */
+function syncGenerateVisibility() {
+  const slot = document.getElementById('brickGenerate')?.closest('.sticky-actions');
+  if (!slot) return;
+  const tool = BRICK_TOOLS.find((t) => t.id === _activeTool);
+  slot.style.display = !tool || tool.generates ? '' : 'none';
+}
+
+/** F35 item 16 follow-up (Fred, live use: "don't see the layers"): with no Brick tool picked yet,
+ *  the tab's own panel has nothing contextual to show (syncToolSections hides every section) --
+ *  show the shared editor Layers panel instead of a near-empty Brick panel. Only touches these two
+ *  panels while the Brick tab is actually active (getEditorTab) -- never fights editor-tabs.js's
+ *  own per-tab panel toggle for Artwork/Photo/Frame, which this deliberately leaves alone (not the
+ *  reported problem). */
+function syncEmptySelectionPanel() {
+  if (getEditorTab() !== 'brick') return;
+  const brickPanel = document.getElementById('editorBrickPanel');
+  const layersPanel = document.getElementById('editorLayersPanel');
+  const showLayers = _activeTool === null;
+  if (brickPanel) brickPanel.style.display = showLayers ? 'none' : '';
+  if (layersPanel) layersPanel.style.display = showLayers ? '' : 'none';
 }
 
 /** F35 (advisor: "Esc = back to the select tool in every tab"): Brick has no Select tool of its
@@ -412,23 +909,26 @@ function renderFramePresetList(container) {
     btn.className = 'cad-btn';
     btn.id = `brickFramePreset_${preset.id}`;
     btn.textContent = preset.label;
-    btn.addEventListener('click', () => {
-      P.brickSettings.frameBandPreset = preset.id;
-      syncFramePresetButtons();
-      // F35 item 8: a different preset can have a different BAND COUNT, so the per-band pattern
-      // picker is fully re-rendered here (not just re-synced) every time the preset changes.
-      renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
-      syncFrameBandPatternButtons();
-      notifyChange();
-    });
+    btn.addEventListener('click', () => setFrameBandPreset(preset.id));
     container.appendChild(btn);
   }
+}
+
+export function setFrameBandPreset(presetId, commit = 'generate') {
+  P.brickSettings.frameBandPreset = presetId;
+  syncFramePresetButtons();
+  // F35 item 8: a different preset can have a different BAND COUNT, so the per-band pattern
+  // picker is fully re-rendered here (not just re-synced) every time the preset changes.
+  renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
+  syncFrameBandPatternButtons();
+  commitBrickSetting(commit);
 }
 
 function syncFramePresetButtons() {
   for (const preset of FRAME_PRESET_LIST) {
     document.getElementById(`brickFramePreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.frameBandPreset);
   }
+  syncQuickSettings();
 }
 
 /** T86 item 7 (Fred: "a brush line can have a few brick patterns, maybe 2 and 3 bricks wide") --
@@ -483,19 +983,23 @@ function renderWallPatternList(container) {
     btn.className = 'cad-btn';
     btn.id = `brickPattern_${pattern.id}`;
     btn.textContent = pattern.label;
-    btn.addEventListener('click', () => {
-      P.brickSettings.pattern = pattern.id;
-      syncWallPatternButtons();
-      notifyChange();
-    });
+    btn.addEventListener('click', () => setWallPattern(pattern.id));
     container.appendChild(btn);
   }
+}
+
+export function setWallPattern(patternId, commit = 'generate') {
+  P.brickSettings.pattern = patternId;
+  syncWallPatternButtons();
+  commitBrickSetting(commit);
 }
 
 function syncWallPatternButtons() {
   for (const pattern of WALL_PATTERN_LIST) {
     document.getElementById(`brickPattern_${pattern.id}`)?.classList.toggle('active', pattern.id === P.brickSettings.pattern);
   }
+  syncQuickSettings();
+  syncLargeStonesRow();
 }
 
 /** F35 item 8: the per-band pattern picker -- one row per band in the CURRENT frameBandPreset, each
@@ -509,6 +1013,9 @@ function renderFrameBandPatternList(container) {
   if (!container) return;
   container.innerHTML = '';
   const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
+  // Audit K2: a preset with no bands (None) has no band rows -- its heading goes too.
+  const heading = document.getElementById('brickFrameBandPatternLabel');
+  if (heading) heading.style.display = bands.length ? '' : 'none';
   bands.forEach((band, i) => {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex; gap:4px; margin-bottom:4px; flex-wrap:wrap; align-items:center;';
@@ -532,7 +1039,7 @@ function renderFrameBandPatternList(container) {
           if (!P.brickSettings.frameBandPatterns) P.brickSettings.frameBandPatterns = [];
           P.brickSettings.frameBandPatterns[i] = pattern.id;
           syncFrameBandPatternButtons();
-          notifyChange();
+          commitBrickSetting();
         });
       }
       row.appendChild(btn);
@@ -566,28 +1073,18 @@ function selectTool(id) {
     console.warn('Brick tool: open the SVG editor first (Edit Artwork) -- no editor instance yet.');
     return;
   }
-  if (id === 'brush') {
+  const tool = BRICK_TOOLS.find((t) => t.id === id);
+  if (id === 'brush' || (tool && tool.variantOf === 'brush')) {
     editor._brickSettings = P.brickSettings; // same object, mutated in place -- see header
+    editor._brickStrokeOverrides = (tool && tool.strokeOverrides) || null; // turn 201: a variant's own stroke fields
     editor.setMode('brickBrush');
     return;
   }
-  if (id === 'wall') {
-    // Advisor review (turn 131): Wall must respect an EXISTING frame's own
-    // interior, not just fill the raw board -- resolve the frame the same
-    // way the Frame tool does; runBricks clips Wall to it via generateBricks
-    // when one is usable, and simply fills the whole board when there isn't.
-    runBricks(editor, P.brickSettings, resolveFrameGeom(editor));
-    notifyChange();
-    return;
-  }
-  if (id === 'frame') {
-    const frameGeom = resolveFrameGeom(editor);
-    if (!frameGeom) {
-      console.warn('Brick Frame tool: no usable frame contour on this board.');
-      return;
-    }
-    runBricks(editor, P.brickSettings, frameGeom);
-    notifyChange();
+  // Audit C2: picking Wall or Frame only shows its settings (and the pinned Generate); it never lays.
+  // Generate lays the tool's own kind (audit C1, _kindsToLay). Wall stays clipped to an existing frame's
+  // interior via the composer (advisor review, turn 131).
+  if (id === 'wall' || id === 'frame') {
+    if (id === 'frame' && !resolveFrameGeom(editor)) console.warn('Brick Frame tool: no usable frame contour on this board.');
     return;
   }
   if (id === 'scissors') {
@@ -600,8 +1097,10 @@ function selectTool(id) {
   if (id === 'stripe') {
     // Same reuse, for the existing Stripe mode. editor-brick-tool.js's own
     // regenerateOwnedBrickElements reacts to the resulting STRIPE_ATTR-
-    // tagged pieces on the next commit, cycling each its own brick style.
+    // tagged pieces on the next commit, giving each run its picked brick style (audit C6).
+    editor._brickSettings = P.brickSettings;
     editor.setMode('stripe');
+    syncStripePanelContext();
     return;
   }
 }
@@ -624,6 +1123,55 @@ const FRAME_PRESET_LABELS = {
   mixed_bands: 'Header / Flemish / Soldier',
 };
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
+
+/** F35 item 18 (3), the sidebar's QUICK settings (#brickQuickSettings, main sidebar 🧱 BRICK): a few
+ *  2D settings mirrored from the editor's Brick tab -- the SAME P.brickSettings and the SAME setters,
+ *  committed 'auto' (re-lay at once), the sidebar's own rule. Declared here as data: each row names its
+ *  choices (the editor's own declared lists), which choice is current, and how to apply one. */
+const BRICK_SET_CHOICES = [{ id: 1, label: 'Red Brick' }, { id: 3, label: 'White Rocks' }];
+const BRICK_QUICK_SETTINGS = [
+  { id: 'set', label: 'Set', choices: () => BRICK_SET_CHOICES,
+    isCurrent: (c) => c.id === P.brickSettings.setId, apply: (c) => selectSet(c.id, 'auto') },
+  { id: 'size', label: 'Brick size', choices: () => BRICK_SIZE_PRESETS,
+    isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
+  { id: 'pattern', label: 'Wall pattern', choices: () => WALL_PATTERN_LIST,
+    isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
+  { id: 'frameBands', label: 'Frame bands', choices: () => FRAME_PRESET_LIST,
+    isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
+];
+const quickButtonId = (row, choice) => `brickQuick_${row.id}_${choice.id}`;
+
+function renderQuickSettings(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const row of BRICK_QUICK_SETTINGS) {
+    const label = document.createElement('label');
+    label.className = 'cad-label';
+    label.textContent = row.label;
+    container.appendChild(label);
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;';
+    for (const choice of row.choices()) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cad-btn';
+      btn.id = quickButtonId(row, choice);
+      btn.textContent = choice.label;
+      btn.addEventListener('click', () => row.apply(choice));
+      list.appendChild(btn);
+    }
+    container.appendChild(list);
+  }
+  syncQuickSettings();
+}
+
+function syncQuickSettings() {
+  for (const row of BRICK_QUICK_SETTINGS) {
+    for (const choice of row.choices()) {
+      document.getElementById(quickButtonId(row, choice))?.classList.toggle('active', row.isCurrent(choice));
+    }
+  }
+}
 
 /** T86 item 7: labels for core/bricks/library.js's own declared BRUSH_PRESETS keys (the 3
  *  combinations Fred actually asked for -- "maybe 2 and 3 bricks wide"). */
@@ -652,11 +1200,21 @@ const BRUSH_PRESET_LIST = [
  *  own brick-length-only special case) -- Frame bands now resolve the SAME global brick length as
  *  Wall/Brush, via `scale` (editor-brick-tool.js's own scaleFor), which generateBricks already
  *  threads to both uniformly. */
-function resolveFrameGeom(editor) {
+/** The contour the Frame bands follow (F35 item 16, P.brickSettings.frameOffset): ON = the frame's outer
+ *  edge offset by `distance` (the SAME frameContourSilhouette the Shape Lattice's offset-from-frame uses);
+ *  OFF = free placement, the board's own outline. null = no usable contour. */
+function frameBandContour(editor) {
+  const off = P.brickSettings.frameOffset || { on: true, distance: 0 };
+  if (off.on === false) return rectToPrimitives({ x1: 0, y1: 0, x2: editor._mW, y2: editor._mH });
   const ctx = frameContext(editor);
-  const sil = ctx ? frameContourSilhouette(ctx, 0, 0) : { error: 'noFrame' };
-  if (sil.error) return null;
-  const primitives = buildRibbonPrimitives(sil.primitives);
+  const sil = ctx ? frameContourSilhouette(ctx, Number(off.distance) || 0, 0) : { error: 'noFrame' };
+  return sil.error ? null : sil.primitives;
+}
+
+function resolveFrameGeom(editor) {
+  const contour = frameBandContour(editor);
+  if (!contour) return null;
+  const primitives = buildRibbonPrimitives(contour);
   const basePreset = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
   const overrides = P.brickSettings.frameBandPatterns || [];
   const bands = basePreset.map((band, i) => (overrides[i] ? { ...band, pattern: overrides[i] } : band));
@@ -666,28 +1224,50 @@ function resolveFrameGeom(editor) {
 // F35 (Fred: "resolution is his own responsibility via the resolution panel" -- REVERSING the
 // earlier auto-tighten below): a grout groove needs the terrain's own mesh to sample it at least
 // 2-3 times across, or it reads as a blur rather than a visible line -- a 0.06in groove needs
-// P.spacing <= ~0.02in, well finer than this app's own 0.05in default (tuned for smooth terrain,
+// spacing <= ~0.02in, well finer than this app's own 0.05in default (tuned for smooth terrain,
 // not brick-scale features). This USED to auto-tighten P.spacing itself (applyParam('spacing', ...))
 // whenever bricks existed; Fred ruled that his own call to make, not automatic. Detection only now
-// -- never writes P.spacing -- surfacing a plain, non-blocking hint instead, in both the Resolution
-// panel (#spacingGroutHint) and the Brick tab's own Grout section (#brickGroutSpacingHint), so
-// whichever one the user happens to be looking at explains why joints might look blurred.
+// -- never writes any resolution field -- surfacing a plain, non-blocking hint instead.
 const GROUT_SAMPLES_ACROSS = 3;
 
+// F35 item 16 follow-up (the measured resolution x brick-size grid, shots/seatC/
+// resolution_scale_grid.png): finer resolution only ever fixes grout-joint CARVING -- it does
+// nothing for the separate, measured finding that bricks > 1.5in read as the board's own sculpted
+// terrain rather than distinct bricks (a scale/relief-dominance issue, not a sampling one). The hint
+// is deliberately SILENT above this size rather than recommending an 8-second Masonry-max rebuild
+// that would not actually fix what the user is seeing.
+const BRICK_HINT_MAX_SIZE_IN = 1.5;
+
+/** The hint targets the EFFECTIVE EXPORT resolution (Send is what actually needs to carve cleanly),
+ *  not Display -- but when they're the same value (sameAsDisplayResolution, the default for every
+ *  existing board) the message still surfaces through the always-visible Display panel's own
+ *  #spacingGroutHint, since #exportSpacingGroutHint lives inside the Export section that's hidden
+ *  in exactly that default case. */
 function updateSpacingHint(groutWidthIn) {
   const gw = groutWidthIn ?? P.brickSettings.grout.widthIn;
   const bricksExist = document.querySelectorAll('[data-brick-gen="1"]').length > 0;
+  const smallEnoughToHelp = P.brickSettings.brickLengthIn <= BRICK_HINT_MAX_SIZE_IN;
   const targetSpacing = gw > 0 ? gw / GROUT_SAMPLES_ACROSS : null;
-  const show = bricksExist && targetSpacing != null && P.spacing > targetSpacing;
+  const exportSpacing = effectiveExportSpacing();
+  const show = bricksExist && smallEnoughToHelp && targetSpacing != null && exportSpacing > targetSpacing;
+  // The coarsest (cheapest) resolutions that are STILL fine enough, named -- e.g. "Extreme (0.02")
+  // or Masonry (0.015")" for a typical 0.06in grout width's own 0.02in target.
+  const sufficient = RESOLUTIONS.filter((r) => r.val <= targetSpacing).sort((a, b) => b.val - a.val).slice(0, 2);
+  const suggestion = sufficient.map((r) => `${r.name} (${r.val}")`).join(' or ');
   const msg = show
-    ? `Grout joints need spacing ≤ ${targetSpacing.toFixed(3)} in to carve cleanly (current ${P.spacing})`
+    ? `Grout joints need Export resolution ≤ ${targetSpacing.toFixed(3)} in to carve cleanly (current ${exportSpacing}in)${suggestion ? ` -- try ${suggestion}` : ''}`
     : '';
-  for (const id of ['spacingGroutHint', 'brickGroutSpacingHint']) {
+  for (const id of ['brickGroutSpacingHint', P.sameAsDisplayResolution ? 'spacingGroutHint' : 'exportSpacingGroutHint']) {
     const el = document.getElementById(id);
     if (!el) continue;
     el.textContent = msg;
     el.style.display = show ? '' : 'none';
   }
+  // Clear whichever hint element ISN'T the active one this time, so flipping "same as display"
+  // never leaves a stale message showing under the wrong control.
+  const inactiveId = P.sameAsDisplayResolution ? 'exportSpacingGroutHint' : 'spacingGroutHint';
+  const inactiveEl = document.getElementById(inactiveId);
+  if (inactiveEl) { inactiveEl.textContent = ''; inactiveEl.style.display = 'none'; }
 }
 
 export function initBrickPanel() {
@@ -696,9 +1276,18 @@ export function initBrickPanel() {
   // binding that actually writes P.spacing isn't declared anywhere -- deferring one tick guarantees
   // P.spacing already reflects the new value by the time the hint re-reads it, regardless of order.
   document.getElementById('spacing')?.addEventListener('change', () => setTimeout(() => updateSpacingHint(), 0));
+  // F35 item 16 follow-up: the hint now targets the EFFECTIVE export resolution, which these two
+  // controls can also change -- same deferred-by-one-tick convention as #spacing above.
+  document.getElementById('exportSpacing')?.addEventListener('change', () => setTimeout(() => updateSpacingHint(), 0));
+  document.getElementById('sameAsDisplayResolution')?.addEventListener('change', () => setTimeout(() => updateSpacingHint(), 0));
   updateSpacingHint();
 
   document.getElementById('editorTabBrick')?.addEventListener('click', () => setEditorTab('brick'));
+  // F35 item 16 follow-up: re-sync which panel (Brick's own settings vs the shared Layers panel)
+  // shows every time the Brick tab itself becomes active -- syncToolButtons (called from
+  // selectTool/deselectTool already) only runs on a TOOL change, not a bare tab switch, so entering
+  // the tab with no tool yet picked needs its own trigger here.
+  document.addEventListener('editorTabChanged', (e) => { if (e.detail?.tab === 'brick') syncToolButtons(); });
   renderToolList(document.getElementById('editorToolbarBrick'));
   syncToolButtons();
   renderFramePresetList(document.getElementById('brickFramePresetList'));
@@ -709,6 +1298,7 @@ export function initBrickPanel() {
   syncWallPatternButtons();
   renderBrickSizePresetList(document.getElementById('brickSizePresetList'));
   syncBrickSizePresetButtons();
+  renderQuickSettings(document.getElementById('brickQuickSettings'));
 
   document.getElementById('brickSetRed')?.addEventListener('click', () => selectSet(1));
   // F35 item 4 (c): White Rocks (Set 3, f3's item 74 fieldstone layout) is
@@ -717,30 +1307,66 @@ export function initBrickPanel() {
 
   bindBrickSizeControls();
   bindGroutField('brickGroutWidth', 'widthIn');
-  bindGroutField('brickGroutDepth', 'depthIn');
+  bindGroutField('brickGroutDepth', 'depthIn', 'surface'); // F35 item 18: the joint recess depth, height-only
   document.getElementById('brickBtnGroutRecessed')?.addEventListener('click', () => setGroutProfile('recessed'));
   document.getElementById('brickBtnGroutFlush')?.addEventListener('click', () => setGroutProfile('flush'));
-  document.getElementById('brickBtnReliefRaised')?.addEventListener('click', () => setInvert(false));
-  document.getElementById('brickBtnReliefCarved')?.addEventListener('click', () => setInvert(true));
+  // F35 item 18 (3): Relief + Max Height moved to the main sidebar -- 'auto' there (re-lay at once)
+  document.getElementById('brickBtnReliefRaised')?.addEventListener('click', () => setInvert(false, 'auto'));
+  document.getElementById('brickBtnReliefCarved')?.addEventListener('click', () => setInvert(true, 'auto'));
+  document.getElementById('brickBtnTopOrganic')?.addEventListener('click', () => setBrickTopMode('organic'));
+  document.getElementById('brickBtnTopFlat')?.addEventListener('click', () => setBrickTopMode('flat'));
+  renderSurfaceStyleToggle(document.getElementById('brickSurfaceStyleToggle'));
+  renderRaisedModeToggle(document.getElementById('brickRaisedModeToggle'));
+  document.getElementById('brickRaisedLevel')?.addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    if (!Number.isFinite(v)) return;
+    P.brickSettings.raisedLevelIn = v;
+    notifyChange();
+  });
+  renderStripeBrickStyles(document.getElementById('stripeBrickStyles'));
+  document.getElementById('stripeThree')?.addEventListener('change', () => { syncStripeBrickStyles(); });
+  document.addEventListener('editorTabChanged', () => syncStripePanelContext());
+  bindSlider('brickSurfaceWearSlider', 'brickSurfaceWear', 'surfaceWear', (v) => Math.max(0, Math.min(1, parseFloat(v))), 'surface');
+  document.getElementById('brickFrameOffsetOn')?.addEventListener('change', (e) => setFrameOffset({ on: e.target.checked }));
+  document.getElementById('brickFrameOffsetDistance')?.addEventListener('change', (e) => setFrameOffset({ distance: e.target.value }));
+  for (const kind of BRICK_KINDS) {
+    document.getElementById(`brickLevel_${kind}`)?.addEventListener('change', (e) => setElementLevel(kind, e.target.value));
+  }
   document.getElementById('brickBtnProfileStripped')?.addEventListener('click', () => setProfile('bricks'));
   document.getElementById('brickBtnProfileContinuous')?.addEventListener('click', () => setProfile('continuous'));
   document.getElementById('brickBtnOrientationStretcher')?.addEventListener('click', () => setOrientation('stretcher'));
   document.getElementById('brickBtnOrientationSoldier')?.addEventListener('click', () => setOrientation('soldier'));
-  bindSlider('brickReliefHeightSlider', 'brickReliefHeight', 'reliefIn');
+  bindSlider('brickReliefHeightSlider', 'brickReliefHeight', 'reliefIn', parseFloat, 'auto');
+  // F35 item 21: a LAYOUT setting -- the editor marks it pending (Generate)
+  bindSlider('brickLargeStonesSlider', 'brickLargeStones', 'largeStones', (v) => Math.max(0, Math.min(1, parseFloat(v))));
   bindSlider('brickSuppressionSlider', 'brickSuppression', 'suppression');
   bindSlider('brickClumpingSlider', 'brickClumping', 'clumping');
   document.getElementById('brickSeed')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10);
     if (!Number.isFinite(v)) return;
     P.brickSettings.seed = v;
-    notifyChange();
+    commitBrickSetting('generate', 'onDrag');
   });
-  document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => {
-    const v = Math.floor(Math.random() * 1000000);
-    P.brickSettings.seed = v;
-    document.getElementById('brickSeed').value = v;
-    notifyChange();
-  });
+  document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => setSeed(Math.floor(Math.random() * 1000000)));
+  document.getElementById('brickGenerate')?.addEventListener('click', () => generateBricks());
+  // Audit B1-B3: undo/redo, Cancel's restored document and a reopen all re-render the layer roster
+  // (layers.js renderLayersPanel) -- the laid key may have changed with it.
+  document.addEventListener('editorLayersChanged', () => syncGeneratePending());
+  // Audit C11: the drawer's tab label shows the pending dot only while it names the Brick tab.
+  document.addEventListener('editorTabChanged', () => syncGeneratePending());
+  // F35 item 20: a brush stroke added / edited / deleted is an editor commit -- re-derive pending, since
+  // the Wall's laid key now covers the brush footprints (_brushKey)
+  document.addEventListener('editorCommit', () => syncGeneratePending());
+  // Audit B1: Cancel/Discard put P.brickSettings back to the editor's entry snapshot (app-init.js).
+  document.addEventListener('brickSettingsRestored', () => { syncControlsFromState(); syncGeneratePending(); });
 
   syncControlsFromState();
+  syncGeneratePending();
+}
+
+export function setSeed(v, commit = 'generate') {
+  P.brickSettings.seed = v;
+  const field = document.getElementById('brickSeed');
+  if (field) field.value = v;
+  commitBrickSetting(commit);
 }

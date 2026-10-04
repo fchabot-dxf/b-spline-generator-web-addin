@@ -13,7 +13,8 @@
  *   closeWizard()         dismiss the wizard modal.
  */
 
-import { P, lastResult, isFusionMode } from '../core/state.js';
+import { P, lastResult, isFusionMode, RESOLUTIONS } from '../core/state.js';
+import { resolveGrid } from '../core/terrain.js';
 import { frameSendPayload } from './frame-panel.js';
 import { confirmDialog } from '../core/confirm-dialog.js';
 import { rebuild } from '../core/engine.js';
@@ -436,6 +437,42 @@ export function onFusionApply(preview) {
     }
 }
 
+/** F35 item 16 follow-up (Fred): Export can now use a DIFFERENT resolution than the live Display
+ *  preview. `lastResult` (core/engine/rebuild.js's own output, read directly by the caller below) is
+ *  a single global slot shared by both Display and Export -- when they differ, this brackets the
+ *  caller's own read of it with a temporary resolution swap: rebuild `lastResult` at Export's own
+ *  resolution (via `rebuild(null, ...)`, which skips `preview.update` so the LIVE 3D view never
+ *  visibly jumps mid-Send), run `fn`, then rebuild back to Display's resolution so the live preview
+ *  and `lastResult` are exactly as the user left them. Masks (`editor._layers[i]._mask`) are
+ *  resolution-scoped too and must be re-rasterized on both ends of the swap -- core/engine/
+ *  rebuild.js's own `rebuild()` only CONSUMES whatever mask is already there, it does not rasterize
+ *  one itself (see main/stamp-mask-manager.js's own `updateStampMasks`, the same call
+ *  `refreshAllStampMasks` makes before every real-UI rebuild). A plain state write (`P.spacing =`),
+ *  not `applyParam`, so the Display dropdown's own displayed value never flickers to Export's during
+ *  the swap. A no-op (straight to `fn`) when `sameAsDisplayResolution`, which is every existing
+ *  board's own default -- behaviour is then byte-identical to before this split existed. */
+export async function withExportResolution(preview, fn) {
+    if (P.sameAsDisplayResolution) return fn();
+
+    const savedSpacing = P.spacing;
+    const exportGrid = resolveGrid(P.widthIn, P.heightIn, P.exportSpacing);
+    const resName = RESOLUTIONS.find((r) => r.val === Number(P.exportSpacing))?.name;
+    if (isFusionMode) setFusionStatus(`Building at ${resName ? `${resName} ` : ''}${P.exportSpacing}in…`, 'busy');
+
+    P.spacing = P.exportSpacing;
+    await updateStampMasks(exportGrid.nx, exportGrid.nz);
+    await rebuild(null, updateStampMasks, updatePreviewSculptMode);
+
+    try {
+        return await fn();
+    } finally {
+        P.spacing = savedSpacing;
+        const displayGrid = resolveGrid(P.widthIn, P.heightIn, P.spacing);
+        await updateStampMasks(displayGrid.nx, displayGrid.nz);
+        await rebuild(preview, updateStampMasks, updatePreviewSculptMode);
+    }
+}
+
 export async function executeExport(preview, options = null, isAppend = false, filename_hint = null) {
     const btn = isFusionMode
         ? fusionActionButton()
@@ -450,41 +487,43 @@ export async function executeExport(preview, options = null, isAppend = false, f
     if (!options) options = readWizardOptions();
 
     try {
-        const heights   = lastResult.heights;
-        const offsetPts = lastResult.thickenData?.offsetPts;
-        const unstamped = lastResult.cleanHeights || heights;
+        await withExportResolution(preview, async () => {
+            const heights   = lastResult.heights;
+            const offsetPts = lastResult.thickenData?.offsetPts;
+            const unstamped = lastResult.cleanHeights || heights;
 
-        const shared = {
-            widthIn: P.widthIn,
-            heightIn: P.heightIn,
-            carveZ: P.carveZ,
-            nx: lastResult.nx,
-            nz: lastResult.nz,
-            orientation: P.exportOrientation,
-            options,
-        };
+            const shared = {
+                widthIn: P.widthIn,
+                heightIn: P.heightIn,
+                carveZ: P.carveZ,
+                nx: lastResult.nx,
+                nz: lastResult.nz,
+                orientation: P.exportOrientation,
+                options,
+            };
 
-        const variants = [
-            { key: 'cleanSurf',   label: 'cleanSurface',   fileLabel: 'clean-surface',   opts: { cleanSurf: true } },
-            { key: 'clean',       label: 'cleanSolid',     fileLabel: 'clean-solid',     opts: { clean: true } },
-            { key: 'stampedSurf', label: 'stampedSurface', fileLabel: 'stamped-surface', opts: { stampedSurf: true } },
-            { key: 'stamped',     label: 'stampedSolid',   fileLabel: 'stamped-solid',   opts: { stamped: true } },
-        ];
-        const selectedVariants = variants.filter(v => options[v.key]);
-        const layersToExport   = options.includeSVG ? exportableStampLayers() : [];
+            const variants = [
+                { key: 'cleanSurf',   label: 'cleanSurface',   fileLabel: 'clean-surface',   opts: { cleanSurf: true } },
+                { key: 'clean',       label: 'cleanSolid',     fileLabel: 'clean-solid',     opts: { clean: true } },
+                { key: 'stampedSurf', label: 'stampedSurface', fileLabel: 'stamped-surface', opts: { stampedSurf: true } },
+                { key: 'stamped',     label: 'stampedSolid',   fileLabel: 'stamped-solid',   opts: { stamped: true } },
+            ];
+            const selectedVariants = variants.filter(v => options[v.key]);
+            const layersToExport   = options.includeSVG ? exportableStampLayers() : [];
 
-        if (isFusionMode) {
-            await sendToFusion({
-                shared, heights, offsetPts, unstamped,
-                options, layersToExport,
-                isAppend, filename_hint, btn,
-            });
-        } else {
-            await downloadFiles({
-                shared, heights, offsetPts, unstamped,
-                selectedVariants, layersToExport, btn,
-            });
-        }
+            if (isFusionMode) {
+                await sendToFusion({
+                    shared, heights, offsetPts, unstamped,
+                    options, layersToExport,
+                    isAppend, filename_hint, btn,
+                });
+            } else {
+                await downloadFiles({
+                    shared, heights, offsetPts, unstamped,
+                    selectedVariants, layersToExport, btn,
+                });
+            }
+        });
     } catch (e) {
         console.error('Export Failed:', e);
         if (btn) { btn.disabled = false; btn.textContent = 'Try Again'; }
@@ -542,7 +581,9 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
             const manifest = manifests[i];
             return {
                 index: i + 1,
-                config: { profile: layersToExport[i].profile, depth: layersToExport[i].depth },
+                // turn 193 (Fred): does this layer CARVE? The add-in puts a carving layer's sketch in the
+                // Carved component and every other exported layer's sketch on root (b-spline-gen.py).
+                config: { profile: layersToExport[i].profile, depth: layersToExport[i].depth, carve: isCarvingLayer(layersToExport[i]) },
                 svg: await bakeSvgForCarving(r.svg, P.widthIn, P.heightIn, 96),
                 ...(manifest ? { sketchManifest: manifest } : {}),
             };
@@ -603,7 +644,12 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
     if (!isAppend) {
         try {
             const raw = await _bricksLayerSvg(editor);
-            bricks = raw ? { enabled: true, svg: await bakeSvgForCarving(raw, P.widthIn, P.heightIn, 96) } : { enabled: false };
+            // turn 193: `carve` -- the Bricks layer's sketch goes in the Carved component only when the
+            // layer carves; otherwise on root, like every other non-carving art layer
+            const bricksLayer = editor && Array.isArray(editor._layers) ? editor._layers.find((l) => l && l.name === BRICKS_LAYER_NAME) : null;
+            bricks = raw
+                ? { enabled: true, carve: !!(bricksLayer && isCarved(bricksLayer)), svg: await bakeSvgForCarving(raw, P.widthIn, P.heightIn, 96) }
+                : { enabled: false };
         } catch (e) {
             if (typeof fusLog === 'function') fusLog('[EXPORT] Bricks SVG failed: ' + (e && e.message));
         }

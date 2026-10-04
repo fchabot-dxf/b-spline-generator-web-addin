@@ -92,6 +92,9 @@ const _PERSISTED_LAYER_FIELDS = [
     // (JSON.stringify handles it directly, same as any other field this
     // list's generic `l[field] !== undefined` branch already copies).
     'pattern',
+    // Audit B1-B3: the Bricks layer's key of the settings its Wall/Frame bricks were laid with
+    // (editor-brick-tool.js runBricks), so a reload still knows whether Generate is pending.
+    'brickLaidKey',
 ];
 
 /** Serialize the layer roster as a string attribute we can stamp onto

@@ -20,8 +20,8 @@ From the outgoing advisor (session `b-spline-generator-web-addin-54`) to the new
 |---|---|---|---|---|---|
 | A | `b-spline-generator-web-addin-39` | main checkout / `main` | 7 | 39 | H23 item 78: Template 18 Arched Head (diagram first) -- f3 DECOMMISSIONED 17fe1c6 |
 | B | `b-spline-generator-web-addin-d3` | `-lane-b` / `lane-b` | 10 | d3 | T86 item 4b: brick engine on every template (b5 decommissioned f4375d1) |
-| C | `b-spline-generator-web-addin-de` | `-fb-app` / `fb-app` | 5 | de | F35 item 12 (carving sketches in Carved, fieldstone) then 11 (bricks SVG on Send) |
-| spare | none | none | none | none | b5 + f3 DECOMMISSIONED 2026-10-04 |
+| C | `b-spline-generator-web-addin-37` | `-fb-app` / `fb-app` | 6 | 37 | F35 item 18: Flat/Organic, Weathered, sidebar split, 2D-only editor (de DECOMMISSIONED cb79c86) |
+| spare | `-88` | wt-88 (ad-hoc fixes) | none | none | on-call for small fixes; b5, f3, de DECOMMISSIONED |
 
 Decommissioned, all signed with 🪦 except `af`, which is closed: af, 66, d6, 55, 4a (archived 2026-10-03, never had a task).
 

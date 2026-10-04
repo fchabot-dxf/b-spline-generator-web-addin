@@ -10,11 +10,31 @@ import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { applySnapshot } from './snapshot-manager.js';
 import { _isTypingTarget } from '../editor/dom.js';
-import { getEditorTab } from './editor-tabs.js';
+import { getEditorTab, EDITOR_TABS } from './editor-tabs.js';
 import { deselectTool as deselectBrickTool } from './brick-panel.js';
 import { deselectPhotoTool } from './photo-panel.js';
 
+/** "Back to the select tool" for a tab -- the ONE path both Esc and a tab switch use. Dispatches by
+ *  tab rather than unifying onto one shared mode concept (Wall/Frame/Photo's own tools have no
+ *  gesture "mode" to exit; Brick's deselect also clears its own active tool). */
+function returnToSelect(tab) {
+    if (tab === 'brick') deselectBrickTool();
+    else if (tab === 'photo') deselectPhotoTool();
+    else window.svgEditor?.setMode?.('select');
+}
+
+/** Fred (2026-10-04): entering a tab drops a tool mode that tab doesn't own (EDITOR_TABS[].modes).
+ *  Returning to the old tab does not restore the old tool. */
+export function dropForeignModeOnTabChange(tabId) {
+    const ed = typeof window !== 'undefined' ? window.svgEditor : null;
+    const tab = EDITOR_TABS.find((t) => t.id === tabId);
+    if (!ed || !tab?.modes) return;
+    if (!tab.modes.includes(ed._currentMode)) returnToSelect(tabId);
+}
+
 export function wireGlobalEvents(preview) {
+    document.addEventListener('editorTabChanged', (e) => dropForeignModeOnTabChange(e.detail?.tab));
+
     window.addEventListener('keydown', e => {
         // F35 (advisor: "Esc = back to the select tool in every tab"): dispatches by the
         // CURRENTLY ACTIVE editor tab rather than unifying onto one shared mode concept (Wall/
@@ -23,10 +43,7 @@ export function wireGlobalEvents(preview) {
         // actively placing anchor points) stays completely separate and still runs first; this
         // always ALSO returns the editor to plain Select afterward, which is the literal ask.
         if (e.key === 'Escape' && isEditorOpen() && !_isTypingTarget(e.target)) {
-            const tab = getEditorTab();
-            if (tab === 'brick') deselectBrickTool();
-            else if (tab === 'photo') deselectPhotoTool();
-            else window.svgEditor?.setMode?.('select');
+            returnToSelect(getEditorTab());
         }
 
         if (!(e.ctrlKey || e.metaKey)) return;

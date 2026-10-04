@@ -571,6 +571,28 @@ export function setActiveLayer(editor, layerId) {
  *  longer editable. */
 export function applyLayerState(editor) {
   if (!editor._sketchLayer) return;
+  const state = _layerStateMaps(editor);
+  editor._sketchLayer.children().forEach(child => _applyLayerClasses(child, state));
+
+  // BUG-28 cross-layer multi-select: only deselect when the selection is
+  // a SINGLE non-editable element. Multi-selection across layers is now
+  // a legitimate state (shift-click / marquee can pick from any visible
+  // layer), so we don't auto-strip it on layer changes.
+  const selArr = editor._selectedElements || [];
+  if (selArr.length === 1 && !isEditableByLayer(editor, selArr[0])) {
+    editor._deselect();
+  }
+}
+
+/** The same per-element step for ONE element that was just drawn onto a layer (audit follow-up: bricks
+ *  re-laid onto a HIDDEN Bricks layer showed, because new elements never got the layer's classes until
+ *  the next full applyLayerState). One declared step, shared with applyLayerState above. */
+export function applyLayerStateTo(editor, child) {
+  if (!child) return;
+  _applyLayerClasses(child, _layerStateMaps(editor));
+}
+
+function _layerStateMaps(editor) {
   const activeLayer = getActiveLayer(editor);
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
   const visById = new Map(layers.map(l => [l.id, l.visible !== false]));
@@ -582,8 +604,10 @@ export function applyLayerState(editor) {
   // lives in styles/editor.css next to .layer-hidden/.inactive-layer, the
   // two classes this same loop already manages the same way.
   const colorById = new Map(layers.map(l => [l.id, showsColor(l)]));
+  return { activeLayer, visById, colorById };
+}
 
-  editor._sketchLayer.children().forEach(child => {
+function _applyLayerClasses(child, { activeLayer, visById, colorById }) {
     const layerId = getElementLayer(child);
     const isActive = layerId === activeLayer;
     const isVisible = visById.has(layerId) ? visById.get(layerId) : true;
@@ -603,16 +627,6 @@ export function applyLayerState(editor) {
     else            child.removeClass('layer-hidden');
     if (!showColor) child.addClass('layer-no-color');
     else            child.removeClass('layer-no-color');
-  });
-
-  // BUG-28 cross-layer multi-select: only deselect when the selection is
-  // a SINGLE non-editable element. Multi-selection across layers is now
-  // a legitimate state (shift-click / marquee can pick from any visible
-  // layer), so we don't auto-strip it on layer changes.
-  const selArr = editor._selectedElements || [];
-  if (selArr.length === 1 && !isEditableByLayer(editor, selArr[0])) {
-    editor._deselect();
-  }
 }
 
 // ----------- Panel rendering -----------
@@ -708,11 +722,28 @@ export function renderLayersPanel(editor) {
 // ("V-Bit (Linear)") that wouldn't fit a 44px row.
 const PROFILE_LABELS = { vbit: 'V', adaptive: 'Adapt', ballnose: 'Ball', flat: 'Flat' };
 
+/** The Bricks layer (editor-brick-tool.js ensureBricksLayer), by NAME: the stamp-mask pipeline
+ *  (main/stamp-mask-manager.js) routes it through the brick-aware height mask
+ *  (editor-brick-height-mask.js), matching ensureBricksLayer's own lookup (no reserved id scheme). */
+export const BRICKS_LAYER_NAME = 'Bricks';
+export function isBricksLayer(layer) {
+  return !!layer && layer.name === BRICKS_LAYER_NAME;
+}
+
+/** Audit K7: the Bricks layer's carve profile is never read (its height comes from the brick mask), so
+ *  its row reads "Raised .13"" / "Carved .13"" (the depth sign) instead of the misleading "Flat .13"",
+ *  which also clashed with the Flat | Organic brick-top setting. Every other layer: profile + depth. */
+function _summaryLabel(layer) {
+  if (isBricksLayer(layer)) return (typeof layer.depth === 'number' && layer.depth < 0) ? 'Carved' : 'Raised';
+  return PROFILE_LABELS[layer.profile] || layer.profile || '';
+}
+
 function _formatToolSummary(layer) {
-  const label = PROFILE_LABELS[layer.profile] || layer.profile || '';
+  const label = _summaryLabel(layer);
   const depth = typeof layer.depth === 'number' ? layer.depth : 0;
   const abs = Math.abs(depth).toFixed(2).replace(/^0\./, '.');
-  return `${label} ${depth < 0 ? '-' : ''}${abs}"`;
+  const sign = depth < 0 && !isBricksLayer(layer) ? '-' : ''; // Bricks: the word already says it
+  return `${label} ${sign}${abs}"`;
 }
 
 /** T27: small factory for a fixed-glyph toggle button — same shape (a
@@ -894,7 +925,7 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   const toolSummary = document.createElement('span');
   toolSummary.className = 'layer-tool-summary' + (carveActive ? '' : ' not-carved');
   toolSummary.textContent = ` · ${_formatToolSummary(layer)}`;
-  toolSummary.title = `${PROFILE_LABELS[layer.profile] || layer.profile || 'tool'}, depth ${layer.depth ?? 0}"${carveActive ? '' : ' (not carved)'}`;
+  toolSummary.title = `${_summaryLabel(layer) || 'tool'}, depth ${layer.depth ?? 0}"${carveActive ? '' : ' (not carved)'}`;
   name.appendChild(toolSummary);
 
   const del = document.createElement('button');

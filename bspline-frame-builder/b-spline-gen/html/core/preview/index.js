@@ -39,6 +39,7 @@ import { ViewCube } from './view-cube.js';
 import { GroundGrid } from './ground-grid.js';
 import { LeaderLineOverlay } from './leader-lines.js';
 import { applyFrameToPanel, frameLoopsWorld, pointInPolygon } from './frame-mesh.js';
+import { ADAPTIVE_DISPLAY, adaptiveGridIndices } from './adaptive-mesh.js';
 import { OrbitController } from './orbit-controller.js';
 import { SculptController } from './sculpt-controller.js';
 import { renderTopView } from './top-view.js';
@@ -164,7 +165,8 @@ export class TerrainPreview {
          meshColours = null, worstPts = [], showLeaders = true,
          offsetPts = null, shadingIntensity = 0.25,
          thinPts = [], intersectPts = [],
-         thickenWireframe = false, botColours = null, flatShading = false) {
+         thickenWireframe = false, botColours = null, flatShading = false,
+         adaptiveDisplay = false) {
     const THREE = this._THREE;
     this._dispose();
     this._groundGrid.update(width, height);
@@ -192,18 +194,21 @@ export class TerrainPreview {
     const hasSolid = offsetPts && offsetPts.length >= count * 3;
     const showSolid = hasSolid && !thickenWireframe;
     const liveBrushColours = buildLiveBrushColours(meshColours, this._sculpt.getConfig(), nx, nz);
+    // F35 item 17: opt-in adaptive display mesh — same vertices, RTIN triangles (adaptive-mesh.js).
+    const adaptiveMaxError = adaptiveDisplay ? ADAPTIVE_DISPLAY.maxErrorIn : 0;
 
     this._meshIsSolid = showSolid; // H23 item 67: topCapIndices only applies to buildSolidMesh's own layout
     if (showSolid) {
       const topColours = liveBrushColours || (useMeshColours ? meshColours : null);
       if (liveBrushColours) dbg('VertexColor', 'liveBrushColours sample:', Array.from(liveBrushColours.slice(0, 12)));
       this._mesh = buildSolidMesh(THREE, pos, offsetPts, nx, nz, {
-        topColours, botColours, flatShading, topUvs: field.uvs,
+        topColours, botColours, flatShading, topUvs: field.uvs, adaptiveMaxError,
       });
       this._mesh.visible = !this._curvesVisible;
       this._scene.add(this._mesh);
     } else {
       const colours = liveBrushColours || (useMeshColours ? meshColours.slice() : null);
+      if (adaptiveMaxError) field.indices = adaptiveGridIndices(pos, nx, nz, { maxError: adaptiveMaxError });
       this._mesh = buildTopOnlyMesh(THREE, field, colours, {
         isWireframeMode: !!thickenWireframe,
         flatShading,
@@ -483,7 +488,7 @@ export class TerrainPreview {
       for (const name of ['position', 'uv', 'normal', 'color']) {
         if (geometry.attributes[name]) capGeom.setAttribute(name, geometry.attributes[name]);
       }
-      capGeom.setIndex(topCapIndices(this._lastNx, this._lastNz));
+      capGeom.setIndex(geometry.userData?.adaptiveCaps || topCapIndices(this._lastNx, this._lastNz));
       geometry = capGeom;
     }
     this._drapeMesh = new THREE.Mesh(geometry, mat);

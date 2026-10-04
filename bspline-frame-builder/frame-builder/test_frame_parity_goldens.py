@@ -46,14 +46,18 @@ _SIZES_PORTRAIT = ("7x9", "6x9", "12x6")
 # count doesn't match the template's own declared count, for a build-defect reason, not a
 # "too small" _DEGENERATE one) -- not asserted here at all (no "correct" count to check
 # against); see test_fb_fix.py's matching _KNOWN_BROKEN_GOLDENS and LIVE-RESULTS-ranchy.md
-# item 13. T9 12x6: 0 of 12 bars (2 corners fail miter resolution).
+# item 13.
 # H23 item 19: T10 7x9/6x9 re-recorded live and FIXED (items 14/15/17's own work) -- full
 # 4/4 bars now, removed from this set. T10 12x6 stays broken, re-confirmed live: sketch 3/
 # frame enclosure still fails to form at all there (a pre-existing Template 1 limitation
 # T10 inherits, "ship it" per the advisor/Fred) -- its own golden here is still the item-13
 # era recording (2 malformed bars, a different failure shape than today's "no sketch 3 at
 # all", but broken either way; not re-recorded since there is no "correct" shape to capture).
-_KNOWN_BROKEN_BUILD = {"template_9_12x6.json", "template_10_12x6.json"}
+# H23 item 79: T9 12x6 re-recorded live and FIXED (raising the default flangeHeight to 0.7
+# changed which of frameParamRanges' own two bounds 12x6 clamps against) -- full 12/12 bars
+# now, removed from this set. (Its app-vs-Fusion comparison still needs its own exclusion,
+# for an unrelated reason -- see CLAMP_DIVERGENT_OUTLINE/_INNER in frame-parity-app.test.js.)
+_KNOWN_BROKEN_BUILD = {"template_10_12x6.json"}
 
 
 # Every template's own DECLARED allowed golden-file states (H23 item 13/F30 item 3/F33 item 1's
@@ -107,6 +111,10 @@ _ALLOWED_GOLDEN_STATES = {
                      {f"template_15_{s}.json" for s in _SIZES}],
     "template_16": [set(), {"template_16_7x9.json"}, {f"template_16_{s}.json" for s in _SIZES}],
     "template_17": [set(), {"template_17_7x9.json"}, {f"template_17_{s}.json" for s in _SIZES}],
+    # H23 item 80 (2026-10-04): Template 19's own first-ever live goldens, recorded at the same two
+    # sizes its own live build check used (7x9/9x12, T18's own precedent -- not T9/T10's own
+    # 7x9/6x9/12x6 portrait set, and not the plain 3-size set either).
+    "template_19": [set(), {"template_19_7x9.json", "template_19_9x12.json"}],
 }
 # T1/T2 are the only templates held to a FIXED, always-fully-recorded set (no "not yet recorded"
 # or partial state ever allowed for them) -- the baseline every other template's own partial/empty

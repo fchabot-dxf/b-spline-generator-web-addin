@@ -19,6 +19,7 @@
 import { clampedKnots, evalBSplineSurface } from '../bspline-math.js';
 import { COORD_SYSTEM } from '../coords.js';
 import { dbg } from '../debug.js';
+import { adaptiveGridIndices } from './adaptive-mesh.js';
 
 const safeNum = v => Number.isFinite(v) ? v : 0;
 
@@ -129,7 +130,7 @@ export function buildTopOnlyMesh(THREE, field, colours, { isWireframeMode, flatS
  * with side-wall verts duplicated so normals at corners stay sharp.
  */
 export function buildSolidMesh(THREE, topPos, offsetPts, nx, nz, opts) {
-  const { topColours, botColours, flatShading, topUvs } = opts || {};
+  const { topColours, botColours, flatShading, topUvs, adaptiveMaxError } = opts || {};
   const count = nx * nz;
   const boundaryIndices = COORD_SYSTEM.gridBoundaryIndices(nx, nz);
   const B = boundaryIndices.length;
@@ -219,13 +220,18 @@ export function buildSolidMesh(THREE, topPos, offsetPts, nx, nz, opts) {
   }
   if (badCount > 0) console.warn(`[WARN] buildSolidMesh corrected ${badCount} invalid position values (NaN/Inf)`);
 
-  const indices = solidIndices(nx, nz, B, SIDE_START);
+  // F35 item 17: adaptive display caps (same vertices, fewer triangles) when asked for.
+  const caps = adaptiveMaxError ? adaptiveCapIndices(pos, nx, nz, adaptiveMaxError) : topCapIndices(nx, nz);
+  const capLen = caps.length;
+  const indices = solidIndices(caps, B, SIDE_START); // appends the walls onto `caps`
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   if (useColours) geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
   if (useUvs) geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geometry.setIndex(indices);
+  // The drape overlay's cap-only index ('Colour edges' OFF) must follow the same adaptive caps.
+  if (adaptiveMaxError) geometry.userData.adaptiveCaps = indices.slice(0, capLen);
   geometry.computeVertexNormals();
 
   const mat = new THREE.MeshPhongMaterial({
@@ -260,11 +266,22 @@ export function topCapIndices(nx, nz) {
 }
 
 /**
- * Top-cap + bottom-cap + side-wall index buffer for a solid laid out as
- * [Top (count), Bottom (count), SideTop (B), SideBot (B)].
+ * F35 item 17: the adaptive counterpart of topCapIndices for the same
+ * [Top (count), Bottom (count), ...] layout — each cap triangulated on its
+ * own (the top checks z; the bottom checks x, y and z, since thicken's
+ * offset points can move sideways), same winding as topCapIndices.
  */
-function solidIndices(nx, nz, B, sideStart) {
-  let indices = topCapIndices(nx, nz);
+export function adaptiveCapIndices(pos, nx, nz, maxError) {
+  return adaptiveGridIndices(pos, nx, nz, { maxError, comps: [2] })
+    .concat(adaptiveGridIndices(pos, nx, nz, { maxError, comps: [0, 1, 2], base: nx * nz, invert: true }));
+}
+
+/**
+ * Cap index buffer (`caps`, extended in place) + side-wall index buffer for a
+ * solid laid out as [Top (count), Bottom (count), SideTop (B), SideBot (B)].
+ */
+function solidIndices(caps, B, sideStart) {
+  const indices = caps;
   for (let i = 0; i < B; i++) {
     const next = (i + 1) % B;
     const t1 = sideStart + i;

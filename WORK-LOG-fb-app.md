@@ -11470,3 +11470,964 @@ one-off screenshot need.
 Not yet done: relocating Brick size + Grout into the toolbar-anchored "Bricks & grout" popover (still
 queued from item 16's own earlier scope, unaffected by this slider change); the frame-depth-vs-neck
 hint and resolution hint wording (next, per the advisor's turn-171 dispatch).
+
+## F35 item 16 follow-up: resolution hint fold-in + the Display/Export resolution split
+
+Two advisor DMs, the second explicitly "replaces the earlier 'one resolution' instruction":
+1. Add `Masonry` (0.015) / `Masonry max` (0.011) to `RESOLUTIONS`; the brick grout-vs-spacing hint
+   should recommend them by name for bricks <= 1.5in, and go SILENT above that size (the measured
+   grid's own finding: finer resolution never fixes "reads as terrain, not bricks" at larger sizes,
+   only grout-joint carving -- recommending an 8-second Masonry-max rebuild for something it can't
+   fix would be actively misleading).
+2. Fred: ONE resolution setting becomes TWO -- **Display** (`P.spacing`, the live 3D preview,
+   unchanged) and **Export** (`P.exportSpacing`, the mesh actually built for Send/STEP), plus
+   `P.sameAsDisplayResolution` (default true, so every existing board's behaviour is byte-identical
+   until deliberately split). Send shows the effective resolution in its own progress line. The
+   brick hint targets Export, not Display.
+
+**core/state.js**: `RESOLUTIONS` gained the two new entries (after Extreme, values confirmed against
+the measured grid, not guessed). New `P` fields `sameAsDisplayResolution: true` / `exportSpacing:
+0.05` (mirrors `spacing`'s own default); `exportSpacing` added to `updateP`'s `stringParams`,
+`sameAsDisplayResolution` to `boolParams` (confirmed via a live DM research pass that `P.spacing`
+itself is ALREADY a string, not a number, by this same convention -- easy to miss and get the new
+field's coercion wrong). New exported `effectiveExportSpacing()` -- the ONE place Display-vs-Export
+resolves, always returning a real `Number` (never the raw possibly-string `P.spacing`/`P.exportSpacing`,
+so callers can safely use strict equality against `RESOLUTIONS`' own numeric `val`s). Same NaN/<=0
+safeguard added for `exportSpacing` in `loadLastSession` as `spacing` already had.
+
+**Research before writing a line of code**: an Explore agent traced the FULL existing pipeline first
+(persistence shape, Send's actual resolution source, where progress text could go, the hint's own
+call sites) rather than guessing. Key finding that shaped the whole design: **Send does not build its
+own mesh today** -- both Fusion Send and the web STEP download read `lastResult` (core/engine/
+rebuild.js's own output), i.e. whatever `P.spacing` happened to be at the LAST live-preview rebuild.
+There was no "export resolution" concept to extend; splitting Display from Export means temporarily
+rebuilding `lastResult` at a different resolution for the duration of the Send, then rebuilding back.
+
+**main/export-flow.js**: new exported `withExportResolution(preview, fn)` brackets `executeExport`'s
+existing `lastResult`-reading body (moved into the callback, unchanged otherwise). When
+`sameAsDisplayResolution` (every existing board's default), it's a pure passthrough -- zero behavior
+change, confirmed by the same function being a one-line `return fn()` in that branch. When split: a
+PLAIN state write (`P.spacing = P.exportSpacing`, deliberately NOT `applyParam`, so the Display
+dropdown never visibly flickers to Export's value), `updateStampMasks` at the export grid (masks are
+resolution-scoped and `rebuild()` itself never rasterizes one, only consumes whatever's already
+there -- confirmed from rebuild.js directly, not assumed), `rebuild(null, ...)` (the `null` preview
+is what keeps the LIVE 3D view from visibly jumping mid-Send -- `rebuild()`'s own `if (preview)` guard
+skips `preview.update` entirely), then `fn()` runs against the freshly-built export-resolution
+`lastResult`, then the whole sequence reverses in a `finally` (restores `P.spacing`, re-rasterizes
+masks at the display grid, `rebuild(preview, ...)` to push the live view back to exactly where the
+user left it) -- the restore runs even if `fn` throws. Fusion-mode progress: `setFusionStatus(
+'Building at <RESOLUTIONS name> <value>in…', 'busy')` right before the export-resolution rebuild,
+silent in the web wizard path (not asked for there). `core/fusion-bridge.js`'s own poll-timeout
+`P.spacing <= 0.05` check needed NO code change -- it runs from inside `sendToFusion`, itself inside
+the wrapped `fn()`, so `P.spacing` is already the effective export value at that point; added a
+comment explaining why, so a future reader doesn't "fix" it into a latent bug.
+
+**main/param-manager.js**: `applyParam` early-returns for these two new keys before the generic
+grid-diff/rebuild-scheduling tail -- without this, every Export-resolution UI change would still
+schedule a real (if harmless) Display rebuild 200ms later, since that tail is keyed on `P.spacing`
+alone and these two fields never change it.
+
+**HTML + wiring**: new "Export uses the same resolution as Display" checkbox + a second
+`<select id="exportSpacing">` (hidden while checked) in the Resolution panel, both auto-bound for
+free by `main/ui-bindings.js`'s existing `Object.keys(P).forEach(...)` loop (any DOM id matching a
+`P` key gets wired with zero extra code -- confirmed this already works for every other scalar
+field). `core/ui-utils.js`'s `updateSpacingLabels` gained an optional `selectId` param so it can
+populate EITHER select from the one `RESOLUTIONS` list, rather than a second copy of the option-
+building loop; both its call sites (`app-init.js`, `param-manager.js`'s widthIn/heightIn handler) now
+call it twice. The checkbox's own show/hide toggle is hand-written (inverse polarity from the
+existing `bindTogglePanel` helper -- checked HIDES the Export section here, the opposite of every
+other toggle-panel consumer -- so reusing it would need its own inversion flag for one caller).
+
+**main/brick-panel.js**'s `updateSpacingHint`: now reads `effectiveExportSpacing()` instead of
+`P.spacing` directly; gated by a new `BRICK_HINT_MAX_SIZE_IN = 1.5` check against
+`P.brickSettings.brickLengthIn`; the suggestion text is DATA-DRIVEN (`RESOLUTIONS.filter(r => r.val
+<= targetSpacing)`, coarsest-two), not a hardcoded "Extreme or Masonry" string, so it stays correct
+if the target ever needs an even finer pair. Shows via `#spacingGroutHint` (Display's own, always-
+visible panel) when `sameAsDisplayResolution`, or `#exportSpacingGroutHint` (inside the now-visible
+Export section) when not -- explicitly clears whichever one is currently INACTIVE so flipping the
+checkbox never leaves a stale message under the wrong control. New listeners on `#exportSpacing`/
+`#sameAsDisplayResolution` re-evaluate the hint, same deferred-one-tick convention as `#spacing`'s
+own existing listener.
+
+**Tests** (4 new files, 34 new tests total):
+- `tests/resolution-split-persist.test.js` (11): RESOLUTIONS entries, `updateP` coercion for both
+  new fields, `effectiveExportSpacing` (mirrors/decouples/always-a-Number), `loadLastSession`
+  restore (both fields, a pre-split project left untouched, the NaN/<=0 safeguard). Mutation-tested
+  the safeguard by removing it -- exactly that 1 test failed.
+- `tests/export-flow-resolution-split.test.js` (9): `withExportResolution`'s no-op passthrough path;
+  the swap/restore (including on `fn` throwing); `rebuild(null, ...)` for the export build vs
+  `rebuild(preview, ...)` for the restore; masks re-rasterized at BOTH grids; exact operation
+  ordering (masks -> rebuild:export -> fn -> masks -> rebuild:restore); the Fusion-mode progress
+  message's exact wording, silent in web mode. Mutation-tested (the no-op branch unconditional) --
+  exactly the 6 "sameAsDisplayResolution OFF" tests failed, the 3 "ON"/passthrough tests stayed green.
+- `tests/param-manager-export-resolution.test.js` (3): the two new keys never trigger
+  `scheduleRebuild`/`refreshAllStampMasks`; a control case (`spacing` itself) confirms the REAL
+  rebuild path still fires for an ordinary Display key. Mutation-tested (removed the early-return) --
+  both new-key tests failed, the control test stayed green.
+- `tests/brick-spacing-hint.test.js` (rewritten, 7): hidden/shown states now reference
+  `effectiveExportSpacing`; new tests for the Export-targeting-when-decoupled case and the >1.5in
+  silence gate; the "toggling same-as-display live moves the hint" case.
+Full suite green: 215 files / 3890 tests (was 212/3864 before this item).
+
+**Live-verified** (headless Chrome, not just unit tests): opened the Resolution panel fresh --
+`exportResolutionOptions` correctly hidden, `sameAsDisplayResolution` checked, both selects populated
+with all 11 real `RESOLUTIONS` entries (confirmed the static HTML's own placeholder options get
+replaced, same as the pre-existing `#spacing` behavior). A REAL click on the checkbox (not a
+synthetic event -- see below) correctly un-hides the Export select and sets `P.sameAsDisplayResolution
+= false`. Setting Export to an INVALID value (no matching `<option>`) safely no-ops to `""`, exactly
+like a native `<select>`; setting it to a real value (Masonry, 0.015) correctly updates
+`P.exportSpacing`. With Display left at its own fine default and Export set deliberately coarse
+(Coarse, 1in), the hint correctly shows under `#exportSpacingGroutHint` (not `#spacingGroutHint`)
+with the right message, and mirrors on the Brick tab's own hint too. Zero console errors.
+**Caught my own test-harness bug while live-verifying, not a production one**: a checkbox's generic
+auto-bind listens on `'input'` (core/ui-utils.js's own `bind()`: `SELECT` -> `'change'`, everything
+else -> `'input'`) while my OWN new visibility-toggle code listens on `'change'` -- correct for a
+REAL click (which fires both, in that order) but my first verification script only dispatched a
+synthetic `'change'` event, so the auto-bind never ran and the checkbox APPEARED broken. Switched the
+script to a real `.click()` (fires the full native sequence) and it worked correctly -- recorded here
+so a future script doesn't waste time on the same false alarm.
+
+Not yet done, explicitly deferred (per the advisor's own rapid sequence of follow-up DMs, each
+naming where it slots in): a staged loading/busy indicator covering brick generation, the height-
+mask pass, and fine-resolution rebuilds (declared stage data, >250ms show threshold, yield between
+stages) -- asked to be folded into this same item, but is a genuinely separate piece of UI/UX
+infrastructure (finding/reusing whatever loading signal already exists, instrumenting multiple call
+sites) rather than a quick addendum to an already-large turn; a Brick-top Flat/Organic global
+setting (per-brick plane-fit, cached, grout stays draped); the Frame Template selector becoming an
+icon-per-template custom listbox; and a Brick/Photo sidebar-vs-editor-tab 3D/2D control split. All
+four arrived as DMs during this turn's own work and are queued as explicit next items, in the order
+the advisor named them.
+
+## F35 item 16 follow-up: per-tab top-toolbar GROUPS (Brick's Brush lost its Grid/Snap controls)
+
+Small, explicitly-sequenced fix (advisor: "Small; do it next"): the earlier UX-unification turn's own
+fix (commit 2245810, this same item) hid the ENTIRE top toolbar (`#editorToolbarTop` -- Stroke/
+Color/Grid/FillMode/Font/Expand) outside the Artwork tab, on the reasoning that it was "shared
+styling chrome for ONE of them." That went too far: Brick's own Brush tool draws strokes on the
+canvas and genuinely needs GRID (SHOW/GRID-snap/GEOM-snap + spacing) -- the exact same shared
+control + state Artwork's own drawing tools already use -- which the blanket hide took away too.
+
+**Fix, declared per tab, not a second hand-rolled branch**: `main/editor-tabs.js` gained
+`TOOLBAR_TOP_GROUPS_BY_TAB` (`brick: ['editorGridGroup']`, `photo: []`, `frame: []`) and
+`ALL_TAB_GATED_TOOLBAR_GROUPS` (the 6 real groups; `editorTouchActionsGroup` deliberately excluded --
+its own visibility is purely a `(pointer:coarse)` CSS media query, independent of mode OR tab by
+design, per editor-ui.js's own TOOLBAR_GROUPS doc comment). `setEditorTab` now always shows the bar
+itself and sets an INLINE `style.display` on each gated group for non-Artwork tabs; for Artwork, it
+clears the inline style back to `''` instead of setting anything. This composes correctly with
+editor-ui.js's existing PER-MODE visibility system (`TOOLBAR_GROUPS`, a separate, already-declared
+table keyed by mode, toggling a `.hidden` class with `!important`) without needing to import or call
+into it: the `.hidden` class is never touched by this new code, so it keeps tracking whatever mode
+Artwork was last in, completely undisturbed, the whole time a non-Artwork tab is active (confirmed by
+actually checking `base.css`'s `.hidden { display: none !important; }` rather than assuming an inline
+style and a `!important` class interact safely) -- returning to Artwork needs no re-sync call at all,
+just clearing the override lets the untouched class state show through exactly as it was.
+
+**Tests**, new `tests/editor-tabs-toolbar-groups.test.js` (5): Brick shows Grid only; Photo/Frame
+show nothing; Artwork clears every inline override and leaves a PRE-EXISTING `.hidden` class (seeded
+in the fixture to simulate editor-ui.js's own table having already hidden Font/Expand for some mode)
+completely untouched; a round-trip Artwork -> Brick -> Artwork proves the restore needs no re-sync;
+TouchActionsGroup is never touched on any tab. Mutation-tested (reverted to the old blanket-hide
+behavior) -- exactly the 3 tests checking per-tab group visibility failed, Artwork and TouchActions
+stayed green (both were already satisfied by the old code too, correctly not flagging a difference
+that doesn't exist for them). Full suite green: 216 files / 3895 tests.
+
+**Live-verified** (headless Chrome, Brick tab, Brush tool, both 1366 and 390 widths): GRID group
+(SHOW/GRID/GEOM + the 1/4" spacing dropdown) visible and functional, Stroke/Color correctly hidden,
+Brush tool correctly shows its strong active highlight (confirms the earlier cross-tab highlight fix,
+commit 2245810, is intact on this branch). Screenshots:
+`.bspline-status/shots/seatC/f35item16_brick_tab_grid_group_{1366,390}.png`.
+
+Not yet done, queued next (per the advisor's own explicit re-prioritization, ahead of the rest of
+item 16): a 4-part Brick-tab usability bug report from Fred's own live use (tool rail icons/
+highlighting -- to be CONFIRMED against this branch's current code, not assumed broken; the settings
+panel showing every section at once instead of being contextual; the Layers panel not appearing with
+nothing selected; and a reported bad brick layout -- wall bricks running under/over frame bands,
+shards fanning at the shoulders -- to reproduce and diagnose as either already-fixed or a real
+wall/frame clip bug).
+
+## F35 item 16, re-prioritized: Fred's live Brick-tab confusion (4-part bug report)
+
+Fred's own live screenshot (`.bspline-status/shots/fred/fred_brick_tab_confusion_2026-10-04.png`,
+add-in 2026.10.04-7, BEFORE this session's earlier UX-unification commit 2245810): "I don't
+understand which tool is selected, can't select brush, don't see the layers." The advisor moved this
+ahead of the rest of item 16. All 4 parts addressed; none assumed broken without checking this
+branch's own current code first.
+
+**(1) Tool icons + highlight.** The Frame tool's own icon was `'🖼️'` -- Unicode literally calls that
+glyph "framed picture," which is exactly the photo-icon confusion Fred reported (confirmed by reading
+`BRICK_TOOLS` directly, not assumed from the screenshot alone) -- changed to `'⬚'` (a plain dotted
+square, reads as "outline/border," no photo association). Tooltips were ALREADY present (`editor-
+tool-registry.js`'s `renderToolRegistry` sets `btn.title` from `label`/`hint` for every entry) --
+nothing to fix there. The highlight itself: `.tool-btn.active` (editor.css) is a pale `#e5f3ff`
+background; Artwork's own static SVG buttons get an ADDITIONAL `.tool-btn.active svg { stroke-width:
+2.5px }` bold-stroke treatment the same rule doesn't reach for Brick/Photo's plain-emoji buttons
+(`btn.textContent = tool.icon`, no `<svg>` to bold) -- confirmed by reading `base.css`'s actual rule,
+not assumed. Registry-rendered buttons now also carry a new `tool-btn-emoji` class
+(`editor-tool-registry.js`), with its own `.tool-btn-emoji.active` rule (editor.css) giving a SOLID
+filled background (matching `.cad-btn.active`'s own established "selected" look elsewhere in the app)
+-- scoped so Artwork's own static buttons are completely untouched.
+
+**(2) Contextual panel.** The right-side panel showed Set/Wall pattern/Frame band preset/Band
+patterns all simultaneously regardless of which tool was active -- confirmed live (own screenshot
+matched Fred's own complaint exactly). `BRICK_TOOLS`' own `settingsSection` field was declared for
+exactly this ("reserved for a future per-tool settings block... null for now") when Brush was its
+only would-be consumer, left unused rather than generalized for one. Wall and Frame needing the
+identical treatment is the 3rd consumer that justifies turning it on: `settingsSection` now names
+each tool's own DOM id (`brickBrushSection`/`brickWallSection`/`brickFrameSection`; Scissors/Stripe
+stay `null`, nothing of their own to show), wrapped the "Wall pattern" and "Frame band preset" + "Band
+patterns" HTML blocks in those two new container divs, and replaced the old Brush-only
+`syncBrushSection()` with a generic `syncToolSections()` that shows ONLY the active tool's own
+section. "Set"/"Brick size"/"Grout"/"Relief"/etc. stay unconditional -- genuinely common to every tool.
+
+**(3) Layers panel on empty selection.** With no Brick tool picked yet, `syncToolSections()` hides
+every section, leaving a near-empty panel -- exactly "don't see the layers." New
+`syncEmptySelectionPanel()`: while the Brick tab is active (`getEditorTab()`) and `_activeTool ===
+null`, swaps `#editorBrickPanel` for the shared `#editorLayersPanel` (editor-tabs.js's own per-tab
+toggle owns every OTHER tab's panel untouched -- this only ever touches these two, only on Brick,
+matching the reported problem's own scope, not a broader redesign). Wired from the SAME
+`syncToolButtons()` already called by `selectTool`/`deselectTool`, plus a new `'editorTabChanged'`
+listener (since entering the tab with no tool picked is a bare tab switch, not a tool change, so
+`syncToolButtons()` needed its own trigger for that case).
+
+**Tests**, 3 new files (14 tests): `tests/brick-tool-contextual-sections.test.js` (one section visible
+at a time per tool, Scissors/Stripe hide all three); `tests/brick-empty-selection-layers-panel.test.js`
+(Layers shows with no tool, Brick panel shows once one's picked, Escape returns to Layers, other tabs
+untouched); `editor-tool-registry.test.js` gained one test for the new `tool-btn-emoji` class. Each
+mutation-tested (reverting `settingsSection` to `null` for wall/frame failed exactly the 5 contextual-
+section tests; disabling `syncEmptySelectionPanel` failed exactly the 2 tests that depend on it, the
+other 2 -- picking a tool, and the other-tabs control -- correctly stayed green). Full suite green:
+220 files / 3938 tests.
+
+**(4) The reported bad brick layout -- reproduced and diagnosed, not blindly "fixed."** Red Brick +
+Stretcher wall + Soldier frame on Template 1 (all defaults -- zero configuration needed to
+reproduce), headless Chrome, real SVG canvas (not the flat terrain backdrop). Measured: 295 bricks
+(171 wall + 124 frame), 23 of the 171 wall bricks' own bounding boxes overlap SOME frame brick's
+bounding box (concentrated at the 4 concave "shoulder" curves, `shots/seatC/
+f35item16_brick_wall_frame_repro_full.png` + a tight `..._shoulder_closeup.png`). Visually, this
+branch's current result is substantially cleaner than Fred's own -7 screenshot's chaos (no stray dark
+gaps, no obviously broken/duplicated geometry) -- consistent with the advisor's own guess that
+d3's notch/medial work (landed after -7) already fixed most of it. What REMAINS at each shoulder: the
+frame band's own soldier bricks fan out as thin radial wedges pivoting around the concave curve, a
+visually busy but geometrically coherent way of keeping each brick roughly perpendicular to the
+local curve tangent -- not obviously broken (no visible self-intersection, no double-rendered
+geometry in the close-up), but genuinely busy enough that Fred may want a different treatment for a
+tight concave corner specifically. Deliberately NOT changed: the bbox-overlap count alone doesn't
+distinguish "two shapes sharing a boundary" from "two shapes actually overlapping," and the fan
+pattern's own correctness depends on a design call (should a frame band even wrap a sharp concave
+notch this way, or should it taper off / use a different corner treatment?) this report surfaces for
+Fred/the advisor's own judgment rather than one this diagnostic pass should decide unilaterally.
+
+**Screenshots** (`.bspline-status/shots/seatC/`): `f35item16_brick_tab_fixed_no_tool_1366.png` (Layers
+panel, nothing highlighted), `f35item16_brick_tab_fixed_wall_tool_1366.png` (Wall tool strongly
+highlighted, ONLY Wall-pattern + common sections visible, the grout hint showing correctly),
+`f35item16_brick_wall_frame_repro_full.png` + `..._shoulder_closeup.png` (item 4's repro).
+
+(Per Fred's own follow-up DM after seeing this: the shoulder fan stays as-is -- voussoirs, he liked
+the corner pieces. Confirms the diagnostic framing above was the right call.)
+
+## F35 item 16, turn 173: the loading/busy signal for heavier geometry
+
+Advisor's formal turn-173 dispatch, first of "one per turn, pass back after each": "the existing
+LOADING signal... must also cover brick generation, the height-mask + photo-surface pass, and
+rebuilds at fine resolutions (Masonry 0.015/0.011 take 4-8s). Show it when the work takes > ~250ms...
+with a short label of the current stage... keep the UI responsive (yield between stages)... declare
+the stages as data... reuse it, don't invent a new one."
+
+**Research before writing a line of code**: an Explore agent mapped the WHOLE existing signal
+landscape first. Key finding: there is currently NO busy indicator of any kind during a plain live-
+preview rebuild -- no spinner, no status text, nothing. `#bottomStatusBar` and the sculpt notices
+(`core/engine/rebuild.js`'s own `updateStatusBar`/`updateSculptNotice`) are DEAD CODE -- their target
+elements don't exist in any HTML, so that code never runs. The ONE real, already-reusable surface is
+`core/fusion-bridge.js`'s `setFusionStatus(text, kind)` (writes `#fusion-status`), already used for a
+non-Fusion-specific warning (`main/export-flow.js`'s own `_reportDeclinedOutlines`, whose comment
+calls it "the app's one reusable status-line surface... rather than inventing new UI") -- confirming
+exactly what to reuse. Also found: `rebuild()` and the brick height-mask rasterizer are the two
+genuinely slow, call-site-scattered operations (rebuild() has ~15 call sites across main/ and core/);
+brick GENERATION itself (`_generateAndDraw`) is fully synchronous but inherently fast regardless of
+resolution (brick count depends on board/brick-size geometry, never on mesh resolution).
+
+**New `core/loading-signal.js`**: `LOADING_STAGES` declared as data (`bricks`/`heightMask`/`rebuild`,
+the last with a label FUNCTION of ctx so "Building surface 0.015″…" can report the live resolution
+value, matching Fred's own example wording exactly) -- a future slow operation (the queued Flat-mode
+per-brick plane fit) is one more entry here, not a new mechanism. `withLoadingStage(stageId, fn, ctx)`
+only calls `setFusionStatus` if `fn` is STILL running after 250ms (Fred's own number) -- no flicker
+for the common fast case -- and always clears it (only if IT was the one that showed something,
+never blindly) when `fn` settles, success or failure.
+
+**Wired at 3 call sites**: `core/engine/rebuild.js` wraps its own body (stage `rebuild`, ctx =
+`{spacing: P.spacing}}` -- ONE place covers all ~15 existing call sites, not 15 individual wraps);
+`main/stamp-mask-manager.js` wraps specifically the brick-layer's own `rasterizeBrickHeightMask` call
+(stage `heightMask` -- the generic SVG rasterizer for other layers is untouched, not part of this ask);
+`main/brick-panel.js` wraps all 4 `runBricks(...)` call sites (stage `bricks`).
+
+**"Keep the UI responsive" -- real yields, not just a label**: a label showing >250ms into a FULLY
+SYNCHRONOUS call would never actually paint until the synchronous work already finished, defeating
+the point. `rebuild()` already yields between its own phases (pre-existing `yieldToMain`, untouched).
+`editor/editor-brick-height-mask.js`'s own per-grid-point loop (up to ~525,000 iterations at Masonry
+max, fully synchronous before this) did not -- added a periodic `await` yield every 32 rows
+(`YIELD_EVERY_N_ROWS`), same one-line `setTimeout(resolve,0)` convention as rebuild.js's own. Pure
+timing change, zero output difference -- confirmed directly (see tests below), not assumed. No new
+import needed (a bare `setTimeout` has no `core/state.js` dependency, so this stays inside the
+existing "editor/ never imports core/state.js" boundary brick-panel.js's own header already documents).
+
+**A real bug found and fixed while live-verifying, not assumed working from the code alone**: on the
+first live check, `setFusionStatus`'s own text/timing were all correct (confirmed by polling
+`#fusion-status`'s DOM state directly: "Carving relief…" at the right moment, then "Building surface
+0.011″…", then cleared -- textbook correct) but NOTHING was visible on screen. `#fusion-status` sits
+in plain document flow, a sibling of `<main>`, with no `position`/`z-index` of its own -- entirely
+behind the SVG editor's own full-viewport modal (`editor.css`'s `.cad-modal-overlay`, `z-index: 9999
+!important`) the ENTIRE TIME the Brick tab (where every one of these three stages actually fires) is
+open. Correct text, correct timing, zero visible effect for exactly the case this feature exists for.
+Fixed with `position: fixed; top/left/right: 0; z-index: 10000` on `.fusion-status` -- confirmed via
+`document.elementFromPoint` that it's now the topmost element at its own position, and via a real
+screenshot (not just DOM state) that the text is visually on screen, floating above the open editor.
+
+**Tests**, 3 new files (22 tests): `tests/loading-signal.test.js` (11) -- stage data, no-flicker-under-
+threshold (fake timers), shows+clears correctly, dynamic ctx label, clears on rejection too, unknown
+stage id is a safe no-op. `tests/brick-height-mask-yield.test.js` (3) -- a large nz genuinely does NOT
+resolve synchronously (real yielding, not decorative), output is byte-identical regardless of how many
+yields a pass takes, a real brick fixture actually registers as stamped (not a vacuous empty-mask
+test). Mutation-tested: the 250ms threshold test fails exactly when `SHOW_THRESHOLD_MS` is zeroed
+(the other "settles back to hidden eventually" tests correctly stay green, since that property holds
+regardless of the threshold -- confirms the threshold test specifically is the one load-bearing check);
+the yield-detection test fails exactly when the yield line is removed, the two output-correctness
+tests correctly stay green. Full suite green: 222 files / 3949 tests.
+
+**Live-verified end to end** (headless Chrome, real Masonry-max rebuild, 295 real bricks): polled
+`#fusion-status` every 400ms through a real `applyParam('spacing', 0.011)` -- observed exactly
+"Carving relief…" (t+400ms) -> cleared (t+800ms) -> "Building surface 0.011″…" (t+1200-1600ms) ->
+cleared (t+2000ms onward), matching the design precisely. Screenshot (a rapid back-to-back sequence
+was needed to actually catch the ~400ms visible window; a single well-aimed capture kept landing in a
+gap) confirms it's visually on screen, floating correctly above the open Brick editor tab:
+`.bspline-status/shots/seatC/f35item16_loading_signal_building_surface.png`.
+
+Heads-up noted, not yet acted on (affects FUTURE turns, not this one): spare 88 is fixing a real bug
+on `fix-brick-buttons` (discrete brick buttons never regenerated, `notifyChange`-only) by renaming
+`_commitBrickSlider` to a shared `commitBrickSetting()`; separately, Fred changed policy mid-session --
+bricks no longer auto-rebuild from the EDITOR (mark pending + a sticky Generate button instead), but
+DO still auto-rebuild from the MAIN SIDEBAR's own quick settings once that split lands. Advisor asked
+to merge main into fb-app after 88 merges, and to use `commitBrickSetting()`/88's own new per-binding
+commit-mode mechanism for any new brick control from here on. Not relevant to this turn's own 4
+`runBricks` call sites (unchanged in SHAPE, just wrapped) until that merge actually happens.
+
+## F35 item 16, turn 175: Brick/Photo sidebar split + Flat/Organic + Weathered -- IN PROGRESS
+
+Merged origin/main first (`e31e5c3`, 88's `fix-brick-buttons`, commit 10ece6b -- the sticky Generate
+button + per-binding auto/generate commit mode). Conflict in brick-panel.js resolved per 88's own
+DM guidance: `generateBricks()` keeps main's `lay`/`_markLaidNow` structure, with my loading-signal
+`withLoadingStage` wrapped around its one `runBricks` call; the two `selectTool` call sites (wall/
+frame) keep both `_markLaidNow` (main) and `withLoadingStage` (fb-app). Full suite green after the
+merge: 223 files / 3971 tests.
+
+**This turn bundles three asks from the advisor's own rapid DM sequence**: (1) the Brick/Photo
+sidebar split (3D settings move to the main sidebar; the editor tab keeps only 2D/layout controls;
+"each control lives in exactly ONE place" except 4-5 quick 2D settings the sidebar ALSO gets, shared
+state, two entry points, per a later refinement DM); (2) Brick-top Flat/Organic (the height adapter);
+(3) a declared 'Weathered' preset matching Fred's own target-look reference images. Each is
+substantial on its own; this is a large, multi-part turn still in progress -- what's done and the
+full design for what remains are both recorded here so continuing (this session or a fresh one) does
+not need to re-derive the architecture analysis below.
+
+**Done and tested**: new `core/bricks/plane-fit.js` -- `fitPlane(points)`, a plain least-squares
+plane `z = a*x + b*y + c` through a handful of 3D points (standard 3x3 normal-equations solve,
+Cramer's rule), with a safe degenerate fallback (fewer than 3 effectively-distinct points, or a
+singular system) to a level plane at the mean sampled height -- never NaN. Pure geometry, zero
+brick-specific knowledge, zero DOM/state dependency -- callable from editor/editor-brick-height-
+mask.js with no import-boundary issue.
+
+**A real bug caught by the test suite itself, not a deliberate mutation**: the FIRST version of
+`fitPlane`'s own `detC` (Cramer's rule, the 3rd unknown) had a transcription error -- `sy * sxz`
+where the correct cofactor term is `syz * sx` (two DIFFERENT sums: "sum of y times sum of x*z" vs
+"sum of y*z times sum of x" -- easy to swap by eye, exactly why a ground-truth test matters more than
+re-reading the algebra). `a`/`b` came back exactly right (2 and -3 on a known `z=2x-3y+5` plane) but
+`c` read 13.75 instead of 5 -- caught immediately by the EXACT-plane test (tight tolerance, 1e-6),
+fixed, re-verified. Mutation-tested separately too (forcing the degenerate flat-fallback
+unconditionally): exactly the 2 tests that depend on a real non-zero slope failed, the level/
+degenerate/collinear tests correctly stayed green. 5 tests, `tests/bricks-plane-fit.test.js`. Full
+suite green: 224 files / 3976 tests.
+
+**The architecture problem this feature runs into, worked out but NOT yet implemented**: "fit a
+plane to the TERRAIN under a brick's footprint" needs the terrain's own height field -- but
+`editor/editor-brick-height-mask.js`'s `rasterizeBrickHeightMask` runs during `main/stamp-mask-
+manager.js`'s `updateStampMasks`, which is a SEPARATE pass that happens BEFORE `core/engine/
+rebuild.js`'s own `rebuild()` even starts (confirmed by reading `refreshAllStampMasks`: it calls
+`updateStampMasks` THEN `scheduleRebuild(rebuild)` -- the two are not the same call, often not even
+the same tick). The terrain heightmap doesn't exist yet at mask-rasterization time; it's `rebuild()`
+own `buildHeights()` that generates it, strictly AFTER masks are already rasterized. Not circular,
+but a real ordering gap: the CLEAN (pre-stamp) terrain is independent of the brick mask, so it CAN be
+computed standalone for Flat mode's own purposes --it just isn't today.
+
+**The planned fix** (not yet written): `main/stamp-mask-manager.js` (which already imports `P` and
+already sits in the "main/ bridges state to editor" layer, so this doesn't cross any import
+boundary) computes a STANDALONE clean heightmap via `core/terrain.js`'s own `generateHeightmap({
+...P, nx, nz, edgeMargin }, { mask: null })` -- the SAME call `rebuild.js`'s `buildHeights` already
+makes -- gated behind `P.brickSettings.brickTopMode === 'flat'` (zero extra cost in the default
+Organic mode), and passes the resulting Float32Array into `rasterizeBrickHeightMask` as a new
+parameter. `editor-brick-height-mask.js` itself gains ZERO new imports (a plain array in, same as
+every other parameter it already takes) -- the existing "editor/ never imports core/state.js"
+boundary (brick-panel.js's own header) stays intact.
+
+**The planned combine math** (derived, not yet coded): confirmed directly from `core/engine/apply-
+stamp-layers.js:92` (`stampedHeights[k] += bodyVal * layerDepth + ...`) and `editor/editor-brick-
+tool.js:123` (`layer.depth = settings.invert ? -settings.reliefIn : settings.reliefIn`) that the
+compositor's own formula is `finalHeight = terrainHeight + body[k] * (sign * reliefIn)` where `sign
+= invert ? -1 : +1`. For Flat mode, the target is `finalHeight = planeFit(x,y) + sign * reliefRaw(u,v)`
+(reliefRaw = `brickTopHeight`'s own existing 0..reliefMaxIn output, UNCHANGED -- same shoulder/crown/
+chip/photo-detail shape in both modes, only the SUBSTRATE it sits on differs). Solving for `body[k]`:
+`body[k] = sign * (planeFit(x,y) - terrainHeight(x,y)) / reliefIn + reliefRaw(u,v) / reliefIn`. Grout
+points (outside every brick polygon, `sampleHeight` returns `jointHeightIn`, typically 0) are
+UNTOUCHED by this -- the substitution only ever applies on the "inside a brick" branch, so grout
+stays draped to the real terrain in BOTH modes with no special-casing needed.
+
+**The planned per-brick plane cache**: one pass over each LIVE brick group's own bricks (before the
+main per-grid-point loop), sampling the terrain heightmap at each brick's own polygon corners + its
+centroid (nearest-grid-point lookup, same `(x,y)->i,j` mapping the main loop already uses), calling
+`fitPlane` once per brick, cached by brick id -- "cached it per brick" per the advisor's own ask,
+since it's the SAME plane for every grid point inside that one brick's footprint.
+
+**Not yet started**: threading `P.brickSettings.brickTopMode` ('organic' default | 'flat') through
+to the rasterizer -- per the established "DOM is the source of truth, grouped by (set,seed,reliefIn)"
+convention (`collectLiveBrickGroups`'s own header), this should be a NEW per-brick DOM attribute
+(`drawBrick` stamps it at draw time, same as `data-brick-relief`), not a direct `core/state.js` read
+from inside editor/ -- keeps the same boundary, and naturally supports a future per-stroke override
+if that's ever wanted, even though today every stroke reads the one global setting. Also not started:
+the declared 'Weathered' preset (worn/noise-displaced brick edges, per-brick height jitter, pit-
+contrast surface detail, deep/dark grout via existing grout-depth+recessed-profile fields) and the
+full Brick/Photo sidebar HTML restructuring (moving Relief/height/grout-depth-profile/surface-detail/
+Hide-filter-texture/the resolution hint OUT of the editor tab into a new main-sidebar BRICK 3D
+section, plus the quick-2D-settings mirror wired through 88's own `selectSet(id,'auto')` etc., plus
+the equivalent PHOTO split).
+
+**Capacity note, stated plainly per the worker protocol's own convention rather than quietly pushing
+through**: this turn bundles three substantial features (a new cross-cutting terrain dependency for
+the mask rasterizer, a tuned multi-parameter weathering preset, and a real UI reorganization across
+two tabs + a new sidebar section) that each warrant their own careful implementation + mutation-
+tested verification + live-rendered close-ups, on top of an already long session (turns 171-175, each
+shipped, tested, and pushed in full). The PURE-MATH, hardest-to-get-subtly-wrong piece (plane
+fitting) is done, tested, and a real bug in it was caught before it could propagate anywhere. Rather
+than rushing the remaining, more failure-prone pieces (an untested terrain-threading change touching
+3 files, a weathering preset whose "rightness" depends on comparing against Fred's own reference
+images, and a UI move spanning two tabs) in the same breath, committing this clean foundation now and
+flagging the honest remaining scope for the next turn/session.
+
+## F35 item 18 part (1), turn 177 (seat C = 37, epoch 6): brick top FLAT | ORGANIC
+
+Took seat C from de (out of capacity) and continued de's T175 plan, part (1) only.
+
+**Changed de's plan at one point, with a measured reason.** de's plan had stamp-mask-manager build a
+standalone clean heightmap and bake `plane - terrain` into the brick mask. That goes STALE: a terrain
+slider (peakShape, density, seed...) or a sculpt stroke rebuilds WITHOUT re-rasterizing masks
+(main/param-manager.js applyParam: only gridChanged/stampMaskParams call refreshAllStampMasks, every
+other key just schedules rebuild). Flat bricks would then sit on the OLD ground until the next
+mask refresh. So the split is instead:
+- mask time (editor/editor-brick-height-mask.js, `opts.topMode === 'flat'`): only WHICH brick covers
+  each grid point, `flatTop = { brickOf: Int32Array (-1 = grout), count }`. Brick lookup is the
+  engine's own exported index.query + pointInPolygon, first match, the SAME order sampleHeight uses,
+  so no engine (core/bricks, seat B) change was needed. In Flat every point inside a brick is
+  isStamped (no draped hole where the profile reaches 0). Organic: no flatTop, body byte-identical.
+- composite time (core/engine/apply-stamp-layers.js, new `flatBrickPlaneHeights`): each brick's
+  least-squares plane (de's core/bricks/plane-fit.js, unchanged maths) over EVERY grid point the brick
+  covers, fitted to the heights below this layer at THIS rebuild, centred on the brick in grid units.
+  A Flat brick point: `plane + body*depth + fillet` (terrain replaced, suppression moot). Grout falls
+  through the normal path, so it stays draped in both modes with no special case.
+- the inset-window hole also clears `brickOf` (stamp-mask-manager clearStampMaskInWindow).
+
+**Setting + UI.** `P.brickSettings.brickTopMode` ('organic' default; only `=== 'flat'` is Flat, so a
+saved session without the key loads unchanged). An Organic | Flat toggle under Relief in the editor's
+Brick tab (where the other 3D brick settings live today; part (3) moves them to the sidebar together).
+Declared a third BRICK_COMMIT mode, `surface`: a 3D-only key (SURFACE_ONLY_SETTING_KEYS) never re-lays,
+never marks Generate pending, and re-masks at once via the editor's own change pipeline
+(`_notifyChange('commit')` -> app-init onChange -> refreshAllStampMasks). `setBrickTopMode(mode, commit='surface')`
+is the sidebar's entry point too. Also corrected plane-fit.js's header, which my change made wrong
+(it named the rasterizer as the plane's consumer and assumed corner+centroid samples).
+
+**Tests.** New tests/brick-top-flat.test.js (7): brickOf names each brick and -1 in the joint, Organic
+has no flatTop and the same body; window hole clears brickOf; a planar terrain is reproduced exactly;
+on hills the result is planar and equals fitPlane; applyStampLayers Flat = one plane per brick (minus
+profile) while Organic is not, joints identical; SAME mask + changed terrain lands bricks on the NEW
+ground (the staleness guard); Carved (negative depth). tests/brick-discrete-controls-regen.test.js +3:
+toggle saves/re-masks/never re-lays/never pending; a pending layout change stays pending across it;
+sidebar entry point. Non-vacuous: against HEAD's sources 6 fail + 3 cannot run (their setup needs
+flatTop); the 2 that pass on HEAD pin existing behaviour (pending stays pending; old panel has no
+button). Mutation (compositor ignores the planes, `planeZ = null`): 3/7 of brick-top-flat fail
+(the staleness test was strengthened with a planarity check after it first passed that mutation).
+Fast tier: 40 brick/stamp/rebuild/palette/state/mask spec files, 423 passed, 0 failed.
+
+**Live, real app (served fb-app worktree, headless Chrome, real Wall+Frame bricks on T1 7x9, spacing
+0.03, measured from lastResult.heights: max distance of each brick's base, height minus body*depth,
+from one plane):**
+
+| brick length | bricks measured | Organic base (max / median in) | Flat base | terrain under bricks |
+|---|---|---|---|---|
+| 3 in | 36 | 0.358 / 0.170 | 0 / 0 | 0.377 / 0.189 |
+| 0.75 in | 291 | 0.128 / 0.050 | 0 / 0 | 0.159 / 0.057 |
+
+Shots: shots/seat37/f35item18_{organic,flat}_{3,0.75}in.png (script tools/repro/f35item18_flat_organic_shots.mjs,
+SIZE_IN/SPACING env). Visible at 3 in: steep brick sides show the grid's sawtooth where a plane meets
+draped grout up to ~0.37 in away -- a sampling artifact of near-vertical walls, more visible in Flat than
+Organic; not changed here.
+
+**ENGINE BUG found, NOT fixed (core/bricks Wall layout, seat B):** on T1 7x9 at brick length 1.5 in
+exactly one Wall brick (data-brick-id=5, sample rw_22) has a CORRUPT 39-point polygon covering the whole
+interior (bbox 1.41,1.75 - 5.59,7.25, area 13.97 sq in vs 0.6 for a normal brick). It starts like a
+normal brick and wanders. Pre-existing: in Organic it silently swallows the interior Wall bricks (no
+joints visible in the centre); Flat just makes it obvious (one giant flat plane). 0.75 in and 3 in
+are clean. Reproduce: Wall tool on the default board, setBrickSize(1.5,'auto'), list
+[data-brick-gen="1"] polygons by area.
+
+Processes: my http.server (8838) and headless Chromes are stopped before the pass.
+
+## F35 item 18 part (2), turn 179 (seat C = 37): brick SURFACE style, Clean | Weathered, as data
+
+**Declared** in a new editor/brick-surface-styles.js, `BRICK_SURFACE_STYLES` (rendered into the Brick
+tab's new Surface toggle, one button per entry). Clean declares NOTHING, so it is exactly the set's own
+library look (proved byte-identical below). Weathered = overrides read by the mask rasterizer:
+- `profileScale`: multipliers on the SET's own heightProfile (edgeRadiusIn x1.8, crown x0.5, chipRate
+  x5, chipSizeIn x1.8, surfaceShare x2.5; chipRate/surfaceShare capped at 1). Multipliers, not
+  absolutes, so Set 3's bigger declared profile keeps its own proportions;
+- `profileSet`: edgeNoiseIn 0.015 / edgeNoiseScaleIn 0.06 = worn RAGGED edges (below);
+- `pitGain` 1.8: the photo detail's negative half (pits/cracks) amplified, positive half kept;
+- `topJitterIn` 0.012: extra seeded per-brick top offset (seed + brick id), on top of the layout's own;
+- `jointDepthIn` 0.03: joints recessed below the ground. A joint = a non-brick grid point with a brick
+  within one grout width at one of the 4 axis offsets (any joint angle has an axis reaching across it).
+  Points with no brick nearby are untouched, so the board outside the brickwork never sinks. Body is
+  normalised by layer.depth, so joints go DOWN for Raised and Carved alike.
+
+**Engine touch, agreed with seat B first** (d3, turn 317: "Go ahead, add them yourself"): two optional
+heightProfile fields in core/bricks/height-profile.js, `edgeNoiseIn`/`edgeNoiseScaleIn` -- the shoulder's
+distance-to-edge perturbed by noise2d.js valueNoise2 in board space. Default 0 = exactly the old
+shoulder; chips and crown still read the true distance. No other core/bricks change; no library set
+declares them, so every existing look is unchanged.
+
+**Setting + UI.** `P.brickSettings.surfaceStyle` ('clean'; unknown/missing = Clean). Joins
+SURFACE_ONLY_SETTING_KEYS with brickTopMode: committed with 'surface' (re-masks at once, never re-lays,
+never marks Generate pending). `setSurfaceStyle(id, commit='surface')` = the sidebar entry point (3).
+Not merged with the existing Recessed/Flush grout buttons (still "not yet visually implemented"): the
+style's jointDepthIn is its own field. Flagging for the advisor whether Recessed should reuse the joint
+recess code now that it exists.
+
+**Tests.** New tests/brick-surface-style.test.js (9): Clean/unknown/missing = Clean and identity;
+Weathered scales the set's own profile, caps fractions, leaves the frozen library set alone; pit gain
+negative-only; jitter seeded, bounded, varies; edgeNoise absent/0 = plain shoulder, on = the shoulder
+line wanders along an edge, never above full height, interior untouched; rasterizer Clean (explicit,
+unknown, absent) byte-identical to no style; Weathered joint recessed by exactly jointDepthIn, open
+board untouched, bricks changed; Carved joint still goes down. tests/brick-discrete-controls-regen +3
+(buttons from data, toggle saves/re-masks/never pending, unknown id -> Clean). Mutations: joint recess
+off -> 2/9 fail; edge noise off -> 1/9 fail; restored -> 9/9. Fast tier: 41 files, 435 passed, 0 failed.
+
+**Live** (served fb-app, headless Chrome, real Wall+Frame on T1 7x9, brick 0.75 in, spacing 0.015):
+Weathered recesses 76,683 joint points at a mean 0.030 in, Clean 0. Shots:
+shots/seat37/f35item18_{clean,weathered}_0.75in_r2.2_t0.55.png. Weathered reads clearly worn (ragged
+edges, pitted faces, deeper joints) and probably HEAVY for Fred's taste -- every value is one declared
+number; a 3x3 grid for Fred to mark is the cheap next tuning step if wanted. Unverified: a low oblique
+view at the board edge showed a few thin needle spikes; not reproduced in the top-down view, not chased.
+
+Script: tools/repro/f35item18_flat_organic_shots.mjs is now generic (VARIANTS name:buttonId list, RADIUS,
+TARGET, TILT env). Server PID 16604 (mine) killed by PID; no listeners left.
+
+## F35 item 18, turn 181 (seat C = 37): Recessed grout = the ONE joint recess; Weathered tuning grid
+
+**Recessed now works (advisor: one implementation, Flush = no recess).** The joint recess in
+editor-brick-height-mask.js is driven by the GROUT setting: `groutProfile === 'recessed'` recesses joints
+by `grout.depthIn` (stamp-mask-manager passes profile + depth); Flush = none, in every style. Weathered's
+own `jointDepthIn` (0.03) became `jointDepthScale` 1.6 (x the grout depth). CONSEQUENCE, flagged: the
+P default grout profile is 'flush', so Weathered on a default board no longer shows deep joints until
+Recessed is picked -- that is the literal rule; say if Weathered should switch grout to Recessed itself.
+Grout profile + depth are now height-only: committed 'surface' (re-mask, never re-lay, never pending),
+kept out of the layout key (SURFACE_ONLY_GROUT_KEYS; grout WIDTH stays layout). The Recessed button
+title and editor-brick-tool.js's header no longer say "not yet visually implemented".
+Tests: brick-surface-style joint tests rewritten (Recessed Clean = depth, Flush = none even Weathered,
+Weathered+Recessed = depth x scale, Carved down) + the panel's grout-profile test now asserts 3D-only
+(it asserted the OLD pending behaviour -- updated on purpose). All 5 fail against 156b8b9's sources.
+Fast tier 41 files, 437 passed, 0 failed.
+
+**Tuning grid for Fred** (tools/repro/f35item18_weathered_grid_shots.mjs + tools/grid_composite.py):
+rows edge wear edgeNoiseIn 0 / 0.02 / 0.04 in, cols pitGain 1 / 2.5 / 4, every other Weathered value as
+declared, grout Recessed, brick 0.75 in, spacing 0.011, sun moved high top-left for the capture only.
+Per cell RMS height change vs Clean (whole board): 0.0338 0.0398 0.0425 / 0.0363 0.0418 0.0444 /
+0.0411 0.0461 0.0484 in -- monotonic in both. First attempt (0.006-0.025 in edges, 1.2-2.5 pits,
+spacing 0.015) gave 9 near-identical cells: edge wear of ~1 grid cell does not show; widened.
+Shot: shots/seat37/f35item18_weathered_grid.png. To freeze Fred's pick: set the two numbers in
+BRICK_SURFACE_STYLES.weathered. `surfaceStyleById` now also returns an inline style object as-is (how
+the grid renders candidates; the UI only stores ids).
+
+Coordination: 88 (audit-fixes, off fb-app) touches brick-panel.js's pending area -- told 88 to rebase on
+this commit and keep the surface-only keys out of its laid-settings record; B4/C5 (grout depth/Recessed)
+are this commit. Server: harness task stopped; no listeners.
+
+## F35 item 18, turn 183 (seat C = 37): Weathered -> Recessed; part (3) Brick sidebar split (Photo at a gate)
+
+**Weathered switches the grout (1f2ac21).** `BRICK_SURFACE_STYLES.weathered.groutProfile = 'recessed'`;
+setSurfaceStyle applies it and remembers the replaced profile (`groutProfileBeforeStyle`, 3D-only key);
+a style without one restores it unless the user picked a grout profile in between. Tests +3 (1 fails on
+the old panel; the other 2 pin preservation that already held).
+
+**Brick sidebar split.** New main-sidebar panel 🧱 BRICK (after FILTER), collapsed by default:
+- QUICK settings, declared as one table `BRICK_QUICK_SETTINGS` (main/brick-panel.js): Set, Brick size,
+  Wall pattern, Frame bands -- each row = the editor's own declared choice list + isCurrent + apply via
+  the existing setter with 'auto'. One render + one sync; every editor sync fn also syncs the quick rows,
+  so both entry points always show the same state.
+- 3D, each control MOVED (single place, ids unchanged, so every binding is untouched): Relief
+  Raised/Carved, Brick top, Surface, Max Height, Grout depth, Recessed/Flush, Hide filter texture. Relief +
+  Max Height now commit 'auto' (they re-lay: reliefIn is stamped per brick at lay time); the rest were
+  already 'surface'.
+- Stays in the editor (2D layout): Set, tool hint, Brush/Wall/Frame sections, Brick size slider+presets,
+  Grout WIDTH + the resolution hint (it is about grout width), Suppression (core/bricks/suppression.js
+  removes whole pieces = layout, NOT height -- checked before moving), Clumping, Seed, Generate.
+Tests: the 2 editor tests that asserted Relief/Max Height mark pending were REMOVED and replaced by
+sidebar ones (re-lay at once); +8 new sidebar/quick tests, all 8 fail against 1f2ac21's sources.
+Fast tier: 51 files, 613 passed, 0 failed.
+Live (served fb-app, headless): editor panel keeps width/suppression/clumping/seed and no longer holds
+height/top/hide-filter/depth; with the editor CLOSED, quick Wall pattern -> herringbone re-laid 171 -> 188
+wall bricks, rebuilt heights, the editor's own Herringbone button followed; sidebar Flat -> mask flatTop.
+Shots: shots/seat37/f35item18_split_{editor_brick_panel,sidebar_brick,sidebar_after_quick}.png.
+
+**PHOTO split NOT done -- a fork for the advisor.** Measured what the Photo tab's 3D controls write:
+- Effect params = a SECOND render target of the FILTER panel's own tweaks (registerTweaksTarget) -- the
+  sidebar already has them;
+- Max Height = P.carveZ, the SAME param as STOCK DIMENSIONS' Carve Depth (Z), but bounded 0.01-0.25 in
+  (Fred: photo height <= 1/4) vs Carve Depth's 0.1-20 in;
+- Relief Raised/Carved = an 'invert' step in P.photoEdits (photo-only, no sidebar equivalent).
+Options: (A) remove Effect params + Max Height from the Photo tab (sidebar FILTER + Carve Depth already
+hold them) and move only Relief to a small sidebar 📷 PHOTO panel; (B) a sidebar 📷 PHOTO panel with
+Relief + a photo-bounded Max Height (two controls for one param, different bounds) and drop the Photo
+tab's Effect params copy; (C) leave Photo as is. Recommend A, with Carve Depth clamped to 0.25 in while
+the active filter is the photo (one control, Fred's bound). Removing the Effect-params copy is a removal:
+I'll sweep registerTweaksTarget/photoTweaksBody/tests when it's decided.
+
+Coordination: told 88 before moving the markup; 88 does its Brick-panel number-box widths after rebasing.
+
+## F35 item 18 part (4), turn 185 (seat C = 37): the editor's static backdrop -- no 3D while editing
+
+Merged origin/main first (fast-forward to 718c33a).
+
+**Measured before deciding what "loads fast" means** (new tools/repro/f35item18_editor_session_perf.mjs:
+real app, headless, PERF log on, a T1 7x9 Wall+Frame brick board Applied at spacing 0.015; busy = a
+rebuild in flight OR the loading line showing a stage, since mask building is not a rebuild):
+
+| step | before | after |
+|---|---|---|
+| open the editor | 1.40 s, 0 remasks | 1.35 s, 0 remasks |
+| one in-editor change (Brick tab Generate, herringbone) | 8.10 s busy: 2 remasks (1.2 s in the commit) + a full 3D rebuild, backdrop redrawn | 0.17 s: serialize 3 ms + persist 29 ms, 0 remasks, backdrop not redrawn |
+| Apply | 7.1 s, 3D rebuilt | 7.3 s, 3D rebuilt |
+
+Opening was never the slow part; EVERY in-editor edit paid the whole 3D cost again (the commit pipeline's
+remask -> refreshAllStampMasks -> rebuild -> updateEditorTopView -> sync3DBackground).
+
+**Change, declared:** main/app-init.js `CHANGE_PIPELINE_IN_EDITOR` = CHANGE_PIPELINE minus `remask`
+(live: serialize; commit: serialize, persist). initSvgEditor's onChange picks it with the EXISTING
+declared fact core/history.js `isEditorOpen()`; runChangePipeline takes the table as an optional third
+argument (default = the old table, so every non-editor caller is unchanged). The backdrop is now the
+board as it was when the editor opened (open() -> sync3DBackground), static for the session. Apply and
+Cancel are the only ways the modal closes and both already remask + rebuild (checked every
+svgEditorModal reference). The sidebar's 'auto'/'surface' brick commits only happen with the editor
+closed, so they still remask.
+
+Tests: change-pipeline.test.js +3 (table = old minus remask, same order; run with it never remasks; no
+table argument still remasks). Fast tier: 59 files, 685 passed, 0 failed.
+Shots: shots/seat37/f35item18_backdrop_{before,after}_editor.png (same look; the after shot shows a few
+bricks white -- their photo textures were still loading 0.17 s after Generate vs 8 s before; load timing,
+not missing bricks).
+
+**Still live inside the editor, NOT changed (flag):** a PARAM change made from inside the editor (the
+Photo tab: levels/crop/relief go through applyParam/P.photoEdits -> scheduleRebuild) still rebuilds the
+3D and redraws the backdrop -- that is how the photo shows up in the editor today. Freezing it too would
+hide the photo terrain until Apply; say if wanted (it is the same Photo question as the turn-183 gate).
+
+## F35 item 16 (Wall/Frame as tools), turn 187 (seat C = 37): slice 1 = audit C1 + C2 + K7
+
+Merged origin/main first (88's audit fixes b0f7478: laid key on the Bricks layer, pending badge).
+Item 16 in full (wall ELEMENTS with regions, contextual panel, migration, scissors split, per-tool Level,
+offset-from-frame) is several turns; this turn is the first slice, stated plainly rather than rushed.
+
+**C1, each tool lays only its own element.** editor-brick-tool.js: `BRICK_KINDS = ['wall','frame']`;
+`_generateAndDraw` / runBricks / runBricksPreview take an optional `kinds` and clear + draw only those
+(the composer still runs with the frame, so a Wall alone keeps the SAME frame-interior clip; default =
+both = old behaviour). main/brick-panel.js: BRICK_TOOLS declare `lays: 'wall' | 'frame'` next to 88's
+`generates`; `_kindsToLay` = kinds already on the canvas + the active tool's own (frame only with a
+usable frame) -- used by Generate and the live drag preview. `_hasLaidWallOrFrame` became unused by
+this change and is removed. Wall hint now: "Fills the frame's interior with bricks (the whole board when
+there is no frame). Press Generate to lay it."
+**C2, picking a tool never lays.** selectTool's wall/frame branch only shows the settings (and the
+pinned Generate); Generate lays. The panel test setup said "selecting the tool lays the bricks once" --
+updated to the new flow (pick, then Generate); that is the point of C2, not a weakened test.
+**K7, "Bricks · Flat .13"".** The Bricks layer's profile is never read (the brick mask sets its height):
+its row now reads "Raised .13"" / "Carved .13"". To do that layers.js needs the Bricks layer identity but
+cannot import editor-brick-tool.js (that file imports layers.js): BRICKS_LAYER_NAME + isBricksLayer moved
+to layers.js and are re-exported from editor-brick-tool.js, so every importer is unchanged.
+
+Tests: new tests/brick-tool-kinds.test.js (5, real draw path into jsdom, composer stubbed); panel +5 (C2
+no lay on pick; Wall+Generate = ['wall']; Frame+Generate = ['frame']; present frame + Wall = both; hint);
+layer list +1 (K7). Against the previous sources: 8 of the C1/C2 tests fail (the 2 passing pin defaults
+that held), K7 fails. Fast tier 57 files, 605 passed, 0 failed.
+Live (served fb-app, headless): pick Wall -> 0 bricks; Generate -> 193 wall, 0 frame; pick Frame -> still
+193/0; Generate -> 193 wall + 136 frame; Bricks row "Raised .25"". Shots shots/seat37/
+f35item16_c1_{wall_only,wall_plus_frame}.png.
+
+**Open, for the advisor (next slices):**
+- A Wall laid alone fills the BAND interior, leaving an empty ring where the Frame bands would go (the
+  geometry it always had). Should a wall with no frame bands fill out to the frame contour? That is the
+  "region minus frame bands" rule of the wall-ELEMENT design; the engine's composer currently falls
+  back to the rectangular board, not the frame contour, when there are no bands -- needs a seat-B call.
+- "Offset-from-frame default ON" and "Level" per tool: please confirm the meaning. My reading: Frame
+  bands get an "Offset from frame" distance (default ON at 0, like the Shape Lattice); Level = the
+  element's own height offset in inches (proud/recessed, item 15's accent level applied per element).
+- C6 (Brick Stripe shows Artwork's colour panel) not started; next slice with the wall elements.
+
+## F35 item 16 slice 2, turn 189 (seat C = 37): Frame offset-from-frame + per-element Level
+
+Merged origin/main first: ONE conflict, the editor-brick-tool.js layers.js import line (my BRICKS_LAYER_NAME/
+isBricksLayer vs 88's applyLayerStateTo) -> union, exactly 88's predicted resolution. 88's applyLayerStateTo
+calls SVG.js addClass/removeClass on each drawn brick, which my brick-tool-kinds test fake lacked -> the
+fake gained them (7fec7d4); 589/589 brick+layer specs green after the merge.
+
+**Offset from frame (advisor: like the art lattice's, ON at 0; OFF = free placement).**
+`P.brickSettings.frameOffset = { on: true, distance: 0 }`. brick-panel.js `frameBandContour`: ON = the SAME
+frameContourSilhouette(ctx, distance) the Shape Lattice's offset-from-frame uses (+ inward, - outward);
+OFF = the board's own outline (rectToPrimitives) -- so the Frame tool now also works on a board with no
+frame. resolveFrameGeom builds the bands on it, so a Wall's interior clip follows the moved bands too.
+It moves the layout -> 'generate' (pending until Generate), like every editor Brick-tab setting. UI in the
+Frame section: checkbox + distance (disabled when OFF). Frame hint mentions the board edge.
+**Level (per-element height offset, proud/recessed).** `P.brickSettings.elementLevelIn = { wall: 0, frame: 0 }`
+keyed by BRICK_KINDS; one "Level (in)" input in the Wall section and one in the Frame section (step 1/64).
+Read ONLY by the height mask: collectLiveBrickGroups adds `levels[data-brick kind]` to each brick's
+heightOffset (stamp-mask-manager passes it). 3D-only -> 'surface' (SURFACE_ONLY_SETTING_KEYS), never
+re-lays, never pending; set inside the editor it lands on Apply (part 4's rule). Missing key = 0.
+
+Tests: panel +4 (default ON 0 reaches frameContourSilhouette; a distance is pending then laid at that
+distance; OFF hands the board rectangle to the band builder + disables the field; Level saved per kind,
+re-masks, never re-lays/pending); mask +2 (a kind's level moves exactly that kind by exactly that many
+inches; zero/missing levels byte-identical). Against the previous sources 4 fail, the 2 passing pin the
+defaults. Fast tier 58 files, 616 passed, 0 failed.
+
+Live (served fb-app, headless, T1 7x9, Frame tool):
+| setting | frame bricks | bands' outer bbox (in) |
+|---|---|---|
+| ON, 0 | 136 | 0.25,0.25 - 6.75,8.75 (the frame's outer edge, its 0.25 trim) |
+| ON, 0.3 (Generate pending after the change) | 124 | 0.55,0.55 - 6.45,8.45 (exactly 0.3 in) |
+| OFF | 130 | 0,0 - 7,9 (the board) |
+Frame Level +0.0625 then Apply: a frame brick's centre height 0.7225 -> 0.7850 in (delta 0.0625 exactly),
+Generate not pending. Shots shots/seat37/f35item16_frame_offset_{0,0.3,off}.png.
+(My first OFF bbox read NaN: the probe's number regex split exponent values like 1e-16 -- a probe bug,
+the shot was right; re-measured with a points parser.)
+
+**Turn 189 amendments.**
+(1) MERGE: done before the amendment arrived (7a259fd, one import-line conflict, union kept 88's
+onBricksLayer at all 3 draw sites + my kinds logic; the "5 failing brick test files" were my kinds-test
+fake lacking SVG.js addClass/removeClass, fixed 7fec7d4). Main moved again (T19) -> merged clean,
+beefec7, brick tier 59 files / 632 passed, pushed, DM'd the advisor the sha.
+(2) FRED, Weathered WEAR as a SLIDER (the correction superseding 3 buttons). Declared on the style:
+`BRICK_SURFACE_STYLES.weathered.wear = { default: 0.5, edgeNoiseIn: [0, 0.04], pitGain: [1, 4] }` (the
+grid's diagonal); the fixed edgeNoiseIn 0.015 / pitGain 1.8 are gone. `styleAtWear(style, wear)` resolves
+it (clamped 0..1, absent = default; a style without `wear` untouched); the rasterizer applies it with
+`opts.surfaceWear` = P.brickSettings.surfaceWear (default 0.5, 3D-only key). Sidebar 3D: a "Wear" slider
+row under Surface, shown only while the surface style declares `wear`. Also: the 'surface' commit now
+only SAVES on a drag tick and re-masks once on release (a re-mask per slider tick is the expensive height
+pass); the grout depth field gained a 'change' listener so a typed depth still re-masks when it settles
+(its test now asserts 1 notify on input, 2 after change -- updated on purpose). The tuning-grid script's
+inline cells drop `wear` so the slider can't override an explicit (edge, pit) cell.
+Tests: wear table + 3 points + clamp/default (styleAtWear), the 2 existing style tests moved onto
+styleAtWear, panel: row hidden for Clean / shown for Weathered / hidden again, drag saves only, release
+re-masks once, never re-lays. Against the previous sources 8 fail. Fast tier 58 files, 623 passed, 0 failed.
+Live: row hidden for Clean, shown for Weathered (grout -> Recessed), Wear 0 vs 1 changes the real heights
+by RMS 0.0206 in. Shot shots/seat37/f35item18_wear_slider_sidebar.png.
+CHECKLIST: the amendment asks for a checklist line; NEXT-SESSION-fb-app.md is the advisor's file (worker
+never edits it) -- please add the [F35-item-N] line for the Wear slider.
+
+## F35 item 16 slice 3, turn 191 (seat C = 37): audit C6 -- the Brick Stripe picks a brick STYLE per run
+
+Pulled 5f2c04d (advisor's item 19/20 lines), merged origin/main (clean).
+
+**Before:** the Brick tab's Stripe opened Artwork's colour panel (swatches/presets/lattice text that mean
+nothing for bricks); striped runs cycled a FIXED 2-entry STYLE_CYCLE by position.
+**Now, declared:** editor-brick-tool.js `BRICK_STRIPE_STYLES` (red bricks / white rocks one band / red one
+band / white rocks) + `DEFAULT_STRIPE_STYLE_PICKS` (A red bricks, B white one band, C red one band) and
+`stripeCycleFor(picks, useC)` (2 slots, 3 with the panel's own "Use C"; unknown pick = that slot's
+default). STYLE_CYCLE is gone: the default picks ARE the old cycle, so striped boards look the same.
+`P.brickSettings.stripeStyles` holds the picks (Brush-only key: never pends the Wall/Frame).
+regenerateOwnedBrickElements reads the picks LIVE (editor._brickSettings) -- one setting for every
+striped run, so a pick re-commits (commitEdit) and every run follows at once.
+**Panel:** in the Brick tab the Stripe panel hides the colour swatches/presets/reset, relabels
+"Colours" -> "Brick styles", shows A/B(/C) rows of sample-photo thumbnails (one band marked "="), and
+its hint says "Tap a brush stroke..."; back in Artwork it is the colour panel again (hint restored). New
+ids only (stripeColoursLabel, stripeColorSwatches, stripeBrickStyles, stripeTargetHint); the Artwork
+stripe module is untouched.
+
+**A real bug the live check caught (not the unit tests):** regenerateOwnedBrickElements skips work when a
+fingerprint of its inputs is unchanged ("every input its own output depends on"); the new stripe picks
+were NOT in it, so a pick change was silently skipped. Measured live: B -> red one band left runs 1 and 3
+on set 3; with the cycle ids added to the fingerprint they turn set 1 at once. Not unit-covered (the
+regenerate path needs the real SVG.js sketch layer); the live probe is the proof, run before and after.
+
+Tests: new tests/brick-stripe-styles.test.js (4: default = old cycle; Use C + picks; unknown pick ->
+default; every style a real set+profile); panel +3 (Brick-tab Stripe shows brick slots not swatches, C
+only with Use C, picks highlighted; back in Artwork the colour panel + hint return; a pick saves,
+re-commits once, never re-lays/pends). Against the previous sources 6 fail. Fast tier 61 files, 668
+passed, 0 failed. Live: a scripted brush stroke striped into 4 runs -> sets 1/3/1/3 (default); B = red one
+band -> 1/1/1/1. Shot shots/seat37/f35item16_c6_stripe_brick_styles.png.
+Control matrix (Fred's new rule): asked 88 for the file + format with my 9 new controls and their
+expected {pending, canvas, 3D}; rows to follow once it exists.
+
+## turn 193 (seat C = 37): PRIORITY -- Send dropped ALL art when no Carved component (item 12 regression)
+
+Fred's live Send 16:21: stamp layers=4, none carving -> only Clean sent -> "SVG Stamp Import/Project
+skipped: no Stamped (Carved) component" -> every art sketch dropped. Cause: F35 item 12 (50025a6) sent
+EVERY art-layer sketch to the Carved component and skipped them all without one; the payload gave Python
+no way to tell carving layers from the rest (config was {profile, depth} only).
+**Fix (e9b9acc), declared:** export-flow.js sends `config.carve = isCarvingLayer(l)` per layer and
+`bricks.carve = isCarved(Bricks layer)`. b-spline-gen.py: `_svg_layer_import_plan` records `carves` (absent
+key = real depth, the old assumption); `_assign_sketch_targets` (pure, run by _ordered_svg_layer_import_plan)
+sets each step's `target` 'carved' | 'root' -- a kind-split pattern (incl. its Lattice Boundary, same
+patternId) stays in ONE component, carved if any of its kinds carves, since its kinds project each other
+and share a plane. The handler passes {'carved': _find_stamped_component(group), 'root': the group's own
+component (pre-item-12's exact target)}; _import_all_svg_layers skips ONLY steps whose target is None and
+logs which. _apply_bricks_sketch follows the same rule (carve absent = carving = item 11's behaviour) and
+clears an older 'Bricks' sketch from BOTH homes so toggling carve never leaves a stale copy.
+Tests: new test_sketch_targets.py (10): plan targets (carve/no-carve/depth fallback/pattern grouping both
+ways), the advisor's case (no Stamped + 1 non-carving layer -> 1 root sketch, nothing logged as skipped),
+carving-only skipped, both homes with a Stamped variant, bricks root / Stamped / no-key. 8/10 fail against
+the old b-spline-gen.py (the 2 passing pin preserved behaviour). b-spline-gen pytest 138, frame-builder
+pytest 1287 (+25 skipped), JS export/send 38 -- all passed, 0 failed. The JS payload field itself is not
+unit-covered (the full executeExport needs a live editor + preview); covered by the live run below.
+**Live in Fusion** (holder 37 granted by the advisor, ONE call, fingerprinted scratch doc closed by its own
+handle, worktree module loaded as 'scratch37_bsg', sys.path + sys.modules restored: 0 modules left over,
+4 docs before/after). Note: the scratch doc first lacked widthIn/heightIn parameters and the import failed
+on a PRE-EXISTING eager default in _import_single_layer_svg (`params.get('widthIn', board['widthIn'])`
+evaluates board['widthIn'] even when params has it) -- a real Send's design always has them; added them,
+flagging the latent KeyError rather than changing it here.
+| case | B-Spline Set (root) | Stamped |
+|---|---|---|
+| no Stamped variant: L1 carve off, L2 carve on, Bricks carve off | "Source - L1" (4 curves), "Bricks" (4) | -- (L2 logged "skipped carving sketches only") |
+| Stamped added: L3 carve on, L4 carve off | + "Source - L4" (4) | "Source - L3" (4) |
+**Hidden layer (advisor's extra case):** editor/layers.js's declared truth table makes visibility the master:
+isExported = visible, isCarved = visible && carve. So a HIDDEN layer is not exported at all (no sketch, by
+design of that table), while a VISIBLE layer with carve OFF is exported and not carved -> root (the live L1/L4
+case). If Fred wants hidden layers' art to still arrive as sketches, that is a change to isExported (a
+product decision) -- not made here.
+Holder written back to 'none'.
+
+## turn 195 (seat C = 37): F35 item 20 brush-over-wall + Generate failure keeps bricks + Stripe ONE panel
+
+Merged origin/main first (clean). 88's tools/brick-matrix is not on main yet -> matrix rows owed (listed below).
+
+**Item 20 (Fred / audit C10 option B: the wall flows around a brush stroke).** Engine signature AGREED
+with d3 by DM (T86 item 13, after their big-brick crash): `generateBricks(input)` gets optional
+`input.exclusions = [{polygon:[{x,y}]}]`, board inches; the engine DROPS any wall piece overlapping an
+exclusion (overlap = edges crossing OR either containing a vertex of the other) and will return
+`exclusionsApplied: true`. My side (editor-brick-tool.js): `brushExclusions(editor)` = every brush brick
+on the canvas, passed on every Wall lay; until the engine returns exclusionsApplied, the STUB
+`dropExcludedWallBricks` applies the SAME overlap test (`polygonsOverlap`). A centroid-only stub was tried
+first and MEASURED wrong live: the wall row's centres sat at y 4.38, just outside the brush bricks
+(4.40-4.60), so nothing dropped though they visibly overlapped -- switched to d3's any-overlap rule so the
+stub and the engine agree. Pending (brick-panel.js): the laid key = settings key + `#brush:<footprints>`
+while a Wall is on the canvas (`_brushKey`), and an 'editorCommit' listener re-derives pending, so adding,
+editing or deleting a stroke makes the Wall pending; Generate clears it.
+**Generate failure (advisor).** runBricks' engine call now runs BEFORE anything is cleared, so a throw
+leaves the canvas exactly as it was; `_layBricks` catches it (withLoadingStage is async -- the throw used
+to become a silent unhandled rejection after the clear), shows an error toast "Generate failed -- the
+previous bricks are kept (...)", returns false, and the layout stays pending.
+**Stripe ONE panel in the Brick tab (advisor: declared in the tab/mode registry).** main/editor-tabs.js
+EDITOR_TABS brick gets `modeHosts: { stripe: { content: 'editorStripePanelBody', host:
+'brickStripeSection', panel: 'editorStripePanel' } }`; `applyModeHosts` (run by setEditorTab) moves the
+content into the active tab's host and back to its declared `panel` otherwise -- homes are declared, not
+remembered (a remembered-home Map was tried first and broke on a rebuilt DOM in the test). editor-ui.js
+TOOLBAR_GROUPS.editorStripePanel = stripe mode AND `panelHoldsContent` (the side panel shows only while it
+holds its own settings) -- no tab check in editor-ui. BRICK_TOOLS stripe -> settingsSection
+'brickStripeSection'. Artwork's Stripe unchanged. Still visible under Stripe in the Brick panel: the shared
+rows (Set, Size, Grout...) -- they don't apply to a stripe pick; say if they should hide for Stripe.
+
+Tests: brick-tool-kinds +6 (throw keeps the canvas; brushExclusions; any-overlap with the live numbers;
+centroid-inside drop; exclusions reach the engine + covered piece gone; exclusionsApplied bypasses the
+stub); panel +2 (throw -> error toast + pending kept; stroke add/delete -> pending, Generate clears);
+new editor-tab-mode-hosts.test.js (3). Against the previous sources 8 fail (the 2 passing pin defaults).
+Fast tier 71 files, 770 passed, 0 failed.
+Live (served fb-app, T1 7x9): Wall 193 laid, not pending -> brush stroke across it -> pending -> Generate ->
+185 wall, 0 under the stroke, not pending; Stripe tool in the Brick tab: settings inside the Brick panel,
+side column hidden. Shots shots/seat37/f35item20_{wall_around_stroke,stripe_one_panel}.png.
+**Matrix rows owed (88's format, once tools/brick-matrix is on main):** brush stroke add/delete ->
+{pending: true, canvas: null, threeD: null} with a Wall laid; Generate with a throwing engine ->
+{pending: true (stays), canvas: false (unchanged), toast}.
+Fusion holder: 39 wrote itself in after I released ("self-serve when free") -- protocol question for you.
+
+## turn 197 (seat C = 37): Stripe hides the shared rows; F35 item 21 Large stones; control greying (88's matrix)
+
+**Stripe hides the shared rows (advisor: declared, not an if).** The Brick panel's shared rows are now two
+containers (#brickSharedSet = Set; #brickSharedLayout = Brick size .. Seed). BRICK_TOOLS declares
+`sharedRows: false` on Stripe; syncToolSections hides BRICK_SHARED_SECTIONS for a tool that declares it.
+**Item 21 Large stones** (advisor's checklist line pulled, b37e412). `P.brickSettings.largeStones` 0.5 (in the
+laid key = a layout setting: pending in the editor, Generate lays it). editor-brick-tool.js `wallLayoutFor`
+(a tile2d pattern's own layout, else the set's layout -- White Rocks = 'fieldstone') decides both where the
+slider shows (Wall section, fieldstone only) and whether `input.largeStones` reaches generateBricks. STUB:
+d3 hasn't DM'd the option name yet (T86 item 17); `input.largeStones` is the provisional field, inert until
+the engine reads it -- one line to rename if d3 picks another.
+**Control greying (88's matrix; the advisor had batched it to me).** Pure, import-free
+main/brick-control-requires.js `BRICK_CONTROL_REQUIRES` (88's exact shape; path agreed with 88 -- not
+core/bricks/, which is seat B's engine folder) + `requirementMet`. brick-panel greys each listed control
+(disabled + the reason as tooltip) while unmet: Clumping (both inputs) needs Suppression > 0; Grout depth
+needs Recessed. Re-checked after every commitBrickSetting and on restore. 88's matrix imports the module.
+
+Tests: panel +5 (Stripe hides/Wall shows the shared rows; Large stones row visibility red/white/fieldstone;
+slider pending then laid; Clumping greyed at 0 / enabled > 0; Grout depth greyed for Flush); kinds +2
+(wallLayoutFor; largeStones reaches the engine only for fieldstone); new brick-control-requires.test.js
+(3: no imports, ids exist in the palette, requirementMet forms). Against the previous sources the new
+behaviour tests fail (5 + 2). Fast tier: first run had 2 FAILURES in tests/bricks-fieldstone.test.js (seat
+B's engine test, untouched here) -- they pass 7/7 alone (~6 s each, near the 5 s default: load-dependent
+timeouts); RE-RUN of the full fast tier: 72 files, 780 passed, 0 failed. Flagging the flaky timing to seat B.
+Live (served fb-app): Wall -> shared rows shown, Large stones hidden for Red, shown for White Rocks,
+Clumping disabled at Suppression 0; Stripe -> both shared containers hidden, its own settings shown.
+Shots shots/seat37/f35item21_{stripe_no_shared_rows,large_stones_white_rocks}.png.
+Matrix rows: 88's matrix imports BRICK_CONTROL_REQUIRES; rows for item 20/21 still owed once it is on main.
+**Turn-197 amendment (88's matrix: 56 rows, 51 PASS, 2 FAIL):** (1)+(2) the two greying rules are exactly
+the BRICK_CONTROL_REQUIRES above. (3) number boxes now apply WHILE TYPING for commits that apply at once
+('surface', 'auto'): each keystroke saves, one apply runs NUMBER_BOX_SETTLE_MS (400 ms) after the last
+keystroke (`settleAfterTyping`, in bindSlider's number box and bindGroutField); 'generate' boxes already mark
+pending per keystroke. This supersedes turn 189's "grout depth re-masks only on change". Test (fake timers):
+2 keystrokes -> 0 re-masks until 400 ms after the last -> exactly 1; fails 1/1 without the debounce.
+
+## turn 199 (seat C = 37): the Large stones slider stays HIDDEN until the engine honours it (merge blocker)
+
+Advisor: a slider the engine ignores is a dead control (Fred's complaint; the matrix would fail it). Declared:
+core/bricks/engine.js `ENGINE_OPTIONS` (re-exported from core/bricks/index.js) = the generateBricks input
+options the engine actually reads today -- 'largeStones' (T86 item 17) and 'exclusions' (T86 item 13) are NOT
+in it; seat B adds each name in the change that makes the engine read it (small additive edit to seat B's
+file, d3 told by DM). main/brick-control-requires.js: `requires: { engineOption }` + `hides: true` (hidden,
+not greyed); requirementMet(requires, el, { engineOptions }). The Large stones row shows only for a
+fieldstone wall AND once 'largeStones' is in ENGINE_OPTIONS -- it appears by itself, no UI change later.
+syncControlRequires skips `hides` rules (the row's own sync applies them). Tests: panel -- hidden for White
+Rocks while the engine lacks it, shown (fieldstone only) with a stand-in engine list; requires -- the rule hides
+today, met with the option listed. The hide test fails 1/1 on the previous panel. Fast tier 72 files, 783
+passed, 0 failed.
+**Raised brush (2 modes) -- not started, by design; a plan for the advisor.** Its definition is on lane-b:
+T86 item 10 "GROUT-LINE CUT (Fred: Raised brush mode 2 'grout mode': cuts through bricks to add grout
+joints wherever it's drawn)" -- core op bricksGroutCut, seat B, still OPEN. Mode 1 = today's brush. So a
+mode toggle now would show a mode that does nothing -- exactly what this turn's blocker forbade. Proposed:
+declare the Brush's modes as data (BRUSH_MODES: 'bricks' | 'grout'), the 'grout' entry carrying
+requires: { engineOption: 'groutCut' } (hidden until seat B lists it in ENGINE_OPTIONS with T86 item 10);
+the editor side = a cut element with its own spine (same spine/regenerate machinery as brush strokes)
+applied after layout. Building the 'bricks'-only toggle alone would be a one-option toggle -- skip until
+the engine lands, or build now hidden: your call.
+
+## turn 201 (seat C = 37): the RAISED BRUSH (2 modes, mode 2 hidden until seat B's grout cut)
+
+Declared as a BRICK_TOOLS VARIANT of Brush (advisor): `{ id: 'raisedBrush', variantOf: 'brush',
+settingsSection: 'brickRaisedSection', strokeOverrides: () => ({ levelIn, strokeMode }) }` -- the same
+brickBrush mode and stroke machinery; selectTool arms any `variantOf: 'brush'` the same way and hands the
+editor `_brickStrokeOverrides` (a FUNCTION, read at stroke finish, so a Level changed after picking the tool
+still applies; the plain Brush clears it). brickBrushHandler.finish merges the overrides into THIS stroke's
+frozen settings snapshot. Settings `raisedLevelIn` (0.0625 = 1/16 in, Fred's accent default) and
+`raisedMode` ('bricks' | 'grout') -- brush-only keys (never pend the Wall).
+Mode 1: `bricksForStroke` (new, exported; regenerateOwnedBrickElements uses it) lifts every brick of a stroke
+by its own `levelIn` (heightOffset -> the height mask), per stroke, not per kind.
+Mode 2 GROUT CUT: seat B's bricksGroutCut (T86 item 10) does not exist yet -> STUB: a grout-mode stroke keeps
+its spine and lays no bricks; its mode button is hidden by BRICK_CONTROL_REQUIRES
+{ engineOption: 'groutCut' }, hides: true (appears by itself when seat B lists 'groutCut' in ENGINE_OPTIONS);
+setRaisedMode refuses a hidden mode. Placement: the mode picker (rendered from RAISED_BRUSH_MODES) and Level
+live in the Raised brush's OWN section.
+Tests: new tests/brick-raised-brush.test.js (3: plain unchanged; Level lifts every brick by exactly 0.0625;
+grout lays none); panel +4 (button arms brickBrush with live overrides incl. a later Level change; plain Brush
+clears them; grout hidden/refused until the engine lists groutCut, then pickable; never pending). The
+requires-data test now accepts ids main/brick-panel.js renders from a declared prefix. 7 new tests fail on the
+previous sources. Fast tier 73 files, 790 passed, 0 failed.
+Live (served fb-app): a plain and a Raised stroke, 4 bricks each; mean height offset -0.0057 vs +0.0568 in
+(difference 0.0625 = the Level); grout mode hidden; section shown. Shot shots/seat37/f35item16_raised_brush.png.
+Matrix: tools/brick-matrix is still not on origin/main -> rows owed (item 20, 21, Raised brush), listed for 88.

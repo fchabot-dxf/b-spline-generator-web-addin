@@ -36,6 +36,17 @@ const FRAME_GEN_SALT = 700;
 export const FRAME_MIN_OPENING_IN = 0.25;
 /** T10's arch never goes flatter than this (inches of rise): a flat arch has no arc to build. */
 export const MIN_ARCH_RISE_IN = 0.125;
+/** H23 item 78c / turn 550: T18's own topInset ceiling when an arch is also present (T18 today --
+ * T3's own topInset has no arch, so this never applies there). Not a closed form: unlike archRise's
+ * own horn-length margin above, the narrow-head + arch failure (the top horn's own inward offset
+ * splitting into two separate bodies, or Fusion silently never building sketch_3 at all -- NEITHER
+ * caught by this file's own JS-side defect checks) didn't reduce to one clean tangency inequality in
+ * the time this item had. Same honest choice `_archedTimerRange`'s own declared literals already
+ * make (editor-shape-lattice-generator.js): MEASURED by a live Fusion build/bisection sweep across
+ * all 3 portrait sizes (6x9/7x9/9x12 -- project_portrait_only), MODERATE (0.65 confirmed clean
+ * everywhere; 0.70 already splits the 6x9 case, the tightest of the three) rather than pushed to
+ * the exact edge (Fred's own "moderate ranges" precedent, H23 item 78b's rounder shoulder). */
+export const TOP_INSET_ARCH_MAX_OF_HW = 0.65;
 const _templateThickness = (tpl) => tpl.params.find((p) => p.name === 'frame_thickness')?.default ?? 0;
 const _narrow = (r, lo, hi) => {
   const a = Math.max(r.min, lo), b = Math.min(r.max, hi);
@@ -199,6 +210,13 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
       // points (p02_12) are then collinear and Fusion's addByThreePoints throws. The handle stops at
       // MIN_ARCH_RISE_IN instead (Fred's standing rule: handles stop before the shape breaks).
       R.archRise = _narrow(R.archRise, MIN_ARCH_RISE_IN / hh, Math.max(hornLen - t, HORN_MIN_OF_HALF_HEIGHT * hh) / hh);
+    }
+    // T18 ARCHED HEAD (H23 item 78c / turn 550): topInset's own shape-only ceiling (_hourglassRange,
+    // "never narrower than the waist") has no idea an arch sits above it -- MEASURED live: a narrow
+    // enough head combined with the arch breaks the build (see TOP_INSET_ARCH_MAX_OF_HW's own doc
+    // comment). Only engages when BOTH keys are present (T3's own topInset has no archRise at all).
+    if (R.topInset && R.archRise) {
+      R.topInset = _narrow(R.topInset, -Infinity, TOP_INSET_ARCH_MAX_OF_HW);
     }
     // T5 HOURGLASS DIPPED TOP (only a frame whose outline has the dip: its resolved params carry it). The dip's
     // inner edge (the dip offset down by t) lies within |x| <= a, from t to D + t below the top; the sides' inner

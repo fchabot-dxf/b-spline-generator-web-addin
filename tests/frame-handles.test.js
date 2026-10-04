@@ -544,6 +544,25 @@ describe('H23 item 63: T10 arch rise never goes flat (a flat arch has no arc for
   });
 });
 
+describe('H23 item 78c / turn 550: T18 topInset stops before a narrow head + arch breaks the live build', () => {
+  it('template_18 (topInset + archRise both present) caps topInset at TOP_INSET_ARCH_MAX_OF_HW', () => {
+    const id = 'template_18';
+    const tpl = tplOf(FRAME_DEFS, id);
+    for (const [w, h] of [[6, 9], [7, 9], [9, 12]]) {
+      const region = profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id }), { widthIn: w, heightIn: h }).region;
+      const ranges = frameParamRanges(tpl, region, paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region), 0.75);
+      expect(ranges.topInset.max, `${w}x${h}`).toBeCloseTo(0.65, 9);
+    }
+  });
+  it('template_3 (topInset, no archRise) is unaffected -- the cap only engages when BOTH keys are present', () => {
+    const id = 'template_3';
+    const tpl = tplOf(FRAME_DEFS, id);
+    const region = profile(FRAME_DEFS, normalizeFrameRecord({ templateId: id })).region;
+    const ranges = frameParamRanges(tpl, region, paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region), 0.75);
+    expect(ranges.topInset.max).not.toBeCloseTo(0.65, 9);
+  });
+});
+
 describe('H23 item 63: mitersCollide only flags miters of the SAME bar (Fred: T16 waist handle froze)', () => {
   const m = (ox, oy, ix, iy) => ({ outer: { x: ox, y: oy }, inner: { x: ix, y: iy } });
   it('two waist miters facing each other across a narrow opening do not collide', () => {

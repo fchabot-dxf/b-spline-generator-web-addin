@@ -35,10 +35,10 @@
  * off the DOM via the `data-brick-*` attributes drawBrick stashes below.
  * `profile`/`edgeFilletRadius` stay set (harmless, and still what a non-brick
  * reader of this layer's tooling would see) even though the brick rasterizer
- * itself doesn't consult them. `grout.profile:'recessed'` is still accepted/
- * stored but has NO visual effect (joints simply sit at the base terrain
- * level, 'flush' -- a genuine carved recess needs a second, inverse-shaped
- * stamp layer at a negative depth, not built here; a named gap, not silent).
+ * itself doesn't consult them. `grout.profile:'recessed'` recesses the joints
+ * by `grout.depthIn` IN THE SAME brick mask (editor-brick-height-mask.js, F35
+ * item 18 turn 181 -- no second stamp layer needed); 'flush' leaves them at
+ * the ground.
  *
  * F35 item 3: Wall/Frame stay exactly this item-1 fire-and-forget regime
  * (regenerated fresh from current settings on each button click; their own
@@ -49,12 +49,12 @@
  * BRICK_ELEMENT_ATTR/BRICK_SETTINGS_ATTR/reconstructChains/
  * regenerateOwnedBrickElements block below for the full mechanism.
  */
-import { ensureActiveLayer, addLayer } from './layers.js';
+import { ensureActiveLayer, addLayer, BRICKS_LAYER_NAME, isBricksLayer, applyLayerStateTo } from './layers.js';
 import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, bricksContourBands, generateBricks } from '../core/bricks/index.js';
+import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon } from '../core/bricks/index.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS } from '../core/bricks/library.js';
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
@@ -62,16 +62,9 @@ import { radialSignAt } from '../core/bricks/arc-voussoir.js';
 
 export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-spine'
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
-export const BRICKS_LAYER_NAME = 'Bricks';
-
-/** F35 item 5: the generic stamp-mask pipeline (main/stamp-mask-manager.js)
- *  checks this to route the Bricks layer through the brick-aware height-mask
- *  rasterizer (editor-brick-height-mask.js) instead of the generic SVG-mask
- *  one -- by NAME, matching ensureBricksLayer's own lookup (there's no
- *  reserved id scheme for named layers here). */
-export function isBricksLayer(layer) {
-  return !!layer && layer.name === BRICKS_LAYER_NAME;
-}
+// Audit K7: the Bricks layer's identity now lives in layers.js (the layer-row summary needs it, and
+// layers.js cannot import this file -- this file imports layers.js). Re-exported for every importer.
+export { BRICKS_LAYER_NAME, isBricksLayer };
 
 // F35 item 3 (advisor: "brick elements as declared spine + settings... the
 // prerequisite for Scissors/Stripe"): a Brush stroke is no longer baked
@@ -123,7 +116,9 @@ function applyBrickLayerTooling(layer, settings) {
   layer.depth = settings.invert ? -settings.reliefIn : settings.reliefIn;
   layer.profile = 'flat';
   layer.edgeFilletRadius = 0;
-  layer.carve = true;
+  // Audit C7: `carve` is NOT forced back on here. A new Bricks layer carves by default
+  // (layers.js TOOLING_DEFAULTS); after that it is the user's own Layers-row toggle, which a
+  // Generate must not silently undo.
 }
 
 /** F35 item 4 (a): a declared flat colour per SET, so White Rocks (and a
@@ -152,14 +147,22 @@ const DEFAULT_BRICK_COLOR = SET_COLORS[1];
  *  DOM is that rasterizer's sole source of truth (see its header), so every
  *  field `sampleHeight`/`brickTopHeight` need must be stashed here, at the
  *  one place that already has the real brick object in hand. */
+/** The ONE way a brick-tool element joins the Bricks layer: tagged with it AND given its current
+ *  hidden / inactive / no-colour state (layers.js applyLayerStateTo). Before, bricks re-laid onto a
+ *  hidden Bricks layer showed on the canvas while the layer still said hidden. Every brick-tool draw
+ *  (bricks, brush spines, the slow-drag outline preview) goes through here. */
+function onBricksLayer(editor, layer, el) {
+  el.attr('data-layer', layer.id);
+  applyLayerStateTo(editor, el);
+  return el;
+}
+
 function drawBrick(editor, layer, brick, kind, setId, seed, reliefIn) {
   const pts = brick.polygon.map((p) => `${p.x},${p.y}`).join(' ');
   const paint = brickFillPaint(editor, setId, brick.sampleId, brick.flip) || SET_COLORS[setId] || DEFAULT_BRICK_COLOR;
-  return editor._sketchLayer
-    .polygon(pts)
+  return onBricksLayer(editor, layer, editor._sketchLayer.polygon(pts))
     .fill(paint)
     .stroke('none')
-    .attr('data-layer', layer.id)
     .attr(BRICK_ATTR, kind)
     .attr(BRICK_GEN_ATTR, '1')
     .attr('data-brick-set', setId)
@@ -287,6 +290,16 @@ function setForId(id) {
  *  `input` in place, same style resolveFrameBrickSet already uses for its own Frame-only override.
  *  Leaves `input` untouched for an unrecognised/omitted pattern (falls through to bondLayout's own
  *  default single stretcher zone, byte-identical to pre-item-7 behaviour). */
+/** F35 item 21: the layout the Wall fill actually uses -- a tile2d pattern's own layout, otherwise the
+ *  set's declared layout (White Rocks = 'fieldstone'). The Large stones slider shows for 'fieldstone'. */
+export function wallLayoutFor(settings) {
+  const def = settings && settings.pattern && BRICK_PATTERNS[settings.pattern];
+  if (def && def.kind === 'none') return 'none';
+  if (def && def.kind === 'tile2d') return settings.pattern;
+  const set = brickSetById(settings && settings.setId) || brickSetById(1);
+  return set.layout;
+}
+
 function applyWallPattern(input, settings) {
   const pattern = settings.pattern;
   const def = pattern && BRICK_PATTERNS[pattern];
@@ -318,11 +331,54 @@ function applyWallPattern(input, settings) {
  *  `frame.set || set` fallback picks the top-level `set` here, same as
  *  Wall), so every tool resolves the same brick length with no separate
  *  per-tool override left to keep in sync. */
-function _generateAndDraw(editor, settings, frameGeom) {
+/** Audit C1 (F35 item 16, Wall and Frame as their own tools): `kinds` = which element kinds this run
+ *  LAYS -- only those are cleared and drawn; the others already on the canvas stay as they are. The
+ *  composer still runs with the frame (when one resolves), so a Wall laid alone keeps the SAME
+ *  frame-interior clip it always had. Default both = the original behaviour. */
+export const BRICK_KINDS = ['wall', 'frame'];
+
+/** F35 item 20 (brush over wall, Fred / audit C10 option B: the wall flows AROUND a brush stroke): every
+ *  brush brick on the canvas is an exclusion for the Wall fill -- `input.exclusions = [{polygon}]`, board
+ *  inches, the signature agreed with seat B (d3, T86 item 13: the engine DROPS any wall piece overlapping
+ *  an exclusion). Read straight off the DOM, same as the height mask does. */
+export function brushExclusions(editor) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll) return [];
+  return [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="brush"]`)].map((n) => ({
+    polygon: (n.getAttribute('points') || '').trim().split(/\s+/).filter(Boolean).map((p) => {
+      const [x, y] = p.split(',').map(Number);
+      return { x, y };
+    }),
+  })).filter((e) => e.polygon.length >= 3);
+}
+
+/** STUB until the engine honours `input.exclusions` (it then returns `exclusionsApplied: true` and this
+ *  is skipped): drop every wall piece that OVERLAPS an exclusion -- the SAME test seat B declared for the
+ *  engine (d3: "edges crossing OR either shape containing a vertex of the other"), so the stub and the
+ *  engine agree on what goes. (A centroid-only test was tried first and MEASURED wrong live: a wall row
+ *  whose centres sat 0.02 in outside a brush stroke stayed, visibly overlapping it.) Exported for tests. */
+function _segmentsCross(a, b, c, d) {
+  const o = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const d1 = o(c, d, a), d2 = o(c, d, b), d3 = o(a, b, c), d4 = o(a, b, d);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0)) && d1 !== 0 && d2 !== 0 && d3 !== 0 && d4 !== 0;
+}
+export function polygonsOverlap(p, q) {
+  if (p.some((v) => pointInPolygon(v.x, v.y, q)) || q.some((v) => pointInPolygon(v.x, v.y, p))) return true;
+  for (let i = 0; i < p.length; i++) {
+    const a = p[i], b = p[(i + 1) % p.length];
+    for (let j = 0; j < q.length; j++) {
+      if (_segmentsCross(a, b, q[j], q[(j + 1) % q.length])) return true;
+    }
+  }
+  return false;
+}
+export function dropExcludedWallBricks(bricks, exclusions) {
+  if (!exclusions || !exclusions.length) return bricks;
+  return bricks.filter((b) => !exclusions.some((e) => polygonsOverlap(b.polygon, e.polygon)));
+}
+
+function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const layer = ensureBricksLayer(editor);
-  clearGenerated(editor, layer, 'wall');
-  clearGenerated(editor, layer, 'frame');
-  applyBrickLayerTooling(layer, settings);
 
   const input = {
     boardOutline: boardPolygon(editor),
@@ -334,15 +390,30 @@ function _generateAndDraw(editor, settings, frameGeom) {
   };
   if (frameGeom) input.frame = frameGeom;
   applyWallPattern(input, settings);
+  // F35 item 21: the fieldstone layout's share of large stones (d3's T86 item 17 reads it; inert until then)
+  if (wallLayoutFor(settings) === 'fieldstone') input.largeStones = Number.isFinite(settings.largeStones) ? settings.largeStones : 0.5;
+  const exclusions = kinds.includes('wall') ? brushExclusions(editor) : [];
+  if (exclusions.length) input.exclusions = exclusions;
 
-  const { bricks, frameBricks } = generateBricks(input);
-  drawBricks(editor, layer, frameBricks, 'frame', settings.setId, settings.seed, settings.reliefIn);
-  drawBricks(editor, layer, bricks, 'wall', settings.setId, settings.seed, settings.reliefIn);
-  return { wallCount: bricks.length, frameCount: frameBricks.length };
+  // Turn 195: the engine runs BEFORE anything is cleared -- if it throws, the bricks already on the
+  // canvas stay exactly as they were (the caller reports the failure).
+  const result = generateBricks(input);
+  const bricks = result.exclusionsApplied ? result.bricks : dropExcludedWallBricks(result.bricks, exclusions);
+  const { frameBricks } = result;
+  for (const kind of kinds) clearGenerated(editor, layer, kind);
+  applyBrickLayerTooling(layer, settings);
+  const lays = (kind) => kinds.includes(kind);
+  if (lays('frame')) drawBricks(editor, layer, frameBricks, 'frame', settings.setId, settings.seed, settings.reliefIn);
+  if (lays('wall')) drawBricks(editor, layer, bricks, 'wall', settings.setId, settings.seed, settings.reliefIn);
+  return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0 };
 }
 
-export function runBricks(editor, settings, frameGeom) {
-  const counts = _generateAndDraw(editor, settings, frameGeom);
+/** `laidKey` (audit B1-B3): the caller's key for the settings this run lays. It is stamped on the
+ *  Bricks layer as `brickLaidKey` BEFORE the undo commit, so every undo snapshot, the saved layer
+ *  roster (editor-io.js) and Cancel's restored document all carry the key of the bricks they hold. */
+export function runBricks(editor, settings, frameGeom, { laidKey, kinds } = {}) {
+  const counts = _generateAndDraw(editor, settings, frameGeom, kinds);
+  if (laidKey != null) ensureBricksLayer(editor).brickLaidKey = laidKey;
   commitEdit(editor);
   notifyBricksGenerated(settings);
   return counts;
@@ -355,8 +426,8 @@ export function runBricks(editor, settings, frameGeom) {
  *  / 3D rebuild this preview tier exists specifically to skip). main/brick-panel.js's own shared
  *  slider-binding mechanism calls this at most ~10x/sec (rAF-throttled) while dragging; the final
  *  value's runBricks() call on release/commit does the full, committed regenerate. */
-export function runBricksPreview(editor, settings, frameGeom) {
-  return _generateAndDraw(editor, settings, frameGeom);
+export function runBricksPreview(editor, settings, frameGeom, kinds) {
+  return _generateAndDraw(editor, settings, frameGeom, kinds);
 }
 
 /** F35 item 10 follow-up: the SLOW-drag fallback for runBricksPreview -- once brick-panel.js's own
@@ -372,10 +443,9 @@ export function runBricksOutlinePreview(editor) {
   clearGenerated(editor, layer, 'wall');
   clearGenerated(editor, layer, 'frame');
   const pts = boardPolygon(editor).map((p) => `${p.x},${p.y}`).join(' ');
-  editor._sketchLayer.polygon(pts)
+  onBricksLayer(editor, layer, editor._sketchLayer.polygon(pts))
     .fill('none')
     .stroke({ color: '#aa4433', width: 0.03, dasharray: '0.1,0.08' })
-    .attr('data-layer', layer.id)
     .attr(BRICK_ATTR, 'wall')
     .attr(BRICK_GEN_ATTR, '1');
 }
@@ -542,7 +612,12 @@ export const brickBrushHandler = {
     if (preview) preview.remove(); // the live-feedback stroke, never the committed result
     if (points.length < 2) return; // a tap, not a stroke -- nothing to bake
 
-    const settings = editor._brickSettings;
+    // F35 item 16 (turn 201): a brush VARIANT (the Raised brush) adds its own per-stroke fields --
+    // `levelIn` (laid proud by that much) and `strokeMode` -- through editor._brickStrokeOverrides (a
+    // function, read here at finish so a Level changed after picking the tool still applies). They are
+    // frozen into THIS stroke's own settings snapshot like every other brush setting.
+    const overrides = typeof editor._brickStrokeOverrides === 'function' ? editor._brickStrokeOverrides() : null;
+    const settings = editor._brickSettings ? { ...editor._brickSettings, ...(overrides || {}) } : null;
     if (!settings) return;
     const layer = ensureBricksLayer(editor);
     applyBrickLayerTooling(layer, settings);
@@ -593,11 +668,9 @@ function newBrickElementId() {
  *  not meant to visually compete with the opaque brick polygons drawn on
  *  top of it in z-order). */
 function drawSpineSegment(editor, layer, elementId, settingsJson, a, b) {
-  return editor._sketchLayer
-    .line(a.x, a.y, b.x, b.y)
+  return onBricksLayer(editor, layer, editor._sketchLayer.line(a.x, a.y, b.x, b.y))
     .stroke({ color: '#aa4433', width: 0.06, linecap: 'round' })
     .attr('stroke-opacity', '0.15')
-    .attr('data-layer', layer.id)
     .attr(BRICK_ATTR, SPINE_KIND)
     .attr(BRICK_ELEMENT_ATTR, elementId)
     .attr(BRICK_SETTINGS_ATTR, settingsJson);
@@ -616,23 +689,32 @@ function decodeBrickSettings(raw) {
  *  per-sample photo texture yet) -- White Rocks (library.js id 3) is real
  *  now (f3's item 74), so the cycle uses it for run B; profile still varies
  *  too (a 'continuous' run is also a genuinely different SHAPE, not just
- *  colour). A declared cycle, not a hand-rolled toggle, so a future 3rd
- *  variant (Fred/advisor's own scale axis, or a real 3rd set once one
- *  exists) is one more array entry, not new branching logic. KNOWN,
- *  SCOPED-OUT gap (not silent): the user cannot yet PICK which variant each
- *  run gets -- the editor-stripe-tool.js panel's own A/B/C swatches are
- *  still generic colour pickers (meaningless for bricks); this cycle is
- *  purely automatic by the run's own position. Giving the user a real
- *  brick-thumbnail picker needs changes to that SHARED panel's own
- *  rendering, which touches every OTHER (non-brick) use of Stripe too --
- *  a separate, carefully-scoped follow-up, not attempted here. */
-const STYLE_CYCLE = Object.freeze([
-  { setId: 1, profile: 'bricks' },
-  { setId: 3, profile: 'continuous' },
+ *  colour).
+ *
+ *  Audit C6 (F35 item 16): the user PICKS each run's style -- the Stripe panel's A/B/C slots show
+ *  brick-style thumbnails in the Brick tab (main/brick-panel.js) instead of Artwork's colour swatches.
+ *  BRICK_STRIPE_STYLES declares the choices; P.brickSettings.stripeStyles holds the A/B/C picks; the
+ *  cycle length follows the panel's own "Use C" (2 or 3). The picks are ONE brick setting read live at
+ *  every regenerate, and changing a pick re-commits, so every striped run always shows the current picks.
+ *  The default picks A = red bricks, B = white continuous are exactly the old fixed 2-style cycle. */
+export const BRICK_STRIPE_STYLES = Object.freeze([
+  Object.freeze({ id: 'red_bricks', label: 'Red bricks', setId: 1, profile: 'bricks' }),
+  Object.freeze({ id: 'white_continuous', label: 'White rocks, one band', setId: 3, profile: 'continuous' }),
+  Object.freeze({ id: 'red_continuous', label: 'Red, one band', setId: 1, profile: 'continuous' }),
+  Object.freeze({ id: 'white_bricks', label: 'White rocks', setId: 3, profile: 'bricks' }),
 ]);
+export const DEFAULT_STRIPE_STYLE_PICKS = Object.freeze(['red_bricks', 'white_continuous', 'red_continuous']);
 
-function settingsVariantForCycle(baseSettings, cycleIndex) {
-  const variant = STYLE_CYCLE[cycleIndex % STYLE_CYCLE.length];
+/** The style cycle for striped runs: the A/B (/C) picks resolved against BRICK_STRIPE_STYLES (an unknown
+ *  or missing pick falls back to that slot's default). */
+export function stripeCycleFor(picks, useC = false) {
+  const n = useC ? 3 : 2;
+  const byId = (id) => BRICK_STRIPE_STYLES.find((s) => s.id === id);
+  return Array.from({ length: n }, (_, i) => byId(picks && picks[i]) || byId(DEFAULT_STRIPE_STYLE_PICKS[i]));
+}
+
+function settingsVariantForCycle(baseSettings, cycleIndex, cycle = stripeCycleFor()) {
+  const variant = cycle[cycleIndex % cycle.length];
   return { ...baseSettings, setId: variant.setId, profile: variant.profile };
 }
 
@@ -742,6 +824,18 @@ export function reconstructChains(segments) {
 // so skipping is exact, not a heuristic approximation.
 let _lastSpineFingerprint = null;
 
+/** turn 201: the bricks ONE brush stroke lays, from its own frozen settings. A GROUT-mode stroke (the Raised
+ *  brush's mode 2) lays none -- it CUTS joints through existing bricks with seat B's bricksGroutCut (T86
+ *  item 10); STUB until the engine has it (the mode is hidden until ENGINE_OPTIONS lists 'groutCut'), so
+ *  the stroke keeps its spine and draws nothing. `levelIn` (the Raised brush's Level) lifts every brick of
+ *  the stroke by that much (its heightOffset, read by the height mask). Exported for tests. */
+export function bricksForStroke(points, settings) {
+  if (settings.strokeMode === 'grout') return [];
+  const level = Number(settings.levelIn) || 0;
+  const bricks = bricksForBrushStroke(points, settings, toBrickOpts(settings));
+  return level ? bricks.map((b) => ({ ...b, heightOffset: (b.heightOffset || 0) + level })) : bricks;
+}
+
 export function regenerateOwnedBrickElements(editor) {
   if (!editor || !editor._sketchLayer) return;
   const layer = (editor._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
@@ -750,10 +844,13 @@ export function regenerateOwnedBrickElements(editor) {
   const children = editor._sketchLayer.children().toArray();
   const spineEls = children.filter((el) => el.attr(BRICK_ATTR) === SPINE_KIND);
 
+  // audit C6: the striped runs' style cycle (the A/B/C picks + Use C) is an input too -- without it in the
+  // fingerprint a pick change was skipped as "nothing changed" (measured live, turn 191)
+  const stripeCycle = stripeCycleFor(editor._brickSettings && editor._brickSettings.stripeStyles, !!(editor._stripe && editor._stripe.three));
   const fingerprint = spineEls.map((el) => {
     const [a, b] = pieceEnds(el);
     return `${el.attr(BRICK_ELEMENT_ATTR)}|${a.x},${a.y},${b.x},${b.y}|${el.attr(STRIPE_ATTR) || ''}|${el.attr(BRICK_SETTINGS_ATTR) || ''}`;
-  }).join(';');
+  }).join(';') + `#${stripeCycle.map((v) => v.id).join(',')}`;
   if (fingerprint === _lastSpineFingerprint) return;
   _lastSpineFingerprint = fingerprint;
 
@@ -777,8 +874,8 @@ export function regenerateOwnedBrickElements(editor) {
       if (chain.points.length < 2) return;
       const settings = chain.cycleIndex == null
         ? chain.settings
-        : settingsVariantForCycle(chain.settings, chain.cycleIndex);
-      const bricks = bricksForBrushStroke(chain.points, settings, toBrickOpts(settings));
+        : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
+      const bricks = bricksForStroke(chain.points, settings);
       const ownerId = `${elementId}:${chainIdx}`;
       for (const b of bricks) {
         drawBrick(editor, layer, b, 'brush', settings.setId, settings.seed, settings.reliefIn).attr(BRICK_OWNER_ATTR, ownerId);

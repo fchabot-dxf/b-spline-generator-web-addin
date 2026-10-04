@@ -51,10 +51,14 @@ const mount = () => {
 };
 
 // F30 item 3 -> F30 item 4 merge (2026-10-02): the taper copies (Template 12/13) were hidden until verified live in
-// Fusion; both passed the real panel-join check on the merged code, so NO shipped template is hidden right now.
+// Fusion; both passed the real panel-join check on the merged code, so neither stayed hidden.
+// H23 item 78c / turn 550: Template 18 ("Arched Head") joined the list the same way, un-hidden now that its own
+// 18-case live matrix is all-BUILT (template_18/template_data.py FRAME_HIDDEN -> False) -- same as T12/T13 before it.
+// H23 item 80: Template 19 ("Arched Head - Tapered sides") joined the list the same way, un-hidden now
+// that its own 22-case live matrix is all-BUILT (template_19/template_data.py FRAME_HIDDEN -> False).
 const HIDDEN_IDS = [];
 
-describe('F30 item 4 / H23 item 25: no shipped template is hidden now (T10, T12, T13 all shipped)', () => {
+describe('F30 item 4 / H23 item 25 / H23 item 78c: only genuinely in-progress templates are hidden (currently: none)', () => {
   beforeEach(mount);
   afterEach(() => { root.remove(); setEditorTab('artwork'); });
 

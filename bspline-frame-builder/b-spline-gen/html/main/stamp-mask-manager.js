@@ -9,6 +9,7 @@ import { frameWindowGeometry } from '../editor/contour-from-frame.js';
 import { rectContains } from '../core/inset-window.js';
 import { isBricksLayer } from '../editor/editor-brick-tool.js';
 import { rasterizeBrickHeightMask } from '../editor/editor-brick-height-mask.js';
+import { withLoadingStage } from '../core/loading-signal.js';
 
 // Monotonic counter incremented on every refresh. Each in-flight
 // rasterize captures the value at start; if it doesn't match at finish,
@@ -74,6 +75,7 @@ export function clearStampMaskInWindow(result, hole, nx, nz, widthIn, heightIn) 
       result.body[k] = 0;
       result.fillet[k] = 0;
       result.isStamped[k] = 0;
+      if (result.flatTop) result.flatTop.brickOf[k] = -1; // F35 item 18: no Flat brick top in the hole either
     }
   }
   return result;
@@ -153,7 +155,14 @@ export async function updateStampMasks(nx, nz) {
     // content but produces a per-grid-point-varying mask. See
     // editor-brick-height-mask.js's own header.
     const result = isBricksLayer(eLayer)
-      ? await rasterizeBrickHeightMask(editor, eLayer, nx, nz, P.widthIn, P.heightIn)
+      ? await withLoadingStage('heightMask', () => rasterizeBrickHeightMask(editor, eLayer, nx, nz, P.widthIn, P.heightIn,
+          { topMode: P.brickSettings && P.brickSettings.brickTopMode, // F35 item 18: Flat | Organic brick tops
+            surfaceStyle: P.brickSettings && P.brickSettings.surfaceStyle, // F35 item 18 (2): Clean | Weathered
+            surfaceWear: P.brickSettings && P.brickSettings.surfaceWear, // the Weathered Wear slider (0..1)
+            groutWidthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.widthIn,
+            groutProfile: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.profile, // Recessed | Flush
+            groutDepthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.depthIn,
+            levels: P.brickSettings && P.brickSettings.elementLevelIn })) // F35 item 16: per-element Level
       : await rasterizeSvg(
           applyLayerTransform(svg, layerTransform, P.widthIn, P.heightIn),
           nx,

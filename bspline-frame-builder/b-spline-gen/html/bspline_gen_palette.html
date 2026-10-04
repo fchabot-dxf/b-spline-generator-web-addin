@@ -362,7 +362,19 @@
     /* UX2: the one status line for Fusion traffic. Token colors only —
        [hidden] collapses it via the browser's own default, so nothing
        here sets `display` and fights that. */
+    /* F35 item 16 follow-up (Fred: reuse the existing loading signal for brick generation / the
+       height-mask pass / slow resolution rebuilds -- ALL of which happen while the Brick editor tab
+       is open): measured live that this status line, in plain document flow, was rendering entirely
+       BEHIND the SVG editor's own full-viewport modal overlay (editor.css's own .cad-modal-overlay,
+       z-index 9999) -- correct text, correct timing, zero visible effect for exactly the case this
+       feature exists for. `position:fixed` + a z-index above the modal's own fixes that; harmless
+       outside the modal too (hidden by default, and the status text itself is brief/transient). */
     .fusion-status {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 10000;
       padding: 3px 12px;
       font-size: 11px;
       background: var(--cad-bg-secondary);
@@ -870,6 +882,66 @@
         </div>
       </div>
 
+      <!-- F35 item 18 (3), the Brick SIDEBAR SPLIT (Fred: the editor waits for Generate, the sidebar
+           auto-rebuilds): the main sidebar holds the brick 3D settings (each lives ONLY here) plus a few
+           QUICK settings that mirror the editor Brick tab's own (same P.brickSettings, two entry points),
+           both applied at once. The 2D layout (tools, patterns, size slider, grout width, suppression,
+           clumping, seed) stays in the editor's Brick tab. Rows rendered by main/brick-panel.js
+           (BRICK_QUICK_SETTINGS); the 3D controls keep their ids, so their bindings are unchanged. -->
+      <div class="panel panel-brick">
+        <div class="panel-header collapsed" onclick="togglePanel(this)">🧱 BRICK</div>
+        <div class="panel-body hidden">
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Quick settings</label>
+          <div style="font-size:10px; opacity:0.65; margin:0 0 8px;">Applied at once. Every other layout setting is in the editor's Brick tab.</div>
+          <div id="brickQuickSettings"></div>
+
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin:6px 0 4px;">3D</label>
+        <label class="cad-label">Relief</label>
+        <div class="relief-toggle" id="brickReliefToggle" style="margin-bottom:12px;">
+          <button type="button" class="relief-toggle-btn active" id="brickBtnReliefRaised" title="Bricks raised above the surface"><span>Raised</span></button>
+          <button type="button" class="relief-toggle-btn" id="brickBtnReliefCarved" title="Bricks carved into the surface"><span>Carved</span></button>
+        </div>
+
+        <!-- F35 item 18 (1): brick top FLAT | ORGANIC (a 3D-only setting: applies at once, no Generate) -->
+        <label class="cad-label">Brick top</label>
+        <div class="relief-toggle" id="brickTopModeToggle" style="margin-bottom:12px;">
+          <button type="button" class="relief-toggle-btn active" id="brickBtnTopOrganic" title="Each brick's top follows the terrain under it"><span>Organic</span></button>
+          <button type="button" class="relief-toggle-btn" id="brickBtnTopFlat" title="Each brick is a flat block tilted to the average slope under it; joints still follow the terrain"><span>Flat</span></button>
+        </div>
+
+        <!-- F35 item 18 (2): brick SURFACE style, buttons rendered from editor/brick-surface-styles.js (3D-only, applies at once) -->
+        <label class="cad-label">Surface</label>
+        <div class="relief-toggle" id="brickSurfaceStyleToggle" style="margin-bottom:12px;"></div>
+        <!-- F35 item 18 (Fred): Weathered's WEAR, one 0..1 slider along the declared ranges
+             (editor/brick-surface-styles.js); shown only while the surface style declares `wear` -->
+        <div id="brickSurfaceWearRow" style="display:none;">
+          <label class="cad-label">Wear</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="brickSurfaceWearSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.5">
+            <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickSurfaceWear" value="0.5" min="0" max="1" step="0.05"></div>
+          </div>
+        </div>
+
+        <label class="cad-label">Max Height (in)</label>
+        <div class="cad-slider-row" style="margin-bottom:12px;">
+          <input type="range" id="brickReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
+          <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
+        </div>
+
+          <label class="cad-label" style="font-size:10px;">Grout depth (in)</label>
+          <input type="number" id="brickGroutDepth" value="0.05" min="0" max="0.25" step="0.005" style="width:100%; margin-bottom:6px;">
+        <div class="relief-toggle" id="brickGroutProfileToggle" style="margin-bottom:12px;">
+          <button type="button" class="relief-toggle-btn" id="brickBtnGroutRecessed" title="Joints carved below the surrounding surface by the grout depth"><span>Recessed</span></button>
+          <button type="button" class="relief-toggle-btn active" id="brickBtnGroutFlush" title="Joints sit flush with the base surface"><span>Flush</span></button>
+        </div>
+        <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+          <input type="checkbox" id="isolateSkeleton">
+          <span>Hide filter texture</span>
+        </label>
+        <div style="font-size:10px; opacity:0.65; margin:2px 0 4px;">Bricks read best with this on -- the active filter's own fine noise otherwise competes with brick-scale detail.</div>
+        </div>
+      </div>
+
       <!-- 5. Vector Stamping -->
       <div class="panel panel-stamp">
         <div class="panel-header collapsed" onclick="togglePanel(this)">📐 VECTOR STAMPING</div>
@@ -1325,7 +1397,10 @@
       <div class="panel panel-resolution" style="border-bottom:none;">
         <div class="panel-header collapsed" onclick="togglePanel(this)">⚙️ RESOLUTION</div>
         <div class="panel-body hidden">
-          <label class="cad-label">Base Spacing</label>
+          <!-- F35 item 16 follow-up (Fred): "Display" named explicitly (was "Base Spacing") now
+               that Export (below) is a real, separate, parallel setting -- the two read as a pair,
+               not one labelled field plus an unlabelled second one. -->
+          <label class="cad-label">Display Resolution</label>
           <div class="cad-nested-input" style="width:100%;">
             <select id="spacing" style="width:100%; border:none; background:transparent; font-size:11px;">
               <option value="1.0">Coarse</option>
@@ -1335,6 +1410,11 @@
               <option value="0.03">Ultimate</option>
             </select>
           </div>
+          <!-- F35 item 17: Display-only (see title), kept right under Display's own select. -->
+          <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:6px;" title="Display only: flat areas use bigger triangles, sharp detail keeps the Display resolution. Send/STEP unchanged.">
+            <input type="checkbox" id="adaptiveDisplay">
+            <span>Adaptive</span>
+          </label>
           <div class="cad-status-text" style="font-size:10px; opacity:0.6; margin-top:6px;">
             Higher spacing = faster performance, lower detail.
           </div>
@@ -1343,6 +1423,31 @@
                carve the grout joints cleanly. Populated at runtime by main/brick-panel.js's
                updateSpacingHint. -->
           <div id="spacingGroutHint" style="display:none; font-size:10px; color:#b8860b; margin-top:6px;"></div>
+
+          <!-- F35 item 16 follow-up (Fred): Display (above) drives the live 3D preview; Export is
+               the resolution the B-spline mesh is actually BUILT at for Send/STEP -- the two used to
+               be the same single setting. "Same as display" defaults ON so every existing board
+               behaves exactly as before until Fred deliberately splits them. -->
+          <label class="cad-checkbox-row" style="display:flex; align-items:center; gap:6px; margin-top:12px; font-size:11px;">
+            <input type="checkbox" id="sameAsDisplayResolution" checked>
+            Export uses the same resolution as Display
+          </label>
+          <div id="exportResolutionOptions" style="display:none; margin-top:6px;">
+            <label class="cad-label">Export Resolution</label>
+            <div class="cad-nested-input" style="width:100%;">
+              <select id="exportSpacing" style="width:100%; border:none; background:transparent; font-size:11px;">
+                <option value="1.0">Coarse</option>
+                <option value="0.4">Fine</option>
+                <option value="0.15">Ultra</option>
+                <option value="0.05" selected>Mega Ultra</option>
+                <option value="0.03">Ultimate</option>
+              </select>
+            </div>
+            <!-- Mirrors #spacingGroutHint above, targeting the EFFECTIVE export resolution instead
+                 of Display -- Send is what actually needs fine enough joints to carve cleanly.
+                 Populated at runtime by main/brick-panel.js's updateSpacingHint. -->
+            <div id="exportSpacingGroutHint" style="display:none; font-size:10px; color:#b8860b; margin-top:6px;"></div>
+          </div>
         </div>
       </div>
     </aside>
@@ -2819,14 +2924,14 @@
             </div>
             <div data-no-collapse style="display:flex; flex-direction:column; gap:4px;">
               <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-weight:600; flex:1;">Colours</span>
+                <span id="stripeColoursLabel" style="font-weight:600; flex:1;">Colours</span>
                 <label style="display:flex; flex-direction:row; align-items:center; gap:3px; white-space:nowrap;" title="A third colour, C"><input id="stripeThree" type="checkbox" style="margin:0;">Use C</label>
                 <button id="stripeColorsReset" type="button" title="Back to the lattice's Rails / Ties / Nodes colours" style="height:20px; border:1px solid #ccc; border-radius:3px; background:#f9f9f9; cursor:pointer;">&#8634;</button>
               </div>
               <!-- F32 item 1 (Fred: "a few template colour combos"): one chip per STRIPE_COLOR_PRESETS entry,
                    rendered by properties-stripe.js -- never hand-added here per preset. -->
               <div id="stripeColorPresets" style="display:flex; gap:6px;"></div>
-              <div style="display:flex; gap:6px;">
+              <div id="stripeColorSwatches" style="display:flex; gap:6px;">
                 <label style="flex:1; display:flex; flex-direction:column; gap:2px; align-items:center;">A
                   <button id="stripeColorA" type="button" aria-label="Colour A" aria-haspopup="true" aria-expanded="false" class="panel-color-swatch" style="width:100%; height:22px; border:1px solid #ccc; border-radius:3px; cursor:pointer; padding:0;"></button>
                 </label>
@@ -2838,7 +2943,10 @@
                 </label>
               </div>
             </div>
-            <div style="color:#666;">Tap a rail, a contour segment or a line. Tap a striped line again to re-stripe it. A line with no lattice defaults to black / white.</div>
+              <!-- Audit C6: in the Brick tab the A/B/C slots pick a brick STYLE (thumbnails rendered by
+                   main/brick-panel.js from editor-brick-tool.js BRICK_STRIPE_STYLES), not a colour -->
+              <div id="stripeBrickStyles" style="display:none; flex-direction:column; gap:6px;"></div>
+            <div id="stripeTargetHint" style="color:#666;">Tap a rail, a contour segment or a line. Tap a striped line again to re-stripe it. A line with no lattice defaults to black / white.</div>
           </div>
         </aside>
 
@@ -3035,15 +3143,25 @@
              everything else here is the "common controls every tool shares" main/brick-panel.js's own
              header already describes. -->
         <aside class="editor-layers-panel" id="editorBrickPanel" style="display:none;">
+          <!-- Fred (2026-10-04): Brick-tab settings only mark the layout pending (main/brick-panel.js
+               BRICK_COMMIT 'generate'); this pinned Generate is the one thing that re-lays it. Same
+               shared sticky-actions slot + cad-btn-primary as the Lattice panels' own Generate. -->
+          <div class="sticky-actions"><button type="button" id="brickGenerate" class="cad-btn cad-btn-primary" style="width:100%; height:32px; border-radius:3px; font-weight:700;">Generate</button></div>
           <div class="layers-header"><span>Brick</span></div>
           <div style="padding:10px; display:flex; flex-direction:column; gap:4px; font-size:11px;">
+            <!-- Audit K3: the active tool's hint heads the panel; under the Set picker it read as a caption
+                 for Red Brick / White Rocks. -->
+            <div id="brickToolHint" style="font-size:10px; opacity:0.65; margin:0 0 12px;"></div>
+
+            <!-- turn 197: the panel's SHARED rows (Set here; Brick size .. Seed below) -- a tool that declares
+                 sharedRows: false (main/brick-panel.js BRICK_TOOLS: Stripe) hides them -->
+            <div id="brickSharedSet">
             <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Set</label>
             <div style="display:flex; gap:6px; margin-bottom:12px;">
               <button type="button" id="brickSetRed" class="cad-btn brick-set-btn active" title="Red brick (Masonry)">Red Brick</button>
               <button type="button" id="brickSetWhite" class="cad-btn brick-set-btn" title="White rocks (fieldstone, Masonry)">White Rocks</button>
             </div>
-
-            <div id="brickToolHint" style="font-size:10px; opacity:0.65; margin:0 0 12px;"></div>
+            </div>
 
             <!-- F35 item 10 follow-up (Fred): the Brush tool's own section, shown only while Brush
                  is the active tool (main/brick-panel.js's syncToolButtons). -->
@@ -3068,19 +3186,60 @@
               </div>
             </div>
 
-            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
-            <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
-              <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
+            <!-- F35 item 16 follow-up (Fred, live use: "shows every section at once, can't tell
+                 what applies"): shown only while Wall is the active tool (main/brick-panel.js's
+                 syncWallSection), same contextual-section convention brickBrushSection already set. -->
+            <div id="brickWallSection">
+              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
+              <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+                <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
+              </div>
+              <!-- F35 item 21 (Fred: "slider for more or less large ones"): fieldstone walls only -->
+              <div id="brickLargeStonesRow" style="display:none;">
+                <label class="cad-label">Large stones</label>
+                <div class="cad-slider-row" style="margin-bottom:12px;">
+                  <input type="range" id="brickLargeStonesSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.5">
+                  <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickLargeStones" value="0.5" min="0" max="1" step="0.05"></div>
+                </div>
+              </div>
+              <!-- F35 item 16: LEVEL, this element's height offset (+ proud / - recessed), 3D only -->
+              <label class="cad-label">Level (in)</label>
+              <input type="number" id="brickLevel_wall" value="0" min="-0.25" max="0.25" step="0.015625" style="width:100%; margin-bottom:12px;" title="+ sits proud of the other bricks, - sits recessed (3D only)">
             </div>
 
-            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
-            <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
-              <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
+            <!-- F35 item 16 follow-up: shown only while Frame is the active tool (syncFrameSection). -->
+            <!-- F35 item 16 (turn 201): the RAISED BRUSH's own section -- its mode picker (rendered from
+                 main/brick-panel.js RAISED_BRUSH_MODES) and its Level -->
+            <div id="brickRaisedSection" style="display:none;">
+              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Raised brush: Mode</label>
+              <div class="relief-toggle" id="brickRaisedModeToggle" style="margin-bottom:12px;"></div>
+              <label class="cad-label">Level (in, proud of the other bricks)</label>
+              <input type="number" id="brickRaisedLevel" value="0.0625" min="-0.25" max="0.25" step="0.015625" style="width:100%; margin-bottom:12px;">
             </div>
 
-            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Band patterns</label>
-            <div id="brickFrameBandPatternList" style="margin-bottom:12px;">
-              <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
+            <!-- turn 195: the Stripe tool's own section -- main/editor-tabs.js (modeHosts) moves the stripe
+                 settings (#editorStripePanelBody) in here while the Brick tab is active: one panel, not two -->
+            <div id="brickStripeSection" style="display:none;"></div>
+
+            <div id="brickFrameSection">
+              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
+              <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+                <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
+              </div>
+
+              <label id="brickFrameBandPatternLabel" class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Band patterns</label>
+              <div id="brickFrameBandPatternList" style="margin-bottom:12px;">
+                <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
+              </div>
+              <!-- F35 item 16: OFFSET FROM FRAME, like the Shape Lattice's (ON at 0 = on the frame's outer edge;
+                   OFF = the bands follow the board's own outline) -->
+              <label class="cad-label" style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="brickFrameOffsetOn" checked style="width:16px; height:16px;"> Offset from frame
+              </label>
+              <label class="cad-label" style="font-size:10px;">Distance from the frame's outer edge (in, +in / -out)</label>
+              <input type="number" id="brickFrameOffsetDistance" value="0" step="0.05" style="width:100%; margin-bottom:10px;">
+              <label class="cad-label">Level (in)</label>
+              <input type="number" id="brickLevel_frame" value="0" min="-0.25" max="0.25" step="0.015625" style="width:100%; margin-bottom:12px;" title="+ sits proud of the other bricks, - sits recessed (3D only)">
             </div>
 
             <!-- F35 item 16 (Fred: "I'd rather they all have the same size"): ONE global brick
@@ -3091,10 +3250,11 @@
                  brickSizeToSliderPos/sliderPosToBrickSize -- a plain linear 0.375-8in range put
                  every everyday size in the first ~15% of the handle's travel. #brickSize (the
                  number box) stays real inches, exact, unchanged. -->
+            <div id="brickSharedLayout">
             <label class="cad-label">Brick size (in)</label>
             <div class="cad-slider-row" style="margin-bottom:6px;">
               <input type="range" id="brickSizeSlider" class="cad-slider" min="0" max="1000" step="1" value="226">
-              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickSize" value="0.75" min="0.375" max="8" step="0.025"></div>
+              <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickSize" value="0.75" min="0.375" max="8" step="0.025"></div>
             </div>
             <div id="brickSizePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
               <!-- Populated at runtime by main/brick-panel.js's declared BRICK_SIZE_PRESETS. -->
@@ -3106,42 +3266,22 @@
                 <label class="cad-label" style="font-size:10px;">Width (in)</label>
                 <input type="number" id="brickGroutWidth" value="0.06" min="0" max="0.5" step="0.005" style="width:100%;">
               </div>
-              <div style="flex:1;">
-                <label class="cad-label" style="font-size:10px;">Depth (in)</label>
-                <input type="number" id="brickGroutDepth" value="0.05" min="0" max="0.25" step="0.005" style="width:100%;">
-              </div>
-            </div>
-            <div class="relief-toggle" id="brickGroutProfileToggle" style="margin-bottom:12px;">
-              <button type="button" class="relief-toggle-btn" id="brickBtnGroutRecessed" title="Joints carved below the surrounding surface (not yet visually implemented)"><span>Recessed</span></button>
-              <button type="button" class="relief-toggle-btn active" id="brickBtnGroutFlush" title="Joints sit flush with the base surface"><span>Flush</span></button>
             </div>
             <!-- F35 (Fred: detection only, never changes the value): the SAME hint as the
                  Resolution panel's own #spacingGroutHint, shown here too since this is where a
                  user is most likely to be looking when grout width changes. -->
             <div id="brickGroutSpacingHint" style="display:none; font-size:10px; color:#b8860b; margin:0 0 12px;"></div>
 
-            <label class="cad-label">Relief</label>
-            <div class="relief-toggle" id="brickReliefToggle" style="margin-bottom:12px;">
-              <button type="button" class="relief-toggle-btn active" id="brickBtnReliefRaised" title="Bricks raised above the surface"><span>Raised</span></button>
-              <button type="button" class="relief-toggle-btn" id="brickBtnReliefCarved" title="Bricks carved into the surface"><span>Carved</span></button>
-            </div>
-
-            <label class="cad-label">Max Height (in)</label>
-            <div class="cad-slider-row" style="margin-bottom:12px;">
-              <input type="range" id="brickReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
-              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
-            </div>
-
             <label class="cad-label">Suppression</label>
             <div class="cad-slider-row" style="margin-bottom:10px;">
               <input type="range" id="brickSuppressionSlider" class="cad-slider" min="0" max="0.9" step="0.01" value="0">
-              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickSuppression" value="0"></div>
+              <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickSuppression" value="0"></div>
             </div>
 
             <label class="cad-label">Clumping</label>
             <div class="cad-slider-row" style="margin-bottom:10px;">
               <input type="range" id="brickClumpingSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.3">
-              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickClumping" value="0.3"></div>
+              <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickClumping" value="0.3"></div>
             </div>
 
             <label class="cad-label">Seed</label>
@@ -3149,12 +3289,7 @@
               <input type="number" id="brickSeed" value="1" style="flex:1;">
               <button type="button" id="brickBtnRandomSeed" class="cad-btn" title="Random seed">🎲</button>
             </div>
-
-            <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:10px;">
-              <input type="checkbox" id="isolateSkeleton">
-              <span>Hide filter texture</span>
-            </label>
-            <div style="font-size:10px; opacity:0.65; margin:2px 0 4px;">Bricks read best with this on -- the active filter's own fine noise otherwise competes with brick-scale detail.</div>
+            </div>
           </div>
         </aside>
 

@@ -2,7 +2,8 @@
  * core/bricks/height-profile.js — PORTABLE (see rng.js). H23 item 73(c): the 3D height PROFILE
  * within a single brick's own top face -- a rounded "shoulder" near the edge, a slight CROWN
  * (dome) toward the centre, and random chipped corners -- declared per set as
- * `set.heightProfile = {edgeRadiusIn, crown, chipRate, chipSizeIn, surfaceShare}` (advisor,
+ * `set.heightProfile = {edgeRadiusIn, crown, chipRate, chipSizeIn, surfaceShare, edgeNoiseIn?,
+ * edgeNoiseScaleIn?}` (advisor,
  * referencing shots/advisor/brick_3d_compare.png: "rounded worn edges + slight crown + chipped
  * corners + real photo surface"). All pure geometry (distance-to-edge, declared sine easing,
  * seeded chip placement) -- no image/raster dependency, so it stays inside the portable core.
@@ -16,6 +17,7 @@
  * the shape-only height (shoulder + crown + chips) is still a complete, correct answer on its own.
  */
 import { mulberry32, seedFor } from './rng.js';
+import { valueNoise2 } from './noise2d.js';
 
 /** Perpendicular distance from (x,y) to the nearest EDGE of a convex polygon (every brick this
  *  engine produces -- a plain quad, or a mitred triangle/pentagon -- is convex). */
@@ -73,13 +75,22 @@ export function brickTopHeight(x, y, brick, set, seed, sampleDetailAt) {
   const chipRate = hp.chipRate ?? 0;
   const chipSizeIn = hp.chipSizeIn ?? 0;
   const surfaceShare = Math.max(0, Math.min(1, hp.surfaceShare ?? 0));
+  const edgeNoiseIn = hp.edgeNoiseIn ?? 0;
+  const edgeNoiseScaleIn = hp.edgeNoiseScaleIn ?? 0;
   const reliefIn = set.reliefIn ?? 0.125;
 
   const dist = distanceToNearestEdge(x, y, brick.polygon);
+  // EDGE WEAR (F35 item 18, the Weathered surface style; seat B agreed): the shoulder's distance-to-edge
+  // perturbed by a continuous board-space value noise, so the worn shoulder line wanders = ragged
+  // edges. Optional, default 0 = exactly the plain shoulder. Shoulder only: chips and the crown read
+  // the true geometry below.
+  const shoulderDist = (edgeNoiseIn > 0 && edgeNoiseScaleIn > 0)
+    ? Math.max(0, dist + edgeNoiseIn * (valueNoise2(seedFor(seed, 'edge-wear', 0), x / edgeNoiseScaleIn, y / edgeNoiseScaleIn) * 2 - 1))
+    : dist;
 
   // SHOULDER: a sine ease from 0 (at the edge) to 1 (edgeRadiusIn or further inward). edgeRadiusIn
   // <= 0 (no declared profile) means full height everywhere -- the original flat-top behaviour.
-  const shoulder = edgeRadiusIn > 1e-6 ? sineEase(dist / edgeRadiusIn) : 1;
+  const shoulder = edgeRadiusIn > 1e-6 ? sineEase(shoulderDist / edgeRadiusIn) : 1;
 
   // CROWN: an additional small dome ON TOP of the shoulder (added, not min()-combined with it --
   // MEASURED: combining via min(1, shoulder+dome) silently swallowed the whole dome everywhere

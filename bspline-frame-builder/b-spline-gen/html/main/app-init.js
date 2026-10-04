@@ -5,7 +5,7 @@ import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { rebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
-import { updateGlobalButtons, takeSnapshot, globalHistoryLog, setUndoRestoring } from '../core/history.js';
+import { updateGlobalButtons, takeSnapshot, globalHistoryLog, setUndoRestoring, isEditorOpen } from '../core/history.js';
 import { AppState } from './app-state.js';
 import { markDirty } from '../core/dirty.js';
 import { showToast } from '../core/toast.js';
@@ -33,7 +33,18 @@ const FRESH_START_FRAME_TEMPLATE = 'template_1';
 // genuinely undoes the in-flight edits (instead of silently keeping them
 // because onChange already wrote P.editorSvg + remasked after every edit
 // while the user was still typing).
-export const SvgEditorSnapshot = { active: false, editorSvg: null };
+// Audit B1: the brick settings are app state the editor's own undo stack never holds, but every
+// Brick-tab change saves them at once -- so Cancel must put them back too, or the panel shows the
+// discarded settings over the restored bricks (and the next Generate re-lays them).
+export const SvgEditorSnapshot = { active: false, editorSvg: null, brickSettings: null };
+
+/** Put P.brickSettings back IN PLACE (other modules hold the same object, e.g. editor._brickSettings). */
+export function restoreBrickSettings(saved) {
+  if (!saved || !P.brickSettings) return;
+  for (const k of Object.keys(P.brickSettings)) delete P.brickSettings[k];
+  Object.assign(P.brickSettings, JSON.parse(JSON.stringify(saved)));
+  document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
+}
 
 /**
  * SE8b-2: what editor._onChange(kind) actually runs, declared once — the
@@ -48,6 +59,20 @@ export const SvgEditorSnapshot = { active: false, editorSvg: null };
 export const CHANGE_PIPELINE = {
     live:   ['serialize', 'remask'],
     commit: ['serialize', 'persist', 'remask'],
+};
+
+/**
+ * F35 item 18 (4), the editor's STATIC backdrop (Fred: the editor loads fast, Apply builds the 3D):
+ * the SAME table for a change made while the SVG editor is OPEN (core/history.js isEditorOpen) -- no
+ * `remask`, so an in-editor edit never re-masks + rebuilds the 3D (and so never redraws the editor's
+ * backdrop, which only follows a rebuild). The document is still serialized + persisted on every
+ * commit, exactly as before. The 3D is built once when the session ends: Apply and Cancel are the
+ * only ways the modal closes and both already remask (initSvgEditor's onCommit). MEASURED before:
+ * one Brick-tab Generate at 0.015 in spacing kept the app busy 8.1 s (2 remasks + a full rebuild).
+ */
+export const CHANGE_PIPELINE_IN_EDITOR = {
+    live:   ['serialize'],
+    commit: ['serialize', 'persist'],
 };
 
 /** PERF category timing — off by default (core/debug.js's own gate), so
@@ -84,8 +109,8 @@ export function _perfLog(kind, step, ms) {
  * guard exactly: an editor that isn't drawn yet has nothing to persist
  * or remask either).
  */
-export async function runChangePipeline(kind, { serialize, persist, remask }) {
-    const steps = CHANGE_PIPELINE[kind] || CHANGE_PIPELINE.commit;
+export async function runChangePipeline(kind, { serialize, persist, remask }, pipeline = CHANGE_PIPELINE) {
+    const steps = pipeline[kind] || pipeline.commit;
     const frameStart = performance.now();
     for (const step of steps) {
         const stepStart = performance.now();
@@ -504,6 +529,7 @@ export async function initApp(preview, wireGlobalEvents) {
   Object.keys(P).forEach(k => syncUItoParam(k, P[k]));
   setUndoRestoring(false);
   updateSpacingLabels(P.widthIn, P.heightIn);
+  updateSpacingLabels(P.widthIn, P.heightIn, 'exportSpacing');
 
   if (preview) preview.setCurvesVisible(P.showMesh);
 
@@ -673,7 +699,7 @@ export function initSvgEditor(preview) {
           // never rebuilds the drape texture mid-gesture.
           if (kind === 'commit') await refreshDrape(preview);
         },
-      });
+      }, isEditorOpen() ? CHANGE_PIPELINE_IN_EDITOR : CHANGE_PIPELINE); // F35 item 18 (4): no 3D while editing
     },
     // onCommit — fires from Apply (svg=truthy) or Cancel (svg=null).
     // Apply: rebuild with font-embedded SVG and close.
@@ -707,6 +733,7 @@ export function initSvgEditor(preview) {
         // both, so this is safe regardless of exactly when the modal
         // hides relative to this call.
         P.editorSvg = SvgEditorSnapshot.editorSvg;
+        restoreBrickSettings(SvgEditorSnapshot.brickSettings);
         saveLastSession();
         window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn);
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);

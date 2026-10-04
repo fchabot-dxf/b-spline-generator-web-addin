@@ -2,6 +2,12 @@ import { COORD_SYSTEM } from './coords.js';
 import { isDirty, markDirty } from './dirty.js';
 import { dbg } from './debug.js';
 import { fusLog } from './fusion-log.js';
+import { brickSetById } from './bricks/library.js';
+
+// Audit C4: the brick defaults' ONE source is Set 1's own declaration (library.js) -- the state
+// default used to repeat it with a different grout (0.06 vs the set's 0.034, its 17% joint rule), so
+// re-picking Red Brick changed the joints. Copied, never referenced (the set is frozen data).
+const DEFAULT_BRICK_SET = brickSetById(1);
 /**
  * state.js — Application state and persistence logic.
  */
@@ -36,6 +42,17 @@ export const DEFAULT = {
     symOffsetX: 0,
     symOffsetY: 0,
     spacing: 0.05,
+    // F35 item 17: opt-in adaptive DISPLAY mesh (core/preview/adaptive-mesh.js) -- `spacing` stays the
+    // finest detail kept, flat areas collapse into big triangles. Preview only; Send/STEP never read it.
+    adaptiveDisplay: false,
+    // F35 item 16 follow-up (Fred): the single 'resolution' setting splits into Display (`spacing`,
+    // above -- the live 3D preview / interactive rebuilds, unchanged) and Export (the B-spline mesh
+    // actually built for Send/STEP). `sameAsDisplayResolution` defaults true so EVERY existing saved
+    // session keeps today's exact behavior (Send uses whatever Display is) until Fred deliberately
+    // unchecks it; `exportSpacing` only takes effect once he does. Both pick from the same
+    // RESOLUTIONS list (core/state.js, below) as `spacing` always has.
+    sameAsDisplayResolution: true,
+    exportSpacing: 0.05,
     smoothIntensity: 0,
     smoothRadius: 1.2,
     showMesh: false,
@@ -74,14 +91,42 @@ export const DEFAULT = {
       // Scale multiplier AND the separate frameBrickLengthIn override that used to live here):
       // ONE global brick LENGTH in real inches (0.375-8), shared by Wall, every Frame band, and
       // Brush -- starts at Set 1's own declared brickLengthIn (library.js), same "real number on
-      // first use" convention grout/reliefIn below already follow; resets to the newly-picked
-      // set's own brickLengthIn on a set switch (main/brick-panel.js's selectSet), same as before.
+      // first use" convention grout/reliefIn below already follow. A set switch keeps it (F35 item 16:
+      // a real-world size the user picked; main/brick-panel.js selectSet).
       // A legacy saved session's own `scale` migrates via brickLengthIn = its set's own declared
       // length x that scale, once, on load (main/brick-panel.js).
       brickLengthIn: 0.75,
-      grout: { widthIn: 0.06, depthIn: 0.05, profile: 'flush' },
+      // width/depth from Set 1 (audit C4). profile stays 'flush' (Set 1 declares 'recessed', which now
+      // really recesses the joints -- making it the default would change every new board's relief).
+      grout: { widthIn: DEFAULT_BRICK_SET.grout.widthIn, depthIn: DEFAULT_BRICK_SET.grout.depthIn, profile: 'flush' },
       reliefIn: 0.125,
       invert: false,
+      // F35 item 18 (1): 'organic' = each brick's top drapes over the terrain under it (the original
+      // behaviour); 'flat' = each brick is a rigid block on the least-squares plane of the terrain
+      // under its footprint (core/engine/apply-stamp-layers.js). Grout stays draped in both. A saved
+      // session without the key reads as organic (only === 'flat' is Flat), so nothing moves on load.
+      brickTopMode: 'organic',
+      // F35 item 18 (2): the brick SURFACE STYLE, an editor/brick-surface-styles.js key ('clean' |
+      // 'weathered'). Clean = the set's own declared look; a saved session without the key is Clean.
+      surfaceStyle: 'clean',
+      // F35 item 18: the Wear slider (0..1) of a style that declares `wear` (Weathered); 0.5 = the
+      // declared default (edge wear 0.02 in, pit gain 2.5). Read by the height mask only.
+      surfaceWear: 0.5,
+      // F35 item 21: the fieldstone wall's share of LARGE stones, 0..1 (d3's engine option, T86 item 17).
+      // A layout setting (it is in the laid key). A saved session without it reads 0.5.
+      largeStones: 0.5,
+      // F35 item 16 (turn 201): the RAISED BRUSH -- its strokes' Level (laid proud, default 1/16 in) and its
+      // mode ('bricks' | 'grout', main/brick-panel.js RAISED_BRUSH_MODES). Brush-only: frozen per stroke.
+      raisedLevelIn: 0.0625,
+      raisedMode: 'bricks',
+      // F35 item 16 (advisor turn 189): the Frame tool's OFFSET FROM FRAME, like the Shape Lattice's --
+      // ON = the bands follow the frame's outer edge offset by `distance` (+ inward, - outward), default ON
+      // at 0; OFF = free placement, the bands follow the board's own outline instead of the frame.
+      frameOffset: { on: true, distance: 0 },
+      // F35 item 16: LEVEL, a per-element height offset in inches (+ proud, - recessed; item 15's accent
+      // level applied to a whole element), keyed by element kind (editor-brick-tool.js BRICK_KINDS). Read
+      // by the height mask only (3D, never re-lays). A saved session without it is level 0.
+      elementLevelIn: { wall: 0, frame: 0 },
       suppression: 0,
       clumping: 0.3,
       seed: 1,
@@ -114,6 +159,9 @@ export const DEFAULT = {
       // centreline) is the closest match to the OLD orientation-only brush's own default look, so an
       // existing saved session's brush strokes don't visibly change on load.
       brushBandPreset: 'stretcher_1',
+      // Audit C6: the Stripe tool's A/B/C brick-style picks (editor-brick-tool.js BRICK_STRIPE_STYLES ids);
+      // the default A/B is the old fixed cycle, so existing striped strokes look the same.
+      stripeStyles: ['red_bricks', 'white_continuous', 'red_continuous'],
     },
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.
@@ -281,6 +329,11 @@ export const SLIDER_PAIRS = {
     stampFilletPower: 'stampFilletPowerSlider',
 };
 
+// Masonry/Masonry max (F35 item 16 follow-up): from the measured resolution x brick-size grid
+// (shots/seatC/resolution_scale_grid.png) -- 0.015in and 0.011in, fine enough to carve grout
+// joints cleanly for bricks <= 1.5in (see main/brick-panel.js's updateSpacingHint), at a real,
+// measured rebuild cost (3.8s / 8.2s on the app's own default 7x9 board) too slow for the live
+// Display preview to default to, but fine for an Export-only build the user explicitly opts into.
 export const RESOLUTIONS = [
     { name: 'Coarse', val: 1.0 },
     { name: 'Standard', val: 0.6 },
@@ -291,7 +344,16 @@ export const RESOLUTIONS = [
     { name: 'Mega Ultra', val: 0.05 },
     { name: 'Ultimate', val: 0.03 },
     { name: 'Extreme', val: 0.02 },
+    { name: 'Masonry', val: 0.015 },
+    { name: 'Masonry max', val: 0.011 },
 ];
+
+/** The ONE place Display vs Export resolution is resolved -- `P.spacing`/`P.exportSpacing` are
+ *  both stored as strings (updateP's own stringParams coercion), so this always returns a real
+ *  Number, safe for both arithmetic and strict equality against RESOLUTIONS' own numeric `val`s. */
+export function effectiveExportSpacing() {
+    return Number(P.sameAsDisplayResolution ? P.spacing : P.exportSpacing);
+}
 
 export let preDelta = null;
 export let postDelta = null;
@@ -406,6 +468,7 @@ export function loadLastSession() {
         if (isNaN(P.widthIn) || P.widthIn <= 0) P.widthIn = DEFAULT.widthIn;
         if (isNaN(P.heightIn) || P.heightIn <= 0) P.heightIn = DEFAULT.heightIn;
         if (isNaN(P.spacing) || P.spacing <= 0) P.spacing = DEFAULT.spacing;
+        if (isNaN(P.exportSpacing) || P.exportSpacing <= 0) P.exportSpacing = DEFAULT.exportSpacing;
 
         if (sess.preDelta) preDelta = new Float32Array(sess.preDelta);
         if (sess.postDelta) postDelta = new Float32Array(sess.postDelta);
@@ -424,13 +487,14 @@ export function loadLastSession() {
 export function updateP(key, value) {
     if (typeof value === 'number' && isNaN(value)) return;
 
-    const stringParams = ['symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer', 'decalResolution'];
+    const stringParams = ['symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportSpacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer', 'decalResolution'];
     const boolParams = [
         'showMesh', 'thickenEnabled', 'showLeaders', 'includeSurface',
         'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
         'detailDensityRespectSymmetry', 'smoothRespectSymmetry',
         'isolateSkeleton',
-        'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled'
+        'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled', 'adaptiveDisplay',
+        'sameAsDisplayResolution',
     ];
 
     if (key === 'widthIn' || key === 'heightIn') {

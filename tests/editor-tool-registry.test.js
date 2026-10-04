@@ -32,6 +32,12 @@ describe('editor-tool-registry: renderToolRegistry / syncToolRegistryButtons', (
     expect(selected).toEqual(['a']);
   });
 
+  it('F35 item 16 follow-up: every rendered button carries tool-btn-emoji, the scoped hook for a stronger active highlight than plain .tool-btn alone (editor.css) -- Fred, live use: "can\'t tell which tool is selected"', () => {
+    renderToolRegistry(root, REGISTRY, () => {});
+    expect(document.getElementById('btnA').classList.contains('tool-btn-emoji')).toBe(true);
+    expect(document.getElementById('btnA').classList.contains('tool-btn')).toBe(true); // both, not instead-of
+  });
+
   it('re-rendering clears whatever was there before (no stale buttons left behind)', () => {
     renderToolRegistry(root, REGISTRY, () => {});
     renderToolRegistry(root, [REGISTRY[0]], () => {});
