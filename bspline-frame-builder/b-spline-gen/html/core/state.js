@@ -2,6 +2,12 @@ import { COORD_SYSTEM } from './coords.js';
 import { isDirty, markDirty } from './dirty.js';
 import { dbg } from './debug.js';
 import { fusLog } from './fusion-log.js';
+import { brickSetById } from './bricks/library.js';
+
+// Audit C4: the brick defaults' ONE source is Set 1's own declaration (library.js) -- the state
+// default used to repeat it with a different grout (0.06 vs the set's 0.034, its 17% joint rule), so
+// re-picking Red Brick changed the joints. Copied, never referenced (the set is frozen data).
+const DEFAULT_BRICK_SET = brickSetById(1);
 /**
  * state.js — Application state and persistence logic.
  */
@@ -85,12 +91,14 @@ export const DEFAULT = {
       // Scale multiplier AND the separate frameBrickLengthIn override that used to live here):
       // ONE global brick LENGTH in real inches (0.375-8), shared by Wall, every Frame band, and
       // Brush -- starts at Set 1's own declared brickLengthIn (library.js), same "real number on
-      // first use" convention grout/reliefIn below already follow; resets to the newly-picked
-      // set's own brickLengthIn on a set switch (main/brick-panel.js's selectSet), same as before.
+      // first use" convention grout/reliefIn below already follow. A set switch keeps it (F35 item 16:
+      // a real-world size the user picked; main/brick-panel.js selectSet).
       // A legacy saved session's own `scale` migrates via brickLengthIn = its set's own declared
       // length x that scale, once, on load (main/brick-panel.js).
       brickLengthIn: 0.75,
-      grout: { widthIn: 0.06, depthIn: 0.05, profile: 'flush' },
+      // width/depth from Set 1 (audit C4). profile stays 'flush' (Set 1 declares 'recessed', which now
+      // really recesses the joints -- making it the default would change every new board's relief).
+      grout: { widthIn: DEFAULT_BRICK_SET.grout.widthIn, depthIn: DEFAULT_BRICK_SET.grout.depthIn, profile: 'flush' },
       reliefIn: 0.125,
       invert: false,
       // F35 item 18 (1): 'organic' = each brick's top drapes over the terrain under it (the original
