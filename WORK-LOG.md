@@ -17375,3 +17375,88 @@ pair), `tests/bricks-real-template-contours.test.js` (inwardSign wiring +
 new centroid-inside-board regression tests).
 
 Full suite: 196 files / 3611 tests green (vitest).
+
+## H23 item 76 -- collapse-infeasible-fillet-to-corner, THREE attempts, all reverted (f3)
+
+Advisor reviewed the sign fix (528e410): confirmed correct, waist voussoirs
+now inside the board. Remaining ask: the convex shoulder fillets (infeasible
+even at single_soldier depth) leave an empty white gap instead of closing
+into a proper mitred corner, and gave a specific, well-reasoned design --
+"don't sample the neighbour at all; a fillet's own endpoint tangents ARE the
+neighbours' tangents (tangent continuity)" -- compute the TRUE apex `o`
+analytically from the arc's own cx/cy/r/theta1/theta2, plus inward normals
+n1/n2 at each endpoint, inner corner = o + (n1+n2)*band/(1+n1.n2) (the same
+closed-form `offsetPathInward` already uses per-vertex elsewhere in this
+file -- verified algebraically equivalent).
+
+Implemented exactly that (`filletApex`, `mitredOffset`, both analytic, no
+polyline sampling) plus `collapseInfeasibleArcs` (splices an infeasible
+arc's own point span down to the one mitred corner point, re-indexing every
+OTHER still-feasible segment's own startIndex/endIndex since collapsing
+changes the path's own point count -- an index-invalidation bug an earlier
+in-session attempt had already hit and fixed once). Full suite green
+throughout all three attempts below; the problem was never test coverage,
+it was real geometry.
+
+**Measured precisely** (worst pairwise overlap fraction + out-of-board
+vertex count, both templates, both single_soldier [1 row] and three_band [5
+rows, the deep multi-band stress case]):
+
+- Attempt 1 (splice once into `outer`, let the existing generic per-vertex
+  `offsetPathInward` push the collapsed point further inward on later
+  rows/bands, same as any other declared corner): single_soldier LOOKED
+  clean in a rendered preview (small mitred triangle fills the old gap, no
+  visible tangle) -- but three_band: worstOverlap 0.755-0.879, 42-44
+  vertices genuinely outside the board. WORSE than doing nothing (the
+  sign-fix-only baseline had 0 out-of-bounds there).
+- Attempt 2 (same splice, but re-derive the collapsed point's own position
+  EXACTLY via `mitredOffset(apex, rowDepth)` on EVERY row, bypassing the
+  generic per-vertex drift entirely for just that one point): three_band's
+  own out-of-bounds count improved (14-17) but worst overlap got WORSE
+  (0.871-1.000, i.e. two pieces completely coincident) -- a NEW failure
+  mode, most likely directly overwriting one point in `centerline` without
+  re-validating against `bricksAlongPath`'s own cumulative-arc-length
+  assumptions (`cum`/`pointAtArcLength`) desyncs something else downstream.
+  single_soldier's own numbers were UNCHANGED from attempt 1 (0.200 worst
+  overlap, 0 out-of-bounds) -- no compounding to fix there, so no
+  improvement either; still above the codebase's own established 0.15
+  tolerance for "known residual near a mitre".
+
+Three non-trivial, genuinely different bugs surfaced across this session's
+two separate attempts at this enhancement (the first, chord-sampling one,
+documented in the PRIOR entry above; the index-invalidation one fixed
+within attempt 1 here; the cum-desync one in attempt 2) -- each fixed
+revealed the next. Given even the BEST measured attempt still fails the
+advisor's own "zero overlap" bar for the realistic deep-band case, and
+REGRESSES a previously-clean property (three_band's own 0 out-of-bounds),
+**reverted contour-bands.js completely back to 528e410** (sign-fix-only,
+advisor-confirmed-correct) rather than ship any of the three. The gap at an
+infeasible fillet remains exactly as it was: an honest, visible void, never
+a garbage render, never bricks outside the board.
+
+**Assessment for whoever picks this up next:** the per-piece/per-row
+machinery this codebase already has (`offsetPathInward`'s generic per-
+vertex bisector, `bricksAlongPath`'s own extend+mitre-clip) was built for
+ORDINARY declared corners, where every row/band legitimately wants the SAME
+corner pushed further inward by the SAME simple accumulation. A collapsed
+fillet corner breaks that assumption in a way neither "let the generic
+machinery handle it" nor "override the one point analytically every row"
+cleanly resolves alone -- the former drifts via a contaminated neighbour
+over several rows, the latter desyncs something `bricksAlongPath` assumes
+about `centerline`'s own internal consistency. A correct fix likely needs
+either: (a) building each row's own ENTIRE near-corner geometry (the
+collapsed-corner's own two flanking end-pieces, mitred) directly and
+explicitly, bypassing bricksAlongPath's generic per-row corner path
+entirely for just that join, closer to the voussoir_proto.py reference's
+own explicit "every joint = a half-plane... applied to every piece within
+2xband" technique; or (b) a from-scratch review of why `bricksAlongPath`'s
+existing corner handling, proven fine for ORDINARY corners across multiple
+rows already, breaks specifically for an ANALYTICALLY-overridden point.
+Not attempting a fourth iteration this turn.
+
+Files touched then reverted (git diff is empty): `core/bricks/contour-
+bands.js`. No test files changed in this entry (the advisor's own requested
+coverage/overlap test was not added, since there was nothing passing to
+pin).
+
+Full suite: 196 files / 3611 tests green (vitest), unchanged from the prior entry.
