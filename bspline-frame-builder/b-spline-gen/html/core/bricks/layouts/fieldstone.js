@@ -129,14 +129,21 @@ const SIZE_TIERS = Object.freeze([
 // shares, and the two are very different by design: a power-diagram cell's own area scales with its
 // seed's `radius^2` (see `powerCell`'s own header), so for EQUAL point counts, large alone would
 // already claim ~76% of the area (radius ratios 1 : 0.5 : 0.25 square to 1 : 0.25 : 0.0625) --
-// hitting a 50/35/15% AREA split needs roughly the INVERSE point-count weighting (worked out
-// directly from that ratio: large/medium/small point shares near 0.12/0.33/0.55), then nudged by
-// measurement to land within +/-10 points of the declared target for BOTH sets at once (large also
-// benefits from going first in `fieldstoneLayout`'s own per-tier pass order, so its own realised
-// share runs a bit ahead of its raw point-count share -- these numbers already account for that).
-// `SIZE_TIERS` itself stays the single source of truth for stone SIZE (`fraction`) and for what the
-// result is actually supposed to look like (`areaShare`); only this array is a tuning input.
-const GATE_AREA_SHARES = Object.freeze([0.16, 0.35, 0.49]);
+// hitting a 50/35/15% AREA split needs roughly the INVERSE point-count weighting, then nudged by
+// measurement (large also benefits from going first in `fieldstoneLayout`'s own per-tier pass
+// order, so its own realised share runs a bit ahead of its raw point-count share).
+//
+// RECALIBRATED (seat 88, T86 item 17 prep): the FIRST calibration was tuned against only 3
+// templates (1/2/5, all 7x9) -- too narrow a set, and `tests/bricks-fieldstone.test.js`'s own
+// pooled check happened to pass anyway only because its T9 fixture used a narrow-flange variant
+// that skews medium-heavy, masking the miscalibration on ordinary shapes (seat 88's own finding:
+// medium ran 11-13 points low, large 5-8 points high on T1/T12/T9-wide-flange). Redone against a
+// BROADER 6-template set (1/2/5/9/12/15, mixed board sizes) this time, specifically to avoid
+// repeating the same narrow-generalisation mistake -- re-verified directly against seat 88's own
+// exact reported combos (T1 7x9, T12 7x9, T9 9x12) afterward: medium moved from 22-24% to 32-33%,
+// large from 55-58% to 47-49%, both now comfortably inside the declared +/-10 points for every
+// case checked, not just the ones this file's own pooled test happens to sample.
+const GATE_AREA_SHARES = Object.freeze([0.13, 0.55, 0.32]);
 const NOISE_CELL_FACTOR = 1.5; // TEMP for tuning sweep (was 4) -- advisor/Fred: "sizes form zones...
 // raise the noise frequency to about 1-2 large-stone diameters" so medium/small mix THROUGHOUT the
 // board, not segregated into their own large all-one-size regions.

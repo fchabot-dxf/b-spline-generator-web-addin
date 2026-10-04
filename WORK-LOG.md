@@ -20414,3 +20414,48 @@ PRIORITY crash -- is fixed, root-caused, and verified non-vacuous; (b)/(c)/(d) a
 explicitly NOT claimed as fixed, each flagged for its own focused pass. Picking up the
 GATE_AREA_SHARES recalibration (seat 88's finding) next, then item 17 prep, then back to 14/15/13 per
 the standing queue.
+
+## fieldstone GATE_AREA_SHARES recalibrated (seat 88 finding, T86 item 17 prep): medium was chronically underfilled on "ordinary" shapes -- today's own item 6 calibration was tuned on too narrow a template set, redone against a broader one (d3)
+
+**Seat 88 (item 17 prep) found a real miscalibration in today's own item 6 rework**: White rocks'
+fieldstone measured large/medium/small split ran 55-58% / 22-24% / 20-21% on T1 7x9, T12 7x9, and T9
+9x12 at its own wide flange -- medium 11-13 points under the declared 35% target, large 5-8 points
+over, both outside the declared +/-10. `tests/bricks-fieldstone.test.js`'s own pooled check only
+passed because its T9 fixture happened to use a NARROW-flange variant that skews medium-heavy,
+masking the broader problem -- seat 88 pinned that fixture (branch `fix-fieldstone-fixture`, engine
+untouched) and handed the actual recalibration back, correctly identifying it as this side's own
+work.
+
+**Root cause: today's earlier `GATE_AREA_SHARES` calibration was tuned against only 3 templates
+(1/2/5, all 7x9)** -- too narrow a set to catch that the point-count-to-area-share relationship
+varies meaningfully by template shape, not just by brick set. Redone against a BROADER 6-template
+sweep (1/2/5/9/12/15, mixed 7x9/9x12 board sizes) this time, specifically to avoid repeating the
+exact same narrow-generalisation mistake: MEASURED the old `[0.16,0.35,0.49]` shares giving
+large=50/53% medium=28/27% small=22/20% (Red brick/White rocks) on this broader set -- medium
+already running 7-8 points low even here, confirming the problem wasn't specific to seat 88's own
+combos. Re-derived from the same `radius^2` efficiency-ratio approach item 6 originally used, then
+tuned by direct measurement (not a one-shot formula -- the point-count-to-area relationship is
+nonlinear and set-dependent, same lesson as every other calibration in this file): landed on
+`[0.13, 0.55, 0.32]`, giving Red brick 44.5/35.9/19.7% and White rocks 48.3/32.8/18.9% on the broad
+sweep -- both sets comfortably inside +/-10 of 50/35/15 now, not just one.
+
+**Re-verified directly against seat 88's own exact reported combos** (not just my own broader set):
+White rocks T1 7x9 moved from 55.0/24.2/20.8% to 47.9/32.1/20.1%; T12 7x9 from 58.3/22.1/19.6% to
+47.9/33.2/19.0%; T9 9x12 (default/wide flange) from 57.0/23.1/20.0% to 49.0/33.3/17.7% -- medium up
+9-11 points on every one of seat 88's own named problem cases, large down 8-10 points, all three now
+within the declared tolerance on the EXACT shapes that exposed the original miscalibration, not just
+on a different sample that happens to average out.
+
+**MEASURED, full `tests/bricks-fieldstone.test.js` 7/7 still green** (zero overlap, coverage, and the
+pooled histogram check all unaffected by the recalibration -- this only moves WHERE the noise field's
+own candidate draws land, not the power-diagram's own no-overlap guarantee or the grout-shrink
+coverage math). Full suite spot-checked (bricks-fieldstone/bricks-real-template-contours/bricks-
+library/bricks-geometry, 66/66) and a full-suite run attempted twice -- both runs hit DIFFERENT
+unrelated flaky timeouts (frame-3d-sweep.test.js, frame-bartop-drawn.test.js, neither touching
+fieldstone.js), both confirmed passing standalone; system load from many repeated heavy suite runs
+this session, not a regression from this change.
+
+**Commit** (`fieldstone.js`'s own `GATE_AREA_SHARES` update + comment). Messaged seat 88 directly
+with the before/after numbers on their own exact combos; their fixture pin can stay as historical
+context or be unpinned, their call. Picking up item 17 (large-stones slider) prep next, building on
+this now-broader-verified calibration.
