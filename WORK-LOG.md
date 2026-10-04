@@ -19755,3 +19755,66 @@ issue as the harness-fix entry, unrelated to this item, not re-chased).
 Fred wants T9's own default shape to also get taller flanges, AND the medial-line rule as a general
 fix; the bar is explicit -- "the matrix must not regress vs 154/476" -- so the full matrix runs
 before anything ships).
+
+## T86 item 9: converging rows -- the medial-line rule, built and the headline bug fixed; 3 small residual overlaps remain (d3)
+
+Rebuilt the dropped-line architecture (`lineLiveAtDepth`, `primitiveLiveAtDepth`'s own
+`primitives,idx,depth` signature, `buildNotchJoint`) from the reverted item-4b attempt, this time
+with the advisor's own medial-line ruling instead of my own two failed attempts
+(`trustO:true`/`trustO:false`). Several real bugs found and fixed along the way, each MEASURED
+directly, not assumed:
+
+1. **The medial point's own formula was wrong.** My first version shifted `prevPrim`'s own depth-0
+   junction by its own normal -- this ignores the DROPPED primitive's own offset motion entirely and
+   lands the pinch point further out than reality (CONFIRMED: produced a triangle reaching all the
+   way back to the two primitives' own shared depth-0 corner, 50% overlap with a SHALLOWER band's
+   own ordinary brick that legitimately occupies that territory, since the dropped primitive is
+   still live there). Fixed: the true pinch is where `oA(d)`/`oB(d)` (each flanking primitive's own
+   joint with the dropped one) coincide -- `jointPointAt`, already used for `d0`/`d1`, evaluated
+   ONCE MORE at `medialDepth` itself gives that point directly (reused, not a second formula).
+2. **Clipping only the ONE piece nearest the joint is not enough.** The two flanking primitives are
+   parallel for their own ENTIRE facing extent, not just at the joint -- MEASURED: a piece 3
+   positions back from the joint, still within the facing range, built at the row's own full
+   unclamped depth and overlapped the dropped primitive's own clipped territory by 90%. Fixed by
+   extending each side's own clip REACH (`loEnd`/`hiStart` in `linePieces`, via `pointOnD0AtQ`,
+   already declared) to the TRUE overlap of the two primitives' own projections, not just the
+   boundary piece.
+3. **An un-split kite patch can blow the 1.2x ceiling on a wide gap** -- the SAME "irregular patch,
+   never split" defect item 3 already fixed for the dropped-ARC case, now hit by the dropped-LINE
+   case too (MEASURED: 3.38x on `template_15`'s own neck, 3.76x on `template_9` at 9x12). Fixed with
+   two new pitch-sizing helpers mirroring item 3's own shape: `buildNotchPatch` (the pinched
+   triangle, a trivial 2-point boundary fanned to the medial apex) and `buildNotchQuadPatch` (the
+   no-pinch quad, a ruled-surface slice between its own two, possibly different-length, edges).
+4. **A fully-clipped-away piece can reduce to 0-2 points and still get pushed as a "real" piece.**
+   `linePieces`/`voussoirPieces` (arc-voussoir.js) never guarded their own per-piece push on
+   `polygon.length >= 3` the way `along-path.js`'s own equivalent loop already does -- a PRE-EXISTING
+   gap, now reachable via two independent clips landing on the same small span (MEASURED: a literal
+   0-vertex "piece" on `template_5`'s own `double_course`/butt). Fixed at both push sites, the same
+   "no material here, skip it" treatment a dropped primitive already gets elsewhere.
+
+**Verified: the dispatch's own HEADLINE target is fixed.** `template_9`'s `soldier_stretcher` 7x9
+overlap: the pre-fix 92% (`frame-165`/`frame-167`) is gone -- worst overlap across all 190 pieces is
+now 0.0% above the 0.2 fraction threshold (was 21 pairs above it at baseline). Full suite: 3795/3795
+passed throughout every step.
+
+**Full matrix: 146/476 failed, up from 143 (this session's own improved baseline, after the harness
+fix) / down from the dispatch's own cited 154 -- net +3 against the stricter, current bar.** All 3
+are SMALL residual overlaps (0.021-0.052 in^2, just over the 0.02 threshold), not the severe
+ratio-blowup or zero-vertex defects already found and fixed above: `template_5` 7x9
+`double_course`/butt and `mixed_bands`/native, `template_9` 9x12 `mixed_bands` (both corner styles).
+Looked at one directly (`template_9` 9x12): the overlapping pair includes a piece with a near-
+duplicate vertex pair (`(1.4,1.4)` / `(1.4,1.4002)`) -- a thin sliver that escaped `mergeSlivers`'
+own threshold, most likely from `buildNotchQuadPatch`'s own ruled-surface approximation when the
+two edges it interpolates between aren't a close length match. NOT root-caused further this
+session -- capacity note, stated plainly: items 1-4 above were each their own real, measured fix;
+chasing a 4th, smaller-still tail risked diminishing returns at the end of an already-long session
+rather than a clean stopping point. Recommend: a fresh-capacity pass specifically on
+`buildNotchQuadPatch`'s own sliver-merge behaviour, OR accept these 3 as a known, small, documented
+residual (same spirit as the already-tolerated ~10-15% curve-clip imperfection in
+`bricks-real-template-contours.test.js`) -- the advisor's own call, not mine to make unilaterally
+given the explicit "must not regress" bar.
+
+**Commit to follow** (`primitive-ribbon.js`, `arc-voussoir.js`, this entry). Proceeding to the
+advisor's own follow-up request (a SCALE dimension added to the matrix) using this current state,
+since it was dispatched as part of this same item-9 matrix run and is independently useful
+regardless of how the 3 residuals above get resolved.

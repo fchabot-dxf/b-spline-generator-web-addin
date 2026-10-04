@@ -67,11 +67,49 @@ function toCurve(offsetPrim) {
   return { type: 'circle', c: { x: offsetPrim.cx, y: offsetPrim.cy }, r: offsetPrim.r };
 }
 
-function primitiveLiveAtDepth(prim, d1) {
+const MIN_LINE_RUN_IN = 0.02; // T86 item 9 (reusing item 4b's own floor): a declared floor, same
+// role as arc-voussoir.js's own MIN_RADIUS_IN -- below this, a straight primitive's own effective
+// run (after BOTH neighbours' own mitre consumption at this depth) is too degenerate to host even
+// a sliver; drop the whole primitive, the same "an honest gap, not a garbage render" treatment
+// MIN_RADIUS_IN already gives an over-deep convex arc.
+
+/** T86 item 9 (WORK-LOG's own "T86 item 4 continued" diagnosis, turn 309): a LINE never disappears
+ *  from its OWN offset the way a circle's radius can -- unlike an arc, a line's degeneracy is
+ *  purely about its own TWO ENDS: once BOTH neighbours' own mitre consumption at this depth
+ *  exceeds the primitive's own total length, there is no room left for even one real piece.
+ *  Mirrors `linePieces`' own effective-run projection (same `project`/min-max-of-o-or-q reasoning)
+ *  against this primitive's own TRUE immediate neighbours in the full, undropped primitive list --
+ *  never the live-filtered one: a primitive's own corner consumption with whatever is physically
+ *  adjacent to it at depth 0 is a LOCAL fact, unaffected by what else drops elsewhere on the same
+ *  row. */
+function lineLiveAtDepth(primitives, idx, depth, closed) {
+  const prim = primitives[idx];
+  const n = primitives.length;
+  // T86 item 9 bug (found testing the brush's own OPEN primitive lists against this NEW check,
+  // added after item 7): the modular wraparound below is only valid for a CLOSED loop -- on an
+  // OPEN path, primitive 0's own "previous" and the LAST primitive's own "next" are NOT real
+  // neighbours at all (MEASURED: treating them as such on a 2-line bent brush stroke produced a
+  // bogus joint at the wrong place and dropped BOTH primitives, zero pieces). An open path's own
+  // true end has no neighbour to measure consumption against -- same "can't judge, assume live"
+  // fallback as a missing joint.
+  const hasPrev = closed || idx > 0;
+  const hasNext = closed || idx < n - 1;
+  const jointWithPrev = hasPrev ? jointPointAt(primitives, (idx - 1 + n) % n, idx, depth) : null;
+  const jointWithNext = hasNext ? jointPointAt(primitives, idx, (idx + 1) % n, depth) : null;
+  if (!jointWithPrev || !jointWithNext) return true; // no joint to measure against -- same "can't judge, assume live" as every other defensive null-check in this file
+  const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y, totalLen = Math.hypot(dx, dy) || 1;
+  const tx = dx / totalLen, ty = dy / totalLen;
+  const project = (pt) => (pt.x - prim.p0.x) * tx + (pt.y - prim.p0.y) * ty;
+  return project(jointWithNext) - project(jointWithPrev) > MIN_LINE_RUN_IN;
+}
+
+function primitiveLiveAtDepth(primitives, idx, depth, closed = true) {
+  const prim = primitives[idx];
   // isArcFeasible(r, radialSign, halfWidth) checks `r - radialSign*halfWidth > floor` -- passing
-  // `d1` in the `halfWidth` slot gives exactly `r - radialSign*d1`, this primitive's own radius at
-  // its row's deepest edge, the SAME quantity the advisor's own "r-d1 <= grout" check describes.
-  return prim.type === 'line' || isArcFeasible(prim.r, prim.radialSign, d1);
+  // `depth` in the `halfWidth` slot gives exactly `r - radialSign*depth`, this primitive's own
+  // radius at its row's deepest edge, the SAME quantity the advisor's own "r-d1 <= grout" check
+  // describes.
+  return prim.type === 'line' ? lineLiveAtDepth(primitives, idx, depth, closed) : isArcFeasible(prim.r, prim.radialSign, depth);
 }
 
 function originalJunctionPoint(prim) {
@@ -221,7 +259,7 @@ function buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipTh
 function jointFor(joint, idx) {
   if (!joint) return joint;
   if (joint.isButt) return idx === joint.throughIdx ? joint.forThrough : joint.forButt;
-  if (joint.isBlock) return idx === joint.prevIdx ? joint.forPrev : joint.forCur;
+  if (joint.isBlock || joint.isNotch) return idx === joint.prevIdx ? joint.forPrev : joint.forCur;
   return joint;
 }
 
@@ -278,6 +316,196 @@ function buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint) {
   const blockPolygon = [o, blockPrevPoint, inner, blockCurPoint];
 
   return { isBlock: true, prevIdx, curIdx, forPrev, forCur, blockPolygon };
+}
+
+/** A monotonically-increasing position along `prim` (line: tangential projection from `p0`; arc:
+ *  unwrapped angle from `theta1` in its own declared direction, the SAME unwrap `buildPatch` below
+ *  already uses) -- lets two points be ordered "near/far" along a primitive regardless of which
+ *  flanking neighbour happened to compute each one. */
+function tangentialProjection(prim, pt) {
+  if (prim.type === 'line') {
+    const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y, len = Math.hypot(dx, dy) || 1;
+    return ((pt.x - prim.p0.x) * dx + (pt.y - prim.p0.y) * dy) / len;
+  }
+  const direction = Math.sign(prim.theta2 - prim.theta1) || 1;
+  let t = (Math.atan2(pt.y - prim.cy, pt.x - prim.cx) - prim.theta1) * direction;
+  while (t < 0) t += 2 * Math.PI;
+  return t;
+}
+
+/** T86 item 9 (WORK-LOG's own "dropped-line architecture attempted and REVERTED" entry, and the
+ * advisor's own follow-up ruling): a dropped primitive that bridges a NOTCH -- its own two
+ * flanking neighbours are PARALLEL to each other (e.g. two sides of a rectangular step, like
+ * `template_9`'s own "I Shape" waist) -- has no single corner point hiding behind it the way a
+ * dropped ARC's rounded fillet does: extending two NON-parallel sides through where a fillet used
+ * to be always meets at one point, but two PARALLEL sides never meet at all, at any depth. The
+ * ordinary `o`/`q` this file's own `jointBefore` map tries first (`jointPointAt(prevIdx, curIdx,
+ * depth)`, skipping straight past the dropped primitive) comes back `null` in exactly this case.
+ *
+ * MEASURED (the reverted attempt's own finding): giving each flanking primitive its OWN
+ * independent, non-fictitious corner with the dropped primitive (`trustO:true`) reproduces the
+ * exact pre-fix 92% overlap byte-identical -- the two flanking rows have themselves PHYSICALLY
+ * CONVERGED at a deep enough row (their own offset bands, from opposite sides of the gap, start to
+ * occupy the same space), so sizing each side off its OWN corner lets both reach almost all the
+ * way across independently. The general fix (the advisor's own ruling): compute the MEDIAL LINE
+ * between the two flanking primitives ONCE (the line parallel to both, exactly halfway across
+ * their own TRUE, depth-0 gap -- `medialDepth = D/2`, `D` the perpendicular gap) and truncate BOTH
+ * sides at that SAME shared line whenever a row's own depth would otherwise cross it -- the same
+ * "clip two sides against one identical line, so they meet exactly instead of overlapping"
+ * guarantee an ordinary mitre joint already relies on, just with the clip line now being a
+ * constant medial line instead of a per-depth corner intersection.
+ *
+ * Three cases per row, by comparing `d0`/`d1` against `medialDepth`:
+ *  - `d1 <= medialDepth`: this row's own deepest edge hasn't reached the pinch at all -- ordinary,
+ *    independent corners (`trustO:true`) are exactly correct here (MEASURED: this is the case that
+ *    already worked, in isolation, in the reverted attempt), with a `kiteFan` QUAD reaching out to
+ *    each side's own true tangent point, same as a dropped ARC's own kite.
+ *  - `d0 >= medialDepth`: the row's own OUTER edge has ALREADY passed the pinch -- there is no real
+ *    material left near this joint for EITHER side at this depth; clipping each side against the
+ *    medial line (below) naturally removes their ENTIRE candidate piece here (the whole candidate
+ *    sits on the far side of a line both exceed), and the `kiteFan` triangle degenerates to zero/
+ *    negative area, which the caller (`ribbonPieces`) only ever used as plain fill geometry -- so
+ *    this case needs no separate branch, only a guard to skip emitting a degenerate triangle.
+ *  - otherwise (`d0 < medialDepth < d1`, the row straddles the pinch): each side's own candidate
+ *    piece is clipped against the SAME medial line instead of its own independent corner -- they
+ *    now meet EXACTLY at that line, nothing left over for either to overlap into. The dropped
+ *    primitive's own residual sliver is a TRIANGLE (`oA`, `oB`, the medial point) -- the quad's own
+ *    "deep" edge (`qA`/`qB`, past the pinch) has no counterpart any more, since the medial point IS
+ *    where both would-be `qA`/`qB` positions coincide.
+ */
+/** T86 item 9: the dropped primitive's own residual sliver (`buildNotchJoint`'s own triangle, fanning
+ *  a 2-point `[d0Near,d0Far]` outer edge to a single apex) is NOT automatically pitch-sized the way
+ *  an ordinary row's own pieces are -- MEASURED (template_15's own wide neck, a 2.925in gap): a
+ *  single un-split kite patch reached 3.38x nominal, the SAME "irregular patch, never split" defect
+ *  T86 item 3 already fixed for the dropped-ARC case. Mirrors that fix's own shape exactly (plan the
+ *  boundary's own true length with the band's own declared sequence/fill rule, slice via
+ *  `patchSlicePolygon`, merge slivers) over a trivial 2-point boundary (a straight line needs no
+ *  flat-strip/tessellated-arc construction at all -- the kite's own outer edge already IS straight). */
+function buildNotchPatch(d0Near, d0Far, apex, pitch, nominalJoint, width, sequence, forcedFStart) {
+  const boundary = [d0Near, d0Far];
+  const cum = cumulativeLengths(boundary);
+  const totalLen = cum[cum.length - 1];
+  const nominalArea = pitch * width;
+  if (totalLen < 1e-6) return [[...boundary, apex]];
+  const { lengths, jointWidth } = planCornerRun(totalLen, pitch, nominalJoint, FILL_FRACTIONS, sequence, forcedFStart);
+  const spans = [];
+  let s = 0;
+  for (let i = 0; i < lengths.length; i++) { spans.push({ sA: s, sB: s + lengths[i] }); s += lengths[i] + jointWidth; }
+  mergeSlivers(spans, (sA, sB) => Math.abs(signedArea(patchSlicePolygon(boundary, cum, sA, sB, apex))), nominalArea);
+  return spans.map(({ sA, sB }) => patchSlicePolygon(boundary, cum, sA, sB, apex));
+}
+
+/** T86 item 9: `buildNotchJoint`'s own NO-PINCH quad (`[d0Near,d0Far,d1Far,d1Near]`, the case this
+ *  row never reaches the medial line at all) needs the SAME pitch-sizing as the triangle above, for
+ *  the identical reason (MEASURED: template_9 at 9x12, a wider board whose own notch gap scales up
+ *  with it -- a single un-split quad reached 3.76x nominal). A plain RULED-SURFACE slice (the SAME
+ *  "interpolate between two parallel edges" shape `linePieces`' own `buildPiece` already uses for an
+ *  ordinary straight run, generalized to two edges of possibly different length -- `oA`-to-`oB` and
+ *  `qA`-to-`qB` need not match exactly once one side's own corner is more "extreme" than the
+ *  other's, see this file's own `trustO` header): pieces are planned along whichever edge is LONGER
+ *  (the shorter edge's own matching slice is then a fraction of its own length, naturally tapering
+ *  rather than overshooting it), each slice a quad interpolated at the SAME fractional position on
+ *  both edges. */
+function buildNotchQuadPatch(d0Near, d0Far, d1Near, d1Far, pitch, nominalJoint, width, sequence, forcedFStart) {
+  const len0 = Math.hypot(d0Far.x - d0Near.x, d0Far.y - d0Near.y);
+  const len1 = Math.hypot(d1Far.x - d1Near.x, d1Far.y - d1Near.y);
+  const totalLen = Math.max(len0, len1);
+  if (totalLen < 1e-6) return [[d0Near, d0Far, d1Far, d1Near]];
+  const pointAtFrac = (near, far, frac) => ({ x: near.x + (far.x - near.x) * frac, y: near.y + (far.y - near.y) * frac });
+  const sliceAt = (sA, sB) => {
+    const fA = sA / totalLen, fB = sB / totalLen;
+    return [pointAtFrac(d0Near, d0Far, fA), pointAtFrac(d0Near, d0Far, fB), pointAtFrac(d1Near, d1Far, fB), pointAtFrac(d1Near, d1Far, fA)];
+  };
+  const { lengths, jointWidth } = planCornerRun(totalLen, pitch, nominalJoint, FILL_FRACTIONS, sequence, forcedFStart);
+  const spans = [];
+  let s = 0;
+  for (let i = 0; i < lengths.length; i++) { spans.push({ sA: s, sB: s + lengths[i] }); s += lengths[i] + jointWidth; }
+  mergeSlivers(spans, (sA, sB) => Math.abs(signedArea(sliceAt(sA, sB))), pitch * width);
+  return spans.map(({ sA, sB }) => sliceAt(sA, sB));
+}
+
+function buildNotchJoint(primitives, prevIdx, droppedIdx, curIdx, d0, d1, pitch, nominalJoint, width, sequence, forcedFStart) {
+  const oA = jointPointAt(primitives, prevIdx, droppedIdx, d0);
+  const qA = jointPointAt(primitives, prevIdx, droppedIdx, d1);
+  const oB = jointPointAt(primitives, droppedIdx, curIdx, d0);
+  const qB = jointPointAt(primitives, droppedIdx, curIdx, d1);
+  if (!oA || !qA || !oB || !qB) return null;
+  const prevPrim = primitives[prevIdx], curPrim = primitives[curIdx];
+  // same KEEP_REF_STEP_IN convention as every ordinary joint above -- prevIdx only ever reads
+  // `keepRefAsEnd` (it ENDS at this corner), curIdx only ever reads `keepRefAsStart` (it STARTS
+  // here), so the other half of each pair is never consulted; passing the same value for both
+  // keeps `mitreLine`'s own shape without a 5th parameter.
+  const keepRefA = stepFrom(oA, tangentAt(prevPrim, oA), -KEEP_REF_STEP_IN);
+  const keepRefB = stepFrom(oB, tangentAt(curPrim, oB), KEEP_REF_STEP_IN);
+
+  // T86 item 9: the medial line between prevPrim/curPrim, computed ONCE from their own TRUE
+  // (depth-0) positions -- `D` is the perpendicular gap (prevPrim's own normal, which by this
+  // file's own declared convention already points TOWARD the material/the opposite side, dotted
+  // against the vector from prevPrim's own true endpoint to curPrim's own true start). Only
+  // meaningful when prevPrim/curPrim genuinely FACE each other (D > 0); a non-positive D means this
+  // isn't a facing gap at all (defensive -- falls through to the ordinary, unclamped construction
+  // below, same as item 4b's own reverted version, rather than risk a wrong clip on a case this
+  // formula was never derived for).
+  const junctionA = originalJunctionPoint(prevPrim), junctionB = { x: curPrim.p0.x, y: curPrim.p0.y };
+  const D = prevPrim.type === 'line' && curPrim.type === 'line'
+    ? (junctionB.x - junctionA.x) * prevPrim.nx + (junctionB.y - junctionA.y) * prevPrim.ny
+    : -1;
+  const medialDepth = D / 2;
+
+  const dropped = primitives[droppedIdx];
+  const [d0Near, d0Far] = tangentialProjection(dropped, oA) <= tangentialProjection(dropped, oB) ? [oA, oB] : [oB, oA];
+
+  if (!(D > 0) || d1 <= medialDepth) {
+    // no pinch reached this row -- each side's own TRUE, independent corner is exactly correct
+    // (MEASURED: this is the sub-case the reverted attempt already got right in isolation).
+    const forPrev = mitreLine(oA, qA, keepRefA, keepRefA);
+    const forCur = mitreLine(oB, qB, keepRefB, keepRefB);
+    if (!forPrev || !forCur) return null;
+    const [d1Near, d1Far] = tangentialProjection(dropped, qA) <= tangentialProjection(dropped, qB) ? [qA, qB] : [qB, qA];
+    const kiteFan = buildNotchQuadPatch(d0Near, d0Far, d1Near, d1Far, pitch, nominalJoint, width, sequence, forcedFStart);
+    return { isNotch: true, prevIdx, curIdx, forPrev: { ...forPrev, trustO: true }, forCur: { ...forCur, trustO: true }, kiteFan };
+  }
+
+  // T86 item 9: the row's own depth has reached (or straddles) the pinch -- truncate BOTH sides at
+  // the SAME medial line instead of their own independent corners. MEASURED (not assumed, and a
+  // real bug caught this way): the true pinch point is NOT prevPrim's own depth-0 junction shifted
+  // by its own normal -- that ignores the DROPPED primitive's own offset motion entirely and lands
+  // `medialDepth` further out than reality (CONFIRMED: produced a triangle reaching all the way
+  // back to the primitives' own shared depth-0 corner, overlapping 50% with a SHALLOWER band's own
+  // ordinary brick that already legitimately occupies that territory, since the dropped primitive
+  // is still live there). The true pinch is where `oA(d)` and `oB(d)` -- each primitive's own joint
+  // with the DROPPED one, evaluated at a COMMON depth `d` -- coincide; `jointPointAt` already
+  // computes exactly `oA(d)`/`oB(d)` for d0/d1, so evaluating it ONCE MORE at `medialDepth` itself
+  // (reusing the identical declared function, not a second formula) gives that point directly.
+  const medialPoint = jointPointAt(primitives, prevIdx, droppedIdx, medialDepth);
+  if (!medialPoint) return null; // defensive: no joint rather than a bad one, same convention as every other null-check in this file
+  const medialTangent = tangentAt(prevPrim, medialPoint);
+  const medialLineDir = { dirX: medialTangent.x, dirY: medialTangent.y };
+  // MEASURED (not assumed): clipping only the ONE piece nearest the joint (using `medialPoint`
+  // itself as the reach-bounding point, same as an ordinary corner) is NOT enough -- the two
+  // flanking primitives are PARALLEL for their own ENTIRE facing extent, not just at the joint, so
+  // EVERY piece whose own tangential span falls anywhere within that facing range needs the SAME
+  // clip, not only the boundary one (CONFIRMED: a piece 3 positions back from the joint, still
+  // within primB's own facing range, built at the row's own FULL unclamped depth and overlapped
+  // the dropped primitive's own clipped territory by 90%). `pointOnD0AtQ` (already declared, used
+  // identically by `flatStripToTangent` above) gives the medial-line point at the OTHER side's own
+  // far endpoint's tangential position -- extending each side's own clip REACH (`loEnd`/`hiStart`
+  // in `linePieces`) to cover the TRUE overlap of the two primitives' own projections, symmetric
+  // either way: for the LONGER primitive this is the real facing-range boundary; for the SHORTER
+  // one (entirely within the facing range already) it naturally lands past its own far end, which
+  // just as correctly makes the clip apply to its own full length.
+  const reachA = pointOnD0AtQ(prevPrim, medialDepth, curPrim.p1);
+  const reachB = pointOnD0AtQ(curPrim, medialDepth, prevPrim.p0);
+  const forPrev = { point: reachA, q: reachA, ...medialLineDir, keepRefAsStart: prevPrim.p0, keepRefAsEnd: prevPrim.p0, trustO: true };
+  const forCur = { point: reachB, q: reachB, ...medialLineDir, keepRefAsStart: curPrim.p1, keepRefAsEnd: curPrim.p1, trustO: true };
+  // the dropped primitive's own residual sliver, truncated at the SAME medial line and pitch-sized
+  // (`buildNotchPatch`, same reasoning as item 3's own arc-patch fix -- see that function's own
+  // header) when the row's own outer edge (d0) still has real material (d0 < medialDepth); past
+  // that (d0 >= medialDepth) the triangle has degenerated to zero/negative area (oA/oB themselves
+  // are already on the far side of the medial line) -- an empty kiteFan is the honest answer
+  // there, not a sliver triangle nobody asked for.
+  const kiteFan = d0 < medialDepth ? buildNotchPatch(d0Near, d0Far, medialPoint, pitch, nominalJoint, width, sequence, forcedFStart) : [];
+  return { isNotch: true, prevIdx, curIdx, forPrev, forCur, kiteFan };
 }
 
 const EXTENSION_ARC_STEPS = 10; // a smoothness floor for the dropped-arc extension points below, same
@@ -409,16 +637,26 @@ function patchSlicePolygon(boundary, cum, sA, sB, q) {
  *  a short one can still clip to a real sliver regardless of how evenly its own along-boundary length
  *  was planned; this is what "apex fan slivers merged" means, not a second, different defect. */
 function buildPatch(prevPrim, curPrim, dropped, d0, A, B, q, pitch, nominalJoint, width, sequence, forcedFStart) {
-  const off = offsetPrimitive(dropped, d0);
-  const direction = Math.sign(dropped.theta2 - dropped.theta1) || 1;
-  const thetaA = Math.atan2(A.y - off.cy, A.x - off.cx);
-  let thetaB = Math.atan2(B.y - off.cy, B.x - off.cx);
-  while ((thetaB - thetaA) * direction < 0) thetaB += direction * 2 * Math.PI;
-  while ((thetaB - thetaA) * direction > 2 * Math.PI) thetaB -= direction * 2 * Math.PI;
+  // T86 item 9 (the BEVEL sub-case: a dropped LINE between two NON-parallel sides, where the
+  // direct skip-intersection IS defined -- unlike a NOTCH, see `buildNotchJoint`'s own header):
+  // the simpler of the two dropped-primitive shapes -- no curve to tessellate, since a straight
+  // primitive offset by d0 is still exactly straight. The patch's own middle run is just the
+  // segment from A to B directly, with the two flat strips already contributing A/B themselves as
+  // their own endpoints (same as the arc case's `tessellateArcSpan(...).slice(1,-1)` dropping its
+  // own first/last point for the identical reason -- here there is simply nothing left to drop).
+  const middle = dropped.type === 'line' ? [] : (() => {
+    const off = offsetPrimitive(dropped, d0);
+    const direction = Math.sign(dropped.theta2 - dropped.theta1) || 1;
+    const thetaA = Math.atan2(A.y - off.cy, A.x - off.cx);
+    let thetaB = Math.atan2(B.y - off.cy, B.x - off.cx);
+    while ((thetaB - thetaA) * direction < 0) thetaB += direction * 2 * Math.PI;
+    while ((thetaB - thetaA) * direction > 2 * Math.PI) thetaB -= direction * 2 * Math.PI;
+    return tessellateArcSpan(dropped, d0, thetaA, thetaB).slice(1, -1);
+  })();
 
   const boundary = [
     ...flatStripToTangent(prevPrim, d0, q, A),
-    ...tessellateArcSpan(dropped, d0, thetaA, thetaB).slice(1, -1),
+    ...middle,
     ...flatStripToTangent(curPrim, d0, q, B).reverse(),
   ];
   const cum = cumulativeLengths(boundary);
@@ -538,9 +776,20 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
   for (let i = 0; i < spans.length; i++) {
     const { sA, sB } = spans[i];
     const polygon = buildPiece(sA, sB, i === 0, i === spans.length - 1);
-    const { sampleId, flip } = pickSample(set, seed, 'bricks', nextId);
-    const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
-    pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset });
+    // T86 item 9 (found via the full matrix, template_5's own double_course/butt case): two
+    // independent clips on the SAME piece (an ordinary corner's own mitre PLUS ... a notch-adjacent
+    // piece's own medial-line clip, when both bound the same small span) can occasionally remove
+    // the piece's own material entirely -- `clipToHalfPlane` then returns 0-2 points, a degenerate,
+    // not-a-real-polygon result. along-path.js's own equivalent loop already guards on exactly this
+    // (`if (polygon.length >= 3)`); this file's own `linePieces` push never did, silently pushing a
+    // phantom zero-vertex "piece" that renders nothing but still counts toward areas/ratios
+    // elsewhere. Same honest-gap treatment a dropped primitive already gets: no material here,
+    // skip it, don't fabricate one.
+    if (polygon.length >= 3) {
+      const { sampleId, flip } = pickSample(set, seed, 'bricks', nextId);
+      const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
+      pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset });
+    }
     nextId++;
   }
   return { pieces, nextId };
@@ -578,7 +827,7 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
 export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true, rowIndex = 0) {
   const n = primitives.length;
   const liveIndices = [];
-  for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives[i], d1)) liveIndices.push(i);
+  for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives, i, d1, closed)) liveIndices.push(i);
   if (liveIndices.length === 0) return { pieces: [], nextId: startId };
   const m = liveIndices.length;
 
@@ -593,26 +842,35 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     // a square/butt cut, with no extra construction needed here.
     if (!closed && k === 0) return null;
     const prevIdx = liveIndices[(k - 1 + m) % m];
-    const o = jointPointAt(primitives, prevIdx, curIdx, d0);
-    const q = jointPointAt(primitives, prevIdx, curIdx, d1);
-    if (!o || !q) return null;
-    // H23 item 76 (advisor review -- MEASURED OOB regression, see WORK-LOG): `o` (this joint's own
-    // point at the row's OUTER edge, d0) is computed by intersecting `prevIdx`/`curIdx` DIRECTLY,
-    // skipping whatever dropped out between them -- correct IF every skipped primitive is ALSO
-    // infeasible at d0 (it was never really there at this depth either). WRONG when a skipped
-    // primitive is still feasible AT d0 and only drops before d1 (a "transitional" primitive within
-    // THIS row): `o` then intersects two primitives that, at the TRUE outer edge, are not actually
+    // H23 item 76 (advisor review -- MEASURED OOB regression, see WORK-LOG): this joint's own point
+    // at the row's OUTER edge is computed below by intersecting `prevIdx`/`curIdx` DIRECTLY, skipping
+    // whatever dropped out between them -- correct IF every skipped primitive is ALSO infeasible at
+    // d0 (it was never really there at this depth either). WRONG when a skipped primitive is still
+    // feasible AT d0 and only drops before d1 (a "transitional" primitive within THIS row): the
+    // direct intersection then joins two primitives that, at the TRUE outer edge, are not actually
     // adjacent at all (the transitional one is still physically between them) -- a fictitious point
-    // that can land past the board's own true boundary. MEASURED directly: a shoulder fillet
-    // feasible at d0=0 but not d1=0.75 produced an `o` 0.68in past the true edge, and `linePieces`
-    // (trusting `o` for sizing, see its own header) built a piece reaching past the board. `trustO`
-    // is false whenever this applies -- the one case `linePieces`/`voussoirPieces` fall back to `q`
-    // alone for that side's own sizing (the "ordinary corner" / "d0-also-infeasible" cases, the vast
-    // majority, keep trusting `o`, which is what the original fillet-collapse fix above needed).
+    // that can land past the board's own true boundary. `trustO` is false whenever this applies --
+    // the one case `linePieces`/`voussoirPieces` fall back to `q` alone for that side's own sizing
+    // (the "ordinary corner" / "d0-also-infeasible" cases, the vast majority, keep trusting `o`,
+    // which is what the original fillet-collapse fix above needed). Walked BEFORE the `o`/`q`
+    // computation below (T86 item 9): a NOTCH's own direct skip-intersection doesn't merely need
+    // `trustO:false` treatment, it's flat-out undefined (see `buildNotchJoint`'s own header), so
+    // `droppedIdx` must already be known before deciding what to do about that.
     let trustO = true, droppedIdx = null;
     for (let idx = (prevIdx + 1) % n; idx !== curIdx; idx = (idx + 1) % n) {
-      if (primitiveLiveAtDepth(primitives[idx], d0)) { trustO = false; droppedIdx = idx; break; }
+      if (primitiveLiveAtDepth(primitives, idx, d0, closed)) { trustO = false; droppedIdx = idx; break; }
     }
+    const o = jointPointAt(primitives, prevIdx, curIdx, d0);
+    const q = jointPointAt(primitives, prevIdx, curIdx, d1);
+    // T86 item 9: a NOTCH (the dropped primitive's own two flanking neighbours are PARALLEL to each
+    // other -- see `buildNotchJoint`'s own header) makes the direct skip-intersection above come back
+    // `null`, never merely fictitious -- try the notch construction FIRST, before falling back to
+    // "no joint" for the ordinary (genuinely open end) case that null also covers.
+    if (droppedIdx !== null && (!o || !q)) {
+      const notch = buildNotchJoint(primitives, prevIdx, droppedIdx, curIdx, d0, d1, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
+      if (notch) return notch;
+    }
+    if (!o || !q) return null;
     // T86 item 1: a butt/lapped/block corner only ever applies at a genuine, undropped, line-line
     // joint -- a dropped primitive between the neighbours (almost always a fillet/arc) and any
     // arc-involved corner both declare straight to the ordinary mitre below (the architecture plan's
@@ -693,6 +951,10 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     // fires exactly once per joint, never duplicated, including the wrap-around one.
     if (rawJointEnd && rawJointEnd.kiteFan) {
       for (const polygon of rawJointEnd.kiteFan) {
+        // T86 item 9: same defensive guard as `linePieces`' own push above -- a degenerate
+        // (near-zero-length) slice from `buildNotchPatch`/`buildNotchQuadPatch` is an honest "no
+        // material here", never a phantom piece.
+        if (polygon.length < 3) { nextId++; continue; }
         const { sampleId, flip } = pickSample(set, seed, 'bricks', nextId);
         const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
         pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset });
@@ -734,7 +996,7 @@ const BOUNDARY_ARC_STEPS = 16; // a smoothness floor for the TESSELLATED polylin
 export function boundaryAtDepth(primitives, depth) {
   const n = primitives.length;
   const liveIndices = [];
-  for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives[i], depth)) liveIndices.push(i);
+  for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives, i, depth)) liveIndices.push(i);
   if (liveIndices.length === 0) return [];
   const m = liveIndices.length;
   const joints = liveIndices.map((curIdx, k) => jointPointAt(primitives, liveIndices[(k - 1 + m) % m], curIdx, depth));

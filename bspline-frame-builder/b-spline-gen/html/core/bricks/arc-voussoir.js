@@ -237,9 +237,16 @@ export function voussoirPieces(
   for (let i = 0; i < spans.length; i++) {
     const { sA, sB } = spans[i];
     const polygon = buildPiece(sA, sB, i === 0, i === spans.length - 1);
-    const { sampleId, flip } = pickSample(set, seed, 'bricks', nextId);
-    const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
-    pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset });
+    // T86 item 9 (found via the full matrix): two independent clips on the SAME arc piece can
+    // occasionally remove its own material entirely -- `clipToHalfPlane` then returns 0-2 points, a
+    // degenerate, not-a-real-polygon result (same class of edge case primitive-ribbon.js's own
+    // `linePieces` guards against now, for the identical reason). An honest "no material here", not
+    // a phantom piece.
+    if (polygon.length >= 3) {
+      const { sampleId, flip } = pickSample(set, seed, 'bricks', nextId);
+      const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
+      pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset });
+    }
     nextId++;
   }
   return { pieces, nextId };
