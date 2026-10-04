@@ -26,14 +26,13 @@
  *
  * Edge treatment, H23 item 74 (de, F35 item 1 review: "a brick crossing the edge should be CUT,
  * not dropped or left hanging"): every cell is clipped to `boardOutline` via geometry.js's own
- * clipPolygonToBoard -- an EXACT cut for a convex board (every real board so far), never
- * stretched (a cut-down brick's own remaining shape is still its true physical size, just
- * trimmed, same as a real last-brick-in-a-row cut to fit a wall) -- with `boardOutline`'s own
- * documented concave fallback (keep WHOLE or drop, the prior behaviour) when it isn't convex (F35
- * item 6 correction: this is the UNFIXED fallback that produces a visible gap on a concave Frame
- * interior -- tracked separately, not this item's own scope). Adjacency/course assignment below
- * still uses each cell's own UNCLIPPED grid centre (cx/cy) -- clipping only trims the stored
- * polygon, never the logical grid position neighbours/suppression reason about.
+ * clipPolygonToBoard -- an EXACT cut, never stretched (a cut-down brick's own remaining shape is
+ * still its true physical size, just trimmed, same as a real last-brick-in-a-row cut to fit a
+ * wall), for a convex OR concave board alike (H23 item 76 cont.: concave boards used to fall back
+ * to a keep-whole-or-drop heuristic that MEASURED 0.26-0.44in gaps at a concave Frame interior --
+ * `clipPolygonToBoard` now cuts exactly there too). Adjacency/course assignment below still uses
+ * each cell's own UNCLIPPED grid centre (cx/cy) -- clipping only trims the stored polygon, never
+ * the logical grid position neighbours/suppression reason about.
  */
 import { rectPolygon, clipPolygonToBoard } from '../geometry.js';
 import { BRICK_PATTERNS } from '../library.js';

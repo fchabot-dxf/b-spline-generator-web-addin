@@ -18099,3 +18099,177 @@ fix in this entry, not just once at the end.
 
 Not done this turn, still the explicit next item: concave clipping for
 the Wall, awaiting the advisor's review of this pass before starting.
+
+---
+
+## H23 item 77 -- concave clipping for the Wall (f3)
+
+**Dispatch (turn 526, advisor):** "Fillet zones reviewed: filled,
+clean. Deployed as 2026.10.04-1. Next: CONCAVE CLIPPING for the Wall
+(fill to the frame's true inner edge at the waist, gap ~= grout all
+round, T1/T12)..." (the remaining item 76 list and a band-pattern hook
+for de are explicitly sequenced AFTER this, not started this turn).
+
+**Baseline, measured before touching anything:** `clipPolygonToBoard`'s
+own concave branch was the old `pointInPolygon(cellRefPoint) ? poly :
+[]` fallback (keep the WHOLE unclipped cell, or drop it entirely) --
+every real Wall layout (bond/basketweave/fieldstone/herringbone) routes
+through this one function. Confirmed de's own finding directly: a
+straddling cell near T1's left waist (cx=1.95, cy=4.5) has its own
+centre OUTSIDE `innerPath`, so the old fallback dropped it completely
+(area 0) even though a real 0.0296in^2 sliver of it genuinely belongs to
+the board -- the Wall's own fill stopping short of the Frame's true
+inner edge exactly where it's supposed to hug the waist.
+
+**Attempt 1 (reverted): triangulate the board, clip the cell against
+each triangle, keep only the largest piece.** Implemented
+`triangulatePolygon` (standard ear-clipping; along the way MEASURED
+that this file's own `signedArea` is NOT the textbook shoelace sign --
+a mathematically-CCW square reads -16, not +16 -- normalized against
+that, not assumed) and `clipToTriangle`. Full suite green, synthetic
+cases exact, T1's own 38-vertex `innerPath` triangulated cleanly (36
+triangles, 0.000000 area diff from direct shoelace). Looked done.
+MEASURED it wasn't: grid-sampled the TRUE inside area of a real T1
+waist cell (0.75x0.2in) against a brute-force 400x400 sample grid --
+0.10478in^2 -- then broke the same cell down triangle-by-triangle: it
+spans 3 adjacent triangles (0.0224+0.0346+0.0478, summing to exactly
+the grid-sampled truth), and "keep only the largest" kept just the
+0.0478 piece -- silently discarding well over HALF the real coverage.
+This is the COMMON case, not a rare edge case: any cell near a
+triangulation seam (and a fan triangulation has seams radiating from a
+handful of apex vertices across the whole board) hits this.
+
+**Attempt 2 (reverted): merge the per-triangle pieces back together by
+cancelling shared boundary edges** (adjacent pieces' own directed edges
+along a shared triangulation diagonal appear once each way -- cancel
+the pairs, trace what survives). Fixed the T1 waist cell exactly (ratio
+1.0000 against the grid-sampled truth). Broke differently on
+fieldstone: basketweave/herringbone/bond all came back clean (0
+self-intersecting cells) but fieldstone had 4-7 self-intersecting
+cells. Root cause, traced to the merge's own loop-tracer: it assumed
+exactly ONE surviving outgoing edge per vertex, keyed by a `Map` --
+wrong whenever 3+ pieces touch at a single shared triangulation-fan
+apex (common for fieldstone's own larger, organic Voronoi cells,
+basically never for bond's small axis-aligned rects), where the `Map`
+silently dropped all but the last-registered edge at that vertex and
+the trace corrupted.
+
+**Final design: direct polygon-vs-polygon intersection (Greiner-Hormann
+style), no triangulation at all.** `poly` (every real caller passes a
+convex cell) clipped straight against `boardOutline`'s own real edges:
+find every subject/clip edge crossing, splice each into both polygons'
+own vertex lists linked to its twin in the other list, tag each
+crossing on `poly`'s own list entry/exit by alternating a running
+inside/outside flag, then trace -- walk forward, and whenever the next
+node is itself a crossing, jump to its twin (switching lists) before
+continuing. This is the textbook-correct way to clip against a concave
+shape and has neither Attempt 1 nor Attempt 2's problem by
+construction: no triangulation seams to miss pieces at, no shared-edge
+assumption to break. Multiple disjoint result loops (a notch genuinely
+severing one cell into two pieces) keep the larger, same contract as
+before.
+
+Shipped with one more bug, caught before commit: the loop-tracer's own
+termination check (`cur !== startNode`) only matched `startNode` by
+object identity, but the trace can legitimately return to the SAME
+geometric start point via its TWIN (the other list's copy of that
+point) -- missing that case walked almost the ENTIRE board outline
+before giving up. MEASURED on a real bond.js cell: a 44-vertex result
+(should have been ~6) with area 31.06in^2 (should have been ~0.15in^2,
+one nominal brick) -- basically the whole board traced as "one cell".
+Fixed by also checking `cur !== startNode.twin`. Re-verified: 0 cells
+over 1.5x nominal area across both templates after the fix (was 1 cell
+at 31.06in^2 before it).
+
+**Fieldstone's remaining self-intersections (4 T1, 2 T12) traced to a
+DIFFERENT, downstream function, not the new clip.** Reconstructed one
+bad cell's exact pipeline stage-by-stage (re-ran `poissonDiscSample`
+with the real seed to recover the same point, rebuilt its raw Voronoi
+cell, re-ran each pipeline stage): the clip itself produced a clean
+simple hexagon. `offsetPathInward` (the half-grout inward shrink, run
+immediately after the clip) is what flipped it into a bowtie --
+confirmed its own header already documents this as a known P1
+limitation ("no self-intersection repair for a concave corner tighter
+than the band width"). The trigger is new, not the limitation: an exact
+concave clip can leave a real edge shorter than the shrink distance
+right at the board's true boundary (MEASURED: a ~0.009in edge against a
+0.017in shrink) -- unreachable before this turn, since concave boards
+never got a real clip at all. Didn't rewrite `offsetPathInward`'s own
+mitred-offset algorithm (a separate, nontrivial problem, and already a
+documented, accepted limitation) -- added `isSimplePolygon` to
+geometry.js (exported, since the concept now has a real caller, not
+just scratch scripts) and a guard in fieldstone.js's own existing
+bail-out chain (`if (poly.length < 3 || !isSimplePolygon(poly))
+continue`), dropping that one degenerate stone same as its 3 sibling
+bail-outs already do for other degenerate stages. 0 self-intersecting
+cells across all 4 layouts x both templates after this.
+
+**Verification, all MEASURED, not reasoned:**
+- Grid-sampled ground truth (400x400 brute-force sample) vs the fix's
+  own clipped area for the original failing T1 waist cell: exact match
+  (ratio 1.0000).
+- Waist-region gap (sampled every board-outline point with
+  3.9<y<5.3, the hourglass pinch's own y-range, to the nearest brick
+  edge): bond 0.0147in, basketweave 0.0310in, fieldstone 0.0427in,
+  herringbone 0.0181in -- all under 1.3x grout width (0.034in),
+  against the OLD fallback's 0.1307in (~4x grout) at the same points.
+  Advisor's own criterion ("gap ~= grout all round") met.
+- All 4 layouts (bond/basketweave/fieldstone/herringbone) x both
+  templates (T1/T12): 0 self-intersecting cells, 0 zero-area cells,
+  total fill area sane (~25-28in^2, consistent with innerPath's own
+  ~31in^2 net area minus grout) -- confirms the earlier "keep whole"
+  bug (bond/basketweave total area measured as high as 85in^2, more
+  than the board's own bounding box) is also gone.
+- Screenshots: left-waist closeups, T1+T12 x {bond, fieldstone},
+  4 images, all viewed -- brick/stone fill hugs the true inner edge
+  (dashed blue in the renders) continuously, no gap, no oversized or
+  self-intersecting piece anywhere along the curve. Saved to
+  shots/seatA/item77_{t1,t12}_{bond,fieldstone}_leftwaist.png.
+- A genuinely SEPARATE, pre-existing, physically-unavoidable finding,
+  NOT part of this item's scope: a narrow decorative cusp elsewhere on
+  the same board (near x=1.0, y~3.1 and y~5.9 on T1 -- not the waist)
+  has a real ~0.25-0.33in max gap even after this fix, because no
+  rectangular/organic brick grid column happens to land close enough to
+  reach the very tip of a notch narrower than about one grout width.
+  Distinguished from the waist bug by direct measurement (grid-sampled
+  the exact clip area there too -- it already matches the triangle/
+  polygon-intersection truth; there's simply no brick footprint, even
+  unclipped, that reaches that one point). Flagging, not fixing --
+  out of this item's declared scope.
+
+**Tests added** (`tests/bricks-geometry.test.js`,
+`tests/bricks-real-template-contours.test.js`), both files, MUTATION-
+TESTED by reverting geometry.js to the pre-fix commit and re-running:
+all 12 of the new real-template tests failed against the old code (2
+threw immediately -- fieldstone.js's own new `isSimplePolygon` import
+doesn't exist on old geometry.js -- the rest failed their own
+assertions, e.g. a 0.20-0.25in measured gap against a 0.068in (2x
+grout) allowed threshold), then passed clean after restoring the fix:
+  - `clipPolygonToBoard (concave board, ...)`: a synthetic notched
+    square (hand-computable areas) -- fully-inside unchanged,
+    fully-inside-the-notch dropped, a straddling cell cut to its exact
+    hand-derived partial area (2.75, matching shoelace by hand) and
+    confirmed simple, and a genuinely cell spanning the notch on both
+    sides keeps only the larger (hand-computed 2.8 vs 2.0) disjoint
+    piece.
+  - `concave clipping for the Wall`: real T1/T12 geometry x all 4
+    layouts -- every cell simple, and the waist gap bounded at 2x grout
+    width (comfortably above the 0.43x-1.25x actually measured on all
+    4 real layouts, comfortably below the old fallback's ~4x).
+
+Full suite: 200 files / 3676 tests green (3656 + 20 new), re-run after
+every fix in this entry.
+
+Files: `core/bricks/geometry.js` (`clipPolygonToBoard`'s concave branch
+now `polygonIntersection`, a direct Greiner-Hormann-style clip; new
+exported `isSimplePolygon`; `signedArea`/`segmentIntersection` reused,
+no triangulation machinery left in the file), `core/bricks/layouts/
+fieldstone.js` (self-intersection guard after `offsetPathInward`; its
+own header comment, and bond.js's, updated -- both used to describe the
+now-removed keep-whole-or-drop fallback), `tests/bricks-geometry.test.js`,
+`tests/bricks-real-template-contours.test.js`.
+
+Not done this turn, still queued (advisor's own explicit sequencing,
+after this item): the remaining item 76 list (corner styles incl.
+butt, 5+1 presets via the approved piece set), and the band-pattern
+(u,v) hook for de.

@@ -4,7 +4,7 @@
  * new (roundPolygonCorners, the fieldstone layout's "slightly rounded corners").
  */
 import { describe, it, expect } from 'vitest';
-import { clipToHalfPlane, roundPolygonCorners } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { clipToHalfPlane, roundPolygonCorners, clipPolygonToBoard, rectPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 
 function polygonArea(poly) {
   let a = 0;
@@ -51,6 +51,55 @@ describe('clipToHalfPlane', () => {
     const line = { point: { x: -5, y: 0 }, dirX: 0, dirY: 1 };
     const kept = clipToHalfPlane(SQUARE, line, { x: 5, y: 5 });
     expect(polygonArea(kept)).toBeCloseTo(100, 6);
+  });
+});
+
+// A concave "notch" board: a 10x10 square with a rectangular bite taken out of the top edge
+// (x in [3,6], y in [7,10]) -- reflex corners at (6,7) and (3,7), everything else a plain square.
+const NOTCHED_BOARD = [
+  { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 6, y: 10 },
+  { x: 6, y: 7 }, { x: 3, y: 7 }, { x: 3, y: 10 }, { x: 0, y: 10 },
+];
+
+describe('clipPolygonToBoard (concave board, H23 item 76 cont.)', () => {
+  it('a cell entirely inside a concave board is returned unchanged', () => {
+    const cell = rectPolygon(1, 1, 0.5, 0.5); // [0.5,1.5]x[0.5,1.5], well clear of the notch
+    const clipped = clipPolygonToBoard(cell, NOTCHED_BOARD, { x: 1, y: 1 });
+    expect(polygonArea(clipped)).toBeCloseTo(1, 9);
+  });
+
+  it('a cell entirely inside the notch (outside the board) is dropped', () => {
+    const cell = rectPolygon(4.5, 8.5, 0.5, 0.5); // squarely inside the notch -- outside the board
+    const clipped = clipPolygonToBoard(cell, NOTCHED_BOARD, { x: 4.5, y: 8.5 });
+    expect(clipped.length).toBeLessThan(3);
+  });
+
+  it('a cell straddling the notch wall is cut to its TRUE partial area, not kept whole or dropped', () => {
+    // cell = [2.5,4.5] x [6,8.5]: its own centre (3.5,7.25) is INSIDE the notch (outside the
+    // board), so the OLD keep-whole-or-drop fallback would have dropped this cell entirely (area
+    // 0) even though most of it (the y<7 strip) is real board interior. Hand-computed true area:
+    // the x in [2.5,3] strip is entirely inside (2.75 wide check below) -- see inline arithmetic.
+    //   x in [2.5,3]: full height 2.5 (y 6..8.5) -> 0.5 * 2.5 = 1.25
+    //   x in [3,4.5]: only y in [6,7] is inside (below the notch) -> 1.5 * 1 = 1.5
+    //   total = 2.75
+    const cell = [{ x: 2.5, y: 6 }, { x: 4.5, y: 6 }, { x: 4.5, y: 8.5 }, { x: 2.5, y: 8.5 }];
+    const clipped = clipPolygonToBoard(cell, NOTCHED_BOARD, { x: 3.5, y: 7.25 });
+    expect(polygonArea(clipped)).toBeCloseTo(2.75, 9);
+    expect(isSimplePolygon(clipped)).toBe(true);
+    // the whole point: NOT the old all-or-nothing answers.
+    expect(polygonArea(clipped)).not.toBeCloseTo(0, 1);
+    expect(polygonArea(clipped)).not.toBeCloseTo(5, 1); // 5 = the cell's own full, unclipped area
+  });
+
+  it('a cell straddling the notch on BOTH sides (genuinely disconnected by it) keeps only the larger piece', () => {
+    // cell = [0.5,9.5] x [7.2,8]: the notch (x in [3,6]) cuts this into a LEFT piece (x 0.5..3,
+    // width 2.5) and a RIGHT piece (x 6..9.5, width 3.5) -- unequal on purpose so "largest" is
+    // unambiguous. Left area = 2.5*0.8 = 2.0; right area = 3.5*0.8 = 2.8.
+    const cell = [{ x: 0.5, y: 7.2 }, { x: 9.5, y: 7.2 }, { x: 9.5, y: 8 }, { x: 0.5, y: 8 }];
+    const clipped = clipPolygonToBoard(cell, NOTCHED_BOARD, { x: 7.75, y: 7.6 }); // a ref point inside the kept (right) piece
+    expect(polygonArea(clipped)).toBeCloseTo(2.8, 9);
+    expect(isSimplePolygon(clipped)).toBe(true);
+    for (const p of clipped) expect(p.x).toBeGreaterThanOrEqual(6 - 1e-9); // confirms it's the RIGHT piece, not the left
   });
 });
 

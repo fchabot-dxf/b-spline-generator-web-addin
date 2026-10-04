@@ -29,6 +29,10 @@ import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/c
 import { pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { bondLayout } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/layouts/bond.js';
+import { basketweaveLayout } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/layouts/basketweave.js';
+import { fieldstoneLayout } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/layouts/fieldstone.js';
+import { herringboneLayout } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/layouts/herringbone.js';
 
 const SET = BRICK_SETS[0];
 
@@ -281,6 +285,78 @@ describe('H23 item 76 cont. (advisor review): fillet-zone coverage', () => {
             `${name} ${presetName}: fillet at (${f.cx.toFixed(2)},${f.cy.toFixed(2)}) -- band samples ${bandCount}, covered ${coveredCount}`,
           ).toBeGreaterThanOrEqual(0.85);
         }
+      });
+    }
+  }
+});
+
+describe('H23 item 76 cont. (advisor review): concave clipping for the Wall', () => {
+  // T1's own waist (the declared test case) is concave -- `clipPolygonToBoard` used to fall back to
+  // a keep-whole-or-drop heuristic there that MEASURED 0.26-0.44in gaps between the Frame's own true
+  // inner edge and the Wall's own brick/stone fill (de's own finding). Exercises all 4 real Wall
+  // layouts (bond/basketweave/fieldstone/herringbone all route through the SAME clipPolygonToBoard),
+  // on both the hourglass (T1) and tapered (T12) templates.
+  function distPointToSeg(p, a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    let t = len2 > 1e-12 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+  }
+  function distPointToPoly(p, poly) {
+    let best = Infinity;
+    for (let i = 0; i < poly.length; i++) best = Math.min(best, distPointToSeg(p, poly[i], poly[(i + 1) % poly.length]));
+    return best;
+  }
+  function gapAtPoint(p, cells) {
+    for (const c of cells) if (pointInPolygon(p.x, p.y, c.polygon)) return 0;
+    let best = Infinity;
+    for (const c of cells) best = Math.min(best, distPointToPoly(p, c.polygon));
+    return best;
+  }
+  // the real hourglass pinch's own y-range (T1/T12 share this feature) -- see WORK-LOG for how this
+  // was distinguished from a SEPARATE, physically-unavoidable narrow cusp elsewhere on the same board.
+  const WAIST_Y_MIN = 3.9, WAIST_Y_MAX = 5.3;
+
+  const LAYOUTS = {
+    bond: (innerPath) => bondLayout(innerPath, SET, [{ pattern: 'stretcher' }]).cells,
+    basketweave: (innerPath) => basketweaveLayout(innerPath, SET).cells,
+    fieldstone: (innerPath) => fieldstoneLayout(innerPath, SET, null, 1).cells,
+    herringbone: (innerPath) => herringboneLayout(innerPath, SET).cells,
+  };
+
+  for (const [name, templateId, W, H] of [
+    ['template_1 (hourglass -- concave waist)', 'template_1', 7, 9],
+    ['template_12 (tapered)', 'template_12', 7, 9],
+  ]) {
+    for (const [layoutName, layoutFn] of Object.entries(LAYOUTS)) {
+      it(`${name}, ${layoutName}: every cell is a simple polygon (no clip-induced self-intersection)`, () => {
+        const { primitives } = realContour(templateId, W, H);
+        const { innerPath } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
+        const cells = layoutFn(innerPath);
+        expect(cells.length).toBeGreaterThan(0);
+        for (const c of cells) expect(isSimplePolygon(c.polygon), `cell at (${c.cx.toFixed(2)},${c.cy.toFixed(2)})`).toBe(true);
+      });
+
+      it(`${name}, ${layoutName}: the Wall's own fill reaches within ~2 grout-widths of the waist's true inner edge`, () => {
+        const { primitives } = realContour(templateId, W, H);
+        const { innerPath } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
+        const cells = layoutFn(innerPath);
+        const maxGapAllowed = 2 * SET.grout.widthIn; // MEASURED on all 4 real layouts: 0.43x-1.25x grout;
+        // the OLD keep-whole-or-drop fallback measured 0.13in+ here (~4x grout) -- well past this bound.
+        let maxGap = 0, worst = null;
+        for (let i = 0; i < innerPath.length; i++) {
+          const a = innerPath[i], b = innerPath[(i + 1) % innerPath.length];
+          if (!((a.y > WAIST_Y_MIN && a.y < WAIST_Y_MAX) || (b.y > WAIST_Y_MIN && b.y < WAIST_Y_MAX))) continue;
+          for (let s = 0; s <= 8; s++) {
+            const t = s / 8;
+            const p = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+            if (p.y < WAIST_Y_MIN || p.y > WAIST_Y_MAX) continue;
+            const g = gapAtPoint(p, cells);
+            if (g > maxGap) { maxGap = g; worst = p; }
+          }
+        }
+        expect(maxGap, `worst point ${worst && `(${worst.x.toFixed(2)},${worst.y.toFixed(2)})`}`).toBeLessThanOrEqual(maxGapAllowed);
       });
     }
   }

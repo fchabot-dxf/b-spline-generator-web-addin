@@ -28,14 +28,11 @@
  * `courseIndex` is a coarse ROW ESTIMATE (Y-position quantised by the target spacing) purely so
  * suppression's own top-biased scoring still means something for an irregular wall.
  *
- * Shape-boundary handling matches bond.js's own documented simplification (see bond.js's header):
- * `boardOutline` is clipped EXACTLY when convex (every real board so far is a plain rectangle or a
- * mild convex outline) via a proper per-edge half-plane clip; for a genuinely concave outline this
- * falls back to bond.js's own centroid-membership test (drop the whole cell, don't clip it) --
- * correct Sutherland-Hodgman half-plane clipping only works edge-by-edge against a CONVEX clip
- * shape, and a full concave polygon boolean clip is out of scope here (declared, not silent).
+ * Shape-boundary handling matches bond.js's own documented approach (see bond.js's header and
+ * geometry.js's `clipPolygonToBoard`): an EXACT cut always, convex or concave `boardOutline` alike
+ * (H23 item 76 cont.).
  */
-import { pointInPolygon, clipToHalfPlane, clipPolygonToBoard, offsetPathInward, inwardSignFor, roundPolygonCorners } from '../geometry.js';
+import { pointInPolygon, clipToHalfPlane, clipPolygonToBoard, offsetPathInward, inwardSignFor, roundPolygonCorners, isSimplePolygon } from '../geometry.js';
 import { mulberry32, seedFor } from '../rng.js';
 
 const POISSON_ATTEMPTS = 30; // Bridson's own typical constant -- candidates tried per active point before giving up on it
@@ -176,7 +173,12 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed) {
 
     if (shrink > 1e-9) {
       poly = offsetPathInward(poly, shrink, inwardSignFor(poly));
-      if (poly.length < 3) continue;
+      // H23 item 76 cont.: `clipPolygonToBoard`'s now-exact concave clip can leave a real edge
+      // shorter than `shrink` right at the board's true boundary (MEASURED on T1's waist) --
+      // offsetPathInward's own documented P1 limitation (see its header) flips that edge into a
+      // bowtie rather than collapsing it. Drop the cell, same as every other degenerate-result
+      // bail-out in this loop, rather than ship a self-intersecting stone.
+      if (poly.length < 3 || !isSimplePolygon(poly)) continue;
     }
     poly = roundPolygonCorners(poly, cornerRadius);
     if (poly.length < 3) continue;

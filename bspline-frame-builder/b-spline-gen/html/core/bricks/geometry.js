@@ -158,6 +158,30 @@ export function dedupePolygon(poly, eps = 1e-7) {
   return out;
 }
 
+/** Whether `poly` is simple (no two non-adjacent edges cross) -- O(n^2), fine at the vertex counts
+ *  a single cell/stone polygon actually has (a handful to a few dozen after rounding), not meant
+ *  for a full board outline. H23 item 76 cont.: `offsetPathInward`'s own mitred-vertex offset has a
+ *  documented P1 limitation (see its own header) -- a real edge SHORTER than the offset width can
+ *  flip past itself and produce a bowtie. That edge only gets short enough to trigger it right at a
+ *  board's TRUE (now exact, concave-aware) clip boundary, so a caller that offsets a freshly-clipped
+ *  polygon should check this before trusting the result rather than ship a self-intersecting shape. */
+export function isSimplePolygon(poly) {
+  const n = poly.length;
+  if (n < 4) return true;
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const segmentsCross = (p1, p2, p3, p4) => {
+    const d1 = cross(p3, p4, p1), d2 = cross(p3, p4, p2), d3 = cross(p1, p2, p3), d4 = cross(p1, p2, p4);
+    return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+  };
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (j === i + 1 || (i === 0 && j === n - 1)) continue; // adjacent edges share a vertex, not a crossing
+      if (segmentsCross(poly[i], poly[(i + 1) % n], poly[j], poly[(j + 1) % n])) return false;
+    }
+  }
+  return true;
+}
+
 /** Standard convexity test for a simple polygon: every consecutive turn has the same cross-product
  *  sign (collinear/near-zero turns are ignored). Works regardless of winding direction. */
 export function isConvex(poly) {
@@ -175,6 +199,146 @@ export function isConvex(poly) {
   return true;
 }
 
+/** Proper (not-near-endpoint) intersection of open segments p1-p2 and p3-p4, or null. Near-endpoint
+ *  / tangential touches (t or u within 1e-9 of 0 or 1) and parallel/collinear segments are reported
+ *  as "no intersection" -- a deliberate simplification (real board/brick geometry here is never
+ *  adversarially tangent; a genuine tangent touch contributes ~0 area either way). */
+function segmentIntersection(p1, p2, p3, p4) {
+  const d1x = p2.x - p1.x, d1y = p2.y - p1.y;
+  const d2x = p4.x - p3.x, d2y = p4.y - p3.y;
+  const denom = d1x * d2y - d1y * d2x;
+  if (Math.abs(denom) < 1e-12) return null;
+  const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
+  const u = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denom;
+  if (t <= 1e-9 || t >= 1 - 1e-9 || u <= 1e-9 || u >= 1 - 1e-9) return null;
+  return { t, u, x: p1.x + t * d1x, y: p1.y + t * d1y };
+}
+
+/**
+ * General polygon intersection (Greiner-Hormann): `subject` clipped to `clip`, where `clip` may be
+ * CONCAVE (unlike `clipToHalfPlane`, which only clips correctly against one convex half-plane at a
+ * time). Works for `subject` convex or concave too -- every real caller here happens to pass a
+ * convex `subject` (a brick cell, a Voronoi stone), but nothing below assumes that.
+ *
+ * H23 item 76 cont. (advisor review, "concave clipping for the Wall... fill to the frame's true
+ * inner edge at the waist, gap ~= grout all round"): replaces an earlier triangulate-the-board-and-
+ * keep-the-largest-piece approach, which MEASURED two separate failures on real template geometry
+ * before this rewrite: (1) keeping only the single largest per-triangle piece silently discarded
+ * OTHER real, non-overlapping coverage whenever a cell spanned more than one triangle of the SAME
+ * contiguous region (common, not rare -- one real T1 waist cell split 0.0224+0.0346+0.0478 across 3
+ * triangles, and only the 0.0478 survived); (2) even after merging those pieces back together by
+ * cancelling shared triangulation-diagonal edges, a cell touching 3+ fan triangles at a single
+ * shared apex vertex (common for fieldstone's larger, organic Voronoi cells) produced a genuinely
+ * self-intersecting merged polygon, because more than one surviving edge could start at that one
+ * vertex and the merge had no rule for picking the right one. Both failure modes are structural to
+ * "triangulate the clip shape, clip against each piece, recombine" -- this function clips directly
+ * against `clip`'s own real edges instead, which is the textbook-correct way to handle a concave
+ * clip shape and has neither problem by construction.
+ *
+ * Standard algorithm: find every `subject`-edge / `clip`-edge crossing, splice each crossing into
+ * both polygons' own vertex lists (so each list is now subject/clip's original vertices PLUS the
+ * crossings, in order, with each crossing in one list linked to its twin -- the same point -- in
+ * the other), tag each crossing on `subject`'s list "entry" (subject is heading INTO clip just
+ * after this point) or "exit" by alternating a running inside/outside flag seeded from subject's
+ * own first vertex, then trace: starting from each unvisited "entry" crossing, walk forward along
+ * whichever list you're currently on, and every time the next node is itself a crossing, jump to
+ * ITS twin (switching lists) before continuing forward -- this single mechanical rule is what
+ * alternates you between subject's and clip's own boundary, and always closes back on the start
+ * node for a well-formed simple input. Each closed walk is one loop of `subject & clip`; multiple
+ * loops mean a genuinely disconnected intersection (a tight concave notch truly severing one cell
+ * into two pieces) -- keep only the LARGEST, consistent with this module's existing "one polygon
+ * per cell" contract (every caller -- bond.js, basketweave.js, fieldstone.js, herringbone.js --
+ * already treats this function's own return as ONE polygon). No crossings at all means `subject` is
+ * either entirely inside `clip` (returned as-is) or entirely outside (empty).
+ */
+function polygonIntersection(subject, clip) {
+  const n = subject.length, m = clip.length;
+  if (n < 3 || m < 3) return [];
+  const onSubject = subject.map(() => []);
+  const onClip = clip.map(() => []);
+  let anyHit = false;
+  for (let i = 0; i < n; i++) {
+    const a1 = subject[i], a2 = subject[(i + 1) % n];
+    for (let j = 0; j < m; j++) {
+      const b1 = clip[j], b2 = clip[(j + 1) % m];
+      const hit = segmentIntersection(a1, a2, b1, b2);
+      if (!hit) continue;
+      anyHit = true;
+      onSubject[i].push({ t: hit.t, x: hit.x, y: hit.y });
+      onClip[j].push({ t: hit.u, x: hit.x, y: hit.y });
+    }
+  }
+  if (!anyHit) {
+    return pointInPolygon(subject[0].x, subject[0].y, clip) ? subject.slice() : [];
+  }
+  for (const list of onSubject) list.sort((p, q) => p.t - q.t);
+  for (const list of onClip) list.sort((p, q) => p.t - q.t);
+
+  const EPS = 1e-7;
+  const keyOf = (p) => `${Math.round(p.x / EPS)}_${Math.round(p.y / EPS)}`;
+
+  const nodesSubject = [];
+  for (let i = 0; i < n; i++) {
+    nodesSubject.push({ x: subject[i].x, y: subject[i].y, isect: false });
+    for (const hit of onSubject[i]) nodesSubject.push({ x: hit.x, y: hit.y, isect: true });
+  }
+  const nodesClip = [];
+  for (let j = 0; j < m; j++) {
+    nodesClip.push({ x: clip[j].x, y: clip[j].y, isect: false });
+    for (const hit of onClip[j]) nodesClip.push({ x: hit.x, y: hit.y, isect: true });
+  }
+  for (let i = 0; i < nodesSubject.length; i++) nodesSubject[i].next = nodesSubject[(i + 1) % nodesSubject.length];
+  for (let j = 0; j < nodesClip.length; j++) nodesClip[j].next = nodesClip[(j + 1) % nodesClip.length];
+
+  const clipByKey = new Map();
+  for (const node of nodesClip) if (node.isect) {
+    const k = keyOf(node);
+    if (!clipByKey.has(k)) clipByKey.set(k, []);
+    clipByKey.get(k).push(node);
+  }
+  for (const node of nodesSubject) {
+    if (!node.isect) continue;
+    const candidates = clipByKey.get(keyOf(node));
+    const match = candidates && candidates.find((c) => !c.twin);
+    if (match) { node.twin = match; match.twin = node; }
+  }
+
+  let inside = pointInPolygon(subject[0].x, subject[0].y, clip);
+  for (const node of nodesSubject) {
+    if (node.isect) { inside = !inside; node.entry = inside; }
+  }
+
+  const loops = [];
+  const maxSteps = (nodesSubject.length + nodesClip.length) * 2 + 10;
+  for (const startNode of nodesSubject) {
+    if (!startNode.isect || !startNode.entry || startNode.visited) continue;
+    const loop = [];
+    let cur = startNode;
+    let steps = 0;
+    do {
+      loop.push({ x: cur.x, y: cur.y });
+      cur.visited = true;
+      if (cur.isect && cur.twin) cur.twin.visited = true;
+      let nxt = cur.next;
+      cur = (nxt.isect && nxt.twin) ? nxt.twin : nxt;
+      steps++;
+      // the start point is reachable as EITHER `startNode` (subject's own copy) or its twin (the
+      // same geometric point, reached back round via clip's list) -- the loop is closed either way;
+      // checking object identity against `startNode` alone missed the twin case and walked most of
+      // `clip`'s own remaining boundary before giving up (MEASURED on a real bond.js cell: a 44-vertex
+      // result that was almost literally the whole board outline instead of a small clipped sliver).
+    } while (cur !== startNode && cur !== startNode.twin && steps < maxSteps);
+    if (loop.length >= 3) loops.push(loop);
+  }
+  if (!loops.length) return [];
+  let best = loops[0], bestArea = Math.abs(signedArea(best));
+  for (let i = 1; i < loops.length; i++) {
+    const area = Math.abs(signedArea(loops[i]));
+    if (area > bestArea) { best = loops[i]; bestArea = area; }
+  }
+  return best;
+}
+
 /**
  * Clip `poly` (any simple polygon -- a brick cell, a Voronoi stone, ...) to `boardOutline`: H23
  * item 74 (de, F35 item 1 review: "Wall's own brick fill overhangs past the board's edges... Fred
@@ -187,11 +351,13 @@ export function isConvex(poly) {
  * cell mostly/entirely past the board edge has its own centre outside the board too, so using IT
  * as the per-edge "keep" reference flips entire edges to keep the EXTERIOR side instead --
  * reproduced a brick left 0.635in past the board edge, completely unclipped, before this fix).
- * `boardOutline` concave: a full polygon-boolean clip is out of scope here (declared, not silent --
- * Sutherland-Hodgman's own per-edge clip is only correct against a CONVEX clip shape) -- falls back
- * to bond.js's own prior, simpler convention: keep `poly` WHOLE when `cellRefPoint` (a point known
- * to belong to `poly` itself, e.g. its own generator/grid centre) is inside `boardOutline`, drop it
- * entirely otherwise.
+ *
+ * H23 item 76 cont. (advisor review, "concave clipping for the Wall... fill to the frame's true
+ * inner edge at the waist, gap ~= grout all round"): `boardOutline` concave (T1's own waist is the
+ * declared test case) now goes through `polygonIntersection` -- an EXACT cut too, not the old
+ * keep-whole-or-drop-whole fallback (which MEASURED 0.26-0.44in gaps between the Frame's own inner
+ * edge and the Wall's own fill, de's own finding). See `polygonIntersection`'s own header for why
+ * this is a direct polygon-vs-polygon clip rather than a triangulate-and-recombine approach.
  */
 export function clipPolygonToBoard(poly, boardOutline, cellRefPoint) {
   if (isConvex(boardOutline)) {
@@ -205,7 +371,7 @@ export function clipPolygonToBoard(poly, boardOutline, cellRefPoint) {
     }
     return out;
   }
-  return pointInPolygon(cellRefPoint.x, cellRefPoint.y, boardOutline) ? poly : [];
+  return polygonIntersection(poly, boardOutline);
 }
 
 /**
