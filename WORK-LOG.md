@@ -18988,7 +18988,7 @@ clean, non-overlapping coursing even around BOTH concave waist fillets -- `band-
 (u,v) sampling handles arcs directly, with no "fall back to mitre" special-casing needed (unlike my
 own `primitive-ribbon.js` work, which only ever handles line-line corners for butt/lapped/block).
 
-**Commit `[pending]`, pushed to origin/lane-b.** T86 ITEM 1 IS NOW COMPLETE: all 6 of the dispatch's
+**Commit `4ef6f47`, pushed to origin/lane-b.** T86 ITEM 1 IS NOW COMPLETE: all 6 of the dispatch's
 own named FRAME_PRESETS exist and are live-verified (single_soldier, soldier_stretcher pre-existing;
 butt_frame, double_course, quoin_corners, header_band built across this session's own turns), plus
 BUTT/LAPPED/BLOCK corner-style code, a real cross-cutting sliver-fix (twice, the second time
