@@ -76,7 +76,7 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
                 thicken.data?.meshColours, thicken.data?.worstPts ?? [], P.showLeaders,
                 thicken.data?.offsetPts, P.stampRelief,
                 thicken.data?.thinPts ?? [], thicken.data?.intersectPts ?? [],
-                P.thickenWireframe, thicken.data?.botColours, P.flatShading,
+                P.thickenWireframe, thicken.data?.botColours, P.flatShading, P.adaptiveDisplay,
             );
             updatePreviewSculptMode(preview, scheduleRebuild);
         }
@@ -158,7 +158,7 @@ function handleStrokeFastPath(preview, nx, nz) {
         thickenData?.meshColours, thickenData?.worstPts ?? [], P.showLeaders,
         thickenData?.offsetPts, P.stampRelief,
         thickenData?.thinPts ?? [], thickenData?.intersectPts ?? [],
-        P.thickenWireframe, thickenData?.botColours, P.flatShading,
+        P.thickenWireframe, thickenData?.botColours, P.flatShading, P.adaptiveDisplay,
     );
     // NOTE: deliberately skipping updatePreviewSculptMode — it would call
     // setSculptMode → _clearSculptOverlays on every tick, and the sculpt

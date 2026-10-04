@@ -36,6 +36,9 @@ export const DEFAULT = {
     symOffsetX: 0,
     symOffsetY: 0,
     spacing: 0.05,
+    // F35 item 17: opt-in adaptive DISPLAY mesh (core/preview/adaptive-mesh.js) -- `spacing` stays the
+    // finest detail kept, flat areas collapse into big triangles. Preview only; Send/STEP never read it.
+    adaptiveDisplay: false,
     smoothIntensity: 0,
     smoothRadius: 1.2,
     showMesh: false,
@@ -430,7 +433,7 @@ export function updateP(key, value) {
         'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
         'detailDensityRespectSymmetry', 'smoothRespectSymmetry',
         'isolateSkeleton',
-        'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled'
+        'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled', 'adaptiveDisplay'
     ];
 
     if (key === 'widthIn' || key === 'heightIn') {
