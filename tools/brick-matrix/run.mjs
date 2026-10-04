@@ -114,7 +114,18 @@ ws.addEventListener('message', (ev) => {
   if (m.method === 'Runtime.exceptionThrown') pageErrors.push((m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text).split('\n')[0]);
   if (m.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
 });
-const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+// A DevTools reply that never comes (MEASURED: three runs booting at once, one sat 12+ min at "baseline
+// attempt 2" on an evaluate with no answer) must be a reported error, never a hang. CDP_TIMEOUT_MS is far
+// above the longest legitimate single call (an in-page click wait of 2.5 s; Page.navigate/reload return at
+// commit), so it only ever fires on a lost reply. The rejection lands in the run's own catch: a page error,
+// exit 1.
+const CDP_TIMEOUT_MS = 60000;
+const send = (method, params = {}) => new Promise((resolve, reject) => {
+  const i = ++id;
+  const timer = setTimeout(() => { pending.delete(i); reject(new Error(`DevTools ${method} got no reply in ${CDP_TIMEOUT_MS / 1000}s`)); }, CDP_TIMEOUT_MS);
+  pending.set(i, (m) => { clearTimeout(timer); resolve(m); });
+  ws.send(JSON.stringify({ id: i, method, params }));
+});
 const js = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); return r.result?.result?.value; };
 const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(path.join(OUT, `${name}.png`), Buffer.from(r.result.data, 'base64')); };
 const click = (elId, wait = 1200) => js(`(async()=>{ const b=document.getElementById(${JSON.stringify(elId)}); if(!b) return 'MISSING'; if(b.disabled) return 'DISABLED'; b.click(); await new Promise(r=>setTimeout(r,${wait})); return 'ok'; })()`);
