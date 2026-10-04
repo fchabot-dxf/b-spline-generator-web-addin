@@ -310,6 +310,9 @@ KNOWN_CONVEX_RADIUS_BELOW_BAR = {
     # 1.29in at 7x9, both > frame_thickness) are sent at Send-time. Same accepted, benign bootstrap-state
     # characteristic Template 10/11 already have in this list, not a new shape problem.
     'template_18',
+    # H23 item 80: Template 19's phases are Template 18's own, copied verbatim -- same uniform
+    # `heightIn/14` TEMPORARY bootstrap seed radius, same benign characteristic.
+    'template_19',
 }
 
 
