@@ -19953,3 +19953,99 @@ takes whatever `grout.widthIn` it's given, no engine change needed on this side.
 dispatched question is answered and fixed (it was a tooling bug); the life-size follow-up surfaced a
 real, scoped, NOT-yet-built generalization of item 9's own work, flagged for its own item rather than
 attempted here.
+
+## T86 item 6: fieldstone void-filling -- multi-pass Poisson/Voronoi, three measured false starts before landing on a frozen-per-pass design; coverage 90%->97-98% (Set 1), 74%->82-86% (Set 3, capped by its own heavier declared grout) (d3)
+
+**Dispatch (Fred): "fieldstone should also have a lot of smaller stones to fit in voids"** -- the
+single-pass version left big grey gaps, esp. near the frame's own inner edge and at the waist.
+`core/bricks/layouts/fieldstone.js` now runs the original main Poisson-disc/Voronoi pass, then two
+more void-fill passes at 1/3 and 1/6 of the main spacing, each seeded against every point already
+placed so a finer pass's own points can only land in whatever gap its own smaller `minDist` still
+allows between them. Small stones carry their own `point.spacing` so rounding/floor checks scale
+down with them, never the main pass's own absolute numbers.
+
+**Three measured false starts before the real fix, each caught by re-running the EXISTING "Wall's own
+fill reaches within ~2 grout-widths of the waist's true inner edge" test (`tests/bricks-real-template-
+contours.test.js`, H23 item 76 cont.) rather than assuming the new passes were safe just because they
+compiled:**
+1. First attempt seeded void-fill points against every prior point (correct) but also re-hashed pass
+   1's own seed through `seedFor` before generating it -- a silent bug, not a design flaw: pass 1's
+   own point SET was no longer bit-identical to the pre-item-6 baseline at all, so the waist gap
+   moved unpredictably (worse on T1, about the same on T12) for a reason that had nothing to do with
+   void-filling. Fixed by passing `seed` straight through for pass 1, matching the original call
+   exactly.
+2. Second attempt also rejected a void-fill candidate that landed inside an EARLIER pass's own
+   already-built (clipped/shrunk/rounded) polygon, reasoning that this alone would stop a finer pass
+   from needlessly subdividing a cell that was already fine. It didn't: the fix still rebuilt ONE
+   combined Voronoi diagram over every pass's points together at the end, and recomputing a coarse
+   point's own cell against ALL of them -- even a finer point sitting safely outside its FINAL
+   (shrunk) polygon -- can still shift that coarse point's own raw Voronoi bisector enough to shrink
+   its reach toward the board's true (often concave) boundary. MEASURED directly on template_12's own
+   waist: baseline's one big cell closely tracked the boundary from y=4.26 to 4.75; after this
+   attempt, the SAME region fragmented into several smaller cells that each stopped well short of it
+   (worst gap 0.131in against a 0.068in allowance).
+3. Third attempt tried fixing that by requiring a new point to stay the EXISTING point's own full
+   `spacing` away (not just the new pass's smaller `minDist`) -- correct in spirit, but a flat full
+   `spacing` floor is close to a Poisson-disc packing's own inter-point distance, so it rejected
+   essentially every void-fill candidate everywhere (cells identical to the single-pass baseline,
+   zero stones added). Backing the factor down to a fraction of `spacing` (0.5x) then let coverage
+   through but reproduced attempt 2's own waist regression almost exactly, and fully collapsed
+   coverage board-wide (55-58%, down from baseline's ~90%) once point density climbed -- confirming
+   the real defect was structural (recombining every pass into ONE shared Voronoi diagram), not a
+   tunable distance.
+
+**The fix that actually worked, and why it's safe by construction, not by tuning:** each pass's own
+cells are built ONCE and FROZEN. A finer pass's own points are Voronoi'd only AMONG THEMSELVES, then
+bisector-clipped against every nearby EARLIER pass's own point (the same `clipToHalfPlane` trick
+`voronoiCell` already used for same-pass neighbours, just given a mixed neighbour list) -- but an
+earlier pass's own already-built polygon is never touched again. Pass 1's own cells are therefore
+byte-for-byte identical to the pre-item-6 baseline (built via `buildPassCells(pass1Points, [])`, an
+empty prior list), so the waist test cannot regress from void-filling at all, by construction, not
+because a distance threshold happened to be tuned safely. A finer cell can still only ever occupy the
+REAL leftover void (grout gaps, or a dropped cell's own hole) because the bisector clip against each
+nearby earlier point stops it exactly where that point's own raw Voronoi reach would have stopped it
+anyway -- still no general polygon union/difference anywhere (this codebase has none, and still does
+not need one).
+
+**MEASURED, full suite 3864/3864 (`tests/bricks-real-template-contours.test.js` 59/59, waist gaps now
+BETTER than baseline on every case checked: 0.043 -> 0.019-0.031in across template_1/12, both well
+under the 0.068in allowance).** Coverage sweep (6 templates, Set 1): 90.0-90.4% -> 93.6-98.5%, hundreds
+of new small stones each case (full numbers: template_1 1030 cells/97.6%, template_12 978/97.3%,
+template_2 1013/98.5%, template_5 965/96.5%, template_9 9x12 1030/98.4%, template_15 624/93.6%).
+
+**Set 3 ("White rocks") needed one more general rule, and still lands below the 90% target -- a
+declared material property, not a remaining bug.** Its own grout (0.12in) is proportionally much
+heavier than Set 1's (0.034in) relative to its own main spacing (1.1in vs 0.75in) -- the fixed 1/3
+and 1/6 fractions shrink a stone down to almost nothing at that scale (coverage barely moved past the
+single-pass 73.9% baseline). Added `GROUT_CLEARANCE_FACTOR` (declared constant, =2): each pass's own
+fill spacing is floored at that many times the FULL grout width, so a pass too fine to survive its
+own shrink is widened instead of wasted (a no-op for Set 1, whose own grout is small enough that
+neither fraction ever needs it). Swept {1,2,4} plus a 3rd (1/9) fraction: factor 4 ends up skipping
+the second pass outright (both fractions floor to the same spacing), a 3rd fraction nearly doubles
+Set 1's own cell count and runtime for +0.2% coverage while changing Set 3 not at all (its own floor
+blocks the 3rd pass too) -- reverted both, kept 2 fractions + factor 2. Final Set 3 numbers:
+template_1 163 cells/82.6%, template_12 161/85.7% (up from the single-pass baseline's 15 cells/73.9%).
+Real fieldstone with much wider joints genuinely shows more mortar, less stone, than tight brickwork
+-- flagging this honestly rather than forcing a number by further special-casing one set.
+
+**Previews generated and published** (`tools/repro/t86_item6_fieldstone_preview.mjs`, new tool --
+renders the pre-item-6 algorithm inline, copied verbatim from git HEAD, side by side with the live
+module so "before" needs no stash/checkout gymnastics): T1 fieldstone before/after, Red brick + White
+rocks, all 4 to `~/.bspline-status/shots/seatB/t86_item6_*.png`. One tooling snag worth naming for
+whoever writes the next headless-Chrome capture script: a RELATIVE `--user-data-dir` made chrome.exe
+exit immediately (code 21, no stderr) -- needs an absolute path. Separately, the "after" renders (1000+
+polygons) need a much longer post-navigate sleep before `Page.captureScreenshot` than item 3's own
+300ms closeups did, or the screenshot races the paint and comes back blank (MEASURED: 300ms produced 4
+visually-identical blank boards; 2000ms rendered correctly every time).
+
+**Not touched, out of scope for this item:** the main item-4 matrix's own 146/476 failures are
+pre-existing (item 9's 3 residual overlaps + item 12's arc-pair gap) and entirely unrelated --
+confirmed by grep: that matrix never imports `fieldstone.js` at all.
+
+**Commit** (`fieldstone.js`'s own rewrite, the new preview tool, this entry). Passing back: item 6's
+headline ask (more small stones filling voids) is built and measured working for both sets; Set 1
+comfortably clears the 90% target, Set 3 improves substantially but tops out around 82-86% for a
+reason that's about its own declared grout, not a bug -- flagging for the advisor/Fred to confirm
+that's an acceptable, expected difference between the two sets rather than something to chase
+further. Standing queue next: outward bands + wall holes, frame suppression, item 5 (brush/line
+crossings), item 10 (grout-line cut), item 8 (more band/brush patterns).
