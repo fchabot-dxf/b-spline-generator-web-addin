@@ -252,6 +252,35 @@ function syncFramePresetButtons() {
   }
 }
 
+/** T86 item 7 (Fred: "a brush line can have a few brick patterns, maybe 2 and 3 bricks wide") --
+ *  same button-list precedent as `renderFramePresetList` above, reading/writing
+ *  `P.brickSettings.brushBandPreset` instead. A deliberately small, named list (not a per-band
+ *  picker like Frame's own item 8 -- Fred asked for a FEW whole combinations, not band-by-band
+ *  customization of a thin stroke). */
+function renderBrushPresetList(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const preset of BRUSH_PRESET_LIST) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cad-btn';
+    btn.id = `brickBrushPreset_${preset.id}`;
+    btn.textContent = preset.label;
+    btn.addEventListener('click', () => {
+      P.brickSettings.brushBandPreset = preset.id;
+      syncBrushPresetButtons();
+      notifyChange();
+    });
+    container.appendChild(btn);
+  }
+}
+
+function syncBrushPresetButtons() {
+  for (const preset of BRUSH_PRESET_LIST) {
+    document.getElementById(`brickBrushPreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.brushBandPreset);
+  }
+}
+
 /** F35 item 7 (advisor-approved proposal): the Wall pattern picker -- every BRICK_PATTERNS key
  *  (library.js) that applies to a whole-fill Wall pattern, text-button list (same precedent as
  *  FRAME_PRESET_LIST above; a real graphical thumbnail-per-pattern is a declared, not-yet-built
@@ -417,6 +446,14 @@ const FRAME_PRESET_LABELS = {
 };
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
 
+/** T86 item 7: labels for core/bricks/library.js's own declared BRUSH_PRESETS keys (the 3
+ *  combinations Fred actually asked for -- "maybe 2 and 3 bricks wide"). */
+const BRUSH_PRESET_LIST = [
+  { id: 'stretcher_1', label: '1-wide (Stretcher)' },
+  { id: 'stretcher_2_running', label: '2-wide (Running bond)' },
+  { id: 'flemish_soldier_flemish_3', label: '3-wide (Flemish / Soldier / Flemish)' },
+];
+
 /** The current frame's own contour, as `{primitives, bands, set}` for
  *  generateBricks/bricksContourBands -- or null when no real frame resolves (no template selected,
  *  or the offset is degenerate). H23 item 76 (the primitive-ribbon.js rebuild): `sil.primitives`
@@ -491,6 +528,8 @@ export function initBrickPanel() {
   syncToolButtons();
   renderFramePresetList(document.getElementById('brickFramePresetList'));
   syncFramePresetButtons();
+  renderBrushPresetList(document.getElementById('brickBrushPresetList'));
+  syncBrushPresetButtons();
   renderWallPatternList(document.getElementById('brickPatternList'));
   syncWallPatternButtons();
 

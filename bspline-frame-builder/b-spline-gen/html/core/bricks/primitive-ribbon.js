@@ -575,7 +575,7 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
  *   concrete fraction (or `undefined` for an unstaggered row) before calling.
  * @returns {{ pieces: Array, nextId: number }}
  */
-export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart) {
+export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true, rowIndex = 0) {
   const n = primitives.length;
   const liveIndices = [];
   for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives[i], d1)) liveIndices.push(i);
@@ -585,6 +585,13 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
   const halfWidth = (d1 - d0) / 2;
 
   const jointBefore = liveIndices.map((curIdx, k) => {
+    // T86 item 7 (brush -- an OPEN primitive list): the FIRST live primitive's own true start has
+    // no wraparound joint to compute at all -- forcing this one slot `null` also, for free, makes
+    // the LAST live primitive's own `jointEnd` (which reads this SAME slot via the `(k+1)%m` wrap
+    // below) resolve to `null` too, giving BOTH open ends the plain, unmitred "no joint" treatment
+    // `linePieces`/`voussoirPieces` already have for a genuinely open end (see their own headers) --
+    // a square/butt cut, with no extra construction needed here.
+    if (!closed && k === 0) return null;
     const prevIdx = liveIndices[(k - 1 + m) % m];
     const o = jointPointAt(primitives, prevIdx, curIdx, d0);
     const q = jointPointAt(primitives, prevIdx, curIdx, d1);
@@ -702,7 +709,12 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
       nextId++;
     }
   }
-  return { pieces, nextId };
+  // de's own ACCENT levels (proud/recessed motifs for Wall/Frame/Brush) key off per-piece
+  // metadata -- field names pending agreement with de (DM), stamped now so every caller gets it
+  // for free rather than needing a second pass later. `pieceIndex` is this row's own build-order
+  // index (0-based, the SAME order `pieces` is already in -- stable for a given seed, since every
+  // upstream choice that could reorder this array is itself seed-deterministic).
+  return { pieces: pieces.map((p, pieceIndex) => ({ ...p, bandIndex, rowIndex, pieceIndex })), nextId };
 }
 
 const BOUNDARY_ARC_STEPS = 16; // a smoothness floor for the TESSELLATED polyline this returns, same

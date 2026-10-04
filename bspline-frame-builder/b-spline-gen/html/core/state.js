@@ -108,6 +108,12 @@ export const DEFAULT = {
       // toBrickOpts already reads `settings.profile`) but had no direct UI control before now.
       orientation: 'stretcher',
       profile: 'bricks',
+      // T86 item 7: which core/bricks/library.js BRUSH_PRESETS entry a drawn Brush stroke bands
+      // with -- a key, not the bands array itself, same "track the current declaration" convention
+      // as frameBandPreset above. 'stretcher_1' (a single stretcher row straddling the stroke's own
+      // centreline) is the closest match to the OLD orientation-only brush's own default look, so an
+      // existing saved session's brush strokes don't visibly change on load.
+      brushBandPreset: 'stretcher_1',
     },
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.

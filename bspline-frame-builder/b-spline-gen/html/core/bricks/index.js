@@ -14,6 +14,6 @@ export { bricksContourBands, bandFrameAt } from './contour-bands.js';
 export { ribbonPieces } from './primitive-ribbon.js';
 export { generateBricks, buildSpatialIndex, sampleHeight } from './engine.js';
 export { brickTopHeight } from './height-profile.js';
-export { PIECE_CATALOGUE, BRICK_SETS, FRAME_PRESETS, brickSetById, enabledPieces, scaledSet } from './library.js';
+export { PIECE_CATALOGUE, BRICK_SETS, FRAME_PRESETS, BRUSH_PRESETS, brickSetById, enabledPieces, scaledSet } from './library.js';
 export { pointInPolygon, polygonCentroid, rectPolygon, offsetPathInward, inwardSignFor, clipToHalfPlane, roundPolygonCorners } from './geometry.js';
 export { mulberry32, seedFor, hashedRandom } from './rng.js';
