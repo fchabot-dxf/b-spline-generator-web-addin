@@ -23,7 +23,10 @@ function fakeEditor() {
     const api = {
       node: el,
       fill: () => api, stroke: () => api,
-      attr: (k, v) => { el.setAttribute(k, String(v)); return api; },
+      attr: (k, v) => { if (v === undefined) return el.getAttribute(k); el.setAttribute(k, String(v)); return api; },
+      addClass: (c) => { el.classList.add(c); return api; },
+      removeClass: (c) => { el.classList.remove(c); return api; },
+      hasClass: (c) => el.classList.contains(c),
     };
     return api;
   };
