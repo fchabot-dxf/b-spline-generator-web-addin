@@ -240,3 +240,40 @@ describe("F35 item 18 (2): the Surface style (Clean | Weathered) is a 3D-only ('
     expect(runBricks).not.toHaveBeenCalled();
   });
 });
+
+describe('turn 183: Weathered switches the grout to Recessed; Clean restores what it replaced', () => {
+  let notify;
+  beforeEach(() => {
+    P.brickSettings.surfaceStyle = 'clean';
+    P.brickSettings.grout.profile = 'flush';
+    delete P.brickSettings.groutProfileBeforeStyle;
+    setup('wall');
+    notify = vi.fn();
+    window.svgEditor._notifyChange = notify;
+  });
+  it('Weathered -> Recessed (button shows it); Clean -> back to Flush; one re-mask each, never pending', () => {
+    $('brickSurfaceStyle_weathered').click();
+    expect(P.brickSettings.grout.profile).toBe('recessed');
+    expect($('brickBtnGroutRecessed').classList.contains('active')).toBe(true);
+    $('brickSurfaceStyle_clean').click();
+    expect(P.brickSettings.grout.profile).toBe('flush');
+    expect($('brickBtnGroutFlush').classList.contains('active')).toBe(true);
+    expect(P.brickSettings.groutProfileBeforeStyle).toBeUndefined();
+    expect(notify).toHaveBeenCalledTimes(2);
+    expect(pending()).toBe(false);
+  });
+  it("the user's own grout pick after Weathered wins: Clean does not undo it", () => {
+    $('brickSurfaceStyle_weathered').click();
+    $('brickBtnGroutFlush').click();
+    $('brickBtnGroutRecessed').click();
+    $('brickSurfaceStyle_clean').click();
+    expect(P.brickSettings.grout.profile).toBe('recessed');
+  });
+  it('already Recessed: Weathered changes nothing to restore, Clean leaves Recessed', () => {
+    P.brickSettings.grout.profile = 'recessed';
+    setSurfaceStyle('weathered');
+    expect(P.brickSettings.groutProfileBeforeStyle).toBeUndefined();
+    setSurfaceStyle('clean');
+    expect(P.brickSettings.grout.profile).toBe('recessed');
+  });
+});

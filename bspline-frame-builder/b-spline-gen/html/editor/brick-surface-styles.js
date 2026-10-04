@@ -17,7 +17,10 @@
  *  - topJitterIn: an extra seeded per-brick top offset (+/-), on top of the layout's own jitter;
  *  - jointDepthScale: multiplies the grout's own recess depth (P.brickSettings.grout.depthIn) when the
  *    grout profile is Recessed -- deeper joints read dark in the shading. Flush = no recess in every
- *    style (advisor, turn 181: ONE joint-recess implementation, driven by the grout profile).
+ *    style (advisor, turn 181: ONE joint-recess implementation, driven by the grout profile);
+ *  - groutProfile: picking the style switches the grout profile to this (Weathered -> Recessed, so its
+ *    deep joints show); going back to a style without one restores the profile it replaced, unless the
+ *    user picked a grout profile in between (main/brick-panel.js setSurfaceStyle, advisor turn 183).
  * Values are inches like every other brick field, declared, not measured; tuned on 3D close-ups.
  */
 import { mulberry32, seedFor } from '../core/bricks/index.js';
@@ -33,6 +36,7 @@ export const BRICK_SURFACE_STYLES = Object.freeze({
     pitGain: 1.8,
     topJitterIn: 0.012,
     jointDepthScale: 1.6,
+    groutProfile: 'recessed',
   }),
 });
 

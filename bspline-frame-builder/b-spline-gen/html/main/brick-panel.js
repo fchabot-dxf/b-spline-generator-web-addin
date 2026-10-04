@@ -161,10 +161,15 @@ function syncBrickSizeControls(v) {
   if (number) number.value = String(v);
 }
 
-export function setGroutProfile(profile, commit = 'surface') { // F35 item 18: height-only (the joint recess)
+function _writeGroutProfile(profile) {
   P.brickSettings.grout.profile = profile;
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', profile === 'recessed');
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', profile === 'flush');
+}
+
+export function setGroutProfile(profile, commit = 'surface') { // F35 item 18: height-only (the joint recess)
+  _writeGroutProfile(profile);
+  delete P.brickSettings.groutProfileBeforeStyle; // the user's own pick wins over a style's restore
   commitBrickSetting(commit);
 }
 
@@ -219,7 +224,19 @@ function syncSurfaceStyleToggle() {
 }
 
 export function setSurfaceStyle(styleId, commit = 'surface') {
-  P.brickSettings.surfaceStyle = surfaceStyleById(styleId).id;
+  const style = surfaceStyleById(styleId);
+  P.brickSettings.surfaceStyle = style.id;
+  // the style's declared grout profile (Weathered -> Recessed); a style without one restores what it replaced
+  const s = P.brickSettings;
+  if (style.groutProfile) {
+    if (s.grout.profile !== style.groutProfile) {
+      if (s.groutProfileBeforeStyle == null) s.groutProfileBeforeStyle = s.grout.profile;
+      _writeGroutProfile(style.groutProfile);
+    }
+  } else if (s.groutProfileBeforeStyle != null) {
+    _writeGroutProfile(s.groutProfileBeforeStyle);
+    delete s.groutProfileBeforeStyle;
+  }
   syncSurfaceStyleToggle();
   commitBrickSetting(commit);
 }
@@ -404,7 +421,7 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
 const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation'];
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle'];
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'groutProfileBeforeStyle'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 const LAYOUT_IGNORED_SETTING_KEYS = [...BRUSH_ONLY_SETTING_KEYS, ...SURFACE_ONLY_SETTING_KEYS];
