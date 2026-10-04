@@ -49,7 +49,7 @@
  * BRICK_ELEMENT_ATTR/BRICK_SETTINGS_ATTR/reconstructChains/
  * regenerateOwnedBrickElements block below for the full mechanism.
  */
-import { ensureActiveLayer, addLayer } from './layers.js';
+import { ensureActiveLayer, addLayer, applyLayerStateTo } from './layers.js';
 import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
@@ -154,14 +154,22 @@ const DEFAULT_BRICK_COLOR = SET_COLORS[1];
  *  DOM is that rasterizer's sole source of truth (see its header), so every
  *  field `sampleHeight`/`brickTopHeight` need must be stashed here, at the
  *  one place that already has the real brick object in hand. */
+/** The ONE way a brick-tool element joins the Bricks layer: tagged with it AND given its current
+ *  hidden / inactive / no-colour state (layers.js applyLayerStateTo). Before, bricks re-laid onto a
+ *  hidden Bricks layer showed on the canvas while the layer still said hidden. Every brick-tool draw
+ *  (bricks, brush spines, the slow-drag outline preview) goes through here. */
+function onBricksLayer(editor, layer, el) {
+  el.attr('data-layer', layer.id);
+  applyLayerStateTo(editor, el);
+  return el;
+}
+
 function drawBrick(editor, layer, brick, kind, setId, seed, reliefIn) {
   const pts = brick.polygon.map((p) => `${p.x},${p.y}`).join(' ');
   const paint = brickFillPaint(editor, setId, brick.sampleId, brick.flip) || SET_COLORS[setId] || DEFAULT_BRICK_COLOR;
-  return editor._sketchLayer
-    .polygon(pts)
+  return onBricksLayer(editor, layer, editor._sketchLayer.polygon(pts))
     .fill(paint)
     .stroke('none')
-    .attr('data-layer', layer.id)
     .attr(BRICK_ATTR, kind)
     .attr(BRICK_GEN_ATTR, '1')
     .attr('data-brick-set', setId)
@@ -378,10 +386,9 @@ export function runBricksOutlinePreview(editor) {
   clearGenerated(editor, layer, 'wall');
   clearGenerated(editor, layer, 'frame');
   const pts = boardPolygon(editor).map((p) => `${p.x},${p.y}`).join(' ');
-  editor._sketchLayer.polygon(pts)
+  onBricksLayer(editor, layer, editor._sketchLayer.polygon(pts))
     .fill('none')
     .stroke({ color: '#aa4433', width: 0.03, dasharray: '0.1,0.08' })
-    .attr('data-layer', layer.id)
     .attr(BRICK_ATTR, 'wall')
     .attr(BRICK_GEN_ATTR, '1');
 }
@@ -599,11 +606,9 @@ function newBrickElementId() {
  *  not meant to visually compete with the opaque brick polygons drawn on
  *  top of it in z-order). */
 function drawSpineSegment(editor, layer, elementId, settingsJson, a, b) {
-  return editor._sketchLayer
-    .line(a.x, a.y, b.x, b.y)
+  return onBricksLayer(editor, layer, editor._sketchLayer.line(a.x, a.y, b.x, b.y))
     .stroke({ color: '#aa4433', width: 0.06, linecap: 'round' })
     .attr('stroke-opacity', '0.15')
-    .attr('data-layer', layer.id)
     .attr(BRICK_ATTR, SPINE_KIND)
     .attr(BRICK_ELEMENT_ATTR, elementId)
     .attr(BRICK_SETTINGS_ATTR, settingsJson);
