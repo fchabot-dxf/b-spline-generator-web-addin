@@ -19444,3 +19444,314 @@ sequence rather than guessing at a window-contour design unreviewed.
 **Commit `c4e3ca6`, pushed to origin/lane-b.** Replying to the advisor with the matrix
 table, the 4 fixes (3 engine + 1 measurement), the before/after count at each step
 (283->202->175->154), and the categorized remainder for the next turn's own triage.
+
+## T86 item 4 continued: "T9's stray coloured bars" root-caused -- a real architecture gap, not implemented yet (b5)
+
+Advisor dispatch (turn 309): continue the cross-row/multi-band class, plus "T9's stray coloured bars
+on the rails" (visible directly in the contact sheet's own template_9 thumbnail -- a dark, almost-
+black band where the normal palette should cycle cleanly).
+
+**Root-caused on the real template.** `soldier_stretcher` on template_9 ("I Shape"): pieces `frame-165`
+and `frame-167` overlap 92% (grid-sampled), both near x=[5.25,6] y~[1,1.2] -- NOT a corner region at
+all, the MIDDLE of what should be a clean straight run. Isolated the stretcher row alone
+(`scratch/check_t9_stretcher_row.mjs`, calling `ribbonPieces` directly on just that one band) and
+walked the FULL piece sequence: primitive 0 (top edge)'s own row runs cleanly to its own mitre corner
+with primitive 1 (right edge upper, length 1.70) -- then the VERY NEXT pieces are ALSO horizontal,
+matching primitive 2's own geometry (the notch-top), not primitive 1's own (which should be vertical).
+**Primitive 1's own row produced ZERO pieces at this depth and was silently skipped, but nothing told
+primitive 0's or primitive 2's own neighbouring joints that this happened** -- each was built
+independently assuming primitive 1 contributes real material between them, so their own two
+INDEPENDENT corner constructions land on top of each other instead of meeting at a shared point.
+
+**Why this happens, precisely:** `primitiveLiveAtDepth` (the SAME function that drops an infeasible
+arc) returns `prim.type === 'line' || isArcFeasible(...)` -- unconditionally `true` for every line,
+regardless of depth. A line genuinely CAN become infeasible too: primitive 1's own full length
+(1.70in) must host corner material from BOTH its own neighbours at this row's own depth (0.95in);
+once that consumption from both ends exceeds the primitive's own total length, there is no room left
+for even a single real piece -- the exact same "too deep for this short a run" failure mode the
+narrow-neck tangent fix (fix 1 above) and the matrix's own original "narrow neck" framing were both
+circling, just for a STRAIGHT primitive instead of a dropped ARC. Lines have never had this check at
+all; arcs have had it since H23 item 76.
+
+**The general fix this needs (scoped, not yet built):** extend `primitiveLiveAtDepth` to also test a
+LINE primitive's own feasibility at a given depth (mirroring `isArcFeasible`'s own role: too-deep-for-
+this-primitive, not a template-specific threshold), and extend the EXISTING "dropped primitive ->
+`buildPatch`'s own kiteFan" architecture to handle a dropped STRAIGHT primitive, not just a dropped
+arc -- actually the SIMPLER case of the two (no curve to tessellate: the patch's own boundary is just
+`prevPrim`'s own flat strip + the straight line from A to B + `curPrim`'s own flat strip, closed at
+`q`, reusing `buildPatch`'s own already-generalized length-based piece planning from T86 item 3
+verbatim). This is the SAME declared, general-rule shape Fred's own ruling asked for (a measurable
+geometric property -- primitive length vs. band depth -- not a per-template special case), not a new
+kind of fix.
+
+**Confirmed this is a SEPARATE root cause from `header_band`'s own 0.125-ratio finding, not the same
+one wearing two faces:** checked template_3 (where that finding also reproduces) for any short line
+primitive that could explain it the same way -- its OWN shortest line measures 2.993in, far longer
+than header_band's own 0.6in total depth, so the dropped-line mechanism above cannot be what's
+happening there. `header_band`'s own issue is still open; most likely a genuine cross-row (3 rows,
+each independently mitred) corner-size variance, analogous in SPIRIT to the already-documented H23
+item 76 seam residual but not yet traced to its own precise mechanism.
+
+**Capacity note, stated plainly rather than pushed through:** this turn has already covered a full
+matrix build, 3 root-caused-and-fixed engine bugs, and now a 4th fully root-caused but NOT YET
+implemented (the dropped-line architecture extension above) -- a genuinely new, scoped piece of
+engine work in its own right, comparable to T86 item 3's own `buildPatch` rewrite. Implementing it
+correctly needs the SAME careful measure-first discipline the other 3 fixes used (hand-verified
+numbers, mutation-tested regression coverage, a full matrix re-run) -- rushing it at the tail of an
+already-long session risks exactly the kind of overcorrection follow-up #2 already cost one round
+this item. Recommending it as the next DISPATCHED sub-task (fresh capacity, same clear scope) rather
+than attempting it in the remaining room here. `header_band`'s own still-untraced issue and the rest
+of the "cross-row/multi-band" category remain queued behind it.
+
+**No commit this sub-session** -- diagnosis only, no engine change yet; nothing to verify or ship
+until the fix itself is built. Passing back to the advisor with the root cause, the proposed design,
+and the capacity note above.
+
+## T86 item 4b: dropped-line architecture attempted and REVERTED (net regression on the full matrix) -- a deeper cause found, GATE (d3)
+
+Picked up from the above diagnosis (turn 309, `af27368`). Built the extension exactly as scoped --
+`primitiveLiveAtDepth(primitives, idx, depth)` now tests a LINE's own feasibility too (mirroring
+`isArcFeasible`'s role: project its own two REAL immediate-neighbour joints at this depth onto its
+own tangent; infeasible when the effective run between them drops below a declared floor,
+`MIN_LINE_RUN_IN`) -- and extended `buildPatch`'s own kiteFan to bridge a dropped LINE the same way
+it already bridges a dropped ARC (no curve to tessellate, so the patch's own middle run is empty;
+`A`/`B` contribute the only new points).
+
+**First-order bug, found and fixed within this same attempt:** a dropped line's own two flanking
+neighbours are `template_9`'s own TOP and NOTCH-TOP edges -- PARALLEL to each other (a notch, not a
+bevel: extending two parallel sides never makes them meet, unlike extending the two sides a rounded
+fillet replaces, which always meet at the fillet's own original sharp corner). The direct
+prevIdx/curIdx skip-intersection this file's own joint map tries first came back `null` (parallel
+lines truly have none), and returning "no joint" there let BOTH flanking primitives run to their own
+full UNCLIPPED nominal length -- a 100% overlap, each one's own entire excess landing on the other's.
+Fixed with a new `buildNotchJoint` (mirrors `buildBlockJoint`'s own independent `forPrev`/`forCur`
+pair): each flanking primitive gets its OWN real, non-fictitious mitre joint with the dropped
+primitive directly, plus a quad `kiteFan` for the dropped primitive's own residual sliver. The
+quad's own vertex order needed a SECOND fix after the first version also self-intersected: right at
+its own feasibility floor, the two flanking corners' relative order along the dropped primitive's
+own length can differ between the row's outer edge (d0) and inner edge (d1) -- MEASURED directly
+(the two "closing" edges of the naive `[oA,oB,qB,qA]` order crossed at `t=0.505` on this exact case)
+-- `tangentialProjection` now orders each depth's own pair independently before building the quad,
+which kept it simple either way.
+
+**The HEADLINE bug (template_9's own 92% `soldier_stretcher` overlap, the dispatch's own named
+target) is NOT a joint-clipping bug at all, and this architecture does not fix it.** With both of the
+above fixes in place, the exact pre-fix 92% overlap (`frame-165`/`frame-167`) reproduced BYTE-
+IDENTICAL -- not a coincidence: at this row's own depth (0.75-0.95), the TOP edge's own offset band
+and the NOTCH-TOP edge's own offset band have themselves converged to within 0.0019in of each other
+-- they are no longer "two rows meeting at a corner needing a clip", they are close to being THE SAME
+ROW, counted twice, independently, by two unrelated primitives. No joint-level clip choice changes
+that. Tried the one alternative this architecture naturally offers -- `trustO:false` (q-only sizing,
+the SAME fallback the dropped-ARC case already uses) -- and MEASURED it makes this specific case
+WORSE (100%, not 92%): since both flanking primitives are horizontal and tile in the SAME absolute
+direction near the shared seam, q-only sizing gives each one's own boundary-adjacent brick the exact
+SAME span, a clean 100% duplicate instead of a messy 92% one. Reverted to `trustO:true` (no worse
+than the pre-existing baseline on this one case).
+
+**Ran the full item-4 matrix (`tools/repro/t86_item4_matrix_run.mjs`, 476 cases) before committing to
+anything, per the dispatch's own item 3 -- and it settled the question**: with this architecture (incl.
+the `trustO:true` choice), 159/476 failed vs. baseline's 154/476 -- 1 case newly PASSED
+(`template_5` 9x12 `double_course`/native) but 6 newly FAILED elsewhere (`template_5` 7x9
+`double_course`+`mixed_bands`, `template_9` 9x12 `mixed_bands` x2, `template_15` 7x9
+`double_course` x2 -- several at `max piece ratio` 3.75x, a real oversized-piece defect, not a
+measurement artifact). **Net regression**, and on templates/presets that have nothing to do with the
+dispatched case. Root cause of THESE 6 not chased (would be a second rabbit hole on top of the first)
+-- `lineLiveAtDepth` most likely flags a line infeasible on a row where it should stay live for a
+reason specific to those templates/presets, but that's a guess, not a measurement.
+
+**Decision: REVERTED the whole architecture** (`git checkout` on `primitive-ribbon.js`, confirmed
+back to baseline: 76 brick tests pass, matrix back to 154/476 failed). The attempted diff is saved,
+unshipped, at `bspline-frame-builder/scratch/t86_item4b_attempted_fix.diff` (plus the two matrix runs
+at `bspline-frame-builder/scratch/t86_item4b_matrix/{before,after_attempted}.txt`) for whoever picks
+this up next -- the notch-joint + quad-ordering half of it IS a real, tested, non-regressing fix in
+isolation (it closes a genuine latent bug: a self-intersecting kite quad, and before that, two fully
+unclipped runs) and may be worth keeping once the deeper issue below is actually addressed, but
+shipping it alone, as scoped, is a net loss.
+
+**GATE -- this needs a decision, not another attempt from me this session:** the real fix has to
+address two flanking rows having PHYSICALLY CONVERGED, not just "meeting at a corner". Options,
+as I see them:
+  (A) Detect when two flanking primitives' own row-strips overlap in physical space (not just share a
+      joint), and suppress one side's own pieces across the whole converged zone (which side yields
+      needs a declared, general rule -- e.g. always the side whose own primitive index is larger --
+      not a per-template choice). Smallest blast radius, but the suppressed side may show a visible
+      asymmetry at the seam.
+  (B) Recognize the converged zone at the CONTOUR level, before per-row `ribbonPieces` even runs --
+      once a connecting primitive is short enough that ANY row past some depth will converge its two
+      neighbours, build that whole zone (potentially spanning multiple bands/rows) as one unified
+      construction instead of two independent rows plus a patch. Bigger change, touches
+      `contour-bands.js`'s own row loop, but is the more honest shape of the problem.
+  (C) Ship nothing new this item; leave `lineLiveAtDepth` unbuilt, accept the pre-existing 92%
+      overlap as a KNOWN, already-measured residual (same spirit as the already-tolerated ~10-15%
+      curve-clip imperfection documented in `bricks-real-template-contours.test.js`), and move the
+      remaining item-4b sub-tasks (inset-window surround, frame suppression, item 5 brush crossings --
+      none of which depend on this fix) up instead.
+**Capacity note, stated plainly:** this sub-session is the one that found the architecture does not
+work as scoped, including building, measuring, and reverting it -- a full cycle, not a partial one,
+but it leaves nothing new to ship. Recommend (C) now (unblocks the rest of item 4b's own list, all
+independent of this) with (A) or (B) as their own later, separately-dispatched task once scoped by
+the advisor; a fresh session for whichever is chosen either way, same reasoning as every prior
+"don't rush it at the tail" note on this item.
+
+**header_band's own 0.125 min-ratio on `template_3` (item 4b's point 2): narrowed, not yet fixed.**
+Ran b5's own `scratch/check_header_band_t3.mjs`. The smallest piece, `frame-130` (ratio 0.125, exactly
+HALF the 0.25 floor), is a 3-VERTEX right-triangle corner clip (legs 0.1in x 0.1in,
+`[[5.832,0.45],[5.832,0.55],[5.732,0.55]]`) -- a corner-adjacent piece clipped down to a sliver
+triangle that `mergeSlivers` failed to absorb into its neighbour. Confirmed (again) this is NOT the
+dropped-short-line mechanism above: no short line anywhere near this corner. Not root-caused further
+this session (would be a third rabbit hole) -- recommend its own small, separately-scoped dispatch
+(suspect: a `mergeSlivers` call on `header_band`'s own very narrow 0.6in pitch isn't being reached for
+a CORNER-adjacent span the way it is for an ordinary mid-run span, or the corner clip itself produces
+a 3-vertex sliver `mergeSlivers`' own area-based neighbour-merge doesn't recognize as adjacent to;
+needs the same hand-verified, non-vacuous-test treatment as every other fix in this file).
+
+**Item-4 matrix: unchanged this session (154/476 failed, same as the last committed state) --
+reported per the dispatch's own item 3, since the attempted fix was reverted.** Items 4/5/6 of the
+item-4b dispatch (inset-window surround + wall hole, frame suppression, item-5 brush crossings) not
+started -- recommend (C) above, which puts them next. No commit of engine code this sub-session (the
+only candidate diff was reverted); this WORK-LOG entry plus the saved-but-unshipped diff/matrix files
+are the record. Passing back to the advisor with the gate above.
+
+## T86 matrix HARNESS bug: template_16/17 drew wrong (3-primitive pointed arch) -- root-caused to a real `outline-offset.js` bug, harness fixed (d3)
+
+Fred's own finding: `t86_item4_templates.png` drew template_16/17 as plain pointed gothic arches,
+not their real arch+straight-or-concave-sides+waist+bulging-lower-curves+flat-base shape. Dispatched
+as a quick check before item 7: find which (wrong primitives fed in, or the engine dropping their
+upper primitives), fix it, re-run those rows, add a harness check (contour area/bbox match), treat
+T16/T17's existing matrix rows as invalid until fixed.
+
+**Root cause, MEASURED precisely, and it is NOT a harness-only bug.** `t86_item4_matrix_lib.mjs`'s
+own `templatePrimitives` built its primitives from `frameContourSilhouette(frame, 0, 0)` --
+`contour-from-frame.js`'s own "Offset from frame" chokepoint, not a plain contour reader.
+`frameCutProfile`'s own primitives (the template's TRUE, un-offset cut profile) correctly return
+ALL 6 of T16/T17's own declared bars (2 straight/concave upper sides, 2 lower bulge arcs, 1 flat
+base, 1 single-piece arch -- matching their own design exactly, dumped and counted directly).
+Feeding those SAME 6 primitives through `offsetOutlineInward(primitives, 0)` -- offset **ZERO**,
+nothing should ever collapse -- nonetheless collapsed 3 of the 6 (both upper sides AND the arch) to
+the literal SAME degenerate point `(3.5, 4.348)`, leaving exactly the 3-primitive arc-line-arc shape
+Fred saw rendered. A genuine bug in `outline-offset.js`'s own collapse detection for this specific
+topology (plausibly a tangent-chain miscount at the shape's own apex), confirmed independent of this
+harness by reproducing it directly against `frameCutProfile`'s own output, bypassing the harness's
+conversion step entirely.
+
+**This is a live PRODUCTION bug, not just a harness artifact** -- `CONTOUR_FROM_FRAME_DEFAULTS`
+declares `distance: 0` as the Shape Lattice "Offset from frame" feature's own DEFAULT, so any real
+user turning that toggle on for Template 16 or 17 and leaving the distance at its default hits this
+exact same collapse. Not fixed here (would be its own `outline-offset.js` dive, a different file
+than anything else this item touches) -- flagging for its own separately-scoped dispatch; the
+2026-10-02 "Offset from frame doesn't work on T16/T17" item (T84 item 6) fixed a DIFFERENT, already-
+closed defect in the same area (the `corners` array missing declared miter joints) and did not touch
+this one, since it never exercised `distance=0` specifically.
+
+**Harness fix**: `templatePrimitives` (now exported with a 4th `frameCutProfile`-shaped param in
+place of `frameContourSilhouette`) reads `frameCutProfile` directly -- this harness only ever asked
+for `distance=0` (no offset) in the first place, so reading the un-offset source directly is the
+more correct path, not a workaround. `t86_item4_contact_sheet.mjs` had its OWN duplicate of the same
+(buggy) function -- deleted, now imports the one corrected copy from `t86_item4_matrix_lib.mjs`
+(declare once, not twice).
+
+**Harness check added, aimed at the right target.** Checking the matrix's own primitives against
+`frameContourSilhouette` (Fred's own suggested check) would be circular now that it's the one just
+proven unreliable -- `checkContourConsistency` instead re-tessellates `frameCutProfile` INDEPENDENTLY
+(a different walk of the same ground truth) and compares area/bbox against it, which still catches a
+real CONVERSION bug (a dropped segment, a wrong next-point lookup) even though it can no longer catch
+a bug inside `frameCutProfile` itself. It ALSO separately reports whether `frameContourSilhouette`
+agrees with that same ground truth -- a GENERAL detector for this exact class of bug (not a
+template_16/17-specific patch): run against the full matrix, it flags EXACTLY the 4 known-bad
+combos (`template_16`/`template_17` x 7x9/9x12) and nothing else, confirming no other template hides
+the same defect.
+
+**Verification.** `frameCutProfile`-sourced primitives for T16/T17: 6 primitives (matches design),
+correct area (37.2/34.4 in^2 at 7x9) and bbox (board-sized), builds 117/119 clean `single_soldier`
+pieces with no crash. Full item-4 matrix re-run: **143/476 failed (down from 154)** -- a real,
+measured improvement from fixing ONLY the contour source, nothing else changed. Full test suite:
+3784/3784 passed (this change touches only `tools/repro/`, no engine code). Contact-sheet PNG
+re-render attempted but headless Chrome would not connect in this session (`NO CDP`, unrelated to
+this fix -- a pre-existing infra issue, not chased); verified instead by reading the regenerated
+SVG's own vector data directly -- T16/T17's own cells now show a multi-point tessellated outline
+(arcs with many sample points, not 3 bare corners), confirming the real shape renders.
+
+**Commit (this entry + the 3 `tools/repro/` files) to follow.** Proceeding to item 7 (brush
+patterns) as ordered. The `outline-offset.js` distance=0 collapse bug is a separate, flagged finding
+for the advisor to scope -- not blocking item 7, which never calls through `frameContourSilhouette`.
+
+## T86 item 7: brush patterns -- bricksContourBands generalized to an OPEN, centred primitive list; brush now bands through it (d3)
+
+Fred: "add brick orientation and patterns for brush". Advisor refinement: brush = the SAME band
+list as a frame preset, laid along an OPEN path instead of a closed contour, rows offset either
+side of the stroke's own centreline (width = sum of the bands), square/butt ends at both open
+ends, running bond = 1/2-brick stagger row to row -- "one engine: `bricksContourBands` on an open
+primitive list, not a separate brush code path." Also carrying de's own requested per-piece
+metadata (`{bandIndex, rowIndex, pieceIndex}`, for his later accent-level work) on every band/brush
+piece.
+
+**Engine (`primitive-ribbon.js`, `contour-bands.js`): two new, additive opts, both defaulting to
+today's exact closed-contour behaviour.**
+- `ribbonPieces`'s own new `closed=true` param: when false, the FIRST live primitive's own
+  wraparound joint slot is forced `null` -- which, for free, ALSO resolves the LAST live
+  primitive's own `jointEnd` to `null` (it reads the exact same array slot via the `(k+1)%m` wrap),
+  giving BOTH open ends the plain "no joint" treatment `linePieces`/`voussoirPieces` already have
+  for a genuinely open path end (a clean square/butt cut, no new construction needed).
+- `bricksContourBands`'s own new `opts.closed` (threaded straight to `ribbonPieces`) and
+  `opts.centered`: `centered` only shifts WHERE the per-row depth walk starts (`-totalWidth/2`
+  instead of `0`) -- the SAME forward per-row loop as every closed-contour band stack already
+  uses, so `bands[0]` sits at one edge of the stack and `bands[last]` at the other, exactly
+  "width = sum of the bands, centred" with no separate left/right construction. `inwardSign` is
+  never auto-detected for an open path (an open polyline has no "inside" -- `inwardSignFor` is a
+  closed-polygon concept); each line's own plain `(-dy,dx)/len` normal is used as-is, a fixed
+  left-of-travel convention declared once. `boundaryAtDepth`/`innerPath` stay closed-contour-only
+  (an open stroke has no Wall-starting inner edge to give) -- returns `[]` rather than guessing.
+- Per-piece metadata: `ribbonPieces` now stamps `{bandIndex, rowIndex, pieceIndex}` on every piece
+  it returns (including kiteFan/block pieces) in one final pass, `pieceIndex` = the piece's own
+  build-order index within the row (already deterministic per seed). Field names are de's own to
+  finalize by DM per the advisor's note; stamped now so no second pass is needed later.
+
+**New presets** (`library.js`, `BRUSH_PRESETS`): a small, NAMED set matching exactly what Fred
+asked for ("maybe 2 and 3 bricks wide"), not all 7 `FRAME_PRESETS` -- `stretcher_1` (1 row),
+`stretcher_2_running` (one band, 2 rows -- `stretcher`'s own declared `staggerFrac:0.5` already
+alternates row-to-row, no second band needed), `flemish_soldier_flemish_3` (3 bands).
+
+**Brush wiring** (`editor-brick-tool.js`): the SIMPLIFIED stroke polyline this file already builds
+(`ramerDouglasPeucker`, unchanged) needed no arc-fitting step at all -- a brush stroke has never
+had true circular arcs (unlike a frame contour); `strokePrimitives` just turns each consecutive
+point pair into one line primitive. `bricksForBrushStroke` dispatches: `profile:'continuous'`
+(Stripe's own style-cycle variant) still goes through the OLD, unmodified `bricksAlongPath` (no
+band/row equivalent of "one unbroken band, no per-brick joints" exists in the new engine, nor
+should it try to); every other case (`profile:'bricks'`, the only other one in use today) now
+bands through `bricksContourBands(strokePrimitives(points), bands, {...opts, closed:false,
+centered:true})`. Settings: `P.brickSettings.brushBandPreset` (`core/state.js`, default
+`'stretcher_1'` -- the closest match to the OLD orientation-only brush's own look, so an existing
+saved session's strokes don't visibly change on load) + a button-list picker in `main/brick-
+panel.js`/`bspline_gen_palette.html`, built as a direct copy of the EXISTING Frame-preset-picker
+pattern (same button-list shape, same `renderXList`/`syncXButtons` pair) -- no new UI mechanism.
+
+**Verification.** New `tests/bricks-open-path-bands.test.js` (7 tests): open 1-wide stretcher on a
+straight stroke bands straddle the centreline (`y` in `[-H/2,H/2]`) exactly, ends square within
+`CLIP_EPS_IN`'s own float-safety margin (0.02in, the SAME one every other open-end piece in this
+codebase already carries); 3-wide flemish/soldier/flemish on a BENT (90deg) stroke -- all 3 bands
+build, every piece simple, **zero** overlap across the bend; "2-wide running"'s own row 1 is
+exactly L/2 narrower than row 0 (the running-bond stagger, MEASURED not assumed); metadata present
+and stable seed-to-seed; `closed` defaults to `true` with a BYTE-IDENTICAL result to an explicit
+`true` on a plain closed square (the existing-caller non-regression proof). **Non-vacuous,
+confirmed directly**: 5 of these 7 fail against the pre-item-7 code (`git stash` on the two engine
+files) -- the other 2 are "defaults don't change existing behaviour" checks, which correctly pass
+either way. New tests in `tests/bricks-editor-adapter.test.js` (4 more) cover the ADAPTER wiring
+itself (`strokePrimitives`'s own point-pair conversion; `bricksForBrushStroke` actually reaches
+the new engine for `'bricks'` and the OLD one, unmodified, for `'continuous'`; an unknown preset
+name falls back cleanly rather than throwing).
+
+Full suite: **3795/3795 passed** (206 files). Full item-4 matrix re-run: **143/476 failed**,
+unchanged from the harness-fix entry above (expected -- `closed` defaults to `true`, so no existing
+frame caller's own geometry moves at all; confirms the new code path is genuinely additive, not a
+silent behaviour change to the paths every other template already depends on).
+
+**Not done this item** (explicitly out of scope, per the dispatch's own "a brush line can have a
+FEW brick patterns" framing): a per-band pattern OVERRIDE picker for brush (Frame's own item 8
+has one; brush only offers the 3 named whole-preset combinations) -- deliberate, not an oversight.
+Also not attempted: regenerating the T86 item-4 contact-sheet PNG (same headless-Chrome `NO CDP`
+issue as the harness-fix entry, unrelated to this item, not re-chased).
+
+**Commit to follow.** Next per the advisor's own order: T86 item 9 (converging rows, un-parked --
+Fred wants T9's own default shape to also get taller flanges, AND the medial-line rule as a general
+fix; the bar is explicit -- "the matrix must not regress vs 154/476" -- so the full matrix runs
+before anything ships).

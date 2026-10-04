@@ -3055,18 +3055,12 @@
                 <button type="button" class="relief-toggle-btn" id="brickBtnOrientationSoldier" title="Bricks standing on end, across the stroke"><span>Soldier</span></button>
               </div>
 
-              <!-- F35 item 10 follow-up: a brush stroke 1-3 bricks wide with a per-row pattern is
-                   QUEUED (reusing the SAME band-list component the Frame tool uses), waiting on d3's
-                   T86 item 7 (brush on the shared pattern sequences) to land on main -- only 1-wide
-                   Stretcher is real today, so there is nothing else to wire yet; greyed placeholders
-                   name what's coming rather than silently omitting it. -->
-              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Brush: Width</label>
-              <div style="display:flex; gap:6px; margin-bottom:4px; flex-wrap:wrap;">
-                <button type="button" class="cad-btn active" disabled title="The only width built today">1-wide Stretcher</button>
-                <button type="button" class="cad-btn" disabled style="opacity:0.4;" title="Coming once d3's T86 item 7 lands">2-wide Running</button>
-                <button type="button" class="cad-btn" disabled style="opacity:0.4;" title="Coming once d3's T86 item 7 lands">3-wide Flemish/Soldier/Flemish</button>
+              <!-- T86 item 7: the Brush band-preset picker (core/bricks/library.js BRUSH_PRESETS),
+                   straddling the drawn stroke's centreline; replaces the earlier greyed width placeholders. -->
+              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Brush: Width / pattern</label>
+              <div id="brickBrushPresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+                <!-- Populated at runtime by main/brick-panel.js's declared BRUSH_PRESET_LIST. -->
               </div>
-              <div style="font-size:10px; opacity:0.65; margin:2px 0 12px;">Wider brush patterns are queued, pending the shared band-pattern engine.</div>
             </div>
 
             <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
