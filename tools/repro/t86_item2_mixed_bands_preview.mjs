@@ -5,8 +5,9 @@
 //
 // Usage: node tools/repro/t86_item2_mixed_bands_preview.mjs <repoRoot> <outDir>
 import { pathToFileURL } from 'node:url';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 
 const [ROOT_ARG, OUT_DIR] = process.argv.slice(2);
 const ROOT = pathToFileURL(ROOT_ARG).href.replace(/\/$/, '');
@@ -159,8 +160,17 @@ for (const r of renders) {
   await send('Page.navigate', { url: pathToFileURL(svgPath).href });
   await sleep(300);
   const shot = await send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width, height, scale: 1 } });
-  writeFileSync(`${OUT_DIR}/t86_item2_mixed_bands_${r.name}.png`, Buffer.from(shot.result.data, 'base64'));
+  const pngPath = `${OUT_DIR}/t86_item2_mixed_bands_${r.name}.png`;
+  writeFileSync(pngPath, Buffer.from(shot.result.data, 'base64'));
   console.log('screenshotted', r.name);
+  // status_watch.py's own real source is ~/.bspline-status/shots/<seat key>/, NOT the repo's own
+  // (gitignored) shots/seatB/ -- confirmed live (advisor review, T86 item 2 follow-up): previews
+  // saved only to the repo copy were invisible on the status page. Publish both, every run.
+  try {
+    const sharedDir = `${os.homedir()}/.bspline-status/shots/seatB`;
+    mkdirSync(sharedDir, { recursive: true });
+    copyFileSync(pngPath, `${sharedDir}/t86_item2_mixed_bands_${r.name}.png`);
+  } catch (e) { console.log('shared-status publish skipped:', e.message); }
 }
 ws.close();
 chrome.kill();
