@@ -44,7 +44,7 @@ const FIXTURE = `
   <div id="brickFramePresetList"></div>
   <div id="brickBrushPresetList"></div>
   <div id="brickPatternList"></div>
-  <div id="brickFrameBandPatternList"></div>
+  <label id="brickFrameBandPatternLabel">Band patterns</label><div id="brickFrameBandPatternList"></div>
   <button id="brickSetRed"></button>
   <button id="brickSetWhite"></button>
   <div id="brickSizePresetList"></div>
@@ -434,5 +434,16 @@ describe('Generate visibility, the pending badge and a hidden Bricks layer', () 
     $('brickPattern_flemish').click();
     $('brickGenerate').click();
     expect(showToast).not.toHaveBeenCalled();
+  });
+});
+
+describe('audit K2: the Band patterns heading follows the preset', () => {
+  beforeEach(() => setup('frame'));
+  it('hidden for the None preset (no bands), shown again for a preset with bands', () => {
+    $('brickFramePreset_none').click();
+    expect($('brickFrameBandPatternLabel').style.display).toBe('none');
+    expect($('brickFrameBandPatternList').children.length).toBe(0);
+    $('brickFramePreset_three_band').click();
+    expect($('brickFrameBandPatternLabel').style.display).toBe('');
   });
 });

@@ -729,6 +729,9 @@ function renderFrameBandPatternList(container) {
   if (!container) return;
   container.innerHTML = '';
   const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
+  // Audit K2: a preset with no bands (None) has no band rows -- its heading goes too.
+  const heading = document.getElementById('brickFrameBandPatternLabel');
+  if (heading) heading.style.display = bands.length ? '' : 'none';
   bands.forEach((band, i) => {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex; gap:4px; margin-bottom:4px; flex-wrap:wrap; align-items:center;';

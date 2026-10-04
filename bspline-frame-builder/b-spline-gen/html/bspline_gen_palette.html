@@ -916,7 +916,7 @@
         <label class="cad-label">Max Height (in)</label>
         <div class="cad-slider-row" style="margin-bottom:12px;">
           <input type="range" id="brickReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
-          <div class="cad-stepper" style="width:60px;"><input type="number" id="brickReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
+          <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
         </div>
 
           <label class="cad-label" style="font-size:10px;">Grout depth (in)</label>
@@ -3137,13 +3137,15 @@
           <div class="sticky-actions"><button type="button" id="brickGenerate" class="cad-btn cad-btn-primary" style="width:100%; height:32px; border-radius:3px; font-weight:700;">Generate</button></div>
           <div class="layers-header"><span>Brick</span></div>
           <div style="padding:10px; display:flex; flex-direction:column; gap:4px; font-size:11px;">
+            <!-- Audit K3: the active tool's hint heads the panel; under the Set picker it read as a caption
+                 for Red Brick / White Rocks. -->
+            <div id="brickToolHint" style="font-size:10px; opacity:0.65; margin:0 0 12px;"></div>
+
             <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Set</label>
             <div style="display:flex; gap:6px; margin-bottom:12px;">
               <button type="button" id="brickSetRed" class="cad-btn brick-set-btn active" title="Red brick (Masonry)">Red Brick</button>
               <button type="button" id="brickSetWhite" class="cad-btn brick-set-btn" title="White rocks (fieldstone, Masonry)">White Rocks</button>
             </div>
-
-            <div id="brickToolHint" style="font-size:10px; opacity:0.65; margin:0 0 12px;"></div>
 
             <!-- F35 item 10 follow-up (Fred): the Brush tool's own section, shown only while Brush
                  is the active tool (main/brick-panel.js's syncToolButtons). -->
@@ -3185,7 +3187,7 @@
                 <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
               </div>
 
-              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Band patterns</label>
+              <label id="brickFrameBandPatternLabel" class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Band patterns</label>
               <div id="brickFrameBandPatternList" style="margin-bottom:12px;">
                 <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
               </div>
@@ -3202,7 +3204,7 @@
             <label class="cad-label">Brick size (in)</label>
             <div class="cad-slider-row" style="margin-bottom:6px;">
               <input type="range" id="brickSizeSlider" class="cad-slider" min="0" max="1000" step="1" value="226">
-              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickSize" value="0.75" min="0.375" max="8" step="0.025"></div>
+              <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickSize" value="0.75" min="0.375" max="8" step="0.025"></div>
             </div>
             <div id="brickSizePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
               <!-- Populated at runtime by main/brick-panel.js's declared BRICK_SIZE_PRESETS. -->
@@ -3223,13 +3225,13 @@
             <label class="cad-label">Suppression</label>
             <div class="cad-slider-row" style="margin-bottom:10px;">
               <input type="range" id="brickSuppressionSlider" class="cad-slider" min="0" max="0.9" step="0.01" value="0">
-              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickSuppression" value="0"></div>
+              <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickSuppression" value="0"></div>
             </div>
 
             <label class="cad-label">Clumping</label>
             <div class="cad-slider-row" style="margin-bottom:10px;">
               <input type="range" id="brickClumpingSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.3">
-              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickClumping" value="0.3"></div>
+              <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickClumping" value="0.3"></div>
             </div>
 
             <label class="cad-label">Seed</label>

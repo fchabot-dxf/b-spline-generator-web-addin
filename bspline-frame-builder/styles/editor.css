@@ -1360,6 +1360,10 @@
         height: var(--cad-stepper-touch) !important;
         min-width: 96px !important;
     }
+    /* Audit K1: room for a 3-decimal value (0.125, 0.375) at the touch font size, measured live. */
+    .cad-stepper.cad-stepper-wide {
+        min-width: 106px !important;
+    }
     /* flex: 0 0 <btn-width>, not a bare width -- a formula-switched input's
        own flex-grow drops to its 0 1 auto default (its own base rule only
        targets [type="number"]), so without an explicit flex-shrink:0 here
@@ -1770,6 +1774,14 @@
    rest via scrolling, not shrinking. */
 .editor-layers-panel > * {
     flex-shrink: 0;
+}
+
+/* Audit K1 (Brick tab): a stepper whose value needs 3 decimals (Max Height 0.125, Brick size 0.375)
+   was clipped by .cad-stepper's 75px floor (2 x 22px buttons). Measured live: ~86px fits it. The
+   touch layout's own floor is raised the same way inside its media query below. */
+.cad-stepper.cad-stepper-wide {
+    width: 90px;
+    min-width: 90px;
 }
 
 /* Audit C3/C11 (main/brick-panel.js PENDING_INDICATORS): brick settings changed since the bricks were
