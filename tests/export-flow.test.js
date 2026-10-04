@@ -21,7 +21,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { activeStampLayers, exportableStampLayers, _reportDeclinedOutlines, _fusionLayerManifest, _boundarySketchManifests } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
+import { activeStampLayers, exportableStampLayers, _reportDeclinedOutlines, _fusionLayerManifest, _boundarySketchManifests, _bricksLayerSvg } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
 import { setLayerVisible } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 // F17 (P1): the lattice manifest is built from the owned pieces AS DRAWN, so the mocks carry real geometry
 import { drawnFromPattern, ownedStores } from './helpers/drawn-lattice.js';
@@ -525,5 +525,48 @@ describe('export-flow: _fusionLayerManifest (T76 item 4 — one manifest per kin
     const manifest = _fusionLayerManifest(editor, { id: 'railsL' });
     const rail0Dim = manifest.dimensions.find((d) => d.type === 'SlotWidth' && d.target === 'rail0');
     expect(rail0Dim.expression).toBe('rail_width'); // NOT hardcoded
+  });
+});
+
+/** F35 item 11: _bricksLayerSvg -- the Bricks editor layer's own generated polygons, filtered to
+ *  real brick pieces only (editor-io-fusion-geometry.test.js's own minimal getLayerSvg fixture
+ *  shape: {_draw, _sketchLayer:{node:{innerHTML}}, _mW, _mH, _layers, _activeLayer}). */
+describe('export-flow: _bricksLayerSvg (F35 item 11 -- Send bricks with the B-spline)', () => {
+  function bricksEditor(innerHTML, layerId = 'b1') {
+    return {
+      _draw: {},
+      _sketchLayer: { node: { innerHTML } },
+      _mW: 7, _mH: 9,
+      _layers: [{ id: layerId, name: 'Bricks' }],
+      _activeLayer: null,
+    };
+  }
+
+  it('no Bricks layer at all -> empty string', async () => {
+    const editor = { _draw: {}, _sketchLayer: { node: { innerHTML: '' } }, _mW: 7, _mH: 9, _layers: [{ id: 'l0', name: 'Layer 1' }], _activeLayer: null };
+    expect(await _bricksLayerSvg(editor)).toBe('');
+  });
+
+  it('a Bricks layer with only the Brush spine (no real pieces yet) -> empty string', async () => {
+    const html = '<line x1="0" y1="0" x2="1" y2="0" data-layer="b1" data-brick="brush-spine"/>';
+    expect(await _bricksLayerSvg(bricksEditor(html))).toBe('');
+  });
+
+  it('keeps real brick polygons (data-brick-gen="1") and strips the spine line sharing the same layer', async () => {
+    const html = [
+      '<line x1="0" y1="0" x2="1" y2="0" data-layer="b1" data-brick="brush-spine"/>',
+      '<polygon points="0,0 1,0 1,0.3 0,0.3" data-layer="b1" data-brick="wall" data-brick-gen="1"/>',
+      '<polygon points="0,0.3 1,0.3 1,0.6 0,0.6" data-layer="b1" data-brick="frame" data-brick-gen="1"/>',
+    ].join('');
+    const svg = await _bricksLayerSvg(bricksEditor(html));
+    expect(svg).toContain('<svg');
+    expect((svg.match(/<polygon/g) || [])).toHaveLength(2);
+    expect(svg).not.toContain('brush-spine');
+    expect(svg).not.toContain('<line');
+  });
+
+  it('a different layer\'s own content (data-layer mismatch) never leaks in', async () => {
+    const html = '<polygon points="0,0 1,0 1,1" data-layer="other" data-brick="wall" data-brick-gen="1"/>';
+    expect(await _bricksLayerSvg(bricksEditor(html))).toBe('');
   });
 });

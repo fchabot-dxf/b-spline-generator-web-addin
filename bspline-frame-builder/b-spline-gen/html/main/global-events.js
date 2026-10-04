@@ -10,9 +10,25 @@ import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { applySnapshot } from './snapshot-manager.js';
 import { _isTypingTarget } from '../editor/dom.js';
+import { getEditorTab } from './editor-tabs.js';
+import { deselectTool as deselectBrickTool } from './brick-panel.js';
+import { deselectPhotoTool } from './photo-panel.js';
 
 export function wireGlobalEvents(preview) {
     window.addEventListener('keydown', e => {
+        // F35 (advisor: "Esc = back to the select tool in every tab"): dispatches by the
+        // CURRENTLY ACTIVE editor tab rather than unifying onto one shared mode concept (Wall/
+        // Frame/Photo's own tools have no gesture "mode" to exit) -- Artwork's own Draw-mode
+        // anchor-path-cancel (editor-interaction.js's own Escape handler, installed only while
+        // actively placing anchor points) stays completely separate and still runs first; this
+        // always ALSO returns the editor to plain Select afterward, which is the literal ask.
+        if (e.key === 'Escape' && isEditorOpen() && !_isTypingTarget(e.target)) {
+            const tab = getEditorTab();
+            if (tab === 'brick') deselectBrickTool();
+            else if (tab === 'photo') deselectPhotoTool();
+            else window.svgEditor?.setMode?.('select');
+        }
+
         if (!(e.ctrlKey || e.metaKey)) return;
         if (_isTypingTarget(e.target)) return;
 

@@ -10655,3 +10655,818 @@ the holder file, which needs the advisor).
 Full suite not re-run this turn (diagram-only change, no app/test code touched; same "a style tweak
 does not need 1,500 tests" gate-tiering rule). `node tools/repro/h23_item78b_t10_target_vs_current.mjs
 <repoRoot> [outDir]` re-runs cleanly end to end (verified twice from a clean scratch dir).
+## F35 item 12 follow-up: a 'None' OFF switch for Wall and Frame band preset
+
+Fred: "the Wall and the Frame each need an OFF state" -- Wall=None means no wall bricks (frame only);
+Frame band preset=None means no frame bands (wall fills to the board/frame contour). Both declared as
+DATA, not an if-branch per button, per the dispatch's own instruction.
+
+**Frame band preset=None was free**: `FRAME_PRESETS.none = []` (an empty band list). `generateBricks`
+(engine.js) already had `if (frame && frame.bands && frame.bands.length)` -- written for the
+omitted-frame case, but an EMPTY array fails that check identically, so zero frame bricks and
+`interiorOutline = boardOutline` (unchanged) fall out with ZERO code changes anywhere downstream.
+`FRAME_PRESET_LIST` already reads `Object.keys(FRAME_PRESETS)` directly (this round's own earlier
+fix), so the button appeared with no UI code either -- just a label.
+
+**Wall pattern=None needed one new declared flag**: `BRICK_PATTERNS.none = { kind: 'none' }` (the Wall
+picker already reads `Object.keys(BRICK_PATTERNS)` too). `applyWallPattern` (editor-brick-tool.js)
+sets `input.skipWallFill = true` for this `kind` (matching its own existing `tile2d`/course-kind
+dispatch, just one more case); `generateBricks` checks that ONE flag once, skipping `bricksFillShape`
+entirely when set -- Frame is completely untouched (the `skipWallFill` check is scoped to the Wall
+call only). Since 'none' is now a `BRICK_PATTERNS` key, it also auto-appeared in the per-band Frame
+picker (which reads the SAME `WALL_PATTERN_LIST`) -- disabled it there alongside `tile2d` entries
+("a band needs a real pattern"), the identical treatment that list already gives herringbone/
+basketweave, not a new mechanism.
+
+Tests: `FRAME_PRESETS.none` asserted empty and excluded from the "every preset has non-empty bands"
+check (bricks-library.test.js); `bricksContourBands` with `FRAME_PRESETS.none` asserted to yield
+ZERO bricks, not "produced no bricks" treated as a failure (bricks-contour-bands.test.js); two new
+`generateBricks` tests (bricks-engine.test.js): `skipWallFill` zeroes Wall while leaving Frame's own
+brick count identical to the non-skipped case, and `FRAME_PRESETS.none` behaves byte-identically to
+passing no `frame` object at all. Full suite green: 205 files / 3786 tests.
+
+Live-verified both scenarios on T1 (three_band preset): Wall=None with Frame still active -- 0 wall
+pieces, 300 frame pieces (the 3-band perimeter clearly visible, terrain showing through the interior
+where Wall bricks used to be); Frame=None with Wall=stretcher -- 0 frame pieces, 332 wall pieces (a
+plain brick wall filling right up to the board's own hourglass contour, no frame band at all). Zero
+console errors either way. Screenshots: `shots/seatC/f35item12_wall_none.png`,
+`f35item12_frame_none.png`.
+
+## F35 item 10 follow-up: Brush section -- Profile [Stripped|Continuous] + Orientation [Stretcher|Soldier]
+
+Fred's next DM batch (folded in before item 11, per the advisor): the Brush tool needed its own
+settings section in the Brick tab panel, shown only while Brush is the active tool. Two pieces
+landed this round; the pattern-picker piece (reusing the Frame tool's own band-list UI, brush
+presets 1/2/3-wide) stays a declared, greyed placeholder pending d3's T86 item 7 (the shared
+band-pattern engine) -- nothing to generalize yet with only one real width.
+
+**Both options already existed in the engine with zero UI exposure.** `bricksAlongPath`
+(core/bricks/along-path.js) already declared `opts.orientation` ('stretcher'|'soldier') and
+`opts.profile` ('bricks'|'continuous'|'ridge', 'ridge' throwing not-yet-implemented) -- this was
+pure UI wiring, no engine change. The advisor's dispatch calls the `'bricks'` profile value
+"Stripped" colloquially; the UI label says Stripped/Continuous while the stored value stays the
+existing declared constant (`'bricks'`/`'continuous'`), not a rename.
+
+**Where the settings live, and why NOT a new per-element edit mechanism.** Investigated whether
+"regenerate on change" meant live-editing an ALREADY-DRAWN brush element's own settings. It
+doesn't exist anywhere in this codebase for ANY Brick-tab setting -- Scale/Grout/Relief/etc. all
+only ever affect NEW strokes going forward (`brickBrushHandler.finish()` freezes a JSON snapshot of
+`P.brickSettings` into each stroke's own `BRICK_SETTINGS_ATTR` at draw time; Stripe's own
+`settingsVariantForCycle` is a computed-fresh-every-regenerate override, not a rewrite of that
+snapshot). Orientation/Profile follow the SAME established precedent -- two new global
+`P.brickSettings` fields (`orientation: 'stretcher'`, `profile: 'bricks'`, state.js), read by
+`toBrickOpts` (editor-brick-tool.js) into every NEW stroke's frozen settings -- rather than
+inventing a first-of-its-kind "edit an existing element" capability nothing else here needed either.
+Flagging this for the advisor/Fred: an already-drawn stroke's Profile/Orientation can only be
+changed by re-drawing it, same as Scale or Grout today.
+
+**UI**: a new `#brickBrushSection` block in `bspline_gen_palette.html`, inserted right after
+`#brickToolHint` and before the Wall-pattern picker (inside `#editorBrickPanel`) -- two
+`.relief-toggle`/`.relief-toggle-btn` pairs (the SAME convention `#brickReliefToggle`/
+`#brickGroutProfileToggle` already use), default Stripped/Stretcher active. The Width row is a
+labeled, disabled 3-button placeholder (1-wide Stretcher active, 2-wide/3-wide greyed with a
+tooltip naming d3's T86 item 7 as the gate) -- named rather than silently omitted, per Fred's own
+"queued, pending X" convention elsewhere in this panel.
+
+**Wiring** (main/brick-panel.js): `syncProfileToggle`/`setProfile`/`syncOrientationToggle`/
+`setOrientation` mirror `syncReliefToggle`/`setInvert` exactly. `syncBrushSection()` toggles
+`#brickBrushSection`'s display based on `_activeTool === 'brush'` -- called from `syncToolButtons()`
+(every tool switch, including on init) and from `syncControlsFromState()` (a reloaded session
+restoring a non-default profile/orientation reflects onto the buttons immediately, not just on the
+next tool switch).
+
+**Tests** (`tests/brick-brush-section.test.js`, new file, minimal jsdom fixture for
+`initBrickPanel()`): section hidden by default, shown on Brush, hidden again on Wall; defaults
+Stripped/Stretcher active; both toggles write the correct `P.brickSettings` field and flip both
+buttons' `active` class; a pre-set non-default state is reflected on re-init (the reload case).
+Mutation-tested: commented out both `addEventListener` wiring lines, re-ran -- exactly 2/5 tests
+failed (the two toggle-click tests; the other 3 test unrelated behavior and correctly stayed green),
+confirming they're not vacuous. Restored from a pre-mutation copy (byte-diffed identical after
+restore) rather than `git checkout`, since the Brush-section edits were uncommitted at mutation
+time. Full suite green: 205 files / 3786 tests (ran before the mutation probe); re-ran the 4 directly
+affected files after restoring (40/40 green).
+
+**Live-verified** via headless Chrome, driving `getModeHandler('brickBrush')`'s own
+start/update/finish directly (dynamic-imported from editor-interaction.js in-page) rather than
+synthesizing pixel-coordinate pointer events -- exercises the exact same code path real mouse
+drags dispatch into, with no dependency on canvas pan/zoom state. Confirmed: clicking Brush shows
+the section (`getComputedStyle().display` flips block/none correctly on Wall/Frame too); a stroke
+drawn at Stripped/Stretcher defaults produces 5 separate brick polygons; switching Profile to
+Continuous and drawing a second stroke produces one unbroken polygon band (visually confirmed in
+the screenshot, not just by brick count); Orientation toggle writes through
+(`P.brickSettings.orientation === 'soldier'` after the click). Zero console errors/exceptions
+throughout. Screenshots: `shots/seatC/f35item10b_brush_stripped.png` (five jointed bricks),
+`f35item10b_brush_continuous.png` (one unbroken band drawn below it, same stroke shape).
+
+Not yet done from this DM batch: the Brush pattern-picker's real band-list UI (deliberately a
+placeholder, see above), and the slider commit-timing / live-2D-preview-during-drag work (not
+started).
+
+## Bug fix (d3's find, dispatched ahead of item 11): outline-offset.js t=0 collapses T16/T17
+
+d3 found that `offsetOutlineInward(primitives, 0)` -- "Offset from frame" at its own live default
+distance (0) -- collapsed 3 of T16/T17's (Arched Funnel/Tulip) 6 primitives (both upper sides + the
+arch) into a single point, instead of returning the outline unchanged. Measured with the templates'
+own real geometry (`frameCutProfile` + `offsetOutlineInward` direct, both boards): **the failure is
+isolated to EXACTLY t=0** -- t=1e-6 through t=0.25 all come back with zero collapses on both
+templates. This matters because it rules out "small offsets are generally unreliable" (the dispatch's
+own hedge) as the actual scope; the real bug is a boundary case at the single value t=0.
+
+**Root cause**: at t=0 every offset "carrier" (outline-offset.js's own `_carrier`) is exactly the
+ORIGINAL line/circle, so a corner joint's true solution is one of `_intersect`'s own 2 candidate
+roots, AT ZERO distance from `ref` (the un-offset joint). But `_intersect`'s `onOffset` filter calls
+`_inside(q, poly)` -- a ray-cast point-in-polygon test -- evaluated AT a VERTEX of that same
+tessellated polygon, which is exactly the one place a ray-cast's left/right convention is undefined.
+At t=0 this can reject the true (zero-distance) root and keep only the far, wrong one of the 2-root
+circle/line intersection, which the `_join`/`offsetOutlineInward` "backwards" check then reads as
+that piece's own joints having crossed -- marking it (and, cascading, its neighbours) `collapsed`.
+Every OTHER tested t (even 1e-6) moves the carriers just enough that the ambiguous-vertex case never
+arises.
+
+**Fix** (`bspline-frame-builder/b-spline-gen/html/editor/outline-offset.js`): `offsetOutlineInward`
+now special-cases `Math.abs(t) < 1e-9` as an exact identity -- returns a CLONE of the input
+primitives (never the same objects, so callers stay free to mutate the result) without running the
+joint solver at all. This is mathematically exact (an offset by 0 is the identity by definition) and
+touches nothing about the solver's behavior at any other t -- confirmed by the full existing
+outline-offset/contour-from-frame/frame-parity-app suites staying green (209 tests) with no
+assertions changed.
+
+**Tests** (both files, mutation-tested together: commenting out the t=0 fast path made exactly 9 of
+133 tests fail -- the 9 new ones below, nothing pre-existing -- then restored from a pre-mutation
+copy, confirmed byte-identical):
+- `tests/outline-offset.test.js`: a line+arc outline (the same corner KIND that broke -- a line-arc
+  joint, not just all-line) at t=0 returns every primitive unchanged (type, coordinates, radii) with
+  zero `collapsed`, and the returned objects are clones, not the original references.
+- `tests/contour-from-frame.test.js`, two new `describe` blocks:
+  1. Every template, all 3 board sizes, `frameContourSilhouette(frame, 0, 0)` (distance 0, SW=0 --
+     the TRUE t=0 edge; the existing "T84 item 6" suite's own SW=0.07 never actually reaches t=0, so
+     it could not have caught this) matches the un-offset `frameCutProfile`'s own primitive count and
+     bounding box exactly -- t=0 can never legitimately collapse anything, so this is a hard
+     invariant, not an empirical observation.
+  2. T16/T17 specifically, at the dispatch's own named distances (0, 0.1, 0.25): all 6 primitives
+     survive every one, per this codebase's own already-declared invariant (contour-from-frame.js:
+     "T16/T17: every joint is a real corner, nothing ever collapses there").
+
+Full suite green: 206 files / 3811 tests.
+
+**Live-verified**: Shape Lattice pattern on T16 and T17, "Offset from frame" checked, distance 0 --
+both show a single smooth, closed, unbroken contour tracing the full funnel/hourglass outline (no
+stray point, no gap, no sharp jump). Screenshots: `shots/seatC/f8_offset0_fix_t16_arched_funnel.png`,
+`f8_offset0_fix_t17_tulip.png`.
+
+## F35 item 10 follow-up: Brick-tab sliders commit on release, with a throttled 2D-only drag preview
+
+Fred's slider-timing DM, folded in with the rest of this batch: Brick-tab sliders (Scale, Relief
+height, Suppression, Clumping, Frame length) should regenerate on RELEASE, not every raw drag tick --
+but with a live, throttled (~10/sec) 2D-only preview WHILE dragging so the canvas doesn't sit stale
+for the length of a drag, falling back to a cheap outline-only draw if a preview tick measures slow.
+
+**Investigated first, not assumed**: before touching anything, traced what currently happens on a
+slider drag. Answer: NOTHING. `bindSlider` wrote straight to `P.brickSettings[key]`, never calling
+`runBricks`/`commitEdit`/`scheduleRebuild` -- every OTHER app param goes through `applyParam` (which
+already debounces a `scheduleRebuild` call at 200ms, effectively "fires once after dragging stops"),
+but brick settings bypass that entirely. So this wasn't "fix an existing every-tick regen" -- it's a
+genuinely new capability, built from scratch to this spec.
+
+**Why `runBricks` itself can't be the live-preview tier**: it calls `commitEdit` (pushes an undo
+snapshot + rescans every Brush element via `regenerateOwnedBrickElements`) and
+`notifyBricksGenerated` (can trigger a grout-driven mesh-spacing tighten -> `scheduleRebuild`'s own
+EXPENSIVE height-map/3D path) on every call. Running that 10x/sec during a drag would spam the undo
+stack (one drag = dozens of undo steps) and could still cascade into the exact expensive rebuild this
+feature exists to skip. Fixed by splitting `editor-brick-tool.js`'s `runBricks` into a shared
+`_generateAndDraw` (geometry + polygon draw only) plus three callers: `runBricks` (full: generate +
+commitEdit + notifyBricksGenerated, unchanged behavior for the Wall/Frame buttons), NEW
+`runBricksPreview` (generate + draw, no commit/notify -- the live-drag tier), and NEW
+`runBricksOutlinePreview` (one cheap dashed board-outline stroke, no `generateBricks` call at all --
+the slow-drag fallback, costs nothing regardless of brick density).
+
+**The shared mechanism** (`main/brick-panel.js`'s `bindSlider`, declared once, every slider call site
+unchanged): 'input' (every raw tick) writes `P.brickSettings` immediately (cheap) and schedules a live
+preview via `requestAnimationFrame`, gated to actually run at most every 100ms (~10/sec) -- a tick that
+arrives before the gate elapses just re-arms the SAME pending frame rather than queuing a second one,
+so "latest value wins" falls out for free (every raw tick keeps the state current; only the throttled
+frame's OWN read of it, whenever it finally runs, matters). The live tier measures its own
+`runBricksPreview` call with `performance.now()`; crossing 50ms sets a drag-scoped `_dragSlow` flag, so
+every FURTHER tick of that same drag calls `runBricksOutlinePreview` instead. 'change' (blur/Enter/
+mouse-up) cancels any pending live frame and calls the full `runBricks` immediately, resetting
+`_dragSlow` for the next drag. Brush tool active, or Frame tool with no usable frame: the live tier is
+a no-op (nothing to preview -- a Brush element's settings are frozen at draw time regardless of any
+slider, the same existing limitation the Brush Profile/Orientation toggles above already document;
+Frame with no frame is the SAME precondition the Frame button itself already guards on).
+
+**Tests** (`tests/brick-slider-timing.test.js`, new file): mocks `runBricks`/`runBricksPreview`/
+`runBricksOutlinePreview` (editor-brick-tool.js) to isolate the TIMING/dispatch logic from real brick
+geometry (covered elsewhere); a controllable rAF mock (the SAME convention `editor-session.test.js`'s
+own SA-UNDO-1 suite already established -- `requestAnimationFrame` records callbacks, nothing fires
+until the test calls `runPending()`). Covers: dragging never calls the full commit and collapses N raw
+ticks into exactly one scheduled frame using the LATEST value; release cancels any pending frame and
+commits exactly once; a bare release with no prior drag still commits; Brush-active and
+no-usable-frame both suppress the live tier entirely; a measured-slow tick falls back to
+outline-only for the rest of that drag, and a commit resets it for the next one. Mutation-tested:
+reverted `bindSlider` to its pre-this-turn immediate-apply-only form, re-ran -- 6 of 8 new tests
+failed (the 2 that don't depend on the throttle/commit split, e.g. "schedules exactly one frame",
+correctly stayed green since a plain immediate-apply happens to also satisfy "no full commit on
+input"), confirming the suite is not vacuous; restored from a pre-mutation copy, re-confirmed green.
+Full suite green: 207 files / 3819 tests.
+
+**Live-verified** via headless Chrome against the REAL pipeline (unmocked -- the unit tests above
+isolate the timing/dispatch logic, this exercises `generateBricks`/the DOM end to end): on T1 with
+Wall bricks seeded (171 pieces at scale 1.0), firing a bare `input` event on `#brickScaleSlider`
+(value 1.5, no `change` yet) updated the canvas to 66 pieces (fewer, larger bricks, exactly what
+scale 1.5 should produce) -- confirming the live-preview tier really redraws from a raw drag tick,
+not just on release. Firing `change` afterward left the count unchanged (66, stable), confirming the
+full commit reproduces the same, correct result. Zero console errors.
+
+## Post-merge: Brush Orientation vs d3's T86 item 7 band presets
+
+Merged `origin/main` (d3's brush band-preset work, T86 item 7, already conflict-resolved against my
+own Profile/Orientation toggles by the advisor on main) into fb-app -- clean auto-merge, no manual
+conflict resolution needed; full suite green 208/3830 straight after.
+
+Per the advisor's own ask ("decide which wins, or disable orientation when a multi-row preset is
+picked, or disable orientation"): traced `bricksForBrushStroke` (editor-brick-tool.js, the merged
+code) rather than guessing. Finding: `opts.orientation` (my toggle) and a brush preset's own per-band
+`pattern` field never actually COLLIDE in the engine -- `bricksForBrushStroke` reads `orientation`
+ONLY on the `profile:'continuous'` path (`bricksAlongPath`); the DEFAULT Stripped path (every
+`brushBandPreset`, including the 1-wide stretcher one, not just 2/3-wide) goes through
+`bricksContourBands` instead, which derives each band's own brick orientation from its OWN pattern
+name and never reads `opts.orientation` at all. So Orientation isn't in conflict with the preset --
+it's simply INERT for Stripped, full stop (not a "multi-row only" issue as the dispatch assumed).
+
+Fix: `main/brick-panel.js`'s new `syncOrientationAvailability()` disables both Orientation buttons
+(with an explanatory tooltip) whenever `profile !== 'continuous'`, called from both
+`syncProfileToggle` and `syncOrientationToggle` so it stays correct regardless of which one last
+changed. Added the matching `.relief-toggle-btn:disabled` CSS rule (`styles/layout-app.css`) -- it
+had none before, so a disabled toggle button would have looked identical to an enabled one.
+
+Updated `tests/brick-brush-section.test.js`'s own Orientation test (it predated this fix and clicked
+Orientation while Stripped was active, which no longer does anything -- correctly caught by the new
+disabled-button behavior): now asserts disabled-under-Stripped, clicking does nothing, switching to
+Continuous enables it and the toggle works, switching back to Stripped disables it again. Full suite
+green: 208 files / 3830 tests (one `frame-gen.test.js` failure on the first run was a pre-existing,
+unrelated random-seed flake -- reproduced green in isolation and on a full clean re-run).
+
+Live-verified (headless Chrome, T1, Brush tool): Orientation buttons render visibly dimmed/disabled
+under the default Stripped profile; d3's real 3-entry preset list (1/2/3-wide) renders correctly
+alongside; switching to Continuous un-dims and enables Orientation. Screenshots:
+`shots/seatC/f35item10b_brush_merged_stripped.png`, `f35item10b_brush_merged_continuous.png`.
+
+## Bug fix (Fred, "do it next"): Clear leaves a ghost of the old content
+
+Clicking Clear in the editor emptied the drawn content but a ghost of the old terrain/background
+stayed visible. Investigated the 3 named suspects (brick elements, height mask, background render)
+rather than guessing which one: `regenerateOwnedBrickElements` (editor-brick-tool.js) and the brick
+height-mask rasterizer (editor-brick-height-mask.js) are both already fully stateless -- they re-read
+the live DOM every call, no cache to invalidate. The ACTUAL bug was in the background render, and it's
+an ORDERING bug, not a cache-invalidation one.
+
+**Root cause**: `action-tools.js`'s `editorClear` handler (Artwork tab) called `sync3DBackground(editor)`
+SYNCHRONOUSLY, one line before `commitEdit(editor)`. `sync3DBackground` doesn't recompute anything --
+it just `toDataURL()`s whatever `#svgEditorTopView` CURRENTLY shows and stamps that bitmap into the
+background layer. At the point Clear calls it, nothing has told that canvas the content changed yet,
+so it always captured the STALE, pre-Clear terrain. The only thing that ever actually repaints
+`#svgEditorTopView` is the async chain `commitEdit -> _notifyChange('commit') -> onChange -> 
+runChangePipeline('commit') -> remask -> scheduleRebuild (50ms debounce) -> rebuild() ->
+updateEditorTopView()` -- which calls `sync3DBackground` itself, correctly, once the terrain is
+actually recomputed. So the explicit call in Clear was both redundant with that AND guaranteed to
+paint something wrong in the meantime. (The exact same stale-then-corrected idiom exists at 2 other
+call sites in this codebase, `editor.js` `setModelMetrics` and `editor-io.js` `open()` -- not touched
+here, out of scope for this fix, but worth knowing about if a similar ghost ever shows up elsewhere.)
+
+Checked `_restoreState()` (undo/redo) too, per the dispatch's "undo of Clear must bring it all back":
+it never calls `sync3DBackground` at all, relying on the SAME async chain Clear now relies on after
+this fix -- so undo was never making this WORSE, and needed no separate fix.
+
+**Fix**: removed the premature `sync3DBackground(editor)` call from `editorClear` (and its now-unused
+import) -- Clear now relies on the exact same async commit chain every other edit (draw, delete, ...)
+already correctly relies on, with no special-cased extra call.
+
+Considered also touching `editor-brick-surface.js`'s `PATTERN_IDS` cache + its `<defs data-brick-defs>`
+block (lives on the root `<svg>`, a sibling of `_sketchLayer`, so `_sketchLayer.clear()` never removes
+it) -- on inspection this is a content-addressed cache (keyed by set/sample/flip, not by DOM element),
+so a surviving `<pattern>` after Clear is still perfectly valid and gets correctly reused by the next
+brick draw using the same sample; it's bounded by the small, fixed sample catalog size, not unbounded
+per Clear cycle. Concluded this is a real but harmless, invisible, already-correct cache -- not the
+reported bug, and not touched (no speculative fix for something that isn't actually broken).
+
+**Test** (`tests/h20-clear-scoped.test.js`, extended): a mock editor with a spy-able `_bgLayer`
+(`.image`/`.clear`/`.rect`) and a real `#svgEditorTopView` canvas fixture -- asserts `_bgLayer.image`/
+`.clear` are never called SYNCHRONOUSLY within `editorClear`'s own call stack (the precise historical
+bug), then calls the real `sync3DBackground(editor)` directly afterward to prove the fixture itself is
+live (not vacuously passing because the mock no-ops). Mutation-tested: restored the old premature call,
+re-ran -- exactly 1 of 7 tests in the file failed (the new one), confirming it's not vacuous; restored
+from a pre-mutation copy, re-confirmed green. Full suite green: 208 files / 3831 tests.
+
+**Live-verified** (headless Chrome, T1, Wall bricks seeded -- a real photo-textured brick fill with
+real relief carve depth, the most visually obvious case): before Clear, the canvas shows the full red-
+brick wall fill; after Clear + the async rebuild settling (~1.2s margin, well past the 50ms debounce),
+the canvas shows a flat, featureless board -- no brick texture, no leftover relief bump, matching a
+genuinely fresh board. Zero console errors. Screenshots: `shots/seatC/clear_ghost_fix_before.png`,
+`clear_ghost_fix_after.png`.
+
+Not yet separately re-verified on the Photo tab specifically (the dispatch asked for "every tab") --
+the fix is in the one shared Artwork-tab Clear path every tab's own Clear eventually funnels through
+(Brick/Photo content all lives in `_sketchLayer` same as Artwork), so it should already cover them,
+but a dedicated Photo-tab screenshot is still open.
+
+## Bug fix (Fred, "do it next"): mobile tool-rail regression from item 10, every tab (incl. Artwork)
+
+At phone width (~390px) every editor tab's tool rail rendered as a full-width VERTICAL stack of
+icons, pushing the canvas down (Brick) or covering it entirely (Artwork). Investigated the CSS
+cascade directly rather than guessing at a rewrite, per the later correction ("same UX as Artwork,
+not the same UI -- Brick/Photo keep their own look/icons, reuse Artwork's INTERACTION code").
+
+**Root cause** (confirmed via `git diff 4538ce6^ 4538ce6`, item 10's own commit): before item 10, the
+tool buttons were DIRECT children of `.editor-sidebar`, so the existing mobile rule
+(`.editor-sidebar { flex-direction: row !important }`, `styles/editor.css`, two near-duplicate
+`@media` blocks for the portrait-narrow and landscape-short-coarse-pointer cases) controlled them
+directly. Item 10 inserted one new nesting level -- `#editorToolbarFrame/Artwork/Photo/Brick` wrapper
+divs -- each carrying its own hardcoded inline `flex-direction:column` for the DESKTOP vertical rail.
+`flex-direction` only governs a flex container's DIRECT children, so the existing mobile rule now
+only ever reorders the (mostly `display:none`) wrapper divs relative to each other; it never reaches
+the actual buttons one level deeper. This hits ALL FOUR tabs identically -- Artwork included, not a
+Brick/Photo-only issue, confirming the "Artwork may have regressed too" suspicion exactly. The item
+10 commit touched zero lines of `styles/*.css`, so this was a markup-nesting change silently
+orphaning a previously-correct CSS rule, not a bad edit to the rule itself.
+
+Separately investigated whether "reuse Artwork's interaction code" implies a bigger JS refactor
+(`editor.setMode()`, the active-highlight loop, the mobile drawer's `TOOL_PANELS` table, undo/redo,
+pinch/pan, Esc-to-select): found that mode dispatch, pinch/pan, and undo/redo are ALREADY fully
+generic and already shared by Brick's Brush tool today; Brick's Wall/Frame/Scissors/Stripe tools and
+Photo's 5 tools maintain their own independent active-tool highlighting (`_activeTool`/
+`syncToolButtons` in brick-panel.js, `_activePhotoTool`/`syncPhotoToolButtons` in photo-panel.js)
+rather than going through `setMode`'s own generic highlight loop (which only matches the `tool${Mode}`
+id convention Brick/Photo buttons don't use). Also could not find any existing "Esc reverts to Select"
+mechanism anywhere in the codebase to actually inherit (only Draw mode's own anchor-path-cancel Esc
+handler exists). Given the actual, measurable, screenshot-able bug (canvas covered on mobile) is
+FULLY explained by the CSS cascade issue alone, and a full parallel-mechanism-to-generic-mechanism
+refactor of Brick/Photo's own tool selection is a substantially larger, more architecturally open
+question (what would "Wall/Frame mode" even mean in `editor._currentMode` terms; Photo has no canvas
+gesture concept at all today) -- fixed the concrete CSS bug now and am flagging the deeper
+behavioral-parity question back to the advisor rather than guessing at its scope.
+
+**Fix** (`bspline-frame-builder/styles/editor.css`, both mobile `@media` blocks): added
+`.editor-sidebar > div[id^="editorToolbar"] { flex-direction: row !important; flex-wrap: nowrap
+!important; align-items: center !important; gap: 8px !important; }` -- reaches every tab's own
+wrapper by its shared id prefix (a future new tab needs no matching update here, same convention as
+`EDITOR_TABS` itself), `!important` since that's the only thing that beats a plain inline style.
+Deliberately does NOT touch `display` -- `main/editor-tabs.js`'s own `setEditorTab` must keep
+controlling which ONE wrapper is visible via inline `display:flex|none` unchanged. The existing
+`.editor-sidebar .tool-btn { flex: 0 0 auto }` rule already reaches through the wrapper divs fine (a
+descendant selector isn't limited by flex nesting depth) -- no change needed there.
+
+No vitest coverage possible (this codebase has no viewport/media-query layout testing convention --
+confirmed by search; CSS layout is verified only via live CDP screenshots, same as every other
+responsive fix here). Full suite green: 208 files / 3831 tests (confirms zero JS regressions from a
+CSS-only change).
+
+**Live-verified**: a new repro script (`tools/repro/` convention, CDP) drove all 4 tabs at 390x844 AND
+768x1024 (mobile device-metrics + touch emulation) on T1, reading each active wrapper's own
+`getBoundingClientRect()`/`getComputedStyle().flexDirection` directly (not just screenshots). At
+390px: Artwork's wrapper measured 927x44 (wide, short -- a true horizontal row, `flexDirection:
+"row"`), Photo/Brick 252x44, matching. At 768px (above the 720px breakpoint): Artwork 44x927
+(narrow, tall -- the desktop vertical rail, `"column"`), Photo/Brick 44x252. Screenshots confirm the
+canvas is fully visible below a compact, horizontally-scrollable icon row on every populated tab at
+390px (Frame's own wrapper is legitimately empty at both widths -- Frame uses on-canvas shape
+handles, not a left-rail toolbar, unaffected by and unrelated to this fix). Screenshots:
+`shots/seatC/f35_mobile_fix_390_{artwork,frame,photo,brick}.png`,
+`f35_mobile_fix_768_{artwork,frame,photo,brick}.png`.
+
+## F35 item 11: SEND BRICKS WITH THE B-SPLINE
+
+Built app/Python-side per the dispatch (Fred: "I just want it sent with bspline", no lock button, no
+line-by-line API drawing), then did the Fusion probe + combined live Send check while holding Fusion.
+
+**JS side** (`main/export-flow.js`): new `_bricksLayerSvg(editor)` -- finds the editor's "Bricks"
+layer, reads it via the SAME `getLayerSvg(..., {geometry:'fusion'})` every art layer already uses,
+then filters to `BRICK_GEN_ATTR='1'` children only. This second filter is needed because the Bricks
+layer also carries each Brush stroke's own invisible SPINE `<line>` (hit-testing/regenerate anchor,
+never real geometry) on the SAME layer -- the generic by-LAYER filter can't tell spine from real
+brick fill apart, so this strips it out afterward rather than teaching the generic layer-export path
+brick-specific knowledge no other caller needs. `sendToFusion` bakes the result through
+`bakeSvgForCarving(raw, P.widthIn, P.heightIn, 96)` -- byte-identical convention to every art layer,
+no new scale/offset math -- and adds it to the payload as `stamp.bricks`, with the SAME tri-state
+contract H23 item 71's decal already established: `null` = no instruction (append), `{enabled:false}`
+= explicit "remove whatever Bricks sketch exists" (sent whenever this Send genuinely has none),
+`{enabled:true, svg}` = replace it with this.
+
+**Caught before it shipped**: `stamp.enabled` (the existing SVG-stamping toggle) is
+`exportableStampLayers().length > 0` -- i.e. gated on hand-drawn ART layers specifically. A board
+with bricks and ZERO art layers would have `stamp.enabled = false`, and Python's own SVG-stamping
+block only runs `self._import_all_svg_layers(...)` inside `if stamp_data.get('enabled')` -- so
+nesting the bricks call in there too would have silently dropped bricks-only boards. Fixed by placing
+`self._apply_bricks_sketch(...)` at the SAME independence level as `_apply_colour_decal` (both inside
+`if not is_preview`, neither gated on `stamp_data.enabled`) -- the exact precedent that already solves
+this for the decal, for the identical reason.
+
+**Python side** (`b-spline-gen.py`): `BRICKS_SKETCH_NAME = 'Bricks'` + `_remove_named_sketch`
+(mirrors `_remove_named_decal`'s exact shape, for a component's `.sketches` instead of `.decals`).
+New method `_apply_bricks_sketch`: resolves the target via the EXISTING `_find_stamped_component`
+(item 12's own function, already proven correct -- never falls back to root/Clean), removes any
+existing 'Bricks' sketch unconditionally before adding (item 68/71's own proven dedupe-before-add
+fix), then calls `_import_single_layer_svg` with a NEW optional `full_name` param (defaults to
+`None`, every existing caller untouched) so the sketch is named EXACTLY `'Bricks'` rather than that
+function's own `f"Source - {sketch_name}"` template. "MUST NEVER RAISE" -- identical discipline to
+the decal, one outer try/except.
+
+**Tests**: `tests/export-flow.test.js` (4 new, `_bricksLayerSvg`) -- no Bricks layer, spine-only
+(empty), mixed spine+real-pieces (keeps pieces, strips spine), wrong-layer content never leaks in.
+Mutation-tested (disabling the BRICK_GEN_ATTR filter fails exactly the 2 tests that depend on it).
+`bspline-frame-builder/b-spline-gen/test_bricks_sketch_handler.py` (12 new, Python) -- reuses
+`test_colour_decal_handler.py`'s own Fusion-API fakes (`_FakeBody`/`_FakeFace`/`_FakeOcc`/
+`_import_group`/`_stamped_occ`) for body/face/occurrence resolution, adding sketch/construction-plane/
+import-manager fakes the decal's own suite never needed. Covers the full tri-state contract (no key /
+explicit None / disabled / enabled), no-Stamped-component skip, exact-name assertion ('Bricks', not
+'Source - Bricks'), re-Send replaces not duplicates, a Fusion-API crash never propagates, and lands in
+Stamped specifically (never Clean). Mutation-tested (disabling the dedupe-before-add fails exactly the
+re-Send test). Full suites green: JS 208 files / 3835 tests, Python 128 tests (both repo-wide, not
+just the new files).
+
+**Fusion probe + combined live Send check** (holder held throughout, both scratch docs
+fingerprinted + closed via their own handle, never by name/count):
+1. Generated a REAL baked Bricks SVG via the live app's own pipeline (`_bricksLayerSvg` +
+   `bakeSvgForCarving`, not hand-written) -- a Wall fill at scale 2 on T1, 91 polygons, viewBox
+   `-336 -432 672 864` (confirms the `carveMatrix` convention: ×96dpi, centered at origin, exactly
+   `widthIn*dpi` × `heightIn*dpi`).
+2. Isolated 3 real polygons into a minimal probe file. First attempt at building it with a naive
+   regex (`<polygon[^>]*>`) produced malformed, unclosed/nested XML (matched only the opening tag,
+   not the full `<polygon>...</polygon>` pair) -- caught by validating with `xml.etree.ElementTree`
+   BEFORE spending a Fusion call on it, not after a cryptic Fusion-side failure (which is exactly
+   what the first real attempt produced: "failed to import SVG", a pure client-side bug, not a
+   Fusion quirk).
+3. **Scale/units, numerically verified, not just "looked right"**: imported the 3-polygon SVG into a
+   fresh scratch sketch via the EXACT production call (`importManager.createSVGImportOptions` +
+   `svg_options.scale = 1.0`, matching `_import_single_layer_svg`'s own existing art-layer
+   convention). Computed polygon 1's expected real-world area by hand from its own baked coordinates
+   (a right triangle, two 86.553px legs -> 0.40644 in^2 -> 2.6224 cm^2) and compared to Fusion's own
+   measured profile area: **2.62214 cm^2 -- matches to within 0.001%.** Confirms the existing
+   art-layer scale/units convention carries over exactly to `<polygon>` geometry with zero changes
+   needed, and that Fusion's importer builds correct closed profiles from `<polygon>` despite each
+   one's dangling `fill="url(#brickfill-...)"` reference (the pattern `<defs>` never gets exported --
+   by-layer filtering has no `data-layer` on it -- but fill is cosmetic to Fusion's geometry import,
+   confirmed empirically, not just assumed).
+4. **Combined Send check**: built a second scratch doc with a REAL `B-Spline Set` -> `Stamped` +
+   `Clean` component tree (real occurrences, real bodies, real design parameters for widthIn/heightIn
+   -- not fakes), then called the deployed `_find_stamped_component`/`_find_stamped_panel_body`/
+   `_largest_area_face` plus `_compute_artwork_plane`/`_import_single_layer_svg` (the add-in running
+   in Fusion hasn't been redeployed with this turn's new code, so this probe used the ALREADY-DEPLOYED
+   methods directly, with an inline copy of the new `_remove_named_sketch` logic, rather than
+   redeploying someone else's live Fusion session mid-session). Result: the Bricks sketch landed in
+   Stamped (`["Sketch1", "Source - BricksCheck3"]`), Clean stayed at exactly its own original
+   `["Sketch1"]` (zero new sketches), root stayed at `[]`. Re-ran the remove-before-add + import
+   sequence a second time (simulating re-Send): removed exactly 1 existing sketch first, then
+   Stamped's own sketch list was STILL exactly `["Sketch1", "Source - BricksCheck3"]` -- never 2,
+   confirming replace-not-duplicate against a real Fusion tree, not just the Python fakes. Both
+   scratch docs closed by their own handle after a fingerprint-name check.
+   Screenshot: `shots/seatC/f35item11_bricks_sketch_fusion.png` (the 3-polygon probe sketch floating
+   above the Stamped/Clean test bodies, isometric view).
+
+Not yet done: redeploying the real add-in with this turn's code (so the NEW `full_name='Bricks'`
+exact-naming and the `stamp.enabled`-independence fix run for real inside an actual Send from the
+web UI) -- that's the advisor's own call, not mine to do unprompted mid-session.
+
+## F35: editor tool-rail UX unification (declared registry + Esc-to-select), modest per the advisor
+
+Per the advisor's own explicit scoping ("a modest UX unification, NOT a mode refactor: ONE declared
+tool registry per tab driving the active-tool highlight for all tabs... plus Esc = back to the
+select tool in every tab").
+
+**A real, confirmed bug found while investigating, not just a style cleanup**: `editor-ui.js`'s
+`setMode()` toggled `.active` via `queryAll('.editor-sidebar .tool-btn')` -- EVERY `.tool-btn` in
+the whole sidebar, not just Artwork's own. Brick/Photo's own tool buttons are ALSO `.tool-btn`
+(their own, independent active-tool highlighting), so any `setMode()` call -- including the ones
+Brick's OWN Brush/Scissors/Stripe tools make to arm the generic mode system (`brickBrush`/`cut`/
+`stripe`) -- walked right past them and set `active=false` on every one (none match the
+`tool${Mode}` id convention this loop checks for). Measured live BEFORE the fix: clicking Brick's
+Brush tool left `brickTool_brush.classList.contains('active')` **false** immediately after the
+click, despite `editor._currentMode` correctly becoming `'brickBrush'` -- the button visibly
+un-highlights itself the instant it's selected.
+
+**Fix, two parts**:
+1. New `editor/editor-tool-registry.js`: `renderToolRegistry(container, registry, onSelect)` +
+   `syncToolRegistryButtons(registry, activeId)` -- the ONE declared mechanism Brick
+   (`main/brick-panel.js`) and Photo (`main/photo-panel.js`) now BOTH use, replacing two
+   textually-identical copies of the same render-buttons/toggle-active loop each panel carried
+   independently. `BRICK_TOOLS`/`PHOTO_TOOLS` each gained an explicit `buttonId` field (was
+   computed ad hoc via template-string concatenation at 2 separate call sites per panel).
+2. `editor-ui.js`'s `setMode()`: scoped its own highlight query to `#editorToolbarArtwork .tool-btn`
+   specifically -- the one-line fix for the cross-tab bug above, and (deliberately) NOT migrated
+   onto the new shared registry functions itself: Artwork's own buttons are static HTML with richer
+   inline SVG icons (not a plain icon character `renderToolRegistry` renders), and the mode-name-to-
+   button-id mapping is an EXISTING, working, already-used-elsewhere convention (`MODE_HINTS`,
+   `TOUCH_MODE_HINTS`, `modeHandlers` all key off the same mode-name strings) -- forcing it into a
+   parallel `{id, buttonId}` array would be pure duplication for zero behavioral gain. "One
+   mechanism, no duplication" is satisfied by Brick+Photo sharing one thing instead of two; Artwork
+   needed a scope fix, not a rewrite.
+
+**Esc = back to the select tool, every tab** (`main/global-events.js`, the existing global keydown
+listener this exact class of shortcut already lives in): new branch, UNGATED by Ctrl (Escape has no
+modifier), dispatching by `getEditorTab()`: Brick -> new exported `deselectTool()` (brick-panel.js:
+clears `_activeTool`, re-syncs its own highlight to none, calls `editor.setMode('select')`), Photo
+-> new exported `deselectPhotoTool()` (photo-panel.js: Photo's own tools are settings-section
+switches with no "nothing selected" state to fall back to, so this only resets the EDITOR's
+underlying interaction mode, deliberately leaving whichever Photo section was showing alone),
+anything else (Artwork/Frame) -> `editor.setMode('select')` directly. Deliberately left
+editor-interaction.js's own PRE-EXISTING Draw-mode anchor-path-cancel Escape handler (a separate,
+dynamically-installed `window` listener, only live while actively placing anchor points) completely
+untouched -- both listeners fire on the same Escape press with no conflict (anchor-cancel cleans up
+the in-progress path; this new one also returns the tool to Select afterward, which is the literal,
+intended behavior per the brief, not a side effect to guard against).
+
+**Tests** (`tests/editor-tool-registry.test.js`, new file): `renderToolRegistry`/
+`syncToolRegistryButtons` (render + rewire-on-select, re-render clears stale buttons, sync toggles
+exactly the right entry, a not-yet-rendered id is a safe no-op) -- 4 tests. Plus the regression
+itself, 2 tests, using the same minimal mock-editor shape `shape-lattice-handle-hover.test.js`
+already proved sufficient to run `setMode()` end to end: switching Artwork to Draw mode highlights
+`toolDraw` AND leaves Brick's own active button untouched; arming `brickBrush` specifically (the
+exact real-world trigger) never un-highlights `brickTool_brush`. Mutation-tested: reverted the
+scoping fix back to the blanket query, re-ran -- exactly those 2 tests failed, the other 4 (pure
+registry-function tests, unrelated to the scoping bug) correctly stayed green. Restored from a
+pre-mutation copy, re-confirmed green. Full suite green: 209 files / 3841 tests.
+
+**Live-verified** (headless Chrome, T1, all 3 tabs, one script): (1) clicking Brick's Brush tool ->
+`brickTool_brush` active = true (the fix, confirmed end to end past the earlier, failing manual
+check); (2) Escape on the Brick tab -> `brickTool_brush` active = false, `editor._currentMode` =
+`'select'`; (3) Escape on the Photo tab -> `editor._currentMode` = `'select'`, no crash; (4) Draw
+tool active on Artwork before Escape; (5) Escape on Artwork -> `toolSelect` active = true,
+`editor._currentMode` = `'select'`. Zero console errors across all 5 checks.
+
+## F35 perf item, part 1: remove auto-spacing-tighten -> detection-only hint; skip brick regen on non-brick commits
+
+Per the advisor's downgrade ("Fred: resolution is his own responsibility via the resolution panel... the
+perf quick win is just: skip brick regen on non-brick commits").
+
+**Removed** `ensureFineEnoughMesh` (main/brick-panel.js) -- it used to call `applyParam('spacing',
+targetSpacing)` whenever bricks existed and `P.spacing` was coarser than `groutWidthIn/3`, silently
+overriding the user's own Resolution-panel choice. Replaced with `updateSpacingHint`, DETECTION
+ONLY -- never writes `P.spacing` -- showing a plain message ("Grout joints need spacing <= X in to
+carve cleanly (current Y)") in BOTH the Resolution panel (`#spacingGroutHint`, new) and the Brick
+tab's own Grout section (`#brickGroutSpacingHint`, new) whenever real bricks exist
+(`[data-brick-gen="1"]` present anywhere) and the current spacing is too coarse. Re-evaluated on
+`'bricksGenerated'` and on the Resolution panel's own `#spacing` select changing (deferred one tick
+via `setTimeout(0)`, since this listener's registration order relative to whatever generic
+param-input binding actually writes `P.spacing` isn't declared anywhere -- this guarantees the hint
+reads the POST-change value regardless of order, not whichever one happened to run first).
+
+**The actual perf fix**: `regenerateOwnedBrickElements` (editor-brick-tool.js) used to remove-and-
+redraw EVERY brush-owned brick polygon on EVERY `editorCommit`, even ones that never touched a
+brick spine at all (e.g. dragging an unrelated artwork node) -- a full DOM scan, per-chain
+`bricksForBrushStroke`, and a fresh polygon (with its own pattern-fill lookup) per brick, on every
+commit anywhere in the editor. Added a cheap fingerprint of exactly the spine content this function
+reads (element id, endpoints, stripe id, settings JSON -- every input its own output depends on):
+when a commit's fingerprint matches the LAST one, the redraw would produce byte-identical output,
+so it's skipped entirely -- an exact optimization, not a heuristic approximation.
+
+**Tests**: `tests/brick-spacing-hint.test.js` (4 new) -- hidden with no bricks, shows in both
+places when bricks exist and spacing is too coarse (never mutates `P.spacing`), stays hidden when
+spacing is already fine, re-evaluates live on the Resolution select's own change. Mutation-tested
+(forcing `show=true` unconditionally fails exactly the 2 tests that assert "hidden", the other 2
+correctly stay green). `tests/bricks-regen-perf.test.js` (4 new) -- a bare layer is a cheap no-op;
+a real spine draws real polygons then an IDENTICAL second call makes zero new `polygon()` calls and
+leaves the same brick objects in place; a genuinely moved endpoint redraws; a genuinely different
+settings snapshot on the same endpoints also redraws (not just position matters). Mutation-tested
+(disabling the fingerprint check fails exactly the one test asserting the skip). Full suite green:
+211 files / 3849 tests.
+
+**Live-verified** (headless Chrome, T1): drew a Brush stroke (3 owned bricks), tagged them with a
+probe attribute, dispatched an unrelated `editorCommit` (an artwork circle drawn on a different
+layer) -- all 3 probe-tagged elements survived untouched (3 probed, 3 owned, same objects, not
+recreated). Then drew a genuinely NEW second brush stroke -- owned brick count correctly grew from
+3 to 6, confirming real content changes still redraw.
+
+Not yet done: the measured spacing/scale grid the advisor asked for next (real carved 3D close-ups
+across a spacing x scale matrix, to word the hint's own threshold from Fred's marks rather than the
+existing "3 samples across the groove" rule used here) -- current hint wording may need revision
+once that lands. Also queued, arrived after this: Fred wants brick SIZE in real inches (0.375"-8",
+replacing the 0.5-2x scale multiplier) with a "Life size" preset, to be added as a column in that
+same grid -- not started yet.
+
+## F35 item 16, part 1: GLOBAL brick size (Fred: "I'd rather they all have the same size")
+
+Per the advisor's final settled spec, after a couple of rapid DM revisions on top of the earlier
+"brick size in inches, per-element" ask: brick SIZE is global, exactly like grout -- one
+`P.brickSettings.brickLengthIn` (inches, 0.375"-8", height follows the set's own aspect) drives Wall,
+every Frame band, AND Brush. The per-element `scale` multiplier and the separate Frame-only
+`frameBrickLengthIn` override are BOTH removed outright, not deprecated alongside.
+
+**A real discrepancy found and fixed, not assumed from the advisor's own earlier claim**: the
+advisor's DM said grout-scaling-with-brick-size was "already reversed and merged to main (a2d44d8)".
+After merging main, `library.js`'s `scaledSet` still multiplied `grout.widthIn` by `scale`, and the
+existing `tests/bricks-scale-grout.test.js` still asserted that behavior -- grepped and re-read the
+file directly rather than trusting the claim, confirmed the reversal had never actually landed in
+code. Fixed it now (removed grout from `scaledSet`'s return entirely; the new design makes the
+question moot anyway since grout is a flat global width, same as before). Along the way, the OTHER
+existing tests in that same file (the `bricksAlongPath`/`bricksFillShape`/`bricksContourBands`
+engines) already showed `grout.widthIn` is read from `opts.set.grout.widthIn` directly for real joint
+math, never from the scaled copy -- so `scaledSet`'s own grout-scaling was dead code all along, not
+just stale-but-harmless. Also fixed a stale comment next to Set 1's own grout declaration that still
+described the old (never fully wired) "grout scales with brick" rationale.
+
+**Data/state layer**: `core/state.js`'s `P.brickSettings.scale: 1` + `frameBrickLengthIn: 0.75`
+replaced by one `brickLengthIn: 0.75`. New migration `brick-scale-to-brickLengthIn`
+(`main/app-init.js`'s `MIGRATIONS`): converts a saved design's old `scale` into the new absolute
+`brickLengthIn` via `setForId(p.brickSettings.setId).brickLengthIn * scale` (falls back to set 1 if
+the saved `setId` is missing/unknown), drops both old keys. 4 new tests in
+`tests/migrations.test.js` cover set 1 and set 3 base lengths, the no-op case
+(`brickLengthIn` already present), and a safe no-op on a settings object with neither key.
+
+**Engine-facing layer**: new exported `scaleFor(settings)` in `editor/editor-brick-tool.js` --
+`settings.brickLengthIn / setForId(settings.setId).brickLengthIn` -- the ONE place the new absolute
+inches value is converted back into the engine's existing relative `scale` multiplier
+(`generateBricks`'s own `input.scale`, unchanged). Wired into both `toBrickOpts` and
+`_generateAndDraw`, so Wall and Frame derive their multiplier from literally the same function call
+shape, not two independent paths.
+
+**Frame no longer carries its own override**: removed `resolveFrameBrickSet()` from
+`main/brick-panel.js` entirely (it used to look up `P.brickSettings.frameBrickLengthIn` and build a
+separate `set` object just for Frame bands); `resolveFrameGeom()` now returns only
+`{primitives, bands}`. Frame bands fall through to `generateBricks`'s own pre-existing
+`const frameSet = frame.set || set;` line (core/bricks/engine.js:50) -- this is NEW load-bearing
+behavior now that nothing ever passes `frame.set`, so it needed its own direct test (see below).
+
+**UI**: `bspline_gen_palette.html`'s separate "Frame brick length" slider and "Scale" slider (0.5x-2x)
+both replaced by one "Brick size (in)" slider (`#brickSizeSlider`/`#brickSize`, 0.375-8, step 0.025)
+plus a `#brickSizePresetList` button row. Presets are declared data,
+`BRICK_SIZE_PRESETS = [{id:'quarter', label:'¼ size', lengthIn:2}, {id:'half', lengthIn:4},
+{id:'life', label:'Life size (8"x2 1/4")', lengthIn:8}]`, rendered/synced by new
+`renderBrickSizePresetList`/`syncBrickSizePresetButtons`/`setBrickSize(lengthIn)` in brick-panel.js
+(clamps to [0.375, 8], writes `P.brickSettings.brickLengthIn`, syncs the slider pair + preset
+button highlight, triggers the normal live-preview path). `selectSet(setId)` deliberately no longer
+resets `brickLengthIn` on a brick-set switch (the whole point of "global" is that it survives a set
+change, unlike the old per-set-relative `scale`).
+
+**New test, `tests/bricks-engine.test.js`** ("with no frame.set override, Frame bands scale
+IDENTICALLY to Wall via the shared top-level scale"): calls `generateBricks` twice on the same
+9x12 board + `FRAME_PRESETS.single_soldier`, once with no `scale` and once with `scale: 2`, with NO
+`frame.set` in either call (matching every real caller now). Asserts a mid-run (not corner-fit)
+frame brick's own bounding box doubles, AND that Wall's own first brick doubles by the exact same
+factor from the exact same input -- proving Wall and Frame read one shared value, not two
+independently-derived ones. Mutation-tested: dropped `scale` from the `bricksContourBands` call at
+engine.js:51 (restoring the pre-fix behavior) -- re-ran this file alone, exactly the 1 new test
+failed (0.75 vs expected 1.5), the other 9 stayed green. Restored from a pre-mutation copy, confirmed
+`git diff` on engine.js was empty before moving on.
+
+**Suite**: full run green, 211 files / 3854 tests (was 3853 before this test; the
+`tests/brick-slider-timing.test.js` fixture/`setAndFire` calls were already updated from
+`brickScaleSlider`/`P.brickSettings.scale` to `brickSizeSlider`/`P.brickSettings.brickLengthIn` in
+the same turn as the UI change, including adding the fixture's `#brickSizePresetList` div and
+dropping the now-nonexistent `brickFrameLengthSlider` fixture line).
+
+Not yet done (explicitly deferred, per the advisor's own sequencing): (1) checking the frame-band
+depth and fill-set floor behavior at 8" ("life size") on a 7x9 board -- the advisor's own ask,
+"a few bricks across must still lay out cleanly; report what happens" -- not yet investigated; (2)
+the frame-band-depth-vs-neck-narrowness hint ("Frame bands are deeper than the neck allows -- try
+stretcher bands"); (3) the measured resolution grid screenshot, rows = spacing, cols = global brick
+size (0.375/0.75/1.5/3/8), labeled with rebuild time + point count; (4) relocating Brick size + Grout
+into a toolbar-anchored "Bricks & grout" popover (no such popover component exists yet -- folded into
+item 16's own broader toolbar restructuring); (5) item 16's remaining scope (Wall/Frame as selectable
+tools/elements, contextual panel, Brick tab's empty-selection state = the shared Layers panel, base
+Level per element, Raised brush mode 2). No live Fusion/Chrome verification done yet this turn --
+state/engine/UI change confirmed by the unit suite only.
+
+## F35 item 16 follow-up: measured resolution x brick-size grid (+ the 8" life-size floor check)
+
+Per the advisor's own explicit ask ("Fred wants it measured, not theorised"): a real, rendered grid
+-- rows = terrain spacing 0.05/0.03/0.02/0.015/0.011in, cols = the new global brick size
+0.375/0.75/1.5/3/8in -- each cell a real 3D close-up + its own rebuild time (ms) and point count,
+on the app's own DEFAULT board (confirmed live: 7x9in, `template_1` already active -- exactly the
+"7x9 board" the advisor's life-size-floor question was about, no special setup needed).
+
+**New tool, `tools/repro/brick_resolution_grid_shots.mjs`**: forks the established
+`frame_3d_shots.mjs`/`filter_shots.mjs` headless-Chrome CDP driver pattern. Opens the editor
+(`btnEditFrameShape`), switches to the Brick tab, selects the Wall tool (draws Frame bands too --
+`_commitBrickSlider` always passes `resolveFrameGeom(editor)` regardless of which brick tool is
+active, confirmed by reading brick-panel.js directly rather than assumed). Per cell: commits the
+brick-size slider to the real UI value, writes `P.spacing` directly, times ONE real
+`updateStampMasks` + `rebuild()` pass, reads back wall/frame/total brick counts, frames a
+close-up camera (radius `min(9, max(2.2, sizeIn*3.2))` -- proportional zoom per column, capped so
+the 8in column's own "3x brick length" radius doesn't exceed the whole 7x9 board), and captures via
+`window.__preview.getSnapshot()`. **New reusable compositor, `tools/grid_composite.py`** (Pillow):
+takes the driver's own JSON report + per-cell PNGs and lays out a labeled rows x cols grid --
+declared once since this is the second "render a grid of real close-ups" ask this project has had
+(the first, an earlier spacing x scale grid, was superseded before it was ever built), not a
+one-off. Output: `shots/seatC/resolution_scale_grid.png` (+ `grid_run_report.json`, the raw numbers).
+
+**Three real bugs found and fixed while building this, each caught by comparing the actual
+screenshot/numbers against what should have been there, not assumed from the code reading clean**:
+
+1. **Stale server, not stale code.** The first `python -m http.server 8784` for this probe landed on
+   a port a DIFFERENT, two-day-old orphaned python process (PID from 2026-10-02) already held --
+   Python's `allow_reuse_address` let my new server bind anyway, and curl/Chrome both silently kept
+   talking to the OLD one the whole time (confirmed: `curl .../bspline_gen_palette.html | grep -c
+   brickSizeSlider` returned 0 even though the string is on disk at bspline_gen_palette.html:3091).
+   This is exactly the `project_scratch_server_zombies` failure mode from memory -- fixed by picking
+   a verified-free port (8791) instead of fighting over 8784 (not mine to kill, per the no-blanket-
+   kills rule), and now ALWAYS curl-diffing served bytes vs disk before trusting a screenshot.
+2. **Orthographic zoom needs the frustum updated, not just the camera moved.** My first close-up
+   camera override set `_orb`/`_camera.position`/`quaternion` correctly but called only
+   `p.updateFrustum?.()` -- that method lives on `OrbitController` (`o`), not `TerrainPreview` (`p`);
+   dropping `filter_shots.mjs`'s own `else if (o.updateFrustum)` fallback when I wrote this fresh
+   meant the orthographic frustum (which is what ACTUALLY controls zoom for an orthographic camera,
+   not camera distance) never updated -- every "close-up" rendered as the full board regardless of
+   the computed radius. Caught by actually looking at cell_0_0.png (Read tool), not by code review.
+3. **A genuine race in `core/engine/rebuild.js`'s own re-entrancy guard** (`rebuild.isRebuilding`):
+   something else in the app (one of ~10 other `scheduleRebuild` call sites -- `sculpt-interaction.js`,
+   `global-events.js`, `main.js`'s own `onChange` handlers, etc. -- never fully root-caused, out of
+   scope for this task) occasionally already has a rebuild in flight when this script's own explicit,
+   awaited `rebuild()` call starts. The guard's early `return` on a live `isRebuilding` gives back
+   `undefined` -- NOT a promise standing in for the real completion -- so an awaiting caller "finishes"
+   instantly having done zero work. Measured live, twice, non-deterministically (same inputs, same
+   script, different runs): one full 25-cell run came back with every single `rebuildMs` reading
+   either a 3x-too-low average (an earlier mean-of-3-reps version) or exactly 0 (the later single-pass
+   version) with `isRebuildingBeforeMask`/`isRebuildingBeforeRebuild` both `true` in the diagnostic
+   fields added specifically to pin this down. **Fixed in the script** with a poll-until-quiescent
+   wait (`while (rebuild.isRebuilding) await W(50)`, 20s cap) before the timed call -- this is a
+   tooling-side fix (the function's actual contract is fire-and-forget/re-entrant-safe via its own
+   `pendingRebuild` chaining, fine for every REAL caller, none of which await it for a timing
+   guarantee the way this measurement script does) rather than a product bug, so nothing in
+   `core/engine/rebuild.js` itself was touched. Re-ran the full grid after the fix: all 25 cells'
+   `isRebuildingBeforeRebuild` read `false` and timings came back internally consistent (see below).
+
+**The measured numbers** (`grid_run_report.json`, full 7x9 board, Wall + Frame together):
+- **Rebuild cost scales with mesh resolution (spacing), essentially NOT with brick size** -- every
+  column at a given row lands within ~10% of the row's own mean: ~440ms at 0.05in (25,521 pts),
+  ~870ms at 0.03in (70,735 pts), ~1,950ms at 0.02in (158,301 pts), ~3,800ms at 0.015in (281,869 pts),
+  **~8,200ms (over 8 SECONDS) at 0.011in (524,619 pts)**. The current UI's own finest dropdown option
+  (0.03in, "Ultimate") costs well under a second; 0.011in is nearly an order of magnitude slower and
+  was never in the dropdown or even in `RESOLUTIONS` (core/state.js tops out at 0.02 "Extreme") --
+  this grid is itself a measured argument for NOT adding 0.011 as a real option, only using it here
+  as a diagnostic upper bound per the advisor's own request.
+- **The 8" life-size floor, on this board, is NOT empty or degenerate** -- every spacing row produced
+  the exact same **16 Wall bricks + 18 Frame bricks = 34 total** (brick layout depends only on board
+  geometry + brick settings, never on terrain mesh resolution, confirmed by the counts being
+  byte-identical down every column). The engine handles the extreme case gracefully: no crash, no
+  zero-brick layout, no exception, at any of the 5 spacings tested.
+- **But visually, life-size bricks on a 7x9 board read as the board's own underlying sculpted relief,
+  not as "bricks."** At 0.375-1.5in, every cell shows crisp, individually-distinguishable raised brick
+  slabs with visible grout grooves. At 3in and especially 8in, the close-ups look like rolling terrain
+  rather than flat rectangular blocks -- NOT a bricks-engine bug (the same camera, same board, same
+  underlying height-field machinery renders perfect bricks at the smaller sizes) but a straightforward
+  consequence of scale: the board's own default sculpted base terrain has real height variation of its
+  own, and at 7-9in board dimensions a handful of 8in bricks are each large enough that the board's
+  OWN bumps dominate the visual read over the brick relief sitting on top of them. This is the
+  concrete, measured answer to "a few bricks across must still lay out cleanly; report what happens":
+  they lay out cleanly (34 real bricks, no degenerate geometry) but do not look like a brick wall at
+  this board size -- worth relaying to Fred as-is rather than silently smoothing over in the screenshot.
+
+**Not done this turn** (per the advisor's own stated sequencing -- next in order): (1) the
+frame-band-depth-vs-neck-narrowness hint and the resolution hint's own wording (this grid was the
+prerequisite measurement for both); (2) the rest of item 16 (Wall/Frame as tools, contextual panel,
+shared Layers empty-state, Level, Raised brush, toolbar popover relocation).
+
+## F35 item 16 follow-up: brick-size slider goes logarithmic (Fred: "is scale easy?")
+
+Mid-task DM from the advisor, arriving while the resolution grid above was already underway (done in
+this same turn, after the grid): the plain linear 0.375-8in slider put every everyday size
+(0.375-1.5in) in the first ~15% of the handle's own travel, since 8in is >20x the minimum -- Fred's
+own usability read on the control. Fix: the `#brickSizeSlider` range input's own raw DOM value is now
+a LOG position (0-1000, `BRICK_SIZE_SLIDER_STEPS`), converted to/from real inches by two new pure,
+exported functions in `main/brick-panel.js` -- `brickSizeToSliderPos(inches)` /
+`sliderPosToBrickSize(pos)`. `#brickSize` (the number stepper) is untouched -- real inches, exact,
+throughout, per the advisor's own explicit "the number box stays exact."
+
+**Binding**: the shared `bindSlider` helper assumes the slider and number box carry the SAME raw
+value, which no longer holds here -- added a dedicated `bindBrickSizeControls()` (same input-live-
+preview / change-commits shape as `bindSlider`, just routing the slider's own raw value through
+`sliderPosToBrickSize` first). `setBrickSize(lengthIn)` (the preset-click path) and
+`syncControlsFromState()` both now call a new `syncBrickSizeControls(v)` that writes the slider's log
+position and the number box's exact inches separately, replacing the old single `setPair(...)` call
+(which wrote the same raw value to both -- no longer correct once they diverge).
+
+**Presets widened from 3 to 5** (Fred's own spec in the same DM): `BRICK_SIZE_PRESETS` was
+`[2, 4, 8]` ("¼/½/Life size", arbitrary fractions of 8in) -- now `[0.375, 0.75, 1.5, 3, 8]`
+("⅜″/¾″/1½″/3″/Life 8″"), the same 5 values as the resolution grid's own columns above, so the
+control's quick-picks match the exact points Fred already has real renders of.
+
+**Tests**, new file `tests/brick-size-log-slider.test.js` (10 tests): pure round-trip/endpoint/
+monotonic coverage for `brickSizeToSliderPos`/`sliderPosToBrickSize` (both newly exported
+specifically to be unit-testable, same precedent as `scaleFor` earlier this item), PLUS one test
+that encodes the actual bug being fixed directly -- asserts 1.5in's own slider position covers more
+than 40% of the travel (a linear mapping gives ~14.7%, matching Fred's own "~15%" read). Also: the
+real `#brickSizeSlider` element drives the correct inches through the log mapping; `#brickSize`
+stays exact independent of the slider's own quantization; setting via either control re-syncs the
+other; all 5 presets render, commit the exact value, and highlight correctly. Mutation-tested:
+reverted `brickSizeToSliderPos`/`sliderPosToBrickSize` to a plain linear map -- exactly the 1 test
+built to catch this (the "40% of travel" one) failed (14.8% vs expected >40%), the other 9 (round-
+trip/endpoints/monotonic/integration/presets) stayed green, confirming those alone would NOT have
+caught this specific regression. Restored from a pre-mutation copy. `tests/brick-slider-timing.test.js`
+(the pre-existing drag-timing suite) now drives `#brickSize` instead of `#brickSizeSlider` for its
+own interactions -- both route through the identical apply/commit functions in
+`bindBrickSizeControls`, so the throttle/live-preview/commit behavior under test is unchanged; only
+the element used to fire the events changed, since the slider's raw value is no longer plain inches.
+Full suite green: 212 files / 3864 tests (was 211/3854).
+
+**Screenshots** (per the advisor's own ask, "none exist yet"): `brick_size_control_1366.png` /
+`_390.png` (headless Chrome, Brick tab, Wall tool) -- copied to
+`.bspline-status/shots/seatC/f35item16_brick_size_log_slider_{1366,390}.png`. The mobile (390) shot
+needed one extra step not obvious from the desktop case: the Brick tab's controls live in
+`editor/editor-drawer.js`'s own bottom drawer, collapsed to a ~96px "peek" height by default -- a
+real user drags it open (`splitter.js`'s drag/snap gesture); the screenshot script instead sets
+`#editorMobileDrawer`'s height directly to the drawer's own 88vh "full" snap fraction, which is
+harmless on desktop (that wrapper is `display:contents` there per editor-drawer.js's own header, so
+setting its height has no visual effect) and avoids simulating the real drag for what is just a
+one-off screenshot need.
+
+Not yet done: relocating Brick size + Grout into the toolbar-anchored "Bricks & grout" popover (still
+queued from item 16's own earlier scope, unaffected by this slider change); the frame-depth-vs-neck
+hint and resolution hint wording (next, per the advisor's turn-171 dispatch).

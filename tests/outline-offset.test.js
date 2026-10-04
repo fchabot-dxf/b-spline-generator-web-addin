@@ -23,6 +23,26 @@ function roundedBox(r) {
 }
 
 describe('offsetOutlineInward', () => {
+  it('t=0 is the exact identity: every primitive comes back unchanged, nothing collapses', () => {
+    // MEASURED regression (d3, T16/T17 "Arched Funnel"/"Tulip"): before the t=0 special case, a
+    // line-arc corner's own joint solver could pick the wrong root of a 2-root circle/line
+    // intersection right AT t=0 (`_inside`'s ray-cast is ambiguous exactly on a polygon vertex),
+    // collapsing pieces that never should have moved at all. A line/arc mix (not just all-line)
+    // exercises the exact corner kind that broke.
+    const prims = [L(0, 0, 4, 0), A(5, 0, 1, Math.PI, -Math.PI), L(6, 0, 10, 0), L(10, 0, 10, 6), L(10, 6, 0, 6), L(0, 6, 0, 0)];
+    const out = offsetOutlineInward(prims, 0);
+    expect(out).toHaveLength(prims.length);
+    expect(out.filter((p) => p.collapsed)).toHaveLength(0);
+    out.forEach((p, i) => {
+      expect(p.type).toBe(prims[i].type);
+      if (p.type === 'L') { close(p.p0, prims[i].p0); close(p.p1, prims[i].p1); }
+      else { expect([p.cx, p.cy, p.rx, p.theta1, p.dTheta]).toEqual([prims[i].cx, prims[i].cy, prims[i].rx, prims[i].theta1, prims[i].dTheta]); }
+    });
+    // returns clones, not the same objects -- callers must be free to mutate the result
+    expect(out[0]).not.toBe(prims[0]);
+    expect(out[0].p0).not.toBe(prims[0].p0);
+  });
+
   it('a square: each side moves in by t, corners meet at the miter point', () => {
     const out = offsetOutlineInward([L(0, 0, 4, 0), L(4, 0, 4, 4), L(4, 4, 0, 4), L(0, 4, 0, 0)], 1);
     [[1, 1, 3, 1], [3, 1, 3, 3], [3, 3, 1, 3], [1, 3, 1, 1]].forEach(([a, b, c, d], i) => {

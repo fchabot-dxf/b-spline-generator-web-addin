@@ -28,6 +28,9 @@ import { brickTopHeight } from './height-profile.js';
  * @param {number} [input.clumping=0.3]
  * @param {{bond?:'running'|'stack'|'soldier', rows?:number, heightIn?:number}[]} [input.zones]
  * @param {number} [input.scale=1] — uniform multiplier on the set's own brick length/height (grout unaffected)
+ * @param {boolean} [input.skipWallFill=false] — F35 item 12 follow-up (Fred): the Wall picker's own
+ *   'none' pattern (editor-brick-tool.js's applyWallPattern) -- skip bricksFillShape entirely, Wall
+ *   produces zero bricks (Frame, if any, is untouched: this only gates the Wall fill call below).
  * @param {number} input.seed
  * @returns {{ bricks: Array, frameBricks: Array, seed: number }} `seed` is carried along so
  *   sampleHeight (below) can reach it without a breaking signature change -- height-profile chip
@@ -50,13 +53,13 @@ export function generateBricks(input) {
     interiorOutline = res.innerPath;
   }
 
-  const { bricks } = bricksFillShape(interiorOutline, null, {
+  const bricks = input.skipWallFill ? [] : bricksFillShape(interiorOutline, null, {
     set, seed, scale,
     suppression: input.suppression ?? 0,
     topBias: input.topBias ?? 0.8,
     clumping: input.clumping ?? 0.3,
     zones: input.zones,
-  });
+  }).bricks;
   return { bricks, frameBricks, seed };
 }
 

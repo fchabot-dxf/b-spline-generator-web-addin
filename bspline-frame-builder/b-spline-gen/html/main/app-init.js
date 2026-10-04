@@ -22,6 +22,7 @@ import { frameContext, drawFrameProfile } from '../editor/editor-frame-profile.j
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 import { FRAME_DEFS, frameParam, normalizeFrameRecord } from '../core/frame-record.js';
 import { syncFramePanel } from './frame-panel.js';
+import { brickSetById } from '../core/bricks/library.js';
 
 /** The frame a fresh start opens on (data/frame-defs: "Template 1 - Hourglass"). */
 const FRESH_START_FRAME_TEMPLATE = 'template_1';
@@ -451,6 +452,21 @@ export const MIGRATIONS = [
       } catch (e) {
         console.warn('[migration] contour-from-frame-outer-edge failed:', e);
       }
+    },
+  },
+  {
+    id: 'brick-scale-to-brickLengthIn',
+    // F35 item 16 (Fred: "I'd rather they all have the same size"): the old per-element 0.5-2x
+    // Scale multiplier (and the separate Frame-only frameBrickLengthIn override) are replaced by
+    // ONE global brickLengthIn in real inches. A pre-item-16 save still carries `scale` (brickLengthIn
+    // absent) -- convert it ONCE, relative to whichever brick SET was active, so an existing board's
+    // own brick size on screen doesn't silently jump on the next load.
+    when: (p) => p.brickSettings && p.brickSettings.brickLengthIn === undefined && typeof p.brickSettings.scale === 'number',
+    apply: (p) => {
+      const set = brickSetById(p.brickSettings.setId) || brickSetById(1);
+      p.brickSettings.brickLengthIn = set.brickLengthIn * p.brickSettings.scale;
+      delete p.brickSettings.scale;
+      delete p.brickSettings.frameBrickLengthIn;
     },
   },
 ];

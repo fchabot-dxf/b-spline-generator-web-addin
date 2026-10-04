@@ -41,6 +41,7 @@ import { latticeOwnedElementsOnLayer, _ownedOnLayer, resolvePatternLayer, _findB
 import { primitiveFromContourD } from '../editor/editor-contour-cut.js';
 import { buildArtworkDecalPng } from '../core/stamp/decal-png.js';
 import { showToast } from '../core/toast.js';
+import { BRICKS_LAYER_NAME, BRICK_GEN_ATTR } from '../editor/editor-brick-tool.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
@@ -131,6 +132,37 @@ export async function _fusionLayerSvg(editor, l, excludePattern) {
     // UNFILTERED l.svg (that would silently reintroduce the exact
     // duplicate-geometry bug this exclusion exists to prevent).
     return { svg: svg || (excludePattern ? '' : l.svg), declined, declinedKinds };
+}
+
+/** F35 item 11 (Fred: "I just want it sent with bspline"): the Bricks editor layer's own generated
+ *  brick polygons (wall/frame/brush), as a Fusion-ready SVG string, or '' when there's nothing to
+ *  send (no Bricks layer yet, or it's empty right now -- the explicit "no bricks" case, distinct
+ *  from append's "no instruction" null, see sendToFusion's own `bricks` tri-state below).
+ *
+ *  The Bricks layer ALSO carries each Brush stroke's own invisible SPINE `<line>` (editor-brick-
+ *  tool.js's own hit-testing/regenerate anchor, stroke-opacity 0.15 -- never meant to be real
+ *  geometry) on the SAME layer (`ensureBricksLayer`'s own "every brick-tool action shares this ONE
+ *  layer" convention) -- getLayerSvg's by-LAYER filter has no way to tell spine from real brick
+ *  fill apart, so this filters to BRICK_GEN_ATTR='1' (every real generated piece carries it, the
+ *  spine never does) AFTER the generic by-layer extraction, rather than teaching the generic
+ *  layer-export path brick-specific knowledge no other caller needs. */
+export async function _bricksLayerSvg(editor) {
+    if (!editor || !Array.isArray(editor._layers)) return '';
+    const layer = editor._layers.find((l) => l && l.name === BRICKS_LAYER_NAME);
+    if (!layer) return '';
+    const { svg } = await getLayerSvg(editor, layer.id, 96, { geometry: 'fusion' });
+    if (!svg) return '';
+    let doc;
+    try { doc = new DOMParser().parseFromString(svg, 'image/svg+xml'); } catch { return ''; }
+    const root = doc.documentElement;
+    if (!root) return '';
+    let kept = 0;
+    Array.from(root.children).forEach((ch) => {
+        if (ch.getAttribute(BRICK_GEN_ATTR) === '1') { kept++; return; }
+        ch.remove();
+    });
+    if (kept === 0) return '';
+    return new XMLSerializer().serializeToString(root);
 }
 
 /** T62 (SE15): a layer's own SE15 sketch manifest, or `null` when the
@@ -558,6 +590,24 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
             decal = { enabled: false };
         }
     }
+    // F35 item 11 (Fred: "SEND BRICKS WITH THE B-SPLINE... no lock button, no line-by-line API
+    // drawing"): the Bricks layer's own generated polygons, baked the SAME way every art layer
+    // already is (bakeSvgForCarving, P.widthIn/heightIn, dpi=96) -- no new scale/offset math, reuses
+    // the one proven-correct carve transform. Same tri-state contract as `decal` above: `null` = no
+    // instruction (append -- the Stamped component this targets isn't rebuilt on append either, same
+    // reasoning as `frame`/`decal`), `{enabled:false}` = the one explicit "remove whatever Bricks
+    // sketch exists" instruction (sent whenever this Send genuinely has none), `{enabled:true, svg}`
+    // = replace it with this. "Never fails a Send": a bake failure here is logged, never thrown, and
+    // leaves `bricks` at `null` (no instruction) rather than risk an incorrect removal.
+    let bricks = null;
+    if (!isAppend) {
+        try {
+            const raw = await _bricksLayerSvg(editor);
+            bricks = raw ? { enabled: true, svg: await bakeSvgForCarving(raw, P.widthIn, P.heightIn, 96) } : { enabled: false };
+        } catch (e) {
+            if (typeof fusLog === 'function') fusLog('[EXPORT] Bricks SVG failed: ' + (e && e.message));
+        }
+    }
     const payload = JSON.stringify({
         params: { ...P },
         stepVariants,
@@ -573,6 +623,7 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
             layers: bakedLayers,
             dpi: 96,
             decal,
+            bricks,
         },
     });
     if (typeof fusLog === 'function') {

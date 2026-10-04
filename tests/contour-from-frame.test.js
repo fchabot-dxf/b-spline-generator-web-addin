@@ -453,3 +453,48 @@ describe('T84 item 6 (Fred, screenshot): every template\'s default gives a conto
     }
   });
 });
+
+describe('outline-offset.js t=0 fix: "Offset from frame" distance 0 must never collapse the outline', () => {
+  // MEASURED regression (d3): with SW=0 (no stroke -- e.g. a consumer with no visible contour
+  // line, the Brick Frame tool's planned reuse of this same contour source among them), distance 0
+  // puts `offsetOutlineInward` at EXACTLY t=0, where a line-arc corner's joint solver could pick
+  // the wrong root of a 2-root intersection (see outline-offset.js's own t=0 header comment) --
+  // collapsing pieces that should never move at all. The existing "T84 item 6" suite above always
+  // adds SW=0.07/2, which never actually reaches t=0, so it could not have caught this.
+  const BOARDS = [[7, 9], [12, 6], [9, 12]];
+  it.each(FRAME_DEFS.templates.map((tpl) => tpl.id))('%s: distance=0, SW=0 reproduces the un-offset outline exactly, on all 3 board sizes', (tplId) => {
+    for (const [W, H] of BOARDS) {
+      const frame = frameOf(tplId, W, H);
+      const prof = frameCutProfile(FRAME_DEFS, frame.record, frame.board);
+      if (prof.defects.length || !prof.fit.ok) continue; // same precondition skip as T84 item 6 above
+      const sil = frameContourSilhouette(frame, 0, 0);
+      expect(sil.error, `${tplId} ${W}x${H}: ${sil.error}`).toBeUndefined();
+      // t=0 can never legitimately collapse anything (every line stays put, every arc keeps its own
+      // radius) -- unlike distance 0.1/0.25 below, "same primitive count as the un-offset profile"
+      // is a hard invariant here, not just an empirical observation.
+      expect(sil.primitives.length, `${tplId} ${W}x${H}`).toBe(prof.primitives.length);
+      const bbox = (pts) => ({
+        minX: Math.min(...pts.map((p) => p.x)), maxX: Math.max(...pts.map((p) => p.x)),
+        minY: Math.min(...pts.map((p) => p.y)), maxY: Math.max(...pts.map((p) => p.y)),
+      });
+      expect(bbox(samples(sil.primitives))).toEqual(bbox(samples(prof.primitives)));
+    }
+  });
+
+  // T16/T17 (Arched Funnel/Tulip) are the templates d3 actually measured the collapse on, and are
+  // separately DECLARED elsewhere in this codebase (contour-from-frame.js's own frameContourSilhouette,
+  // "every joint is a real corner, nothing ever collapses there") to never legitimately collapse at
+  // ANY offset -- so, unlike the generic 0.1/0.25 case in the "F26" describe above (which only
+  // covers templates 1-6 and allows real corner-arc collapses), these two keep full primitive count
+  // at every one of the dispatch's 3 named distances, not just 0.
+  it.each(['template_16', 'template_17'])('%s: distance 0, 0.1, 0.25 all keep every one of its 6 primitives (an all-miter outline never legitimately collapses)', (tplId) => {
+    const frame = frameOf(tplId, 7, 9);
+    const prof = frameCutProfile(FRAME_DEFS, frame.record, frame.board);
+    expect(prof.defects).toEqual([]);
+    for (const d of [0, 0.1, 0.25]) {
+      const sil = frameContourSilhouette(frame, d, 0);
+      expect(sil.error, `${tplId} distance ${d}: ${sil.error}`).toBeUndefined();
+      expect(sil.primitives.length, `${tplId} distance ${d}`).toBe(prof.primitives.length);
+    }
+  });
+});
