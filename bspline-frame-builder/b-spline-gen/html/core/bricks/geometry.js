@@ -336,6 +336,26 @@ export function polygonIntersection(subject, clip) {
     const area = Math.abs(signedArea(loops[i]));
     if (area > bestArea) { best = loops[i]; bestArea = area; }
   }
+  // T86 (seat 37/F35 item 18 turn 177 repro, advisor dispatch): PROVABLE invariant -- `subject &
+  // clip`'s own area can never exceed EITHER operand's own area. MEASURED a real, reproducible
+  // violation: a near-degenerate crossing pair (a subject edge grazing a board-outline feature at a
+  // near-tangent angle, two crossings landing only ~0.0014in apart) put the trace's own "entry"
+  // and "exit" nodes immediately adjacent on subject's own list, with nothing of subject's own
+  // perimeter between them -- the walk rule (jump to the other polygon's list at ANY crossing) then
+  // has no choice but to continue on `clip`'s own list, and if `clip`'s own forward vertex order
+  // doesn't happen to lead back to the matching twin quickly, it must walk almost `clip`'s ENTIRE
+  // remaining perimeter to close the loop (T1 7x9 brickLengthIn=1.5: a 0.3 sq in brick produced a
+  // 13.97 sq in "intersection", nearly the whole board -- this file's own header already documents
+  // an EARLIER, structurally similar incident, "a 44-vertex result that was almost literally the
+  // whole board outline", so this is a recurring failure CLASS of the forward-walk rule on
+  // near-tangent inputs, not a one-off). Rather than chase every possible near-tangent
+  // configuration that can trigger this, validate the result against physical reality: if it's
+  // bigger than `subject` itself, something upstream went wrong, and the honest answer is "this
+  // input is too degenerate to trust" -- empty, which every caller already treats as "fully
+  // clipped away" (bond.js/fieldstone.js/basketweave.js/herringbone.js all already skip a
+  // less-than-3-point result as a normal, expected outcome), not a crash or a corrupt render.
+  const subjectArea = Math.abs(signedArea(subject));
+  if (bestArea > subjectArea * 1.0001 + 1e-9) return [];
   return best;
 }
 
