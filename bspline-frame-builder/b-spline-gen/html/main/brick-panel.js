@@ -21,7 +21,7 @@ import { P, saveLastSession } from '../core/state.js';
 import { runBricks, primitivesToPolyline } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
-import { FRAME_PRESETS } from '../core/bricks/library.js';
+import { FRAME_PRESETS, brickSetById } from '../core/bricks/library.js';
 import { applyParam } from './param-manager.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
@@ -56,6 +56,22 @@ function notifyChange() { saveLastSession(); }
 
 function syncSetPicker() {
   document.getElementById('brickSetRed')?.classList.toggle('active', P.brickSettings.setId === 1);
+  document.getElementById('brickSetWhite')?.classList.toggle('active', P.brickSettings.setId === 3);
+}
+
+/** Switching sets also resets the grout WIDTH field to that set's own
+ *  declared default (Set 3's own fieldstone joints are genuinely wider,
+ *  0.12in vs Set 1's measured 0.06in) -- otherwise the slider would silently
+ *  keep showing/using the PREVIOUS set's own width after a switch, which
+ *  `toBrickOpts` always applies verbatim regardless of which set is active. */
+function selectSet(setId) {
+  const set = brickSetById(setId);
+  if (!set) return;
+  P.brickSettings.setId = setId;
+  P.brickSettings.grout.widthIn = set.grout.widthIn;
+  syncSetPicker();
+  syncControlsFromState();
+  notifyChange();
 }
 
 function setGroutProfile(profile) {
@@ -89,6 +105,7 @@ function setPair(sliderId, numberId, v) {
 function syncControlsFromState() {
   const s = P.brickSettings;
   syncSetPicker();
+  syncFramePresetButtons();
   setPair('brickScaleSlider', 'brickScale', s.scale);
   document.getElementById('brickGroutWidth').value = s.grout.widthIn;
   document.getElementById('brickGroutDepth').value = s.grout.depthIn;
@@ -148,6 +165,30 @@ function syncToolButtons() {
   if (hintEl) hintEl.textContent = hint ? hint.hint : '';
 }
 
+function renderFramePresetList(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const preset of FRAME_PRESET_LIST) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cad-btn';
+    btn.id = `brickFramePreset_${preset.id}`;
+    btn.textContent = preset.label;
+    btn.addEventListener('click', () => {
+      P.brickSettings.frameBandPreset = preset.id;
+      syncFramePresetButtons();
+      notifyChange();
+    });
+    container.appendChild(btn);
+  }
+}
+
+function syncFramePresetButtons() {
+  for (const preset of FRAME_PRESET_LIST) {
+    document.getElementById(`brickFramePreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.frameBandPreset);
+  }
+}
+
 /** Brush arms interactive stroke drawing (editor._currentMode =
  *  'brickBrush', editor-interaction.js's own mode dispatch); Wall/Frame are
  *  immediate button-driven actions -- there's no "mode" to arm for them, so
@@ -202,6 +243,21 @@ function selectTool(id) {
   }
 }
 
+/** F35 item 4 (advisor): a Frame band-preset picker above the band list.
+ *  The advisor's own dispatch named 5 presets (soldier, soldier-stretcher,
+ *  double-course, quoin-corners, header-band) -- only 3 are actually
+ *  declared in library.js's own FRAME_PRESETS today (single_soldier,
+ *  soldier_stretcher, three_band); quoin-corners/header-band don't exist
+ *  yet (not f3's own fault -- the dispatch named a FUTURE state). Mapped
+ *  the 3 real ones to readable labels here rather than inventing placeholder
+ *  pattern data for the missing 2, which isn't this adapter's call to
+ *  design; flagged to the advisor in the pass-back instead. */
+const FRAME_PRESET_LIST = [
+  { id: 'single_soldier', label: 'Soldier' },
+  { id: 'soldier_stretcher', label: 'Soldier + Stretcher' },
+  { id: 'three_band', label: 'Soldier / Stretcher / Soldier' },
+];
+
 /** The current frame's own contour, as `{path, cornerIndices, bands}` for
  *  generateBricks/bricksContourBands -- or null when no real frame resolves
  *  (no template selected, or the offset is degenerate). `sil.corners` (NOT
@@ -213,7 +269,8 @@ function resolveFrameGeom(editor) {
   const sil = ctx ? frameContourSilhouette(ctx, 0, 0) : { error: 'noFrame' };
   if (sil.error) return null;
   const { points, cornerIndices } = primitivesToPolyline(sil.primitives, sil.corners);
-  return { path: points, cornerIndices, bands: FRAME_PRESETS.single_soldier };
+  const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
+  return { path: points, cornerIndices, bands };
 }
 
 // Advisor review (turn 131, round 2): a grout groove needs the terrain's own
@@ -239,12 +296,13 @@ export function initBrickPanel() {
 
   renderToolList(document.getElementById('brickToolList'));
   syncToolButtons();
+  renderFramePresetList(document.getElementById('brickFramePresetList'));
+  syncFramePresetButtons();
 
-  document.getElementById('brickSetRed')?.addEventListener('click', () => {
-    P.brickSettings.setId = 1;
-    syncSetPicker();
-    notifyChange();
-  });
+  document.getElementById('brickSetRed')?.addEventListener('click', () => selectSet(1));
+  // F35 item 4 (c): White Rocks (Set 3, f3's item 74 fieldstone layout) is
+  // now real -- un-greyed, selectable like Red Brick.
+  document.getElementById('brickSetWhite')?.addEventListener('click', () => selectSet(3));
 
   bindSlider('brickScaleSlider', 'brickScale', 'scale');
   bindGroutField('brickGroutWidth', 'widthIn');

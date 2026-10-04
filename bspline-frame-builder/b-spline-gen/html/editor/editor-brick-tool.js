@@ -117,24 +117,36 @@ function applyBrickLayerTooling(layer, settings) {
   layer.carve = true;
 }
 
+/** F35 item 4 (a): a declared flat colour per SET, so White Rocks (and a
+ *  Stripe run cycling SET, see settingsVariantForCycle) actually reads as a
+ *  different material -- this app has no per-sample photo-texture rendering
+ *  for bricks yet (every brick is one flat-filled polygon), so a
+ *  representative colour per set is the honest, achievable stand-in: Set
+ *  1's own red-brick photos read red-brown; Set 3's own fieldstone photos
+ *  read pale warm grey. */
+const SET_COLORS = Object.freeze({ 1: '#aa4433', 3: '#c9c3b2' });
+const DEFAULT_BRICK_COLOR = SET_COLORS[1];
+
 /** Draws one `{id, polygon:{x,y}[], ...}` brick as a filled polygon on
  *  `layer`, tagged per this file's own header convention. No stroke (a
  *  stroke would draw a visible line INSIDE the joint gaps between flush-
  *  fitting bricks, which core/bricks/ already sizes correctly via its own
- *  grout.widthIn -- adding our own outline would just redraw over that). */
-function drawBrick(editor, layer, brick, kind) {
+ *  grout.widthIn -- adding our own outline would just redraw over that).
+ *  `setId` picks the fill colour (SET_COLORS); omitted callers (none left
+ *  after this item) would fall back to Set 1's own red. */
+function drawBrick(editor, layer, brick, kind, setId) {
   const pts = brick.polygon.map((p) => `${p.x},${p.y}`).join(' ');
   return editor._sketchLayer
     .polygon(pts)
-    .fill('#aa4433')
+    .fill(SET_COLORS[setId] || DEFAULT_BRICK_COLOR)
     .stroke('none')
     .attr('data-layer', layer.id)
     .attr(BRICK_ATTR, kind)
     .attr(BRICK_GEN_ATTR, '1');
 }
 
-function drawBricks(editor, layer, bricks, kind) {
-  for (const b of bricks) drawBrick(editor, layer, b, kind);
+function drawBricks(editor, layer, bricks, kind, setId) {
+  for (const b of bricks) drawBrick(editor, layer, b, kind, setId);
 }
 
 /** Removes this adapter's own previously-generated pieces of `kind` from
@@ -207,8 +219,8 @@ export function runBricks(editor, settings, frameGeom) {
   if (frameGeom) input.frame = frameGeom;
 
   const { bricks, frameBricks } = generateBricks(input);
-  drawBricks(editor, layer, frameBricks, 'frame');
-  drawBricks(editor, layer, bricks, 'wall');
+  drawBricks(editor, layer, frameBricks, 'frame', settings.setId);
+  drawBricks(editor, layer, bricks, 'wall', settings.setId);
   commitEdit(editor);
   notifyBricksGenerated(settings);
   return { wallCount: bricks.length, frameCount: frameBricks.length };
@@ -376,17 +388,32 @@ function decodeBrickSettings(raw) {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
-/** F35 item 3 (Fred: "stripe the spine into A/B/C runs, each run its own
- *  settings variant"): the one already-real 2-way distinction core/bricks/
- *  gives a Brush stroke today (no second declared BRICK_SETS entry exists
- *  yet to vary SET per run -- Set 2/3 are parked/empty, per library.js's own
- *  comments) is bricksAlongPath's own `profile` ('bricks' vs 'continuous').
- *  A declared cycle, not a hand-rolled toggle, so a future 3rd variant is
- *  one more array entry, not new branching logic. */
-const STYLE_CYCLE = Object.freeze(['bricks', 'continuous']);
+/** F35 item 3/4 (Fred: "stripe the spine into A/B/C runs, each run its own
+ *  settings variant" -- item 4: "today all runs render the same red... pick
+ *  a brick STYLE variant (set: Red brick/White rocks; profile: bricks/
+ *  continuous; or scale)"). SET is the axis that actually reads as a
+ *  different material with this app's own flat-fill brick rendering (no
+ *  per-sample photo texture yet) -- White Rocks (library.js id 3) is real
+ *  now (f3's item 74), so the cycle uses it for run B; profile still varies
+ *  too (a 'continuous' run is also a genuinely different SHAPE, not just
+ *  colour). A declared cycle, not a hand-rolled toggle, so a future 3rd
+ *  variant (Fred/advisor's own scale axis, or a real 3rd set once one
+ *  exists) is one more array entry, not new branching logic. KNOWN,
+ *  SCOPED-OUT gap (not silent): the user cannot yet PICK which variant each
+ *  run gets -- the editor-stripe-tool.js panel's own A/B/C swatches are
+ *  still generic colour pickers (meaningless for bricks); this cycle is
+ *  purely automatic by the run's own position. Giving the user a real
+ *  brick-thumbnail picker needs changes to that SHARED panel's own
+ *  rendering, which touches every OTHER (non-brick) use of Stripe too --
+ *  a separate, carefully-scoped follow-up, not attempted here. */
+const STYLE_CYCLE = Object.freeze([
+  { setId: 1, profile: 'bricks' },
+  { setId: 3, profile: 'continuous' },
+]);
 
 function settingsVariantForCycle(baseSettings, cycleIndex) {
-  return { ...baseSettings, profile: STYLE_CYCLE[cycleIndex % STYLE_CYCLE.length] };
+  const variant = STYLE_CYCLE[cycleIndex % STYLE_CYCLE.length];
+  return { ...baseSettings, setId: variant.setId, profile: variant.profile };
 }
 
 const pointKey = (p) => `${p.x.toFixed(6)},${p.y.toFixed(6)}`;
@@ -515,7 +542,7 @@ export function regenerateOwnedBrickElements(editor) {
         : settingsVariantForCycle(chain.settings, chain.cycleIndex);
       const { bricks } = bricksAlongPath(chain.points, { ...toBrickOpts(settings), closed: false });
       const ownerId = `${elementId}:${chainIdx}`;
-      for (const b of bricks) drawBrick(editor, layer, b, 'brush').attr(BRICK_OWNER_ATTR, ownerId);
+      for (const b of bricks) drawBrick(editor, layer, b, 'brush', settings.setId).attr(BRICK_OWNER_ATTR, ownerId);
     });
   }
 }

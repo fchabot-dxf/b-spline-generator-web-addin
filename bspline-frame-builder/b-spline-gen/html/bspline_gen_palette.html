@@ -1005,7 +1005,8 @@
           <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Set</label>
           <div style="display:flex; gap:6px; margin-bottom:12px;">
             <button type="button" id="brickSetRed" class="cad-btn brick-set-btn active" title="Red brick (Masonry)">Red Brick</button>
-            <button type="button" id="brickSetWhite" class="cad-btn brick-set-btn" title="Coming later" disabled>White Rocks<br><span style="font-size:9px; opacity:0.7;">(coming)</span></button>
+            <!-- F35 item 4 (c): un-greyed -- f3's item 74 built the fieldstone layout this set needs. -->
+            <button type="button" id="brickSetWhite" class="cad-btn brick-set-btn" title="White rocks (fieldstone, Masonry)">White Rocks</button>
           </div>
 
           <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Tool</label>
@@ -1013,6 +1014,15 @@
             <!-- Populated at runtime by main/brick-panel.js's declared BRICK_TOOLS list. -->
           </div>
           <div id="brickToolHint" style="font-size:10px; opacity:0.65; margin:-6px 0 12px;"></div>
+
+          <!-- F35 item 4 (advisor): a Frame band-preset picker. Only 3 of
+               the 5 named presets exist in library.js's own FRAME_PRESETS
+               today -- see main/brick-panel.js's own FRAME_PRESET_LIST
+               comment for which 2 are still missing. -->
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
+          <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+            <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
+          </div>
 
           <label class="cad-label">Scale</label>
           <div class="cad-slider-row" style="margin-bottom:10px;">

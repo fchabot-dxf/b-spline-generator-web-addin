@@ -9328,3 +9328,86 @@ on the Brick tab's own Wall/Frame tools next to confirm the escalated issues are
 end-to-end, not just at the test level.
 
 Commit, push, pass back.
+
+
+### F35 item 4: Brick tab polish -- visible stripe styles, White Rocks, Frame presets; Wall/Frame-as-spines scoped, not built
+
+Dispatch: (a) Stripe A/B/C runs must look genuinely different (today all red; the generic stripe
+panel's colour swatches mean nothing for bricks); (b) Wall and Frame elements become spine+settings
+too (Frame's spine = the frame contour, Wall's = the board/frame interior outline) so Scissors/
+Stripe/Scale work on them the same way Brush does; (c) White Rocks (f3's item 74) un-greyed. A
+follow-up message added a Frame band-PRESET PICKER (5 thumbnails named: soldier, soldier-stretcher,
+double-course, quoin-corners, header-band).
+
+**(c) shipped and verified.** White Rocks (`BRICK_SETS[2]`, `engine:'masonry'`, `layout:'fieldstone'`
+-- f3's item 74 built it for real, it's no longer the empty slot) is selectable in the picker.
+Switching sets also resets the grout WIDTH field to that set's own declared default (0.12in vs Set
+1's 0.06in) -- otherwise the UI would silently keep showing/using the PREVIOUS set's own width, which
+`toBrickOpts` applies verbatim regardless of which set is active. Verified live: clicking White Rocks
+-> `setId=3`, `grout.widthIn` auto-updates to 0.12, a Wall fill produces 16 irregular fieldstone
+polygons, all filled a single declared colour (see (a) below for why that colour, specifically).
+`shots/seatC/f35item4_01_white_rocks_wall.png`.
+
+**(a) shipped and verified, scoped honestly.** This app has no per-sample photo-texture rendering for
+bricks yet -- every brick is one flat-filled polygon, so a genuinely different-LOOKING style needs a
+declared representative colour per SET (`SET_COLORS`: Set 1 red-brown, Set 3 pale warm grey) plus the
+already-real `profile` difference ('bricks' = individual units, 'continuous' = one solid band).
+`STYLE_CYCLE` now cycles BOTH together (`{setId:1, profile:'bricks'}`, `{setId:3,
+profile:'continuous'}`) so a striped run visibly differs in colour AND shape, not just shape.
+Verified live on a fresh stroke: 8 bricks, exactly 2 distinct fill colours present
+(`#aa4433`/`#c9c3b2`), alternating cleanly along the stroke --
+`shots/seatC/f35item4_02b_stripe_clean.png` shows this unambiguously (red individual bricks
+alternating with tan continuous bands). KNOWN, NAMED GAP (not silent, matches the dispatch's own
+observation that the stripe panel's swatches "mean nothing for bricks"): the cycle is fully
+AUTOMATIC by a run's own position -- the user cannot yet PICK which style each run gets via the
+shared editor-stripe-tool.js panel (its own A/B/C swatches are still generic colour pickers, left
+untouched). Giving the user a real "pick set/profile/scale per run" picker (the dispatch's own ask,
+"shown as small brick thumbnails, not colours") means changing that SHARED panel's own rendering,
+which touches every other (non-brick) use of Stripe too -- a separate, carefully-scoped follow-up.
+
+**Frame band-preset picker (the advisor's own mid-turn addition) -- shipped, with an honest data
+gap flagged.** `P.brickSettings.frameBandPreset` (a key into `library.js`'s own `FRAME_PRESETS`, not
+the bands array itself, so it always tracks that file's current declaration) + a 3-button picker in
+the Brick tab. The advisor's own dispatch named 5 presets (soldier, soldier-stretcher, double-course,
+quoin-corners, header-band) -- only 3 actually exist in `FRAME_PRESETS` today (`single_soldier`,
+`soldier_stretcher`, `three_band`); `quoin-corners`/`header-band` aren't declared anywhere yet. Mapped
+the 3 real ones to readable labels rather than inventing placeholder pattern data for the missing 2
+(not this adapter's call to design new brick-band geometry) -- flagged below for the advisor/f3 to
+resolve: either the other 2 are a future f3 item, or the dispatch's own naming was aspirational.
+Verified live: picking "three_band" updates `frameBandPreset`, re-running Frame produces the expected
+much-thicker 3-course band (668 bricks vs the single-course default) --
+`shots/seatC/f35item4_03_frame_three_band.png`. That same screenshot is also a good incidental
+confirmation that f3's item 74 concave-curve fix holds up on a REAL multi-band Frame run too: the
+band fans cleanly around the hourglass waist with no sunburst/wedge gaps, the issue escalated from
+the F35 item 1 review.
+
+**(b) Wall/Frame as spine+settings elements -- investigated, NOT built this turn, scoped the same
+honest way item 3's own Scissors/Stripe prerequisite was.** Brush's own spine (a plain `<line>`
+chain) works because `isCuttable` already accepts any `<line>` with zero changes elsewhere, and an
+OPEN run has a natural start/end for cutting. Frame/Wall are fundamentally different:
+- Frame's own contour is a CLOSED LOOP. A closed loop's cut/open/cut-again semantics are NOT the same
+  as an open line's (cutting a closed loop ONCE just opens it into one long run, not two pieces) --
+  this is exactly what the editor's OWN `isContourPath`/`_cutContourAt`/`BOUNDARY_REF_ATTR` machinery
+  already handles correctly for Shape-Lattice-generated boundaries, but my own `reconstructChains`
+  (built for Brush's open-line case) does not: traced through it by hand for a closed ring of
+  segments and confirmed it would produce a degenerate double-closed chain, not the correct
+  open-after-one-cut result. Representing a Frame spine properly means using THAT existing
+  contour-segment convention instead of plain lines -- a genuinely different representation, not an
+  extension of what Brush already has.
+- Wall has no natural 1D spine AT ALL -- it's an area fill. "The board/frame interior outline" (the
+  dispatch's own proposed spine) is a boundary CURVE, not a stroke a user drew; cutting it would mean
+  cutting the BOUNDARY, not dividing the FILLED AREA into two filled regions, which is a different,
+  harder operation (splitting one area fill into two independently-regenerating area fills needs its
+  own area-partition logic, not reuse of line-cutting at all).
+
+Given this is comparable in size to item 3's own full spine+regenerate build (times two, for two
+structurally different spine kinds), attempting a rushed version risked shipping something that
+looks wired up but regenerates incorrectly the first time someone actually cuts a Frame band. Not
+attempting it here; flagging the concrete blocker (contour-segment representation needed for Frame,
+an area-partition model needed for Wall) rather than guessing at a design unprompted.
+
+Full suite green: 195 files / 3599 tests (no new automated tests this round -- (a)/(c)/preset-picker
+are DOM/colour wiring verified live, same precedent as the rest of this module; no new pure logic to
+unit-test).
+
+Commit, push, pass back with (b)'s scope and the 2 missing frame presets as explicit questions.
