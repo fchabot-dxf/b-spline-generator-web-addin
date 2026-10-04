@@ -66,7 +66,9 @@ function setup(tool) {
   root = document.createElement('div');
   root.innerHTML = FIXTURE;
   document.body.appendChild(root);
-  window.svgEditor = { setMode: () => {} };
+  // A Bricks layer + a runBricks mock honouring the real contract: the laid key is stamped on it.
+  window.svgEditor = { setMode: () => {}, _layers: [{ id: 'b', name: 'Bricks' }] };
+  runBricks.mockImplementation((ed, _s, _fg, opts) => { if (opts?.laidKey != null) ed._layers[0].brickLaidKey = opts.laidKey; });
   vi.stubGlobal('requestAnimationFrame', () => 1);
   vi.stubGlobal('cancelAnimationFrame', () => {});
   P.brickSettings.pattern = 'stretcher';
@@ -319,5 +321,58 @@ describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + 
     expect(P.brickSettings.brickLengthIn).toBe(3);
     expect(runBricks).toHaveBeenCalledTimes(1);
     expect($('brickQuick_size_three').classList.contains('active')).toBe(true);
+  });
+});
+
+// Audit B1-B3: pending is derived from the key stamped on the Bricks layer, which undo/redo, Cancel and
+// reload all carry -- not from module memory that none of them touch.
+describe('pending follows the Bricks layer key through undo, reload and Cancel', () => {
+  beforeEach(() => setup('wall'));
+  const layer = () => window.svgEditor._layers[0];
+  const layersChanged = () => document.dispatchEvent(new CustomEvent('editorLayersChanged'));
+
+  it('Generate stamps the current settings key on the layer', () => {
+    const before = layer().brickLaidKey;
+    $('brickPattern_herringbone').click();
+    $('brickGenerate').click();
+    expect(layer().brickLaidKey).not.toBe(before);
+    expect(layer().brickLaidKey).toContain('herringbone');
+  });
+
+  it('undo restoring the older layer key shows pending; redo clears it', () => {
+    const stretcherKey = layer().brickLaidKey;
+    $('brickPattern_herringbone').click();
+    $('brickGenerate').click();
+    const herringboneKey = layer().brickLaidKey;
+    layer().brickLaidKey = stretcherKey; layersChanged(); // what editor.undo() restores
+    expect(pending()).toBe(true);
+    layer().brickLaidKey = herringboneKey; layersChanged(); // redo
+    expect(pending()).toBe(false);
+  });
+
+  it('a reopened/reloaded document whose layer key differs from the settings shows pending at once', () => {
+    layer().brickLaidKey = layer().brickLaidKey.replace('stretcher', 'stack');
+    layersChanged();
+    expect(pending()).toBe(true);
+  });
+
+  it('Cancel restoring the entry settings (brickSettingsRestored) re-syncs the panel and the pending state', () => {
+    const entry = JSON.parse(JSON.stringify(P.brickSettings));
+    $('brickPattern_basketweave').click();
+    expect(pending()).toBe(true);
+    Object.assign(P.brickSettings, entry);
+    document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
+    expect($('brickPattern_stretcher').classList.contains('active')).toBe(true);
+    expect($('brickPattern_basketweave').classList.contains('active')).toBe(false);
+    expect(pending()).toBe(false);
+  });
+
+  it('bricks with no key yet (saved before this field) are not pending until a setting changes', () => {
+    delete layer().brickLaidKey; layersChanged();
+    expect(pending()).toBe(false);
+    $('brickPattern_flemish').click();
+    expect(pending()).toBe(true);
+    $('brickGenerate').click();
+    expect(pending()).toBe(false);
   });
 });

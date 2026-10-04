@@ -141,6 +141,7 @@ export function initSvgSource(ctx, layerModule) {
         // own comment for the same RO1 history).
         SvgEditorSnapshot.active = true;
         SvgEditorSnapshot.editorSvg = P.editorSvg ?? null;
+        SvgEditorSnapshot.brickSettings = P.brickSettings ? JSON.parse(JSON.stringify(P.brickSettings)) : null;
       }
       if (window.svgEditor && currentLayer) {
         // Restore the unified editor document (P.editorSvg), NOT currentLayer.svg:

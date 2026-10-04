@@ -19,7 +19,7 @@
  */
 import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
 import { withLoadingStage } from '../core/loading-signal.js';
-import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives } from '../editor/editor-brick-tool.js';
+import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
@@ -433,18 +433,26 @@ const _layoutKey = () => JSON.stringify(P.brickSettings, function (k, v) {
   if (this === P.brickSettings.grout && SURFACE_ONLY_GROUT_KEYS.includes(k)) return undefined;
   return v;
 });
-// The settings the Wall/Frame bricks on the canvas were last laid with. null = nothing changed yet
-// this session (e.g. bricks restored from a saved session): not pending. A change made while it is
-// null can't be compared, so it becomes UNKNOWN_LAID -- pending until the next Generate.
-const UNKNOWN_LAID = '\u0000unknown';
-let _drawnLayoutKey = null;
+// Audit B1-B3: the settings the Wall/Frame bricks on the canvas were laid with live ON the Bricks
+// layer (`brickLaidKey`, stamped by runBricks before its undo commit, persisted with the layer
+// roster), so undo/redo, Cancel and reload all carry them -- module memory did not. No key on the
+// layer (no bricks laid, or bricks saved before this field): a change made then can't be compared,
+// so it stays pending until the next Generate.
+let _changedWhileUnknown = false;
+
+function _laidLayoutKey() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  const layer = (editor?._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
+  return layer?.brickLaidKey ?? null;
+}
 
 function isGeneratePending() {
-  return _drawnLayoutKey !== null && _layoutKey() !== _drawnLayoutKey;
+  const laid = _laidLayoutKey();
+  return laid === null ? _changedWhileUnknown : _layoutKey() !== laid;
 }
 
 function _noteSettingChanged() {
-  if (_drawnLayoutKey === null) _drawnLayoutKey = UNKNOWN_LAID;
+  if (_laidLayoutKey() === null) _changedWhileUnknown = true;
   syncGeneratePending();
 }
 
@@ -457,8 +465,10 @@ function syncGeneratePending() {
   btn.title = pending ? 'Brick settings changed -- press Generate to re-lay the bricks' : 'Re-lay the Wall/Frame bricks';
 }
 
-function _markLaidNow() {
-  _drawnLayoutKey = _layoutKey();
+/** Lay the Wall/Frame bricks with the current settings, stamping their key on the Bricks layer. */
+function _layBricks(editor, frameGeom) {
+  withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey() }));
+  _changedWhileUnknown = false;
   syncGeneratePending();
 }
 
@@ -479,8 +489,7 @@ export function generateBricks() {
   const frameGeom = resolveFrameGeom(editor);
   const lay = _hasLaidWallOrFrame(editor) || _activeTool === 'wall' || (_activeTool === 'frame' && !!frameGeom);
   if (!lay) return false;
-  withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom));
-  _markLaidNow();
+  _layBricks(editor, frameGeom);
   return true;
 }
 
@@ -760,8 +769,7 @@ function selectTool(id) {
     // interior, not just fill the raw board -- resolve the frame the same
     // way the Frame tool does; runBricks clips Wall to it via generateBricks
     // when one is usable, and simply fills the whole board when there isn't.
-    withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, resolveFrameGeom(editor)));
-    _markLaidNow();
+    _layBricks(editor, resolveFrameGeom(editor));
     notifyChange();
     return;
   }
@@ -771,8 +779,7 @@ function selectTool(id) {
       console.warn('Brick Frame tool: no usable frame contour on this board.');
       return;
     }
-    withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom));
-    _markLaidNow();
+    _layBricks(editor, frameGeom);
     notifyChange();
     return;
   }
@@ -1008,6 +1015,11 @@ export function initBrickPanel() {
   });
   document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => setSeed(Math.floor(Math.random() * 1000000)));
   document.getElementById('brickGenerate')?.addEventListener('click', () => generateBricks());
+  // Audit B1-B3: undo/redo, Cancel's restored document and a reopen all re-render the layer roster
+  // (layers.js renderLayersPanel) -- the laid key may have changed with it.
+  document.addEventListener('editorLayersChanged', () => syncGeneratePending());
+  // Audit B1: Cancel/Discard put P.brickSettings back to the editor's entry snapshot (app-init.js).
+  document.addEventListener('brickSettingsRestored', () => { syncControlsFromState(); syncGeneratePending(); });
 
   syncControlsFromState();
   syncGeneratePending();

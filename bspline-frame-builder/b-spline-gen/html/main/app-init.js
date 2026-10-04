@@ -33,7 +33,18 @@ const FRESH_START_FRAME_TEMPLATE = 'template_1';
 // genuinely undoes the in-flight edits (instead of silently keeping them
 // because onChange already wrote P.editorSvg + remasked after every edit
 // while the user was still typing).
-export const SvgEditorSnapshot = { active: false, editorSvg: null };
+// Audit B1: the brick settings are app state the editor's own undo stack never holds, but every
+// Brick-tab change saves them at once -- so Cancel must put them back too, or the panel shows the
+// discarded settings over the restored bricks (and the next Generate re-lays them).
+export const SvgEditorSnapshot = { active: false, editorSvg: null, brickSettings: null };
+
+/** Put P.brickSettings back IN PLACE (other modules hold the same object, e.g. editor._brickSettings). */
+export function restoreBrickSettings(saved) {
+  if (!saved || !P.brickSettings) return;
+  for (const k of Object.keys(P.brickSettings)) delete P.brickSettings[k];
+  Object.assign(P.brickSettings, JSON.parse(JSON.stringify(saved)));
+  document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
+}
 
 /**
  * SE8b-2: what editor._onChange(kind) actually runs, declared once — the
@@ -708,6 +719,7 @@ export function initSvgEditor(preview) {
         // both, so this is safe regardless of exactly when the modal
         // hides relative to this call.
         P.editorSvg = SvgEditorSnapshot.editorSvg;
+        restoreBrickSettings(SvgEditorSnapshot.brickSettings);
         saveLastSession();
         window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn);
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);

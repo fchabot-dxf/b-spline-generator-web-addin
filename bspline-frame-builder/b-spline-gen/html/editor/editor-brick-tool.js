@@ -341,8 +341,12 @@ function _generateAndDraw(editor, settings, frameGeom) {
   return { wallCount: bricks.length, frameCount: frameBricks.length };
 }
 
-export function runBricks(editor, settings, frameGeom) {
+/** `laidKey` (audit B1-B3): the caller's key for the settings this run lays. It is stamped on the
+ *  Bricks layer as `brickLaidKey` BEFORE the undo commit, so every undo snapshot, the saved layer
+ *  roster (editor-io.js) and Cancel's restored document all carry the key of the bricks they hold. */
+export function runBricks(editor, settings, frameGeom, { laidKey } = {}) {
   const counts = _generateAndDraw(editor, settings, frameGeom);
+  if (laidKey != null) ensureBricksLayer(editor).brickLaidKey = laidKey;
   commitEdit(editor);
   notifyBricksGenerated(settings);
   return counts;
