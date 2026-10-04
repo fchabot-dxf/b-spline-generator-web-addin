@@ -158,9 +158,11 @@ export async function updateStampMasks(nx, nz) {
       ? await withLoadingStage('heightMask', () => rasterizeBrickHeightMask(editor, eLayer, nx, nz, P.widthIn, P.heightIn,
           { topMode: P.brickSettings && P.brickSettings.brickTopMode, // F35 item 18: Flat | Organic brick tops
             surfaceStyle: P.brickSettings && P.brickSettings.surfaceStyle, // F35 item 18 (2): Clean | Weathered
+            surfaceWear: P.brickSettings && P.brickSettings.surfaceWear, // the Weathered Wear slider (0..1)
             groutWidthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.widthIn,
             groutProfile: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.profile, // Recessed | Flush
-            groutDepthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.depthIn }))
+            groutDepthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.depthIn,
+            levels: P.brickSettings && P.brickSettings.elementLevelIn })) // F35 item 16: per-element Level
       : await rasterizeSvg(
           applyLayerTransform(svg, layerTransform, P.widthIn, P.heightIn),
           nx,

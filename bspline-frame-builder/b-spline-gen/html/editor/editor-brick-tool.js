@@ -49,7 +49,7 @@
  * BRICK_ELEMENT_ATTR/BRICK_SETTINGS_ATTR/reconstructChains/
  * regenerateOwnedBrickElements block below for the full mechanism.
  */
-import { ensureActiveLayer, addLayer, applyLayerStateTo } from './layers.js';
+import { ensureActiveLayer, addLayer, BRICKS_LAYER_NAME, isBricksLayer, applyLayerStateTo } from './layers.js';
 import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
@@ -62,16 +62,9 @@ import { radialSignAt } from '../core/bricks/arc-voussoir.js';
 
 export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-spine'
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
-export const BRICKS_LAYER_NAME = 'Bricks';
-
-/** F35 item 5: the generic stamp-mask pipeline (main/stamp-mask-manager.js)
- *  checks this to route the Bricks layer through the brick-aware height-mask
- *  rasterizer (editor-brick-height-mask.js) instead of the generic SVG-mask
- *  one -- by NAME, matching ensureBricksLayer's own lookup (there's no
- *  reserved id scheme for named layers here). */
-export function isBricksLayer(layer) {
-  return !!layer && layer.name === BRICKS_LAYER_NAME;
-}
+// Audit K7: the Bricks layer's identity now lives in layers.js (the layer-row summary needs it, and
+// layers.js cannot import this file -- this file imports layers.js). Re-exported for every importer.
+export { BRICKS_LAYER_NAME, isBricksLayer };
 
 // F35 item 3 (advisor: "brick elements as declared spine + settings... the
 // prerequisite for Scissors/Stripe"): a Brush stroke is no longer baked
@@ -328,10 +321,14 @@ function applyWallPattern(input, settings) {
  *  `frame.set || set` fallback picks the top-level `set` here, same as
  *  Wall), so every tool resolves the same brick length with no separate
  *  per-tool override left to keep in sync. */
-function _generateAndDraw(editor, settings, frameGeom) {
+/** Audit C1 (F35 item 16, Wall and Frame as their own tools): `kinds` = which element kinds this run
+ *  LAYS -- only those are cleared and drawn; the others already on the canvas stay as they are. The
+ *  composer still runs with the frame (when one resolves), so a Wall laid alone keeps the SAME
+ *  frame-interior clip it always had. Default both = the original behaviour. */
+export const BRICK_KINDS = ['wall', 'frame'];
+function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const layer = ensureBricksLayer(editor);
-  clearGenerated(editor, layer, 'wall');
-  clearGenerated(editor, layer, 'frame');
+  for (const kind of kinds) clearGenerated(editor, layer, kind);
   applyBrickLayerTooling(layer, settings);
 
   const input = {
@@ -346,16 +343,17 @@ function _generateAndDraw(editor, settings, frameGeom) {
   applyWallPattern(input, settings);
 
   const { bricks, frameBricks } = generateBricks(input);
-  drawBricks(editor, layer, frameBricks, 'frame', settings.setId, settings.seed, settings.reliefIn);
-  drawBricks(editor, layer, bricks, 'wall', settings.setId, settings.seed, settings.reliefIn);
-  return { wallCount: bricks.length, frameCount: frameBricks.length };
+  const lays = (kind) => kinds.includes(kind);
+  if (lays('frame')) drawBricks(editor, layer, frameBricks, 'frame', settings.setId, settings.seed, settings.reliefIn);
+  if (lays('wall')) drawBricks(editor, layer, bricks, 'wall', settings.setId, settings.seed, settings.reliefIn);
+  return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0 };
 }
 
 /** `laidKey` (audit B1-B3): the caller's key for the settings this run lays. It is stamped on the
  *  Bricks layer as `brickLaidKey` BEFORE the undo commit, so every undo snapshot, the saved layer
  *  roster (editor-io.js) and Cancel's restored document all carry the key of the bricks they hold. */
-export function runBricks(editor, settings, frameGeom, { laidKey } = {}) {
-  const counts = _generateAndDraw(editor, settings, frameGeom);
+export function runBricks(editor, settings, frameGeom, { laidKey, kinds } = {}) {
+  const counts = _generateAndDraw(editor, settings, frameGeom, kinds);
   if (laidKey != null) ensureBricksLayer(editor).brickLaidKey = laidKey;
   commitEdit(editor);
   notifyBricksGenerated(settings);
@@ -369,8 +367,8 @@ export function runBricks(editor, settings, frameGeom, { laidKey } = {}) {
  *  / 3D rebuild this preview tier exists specifically to skip). main/brick-panel.js's own shared
  *  slider-binding mechanism calls this at most ~10x/sec (rAF-throttled) while dragging; the final
  *  value's runBricks() call on release/commit does the full, committed regenerate. */
-export function runBricksPreview(editor, settings, frameGeom) {
-  return _generateAndDraw(editor, settings, frameGeom);
+export function runBricksPreview(editor, settings, frameGeom, kinds) {
+  return _generateAndDraw(editor, settings, frameGeom, kinds);
 }
 
 /** F35 item 10 follow-up: the SLOW-drag fallback for runBricksPreview -- once brick-panel.js's own

@@ -106,7 +106,8 @@ for (let r = 0; r < EDGES.length; r++) {
       const { P } = await import('./core/state.js');
       const { BRICK_SURFACE_STYLES } = await import('./editor/brick-surface-styles.js');
       const w = BRICK_SURFACE_STYLES.weathered;
-      P.brickSettings.surfaceStyle = { ...w, profileSet: { ...w.profileSet, edgeNoiseIn: ${EDGES[r]} }, pitGain: ${PITS[c]} };
+      // an explicit (edge, pit) cell: no wear key on the inline style, so the Wear slider does not override it
+      P.brickSettings.surfaceStyle = { ...w, wear: undefined, profileSet: { ...w.profileSet, edgeNoiseIn: ${EDGES[r]} }, pitGain: ${PITS[c]} };
       const h = await window.__wgridRebuild();
       const c0 = window.__wgridClean;
       let ss = 0; for (let k = 0; k < h.length; k++) ss += (h[k] - c0[k]) ** 2;

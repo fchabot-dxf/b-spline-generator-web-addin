@@ -30,6 +30,11 @@ const TERRAIN = (x, y) => 1.2 + 0.5 * Math.sin(1.9 * x) * Math.cos(1.4 * y) + 0.
 const W = 7, H = 9;
 const build = (spacing, thick) => carvedPanel(W, H, Math.round(W / spacing) + 1, Math.round(H / spacing) + 1, TERRAIN, thick);
 
+// Declared per-file timeout: the 0.05-spacing cases build ~140x180 carved meshes and take up to ~1.9s
+// alone (measured 2026-10-04), but crossed vitest's 5s default under full-suite load (twice that day,
+// green alone). ~10x the solo time keeps the gate from flaking without hiding a real hang.
+const HEAVY_MESH_TIMEOUT_MS = 20_000;
+
 const CASES = [];
 for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_6']) for (const [spacing, thick] of [[0.4, 0.2], [0.15, 1.0], [0.05, 0.2]]) CASES.push([id, spacing, thick]);
 
@@ -65,7 +70,7 @@ describe('bar tops vs the DRAWN panel faces (normal-offset underside)', () => {
     }
     expect({ worstBottom: +worstBottom.toFixed(4), barShows, panelOutside }).toEqual({ worstBottom: expect.any(Number), barShows: 0, panelOutside: 0 });
     expect(worstBottom).toBeLessThan(1e-4);
-  });
+  }, HEAVY_MESH_TIMEOUT_MS);
 
   it('the outline wall carries the panel colours (no white ledge) and spans the drawn faces', () => {
     const { mesh, solid, grid } = build(0.4, 0.5);

@@ -27,7 +27,8 @@ import {
   initBrickPanel, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
   setBrickTopMode, setSurfaceStyle,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
-import { runBricks, runBricksPreview } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { runBricks, runBricksPreview, buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
 import { deselectTool } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
@@ -54,7 +55,10 @@ const FIXTURE = `
   <button id="brickBtnReliefRaised"></button><button id="brickBtnReliefCarved"></button>
   <button id="brickBtnTopOrganic" class="active"></button><button id="brickBtnTopFlat"></button>
   <div id="brickSurfaceStyleToggle"></div>
+  <div id="brickSurfaceWearRow" style="display:none;"><input type="range" id="brickSurfaceWearSlider" min="0" max="1" step="0.05"><input id="brickSurfaceWear"></div>
   <div id="brickQuickSettings"></div>
+  <input type="checkbox" id="brickFrameOffsetOn" checked><input id="brickFrameOffsetDistance" value="0">
+  <input id="brickLevel_wall" value="0"><input id="brickLevel_frame" value="0">
   <input id="brickReliefHeightSlider" type="range" min="0" max="1" step="0.001"><input id="brickReliefHeight">
   <input id="brickSuppressionSlider" type="range"><input id="brickSuppression">
   <input id="brickClumpingSlider" type="range"><input id="brickClumping">
@@ -82,7 +86,8 @@ function setup(tool) {
   P.brickSettings.setId = 1;
   P.brickSettings.invert = false;
   initBrickPanel();
-  $(`brickTool_${tool}`).click(); // selecting the tool lays the bricks once and records what was laid
+  $(`brickTool_${tool}`).click(); // audit C2: selecting the tool only shows its settings...
+  if (tool === 'wall' || tool === 'frame') $('brickGenerate').click(); // ...Generate lays it and records what was laid
   vi.clearAllMocks();
 }
 afterEach(() => { root.remove(); window.svgEditor = null; vi.unstubAllGlobals(); });
@@ -122,8 +127,10 @@ describe('Editor Brick tab (Wall tool): a setting change marks pending; only Gen
     window.svgEditor._notifyChange = notify;
     const other = P.brickSettings.grout.profile === 'flush' ? 'brickBtnGroutRecessed' : 'brickBtnGroutFlush';
     $(other).click();
-    fire('brickGroutDepth', 0.07, 'input');
+    fire('brickGroutDepth', 0.07, 'input'); // typing: saved, no re-mask yet (turn 189)
     expect(P.brickSettings.grout.depthIn).toBe(0.07);
+    expect(notify).toHaveBeenCalledTimes(1);
+    fire('brickGroutDepth', 0.07, 'change'); // settled: re-mask
     expect(notify).toHaveBeenCalledTimes(2);
     expect(runBricks).not.toHaveBeenCalled();
     expect(pending()).toBe(false);
@@ -445,5 +452,117 @@ describe('audit K2: the Band patterns heading follows the preset', () => {
     expect($('brickFrameBandPatternList').children.length).toBe(0);
     $('brickFramePreset_three_band').click();
     expect($('brickFrameBandPatternLabel').style.display).toBe('');
+  });
+});
+
+describe('audit C1/C2 (F35 item 16): Wall and Frame are their own tools', () => {
+  const kindsOfCall = (i = 0) => runBricks.mock.calls[i][3].kinds;
+  const putOnCanvas = (kind) => {
+    const node = document.createElement('div');
+    const el = document.createElement('polygon');
+    el.setAttribute('data-brick-gen', '1');
+    el.setAttribute('data-brick', kind);
+    node.appendChild(el);
+    window.svgEditor._sketchLayer = { node };
+  };
+  beforeEach(() => setup('brush'));
+
+  it('C2: picking Wall or Frame only shows its settings -- nothing is laid', () => {
+    $('brickTool_wall').click();
+    $('brickTool_frame').click();
+    expect(runBricks).not.toHaveBeenCalled();
+  });
+  it('C1: Wall + Generate on an empty board lays the wall only', () => {
+    $('brickTool_wall').click();
+    $('brickGenerate').click();
+    expect(kindsOfCall()).toEqual(['wall']);
+  });
+  it('C1: Frame + Generate lays the frame bands only', () => {
+    $('brickTool_frame').click();
+    $('brickGenerate').click();
+    expect(kindsOfCall()).toEqual(['frame']);
+  });
+  it('Generate re-lays what is already on the canvas plus the active tool\'s own kind', () => {
+    putOnCanvas('frame');
+    $('brickTool_wall').click();
+    $('brickGenerate').click();
+    expect(kindsOfCall()).toEqual(['wall', 'frame']);
+  });
+  it('the Wall hint no longer claims the whole board', () => {
+    $('brickTool_wall').click();
+    expect($('brickToolHint').textContent).toMatch(/frame's interior/);
+    expect($('brickToolHint').textContent).not.toMatch(/^Fills the whole board/);
+  });
+});
+
+describe('F35 item 16: the Frame tool\'s offset from frame, and per-element Level', () => {
+  let notify;
+  beforeEach(() => {
+    P.brickSettings.frameOffset = { on: true, distance: 0 };
+    P.brickSettings.elementLevelIn = { wall: 0, frame: 0 };
+    setup('frame');
+    notify = vi.fn();
+    window.svgEditor._notifyChange = notify;
+    window.svgEditor._mW = 7; window.svgEditor._mH = 9;
+  });
+  it('defaults: ON at distance 0, the frame contour at 0 is what the bands follow', () => {
+    expect($('brickFrameOffsetOn').checked).toBe(true);
+    $('brickGenerate').click();
+    expect(frameContourSilhouette.mock.calls.at(-1)[1]).toBe(0);
+  });
+  it('a distance is a LAYOUT change: pending, then Generate lays the bands at that distance', () => {
+    fire('brickFrameOffsetDistance', 0.3, 'change');
+    expect(P.brickSettings.frameOffset).toEqual({ on: true, distance: 0.3 });
+    expectPendingThenGenerate();
+    expect(frameContourSilhouette.mock.calls.at(-1)[1]).toBe(0.3);
+  });
+  it('OFF = free placement: the bands follow the board outline, the distance field is disabled', () => {
+    $('brickFrameOffsetOn').checked = false;
+    $('brickFrameOffsetOn').dispatchEvent(new Event('change'));
+    expect(P.brickSettings.frameOffset.on).toBe(false);
+    expect($('brickFrameOffsetDistance').disabled).toBe(true);
+    buildRibbonPrimitives.mockClear();
+    $('brickGenerate').click();
+    const contour = buildRibbonPrimitives.mock.calls.at(-1)[0];
+    expect(contour.map((p) => [p.p0.x, p.p0.y])).toEqual([[0, 0], [7, 0], [7, 9], [0, 9]]);
+  });
+  it('Level is 3D-only: saved per element kind, re-masks at once, never re-lays, never pending', () => {
+    fire('brickLevel_frame', 0.0625, 'change');
+    fire('brickLevel_wall', -0.03125, 'change');
+    expect(P.brickSettings.elementLevelIn).toEqual({ wall: -0.03125, frame: 0.0625 });
+    expect(notify).toHaveBeenCalledTimes(2);
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(pending()).toBe(false);
+  });
+});
+
+describe("turn 189 (Fred): the Wear slider shows only for Weathered, saves on drag, re-masks on release", () => {
+  let notify;
+  beforeEach(() => {
+    P.brickSettings.surfaceStyle = 'clean';
+    P.brickSettings.surfaceWear = 0.5;
+    setup('wall');
+    notify = vi.fn();
+    window.svgEditor._notifyChange = notify;
+  });
+  it('hidden for Clean, shown (at the saved value) for Weathered, hidden again for Clean', () => {
+    expect($('brickSurfaceWearRow').style.display).toBe('none');
+    $('brickSurfaceStyle_weathered').click();
+    expect($('brickSurfaceWearRow').style.display).toBe('');
+    expect($('brickSurfaceWear').value).toBe('0.5');
+    $('brickSurfaceStyle_clean').click();
+    expect($('brickSurfaceWearRow').style.display).toBe('none');
+  });
+  it('drag ticks only save; release re-masks once; never re-lays, never pending', () => {
+    $('brickSurfaceStyle_weathered').click();
+    notify.mockClear();
+    fire('brickSurfaceWearSlider', 0.8, 'input');
+    fire('brickSurfaceWearSlider', 0.9, 'input');
+    expect(P.brickSettings.surfaceWear).toBe(0.9);
+    expect(notify).not.toHaveBeenCalled();
+    fire('brickSurfaceWearSlider', 0.9, 'change');
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(pending()).toBe(false);
   });
 });

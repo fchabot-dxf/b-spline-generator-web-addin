@@ -912,6 +912,15 @@
         <!-- F35 item 18 (2): brick SURFACE style, buttons rendered from editor/brick-surface-styles.js (3D-only, applies at once) -->
         <label class="cad-label">Surface</label>
         <div class="relief-toggle" id="brickSurfaceStyleToggle" style="margin-bottom:12px;"></div>
+        <!-- F35 item 18 (Fred): Weathered's WEAR, one 0..1 slider along the declared ranges
+             (editor/brick-surface-styles.js); shown only while the surface style declares `wear` -->
+        <div id="brickSurfaceWearRow" style="display:none;">
+          <label class="cad-label">Wear</label>
+          <div class="cad-slider-row" style="margin-bottom:12px;">
+            <input type="range" id="brickSurfaceWearSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.5">
+            <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickSurfaceWear" value="0.5" min="0" max="1" step="0.05"></div>
+          </div>
+        </div>
 
         <label class="cad-label">Max Height (in)</label>
         <div class="cad-slider-row" style="margin-bottom:12px;">
@@ -3178,6 +3187,9 @@
               <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
                 <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
               </div>
+              <!-- F35 item 16: LEVEL, this element's height offset (+ proud / - recessed), 3D only -->
+              <label class="cad-label">Level (in)</label>
+              <input type="number" id="brickLevel_wall" value="0" min="-0.25" max="0.25" step="0.015625" style="width:100%; margin-bottom:12px;" title="+ sits proud of the other bricks, - sits recessed (3D only)">
             </div>
 
             <!-- F35 item 16 follow-up: shown only while Frame is the active tool (syncFrameSection). -->
@@ -3191,6 +3203,15 @@
               <div id="brickFrameBandPatternList" style="margin-bottom:12px;">
                 <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
               </div>
+              <!-- F35 item 16: OFFSET FROM FRAME, like the Shape Lattice's (ON at 0 = on the frame's outer edge;
+                   OFF = the bands follow the board's own outline) -->
+              <label class="cad-label" style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="brickFrameOffsetOn" checked style="width:16px; height:16px;"> Offset from frame
+              </label>
+              <label class="cad-label" style="font-size:10px;">Distance from the frame's outer edge (in, +in / -out)</label>
+              <input type="number" id="brickFrameOffsetDistance" value="0" step="0.05" style="width:100%; margin-bottom:10px;">
+              <label class="cad-label">Level (in)</label>
+              <input type="number" id="brickLevel_frame" value="0" min="-0.25" max="0.25" step="0.015625" style="width:100%; margin-bottom:12px;" title="+ sits proud of the other bricks, - sits recessed (3D only)">
             </div>
 
             <!-- F35 item 16 (Fred: "I'd rather they all have the same size"): ONE global brick

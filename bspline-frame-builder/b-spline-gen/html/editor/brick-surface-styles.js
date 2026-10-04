@@ -18,6 +18,10 @@
  *  - jointDepthScale: multiplies the grout's own recess depth (P.brickSettings.grout.depthIn) when the
  *    grout profile is Recessed -- deeper joints read dark in the shading. Flush = no recess in every
  *    style (advisor, turn 181: ONE joint-recess implementation, driven by the grout profile);
+ *  - wear (Fred, turn 189: "they should have different levels", then "a slider"): ONE 0..1 WEAR amount
+ *    interpolating its declared ranges -- edge wear `edgeNoiseIn` and pit contrast `pitGain`, both linear
+ *    from the range's first value (wear 0) to its last (wear 1); `default` is where a new board starts.
+ *    The grid Fred marked (shots/seat37/f35item18_weathered_grid.png) is this range's diagonal.
  *  - groutProfile: picking the style switches the grout profile to this (Weathered -> Recessed, so its
  *    deep joints show); going back to a style without one restores the profile it replaced, unless the
  *    user picked a grout profile in between (main/brick-panel.js setSurfaceStyle, advisor turn 183).
@@ -32,8 +36,8 @@ export const BRICK_SURFACE_STYLES = Object.freeze({
     label: 'Weathered',
     title: 'Worn ragged edges, uneven tops, pitted faces, deep joints',
     profileScale: Object.freeze({ edgeRadiusIn: 1.8, crown: 0.5, chipRate: 5, chipSizeIn: 1.8, surfaceShare: 2.5 }),
-    profileSet: Object.freeze({ edgeNoiseIn: 0.015, edgeNoiseScaleIn: 0.06 }),
-    pitGain: 1.8,
+    profileSet: Object.freeze({ edgeNoiseScaleIn: 0.06 }),
+    wear: Object.freeze({ default: 0.5, edgeNoiseIn: Object.freeze([0, 0.04]), pitGain: Object.freeze([1, 4]) }),
     topJitterIn: 0.012,
     jointDepthScale: 1.6,
     groutProfile: 'recessed',
@@ -41,6 +45,22 @@ export const BRICK_SURFACE_STYLES = Object.freeze({
 });
 
 export const DEFAULT_SURFACE_STYLE = 'clean';
+
+const lerp = ([a, b], t) => a + (b - a) * t;
+
+/** The style with its WEAR resolved (a copy): `wear` 0..1 (clamped; absent/non-finite = the style's own
+ *  default) sets edgeNoiseIn and pitGain along their declared ranges. A style without `wear` is returned
+ *  as-is. */
+export function styleAtWear(style, wear) {
+  if (!style || !style.wear) return style;
+  const w = Number.isFinite(Number(wear)) && wear !== null && wear !== '' ? Math.max(0, Math.min(1, Number(wear))) : style.wear.default;
+  return {
+    ...style,
+    profileSet: { ...(style.profileSet || {}), edgeNoiseIn: lerp(style.wear.edgeNoiseIn, w) },
+    pitGain: lerp(style.wear.pitGain, w),
+    wearResolved: w,
+  };
+}
 
 /** The declared style for an id; anything unknown (or a saved session without the key) is Clean.
  *  An inline style DECLARATION (an object of this table's shape) is returned as-is -- how a tuning

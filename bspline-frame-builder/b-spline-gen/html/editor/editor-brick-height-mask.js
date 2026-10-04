@@ -20,8 +20,8 @@
  */
 import { buildSpatialIndex, sampleHeight, brickSetById, pointInPolygon } from '../core/bricks/index.js';
 import { preloadSetDetail, sampleDetailAtFor } from './editor-brick-surface.js';
-import { BRICK_GEN_ATTR } from './editor-brick-tool.js';
-import { surfaceStyleById, styledSet, styledDetail, styleTopJitter } from './brick-surface-styles.js';
+import { BRICK_GEN_ATTR, BRICK_ATTR } from './editor-brick-tool.js';
+import { surfaceStyleById, styledSet, styledDetail, styleTopJitter, styleAtWear } from './brick-surface-styles.js';
 
 // F35 item 16 follow-up (Fred: "keep the UI responsive... yield between stages if they block the
 // main thread"): at Masonry/Masonry max resolution this loop runs up to ~525,000 iterations fully
@@ -46,7 +46,7 @@ function parsePoints(pointsAttr) {
  *  ({id, polygon, sampleId, flip, heightOffset}) for buildSpatialIndex/
  *  sampleHeight to consume -- see this file's own header for why the DOM,
  *  not a parallel cache, is the source of truth here. */
-function collectLiveBrickGroups(editor, layer) {
+function collectLiveBrickGroups(editor, layer, levels = {}) {
   const nodes = editor._sketchLayer.node.querySelectorAll(
     `[data-layer="${layer.id}"][${BRICK_GEN_ATTR}="1"]`,
   );
@@ -63,7 +63,8 @@ function collectLiveBrickGroups(editor, layer) {
       polygon: parsePoints(n.getAttribute('points')),
       sampleId: n.getAttribute('data-brick-sample') || null,
       flip: n.getAttribute('data-brick-flip') === '1',
-      heightOffset: Number(n.getAttribute('data-brick-height-offset')) || 0,
+      // F35 item 16: + the element's LEVEL (opts.levels, keyed by its kind: wall | frame | brush ...)
+      heightOffset: (Number(n.getAttribute('data-brick-height-offset')) || 0) + (Number(levels[n.getAttribute(BRICK_ATTR)]) || 0),
     });
   });
   return [...groups.values()];
@@ -101,12 +102,12 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
   const isStamped = new Uint8Array(nx * nz);
   const flat = opts.topMode === 'flat';
   const brickOf = flat ? new Int32Array(nx * nz).fill(-1) : null;
-  const groups = collectLiveBrickGroups(editor, layer);
+  const groups = collectLiveBrickGroups(editor, layer, opts.levels);
   if (!groups.length) return { body, fillet, isStamped, metrics: null, ...(flat ? { flatTop: { brickOf, count: 0 } } : {}) };
 
   await Promise.all(groups.map((g) => preloadSetDetail(g.setId)));
 
-  const style = surfaceStyleById(opts.surfaceStyle);
+  const style = styleAtWear(surfaceStyleById(opts.surfaceStyle), opts.surfaceWear); // F35 item 18: the Wear slider
   let brickCount = 0;
   const built = groups.map((g) => {
     const librarySet = brickSetById(g.setId) || brickSetById(1);

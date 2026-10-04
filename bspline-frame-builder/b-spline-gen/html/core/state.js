@@ -109,6 +109,17 @@ export const DEFAULT = {
       // F35 item 18 (2): the brick SURFACE STYLE, an editor/brick-surface-styles.js key ('clean' |
       // 'weathered'). Clean = the set's own declared look; a saved session without the key is Clean.
       surfaceStyle: 'clean',
+      // F35 item 18: the Wear slider (0..1) of a style that declares `wear` (Weathered); 0.5 = the
+      // declared default (edge wear 0.02 in, pit gain 2.5). Read by the height mask only.
+      surfaceWear: 0.5,
+      // F35 item 16 (advisor turn 189): the Frame tool's OFFSET FROM FRAME, like the Shape Lattice's --
+      // ON = the bands follow the frame's outer edge offset by `distance` (+ inward, - outward), default ON
+      // at 0; OFF = free placement, the bands follow the board's own outline instead of the frame.
+      frameOffset: { on: true, distance: 0 },
+      // F35 item 16: LEVEL, a per-element height offset in inches (+ proud, - recessed; item 15's accent
+      // level applied to a whole element), keyed by element kind (editor-brick-tool.js BRICK_KINDS). Read
+      // by the height mask only (3D, never re-lays). A saved session without it is level 0.
+      elementLevelIn: { wall: 0, frame: 0 },
       suppression: 0,
       clumping: 0.3,
       seed: 1,

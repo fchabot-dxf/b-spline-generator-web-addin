@@ -12133,3 +12133,103 @@ not missing bricks).
 Photo tab: levels/crop/relief go through applyParam/P.photoEdits -> scheduleRebuild) still rebuilds the
 3D and redraws the backdrop -- that is how the photo shows up in the editor today. Freezing it too would
 hide the photo terrain until Apply; say if wanted (it is the same Photo question as the turn-183 gate).
+
+## F35 item 16 (Wall/Frame as tools), turn 187 (seat C = 37): slice 1 = audit C1 + C2 + K7
+
+Merged origin/main first (88's audit fixes b0f7478: laid key on the Bricks layer, pending badge).
+Item 16 in full (wall ELEMENTS with regions, contextual panel, migration, scissors split, per-tool Level,
+offset-from-frame) is several turns; this turn is the first slice, stated plainly rather than rushed.
+
+**C1, each tool lays only its own element.** editor-brick-tool.js: `BRICK_KINDS = ['wall','frame']`;
+`_generateAndDraw` / runBricks / runBricksPreview take an optional `kinds` and clear + draw only those
+(the composer still runs with the frame, so a Wall alone keeps the SAME frame-interior clip; default =
+both = old behaviour). main/brick-panel.js: BRICK_TOOLS declare `lays: 'wall' | 'frame'` next to 88's
+`generates`; `_kindsToLay` = kinds already on the canvas + the active tool's own (frame only with a
+usable frame) -- used by Generate and the live drag preview. `_hasLaidWallOrFrame` became unused by
+this change and is removed. Wall hint now: "Fills the frame's interior with bricks (the whole board when
+there is no frame). Press Generate to lay it."
+**C2, picking a tool never lays.** selectTool's wall/frame branch only shows the settings (and the
+pinned Generate); Generate lays. The panel test setup said "selecting the tool lays the bricks once" --
+updated to the new flow (pick, then Generate); that is the point of C2, not a weakened test.
+**K7, "Bricks · Flat .13"".** The Bricks layer's profile is never read (the brick mask sets its height):
+its row now reads "Raised .13"" / "Carved .13"". To do that layers.js needs the Bricks layer identity but
+cannot import editor-brick-tool.js (that file imports layers.js): BRICKS_LAYER_NAME + isBricksLayer moved
+to layers.js and are re-exported from editor-brick-tool.js, so every importer is unchanged.
+
+Tests: new tests/brick-tool-kinds.test.js (5, real draw path into jsdom, composer stubbed); panel +5 (C2
+no lay on pick; Wall+Generate = ['wall']; Frame+Generate = ['frame']; present frame + Wall = both; hint);
+layer list +1 (K7). Against the previous sources: 8 of the C1/C2 tests fail (the 2 passing pin defaults
+that held), K7 fails. Fast tier 57 files, 605 passed, 0 failed.
+Live (served fb-app, headless): pick Wall -> 0 bricks; Generate -> 193 wall, 0 frame; pick Frame -> still
+193/0; Generate -> 193 wall + 136 frame; Bricks row "Raised .25"". Shots shots/seat37/
+f35item16_c1_{wall_only,wall_plus_frame}.png.
+
+**Open, for the advisor (next slices):**
+- A Wall laid alone fills the BAND interior, leaving an empty ring where the Frame bands would go (the
+  geometry it always had). Should a wall with no frame bands fill out to the frame contour? That is the
+  "region minus frame bands" rule of the wall-ELEMENT design; the engine's composer currently falls
+  back to the rectangular board, not the frame contour, when there are no bands -- needs a seat-B call.
+- "Offset-from-frame default ON" and "Level" per tool: please confirm the meaning. My reading: Frame
+  bands get an "Offset from frame" distance (default ON at 0, like the Shape Lattice); Level = the
+  element's own height offset in inches (proud/recessed, item 15's accent level applied per element).
+- C6 (Brick Stripe shows Artwork's colour panel) not started; next slice with the wall elements.
+
+## F35 item 16 slice 2, turn 189 (seat C = 37): Frame offset-from-frame + per-element Level
+
+Merged origin/main first: ONE conflict, the editor-brick-tool.js layers.js import line (my BRICKS_LAYER_NAME/
+isBricksLayer vs 88's applyLayerStateTo) -> union, exactly 88's predicted resolution. 88's applyLayerStateTo
+calls SVG.js addClass/removeClass on each drawn brick, which my brick-tool-kinds test fake lacked -> the
+fake gained them (7fec7d4); 589/589 brick+layer specs green after the merge.
+
+**Offset from frame (advisor: like the art lattice's, ON at 0; OFF = free placement).**
+`P.brickSettings.frameOffset = { on: true, distance: 0 }`. brick-panel.js `frameBandContour`: ON = the SAME
+frameContourSilhouette(ctx, distance) the Shape Lattice's offset-from-frame uses (+ inward, - outward);
+OFF = the board's own outline (rectToPrimitives) -- so the Frame tool now also works on a board with no
+frame. resolveFrameGeom builds the bands on it, so a Wall's interior clip follows the moved bands too.
+It moves the layout -> 'generate' (pending until Generate), like every editor Brick-tab setting. UI in the
+Frame section: checkbox + distance (disabled when OFF). Frame hint mentions the board edge.
+**Level (per-element height offset, proud/recessed).** `P.brickSettings.elementLevelIn = { wall: 0, frame: 0 }`
+keyed by BRICK_KINDS; one "Level (in)" input in the Wall section and one in the Frame section (step 1/64).
+Read ONLY by the height mask: collectLiveBrickGroups adds `levels[data-brick kind]` to each brick's
+heightOffset (stamp-mask-manager passes it). 3D-only -> 'surface' (SURFACE_ONLY_SETTING_KEYS), never
+re-lays, never pending; set inside the editor it lands on Apply (part 4's rule). Missing key = 0.
+
+Tests: panel +4 (default ON 0 reaches frameContourSilhouette; a distance is pending then laid at that
+distance; OFF hands the board rectangle to the band builder + disables the field; Level saved per kind,
+re-masks, never re-lays/pending); mask +2 (a kind's level moves exactly that kind by exactly that many
+inches; zero/missing levels byte-identical). Against the previous sources 4 fail, the 2 passing pin the
+defaults. Fast tier 58 files, 616 passed, 0 failed.
+
+Live (served fb-app, headless, T1 7x9, Frame tool):
+| setting | frame bricks | bands' outer bbox (in) |
+|---|---|---|
+| ON, 0 | 136 | 0.25,0.25 - 6.75,8.75 (the frame's outer edge, its 0.25 trim) |
+| ON, 0.3 (Generate pending after the change) | 124 | 0.55,0.55 - 6.45,8.45 (exactly 0.3 in) |
+| OFF | 130 | 0,0 - 7,9 (the board) |
+Frame Level +0.0625 then Apply: a frame brick's centre height 0.7225 -> 0.7850 in (delta 0.0625 exactly),
+Generate not pending. Shots shots/seat37/f35item16_frame_offset_{0,0.3,off}.png.
+(My first OFF bbox read NaN: the probe's number regex split exponent values like 1e-16 -- a probe bug,
+the shot was right; re-measured with a points parser.)
+
+**Turn 189 amendments.**
+(1) MERGE: done before the amendment arrived (7a259fd, one import-line conflict, union kept 88's
+onBricksLayer at all 3 draw sites + my kinds logic; the "5 failing brick test files" were my kinds-test
+fake lacking SVG.js addClass/removeClass, fixed 7fec7d4). Main moved again (T19) -> merged clean,
+beefec7, brick tier 59 files / 632 passed, pushed, DM'd the advisor the sha.
+(2) FRED, Weathered WEAR as a SLIDER (the correction superseding 3 buttons). Declared on the style:
+`BRICK_SURFACE_STYLES.weathered.wear = { default: 0.5, edgeNoiseIn: [0, 0.04], pitGain: [1, 4] }` (the
+grid's diagonal); the fixed edgeNoiseIn 0.015 / pitGain 1.8 are gone. `styleAtWear(style, wear)` resolves
+it (clamped 0..1, absent = default; a style without `wear` untouched); the rasterizer applies it with
+`opts.surfaceWear` = P.brickSettings.surfaceWear (default 0.5, 3D-only key). Sidebar 3D: a "Wear" slider
+row under Surface, shown only while the surface style declares `wear`. Also: the 'surface' commit now
+only SAVES on a drag tick and re-masks once on release (a re-mask per slider tick is the expensive height
+pass); the grout depth field gained a 'change' listener so a typed depth still re-masks when it settles
+(its test now asserts 1 notify on input, 2 after change -- updated on purpose). The tuning-grid script's
+inline cells drop `wear` so the slider can't override an explicit (edge, pit) cell.
+Tests: wear table + 3 points + clamp/default (styleAtWear), the 2 existing style tests moved onto
+styleAtWear, panel: row hidden for Clean / shown for Weathered / hidden again, drag saves only, release
+re-masks once, never re-lays. Against the previous sources 8 fail. Fast tier 58 files, 623 passed, 0 failed.
+Live: row hidden for Clean, shown for Weathered (grout -> Recessed), Wear 0 vs 1 changes the real heights
+by RMS 0.0206 in. Shot shots/seat37/f35item18_wear_slider_sidebar.png.
+CHECKLIST: the amendment asks for a checklist line; NEXT-SESSION-fb-app.md is the advisor's file (worker
+never edits it) -- please add the [F35-item-N] line for the Wear slider.

@@ -20,9 +20,10 @@
 import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
-import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME } from '../editor/editor-brick-tool.js';
+import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
+import { rectToPrimitives } from '../core/inset-window.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
@@ -46,10 +47,12 @@ const BRICK_TOOLS = [
     hint: 'Click here, then drag a stroke on the canvas to lay bricks along it.' },
   // `generates` (audit C9): Generate re-lays this tool's output, so the pinned Generate shows for it.
   // Brush/Scissors/Stripe act on drawn strokes, whose settings freeze at draw time.
-  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true,
-    hint: 'Fills the whole board with bricks.' },
-  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true,
-    hint: 'Bands of bricks along the current frame\'s own contour.' },
+  // `lays` (audit C1): the ONE element kind this tool lays (editor-brick-tool.js BRICK_KINDS). Picking the
+  // tool only shows its settings (audit C2); Generate lays it.
+  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true, lays: 'wall',
+    hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Press Generate to lay it.' },
+  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame',
+    hint: 'Bands of bricks along the frame\'s contour (or the board\'s edge with Offset from frame off). Press Generate to lay them.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
   // (editor-cut-tool.js) with zero changes needed there. Only applies to
@@ -197,6 +200,42 @@ function syncBrickTopToggle() {
   document.getElementById('brickBtnTopFlat')?.classList.toggle('active', flat);
 }
 
+/** F35 item 16: the Frame tool's offset from frame -- the band contour moves, so it is a LAYOUT setting
+ *  ('generate': pending until Generate, like every other editor Brick-tab setting). */
+export function setFrameOffset({ on, distance }, commit = 'generate') {
+  const cur = P.brickSettings.frameOffset || { on: true, distance: 0 };
+  const d = Number(distance);
+  P.brickSettings.frameOffset = { on: on === undefined ? cur.on !== false : !!on, distance: Number.isFinite(d) ? d : (cur.distance || 0) };
+  syncFrameOffsetControls();
+  commitBrickSetting(commit);
+}
+
+function syncFrameOffsetControls() {
+  const off = P.brickSettings.frameOffset || { on: true, distance: 0 };
+  const box = document.getElementById('brickFrameOffsetOn');
+  const dist = document.getElementById('brickFrameOffsetDistance');
+  if (box) box.checked = off.on !== false;
+  if (dist) { dist.value = off.distance || 0; dist.disabled = off.on === false; }
+}
+
+/** F35 item 16: an element's LEVEL (height offset, inches) -- read only by the height mask, so 3D-only
+ *  ('surface': re-mask at once, never re-lay, never pending). One input per kind: #brickLevel_<kind>. */
+export function setElementLevel(kind, levelIn, commit = 'surface') {
+  const v = Number(levelIn);
+  if (!Number.isFinite(v)) return;
+  P.brickSettings.elementLevelIn = { ...(P.brickSettings.elementLevelIn || {}), [kind]: v };
+  syncElementLevels();
+  commitBrickSetting(commit);
+}
+
+function syncElementLevels() {
+  const levels = P.brickSettings.elementLevelIn || {};
+  for (const kind of BRICK_KINDS) {
+    const el = document.getElementById(`brickLevel_${kind}`);
+    if (el && document.activeElement !== el) el.value = levels[kind] || 0;
+  }
+}
+
 export function setBrickTopMode(mode, commit = 'surface') {
   P.brickSettings.brickTopMode = mode === 'flat' ? 'flat' : 'organic';
   syncBrickTopToggle();
@@ -222,9 +261,16 @@ function renderSurfaceStyleToggle(container) {
 }
 
 function syncSurfaceStyleToggle() {
-  const current = surfaceStyleById(P.brickSettings.surfaceStyle).id;
+  const current = surfaceStyleById(P.brickSettings.surfaceStyle);
   for (const style of Object.values(BRICK_SURFACE_STYLES)) {
-    document.getElementById(`brickSurfaceStyle_${style.id}`)?.classList.toggle('active', style.id === current);
+    document.getElementById(`brickSurfaceStyle_${style.id}`)?.classList.toggle('active', style.id === current.id);
+  }
+  // the Wear slider shows only for a style that declares `wear` (Weathered)
+  const row = document.getElementById('brickSurfaceWearRow');
+  if (row) row.style.display = current.wear ? '' : 'none';
+  if (current.wear) {
+    const w = Number.isFinite(P.brickSettings.surfaceWear) ? P.brickSettings.surfaceWear : current.wear.default;
+    setPair('brickSurfaceWearSlider', 'brickSurfaceWear', w);
   }
 }
 
@@ -338,6 +384,8 @@ function syncControlsFromState() {
   syncReliefToggle();
   syncBrickTopToggle();
   syncSurfaceStyleToggle();
+  syncFrameOffsetControls();
+  syncElementLevels();
   setPair('brickReliefHeightSlider', 'brickReliefHeight', s.reliefIn);
   setPair('brickSuppressionSlider', 'brickSuppression', s.suppression);
   setPair('brickClumpingSlider', 'brickClumping', s.clumping);
@@ -371,7 +419,7 @@ function _runLivePreview() {
   if (_activeTool === 'frame' && !frameGeom) return; // Frame tool, no usable frame: nothing to preview
   if (_dragSlow) { runBricksOutlinePreview(editor); return; }
   const t0 = performance.now();
-  runBricksPreview(editor, P.brickSettings, frameGeom); // Wall: frameGeom may legitimately be undefined (whole-board fill)
+  runBricksPreview(editor, P.brickSettings, frameGeom, _kindsToLay(editor, frameGeom)); // Wall: frameGeom may be undefined (whole-board fill)
   if (performance.now() - t0 > SLOW_PREVIEW_MS) _dragSlow = true; // this drag only -- commit resets it
 }
 
@@ -406,8 +454,9 @@ const BRICK_COMMIT = {
   // F35 item 18: a 3D-only setting (SURFACE_ONLY_SETTING_KEYS below) -- the 2D layout is unchanged,
   // so nothing to re-lay and nothing pending: just re-mask the heights through the editor's own
   // change pipeline (main/app-init.js onChange -> refreshAllStampMasks), from either entry point.
+  // a drag tick only saves; the re-mask (the expensive height pass) runs once on release
   surface: {
-    onDrag: () => { notifyChange(); _remaskSurface(); },
+    onDrag: () => { notifyChange(); },
     onRelease: () => { notifyChange(); _remaskSurface(); },
   },
 };
@@ -427,7 +476,7 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
 const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation'];
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'groutProfileBeforeStyle'];
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'elementLevelIn'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 const LAYOUT_IGNORED_SETTING_KEYS = [...BRUSH_ONLY_SETTING_KEYS, ...SURFACE_ONLY_SETTING_KEYS];
@@ -480,9 +529,9 @@ function syncGeneratePending() {
   btn.title = pending ? 'Brick settings changed -- press Generate to re-lay the bricks' : 'Re-lay the Wall/Frame bricks';
 }
 
-/** Lay the Wall/Frame bricks with the current settings, stamping their key on the Bricks layer. */
-function _layBricks(editor, frameGeom) {
-  withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey() }));
+/** Lay the given element kinds with the current settings, stamping their key on the Bricks layer. */
+function _layBricks(editor, frameGeom, kinds) {
+  withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey(), kinds }));
   _changedWhileUnknown = false;
   syncGeneratePending();
   // Audit C8: the layer's visibility is the user's choice, so it is not flipped back on -- but a
@@ -491,9 +540,13 @@ function _layBricks(editor, frameGeom) {
   if (layer && layer.visible === false) showToast('Bricks re-laid on the hidden Bricks layer -- show it in Layers to see them', 'warn');
 }
 
-function _hasLaidWallOrFrame(editor) {
+/** Audit C1: what Generate lays -- every element kind already on the canvas, plus the active tool's
+ *  own kind (BRICK_TOOLS `lays`). Frame needs a usable frame. A Wall alone never brings Frame bands. */
+function _kindsToLay(editor, frameGeom) {
   const node = editor?._sketchLayer?.node;
-  return !!node?.querySelector?.('[data-brick-gen="1"][data-brick="wall"], [data-brick-gen="1"][data-brick="frame"]');
+  const present = (kind) => !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`);
+  const active = BRICK_TOOLS.find((t) => t.id === _activeTool);
+  return BRICK_KINDS.filter((kind) => (present(kind) || (active && active.lays === kind)) && (kind !== 'frame' || !!frameGeom));
 }
 
 /** Generate: re-lay the Wall/Frame bricks with the CURRENT settings -- whatever Wall/Frame bricks
@@ -506,9 +559,9 @@ export function generateBricks() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (!editor) return false;
   const frameGeom = resolveFrameGeom(editor);
-  const lay = _hasLaidWallOrFrame(editor) || _activeTool === 'wall' || (_activeTool === 'frame' && !!frameGeom);
-  if (!lay) return false;
-  _layBricks(editor, frameGeom);
+  const kinds = _kindsToLay(editor, frameGeom);
+  if (!kinds.length) return false;
+  _layBricks(editor, frameGeom, kinds);
   return true;
 }
 
@@ -556,12 +609,14 @@ function bindBrickSizeControls(commit = 'generate') {
 }
 
 function bindGroutField(id, key, commit = 'generate') {
-  document.getElementById(id)?.addEventListener('input', (e) => {
+  const write = (e, phase) => {
     const v = parseFloat(e.target.value);
     if (!Number.isFinite(v)) return;
     P.brickSettings.grout[key] = v;
-    commitBrickSetting(commit, 'onDrag');
-  });
+    commitBrickSetting(commit, phase);
+  };
+  document.getElementById(id)?.addEventListener('input', (e) => write(e, 'onDrag'));
+  document.getElementById(id)?.addEventListener('change', (e) => write(e, 'onRelease')); // typed value settled
 }
 
 /** F35 item 10: this list now renders into the left-rail toolbar
@@ -795,23 +850,11 @@ function selectTool(id) {
     editor.setMode('brickBrush');
     return;
   }
-  if (id === 'wall') {
-    // Advisor review (turn 131): Wall must respect an EXISTING frame's own
-    // interior, not just fill the raw board -- resolve the frame the same
-    // way the Frame tool does; runBricks clips Wall to it via generateBricks
-    // when one is usable, and simply fills the whole board when there isn't.
-    _layBricks(editor, resolveFrameGeom(editor));
-    notifyChange();
-    return;
-  }
-  if (id === 'frame') {
-    const frameGeom = resolveFrameGeom(editor);
-    if (!frameGeom) {
-      console.warn('Brick Frame tool: no usable frame contour on this board.');
-      return;
-    }
-    _layBricks(editor, frameGeom);
-    notifyChange();
+  // Audit C2: picking Wall or Frame only shows its settings (and the pinned Generate); it never lays.
+  // Generate lays the tool's own kind (audit C1, _kindsToLay). Wall stays clipped to an existing frame's
+  // interior via the composer (advisor review, turn 131).
+  if (id === 'wall' || id === 'frame') {
+    if (id === 'frame' && !resolveFrameGeom(editor)) console.warn('Brick Frame tool: no usable frame contour on this board.');
     return;
   }
   if (id === 'scissors') {
@@ -925,11 +968,21 @@ const BRUSH_PRESET_LIST = [
  *  own brick-length-only special case) -- Frame bands now resolve the SAME global brick length as
  *  Wall/Brush, via `scale` (editor-brick-tool.js's own scaleFor), which generateBricks already
  *  threads to both uniformly. */
-function resolveFrameGeom(editor) {
+/** The contour the Frame bands follow (F35 item 16, P.brickSettings.frameOffset): ON = the frame's outer
+ *  edge offset by `distance` (the SAME frameContourSilhouette the Shape Lattice's offset-from-frame uses);
+ *  OFF = free placement, the board's own outline. null = no usable contour. */
+function frameBandContour(editor) {
+  const off = P.brickSettings.frameOffset || { on: true, distance: 0 };
+  if (off.on === false) return rectToPrimitives({ x1: 0, y1: 0, x2: editor._mW, y2: editor._mH });
   const ctx = frameContext(editor);
-  const sil = ctx ? frameContourSilhouette(ctx, 0, 0) : { error: 'noFrame' };
-  if (sil.error) return null;
-  const primitives = buildRibbonPrimitives(sil.primitives);
+  const sil = ctx ? frameContourSilhouette(ctx, Number(off.distance) || 0, 0) : { error: 'noFrame' };
+  return sil.error ? null : sil.primitives;
+}
+
+function resolveFrameGeom(editor) {
+  const contour = frameBandContour(editor);
+  if (!contour) return null;
+  const primitives = buildRibbonPrimitives(contour);
   const basePreset = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
   const overrides = P.brickSettings.frameBandPatterns || [];
   const bands = basePreset.map((band, i) => (overrides[i] ? { ...band, pattern: overrides[i] } : band));
@@ -1031,6 +1084,12 @@ export function initBrickPanel() {
   document.getElementById('brickBtnTopOrganic')?.addEventListener('click', () => setBrickTopMode('organic'));
   document.getElementById('brickBtnTopFlat')?.addEventListener('click', () => setBrickTopMode('flat'));
   renderSurfaceStyleToggle(document.getElementById('brickSurfaceStyleToggle'));
+  bindSlider('brickSurfaceWearSlider', 'brickSurfaceWear', 'surfaceWear', (v) => Math.max(0, Math.min(1, parseFloat(v))), 'surface');
+  document.getElementById('brickFrameOffsetOn')?.addEventListener('change', (e) => setFrameOffset({ on: e.target.checked }));
+  document.getElementById('brickFrameOffsetDistance')?.addEventListener('change', (e) => setFrameOffset({ distance: e.target.value }));
+  for (const kind of BRICK_KINDS) {
+    document.getElementById(`brickLevel_${kind}`)?.addEventListener('change', (e) => setElementLevel(kind, e.target.value));
+  }
   document.getElementById('brickBtnProfileStripped')?.addEventListener('click', () => setProfile('bricks'));
   document.getElementById('brickBtnProfileContinuous')?.addEventListener('click', () => setProfile('continuous'));
   document.getElementById('brickBtnOrientationStretcher')?.addEventListener('click', () => setOrientation('stretcher'));
