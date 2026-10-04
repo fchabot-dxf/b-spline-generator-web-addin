@@ -19444,3 +19444,65 @@ sequence rather than guessing at a window-contour design unreviewed.
 **Commit `c4e3ca6`, pushed to origin/lane-b.** Replying to the advisor with the matrix
 table, the 4 fixes (3 engine + 1 measurement), the before/after count at each step
 (283->202->175->154), and the categorized remainder for the next turn's own triage.
+
+## T86 item 4 continued: "T9's stray coloured bars" root-caused -- a real architecture gap, not implemented yet (b5)
+
+Advisor dispatch (turn 309): continue the cross-row/multi-band class, plus "T9's stray coloured bars
+on the rails" (visible directly in the contact sheet's own template_9 thumbnail -- a dark, almost-
+black band where the normal palette should cycle cleanly).
+
+**Root-caused on the real template.** `soldier_stretcher` on template_9 ("I Shape"): pieces `frame-165`
+and `frame-167` overlap 92% (grid-sampled), both near x=[5.25,6] y~[1,1.2] -- NOT a corner region at
+all, the MIDDLE of what should be a clean straight run. Isolated the stretcher row alone
+(`scratch/check_t9_stretcher_row.mjs`, calling `ribbonPieces` directly on just that one band) and
+walked the FULL piece sequence: primitive 0 (top edge)'s own row runs cleanly to its own mitre corner
+with primitive 1 (right edge upper, length 1.70) -- then the VERY NEXT pieces are ALSO horizontal,
+matching primitive 2's own geometry (the notch-top), not primitive 1's own (which should be vertical).
+**Primitive 1's own row produced ZERO pieces at this depth and was silently skipped, but nothing told
+primitive 0's or primitive 2's own neighbouring joints that this happened** -- each was built
+independently assuming primitive 1 contributes real material between them, so their own two
+INDEPENDENT corner constructions land on top of each other instead of meeting at a shared point.
+
+**Why this happens, precisely:** `primitiveLiveAtDepth` (the SAME function that drops an infeasible
+arc) returns `prim.type === 'line' || isArcFeasible(...)` -- unconditionally `true` for every line,
+regardless of depth. A line genuinely CAN become infeasible too: primitive 1's own full length
+(1.70in) must host corner material from BOTH its own neighbours at this row's own depth (0.95in);
+once that consumption from both ends exceeds the primitive's own total length, there is no room left
+for even a single real piece -- the exact same "too deep for this short a run" failure mode the
+narrow-neck tangent fix (fix 1 above) and the matrix's own original "narrow neck" framing were both
+circling, just for a STRAIGHT primitive instead of a dropped ARC. Lines have never had this check at
+all; arcs have had it since H23 item 76.
+
+**The general fix this needs (scoped, not yet built):** extend `primitiveLiveAtDepth` to also test a
+LINE primitive's own feasibility at a given depth (mirroring `isArcFeasible`'s own role: too-deep-for-
+this-primitive, not a template-specific threshold), and extend the EXISTING "dropped primitive ->
+`buildPatch`'s own kiteFan" architecture to handle a dropped STRAIGHT primitive, not just a dropped
+arc -- actually the SIMPLER case of the two (no curve to tessellate: the patch's own boundary is just
+`prevPrim`'s own flat strip + the straight line from A to B + `curPrim`'s own flat strip, closed at
+`q`, reusing `buildPatch`'s own already-generalized length-based piece planning from T86 item 3
+verbatim). This is the SAME declared, general-rule shape Fred's own ruling asked for (a measurable
+geometric property -- primitive length vs. band depth -- not a per-template special case), not a new
+kind of fix.
+
+**Confirmed this is a SEPARATE root cause from `header_band`'s own 0.125-ratio finding, not the same
+one wearing two faces:** checked template_3 (where that finding also reproduces) for any short line
+primitive that could explain it the same way -- its OWN shortest line measures 2.993in, far longer
+than header_band's own 0.6in total depth, so the dropped-line mechanism above cannot be what's
+happening there. `header_band`'s own issue is still open; most likely a genuine cross-row (3 rows,
+each independently mitred) corner-size variance, analogous in SPIRIT to the already-documented H23
+item 76 seam residual but not yet traced to its own precise mechanism.
+
+**Capacity note, stated plainly rather than pushed through:** this turn has already covered a full
+matrix build, 3 root-caused-and-fixed engine bugs, and now a 4th fully root-caused but NOT YET
+implemented (the dropped-line architecture extension above) -- a genuinely new, scoped piece of
+engine work in its own right, comparable to T86 item 3's own `buildPatch` rewrite. Implementing it
+correctly needs the SAME careful measure-first discipline the other 3 fixes used (hand-verified
+numbers, mutation-tested regression coverage, a full matrix re-run) -- rushing it at the tail of an
+already-long session risks exactly the kind of overcorrection follow-up #2 already cost one round
+this item. Recommending it as the next DISPATCHED sub-task (fresh capacity, same clear scope) rather
+than attempting it in the remaining room here. `header_band`'s own still-untraced issue and the rest
+of the "cross-row/multi-band" category remain queued behind it.
+
+**No commit this sub-session** -- diagnosis only, no engine change yet; nothing to verify or ship
+until the fix itself is built. Passing back to the advisor with the root cause, the proposed design,
+and the capacity note above.
