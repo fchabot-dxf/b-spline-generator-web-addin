@@ -10349,3 +10349,32 @@ now genuinely closed (not just bounded); the wraparound bug (a severe, previousl
 not part of either round's original ask) found and fixed along the way, with a non-vacuous regression
 test proving both the failure and the fix; the live-app screenshots the advisor explicitly asked for,
 honestly showing Wall's own interior fill since that's real unconditional behaviour, not staged away.
+
+## F35 item 8: advisor PARKS band-course.js after round 3 -- architecture pivot, not a further fix
+
+The advisor's own 1:1 review of round 3's shots (`f35item8_full_1366.png`, the corner crop) found the
+Wall interior still showing radial fans/grey ribbons and the inner bands at the corner still colliding
+(overlapping rows, shards, mismatched joints) -- real, visible defects at the ACTUAL inner-band depths
+those shots reached, beyond what this round's two fixes (the bowtie clamp, the wraparound formula)
+happened to close. After three rounds chasing fresh edge cases in a second, independent band-geometry
+engine running alongside the proven `primitive-ribbon.js` (voussoirs, mitres, corner styles already
+solved there), the advisor's call: that's the wrong shape for this feature, not a bug to keep patching.
+
+**Decision (verbatim, advisor): a band pattern is a declared SEQUENCE OF PIECE LENGTHS along the ribbon**
+-- soldier=[W], stretcher=[L], header=[W] (end face, WxW at band depth W), flemish=[L,W] alternating,
+running/stack=multi-row offsets. b5 adds a `sequence` input to `planCornerRun` inside the EXISTING
+primitive-ribbon path, so voussoirs/mitres/corner-styles apply for free -- no second engine, no
+re-deriving corner detection, arc feasibility, or mitre construction from scratch the way band-course.js
+had to. My own part once b5's API lands: keep the picker UI (`brick-panel.js`'s `renderFrameBandPatternList`/
+`syncFrameBandPatternButtons`) and `BRICK_PATTERNS` (library.js) exactly as they are, but map each
+band's own pattern to its declared sequence + row offsets instead of calling `band-course.js`.
+
+**`band-course.js` itself is PARKED, unmerged, on `fb-app`** -- not deleted, not merged to main. It stays
+named and available (its own `pieceQuad`/wraparound fixes, the `isSimplePolygon` reuse, the depth-
+clamping approach are all real, verified findings, even if this specific file's own architecture isn't
+the one shipping) in case any of its approach is useful reference once the sequence-based rebuild is
+under way. `tests/bricks-band-course.test.js` stays green and committed alongside it, as the record of
+what WAS verified about this engine, not as a currently-exercised live path.
+
+**Waiting on**: b5's own `sequence` input to `planCornerRun` (advisor: "I'll DM" when it's ready). No
+further band-course.js work until then -- re-arming the worker wait now.
