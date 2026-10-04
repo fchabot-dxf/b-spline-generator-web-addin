@@ -213,8 +213,14 @@ export function setMode(editor, mode) {
         editor.setGrid({ visible: true });
     }
 
-    // Update active class on buttons
-    const btns = queryAll('.editor-sidebar .tool-btn');
+    // Update active class on buttons -- scoped to Artwork's OWN toolbar wrapper specifically
+    // (F35 advisor: Brick/Photo's own tool buttons are ALSO `.tool-btn`, with their own
+    // independent active-tool state; a bare `.editor-sidebar .tool-btn` query used to reach them
+    // too and toggle them all OFF on every setMode call -- confirmed live: selecting Brick's own
+    // Brush tool, which arms this exact generic mode system via `editor.setMode('brickBrush')`,
+    // left `brickTool_brush` un-highlighted immediately after the click since `brickTool_brush`
+    // never matches the `tool${Mode}` id convention this loop checks for).
+    const btns = queryAll('#editorToolbarArtwork .tool-btn');
     btns.forEach(btn => {
         // SA-DEAD-7: the 3 "special case" branches this generic toggle used
         // to be followed by (draw/select/node) were provably redundant —
