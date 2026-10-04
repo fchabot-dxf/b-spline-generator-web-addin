@@ -13,6 +13,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js'
   return { ...actual, runBricks: vi.fn(), runBricksPreview: vi.fn(), runBricksOutlinePreview: vi.fn(), buildRibbonPrimitives: vi.fn(() => []) };
 });
 // A usable frame for the Frame tool (resolveFrameGeom needs a frame context + a valid silhouette).
+vi.mock('../bspline-frame-builder/b-spline-gen/html/core/toast.js', () => ({ showToast: vi.fn() }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, frameContext: vi.fn(() => ({})) };
@@ -27,9 +28,13 @@ import {
   setBrickTopMode, setSurfaceStyle,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, runBricksPreview } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
+import { deselectTool } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
+import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
 
 const FIXTURE = `
-  <button id="brickGenerate">Generate</button>
+  <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
+  <button id="editorTabBrick">Brick</button><button id="editorDrawerTab-layers">Brick</button>
   <div id="editorToolbarBrick"></div>
   <div id="brickToolHint"></div>
   <div id="brickBrushSection" style="display:none;">
@@ -374,5 +379,60 @@ describe('pending follows the Bricks layer key through undo, reload and Cancel',
     expect(pending()).toBe(true);
     $('brickGenerate').click();
     expect(pending()).toBe(false);
+  });
+});
+
+// Audit C3/C9/C8/C11.
+describe('Generate visibility, the pending badge and a hidden Bricks layer', () => {
+  const slotShown = () => $('brickGenerate').closest('.sticky-actions').style.display !== 'none';
+  const badged = (id) => $(id).hasAttribute('data-brick-pending');
+
+  it('C9: Generate shows for Wall and Frame, hides for Brush, Scissors and Stripe', () => {
+    setup('wall');
+    expect(slotShown()).toBe(true);
+    for (const t of ['brush', 'scissors', 'stripe']) { $(`brickTool_${t}`).click(); expect(slotShown(), t).toBe(false); }
+    $('brickTool_frame').click();
+    expect(slotShown()).toBe(true);
+  });
+
+  it('C3: the Brick tab button carries the pending dot, also once the tool is put away', () => {
+    setup('wall');
+    expect(badged('editorTabBrick')).toBe(false);
+    $('brickPattern_herringbone').click();
+    expect(badged('editorTabBrick')).toBe(true);
+    deselectTool(); // Esc's path: the Brick panel (and its Generate) gives way to Layers; the badge stays
+    expect(badged('editorTabBrick')).toBe(true);
+    window.svgEditor._sketchLayer = { node: { querySelector: () => ({}) } }; // Wall/Frame bricks are on the canvas
+    $('brickGenerate').click(); // with no tool, Generate re-lays the bricks already there
+    expect(badged('editorTabBrick')).toBe(false);
+  });
+
+  it('C11: the drawer tab label carries the dot only while it names the Brick tab', () => {
+    setup('wall');
+    setEditorTab('brick');
+    $('brickPattern_herringbone').click();
+    expect(badged('editorDrawerTab-layers')).toBe(true);
+    setEditorTab('artwork'); // the drawer label now names Artwork's panel
+    expect(badged('editorDrawerTab-layers')).toBe(false);
+    expect(badged('editorTabBrick')).toBe(true); // the Brick tab button keeps it
+    setEditorTab('brick');
+    expect(badged('editorDrawerTab-layers')).toBe(true);
+  });
+
+  it('C8: laying bricks onto a hidden Bricks layer warns, and leaves the layer hidden', () => {
+    setup('wall');
+    window.svgEditor._layers[0].visible = false;
+    $('brickPattern_flemish').click();
+    $('brickGenerate').click();
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast.mock.calls[0][1]).toBe('warn');
+    expect(window.svgEditor._layers[0].visible).toBe(false);
+  });
+
+  it('C8: a visible Bricks layer lays without a warning', () => {
+    setup('wall');
+    $('brickPattern_flemish').click();
+    $('brickGenerate').click();
+    expect(showToast).not.toHaveBeenCalled();
   });
 });
