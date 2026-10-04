@@ -672,6 +672,26 @@ def _remove_named_decal(component, name):
     return removed
 
 
+# F35 item 11: the ONE combined brick sketch a Send ever creates (export-flow.js's own
+# _bricksLayerSvg bakes every wall/frame/brush polygon on the editor's Bricks layer into ONE SVG).
+# BRICKS_SKETCH_NAME is how re-Send finds and replaces its own earlier sketch (never duplicates,
+# never leaves a stale one behind when bricks are removed) -- the SAME DECAL_NAME convention above.
+BRICKS_SKETCH_NAME = 'Bricks'
+
+
+def _remove_named_sketch(component, name):
+    """Mirrors _remove_named_decal's exact shape, for a component's own sketches collection."""
+    removed = 0
+    try:
+        for s in list(component.sketches):
+            if s.name == name:
+                s.deleteMe()
+                removed += 1
+    except Exception as e:
+        _log(f'[BRICKS] remove failed: {e}')
+    return removed
+
+
 def _apply_colour_decal(current_import_group, stamp_data, params):
     """Apply/replace/remove the optional 'Artwork colours' decal on the Stamped top face.
     `stamp_data['decal']` is None/absent -> NO INSTRUCTION, leave whatever's there alone (sent on
@@ -1830,6 +1850,14 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if not is_preview:
                 _apply_colour_decal(current_import_group, stamp_data, params)
 
+            # ── Bricks sketch (F35 item 11) ──────────────────────────────────────
+            # SAME independence from stamp_data.enabled as the decal above, for the SAME reason --
+            # a board can have bricks with zero hand-drawn art layers (JS's own
+            # includeSVG = exportableStampLayers().length > 0 would then be False), and bricks are
+            # a completely separate concern from "does this Send carry exportable art-layer SVG".
+            if not is_preview:
+                self._apply_bricks_sketch(current_import_group, stamp_data, params, orientation)
+
             # ── Finalise ─────────────────────────────────────────────────────────
             _send_progress('Cleaning up graphics...')
             _clear_custom_graphics()
@@ -2070,11 +2098,16 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             _log(f'[SE15] Constrained sketch build failed for {sketch_name}: {e}')
         return ctx
 
-    def _import_single_layer_svg(self, sketch_target, svg_text, plane, sketch_name, params=None):
+    def _import_single_layer_svg(self, sketch_target, svg_text, plane, sketch_name, params=None, full_name=None):
         """Imports a single SVG string and projects it onto `plane` (T74
         AMEND 5: computed ONCE by the caller and shared with
         _build_constrained_sketch_for_layer for a mixed layer, rather
-        than minting a second, identically-placed construction plane)."""
+        than minting a second, identically-placed construction plane).
+
+        F35 item 11: `full_name`, when given, is the sketch's exact final name verbatim (Bricks
+        wants a sketch literally named 'Bricks', not this function's own default
+        "Source - {sketch_name}" template) -- every existing caller omits it and keeps that
+        default untouched."""
         try:
             dpi = 96.0 # standard
             # DYNAMIC SCALE: Use design's board size or FALLBACK to 7x9 only if missing
@@ -2092,7 +2125,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             # 3. Create Sketch and Import
             sketch = sketch_target.sketches.add(plane)
-            sketch.name = f"Source - {sketch_name}"
+            sketch.name = full_name or f"Source - {sketch_name}"
 
             import_mgr = adsk.core.Application.get().importManager
             svg_options = import_mgr.createSVGImportOptions(tmp_path)
@@ -2109,6 +2142,51 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
         except Exception as e:
             _log(f'[STAMP] Error in layer {sketch_name}: {e}')
+
+    def _apply_bricks_sketch(self, current_import_group, stamp_data, params, orientation='z-up'):
+        """F35 item 11 (Fred: "SEND BRICKS WITH THE B-SPLINE... no lock button, no line-by-line API
+        drawing"): import the Bricks editor layer's own baked SVG (export-flow.js's
+        _bricksLayerSvg + bakeSvgForCarving -- the SAME carve-transform pipeline every art-layer
+        sketch already uses, so no new scale/offset math here) into ONE sketch named exactly
+        'Bricks' in the Stamped (Carved) component. Same remove-before-add / tri-state contract
+        _apply_colour_decal already established for the decal (item 68/71's own proven fix):
+        `stamp_data['bricks']` is None/absent -> NO INSTRUCTION (append -- the Stamped component
+        this targets isn't rebuilt on append either, same reasoning as `frame`/`decal`),
+        `{'enabled': False}` -> remove whatever 'Bricks' sketch exists, `{'enabled': True,
+        'svg': ...}` -> replace it with this. MUST NEVER RAISE -- a failure here must never fail
+        the Send (callers rely on this, same as _apply_colour_decal)."""
+        try:
+            bricks_data = (stamp_data or {}).get('bricks')
+            if bricks_data is None:
+                return  # no instruction at all (append) -- leave it alone
+            sketch_target = _find_stamped_component(current_import_group)
+            if not sketch_target:
+                if bricks_data.get('enabled'):
+                    _log('[BRICKS] enabled but no Stamped (Carved) component in this Send -- skipped')
+                return
+            if not bricks_data.get('enabled'):
+                n = _remove_named_sketch(sketch_target, BRICKS_SKETCH_NAME)
+                if n:
+                    _log(f'[BRICKS] removed {n} existing "{BRICKS_SKETCH_NAME}" sketch(es) (no bricks this Send)')
+                return
+            svg_text = bricks_data.get('svg') or ''
+            if not svg_text:
+                _log('[BRICKS] enabled but no svg data -- skipped')
+                return
+
+            _remove_named_sketch(sketch_target, BRICKS_SKETCH_NAME)  # dedupe BEFORE adding -- same fix as the decal
+
+            top_face = None
+            try:
+                body = _find_stamped_panel_body(current_import_group)
+                top_face = _largest_area_face(body) if body else None
+            except Exception:
+                top_face = None
+            plane = self._compute_artwork_plane(sketch_target, BRICKS_SKETCH_NAME, top_face, orientation)
+            self._import_single_layer_svg(sketch_target, svg_text, plane, BRICKS_SKETCH_NAME, params, full_name=BRICKS_SKETCH_NAME)
+            _log(f'[BRICKS] imported "{BRICKS_SKETCH_NAME}" sketch into {sketch_target.name}')
+        except Exception as e:
+            _log(f'[BRICKS] apply FAILED (Send unaffected): {e}')
 
 # ── Command constants ─────────────────────────────────────────────────────────
 COMMAND_ID      = 'fusionHybridCommand'
