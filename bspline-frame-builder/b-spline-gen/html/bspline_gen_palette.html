@@ -882,6 +882,57 @@
         </div>
       </div>
 
+      <!-- F35 item 18 (3), the Brick SIDEBAR SPLIT (Fred: the editor waits for Generate, the sidebar
+           auto-rebuilds): the main sidebar holds the brick 3D settings (each lives ONLY here) plus a few
+           QUICK settings that mirror the editor Brick tab's own (same P.brickSettings, two entry points),
+           both applied at once. The 2D layout (tools, patterns, size slider, grout width, suppression,
+           clumping, seed) stays in the editor's Brick tab. Rows rendered by main/brick-panel.js
+           (BRICK_QUICK_SETTINGS); the 3D controls keep their ids, so their bindings are unchanged. -->
+      <div class="panel panel-brick">
+        <div class="panel-header collapsed" onclick="togglePanel(this)">🧱 BRICK</div>
+        <div class="panel-body hidden">
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Quick settings</label>
+          <div style="font-size:10px; opacity:0.65; margin:0 0 8px;">Applied at once. Every other layout setting is in the editor's Brick tab.</div>
+          <div id="brickQuickSettings"></div>
+
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin:6px 0 4px;">3D</label>
+        <label class="cad-label">Relief</label>
+        <div class="relief-toggle" id="brickReliefToggle" style="margin-bottom:12px;">
+          <button type="button" class="relief-toggle-btn active" id="brickBtnReliefRaised" title="Bricks raised above the surface"><span>Raised</span></button>
+          <button type="button" class="relief-toggle-btn" id="brickBtnReliefCarved" title="Bricks carved into the surface"><span>Carved</span></button>
+        </div>
+
+        <!-- F35 item 18 (1): brick top FLAT | ORGANIC (a 3D-only setting: applies at once, no Generate) -->
+        <label class="cad-label">Brick top</label>
+        <div class="relief-toggle" id="brickTopModeToggle" style="margin-bottom:12px;">
+          <button type="button" class="relief-toggle-btn active" id="brickBtnTopOrganic" title="Each brick's top follows the terrain under it"><span>Organic</span></button>
+          <button type="button" class="relief-toggle-btn" id="brickBtnTopFlat" title="Each brick is a flat block tilted to the average slope under it; joints still follow the terrain"><span>Flat</span></button>
+        </div>
+
+        <!-- F35 item 18 (2): brick SURFACE style, buttons rendered from editor/brick-surface-styles.js (3D-only, applies at once) -->
+        <label class="cad-label">Surface</label>
+        <div class="relief-toggle" id="brickSurfaceStyleToggle" style="margin-bottom:12px;"></div>
+
+        <label class="cad-label">Max Height (in)</label>
+        <div class="cad-slider-row" style="margin-bottom:12px;">
+          <input type="range" id="brickReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
+          <div class="cad-stepper" style="width:60px;"><input type="number" id="brickReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
+        </div>
+
+          <label class="cad-label" style="font-size:10px;">Grout depth (in)</label>
+          <input type="number" id="brickGroutDepth" value="0.05" min="0" max="0.25" step="0.005" style="width:100%; margin-bottom:6px;">
+        <div class="relief-toggle" id="brickGroutProfileToggle" style="margin-bottom:12px;">
+          <button type="button" class="relief-toggle-btn" id="brickBtnGroutRecessed" title="Joints carved below the surrounding surface by the grout depth"><span>Recessed</span></button>
+          <button type="button" class="relief-toggle-btn active" id="brickBtnGroutFlush" title="Joints sit flush with the base surface"><span>Flush</span></button>
+        </div>
+        <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:10px;">
+          <input type="checkbox" id="isolateSkeleton">
+          <span>Hide filter texture</span>
+        </label>
+        <div style="font-size:10px; opacity:0.65; margin:2px 0 4px;">Bricks read best with this on -- the active filter's own fine noise otherwise competes with brick-scale detail.</div>
+        </div>
+      </div>
+
       <!-- 5. Vector Stamping -->
       <div class="panel panel-stamp">
         <div class="panel-header collapsed" onclick="togglePanel(this)">📐 VECTOR STAMPING</div>
@@ -3163,42 +3214,11 @@
                 <label class="cad-label" style="font-size:10px;">Width (in)</label>
                 <input type="number" id="brickGroutWidth" value="0.06" min="0" max="0.5" step="0.005" style="width:100%;">
               </div>
-              <div style="flex:1;">
-                <label class="cad-label" style="font-size:10px;">Depth (in)</label>
-                <input type="number" id="brickGroutDepth" value="0.05" min="0" max="0.25" step="0.005" style="width:100%;">
-              </div>
-            </div>
-            <div class="relief-toggle" id="brickGroutProfileToggle" style="margin-bottom:12px;">
-              <button type="button" class="relief-toggle-btn" id="brickBtnGroutRecessed" title="Joints carved below the surrounding surface (not yet visually implemented)"><span>Recessed</span></button>
-              <button type="button" class="relief-toggle-btn active" id="brickBtnGroutFlush" title="Joints sit flush with the base surface"><span>Flush</span></button>
             </div>
             <!-- F35 (Fred: detection only, never changes the value): the SAME hint as the
                  Resolution panel's own #spacingGroutHint, shown here too since this is where a
                  user is most likely to be looking when grout width changes. -->
             <div id="brickGroutSpacingHint" style="display:none; font-size:10px; color:#b8860b; margin:0 0 12px;"></div>
-
-            <label class="cad-label">Relief</label>
-            <div class="relief-toggle" id="brickReliefToggle" style="margin-bottom:12px;">
-              <button type="button" class="relief-toggle-btn active" id="brickBtnReliefRaised" title="Bricks raised above the surface"><span>Raised</span></button>
-              <button type="button" class="relief-toggle-btn" id="brickBtnReliefCarved" title="Bricks carved into the surface"><span>Carved</span></button>
-            </div>
-
-            <!-- F35 item 18 (1): brick top FLAT | ORGANIC (a 3D-only setting: applies at once, no Generate) -->
-            <label class="cad-label">Brick top</label>
-            <div class="relief-toggle" id="brickTopModeToggle" style="margin-bottom:12px;">
-              <button type="button" class="relief-toggle-btn active" id="brickBtnTopOrganic" title="Each brick's top follows the terrain under it"><span>Organic</span></button>
-              <button type="button" class="relief-toggle-btn" id="brickBtnTopFlat" title="Each brick is a flat block tilted to the average slope under it; joints still follow the terrain"><span>Flat</span></button>
-            </div>
-
-            <!-- F35 item 18 (2): brick SURFACE style, buttons rendered from editor/brick-surface-styles.js (3D-only, applies at once) -->
-            <label class="cad-label">Surface</label>
-            <div class="relief-toggle" id="brickSurfaceStyleToggle" style="margin-bottom:12px;"></div>
-
-            <label class="cad-label">Max Height (in)</label>
-            <div class="cad-slider-row" style="margin-bottom:12px;">
-              <input type="range" id="brickReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
-              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
-            </div>
 
             <label class="cad-label">Suppression</label>
             <div class="cad-slider-row" style="margin-bottom:10px;">
@@ -3217,12 +3237,6 @@
               <input type="number" id="brickSeed" value="1" style="flex:1;">
               <button type="button" id="brickBtnRandomSeed" class="cad-btn" title="Random seed">🎲</button>
             </div>
-
-            <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:10px;">
-              <input type="checkbox" id="isolateSkeleton">
-              <span>Hide filter texture</span>
-            </label>
-            <div style="font-size:10px; opacity:0.65; margin:2px 0 4px;">Bricks read best with this on -- the active filter's own fine noise otherwise competes with brick-scale detail.</div>
           </div>
         </aside>
 
