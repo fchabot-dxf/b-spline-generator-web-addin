@@ -19,7 +19,7 @@ From the outgoing advisor (session `b-spline-generator-web-addin-54`) to the new
 | Seat | Session | Worktree / branch | Epoch | Seat lock | Doing now |
 |---|---|---|---|---|---|
 | A | `b-spline-generator-web-addin-39` | main checkout / `main` | 7 | 39 | H23 item 78: Template 18 Arched Head (diagram first) -- f3 DECOMMISSIONED 17fe1c6 |
-| B | `b-spline-generator-web-addin-d3` | `-lane-b` / `lane-b` | 10 | d3 | T86 item 4b: brick engine on every template (b5 decommissioned f4375d1) |
+| B | (FRESH SEAT NEEDED; d3 HELD at turn 342, 2026-10-04 evening, 3-day session) | `-lane-b` / `lane-b` | 11 on adoption | -- | start block at the END of NEXT-SESSION-lane-b.md: 16(c) plan (WORK-LOG 8326c9f) -> 16(b) -> 13 -> 18 -> 10 -> 21b |
 | C | `b-spline-generator-web-addin-37` | `-fb-app` / `fb-app` | 6 | 37 | F35 item 18: Flat/Organic, Weathered, sidebar split, 2D-only editor (de DECOMMISSIONED cb79c86) |
 | spare | `-88` | wt-88 (ad-hoc fixes) | none | none | on-call for small fixes; b5, f3, de DECOMMISSIONED |
 
