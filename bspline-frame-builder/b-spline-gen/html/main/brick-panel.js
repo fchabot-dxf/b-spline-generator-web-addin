@@ -22,7 +22,7 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
 import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS,
-  BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS,
+  BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions,
 } from '../editor/editor-brick-tool.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
@@ -65,7 +65,7 @@ const BRICK_TOOLS = [
   // not an oversight).
   { id: 'scissors', buttonId: 'brickTool_scissors', label: 'Scissors', icon: '✂️', settingsSection: null,
     hint: 'Tap a brush stroke to split it -- each piece regenerates its own bricks independently once moved apart.' },
-  { id: 'stripe', buttonId: 'brickTool_stripe', label: 'Stripe', icon: '📏', settingsSection: null,
+  { id: 'stripe', buttonId: 'brickTool_stripe', label: 'Stripe', icon: '📏', settingsSection: 'brickStripeSection',
     hint: 'Tap a brush stroke to split it into alternating brick-style runs.' },
 ];
 
@@ -573,11 +573,24 @@ const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear'
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 const LAYOUT_IGNORED_SETTING_KEYS = [...BRUSH_ONLY_SETTING_KEYS, ...SURFACE_ONLY_SETTING_KEYS];
 // The replacer's `this` is the holder: top-level keys, plus the grout group's own surface-only keys.
-const _layoutKey = () => JSON.stringify(P.brickSettings, function (k, v) {
+const _settingsKey = () => JSON.stringify(P.brickSettings, function (k, v) {
   if (this === P.brickSettings && LAYOUT_IGNORED_SETTING_KEYS.includes(k)) return undefined;
   if (this === P.brickSettings.grout && SURFACE_ONLY_GROUT_KEYS.includes(k)) return undefined;
   return v;
 });
+/** F35 item 20: the Wall flows around the brush strokes, so its layout ALSO depends on them -- the
+ *  brush footprints (every brush brick's points) join the laid key while a Wall is on the canvas.
+ *  Adding, editing or deleting a stroke then makes the Wall pending (editor) like any layout setting. */
+function _brushKey() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  const node = editor?._sketchLayer?.node;
+  if (!node?.querySelector?.('[data-brick-gen="1"][data-brick="wall"]')) return '';
+  return brushExclusions(editor).map((e) => e.polygon.map((p) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ')).sort().join('|');
+}
+const _layoutKey = () => {
+  const brush = _brushKey();
+  return brush ? `${_settingsKey()}#brush:${brush}` : _settingsKey();
+};
 // Audit B1-B3: the settings the Wall/Frame bricks on the canvas were laid with live ON the Bricks
 // layer (`brickLaidKey`, stamped by runBricks before its undo commit, persisted with the layer
 // roster), so undo/redo, Cancel and reload all carry them -- module memory did not. No key on the
@@ -623,7 +636,19 @@ function syncGeneratePending() {
 
 /** Lay the given element kinds with the current settings, stamping their key on the Bricks layer. */
 function _layBricks(editor, frameGeom, kinds) {
-  withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey(), kinds }));
+  // Turn 195: an engine throw keeps the previous bricks (runBricks computes before it clears) and says
+  // so -- never an empty canvas with no message. The layout stays pending (nothing new was laid).
+  let failed = null;
+  withLoadingStage('bricks', () => {
+    try { runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey(), kinds }); }
+    catch (e) { failed = e; }
+  });
+  if (failed) {
+    console.error('Brick Generate failed:', failed);
+    showToast(`Generate failed -- the previous bricks are kept (${(failed && failed.message) || failed})`, 'error');
+    syncGeneratePending();
+    return false;
+  }
   _changedWhileUnknown = false;
   syncGeneratePending();
   // Audit C8: the layer's visibility is the user's choice, so it is not flipped back on -- but a
@@ -653,8 +678,7 @@ export function generateBricks() {
   const frameGeom = resolveFrameGeom(editor);
   const kinds = _kindsToLay(editor, frameGeom);
   if (!kinds.length) return false;
-  _layBricks(editor, frameGeom, kinds);
-  return true;
+  return _layBricks(editor, frameGeom, kinds) !== false;
 }
 
 export function bindSlider(sliderId, numberId, key, parse = parseFloat, commit = 'generate') {
@@ -1207,6 +1231,9 @@ export function initBrickPanel() {
   document.addEventListener('editorLayersChanged', () => syncGeneratePending());
   // Audit C11: the drawer's tab label shows the pending dot only while it names the Brick tab.
   document.addEventListener('editorTabChanged', () => syncGeneratePending());
+  // F35 item 20: a brush stroke added / edited / deleted is an editor commit -- re-derive pending, since
+  // the Wall's laid key now covers the brush footprints (_brushKey)
+  document.addEventListener('editorCommit', () => syncGeneratePending());
   // Audit B1: Cancel/Discard put P.brickSettings back to the editor's entry snapshot (app-init.js).
   document.addEventListener('brickSettingsRestored', () => { syncControlsFromState(); syncGeneratePending(); });
 
