@@ -1325,7 +1325,10 @@
       <div class="panel panel-resolution" style="border-bottom:none;">
         <div class="panel-header collapsed" onclick="togglePanel(this)">⚙️ RESOLUTION</div>
         <div class="panel-body hidden">
-          <label class="cad-label">Base Spacing</label>
+          <!-- F35 item 16 follow-up (Fred): "Display" named explicitly (was "Base Spacing") now
+               that Export (below) is a real, separate, parallel setting -- the two read as a pair,
+               not one labelled field plus an unlabelled second one. -->
+          <label class="cad-label">Display Resolution</label>
           <div class="cad-nested-input" style="width:100%;">
             <select id="spacing" style="width:100%; border:none; background:transparent; font-size:11px;">
               <option value="1.0">Coarse</option>
@@ -1335,7 +1338,8 @@
               <option value="0.03">Ultimate</option>
             </select>
           </div>
-          <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:6px;" title="Display only: flat areas use bigger triangles, sharp detail keeps the Base Spacing. Send/STEP unchanged.">
+          <!-- F35 item 17: Display-only (see title), kept right under Display's own select. -->
+          <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:6px;" title="Display only: flat areas use bigger triangles, sharp detail keeps the Display resolution. Send/STEP unchanged.">
             <input type="checkbox" id="adaptiveDisplay">
             <span>Adaptive</span>
           </label>
@@ -1347,6 +1351,31 @@
                carve the grout joints cleanly. Populated at runtime by main/brick-panel.js's
                updateSpacingHint. -->
           <div id="spacingGroutHint" style="display:none; font-size:10px; color:#b8860b; margin-top:6px;"></div>
+
+          <!-- F35 item 16 follow-up (Fred): Display (above) drives the live 3D preview; Export is
+               the resolution the B-spline mesh is actually BUILT at for Send/STEP -- the two used to
+               be the same single setting. "Same as display" defaults ON so every existing board
+               behaves exactly as before until Fred deliberately splits them. -->
+          <label class="cad-checkbox-row" style="display:flex; align-items:center; gap:6px; margin-top:12px; font-size:11px;">
+            <input type="checkbox" id="sameAsDisplayResolution" checked>
+            Export uses the same resolution as Display
+          </label>
+          <div id="exportResolutionOptions" style="display:none; margin-top:6px;">
+            <label class="cad-label">Export Resolution</label>
+            <div class="cad-nested-input" style="width:100%;">
+              <select id="exportSpacing" style="width:100%; border:none; background:transparent; font-size:11px;">
+                <option value="1.0">Coarse</option>
+                <option value="0.4">Fine</option>
+                <option value="0.15">Ultra</option>
+                <option value="0.05" selected>Mega Ultra</option>
+                <option value="0.03">Ultimate</option>
+              </select>
+            </div>
+            <!-- Mirrors #spacingGroutHint above, targeting the EFFECTIVE export resolution instead
+                 of Display -- Send is what actually needs fine enough joints to carve cleanly.
+                 Populated at runtime by main/brick-panel.js's updateSpacingHint. -->
+            <div id="exportSpacingGroutHint" style="display:none; font-size:10px; color:#b8860b; margin-top:6px;"></div>
+          </div>
         </div>
       </div>
     </aside>
@@ -3072,19 +3101,27 @@
               </div>
             </div>
 
-            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
-            <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
-              <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
+            <!-- F35 item 16 follow-up (Fred, live use: "shows every section at once, can't tell
+                 what applies"): shown only while Wall is the active tool (main/brick-panel.js's
+                 syncWallSection), same contextual-section convention brickBrushSection already set. -->
+            <div id="brickWallSection">
+              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
+              <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+                <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
+              </div>
             </div>
 
-            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
-            <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
-              <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
-            </div>
+            <!-- F35 item 16 follow-up: shown only while Frame is the active tool (syncFrameSection). -->
+            <div id="brickFrameSection">
+              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
+              <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+                <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
+              </div>
 
-            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Band patterns</label>
-            <div id="brickFrameBandPatternList" style="margin-bottom:12px;">
-              <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
+              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Band patterns</label>
+              <div id="brickFrameBandPatternList" style="margin-bottom:12px;">
+                <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
+              </div>
             </div>
 
             <!-- F35 item 16 (Fred: "I'd rather they all have the same size"): ONE global brick

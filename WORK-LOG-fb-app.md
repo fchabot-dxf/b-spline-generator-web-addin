@@ -11470,3 +11470,254 @@ one-off screenshot need.
 Not yet done: relocating Brick size + Grout into the toolbar-anchored "Bricks & grout" popover (still
 queued from item 16's own earlier scope, unaffected by this slider change); the frame-depth-vs-neck
 hint and resolution hint wording (next, per the advisor's turn-171 dispatch).
+
+## F35 item 16 follow-up: resolution hint fold-in + the Display/Export resolution split
+
+Two advisor DMs, the second explicitly "replaces the earlier 'one resolution' instruction":
+1. Add `Masonry` (0.015) / `Masonry max` (0.011) to `RESOLUTIONS`; the brick grout-vs-spacing hint
+   should recommend them by name for bricks <= 1.5in, and go SILENT above that size (the measured
+   grid's own finding: finer resolution never fixes "reads as terrain, not bricks" at larger sizes,
+   only grout-joint carving -- recommending an 8-second Masonry-max rebuild for something it can't
+   fix would be actively misleading).
+2. Fred: ONE resolution setting becomes TWO -- **Display** (`P.spacing`, the live 3D preview,
+   unchanged) and **Export** (`P.exportSpacing`, the mesh actually built for Send/STEP), plus
+   `P.sameAsDisplayResolution` (default true, so every existing board's behaviour is byte-identical
+   until deliberately split). Send shows the effective resolution in its own progress line. The
+   brick hint targets Export, not Display.
+
+**core/state.js**: `RESOLUTIONS` gained the two new entries (after Extreme, values confirmed against
+the measured grid, not guessed). New `P` fields `sameAsDisplayResolution: true` / `exportSpacing:
+0.05` (mirrors `spacing`'s own default); `exportSpacing` added to `updateP`'s `stringParams`,
+`sameAsDisplayResolution` to `boolParams` (confirmed via a live DM research pass that `P.spacing`
+itself is ALREADY a string, not a number, by this same convention -- easy to miss and get the new
+field's coercion wrong). New exported `effectiveExportSpacing()` -- the ONE place Display-vs-Export
+resolves, always returning a real `Number` (never the raw possibly-string `P.spacing`/`P.exportSpacing`,
+so callers can safely use strict equality against `RESOLUTIONS`' own numeric `val`s). Same NaN/<=0
+safeguard added for `exportSpacing` in `loadLastSession` as `spacing` already had.
+
+**Research before writing a line of code**: an Explore agent traced the FULL existing pipeline first
+(persistence shape, Send's actual resolution source, where progress text could go, the hint's own
+call sites) rather than guessing. Key finding that shaped the whole design: **Send does not build its
+own mesh today** -- both Fusion Send and the web STEP download read `lastResult` (core/engine/
+rebuild.js's own output), i.e. whatever `P.spacing` happened to be at the LAST live-preview rebuild.
+There was no "export resolution" concept to extend; splitting Display from Export means temporarily
+rebuilding `lastResult` at a different resolution for the duration of the Send, then rebuilding back.
+
+**main/export-flow.js**: new exported `withExportResolution(preview, fn)` brackets `executeExport`'s
+existing `lastResult`-reading body (moved into the callback, unchanged otherwise). When
+`sameAsDisplayResolution` (every existing board's default), it's a pure passthrough -- zero behavior
+change, confirmed by the same function being a one-line `return fn()` in that branch. When split: a
+PLAIN state write (`P.spacing = P.exportSpacing`, deliberately NOT `applyParam`, so the Display
+dropdown never visibly flickers to Export's value), `updateStampMasks` at the export grid (masks are
+resolution-scoped and `rebuild()` itself never rasterizes one, only consumes whatever's already
+there -- confirmed from rebuild.js directly, not assumed), `rebuild(null, ...)` (the `null` preview
+is what keeps the LIVE 3D view from visibly jumping mid-Send -- `rebuild()`'s own `if (preview)` guard
+skips `preview.update` entirely), then `fn()` runs against the freshly-built export-resolution
+`lastResult`, then the whole sequence reverses in a `finally` (restores `P.spacing`, re-rasterizes
+masks at the display grid, `rebuild(preview, ...)` to push the live view back to exactly where the
+user left it) -- the restore runs even if `fn` throws. Fusion-mode progress: `setFusionStatus(
+'Building at <RESOLUTIONS name> <value>in…', 'busy')` right before the export-resolution rebuild,
+silent in the web wizard path (not asked for there). `core/fusion-bridge.js`'s own poll-timeout
+`P.spacing <= 0.05` check needed NO code change -- it runs from inside `sendToFusion`, itself inside
+the wrapped `fn()`, so `P.spacing` is already the effective export value at that point; added a
+comment explaining why, so a future reader doesn't "fix" it into a latent bug.
+
+**main/param-manager.js**: `applyParam` early-returns for these two new keys before the generic
+grid-diff/rebuild-scheduling tail -- without this, every Export-resolution UI change would still
+schedule a real (if harmless) Display rebuild 200ms later, since that tail is keyed on `P.spacing`
+alone and these two fields never change it.
+
+**HTML + wiring**: new "Export uses the same resolution as Display" checkbox + a second
+`<select id="exportSpacing">` (hidden while checked) in the Resolution panel, both auto-bound for
+free by `main/ui-bindings.js`'s existing `Object.keys(P).forEach(...)` loop (any DOM id matching a
+`P` key gets wired with zero extra code -- confirmed this already works for every other scalar
+field). `core/ui-utils.js`'s `updateSpacingLabels` gained an optional `selectId` param so it can
+populate EITHER select from the one `RESOLUTIONS` list, rather than a second copy of the option-
+building loop; both its call sites (`app-init.js`, `param-manager.js`'s widthIn/heightIn handler) now
+call it twice. The checkbox's own show/hide toggle is hand-written (inverse polarity from the
+existing `bindTogglePanel` helper -- checked HIDES the Export section here, the opposite of every
+other toggle-panel consumer -- so reusing it would need its own inversion flag for one caller).
+
+**main/brick-panel.js**'s `updateSpacingHint`: now reads `effectiveExportSpacing()` instead of
+`P.spacing` directly; gated by a new `BRICK_HINT_MAX_SIZE_IN = 1.5` check against
+`P.brickSettings.brickLengthIn`; the suggestion text is DATA-DRIVEN (`RESOLUTIONS.filter(r => r.val
+<= targetSpacing)`, coarsest-two), not a hardcoded "Extreme or Masonry" string, so it stays correct
+if the target ever needs an even finer pair. Shows via `#spacingGroutHint` (Display's own, always-
+visible panel) when `sameAsDisplayResolution`, or `#exportSpacingGroutHint` (inside the now-visible
+Export section) when not -- explicitly clears whichever one is currently INACTIVE so flipping the
+checkbox never leaves a stale message under the wrong control. New listeners on `#exportSpacing`/
+`#sameAsDisplayResolution` re-evaluate the hint, same deferred-one-tick convention as `#spacing`'s
+own existing listener.
+
+**Tests** (4 new files, 34 new tests total):
+- `tests/resolution-split-persist.test.js` (11): RESOLUTIONS entries, `updateP` coercion for both
+  new fields, `effectiveExportSpacing` (mirrors/decouples/always-a-Number), `loadLastSession`
+  restore (both fields, a pre-split project left untouched, the NaN/<=0 safeguard). Mutation-tested
+  the safeguard by removing it -- exactly that 1 test failed.
+- `tests/export-flow-resolution-split.test.js` (9): `withExportResolution`'s no-op passthrough path;
+  the swap/restore (including on `fn` throwing); `rebuild(null, ...)` for the export build vs
+  `rebuild(preview, ...)` for the restore; masks re-rasterized at BOTH grids; exact operation
+  ordering (masks -> rebuild:export -> fn -> masks -> rebuild:restore); the Fusion-mode progress
+  message's exact wording, silent in web mode. Mutation-tested (the no-op branch unconditional) --
+  exactly the 6 "sameAsDisplayResolution OFF" tests failed, the 3 "ON"/passthrough tests stayed green.
+- `tests/param-manager-export-resolution.test.js` (3): the two new keys never trigger
+  `scheduleRebuild`/`refreshAllStampMasks`; a control case (`spacing` itself) confirms the REAL
+  rebuild path still fires for an ordinary Display key. Mutation-tested (removed the early-return) --
+  both new-key tests failed, the control test stayed green.
+- `tests/brick-spacing-hint.test.js` (rewritten, 7): hidden/shown states now reference
+  `effectiveExportSpacing`; new tests for the Export-targeting-when-decoupled case and the >1.5in
+  silence gate; the "toggling same-as-display live moves the hint" case.
+Full suite green: 215 files / 3890 tests (was 212/3864 before this item).
+
+**Live-verified** (headless Chrome, not just unit tests): opened the Resolution panel fresh --
+`exportResolutionOptions` correctly hidden, `sameAsDisplayResolution` checked, both selects populated
+with all 11 real `RESOLUTIONS` entries (confirmed the static HTML's own placeholder options get
+replaced, same as the pre-existing `#spacing` behavior). A REAL click on the checkbox (not a
+synthetic event -- see below) correctly un-hides the Export select and sets `P.sameAsDisplayResolution
+= false`. Setting Export to an INVALID value (no matching `<option>`) safely no-ops to `""`, exactly
+like a native `<select>`; setting it to a real value (Masonry, 0.015) correctly updates
+`P.exportSpacing`. With Display left at its own fine default and Export set deliberately coarse
+(Coarse, 1in), the hint correctly shows under `#exportSpacingGroutHint` (not `#spacingGroutHint`)
+with the right message, and mirrors on the Brick tab's own hint too. Zero console errors.
+**Caught my own test-harness bug while live-verifying, not a production one**: a checkbox's generic
+auto-bind listens on `'input'` (core/ui-utils.js's own `bind()`: `SELECT` -> `'change'`, everything
+else -> `'input'`) while my OWN new visibility-toggle code listens on `'change'` -- correct for a
+REAL click (which fires both, in that order) but my first verification script only dispatched a
+synthetic `'change'` event, so the auto-bind never ran and the checkbox APPEARED broken. Switched the
+script to a real `.click()` (fires the full native sequence) and it worked correctly -- recorded here
+so a future script doesn't waste time on the same false alarm.
+
+Not yet done, explicitly deferred (per the advisor's own rapid sequence of follow-up DMs, each
+naming where it slots in): a staged loading/busy indicator covering brick generation, the height-
+mask pass, and fine-resolution rebuilds (declared stage data, >250ms show threshold, yield between
+stages) -- asked to be folded into this same item, but is a genuinely separate piece of UI/UX
+infrastructure (finding/reusing whatever loading signal already exists, instrumenting multiple call
+sites) rather than a quick addendum to an already-large turn; a Brick-top Flat/Organic global
+setting (per-brick plane-fit, cached, grout stays draped); the Frame Template selector becoming an
+icon-per-template custom listbox; and a Brick/Photo sidebar-vs-editor-tab 3D/2D control split. All
+four arrived as DMs during this turn's own work and are queued as explicit next items, in the order
+the advisor named them.
+
+## F35 item 16 follow-up: per-tab top-toolbar GROUPS (Brick's Brush lost its Grid/Snap controls)
+
+Small, explicitly-sequenced fix (advisor: "Small; do it next"): the earlier UX-unification turn's own
+fix (commit 2245810, this same item) hid the ENTIRE top toolbar (`#editorToolbarTop` -- Stroke/
+Color/Grid/FillMode/Font/Expand) outside the Artwork tab, on the reasoning that it was "shared
+styling chrome for ONE of them." That went too far: Brick's own Brush tool draws strokes on the
+canvas and genuinely needs GRID (SHOW/GRID-snap/GEOM-snap + spacing) -- the exact same shared
+control + state Artwork's own drawing tools already use -- which the blanket hide took away too.
+
+**Fix, declared per tab, not a second hand-rolled branch**: `main/editor-tabs.js` gained
+`TOOLBAR_TOP_GROUPS_BY_TAB` (`brick: ['editorGridGroup']`, `photo: []`, `frame: []`) and
+`ALL_TAB_GATED_TOOLBAR_GROUPS` (the 6 real groups; `editorTouchActionsGroup` deliberately excluded --
+its own visibility is purely a `(pointer:coarse)` CSS media query, independent of mode OR tab by
+design, per editor-ui.js's own TOOLBAR_GROUPS doc comment). `setEditorTab` now always shows the bar
+itself and sets an INLINE `style.display` on each gated group for non-Artwork tabs; for Artwork, it
+clears the inline style back to `''` instead of setting anything. This composes correctly with
+editor-ui.js's existing PER-MODE visibility system (`TOOLBAR_GROUPS`, a separate, already-declared
+table keyed by mode, toggling a `.hidden` class with `!important`) without needing to import or call
+into it: the `.hidden` class is never touched by this new code, so it keeps tracking whatever mode
+Artwork was last in, completely undisturbed, the whole time a non-Artwork tab is active (confirmed by
+actually checking `base.css`'s `.hidden { display: none !important; }` rather than assuming an inline
+style and a `!important` class interact safely) -- returning to Artwork needs no re-sync call at all,
+just clearing the override lets the untouched class state show through exactly as it was.
+
+**Tests**, new `tests/editor-tabs-toolbar-groups.test.js` (5): Brick shows Grid only; Photo/Frame
+show nothing; Artwork clears every inline override and leaves a PRE-EXISTING `.hidden` class (seeded
+in the fixture to simulate editor-ui.js's own table having already hidden Font/Expand for some mode)
+completely untouched; a round-trip Artwork -> Brick -> Artwork proves the restore needs no re-sync;
+TouchActionsGroup is never touched on any tab. Mutation-tested (reverted to the old blanket-hide
+behavior) -- exactly the 3 tests checking per-tab group visibility failed, Artwork and TouchActions
+stayed green (both were already satisfied by the old code too, correctly not flagging a difference
+that doesn't exist for them). Full suite green: 216 files / 3895 tests.
+
+**Live-verified** (headless Chrome, Brick tab, Brush tool, both 1366 and 390 widths): GRID group
+(SHOW/GRID/GEOM + the 1/4" spacing dropdown) visible and functional, Stroke/Color correctly hidden,
+Brush tool correctly shows its strong active highlight (confirms the earlier cross-tab highlight fix,
+commit 2245810, is intact on this branch). Screenshots:
+`.bspline-status/shots/seatC/f35item16_brick_tab_grid_group_{1366,390}.png`.
+
+Not yet done, queued next (per the advisor's own explicit re-prioritization, ahead of the rest of
+item 16): a 4-part Brick-tab usability bug report from Fred's own live use (tool rail icons/
+highlighting -- to be CONFIRMED against this branch's current code, not assumed broken; the settings
+panel showing every section at once instead of being contextual; the Layers panel not appearing with
+nothing selected; and a reported bad brick layout -- wall bricks running under/over frame bands,
+shards fanning at the shoulders -- to reproduce and diagnose as either already-fixed or a real
+wall/frame clip bug).
+
+## F35 item 16, re-prioritized: Fred's live Brick-tab confusion (4-part bug report)
+
+Fred's own live screenshot (`.bspline-status/shots/fred/fred_brick_tab_confusion_2026-10-04.png`,
+add-in 2026.10.04-7, BEFORE this session's earlier UX-unification commit 2245810): "I don't
+understand which tool is selected, can't select brush, don't see the layers." The advisor moved this
+ahead of the rest of item 16. All 4 parts addressed; none assumed broken without checking this
+branch's own current code first.
+
+**(1) Tool icons + highlight.** The Frame tool's own icon was `'🖼️'` -- Unicode literally calls that
+glyph "framed picture," which is exactly the photo-icon confusion Fred reported (confirmed by reading
+`BRICK_TOOLS` directly, not assumed from the screenshot alone) -- changed to `'⬚'` (a plain dotted
+square, reads as "outline/border," no photo association). Tooltips were ALREADY present (`editor-
+tool-registry.js`'s `renderToolRegistry` sets `btn.title` from `label`/`hint` for every entry) --
+nothing to fix there. The highlight itself: `.tool-btn.active` (editor.css) is a pale `#e5f3ff`
+background; Artwork's own static SVG buttons get an ADDITIONAL `.tool-btn.active svg { stroke-width:
+2.5px }` bold-stroke treatment the same rule doesn't reach for Brick/Photo's plain-emoji buttons
+(`btn.textContent = tool.icon`, no `<svg>` to bold) -- confirmed by reading `base.css`'s actual rule,
+not assumed. Registry-rendered buttons now also carry a new `tool-btn-emoji` class
+(`editor-tool-registry.js`), with its own `.tool-btn-emoji.active` rule (editor.css) giving a SOLID
+filled background (matching `.cad-btn.active`'s own established "selected" look elsewhere in the app)
+-- scoped so Artwork's own static buttons are completely untouched.
+
+**(2) Contextual panel.** The right-side panel showed Set/Wall pattern/Frame band preset/Band
+patterns all simultaneously regardless of which tool was active -- confirmed live (own screenshot
+matched Fred's own complaint exactly). `BRICK_TOOLS`' own `settingsSection` field was declared for
+exactly this ("reserved for a future per-tool settings block... null for now") when Brush was its
+only would-be consumer, left unused rather than generalized for one. Wall and Frame needing the
+identical treatment is the 3rd consumer that justifies turning it on: `settingsSection` now names
+each tool's own DOM id (`brickBrushSection`/`brickWallSection`/`brickFrameSection`; Scissors/Stripe
+stay `null`, nothing of their own to show), wrapped the "Wall pattern" and "Frame band preset" + "Band
+patterns" HTML blocks in those two new container divs, and replaced the old Brush-only
+`syncBrushSection()` with a generic `syncToolSections()` that shows ONLY the active tool's own
+section. "Set"/"Brick size"/"Grout"/"Relief"/etc. stay unconditional -- genuinely common to every tool.
+
+**(3) Layers panel on empty selection.** With no Brick tool picked yet, `syncToolSections()` hides
+every section, leaving a near-empty panel -- exactly "don't see the layers." New
+`syncEmptySelectionPanel()`: while the Brick tab is active (`getEditorTab()`) and `_activeTool ===
+null`, swaps `#editorBrickPanel` for the shared `#editorLayersPanel` (editor-tabs.js's own per-tab
+toggle owns every OTHER tab's panel untouched -- this only ever touches these two, only on Brick,
+matching the reported problem's own scope, not a broader redesign). Wired from the SAME
+`syncToolButtons()` already called by `selectTool`/`deselectTool`, plus a new `'editorTabChanged'`
+listener (since entering the tab with no tool picked is a bare tab switch, not a tool change, so
+`syncToolButtons()` needed its own trigger for that case).
+
+**Tests**, 3 new files (14 tests): `tests/brick-tool-contextual-sections.test.js` (one section visible
+at a time per tool, Scissors/Stripe hide all three); `tests/brick-empty-selection-layers-panel.test.js`
+(Layers shows with no tool, Brick panel shows once one's picked, Escape returns to Layers, other tabs
+untouched); `editor-tool-registry.test.js` gained one test for the new `tool-btn-emoji` class. Each
+mutation-tested (reverting `settingsSection` to `null` for wall/frame failed exactly the 5 contextual-
+section tests; disabling `syncEmptySelectionPanel` failed exactly the 2 tests that depend on it, the
+other 2 -- picking a tool, and the other-tabs control -- correctly stayed green). Full suite green:
+220 files / 3938 tests.
+
+**(4) The reported bad brick layout -- reproduced and diagnosed, not blindly "fixed."** Red Brick +
+Stretcher wall + Soldier frame on Template 1 (all defaults -- zero configuration needed to
+reproduce), headless Chrome, real SVG canvas (not the flat terrain backdrop). Measured: 295 bricks
+(171 wall + 124 frame), 23 of the 171 wall bricks' own bounding boxes overlap SOME frame brick's
+bounding box (concentrated at the 4 concave "shoulder" curves, `shots/seatC/
+f35item16_brick_wall_frame_repro_full.png` + a tight `..._shoulder_closeup.png`). Visually, this
+branch's current result is substantially cleaner than Fred's own -7 screenshot's chaos (no stray dark
+gaps, no obviously broken/duplicated geometry) -- consistent with the advisor's own guess that
+d3's notch/medial work (landed after -7) already fixed most of it. What REMAINS at each shoulder: the
+frame band's own soldier bricks fan out as thin radial wedges pivoting around the concave curve, a
+visually busy but geometrically coherent way of keeping each brick roughly perpendicular to the
+local curve tangent -- not obviously broken (no visible self-intersection, no double-rendered
+geometry in the close-up), but genuinely busy enough that Fred may want a different treatment for a
+tight concave corner specifically. Deliberately NOT changed: the bbox-overlap count alone doesn't
+distinguish "two shapes sharing a boundary" from "two shapes actually overlapping," and the fan
+pattern's own correctness depends on a design call (should a frame band even wrap a sharp concave
+notch this way, or should it taper off / use a different corner treatment?) this report surfaces for
+Fred/the advisor's own judgment rather than one this diagnostic pass should decide unilaterally.
+
+**Screenshots** (`.bspline-status/shots/seatC/`): `f35item16_brick_tab_fixed_no_tool_1366.png` (Layers
+panel, nothing highlighted), `f35item16_brick_tab_fixed_wall_tool_1366.png` (Wall tool strongly
+highlighted, ONLY Wall-pattern + common sections visible, the grout hint showing correctly),
+`f35item16_brick_wall_frame_repro_full.png` + `..._shoulder_closeup.png` (item 4's repro).

@@ -17,27 +17,33 @@
  * initBrickPanel() runs at app start. Every tool action below reads
  * `window.svgEditor` fresh at the point of use instead of caching it.
  */
-import { P, saveLastSession } from '../core/state.js';
+import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
 import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
-import { setEditorTab } from './editor-tabs.js';
+import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
- * entries plus their engine function, no UI rework"). `settingsSection` is
- * reserved for a future per-tool settings block (Wall's zones, Frame's band
- * picker) -- null for now, every tool uses only the common controls below.
+ * entries plus their engine function, no UI rework"). `settingsSection` names
+ * the DOM id of that tool's own settings block, shown ONLY while it's the
+ * active tool (syncToolSections, below) -- null for a tool with none of its
+ * own (Scissors/Stripe act on an existing stroke, no settings to show).
+ * F35 item 16 follow-up (Fred, live use: "shows every section at once, can't
+ * tell what applies"): Brush was the only consumer when this field was first
+ * declared (a direct `_activeTool === 'brush'` check, not worth generalizing
+ * for one); Wall and Frame needing the exact same treatment is the 3rd
+ * consumer that justifies the declared table this always meant to become.
  * `run` is this file's own entry point for that tool (not re-exported --
  * core/bricks/ itself stays engine-agnostic of "how a UI triggers it"). */
 const BRICK_TOOLS = [
-  { id: 'brush', buttonId: 'brickTool_brush', label: 'Brush', icon: '✏️', settingsSection: null,
+  { id: 'brush', buttonId: 'brickTool_brush', label: 'Brush', icon: '✏️', settingsSection: 'brickBrushSection',
     hint: 'Click here, then drag a stroke on the canvas to lay bricks along it.' },
-  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: null,
+  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection',
     hint: 'Fills the whole board with bricks.' },
-  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '🖼️', settingsSection: null,
+  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection',
     hint: 'Bands of bricks along the current frame\'s own contour.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
@@ -229,14 +235,15 @@ function setOrientation(v) {
   notifyChange();
 }
 
-/** Shown only while Brush is the active tool (BRICK_TOOLS' own
- *  `settingsSection` field is reserved for exactly this per-tool-section
- *  concept but unused elsewhere yet -- Brush is the first tool that needs
- *  one, so this stays a direct `_activeTool === 'brush'` check rather than
- *  generalizing settingsSection for a single consumer). */
-function syncBrushSection() {
-  const el = document.getElementById('brickBrushSection');
-  if (el) el.style.display = _activeTool === 'brush' ? '' : 'none';
+/** Shows ONLY the active tool's own settings section (BRICK_TOOLS' own declared
+ *  `settingsSection`), hides every other tool's -- Scissors/Stripe have none (null), so
+ *  selecting either hides Brush/Wall/Frame's sections with nothing of their own to show. */
+function syncToolSections() {
+  for (const tool of BRICK_TOOLS) {
+    if (!tool.settingsSection) continue;
+    const el = document.getElementById(tool.settingsSection);
+    if (el) el.style.display = tool.id === _activeTool ? '' : 'none';
+  }
 }
 
 function setPair(sliderId, numberId, v) {
@@ -268,7 +275,7 @@ function syncControlsFromState() {
   document.getElementById('brickSeed').value = s.seed;
   syncProfileToggle();
   syncOrientationToggle();
-  syncBrushSection();
+  syncToolSections();
 }
 
 /** F35 item 10 follow-up (Fred, folded in with the slider-timing ask): a Brick-tab slider
@@ -390,7 +397,23 @@ function syncToolButtons() {
   const hint = BRICK_TOOLS.find((t) => t.id === _activeTool);
   const hintEl = document.getElementById('brickToolHint');
   if (hintEl) hintEl.textContent = hint ? hint.hint : '';
-  syncBrushSection();
+  syncToolSections();
+  syncEmptySelectionPanel();
+}
+
+/** F35 item 16 follow-up (Fred, live use: "don't see the layers"): with no Brick tool picked yet,
+ *  the tab's own panel has nothing contextual to show (syncToolSections hides every section) --
+ *  show the shared editor Layers panel instead of a near-empty Brick panel. Only touches these two
+ *  panels while the Brick tab is actually active (getEditorTab) -- never fights editor-tabs.js's
+ *  own per-tab panel toggle for Artwork/Photo/Frame, which this deliberately leaves alone (not the
+ *  reported problem). */
+function syncEmptySelectionPanel() {
+  if (getEditorTab() !== 'brick') return;
+  const brickPanel = document.getElementById('editorBrickPanel');
+  const layersPanel = document.getElementById('editorLayersPanel');
+  const showLayers = _activeTool === null;
+  if (brickPanel) brickPanel.style.display = showLayers ? 'none' : '';
+  if (layersPanel) layersPanel.style.display = showLayers ? '' : 'none';
 }
 
 /** F35 (advisor: "Esc = back to the select tool in every tab"): Brick has no Select tool of its
@@ -666,28 +689,50 @@ function resolveFrameGeom(editor) {
 // F35 (Fred: "resolution is his own responsibility via the resolution panel" -- REVERSING the
 // earlier auto-tighten below): a grout groove needs the terrain's own mesh to sample it at least
 // 2-3 times across, or it reads as a blur rather than a visible line -- a 0.06in groove needs
-// P.spacing <= ~0.02in, well finer than this app's own 0.05in default (tuned for smooth terrain,
+// spacing <= ~0.02in, well finer than this app's own 0.05in default (tuned for smooth terrain,
 // not brick-scale features). This USED to auto-tighten P.spacing itself (applyParam('spacing', ...))
 // whenever bricks existed; Fred ruled that his own call to make, not automatic. Detection only now
-// -- never writes P.spacing -- surfacing a plain, non-blocking hint instead, in both the Resolution
-// panel (#spacingGroutHint) and the Brick tab's own Grout section (#brickGroutSpacingHint), so
-// whichever one the user happens to be looking at explains why joints might look blurred.
+// -- never writes any resolution field -- surfacing a plain, non-blocking hint instead.
 const GROUT_SAMPLES_ACROSS = 3;
 
+// F35 item 16 follow-up (the measured resolution x brick-size grid, shots/seatC/
+// resolution_scale_grid.png): finer resolution only ever fixes grout-joint CARVING -- it does
+// nothing for the separate, measured finding that bricks > 1.5in read as the board's own sculpted
+// terrain rather than distinct bricks (a scale/relief-dominance issue, not a sampling one). The hint
+// is deliberately SILENT above this size rather than recommending an 8-second Masonry-max rebuild
+// that would not actually fix what the user is seeing.
+const BRICK_HINT_MAX_SIZE_IN = 1.5;
+
+/** The hint targets the EFFECTIVE EXPORT resolution (Send is what actually needs to carve cleanly),
+ *  not Display -- but when they're the same value (sameAsDisplayResolution, the default for every
+ *  existing board) the message still surfaces through the always-visible Display panel's own
+ *  #spacingGroutHint, since #exportSpacingGroutHint lives inside the Export section that's hidden
+ *  in exactly that default case. */
 function updateSpacingHint(groutWidthIn) {
   const gw = groutWidthIn ?? P.brickSettings.grout.widthIn;
   const bricksExist = document.querySelectorAll('[data-brick-gen="1"]').length > 0;
+  const smallEnoughToHelp = P.brickSettings.brickLengthIn <= BRICK_HINT_MAX_SIZE_IN;
   const targetSpacing = gw > 0 ? gw / GROUT_SAMPLES_ACROSS : null;
-  const show = bricksExist && targetSpacing != null && P.spacing > targetSpacing;
+  const exportSpacing = effectiveExportSpacing();
+  const show = bricksExist && smallEnoughToHelp && targetSpacing != null && exportSpacing > targetSpacing;
+  // The coarsest (cheapest) resolutions that are STILL fine enough, named -- e.g. "Extreme (0.02")
+  // or Masonry (0.015")" for a typical 0.06in grout width's own 0.02in target.
+  const sufficient = RESOLUTIONS.filter((r) => r.val <= targetSpacing).sort((a, b) => b.val - a.val).slice(0, 2);
+  const suggestion = sufficient.map((r) => `${r.name} (${r.val}")`).join(' or ');
   const msg = show
-    ? `Grout joints need spacing ≤ ${targetSpacing.toFixed(3)} in to carve cleanly (current ${P.spacing})`
+    ? `Grout joints need Export resolution ≤ ${targetSpacing.toFixed(3)} in to carve cleanly (current ${exportSpacing}in)${suggestion ? ` -- try ${suggestion}` : ''}`
     : '';
-  for (const id of ['spacingGroutHint', 'brickGroutSpacingHint']) {
+  for (const id of ['brickGroutSpacingHint', P.sameAsDisplayResolution ? 'spacingGroutHint' : 'exportSpacingGroutHint']) {
     const el = document.getElementById(id);
     if (!el) continue;
     el.textContent = msg;
     el.style.display = show ? '' : 'none';
   }
+  // Clear whichever hint element ISN'T the active one this time, so flipping "same as display"
+  // never leaves a stale message showing under the wrong control.
+  const inactiveId = P.sameAsDisplayResolution ? 'exportSpacingGroutHint' : 'spacingGroutHint';
+  const inactiveEl = document.getElementById(inactiveId);
+  if (inactiveEl) { inactiveEl.textContent = ''; inactiveEl.style.display = 'none'; }
 }
 
 export function initBrickPanel() {
@@ -696,9 +741,18 @@ export function initBrickPanel() {
   // binding that actually writes P.spacing isn't declared anywhere -- deferring one tick guarantees
   // P.spacing already reflects the new value by the time the hint re-reads it, regardless of order.
   document.getElementById('spacing')?.addEventListener('change', () => setTimeout(() => updateSpacingHint(), 0));
+  // F35 item 16 follow-up: the hint now targets the EFFECTIVE export resolution, which these two
+  // controls can also change -- same deferred-by-one-tick convention as #spacing above.
+  document.getElementById('exportSpacing')?.addEventListener('change', () => setTimeout(() => updateSpacingHint(), 0));
+  document.getElementById('sameAsDisplayResolution')?.addEventListener('change', () => setTimeout(() => updateSpacingHint(), 0));
   updateSpacingHint();
 
   document.getElementById('editorTabBrick')?.addEventListener('click', () => setEditorTab('brick'));
+  // F35 item 16 follow-up: re-sync which panel (Brick's own settings vs the shared Layers panel)
+  // shows every time the Brick tab itself becomes active -- syncToolButtons (called from
+  // selectTool/deselectTool already) only runs on a TOOL change, not a bare tab switch, so entering
+  // the tab with no tool yet picked needs its own trigger here.
+  document.addEventListener('editorTabChanged', (e) => { if (e.detail?.tab === 'brick') syncToolButtons(); });
   renderToolList(document.getElementById('editorToolbarBrick'));
   syncToolButtons();
   renderFramePresetList(document.getElementById('brickFramePresetList'));

@@ -82,6 +82,7 @@ export function applyParam(key, value) {
 
   if (key === 'widthIn' || key === 'heightIn') {
     updateSpacingLabels(P.widthIn, P.heightIn);
+    updateSpacingLabels(P.widthIn, P.heightIn, 'exportSpacing');
     // the drawing follows the new board (app-init _resyncEditorToStock) -- it was stretched over it
     if (!AppState.isInitializing && typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('stockSizeChanged'));
   }
@@ -118,6 +119,14 @@ export function applyParam(key, value) {
     const vBitExtra = document.getElementById('vBitAngleContainer');
     if (vBitExtra) vBitExtra.style.display = (value === 'vbit' || value === 'adaptive') ? 'block' : 'none';
   }
+
+  // F35 item 16 follow-up: exportSpacing/sameAsDisplayResolution never affect the live Display
+  // preview (core/engine/rebuild.js always rebuilds at P.spacing, never P.exportSpacing) -- without
+  // this guard, every Export-resolution change would still schedule a real, visible rebuild 200ms
+  // later at the UNCHANGED Display resolution for no reason (the grid below is keyed on P.spacing
+  // alone, so `gridChanged` is always false for these two keys). The only real work either one
+  // triggers is main/export-flow.js's own withExportResolution, bracketing the Send/STEP build.
+  if (key === 'exportSpacing' || key === 'sameAsDisplayResolution') return;
 
   const delay = immediateRebuildParams.includes(key) ? 0 : 200;
   if (!AppState.isInitializing) {

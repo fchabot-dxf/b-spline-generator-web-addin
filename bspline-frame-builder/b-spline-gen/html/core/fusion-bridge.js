@@ -102,6 +102,10 @@ export async function sendFusionPayloadChunked(payloadString) {
 export function startFusionPolling() {
     if (pollInterval) clearInterval(pollInterval);
     let _pollTicks = 0;
+    // F35 item 16 follow-up: called from sendToFusion (main/export-flow.js), which -- when Export
+    // differs from Display -- has ALREADY swapped P.spacing to P.exportSpacing for the duration of
+    // the Send (see export-flow.js's own withExportResolution); P.spacing here is already the
+    // EFFECTIVE value this particular build is running at, not necessarily Display's own setting.
     const timeoutTicks = (P.spacing <= 0.05) ? 300 : 90;
 
     pollInterval = setInterval(() => {
