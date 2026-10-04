@@ -21288,3 +21288,36 @@ Released the Fusion holder (`fusion_holder.txt` -> `none`).
 
 Stopping here per the dispatch's own "then stop; you've earned the rest" -- not proceeding to item 81
 (T10 archRise_min + apex drift) without a fresh dispatch.
+
+## Amendment: merged origin/main into lane-b (WORK-LOG.md + tests/bricks-fieldstone.test.js conflict), both sides kept (d3)
+
+**Amendment dispatch**: "MERGE CONFLICT: lane-b vs main in tests/bricks-fieldstone.test.js (your
+timing-flake fix bf75ad8 vs 88's abc0a34 fixture pin) + WORK-LOG.md. git merge origin/main into
+lane-b, keep BOTH (88's fixture + your timeouts), run vitest, push, then pass back or DM me."
+
+**WORK-LOG.md**: a plain union conflict (two seats' independent entries landing back to back) --
+resolved by keeping both halves in full, HEAD's entries then origin/main's, markers stripped, no
+content changed.
+
+**tests/bricks-fieldstone.test.js**: the 3 marked conflicts (overlap/coverage/histogram `it` blocks)
+were the easy part -- all three resolved to keep MY `runs`-based reads (bf75ad8's shared
+once-per-combo computation), since origin/main's inline-recompute version is now redundant once
+`runs` carries the right data. **The real work was unmarked**: git auto-merged the `CASES` array
+itself clean (origin/main's commit abc0a34 added a 5th `seeds` element per case -- `{}`for T1/T12,
+`{ flangeHeight: 0.4 }` for T9, pinning it against main's own new 0.7 default), but my own `runs`
+precompute loop at line ~102 still destructured `CASES` as a 4-tuple and called `realContour(templateId,
+W, H)` with no seeds -- NOT a conflict git could see (different lines), but it would have silently
+dropped seat 88's own fixture pin, defeating the entire point of their commit. Caught by reading the
+merged CASES declaration against the unmarked `runs` loop rather than trusting "no conflict markers
+here = fine." Fixed: `for (const [name, templateId, W, H, seeds] of CASES)` / `realContour(templateId,
+W, H, seeds)`.
+
+**Verified**: `npx vitest run` on the 6 brick-layout test files (87/87), then a full suite run
+(243 files / 4189/4189) -- both clean post-merge, including main's own substantial independent
+progress since the merge-base (T9 flangeHeight 0.7 default, new plane-fit.js/loading-signal.js/
+adaptive-mesh.js, engine.js/height-profile.js changes). Pushed (`d0b0bd8..473c319 lane-b -> lane-b`,
+merge parents confirmed `d0b0bd8`/`5cf0a4c` as predicted).
+
+**Commit** (merge commit 473c319, default merge message, no conflicts remaining). My crash fix
+(5f6ee88) and the rest of this session's work is now reachable from main once the advisor merges
+lane-b. Passing back.
