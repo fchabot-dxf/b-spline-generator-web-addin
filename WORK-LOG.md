@@ -21793,3 +21793,70 @@ test, the new `it.todo` in `bricks-pointinpolygon-boundary.test.js`, the regener
 screenshots; this entry). Passing back with the one real fix+shots, and the other two root causes
 precisely documented; asking the advisor how to proceed on those two (more dedicated time on item
 21, a different seat, or defer and continue to 16(c) per the queue) rather than guessing.
+
+## T86 item 16(c), investigated: NOT a single pattern -- at least TWO distinct self-intersection mechanisms found, a WRITTEN PLAN this turn, not code, per the advisor's own explicit "that's a fine outcome" (d3)
+
+**Dispatch (turn 341)**: "boundaryAtDepth self-intersecting where the band is deeper than half the
+local gap: the band yields to the medial line there; un-blocks fieldstone bands on T18." Explicit
+advisor permission: "if it's too deep for this session, pass back a written plan instead of code...
+that's a fine outcome," with an explicit capacity acknowledgment ("you are 3 days in").
+
+**Investigated T18 first (the item-20 repro).** CONFIRMED (not assumed) `boundaryAtDepth`'s own
+self-intersection is a SINGLE, specific crossing, located precisely: between the joint connecting
+primitive[11] (a LARGE arc, r=2.633, spanning the template's own bottom) to primitive[0] (a SHORT
+vertical line, x~5.41), and primitive[11]'s own LAST few tessellated points just before that same
+joint. **This is NOT the "two primitives facing each other across a narrow gap" scenario
+`buildNotchJoint` already handles** (that function's own `D = junctionB-junctionA dotted with
+prevPrim.nx` check specifically needs TWO primitives on OPPOSITE sides of a gap, with a dropped one
+between them) -- there's no dropped primitive here at all (primitive[0] and primitive[11] are
+DIRECTLY adjacent, a genuine, undropped corner). Instead: primitive[11]'s own LARGE arc, offset
+inward by depth (radius shrinks 2.633 -> 1.883 at depth 0.75), stays centred at the SAME fixed point
+(cx=3.50, cy=2.88) -- near its OWN endpoint (close to where it joins primitive[0]), this inward
+shrinkage pulls the arc's own offset curve back far enough to cross OVER primitive[0]'s own offset
+line, which sits closer to the arc's own centre than the arc's own shrunk radius reaches at that
+angle. A DIFFERENT geometric mechanism: one primitive's own offset curve overshooting PAST an
+adjacent, undropped neighbour, not two primitives colliding across a gap.
+
+**Checked T9 (9x12) at 0.75/1/1.25 for comparison -- did NOT reproduce any self-intersection at
+these specific depths/board size.** Either the advisor's own "T9 waist at 1in+" reference is a
+different board size/context than the one I tried, or T9's own geometry doesn't hit this at all for
+fieldstone-band depths in this range -- flagging rather than guessing which.
+
+**Why this is a written plan, not shipped code**: the dispatch's own "yields to the medial line"
+framing (and `buildNotchJoint`'s own existing medial-line logic) describes the fix for the
+TWO-PRIMITIVES-FACING case -- but T18's own actual failure is the DIFFERENT single-arc-overshoot
+mechanism above, which `buildNotchJoint`'s own medial-line math doesn't directly apply to (there's
+no second primitive it's "facing" against -- it's overshooting past its own ordinary neighbour).
+Before writing a general fix, the REAL QUESTION this needs is: are there TWO genuinely distinct
+failure modes to handle (two-primitives-facing AND single-arc-overshoot), or is the
+single-arc-overshoot case actually a DEGENERATE instance of the SAME general principle (the arc's
+own centre point IS, in a sense, "facing" the line primitive, just via a different geometric
+relationship than two near-parallel lines)? Resolving that needs either (a) a careful reformulation
+of `buildNotchJoint`'s own "facing" detection to a MORE GENERAL form that covers both cases (risky:
+that detection has its OWN documented history of reverted attempts for being too narrow or too
+broad), or (b) a SEPARATE, purpose-built detector for "does primitive X's own offset-at-depth curve
+cross primitive Y's own offset-at-depth curve, for ANY X/Y pair sharing a joint" (more general,
+checked directly on the computed geometry rather than inferred from a specific facing-pattern, but a
+genuinely NEW piece of machinery, not a reuse of existing code) -- NEITHER of these is a narrow,
+bounded patch; both need the kind of careful, unhurried iteration this file's own git history shows
+every previous fix in this area required (plural reverted attempts documented inline, each time).
+
+**RECOMMENDED next step for whoever picks this up**: start from direction (b) above (a general
+"does THIS joint's own two flanking offset curves cross" detector, run as a POST-CHECK after
+`boundaryAtDepth`'s own normal joint computation, at EVERY joint, not just ones involving a dropped
+primitive) -- when a crossing is found, truncate BOTH flanking curves at their own actual
+intersection point (the TRUE "medial" point for that SPECIFIC pair, computed directly via
+curve-intersection, not inferred from a declared formula) rather than letting either one overshoot
+past it. This generalizes cleanly to BOTH the two-primitives-facing case (where it reduces to
+roughly what `buildNotchJoint` already does) AND T18's own single-arc-overshoot case (which
+`buildNotchJoint`'s own narrower "facing pair" detection misses entirely), without needing to
+pre-classify WHICH kind of pinch it is. Test on: T18 @ 0.75/1in (the confirmed repro), T1/T12 @
+1.25/1.5in (item 16(a)'s own test file already measured gaps there, same general territory), and
+re-run item 20's own `template_18` `it.todo` (should un-block once this lands).
+
+**Scratch diagnostics** (primitive dump, feasibility checks, crossing-detection for T18/T9) left in
+`bspline-frame-builder/scratch/t86_16c_*` for whoever picks this up next.
+
+**Commit**: this entry only (no code -- nothing was changed in `primitive-ribbon.js`, confirmed
+clean). Passing back with the plan; this exhausts my own queue for this turn (16(b)/13/18/10
+remain, per the advisor's own ordering, for whenever a fresh pass picks up).
