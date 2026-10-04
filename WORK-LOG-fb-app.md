@@ -10968,3 +10968,66 @@ Not yet separately re-verified on the Photo tab specifically (the dispatch asked
 the fix is in the one shared Artwork-tab Clear path every tab's own Clear eventually funnels through
 (Brick/Photo content all lives in `_sketchLayer` same as Artwork), so it should already cover them,
 but a dedicated Photo-tab screenshot is still open.
+
+## Bug fix (Fred, "do it next"): mobile tool-rail regression from item 10, every tab (incl. Artwork)
+
+At phone width (~390px) every editor tab's tool rail rendered as a full-width VERTICAL stack of
+icons, pushing the canvas down (Brick) or covering it entirely (Artwork). Investigated the CSS
+cascade directly rather than guessing at a rewrite, per the later correction ("same UX as Artwork,
+not the same UI -- Brick/Photo keep their own look/icons, reuse Artwork's INTERACTION code").
+
+**Root cause** (confirmed via `git diff 4538ce6^ 4538ce6`, item 10's own commit): before item 10, the
+tool buttons were DIRECT children of `.editor-sidebar`, so the existing mobile rule
+(`.editor-sidebar { flex-direction: row !important }`, `styles/editor.css`, two near-duplicate
+`@media` blocks for the portrait-narrow and landscape-short-coarse-pointer cases) controlled them
+directly. Item 10 inserted one new nesting level -- `#editorToolbarFrame/Artwork/Photo/Brick` wrapper
+divs -- each carrying its own hardcoded inline `flex-direction:column` for the DESKTOP vertical rail.
+`flex-direction` only governs a flex container's DIRECT children, so the existing mobile rule now
+only ever reorders the (mostly `display:none`) wrapper divs relative to each other; it never reaches
+the actual buttons one level deeper. This hits ALL FOUR tabs identically -- Artwork included, not a
+Brick/Photo-only issue, confirming the "Artwork may have regressed too" suspicion exactly. The item
+10 commit touched zero lines of `styles/*.css`, so this was a markup-nesting change silently
+orphaning a previously-correct CSS rule, not a bad edit to the rule itself.
+
+Separately investigated whether "reuse Artwork's interaction code" implies a bigger JS refactor
+(`editor.setMode()`, the active-highlight loop, the mobile drawer's `TOOL_PANELS` table, undo/redo,
+pinch/pan, Esc-to-select): found that mode dispatch, pinch/pan, and undo/redo are ALREADY fully
+generic and already shared by Brick's Brush tool today; Brick's Wall/Frame/Scissors/Stripe tools and
+Photo's 5 tools maintain their own independent active-tool highlighting (`_activeTool`/
+`syncToolButtons` in brick-panel.js, `_activePhotoTool`/`syncPhotoToolButtons` in photo-panel.js)
+rather than going through `setMode`'s own generic highlight loop (which only matches the `tool${Mode}`
+id convention Brick/Photo buttons don't use). Also could not find any existing "Esc reverts to Select"
+mechanism anywhere in the codebase to actually inherit (only Draw mode's own anchor-path-cancel Esc
+handler exists). Given the actual, measurable, screenshot-able bug (canvas covered on mobile) is
+FULLY explained by the CSS cascade issue alone, and a full parallel-mechanism-to-generic-mechanism
+refactor of Brick/Photo's own tool selection is a substantially larger, more architecturally open
+question (what would "Wall/Frame mode" even mean in `editor._currentMode` terms; Photo has no canvas
+gesture concept at all today) -- fixed the concrete CSS bug now and am flagging the deeper
+behavioral-parity question back to the advisor rather than guessing at its scope.
+
+**Fix** (`bspline-frame-builder/styles/editor.css`, both mobile `@media` blocks): added
+`.editor-sidebar > div[id^="editorToolbar"] { flex-direction: row !important; flex-wrap: nowrap
+!important; align-items: center !important; gap: 8px !important; }` -- reaches every tab's own
+wrapper by its shared id prefix (a future new tab needs no matching update here, same convention as
+`EDITOR_TABS` itself), `!important` since that's the only thing that beats a plain inline style.
+Deliberately does NOT touch `display` -- `main/editor-tabs.js`'s own `setEditorTab` must keep
+controlling which ONE wrapper is visible via inline `display:flex|none` unchanged. The existing
+`.editor-sidebar .tool-btn { flex: 0 0 auto }` rule already reaches through the wrapper divs fine (a
+descendant selector isn't limited by flex nesting depth) -- no change needed there.
+
+No vitest coverage possible (this codebase has no viewport/media-query layout testing convention --
+confirmed by search; CSS layout is verified only via live CDP screenshots, same as every other
+responsive fix here). Full suite green: 208 files / 3831 tests (confirms zero JS regressions from a
+CSS-only change).
+
+**Live-verified**: a new repro script (`tools/repro/` convention, CDP) drove all 4 tabs at 390x844 AND
+768x1024 (mobile device-metrics + touch emulation) on T1, reading each active wrapper's own
+`getBoundingClientRect()`/`getComputedStyle().flexDirection` directly (not just screenshots). At
+390px: Artwork's wrapper measured 927x44 (wide, short -- a true horizontal row, `flexDirection:
+"row"`), Photo/Brick 252x44, matching. At 768px (above the 720px breakpoint): Artwork 44x927
+(narrow, tall -- the desktop vertical rail, `"column"`), Photo/Brick 44x252. Screenshots confirm the
+canvas is fully visible below a compact, horizontally-scrollable icon row on every populated tab at
+390px (Frame's own wrapper is legitimately empty at both widths -- Frame uses on-canvas shape
+handles, not a left-rail toolbar, unaffected by and unrelated to this fix). Screenshots:
+`shots/seatC/f35_mobile_fix_390_{artwork,frame,photo,brick}.png`,
+`f35_mobile_fix_768_{artwork,frame,photo,brick}.png`.
