@@ -36,6 +36,20 @@ export const PIECE_CATALOGUE = Object.freeze([
 ]);
 
 /**
+ * H23 item 74 (Fred via advisor): "add half bricks in voids... the void-filling pieces are HALF
+ * and THIRD bricks... No arbitrary cut sizes." Where a course's own run doesn't divide evenly into
+ * whole pieces (against the board outline, a frame's inner contour, a window, a scissors cut, OR
+ * simply a declared corner), the FINAL piece is one of these declared fractions of the set's own
+ * brickLengthIn/brickHeightIn (whichever is the pitch axis) -- never an arbitrary leftover length.
+ * Descending order (along-path.js's own scheduler tries the biggest fraction first, matching "mostly
+ * whole bricks, minimal small cuts"). A genuinely non-square edge (an angled outline side, a curve,
+ * a tapered template) still cuts that chosen-fraction piece on the DIAGONAL via the SAME mitre-line
+ * clip every corner already uses ("like the corner mitres") -- the fraction controls the piece's
+ * own SIZE/position, the clip controls its exact final SHAPE; the two are independent.
+ */
+export const FILL_FRACTIONS = Object.freeze([1, 2 / 3, 1 / 2, 1 / 3]);
+
+/**
  * Brick-sample SETS -- a fixed max of 3 (Fred: "no open-ended library machinery"). Each set is a
  * DIFFERENT kind of brick: its own sample photos, its own measured proportions/shape/layout/
  * joints. Set 3 is a declared empty slot for later. The piece catalogue above is shared across
@@ -129,15 +143,50 @@ export const BRICK_SETS = Object.freeze([
   },
   {
     id: 3,
-    name: '(empty)',
-    // Was "parked" (ashlar/pavers). Un-parked by Fred ("do a few masonry") as its own P1c item --
-    // Masonry sets for ashlar stone (shots/fred/photo_test_ashlar_stone_wall.jpg) and granite
-    // pavers (shots/advisor/bricks/b1_* -- the original garden-edging crops, freed up by Set 1's
-    // own swap to red brick). NOT built here: P1a (this item) ships red brick only.
-    engine: null,
-    shape: null,
-    layout: null,
-    samples: [],
+    name: 'White rocks',
+    // H23 item 74b (advisor): "P1c: Set 2 'White rocks'" -- but BRICK_SETS id:2 is already
+    // declared ('Brick 2', engine:'mc', P2's own reserved MathieuConnery slot); this item's own
+    // earlier Set-3 comment already earmarked THIS slot for exactly this ashlar/stone follow-up
+    // ("NOT built here: P1a (this item) ships red brick only"). Treating the dispatch note's "Set
+    // 2" as loose phrasing (the second STONE kind to ship, not literally BRICK_SETS[1]) rather than
+    // overwriting Set 2's own already-declared, not-yet-built P2 data -- flagged in WORK-LOG for
+    // the advisor to correct if a literal id:2 swap was actually intended.
+    engine: 'masonry',
+    shape: 'irregular', // rock-faced quoin stones -- the layout below produces irregular polygons, not rectangles
+    layout: 'fieldstone', // H23 item 74c's own new layout (Poisson-disc -> Voronoi -> shrink -> round)
+    // `brickLengthIn` is reused by the 'fieldstone' layout as its own TARGET STONE SPACING (see
+    // layouts/fieldstone.js's own header) -- NOT a literal rectangular brick length. Declared at a
+    // bigger decorative scale than Set 1's bricks (0.75in): real quoin/fieldstone units read
+    // noticeably larger than a brick in a real wall too, kept in the same decorative ballpark
+    // Set 1 established. `brickHeightIn` is unused by this layout (kept for vocabulary parity).
+    brickLengthIn: 1.1,
+    brickHeightIn: 1.1,
+    // GROUT: Fred/advisor "wider grout default" (vs Set 1's own MEASURED 0.06in). An actual pixel
+    // measurement off stones_white's own dark mortar band was ATTEMPTED (a luminance scan like Set
+    // 1's own) but the rough rock-face texture's own local contrast swamped the joint's signal --
+    // no clean band found, unlike Set 1's smoother brick faces. Declared instead, using the
+    // real-world brick:fieldstone joint-width ratio (fieldstone joints typically read ~1.5-2.5x a
+    // brick's own) as a guide -- 0.12in, 2x Set 1's measured 0.06.
+    grout: { widthIn: 0.12, depthIn: 0.06, profile: 'recessed' },
+    reliefIn: 0.125,
+    reliefMaxIn: 0.25,
+    heightJitterIn: 0.02,
+    // Declared the same SHAPE as Set 1's own (shoulder+crown+chips) at proportionally bigger
+    // numbers (this set's own stones are ~1.5x Set 1's bricks): not measured off a 3D reference
+    // (stones_white is a flat-photo style reference, same situation Set 1's own heightProfile was
+    // in) -- a reasonable declared default, re-tunable once Fred sees a live preview.
+    heightProfile: {
+      edgeRadiusIn: 0.05,
+      crown: 0.1,
+      chipRate: 0.1, // rock-faced stones read "chippier" than smooth brick -- a higher declared rate
+      chipSizeIn: 0.07,
+      surfaceShare: 0.35,
+    },
+    // H23 item 74b: 10 stones (shots/advisor/stones_white/stone_02..11.png -- stone_01 excluded,
+    // it's a corner/context crop showing the adjacent brick coursing, not a clean stone face),
+    // re-encoded PNG -> JPEG q85, max 480px long side (0.65MB -> 0.12MB).
+    samples: ['stone_02', 'stone_03', 'stone_04', 'stone_05', 'stone_06', 'stone_07', 'stone_08', 'stone_09', 'stone_10', 'stone_11']
+      .map((id) => ({ id, image: `data/bricks/${id}.jpg` })),
   },
 ]);
 

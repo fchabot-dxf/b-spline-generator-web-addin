@@ -49,19 +49,26 @@ describe('opts.scale', () => {
     expect(scaledSet(SET, 1)).toBe(SET);
   });
 
-  it('bricksAlongPath: scale=2 doubles brick dimensions and leaves the joint gap unchanged', () => {
+  it('bricksAlongPath: scale=2 doubles brick dimensions; the joint gap still uses the SAME declared (unscaled) grout width as its nominal', () => {
     const straight = [{ x: 0, y: 0 }, { x: 10, y: 0 }];
     const base = bricksAlongPath(straight, { set: SET, orientation: 'stretcher', seed: 1 });
     const doubled = bricksAlongPath(straight, { set: SET, orientation: 'stretcher', seed: 1, scale: 2 });
     const b0 = bbox(base.bricks[0].polygon), d0 = bbox(doubled.bricks[0].polygon);
     expect(d0.w).toBeCloseTo(b0.w * 2, 6);
     expect(d0.h).toBeCloseTo(b0.h * 2, 6);
-    // joint gap is the x-distance between consecutive bricks' own edges -- unaffected by scale
+    // H23 item 74 (Fred via advisor, "no arbitrary cut sizes"): a run's own joints are slightly
+    // widened/narrowed from the declared grout.widthIn to absorb that run's own fractional-piece
+    // mismatch -- by how much depends on how the run's own length divides by the (scaled) pitch, so
+    // base and doubled no longer land on EXACTLY the same adjusted value. What stays true regardless
+    // of scale: grout.widthIn itself is never scaled (used as-is, the declared nominal both runs
+    // adjust AROUND), so every observed joint in either run stays within a bounded band of it.
     const b1 = base.bricks[1], d1 = doubled.bricks[1];
     const baseJoint = Math.min(...b1.polygon.map((p) => p.x)) - Math.max(...base.bricks[0].polygon.map((p) => p.x));
     const doubledJoint = Math.min(...d1.polygon.map((p) => p.x)) - Math.max(...doubled.bricks[0].polygon.map((p) => p.x));
-    expect(doubledJoint).toBeCloseTo(baseJoint, 6);
-    expect(doubledJoint).toBeCloseTo(SET.grout.widthIn, 6);
+    for (const joint of [baseJoint, doubledJoint]) {
+      expect(joint).toBeGreaterThan(SET.grout.widthIn * 0.5);
+      expect(joint).toBeLessThan(SET.grout.widthIn * 1.5);
+    }
   });
 
   it('bricksFillShape: scale=2 doubles every brick\'s own footprint, same joint gap', () => {

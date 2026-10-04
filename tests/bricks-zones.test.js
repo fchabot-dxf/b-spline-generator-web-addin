@@ -34,7 +34,15 @@ describe('bond zones', () => {
     ]);
     const topCourseCells = cells.filter((c) => c.courseIndex === 0);
     expect(topCourseCells.length).toBeGreaterThan(0);
-    for (const c of topCourseCells) {
+    // H23 item 74 (de): cells are now CUT to the board edge, not kept whole -- a 9in-wide board
+    // doesn't divide evenly by this course's own colPitch, so the first/last column's own cell is
+    // legitimately narrower than a full brick here. Check only the INTERIOR columns, which the
+    // board edge never touches -- the orientation/sizing invariant this test is actually about.
+    const colIndices = topCourseCells.map((c) => c.colIndex);
+    const minCol = Math.min(...colIndices), maxCol = Math.max(...colIndices);
+    const interiorCells = topCourseCells.filter((c) => c.colIndex > minCol && c.colIndex < maxCol);
+    expect(interiorCells.length).toBeGreaterThan(0);
+    for (const c of interiorCells) {
       const { w, h } = bbox(c.polygon);
       expect(w).toBeCloseTo(SET.brickHeightIn, 5);
       expect(h).toBeCloseTo(SET.brickLengthIn, 5);
