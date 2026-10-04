@@ -96,6 +96,7 @@ describe('rasterizeBrickHeightMask with a surface style', () => {
       poly.setAttribute('data-brick-seed', '1');
       poly.setAttribute('data-brick-relief', '0.125');
       poly.setAttribute('data-brick-id', id);
+      poly.setAttribute('data-brick', id === 'left' ? 'wall' : 'frame');
       root.appendChild(poly);
     };
     // two bricks with a 0.25 in joint at x = 3.875..4.125
@@ -153,5 +154,35 @@ describe('rasterizeBrickHeightMask with a surface style', () => {
   it('Carved (negative depth): the joint still goes DOWN', async () => {
     const r = await run(RECESSED, -0.125);
     expect(r.body[joint] * -0.125).toBeCloseTo(-0.05, 6);
+  });
+});
+
+describe('F35 item 16: per-element Level in the height mask', () => {
+  const W = 8, H = 4, NX = 65, NZ = 33;
+  const K = (x, y) => Math.round((1 - y / H) * (NZ - 1)) * NX + Math.round((x / W) * (NX - 1));
+  async function run(opts) {
+    const root = document.createElement('div');
+    for (const [id, kind, pts] of [['left', 'wall', '0.5,0.5 3.875,0.5 3.875,3.5 0.5,3.5'], ['right', 'frame', '4.125,0.5 7.5,0.5 7.5,3.5 4.125,3.5']]) {
+      const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      for (const [k, v] of [['points', pts], ['data-layer', 'L'], [BRICK_GEN_ATTR, '1'], ['data-brick-set', '1'], ['data-brick-seed', '1'],
+        ['data-brick-relief', '0.125'], ['data-brick-id', id], ['data-brick', kind]]) poly.setAttribute(k, v);
+      root.appendChild(poly);
+    }
+    document.body.appendChild(root);
+    const m = await rasterizeBrickHeightMask({ _sketchLayer: { node: root } }, { id: 'L', depth: 0.125 }, NX, NZ, W, H, opts);
+    root.remove();
+    return m;
+  }
+  it('a kind\'s level raises (or lowers) exactly that kind\'s bricks by that many inches', async () => {
+    const flat = await run({});
+    const lv = await run({ levels: { wall: 0.03, frame: -0.02 } });
+    const inWall = K(2, 2), inFrame = K(6, 2);
+    expect((lv.body[inWall] - flat.body[inWall]) * 0.125).toBeCloseTo(0.03, 6);
+    expect((lv.body[inFrame] - flat.body[inFrame]) * 0.125).toBeCloseTo(-0.02, 6);
+  });
+  it('no levels (a saved session without the key) = byte-identical', async () => {
+    const a = await run({});
+    const b = await run({ levels: { wall: 0, frame: 0 } });
+    expect(Array.from(b.body)).toEqual(Array.from(a.body));
   });
 });

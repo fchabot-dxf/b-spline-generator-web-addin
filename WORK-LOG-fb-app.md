@@ -12173,3 +12173,40 @@ f35item16_c1_{wall_only,wall_plus_frame}.png.
   bands get an "Offset from frame" distance (default ON at 0, like the Shape Lattice); Level = the
   element's own height offset in inches (proud/recessed, item 15's accent level applied per element).
 - C6 (Brick Stripe shows Artwork's colour panel) not started; next slice with the wall elements.
+
+## F35 item 16 slice 2, turn 189 (seat C = 37): Frame offset-from-frame + per-element Level
+
+Merged origin/main first: ONE conflict, the editor-brick-tool.js layers.js import line (my BRICKS_LAYER_NAME/
+isBricksLayer vs 88's applyLayerStateTo) -> union, exactly 88's predicted resolution. 88's applyLayerStateTo
+calls SVG.js addClass/removeClass on each drawn brick, which my brick-tool-kinds test fake lacked -> the
+fake gained them (7fec7d4); 589/589 brick+layer specs green after the merge.
+
+**Offset from frame (advisor: like the art lattice's, ON at 0; OFF = free placement).**
+`P.brickSettings.frameOffset = { on: true, distance: 0 }`. brick-panel.js `frameBandContour`: ON = the SAME
+frameContourSilhouette(ctx, distance) the Shape Lattice's offset-from-frame uses (+ inward, - outward);
+OFF = the board's own outline (rectToPrimitives) -- so the Frame tool now also works on a board with no
+frame. resolveFrameGeom builds the bands on it, so a Wall's interior clip follows the moved bands too.
+It moves the layout -> 'generate' (pending until Generate), like every editor Brick-tab setting. UI in the
+Frame section: checkbox + distance (disabled when OFF). Frame hint mentions the board edge.
+**Level (per-element height offset, proud/recessed).** `P.brickSettings.elementLevelIn = { wall: 0, frame: 0 }`
+keyed by BRICK_KINDS; one "Level (in)" input in the Wall section and one in the Frame section (step 1/64).
+Read ONLY by the height mask: collectLiveBrickGroups adds `levels[data-brick kind]` to each brick's
+heightOffset (stamp-mask-manager passes it). 3D-only -> 'surface' (SURFACE_ONLY_SETTING_KEYS), never
+re-lays, never pending; set inside the editor it lands on Apply (part 4's rule). Missing key = 0.
+
+Tests: panel +4 (default ON 0 reaches frameContourSilhouette; a distance is pending then laid at that
+distance; OFF hands the board rectangle to the band builder + disables the field; Level saved per kind,
+re-masks, never re-lays/pending); mask +2 (a kind's level moves exactly that kind by exactly that many
+inches; zero/missing levels byte-identical). Against the previous sources 4 fail, the 2 passing pin the
+defaults. Fast tier 58 files, 616 passed, 0 failed.
+
+Live (served fb-app, headless, T1 7x9, Frame tool):
+| setting | frame bricks | bands' outer bbox (in) |
+|---|---|---|
+| ON, 0 | 136 | 0.25,0.25 - 6.75,8.75 (the frame's outer edge, its 0.25 trim) |
+| ON, 0.3 (Generate pending after the change) | 124 | 0.55,0.55 - 6.45,8.45 (exactly 0.3 in) |
+| OFF | 130 | 0,0 - 7,9 (the board) |
+Frame Level +0.0625 then Apply: a frame brick's centre height 0.7225 -> 0.7850 in (delta 0.0625 exactly),
+Generate not pending. Shots shots/seat37/f35item16_frame_offset_{0,0.3,off}.png.
+(My first OFF bbox read NaN: the probe's number regex split exponent values like 1e-16 -- a probe bug,
+the shot was right; re-measured with a points parser.)

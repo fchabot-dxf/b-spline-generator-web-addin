@@ -160,7 +160,8 @@ export async function updateStampMasks(nx, nz) {
             surfaceStyle: P.brickSettings && P.brickSettings.surfaceStyle, // F35 item 18 (2): Clean | Weathered
             groutWidthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.widthIn,
             groutProfile: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.profile, // Recessed | Flush
-            groutDepthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.depthIn }))
+            groutDepthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.depthIn,
+            levels: P.brickSettings && P.brickSettings.elementLevelIn })) // F35 item 16: per-element Level
       : await rasterizeSvg(
           applyLayerTransform(svg, layerTransform, P.widthIn, P.heightIn),
           nx,

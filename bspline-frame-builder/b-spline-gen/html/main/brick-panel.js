@@ -23,6 +23,7 @@ import { showToast } from '../core/toast.js';
 import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
+import { rectToPrimitives } from '../core/inset-window.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
@@ -51,7 +52,7 @@ const BRICK_TOOLS = [
   { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true, lays: 'wall',
     hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Press Generate to lay it.' },
   { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame',
-    hint: 'Bands of bricks along the frame\'s contour. Press Generate to lay them.' },
+    hint: 'Bands of bricks along the frame\'s contour (or the board\'s edge with Offset from frame off). Press Generate to lay them.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
   // (editor-cut-tool.js) with zero changes needed there. Only applies to
@@ -199,6 +200,42 @@ function syncBrickTopToggle() {
   document.getElementById('brickBtnTopFlat')?.classList.toggle('active', flat);
 }
 
+/** F35 item 16: the Frame tool's offset from frame -- the band contour moves, so it is a LAYOUT setting
+ *  ('generate': pending until Generate, like every other editor Brick-tab setting). */
+export function setFrameOffset({ on, distance }, commit = 'generate') {
+  const cur = P.brickSettings.frameOffset || { on: true, distance: 0 };
+  const d = Number(distance);
+  P.brickSettings.frameOffset = { on: on === undefined ? cur.on !== false : !!on, distance: Number.isFinite(d) ? d : (cur.distance || 0) };
+  syncFrameOffsetControls();
+  commitBrickSetting(commit);
+}
+
+function syncFrameOffsetControls() {
+  const off = P.brickSettings.frameOffset || { on: true, distance: 0 };
+  const box = document.getElementById('brickFrameOffsetOn');
+  const dist = document.getElementById('brickFrameOffsetDistance');
+  if (box) box.checked = off.on !== false;
+  if (dist) { dist.value = off.distance || 0; dist.disabled = off.on === false; }
+}
+
+/** F35 item 16: an element's LEVEL (height offset, inches) -- read only by the height mask, so 3D-only
+ *  ('surface': re-mask at once, never re-lay, never pending). One input per kind: #brickLevel_<kind>. */
+export function setElementLevel(kind, levelIn, commit = 'surface') {
+  const v = Number(levelIn);
+  if (!Number.isFinite(v)) return;
+  P.brickSettings.elementLevelIn = { ...(P.brickSettings.elementLevelIn || {}), [kind]: v };
+  syncElementLevels();
+  commitBrickSetting(commit);
+}
+
+function syncElementLevels() {
+  const levels = P.brickSettings.elementLevelIn || {};
+  for (const kind of BRICK_KINDS) {
+    const el = document.getElementById(`brickLevel_${kind}`);
+    if (el && document.activeElement !== el) el.value = levels[kind] || 0;
+  }
+}
+
 export function setBrickTopMode(mode, commit = 'surface') {
   P.brickSettings.brickTopMode = mode === 'flat' ? 'flat' : 'organic';
   syncBrickTopToggle();
@@ -340,6 +377,8 @@ function syncControlsFromState() {
   syncReliefToggle();
   syncBrickTopToggle();
   syncSurfaceStyleToggle();
+  syncFrameOffsetControls();
+  syncElementLevels();
   setPair('brickReliefHeightSlider', 'brickReliefHeight', s.reliefIn);
   setPair('brickSuppressionSlider', 'brickSuppression', s.suppression);
   setPair('brickClumpingSlider', 'brickClumping', s.clumping);
@@ -429,7 +468,7 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
 const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation'];
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'groutProfileBeforeStyle'];
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'groutProfileBeforeStyle', 'elementLevelIn'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 const LAYOUT_IGNORED_SETTING_KEYS = [...BRUSH_ONLY_SETTING_KEYS, ...SURFACE_ONLY_SETTING_KEYS];
@@ -919,11 +958,21 @@ const BRUSH_PRESET_LIST = [
  *  own brick-length-only special case) -- Frame bands now resolve the SAME global brick length as
  *  Wall/Brush, via `scale` (editor-brick-tool.js's own scaleFor), which generateBricks already
  *  threads to both uniformly. */
-function resolveFrameGeom(editor) {
+/** The contour the Frame bands follow (F35 item 16, P.brickSettings.frameOffset): ON = the frame's outer
+ *  edge offset by `distance` (the SAME frameContourSilhouette the Shape Lattice's offset-from-frame uses);
+ *  OFF = free placement, the board's own outline. null = no usable contour. */
+function frameBandContour(editor) {
+  const off = P.brickSettings.frameOffset || { on: true, distance: 0 };
+  if (off.on === false) return rectToPrimitives({ x1: 0, y1: 0, x2: editor._mW, y2: editor._mH });
   const ctx = frameContext(editor);
-  const sil = ctx ? frameContourSilhouette(ctx, 0, 0) : { error: 'noFrame' };
-  if (sil.error) return null;
-  const primitives = buildRibbonPrimitives(sil.primitives);
+  const sil = ctx ? frameContourSilhouette(ctx, Number(off.distance) || 0, 0) : { error: 'noFrame' };
+  return sil.error ? null : sil.primitives;
+}
+
+function resolveFrameGeom(editor) {
+  const contour = frameBandContour(editor);
+  if (!contour) return null;
+  const primitives = buildRibbonPrimitives(contour);
   const basePreset = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
   const overrides = P.brickSettings.frameBandPatterns || [];
   const bands = basePreset.map((band, i) => (overrides[i] ? { ...band, pattern: overrides[i] } : band));
@@ -1025,6 +1074,11 @@ export function initBrickPanel() {
   document.getElementById('brickBtnTopOrganic')?.addEventListener('click', () => setBrickTopMode('organic'));
   document.getElementById('brickBtnTopFlat')?.addEventListener('click', () => setBrickTopMode('flat'));
   renderSurfaceStyleToggle(document.getElementById('brickSurfaceStyleToggle'));
+  document.getElementById('brickFrameOffsetOn')?.addEventListener('change', (e) => setFrameOffset({ on: e.target.checked }));
+  document.getElementById('brickFrameOffsetDistance')?.addEventListener('change', (e) => setFrameOffset({ distance: e.target.value }));
+  for (const kind of BRICK_KINDS) {
+    document.getElementById(`brickLevel_${kind}`)?.addEventListener('change', (e) => setElementLevel(kind, e.target.value));
+  }
   document.getElementById('brickBtnProfileStripped')?.addEventListener('click', () => setProfile('bricks'));
   document.getElementById('brickBtnProfileContinuous')?.addEventListener('click', () => setProfile('continuous'));
   document.getElementById('brickBtnOrientationStretcher')?.addEventListener('click', () => setOrientation('stretcher'));

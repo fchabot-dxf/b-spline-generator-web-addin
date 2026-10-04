@@ -27,7 +27,8 @@ import {
   initBrickPanel, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
   setBrickTopMode, setSurfaceStyle,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
-import { runBricks, runBricksPreview } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { runBricks, runBricksPreview, buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
 import { deselectTool } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
@@ -55,6 +56,8 @@ const FIXTURE = `
   <button id="brickBtnTopOrganic" class="active"></button><button id="brickBtnTopFlat"></button>
   <div id="brickSurfaceStyleToggle"></div>
   <div id="brickQuickSettings"></div>
+  <input type="checkbox" id="brickFrameOffsetOn" checked><input id="brickFrameOffsetDistance" value="0">
+  <input id="brickLevel_wall" value="0"><input id="brickLevel_frame" value="0">
   <input id="brickReliefHeightSlider" type="range" min="0" max="1" step="0.001"><input id="brickReliefHeight">
   <input id="brickSuppressionSlider" type="range"><input id="brickSuppression">
   <input id="brickClumpingSlider" type="range"><input id="brickClumping">
@@ -486,5 +489,46 @@ describe('audit C1/C2 (F35 item 16): Wall and Frame are their own tools', () => 
     $('brickTool_wall').click();
     expect($('brickToolHint').textContent).toMatch(/frame's interior/);
     expect($('brickToolHint').textContent).not.toMatch(/^Fills the whole board/);
+  });
+});
+
+describe('F35 item 16: the Frame tool\'s offset from frame, and per-element Level', () => {
+  let notify;
+  beforeEach(() => {
+    P.brickSettings.frameOffset = { on: true, distance: 0 };
+    P.brickSettings.elementLevelIn = { wall: 0, frame: 0 };
+    setup('frame');
+    notify = vi.fn();
+    window.svgEditor._notifyChange = notify;
+    window.svgEditor._mW = 7; window.svgEditor._mH = 9;
+  });
+  it('defaults: ON at distance 0, the frame contour at 0 is what the bands follow', () => {
+    expect($('brickFrameOffsetOn').checked).toBe(true);
+    $('brickGenerate').click();
+    expect(frameContourSilhouette.mock.calls.at(-1)[1]).toBe(0);
+  });
+  it('a distance is a LAYOUT change: pending, then Generate lays the bands at that distance', () => {
+    fire('brickFrameOffsetDistance', 0.3, 'change');
+    expect(P.brickSettings.frameOffset).toEqual({ on: true, distance: 0.3 });
+    expectPendingThenGenerate();
+    expect(frameContourSilhouette.mock.calls.at(-1)[1]).toBe(0.3);
+  });
+  it('OFF = free placement: the bands follow the board outline, the distance field is disabled', () => {
+    $('brickFrameOffsetOn').checked = false;
+    $('brickFrameOffsetOn').dispatchEvent(new Event('change'));
+    expect(P.brickSettings.frameOffset.on).toBe(false);
+    expect($('brickFrameOffsetDistance').disabled).toBe(true);
+    buildRibbonPrimitives.mockClear();
+    $('brickGenerate').click();
+    const contour = buildRibbonPrimitives.mock.calls.at(-1)[0];
+    expect(contour.map((p) => [p.p0.x, p.p0.y])).toEqual([[0, 0], [7, 0], [7, 9], [0, 9]]);
+  });
+  it('Level is 3D-only: saved per element kind, re-masks at once, never re-lays, never pending', () => {
+    fire('brickLevel_frame', 0.0625, 'change');
+    fire('brickLevel_wall', -0.03125, 'change');
+    expect(P.brickSettings.elementLevelIn).toEqual({ wall: -0.03125, frame: 0.0625 });
+    expect(notify).toHaveBeenCalledTimes(2);
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(pending()).toBe(false);
   });
 });
