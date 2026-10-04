@@ -162,7 +162,9 @@ export async function updateStampMasks(nx, nz) {
             groutWidthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.widthIn,
             groutProfile: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.profile, // Recessed | Flush
             groutDepthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.depthIn,
-            levels: P.brickSettings && P.brickSettings.elementLevelIn })) // F35 item 16: per-element Level
+            levels: P.brickSettings && P.brickSettings.elementLevelIn, // F35 item 16: per-element Level
+            accent: P.brickSettings && P.brickSettings.accent, // F35 item 15: raised accents (Wall)
+            accentSeed: P.brickSettings && P.brickSettings.seed }))
       : await rasterizeSvg(
           applyLayerTransform(svg, layerTransform, P.widthIn, P.heightIn),
           nx,

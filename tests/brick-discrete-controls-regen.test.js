@@ -74,6 +74,8 @@ const FIXTURE = `
   <div id="stripeTargetHint">Tap a rail, a contour segment or a line.</div>
   <input type="checkbox" id="brickFrameOffsetOn" checked><input id="brickFrameOffsetDistance" value="0">
   <input id="brickLevel_wall" value="0"><input id="brickLevel_frame" value="0">
+  <div id="brickAccentList"></div><button id="brickAccentClick">Click bricks</button>
+  <div id="brickAccentLevelRow" style="display:none;"><input id="brickAccentLevel" value="0.0625"></div>
   <input id="brickReliefHeightSlider" type="range" min="0" max="1" step="0.001"><input id="brickReliefHeight">
   <input id="brickSuppressionSlider" type="range"><input id="brickSuppression">
   <input id="brickClumpingSlider" type="range"><input id="brickClumping">
@@ -810,5 +812,47 @@ describe('F35 item 13: the Wall pattern picker is an engine-drawn icon grid, gro
     expect($('brickQuick_pattern_flemish').querySelector('svg')).not.toBeNull();
     expect($('brickQuick_pattern_flemish').title).toBe('Flemish');
     expect($('brickQuick_set_1').textContent).toBe('Red Brick');
+  });
+});
+
+describe('F35 item 15: raised accents -- a preset icon grid + Click bricks, 3D-only (never pending)', () => {
+  beforeEach(() => { P.brickSettings.accent = { preset: 'none', levelIn: 0.0625, clicks: [] }; setup('wall'); });
+  it('None + the 10 presets, icon only with the name as tooltip; the level row hidden for None', async () => {
+    const { ACCENT_PRESETS } = await import('../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js');
+    const btns = [...$('brickAccentList').querySelectorAll('button')];
+    expect(btns.map((b) => b.id)).toEqual(['brickAccent_none', ...ACCENT_PRESETS.map((p) => `brickAccent_${p.id}`)]);
+    expect($('brickAccent_pyramid').title).toBe('Pyramid');
+    expect($('brickAccent_pyramid').querySelector('svg')).not.toBeNull();
+    expect($('brickAccent_pyramid').textContent.trim()).toBe('');
+    expect($('brickAccent_none').classList.contains('active')).toBe(true);
+    expect($('brickAccentLevelRow').style.display).toBe('none');
+  });
+  it('a preset pick and the level are 3D-only: saved, re-masked, never re-laid or pending', () => {
+    const notify = vi.fn();
+    window.svgEditor._notifyChange = notify;
+    $('brickAccent_zigzag').click();
+    expect(P.brickSettings.accent.preset).toBe('zigzag');
+    expect($('brickAccent_zigzag').classList.contains('active')).toBe(true);
+    expect($('brickAccentLevelRow').style.display).toBe('');
+    fire('brickAccentLevel', -0.03125, 'change');
+    expect(P.brickSettings.accent.levelIn).toBe(-0.03125);
+    expect(notify).toHaveBeenCalledTimes(2);
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(pending()).toBe(false);
+  });
+  it('Click bricks arms the canvas mode as Custom; a tool pick or a preset disarms it', () => {
+    const modes = [];
+    window.svgEditor.setMode = (m) => { window.svgEditor._currentMode = m; modes.push(m); };
+    $('brickAccentClick').click();
+    expect(P.brickSettings.accent.preset).toBe('custom');
+    expect(window.svgEditor._currentMode).toBe('brickAccentClick');
+    expect($('brickAccentClick').classList.contains('active')).toBe(true);
+    $('brickAccent_checker').click();
+    expect(window.svgEditor._currentMode).toBe('select');
+    expect($('brickAccentClick').classList.contains('active')).toBe(false);
+    $('brickAccentClick').click();
+    $('brickTool_frame').click();
+    expect(modes).toContain('select');
+    expect($('brickAccentClick').classList.contains('active')).toBe(false);
   });
 });

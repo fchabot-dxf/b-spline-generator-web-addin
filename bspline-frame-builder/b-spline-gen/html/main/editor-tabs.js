@@ -31,7 +31,7 @@ export const EDITOR_TABS = [
   { id: 'photo', label: 'Photo', drawerLabel: 'Photo', buttonId: 'editorTabPhoto', panelId: 'editorPhotoPanel', toolbarId: 'editorToolbarPhoto',
     modes: ['select'] },
   { id: 'brick', label: 'Brick', drawerLabel: 'Brick', buttonId: 'editorTabBrick', panelId: 'editorBrickPanel', toolbarId: 'editorToolbarBrick',
-    modes: ['select', 'brickBrush', 'cut', 'stripe'],
+    modes: ['select', 'brickBrush', 'cut', 'stripe', 'brickAccentClick'],
     // `modeHosts` (turn 195, advisor: "one contextual panel"): which panel a mode's settings open in, per
     // tab. Here the stripe mode's settings (#editorStripePanelBody) live INSIDE this tab's own panel
     // (#brickStripeSection, shown for the Stripe tool) instead of opening a second side column. A tab

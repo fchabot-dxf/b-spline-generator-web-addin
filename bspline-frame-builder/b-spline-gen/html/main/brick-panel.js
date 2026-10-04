@@ -23,7 +23,9 @@ import { showToast } from '../core/toast.js';
 import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS,
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
+  accentIconSvg, syncAccentHighlight, wallBrickPolygons,
 } from '../editor/editor-brick-tool.js';
+import { ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { BRICK_CONTROL_REQUIRES, requirementMet } from './brick-control-requires.js';
 import { ENGINE_OPTIONS } from '../core/bricks/index.js';
@@ -240,6 +242,87 @@ export function setElementLevel(kind, levelIn, commit = 'surface') {
   P.brickSettings.elementLevelIn = { ...(P.brickSettings.elementLevelIn || {}), [kind]: v };
   syncElementLevels();
   commitBrickSetting(commit);
+}
+
+/** F35 item 15: RAISED ACCENTS on the Wall (editor/brick-accents.js). 3D-only like Level: a change re-tags
+ *  the 2D highlight and re-masks, never re-lays. The picker = None + ACCENT_PRESETS as engine-drawn icons
+ *  (icons only, the name as tooltip); Custom = the "Click bricks" toggle, which arms the canvas mode. */
+const _accent = () => ({ ...DEFAULT_ACCENT, ...(P.brickSettings.accent || {}) });
+const ACCENT_CHOICES = [{ id: 'none', label: 'None' }, ...ACCENT_PRESETS];
+let _accentClickArmed = false;
+
+function renderAccentList(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const choice of ACCENT_CHOICES) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cad-btn brick-accent-icon';
+    btn.id = `brickAccent_${choice.id}`;
+    btn.title = choice.label;
+    btn.setAttribute('aria-label', choice.label);
+    btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
+    btn.innerHTML = accentIconSvg(choice.id, 30) || choice.label;
+    if (btn.firstElementChild) btn.firstElementChild.style.cssText = 'width:100%; height:auto; display:block;'; // scales to its grid cell
+    btn.addEventListener('click', () => setAccentPreset(choice.id));
+    container.appendChild(btn);
+  }
+}
+
+function syncAccentControls() {
+  const a = _accent();
+  for (const choice of ACCENT_CHOICES) document.getElementById(`brickAccent_${choice.id}`)?.classList.toggle('active', a.preset === choice.id);
+  document.getElementById('brickAccentClick')?.classList.toggle('active', a.preset === ACCENT_CUSTOM.id && _accentClickArmed);
+  const row = document.getElementById('brickAccentLevelRow');
+  if (row) row.style.display = a.preset === 'none' ? 'none' : '';
+  const level = document.getElementById('brickAccentLevel');
+  if (level && document.activeElement !== level) level.value = a.levelIn;
+}
+
+function _accentChanged(commit) {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (editor) syncAccentHighlight(editor, P.brickSettings.accent, P.brickSettings.seed);
+  syncAccentControls();
+  commitBrickSetting(commit);
+}
+
+export function setAccentPreset(id, commit = 'surface') {
+  if (id !== 'none' && id !== ACCENT_CUSTOM.id && !ACCENT_PRESETS.some((p) => p.id === id)) return;
+  if (id !== ACCENT_CUSTOM.id) _disarmAccentClick();
+  P.brickSettings.accent = { ..._accent(), preset: id };
+  _accentChanged(commit);
+}
+
+export function setAccentLevel(levelIn, commit = 'surface') {
+  const v = Number(levelIn);
+  if (!Number.isFinite(v)) return;
+  P.brickSettings.accent = { ..._accent(), levelIn: v };
+  _accentChanged(commit);
+}
+
+/** Custom: arm (or disarm) the canvas click mode. Each click toggles the brick under it -- stored as a
+ *  POINT (brick-accents.js toggleAccentClick), so it follows a re-lay to whichever brick lies there. */
+export function toggleAccentClickMode() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!editor) return;
+  if (_accentClickArmed) { _disarmAccentClick(); return; }
+  _accentClickArmed = true;
+  editor._brickAccentClick = (pt) => {
+    const a = _accent();
+    P.brickSettings.accent = { ...a, preset: ACCENT_CUSTOM.id, clicks: toggleAccentClick(a.clicks || [], pt, wallBrickPolygons(editor)) };
+    _accentChanged('surface');
+  };
+  P.brickSettings.accent = { ..._accent(), preset: ACCENT_CUSTOM.id };
+  editor.setMode('brickAccentClick');
+  _accentChanged('surface');
+}
+
+function _disarmAccentClick() {
+  if (!_accentClickArmed) return;
+  _accentClickArmed = false;
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (editor && editor._currentMode === 'brickAccentClick') editor.setMode('select');
+  syncAccentControls();
 }
 
 function syncElementLevels() {
@@ -555,6 +638,7 @@ function syncControlsFromState() {
   syncSurfaceStyleToggle();
   syncFrameOffsetControls();
   syncElementLevels();
+  syncAccentControls();
   setPair('brickReliefHeightSlider', 'brickReliefHeight', s.reliefIn);
   setPair('brickSuppressionSlider', 'brickSuppression', s.suppression);
   setPair('brickClumpingSlider', 'brickClumping', s.clumping);
@@ -662,7 +746,7 @@ function syncControlRequires() {
 const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 'stripeStyles', 'raisedLevelIn', 'raisedMode'];
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'elementLevelIn'];
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'elementLevelIn', 'accent'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 const LAYOUT_IGNORED_SETTING_KEYS = [...BRUSH_ONLY_SETTING_KEYS, ...SURFACE_ONLY_SETTING_KEYS];
@@ -1101,6 +1185,7 @@ function syncFrameBandPatternButtons() {
  *  mode untouched (whatever the user was already doing, e.g. Select, stays
  *  active -- Wall/Frame don't need to claim the pointer). */
 function selectTool(id) {
+  _disarmAccentClick(); // F35 item 15: a tool pick ends Click bricks
   _activeTool = id;
   syncToolButtons();
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
@@ -1334,6 +1419,10 @@ export function initBrickPanel() {
   syncBrushPresetButtons();
   renderWallPatternList(document.getElementById('brickPatternList'));
   syncWallPatternButtons();
+  renderAccentList(document.getElementById('brickAccentList'));
+  document.getElementById('brickAccentClick')?.addEventListener('click', () => toggleAccentClickMode());
+  document.getElementById('brickAccentLevel')?.addEventListener('change', (e) => setAccentLevel(e.target.value));
+  syncAccentControls();
   renderBrickSizePresetList(document.getElementById('brickSizePresetList'));
   syncBrickSizePresetButtons();
   renderQuickSettings(document.getElementById('brickQuickSettings'));

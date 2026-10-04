@@ -59,6 +59,7 @@ import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS } from '../core/bricks/libr
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
 import { radialSignAt } from '../core/bricks/arc-voussoir.js';
+import { accentedBrickIndices } from './brick-accents.js';
 
 export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-spine'
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
@@ -315,14 +316,8 @@ export function wallPatternIconSvg(patternId, heightPx = 30) {
     + `<rect width="${w}" height="${h}" fill="#efe6da"/>`;
   let svg = null;
   try {
-    const settings = { setId: 1, pattern: patternId, seed: 7, suppression: 0, clumping: 0, grout: { widthIn: 0.05 }, brickLengthIn: 0.6 };
-    const input = {
-      boardOutline: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }],
-      set: resolvedSetFor(settings), scale: scaleFor(settings), suppression: 0, clumping: 0, seed: settings.seed,
-    };
-    applyWallPattern(input, settings);
-    const { bricks } = generateBricks(input);
-    const polys = bricks.map((b) => `<polygon points="${b.polygon.map((p) => `${+p.x.toFixed(3)},${+p.y.toFixed(3)}`).join(' ')}"/>`).join('');
+    const bricks = _iconBricks(PATTERN_ICON_BOARD, patternId, 0.6, 0.05);
+    const polys = bricks.map(_iconPolygon).join('');
     svg = bricks.length
       ? `${open}<g fill="#b5533c" stroke="#efe6da" stroke-width="0.025">${polys}</g></svg>`
       : `${open}<line x1="0.3" y1="${h - 0.3}" x2="${w - 0.3}" y2="0.3" stroke="#8a8078" stroke-width="0.08"/></svg>`; // 'none'
@@ -330,6 +325,48 @@ export function wallPatternIconSvg(patternId, heightPx = 30) {
     svg = null;
   }
   _patternIcons.set(key, svg);
+  return svg;
+}
+
+/** The bricks an icon shows: `patternId` laid by the real engine (applyWallPattern + generateBricks, as a
+ *  Wall) on a `board` patch, Set 1 at `brickLengthIn`. Shared by the pattern and the accent icons. */
+function _iconBricks(board, patternId, brickLengthIn, groutIn) {
+  const { widthIn: w, heightIn: h } = board;
+  const settings = { setId: 1, pattern: patternId, seed: 7, suppression: 0, clumping: 0, grout: { widthIn: groutIn }, brickLengthIn };
+  const input = {
+    boardOutline: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }],
+    set: resolvedSetFor(settings), scale: scaleFor(settings), suppression: 0, clumping: 0, seed: settings.seed,
+  };
+  applyWallPattern(input, settings);
+  return generateBricks(input).bricks;
+}
+const _iconPolygon = (b, attrs = '') => `<polygon${attrs} points="${b.polygon.map((p) => `${+p.x.toFixed(3)},${+p.y.toFixed(3)}`).join(' ')}"/>`;
+
+/** F35 item 15: a raised-accent preset's picker icon -- a stretcher wall laid by the real engine, with the
+ *  bricks the preset's own rule raises (brick-accents.js accentedBrickIndices, the SAME rule the height
+ *  mask applies) drawn dark with a drop shadow. The icon shows the preset's ZONE only (stretched to the
+ *  whole icon), so the motif reads at icon size. A new ACCENT_PRESETS entry gets its icon for free. */
+export const ACCENT_ICON_BOARD = Object.freeze({ widthIn: 3, heightIn: 1.5 });
+const _accentIcons = new Map();
+export function accentIconSvg(presetId, heightPx = 26) {
+  const key = `${presetId}:${heightPx}`;
+  if (_accentIcons.has(key)) return _accentIcons.get(key);
+  const { widthIn: w, heightIn: h } = ACCENT_ICON_BOARD;
+  const widthPx = Math.round((heightPx * w) / h);
+  let svg = null;
+  try {
+    const bricks = _iconBricks(ACCENT_ICON_BOARD, 'stretcher', 0.36, 0.03);
+    const raised = accentedBrickIndices(bricks, { preset: presetId }, { seed: 7, zone: [0, 1] });
+    const flat = bricks.filter((b, k) => !raised.has(k)).map((b) => _iconPolygon(b)).join('');
+    const up = bricks.filter((b, k) => raised.has(k));
+    svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${widthPx}" height="${heightPx}" viewBox="0 0 ${w} ${h}" aria-hidden="true">`
+      + `<rect width="${w}" height="${h}" fill="#efe6da"/><g fill="#d07a5c">${flat}</g>`
+      + `<g fill="#2b1a14" transform="translate(0.04 0.04)">${up.map((b) => _iconPolygon(b)).join('')}</g>`
+      + `<g fill="#8e2f1c">${up.map((b) => _iconPolygon(b)).join('')}</g></svg>`;
+  } catch (_) {
+    svg = null;
+  }
+  _accentIcons.set(key, svg);
   return svg;
 }
 
@@ -369,6 +406,47 @@ function applyWallPattern(input, settings) {
  *  composer still runs with the frame (when one resolves), so a Wall laid alone keeps the SAME
  *  frame-interior clip it always had. Default both = the original behaviour. */
 export const BRICK_KINDS = ['wall', 'frame'];
+
+/** F35 item 15: the Wall's generated brick nodes (DOM order) and their polygons, board inches. */
+export function wallBrickNodes(editor) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll) return [];
+  return [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="wall"]`)];
+}
+const _nodePolygon = (n) => (n.getAttribute('points') || '').trim().split(/\s+/).filter(Boolean).map((p) => {
+  const [x, y] = p.split(',').map(Number);
+  return { x, y };
+});
+export const wallBrickPolygons = (editor) => wallBrickNodes(editor).map((n) => ({ polygon: _nodePolygon(n) }));
+
+/** F35 item 15: shows which Wall bricks the raised accent lifts -- a dark outline + `data-brick-accent` on
+ *  each, from the SAME rule the height mask applies (brick-accents.js accentedBrickIndices). 2D only. */
+export const ACCENT_OUTLINE = Object.freeze({ color: '#ffc61a', widthIn: 0.05 }); // amber: reads against the photo's own dark joints
+export function syncAccentHighlight(editor, accent, seed) {
+  const nodes = wallBrickNodes(editor);
+  const raised = accentedBrickIndices(nodes.map((n) => ({ polygon: _nodePolygon(n) })), accent, { seed: seed || 1 });
+  nodes.forEach((n, k) => {
+    if (raised.has(k)) {
+      n.setAttribute('data-brick-accent', '1');
+      n.setAttribute('stroke', ACCENT_OUTLINE.color);
+      n.setAttribute('stroke-width', String(ACCENT_OUTLINE.widthIn));
+    } else if (n.hasAttribute('data-brick-accent')) {
+      n.removeAttribute('data-brick-accent');
+      n.setAttribute('stroke', 'none');
+      n.removeAttribute('stroke-width');
+    }
+  });
+  return raised.size;
+}
+
+/** F35 item 15, Custom "Click bricks" (editor._currentMode === 'brickAccentClick'): a click hands its
+ *  UNSNAPPED board point to editor._brickAccentClick (main/brick-panel.js), which toggles that brick. */
+export const brickAccentClickHandler = {
+  start(editor, pt, e) {
+    const raw = e && typeof editor._getMousePoint === 'function' ? editor._getMousePoint(e) : pt;
+    if (typeof editor._brickAccentClick === 'function') editor._brickAccentClick(raw || pt);
+  },
+};
 
 /** F35 item 20 (brush over wall, Fred / audit C10 option B: the wall flows AROUND a brush stroke): every
  *  brush brick on the canvas is an exclusion for the Wall fill -- `input.exclusions = [{polygon}]`, board
@@ -438,6 +516,7 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const lays = (kind) => kinds.includes(kind);
   if (lays('frame')) drawBricks(editor, layer, frameBricks, 'frame', settings.setId, settings.seed, settings.reliefIn);
   if (lays('wall')) drawBricks(editor, layer, bricks, 'wall', settings.setId, settings.seed, settings.reliefIn);
+  if (lays('wall')) syncAccentHighlight(editor, settings.accent, settings.seed);
   return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0 };
 }
 

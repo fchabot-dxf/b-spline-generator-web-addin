@@ -12484,3 +12484,93 @@ No core/ file touched by this turn.
 Live (served 8851, headless Chrome): 9 buttons, all with an svg, families [Bonds, Herringbone, Basketweave,
 Fieldstone], the active pattern outlined. Shot: shots/seat37/f35item13_pattern_icon_grid.png.
 Server 8851 (my own task) stopped.
+
+### turn 207 -- F35 item 15: raised accents (10 presets + Custom "Click bricks"), and the d3 layout list (seat 37)
+
+**For d3 (lane-b), verbatim: item 13's engine layouts + rotation, and item 14's tile engine.** Each row = an
+id, a one-line description, and the advisor's decision from NEXT-SESSION-fb-app.md (BUILD / DROPPED). The
+Wall picker shows any new BRICK_PATTERNS key with an engine-drawn icon for free (wallPatternIconSvg); an
+unlisted key lands in the 'More' family until WALL_PATTERN_FAMILIES names it. Families will be
+Bonds / Herringbone / Basketweave / Random / Tiles (advisor decision).
+```js
+// F35 item 13 (Fred's sheets 1+2) -- core/bricks/layouts, closed-form, fill set + clip, never stretched
+const ITEM13_LAYOUTS = [
+  { id: 'rotation',            build: true,  family: '*',           desc: 'a declared `rotation` 0 / 45 / 90 deg for EVERY pattern (sheet: vertical running bond = running at 90; 45deg running bond; 90 vs 45 herringbone) -- an option, not a layout' },
+  { id: 'stackedHorizontal',   build: true,  family: 'bonds',       desc: 'N soldier rows then 1 stretcher course, repeating (course-alternating; N as data, default 3)' },
+  { id: 'stackedVariation',    build: false, family: 'bonds',       desc: 'a grid of square units, each 2 bricks side by side, orientation random per unit (seeded) -- DROPPED' },
+  { id: 'chevron',             build: true,  family: 'herringbone', desc: 'parallelogram bricks with 45deg diagonal-cut ends meeting in V columns (ends cut from the fill set)' },
+  { id: 'basketweaveOptions',  build: true,  family: 'basketweave', desc: 'bricksPerUnit option (2 or 3; today auto from the ratio). The STAGGERED variation (unit rows offset by half a unit) -- DROPPED' },
+  { id: 'basketweaveStacked',  build: false, family: 'basketweave', desc: 'a diagonal basketweave band crossing a stacked field -- DROPPED' },
+  { id: 'basketweaveDouble',   build: true,  family: 'basketweave', desc: 'single vs DOUBLE basketweave = 1-pair vs 2-pair units (bricksPerUnit)' },
+  { id: 'boxedBasketweave1',   build: true,  family: 'basketweave', desc: 'each basketweave unit framed by a ring of bricks (sheet 2, variant 1)' },
+  { id: 'boxedBasketweave2',   build: false, family: 'basketweave', desc: 'the sheet\'s second boxed variant -- DROPPED' },
+  { id: 'spanishBond',         build: false, family: 'bonds',       desc: 'the sheet\'s interlocking unit -- DROPPED' },
+  { id: 'comboRunningBasket',  build: false, family: 'bonds',       desc: 'alternating bands of running-bond courses and basketweave units -- DROPPED' },
+  { id: 'comboStackRunning',   build: true,  family: 'bonds',       desc: 'stacked soldier courses alternating with running-bond courses' },
+];
+// F35 item 14 (Fred's 3rd sheet, ref_paver_tile_sheet.jpg) -- a 'Tiles' family: periodic tilings with
+// NON-rectangular units, closed-form, the same grout/clip/texture pipeline (each unit a centre-cropped
+// sample, never stretched); unit size = the set's brick length (scale applies); rotation applies.
+const ITEM14_TILES = [
+  { id: 'tileSquare',          build: true,  desc: 'plain square grid' },
+  { id: 'tileOctagonSquare',   build: true,  desc: 'octagon + small square (truncated square tiling); ONE octagon:square ratio (advisor), as data' },
+  { id: 'tileSquareDiamond',   build: true,  desc: 'large squares with small diamond inserts at the corners (corner-clipped squares)' },
+  { id: 'tileHexagon',         build: true,  desc: 'regular hexagons' },
+  { id: 'tileLozenge',         build: false, desc: 'elongated rhombus lattice -- DROPPED' },
+  { id: 'tilePinwheel',        build: true,  desc: 'framed square: a square unit ringed by 4 bricks (hopscotch-like, sheet top-right)' },
+];
+```
+(Square grid (a) is not in the advisor's BUILD list by name; listed as build because the sheet opens with
+it and it is the trivial case -- strike it if the decision meant to drop it.) The app side of item 14 (the
+Tiles family row, icons) needs nothing new: it appears from BRICK_PATTERNS like item 13's.
+
+**Item 15 -- what was built.** Accents are a 3D (height) concern, so they follow Level's path, not the layout's:
+- editor/brick-accents.js (new, pure): ACCENT_MOTIFS (checker, everyNth, staircase, pyramid, zigzag,
+  courseBand, crenellation, random) and the 10 ACCENT_PRESETS as data (a motif + params + zone = the lower
+  third). (course, column) are DERIVED from brick positions here (no engine op, nothing hidden): the course
+  pitch is the typical vertical step between brick centres, the column pitch the typical step along a course.
+  Measured trap: with floor(x/pitch + 0.25) alone, a staggered course's right-edge half brick shared a column
+  with its neighbour; columns now strictly increase along a course.
+- The ZONE is measured over the wall's own extent, not the board: a Wall inside a frame, or a later wall
+  element anywhere, gets ITS lower third.
+- Custom "Click bricks": clicks are stored as board POINTS (P.brickSettings.accent.clicks), so after a re-lay
+  (new pattern, size, seed) each one raises whichever brick now lies under it; a click on a raised brick
+  removes its point; a click on grout does nothing. Canvas mode 'brickAccentClick' (editor-interaction.js
+  modeHandlers + the Brick tab's declared modes) reads the UNSNAPPED pointer.
+- The height mask lifts exactly the accented Wall bricks by accent.levelIn (default +1/16 in, - = recessed);
+  the 2D canvas outlines the same bricks in amber (one rule, accentedBrickIndices, for both). A first dark
+  outline was MEASURED unreadable against the photo's own dark joints in the shot -> amber, thicker.
+- UI (Wall section, per the placement rule): "Raised accents" = None + the 10 presets as engine-drawn icons
+  (accentIconSvg lays a stretcher wall with the real engine and draws the raised bricks dark with a shadow;
+  icons only, name as tooltip), a "Click bricks" toggle, and "Accent level (in)" (hidden for None).
+- 'accent' is in SURFACE_ONLY_SETTING_KEYS: a pick or level change re-masks, never re-lays, never pending.
+  A saved session without the key has no accents (byte-identical mask, tested).
+
+**Sheet coverage (ref_accent_brick_levels.jpg, 4x4 cells, r=row c=col), approximate:** r1c1 checker-like dots
+-> Checker; r1c2 diagonal singles -> Staircase; r1c3 alternate bricks in 3 courses -> Crenellation; r1c4 same
+in bands -> Crenellation; r2c1 multi-step stairs -> Double staircase; r2c2 stepped triangle -> Pyramid; r2c3 two
+full courses -> Double course bands; r2c4 sparse singles -> Sparse dots; r3c1 sparse in a course -> Sparse dots;
+r3c2 alternate in 2 courses -> Crenellation; r3c3 zigzag -> Zigzag; r4c1 course bands -> Course bands; r4c2
+dense checker -> Checker; r4c3 soldier course band -> Course bands (the soldier course itself is a layout
+thing). NOT covered: r3c4 + r4c4 = U/box corbel shapes (dropped by the advisor decision). Random 15% is not on
+the sheet (it is in the decision). So 14 of 16 cells are covered; the 2 U/box cells would be a new motif (data
++ one rule).
+
+Tests: new tests/brick-accents.test.js (23: grid from a real engine wall -- lower-third cells only, course 0 at
+the bottom, no gaps, no shared column; 10 presets, unique, each raises bricks only inside its zone, all
+distinct; Course bands = whole courses; the zone follows the wall not the board; none/unknown/null = nothing;
+Custom toggle + re-map after a re-lay at another size; icons engine-drawn + distinct; the height mask lifts the
+clicked brick by exactly levelIn, its neighbour unchanged; none = byte-identical). brick-discrete-controls-regen
+gains an "F35 item 15" block (3: the icon grid; 3D-only, never pending; Click bricks arms/disarms the mode).
+Non-vacuous: old wiring + new module -> panel block fails 3/3; only the old height mask -> mask test fails 1/1;
+only the column fix removed -> the column test fails 1/1. (Run against the full pre-change tree, both files
+fail at import.) Restored from my own copies, cmp-checked.
+Fast tier (brick/accent/icon/tab/mask/state/interaction, 55 files): 628 passed, 0 failed.
+Live (served 8851, headless Chrome, real editor DOM + the real height mask): 11 buttons all with icons;
+Pyramid / Course bands / Zigzag raise 7 / 21 / 5 bricks, each lifted by exactly 0.0625 in in the mask, Generate
+never pending; Click bricks: a real mouse click raised 1 brick, a second click lowered it. No page errors.
+Shot: shots/seat37/f35item15_grid_and_3_presets.png (+ the separate grid/applied shots).
+Seen, not mine, NOT fixed: the Brick panel scrolls sideways for every tool because the Random-seed button
+overflows it by 59-74 px (measured per tool).
+Matrix: 'accent' is a new Brick control -> a controls.mjs row is owed once tools/brick-matrix is on main.
+Server 8851 (my own task) stopped.

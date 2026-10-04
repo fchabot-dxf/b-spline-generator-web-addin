@@ -127,6 +127,11 @@ export const DEFAULT = {
       // level applied to a whole element), keyed by element kind (editor-brick-tool.js BRICK_KINDS). Read
       // by the height mask only (3D, never re-lays). A saved session without it is level 0.
       elementLevelIn: { wall: 0, frame: 0 },
+      // F35 item 15: RAISED ACCENTS on the Wall -- `preset` = an editor/brick-accents.js ACCENT_PRESETS id,
+      // 'custom' (the bricks under `clicks`, wall-local board points, re-mapped after every re-lay) or
+      // 'none'; `levelIn` = how far they sit proud (+) or recessed (-). 3D-only (never re-lays). A saved
+      // session without it has no accents.
+      accent: { preset: 'none', levelIn: 0.0625, clicks: [] },
       suppression: 0,
       clumping: 0.3,
       seed: 1,
