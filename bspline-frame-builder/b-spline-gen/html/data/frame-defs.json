@@ -70,7 +70,7 @@
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "296ebfbed9dda5385e053c53990fc33eab70fb3bddfd6c21b531e5cdd3ffe36d",
+  "sourceHash": "08dad359eb4166807d364332b6e7d3edb93ff7399eea0bedb5cd297e37df7505",
   "templates": [
     {
       "features": [
@@ -12882,7 +12882,7 @@
           "label": "Waist position"
         }
       ],
-      "hidden": true,
+      "hidden": false,
       "id": "template_18",
       "name": "Template 18 - Arched Head",
       "params": [

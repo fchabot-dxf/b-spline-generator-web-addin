@@ -149,14 +149,15 @@ FRAME_PROVISIONAL_SHAPE = {
     "waistOpeningFrameThicknessIn": 0.75,
 }
 
-# H23 item 78c: hidden from the template picker until the Fusion phases are built and live-verified
-# (goldens at 7x9 + 9x12, the live matrix, guard-clean at every size) -- same mechanism every other
-# brand-new template uses before its own first live check (F29 item 1 precedent). A saved project
-# that already picked Template 18 keeps loading and drawing exactly as before -- every lookup is
-# still by id over the full template list (frame-record.js findFrameTemplate); only the picker's own
-# dropdown (frame-panel.js) reads this flag. Flip back to False once the live checks pass and before
-# merging the t10-reconstruction branch to main.
-FRAME_HIDDEN = True
+# H23 item 78c: un-hidden (turn 550) -- the live checks this flag was waiting on now all pass: the
+# 18-case live matrix (every declared handle at its own min/default/max, 7x9 + 9x12) is all-BUILT
+# (4 bars, sketch_3 created, timeline healthy), after two root-caused fixes -- the size-aware
+# waist-opening clamp (Option A) and the archRise rebuild's own fixed-literal apex bug (replaced with
+# a generic SeedFrom minor-arc-midpoint mode, also fixes T10's own long-standing archRise_min bug)
+# -- plus a measured, moderate topInset ceiling where it meets the arch (TOP_INSET_ARCH_MAX_OF_HW).
+# Goldens re-recorded (T10's own 6x9/7x9; T18 has none yet to freshness-check). See WORK-LOG.md's
+# H23 item 78c / turn 550 entry for the full live-verification record before flipping this back.
+FRAME_HIDDEN = False
 
 
 def get_template_logic(ui_data=None):
