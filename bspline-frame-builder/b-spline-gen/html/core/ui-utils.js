@@ -121,8 +121,11 @@ export function syncUItoParam(key, value) {
 /**
  * Updates the display labels in the resolution/spacing dropdown.
  */
-export function updateSpacingLabels(widthIn, heightIn) {
-    const sel = document.getElementById('spacing');
+/** F35 item 16 follow-up: generalized to populate EITHER the Display (`spacing`, default) or the
+ *  Export (`exportSpacing`) resolution select -- both read the same RESOLUTIONS list, so this stays
+ *  the one place that list turns into <option>s rather than a second copy of the loop. */
+export function updateSpacingLabels(widthIn, heightIn, selectId = 'spacing') {
+    const sel = document.getElementById(selectId);
     if (!sel) return;
 
     const currentVal = sel.value;

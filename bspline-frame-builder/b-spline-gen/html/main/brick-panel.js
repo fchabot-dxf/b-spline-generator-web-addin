@@ -17,7 +17,7 @@
  * initBrickPanel() runs at app start. Every tool action below reads
  * `window.svgEditor` fresh at the point of use instead of caching it.
  */
-import { P, saveLastSession } from '../core/state.js';
+import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
 import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
@@ -666,28 +666,50 @@ function resolveFrameGeom(editor) {
 // F35 (Fred: "resolution is his own responsibility via the resolution panel" -- REVERSING the
 // earlier auto-tighten below): a grout groove needs the terrain's own mesh to sample it at least
 // 2-3 times across, or it reads as a blur rather than a visible line -- a 0.06in groove needs
-// P.spacing <= ~0.02in, well finer than this app's own 0.05in default (tuned for smooth terrain,
+// spacing <= ~0.02in, well finer than this app's own 0.05in default (tuned for smooth terrain,
 // not brick-scale features). This USED to auto-tighten P.spacing itself (applyParam('spacing', ...))
 // whenever bricks existed; Fred ruled that his own call to make, not automatic. Detection only now
-// -- never writes P.spacing -- surfacing a plain, non-blocking hint instead, in both the Resolution
-// panel (#spacingGroutHint) and the Brick tab's own Grout section (#brickGroutSpacingHint), so
-// whichever one the user happens to be looking at explains why joints might look blurred.
+// -- never writes any resolution field -- surfacing a plain, non-blocking hint instead.
 const GROUT_SAMPLES_ACROSS = 3;
 
+// F35 item 16 follow-up (the measured resolution x brick-size grid, shots/seatC/
+// resolution_scale_grid.png): finer resolution only ever fixes grout-joint CARVING -- it does
+// nothing for the separate, measured finding that bricks > 1.5in read as the board's own sculpted
+// terrain rather than distinct bricks (a scale/relief-dominance issue, not a sampling one). The hint
+// is deliberately SILENT above this size rather than recommending an 8-second Masonry-max rebuild
+// that would not actually fix what the user is seeing.
+const BRICK_HINT_MAX_SIZE_IN = 1.5;
+
+/** The hint targets the EFFECTIVE EXPORT resolution (Send is what actually needs to carve cleanly),
+ *  not Display -- but when they're the same value (sameAsDisplayResolution, the default for every
+ *  existing board) the message still surfaces through the always-visible Display panel's own
+ *  #spacingGroutHint, since #exportSpacingGroutHint lives inside the Export section that's hidden
+ *  in exactly that default case. */
 function updateSpacingHint(groutWidthIn) {
   const gw = groutWidthIn ?? P.brickSettings.grout.widthIn;
   const bricksExist = document.querySelectorAll('[data-brick-gen="1"]').length > 0;
+  const smallEnoughToHelp = P.brickSettings.brickLengthIn <= BRICK_HINT_MAX_SIZE_IN;
   const targetSpacing = gw > 0 ? gw / GROUT_SAMPLES_ACROSS : null;
-  const show = bricksExist && targetSpacing != null && P.spacing > targetSpacing;
+  const exportSpacing = effectiveExportSpacing();
+  const show = bricksExist && smallEnoughToHelp && targetSpacing != null && exportSpacing > targetSpacing;
+  // The coarsest (cheapest) resolutions that are STILL fine enough, named -- e.g. "Extreme (0.02")
+  // or Masonry (0.015")" for a typical 0.06in grout width's own 0.02in target.
+  const sufficient = RESOLUTIONS.filter((r) => r.val <= targetSpacing).sort((a, b) => b.val - a.val).slice(0, 2);
+  const suggestion = sufficient.map((r) => `${r.name} (${r.val}")`).join(' or ');
   const msg = show
-    ? `Grout joints need spacing ≤ ${targetSpacing.toFixed(3)} in to carve cleanly (current ${P.spacing})`
+    ? `Grout joints need Export resolution ≤ ${targetSpacing.toFixed(3)} in to carve cleanly (current ${exportSpacing}in)${suggestion ? ` -- try ${suggestion}` : ''}`
     : '';
-  for (const id of ['spacingGroutHint', 'brickGroutSpacingHint']) {
+  for (const id of ['brickGroutSpacingHint', P.sameAsDisplayResolution ? 'spacingGroutHint' : 'exportSpacingGroutHint']) {
     const el = document.getElementById(id);
     if (!el) continue;
     el.textContent = msg;
     el.style.display = show ? '' : 'none';
   }
+  // Clear whichever hint element ISN'T the active one this time, so flipping "same as display"
+  // never leaves a stale message showing under the wrong control.
+  const inactiveId = P.sameAsDisplayResolution ? 'exportSpacingGroutHint' : 'spacingGroutHint';
+  const inactiveEl = document.getElementById(inactiveId);
+  if (inactiveEl) { inactiveEl.textContent = ''; inactiveEl.style.display = 'none'; }
 }
 
 export function initBrickPanel() {
@@ -696,6 +718,10 @@ export function initBrickPanel() {
   // binding that actually writes P.spacing isn't declared anywhere -- deferring one tick guarantees
   // P.spacing already reflects the new value by the time the hint re-reads it, regardless of order.
   document.getElementById('spacing')?.addEventListener('change', () => setTimeout(() => updateSpacingHint(), 0));
+  // F35 item 16 follow-up: the hint now targets the EFFECTIVE export resolution, which these two
+  // controls can also change -- same deferred-by-one-tick convention as #spacing above.
+  document.getElementById('exportSpacing')?.addEventListener('change', () => setTimeout(() => updateSpacingHint(), 0));
+  document.getElementById('sameAsDisplayResolution')?.addEventListener('change', () => setTimeout(() => updateSpacingHint(), 0));
   updateSpacingHint();
 
   document.getElementById('editorTabBrick')?.addEventListener('click', () => setEditorTab('brick'));

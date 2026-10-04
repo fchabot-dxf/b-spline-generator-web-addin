@@ -36,6 +36,14 @@ export const DEFAULT = {
     symOffsetX: 0,
     symOffsetY: 0,
     spacing: 0.05,
+    // F35 item 16 follow-up (Fred): the single 'resolution' setting splits into Display (`spacing`,
+    // above -- the live 3D preview / interactive rebuilds, unchanged) and Export (the B-spline mesh
+    // actually built for Send/STEP). `sameAsDisplayResolution` defaults true so EVERY existing saved
+    // session keeps today's exact behavior (Send uses whatever Display is) until Fred deliberately
+    // unchecks it; `exportSpacing` only takes effect once he does. Both pick from the same
+    // RESOLUTIONS list (core/state.js, below) as `spacing` always has.
+    sameAsDisplayResolution: true,
+    exportSpacing: 0.05,
     smoothIntensity: 0,
     smoothRadius: 1.2,
     showMesh: false,
@@ -281,6 +289,11 @@ export const SLIDER_PAIRS = {
     stampFilletPower: 'stampFilletPowerSlider',
 };
 
+// Masonry/Masonry max (F35 item 16 follow-up): from the measured resolution x brick-size grid
+// (shots/seatC/resolution_scale_grid.png) -- 0.015in and 0.011in, fine enough to carve grout
+// joints cleanly for bricks <= 1.5in (see main/brick-panel.js's updateSpacingHint), at a real,
+// measured rebuild cost (3.8s / 8.2s on the app's own default 7x9 board) too slow for the live
+// Display preview to default to, but fine for an Export-only build the user explicitly opts into.
 export const RESOLUTIONS = [
     { name: 'Coarse', val: 1.0 },
     { name: 'Standard', val: 0.6 },
@@ -291,7 +304,16 @@ export const RESOLUTIONS = [
     { name: 'Mega Ultra', val: 0.05 },
     { name: 'Ultimate', val: 0.03 },
     { name: 'Extreme', val: 0.02 },
+    { name: 'Masonry', val: 0.015 },
+    { name: 'Masonry max', val: 0.011 },
 ];
+
+/** The ONE place Display vs Export resolution is resolved -- `P.spacing`/`P.exportSpacing` are
+ *  both stored as strings (updateP's own stringParams coercion), so this always returns a real
+ *  Number, safe for both arithmetic and strict equality against RESOLUTIONS' own numeric `val`s. */
+export function effectiveExportSpacing() {
+    return Number(P.sameAsDisplayResolution ? P.spacing : P.exportSpacing);
+}
 
 export let preDelta = null;
 export let postDelta = null;
@@ -406,6 +428,7 @@ export function loadLastSession() {
         if (isNaN(P.widthIn) || P.widthIn <= 0) P.widthIn = DEFAULT.widthIn;
         if (isNaN(P.heightIn) || P.heightIn <= 0) P.heightIn = DEFAULT.heightIn;
         if (isNaN(P.spacing) || P.spacing <= 0) P.spacing = DEFAULT.spacing;
+        if (isNaN(P.exportSpacing) || P.exportSpacing <= 0) P.exportSpacing = DEFAULT.exportSpacing;
 
         if (sess.preDelta) preDelta = new Float32Array(sess.preDelta);
         if (sess.postDelta) postDelta = new Float32Array(sess.postDelta);
@@ -424,13 +447,14 @@ export function loadLastSession() {
 export function updateP(key, value) {
     if (typeof value === 'number' && isNaN(value)) return;
 
-    const stringParams = ['symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer', 'decalResolution'];
+    const stringParams = ['symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportSpacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer', 'decalResolution'];
     const boolParams = [
         'showMesh', 'thickenEnabled', 'showLeaders', 'includeSurface',
         'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
         'detailDensityRespectSymmetry', 'smoothRespectSymmetry',
         'isolateSkeleton',
-        'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled'
+        'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled',
+        'sameAsDisplayResolution',
     ];
 
     if (key === 'widthIn' || key === 'heightIn') {

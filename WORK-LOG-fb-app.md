@@ -11470,3 +11470,130 @@ one-off screenshot need.
 Not yet done: relocating Brick size + Grout into the toolbar-anchored "Bricks & grout" popover (still
 queued from item 16's own earlier scope, unaffected by this slider change); the frame-depth-vs-neck
 hint and resolution hint wording (next, per the advisor's turn-171 dispatch).
+
+## F35 item 16 follow-up: resolution hint fold-in + the Display/Export resolution split
+
+Two advisor DMs, the second explicitly "replaces the earlier 'one resolution' instruction":
+1. Add `Masonry` (0.015) / `Masonry max` (0.011) to `RESOLUTIONS`; the brick grout-vs-spacing hint
+   should recommend them by name for bricks <= 1.5in, and go SILENT above that size (the measured
+   grid's own finding: finer resolution never fixes "reads as terrain, not bricks" at larger sizes,
+   only grout-joint carving -- recommending an 8-second Masonry-max rebuild for something it can't
+   fix would be actively misleading).
+2. Fred: ONE resolution setting becomes TWO -- **Display** (`P.spacing`, the live 3D preview,
+   unchanged) and **Export** (`P.exportSpacing`, the mesh actually built for Send/STEP), plus
+   `P.sameAsDisplayResolution` (default true, so every existing board's behaviour is byte-identical
+   until deliberately split). Send shows the effective resolution in its own progress line. The
+   brick hint targets Export, not Display.
+
+**core/state.js**: `RESOLUTIONS` gained the two new entries (after Extreme, values confirmed against
+the measured grid, not guessed). New `P` fields `sameAsDisplayResolution: true` / `exportSpacing:
+0.05` (mirrors `spacing`'s own default); `exportSpacing` added to `updateP`'s `stringParams`,
+`sameAsDisplayResolution` to `boolParams` (confirmed via a live DM research pass that `P.spacing`
+itself is ALREADY a string, not a number, by this same convention -- easy to miss and get the new
+field's coercion wrong). New exported `effectiveExportSpacing()` -- the ONE place Display-vs-Export
+resolves, always returning a real `Number` (never the raw possibly-string `P.spacing`/`P.exportSpacing`,
+so callers can safely use strict equality against `RESOLUTIONS`' own numeric `val`s). Same NaN/<=0
+safeguard added for `exportSpacing` in `loadLastSession` as `spacing` already had.
+
+**Research before writing a line of code**: an Explore agent traced the FULL existing pipeline first
+(persistence shape, Send's actual resolution source, where progress text could go, the hint's own
+call sites) rather than guessing. Key finding that shaped the whole design: **Send does not build its
+own mesh today** -- both Fusion Send and the web STEP download read `lastResult` (core/engine/
+rebuild.js's own output), i.e. whatever `P.spacing` happened to be at the LAST live-preview rebuild.
+There was no "export resolution" concept to extend; splitting Display from Export means temporarily
+rebuilding `lastResult` at a different resolution for the duration of the Send, then rebuilding back.
+
+**main/export-flow.js**: new exported `withExportResolution(preview, fn)` brackets `executeExport`'s
+existing `lastResult`-reading body (moved into the callback, unchanged otherwise). When
+`sameAsDisplayResolution` (every existing board's default), it's a pure passthrough -- zero behavior
+change, confirmed by the same function being a one-line `return fn()` in that branch. When split: a
+PLAIN state write (`P.spacing = P.exportSpacing`, deliberately NOT `applyParam`, so the Display
+dropdown never visibly flickers to Export's value), `updateStampMasks` at the export grid (masks are
+resolution-scoped and `rebuild()` itself never rasterizes one, only consumes whatever's already
+there -- confirmed from rebuild.js directly, not assumed), `rebuild(null, ...)` (the `null` preview
+is what keeps the LIVE 3D view from visibly jumping mid-Send -- `rebuild()`'s own `if (preview)` guard
+skips `preview.update` entirely), then `fn()` runs against the freshly-built export-resolution
+`lastResult`, then the whole sequence reverses in a `finally` (restores `P.spacing`, re-rasterizes
+masks at the display grid, `rebuild(preview, ...)` to push the live view back to exactly where the
+user left it) -- the restore runs even if `fn` throws. Fusion-mode progress: `setFusionStatus(
+'Building at <RESOLUTIONS name> <value>in…', 'busy')` right before the export-resolution rebuild,
+silent in the web wizard path (not asked for there). `core/fusion-bridge.js`'s own poll-timeout
+`P.spacing <= 0.05` check needed NO code change -- it runs from inside `sendToFusion`, itself inside
+the wrapped `fn()`, so `P.spacing` is already the effective export value at that point; added a
+comment explaining why, so a future reader doesn't "fix" it into a latent bug.
+
+**main/param-manager.js**: `applyParam` early-returns for these two new keys before the generic
+grid-diff/rebuild-scheduling tail -- without this, every Export-resolution UI change would still
+schedule a real (if harmless) Display rebuild 200ms later, since that tail is keyed on `P.spacing`
+alone and these two fields never change it.
+
+**HTML + wiring**: new "Export uses the same resolution as Display" checkbox + a second
+`<select id="exportSpacing">` (hidden while checked) in the Resolution panel, both auto-bound for
+free by `main/ui-bindings.js`'s existing `Object.keys(P).forEach(...)` loop (any DOM id matching a
+`P` key gets wired with zero extra code -- confirmed this already works for every other scalar
+field). `core/ui-utils.js`'s `updateSpacingLabels` gained an optional `selectId` param so it can
+populate EITHER select from the one `RESOLUTIONS` list, rather than a second copy of the option-
+building loop; both its call sites (`app-init.js`, `param-manager.js`'s widthIn/heightIn handler) now
+call it twice. The checkbox's own show/hide toggle is hand-written (inverse polarity from the
+existing `bindTogglePanel` helper -- checked HIDES the Export section here, the opposite of every
+other toggle-panel consumer -- so reusing it would need its own inversion flag for one caller).
+
+**main/brick-panel.js**'s `updateSpacingHint`: now reads `effectiveExportSpacing()` instead of
+`P.spacing` directly; gated by a new `BRICK_HINT_MAX_SIZE_IN = 1.5` check against
+`P.brickSettings.brickLengthIn`; the suggestion text is DATA-DRIVEN (`RESOLUTIONS.filter(r => r.val
+<= targetSpacing)`, coarsest-two), not a hardcoded "Extreme or Masonry" string, so it stays correct
+if the target ever needs an even finer pair. Shows via `#spacingGroutHint` (Display's own, always-
+visible panel) when `sameAsDisplayResolution`, or `#exportSpacingGroutHint` (inside the now-visible
+Export section) when not -- explicitly clears whichever one is currently INACTIVE so flipping the
+checkbox never leaves a stale message under the wrong control. New listeners on `#exportSpacing`/
+`#sameAsDisplayResolution` re-evaluate the hint, same deferred-one-tick convention as `#spacing`'s
+own existing listener.
+
+**Tests** (4 new files, 34 new tests total):
+- `tests/resolution-split-persist.test.js` (11): RESOLUTIONS entries, `updateP` coercion for both
+  new fields, `effectiveExportSpacing` (mirrors/decouples/always-a-Number), `loadLastSession`
+  restore (both fields, a pre-split project left untouched, the NaN/<=0 safeguard). Mutation-tested
+  the safeguard by removing it -- exactly that 1 test failed.
+- `tests/export-flow-resolution-split.test.js` (9): `withExportResolution`'s no-op passthrough path;
+  the swap/restore (including on `fn` throwing); `rebuild(null, ...)` for the export build vs
+  `rebuild(preview, ...)` for the restore; masks re-rasterized at BOTH grids; exact operation
+  ordering (masks -> rebuild:export -> fn -> masks -> rebuild:restore); the Fusion-mode progress
+  message's exact wording, silent in web mode. Mutation-tested (the no-op branch unconditional) --
+  exactly the 6 "sameAsDisplayResolution OFF" tests failed, the 3 "ON"/passthrough tests stayed green.
+- `tests/param-manager-export-resolution.test.js` (3): the two new keys never trigger
+  `scheduleRebuild`/`refreshAllStampMasks`; a control case (`spacing` itself) confirms the REAL
+  rebuild path still fires for an ordinary Display key. Mutation-tested (removed the early-return) --
+  both new-key tests failed, the control test stayed green.
+- `tests/brick-spacing-hint.test.js` (rewritten, 7): hidden/shown states now reference
+  `effectiveExportSpacing`; new tests for the Export-targeting-when-decoupled case and the >1.5in
+  silence gate; the "toggling same-as-display live moves the hint" case.
+Full suite green: 215 files / 3890 tests (was 212/3864 before this item).
+
+**Live-verified** (headless Chrome, not just unit tests): opened the Resolution panel fresh --
+`exportResolutionOptions` correctly hidden, `sameAsDisplayResolution` checked, both selects populated
+with all 11 real `RESOLUTIONS` entries (confirmed the static HTML's own placeholder options get
+replaced, same as the pre-existing `#spacing` behavior). A REAL click on the checkbox (not a
+synthetic event -- see below) correctly un-hides the Export select and sets `P.sameAsDisplayResolution
+= false`. Setting Export to an INVALID value (no matching `<option>`) safely no-ops to `""`, exactly
+like a native `<select>`; setting it to a real value (Masonry, 0.015) correctly updates
+`P.exportSpacing`. With Display left at its own fine default and Export set deliberately coarse
+(Coarse, 1in), the hint correctly shows under `#exportSpacingGroutHint` (not `#spacingGroutHint`)
+with the right message, and mirrors on the Brick tab's own hint too. Zero console errors.
+**Caught my own test-harness bug while live-verifying, not a production one**: a checkbox's generic
+auto-bind listens on `'input'` (core/ui-utils.js's own `bind()`: `SELECT` -> `'change'`, everything
+else -> `'input'`) while my OWN new visibility-toggle code listens on `'change'` -- correct for a
+REAL click (which fires both, in that order) but my first verification script only dispatched a
+synthetic `'change'` event, so the auto-bind never ran and the checkbox APPEARED broken. Switched the
+script to a real `.click()` (fires the full native sequence) and it worked correctly -- recorded here
+so a future script doesn't waste time on the same false alarm.
+
+Not yet done, explicitly deferred (per the advisor's own rapid sequence of follow-up DMs, each
+naming where it slots in): a staged loading/busy indicator covering brick generation, the height-
+mask pass, and fine-resolution rebuilds (declared stage data, >250ms show threshold, yield between
+stages) -- asked to be folded into this same item, but is a genuinely separate piece of UI/UX
+infrastructure (finding/reusing whatever loading signal already exists, instrumenting multiple call
+sites) rather than a quick addendum to an already-large turn; a Brick-top Flat/Organic global
+setting (per-brick plane-fit, cached, grout stays draped); the Frame Template selector becoming an
+icon-per-template custom listbox; and a Brick/Photo sidebar-vs-editor-tab 3D/2D control split. All
+four arrived as DMs during this turn's own work and are queued as explicit next items, in the order
+the advisor named them.

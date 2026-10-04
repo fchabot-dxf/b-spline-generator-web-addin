@@ -504,6 +504,7 @@ export async function initApp(preview, wireGlobalEvents) {
   Object.keys(P).forEach(k => syncUItoParam(k, P[k]));
   setUndoRestoring(false);
   updateSpacingLabels(P.widthIn, P.heightIn);
+  updateSpacingLabels(P.widthIn, P.heightIn, 'exportSpacing');
 
   if (preview) preview.setCurvesVisible(P.showMesh);
 
