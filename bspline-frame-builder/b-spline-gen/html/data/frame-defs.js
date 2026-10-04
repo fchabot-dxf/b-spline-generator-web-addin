@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "53e1d84c71150dcb16d6b1f4dde8eda11c284db95ffb12850d27964666250f8a",
+  "sourceHash": "e24897ce111a8cfe6f0529115da3b9e5b51151e7a9eceb2e3d317cc99454b59b",
   "templates": [
     {
       "features": [
@@ -14586,7 +14586,7 @@ export default {
           "label": "Taper angle"
         }
       ],
-      "hidden": true,
+      "hidden": false,
       "id": "template_19",
       "name": "Template 19 - Arched Head - Tapered sides",
       "params": [

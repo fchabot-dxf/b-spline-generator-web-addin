@@ -14,6 +14,9 @@
  * SAME safety T18 itself already has. `test_pins_the_full_feature_set` below exists specifically so a
  * regression of this exact class (an extractor silently succeeding and dropping features) fails loudly
  * here instead of only showing up as a visually wrong shape.
+ *
+ * Un-hidden the same turn: a 22-case live matrix (every declared handle at its own reachable
+ * {min, max} + default, x {7x9, 9x12}, T18's own un-hide methodology) is all-BUILT.
  */
 import { describe, it, expect } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
@@ -23,11 +26,11 @@ const tplOf = (id) => FRAME_DEFS.templates.find((t) => t.id === id);
 const T18 = tplOf('template_18'), T19 = tplOf('template_19');
 
 describe('Template 19: declaration', () => {
-  it('is "19. Arched Head - Tapered sides", the shared hourglass preset, from Template 18, hidden until live-verified', () => {
+  it('is "19. Arched Head - Tapered sides", the shared hourglass preset, from Template 18, un-hidden after its own 22-case live matrix', () => {
     expect(T19.name).toBe('Template 19 - Arched Head - Tapered sides');
     expect(frameLabel(T19)).toBe('19. Arched Head - Tapered sides');
     expect(T19.silhouettePreset).toBe('hourglass');
-    expect(T19.hidden).toBe(true);
+    expect(T19.hidden).toBe(false);
     expect(T19.handles.map((h) => h.key)).toEqual(['archRise', 'topInset', 'waistReach', 'waistCenterY', 'taperAngle']);
     for (const h of T19.handles) expect(h.binding).toBe('seeded');
   });

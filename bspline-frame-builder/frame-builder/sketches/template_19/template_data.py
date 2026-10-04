@@ -153,13 +153,13 @@ FRAME_FEATURES = COMMON_FRAME_FEATURES
 FRAME_SHAPE_EXTRACTOR = "hourglass_narrow_arched_head"
 FRAME_PROVISIONAL_SHAPE = {"from": "template_18", "taperAngleDeg": 8.0}
 
-# H23 item 80: hidden from the template picker until the Fusion phases are confirmed live (goldens at
-# 7x9 + 9x12, guard-clean) -- same mechanism every brand-new template uses before its own first live
-# check (F29 item 1 / T18's own precedent). A saved project that already picked Template 19 keeps
-# loading and drawing exactly as before -- every lookup is still by id over the full template list
-# (frame-record.js findFrameTemplate); only the picker's own dropdown (frame-panel.js) reads this
-# flag. Flip back to False once the live checks pass and before merging this branch to main.
-FRAME_HIDDEN = True
+# H23 item 80: un-hidden -- the 22-case live matrix (every declared handle at its own reachable
+# {min, max} + default, x {7x9, 9x12}, the SAME methodology T18's own un-hide used) is all-BUILT (4
+# bars, sketch_3 created, timeline healthy, every case). 3 cases hit a transient session-degradation
+# false failure mid-run (the fusion360-quirks skill's own already-documented "long session, many
+# scratch docs" pattern -- a plain stop/run resolved it, re-tested clean immediately after, no code at
+# fault); see WORK-LOG.md for the full record.
+FRAME_HIDDEN = False
 
 
 def get_template_logic(ui_data=None):
