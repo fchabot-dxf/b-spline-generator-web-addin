@@ -90,15 +90,8 @@ describe('frame-defs (generated) — schema', () => {
     expect(keys.filter((k) => !FEATURES[t.silhouettePreset].includes(k)).every((k) => EXTRA[t.silhouettePreset].includes(k))).toBe(true);
     if (!['template_3', 'template_4', 'template_5', 'template_8', 'template_10', 'template_12', 'template_13'].includes(t.id)) expect(keys.sort()).toEqual(FEATURES[t.silhouettePreset]); // Template 1 / 2: exactly as before
     // T6: a provisional model of its own (no base template, frame_shape_fit.provisional_tab_top_model) is fitted
-    // from nothing yet; T3-T5's provisional ones carry Template 1's own REAL fit (2+ goldens), so inherit a
-    // non-empty fittedFrom. H23 item 78b, T10's new model: also fitted from nothing (its own "baseModel" is a
-    // STRING, not null -- it names Template 11's own provisional builder, not a really-fitted template -- but
-    // T11 itself has no real goldens either, so the inherited `fit` is just as empty as T6's). Checking
-    // `fittedFrom.length === 0` directly (rather than inferring it from `baseModel === null`, which only
-    // distinguishes "no base at all" from "has a base", not whether that base is itself really fitted) covers
-    // both shapes correctly without changing T3/T4/T5's own already-passing case (their `fittedFrom` stays
-    // non-empty either way, inherited from Template 1's real fit).
-    if (t.shapeModel.fit.fittedFrom.length === 0) expect(t.shapeModel.fit.fittedFrom).toEqual([]);
+    // from nothing yet; every other model (T3-T5's provisional ones carry Template 1's fit) from 2+ goldens.
+    if (t.shapeModel.provisional && t.shapeModel.provisional.baseModel === null) expect(t.shapeModel.fit.fittedFrom).toEqual([]);
     else expect(t.shapeModel.fit.fittedFrom.length).toBeGreaterThanOrEqual(2);
     for (const p of t.params) {
       expect(p).toHaveProperty('unit');

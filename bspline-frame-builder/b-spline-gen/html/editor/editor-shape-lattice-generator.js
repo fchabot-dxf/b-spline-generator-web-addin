@@ -643,15 +643,7 @@ function _hourglassRange(key, region, stroke, v) {
     // the bottom) horn; and 2S >= d for a real tangency with the waist.
     const wcy = hh * v.waistCenterY, horn = HORN_MIN_OF_HALF_HEIGHT * hh;
     const H = hh - stroke - horn + (key === 'cornerRadiusTop' ? wcy : -wcy);
-    // H23 item 78b (T10 narrow head + arch): the top corner's own depth is measured from ITS horn, d - topInset
-    // -- hourglassConstruction's own `side()` already does exactly this (`d = depth - inset`), and
-    // `_hourglassLeftRange` right below already mirrors it (its own `corners` array, `d = d0 - c.inset`); this
-    // branch was the one place still using the full, non-inset depth for cornerRadiusTop's own floor/ceiling,
-    // which over-tightened it whenever topInset > 0 (T3, now T10). No-op for every template with topInset = 0
-    // (every one but T3), and can only WIDEN (never narrow) T3's own already-shipped range, since subtracting a
-    // positive topInset only shrinks `d`. Verified: T1/T3/T4/T5 A/B byte-identical after this change.
-    const topInset = hw * (v.topInset ?? DERIVED_PARAM_DEFAULTS.hourglass.topInset(v));
-    const d = hw * v.waistReach - (key === 'cornerRadiusTop' ? topInset : 0);
+    const d = hw * v.waistReach;
     const rw = hw * (v.waistRadius ?? DERIVED_PARAM_DEFAULTS.hourglass.waistRadius(v));
     const sMax = (H * H / d + d) / 2;
     // the keyhole bound (see _optionalRange), per side: dy >= R in the major-waist

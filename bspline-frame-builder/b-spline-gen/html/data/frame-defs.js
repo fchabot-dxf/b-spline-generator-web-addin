@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "9c1234a56013c1dd9642dc72eed8462640bdf429a90a7e44a68aa5c879b39bf8",
+  "sourceHash": "33e8820e3471ea0091e26f82de550aac2e6ec6f75beed99991406bc1565622cd",
   "templates": [
     {
       "features": [
@@ -1710,12 +1710,6 @@ export default {
         {
           "basis": "hw",
           "binding": "seeded",
-          "key": "topInset",
-          "label": "Head width"
-        },
-        {
-          "basis": "hw",
-          "binding": "seeded",
           "key": "waistReach",
           "label": "Waist reach"
         },
@@ -1732,7 +1726,7 @@ export default {
           "label": "Taper angle"
         }
       ],
-      "hidden": true,
+      "hidden": false,
       "id": "template_10",
       "name": "Template 10 - Arched Hourglass",
       "params": [
@@ -2010,59 +2004,71 @@ export default {
         "features": {
           "archRise": {
             "hh": 0.0,
-            "hw": 0.19419
+            "hw": 0.35
           },
           "cornerR": {
-            "hh": 0.0,
-            "hw": 0.39705
-          },
-          "cornerRBottom": {
-            "hh": 0.0,
-            "hw": 0.39705
-          },
-          "cornerRTop": {
-            "hh": 0.0,
-            "hw": 0.10554
+            "hh": 0.134309,
+            "hw": 0.01741
           },
           "depth": {
-            "hh": 0.0,
-            "hw": 0.77292
+            "hh": -0.052481,
+            "hw": 0.38866
           },
           "notch": {
-            "hh": 0.0,
-            "hw": 0.593480955044052
+            "hh": 0.232589,
+            "hw": 0.09041
           },
-          "topInset": {
+          "taperAngle": {
+            "const": 8.0,
             "hh": 0.0,
-            "hw": 0.41092
-          },
-          "waistCy": {
-            "hh": 0.27784,
             "hw": 0.0
           },
+          "waistCy": {
+            "hh": 0.000101,
+            "hw": 8e-05
+          },
           "waistR": {
-            "hh": 0.0,
-            "hw": 0.21726
+            "hh": 0.200276,
+            "hw": -0.0517
           }
         },
         "fit": {
-          "exactAtFittedSizes": false,
-          "excluded": [],
-          "fittedFrom": [],
-          "maxResidualIn": null,
+          "exactAtFittedSizes": true,
+          "excluded": [
+            "12x6"
+          ],
+          "fittedFrom": [
+            "6x9",
+            "7x9"
+          ],
+          "maxResidualIn": 0.0,
           "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
-          "residualsIn": {}
-        },
-        "provisional": {
-          "archRiseOfHw": 0.19419,
-          "baseModel": "provisional_diamond_top_hourglass_pinch_model (Template 11's own side algebra)",
-          "cornerRadiusBottomOfHw": 0.39705,
-          "cornerRadiusTopOfHw": 0.10554,
-          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
-          "topInsetOfHw": 0.41092,
-          "waistCenterYOfHh": 0.27784,
-          "waistRadiusOfHw": 0.21726,
-          "waistReachOfHw": 0.77292
+          "residualsIn": {
+            "archRise": [
+              -0.0,
+              -0.0
+            ],
+            "cornerR": [
+              0.0,
+              0.0
+            ],
+            "depth": [
+              -0.0,
+              -0.0
+            ],
+            "notch": [
+              0.0,
+              0.0
+            ],
+            "waistCy": [
+              0.0,
+              0.0
+            ],
+            "waistR": [
+              0.0,
+              0.0
+            ]
+          }
         }
       },
       "silhouettePreset": "hourglass",

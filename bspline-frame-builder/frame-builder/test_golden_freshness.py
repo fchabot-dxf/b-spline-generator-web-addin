@@ -60,12 +60,8 @@ def test_discover_templates_finds_every_template_with_committed_goldens():
     # H23 item 27: template_7 has no tests/fixtures/frame-parity goldens (verified by the
     # all-template shape-outline test + a live build instead) -- correctly out of this check's scope.
     assert "template_7" not in templates
-    # H23 item 78b: template_10's own 3 goldens (7x9/6x9/12x6) were removed -- they recorded the OLD shape
-    # (full-width dome), now replaced by Fred's narrow-head+arch reconstruction (WORK-LOG.md). Back in this
-    # set once the new Fusion phases are built and fresh goldens recorded for the new shape.
-    assert "template_10" not in templates
     assert {"template_1", "template_2", "template_3", "template_4", "template_5", "template_6",
-            "template_8", "template_9", "template_12", "template_13"} <= set(templates)
+            "template_8", "template_9", "template_10", "template_12", "template_13"} <= set(templates)
     for tid, paths in templates.items():
         assert paths["phases"], tid
         assert paths["goldens"], tid

@@ -133,8 +133,8 @@ function svgFor(primitives, label) {
   return { svg, width: RENDER_W, height: renderH };
 }
 
-const currentSvg = svgFor(currentOut.primitives, 'SHIPPED T10 default (7x9) -- rounder shoulder (known clamp gap)');
-const targetSvg = svgFor(targetPrims, "Fred's reconstruction (7x9) -- exact sketch");
+const currentSvg = svgFor(currentOut.primitives, 'CURRENT T10 (7x9, default) -- full-width dome');
+const targetSvg = svgFor(targetPrims, "Fred's reconstruction (7x9) -- narrow head + arch");
 const html = `<!doctype html><html><head><meta charset="utf-8"><style>
   html,body{margin:0;background:#fff;font-family:Arial,Helvetica,sans-serif;}
   .row{display:flex;gap:24px;padding:24px;}
