@@ -13,6 +13,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js'
   return { ...actual, runBricks: vi.fn(), runBricksPreview: vi.fn(), runBricksOutlinePreview: vi.fn(), buildRibbonPrimitives: vi.fn(() => []) };
 });
 // A usable frame for the Frame tool (resolveFrameGeom needs a frame context + a valid silhouette).
+vi.mock('../bspline-frame-builder/b-spline-gen/html/core/toast.js', () => ({ showToast: vi.fn() }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, frameContext: vi.fn(() => ({})) };
@@ -27,9 +28,13 @@ import {
   setBrickTopMode, setSurfaceStyle,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, runBricksPreview } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
+import { deselectTool } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
+import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
 
 const FIXTURE = `
-  <button id="brickGenerate">Generate</button>
+  <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
+  <button id="editorTabBrick">Brick</button><button id="editorDrawerTab-layers">Brick</button>
   <div id="editorToolbarBrick"></div>
   <div id="brickToolHint"></div>
   <div id="brickBrushSection" style="display:none;">
@@ -39,7 +44,7 @@ const FIXTURE = `
   <div id="brickFramePresetList"></div>
   <div id="brickBrushPresetList"></div>
   <div id="brickPatternList"></div>
-  <div id="brickFrameBandPatternList"></div>
+  <label id="brickFrameBandPatternLabel">Band patterns</label><div id="brickFrameBandPatternList"></div>
   <button id="brickSetRed"></button>
   <button id="brickSetWhite"></button>
   <div id="brickSizePresetList"></div>
@@ -66,7 +71,9 @@ function setup(tool) {
   root = document.createElement('div');
   root.innerHTML = FIXTURE;
   document.body.appendChild(root);
-  window.svgEditor = { setMode: () => {} };
+  // A Bricks layer + a runBricks mock honouring the real contract: the laid key is stamped on it.
+  window.svgEditor = { setMode: () => {}, _layers: [{ id: 'b', name: 'Bricks' }] };
+  runBricks.mockImplementation((ed, _s, _fg, opts) => { if (opts?.laidKey != null) ed._layers[0].brickLaidKey = opts.laidKey; });
   vi.stubGlobal('requestAnimationFrame', () => 1);
   vi.stubGlobal('cancelAnimationFrame', () => {});
   P.brickSettings.pattern = 'stretcher';
@@ -319,5 +326,124 @@ describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + 
     expect(P.brickSettings.brickLengthIn).toBe(3);
     expect(runBricks).toHaveBeenCalledTimes(1);
     expect($('brickQuick_size_three').classList.contains('active')).toBe(true);
+  });
+});
+
+// Audit B1-B3: pending is derived from the key stamped on the Bricks layer, which undo/redo, Cancel and
+// reload all carry -- not from module memory that none of them touch.
+describe('pending follows the Bricks layer key through undo, reload and Cancel', () => {
+  beforeEach(() => setup('wall'));
+  const layer = () => window.svgEditor._layers[0];
+  const layersChanged = () => document.dispatchEvent(new CustomEvent('editorLayersChanged'));
+
+  it('Generate stamps the current settings key on the layer', () => {
+    const before = layer().brickLaidKey;
+    $('brickPattern_herringbone').click();
+    $('brickGenerate').click();
+    expect(layer().brickLaidKey).not.toBe(before);
+    expect(layer().brickLaidKey).toContain('herringbone');
+  });
+
+  it('undo restoring the older layer key shows pending; redo clears it', () => {
+    const stretcherKey = layer().brickLaidKey;
+    $('brickPattern_herringbone').click();
+    $('brickGenerate').click();
+    const herringboneKey = layer().brickLaidKey;
+    layer().brickLaidKey = stretcherKey; layersChanged(); // what editor.undo() restores
+    expect(pending()).toBe(true);
+    layer().brickLaidKey = herringboneKey; layersChanged(); // redo
+    expect(pending()).toBe(false);
+  });
+
+  it('a reopened/reloaded document whose layer key differs from the settings shows pending at once', () => {
+    layer().brickLaidKey = layer().brickLaidKey.replace('stretcher', 'stack');
+    layersChanged();
+    expect(pending()).toBe(true);
+  });
+
+  it('Cancel restoring the entry settings (brickSettingsRestored) re-syncs the panel and the pending state', () => {
+    const entry = JSON.parse(JSON.stringify(P.brickSettings));
+    $('brickPattern_basketweave').click();
+    expect(pending()).toBe(true);
+    Object.assign(P.brickSettings, entry);
+    document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
+    expect($('brickPattern_stretcher').classList.contains('active')).toBe(true);
+    expect($('brickPattern_basketweave').classList.contains('active')).toBe(false);
+    expect(pending()).toBe(false);
+  });
+
+  it('bricks with no key yet (saved before this field) are not pending until a setting changes', () => {
+    delete layer().brickLaidKey; layersChanged();
+    expect(pending()).toBe(false);
+    $('brickPattern_flemish').click();
+    expect(pending()).toBe(true);
+    $('brickGenerate').click();
+    expect(pending()).toBe(false);
+  });
+});
+
+// Audit C3/C9/C8/C11.
+describe('Generate visibility, the pending badge and a hidden Bricks layer', () => {
+  const slotShown = () => $('brickGenerate').closest('.sticky-actions').style.display !== 'none';
+  const badged = (id) => $(id).hasAttribute('data-brick-pending');
+
+  it('C9: Generate shows for Wall and Frame, hides for Brush, Scissors and Stripe', () => {
+    setup('wall');
+    expect(slotShown()).toBe(true);
+    for (const t of ['brush', 'scissors', 'stripe']) { $(`brickTool_${t}`).click(); expect(slotShown(), t).toBe(false); }
+    $('brickTool_frame').click();
+    expect(slotShown()).toBe(true);
+  });
+
+  it('C3: the Brick tab button carries the pending dot, also once the tool is put away', () => {
+    setup('wall');
+    expect(badged('editorTabBrick')).toBe(false);
+    $('brickPattern_herringbone').click();
+    expect(badged('editorTabBrick')).toBe(true);
+    deselectTool(); // Esc's path: the Brick panel (and its Generate) gives way to Layers; the badge stays
+    expect(badged('editorTabBrick')).toBe(true);
+    window.svgEditor._sketchLayer = { node: { querySelector: () => ({}) } }; // Wall/Frame bricks are on the canvas
+    $('brickGenerate').click(); // with no tool, Generate re-lays the bricks already there
+    expect(badged('editorTabBrick')).toBe(false);
+  });
+
+  it('C11: the drawer tab label carries the dot only while it names the Brick tab', () => {
+    setup('wall');
+    setEditorTab('brick');
+    $('brickPattern_herringbone').click();
+    expect(badged('editorDrawerTab-layers')).toBe(true);
+    setEditorTab('artwork'); // the drawer label now names Artwork's panel
+    expect(badged('editorDrawerTab-layers')).toBe(false);
+    expect(badged('editorTabBrick')).toBe(true); // the Brick tab button keeps it
+    setEditorTab('brick');
+    expect(badged('editorDrawerTab-layers')).toBe(true);
+  });
+
+  it('C8: laying bricks onto a hidden Bricks layer warns, and leaves the layer hidden', () => {
+    setup('wall');
+    window.svgEditor._layers[0].visible = false;
+    $('brickPattern_flemish').click();
+    $('brickGenerate').click();
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast.mock.calls[0][1]).toBe('warn');
+    expect(window.svgEditor._layers[0].visible).toBe(false);
+  });
+
+  it('C8: a visible Bricks layer lays without a warning', () => {
+    setup('wall');
+    $('brickPattern_flemish').click();
+    $('brickGenerate').click();
+    expect(showToast).not.toHaveBeenCalled();
+  });
+});
+
+describe('audit K2: the Band patterns heading follows the preset', () => {
+  beforeEach(() => setup('frame'));
+  it('hidden for the None preset (no bands), shown again for a preset with bands', () => {
+    $('brickFramePreset_none').click();
+    expect($('brickFrameBandPatternLabel').style.display).toBe('none');
+    expect($('brickFrameBandPatternList').children.length).toBe(0);
+    $('brickFramePreset_three_band').click();
+    expect($('brickFrameBandPatternLabel').style.display).toBe('');
   });
 });

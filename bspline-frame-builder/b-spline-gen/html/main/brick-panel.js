@@ -19,7 +19,8 @@
  */
 import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
 import { withLoadingStage } from '../core/loading-signal.js';
-import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives } from '../editor/editor-brick-tool.js';
+import { showToast } from '../core/toast.js';
+import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
@@ -43,9 +44,11 @@ import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-
 const BRICK_TOOLS = [
   { id: 'brush', buttonId: 'brickTool_brush', label: 'Brush', icon: '✏️', settingsSection: 'brickBrushSection',
     hint: 'Click here, then drag a stroke on the canvas to lay bricks along it.' },
-  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection',
+  // `generates` (audit C9): Generate re-lays this tool's output, so the pinned Generate shows for it.
+  // Brush/Scissors/Stripe act on drawn strokes, whose settings freeze at draw time.
+  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true,
     hint: 'Fills the whole board with bricks.' },
-  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection',
+  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true,
     hint: 'Bands of bricks along the current frame\'s own contour.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
@@ -344,11 +347,12 @@ function syncControlsFromState() {
   syncToolSections();
 }
 
-/** F35 item 10 follow-up (Fred, folded in with the slider-timing ask): a Brick-tab slider
- *  regenerates on RELEASE ('change': blur/Enter/mouse-up), not on every raw drag tick ('input') --
- *  but WITH a live, throttled 2D-only preview while dragging so the canvas doesn't sit stale for
- *  the length of the drag. Declared ONCE here -- every bindSlider call site below shares this one
- *  mechanism, not a per-slider copy. Wall/Frame only: a Brush stroke's own settings are frozen at
+/** F35 item 10 follow-up (Fred, folded in with the slider-timing ask): an 'auto'-committed brick
+ *  slider (the main sidebar's -- BRICK_COMMIT below) regenerates on RELEASE ('change': blur/Enter/
+ *  mouse-up), not on every raw drag tick ('input'), WITH a live, throttled 2D-only preview while
+ *  dragging. The editor Brick tab's own sliders are 'generate' bindings: no preview, no re-lay,
+ *  they only mark Generate pending (audit K4: this header used to describe them as re-laying).
+ *  Declared ONCE here -- every bindSlider call site below shares this one mechanism. Wall/Frame only: a Brush stroke's own settings are frozen at
  *  draw time (no existing "edit an already-drawn element" mechanism, see the Brush-section header
  *  above), so there is nothing for a slider to live-preview while Brush is the active tool. */
 const LIVE_PREVIEW_INTERVAL_MS = 100; // ~10/sec, Fred's own spec
@@ -433,33 +437,58 @@ const _layoutKey = () => JSON.stringify(P.brickSettings, function (k, v) {
   if (this === P.brickSettings.grout && SURFACE_ONLY_GROUT_KEYS.includes(k)) return undefined;
   return v;
 });
-// The settings the Wall/Frame bricks on the canvas were last laid with. null = nothing changed yet
-// this session (e.g. bricks restored from a saved session): not pending. A change made while it is
-// null can't be compared, so it becomes UNKNOWN_LAID -- pending until the next Generate.
-const UNKNOWN_LAID = '\u0000unknown';
-let _drawnLayoutKey = null;
+// Audit B1-B3: the settings the Wall/Frame bricks on the canvas were laid with live ON the Bricks
+// layer (`brickLaidKey`, stamped by runBricks before its undo commit, persisted with the layer
+// roster), so undo/redo, Cancel and reload all carry them -- module memory did not. No key on the
+// layer (no bricks laid, or bricks saved before this field): a change made then can't be compared,
+// so it stays pending until the next Generate.
+let _changedWhileUnknown = false;
+
+function _laidLayoutKey() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  const layer = (editor?._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
+  return layer?.brickLaidKey ?? null;
+}
 
 function isGeneratePending() {
-  return _drawnLayoutKey !== null && _layoutKey() !== _drawnLayoutKey;
+  const laid = _laidLayoutKey();
+  return laid === null ? _changedWhileUnknown : _layoutKey() !== laid;
 }
 
 function _noteSettingChanged() {
-  if (_drawnLayoutKey === null) _drawnLayoutKey = UNKNOWN_LAID;
+  if (_laidLayoutKey() === null) _changedWhileUnknown = true;
   syncGeneratePending();
 }
 
+/** Audit C3/C11: where else the pending state shows, so it stays visible with no tool picked (the
+ *  Brick panel then gives way to Layers) and at the phone drawer's peek height. Marked with the
+ *  `data-brick-pending` attribute; editor.css draws the dot. */
+const PENDING_INDICATORS = [
+  { id: 'editorTabBrick', when: () => true },
+  { id: 'editorDrawerTab-layers', when: () => getEditorTab() === 'brick' }, // the drawer's label for the ACTIVE tab
+];
+
 function syncGeneratePending() {
+  const pending = isGeneratePending();
+  for (const ind of PENDING_INDICATORS) {
+    document.getElementById(ind.id)?.toggleAttribute('data-brick-pending', pending && ind.when());
+  }
   const btn = document.getElementById('brickGenerate');
   if (!btn) return;
-  const pending = isGeneratePending();
   btn.textContent = pending ? 'Generate \u2022' : 'Generate';
   btn.classList.toggle('pending', pending);
   btn.title = pending ? 'Brick settings changed -- press Generate to re-lay the bricks' : 'Re-lay the Wall/Frame bricks';
 }
 
-function _markLaidNow() {
-  _drawnLayoutKey = _layoutKey();
+/** Lay the Wall/Frame bricks with the current settings, stamping their key on the Bricks layer. */
+function _layBricks(editor, frameGeom) {
+  withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey() }));
+  _changedWhileUnknown = false;
   syncGeneratePending();
+  // Audit C8: the layer's visibility is the user's choice, so it is not flipped back on -- but a
+  // re-lay nobody can see must not pass silently.
+  const layer = (editor._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
+  if (layer && layer.visible === false) showToast('Bricks re-laid on the hidden Bricks layer -- show it in Layers to see them', 'warn');
 }
 
 function _hasLaidWallOrFrame(editor) {
@@ -479,8 +508,7 @@ export function generateBricks() {
   const frameGeom = resolveFrameGeom(editor);
   const lay = _hasLaidWallOrFrame(editor) || _activeTool === 'wall' || (_activeTool === 'frame' && !!frameGeom);
   if (!lay) return false;
-  withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom));
-  _markLaidNow();
+  _layBricks(editor, frameGeom);
   return true;
 }
 
@@ -554,6 +582,15 @@ function syncToolButtons() {
   if (hintEl) hintEl.textContent = hint ? hint.hint : '';
   syncToolSections();
   syncEmptySelectionPanel();
+  syncGenerateVisibility();
+}
+
+/** Audit C9: the pinned Generate shows only for a tool it applies to (BRICK_TOOLS' `generates`). */
+function syncGenerateVisibility() {
+  const slot = document.getElementById('brickGenerate')?.closest('.sticky-actions');
+  if (!slot) return;
+  const tool = BRICK_TOOLS.find((t) => t.id === _activeTool);
+  slot.style.display = !tool || tool.generates ? '' : 'none';
 }
 
 /** F35 item 16 follow-up (Fred, live use: "don't see the layers"): with no Brick tool picked yet,
@@ -693,6 +730,9 @@ function renderFrameBandPatternList(container) {
   if (!container) return;
   container.innerHTML = '';
   const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
+  // Audit K2: a preset with no bands (None) has no band rows -- its heading goes too.
+  const heading = document.getElementById('brickFrameBandPatternLabel');
+  if (heading) heading.style.display = bands.length ? '' : 'none';
   bands.forEach((band, i) => {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex; gap:4px; margin-bottom:4px; flex-wrap:wrap; align-items:center;';
@@ -760,8 +800,7 @@ function selectTool(id) {
     // interior, not just fill the raw board -- resolve the frame the same
     // way the Frame tool does; runBricks clips Wall to it via generateBricks
     // when one is usable, and simply fills the whole board when there isn't.
-    withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, resolveFrameGeom(editor)));
-    _markLaidNow();
+    _layBricks(editor, resolveFrameGeom(editor));
     notifyChange();
     return;
   }
@@ -771,8 +810,7 @@ function selectTool(id) {
       console.warn('Brick Frame tool: no usable frame contour on this board.');
       return;
     }
-    withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom));
-    _markLaidNow();
+    _layBricks(editor, frameGeom);
     notifyChange();
     return;
   }
@@ -1008,6 +1046,13 @@ export function initBrickPanel() {
   });
   document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => setSeed(Math.floor(Math.random() * 1000000)));
   document.getElementById('brickGenerate')?.addEventListener('click', () => generateBricks());
+  // Audit B1-B3: undo/redo, Cancel's restored document and a reopen all re-render the layer roster
+  // (layers.js renderLayersPanel) -- the laid key may have changed with it.
+  document.addEventListener('editorLayersChanged', () => syncGeneratePending());
+  // Audit C11: the drawer's tab label shows the pending dot only while it names the Brick tab.
+  document.addEventListener('editorTabChanged', () => syncGeneratePending());
+  // Audit B1: Cancel/Discard put P.brickSettings back to the editor's entry snapshot (app-init.js).
+  document.addEventListener('brickSettingsRestored', () => { syncControlsFromState(); syncGeneratePending(); });
 
   syncControlsFromState();
   syncGeneratePending();
