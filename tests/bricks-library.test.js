@@ -59,8 +59,12 @@ describe('BRICK_SETS', () => {
     expect(set2.samples.map((s) => s.id)).toEqual(['b2_01', 'b2_02', 'b2_03', 'b2_04', 'b2_05']);
   });
 
-  it('Set 3 is a declared empty slot', () => {
-    expect(BRICK_SETS[2].samples).toEqual([]);
+  it('Set 3 is "White rocks" (H23 item 74b): fieldstone layout, 10 samples, a wider grout than Set 1', () => {
+    const set3 = BRICK_SETS[2];
+    expect(set3.name).toBe('White rocks');
+    expect(set3.layout).toBe('fieldstone');
+    expect(set3.samples.length).toBe(10);
+    expect(set3.grout.widthIn).toBeGreaterThan(BRICK_SETS[0].grout.widthIn);
   });
 
   it('every non-empty set declares a relief budget with reliefIn <= reliefMaxIn <= 0.25', () => {

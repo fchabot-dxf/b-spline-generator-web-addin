@@ -16904,3 +16904,190 @@ test), `tests/bricks-library.test.js` (asset-size regression), `tests/bricks-hei
 (new).
 
 Full suite: 192 files / 3565 tests green (vitest).
+
+## H23 item 74 -- masonry follow-ups: fraction-piece voids, edge clipping, curved-contour radial
+## fanning, the fieldstone layout, White Rocks (f3)
+
+Dispatched as "(a) the adapter's own sampleDetailAt photo surface, (b) P1c white rocks, (c) the
+fieldstone layout" (turn 508), then amended repeatedly, live, via cross-session DMs as the advisor
+and seat `de` reviewed F35 item 1 (the Brick tab) against real templates: curved-contour support
+ahead of (a), then de's own 2 further findings (wall overhang at the board edge; a tapered-course
+wedge/spike on concave curves), then the advisor's "half bricks in voids" declared-fraction
+scheduling, then a diagonal-cut clarification. (a) itself (the real photo-surface sampleDetailAt)
+was NOT reached this turn -- see "Not done" below.
+
+### (b) + (c): White Rocks (Set 3) and the 'fieldstone' layout
+
+Set 3 ("White rocks") declared in `library.js`: `engine:'masonry'`, `layout:'fieldstone'` (new),
+`brickLengthIn:1.1` (reused by this layout as the Poisson-disc TARGET SPACING, not a literal brick
+length -- documented in both `library.js` and `fieldstone.js` so the reuse doesn't read as a
+mistake), `grout.widthIn:0.12` (2x Set 1's own measured 0.06 -- an ATTEMPTED pixel measurement off
+`stones_white`'s own mortar band failed, the rough rock-face texture's own local contrast swamped
+the join's signal, unlike Set 1's smoother brick faces; declared off the real-world brick:fieldstone
+joint-width ratio instead, honestly noted as declared-not-measured). 10 samples
+(`stone_02`-`stone_11`; `stone_01` excluded, a corner/context crop showing the adjacent brick
+coursing, not a clean stone face), re-encoded PNG -> JPEG q85 max 480px long side (0.65MB -> 0.12MB).
+
+New `core/bricks/layouts/fieldstone.js`: Bridson's Poisson-disc point sampling (one continuous
+mulberry32 stream per run -- declared, documented exception to every other per-cell draw's own
+independent-stream convention, since point placement is inherently sequential) -> each point's own
+Voronoi cell via chained `clipToHalfPlane` bisector clips (promoted `clipToHalfPlane` from
+along-path.js to `geometry.js` as a shared primitive for this, since it's genuinely shape-agnostic)
+-> clipped to the board boundary (new shared `geometry.js` helpers `isConvex`/`clipPolygonToBoard`,
+see de's own finding below) -> shrunk inward by half the grout width (`offsetPathInward`, already
+shared) -> corners slightly rounded (new `geometry.js` helper `roundPolygonCorners`, inscribed-
+tangent-circle construction, tangent length clamped to 45% of either incident edge so a small cell's
+own rounding can't eat past its neighbour). Cells get `neighbors:{}` (empty on purpose, forcing
+pieces.js's own adjacency walk to top out at 1 -- fieldstone has no multi-stone "piece" grouping,
+reusing pieces.js/suppression.js/samples.js completely unchanged) and a coarse `courseIndex` (Y
+quantised by spacing) purely so suppression's own top-bias still means something. `NEIGHBOR_RADIUS_
+FACTOR` (how far to search for Voronoi-relevant neighbours) MEASURED at 2 through 8 on a 9x12 board
+-- identical coverage/overlap at every value tested, so 3 is kept (margin without the wasted
+candidate-filtering a larger factor cost for no geometric gain).
+
+**Tests:** `tests/bricks-geometry.test.js` (new, 10 tests: `clipToHalfPlane` direct coverage,
+`roundPolygonCorners` incl. a MUTATION check proving the tangent clamp is load-bearing -- without it
+an oversized radius on a small shape self-intersects). `tests/bricks-library.test.js` (Set 3's own
+new shape). Smoke-verified via scratch probes (62 stones on a 9x12 board, 0% overlap via grid
+sampling, deterministic, 6ms) -- no dedicated fieldstone-layout test file yet (an honest gap, not
+silent: the 3 new real-geometry test files below exercise the SHARED clip/round/board-boundary
+primitives fieldstone.js itself is built from, just not fieldstone.js's own full pipeline directly).
+
+### de's finding #1: Wall overhangs the board edge (bond.js)
+
+de traced Fred's own review finding ("Wall's own brick fill overhangs past the board's edges") to
+`bond.js`'s own documented simplification: a cell kept WHOLE when its centroid is inside the board,
+dropped otherwise -- a cell whose centroid is inside but far edge extends past the boundary used to
+be kept whole and hang over. Fred: cut it, don't drop or hang it. New `geometry.js` export
+`clipPolygonToBoard(poly, boardOutline, cellRefPoint)`: an EXACT per-edge half-plane cut for a
+convex board (every real board so far), bond.js's own prior keep-or-drop for a genuinely concave one
+(full concave polygon clipping is out of scope, declared not silent). `bond.js` now clips every
+cell's own polygon to this instead of the old centroid-only keep/drop, while still computing
+adjacency/courseIndex from the cell's own UNCLIPPED grid centre (architecturally safe: pieces.js/
+suppression.js only ever read `cx`/`cy`/`courseIndex`/`neighbors`, never the stored polygon).
+
+**A real bug found building this, by my own new regression test:** the FIRST version of
+`clipPolygonToBoard` used the cell's OWN centre as the per-edge "which side is interior" reference --
+correct for a cell mostly inside the board, WRONG for a cell mostly/entirely past the edge (its own
+centre is ALSO outside, so using it flips entire edges to keep the exterior side instead). MEASURED:
+a brick left 0.635in past the board edge, completely unclipped. Fixed by using the BOARD's own
+centroid instead (always safely interior for a convex polygon -- a uniform average of a convex
+shape's own vertices can never fall outside it) for the per-edge reference, keeping `cellRefPoint`
+only for the concave fallback's own keep-or-drop decision. MUTATION-TESTED (reverted to the buggy
+reference, confirmed the new regression test catches it, restored).
+
+**Tests:** `tests/bricks-fill-shape.test.js` -- de's own exact repro (`bricksFillShape` on a plain
+7x9 rect, no frame) as a dedicated "no point ever lands outside the board" test; the pre-existing
+"never stretches a brick" test updated for cells now legitimately cut at the edge (checks only
+FULL-SIZE cells, area >= 99.5% of nominal, for the ratio invariant).
+
+### de's finding #2 + the advisor's "radial joints": wedge gaps and self-intersecting spikes on
+### concave curves (along-path.js)
+
+de, after fixing the frame's own curve-fanning adapter bug (not this item -- editor-brick-tool.js,
+fb-app branch): "on the hourglass template's two concave waist arcs, the Frame band fans out as a
+sunburst with wedge-shaped gaps... wider than the grout -- and the bricks themselves poke out as
+spikes." Root cause: ordinary (non-corner) joints were placed by PLAIN, INDEPENDENT local-
+perpendicular offsets at each brick's own start/end -- correct on a straight/gentle run, but on a
+TIGHT concave bend this breaks two ways: the band's own centreline pitch doesn't match how much
+shorter the band's own INNER edge gets over that span, so consecutive bricks' inner corners
+progressively converge (self-intersect) while their outer corners diverge (the wedge gap); AND a
+brick whose own halfWidth exceeds the local radius of curvature can self-intersect entirely alone.
+REPRODUCED directly on the real T1 hourglass frame band (3 self-intersecting bricks per concave run,
+up to 0.85% overlap, ~24-26% uncovered band area, MEASURED before the fix).
+
+**Fix:** generalised item 73(a)'s own corner-mitre technique (proven: "a half-plane clip of a simple
+polygon is always simple") to EVERY joint, not just declared corners. Every brick is now built the
+SAME way regardless of what bounds it: oversized (`extrapolatedPointAt`), then clipped to
+`mitreLineAt`'s own line evaluated EXACTLY at its own start/end arc-length -- which, at an ordinary
+smooth-curve point, IS simply the local RADIAL line (`mitreLineAt`'s general definition doesn't care
+whether the point is a declared corner), so two bricks sharing a joint always clip to the IDENTICAL
+line and meet exactly, however tight the curvature. On a dead-straight run the clip is a no-op (the
+brick's own corners already sit exactly on that line) -- a strict generalisation, not a behaviour
+change, for every shape the old code already handled (confirmed: the full pre-existing suite stayed
+green through this change with zero edits). The older "any nearby DECLARED corner within
+MITRE_REACH" clip is KEPT as a second, mostly-redundant-in-theory safety net (a chain-bounding
+argument says every piece is already tightly bounded by its own immediate neighbours) -- cheap
+insurance, not removed, since one edge case below proved that argument has a real hole.
+
+**Measured after the fix:** T1 7x9/12x6, 0 self-intersecting bricks (down from 3 each), clean
+visual fan on both waist sides (`shots/seatA/item74_t1_frame_fixed.png` vs the original bug,
+`shots/seatC/f35item1_frame_1366.png`).
+
+### The advisor's "half bricks in voids": declared FILL_FRACTIONS, no arbitrary cut sizes
+
+Fred (via advisor), refined over 2 messages: void-filling pieces are declared fractions of a whole
+piece -- `library.js`'s new `FILL_FRACTIONS = [1, 2/3, 1/2, 1/3]` -- never an arbitrary cut length.
+New `along-path.js` helper `planPieceLengths(runLength, pitch, nominalJoint, fractions)`: as many
+WHOLE pieces as fit, then exactly ONE final piece sized to the nearest declared fraction (not
+"whatever's left"); the residual mismatch is absorbed by slightly widening/narrowing EVERY joint in
+that run (never a piece's own length) -- real masonry courses do exactly this. The run-walking loop
+now draws each piece's own length from this precomputed schedule instead of a fixed `pitch`,
+otherwise unchanged -- the actual CUT at a non-square edge is still the SAME mitre-line clip above
+("pick the piece that reaches the edge, then clip it along the edge line" -- the advisor's own later
+clarification, confirming the clip mechanism already does this correctly; the fraction schedule only
+decides each piece's own nominal size/position).
+
+**Tests:** `tests/bricks-along-path.test.js`, `tests/bricks-scale-grout.test.js` -- both had an
+exact-joint-width assumption that the new (intentional) per-run joint redistribution breaks;
+rewritten to check every brick's own length is a declared fraction, joints stay within a bounded
+band of the nominal (not exactly equal to it), and exactly one brick per run is non-full-length.
+
+### Real-template verification (T1, T12) + a found-and-flagged adapter bug
+
+New `tests/bricks-real-template-contours.test.js`: drives `frameContourSilhouette` directly (DOM-
+free, same technique `frame-parity-app.test.js` already uses) on T1 (hourglass, concave waist) and
+T12 (tapered) at 7x9, feeding the REAL computed geometry through `bricksContourBands` -- no
+synthetic stand-in. Checks: every brick simple, no substantial pairwise overlap (<15%, a documented
+small known residual -- see below), no gap between consecutive bricks wider than ~2 grout widths.
+
+**A genuine, separate bug found and flagged (NOT fixed here -- it's the adapter's, not core/
+bricks'):** `sil.corners` (`frameContourSilhouette`'s own declared field, via
+`declaredMiterJointIndices`) uses outlineDefects' OWN "index i = the joint BETWEEN primitive i and
+primitive i+1" convention (confirmed directly against outlineDefects' own `notTangent` check) -- but
+`primitivesToPolyline` (both a local test copy here AND the real one on the fb-app branch,
+editor-brick-tool.js, confirmed byte-identical) marks a corner index `i` as "the START of primitive
+i" = the joint BEFORE primitive i -- one position off. MEASURED directly: T1 7x9's raw `sil.corners`
+fed unmodified left a real, visible gap at the board's own bottom-left corner
+(`shots/seatA/item74_t1_offbyone_bug.png`); shifting every index by `+1` closed it exactly
+(`shots/seatA/item74_t1_offbyone_fixed.png`), with every OTHER corner still landing cleanly (T1's
+own high symmetry means the un-shifted indices mostly still land on SOME real corner, just the wrong
+one of an equivalent pair -- why only one of four corners visibly broke, not all four). This test
+file applies that `+1` locally (documented, with a MUTATION check proving the correction matters)
+so it verifies core/bricks' OWN "corners only at declared corner indices" contract in isolation from
+the adapter's own separate bug. Reported directly to de via cross-session message.
+
+**A known, bounded residual, documented rather than silently tolerated:** a piece several positions
+from a corner but still within `MITRE_REACH` gets an extra corner-line clip to avoid overlapping the
+ADJACENT run's own early piece -- correct and necessary -- but that piece's own immediate
+neighbour's own ORDINARY joint line doesn't know about that extra clip, so a small, joint-scale
+triangular notch (bounded by roughly one joint width) can appear where the two interact. MEASURED on
+T12's own waist: up to ~10% pairwise overlap on one small triangle pair (vs the original pre-fix
+bug's own 30-80%). A real fix needs each piece's own clip to be aware of its neighbour's OWN
+resulting shape -- a materially bigger redesign than independent half-plane clipping -- tracked, not
+papered over, and within the advisor's own stated tolerance ("no void wider than grout").
+`tests/bricks-contour-bands.test.js`'s own former "90% coverage" corner test (item 73a's own) is
+replaced with a direct max-void-WIDTH measurement matching the advisor's own newer, sharper
+criterion (a percentage can't distinguish "one joint-sized notch" from "many small gaps" the way a
+width measurement can); its own grid-sampling (here and in the overlap test) switched to CELL-CENTRE
+points after MEASURING that edge-inclusive grid lines land exactly on a shared mitre seam between
+two legitimately-adjacent (zero true overlap, confirmed via exact Sutherland-Hodgman intersection)
+pieces often enough to misread as a false "overlap"/"void".
+
+**Files:** `core/bricks/along-path.js` (uniform joint-mitre clipping, `planPieceLengths`),
+`core/bricks/geometry.js` (`clipToHalfPlane` promoted from along-path.js, new `isConvex`,
+`clipPolygonToBoard`, `roundPolygonCorners`), `core/bricks/layouts/bond.js` (edge clipping via
+`clipPolygonToBoard`), `core/bricks/layouts/fieldstone.js` (new), `core/bricks/fill-shape.js`
+(registers the fieldstone layout, passes `seed` to layout functions), `core/bricks/library.js`
+(Set 3 White Rocks, `FILL_FRACTIONS`), `core/bricks/index.js` (new exports); `data/bricks/stone_*.jpg`
+(10 new); `tests/bricks-geometry.test.js` (new), `tests/bricks-real-template-contours.test.js`
+(new), `tests/bricks-along-path.test.js`, `tests/bricks-contour-bands.test.js`,
+`tests/bricks-fill-shape.test.js`, `tests/bricks-library.test.js`, `tests/bricks-scale-grout.test.js`,
+`tests/bricks-zones.test.js` (all updated for the new, intentional behaviour).
+
+**Not done this turn (item 74a, still open):** the adapter's own `sampleDetailAt` -- canvas-loading
+the JPEG samples, de-lighting via high-pass, feeding `surfaceShare` of the relief budget -- and
+making chips visibly show in a preview. The curved-contour work (de's 2 findings + the advisor's
+radial-joint/fraction-piece asks) consumed this entire turn; (a) is next.
+
+Full suite: 194 files / 3583 tests green (vitest).

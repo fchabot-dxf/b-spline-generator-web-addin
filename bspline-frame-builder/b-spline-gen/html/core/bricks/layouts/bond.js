@@ -17,12 +17,17 @@
  * hands back here (Fred/the advisor: "nothing in suppression/clumping/frame/pieces assumes
  * rectangles beyond the bond layout itself").
  *
- * Edge treatment (a declared simplification, not full polygon clipping): a cell is kept only when
- * its own CENTROID falls inside `boardOutline` -- whole bricks, dropped (not cut/stretched) at the
- * board edge. `boardOutline` can be concave (an hourglass waist, etc.), which is why this uses
- * ray-cast point-in-polygon rather than a convex clip.
+ * Edge treatment, H23 item 74 (de, F35 item 1 review: "a brick crossing the edge should be CUT,
+ * not dropped or left hanging"): every cell is clipped to `boardOutline` via geometry.js's own
+ * clipPolygonToBoard -- an EXACT cut for a convex board (every real board so far), never
+ * stretched (a cut-down brick's own remaining shape is still its true physical size, just
+ * trimmed, same as a real last-brick-in-a-row cut to fit a wall) -- with `boardOutline`'s own
+ * documented concave fallback (keep WHOLE or drop, the prior behaviour) when it isn't convex.
+ * Adjacency/course assignment below still uses each cell's own UNCLIPPED grid centre (cx/cy) --
+ * clipping only trims the stored polygon, never the logical grid position neighbours/suppression
+ * reason about.
  */
-import { pointInPolygon, rectPolygon } from '../geometry.js';
+import { rectPolygon, clipPolygonToBoard } from '../geometry.js';
 
 const BOND_KINDS = {
   running: { stagger: true, rotated: false },
@@ -106,11 +111,11 @@ export function bondLayout(boardOutline, set, zones) {
   for (let c = 0; c < courses.length; c++) {
     for (let k = 0; k < courses[c].length; k++) {
       const cell = courses[c][k];
-      const centroid = { x: cell.cx, y: cell.cy };
-      if (!pointInPolygon(centroid.x, centroid.y, boardOutline)) { idGrid[c].push(-1); continue; }
+      const clipped = clipPolygonToBoard(cell.polygon, boardOutline, { x: cell.cx, y: cell.cy });
+      if (clipped.length < 3) { idGrid[c].push(-1); continue; } // fully outside, or clipped to a degenerate sliver
       const id = nextId++;
       idGrid[c].push(id);
-      cells.push({ id, polygon: cell.polygon, courseIndex: c, colIndex: k, cx: cell.cx, cy: cell.cy, neighbors: {} });
+      cells.push({ id, polygon: clipped, courseIndex: c, colIndex: k, cx: cell.cx, cy: cell.cy, neighbors: {} });
     }
   }
   const byId = new Map(cells.map((c) => [c.id, c]));

@@ -16,13 +16,14 @@
  * covering the whole shape, i.e. the original pre-zones behaviour.
  */
 import { bondLayout } from './layouts/bond.js';
+import { fieldstoneLayout } from './layouts/fieldstone.js';
 import { assignPieces } from './pieces.js';
 import { computeSuppressedCells } from './suppression.js';
 import { assignSamples } from './samples.js';
 import { pointInPolygon } from './geometry.js';
 import { PIECE_CATALOGUE, enabledPieces, scaledSet } from './library.js';
 
-const LAYOUTS = Object.freeze({ bond: bondLayout });
+const LAYOUTS = Object.freeze({ bond: bondLayout, fieldstone: fieldstoneLayout });
 
 /**
  * @param {{x:number,y:number}[]} polygon — closed outer polygon, board inches
@@ -46,7 +47,7 @@ export function bricksFillShape(polygon, holes, opts) {
 
   const layoutFn = LAYOUTS[set.layout];
   if (!layoutFn) return { bricks: [] };
-  const { cells: allCells } = layoutFn(polygon, set, opts.zones);
+  const { cells: allCells } = layoutFn(polygon, set, opts.zones, seed);
   const cells = (holes && holes.length)
     ? allCells.filter((c) => !holes.some((h) => pointInPolygon(c.cx, c.cy, h)))
     : allCells;

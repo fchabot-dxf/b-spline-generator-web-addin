@@ -18,15 +18,37 @@ function bbox(polygon) {
 }
 
 describe('bricksFillShape', () => {
-  it('never stretches a brick: every cell keeps the set\'s own length/height ratio, on two different board sizes', () => {
+  it('never stretches a brick: every FULL-SIZE cell keeps the set\'s own length/height ratio, on two different board sizes', () => {
     const expectedRatio = SET.brickLengthIn / SET.brickHeightIn;
+    const fullArea = SET.brickLengthIn * SET.brickHeightIn;
     for (const [w, h] of [[6, 9], [9, 12]]) {
       const { bricks } = bricksFillShape(rect(w, h), null, { set: SET, seed: 1 });
       expect(bricks.length).toBeGreaterThan(0);
+      let checked = 0;
       for (const b of bricks) {
         const { w: bw, h: bh } = bbox(b.polygon);
+        // H23 item 74 (de): a brick crossing the board edge is now CUT to it, not kept whole -- its
+        // own bbox ratio legitimately differs there (a cut, not a stretch). Only full-size (uncut)
+        // cells are checked here, identified by bbox area close to a full brick's own.
+        if (bw * bh < fullArea * 0.995) continue;
+        checked++;
         const ratio = bw / bh;
         expect(Math.abs(ratio - expectedRatio) / expectedRatio).toBeLessThan(0.02);
+      }
+      expect(checked).toBeGreaterThan(0); // not vacuous -- most cells on a 6-9in board are full-size
+    }
+  });
+
+  it('H23 item 74 (de, exact repro): no brick point ever lands outside the board -- edges are CUT, not left hanging', () => {
+    const board = rect(7, 9);
+    const { bricks } = bricksFillShape(board, null, { set: SET, seed: 1 });
+    expect(bricks.length).toBeGreaterThan(0);
+    for (const b of bricks) {
+      for (const p of b.polygon) {
+        expect(p.x).toBeGreaterThanOrEqual(-1e-9);
+        expect(p.x).toBeLessThanOrEqual(7 + 1e-9);
+        expect(p.y).toBeGreaterThanOrEqual(-1e-9);
+        expect(p.y).toBeLessThanOrEqual(9 + 1e-9);
       }
     }
   });

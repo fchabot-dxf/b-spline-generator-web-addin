@@ -52,10 +52,10 @@
  * branching case (P2's own ribbon/intersection-graph engine) is deliberately not built here, per
  * the worker/advisor gate on item 72.
  */
-import { cumulativeLengths, pointAtArcLength } from './geometry.js';
+import { cumulativeLengths, pointAtArcLength, clipToHalfPlane } from './geometry.js';
 import { mulberry32, seedFor } from './rng.js';
 import { valueNoise2 } from './noise2d.js';
-import { scaledSet } from './library.js';
+import { scaledSet, FILL_FRACTIONS } from './library.js';
 
 function closeLoop(path) { return path.concat([path[0]]); }
 
@@ -159,31 +159,50 @@ function mitreLineAt(path, cum, s, total, closed) {
   return { point: p, dirX: dx / dlen, dirY: dy / dlen };
 }
 
-/** Clip `poly` to the half-plane of `line` containing `keepRef` (a point known to belong on the
- *  side that must survive) -- a plain single-line Sutherland-Hodgman clip. */
-function clipToHalfPlane(poly, line, keepRef) {
-  const side = (p) => line.dirX * (p.y - line.point.y) - line.dirY * (p.x - line.point.x);
-  const keepSign = Math.sign(side(keepRef)) || 1;
-  const s = (p) => side(p) * keepSign;
-  const out = [];
-  for (let i = 0; i < poly.length; i++) {
-    const cur = poly[i], next = poly[(i + 1) % poly.length];
-    const curS = s(cur), nextS = s(next);
-    if (curS >= -1e-9) out.push(cur);
-    if ((curS >= -1e-9) !== (nextS >= -1e-9)) {
-      const t = curS / (curS - nextS);
-      out.push({ x: cur.x + (next.x - cur.x) * t, y: cur.y + (next.y - cur.y) * t });
-    }
-  }
-  return out;
-}
-
 function pickSample(set, seed, purpose, id) {
   if (!set.samples || !set.samples.length) return { sampleId: null, flip: false };
   const sampleRng = mulberry32(seedFor(seed, purpose + '-sample', id));
   const sample = set.samples[Math.floor(sampleRng() * set.samples.length)];
   const flip = mulberry32(seedFor(seed, purpose + '-flip', id))() < 0.5;
   return { sampleId: sample.id, flip };
+}
+
+/**
+ * H23 item 74 (Fred via advisor): plan a single corner-bounded run's own piece lengths -- as many
+ * WHOLE pieces (length = `pitch`) as fit, then exactly ONE final piece sized to the best-matching
+ * declared FILL_FRACTIONS entry (never an arbitrary leftover length) -- "no void wider than grout,
+ * no arbitrary cut sizes." The small mismatch between that chosen fraction and the run's own true
+ * remaining length is absorbed by slightly WIDENING OR NARROWING every joint in THIS run (never a
+ * piece's own length) -- real masonry courses do exactly this rather than cut an odd-sized brick.
+ * A run too short for even the smallest declared fraction becomes a single piece spanning the
+ * whole run (still a real, clip-correct brick, just not matching a named fraction -- there is no
+ * better option shorter than the run itself).
+ *
+ * @param {number} runLength — arc-length of the run (straight or curved -- this never looks at shape)
+ * @param {number} pitch — one WHOLE piece's own length (brickLengthIn or brickHeightIn, by orientation)
+ * @param {number} nominalJoint — the set's own declared grout.widthIn
+ * @param {number[]} fractions — FILL_FRACTIONS, descending
+ * @returns {{lengths:number[], jointWidth:number}} lengths.length - 1 joints, each `jointWidth`
+ */
+function planPieceLengths(runLength, pitch, nominalJoint, fractions) {
+  const minFraction = Math.min(...fractions);
+  if (runLength < pitch * minFraction - 1e-9) {
+    return { lengths: [runLength], jointWidth: nominalJoint };
+  }
+  let wholeCount = Math.max(0, Math.floor((runLength + nominalJoint) / (pitch + nominalJoint)));
+  // back off whole pieces until what's left can be covered by at least the smallest fraction
+  while (wholeCount > 0 && runLength - wholeCount * (pitch + nominalJoint) < pitch * minFraction - 1e-9) wholeCount--;
+  const remainder = runLength - wholeCount * (pitch + nominalJoint);
+  let bestFraction = fractions[0], bestErr = Infinity;
+  for (const f of fractions) {
+    const err = Math.abs(remainder - f * pitch);
+    if (err < bestErr) { bestErr = err; bestFraction = f; }
+  }
+  const lengths = [...Array(wholeCount).fill(pitch), bestFraction * pitch];
+  const nJoints = wholeCount; // one joint after each whole piece; the final piece reaches the run's own true end directly
+  const idealTotal = lengths.reduce((a, b) => a + b, 0) + nJoints * nominalJoint;
+  const jointWidth = nJoints > 0 ? Math.max(0, nominalJoint + (runLength - idealTotal) / nJoints) : nominalJoint;
+  return { lengths, jointWidth };
 }
 
 /**
@@ -297,39 +316,83 @@ export function bricksAlongPath(polyline, opts) {
   };
 
   // 'bricks' profile: individual bricks, one per pitch slot, each its own joint, walked in CORNER-
-  // BOUNDED RUNS (a run boundary is a real corner unless it's an OPEN path's own true end). A
-  // run's own FIRST/LAST brick, when that boundary is a real corner, is built as an END BRICK --
-  // its near/far edge EXTRAPOLATED past the corner (extrapolatedPointAt) rather than clamped to
-  // it -- so after the SAME mitre-line clip every brick gets, it reaches exactly the true mitre
-  // point with no separate filler piece needed (see this file's own header).
+  // BOUNDED RUNS (a run boundary is a real corner unless it's an OPEN path's own true end -- a
+  // DECLARED corner must always land exactly on a brick boundary, which is why the walk restarts
+  // its own pitch phase at each one, never just pitches straight through).
+  //
+  // H23 item 74 (de, F35 item 1 review, two findings on T1's own concave waist): regular (non-
+  // corner) joints used to be placed by PLAIN, INDEPENDENT local-perpendicular offsets at each
+  // brick's own s/sEnd -- correct on a straight or gently-curved run, but on a TIGHT concave bend
+  // this breaks two ways at once: (1) the band's own CENTRELINE pitch doesn't match how much
+  // shorter the band's own INNER edge gets over that same span, so consecutive bricks' inner
+  // corners progressively converge (overlap/self-intersect) while their outer corners diverge
+  // (an ever-widening wedge gap, wider than the grout) -- REPRODUCED on the real T1 hourglass
+  // frame band (3 self-intersecting bricks per run on the waist, ~0.3-0.9% overlap, ~24-26%
+  // uncovered band area, MEASURED). (2) a brick whose own halfWidth exceeds the local radius of
+  // curvature there can self-intersect entirely on its own.
+  //
+  // FIX: generalize item 73(a)'s own corner-mitre technique (proven: "a half-plane clip of a
+  // simple polygon is always simple") to EVERY joint, not just declared corners. Every brick is
+  // now built the SAME way regardless of what kind of joint bounds it: oversized (extrapolatedPointAt,
+  // same as a corner's own end brick), then clipped to mitreLineAt's own line evaluated EXACTLY at
+  // its own s (leading) and sEnd (trailing) -- which, for an ordinary smooth-curve point, IS simply
+  // the local RADIAL line (perpendicular to the path's own local tangent there -- mitreLineAt's
+  // general definition, declared corner or not), so two bricks sharing a joint always clip to the
+  // IDENTICAL line and meet EXACTLY, with no gap and no possibility of crossing, however tight the
+  // local curvature -- the same guarantee item 73(a) already proved for declared corners, now
+  // covering every joint a curve can produce. On a dead-straight run this clip is a no-op (the
+  // brick's own corners already sit exactly on that line), so this is a strict generalization, not
+  // a behaviour change, for every shape the old code already handled correctly.
+  // mitreLineAt returns null ONLY at a genuinely open path's own true start/end (no second side to
+  // bisect against) -- there, nothing to clip against, so that one edge stays PLAIN (unextended),
+  // same as the path's own raw end always has been.
+  // The broader "any nearby DECLARED corner within MITRE_REACH" clip (below) is KEPT as a second,
+  // now-redundant-in-theory safety net: with every joint already clipping a brick tight against its
+  // own immediate neighbours, a brick several positions from a corner is already fully bounded by
+  // that neighbour chain and can't reach the corner's own territory -- but the extra clip costs
+  // little and is a no-op once a brick is already correctly bounded, so it stays as insurance
+  // against anything this chain-bounding argument hasn't foreseen.
+  //
+  // H23 item 74 (Fred via advisor, "add half bricks in voids... no arbitrary cut sizes"): a run's
+  // own length rarely divides evenly by `pitch` -- planPieceLengths (above) plans each run as whole
+  // pieces plus exactly one final piece sized to the nearest declared FILL_FRACTIONS entry, residual
+  // mismatch absorbed into that run's own joint width, rather than leaving the old "whatever's
+  // left" arbitrary sliver as the final piece. The actual CUT at a non-square edge (an angled
+  // corner, a curve) is still the mitre-line clip above/below -- "pick the piece that reaches the
+  // edge, then clip it along the edge line" -- the fraction schedule only decides each piece's own
+  // nominal size/position, never its final clipped shape.
   const bounds = [0, ...cornerS, total];
   for (let k = 0; k < bounds.length - 1; k++) {
     const runStart = bounds[k], runEnd = bounds[k + 1];
     if (runEnd - runStart < 1e-6) continue;
-    const startIsCorner = k > 0 || closed;
-    const endIsCorner = k < bounds.length - 2 || closed;
+    const { lengths: pieceLengths, jointWidth } = planPieceLengths(runEnd - runStart, pitch, J, FILL_FRACTIONS);
 
-    let s = runStart, guard = 0, isFirst = true;
+    let s = runStart, guard = 0, pieceIdx = 0;
     while (s < runEnd - 1e-6 && guard++ < 10000) {
-      const sEnd = Math.min(s + pitch, runEnd);
-      const isLast = sEnd >= runEnd - 1e-6;
+      const pieceLength = pieceLengths[Math.min(pieceIdx, pieceLengths.length - 1)];
+      const sEnd = Math.min(s + pieceLength, runEnd);
 
-      const leftStart = (isFirst && startIsCorner)
+      const startLine = mitreLineAt(path, cum, s, total, closed);
+      const endLine = mitreLineAt(path, cum, sEnd, total, closed);
+
+      const leftStart = startLine
         ? extrapolatedPointAt(path, cum, s, total, closed, halfWidth, 'out', -EXTEND_BY)
         : plainPointAt(path, cum, s, total, closed, halfWidth, 'out');
-      const rightStart = (isFirst && startIsCorner)
+      const rightStart = startLine
         ? extrapolatedPointAt(path, cum, s, total, closed, -halfWidth, 'out', -EXTEND_BY)
         : plainPointAt(path, cum, s, total, closed, -halfWidth, 'out');
-      const leftEnd = (isLast && endIsCorner)
+      const leftEnd = endLine
         ? extrapolatedPointAt(path, cum, sEnd, total, closed, halfWidth, 'in', EXTEND_BY)
         : plainPointAt(path, cum, sEnd, total, closed, halfWidth, 'in');
-      const rightEnd = (isLast && endIsCorner)
+      const rightEnd = endLine
         ? extrapolatedPointAt(path, cum, sEnd, total, closed, -halfWidth, 'in', EXTEND_BY)
         : plainPointAt(path, cum, sEnd, total, closed, -halfWidth, 'in');
 
       let polygon = [leftStart, leftEnd, rightEnd, rightStart];
       const mid = (s + sEnd) / 2;
       const refPoint = pointAtArcLength(path, cum, mid, closed);
+      if (startLine && polygon.length >= 3) polygon = clipToHalfPlane(polygon, startLine, refPoint);
+      if (endLine && polygon.length >= 3) polygon = clipToHalfPlane(polygon, endLine, refPoint);
       for (const { cs, line } of mitreLines) {
         if (polygon.length < 3) break;
         if (arcDistanceToCorner(mid, cs) > MITRE_REACH) continue;
@@ -342,8 +405,8 @@ export function bricksAlongPath(polyline, opts) {
         const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', id))() * 2 - 1) * (set.heightJitterIn || 0);
         bricks.push({ id: `${pieceId}-${id}`, polygon, pieceId, sampleId, flip, heightOffset });
       }
-      s = sEnd + J;
-      isFirst = false;
+      s = sEnd + jointWidth;
+      pieceIdx++;
     }
   }
   return { bricks };

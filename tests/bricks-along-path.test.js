@@ -23,17 +23,30 @@ describe('bricksAlongPath — "bricks" profile (default)', () => {
   it('lays bricks end to end along a straight line at pitch+joint spacing, in order', () => {
     const { bricks } = bricksAlongPath(straight, { set: SET, orientation: 'stretcher', seed: 1 });
     expect(bricks.length).toBeGreaterThan(5);
+    // H23 item 74 (Fred via advisor, "no arbitrary cut sizes"): the run's own length (10in) doesn't
+    // divide evenly by pitch+joint, so every joint in THIS run is slightly widened (vs the set's own
+    // declared grout.widthIn) to absorb that mismatch, and the FINAL brick is sized to the nearest
+    // declared FILL_FRACTIONS entry -- never an arbitrary leftover. Joints stay close to the
+    // declared width (a small, bounded adjustment, not an arbitrary one).
     for (let i = 1; i < bricks.length; i++) {
       const prevBox = bbox(bricks[i - 1].polygon), curBox = bbox(bricks[i].polygon);
-      // consecutive bricks: a real joint gap of jointWidthIn between them (not back to back)
-      expect(curBox.minX - prevBox.maxX).toBeCloseTo(SET.grout.widthIn, 3);
+      const joint = curBox.minX - prevBox.maxX;
+      expect(joint).toBeGreaterThan(SET.grout.widthIn * 0.5);
+      expect(joint).toBeLessThan(SET.grout.widthIn * 1.5);
     }
-    // every brick except possibly the last (clipped to the path's own remaining length) is a full
-    // brickLengthIn long -- never stretched/shrunk to fit the pitch.
-    for (let i = 0; i < bricks.length - 1; i++) {
-      const box = bbox(bricks[i].polygon);
-      expect(box.maxX - box.minX).toBeCloseTo(SET.brickLengthIn, 3);
+    // every brick's own length is a declared FILL_FRACTIONS multiple of brickLengthIn (1, 2/3, 1/2,
+    // or 1/3) -- never an arbitrary stretch/shrink.
+    const fractionLengths = [1, 2 / 3, 1 / 2, 1 / 3].map((f) => f * SET.brickLengthIn);
+    for (const b of bricks) {
+      const box = bbox(b.polygon);
+      const len = box.maxX - box.minX;
+      expect(fractionLengths.some((fl) => Math.abs(len - fl) < 1e-3), `brick length ${len} is not a declared fraction`).toBe(true);
     }
+    // exactly one brick (the final one) is NOT full-length -- every run here ends with precisely one
+    // fractional "fill" piece, never more.
+    const fullLen = SET.brickLengthIn;
+    const nonFull = bricks.filter((b) => { const { maxX, minX } = bbox(b.polygon); return Math.abs((maxX - minX) - fullLen) > 1e-3; });
+    expect(nonFull.length).toBe(1);
   });
 
   it('orientation=soldier swaps pitch/width vs stretcher', () => {
