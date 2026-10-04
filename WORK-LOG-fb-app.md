@@ -10130,3 +10130,128 @@ Commit, push, pass back with the depth limitation named explicitly and the quest
 engine-split integration (robust for any single override, bounded for multiple deep new-pattern
 bands on a tight template) an acceptable scope line for now, or does the advisor want band-course.js
 itself made depth-robust (its own `isArcFeasible`/`primitiveLiveAtDepth` equivalent) as a follow-up?
+
+## F35 item 8, round 2: advisor correction (bricks bending on arcs, sliver corners) -- band-course.js
+## rebuilt to a 3rd architecture (direct per-piece sampling, no circle-fitting)
+
+The advisor's 1:1 review of round 1's own shots found both named defects real: on the WAIST, a single
+piece spanned ~90deg of curve (a bent strip, not a brick) with stray shards at the fillets; on the
+CORNER, piece lengths varied from 1/4 to ~4 brick lengths in one row with sliver triangles at the
+mitre. Root cause: round 1's `bandCourseBricks` sampled a brick's own outer edge at several (u,v)
+points and treated the RESULT as the brick's true shape -- correct only in the limit, visibly wrong at
+brick scale on T1's own tight (r=0.623-0.68in) shoulder fillets.
+
+**Attempt 1 (classify-run + reuse `voussoirPieces`), tried and abandoned.** Classified each
+corner-bounded run as a straight line or a true circular arc (3-point fit) and handed an arc run
+directly to `arc-voussoir.js`'s own `voussoirPieces` -- correct in principle (that's the legacy path's
+own construction), but MEASURED to fail on T1's real geometry: a tangent-based corner scan can't
+reliably tell "a true sharp corner" from "a tight true arc's own natural curvature" without threshold
+tuning that kept failing in BOTH directions (too strict: T1's own tight fillet produced 78 false
+corners, one per scan step; too lenient, after re-deriving the threshold from a wrong
+`MIN_FEATURE_RADIUS_IN=0.05`: merged T1's genuinely distinct 0.623in and 0.68in arcs into one wrong
+circle fit, down to only 4 corners total, losing real transitions). Even after re-measuring T1's own
+real smallest radius (0.623in, confirmed by dumping its 12 raw primitives directly, not guessed) and
+retuning to `MIN_FEATURE_RADIUS_IN=0.2`, a SEPARATE junction-sampling artifact remained:
+`bandFrameAt`'s own boundary-at-depth construction shows a brief localised irregularity right at a
+primitive junction, producing a tight CLUSTER of several false corners within ~0.3-0.4in of a real
+fillet/waist boundary -- needed a `CORNER_MERGE_IN` de-duplication (0.3, widened to 0.5) on top of the
+threshold retune. T1 still showed persistent overlaps (hundreds, falling to tens, but never zero)
+across every pattern even after several fix iterations -- this whole classify-and-fit approach was
+fundamentally fragile on T1's real multi-primitive, junction-artifact-prone silhouette, not just
+under-tuned.
+
+**Attempt 2 / final architecture: never classify a run's shape, never fit a circle.** Abandoned
+`classifyRun`/`fitCircle`/`buildArcRun`/`voussoirPieces` entirely. Each PIECE is now built directly
+from its own two outer-edge `bandFrameAt` samples (exact, no subdivision -- a piece can't "bend": its
+own 4 corners are exactly these two samples plus each one's own local normal for the inner corners,
+`pieceQuad`) -- `planCornerRun` (the SAME declared fill-fraction planner the legacy path's own
+`linePieces`/`voussoirPieces` use) still plans each run's own piece lengths along `u`, which is exact
+arc length regardless of what the underlying geometry actually is. Every piece (not just the very
+first/last) is clipped against BOTH its run's own end-corner mitre lines (`buildJoint` +
+`clipToHalfPlane`, the legacy path's own build-then-clip convention) -- MEASURED on `soldier` (row
+depth 0.75in, far deeper than its own 0.2in pitch) that several consecutive pieces near a corner each
+reach into the corner's own true mitre reach, not just the one piece immediately at it; a piece that
+never reaches a mitre line is simply returned unchanged (always a safe no-op). Building the FULL naive
+quad first and clipping after (not substituting the corner's mitre point directly into a piece's own
+inner corner) matters: substitution was MEASURED to produce a long "kite" overlapping un-mitred
+neighbours whenever row depth exceeds pitch, since clipping can only ever REMOVE material past the
+true mitre line while substitution can manufacture overlap. This change alone cut T1's own overlap
+count from the hundreds (attempt 1) down to a handful, and dramatically simplified the file (the
+`classifyRun`/`fitCircle`/`buildArcRun`/`resolveArcSpan` chain is gone).
+
+**A boolean "do these two pieces overlap" flag can't tell a real defect from float-epsilon noise at a
+shared mitre seam** -- the SAME lesson `bricks-contour-bands.test.js` already recorded twice this
+session. Added exact AREA-based overlap measurement to the test file (`overlapArea`/`clipConvex`, a
+Sutherland-Hodgman convex clip) and switched every per-pattern assertion to it. First pass showed
+`soldier` at 3.4 sq in of real overlap (more than one whole brick) -- a genuine, bounded, NOT yet
+closed limitation (deep row vs shallow pitch, same root cause named above), reported honestly as a
+named exception rather than silently loosened into the general tolerance. Every other pattern measured
+small at this point (max single-pair ~0.01 sq in).
+
+**Two bugs found only by re-reading my own numbers, not by eyeballing a screenshot.** (1) My own test
+harness's `clipConvex` had a bug: a CLIP polygon with a repeated vertex (legitimate on a piece clipped
+to a thin sliver near a corner) makes that edge zero-length, so its own half-plane test returns true
+for every point, silently turning that edge into a no-op and letting the "overlap" default to the
+subject's own full area -- this alone had been reporting a fabricated 1.68 sq in "defect" on the plain
+square's own header pattern (its REAL overlap there is 0.000003 sq in). Fixed by skipping any clip edge
+under 1e-9 long. (2) Kept chasing a real-looking defect on the SQUARE fixture's "mostly whole bricks"
+check (`fullLengthCount` stuck at 24/52, failing a `>half` assertion) before realising the check itself
+only ever compared x-extent to `brickLengthIn` and y-extent to `brickHeightIn` -- correct for a
+horizontal run, but every brick on the square's own LEFT/RIGHT (vertical) edges has its long axis along
+y, so the check was silently miscounting half the population as "not full length" regardless of the
+engine's own real output. Fixed by comparing the extents' own min/max instead of which axis they sit
+on. Neither of these was a band-course.js bug -- both were test-harness bugs that had been producing
+confident, wrong numbers.
+
+**A third, genuinely new engine defect, found only by looking at a real 1:1 render, not by trusting the
+area-overlap numbers alone.** Area-overlap measurement catches OVERLAP; it is structurally blind to a
+GAP (missing coverage), which is a different failure mode entirely. Rendering T1's own real header+
+flemish output flat-coloured at a declared 96px/in (1in == 96 CSS px, the W3C reference pixel, at
+deviceScaleFactor 1 -- the only "1:1" convention this app has; confirmed via a dedicated research pass
+that no existing zoom-to-actual-size mechanism exists in the editor itself) showed a persistent,
+visible white SLIT cutting radially through several header courses, confirmed present in the FILL
+alone (re-rendered with zero stroke -- the gap didn't move or shrink, ruling out a stroke/anti-alias
+artifact). Direct measurement traced it to an ISOLATED false corner at the tangent-continuous junction
+between T1's own two shoulder-fillet arcs (r=0.623 and r=0.68): `findRowCorners`'s scan measured a
+~9.5deg tangent jump over one 0.02in scan step there -- an IMPLIED local radius of ~0.12in, tighter
+than the `MIN_FEATURE_RADIUS_IN=0.2` margin the threshold had been calibrated against, so it crossed
+`CORNER_TANGENT_COS_MIN` and was wrongly scored as a real corner. Unlike the already-documented
+CLUSTER artifact (several false corners packed within a quarter-inch, caught by `CORNER_MERGE_IN`),
+this one was a LONE false positive (nearest neighbour 0.56in away, just outside the merge radius) with
+nothing to collapse into -- it survived as a real (wrong) run boundary and mitre-clipped a genuine gap
+into both flanking runs. Fixed by re-measuring this junction's own effective radius directly (~0.12in)
+and lowering `MIN_FEATURE_RADIUS_IN` to 0.1 (comfortably under it, while staying far above a true
+90-degree corner's own near-zero tangent dot product -- confirmed T1's own 4 real sharp corners are
+still found, exactly 4, nothing lost). Re-verified via the SAME re-render: the slit is gone, clean
+voussoir-style coursing the full length of the S-curve.
+
+That fix also REMOVED an accidental clip that had been quietly masking part of the already-documented
+row-to-row concave-curvature overlap (see below) -- the "bands stack without overlap" test's own
+measured total moved from 0.0498 to 0.115 sq in. Re-measured the real ceiling across the board after
+the fix (max single-pair 0.019 sq in, max total 0.115 sq in, all still the SAME named row-to-row
+effect -- confirmed zero at a single row, every time, for every pattern) and set `AREA_TOLERANCE` to
+one full brick's own area (0.15 sq in): comfortably above everything actually measured, ~23x below
+soldier's own separate 3.4 sq in limitation, so a real regression in either direction still fails
+loudly.
+
+**Final measured state per pattern on T1** (2-row band, ~0.4-1.5in depth): `header` negligible (total
+0.003 sq in, matches legacy's own float-epsilon noise floor); `stretcher`/`stack`/`flemish` small and
+bounded (max single-pair under 0.02 sq in, well under one brick's own area, concentrated at the
+concave waist's own row-to-row boundary -- confirmed zero at a single row); `soldier` a genuine,
+NOT yet closed, much larger exception (3.4 sq in, deep row vs shallow pitch) -- reported as a named
+limitation, not silently hidden inside a loosened general tolerance. Full suite green: 202 files /
+3734 tests.
+
+**Re-shot T1 corner + waist at 1:1, header + flemish only** (soldier deliberately left out of this
+specific pair of shots -- its own separate, already-named defect visually dominated an earlier 3-band
+attempt in a way that could be misread as a header/flemish problem, which would misrepresent what this
+round's fix actually targets): `shots/seatC/f35item8_corner_closeup.png` and
+`f35item8_waist_closeup.png`, overwriting round 1's own now-superseded (bending/sliver) shots. Waist:
+clean voussoir-style coursing the full S-curve, no bent strips, no gaps. Corner: consistent whole/
+fill-fraction piece lengths on both header and flemish, correctly mitred, no slivers.
+
+Commit by explicit path, push, report back to the advisor: both named defects (bending on arcs,
+sliver/varied-length corners) fixed and re-shot as asked; soldier's own separate, pre-existing
+limitation (unaffected by this round's scope) still open and named; a third defect (the isolated
+false-corner gap) found and fixed along the way, not part of the original ask but found while
+verifying the other two at 1:1.
