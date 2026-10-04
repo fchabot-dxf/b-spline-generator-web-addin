@@ -36,7 +36,8 @@
 import { inwardSignFor, cumulativeLengths, pointAtArcLength } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, boundaryAtDepth } from './primitive-ribbon.js';
-import { scaledSet } from './library.js';
+import { scaledSet, BRICK_PATTERNS } from './library.js';
+import { axisLen, courseHeightFor } from './layouts/bond.js';
 
 const ARC_TESS_STEPS = 16; // only for inwardSignFor's own tessellation -- a smoothness floor for
 // deciding which way is "inward", never a correctness requirement (ribbonPieces itself never
@@ -79,7 +80,7 @@ function enrichPrimitives(primitives, inwardSign) {
 /**
  * @param {({type:'line', p0:{x,y}, p1:{x,y}}|{type:'arc', cx:number, cy:number, r:number, theta1:number, theta2:number})[]} primitives
  *   — the closed contour's own ordered RAW primitives, depth-0 (the true board/frame outline).
- * @param {{widthIn:number, pattern:'soldier'|'stretcher', cornerStyle?:'mitre'|'butt'|'lapped'|'block'}[]} bands — outer -> inner
+ * @param {{widthIn:number, pattern:'soldier'|'stretcher'|'header'|'flemish'|'stack', cornerStyle?:'mitre'|'butt'|'lapped'|'block'}[]} bands — outer -> inner
  * @param {object} opts
  * @param {object} opts.set — a library.BRICK_SETS entry
  * @param {number} [opts.scale=1] — uniform multiplier on the set's own brick length/height (grout unaffected)
@@ -98,21 +99,49 @@ export function bricksContourBands(primitives, bands, opts) {
   let depthSoFar = 0;
   let nextId = 0;
 
+  const L = set.brickLengthIn, H = set.brickHeightIn;
+
   bands.forEach((band, bandIndex) => {
-    const pattern = band.pattern || 'stretcher';
+    const patternName = band.pattern || 'stretcher';
+    const patternDef = BRICK_PATTERNS[patternName] || BRICK_PATTERNS.stretcher;
     // T86 item 1: 'butt'/'lapped'/'block' (declared per-band, default 'mitre' -- every existing
     // preset/caller that never declares this keeps today's exact symmetric-mitre behaviour).
     const cornerStyle = band.cornerStyle || 'mitre';
-    const naturalWidth = pattern === 'soldier' ? set.brickLengthIn : set.brickHeightIn;
-    const pitch = pattern === 'soldier' ? set.brickHeightIn : set.brickLengthIn; // along-run length
-    // -- the OTHER dimension from naturalWidth (the row's own cross-width); matches
-    // along-path.js's own established `orientation==='soldier' ? brickHeightIn : brickLengthIn`.
+    // T86 item 2 (replaces de's separate band-course.js engine, parked): read the SAME declared
+    // pitch/cross axes + stagger `layouts/bond.js`'s own Wall-side rows already use (`axisLen`/
+    // `courseHeightFor`, imported not re-derived) instead of this file's own former bare
+    // `pattern==='soldier'` ternary -- soldier/stretcher keep their EXACT prior naturalWidth/pitch
+    // values (confirmed: `courseHeightFor`/`axisLen` reduce to the identical two numbers for those
+    // two patterns), header/stack now resolve correctly too (previously sized AS IF stretcher,
+    // band-course.js's own measured defect this replaces). flemish ('course-alternating') has no
+    // single pitch at all -- its own `sequence` (below) carries [L,H] instead, and `pitch` here is
+    // only the FILL-FRACTION base for its own end pieces (same role every other pattern already
+    // gives it), not a per-piece length.
+    const naturalWidth = courseHeightFor(patternDef, L, H);
+    const pitch = patternDef.kind === 'course-alternating' ? L : axisLen(patternDef.pitchAxis, L, H);
+    // the course-alternating (flemish) repeat unit: stretcher-length then header-length, exactly
+    // `layouts/bond.js`'s own `flemishRow` -- [L, H], JOINTS still handled separately by the
+    // existing jointWidth mechanism, never baked into the sequence itself.
+    const sequence = patternDef.kind === 'course-alternating' ? [L, H] : undefined;
+    const staggerFrac = patternDef.staggerFrac || 0;
     const rows = Math.max(1, Math.round(band.widthIn / naturalWidth));
     for (let row = 0; row < rows; row++) {
       const d0 = depthSoFar + naturalWidth * row, d1 = depthSoFar + naturalWidth * (row + 1);
+      const odd = row % 2 === 1;
+      // flemish: ALWAYS rotate its own 2-element sequence by one position on odd rows -- the
+      // discrete equivalent of bond.js's own hardcoded "offset by half the period" for a 2-element
+      // repeat (never gated by staggerFrac, which flemish doesn't declare at all: there is only one
+      // correct flemish stagger, not a tunable one). Every other 'course'-kind pattern instead
+      // forces its own START end piece to the declared `staggerFrac` fraction on odd rows (e.g.
+      // stretcher's own 0.5 = a real half-brick running-bond offset) -- `forcedFStart` is already
+      // one of `FILL_FRACTIONS`' own declared values, never a new kind of cut (see
+      // `planCornerRun`'s own header).
+      const rowSequence = sequence && odd ? [sequence[1], sequence[0]] : sequence;
+      const forcedFStart = !sequence && staggerFrac > 0 && odd ? staggerFrac : undefined;
       const { pieces, nextId: afterId } = ribbonPieces(
-        enriched, d0, d1, set, pattern, pitch, set.grout.widthIn,
+        enriched, d0, d1, set, patternName, pitch, set.grout.widthIn,
         seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
+        rowSequence, forcedFStart,
       );
       bricks.push(...pieces);
       nextId = afterId;

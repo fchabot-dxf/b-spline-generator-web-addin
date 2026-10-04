@@ -87,11 +87,16 @@ export function isArcFeasible(r, radialSign, halfWidth) {
  *   derived locally here. `null` (the default) applies NO clipping, identical to every existing
  *   caller's prior behaviour (along-path.js's own arc dispatch, which handles its own corners
  *   externally and never wants this).
+ * @param {number[]} [sequence] — T86 item 2: passed straight through to `planCornerRun` (see its own
+ *   header) in the SAME length units as `pitch` itself (inches, never angle) -- `pitch` is already
+ *   passed to `planCornerRun` unconverted here (only `effectiveArcLength`, the run's own total, is
+ *   ever converted from angle via `r * |dtheta|`), so `sequence` needs no conversion either.
+ * @param {number} [forcedFStart] — T86 item 2: ditto, passed straight through (a plain fraction).
  * @returns {{ pieces: Array, nextId: number }}
  */
 export function voussoirPieces(
   cx, cy, r, theta1, theta2, halfWidth, radialSign, pitch, nominalJoint, set, seed, pieceId, startId,
-  jointStart = null, jointEnd = null,
+  jointStart = null, jointEnd = null, sequence, forcedFStart,
 ) {
   const direction = Math.sign(theta2 - theta1) || 1;
   const totalArcLength = r * Math.abs(theta2 - theta1);
@@ -156,7 +161,7 @@ export function voussoirPieces(
   const loTheta = theta2 + (endProgO === null ? endProgQ : Math.min(endProgO, endProgQ)) * direction; // jointEnd's own farthest-backward reach
   const effectiveArcLength = r * Math.abs(thetaEnd - thetaStart);
   const { lengths, jointWidth } = effectiveArcLength > 1e-6
-    ? planCornerRun(effectiveArcLength, pitch, nominalJoint, FILL_FRACTIONS)
+    ? planCornerRun(effectiveArcLength, pitch, nominalJoint, FILL_FRACTIONS, sequence, forcedFStart)
     : { lengths: [], jointWidth: nominalJoint };
   const CLIP_EPS_ANGLE = Math.min(0.02 / r, MAX_EXTEND_ANGLE); // see primitive-ribbon.js's own CLIP_EPS_IN
 
