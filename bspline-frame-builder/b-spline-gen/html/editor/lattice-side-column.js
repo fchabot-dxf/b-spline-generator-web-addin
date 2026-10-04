@@ -177,8 +177,14 @@ function _hideSectionByTitle(bodyEl, title) {
  *  (the dispatch's own "any other tool panel that today opens as its
  *  own middle column") is one more entry here, not new mount/unmount
  *  code. */
+// `tab`: the editor tab (main/editor-tabs.js EDITOR_TABS id) that OWNS this mount. #editorLayersPanel
+// is also shown by other tabs (the Brick tab shows it while no brick tool is picked), and the editor
+// mode can stay 'lattice'/'shapeLattice' across a tab switch -- so a mount is scoped by tab too, or
+// the lattice Generate sits pinned where the Brick tab's own Generate appears (Fred, 2026-10-04:
+// "Generate in the Brick tab makes a lattice").
 const TOOL_PANEL_MOUNTS = {
   lattice: {
+    tab: 'artwork',
     panelId: 'editorLatticePanel',
     bodyId: 'editorLatticePanelBody',
     footerId: 'editorLatticePanelFooter',
@@ -186,6 +192,7 @@ const TOOL_PANEL_MOUNTS = {
     unprotectAllId: 'latticeUnprotectAll',
   },
   shapeLattice: {
+    tab: 'artwork',
     panelId: 'editorShapeLatticePanel',
     bodyId: 'editorShapeLatticePanelBody',
     footerId: 'editorShapeLatticePanelFooter',
@@ -276,15 +283,29 @@ function _mount(mode, layersPanelEl) {
   _mountedMode = mode;
 }
 
+// The active editor tab, mirrored from main/editor-tabs.js's 'editorTabChanged' event (editor/ never
+// imports main/). Starts at that module's own default tab.
+let _activeTab = 'artwork';
+
 function _syncMount(mode) {
   const layersPanelEl = el('editorLayersPanel');
   if (!layersPanelEl) return;
-  const desktop = _isDesktop();
-  if (_mountedMode && (_mountedMode !== mode || !desktop)) {
+  const cfg = TOOL_PANEL_MOUNTS[mode];
+  const wanted = _isDesktop() && !!cfg && cfg.tab === _activeTab;
+  if (_mountedMode && (_mountedMode !== mode || !wanted)) {
     _unmount(_mountedMode);
   }
-  if (desktop && TOOL_PANEL_MOUNTS[mode] && _mountedMode !== mode) {
+  if (wanted && _mountedMode !== mode) {
     _mount(mode, layersPanelEl);
+  }
+  // Outside its own tab a lattice tool panel stays hidden entirely: editor-ui.js shows it by MODE,
+  // and the mode can outlive a tab switch. In its tab, an unmounted panel is left to editor-ui.js
+  // (cleared inline override); a mounted one stays hidden by _mount.
+  for (const [key, c] of Object.entries(TOOL_PANEL_MOUNTS)) {
+    const panelEl = el(c.panelId);
+    if (!panelEl) continue;
+    if (c.tab !== _activeTab) panelEl.style.display = 'none';
+    else if (_mountedMode !== key) panelEl.style.display = '';
   }
 }
 
@@ -572,6 +593,10 @@ export function initLatticeSideColumn(editor) {
   // panel is already mounted (or, on mobile, while it was never
   // supposed to be) — re-evaluate against whatever mode is current.
   window.addEventListener('resize', () => {
+    if (lastMode !== null) _syncMount(lastMode);
+  });
+  document.addEventListener('editorTabChanged', (e) => {
+    _activeTab = e.detail?.tab || _activeTab;
     if (lastMode !== null) _syncMount(lastMode);
   });
 }
