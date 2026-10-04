@@ -564,7 +564,7 @@ aside {
    the corresponding desktop resizer fence.
    ========================================================================= */
 /* audit tidy-up: 720/721 -- the one phone breakpoint (b-spline-gen/html/editor/breakpoints.js) */
-@media (max-width: 720px) {
+@media (max-width: 900px) {
     .cad-main-content {
         grid-template-columns: 1fr;
         grid-template-rows: 30vh 12px 1fr; /* item 12b: was 40vh (35vh under 400px) */
@@ -618,7 +618,7 @@ aside {
    actually pointed at the real cause). Overriding `grid-column`
    explicitly, together with a reversed grid-template-columns so each
    side keeps its OWN correct size, is what actually swaps position. */
-@media (pointer: coarse) and (max-height: 500px) and (min-width: 721px) {
+@media (pointer: coarse) and (max-height: 500px) and (min-width: 901px) {
     .cad-main-content {
         grid-template-columns: 1fr auto var(--cad-sidebar-width);
     }
@@ -629,7 +629,7 @@ aside {
 
 /* Workflow audit #10 (phone): the header fits a phone -- the 🧩 "download the Fusion add-in" button is desktop-only
    (you install the add-in on the PC), and the project name gets a narrower ellipsis. */
-@media (pointer: coarse) and (max-width: 720px) {
+@media (pointer: coarse) and (max-width: 900px) {
     #btnDownloadAddin { display: none !important; }
     #btnNewProject { display: none !important; } /* phone: New is in the Projects window (no room in the header) */
     #fmCurrentFileLabel { max-width: 22vw !important; }

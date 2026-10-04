@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PEEK_LAYOUT } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout'];
 const groupOf = (c) => (c.kind === 'sidebar' ? (c.do.click?.startsWith('brickQuick_') ? 'sidebar-quick' : 'sidebar-3d')
   : c.kind === 'brush' || c.kind === 'stripe' ? 'brush' : c.tool);
 
@@ -261,6 +261,7 @@ try {
       Z = z1;
     }
   }
+  if (!arg('group') || arg('group') === 'layout') await runLayout();
 } catch (e) {
   pageErrors.push(`run error: ${e.message}`); // e.g. setup failed -- reported, exit 1
   console.log(`ERROR  ${e.message}`);
@@ -274,6 +275,30 @@ try {
   process.exit(fails.length || pageErrors.length ? 1 : 0);
 }
 
+// ---------------------------------------------------------------- layout (hoisted)
+async function waitApp() { for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; } await sleep(3000); }
+async function openBrickTab() { if (!(await editorOpen())) await click('btnStampEdit', 2500); for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000); await click('editorTabBrick', 1000); }
+async function runLayout() {
+  for (const vp of PEEK_LAYOUT.viewports) {
+    await send('Emulation.setDeviceMetricsOverride', { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: vp.mobile });
+    await send('Emulation.setTouchEmulationEnabled', { enabled: vp.mobile, maxTouchPoints: vp.mobile ? 5 : 1 });
+    await send('Page.reload', {}); await waitApp();
+    await openBrickTab();
+    for (const tool of PEEK_LAYOUT.tools) {
+      await click(`brickTool_${tool}`, 1500);
+      const r = JSON.parse(await js(`JSON.stringify((()=>{ const g=document.getElementById(${JSON.stringify(PEEK_LAYOUT.element)}); if(!g) return { missing: true };
+        const b=g.getBoundingClientRect(); const d=document.getElementById('editorMobileDrawer');
+        return { top: Math.round(b.top), bottom: Math.round(b.bottom), h: Math.round(b.height), innerH: innerHeight, peek: !!d && d.classList.contains('is-peek'),
+          shownPx: Math.round(Math.max(0, Math.min(b.bottom, innerHeight) - Math.max(b.top, 0))) }; })())`));
+      const ok = !r.missing && r.h > 0 && r.top >= 0 && r.bottom <= r.innerH + 0.5;
+      rows.push({ name: `Peek ${vp.name}: ${tool} Generate fully shown`, kind: 'layout', result: 'ok', observed: r,
+        verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', layout: ok ? 'PASS' : 'FAIL' } });
+      console.log(`${ok ? 'pass' : 'FAIL'}  Peek ${vp.name}: ${tool} Generate`.padEnd(54) + ` ${r.shownPx}/${r.h} px shown, bottom ${r.bottom} of ${r.innerH}${r.peek ? ' (drawer at peek)' : ''}`);
+      if (!ok) await shot(`FAIL_peek_${vp.width}_${tool}`);
+    }
+  }
+}
+
 // ---------------------------------------------------------------- report (hoisted; shared by --parallel)
 function failRows(rows) {
   return rows.filter((r) => Object.values(r.verdict).includes('FAIL') || !(['ok', 'requires unmet'].includes(r.result) || String(r.result).startsWith('skipped')));
@@ -281,8 +306,8 @@ function failRows(rows) {
 function writeReport(rows, pageErrors) {
   const fails = failRows(rows);
   writeFileSync(path.join(OUT, 'brick-matrix.json'), JSON.stringify({ requiresSource: REQUIRES_SOURCE, rows, pageErrors }, null, 1));
-  const md = ['| Control | Kind | Pending | Canvas | 3D | Greyed out (requires) |', '|---|---|---|---|---|---|',
-    ...rows.map((r) => `| ${r.name} | ${r.kind}${r.tool ? ' (' + r.tool + ')' : ''} | ${r.verdict.pending} | ${r.verdict.canvas} | ${r.verdict.threeD} | ${r.verdict.greyedOut || ''} |`)];
+  const md = ['| Control | Kind | Pending | Canvas | 3D | Greyed out (requires) | Layout |', '|---|---|---|---|---|---|---|',
+    ...rows.map((r) => `| ${r.name} | ${r.kind}${r.tool ? ' (' + r.tool + ')' : ''} | ${r.verdict.pending} | ${r.verdict.canvas} | ${r.verdict.threeD} | ${r.verdict.greyedOut || ''} | ${r.verdict.layout || ''} |`)];
   const NL = String.fromCharCode(10);
   writeFileSync(path.join(OUT, 'brick-matrix.md'), md.join(NL) + NL + NL + `${fails.length} FAIL row(s); page errors: ${pageErrors.length}` + NL);
 }
