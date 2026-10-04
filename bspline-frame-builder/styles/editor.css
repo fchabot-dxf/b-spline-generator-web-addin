@@ -292,6 +292,28 @@
         white-space: nowrap !important;
     }
 
+    /* F35 item 10 mobile regression (Fred): each tab's own toolbar wrapper
+       (#editorToolbarFrame/Artwork/Photo/Brick, main/editor-tabs.js) carries
+       a hardcoded inline flex-direction:column for its DESKTOP vertical
+       rail -- `.editor-sidebar`'s own row rule above only ever reached that
+       far before item 10 added this extra nesting level, so it stopped
+       reaching the actual buttons (now grandchildren, not children, of
+       .editor-sidebar) on every tab alike, not just Brick/Photo. An
+       !important stylesheet rule is the one thing that beats a plain
+       (non-!important) inline style, so this reaches every tab's own
+       wrapper by its shared id prefix -- a new tab added later needs no
+       matching update here, same convention as EDITOR_TABS itself. */
+    /* display is deliberately NOT forced here -- main/editor-tabs.js's own
+       setEditorTab toggles it ('flex' for the active tab, 'none' for the
+       other 3) via inline style, and that must keep working unchanged;
+       only the vertical/horizontal AXIS is this rule's concern. */
+    .editor-sidebar > div[id^="editorToolbar"] {
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        gap: 8px !important;
+    }
+
     .tool-divider {
         width: 1px !important;
         height: 20px !important;
@@ -953,6 +975,18 @@
        inside the horizontal-scroll rail, not re-declare their size. */
     .editor-sidebar .tool-btn {
         flex: 0 0 auto;
+    }
+
+    /* F35 item 10 mobile regression -- same fix as the max-width:720px block
+       above, needed again here since this is a SEPARATE media query (the
+       landscape-phone / coarse-pointer-and-short case); .editor-sidebar's
+       own flex-direction:row here is a plain (non-!important) rule, which
+       never beats the wrapper's inline flex-direction:column either. */
+    .editor-sidebar > div[id^="editorToolbar"] {
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        gap: 8px !important;
     }
 
     .editor-toolbar-top {

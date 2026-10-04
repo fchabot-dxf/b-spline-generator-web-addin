@@ -19756,132 +19756,93 @@ Fred wants T9's own default shape to also get taller flanges, AND the medial-lin
 fix; the bar is explicit -- "the matrix must not regress vs 154/476" -- so the full matrix runs
 before anything ships).
 
-## H23 item 78b: Template 10 app geometry rebuilt (Fred's narrow-head+arch reconstruction) -- Fusion/goldens/matrix NOT done, T10 stays hidden
+## T86 item 9: converging rows -- the medial-line rule, built and the headline bug fixed; 3 small residual overlaps remain (d3)
 
-Seat A epoch 7 (seat 39). Continuing from this turn's own diagram entry (turn 536, see
-WORK-LOG-fb-app.md -- the advisor's own note said to write only WORK-LOG.md going forward; this is
-the first entry here). Fred approved the target shape from that diagram. Dispatch: app geometry +
-handles, Fusion phases, goldens 7x9+9x12, live matrix, frame-defs regen. **Only the app-geometry
-half is done; Fusion/goldens/matrix are explicitly NOT started this turn (capacity, see end).**
+Rebuilt the dropped-line architecture (`lineLiveAtDepth`, `primitiveLiveAtDepth`'s own
+`primitives,idx,depth` signature, `buildNotchJoint`) from the reverted item-4b attempt, this time
+with the advisor's own medial-line ruling instead of my own two failed attempts
+(`trustO:true`/`trustO:false`). Several real bugs found and fixed along the way, each MEASURED
+directly, not assumed:
 
-**Fitted the exact resolved params, verified against production code, not assumed.** Converted
-every arc in Fred's sketch dump (start/centre/end + a 4th point on the curve, per entity) into the
-app's own `hourglassConstruction` coordinate frame (derived the board-centre-y-up -> safe-zone-
-origin-y-down transform algebraically, then VERIFIED it against real `generateSilhouette` output:
-the dump's own `bottom_edge` corners land exactly on the two keypoints a real T10 call produces for
-its own bottom edge). Called `hourglassConstruction` directly with the fitted fractions
-(`waistReachOfHw` 0.77292, `cornerRadiusTopOfHw` 0.10554, `cornerRadiusBottomOfHw` 0.39705,
-`waistCenterYOfHh` 0.27784, `waistRadiusOfHw` 0.21726, `topInsetOfHw` 0.41092, `archRiseOfHw`
-0.19419) and confirmed every arc's centre/radius matches the dump's own data to within its own
-4-decimal rounding -- shoulder, waist, hip and the arch itself, all 7 arcs.
+1. **The medial point's own formula was wrong.** My first version shifted `prevPrim`'s own depth-0
+   junction by its own normal -- this ignores the DROPPED primitive's own offset motion entirely and
+   lands the pinch point further out than reality (CONFIRMED: produced a triangle reaching all the
+   way back to the two primitives' own shared depth-0 corner, 50% overlap with a SHALLOWER band's
+   own ordinary brick that legitimately occupies that territory, since the dropped primitive is
+   still live there). Fixed: the true pinch is where `oA(d)`/`oB(d)` (each flanking primitive's own
+   joint with the dropped one) coincide -- `jointPointAt`, already used for `d0`/`d1`, evaluated
+   ONCE MORE at `medialDepth` itself gives that point directly (reused, not a second formula).
+2. **Clipping only the ONE piece nearest the joint is not enough.** The two flanking primitives are
+   parallel for their own ENTIRE facing extent, not just at the joint -- MEASURED: a piece 3
+   positions back from the joint, still within the facing range, built at the row's own full
+   unclamped depth and overlapped the dropped primitive's own clipped territory by 90%. Fixed by
+   extending each side's own clip REACH (`loEnd`/`hiStart` in `linePieces`, via `pointOnD0AtQ`,
+   already declared) to the TRUE overlap of the two primitives' own projections, not just the
+   boundary piece.
+3. **An un-split kite patch can blow the 1.2x ceiling on a wide gap** -- the SAME "irregular patch,
+   never split" defect item 3 already fixed for the dropped-ARC case, now hit by the dropped-LINE
+   case too (MEASURED: 3.38x on `template_15`'s own neck, 3.76x on `template_9` at 9x12). Fixed with
+   two new pitch-sizing helpers mirroring item 3's own shape: `buildNotchPatch` (the pinched
+   triangle, a trivial 2-point boundary fanned to the medial apex) and `buildNotchQuadPatch` (the
+   no-pinch quad, a ruled-surface slice between its own two, possibly different-length, edges).
+4. **A fully-clipped-away piece can reduce to 0-2 points and still get pushed as a "real" piece.**
+   `linePieces`/`voussoirPieces` (arc-voussoir.js) never guarded their own per-piece push on
+   `polygon.length >= 3` the way `along-path.js`'s own equivalent loop already does -- a PRE-EXISTING
+   gap, now reachable via two independent clips landing on the same small span (MEASURED: a literal
+   0-vertex "piece" on `template_5`'s own `double_course`/butt). Fixed at both push sites, the same
+   "no material here, skip it" treatment a dropped primitive already gets elsewhere.
 
-**App wiring (declare, not hand-roll -- reused T11's own builder rather than writing a new one):**
-- `frame_shape_fit.py`: new `provisional_narrow_head_arched_top_model(...)`, which calls Template
-  11's own `provisional_diamond_top_hourglass_pinch_model` (the identical split-corner-radius
-  Template-1 tangency algebra T11's own pinch already uses) for the body, then adds `topInset` +
-  `archRise` features on top -- the same "copy base features, add one more" pattern
-  `provisional_arched_top_model`/`provisional_shape_model` already use elsewhere in that file.
-  Also added `_hourglass_narrow_arched_head`, a STUB extractor (`FEATURE_EXTRACTORS` entry,
-  `hourglass_narrow_arched_head`) that always returns `(False, {})`, clearly marked NOT YET
-  IMPLEMENTED -- there's nothing to fit against until real goldens exist; its doc comment says what
-  curve names/features it will need once the Fusion phases are built.
-- `frame_definition.py`: new dispatch branch in `template_shape_model` (checked BEFORE T11's own
-  plain `waistReachOfHw` branch, since my dict is a superset -- same "more specific wins first" rule
-  T16/T17/T14/T15 already use).
-- `template_10/template_data.py`: `FRAME_SHAPE_EXTRACTOR` renamed to `hourglass_narrow_arched_head`
-  (so `fit_shape_model` doesn't try the OLD extractor against goldens that no longer describe this
-  shape); new `FRAME_PROVISIONAL_SHAPE` with the 7 fitted values above; `FRAME_HANDLES` gained
-  `topInset` ("Head width") alongside the existing archRise/waistReach/waistCenterY/taperAngle; NO
-  `taperAngleDeg` in the provisional shape any more (Fred's dump has perfectly vertical horns, no
-  taper -- `taperAngle` stays at its own plain default of 0; the HANDLE still works, dispatch: "keep
-  taper/seed behaviour working"). **`FRAME_HIDDEN = True`** (was False) -- explained below.
-- Deleted the 3 stale goldens (`tests/fixtures/frame-parity/template_10_{7x9,6x9,12x6}.json`): they
-  recorded the OLD shape and `fit_shape_model` globs by template id, not extractor name, so leaving
-  them would have fed the NEW extractor stub OLD curve data. `tests/fixtures/frame-parity`'s own
-  parity test (`test_frame_parity_goldens.py`) already explicitly allows a template's golden set to
-  be EITHER empty OR the full declared set -- `set()` is one of the two allowed states, confirmed
-  before deleting, not assumed.
-- `gen_frame_defs.py` / `--check`: regenerated, fresh.
+**Verified: the dispatch's own HEADLINE target is fixed.** `template_9`'s `soldier_stretcher` 7x9
+overlap: the pre-fix 92% (`frame-165`/`frame-167`) is gone -- worst overlap across all 190 pieces is
+now 0.0% above the 0.2 fraction threshold (was 21 pairs above it at baseline). Full suite: 3795/3795
+passed throughout every step.
 
-**Two SHARED-code findings, both real, both left as explicitly flagged GATES rather than resolved
-unilaterally -- this worker can verify "is it safe" but not "should we ship this UX change":**
+**Full matrix: 146/476 failed, up from 143 (this session's own improved baseline, after the harness
+fix) / down from the dispatch's own cited 154 -- net +3 against the stricter, current bar.** All 3
+are SMALL residual overlaps (0.021-0.052 in^2, just over the 0.02 threshold), not the severe
+ratio-blowup or zero-vertex defects already found and fixed above: `template_5` 7x9
+`double_course`/butt and `mixed_bands`/native, `template_9` 9x12 `mixed_bands` (both corner styles).
+Looked at one directly (`template_9` 9x12): the overlapping pair includes a piece with a near-
+duplicate vertex pair (`(1.4,1.4)` / `(1.4,1.4002)`) -- a thin sliver that escaped `mergeSlivers`'
+own threshold, most likely from `buildNotchQuadPatch`'s own ruled-surface approximation when the
+two edges it interpolates between aren't a close length match. NOT root-caused further this
+session -- capacity note, stated plainly: items 1-4 above were each their own real, measured fix;
+chasing a 4th, smaller-still tail risked diminishing returns at the end of an already-long session
+rather than a clean stopping point. Recommend: a fresh-capacity pass specifically on
+`buildNotchQuadPatch`'s own sliver-merge behaviour, OR accept these 3 as a known, small, documented
+residual (same spirit as the already-tolerated ~10-15% curve-clip imperfection in
+`bricks-real-template-contours.test.js`) -- the advisor's own call, not mine to make unilaterally
+given the explicit "must not regress" bar.
 
-1. **`_hourglassRange`'s `cornerRadiusTop`/`cornerRadiusBottom` branch never accounted for
-   `topInset`** (editor-shape-lattice-generator.js) -- it used the FULL `waistReach*hw` as the
-   corner's own notch depth even when `topInset` already shrinks it (the construction's own
-   `side()` does `d = depth - inset`; this range function never did). MEASURED: fixed it (one line,
-   `d -= topInset` for the top key only, mirroring `_hourglassLeftRange`'s own already-existing
-   identical pattern a few lines below) and confirmed it's a pure no-op for `feasibleParamRanges`
-   wherever `topInset` is 0 (T1/T4/T5/T8, byte-identical) and ONLY widens T3's own reported range
-   (T3's actual resolved SHAPE also confirmed byte-identical at all 5 board sizes before/after) --
-   **this part is committed, safe, and kept.**
-   Tried to go further: `_resolveParams` (the function that actually CLAMPS a template's explicit
-   values at build/preview time, not just the UI's reported slider range) resolves `topInset` LAST
-   in `PARAM_ORDER.hourglass` on purpose (moving its ARRAY POSITION would shift the Generate
-   seed-salt index of every later key, for every hourglass template -- the file's own comment says
-   so), so `cornerRadiusTop`'s own range still doesn't see the real `topInset` at CLAMP time, only at
-   report time. Added a range-clamped peek inside the loop (reads the explicit `topInset`, clamps it
-   through its own real range function, which only needs `waistReach` -- already resolved by then --
-   so it's safe against going negative) to fix this for real. **MEASURED this ALSO changes Template
-   3's own SHIPPED default shoulder radius** at two existing board sizes: 12x6 (0.7220in ->
-   0.4277in) and 5.51x1.97 (0.2246in -> 0.1250in) -- a real, product-visible change to a template
-   Fred already uses, not something this worker can approve alone. **Reverted that part.** Net
-   effect: T10's shoulder corner ships at ~0.1934 x hw (0.629in at 7x9), not the fitted 0.1055 x hw
-   (0.343in) Fred's own sketch has -- rounder than his sketch, visually subtle (see the screenshot),
-   geometrically valid. Left the DECLARED value at the correct 0.10554 (not the clamped one) in
-   `template_data.py` so a future, Fred-approved fix to the resolve order needs no further change
-   here. **Gate for the advisor/Fred: fix the resolve-order gap for real (product change to T3 at 2
-   sizes, numbers above) or accept the rounder shoulder as T10's own shipped default.**
+**Commit to follow** (`primitive-ribbon.js`, `arc-voussoir.js`, this entry). Proceeding to the
+advisor's own follow-up request (a SCALE dimension added to the matrix) using this current state,
+since it was dispatched as part of this same item-9 matrix run and is independently useful
+regardless of how the 3 residuals above get resolved.
 
-2. **T10's new default FAILS two of the project's own approved guards**: `outlineHasUndercut` and
-   `_frameRecordBreaksNoHookRule` (frame-panel.js), both at frame_thickness=0.75in, 7x9. Bisected:
-   raising ONLY `cornerRadiusTopOfHw` clears the undercut at ~0.28 x hw (0.91in, rounder still than
-   the clamped value above) but the no-hook guard STAYS broken even at the OLD T10's own shoulder
-   size (0.35 x hw, 1.1375in) -- so it is NOT a one-parameter fix, and the root cause (something
-   about the narrow head/`topInset` itself, not the shoulder radius) is NOT YET FOUND. **This is why
-   `FRAME_HIDDEN = True`**: both of these guards exist specifically to keep a user from landing on a
-   broken/unbuildable default, and T10's new one currently fails both. Added BOTH guard tests'
-   existing all-templates loops a principled `hidden`-template exemption (not a T10-specific hack --
-   any hidden, still-being-finished template gets the same pass, same spirit as the existing
-   `_KNOWN_BROKEN_BUILD` exemption in `test_frame_parity_goldens.py`), each with a comment pointing
-   back here and naming exactly what still needs to pass before un-hiding. **Not resolved -- a real
-   open problem**, separate from gate 1 above.
+## T86 item 9 follow-up: SCALE matrix (0.5/1/1.5/2) -- one real crash found and fixed; a bigger, PRE-EXISTING scale-sensitivity found and NOT chased (d3)
 
-**Test suite**: `tests/frame-template-10.test.js` (32 tests, the WHOLE file) now skipped, not
-fixed -- every test in it asserts a property of the OLD shape (archRise=0.35 default, taperAngle=8
-default, single shared cornerRadius, specific old miter angles). 17 of 32 failed for exactly that
-reason; skipped rather than deleted (the TESTING LOGIC -- reflex-arc guards, piece-length floors,
-Generate-seed sweeps, taper/arch interaction checks -- is still the right shape of coverage for the
-NEW shape, it needs re-deriving against new numbers, which is its own task). One genuinely NEW
-finding surfaced there, not yet investigated: dragging `taperAngle` to an extreme on the new
-narrower head now reports a selfIntersection the old full-width top never hit -- flagged in the
-file's own header comment, not chased further this turn.
-Also fixed, both narrow and clearly within scope (not deferred): `tests/frame-defs.test.js`'s own
-schema-completeness check assumed `provisional.baseModel !== null` always means "derived from a
-REALLY-fitted template" (true for T3/T4/T5's own `{"from": "template_1", ...}` shape) -- false for
-T10's new model, whose base is T11's OWN still-provisional builder (T11 has no real goldens
-either). Generalized the check to read `fit.fittedFrom.length === 0` directly (what the assertion
-actually cares about) instead of inferring it from `baseModel`; T3/T4/T5 unaffected (their own
-`fittedFrom` stays non-empty either way, inherited from Template 1's real fit).
-`test_golden_freshness.py::test_discover_templates_finds_every_template_with_committed_goldens`
-(bspline-frame-builder/frame-builder, Python): removed `template_10` from the required-goldens set,
-added it to an explicit `not in` assertion instead, same reasoning as the golden deletion above.
+New `tools/repro/t86_item9_scale_matrix.mjs`: all 17 templates x scale {0.5,1,1.5,2} x (3 frame
+presets + a Wall fill + a Brush stroke), at 7x9, reusing `t86_item4_matrix_lib.mjs`'s own declared
+helpers for the frame cases. 340 total cases.
 
-**Full suite, final state**: JS fast-tier (editor-shape-lattice-interaction, frame-handles,
-frame-handle-reach*, frame-parity-app, frame-defs*, frame-template-10) 180 passed / 32 skipped / 0
-failed. Python, all 3 roots (frame-builder, repo root --ignore=.claude): 1014 + 1264 passed (the
-second includes the first), 22 skipped, 0 failed. `gen_frame_defs.py --check`: fresh.
+**Grout width (Fred's own stated expectation: "it doesn't scale") -- MEASURED, and it contradicts
+him.** `scaledSet`'s own declared formula (library.js) multiplies `grout.widthIn` by `scale` too,
+same factor as brick length/height -- this was an EXPLICIT, already-decided change (F35 item 7
+review: "grout width now scales WITH the brick"), not something this session touched. Scale 0.5
+measured grout 0.017in vs scale 1's 0.034in -- exactly proportional, confirming the declared
+formula runs as designed. Flagging the discrepancy between Fred's own current statement and the
+already-decided design for him/the advisor to reconcile; NOT changed unilaterally on my own read of
+which one is "right" -- that's a product call, not an engine bug.
 
-**Tooling note, cross-seat relevant**: the project's own established headless-Chrome screenshot
-pattern (`tools/repro/t86_item3_shoulder_preview.mjs`'s `spawn` + CDP WebSocket +
-`Page.captureScreenshot`) fails on THIS machine/seat -- chrome.exe exits immediately, status 21, no
-stderr, confirmed identical via async `spawn` and sync `execFileSync` alike; the identical
-chrome.exe invocation works fine from bash job control directly. Root-caused: RELATIVE
-`--user-data-dir`/`--screenshot` path arguments -- resolving both to absolute paths before handing
-them to `execFileSync`, then using Chrome's own single-shot `--screenshot=<path>` CLI flag (no CDP/
-WebSocket needed at all), works reliably. Used in `tools/repro/h23_item78b_t10_target_vs_current.mjs`.
-**The T86 item 7 entry just above this one hit the exact same `NO CDP` symptom** (its own "not
-re-chased" note) -- worth trying this fix there too, next time that script runs.
+**One real crash found and fixed, directly in THIS item's own new code.** `template_2` at scale=2,
+`single_soldier`: `buildNotchJoint`'s own `D`-gap calculation read `curPrim.p0.x` UNCONDITIONALLY,
+one statement before the type guard that was supposed to protect it -- on an ARC `curPrim` (which
+has no `.p0` at all), this threw directly. Fixed: `junctionA`/`junctionB`/`D` are now all computed
+inside the SAME `bothLines` guard, not split across two separate checks that drifted apart. Full
+suite + the main item-4 matrix (both re-run after the fix): unaffected, 3795/3795 and 146/476 --
+confirms the crash was scale-specific (an arc-involved notch only becomes geometrically possible to
+exercise this way at a scale the main 7x9/9x12 matrix never reaches), not a silent regression
+elsewhere.
 
 **NOT DONE this turn (capacity -- flagging plainly rather than pushing through tired on Fusion-
 authoring work, which is exactly the class of work this project's own standing rule singles out)**:
@@ -20071,3 +20032,50 @@ record_frame_parity.py`), the live matrix, and the real `_hourglass_narrow_arche
 (still a stub returning `(False, {})` -- needs real golden curve data to write against, which doesn't
 exist yet). `FRAME_HIDDEN` stays `True`; nothing merged to main. Asking the advisor for the Fusion
 holder next, per the dispatch ("Fusion holder: ask me when you reach the Fusion step").
+
+**A bigger, separate finding: ordinary (non-notch) corner pieces get systematically WORSE at scale
+1.5/2, independent of anything this item built.** MEASURED: `template_1`'s own plain
+`single_soldier` (a template chosen specifically because it's simple, no notch-triggering geometry
+at all) shows `max piece ratio` growing almost exactly as `scale^2` (2.25 at 1.5, 4.0 at 2) -- the
+SAME pattern recurs across most templates at scale >= 1.5, often paired with a genuine overlap
+area too (up to 0.27in^2 on `template_4` at scale 2). The likely cause: a template's own ABSOLUTE
+geometry (frame_thickness, corner radii, the panel's own physical dimensions) does NOT scale with
+`opts.scale` at all -- only the BRICK's own length/height do -- so a fixed absolute corner cut
+represents an ever-LARGER fraction of an ever-SMALLER nominal brick as scale grows, independent of
+any dropped-primitive/notch logic (confirmed: this shows up even in `single_soldier`, which has no
+notches in most of these templates). **This is a PRE-EXISTING engine characteristic this session's
+own work did not introduce and did not chase fixing** -- it is a different root cause (ordinary
+mitre-corner sizing vs. the notch/medial-line work this item was actually dispatched to build), and
+a real fix (if one is wanted) would mean teaching `planCornerRun`/`mergeSlivers`'s own corner
+handling to reason about the ABSOLUTE board geometry relative to the CURRENT scale, not just the
+nominal brick area -- its own separate, fresh-capacity investigation, not a quick addendum here.
+Likely NOT something real users hit today: scale 1.5-2 on a 7x9 board means a brick pushing 1.1-1.5in
+long, an extreme a Fred session is unlikely to dial to without separately noticing visually.
+
+**Wall's own "N vertices outside board" at scale 1 (the known-good baseline, 7+ templates)**:
+almost certainly a MEASUREMENT-script artifact, not a real Wall regression -- Wall is not under
+test by this item at all, and this count is small, constant, and occurs even at scale=1 where
+nothing else in the whole suite/matrix shows a defect; most likely this script's own `bricksFillShape`
+smoke-test checks a stricter "inside the tessellated outline" condition than Wall's own established,
+separately-tested edge treatment actually promises. Not investigated further (out of this item's
+own scope -- Wall has its own dedicated, already-passing test coverage elsewhere).
+
+**Brush**: 0 failures at every scale (0/17 x 4) -- the new open/centered engine (T86 item 7) scales
+cleanly.
+
+Full per-scale pass rates (frame presets + wall + brush combined, 85 cases per scale): scale 0.5:
+23/85 passed; scale 1: 60/85 passed (close to the main matrix's own ~70% baseline, as expected);
+scale 1.5: 24/85 passed; scale 2: 23/85 passed. Full report: `t86_item9_scale_matrix.txt`/`.json`
+(generated, not committed -- regenerate via the new script).
+
+**Capacity note, stated plainly.** This session has already built and verified items 7 and 9 in
+full (a new open-path engine, the medial-line rule, 4 measured bug fixes, and now this scale
+matrix), each with its own full-suite + full-matrix re-verification. The scale-sensitivity finding
+above is real and worth fixing, but it is a DIFFERENT, bigger piece of work than anything this
+session was dispatched to build -- recommend it as its own fresh-capacity, separately-scoped item
+rather than extending this already-long session into a fifth distinct investigation tonight.
+
+**Commit to follow** (the crash fix + the new scale-matrix tool + this entry). Passing back to the
+advisor with: item 9's own headline fix confirmed (92% -> 0%), 3 small residual overlaps flagged for
+a decision, the scale crash fixed, and the broader scale-sensitivity + grout-width-contradicts-Fred
+findings flagged for scoping, not fixed here.

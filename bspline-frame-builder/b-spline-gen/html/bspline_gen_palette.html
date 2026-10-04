@@ -1335,9 +1335,18 @@
               <option value="0.03">Ultimate</option>
             </select>
           </div>
+          <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:6px;" title="Display only: flat areas use bigger triangles, sharp detail keeps the Base Spacing. Send/STEP unchanged.">
+            <input type="checkbox" id="adaptiveDisplay">
+            <span>Adaptive</span>
+          </label>
           <div class="cad-status-text" style="font-size:10px; opacity:0.6; margin-top:6px;">
             Higher spacing = faster performance, lower detail.
           </div>
+          <!-- F35 (Fred: "resolution is his own responsibility" -- detection only, never changes
+               the value): shown only when bricks exist and the current spacing is too coarse to
+               carve the grout joints cleanly. Populated at runtime by main/brick-panel.js's
+               updateSpacingHint. -->
+          <div id="spacingGroutHint" style="display:none; font-size:10px; color:#b8860b; margin-top:6px;"></div>
         </div>
       </div>
     </aside>
@@ -3078,16 +3087,21 @@
               <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
             </div>
 
-            <label class="cad-label">Frame brick length (in)</label>
-            <div class="cad-slider-row" style="margin-bottom:10px;">
-              <input type="range" id="brickFrameLengthSlider" class="cad-slider" min="0.5" max="1.5" step="0.05" value="0.75">
-              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickFrameLength" value="0.75" min="0.5" max="1.5" step="0.05"></div>
+            <!-- F35 item 16 (Fred: "I'd rather they all have the same size"): ONE global brick
+                 SIZE in real inches, replacing the old separate Frame-brick-length override and
+                 the 0.5-2x Scale multiplier -- shared by Wall, every Frame band, and Brush.
+                 Advisor follow-up (Fred: "is scale easy?"): the SLIDER's own raw value is a LOG
+                 position, 0-1000, mapped to 0.375-8in by main/brick-panel.js's own
+                 brickSizeToSliderPos/sliderPosToBrickSize -- a plain linear 0.375-8in range put
+                 every everyday size in the first ~15% of the handle's travel. #brickSize (the
+                 number box) stays real inches, exact, unchanged. -->
+            <label class="cad-label">Brick size (in)</label>
+            <div class="cad-slider-row" style="margin-bottom:6px;">
+              <input type="range" id="brickSizeSlider" class="cad-slider" min="0" max="1000" step="1" value="226">
+              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickSize" value="0.75" min="0.375" max="8" step="0.025"></div>
             </div>
-
-            <label class="cad-label">Scale</label>
-            <div class="cad-slider-row" style="margin-bottom:10px;">
-              <input type="range" id="brickScaleSlider" class="cad-slider" min="0.5" max="2" step="0.05" value="1">
-              <div class="cad-stepper" style="width:60px;"><input type="number" id="brickScale" value="1"></div>
+            <div id="brickSizePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+              <!-- Populated at runtime by main/brick-panel.js's declared BRICK_SIZE_PRESETS. -->
             </div>
 
             <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Grout</label>
@@ -3105,6 +3119,10 @@
               <button type="button" class="relief-toggle-btn" id="brickBtnGroutRecessed" title="Joints carved below the surrounding surface (not yet visually implemented)"><span>Recessed</span></button>
               <button type="button" class="relief-toggle-btn active" id="brickBtnGroutFlush" title="Joints sit flush with the base surface"><span>Flush</span></button>
             </div>
+            <!-- F35 (Fred: detection only, never changes the value): the SAME hint as the
+                 Resolution panel's own #spacingGroutHint, shown here too since this is where a
+                 user is most likely to be looking when grout width changes. -->
+            <div id="brickGroutSpacingHint" style="display:none; font-size:10px; color:#b8860b; margin:0 0 12px;"></div>
 
             <label class="cad-label">Relief</label>
             <div class="relief-toggle" id="brickReliefToggle" style="margin-bottom:12px;">

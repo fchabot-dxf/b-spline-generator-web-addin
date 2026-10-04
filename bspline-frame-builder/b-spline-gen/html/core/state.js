@@ -36,6 +36,9 @@ export const DEFAULT = {
     symOffsetX: 0,
     symOffsetY: 0,
     spacing: 0.05,
+    // F35 item 17: opt-in adaptive DISPLAY mesh (core/preview/adaptive-mesh.js) -- `spacing` stays the
+    // finest detail kept, flat areas collapse into big triangles. Preview only; Send/STEP never read it.
+    adaptiveDisplay: false,
     smoothIntensity: 0,
     smoothRadius: 1.2,
     showMesh: false,
@@ -70,7 +73,15 @@ export const DEFAULT = {
     // panel shows real numbers on first use, not a second, independent guess.
     brickSettings: {
       setId: 1,
-      scale: 1,
+      // F35 item 16 (Fred: "I'd rather they all have the same size" -- replacing the old 0.5-2x
+      // Scale multiplier AND the separate frameBrickLengthIn override that used to live here):
+      // ONE global brick LENGTH in real inches (0.375-8), shared by Wall, every Frame band, and
+      // Brush -- starts at Set 1's own declared brickLengthIn (library.js), same "real number on
+      // first use" convention grout/reliefIn below already follow; resets to the newly-picked
+      // set's own brickLengthIn on a set switch (main/brick-panel.js's selectSet), same as before.
+      // A legacy saved session's own `scale` migrates via brickLengthIn = its set's own declared
+      // length x that scale, once, on load (main/brick-panel.js).
+      brickLengthIn: 0.75,
       grout: { widthIn: 0.06, depthIn: 0.05, profile: 'flush' },
       reliefIn: 0.125,
       invert: false,
@@ -81,14 +92,6 @@ export const DEFAULT = {
       // Frame tool bands with -- a key, not the bands array itself, so it
       // always tracks library.js's own current declaration.
       frameBandPreset: 'single_soldier',
-      // F35 item 5 review (Fred, via advisor correction): "frame thickness" =
-      // the LENGTH of the bricks across a Frame band (a soldier band's own
-      // width IS the brick length) -- a per-frame brick-length OVERRIDE, not
-      // a band-width scaler. Starts at Set 1's own declared brickLengthIn
-      // (library.js), same "real number on first use" convention as
-      // grout/reliefIn above; resets to the newly-picked set's own
-      // brickLengthIn on a set switch (main/brick-panel.js's selectSet).
-      frameBrickLengthIn: 0.75,
       // F35 item 7: the Wall pattern picker's own choice -- any core/bricks/library.js
       // BRICK_PATTERNS key. A key, not the pattern definition itself, same "track the current
       // declaration" convention as frameBandPreset above.
@@ -430,7 +433,7 @@ export function updateP(key, value) {
         'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
         'detailDensityRespectSymmetry', 'smoothRespectSymmetry',
         'isolateSkeleton',
-        'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled'
+        'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled', 'adaptiveDisplay'
     ];
 
     if (key === 'widthIn' || key === 'heightIn') {

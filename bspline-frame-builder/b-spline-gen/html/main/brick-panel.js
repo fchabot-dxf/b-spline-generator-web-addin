@@ -18,12 +18,12 @@
  * `window.svgEditor` fresh at the point of use instead of caching it.
  */
 import { P, saveLastSession } from '../core/state.js';
-import { runBricks, buildRibbonPrimitives, resolvedSetFor } from '../editor/editor-brick-tool.js';
+import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
-import { applyParam } from './param-manager.js';
 import { setEditorTab } from './editor-tabs.js';
+import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -33,11 +33,11 @@ import { setEditorTab } from './editor-tabs.js';
  * `run` is this file's own entry point for that tool (not re-exported --
  * core/bricks/ itself stays engine-agnostic of "how a UI triggers it"). */
 const BRICK_TOOLS = [
-  { id: 'brush', label: 'Brush', icon: '✏️', settingsSection: null,
+  { id: 'brush', buttonId: 'brickTool_brush', label: 'Brush', icon: '✏️', settingsSection: null,
     hint: 'Click here, then drag a stroke on the canvas to lay bricks along it.' },
-  { id: 'wall', label: 'Wall', icon: '🧱', settingsSection: null,
+  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: null,
     hint: 'Fills the whole board with bricks.' },
-  { id: 'frame', label: 'Frame', icon: '🖼️', settingsSection: null,
+  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '🖼️', settingsSection: null,
     hint: 'Bands of bricks along the current frame\'s own contour.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
@@ -45,9 +45,9 @@ const BRICK_TOOLS = [
   // Brush strokes today (Wall/Frame have no drawn spine to tap -- see
   // editor-brick-tool.js's own header on why that's a deliberate scope,
   // not an oversight).
-  { id: 'scissors', label: 'Scissors', icon: '✂️', settingsSection: null,
+  { id: 'scissors', buttonId: 'brickTool_scissors', label: 'Scissors', icon: '✂️', settingsSection: null,
     hint: 'Tap a brush stroke to split it -- each piece regenerates its own bricks independently once moved apart.' },
-  { id: 'stripe', label: 'Stripe', icon: '📏', settingsSection: null,
+  { id: 'stripe', buttonId: 'brickTool_stripe', label: 'Stripe', icon: '📏', settingsSection: null,
     hint: 'Tap a brush stroke to split it into alternating brick-style runs.' },
 ];
 
@@ -64,16 +64,94 @@ function syncSetPicker() {
  *  declared default (Set 3's own fieldstone joints are genuinely wider,
  *  0.12in vs Set 1's measured 0.06in) -- otherwise the slider would silently
  *  keep showing/using the PREVIOUS set's own width after a switch, which
- *  `toBrickOpts` always applies verbatim regardless of which set is active. */
+ *  `toBrickOpts` always applies verbatim regardless of which set is active.
+ *  F35 item 16: brickLengthIn is now a GLOBAL, absolute real-world size --
+ *  deliberately NOT reset here (unlike the old Frame-only frameBrickLengthIn
+ *  it replaced, which WAS force-synced to the new set on every switch): a
+ *  user who picked "2 inch bricks" means 2 inches regardless of which photo
+ *  texture is applied, the same way Wall/Brush's own old relative Scale
+ *  multiplier never needed a reset either. */
 function selectSet(setId) {
   const set = brickSetById(setId);
   if (!set) return;
   P.brickSettings.setId = setId;
   P.brickSettings.grout.widthIn = set.grout.widthIn;
-  P.brickSettings.frameBrickLengthIn = set.brickLengthIn;
   syncSetPicker();
   syncControlsFromState();
   notifyChange();
+}
+
+/** F35 item 16 (Fred, "replacing the 0.5-2x multiplier with a BRICK SIZE control in inches"):
+ *  quick-access real-world sizes, declared as data -- a new preset is one more entry here, no UI
+ *  rework. Advisor follow-up (Fred: "is scale easy?" -- the linear slider crammed every everyday
+ *  size into ~15% of the travel): the preset list itself was widened from 3 points (2/4/8in) to the
+ *  5 values that actually span the control's own min/max, matching the measured resolution grid's
+ *  own columns (shots/seatC/resolution_scale_grid.png) -- "Life size" is a real US brick's own
+ *  actual length (8in x 2.25in). */
+const BRICK_SIZE_PRESETS = [
+  { id: 'eighth3', label: '⅜″', lengthIn: 0.375 },
+  { id: 'quarter3', label: '¾″', lengthIn: 0.75 },
+  { id: 'half1', label: '1½″', lengthIn: 1.5 },
+  { id: 'three', label: '3″', lengthIn: 3 },
+  { id: 'life', label: 'Life 8″', lengthIn: 8 },
+];
+const BRICK_SIZE_MIN_IN = 0.375;
+const BRICK_SIZE_MAX_IN = 8;
+
+/** The range input's OWN raw value is a LOG position (0..BRICK_SIZE_SLIDER_STEPS), never the real
+ *  inches value -- a plain linear 0.375-8in slider put every everyday size (0.375-1.5in) in the
+ *  first ~15% of the handle's travel, since 8in is >20x the minimum (Fred's own "is scale easy?"
+ *  review). `#brickSize` (the number stepper) stays in REAL inches throughout, exact, never
+ *  log-mapped -- only the draggable handle's own position is remapped, via these two inverse
+ *  functions, so dragging feels evenly spaced across the whole 0.375-8in range. */
+export const BRICK_SIZE_SLIDER_STEPS = 1000;
+export function brickSizeToSliderPos(inches) {
+  const clamped = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, inches));
+  const t = Math.log(clamped / BRICK_SIZE_MIN_IN) / Math.log(BRICK_SIZE_MAX_IN / BRICK_SIZE_MIN_IN);
+  return Math.round(t * BRICK_SIZE_SLIDER_STEPS);
+}
+export function sliderPosToBrickSize(pos) {
+  const t = Math.min(BRICK_SIZE_SLIDER_STEPS, Math.max(0, pos)) / BRICK_SIZE_SLIDER_STEPS;
+  return BRICK_SIZE_MIN_IN * Math.pow(BRICK_SIZE_MAX_IN / BRICK_SIZE_MIN_IN, t);
+}
+
+function renderBrickSizePresetList(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const preset of BRICK_SIZE_PRESETS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cad-btn';
+    btn.id = `brickSizePreset_${preset.id}`;
+    btn.textContent = preset.label;
+    btn.addEventListener('click', () => setBrickSize(preset.lengthIn));
+    container.appendChild(btn);
+  }
+}
+
+function syncBrickSizePresetButtons() {
+  for (const preset of BRICK_SIZE_PRESETS) {
+    document.getElementById(`brickSizePreset_${preset.id}`)?.classList.toggle('active', preset.lengthIn === P.brickSettings.brickLengthIn);
+  }
+}
+
+function setBrickSize(lengthIn) {
+  const v = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, lengthIn));
+  P.brickSettings.brickLengthIn = v;
+  syncBrickSizeControls(v);
+  syncBrickSizePresetButtons();
+  notifyChange();
+  _scheduleLivePreview();
+}
+
+/** Writes the real inches value `v` to BOTH controls -- the slider's own raw DOM value is its LOG
+ *  position (brickSizeToSliderPos), never `v` itself; `#brickSize` (the number stepper) gets `v`
+ *  directly, exact, same as every other bound control here. */
+function syncBrickSizeControls(v) {
+  const slider = document.getElementById('brickSizeSlider');
+  const number = document.getElementById('brickSize');
+  if (slider) slider.value = String(brickSizeToSliderPos(v));
+  if (number) number.value = String(v);
 }
 
 function setGroutProfile(profile) {
@@ -109,6 +187,7 @@ function syncProfileToggle() {
   const continuous = P.brickSettings.profile === 'continuous';
   document.getElementById('brickBtnProfileStripped')?.classList.toggle('active', !continuous);
   document.getElementById('brickBtnProfileContinuous')?.classList.toggle('active', continuous);
+  syncOrientationAvailability();
 }
 
 function setProfile(v) {
@@ -117,10 +196,31 @@ function setProfile(v) {
   notifyChange();
 }
 
+/** T86 item 7 merge note (advisor asked: "decide which wins, or disable orientation when a
+ *  multi-row preset is picked"): traced `bricksForBrushStroke` (editor-brick-tool.js) -- it reads
+ *  `opts.orientation` ONLY on the `profile:'continuous'` path (bricksAlongPath); the Stripped path
+ *  (the DEFAULT profile, every brushBandPreset including the 1-wide stretcher one) goes through
+ *  `bricksContourBands` instead, which derives each band's own brick orientation from ITS pattern
+ *  name (stretcher/soldier/flemish), never reading `opts.orientation` at all. So the two settings
+ *  never actually COLLIDE in the engine -- Orientation is simply INERT for Stripped, every preset,
+ *  not just multi-row ones. Disabling it there (rather than leaving a control that silently does
+ *  nothing) is the honest fix; Continuous keeps it fully live. */
+function syncOrientationAvailability() {
+  const inert = P.brickSettings.profile !== 'continuous';
+  const title = inert ? 'Only affects the Continuous profile -- Stripped\'s own band pattern already sets each row\'s orientation' : '';
+  for (const id of ['brickBtnOrientationStretcher', 'brickBtnOrientationSoldier']) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    btn.disabled = inert;
+    btn.title = title;
+  }
+}
+
 function syncOrientationToggle() {
   const soldier = P.brickSettings.orientation === 'soldier';
   document.getElementById('brickBtnOrientationStretcher')?.classList.toggle('active', !soldier);
   document.getElementById('brickBtnOrientationSoldier')?.classList.toggle('active', soldier);
+  syncOrientationAvailability();
 }
 
 function setOrientation(v) {
@@ -155,7 +255,8 @@ function syncControlsFromState() {
   syncWallPatternButtons();
   renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
   syncFrameBandPatternButtons();
-  setPair('brickScaleSlider', 'brickScale', s.scale);
+  syncBrickSizeControls(s.brickLengthIn);
+  syncBrickSizePresetButtons();
   document.getElementById('brickGroutWidth').value = s.grout.widthIn;
   document.getElementById('brickGroutDepth').value = s.grout.depthIn;
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', s.grout.profile === 'recessed');
@@ -165,10 +266,60 @@ function syncControlsFromState() {
   setPair('brickSuppressionSlider', 'brickSuppression', s.suppression);
   setPair('brickClumpingSlider', 'brickClumping', s.clumping);
   document.getElementById('brickSeed').value = s.seed;
-  setPair('brickFrameLengthSlider', 'brickFrameLength', s.frameBrickLengthIn);
   syncProfileToggle();
   syncOrientationToggle();
   syncBrushSection();
+}
+
+/** F35 item 10 follow-up (Fred, folded in with the slider-timing ask): a Brick-tab slider
+ *  regenerates on RELEASE ('change': blur/Enter/mouse-up), not on every raw drag tick ('input') --
+ *  but WITH a live, throttled 2D-only preview while dragging so the canvas doesn't sit stale for
+ *  the length of the drag. Declared ONCE here -- every bindSlider call site below shares this one
+ *  mechanism, not a per-slider copy. Wall/Frame only: a Brush stroke's own settings are frozen at
+ *  draw time (no existing "edit an already-drawn element" mechanism, see the Brush-section header
+ *  above), so there is nothing for a slider to live-preview while Brush is the active tool. */
+const LIVE_PREVIEW_INTERVAL_MS = 100; // ~10/sec, Fred's own spec
+const SLOW_PREVIEW_MS = 50; // measured (not guessed) threshold for falling back to outline-only
+let _liveFrame = null, _lastLiveAt = 0, _dragSlow = false;
+
+function _cancelLivePreview() {
+  if (_liveFrame != null) { cancelAnimationFrame(_liveFrame); _liveFrame = null; }
+}
+
+function _runLivePreview() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!editor) return;
+  if (_activeTool !== 'wall' && _activeTool !== 'frame') return; // Brush/other: nothing to live-preview
+  const frameGeom = resolveFrameGeom(editor);
+  if (_activeTool === 'frame' && !frameGeom) return; // Frame tool, no usable frame: nothing to preview
+  if (_dragSlow) { runBricksOutlinePreview(editor); return; }
+  const t0 = performance.now();
+  runBricksPreview(editor, P.brickSettings, frameGeom); // Wall: frameGeom may legitimately be undefined (whole-board fill)
+  if (performance.now() - t0 > SLOW_PREVIEW_MS) _dragSlow = true; // this drag only -- commit resets it
+}
+
+function _scheduleLivePreview() {
+  if (_liveFrame != null) return; // already queued -- the frame that runs reads the LATEST settings
+  _liveFrame = requestAnimationFrame(() => {
+    _liveFrame = null;
+    const now = performance.now();
+    if (now - _lastLiveAt < LIVE_PREVIEW_INTERVAL_MS) { _scheduleLivePreview(); return; } // throttle window not up yet
+    _lastLiveAt = now;
+    _runLivePreview();
+  });
+}
+
+function _commitBrickSlider() {
+  _cancelLivePreview();
+  _dragSlow = false;
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!editor) return;
+  if (_activeTool === 'wall') {
+    runBricks(editor, P.brickSettings, resolveFrameGeom(editor));
+  } else if (_activeTool === 'frame') {
+    const frameGeom = resolveFrameGeom(editor);
+    if (frameGeom) runBricks(editor, P.brickSettings, frameGeom);
+  }
 }
 
 function bindSlider(sliderId, numberId, key, parse = parseFloat) {
@@ -181,9 +332,37 @@ function bindSlider(sliderId, numberId, key, parse = parseFloat) {
     if (number) number.value = String(v);
     P.brickSettings[key] = v;
     notifyChange();
+    _scheduleLivePreview();
   };
+  const commit = (raw) => { apply(raw); _commitBrickSlider(); };
   slider?.addEventListener('input', (e) => apply(e.target.value));
+  slider?.addEventListener('change', (e) => commit(e.target.value));
   number?.addEventListener('input', (e) => apply(e.target.value));
+  number?.addEventListener('change', (e) => commit(e.target.value));
+}
+
+/** Brick size's own binder, not the shared bindSlider above: the slider's raw DOM value is a LOG
+ *  position (brickSizeToSliderPos/sliderPosToBrickSize), while `#brickSize` (the number stepper)
+ *  stays real inches throughout -- the two controls no longer share one raw value the way every
+ *  other bindSlider pair does, so this mirrors bindSlider's own input/change-commit shape with that
+ *  one difference instead of forcing a log-aware `parse` through the generic helper. */
+function bindBrickSizeControls() {
+  const slider = document.getElementById('brickSizeSlider');
+  const number = document.getElementById('brickSize');
+  const apply = (v) => {
+    if (!Number.isFinite(v)) return;
+    const clamped = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, v));
+    if (slider) slider.value = String(brickSizeToSliderPos(clamped));
+    if (number) number.value = String(clamped);
+    P.brickSettings.brickLengthIn = clamped;
+    notifyChange();
+    _scheduleLivePreview();
+  };
+  const commit = (v) => { apply(v); _commitBrickSlider(); };
+  slider?.addEventListener('input', (e) => apply(sliderPosToBrickSize(parseFloat(e.target.value))));
+  slider?.addEventListener('change', (e) => commit(sliderPosToBrickSize(parseFloat(e.target.value))));
+  number?.addEventListener('input', (e) => apply(parseFloat(e.target.value)));
+  number?.addEventListener('change', (e) => commit(parseFloat(e.target.value)));
 }
 
 function bindGroutField(id, key) {
@@ -198,30 +377,30 @@ function bindGroutField(id, key) {
 /** F35 item 10: this list now renders into the left-rail toolbar
  *  (#editorToolbarBrick, icon-only, same convention Artwork's own tool rail
  *  already uses), not the old sidebar's horizontal icon+label row -- the
- *  label moves into the button's own title tooltip instead. */
+ *  label moves into the button's own title tooltip instead.
+ *  F35 (advisor, UX unification): rendering + the active-class toggle are the
+ *  shared editor-tool-registry.js mechanism now, the same one Photo uses --
+ *  this file no longer carries its own copy of either loop. */
 function renderToolList(container) {
-  if (!container) return;
-  container.innerHTML = '';
-  for (const tool of BRICK_TOOLS) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'tool-btn';
-    btn.id = `brickTool_${tool.id}`;
-    btn.title = `${tool.label} — ${tool.hint}`;
-    btn.textContent = tool.icon;
-    btn.addEventListener('click', () => selectTool(tool.id));
-    container.appendChild(btn);
-  }
+  renderToolRegistry(container, BRICK_TOOLS, selectTool);
 }
 
 function syncToolButtons() {
-  for (const tool of BRICK_TOOLS) {
-    document.getElementById(`brickTool_${tool.id}`)?.classList.toggle('active', tool.id === _activeTool);
-  }
+  syncToolRegistryButtons(BRICK_TOOLS, _activeTool);
   const hint = BRICK_TOOLS.find((t) => t.id === _activeTool);
   const hintEl = document.getElementById('brickToolHint');
   if (hintEl) hintEl.textContent = hint ? hint.hint : '';
   syncBrushSection();
+}
+
+/** F35 (advisor: "Esc = back to the select tool in every tab"): Brick has no Select tool of its
+ *  own to click -- clears this tab's own active-tool state and returns the editor's underlying
+ *  interaction mode to plain Select, the same real effect Artwork's Escape-to-toolSelect has. */
+export function deselectTool() {
+  _activeTool = null;
+  syncToolButtons();
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (editor && typeof editor.setMode === 'function') editor.setMode('select');
 }
 
 function renderFramePresetList(container) {
@@ -454,7 +633,7 @@ const BRUSH_PRESET_LIST = [
   { id: 'flemish_soldier_flemish_3', label: '3-wide (Flemish / Soldier / Flemish)' },
 ];
 
-/** The current frame's own contour, as `{primitives, bands, set}` for
+/** The current frame's own contour, as `{primitives, bands}` for
  *  generateBricks/bricksContourBands -- or null when no real frame resolves (no template selected,
  *  or the offset is degenerate). H23 item 76 (the primitive-ribbon.js rebuild): `sil.primitives`
  *  converts DIRECTLY to raw lines+arcs via buildRibbonPrimitives -- no polyline, no declared corner
@@ -467,7 +646,12 @@ const BRUSH_PRESET_LIST = [
  *  index the user hasn't touched. T86 item 2: every pattern now builds through the SAME
  *  `bricksContourBands` call (generateBricks' own composer, via `runBricks`) -- no per-band engine
  *  split any more (editor-brick-tool.js's own now-retired `frameBricksFor`), so this function just
- *  builds the real band list, nothing else. */
+ *  builds the real band list, nothing else.
+ *
+ *  F35 item 16: no longer returns its own `set` override (the retired resolveFrameBrickSet, Frame's
+ *  own brick-length-only special case) -- Frame bands now resolve the SAME global brick length as
+ *  Wall/Brush, via `scale` (editor-brick-tool.js's own scaleFor), which generateBricks already
+ *  threads to both uniformly. */
 function resolveFrameGeom(editor) {
   const ctx = frameContext(editor);
   const sil = ctx ? frameContourSilhouette(ctx, 0, 0) : { error: 'noFrame' };
@@ -476,52 +660,43 @@ function resolveFrameGeom(editor) {
   const basePreset = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
   const overrides = P.brickSettings.frameBandPatterns || [];
   const bands = basePreset.map((band, i) => (overrides[i] ? { ...band, pattern: overrides[i] } : band));
-  return { primitives, bands, set: resolveFrameBrickSet() };
+  return { primitives, bands };
 }
 
-/** F35 item 5 review (Fred, via advisor correction): "frame thickness" = the
- *  LENGTH of the bricks across a Frame band (a soldier band's own width IS
- *  the brick length) -- a per-frame brick-length OVERRIDE, not a band-width
- *  scaler. `brickHeightIn` is recomputed to keep the set's own declared
- *  aspect ratio, so the brick's own proportions never distort. Returns the
- *  base set UNCHANGED when the override equals its own declared length (the
- *  default, reset on every set switch -- selectSet above) so every OTHER
- *  caller of this set (Wall's own interior fill, via generateBricks' own
- *  top-level `input.set`) is completely unaffected -- this is carried
- *  separately as frameGeom's own `set`, generateBricks' optional
- *  `frame.set` override. */
-function resolveFrameBrickSet() {
-  // resolvedSetFor (editor-brick-tool.js), NOT a raw brickSetById -- so this
-  // starts from the SAME grout-width-overridden set Wall/Brush already use
-  // (runBricks' own `input.set`), rather than silently dropping the user's
-  // current grout-width slider value for Frame bricks specifically.
-  const base = resolvedSetFor(P.brickSettings);
-  const overrideLength = P.brickSettings.frameBrickLengthIn;
-  if (!overrideLength || overrideLength === base.brickLengthIn) return base;
-  const aspect = base.brickHeightIn / base.brickLengthIn;
-  return { ...base, brickLengthIn: overrideLength, brickHeightIn: overrideLength * aspect };
-}
+// F35 (Fred: "resolution is his own responsibility via the resolution panel" -- REVERSING the
+// earlier auto-tighten below): a grout groove needs the terrain's own mesh to sample it at least
+// 2-3 times across, or it reads as a blur rather than a visible line -- a 0.06in groove needs
+// P.spacing <= ~0.02in, well finer than this app's own 0.05in default (tuned for smooth terrain,
+// not brick-scale features). This USED to auto-tighten P.spacing itself (applyParam('spacing', ...))
+// whenever bricks existed; Fred ruled that his own call to make, not automatic. Detection only now
+// -- never writes P.spacing -- surfacing a plain, non-blocking hint instead, in both the Resolution
+// panel (#spacingGroutHint) and the Brick tab's own Grout section (#brickGroutSpacingHint), so
+// whichever one the user happens to be looking at explains why joints might look blurred.
+const GROUT_SAMPLES_ACROSS = 3;
 
-// Advisor review (turn 131, round 2): a grout groove needs the terrain's own
-// mesh to sample it at least 2-3 times across, or it reads as a blur rather
-// than a visible line -- a 0.06in groove needs P.spacing <= ~0.02in, well
-// finer than this app's own 0.05in default (tuned for smooth terrain, not
-// brick-scale features). Only TIGHTENS spacing (never loosens a user's own
-// already-finer setting), and only when real brick content actually exists
-// (editor-brick-tool.js's own 'bricksGenerated' event) -- not a blanket
-// global default change for users who never touch the Brick tab.
-const SAMPLES_ACROSS_GROUT = 3;
-
-function ensureFineEnoughMesh(groutWidthIn) {
-  if (!(groutWidthIn > 0)) return;
-  const targetSpacing = groutWidthIn / SAMPLES_ACROSS_GROUT;
-  if (P.spacing > targetSpacing) {
-    applyParam('spacing', targetSpacing);
+function updateSpacingHint(groutWidthIn) {
+  const gw = groutWidthIn ?? P.brickSettings.grout.widthIn;
+  const bricksExist = document.querySelectorAll('[data-brick-gen="1"]').length > 0;
+  const targetSpacing = gw > 0 ? gw / GROUT_SAMPLES_ACROSS : null;
+  const show = bricksExist && targetSpacing != null && P.spacing > targetSpacing;
+  const msg = show
+    ? `Grout joints need spacing ≤ ${targetSpacing.toFixed(3)} in to carve cleanly (current ${P.spacing})`
+    : '';
+  for (const id of ['spacingGroutHint', 'brickGroutSpacingHint']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.textContent = msg;
+    el.style.display = show ? '' : 'none';
   }
 }
 
 export function initBrickPanel() {
-  document.addEventListener('bricksGenerated', (e) => ensureFineEnoughMesh(e.detail?.groutWidthIn));
+  document.addEventListener('bricksGenerated', (e) => updateSpacingHint(e.detail?.groutWidthIn));
+  // setTimeout(0): this listener's own registration order relative to the generic param-input
+  // binding that actually writes P.spacing isn't declared anywhere -- deferring one tick guarantees
+  // P.spacing already reflects the new value by the time the hint re-reads it, regardless of order.
+  document.getElementById('spacing')?.addEventListener('change', () => setTimeout(() => updateSpacingHint(), 0));
+  updateSpacingHint();
 
   document.getElementById('editorTabBrick')?.addEventListener('click', () => setEditorTab('brick'));
   renderToolList(document.getElementById('editorToolbarBrick'));
@@ -532,13 +707,15 @@ export function initBrickPanel() {
   syncBrushPresetButtons();
   renderWallPatternList(document.getElementById('brickPatternList'));
   syncWallPatternButtons();
+  renderBrickSizePresetList(document.getElementById('brickSizePresetList'));
+  syncBrickSizePresetButtons();
 
   document.getElementById('brickSetRed')?.addEventListener('click', () => selectSet(1));
   // F35 item 4 (c): White Rocks (Set 3, f3's item 74 fieldstone layout) is
   // now real -- un-greyed, selectable like Red Brick.
   document.getElementById('brickSetWhite')?.addEventListener('click', () => selectSet(3));
 
-  bindSlider('brickScaleSlider', 'brickScale', 'scale');
+  bindBrickSizeControls();
   bindGroutField('brickGroutWidth', 'widthIn');
   bindGroutField('brickGroutDepth', 'depthIn');
   document.getElementById('brickBtnGroutRecessed')?.addEventListener('click', () => setGroutProfile('recessed'));
@@ -552,7 +729,6 @@ export function initBrickPanel() {
   bindSlider('brickReliefHeightSlider', 'brickReliefHeight', 'reliefIn');
   bindSlider('brickSuppressionSlider', 'brickSuppression', 'suppression');
   bindSlider('brickClumpingSlider', 'brickClumping', 'clumping');
-  bindSlider('brickFrameLengthSlider', 'brickFrameLength', 'frameBrickLengthIn');
   document.getElementById('brickSeed')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10);
     if (!Number.isFinite(v)) return;

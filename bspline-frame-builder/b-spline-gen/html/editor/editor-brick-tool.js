@@ -200,19 +200,33 @@ function boardPolygon(editor) {
 /** The set the user's CURRENT settings actually resolve to: the library's own
  *  declared entry (setForId) with the grout WIDTH override applied (the one
  *  field every tool's own settings panel lets the user override directly).
- *  Exported so main/brick-panel.js's own Frame-brick-length override (F35
- *  item 5 review) can start from the SAME resolved set Wall/Brush already
- *  use, instead of a second, independent `brickSetById` call that would
- *  silently drop the user's own current grout-width override. */
+ *  Exported so main/brick-panel.js can start from the SAME resolved set
+ *  Wall/Brush already use, instead of a second, independent `brickSetById`
+ *  call that would silently drop the user's own current grout-width
+ *  override. NEVER applies the global brick-length override (toBrickOpts'
+ *  own `scale`, below, is how that reaches the engine) -- this is the
+ *  UNSCALED base every `scale` multiplier is computed relative to. */
 export function resolvedSetFor(settings) {
   const base = setForId(settings.setId);
   return { ...base, grout: { ...base.grout, widthIn: settings.grout.widthIn } };
 }
 
+/** F35 item 16 (Fred: "I'd rather they all have the same size"): the ONE global brick length
+ *  (inches) -- replacing the old per-tool 0.5-2x Scale multiplier AND the separate Frame-only
+ *  frameBrickLengthIn override -- expressed as the `scale` multiplier the 3 core engines
+ *  (along-path/fill-shape/contour-bands, via `scaledSet`) already take, relative to the ACTIVE
+ *  set's own declared brickLengthIn. Wall, every Frame band, and Brush all resolve through this
+ *  SAME function now, so picking a brick length affects every tool identically -- there is no
+ *  more a separate Frame-only length to keep in sync with it. */
+export function scaleFor(settings) {
+  const base = setForId(settings.setId);
+  return settings.brickLengthIn && base.brickLengthIn ? settings.brickLengthIn / base.brickLengthIn : 1;
+}
+
 function toBrickOpts(settings) {
   return {
     set: resolvedSetFor(settings),
-    scale: settings.scale,
+    scale: scaleFor(settings),
     suppression: settings.suppression,
     clumping: settings.clumping,
     seed: settings.seed,
@@ -294,14 +308,17 @@ function applyWallPattern(input, settings) {
  *  no clipping between them. Using the one real composer instead of two
  *  separate calls means Wall is ALWAYS clipped to whatever the frame's true
  *  interior is (when a frame resolves), with no overlap, regardless of
- *  which button the user clicked. `frameGeom` is `{path, cornerIndices,
- *  bands, arcSegments, set}` or null/undefined (no usable frame -- Wall
- *  alone fills the whole board, same as before Frame existed); its own
- *  `set` (main/brick-panel.js's resolveFrameBrickSet, F35 item 5 review) is
- *  a Frame-ONLY brick-length override, passed through generateBricks' own
- *  optional `frame.set` -- the `set` built here stays what Wall's own
- *  interior fill always used. */
-export function runBricks(editor, settings, frameGeom) {
+ *  which button the user clicked. `frameGeom` is `{primitives, bands}`
+ *  (main/brick-panel.js's own resolveFrameGeom) or null/undefined (no usable
+ *  frame -- Wall alone fills the whole board, same as before Frame
+ *  existed). F35 item 16: Frame bands no longer carry their own `set`
+ *  override -- `scale` (derived from the ONE global brick length, below) is
+ *  passed straight through to `generateBricks`, which already threads it to
+ *  BOTH the Wall fill and the Frame bands identically (its own
+ *  `frame.set || set` fallback picks the top-level `set` here, same as
+ *  Wall), so every tool resolves the same brick length with no separate
+ *  per-tool override left to keep in sync. */
+function _generateAndDraw(editor, settings, frameGeom) {
   const layer = ensureBricksLayer(editor);
   clearGenerated(editor, layer, 'wall');
   clearGenerated(editor, layer, 'frame');
@@ -310,7 +327,7 @@ export function runBricks(editor, settings, frameGeom) {
   const input = {
     boardOutline: boardPolygon(editor),
     set: resolvedSetFor(settings),
-    scale: settings.scale,
+    scale: scaleFor(settings),
     suppression: settings.suppression,
     clumping: settings.clumping,
     seed: settings.seed,
@@ -321,9 +338,46 @@ export function runBricks(editor, settings, frameGeom) {
   const { bricks, frameBricks } = generateBricks(input);
   drawBricks(editor, layer, frameBricks, 'frame', settings.setId, settings.seed, settings.reliefIn);
   drawBricks(editor, layer, bricks, 'wall', settings.setId, settings.seed, settings.reliefIn);
+  return { wallCount: bricks.length, frameCount: frameBricks.length };
+}
+
+export function runBricks(editor, settings, frameGeom) {
+  const counts = _generateAndDraw(editor, settings, frameGeom);
   commitEdit(editor);
   notifyBricksGenerated(settings);
-  return { wallCount: bricks.length, frameCount: frameBricks.length };
+  return counts;
+}
+
+/** F35 item 10 follow-up (Fred): a Brick-tab slider's LIVE drag preview -- the same generate+draw
+ *  step as runBricks, WITHOUT commitEdit (no undo snapshot pushed per drag tick -- a drag would
+ *  otherwise spam the undo stack) or notifyBricksGenerated (no 'bricksGenerated' listener firing,
+ *  so no grout-driven mesh-spacing tighten -> scheduleRebuild cascade into the expensive height-map
+ *  / 3D rebuild this preview tier exists specifically to skip). main/brick-panel.js's own shared
+ *  slider-binding mechanism calls this at most ~10x/sec (rAF-throttled) while dragging; the final
+ *  value's runBricks() call on release/commit does the full, committed regenerate. */
+export function runBricksPreview(editor, settings, frameGeom) {
+  return _generateAndDraw(editor, settings, frameGeom);
+}
+
+/** F35 item 10 follow-up: the SLOW-drag fallback for runBricksPreview -- once brick-panel.js's own
+ *  shared slider mechanism measures a live preview tick over its declared threshold, further live
+ *  ticks of THAT SAME drag draw just the fill boundary (the frame's own board-outline default --
+ *  deliberately not a precise frame-interior trace, which would need its own arc-sampling just for
+ *  a rare, already-slow fallback) as one cheap dashed outline instead of the full per-brick fill.
+ *  Costs nothing regardless of brick density (a large fieldstone-with-infill fill, the exact case
+ *  this exists for) since it never calls generateBricks at all. The next commit (runBricks) always
+ *  draws the real fill -- this is a drag-only placeholder, never a final state. */
+export function runBricksOutlinePreview(editor) {
+  const layer = ensureBricksLayer(editor);
+  clearGenerated(editor, layer, 'wall');
+  clearGenerated(editor, layer, 'frame');
+  const pts = boardPolygon(editor).map((p) => `${p.x},${p.y}`).join(' ');
+  editor._sketchLayer.polygon(pts)
+    .fill('none')
+    .stroke({ color: '#aa4433', width: 0.03, dasharray: '0.1,0.08' })
+    .attr('data-layer', layer.id)
+    .attr(BRICK_ATTR, 'wall')
+    .attr(BRICK_GEN_ATTR, '1');
 }
 
 /** Advisor review (turn 131, round 2): a 0.06in grout groove needs the
@@ -677,6 +731,17 @@ export function reconstructChains(segments) {
  *  untouched -- they stay the separate, fire-and-forget regime item 1
  *  already built (their own "spine" is the live board/frame contour itself,
  *  not a drawn element, so they have nothing here to react to). */
+// F35 (Fred, perf: "the app lags once a brick layer exists" -- the quick win: "skip brick regen
+// on non-brick commits"): regenerateOwnedBrickElements used to remove-and-redraw EVERY brush-owned
+// brick on EVERY editorCommit, even one that never touched a brick spine at all (e.g. dragging an
+// unrelated artwork node) -- a full DOM scan + per-chain bricksForBrushStroke + a fresh polygon
+// (with its own pattern-fill lookup) per brick, on every single commit anywhere in the editor.
+// A cheap fingerprint of the spine content this function ACTUALLY reads (element id, endpoints,
+// stripe id, settings JSON -- every input its own output depends on) lets an unrelated commit
+// skip that work entirely: if none of it changed, the redraw would produce byte-identical output,
+// so skipping is exact, not a heuristic approximation.
+let _lastSpineFingerprint = null;
+
 export function regenerateOwnedBrickElements(editor) {
   if (!editor || !editor._sketchLayer) return;
   const layer = (editor._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
@@ -684,6 +749,13 @@ export function regenerateOwnedBrickElements(editor) {
 
   const children = editor._sketchLayer.children().toArray();
   const spineEls = children.filter((el) => el.attr(BRICK_ATTR) === SPINE_KIND);
+
+  const fingerprint = spineEls.map((el) => {
+    const [a, b] = pieceEnds(el);
+    return `${el.attr(BRICK_ELEMENT_ATTR)}|${a.x},${a.y},${b.x},${b.y}|${el.attr(STRIPE_ATTR) || ''}|${el.attr(BRICK_SETTINGS_ATTR) || ''}`;
+  }).join(';');
+  if (fingerprint === _lastSpineFingerprint) return;
+  _lastSpineFingerprint = fingerprint;
 
   const byElement = new Map();
   for (const el of spineEls) {

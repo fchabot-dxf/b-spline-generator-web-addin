@@ -78,7 +78,15 @@ describe('Brick tab: Brush section', () => {
     expect(active('brickBtnProfileStripped')).toBe(true);
   });
 
-  it('Orientation toggle writes P.brickSettings.orientation and updates both buttons', () => {
+  it('Orientation is disabled under Stripped (bricksForBrushStroke\'s band path ignores it) and live under Continuous', () => {
+    expect($('brickBtnOrientationStretcher').disabled).toBe(true);
+    expect($('brickBtnOrientationSoldier').disabled).toBe(true);
+    $('brickBtnOrientationSoldier').click(); // a disabled button: the click must not reach setOrientation
+    expect(P.brickSettings.orientation).toBe('stretcher');
+
+    $('brickBtnProfileContinuous').click();
+    expect($('brickBtnOrientationStretcher').disabled).toBe(false);
+    expect($('brickBtnOrientationSoldier').disabled).toBe(false);
     $('brickBtnOrientationSoldier').click();
     expect(P.brickSettings.orientation).toBe('soldier');
     expect(active('brickBtnOrientationSoldier')).toBe(true);
@@ -86,6 +94,9 @@ describe('Brick tab: Brush section', () => {
     $('brickBtnOrientationStretcher').click();
     expect(P.brickSettings.orientation).toBe('stretcher');
     expect(active('brickBtnOrientationStretcher')).toBe(true);
+
+    $('brickBtnProfileStripped').click(); // back to Stripped: disabled again
+    expect($('brickBtnOrientationStretcher').disabled).toBe(true);
   });
 
   it('a saved session restoring non-default values is reflected onto the buttons on init (syncControlsFromState)', () => {

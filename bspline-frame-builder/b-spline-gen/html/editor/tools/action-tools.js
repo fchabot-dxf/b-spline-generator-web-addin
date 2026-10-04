@@ -1,7 +1,7 @@
 import { bindClick } from '../dom.js';
 import { endEditorSession } from '../editor-text-session.js';
 import { isUnexpandable, unexpand } from '../editor-expand-commit.js';
-import { resetArtworkToFresh, sync3DBackground } from '../editor-io.js';
+import { resetArtworkToFresh } from '../editor-io.js';
 import { clearFrame } from '../editor-frame-profile.js';
 import { refreshGuides } from '../editor-guides.js';
 import { commitEdit } from '../editor-commit.js';
@@ -45,8 +45,20 @@ export function registerActionTools(editor) {
     // path uses, declared once in editor-io.js). editor.pushState() below
     // is what makes this ONE undo step (resetArtworkToFresh's own internal
     // addLayer call is skipUndo, by design).
+    //
+    // F35 (Fred: "Clear leaves a ghost of the old content"): this used to
+    // also call sync3DBackground(editor) right here, before commitEdit --
+    // that snapshots whatever #svgEditorTopView CURRENTLY shows into the
+    // background layer, but nothing has repainted that canvas yet at this
+    // point, so it always captured the STALE, pre-Clear terrain. The only
+    // thing that ever repaints #svgEditorTopView for real is the async
+    // commitEdit -> onChange('commit') -> remask -> rebuild() ->
+    // updateEditorTopView() chain below, which calls sync3DBackground
+    // itself once the terrain is actually recomputed -- the call removed
+    // here was redundant with that AND guaranteed to render stale content
+    // in the meantime. Every other edit (draw, delete, ...) already
+    // relies on that same chain alone with no ghost; Clear now does too.
     resetArtworkToFresh(editor);
-    sync3DBackground(editor);
     refreshGuides(editor);
     commitEdit(editor); // audit batch 3: the one commit
   });
