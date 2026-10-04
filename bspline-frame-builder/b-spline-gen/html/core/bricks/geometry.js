@@ -487,11 +487,21 @@ export function roundPolygonCorners(poly, radius, segments = 4) {
   if (!(radius > 0) || poly.length < 3) return poly;
   const n = poly.length;
   const out = [];
+  // +1 when the polygon winds counter-clockwise in math axes (signedArea is NEGATIVE then -- MEASURED on
+  // a unit square, see signedArea's own formula)
+  const ccw = signedArea(poly) < 0 ? 1 : -1;
   for (let i = 0; i < n; i++) {
     const v = poly[i], prev = poly[(i - 1 + n) % n], next = poly[(i + 1) % n];
     const u1x = prev.x - v.x, u1y = prev.y - v.y, len1 = Math.hypot(u1x, u1y);
     const u2x = next.x - v.x, u2y = next.y - v.y, len2 = Math.hypot(u2x, u2y);
     if (len1 < 1e-9 || len2 < 1e-9) { out.push(v); continue; }
+    // A REFLEX vertex (the turn prev->v->next goes against the winding) stays sharp: its fillet would ADD
+    // material outside the polygon, into whatever the notch wraps round. T86 item 21c: fieldstone clips a
+    // stone to the band ring THEN rounds it, so a stone wrapping the inner hole's corner had that notch
+    // filleted INTO the hole -- MEASURED 0.0019 sq in, (1 - pi/4) r^2 for its corner radius r = 0.09 in;
+    // hidden until polygonIntersection measured touching shapes correctly.
+    const turn = -u1x * u2y + u1y * u2x; // (v - prev) x (next - v)
+    if (Math.sign(turn) === -ccw) { out.push(v); continue; }
     const n1x = u1x / len1, n1y = u1y / len1, n2x = u2x / len2, n2y = u2y / len2;
     const cosTheta = Math.max(-1, Math.min(1, n1x * n2x + n1y * n2y));
     const theta = Math.acos(cosTheta);
