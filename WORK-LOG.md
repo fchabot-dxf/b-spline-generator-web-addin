@@ -18273,3 +18273,124 @@ Not done this turn, still queued (advisor's own explicit sequencing,
 after this item): the remaining item 76 list (corner styles incl.
 butt, 5+1 presets via the approved piece set), and the band-pattern
 (u,v) hook for de.
+
+---
+
+## H23 item 77 follow-up -- band-pattern (u,v) hook for de (f3)
+
+**Dispatch (turn 528, advisor):** "Item 77 reviewed: the wall is cut
+cleanly along the waist curve, nice. Next: FIRST the band-pattern (u,v)
+hook (small, so de can start the per-band pattern picker; DM de when
+it's on main), THEN corner styles ... THEN the 5+1 frame presets ...
+then tidy the thin wedges in the fillet fans." Doing only the first,
+smallest item this turn, per the advisor's own sequencing and this
+project's "one task per wake" convention.
+
+**What it is:** library.js's own F35 item 7 header already declared the
+shape of this: "a pattern is placed in local (u,v) space... each
+CONSUMER supplies its own (u,v) frame: Wall's is the identity (u=x,
+v=y)... a Frame band's is its own path-local frame (arc-length +
+perpendicular offset, f3's own territory, not built here)." This turn
+builds that territory: `contour-bands.js`'s new exported `bandFrameAt
+(primitives)`, returning a `(u,v) -> {x,y,tx,ty,nx,ny}` closure -- `v`
+is signed depth from the board's TRUE outline (0 = outer edge,
+increasing = inward, the SAME convention every band/row in
+`bricksContourBands` itself already uses), `u` is arc length along
+THAT depth's own boundary, wrapping (a closed contour). Lets de's own
+pattern-generation code (today only exercised in the Wall's flat (x,y)
+Cartesian space) sample real, correctly-oriented world positions along
+a CURVED Frame band without knowing anything about lines vs arcs,
+joints, or inward offsetting -- it does NOT by itself make a 'tile2d'
+pattern (herringbone/basketweave) actually distort correctly around a
+curve (de's own flagged "genuinely hard question", still open, not
+this hook's job).
+
+**Deliberately just a composition, not new geometry:** `v` selects
+WHICH offset boundary via the ALREADY-exact `boundaryAtDepth`
+(primitive-ribbon.js); `u` locates the point on it via the ALREADY-
+exact `pointAtArcLength` (geometry.js). Returns a closure (not a
+one-shot function) so a caller sampling many (u,v) points for one band
+-- exactly what a pattern generator does -- pays the one-time inward-
+sign/enrichment cost ONCE, with `boundaryAtDepth`'s own per-depth
+polyline cached across repeated calls at the same `v`.
+
+**Two real bugs found composing these two ALREADY-correct primitives
+(both MEASURED on real geometry before being trusted):**
+- `boundaryAtDepth`'s own joint lookup (`jointPointAt` ->
+  `curveIntersection`) can return `null` at a depth no EXISTING caller
+  happens to land on exactly (`bricksContourBands` only ever calls it
+  at depths quantised to a whole brick-row count). MEASURED on T1 at an
+  arbitrary v=0.3: a null right at a shoulder fillet's own joint,
+  crashing `cumulativeLengths` on `null.x`. This is a separate,
+  pre-existing gap in the shared joint machinery, not something this
+  hook set out to fix -- the sampler just filters nulls out of its own
+  boundary before using it (the polyline connects its two real
+  neighbours directly, a locally tiny simplification, not a wrong
+  answer), and the gap itself is flagged here rather than silently
+  patched over inside primitive-ribbon.js.
+- `pointAtArcLength`'s own `closed` flag only wraps `u` modulo whatever
+  `cum` already spans -- it does NOT add a final closing edge on its
+  own. The established convention for this exact pairing already
+  exists elsewhere in this codebase (`editor-brick-tool.js`'s own
+  `buildArcSegments`: `points.concat([points[0]])` before computing
+  `cum`) -- missed it on the first pass. MEASURED on the plain 10x10
+  SQUARE fixture: an inset-by-1 boundary's own TRUE 32in perimeter (4
+  sides of 8) came back with `cum`'s own total at 24in, silently
+  skipping the left edge entirely on every wraparound (u=32 landed on
+  the SAME point as u=8, not back at u=0). Fixed by appending the
+  closing point before `cumulativeLengths`, matching the established
+  convention exactly. Re-verified: u=40 at v=0 (true perimeter 40)
+  lands exactly back at u=0; u=32/u=72 at v=1 (true perimeter 32, an
+  8x8 inset square) both land exactly back at u=0/u=8 respectively.
+
+**Verification, MEASURED not reasoned:**
+- Normal direction, checked exactly (not just "broadly positive"): a
+  point sampled mid-edge on the plain SQUARE fixture (5in from either
+  corner, so no mitre-bisector effect) has its own `(nx,ny)` matching
+  that edge's own true inward normal to floating-point exactness, both
+  the bottom edge (expected (0,1)) and the right edge (expected
+  (-1,0)). Cross-checked on T1's own real primitive 0 (a line): the
+  sampler's own reported normal at any u strictly inside it matches
+  that primitive's own `enrichPrimitives`-computed normal bit-for-bit.
+  On a real arc primitive (r=0.623): the normal is consistently
+  radially INWARD (dot with the outward radial direction = -1.000,
+  +-0.001, across 6 sample points on 2 different occurrences of the
+  arc) -- never flips sign, never drifts toward tangential.
+  (An earlier, cruder "finite-difference the actual world-space move"
+  test gave only ~0.2-0.7 dot products near corners -- NOT a bug, just
+  the wrong test: moving along `v` near a corner also shifts `u`'s own
+  relationship to a fixed edge position, since the corner moves along
+  its own mitre bisector, not either edge's bare normal -- documented
+  in the function's own header rather than left as a confusing loose
+  end.)
+- v>0 moves along the TRUE mitred corner bisector: the SQUARE's own
+  plain 90deg corner at v=1 lands at EXACTLY (1,1), the same
+  mitred-vertex construction `offsetPathInward` already uses elsewhere.
+- Tangent/normal are always unit length, perpendicular, and right-
+  handed (n = tangent rotated +90deg) at 5 sampled (u,v) pairs spanning
+  different edges and depths.
+
+**Tests added** (`tests/bricks-contour-bands.test.js`, reusing the
+file's own existing `SQUARE_PRIMITIVES` fixture -- every expected value
+is hand-computable exactly, not a golden snapshot): first-vertex/
+tangent, exact mid-edge normals (both edges), the mitred-corner-bisector
+inset, the TRUE-perimeter wraparound (single and double wrap), and the
+unit/perpendicular/right-handed frame invariant. MUTATION-TESTED the
+wraparound test specifically (the one bug most likely to silently
+regress, since it only shows up past the "missing" edge): reverted just
+the `concat([boundary[0]])` line -- the test failed immediately (off by
+exactly 10, landing back at u=0's own point instead of u=40's expected
+wraparound) -- restored, re-ran clean.
+
+Full suite: 200 files / 3681 tests green (3676 + 5 new `it` blocks),
+re-run after both fixes and after the doc-only edits below.
+
+Files: `core/bricks/contour-bands.js` (new exported `bandFrameAt`),
+`core/bricks/index.js` (barrel export added), `core/bricks/library.js`
+(BRICK_PATTERNS header updated -- was describing this as "not built
+here"), `tests/bricks-contour-bands.test.js`.
+
+Next: DM de that this is on main (per the advisor's own instruction),
+then the remaining item 76 list (corner styles incl. butt, 5+1
+presets), then tidying the thin wedges in the fillet fans -- both still
+queued, not started this turn.

@@ -6,7 +6,7 @@
  * and the 3 declared FRAME_PRESETS.
  */
 import { describe, it, expect } from 'vitest';
-import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
+import { bricksContourBands, bandFrameAt } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 
 const SET = BRICK_SETS[0];
@@ -429,6 +429,75 @@ describe('bricksContourBands — the Frame tool', () => {
         const worstVoidIn = (worstRun / GRID) * sqSize;
         expect(worstVoidIn, `${name}: corner (${c.ox},${c.oy}) worst void width`).toBeLessThanOrEqual(maxVoidIn);
       }
+    }
+  });
+});
+
+describe('bandFrameAt -- H23 item 77 follow-up: the band-pattern (u,v) hook for de', () => {
+  // SQUARE_PRIMITIVES, reused from above: (0,0)->(10,0)->(10,10)->(0,10)->(0,0), 4 plain corners,
+  // perimeter 40. Every expected value below is hand-computable exactly (no curvature, no mitre-
+  // bisector subtlety away from a corner), so this is real arithmetic, not a golden snapshot.
+  const sample = bandFrameAt(SQUARE_PRIMITIVES);
+
+  it('v=0, u=0 is the first declared vertex, tangent along the first edge', () => {
+    const p = sample(0, 0);
+    expect(p.x).toBeCloseTo(0, 9);
+    expect(p.y).toBeCloseTo(0, 9);
+    expect(p.tx).toBeCloseTo(1, 9);
+    expect(p.ty).toBeCloseTo(0, 9);
+  });
+
+  it('a point mid-edge (away from any corner) has an EXACT normal matching that edge, both edges checked', () => {
+    // u=5: midpoint of the bottom edge (0,0)->(10,0) -- 5in from both corners.
+    const bottom = sample(5, 0);
+    expect(bottom.x).toBeCloseTo(5, 9);
+    expect(bottom.y).toBeCloseTo(0, 9);
+    expect(bottom.nx).toBeCloseTo(0, 9); // inward = +y, away from the board's own exterior below
+    expect(bottom.ny).toBeCloseTo(1, 9);
+    // u=15: midpoint of the right edge (10,0)->(10,10) -- u=10 is the corner, +5 along the next edge.
+    const right = sample(15, 0);
+    expect(right.x).toBeCloseTo(10, 9);
+    expect(right.y).toBeCloseTo(5, 9);
+    expect(right.tx).toBeCloseTo(0, 9);
+    expect(right.ty).toBeCloseTo(1, 9);
+    expect(right.nx).toBeCloseTo(-1, 9); // inward = -x, toward the square's own centre
+    expect(right.ny).toBeCloseTo(0, 9);
+  });
+
+  it('v > 0 moves inward along the mitred corner bisector, not a naive per-edge translation', () => {
+    // v=1 insets this square's own plain 90deg corners to EXACTLY (1,1) (mitre of two perpendicular
+    // edges each offset by 1) -- the SAME mitred-vertex construction offsetPathInward documents.
+    const corner = sample(0, 1);
+    expect(corner.x).toBeCloseTo(1, 9);
+    expect(corner.y).toBeCloseTo(1, 9);
+  });
+
+  it('u wraps on the TRUE closed perimeter at every depth, not short by the final edge', () => {
+    // MUTATION-PROVEN bug this guards: pointAtArcLength's own `closed` flag only wraps `u` modulo
+    // whatever `cum` already spans -- it does NOT add a closing edge on its own. Before this hook
+    // explicitly appended that closing point, a depth-1 inset of this square (true perimeter 32,
+    // 4 sides of 8) measured its own wraparound total as 24 -- the left edge silently never walked.
+    const v0wrap = sample(40, 0); // true perimeter at v=0 is exactly 40
+    expect(v0wrap.x).toBeCloseTo(0, 9);
+    expect(v0wrap.y).toBeCloseTo(0, 9);
+    const v1wrap = sample(32, 1); // true perimeter at v=1 (an 8x8 inset square) is exactly 32
+    const v1start = sample(0, 1);
+    expect(v1wrap.x).toBeCloseTo(v1start.x, 9);
+    expect(v1wrap.y).toBeCloseTo(v1start.y, 9);
+    // and wrapping more than once lands the same place too (72 = 2*32 + 8)
+    const v1twice = sample(72, 1);
+    const v1eight = sample(8, 1);
+    expect(v1twice.x).toBeCloseTo(v1eight.x, 9);
+    expect(v1twice.y).toBeCloseTo(v1eight.y, 9);
+  });
+
+  it('every sampled (u,v) returns a genuinely unit tangent and a perpendicular, right-handed normal', () => {
+    for (const [u, v] of [[0, 0], [3, 0], [5, 0.5], [22, 1], [39, 0.2]]) {
+      const p = sample(u, v);
+      expect(Math.hypot(p.tx, p.ty)).toBeCloseTo(1, 6);
+      expect(Math.hypot(p.nx, p.ny)).toBeCloseTo(1, 6);
+      expect(p.nx * p.tx + p.ny * p.ty).toBeCloseTo(0, 9); // perpendicular
+      expect(p.tx * p.ny - p.ty * p.nx).toBeCloseTo(1, 9); // n = tangent rotated +90 (right-handed)
     }
   });
 });

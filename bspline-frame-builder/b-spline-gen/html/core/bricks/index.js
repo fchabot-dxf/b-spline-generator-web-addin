@@ -7,7 +7,7 @@
  */
 export { bricksAlongPath } from './along-path.js';
 export { bricksFillShape } from './fill-shape.js';
-export { bricksContourBands } from './contour-bands.js';
+export { bricksContourBands, bandFrameAt } from './contour-bands.js';
 export { generateBricks, buildSpatialIndex, sampleHeight } from './engine.js';
 export { brickTopHeight } from './height-profile.js';
 export { PIECE_CATALOGUE, BRICK_SETS, FRAME_PRESETS, brickSetById, enabledPieces, scaledSet } from './library.js';

@@ -234,7 +234,13 @@ export const BRICK_SETS = Object.freeze([
  * along-path.js's bare `orientation==='soldier'` ternary). A pattern is placed in local (u,v) space
  * -- u=along a course/band, v=across it -- and each CONSUMER supplies its own (u,v) frame: Wall's
  * is the identity (u=x, v=y, layouts/bond.js below); a Frame band's is its own path-local frame
- * (arc-length + perpendicular offset, f3's own territory, not built here).
+ * (arc-length + perpendicular offset) -- H23 item 77 follow-up: that frame is `contour-bands.js`'s
+ * own exported `bandFrameAt(primitives)`, which returns a `(u,v) -> {x,y,tx,ty,nx,ny}` sampler (v=0
+ * = the board's own true outline, increasing = inward, same convention `bricksContourBands`'
+ * bands/rows already use). `bricksContourBands` itself still only consumes 'course'-kind patterns
+ * directly; `bandFrameAt` is the separate, smaller hook a 'tile2d' (or any other) pattern generator
+ * needs to place itself along a curved band -- it does not by itself solve tile2d-on-a-curve (a
+ * tile2d CELL's own shape distorting around curvature is a separate, harder question, still open).
  *
  * `kind` tags which cell-generation family a pattern needs:
  *   'course'             — one row of UNIFORMLY-pitched bricks, the pre-item-7 model generalised
