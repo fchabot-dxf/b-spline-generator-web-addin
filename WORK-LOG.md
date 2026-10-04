@@ -18898,3 +18898,51 @@ including a bug the TEST itself first had, verified end to end, previews confirm
 BUTT, the sliver fix, LAPPED and BLOCK are all now complete and live-verified in this session --
 header-band is the one remaining preset, blocked on the separate 'header' pattern feature. Passing
 back to report the full status and flag that gap before attempting it.
+
+## T86 item 1 follow-up #2: the sliver fix's own tolerance was too narrow -- fixed the actual lens, not just the gate
+
+The advisor's own review caught the SAME class of defect resurfacing at a BLOCK/lapped corner,
+proposing a specific mechanism ("the fill rule must count the run length as ending at the block /
+through-band face, not the corner"). MEASURED that claim directly before accepting it: reconstructed
+`effectiveLen` by summing the live engine's own actual piece widths + joint widths for the affected
+run (a BLOCK square's own bottom band, both ends quoin-clipped) -- it already totalled 7.732in, which
+IS `10 - 2*(blockSize=1.1 + grout=0.034)`, i.e. already correctly ending at the block's own FACE, not
+the bare corner. The advisor's own diagnosis of the mechanism didn't hold up; their OBSERVATION (a
+real, visible sliver) was still exactly right -- the actual bug was elsewhere.
+
+**The real cause: the first sliver fix's own tolerance was the wrong LENS.** It gated the fullest-
+pair preference on total POSITION ERROR staying within half a grout width of the true minimum.
+MEASURED: for this exact run (7.732), forcing both ends whole costs 0.044in of position error vs the
+true-best 0.010in -- outside that window, so the old fix fell back to a balanced (1/2,1/2) split
+(two 0.1in end pieces) instead, a real sliver next to the 1.1in grey block. But MEASURED across
+every case this file now has (the original 10in through run, the 8.432in butt-clipped run, this
+7.732in block-bounded run): forcing both ends whole changes the resulting JOINT WIDTH by at most
+~0.001in versus the error-minimizing choice -- imperceptible, every single time, not a coincidence
+specific to one case. Position error was never the quantity that reads as a visual defect; joint
+width deviating from nominal is. Re-did `planCornerRun`'s own selection on that corrected basis:
+prefer the fullest end-fraction pair whose own resulting joint width stays within a generous
+declared ceiling (3x nominal) of the set's own grout width, falling back to the full candidate pool
+(then err as a last-resort tiebreaker) only when nothing clears that ceiling at all.
+
+**Verification.** `tests/bricks-piece-plan.test.js` rewritten: the EXISTING 10in-run test is
+unaffected (still whole bricks); the 8.432in butt-run test's own expectation changed from a balanced
+0.1in split to whole bricks (confirmed this is now the correct, intended behaviour, not a
+regression); a NEW test for the exact 7.732in block-bounded case, hand-computed and matching what the
+live engine actually produces; the genuinely-forced-thin-end floor case (no fuller alternative fits
+at all) stays unchanged, confirming the fix is a preference, not a ban. Mutation-tested: 2/4 tests
+fail against the pre-fix code (the two that changed; the other two correctly still pass, confirming
+no unrelated regression). Full `vitest`: 201 files/3700 tests, 0 failures -- none of the existing
+BUTT/LAPPED/BLOCK tests needed updating, since they only assert the OVERALL clipped span (unaffected
+by how that span subdivides into pieces), not individual piece sizes.
+
+**Re-ran all 9 previews** (butt/lapped/block x square/template_1/closeup, the SAME 3 tools already
+built): every sliver is gone in all three styles -- the butt square's own previously-visible thin
+strips next to the top/bottom runs are now uniform whole bricks; the lapped closeup's own thin red
+strip is gone; the block square's own thin strips next to each grey quoin are gone, every piece now a
+full brick right up to the block's own face.
+
+**Commit `[pending]`, pushed to origin/lane-b.** Fixed the actual root cause (the wrong objective
+function in a shared planner, not the mechanism the advisor's own report guessed at, confirmed by
+measurement before accepting either claim), not a narrow one-off patch -- the SAME planner serves
+mitre too, so this also improves any future mitre-corner run that happened to land in the same
+narrow-tolerance trap. Moving to the header-band coordination with de next, as directed.

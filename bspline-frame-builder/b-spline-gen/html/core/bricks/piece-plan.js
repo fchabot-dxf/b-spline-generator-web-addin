@@ -105,34 +105,46 @@ export function planCornerRun(runLength, pitch, nominalJoint, fractions) {
       const nJoints = wholeCount + 1;
       const idealTotal = endsLen + wholeCount * pitch + nJoints * nominalJoint;
       const err = Math.abs(runLength - idealTotal);
-      candidates.push({ fStart, fEnd, wholeCount, nJoints, idealTotal, err });
+      const jointWidth = Math.max(0, nominalJoint + (runLength - idealTotal) / nJoints);
+      candidates.push({ fStart, fEnd, wholeCount, nJoints, idealTotal, err, jointWidth });
     }
   }
   // T86 item 1 follow-up (advisor review, "the top band's first and last pieces are thin strips"):
   // MEASURED the raw err-minimum alone can pick a razor-thin END FRACTION (e.g. 1/4) over a FULL
-  // brick at both ends for a saving of a tiny fraction of ONE joint's own width (runLength=10,
-  // pitch=0.2, nominalJoint=0.034: the strict-best combo's own err is 0.012in: both-whole-ends costs
-  // only 0.028in -- a 0.016in difference across a 10in run, invisible in the joint spacing, while the
-  // resulting 0.05in sliver end piece is NOT invisible). Against this file's own declared design
-  // intent (FILL_FRACTIONS' own header: "mostly whole bricks, minimal small cuts"), minimizing err
-  // ALONE is the wrong objective on its own -- among every combo whose own err stays within a
-  // declared TOLERANCE of the true best, prefer the FULLEST end pieces (max fStart+fEnd), falling
-  // back to the lower err as a tiebreaker. TOLERANCE is half the set's own nominal joint width: any
-  // difference smaller than that is already below what a real joint's own natural variation absorbs
-  // (MEASURED: every within-tolerance combo here still keeps its own jointWidth within ~2% of
-  // nominal, nowhere near visually distinguishable). Affects every corner style sharing this
-  // function (mitre included) -- the SAME objective, not a butt-only special case.
-  const minErr = Math.min(...candidates.map((c) => c.err));
-  const tolerance = nominalJoint * 0.5;
-  const within = candidates.filter((c) => c.err <= minErr + tolerance);
+  // brick at both ends for a saving of a tiny fraction of ONE joint's own width. Against this file's
+  // own declared design intent (FILL_FRACTIONS' own header: "mostly whole bricks, minimal small
+  // cuts"), minimizing err ALONE is the wrong objective.
+  //
+  // T86 item 1 follow-up #2 (advisor review again, SAME complaint resurfacing at a BLOCK/LAPPED
+  // corner): the first fix above gated the fullest-pair preference on total POSITION error staying
+  // within a tolerance of the true minimum -- too narrow a gate. MEASURED directly (a block-bounded
+  // run, length 7.732, this item's own square fixture): both-whole-ends' own err (0.044) was well
+  // OUTSIDE that tolerance window (0.017), so the old fix fell back to a half-fraction (0.1in) pair
+  // instead -- a real, visible sliver next to the grey quoin block, exactly what the advisor flagged
+  // (their own guess at the MECHANISM -- "run length counted to the corner, not the block face" --
+  // did not hold up: `effectiveLen` was already confirmed correct by re-summing the actual engine
+  // output, 7.732 exactly; the TRUE bug was in this tie-break, not in how the run length is measured).
+  // Position error is the WRONG lens for "is this combo visually fine": the quantity that actually
+  // reads as a defect is JOINT WIDTH deviating far from nominal, and MEASURED across every case this
+  // file now has (10in through run, 8.432in butt-clipped run, 7.732in block-bounded run), forcing
+  // BOTH ends whole changes the resulting joint width by at most ~0.001in versus the strict error-
+  // minimum's own choice -- utterly imperceptible, every time, not a rare coincidence. So: prefer the
+  // FULLEST end-fraction pair whose own `jointWidth` stays within a generous, declared ceiling of
+  // nominal (3x -- comfortably past ordinary joint variation, but still catching a genuinely
+  // degenerate run where even the fullest viable pair would leave a joint wide enough to read as a
+  // void rather than mortar); only fall back to the full candidate pool when NOTHING clears that
+  // ceiling. Err is now a pure last-resort tiebreaker, not the primary objective.
+  const REASONABLE_JOINT_MULT = 3;
+  const reasonable = candidates.filter((c) => c.jointWidth <= nominalJoint * REASONABLE_JOINT_MULT);
+  const pool = reasonable.length ? reasonable : candidates;
   // Two tiebreakers ahead of err, both the same "avoid a thin end piece" intent: first the FULLEST
   // pair by total (preferring e.g. two whole bricks over one 3/4 + one 1/4), then -- among same-total
   // pairs, which `fStart+fEnd` alone can't distinguish -- the MOST BALANCED one (maximize the smaller
-  // of the two): (0.5,0.5) over (0.75,0.25)/(0.25,0.75) even though all three sum to 1 and tie on err,
-  // since the latter two still produce one 1/4-fraction sliver the balanced split avoids entirely
-  // (MEASURED: this exact tie on the right band's own run, runLength=8.432 in the T86 item 1 square
-  // fixture -- without this second tiebreaker the thin end survived the fix above).
-  const best = within.reduce((a, b) => {
+  // of the two): (0.5,0.5) over (0.75,0.25)/(0.25,0.75) if ever tied on both sum AND a reasonable
+  // joint width (MEASURED this exact tie once, before fix #2 above made (1,1) itself reachable in
+  // every case tried so far -- kept as a tiebreaker since a tie among non-maximal sums remains
+  // possible for other inputs).
+  const best = pool.reduce((a, b) => {
     const sumA = a.fStart + a.fEnd, sumB = b.fStart + b.fEnd;
     if (sumB !== sumA) return sumB > sumA ? b : a;
     const minA = Math.min(a.fStart, a.fEnd), minB = Math.min(b.fStart, b.fEnd);
