@@ -1,8 +1,11 @@
 /**
- * F35 item 10 follow-up (Fred): Brick-tab sliders regenerate on RELEASE, not every drag tick --
- * with a throttled (~10/sec), 2D-only live preview while dragging, falling back to a cheap
- * outline-only draw once a preview tick measures slow. brick-panel.js's own shared mechanism
- * (bindSlider + _scheduleLivePreview/_commitBrickSlider), declared once for every slider.
+ * F35 item 10 follow-up (Fred): an 'auto'-committed brick slider regenerates on RELEASE, not every
+ * drag tick -- with a throttled (~10/sec), 2D-only live preview while dragging, falling back to a
+ * cheap outline-only draw once a preview tick measures slow. brick-panel.js's own shared mechanism
+ * (bindSlider + BRICK_COMMIT.auto -> _scheduleLivePreview/generateBricks), declared once.
+ * Fred (2026-10-04): the editor's own Brick-tab sliders are 'generate' bindings now (no preview, no
+ * regen -- see brick-discrete-controls-regen.test.js); 'auto' is the main sidebar's quick settings,
+ * so these tests bind a fixture slider pair with commit 'auto' (#autoSlider/#autoNumber).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
@@ -12,7 +15,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js'
   return { ...actual, runBricks: vi.fn(), runBricksPreview: vi.fn(), runBricksOutlinePreview: vi.fn() };
 });
 
-import { initBrickPanel } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
+import { initBrickPanel, bindSlider } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, runBricksPreview, runBricksOutlinePreview } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
 const FIXTURE = `
@@ -36,6 +39,7 @@ const FIXTURE = `
   <input id="brickSuppressionSlider" type="range"><input id="brickSuppression">
   <input id="brickClumpingSlider" type="range"><input id="brickClumping">
   <input id="brickSeed"><button id="brickBtnRandomSeed"></button>
+  <input id="autoSlider" type="range" min="0" max="20" step="0.01"><input id="autoNumber" type="number">
 `;
 
 /** editor-session.test.js's own controllable rAF mock (same convention): requestAnimationFrame
@@ -81,6 +85,7 @@ beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', raf.raf);
   vi.stubGlobal('cancelAnimationFrame', raf.caf);
   initBrickPanel();
+  bindSlider('autoSlider', 'autoNumber', 'brickLengthIn', parseFloat, 'auto');
   document.getElementById('brickTool_wall').click(); // Wall tool active for most of these tests
   vi.clearAllMocks(); // the setup click above itself calls the mocked runBricks once -- don't count it
 });
@@ -93,20 +98,17 @@ afterEach(() => {
 });
 
 describe('Brick slider timing: live preview while dragging, full commit on release', () => {
-  // Advisor follow-up (Fred, "is scale easy?"): brickSizeSlider's own raw DOM value is now a LOG
-  // position (0-1000), not real inches -- these tests drive #brickSize (the number stepper) instead,
-  // which main/brick-panel.js's own bindBrickSizeControls binds through the EXACT SAME apply/commit
-  // functions as the slider (same throttle, same _commitBrickSlider), so the timing behaviour under
-  // test is identical either way, with assertions staying in plain, readable inches.
+  // #autoNumber/#autoSlider: a plain bindSlider pair on brickLengthIn with commit 'auto' (see header),
+  // so assertions stay in plain, readable inches.
   it('dragging (input) never calls the full commit; it schedules exactly one live-preview frame', () => {
-    setAndFire('brickSize', 1.2, 'input');
+    setAndFire('autoNumber', 1.2, 'input');
     expect(runBricks).not.toHaveBeenCalled();
     expect(raf.pendingCount()).toBe(1);
     expect(runBricksPreview).not.toHaveBeenCalled(); // not until the frame actually runs
   });
 
   it('once the rAF frame elapses, the live preview runs with the CURRENT P.brickSettings', () => {
-    setAndFire('brickSize', 1.4, 'input');
+    setAndFire('autoNumber', 1.4, 'input');
     raf.runPending();
     expect(runBricksPreview).toHaveBeenCalledTimes(1);
     expect(P.brickSettings.brickLengthIn).toBe(1.4);
@@ -114,9 +116,9 @@ describe('Brick slider timing: live preview while dragging, full commit on relea
   });
 
   it('several raw ticks before the frame fires collapse into ONE preview call, using the LATEST value (latest wins)', () => {
-    setAndFire('brickSize', 1.1, 'input');
-    setAndFire('brickSize', 1.2, 'input');
-    setAndFire('brickSize', 1.3, 'input');
+    setAndFire('autoNumber', 1.1, 'input');
+    setAndFire('autoNumber', 1.2, 'input');
+    setAndFire('autoNumber', 1.3, 'input');
     expect(raf.pendingCount()).toBe(1); // the 2nd/3rd ticks saw a frame already queued, no new one scheduled
     raf.runPending();
     expect(runBricksPreview).toHaveBeenCalledTimes(1);
@@ -124,9 +126,9 @@ describe('Brick slider timing: live preview while dragging, full commit on relea
   });
 
   it('release ("change") cancels any pending live frame and commits via the full runBricks exactly once', () => {
-    setAndFire('brickSize', 1.5, 'input');
+    setAndFire('autoNumber', 1.5, 'input');
     expect(raf.pendingCount()).toBe(1);
-    setAndFire('brickSize', 1.5, 'change');
+    setAndFire('autoNumber', 1.5, 'change');
     expect(raf.pendingCount()).toBe(0); // the pending live frame was cancelled, not left to also fire
     expect(runBricks).toHaveBeenCalledTimes(1);
     raf.runPending(); // even if something were still queued, nothing further should fire
@@ -134,26 +136,26 @@ describe('Brick slider timing: live preview while dragging, full commit on relea
   });
 
   it('a slider drag with no prior release still calls runBricks on its own first "change"', () => {
-    setAndFire('brickReliefHeightSlider', 0.2, 'change');
+    setAndFire('autoSlider', 0.2, 'change');
     expect(runBricks).toHaveBeenCalledTimes(1);
   });
 
   it('while Brush is the active tool, dragging never calls the live preview at all (nothing to preview -- frozen per-element settings)', () => {
     document.getElementById('brickTool_brush').click();
-    setAndFire('brickSize', 1.6, 'input');
+    setAndFire('autoNumber', 1.6, 'input');
     raf.runPending();
     expect(runBricksPreview).not.toHaveBeenCalled();
     expect(runBricksOutlinePreview).not.toHaveBeenCalled();
-    setAndFire('brickSize', 1.6, 'change');
+    setAndFire('autoNumber', 1.6, 'change');
     expect(runBricks).not.toHaveBeenCalled();
   });
 
   it('Frame tool with no usable frame on this board: no live preview, and release does not call runBricks either (matches the Frame button\'s own existing guard)', () => {
     document.getElementById('brickTool_frame').click();
-    setAndFire('brickSize', 1.6, 'input');
+    setAndFire('autoNumber', 1.6, 'input');
     raf.runPending();
     expect(runBricksPreview).not.toHaveBeenCalled();
-    setAndFire('brickSize', 1.6, 'change');
+    setAndFire('autoNumber', 1.6, 'change');
     expect(runBricks).not.toHaveBeenCalled();
   });
 
@@ -162,23 +164,23 @@ describe('Brick slider timing: live preview while dragging, full commit on relea
     // code measures (end - t0) around that exact call, so this is a direct simulation of "this tick
     // took 70ms", not a guess at how many performance.now() reads happen or in what order.
     runBricksPreview.mockImplementationOnce(() => { t += 70; });
-    setAndFire('brickSize', 1.1, 'input');
+    setAndFire('autoNumber', 1.1, 'input');
     raf.runPending(); // tick 1: measures 70ms > 50 -> _dragSlow = true
     expect(runBricksPreview).toHaveBeenCalledTimes(1);
     expect(runBricksOutlinePreview).not.toHaveBeenCalled();
 
     t += 200; // clear the 100ms throttle gate for the next tick
-    setAndFire('brickSize', 1.2, 'input'); // same drag, not yet released
+    setAndFire('autoNumber', 1.2, 'input'); // same drag, not yet released
     raf.runPending(); // tick 2: _dragSlow is set -> outline-only, the real preview is not touched
     expect(runBricksOutlinePreview).toHaveBeenCalledTimes(1);
     expect(runBricksPreview).toHaveBeenCalledTimes(1); // unchanged since tick 1
 
-    setAndFire('brickSize', 1.2, 'change'); // commit: resets the slow flag for the NEXT drag
+    setAndFire('autoNumber', 1.2, 'change'); // commit: resets the slow flag for the NEXT drag
     runBricksPreview.mockClear();
     runBricksOutlinePreview.mockClear();
 
     t += 200;
-    setAndFire('brickSize', 1.4, 'input'); // a new drag
+    setAndFire('autoNumber', 1.4, 'input'); // a new drag
     raf.runPending(); // tick 3: fresh drag, runBricksPreview is a plain no-op again (fast) -> stays not-slow
     expect(runBricksPreview).toHaveBeenCalledTimes(1); // back to the real preview, not outline-only
     expect(runBricksOutlinePreview).not.toHaveBeenCalled();

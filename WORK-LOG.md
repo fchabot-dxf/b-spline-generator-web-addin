@@ -20298,3 +20298,381 @@ after every batch, including after 3 client-side tool-call timeouts mid-matrix -
 pure transport timeout, Fusion itself had already finished and closed its own doc; the "never
 parallel" rule was kept throughout -- always confirmed clean before issuing the next call, never
 fired a retry while a prior call might still be running).
+
+## T86 item 11: scale-sensitive corner sizing -- root cause was a MEASUREMENT bug, not an engine bug; fixed. Life-size scale (4in/8in) found a real, bigger, separate issue, flagged not fixed (d3)
+
+**Root-caused exactly as the dispatch asked, and the answer is good news: the engine was never
+broken.** `t86_item4_matrix_lib.mjs`'s own `bandInfo` (the ratio-check helper) computed its "nominal
+piece area" from `opts.set.brickLengthIn`/`brickHeightIn` DIRECTLY -- the UNSCALED base values --
+while `bricksContourBands` (called two lines below, with the SAME `opts`) already applies
+`scaledSet(opts.set, opts.scale)` internally before building a single real piece. Every actual piece
+was always correctly scaled; only the matrix's own REFERENCE value wasn't, so it compared a
+scale^2-sized real piece against a fixed, scale=1 "nominal" and reported the growing mismatch as a
+defect. **MEASURED directly, bypassing the buggy helper entirely**: `template_1`'s own
+`single_soldier` ratio is EXACTLY 1.0 at scale 1, 1.5, AND 2 -- confirmed across `template_2/4/9/15`
+x `single_soldier`/`soldier_stretcher`/`mixed_bands` too, every ratio landing in the ordinary 1.0-1.2
+range already expected at scale=1. Fixed with a one-line change (`scaledSet` applied to the SAME
+set `bandInfo` already reads), re-verified: full suite 3795/3795, main item-4 matrix unchanged at
+146/476 (expected -- `scaledSet(set,1)` is a no-op, so nothing at the matrix's own default scale
+moves at all).
+
+**The advisor's own follow-up (scale now reaches LIFE SIZE -- 4in/8in bricks) found a real, separate
+issue the measurement-bug fix does NOT cover.** Built a quick scratch check (scale = desired-inches /
+0.75, the set's own base length) across `template_1/2/9/15` at 7x9/9x12, `single_soldier`/
+`soldier_stretcher`, at true 4in and 8in brick sizes. Ratios are fine (confirming the fix above is
+real and correct) but pairwise OVERLAP is frequently severe -- 0.5 to 1.0 (full containment) on
+MULTIPLE templates, not a measurement artifact (overlap fraction never depended on the buggy
+nominal). **Root-caused one directly** (`template_1`, `single_soldier`, 4in bricks, the classic
+hourglass): the SOLDIER band's own depth is now 4in on a 7x9 board -- deep enough that BOTH of
+`template_1`'s own shoulder fillets (convex arcs, r=0.623) drop out at this depth while the WAIST
+arc (concave, r=0.68) stays live throughout (confirmed directly: `liveAtD0=true` for all three,
+`liveAtD1` true/FALSE/true for shoulder/waist/shoulder) -- giving TWO SEPARATE notch joints (line-0
+to arc-waist via the dropped first shoulder, arc-waist to line-4 via the dropped second shoulder),
+each individually a LINE-ARC pair, not the LINE-LINE pair `buildNotchJoint` (item 9) was built for.
+`buildNotchJoint`'s own `D`/medial-line construction is gated to `prevPrim.type==='line' &&
+curPrim.type==='line'` -- for a line-arc pair it correctly falls through to the un-clamped,
+independent-corners construction (CASE 1), but that construction carries the EXACT SAME latent
+assumption item 9's own WORK-LOG already named for line-line pairs: two independently-sized corners
+can overlap once the row's own depth exceeds what the actual gap can support, REGARDLESS of whether
+the two flanking neighbours are lines or arcs. Item 9's own medial-line fix is a real, correct answer
+to this but was SCOPED to the one primitive-type combination the dispatch and the main matrix (max
+scale 2) actually exercised; life-size bricks (scale ~5.3-10.7 on these templates) exercise the
+LINE-ARC (and plausibly ARC-ARC) version of the identical underlying problem, which has NOT been
+built.
+
+**NOT fixed this item -- a clear scope boundary, not an oversight.** Generalizing the medial-line
+construction to an arc-involved pair is a GENUINELY different, substantial piece of geometry (an
+arc's own "medial" boundary against a facing line or another arc is a different formula than two
+parallel lines' own simple perpendicular-bisector case -- `buildNotchJoint`'s existing `D`/
+`medialDepth`/`jointPointAt`-at-medialDepth construction does not generalize by substitution), and
+building it carries the SAME risk profile item 9's own work already measured (multiple false starts,
+a net-regression attempt, several rounds of fix-measure-fix before landing correctly) -- not a
+same-turn addendum on top of everything else this session already built and verified. Recommending
+it as its own fresh-capacity item (the natural next: "T86 item 12 -- converging rows for arc-involved
+pairs, life-size scale"), reusing item 9's own measured playbook (isolate on one real template first,
+non-vacuous test, full matrix before shipping) rather than starting from zero.
+
+**Also still true from the earlier scale-matrix entry, unresolved by this item (not this item's own
+scope either):** grout width scaling itself is being handled as a UI/data decision (de's own item
+16, per the advisor's "it becomes one global value in inches" ruling) -- the engine already just
+takes whatever `grout.widthIn` it's given, no engine change needed on this side.
+
+**Commit** (`t86_item4_matrix_lib.mjs`'s own one-line fix, this entry). Passing back: item 11's own
+dispatched question is answered and fixed (it was a tooling bug); the life-size follow-up surfaced a
+real, scoped, NOT-yet-built generalization of item 9's own work, flagged for its own item rather than
+attempted here.
+
+## T86 item 6: fieldstone void-filling -- multi-pass Poisson/Voronoi, three measured false starts before landing on a frozen-per-pass design; coverage 90%->97-98% (Set 1), 74%->82-86% (Set 3, capped by its own heavier declared grout) (d3)
+
+**Dispatch (Fred): "fieldstone should also have a lot of smaller stones to fit in voids"** -- the
+single-pass version left big grey gaps, esp. near the frame's own inner edge and at the waist.
+`core/bricks/layouts/fieldstone.js` now runs the original main Poisson-disc/Voronoi pass, then two
+more void-fill passes at 1/3 and 1/6 of the main spacing, each seeded against every point already
+placed so a finer pass's own points can only land in whatever gap its own smaller `minDist` still
+allows between them. Small stones carry their own `point.spacing` so rounding/floor checks scale
+down with them, never the main pass's own absolute numbers.
+
+**Three measured false starts before the real fix, each caught by re-running the EXISTING "Wall's own
+fill reaches within ~2 grout-widths of the waist's true inner edge" test (`tests/bricks-real-template-
+contours.test.js`, H23 item 76 cont.) rather than assuming the new passes were safe just because they
+compiled:**
+1. First attempt seeded void-fill points against every prior point (correct) but also re-hashed pass
+   1's own seed through `seedFor` before generating it -- a silent bug, not a design flaw: pass 1's
+   own point SET was no longer bit-identical to the pre-item-6 baseline at all, so the waist gap
+   moved unpredictably (worse on T1, about the same on T12) for a reason that had nothing to do with
+   void-filling. Fixed by passing `seed` straight through for pass 1, matching the original call
+   exactly.
+2. Second attempt also rejected a void-fill candidate that landed inside an EARLIER pass's own
+   already-built (clipped/shrunk/rounded) polygon, reasoning that this alone would stop a finer pass
+   from needlessly subdividing a cell that was already fine. It didn't: the fix still rebuilt ONE
+   combined Voronoi diagram over every pass's points together at the end, and recomputing a coarse
+   point's own cell against ALL of them -- even a finer point sitting safely outside its FINAL
+   (shrunk) polygon -- can still shift that coarse point's own raw Voronoi bisector enough to shrink
+   its reach toward the board's true (often concave) boundary. MEASURED directly on template_12's own
+   waist: baseline's one big cell closely tracked the boundary from y=4.26 to 4.75; after this
+   attempt, the SAME region fragmented into several smaller cells that each stopped well short of it
+   (worst gap 0.131in against a 0.068in allowance).
+3. Third attempt tried fixing that by requiring a new point to stay the EXISTING point's own full
+   `spacing` away (not just the new pass's smaller `minDist`) -- correct in spirit, but a flat full
+   `spacing` floor is close to a Poisson-disc packing's own inter-point distance, so it rejected
+   essentially every void-fill candidate everywhere (cells identical to the single-pass baseline,
+   zero stones added). Backing the factor down to a fraction of `spacing` (0.5x) then let coverage
+   through but reproduced attempt 2's own waist regression almost exactly, and fully collapsed
+   coverage board-wide (55-58%, down from baseline's ~90%) once point density climbed -- confirming
+   the real defect was structural (recombining every pass into ONE shared Voronoi diagram), not a
+   tunable distance.
+
+**The fix that actually worked, and why it's safe by construction, not by tuning:** each pass's own
+cells are built ONCE and FROZEN. A finer pass's own points are Voronoi'd only AMONG THEMSELVES, then
+bisector-clipped against every nearby EARLIER pass's own point (the same `clipToHalfPlane` trick
+`voronoiCell` already used for same-pass neighbours, just given a mixed neighbour list) -- but an
+earlier pass's own already-built polygon is never touched again. Pass 1's own cells are therefore
+byte-for-byte identical to the pre-item-6 baseline (built via `buildPassCells(pass1Points, [])`, an
+empty prior list), so the waist test cannot regress from void-filling at all, by construction, not
+because a distance threshold happened to be tuned safely. A finer cell can still only ever occupy the
+REAL leftover void (grout gaps, or a dropped cell's own hole) because the bisector clip against each
+nearby earlier point stops it exactly where that point's own raw Voronoi reach would have stopped it
+anyway -- still no general polygon union/difference anywhere (this codebase has none, and still does
+not need one).
+
+**MEASURED, full suite 3864/3864 (`tests/bricks-real-template-contours.test.js` 59/59, waist gaps now
+BETTER than baseline on every case checked: 0.043 -> 0.019-0.031in across template_1/12, both well
+under the 0.068in allowance).** Coverage sweep (6 templates, Set 1): 90.0-90.4% -> 93.6-98.5%, hundreds
+of new small stones each case (full numbers: template_1 1030 cells/97.6%, template_12 978/97.3%,
+template_2 1013/98.5%, template_5 965/96.5%, template_9 9x12 1030/98.4%, template_15 624/93.6%).
+
+**Set 3 ("White rocks") needed one more general rule, and still lands below the 90% target -- a
+declared material property, not a remaining bug.** Its own grout (0.12in) is proportionally much
+heavier than Set 1's (0.034in) relative to its own main spacing (1.1in vs 0.75in) -- the fixed 1/3
+and 1/6 fractions shrink a stone down to almost nothing at that scale (coverage barely moved past the
+single-pass 73.9% baseline). Added `GROUT_CLEARANCE_FACTOR` (declared constant, =2): each pass's own
+fill spacing is floored at that many times the FULL grout width, so a pass too fine to survive its
+own shrink is widened instead of wasted (a no-op for Set 1, whose own grout is small enough that
+neither fraction ever needs it). Swept {1,2,4} plus a 3rd (1/9) fraction: factor 4 ends up skipping
+the second pass outright (both fractions floor to the same spacing), a 3rd fraction nearly doubles
+Set 1's own cell count and runtime for +0.2% coverage while changing Set 3 not at all (its own floor
+blocks the 3rd pass too) -- reverted both, kept 2 fractions + factor 2. Final Set 3 numbers:
+template_1 163 cells/82.6%, template_12 161/85.7% (up from the single-pass baseline's 15 cells/73.9%).
+Real fieldstone with much wider joints genuinely shows more mortar, less stone, than tight brickwork
+-- flagging this honestly rather than forcing a number by further special-casing one set.
+
+**Previews generated and published** (`tools/repro/t86_item6_fieldstone_preview.mjs`, new tool --
+renders the pre-item-6 algorithm inline, copied verbatim from git HEAD, side by side with the live
+module so "before" needs no stash/checkout gymnastics): T1 fieldstone before/after, Red brick + White
+rocks, all 4 to `~/.bspline-status/shots/seatB/t86_item6_*.png`. One tooling snag worth naming for
+whoever writes the next headless-Chrome capture script: a RELATIVE `--user-data-dir` made chrome.exe
+exit immediately (code 21, no stderr) -- needs an absolute path. Separately, the "after" renders (1000+
+polygons) need a much longer post-navigate sleep before `Page.captureScreenshot` than item 3's own
+300ms closeups did, or the screenshot races the paint and comes back blank (MEASURED: 300ms produced 4
+visually-identical blank boards; 2000ms rendered correctly every time).
+
+**Not touched, out of scope for this item:** the main item-4 matrix's own 146/476 failures are
+pre-existing (item 9's 3 residual overlaps + item 12's arc-pair gap) and entirely unrelated --
+confirmed by grep: that matrix never imports `fieldstone.js` at all.
+
+**Commit** (`fieldstone.js`'s own rewrite, the new preview tool, this entry). Passing back: item 6's
+headline ask (more small stones filling voids) is built and measured working for both sets; Set 1
+comfortably clears the 90% target, Set 3 improves substantially but tops out around 82-86% for a
+reason that's about its own declared grout, not a bug -- flagging for the advisor/Fred to confirm
+that's an acceptable, expected difference between the two sets rather than something to chase
+further. Standing queue next: outward bands + wall holes, frame suppression, item 5 (brush/line
+crossings), item 10 (grout-line cut), item 8 (more band/brush patterns).
+
+## T86 item 6 REJECTED and reworked: the multi-pass version (55d4d0c) had real overlap hiding under an inflated coverage number; replaced with a single power-diagram pass, 3 more measured bugs found and fixed along the way (d3)
+
+**Advisor rejected 55d4d0c on sight of the White rocks AFTER screenshot**: small stones were
+visibly sitting ON TOP of big ones, not in the grout gaps. MEASURED directly (new exact
+polygon-intersection overlap test, not the sampled "is this point covered" metric the original
+coverage number used, which is BLIND to overlap by construction): White rocks 60% of its own total
+"stone area" was overlap, Red brick 82%. The 97-98% coverage number I reported for item 6 was real
+area covered, but a large chunk of it was the SAME area covered twice -- the metric I used could
+not have caught this, which is exactly the gap the advisor's own review closed.
+
+**Root cause of the overlap (confirmed, not guessed): freezing each pass's cells is fundamentally
+unsound once a later pass can land anywhere near a sparse-neighbourhood point.** A frozen cell's own
+raw Voronoi reach, in a direction with no OTHER same-pass neighbour, extends however far it has to
+until SOMETHING stops it -- which, for a cell built before later passes existed, can be very far
+indeed. A later pass's own point, bisector-clipped against that ONE frozen point, correctly stays
+on its own side of THAT bisector -- but the frozen cell's own already-fixed shape was never
+re-examined, so if the frozen cell's true boundary (after board-clip/shrink/round) still reaches
+past where the later point's own bisector sits, actual overlap results. This is structural, not a
+tuning miss: no choice of pass ordering or spacing fixes it without an actual polygon-subtraction
+step this codebase does not have.
+
+**Advisor's follow-up direction (then refined once more by Fred, "shouldn't the spacing be
+irregular, so medium stones can be in the centre too") was the right call: ONE combined pass,
+geometry that cannot overlap by construction, not a careful multi-pass patch-up.** Rebuilt around a
+POWER DIAGRAM (`powerCell` in fieldstone.js) -- a weighted generalisation of the plain Voronoi
+diagram already used everywhere else in this file: weight = a seed's own declared radius squared, so
+a seed's own cell grows or shrinks with its own size instead of just local point density. The
+bisector between two power-diagram sites is STILL a straight line (offset from the midpoint by the
+sites' own weight difference) -- the textbook result that makes this a small, precise extension of
+the SAME `clipToHalfPlane` half-plane clip every cell boundary in this file already used, not a new
+algorithm. Built over every seed TOGETHER in one shot, a power diagram is a true tessellation --
+structurally unable to overlap, unlike the frozen multi-pass version.
+
+**First attempt at generating the seeds themselves -- one Poisson-disc stream with a per-seed
+variable radius drawn live from the noise field -- was tried and abandoned as genuinely unstable,
+not just imperfect.** Bridson's own "grow a new candidate from an active point at a distance based
+on that point's radius" step assumes same-size neighbours; once radius varies seed-to-seed, a
+small-radius active point proposes candidates far too close to where its true same-size separation
+would need to be, and small changes to the packing-distance constant swung measured coverage from 0%
+(every candidate rejected) to the high 80s% with no stable middle found, including one run that
+silently measured 0 cells entirely. Abandoned for a more boring, previously-proven structure:
+**per-tier Poisson-disc passes (largest tier first), each a FIXED radius for that pass only (the
+exact well-tested single-density growth formula), each pass's candidates additionally gated by
+`tierAt(x,y)` -- a shared low-frequency noise field -- so a tier only seeds where the noise field
+says it belongs.** The three tiers' points are then fed into ONE combined power diagram at the end,
+so "which pass placed a point" never matters for the no-overlap guarantee -- only the final power
+diagram does, and it is single-shot by construction.
+
+**Three more real, measured bugs found getting the combined approach from "zero overlap in the one
+case I first checked" to "zero overlap on a 36-case sweep (2 sets x 6 templates x 3 seeds) and a
+correct size-tier split":**
+1. **A fixed `neighborRadius` cutoff is not a safe bound once seeding is tier-gated.** The original
+   single-density algorithm could safely assume every point has close neighbours (uniform packing
+   guarantees it); a noise-gated tier can legitimately go sparse, and in a sparse patch a seed's own
+   power cell genuinely needs to reach further than any fixed cutoff to find its real neighbour.
+   MEASURED directly: two real stones 3.74in apart (on a ~7in-wide board) both grew out to the SAME
+   bounding-box corner because the 2.25in cutoff excluded each from the other's own bisector clip --
+   reproducible on 5 of 6 templates at one specific seed, not a rare fluke. Fixed by removing the
+   cutoff entirely -- every seed clips against every other one, which is cheap enough at this point
+   count (a few hundred) to just always do, rather than trust a radius tuned for a different
+   algorithm to still happen to be generous enough here.
+2. **Bridson's algorithm, as usually written (one first seed, grow only from the active list), only
+   ever discovers ONE connected blob of valid space.** Fine for the original single-density pass (the
+   whole board is one blob); wrong for a gated tier, whose own region is frequently SEVERAL
+   disconnected noise-field blobs. MEASURED: large's own share of total stone AREA came out at 13.5%
+   against a declared 50% target, because whole separate "large" patches got zero seeds of ANY tier
+   at all (large's own first-seed search found one patch; the gate then blocked medium/small from
+   the OTHER patches too, since the noise field there still said "large"). Fixed by re-searching for
+   a fresh first seed every time the active list empties, instead of stopping -- repeat until many
+   consecutive searches fail, which is what "every reachable blob is actually full" means.
+3. **The low-frequency noise field's own raw output is not uniform in [0,1), so a naive
+   cumulative-areaShare bucket against it badly misallocates tiers.** Bilinearly interpolating 4
+   independent random corners concentrates the result toward 0.5 (all 4 corners landing near 0 or
+   near 1 together is astronomically unlikely) -- MEASURED (direct grid sample of the noise function
+   alone, no Poisson-disc involved): declared bucket thresholds [0, 0.5, 0.85, 1.0] against this
+   distribution gave large=8.8%/medium=90.4%/small=0.8% of SPATIAL area, nowhere near 50/35/15,
+   because the "small" bucket's own 0.85 threshold is almost never reached by the raw noise at all.
+   Fixed with `uniformizeNoise`: 21 empirically-measured quantile breakpoints (sampled across many
+   independent noise cells/seeds), inverted to remap a raw sample back to an approximately uniform
+   value before the bucket lookup.
+4. **Even with (3) fixed, measured FINAL STONE AREA per tier still didn't match the noise field's own
+   spatial allocation** (noise said large=~50% of space; actual stone area came out ~13-33% depending
+   on other constants) -- a coarser tier wastes more of its own small gated blob to boundary/edge
+   effects than a finer tier does (large stones barely fit 2-4 across a blob sized for the noise
+   field's own low frequency; a finer tier's smaller stones tile the same blob far more completely).
+   Not "fixed" in the sense of removing the effect (it's a real, expected consequence of relative
+   scale) -- compensated instead: `GATE_AREA_SHARES`, a separate set of noise-bucket input shares
+   (distinct from `SIZE_TIERS[i].areaShare`, which stays the declared OUTPUT target), tuned by
+   direct measurement (not derived analytically -- the relationship between gate share and resulting
+   stone-area share is nonlinear, confirmed by iterating) until the measured split landed within
+   +/-10 points of 50/35/15 for BOTH sets at once.
+
+**Also carried over and re-verified from the rejected version: grout shrink scales DOWN per tier,
+proportionally to each tier's own spacing** (a quarter-scale small stone keeps the SAME fixed grout
+shrink that eats ~38% of its own area at full scale, vs ~9% for a full-size stone -- confirmed
+directly by disabling shrink entirely, which measured ~99% coverage for BOTH sets, proving the
+remaining shortfall was entirely the shrink/tier-size mismatch, not a packing problem). Real
+fieldstone chinking uses a thinner mortar bead between tiny stones than the main coursing
+physically allows -- the large tier keeps the set's own full declared grout width unchanged (ratio
+1), matching every other layout's own single-size behaviour exactly.
+
+**MEASURED, final state, full suite 3871/3871 (one unrelated flaky timeout on
+`frame-bartop-drawn.test.js` under full-suite CPU load, confirmed passing standalone and untouched
+by this item -- doesn't import fieldstone.js at all).** New dedicated test file
+`tests/bricks-fieldstone.test.js` (7 tests): zero pairwise overlap (via the SAME exact
+Greiner-Hormann `polygonIntersection` geometry.js already uses for concave board clipping, now
+exported, not a sampled estimate) across 2 sets x 3 templates x 3 seeds = 18 cases each, under
+0.05% every time; union-coverage averages (Red brick ~87-88%, White rocks ~65-75%, thresholds set
+under the worst individually-measured case, not the average); size-tier histogram within +/-10
+points of 50/35/15% for both sets; simple-polygon sanity. **Proved non-vacuous directly**: ran this
+exact test file against the rejected 55d4d0c version (git stash) -- 4 of 7 failed, including 107%
+overlap on White rocks, confirming the suite actually catches the bug the advisor flagged, not just
+a differently-worded version of the same blind metric.
+
+**Previews regenerated** (same `tools/repro/t86_item6_fieldstone_preview.mjs`, before/after, both
+sets) and republished to `~/.bspline-status/shots/seatB/t86_item6_*.png` -- visually confirms large/
+medium/small stones mixed naturally across the whole board (not big stones plus gravel confined to
+leftover gaps), no visible overlap in either set.
+
+**White rocks' own coverage ceiling is unchanged from the original (pre-item-6) finding and still
+not a bug**: its own grout (0.12in) is proportionally much heavier than Red brick's (0.034in)
+relative to its own main spacing, which the tier-proportional shrink scaling helps but cannot fully
+erase -- same honest flag as before, now re-confirmed through a structurally different, correct
+implementation rather than inherited from the rejected one.
+
+**Commit** (`fieldstone.js`'s own full rework, `geometry.js`'s one-line export of
+`polygonIntersection`, the new `tests/bricks-fieldstone.test.js`, the preview tool's regenerated
+output). Passing back: item 6 is rebuilt on a structurally sound footing (power diagram, true
+tessellation, overlap now actually verified rather than assumed), all three of the advisor's own
+named checks pass, four distinct measured bugs fixed along the way. Flagging the SAME White rocks
+coverage-ceiling question as before for a decision -- it survived a completely different
+implementation unchanged, which is itself evidence it's a real material property, not an artifact
+of any one approach.
+
+## T86 item 6, second review round: the "grout ceiling" was actually dropped cells (voids near the waist), and size tiers were zoning instead of mixing -- both root-caused and fixed, not tuned around (d3)
+
+**Advisor review of the power-diagram rebuild: "no more overlaps, the power diagram was the right
+call" -- but flagged two real remaining problems, both confirmed by measurement, neither of which
+was the "grout ceiling" I'd been assuming.**
+
+**(1) Voids, not a grout ceiling.** White rocks showed a visible empty band across the waist; Red
+brick a hole near the centre. ROOT CAUSE: the grout SHRINK step (`offsetPathInward`, applied to the
+WHOLE finished cell, including whatever edge `clipPolygonToBoard` had just cut flush against the
+board's own TRUE outline) hit `offsetPathInward`'s own documented P1 limitation -- a short edge near
+a concave feature (exactly the waist) flips into a bowtie instead of collapsing, and the cell was
+DROPPED. This is a PRE-EXISTING limitation (referenced in the code as "H23 item 76 cont.", an EARLIER
+item than this one) that the original single-size fieldstone already had and already silently
+accepted -- item 6's own multi-tier version just made it bite harder (more, smaller cells -> more
+short edges -> more drops). **Fixed two ways, not one tuning knob:**
+- Grout is now baked directly into `powerCell`'s own bisector clip -- shift the clip LINE
+  `pointShrink` further toward the point being built, before clipping, rather than clip-then-shrink-
+  the-finished-polygon. A plain line translation can never self-intersect, so this removes the
+  bowtie failure mode structurally rather than catching and dropping it. It also means a stone's own
+  edge along the board's TRUE outline is never separately shrunk -- flush with the frame's own inner
+  edge, matching how bond.js/basketweave.js/herringbone.js already treat the board boundary (grout
+  is the gap BETWEEN stones, never a setback from the board edge itself) -- this is the "same concave
+  clip as the wall" the advisor asked for: `clipPolygonToBoard`'s own exact Greiner-Hormann clip,
+  untouched and unshrunk, same as every other layout.
+- **Never drop a seed's territory, literally**: `fieldstoneLayout` now builds the full cell set,
+  removes any seed whose own cell came back degenerate or under the declared floor, and REBUILDS the
+  power diagram over what's left -- since a power diagram is a complete tessellation by construction,
+  removing one seed can only ever make its neighbours' cells bigger, never leave a gap. Iterates
+  (capped at 4 rounds; converges well before that in practice) until stable. This is "merge an
+  undersized cell into its neighbour" without an actual polygon-union operation, which this codebase
+  still doesn't have and still didn't need.
+- MEASURED: Red brick coverage 87-88% avg -> 91-92% (now consistently >90%, not just sometimes).
+  White rocks 65-75% avg -> 81-84% -- a real, large jump, confirming most of the OLD shortfall really
+  was silent drops near the board's own concave edge, not a grout-width ceiling as I'd assumed and
+  reported last round. (White rocks still runs behind Red brick -- its own heavier grout, 0.12in vs
+  0.034in, genuinely does cost more area per stone; that part of the earlier finding stands, it was
+  just smaller than the drop-bug had been making it look.)
+
+**(2) Zoning, not organic mixing.** Fred: "sizes form zones (all small in the middle, all large
+around the edge)... medium/small mixed THROUGHOUT." ROOT CAUSE: `NOISE_CELL_FACTOR=4` (the prior
+round's own calibration) made each tier's own gated region comparable to several stone-diameters
+across -- big enough to read as a solid same-size patch, not organic mixing. First tried the
+advisor's own first suggestion (raise the frequency to ~1-2 stone diameters, `NOISE_CELL_FACTOR=1.5`)
+-- this made the HISTOGRAM badly worse (large jumped to 72-80% of area against a 50% target) because
+a noise blob that size is barely bigger than a LARGE stone itself, so a large seed's own full packing
+clearance routinely reaches PAST its own blob into a neighbouring medium/small one, starving it
+regardless of the nominal space split -- confirmed by direct measurement, not assumed. Switched to
+the advisor's own ALTERNATIVE suggestion instead: `tierAt` now blends the smooth spatial noise field
+with a FRESH per-candidate random draw (`NOISE_BIAS=0.25` -- mostly random, gently noise-biased), so
+a tier's own candidates are no longer confined to hard spatial regions at all; any tier can succeed
+anywhere real geometric room exists, with only a gentle large-scale tendency left over (visible
+clustering in the renders, not hard zoning).
+
+**A second, smaller bug surfaced and got fixed along the way while chasing (2): `GATE_AREA_SHARES`
+had been calibrated as if it were an AREA-share proxy, but a power-diagram cell's own area scales
+with `radius^2` (see `powerCell`'s own header) -- for EQUAL point counts, large alone would already
+claim ~76% of total area (radius ratios 1:0.5:0.25 square to 1:0.25:0.0625). Re-derived the correct
+POINT-COUNT shares directly from that ratio (roughly inverse to the target area split -- large needs
+disproportionately FEWER points to end up with proportionally more area each) and tuned from there by
+direct measurement, same discipline as everywhere else in this item: MEASURED large=50.4%/67.0%
+(two false starts, logged honestly rather than skipped) before landing on
+`GATE_AREA_SHARES=[0.16,0.35,0.49]` giving large=50.4%/medium=28.2%/small=21.4% (Red brick) and
+large=51.7%/medium=27.3%/small=20.9% (White rocks) -- both comfortably within the declared +/-10
+points of 50/35/15% for both sets.**
+
+**MEASURED, zero overlap held throughout this entire round** (confirmed directly: a quick experiment
+loosening `CROSS_TIER_PACKING_FACTOR` to let medium/small place more easily near large points
+REINTRODUCED real overlap, 6-27% of stone area, because the bisector-shift grout construction assumes
+the shift stays small relative to point-to-point distance -- reverted immediately once measured, kept
+at the safe value, logged as a dead end rather than silently discarded). Full suite 3871/3871, the
+dedicated `tests/bricks-fieldstone.test.js` all 7 green with coverage thresholds raised to match the
+new, higher floor (Red brick 0.8->0.88, White rocks 0.55->0.78).
+
+**Previews regenerated** (same tool, before/after, both sets) and republished to
+`~/.bspline-status/shots/seatB/t86_item6_*.png` -- visually confirms BOTH fixes: no more void across
+either board's waist, and large/medium/small genuinely mixed throughout rather than segregated into
+same-size regions.
+
+**Commit** (`fieldstone.js`'s own shrink/drop/clustering rework, `tests/bricks-fieldstone.test.js`'s
+updated coverage thresholds, this entry). Passing back: both advisor-flagged problems root-caused and
+fixed (not tuned around) -- voids were a pre-existing `offsetPathInward` limitation this item's own
+tier system exposed more often, now removed structurally; zoning was the prior round's own noise-cell
+calibration, now replaced with a mostly-random, gently-biased gate per the advisor's own alternative
+suggestion. Coverage, overlap, and histogram all re-verified; ready for another look.

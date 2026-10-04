@@ -22,6 +22,17 @@ import { buildSpatialIndex, sampleHeight, brickSetById } from '../core/bricks/in
 import { preloadSetDetail, sampleDetailAtFor } from './editor-brick-surface.js';
 import { BRICK_GEN_ATTR } from './editor-brick-tool.js';
 
+// F35 item 16 follow-up (Fred: "keep the UI responsive... yield between stages if they block the
+// main thread"): at Masonry/Masonry max resolution this loop runs up to ~525,000 iterations fully
+// synchronously (measured: shots/seatC/resolution_scale_grid.png) -- a plain setTimeout yield, same
+// one-liner convention as core/engine/rebuild.js's own `yieldToMain`, inserted every N rows so the
+// browser can actually paint a "Carving relief…" status and process input between chunks. Yielding
+// changes nothing about the computed output, only how it's time-sliced -- every existing test on
+// this function's own output still applies unchanged. No core/state.js import needed for a bare
+// setTimeout (this file stays within the existing editor/-never-imports-core/state.js boundary).
+const yieldToMain = () => new Promise((resolve) => setTimeout(resolve, 0));
+const YIELD_EVERY_N_ROWS = 32;
+
 function parsePoints(pointsAttr) {
   return (pointsAttr || '').trim().split(/\s+/).filter(Boolean).map((pair) => {
     const [x, y] = pair.split(',').map(Number);
@@ -88,6 +99,7 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
 
   const iSpan = Math.max(1, nx - 1), jSpan = Math.max(1, nz - 1);
   for (let j = 0; j < nz; j++) {
+    if (j > 0 && j % YIELD_EVERY_N_ROWS === 0) await yieldToMain();
     const y = heightIn * (1 - j / jSpan);
     for (let i = 0; i < nx; i++) {
       const x = (i / iSpan) * widthIn;

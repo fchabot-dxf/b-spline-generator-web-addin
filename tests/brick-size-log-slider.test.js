@@ -104,7 +104,9 @@ describe('the real #brickSizeSlider element drives inches through the log mappin
     $('brickSizeSlider').value = String(pos);
     $('brickSizeSlider').dispatchEvent(new Event('change'));
     expect(P.brickSettings.brickLengthIn).toBeCloseTo(3, 1);
-    expect(runBricks).toHaveBeenCalledTimes(1);
+    // Fred (2026-10-04): the editor's Brick-tab controls only mark the layout pending -- the
+    // sticky Generate re-lays it (brick-discrete-controls-regen.test.js), so release no longer does.
+    expect(runBricks).not.toHaveBeenCalled();
   });
 
   it('the number box stays in EXACT real inches, independent of the slider\'s own quantization', () => {
