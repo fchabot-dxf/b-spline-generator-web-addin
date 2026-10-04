@@ -141,8 +141,11 @@ export function voussoirPieces(
   const progress = (pt, ref) => (unwrap(thetaAt(pt), ref) - ref) * direction;
   // `trustO` (computed once per joint in primitive-ribbon.js's own ribbonPieces, see its header):
   // false when `o` is a FICTITIOUS point (a primitive dropped between this joint's own two
-  // neighbours is still feasible at d0) -- fall back to `q` alone for that side's own sizing, same
-  // as `linePieces`' own identical fallback.
+  // neighbours is still feasible at d0) -- fall back to `q` alone for that side's own sizing. H23
+  // item 76 cont. (advisor review, "they must not stop at the fillet's tangent points"): this run's
+  // own piece sequence stays `q`-based ONLY, same as `linePieces`' own identical choice -- see that
+  // function's own header for why reaching the true tangent point itself is `ribbonPieces`' own
+  // separate `kiteFan` job, never this run's own construction.
   const startProgO = jointStart && jointStart.trustO ? progress(jointStart.point, theta1) : null;
   const startProgQ = jointStart ? progress(jointStart.q, theta1) : 0;
   const endProgO = jointEnd && jointEnd.trustO ? progress(jointEnd.point, theta2) : null;
@@ -159,9 +162,15 @@ export function voussoirPieces(
 
   // build ONE piece's own clipped polygon for an arbitrary [thetaA,thetaB] span -- shared by the
   // normal per-piece build below AND the merge-slivers pass that follows it.
+  // H23 item 76 cont. (MEASURED, not assumed -- see primitive-ribbon.js's own `linePieces` header):
+  // on a `trustO:false` side, skip the usual float-safety CLIP_EPS_ANGLE extension (and its matching
+  // clip) entirely -- there's no valid mitre there any more, and the patch's own strip starts EXACTLY
+  // at `q`, not at some clipped approximation of it.
   const buildPiece = (thetaA, thetaB, isVeryFirst, isVeryLast) => {
-    const sampleThetaStart = isVeryFirst ? thetaA - CLIP_EPS_ANGLE * direction : thetaA;
-    const sampleThetaEnd = isVeryLast ? thetaB + CLIP_EPS_ANGLE * direction : thetaB;
+    const skipStartExt = isVeryFirst && jointStart && !jointStart.trustO;
+    const skipEndExt = isVeryLast && jointEnd && !jointEnd.trustO;
+    const sampleThetaStart = isVeryFirst && !skipStartExt ? thetaA - CLIP_EPS_ANGLE * direction : thetaA;
+    const sampleThetaEnd = isVeryLast && !skipEndExt ? thetaB + CLIP_EPS_ANGLE * direction : thetaB;
     const nSeg = Math.max(1, Math.ceil(Math.abs(sampleThetaEnd - sampleThetaStart) / MAX_SEGMENT_ANGLE));
     const outerPts = [];
     for (let k = 0; k <= nSeg; k++) {
@@ -185,8 +194,8 @@ export function voussoirPieces(
     // `+ 1e-9`: see primitive-ribbon.js's own identical epsilon -- guarantees the very first/last
     // piece is always checked even when a `trustO:false` fallback made hiTheta/loTheta coincide with
     // thetaStart/thetaEnd exactly.
-    if (jointStart && thetaA * direction < hiTheta * direction + 1e-9) polygon = clipToHalfPlane(polygon, jointStart, jointStart.keepRefAsStart);
-    if (jointEnd && thetaB * direction > loTheta * direction - 1e-9) polygon = clipToHalfPlane(polygon, jointEnd, jointEnd.keepRefAsEnd);
+    if (jointStart && !skipStartExt && thetaA * direction < hiTheta * direction + 1e-9) polygon = clipToHalfPlane(polygon, jointStart, jointStart.keepRefAsStart);
+    if (jointEnd && !skipEndExt && thetaB * direction > loTheta * direction - 1e-9) polygon = clipToHalfPlane(polygon, jointEnd, jointEnd.keepRefAsEnd);
     return polygon;
   };
 

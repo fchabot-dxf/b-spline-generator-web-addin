@@ -29,6 +29,17 @@
  * junction). End pieces on either side are built OVERSIZED then clipped to the (o,q) line -- the
  * SAME half-plane mitre technique along-path.js already uses for declared corners, applied
  * generally to every live-live joint instead of only pre-declared ones.
+ *
+ * H23 item 76 cont. (advisor review, "trimmed only by the real board outline"): at a joint where a
+ * primitive dropped out, `o` (computed by skipping straight to the far neighbour) is FICTITIOUS
+ * whenever the dropped primitive is still feasible at d0 (`trustO:false` on that joint) -- both
+ * `linePieces` and `voussoirPieces` then plan and build that run PLAIN, `q`-based only, same as an
+ * ordinary corner (see their own headers for why reaching further themselves, toward the dropped
+ * primitive's own true tangent point, isn't safe in general). The real board outline there -- the
+ * dropped primitive's own TRUE arc, plus the flat/curved strip on each neighbour's own d0 edge out to
+ * its own tangent point with that arc -- is `buildPatch`'s own separate, independently-sized piece(s),
+ * collected into `pieces` right after whichever primitive owns that joint as its own `jointEnd`
+ * (preserving build-order == walk-order, which other code relies on).
  */
 import { curveIntersection } from './curve-intersect.js';
 import { clipToHalfPlane, signedArea } from './geometry.js';
@@ -113,6 +124,124 @@ function tangentAt(prim, point) {
 function stepFrom(point, tangent, signedStep) {
   return { x: point.x + tangent.x * signedStep, y: point.y + tangent.y * signedStep };
 }
+
+const EXTENSION_ARC_STEPS = 10; // a smoothness floor for the dropped-arc extension points below, same
+// role as BOUNDARY_ARC_STEPS/MAX_SEGMENT_ANGLE elsewhere in this file -- never a correctness
+// requirement, just how closely the drawn boundary hugs the TRUE arc between A/M/B.
+
+/** Points tracing a DROPPED primitive's own TRUE arc (at `depth`, the row's own outer edge where the
+ *  dropped primitive is still feasible) from angle `thetaFrom` to `thetaTo`, inclusive of both ends.
+ *  H23 item 76 cont. (advisor review, "only the real board outline trims them" -- see this file's
+ *  own header for the full "kite" shape this feeds into). */
+function tessellateArcSpan(arc, depth, thetaFrom, thetaTo) {
+  const off = offsetPrimitive(arc, depth);
+  const points = [];
+  for (let k = 0; k <= EXTENSION_ARC_STEPS; k++) {
+    const t = thetaFrom + ((thetaTo - thetaFrom) * k) / EXTENSION_ARC_STEPS;
+    points.push({ x: off.cx + off.r * Math.cos(t), y: off.cy + off.r * Math.sin(t) });
+  }
+  return points;
+}
+
+const MAX_KITE_SLICES = 20; // a generous ceiling on how far `buildPatch` will keep subdividing --
+// real fillets never need anywhere near this many; it's a loop-safety bound, not a design target.
+
+/** The point on `prim`'s own d0-offset edge at the SAME tangential coordinate as `q`'s own
+ *  projection onto `prim` -- i.e. exactly where `prim`'s own NORMAL (unextended, `q`-based) last/
+ *  first piece's own d0-corner already naturally sits. `prim` may be either shape. */
+function pointOnD0AtQ(prim, d0, q) {
+  if (prim.type === 'line') {
+    const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y, len = Math.hypot(dx, dy) || 1;
+    const tx = dx / len, ty = dy / len;
+    const s = (q.x - prim.p0.x) * tx + (q.y - prim.p0.y) * ty;
+    return { x: prim.p0.x + tx * s + prim.nx * d0, y: prim.p0.y + ty * s + prim.ny * d0 };
+  }
+  const theta = Math.atan2(q.y - prim.cy, q.x - prim.cx);
+  const off = offsetPrimitive(prim, d0);
+  return { x: off.cx + off.r * Math.cos(theta), y: off.cy + off.r * Math.sin(theta) };
+}
+
+/** The flat (or, if `prim` is itself an arc, curved) strip of `prim`'s own d0 edge from its own
+ *  `q`-based natural stop (see `pointOnD0AtQ`) out to `tangentPoint` (where `prim` is tangent to the
+ *  dropped primitive) -- ordered near-Q first, `tangentPoint` last. H23 item 76 cont. (MEASURED, not
+ *  assumed): `prim`'s own NORMAL run must end EXACTLY flat at `q` for this to meet cleanly -- no
+ *  float-safety epsilon past it (`linePieces`/`voussoirPieces` both skip their own usual
+ *  CLIP_EPS_IN/CLIP_EPS_ANGLE extension specifically on a `trustO:false` side, see their own headers
+ *  for why: there's no valid mitre there to clip against any more, the patch owns everything beyond
+ *  `q`, so any extra "safety" material only re-creates the overlap this architecture exists to avoid
+ *  -- MEASURED directly: with the epsilon still in place, 93% of one patch slice's own tiny area was
+ *  inside the neighbouring normal piece, on TWO different circles that happen to pass close to the
+ *  same tangent point). `q`'s own tangential position can be either side of `tangentPoint`'s, so this
+ *  strip can have positive OR effectively zero/negative length; a degenerate (near-zero) strip is
+ *  harmless (two near-identical points), never assumed away. */
+function flatStripToTangent(prim, d0, q, tangentPoint) {
+  if (prim.type === 'line') return [pointOnD0AtQ(prim, d0, q), tangentPoint];
+  const thetaTangent = Math.atan2(tangentPoint.y - prim.cy, tangentPoint.x - prim.cx);
+  // unwrap `q`'s own angle to the representation NEAREST `thetaTangent` (never past pi away) --
+  // this run's own `q`-based stop and its true tangent point are always close together (both are, in
+  // effect, this primitive's own natural end, reached two different ways), so the nearest
+  // representation IS the short, correct path; no `direction` needed here (unlike `buildPatch`'s own
+  // thetaA/thetaB unwrap, which spans the dropped primitive's OWN full declared arc and must stay on
+  // ITS OWN branch, in ITS OWN direction, instead).
+  let thetaQ = Math.atan2(q.y - prim.cy, q.x - prim.cx);
+  while (thetaQ - thetaTangent > Math.PI) thetaQ -= 2 * Math.PI;
+  while (thetaQ - thetaTangent < -Math.PI) thetaQ += 2 * Math.PI;
+  return tessellateArcSpan(prim, d0, thetaQ, thetaTangent);
+}
+
+/** The patch filling the WHOLE outer excess around a dropped primitive, down to the single point `q`
+ *  (the row's own TRUE d1 corner there -- neither flanking neighbour's own run reaches this far, see
+ *  `linePieces`'/`voussoirPieces`' own header for why they deliberately stay `q`-based and plain).
+ *  The patch's own OUTER boundary runs, in order: `prevPrim`'s own flat/curved strip from ITS OWN
+ *  `q`-based stop out to `A` (the true tangent point with the dropped primitive) -- the dropped
+ *  primitive's own TRUE arc from `A` to `B` -- `curPrim`'s own strip from `B` back to ITS OWN
+ *  `q`-based stop. Every consecutive pair of boundary points, together with `q`, is a candidate
+ *  wedge; grouped into as many roughly-equal pieces as needed to keep each at or below the declared
+ *  1.2x ceiling (MEASURED: a single piece spanning the whole boundary reached 2.33x nominal on a
+ *  real template). A patch too small to need splitting stays one piece, even under the 1/4 floor --
+ *  there's no smaller, better-fitting option for the TRUE board outline than the whole patch itself. */
+function buildPatch(prevPrim, curPrim, dropped, d0, A, B, q, pitch, width) {
+  const off = offsetPrimitive(dropped, d0);
+  const direction = Math.sign(dropped.theta2 - dropped.theta1) || 1;
+  const thetaA = Math.atan2(A.y - off.cy, A.x - off.cx);
+  let thetaB = Math.atan2(B.y - off.cy, B.x - off.cx);
+  while ((thetaB - thetaA) * direction < 0) thetaB += direction * 2 * Math.PI;
+  while ((thetaB - thetaA) * direction > 2 * Math.PI) thetaB -= direction * 2 * Math.PI;
+
+  const boundary = [
+    ...flatStripToTangent(prevPrim, d0, q, A),
+    ...tessellateArcSpan(dropped, d0, thetaA, thetaB).slice(1, -1),
+    ...flatStripToTangent(curPrim, d0, q, B).reverse(),
+  ];
+  const n = boundary.length - 1; // number of boundary EDGES (segments) to group into slices
+  const nominalArea = pitch * width;
+  const sliceArea = (i0, i1) => Math.abs(signedArea([...boundary.slice(i0, i1 + 1), q]));
+
+  let K = 1;
+  for (; K < MAX_KITE_SLICES && K < n; K++) {
+    let maxArea = 0;
+    for (let g = 0; g < K; g++) {
+      const i0 = Math.round((n * g) / K), i1 = Math.round((n * (g + 1)) / K);
+      if (i1 > i0) maxArea = Math.max(maxArea, sliceArea(i0, i1));
+    }
+    if (maxArea <= nominalArea * 1.2) break;
+  }
+  const spans = [];
+  for (let g = 0; g < K; g++) {
+    const i0 = Math.round((n * g) / K), i1 = Math.round((n * (g + 1)) / K);
+    if (i1 > i0) spans.push({ sA: i0, sB: i1 });
+  }
+  // H23 item 76 cont. (advisor review, "each ≥ 1/4 brick; merge otherwise"): equal-INDEX grouping
+  // above only bounds the CEILING -- the boundary's own point density is uneven (a flat strip's own 2
+  // points vs the dropped arc's own densely-tessellated middle), so an equal split can still leave
+  // one slice far smaller than another (MEASURED: as small as 0.0487x nominal). The SAME `mergeSlivers`
+  // `linePieces`/`voussoirPieces` already use handles this identically -- spans here are boundary
+  // INDEX ranges rather than inches/radians, but the merge operation (absorb span 0 into span 1, or
+  // the reverse at the far end) is exactly the same integer-index arithmetic.
+  mergeSlivers(spans, (i0, i1) => sliceArea(i0, i1), nominalArea);
+  return spans.map(({ sA: i0, sB: i1 }) => [...boundary.slice(i0, i1 + 1), q]);
+}
+
 const CLIP_EPS_IN = 0.02; // a small safety margin on the piece touching a corner's own extreme edge
 // (float precision only, plus the fact the piece's own flat end is tangent to, not crossing, the
 // mitre line exactly AT its own sStart/sEnd by construction -- see this function's own header).
@@ -150,7 +279,18 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
   // `trustO` (computed once per joint in `ribbonPieces`, see its own header): false when `o` is a
   // FICTITIOUS point (a primitive dropped between this joint's own two neighbours is still feasible
   // at d0, so `o` doesn't reflect the TRUE outer-edge boundary) -- fall back to `q` alone for that
-  // side's own sizing rather than risk extending a piece past the real board edge.
+  // side's own sizing. H23 item 76 cont. (advisor review, "they must not stop at the fillet's
+  // tangent points"): this run's own piece sequence stays `q`-based ONLY -- it never tries to reach
+  // the dropped primitive's own true tangent point itself. MEASURED (not assumed) why: the row's own
+  // TRUE d1 boundary genuinely ENDS at `q` (that's what "dropped" means -- nothing of the fillet
+  // survives at d1), but its own true d0 boundary can need to reach EITHER more OR less than `q`'s
+  // own tangential position depending on the specific geometry (confirmed on two different real
+  // joints, one each way) -- a single flat quad literally cannot represent both at once without
+  // risking a bowtie whenever they disagree. `ribbonPieces`' own `kiteFan` covers the WHOLE outer
+  // excess instead (the flat strip from this run's own natural stop to the true tangent point, AND
+  // the dropped primitive's own true curve, down to the SAME point `q` this run's own last piece
+  // already ends at) -- this run's own construction is plain, ordinary, exactly like a declared
+  // corner, nothing extended.
   const startO = jointStart && jointStart.trustO ? project(jointStart.point) : null;
   const startQ = jointStart ? project(jointStart.q) : 0;
   const endO = jointEnd && jointEnd.trustO ? project(jointEnd.point) : null;
@@ -167,15 +307,20 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
   // build ONE piece's own clipped polygon for an arbitrary [sA,sB] span -- shared by the normal
   // per-piece build below AND the merge pass that follows it (a merged span is built exactly the
   // same way, just wider).
+  // H23 item 76 cont. (MEASURED, not assumed): on a `trustO:false` side, skip the usual float-safety
+  // CLIP_EPS_IN extension (and its matching clip) entirely -- there's no valid mitre there to clip
+  // against any more (the patch owns everything beyond `q`), so "extend a little for safety, then
+  // clip back" only re-creates overlap with the patch's own strip, which starts EXACTLY at `q`, not
+  // at some clipped approximation of it (MEASURED: with the epsilon left in, 93% of one patch slice's
+  // own tiny area read as inside this run's own piece).
   const buildPiece = (sA, sB, isVeryFirst, isVeryLast) => {
-    const sStartPiece = isVeryFirst ? sA - CLIP_EPS_IN : sA;
-    const sFinishPiece = isVeryLast ? sB + CLIP_EPS_IN : sB;
+    const skipStartExt = isVeryFirst && jointStart && !jointStart.trustO;
+    const skipEndExt = isVeryLast && jointEnd && !jointEnd.trustO;
+    const sStartPiece = isVeryFirst && !skipStartExt ? sA - CLIP_EPS_IN : sA;
+    const sFinishPiece = isVeryLast && !skipEndExt ? sB + CLIP_EPS_IN : sB;
     let polygon = [worldAt(sStartPiece, d0), worldAt(sFinishPiece, d0), worldAt(sFinishPiece, d1), worldAt(sStartPiece, d1)];
-    // `+ 1e-9`: when `trustO` was false, hiStart/loEnd COINCIDE with sStart/sEnd exactly (the `q`-only
-    // fallback), which would otherwise make the very first/last piece ineligible for its own corner
-    // clip -- the epsilon guarantees it's always still checked.
-    if (jointStart && sA < hiStart + 1e-9) polygon = clipToHalfPlane(polygon, jointStart, jointStart.keepRefAsStart);
-    if (jointEnd && sB > loEnd - 1e-9) polygon = clipToHalfPlane(polygon, jointEnd, jointEnd.keepRefAsEnd);
+    if (jointStart && !skipStartExt && sA < hiStart + 1e-9) polygon = clipToHalfPlane(polygon, jointStart, jointStart.keepRefAsStart);
+    if (jointEnd && !skipEndExt && sB > loEnd - 1e-9) polygon = clipToHalfPlane(polygon, jointEnd, jointEnd.keepRefAsEnd);
     return polygon;
   };
 
@@ -237,9 +382,9 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     // is false whenever this applies -- the one case `linePieces`/`voussoirPieces` fall back to `q`
     // alone for that side's own sizing (the "ordinary corner" / "d0-also-infeasible" cases, the vast
     // majority, keep trusting `o`, which is what the original fillet-collapse fix above needed).
-    let trustO = true;
+    let trustO = true, droppedIdx = null;
     for (let idx = (prevIdx + 1) % n; idx !== curIdx; idx = (idx + 1) % n) {
-      if (primitiveLiveAtDepth(primitives[idx], d0)) { trustO = false; break; }
+      if (primitiveLiveAtDepth(primitives[idx], d0)) { trustO = false; droppedIdx = idx; break; }
     }
     // the SAME joint, approached by its own two DIFFERENT primitives, must keep OPPOSITE sides of
     // its own mitre line (each keeps only its own half of the cut) -- `keepRefAsStart` (stepping
@@ -249,7 +394,24 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     const keepRefAsStart = stepFrom(o, tangentAt(primitives[curIdx], o), KEEP_REF_STEP_IN);
     const keepRefAsEnd = stepFrom(o, tangentAt(primitives[prevIdx], o), -KEEP_REF_STEP_IN);
     const joint = mitreLine(o, q, keepRefAsStart, keepRefAsEnd);
-    return joint && { ...joint, trustO };
+    if (!joint) return null;
+    if (trustO || droppedIdx === null) return { ...joint, trustO };
+    // H23 item 76 cont. (advisor review: "the neighbouring runs extend UP TO THE MITRE LINE through
+    // that zone, and only the real board outline (the fillet arc itself) trims them; they must not
+    // stop at the fillet's tangent points"): `linePieces`/`voussoirPieces` both stay `q`-based and
+    // PLAIN for this joint (see their own header for why: the true tangent point is NOT always the
+    // more extreme of the two, and letting either run reach for it directly risked a self-
+    // intersecting piece -- MEASURED on a real template -- whenever `q` was actually the more extreme
+    // one instead). The WHOLE outer excess -- from each neighbour's own `q`-based natural stop, out
+    // to the dropped primitive's own TRUE tangent points (`A`/`B`), around its own TRUE arc, and back
+    // down to `q` -- is `buildPatch`'s own job instead, entirely independent of either neighbour's
+    // own piece sizing.
+    const dropped = primitives[droppedIdx];
+    const A = jointPointAt(primitives, prevIdx, droppedIdx, d0);
+    const B = jointPointAt(primitives, droppedIdx, curIdx, d0);
+    if (!A || !B) return { ...joint, trustO }; // defensive: no patch rather than a bad one
+    const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], dropped, d0, A, B, q, pitch, d1 - d0);
+    return { ...joint, trustO, kiteFan };
   });
 
   const pieces = [];
@@ -270,6 +432,22 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
       })();
     pieces.push(...built.pieces);
     nextId = built.nextId;
+
+    // kite-fan pieces (see the jointBefore map's own header above) belong HERE in build order --
+    // physically between THIS primitive's own last piece and the next primitive's own first piece --
+    // not appended afterward: other code (and tests) walk `pieces` by BUILD order expecting it to
+    // match geometric/walk order (MEASURED: a "gap between consecutive bricks" test read a worst gap
+    // of 5in -- comparing two utterly unrelated bricks -- when kite pieces were collected in a
+    // separate pass at the end instead). Each joint is exactly one primitive's own `jointEnd`, so this
+    // fires exactly once per joint, never duplicated, including the wrap-around one.
+    if (jointEnd && jointEnd.kiteFan) {
+      for (const polygon of jointEnd.kiteFan) {
+        const { sampleId, flip } = pickSample(set, seed, 'bricks', nextId);
+        const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
+        pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset });
+        nextId++;
+      }
+    }
   }
   return { pieces, nextId };
 }

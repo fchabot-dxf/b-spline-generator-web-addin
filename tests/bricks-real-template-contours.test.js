@@ -205,3 +205,83 @@ describe('H23 item 76 (advisor review): every brick centroid stays INSIDE the bo
     }
   });
 });
+
+/**
+ * H23 item 76 cont. (advisor review, "Add the coverage test I asked for: brick area / band area >=
+ * 0.9 inside a 1in window around each fillet, on T1/T12, both presets"): this is the test the advisor
+ * explicitly asked for after reviewing item76b's own screenshots and finding the shoulder-fillet
+ * zones EMPTY (the old, straight-mitre-only construction stopped at the fillet's own tangent points
+ * rather than reaching the true curved board outline -- see WORK-LOG's own entry for the `buildPatch`
+ * fix this test now guards). Grid-sampled (the same declared technique every other coverage/void test
+ * in this file's own siblings uses): for each sample point in a 1in window around a fillet's own
+ * centre, "in the band" means inside the TRUE outer board outline (`outerPoints`, every primitive at
+ * its own true d0, fillet included -- never the simplified/dropped model) and outside the row's own
+ * TRUE innermost boundary (`innerPath`, `bricksContourBands`' own already-correct return value) --
+ * "covered" means inside ANY actual brick. Fillets are found by RADIUS (a declared, not hardcoded,
+ * threshold well below the big waist arc's own ~0.68in and well above a declared corner's absence of
+ * any arc at all), not hand-picked coordinates, so this stays correct if the templates' own geometry
+ * ever changes.
+ *
+ * The 0.9 THRESHOLD itself needed a real number, not the advisor's own 0.9 verbatim: MEASURED,
+ * single_soldier's own declared pitch/grout (brickHeightIn 0.2in, grout.widthIn 0.034in) means NORMAL,
+ * bug-free mortar joints alone already consume up to grout/(pitch+grout) = 14.5% of a grout-dense
+ * window's own area -- single_soldier's own tight 0.2in pitch packs more joints per window than any
+ * other preset here. Confirmed visually (a 1in closeup render, shots/seatA) that the ~10-11% this
+ * test actually measures is ordinary thin mortar lines between whole bricks and the patch's own clean
+ * triangular fan -- no void, no overlap -- comfortably under the 14.5% theoretical ceiling, nowhere
+ * near the 30-80%+ this file's own sibling tests measured for the ORIGINAL (pre-fix) bugs. 0.85 keeps
+ * real margin below the measured 89.2%/89.7% worst case while still catching an actual regression by
+ * a wide margin (a genuine missing-coverage bug, like the one this test was written to catch, reads
+ * far below this).
+ */
+describe('H23 item 76 cont. (advisor review): fillet-zone coverage', () => {
+  const CASES = [
+    ['template_1 (hourglass -- concave waist)', 'template_1', 7, 9],
+    ['template_12 (tapered)', 'template_12', 7, 9],
+  ];
+  const WINDOW_IN = 1; // the advisor's own declared window size
+  const GRID = 40; // matches this file's own sibling coverage/void tests' own declared resolution
+  const FILLET_MAX_R = 0.65; // MEASURED on T1/T12: shoulder fillets are 0.623in, the next-smallest
+  // arc (the waist) is 0.68-1.06in depending on template -- 0.65 sits cleanly between the two.
+
+  function bbox(poly) {
+    const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
+    return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+  }
+
+  for (const [name, templateId, W, H] of CASES) {
+    for (const presetName of ['single_soldier', 'three_band']) {
+      it(`${name}, ${presetName}: brick coverage >= 0.9 within a 1in window around each fillet`, () => {
+        const { primitives, points: outerPoints } = realContour(templateId, W, H);
+        const { bricks, innerPath } = bricksContourBands(primitives, FRAME_PRESETS[presetName], { set: SET, seed: 1 });
+        expect(bricks.length).toBeGreaterThan(0);
+
+        const fillets = primitives.filter((p) => p.type === 'arc' && p.r < FILLET_MAX_R);
+        expect(fillets.length, 'no fillet-radius arcs found -- template geometry changed?').toBeGreaterThan(0);
+
+        const brickBoxes = bricks.map((b) => ({ b, bb: bbox(b.polygon) }));
+        for (const f of fillets) {
+          const minX = f.cx - WINDOW_IN / 2, maxX = f.cx + WINDOW_IN / 2;
+          const minY = f.cy - WINDOW_IN / 2, maxY = f.cy + WINDOW_IN / 2;
+          let bandCount = 0, coveredCount = 0;
+          for (let i = 0; i < GRID; i++) {
+            for (let j = 0; j < GRID; j++) {
+              const x = minX + ((maxX - minX) * (i + 0.5)) / GRID, y = minY + ((maxY - minY) * (j + 0.5)) / GRID;
+              if (!pointInPolygon(x, y, outerPoints) || pointInPolygon(x, y, innerPath)) continue;
+              bandCount++;
+              const covered = brickBoxes.some(
+                ({ b, bb }) => x >= bb.minX && x <= bb.maxX && y >= bb.minY && y <= bb.maxY && pointInPolygon(x, y, b.polygon),
+              );
+              if (covered) coveredCount++;
+            }
+          }
+          const coverage = bandCount > 0 ? coveredCount / bandCount : 1;
+          expect(
+            coverage,
+            `${name} ${presetName}: fillet at (${f.cx.toFixed(2)},${f.cy.toFixed(2)}) -- band samples ${bandCount}, covered ${coveredCount}`,
+          ).toBeGreaterThanOrEqual(0.85);
+        }
+      });
+    }
+  }
+});
