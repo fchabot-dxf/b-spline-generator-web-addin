@@ -199,8 +199,15 @@ def template_shape_model(template_id, frame, goldens_dir):
     frame_shape_fit.provisional_dipped_left_wave_model.
     T9 I SHAPE: {"stemHalfWidthOfHw": w, "flangeHeightOfHh": h} (no `from`: like T6, nothing to derive it from)
     builds frame_shape_fit.provisional_i_shape_model.
-    T10 ARCHED HOURGLASS: {"from": <template id>, "archRiseOfHw": r} builds frame_shape_fit.provisional_arched_
-    top_model (the base model's own sides/base unchanged, plus a top arc r x hw tall).
+    T10 ARCHED HOURGLASS (H23 item 78b, Fred's own reconstruction, replaces the old "from"-based model below):
+    {"waistReachOfHw": w, "cornerRadiusTopOfHw": ct, "cornerRadiusBottomOfHw": cb, "waistCenterYOfHh": cy,
+    "waistRadiusOfHw": wr, "topInsetOfHw": ti, "archRiseOfHw": ar} (no `from`: same reasoning as T11 below --
+    a narrow head + arch over a split-corner pinch, nothing earlier fits all of it at once) builds
+    frame_shape_fit.provisional_narrow_head_arched_top_model (T11's own split-corner pinch builder, reused,
+    plus topInset + archRise). CHECKED BEFORE T11 below: this dict is a superset of T11's own 5 keys.
+    The OLD T10 model -- {"from": <template id>, "archRiseOfHw": r} building provisional_arched_top_model (the
+    base model's own sides/base unchanged, plus a top arc r x hw tall) -- is kept below for any other template
+    that might still use the plain "from" + archRiseOfHw shape (none does today; T10 itself no longer does).
     T7 DIAMOND-TOP HOURGLASS: {"neckWidthOfHw": w, "neckHeightOfHh": h, "bodyFlareOfHh": f} (no `from`: like T6,
     a gable roof and an S-curve side, nothing to derive it from) builds
     frame_shape_fit.provisional_diamond_top_hourglass_model.
@@ -244,6 +251,19 @@ def template_shape_model(template_id, frame, goldens_dir):
             from fb_engine.frame_shape_fit import provisional_diamond_top_hourglass_model
             return provisional_diamond_top_hourglass_model(prov["neckWidthOfHw"], prov["neckHeightOfHh"],
                                                             prov["bodyFlareOfHh"])
+        if "archRiseOfHw" in prov and "topInsetOfHw" in prov:
+            # H23 item 78b, T10 ARCHED HOURGLASS (NEW shape, Fred's own reconstruction): also a shape of
+            # its own (no base template -- a narrow vertical head topped by an arch over Template 1's own
+            # 3-arc pinch side, reusing T11's own split-corner-radius provisional builder for the pinch,
+            # same "nothing earlier fits both parts at once" reasoning T11 itself uses):
+            # {"waistReachOfHw": w, "cornerRadiusTopOfHw": ct, "cornerRadiusBottomOfHw": cb,
+            # "waistCenterYOfHh": cy, "waistRadiusOfHw": wr, "topInsetOfHw": ti, "archRiseOfHw": ar}.
+            # Checked BEFORE "waistReachOfHw" below (T11's own plain 5-key dict): this one is a superset
+            # (+topInsetOfHw +archRiseOfHw), same "more specific dict wins first" rule T17/T14/T15 use.
+            from fb_engine.frame_shape_fit import provisional_narrow_head_arched_top_model
+            return provisional_narrow_head_arched_top_model(
+                prov["waistReachOfHw"], prov["cornerRadiusTopOfHw"], prov["cornerRadiusBottomOfHw"],
+                prov["waistCenterYOfHh"], prov["waistRadiusOfHw"], prov["topInsetOfHw"], prov["archRiseOfHw"])
         if "waistReachOfHw" in prov:
             # T11 HOURGLASS ROOF: also a shape of its own (no base template -- a gable roof over
             # Template 1's own shoulder/waist/hip pinch, nothing earlier fits both parts at once):

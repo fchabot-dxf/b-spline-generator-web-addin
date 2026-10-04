@@ -182,6 +182,26 @@ def _hourglass_arched_top(curves, hw, hh, tol=2e-3):
     return ok, feats
 
 
+def _hourglass_narrow_arched_head(curves, hw, hh, tol=2e-3):
+    """H23 item 78b: Template 10's NEW shape (replaces `_hourglass_arched_top` above) -- Fred's own hand
+    reconstruction: a narrow vertical-sided head (`horn_TR`/`horn_TL`, inset `topInset` from the full
+    board width) topped by an arch, over a split-corner-radius 3-arc pinch (the shoulder and hip radii are
+    NOT equal, unlike the old T10/Template 1 side) down to a full-width base.
+
+    NOT YET IMPLEMENTED -- there are no recorded Fusion goldens for this shape yet (the Fusion phases
+    themselves haven't been built: H23 item 78b's own app-geometry step only). Always returns `ok=False`
+    so `fit_shape_model` correctly falls through to the provisional model
+    (`provisional_narrow_head_arched_top_model`, this template's own `template_data.py`) rather than
+    either crashing on the old T10 goldens' curve structure or silently fitting garbage. Write this for
+    real once `tools/repro/record_frame_parity.py` has live 7x9/9x12 goldens to fit against -- it will
+    need curves named like `_hourglass_narrow_top`'s own (`horn_TR`/`horn_TL`, `arc_shoulder_R/L`,
+    `arc_waist_R/L`, `arc_hip_R/L`) plus `_hourglass_arched_top`'s own `top_edge` arch check above, and
+    should return the same feature keys `provisional_diamond_top_hourglass_pinch_model` declares (depth,
+    cornerR, cornerRTop, cornerRBottom, waistR, waistCy, notch) plus `topInset` and `archRise`.
+    """
+    return False, {}
+
+
 def _tab_top(curves, hw, hh, tol=2e-3):
     """T6 TAB TOP: a rectangle with a narrower rectangular tab centred on top (8 straight pieces).
 
@@ -496,6 +516,7 @@ def _flask(curves, hw, hh, tol=2e-3):
 FEATURE_EXTRACTORS = {"hourglass": _hourglass, "bottle": _bottle, "hourglass_narrow_top": _hourglass_narrow_top,
                       "hourglass_offset_waist": _hourglass_offset_waist, "hourglass_dipped_top": _hourglass_dipped_top,
                       "hourglass_arched_top": _hourglass_arched_top,
+                      "hourglass_narrow_arched_head": _hourglass_narrow_arched_head,
                       "bottle_taper": _bottle_taper,
                       "tab_top": _tab_top, "dipped_left_wave": _dipped_left_wave, "i_shape": _i_shape,
                       "diamond_top_hourglass": _diamond_top_hourglass,
@@ -697,6 +718,44 @@ def provisional_diamond_top_hourglass_pinch_model(waist_reach_of_hw, corner_radi
             "cornerRadiusBottomOfHw": corner_radius_bottom_of_hw,
             "waistCenterYOfHh": waist_center_y_of_hh,
             "waistRadiusOfHw": waist_radius_of_hw,
+        },
+    }
+
+
+def provisional_narrow_head_arched_top_model(waist_reach_of_hw, corner_radius_top_of_hw, corner_radius_bottom_of_hw,
+                                              waist_center_y_of_hh, waist_radius_of_hw, top_inset_of_hw, arch_rise_of_hw):
+    """H23 item 78b: Template 10's NEW shape, until its goldens are recorded live -- a PROVISIONAL model
+    (never none), replacing the old `provisional_arched_top_model(template_1, ...)` one. Fred's own hand
+    reconstruction: a narrow vertical-sided head (`topInset`) topped by an arch (`archRise`), over the
+    SAME split-corner-radius 3-arc pinch Template 11's own provisional model already builds
+    (`provisional_diamond_top_hourglass_pinch_model`, reused verbatim here, not re-derived -- T10's own
+    side is the identical Template-1 tangency algebra T11's own side already is, split-corner-radius
+    included). `topInset`/`archRise` are then added on top, the same simple "copy base features, add one
+    more" pattern `provisional_arched_top_model`/`provisional_shape_model` already use.
+
+    Every value here comes from `tools/repro/h23_item78b_t10_target_vs_current.mjs`'s own exact fit
+    against Fred's hand-reconstructed sketch dump
+    (`~/.bspline-status/shots/fred/t10_fred_reconstructed_sketch_dump_2026-10-01.txt`): calling
+    `hourglassConstruction` directly with these resolved fractions reproduces the dump's own shoulder/
+    waist/hip arc centres and radii, and the arch's own radius, each to within the dump's own 4-decimal
+    rounding (confirmed, not assumed -- see that script's own console output / WORK-LOG-fb-app.md's H23
+    item 78b entry). Marked `provisional` so nothing mistakes it for a fit.
+    """
+    base = provisional_diamond_top_hourglass_pinch_model(
+        waist_reach_of_hw, corner_radius_top_of_hw, corner_radius_bottom_of_hw,
+        waist_center_y_of_hh, waist_radius_of_hw)
+    feats = {k: dict(v) for k, v in base["features"].items()}
+    feats["topInset"] = {"hw": top_inset_of_hw, "hh": 0.0}
+    feats["archRise"] = {"hw": arch_rise_of_hw, "hh": 0.0}
+    return {
+        "features": feats,
+        "fit": dict(base["fit"]),
+        "provisional": {
+            "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
+            "baseModel": "provisional_diamond_top_hourglass_pinch_model (Template 11's own side algebra)",
+            "waistReachOfHw": waist_reach_of_hw, "cornerRadiusTopOfHw": corner_radius_top_of_hw,
+            "cornerRadiusBottomOfHw": corner_radius_bottom_of_hw, "waistCenterYOfHh": waist_center_y_of_hh,
+            "waistRadiusOfHw": waist_radius_of_hw, "topInsetOfHw": top_inset_of_hw, "archRiseOfHw": arch_rise_of_hw,
         },
     }
 
