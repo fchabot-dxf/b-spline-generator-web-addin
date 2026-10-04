@@ -54,8 +54,8 @@ import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, generateBricks } from '../core/bricks/index.js';
-import { brickSetById, BRICK_PATTERNS } from '../core/bricks/library.js';
+import { bricksAlongPath, bricksContourBands, generateBricks } from '../core/bricks/index.js';
+import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS } from '../core/bricks/library.js';
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
 import { radialSignAt } from '../core/bricks/arc-voussoir.js';
@@ -222,6 +222,34 @@ function toBrickOpts(settings) {
     // change for Wall/Frame or an un-striped Brush stroke.
     profile: settings.profile || 'bricks',
   };
+}
+
+/** T86 item 7: a drawn Brush stroke's own fitted primitives for `bricksContourBands` -- the
+ *  SIMPLIFIED polyline already handed to this file (see `finish()`'s own header: `ramerDouglasPeucker`
+ *  collapses a raw drag into a handful of real straight segments) is ALREADY a true line-primitive
+ *  list, one per consecutive point pair -- no arc-fitting step is needed (unlike a frame contour,
+ *  a brush stroke has never had true circular arcs; `bricksAlongPath`'s own curve handling is a
+ *  local-radius APPROXIMATION on a dense polyline, not a fitted primitive, and that distinction
+ *  stays true here too). */
+export function strokePrimitives(points) {
+  const primitives = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    primitives.push({ type: 'line', p0: { x: points[i].x, y: points[i].y }, p1: { x: points[i + 1].x, y: points[i + 1].y } });
+  }
+  return primitives;
+}
+
+/** T86 item 7 (advisor: "One engine: bricksContourBands on an open primitive list, not a separate
+ *  brush code path"). Dispatches to the OLD `bricksAlongPath` only for `profile:'continuous'`
+ *  (Stripe's own style-cycle variant, F35 item 3/4) -- `bricksContourBands`'s own band/row
+ *  construction has no equivalent to "one unbroken band, no per-brick joints, a texture-blend plan"
+ *  at all, so that profile keeps its own existing, unmodified engine. Every OTHER brush stroke
+ *  (today's only other case: `profile:'bricks'`, the masonry look) now bands the SAME way a Frame
+ *  does, just along an OPEN, centred primitive list instead of a closed, inward one. */
+export function bricksForBrushStroke(points, settings, opts) {
+  if (opts.profile === 'continuous') return bricksAlongPath(points, { ...opts, closed: false }).bricks;
+  const bands = BRUSH_PRESETS[settings.brushBandPreset] || BRUSH_PRESETS.stretcher_1;
+  return bricksContourBands(strokePrimitives(points), bands, { ...opts, closed: false, centered: true }).bricks;
 }
 
 function setForId(id) {
@@ -670,7 +698,7 @@ export function regenerateOwnedBrickElements(editor) {
       const settings = chain.cycleIndex == null
         ? chain.settings
         : settingsVariantForCycle(chain.settings, chain.cycleIndex);
-      const { bricks } = bricksAlongPath(chain.points, { ...toBrickOpts(settings), closed: false });
+      const bricks = bricksForBrushStroke(chain.points, settings, toBrickOpts(settings));
       const ownerId = `${elementId}:${chainIdx}`;
       for (const b of bricks) {
         drawBrick(editor, layer, b, 'brush', settings.setId, settings.seed, settings.reliefIn).attr(BRICK_OWNER_ATTR, ownerId);

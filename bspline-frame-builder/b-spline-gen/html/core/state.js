@@ -101,6 +101,12 @@ export const DEFAULT = {
       // soldier_stretcher, keeps band 0's own override). Only course/course-alternating kinds are
       // meaningful here (main/brick-panel.js's own FRAME_BAND_PATTERN_LIST greys out the rest).
       frameBandPatterns: [],
+      // T86 item 7: which core/bricks/library.js BRUSH_PRESETS entry a drawn Brush stroke bands
+      // with -- a key, not the bands array itself, same "track the current declaration" convention
+      // as frameBandPreset above. 'stretcher_1' (a single stretcher row straddling the stroke's own
+      // centreline) is the closest match to the OLD orientation-only brush's own default look, so an
+      // existing saved session's brush strokes don't visibly change on load.
+      brushBandPreset: 'stretcher_1',
     },
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.

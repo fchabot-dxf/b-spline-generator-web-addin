@@ -348,6 +348,27 @@ export const FRAME_PRESETS = Object.freeze({
   ],
 });
 
+/**
+ * T86 item 7 (Fred: "add brick orientation and patterns for brush", refined by the advisor: "a
+ * brush line can have a few brick patterns, maybe 2 and 3 bricks wide" -- "the brush = the SAME
+ * band list as the frame ... laid along an OPEN path instead of a closed contour, rows offset
+ * either side of the stroke centreline"). The SAME declared shape as `FRAME_PRESETS` above (so
+ * `bricksContourBands` consumes either identically) -- `contour-bands.js`'s own `opts.closed:false,
+ * opts.centered:true` is what makes a brush stroke's own bands straddle its centreline instead of
+ * nesting inward from an outer edge; these presets never need to know that themselves. A
+ * deliberately SMALL, named set (not all 7 FRAME_PRESETS) -- a thin stroke reads differently from a
+ * wide frame band, so only the combinations Fred actually asked for are declared.
+ */
+export const BRUSH_PRESETS = Object.freeze({
+  stretcher_1: [{ widthIn: 0.2, pattern: 'stretcher' }],
+  stretcher_2_running: [{ widthIn: 0.4, pattern: 'stretcher' }], // 2 rows, one band -- running bond's own staggerFrac (0.5) already alternates row-to-row, no second band needed
+  flemish_soldier_flemish_3: [
+    { widthIn: 0.2, pattern: 'flemish' },
+    { widthIn: 0.75, pattern: 'soldier' },
+    { widthIn: 0.2, pattern: 'flemish' },
+  ],
+});
+
 export function brickSetById(id) {
   return BRICK_SETS.find((s) => s.id === id) || null;
 }

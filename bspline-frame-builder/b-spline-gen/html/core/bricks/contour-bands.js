@@ -77,54 +77,75 @@ function enrichPrimitives(primitives, inwardSign) {
   });
 }
 
+/** Every band's own row count + naturalWidth/pitch/sequence/stagger, precomputed ONCE -- shared by
+ *  the `centered` total-width pre-pass (T86 item 7) and the main build loop below, so the two never
+ *  compute a band's own row geometry two different ways. */
+function planBands(bands, L, H) {
+  return bands.map((band) => {
+    const patternName = band.pattern || 'stretcher';
+    const patternDef = BRICK_PATTERNS[patternName] || BRICK_PATTERNS.stretcher;
+    const cornerStyle = band.cornerStyle || 'mitre';
+    const naturalWidth = courseHeightFor(patternDef, L, H);
+    const pitch = patternDef.kind === 'course-alternating' ? L : axisLen(patternDef.pitchAxis, L, H);
+    const sequence = patternDef.kind === 'course-alternating' ? [L, H] : undefined;
+    const staggerFrac = patternDef.staggerFrac || 0;
+    const rows = Math.max(1, Math.round(band.widthIn / naturalWidth));
+    return { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows };
+  });
+}
+
 /**
  * @param {({type:'line', p0:{x,y}, p1:{x,y}}|{type:'arc', cx:number, cy:number, r:number, theta1:number, theta2:number})[]} primitives
- *   — the closed contour's own ordered RAW primitives, depth-0 (the true board/frame outline).
- * @param {{widthIn:number, pattern:'soldier'|'stretcher'|'header'|'flemish'|'stack', cornerStyle?:'mitre'|'butt'|'lapped'|'block'}[]} bands — outer -> inner
+ *   — the contour's own ordered RAW primitives, depth-0 (the true board/frame outline, or -- T86
+ *   item 7, `opts.closed=false` -- an OPEN stroke's own fitted line segments).
+ * @param {{widthIn:number, pattern:'soldier'|'stretcher'|'header'|'flemish'|'stack', cornerStyle?:'mitre'|'butt'|'lapped'|'block'}[]} bands — outer -> inner (closed), or edge -> edge across the centreline (open + centered)
  * @param {object} opts
  * @param {object} opts.set — a library.BRICK_SETS entry
  * @param {number} [opts.scale=1] — uniform multiplier on the set's own brick length/height (grout unaffected)
  * @param {number} opts.seed
+ * @param {boolean} [opts.closed=true] — T86 item 7: false for an OPEN primitive list (a brush
+ *   stroke's own fitted line segments) -- no wraparound joint at the two true ends (square/butt
+ *   cut, `ribbonPieces`' own open-path support), and `inwardSign` is never auto-detected (an open
+ *   polyline has no "inside" to detect) -- each line's own `(-dy,dx)/len` normal is used AS-IS
+ *   (a fixed left-of-travel convention), never flipped.
+ * @param {boolean} [opts.centered=false] — T86 item 7: only meaningful with `closed:false`. `bands`
+ *   stack straddling the stroke's own centreline (depth 0) instead of starting from it and going
+ *   only inward -- the SAME forward per-row loop below, just started at `-totalWidth/2` instead of
+ *   `0`, so `bands[0]` sits at one edge of the stack and `bands[last]` at the other, exactly
+ *   mirroring "width = sum of the bands, centred" (the dispatch's own phrase) with no separate
+ *   left/right construction.
  * @returns {{ bricks: Array, innerPath: {x:number,y:number}[] }} innerPath = the last band's own
- *   inner edge (tessellated), where bricksFillShape (the Wall tool) should start from.
+ *   inner edge (tessellated), where bricksFillShape (the Wall tool) should start from -- `[]` when
+ *   `opts.closed===false` (`boundaryAtDepth` is a closed-contour concept; an open stroke has no
+ *   Wall-starting inner edge to give it).
  */
 export function bricksContourBands(primitives, bands, opts) {
   const { seed } = opts;
+  const closed = opts.closed !== false;
   const set = scaledSet(opts.set, opts.scale); // scaled ONCE here; the inner ribbonPieces calls
   // below get this already-scaled set directly (no opts.scale passed to them) so it's never applied twice.
-  const inwardSign = inwardSignFor(tessellate(primitives));
+  const inwardSign = closed ? inwardSignFor(tessellate(primitives)) : 1;
   const enriched = enrichPrimitives(primitives, inwardSign);
 
   const bricks = [];
-  let depthSoFar = 0;
+  const L = set.brickLengthIn, H = set.brickHeightIn;
+  const plannedBands = planBands(bands, L, H);
+  let depthSoFar = opts.centered
+    ? -plannedBands.reduce((sum, b) => sum + b.naturalWidth * b.rows, 0) / 2
+    : 0;
   let nextId = 0;
 
-  const L = set.brickLengthIn, H = set.brickHeightIn;
-
   bands.forEach((band, bandIndex) => {
-    const patternName = band.pattern || 'stretcher';
-    const patternDef = BRICK_PATTERNS[patternName] || BRICK_PATTERNS.stretcher;
-    // T86 item 1: 'butt'/'lapped'/'block' (declared per-band, default 'mitre' -- every existing
-    // preset/caller that never declares this keeps today's exact symmetric-mitre behaviour).
-    const cornerStyle = band.cornerStyle || 'mitre';
-    // T86 item 2 (replaces de's separate band-course.js engine, parked): read the SAME declared
-    // pitch/cross axes + stagger `layouts/bond.js`'s own Wall-side rows already use (`axisLen`/
-    // `courseHeightFor`, imported not re-derived) instead of this file's own former bare
-    // `pattern==='soldier'` ternary -- soldier/stretcher keep their EXACT prior naturalWidth/pitch
-    // values (confirmed: `courseHeightFor`/`axisLen` reduce to the identical two numbers for those
-    // two patterns), header/stack now resolve correctly too (previously sized AS IF stretcher,
-    // band-course.js's own measured defect this replaces). flemish ('course-alternating') has no
-    // single pitch at all -- its own `sequence` (below) carries [L,H] instead, and `pitch` here is
-    // only the FILL-FRACTION base for its own end pieces (same role every other pattern already
-    // gives it), not a per-piece length.
-    const naturalWidth = courseHeightFor(patternDef, L, H);
-    const pitch = patternDef.kind === 'course-alternating' ? L : axisLen(patternDef.pitchAxis, L, H);
-    // the course-alternating (flemish) repeat unit: stretcher-length then header-length, exactly
-    // `layouts/bond.js`'s own `flemishRow` -- [L, H], JOINTS still handled separately by the
-    // existing jointWidth mechanism, never baked into the sequence itself.
-    const sequence = patternDef.kind === 'course-alternating' ? [L, H] : undefined;
-    const staggerFrac = patternDef.staggerFrac || 0;
-    const rows = Math.max(1, Math.round(band.widthIn / naturalWidth));
+    // T86 item 2: read the SAME declared pitch/cross axes + stagger `layouts/bond.js`'s own
+    // Wall-side rows already use (`axisLen`/`courseHeightFor`, imported not re-derived) instead of
+    // this file's own former bare `pattern==='soldier'` ternary -- soldier/stretcher keep their
+    // EXACT prior naturalWidth/pitch values (confirmed: `courseHeightFor`/`axisLen` reduce to the
+    // identical two numbers for those two patterns), header/stack now resolve correctly too
+    // (previously sized AS IF stretcher, band-course.js's own measured defect this replaces).
+    // flemish ('course-alternating') has no single pitch at all -- its own `sequence` (below)
+    // carries [L,H] instead, and `pitch` here is only the FILL-FRACTION base for its own end
+    // pieces (same role every other pattern already gives it), not a per-piece length.
+    const { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows } = plannedBands[bandIndex];
     for (let row = 0; row < rows; row++) {
       const d0 = depthSoFar + naturalWidth * row, d1 = depthSoFar + naturalWidth * (row + 1);
       const odd = row % 2 === 1;
@@ -141,7 +162,7 @@ export function bricksContourBands(primitives, bands, opts) {
       const { pieces, nextId: afterId } = ribbonPieces(
         enriched, d0, d1, set, patternName, pitch, set.grout.widthIn,
         seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
-        rowSequence, forcedFStart,
+        rowSequence, forcedFStart, closed, row,
       );
       bricks.push(...pieces);
       nextId = afterId;
@@ -149,7 +170,7 @@ export function bricksContourBands(primitives, bands, opts) {
     depthSoFar += naturalWidth * rows;
   });
 
-  return { bricks, innerPath: boundaryAtDepth(enriched, depthSoFar) };
+  return { bricks, innerPath: closed ? boundaryAtDepth(enriched, depthSoFar) : [] };
 }
 
 /**

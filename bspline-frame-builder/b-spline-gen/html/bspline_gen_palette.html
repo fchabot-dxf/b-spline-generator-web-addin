@@ -1015,6 +1015,14 @@
           </div>
           <div id="brickToolHint" style="font-size:10px; opacity:0.65; margin:-6px 0 12px;"></div>
 
+          <!-- T86 item 7 (Fred: "a brush line can have a few brick patterns, maybe 2 and 3
+               bricks wide"): the Brush band-preset picker -- core/bricks/library.js's own
+               declared BRUSH_PRESETS, straddling the drawn stroke's own centreline. -->
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Brush band preset</label>
+          <div id="brickBrushPresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+            <!-- Populated at runtime by main/brick-panel.js's declared BRUSH_PRESET_LIST. -->
+          </div>
+
           <!-- F35 item 7 (advisor-approved proposal): the Wall pattern picker -- every
                core/bricks/library.js BRICK_PATTERNS key (stretcher/stack/soldier/header/flemish/
                herringbone/basketweave), one shared table also meant for Frame bands once f3's own

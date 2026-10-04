@@ -21,7 +21,7 @@
  * primitive).
  */
 import { describe, it, expect } from 'vitest';
-import { primitivesToPolyline, buildRibbonPrimitives, reconstructChains } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { primitivesToPolyline, buildRibbonPrimitives, reconstructChains, strokePrimitives, bricksForBrushStroke } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
@@ -264,5 +264,47 @@ describe('reconstructChains: F35 item 3 -- spine segments -> regenerate units', 
   it('empty input produces no chains', () => {
     expect(reconstructChains([])).toEqual([]);
     expect(reconstructChains(undefined)).toEqual([]);
+  });
+});
+
+describe('T86 item 7: strokePrimitives / bricksForBrushStroke -- the brush\'s own open-path engine wiring', () => {
+  it('strokePrimitives turns a simplified polyline into one line primitive per consecutive point pair', () => {
+    const points = [{ x: 0, y: 0 }, { x: 3, y: 0 }, { x: 3, y: 4 }];
+    const primitives = strokePrimitives(points);
+    expect(primitives).toEqual([
+      { type: 'line', p0: { x: 0, y: 0 }, p1: { x: 3, y: 0 } },
+      { type: 'line', p0: { x: 3, y: 0 }, p1: { x: 3, y: 4 } },
+    ]);
+  });
+
+  it('bricksForBrushStroke (profile "bricks", the default) bands via bricksContourBands, open + centred on the stroke', () => {
+    const points = [{ x: 0, y: 0 }, { x: 5, y: 0 }];
+    const bricks = bricksForBrushStroke(points, { brushBandPreset: 'stretcher_1' }, { set: BRICK_SETS[0], seed: 1, profile: 'bricks' });
+    expect(bricks.length).toBeGreaterThan(0);
+    const H = BRICK_SETS[0].brickHeightIn;
+    const ys = bricks.flatMap((b) => b.polygon.map((p) => p.y));
+    // straddles the stroke's own centreline (y=0), the SAME property
+    // tests/bricks-open-path-bands.test.js already proves on bricksContourBands directly -- this
+    // test is about the WIRING (does the adapter actually reach that engine with the right opts),
+    // not a second copy of the engine's own geometry proof.
+    expect(Math.min(...ys)).toBeCloseTo(-H / 2, 3);
+    expect(Math.max(...ys)).toBeCloseTo(H / 2, 3);
+  });
+
+  it('bricksForBrushStroke (profile "continuous") still routes to the OLD bricksAlongPath, unaffected by item 7', () => {
+    const points = [{ x: 0, y: 0 }, { x: 5, y: 0 }];
+    const bricks = bricksForBrushStroke(points, { brushBandPreset: 'stretcher_1' }, { set: BRICK_SETS[0], seed: 1, profile: 'continuous' });
+    expect(bricks.length).toBeGreaterThan(0);
+    // bricksAlongPath's own 'continuous' profile pieces carry a `cropWindow` + `overlapIn` (its own
+    // declared blend-plan fields) -- bricksContourBands pieces never do; this is the one externally
+    // observable difference proving the OLD engine, not the new one, actually ran.
+    expect(bricks[0]).toHaveProperty('cropWindow');
+    expect(bricks[0]).toHaveProperty('overlapIn');
+  });
+
+  it('an unknown brushBandPreset falls back to stretcher_1, never throws', () => {
+    const points = [{ x: 0, y: 0 }, { x: 5, y: 0 }];
+    const bricks = bricksForBrushStroke(points, { brushBandPreset: 'not-a-real-preset' }, { set: BRICK_SETS[0], seed: 1, profile: 'bricks' });
+    expect(bricks.length).toBeGreaterThan(0);
   });
 });

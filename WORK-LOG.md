@@ -19674,3 +19674,84 @@ SVG's own vector data directly -- T16/T17's own cells now show a multi-point tes
 **Commit (this entry + the 3 `tools/repro/` files) to follow.** Proceeding to item 7 (brush
 patterns) as ordered. The `outline-offset.js` distance=0 collapse bug is a separate, flagged finding
 for the advisor to scope -- not blocking item 7, which never calls through `frameContourSilhouette`.
+
+## T86 item 7: brush patterns -- bricksContourBands generalized to an OPEN, centred primitive list; brush now bands through it (d3)
+
+Fred: "add brick orientation and patterns for brush". Advisor refinement: brush = the SAME band
+list as a frame preset, laid along an OPEN path instead of a closed contour, rows offset either
+side of the stroke's own centreline (width = sum of the bands), square/butt ends at both open
+ends, running bond = 1/2-brick stagger row to row -- "one engine: `bricksContourBands` on an open
+primitive list, not a separate brush code path." Also carrying de's own requested per-piece
+metadata (`{bandIndex, rowIndex, pieceIndex}`, for his later accent-level work) on every band/brush
+piece.
+
+**Engine (`primitive-ribbon.js`, `contour-bands.js`): two new, additive opts, both defaulting to
+today's exact closed-contour behaviour.**
+- `ribbonPieces`'s own new `closed=true` param: when false, the FIRST live primitive's own
+  wraparound joint slot is forced `null` -- which, for free, ALSO resolves the LAST live
+  primitive's own `jointEnd` to `null` (it reads the exact same array slot via the `(k+1)%m` wrap),
+  giving BOTH open ends the plain "no joint" treatment `linePieces`/`voussoirPieces` already have
+  for a genuinely open path end (a clean square/butt cut, no new construction needed).
+- `bricksContourBands`'s own new `opts.closed` (threaded straight to `ribbonPieces`) and
+  `opts.centered`: `centered` only shifts WHERE the per-row depth walk starts (`-totalWidth/2`
+  instead of `0`) -- the SAME forward per-row loop as every closed-contour band stack already
+  uses, so `bands[0]` sits at one edge of the stack and `bands[last]` at the other, exactly
+  "width = sum of the bands, centred" with no separate left/right construction. `inwardSign` is
+  never auto-detected for an open path (an open polyline has no "inside" -- `inwardSignFor` is a
+  closed-polygon concept); each line's own plain `(-dy,dx)/len` normal is used as-is, a fixed
+  left-of-travel convention declared once. `boundaryAtDepth`/`innerPath` stay closed-contour-only
+  (an open stroke has no Wall-starting inner edge to give) -- returns `[]` rather than guessing.
+- Per-piece metadata: `ribbonPieces` now stamps `{bandIndex, rowIndex, pieceIndex}` on every piece
+  it returns (including kiteFan/block pieces) in one final pass, `pieceIndex` = the piece's own
+  build-order index within the row (already deterministic per seed). Field names are de's own to
+  finalize by DM per the advisor's note; stamped now so no second pass is needed later.
+
+**New presets** (`library.js`, `BRUSH_PRESETS`): a small, NAMED set matching exactly what Fred
+asked for ("maybe 2 and 3 bricks wide"), not all 7 `FRAME_PRESETS` -- `stretcher_1` (1 row),
+`stretcher_2_running` (one band, 2 rows -- `stretcher`'s own declared `staggerFrac:0.5` already
+alternates row-to-row, no second band needed), `flemish_soldier_flemish_3` (3 bands).
+
+**Brush wiring** (`editor-brick-tool.js`): the SIMPLIFIED stroke polyline this file already builds
+(`ramerDouglasPeucker`, unchanged) needed no arc-fitting step at all -- a brush stroke has never
+had true circular arcs (unlike a frame contour); `strokePrimitives` just turns each consecutive
+point pair into one line primitive. `bricksForBrushStroke` dispatches: `profile:'continuous'`
+(Stripe's own style-cycle variant) still goes through the OLD, unmodified `bricksAlongPath` (no
+band/row equivalent of "one unbroken band, no per-brick joints" exists in the new engine, nor
+should it try to); every other case (`profile:'bricks'`, the only other one in use today) now
+bands through `bricksContourBands(strokePrimitives(points), bands, {...opts, closed:false,
+centered:true})`. Settings: `P.brickSettings.brushBandPreset` (`core/state.js`, default
+`'stretcher_1'` -- the closest match to the OLD orientation-only brush's own look, so an existing
+saved session's strokes don't visibly change on load) + a button-list picker in `main/brick-
+panel.js`/`bspline_gen_palette.html`, built as a direct copy of the EXISTING Frame-preset-picker
+pattern (same button-list shape, same `renderXList`/`syncXButtons` pair) -- no new UI mechanism.
+
+**Verification.** New `tests/bricks-open-path-bands.test.js` (7 tests): open 1-wide stretcher on a
+straight stroke bands straddle the centreline (`y` in `[-H/2,H/2]`) exactly, ends square within
+`CLIP_EPS_IN`'s own float-safety margin (0.02in, the SAME one every other open-end piece in this
+codebase already carries); 3-wide flemish/soldier/flemish on a BENT (90deg) stroke -- all 3 bands
+build, every piece simple, **zero** overlap across the bend; "2-wide running"'s own row 1 is
+exactly L/2 narrower than row 0 (the running-bond stagger, MEASURED not assumed); metadata present
+and stable seed-to-seed; `closed` defaults to `true` with a BYTE-IDENTICAL result to an explicit
+`true` on a plain closed square (the existing-caller non-regression proof). **Non-vacuous,
+confirmed directly**: 5 of these 7 fail against the pre-item-7 code (`git stash` on the two engine
+files) -- the other 2 are "defaults don't change existing behaviour" checks, which correctly pass
+either way. New tests in `tests/bricks-editor-adapter.test.js` (4 more) cover the ADAPTER wiring
+itself (`strokePrimitives`'s own point-pair conversion; `bricksForBrushStroke` actually reaches
+the new engine for `'bricks'` and the OLD one, unmodified, for `'continuous'`; an unknown preset
+name falls back cleanly rather than throwing).
+
+Full suite: **3795/3795 passed** (206 files). Full item-4 matrix re-run: **143/476 failed**,
+unchanged from the harness-fix entry above (expected -- `closed` defaults to `true`, so no existing
+frame caller's own geometry moves at all; confirms the new code path is genuinely additive, not a
+silent behaviour change to the paths every other template already depends on).
+
+**Not done this item** (explicitly out of scope, per the dispatch's own "a brush line can have a
+FEW brick patterns" framing): a per-band pattern OVERRIDE picker for brush (Frame's own item 8
+has one; brush only offers the 3 named whole-preset combinations) -- deliberate, not an oversight.
+Also not attempted: regenerating the T86 item-4 contact-sheet PNG (same headless-Chrome `NO CDP`
+issue as the harness-fix entry, unrelated to this item, not re-chased).
+
+**Commit to follow.** Next per the advisor's own order: T86 item 9 (converging rows, un-parked --
+Fred wants T9's own default shape to also get taller flanges, AND the medial-line rule as a general
+fix; the bar is explicit -- "the matrix must not regress vs 154/476" -- so the full matrix runs
+before anything ships).
