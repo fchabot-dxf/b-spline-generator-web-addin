@@ -214,6 +214,7 @@ function syncFramePresetButtons() {
 const WALL_PATTERN_LABELS = {
   stretcher: 'Stretcher', stack: 'Stack', soldier: 'Soldier', header: 'Header',
   flemish: 'Flemish', herringbone: 'Herringbone', basketweave: 'Basketweave',
+  fieldstone: 'Fieldstone',
 };
 const WALL_PATTERN_LIST = Object.keys(BRICK_PATTERNS).map((id) => ({ id, label: WALL_PATTERN_LABELS[id] || id }));
 
