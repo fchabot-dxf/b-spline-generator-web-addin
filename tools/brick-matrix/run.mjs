@@ -32,7 +32,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
 const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d'];
-const groupOf = (c) => (c.kind === 'sidebar' ? (c.do.click?.startsWith('brickQuick_') ? 'sidebar-quick' : 'sidebar-3d')
+const groupOf = (c) => (c.kind === 'opens' ? 'sidebar-quick' : c.kind === 'sidebar' ? (c.do.click?.startsWith('brickQuick_') ? 'sidebar-quick' : 'sidebar-3d')
   : c.kind === 'brush' || c.kind === 'stripe' ? 'brush' : c.tool);
 
 if (arg('only-if-changed')) {
@@ -249,6 +249,18 @@ try {
       const result = await act(c.do); await sleep(800);
       const p = (await isPending()) && !p0; const b = await js(BRUSH);
       await record(c, { result, pending: p, canvas: a !== b, threeD: null, hashes: { before: a, after: b } });
+    } else if (c.kind === 'opens') {
+      // a sidebar button that opens the editor on a declared tab: open?, on that tab? -- then close it again
+      if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
+      await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+      const result = await act(c.do);
+      await sleep(2500);
+      const opened = await editorOpen();
+      const tab = await js(`(async()=>{ const m = await import('./main/editor-tabs.js'); return m.getEditorTab(); })()`);
+      const v = { opened: opened ? 'PASS' : 'FAIL', tab: tab === c.expect.tab ? 'PASS' : 'FAIL' };
+      rows.push({ name: c.name, kind: c.kind, result, observed: { opened, tab }, expect: c.expect, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', opens: v.opened === 'PASS' && v.tab === 'PASS' ? 'PASS' : 'FAIL' } });
+      console.log(`${v.opened === 'PASS' && v.tab === 'PASS' ? 'pass' : 'FAIL'}  ${c.name.padEnd(34)} opened ${v.opened} tab ${tab} (${v.tab})`);
+      if (opened) { await apply(); Z = await heightsSettled(Z); }
     } else if (c.kind === 'sidebar') {
       if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
       await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);

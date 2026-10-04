@@ -12716,3 +12716,38 @@ first) and 23 (incl. the White Rocks -> Fieldstone fold) are next turns. Folded 
 - **Shot:** shots/seat37/turn207_template_picker_rectangle.png (the sidebar: header "— Rectangle", the Rectangle
   button, the open grid).
 - Server 8851 (my own task) stopped.
+
+### turn 207 (last amendments, folded in) -- Recessed + Flat defaults, "Brick editor" button (seat 37)
+
+The second amendment batch (7). Folded in here: the two new defaults and the Brick editor button. Items 24
+(icons: an icon sheet first), 25 (2D/3D pill) and 26 (sidebar resize) are NEXT turns, in that order; then the
+item 22 design note; then item 23.
+- **Defaults (new boards only):** grout profile RECESSED (depth stays Set 1's 0.05 in), brick top FLAT.
+  core/state.js DEFAULT. Saved boards keep theirs: loadLastSession and a project load REPLACE P.brickSettings
+  whole, and every reader compares explicitly (`=== 'flat'`, `=== 'recessed'`), so an older board without
+  brickTopMode still reads Organic.
+  - The Weathered -> Recessed / Clean -> restore logic holds from Recessed: Weathered stores no "before", and
+    Clean leaves Recessed (tested).
+  - Pinned: brick-default-grout (Recessed, 0.05, Flat).
+  - Matrix: the sidebar-3d pairs now first move AWAY from the defaults (Organic then Flat; Flush, depth
+    greyed, then Recessed, depth). Clicking the default first changes nothing, which would FAIL the row.
+- **"Brick editor" button,** the first thing in the sidebar BRICK section. It is declared beside the FRAME
+  section's "Edit frame" in main/frame-panel.js `OPEN_EDITOR_BUTTONS` ({id, tab}): both open the same editor
+  (btnStampEdit's path) on their tab, replacing Edit frame's one-off listener. Same look as Edit frame.
+  - Matrix: a new kind 'opens' in tools/brick-matrix (controls.mjs doc + run.mjs runner, grouped with
+    sidebar-quick). It clicks the button and checks that the editor opened on the declared tab, then Applies.
+    Row 'Brick editor button', introducedBy 979ada1: PASS (opened, tab brick).
+- **Non-vacuous:** the 4 new tests (default pins + 3 button tests) fail 4/4 against the previous sources.
+- **Matrix -- the final tip: full --parallel 63 rows, 0 FAIL** (out-full5); **persistence 24/24** (baseline 204
+  bricks = my tree's 1 in default).
+  - Along the way, three runs showed FAILs in the wall group, a different set each time (Basketweave "MISSING";
+    Suppression 0 + Clumping; the two Level rows). The wall-alone run with the Level FAILs is PROVEN to have
+    run on ANOTHER build:
+    - its baseline was 329 bricks (the old 3/4 in default), while my tree lays 204;
+    - its accent rows were "skipped: not in this build".
+  - Its http port was evidently held by another process (another seat's matrix from an older checkout?).
+    run.mjs does not fail when its own server cannot bind, so it silently drives a foreign app.
+  - For 88: fail when the server cannot bind, or check the served build (e.g. fetch a file and compare it
+    with --root).
+- Main-checkout incident (the advisor's DM): not mine. The advisor stashed the outside agent's edits; my
+  8edb723 "frame follows its frame" stands; BRICK_COMMIT untouched until the advisor confirms Fred's wish.

@@ -13,6 +13,8 @@
 //   'sidebar'   a main-sidebar Brick control ('auto' commit): change -> canvas? -> 3D? (no Generate)
 //   'stripe'    a Stripe-panel brick-style pick: a fresh brush stroke is striped (count 4), then the pick
 //               must re-style the striped runs at once (canvas), never pending
+//   'opens'     a main-sidebar button that opens the editor: expect { tab } = the editor tab it must open on
+//               (seat 37, turn 207); the row closes the editor again (Apply)
 // introducedBy: the commit that added the control -- on a build without it the row is SKIPPED, not failed.
 // tool:   the Brick tool that must be active for an 'editor'/'editor3d' row (its settings section shows)
 // do:     { click: id } | { set: id, value, event }   (event: 'input' | 'change')
@@ -98,17 +100,20 @@ export const BRICK_CONTROLS = [
   { name: 'Quick frame bands: 3-band', kind: 'sidebar', do: click('brickQuick_frameBands_three_band'), expect: AUTO },
   { name: 'Relief: Carved', kind: 'sidebar', do: click('brickBtnReliefCarved'), expect: SURFACE },
   { name: 'Relief: Raised', kind: 'sidebar', do: click('brickBtnReliefRaised'), expect: SURFACE },
-  { name: 'Brick top: Flat', kind: 'sidebar', do: click('brickBtnTopFlat'), expect: SURFACE },
+  // turn 207: a new board starts Flat + Recessed (core/state.js), so each pair first moves AWAY from the default
   { name: 'Brick top: Organic', kind: 'sidebar', do: click('brickBtnTopOrganic'), expect: SURFACE },
+  { name: 'Brick top: Flat', kind: 'sidebar', do: click('brickBtnTopFlat'), expect: SURFACE },
   { name: 'Surface: Weathered', kind: 'sidebar', do: click('brickSurfaceStyle_weathered'), expect: SURFACE },
   { name: 'Wear 0.9 (Weathered)', kind: 'sidebar', do: set('brickSurfaceWear', 0.9), expect: SURFACE },
   { name: 'Surface: Clean', kind: 'sidebar', do: click('brickSurfaceStyle_clean'), expect: SURFACE },
   { name: 'Max Height 0.2', kind: 'sidebar', do: set('brickReliefHeight', 0.2), expect: SURFACE },
-  { name: 'Grout: Recessed', kind: 'sidebar', do: click('brickBtnGroutRecessed'), expect: SURFACE },
-  { name: 'Grout depth 0.1 (Recessed)', kind: 'sidebar', do: set('brickGroutDepth', 0.1), expect: SURFACE, requires: NEEDS_RECESSED },
   { name: 'Grout: Flush', kind: 'sidebar', do: click('brickBtnGroutFlush'), expect: SURFACE },
   { name: 'Grout depth 0.05 (Flush)', kind: 'sidebar', do: set('brickGroutDepth', 0.05), expect: SURFACE, requires: NEEDS_RECESSED },
+  { name: 'Grout: Recessed', kind: 'sidebar', do: click('brickBtnGroutRecessed'), expect: SURFACE },
+  { name: 'Grout depth 0.1 (Recessed)', kind: 'sidebar', do: set('brickGroutDepth', 0.1), expect: SURFACE, requires: NEEDS_RECESSED },
   { name: 'Hide filter texture', kind: 'sidebar', do: click('isolateSkeleton'), expect: SURFACE },
+  // turn 207 (Fred): the BRICK section's "Brick editor" button opens the editor on the Brick tab
+  { name: 'Brick editor button', kind: 'opens', do: click('btnEditBricks'), expect: { tab: 'brick' }, introducedBy: '979ada1' },
 ];
 
 // The APP's own declaration wins when it exists (seat 37: main/brick-control-requires.js, a pure data
