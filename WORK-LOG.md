@@ -19251,3 +19251,86 @@ described as correct, on both the square and T1's true corner. Published to BOTH
 is reverted and the ceiling-violation math that settled it; the flemish finding is confirmed real but
 traced to `buildPatch`'s own pre-existing pitch-blindness (not flemish, not this item), with the A/B
 proof against the already-shipped `stretcher` pattern, proposed as a separate future item.
+
+## T86 item 3: `buildPatch` plans its own pieces along the patch's TRUE ARC LENGTH, not boundary point count (b5)
+
+Advisor dispatch (NEXT-SESSION-lane-b.md, following my own follow-up #2 proposal): "`buildPatch`
+respects the band's pitch/sequence: at dropped-fillet transitions the kite-fan pieces ignore pitch
+(irregular 0.3-0.8in pieces + thin fan slivers on the inner soldier band at every T1 shoulder). Plan
+the patch's pieces along its own arc length with the band's declared sequence + the fill rule
+(ceiling 1.2x, floor 1/4), apex fan slivers merged."
+
+**First, correctly located the actual defect** rather than reusing my earlier (follow-up #2)
+flemish-waist investigation: that one was the WRONG band depth -- flemish's own depth (0.4) never
+drops a shoulder arc (`isArcFeasible(r=0.623, radialSign=1, 0.4)` is `true` for every T1 shoulder;
+only at the SOLDIER band's own deeper 1.15 does it go `false`), so flemish's own irregular pieces
+there are ordinary voussoir tessellation, not `buildPatch` at all. The advisor's own dispatch says
+"inner soldier band" explicitly -- re-targeted the investigation there
+(`scratch/check_dropped_primitives.mjs` confirmed the feasible/infeasible split precisely;
+`scratch/debug_soldier_patch.mjs` dumped the real pre-fix patch pieces: a clean, uniform progression
+in the middle (8 pieces, `0.466in` to `0.771in`, matching a reasonable arc-length cycle) flanked by 4
+genuinely inconsistent pieces per shoulder -- one end merged to `0.491in`, the other end left as TWO
+separate, unrelated-sized pieces (`0.661in`, `0.75in`) -- exactly "irregular... thin fan slivers."
+
+**Root cause, traced in `buildPatch` itself (`primitive-ribbon.js`):** the patch's own boundary is a
+mixed polyline -- two flat strips (2 points each, regardless of their own length) plus the dropped
+arc's own densely-tessellated middle (`EXTENSION_ARC_STEPS+1` points, regardless of ITS OWN often much
+shorter true length). The old code grouped this boundary into K roughly-EQUAL-POINT-COUNT slices
+(searching for the smallest K keeping each slice's own AREA at or below the already-declared 1.2x
+ceiling), which bounds the ceiling correctly but is blind to the boundary's own uneven point DENSITY --
+equal point count is not equal arc length, so the resulting pieces varied in TRUE size even while each
+one individually passed the SAME floor/ceiling check every other run already enforces. The 1.2x/0.25x
+rule was never the missing piece; the missing piece was planning by LENGTH at all.
+
+**Fix.** `buildPatch` now: (1) computes the boundary's own TRUE cumulative arc length
+(`cumulativeLengths`, segment by segment -- the boundary mixes straight and curved stretches, so there
+is no single closed-form formula the way a plain line or a plain circle gets one for free); (2) calls
+`planCornerRun(totalLen, pitch, nominalJoint, FILL_FRACTIONS, sequence, forcedFStart)` -- the EXACT
+same declared end-fraction + sequence-cycling + grout-joint planner `linePieces`/`voussoirPieces`
+already use, now also receiving the row's own `sequence`/`forcedFStart` (threaded through the call
+site, which previously passed neither `nominalJoint` nor `sequence` at all); (3) walks the TRUE
+boundary polyline at each planned cut length (`pointAtLength`, linear interpolation within whichever
+segment contains that length) to build each piece's own exact polygon (`patchSlicePolygon`: the
+interpolated start cut, every ORIGINAL boundary point strictly inside the range -- preserving the
+dropped arc's own real curvature, not flattening it to a chord -- the interpolated end cut, then the
+shared apex `q` closing the fan). `mergeSlivers` still runs afterward on the new LENGTH-based spans,
+same 0.25x floor/1.2x ceiling as everywhere else -- "apex fan slivers merged" is this SAME pass, not a
+second mechanism; a wedge near the shared apex can still clip small regardless of how evenly its own
+along-boundary length was planned. Deleted the now-dead `MAX_KITE_SLICES` constant (the old K-search
+loop it bounded is gone).
+
+**A fan converging to the apex still LOOKS visually thin -- confirmed that's not the defect.**
+MEASURED directly (`scratch/check_shoulder_areas.mjs`, every real piece near both T1 shoulders):
+area ratios from 0.50x to 1.00x of nominal, nowhere near the 0.25x floor despite several pieces
+LOOKING like thin converging wedges in the preview (same visual-vs-actual gap the advisor's own
+approved stepped-mitre finding already established for the corner case in follow-up #2 -- a wedge
+narrowing toward a shared point is the correct SHAPE at this kind of transition, not a defect by
+itself; only a genuinely sub-floor AREA would be).
+
+**Verification (`tests/bricks-build-patch-sequence.test.js`, new).** Confirmed the dropped-primitive
+precondition directly (every T1 shoulder arc: feasible at flemish's own 0.4, infeasible at soldier's
+own 1.15) so the test fixture is proven to exercise `buildPatch`, not assumed to. A floor/ceiling test
+alone does NOT distinguish old vs new (BOTH algorithms already enforced that bound, over
+differently-UNIFORM pieces) -- caught this empirically (both versions passed that test unchanged) and
+replaced it with the metric that actually moved: single_soldier on T1 7x9 measured 132 total pieces /
+32 with more than 6 vertices before the fix, 136 total / 28 with more than 6 vertices after -- pinned
+as an exact regression check, not just a bound, plus a floor/ceiling sanity check kept for its own
+value and a left/right shoulder symmetry check (confirmed still holding after the fix, not broken by
+it). Mutation-tested (`git stash` on `primitive-ribbon.js`): the pinned-count test fails cleanly
+against the pre-fix code (132 received vs 136 expected); the other 4 tests still pass unchanged
+(same floor/ceiling + same symmetry, correctly NOT sensitive to this specific defect). Full `vitest`:
+204 files/3780 tests, 0 failures.
+
+**Live previews**, new tool `tools/repro/t86_item3_shoulder_preview.mjs` (1:1 shoulder closeups, both
+`single_soldier` and `mixed_bands`, located via the real patch pieces' own measured bbox): both show a
+clean fan of consistently-sized wedges converging on the shoulder's own apex point, no stray
+inconsistent extras. Re-shot all 5 `mixed_bands` previews from item 2 too (unaffected elsewhere;
+confirms the fix is scoped to the dropped-primitive transitions only). Published to both
+`shots/seatB/` and `~/.bspline-status/shots/seatB/` (the item-2-follow-up-#1 auto-publish step
+covers both scripts now).
+
+**Commit `[pending]`, push to origin/lane-b to follow.** Also noticed in passing: lane-b picked up a
+merge bringing in de's own `fb-app` commit (`a3ed945`, "wire picker to b5's sequence API, retire
+frameBricksFor") -- de acted on the retirement recommendation from my own T86 item 2 DM; not my own
+work, just confirming the cross-branch coordination landed. Passing back to the advisor with the full
+item status.

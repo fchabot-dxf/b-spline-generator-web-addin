@@ -278,9 +278,6 @@ function tessellateArcSpan(arc, depth, thetaFrom, thetaTo) {
   return points;
 }
 
-const MAX_KITE_SLICES = 20; // a generous ceiling on how far `buildPatch` will keep subdividing --
-// real fillets never need anywhere near this many; it's a loop-safety bound, not a design target.
-
 /** The point on `prim`'s own d0-offset edge at the SAME tangential coordinate as `q`'s own
  *  projection onto `prim` -- i.e. exactly where `prim`'s own NORMAL (unextended, `q`-based) last/
  *  first piece's own d0-corner already naturally sits. `prim` may be either shape. */
@@ -324,18 +321,74 @@ function flatStripToTangent(prim, d0, q, tangentPoint) {
   return tessellateArcSpan(prim, d0, thetaQ, thetaTangent);
 }
 
+/** Cumulative arc length at each `boundary` point, `cum[0]=0`, `cum[last]=` the boundary's own total
+ *  length -- the SAME "walk a polyline by length" need `linePieces` gets for free from a straight
+ *  line's own single tangent and `voussoirPieces` gets for free from a circle's own constant radius,
+ *  but `buildPatch`'s own boundary mixes two flat strips with a densely-tessellated arc, so there is
+ *  no single formula; this walks the real (possibly curved) polyline segment by segment. */
+function cumulativeLengths(boundary) {
+  const cum = [0];
+  for (let i = 1; i < boundary.length; i++) {
+    cum.push(cum[i - 1] + Math.hypot(boundary[i].x - boundary[i - 1].x, boundary[i].y - boundary[i - 1].y));
+  }
+  return cum;
+}
+
+/** The point at arc length `L` along `boundary` (clamped to its own ends), linearly interpolated
+ *  within whichever segment `cum` says contains it -- exact at an existing boundary point, a genuine
+ *  new point otherwise (a piece boundary rarely lands exactly on one of the dropped arc's own
+ *  tessellation points). */
+function pointAtLength(boundary, cum, L) {
+  const total = cum[cum.length - 1];
+  const clamped = Math.max(0, Math.min(total, L));
+  for (let i = 1; i < cum.length; i++) {
+    if (clamped <= cum[i] + 1e-9) {
+      const segLen = cum[i] - cum[i - 1];
+      const t = segLen > 1e-9 ? (clamped - cum[i - 1]) / segLen : 0;
+      return { x: boundary[i - 1].x + (boundary[i].x - boundary[i - 1].x) * t, y: boundary[i - 1].y + (boundary[i].y - boundary[i - 1].y) * t };
+    }
+  }
+  return boundary[boundary.length - 1];
+}
+
+/** One patch slice's own polygon for the length range `[sA,sB]`: the interpolated cut point at `sA`,
+ *  every ORIGINAL boundary point strictly inside the range (preserving the dropped arc's own
+ *  tessellated curvature -- using only the two interpolated ends would flatten it to a straight
+ *  chord), the interpolated cut point at `sB`, then the shared apex `q` closing the fan. */
+function patchSlicePolygon(boundary, cum, sA, sB, q) {
+  const pts = [pointAtLength(boundary, cum, sA)];
+  for (let i = 0; i < boundary.length; i++) if (cum[i] > sA + 1e-9 && cum[i] < sB - 1e-9) pts.push(boundary[i]);
+  pts.push(pointAtLength(boundary, cum, sB));
+  pts.push(q);
+  return pts;
+}
+
 /** The patch filling the WHOLE outer excess around a dropped primitive, down to the single point `q`
  *  (the row's own TRUE d1 corner there -- neither flanking neighbour's own run reaches this far, see
  *  `linePieces`'/`voussoirPieces`' own header for why they deliberately stay `q`-based and plain).
  *  The patch's own OUTER boundary runs, in order: `prevPrim`'s own flat/curved strip from ITS OWN
  *  `q`-based stop out to `A` (the true tangent point with the dropped primitive) -- the dropped
  *  primitive's own TRUE arc from `A` to `B` -- `curPrim`'s own strip from `B` back to ITS OWN
- *  `q`-based stop. Every consecutive pair of boundary points, together with `q`, is a candidate
- *  wedge; grouped into as many roughly-equal pieces as needed to keep each at or below the declared
- *  1.2x ceiling (MEASURED: a single piece spanning the whole boundary reached 2.33x nominal on a
- *  real template). A patch too small to need splitting stays one piece, even under the 1/4 floor --
- *  there's no smaller, better-fitting option for the TRUE board outline than the whole patch itself. */
-function buildPatch(prevPrim, curPrim, dropped, d0, A, B, q, pitch, width) {
+ *  `q`-based stop.
+ *
+ *  T86 item 3 (advisor review, "the kite-fan pieces ignore pitch -- irregular 0.3-0.8in pieces + thin
+ *  fan slivers on the inner soldier band at every T1 shoulder"): previously grouped the boundary's own
+ *  POINTS into K roughly-equal-INDEX slices, chosen only to keep each slice's own AREA at or below the
+ *  1.2x ceiling -- correct on the ceiling, but blind to the boundary's own wildly uneven point density
+ *  (a flat strip contributes 2 points regardless of its own length; the densely-tessellated dropped arc
+ *  contributes `EXTENSION_ARC_STEPS`+1 points over whatever its own, often much shorter, true length
+ *  is), so equal-INDEX slicing produced equal-POINT-COUNT, not equal-LENGTH, pieces -- MEASURED (not
+ *  assumed): 0.263x0.263 next to 0.709x0.566 on the same patch. Now plans the boundary's own TRUE ARC
+ *  LENGTH exactly like a normal row -- `planCornerRun` with the SAME declared `sequence`/
+ *  `forcedFStart` the straight/arc runs either side of this patch already use (an unbroken L/W/etc.
+ *  cycle THROUGH the transition, not a separate un-pitched scheme only here) -- then walks the
+ *  boundary's own true polyline (`pointAtLength`/`patchSlicePolygon`) to cut each planned piece at its
+ *  own EXACT length, preserving the dropped arc's own real tessellated points wherever a cut doesn't
+ *  land on one. `mergeSlivers` still runs afterward on the resulting LENGTH-based spans (same 1/4
+ *  floor, 1.2x ceiling as everywhere else) -- a piece near the shared apex `q` is a genuine wedge, and
+ *  a short one can still clip to a real sliver regardless of how evenly its own along-boundary length
+ *  was planned; this is what "apex fan slivers merged" means, not a second, different defect. */
+function buildPatch(prevPrim, curPrim, dropped, d0, A, B, q, pitch, nominalJoint, width, sequence, forcedFStart) {
   const off = offsetPrimitive(dropped, d0);
   const direction = Math.sign(dropped.theta2 - dropped.theta1) || 1;
   const thetaA = Math.atan2(A.y - off.cy, A.x - off.cx);
@@ -348,33 +401,24 @@ function buildPatch(prevPrim, curPrim, dropped, d0, A, B, q, pitch, width) {
     ...tessellateArcSpan(dropped, d0, thetaA, thetaB).slice(1, -1),
     ...flatStripToTangent(curPrim, d0, q, B).reverse(),
   ];
-  const n = boundary.length - 1; // number of boundary EDGES (segments) to group into slices
+  const cum = cumulativeLengths(boundary);
+  const totalLen = cum[cum.length - 1];
   const nominalArea = pitch * width;
-  const sliceArea = (i0, i1) => Math.abs(signedArea([...boundary.slice(i0, i1 + 1), q]));
+  if (totalLen < 1e-6) return [[...boundary, q]]; // degenerate (near-zero-length) patch: one piece, same as a too-small-to-split one below
 
-  let K = 1;
-  for (; K < MAX_KITE_SLICES && K < n; K++) {
-    let maxArea = 0;
-    for (let g = 0; g < K; g++) {
-      const i0 = Math.round((n * g) / K), i1 = Math.round((n * (g + 1)) / K);
-      if (i1 > i0) maxArea = Math.max(maxArea, sliceArea(i0, i1));
-    }
-    if (maxArea <= nominalArea * 1.2) break;
-  }
+  const { lengths, jointWidth } = planCornerRun(totalLen, pitch, nominalJoint, FILL_FRACTIONS, sequence, forcedFStart);
   const spans = [];
-  for (let g = 0; g < K; g++) {
-    const i0 = Math.round((n * g) / K), i1 = Math.round((n * (g + 1)) / K);
-    if (i1 > i0) spans.push({ sA: i0, sB: i1 });
+  let s = 0;
+  for (let i = 0; i < lengths.length; i++) {
+    spans.push({ sA: s, sB: s + lengths[i] });
+    s += lengths[i] + jointWidth;
   }
-  // H23 item 76 cont. (advisor review, "each ≥ 1/4 brick; merge otherwise"): equal-INDEX grouping
-  // above only bounds the CEILING -- the boundary's own point density is uneven (a flat strip's own 2
-  // points vs the dropped arc's own densely-tessellated middle), so an equal split can still leave
-  // one slice far smaller than another (MEASURED: as small as 0.0487x nominal). The SAME `mergeSlivers`
-  // `linePieces`/`voussoirPieces` already use handles this identically -- spans here are boundary
-  // INDEX ranges rather than inches/radians, but the merge operation (absorb span 0 into span 1, or
-  // the reverse at the far end) is exactly the same integer-index arithmetic.
-  mergeSlivers(spans, (i0, i1) => sliceArea(i0, i1), nominalArea);
-  return spans.map(({ sA: i0, sB: i1 }) => [...boundary.slice(i0, i1 + 1), q]);
+  // H23 item 76 cont. (advisor review, "each ≥ 1/4 brick; merge otherwise"): a wedge slice sharing the
+  // SAME apex `q` can still clip to a real sliver even with an evenly-planned along-boundary length
+  // (the apex end of a wedge is inherently narrow) -- the SAME `mergeSlivers` `linePieces`/
+  // `voussoirPieces` already use, now over LENGTH-based spans instead of boundary-INDEX ones.
+  mergeSlivers(spans, (sA, sB) => Math.abs(signedArea(patchSlicePolygon(boundary, cum, sA, sB, q))), nominalArea);
+  return spans.map(({ sA, sB }) => patchSlicePolygon(boundary, cum, sA, sB, q));
 }
 
 const CLIP_EPS_IN = 0.02; // a small safety margin on the piece touching a corner's own extreme edge
@@ -582,7 +626,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     const A = jointPointAt(primitives, prevIdx, droppedIdx, d0);
     const B = jointPointAt(primitives, droppedIdx, curIdx, d0);
     if (!A || !B) return { ...joint, trustO }; // defensive: no patch rather than a bad one
-    const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], dropped, d0, A, B, q, pitch, d1 - d0);
+    const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], dropped, d0, A, B, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
     return { ...joint, trustO, kiteFan };
   });
 
