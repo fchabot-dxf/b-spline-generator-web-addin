@@ -59,6 +59,18 @@ export function bindControls(preview) {
   bindTogglePanel('decalEnabled', 'decalOptions');
   initDecalSettingsUI();
 
+  // F35 item 16 follow-up: inverse polarity from bindTogglePanel above (CHECKED hides the Export
+  // select -- nothing to pick while it mirrors Display) and reads P directly rather than the
+  // checkbox's own .checked, since P.sameAsDisplayResolution (boolParams-coerced) is the one source
+  // of truth syncUItoParam already keeps the checkbox in sync with (undo/project load included).
+  const exportResOptions = document.getElementById('exportResolutionOptions');
+  const sameAsDisplayCb = document.getElementById('sameAsDisplayResolution');
+  if (sameAsDisplayCb && exportResOptions) {
+    const syncExportResVisibility = () => { exportResOptions.style.display = P.sameAsDisplayResolution ? 'none' : ''; };
+    sameAsDisplayCb.addEventListener('change', syncExportResVisibility);
+    syncExportResVisibility();
+  }
+
   const bindToolBtn = (btnId, layer, mode) => {
     const btn = document.getElementById(btnId);
     if (btn) {

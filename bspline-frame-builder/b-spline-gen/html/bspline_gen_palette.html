@@ -1347,6 +1347,31 @@
                carve the grout joints cleanly. Populated at runtime by main/brick-panel.js's
                updateSpacingHint. -->
           <div id="spacingGroutHint" style="display:none; font-size:10px; color:#b8860b; margin-top:6px;"></div>
+
+          <!-- F35 item 16 follow-up (Fred): Display (above) drives the live 3D preview; Export is
+               the resolution the B-spline mesh is actually BUILT at for Send/STEP -- the two used to
+               be the same single setting. "Same as display" defaults ON so every existing board
+               behaves exactly as before until Fred deliberately splits them. -->
+          <label class="cad-checkbox-row" style="display:flex; align-items:center; gap:6px; margin-top:12px; font-size:11px;">
+            <input type="checkbox" id="sameAsDisplayResolution" checked>
+            Export uses the same resolution as Display
+          </label>
+          <div id="exportResolutionOptions" style="display:none; margin-top:6px;">
+            <label class="cad-label">Export Resolution</label>
+            <div class="cad-nested-input" style="width:100%;">
+              <select id="exportSpacing" style="width:100%; border:none; background:transparent; font-size:11px;">
+                <option value="1.0">Coarse</option>
+                <option value="0.4">Fine</option>
+                <option value="0.15">Ultra</option>
+                <option value="0.05" selected>Mega Ultra</option>
+                <option value="0.03">Ultimate</option>
+              </select>
+            </div>
+            <!-- Mirrors #spacingGroutHint above, targeting the EFFECTIVE export resolution instead
+                 of Display -- Send is what actually needs fine enough joints to carve cleanly.
+                 Populated at runtime by main/brick-panel.js's updateSpacingHint. -->
+            <div id="exportSpacingGroutHint" style="display:none; font-size:10px; color:#b8860b; margin-top:6px;"></div>
+          </div>
         </div>
       </div>
     </aside>
