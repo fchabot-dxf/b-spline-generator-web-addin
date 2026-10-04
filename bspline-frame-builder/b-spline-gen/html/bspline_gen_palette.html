@@ -1325,7 +1325,10 @@
       <div class="panel panel-resolution" style="border-bottom:none;">
         <div class="panel-header collapsed" onclick="togglePanel(this)">⚙️ RESOLUTION</div>
         <div class="panel-body hidden">
-          <label class="cad-label">Base Spacing</label>
+          <!-- F35 item 16 follow-up (Fred): "Display" named explicitly (was "Base Spacing") now
+               that Export (below) is a real, separate, parallel setting -- the two read as a pair,
+               not one labelled field plus an unlabelled second one. -->
+          <label class="cad-label">Display Resolution</label>
           <div class="cad-nested-input" style="width:100%;">
             <select id="spacing" style="width:100%; border:none; background:transparent; font-size:11px;">
               <option value="1.0">Coarse</option>
@@ -1335,7 +1338,8 @@
               <option value="0.03">Ultimate</option>
             </select>
           </div>
-          <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:6px;" title="Display only: flat areas use bigger triangles, sharp detail keeps the Base Spacing. Send/STEP unchanged.">
+          <!-- F35 item 17: Display-only (see title), kept right under Display's own select. -->
+          <label class="cad-label" style="display:flex; align-items:center; gap:8px; margin-top:6px;" title="Display only: flat areas use bigger triangles, sharp detail keeps the Display resolution. Send/STEP unchanged.">
             <input type="checkbox" id="adaptiveDisplay">
             <span>Adaptive</span>
           </label>
