@@ -76,25 +76,37 @@ const CASES = [
   ['template_12 (tapered)', 'template_12', 7, 9],
   ['template_9 (9x12)', 'template_9', 9, 12],
 ];
+// MEASURED (seat 37, turn 199): the overlap/coverage tests ran ~6s each under full-suite parallel
+// load, over vitest's 5s default, and timed out once (standalone and a full-suite re-run were both
+// green). 3 seeds here, not because fewer would miss real bugs, but because the ACTUAL waste was
+// calling fieldstoneLayout 3 SEPARATE times per (set,template,seed) -- once each for the overlap,
+// coverage, and histogram checks below, which all want the SAME result. Computed ONCE per combo
+// here instead and shared across all three assertions -- a real ~3x cut in the dominant cost
+// (fieldstoneLayout + the O(n^2) pairwise polygonIntersection overlap scan), not a timeout bandage.
 const SEEDS = [1, 2, 3];
 const SETS = [[0, 'Red brick'], [2, 'White rocks']];
 
 describe('fieldstoneLayout (T86 item 6): no overlap, union coverage, size-tier histogram', () => {
   for (const [setIdx, setLabel] of SETS) {
     const SET = BRICK_SETS[setIdx];
+    // computed ONCE per (template,seed) at collection time, not per-`it` -- see the SEEDS comment above.
+    const runs = [];
+    for (const [name, templateId, W, H] of CASES) {
+      const { primitives } = realContour(templateId, W, H);
+      const { innerPath } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
+      for (const seed of SEEDS) {
+        const { cells } = fieldstoneLayout(innerPath, SET, null, seed);
+        runs.push({ name, seed, innerPath, cells });
+      }
+    }
 
     it(`${setLabel}: zero pairwise overlap across every template/seed tried`, () => {
       let worstPct = 0, worstCase = '';
-      for (const [name, templateId, W, H] of CASES) {
-        const { primitives } = realContour(templateId, W, H);
-        const { innerPath } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
-        for (const seed of SEEDS) {
-          const { cells } = fieldstoneLayout(innerPath, SET, null, seed);
-          const totalArea = cells.reduce((s, c) => s + Math.abs(signedArea(c.polygon)), 0);
-          const overlap = totalOverlapArea(cells);
-          const pct = totalArea > 0 ? (overlap / totalArea) * 100 : 0;
-          if (pct > worstPct) { worstPct = pct; worstCase = `${name} seed=${seed}`; }
-        }
+      for (const { name, seed, cells } of runs) {
+        const totalArea = cells.reduce((s, c) => s + Math.abs(signedArea(c.polygon)), 0);
+        const overlap = totalOverlapArea(cells);
+        const pct = totalArea > 0 ? (overlap / totalArea) * 100 : 0;
+        if (pct > worstPct) { worstPct = pct; worstCase = `${name} seed=${seed}`; }
       }
       // a power diagram cannot overlap by construction once every pair is actually bisector-clipped
       // against every other -- this allows only floating-point-scale slack, not "mostly fine".
@@ -102,15 +114,7 @@ describe('fieldstoneLayout (T86 item 6): no overlap, union coverage, size-tier h
     });
 
     it(`${setLabel}: union coverage averages a reasonable majority of the fill region`, () => {
-      const coverages = [];
-      for (const [, templateId, W, H] of CASES) {
-        const { primitives } = realContour(templateId, W, H);
-        const { innerPath } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
-        for (const seed of SEEDS) {
-          const { cells } = fieldstoneLayout(innerPath, SET, null, seed);
-          coverages.push(unionCoverage(innerPath, cells));
-        }
-      }
+      const coverages = runs.map(({ innerPath, cells }) => unionCoverage(innerPath, cells));
       const avg = coverages.reduce((a, b) => a + b, 0) / coverages.length;
       // MEASURED (post "never drop a cell" rework): Red brick averages ~91-92% (individual cases
       // 91-92.4%); White rocks averages ~81-84% (individual cases 81.3-83.6%) -- White rocks' own
@@ -127,16 +131,11 @@ describe('fieldstoneLayout (T86 item 6): no overlap, union coverage, size-tier h
     it(`${setLabel}: measured large/medium/small area split is within 10 points of the declared 50/35/15% share`, () => {
       const byTier = { large: 0, medium: 0, small: 0 };
       let totalArea = 0;
-      for (const [, templateId, W, H] of CASES) {
-        const { primitives } = realContour(templateId, W, H);
-        const { innerPath } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
-        for (const seed of SEEDS) {
-          const { cells } = fieldstoneLayout(innerPath, SET, null, seed);
-          for (const c of cells) {
-            const a = Math.abs(signedArea(c.polygon));
-            totalArea += a;
-            byTier[c.tier] += a;
-          }
+      for (const { cells } of runs) {
+        for (const c of cells) {
+          const a = Math.abs(signedArea(c.polygon));
+          totalArea += a;
+          byTier[c.tier] += a;
         }
       }
       const pct = { large: (byTier.large / totalArea) * 100, medium: (byTier.medium / totalArea) * 100, small: (byTier.small / totalArea) * 100 };
