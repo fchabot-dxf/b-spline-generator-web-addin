@@ -20183,3 +20183,118 @@ remain). `FRAME_HIDDEN` stays `True`; nothing merged to main; this commit stays 
 `t10-reconstruction`. **Live matrix not run beyond these 2 seeded cases** (capacity, and the 7x9
 finding above needs Fred's own call before a broader sweep is worth the time) -- the dispatch's own
 "run the live matrix (BUILT criteria)" is NOT complete; flagging plainly rather than claiming it is.
+
+## H23 item 78c: Option A (size-aware waist-opening clamp) implemented, verified live; 2 new
+unrelated live-build gaps found at other handles' own declared extremes -- T18 stays hidden
+
+Advisor's decision on the gate above (turn 548, applying Fred's rounder-shoulder precedent, he can
+overrule): **Option A** -- derive the waist reach from the board width so the opening never closes,
+rather than a 7x9 special case, keep 9x12 as drawn.
+
+**Implementation (all three layers, declared not hand-rolled):**
+- `frame_shape_fit.provisional_narrow_head_arched_top_model`: new optional
+  `waist_opening_frame_thickness_in=None` param; when given, adds a `waistOpeningFtIn` CONST feature
+  (same pattern `provisional_taper_model`'s own `taperAngle` already uses) -- every other caller
+  omits it, so it's a pure no-op for T10/T1/T3/T4/T5.
+- `frame_definition.py`'s dispatch: forwards `prov.get("waistOpeningFrameThicknessIn")` through.
+- `template_18/template_data.py`: declares `waistOpeningFrameThicknessIn: 0.75` (this template's own
+  default `frame_thickness`) in `FRAME_PROVISIONAL_SHAPE`.
+- `editor-shape-lattice-generator.js`'s `paramsFromShapeModel` (generic hourglass branch): when the
+  const feature is present, `out.waistReach = Math.min(out.waistReach, 1 - (waistOpeningFtIn +
+  FRAME_MIN_OPENING_IN/2) / hw)` -- evaluated against the REAL `hw` (the region's own half-width,
+  which is `(widthIn - 2*boundingboxoffset)/2`, NOT the raw board half-width -- verified this
+  distinction live, see below) for whatever board is being resolved.
+`tests/frame-defs.test.js`'s `EXTRA.hourglass` allowlist updated for the new opt-in key. Fast-tier
+JS (163/163) and the touched Python suites green before the merge below.
+
+**Advisor's urgent cross-session message, handled first:** a prior deploy (2026.10.04-11) had been
+built from the MAIN CHECKOUT at a stale sha, rolling back the advisor's own just-redeployed -10
+build. Checked: the main checkout was actually already at `bbaf8f4` (origin/main's own HEAD, not
+stale) by the time I looked, so no `git pull` was needed there. Merged `origin/main` into
+`t10-reconstruction` (clean, no conflicts -- checked first: origin/main had touched NONE of
+`frame_definition.py`/`frame_shape_fit.py`/`editor-shape-lattice-generator.js`/the T18 files/the 3
+test files since the merge-base, so no repeat of the item-78c merge near-miss was possible this
+time; confirmed after merging too, by diffing my own pre-merge commit against the merged HEAD for
+every file I touched -- byte-identical). Regenerated `frame-defs`, ran the FULL suite as the
+redeploy gate (not just fast-tier, given the prior deploy mixup): **3948/3948 JS, 1028/1028 Python**
+(25 skipped, pre-existing). Pushed the branch. Deployed FROM the `t10-reconstruction` worktree (never
+the main checkout) -- stopped the live add-in first via `app.scripts.itemsByName(...).stop()`
+(confirmed `isRunning` False) rather than `--force`, deployed, ran it again. **Build info:
+2026.10.04-12, sha `2cac459`, branch `t10-reconstruction`, not dirty.**
+
+**Re-hit the fb_engine stale-cache bug from the previous item, in a NEW shape, and fixed it again --
+written up properly this time (`fusion360-quirks` skill, committed separately,
+`fred-skills@58e54d1`):** after stop/deploy/run, `fb_engine.frame_definition` was STILL the OLD
+pre-merge module (cached from the add-in's 14:07 run, before my stop) even though `fb_engine.
+__path__` already pointed at the freshly-deployed path -- `frame_shape_fit`, which `frame_definition`
+only imports LAZILY inside the function body (not at module top level), was NOT yet cached and so
+imported genuinely fresh, showing the new signature. Checking one submodule's freshness proved
+nothing about its sibling. Fixed by purging every `sys.modules` entry whose `__file__` lived under
+the deployed add-in root, then one more stop/run; verified via `inspect.signature`/`inspect.
+getsource` on the SPECIFIC functions this item edited, not just `__path__`.
+
+**Verified the clamp live, both sizes, default values -- the 7x9 bar-merge is FIXED:**
+`paramsFromShapeModel` resolves `waistReach` to **0.75 at 7x9** (clamped down from 0.77292; the
+REAL region half-width after the 0.25in `boundingboxoffset` trim is 3.25in, not the raw 3.5in --
+confirmed this is what the production `frameCutProfile`/`frameSeedGeometry` pipeline actually uses,
+my own first hand-check used the wrong, raw half-width and would have gotten 0.75 not 0.730769 if a
+template's own default frame_thickness margin math assumed the untrimmed board) and **stays at
+0.77292 at 9x12** (untouched, "keep 9x12 as drawn"). Built both live via `build_sketch_logic_v3`
+with the app's own computed `seedGeometry` (the real Send path): **7x9 now gives 4 correctly-named
+bars** (`frame_left`/`frame_right`/`frame_top`/`frame_bottom`), opening exactly 0.25in (frame_left
+max.x -0.125, frame_right min.x +0.125 -- precisely at the floor, as designed); **9x12 still 4 bars**,
+opening 0.43in (unchanged). Screenshots: `~/.bspline-status/shots/seatA/
+h23_item78c_t18_optionA_t18_optA_{7x9,9x12}.png`. Re-recorded the unseeded goldens too
+(`tools/repro/record_frame_parity.py`, `scratch/h23_item78c_goldens_v2/template_18_{7x9,9x12}.json`)
+-- both 4 bars, `timelineHealthy: True` (the unseeded bootstrap default was never affected by this
+clamp, since it uses the phase files' own hardcoded skeleton pins, not `paramsFromShapeModel` -- this
+just confirms it stayed that way).
+
+**Live matrix (18 cases, template_18 only: every declared handle at its own REACHABLE {min, max} --
+item 64's own bisection against the no-hook guard -- plus the plain default, x {7x9, 9x12}; JS-side
+`frameCutProfile` defects also checked for all 18, zero):** `archRise`/`topInset`/`waistReach`/
+`waistCenterY` each at min, default, max. **14/18 clean** (4 bars, 6 profiles, `timelineHealthy`,
+matching the default pattern). **2 genuinely NEW findings, both independent of Option A (neither
+touches `waistReach`/`frame_thickness` at all) -- not fixed, flagged:**
+1. **`archRise` at its own declared max fails to build sketch_3 at ALL, both sizes**
+   (`archRise=0.74776` at 7x9, `0.79545` at 9x12 -- `build_sketch_logic_v3` returns with NO exception,
+   but `3_frame_enclosure` is never created; `2_shape_outline` builds fine, `timelineHealthy: True`).
+   Root cause read from the (copied-verbatim-from-T10) phase file itself,
+   `p02_12_arch_rebuild.py`: the arch's apex is forced through a HARDCODED ceiling, `LY =
+   'heightIn/2 - 0.25 in'`, independent of `archRise` -- the file's own docstring documents this as
+   the FORCE-SHORT-BRANCH literal for `addByThreePoints`, needed at every normal `archRise`, but at
+   the extreme high end the three points this rebuild seeds apparently stop being a valid short-arc
+   triple against that same fixed ceiling. **Exactly the same failure CLASS the item-78b entry above
+   flagged for T10's own `archRise_min=0`** (collinear at the ceiling there; a different degenerate
+   case here) -- a pre-existing characteristic of this copied phase file, not something this item's
+   edits touch, and (per that same precedent) a phase-file fix is out of this item's own scope.
+2. **`topInset` at its own declared max is asymmetric and inconsistent across sizes.** At 9x12
+   (`topInset=0.77192`): same `3_frame_enclosure`-never-built symptom as above, no exception. At 7x9
+   (`topInset=0.72977`): sketch_3 DOES build, but `frame_right` SPLITS into two separate bodies
+   (`frame_right` bbox y:[0, 3.42], `frame_right (1)` bbox y:[-4.25, 0], volumes 2.556/4.074) while
+   `frame_left` stays one solid piece -- an asymmetric topology break, not a merge, at the narrow-head
+   extreme. Not diagnosed further (capacity; this is a different mechanism from both the waist-
+   opening merge and the archRise collinearity, needs its own investigation).
+`waistReach` and `waistCenterY` are clean at both their own declared range ends, both sizes --
+**Option A's own fix target is fully verified**, including the pre-existing `FRAME_MIN_OPENING_IN`
+interactive-drag guard (frame-handles.js) independently covering `waistReach_max`, which Option A
+does not touch.
+
+**Gate for the advisor/Fred, not resolved here: T18 is NOT "all green" yet.** `archRise` and
+`topInset` are both declared, seeded, user-draggable `FRAME_HANDLES` (not internal-only values) --
+a real user CAN reach both broken extremes through the UI as shipped. Un-hiding T18 now would ship
+two live-buildable-looking handles that silently break (no JS-side defect is raised for either; the
+no-hook/undercut guards don't catch this failure class) at their own declared range ends. Options,
+not picked unilaterally: (a) narrow `archRise`'s and `topInset`'s own declared ranges to stop short
+of where each one breaks (an Option-A-style fix, needs the actual safe boundary bisected first); (b)
+fix the phase file's hardcoded `LY` ceiling for `archRise` (touches the shared-with-T10 phase file,
+a bigger change) and investigate the `topInset` split separately; (c) ship T18 with these two
+handles' own ranges left as-is and accept the risk Fred can hit a broken build by dragging far
+enough (not recommended -- no guard currently prevents it); (d) something else Fred prefers.
+`FRAME_HIDDEN` stays `True`; nothing merged to main. This commit (`t10-reconstruction` only) is
+`10193b1` (Option A) + `2cac459` (merge commit, also carries the redeploy). **Fusion holder released
+again** (`fusion_holder.txt` -> `none`); no scratch documents leaked (`app.documents` checked clean
+after every batch, including after 3 client-side tool-call timeouts mid-matrix -- each one was a
+pure transport timeout, Fusion itself had already finished and closed its own doc; the "never
+parallel" rule was kept throughout -- always confirmed clean before issuing the next call, never
+fired a retry while a prior call might still be running).
