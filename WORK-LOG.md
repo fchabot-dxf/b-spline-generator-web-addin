@@ -21673,3 +21673,123 @@ Passing back with shots and both honest findings (item 19's own separate three_b
 already turned into item 21 by the advisor before this pass landed -- not this item's own findings,
 which are new); per the advisor's own turn-335 ordering (item 19 -> item 20 -> 16(b) -> 13 -> 18 ->
 10), picking up 16(b) root cause next.
+
+## T86 item 21: one of three findings FIXED and verified (the fieldstone-band corner wedge); the other two root-caused precisely but NOT shipped -- both genuinely need more careful work than this turn had room for, reported honestly rather than rushed (d3)
+
+**Dispatch (turn 339, confirmed order item 21 -> 16(c) -> 16(b) -> 13 -> 18 -> 10), plus one
+mid-task amendment**: (1) the three_band 12-pair corner overlap (my own item-19 finding). (2) the
+item-19 shot's own 2 missing pieces (seat 88's review): the bottom-right end piece of the bottom
+course, and the left-most brick of a course near y~3.0. (3, amendment) the item-20 mixed-preset
+shot's own large empty wedge at one corner of the fieldstone band. "One turn, full-board T1
+before/after."
+
+**(3, the amendment) -- FOUND, FIXED, VERIFIED.** The advisor's own review of my item-20 shot caught
+a real defect I'd under-characterised as "a thin cosmetic sliver" (confirmed zero-area-escape, but
+hadn't checked COVERAGE specifically there). MEASURED: 64.4% coverage in a focused box around the
+affected corner (vs the ring's own 85%+ elsewhere) -- a genuine, substantial void, not cosmetic.
+ROOT CAUSE: `ribbonSlitPolygon`'s own bridge (the "keyhole" seam connecting outer/inner into one
+simple polygon, see its own header) started at `outer[0]` -- whatever point `boundaryAtDepth`'s own
+tessellation happens to begin at, which for template_1 is a board CORNER (`{6.75,0.25}`) -- and a
+sharp corner plus the slit's own degenerate double-edge there measurably starved Poisson-disc's own
+candidate acceptance nearby. **Fixed** by starting the bridge at the LONGEST edge in `outer`
+instead (reliably the middle of a long straight run -- an arc tessellates into many short points, a
+line into exactly two far apart -- so "longest edge" is a cheap, robust proxy for "far from any
+corner"), with `inner`'s own bridge point found by NEAREST-WORLD-POSITION match rather than the
+same raw array index: MEASURED a real 102-vs-38-point length mismatch between `outer`/`inner`
+(independent tessellation at different depths) that, naively index-matched, misaligned the bridge
+badly enough to collapse total stone count by 40% (138->83) even though it ALSO happened to fix the
+coverage number -- caught by watching stone count, not just the one metric I was optimising, before
+trusting the fix. Nearest-point matching fixed both: 140 stones (back to normal), 92.1% coverage in
+the affected box (up from 64.4%). MEASURED non-vacuous via `git stash`.
+
+**(1) three_band overlap -- ROOT CAUSE FOUND, NOT the mechanism I'd assumed.** MEASURED (not
+guessed): directly instrumented `primitive-ribbon.js`'s own `buildNotchJoint`/`buildPatch` (the two
+dropped-primitive kiteFan-patch builders) with temporary debug logging around the exact overlapping
+pair (frame-1008/frame-1041, row0 vs row1) -- NEITHER function fires for this joint at all. The
+joint's own `droppedIdx` scan finds `idx === curIdx` on its very first check (no primitive dropped
+between these two neighbours), so this is an ORDINARY, undropped corner. The overlap instead comes
+from the CORE, UNIVERSALLY-USED "take whichever of a joint's own `o`(d0)/`q`(d1) is the more extreme
+reach" mechanism every single joint in this system already relies on (`linePieces`'s/
+`voussoirPieces`' own `hiStart`/`loEnd`) -- near a tight curve, this can legitimately make ONE row's
+own piece reach substantially past its own nominal depth-only footprint, and since each of
+`three_band`'s own 3 rows is built by a FULLY INDEPENDENT `ribbonPieces` call (per `contour-bands.js`'s
+own declared "no band depends on the previous band's own polyline" design, H23 item 76), nothing
+currently stops two ADJACENT rows' own independent "extra reach" from landing in the same world-space
+territory. **Not shipped**: this mechanism is CORE, used by every joint in the whole frame-band
+system (not a narrow, isolatable edge case) -- the ORIGINAL implementer's own extensive comment
+history in this exact file documents MULTIPLE reverted attempts at closely related fixes (e.g. the
+`buildNotchJoint` "medial line" logic's own header: "an earlier version... produced a triangle
+reaching all the way back to the primitives' own shared depth-0 corner, overlapping 50%... with a
+SHALLOWER band's own ordinary brick"), confirming this general CLASS of cross-row coordination bug
+has already resisted at least one prior attempt. A blind fix here risks silently breaking MANY
+currently-correct joints, not just this one -- genuinely needs the same unhurried, carefully-verified
+attention the prior fixes in this file document, not a rushed pass.
+
+**(2) the 2 missing pieces -- BOTH REPRODUCED AND ROOT-CAUSED, a DIFFERENT bug than item 19's own
+fix.** Precisely located both: the bottom-right gap is a real 0.26in void between the covered edge
+(x=6.488) and the board's own true right edge (x=6.75) at the bottom course; the other is a FULL
+missing brick (x=0.25-1.03, not just a sliver) at courseIndex=12 (cy=3.158), one course up from
+where I'd checked clean in item 19. MINIMAL reproduction (template/board-free): a plain axis-aligned
+rectangle, 2 vertices genuinely INSIDE a clip rectangle and 2 genuinely OUTSIDE (a textbook partial
+overlap, not a boundary-touching edge case) -- `polygonIntersection` returns `[]` instead of the
+correct clipped quad, CONFIRMED independent of float drift (fails identically with exact 0.25/0.45
+coordinates, not just the item-19-style drifted ones). ROOT CAUSE: the rectangle's own bottom edge
+is COLLINEAR with the clip's own bottom edge (same structural cause as item 19 -- `bondLayout`'s own
+course-0 bottom edge is deliberately coincident with the board's own bottom edge by construction),
+and this specific rectangle's LEFT edge ALSO crosses the clip boundary, landing its own bottom-left
+CORNER exactly on the collinear shared line. `segmentIntersection`'s own documented, deliberate
+simplification ("near-endpoint / tangential touches... reported as no intersection... a genuine
+tangent touch contributes ~0 area either way") is WRONG for this specific compound case: that corner
+IS a real entry/exit crossing (the rest of the rectangle genuinely straddles the clip edge), so the
+walk comes up one crossing short of a pairable set and fails to close any loop, returning `[]`.
+**Attempted a fix, MEASURED it wrong, reverted rather than shipped**: added vertex-on-edge crossing
+detection to `polygonIntersection` (checking subject/clip vertices against the other polygon's own
+edges, registering a synthetic crossing when found) -- this DID stop returning `[]`, but the result
+was GEOMETRICALLY WRONG, not just imprecise: a 6-vertex self-intersecting shape including points
+genuinely outside the clip (x=7.272, past the clip's own x=6.75 edge), with a signed area (0.15) that
+doesn't match the true expected clipped area (0.0456) at all -- the synthetic crossing's own
+placement in the entry/exit walk ordering is wrong, not a cosmetic issue. Reverted cleanly (confirmed
+via `git diff` showing no residual change) rather than ship a result that's WORSE than the current
+honest `[]` (an empty result is at least obviously-nothing; a self-intersecting polygon could corrupt
+downstream area/coverage math silently).
+
+**Full-board T1 before/after shots**: produced for (3), the one that actually changed --
+`tools/repro/t86_item20_fieldstone_band_preview.mjs` regenerated against the fix, both the
+single-band and mixed-preset renders now show full, even coverage on all four corners (no more
+wedge), re-published to the SAME `~/.bspline-status/shots/seatB/t86_item20_{single_band,
+mixed_fieldstone_soldier}.png` paths. (1)/(2) are unfixed this turn -- a "before/after" pair for
+either would show the SAME (still-buggy) state twice, not useful; the existing item-19 shots
+(`~/.bspline-status/shots/seatB/t86_item19_{before,after}.png`) already show the "after" state with
+both of (2)'s own gaps visible for reference.
+
+**New reproductions preserved, not lost, for (1)/(2)**: `tests/bricks-primitive-ribbon.test.js`'s
+own `it.todo` (already committed, item 19) for the three_band overlap; a NEW `it.todo` in
+`tests/bricks-pointinpolygon-boundary.test.js` for the minimal rectangle-clip reproduction, so
+whoever picks either of these up next starts from an already-isolated case instead of re-deriving it
+from real template geometry. Scratch diagnostics (debug-instrumented primitive-ribbon.js
+reproduction script, the minimal rectangle-clip script) left in
+`bspline-frame-builder/scratch/t86_item21_*` for reference -- NOT committed (scratch, per
+convention), but not deleted either. (3)'s own new regression test is committed for real
+(`tests/bricks-fieldstone-band.test.js`).
+
+**Verified**: targeted (6/6 + 1 unrelated todo, `bricks-fieldstone-band.test.js`), bricks+brick-UI
+domain (52 files/556 tests incl. 4 todo, clean), full suite (246/247 files -- ONE unrelated timeout,
+`frame-3d-sweep.test.js`, confirmed via a standalone re-run to now flake even in isolation, 133s
+against its own 90s budget, consistent with cumulative system load after a long session rather than
+anything touching `core/bricks/` -- that file has no dependency on it at all, confirmed earlier this
+session too).
+
+**Capacity note** (worker skill's own "capacity is a reportable fact"): this turn covered items 19,
+20, the ENGINE_OPTIONS amendment, this item-21 investigation, AND its own mid-task amendment -- a
+very long, heavy run. One of three item-21 findings shipped and verified; the other two have their
+root causes precisely known (a real, substantial deliverable even without shipped code for those
+two), but BOTH genuinely need focused, unhurried follow-up -- either a fresh turn with room to
+iterate carefully on the walk-ordering math, or a second pair of eyes on the cross-row coordination
+design. Flagging this plainly rather than pushing through tired on delicate, already-fragile
+geometry code.
+
+**Commit** (`contour-bands.js`'s own bridge-position fix, the new `bricks-fieldstone-band.test.js`
+test, the new `it.todo` in `bricks-pointinpolygon-boundary.test.js`, the regenerated preview
+screenshots; this entry). Passing back with the one real fix+shots, and the other two root causes
+precisely documented; asking the advisor how to proceed on those two (more dedicated time on item
+21, a different seat, or defer and continue to 16(c) per the queue) rather than guessing.
