@@ -643,15 +643,21 @@ function _hourglassRange(key, region, stroke, v) {
     // the bottom) horn; and 2S >= d for a real tangency with the waist.
     const wcy = hh * v.waistCenterY, horn = HORN_MIN_OF_HALF_HEIGHT * hh;
     const H = hh - stroke - horn + (key === 'cornerRadiusTop' ? wcy : -wcy);
-    // H23 item 78b (T10 narrow head + arch): the top corner's own depth is measured from ITS horn, d - topInset
-    // -- hourglassConstruction's own `side()` already does exactly this (`d = depth - inset`), and
-    // `_hourglassLeftRange` right below already mirrors it (its own `corners` array, `d = d0 - c.inset`); this
-    // branch was the one place still using the full, non-inset depth for cornerRadiusTop's own floor/ceiling,
-    // which over-tightened it whenever topInset > 0 (T3, now T10). No-op for every template with topInset = 0
-    // (every one but T3), and can only WIDEN (never narrow) T3's own already-shipped range, since subtracting a
-    // positive topInset only shrinks `d`. Verified: T1/T3/T4/T5 A/B byte-identical after this change.
-    const topInset = hw * (v.topInset ?? DERIVED_PARAM_DEFAULTS.hourglass.topInset(v));
-    const d = hw * v.waistReach - (key === 'cornerRadiusTop' ? topInset : 0);
+    // H23 item 78b/c (T10/T18 narrow head + arch): TRIED subtracting topInset from `d` here (matching
+    // hourglassConstruction's own `side()`, which already does `d = depth - inset` -- this branch was the one
+    // place still using the full, non-inset depth for cornerRadiusTop's own floor/ceiling). Verified safe for
+    // `feasibleParamRanges` alone (T1/T3/T4/T5 A/B byte-identical; only WIDENS T3's own reported range) -- but
+    // `_resolveParams` (the function that actually CLAMPS an explicit value, not just reports a range) resolves
+    // `topInset` LAST in PARAM_ORDER.hourglass, so it never saw the real topInset at clamp time regardless of
+    // this fix, leaving `feasibleParamRanges` reporting a WIDER range than `_resolveParams` actually enforces.
+    // MEASURED: this mismatch makes Template 3's own [Generate] (tests/frame-gen.test.js) draw seeds the
+    // reported range calls valid but `_resolveParams` silently clamps anyway -- a real regression for a shipped
+    // template. A matching `_resolveParams` fix exists but ALSO changes Template 3's own shipped shoulder
+    // radius at 2 board sizes (12x6, 5.51x1.97) -- a product change needing sign-off, not made here. Reverted
+    // this branch to the original, pre-78b formula instead: Template 18's own approved shoulder value (0.9in
+    // at 7x9) is comfortably above the floor this ORIGINAL formula computes anyway, so T18 doesn't need the fix
+    // to resolve correctly -- confirmed, not assumed (see WORK-LOG.md's H23 item 78c entry).
+    const d = hw * v.waistReach;
     const rw = hw * (v.waistRadius ?? DERIVED_PARAM_DEFAULTS.hourglass.waistRadius(v));
     const sMax = (H * H / d + d) / 2;
     // the keyhole bound (see _optionalRange), per side: dy >= R in the major-waist

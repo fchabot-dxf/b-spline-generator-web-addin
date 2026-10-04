@@ -19988,3 +19988,86 @@ Screenshot: `C:/Users/danse/.bspline-status/shots/seatA/h23_item78c_template18_p
 `sketches/template_18/` scaffold (template_data.py pointing at the kept provisional-model
 infrastructure above, sketch_1/2/3 + phases), THEN the guard check at every board size, THEN Fusion
 phases/goldens/matrix. Nothing pushed to main; Template 10 stays exactly as shipped.
+
+## H23 item 78c continued: Fred approved the proposal AS DRAWN -- building the real Template 18 scaffold
+
+Seat A epoch 7 (seat 39), turn 544. The advisor's own formal dispatch ("lock the head to the dump
+numbers") was superseded by a cross-session cancellation a few minutes later: Fred reviewed the
+78c proposal render and said the taller head is fine -- "7x9 tall is fine" -- so the shape AS DRAWN
+(standard `hourglassConstruction` archRise/topInset behaviour, not the dump's own literal apex
+position) is approved. Proceeded to build the real Template 18 "Arched Head" scaffold on this
+branch: frame-defs entry + handles, Fusion phases (copied, not rewritten -- see below). Goldens,
+the live matrix, and merge are still ahead (need the Fusion holder, asked for separately).
+
+**App-side registration**: `sketches/template_18/template_data.py`, built from Template 10's own
+template as a base (same `FRAME_SILHOUETTE_PRESET`, `FRAME_REGIONS`, `FRAME_SEED_MAP` -- identical
+curve names, since the phase files are literally copied from T10 below) with: `TEMPLATE_NAME`/
+`DESCRIPTION` for T18; `widthIn`/`heightIn` defaults 7x9 (not T10's own unusual 5.51x1.97);
+`FRAME_HANDLES` = archRise + topInset ("Head width", new) + waistReach + waistCenterY (no
+taperAngle -- Fred's reconstruction has none; a tapered variant is Template 19, its own template,
+not a T18 parameter); `FRAME_SHAPE_EXTRACTOR` = `hourglass_narrow_arched_head` (already registered
+as a stub from the earlier 78b/c work); `FRAME_PROVISIONAL_SHAPE` = the exact 7 fitted values from
+the earlier entries (cornerRadiusTopOfHw 0.27692, the Fred-approved 0.9in); `FRAME_HIDDEN = True`
+until the live Fusion checks pass.
+
+**Fusion phases: copied Template 10's own verbatim, zero changes needed -- verified, not assumed.**
+Delegated the research (not the writing) to an Explore agent: full read of `template_10/phases/
+p02_02_anatomy.py` through `p02_12_arch_rebuild.py`, `template_11/phases/p02_02_loop.py` +
+`p02_03_welds.py`, both templates' own `template_data.py`, and a repo-wide grep for `cornerRadius`
+across both phase folders. Finding: **the "single shared corner radius" Template 10 appears to have
+is ENTIRELY an app-side JS illusion** (`editor-shape-lattice-generator.js`'s generic `hourglass`
+preset derives `cornerRadiusTop`/`cornerRadiusBottom` from one shared `cornerRadius` ONLY when
+neither is set explicitly) -- Template 10's own Fusion phases never had any such coupling: each of
+the 6 corner arcs (shoulder/waist/hip x R/L) already gets its own independently-named temporary seed
+radius (`seed_rad_shoulder_R/L` etc., all literal `heightIn/14`, p02_03_loop.py lines 151-163,
+deleted before the real build by p02_09_radius_removal.py), and `FRAME_SEED_MAP`'s own `"kind":
+"radius"` entries (already copied, already per-arc) read the ACTUAL rendered primitive's own radius
+at Send time (`frame-handles.js` line 360: `radius: p.type === 'A' ? p.rx : ...` -- generic, no
+shoulder-equals-hip assumption anywhere). Since Template 18's own app-side resolve already produces
+genuinely independent `cornerRadiusTop`/`cornerRadiusBottom` (confirmed: 0.2769/0.3971 at every
+board size, never equal), the per-arc seed values sent to Fusion will differ correctly with ZERO
+phase-file changes. Copied `template_10/phases/*.py` and the 3 `sketch_N_*.py` files into
+`template_18/` verbatim (file copy, not edited) on this basis.
+
+**A real, caught-not-shipped regression from the earlier `_hourglassRange` fix -- reverted it.**
+The H23 item 78b entry above kept a fix to `_hourglassRange`'s `cornerRadiusTop`/`Bottom` branch
+(account for `topInset` when computing the floor), believed safe because it only widens
+`feasibleParamRanges`'s own REPORTED range and is a no-op inside `_resolveParams` (which never sees
+`topInset` early enough to use it, an unrelated ordering issue). Running the FULL suite (not just
+the fast tier) surfaced the gap this reasoning missed: `tests/frame-gen.test.js`'s own Template 3
+`[Generate]` sweep (200 random seeds) started reporting seeds as "clamped" that weren't before --
+`feasibleParamRanges` now reports a WIDER range than `_resolveParams` actually enforces (since only
+one of the two got fixed), so Generate can draw a value the reported range calls valid and
+`_resolveParams` silently clamps anyway. **Reverted the `_hourglassRange` change entirely** (back to
+the literal pre-78b formula) rather than also fixing `_resolveParams` (which changes Template 3's
+own shipped shoulder radius at 2 sizes, still needing sign-off, not this turn's call to make).
+Confirmed Template 18 doesn't need the fix to resolve correctly: its own approved shoulder value
+(0.2769 x hw, 0.9in at 7x9) sits comfortably above the floor the ORIGINAL, unfixed formula computes
+at every board size tested (6x9/7x9/9x12/12x6/5.51x1.97) -- measured directly, not assumed; the
+resolved value equals the declared value exactly, no clamping, at all 5 sizes.
+**Lesson, worth remembering: a "safe, no-op" fix verified only against a fast-tier subset and a
+fixed default-param A/B check can still regress something the FULL suite catches (a random-seed
+sweep this time) -- run the full suite before trusting a shared-code change is actually inert.**
+
+**Two more generic "every template" registry/allowlist fixes**, same pattern as the earlier entries
+(add `template_18`, don't change the check's own logic): `fb_engine/test_all_templates_shape_outline.
+py`'s `KNOWN_CONVEX_RADIUS_BELOW_BAR` (Template 18's copied phases share Template 10/11's own
+accepted "sharp inner corner in the UNSEEDED bootstrap sketch" characteristic -- the TEMPORARY
+`heightIn/14` seed on all 6 arcs is below `frame_thickness` at some sizes; the REAL seeded shape,
+both corners > frame_thickness, never hits this); `fb_engine/test_no_miter_miss_possible.py`'s
+`TEMPLATES` list. And two JS ones: `tests/frame-template-6.test.js`'s full template-label-ordering
+list (insert "18. Arched Head"); `tests/frame-hidden-template.test.js`'s `HIDDEN_IDS` (was `[]` since
+T12/T13 un-hid -- Template 18 joins it the same way T12/13 did, with the describe block's own title
+updated to not claim "no shipped template is hidden" while one genuinely is).
+
+**Full suite, final state**: JS **3831/3831 passed, 0 skipped at the suite level** (frame-template-
+10.test.js's own 32 skips from the revert entry above are gone too -- it's fully active again).
+Python, repo root: **1278 passed**, 25 skipped, 0 failed. `gen_frame_defs.py --check`: fresh.
+Verified directly (not just via the suite) that Template 18 clears BOTH the undercut and no-hook
+guards, `outlineDefects: []`, at 6x9/7x9/9x12/12x6/5.51x1.97.
+
+**NOT DONE this turn -- the live Fusion half**: goldens at 7x9 + 9x12 (`tools/repro/
+record_frame_parity.py`), the live matrix, and the real `_hourglass_narrow_arched_head` extractor
+(still a stub returning `(False, {})` -- needs real golden curve data to write against, which doesn't
+exist yet). `FRAME_HIDDEN` stays `True`; nothing merged to main. Asking the advisor for the Fusion
+holder next, per the dispatch ("Fusion holder: ask me when you reach the Fusion step").

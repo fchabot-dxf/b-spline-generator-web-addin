@@ -51,10 +51,13 @@ const mount = () => {
 };
 
 // F30 item 3 -> F30 item 4 merge (2026-10-02): the taper copies (Template 12/13) were hidden until verified live in
-// Fusion; both passed the real panel-join check on the merged code, so NO shipped template is hidden right now.
-const HIDDEN_IDS = [];
+// Fusion; both passed the real panel-join check on the merged code, so neither stayed hidden.
+// H23 item 78c: Template 18 ("Arched Head") joins the list the same way -- hidden until its own Fusion phases
+// are built and live-verified (goldens at 7x9/9x12, the live matrix, guard-clean at every size). Remove it here
+// once it un-hides (template_18/template_data.py FRAME_HIDDEN -> False), same as T12/T13 before it.
+const HIDDEN_IDS = ['template_18'];
 
-describe('F30 item 4 / H23 item 25: no shipped template is hidden now (T10, T12, T13 all shipped)', () => {
+describe('F30 item 4 / H23 item 25 / H23 item 78c: only genuinely in-progress templates are hidden (currently: Template 18)', () => {
   beforeEach(mount);
   afterEach(() => { root.remove(); setEditorTab('artwork'); });
 

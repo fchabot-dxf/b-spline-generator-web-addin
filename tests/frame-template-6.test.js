@@ -64,6 +64,7 @@ describe('Template 6: listing and declaration', () => {
       '14. Sand Timer', // T84 item 5
       '15. Flask', // F31 item 2b
       '16. Arched Funnel', '17. Tulip', // T84 item 3
+      '18. Arched Head', // H23 item 78c
       '2. Narrow Neck',
       '3. Tapered Hourglass', '4. Offset Hourglass', '5. Hourglass Dipped Top', '6. Tab Top',
       '7. Diamond-top Hourglass', '8. Dipped Top + Left-Only Wave', '9. I Shape']);

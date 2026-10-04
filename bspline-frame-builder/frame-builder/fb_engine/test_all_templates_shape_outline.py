@@ -304,6 +304,12 @@ def test_seed_midpoint_report(tid, capsys):
 KNOWN_CONVEX_RADIUS_BELOW_BAR = {
     'template_1', 'template_2', 'template_3', 'template_4', 'template_5',
     'template_8', 'template_10', 'template_11', 'template_12', 'template_13',
+    # H23 item 78c: Template 18's phases are copied verbatim from Template 10's own (p02_01-p02_12,
+    # unchanged) -- same uniform `heightIn/14` TEMPORARY seed radius for all 6 arcs (p02_03_loop.py),
+    # deleted before the real, per-arc-independent seeded values (cornerRadiusTop 0.9in / cornerRadiusBottom
+    # 1.29in at 7x9, both > frame_thickness) are sent at Send-time. Same accepted, benign bootstrap-state
+    # characteristic Template 10/11 already have in this list, not a new shape problem.
+    'template_18',
 }
 
 

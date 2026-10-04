@@ -35,7 +35,7 @@ from fb_engine.template_resolver import resolve_template, _ensure_template_regis
 
 TEMPLATES = ['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_6',
              'template_7', 'template_8', 'template_9', 'template_10', 'template_11', 'template_12',
-             'template_13', 'template_14', 'template_15', 'template_16', 'template_17']
+             'template_13', 'template_14', 'template_15', 'template_16', 'template_17', 'template_18']
 
 _RESOLVE_STEP_TYPES = ('ResolveInnerCorners', 'ResolveLineCircleCorner', 'ResolveCircleCircleCorner')
 

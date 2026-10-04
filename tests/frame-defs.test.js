@@ -88,7 +88,7 @@ describe('frame-defs (generated) — schema', () => {
     const keys = Object.keys(t.shapeModel.features);
     expect(keys.filter((k) => FEATURES[t.silhouettePreset].includes(k)).sort()).toEqual(FEATURES[t.silhouettePreset]);
     expect(keys.filter((k) => !FEATURES[t.silhouettePreset].includes(k)).every((k) => EXTRA[t.silhouettePreset].includes(k))).toBe(true);
-    if (!['template_3', 'template_4', 'template_5', 'template_8', 'template_10', 'template_12', 'template_13'].includes(t.id)) expect(keys.sort()).toEqual(FEATURES[t.silhouettePreset]); // Template 1 / 2: exactly as before
+    if (!['template_3', 'template_4', 'template_5', 'template_8', 'template_10', 'template_12', 'template_13', 'template_18'].includes(t.id)) expect(keys.sort()).toEqual(FEATURES[t.silhouettePreset]); // Template 1 / 2: exactly as before
     // T6: a provisional model of its own (no base template, frame_shape_fit.provisional_tab_top_model) is fitted
     // from nothing yet; T3-T5's provisional ones carry Template 1's own REAL fit (2+ goldens), so inherit a
     // non-empty fittedFrom. H23 item 78b, T10's new model: also fitted from nothing (its own "baseModel" is a
