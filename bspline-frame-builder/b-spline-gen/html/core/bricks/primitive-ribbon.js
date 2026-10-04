@@ -43,7 +43,7 @@
  */
 import { curveIntersection, lineLineIntersection } from './curve-intersect.js';
 import { clipToHalfPlane, signedArea } from './geometry.js';
-import { planCornerRun, mergeClipZone, mergeSlivers, pickSample } from './piece-plan.js';
+import { planCornerRun, mergeSlivers, pickSample } from './piece-plan.js';
 import { isArcFeasible, voussoirPieces } from './arc-voussoir.js';
 import { FILL_FRACTIONS, brickSetById } from './library.js';
 import { mulberry32, seedFor } from './rng.js';
@@ -467,7 +467,6 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
     spans.push({ sA: s, sB: s + lengths[i] });
     s = s + lengths[i] + jointWidth;
   }
-  mergeClipZone(spans, jointStart ? hiStart : null, jointEnd ? loEnd : null);
   mergeSlivers(spans, (sA, sB) => Math.abs(signedArea(buildPiece(sA, sB, sA <= sStart, sB >= sEnd))), pitch * (d1 - d0));
 
   const pieces = [];

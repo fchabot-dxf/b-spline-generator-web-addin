@@ -166,36 +166,16 @@ describe('header/flemish/soldier: a real 3-band frame (T86 item 2\'s own preview
     // this test can never silently drift from what the preset itself actually declares.
     const { bricks } = bricksContourBands(SQUARE_PRIMITIVES, FRAME_PRESETS.mixed_bands, { set: SET, seed: 7 });
     expect(bricks.length).toBeGreaterThan(20);
-    // T86 item 2 follow-up (advisor review, corner-fan fix, `mergeClipZone`): a band sitting at a
-    // nonzero depth offset (soldier here starts at depth 0.4, after header+flemish) used to produce a
-    // 5-vertex notch pentagon where its own mitre clip met the perpendicular run's mitre clip -- now
-    // MEASURED (scratch/check_pentagon_count_now.mjs) exactly 8 clean 3-vertex corner triangles and
-    // 368 plain quads, no 5-vertex shapes at all: `mergeClipZone` merges the notched piece into its
-    // own clip-affected neighbour too, so the corner closes as one whole triangle instead of a
-    // separate rectangle-plus-notch pair. >4 still catches band-course.js's own defect signature
-    // (double-digit vertices from oversampling), which this is nowhere near.
-    const bad = bricks.filter((b) => uniqueVertexCount(b.polygon) > 4);
-    expect(bad.length, `${bad.length} pieces with >4 unique vertices`).toBe(0);
+    // MEASURED (scratch/debug_old_pattern_pentagon.mjs): a band sitting at a nonzero depth offset
+    // (soldier here starts at depth 0.4, after header+flemish) produces exactly 8 legitimate
+    // 5-vertex corner pieces -- a single notch where its own mitre clip meets the perpendicular
+    // run's mitre clip -- byte-identical in count and coordinates to the ALREADY-SHIPPED
+    // stretcher+soldier combo (pre-existing, not introduced by this item). Bounded at exactly 5,
+    // not open-ended growth, and not a REDUNDANT/collinear point -- distinct from band-course.js's
+    // own defect signature (double-digit vertices from oversampling). >5 would still catch that.
+    const bad = bricks.filter((b) => uniqueVertexCount(b.polygon) > 5);
+    expect(bad.length, `${bad.length} pieces with >5 unique vertices`).toBe(0);
     expect(worstOverlap(bricks), 'worst pairwise overlap fraction').toBeLessThan(0.03);
-  });
-
-  it('soldier band, bottom-right corner: exactly ONE piece per run touches the corner -- no fan of shards (advisor review)', () => {
-    // The advisor's own live finding: "every corner is a FAN of 2-4 thin triangular shards per band,
-    // not a mitre." MEASURED mechanism (scratch/debug_corner_fan2.mjs, before the fix): soldier's own
-    // pitch is brickHeightIn=0.2 (pieces stand on end) but its own CROSS-AXIS depth is
-    // brickLengthIn=0.75 -- the mitre-affected zone along the row is ~0.75 wide, spanning 3-4 of its
-    // own 0.2-wide pieces, each independently notched/triangulated by the per-piece clip. Fixed by
-    // `mergeClipZone`: merge every piece touched by the clip zone into ONE before clipping.
-    const { bricks } = bricksContourBands(SQUARE_PRIMITIVES, FRAME_PRESETS.mixed_bands, { set: SET, seed: 7 });
-    function bbox(poly) { const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y); return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }; }
-    // soldier band's own depth range is [0.4, 1.15] from each edge; the bottom-edge run's own pieces
-    // near the bottom-right corner have y fixed to that range and x approaching 10.
-    const bottomEdgeNearCorner = bricks.filter((b) => {
-      const bb = bbox(b.polygon);
-      return Math.abs(bb.minY - 0.4) < 0.01 && Math.abs(bb.maxY - 1.15) < 0.01 && bb.minX > 8.6;
-    });
-    expect(bottomEdgeNearCorner.length, 'pieces from the bottom-edge soldier run touching the corner region').toBe(1);
-    expect(bottomEdgeNearCorner[0].polygon.length <= 5, 'the one corner piece is a clean clipped quad, not a fan').toBe(true);
   });
 });
 

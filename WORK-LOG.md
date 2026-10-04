@@ -19177,3 +19177,77 @@ status: finding (1) fixed structurally (publish step), finding (3) confirmed NOT
 engine (stale image), finding (2) confirmed as a REAL defect independently found and fixed in this
 engine (not just the cited stale image), with the mechanism, the fix, and why area-based sliver
 prevention alone could never have caught this class of defect.
+
+## T86 item 2 follow-up #2: `mergeClipZone` overcorrected -- reverted; the real flemish finding is pre-existing in `buildPatch` (b5)
+
+Advisor review of the re-shot `mixed_bands` previews: `mergeClipZone` overcorrects -- the soldier
+band's corners now show ONE giant merged triangle (~4.5x nominal area, measured: `0.9105in long x
+0.75in deep = 0.683in^2` vs a `0.15in^2` nominal and the project's own already-declared `1.2x` ceiling
+from T86 item 1's own sliver-fix). "For a deep soldier band... several bricks crossing the mitre is
+real masonry: each is cut along the diagonal into a trapezoid, a clean stepped mitre. That's correct,
+not a defect." Also: flemish's own middle band has "wildly uneven pieces along the top and bottom
+runs (tiny squares next to 3-brick-long blocks)" and should alternate exactly L/W with the residual
+in the joints.
+
+**Checked the ceiling math myself before reverting anything, not just taking the critique on faith:**
+`0.683/0.15 = 4.55x` -- a real, large violation of a rule this project ALREADY established (T86 item
+1's own `mergeSlivers` ceiling, 1.2x). That number alone settled it regardless of the masonry
+argument. **Reverted `mergeClipZone`** (function + both call sites in `linePieces`/`voussoirPieces`)
+and its own tests back to the exact pre-follow-up-#2 state (`git checkout 76a861d --
+<files>`), keeping ONLY the still-valid, unrelated auto-publish fix from that same commit.
+
+**Re-examined the PRE-merge per-piece output with fresh eyes, this time tracing actual vertex
+coordinates instead of reading a screenshot and pattern-matching against the advisor's own "fan of
+shards" wording.** Walked the bottom-edge soldier run's own pieces one by one
+(`scratch/debug_corner_fan2.mjs`): a full brick, then a pentagon with a SMALL notch at the DEEP edge
+only (the mitre line first bites the row's own inner/deep edge, not the outer edge -- correct for a
+90-degree corner whose own depth exceeds its pitch), then a trapezoid with a visibly MORE-clipped
+inner edge, then a triangle terminating exactly at the true corner point, with a SECOND, complementary
+triangle from the perpendicular run meeting it exactly along the mitre diagonal. Every shape
+individually clean, non-overlapping, and geometrically exact -- a real stepped mitre, not duplicated
+or degenerate geometry. **My own first-pass visual read was the error, not the geometry**: I had gone
+looking to confirm "fan of shards" rather than tracing the actual numbers before building
+`mergeClipZone` in the first place.
+
+**The flemish finding is real, but NOT in the sequence/L-W alternation itself.** Dumped the flemish
+band's own piece widths along a full straight run, both fixtures (`scratch/debug_flemish.mjs`,
+`scratch/debug_flemish_t1.mjs`): clean `0.75, 0.2, 0.75, 0.2, ...` alternation throughout, residual
+absorbed in the joints exactly as declared -- NOT "wildly uneven." The actual uneven pieces the
+advisor is seeing sit specifically at the WAIST FILLET'S OWN straight-to-arc transition
+(`scratch/debug_flemish_waist.mjs`): 4 pieces per side with 20-36 vertices each (real
+tessellated-arc/`buildPatch` kite-fan pieces, not a bending defect) and genuinely irregular sizes
+(`0.263x0.263` next to `0.709x0.566` -- the "tiny square next to a big block" the advisor is
+describing). TRACED the mechanism: `buildPatch(prevPrim, curPrim, dropped, d0, A, B, q, pitch,
+width)` -- the function that builds a transition patch wherever a primitive drops out at this row's
+own depth -- takes a single scalar `pitch`, never `sequence`; it was never wired to receive or
+respect a declared piece sequence at all. **Confirmed PRE-EXISTING, not introduced by T86 item 2**:
+swapped `pattern:'flemish'` for the ALREADY-SHIPPED `'stretcher'` on the exact same band depth and
+template (`scratch/debug_patch_preexisting.mjs`) -- the SAME transition zone produces 4 pieces with
+22-36 vertices and equally irregular sizes (`0.531x0.608`, `0.666x0.599`, `0.308x0.811`,
+`0.593x0.491`), none of them a clean 0.75-wide stretcher piece either. `buildPatch`'s own
+kite-fan construction has never respected brick-pitch sizing for ANY pattern -- this is a real,
+long-standing limitation of that function, surfaced now because `mixed_bands` is the first preset to
+put a narrow-pitch sequence band directly over a template with a dropped-primitive transition, not
+something this item's own `sequence` work introduced or regressed.
+
+**Not fixing `buildPatch` in this turn.** Teaching it to respect a declared pitch/sequence is a
+separate, nontrivial redesign of its own kite-fan triangulation (same class of scope as T86 item 1's
+own corner-style work), affects every existing pattern that can hit a dropped-primitive transition
+(not flemish-specific), and the advisor's own dispatch for THIS follow-up was about the corner-fan
+overcorrection specifically. Flagging it as a candidate separate item instead of a rushed patch here.
+
+**Verification.** Reverted engine files restore `tests/bricks-piece-plan.test.js`/
+`tests/bricks-pattern-sequences.test.js` to their exact pre-follow-up-#2 state (both files already
+passing against the 76a861d code, confirmed again after the `git checkout`). Full `vitest`: 203
+files/3763 tests, 0 failures -- the EXACT same count as before follow-up #2 ever started, confirming a
+clean, complete revert with nothing left behind.
+
+**Re-shot all 5 `mixed_bands` previews** with the reverted (pure per-piece-clip +
+`mergeSlivers`-only) engine. Soldier corners now show the clean stepped-mitre staircase the advisor
+described as correct, on both the square and T1's true corner. Published to BOTH `shots/seatB/` and
+`~/.bspline-status/shots/seatB/` (the auto-publish step from follow-up #1 still fires every run).
+
+**Commit `[pending]`, push to origin/lane-b to follow.** Replying to the advisor: the corner-fan fix
+is reverted and the ceiling-violation math that settled it; the flemish finding is confirmed real but
+traced to `buildPatch`'s own pre-existing pitch-blindness (not flemish, not this item), with the A/B
+proof against the already-shipped `stretcher` pattern, proposed as a separate future item.
