@@ -22,7 +22,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
-  runChangePipeline, _perfLog, CHANGE_PIPELINE,
+  runChangePipeline, _perfLog, CHANGE_PIPELINE, CHANGE_PIPELINE_IN_EDITOR,
 } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 
 function mockSteps(svgReturn = '<svg/>') {
@@ -109,5 +109,28 @@ describe('_perfLog: the PERF debug-category gate', () => {
     expect(spy).not.toHaveBeenCalled();
     expect(window.__perfLog).toBeUndefined();
     spy.mockRestore();
+  });
+});
+
+// F35 item 18 (4): while the SVG editor is open, a change is saved but never re-masks/rebuilds the 3D;
+// Apply/Cancel build it once (initSvgEditor picks the table with core/history.js isEditorOpen).
+describe('CHANGE_PIPELINE_IN_EDITOR (the editor-open table)', () => {
+  it('the same steps as CHANGE_PIPELINE minus remask, in the same order', () => {
+    for (const kind of ['live', 'commit']) {
+      expect(CHANGE_PIPELINE_IN_EDITOR[kind]).toEqual(CHANGE_PIPELINE[kind].filter((s) => s !== 'remask'));
+    }
+    expect(CHANGE_PIPELINE_IN_EDITOR.commit).toEqual(['serialize', 'persist']);
+  });
+  it('run with it: a commit serializes + persists, a drag frame only serializes, neither remasks', async () => {
+    for (const [kind, want] of [['commit', ['serialize', 'persist']], ['live', ['serialize']]]) {
+      const m = mockSteps();
+      await runChangePipeline(kind, m, CHANGE_PIPELINE_IN_EDITOR);
+      expect(m.calls).toEqual(want);
+    }
+  });
+  it('without a table argument the original pipeline still remasks (editor closed)', async () => {
+    const m = mockSteps();
+    await runChangePipeline('commit', m);
+    expect(m.calls).toEqual(['serialize', 'persist', 'remask']);
   });
 });

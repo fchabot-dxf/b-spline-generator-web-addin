@@ -5,7 +5,7 @@ import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { rebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
-import { updateGlobalButtons, takeSnapshot, globalHistoryLog, setUndoRestoring } from '../core/history.js';
+import { updateGlobalButtons, takeSnapshot, globalHistoryLog, setUndoRestoring, isEditorOpen } from '../core/history.js';
 import { AppState } from './app-state.js';
 import { markDirty } from '../core/dirty.js';
 import { showToast } from '../core/toast.js';
@@ -50,6 +50,20 @@ export const CHANGE_PIPELINE = {
     commit: ['serialize', 'persist', 'remask'],
 };
 
+/**
+ * F35 item 18 (4), the editor's STATIC backdrop (Fred: the editor loads fast, Apply builds the 3D):
+ * the SAME table for a change made while the SVG editor is OPEN (core/history.js isEditorOpen) -- no
+ * `remask`, so an in-editor edit never re-masks + rebuilds the 3D (and so never redraws the editor's
+ * backdrop, which only follows a rebuild). The document is still serialized + persisted on every
+ * commit, exactly as before. The 3D is built once when the session ends: Apply and Cancel are the
+ * only ways the modal closes and both already remask (initSvgEditor's onCommit). MEASURED before:
+ * one Brick-tab Generate at 0.015 in spacing kept the app busy 8.1 s (2 remasks + a full rebuild).
+ */
+export const CHANGE_PIPELINE_IN_EDITOR = {
+    live:   ['serialize'],
+    commit: ['serialize', 'persist'],
+};
+
 /** PERF category timing — off by default (core/debug.js's own gate), so
  *  this costs nothing until switched on. Goes through THREE channels when
  *  on: `dbg()` (site devtools console), `fusLog` (the add-in's log file —
@@ -84,8 +98,8 @@ export function _perfLog(kind, step, ms) {
  * guard exactly: an editor that isn't drawn yet has nothing to persist
  * or remask either).
  */
-export async function runChangePipeline(kind, { serialize, persist, remask }) {
-    const steps = CHANGE_PIPELINE[kind] || CHANGE_PIPELINE.commit;
+export async function runChangePipeline(kind, { serialize, persist, remask }, pipeline = CHANGE_PIPELINE) {
+    const steps = pipeline[kind] || pipeline.commit;
     const frameStart = performance.now();
     for (const step of steps) {
         const stepStart = performance.now();
@@ -674,7 +688,7 @@ export function initSvgEditor(preview) {
           // never rebuilds the drape texture mid-gesture.
           if (kind === 'commit') await refreshDrape(preview);
         },
-      });
+      }, isEditorOpen() ? CHANGE_PIPELINE_IN_EDITOR : CHANGE_PIPELINE); // F35 item 18 (4): no 3D while editing
     },
     // onCommit — fires from Apply (svg=truthy) or Cancel (svg=null).
     // Apply: rebuild with font-embedded SVG and close.
