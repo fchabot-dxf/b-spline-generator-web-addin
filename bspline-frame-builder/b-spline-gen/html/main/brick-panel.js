@@ -38,6 +38,16 @@ const BRICK_TOOLS = [
     hint: 'Fills the whole board with bricks.' },
   { id: 'frame', label: 'Frame', icon: '🖼️', settingsSection: null,
     hint: 'Bands of bricks along the current frame\'s own contour.' },
+  // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
+  // a Brush stroke's own spine is a plain <line> chain, already isCuttable
+  // (editor-cut-tool.js) with zero changes needed there. Only applies to
+  // Brush strokes today (Wall/Frame have no drawn spine to tap -- see
+  // editor-brick-tool.js's own header on why that's a deliberate scope,
+  // not an oversight).
+  { id: 'scissors', label: 'Scissors', icon: '✂️', settingsSection: null,
+    hint: 'Tap a brush stroke to split it -- each piece regenerates its own bricks independently once moved apart.' },
+  { id: 'stripe', label: 'Stripe', icon: '📏', settingsSection: null,
+    hint: 'Tap a brush stroke to split it into alternating brick-style runs.' },
 ];
 
 let _activeTool = null;
@@ -174,6 +184,20 @@ function selectTool(id) {
     }
     runBricks(editor, P.brickSettings, frameGeom);
     notifyChange();
+    return;
+  }
+  if (id === 'scissors') {
+    // The EXISTING, unmodified Cut mode (editor-interaction.js's own
+    // modeHandlers table) -- a brush spine's plain <line> segments are
+    // already isCuttable, so this needs no brick-specific mode at all.
+    editor.setMode('cut');
+    return;
+  }
+  if (id === 'stripe') {
+    // Same reuse, for the existing Stripe mode. editor-brick-tool.js's own
+    // regenerateOwnedBrickElements reacts to the resulting STRIPE_ATTR-
+    // tagged pieces on the next commit, cycling each its own brick style.
+    editor.setMode('stripe');
     return;
   }
 }

@@ -13,7 +13,7 @@
  * curved runs.
  */
 import { describe, it, expect } from 'vitest';
-import { primitivesToPolyline } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { primitivesToPolyline, reconstructChains } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
 describe('primitivesToPolyline: contour-from-frame.js primitives -> a flat polyline + DECLARED corner indices only', () => {
   it('a square made of 4 L primitives, ALL declared as corners, becomes 4 points each its own corner', () => {
@@ -97,5 +97,98 @@ describe('primitivesToPolyline: contour-from-frame.js primitives -> a flat polyl
     expect(cornerIndices[0]).toBe(0); // the L's own start
     expect(cornerIndices[1]).toBe(1); // the A's own start, right after the L's single point
     expect(points.length).toBe(1 + 16); // 1 for the straight edge + ARC_STEPS for the arc
+  });
+});
+
+describe('reconstructChains: F35 item 3 -- spine segments -> regenerate units', () => {
+  const SETTINGS_A = { setId: 1, scale: 1, seed: 7 };
+  const SETTINGS_B = { setId: 1, scale: 2, seed: 9 };
+
+  it('a single segment is its own one-chain unit', () => {
+    const segs = [{ a: { x: 0, y: 0 }, b: { x: 1, y: 0 }, stripeId: null, settings: SETTINGS_A }];
+    const chains = reconstructChains(segs);
+    expect(chains).toHaveLength(1);
+    expect(chains[0].points).toEqual([{ x: 0, y: 0 }, { x: 1, y: 0 }]);
+    expect(chains[0].cycleIndex).toBeNull();
+    expect(chains[0].settings).toBe(SETTINGS_A);
+  });
+
+  it('plain CONTIGUOUS segments merge into one ordered chain, regardless of array order', () => {
+    // Drawn 0->1->2->3, but handed in shuffled order -- the chain must still
+    // reconstruct the TRUE geometric sequence, not the input order.
+    const segs = [
+      { a: { x: 2, y: 0 }, b: { x: 3, y: 0 }, stripeId: null, settings: SETTINGS_A },
+      { a: { x: 0, y: 0 }, b: { x: 1, y: 0 }, stripeId: null, settings: SETTINGS_A },
+      { a: { x: 1, y: 0 }, b: { x: 2, y: 0 }, stripeId: null, settings: SETTINGS_A },
+    ];
+    const chains = reconstructChains(segs);
+    expect(chains).toHaveLength(1);
+    expect(chains[0].points).toEqual([
+      { x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 },
+    ]);
+  });
+
+  it('a Scissors cut (two touching, still-contiguous plain pieces) stays ONE merged chain -- nothing should visually change from a bare cut', () => {
+    // cutAtNoCommit's own clone copies the settings attribute verbatim, so
+    // both resulting pieces carry the SAME settings object/value.
+    const segs = [
+      { a: { x: 0, y: 0 }, b: { x: 1.5, y: 0 }, stripeId: null, settings: SETTINGS_A },
+      { a: { x: 1.5, y: 0 }, b: { x: 3, y: 0 }, stripeId: null, settings: SETTINGS_A },
+    ];
+    expect(reconstructChains(segs)).toHaveLength(1);
+  });
+
+  it('dragging one piece away (geometric gap, no shared endpoint) splits it into two independent chains', () => {
+    const segs = [
+      { a: { x: 0, y: 0 }, b: { x: 1.5, y: 0 }, stripeId: null, settings: SETTINGS_A },
+      { a: { x: 5, y: 5 }, b: { x: 6.5, y: 5 }, stripeId: null, settings: SETTINGS_A }, // moved away
+    ];
+    const chains = reconstructChains(segs);
+    expect(chains).toHaveLength(2);
+  });
+
+  it('two DIFFERENT brick elements (unrelated spines) never merge with each other', () => {
+    // Geometrically touching by coincidence, but the caller only ever passes
+    // ONE element's own segments at a time (regenerateOwnedBrickElements
+    // groups by BRICK_ELEMENT_ATTR first) -- this test documents that
+    // reconstructChains itself has no element-id awareness, it just merges
+    // whatever contiguous segments it's given, so the CALLER's grouping is
+    // what keeps separate strokes from bleeding into each other.
+    const segs = [
+      { a: { x: 0, y: 0 }, b: { x: 1, y: 0 }, stripeId: null, settings: SETTINGS_A },
+      { a: { x: 1, y: 0 }, b: { x: 2, y: 0 }, stripeId: null, settings: SETTINGS_B },
+    ];
+    expect(reconstructChains(segs)).toHaveLength(1); // merges purely on geometry
+  });
+
+  it('a Stripe run (shared stripeId) NEVER merges, even though the pieces are contiguous -- each cycles its own index', () => {
+    const segs = [
+      { a: { x: 0, y: 0 }, b: { x: 1, y: 0 }, stripeId: 'run-1', settings: SETTINGS_A },
+      { a: { x: 1, y: 0 }, b: { x: 2, y: 0 }, stripeId: 'run-1', settings: SETTINGS_A },
+      { a: { x: 2, y: 0 }, b: { x: 3, y: 0 }, stripeId: 'run-1', settings: SETTINGS_A },
+    ];
+    const chains = reconstructChains(segs);
+    expect(chains).toHaveLength(3);
+    expect(chains.map((c) => c.cycleIndex).sort()).toEqual([0, 1, 2]);
+  });
+
+  it('two separate stripe runs cycle independently of each other', () => {
+    const segs = [
+      { a: { x: 0, y: 0 }, b: { x: 1, y: 0 }, stripeId: 'run-A', settings: SETTINGS_A },
+      { a: { x: 1, y: 0 }, b: { x: 2, y: 0 }, stripeId: 'run-A', settings: SETTINGS_A },
+      { a: { x: 10, y: 0 }, b: { x: 11, y: 0 }, stripeId: 'run-B', settings: SETTINGS_B },
+      { a: { x: 11, y: 0 }, b: { x: 12, y: 0 }, stripeId: 'run-B', settings: SETTINGS_B },
+    ];
+    const chains = reconstructChains(segs);
+    expect(chains).toHaveLength(4);
+    const runACycles = chains.filter((c) => c.settings === SETTINGS_A).map((c) => c.cycleIndex).sort();
+    const runBCycles = chains.filter((c) => c.settings === SETTINGS_B).map((c) => c.cycleIndex).sort();
+    expect(runACycles).toEqual([0, 1]);
+    expect(runBCycles).toEqual([0, 1]);
+  });
+
+  it('empty input produces no chains', () => {
+    expect(reconstructChains([])).toEqual([]);
+    expect(reconstructChains(undefined)).toEqual([]);
   });
 });
