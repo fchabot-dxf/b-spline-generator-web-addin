@@ -31,7 +31,7 @@
  */
 import { mulberry32, seedFor } from './rng.js';
 import { FILL_FRACTIONS } from './library.js';
-import { planCornerRun, mergeSlivers, pickSample } from './piece-plan.js';
+import { planCornerRun, mergeClipZone, mergeSlivers, pickSample } from './piece-plan.js';
 import { clipToHalfPlane, signedArea } from './geometry.js';
 
 const MAX_SEGMENT_ANGLE = (5 * Math.PI) / 180; // H23 item 76: an outer/inner arc edge is sampled
@@ -212,6 +212,7 @@ export function voussoirPieces(
     spans.push({ sA: theta, sB: pieceThetaEnd });
     theta = pieceThetaEnd + (jointWidth / r) * direction;
   }
+  mergeClipZone(spans, jointStart ? hiTheta : null, jointEnd ? loTheta : null, direction);
   mergeSlivers(
     spans,
     (thetaA, thetaB) => Math.abs(signedArea(buildPiece(thetaA, thetaB, thetaA === thetaStart, thetaB === thetaEnd))),

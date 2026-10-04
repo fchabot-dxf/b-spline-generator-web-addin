@@ -19095,3 +19095,85 @@ voussoir fan through the waist fillet with no visible defect at preview scale.
 not performing -- the retirement of `editor-brick-tool.js`'s own `frameBricksFor`/
 `NEW_ENGINE_PATTERNS` special-casing for header/flemish/stack, since `bricksContourBands` now handles
 all three natively through the proven path. Passing back to the advisor with the full item status.
+
+## T86 item 2 follow-up: the mitre-corner fan -- real bug, fixed; the two stale-image findings weren't (b5)
+
+Advisor review (turn 299): (1) the `mixed_bands` previews I cited weren't on the status page --
+TRACED, not just re-copied: `status_watch.py`'s own real source is `~/.bspline-status/shots/<seat
+key>/`, NOT the repo's own (gitignored) `shots/seatB/` I'd been saving to and citing -- a DIFFERENT
+directory outside any worktree entirely, shared across seats/machines. (2) "every corner is a FAN of
+2-4 thin triangular shards per band, not a mitre," citing `t86_item1_header_square_corner_closeup`/
+`_template_1`. (3) "waist header pieces poke past the outline on the convex shoulders (T1, both
+sides)," same citation.
+
+**(1) is simply fixed** -- copied the 5 `mixed_bands` PNGs to the shared dir, and added an
+auto-publish step to `t86_item2_mixed_bands_preview.mjs` itself (`copyFileSync` to
+`~/.bspline-status/shots/seatB/` after each screenshot) so a re-run never needs a manual copy again.
+
+**(2) and (3) both CITE images from `t86_item1_header_*`** -- de's own `band-course.js` engine
+(parked, superseded by this very item), not `bricksContourBands`/`primitive-ribbon.js`. Rather than
+assume the citation was stale and move on, checked both independently against MY OWN engine's real
+output, since the advisor's own underlying PRINCIPLE ("pieces straddle the diagonal and each gets
+clipped into a sliver") could easily apply to either engine:
+
+- **(3), poke-past-outline: NOT present in my engine.** `scratch/check_t1_outline.mjs` -- every
+  `mixed_bands` piece vertex on T1 against the TRUE tessellated silhouette (not a bbox proxy):
+  worst distance outside the outline was 0.00039in, pure float noise (same order every other `0 outside
+  the board` check in this codebase already tolerates). No fix needed; the finding was the stale
+  band-course.js image.
+- **(2), the corner fan: a REAL, independently-confirmed defect in MY OWN engine too.** Dumped the
+  actual `mixed_bands` pieces at a square corner (`scratch/debug_corner_fan2.mjs`): soldier's own
+  bottom-right corner showed FIVE separate shapes (a pentagon, a partially-notched quad, two
+  complementary triangles, each from an independent per-piece clip) where one clean mitred piece
+  belongs. MECHANISM, traced via `planCornerRun`'s own `sequence`-aware params: soldier's declared
+  axes put PITCH on `brickHeightIn` (0.2, pieces stand on end, narrow face along the row) but CROSS-
+  AXIS DEPTH on `brickLengthIn` (0.75) -- a 3.75x mismatch. A 90-degree mitre's own clip half-plane
+  sweeps a zone ALONG THE ROW exactly as wide as the band's own depth (basic trig for a 90-degree
+  corner), so when depth > pitch, the zone is wider than ONE piece -- several 0.2-wide pieces each
+  took their own independent notch/clip. `mergeSlivers` (the EXISTING sliver-prevention pass) didn't
+  catch it because it's an AREA-floor check, and a clipped right triangle with 0.44in legs measured
+  0.095in^2 -- comfortably above its own 0.0375in^2 floor. The defect is in the PIECE COUNT at the
+  mitre, not any one piece's own thinness; no area threshold fixes that.
+
+**Fix: `mergeClipZone` (`piece-plan.js`, new, exported), wired into both `linePieces` and
+`voussoirPieces`.** Before the existing area-based `mergeSlivers` pass, merge every span whose own
+NOMINAL (pre-clip) extent is actually touched by a joint's clip half-plane (`hiStart`/`loEnd` --
+`linePieces`/`voussoirPieces` already compute these as the joint's own farthest reach, the SAME bound
+each piece's own per-piece clip check already uses) into ONE combined span, merging from each end
+inward until the next candidate span is no longer clip-affected. `null` on a side (no joint there)
+is a true no-op, matching every per-piece check's own `jointStart &&`/`jointEnd &&` guard exactly.
+`voussoirPieces` reuses it directly with its own signed `direction` (±1, decreasing-theta arcs).
+
+**Caught my OWN bug in the first implementation before it shipped:** the first version re-tested the
+ACCUMULATOR's own frozen `sA`/`sB` each loop iteration (which never changes once a span is merged in)
+instead of the NEXT CANDIDATE about to be absorbed -- MEASURED directly: it swallowed the entire
+9.2in run into ONE piece, not just the ~0.9in corner zone. A hand-computed unit test
+(`tests/bricks-piece-plan.test.js`) with a deliberately-kept `buggyMergeClipZone` reproduction
+pins this exact failure mode as a standing regression check, not just a fixed-and-forgotten bug.
+
+**Verification.** `tests/bricks-piece-plan.test.js`: 7 new `mergeClipZone` unit tests (both sides,
+combined, the `null`-guard no-op, the never-below-1-span floor, a non-default `direction`, and the
+buggy-vs-fixed regression pin) -- one of my own first-draft hand-computed expectations was itself
+wrong (caught by the test run, not assumed correct: span `(0.2,0.4)`'s own `sB=0.4` is NOT `>0.5`, so
+it correctly stays unmerged -- fixed the test, not the code). `tests/bricks-pattern-sequences.test.js`:
+new end-to-end regression test confirms the real `mixed_bands` square corner now produces exactly
+ONE piece per run touching the corner; corrected a now-stale comment on the existing "every piece a
+clean quad/triangle" test (the depth-offset notch it documented as a 5-vertex pentagon is now a clean
+3-vertex triangle instead -- `mergeClipZone` also absorbs that case, not just the multi-shard fan --
+MEASURED exact counts: 8 triangles, 368 quads, 0 pentagons, where this item previously shipped 8
+pentagons). Mutation-tested (`git stash` on the 3 touched engine files): 8/8 new/changed tests fail
+against the pre-fix code. Full `vitest`: 203 files/3771 tests, 0 failures.
+
+**Re-shot all 5 `mixed_bands` previews** (square, square corner, template_1, T1 corner, T1 waist) --
+every corner now shows exactly the pieces the mitre geometry calls for: one triangle per perpendicular
+run at the shallow header band (pitch=depth there, never had the problem), one clean larger triangle
+per run at the deep soldier band (previously a 5-piece fan), the two meeting exactly along the true
+mitre line. T1's waist closeup is visually unchanged (voussoirs were never affected -- the depth/pitch
+mismatch is a straight-run, not an arc, mechanism). Published to BOTH `shots/seatB/` (this repo) and
+`~/.bspline-status/shots/seatB/` (the actual status-page source) this time.
+
+**Commit `[pending]`, push to origin/lane-b to follow.** Replying to the advisor with the corrected
+status: finding (1) fixed structurally (publish step), finding (3) confirmed NOT present in this
+engine (stale image), finding (2) confirmed as a REAL defect independently found and fixed in this
+engine (not just the cited stale image), with the mechanism, the fix, and why area-based sliver
+prevention alone could never have caught this class of defect.

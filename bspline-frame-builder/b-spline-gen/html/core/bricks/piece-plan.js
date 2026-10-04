@@ -187,6 +187,57 @@ export function planCornerRun(runLength, pitch, nominalJoint, fractions, sequenc
 }
 
 /**
+ * T86 item 2 follow-up (advisor review live on `mixed_bands`/`soldier`: "every corner is a FAN of
+ * 2-4 thin triangular shards per band, not a mitre"): merge every piece whose own NOMINAL (pre-clip)
+ * span is actually touched by a mitre joint's own clip half-plane into ONE combined corner piece,
+ * BEFORE `mergeSlivers`' own area-threshold pass runs. `hiStart`/`loEnd` (`linePieces`/
+ * `voussoirPieces` already compute these -- the joint's own farthest reach, past which a piece can
+ * never be clipped) are the SAME bound each piece's own per-piece clip check already uses; this does
+ * the identical test up front, at the SPAN level, to decide what to merge rather than what to clip.
+ *
+ * MEASURED why `mergeSlivers`'s own AREA floor doesn't already catch this: a band whose own
+ * CROSS-AXIS depth exceeds its along-row pitch (soldier: pitch=brickHeightIn=0.2, depth=
+ * brickLengthIn=0.75, pieces standing on end) has a mitre-affected zone ~0.75 wide along the row --
+ * several whole 0.2-wide pieces, not one. Each one's own INDIVIDUAL clipped shape (a partial notch,
+ * then a pentagon, then a triangle) can easily clear `mergeSlivers`' own per-piece area floor (a
+ * clean right triangle with 0.44in legs measured 0.095in^2, well above a 0.0375in^2 floor) while
+ * still being, together, the fan the advisor is describing -- the defect is in the PIECE COUNT at a
+ * mitre, not any one piece's own thinness. Merging by clip-zone membership first (an objective
+ * geometric test, not an area heuristic) always produces exactly one piece per run per corner
+ * touched; `mergeSlivers` still runs afterward as a safety net for the rarer case where even that one
+ * merged piece is still under its own floor (the advisor's own "merged into its neighbour otherwise").
+ *
+ * `hiStart`/`loEnd` of `null` means "no joint on that side" -- skipped entirely, matching the SAME
+ * `jointStart &&` / `jointEnd &&` guard every per-piece clip check already uses (passing the raw
+ * default used when a joint is absent, e.g. 0, would wrongly treat every span as clip-eligible).
+ * `direction` (default +1) lets `voussoirPieces` reuse this directly with its own signed theta spans.
+ *
+ * @param {{sA:number, sB:number}[]} spans — mutated in place, same convention as `mergeSlivers`.
+ * @param {?number} hiStart — the start joint's own farthest-forward reach, or `null` if absent.
+ * @param {?number} loEnd — the end joint's own farthest-backward reach, or `null` if absent.
+ * @param {number} [direction=1] — +1 for a monotonically increasing span coordinate (lines), or the
+ *   arc's own signed sweep direction (voussoirs), so the same `<`/`>` comparisons stay correct either way.
+ */
+export function mergeClipZone(spans, hiStart, loEnd, direction = 1) {
+  // the CANDIDATE about to be absorbed (spans[1]/spans[length-2]) is what must be tested each time --
+  // the accumulator's own sA/sB (spans[0]/spans[length-1]) never moves past its original value once
+  // set, so testing IT would either never fire (candidate requires more reach) or never stop
+  // (accumulator's own far-below-threshold start/end keeps re-passing forever).
+  if (hiStart != null) {
+    while (spans.length > 1 && spans[1].sA * direction < hiStart * direction + 1e-9) {
+      spans[1].sA = spans[0].sA;
+      spans.shift();
+    }
+  }
+  if (loEnd != null) {
+    while (spans.length > 1 && spans[spans.length - 2].sB * direction > loEnd * direction - 1e-9) {
+      spans[spans.length - 2].sB = spans[spans.length - 1].sB;
+      spans.pop();
+    }
+  }
+}
+
+/**
  * H23 item 76 (advisor review, "nothing below 1/4"... "no piece larger than a whole brick, cap the
  * piece area at 1.2x"): MERGE any piece whose own CLIPPED area falls below `floorFraction` of one
  * whole piece's own nominal area into its immediate neighbour, in place. `planCornerRun`'s own

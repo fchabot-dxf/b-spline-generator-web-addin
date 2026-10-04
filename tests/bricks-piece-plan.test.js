@@ -8,7 +8,7 @@
  * grout.widthIn=0.034) that surfaced both rounds of the thin strips.
  */
 import { describe, it, expect } from 'vitest';
-import { planCornerRun } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/piece-plan.js';
+import { planCornerRun, mergeClipZone } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/piece-plan.js';
 import { FILL_FRACTIONS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 
 const PITCH = 0.2, JOINT = 0.034;
@@ -114,5 +114,70 @@ describe('planCornerRun with `forcedFStart` (T86 item 2 -- running-bond row stag
     expect(() => planCornerRun(runLength, PITCH, JOINT, FILL_FRACTIONS, undefined, 1)).not.toThrow();
     const { lengths } = planCornerRun(runLength, PITCH, JOINT, FILL_FRACTIONS, undefined, 1);
     expect(lengths.length).toBeGreaterThan(0);
+  });
+});
+
+describe('mergeClipZone (T86 item 2 follow-up: "every corner is a FAN of 2-4 thin triangular shards" -- a band whose own cross-axis depth exceeds its along-row pitch, e.g. soldier, has a mitre-affected zone spanning several pieces, not one)', () => {
+  const span = (sA, sB) => ({ sA, sB });
+
+  it('merges every leading span whose own sA sits inside the start clip zone into ONE, by COPYING the accumulator forward -- not re-testing the frozen accumulator', () => {
+    // HAND-COMPUTED: hiStart=0.5 -- spans with sA<0.5 (0, 0.2, 0.4) are clip-affected, the one at
+    // sA=0.6 is not. A naive re-check of spans[0].sA (which never changes once merged) would either
+    // never stop or never start; this must terminate at exactly the right boundary.
+    const spans = [span(0, 0.2), span(0.2, 0.4), span(0.4, 0.6), span(0.6, 0.8), span(0.8, 1.0)];
+    mergeClipZone(spans, 0.5, null);
+    expect(spans).toEqual([span(0, 0.6), span(0.6, 0.8), span(0.8, 1.0)]);
+  });
+
+  it('merges every trailing span whose own sB sits inside the end clip zone into ONE', () => {
+    // HAND-COMPUTED, the mirror case: loEnd=0.5 -- spans with sB>0.5 (0.6, 0.8, 1.0) are clip-affected,
+    // so (0.4,0.6)/(0.6,0.8)/(0.8,1.0) merge into (0.4,1.0); (0.2,0.4)'s own sB=0.4 is NOT >0.5, so it
+    // stays separate (the candidate test is on the span ABOUT TO BE ABSORBED, not the accumulator).
+    const spans = [span(0, 0.2), span(0.2, 0.4), span(0.4, 0.6), span(0.6, 0.8), span(0.8, 1.0)];
+    mergeClipZone(spans, null, 0.5);
+    expect(spans).toEqual([span(0, 0.2), span(0.2, 0.4), span(0.4, 1.0)]);
+  });
+
+  it('both ends at once, on a longer run: merges each end independently, leaves the untouched middle alone', () => {
+    const spans = [span(0, 0.2), span(0.2, 0.4), span(0.4, 0.6), span(0.6, 0.8), span(0.8, 1.0), span(1.0, 1.2)];
+    mergeClipZone(spans, 0.3, 0.9);
+    expect(spans).toEqual([span(0, 0.4), span(0.4, 0.6), span(0.6, 0.8), span(0.8, 1.2)]);
+  });
+
+  it('null on both sides (no joint at all) is a true no-op, matching the jointStart && / jointEnd && guard every per-piece clip check already uses', () => {
+    const spans = [span(0, 0.2), span(0.2, 0.4), span(0.4, 0.6)];
+    mergeClipZone(spans, null, null);
+    expect(spans).toEqual([span(0, 0.2), span(0.2, 0.4), span(0.4, 0.6)]);
+  });
+
+  it('never merges past the last remaining span, even when every span is clip-affected (stops at length 1, same floor mergeSlivers already respects)', () => {
+    const spans = [span(0, 0.2), span(0.2, 0.4), span(0.4, 0.6)];
+    mergeClipZone(spans, 10, null); // hiStart far beyond every span -- would consume everything
+    expect(spans).toEqual([span(0, 0.6)]);
+  });
+
+  it('honours a non-default `direction` (voussoirPieces\' own signed theta spans, decreasing)', () => {
+    // mirrors the hiStart case above but with sA DECREASING and direction=-1, matching how an arc
+    // run built the "other way" produces its own spans.
+    const spans = [span(0, -0.2), span(-0.2, -0.4), span(-0.4, -0.6), span(-0.6, -0.8)];
+    mergeClipZone(spans, -0.5, null, -1);
+    expect(spans).toEqual([span(0, -0.6), span(-0.6, -0.8)]);
+  });
+
+  it('REGRESSION (the exact bug caught before this fix shipped): re-checking the frozen accumulator instead of the next candidate over-merges the ENTIRE array', () => {
+    // A faithful reproduction of the first (wrong) implementation, kept here as a standing check that
+    // the real mergeClipZone does NOT behave this way -- it must leave untouched spans alone.
+    function buggyMergeClipZone(spans, hiStart) {
+      while (spans.length > 1 && spans[0].sA < hiStart + 1e-9) {
+        spans[1].sA = spans[0].sA;
+        spans.shift();
+      }
+    }
+    const spans = [span(0.4, 0.6), span(0.6, 0.8), span(0.8, 1.0), span(1.0, 1.2)];
+    buggyMergeClipZone(spans, 0.75); // only the first ~2 spans should be clip-affected
+    expect(spans).toEqual([span(0.4, 1.2)]); // the bug: swallows the WHOLE array regardless
+    const good = [span(0.4, 0.6), span(0.6, 0.8), span(0.8, 1.0), span(1.0, 1.2)];
+    mergeClipZone(good, 0.75, null);
+    expect(good).toEqual([span(0.4, 0.8), span(0.8, 1.0), span(1.0, 1.2)]); // the fix: stops where it should
   });
 });
