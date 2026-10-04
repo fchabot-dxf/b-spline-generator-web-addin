@@ -147,10 +147,12 @@ const BUTT_PARALLEL_DOT = 0.999; // H23 item 76 cont. (butt corner): tangents th
  * by construction -- `flipThrough` false on band 0 either way). `flipThrough` is the caller's own
  * `bandIndex % 2 === 1`, decided in `ribbonPieces`, never guessed here.
  *
- * Returns `null` when there's no well-defined square cut (the two tangents are parallel, or the
- * through/butt lines don't meet) -- the caller falls back to the ordinary symmetric mitre, same as
- * the already-declared "arc-involved corners fall back to mitre" rule (this function is only ever
- * tried for a line-line corner to begin with; see its own caller).
+ * Returns `null` when there's no well-defined square cut (the two tangents are parallel, the
+ * through/butt lines don't meet, or `cut0` lands outside the butt primitive's own true span -- see
+ * its own header below, a GENUINE concave-corner case, not merely a convex one computed imprecisely)
+ * -- the caller falls back to the ordinary symmetric mitre, same as the already-declared
+ * "arc-involved corners fall back to mitre" rule (this function is only ever tried for a line-line
+ * corner to begin with; see its own caller).
  */
 function buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipThrough) {
   const tPrev = tangentAt(primitives[prevIdx], o);
@@ -167,6 +169,24 @@ function buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipTh
     o, buttTangent,
   );
   if (!cut0) return null; // the through band's own d1 edge runs parallel to the butt primitive -- degenerate, fall back to mitre
+  // T86 item 4 (a genuine CONCAVE corner, found stress-testing every template -- a GENERAL geometric
+  // case, not specific to any one shape): `cut0` is only ever a sensible butt-cut location when it
+  // falls WITHIN the butt primitive's own true [0, length] span -- for a CONVEX corner (the only case
+  // this was built and tested against) it always does, since the through band's own d1 edge is
+  // adjacent to the butt band's own material there. MEASURED (an I-beam template's own reflex waist
+  // corner): `cut0` landed 0.75in BEFORE the butt primitive's own start (its own projected length
+  // -0.75, well outside [0, 5.1]) -- the through band's own material sits on the OPPOSITE side of a
+  // concave corner from the butt band's own run, so the same construction that works for convex
+  // corners has no valid cut location to find here at all. Detected directly (not inferred from the
+  // sign of an unrelated intersection, which this item's own investigation confirmed can read the
+  // SAME sign for both a working convex corner and a broken concave one): project `cut0` onto the
+  // butt primitive's own declared p0->p1 axis and require it to land within the primitive's own real
+  // extent (a small tolerance for a cut arriving essentially AT one true end). Concave corners get a
+  // proper butt cut later (T86 item 5, the general crossing-strokes rule); for now they fall back to
+  // the always-correct mitre, never a degenerate or empty piece.
+  const buttLen = Math.hypot(butt.p1.x - butt.p0.x, butt.p1.y - butt.p0.y);
+  const cut0Param = (cut0.x - butt.p0.x) * buttTangent.x + (cut0.y - butt.p0.y) * buttTangent.y;
+  if (cut0Param < -1e-6 || cut0Param > buttLen + 1e-6) return null;
   // one grout gap, stepping AWAY from the corner along the butt primitive's own tangent (whichever
   // sign that is -- `cut0` can land either side of `o` depending on the corner's own geometry).
   const awaySign = Math.sign((cut0.x - o.x) * buttTangent.x + (cut0.y - o.y) * buttTangent.y) || 1;

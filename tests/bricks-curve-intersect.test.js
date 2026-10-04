@@ -39,6 +39,30 @@ describe('lineCircleIntersections', () => {
   it('a line that misses the circle entirely returns no points', () => {
     expect(lineCircleIntersections({ x: 0, y: 10 }, { x: 1, y: 0 }, { x: 0, y: 0 }, 3)).toEqual([]);
   });
+
+  it('T86 item 4: a GENUINELY tangent line whose own disc computes as a tiny NEGATIVE float (not an exact 0) still returns the single tangent point', () => {
+    // HAND-VERIFIED real numbers (template_2's own neck-to-body transition, a line tangent to its own
+    // neighbouring arc): `b`/`cc` are computed from DIFFERENT floating-point paths that need not
+    // agree to the last bit even for an exact mathematical tangent -- MEASURED: disc = -6.661e-16
+    // here, not the clean disc=0 the test above already covers (that one starts from values chosen
+    // to divide evenly). Before this fix, the old strict `disc < 0` rejected this outright (returned
+    // `[]`), which a real caller (`jointPointAt`) then silently read as "no corner here at all" (a
+    // free end, never clipped) -- see primitive-ribbon.js's own header for the live consequence this
+    // had (a neighbouring row's own piece ran unbounded, 7.7x nominal area).
+    const pts = lineCircleIntersections(
+      { x: 5.5091304999999995, y: 0.25 }, { x: 0, y: 1 },
+      { x: 6.196111, y: 1.6127732499999996 }, 0.6869805000000003,
+    );
+    expect(pts.length).toBe(1);
+    expect(pts[0].x).toBeCloseTo(5.50913, 4);
+    expect(pts[0].y).toBeCloseTo(1.61277, 4);
+  });
+
+  it('a GENUINE non-intersection just past tangent (disc meaningfully negative, not float noise) still returns no points', () => {
+    // the new tolerance (`disc < -1e-9`) must not swallow real misses -- a line moved a visible
+    // 0.01 beyond the tangent distance is nowhere close to the 1e-9-scale noise band.
+    expect(lineCircleIntersections({ x: 0, y: 3.01 }, { x: 1, y: 0 }, { x: 0, y: 0 }, 3)).toEqual([]);
+  });
 });
 
 describe('circleCircleIntersections', () => {

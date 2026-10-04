@@ -20,13 +20,24 @@ export function lineLineIntersection(p0, dir0, p1, dir1) {
   return { x: p0.x + dir0.x * t, y: p0.y + dir0.y * t };
 }
 
-/** `dir` must be a UNIT vector. */
+/** `dir` must be a UNIT vector.
+ *
+ * T86 item 4 (a genuine tangent line-arc corner, found stress-testing every template -- a GENERAL
+ * geometric case, not specific to any one shape): a line EXACTLY tangent to a circle has `disc`
+ * mathematically zero, but `b`/`cc` are computed from DIFFERENT floating-point paths (`dx*dir.x+dy*
+ * dir.y` vs `dx*dx+dy*dy-r*r`) that need not agree to the last bit -- MEASURED (template_2's own
+ * neck-to-body transition, a line tangent to its own neighbouring arc): `disc = -6.66e-16`, pure
+ * rounding noise around an exact tangent, not a genuine non-intersection. The old strict `disc < 0`
+ * rejected it outright, returning NO root at all for a corner that very much exists -- the caller
+ * (`jointPointAt`) then returned `null`, silently treating a real corner as "no joint here" (a free
+ * end, never clipped), which is what let a neighbouring row's own piece run unbounded. The same
+ * tolerance `circleCircleIntersections` (below) already uses for its own tangent/near-miss case. */
 export function lineCircleIntersections(p0, dir, c, r) {
   const dx = p0.x - c.x, dy = p0.y - c.y;
   const b = dx * dir.x + dy * dir.y;
   const cc = dx * dx + dy * dy - r * r;
   const disc = b * b - cc;
-  if (disc < 0) return [];
+  if (disc < -1e-9) return [];
   const sq = Math.sqrt(Math.max(0, disc));
   const t1 = -b - sq, t2 = -b + sq;
   const pt = (t) => ({ x: p0.x + dir.x * t, y: p0.y + dir.y * t });

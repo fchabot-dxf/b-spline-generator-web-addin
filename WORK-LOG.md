@@ -19334,3 +19334,113 @@ merge bringing in de's own `fb-app` commit (`a3ed945`, "wire picker to b5's sequ
 frameBricksFor") -- de acted on the retirement recommendation from my own T86 item 2 DM; not my own
 work, just confirming the cross-branch coordination landed. Passing back to the advisor with the full
 item status.
+
+## T86 item 4: brick frames on every template -- stress matrix, 3 real engine bugs found and fixed (b5)
+
+Dispatch (Fred, via the advisor): "make it work on different shaped hourglass and different frame
+shapes like narrow neck." Build a matrix FIRST (every template x 7 presets x 2 corner styles x 2
+sizes), save a table + a contact sheet, THEN fix by failure class, narrow neck first. Mid-task
+additions (noted, NOT done this turn, see "Not done" below): inset-window brick surrounds, optional
+frame/window suppression, and a follow-on item (T86 item 5, queued) generalizing the butt-cut rule to
+strokes crossing other strokes (not just corners).
+
+**The matrix** (`tools/repro/t86_item4_matrix_lib.mjs` + `_run.mjs`, new): all 17 templates x {7x9,
+9x12} x the 7 dispatched presets (single_soldier, soldier_stretcher, double_course, quoin_corners,
+header_band, butt_frame, mixed_bands -- "the 6" from T86 item 1 plus item 2's own mixed_bands,
+`three_band` excluded as it was never part of either dispatch) x {native cornerStyle, forced butt} =
+476 cases. Per case: vertices outside the TRUE tessellated board outline, worst pairwise overlap AREA
+(not just a boolean), max/min piece area vs. its OWN band's nominal (pitch x naturalWidth, per band --
+header's own nominal genuinely differs from soldier's, tracked by slicing the combined build's own
+piece array at each band's own independently-measured piece count), self-intersecting polygons, and
+fillet/arc coverage (sampled along each arc's own true outer-edge offset curve). Saved to
+`shots/seatB/t86_item4_matrix.{txt,json}`; a contact sheet (`t86_item4_contact_sheet.mjs`, new --
+every template's own soldier_stretcher frame at 7x9, one thumbnail each) to
+`shots/seatB/t86_item4_templates.png`, also published to the shared status location.
+
+**Baseline: 283/476 FAILED.** Not a template-specific audit from here -- per Fred's own ruling
+(relayed by the advisor): zero template-specific code, every fix keyed on a measurable geometric
+property, the 17 templates are the TEST SET proving generality, not individually special-cased
+targets. Traced every fix on the REAL template that surfaced it, never guessed from a template id.
+
+**Fix 1 -- `lineCircleIntersections`'s own tangent tolerance (`curve-intersect.js`).** The dominant
+contributor (81 cases fixed alone). Root-caused on template_2 ("Narrow Neck"): single_soldier built
+ONE 36-vertex, 7.7x-nominal piece spanning across TWO different arcs' own territory. Traced through
+`jointPointAt` -> `curveIntersection` -> `lineCircleIntersections`: a line EXACTLY tangent to its own
+neighbouring arc (a real, G1-continuous transition in this template's own geometry, not a sharp
+corner) has a mathematically-zero discriminant, but `b`/`cc` are computed from DIFFERENT
+floating-point paths that don't agree to the last bit -- MEASURED: `disc = -6.661e-16`. The old strict
+`disc < 0` rejected this outright, so `jointPointAt` returned `null`, and the CALLER silently read a
+REAL corner as "no joint here at all" (a free, unclipped end) -- letting the neighbouring row run with
+no boundary on that side. Fixed with the SAME tolerance `circleCircleIntersections` (right below it in
+the same file) already uses for its own tangent/near-miss case (`disc < -1e-9`, not `< 0`).
+
+**Fix 2 -- `voussoirPieces`' own `isVeryFirst`/`isVeryLast` float-drift (`arc-voussoir.js`).** Fixing
+#1 alone did NOT fully resolve template_2's own case (still 7.6x after). Traced further: inside
+`mergeSlivers`' own area-driven merge decision, `thetaA === thetaStart` / `thetaB === thetaEnd` is
+EXACT equality between two values reached by different accumulation paths (`theta` walked forward
+span-by-span vs. `thetaStart`/`thetaEnd` derived once from the joints) -- MEASURED: off by 8.88e-16,
+so the genuinely-last span read as NOT very-last, the `trustO:false` clip-skip (meant to avoid
+clipping against a FICTITIOUS mitre point at a dropped-primitive joint, by design) never engaged, and
+the regular clip fired using that fictitious point instead -- the exact wrong-clip failure mode
+`skipEndExt` exists to prevent. `linePieces` already compares its own equivalent boundary with
+`<=`/`>=`, never `===`; fixed `voussoirPieces` to match, using PROGRESS (angle x `direction`, the same
+monotonic measure its own clip-eligibilty check two lines up already uses) so it stays correct
+regardless of sweep direction. Together, fix 1+2 brought the baseline to 202 failed (81 more fixed).
+
+**Fix 3 -- `buildButtJoint`'s own concave-corner fallback (`primitive-ribbon.js`).** Found on
+template_9 ("I Shape"): forcing `cornerStyle:'butt'` produced a literal EMPTY (0-vertex, 0-area)
+piece at the waist's own reflex corner. Traced `cut0` (where the through band's own d1 edge crosses
+the butt primitive's own tangent line, the butt-cut's own anchor point): for this corner it landed
+0.75in BEFORE the butt primitive's own declared start -- for a CONVEX corner (the only case BUTT was
+ever built and tested against, T86 item 1) the through band's own material is adjacent to the butt
+band's own run, so `cut0` always lands within it; at a CONCAVE corner the through band's own material
+sits on the OPPOSITE side of the bend, so the same construction has no valid cut location to find at
+all. Confirmed the sign of `awaySign` (the existing code's own "which direction is into the run"
+signal) reads IDENTICALLY for a working convex corner and this broken concave one -- not a usable
+discriminator -- so detection is DIRECT instead: project `cut0` onto the butt primitive's own
+declared span and require it to land within `[0, length]`; outside that, fall back to the
+already-correct ordinary mitre (same pattern as the existing "not a genuine corner" / "parallel"
+fallbacks), rather than ever building a degenerate piece. Concave corners get a real butt cut later
+(T86 item 5, the general crossing-strokes rule, queued); for now, mitre. Brought the baseline to 175
+failed (27 more fixed).
+
+**Fix 4 -- the MATRIX's own measurement, not the engine (`t86_item4_matrix_lib.mjs`).**
+`quoin_corners`/native showed "max piece ratio 8.067" on nearly every template (31 cases) -- a
+deliberately oversized quoin unit (T86 item 1's own declared BLOCK design, already tested and
+shipped) measured against the SURROUNDING band's own regular-brick nominal always reads as a false
+"huge piece." Not a per-template defect -- the SAME 8.067 on templates 1 through 8 is the signature of
+a measurement category error, not 8 independent engine bugs. Excluded a `'block'`-cornerStyle band's
+own pieces from the max-ratio check specifically (the floor still applies -- a collapsed-to-nothing
+quoin would still be a real defect). Brought the baseline to 154 failed, 322 passed (21 more "fixed,"
+all false positives corrected).
+
+**Verification.** `tests/bricks-curve-intersect.test.js`: 2 new tests (the exact real-world tangent
+numbers that triggered fix 1, plus a control proving the new tolerance doesn't swallow a genuine
+0.01in miss). `tests/bricks-stress-matrix-fixes.test.js` (new): fix 2 and fix 3 each reproduced
+directly on the real template that found them (template_2 single_soldier stays under the 1.2x
+ceiling; template_9 single_soldier/butt has no empty or sub-floor piece). Mutation-tested (`git stash`
+on the 3 engine files): all 3 new assertions fail cleanly against the pre-fix code, with the EXACT
+symptom each fix's own header describes (7.70 ratio; a literal empty polygon). Full `vitest`: 205
+files/3784 tests, 0 failures.
+
+**Remaining (154/476, NOT fixed this turn -- by category):** arc coverage 74 (sampled gaps near a
+fillet -- not yet triaged whether these are real holes or a sampling-method artifact of the matrix
+itself, given fix 4's own false-positive precedent), min piece ratio 54 (a 0.125 ratio recurs across
+several templates on `header_band` specifically -- multi-row same-corner interaction, not yet traced
+to a cause), overlap area 41, self-intersecting 12, vertices outside board 11. By preset: concentrated
+in `header_band`/`soldier_stretcher`/`mixed_bands` (multi-row or multi-band presets) far more than the
+single-band presets, suggesting a cross-row or cross-band interaction is the next class to chase, not
+isolated per-template defects. `template_14` ("Sand Timer")'s own visible overlap at its X-crossing
+centre in the contact sheet is the EXACT class T86 item 5 is queued to generalize (strokes crossing
+strokes, not a corner at all) -- not re-investigated here, correctly out of THIS item's own scope.
+
+**Not done this turn (scope additions after the dispatch, explicitly deferred, not silently
+dropped):** the inset-window brick surround + Wall-fill-minus-window hole (de's own `frameBricksFor`
+retirement and the window engine itself are de's files; this needs design coordination, not a
+unilateral change here) and the optional frame/window suppression toggle (de wires the UI later per
+the advisor's own note) are BOTH real, declared scope, not forgotten -- flagging for the advisor to
+sequence rather than guessing at a window-contour design unreviewed.
+
+**Commit `[pending]`, push to origin/lane-b to follow.** Replying to the advisor with the matrix
+table, the 4 fixes (3 engine + 1 measurement), the before/after count at each step
+(283->202->175->154), and the categorized remainder for the next turn's own triage.

@@ -212,9 +212,23 @@ export function voussoirPieces(
     spans.push({ sA: theta, sB: pieceThetaEnd });
     theta = pieceThetaEnd + (jointWidth / r) * direction;
   }
+  // T86 item 4 (a genuine float-drift edge case, found stress-testing every template -- a GENERAL
+  // numerical-robustness bug, not specific to any one shape): `thetaA === thetaStart` / `thetaB ===
+  // thetaEnd` is EXACT-equality on two values reached by DIFFERENT accumulation paths (`theta`
+  // walked forward span by span here vs. `thetaStart`/`thetaEnd` derived once from the joints) --
+  // MEASURED (template_2's own neck-to-body transition): off by 8.88e-16, so the genuinely-last span
+  // read as NOT very-last, `skipEndExt` came out false, and the REGULAR clip fired using the
+  // trustO:false joint's own FICTITIOUS `o` (the exact wrong-clip failure mode `skipEndExt` exists to
+  // avoid -- see `buildPiece`'s own header) during `mergeSlivers`' own area-driven merge decision,
+  // before the correctly INDEX-based final build loop below ever ran. `linePieces` already compares
+  // its own equivalent boundary with `<=`/`>=` (never `===`); PROGRESS (raw angle times `direction`,
+  // the same monotonic measure `buildPiece`'s own clip-eligibility check just above already uses) is
+  // the direction-agnostic version of that same robust comparison for an angle.
+  const isStartSpan = (thetaA) => thetaA * direction <= thetaStart * direction + 1e-9;
+  const isEndSpan = (thetaB) => thetaB * direction >= thetaEnd * direction - 1e-9;
   mergeSlivers(
     spans,
-    (thetaA, thetaB) => Math.abs(signedArea(buildPiece(thetaA, thetaB, thetaA === thetaStart, thetaB === thetaEnd))),
+    (thetaA, thetaB) => Math.abs(signedArea(buildPiece(thetaA, thetaB, isStartSpan(thetaA), isEndSpan(thetaB)))),
     pitch * halfWidth * 2,
   );
 
