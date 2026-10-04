@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { bricksAlongPath } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/along-path.js';
-import { BRICK_SETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { BRICK_SETS, FILL_FRACTIONS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 
 const SET = BRICK_SETS[0];
 
@@ -36,7 +36,7 @@ describe('bricksAlongPath — "bricks" profile (default)', () => {
     }
     // every brick's own length is a declared FILL_FRACTIONS multiple of brickLengthIn (1, 2/3, 1/2,
     // or 1/3) -- never an arbitrary stretch/shrink.
-    const fractionLengths = [1, 2 / 3, 1 / 2, 1 / 3].map((f) => f * SET.brickLengthIn);
+    const fractionLengths = FILL_FRACTIONS.map((f) => f * SET.brickLengthIn);
     for (const b of bricks) {
       const box = bbox(b.polygon);
       const len = box.maxX - box.minX;

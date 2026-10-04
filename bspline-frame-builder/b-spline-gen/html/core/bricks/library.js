@@ -36,18 +36,48 @@ export const PIECE_CATALOGUE = Object.freeze([
 ]);
 
 /**
- * H23 item 74 (Fred via advisor): "add half bricks in voids... the void-filling pieces are HALF
- * and THIRD bricks... No arbitrary cut sizes." Where a course's own run doesn't divide evenly into
- * whole pieces (against the board outline, a frame's inner contour, a window, a scissors cut, OR
- * simply a declared corner), the FINAL piece is one of these declared fractions of the set's own
- * brickLengthIn/brickHeightIn (whichever is the pitch axis) -- never an arbitrary leftover length.
- * Descending order (along-path.js's own scheduler tries the biggest fraction first, matching "mostly
- * whole bricks, minimal small cuts"). A genuinely non-square edge (an angled outline side, a curve,
- * a tapered template) still cuts that chosen-fraction piece on the DIAGONAL via the SAME mitre-line
- * clip every corner already uses ("like the corner mitres") -- the fraction controls the piece's
- * own SIZE/position, the clip controls its exact final SHAPE; the two are independent.
+ * H23 item 74/76 (Fred via advisor): "add half bricks in voids... No arbitrary cut sizes." Where a
+ * course's own run doesn't divide evenly into whole pieces (against the board outline, a frame's
+ * inner contour, a window, a scissors cut, OR simply a declared corner), the FINAL piece is one of
+ * these declared fractions of the set's own brickLengthIn/brickHeightIn (whichever is the pitch
+ * axis) -- never an arbitrary leftover length. Descending order (along-path.js's own scheduler
+ * tries the biggest fraction first, matching "mostly whole bricks, minimal small cuts"). A
+ * genuinely non-square edge (an angled outline side, a curve, a tapered template) still cuts that
+ * chosen-fraction piece on the DIAGONAL via the SAME mitre-line clip every corner already uses
+ * ("like the corner mitres") -- the fraction controls the piece's own SIZE/position, the clip
+ * controls its exact final SHAPE; the two are independent.
+ *
+ * H23 item 76 (advisor's own FINAL piece set, superseding item 74's own [1,2/3,1/2,1/3]):
+ * "declared PIECES = whole, 3/4 bat, 1/2 bat, 1/4 bat (straight fills; DROP the thirds)..." -- these
+ * 4 are the STRAIGHT (along-path, along-arc) fill fractions. The OTHER 4 approved pieces (queen
+ * closer, mitred 3/4, mitred 1/2, king closer) are CORNER-specific, declared separately in
+ * CORNER_PIECES below (a queen closer/king closer aren't plain length fractions -- they have their
+ * own distinct shape: a queen closer is whole-length-but-half-height, a king closer is a whole
+ * brick with one corner cut diagonally).
  */
-export const FILL_FRACTIONS = Object.freeze([1, 2 / 3, 1 / 2, 1 / 3]);
+export const FILL_FRACTIONS = Object.freeze([1, 3 / 4, 1 / 2, 1 / 4]);
+
+/**
+ * H23 item 76 (advisor's own FINAL piece set): the 4 declared CORNER-specific pieces, used only
+ * where a run meets a declared corner (never mid-run) -- a mason's own real vocabulary for turning
+ * a corner while keeping the bond:
+ *   'queenCloser'  — whole LENGTH, HALF height -- keeps a half-brick stagger alive across a corner
+ *                    where two bonded runs meet (same role a queen closer plays in real brickwork).
+ *   'kingCloser'   — a whole brick with ONE corner cut off on the diagonal (45deg from one short
+ *                    end) -- fills a corner without a full mitre.
+ *   'mitredThreeQuarter' / 'mitredHalf' — a 3/4- or 1/2-length piece with its OWN diagonal
+ *                    (mitre) cut, for a corner run built from varied-length mitred pieces rather
+ *                    than one full mitred whole brick (Fred: "more variation... different
+ *                    lengths... diagonal cuts only for mitre").
+ * Declared as DATA (their own fraction-of-brickLengthIn, and whether they carry a diagonal/mitre
+ * cut) so a future piece can be added here without touching any engine code.
+ */
+export const CORNER_PIECES = Object.freeze([
+  { id: 'queenCloser', lengthFraction: 1, heightFraction: 1 / 2, mitred: false },
+  { id: 'kingCloser', lengthFraction: 1, heightFraction: 1, mitred: true },
+  { id: 'mitredThreeQuarter', lengthFraction: 3 / 4, heightFraction: 1, mitred: true },
+  { id: 'mitredHalf', lengthFraction: 1 / 2, heightFraction: 1, mitred: true },
+]);
 
 /**
  * Brick-sample SETS -- a fixed max of 3 (Fred: "no open-ended library machinery"). Each set is a

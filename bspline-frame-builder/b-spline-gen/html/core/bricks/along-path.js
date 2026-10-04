@@ -56,6 +56,8 @@ import { cumulativeLengths, pointAtArcLength, clipToHalfPlane } from './geometry
 import { mulberry32, seedFor } from './rng.js';
 import { valueNoise2 } from './noise2d.js';
 import { scaledSet, FILL_FRACTIONS } from './library.js';
+import { pickSample, planPieceLengths } from './piece-plan.js';
+import { voussoirPieces } from './arc-voussoir.js';
 
 function closeLoop(path) { return path.concat([path[0]]); }
 
@@ -202,52 +204,6 @@ const SAFE_CURVE_FACTOR = 0.5; // the same "declared floor/clamp, not a blow-up"
 // from the two curvature bugs this item's own extension-clamp fix below DOES resolve cleanly (the
 // empty-stretch and stray-shard failures) with zero regressions on the full pre-existing suite.
 
-function pickSample(set, seed, purpose, id) {
-  if (!set.samples || !set.samples.length) return { sampleId: null, flip: false };
-  const sampleRng = mulberry32(seedFor(seed, purpose + '-sample', id));
-  const sample = set.samples[Math.floor(sampleRng() * set.samples.length)];
-  const flip = mulberry32(seedFor(seed, purpose + '-flip', id))() < 0.5;
-  return { sampleId: sample.id, flip };
-}
-
-/**
- * H23 item 74 (Fred via advisor): plan a single corner-bounded run's own piece lengths -- as many
- * WHOLE pieces (length = `pitch`) as fit, then exactly ONE final piece sized to the best-matching
- * declared FILL_FRACTIONS entry (never an arbitrary leftover length) -- "no void wider than grout,
- * no arbitrary cut sizes." The small mismatch between that chosen fraction and the run's own true
- * remaining length is absorbed by slightly WIDENING OR NARROWING every joint in THIS run (never a
- * piece's own length) -- real masonry courses do exactly this rather than cut an odd-sized brick.
- * A run too short for even the smallest declared fraction becomes a single piece spanning the
- * whole run (still a real, clip-correct brick, just not matching a named fraction -- there is no
- * better option shorter than the run itself).
- *
- * @param {number} runLength — arc-length of the run (straight or curved -- this never looks at shape)
- * @param {number} pitch — one WHOLE piece's own length (brickLengthIn or brickHeightIn, by orientation)
- * @param {number} nominalJoint — the set's own declared grout.widthIn
- * @param {number[]} fractions — FILL_FRACTIONS, descending
- * @returns {{lengths:number[], jointWidth:number}} lengths.length - 1 joints, each `jointWidth`
- */
-function planPieceLengths(runLength, pitch, nominalJoint, fractions) {
-  const minFraction = Math.min(...fractions);
-  if (runLength < pitch * minFraction - 1e-9) {
-    return { lengths: [runLength], jointWidth: nominalJoint };
-  }
-  let wholeCount = Math.max(0, Math.floor((runLength + nominalJoint) / (pitch + nominalJoint)));
-  // back off whole pieces until what's left can be covered by at least the smallest fraction
-  while (wholeCount > 0 && runLength - wholeCount * (pitch + nominalJoint) < pitch * minFraction - 1e-9) wholeCount--;
-  const remainder = runLength - wholeCount * (pitch + nominalJoint);
-  let bestFraction = fractions[0], bestErr = Infinity;
-  for (const f of fractions) {
-    const err = Math.abs(remainder - f * pitch);
-    if (err < bestErr) { bestErr = err; bestFraction = f; }
-  }
-  const lengths = [...Array(wholeCount).fill(pitch), bestFraction * pitch];
-  const nJoints = wholeCount; // one joint after each whole piece; the final piece reaches the run's own true end directly
-  const idealTotal = lengths.reduce((a, b) => a + b, 0) + nJoints * nominalJoint;
-  const jointWidth = nJoints > 0 ? Math.max(0, nominalJoint + (runLength - idealTotal) / nJoints) : nominalJoint;
-  return { lengths, jointWidth };
-}
-
 /**
  * @param {{x:number,y:number}[]} polyline — open or closed (per `opts.closed`) path, board inches
  * @param {object} opts
@@ -285,6 +241,16 @@ export function bricksAlongPath(polyline, opts) {
 
   const cornerS = cornerIndices.map((i) => cum[Math.min(i, cum.length - 1)])
     .filter((s) => s > 1e-6 && s < total - 1e-6).sort((a, b) => a - b);
+
+  // H23 item 76 (advisor): `opts.arcSegments` -- declared TRUE circular arcs within this path (the
+  // caller's own job to supply, from the real frame primitive data; see arc-voussoir.js's own
+  // header). `startIndex`/`endIndex` are polyline point indices, same convention as cornerIndices;
+  // `cx`/`cy`/`r`/`theta1`/`theta2` are this ROW's own already-correct exact circle (the caller,
+  // e.g. bricksContourBands, has already adjusted `r` for this row's own cumulative band depth --
+  // this function never re-derives geometry, it only WALKS what it's given).
+  const arcSegments = (opts.arcSegments || []).map((seg) => ({
+    ...seg, startS: cum[Math.min(seg.startIndex, cum.length - 1)], endS: cum[Math.min(seg.endIndex, cum.length - 1)],
+  }));
 
   const bricks = [];
   let nextId = 0;
@@ -409,12 +375,37 @@ export function bricksAlongPath(polyline, opts) {
   // exact clip (not this straight-line estimate) is what correctly reaches the true mitre point
   // regardless of distance. Every OTHER joint in the run gets a curvature-clamped extension instead
   // (localRadiusAt/SAFE_CURVE_FACTOR, this file's own header above).
-  const bounds = [0, ...cornerS, total];
+  // H23 item 76: an arc segment's own start/end are ADDITIONAL forced run boundaries (same
+  // mechanical role as a declared corner for the purpose of splitting the walk -- but NOT a corner:
+  // no extend+clip mitre there, since "the arc's first radial line IS the straight run's own last
+  // joint" by construction, nothing needs reconciling between the two constructions).
+  const rawBounds = [0, ...cornerS, ...arcSegments.flatMap((seg) => [seg.startS, seg.endS]).filter((s) => s > 1e-6 && s < total - 1e-6), total].sort((a, b) => a - b);
+  const bounds = rawBounds.filter((b, i) => i === 0 || b - rawBounds[i - 1] > 1e-6);
   for (let k = 0; k < bounds.length - 1; k++) {
     const runStart = bounds[k], runEnd = bounds[k + 1];
     if (runEnd - runStart < 1e-6) continue;
-    const startIsCorner = k > 0 || closed;
-    const endIsCorner = k < bounds.length - 2 || closed;
+    // An arc segment's own edge is NEVER treated as a corner (the advisor: "the arc's first radial
+    // line IS the straight run's own last joint") -- same k>0/closed logic as always otherwise.
+    const isArcBoundary = (sVal) => arcSegments.some((seg) => Math.abs(seg.startS - sVal) < 1e-6 || Math.abs(seg.endS - sVal) < 1e-6);
+    const startIsCorner = (k > 0 || closed) && !isArcBoundary(runStart);
+    const endIsCorner = (k < bounds.length - 2 || closed) && !isArcBoundary(runEnd);
+
+    // H23 item 76: a run that exactly matches a declared arc segment is built as TRUE voussoirs
+    // (arc-voussoir.js) -- never the straight-line extend+clip construction below, which is correct
+    // for a declared corner or a gentle/straight run but diverges from a true circle the tighter it
+    // gets (see WORK-LOG's own H23 item 75 entry for the three reverted attempts to patch that
+    // instead of sidestepping it).
+    const arcSeg = arcSegments.find((seg) => Math.abs(seg.startS - runStart) < 1e-6 && Math.abs(seg.endS - runEnd) < 1e-6);
+    if (arcSeg) {
+      const { pieces, nextId: afterId } = voussoirPieces(
+        arcSeg.cx, arcSeg.cy, arcSeg.r, arcSeg.theta1, arcSeg.theta2, halfWidth, arcSeg.radialSign,
+        pitch, J, set, seed, pieceId, nextId,
+      );
+      for (const p of pieces) bricks.push(p);
+      nextId = afterId;
+      continue;
+    }
+
     const { lengths: pieceLengths, jointWidth } = planPieceLengths(runEnd - runStart, pitch, J, FILL_FRACTIONS);
 
     let s = runStart, guard = 0, pieceIdx = 0, isFirst = true;

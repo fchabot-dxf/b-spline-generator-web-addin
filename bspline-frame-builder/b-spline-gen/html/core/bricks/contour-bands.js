@@ -30,6 +30,14 @@ import { scaledSet } from './library.js';
  * @param {object} opts
  * @param {object} opts.set — a library.BRICK_SETS entry
  * @param {number[]} [opts.cornerIndices=[]] — indices into `path` where a real corner occurs
+ * @param {{startIndex:number, endIndex:number, cx:number, cy:number, r:number, theta1:number, theta2:number, radialSign:1|-1}[]} [opts.arcSegments=[]]
+ *   — H23 item 76: declared TRUE circular arcs within `path` (the caller's own job to supply, from
+ *   the real frame primitive data -- see arc-voussoir.js's own header). `r`/`theta1`/`theta2`/
+ *   `radialSign` describe `path` itself (depth 0); EVERY row gets its OWN exact circle derived from
+ *   these by adjusting `r` for that row's own cumulative offset depth (`theta1`/`theta2`/`cx`/`cy`
+ *   stay IDENTICAL across rows -- offsetting a circle never moves its centre or sweep angle, only
+ *   its radius) -- bricksAlongPath itself never re-derives any of this, it only ever walks a
+ *   circle it's already been handed.
  * @param {number} [opts.scale=1] — uniform multiplier on the set's own brick length/height (grout unaffected)
  * @param {number} opts.seed
  * @returns {{ bricks: Array, innerPath: {x:number,y:number}[] }} innerPath = the last band's own
@@ -40,9 +48,13 @@ export function bricksContourBands(path, bands, opts) {
   const set = scaledSet(opts.set, opts.scale); // scaled ONCE here; the inner bricksAlongPath calls
   // below get this already-scaled set directly (no opts.scale passed to them) so it's never applied twice.
   const cornerIndices = opts.cornerIndices || [];
+  const arcSegments = opts.arcSegments || [];
   const sign = inwardSignFor(path);
   const bricks = [];
   let outer = path;
+  let depthSoFar = 0; // how far INWARD (same direction `sign`/offsetPathInward move) `outer` has
+  // already been pushed from the ORIGINAL `path` -- tracked alongside `outer` so every row's own
+  // arc segments can be derived directly from the ORIGINAL (depth-0) ones, not re-measured.
 
   bands.forEach((band, bandIndex) => {
     const pattern = band.pattern || 'stretcher';
@@ -50,13 +62,16 @@ export function bricksContourBands(path, bands, opts) {
     const rows = Math.max(1, Math.round(band.widthIn / naturalWidth));
     for (let row = 0; row < rows; row++) {
       const centerline = offsetPathInward(outer, naturalWidth * (row + 0.5), sign);
+      const rowDepth = depthSoFar + naturalWidth * (row + 0.5);
+      const rowArcSegments = arcSegments.map((seg) => ({ ...seg, r: seg.r - seg.radialSign * rowDepth }));
       const { bricks: bandBricks } = bricksAlongPath(centerline, {
-        set, orientation: pattern, closed: true, cornerIndices,
+        set, orientation: pattern, closed: true, cornerIndices, arcSegments: rowArcSegments,
         seed: seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), pieceId: 'frame',
       });
       bricks.push(...bandBricks);
     }
     outer = offsetPathInward(outer, naturalWidth * rows, sign);
+    depthSoFar += naturalWidth * rows;
   });
   return { bricks, innerPath: outer };
 }

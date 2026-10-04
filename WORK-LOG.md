@@ -17173,3 +17173,93 @@ end-of-turn number; this item's fix lives entirely inside along-path.js's own ex
 coverage (bricks-along-path.test.js, bricks-contour-bands.test.js, bricks-real-template-contours.test.js
 all still exercise it), no new test file needed for a change that strictly narrows an existing,
 already-tested code path.
+
+## H23 item 76 -- arcs as TRUE voussoirs (f3)
+
+Dispatched after item 75's own extend-then-clip arc fix proved unstable on T12's waist (Fred's own
+markup, shots/fred/fred_markup_waist_wedges.png: likes the tapered look, wants it to actually fit).
+The advisor's own DM gave the exact architecture: "Stop extending and clipping rectangles on arcs...
+Build arc pieces BY CONSTRUCTION, as voussoirs" -- compute the band's EXACT outer/inner offset arcs
+(same centre, radius ± bandWidth) for the TRUE arc primitive, joint stations = radial lines through
+that centre, each piece the annular-sector quad between consecutive radial joints. This item builds
+and verifies exactly that (the core geometric fix); the REST of the dispatched scope (the 8-piece
+vocabulary's corner-specific pieces, cornerStyles beyond mitre, the 5 named FRAME_PRESETS, seeded
+per-piece length variation, and the full meticulous-cut test suite) is NOT done this turn -- see
+"Not done" below.
+
+**New `core/bricks/arc-voussoir.js`**: `voussoirPieces(cx, cy, r, theta1, theta2, halfWidth,
+radialSign, pitch, nominalJoint, set, seed, pieceId, startId)` -- walks the TRUE circle directly
+(never a tessellated-polyline approximation): `planPieceLengths` (reused as-is, now shared via a
+new `piece-plan.js` to avoid a circular import between along-path.js and this file) plans the
+piece-length schedule in LINEAR inches exactly as a straight run does, converted to angular steps
+via `dTheta = length/r`; each piece's own polygon is built directly from N sampled points along the
+EXACT outer arc (`r + radialSign*halfWidth`) and EXACT inner arc (`r - radialSign*halfWidth`), no
+extension, no clip, nothing approximated -- a piece is geometrically exact the first time, so it
+literally cannot self-intersect or fall short of the true outer edge. `radialSignAt` determines
+(empirically, from the tessellated path's own local tangent vs the true circle's tangent at one
+sample point) whether the construction's own 'out' convention increases or decreases radius at a
+given arc -- varies per arc (CONFIRMED: T12's shoulder/hip arcs get radialSign=-1, the waist gets
++1, a real S-curve inflection, not a bug).
+
+**Wiring**: `along-path.js` gains `opts.arcSegments` (point-index ranges into the walked polyline,
+paired with the arc's own TRUE centre/radius/angles/radialSign) -- a declared arc segment's own
+start/end become ADDITIONAL forced run boundaries (same mechanical role as a declared corner for
+splitting the walk, but explicitly NOT treated as a corner: "the arc's first radial line IS the
+straight run's own last joint," confirmed in practice -- the transition is seamless, no extra clip
+needed). A run that exactly matches a declared arc segment is built via `voussoirPieces` instead of
+the existing extend+clip loop; every other run (straight, declared-corner, or a path with no
+arcSegments at all) is completely untouched -- confirmed via the full pre-existing suite staying
+green with ZERO edits. `contour-bands.js` gains the matching `opts.arcSegments` (describing the
+ORIGINAL un-offset path, depth 0) and derives each ROW's own exact circle by adjusting `r` for that
+row's own cumulative band depth (`rowR = r - radialSign*rowDepth`) -- `cx`/`cy`/`theta1`/`theta2`
+never change across rows (offsetting a circle moves neither its centre nor its sweep angle).
+
+**A real, important finding, not a bug**: MEASURED directly on T12's own waist arc (true radius
+0.680in): a single_soldier band's own full 0.75in cross-width needs an inner-edge radius of
+`r - 0.75`, which goes NEGATIVE there -- the band's own inner edge would have to pass through the
+arc's own centre and out the other side. The first version of this fix floored the inner radius to
+a tiny positive constant, which made every piece in the segment converge to a single point (a
+"pinwheel", visually far worse than simply having no piece there). Fixed properly: `voussoirPieces`
+now checks the TRUE (unclamped) inner radius up front and returns NO pieces for the whole segment
+when it would be non-positive -- an honest, visible gap (the true circle's own outline, nothing
+drawn inside it) rather than a garbage render. This declared band genuinely does not fit this
+curve; the real fix is a narrower band/orientation at the tightest point of a template (tracked
+separately, not something any single piece's own construction can paper over) -- `shots/seatA/
+item76_t12_voussoir.png` shows the honest gap at both waist pinches, with clean voussoir fans
+reaching the true outer contour everywhere the geometry DOES fit (`item76_t12_voussoir_closeup.png`
+vs item 75's own before/after shots for the same region).
+
+**Verified**: `tests/bricks-arc-voussoir.test.js` (new, 9 tests) -- `voussoirPieces`/`radialSignAt`
+in isolation (simple polygons, exact outer-radius reach, no overlap between neighbours, the
+honest-skip behaviour on an impossible radius, determinism, reversed angular direction), including
+a MUTATION check proving the no-overlap test actually discriminates (two pieces deliberately given
+the identical angular range DO overlap). `tests/bricks-real-template-contours.test.js` updated to
+build real `arcSegments` directly from T1/T12's own frame primitive data (centre/radius/angles read
+straight off `sil.primitives`, never re-fitted) and exercise the voussoir path through the full
+`bricksContourBands` call -- all 7 existing tests (simple polygons, no substantial overlap, no gap
+between neighbours, the off-by-one mutation check) still green. Full suite: 196 files / 3608 tests.
+
+**Not done this turn** (the rest of item 76's own dispatched scope, each a real sub-feature of its
+own, deliberately not attempted after the time already spent landing and verifying the voussoir
+construction itself): the approved 8-piece set's 4 CORNER-specific pieces (queen closer, mitred
+3/4, mitred 1/2, king closer -- declared as data in `library.js`'s new `CORNER_PIECES`, but not yet
+consumed by any construction code); cornerStyles (mitre/lapped/block/stepped/butt -- Fred's own
+explicit OK for non-mitred brick corners, confirmed separately from the frame-bar "always miter"
+rule); seeded per-piece length variation (today's own scheduler is still deterministic: whole
+pieces + one best-fit fraction tail, never a varied-length RANDOM sequence); the 5 named
+FRAME_PRESETS (soldier, soldier-stretcher, double-course, quoin-corners, header-band); the
+meticulous-cut test suite the advisor specified (piece-type membership, grout ±10%, min piece
+>= 1/4, zero overlap, coverage >= 95%) on T1/T12/square, with close-up previews per preset. `library.js`'s
+own `FILL_FRACTIONS` was updated to the advisor's FINAL straight-fill set ([1, 3/4, 1/2, 1/4],
+dropping thirds) as part of this turn, since it's a one-line declared-data change the voussoir
+construction itself already depends on.
+
+**Files:** `core/bricks/arc-voussoir.js` (new), `core/bricks/piece-plan.js` (new -- `pickSample`/
+`planPieceLengths` moved out of along-path.js to avoid a circular import with arc-voussoir.js, no
+behaviour change), `core/bricks/along-path.js` (arcSegments wiring, voussoir dispatch),
+`core/bricks/contour-bands.js` (per-row arcSegments derivation), `core/bricks/library.js`
+(FILL_FRACTIONS -> [1,3/4,1/2,1/4], new CORNER_PIECES declared data); `tests/bricks-arc-voussoir.test.js`
+(new), `tests/bricks-real-template-contours.test.js` (real arcSegments construction),
+`tests/bricks-along-path.test.js`, `tests/bricks-contour-bands.test.js` (fraction-set-change fallout).
+
+Full suite: 196 files / 3608 tests green (vitest).

@@ -30,7 +30,8 @@ import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-de
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
-import { pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { pointInPolygon, cumulativeLengths, pointAtArcLength } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { radialSignAt } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/arc-voussoir.js';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { primitivesToPolyline as primitivesToPolylineFixed } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
@@ -74,12 +75,49 @@ function isSimplePolygon(poly) {
   return true;
 }
 
+/** H23 item 76 (advisor: "build arcs as voussoirs between the band's exact outer/inner offset
+ *  arcs"): the declared arcSegments bricksAlongPath/bricksContourBands need -- one per TRUE
+ *  circular-arc primitive, with centre/radius/angle read DIRECTLY off the real frame primitive
+ *  data (never re-fitted/approximated) and `radialSign` determined empirically from the
+ *  tessellated path's own local tangent (arc-voussoir.js's own radialSignAt). This is what the
+ *  real Brick-tab adapter would also need to build to get this same exact-circle construction live
+ *  -- not yet done there (core/bricks' own new capability, verified here against real template
+ *  data; the adapter's own corresponding update is tracked separately, same split as item 74's own
+ *  sampleDetailAt).
+ */
+function buildArcSegments(primitives, points) {
+  const ARC_STEPS = 16;
+  const closedPts = points.concat([points[0]]);
+  const cum = cumulativeLengths(closedPts);
+  const segments = [];
+  let offset = 0;
+  for (const prim of primitives) {
+    const nPts = prim.type === 'A' ? ARC_STEPS : 1;
+    if (prim.type === 'A') {
+      const startIndex = offset;
+      const endIndex = offset + nPts; // may equal points.length (wraparound), valid for cum[]
+      const theta1 = prim.theta1, theta2 = prim.theta1 + prim.dTheta;
+      const sMid = cum[startIndex] + 0.01;
+      const a = pointAtArcLength(closedPts, cum, sMid - 0.005, true);
+      const b = pointAtArcLength(closedPts, cum, sMid + 0.005, true);
+      const tx = b.x - a.x, ty = b.y - a.y, tl = Math.hypot(tx, ty) || 1;
+      const mid = pointAtArcLength(closedPts, cum, sMid, true);
+      const radialSign = radialSignAt({ tx: tx / tl, ty: ty / tl }, mid.x, mid.y, prim.cx, prim.cy);
+      segments.push({ startIndex, endIndex, cx: prim.cx, cy: prim.cy, r: prim.rx, theta1, theta2, radialSign });
+    }
+    offset += nPts;
+  }
+  return segments;
+}
+
 function realContour(templateId, widthIn, heightIn) {
   const record = normalizeFrameRecord({ templateId });
   const frame = { defs: FRAME_DEFS, record, board: { widthIn, heightIn } };
   const sil = frameContourSilhouette(frame, 0, 0);
   if (sil.error) throw new Error(`${templateId} ${widthIn}x${heightIn}: frameContourSilhouette failed (${sil.error})`);
-  return primitivesToPolylineFixed(sil.primitives, sil.corners);
+  const { points, cornerIndices } = primitivesToPolylineFixed(sil.primitives, sil.corners);
+  const arcSegments = buildArcSegments(sil.primitives, points);
+  return { points, cornerIndices, arcSegments };
 }
 
 describe('bricksContourBands on REAL template geometry (H23 item 74, convex + concave arcs)', () => {
@@ -90,8 +128,8 @@ describe('bricksContourBands on REAL template geometry (H23 item 74, convex + co
 
   for (const [name, templateId, W, H] of CASES) {
     it(`${name}: every brick is simple (no self-intersecting spike)`, () => {
-      const { points, cornerIndices } = realContour(templateId, W, H);
-      const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, seed: 1 });
+      const { points, cornerIndices, arcSegments } = realContour(templateId, W, H);
+      const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, arcSegments, seed: 1 });
       expect(bricks.length).toBeGreaterThan(0);
       for (const b of bricks) {
         expect(isSimplePolygon(b.polygon), `brick ${b.id} is self-intersecting`).toBe(true);
@@ -99,8 +137,8 @@ describe('bricksContourBands on REAL template geometry (H23 item 74, convex + co
     });
 
     it(`${name}: no two bricks substantially overlap (grid-sampled, cell-centre)`, () => {
-      const { points, cornerIndices } = realContour(templateId, W, H);
-      const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, seed: 1 });
+      const { points, cornerIndices, arcSegments } = realContour(templateId, W, H);
+      const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, arcSegments, seed: 1 });
       const bbox = (poly) => {
         const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
         return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
@@ -148,8 +186,8 @@ describe('bricksContourBands on REAL template geometry (H23 item 74, convex + co
       // as "close" even when it's deep in the open interior (the path curves back toward it), and
       // "near ANY brick's own bbox" pulls in the ENTIRE perimeter's own bricks on a small board.
       // Measuring the gap between NEIGHBOURS directly sidesteps all three.
-      const { points, cornerIndices } = realContour(templateId, W, H);
-      const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, seed: 1 });
+      const { points, cornerIndices, arcSegments } = realContour(templateId, W, H);
+      const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, arcSegments, seed: 1 });
       const maxVoidIn = SET.grout.widthIn * 2; // a declared margin (this measures CLOSEST approach,
       // not a full void-width scan, so a touch more slack than the synthetic-square test's own)
       const distPointToSeg = (p, a, b) => {
