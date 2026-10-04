@@ -17263,3 +17263,115 @@ behaviour change), `core/bricks/along-path.js` (arcSegments wiring, voussoir dis
 `tests/bricks-along-path.test.js`, `tests/bricks-contour-bands.test.js` (fraction-set-change fallout).
 
 Full suite: 196 files / 3608 tests green (vitest).
+
+## H23 item 76 -- radialSignAt sign fix (advisor review) (f3)
+
+Advisor review of the voussoir commit above caught it NOT working: in
+item76_t1_voussoir.png / item76_t12_voussoir.png, the shoulder-fillet bricks
+fanned OUTSIDE the board (left of x=0 / right of W) and the waist arc
+rendered almost empty. Confirmed visually before touching code (open-every-
+shot discipline) -- both screenshots clearly showed pieces spilling into the
+exterior gray area.
+
+Root cause (advisor's own diagnosis, confirmed by direct measurement, not
+re-derived by reasoning a second time): `radialSignAt` decided its sign from
+the arc's own LOCAL centre-vs-tangent relationship alone -- conflating "is
+this arc convex or concave" (a per-arc fact) with "which way is inward" (a
+GLOBAL fact about the whole path's own winding, the same one `inwardSignFor`
+computes). Those two agree on a path that's convex everywhere (a plain
+circle) and DISAGREE on a concave arc -- exactly the waist. Built a CCW
+circular board and a concave-notch board, offset each inward via the REAL
+`offsetPathInward`/`inwardSignFor`, and confirmed the correct formula against
+the actual measured before/after distance-to-centre on both (not just
+algebra) before editing anything. Fixed by taking `inwardSign` as an explicit
+parameter (computed ONCE per path by the caller, never re-derived per arc)
+and combining it with the local tangent to get the TRUE inward direction.
+
+This also retroactively explains item 75's "pinwheel" finding: that was
+written against the OLD inverted sign and wrongly blamed T12's CONCAVE
+waist; a concave arc's own radius only GROWS with depth and can never need
+the MIN_RADIUS_IN skip. It's CONVEX arcs (fillets) whose radius shrinks with
+depth and can genuinely run out of room -- confirmed directly: T1/T12's own
+~0.62in fillets are infeasible even at a single 0.75in band's own depth (not
+just under deep multi-band presets).
+
+Updated the two `radialSignAt` unit tests (they tested "CCW circle vs CW
+circle" -- two windings of an always-convex shape, which never actually
+exercises the bug) to a convex-vs-concave pair on the SAME path/inwardSign,
+matching how the real caller uses it. Added a new regression test file
+section: every brick's own centroid stays inside the board outline, for T1,
+T12, and a plain square -- the direct, cheap check for exactly this failure
+mode (advisor: "add a test that would have caught it"). Proved it
+non-vacuous: mutation-tested by temporarily restoring the pre-fix formula,
+confirmed it fails 2/2 (T1 + T12), then restored the real fix.
+
+De (session -de) separately reported `bricksContourBands` breaking on deep
+multi-band inward offsets of T1's concave waist (three_band preset, 144
+out-of-board bricks, up to 3.9in overshoot) via a raw-polyline repro that
+didn't wire up `arcSegments` at all. Reproduced the EQUIVALENT case through
+the real, arcSegments-wired path (`realContour()` + `buildArcSegments()`,
+same machinery the committed tests use): 0 out-of-bounds vertices for
+single_soldier / soldier_stretcher / three_band on both T1 and T12, confirmed
+by a direct assertion-based check across all 6 combinations. The sign fix
+alone resolves de's reported symptom AT THE CORE LEVEL; the live app's own
+Brick-tab adapter (editor-brick-tool.js, fb-app branch) still needs its own
+arcSegments wiring to see this fix live -- tracked separately, same split as
+item 74's sampleDetailAt.
+
+**Attempted and REVERTED this same turn:** the advisor also asked to
+"collapse" a convex arc whose radius has shrunk past feasible (rather than
+leaving a gap) into a true mitred corner, since de's three_band preset
+showed a visible gap / tangled mess at the fillets even with 0 bricks
+technically out of bounds. Exported a shared `isArcFeasible(r, radialSign,
+halfWidth)` from arc-voussoir.js (voussoirPieces now calls it too, instead
+of its own inline check) and built `collapseInfeasibleArcs` in
+contour-bands.js to splice a row's own infeasible arc span down to one
+mitred corner point. Two real bugs surfaced in sequence: (1) collapsing only
+a per-row-local copy left the SHARED `outer` path still being offset through
+the now-degenerate span every subsequent row, compounding into a worse mess
+-- fixed by making the collapse permanent (mutating `outer`/cornerIndices/
+activeArcSegments in place, since a convex arc's infeasibility is monotonic
+in depth and never recovers); (2) collapsing shrinks the path's own point
+array, silently invalidating every OTHER arc segment's startIndex/endIndex
+(fixed with an index remap) -- but even after both fixes, T12's own
+single_soldier case regressed to a ~90% brick overlap: T12's fillet sits
+IMMEDIATELY against the waist arc with ZERO straight run between them, so
+the "use the adjacent edge's own direction" corner-computation sampled a
+tessellated ARC CHORD (the waist's own first chord) as if it were a straight
+line, producing a badly-placed corner. A correct version needs to know,
+per flanking neighbour, whether it's a straight run (use its own edge) or
+another true arc (use THAT arc's own analytic tangent at the boundary, not a
+polyline-chord approximation) -- a real design task, not a quick patch.
+REVERTED contour-bands.js back to the last-committed version rather than
+ship a regression; `isArcFeasible` stays exported (voussoirPieces itself now
+uses it) since it's useful, documented, declared groundwork for whoever
+picks this up next. The gap at infeasible fillets remains exactly as
+before (an honest skip, visually a small void, never a garbage render) --
+unchanged from item 76's own original ship.
+
+Verified: full suite 196 files / 3611 tests green (3 more than item 76's own
+original commit, from the new centroid-inside-board tests) both before and
+after the revert. One unrelated flaky test (`frame-bartop-drawn.test.js`,
+nothing to do with bricks/arcs) failed once under full-suite load and passed
+clean in isolation -- not a regression, not investigated further.
+
+Visually re-verified via headless-Chrome SVG->PNG: T1 and T12 single_soldier
+now keep every brick inside the board and the waist fans correctly (shots
+saved to shots/seatA/item76_t1_voussoir_sign_fixed.png and
+item76_t12_voussoir_sign_fixed.png). A small gap remains at each fillet
+(the infeasible-arc skip) -- visible but honest, matches pre-existing
+behavior, not a new defect.
+
+**Not done (remaining, unchanged from item 76's own original list) plus
+this turn's own new finding:** engine consumption of CORNER_PIECES vocab,
+cornerStyles, 5 FRAME_PRESETS, seeded length variation, meticulous-cut test
+suite; collapse-infeasible-arc-to-corner (attempted, reverted, needs a
+neighbour-aware tangent design per above); live adapter arcSegments wiring
+(editor-brick-tool.js, fb-app branch).
+
+Files: `core/bricks/arc-voussoir.js` (radialSignAt sign fix + isArcFeasible
+export), `tests/bricks-arc-voussoir.test.js` (convex/concave radialSignAt
+pair), `tests/bricks-real-template-contours.test.js` (inwardSign wiring +
+new centroid-inside-board regression tests).
+
+Full suite: 196 files / 3611 tests green (vitest).

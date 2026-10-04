@@ -25,15 +25,21 @@ function isSimplePolygon(poly) {
 }
 
 describe('radialSignAt', () => {
-  it('a CCW-tangent point on a circle: the plain "out" perpendicular points TOWARD the centre (radius decreases)', () => {
-    // at angle 0 on a circle centred at the origin, the CCW tangent is (0,1) (straight up).
-    const sign = radialSignAt({ tx: 0, ty: 1 }, 5, 0, 0, 0);
-    expect(sign).toBe(-1);
+  // H23 item 76 FIX (advisor review): the ORIGINAL version of this pair tested "CCW circle vs CW
+  // circle" -- two different global windings of the SAME always-convex shape -- which never
+  // actually exercises the bug (a plain circle's own radialSign is +1 either way once its own
+  // correct inwardSign is supplied, since moving inward always shrinks a convex shape). The REAL
+  // failure mode (shoulder fillets rendering outside the board, the waist rendering empty) is a
+  // CONVEX arc and a CONCAVE arc on the SAME path (same inwardSign) disagreeing -- that's what
+  // these two now test, matching exactly how buildArcSegments/the real adapter call this function.
+  it('a convex arc (centre on the INWARD side, e.g. a corner fillet): moving inward shrinks its radius', () => {
+    const sign = radialSignAt({ tx: 0, ty: 1 }, 5, 0, 0, 0, 1);
+    expect(sign).toBe(1);
   });
 
-  it('a CW-tangent point on the SAME circle: "out" points AWAY from the centre (radius increases)', () => {
-    const sign = radialSignAt({ tx: 0, ty: -1 }, 5, 0, 0, 0);
-    expect(sign).toBe(1);
+  it('a concave arc on the SAME path (centre on the OUTWARD side, e.g. the waist): moving inward grows its radius', () => {
+    const sign = radialSignAt({ tx: 0, ty: -1 }, 5, 0, 0, 0, 1);
+    expect(sign).toBe(-1);
   });
 });
 

@@ -43,6 +43,18 @@ const MIN_RADIUS_IN = 0.01; // a declared floor (same "don't blow up" pattern as
 // tight bend (a real physical constraint -- a wide brick doesn't fit around a narrow enough curve),
 // clamped here to a tiny positive sliver rather than letting the inner radius go to zero or negative.
 
+/** Whether a row's own arc at true radius `r` (already adjusted for this row's own depth, same
+ *  convention as `voussoirPieces`' own `r`) can fit a piece of cross-width `2*halfWidth` at all --
+ *  the check `voussoirPieces` makes internally before returning `{pieces:[]}`, exported as its own
+ *  declared concept so any future caller that needs to know this BEFORE calling voussoirPieces (a
+ *  deep convex band whose own row has shrunk past its arc's radius currently just gets an honest
+ *  gap there -- skipped cleanly, not a garbage render, but still a gap) always agrees with
+ *  voussoirPieces about exactly where the line falls, rather than hand-rolling a second copy of the
+ *  same threshold. */
+export function isArcFeasible(r, radialSign, halfWidth) {
+  return r - radialSign * halfWidth > MIN_RADIUS_IN;
+}
+
 /**
  * @param {number} cx @param {number} cy @param {number} r — this ROW's own true centre + radius
  * @param {number} theta1 @param {number} theta2 — start/end angle (radians); direction is sign(theta2-theta1)
@@ -63,17 +75,24 @@ export function voussoirPieces(cx, cy, r, theta1, theta2, halfWidth, radialSign,
 
   const rOuter = r + radialSign * halfWidth;
   const rInner = r - radialSign * halfWidth;
-  // H23 item 76: a REAL physical constraint, not a construction bug -- MEASURED directly on T12's
-  // own waist arc (true radius 0.68in): a single_soldier band's own full 0.75in cross-width needs
-  // an inner-edge radius of r-0.75, which goes NEGATIVE there (the band's own inner edge would have
-  // to pass through the arc's own centre and out the other side). Forcing a degenerate near-zero
-  // radius floor (the earlier version of this clamp) produced every piece in the segment converging
-  // to a single point -- a "pinwheel", visually far worse than simply having no piece there. This
-  // declared band genuinely does not fit this curve; skip the WHOLE segment (an honest gap, not a
-  // garbage render) rather than force a nonsensical shape. A narrower band/orientation at the
-  // tightest point of a template is the real fix, tracked separately -- not something any single
-  // piece's own construction can paper over.
-  if (rInner <= MIN_RADIUS_IN) return { pieces: [], nextId: startId };
+  // H23 item 76: a REAL physical constraint, not a construction bug (confirmed correct only AFTER
+  // the radialSignAt sign fix below -- the original version of this finding, written against the
+  // pre-fix inverted sign, wrongly blamed T12's CONCAVE waist; a concave arc's radius only GROWS
+  // with depth and can never trip this floor -- it's a CONVEX arc, like a corner fillet, whose
+  // radius shrinks with depth and genuinely can run out of room at a tight enough fillet / deep
+  // enough band -- MEASURED on T1/T12's own ~0.62in fillets, even at a single 0.75in band's own
+  // depth). Forcing a degenerate near-zero radius floor (an earlier version of this clamp) produced
+  // every piece in the segment converging to a single point -- a "pinwheel", worse than simply
+  // having no piece there. This declared band genuinely does not fit this curve; skip the WHOLE
+  // segment (an honest gap) rather than force a nonsensical shape. Collapsing that gap into a true
+  // mitred corner instead (so the two flanking runs meet with no gap at all) was ATTEMPTED and
+  // REVERTED this same turn -- it requires knowing, at the collapse point, whether EACH flanking
+  // neighbour is a straight run (use its own edge direction) or another true arc like the waist
+  // (use that arc's own analytic tangent at the boundary, not a tessellation-chord approximation);
+  // treating every neighbour as a straight edge produced a REGRESSION (a ~90% brick overlap on
+  // T12's own single_soldier case, where the fillet sits immediately against the waist arc with no
+  // straight run between them at all) -- tracked as remaining item 76 scope, not shipped broken.
+  if (!isArcFeasible(r, radialSign, halfWidth)) return { pieces: [], nextId: startId };
   const { lengths, jointWidth } = planPieceLengths(totalArcLength, pitch, nominalJoint, FILL_FRACTIONS);
 
   const pieces = [];
@@ -106,16 +125,30 @@ export function voussoirPieces(cx, cy, r, theta1, theta2, halfWidth, radialSign,
 }
 
 /**
- * Which way along.path.js's own 'out' perpendicular convention (plainPointAt/extrapolatedPointAt,
- * `{x: x - ty*dist, y: y + tx*dist}` for a FORWARD tangent (tx,ty)) moves relative to an arc's own
- * TRUE centre -- +1 if a positive `dist` INCREASES distance from (cx,cy) there, -1 if it decreases
- * it. Determined empirically from the tessellated path's own local tangent at one sample point
- * (matching `localTangent`'s own probe technique) rather than assumed from winding direction, so
- * this works regardless of how any given template's own primitives happen to be wound.
+ * H23 item 76 FIX (advisor review, after shoulder-fillet bricks on T1/T12 rendered OUTSIDE the
+ * board and the waist arc rendered almost empty): the first version of this function decided the
+ * sign from the arc's own LOCAL centre-vs-tangent relationship alone, which is the wrong question
+ * -- it conflated "is this arc convex or concave" (a LOCAL, per-arc fact) with "which way is
+ * inward" (a GLOBAL fact about the whole path's own winding, the same one `inwardSignFor`
+ * computes). Those two happen to agree on a path that is convex everywhere (e.g. a plain circle)
+ * and DISAGREE on a concave arc -- exactly the waist, and exactly why the old version was inverted
+ * there. MEASURED (not re-derived by reasoning a second time): built a CCW circular board and a
+ * concave-notch board, offset each inward via the real `offsetPathInward`/`inwardSignFor`, and
+ * confirmed this formula's answer against the actual measured before/after distance-to-centre on
+ * both -- see tests/bricks-arc-voussoir.test.js's own radialSignAt tests for the equivalent check.
+ *
+ * `inwardSign`: the path's OWN global inward sign (`inwardSignFor(path)`, computed ONCE for the
+ * whole path by the caller) -- never re-derived per arc. Combined with the local tangent, it gives
+ * the TRUE "into the material" direction at this sample; `towardCenter > 0` there means moving
+ * inward moves TOWARD this arc's own centre, so its radius SHRINKS as depth increases (convex,
+ * +1) -- away means the radius GROWS as depth increases (concave, -1). This is also exactly what
+ * `rowR = seg.r - seg.radialSign * rowDepth` (contour-bands.js) and `rOuter/rInner = r ±
+ * radialSign*halfWidth` (voussoirPieces, above) both assume: `radialSign` is "does more depth-into-
+ * material mean a SMALLER true radius".
  */
-export function radialSignAt(tangent, sampleX, sampleY, cx, cy) {
-  const outX = -tangent.ty, outY = tangent.tx; // along-path.js's own 'out' perpendicular, dist=+1
+export function radialSignAt(tangent, sampleX, sampleY, cx, cy, inwardSign) {
+  const inX = -tangent.ty * inwardSign, inY = tangent.tx * inwardSign; // the TRUE inward direction here
   const toCenterX = cx - sampleX, toCenterY = cy - sampleY;
-  const towardCenter = outX * toCenterX + outY * toCenterY; // >0 means 'out' points TOWARD the centre (radius decreases)
-  return towardCenter > 0 ? -1 : 1;
+  const towardCenter = inX * toCenterX + inY * toCenterY;
+  return towardCenter > 0 ? 1 : -1;
 }

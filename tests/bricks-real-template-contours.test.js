@@ -30,7 +30,7 @@ import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-de
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
-import { pointInPolygon, cumulativeLengths, pointAtArcLength } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { pointInPolygon, cumulativeLengths, pointAtArcLength, inwardSignFor } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { radialSignAt } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/arc-voussoir.js';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { primitivesToPolyline as primitivesToPolylineFixed } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
@@ -78,8 +78,10 @@ function isSimplePolygon(poly) {
 /** H23 item 76 (advisor: "build arcs as voussoirs between the band's exact outer/inner offset
  *  arcs"): the declared arcSegments bricksAlongPath/bricksContourBands need -- one per TRUE
  *  circular-arc primitive, with centre/radius/angle read DIRECTLY off the real frame primitive
- *  data (never re-fitted/approximated) and `radialSign` determined empirically from the
- *  tessellated path's own local tangent (arc-voussoir.js's own radialSignAt). This is what the
+ *  data (never re-fitted/approximated) and `radialSign` determined from the tessellated path's own
+ *  local tangent PLUS the path's own GLOBAL inward sign (arc-voussoir.js's own radialSignAt --
+ *  fixed after an advisor review caught the first version deciding this from the arc's own local
+ *  centre alone, which is wrong on a concave arc; see that function's own header). This is what the
  *  real Brick-tab adapter would also need to build to get this same exact-circle construction live
  *  -- not yet done there (core/bricks' own new capability, verified here against real template
  *  data; the adapter's own corresponding update is tracked separately, same split as item 74's own
@@ -89,6 +91,7 @@ function buildArcSegments(primitives, points) {
   const ARC_STEPS = 16;
   const closedPts = points.concat([points[0]]);
   const cum = cumulativeLengths(closedPts);
+  const inwardSign = inwardSignFor(points); // ONE global fact about the whole path, not per-arc
   const segments = [];
   let offset = 0;
   for (const prim of primitives) {
@@ -102,7 +105,7 @@ function buildArcSegments(primitives, points) {
       const b = pointAtArcLength(closedPts, cum, sMid + 0.005, true);
       const tx = b.x - a.x, ty = b.y - a.y, tl = Math.hypot(tx, ty) || 1;
       const mid = pointAtArcLength(closedPts, cum, sMid, true);
-      const radialSign = radialSignAt({ tx: tx / tl, ty: ty / tl }, mid.x, mid.y, prim.cx, prim.cy);
+      const radialSign = radialSignAt({ tx: tx / tl, ty: ty / tl }, mid.x, mid.y, prim.cx, prim.cy, inwardSign);
       segments.push({ startIndex, endIndex, cx: prim.cx, cy: prim.cy, r: prim.rx, theta1, theta2, radialSign });
     }
     offset += nPts;
@@ -244,5 +247,42 @@ describe('bricksContourBands on REAL template geometry (H23 item 74, convex + co
       }
     }
     expect(worstGap, 'the UNCORRECTED adapter bug produces a real gap well past one grout width').toBeGreaterThan(SET.grout.widthIn * 2);
+  });
+});
+
+/** H23 item 76 FIX (advisor review): "Add a test that would have caught it" -- the inverted
+ *  radialSign put shoulder-fillet bricks OUTSIDE the board (left of x=0/right of W on T1 and T12)
+ *  while leaving the waist arc almost empty. None of the tests above would have caught that: they
+ *  check self-intersection, pairwise overlap and inter-brick gaps, none of which says anything
+ *  about where a brick sits RELATIVE TO THE BOARD. A brick's own centroid inside the board outline
+ *  is the direct, cheap check for exactly this failure mode. */
+describe('H23 item 76 (advisor review): every brick centroid stays INSIDE the board outline', () => {
+  const polygonCentroid = (poly) => poly.reduce((s, p) => ({ x: s.x + p.x / poly.length, y: s.y + p.y / poly.length }), { x: 0, y: 0 });
+
+  const REAL_CASES = [
+    ['template_1 (hourglass -- concave waist)', 'template_1', 7, 9],
+    ['template_12 (tapered)', 'template_12', 7, 9],
+  ];
+  for (const [name, templateId, W, H] of REAL_CASES) {
+    it(`${name}: every brick's own centroid is inside the board outline`, () => {
+      const { points, cornerIndices, arcSegments } = realContour(templateId, W, H);
+      const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, arcSegments, seed: 1 });
+      expect(bricks.length).toBeGreaterThan(0);
+      for (const b of bricks) {
+        const c = polygonCentroid(b.polygon);
+        expect(pointInPolygon(c.x, c.y, points), `brick ${b.id} centroid (${c.x.toFixed(3)},${c.y.toFixed(3)}) is OUTSIDE the board`).toBe(true);
+      }
+    });
+  }
+
+  it('a plain square board (no arcs, a direct sanity net): every brick centroid is inside', () => {
+    const S = 8;
+    const points = [{ x: 0, y: 0 }, { x: S, y: 0 }, { x: S, y: S }, { x: 0, y: S }];
+    const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices: [0, 1, 2, 3], seed: 1 });
+    expect(bricks.length).toBeGreaterThan(0);
+    for (const b of bricks) {
+      const c = polygonCentroid(b.polygon);
+      expect(pointInPolygon(c.x, c.y, points), `brick ${b.id} centroid is OUTSIDE the square board`).toBe(true);
+    }
   });
 });
