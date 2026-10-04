@@ -24,6 +24,7 @@ import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
 import { applyParam } from './param-manager.js';
 import { setEditorTab } from './editor-tabs.js';
+import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -33,11 +34,11 @@ import { setEditorTab } from './editor-tabs.js';
  * `run` is this file's own entry point for that tool (not re-exported --
  * core/bricks/ itself stays engine-agnostic of "how a UI triggers it"). */
 const BRICK_TOOLS = [
-  { id: 'brush', label: 'Brush', icon: '✏️', settingsSection: null,
+  { id: 'brush', buttonId: 'brickTool_brush', label: 'Brush', icon: '✏️', settingsSection: null,
     hint: 'Click here, then drag a stroke on the canvas to lay bricks along it.' },
-  { id: 'wall', label: 'Wall', icon: '🧱', settingsSection: null,
+  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: null,
     hint: 'Fills the whole board with bricks.' },
-  { id: 'frame', label: 'Frame', icon: '🖼️', settingsSection: null,
+  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '🖼️', settingsSection: null,
     hint: 'Bands of bricks along the current frame\'s own contour.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
@@ -45,9 +46,9 @@ const BRICK_TOOLS = [
   // Brush strokes today (Wall/Frame have no drawn spine to tap -- see
   // editor-brick-tool.js's own header on why that's a deliberate scope,
   // not an oversight).
-  { id: 'scissors', label: 'Scissors', icon: '✂️', settingsSection: null,
+  { id: 'scissors', buttonId: 'brickTool_scissors', label: 'Scissors', icon: '✂️', settingsSection: null,
     hint: 'Tap a brush stroke to split it -- each piece regenerates its own bricks independently once moved apart.' },
-  { id: 'stripe', label: 'Stripe', icon: '📏', settingsSection: null,
+  { id: 'stripe', buttonId: 'brickTool_stripe', label: 'Stripe', icon: '📏', settingsSection: null,
     hint: 'Tap a brush stroke to split it into alternating brick-style runs.' },
 ];
 
@@ -275,30 +276,30 @@ function bindGroutField(id, key) {
 /** F35 item 10: this list now renders into the left-rail toolbar
  *  (#editorToolbarBrick, icon-only, same convention Artwork's own tool rail
  *  already uses), not the old sidebar's horizontal icon+label row -- the
- *  label moves into the button's own title tooltip instead. */
+ *  label moves into the button's own title tooltip instead.
+ *  F35 (advisor, UX unification): rendering + the active-class toggle are the
+ *  shared editor-tool-registry.js mechanism now, the same one Photo uses --
+ *  this file no longer carries its own copy of either loop. */
 function renderToolList(container) {
-  if (!container) return;
-  container.innerHTML = '';
-  for (const tool of BRICK_TOOLS) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'tool-btn';
-    btn.id = `brickTool_${tool.id}`;
-    btn.title = `${tool.label} — ${tool.hint}`;
-    btn.textContent = tool.icon;
-    btn.addEventListener('click', () => selectTool(tool.id));
-    container.appendChild(btn);
-  }
+  renderToolRegistry(container, BRICK_TOOLS, selectTool);
 }
 
 function syncToolButtons() {
-  for (const tool of BRICK_TOOLS) {
-    document.getElementById(`brickTool_${tool.id}`)?.classList.toggle('active', tool.id === _activeTool);
-  }
+  syncToolRegistryButtons(BRICK_TOOLS, _activeTool);
   const hint = BRICK_TOOLS.find((t) => t.id === _activeTool);
   const hintEl = document.getElementById('brickToolHint');
   if (hintEl) hintEl.textContent = hint ? hint.hint : '';
   syncBrushSection();
+}
+
+/** F35 (advisor: "Esc = back to the select tool in every tab"): Brick has no Select tool of its
+ *  own to click -- clears this tab's own active-tool state and returns the editor's underlying
+ *  interaction mode to plain Select, the same real effect Artwork's Escape-to-toolSelect has. */
+export function deselectTool() {
+  _activeTool = null;
+  syncToolButtons();
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (editor && typeof editor.setMode === 'function') editor.setMode('select');
 }
 
 function renderFramePresetList(container) {

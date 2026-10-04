@@ -37,6 +37,7 @@ import { computeMirrorDimRects } from '../core/photo/mirror-dim.js';
 import { registerTweaksTarget, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { applyParam } from './param-manager.js';
 import { setEditorTab } from './editor-tabs.js';
+import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
 
 /** F35 item 10 (advisor, Fred's own reasoning: "each tab uses a completely different toolbar"):
  *  Photo's own left-rail toolbar, moved here from the old sidebar panel's single always-visible
@@ -45,35 +46,27 @@ import { setEditorTab } from './editor-tabs.js';
  *  visible regardless, the SAME "common controls every tool shares" split main/brick-panel.js's own
  *  BRICK_TOOLS already established -- not a new mechanism. */
 const PHOTO_TOOLS = [
-  { id: 'crop', label: 'Crop', icon: '⬚', hint: 'Crop the photo to a region before it becomes the terrain.' },
-  { id: 'straighten', label: 'Straighten', icon: '📐', hint: 'Rotate by a small angle to level a tilted photo.' },
-  { id: 'rotateFlip', label: 'Rotate/Flip', icon: '🔄', hint: 'Rotate 90° or flip the photo horizontally/vertically.' },
-  { id: 'levels', label: 'Levels', icon: '🎚️', hint: 'Black/white/mid points plus brightness and contrast.' },
-  { id: 'blur', label: 'Blur', icon: '🌫️', hint: 'Smooth the photo before it becomes height.' },
+  { id: 'crop', buttonId: 'photoTool_crop', label: 'Crop', icon: '⬚', hint: 'Crop the photo to a region before it becomes the terrain.' },
+  { id: 'straighten', buttonId: 'photoTool_straighten', label: 'Straighten', icon: '📐', hint: 'Rotate by a small angle to level a tilted photo.' },
+  { id: 'rotateFlip', buttonId: 'photoTool_rotateFlip', label: 'Rotate/Flip', icon: '🔄', hint: 'Rotate 90° or flip the photo horizontally/vertically.' },
+  { id: 'levels', buttonId: 'photoTool_levels', label: 'Levels', icon: '🎚️', hint: 'Black/white/mid points plus brightness and contrast.' },
+  { id: 'blur', buttonId: 'photoTool_blur', label: 'Blur', icon: '🌫️', hint: 'Smooth the photo before it becomes height.' },
 ];
 
 let _activePhotoTool = PHOTO_TOOLS[0].id;
 let _onChange = null;
 let _patterns = [];
 
+/** F35 (advisor, UX unification): rendering + the active-class toggle are the shared
+ *  editor-tool-registry.js mechanism now, the same one Brick uses -- this file no longer carries
+ *  its own copy of either loop. */
 function renderPhotoToolbar(container) {
-  if (!container) return;
-  container.innerHTML = '';
-  for (const tool of PHOTO_TOOLS) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.id = `photoTool_${tool.id}`;
-    btn.className = 'tool-btn';
-    btn.title = `${tool.label} — ${tool.hint}`;
-    btn.textContent = tool.icon;
-    btn.addEventListener('click', () => selectPhotoTool(tool.id));
-    container.appendChild(btn);
-  }
+  renderToolRegistry(container, PHOTO_TOOLS, selectPhotoTool);
 }
 
 function syncPhotoToolButtons() {
+  syncToolRegistryButtons(PHOTO_TOOLS, _activePhotoTool);
   for (const tool of PHOTO_TOOLS) {
-    document.getElementById(`photoTool_${tool.id}`)?.classList.toggle('active', tool.id === _activePhotoTool);
     const section = document.getElementById(`photoToolSection_${tool.id}`);
     if (section) section.style.display = tool.id === _activePhotoTool ? '' : 'none';
   }
@@ -82,6 +75,15 @@ function syncPhotoToolButtons() {
 function selectPhotoTool(id) {
   _activePhotoTool = id;
   syncPhotoToolButtons();
+}
+
+/** F35 (advisor: "Esc = back to the select tool in every tab"): Photo's own tools are settings-
+ *  section switches, not canvas gesture modes -- "back to select" here means returning the
+ *  editor's underlying interaction mode to plain Select (the same real effect everywhere else),
+ *  Photo's own tool selection has no section to fall back to otherwise. */
+export function deselectPhotoTool() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (editor && typeof editor.setMode === 'function') editor.setMode('select');
 }
 
 function notifyChange() {

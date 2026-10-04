@@ -11124,3 +11124,69 @@ fingerprinted + closed via their own handle, never by name/count):
 Not yet done: redeploying the real add-in with this turn's code (so the NEW `full_name='Bricks'`
 exact-naming and the `stamp.enabled`-independence fix run for real inside an actual Send from the
 web UI) -- that's the advisor's own call, not mine to do unprompted mid-session.
+
+## F35: editor tool-rail UX unification (declared registry + Esc-to-select), modest per the advisor
+
+Per the advisor's own explicit scoping ("a modest UX unification, NOT a mode refactor: ONE declared
+tool registry per tab driving the active-tool highlight for all tabs... plus Esc = back to the
+select tool in every tab").
+
+**A real, confirmed bug found while investigating, not just a style cleanup**: `editor-ui.js`'s
+`setMode()` toggled `.active` via `queryAll('.editor-sidebar .tool-btn')` -- EVERY `.tool-btn` in
+the whole sidebar, not just Artwork's own. Brick/Photo's own tool buttons are ALSO `.tool-btn`
+(their own, independent active-tool highlighting), so any `setMode()` call -- including the ones
+Brick's OWN Brush/Scissors/Stripe tools make to arm the generic mode system (`brickBrush`/`cut`/
+`stripe`) -- walked right past them and set `active=false` on every one (none match the
+`tool${Mode}` id convention this loop checks for). Measured live BEFORE the fix: clicking Brick's
+Brush tool left `brickTool_brush.classList.contains('active')` **false** immediately after the
+click, despite `editor._currentMode` correctly becoming `'brickBrush'` -- the button visibly
+un-highlights itself the instant it's selected.
+
+**Fix, two parts**:
+1. New `editor/editor-tool-registry.js`: `renderToolRegistry(container, registry, onSelect)` +
+   `syncToolRegistryButtons(registry, activeId)` -- the ONE declared mechanism Brick
+   (`main/brick-panel.js`) and Photo (`main/photo-panel.js`) now BOTH use, replacing two
+   textually-identical copies of the same render-buttons/toggle-active loop each panel carried
+   independently. `BRICK_TOOLS`/`PHOTO_TOOLS` each gained an explicit `buttonId` field (was
+   computed ad hoc via template-string concatenation at 2 separate call sites per panel).
+2. `editor-ui.js`'s `setMode()`: scoped its own highlight query to `#editorToolbarArtwork .tool-btn`
+   specifically -- the one-line fix for the cross-tab bug above, and (deliberately) NOT migrated
+   onto the new shared registry functions itself: Artwork's own buttons are static HTML with richer
+   inline SVG icons (not a plain icon character `renderToolRegistry` renders), and the mode-name-to-
+   button-id mapping is an EXISTING, working, already-used-elsewhere convention (`MODE_HINTS`,
+   `TOUCH_MODE_HINTS`, `modeHandlers` all key off the same mode-name strings) -- forcing it into a
+   parallel `{id, buttonId}` array would be pure duplication for zero behavioral gain. "One
+   mechanism, no duplication" is satisfied by Brick+Photo sharing one thing instead of two; Artwork
+   needed a scope fix, not a rewrite.
+
+**Esc = back to the select tool, every tab** (`main/global-events.js`, the existing global keydown
+listener this exact class of shortcut already lives in): new branch, UNGATED by Ctrl (Escape has no
+modifier), dispatching by `getEditorTab()`: Brick -> new exported `deselectTool()` (brick-panel.js:
+clears `_activeTool`, re-syncs its own highlight to none, calls `editor.setMode('select')`), Photo
+-> new exported `deselectPhotoTool()` (photo-panel.js: Photo's own tools are settings-section
+switches with no "nothing selected" state to fall back to, so this only resets the EDITOR's
+underlying interaction mode, deliberately leaving whichever Photo section was showing alone),
+anything else (Artwork/Frame) -> `editor.setMode('select')` directly. Deliberately left
+editor-interaction.js's own PRE-EXISTING Draw-mode anchor-path-cancel Escape handler (a separate,
+dynamically-installed `window` listener, only live while actively placing anchor points) completely
+untouched -- both listeners fire on the same Escape press with no conflict (anchor-cancel cleans up
+the in-progress path; this new one also returns the tool to Select afterward, which is the literal,
+intended behavior per the brief, not a side effect to guard against).
+
+**Tests** (`tests/editor-tool-registry.test.js`, new file): `renderToolRegistry`/
+`syncToolRegistryButtons` (render + rewire-on-select, re-render clears stale buttons, sync toggles
+exactly the right entry, a not-yet-rendered id is a safe no-op) -- 4 tests. Plus the regression
+itself, 2 tests, using the same minimal mock-editor shape `shape-lattice-handle-hover.test.js`
+already proved sufficient to run `setMode()` end to end: switching Artwork to Draw mode highlights
+`toolDraw` AND leaves Brick's own active button untouched; arming `brickBrush` specifically (the
+exact real-world trigger) never un-highlights `brickTool_brush`. Mutation-tested: reverted the
+scoping fix back to the blanket query, re-ran -- exactly those 2 tests failed, the other 4 (pure
+registry-function tests, unrelated to the scoping bug) correctly stayed green. Restored from a
+pre-mutation copy, re-confirmed green. Full suite green: 209 files / 3841 tests.
+
+**Live-verified** (headless Chrome, T1, all 3 tabs, one script): (1) clicking Brick's Brush tool ->
+`brickTool_brush` active = true (the fix, confirmed end to end past the earlier, failing manual
+check); (2) Escape on the Brick tab -> `brickTool_brush` active = false, `editor._currentMode` =
+`'select'`; (3) Escape on the Photo tab -> `editor._currentMode` = `'select'`, no crash; (4) Draw
+tool active on Artwork before Escape; (5) Escape on Artwork -> `toolSelect` active = true,
+`editor._currentMode` = `'select'`. Zero console errors across all 5 checks.
