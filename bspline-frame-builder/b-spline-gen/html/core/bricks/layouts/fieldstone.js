@@ -74,10 +74,28 @@
  * fix for the size-tier noise field's own non-uniform statistics (see `uniformizeNoise`). All three
  * are measured, reproducible bugs this file's own test suite (`tests/bricks-fieldstone.test.js`)
  * now guards against directly -- not merely "should be fine by construction."
+ *
+ * SECOND advisor review, after the overlap fix above landed: (a) the grout SHRINK step
+ * (`offsetPathInward`, applied to the WHOLE finished cell including whatever edge had just been cut
+ * flush against the board's own true outline) could flip a short edge near a concave feature (the
+ * waist) into a bowtie instead of collapsing it, and the cell was DROPPED rather than fixed -- a
+ * real, visible void, not a grout-ceiling. Fixed by baking the shrink into `powerCell`'s own
+ * bisector (a plain line shift, can never self-intersect) instead of a separate post-hoc offset, and
+ * by never actually dropping a surviving seed's TERRITORY: an undersized/degenerate cell's own seed
+ * is removed and the power diagram rebuilt over what's left, so neighbouring seeds naturally absorb
+ * the vacated space (a true tessellation always sums to the full region) -- "merge into the
+ * neighbour" without an actual polygon-union operation. (b) Gating each tier to its OWN spatial
+ * noise-blob produced visible size ZONING (all-small in the middle, all-large at the edges) once the
+ * noise frequency was raised to mix sizes more -- a blob at "1-2 large-stone diameters" is barely
+ * bigger than a large stone itself, so a large seed's own full packing clearance routinely reached
+ * past its own blob into a neighbouring one, starving it regardless of the nominal space split.
+ * Fixed per the advisor's own alternative suggestion: `tierAt` now blends the smooth spatial field
+ * with a FRESH per-candidate random draw (`NOISE_BIAS`, mostly random, gently noise-biased), so a
+ * tier's own candidates are not confined to hard spatial regions at all -- any tier can succeed
+ * anywhere real geometric room exists, with only a gentle large-scale tendency left over.
  */
 import {
-  pointInPolygon, clipToHalfPlane, clipPolygonToBoard, offsetPathInward, inwardSignFor,
-  roundPolygonCorners, isSimplePolygon, signedArea,
+  pointInPolygon, clipToHalfPlane, clipPolygonToBoard, roundPolygonCorners, signedArea,
 } from '../geometry.js';
 import { mulberry32, seedFor, hashedRandom } from '../rng.js';
 
@@ -106,27 +124,30 @@ const SIZE_TIERS = Object.freeze([
   { name: 'medium', fraction: 0.5, areaShare: 0.35 },
   { name: 'small', fraction: 0.25, areaShare: 0.15 },
 ]);
-// `tierAt`'s own noise-bucket input shares, distinct from `SIZE_TIERS[i].areaShare` above (the
-// declared OUTPUT target the histogram test checks against). MEASURED: a coarser tier wastes more of
-// its own gated noise-blob to edge effects than a finer one does (large stones barely fit 2-4 across
-// a blob sized for the noise field's own low frequency, wasting a big share of it to boundary/corner
-// rejection; a finer tier's own smaller stones tile the SAME blob far more completely) -- gating by
-// the raw 50/35/15 target directly measured large=13.5%/medium=75.5%/small=11.0% of the FINAL stone
-// area, nowhere near the declared split. These shares compensate for that measured efficiency gap so
-// the OUTPUT lands near the declared target; `SIZE_TIERS` itself stays the single source of truth for
-// stone SIZE (`fraction`) and for what the result is actually supposed to look like (`areaShare`).
-const GATE_AREA_SHARES = Object.freeze([0.59, 0.22, 0.19]);
-const NOISE_CELL_FACTOR = 4; // the low-frequency noise field's own grid cell size, as a multiple of
-// the main spacing -- big enough that a seed's neighbours usually share its own tier (visible organic
-// clustering of same-sized stones, matching how a real fieldstone wall reads), not a single-seed
-// salt-and-pepper mix. Declared separately from SIZE_TIERS since it tunes the noise FIELD, not a tier.
+// `tierAt`'s own candidate-draw shares, distinct from `SIZE_TIERS[i].areaShare` above (the declared
+// OUTPUT target the histogram test checks against). These are CANDIDATE/POINT-COUNT shares, not area
+// shares, and the two are very different by design: a power-diagram cell's own area scales with its
+// seed's `radius^2` (see `powerCell`'s own header), so for EQUAL point counts, large alone would
+// already claim ~76% of the area (radius ratios 1 : 0.5 : 0.25 square to 1 : 0.25 : 0.0625) --
+// hitting a 50/35/15% AREA split needs roughly the INVERSE point-count weighting (worked out
+// directly from that ratio: large/medium/small point shares near 0.12/0.33/0.55), then nudged by
+// measurement to land within +/-10 points of the declared target for BOTH sets at once (large also
+// benefits from going first in `fieldstoneLayout`'s own per-tier pass order, so its own realised
+// share runs a bit ahead of its raw point-count share -- these numbers already account for that).
+// `SIZE_TIERS` itself stays the single source of truth for stone SIZE (`fraction`) and for what the
+// result is actually supposed to look like (`areaShare`); only this array is a tuning input.
+const GATE_AREA_SHARES = Object.freeze([0.16, 0.35, 0.49]);
+const NOISE_CELL_FACTOR = 1.5; // TEMP for tuning sweep (was 4) -- advisor/Fred: "sizes form zones...
+// raise the noise frequency to about 1-2 large-stone diameters" so medium/small mix THROUGHOUT the
+// board, not segregated into their own large all-one-size regions.
 const PACKING_FACTOR = 1; // same-tier pairs: required = spacing*1 = spacing, exactly matching the
 // original single-size algorithm's own [minDist,2minDist) growth/accept relationship.
-const CROSS_TIER_PACKING_FACTOR = 1; // MEASURED: looser cross-tier values (tried 0.4, 0.6) changed
-// coverage by well under a percentage point either way once the real overlap cause (the fixed
-// `neighborRadius` cutoff, see fieldstoneLayout's own comment) was fixed -- packing tightness was
-// never the actual lever. Kept equal to same-tier `PACKING_FACTOR` as the simplest, least-arbitrary
-// choice rather than a tuned-for-no-measured-benefit knob.
+const CROSS_TIER_PACKING_FACTOR = 1; // MEASURED: loosening this (tried 0.4) reintroduced real
+// overlap (6-27% of stone area) -- `powerCell`'s own bisector SHIFT (see its header) assumes the
+// shift distance stays small relative to the point-to-point distance; two very-differently-weighted
+// seeds placed too close together break that assumption and can flip the shifted bisector to a
+// geometrically wrong position. Kept at the safe, proven value; the clustering problem this was
+// trying to solve is fixed differently below (a probabilistic, not spatial-blob, tier gate).
 const GROUT_CLEARANCE_FACTOR = 2; // MEASURED (T86 item 6): White rocks' own heavier declared grout
 // (0.12in vs Set 1's 0.034in) means a small-tier seed's own spacing can be barely wider than the
 // grout itself, shrinking the stone away to nothing. Each tier's own spacing is floored at this many
@@ -181,16 +202,30 @@ function uniformizeNoise(n) {
   return 1;
 }
 
-/** The SIZE_TIERS entry the noise field assigns at `(x,y)` -- a cumulative-share bucket lookup
- *  against ONE uniformized noise value, so tier boundaries shift smoothly across the board exactly
- *  where the noise field itself does (no separate per-tier noise call, which would let tiers
- *  overlap/gap independently of each other). */
-function tierAt(x, y, cellSize, seed) {
+const NOISE_BIAS = 0.25; // T86 item 6 (advisor review, "sizes form zones... Fred wants medium/small
+// mixed THROUGHOUT; raise the noise frequency... or mostly random per seed with only a gentle noise
+// bias"): raising the frequency alone (tried NOISE_CELL_FACTOR down to 1.5) didn't work -- a noise
+// blob that size is barely bigger than a LARGE stone itself, so a large seed's own full packing
+// clearance routinely reaches past its own blob into a neighbouring medium/small blob, starving
+// them regardless of how the space is nominally partitioned (MEASURED: medium fell to ~14% of total
+// area against a 35% target). Went with the advisor's own alternative instead: `tierAt` blends the
+// smooth spatial noise value with a FRESH per-candidate random draw, weighted mostly toward the
+// random draw (this constant), so a tier's own candidates are no longer confined to hard spatial
+// blobs at all -- medium/small can succeed ANYWHERE geometric room exists, with only a gentle
+// large-scale tendency left over from the noise field (visible clustering, not hard zoning).
+
+/** The SIZE_TIERS entry assigned at `(x,y)` for ONE candidate draw -- a cumulative-share bucket
+ *  lookup against a blend of the smooth spatial noise field and (when `rng` is given) a fresh
+ *  per-candidate random draw, so results are NOT purely a function of position: two different
+ *  candidates at the very same spot can draw different tiers. `rng` omitted falls back to the pure
+ *  spatial field (used only by callers that need a position-only read, e.g. diagnostics). */
+function tierAt(x, y, cellSize, seed, rng) {
   const n = uniformizeNoise(valueNoiseAt(x, y, cellSize, seed));
+  const blended = rng ? NOISE_BIAS * n + (1 - NOISE_BIAS) * rng() : n;
   let cum = 0;
   for (let i = 0; i < SIZE_TIERS.length; i++) {
     cum += GATE_AREA_SHARES[i];
-    if (n < cum) return SIZE_TIERS[i];
+    if (blended < cum) return SIZE_TIERS[i];
   }
   return SIZE_TIERS[SIZE_TIERS.length - 1];
 }
@@ -281,7 +316,7 @@ function poissonDiscSample(polygon, spacing, seed, existingPoints, gate) {
     for (let tries = 0; tries < 400 && !first; tries++) {
       const cand = { x: minX + rng() * w, y: minY + rng() * h };
       if (!pointInPolygon(cand.x, cand.y, polygon)) continue;
-      if (gate && !gate(cand.x, cand.y)) continue;
+      if (gate && !gate(cand.x, cand.y, rng)) continue;
       if (!farEnough(cand, myRadius)) continue;
       first = cand;
     }
@@ -300,7 +335,7 @@ function poissonDiscSample(polygon, spacing, seed, existingPoints, gate) {
         const cand = { x: p.x + Math.cos(angle) * r, y: p.y + Math.sin(angle) * r };
         if (cand.x < minX || cand.x > maxX || cand.y < minY || cand.y > maxY) continue;
         if (!pointInPolygon(cand.x, cand.y, polygon)) continue;
-        if (gate && !gate(cand.x, cand.y)) continue;
+        if (gate && !gate(cand.x, cand.y, rng)) continue;
         if (!farEnough(cand, myRadius)) continue;
         place({ ...cand, radius: myRadius });
         active.push(points.length - 1);
@@ -320,17 +355,35 @@ function poissonDiscSample(polygon, spacing, seed, existingPoints, gate) {
  *  (reduces to the ordinary Voronoi midpoint, t=0.5, when r_a=r_b): BIGGER radius pulls the bisector
  *  TOWARD the smaller site, growing the bigger site's own cell, while the bisector itself stays a
  *  straight line perpendicular to the a-b segment, same as plain Voronoi -- so this is still just a
- *  sequence of `clipToHalfPlane` calls, only the bisector's own point moved off the midpoint. */
-function powerCell(point, allPoints, boxPoly) {
+ *  sequence of `clipToHalfPlane` calls, only the bisector's own point moved off the midpoint.
+ *
+ *  T86 item 6 (advisor review, "never drop a cell... clip concave regions properly (the same
+ *  concave clip as the wall)"): the grout gap is baked directly into THIS clip, by shifting each
+ *  bisector line `pointShrink` further toward `point` before clipping, rather than clipping to the
+ *  bare bisector and shrinking the FINISHED polygon afterward with a separate inward-offset pass.
+ *  The old order called `offsetPathInward` on the whole cell, including whatever edge
+ *  `clipPolygonToBoard` had just cut flush against the board's own true (possibly concave) outline
+ *  -- a short edge there is exactly the case `offsetPathInward`'s own documented P1 limitation
+ *  flips into a bowtie instead of collapsing, which is what was silently dropping cells across the
+ *  waist. Shifting the bisector is a plain line translation: `clipToHalfPlane` cannot self-
+ *  intersect a simple input no matter how short the resulting edge is, so this removes the failure
+ *  mode outright rather than papering over it. It also means a stone's edge along the board's own
+ *  TRUE outline is never separately shrunk -- flush with the frame's own inner edge, exactly how
+ *  bond.js/basketweave.js/herringbone.js already treat the board boundary (grout is the gap BETWEEN
+ *  stones, never a setback from the board edge itself). Two neighbours each shift their own shared
+ *  bisector toward themselves by their OWN `pointShrink`, so the final gap between two finished
+ *  cells is `shrinkA + shrinkB` -- symmetric for two same-tier neighbours, tapering for a cross-tier
+ *  pair, exactly the "thinner mortar near small stones" intent `tierShrinks` already declares. */
+function powerCell(point, allPoints, boxPoly, pointShrink) {
   let poly = boxPoly;
   for (const other of allPoints) {
     if (other === point || poly.length < 3) continue;
     const dx = other.x - point.x, dy = other.y - point.y;
     const d2 = dx * dx + dy * dy;
     if (d2 < 1e-12) continue; // coincident seeds -- cannot happen post Poisson-disc rejection, guarded anyway
-    const t = 0.5 + (point.radius * point.radius - other.radius * other.radius) / (2 * d2);
-    const bisector = { x: point.x + t * dx, y: point.y + t * dy };
     const len = Math.sqrt(d2);
+    const t = 0.5 + (point.radius * point.radius - other.radius * other.radius) / (2 * d2) - pointShrink / len;
+    const bisector = { x: point.x + t * dx, y: point.y + t * dy };
     const line = { point: bisector, dirX: -dy / len, dirY: dx / len };
     poly = clipToHalfPlane(poly, line, point);
   }
@@ -374,7 +427,7 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed) {
   for (let i = 0; i < SIZE_TIERS.length; i++) {
     const tier = SIZE_TIERS[i];
     const tierSpacing = tierSpacings[i];
-    const gate = (x, y) => tierAt(x, y, noiseCellSize, seedBase) === tier;
+    const gate = (x, y, rng) => tierAt(x, y, noiseCellSize, seedBase, rng) === tier;
     const found = poissonDiscSample(boardOutline, tierSpacing, seedFor(seedBase, 'fieldstone-tier', i), points, gate);
     for (const p of found) points.push({ ...p, tierIndex: i });
   }
@@ -399,42 +452,50 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed) {
   // count (a few hundred) to just clip against EVERY other one -- the only way to GUARANTEE no missed
   // neighbour regardless of how sparse a tier's own region gets, rather than trusting a cutoff tuned
   // for the single-density case to still happen to be generous enough here.
-  const cells = [];
-  let nextId = 0;
-  for (const point of points) {
-    const others = points.filter((q) => q !== point);
-    let poly = powerCell(point, others, box);
-    if (poly.length < 3) continue;
-    // H23 item 74 (de): the SAME shared clip bond.js's own rectangular cells now use (geometry.js's
-    // clipPolygonToBoard) -- exact for a convex board, bond.js's own prior keep-whole-or-drop
-    // fallback for a concave one. The Poisson sample point is always a safe refPoint (guaranteed
-    // inside boardOutline by poissonDiscSample's own interior-only sampling).
-    poly = clipPolygonToBoard(poly, boardOutline, point);
-    if (poly.length < 3) continue;
-
+  //
+  // Builds the FULL cell set for a given point list in one shot: `clipPolygonToBoard` is the SAME
+  // exact (Greiner-Hormann, concave-safe) clip the Wall's other layouts already use for the board's
+  // own true outline, and `powerCell`'s own bisector shift (not a separate offsetPathInward pass --
+  // see its own header) is what keeps a short board-edge segment from ever becoming a bowtie. A
+  // point entry here is null when its own cell came back degenerate (poly.length<3 at any stage) or
+  // under the declared floor -- NOT dropped silently: `fieldstoneLayout` below removes that seed and
+  // rebuilds, so the power diagram's own remaining seeds naturally absorb its territory (a true
+  // tessellation always sums to the full clipped region, so one fewer seed just means its neighbours
+  // each claim a little more, never a gap) -- "merge an undersized cell into its neighbour" without
+  // an actual polygon-union operation this codebase doesn't have.
+  const buildCells = (pts) => pts.map((point) => {
+    const others = pts.filter((q) => q !== point);
     const pointShrink = tierShrinks[point.tierIndex];
-    if (pointShrink > 1e-9) {
-      poly = offsetPathInward(poly, pointShrink, inwardSignFor(poly));
-      // H23 item 76 cont.: `clipPolygonToBoard`'s now-exact concave clip can leave a real edge
-      // shorter than `shrink` right at the board's true boundary (MEASURED on T1's waist) --
-      // offsetPathInward's own documented P1 limitation (see its header) flips that edge into a
-      // bowtie rather than collapsing it. Drop the cell, same as every other degenerate-result
-      // bail-out in this loop, rather than ship a self-intersecting stone.
-      if (poly.length < 3 || !isSimplePolygon(poly)) continue;
-    }
+    let poly = powerCell(point, others, box, pointShrink);
+    if (poly.length < 3) return null;
+    poly = clipPolygonToBoard(poly, boardOutline, point);
+    if (poly.length < 3) return null;
     poly = roundPolygonCorners(poly, point.radius * 2 * CORNER_RADIUS_FACTOR);
-    if (poly.length < 3) continue;
-    // T86 item 6: the declared floor -- a stone that shrank/clipped down to a true sliver is dropped
-    // (stays void/grout), same "an honest gap, not a garbage render" treatment every other
-    // degenerate-result bail-out in this loop already gives.
-    if (Math.abs(signedArea(poly)) < minPieceArea) continue;
+    if (poly.length < 3) return null;
+    if (Math.abs(signedArea(poly)) < minPieceArea) return null;
+    return poly;
+  });
 
+  let activePoints = points;
+  let polys = buildCells(activePoints);
+  for (let iter = 0; iter < 4 && activePoints.length; iter++) {
+    const survivors = activePoints.filter((_, i) => polys[i]);
+    if (survivors.length === activePoints.length) break; // nothing dropped this round -- stable
+    activePoints = survivors;
+    polys = buildCells(activePoints);
+  }
+
+  const cells = [];
+  for (let i = 0; i < activePoints.length; i++) {
+    if (!polys[i]) continue; // a handful of iterations wasn't enough to stabilise -- rare, and still
+    // honest (void, not a garbage render) rather than looping indefinitely over a pathological input
+    const point = activePoints[i];
     const courseIndex = Math.max(0, Math.round((point.y - minY) / spacing));
     // `tier` (the declared SIZE_TIERS name this stone drew) rides along for diagnostics/tests (the
     // size-histogram check) -- pieces.js/suppression.js/samples.js only ever read the fields this
     // file's own header already documents, so an extra field here is inert for every existing caller.
     cells.push({
-      id: nextId++, polygon: poly, courseIndex, cx: point.x, cy: point.y, neighbors: {},
+      id: cells.length, polygon: polys[i], courseIndex, cx: point.x, cy: point.y, neighbors: {},
       tier: SIZE_TIERS[point.tierIndex].name,
     });
   }

@@ -112,14 +112,15 @@ describe('fieldstoneLayout (T86 item 6): no overlap, union coverage, size-tier h
         }
       }
       const avg = coverages.reduce((a, b) => a + b, 0) / coverages.length;
-      // MEASURED: Red brick averages ~87-88% (individual cases 83-92%); White rocks averages ~65-75%
-      // (individual cases as low as ~46% on a small/sparse board) -- White rocks' own grout (0.12in)
-      // is proportionally much heavier than Red brick's (0.034in) relative to its own main spacing,
-      // which eats a bigger share of every stone's own area regardless of tier (see fieldstoneLayout's
-      // own per-tier shrink-scaling comment) -- a declared material property, not a bug. Thresholds
-      // below are set under the WORST individually-measured case for each set, not the average, so
-      // this is a floor, not a central-tendency check.
-      const floor = setIdx === 0 ? 0.8 : 0.55;
+      // MEASURED (post "never drop a cell" rework): Red brick averages ~91-92% (individual cases
+      // 91-92.4%); White rocks averages ~81-84% (individual cases 81.3-83.6%) -- White rocks' own
+      // grout (0.12in) is proportionally much heavier than Red brick's (0.034in) relative to its own
+      // main spacing, which eats a bigger share of every stone's own area regardless of tier (see
+      // fieldstoneLayout's own per-tier shrink-scaling comment) -- a declared material property, not
+      // a bug, but no longer compounded by cells being silently dropped near the board's own concave
+      // edge. Thresholds below are set under the WORST individually-measured case for each set, not
+      // the average, so this is a floor, not a central-tendency check.
+      const floor = setIdx === 0 ? 0.88 : 0.78;
       expect(avg, `coverages: ${coverages.map((c) => c.toFixed(3)).join(', ')}`).toBeGreaterThanOrEqual(floor);
     });
 
