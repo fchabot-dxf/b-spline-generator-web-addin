@@ -18892,7 +18892,7 @@ work (which FACE of the brick shows along a run, not a corner treatment at all);
 that preset needs no new code at all, per this item's own earlier finding that kingCloser/
 mitredThreeQuarter/mitredHalf are craft names for fractions the existing mitre path already builds.
 
-**Commit `[pending]`, pushed to origin/lane-b.** BLOCK is DONE: the one open question resolved
+**Commit `607bf35`, pushed to origin/lane-b.** BLOCK is DONE: the one open question resolved
 correctly on contact with the real geometry rather than guessed from the armchair, mutation-tested
 including a bug the TEST itself first had, verified end to end, previews confirm the quoin look.
 BUTT, the sliver fix, LAPPED and BLOCK are all now complete and live-verified in this session --
