@@ -281,8 +281,48 @@ function segmentIntersection(p1, p2, p3, p4) {
  * either entirely inside `clip` (returned as-is) or entirely outside (empty).
  */
 export function polygonIntersection(subject, clip) {
+  if (subject.length < 3 || clip.length < 3) return [];
+  if (!touchesDegenerately(subject, clip)) return intersectGeneral(subject, clip);
+  // T86 item 21c: a vertex of either polygon lies ON the other's boundary (a corner on an edge, or two
+  // edges overlapping along a line -- bondLayout's course 0 shares the board's own bottom edge by
+  // construction). segmentIntersection reports such touches as "no crossing", so the entry/exit
+  // alternation below loses a crossing: MEASURED a straddling brick (2 corners in, 2 out) returning []
+  // and, with the arguments swapped, the whole 56.9 sq in board. Counting the touch as a crossing
+  // instead (a first attempt) put it at the wrong place in the walk and produced a self-intersecting
+  // polygon. Standard Greiner-Hormann remedy: perturb. Shift `subject` by DEGENERACY_SHIFT along the
+  // first declared direction that leaves no vertex on the other's boundary, then clip normally. The
+  // shift can manufacture a sliver at most DEGENERACY_SHIFT wide where the polygons only touched, so on
+  // this path a result no larger than that sliver could be is "no overlap".
+  for (const [dx, dy] of DEGENERACY_DIRECTIONS) {
+    const shifted = subject.map((p) => ({ x: p.x + dx * DEGENERACY_SHIFT, y: p.y + dy * DEGENERACY_SHIFT }));
+    if (touchesDegenerately(shifted, clip)) continue;
+    const result = intersectGeneral(shifted, clip);
+    if (result.length < 3) return [];
+    let perimeter = 0;
+    for (let i = 0; i < subject.length; i++) { const a = subject[i], b = subject[(i + 1) % subject.length]; perimeter += Math.hypot(b.x - a.x, b.y - a.y); }
+    const area = Math.abs(signedArea(result));
+    if (area <= 2 * DEGENERACY_SHIFT * perimeter) return [];
+    // all of `subject` inside (e.g. a course-0 brick flush with the board's bottom edge): return it exactly
+    if (Math.abs(signedArea(subject)) - area <= 2 * DEGENERACY_SHIFT * perimeter) return subject.slice();
+    return result;
+  }
+  return intersectGeneral(subject, clip); // every declared direction still degenerate: never seen; old behaviour
+}
+
+// A vertex closer than DEGENERACY_TOUCH to the other polygon's boundary counts as ON it. It must exceed
+// segmentIntersection's own endpoint exclusion (t or u within 1e-9 of an end, i.e. ~1e-8 in on a 10 in
+// edge); DEGENERACY_SHIFT must clear it by a wide margin and stay far below anything visible (grout is
+// ~0.08 in). The directions avoid the axes and 45 degrees, where real edges lie.
+const DEGENERACY_TOUCH = 1e-7;
+const DEGENERACY_SHIFT = 1e-5;
+const DEGENERACY_DIRECTIONS = [[0.8, 0.6], [-0.6, 0.8], [0.28, -0.96], [-0.96, -0.28], [0.6, -0.8]];
+function touchesDegenerately(a, b) {
+  const near = (pts, poly) => pts.some((p) => poly.some((q, j) => distSqToSegment(p.x, p.y, poly[(j + poly.length - 1) % poly.length], q) <= DEGENERACY_TOUCH * DEGENERACY_TOUCH));
+  return near(a, b) || near(b, a);
+}
+
+function intersectGeneral(subject, clip) {
   const n = subject.length, m = clip.length;
-  if (n < 3 || m < 3) return [];
   const onSubject = subject.map(() => []);
   const onClip = clip.map(() => []);
   let anyHit = false;
@@ -298,17 +338,14 @@ export function polygonIntersection(subject, clip) {
     }
   }
   if (!anyHit) {
-    // T86 item 19 follow-up (MEASURED: two real contour-bands.js corner pieces, sharing exactly one
-    // VERTEX and nothing else, started reading as 100% overlapping): testing `subject[0]` -- an
-    // arbitrary raw VERTEX -- stopped being a safe proxy for "is the whole subject inside clip" the
-    // moment `pointInPolygon` itself (above) learned to treat an on-boundary point as inside (needed
-    // for the ORIGINAL item 19 bug, a brick whose edge coincides with the board's own edge by float
-    // drift). Two polygons that merely TOUCH at a shared vertex/edge (zero real crossings, same as a
-    // genuinely nested pair) now both hit the SAME `anyHit=false` branch, but only one of them
-    // should read as "inside". The CENTROID isn't on the boundary unless the whole subject
-    // genuinely sits right at the edge, so it keeps discriminating correctly in both cases.
-    const c = polygonCentroid(subject);
-    return pointInPolygon(c.x, c.y, clip) ? subject.slice() : [];
+    // No crossings: nested (either way round) or disjoint. T86 item 21c: polygonIntersection sends every
+    // TOUCHING pair (a vertex on the other's boundary -- shared vertex, shared edge line, corner on edge)
+    // down its shifted path first, so here no vertex of either polygon is on the other's boundary, and
+    // one vertex is an exact witness. (The earlier centroid witness, item 19 follow-up, was right for
+    // two triangles sharing a vertex but MEASURED wrong on grid-snapped input: a quad whose centroid
+    // sat exactly on a small clip rectangle's edge read as "wholly inside" it, returning the quad.)
+    if (pointInPolygon(subject[0].x, subject[0].y, clip)) return subject.slice();
+    return pointInPolygon(clip[0].x, clip[0].y, subject) ? clip.slice() : [];
   }
   for (const list of onSubject) list.sort((p, q) => p.t - q.t);
   for (const list of onClip) list.sort((p, q) => p.t - q.t);
