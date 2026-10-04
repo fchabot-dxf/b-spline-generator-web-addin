@@ -4,11 +4,13 @@
  *
  * REBUILT per advisor review: a first, greedy-packed version read as "irregular clusters with
  * holes"/"a jumble with crossings and gaps" at 1:1 -- a greedy pack cannot produce a REGULAR weave.
- * Both patterns are now CLOSED-FORM (basketweave.js's own L x L checkerboard-of-squares grid,
- * herringbone.js's own stacked-column-plus-one-vertical-brick row construction) -- see each file's
- * own header for its exact construction and, for herringbone specifically, the measured limitation
- * that the textbook single-brick chevron only tiles exactly at a ~2:1 brick ratio, not Set 1's own
- * 3.75:1.
+ * Both patterns are now CLOSED-FORM -- basketweave.js's own L x L checkerboard-of-squares grid, and
+ * herringbone.js's own H_i/V_i staircase (repeated by k*(-l,l), rotated 45 degrees) -- see each
+ * file's own header for its exact construction. Herringbone's OWN prior header here once claimed
+ * the textbook chevron only tiles at a ~2:1 brick ratio -- that was WRONG (a narrower single-brick-
+ * per-step search's own limitation, not a true limit of the pattern); the current construction is
+ * independently verified (zero overlap, coverage == the exact grout ceiling below) at Set 1's own
+ * real 3.75:1 ratio.
  *
  * MEASURED, not assumed: for ANY rectangular brick pattern that respects a real grout gap (never
  * stretched, never trimmed to hit a coverage number), the maximum POSSIBLE coverage is bounded by
@@ -34,22 +36,18 @@ const TYPICAL_SET = { ...REAL_SET, brickLengthIn: 1, brickHeightIn: 0.5, grout: 
 const RECT = (w, h) => [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
 const BOARD_W = 10, BOARD_H = 10;
 
-// Each closed-form construction has its OWN true ceiling -- NOT the generic "grout on every edge"
-// formula, because both deliberately have some brick-to-brick boundaries with NO grout at all
-// (basketweave's own flush square-to-square edges; herringbone's own flush column-to-column
-// edges), per the advisor's own exact spec ("unit square side = L", not L+grout). Using the generic
-// ceiling here would wrongly flag correct, intentional flush boundaries as "exceeding the
-// mathematical maximum".
+// basketweave's own ceiling is NOT the generic "grout on every edge" formula, because it
+// deliberately has flush (no-grout) square-to-square boundaries by design (the advisor's own exact
+// spec, "unit square side = L", not L+grout) -- the generic ceiling would wrongly flag that
+// intentional flush boundary as "exceeding the mathematical maximum". herringbone.js's own H_i/V_i
+// construction has NO flush boundaries (every neighbor pair is a true grout gap, verified directly
+// against specific adjacent pairs) -- its ceiling IS the generic bound.
 function basketweaveCeiling(L, W, J) {
   const n = Math.max(1, Math.round(L / (W + J)));
   return Math.max(0, 1 - (n * J) / L); // intra-square grout only; squares themselves are flush
 }
 function herringboneCeiling(L, W, J) {
-  const n = Math.max(1, Math.round(L / (W + J)));
-  const pitch = L / n;
-  const unitArea = (L + 2 * J + W) * (L + J); // one column (H-stack + V brick) repeat cell
-  const coveredArea = n * L * Math.max(0, pitch - J) + W * L;
-  return coveredArea / unitArea;
+  return (L / (L + J)) * (W / (W + J)); // every boundary carries real grout -- the generic ceiling
 }
 const CEILING_FOR = { basketweave: basketweaveCeiling, herringbone: herringboneCeiling };
 
