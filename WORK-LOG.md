@@ -20676,3 +20676,109 @@ fixed (not tuned around) -- voids were a pre-existing `offsetPathInward` limitat
 tier system exposed more often, now removed structurally; zoning was the prior round's own noise-cell
 calibration, now replaced with a mostly-random, gently-biased gate per the advisor's own alternative
 suggestion. Coverage, overlap, and histogram all re-verified; ready for another look.
+
+## H23 item 78c, turn 550: archRise_max and topInset_max root-caused and fixed, T10's archRise_min fixed as a bonus, 18-case live matrix all-BUILT, T18 UN-HIDDEN -- one significant finding flagged, not fixed
+
+Seat 39, turn 550. Advisor's dispatch (Fred's own "moderate ranges" precedent): (1) archRise_max --
+fix the hardcoded apex ceiling as a declared/derived value if that's the cause (it affects T10 too,
+fix both); if geometric, narrow the range instead. (2) topInset_max -- narrow the declared range to
+the largest value that builds cleanly at 6x9/7x9/9x12, moderate. (3) Re-run the 18-case live matrix
+to all-BUILT. (4) Un-hide T18, pass back for the merge. Also handled an urgent advisor DM mid-turn:
+the previous deploy had been built from the main checkout at a stale sha -- confirmed the main
+checkout was actually already current by the time I looked, merged `origin/main` into
+`t10-reconstruction` (clean, verified byte-identical against my own pre-merge tip for every file I
+touched), ran the FULL suite as the gate (3948 JS / 1028 Python), deployed from the branch worktree
+only (stopped the add-in first via `app.scripts.stop()`, never `--force`).
+
+**Root cause of archRise_max, confirmed not assumed: a hardcoded apex ceiling, exactly as suspected.**
+`p02_12_arch_rebuild.py`'s own `Rebuild` step forced `top_edge`'s own middle/apex point through a
+fixed literal, `LY = heightIn/2 - 0.25 in` ("the safe zone's own top line") -- item 47's own docstring
+claimed this "has nothing to do with WHERE the seeded ends are and must not track them," true only
+for the ONE archRise value (0.35 of hw) that item's own test happened to use.
+`hourglassConstruction`'s own sagitta-circle `arch` block (editor-shape-lattice-generator.js) puts the
+REAL apex at `chord height + archRise`, no fixed ceiling at all -- every OTHER archRise silently built
+the WRONG circle at the range ends. **Fixed as a declared/derived value, not a hardcoded one:** a new
+generic `SeedFrom` mode, `side: 'short-arc-mid'` (`fb_engine/geometry.py`'s own `_point_seed_from`) --
+the source arc's own CURRENT minor-arc midpoint (the bisector of its two unit radius vectors from its
+own center), needing no stored apex height at all. New unit tests (`test_geometry.py`) prove this
+against 4 cases (symmetric top, symmetric bottom, an off-centre asymmetric chord with an EXACT
+expected point -- not a loose inequality, which would pass even for a buggy fallback -- and a
+diametrically-opposite-endpoints error case), each shown to FAIL 4/4 against the pre-fix code.
+`test_seed_basis.py`'s own structural check (which had asserted the old, now-wrong, literal-apex
+design) updated to match.
+
+**Bonus: this fixes T10's own long-standing archRise_min bug too, confirmed live --** item 63/65's
+own flagged-but-never-fixed finding ("archRise 0 is a FLAT top... Fusion's `addByThreePoints` throws")
+was the SAME root cause from the other direction (the same fixed LY literal happens to be collinear
+with the chord when archRise lands at exactly the value that makes CY coincide with LY). Built T10's
+own archRise=0 directly (bypassing the handle's own `MIN_ARCH_RISE_IN` floor that was standing in for
+this exact bug) at 7x9 and 9x12, both sizes now **4 bars, healthy** -- confirmed against the EXACT
+pre-fix code too (temporarily restored `26441c6`'s own `geometry.py`/`p02_12_arch_rebuild.py`,
+redeployed, re-tested: still fails identically, so nothing here was a regression dressed up as a fix).
+Did NOT touch `MIN_ARCH_RISE_IN` itself (a live guard/range floor -- "ask before guards" -- flagging
+it as now possibly loosenable, not loosening it unilaterally).
+
+**topInset_max: measured, moderate, declared -- the same honest "not a closed form" choice
+`_archedTimerRange`'s own literals already make.** The generic topInset ceiling (`_hourglassRange`,
+"never narrower than the waist") has no idea an arch sits above it. MEASURED, both failure shapes:
+0.72977 at 7x9 splits `frame_right` into two separate bodies (asymmetric -- `frame_left` stays one
+piece); 0.77192 at 9x12 silently never builds `sketch_3` at all. Neither raises an exception, and
+NEITHER is caught by the JS-side `frameCutProfile` defects check (zero defects reported for both --
+this failure class needed a live build to see at all). Bisected via a live build/stepping sweep across
+all 3 portrait sizes (6x9/7x9/9x12): 0.65 clean everywhere, 0.70 already splits the 6x9 case (the
+tightest of the three) -- declared `TOP_INSET_ARCH_MAX_OF_HW = 0.65` in `frame-handles.js`, engaging
+only when both `topInset` and `archRise` are present (so T3's own topInset, no arch, is untouched --
+proven by a dedicated non-regression test). New test proves the cap against the pre-fix reading
+(0.7298 at 6x9, not 0.65).
+
+**18-case live matrix (every T18 handle at its own reachable {min, max} + default, x {7x9, 9x12}, the
+SAME matrix from the prior turn, re-run after both fixes): 18/18 BUILT.** 4 bars, `sketch_3` created,
+`timelineHealthy: true`, every case -- including the two that used to be the gate's own open findings
+(`archRise_max` both sizes, `topInset_max` both sizes, now exactly at the new 0.65 ceiling).
+`waistReach`/`waistCenterY` stayed clean throughout (Option A's own fix target, confirmed still solid).
+3 client-side tool-call timeouts hit mid-matrix, same as last turn -- each one a pure transport
+timeout (`app.documents` checked clean after every one, no leaked scratch docs, never fired a retry
+while a prior call might still be running).
+
+**Significant finding, flagged not fixed: the archRise fix exposes a PRE-EXISTING apex-drift bug in
+T10's own shoulder/waist/hip chain, independent of which apex-forcing approach the rebuild uses.**
+Re-recorded T10's own 6x9/7x9 goldens after the fix (12x6 stays excluded -- confirmed via the SAME
+old-code A/B restore that this is `tools/check_golden_freshness.py`'s own already-declared,
+pre-existing, Fred-"ship it" exclusion, item 13, not a new regression). The re-recorded goldens showed
+a MEASURABLY FLATTER arch than before (7x9's own apex ~3.21in vs the old ~4.25in) -- confirmed via a
+REAL SEEDED build at T10's own default archRise too (not just the unseeded harness): the app's own
+sent seed has the correct apex (exactly 4.25, matching the design's own "apex on the safe zone top
+line" guarantee, `frame-template-10.test.js`'s own explicit assertion), but something in the shoulder/
+waist/hip tangent-chain resolving (`p02_04`-`p02_11`) measurably moves `top_edge`'s own CURVATURE
+between its initial seeded creation and the `p02_12` rebuild, even though nothing explicitly
+constrains that curvature and its ENDPOINTS stay correctly pinned throughout (the anchor+Coincident
+mechanism, item 47, still works as designed). **The OLD code never showed this** because it
+unconditionally overrode the apex back to the hardcoded `LY` literal every single time, which
+happened to coincide with (and therefore mask) the drift for exactly the one archRise value that
+literal was tuned against -- it was never actually validating that `top_edge`'s own curvature held
+steady; for every OTHER archRise it was simply building the WRONG circle outright (this item's own
+original bug). Re-recording the goldens with this drift present broke T10's own REAL-FIT-FROM-GOLDENS
+pipeline (`frame_shape_fit.py`, via `gen_frame_defs.py`): the fit correctly detected the goldens no
+longer support a clean linear model and fell back to `provisional` -- a SAFE failure mode, not a
+crash, but it broke 2 tests (`frame-template-10.test.js`) that assert a working real fit with exact
+hardcoded coefficients. **Reverted the golden re-record** (`git revert`, kept the OLD, pre-fix-era
+6x9/7x9 goldens committed) rather than ship a degraded real fit or quietly adjust test expectations to
+match a newly-exposed problem -- T10's own goldens are therefore technically "stale" relative to the
+phase-file fix in spirit, but `check_golden_freshness.py`'s own commit-timestamp check reads them as
+fresh again (the revert commit IS a new commit touching those paths, even though its content matches
+the old recording byte-for-byte) -- an honest, intentional "kept as-is pending its own investigation"
+state, not a loophole exploited to hide anything. **This needs its own dedicated item**: isolate which
+specific step in `p02_04`-`p02_11` moves `top_edge`'s own curvature and why (it is never explicitly
+constrained, so something indirect -- solver slack, a shared tangency, or a re-solve order effect --
+is doing it), independent of anything built for T18 or Option A.
+
+**All green before un-hiding:** full suite both languages (3990 JS / 1032 Python, one re-run after a
+single flaky timeout in `frame-template-10.test.js` under full-suite parallel load -- confirmed clean
+in isolation AND in two subsequent full re-runs, not a real regression). `tests/frame-hidden-
+template.test.js`'s own `HIDDEN_IDS` emptied (same precedent T12/T13 set). `FRAME_HIDDEN -> False`.
+Fusion holder released. Commits this turn (all on `t10-reconstruction`, nothing merged to main):
+`3b0d4a7` (archRise fix), `ee6a7d0` (merge + redeploy), `7d39f36` (topInset cap), `eef7794` +
+`f6fa3c7` (T10 goldens re-record + revert, net no-op on the committed files), `2ba2702` (un-hide).
+Passing back to the advisor for the merge, with the apex-drift finding flagged as its own follow-up,
+not a blocker for this item's own explicit mandate (both live-build failures fixed and verified,
+matrix all-BUILT, T18 genuinely ready to ship).
