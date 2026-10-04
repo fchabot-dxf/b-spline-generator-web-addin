@@ -12,7 +12,13 @@ import importlib.util
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def _install_fake_adsk():
+_ADSK_KEYS = ("adsk", "adsk.core", "adsk.fusion", "adsk.cam")
+
+
+def _fake_adsk():
+    """A COMPLETE minimal adsk of this test's own: Application.get() -> None, so b-spline-gen.py's
+    module-level `if app:` branch never runs. Never reuse whatever adsk an earlier test left in
+    sys.modules (CAM-builder's returns an app without .userInterface -> AttributeError at import)."""
     adsk = types.ModuleType("adsk")
     adsk.core = types.ModuleType("adsk.core")
     adsk.fusion = types.ModuleType("adsk.fusion")
@@ -21,17 +27,26 @@ def _install_fake_adsk():
     for name in ("UserInterfaceGeneralEventHandler", "HTMLEventHandler",
                  "CommandEventHandler", "CommandCreatedEventHandler", "ValueInput"):
         setattr(adsk.core, name, type(name, (object,), {}))
-    for k, v in (("adsk", adsk), ("adsk.core", adsk.core), ("adsk.fusion", adsk.fusion), ("adsk.cam", adsk.cam)):
-        sys.modules.setdefault(k, v)
+    return {"adsk": adsk, "adsk.core": adsk.core, "adsk.fusion": adsk.fusion, "adsk.cam": adsk.cam}
 
 
 def _load():
-    _install_fake_adsk()
-    spec = importlib.util.spec_from_file_location("b_spline_gen_log_isolation_under_test", os.path.join(_HERE, "b-spline-gen.py"))
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["b_spline_gen_log_isolation_under_test"] = module
-    spec.loader.exec_module(module)
-    return module
+    """Import b-spline-gen.py under this test's own fake adsk, then put back whatever adsk modules were
+    there before, so no other test sees ours."""
+    saved = {k: sys.modules.get(k) for k in _ADSK_KEYS}
+    sys.modules.update(_fake_adsk())
+    try:
+        spec = importlib.util.spec_from_file_location("b_spline_gen_log_isolation_under_test", os.path.join(_HERE, "b-spline-gen.py"))
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["b_spline_gen_log_isolation_under_test"] = module
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
 
 
 def _live_log(bsg, monkeypatch):
@@ -47,7 +62,10 @@ def _stat(path):
 
 
 def test_conftest_and_module_agree_on_the_seam():
-    import conftest
+    # by path: `import conftest` can return ANOTHER folder's conftest when pytest runs from a parent dir
+    spec = importlib.util.spec_from_file_location("b_spline_gen_conftest_under_test", os.path.join(_HERE, "conftest.py"))
+    conftest = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(conftest)
     assert _load().LOG_FILE_ENV == conftest.LOG_FILE_ENV
 
 
