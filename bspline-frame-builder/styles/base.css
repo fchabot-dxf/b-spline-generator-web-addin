@@ -1473,6 +1473,15 @@ header {
     border-color: #5db0e5;
 }
 
+/* turn 203: a disabled slider / number box (a declared requires, main/brick-control-requires.js -- e.g. Clumping
+   at Suppression 0) looked exactly like an enabled one; dim it like a disabled button */
+.cad-slider:disabled,
+.cad-stepper input:disabled,
+input[type="number"]:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 /* workflow audit #9: a disabled button (the `disabled` attribute -- Send frame on a phone) looked active */
 .cad-btn.disabled,
 .cad-btn:disabled,

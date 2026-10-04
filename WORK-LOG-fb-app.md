@@ -12431,3 +12431,29 @@ previous sources. Fast tier 73 files, 790 passed, 0 failed.
 Live (served fb-app): a plain and a Raised stroke, 4 bricks each; mean height offset -0.0057 vs +0.0568 in
 (difference 0.0625 = the Level); grout mode hidden; section shown. Shot shots/seat37/f35item16_raised_brush.png.
 Matrix: tools/brick-matrix is still not on origin/main -> rows owed (item 20, 21, Raised brush), listed for 88.
+
+## turn 203 (seat C = 37): the template ICON DROPDOWN (engine-drawn icons) + the Clumping greying check
+
+**Icons from the engine (Fred's rule).** New editor/frame-template-icon.js `templateIconSvg(defs, id)`: the
+template's own outline drawn by the frame engine -- frameCutProfile (outer) + frameInnerProfile (bars' inner
+edge) as ONE even-odd path at the default portrait 7x9 board with the template's default params; cached; null
+for none/unknown. A new template gets its icon for free (no hand-made images).
+**Icon dropdown, declared over the <select>.** New main/icon-select.js `mountIconSelect(select, { iconFor,
+label })`: the select stays the single source of truth (hidden, its options and 'change' listeners and every
+test that reads it untouched); a button shows the current option's icon, a grid of ICON-ONLY buttons (the name
+is the tooltip + aria-label) is rebuilt from the select's options on every open; a pick sets the value and
+dispatches 'change' once. `refreshIconSelect` keeps the button right after code sets .value
+(_syncTemplateSelect calls it). Mounted on BOTH template pickers (sidebar FRAME #frameTemplate, editor Frame
+tab #editorFrameTemplate). First live shot: 5 auto columns overflowed the 236 px panel -> fixed 4 x 40 px
+(measured: grid 182 px wide, right edge 1371 <= panel 1400).
+**Clumping greying (advisor's check):** the declared requires DOES apply in every tool -- measured live at
+Suppression 0: Clumping (number + slider) disabled for wall, frame, brush AND raisedBrush. It only LOOKED
+enabled because a disabled slider/number box had no disabled style; styles/base.css now dims them (opacity
+0.45, not-allowed cursor; measured 0.45 live on the Raised brush).
+Tests: new tests/template-icon-select.test.js (5: every offered template gets an engine-drawn even-odd icon;
+all distinct; none/unknown -> null; the select is hidden + button follows a programmatic value; icon-only
+options with the name as tooltip; a pick sets the value and fires change once, re-picking fires nothing).
+Fast tier (brick/frame/tab/template/... 111 files): 1858 passed, 0 failed.
+Live: sidebar list = None + 19 icons; picking T3 from the icon list set the frame record and the editor's
+picker followed. Shots: shots/seat37/f35_template_icon_dropdown_editor.png, f35_clumping_greyed_raised.png.
+Matrix: tools/brick-matrix still not on main -> rows still owed (88 will DM when it lands).
