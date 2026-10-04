@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "562759ecfb2eebc15bf15e4f5e07fcb74bfcc87aac815e5234becc78ade82da6",
+  "sourceHash": "33e8820e3471ea0091e26f82de550aac2e6ec6f75beed99991406bc1565622cd",
   "templates": [
     {
       "features": [
@@ -8262,6 +8262,38 @@ export default {
                   ],
                   "StartID": "top:S",
                   "Type": "Line"
+                },
+                {
+                  "Targets": [
+                    "upper_R:S",
+                    "upper_R:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
+                },
+                {
+                  "Targets": [
+                    "lower_R:S",
+                    "lower_R:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
+                },
+                {
+                  "Targets": [
+                    "lower_L:S",
+                    "lower_L:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
+                },
+                {
+                  "Targets": [
+                    "upper_L:S",
+                    "upper_L:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
                 }
               ],
               "Name": "Silhouette",
@@ -9291,7 +9323,7 @@ export default {
         "features": {
           "domeFullnessFrac": {
             "hh": 0.0,
-            "hw": 0.1421885365451818
+            "hw": 0.142188
           },
           "neckHeightFrac": {
             "hh": 0.9,
@@ -9303,19 +9335,28 @@ export default {
           }
         },
         "fit": {
-          "exactAtFittedSizes": false,
+          "exactAtFittedSizes": true,
           "excluded": [],
-          "fittedFrom": [],
-          "maxResidualIn": null,
+          "fittedFrom": [
+            "12x6",
+            "7x9"
+          ],
+          "maxResidualIn": 0.0,
           "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
-          "residualsIn": {}
-        },
-        "provisional": {
-          "baseModel": null,
-          "domeFullnessFracOfHw": 0.1421885365451818,
-          "neckHeightFracOfH": 0.45,
-          "reason": "no recorded Fusion goldens for this template yet (tools/repro/record_frame_parity.py)",
-          "topWidthFracOfHw": 0.45
+          "residualsIn": {
+            "domeFullnessFrac": [
+              0.0,
+              0.0
+            ],
+            "neckHeightFrac": [
+              -0.0,
+              -0.0
+            ],
+            "topWidth": [
+              -0.0,
+              -0.0
+            ]
+          }
         }
       },
       "silhouettePreset": "flask",
@@ -9550,6 +9591,22 @@ export default {
                   ],
                   "StartID": "top:S",
                   "Type": "Line"
+                },
+                {
+                  "Targets": [
+                    "dome_R:S",
+                    "dome_R:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
+                },
+                {
+                  "Targets": [
+                    "dome_L:S",
+                    "dome_L:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
                 }
               ],
               "Name": "Silhouette",
@@ -10746,6 +10803,30 @@ export default {
                   ],
                   "StartID": "arch:S",
                   "Type": "Arc3Point"
+                },
+                {
+                  "Targets": [
+                    "lower_R:S",
+                    "lower_R:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
+                },
+                {
+                  "Targets": [
+                    "lower_L:S",
+                    "lower_L:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
+                },
+                {
+                  "Targets": [
+                    "arch:S",
+                    "arch:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
                 }
               ],
               "Name": "Silhouette",
@@ -12108,6 +12189,46 @@ export default {
                   ],
                   "StartID": "arch:S",
                   "Type": "Arc3Point"
+                },
+                {
+                  "Targets": [
+                    "upper_R:S",
+                    "upper_R:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
+                },
+                {
+                  "Targets": [
+                    "lower_R:S",
+                    "lower_R:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
+                },
+                {
+                  "Targets": [
+                    "lower_L:S",
+                    "lower_L:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
+                },
+                {
+                  "Targets": [
+                    "upper_L:S",
+                    "upper_L:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
+                },
+                {
+                  "Targets": [
+                    "arch:S",
+                    "arch:E"
+                  ],
+                  "Type": "Fix",
+                  "UnseededOnly": true
                 }
               ],
               "Name": "Silhouette",
@@ -17556,12 +17677,12 @@ export default {
             "hw": -0.015632
           },
           "topDipDepth": {
-            "hh": 0.156118,
-            "hw": -0.021117
+            "hh": 0.15611,
+            "hw": -0.021114
           },
           "topDipHalfWidth": {
-            "hh": 0.126135,
-            "hw": 0.554981
+            "hh": 0.126112,
+            "hw": 0.554991
           },
           "waistCy": {
             "hh": -0.012054,
@@ -17598,11 +17719,11 @@ export default {
             ],
             "topDipDepth": [
               -0.0,
-              0.0
+              -0.0
             ],
             "topDipHalfWidth": [
-              0.0,
-              0.0
+              -0.0,
+              -0.0
             ],
             "waistCy": [
               0.0,

@@ -219,6 +219,87 @@ aside {
     background: var(--surface2, rgba(0, 0, 0, 0.06));
 }
 
+/* F34 item 1: the Photo filter's own pattern-row thumbnails + raw-image
+   preview canvas (main/photo-panel.js). */
+.photo-pattern-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+
+.photo-pattern-thumb {
+    padding: 0;
+    width: 40px;
+    height: 40px;
+    border: 1px solid #bcbcbc;
+    background: #222;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.photo-pattern-thumb:hover {
+    border-color: #0696D7;
+}
+
+.photo-pattern-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.photo-preview-canvas {
+    width: 100%;
+    max-width: 220px;
+    display: block;
+    margin: 0 auto 4px;
+    background: #222;
+    border: 1px solid #bcbcbc;
+}
+
+/* F34 item 1 (Fred): the Invert control as a 2-state segmented "Relief"
+   toggle (Raised/Carved) instead of a plain checkbox -- still just the same
+   underlying `invert` setting. */
+.relief-toggle {
+    display: flex;
+    border: 1px solid #bcbcbc;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.relief-toggle-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border: none;
+    background: #ffffff;
+    color: #333;
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.relief-toggle-btn + .relief-toggle-btn {
+    border-left: 1px solid #bcbcbc;
+}
+
+.relief-toggle-btn svg rect {
+    fill: currentColor;
+    opacity: 0.6;
+}
+
+.relief-toggle-btn.active {
+    background: #0696D7;
+    color: #ffffff;
+}
+
+.relief-toggle-btn.active svg rect {
+    opacity: 1;
+}
+
 /* =========================================================================
    5. ck_ constraint toggles (b-spline-gen)
    ========================================================================= */

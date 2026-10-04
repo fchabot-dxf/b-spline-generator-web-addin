@@ -39,6 +39,8 @@ import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { latticeOwnedElementsOnLayer, _ownedOnLayer, resolvePatternLayer, _findBoundaryElements } from '../editor/editor-lattice-pattern.js';
 import { primitiveFromContourD } from '../editor/editor-contour-cut.js';
+import { buildArtworkDecalPng } from '../core/stamp/decal-png.js';
+import { showToast } from '../core/toast.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
@@ -526,6 +528,36 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
             });
         }
     }
+    // H23 item 71: the optional "Fusion colour decal" -- a transparent PNG of the artwork's
+    // colour layers, applied by the add-in as ONE real decal on the Stamped top face.
+    // `decal: null` means NO INSTRUCTION -- the add-in leaves whatever's there alone -- used on
+    // append (same reasoning as `frame` above: append doesn't rebuild the Stamped body this would
+    // target) AND when a render failure happens while enabled (a transient PNG-build hiccup must
+    // never silently delete a previously-working decal). `decal.enabled: false` is the one
+    // EXPLICIT instruction to remove: only sent when the user actually turned the setting off.
+    // "Never fails a Send": every failure path here is logged + a toast, never thrown.
+    let decal = null;
+    if (!isAppend) {
+        if (P.decalEnabled) {
+            try {
+                const png = await buildArtworkDecalPng(editor, {
+                    dpi: Number(P.decalResolution),
+                    opacity: P.decalOpacity,
+                    layerIds: P.decalLayerIds,
+                });
+                if (png) {
+                    decal = { enabled: true, dpi: Number(P.decalResolution), opacity: P.decalOpacity, png };
+                } else {
+                    showToast('colour decal skipped: no colour-carrying artwork found', 'warn');
+                }
+            } catch (e) {
+                if (typeof fusLog === 'function') fusLog('[EXPORT] colour decal PNG failed: ' + (e && e.message));
+                showToast('colour decal skipped: ' + (e && e.message ? e.message : 'render failed'), 'warn');
+            }
+        } else {
+            decal = { enabled: false };
+        }
+    }
     const payload = JSON.stringify({
         params: { ...P },
         stepVariants,
@@ -540,6 +572,7 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
             enabled: options.includeSVG,
             layers: bakedLayers,
             dpi: 96,
+            decal,
         },
     });
     if (typeof fusLog === 'function') {

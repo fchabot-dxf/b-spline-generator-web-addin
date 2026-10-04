@@ -43,6 +43,7 @@ import * as moon       from './moon.js';
 import * as venus      from './venus.js';
 import * as mycelium   from './mycelium.js';
 import * as dunes      from './dunes.js';
+import * as photo      from './photo.js';
 
 // Order here = dropdown order.
 const _all = [
@@ -50,6 +51,7 @@ const _all = [
   chest, carved, faceted, ripples, sandstone, silk, eroded,
   magma, reef, glacier,
   mars, moon, venus, mycelium, dunes,
+  photo,
 ];
 
 export const NoiseModes    = Object.fromEntries(_all.map(m => [m.id, m.fn]));

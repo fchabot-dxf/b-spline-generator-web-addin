@@ -44,6 +44,56 @@ export const DEFAULT = {
     // Session-only — defaults live in each filter's `tweaks` schema and
     // are NOT seeded here. Empty object means "use schema defaults".
     filterTweaks: {},
+    // F34 item 1: the 'photo' filter's own source. photoImageDataUrl is the
+    // RAW (unedited) decoded source image, embedded as a PNG data: URL,
+    // downscaled at upload time (core/photo/codec.js's own PHOTO_MAX_DIM) so
+    // saved projects stay small. photoEdits is the declared, ORDERED list
+    // of {op, params} edit steps (crop/rotate90/flip/levels/
+    // brightnessContrast/blur/invert, core/photo/ops.js) applied to it in
+    // one pure function — "undo" is popping the last entry. Both are plain
+    // JSON, so they round-trip through saveLastSession/loadLastSession like
+    // any other P field; written DIRECTLY (not through updateP/applyParam),
+    // same convention as P.stampLayers/P.decalLayerIds/P.editorSvg — none of
+    // these is a single scalar a generic <input> binds to.
+    photoImageDataUrl: null,
+    photoEdits: [],
+    // F34 item 3: which built-in pattern (data/photo-patterns.json id) the
+    // current photo came from, if any -- null for a user's own upload. Drives
+    // "Save settings to this pattern" (main/photo-panel.js); declared on P
+    // (not a module-local var) so it survives a reload via the existing
+    // generic session save/load, same as photoImageDataUrl/photoEdits above.
+    photoPatternId: null,
+    // F35 item 1: the Brick tab's own common settings (core/bricks/library.js's
+    // BRICK_SETS is the declared source for defaults per set -- these are the
+    // user's CURRENT overrides, shared by all three tools (Brush/Wall/Frame)).
+    // grout/reliefIn start at Set 1's own declared values (library.js) so the
+    // panel shows real numbers on first use, not a second, independent guess.
+    brickSettings: {
+      setId: 1,
+      scale: 1,
+      grout: { widthIn: 0.06, depthIn: 0.05, profile: 'flush' },
+      reliefIn: 0.125,
+      invert: false,
+      suppression: 0,
+      clumping: 0.3,
+      seed: 1,
+      // F35 item 4: which core/bricks/library.js FRAME_PRESETS entry the
+      // Frame tool bands with -- a key, not the bands array itself, so it
+      // always tracks library.js's own current declaration.
+      frameBandPreset: 'single_soldier',
+      // F35 item 5 review (Fred, via advisor correction): "frame thickness" =
+      // the LENGTH of the bricks across a Frame band (a soldier band's own
+      // width IS the brick length) -- a per-frame brick-length OVERRIDE, not
+      // a band-width scaler. Starts at Set 1's own declared brickLengthIn
+      // (library.js), same "real number on first use" convention as
+      // grout/reliefIn above; resets to the newly-picked set's own
+      // brickLengthIn on a set switch (main/brick-panel.js's selectSet).
+      frameBrickLengthIn: 0.75,
+      // F35 item 7: the Wall pattern picker's own choice -- any core/bricks/library.js
+      // BRICK_PATTERNS key. A key, not the pattern definition itself, same "track the current
+      // declaration" convention as frameBandPreset above.
+      pattern: 'stretcher',
+    },
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.
     // At detailDensity = 1 it has no visible effect (no empty zones exist).
@@ -94,6 +144,22 @@ export const DEFAULT = {
     // colour wherever it reaches the board's outer edge; OFF reverts them
     // to the plain wood/heat-map look (the top surface is unaffected).
     colourEdges: true,
+    // H23 item 71: "Fusion colour decal" (VIEW panel) -- on Send, an optional transparent PNG
+    // of the artwork's colour layers (core/stamp/decal-png.js, item 68's own spike promoted to a
+    // real module) sent alongside the payload; the add-in applies it as ONE real Fusion decal on
+    // the Stamped top face, replacing any decal from a previous Send. Off by default (Fred).
+    decalEnabled: false,
+    // A <select> of declared choices (40/100/150), same "numeric-looking string" convention
+    // `spacing` already uses -- kept a string so updateP's stringParams path (not parseFloat)
+    // owns it; Number(P.decalResolution) wherever an actual numeric dpi is needed.
+    decalResolution: '150',
+    decalOpacity: 100, // 0..100 %
+    // { [editorLayerId]: boolean } -- a layer is INCLUDED unless explicitly false (missing/true
+    // both mean included, same "visible !== false" convention editor/layers.js already uses).
+    // Keyed by layer id (stable across reorder/delete), not position -- see editor/layers.js.
+    // Written directly (not through updateP/applyParam, like P.filterTweaks) by the per-layer
+    // checkbox list; never has its own single DOM element, so the generic auto-binder skips it.
+    decalLayerIds: {},
     // Sculpt state
     activeSculptLayer: null, // can be 'top', 'bot', or null
     sculptTopRadius: 2.0,
@@ -337,13 +403,13 @@ export function loadLastSession() {
 export function updateP(key, value) {
     if (typeof value === 'number' && isNaN(value)) return;
 
-    const stringParams = ['symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer'];
+    const stringParams = ['symmetry', 'thickenDir', 'thickenMode', 'spacing', 'exportOrientation', 'noiseType', 'seedType', 'stampProfile', 'sculptTopMode', 'sculptBotMode', 'activeSculptLayer', 'decalResolution'];
     const boolParams = [
         'showMesh', 'thickenEnabled', 'showLeaders', 'includeSurface',
         'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
         'detailDensityRespectSymmetry', 'smoothRespectSymmetry',
         'isolateSkeleton',
-        'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges'
+        'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled'
     ];
 
     if (key === 'widthIn' || key === 'heightIn') {

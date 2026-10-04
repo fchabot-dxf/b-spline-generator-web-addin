@@ -1,0 +1,106 @@
+/**
+ * editor/editor-brick-height-mask.js — F35 item 5: the "brick-specific mask
+ * rasterizer" editor-brick-tool.js's own header names as a real follow-up
+ * ("the engine's own per-brick heightOffset jitter... are NOT yet wired in --
+ * that needs a brick-specific mask rasterizer (sampleHeight + buildSpatialIndex
+ * per grid point) instead of the generic SVG rasterizer"). Builds a mask in
+ * the SAME {body,fillet,isStamped,metrics} shape core/stamp.js's own
+ * rasterizeSvg returns, so main/stamp-mask-manager.js only needs a one-line
+ * branch and core/engine/apply-stamp-layers.js's existing compositor needs
+ * ZERO changes.
+ *
+ * Reads the Bricks layer's own CURRENT drawn polygons straight off the DOM
+ * (the same authoritative source clearGenerated/regenerateOwnedBrickElements
+ * already read/write), grouped by (set,seed,reliefIn) -- Wall/Frame's fire-
+ * and-forget regime and Brush's own independently-regenerating elements can
+ * each carry a DIFFERENT set/seed/relief snapshot (F35 item 3's own per-
+ * element settings), so the DOM (every brick tagged at draw time -- see
+ * editor-brick-tool.js's own drawBrick) is the only place that's always
+ * current regardless of which tool drew what.
+ */
+import { buildSpatialIndex, sampleHeight, brickSetById } from '../core/bricks/index.js';
+import { preloadSetDetail, sampleDetailAtFor } from './editor-brick-surface.js';
+import { BRICK_GEN_ATTR } from './editor-brick-tool.js';
+
+function parsePoints(pointsAttr) {
+  return (pointsAttr || '').trim().split(/\s+/).filter(Boolean).map((pair) => {
+    const [x, y] = pair.split(',').map(Number);
+    return { x, y };
+  });
+}
+
+/** Groups the Bricks layer's own live polygons by `${setId}:${seed}:${relief}`,
+ *  reconstructing just enough of core/bricks/'s own brick shape
+ *  ({id, polygon, sampleId, flip, heightOffset}) for buildSpatialIndex/
+ *  sampleHeight to consume -- see this file's own header for why the DOM,
+ *  not a parallel cache, is the source of truth here. */
+function collectLiveBrickGroups(editor, layer) {
+  const nodes = editor._sketchLayer.node.querySelectorAll(
+    `[data-layer="${layer.id}"][${BRICK_GEN_ATTR}="1"]`,
+  );
+  const groups = new Map();
+  nodes.forEach((n) => {
+    const setId = Number(n.getAttribute('data-brick-set'));
+    if (!Number.isFinite(setId)) return;
+    const seed = Number(n.getAttribute('data-brick-seed')) || 1;
+    const relief = Number(n.getAttribute('data-brick-relief')) || null;
+    const key = `${setId}:${seed}:${relief}`;
+    if (!groups.has(key)) groups.set(key, { setId, seed, relief, bricks: [] });
+    groups.get(key).bricks.push({
+      id: n.getAttribute('data-brick-id') || `${key}-${groups.get(key).bricks.length}`,
+      polygon: parsePoints(n.getAttribute('points')),
+      sampleId: n.getAttribute('data-brick-sample') || null,
+      flip: n.getAttribute('data-brick-flip') === '1',
+      heightOffset: Number(n.getAttribute('data-brick-height-offset')) || 0,
+    });
+  });
+  return [...groups.values()];
+}
+
+/** Builds a {body,fillet,isStamped,metrics} mask -- body[k] here is
+ *  sampleHeight's own absolute-inches result, NORMALISED by that group's own
+ *  reliefIn so it reconstructs correctly through apply-stamp-layers.js's
+ *  existing `body*layerDepth` formula (layer.depth stays plain inches,
+ *  unchanged semantics -- see editor-brick-tool.js's applyBrickLayerTooling,
+ *  which this file does NOT touch). `fillet` stays all-zero (bricks have no
+ *  edge-fillet concept); `isStamped` follows body>0, matching every other
+ *  rasterizer's own convention. */
+export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, heightIn) {
+  const body = new Float32Array(nx * nz);
+  const fillet = new Float32Array(nx * nz);
+  const isStamped = new Uint8Array(nx * nz);
+  const groups = collectLiveBrickGroups(editor, layer);
+  if (!groups.length) return { body, fillet, isStamped, metrics: null };
+
+  await Promise.all(groups.map((g) => preloadSetDetail(g.setId)));
+
+  const built = groups.map((g) => {
+    const librarySet = brickSetById(g.setId) || brickSetById(1);
+    const set = g.relief ? { ...librarySet, reliefIn: g.relief } : librarySet;
+    const cellSizeIn = Math.max(set.brickLengthIn || 1, set.brickHeightIn || 1) * 2;
+    return {
+      set,
+      index: buildSpatialIndex(g.bricks, cellSizeIn),
+      result: { bricks: g.bricks, frameBricks: [], seed: g.seed },
+      sampleDetailAt: sampleDetailAtFor(g.setId),
+    };
+  });
+
+  const iSpan = Math.max(1, nx - 1), jSpan = Math.max(1, nz - 1);
+  for (let j = 0; j < nz; j++) {
+    const y = heightIn * (1 - j / jSpan);
+    for (let i = 0; i < nx; i++) {
+      const x = (i / iSpan) * widthIn;
+      const k = j * nx + i;
+      for (const g of built) {
+        const h = sampleHeight(g.result, g.index, x, y, g.set, 0, g.sampleDetailAt);
+        if (h > 0) {
+          body[k] = h / (g.set.reliefIn || 1);
+          isStamped[k] = 1;
+          break;
+        }
+      }
+    }
+  }
+  return { body, fillet, isStamped, metrics: null };
+}

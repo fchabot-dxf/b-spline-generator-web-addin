@@ -66,7 +66,7 @@
     "frame_height_offset": "-1 in",
     "frame_thickness": "template default (0.75 in)",
     "heightIn": 6,
-    "recorded": "2026-10-01",
+    "recorded": "2026-10-03",
     "recorder": "tools/repro/record_frame_parity.py",
     "template": "template_13",
     "timelineHealthy": true,

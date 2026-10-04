@@ -7,6 +7,8 @@ import { isCarved } from '../editor/layers.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameWindowGeometry } from '../editor/contour-from-frame.js';
 import { rectContains } from '../core/inset-window.js';
+import { isBricksLayer } from '../editor/editor-brick-tool.js';
+import { rasterizeBrickHeightMask } from '../editor/editor-brick-height-mask.js';
 
 // Monotonic counter incremented on every refresh. Each in-flight
 // rasterize captures the value at start; if it doesn't match at finish,
@@ -143,20 +145,28 @@ export async function updateStampMasks(nx, nz) {
       mirrorX: (eLayer.mirrorX !== undefined) ? !!eLayer.mirrorX : !!lLayer.mirrorX,
       mirrorY: (eLayer.mirrorY !== undefined) ? !!eLayer.mirrorY : !!lLayer.mirrorY,
     };
-    const transformedSvg = applyLayerTransform(svg, layerTransform, P.widthIn, P.heightIn);
-    const result = await rasterizeSvg(
-      transformedSvg,
-      nx,
-      nz,
-      blurIn,
-      P.widthIn,
-      P.heightIn,
-      stampProfile,
-      stampDepth,
-      stampVBitAngle,
-      edgeFilletRadius,
-      filletPower
-    );
+    // F35 item 5: the Bricks layer carries real per-brick height variation
+    // (shoulder/crown/chip + photo-surface detail, core/bricks/'s own
+    // sampleHeight) the generic SVG-polygon rasterizer below has no way to
+    // express (it only knows "inside this shape at a uniform depth") --
+    // routed to its own rasterizer instead, which reads the SAME layer
+    // content but produces a per-grid-point-varying mask. See
+    // editor-brick-height-mask.js's own header.
+    const result = isBricksLayer(eLayer)
+      ? await rasterizeBrickHeightMask(editor, eLayer, nx, nz, P.widthIn, P.heightIn)
+      : await rasterizeSvg(
+          applyLayerTransform(svg, layerTransform, P.widthIn, P.heightIn),
+          nx,
+          nz,
+          blurIn,
+          P.widthIn,
+          P.heightIn,
+          stampProfile,
+          stampDepth,
+          stampVBitAngle,
+          edgeFilletRadius,
+          filletPower
+        );
     // Drop the result if a newer refresh has started. Comparing to the
     // global generation (rather than just `myGeneration === current`)
     // means newer raster passes can clobber older ones in any order.

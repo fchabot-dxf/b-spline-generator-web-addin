@@ -56,15 +56,21 @@ _SIZES_PORTRAIT = ("7x9", "6x9", "12x6")
 _KNOWN_BROKEN_BUILD = {"template_9_12x6.json", "template_10_12x6.json"}
 
 
-def test_all_six_goldens_exist():
-    names = {os.path.basename(f) for f in _FILES}
-    # T3 TAPERED HOURGLASS: its goldens are recorded in a live Fusion session (sketches/template_3/LIVE_CHECK.md);
-    # until then it has none and the app uses its provisional shape model. Once recorded: all three sizes.
-    t3 = {n for n in names if n.startswith("template_3_")}
-    assert t3 in (set(), {f"template_3_{s}.json" for s in _SIZES}), sorted(t3)
+# Every template's own DECLARED allowed golden-file states (H23 item 13/F30 item 3/F33 item 1's
+# own comments, preserved verbatim below each one): a template may have NO recording yet (an empty
+# set -- the app then uses its provisional shape model) or one of its own historically-measured
+# states. Declared ONCE here, in a dict a new template just adds a line to, rather than as N
+# hand-named local variables each subtracted from `names` by hand at the bottom (F33 item 1,
+# 2026-10-03: that hand-rolled subtraction is exactly what went stale the moment T14-T17 got their
+# own first goldens -- the assert below derives its own expected remainder from this dict instead,
+# so it cannot go stale the same way again).
+_ALLOWED_GOLDEN_STATES = {
+    # T3 TAPERED HOURGLASS: its goldens are recorded in a live Fusion session
+    # (sketches/template_3/LIVE_CHECK.md); until then it has none and the app uses its provisional
+    # shape model. Once recorded: all three sizes.
+    "template_3": [set(), {f"template_3_{s}.json" for s in _SIZES}],
     # T4 OFFSET HOURGLASS: the same (sketches/template_4/LIVE_CHECK.md).
-    t4 = {n for n in names if n.startswith("template_4_")}
-    assert t4 in (set(), {f"template_4_{s}.json" for s in _SIZES}), sorted(t4)
+    "template_4": [set(), {f"template_4_{s}.json" for s in _SIZES}],
     # T5 HOURGLASS DIPPED TOP: the same (sketches/template_5/LIVE_CHECK.md).
     # H23 item 3 (live Fusion check): 7x9 only, DELIBERATELY partial. 12x6 and
     # 5.51x1.97 both flip to an asymmetric/degenerate shape live in Fusion
@@ -75,28 +81,47 @@ def test_all_six_goldens_exist():
     # require fit.excluded, which is reserved for geometrically impossible
     # sizes, not a build bug. Left unrecorded on purpose until the real fix
     # lands; see LIVE-RESULTS-ranchy.md.
-    t5 = {n for n in names if n.startswith("template_5_")}
-    assert t5 in (set(), {"template_5_7x9.json"}, {f"template_5_{s}.json" for s in _SIZES}), sorted(t5)
+    "template_5": [set(), {"template_5_7x9.json"}, {f"template_5_{s}.json" for s in _SIZES}],
     # T6 TAB TOP: the same (sketches/template_6/LIVE_CHECK.md).
-    t6 = {n for n in names if n.startswith("template_6_")}
-    assert t6 in (set(), {f"template_6_{s}.json" for s in _SIZES}), sorted(t6)
+    "template_6": [set(), {f"template_6_{s}.json" for s in _SIZES}],
     # T8 DIPPED TOP + LEFT-ONLY WAVE: the same (sketches/template_8/LIVE_CHECK.md) -- no goldens recorded yet.
-    t8 = {n for n in names if n.startswith("template_8_")}
-    assert t8 in (set(), {f"template_8_{s}.json" for s in _SIZES}), sorted(t8)
+    "template_8": [set(), {f"template_8_{s}.json" for s in _SIZES}],
     # T9 I SHAPE (sketches/template_9/, H23 item 13 live check): 7x9/6x9/12x6.
-    t9 = {n for n in names if n.startswith("template_9_")}
-    assert t9 in (set(), {f"template_9_{s}.json" for s in _SIZES_PORTRAIT}), sorted(t9)
+    "template_9": [set(), {f"template_9_{s}.json" for s in _SIZES_PORTRAIT}],
     # T10 ARCHED HOURGLASS (sketches/template_10/, H23 item 13 live check): 7x9/6x9/12x6, same
     # non-standard size set as T9 (Fred's own "portrait only right now").
-    t10 = {n for n in names if n.startswith("template_10_")}
-    assert t10 in (set(), {f"template_10_{s}.json" for s in _SIZES_PORTRAIT}), sorted(t10)
+    "template_10": [set(), {f"template_10_{s}.json" for s in _SIZES_PORTRAIT}],
     # T12 HOURGLASS + TAPER / T13 NARROW NECK + TAPER (F30 item 3, 2026-10-01): recorded this session, the same
     # 3-size set as T1-T4/T6/T8 (not T9/T10's own portrait-only set).
-    t12 = {n for n in names if n.startswith("template_12_")}
-    assert t12 in (set(), {f"template_12_{s}.json" for s in _SIZES}), sorted(t12)
-    t13 = {n for n in names if n.startswith("template_13_")}
-    assert t13 in (set(), {f"template_13_{s}.json" for s in _SIZES}), sorted(t13)
-    assert names - t3 - t4 - t5 - t6 - t8 - t9 - t10 - t12 - t13 == {f"template_{t}_{s}.json" for t in (1, 2) for s in _SIZES}
+    "template_12": [set(), {f"template_12_{s}.json" for s in _SIZES}],
+    "template_13": [set(), {f"template_13_{s}.json" for s in _SIZES}],
+    # F33 item 1 (2026-10-03): T14/T15/T16/T17's own new REFLEX ARC fix only re-verified cleanly at
+    # 7x9 live (WORK-LOG-fb-app.md's own addendum) -- 12x6/5.51x1.97 hit a separate, pre-existing
+    # "miter did not split profile" defect there, logged but out of scope (Fred's app is portrait-
+    # only; these two are this project's own stress sizes, not sizes the app ever sends). Each
+    # template's own allowed states below are therefore a partial progression toward the eventual
+    # full 3-size set, not yet the full set itself.
+    "template_14": [set(), {"template_14_7x9.json"}, {f"template_14_{s}.json" for s in _SIZES}],
+    "template_15": [set(), {"template_15_7x9.json"},
+                     {"template_15_7x9.json", "template_15_12x6.json"},  # also clean live at 12x6
+                     {f"template_15_{s}.json" for s in _SIZES}],
+    "template_16": [set(), {"template_16_7x9.json"}, {f"template_16_{s}.json" for s in _SIZES}],
+    "template_17": [set(), {"template_17_7x9.json"}, {f"template_17_{s}.json" for s in _SIZES}],
+}
+# T1/T2 are the only templates held to a FIXED, always-fully-recorded set (no "not yet recorded"
+# or partial state ever allowed for them) -- the baseline every other template's own partial/empty
+# states are expressed relative to.
+_FIXED_FULL_TEMPLATES = (1, 2)
+
+
+def test_all_six_goldens_exist():
+    names = {os.path.basename(f) for f in _FILES}
+    remaining = set(names)
+    for tid, allowed_states in _ALLOWED_GOLDEN_STATES.items():
+        own = {n for n in names if n.startswith(f"{tid}_")}
+        assert own in allowed_states, f"{tid}: {sorted(own)} is not one of its own declared allowed states"
+        remaining -= own
+    assert remaining == {f"template_{t}_{s}.json" for t in _FIXED_FULL_TEMPLATES for s in _SIZES}
 
 
 @pytest.mark.parametrize("path", _FILES, ids=os.path.basename)

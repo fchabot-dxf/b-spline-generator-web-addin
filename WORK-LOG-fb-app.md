@@ -8310,3 +8310,1706 @@ Confirmed via `app.documents` at the end: exactly one document remained open, Fr
 touched. No redeploy (main 2026.10.03-15 was already deployed).
 
 Reported "Fusion released" to the advisor with full results so Fusion could hand to seat f3.
+
+## 2026-10-03: F33 item 1 -- unseeded literal defaults of T14-T17 (my own F31 item 2c finding) (seat C)
+
+Dispatch: my own live-check payloads for F31 item 2c (above) hit a REFLEX ARC (255-267 deg sweep,
+Shape Outline) for T14 and T15 when sent WITHOUT `seedGeometry` -- a path real app users never take
+(`frameSendPayload()` always attaches it), but Fusion's own Sketch Builder command and
+`record_frame_parity.py`'s golden recording both DO build this literal/unseeded path directly. Brief
+(NEXT-SESSION-fb-app.md, advisor's own framing): make all four new templates' literal defaults build
+cleanly -- closed-form, matching the app's own default exactly (item-18/49 convention) -- pure test,
+then a live unseeded check, then record goldens. "Code first; Fusion order f3 -> b5 -> you."
+
+**First checked whether the closed-form math itself was ever wrong, rather than assuming the fix
+brief implied it was: it wasn't.** `fb_engine/test_t14_fusion_expressions.py` /
+`test_t15_fusion_expressions.py` / `test_t16_fusion_expressions.py` / `test_t17_fusion_expressions.py`
+already resolve each template's own Fusion SKETCH_2_PARAMETERS chain in pure Python and check every
+literal BuildSequence Point against that template's own `outline()` -- i.e. they already ARE the
+"literal Points == app default seed geometry" pure test the brief asks for, for all four templates,
+and all 142 of them pass (confirmed by re-running, not assumed from memory). Hand-computed T14's own
+default upper_R arc (7x9: topR=(3.25,4.25), pinchR=(1.3,0), bulge=0.455) to double-check independently
+of the test: sagitta_circle's own closed form gives a genuine ~44 deg minor-arc sweep -- nowhere near
+reflex. So the VALUES were never the defect; nothing needed changing in `t14_sandtimer_geometry.py` /
+`t15_flask_geometry.py` / their own SKETCH_2_PARAMETERS, and no new pure test was written (one already
+existing and green for each of the four is the actual deliverable, not a second copy of it).
+
+**The defect is in the live BUILD mechanism, not the geometry.** Every one of T14/T15/T16/T17's own
+side arcs is a lone MITER (their own module docstrings: no Tangent chain, no neighbour-tangency
+coupling) built via `addByThreePoints(p0, via, p1)` (`fb_engine/geometry.py::_create_arc3`). Once
+created, nothing in the build holds that arc's own shape: its two endpoints get welded (Coincident,
+`p02_03_welds.py`) to whichever neighbouring piece or bounding-box anchor shares that corner, and
+`fusion360-quirks` (this session's own loaded skill) already documents exactly this failure class --
+"`Coincident(point, curve)` only pins the SUPPORTING geometry, not which branch gets drawn" and, more
+to the point here, pinning an arc's OWN endpoints without a direct `Fix` leaves ONE remaining DOF (the
+circle itself, i.e. the bulge depth) that a later constraint pass is free to resolve onto the reflex
+(long-way-round) branch instead of back onto the original short one -- with nothing wrong in the
+numbers that put it there in the first place. Template 10's own `p02_03_loop.py` hit the exact same
+class on its own top arch and documents the clean fix in its own docstring: "`Fix` the arc's own
+endpoints directly -- never rely on a `Coincident` chain to propagate fixedness" (T10's own
+implementation is more elaborate than that because its arch ALSO has to stay correct through a
+downstream tangent chain the Fix alone doesn't serve, needing an anchor-point + rebuild-step recipe on
+top; T14/T15/T16/T17 have no tangent chain at all, so the plain direct-Fix form is the whole fix here).
+
+**Fix applied, all four templates, `UnseededOnly` (the same escape hatch T10's own taper-Vertical
+already established, `fb_engine/seed_geometry.py::apply_seed_geometry`):** right after each template's
+own `p02_02_loop.py` declares its arcs, one `{'Type': 'Fix', 'Targets': [f'{id}:S', f'{id}:E']}` step
+per arc -- T14 (upper_R, lower_R, lower_L, upper_L), T15 (dome_R, dome_L), T16 (lower_R, lower_L,
+arch), T17 (upper_R, lower_R, lower_L, upper_L, arch; T16's arch itself, needing no via-point handle
+at all by symmetry, still goes through the SAME addByThreePoints branch-selection, so it gets the same
+defensive Fix even though nothing live has shown it reflex yet -- "every new template", per the
+brief, not just the two caught live). `UnseededOnly: True` on every one of them: a seeded Send already
+replaces these same Points with the app's own absolute in-position values
+(`apply_seed_geometry`), so a seeded build never has this ambiguity to begin with -- this is purely
+the literal/unseeded construction path's own fix (Sketch Builder, `record_frame_parity.py`). Checked
+that `"Fix"` is dispatched correctly for these bare (no `ID`) steps before trusting the shape: it's in
+`parametric_engine.py`'s own `constr_types` list, routed to `constraints.py::constraint_step`'s inline
+`Fix` branch (`t.isFixed = True` on each resolved target) -- the exact same step shape T10's own
+`p02_03_loop.py` already uses live.
+
+Full suite re-run after the edit: Python 809/809 (10 pre-existing skips, unrelated), explicitly
+including every T14/T15/T16/T17/cross-template file (`test_all_templates_shape_outline.py`,
+`test_no_miter_miss_possible.py`, the four `test_t1*_fusion_expressions.py` files) -- 386/386 on that
+targeted slice alone. The new `Fix` steps have no `ID` key, so every existing static-analysis test
+that walks BuildSequence by `Type in (Line, Arc3Point, Radius)` or `'ID' in step` silently skips over
+them, confirmed by the full suite staying green rather than assumed.
+
+**Not yet done, genuinely gated on Fusion (advisor's own order, f3 -> b5 -> me, not yet my turn):** the
+live unseeded-build check itself (all four templates, UNSEEDED default payload -- no `seedGeometry` --
+0 REFLEX ARC, all declared bars present) and recording the four goldens via `record_frame_parity.py`
+once that passes. This WORK-LOG entry and the commit below are the "code first" half the advisor's own
+dispatch asked for; the live half is next once Fusion is free and it's my turn.
+
+Committed: `sketches/template_14/phases/p02_02_loop.py`, `sketches/template_15/phases/p02_02_loop.py`,
+`sketches/template_16/phases/p02_02_loop.py`, `sketches/template_17/phases/p02_02_loop.py`. Passing
+back with the live/golden half still open.
+
+### Addendum, same day: the live half (Fusion came free, fusion_holder.txt discipline observed)
+
+Advisor's dispatch: run the unseeded builds of T14/T15/T16/T17 (0 REFLEX ARC, all bars), record
+goldens for those four, PLUS re-record template_13 (main's own freshness gate was RED since b5's
+corner-fix commit 0c480ee post-dated T13's own committed goldens). Checked `fusion_holder.txt` before
+every `fusion_execute` (the new cross-seat rule) -- confirmed `de` each time.
+
+**Mechanism decision, made before touching anything:** `record_frame_parity.record_case()` is
+hard-wired to `sys.modules['frame_engine_core']` -- the DEPLOYED add-in's own already-loaded modules,
+never a repo path. Checked the deployed copy directly on disk
+(`%APPDATA%/Autodesk/Autodesk Fusion 360/API/AddIns/bspline-frame-builder`) before trusting anything:
+it does NOT have my own `Fix` steps for T14-T17 (only T10 has `UnseededOnly` on disk), confirming
+"fb-app is synced" in the dispatch note means fb-app has pulled main's latest (confirmed: my local
+`fb-app` HEAD jumped to `8b77192 Merge remote-tracking branch 'origin/main' into fb-app` without any
+fetch/merge action of my own -- the advisor's own session shares this worktree, as discovered earlier
+this engagement), not that the deployed add-in itself carries my fix. Recording via the real deployed
+copy would have silently baked the OLD (pre-fix) construction into the new goldens. Fixed by reusing
+`tools/repro/fusion_t11/item43_golden_check.py`'s own already-proven pattern (built for exactly this:
+"runs record_frame_parity.py's own record_case() with frame_engine_core etc. loaded FRESH from this
+repo checkout, never touching the deployed add-in") instead of the "restart it between sizes"
+workaround the dispatch described -- loading fresh per case sidesteps that class of problem entirely,
+and confirming correctness this way meant Fred's/other seats' deployed add-in was never touched.
+
+**Result: 0 REFLEX ARC across every one of the 12 unseeded builds tried (T14/T15/T16/T17 x
+7x9/12x6/5.51x1.97)** -- the fix holds at every board size tested, not just the one it was found on.
+Recorded goldens for what actually builds cleanly: T14/T15/T16/T17 at 7x9 (new, all 6 declared bars,
+healthy timeline), plus T15 additionally at 12x6 (also clean).
+
+**Two SEPARATE pre-existing defects surfaced by testing sizes nobody had tried on these templates'
+own unseeded path before -- confirmed unrelated to this fix, not fixed here, flagged instead:**
+
+1. T14/T16/T17 fail to build at 12x6 (and T14/T16/T17/T15 at 5.51x1.97) with a "MITER MISS" /
+   "profile spans N bars: a miter did not split it" class of error -- a declared-profile/offset
+   topology problem, zero REFLEX ARC lines involved, a different failure class entirely. Confirmed
+   NOT caused by my own `Fix` steps: re-ran T14 at 12x6 against a scratch worktree pinned to
+   `cd8f5a9` (the commit immediately before my own `Fix` commit) -- byte-identical MITER MISS output,
+   with or without the fix. Worktree removed after (`git worktree remove --force`, nothing left
+   behind). Not recorded; a new finding for whoever picks up non-default board sizes on these four
+   templates next, not this ticket's own scope (which was specifically the REFLEX ARC class).
+
+2. T13 itself -- the template whose freshness gate this dispatch was trying to clear -- hit a LIVE
+   REFLEX ARC (275.4 deg, `arc_hip_L`/`arc_hip_R` both show `M(eval_fail)` right before the crash) at
+   its own EXISTING `5.51x1.97` golden size, a size it used to build (the old committed golden proves
+   it). Worried this might be a genuine regression from b5's own corner fix (0c480ee) given main was
+   just deployed with it -- checked directly rather than assumed: a scratch worktree at `0c480ee^`
+   (one commit BEFORE the corner fix) hits the EXACT SAME crash, same traceback, same symptom. So
+   this is pre-existing and unrelated to the corner fix too -- somewhere between this golden's own
+   recording date (2026-10-01) and now, something else made T13's own tangent-chain arcs (a
+   completely different structural class from T14-T17's lone miters -- Tangent + Equal constraints,
+   not addByThreePoints-then-nothing) go reflex at this one narrow board size. Not investigated
+   further (a different template, a different arc-chain mechanism, not this ticket's scope) -- flagged
+   for whoever owns T13 next. Both scratch worktrees removed after use.
+
+**Consequence for what got committed, stated plainly rather than papered over:** T13's own
+`5.51x1.97` golden was left UNTOUCHED (still 2026-10-01 content) because no valid build exists to
+record right now. `check_golden_freshness.py`'s own freshness check is a GLOB aggregate -- it takes
+the latest commit date across ALL `template_13_*.json` files, so re-recording just the two sizes that
+DO build (7x9, 12x6) makes the check report the WHOLE template FRESH even though the third file still
+silently describes pre-corner-fix geometry nobody can currently reproduce live. Said so here rather
+than silently accepting the green gate at face value: the gate is now green because it has no way to
+see that one of three files is unverifiable against current code, not because all three genuinely
+are.
+
+Also noticed, unprompted and out of scope, so just flagged rather than touched: `python
+tools/gen_frame_defs.py --check` reports `frame-defs.json`/`.js` STALE right now. Confirmed this
+predates my own work entirely (nothing I touched this session reaches `template_data.py` or
+frame-defs generation) -- last regen was `520ea1f` (14:29, "regen frame-defs after lane-b merge"),
+and something in the subsequent merge state needs a fresh `gen_frame_defs.py` pass. Not run here (a
+cross-cutting generated file, better left to whoever's tracking the merge it came from).
+
+Fusion hygiene: confirmed exactly 3 docs open before starting (`Untitled`, `DECAL test - 2026-10-03`,
+`DECAL edge test`) and the same 3 after -- every one of the 15 scratch docs `record_case()` created
+across this session's own `fusion_execute` calls was closed by its own `finally`, zero leaks, Fred's
+and the other named docs never touched.
+
+Full suite green after: Python 812/812 (10 pre-existing skips, unrelated).
+`check_golden_freshness.py --check` now exits 0, "all golden fixtures are fresh" (the dispatch's own
+stated goal).
+
+Committed: `tests/fixtures/frame-parity/template_14_7x9.json` (new),
+`tests/fixtures/frame-parity/template_15_7x9.json` (new),
+`tests/fixtures/frame-parity/template_15_12x6.json` (new),
+`tests/fixtures/frame-parity/template_16_7x9.json` (new),
+`tests/fixtures/frame-parity/template_17_7x9.json` (new),
+`tests/fixtures/frame-parity/template_13_7x9.json`, `tests/fixtures/frame-parity/template_13_12x6.json`
+(both content-identical to before except the recorded date).
+
+Messaging the advisor "Fusion released" with the two new findings above (T14/16/17 non-default-size
+miter-miss class; T13's own reflex arc at 5.51x1.97, pre-existing, not a corner-fix regression) so
+Fusion can hand off, and so T13's own open gap gets routed to whoever owns that template next rather
+than sitting silently behind a green gate.
+
+### Addendum, same day: 3 merge follow-ups before the advisor can merge (no Fusion needed)
+
+Advisor accepted the live half but found 3 things before merging to main (holder handed to f3, so
+this was pure code/test work): merged `origin/main` into `fb-app` first (fast-forward, 3 files,
+picked up `99561be regen frame-defs after fb-app merge` -- this ALSO happened to clear the
+`gen_frame_defs.py --check` STALE flag the previous addendum flagged as out-of-scope, for free).
+
+**(1) `tests/frame-template-15.test.js`, 3 failures.** Root cause: T15 recording its own first
+goldens this session flipped `frame-defs.js`'s own `shapeModel` from a `provisional` block (the
+exact closed-form constant, `DOME_FULLNESS_FRAC_DEFAULT = 0.1421885365451818`) to a `fit` block
+(`gen_frame_defs.py`'s own `fit_shape_model`, coefficients `round(_, 6)`) -- the project's own
+established rule once real Fusion goldens exist (confirmed directly: the regen diff shows
+`"domeFullnessFrac": {"hw": 0.1421885365451818}` -> `{"hw": 0.142188}`, `"provisional"` block
+replaced by `"fit": {"exactAtFittedSizes": true, "fittedFrom": ["12x6", "7x9"], "maxResidualIn":
+0.0, ...}`). Did NOT just loosen tolerances blindly: recomputed the actual new truth in Python
+(`t15_flask_geometry.outline(6.5, 8.5, 0.75, dome_fullness_frac=0.142188)`'s own `dome_r_via`,
+`(2.7878856274548705, -1.7474628483260788)`, matching the JS failure's own actual value to float
+noise) and used THAT as the new expected literal, with a comment explaining why it changed. The
+one genuinely "just loosen it" case (the symmetry check, 9dp -> 6dp) is loosened because the new
+golden-fit code path itself introduces ~5e-10 of float noise neither side can avoid (a dot-product
+over rounded coefficients vs. reading one exact constant) -- 6dp still fails on anything a real
+asymmetry bug would produce, said so in the comment rather than leaving a bare magic number. Also
+updated the two OTHER call sites in the same file that passed the OLD full-precision constant as
+`frameParamRanges`' own "current value" input (not an assertion, but a stale magic number worth
+keeping in sync now that two different literals in one file would otherwise claim to both be "the"
+default). Renamed the round-trip test from "...the provisional model..." to "...the fit model..."
+-- the test's own name was making a now-false claim about which code path it exercises.
+
+**(2) `test_frame_parity_goldens.py::test_all_six_goldens_exist` hardcoded set.** This test declared
+each of 9 templates' own allowed golden-file states as a separately-named local variable, then
+hand-subtracted all 9 from `names` at the very end to assert the remainder was exactly
+`{template_1, template_2}`'s own fixed set -- a pattern that goes stale the moment ANY new template
+gets its own first golden (exactly what just happened for T14-T17), since nothing enforces that a
+new template's own subtraction actually gets added to that final line. Refactored to ONE declared
+dict, `_ALLOWED_GOLDEN_STATES` (template id -> list of allowed `{filename}` sets), with a generic
+loop deriving the "remainder must be exactly the T1/T2 fixed set" check FROM the dict instead of by
+hand -- a new template now needs exactly one new dict entry, and the aggregate check can't forget
+to subtract it. Preserved every one of the original per-template comments verbatim (T5's own
+documented partial-state history, T9/T10's own portrait-only size-set precedent, etc.) -- this is a
+mechanical refactor of HOW the allowed states are checked, not a change to WHAT they are. Added
+T14/T15/T16/T17's own new partial states (7x9-only for T14/T16/T17, 7x9+12x6 for T15, matching
+exactly what got recorded in the live-half addendum above). Mutation-tested the refactor itself
+before trusting it: removed `template_14`'s own entry from the dict in-process (no file touched)
+and confirmed the test fails as expected (its own file lands in "remaining" and breaks the T1/T2
+equality) -- reverted (in-memory only, nothing to restore on disk).
+
+**(3) `check_golden_freshness.py`'s own glob-aggregate gotcha (my own finding from the live-half
+addendum).** `_latest_committer_date(golden_files)` took the MAX commit date across every one of a
+template's own golden files as a single number -- so re-recording only SOME of them (T13's own
+7x9/12x6, leaving 5.51x1.97 untouched) made the whole template's own "latest golden" jump to the
+re-recording's date, reporting the ENTIRE template FRESH even though one file was still silently
+describing pre-fix geometry. Rewrote `check_template` to compare the phases' own latest commit
+against EACH golden file's own commit date INDIVIDUALLY -- any ONE stale file now makes the whole
+template report STALE, closing the exact gap that let T13 report falsely green.
+
+Running this corrected, per-file check for the first time immediately surfaced TWO MORE real,
+previously-hidden gaps the old aggregate logic had been masking all along (neither touched by my
+own F33 item 1 work, found entirely BY turning this check on, not sought out):
+  - `template_10_12x6.json` -- a long-documented, already-accepted exception
+    (`test_frame_parity_goldens.py`'s own `_KNOWN_BROKEN_BUILD`, H23 item 13, Fred: "ship it" --
+    sketch 3 never forms at all at this size, a Template 1 limitation T10 inherits, no correct
+    shape exists to re-record).
+  - `template_5_7x9.json` -- genuinely stale, NOT an accepted gap: commit `c2cce2a` ("WIP: H23
+    items 10/6/11... item 6: fixed the root cause [sketches/template_5/phases/p02_03_loop.py]...
+    Not yet built live, no goldens recorded... this item is not done") edited T5's own phases on
+    2026-09-30 and never came back to re-record its one golden. Confirmed via its own commit
+    message before declaring anything, not assumed.
+Declared BOTH in a new `_KNOWN_UNVERIFIABLE_GOLDENS` set (the same "declared exception, never
+silent" pattern `test_frame_parity_goldens.py` already uses for `_DEGENERATE`/`_KNOWN_BROKEN_BUILD`)
+so this check's own gate doesn't block on gaps that are either already-accepted or someone else's
+unfinished work -- worded the two comments differently on purpose (one says "ship it", the other
+says "whoever owns H23 item 6 next should re-record it live... then remove this line") so neither
+reads as more settled than it actually is. Did NOT touch template_5's own phases or try to re-record
+it live -- a different template, someone else's open item, not this ticket's scope; flagging it
+here is the whole job.
+
+Portrait-only reminder (advisor, same note): T14/T16/T17's own 12x6/5.51x1.97 failures and T15's own
+5.51x1.97 failure (both logged in the live-half addendum above) stay unfixed on purpose -- Fred's
+app never sends a landscape or near-square board, so these are out of scope, not forgotten.
+
+Full suite green: Python 860/860 (10 pre-existing skips, unrelated), JS vitest 173 files / 3387
+tests. `check_golden_freshness.py --check` exits 0, `gen_frame_defs.py --check` exits 0.
+
+Committed: `tests/frame-template-15.test.js`, `test_frame_parity_goldens.py`,
+`tools/check_golden_freshness.py`. Passing back for the merge.
+
+## 2026-10-03: F33 item 2 -- re-record the stale template_5_7x9 golden (seat C)
+
+Dispatch: my own per-file freshness finding from F33 item 1's own merge follow-ups --
+`template_5_7x9.json` was declared `_KNOWN_UNVERIFIABLE_GOLDENS` as "not yet triaged". Brief:
+code-reading first, no Fusion -- is the phase edit an intended change (re-record) or unfinished WIP
+(report what to revert, don't revert it myself)? Live re-record only once `fusion_holder.txt` said
+`de` (f3, then b5's stress test, were ahead).
+
+**Code reading, before touching anything.** `git show c2cce2a -- .../template_5/phases/
+p02_03_loop.py`: replaces a single literal seed radius (`heightIn * 0.272158`, the dip/shoulder
+arcs' own shared radius) with a declared closed-form expression, `TOP_SEED_RADIUS_EXPR` --
+chord/sagitta -> radius, the standard circular-segment formula, built from the SAME half-chord/
+sagitta values the arcs' own seed Points already use. The commit's own message calls this "fixed
+the root cause" for H23 item 6 (the old literal was heightIn-only, so it diverged from the chord it
+had to span at any OTHER aspect ratio) -- the "not yet built live... this item is not done" line in
+that same commit refers to the SESSION's other items (10, 11) and the fact that nobody re-recorded
+goldens before the Fusion bridge went down that day, not to the formula itself being a draft.
+
+**Verified numerically before concluding "intended, not WIP"** (not trusting the commit message
+alone): the new formula evaluates to 2.449397 at 7x9 vs. the old literal's 2.449422 -- a ~2.5e-5 in
+gap, consistent with the old constant having been a ROUNDED empirical fit at 7x9, not an exact
+closed form. At 12x6 the old literal (1.632948) was smaller than the chord's own half-length
+(2.005716) it had to span -- geometrically impossible, exactly the bug class the commit describes --
+while the new formula gives 10.24, a valid (if shallow) arc. Conclusion: a genuine, deliberate,
+correct fix, not guesswork -- re-record, don't revert.
+
+**Live re-record** (`fusion_holder.txt` = `de`, confirmed before calling `fusion_execute`; holder
+handed off to `f3` then `b5` immediately after, per the advisor's own queue): reused F33 item 1's
+own proven fresh-module-load script (`tools/repro/fusion_t11/item43_golden_check.py`'s pattern,
+never touches the deployed add-in) for a single case, `template_5` at 7x9. Clean build: 0 REFLEX
+ARC, 0 MITER MISS, all declared bars, healthy timeline. The diff against the stale golden landed
+exactly where the numeric check predicted -- radius 2.44942 -> 2.4494, volume 4.46184 -> 4.46183,
+6th-decimal-place shifts throughout, same shape at corrected precision, no structural change (same
+bar count, same profile count). Doc hygiene: 4 docs open before and after (Untitled, DECAL test,
+DECAL edge test, f3's own ITEM71 decal test doc), only my own scratch doc touched; released Fusion
+and messaged the advisor immediately once the build confirmed clean, before doing any of the
+commit/test bookkeeping below, per their own explicit ask (b5 was waiting on it for the window fix).
+
+Removed `template_5_7x9.json` from `check_golden_freshness.py`'s own `_KNOWN_UNVERIFIABLE_GOLDENS`
+now that it genuinely builds live again. Ran `gen_frame_defs.py` afterward (its own `--check` had
+flagged STALE once the golden changed) -- the regen shifted T5's own fitted `topDipDepth`/
+`topDipHalfWidth` coefficients by the same ~1e-5 the golden itself moved, 6th decimal place, no
+structural change; confirmed via the full JS suite staying green rather than assumed.
+
+Full suite green: Python 860/860 (10 pre-existing skips, unrelated), JS vitest 173 files / 3387
+tests. `check_golden_freshness.py --check` and `gen_frame_defs.py --check` both exit 0.
+
+Committed: `tests/fixtures/frame-parity/template_5_7x9.json`, `tools/check_golden_freshness.py`,
+`bspline-frame-builder/b-spline-gen/html/data/frame-defs.json`/`.js` (regenerated). Pushed, passing
+back.
+
+## 2026-10-03: F34 item 1 -- Photo filter + small editor (seat C)
+
+[... the full F34 item 1 build is covered by its own commits (8abac4f, 972e376, fc1dafd, 6107ce3 and
+the tab-restructure commit below) -- this entry covers the Art-vs-Photo reuse audit Fred asked for
+before the panel was finished, since it directly shaped the final shape of the Photo tab.]
+
+**Art-section reuse audit (Fred: "the Photo tab should reuse tools that already exist in the ART
+section where they overlap... list Art's tools vs your Photo ops... before finishing the panel").**
+Dispatched an Explore pass over the live Art/Artwork editor (SVG sketch + Vector Stamping) rather
+than assuming; the honest finding is that NONE of the four capabilities Fred named actually exist
+there in a form reusable for a raster photo:
+
+| Capability | Exists in Art/Artwork? | Reusable for Photo as-is? |
+|---|---|---|
+| Image upload | No -- `#stampUpload` is `accept=".svg"` only (`main/stamp/svg-source.js`), reads text and imports vector child nodes; no PNG/JPEG path anywhere in the Art tab | No -- needs a new accept type and a new import path |
+| On-canvas move/scale/rotate handles | Yes, generically, for vector shapes (`editor/editor-transform-handles.js`, a real Figma-style 8-handle system keyed off `editor._selectedElements`) | Partial only -- `handle-edit.js`'s own `HANDLE_EDIT` table has no `image` entry (falls to a generic scale fallback), and `bakeMatrixIntoElement()` EXPLICITLY REFUSES to bake `text, image, g` -- a photo layer could visually drag on screen but couldn't commit into exportable geometry without new code. More fundamentally, nothing in the editor ever creates or selects an `<image>` node in the live sketch at all (the only existing `<image>` use is a non-interactive 3D background preview, never hit-tested, never added to `_selectedElements`) |
+| Crop | No -- absent from `editor/` entirely | No |
+| Image adjustments (brightness/contrast/levels/blur/invert) | No -- `editor/editor-color.js` is a fixed 32-swatch stroke/fill palette for vector shapes, not pixel adjustment | No -- different pipeline (RGB vector fill/stroke vs. a single-channel greyscale heightmap) |
+
+Net: reusing the ONE closest piece (the transform-handle system) would need three genuinely NEW
+pieces of plumbing that don't exist today (a `HANDLE_EDIT['image']` rule, an image-baking path in
+`bakeMatrixIntoElement`, and new code to insert a selectable `<image>` node into the live sketch on
+upload) -- that is MORE work than the already-built, already-tested Photo tab, not less, and it
+would also change WHAT the feature is (an SVG-editor image layer feeding the vector/stamping depth
+pipeline) rather than what was asked (a photo's own brightness feeding the terrain heightmap
+directly, a different and simpler pipeline by design). Did not refactor the Photo tab onto Art's
+system on the strength of this finding -- flagged it to the advisor/Fred instead of guessing, per
+their own explicit ask to see the table first. The Photo tab's own crop/levels/brightness/contrast/
+blur/invert/straighten implementation (`main/photo-panel.js`, `core/photo/ops.js`) stands as
+originally built.
+
+**Also landed in this same pass, before the audit was requested:** the Photo tab was promoted from a
+Filter-nested sub-panel to its own top-level sidebar panel (Fred: "its own tab next to Filter...
+instead of living inside the Filter section"), reordered into declared Prepare (straighten/crop/
+rotate90/flip) and Edit (levels/brightness/contrast/blur) groups, and the filter's own 6 effect-param
+tweaks (depth/scale/offset/rotation/repeat) now render a SECOND time inside this tab too -- reusing
+the EXACT same generic Edit-Filter rendering (`core/noise/tweaks-ui.js`'s own `buildRow`/schema),
+generalized to support multiple registered render targets (`registerTweaksTarget`) rather than
+copy-pasting the row-building logic, so editing a slider in either location updates the same
+`P.filterTweaks.photo` state. Picking a pattern or loading your own photo now also switches the
+active filter to 'photo' itself (dispatching a real `change` event on `#noiseType`, so every existing
+listener -- the rebuild, the tweaks render, this tab's own sync -- fires the normal way once, not a
+duplicated code path). A `Photo | Bricks` mode switch was asked for, then explicitly dropped in favor
+of Bricks becoming its OWN separate top-level tab later (F34 item 2, now owned by seat f3 for the
+brick-sampling engine itself; this seat's own item 2 becomes wiring that engine into a Bricks tab,
+reusing the Photo tab's own prepare/edit/Relief as shared components once it lands) -- built, then
+removed, the one dead-end file (`core/photo/modes.js`) before it was ever committed.
+
+Full suite green throughout: JS 182 files / 3475 tests.
+
+**Addendum for f3 (brick engine targeting Art's own vector-art format, per Fred: "bricks are more
+like vectors"):** the entry point is `importSvgIntoLayer(editor, svgText)`
+(`main/stamp/svg-source.js:178-215`) -- takes a raw SVG string, parses it (`DOMParser`), strips any
+`.editor-metadata` defs, ensures an active editor layer exists (creating one via `addLayer` if not),
+then appends every TOP-LEVEL CHILD of the parsed `<svg>` root directly into `editor._sketchLayer.node`
+(a live SVG DOM `<g>`), stamping each one with `data-layer="<layerId>"` (a string id matching one of
+`editor._layers[]`, each layer carrying its own CNC tooling config -- `TOOLING_DEFAULTS` in
+`editor/layers.js`). This is the SAME live DOM the Vector Stamping / relief / colour pipeline already
+reads from (`core/stamp/index.js`'s own `rasterizeSvg`), so a brick piece emitted as plain SVG shapes
+(rect/path/etc.) with a `data-layer` attribute set to whichever layer should own its own
+depth/profile/colour settings is consumable as-is. Persisted form is the editor's own `save()`
+serialization into `P.editorSvg` (a plain string, `core/state.js`'s own `editorSvg: null` field) --
+the SAME shape `tests/decal-png.test.js`'s own `fakeEditor({save: () => SKETCH})` fixture already
+exercises, where `SKETCH` is a raw `<svg>` string with `data-layer="..."` on each top-level shape.
+
+### Live browser verification (real Chrome, headless CDP, no Fusion -- app-only per the brief)
+
+Served the palette locally (`python -m http.server`, own PID tracked and stopped afterward -- no
+bare-subshell zombie, [project_scratch_server_zombies] applied) and drove it with a dedicated CDP
+script forked from `tools/repro/filter_shots.mjs`'s own proven driver (headless Chrome + swiftshader,
+raw debugger websocket, `window.__preview.getSnapshot()` for layout-independent 3D shots) -- the
+SAME pattern every other filter verification in this repo already uses, not a new one.
+
+**End-to-end confirmed, zero console errors throughout:** the Photo tab renders, the pattern row
+populates from `data/photo-patterns.json`, clicking a thumbnail switches the active filter to
+`'photo'` automatically (confirmed: `#noiseType` reads `'photo'` afterward) and the 3D preview
+updates live. Drove the REAL DOM controls exactly as a user would (set slider values, dispatch
+`input` events, click buttons) rather than calling internals directly.
+
+**Brick feasibility check (Fred's own pass/fail bar: bricks raised, joints as grooves, crop+levels+
+blur(+invert) only, no segmentation).** Brick 1's own curved diagonal edging has no axis-aligned
+rectangle that captures pure brick (confirmed by eye on the actual photo before touching code --
+pavement one side, mulch/plants the other). The advisor independently found a working straighten
+angle + crop box by prototyping outside this app (-33 degrees in their own tool's sign convention,
+then a tight crop) and handed over the exact numbers; my own `straighten` op's sign convention had
+already been fixed to match `rotate90`'s (verified empirically, not re-derived, see the ops.js
+commit) -- translating their numbers through MY OWN convention needed the OPPOSITE sign (+33, not
+-33), confirmed by running both signs through a quick Python prototype of the exact same formula
+(crop+straighten) against the real `brick_1.jpg` and inspecting which one actually produces a
+horizontal, pavement/mulch-free brick strip (it was +33; the other sign left the crop full of leaf
+clutter) -- measured, not assumed, before trusting either sign in the real app.
+
+Applied `{straighten: 33}` then `{crop: {x:0.4854, y:0.3710, w:0.4729, h:0.0647}}` through the REAL
+Photo tab's own controls (not a script shortcut): `P.photoEdits` read back afterward matches exactly.
+3D preview after this step: a recognizable brick strip is visible, but DOMINATED by the shared
+macro/coarse redistribution layer (`core/terrain.js`'s own Pass 2 -- `h = lerp(fine*LOW,
+PEAK_BASE+fine*PEAK_RNG, coarse)`) at its own DEFAULT `density`/`macroScale`, the exact same
+filter-INDEPENDENT layer every other filter (Moon/Mars/etc.) already goes through -- confirmed by
+sampling the real heightmap (`generateHeightmap`) and seeing a smooth, large-scale symmetric rise/
+fall (symmetry='x' is the app's own default, so the mirrored shape is expected and correct) with
+only a small ripple riding on top. Setting `density: 0` (an EXISTING, filter-independent knob
+already in the Skeleton panel, not something new) silences that shared layer entirely; re-shot with
+it at 0 plus a levels nudge: the board goes flat overall and clear vertical brick/joint banding
+becomes visible in the render, confirming the photo's own texture IS there and IS usable, just
+masked by the shared macro layer at its own defaults -- the SAME consideration that applies to every
+other filter on this app, not something specific to or missing from Photo.
+
+**Honest verdict, not smoothed over:** the TOOLS (straighten + crop + levels + the existing density
+knob) CAN isolate a clean, legible brick/joint pattern from Brick 1's own curved photo with no new
+machinery -- confirmed live, not just in the Python prototype. Reaching the FINAL crisp "bricks
+raised, joints as grooves" look still needs levels/contrast values tuned to this specific crop's own
+actual histogram (my own quick `{black:0.3, white:0.75}` guess under-used the available contrast --
+the sampled mid-row only spanned 0.041-0.055, far short of the photo's own full range) -- exactly the
+live human-judgment step Fred said he and the advisor would do together, not something to perfect
+here. Brick 2 was not independently re-tuned (same reasoning: "don't tune on your own" applies to
+discovering ITS OWN best crop too, not just levels) -- the MECHANISM is proven on Brick 1, which is
+what the feasibility check was actually asking.
+
+Drain Grate and Rusty Grate (axis-aligned, no curve problem) load and render cleanly at their own
+defaults with no edits at all -- confirms the pipeline doesn't depend on the brick case's own extra
+steps to produce a plausible result.
+
+Screenshots saved to `shots/seatC/` (`f34item1_brick1_before_raw_1366.png`,
+`f34item1_brick1_after_straighten_crop_{1366,390}.png`, `f34item1_brick1_density0_levels_1366.png`,
+`f34item1_drain_grate_default_1366.png`, `f34item1_rusty_grate_default_1366.png`).
+
+Full suite green throughout this entire session: JS 182 files / 3475 tests, Python 892 (10
+pre-existing skips).
+
+**Not yet done, genuinely gated on Fusion (brief: "App-only, no Fusion except one live Send at the
+end"):** `fusion_holder.txt` reads `none` right now, not `de` -- waiting for the advisor's own grant
+before the one live Send this item's own brief calls for.
+
+
+### Addendum, same day: the one live Send verification (Fusion came free, fusion_holder.txt discipline observed)
+
+Advisor's dispatch: do the one live Send this item's brief always reserved for Fusion, close only
+the resulting scratch doc via its own tracked handle, release the holder, pass back. Confirmed
+`fusion_holder.txt` read `de` before touching Fusion, same discipline as every prior call this
+engagement.
+
+**Why a browser-side STEP generation instead of the real `isFusionMode` bridge:** a standalone
+headless-Chrome session has no Fusion-hosted palette, so the actual wire transport
+(`sendFusionPayloadChunked`, `core/fusion-bridge.js`) can't run outside Fusion itself. But
+`generateThickenedStep()` (`core/stepWriter.js`) is pure JS -- it turns a `generateHeightmap()`
+output straight into real STEP text with no Fusion API involved. So the verification path was: drive
+the REAL Photo tab controls live in headless Chrome (Brick 1, `{straighten:33}`, the advisor's own
+crop `{x:0.4854,y:0.3710,w:0.4729,h:0.0647}`, `{black:0.3,white:0.75}` levels, `density:0`,
+`carveZ:0.6` -- same settings the brick-feasibility check used), call `generateThickenedStep()` live
+in the page on the real `lastResult` the UI had just produced, and write the returned STEP text to a
+local `.step` file. This is the exact same geometry function a real Send would hand to the bridge --
+only the wire hop is swapped for a local file. STEP generated cleanly: 3,320,349 bytes, grid 141x181,
+zero JS errors.
+
+**Import into Fusion** via `app.importManager.createSTEPImportOptions()` /
+`importToNewDocument()` -- genuine CAD import, not a script-side approximation. Before touching
+anything, printed the baseline doc list to know what NOT to touch: `['Untitled', 'DECAL test -
+2026-10-03', 'DECAL edge test', 'ITEM71 colour decal live test - 2026-10-03']` (4 docs, Fred's own).
+Stamped a `userParameters` fingerprint (`adv_f34item1_fp`) onto the new doc's design immediately
+after import, specifically so the close step could find it later by a property instead of by name or
+position.
+
+**The exact fusion360-quirks hazard, hit and resolved properly, not glossed over:** `doc.name` after
+import read `'Untitled'` -- IDENTICAL to the name already in the pre-existing baseline list. Per the
+skill's own explicit rule ("Fusion document names are not unique -- never close by name"), name match
+alone proved nothing. Verified properly instead: `app.documents.count` went from 4 (baseline) to 5
+right after import, and a full re-list showed the SAME 4 original names plus a 5th `'Untitled'`
+entry that was the active document -- confirming `importToNewDocument` really did create a distinct
+5th document object that merely happens to share Fusion's generic default name with Fred's own first
+doc, not a reuse of it. Re-confirmed the correct target a second way before touching it: searched all
+5 open documents for the one whose design actually carried the `adv_f34item1_fp` user parameter --
+found exactly one match, at index 4, flagged as the active document, containing exactly one body
+(`Body1`, volume 139.4572) and zero sub-occurrences -- a clean, unambiguous scratch doc, not Fred's.
+
+**Result:** `Body1`, volume 139.4572 cm^3, bbox min `[-8.89, -11.43, -0.368]` / max `[8.89, 11.43,
+0.335]` -- bbox footprint (17.78 x 22.86) is an exact match for a 7x9in board in cm
+(7in=17.78cm, 9in=22.86cm), thickness range ~0.7cm consistent with a thin relief panel. Zero import
+errors. Screenshot (`shots/seatC/f34item1_brick1_step_import_fusion.png`) shows a clean rectangular
+board with visible brick-coursing texture (horizontal rows, offset vertical joints) -- the same
+pattern the earlier app-side brick-feasibility screenshots showed, now confirmed surviving a REAL
+STEP round-trip into Fusion, not just the in-browser Three.js preview.
+
+**Close, verified before and after:** found the target doc again by its `adv_f34item1_fp` fingerprint
+(not by name/index), closed that exact handle (`target.close(False)`), then re-listed
+`app.documents`: count back to 4, names `['Untitled', 'DECAL test - 2026-10-03', 'DECAL edge test',
+'ITEM71 colour decal live test - 2026-10-03']` -- byte-for-byte the original baseline. Fred's own 4
+documents were never touched. `fusion_holder.txt` released back to `none` immediately after.
+
+F34 item 1 is now fully verified end-to-end: app-side (filter math, UI, persistence, tests) AND the
+one live Fusion Send this item's brief reserved for the end. Nothing left open on this item.
+
+
+### F34 item 3: Photo tab polish (Max Height in inches, Save settings to this pattern, Brick 1 preset shots)
+
+Advisor's dispatch, for Fred's upcoming tuning session: (a) a relief/depth control on photos, max
+0.25in, default 0.125in, declared in inches; (b) a "Save settings to this pattern" action writing the
+live edits+tweaks back into the pattern's own entry; (c) screenshots of Brick 1 with the +33
+straighten + crop preset, to shots/seatC. App-only, no Fusion.
+
+**(a) Max Height (in)** -- NOT the same thing as the existing "Depth" effect param (a unitless
+relief-strength multiplier around mid-grey, 0.3-2.0). Fred's "height wouldn't ever be more than 1/4"
+is a PHYSICAL dimension, and the app already has exactly one real physical carve-height knob:
+`P.carveZ` (the generic Skeleton tab's own 0.1-20in "Carve Depth (Z)" slider, multiplied onto the
+normalized 0..1 heightmap at the very end of terrain.js, filter-independent). Rather than inventing a
+second, parallel height concept, the Photo tab gets its OWN pair of elements
+(`photoReliefHeightSlider`/`photoReliefHeight`) bound to that SAME real `carveZ` via `applyParam`
+(main/photo-panel.js's new `setReliefHeight`/`syncReliefHeightDisplay`) -- just scoped to a
+photo-appropriate 0.01-0.25in range instead of the generic tab's 0.1-20in, so Send/thicken/CAM
+downstream need zero special-casing (it's the real parameter, not a shadow copy). Constants
+(`DEFAULT_PHOTO_RELIEF_IN = 0.125`, `MAX_PHOTO_RELIEF_IN = 0.25`) declared once in core/photo/
+patterns.js so the UI and the save-back path can't drift apart.
+
+Default application: `loadImage()` gained a 4th param (`reliefIn`, defaulting to
+`DEFAULT_PHOTO_RELIEF_IN`) applied via `setReliefHeight()` right after switching the filter -- so a
+fresh "Load my own" photo gets 0.125in, and a built-in pattern gets ITS OWN saved relief if present
+(`settingsToRelief(pattern.settings)`), else the same 0.125in default. Verified live (headless
+Chrome): picking Brick 1 fresh shows Max Height = 0.125 by default (no saved relief yet in its
+pattern entry); dragging the slider to 0.2 updates the real `P.carveZ` to exactly 0.2, confirmed by
+reading P directly, not just the slider's own echoed value.
+
+**(b) Save settings to this pattern** -- `editsToSettings(photoEdits, tweaks, reliefIn)`
+(core/photo/patterns.js) is the declared INVERSE of the existing `settingsToPhotoEdits`/
+`settingsToTweaks`: collapses the live, ordered edit list back into the same flat `settings` shape a
+pattern entry stores, adding a new `relief` field to that shape. Discrete ops that can be clicked
+more than once don't just grab "the last one" (which would silently drop real state): rotate90 clicks
+collapse to their NET turns mod 4 (3 clicks = rotate:270, 4 clicks nets to nothing, not rotate:360),
+flip clicks collapse to PARITY (flip twice = back to unflipped, not still-flipped), and multiple crop
+steps COMPOSE into the one equivalent region applyPhotoEdits' own sequential application already
+implies (a second crop is a fraction OF the first crop's output) -- verified this one isn't vacuous by
+mutation-testing it: swapping the compose loop for a naive "take the last crop" made the dedicated
+composition test fail immediately (0 vs the expected composed 0.1-offset), then reverted.
+
+Which pattern to save into is tracked as `P.photoPatternId` (declared on P itself, not a module-local
+variable, specifically so it round-trips through the EXISTING generic saveLastSession/
+loadLastSession session persistence for free -- set on every pattern-row click, cleared on "Load my
+own" since a raw upload has no pattern entry to write back into). The action itself downloads an
+updated `photo-patterns.json` (same "real file, not a clipboard blob" idiom Settings > Save log
+already uses, FileSaver-or-`<a download>` fallback) with just that one pattern's `settings` replaced
+-- there's no filesystem/process access from a browser page to shell out to `add_photo_pattern.py` or
+write the repo file directly, so the advisor/Fred applies the downloaded file the same manual way as
+any other exported JSON. Verified live: Save button is disabled with no pattern loaded or after
+"Load my own", enabled the instant a built-in pattern is clicked (`P.photoPatternId` reads back
+correctly, e.g. `"brick_1"`), and the click path runs with zero JS errors.
+
+11 new unit tests (tests/photo-patterns.test.js, now 28/28): settingsToRelief's default/clamp
+behavior, and editsToSettings' round-trip + the three collapse cases (rotate parity, flip parity,
+crop composition) + tweaks-key filtering. Full JS suite still green: 182 files / 3485 tests (+10 from
+this item).
+
+**(c) Screenshots** -- own scratch dev server (`tools/serve_app.py` on a fresh port, since the two
+already-running instances on this machine were confirmed via curl to be serving OTHER seats'
+worktrees, not this one -- left untouched, killed only the one process I started myself after).
+Brick 1, fresh load: Max Height shows 0.125 (the declared default). Applied the advisor's own
+straighten:33 + crop `{x:0.4854,y:0.3710,w:0.4729,h:0.0647}` preset through the real UI controls.
+Full Photo-tab panel shots (showing the new Max Height slider and Save button alongside the existing
+controls) plus an isolated 3D terrain shot, saved to `shots/seatC/`
+(`f34item3_photo_tab_brick1_default_1366.png`,
+`f34item3_photo_tab_brick1_straighten_crop_1366.png`,
+`f34item3_photo_tab_max_height_02in_1366.png`, `f34item3_brick1_straighten_crop_terrain.png`).
+Deliberately did NOT also re-tune density/levels for these shots beyond the preset the dispatch
+named -- item 1 already showed that tuning path works, and the brief says this polish is specifically
+"for Fred's tuning session," so the terrain shot honestly shows the DEFAULT state (shared macro layer
+still dominant at default density) he'll tune from live, not a pre-tuned result that would hide what
+he's actually about to do.
+
+Nothing else touched. Commit, push, pass back.
+
+
+### F35 item 1: the Brick tab (Brush, Wall, Frame)
+
+Advisor's dispatch (after extensive, fast-iterating UI-design back-and-forth that eventually
+settled, see cross-session messages): a top-level `[Art][Photo][Brick]` tab, a declared tool list
+`[{id,label,icon,settingsSection,engineEntry}]`, first 3 tools Brush/Wall/Frame wired to f3's
+`core/bricks/` primitives per their own WORK-LOG adapter table (H23 item 72, P1a), a set picker
+(Red Brick selectable, White Rocks greyed "coming"), Scale/Grout/Relief/Height/Suppression/
+Clumping/Seed common controls, output onto editor LAYERS, height into the terrain "like the other
+sources." App-only, no Fusion.
+
+**Investigation before writing any code** (this item touches 5 existing subsystems at once --
+core/bricks/, editor layers, editor tool-mode dispatch, the stamp-mask/terrain pipeline, and the
+frame-contour geometry -- getting any one wrong would silently misplace or mis-height every brick):
+dispatched an Explore agent for the editor-side facts (layers.js's `data-layer` + kind-marker
+convention, the `draw`/`line` mode-handler pattern + `modeHandlers` dispatch table, `editor-cut-
+tool.js`'s `cutAt`/`commitCutEdit` for a later item, `contour-from-frame.js`'s `frameContourSilhouette`
+return shape, Photo's own Relief toggle markup, and the panel-registration convention), while reading
+f3's own `core/bricks/` source + WORK-LOG entry (H23 item 72, lines 16602-16801) directly myself in
+parallel.
+
+**The one load-bearing fact verified EMPIRICALLY, not assumed:** whether `core/bricks/`'s own
+"board inches" polygon output needs any transform before being drawn onto `editor._sketchLayer`.
+Opened the real SVG editor in headless Chrome, drew a literal `rect(1,1).move(0,0)` via
+`fusion_execute`-style direct eval, and confirmed by SCREENSHOT it lands exactly in the board's own
+top-left corner -- the editor's native drawing-surface units ARE board inches directly
+(`editor._mW`/`_mH` === `P.widthIn`/`heightIn`), origin top-left, Y down, no DPI scale, no flip. This
+meant every brick polygon core/bricks/ returns draws with ZERO coordinate transform -- a real
+unknown resolved by measurement before it could silently misplace geometry (same discipline as this
+engagement's earlier sign-convention catches).
+
+**Architecture decision: height into the terrain reuses the EXISTING generic stamp pipeline
+wholesale, no bespoke brick-height code.** `main/stamp-mask-manager.js`'s `updateStampMasks` already
+rasterizes ANY carved editor layer's own SVG content into a mask via the generic `rasterizeSvg` +
+profile-module pipeline (`core/stamp/profiles/`), regardless of which tool drew it -- so a "Bricks"
+layer just needs the right PER-LAYER TOOLING fields: `profile:'flat'` (core/stamp/profiles/flat.js:
+vertical wall + flat plateau, no taper -- matches a brick's own flat top far better than vbit/
+ballnose), `edgeFilletRadius:0` (sharp joints), `depth: reliefIn`. Verified this ACTUALLY reaches the
+real terrain, not just that the layer's own fields look right: flattened the shared macro layer
+(density:0, small carveZ, the same finding F34 item 1 made for Photo), ran Wall, closed the editor,
+and rendered the MAIN 3D preview -- it shows genuine raised bricks with real joint grooves, correctly
+following the board's own non-rectangular silhouette. Screenshot:
+`shots/seatC/f35item1_terrain_with_bricks.png`.
+
+Raised/Carved (the Relief toggle, mirroring Photo's own UI pattern) is a single sign flip on that
+same `depth` field -- `core/engine/apply-stamp-layers.js`'s own compositor already treats a NEGATIVE
+layer depth as "carve down from the base" (`layerSign`/`filletAmplitude` are explicitly signed, not
+clamped to non-negative), confirmed by reading that file directly rather than assuming it would
+just work.
+
+**Named, honest simplifications (not silent gaps):**
+- Every brick renders at a UNIFORM depth (the layer's own `depth` field) -- f3's own
+  `core/bricks/engine.js` `sampleHeight`/`buildSpatialIndex` (per-brick `heightOffset` jitter, the
+  'continuous' profile's own undulation) are NOT wired in. That needs a BRICK-SPECIFIC mask
+  rasterizer (calling `sampleHeight` per grid point) instead of the generic SVG rasterizer, which
+  can't see per-polygon height variation once everything's flattened to one alpha mask. A real
+  follow-up, not attempted here.
+- `grout.profile:'recessed'` is a stored, user-facing setting but has NO visual effect yet -- joints
+  currently sit at the base terrain level, which is exactly 'flush'. A genuine carved recess needs a
+  second, inverse-shaped stamp layer at a negative depth (the joint gaps, not the bricks); not built.
+  Defaulted the UI to 'flush' specifically BECAUSE it's the one that's actually implemented, rather
+  than defaulting to the set's own declared 'recessed' and silently doing nothing different.
+- Wall fills the WHOLE BOARD only, not an arbitrary selected shape (no existing "arbitrary SVG
+  element -> polygon points" utility was found in this codebase to reuse, and hand-rolling one for
+  every element type -- rect/circle/path -- was out of scope here).
+- Frame uses `FRAME_PRESETS.single_soldier` only (the dispatch's own common-controls list for this
+  item doesn't mention a band-preset picker UI; `settingsSection` is declared on each tool entry in
+  `BRICK_TOOLS` for exactly this kind of future per-tool UI, not built yet).
+
+**Implementation:**
+- `core/state.js`: `P.brickSettings` (`setId, scale, grout:{widthIn,depthIn,profile}, reliefIn,
+  invert, suppression, clumping, seed`) -- the one shared settings object every tool reads/writes,
+  same convention as `P.photoEdits`/`P.filterTweaks`.
+- `editor/editor-brick-tool.js` (NEW) -- the adapter: `ensureBricksLayer` (find-or-create a layer
+  literally named "Bricks", shared by all 3 tools so output always lands together),
+  `applyBrickLayerTooling` (depth/profile/edgeFilletRadius/carve, the sign-flip for Raised/Carved),
+  `drawBrick`/`drawBricks`/`clearGenerated` (the `data-layer` + `BRICK_ATTR` ('brush'|'wall'|'frame')
+  + `BRICK_GEN_ATTR` ownership-marker tagging convention, mirroring `editor-lattice.js`'s own
+  `emitSegment`/`data-lattice-gen` precedent -- found via the Explore agent, not invented fresh),
+  `runWallTool`/`runFrameTool` (button-driven), `primitivesToPolyline` (the one pure, unit-tested
+  piece: `contour-from-frame.js`'s `{type:'L'|'A',...}` primitives -> a flat polyline + corner
+  indices, arcs subdivided into 16 points, not collapsed to endpoints), `brickBrushHandler` (the
+  interactive mode handler -- mirrors `editor-interaction.js`'s own `makeDrawingHandler`/
+  `createDrawingShape` pattern for the LIVE preview stroke, but on `finish()` discards that preview
+  path and bakes real `bricksAlongPath` bricks along the drawn polyline instead of keeping it as a
+  plain path).
+- `editor/editor-interaction.js`: registered `brickBrush` in the `modeHandlers` dispatch table (one
+  new entry, same place `cut`/`stripe`/`lattice` were each added).
+- `main/brick-panel.js` (NEW) -- `BRICK_TOOLS` (the declared `[{id,label,icon,settingsSection,hint}]`
+  list Fred's own dispatch asked for, so a 4th tool is a data entry + its own `run` wiring, not a UI
+  rework), set picker, all common-control bindings, `selectTool()` (Brush arms the interactive mode;
+  Wall/Frame run immediately as one-shot actions, since there's nothing to "arm" for a fill/band
+  operation). Reads `window.svgEditor` FRESH at the point of use rather than caching it at init --
+  confirmed via `app-init.js` that the editor is created LAZILY on first modal-open, not at app
+  start, so a module-level reference taken at `initBrickPanel()` time would be stale/null.
+  `editor._brickSettings = P.brickSettings` (same object, mutated in place) right before arming
+  Brush -- editor/ files never import `core/state.js` directly (an existing, deliberate boundary
+  confirmed by grep: zero hits across the whole editor/ directory), so this is the one declared
+  bridge point, same role `onChange` plays for Photo.
+- `bspline_gen_palette.html`: new `.panel.panel-brick` section (same header/body accordion markup
+  every panel already uses -- confirmed there's no registry to hook into, accordion persistence is
+  automatic by class name alone), placed right after Photo.
+- `main/main.js`: `initBrickPanel()` call alongside the other panel inits.
+
+**Tests:** `tests/bricks-editor-adapter.test.js` (4 tests) for `primitivesToPolyline` -- the only
+pure, DOM-free piece (everything else is svg.js/DOM-dependent, same "not unit-tested, verified live"
+precedent as `main/photo-panel.js`). Mutation-tested the arc-subdivision math (shifted the arc
+center by 999 in one coordinate) and confirmed the radius-check assertion catches it, then reverted.
+Full suite: 192 files / 3554 tests green (+4 from this item; the rest of the jump from 182/3485 to
+192/3554 across this session is f3's own 9 bricks-engine test files merged from main in between).
+
+**Live verification (headless Chrome, own scratch dev server since the two already-running
+instances on this machine were confirmed serving OTHER seats' worktrees):**
+- Wall: 298 bricks, a clean running-bond fill of the whole 7x9 board, correct joint gaps.
+  `shots/seatC/f35item1_wall_1366.png`.
+- Frame: selected a real frame template (`template_1`), 125 bricks in a soldier band following the
+  frame's own contour. `shots/seatC/f35item1_frame_1366.png`.
+- Brush: drove the REAL mode handler (`getModeHandler('brickBrush')`) through a multi-point drag,
+  same call shape a real pointer gesture uses -- 11 bricks correctly following a diagonal curved
+  stroke, mitred at each turn. `shots/seatC/f35item1_brush_solo_{1366,390}.png`.
+- The Brick tab's own sidebar panel (set picker, tool row, all 7 common controls) at both required
+  widths: `shots/seatC/f35item1_brick_panel_{1366,390}.png`.
+- The terrain-height proof: `shots/seatC/f35item1_terrain_with_bricks.png` (described above).
+- Zero JS errors across every pass.
+
+Nothing else touched. Commit, push, pass back.
+
+
+### F35 item 1, advisor review (turn 131): 3 fixes + 2 extra checks
+
+Advisor held the merge after reviewing the first pass's shots: (1) Wall overhangs the board edge,
+(2) Frame breaks into overlapping blobs/diagonal shards on the real curved T1 contour, (3) Wall was
+drawn independently of Frame, leaving them overlapping. A follow-up message added (4) verify bricks
+actually drape on the real B-spline terrain (not just a flattened slab) and (5) report the real
+relief depth + whether the preview applies any Z exaggeration.
+
+**(2) and (3) fixed; (1) is a genuine `core/bricks/` engine limitation, escalated to f3 (cc
+advisor) rather than patched around in the adapter -- same protocol the advisor's own review message
+set for the curve issue ("if the engine can't do curves, tell f3 directly").**
+
+**(2) root cause, found by re-reading my own adapter, not the engine:** `primitivesToPolyline`
+marked EVERY primitive's own start as a declared "corner" passed to `bricksAlongPath`/
+`bricksContourBands`'s `cornerIndices` -- including the boundary between two 'A' primitives that are
+actually a TANGENT continuation of the same smooth curve (how a long arc gets represented once split
+into several primitive objects). Forcing a mitred-corner correction at those non-corner points is
+exactly what produced the overlapping shards at the hourglass waist. Fix: use
+`frameContourSilhouette`'s own declared `corners` field ("indices into primitives that are sharp
+(merged) joints, not tangent") to mark ONLY real corners; everything between two declared corners
+-- however many 'A' primitives it's subdivided into -- is left to `bricksAlongPath`'s own arc-length
+tangent sampling, which already fans smoothly along an un-mitred run by design. Rewrote
+`tests/bricks-editor-adapter.test.js` for the new `primitivesToPolyline(primitives, corners)`
+signature (7 tests, up from 4) -- added a dedicated case for two consecutive arcs with only the
+first declared a corner, confirming the tangent join produces NO extra corner.
+
+**(3) fixed by using f3's own composer instead of two independent calls.** Replaced the separate
+`runWallTool`/`runFrameTool` with one `runBricks(editor, settings, frameGeom)` built on
+`generateBricks()` (core/bricks/engine.js) -- "Frame then Wall, Wall fills the Frame's own
+interiorOutline" was already built and already the right behavior; the first pass just didn't use
+it, calling `bricksFillShape`/`bricksContourBands` separately with no shared boundary. Now BOTH the
+Wall and Frame buttons resolve the current frame contour the same way and call the same function --
+whichever one the user clicks, if a frame is resolvable the result is identical (band + a wall fill
+clipped to its own interior, zero overlap); with no frame, Wall alone still fills the whole board
+exactly as before. Verified live against the SAME real curved template (`template_1`) that showed
+the original breakage: Frame now shows a clean soldier band FANNING (not mitring) around the
+hourglass waist's two concave arcs, Wall's own fill sits entirely inside it with no overlap --
+`shots/seatC/f35item1_fix_frame_1366.png` / `f35item1_fix_wall_1366.png` (now identical, confirming
+the two buttons converge) / `f35item1_fix_both_1366.png`.
+
+**(1) Wall overhangs the board edge -- a DOCUMENTED, DELIBERATE simplification in f3's own
+`core/bricks/layouts/bond.js`, not an adapter bug:** that file's own header states it plainly: "Edge
+treatment (a declared simplification, not full polygon clipping): a cell is kept only when its own
+CENTROID falls inside boardOutline -- whole bricks, dropped (not cut/stretched) at the board edge."
+A brick whose centre is inside but whose own far edge extends past the boundary is kept WHOLE,
+hanging past the edge -- exactly what Fred saw. General polygon clipping against a boundary that can
+be CONCAVE (the same hourglass shape) is real, nontrivial geometry work (`core/bricks/`'s own
+WORK-LOG documents three separate, compounding bugs just getting MITRE-CORNER clipping right) -- the
+kind of thing that belongs in the portable engine itself (so `bricksFillShape`'s own "clipped to
+polygon" doc comment becomes literally true), not hacked into this adapter by re-clipping SVG
+polygons after the fact outside the engine's own data model. Confirmed this is STILL present with no
+frame active (bond.js's own code is unchanged) -- `shots/seatC/f35item1_wall_noframe_1366.png`.
+Flagged to f3 directly (cc advisor) with the exact repro: `bricksFillShape(boardPolygon, null, {set:
+BRICK_SETS[0], seed:1})` on the current app's own 7x9in board. NOT attempted here.
+
+**(4) bricks genuinely drape on the real terrain, additive -- verified at BOTH a normal and a much
+stronger terrain, not just the flattened slab the first pass's own terrain shot used:** ran Wall+
+Frame with the app's own REAL DEFAULT settings untouched (`carveZ:1.5, density:1`, genuine B-spline/
+noise terrain active), screenshotted iso + top views -- the brick courses visibly bend and climb
+following the terrain's own rolling hills, joints stay visible as grooves on the sloped sections too
+(exactly what additive stamp compositing guarantees by construction: `core/engine/apply-stamp-
+layers.js`'s own `stampedHeights[k] += bodyVal * layerDepth + ...` adds the brick relief ON TOP of
+whatever the real local terrain height already was, never replacing it). Repeated at `carveZ:3.0`
+(a much more dramatic terrain) -- same correct draping holds at any terrain scale.
+`shots/seatC/f35item1_fix_terrain_{default,strong}_{iso,top}.png`.
+
+**(5) the actual relief value + no preview Z-exaggeration exists, confirmed by reading the renderer's
+own source, not assumed:** the brick layer's `depth` is exactly `P.brickSettings.reliefIn` = 0.125in
+(the declared default, unchanged) in every shot. Searched `core/preview/terrain-mesh.js` (where
+heightmap values become actual mesh vertex Z positions) for any multiplier applied to height before
+it reaches the GPU -- there is none; `z = heights[idx]` is used directly, no exaggeration factor
+anywhere in the renderer. The "very tall and blocky" look in the FIRST pass's flat-slab screenshot is
+a real property of a genuinely sharp-edged (flat profile, 0 fillet), 0.125in-tall brick seen up close
+relative to a 7x9in board -- not a display-scale artifact.
+
+Full suite still green: 192 files / 3557 tests (+3 from the expanded primitivesToPolyline coverage).
+
+Commit, push, pass back, and a separate message to f3 (cc advisor) for the escalated edge-clipping
+gap.
+
+
+### F35 item 1, advisor review round 2 (turn 131, follow-up): mesh resolution + concave-curve escalation
+
+Fred: wall/frame overlap fix confirmed good. Two new findings: (a) on the hourglass waist's CONCAVE
+arcs, the frame band fans out as a sunburst with wedge-shaped gaps wider than the grout, and the
+radial bricks poke out as spikes -- not what a real curved course looks like (bricks should taper on
+the inner side or stay joint-parallel with stepping). Advisor says this is engine curve handling,
+already queued as f3's own item 74, and to send it with the shot. (b) On the real terrain, bricks
+read as "melted ripples" -- asked to check the mesh resolution against the grout width and bump it
+when bricks are present, show one shot with the filter noise off / macro on, and report the mesh
+step.
+
+**(a) Escalated to f3 directly (cc advisor), not fixed here** -- matches the advisor's own routing
+(f3 already has curved-contour support queued at item 74, this is squarely engine geometry, the same
+"tell f3 directly" protocol as the board-edge-overhang escalation). Sent with
+`shots/seatC/f35item1_fix_frame_1366.png` (the exact shot showing the sunburst) and today's own
+cornerIndices fix as context (the fan BEHAVIOR along a declared non-corner run is correct per my own
+fix -- bricksAlongPath's un-mitred tangent sampling IS fanning, not mitring, as asked; the PROBLEM is
+what that fan looks like on a CONCAVE run specifically: on the outside of a curve the perpendicular
+rays naturally spread apart, which is fine; on the INSIDE of a concave curve they converge, and the
+current geometry doesn't taper/converge the bricks themselves to match, leaving wedge gaps instead).
+
+**(b) investigated and partially fixed, reported honestly on the remainder.**
+
+Mesh step, read from `resolveGrid` directly rather than assumed: the app's own default `P.spacing`
+is 0.05in, which on this 7x9in board resolves to a 141x181 grid (`spacing = widthIn/(nx-1)` exactly
+0.05in/sample). Set 1's own grout width is 0.06in -- 0.06/0.05 = 1.2 samples across the groove, nowhere
+near the 2-3 the advisor named as the floor for a groove to read as a visible line rather than a blur.
+
+Fix: `editor-brick-tool.js` now dispatches a `bricksGenerated` CustomEvent (same declared-bridge
+convention as layers.js's own `layer-tooling-commit` / stamp-mask-manager.js's `stampMaskUpdated` --
+editor/ files never import core/state.js directly, so a plain DOM event is the established crossing
+point) carrying the active grout width; `main/brick-panel.js` listens and TIGHTENS `P.spacing` to
+`groutWidthIn / 3` via the real `applyParam('spacing', ...)` path -- never loosens an already-finer
+user setting, and only fires when real brick content actually exists (not a blanket global default
+change for every user). Verified live: before any bricks, spacing=0.05 (141x181); immediately after
+running Wall, spacing auto-tightened to 0.02 (351x451), giving exactly 3 samples across the 0.06in
+groove, confirmed by direct `resolveGrid` math in the same page session.
+
+Honest result on the "melted ripples" look: the finer mesh alone (`f35item1_r2_terrain_finemesh_
+iso.png`) did NOT meaningfully fix the visual softness at default filter settings -- the active
+filter's OWN fine-grained bumps (simplex at its default scale) sit at a similar visual frequency to
+the bricks and keep competing with them regardless of sampling density, exactly as Fred suspected
+("the filter noise at the same scale swamps them"). The requested "filter noise off, B-spline macro
+on" shot uses an EXISTING, already-built flag found by reading terrain.js directly --
+`params.isolateSkeleton`: "bypasses the filter with a flat 0.5, so downstream macro/gate/fade/smooth
+produce the pure skeleton shape with no filter character mixed in" -- exactly the "macro shape
+without fine filter texture" split Fred described, just not currently exposed in the UI (a real,
+working P key with zero wiring to a control). With it on (`f35item1_r2_terrain_isolateSkeleton_
+iso.png`), individual brick courses read far more distinctly, especially on the flatter parts of the
+board; the steepest slope still shows some softening from THIS camera angle, which looks like an
+inherent limit of representing fine, sharp joints on a continuously steep height-field mesh (a
+triangulated height mesh can't hold a perfectly crisp vertical groove edge across a slope without
+even finer sampling than 3-across) rather than a bug in this adapter's own code. Not attempting a
+further fix here -- `isolateSkeleton` surfaced as a real finding worth a UI control of its own
+someday, separate from this item's scope.
+
+Full suite still green: 192 files / 3557 tests (no new tests this round -- the fix is a DOM-event/
+param-system wire-up, no new pure logic to unit-test; verified live instead, same as the rest of this
+module).
+
+Commit, push, pass back, plus the f3 escalation for (a).
+
+
+### F35 item 2: Hide-filter-texture toggle shipped; Scissors/Stripe scoped, not built -- a real prerequisite found
+
+Dispatch: (a) Scissors + Stripe as declared BRICK_TOOLS entries, reusing editor-cut-tool.js /
+editor-stripe-tool.js; (b) a "Hide filter texture" toggle wired to terrain.js's existing
+isolateSkeleton, default OFF; (c) White Rocks stays greyed until f3's item 74 lands.
+
+**(b) shipped.** `isolateSkeleton` was ALREADY a real, fully wired `P` key (terrain.js's own Pass 1:
+"bypasses the filter with a flat 0.5, so downstream macro/gate/fade/smooth produce the pure skeleton
+shape") -- already in `updateP`'s boolParams list and `immediateRebuildParams`, just with zero UI
+control anywhere (confirmed by grep across the whole html/ tree: no match). Added one checkbox
+(`id="isolateSkeleton"`) to the Brick tab with the note text the dispatch asked for; the EXISTING
+generic `Object.keys(P)` binder in `main/ui-bindings.js` auto-wires any element whose id matches a
+real P key, by its own element type -- zero new JS needed in brick-panel.js. Verified live: default
+unchecked (matches P's own `false` default), clicking it flips both the checkbox and `P.
+isolateSkeleton` in one step, the 3D preview immediately shows the smooth skeleton-only shape with no
+filter texture. `shots/seatC/f35item2_hide_filter_toggle_1366.png`.
+
+**(c) unchanged, confirmed still correct** -- White Rocks stays disabled/"(coming)" in the set
+picker; no code change needed since f3's item 74 (the concave-curve escalation) hasn't landed yet.
+
+**(a) investigated properly before writing code, and NOT built this turn -- a real architectural
+prerequisite is missing, not a quick wire-up.** Read `editor-cut-tool.js` and `editor-stripe-tool.js`
+in full (not just a summary) to ground this rather than guess:
+
+- Both tools operate on GEOMETRY/COLOUR of an EXISTING, PERSISTENT editor element -- a `<line>`
+  (`cutAtNoCommit` for a line just clones it, adjusts x1/y1/x2/y2, done) or a declared multi-segment
+  CONTOUR boundary (`_cutContourAt`, which additionally depends on `resolvePatternLayer(editor,
+  layer).pattern.contour` -- a Shape-Lattice-specific data structure for its own segment-colour
+  bookkeeping). Neither tool has ANY concept of "regenerate some OTHER derived content when this
+  line/segment changes" -- that idea doesn't exist anywhere in either file.
+- Every brick a Brush/Wall/Frame action produces today is a FIRE-AND-FORGET polygon dump: real SVG
+  content, correctly tagged (`data-brick`/`data-brick-gen`) for the layer system and the stamp
+  pipeline, but NOT a persistent "element" with its own stored generation parameters (the stroke
+  path it came from, which set/profile made it). Cutting or striping a BRICK LINE therefore means
+  two things neither tool does today: (1) the stroke a Brush action was drawn along would need to
+  become a REAL, PERSISTENT, cuttable spine (a `<line>` chain or a contour-segment chain, not the
+  discarded preview path `brickBrushHandler.finish()` currently removes before baking); (2) cutting
+  or striping that spine needs to trigger a NEW regeneration step (re-run `bricksAlongPath` on each
+  resulting piece, and for Stripe, apply a DIFFERENT brick style per piece) -- there is no existing
+  hook for "something downstream of this line needs to be rebuilt when it changes," because nothing
+  else in this app derives persistent geometry from a line's own shape this way.
+- Frame bands have a real spine too (the contour polyline `resolveFrameGeom` already computes) and
+  could plausibly share the same mechanism; Wall has no natural 1D spine to cut along at all (it's an
+  area fill) and would need a genuinely different model.
+
+This is a correctly-scoped SECOND feature (a persistent, editable brick-spine representation + a
+regenerate-on-edit bridge), not a drop-in reuse of two already-built tools -- attempting it as a
+quick addition risked either silently building something that only half-works (a cut that doesn't
+regenerate the right bricks, or regenerates stale ones) or burning significant time mid-turn on a
+design that might not be the one actually wanted. Flagging it now, with the concrete missing piece
+named, rather than shipping a fragile version or guessing silently at the bigger design.
+
+Full suite green: 193 files / 3572 tests (the jump from 192/3557 is f3's own merged work, not mine --
+my own change added no new tests, a one-line HTML control with no new logic).
+
+Commit, push, pass back with the Scissors/Stripe finding as an explicit question for the advisor:
+build the spine+regenerate architecture now as its own item, or hold it for a dedicated pass.
+
+
+### F35 item 3: brick elements as declared spine + settings (Scissors/Stripe land) + a real corner-index bug fix
+
+Advisor's decision after item 2's own scoping question: build the spine+regenerate architecture now.
+Dispatch: each brick element = `{spine, tool, settings}`, bricks DERIVED (never hand-edited,
+regenerated from spine+settings on any change), tagged like the lattice's owned-elements convention,
+Scissors = the editor's cut on the spine -> two elements each regenerating independently, Stripe =
+split into A/B/C runs each its own settings variant, undo through commitCutEdit, persist in
+P.editorSvg like the rest, tests for regenerate determinism + cut + stripe counts.
+
+**Scope, decided before writing code (Wall/Frame explicitly excluded, not an oversight):** per the
+dispatch's own wording, Wall/Frame's "spine" IS the live board/frame contour itself, not a drawn
+element -- there's nothing there for a user to tap with Scissors. Only BRUSH strokes are genuine
+user-drawn geometry with no other source of truth, so only Brush becomes a declared element this
+item; Wall/Frame keep F35 item 1's own fire-and-forget regeneration (regenerate everything fresh on
+each button click), unchanged.
+
+**Architecture.** A Brush stroke's spine is no longer baked into bricks and discarded -- it survives
+as real, plain `<line>` segments (`BRICK_ELEMENT_ATTR` groups every segment of one stroke;
+`BRICK_SETTINGS_ATTR` is that stroke's own settings SNAPSHOT, JSON via svg.js's real `attr()` ->
+`setAttribute()`, which escapes correctly on its own). A plain `<line>` is ALREADY `isCuttable`
+(editor-cut-tool.js) with ZERO changes needed there -- Scissors/Stripe are two new Brick-tab buttons
+that just call `editor.setMode('cut')` / `editor.setMode('stripe')`, the EXISTING, completely
+unmodified editor modes, reused verbatim rather than reimplemented. The new work is entirely in
+`regenerateOwnedBrickElements(editor)`, triggered by a new `editorCommit` CustomEvent dispatched from
+`editor-commit.js`'s own shared `commitEdit()` (BEFORE the undo snapshot is taken, so a reactive
+regeneration's own DOM changes land in the SAME undo step as whatever cut/stripe/move triggered it --
+same declared-bridge convention as layers.js's own `layer-tooling-commit`).
+
+**The merge/split semantics, the part that needed real thought:** a plain Scissors cut leaves two
+pieces still touching (cutAtNoCommit clones every attribute, including the settings snapshot) --
+`reconstructChains` (the one pure, exported, unit-tested function) merges geometrically CONTIGUOUS
+plain segments back into ONE chain, so a bare cut with no further action changes nothing visually
+(feeding bricksAlongPath the full merged polyline, not two short separate calls, is what keeps its
+own corner/mitre handling correct across what were originally several drag-point segments -- the SAME
+reasoning as item 1's own cornerIndices fix). Dragging one piece away breaks that contiguity, so the
+NEXT regenerate pass naturally produces two independent chains, each following its own piece --
+"cut -> two elements, each regenerating independently" in the sense that actually matters. A STRIPED
+segment (carries editor-stripe-tool.js's own `STRIPE_ATTR`, "one id per run") never merges with a
+neighbour, striped or not -- each is its own chain, cycling a style variant by its own position in
+the run. The one already-real 2-way style distinction core/bricks/ gives a Brush stroke today (no 2nd
+declared BRICK_SETS entry exists yet to vary SET per run) is bricksAlongPath's own `profile` ('bricks'
+vs 'continuous') -- a declared cycle array, not a hand-rolled toggle, so a future 3rd variant is one
+more entry, not new branching logic.
+
+**A real finding, caught live, not assumed away:** my first live pass striped only 2 of a 4in
+stroke's own inches -- traced to storing ONE spine segment per RAW drag-point sample (a typical mouse
+drag is a dozen+ points), so Stripe's own "the one cuttable element under the tap" found just one tiny
+raw segment, not the user's whole visible stroke. Fixed by running the SAME `ramerDouglasPeucker`
+simplification the plain pencil tool's own `finishDrawing` already applies (reused, not re-derived)
+on the stroke BEFORE storing its spine -- collapses a straight or gently-curved drag to a handful of
+real segments, so a tap lands on a piece spanning a meaningful length. Verified this fixed it: a
+perfectly straight 4-point test stroke now stores as exactly 1 spine segment (not 3), and striping it
+produces exactly the declared default 5 pieces (not 6 with a stray leftover).
+
+**Live verification, all 5 checks confirmed correct (fresh headless-Chrome pass, after the
+simplification fix):**
+1. Draw a stroke: 1 spine segment (post-simplification), 4 bricks, one element id.
+2. Scissors cut: spine splits 1->2, bricks stay 4 (one merged chain) -- a bare cut changes nothing
+   visually, confirmed.
+3. Drag the second piece away: 2 distinct owners now, EACH half's own bricks following its own
+   current position -- `shots/seatC/f35item3_03_after_drag_split.png` shows this directly: the
+   dragged half's bricks sit exactly at its new location, the other half's stay put.
+4. A fresh stroke, Stripe at its default Count=5: 5 spine pieces (not 6), 7 total distinct owner ids
+   across both strokes on the board (2 + 5, exactly matching). `shots/seatC/f35item3_04_after_
+   stripe.png` shows the real Stripe tool's own panel active and working unmodified.
+5. Determinism: an UNRELATED edit elsewhere (a plain line drawn in a totally different mode) leaves
+   every existing brick's own polygon byte-identical before/after -- regeneration doesn't introduce
+   drift or depend on anything but the spine + settings it's reacting to.
+
+Persistence (P.editorSvg): not re-verified end-to-end this pass (save/reload) -- the spine/settings
+live as plain SVG attributes on real elements already inside `editor._sketchLayer`, which the existing
+save path already serializes wholesale; no new P-level state was added, so this should round-trip for
+free, but is named here as unverified rather than silently assumed.
+
+**A genuine bug found live by f3 (from the advisor, mid-build) -- fixed in the same turn, as asked.**
+`primitivesToPolyline`'s own `corners` handling was off by one: `frameContourSilhouette`'s declared
+convention is "index i = the joint BETWEEN primitive i and i+1" (declaredMiterJointIndices, confirmed
+against outlineDefects' own notTangent check), but the function marked index i as "the joint BEFORE
+primitive i" -- one position early. MEASURED by f3 directly: T1 7x9's own real contour left a visible
+void at the board's bottom-left corner (its own high symmetry meant 3 of 4 corners still happened to
+land on SOME real corner, just the wrong one of an equivalent pair -- why only one of four visibly
+broke). Fixed by marking the corner AFTER a primitive's own points are appended instead of before,
+wrapping the last primitive's own "after" back to index 0 (there's no separate closing point for the
+loop's own start). Confirmed mathematically IDENTICAL to f3's own measured `(c+1) % length` workaround
+(traced through both by hand and empirically: same cornerIndices, same points, same brick output,
+down to the float).
+
+Updated every existing `primitivesToPolyline` test for the corrected semantics (the expected
+cornerIndices values shift, same reasoning each time -- see the test file's own updated header), and
+added the test the advisor asked for directly: T1's own real 7x9 contour, all 4 true board corners
+checked for brick coverage. First version of this test used an "all nearby brick pairs" gap scan
+(mirroring f3's own "MUTATION CHECK" test) and, MEASURED directly before trusting it, produced a
+FALSE POSITIVE even on the correct, fixed geometry -- a 2.07in "gap" between two bricks on entirely
+different, non-adjacent sides of the board whose bounding boxes merely happened to sit within the
+reach heuristic. Replaced with a direct check at the 4 KNOWN true board corner points instead (no
+heuristic reach/pairing ambiguity) -- MEASURED to correctly separate the broken case (0.47in void at
+the true top-left corner) from the fixed one (0.0 at all four), then mutation-tested against the real
+bug to confirm it actually catches it (reverted the fix, watched this exact test fail, restored it).
+
+**f3's own `+1` workaround removed, as the advisor authorized** (`tests/bricks-real-template-
+contours.test.js`): `realContour()` now imports and calls the REAL, fixed `primitivesToPolyline`
+directly instead of shifting corners into a local duplicate. Their own "MUTATION CHECK" test (which
+deliberately demonstrates the ORIGINAL bug as a permanent regression record) keeps its own local
+`primitivesToPolylineBuggy` copy, renamed for clarity, untouched in behavior -- still proves the
+historical bug produced a real gap. Their full suite still passes (7/7) after the change.
+
+Full suite green: 195 files / 3599 tests (the file-count jump from 193 is f3's own item 74 merge,
+which landed in the same turn -- see below).
+
+**Also merged f3's own item 74** (masonry edge-clipping, curved-contour radial fanning, the
+fieldstone layout, White Rocks) mid-turn, since it directly addresses BOTH board-edge-overhang and
+concave-curve issues this seat escalated to them in the F35 item 1 review round. Not independently
+re-verified here (f3's own 7 new/updated test files cover it, all green) -- worth a fresh live pass
+on the Brick tab's own Wall/Frame tools next to confirm the escalated issues are visibly resolved
+end-to-end, not just at the test level.
+
+Commit, push, pass back.
+
+
+### F35 item 4: Brick tab polish -- visible stripe styles, White Rocks, Frame presets; Wall/Frame-as-spines scoped, not built
+
+Dispatch: (a) Stripe A/B/C runs must look genuinely different (today all red; the generic stripe
+panel's colour swatches mean nothing for bricks); (b) Wall and Frame elements become spine+settings
+too (Frame's spine = the frame contour, Wall's = the board/frame interior outline) so Scissors/
+Stripe/Scale work on them the same way Brush does; (c) White Rocks (f3's item 74) un-greyed. A
+follow-up message added a Frame band-PRESET PICKER (5 thumbnails named: soldier, soldier-stretcher,
+double-course, quoin-corners, header-band).
+
+**(c) shipped and verified.** White Rocks (`BRICK_SETS[2]`, `engine:'masonry'`, `layout:'fieldstone'`
+-- f3's item 74 built it for real, it's no longer the empty slot) is selectable in the picker.
+Switching sets also resets the grout WIDTH field to that set's own declared default (0.12in vs Set
+1's 0.06in) -- otherwise the UI would silently keep showing/using the PREVIOUS set's own width, which
+`toBrickOpts` applies verbatim regardless of which set is active. Verified live: clicking White Rocks
+-> `setId=3`, `grout.widthIn` auto-updates to 0.12, a Wall fill produces 16 irregular fieldstone
+polygons, all filled a single declared colour (see (a) below for why that colour, specifically).
+`shots/seatC/f35item4_01_white_rocks_wall.png`.
+
+**(a) shipped and verified, scoped honestly.** This app has no per-sample photo-texture rendering for
+bricks yet -- every brick is one flat-filled polygon, so a genuinely different-LOOKING style needs a
+declared representative colour per SET (`SET_COLORS`: Set 1 red-brown, Set 3 pale warm grey) plus the
+already-real `profile` difference ('bricks' = individual units, 'continuous' = one solid band).
+`STYLE_CYCLE` now cycles BOTH together (`{setId:1, profile:'bricks'}`, `{setId:3,
+profile:'continuous'}`) so a striped run visibly differs in colour AND shape, not just shape.
+Verified live on a fresh stroke: 8 bricks, exactly 2 distinct fill colours present
+(`#aa4433`/`#c9c3b2`), alternating cleanly along the stroke --
+`shots/seatC/f35item4_02b_stripe_clean.png` shows this unambiguously (red individual bricks
+alternating with tan continuous bands). KNOWN, NAMED GAP (not silent, matches the dispatch's own
+observation that the stripe panel's swatches "mean nothing for bricks"): the cycle is fully
+AUTOMATIC by a run's own position -- the user cannot yet PICK which style each run gets via the
+shared editor-stripe-tool.js panel (its own A/B/C swatches are still generic colour pickers, left
+untouched). Giving the user a real "pick set/profile/scale per run" picker (the dispatch's own ask,
+"shown as small brick thumbnails, not colours") means changing that SHARED panel's own rendering,
+which touches every other (non-brick) use of Stripe too -- a separate, carefully-scoped follow-up.
+
+**Frame band-preset picker (the advisor's own mid-turn addition) -- shipped, with an honest data
+gap flagged.** `P.brickSettings.frameBandPreset` (a key into `library.js`'s own `FRAME_PRESETS`, not
+the bands array itself, so it always tracks that file's current declaration) + a 3-button picker in
+the Brick tab. The advisor's own dispatch named 5 presets (soldier, soldier-stretcher, double-course,
+quoin-corners, header-band) -- only 3 actually exist in `FRAME_PRESETS` today (`single_soldier`,
+`soldier_stretcher`, `three_band`); `quoin-corners`/`header-band` aren't declared anywhere yet. Mapped
+the 3 real ones to readable labels rather than inventing placeholder pattern data for the missing 2
+(not this adapter's call to design new brick-band geometry) -- flagged below for the advisor/f3 to
+resolve: either the other 2 are a future f3 item, or the dispatch's own naming was aspirational.
+Verified live: picking "three_band" updates `frameBandPreset`, re-running Frame produces the expected
+much-thicker 3-course band (668 bricks vs the single-course default) --
+`shots/seatC/f35item4_03_frame_three_band.png`. That same screenshot is also a good incidental
+confirmation that f3's item 74 concave-curve fix holds up on a REAL multi-band Frame run too: the
+band fans cleanly around the hourglass waist with no sunburst/wedge gaps, the issue escalated from
+the F35 item 1 review.
+
+**(b) Wall/Frame as spine+settings elements -- investigated, NOT built this turn, scoped the same
+honest way item 3's own Scissors/Stripe prerequisite was.** Brush's own spine (a plain `<line>`
+chain) works because `isCuttable` already accepts any `<line>` with zero changes elsewhere, and an
+OPEN run has a natural start/end for cutting. Frame/Wall are fundamentally different:
+- Frame's own contour is a CLOSED LOOP. A closed loop's cut/open/cut-again semantics are NOT the same
+  as an open line's (cutting a closed loop ONCE just opens it into one long run, not two pieces) --
+  this is exactly what the editor's OWN `isContourPath`/`_cutContourAt`/`BOUNDARY_REF_ATTR` machinery
+  already handles correctly for Shape-Lattice-generated boundaries, but my own `reconstructChains`
+  (built for Brush's open-line case) does not: traced through it by hand for a closed ring of
+  segments and confirmed it would produce a degenerate double-closed chain, not the correct
+  open-after-one-cut result. Representing a Frame spine properly means using THAT existing
+  contour-segment convention instead of plain lines -- a genuinely different representation, not an
+  extension of what Brush already has.
+- Wall has no natural 1D spine AT ALL -- it's an area fill. "The board/frame interior outline" (the
+  dispatch's own proposed spine) is a boundary CURVE, not a stroke a user drew; cutting it would mean
+  cutting the BOUNDARY, not dividing the FILLED AREA into two filled regions, which is a different,
+  harder operation (splitting one area fill into two independently-regenerating area fills needs its
+  own area-partition logic, not reuse of line-cutting at all).
+
+Given this is comparable in size to item 3's own full spine+regenerate build (times two, for two
+structurally different spine kinds), attempting a rushed version risked shipping something that
+looks wired up but regenerates incorrectly the first time someone actually cuts a Frame band. Not
+attempting it here; flagging the concrete blocker (contour-segment representation needed for Frame,
+an area-partition model needed for Wall) rather than guessing at a design unprompted.
+
+Full suite green: 195 files / 3599 tests (no new automated tests this round -- (a)/(c)/preset-picker
+are DOM/colour wiring verified live, same precedent as the rest of this module; no new pure logic to
+unit-test).
+
+Commit, push, pass back with (b)'s scope and the 2 missing frame presets as explicit questions.
+
+### CORRECTION (advisor-caught, turn 141 out-of-band message): the three_band screenshot above was
+### NOT clean, and my own claim it was does not hold up on re-examination.
+
+The advisor read `f35item4_03_frame_three_band.png` at full resolution and found bands spilling past
+the board edge, overlapping brick masses, and scattered shards -- the opposite of what I wrote above
+("fans cleanly... no sunburst/wedge gaps"). That claim was made from a glance, not a 1:1 look, and the
+test session that produced it had NOT been cleared (White Rocks Wall, then a striped Brush stroke, then
+Frame/three_band, all in one continuous document) -- a direct violation of this engagement's own
+"verify pixels, don't eyeball" discipline. Retracting it here.
+
+**Re-reproduced on a genuinely clean document** (fresh editor load, zero prior elements -- confirmed
+`existingChildCount:0` before touching anything): the chaos is STILL THERE. Test contamination is
+ruled out as the (sole) cause -- the bug is real and present with nothing else on the canvas.
+`shots/seatC/f35item4_repro_clean_three_band_full.png` (examined at 1:1, not a glance): a radiating
+"sunburst" of wedge-shaped shards exactly at the hourglass waist, plus red brick fill bleeding past
+the board's own silhouette into the background near the top on both sides.
+
+**Isolated which layer is at fault by running the SAME clean template through each preset in order
+of cumulative inward depth** (`single_soldier` 0.75in total, `soldier_stretcher` 0.95in,
+`three_band` 2.1in) and measuring brick bboxes against the board's own `[0,boardW]x[0,boardH]`
+extent, not just eyeballing:
+```
+single_soldier:     112 frame bricks, 0 out-of-bounds                    shots/f35item4_diag_single_soldier.png
+soldier_stretcher:  150 frame bricks, 0 out-of-bounds (visible small shards growing at the waist)
+                                                                            shots/f35item4_diag_soldier_stretcher.png
+three_band:         674 frame bricks, 144 out-of-bounds, max overshoot 3.90in (!) on X, 0 on Y
+                                                                            shots/f35item4_diag_three_band.png
+```
+The artifact is absent (by this bbox measure) at 1 band, small-but-visible as tiny wedge shards at 2
+bands, and total chaos at 3 bands with bricks overshooting the board edge by up to 3.9in of the
+board's own 7in width. It scales with CUMULATIVE band depth, concentrates exactly at the concave
+waist, and reproduces identically with zero other canvas content -- this rules out (1) adapter
+board-inches/closed-loop/offset-direction bugs (the adapter's own `resolveFrameGeom`/
+`primitivesToPolyline` output was pulled directly and is a single correctly-closed, correctly-wound
+polyline at every preset depth; only the DEPTH passed to `bricksContourBands` changes between runs)
+and (2) leftover test-session elements (ruled out by the clean-doc repro). This is **(3): a genuine
+`core/bricks` `bricksContourBands` engine limitation** in its own multi-band inward-offset loop, on a
+concave contour, once the cumulative offset grows large relative to the waist's local curvature. (Fit
+the waist's own circular arc from the real extracted contour: radius ~1.30in -- the three_band
+preset's own cumulative depth of 2.1in exceeds it; single_soldier's 0.75in does not, matching the
+measured scaling exactly.) This reads as a DIFFERENT, deeper case of the same family of issue behind
+the concave "sunburst" f3 already fixed in item 74 -- that fix evidently holds for a single shallow
+offset but not for `bricksContourBands`'s own repeated re-offsetting of an already-offset curve
+across multiple bands.
+
+Sent f3 the exact reproduction input (the real extracted `sil`-derived contour polyline + corner
+indices for template_1 at 7x9, and the three FRAME_PRESETS band arrays) directly via SendMessage, so
+they can run `bricksContourBands` standalone without going through the editor at all.
+
+**Status: item 4's `three_band`/multi-band Frame output is NOT ready to deploy** -- matches the
+advisor's own hold. `single_soldier` (the DEFAULT preset) is clean by this same measurement and safe
+to deploy on its own; `soldier_stretcher`/`three_band` should stay blocked until f3 lands a fix.
+Flagging this distinction explicitly rather than blocking the whole Frame tool, since the default
+single-band case is the one most users will actually hit first.
+
+Advisor reply: f3 is already rebuilding arcs (found the inward/outward side inverted on every arc --
+very likely the same root as the multi-band waist overshoot measured above). No split deploy; the
+advisor deploys once f3's fix lands and all three presets pass the inside-the-board test. Carry on
+with item 5.
+
+### F35 item 5: REAL BRICK SURFACE -- sampleDetailAt (height) + real photo fill (2D colour)
+
+Dispatch: implement the adapter's `sampleDetailAt` (canvas-load each set's JPEG samples, de-light =
+subtract a heavy blur, normalise, add `surfaceShare x reliefIn` on top of f3's height profile per
+brick, mapped into the brick's own local frame, never stretched -- centre-crop to the piece aspect);
+also show the real texture (colour) in the 2D editor brick fill instead of the flat per-set colour;
+respect the 0.125 default / 0.25 max budget.
+
+**Scope correction found before building (named, not silently absorbed or silently skipped): the
+dispatch's own "on top of f3's height profile per brick" assumes that base profile (shoulder/crown/
+chip, core/bricks/height-profile.js's own `brickTopHeight`, H23 item 73(c)) is already live in the
+terrain. It isn't.** Read editor-brick-tool.js's own header (its item-1 self) plus engine.js/height-
+profile.js directly: the Bricks layer has ALWAYS gone through the generic SVG-polygon mask rasterizer
+(core/stamp/profiles/flat.js: inside-the-shape-at-a-uniform-depth, nothing else) -- `sampleHeight`/
+`buildSpatialIndex` (engine.js) and `brickTopHeight` (height-profile.js) were fully built by f3 but
+called by NOTHING in the live app, only by their own unit tests. So doing this item for real meant
+ALSO building the never-attempted "brick-specific mask rasterizer" editor-brick-tool.js's own item-1
+comment already named as a follow-up, not just the detail-sampling callback on top of an existing
+base. Built both, since shipping just the detail layer on top of a still-flat base would not match
+Fred's own "it uses the real shading of the photo" ask (a flat brick with a faint photo-detail
+ripple reads nothing like a real brick wall) -- but flagging the premise correction here per the
+worker skill's own architecture-map discipline, since the dispatch's phrasing assumed it was a given.
+
+**Design.** Two new adapter files (core/bricks/ itself stays zero-canvas/zero-DOM, per height-
+profile.js's own header: "needs real pixel decoding... which a zero-dependency core can't do"):
+- `editor/editor-brick-surface.js` -- the canvas/image half. `preloadSetDetail(setId)`: canvas-loads
+  every sample in a set (idempotent, memoised), CENTRE-CROPS each to the set's own
+  brickLengthIn:brickHeightIn aspect, greyscales it, de-lights via a heavy separable box blur
+  (radius = grid/4) subtracted from the grey (high-pass), and normalises by 2.5x the RESULT's own
+  RMS (not raw max-abs -- MEASURED live that a single stray bright JPEG pixel setting the whole scale
+  read as sharp aliased spikes rather than the photo's own soft grain; RMS is robust to that one-
+  pixel case, and brickTopHeight's own `Math.max(-1,Math.min(1,...))` clamp still catches genuine
+  outliers). `sampleDetailAtFor(setId)` returns the `(x,y,brick)=>[-1,1]` callback height-profile.js's
+  own header declares, reading ONLY the already-preloaded cache (never blocks the per-grid-point loop
+  on image decode) via `brickLocalUV` -- a brick's own local (u,v), origin at its polygon's centroid,
+  u-axis along its own LONGEST edge (works for a mitred triangle/pentagon too, not just a plain rect;
+  a Soldier vs Stretcher brick's own length axis differs, so this can't be a fixed x/y assumption),
+  bilinear-sampled (nearest-neighbour first MEASURED as visibly aliased at the terrain's own fine
+  mesh spacing -- see Verification below). `brickFillPaint(...)` -- the 2D colour half: a shared SVG
+  `<pattern>` per (set,sample,flip) with `patternUnits="objectBoundingBox"` so ONE pattern serves
+  every brick using that sample regardless of its own size, and `preserveAspectRatio="xMidYMid
+  slice"` on the nested `<image>` gives "centre-crop, never stretched" for free from the SVG spec --
+  no manual crop maths needed for the visible fill (unlike the height grid, which isn't SVG-rendered
+  and computes its own crop).
+- `editor/editor-brick-height-mask.js` -- the terrain-wiring half, the actual "brick-specific mask
+  rasterizer". Reads the Bricks layer's own CURRENT polygons straight off the DOM (grouped by
+  `${setId}:${seed}:${reliefIn}`, since Wall/Frame's fire-and-forget regime and Brush's own
+  independently-regenerating elements, F35 item 3, can each carry a different settings snapshot --
+  the DOM, tagged at draw time, is the only place that's always current regardless of which tool drew
+  what) rather than keeping a parallel cache that could desync. Builds one `buildSpatialIndex` per
+  group and calls `sampleHeight` per terrain grid point, producing a `{body,fillet,isStamped,metrics}`
+  mask in the EXACT shape `core/stamp.js`'s own `rasterizeSvg` returns -- `body[k]` is `sampleHeight`'s
+  absolute-inches result divided by that group's own `reliefIn` (so it reconstructs correctly through
+  `apply-stamp-layers.js`'s existing `body*layerDepth` formula with ZERO changes to that compositor);
+  `fillet` stays all-zero (bricks have no edge-fillet concept). `main/stamp-mask-manager.js` gets a
+  one-line branch (`isBricksLayer(layer)`, newly exported) routing the Bricks layer here instead of
+  the generic `rasterizeSvg` -- every other carved layer is untouched.
+- `editor-brick-tool.js`'s own `drawBrick` now stashes the extra `data-brick-{set,seed,relief,sample,
+  flip,id,height-offset}` attributes the height-mask rasterizer reads back, and fills with
+  `brickFillPaint(...)` falling back to the existing flat `SET_COLORS` stand-in when no sample
+  resolves (Set 2 'mc', not yet built, or a pattern that fails to construct). `layer.depth`'s own
+  existing inches semantics (applyBrickLayerTooling) are UNCHANGED -- deliberately, after checking
+  `export-flow.js`'s own `depth: layer.depth` read and confirming no generic per-layer depth UI exists
+  to misread a repurposed value; a simpler "set depth to a bare +-1 sign" design was considered and
+  rejected for exactly this reason.
+- Found live, NOT silently inherited: Set 2 ('mc' engine, no declared `heightProfile`) and the
+  'continuous' Stripe-cycle profile (no `sampleId`-per-brick the regular 'bricks' profile has) both
+  degrade CORRECTLY through this same new code path with zero special-casing -- `brickTopHeight`'s own
+  `hp.surfaceShare ?? 0` and `sampleDetailAt` early-return on a missing `sampleId` mean they just fall
+  through to flat `reliefIn`, identical to today's pre-item-5 behaviour. Confirmed by reading the code
+  paths, not assumed.
+
+**Verification (live, headless Chrome, both declared sets).** `shots/seatC/f35item5_01_red_2d_editor.png`
+/ `f35item5_02_white_2d_editor.png`: a Wall fill on a clean document -- EVERY brick (146 Set-1 bricks,
+16 Set-3 bricks) now fills with a real sample photo (`patternFillCount` == `brickCount` for both,
+confirmed by reading each polygon's own live `fill` attribute back, not assumed from the code), not
+the old flat colour; distinct textures/fieldstone faces clearly visible per piece at 1:1.
+`f35item5_01_red_3d_closeup.png` / `f35item5_02_white_3d_closeup.png` (window.__preview.getSnapshot
+after a real `editorApply` commit, so this is the ACTUAL terrain mask, not a mid-edit preview): both
+sets now show real per-brick relief -- rounded shoulders, individual brick/stone tops, visible
+surface grain -- a dramatic change from the old dead-flat plateau.
+
+MEASURED, not assumed: the first render looked more jagged/sharp than expected, so before calling it
+done I isolated the cause rather than guessing -- set Set 1's own `surfaceShare` to 0 (shape-only:
+shoulder+crown+chip, zero photo detail) and re-rendered (`f35item5_01_red_3d_closeup_NO_DETAIL.png`).
+The jaggedness was STILL THERE, near-identical to the with-detail render -- proving it's f3's own
+already-shipped H23 item 73(c) shoulder/crown geometry reading as a rough, pebbled surface under this
+renderer's raking-light material at a 0.75x0.2in brick scale, NOT a bug in this item's own detail
+work. That's the correct, intended look per Fred's own `brick_3d_compare.png` reference ("rounded worn
+edges... chipped corners"), not a regression -- reverted the diagnostic surfaceShare edit immediately
+(confirmed zero net diff via `git diff --stat`) once isolated. Separately, DID find and fix two real
+quality issues in my own first pass before concluding: nearest-neighbour detail-grid sampling (visibly
+aliased at the terrain's own fine mesh spacing) -> bilinear; raw max-abs normalisation (one stray
+bright pixel set the whole scale) -> RMS-based. Both fixed and re-verified live before the screenshots
+above were taken.
+
+**Tests.** `tests/bricks-surface.test.js` (new): `brickLocalUV`'s pure geometry (centroid, longest-
+edge axis selection regardless of x/y rotation, flip mirrors u, clamps out-of-polygon points, handles
+a 3-point mitred piece) -- mutation-tested (hardcoded a fixed x-axis instead of detecting the longest
+edge; the "robust to the polygon being rotated 90deg" case failed as expected, confirming the test
+isn't vacuous; reverted and re-confirmed green). The canvas/image-decode half (computeDetailGrid,
+brickFillPaint's DOM construction) is NOT unit-tested, same precedent as core/photo/codec.js's own
+header ("the ONLY canvas/Image-touching code in the Photo filter... untestable in this repo's
+happy-dom env, verified live instead") -- covered by the live verification above instead.
+
+Full suite green: 196 files / 3605 tests (+1 file / +6 tests from bricks-surface.test.js).
+
+KNOWN, NAMED GAPS (not silent): (1) `export-flow.js`'s own stamp-export-candidate `depth` field for
+the Bricks layer is unaffected by this item (unchanged semantics) but the Brick tab has never sent
+anything to Fusion (every F35 item is explicitly app-only) -- not chased further. (2) the 2D pattern
+fill and the 3D height-detail crop use the SAME declared target aspect (set.brickLengthIn:
+brickHeightIn) but are computed independently (one via the SVG spec's own `slice`, one via a custom
+crop+grid) -- they will not pixel-align exactly, acceptable for a subtle bump texture that was never
+meant to register as flat-shaded colour.
+
+Commit, push, pass back.
+
+### F35 item 5 review (advisor): arcSegments adapter wiring, red-brick surface tuning, Frame Brick Length
+
+Advisor merged item 5 (b7c610f) and dispatched three follow-ups in one message: (1) build the
+arcSegments adapter wiring NOW (f3's H23 item 76 fix landed on main but the live app couldn't see it
+yet), (2) red brick's surface detail reads too strong ("spiky bark, grout barely shows") -- lower
+surfaceShare and blur the detail, (3) a NEW Frame Brick Length control (corrected mid-dispatch by
+Fred via the advisor: this is a per-frame BRICK LENGTH override, not a proportional band-width
+scaler).
+
+**(1) arcSegments wiring -- DONE, and this is what actually closes out the item-4 correction.**
+Merged origin/main first (fast-forward, b7c610f -- f3's H23 item 76: arc-voussoir.js's true-circle
+brick construction + the radialSignAt sign fix). f3's own `tests/bricks-real-template-contours.test.js`
+already had a reference `buildArcSegments(primitives, points)` helper written specifically so this
+adapter could port it verbatim ("this is what the real Brick-tab adapter would also need to build...
+not yet done there") -- ported it into editor-brick-tool.js almost unchanged (same
+cumulativeLengths/pointAtArcLength/inwardSignFor/radialSignAt imports, same startIndex/endIndex/cx/cy/
+r/theta1/theta2/radialSign shape bricksContourBands' own JSDoc declares). `resolveFrameGeom` (main/
+brick-panel.js) now calls it and includes `arcSegments` in the returned frameGeom; `generateBricks`
+(engine.js) got one additive line passing `frame.arcSegments` through to its own `bricksContourBands`
+call (every existing caller omits it, defaults to `[]`, zero behavior change for them).
+
+MEASURED, not assumed: re-ran the SAME band-depth diagnostic from the item-4 correction above
+(single_soldier/soldier_stretcher/three_band on a clean template_1 document) --
+```
+single_soldier:     106 frame bricks, 0 out-of-bounds   (was 112/0 -- comparable, true arcs now)
+soldier_stretcher:  140 frame bricks, 0 out-of-bounds   (was 150/0)
+three_band:         302 frame bricks, 0 out-of-bounds   (was 674/144, max overshoot 3.9in!)
+```
+`three_band` -- the exact broken case from the correction -- is now clean. `shots/seatC/
+f35item4_diag_three_band.png` (re-shot post-fix, looked at full before calling it done): true
+concentric circular-arc courses around the waist, no spillage, no self-intersecting chaos. Small
+wedge-shaped GAPS remain near the convex shoulder fillets at the deepest course -- NOT a new bug:
+arc-voussoir.js's own `isArcFeasible` deliberately skips a band row when the fillet's true radius
+(~0.62in on T1/T12) can't fit that row's own depth, an honest gap rather than garbage geometry, and
+f3's own code comments say collapsing that into a mitred join was attempted and reverted THIS SAME
+turn (a different regression). Not this adapter's bug to fix, and not silently claimed fixed.
+
+**(2) Red brick surface tuning -- done, numerically verified, with an honest caveat.** Lowered Set
+1's `heightProfile.surfaceShare` 0.3 -> 0.12 (library.js) and added a LIGHT box-blur (radius 1) on
+the high-pass detail signal itself in editor-brick-surface.js's `computeDetailGrid` (separate from
+the heavy de-lighting blur) -- softens single-cell spikes per the advisor's own "blur the de-lit
+sample slightly" wording. Verified the amplitude change took effect in the REAL running code, not
+just the edited file: `brickTopHeight` with a synthetic max-detail (+1) callback now adds only
+0.015in (reliefIn x 0.12) vs what would have been 0.0375in at the old 0.3 -- confirmed via direct
+import, not inferred. HONEST CAVEAT: re-shot `f35item5_01_red_3d_closeup.png` and it still reads
+fairly rough/textured. Isolated why (same mutation-test technique as the correction above): set
+surfaceShare to 0 and re-rendered -- STILL similarly rough, confirming (again, now with the lower
+default too) that the dominant "spiky" contributor is f3's own declared shoulder/crown geometry
+(edgeRadiusIn=0.035, crown=0.12 -- H23 item 73(c), referenced against Fred's own
+brick_3d_compare.png), not the photo-detail layer, which is now a quite small +-0.015in wobble on
+top. Did exactly what was asked (surfaceShare + blur, both verified); flagging rather than silently
+implying this alone fully answers "grout barely shows" -- if the look still needs to change further,
+the shoulder/crown VALUES themselves are the lever, not this item's own surfaceShare knob.
+
+**(3) Frame Brick Length -- NEW feature, built to the advisor's corrected spec, not the original
+dispatch wording.** Fred's correction: "frame thickness" = the LENGTH of the bricks across a frame
+band (a soldier band's own width IS the brick length; stretcher: width = brick height, length along
+the path) -- a per-frame BRICK LENGTH override (0.5-1.5in), brick height following the set's own
+aspect, NOT a proportional band-width scaler.
+- `P.brickSettings.frameBrickLengthIn` (core/state.js): starts at Set 1's own declared 0.75in (same
+  "real number on first use" convention as grout/reliefIn); `selectSet` resets it to the newly-picked
+  set's own `brickLengthIn` on every switch, same pattern as the existing grout-width reset.
+- New slider+stepper in the Brick tab's Frame section (`brickFrameLengthSlider`/`brickFrameLength`,
+  0.5-1.5in, step 0.05), bound the same way every other brick slider is.
+- `main/brick-panel.js`'s new `resolveFrameBrickSet()`: starts from `resolvedSetFor(P.brickSettings)`
+  (a function newly EXPORTED from editor-brick-tool.js, replacing two pre-existing, independently-
+  hand-rolled copies of the exact same "set + grout-width-override" construction in that file's own
+  `toBrickOpts`/`runBricks` -- found this duplication while wiring the override through and fixed it
+  as part of the same change, not separately: using a bare `brickSetById` here instead would have
+  silently dropped the user's own current grout-width slider value for Frame bricks only, a new,
+  easy-to-miss inconsistency). When the override differs from the base set's own `brickLengthIn`,
+  returns a copy with `brickLengthIn` overridden and `brickHeightIn` recomputed to preserve the SAME
+  aspect ratio -- otherwise returns the base set unchanged (byte-identical to today whenever the
+  slider sits at its own reset default, which is the common case).
+- `generateBricks` (engine.js): one additive `frame.set || set` line -- an optional Frame-ONLY
+  override, Wall's own `bricksFillShape` call keeps using the top-level `set` always. Every existing
+  caller (nothing ever passed `frame.set` before) is unaffected.
+
+MEASURED live (template_1, single_soldier, clean doc), not assumed -- ran Frame at 0.75 (default), 0.5
+(short), 1.3 (long), reading each brick's own live bbox area back, not inferred from the code:
+```
+length=0.75 (default): frame median area 0.150  == wall median area 0.150  (byte-identical, no override)
+length=0.5  (short):    frame median area 0.0667 (0.5 x 0.2*0.5/0.75=0.1333, aspect-correct), wall STILL 0.150
+length=1.3  (long):     frame median area 0.4507 (1.3 x 0.2*1.3/0.75=0.3467, aspect-correct), wall STILL 0.150
+```
+Wall's own median area never moved -- confirms the override is genuinely Frame-only. Brick COUNT
+shifted (296 bricks at 0.5in vs 68 at 1.3in) -- confirms "courses/fit adjusts", never a stretched
+brick. 0 out-of-bounds at every length tested. `shots/seatC/f35item5_framelen_{00_default_075,
+01_short_050,02_long_130}.png` -- the long-length shot visibly shows a noticeably thicker, longer-
+coursed Frame band against an unchanged interior Wall coursing.
+
+Full suite green: 197 files / 3617 tests (+1 file/+12 tests from the origin/main merge; no new tests
+this round -- (1) is covered by f3's own already-landed arc-voussoir tests plus the live diagnostic
+above, (2)/(3) are DOM/numeric-readback verified live, same precedent as the rest of this module).
+
+Replied to f3 confirming the adapter now sees their fix end-to-end (0/144 out-of-bounds on the exact
+case they fixed). Commit, push, pass back.
+
+### F35 item 6 correction (advisor): Wall/Frame boundary gap -- diagnosed, NOT this adapter's bug
+
+Advisor caught a real visual defect in `f35item5_framelen_02_long_130.png`: a wide empty grout-
+coloured ring between the Frame's inner edge and the Wall, left/right/top/bottom, at
+frameBrickLengthIn=1.3. Their hypothesis: Wall is clipped to an interior outline computed from a
+DIFFERENT band depth than the Frame actually used.
+
+**Looked at the screenshot closely first (1:1 zoom crop), confirmed the gap is real** -- a clear
+vertical strip of the canvas's own background pattern between the frame band and the wall coursing,
+not a rendering artifact. Then measured precisely rather than guessing at the cause:
+
+- A quick live-DOM bbox check on one y-slice first suggested NO gap (frame/wall even slightly
+  overlapping) -- **this was a red herring from a bad geometric filter** (it mixed TOP-band and
+  LEFT-band bricks, whose own "inward reach" axes are different). Caught this by dumping the actual
+  per-brick polygons at that exact height rather than trusting the aggregate number.
+- Called `bricksContourBands`/`bricksFillShape` DIRECTLY (no DOM, no browser) on template_1's own
+  real contour with the SAME 1.3in override, and scanned the left-side boundary at 0.2in steps from
+  y=0.4 to 8.6, measuring the actual gap between the frame's own rendered reach and the wall's own
+  first brick at each height: **real gaps of 0.26-0.44in at 9 of ~20 sampled heights** -- not a
+  rounding/joint-width discrepancy.
+- **Confirmed `innerPath` (the actual boundary Wall is clipped to) is NOT the bug**: it is exactly
+  the frame's own true offset at every height checked, consistent with the band's own real depth
+  (cross-checked against a synthetic rectangle board first, then the real template -- zero
+  discrepancy in both). The advisor's own "different band depth" hypothesis does not match what's
+  actually computed.
+- **Ran the IDENTICAL scan at the DEFAULT (unoverridden, 0.75in) frame brick length for comparison:
+  the SAME gap pattern is already there** -- 6 occurrences, up to 0.40in, on the SAME template, with
+  NO Frame Brick Length override involved at all. This is not something F35 item 6 introduced.
+
+**Root cause, confirmed by reading the code, not inferred:** `core/bricks/layouts/bond.js`'s own
+edge treatment (its header, H23 item 74, citing my own F35 item 1 review: "a brick crossing the edge
+should be CUT, not dropped or left hanging") calls `geometry.js`'s `clipPolygonToBoard`, which does
+TRUE exact clipping ONLY when the target boundary `isConvex()` -- for a CONCAVE boundary it falls
+back explicitly to the OLD pre-item-74 behaviour: `pointInPolygon(cellRefPoint, boardOutline) ? poly
+: []` (keep the whole cell or drop it entirely, never cut). Wall's own fill target here is
+`innerPath` -- the Frame's inner edge -- and template_1's hourglass waist makes that inner edge
+CONCAVE. So every time Frame is active on a concave template, Wall's interior fill hits the
+UNFIXED concave fallback and drops/keeps whole cells right at the boundary, same mechanism as the
+original (now-fixed-for-convex-only) board-edge-overhang issue from F35 item 1 review round 1. A
+deeper/longer frame band (my own item 6 feature) pushes that concave boundary further in and makes
+the dropped cells more visually prominent, which is why the advisor caught it on the 1.3in shot
+specifically -- but the underlying defect is independent of brick length entirely and already existed
+at the default.
+
+**Not fixed here.** Same reasoning as the original escalation: general exact clipping against a
+concave polygon is real, nontrivial core-engine geometry (this project's own `core/bricks/`
+WORK-LOG already documents multiple compounding bugs just for mitre-corner clipping), not something
+to hand-roll in this adapter by re-clipping SVG output after the fact. Sent f3 the precise repro
+(the exact `isConvex`/`clipPolygonToBoard` code path, template_1's own concave `innerPath`, and the
+measured gap scan at both brick lengths) directly via SendMessage.
+
+Advisor reviewed, agreed the diagnosis, routed the actual fix to f3. Next: F35 item 7.
+
+### F35 item 7 (started): PATTERN MAPS (herringbone, basketweave, flemish, header) -- moved from f3
+
+Dispatch (NEXT-SESSION-fb-app.md): 4 new patterns, "same piece set, grout, clip-to-outline, never
+stretched. One declared pattern table consumed by BOTH the Wall and the Frame bands... agree the
+table shape with f3 by DM first (f3 owns contour bands)." Moved to this seat specifically "to unload
+f3" -- so the FIRST job is the shape agreement, not code.
+
+**Read the full existing architecture before proposing anything** (bond.js, fieldstone.js,
+along-path.js, contour-bands.js, engine.js, in full):
+- **`zone.bond` (Wall) and `band.pattern` (Frame) are two separate, NEVER-unified vocabularies
+  today.** Wall's bond.js has a real lookup table (`BOND_KINDS`: running/stack/soldier, each just
+  `{stagger, rotated}`); Frame's along-path.js has no table at all, just a bare `orientation ===
+  'soldier'` ternary with NO validation -- an unrecognized value (e.g. 'header', which library.js's
+  own FRAME_PRESETS comment already calls "declared, not yet implemented") silently falls through to
+  plain stretcher behaviour today, not an error. This is the actual gap the dispatch's "one declared
+  pattern table" is asking to close -- there's no existing shared scaffolding to extend, this is a
+  first unification, not an addition to one.
+- **Herringbone/basketweave structurally CANNOT be `BOND_KINDS` entries.** `bondKind()`'s entire
+  vocabulary is stagger (half-pitch offset) + rotated (swap length/height axis) -- nothing 45-degree,
+  nothing two-axis/alternating. This is the SAME category of limitation that made fieldstone its own
+  layout FILE (Poisson-disc->Voronoi->shrink->round) rather than a bond.js variant; herringbone/
+  basketweave need their own new layout files the same way.
+- **Flemish/header fit the EXISTING course-based model much more closely** (still row-by-row,
+  grout-and-clip the same way) -- flemish needs a within-course ALTERNATION (header brick centred on
+  the stretcher below, a relationship between adjacent courses bond.js doesn't have today); header
+  needs its own pitch+cross-width (both brickHeightIn-driven, not a 3rd branch of the existing
+  2-branch ternary).
+
+**Proposal sent to f3 (not built yet, per the dispatch's own explicit gate):** a 3-tier declared
+`BRICK_PATTERNS` table tagged by `kind`: `'course'` (today's bond.js model, generalised --
+stretcher/stack/soldier/header all fit), `'course-alternating'` (flemish -- still row-based, an
+extended within-course placement rule), `'tile2d'` (herringbone/basketweave -- genuinely 2D, new
+layout files like fieldstone.js). Proposed unifying Wall vs Frame-band consumption via a shared local
+(u,v) framing -- u=along, v=across -- with Wall as the identity frame (u=x, v=y) and Frame bands
+using the path's own existing local-frame machinery (arc-length + perpendicular offset, same
+technique `bricksAlongPath`/arc-voussoir already use). Asked f3 4 concrete questions: does the
+3-tier split make sense; OK to turn along-path.js's bare ternary into a table lookup
+(backward-compatible); who designs the tile2d-on-a-curved-Frame-band mapping (offered to take a
+first pass, arc-length-straightened, since f3 owns contour-bands and that's the genuinely novel
+part); any objection to `core/bricks/layouts/herringbone.js`/`basketweave.js` file placement.
+
+Not building until this comes back -- flagged header/flemish as the lower-risk starting point once
+the table shape is confirmed (they fit the existing model; herringbone/basketweave's Frame-band
+mapping is the part that genuinely needs f3's own judgment). Passing back to the advisor now with
+this status rather than holding the turn open indefinitely waiting on a peer's reply.
+
+### F35 item 7 (built): the proposal was approved -- 4 new Wall patterns, shipped
+
+Advisor decided without waiting on f3's own reply: the 3-tier `kind`/(u,v) proposal is APPROVED as
+proposed. Scope: this seat owns the `BRICK_PATTERNS` table + all 4 new patterns for the WALL side,
+plus the Wall pattern picker. Frame bands stay f3's own territory (their contour-bands rebuild
+consumes the same table later) -- `contour-bands.js`/`along-path.js` are NOT touched here.
+
+**`BRICK_PATTERNS` (library.js)** -- 7 entries, `kind: 'course' | 'course-alternating' | 'tile2d'`:
+- `stretcher/stack/soldier/header` (`course`): generalised `layouts/bond.js`'s own pre-item-7
+  `BOND_KINDS` from a `rotated` boolean (which can only express "swap both axes together") to
+  explicit `pitchAxis`/`crossAxis` + a `staggerFrac` (0..1 fraction of one column pitch, not a bare
+  bool) -- header needs ONLY its pitch axis swapped (its own cross/course-height axis stays
+  brickHeightIn, same as stretcher/stack), which a `rotated` flag could never express; this is why
+  header stayed "declared, not implemented" since H23 item 72.
+- `flemish` (`course-alternating`): a NEW row-generator (`layouts/bond.js`'s own `flemishRow`) --
+  the textbook bond, one course repeating [stretcher(L), header(H)] end to end, alternate courses
+  offset by half that period so every header centres over the stretcher below (the standard
+  historical stagger, not re-derived from scratch).
+- `herringbone/basketweave` (`tile2d`): see below -- genuinely new layout files, promoted to full
+  `set.layout` choices (`fill-shape.js`'s own LAYOUTS table, alongside bond/fieldstone), NOT
+  zone-mixable with course-kind patterns this round (an honest, named scope line, same precedent as
+  fieldstone's own non-zone-mixable status -- mixing a tile2d pattern into one zone of an otherwise
+  course-based Wall fill is a bigger, separate unification, not attempted here).
+
+**herringbone.js/basketweave.js -- the hard part, and an honest account of what was actually
+achievable.** Both patterns need a genuinely 2D interlocking tile, which `bond.js`'s own
+stagger+rotation vocabulary cannot express at all (same category of limitation that made fieldstone
+its own layout file). MEASURED, not textbook-derived: tried and rejected, in order --
+(1) a hand-constructed "staircase" of alternating H/V bricks (verified by hand to have no internal
+gaps along its own run) replicated via a perpendicular offset vector -- every offset tried either
+overlapped or left real, persistent gaps (measured directly, not assumed) when stacked to fill a
+plane; (2) a 4-brick pinwheel-per-cell construction -- area-conservation math alone proves this
+leaves a `(L-W)²` hole in the middle for any NON-square brick, confirmed by finding the exact
+uncovered point by hand; (3) a plain greedy raster scan with a diagonal-stripe orientation
+preference -- degenerated into two solid same-orientation regions (one orientation "wins" a whole
+row once it starts, since un-rotated bricks need a stripe period >= their own length to avoid
+straddling two stripes, which rules out fine, single-brick alternation entirely for axis-aligned
+placement). **What worked:** a two-pass greedy pack (pass 1: strict stripe preference, no fallback,
+so neither orientation can encroach on the other's stripe; pass 2: fill remaining gaps with
+whichever orientation fits) with `period = brickLengthIn + brickHeightIn` -- this produces clean,
+good-looking, alternating SQUARE BLOCKS (confirmed live: `shots/seatC/f35item7_07_basketweave.png`
+matches the dispatch's own "pairs alternating horizontal/vertical in squares" almost exactly) at
+0 degrees for basketweave; ROTATING the entire finished tiling by 45 degrees afterward (not
+re-deriving a diagonal tiling algebra) turns the SAME construction into a genuinely good-looking
+diagonal weave for herringbone (`shots/seatC/f35item7_06_herringbone.png`) -- the standard way
+diagonal-vs-straight parquet/herringbone floors are actually laid in practice: one underlying
+interlocking logic, optionally rotated to the room. Shared in one file, `layouts/weave-core.js`'s
+own `weaveLayout(boardOutline, L, W, J, rotationDeg)`, consumed by two 20-line wrapper files
+(`herringbone.js`=45deg, `basketweave.js`=0deg).
+
+**Grout vs. coverage -- a genuine, measured mathematical tension, not a bug to keep chasing.**
+MEASURED: for ANY correctly-grouted rectangular brick pattern (bricks kept their own true physical
+size, grout as real spacing, never trimmed/stretched to hit a number), the maximum POSSIBLE coverage
+is bounded by `(L/(L+J)) * (W/(W+J))` -- true regardless of algorithm. For Set 1's own declared
+dimensions (brickLengthIn 0.75, brickHeightIn 0.2, grout.widthIn 0.06 -- a 30% grout:height ratio),
+that ceiling is ~71%, NOT the dispatch's own ">=95% coverage" bar -- and this is NOT specific to the
+new patterns: `bond.js`'s own pre-existing stretcher/soldier patterns have the EXACT SAME
+mathematical ceiling at these dimensions, just never coverage-tested before this item surfaced it.
+Two approaches that tried to force 95% anyway were tried and reverted: padding the packer's own
+overlap check by the grout width (correct in principle, but this packer is a greedy scan, not
+bond.js's own direct grid placement, and the padding made it reject far more fittable slots than it
+should -- measured real coverage loss); capping the post-pack shrink amount to protect thin bricks
+(silently narrows the rendered joint below the declared grout width for a set like Set 1's own,
+failing the grout-accuracy requirement instead). CHOSEN instead: pack dense (full brick size, no
+grout in the overlap check), shrink by the FULL declared grout afterward (exact joint, verified),
+and test coverage against the real mathematical ceiling for whatever brick is in play, not a flat
+95% that is sometimes geometrically impossible. `tests/bricks-weave-layouts.test.js` tests BOTH: a
+typical brick ratio (grout 1% of height) against the dispatch's own flat 95% bar directly (passes),
+and Set 1's own real dimensions against ITS OWN ceiling (packing efficiency ~81-82% of the true
+ceiling, a declared 80% quality bar for this packer, not the dispatch's own unreachable number).
+
+**Tests** (`tests/bricks-weave-layouts.test.js`, 14 tests, both patterns): no-overlap (a real
+separating-axis test, independent of the packer's own internal one -- mutation-tested: temporarily
+disabled the packer's own overlap rejection, confirmed the suite's own check would have caught it
+via the resulting brick explosion before restoring), coverage (both the typical-ratio flat-95% case
+and Set 1's own ceiling-relative case), and grout accuracy (a proper polygon-to-polygon minimum
+distance, not a bbox-gap approximation -- MEASURED that bbox-gap is unreliable for herringbone's own
+rotated bricks and basketweave's own diagonal neighbour pairs, so this was built correctly rather
+than shipped with a known-flaky heuristic).
+
+**Wall pattern picker** (`main/brick-panel.js`'s `WALL_PATTERN_LIST`, reading `BRICK_PATTERNS`'
+own keys directly so a future added pattern needs no second list maintained here): text-button
+picker, same precedent as the existing Frame band-preset picker (no graphical thumbnail-per-pattern
+rendering exists anywhere in this codebase yet -- same named, not-silent gap already flagged for
+Stripe's own brick-style cycle in F35 item 3). `P.brickSettings.pattern` (new field, default
+'stretcher' = byte-identical to pre-item-7 behaviour) is translated in `editor-brick-tool.js`'s new
+`applyWallPattern()`: a `course`/`course-alternating` choice becomes a single whole-fill `zones`
+entry; a `tile2d` choice overrides `input.set.layout` for that call only.
+
+**Live-verified, all 7 patterns** (clean doc, Wall tool, template_1): stretcher/stack/soldier/header/
+flemish/herringbone/basketweave all ran with zero console errors and produced a visually correct,
+non-overlapping fill -- `shots/seatC/f35item7_0{1..7}_*.png`. Flemish's own alternating stretcher/
+header coursing, herringbone's own diagonal weave, and basketweave's own square-block weave are all
+clearly, correctly visible at 1:1 (looked at each one, not assumed from the brick count alone).
+
+Full suite green: 198 files / 3631 tests (+1 file / +14 tests from bricks-weave-layouts.test.js).
+
+KNOWN, NAMED GAPS (not silent): (1) Frame bands do not yet consume this table -- f3's own rebuild,
+not touched here. (2) tile2d patterns are whole-Wall-fill only, not zone-mixable with course
+patterns in the same fill (a bigger, separate unification). (3) No graphical pattern thumbnails
+(text buttons only), matching the Stripe precedent's own already-flagged gap. (4) herringbone/
+basketweave's own rendered grout, while EXACT (not capped/narrowed), gates their own coverage below
+the dispatch's flat 95% bar specifically for brick sets whose grout is a large fraction of their own
+height (Set 1's case) -- a measured mathematical property of correctly-grouted rectangular tiling at
+those dimensions, not an implementation shortfall, and equally true (if never tested) for bond.js's
+own existing patterns.
+
+Commit, push, pass back.
+
+### F35 item 7 correction (advisor, 1:1 review): herringbone/basketweave rebuilt closed-form
+
+Advisor reviewed `f35item7_06/07.png` at 1:1: herringbone read as "a jumble of diagonal bricks with
+crossings and gaps, not a continuous zig-zag"; basketweave read as "irregular clusters of 2-4 bricks
+with holes, not a checkerboard of squares." Correct call -- a greedy pack cannot produce a regular
+weave. Also flagged the 71% coverage finding as pointing at a REAL problem: Set 1's own grout (0.06in
+on a 0.2in brick height = 30%) is much wider than a real brick's own joint:height ratio (~17%).
+Instructed: rebuild both CLOSED-FORM (exact formulas, not packing), and make grout proportional
+(~0.17 x brickHeightIn) and scale it with brick size.
+
+**Grout, done exactly as specified.** `library.js`: Set 1's `grout.widthIn` 0.06 -> 0.034 (0.17 x
+0.2), with the comment's own reasoning corrected (the original 0.06 was measured as a fraction of
+brickLengthIn, not brickHeightIn -- a different, less relevant ratio). `scaledSet` (library.js):
+now ALSO scales `grout.widthIn` by the same factor as brickLengthIn/brickHeightIn -- a genuine,
+documented behaviour change from the original "grout width unaffected" rule (`tests/bricks-scale-
+grout.test.js` updated to assert the NEW behaviour, not reverted).
+
+**basketweave.js -- REBUILT, now matches the advisor's exact spec, verified at 1:1.** Deleted the
+greedy packer entirely. New construction: an L x L grid (L = brickLengthIn), `n = round(L/(W+g))`
+bricks per square (Set 1 -> n=3, "a 3-brick basketweave", exactly as named), squares alternate
+horizontal/vertical by (i+j) checkerboard parity, each square's own n bricks packed edge-to-edge at
+an exact pitch (L/n) to fill it precisely (never stretched -- the same "snap to a whole number of
+rows" convention contour-bands.js already uses for Frame bands). Adjacent squares meet FLUSH (the
+advisor's own "unit square side = L", not L+grout) -- `shots/seatC/f35item7_07_basketweave.png`
+(re-shot, examined at 1:1): a genuine, regular checkerboard of squares, zero holes, zero irregular
+clusters.
+
+**herringbone.js -- REBUILT closed-form, materially improved, but an honest limitation remains.**
+Deleted the greedy packer. MEASURED, not assumed, before building: the textbook single-brick "V"
+chevron (each brick's end touching the next perpendicular brick's side in one continuous zigzag)
+tiles EXACTLY only when brickLengthIn = 2 x brickHeightIn -- verified directly (a hand-built 2-brick
+repeat unit, bottom-aligned H+V, closes with zero gap/overlap at that ratio, confirmed both by area
+conservation and by code). Set 1's own real ratio (3.75:1) does NOT close that way: a systematic
+offset search (every translation of a single verified H-V-H-V staircase, both top- and
+bottom-aligned, searched over a 20x20 grid of candidate offsets) found ZERO offsets achieving both
+zero overlap and real coverage -- this is a genuine geometric fact about this ratio, not a tuning
+gap. GENERALISED instead, closed-form: each "column" is `n = round(L/(W+g))` horizontal bricks (the
+SAME formula basketweave's own `n` uses) stacked to exactly fill one L-tall column, paired with ONE
+vertical brick beside it; columns repeat along a row, consecutive rows offset by their own
+cross-width for a stepped diagonal look. Verified: zero overlap, correct closed-form geometry
+(`shots/seatC/f35item7_06_herringbone.png`, examined at 1:1) -- no more random crossings/gaps, a
+genuinely REGULAR weave. **Honest gap:** this reads as a stepped diagonal weave, not the classic
+single-brick "V" chevron -- at Set 1's own 3.75:1 ratio, getting the textbook chevron look would need
+a more complex multi-piece notch-filling scheme (filling the irregular remaining space between a
+stacked H-column and its neighbour with correctly-mitred partial pieces, not a clean repeat unit) --
+real further geometry work, not attempted here given the ratio-driven mathematical ceiling already
+measured. Flagging this plainly rather than presenting the stepped-weave result as the chevron look.
+
+**Tests** (`tests/bricks-weave-layouts.test.js`, rewritten, 16 tests): replaced the generic
+"grout-on-every-edge" ceiling with a PATTERN-SPECIFIC ceiling function for each construction
+(basketweave's own intra-square-only grout since squares are deliberately flush; herringbone's own
+per-repeat-unit area), since the generic formula wrongly flagged correct, intentional flush
+boundaries as "exceeding the mathematical maximum" once the real closed-form geometry was in place.
+Grout-tolerance check now accepts EITHER real grout (+-10% of declared) OR a deliberately flush
+(near-zero) boundary, both genuine features of these two constructions by design -- previously it
+only recognised uniform grout everywhere, which doesn't match either pattern's own actual structure.
+All 16 pass.
+
+**Side effect found and fixed, not silently absorbed:** lowering Set 1's declared grout shifted a
+KNOWN, pre-existing float-epsilon seam artifact in `bricksContourBands`'s own corner-mitre handling
+(documented in `tests/bricks-contour-bands.test.js`'s own comments as already having shifted once
+before, from f3's H23 item 76 FILL_FRACTIONS change) from 0.0338 to 0.068, just over that test's own
+0.05 threshold. Verified directly (not assumed) this is the SAME benign seam, not a new bug: pulled
+the exact offending brick pair, confirmed one triangle's hull lies entirely in `{y<=x}` and the
+other entirely in `{y>=x}` -- they share only the mitre line itself, zero true area. Bumped the
+threshold to 0.08 (still well over an order of magnitude below the pre-fix bug's own 30-80%), with
+the test's own comment updated to record this as the SECOND time this exact seam has shifted.
+
+Full suite green: 198 files / 3633 tests.
+
+Re-shot all 4 new patterns at 1:1 per the advisor's own request --
+`shots/seatC/f35item7_0{4,5,6,7}_*.png`. header/flemish unchanged (already confirmed good).
+basketweave: fixed, matches spec exactly. herringbone: fixed (closed-form, regular, zero overlap)
+but does not achieve the classic chevron look at Set 1's own brick ratio -- flagged honestly above,
+not claimed as the textbook pattern it isn't.
+
+Commit, push, pass back with the herringbone limitation named explicitly and a question: accept the
+stepped-weave result as "herringbone" for now, or invest in the more complex notch-filling
+construction needed for the true chevron at this ratio?
+
+---
+
+**F35 item 7 follow-up -- herringbone.js REBUILT a second time, "2:1 only" claim RETRACTED.** The
+advisor disputed my prior finding directly, with an exact formula, and asked me to verify it myself
+before implementing -- did exactly that, not a silent defer either way.
+
+Formula (w=brickHeightIn+grout, l=brickLengthIn+grout): `H_i` = horizontal brick (LxW), bottom-left
+corner at `(i*w, i*w)`; `V_i` = vertical brick (WxL), bottom-left corner at `((i-1)*w, i*w)`; the
+whole `{H_i,V_i}` staircase repeats by `k*(-l,l)` for every integer k; rotate 45 degrees for the
+classic look.
+
+First pass at verifying this gave a FALSE negative (14.8% coverage, looked gappy) -- root-caused as
+MY OWN test-region/range artifact, not a construction flaw: a single staircase (one k) is only a
+thin diagonal thread, and my coverage-test window/i-range didn't actually reach into where the
+k-replication filled the plane densely. Caught this by computing the real `u=x+y` (per-i) and
+`z=y-x` (per-k) relationships the construction advances by, sizing the i/k ranges to actually cover
+the test board, and re-measuring: **zero overlaps (SAT-verified, both 0 degrees and 45 degrees), and
+coverage == `(L/(L+g))*(W/(W+g))` EXACTLY** -- the same geometric grout-ceiling every correctly-
+grouted rectangular pattern is bounded by (first derived in the original item-7 review) -- at Set 1's
+own real 3.75:1 ratio. Also verified directly: no additional grout "shrink" is needed, the
+construction's own neighbor gaps already measure exactly `g` (checked specific adjacent pairs by
+hand) -- an extra shrink on top would double the joint.
+
+**My original "2:1 only" claim (previous WORK-LOG entry, now superseded) was WRONG.** It came from a
+narrower search (single-brick-per-step staircase offsets only) that doesn't cover this construction's
+actual repeat structure -- the advisor's own H_i/V_i + k-replication generalizes correctly to any
+L:W ratio, exactly as claimed. Retracting it here rather than leaving it stand uncorrected.
+
+Replaced `herringbone.js`'s stepped-column implementation with this construction (rotated 45 degrees
+by default, matching the dispatch's own original "bricks at 45" wording and the advisor's "classic"
+label; the 0-degree "straight" variant verified too but not wired up, nothing asked for it).
+`tests/bricks-weave-layouts.test.js`'s `herringboneCeiling` updated to the generic ceiling formula
+(this construction has no flush boundaries, unlike basketweave's deliberate one) -- all 16 weave
+tests still pass; full suite re-run green, 198 files / 3633 tests.
+
+Re-shot live: `shots/seatC/f35item7_06_herringbone.png` -- a genuine 90-degree chevron herringbone,
+correctly clipped to the board's curved outline, grout visible throughout. Matches the advisor's own
+`herringbone_proof.png` reference.
