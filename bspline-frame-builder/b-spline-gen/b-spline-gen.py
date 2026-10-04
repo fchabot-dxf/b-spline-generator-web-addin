@@ -99,6 +99,9 @@ def _dir_writable(d):
         return False
 
 
+LOG_FILE_ENV = 'BSPLINE_GEN_LOG_FILE'
+
+
 def get_log_path():
     """Log file path, DERIVED from this .py file's own location so it always
     resolves to a real, writable folder in BOTH the repo and the deployed Fusion
@@ -113,6 +116,12 @@ def get_log_path():
     wrong-path orphan — git-ignored / local-only — never consulted here.
     workspace_link.json is the sole override.)
     """
+    # Test seam (declared): when set, the log goes HERE and nowhere else. This folder's conftest.py sets it
+    # before collection, so pytest runs never append fake "_handle_generate ... isPreview=False" lines to
+    # the live add-in's log (they read exactly like a phantom Send -- traced 2026-10-04).
+    override = os.environ.get(LOG_FILE_ENV)
+    if override:
+        return override
     addin_dir = os.path.dirname(os.path.realpath(__file__))
     derived   = os.path.join(addin_dir, 'b_spline_gen_log.txt')  # always valid
     try:
