@@ -50,8 +50,10 @@ export const axisLen = (axis, L, H) => (axis === 'height' ? H : L);
  *  used by resolveZones for pitch/row-count math before any row is actually built). flemish's own
  *  course height is simply brickHeightIn regardless of its own stretcher/header alternation -- a
  *  header SHOWS its end face but is still the SAME physical brick height as the stretcher beside it
- *  in a real flemish course (one course = one row of bricks, always). */
-function courseHeightFor(pattern, L, H) {
+ *  in a real flemish course (one course = one row of bricks, always).
+ *  T86 item 2: exported for contour-bands.js's own reuse, same reason `axisLen` already is -- the
+ *  SAME row-depth convention, now needed by the Frame-band engine too (replacing band-course.js). */
+export function courseHeightFor(pattern, L, H) {
   return pattern.kind === 'course-alternating' ? H : axisLen(pattern.crossAxis, L, H);
 }
 

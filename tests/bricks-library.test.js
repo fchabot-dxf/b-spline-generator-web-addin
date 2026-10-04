@@ -85,10 +85,11 @@ describe('BRICK_SETS', () => {
 });
 
 describe('FRAME_PRESETS', () => {
-  it('declares exactly the 7 named presets, each a non-empty band list with widthIn > 0', () => {
+  it('declares exactly the 8 named presets, each a non-empty band list with widthIn > 0', () => {
     // T86 item 1: butt_frame, quoin_corners, double_course and header_band join the 3 original
     // mitre-only presets -- the dispatch's own full 6 corner-style/pattern presets plus the original 3.
-    expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['butt_frame', 'double_course', 'header_band', 'quoin_corners', 'single_soldier', 'soldier_stretcher', 'three_band'].sort());
+    // T86 item 2: mixed_bands (header/flemish/soldier) joins as the declared sequence-based preview combo.
+    expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['butt_frame', 'double_course', 'header_band', 'mixed_bands', 'quoin_corners', 'single_soldier', 'soldier_stretcher', 'three_band'].sort());
     for (const bands of Object.values(FRAME_PRESETS)) {
       expect(bands.length).toBeGreaterThan(0);
       for (const b of bands) expect(b.widthIn).toBeGreaterThan(0);

@@ -83,10 +83,26 @@ export function planPieceLengths(runLength, pitch, nominalJoint, fractions) {
  *
  * @param {number} runLength — the TRUE corner-to-corner reach (caller-measured, see above)
  * @param {number} pitch @param {number} nominalJoint @param {number[]} fractions — same meaning as `planPieceLengths`
+ * @param {number[]} [sequence] — T86 item 2: the declared, CYCLED along-run lengths for the MIDDLE
+ *   (whole) pieces -- `[pitch]` (the default, when omitted) reproduces today's exact uniform-pitch
+ *   behaviour byte for byte. A longer array (e.g. flemish's own `[L, H]`) makes consecutive middle
+ *   pieces alternate lengths; `pitch` itself keeps its EXISTING meaning throughout (the end pieces'
+ *   own fraction base, and the short-run floor below) -- `sequence` only ever governs what fills the
+ *   space BETWEEN the two declared end pieces.
+ * @param {number} [forcedFStart] — T86 item 2: when given, restricts the START end piece to exactly
+ *   this ONE declared fraction (skipping the free fStart search) -- row-to-row stagger (running
+ *   bond's own half-brick offset between courses) is `forcedFStart=0.5` on alternate rows, not a new
+ *   concept: 0.5 is already one of `FILL_FRACTIONS`' own declared values, so "staggered" is just
+ *   "the search is narrowed to the one fraction a real half-brick offset needs," matching how
+ *   `layouts/bond.js`'s own `uniformRow` forces its row stagger today (a declared offset, not a free
+ *   optimisation) -- never a NEW kind of cut.
  * @returns {{lengths:number[], jointWidth:number}} — lengths[0] and lengths[last] are each one of
- *   `fractions`*pitch (the SAME piece when lengths.length===1); every length between is a whole pitch.
+ *   `fractions`*pitch (the SAME piece when lengths.length===1); every length between cycles `sequence`.
  */
-export function planCornerRun(runLength, pitch, nominalJoint, fractions) {
+export function planCornerRun(runLength, pitch, nominalJoint, fractions, sequence, forcedFStart) {
+  const seq = sequence && sequence.length ? sequence : [pitch];
+  const avgSeq = seq.reduce((a, b) => a + b, 0) / seq.length;
+  const startFractions = forcedFStart != null ? [forcedFStart] : fractions;
   const minFraction = Math.min(...fractions);
   if (runLength < pitch * minFraction * 2 - 1e-9) {
     // too short for two independent end pieces (even the smallest declared fraction each) -- a
@@ -94,20 +110,31 @@ export function planCornerRun(runLength, pitch, nominalJoint, fractions) {
     return { lengths: [runLength], jointWidth: nominalJoint };
   }
   const candidates = [];
-  for (const fStart of fractions) {
+  for (const fStart of startFractions) {
     for (const fEnd of fractions) {
       const endsLen = (fStart + fEnd) * pitch;
       if (endsLen > runLength + 1e-9) continue; // even 0 whole pieces would overshoot -- not viable
-      let wholeCount = Math.max(0, Math.round((runLength - endsLen - nominalJoint) / (pitch + nominalJoint)));
+      let wholeCount = Math.max(0, Math.round((runLength - endsLen - nominalJoint) / (avgSeq + nominalJoint)));
       // back off until the (wholeCount+1) joints between pieces don't need to go unreasonably
       // negative to absorb the mismatch -- mirrors `planPieceLengths`' own back-off loop.
-      while (wholeCount > 0 && endsLen + wholeCount * pitch - pitch * 0.5 > runLength) wholeCount--;
+      while (wholeCount > 0 && endsLen + wholeCount * avgSeq - avgSeq * 0.5 > runLength) wholeCount--;
       const nJoints = wholeCount + 1;
-      const idealTotal = endsLen + wholeCount * pitch + nJoints * nominalJoint;
+      // the actual cycled total (not wholeCount*avgSeq) -- exact when sequence has 1 element
+      // (today's behaviour, byte for byte), an honest sum of the real cycled lengths otherwise.
+      let wholeTotal = 0;
+      for (let k = 0; k < wholeCount; k++) wholeTotal += seq[k % seq.length];
+      const idealTotal = endsLen + wholeTotal + nJoints * nominalJoint;
       const err = Math.abs(runLength - idealTotal);
       const jointWidth = Math.max(0, nominalJoint + (runLength - idealTotal) / nJoints);
       candidates.push({ fStart, fEnd, wholeCount, nJoints, idealTotal, err, jointWidth });
     }
+  }
+  // `forcedFStart` narrows the search to ONE start fraction -- on a short enough run, that one
+  // fraction (plus every declared fEnd) can genuinely overshoot everywhere, leaving `candidates`
+  // empty. Retry the free search rather than crash or silently return nothing: an un-staggered end
+  // on an otherwise-too-tight run is a better honest fallback than no plan at all.
+  if (candidates.length === 0 && forcedFStart != null) {
+    return planCornerRun(runLength, pitch, nominalJoint, fractions, sequence);
   }
   // T86 item 1 follow-up (advisor review, "the top band's first and last pieces are thin strips"):
   // MEASURED the raw err-minimum alone can pick a razor-thin END FRACTION (e.g. 1/4) over a FULL
@@ -152,7 +179,9 @@ export function planCornerRun(runLength, pitch, nominalJoint, fractions) {
     return b.err < a.err ? b : a;
   });
   const { fStart, fEnd, wholeCount, nJoints, idealTotal } = best;
-  const lengths = [fStart * pitch, ...Array(wholeCount).fill(pitch), fEnd * pitch];
+  const wholeLengths = [];
+  for (let k = 0; k < wholeCount; k++) wholeLengths.push(seq[k % seq.length]);
+  const lengths = [fStart * pitch, ...wholeLengths, fEnd * pitch];
   const jointWidth = Math.max(0, nominalJoint + (runLength - idealTotal) / nJoints);
   return { lengths, jointWidth };
 }

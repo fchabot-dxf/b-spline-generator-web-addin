@@ -325,13 +325,27 @@ export const FRAME_PRESETS = Object.freeze({
     { widthIn: 0.75, pattern: 'soldier', cornerStyle: 'lapped' },
   ],
   // F35 item 8 (de) + T86 item 1: "header pattern + king-closer mitres" needs no cornerStyle
-  // override at all -- band-course.js's own mitre-corner handling (confirmed: it explicitly inserts
-  // the TRUE mitre corner point via mitreOffset, not a naive (u,v) approximation) already produces
-  // whole-brick (king-closer-fraction) corner pieces for header's own small pitch, the same way
-  // single_soldier's own default mitre corners do. 3 rows (0.6in total depth) -- de's own measured
-  // safe range on a tight template (T1's shoulder fillet) is roughly 1.2-1.5in before band-course.js
-  // degrades, so this stays comfortably inside it.
+  // override at all -- the mitre corner machinery every pattern already shares (true analytic
+  // offset + clip, `primitive-ribbon.js`'s own `buildButtJoint`/ordinary-mitre path) naturally
+  // produces whole-brick (king-closer-fraction) corner pieces for header's own small pitch, the same
+  // way single_soldier's own default mitre corners do. T86 item 2: `bricksContourBands` now builds
+  // 'header' directly (declared piece-length sequences, see contour-bands.js's own header) -- the
+  // de-measured "1.2-1.5in before band-course.js degrades" caution no longer applies to THIS path at
+  // all (confirmed: no bending/oversampling possible, every piece comes from the same exact clip
+  // math soldier/stretcher always used); it still applies to the LIVE app's own current routing
+  // until `editor-brick-tool.js`'s own `frameBricksFor` is updated to stop sending header/flemish/
+  // stack through the now-superseded band-course.js (de's own call, not made here -- see WORK-LOG).
   header_band: [{ widthIn: 0.6, pattern: 'header' }],
+  // T86 item 2: the dispatch's own preview combination -- header (outer, a tight decorative band),
+  // flemish (middle, the alternating stretcher/header look), soldier (inner) -- in ONE frame,
+  // demonstrating 3 different pattern kinds (course/course-alternating/course) stacking cleanly.
+  mixed_bands: [
+    { widthIn: 0.2, pattern: 'header' }, // one course, brickHeightIn deep (courseHeightFor: header too)
+    { widthIn: 0.2, pattern: 'flemish' }, // one flemish COURSE is also brickHeightIn deep -- the
+    // [L,H] along-run ALTERNATION is a separate axis from the row's own cross-depth (bond.js's own
+    // `courseHeightFor`: 'course-alternating' always resolves to H, confirmed, not re-derived).
+    { widthIn: 0.75, pattern: 'soldier' },
+  ],
 });
 
 export function brickSetById(id) {

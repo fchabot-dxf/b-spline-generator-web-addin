@@ -18994,3 +18994,104 @@ butt_frame, double_course, quoin_corners, header_band built across this session'
 BUTT/LAPPED/BLOCK corner-style code, a real cross-cutting sliver-fix (twice, the second time
 correcting the first), and 9+3=12 live preview renders across 4 corner-style/pattern families.
 Replying to de and passing back to the advisor with the full item status.
+
+## T86 item 2: band patterns as declared piece sequences -- replaces band-course.js (b5)
+
+de's own follow-up review found real defects in `band-course.js` (bending bricks into curved
+multi-corner strips on arcs; wildly varied piece lengths on straight runs) -- its own (u,v) sampling
+approximates rather than using the exact analytic mitre/offset machinery every OTHER pattern already
+goes through. I confirmed the same defect independently (`scratch/check_header_bending.mjs`: 390/390
+header pieces on T1 had >4 unique vertices, up to 26, including on dead-straight runs) and walked
+back my own "T86 item 1 is done" claim for `header_band` specifically. The advisor's own dispatch
+(turn 297): replace band-course.js (parked, not deleted -- de's own active work) with DECLARED piece
+sequences inside the SAME proven `primitive-ribbon.js`/`planCornerRun` path every other pattern
+already uses, so header/flemish/stack become structurally incapable of the bending defect by
+construction rather than needing a second fix in a second engine.
+
+**`piece-plan.js`'s `planCornerRun`** gets two new optional trailing params: `sequence` (an array of
+piece lengths cycled for every MIDDLE piece along the run, default `[pitch]` -- byte-identical to
+today's uniform behaviour when omitted, confirmed by `toEqual`) and `forcedFStart` (pins the run's own
+START fraction instead of leaving it to the free search, for a real half-brick running-bond stagger --
+also byte-identical when omitted). End pieces still come from the declared `fractions` pool regardless
+of `sequence`; `wholeCount`/`idealTotal` now sum the actual cycled lengths rather than assuming a
+uniform pitch. A `forcedFStart` that makes every candidate empty retries via the free search rather
+than crashing on `pool.reduce` over `[]` (the genuinely-forced-thin-end floor case already covered the
+free-search path; this just reaches it from a second caller).
+
+**`primitive-ribbon.js`'s `linePieces`/`ribbonPieces`** and **`arc-voussoir.js`'s `voussoirPieces`**
+all grow the same trailing `sequence, forcedFStart` pair, passed straight through to their own
+`planCornerRun` call -- no other change to either file's own clip/offset math, which is the whole
+point: a sequence is just a declared list of lengths to cycle, not a new geometry path.
+
+**`layouts/bond.js`'s `courseHeightFor`** (Wall-tool side, pre-existing) is now exported and reused by
+`contour-bands.js` instead of re-deriving a course's own cross-depth -- one named source for "how deep
+is one course of this pattern", not two. **`contour-bands.js`'s per-band loop** rewritten to actually
+CONSUME the pre-existing, previously-undriven `BRICK_PATTERNS` declarations (`header`/`flemish`/
+`stack` already had `kind`/`pitchAxis`/`crossAxis`/`staggerFrac` declared in `library.js`, just never
+read by this file before de's own F35 item 7): `naturalWidth = courseHeightFor(...)`, `pitch =
+kind==='course-alternating' ? L : axisLen(pitchAxis, L, H)`, `sequence = kind==='course-alternating' ?
+[L,H] : undefined` (flemish only), odd rows get `rowSequence` rotated (flemish, unconditional -- it
+declares no `staggerFrac` so there's nothing else to key off) or `forcedFStart = staggerFrac` (plain
+stagger patterns, stretcher's own existing behaviour). Confirmed via the full suite that this is
+byte-identical for soldier/stretcher's own pre-existing output before touching anything else.
+`library.js` gets the new `mixed_bands` preset (header/flemish/soldier, the dispatch's own named 3-band
+preview combination) and `index.js` now exports `ribbonPieces` directly (a consumer that wants one
+row's own exact geometry without the whole band/depth-stacking wrapper).
+
+**Verification, `tests/bricks-pattern-sequences.test.js` (new).** First pass used a strict `===0` SAT
+overlap check and a blanket `>4 unique vertices = bent` check, copied from the shape of de's own
+band-course tests without re-deriving whether they still applied here -- both turned out to be wrong
+for reasons specific to THIS engine, not bugs in the engine itself:
+
+- **Overlap:** T1's header/flemish/stack bands measured a worst-pair overlap fraction up to 0.135 at
+  the SAME grid resolution (GRID=10) `tests/bricks-primitive-ribbon.test.js` already uses for its own
+  `three_band` stress case -- but tracing it down (two header-row end triangles sharing only a corner's
+  zero-width mitre diagonal, each just 0.2x0.2in, far smaller than the brick-scale pieces GRID=10 was
+  calibrated against) showed it was pure boundary-sampling noise: it converges to 0 as the grid refines
+  (0.135 -> 0.058 -> 0.019 at GRID 10/30/100) and reads exactly 0 in the reverse direction at every
+  resolution -- the fingerprint of sampling noise at a shared edge, not a real area overlap (same class
+  the EXISTING precedent file's own comment already documents at line ~201, "0.0192 ... sampling noise
+  ... exact Sutherland-Hodgman intersection measures 0"). Fixed by raising my own test's local
+  `overlapFraction` GRID to 100 (scoped to this file only, not touching the existing precedent file's
+  own calibration) -- confirmed a genuinely-overlapping T1 pair (frame-4/frame-46, a real ~0.3-scale
+  row-seam residual) is essentially unchanged at the finer grid, so this is strictly more precise, not
+  differently miscalibrated.
+- **The T1 waist IS still a real, bounded overlap** -- separately from the noise above, header/flemish/
+  stack on T1 genuinely reproduce the SAME already-documented, already-accepted H23 item 76 seam
+  residual (`tests/bricks-primitive-ribbon.test.js` lines 214-233: two DIFFERENT rows of the SAME band,
+  built independently per the advisor's own explicit design, don't line up pixel-for-pixel at the
+  waist-fillet seam; MEASURED 0.300, tolerance <0.35). Confirmed via `scratch/debug_stack_overlap.mjs`
+  that swapping `pattern:'stack'` for the already-shipped `'stretcher'` reproduces the IDENTICAL
+  overlapping piece pairs at IDENTICAL coordinates on T1 -- this is NOT something T86 item 2 introduces
+  or needs to fix; it predates this item and reproduces with code this item never touched. My own test
+  now applies the SAME <0.35 bound on T1, <0.03 on the arc-free square.
+- **Vertex count:** voussoir/arc pieces legitimately have many tessellated vertices on T1 (NOT the
+  band-course.js bending signature) -- confirmed the per-pattern ">4 vertices = bent" check only on the
+  arc-free square fixture, where it's a meaningful strict check. The `mixed_bands` 3-band test (square
+  only, no arcs at all) still measured 8 genuine 5-vertex pieces: a band sitting at a nonzero depth
+  offset (soldier here starts at depth 0.4, after header+flemish) produces a legitimate single-notch
+  pentagon where its own mitre clip meets the perpendicular run's mitre clip. Confirmed via
+  `scratch/debug_old_pattern_pentagon.mjs` byte-identical (same count, same coordinates) against the
+  ALREADY-SHIPPED `stretcher`+`soldier` combo -- pre-existing, not introduced here, and bounded at
+  exactly 5 (not open-ended growth), distinct from band-course.js's own defect signature of double-digit
+  REDUNDANT collinear vertices from oversampling. Ceiling raised to >5 there, left at >4 everywhere else.
+
+Mutation-tested (`git stash` on all 7 engine files): the new-behaviour-specific tests (sequence
+cycling, forcedFStart override, the `mixed_bands` end-to-end build, the preset declaration, the
+stretcher-2-row half-brick stagger) fail 6/6 against the pre-item-2 code -- `TypeError`s and wrong
+values, not silently-passing assertions. `tests/bricks-library.test.js`'s own closed preset-name list
+updated (7 -> 8 presets). Full `vitest`: 203 files/3763 tests, 0 failures.
+
+**Live previews** (new tool, `tools/repro/t86_item2_mixed_bands_preview.mjs`, calling
+`bricksContourBands` + `FRAME_PRESETS.mixed_bands` directly -- NOT band-course.js): saved to
+`shots/seatB/t86_item2_mixed_bands_{square,square_corner_closeup,template_1,
+template_1_corner_closeup,template_1_waist_closeup}.png`. Waist close-up location MEASURED directly
+(`scratch/find_t1_waist.mjs`: the right-side concave pinch point sits at ~(5.73, 4.50) on the 7x9
+board), not eyeballed. All 5 confirm clean mitres at both square and T1 true corners, and a clean
+voussoir fan through the waist fillet with no visible defect at preview scale.
+
+**Commit `[pending]`, push to origin/lane-b to follow.** DMing de with the new `sequence`/
+`forcedFStart` API (now exported via `core/bricks/index.js`'s `ribbonPieces`) and recommending --
+not performing -- the retirement of `editor-brick-tool.js`'s own `frameBricksFor`/
+`NEW_ENGINE_PATTERNS` special-casing for header/flemish/stack, since `bricksContourBands` now handles
+all three natively through the proven path. Passing back to the advisor with the full item status.

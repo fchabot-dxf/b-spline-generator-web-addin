@@ -383,8 +383,10 @@ const CLIP_EPS_IN = 0.02; // a small safety margin on the piece touching a corne
 
 /** A straight primitive's own pieces between its d0/d1 offset lines, clipped against `jointStart`/
  *  `jointEnd` (either may be `null` at a genuinely open path's own free end -- never happens for this
- *  codebase's always-closed frame contours, but handled honestly rather than assumed away). */
-function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set, seed, pieceId, startId) {
+ *  codebase's always-closed frame contours, but handled honestly rather than assumed away).
+ *  T86 item 2: `sequence`/`forcedFStart` pass straight through to `planCornerRun` (see its own
+ *  header) -- both default to `undefined` there, reproducing today's exact uniform-pitch behaviour. */
+function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set, seed, pieceId, startId, sequence, forcedFStart) {
   const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y;
   const totalLen = Math.hypot(dx, dy);
   if (totalLen < 1e-6) return { pieces: [], nextId: startId };
@@ -436,7 +438,7 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
   const loEnd = jointEnd ? (endO === null ? endQ : Math.min(endO, endQ)) : totalLen;
   const effectiveLen = sEnd - sStart;
   const { lengths, jointWidth } = effectiveLen > 1e-6
-    ? planCornerRun(effectiveLen, pitch, nominalJoint, FILL_FRACTIONS)
+    ? planCornerRun(effectiveLen, pitch, nominalJoint, FILL_FRACTIONS, sequence, forcedFStart)
     : { lengths: [], jointWidth: nominalJoint };
 
   // build ONE piece's own clipped polygon for an arbitrary [sA,sB] span -- shared by the normal
@@ -500,9 +502,16 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
  * @param {number} [bandIndex=0] — only read when `cornerStyle==='lapped'`; the caller's own band
  *   index (`contour-bands.js`'s own `bandIndex`, NOT `row` -- the alternation is band-to-band, per
  *   the advisor's own decision, not row-to-row within one band).
+ * @param {number[]} [sequence] — T86 item 2: passed straight through to `planCornerRun` on every
+ *   primitive's own run (see its own header) -- the caller (`contour-bands.js`) already applies any
+ *   per-ROW rotation (flemish's own alternate-course swap) before calling, so `ribbonPieces` itself
+ *   never needs to know about row index for this.
+ * @param {number} [forcedFStart] — T86 item 2: ditto, passed straight through to `planCornerRun` --
+ *   the caller already resolved whether THIS row is staggered (odd row, `staggerFrac>0`) into a
+ *   concrete fraction (or `undefined` for an unstaggered row) before calling.
  * @returns {{ pieces: Array, nextId: number }}
  */
-export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0) {
+export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart) {
   const n = primitives.length;
   const liveIndices = [];
   for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives[i], d1)) liveIndices.push(i);
@@ -593,12 +602,12 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     const rawJointEnd = jointBefore[(k + 1) % m];
     const jointEnd = jointFor(rawJointEnd, idx);
     const built = prim.type === 'line'
-      ? linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set, seed, pieceId, nextId)
+      ? linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set, seed, pieceId, nextId, sequence, forcedFStart)
       : (() => {
         const centerlineR = prim.r - prim.radialSign * ((d0 + d1) / 2);
         return voussoirPieces(
           prim.cx, prim.cy, centerlineR, prim.theta1, prim.theta2, halfWidth, prim.radialSign,
-          pitch, nominalJoint, set, seed, pieceId, nextId, jointStart, jointEnd,
+          pitch, nominalJoint, set, seed, pieceId, nextId, jointStart, jointEnd, sequence, forcedFStart,
         );
       })();
     pieces.push(...built.pieces);
