@@ -35,6 +35,7 @@ import { initApp, initSvgEditor } from './app-init.js';
 import { bindControls } from './ui-bindings.js';
 import { bindProjectManager } from './cloud-project-manager.js';
 import { initFramePanel, onFrameResult, syncFramePanel } from './frame-panel.js';
+import { initClearMenu } from './editor-clear-menu.js';
 import { bindHeaderAndSettings } from './header-controls.js';
 import { wireGlobalEvents } from './global-events.js';
 import {
@@ -141,6 +142,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // FB-APP S2 (F6): the sidebar FRAME section + the editor's cut-profile provider.
     initFramePanel();
+    // F35 item 28: the editor header's Clear menu (All / one entry per tab that declares `clears`)
+    initClearMenu();
 
     // 7. Fusion 360 detection. Two RAFs to yield to browser paint so
     //    the palette has settled before we start polling.

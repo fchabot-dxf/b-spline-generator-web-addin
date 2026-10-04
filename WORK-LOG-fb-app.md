@@ -12814,3 +12814,54 @@ item 22 design note; then item 23.
   - a real brush stroke over the Wall re-laid it around the stroke (37 -> 31, 3 brush bricks);
   - 0 page errors.
 - Server 8851 (my own task) stopped.
+
+### turn 211 -- F35 item 28: Clear as a menu in the editor header (seat 37)
+
+Fred: "Clear should be a drop down in header with all clear options, all, frame, art etc". Decisions as
+amended (advisor turn 211); the Cowork handoff's Clear notes were the reference (main checkout untouched).
+- **Declared from the registry.** main/editor-tabs.js EDITOR_TABS entries now declare `clears` (frame,
+  artwork, photo, bricks). main/editor-clear-menu.js:
+  - `CLEAR_KINDS`: each kind's label, whether it changes the drawing, and its run;
+  - `clearOptions()`: All first (every declared kind, confirm), then one option per tab that declares
+    `clears`, in tab order. A new tab that declares one gets its own entry.
+- **The kinds:**
+  - Frame = the shape only: the existing frame-clear handler, template -> Rectangle (editFrame, the Frame
+    tab's own undo). Bricks re-lay through item 27's frameRecordChanged.
+  - Artwork = editor/editor-clear.js `clearArtworkLayers`: the art layers and their content go, lattice
+    patterns with them; the Bricks layer and its bricks stay. A fresh "Layer 1" (named so: addLayer's default
+    counts the Bricks layer and said "Layer 2") goes back IN FRONT of Bricks, keeping the order.
+  - Photo = main/photo-panel.js `clearPhoto`: the image, its edits and its pattern back to core/state.js's
+    defaults. noiseType is NOT changed. The preview and the terrain follow through the usual change.
+  - Bricks = `clearBrickElements`: every brick element (Wall, Frame, Brush bricks and the stroke spines) goes;
+    the Bricks layer stays with `brickLaidKey = null`.
+  - All = frame + photo + `resetArtworkToFresh` (exactly a new board's drawing, the function open() uses),
+    after the in-app confirm (audit K5); only All asks.
+- **ONE undo step per option:** the editor-side kinds share one refreshGuides + commitEdit; frame and photo
+  keep their own state paths.
+- **Placement:** the menu lives in main/, because Photo needs app state and editor/ never imports it.
+  editor/tools/action-tools.js's Clear binding is REMOVED with its four now-unused imports (resetArtworkToFresh,
+  clearFrame, refreshGuides, commitEdit). confirmDialog stays: Cancel uses it. svg-source.js's comment now
+  points at the new home.
+  - It supersedes H20 item 3's tab-scoped Clear. That test block is retired; three of its tests passed
+    VACUOUSLY once the button no longer bound there (the "ghost" test, "declined does nothing" and the frame
+    one), and they are re-written against the menu.
+- **UI:** #editorClear reads "Clear ▾" and opens #editorClearMenu: a fixed menu under the button that closes
+  on an outside click, Escape or scroll. It works from inside the phone's ⋯ popover: measured at 390x844, on
+  screen and on top.
+- **Tests:**
+  - h20-clear-scoped: a new "F35 item 28" block (9): options from the registry; Artwork / Bricks each one
+    undo step, undo restores; Frame and Photo untouch the drawing; All asks, declined = nothing, accepted = a
+    fresh drawing in one step; only All asks; no stale-background snapshot (H20's ghost rule); the menu's DOM
+    and a click.
+  - photo-clear (1): the real clearPhoto.
+  - Mutations, each restored from my copy: the registry without `clears` -> 7 fail; the laid key kept -> the
+    Bricks test fails; no confirm -> the All test fails.
+- **Fast tier** (137 files): 2295/2295 (+3 todo).
+- **Live** (served, headless Chrome): the menu reads All / Frame / Artwork / Photo / Bricks. Bricks: 98 + 106
+  -> 0, laid key null, art kept. Artwork: art 1 -> 0, Bricks kept. Frame: template -> null (Rectangle).
+  Photo: cleared. All: the dialog text shown, Keep = nothing, Clear all = fresh (one Layer 1, no Bricks layer).
+  0 errors.
+- **Shots:** shots/seat37/f35item28_clear_menu.png, f35item28_clear_menu_phone.png.
+- **Matrix:** the option -> kinds table and one probe per kind (the photo probe included) DM'd to 88, who
+  writes the rows.
+- Server 8851 (my own task) stopped.
