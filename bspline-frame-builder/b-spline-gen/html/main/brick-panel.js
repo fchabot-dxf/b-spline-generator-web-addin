@@ -18,7 +18,7 @@
  * `window.svgEditor` fresh at the point of use instead of caching it.
  */
 import { P, saveLastSession } from '../core/state.js';
-import { runBricks, primitivesToPolyline, buildArcSegments, resolvedSetFor } from '../editor/editor-brick-tool.js';
+import { runBricks, buildRibbonPrimitives, resolvedSetFor } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, brickSetById } from '../core/bricks/library.js';
@@ -260,24 +260,20 @@ const FRAME_PRESET_LIST = [
   { id: 'three_band', label: 'Soldier / Stretcher / Soldier' },
 ];
 
-/** The current frame's own contour, as `{path, cornerIndices, bands}` for
+/** The current frame's own contour, as `{primitives, bands, set}` for
  *  generateBricks/bricksContourBands -- or null when no real frame resolves
- *  (no template selected, or the offset is degenerate). `sil.corners` (NOT
- *  every primitive boundary) is passed through to primitivesToPolyline --
- *  see that function's own header for why marking every boundary broke
- *  curved runs (advisor review, turn 131). */
+ *  (no template selected, or the offset is degenerate). H23 item 76 (the
+ *  primitive-ribbon.js rebuild): `sil.primitives` converts DIRECTLY to raw
+ *  lines+arcs via buildRibbonPrimitives -- no polyline, no declared corner
+ *  indices; bricksContourBands derives every joint (corner or otherwise)
+ *  straight from where consecutive primitives actually meet. */
 function resolveFrameGeom(editor) {
   const ctx = frameContext(editor);
   const sil = ctx ? frameContourSilhouette(ctx, 0, 0) : { error: 'noFrame' };
   if (sil.error) return null;
-  const { points, cornerIndices } = primitivesToPolyline(sil.primitives, sil.corners);
+  const primitives = buildRibbonPrimitives(sil.primitives);
   const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
-  // H23 item 76 / F35 item 4 correction: TRUE circular arcs (the waist, shoulder
-  // fillets, ...) declared from the real primitive data, so bricksContourBands
-  // builds them as exact voussoirs instead of falling back to its pre-item-76
-  // corner-mitre approximation -- see buildArcSegments' own header for why.
-  const arcSegments = buildArcSegments(sil.primitives, points);
-  return { path: points, cornerIndices, bands, arcSegments, set: resolveFrameBrickSet() };
+  return { primitives, bands, set: resolveFrameBrickSet() };
 }
 
 /** F35 item 5 review (Fred, via advisor correction): "frame thickness" = the

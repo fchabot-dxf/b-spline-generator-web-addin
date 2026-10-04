@@ -21,7 +21,7 @@
  * primitive).
  */
 import { describe, it, expect } from 'vitest';
-import { primitivesToPolyline, reconstructChains } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { primitivesToPolyline, buildRibbonPrimitives, reconstructChains } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
@@ -120,19 +120,18 @@ describe('primitivesToPolyline: contour-from-frame.js primitives -> a flat polyl
   });
 
   it('T1 7x9 real contour (advisor/f3): all 4 corners mitred, no void -- the EXACT case the off-by-one bug broke', () => {
-    // The adapter's own real call chain, RAW unshifted sil.corners (f3's own
-    // test file applies a +1 workaround to their LOCAL, deliberately-
-    // unfixed copy of this function specifically to isolate core/bricks'
-    // own contract from this adapter bug -- that workaround is unneeded
-    // here since this IS the real, now-fixed adapter function).
+    // H23 item 76 (primitive-ribbon.js rebuild): the real adapter's own call chain now builds
+    // `primitives` directly via buildRibbonPrimitives (main/brick-panel.js's own resolveFrameGeom),
+    // not primitivesToPolyline/cornerIndices -- bricksContourBands derives every joint (corner or
+    // otherwise) automatically, so there is no declared corner-index off-by-one left to guard here.
     const record = normalizeFrameRecord({ templateId: 'template_1' });
     const frame = { defs: FRAME_DEFS, record, board: { widthIn: 7, heightIn: 9 } };
     const sil = frameContourSilhouette(frame, 0, 0);
     expect(sil.error).toBeUndefined();
 
-    const { points, cornerIndices } = primitivesToPolyline(sil.primitives, sil.corners);
+    const primitives = buildRibbonPrimitives(sil.primitives);
     const SET = BRICK_SETS[0];
-    const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, seed: 1 });
+    const { bricks } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
     expect(bricks.length).toBeGreaterThan(0);
 
     // Checked DIRECTLY at the board's own 4 true geometric corners (the

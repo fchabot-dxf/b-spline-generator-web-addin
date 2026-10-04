@@ -84,9 +84,9 @@ describe('opts.scale', () => {
 
   it('bricksContourBands: scale=2 doubles the frame band\'s own natural row width (same declared widthIn snaps to fewer, bigger rows)', () => {
     const square = [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }, { x: 0, y: 20 }];
-    const corners = [0, 1, 2, 3];
-    const base = bricksContourBands(square, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices: corners, seed: 5 });
-    const doubled = bricksContourBands(square, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices: corners, seed: 5, scale: 2 });
+    const primitives = square.map((p, i) => ({ type: 'line', p0: p, p1: square[(i + 1) % square.length] }));
+    const base = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 5 });
+    const doubled = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 5, scale: 2 });
     const b0 = bbox(base.bricks.find((b) => !b.id.includes('corner')).polygon);
     const d0 = bbox(doubled.bricks.find((b) => !b.id.includes('corner')).polygon);
     expect(Math.max(d0.w, d0.h)).toBeCloseTo(Math.max(b0.w, b0.h) * 2, 2);

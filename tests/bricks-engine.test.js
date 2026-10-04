@@ -9,6 +9,10 @@ import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen
 
 const SET = BRICK_SETS[0];
 const rect = (w, h) => [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
+const rectPrimitives = (w, h) => {
+  const pts = rect(w, h);
+  return pts.map((p, i) => ({ type: 'line', p0: p, p1: pts[(i + 1) % pts.length] }));
+};
 
 describe('generateBricks', () => {
   it('with no frame, fills the whole board', () => {
@@ -23,7 +27,7 @@ describe('generateBricks', () => {
     const noFrame = generateBricks({ boardOutline: board, set: SET, seed: 1 });
     const framed = generateBricks({
       boardOutline: board, set: SET, seed: 1,
-      frame: { path: board, cornerIndices: [0, 1, 2, 3], bands: FRAME_PRESETS.single_soldier },
+      frame: { primitives: rectPrimitives(9, 12), bands: FRAME_PRESETS.single_soldier },
     });
     expect(framed.frameBricks.length).toBeGreaterThan(0);
     expect(framed.bricks.length).toBeLessThan(noFrame.bricks.length);

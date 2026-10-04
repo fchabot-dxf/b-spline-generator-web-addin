@@ -18,9 +18,9 @@ import { brickTopHeight } from './height-profile.js';
  * @param {object} input
  * @param {{x:number,y:number}[]} input.boardOutline — closed polygon, board inches
  * @param {object} input.set — a library.BRICK_SETS entry
- * @param {object} [input.frame] — { path, cornerIndices, bands, arcSegments, set } or omitted/null
- *   for no frame (arcSegments, H23 item 76: declared TRUE circular arcs within path, passed through
- *   to bricksContourBands verbatim -- see that function's own header; `set`, F35 item 5 review: an
+ * @param {object} [input.frame] — { primitives, bands, set } or omitted/null for no frame
+ *   (H23 item 76: `primitives` is the frame contour's own RAW lines+arcs, passed through to
+ *   bricksContourBands verbatim -- see that function's own header; `set`, F35 item 5 review: an
  *   OPTIONAL override used for the frame bands ONLY, defaulting to the top-level `input.set` when
  *   omitted -- Wall's own bricksFillShape call below always uses `input.set`, never this)
  * @param {number} [input.suppression=0]
@@ -45,9 +45,7 @@ export function generateBricks(input) {
     // before this) is unaffected; Wall's own bricksFillShape call below
     // always keeps the top-level `set`, never this override.
     const frameSet = frame.set || set;
-    const res = bricksContourBands(frame.path, frame.bands, {
-      set: frameSet, cornerIndices: frame.cornerIndices || [], arcSegments: frame.arcSegments || [], seed, scale,
-    });
+    const res = bricksContourBands(frame.primitives, frame.bands, { set: frameSet, seed, scale });
     frameBricks = res.bricks;
     interiorOutline = res.innerPath;
   }

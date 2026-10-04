@@ -3,11 +3,24 @@
  * Fred's own UI lock -- "the Brick tab has three tools: Brush, Wall, Frame" -- contour bands get
  * their OWN entry point rather than being folded only into an option of bricksFillShape):
  *
- *   bricksContourBands(path, bands, opts) -> { bricks, innerPath }
+ *   bricksContourBands(primitives, bands, opts) -> { bricks, innerPath }
  *
- * A declared list of BANDS running outer -> inner along a closed PATH (the board/frame outline,
- * supplied by the adapter), each its own declared width + pattern (library.js's own
- * FRAME_PRESETS). A thin band-stacker on top of bricksAlongPath (primitive #1).
+ * H23 item 76 (advisor, 4th architecture attempt, after three reverted attempts at patching the
+ * OLD bricksAlongPath/offsetPathInward-based row machinery -- see WORK-LOG's own "primitive-
+ * ribbon.js" entry for the full account): EACH ROW is built as an independent ribbon directly from
+ * the ORIGINAL frame `primitives` (lines + true circular arcs) plus that row's own depth range,
+ * never by compounding an offset through a PREVIOUSLY-offset polyline. "No band depends on the
+ * previous band's own polyline, only on the original primitives + d." This is what finally
+ * sidesteps the compounding-error-through-a-degenerate-region class of bug the three reverted
+ * attempts kept hitting.
+ *
+ * `primitives`: the CLOSED contour's own ordered list, each either `{type:'line', p0, p1}` or
+ * `{type:'arc', cx, cy, r, theta1, theta2}` -- RAW geometry only (no inward-normal/radialSign
+ * convention baked in yet; this function derives the path's own GLOBAL inward sign ONCE, same as
+ * `radialSignAt` needs, and enriches each primitive with it before handing rows to
+ * primitive-ribbon.js's own `ribbonPieces`). No declared corner list: `ribbonPieces` derives every
+ * joint directly from where consecutive primitives actually meet, degenerating to "no clip" on its
+ * own for a tangent-continuous (non-corner) transition.
  *
  * A band's own BRICKS ARE NEVER STRETCHED to fit `widthIn` exactly -- a brick's cross-dimension is
  * always its natural size (brickLengthIn for 'soldier', brickHeightIn for 'stretcher'; MEASURED,
@@ -15,63 +28,94 @@
  * only correct when widthIn happens to equal that natural size -- confirmed wrong by a rendered
  * preview showing visible gaps/overlaps at every band seam once a preset's own declared widthIn
  * diverged from the pattern's real brick size). Instead `widthIn` is SNAPPED to the nearest whole
- * number of that pattern's own brick-width rows (at least 1), each row its own
- * bricksAlongPath call on its own centreline, stacked outer -> inner within the band -- so a wider
- * band is genuinely MULTIPLE COURSES of full-size bricks, never one row of stretched ones, and the
- * next band always starts exactly where the actual (snapped) rows end, with no seam gap.
+ * number of that pattern's own brick-width rows (at least 1), each row its own independent ribbon,
+ * stacked outer -> inner within the band -- so a wider band is genuinely MULTIPLE COURSES of
+ * full-size bricks, never one row of stretched ones, and the next band always starts exactly where
+ * the actual (snapped) rows end, with no seam gap.
  */
-import { offsetPathInward, inwardSignFor } from './geometry.js';
-import { bricksAlongPath } from './along-path.js';
+import { inwardSignFor } from './geometry.js';
+import { radialSignAt } from './arc-voussoir.js';
+import { ribbonPieces, boundaryAtDepth } from './primitive-ribbon.js';
 import { scaledSet } from './library.js';
 
+const ARC_TESS_STEPS = 16; // only for inwardSignFor's own tessellation -- a smoothness floor for
+// deciding which way is "inward", never a correctness requirement (ribbonPieces itself never
+// tessellates an arc's own interior; its only geometry is the exact analytic circle).
+
+function tessellate(primitives) {
+  const points = [];
+  for (const prim of primitives) {
+    if (prim.type === 'arc') {
+      for (let k = 0; k < ARC_TESS_STEPS; k++) {
+        const t = prim.theta1 + ((prim.theta2 - prim.theta1) * k) / ARC_TESS_STEPS;
+        points.push({ x: prim.cx + prim.r * Math.cos(t), y: prim.cy + prim.r * Math.sin(t) });
+      }
+    } else {
+      points.push(prim.p0);
+    }
+  }
+  return points;
+}
+
+/** Enrich each RAW primitive with the one orientation fact it needs for `ribbonPieces`' own
+ *  offsetting (a line's constant inward normal; an arc's own radialSign) -- derived from the WHOLE
+ *  path's own global inward sign, computed ONCE, never re-derived per primitive (the exact bug
+ *  class `radialSignAt`'s own fix, item 76 above, closed). */
+function enrichPrimitives(primitives, inwardSign) {
+  return primitives.map((prim) => {
+    if (prim.type === 'line') {
+      const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y, len = Math.hypot(dx, dy) || 1;
+      return { ...prim, nx: (-dy / len) * inwardSign, ny: (dx / len) * inwardSign };
+    }
+    const midT = (prim.theta1 + prim.theta2) / 2;
+    const mid = { x: prim.cx + prim.r * Math.cos(midT), y: prim.cy + prim.r * Math.sin(midT) };
+    const direction = Math.sign(prim.theta2 - prim.theta1) || 1;
+    const tangent = { tx: -Math.sin(midT) * direction, ty: Math.cos(midT) * direction };
+    const radialSign = radialSignAt(tangent, mid.x, mid.y, prim.cx, prim.cy, inwardSign);
+    return { ...prim, radialSign };
+  });
+}
+
 /**
- * @param {{x:number,y:number}[]} path — closed polygon, ORDERED, board inches
+ * @param {({type:'line', p0:{x,y}, p1:{x,y}}|{type:'arc', cx:number, cy:number, r:number, theta1:number, theta2:number})[]} primitives
+ *   — the closed contour's own ordered RAW primitives, depth-0 (the true board/frame outline).
  * @param {{widthIn:number, pattern:'soldier'|'stretcher'}[]} bands — outer -> inner
  * @param {object} opts
  * @param {object} opts.set — a library.BRICK_SETS entry
- * @param {number[]} [opts.cornerIndices=[]] — indices into `path` where a real corner occurs
- * @param {{startIndex:number, endIndex:number, cx:number, cy:number, r:number, theta1:number, theta2:number, radialSign:1|-1}[]} [opts.arcSegments=[]]
- *   — H23 item 76: declared TRUE circular arcs within `path` (the caller's own job to supply, from
- *   the real frame primitive data -- see arc-voussoir.js's own header). `r`/`theta1`/`theta2`/
- *   `radialSign` describe `path` itself (depth 0); EVERY row gets its OWN exact circle derived from
- *   these by adjusting `r` for that row's own cumulative offset depth (`theta1`/`theta2`/`cx`/`cy`
- *   stay IDENTICAL across rows -- offsetting a circle never moves its centre or sweep angle, only
- *   its radius) -- bricksAlongPath itself never re-derives any of this, it only ever walks a
- *   circle it's already been handed.
  * @param {number} [opts.scale=1] — uniform multiplier on the set's own brick length/height (grout unaffected)
  * @param {number} opts.seed
  * @returns {{ bricks: Array, innerPath: {x:number,y:number}[] }} innerPath = the last band's own
- *   inner edge, where bricksFillShape (the Wall tool) should start from.
+ *   inner edge (tessellated), where bricksFillShape (the Wall tool) should start from.
  */
-export function bricksContourBands(path, bands, opts) {
+export function bricksContourBands(primitives, bands, opts) {
   const { seed } = opts;
-  const set = scaledSet(opts.set, opts.scale); // scaled ONCE here; the inner bricksAlongPath calls
+  const set = scaledSet(opts.set, opts.scale); // scaled ONCE here; the inner ribbonPieces calls
   // below get this already-scaled set directly (no opts.scale passed to them) so it's never applied twice.
-  const cornerIndices = opts.cornerIndices || [];
-  const arcSegments = opts.arcSegments || [];
-  const sign = inwardSignFor(path);
+  const inwardSign = inwardSignFor(tessellate(primitives));
+  const enriched = enrichPrimitives(primitives, inwardSign);
+
   const bricks = [];
-  let outer = path;
-  let depthSoFar = 0; // how far INWARD (same direction `sign`/offsetPathInward move) `outer` has
-  // already been pushed from the ORIGINAL `path` -- tracked alongside `outer` so every row's own
-  // arc segments can be derived directly from the ORIGINAL (depth-0) ones, not re-measured.
+  let depthSoFar = 0;
+  let nextId = 0;
 
   bands.forEach((band, bandIndex) => {
     const pattern = band.pattern || 'stretcher';
     const naturalWidth = pattern === 'soldier' ? set.brickLengthIn : set.brickHeightIn;
+    const pitch = pattern === 'soldier' ? set.brickHeightIn : set.brickLengthIn; // along-run length
+    // -- the OTHER dimension from naturalWidth (the row's own cross-width); matches
+    // along-path.js's own established `orientation==='soldier' ? brickHeightIn : brickLengthIn`.
     const rows = Math.max(1, Math.round(band.widthIn / naturalWidth));
     for (let row = 0; row < rows; row++) {
-      const centerline = offsetPathInward(outer, naturalWidth * (row + 0.5), sign);
-      const rowDepth = depthSoFar + naturalWidth * (row + 0.5);
-      const rowArcSegments = arcSegments.map((seg) => ({ ...seg, r: seg.r - seg.radialSign * rowDepth }));
-      const { bricks: bandBricks } = bricksAlongPath(centerline, {
-        set, orientation: pattern, closed: true, cornerIndices, arcSegments: rowArcSegments,
-        seed: seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), pieceId: 'frame',
-      });
-      bricks.push(...bandBricks);
+      const d0 = depthSoFar + naturalWidth * row, d1 = depthSoFar + naturalWidth * (row + 1);
+      const { pieces, nextId: afterId } = ribbonPieces(
+        enriched, d0, d1, set, pattern, pitch, set.grout.widthIn,
+        seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId,
+      );
+      bricks.push(...pieces);
+      nextId = afterId;
     }
-    outer = offsetPathInward(outer, naturalWidth * rows, sign);
     depthSoFar += naturalWidth * rows;
   });
-  return { bricks, innerPath: outer };
+
+  return { bricks, innerPath: boundaryAtDepth(enriched, depthSoFar) };
 }

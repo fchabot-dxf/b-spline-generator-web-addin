@@ -67,6 +67,20 @@ function originalJunctionPoint(prim) {
   return prim.type === 'line' ? prim.p1 : { x: prim.cx + prim.r * Math.cos(prim.theta2), y: prim.cy + prim.r * Math.sin(prim.theta2) };
 }
 
+/** The TRUE (mitred) joint point between two consecutive LIVE primitives, at a given depth -- their
+ *  own offset-at-`depth` curves intersected, nearest the original (depth-0) junction. Shared by
+ *  `ribbonPieces` (needs it at both a row's own d0 and d1, to build the mitre LINE between them) and
+ *  `boundaryAtDepth` (needs it at one depth, to build the TRUE offset boundary polyline) -- the same
+ *  computation either way, never duplicated. */
+function jointPointAt(primitives, prevIdx, curIdx, depth) {
+  const ref = originalJunctionPoint(primitives[prevIdx]);
+  return curveIntersection(
+    toCurve(offsetPrimitive(primitives[prevIdx], depth)),
+    toCurve(offsetPrimitive(primitives[curIdx], depth)),
+    ref,
+  );
+}
+
 function mitreLine(o, q, keepRefAsStart, keepRefAsEnd) {
   const dx = q.x - o.x, dy = q.y - o.y, len = Math.hypot(dx, dy);
   if (len < 1e-9) return null; // o and q coincide (a degenerate zero-depth row) -- no meaningful mitre direction, so no clip
@@ -144,14 +158,27 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
   const m = liveIndices.length;
 
   const halfWidth = (d1 - d0) / 2;
-  const mitreReach = halfWidth * 5; // matches along-path.js's own MITRE_REACH formula exactly
+  // H23 item 76 (MEASURED, three_band's own cross-row/cross-primitive overlap the advisor flagged):
+  // along-path.js's own MITRE_REACH = halfWidth*5 is a PIECE-SCALE reach, correct THERE because that
+  // architecture's own row centreline is ALREADY a true mitred offset polygon (offsetPathInward's
+  // own per-vertex bisector, exact at any depth) -- MITRE_REACH only had to cover the last few
+  // pieces nearest a corner, not the corner's own reach itself. This architecture has no such
+  // pre-mitred centreline: EVERY row is independent, and the ONLY thing that keeps a piece from
+  // reaching past a corner's own TRUE mitre line is whichever of mitreReach/isFirst/isLast actually
+  // triggers the clip -- so mitreReach itself must cover the corner's own full reach, not just a
+  // piece-width margin. For a 90deg corner that reach IS exactly `d1` (CONFIRMED: the mitre crosses
+  // at s=depth there) -- MEASURED directly: a stretcher row0 piece (halfWidth=0.1, so the OLD
+  // halfWidth*5=0.5in reach) sat 0.821in from a real 90deg corner and was never clipped at all,
+  // overlapping a DIFFERENT row's own piece on the ADJACENT (differently-oriented) edge, 0.5in
+  // short of where it needed to reach. `Math.max(..., d1)` keeps the existing halfWidth*5 margin for
+  // shallow rows (already comfortably larger there) and grows it for deep ones, where it matters.
+  const mitreReach = Math.max(halfWidth * 5, d1);
   const extendBy = mitreReach + 0.05; // matches along-path.js's own EXTEND_BY formula exactly
 
   const jointBefore = liveIndices.map((curIdx, k) => {
     const prevIdx = liveIndices[(k - 1 + m) % m];
-    const ref = originalJunctionPoint(primitives[prevIdx]);
-    const o = curveIntersection(toCurve(offsetPrimitive(primitives[prevIdx], d0)), toCurve(offsetPrimitive(primitives[curIdx], d0)), ref);
-    const q = curveIntersection(toCurve(offsetPrimitive(primitives[prevIdx], d1)), toCurve(offsetPrimitive(primitives[curIdx], d1)), ref);
+    const o = jointPointAt(primitives, prevIdx, curIdx, d0);
+    const q = jointPointAt(primitives, prevIdx, curIdx, d1);
     if (!o || !q) return null;
     // the SAME joint, approached by its own two DIFFERENT primitives, must keep OPPOSITE sides of
     // its own mitre line (each keeps only its own half of the cut) -- `keepRefAsStart` (stepping
@@ -183,4 +210,44 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     nextId = built.nextId;
   }
   return { pieces, nextId };
+}
+
+const BOUNDARY_ARC_STEPS = 16; // a smoothness floor for the TESSELLATED polyline this returns, same
+// role as arc-voussoir.js's own MAX_SEGMENT_ANGLE -- never a correctness requirement (every vertex
+// at a JOINT is already the exact mitred intersection; this only controls how closely the drawn
+// polyline's own straight segments hug the true arc BETWEEN two joints).
+
+/**
+ * The CLOSED contour's own true offset boundary at a given `depth`, as a plain {x,y}[] polyline --
+ * every corner is the EXACT mitred joint intersection (the same `jointPointAt` `ribbonPieces` itself
+ * uses to build piece geometry), not a naive per-primitive endpoint shift (MEASURED: that naive
+ * version does not actually reach the true offset corner -- confirmed directly against `polygonArea`
+ * on a simple square, off by a visible margin, not a rounding-level discrepancy). Used for
+ * `bricksContourBands`' own `innerPath` (the Wall tool's own starting boundary) -- never fed back
+ * into any ribbon construction itself, which always works from the ORIGINAL, depth-0 primitives.
+ */
+export function boundaryAtDepth(primitives, depth) {
+  const n = primitives.length;
+  const liveIndices = [];
+  for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives[i], depth)) liveIndices.push(i);
+  if (liveIndices.length === 0) return [];
+  const m = liveIndices.length;
+  const joints = liveIndices.map((curIdx, k) => jointPointAt(primitives, liveIndices[(k - 1 + m) % m], curIdx, depth));
+
+  const points = [];
+  for (let k = 0; k < m; k++) {
+    const prim = primitives[liveIndices[k]];
+    const startPt = joints[k];
+    if (prim.type === 'line') {
+      points.push(startPt);
+    } else {
+      const offPrim = offsetPrimitive(prim, depth);
+      for (let s = 0; s < BOUNDARY_ARC_STEPS; s++) {
+        if (s === 0) { points.push(startPt); continue; }
+        const t = prim.theta1 + ((prim.theta2 - prim.theta1) * s) / BOUNDARY_ARC_STEPS;
+        points.push({ x: offPrim.cx + offPrim.r * Math.cos(t), y: offPrim.cy + offPrim.r * Math.sin(t) });
+      }
+    }
+  }
+  return points;
 }

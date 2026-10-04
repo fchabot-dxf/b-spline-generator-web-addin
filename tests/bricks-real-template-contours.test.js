@@ -6,58 +6,31 @@
  * void wider than grout along the edge."
  *
  * Drives the REAL frame-template machinery (frameContourSilhouette, same chokepoint the actual
- * Brick-tab adapter -- editor-brick-tool.js, the fb-app branch -- uses) directly, DOM-free, same
- * technique tests/frame-parity-app.test.js already uses to drive frameCutProfile without a live
- * editor. No synthetic hourglass stand-in: this is T1's and T12's own real, built geometry.
+ * Brick-tab adapter -- editor-brick-tool.js -- uses) directly, DOM-free, same technique
+ * tests/frame-parity-app.test.js already uses to drive frameCutProfile without a live editor. No
+ * synthetic hourglass stand-in: this is T1's and T12's own real, built geometry.
  *
- * CORNER-INDEX FIX -- FIXED (de, F35 item 3, advisor-confirmed): `sil.corners`
- * (frameContourSilhouette's declared field, built via declaredMiterJointIndices) uses
- * OUTLINEDEFECTS' OWN "index i = the joint BETWEEN primitive i and primitive i+1" convention
- * (confirmed directly against outlineDefects' own notTangent check, editor-shape-lattice-
- * generator.js) -- the real `primitivesToPolyline` (editor-brick-tool.js, fb-app branch) marked a
- * corner index `i` as "the START of primitive i" = the joint BEFORE primitive i, one position off.
- * MEASURED directly: T1 7x9's raw `sil.corners` fed unmodified left a real, visible void at the
- * board's own bottom-left corner (shots/seatA/item74_t1_bl_zoom.png). FIXED in editor-brick-tool.js
- * by marking the corner AFTER a primitive's own points instead of before (wrapping the last
- * primitive's "after" back to index 0) -- `realContour()` below now imports and calls that real,
- * fixed function directly, no local +1 workaround needed any more. The LOCAL `primitivesToPolyline`
- * copy just below is kept ONLY for the "MUTATION CHECK" test at the bottom of this file, which
- * deliberately demonstrates the ORIGINAL bug's own real effect (off-by-one, unshifted) as a
- * permanent regression record -- it is never used for the "is the geometry good" tests above it.
+ * H23 item 76 (primitive-ribbon.js rebuild): `bricksContourBands` now takes `primitives` (raw
+ * lines+arcs) directly, no polyline/cornerIndices/arcSegments -- every joint (corner or otherwise)
+ * is derived automatically from where consecutive primitives actually meet. `realContour()` below
+ * uses the real adapter's own `buildRibbonPrimitives` (editor-brick-tool.js) to convert
+ * `sil.primitives` directly, the SAME conversion the live Brick-tab Frame tool uses (via
+ * main/brick-panel.js's own `resolveFrameGeom`) -- no local re-derivation. The item-74 corner-index
+ * off-by-one this file's own header used to describe is STRUCTURALLY IMPOSSIBLE now (there is no
+ * declared corner-index list left to get off by one) -- its own "MUTATION CHECK" regression test
+ * was removed for the same reason, rather than awkwardly adapted to a bug class that can no longer
+ * occur.
  */
 import { describe, it, expect } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
-import { pointInPolygon, cumulativeLengths, pointAtArcLength, inwardSignFor } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
-import { radialSignAt } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/arc-voussoir.js';
+import { pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
-import { primitivesToPolyline as primitivesToPolylineFixed } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
 const SET = BRICK_SETS[0];
-const ARC_STEPS = 16; // matches editor-brick-tool.js's own ARC_STEPS exactly
-
-/** The ORIGINAL, deliberately off-by-one copy of editor-brick-tool.js's own primitivesToPolyline --
- *  kept ONLY so the "MUTATION CHECK" test below can demonstrate the bug it fixed, as a permanent
- *  regression record. Every OTHER test in this file uses the real, fixed `primitivesToPolylineFixed`
- *  import instead (see this file's own header). */
-function primitivesToPolylineBuggy(primitives, corners) {
-  const cornerSet = new Set(corners || []);
-  const points = [], cornerIndices = [];
-  (primitives || []).forEach((prim, i) => {
-    if (cornerSet.has(i)) cornerIndices.push(points.length);
-    if (prim.type === 'A') {
-      for (let k = 0; k < ARC_STEPS; k++) {
-        const t = prim.theta1 + (prim.dTheta * k) / ARC_STEPS;
-        points.push({ x: prim.cx + prim.rx * Math.cos(t), y: prim.cy + prim.ry * Math.sin(t) });
-      }
-    } else {
-      points.push({ x: prim.p0.x, y: prim.p0.y });
-    }
-  });
-  return { points, cornerIndices };
-}
 
 function isSimplePolygon(poly) {
   const cross = (o, p, q) => (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
@@ -75,42 +48,23 @@ function isSimplePolygon(poly) {
   return true;
 }
 
-/** H23 item 76 (advisor: "build arcs as voussoirs between the band's exact outer/inner offset
- *  arcs"): the declared arcSegments bricksAlongPath/bricksContourBands need -- one per TRUE
- *  circular-arc primitive, with centre/radius/angle read DIRECTLY off the real frame primitive
- *  data (never re-fitted/approximated) and `radialSign` determined from the tessellated path's own
- *  local tangent PLUS the path's own GLOBAL inward sign (arc-voussoir.js's own radialSignAt --
- *  fixed after an advisor review caught the first version deciding this from the arc's own local
- *  centre alone, which is wrong on a concave arc; see that function's own header). This is what the
- *  real Brick-tab adapter would also need to build to get this same exact-circle construction live
- *  -- not yet done there (core/bricks' own new capability, verified here against real template
- *  data; the adapter's own corresponding update is tracked separately, same split as item 74's own
- *  sampleDetailAt).
- */
-function buildArcSegments(primitives, points) {
+/** A plain tessellated polyline of the real board outline, for the centroid-inside-board tests
+ *  below ONLY (point-in-polygon needs a polyline, not primitives) -- never fed into
+ *  bricksContourBands itself, which takes `primitives` directly. */
+function tessellateBoard(primitives) {
   const ARC_STEPS = 16;
-  const closedPts = points.concat([points[0]]);
-  const cum = cumulativeLengths(closedPts);
-  const inwardSign = inwardSignFor(points); // ONE global fact about the whole path, not per-arc
-  const segments = [];
-  let offset = 0;
+  const points = [];
   for (const prim of primitives) {
-    const nPts = prim.type === 'A' ? ARC_STEPS : 1;
-    if (prim.type === 'A') {
-      const startIndex = offset;
-      const endIndex = offset + nPts; // may equal points.length (wraparound), valid for cum[]
-      const theta1 = prim.theta1, theta2 = prim.theta1 + prim.dTheta;
-      const sMid = cum[startIndex] + 0.01;
-      const a = pointAtArcLength(closedPts, cum, sMid - 0.005, true);
-      const b = pointAtArcLength(closedPts, cum, sMid + 0.005, true);
-      const tx = b.x - a.x, ty = b.y - a.y, tl = Math.hypot(tx, ty) || 1;
-      const mid = pointAtArcLength(closedPts, cum, sMid, true);
-      const radialSign = radialSignAt({ tx: tx / tl, ty: ty / tl }, mid.x, mid.y, prim.cx, prim.cy, inwardSign);
-      segments.push({ startIndex, endIndex, cx: prim.cx, cy: prim.cy, r: prim.rx, theta1, theta2, radialSign });
+    if (prim.type === 'arc') {
+      for (let k = 0; k < ARC_STEPS; k++) {
+        const t = prim.theta1 + ((prim.theta2 - prim.theta1) * k) / ARC_STEPS;
+        points.push({ x: prim.cx + prim.r * Math.cos(t), y: prim.cy + prim.r * Math.sin(t) });
+      }
+    } else {
+      points.push(prim.p0);
     }
-    offset += nPts;
   }
-  return segments;
+  return points;
 }
 
 function realContour(templateId, widthIn, heightIn) {
@@ -118,9 +72,8 @@ function realContour(templateId, widthIn, heightIn) {
   const frame = { defs: FRAME_DEFS, record, board: { widthIn, heightIn } };
   const sil = frameContourSilhouette(frame, 0, 0);
   if (sil.error) throw new Error(`${templateId} ${widthIn}x${heightIn}: frameContourSilhouette failed (${sil.error})`);
-  const { points, cornerIndices } = primitivesToPolylineFixed(sil.primitives, sil.corners);
-  const arcSegments = buildArcSegments(sil.primitives, points);
-  return { points, cornerIndices, arcSegments };
+  const primitives = buildRibbonPrimitives(sil.primitives);
+  return { primitives, points: tessellateBoard(primitives) };
 }
 
 describe('bricksContourBands on REAL template geometry (H23 item 74, convex + concave arcs)', () => {
@@ -131,8 +84,8 @@ describe('bricksContourBands on REAL template geometry (H23 item 74, convex + co
 
   for (const [name, templateId, W, H] of CASES) {
     it(`${name}: every brick is simple (no self-intersecting spike)`, () => {
-      const { points, cornerIndices, arcSegments } = realContour(templateId, W, H);
-      const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, arcSegments, seed: 1 });
+      const { primitives } = realContour(templateId, W, H);
+      const { bricks } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
       expect(bricks.length).toBeGreaterThan(0);
       for (const b of bricks) {
         expect(isSimplePolygon(b.polygon), `brick ${b.id} is self-intersecting`).toBe(true);
@@ -140,8 +93,8 @@ describe('bricksContourBands on REAL template geometry (H23 item 74, convex + co
     });
 
     it(`${name}: no two bricks substantially overlap (grid-sampled, cell-centre)`, () => {
-      const { points, cornerIndices, arcSegments } = realContour(templateId, W, H);
-      const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, arcSegments, seed: 1 });
+      const { primitives } = realContour(templateId, W, H);
+      const { bricks } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
       const bbox = (poly) => {
         const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
         return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
@@ -189,8 +142,8 @@ describe('bricksContourBands on REAL template geometry (H23 item 74, convex + co
       // as "close" even when it's deep in the open interior (the path curves back toward it), and
       // "near ANY brick's own bbox" pulls in the ENTIRE perimeter's own bricks on a small board.
       // Measuring the gap between NEIGHBOURS directly sidesteps all three.
-      const { points, cornerIndices, arcSegments } = realContour(templateId, W, H);
-      const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, arcSegments, seed: 1 });
+      const { primitives } = realContour(templateId, W, H);
+      const { bricks } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
       const maxVoidIn = SET.grout.widthIn * 2; // a declared margin (this measures CLOSEST approach,
       // not a full void-width scan, so a touch more slack than the synthetic-square test's own)
       const distPointToSeg = (p, a, b) => {
@@ -213,41 +166,6 @@ describe('bricksContourBands on REAL template geometry (H23 item 74, convex + co
     });
   }
 
-  it('MUTATION CHECK: the raw (uncorrected, off-by-one) sil.corners DOES leave a real void -- proving the void test above is not vacuous', () => {
-    const record = normalizeFrameRecord({ templateId: 'template_1' });
-    const frame = { defs: FRAME_DEFS, record, board: { widthIn: 7, heightIn: 9 } };
-    const sil = frameContourSilhouette(frame, 0, 0);
-    const { points, cornerIndices } = primitivesToPolylineBuggy(sil.primitives, sil.corners); // the ORIGINAL bug, for posterity
-    const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, seed: 1 });
-    const distPointToSeg = (p, a, b) => {
-      const dx = b.x - a.x, dy = b.y - a.y, len2 = dx * dx + dy * dy;
-      const t = len2 > 1e-12 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)) : 0;
-      return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
-    };
-    const polyGap = (A, B) => {
-      let best = Infinity;
-      for (const p of A) for (let i = 0, j = B.length - 1; i < B.length; j = i++) best = Math.min(best, distPointToSeg(p, B[j], B[i]));
-      for (const p of B) for (let i = 0, j = A.length - 1; i < A.length; j = i++) best = Math.min(best, distPointToSeg(p, A[j], A[i]));
-      return best;
-    };
-    // ALL pairs within a declared reach (not just consecutive-by-id): the bug can shift WHICH
-    // bricks end up adjacent to the resulting gap, not only the gap's own size.
-    const reach = SET.brickLengthIn * 2;
-    const bbox = (poly) => {
-      const bxs = poly.map((p) => p.x), bys = poly.map((p) => p.y);
-      return { minX: Math.min(...bxs), maxX: Math.max(...bxs), minY: Math.min(...bys), maxY: Math.max(...bys) };
-    };
-    const boxes = bricks.map((b) => bbox(b.polygon));
-    let worstGap = 0;
-    for (let i = 0; i < bricks.length; i++) {
-      for (let j = i + 1; j < bricks.length; j++) {
-        const A = boxes[i], B = boxes[j];
-        if (A.maxX < B.minX - reach || B.maxX < A.minX - reach || A.maxY < B.minY - reach || B.maxY < A.minY - reach) continue;
-        worstGap = Math.max(worstGap, polyGap(bricks[i].polygon, bricks[j].polygon));
-      }
-    }
-    expect(worstGap, 'the UNCORRECTED adapter bug produces a real gap well past one grout width').toBeGreaterThan(SET.grout.widthIn * 2);
-  });
 });
 
 /** H23 item 76 FIX (advisor review): "Add a test that would have caught it" -- the inverted
@@ -265,8 +183,8 @@ describe('H23 item 76 (advisor review): every brick centroid stays INSIDE the bo
   ];
   for (const [name, templateId, W, H] of REAL_CASES) {
     it(`${name}: every brick's own centroid is inside the board outline`, () => {
-      const { points, cornerIndices, arcSegments } = realContour(templateId, W, H);
-      const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices, arcSegments, seed: 1 });
+      const { primitives, points } = realContour(templateId, W, H);
+      const { bricks } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
       expect(bricks.length).toBeGreaterThan(0);
       for (const b of bricks) {
         const c = polygonCentroid(b.polygon);
@@ -278,7 +196,8 @@ describe('H23 item 76 (advisor review): every brick centroid stays INSIDE the bo
   it('a plain square board (no arcs, a direct sanity net): every brick centroid is inside', () => {
     const S = 8;
     const points = [{ x: 0, y: 0 }, { x: S, y: 0 }, { x: S, y: S }, { x: 0, y: S }];
-    const { bricks } = bricksContourBands(points, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices: [0, 1, 2, 3], seed: 1 });
+    const primitives = points.map((p, i) => ({ type: 'line', p0: p, p1: points[(i + 1) % points.length] }));
+    const { bricks } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
     expect(bricks.length).toBeGreaterThan(0);
     for (const b of bricks) {
       const c = polygonCentroid(b.polygon);

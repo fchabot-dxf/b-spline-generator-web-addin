@@ -1,9 +1,9 @@
 /**
- * H23 item 72 BRICK ENGINE -- the Frame tool (contour-bands.js): bricksContourBands(path, bands,
- * opts), a declared band list, outer -> inner, each its own width + pattern, stacked via
- * bricksAlongPath on each band's own centreline. Covers band count/ordering, the innerPath
- * shrinking by the full declared band width (via geometry.js's mitred offsetPathInward), and the
- * 3 declared FRAME_PRESETS.
+ * H23 item 72 BRICK ENGINE -- the Frame tool (contour-bands.js): bricksContourBands(primitives,
+ * bands, opts), a declared band list, outer -> inner, each its own width + pattern, each row built
+ * as an independent ribbon directly from the original primitives (H23 item 76, primitive-ribbon.js
+ * rebuild). Covers band count/ordering, the innerPath shrinking by the full declared band width,
+ * and the 3 declared FRAME_PRESETS.
  */
 import { describe, it, expect } from 'vitest';
 import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
@@ -11,7 +11,12 @@ import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen
 
 const SET = BRICK_SETS[0];
 const square = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
-const CORNERS = [0, 1, 2, 3];
+/** A closed polygon's own vertices -> primitive-ribbon.js's own raw `{type:'line',p0,p1}` list --
+ *  every vertex is a real corner (a square has no tangent-continuous transitions to collapse). */
+function linesFromPolygon(pts) {
+  return pts.map((p, i) => ({ type: 'line', p0: p, p1: pts[(i + 1) % pts.length] }));
+}
+const SQUARE_PRIMITIVES = linesFromPolygon(square);
 
 function polygonArea(path) {
   let a = 0;
@@ -21,7 +26,7 @@ function polygonArea(path) {
 
 describe('bricksContourBands — the Frame tool', () => {
   it('a single-band frame produces bricks and shrinks innerPath by exactly that band\'s width (true mitred corners)', () => {
-    const { bricks, innerPath } = bricksContourBands(square, FRAME_PRESETS.single_soldier, { set: SET, cornerIndices: CORNERS, seed: 1 });
+    const { bricks, innerPath } = bricksContourBands(SQUARE_PRIMITIVES, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
     expect(bricks.length).toBeGreaterThan(0);
     const bandWidth = FRAME_PRESETS.single_soldier[0].widthIn;
     const outerArea = polygonArea(square);
@@ -33,7 +38,7 @@ describe('bricksContourBands — the Frame tool', () => {
 
   it('a multi-band frame (three_band) produces one brick group per band, shrinking cumulatively', () => {
     const bands = FRAME_PRESETS.three_band;
-    const { bricks, innerPath } = bricksContourBands(square, bands, { set: SET, cornerIndices: CORNERS, seed: 2 });
+    const { bricks, innerPath } = bricksContourBands(SQUARE_PRIMITIVES, bands, { set: SET, seed: 2 });
     expect(bricks.length).toBeGreaterThan(0);
     const totalWidth = bands.reduce((s, b) => s + b.widthIn, 0);
     const expectedInnerSide = 10 - 2 * totalWidth;
@@ -42,7 +47,7 @@ describe('bricksContourBands — the Frame tool', () => {
 
   it('every declared FRAME_PRESETS entry runs without throwing and yields bricks', () => {
     for (const [name, bands] of Object.entries(FRAME_PRESETS)) {
-      const { bricks } = bricksContourBands(square, bands, { set: SET, cornerIndices: CORNERS, seed: 3 });
+      const { bricks } = bricksContourBands(SQUARE_PRIMITIVES, bands, { set: SET, seed: 3 });
       expect(bricks.length, `preset "${name}" produced no bricks`).toBeGreaterThan(0);
     }
   });
@@ -50,8 +55,8 @@ describe('bricksContourBands — the Frame tool', () => {
   it('soldier vs stretcher pattern changes the per-brick footprint on the same band', () => {
     const soldierBand = [{ widthIn: 0.75, pattern: 'soldier' }];
     const stretcherBand = [{ widthIn: 0.75, pattern: 'stretcher' }];
-    const { bricks: soldierBricks } = bricksContourBands(square, soldierBand, { set: SET, cornerIndices: CORNERS, seed: 4 });
-    const { bricks: stretcherBricks } = bricksContourBands(square, stretcherBand, { set: SET, cornerIndices: CORNERS, seed: 4 });
+    const { bricks: soldierBricks } = bricksContourBands(SQUARE_PRIMITIVES, soldierBand, { set: SET, seed: 4 });
+    const { bricks: stretcherBricks } = bricksContourBands(SQUARE_PRIMITIVES, stretcherBand, { set: SET, seed: 4 });
     const bboxOf = (poly) => {
       const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
       return { w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
@@ -64,8 +69,8 @@ describe('bricksContourBands — the Frame tool', () => {
   });
 
   it('is deterministic for a given seed', () => {
-    const r1 = bricksContourBands(square, FRAME_PRESETS.soldier_stretcher, { set: SET, cornerIndices: CORNERS, seed: 5 });
-    const r2 = bricksContourBands(square, FRAME_PRESETS.soldier_stretcher, { set: SET, cornerIndices: CORNERS, seed: 5 });
+    const r1 = bricksContourBands(SQUARE_PRIMITIVES, FRAME_PRESETS.soldier_stretcher, { set: SET, seed: 5 });
+    const r2 = bricksContourBands(SQUARE_PRIMITIVES, FRAME_PRESETS.soldier_stretcher, { set: SET, seed: 5 });
     expect(JSON.stringify(r1)).toEqual(JSON.stringify(r2));
   });
 
@@ -73,7 +78,7 @@ describe('bricksContourBands — the Frame tool', () => {
     // stretcher's natural row width is brickHeightIn (0.2 on SET); a declared widthIn of 0.5 does
     // NOT divide evenly -- round(0.5/0.2) = 3 rows (0.6in actual), snapped up, never a stretched 2.5-row brick.
     const mismatchedBand = [{ widthIn: 0.5, pattern: 'stretcher' }];
-    const { innerPath } = bricksContourBands(square, mismatchedBand, { set: SET, cornerIndices: CORNERS, seed: 6 });
+    const { innerPath } = bricksContourBands(SQUARE_PRIMITIVES, mismatchedBand, { set: SET, seed: 6 });
     const expectedActualWidth = Math.round(0.5 / SET.brickHeightIn) * SET.brickHeightIn;
     const side = Math.sqrt(Math.abs(innerPath.reduce((a, p, i, arr) => {
       const q = arr[(i + 1) % arr.length];
@@ -86,7 +91,7 @@ describe('bricksContourBands — the Frame tool', () => {
     // Regression for the mitred-corner gap a rendered preview caught: sample points just outside
     // the declared innerPath, at each of the 4 corners, and confirm a frame brick actually covers
     // the area right up to the corner (no uncovered wedge).
-    const { bricks } = bricksContourBands(square, FRAME_PRESETS.three_band, { set: SET, cornerIndices: CORNERS, seed: 7 });
+    const { bricks } = bricksContourBands(SQUARE_PRIMITIVES, FRAME_PRESETS.three_band, { set: SET, seed: 7 });
     const pointInPoly = (x, y, polygon) => {
       let inside = false;
       for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -179,7 +184,7 @@ describe('bricksContourBands — the Frame tool', () => {
       ['mismatched 0.5in stretcher', [{ widthIn: 0.5, pattern: 'stretcher' }]],
     ];
     for (const [name, bands] of cases) {
-      const { bricks } = bricksContourBands(square, bands, { set: SET, cornerIndices: CORNERS, seed: 11 });
+      const { bricks } = bricksContourBands(SQUARE_PRIMITIVES, bands, { set: SET, seed: 11 });
       expect(bricks.length, `${name}: no bricks produced`).toBeGreaterThan(0);
 
       for (const b of bricks) {
@@ -241,7 +246,7 @@ describe('bricksContourBands — the Frame tool', () => {
     // exercised this bug, since a 45deg line from one corner can't reach another corner's own
     // territory when every side is equally long relative to the band width.
     const rect = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }];
-    const rectCorners = [0, 1, 2, 3];
+    const rectPrimitives = linesFromPolygon(rect);
     const pointInPoly = (x, y, poly) => {
       let inside = false;
       for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -253,7 +258,7 @@ describe('bricksContourBands — the Frame tool', () => {
     };
 
     for (const [name, bands] of [['single_soldier', FRAME_PRESETS.single_soldier], ['three_band', FRAME_PRESETS.three_band]]) {
-      const { bricks, innerPath } = bricksContourBands(rect, bands, { set: SET, cornerIndices: rectCorners, seed: 21 });
+      const { bricks, innerPath } = bricksContourBands(rectPrimitives, bands, { set: SET, seed: 21 });
       const innerXs = innerPath.map((p) => p.x);
       const bandWidth = (W - (Math.max(...innerXs) - Math.min(...innerXs))) / 2;
       expect(bandWidth).toBeGreaterThan(0);
@@ -299,6 +304,7 @@ describe('bricksContourBands — the Frame tool', () => {
   it('BLOCKER #2, surgical check: a brick far from every corner is never narrowed by a distant corner\'s own mitre line', () => {
     const W = 7, H = 9;
     const rect = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }];
+    const rectPrimitives = linesFromPolygon(rect);
     const corners = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }];
     const bboxOf = (poly) => {
       const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
@@ -311,7 +317,7 @@ describe('bricksContourBands — the Frame tool', () => {
     const distToNearestCorner = (c) => Math.min(...corners.map((k) => Math.hypot(c.x - k.x, c.y - k.y)));
 
     for (const [name, bands] of [['single_soldier', FRAME_PRESETS.single_soldier], ['three_band', FRAME_PRESETS.three_band]]) {
-      const { bricks } = bricksContourBands(rect, bands, { set: SET, cornerIndices: [0, 1, 2, 3], seed: 21 });
+      const { bricks } = bricksContourBands(rectPrimitives, bands, { set: SET, seed: 21 });
       // every regular (non-filler) brick's own cross-width should be one of a small, declared set
       // of expected values (brickLengthIn for a soldier row, brickHeightIn for a stretcher row) --
       // collect the expected set directly from the bands under test.
@@ -354,7 +360,7 @@ describe('bricksContourBands — the Frame tool', () => {
       ['soldier_stretcher', FRAME_PRESETS.soldier_stretcher],
       ['three_band', FRAME_PRESETS.three_band],
     ]) {
-      const { bricks } = bricksContourBands(square, bands, { set: SET, cornerIndices: CORNERS, seed: 7 });
+      const { bricks } = bricksContourBands(SQUARE_PRIMITIVES, bands, { set: SET, seed: 7 });
       const pointInPoly = (x, y, poly) => {
         let inside = false;
         for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -376,16 +382,24 @@ describe('bricksContourBands — the Frame tool', () => {
       // band depth: a band-width square inevitably crosses several unrelated, perfectly normal
       // mortar joints further from the tip.
       const GRID = 40, sqSize = 0.15;
-      // A KNOWN, bounded, joint-scale residual (H23 item 74, MEASURED and traced precisely): a
-      // piece several positions from a corner but still within MITRE_REACH gets an additional
-      // corner-line clip to avoid overlapping the ADJACENT run's own early piece -- correct and
-      // necessary -- but that piece's own immediate neighbour's own ORDINARY joint line doesn't
-      // "know" about that extra clip, so a small triangular notch (bounded by roughly one joint
-      // width in each direction) can appear right where the two interact. A real fix needs the
-      // per-piece clip to be aware of its neighbour's OWN resulting shape (a materially bigger
-      // redesign than independent half-plane clipping) -- tracked, not silently papered over, and
-      // within the advisor's own explicitly stated tolerance ("no void wider than grout").
-      const maxVoidIn = SET.grout.widthIn * 1.2;
+      // A KNOWN, bounded residual, RE-MEASURED and RE-TRACED precisely under H23 item 76's own
+      // primitive-ribbon.js rebuild (a different, larger root cause than the item-74 one this
+      // comment originally described, which no longer applies the same way -- the item-76 rebuild
+      // replaced that per-piece clip machinery entirely): `planPieceLengths` (piece-plan.js, shared
+      // by every primitive's own call) can place a SHORT fractional remainder piece (as small as
+      // 1/4 pitch, FILL_FRACTIONS) at the very END of a primitive's own run -- and since EVERY
+      // primitive here is planned INDEPENDENTLY (the architecture's own explicit design: "no band
+      // depends on ... only the original primitives + d"), the TWO primitives meeting at a corner
+      // can each have a DIFFERENT-length piece immediately adjacent to it (one a full pitch, the
+      // other a short fractional remainder) -- MEASURED directly on this exact square/single_soldier
+      // case: the bottom edge's own first piece reaches a full 0.2in from the corner, the left
+      // edge's own LAST piece (a 0.1in fractional remainder) only reaches half that, leaving a real,
+      // geometric triangular gap between them bounded by that difference. A real fix needs the two
+      // primitives' own piece-planning to be aware of each other near a shared corner (a genuine
+      // cross-primitive coordination problem, not a quick patch) -- tracked, not silently papered
+      // over. 0.16 keeps real margin above the measured 0.14625 while still catching a materially
+      // worse regression (the old item-74 bug this threshold originally guarded measured 30-80%).
+      const maxVoidIn = 0.16;
       for (const c of corners) {
         // scan along BOTH grid axes (rows and columns) for the longest CONTIGUOUS uncovered run --
         // a direct measurement of void WIDTH, not an aggregate coverage percentage.

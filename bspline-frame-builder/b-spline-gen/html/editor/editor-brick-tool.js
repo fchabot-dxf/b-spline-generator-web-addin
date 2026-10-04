@@ -371,6 +371,32 @@ export function buildArcSegments(primitives, points) {
   return segments;
 }
 
+/** H23 item 76 (advisor, primitive-ribbon.js rebuild -- "input: primitives + corners, which the
+ *  adapter already has via sil.primitives"): converts contour-from-frame.js's own
+ *  `{type:'L'|'A', ...}` primitive list DIRECTLY into core/bricks/primitive-ribbon.js's own RAW
+ *  primitive format (`{type:'line',p0,p1}` / `{type:'arc',cx,cy,r,theta1,theta2}`) for
+ *  `bricksContourBands`. No polyline, no declared `cornerIndices`: `ribbonPieces` derives every
+ *  joint directly from where consecutive primitives actually meet, degenerating to "no clip" on
+ *  its own for a tangent-continuous (non-corner) transition (a line-line/line-circle intersection
+ *  of two parallel/tangent curves has no solution, so the joint's own mitre line is simply absent
+ *  there) -- no separate "is this a real corner" declaration needed, unlike `primitivesToPolyline`/
+ *  `buildArcSegments` above, which this replaces for the Frame tool specifically (both kept,
+ *  unused here, for any other caller that still wants a plain declared-corners polyline). An 'L'
+ *  primitive only carries its own `p0` (its own `p1` is implicit -- the NEXT primitive's own start
+ *  point, same convention `primitivesToPolyline` already relies on). */
+export function buildRibbonPrimitives(primitives) {
+  const list = primitives || [];
+  const n = list.length;
+  return list.map((prim, i) => {
+    if (prim.type === 'A') {
+      return { type: 'arc', cx: prim.cx, cy: prim.cy, r: prim.rx, theta1: prim.theta1, theta2: prim.theta1 + prim.dTheta };
+    }
+    const next = list[(i + 1) % n];
+    const p1 = next.type === 'A' ? { x: next.cx + next.rx * Math.cos(next.theta1), y: next.cy + next.ry * Math.sin(next.theta1) } : next.p0;
+    return { type: 'line', p0: prim.p0, p1 };
+  });
+}
+
 /** The Brush tool's mode handler (editor._currentMode === 'brickBrush'):
  *  mirrors makeDrawingHandler's own freehand-path shape (editor-
  *  interaction.js) for the LIVE preview stroke, but on finish discards that
