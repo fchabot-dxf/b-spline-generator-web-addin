@@ -282,6 +282,23 @@ describe("F35 item 18 (2): the Surface style (Clean | Weathered) is a 3D-only ('
   });
 });
 
+describe('turn 207: Recessed is the new-board start -- Weathered keeps it, Clean leaves it Recessed', () => {
+  beforeEach(() => {
+    P.brickSettings.surfaceStyle = 'clean';
+    P.brickSettings.grout.profile = 'recessed';
+    delete P.brickSettings.groutProfileBeforeStyle;
+    setup('wall');
+  });
+  it('nothing to restore: Weathered stores no "before", Clean keeps Recessed', () => {
+    $('brickSurfaceStyle_weathered').click();
+    expect(P.brickSettings.grout.profile).toBe('recessed');
+    expect(P.brickSettings.groutProfileBeforeStyle).toBeUndefined();
+    $('brickSurfaceStyle_clean').click();
+    expect(P.brickSettings.grout.profile).toBe('recessed');
+    expect($('brickBtnGroutRecessed').classList.contains('active')).toBe(true);
+  });
+});
+
 describe('turn 183: Weathered switches the grout to Recessed; Clean restores what it replaced', () => {
   let notify;
   beforeEach(() => {

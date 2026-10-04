@@ -215,6 +215,10 @@ function _syncTemplateSelect(sel, templateId) {
 }
 
 let _openEditorOn = null;
+export const OPEN_EDITOR_BUTTONS = Object.freeze([
+  { id: 'btnEditFrameShape', tab: 'frame' },
+  { id: 'btnEditBricks', tab: 'brick' },
+]);
 
 /** A frame template's name as shown: numbered (Fred: "Number the other frames too") -- "Template 1 - Hourglass"
  *  -> "1. Hourglass"; a name without the "Template N - " prefix is shown as is. */
@@ -886,7 +890,9 @@ export function initFramePanel() {
     $(g.sizeW)?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, w: v })));
     $(g.sizeH)?.addEventListener('change', (e) => _applyInsetWindowStepper(e.target, (r, v) => ({ ...r, h: v })));
   }
-  $('btnEditFrameShape')?.addEventListener('click', () => { _openEditorOn = 'frame'; $('btnStampEdit')?.click(); });
+  // The sidebar sections' open-the-editor buttons, declared: each opens the SAME editor (btnStampEdit's own
+  // path) on its own tab. Turn 207 (Fred): the BRICK section's "Brick editor" joins the Frame section's.
+  for (const { id, tab } of OPEN_EDITOR_BUTTONS) $(id)?.addEventListener('click', () => { _openEditorOn = tab; $('btnStampEdit')?.click(); });
   _wireHandleDrag();
   _wireWindowDrag();
   // The fit warning (and the editor's profile) depend on the board size.

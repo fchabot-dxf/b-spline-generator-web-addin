@@ -96,16 +96,17 @@ export const DEFAULT = {
       // A legacy saved session's own `scale` migrates via brickLengthIn = its set's own declared
       // length x that scale, once, on load (main/brick-panel.js).
       brickLengthIn: 1,
-      // width/depth from Set 1 (audit C4). profile stays 'flush' (Set 1 declares 'recessed', which now
-      // really recesses the joints -- making it the default would change every new board's relief).
-      grout: { widthIn: DEFAULT_BRICK_SET.grout.widthIn, depthIn: DEFAULT_BRICK_SET.grout.depthIn, profile: 'flush' },
+      // width/depth from Set 1 (audit C4). Fred (turn 207): a NEW board's joints are RECESSED (depth 0.05 in,
+      // Set 1's); a saved board keeps its own profile (the session/project load replaces brickSettings whole).
+      grout: { widthIn: DEFAULT_BRICK_SET.grout.widthIn, depthIn: DEFAULT_BRICK_SET.grout.depthIn, profile: 'recessed' },
       reliefIn: 0.125,
       invert: false,
       // F35 item 18 (1): 'organic' = each brick's top drapes over the terrain under it (the original
       // behaviour); 'flat' = each brick is a rigid block on the least-squares plane of the terrain
-      // under its footprint (core/engine/apply-stamp-layers.js). Grout stays draped in both. A saved
-      // session without the key reads as organic (only === 'flat' is Flat), so nothing moves on load.
-      brickTopMode: 'organic',
+      // under its footprint (core/engine/apply-stamp-layers.js). Grout stays draped in both. Fred (turn 207):
+      // a NEW board starts Flat; a saved session without the key still reads as organic (only === 'flat' is
+      // Flat, and the load replaces brickSettings whole), so nothing moves on load.
+      brickTopMode: 'flat',
       // F35 item 18 (2): the brick SURFACE STYLE, an editor/brick-surface-styles.js key ('clean' |
       // 'weathered'). Clean = the set's own declared look; a saved session without the key is Clean.
       surfaceStyle: 'clean',

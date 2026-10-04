@@ -21,4 +21,9 @@ describe('the default brick grout is Set 1 (Red Brick)\'s own', () => {
     expect(DEFAULT.brickSettings.brickLengthIn).toBe(1);
     expect(set1.brickLengthIn).toBe(0.75); // the set's own declaration is unchanged
   });
+  it("Fred (turn 207): a new board starts with RECESSED joints (Set 1's 0.05 in) and FLAT brick tops", () => {
+    expect(DEFAULT.brickSettings.grout.profile).toBe('recessed');
+    expect(DEFAULT.brickSettings.grout.depthIn).toBe(0.05);
+    expect(DEFAULT.brickSettings.brickTopMode).toBe('flat');
+  });
 });
