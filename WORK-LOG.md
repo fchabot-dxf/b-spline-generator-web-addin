@@ -19247,7 +19247,7 @@ clean, complete revert with nothing left behind.
 described as correct, on both the square and T1's true corner. Published to BOTH `shots/seatB/` and
 `~/.bspline-status/shots/seatB/` (the auto-publish step from follow-up #1 still fires every run).
 
-**Commit `[pending]`, push to origin/lane-b to follow.** Replying to the advisor: the corner-fan fix
+**Commit `23355fc`, pushed to origin/lane-b.** Replying to the advisor: the corner-fan fix
 is reverted and the ceiling-violation math that settled it; the flemish finding is confirmed real but
 traced to `buildPatch`'s own pre-existing pitch-blindness (not flemish, not this item), with the A/B
 proof against the already-shipped `stretcher` pattern, proposed as a separate future item.
