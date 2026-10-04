@@ -10013,3 +10013,120 @@ tests still pass; full suite re-run green, 198 files / 3633 tests.
 Re-shot live: `shots/seatC/f35item7_06_herringbone.png` -- a genuine 90-degree chevron herringbone,
 correctly clipped to the board's curved outline, grout visible throughout. Matches the advisor's own
 `herringbone_proof.png` reference.
+
+---
+
+**F35 item 8: per-band pattern picker for Frame bands, on f3's `bandFrameAt` (u,v) hook (main
+8286930).** Dispatch: each Frame band picks a pattern from `BRICK_PATTERNS`; course kinds only
+(soldier/stretcher/header/flemish/stack), laid in (u,v) so they follow straights, voussoir arcs and
+mitred corners; herringbone/basketweave greyed "Wall only for now"; no changes to `contour-bands.js`
+(f3's file).
+
+**New core engine, `core/bricks/band-course.js`.** Every unit (brick) is a flat rectangle in (u,v)
+pattern space (u=along the band, v=across it), placed by the SAME pitch/cross-axis/stagger math
+`layouts/bond.js` already uses for a flat Wall course (its own `axisLen` exported and reused, never
+re-derived), then mapped to real (x,y) via `bandFrameAt`. Closed-loop wrap: brick/period COUNT snaps
+to the nearest whole number fitting the band's own TRUE perimeter at that depth (found empirically --
+`bandFrameAt`'s own `u` IS arc length, so the wrap point is the smallest u>0 where `sample(u,v)`
+returns to `sample(0,v)`, via coarse scan + ternary-search refinement -- never touches
+contour-bands.js's own private `enrichPrimitives`/`boundaryAtDepth`).
+
+**Four real bugs found and fixed while building this, each MEASURED before and after:**
+1. *Corner tangential drift*: `bandFrameAt`'s own `u=0` shifts along a corner's own mitre bisector
+   (not purely perpendicularly) as depth changes -- reusing one `u` window for both a brick's outer
+   (v0) and inner (v1) edge put the inner edge on the WRONG PHYSICAL EDGE for any brick whose `u`
+   window straddles a corner at one depth but not the other. Fixed: sample ONLY the outer edge
+   through `bandFrameAt`; the inner edge is built by projecting each outer sample along its OWN local
+   normal by `v1-v0` (exact on a straight run, accurate for brick-scale depths on an arc).
+2. *Facet instead of true mitre at a corner*: projecting each outer sample independently put a
+   chamfered facet on the inner edge at every corner instead of a sharp mitre. Fixed: recover the
+   exact corner by intersecting the two bracketing samples' own tangent lines, insert it as a real
+   vertex, offset along the TRUE mitre bisector (standard `1/cos(half-angle)` construction).
+3. *Flat-`dv`-reach snap zone wrong for deep rows*: a sample within `dv` of a corner has no valid
+   simple normal offset (the true boundary there is dominated by the mitre) -- but using a FLAT `dv`
+   reach breaks for `soldier` (`dv`=a full brickLengthIn, 0.75in, far exceeding that pattern's own
+   0.2in brick width): near T1's tightly-spaced waist fillets, EVERY sample fell within reach of the
+   SAME corner, collapsing an entire row to one degenerate point. Fixed: compare each sample's own
+   distance against THAT corner's own true mitre distance (capped for a near-reversal corner), which
+   scales with how sharp the corner actually is, not with the row's own depth.
+4. *Guard-based corner detection caught the WRONG unit's corner*: a per-unit "guard" sample (reaching
+   a fixed distance before/after the unit's own span, needed because `dv` can be wide) could also
+   catch a corner belonging to an ALREADY-handled neighbouring unit, re-inserting it and inflating
+   that unit's own polygon across unrelated territory (measured on a flemish row: a 0.75in stretcher
+   sub-unit's own guard reached clean past its 0.2in header neighbour). Fixed: corner detection moved
+   to ONE dense scan per ROW (`findRowCorners`), each corner's own exact `u` recovered once; a unit
+   only claims a corner whose `u` genuinely falls inside its own span -- an exact range check, never a
+   proximity guess. (A fifth, narrower bug surfaced during this fix: `i*step` reconstructing
+   `perimeter` in floating point can land a few ULPs short, silently skipping the row's own closing-
+   seam corner -- fixed by forcing the last comparison to close against `sample(0,v0)` exactly.)
+
+**A real, bounded limitation, found by comparison against the UNTOUCHED legacy system, not assumed:**
+band-course.js approximates a brick's inner edge via local-normal projection from the outer edge;
+`bricksContourBands` (unmodified) uses exact analytic offsetting with `isArcFeasible`/
+`primitiveLiveAtDepth` dropping a primitive that becomes infeasible at depth. MEASURED (exact overlap-
+area via polygon clipping, not just a boolean SAT flag) on T1's own shoulder fillet: band-course.js
+shows ~11.8 sq in of REAL overlap on the existing three_band preset's own full declared depth
+(2.1in, soldier/stretcher/soldier -- the UNTOUCHED default, no pattern override at all), while the
+same preset through unmodified `bricksContourBands` stays clean (its own "overlapping" pairs are
+float-epsilon mitre-seam noise, total area ~0.003 sq in, the same benign class
+`tests/bricks-contour-bands.test.js` already documents). The failure scales with absolute cumulative
+depth from the board's true outer edge, independent of which pattern is used -- confirmed clean at
+shallow depth (a single band at its own natural 1-row width, ~0.2-0.8in) and increasingly unreliable
+past roughly 1.2-1.5in on T1's own tightest fillet, regardless of ordering tricks tried (splitting two
+new-pattern bands apart just pushes the SECOND one's own startDepth deeper instead).
+
+**Integration (`editor-brick-tool.js`'s own `frameBricksFor`), gated PER BAND because of that limit, not
+per whole frame.** A first version gated on "any per-band override active -> whole frame via the new
+engine" -- WRONG: it silently regressed the existing three_band preset's own default patterns the
+moment the user touched ANY band, even one left at its own default, since bricksContourBands' own
+proven depth-robustness was being discarded for bands that didn't need the new engine at all. Fixed:
+bands are split into RUNS of consecutive same-engine-need (course/alternating patterns
+`bricksContourBands` already renders correctly -- soldier/stretcher/unset -- stay on it; header/
+flemish/stack need band-course.js). A LEGACY run is positioned via a count-and-slice trick (no
+distance math): `bricksContourBands` has no depth-offset parameter, but a band's own piece count is
+independent of what follows it, so calling it once with just the PRECEDING bands (their real pattern,
+or 'stretcher' as an exact depth-equivalent placeholder for a preceding new-engine band) gives the
+exact count to skip; calling it again with `[preceding..., ...thisRun]` and slicing from that count
+onward yields exactly this run's own bricks, correctly positioned. A NEW-ENGINE run needs no such
+trick -- band-course.js is this project's own file, so it takes a `startDepth` option directly
+(`resolveBandRows` exported so this caller never re-derives the pitch/cross-axis formula). Verified:
+an untouched preset (no override) takes the identical legacy path as before F35 item 8 (zero
+behaviour change); a single shallow override (e.g. the outermost band only) is clean at both the
+cross-engine seam (float-epsilon only) and within each run; MULTIPLE new-pattern bands whose COMBINED
+depth exceeds the ~1.2-1.5in ceiling on a tight template can still show real overlap -- a narrower,
+honestly-scoped residual (same class of gap library.js's own BRICK_PATTERNS header already names for
+tile2d-on-a-curve), not silently hidden.
+
+**Tests** (`tests/bricks-band-course.test.js`, 34 tests): exact-math on a plain square (first
+stretcher brick sits exactly on the outer edge, correct declared length; two stacked bands meet with
+zero gap at the shared depth); for all 5 course-kind patterns, on BOTH a plain square and T1's own
+real geometry (`frameContourSilhouette` + `buildRibbonPrimitives`, the same chokepoint the live
+adapter uses) at a 2-row band (~0.4-1.5in depth, well inside the measured-safe range): no overlap
+(exact SAT), grout within +-10% or a deliberately flush row boundary (same two-way classification
+`bricks-weave-layouts.test.js` already established), substantial brick count; bands split as 1+2 rows
+match a single 3-row band's own bricks with zero overlap between them. Full suite green: 201 files /
+3715 tests (up from 198/3633 at the end of item 7).
+
+**UI** (`main/brick-panel.js`): `renderFrameBandPatternList`/`syncFrameBandPatternButtons` -- one row
+per band in the current `frameBandPreset`, every `BRICK_PATTERNS` key as a button (same table/labels
+the Wall picker already reads), herringbone/basketweave disabled with a "Wall only for now" tooltip.
+Re-rendered (not just re-synced) on every preset change, since band COUNT can change.
+`P.brickSettings.frameBandPatterns` (core/state.js): an array keyed by band INDEX, not by preset id,
+so an override survives switching to a preset where that index still exists.
+`resolveFrameGeom` merges it into the preset's own declared bands (never mutates `FRAME_PRESETS`
+itself). `bond.js`'s own `axisLen` exported (trivial, zero behaviour change) for band-course.js's
+reuse.
+
+Live-verified (headless Chrome, T1 at 7x9, `three_band` preset, band 0 overridden to flemish, bands
+1-2 left at their own default soldier/stretcher): 396 frame bricks, zero console errors. Extracted the
+live polygon data and re-rendered flat-coloured (the live photo-texture made genuine geometry hard to
+read at a glance) -- `shots/seatC/f35item8_safe_overview.png` (photo-texture, as the user actually
+sees it), `f35item8_corner_closeup.png` and `f35item8_waist_closeup.png` (flat-coloured, from the SAME
+live data): flemish's alternating stretcher/header correctly mitres the corner and follows the waist's
+concave curve, soldier's radiating courses correctly fan around the shoulder fillets, no visible
+overlap or gap at either closeup.
+
+Commit, push, pass back with the depth limitation named explicitly and the question: is the per-band,
+engine-split integration (robust for any single override, bounded for multiple deep new-pattern
+bands on a tight template) an acceptable scope line for now, or does the advisor want band-course.js
+itself made depth-robust (its own `isArcFeasible`/`primitiveLiveAtDepth` equivalent) as a follow-up?
