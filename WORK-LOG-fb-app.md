@@ -12383,3 +12383,17 @@ the BRICK_CONTROL_REQUIRES above. (3) number boxes now apply WHILE TYPING for co
 keystroke (`settleAfterTyping`, in bindSlider's number box and bindGroutField); 'generate' boxes already mark
 pending per keystroke. This supersedes turn 189's "grout depth re-masks only on change". Test (fake timers):
 2 keystrokes -> 0 re-masks until 400 ms after the last -> exactly 1; fails 1/1 without the debounce.
+
+## turn 199 (seat C = 37): the Large stones slider stays HIDDEN until the engine honours it (merge blocker)
+
+Advisor: a slider the engine ignores is a dead control (Fred's complaint; the matrix would fail it). Declared:
+core/bricks/engine.js `ENGINE_OPTIONS` (re-exported from core/bricks/index.js) = the generateBricks input
+options the engine actually reads today -- 'largeStones' (T86 item 17) and 'exclusions' (T86 item 13) are NOT
+in it; seat B adds each name in the change that makes the engine read it (small additive edit to seat B's
+file, d3 told by DM). main/brick-control-requires.js: `requires: { engineOption }` + `hides: true` (hidden,
+not greyed); requirementMet(requires, el, { engineOptions }). The Large stones row shows only for a
+fieldstone wall AND once 'largeStones' is in ENGINE_OPTIONS -- it appears by itself, no UI change later.
+syncControlRequires skips `hides` rules (the row's own sync applies them). Tests: panel -- hidden for White
+Rocks while the engine lacks it, shown (fieldstone only) with a stand-in engine list; requires -- the rule hides
+today, met with the option listed. The hide test fails 1/1 on the previous panel. Fast tier 72 files, 783
+passed, 0 failed.

@@ -36,6 +36,14 @@ import { brickTopHeight } from './height-profile.js';
  *   sampleHeight (below) can reach it without a breaking signature change -- height-profile chip
  *   placement is seeded.
  */
+/** The generateBricks `input` options this engine actually HONOURS (turn 199, advisor: a UI control for an
+ *  option the engine ignores must not show -- main/brick-control-requires.js `engineOption`). Add an
+ *  option's name here in the SAME change that makes the engine read it (e.g. 'largeStones' with T86
+ *  item 17, 'exclusions' with T86 item 13) and its control appears by itself. */
+export const ENGINE_OPTIONS = Object.freeze([
+  'boardOutline', 'set', 'frame', 'suppression', 'topBias', 'clumping', 'zones', 'scale', 'skipWallFill', 'seed',
+]);
+
 export function generateBricks(input) {
   const { boardOutline, set, frame, seed, scale } = input;
 

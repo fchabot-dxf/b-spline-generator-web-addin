@@ -14,7 +14,8 @@ describe('BRICK_CONTROL_REQUIRES', () => {
   it('every id is a real palette control, every satisfied form is supported', () => {
     const html = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
     for (const r of BRICK_CONTROL_REQUIRES) {
-      for (const id of [...r.controls, r.requires.control]) expect(html).toContain(`id="${id}"`);
+      for (const id of [...r.controls, r.requires.control].filter(Boolean)) expect(html).toContain(`id="${id}"`);
+      if (r.requires.engineOption) continue; // an engine option, not a control state
       expect(Object.keys(r.requires.satisfied).some((k) => ['gt', 'active', 'checked'].includes(k))).toBe(true);
       expect(r.why).toBeTruthy();
     }
@@ -25,5 +26,15 @@ describe('BRICK_CONTROL_REQUIRES', () => {
     expect(requirementMet({ satisfied: { active: true } }, { classList: { contains: () => false } })).toBe(false);
     expect(requirementMet({ satisfied: { checked: true } }, { checked: true })).toBe(true);
     expect(requirementMet({ satisfied: { gt: 0 } }, null)).toBe(true);
+  });
+});
+
+describe('turn 199: engineOption requirements', () => {
+  it('met only when the engine lists the option; Large stones is NOT in the engine yet', async () => {
+    const { ENGINE_OPTIONS } = await import('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js');
+    const rule = BRICK_CONTROL_REQUIRES.find((r) => r.controls.includes('brickLargeStonesRow'));
+    expect(rule.hides).toBe(true);
+    expect(requirementMet(rule.requires, null, { engineOptions: ENGINE_OPTIONS })).toBe(false);
+    expect(requirementMet(rule.requires, null, { engineOptions: [...ENGINE_OPTIONS, 'largeStones'] })).toBe(true);
   });
 });

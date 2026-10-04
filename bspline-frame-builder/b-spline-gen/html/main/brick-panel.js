@@ -26,6 +26,7 @@ import {
 } from '../editor/editor-brick-tool.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { BRICK_CONTROL_REQUIRES, requirementMet } from './brick-control-requires.js';
+import { ENGINE_OPTIONS } from '../core/bricks/index.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { rectToPrimitives } from '../core/inset-window.js';
@@ -465,9 +466,15 @@ function syncToolSections() {
 }
 
 /** F35 item 21: the Large stones row shows only while the Wall's layout is fieldstone. */
+const _hiddenUntilMet = (id) => {
+  const rule = BRICK_CONTROL_REQUIRES.find((r) => r.hides && r.controls.includes(id));
+  return !!rule && !requirementMet(rule.requires, document.getElementById(rule.requires.control), { engineOptions: ENGINE_OPTIONS });
+};
+
 function syncLargeStonesRow() {
   const row = document.getElementById('brickLargeStonesRow');
-  if (row) row.style.display = wallLayoutFor(P.brickSettings) === 'fieldstone' ? '' : 'none';
+  // fieldstone walls only, AND only once the engine honours the option (turn 199: never a dead control)
+  if (row) row.style.display = wallLayoutFor(P.brickSettings) === 'fieldstone' && !_hiddenUntilMet('brickLargeStonesRow') ? '' : 'none';
   setPair('brickLargeStonesSlider', 'brickLargeStones', Number.isFinite(P.brickSettings.largeStones) ? P.brickSettings.largeStones : 0.5);
 }
 
@@ -589,6 +596,7 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
  *  (main/brick-control-requires.js) -- disabled, with the reason as its tooltip. */
 function syncControlRequires() {
   for (const rule of BRICK_CONTROL_REQUIRES) {
+    if (rule.hides) continue; // hidden-while-unmet rules are applied by the control's own row sync
     const met = requirementMet(rule.requires, document.getElementById(rule.requires.control));
     for (const id of rule.controls) {
       const el = document.getElementById(id);

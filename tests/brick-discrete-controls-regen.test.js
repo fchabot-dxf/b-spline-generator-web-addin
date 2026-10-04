@@ -17,6 +17,12 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/toast.js', () => ({ sho
 // Audit C6: a Stripe style pick re-commits through commitEdit (the editor's real commit pipeline is not
 // under test here).
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js', () => ({ commitEdit: vi.fn() }));
+// turn 199: the engine's honoured-option list, mutable so a test can stand in for "T86 item 17 landed"
+const engineOpts = vi.hoisted(() => ({ extra: [] }));
+vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, get ENGINE_OPTIONS() { return [...actual.ENGINE_OPTIONS, ...engineOpts.extra]; } };
+});
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, frameContext: vi.fn(() => ({})) };
@@ -671,7 +677,14 @@ describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fiel
     expect(shown('brickSharedSet')).toBe(true);
     expect(shown('brickSharedLayout')).toBe(true);
   });
+  it('turn 199: hidden while the engine does not honour largeStones, even for a fieldstone wall', () => {
+    engineOpts.extra = [];
+    $('brickSetWhite').click();
+    expect(shown('brickLargeStonesRow')).toBe(false);
+  });
   it('the Large stones row shows only for a fieldstone wall (White Rocks, or the Fieldstone pattern)', () => {
+    engineOpts.extra = ['largeStones']; // the engine honours it (T86 item 17)
+    $('brickSetRed').click();
     expect(shown('brickLargeStonesRow')).toBe(false); // red brick, stretcher
     $('brickSetWhite').click();
     expect(shown('brickLargeStonesRow')).toBe(true);
@@ -679,6 +692,7 @@ describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fiel
     expect(shown('brickLargeStonesRow')).toBe(false);
     $('brickPattern_fieldstone').click();
     expect(shown('brickLargeStonesRow')).toBe(true);
+    engineOpts.extra = [];
   });
   it('a layout setting: the slider marks pending, Generate lays with it', () => {
     $('brickPattern_fieldstone').click();
