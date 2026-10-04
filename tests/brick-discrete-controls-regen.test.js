@@ -38,6 +38,8 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, runBricksPreview, buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
+import { frameContext } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
 import { deselectTool } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
@@ -74,6 +76,7 @@ const FIXTURE = `
   <div id="stripeTargetHint">Tap a rail, a contour segment or a line.</div>
   <input type="checkbox" id="brickFrameOffsetOn" checked><input id="brickFrameOffsetDistance" value="0">
   <input id="brickLevel_wall" value="0"><input id="brickLevel_frame" value="0">
+  <div id="brickSidebarNoBricks" style="display:none;"></div><div id="brickStartHint" style="display:none;"></div>
   <div id="brickAccentList"></div><button id="brickAccentClick">Click bricks</button>
   <div id="brickAccentLevelRow" style="display:none;"><input id="brickAccentLevel" value="0.0625"></div>
   <input id="brickReliefHeightSlider" type="range" min="0" max="1" step="0.001"><input id="brickReliefHeight">
@@ -93,8 +96,18 @@ function setup(tool) {
   root.innerHTML = FIXTURE;
   document.body.appendChild(root);
   // A Bricks layer + a runBricks mock honouring the real contract: the laid key is stamped on it.
-  window.svgEditor = { setMode: () => {}, _layers: [{ id: 'b', name: 'Bricks' }] };
-  runBricks.mockImplementation((ed, _s, _fg, opts) => { if (opts?.laidKey != null) ed._layers[0].brickLaidKey = opts.laidKey; });
+  window.svgEditor = { setMode: () => {}, _layers: [{ id: 'b', name: 'Bricks' }], _sketchLayer: { node: document.createElement('div') } };
+  // ...and, like the real one, it leaves the laid kinds' bricks on the canvas (audit v2 N4/N5 read them)
+  runBricks.mockImplementation((ed, _s, _fg, opts) => {
+    if (opts?.laidKey != null) ed._layers[0].brickLaidKey = opts.laidKey;
+    const node = ed._sketchLayer?.node;
+    for (const kind of opts?.kinds || []) {
+      if (!node?.appendChild || node.querySelector(`[data-brick="${kind}"]`)) continue;
+      const el = document.createElement('polygon');
+      el.setAttribute('data-brick-gen', '1'); el.setAttribute('data-brick', kind);
+      node.appendChild(el);
+    }
+  });
   vi.stubGlobal('requestAnimationFrame', () => 1);
   vi.stubGlobal('cancelAnimationFrame', () => {});
   P.brickSettings.pattern = 'stretcher';
@@ -543,13 +556,11 @@ describe('F35 item 16: the Frame tool\'s offset from frame, and per-element Leve
     const contour = buildRibbonPrimitives.mock.calls.at(-1)[0];
     expect(contour.map((p) => [p.p0.x, p.p0.y])).toEqual([[0, 0], [7, 0], [7, 9], [0, 9]]);
   });
-  it('Level is 3D-only: saved per element kind, re-masks at once, never re-lays, never pending', () => {
+  it('audit v2 N6: Level, saved per element kind, shows the Generate dot (it showed nothing before); Generate clears it', () => {
     fire('brickLevel_frame', 0.0625, 'change');
     fire('brickLevel_wall', -0.03125, 'change');
     expect(P.brickSettings.elementLevelIn).toEqual({ wall: -0.03125, frame: 0.0625 });
-    expect(notify).toHaveBeenCalledTimes(2);
-    expect(runBricks).not.toHaveBeenCalled();
-    expect(pending()).toBe(false);
+    expectPendingThenGenerate((c) => expect(c[1].elementLevelIn).toEqual({ wall: -0.03125, frame: 0.0625 }));
   });
 });
 
@@ -854,5 +865,98 @@ describe('F35 item 15: raised accents -- a preset icon grid + Click bricks, 3D-o
     $('brickTool_frame').click();
     expect(modes).toContain('select');
     expect($('brickAccentClick').classList.contains('active')).toBe(false);
+  });
+});
+
+describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
+  const shown = (id) => $(id).style.display !== 'none';
+  beforeEach(() => { P.editorSvg = null; });
+
+  it("N2: P.brickSettings REPLACED (reload / project load) -> the panel shows the board's values, editor + sidebar", () => {
+    setup('brush');
+    const before = P.brickSettings;
+    P.brickSettings = { ...JSON.parse(JSON.stringify(before)), setId: 3, pattern: 'herringbone', brickLengthIn: 1.5, surfaceStyle: 'weathered' };
+    window.svgEditor._brickSettings = before; // an armed Brush still holds the old object
+    document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
+    expect($('brickSetWhite').classList.contains('active')).toBe(true);
+    expect($('brickPattern_herringbone').classList.contains('active')).toBe(true);
+    expect($('brickQuick_pattern_herringbone').classList.contains('active')).toBe(true);
+    expect($('brickSize').value).toBe('1.5');
+    expect(window.svgEditor._brickSettings).toBe(P.brickSettings);
+    P.brickSettings = before;
+  });
+
+  it('N4: a brush-only board never shows a Generate dot (nothing for Generate to re-lay)', () => {
+    setup('brush');
+    firstInactive('[id^=brickSizePreset_]').click();
+    $('brickSetWhite').click();
+    expect(pending()).toBe(false);
+    expect($('editorTabBrick').hasAttribute('data-brick-pending')).toBe(false);
+  });
+
+  it('N3: White Rocks greys the course bonds (editor + quick row) with the reason, hides the band patterns; Red restores', () => {
+    setup('wall');
+    $('brickSetWhite').click();
+    for (const id of ['brickPattern_stretcher', 'brickPattern_flemish', 'brickQuick_pattern_stack']) {
+      expect($(id).disabled, id).toBe(true);
+      expect($(id).title, id).toMatch(/White Rocks/);
+    }
+    for (const id of ['brickPattern_herringbone', 'brickPattern_basketweave', 'brickPattern_fieldstone', 'brickPattern_none']) expect($(id).disabled, id).toBe(false);
+    expect(shown('brickFrameBandPatternList')).toBe(false);
+    $('brickSetRed').click();
+    expect($('brickPattern_stretcher').disabled).toBe(false);
+    expect($('brickPattern_stretcher').title).toBe('Stretcher'); // its own tooltip is back
+    expect(shown('brickFrameBandPatternList')).toBe(true);
+  });
+
+  it('N5: no Wall/Frame bricks -> the sidebar BRICK controls are greyed with a visible reason; a Generate enables them', () => {
+    setup('brush');
+    expect($('brickBtnReliefCarved').disabled).toBe(true);
+    expect($('brickQuick_pattern_herringbone').disabled).toBe(true);
+    expect($('brickBtnReliefCarved').title).toMatch(/No Wall or Frame bricks/);
+    expect(shown('brickSidebarNoBricks')).toBe(true);
+    $('brickTool_wall').click();
+    $('brickGenerate').click();
+    expect($('brickBtnReliefCarved').disabled).toBe(false);
+    expect($('brickQuick_pattern_herringbone').disabled).toBe(false);
+    expect(shown('brickSidebarNoBricks')).toBe(false);
+  });
+
+  it('N5: a reloaded board whose saved drawing has wall bricks counts as laid before the editor loads it', () => {
+    P.editorSvg = '<svg><polygon data-brick-gen="1" data-brick="wall" points="0,0 1,0 1,1"/></svg>';
+    setup('brush');
+    expect($('brickBtnReliefCarved').disabled).toBe(false);
+  });
+
+  it("N7: Scissors hides the shared rows too (a cut keeps each piece's draw-time settings)", () => {
+    setup('wall');
+    $('brickTool_scissors').click();
+    expect(shown('brickSharedSet')).toBe(false);
+    expect(shown('brickSharedLayout')).toBe(false);
+  });
+
+  it('N9: Generate with the Frame tool and no frame says so in a toast (not only the console)', () => {
+    setup('frame');
+    frameContext.mockImplementation(() => null);
+    try {
+      $('brickGenerate').click();
+      expect(showToast).toHaveBeenCalledWith(FRAME_NEEDS_A_FRAME, 'warn');
+    } finally {
+      frameContext.mockImplementation(() => ({}));
+    }
+  });
+
+  it('N11: the Brick tab with no tool on a board with no bricks shows the start hint, naming the tools', () => {
+    setup('brush');
+    setEditorTab('brick');
+    deselectTool();
+    expect(shown('brickStartHint')).toBe(true);
+    expect($('brickStartHint').textContent).toMatch(/Wall/);
+    expect($('brickStartHint').textContent).toMatch(/Frame/);
+    expect($('brickStartHint').textContent).toMatch(/Brush/);
+    $('brickTool_wall').click();
+    expect(shown('brickStartHint')).toBe(false);
+    setEditorTab('artwork');
+    expect(shown('brickStartHint')).toBe(false);
   });
 });

@@ -43,7 +43,15 @@ export function restoreBrickSettings(saved) {
   if (!saved || !P.brickSettings) return;
   for (const k of Object.keys(P.brickSettings)) delete P.brickSettings[k];
   Object.assign(P.brickSettings, JSON.parse(JSON.stringify(saved)));
-  document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
+  announceBrickSettingsRestored();
+}
+
+/** Audit v2 N2: P.brickSettings was REPLACED from outside the brick panel -- Cancel (above), the session
+ *  restore (initApp), a project load or a global undo (snapshot-manager.js applySnapshot). The panel
+ *  (main/brick-panel.js) re-syncs every control, editor and sidebar, and the pending state from it. Before
+ *  this, only Cancel announced it: after a reload or a load the panels showed the DEFAULTS. */
+export function announceBrickSettingsRestored() {
+  if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
 }
 
 /**
@@ -510,6 +518,7 @@ export async function initApp(preview, wireGlobalEvents) {
   AppState.isInitializing = true;
   const restored = loadLastSession();
   runMigrations();
+  if (restored) announceBrickSettingsRestored(); // audit v2 N2: the brick panel was built before this restore
 
   // Save audit #4: a restored session keeps its seed (a fresh one would change the terrain it was saved with);
   // only a fresh start rolls one

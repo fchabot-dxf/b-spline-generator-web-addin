@@ -125,7 +125,8 @@ export const DEFAULT = {
       frameOffset: { on: true, distance: 0 },
       // F35 item 16: LEVEL, a per-element height offset in inches (+ proud, - recessed; item 15's accent
       // level applied to a whole element), keyed by element kind (editor-brick-tool.js BRICK_KINDS). Read
-      // by the height mask only (3D, never re-lays). A saved session without it is level 0.
+      // by the height mask; in the laid key (audit v2 N6: an editor change shows the Generate dot). A saved
+      // session without it is level 0.
       elementLevelIn: { wall: 0, frame: 0 },
       // F35 item 15: RAISED ACCENTS on the Wall -- `preset` = an editor/brick-accents.js ACCENT_PRESETS id,
       // 'custom' (the bricks under `clicks`, wall-local board points, re-mapped after every re-lay) or

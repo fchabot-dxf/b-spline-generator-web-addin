@@ -118,7 +118,12 @@ describe('Custom: Click bricks (stored points, re-mapped after a re-lay)', () =>
 describe('picker icons, drawn by the real engine', () => {
   it('every preset gets an icon with raised (dark) bricks; all distinct; None draws none raised', () => {
     const icons = ACCENT_PRESETS.map((p) => accentIconSvg(p.id));
-    for (const svg of icons) expect(svg).toMatch(/<g fill="#8e2f1c"><polygon/);
+    for (const svg of icons) {
+      // REAL parsed elements: the wall bricks (light) and the raised ones (dark group)
+      const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+      expect(doc.querySelectorAll('g[fill="#d07a5c"] > polygon').length).toBeGreaterThan(10);
+      expect(doc.querySelectorAll('g[fill="#8e2f1c"] > polygon').length).toBeGreaterThan(0);
+    }
     expect(new Set(icons).size).toBe(10);
     expect(accentIconSvg('none')).toMatch(/<g fill="#8e2f1c"><\/g>/);
   });

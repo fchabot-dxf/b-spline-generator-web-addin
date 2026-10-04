@@ -72,7 +72,8 @@ const BRICK_TOOLS = [
   // Brush strokes today (Wall/Frame have no drawn spine to tap -- see
   // editor-brick-tool.js's own header on why that's a deliberate scope,
   // not an oversight).
-  { id: 'scissors', buttonId: 'brickTool_scissors', label: 'Scissors', icon: '✂️', settingsSection: null,
+  // sharedRows: false (audit v2 N7) -- a cut keeps each piece's draw-time settings, so the shared rows do nothing
+  { id: 'scissors', buttonId: 'brickTool_scissors', label: 'Scissors', icon: '✂️', settingsSection: null, sharedRows: false,
     hint: 'Tap a brush stroke to split it -- each piece regenerates its own bricks independently once moved apart.' },
   // sharedRows: false (turn 197) -- a stripe pick restyles EXISTING strokes, so the panel's shared rows
   // (BRICK_SHARED_SECTIONS: Set, Brick size .. Seed) don't apply and are hidden
@@ -234,9 +235,11 @@ function syncFrameOffsetControls() {
   if (dist) { dist.value = off.distance || 0; dist.disabled = off.on === false; }
 }
 
-/** F35 item 16: an element's LEVEL (height offset, inches) -- read only by the height mask, so 3D-only
- *  ('surface': re-mask at once, never re-lay, never pending). One input per kind: #brickLevel_<kind>. */
-export function setElementLevel(kind, levelIn, commit = 'surface') {
+/** F35 item 16: an element's LEVEL (height offset, inches), read by the height mask. Audit v2 N6: in the editor
+ *  a Level change showed nothing at all (3D-only, and the editor never re-masks) -- it is now in the laid key
+ *  and commits like the other editor settings: the Generate dot shows, Generate + Apply builds it.
+ *  One input per kind: #brickLevel_<kind>. */
+export function setElementLevel(kind, levelIn, commit = 'generate') {
   const v = Number(levelIn);
   if (!Number.isFinite(v)) return;
   P.brickSettings.elementLevelIn = { ...(P.brickSettings.elementLevelIn || {}), [kind]: v };
@@ -728,17 +731,36 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
 /** Audit (88's matrix): grey out every control whose declared requirement is unmet
  *  (main/brick-control-requires.js) -- disabled, with the reason as its tooltip. */
 function syncControlRequires() {
+  const ctx = { engineOptions: ENGINE_OPTIONS, facts: { bricksLaid: _bricksLaid() } };
+  // a control under several rules is greyed while ANY is unmet (the first unmet rule's reason shows)
+  const unmet = new Map(), ruled = new Set(), whys = new Set();
   for (const rule of BRICK_CONTROL_REQUIRES) {
     if (rule.hides) continue; // hidden-while-unmet rules are applied by the control's own row sync
-    const met = requirementMet(rule.requires, document.getElementById(rule.requires.control));
-    for (const id of rule.controls) {
-      const el = document.getElementById(id);
+    whys.add(rule.why);
+    const met = requirementMet(rule.requires, document.getElementById(rule.requires.control), ctx);
+    const els = [...rule.controls.map((id) => document.getElementById(id)),
+      ...(rule.within || []).flatMap((id) => [...(document.getElementById(id)?.querySelectorAll('button, input') || [])])];
+    for (const el of els) {
       if (!el) continue;
-      el.disabled = !met;
-      if (!met) el.title = rule.why;
-      else if (el.title === rule.why) el.removeAttribute('title');
+      ruled.add(el);
+      if (!met && !unmet.has(el)) unmet.set(el, rule.why);
     }
   }
+  // the control's OWN tooltip (e.g. an icon's name) is kept aside while the reason shows, then put back
+  for (const el of ruled) {
+    el.disabled = unmet.has(el);
+    if (unmet.has(el)) {
+      if (!el.hasAttribute('data-own-title')) el.setAttribute('data-own-title', whys.has(el.title) ? '' : (el.title || ''));
+      el.title = unmet.get(el);
+    } else if (el.hasAttribute('data-own-title')) {
+      const own = el.getAttribute('data-own-title');
+      if (own) el.title = own; else el.removeAttribute('title');
+      el.removeAttribute('data-own-title');
+    }
+  }
+  // N5: the sidebar says WHY its controls are greyed, not just in a tooltip
+  const note = document.getElementById('brickSidebarNoBricks');
+  if (note) note.style.display = ctx.facts.bricksLaid ? 'none' : '';
 }
 
 /** Settings keys a Wall/Frame layout never reads -- a Brush stroke's own settings freeze at draw
@@ -746,7 +768,8 @@ function syncControlRequires() {
 const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 'stripeStyles', 'raisedLevelIn', 'raisedMode'];
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'elementLevelIn', 'accent'];
+// (Level, elementLevelIn, left this list for audit v2 N6: an editor Level change now shows the Generate dot)
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 const LAYOUT_IGNORED_SETTING_KEYS = [...BRUSH_ONLY_SETTING_KEYS, ...SURFACE_ONLY_SETTING_KEYS];
@@ -782,7 +805,24 @@ function _laidLayoutKey() {
   return layer?.brickLaidKey ?? null;
 }
 
+/** The element kinds whose Generate-laid bricks are on the canvas now. */
+function _presentKinds(editor) {
+  const node = editor?._sketchLayer?.node;
+  return BRICK_KINDS.filter((kind) => !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`));
+}
+
+/** Audit v2 N5: does the board have Wall/Frame bricks? The live canvas, or the saved drawing while the editor
+ *  has not loaded it yet (after a reload, before it is opened). */
+function _bricksLaid() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (_presentKinds(editor).length) return true;
+  return typeof P.editorSvg === 'string' && /data-brick="(wall|frame)"/.test(P.editorSvg);
+}
+
 function isGeneratePending() {
+  // Audit v2 N4: nothing Generate re-lays is on the canvas (no Wall/Frame bricks, e.g. a brush-only board)
+  // -> nothing is pending. The dot used to stick there: no laid key + a sticky "changed while unknown".
+  if (!_presentKinds(typeof window !== 'undefined' ? window.svgEditor : null).length) return false;
   const laid = _laidLayoutKey();
   return laid === null ? _changedWhileUnknown : _layoutKey() !== laid;
 }
@@ -829,6 +869,7 @@ function _layBricks(editor, frameGeom, kinds) {
   }
   _changedWhileUnknown = false;
   syncGeneratePending();
+  syncControlRequires(); // audit v2 N5: the board now has bricks -- the sidebar controls apply
   // Audit C8: the layer's visibility is the user's choice, so it is not flipped back on -- but a
   // re-lay nobody can see must not pass silently.
   const layer = (editor._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
@@ -838,16 +879,19 @@ function _layBricks(editor, frameGeom, kinds) {
 /** Audit C1: what Generate lays -- every element kind already on the canvas, plus the active tool's
  *  own kind (BRICK_TOOLS `lays`). Frame needs a usable frame. A Wall alone never brings Frame bands. */
 function _kindsToLay(editor, frameGeom) {
-  const node = editor?._sketchLayer?.node;
-  const present = (kind) => !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`);
+  const present = _presentKinds(editor);
   const active = BRICK_TOOLS.find((t) => t.id === _activeTool);
-  return BRICK_KINDS.filter((kind) => (present(kind) || (active && active.lays === kind)) && (kind !== 'frame' || !!frameGeom));
+  return BRICK_KINDS.filter((kind) => (present.includes(kind) || (active && active.lays === kind)) && (kind !== 'frame' || !!frameGeom));
 }
 
 /** Generate: re-lay the Wall/Frame bricks with the CURRENT settings -- whatever Wall/Frame bricks
  *  are already on the canvas, or the active Wall/Frame tool's own output (Frame needs a usable
  *  frame). Wall and Frame are laid together by one runBricks call (editor-brick-tool.js), so there
  *  is no per-element subset to pick. Brush strokes are untouched (frozen at draw time). */
+/** Audit v2 N9: Generate with the Frame tool on a board with no frame laid nothing and said so only in the
+ *  console. (Offset from frame OFF lays the bands along the board's edge instead -- no frame needed.) */
+export const FRAME_NEEDS_A_FRAME = "No frame on this board -- pick a frame template, or turn Offset from frame off to lay the bands along the board's edge.";
+
 export function generateBricks() {
   _cancelLivePreview();
   _dragSlow = false;
@@ -855,6 +899,7 @@ export function generateBricks() {
   if (!editor) return false;
   const frameGeom = resolveFrameGeom(editor);
   const kinds = _kindsToLay(editor, frameGeom);
+  if (!frameGeom && BRICK_TOOLS.find((t) => t.id === _activeTool)?.lays === 'frame') showToast(FRAME_NEEDS_A_FRAME, 'warn');
   if (!kinds.length) return false;
   return _layBricks(editor, frameGeom, kinds) !== false;
 }
@@ -965,7 +1010,24 @@ function syncGenerateVisibility() {
  *  panels while the Brick tab is actually active (getEditorTab) -- never fights editor-tabs.js's
  *  own per-tab panel toggle for Artwork/Photo/Frame, which this deliberately leaves alone (not the
  *  reported problem). */
+/** Audit v2 N11: a new board's Brick tab, no tool picked, showed only Layers ("Layer 1") and unlabelled
+ *  toolbar icons. The start hint names the tools that lay bricks (BRICK_TOOLS: those that `lay` an element,
+ *  plus Brush), shown in the Brick tab with no tool picked on a board that has no bricks yet. */
+function syncStartHint() {
+  const hint = document.getElementById('brickStartHint');
+  if (!hint) return;
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  const anyBricks = !!editor?._sketchLayer?.node?.querySelector?.('[data-brick-gen="1"]')
+    || (typeof P.editorSvg === 'string' && P.editorSvg.includes('data-brick-gen="1"'));
+  if (!hint.textContent) {
+    const starters = BRICK_TOOLS.filter((t) => t.lays || t.id === 'brush').map((t) => `${t.icon} ${t.label}`);
+    hint.textContent = `Pick ${starters.slice(0, -1).join(', ')} or ${starters.at(-1)} in the toolbar to start laying bricks.`;
+  }
+  hint.style.display = getEditorTab() === 'brick' && _activeTool === null && !anyBricks ? '' : 'none';
+}
+
 function syncEmptySelectionPanel() {
+  syncStartHint();
   if (getEditorTab() !== 'brick') return;
   const brickPanel = document.getElementById('editorBrickPanel');
   const layersPanel = document.getElementById('editorLayersPanel');
@@ -1133,8 +1195,11 @@ function renderFrameBandPatternList(container) {
   container.innerHTML = '';
   const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
   // Audit K2: a preset with no bands (None) has no band rows -- its heading goes too.
+  // Audit v2 N3: White Rocks bands are fieldstone, so the per-band patterns are hidden (declared requires).
+  const show = bands.length && !_hiddenUntilMet('brickFrameBandPatternList');
   const heading = document.getElementById('brickFrameBandPatternLabel');
-  if (heading) heading.style.display = bands.length ? '' : 'none';
+  if (heading) heading.style.display = show ? '' : 'none';
+  container.style.display = show ? '' : 'none';
   bands.forEach((band, i) => {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex; gap:4px; margin-bottom:4px; flex-wrap:wrap; align-items:center;';
@@ -1410,7 +1475,7 @@ export function initBrickPanel() {
   // shows every time the Brick tab itself becomes active -- syncToolButtons (called from
   // selectTool/deselectTool already) only runs on a TOOL change, not a bare tab switch, so entering
   // the tab with no tool yet picked needs its own trigger here.
-  document.addEventListener('editorTabChanged', (e) => { if (e.detail?.tab === 'brick') syncToolButtons(); });
+  document.addEventListener('editorTabChanged', (e) => { if (e.detail?.tab === 'brick') syncToolButtons(); else syncStartHint(); });
   renderToolList(document.getElementById('editorToolbarBrick'));
   syncToolButtons();
   renderFramePresetList(document.getElementById('brickFramePresetList'));
@@ -1483,9 +1548,17 @@ export function initBrickPanel() {
   document.addEventListener('editorTabChanged', () => syncGeneratePending());
   // F35 item 20: a brush stroke added / edited / deleted is an editor commit -- re-derive pending, since
   // the Wall's laid key now covers the brush footprints (_brushKey)
-  document.addEventListener('editorCommit', () => syncGeneratePending());
-  // Audit B1: Cancel/Discard put P.brickSettings back to the editor's entry snapshot (app-init.js).
-  document.addEventListener('brickSettingsRestored', () => { syncControlsFromState(); syncGeneratePending(); });
+  document.addEventListener('editorCommit', () => { syncGeneratePending(); syncControlRequires(); syncStartHint(); });
+  document.addEventListener('bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
+  // Audit B1 + v2 N2: P.brickSettings was replaced (Cancel, session restore, project load, global undo --
+  // app-init.js announceBrickSettingsRestored). A load swaps in a NEW object: an armed Brush keeps
+  // reading the editor's own reference, so it is re-pointed too.
+  document.addEventListener('brickSettingsRestored', () => {
+    const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+    if (editor && editor._brickSettings) editor._brickSettings = P.brickSettings;
+    syncControlsFromState();
+    syncGeneratePending();
+  });
 
   syncControlsFromState();
   syncGeneratePending();

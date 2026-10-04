@@ -165,6 +165,11 @@
     .cad-nested-input > .cad-stepper {
       flex: 1;
     }
+    /* audit v2 N12: the Brick Seed row -- its JS-wrapped stepper (no shrink, a ~150 px number input inside)
+       plus the 75 px-minimum dice button made the row 263 px in a 220 px panel: the dice was cut off and the
+       panel scrolled sideways. The stepper fills what the dice button leaves. */
+    .brick-seed-row > .cad-stepper { flex: 1 1 0; min-width: 0; }
+    .brick-seed-row > .cad-btn { flex: 0 0 auto; min-width: 0; padding: 0 8px; }
     .cad-nested-input:has(> .cad-stepper) {
       padding: 0;
     }
@@ -893,6 +898,8 @@
         <div class="panel-body hidden">
           <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Quick settings</label>
           <div style="font-size:10px; opacity:0.65; margin:0 0 8px;">Applied at once. Every other layout setting is in the editor's Brick tab.</div>
+          <!-- audit v2 N5: shown while the board has no Wall/Frame bricks (main/brick-panel.js syncControlRequires) -->
+          <div id="brickSidebarNoBricks" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);">No bricks on this board yet. Open the editor's Brick tab, pick Wall or Frame and press Generate -- these settings then apply at once.</div>
           <div id="brickQuickSettings"></div>
 
           <label class="cad-label" style="font-weight:600; opacity:0.75; margin:6px 0 4px;">3D</label>
@@ -3294,7 +3301,7 @@
             </div>
 
             <label class="cad-label">Seed</label>
-            <div style="display:flex; gap:6px; margin-bottom:4px;">
+            <div class="brick-seed-row" style="display:flex; gap:6px; margin-bottom:4px;">
               <input type="number" id="brickSeed" value="1" style="flex:1;">
               <button type="button" id="brickBtnRandomSeed" class="cad-btn" title="Random seed">🎲</button>
             </div>
@@ -3308,6 +3315,8 @@
             <span>Layers</span>
             <button id="editorAddLayer" class="layers-add-btn" type="button" title="Add Layer">+</button>
           </div>
+          <!-- audit v2 N11: the Brick tab's start hint (main/brick-panel.js syncStartHint, text from BRICK_TOOLS) -->
+          <div id="brickStartHint" style="display:none; font-size:11px; margin:6px 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);"></div>
           <div class="layers-list" id="editorLayersList">
             <div class="layers-empty" id="editorLayersEmpty">No layers yet.<br>Click + to add one, or just start drawing.</div>
           </div>

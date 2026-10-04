@@ -14,8 +14,10 @@ describe('wallPatternIconSvg', () => {
     for (const id of ids) {
       const svg = wallPatternIconSvg(id);
       expect(svg, id).toMatch(/^<svg[^>]*viewBox="0 0 1.8 1.2"/);
-      if (id === 'none') expect(svg).not.toContain('<polygon');
-      else expect((svg.match(/<polygon/g) || []).length, id).toBeGreaterThan(3);
+      // count the REAL <polygon> elements a browser would parse (a malformed tag such as `<polygon0` drew nothing)
+      const polys = new DOMParser().parseFromString(svg, 'image/svg+xml').querySelectorAll('polygon').length;
+      if (id === 'none') expect(polys).toBe(0);
+      else expect(polys, id).toBeGreaterThan(3);
     }
   });
   it('different layouts draw different icons', () => {

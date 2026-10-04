@@ -40,6 +40,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/main/app-init.js', () => ({
   runMigrations: vi.fn(),
   editorRestoreSvg: vi.fn(() => 'MOCK_RESTORE_SVG'),
   refreshDrape: vi.fn(async () => {}),
+  announceBrickSettingsRestored: vi.fn(),
 }));
 
 import { applySnapshot } from '../bspline-frame-builder/b-spline-gen/html/main/snapshot-manager.js';
@@ -177,5 +178,17 @@ describe('applySnapshot -- save audit #1 / #5', () => {
     await applySnapshot({ P: { widthIn: 10 } }, null, { source: 'load' });
     expect(P.editorSvg).toBe(null);
     expect(P.frame).toBe(null);
+  });
+});
+
+describe('audit v2 N2: a load or a global undo announces that P.brickSettings was replaced', () => {
+  beforeEach(() => { vi.clearAllMocks(); window.svgEditor = mockEditor(); });
+  it.each([['load'], ['undo']])("source '%s' -> announceBrickSettingsRestored, once, after the new settings are in P", async (source) => {
+    let seen = null;
+    appInit.announceBrickSettingsRestored.mockImplementation(() => { seen = P.brickSettings; });
+    const brickSettings = { ...P.brickSettings, setId: 3, pattern: 'herringbone' };
+    await applySnapshot({ P: { brickSettings } }, null, { source });
+    expect(appInit.announceBrickSettingsRestored).toHaveBeenCalledTimes(1);
+    expect(seen).toBe(brickSettings); // the panel re-syncs from the RESTORED object, not the one before
   });
 });

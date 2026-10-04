@@ -7,7 +7,20 @@
  * { checked: bool } on a checkbox. `requires: { engineOption: name }` (turn 199) = the brick engine
  * honours that generateBricks option (core/bricks/engine.js ENGINE_OPTIONS, passed in as
  * ctx.engineOptions); `hides: true` = hidden, not greyed, while unmet (a control that would do nothing).
+ * `requires: { fact: name }` (audit v2 N5) = a fact about the board the panel supplies as ctx.facts[name]
+ * (a missing fact counts as met, like a missing control). `within: [containerId]` greys every button /
+ * input INSIDE those containers too (their buttons are rendered from data, ids not listed here).
+ * A control under several rules is greyed while ANY of them is unmet.
  */
+// Audit v2 N3: the 'course' / 'course-alternating' BRICK_PATTERNS (core/bricks/library.js) -- the
+// fieldstone layout (White Rocks) never reads them (tests/brick-control-requires-v2.test.js checks this list
+// against the pattern kinds)
+const COURSE_BONDS = ['stretcher', 'stack', 'soldier', 'header', 'flemish'];
+// Audit v2 N5: the main sidebar's BRICK controls (quick settings + 3D) -- they act on laid Wall/Frame bricks
+const SIDEBAR_BRICK_CONTROLS = ['brickBtnReliefRaised', 'brickBtnReliefCarved', 'brickBtnTopOrganic', 'brickBtnTopFlat',
+  'brickSurfaceWear', 'brickSurfaceWearSlider', 'brickReliefHeight', 'brickReliefHeightSlider', 'brickGroutDepth',
+  'brickBtnGroutRecessed', 'brickBtnGroutFlush'];
+
 export const BRICK_CONTROL_REQUIRES = [
   { controls: ['brickClumping', 'brickClumpingSlider'], requires: { control: 'brickSuppression', satisfied: { gt: 0 } },
     why: 'Clumping only shapes which bricks Suppression removes -- no effect at Suppression 0' },
@@ -17,11 +30,19 @@ export const BRICK_CONTROL_REQUIRES = [
     why: 'Large stones needs the fieldstone engine option (seat B, T86 item 17) -- hidden until the engine reads it' },
   { controls: ['brickRaisedMode_grout'], requires: { engineOption: 'groutCut' }, hides: true,
     why: 'Grout mode cuts joints with the engine\'s bricksGroutCut (seat B, T86 item 10) -- hidden until it exists' },
+  { controls: [...COURSE_BONDS.map((id) => `brickPattern_${id}`), ...COURSE_BONDS.map((id) => `brickQuick_pattern_${id}`)],
+    requires: { control: 'brickSetWhite', satisfied: { active: false } },
+    why: 'White Rocks lays its own fieldstone stones -- course bonds don\'t apply (Herringbone, Basketweave and None still do)' },
+  { controls: ['brickFrameBandPatternLabel', 'brickFrameBandPatternList'], requires: { control: 'brickSetWhite', satisfied: { active: false } },
+    hides: true, why: 'White Rocks frame bands are fieldstone -- a band\'s pattern doesn\'t apply' },
+  { controls: SIDEBAR_BRICK_CONTROLS, within: ['brickQuickSettings', 'brickSurfaceStyleToggle'], requires: { fact: 'bricksLaid' },
+    why: 'No Wall or Frame bricks on this board yet -- lay them in the editor\'s Brick tab first' },
 ];
 
 /** Is `requires` met, given the DOM node of its control? (null control = met: never grey on a missing node) */
 export function requirementMet(requires, controlEl, ctx = {}) {
   if (requires.engineOption) return (ctx.engineOptions || []).includes(requires.engineOption);
+  if (requires.fact) return !ctx.facts || ctx.facts[requires.fact] !== false;
   if (!controlEl) return true;
   const s = requires.satisfied || {};
   if ('gt' in s) return Number(controlEl.value) > s.gt;

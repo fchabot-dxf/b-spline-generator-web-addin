@@ -175,6 +175,24 @@ function drawBrick(editor, layer, brick, kind, setId, seed, reliefIn) {
     .attr('data-brick-height-offset', brick.heightOffset || 0);
 }
 
+/** Audit v2 N1: a brick's FILL is derived from its own declared attributes (set, sample, flip -- written by
+ *  drawBrick above), but the <pattern> it points at lives in the editor's outer <defs>, OUTSIDE the saved
+ *  document. A reload or a project load restored the polygons with fills pointing at patterns that no
+ *  longer existed: every brick drew nothing. editor-io.js open() calls this on every load, so each brick's
+ *  fill is re-derived (and its pattern re-created) from its attributes. Returns how many were repainted. */
+export function repaintBricks(editor) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll) return 0;
+  const nodes = node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][data-brick-set]`);
+  nodes.forEach((el) => {
+    const setId = Number(el.getAttribute('data-brick-set'));
+    const paint = brickFillPaint(editor, setId, el.getAttribute('data-brick-sample') || null, el.getAttribute('data-brick-flip') === '1')
+      || SET_COLORS[setId] || DEFAULT_BRICK_COLOR;
+    el.setAttribute('fill', paint);
+  });
+  return nodes.length;
+}
+
 function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn) {
   for (const b of bricks) drawBrick(editor, layer, b, kind, setId, seed, reliefIn);
 }
@@ -340,7 +358,9 @@ function _iconBricks(board, patternId, brickLengthIn, groutIn) {
   applyWallPattern(input, settings);
   return generateBricks(input).bricks;
 }
-const _iconPolygon = (b, attrs = '') => `<polygon${attrs} points="${b.polygon.map((p) => `${+p.x.toFixed(3)},${+p.y.toFixed(3)}`).join(' ')}"/>`;
+// one argument only: it is passed straight to .map(), whose index must never reach the markup (a second
+// `attrs` parameter once turned every pattern icon into `<polygon0 ...>` -- drawn as nothing, measured live)
+const _iconPolygon = (b) => `<polygon points="${b.polygon.map((p) => `${+p.x.toFixed(3)},${+p.y.toFixed(3)}`).join(' ')}"/>`;
 
 /** F35 item 15: a raised-accent preset's picker icon -- a stretcher wall laid by the real engine, with the
  *  bricks the preset's own rule raises (brick-accents.js accentedBrickIndices, the SAME rule the height
