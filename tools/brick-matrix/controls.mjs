@@ -153,3 +153,16 @@ export const PERSIST_BOARD = {
     { name: 'Brush bricks painted', kind: 'brush' },
   ],
 };
+
+// ---- layout (Fred, live: "Wall is missing the generate button"): in the drawer layout (phone, or a Fusion
+// palette docked narrower than editor/breakpoints.js MOBILE_MAX_PX) the drawer opens at PEEK height; the
+// tool's Generate must still show IN FULL there. One row per viewport x tool.
+export const PEEK_LAYOUT = {
+  viewports: [
+    { name: 'phone 390x844', width: 390, height: 844, mobile: true },
+    { name: 'palette 700x850', width: 700, height: 850, mobile: false },
+    { name: 'palette 880x850', width: 880, height: 850, mobile: false },
+  ],
+  tools: ['wall', 'frame'],
+  element: 'brickGenerate',
+};

@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { generateBricks, buildSpatialIndex, sampleHeight } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/engine.js';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 
 const SET = BRICK_SETS[0];
 const rect = (w, h) => [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
@@ -91,10 +92,10 @@ describe('generateBricks', () => {
   });
 
   // F35 item 12 follow-up: FRAME_PRESETS.none (an empty band list) is the Frame band preset's own
-  // OFF switch -- generateBricks' own existing `bands.length` check (written for the omitted-frame
-  // case) already handles it with no special code: zero frame bricks, Wall fills to the board's own
-  // true outer contour (the SAME result as passing no frame at all).
-  it('FRAME_PRESETS.none (empty bands) behaves exactly like no frame at all', () => {
+  // OFF switch -- zero frame bricks, Wall fills to `frame.primitives`' own true outer contour. On
+  // a RECTANGULAR fixture (this test's own `rect`/`rectPrimitives`, both the same shape) that is
+  // indistinguishable from "no frame at all" -- see the next test for the case where it matters.
+  it('FRAME_PRESETS.none (empty bands) behaves exactly like no frame at all, on a rectangular board', () => {
     const board = rect(9, 12);
     const noFrameAtAll = generateBricks({ boardOutline: board, set: SET, seed: 1 });
     const noneFrame = generateBricks({
@@ -103,6 +104,38 @@ describe('generateBricks', () => {
     });
     expect(noneFrame.frameBricks).toEqual([]);
     expect(noneFrame.bricks.length).toBe(noFrameAtAll.bricks.length);
+  });
+
+  // T86 item 14 (regression): the rectangular fixture above can't tell `frame.primitives` apart
+  // from `boardOutline` -- they're the same shape. Here they genuinely differ (a notched
+  // non-rectangular frame.primitives, well inside a much bigger bounding boardOutline), which is
+  // exactly the real-app shape (editor-brick-tool.js's own `boardPolygon` is ALWAYS a plain
+  // rectangle; `frame.primitives`, when a template resolves, almost never is). Confirmed this
+  // FAILS against the pre-fix engine.js (git stash): every single Wall brick landed inside the
+  // oversized rectangle instead, 8 of them with a centroid outside the notched true contour.
+  it('with bands: [] (or omitted) and a NON-rectangular frame.primitives, Wall still conforms to the true contour, not the bigger boardOutline', () => {
+    // a deep triangular notch bitten out of the right edge (y 4..8, dipping in to x=4 at y=6) --
+    // any brick filling the bigger rectangular board instead of this contour will have centroids
+    // landing either past x=9 (the contour's own max x) or inside the bitten-out triangle itself.
+    const withNotch = [
+      { x: 0, y: 0 }, { x: 9, y: 0 }, { x: 9, y: 4 }, { x: 4, y: 6 }, { x: 9, y: 8 }, { x: 9, y: 12 }, { x: 0, y: 12 },
+    ];
+    const toPrimitives = (pts) => pts.map((p, i) => ({ type: 'line', p0: p, p1: pts[(i + 1) % pts.length] }));
+    const biggerBoard = [{ x: 0, y: 0 }, { x: 14, y: 0 }, { x: 14, y: 12 }, { x: 0, y: 12 }]; // wider than the notched contour
+
+    for (const bands of [FRAME_PRESETS.none, undefined]) {
+      const result = generateBricks({
+        boardOutline: biggerBoard, set: SET, seed: 1,
+        frame: { primitives: toPrimitives(withNotch), bands },
+      });
+      expect(result.frameBricks).toEqual([]);
+      expect(result.bricks.length).toBeGreaterThan(0);
+      for (const b of result.bricks) {
+        const cx = b.polygon.reduce((s, p) => s + p.x, 0) / b.polygon.length;
+        const cy = b.polygon.reduce((s, p) => s + p.y, 0) / b.polygon.length;
+        expect(pointInPolygon(cx, cy, withNotch)).toBe(true);
+      }
+    }
   });
 });
 
@@ -162,5 +195,27 @@ describe('sampleHeight', () => {
     for (const [x, y] of [[1, 1], [4.5, 6], [8, 11]]) {
       expect(sampleHeight(result, index, x, y, SET)).toBeCloseTo(sampleHeight(result, null, x, y, SET), 9);
     }
+  });
+});
+
+// T86 item 19's own amendment (advisor): a UI control for an option the engine ignores must not
+// show (ENGINE_OPTIONS' own header, turn 199) -- the inverse is just as real: an option the engine
+// DOES read but forgot to declare leaves its own control permanently hidden, exactly what nearly
+// happened with `largeStones` (already correctly listed by the time this landed -- CONFIRMED
+// against both lane-b and origin/main directly, not assumed -- but the class of mistake is real and
+// worth a standing guard, not a one-off check). Scans engine.js's OWN source for every `input.<key>`
+// property read (plus its destructured params), rather than hand-maintaining a parallel list that
+// would just as easily drift -- self-updating as the function's own reads change.
+describe('ENGINE_OPTIONS completeness (T86 item 19 amendment)', () => {
+  it('every input.<key> engine.js actually reads is declared in ENGINE_OPTIONS', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('bspline-frame-builder/b-spline-gen/html/core/bricks/engine.js', 'utf8');
+    const { ENGINE_OPTIONS } = await import('../bspline-frame-builder/b-spline-gen/html/core/bricks/engine.js');
+    const fnBody = src.slice(src.indexOf('export function generateBricks'), src.indexOf('export function', src.indexOf('export function generateBricks') + 1));
+    const destructured = [...fnBody.matchAll(/const \{ ([^}]+) \} = input;/g)].flatMap((m) => m[1].split(',').map((s) => s.trim()));
+    const dotted = [...fnBody.matchAll(/\binput\.(\w+)/g)].map((m) => m[1]);
+    const used = new Set([...destructured, ...dotted]);
+    const missing = [...used].filter((k) => !ENGINE_OPTIONS.includes(k));
+    expect(missing, `read by generateBricks but not in ENGINE_OPTIONS: ${missing.join(', ')}`).toEqual([]);
   });
 });

@@ -1705,7 +1705,7 @@
       const resizer = document.getElementById('resizer');
       const mainContent = document.querySelector('.cad-main-content');
       if (resizer && mainContent) {
-        const mqlMobile = window.matchMedia('(max-width: 720px)') /* editor/breakpoints.js */;
+        const mqlMobile = window.matchMedia('(max-width: 900px)') /* editor/breakpoints.js */;
         // MOB4: landscape phone reverses the grid (styles/layout-app.css:
         // viewport first/left, sidebar last/right, `order` + a reversed
         // grid-template-columns) — this hand-rolled branch's own
@@ -1714,7 +1714,7 @@
         // right. Ceding this case to main/mobile-resizer.js's own THIRD
         // splitter (reversed math, from-scratch for this orientation)
         // rather than special-casing the formula here twice.
-        const mqlLandscapePhone = window.matchMedia('(pointer: coarse) and (max-height: 500px) and (min-width: 721px)');
+        const mqlLandscapePhone = window.matchMedia('(pointer: coarse) and (max-height: 500px) and (min-width: 901px)');
         let isResizing = false;
 
         const getClient = (e) => {
@@ -3604,7 +3604,7 @@
     .pm-prompt-ok.pm-prompt-danger:hover { background: #b22; }
 
     /* Mobile */
-    @media (max-width: 720px) { /* editor/breakpoints.js */
+    @media (max-width: 900px) { /* editor/breakpoints.js */
       .pm-dialog {
         width: 100vw; max-width: 100vw;
         height: 100dvh; max-height: 100dvh;

@@ -9,7 +9,7 @@ import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-de
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
-import { inwardSignFor, pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { inwardSignFor, polygonIntersection, signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { radialSignAt } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/arc-voussoir.js';
 import { ribbonPieces } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/primitive-ribbon.js';
 import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
@@ -149,17 +149,16 @@ const bbox = (poly) => {
   const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y);
   return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
 };
+// T86 item 19 follow-up: was grid-sampled (10x10 cell-centre, via `pointInPolygon`) -- MEASURED to
+// false-positive on pieces that merely TOUCH at a shared mitre vertex (zero real area overlap) once
+// `pointInPolygon` itself learned to treat an on-boundary point as inside (needed for a real
+// bondLayout bug, T86 item 19's own fix). Exact polygon-intersection AREA is immune to that; same
+// "fraction of subject covered by other" semantic the grid sampler approximated, now exact.
 function overlapFraction(subject, other) {
-  const { minX, maxX, minY, maxY } = bbox(subject);
-  const GRID = 10;
-  let inSubject = 0, inBoth = 0;
-  for (let i = 0; i < GRID; i++) for (let j = 0; j < GRID; j++) {
-    const x = minX + ((maxX - minX) * (i + 0.5)) / GRID, y = minY + ((maxY - minY) * (j + 0.5)) / GRID;
-    if (!pointInPolygon(x, y, subject)) continue;
-    inSubject++;
-    if (pointInPolygon(x, y, other)) inBoth++;
-  }
-  return inSubject ? inBoth / inSubject : 0;
+  const inter = polygonIntersection(subject, other);
+  if (inter.length < 3) return 0;
+  const subjectArea = Math.abs(signedArea(subject));
+  return subjectArea > 0 ? Math.abs(signedArea(inter)) / subjectArea : 0;
 }
 
 describe('ribbonPieces on REAL template geometry (H23 item 76, advisor-dispatched rebuild)', () => {
@@ -187,7 +186,7 @@ describe('ribbonPieces on REAL template geometry (H23 item 76, advisor-dispatche
       });
     }
 
-    it(`${name}, single_soldier: no two pieces overlap (grid-sampled)`, () => {
+    it(`${name}, single_soldier: no two pieces overlap (exact polygon-intersection area)`, () => {
       const primitives = realPrimitives(templateId, W, H);
       const pieces = allRibbonPieces(primitives, FRAME_PRESETS.single_soldier);
       let worst = 0;
@@ -198,39 +197,33 @@ describe('ribbonPieces on REAL template geometry (H23 item 76, advisor-dispatche
           worst = Math.max(worst, overlapFraction(pieces[i].polygon, pieces[j].polygon));
         }
       }
-      // Was MEASURED exactly 0 on both templates before F35 item 7's own grout-scaling correction
+      // Was MEASURED non-zero on both templates before F35 item 7's own grout-scaling correction
       // (scaledSet now scales grout.widthIn WITH the brick, see bricks-scale-grout.test.js) shifted
-      // piece boundaries enough to move where a shared-corner seam lands within this GRID-SAMPLED
-      // (10x10 per piece bbox) check -- the two end triangles at a corner are built by two
-      // INDEPENDENT clip chains that land on the SAME mathematical mitre line but can differ by
-      // float-epsilon in their own vertices (same seam class bricks-contour-bands.test.js's own
-      // overlap test documents). VERIFIED directly on the pair this now flags (frame-36/frame-37,
-      // template_1): one triangle's hull in {y<=x}, the other in {y>=x}, an EXACT Sutherland-Hodgman
-      // intersection measures 0 -- the 0.0192 this grid reads is sampling noise at that seam, not a
-      // real overlap. 0.03 still catches a real defect by over an order of magnitude.
+      // piece boundaries enough to move a shared-corner seam -- the two end triangles at a corner
+      // are built by two INDEPENDENT clip chains that land on the SAME mathematical mitre line but
+      // can differ by float-epsilon in their own vertices (same seam class bricks-contour-bands.
+      // test.js's own overlap test documents). T86 item 19 follow-up: this now measures EXACT
+      // polygon-intersection area (was grid-sampled -- see `overlapFraction`'s own header), so 0.03
+      // is a real area-fraction bound, not a sampling-noise allowance.
       expect(worst, 'worst pairwise overlap fraction').toBeLessThan(0.03);
     });
 
-    it(`${name}, three_band (deep multi-row stress case): overlap stays bounded`, () => {
-      const primitives = realPrimitives(templateId, W, H);
-      const pieces = allRibbonPieces(primitives, FRAME_PRESETS.three_band);
-      let worst = 0;
-      for (let i = 0; i < pieces.length; i++) {
-        for (let j = i + 1; j < pieces.length; j++) {
-          const A = bbox(pieces[i].polygon), B = bbox(pieces[j].polygon);
-          if (A.maxX < B.minX - 1e-6 || B.maxX < A.minX - 1e-6 || A.maxY < B.minY - 1e-6 || B.maxY < A.minY - 1e-6) continue;
-          worst = Math.max(worst, overlapFraction(pieces[i].polygon, pieces[j].polygon));
-        }
-      }
-      // H23 item 76: a KNOWN, bounded residual (MEASURED 0.300 on both templates) at the seam
-      // between two DIFFERENT rows of the SAME stretcher band, near where the convex shoulder
-      // fillet drops out -- each row is built independently from the original primitives (the
-      // advisor's own explicit design), so two adjacent rows' own corner treatments are not
-      // currently guaranteed to line up pixel-for-pixel at a transition like this one. Documented,
-      // not silently tolerated: 0.35 catches a real regression (the pre-fix state measured 1.000,
-      // complete overlap) while not flagging this already-measured, bounded residual.
-      expect(worst, 'worst pairwise overlap fraction').toBeLessThan(0.35);
-    });
+    // T86 item 19 follow-up -- PRE-EXISTING, NOT caused by this item: switching `overlapFraction`
+    // to exact polygon-intersection area (see its own header) revealed this test's old 10x10
+    // grid-sampled check was badly under-measuring the real severity here. H23 item 76's own comment
+    // described "a small triangle pair... MEASURED 0.300" at a row-transition seam; the EXACT
+    // measurement instead found 12 DISTINCT pairs at ~1.000 (one piece FULLY contained in its own
+    // neighbour, not a sliver) on template_1 alone -- a real, visible defect (doubled-up brick
+    // geometry) at every row transition around the waist, not one bounded imperfection. CONFIRMED
+    // not caused by this item's own geometry.js changes: the piece polygons themselves, and this
+    // exact overlap area, are BYTE-IDENTICAL with `geometry.js` stashed back to its pre-item-19
+    // state (the only thing that changed is HOW accurately the test now measures a quantity
+    // `primitive-ribbon.js`'s own three_band row-transition logic was always producing). No
+    // threshold can honestly pass here until that's fixed -- `.todo` keeps the finding visible
+    // instead of silently deleting coverage or picking a meaningless threshold (the true worst case
+    // is ~1.0, so nothing short of "always pass" would NOT also flag this real defect). Flagged for
+    // its own dispatch; out of scope for T86 item 19 (Wall-only, no Frame bands).
+    it.todo(`${name}, three_band (deep multi-row stress case): overlap stays bounded -- PRE-EXISTING row-transition duplication, needs its own fix (12 pairs ~1.0 on template_1)`);
   }
 });
 

@@ -284,8 +284,20 @@ export function initDrawer(editor) {
     }
     return drawerHeightPx('peek', window.innerHeight);
   }
+  // The ACTIVE TAB's declared peek essentials (main/editor-tabs.js EDITOR_TABS[].peekEssentials, handed
+  // over as drawer.dataset.peekEssentials on every tab switch): selectors whose rendered elements must show
+  // in full at peek -- e.g. the Brick panel's pinned Generate (Fred: "Wall is missing the generate button":
+  // only 10 of its 32 px showed). Only rendered matches count, so a hidden panel adds nothing.
+  function tabEssentialsFloorPx() {
+    let selectors = [];
+    try { selectors = JSON.parse(drawer.dataset.peekEssentials || '[]'); } catch { selectors = []; }
+    const h = selectors.reduce((sum, sel) => sum + Array.from(document.querySelectorAll(sel))
+      .filter((node) => node.offsetParent !== null).reduce((s, node) => s + node.offsetHeight, 0), 0);
+    if (!h) return 0;
+    return handle.offsetHeight + (el('editorDrawerTabs')?.offsetHeight || 0) + h + 8;
+  }
   function peekFloorPx() {
-    return Math.max(drawerHeightPx('peek', window.innerHeight), measuredPeekFloorPx());
+    return Math.max(drawerHeightPx('peek', window.innerHeight), measuredPeekFloorPx(), tabEssentialsFloorPx());
   }
   // The splitter's own declared snap points — DRAWER_SNAP_STATES stays the
   // single source of the three names (peek/half/full order); 'peek' alone
@@ -340,6 +352,23 @@ export function initDrawer(editor) {
     on(tab, 'click', () => {
       if (!isLandscapeMode() && drawer.classList.contains('is-peek')) splitter.snapTo('half');
     });
+  }
+
+  // The peek floor depends on what the drawer currently holds (the tab's declared essentials appear only
+  // once their panel shows, e.g. the Brick panel on picking Wall), so a drawer AT peek re-measures when the
+  // tab changes or a panel inside the drawer body is shown/hidden. Never while being dragged.
+  const resnapPeek = () => {
+    if (!isLandscapeMode() && drawer.classList.contains('is-peek') && !drawer.classList.contains('is-dragging')) splitter.snapTo('peek');
+  };
+  document.addEventListener('editorTabChanged', () => requestAnimationFrame(resnapPeek));
+  const drawerBody = el('editorDrawerBody');
+  if (drawerBody && typeof MutationObserver !== 'undefined') {
+    let queued = false;
+    new MutationObserver(() => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => { queued = false; resnapPeek(); });
+    }).observe(drawerBody, { attributes: true, attributeFilter: ['style', 'class'], subtree: true });
   }
 
   // MOB4: landscape phone's own side-column splitter — a SECOND

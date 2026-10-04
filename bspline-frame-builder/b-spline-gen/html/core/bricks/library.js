@@ -295,7 +295,14 @@ export const BRICK_PATTERNS = Object.freeze({
   // key, so the Wall picker couldn't select it -- a Poisson-disc Voronoi tiling, not tied to any
   // one set's own sample photos (`fieldstoneLayout` only reads brickLengthIn/grout.widthIn), so it
   // works with either set exactly like herringbone/basketweave already do.
-  fieldstone: { kind: 'tile2d' },
+  // T86 item 20 (Fred: "a frame of fieldstone and a wall of soldier with dot raised"): `bandCapable`
+  // is the declared flag contour-bands.js's own per-band dispatch reads (and 37's own picker, so the
+  // option enables itself there with no separate UI-side list to keep in sync) -- herringbone/
+  // basketweave stay Wall-only (no flag) since nothing asked for them as a band yet; an AREA-fill
+  // pattern needs no new `kind` to become band-capable, just this one flag, since a band fill is the
+  // SAME `fieldstoneLayout` call Wall already makes, just against the band's own ribbon region
+  // instead of the whole interior (see contour-bands.js's own `buildAreaBandBricks`).
+  fieldstone: { kind: 'tile2d', bandCapable: true },
 });
 
 /**
@@ -324,10 +331,12 @@ export const BRICK_PATTERNS = Object.freeze({
  */
 export const FRAME_PRESETS = Object.freeze({
   // F35 item 12 follow-up (Fred): the Frame band preset's own OFF switch -- an EMPTY band list,
-  // not a special case anywhere downstream: engine.js's own generateBricks already treats
-  // `frame.bands.length === 0` as "no frame" (`if (frame && frame.bands && frame.bands.length)`,
-  // written for the omitted-frame case, applies here unchanged), so Wall fills right up to the
-  // board/frame's own true outer contour, exactly as if no Frame tool had ever run.
+  // not a special case anywhere downstream: zero bands means `bricksContourBands` has nothing to
+  // shrink by, so its own `innerPath` comes back as the frame contour unchanged -- Wall fills
+  // right up to the frame's own true outer contour, with no decorative band drawn along it. (T86
+  // item 14: engine.js's own generateBricks used to collapse this all the way to the plain
+  // rectangular `boardOutline` instead -- fixed to gate on `frame.primitives` existing at all, not
+  // on `frame.bands.length`, so this preset's own true contour survives.)
   none: [],
   single_soldier: [{ widthIn: 0.75, pattern: 'soldier' }],
   soldier_stretcher: [
