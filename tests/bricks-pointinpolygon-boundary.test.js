@@ -98,4 +98,14 @@ describe('pointInPolygon (T86 item 19): tolerant of a point built to land exactl
     const area = inter.length >= 3 ? Math.abs(signedArea(inter)) : 0;
     expect(area).toBeLessThan(1e-9);
   });
+
+  // T86 item 21 (seat 88's measurement on item 19's own "after" shot: a missing brick at the
+  // bottom-right of the bottom course on T1 7x9 Red Brick 0.75, Wall-only). ROOT-CAUSED to a
+  // DIFFERENT degenerate case than item 19's own fix, not yet shippable -- see WORK-LOG for the
+  // full account of why a first attempted fix (vertex-on-edge crossing detection) produced a
+  // geometrically WRONG, self-intersecting result rather than just an imprecise one, and was
+  // reverted rather than shipped. `it.todo` preserves this MINIMAL, already-isolated reproduction
+  // (a plain axis-aligned rectangle, no template/board involved at all) so the next attempt starts
+  // here instead of re-deriving it from the real template geometry.
+  it.todo('polygonIntersection: a rectangle genuinely straddling a clip edge (2 vertices in, 2 out) must clip, not return empty -- BLOCKED, see WORK-LOG T86 item 21');
 });

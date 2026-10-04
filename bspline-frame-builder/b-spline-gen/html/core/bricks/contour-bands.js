@@ -114,8 +114,50 @@ function planBands(bands, L, H) {
  *  bridge's own single radial seam can get an extra (unnecessary but geometrically correct) cut
  *  there -- one specific position around the ring, not a general defect, same class of residual
  *  already documented for cross-row seams elsewhere in this file's own git history. */
-function ribbonSlitPolygon(outer, inner) {
-  if (outer.length < 3 || inner.length < 3) return outer;
+/** The index to start the slit's own bridge at -- the LONGEST edge in `outer`, a deliberate choice:
+ *  a tessellated boundary's own longest edge is reliably the middle of a long straight run (an arc
+ *  contributes many short, closely-spaced tessellation points; a line contributes exactly two, far
+ *  apart), i.e. as far from any corner's own degenerate ray-casting/clipping behaviour as this
+ *  boundary gets. T86 item 21 (the advisor's own amendment, from the mixed-preset shot): starting
+ *  the bridge at `outer[0]` -- WHATEVER point `boundaryAtDepth`'s own tessellation happens to begin
+ *  at, often a board corner -- MEASURED a real, substantial coverage gap concentrated right there
+ *  (64.4% in a 1.1x1.3in sample box around the corner, vs 92%+ once the bridge starts mid-edge
+ *  instead) -- a corner's own sharp turn plus the slit's own degenerate double-edge apparently
+ *  interact badly with Poisson-disc's own candidate acceptance nearby. Picking a safer start point
+ *  is a complete fix at the SOURCE (no change needed to fieldstoneLayout, pointInPolygon, or
+ *  polygonIntersection at all) -- confirmed by direct measurement, not assumed from the theory alone. */
+function longestEdgeStart(poly) {
+  let bestI = 0, bestLenSq = -1;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const lenSq = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+    if (lenSq > bestLenSq) { bestLenSq = lenSq; bestI = i; }
+  }
+  return bestI;
+}
+function nearestIndex(point, poly) {
+  let bestJ = 0, bestDistSq = Infinity;
+  for (let j = 0; j < poly.length; j++) {
+    const distSq = (poly[j].x - point.x) ** 2 + (poly[j].y - point.y) ** 2;
+    if (distSq < bestDistSq) { bestDistSq = distSq; bestJ = j; }
+  }
+  return bestJ;
+}
+function ribbonSlitPolygon(outerIn, innerIn) {
+  if (outerIn.length < 3 || innerIn.length < 3) return outerIn;
+  // rotate `outer` to the longest-edge start, then find `inner`'s own NEAREST point to that SAME
+  // world position -- NOT the same array index: `outer`/`inner` are tessellated independently (each
+  // arc's own offset radius differs by depth, so the SAME primitive can contribute a different
+  // point count at each depth -- MEASURED a real case, 102 outer points vs 38 inner, where rotating
+  // both by the same raw index landed `inner`'s own bridge on a world position having nothing to do
+  // with `outer`'s, collapsing the ribbon's own stone count by 40%). Nearest-point matching is
+  // robust to this by construction -- `inner` is always roughly a scaled-down `outer`, so its own
+  // closest point to any `outer` position IS the corresponding radial spot, regardless of how the
+  // two arrays' own lengths/tessellation densities differ.
+  const k = Math.min(longestEdgeStart(outerIn), outerIn.length - 1);
+  const outer = [...outerIn.slice(k), ...outerIn.slice(0, k)];
+  const innerK = nearestIndex(outer[0], innerIn);
+  const inner = [...innerIn.slice(innerK), ...innerIn.slice(0, innerK)];
   const innerReversedTail = inner.slice(1).reverse();
   return [...outer, outer[0], inner[0], ...innerReversedTail, inner[0], outer[0]];
 }
