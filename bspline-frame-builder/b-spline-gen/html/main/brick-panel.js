@@ -66,6 +66,7 @@ function notifyChange() { saveLastSession(); }
 function syncSetPicker() {
   document.getElementById('brickSetRed')?.classList.toggle('active', P.brickSettings.setId === 1);
   document.getElementById('brickSetWhite')?.classList.toggle('active', P.brickSettings.setId === 3);
+  syncQuickSettings();
 }
 
 /** Switching sets also resets the grout WIDTH field to that set's own
@@ -141,6 +142,7 @@ function syncBrickSizePresetButtons() {
   for (const preset of BRICK_SIZE_PRESETS) {
     document.getElementById(`brickSizePreset_${preset.id}`)?.classList.toggle('active', preset.lengthIn === P.brickSettings.brickLengthIn);
   }
+  syncQuickSettings();
 }
 
 export function setBrickSize(lengthIn, commit = 'generate') {
@@ -607,6 +609,7 @@ function syncFramePresetButtons() {
   for (const preset of FRAME_PRESET_LIST) {
     document.getElementById(`brickFramePreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.frameBandPreset);
   }
+  syncQuickSettings();
 }
 
 /** T86 item 7 (Fred: "a brush line can have a few brick patterns, maybe 2 and 3 bricks wide") --
@@ -676,6 +679,7 @@ function syncWallPatternButtons() {
   for (const pattern of WALL_PATTERN_LIST) {
     document.getElementById(`brickPattern_${pattern.id}`)?.classList.toggle('active', pattern.id === P.brickSettings.pattern);
   }
+  syncQuickSettings();
 }
 
 /** F35 item 8: the per-band pattern picker -- one row per band in the CURRENT frameBandPreset, each
@@ -807,6 +811,55 @@ const FRAME_PRESET_LABELS = {
 };
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
 
+/** F35 item 18 (3), the sidebar's QUICK settings (#brickQuickSettings, main sidebar 🧱 BRICK): a few
+ *  2D settings mirrored from the editor's Brick tab -- the SAME P.brickSettings and the SAME setters,
+ *  committed 'auto' (re-lay at once), the sidebar's own rule. Declared here as data: each row names its
+ *  choices (the editor's own declared lists), which choice is current, and how to apply one. */
+const BRICK_SET_CHOICES = [{ id: 1, label: 'Red Brick' }, { id: 3, label: 'White Rocks' }];
+const BRICK_QUICK_SETTINGS = [
+  { id: 'set', label: 'Set', choices: () => BRICK_SET_CHOICES,
+    isCurrent: (c) => c.id === P.brickSettings.setId, apply: (c) => selectSet(c.id, 'auto') },
+  { id: 'size', label: 'Brick size', choices: () => BRICK_SIZE_PRESETS,
+    isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
+  { id: 'pattern', label: 'Wall pattern', choices: () => WALL_PATTERN_LIST,
+    isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
+  { id: 'frameBands', label: 'Frame bands', choices: () => FRAME_PRESET_LIST,
+    isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
+];
+const quickButtonId = (row, choice) => `brickQuick_${row.id}_${choice.id}`;
+
+function renderQuickSettings(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const row of BRICK_QUICK_SETTINGS) {
+    const label = document.createElement('label');
+    label.className = 'cad-label';
+    label.textContent = row.label;
+    container.appendChild(label);
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;';
+    for (const choice of row.choices()) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cad-btn';
+      btn.id = quickButtonId(row, choice);
+      btn.textContent = choice.label;
+      btn.addEventListener('click', () => row.apply(choice));
+      list.appendChild(btn);
+    }
+    container.appendChild(list);
+  }
+  syncQuickSettings();
+}
+
+function syncQuickSettings() {
+  for (const row of BRICK_QUICK_SETTINGS) {
+    for (const choice of row.choices()) {
+      document.getElementById(quickButtonId(row, choice))?.classList.toggle('active', row.isCurrent(choice));
+    }
+  }
+}
+
 /** T86 item 7: labels for core/bricks/library.js's own declared BRUSH_PRESETS keys (the 3
  *  combinations Fred actually asked for -- "maybe 2 and 3 bricks wide"). */
 const BRUSH_PRESET_LIST = [
@@ -922,6 +975,7 @@ export function initBrickPanel() {
   syncWallPatternButtons();
   renderBrickSizePresetList(document.getElementById('brickSizePresetList'));
   syncBrickSizePresetButtons();
+  renderQuickSettings(document.getElementById('brickQuickSettings'));
 
   document.getElementById('brickSetRed')?.addEventListener('click', () => selectSet(1));
   // F35 item 4 (c): White Rocks (Set 3, f3's item 74 fieldstone layout) is
@@ -933,8 +987,9 @@ export function initBrickPanel() {
   bindGroutField('brickGroutDepth', 'depthIn', 'surface'); // F35 item 18: the joint recess depth, height-only
   document.getElementById('brickBtnGroutRecessed')?.addEventListener('click', () => setGroutProfile('recessed'));
   document.getElementById('brickBtnGroutFlush')?.addEventListener('click', () => setGroutProfile('flush'));
-  document.getElementById('brickBtnReliefRaised')?.addEventListener('click', () => setInvert(false));
-  document.getElementById('brickBtnReliefCarved')?.addEventListener('click', () => setInvert(true));
+  // F35 item 18 (3): Relief + Max Height moved to the main sidebar -- 'auto' there (re-lay at once)
+  document.getElementById('brickBtnReliefRaised')?.addEventListener('click', () => setInvert(false, 'auto'));
+  document.getElementById('brickBtnReliefCarved')?.addEventListener('click', () => setInvert(true, 'auto'));
   document.getElementById('brickBtnTopOrganic')?.addEventListener('click', () => setBrickTopMode('organic'));
   document.getElementById('brickBtnTopFlat')?.addEventListener('click', () => setBrickTopMode('flat'));
   renderSurfaceStyleToggle(document.getElementById('brickSurfaceStyleToggle'));
@@ -942,7 +997,7 @@ export function initBrickPanel() {
   document.getElementById('brickBtnProfileContinuous')?.addEventListener('click', () => setProfile('continuous'));
   document.getElementById('brickBtnOrientationStretcher')?.addEventListener('click', () => setOrientation('stretcher'));
   document.getElementById('brickBtnOrientationSoldier')?.addEventListener('click', () => setOrientation('soldier'));
-  bindSlider('brickReliefHeightSlider', 'brickReliefHeight', 'reliefIn');
+  bindSlider('brickReliefHeightSlider', 'brickReliefHeight', 'reliefIn', parseFloat, 'auto');
   bindSlider('brickSuppressionSlider', 'brickSuppression', 'suppression');
   bindSlider('brickClumpingSlider', 'brickClumping', 'clumping');
   document.getElementById('brickSeed')?.addEventListener('input', (e) => {

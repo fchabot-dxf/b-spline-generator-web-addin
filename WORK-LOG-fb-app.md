@@ -12054,3 +12054,45 @@ the grid renders candidates; the UI only stores ids).
 Coordination: 88 (audit-fixes, off fb-app) touches brick-panel.js's pending area -- told 88 to rebase on
 this commit and keep the surface-only keys out of its laid-settings record; B4/C5 (grout depth/Recessed)
 are this commit. Server: harness task stopped; no listeners.
+
+## F35 item 18, turn 183 (seat C = 37): Weathered -> Recessed; part (3) Brick sidebar split (Photo at a gate)
+
+**Weathered switches the grout (1f2ac21).** `BRICK_SURFACE_STYLES.weathered.groutProfile = 'recessed'`;
+setSurfaceStyle applies it and remembers the replaced profile (`groutProfileBeforeStyle`, 3D-only key);
+a style without one restores it unless the user picked a grout profile in between. Tests +3 (1 fails on
+the old panel; the other 2 pin preservation that already held).
+
+**Brick sidebar split.** New main-sidebar panel 🧱 BRICK (after FILTER), collapsed by default:
+- QUICK settings, declared as one table `BRICK_QUICK_SETTINGS` (main/brick-panel.js): Set, Brick size,
+  Wall pattern, Frame bands -- each row = the editor's own declared choice list + isCurrent + apply via
+  the existing setter with 'auto'. One render + one sync; every editor sync fn also syncs the quick rows,
+  so both entry points always show the same state.
+- 3D, each control MOVED (single place, ids unchanged, so every binding is untouched): Relief
+  Raised/Carved, Brick top, Surface, Max Height, Grout depth, Recessed/Flush, Hide filter texture. Relief +
+  Max Height now commit 'auto' (they re-lay: reliefIn is stamped per brick at lay time); the rest were
+  already 'surface'.
+- Stays in the editor (2D layout): Set, tool hint, Brush/Wall/Frame sections, Brick size slider+presets,
+  Grout WIDTH + the resolution hint (it is about grout width), Suppression (core/bricks/suppression.js
+  removes whole pieces = layout, NOT height -- checked before moving), Clumping, Seed, Generate.
+Tests: the 2 editor tests that asserted Relief/Max Height mark pending were REMOVED and replaced by
+sidebar ones (re-lay at once); +8 new sidebar/quick tests, all 8 fail against 1f2ac21's sources.
+Fast tier: 51 files, 613 passed, 0 failed.
+Live (served fb-app, headless): editor panel keeps width/suppression/clumping/seed and no longer holds
+height/top/hide-filter/depth; with the editor CLOSED, quick Wall pattern -> herringbone re-laid 171 -> 188
+wall bricks, rebuilt heights, the editor's own Herringbone button followed; sidebar Flat -> mask flatTop.
+Shots: shots/seat37/f35item18_split_{editor_brick_panel,sidebar_brick,sidebar_after_quick}.png.
+
+**PHOTO split NOT done -- a fork for the advisor.** Measured what the Photo tab's 3D controls write:
+- Effect params = a SECOND render target of the FILTER panel's own tweaks (registerTweaksTarget) -- the
+  sidebar already has them;
+- Max Height = P.carveZ, the SAME param as STOCK DIMENSIONS' Carve Depth (Z), but bounded 0.01-0.25 in
+  (Fred: photo height <= 1/4) vs Carve Depth's 0.1-20 in;
+- Relief Raised/Carved = an 'invert' step in P.photoEdits (photo-only, no sidebar equivalent).
+Options: (A) remove Effect params + Max Height from the Photo tab (sidebar FILTER + Carve Depth already
+hold them) and move only Relief to a small sidebar 📷 PHOTO panel; (B) a sidebar 📷 PHOTO panel with
+Relief + a photo-bounded Max Height (two controls for one param, different bounds) and drop the Photo
+tab's Effect params copy; (C) leave Photo as is. Recommend A, with Carve Depth clamped to 0.25 in while
+the active filter is the photo (one control, Fred's bound). Removing the Effect-params copy is a removal:
+I'll sweep registerTweaksTarget/photoTweaksBody/tests when it's decided.
+
+Coordination: told 88 before moving the markup; 88 does its Brick-panel number-box widths after rebasing.

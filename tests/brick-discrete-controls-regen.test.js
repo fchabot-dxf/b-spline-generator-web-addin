@@ -49,6 +49,7 @@ const FIXTURE = `
   <button id="brickBtnReliefRaised"></button><button id="brickBtnReliefCarved"></button>
   <button id="brickBtnTopOrganic" class="active"></button><button id="brickBtnTopFlat"></button>
   <div id="brickSurfaceStyleToggle"></div>
+  <div id="brickQuickSettings"></div>
   <input id="brickReliefHeightSlider" type="range" min="0" max="1" step="0.001"><input id="brickReliefHeight">
   <input id="brickSuppressionSlider" type="range"><input id="brickSuppression">
   <input id="brickClumpingSlider" type="range"><input id="brickClumping">
@@ -107,11 +108,6 @@ describe('Editor Brick tab (Wall tool): a setting change marks pending; only Gen
     fire('brickSize', 1.5, 'input'); fire('brickSize', 1.5, 'change');
     expectPendingThenGenerate((c) => expect(c[1].brickLengthIn).toBe(1.5));
   });
-  it('a 3D slider (relief height), drag and release', () => {
-    fire('brickReliefHeightSlider', 0.2, 'input'); fire('brickReliefHeightSlider', 0.2, 'change');
-    expectPendingThenGenerate((c) => expect(c[1].reliefIn).toBe(0.2));
-  });
-  it('the Raised/Carved relief toggle', () => { $('brickBtnReliefCarved').click(); expectPendingThenGenerate((c) => expect(c[1].invert).toBe(true)); });
   // F35 item 18 turn 181: the grout PROFILE and DEPTH only drive the joint recess in the height mask --
   // 3D-only ('surface'): re-mask at once, never re-lay, never pending. Grout WIDTH stays a layout setting.
   it('the grout profile toggle and the grout depth field are 3D-only', () => {
@@ -275,5 +271,53 @@ describe('turn 183: Weathered switches the grout to Recessed; Clean restores wha
     expect(P.brickSettings.groutProfileBeforeStyle).toBeUndefined();
     setSurfaceStyle('clean');
     expect(P.brickSettings.grout.profile).toBe('recessed');
+  });
+});
+
+describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + quick settings, applied at once', () => {
+  beforeEach(() => setup('wall'));
+  it('Max Height (moved to the sidebar): drag previews, release re-lays once, never pending', () => {
+    fire('brickReliefHeightSlider', 0.2, 'input');
+    expect(runBricks).not.toHaveBeenCalled();
+    fire('brickReliefHeightSlider', 0.2, 'change');
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    expect(runBricks.mock.calls[0][1].reliefIn).toBe(0.2);
+    expect(pending()).toBe(false);
+  });
+  it('the Raised/Carved relief toggle (moved to the sidebar) re-lays at once', () => {
+    $('brickBtnReliefCarved').click();
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    expect(runBricks.mock.calls[0][1].invert).toBe(true);
+    expect(pending()).toBe(false);
+  });
+  it('one quick row per declared setting, a button per choice, the current one active', () => {
+    const rows = [...$('brickQuickSettings').querySelectorAll('label')].map((l) => l.textContent);
+    expect(rows).toEqual(['Set', 'Brick size', 'Wall pattern', 'Frame bands']);
+    expect($('brickQuick_set_1').classList.contains('active')).toBe(true);
+    expect($('brickQuick_pattern_stretcher').classList.contains('active')).toBe(true);
+    expect($('brickQuick_frameBands_single_soldier').classList.contains('active')).toBe(true);
+  });
+  it.each([
+    ['set', 'brickQuick_set_3', (c) => expect(c[1].setId).toBe(3), 'brickSetWhite'],
+    ['pattern', 'brickQuick_pattern_herringbone', (c) => expect(c[1].pattern).toBe('herringbone'), 'brickPattern_herringbone'],
+    ['frame bands', 'brickQuick_frameBands_three_band', null, 'brickFramePreset_three_band'],
+  ])("quick %s: re-lays once, never pending, and the editor's own button follows", (_n, quickId, check, editorId) => {
+    $(quickId).click();
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    if (check) check(runBricks.mock.calls[0]);
+    expect(pending()).toBe(false);
+    expect($(quickId).classList.contains('active')).toBe(true);
+    expect($(editorId).classList.contains('active')).toBe(true);
+  });
+  it("an editor change (pending) is mirrored by the quick row, which is not itself a re-lay", () => {
+    $('brickPattern_flemish').click();
+    expect($('brickQuick_pattern_flemish').classList.contains('active')).toBe(true);
+    expect(runBricks).not.toHaveBeenCalled();
+  });
+  it('quick brick size re-lays at once', () => {
+    $('brickQuick_size_three').click();
+    expect(P.brickSettings.brickLengthIn).toBe(3);
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    expect($('brickQuick_size_three').classList.contains('active')).toBe(true);
   });
 });
