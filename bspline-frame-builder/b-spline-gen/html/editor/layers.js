@@ -571,6 +571,28 @@ export function setActiveLayer(editor, layerId) {
  *  longer editable. */
 export function applyLayerState(editor) {
   if (!editor._sketchLayer) return;
+  const state = _layerStateMaps(editor);
+  editor._sketchLayer.children().forEach(child => _applyLayerClasses(child, state));
+
+  // BUG-28 cross-layer multi-select: only deselect when the selection is
+  // a SINGLE non-editable element. Multi-selection across layers is now
+  // a legitimate state (shift-click / marquee can pick from any visible
+  // layer), so we don't auto-strip it on layer changes.
+  const selArr = editor._selectedElements || [];
+  if (selArr.length === 1 && !isEditableByLayer(editor, selArr[0])) {
+    editor._deselect();
+  }
+}
+
+/** The same per-element step for ONE element that was just drawn onto a layer (audit follow-up: bricks
+ *  re-laid onto a HIDDEN Bricks layer showed, because new elements never got the layer's classes until
+ *  the next full applyLayerState). One declared step, shared with applyLayerState above. */
+export function applyLayerStateTo(editor, child) {
+  if (!child) return;
+  _applyLayerClasses(child, _layerStateMaps(editor));
+}
+
+function _layerStateMaps(editor) {
   const activeLayer = getActiveLayer(editor);
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
   const visById = new Map(layers.map(l => [l.id, l.visible !== false]));
@@ -582,8 +604,10 @@ export function applyLayerState(editor) {
   // lives in styles/editor.css next to .layer-hidden/.inactive-layer, the
   // two classes this same loop already manages the same way.
   const colorById = new Map(layers.map(l => [l.id, showsColor(l)]));
+  return { activeLayer, visById, colorById };
+}
 
-  editor._sketchLayer.children().forEach(child => {
+function _applyLayerClasses(child, { activeLayer, visById, colorById }) {
     const layerId = getElementLayer(child);
     const isActive = layerId === activeLayer;
     const isVisible = visById.has(layerId) ? visById.get(layerId) : true;
@@ -603,16 +627,6 @@ export function applyLayerState(editor) {
     else            child.removeClass('layer-hidden');
     if (!showColor) child.addClass('layer-no-color');
     else            child.removeClass('layer-no-color');
-  });
-
-  // BUG-28 cross-layer multi-select: only deselect when the selection is
-  // a SINGLE non-editable element. Multi-selection across layers is now
-  // a legitimate state (shift-click / marquee can pick from any visible
-  // layer), so we don't auto-strip it on layer changes.
-  const selArr = editor._selectedElements || [];
-  if (selArr.length === 1 && !isEditableByLayer(editor, selArr[0])) {
-    editor._deselect();
-  }
 }
 
 // ----------- Panel rendering -----------

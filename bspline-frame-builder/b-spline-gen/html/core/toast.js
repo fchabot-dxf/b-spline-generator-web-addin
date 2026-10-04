@@ -1,6 +1,14 @@
 /** A short message in the corner (the project manager's, shared): 'ok' green, 'warn' orange, 'error' red. Hosts
  *  itself on first use, so it works with any modal open or closed. */
+/** A repeat of the SAME text within this window doesn't stack a second toast (the advisor, on the
+ *  Brick tab's hidden-layer warning: a Wall click then Generate re-laid twice, two identical toasts). */
+export const TOAST_DEDUPE_MS = 1500;
+const _lastShownAt = new Map(); // text -> time it was last shown
+
 export function showToast(text, type = 'ok') {
+  const now = Date.now();
+  if (now - (_lastShownAt.get(text) ?? -Infinity) < TOAST_DEDUPE_MS) return;
+  _lastShownAt.set(text, now);
   let host = document.getElementById('cpmToastHost');
   if (!host) {
     host = document.createElement('div');
