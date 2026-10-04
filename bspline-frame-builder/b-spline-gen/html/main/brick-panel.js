@@ -161,7 +161,7 @@ function syncBrickSizeControls(v) {
   if (number) number.value = String(v);
 }
 
-export function setGroutProfile(profile, commit = 'generate') {
+export function setGroutProfile(profile, commit = 'surface') { // F35 item 18: height-only (the joint recess)
   P.brickSettings.grout.profile = profile;
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', profile === 'recessed');
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', profile === 'flush');
@@ -405,10 +405,14 @@ const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation'];
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
 const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle'];
+/** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
+const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 const LAYOUT_IGNORED_SETTING_KEYS = [...BRUSH_ONLY_SETTING_KEYS, ...SURFACE_ONLY_SETTING_KEYS];
-// Top-level keys only (the replacer's `this` is the holder) -- grout.profile is a Wall/Frame setting.
+// The replacer's `this` is the holder: top-level keys, plus the grout group's own surface-only keys.
 const _layoutKey = () => JSON.stringify(P.brickSettings, function (k, v) {
-  return this === P.brickSettings && LAYOUT_IGNORED_SETTING_KEYS.includes(k) ? undefined : v;
+  if (this === P.brickSettings && LAYOUT_IGNORED_SETTING_KEYS.includes(k)) return undefined;
+  if (this === P.brickSettings.grout && SURFACE_ONLY_GROUT_KEYS.includes(k)) return undefined;
+  return v;
 });
 // The settings the Wall/Frame bricks on the canvas were last laid with. null = nothing changed yet
 // this session (e.g. bricks restored from a saved session): not pending. A change made while it is
@@ -909,7 +913,7 @@ export function initBrickPanel() {
 
   bindBrickSizeControls();
   bindGroutField('brickGroutWidth', 'widthIn');
-  bindGroutField('brickGroutDepth', 'depthIn');
+  bindGroutField('brickGroutDepth', 'depthIn', 'surface'); // F35 item 18: the joint recess depth, height-only
   document.getElementById('brickBtnGroutRecessed')?.addEventListener('click', () => setGroutProfile('recessed'));
   document.getElementById('brickBtnGroutFlush')?.addEventListener('click', () => setGroutProfile('flush'));
   document.getElementById('brickBtnReliefRaised')?.addEventListener('click', () => setInvert(false));

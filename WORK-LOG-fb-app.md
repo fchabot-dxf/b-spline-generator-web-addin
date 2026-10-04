@@ -12024,3 +12024,33 @@ view at the board edge showed a few thin needle spikes; not reproduced in the to
 
 Script: tools/repro/f35item18_flat_organic_shots.mjs is now generic (VARIANTS name:buttonId list, RADIUS,
 TARGET, TILT env). Server PID 16604 (mine) killed by PID; no listeners left.
+
+## F35 item 18, turn 181 (seat C = 37): Recessed grout = the ONE joint recess; Weathered tuning grid
+
+**Recessed now works (advisor: one implementation, Flush = no recess).** The joint recess in
+editor-brick-height-mask.js is driven by the GROUT setting: `groutProfile === 'recessed'` recesses joints
+by `grout.depthIn` (stamp-mask-manager passes profile + depth); Flush = none, in every style. Weathered's
+own `jointDepthIn` (0.03) became `jointDepthScale` 1.6 (x the grout depth). CONSEQUENCE, flagged: the
+P default grout profile is 'flush', so Weathered on a default board no longer shows deep joints until
+Recessed is picked -- that is the literal rule; say if Weathered should switch grout to Recessed itself.
+Grout profile + depth are now height-only: committed 'surface' (re-mask, never re-lay, never pending),
+kept out of the layout key (SURFACE_ONLY_GROUT_KEYS; grout WIDTH stays layout). The Recessed button
+title and editor-brick-tool.js's header no longer say "not yet visually implemented".
+Tests: brick-surface-style joint tests rewritten (Recessed Clean = depth, Flush = none even Weathered,
+Weathered+Recessed = depth x scale, Carved down) + the panel's grout-profile test now asserts 3D-only
+(it asserted the OLD pending behaviour -- updated on purpose). All 5 fail against 156b8b9's sources.
+Fast tier 41 files, 437 passed, 0 failed.
+
+**Tuning grid for Fred** (tools/repro/f35item18_weathered_grid_shots.mjs + tools/grid_composite.py):
+rows edge wear edgeNoiseIn 0 / 0.02 / 0.04 in, cols pitGain 1 / 2.5 / 4, every other Weathered value as
+declared, grout Recessed, brick 0.75 in, spacing 0.011, sun moved high top-left for the capture only.
+Per cell RMS height change vs Clean (whole board): 0.0338 0.0398 0.0425 / 0.0363 0.0418 0.0444 /
+0.0411 0.0461 0.0484 in -- monotonic in both. First attempt (0.006-0.025 in edges, 1.2-2.5 pits,
+spacing 0.015) gave 9 near-identical cells: edge wear of ~1 grid cell does not show; widened.
+Shot: shots/seat37/f35item18_weathered_grid.png. To freeze Fred's pick: set the two numbers in
+BRICK_SURFACE_STYLES.weathered. `surfaceStyleById` now also returns an inline style object as-is (how
+the grid renders candidates; the UI only stores ids).
+
+Coordination: 88 (audit-fixes, off fb-app) touches brick-panel.js's pending area -- told 88 to rebase on
+this commit and keep the surface-only keys out of its laid-settings record; B4/C5 (grout depth/Recessed)
+are this commit. Server: harness task stopped; no listeners.

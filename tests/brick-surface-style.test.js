@@ -122,21 +122,36 @@ describe('rasterizeBrickHeightMask with a surface style', () => {
     }
   });
 
-  it('Weathered: the joint is recessed by jointDepthIn, the open board is untouched, the bricks change', async () => {
+  // turn 181: ONE joint-recess implementation, driven by the grout profile; the style only scales it
+  const RECESSED = { groutWidthIn: 0.25, groutProfile: 'recessed', groutDepthIn: 0.05 };
+  const joint = K(4, 2), open = K(0.125, 2), inBrick = K(2, 2);
+
+  it('Recessed grout (Clean): the joint goes down by grout depth, the open board is untouched', async () => {
+    const flush = await run({ groutWidthIn: 0.25, groutProfile: 'flush', groutDepthIn: 0.05 });
+    const r = await run(RECESSED);
+    expect(flush.isStamped[joint]).toBe(0);
+    expect(r.isStamped[joint]).toBe(1);
+    expect(r.body[joint] * 0.125).toBeCloseTo(-0.05, 6);
+    expect(r.isStamped[open]).toBe(0);
+    expect(r.body[open]).toBe(0);
+    expect(r.body[inBrick]).toBe(flush.body[inBrick]); // bricks themselves untouched by the grout setting
+  });
+
+  it('Flush = no recess in every style (Weathered included); Weathered still restyles the bricks', async () => {
     const clean = await run({});
-    const w = await run({ surfaceStyle: 'weathered', groutWidthIn: 0.25 });
-    const joint = K(4, 2), open = K(0.125, 2), inBrick = K(2, 2);
-    expect(clean.isStamped[joint]).toBe(0);
-    expect(w.isStamped[joint]).toBe(1);
-    expect(w.body[joint] * 0.125).toBeCloseTo(-WEATHERED.jointDepthIn, 6);
-    expect(w.isStamped[open]).toBe(0);
-    expect(w.body[open]).toBe(0);
+    const w = await run({ surfaceStyle: 'weathered', groutWidthIn: 0.25, groutProfile: 'flush', groutDepthIn: 0.05 });
+    expect(w.isStamped[joint]).toBe(0);
+    expect(w.body[joint]).toBe(0);
     expect(w.body[inBrick]).not.toBe(clean.body[inBrick]);
   });
 
+  it('Weathered + Recessed: grout depth x jointDepthScale', async () => {
+    const w = await run({ surfaceStyle: 'weathered', ...RECESSED });
+    expect(w.body[joint] * 0.125).toBeCloseTo(-0.05 * WEATHERED.jointDepthScale, 6);
+  });
+
   it('Carved (negative depth): the joint still goes DOWN', async () => {
-    const w = await run({ surfaceStyle: 'weathered', groutWidthIn: 0.25 }, -0.125);
-    const joint = K(4, 2);
-    expect(w.body[joint] * -0.125).toBeCloseTo(-WEATHERED.jointDepthIn, 6);
+    const r = await run(RECESSED, -0.125);
+    expect(r.body[joint] * -0.125).toBeCloseTo(-0.05, 6);
   });
 });

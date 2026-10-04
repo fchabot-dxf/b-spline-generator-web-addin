@@ -112,10 +112,18 @@ describe('Editor Brick tab (Wall tool): a setting change marks pending; only Gen
     expectPendingThenGenerate((c) => expect(c[1].reliefIn).toBe(0.2));
   });
   it('the Raised/Carved relief toggle', () => { $('brickBtnReliefCarved').click(); expectPendingThenGenerate((c) => expect(c[1].invert).toBe(true)); });
-  it('the grout profile toggle', () => {
+  // F35 item 18 turn 181: the grout PROFILE and DEPTH only drive the joint recess in the height mask --
+  // 3D-only ('surface'): re-mask at once, never re-lay, never pending. Grout WIDTH stays a layout setting.
+  it('the grout profile toggle and the grout depth field are 3D-only', () => {
+    const notify = vi.fn();
+    window.svgEditor._notifyChange = notify;
     const other = P.brickSettings.grout.profile === 'flush' ? 'brickBtnGroutRecessed' : 'brickBtnGroutFlush';
     $(other).click();
-    expectPendingThenGenerate();
+    fire('brickGroutDepth', 0.07, 'input');
+    expect(P.brickSettings.grout.depthIn).toBe(0.07);
+    expect(notify).toHaveBeenCalledTimes(2);
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(pending()).toBe(false);
   });
   it('a grout width field', () => { fire('brickGroutWidth', 0.09, 'input'); expectPendingThenGenerate((c) => expect(c[1].grout.widthIn).toBe(0.09)); });
   it('the seed field', () => { fire('brickSeed', 42, 'input'); expectPendingThenGenerate((c) => expect(c[1].seed).toBe(42)); });

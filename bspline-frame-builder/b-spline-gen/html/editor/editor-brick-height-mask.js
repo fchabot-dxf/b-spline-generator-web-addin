@@ -88,8 +88,11 @@ function collectLiveBrickGroups(editor, layer) {
  *
  *  F35 item 18 (2): `opts.surfaceStyle` (brick-surface-styles.js; absent/unknown = Clean = exactly
  *  the set's own look) restyles every brick: heightProfile overrides on the set, pit contrast on the
- *  photo detail, an extra seeded per-brick top offset, and -- `jointDepthIn` -- JOINTS recessed below
- *  the ground: a non-brick point within one grout width (`opts.groutWidthIn`) of a brick, probed at
+ *  photo detail, an extra seeded per-brick top offset, and a deeper joint recess (jointDepthScale).
+ *
+ *  JOINT RECESS, the ONE implementation (turn 181): `opts.groutProfile === 'recessed'` recesses joints
+ *  `opts.groutDepthIn` (x the style's jointDepthScale) below the ground; 'flush' (or absent) = none.
+ *  A joint = a non-brick point within one grout width (`opts.groutWidthIn`) of a brick, probed at
  *  the 4 axis offsets (any joint angle has one axis reaching across it). Elsewhere (no brick nearby)
  *  stays untouched, so the board outside the brickwork never sinks. */
 export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, heightIn, opts = {}) {
@@ -122,7 +125,8 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
     };
   });
 
-  const jointDepthIn = style.jointDepthIn || 0;
+  const jointDepthIn = opts.groutProfile === 'recessed' && opts.groutDepthIn > 0
+    ? opts.groutDepthIn * (style.jointDepthScale || 1) : 0;
   const reach = opts.groutWidthIn > 0 ? opts.groutWidthIn : ((built[0].set.grout && built[0].set.grout.widthIn) || 0.034);
   const inAnyBrick = (px, py) => built.some((g) => g.index.query(px, py).some((c) => pointInPolygon(px, py, c.polygon)));
   const isJoint = (x, y) => inAnyBrick(x + reach, y) || inAnyBrick(x - reach, y) || inAnyBrick(x, y + reach) || inAnyBrick(x, y - reach);

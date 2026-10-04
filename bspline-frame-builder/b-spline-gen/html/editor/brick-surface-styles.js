@@ -15,7 +15,9 @@
  *    inert where the engine does not read them);
  *  - pitGain: the photo detail's NEGATIVE half (pits, cracks) amplified, the positive half kept;
  *  - topJitterIn: an extra seeded per-brick top offset (+/-), on top of the layout's own jitter;
- *  - jointDepthIn: joints recessed this far below the ground (deep joints read dark in the shading).
+ *  - jointDepthScale: multiplies the grout's own recess depth (P.brickSettings.grout.depthIn) when the
+ *    grout profile is Recessed -- deeper joints read dark in the shading. Flush = no recess in every
+ *    style (advisor, turn 181: ONE joint-recess implementation, driven by the grout profile).
  * Values are inches like every other brick field, declared, not measured; tuned on 3D close-ups.
  */
 import { mulberry32, seedFor } from '../core/bricks/index.js';
@@ -30,14 +32,18 @@ export const BRICK_SURFACE_STYLES = Object.freeze({
     profileSet: Object.freeze({ edgeNoiseIn: 0.015, edgeNoiseScaleIn: 0.06 }),
     pitGain: 1.8,
     topJitterIn: 0.012,
-    jointDepthIn: 0.03,
+    jointDepthScale: 1.6,
   }),
 });
 
 export const DEFAULT_SURFACE_STYLE = 'clean';
 
-/** The declared style for an id; anything unknown (or a saved session without the key) is Clean. */
+/** The declared style for an id; anything unknown (or a saved session without the key) is Clean.
+ *  An inline style DECLARATION (an object of this table's shape) is returned as-is -- how a tuning
+ *  grid renders candidate values (tools/repro/f35item18_weathered_grid_shots.mjs) before they are
+ *  frozen into this table; the UI only ever stores ids. */
 export function surfaceStyleById(id) {
+  if (id && typeof id === 'object') return id;
   return BRICK_SURFACE_STYLES[id] || BRICK_SURFACE_STYLES[DEFAULT_SURFACE_STYLE];
 }
 

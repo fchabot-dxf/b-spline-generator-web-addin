@@ -35,10 +35,10 @@
  * off the DOM via the `data-brick-*` attributes drawBrick stashes below.
  * `profile`/`edgeFilletRadius` stay set (harmless, and still what a non-brick
  * reader of this layer's tooling would see) even though the brick rasterizer
- * itself doesn't consult them. `grout.profile:'recessed'` is still accepted/
- * stored but has NO visual effect (joints simply sit at the base terrain
- * level, 'flush' -- a genuine carved recess needs a second, inverse-shaped
- * stamp layer at a negative depth, not built here; a named gap, not silent).
+ * itself doesn't consult them. `grout.profile:'recessed'` recesses the joints
+ * by `grout.depthIn` IN THE SAME brick mask (editor-brick-height-mask.js, F35
+ * item 18 turn 181 -- no second stamp layer needed); 'flush' leaves them at
+ * the ground.
  *
  * F35 item 3: Wall/Frame stay exactly this item-1 fire-and-forget regime
  * (regenerated fresh from current settings on each button click; their own
