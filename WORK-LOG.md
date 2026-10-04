@@ -17091,3 +17091,85 @@ making chips visibly show in a preview. The curved-contour work (de's 2 findings
 radial-joint/fraction-piece asks) consumed this entire turn; (a) is next.
 
 Full suite: 194 files / 3583 tests green (vitest).
+
+## H23 item 75 -- curved contours: continuous placement through tangent transitions (f3)
+
+Advisor's review of item 74 on real T12 (`shots/advisor/item74_t12_frame.png`) found 3 remaining
+defects along the shoulder/waist arcs specifically (not the declared-corner mitres, which were
+already clean): (1) a long EMPTY STRETCH at every straight-to-arc tangent transition, no bricks
+placed at all; (2) a stray, tilted, DETACHED single brick right at that same transition; (3) the
+fanned bricks along the arc itself don't reach the band's own outer edge (float inside it, a visible
+gap to the true contour). Fred, reviewing the same screenshot: likes the tapered/fanned look, wants
+it to actually FIT (no overlap, no stray chips) plus MORE per-piece length variation (seeded random,
+from the approved fraction set) -- confirms the DIRECTION, raises the bar beyond just (1)/(2).
+
+**Root cause of (1)/(2), MEASURED precisely:** T12's own shoulder arc has true radius 0.623in;
+single_soldier's own row-0 centreline offsets the band 0.375in inward, leaving an EFFECTIVE radius
+of ~0.248in on the curve bricks actually walk. A single brick's own ordinary pitch (0.2in) already
+sweeps ~42-47deg of that tight curve -- but along-path.js's own joint construction (item 74's own
+"every joint, not just declared corners" generalisation) used the SAME large, corner-sized
+`EXTEND_BY` (a straight-line extrapolation) for EVERY joint, ordinary or not. On a curve this tight,
+that fixed-large extension diverges wildly from the true path before any clip ever sees it (a
+sagitta of several INCHES on a quarter-inch-radius curve) -- producing a degenerate (0-point, fully
+clipped-away) or garbage-shaped raw polygon for the pieces straddling the transition. CONFIRMED via
+direct instrumentation: the empty piece's own raw corners landed scattered across several inches,
+nowhere near the true curve.
+
+**Fix:** a declared, curvature-aware extension clamp. New `localRadiusAt(path, cum, s, ...)`
+(circumradius of 3 nearby points -- Infinity for a straight/collinear run, cheap to detect). Every
+ORDINARY (non-declared-corner) joint's own extension is now `min(EXTEND_BY, localRadius *
+SAFE_CURVE_FACTOR)` (`SAFE_CURVE_FACTOR = 0.5`, the same "declared floor/clamp, not a blow-up"
+pattern this file's own cos-floor and MITRE_REACH already use) -- a DECLARED CORNER's own extension
+stays the full, uncapped `EXTEND_BY` (its own local "radius" is near-zero BY DESIGN, a real kink, and
+the large reach is exactly what's needed there; mitreLineAt's own EXACT clip, not this straight-line
+estimate, is what makes a corner reach correctly regardless of distance). MEASURED after the fix:
+T12's own shoulder transition, zero empty pieces, zero stray shards
+(`shots/seatA/item75_t12_shoulder_before.png` vs `item75_t12_shoulder_after.png`); full T1 + T12
+renders both flow continuously through every arc (`shots/seatA/item75_t1_frame_fixed.png`,
+`item75_t12_frame_fixed.png`). Full pre-existing suite stayed green through this change untouched --
+the clamp only ever SHRINKS an extension that was already far larger than any shape in the existing
+suite needed, so nothing there was close to the new ceiling.
+
+**(3), the outer-edge gap, NOT fixed this turn -- a real attempt, reverted, documented honestly:**
+a brick's own outer/inner edge, built from only 2 along-path samples (its own start/end), is a
+straight CHORD that necessarily cuts inside a tight curve (this is a SEPARATE issue from (1)/(2):
+present even with the clamp above, since a chord between two CORRECTLY-placed endpoints still doesn't
+follow the arc between them). Tried: extra curve-hugging sample points (plainPointAt at 3 intermediate
+positions per side) between a brick's own start/end, with the INNER edge's own offset distance
+clamped to never reach past the local curve's own centre (a brick's declared cross-width, 0.75in for
+single_soldier, can genuinely EXCEED the available radius at the tightest point -- a real physical
+constraint, the same way a real masonry course needs narrower units on a tight bend, not an
+approximation error to paper over). Three successive refinements (independent per-point clamp ->
+one shared per-brick clamp -> zero tangential extension for ordinary joints, matching the
+intermediate points' own plain placement) each fixed the PREVIOUS attempt's own self-intersection
+but surfaced a new one -- MEASURED each time via the existing isSimplePolygon regression test, which
+caught every single one. REVERTED rather than ship an unstable construction; the single-chord
+version (stable, regression-tested, just geometrically short of the true outer edge on the TIGHTEST
+curves) is what's committed. Tracked as the next piece of this same item.
+
+**Fred's own further ask (not yet built): seeded per-piece length variation on the arcs
+("MORE VARIATION... wedges in different lengths... from the approved set... seeded random") plus
+the full declared piece vocabulary from the advisor's own final spec (whole / 3/4 bat / 1/2 bat /
+1/4 bat / queen closer / mitred 3/4 / mitred 1/2 / king closer) and 4 corner styles (mitre / lapped
+/ block / stepped).** `planPieceLengths` today picks a SINGLE deterministic best-fit fraction only
+for a run's own FINAL piece; Fred wants MULTIPLE varied-length pieces scattered through a run,
+chosen seeded-random from the approved set -- a materially bigger scheduling redesign than today's
+"whole pieces + one tail fraction", not attempted this turn given the time already spent
+stabilising (1)/(2)/(the reverted (3) attempt). Next up, in order: (3)'s outer-edge accuracy, then
+the seeded piece-length variation + full piece vocabulary + corner styles.
+
+**Advisor's own test criteria** ("coverage >=90% along every primitive incl. arcs; no brick whose
+centre is more than half a brick from its neighbour"): MEASURED, not yet met on the tightest curve
+segments (primitive coverage ~60-62%, worst neighbour distance 0.429in vs the 0.375in half-brick
+bar) -- both numbers are DOWNSTREAM of the same unresolved (3) (a brick's own outer edge not fully
+reaching the true contour leaves band-edge area uncovered, and the inner-edge-clamping a full fix
+needs also affects how tightly neighbours can pack) rather than a new, separate defect.
+
+**Files:** `core/bricks/along-path.js` (`localRadiusAt`, `SAFE_CURVE_FACTOR`, curvature-clamped
+extension for ordinary joints).
+
+Full suite: 195 files / 3590 tests green (vitest) -- unchanged file/test count from item 74's own
+end-of-turn number; this item's fix lives entirely inside along-path.js's own existing test
+coverage (bricks-along-path.test.js, bricks-contour-bands.test.js, bricks-real-template-contours.test.js
+all still exercise it), no new test file needed for a change that strictly narrows an existing,
+already-tested code path.

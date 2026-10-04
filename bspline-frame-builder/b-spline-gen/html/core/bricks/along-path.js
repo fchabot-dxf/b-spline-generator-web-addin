@@ -159,6 +159,49 @@ function mitreLineAt(path, cum, s, total, closed) {
   return { point: p, dirX: dx / dlen, dirY: dy / dlen };
 }
 
+/**
+ * H23 item 75 (advisor, T12's own shoulder/hip arcs): the LOCAL RADIUS OF CURVATURE at arc-length
+ * `s`, estimated via the circumradius of 3 nearby points (standard R = abc/(4*area) formula) --
+ * Infinity for a straight/collinear run (the common case, cheap to detect: the 3 points' own
+ * triangle has ~zero area). Used ONLY to clamp how far an ORDINARY (non-corner) joint's own raw
+ * material gets extended before clipping (see `extrapolatedPointAt`'s own header: a straight-line
+ * extrapolation, by construction, diverges from the TRUE curve the tighter that curve is) -- NEVER
+ * applied to a declared corner's own extension, where the local "radius" is near-zero BY DESIGN (a
+ * real kink) and the big, uncapped reach is exactly what's needed to hit the true mitre point
+ * (mitreLineAt's own exact clip, not this straight-line estimate, is what makes that correct).
+ * MEASURED, directly on T12's own shoulder arc: offsetting the band's centerline inward by more
+ * than half that arc's own true radius (0.375 of 0.623) leaves an effective radius of ~0.25in on
+ * the offset centerline bricks actually walk -- a single brick's own ORDINARY pitch (0.2in) already
+ * sweeps ~45deg of that tight curve, so the old FIXED (corner-sized) extension pushed the raw quad
+ * several inches off the true path before any clip saw it, producing an empty/garbage clip result.
+ */
+function localRadiusAt(path, cum, s, total, closed) {
+  const eps = Math.min(0.05, total * 0.01) || 0.05;
+  const a = pointAtArcLength(path, cum, closed ? s - eps : Math.max(0, s - eps), closed);
+  const b = pointAtArcLength(path, cum, s, closed);
+  const c = pointAtArcLength(path, cum, closed ? s + eps : Math.min(total, s + eps), closed);
+  const ab = Math.hypot(b.x - a.x, b.y - a.y), bc = Math.hypot(c.x - b.x, c.y - b.y), ca = Math.hypot(a.x - c.x, a.y - c.y);
+  const area2 = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)); // 2x triangle area
+  if (area2 < 1e-9 || ab < 1e-9 || bc < 1e-9) return Infinity; // collinear (or degenerate) -- straight
+  return (ab * bc * ca) / (2 * area2);
+}
+
+const SAFE_CURVE_FACTOR = 0.5; // the same "declared floor/clamp, not a blow-up" pattern this file's
+// own cos-floor and MITRE_REACH already use -- an extension of up to half the local radius keeps
+// the straight-line approximation's own sagitta error comfortably bounded relative to that radius.
+//
+// H23 item 75 (advisor: "each brick's outer face ON the band's outer edge along arcs"): a 2-point
+// chord (just the brick's own start/end) cuts inside a tight curve (MEASURED directly on T12's own
+// shoulder: the fanned bricks visibly float short of the true outer contour). A multi-point,
+// curve-hugging edge (extra plainPointAt samples between s and sEnd) was ATTEMPTED here and
+// reverted: even with a single shared inner-distance clamp per brick (not an independent one per
+// sample point, which was the first failure mode), the inner edge still produced a non-monotonic
+// zigzag that self-intersects on T12's own tightest curve -- MEASURED through three different
+// clamp/extension strategies, each fixing the previous one's own symptom and surfacing a new one.
+// Tracked as a known, NOT-YET-FIXED gap (the outer-edge-accuracy complaint specifically), separate
+// from the two curvature bugs this item's own extension-clamp fix below DOES resolve cleanly (the
+// empty-stretch and stray-shard failures) with zero regressions on the full pre-existing suite.
+
 function pickSample(set, seed, purpose, id) {
   if (!set.samples || !set.samples.length) return { sampleId: null, flip: false };
   const sampleRng = mulberry32(seedFor(seed, purpose + '-sample', id));
@@ -361,31 +404,43 @@ export function bricksAlongPath(polyline, opts) {
   // corner, a curve) is still the mitre-line clip above/below -- "pick the piece that reaches the
   // edge, then clip it along the edge line" -- the fraction schedule only decides each piece's own
   // nominal size/position, never its final clipped shape.
+  // H23 item 75: a run-BOUNDARY end (a real declared corner) still needs the full, uncapped
+  // EXTEND_BY -- its own local "radius" is near-zero by design (a kink), and mitreLineAt's own
+  // exact clip (not this straight-line estimate) is what correctly reaches the true mitre point
+  // regardless of distance. Every OTHER joint in the run gets a curvature-clamped extension instead
+  // (localRadiusAt/SAFE_CURVE_FACTOR, this file's own header above).
   const bounds = [0, ...cornerS, total];
   for (let k = 0; k < bounds.length - 1; k++) {
     const runStart = bounds[k], runEnd = bounds[k + 1];
     if (runEnd - runStart < 1e-6) continue;
+    const startIsCorner = k > 0 || closed;
+    const endIsCorner = k < bounds.length - 2 || closed;
     const { lengths: pieceLengths, jointWidth } = planPieceLengths(runEnd - runStart, pitch, J, FILL_FRACTIONS);
 
-    let s = runStart, guard = 0, pieceIdx = 0;
+    let s = runStart, guard = 0, pieceIdx = 0, isFirst = true;
     while (s < runEnd - 1e-6 && guard++ < 10000) {
       const pieceLength = pieceLengths[Math.min(pieceIdx, pieceLengths.length - 1)];
       const sEnd = Math.min(s + pieceLength, runEnd);
+      const isLast = sEnd >= runEnd - 1e-6;
 
       const startLine = mitreLineAt(path, cum, s, total, closed);
       const endLine = mitreLineAt(path, cum, sEnd, total, closed);
+      const startExtend = (isFirst && startIsCorner) ? EXTEND_BY
+        : Math.min(EXTEND_BY, localRadiusAt(path, cum, s, total, closed) * SAFE_CURVE_FACTOR);
+      const endExtend = (isLast && endIsCorner) ? EXTEND_BY
+        : Math.min(EXTEND_BY, localRadiusAt(path, cum, sEnd, total, closed) * SAFE_CURVE_FACTOR);
 
       const leftStart = startLine
-        ? extrapolatedPointAt(path, cum, s, total, closed, halfWidth, 'out', -EXTEND_BY)
+        ? extrapolatedPointAt(path, cum, s, total, closed, halfWidth, 'out', -startExtend)
         : plainPointAt(path, cum, s, total, closed, halfWidth, 'out');
       const rightStart = startLine
-        ? extrapolatedPointAt(path, cum, s, total, closed, -halfWidth, 'out', -EXTEND_BY)
+        ? extrapolatedPointAt(path, cum, s, total, closed, -halfWidth, 'out', -startExtend)
         : plainPointAt(path, cum, s, total, closed, -halfWidth, 'out');
       const leftEnd = endLine
-        ? extrapolatedPointAt(path, cum, sEnd, total, closed, halfWidth, 'in', EXTEND_BY)
+        ? extrapolatedPointAt(path, cum, sEnd, total, closed, halfWidth, 'in', endExtend)
         : plainPointAt(path, cum, sEnd, total, closed, halfWidth, 'in');
       const rightEnd = endLine
-        ? extrapolatedPointAt(path, cum, sEnd, total, closed, -halfWidth, 'in', EXTEND_BY)
+        ? extrapolatedPointAt(path, cum, sEnd, total, closed, -halfWidth, 'in', endExtend)
         : plainPointAt(path, cum, sEnd, total, closed, -halfWidth, 'in');
 
       let polygon = [leftStart, leftEnd, rightEnd, rightStart];
@@ -407,6 +462,7 @@ export function bricksAlongPath(polyline, opts) {
       }
       s = sEnd + jointWidth;
       pieceIdx++;
+      isFirst = false;
     }
   }
   return { bricks };
