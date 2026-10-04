@@ -19937,3 +19937,54 @@ Screenshot: `C:/Users/danse/.bspline-status/shots/seatA/h23_item78b_step1_rounde
 **Stopping here per the dispatch -- passing back for Fred's look before Step 2** (hook-guard
 robustness at other sizes, Fusion phases, goldens, matrix, un-hide, merge). Nothing pushed to main;
 this commit stays on `t10-reconstruction`.
+
+## H23 item 78c: REDIRECT -- it's a NEW template after all. Template 10 reverted exactly; Template 18 "Arched Head" proposed instead
+
+Seat A epoch 7 (seat 39), turn 542, still on branch `t10-reconstruction`. Fred reconsidered once
+more after seeing the Step 1 render: the narrow-head+arch shape is a NEW template (Template 18
+"Arched Head"), not a Template 10 replacement -- Template 10 goes back to exactly its original, live
+shape. (The tapered variant becomes Template 19, a later item, not started here.)
+
+**Reverted Template 10 completely, verified byte-for-byte, not assumed:**
+`sketches/template_10/template_data.py`, `test_golden_freshness.py`, `tests/frame-template-10.test.js`,
+`tests/frame-handles.test.js`, and all 3 golden fixtures (`template_10_{7x9,6x9,12x6}.json`) restored
+verbatim from `main` (`git show main:<path>`). Regenerated `frame-defs.json`/`.js` -- diffed against
+main's own committed copy: identical except `sourceHash` (expected -- this worktree's OTHER files,
+below, still differ from main, and that hash covers the whole source tree, not just Template 10's own
+section). Fast-tier JS suite: 218 passed / 0 skipped / 0 failed (frame-template-10.test.js itself back
+to fully active and green, not skipped -- confirms Template 10 is really back to its original,
+guard-passing behaviour, not just visually similar). Python, frame-builder root: 1020 passed / 25
+skipped / 0 failed.
+
+**Kept the shared infrastructure, on purpose -- none of it is Template-10-specific in how it's
+written, and Template 18 needs the identical mechanism:**
+- `editor-shape-lattice-generator.js`'s `_hourglassRange` fix (`cornerRadiusTop`/`Bottom` now account
+  for `topInset`) -- keyed off `topInset` being present at all, not off any template id; still a
+  pure no-op for every template where it's 0 (verified again this turn via the untouched A/B
+  probes from the prior entries, now against a tree where T10 itself no longer sets topInset either).
+- `frame_shape_fit.py`'s `provisional_narrow_head_arched_top_model` and the `_hourglass_narrow_
+  arched_head` stub extractor -- generic names already (not `template_10_...`), built to be reused by
+  whichever template declares a `{waistReachOfHw, cornerRadiusTopOfHw, cornerRadiusBottomOfHw,
+  waistCenterYOfHh, waistRadiusOfHw, topInsetOfHw, archRiseOfHw}` provisional shape -- that's now
+  Template 18's own job, not Template 10's.
+- `frame_definition.py`'s dispatch branch (checks for that same 7-key shape) -- same reasoning.
+- `frame-defs.test.js`'s `fittedFrom.length === 0` generalization -- a general correctness fix (a
+  provisional model built from another still-provisional model, not from a really-fitted template),
+  dormant right now (nothing currently exercises it) but still correct, and Template 18 will need it
+  again once it's actually registered.
+
+**Rendered the Template 18 proposal** (Fred's own exact head proportions -- `topInset`, `archRise`,
+`waistReach`, `waistCenterY`, `waistRadius`, `cornerRadiusBottom`, all unchanged from the approved
+fit -- only `cornerRadiusTop` uses the 0.9in rounder value from the H23 item 78b step 1 entry above,
+since it clears the undercut guard and his own exact 0.343in doesn't at frame_thickness=0.75in) next
+to his exact sketch, both at 7x9. Same discipline as the very FIRST diagram step: no real Template 18
+yet (no `sketches/template_18/` folder, nothing registered in `frame-defs.json`) -- rendered directly
+via `generateSilhouette` with the proposed params, same way the original H23 item 78b diagram did
+before Template 10 existed as a candidate at all. New script:
+`tools/repro/h23_item78c_template18_proposal.mjs`.
+Screenshot: `C:/Users/danse/.bspline-status/shots/seatA/h23_item78c_template18_proposal.png`.
+
+**Stopping here for Fred's OK, per the dispatch** -- once approved: build the real
+`sketches/template_18/` scaffold (template_data.py pointing at the kept provisional-model
+infrastructure above, sketch_1/2/3 + phases), THEN the guard check at every board size, THEN Fusion
+phases/goldens/matrix. Nothing pushed to main; Template 10 stays exactly as shipped.

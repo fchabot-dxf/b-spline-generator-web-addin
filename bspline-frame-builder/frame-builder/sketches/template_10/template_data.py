@@ -87,13 +87,12 @@ FRAME_REGIONS = {
     # piece is one arc instead of one line, but it is still exactly one bar either way.
 }
 # FB-APP F9: the frame shape HANDLES, the ONE binding table (the app's Frame tab
-# reads it from frame-defs.json). H23 item 78b: added `topInset` ("Head width", the dispatch's own
-# "top/head-width handle") alongside the 3 already exposed (Fred's own earlier dispatch: "Handles: arch
-# rise, waist reach, waist height") -- the shoulder/hip/waist-radius handles stay at their own resolved
-# defaults, unexposed, exactly as any other hourglass param a template doesn't list already works.
+# reads it from frame-defs.json). Only 3 of Template 1's own 5 are exposed here
+# (Fred's own dispatch: "Handles: arch rise, waist reach, waist height") -- the
+# shoulder/hip/waist-radius handles stay at their own resolved defaults, unexposed,
+# exactly as any other hourglass param a template doesn't list already works.
 FRAME_HANDLES = [
     {"key": "archRise",     "label": "Arch rise",      "basis": "hh", "binding": "seeded"},
-    {"key": "topInset",     "label": "Head width",     "basis": "hw", "binding": "seeded"},
     {"key": "waistReach",   "label": "Waist reach",    "basis": "hw", "binding": "seeded"},
     {"key": "waistCenterY", "label": "Waist position", "basis": "hh", "binding": "seeded"},
     # T84 item 7 (H23 item 59/60's own gate, resolved): re-added after fixing the skeleton-pin
@@ -142,52 +141,25 @@ FRAME_SEED_MAP = [
     {"id": "seed_rad_shoulder_L", "kind": "radius", "prim": 9},
 ]
 FRAME_FEATURES = COMMON_FRAME_FEATURES
-# H23 item 78b: T10's shape REPLACED, not extended -- Fred: "Template 10 itself must be NARROW HEAD +
-# ARCHED TOP per his own reconstruction" (not a new template). No live Fusion goldens exist for this new
-# shape yet (the Fusion phases below still build the OLD shape -- app geometry only so far): a
-# PROVISIONAL model built directly from Fred's own hand-reconstructed sketch dump
-# (`~/.bspline-status/shots/fred/t10_fred_reconstructed_sketch_dump_2026-10-01.txt`), fitted exactly by
-# `tools/repro/h23_item78b_t10_target_vs_current.mjs` (calling `hourglassConstruction` with these
-# fractions reproduces the dump's own arc centres/radii to within its own 4-decimal rounding -- see that
-# script + WORK-LOG-fb-app.md's H23 item 78b entry). `frame_shape_fit.provisional_narrow_head_arched_top_
-# model` reuses Template 11's own split-corner-radius pinch builder (the identical Template-1 tangency
-# algebra), plus `topInset` (the narrow head) and `archRise` (the arch) on top.
-FRAME_SHAPE_EXTRACTOR = "hourglass_narrow_arched_head"
-# No `taperAngleDeg` here (unlike the old model): Fred's own reconstruction has NO taper (horn_TR/TL are
-# perfectly vertical in the dump), so `taperAngle` stays at its own plain default of 0
-# (DERIVED_PARAM_DEFAULTS.hourglass.taperAngle) -- the taper HANDLE stays in FRAME_HANDLES above and
-# still works (dispatch: "keep taper/seed behaviour working"), it's just not pre-applied by default
-# any more.
-FRAME_PROVISIONAL_SHAPE = {
-    "waistReachOfHw": 0.77292, "cornerRadiusTopOfHw": 0.27692, "cornerRadiusBottomOfHw": 0.39705,
-    "waistCenterYOfHh": 0.27784, "waistRadiusOfHw": 0.21726, "topInsetOfHw": 0.41092, "archRiseOfHw": 0.19419,
-}
-# H23 item 78b, ROUNDER SHOULDER (Fred approved, turn 540): `cornerRadiusTopOfHw` is 0.27692 (0.9in at
-# 7x9), not Fred's own exact sketch value (0.10554, 0.343in). Two reasons, not one:
-# (1) the JS resolve path (editor-shape-lattice-generator.js `_resolveParams`) clamps an explicit
-#     cornerRadiusTop BEFORE `topInset` is resolved (PARAM_ORDER.hourglass order, kept on purpose --
-#     reordering it shifts the Generate seed-salt index of every later key, for every hourglass
-#     template), so the exact value would render rounder than declared regardless (~0.1934 x hw, a
-#     separate, still-open architecture gap -- fixing it for real also changes Template 3's own SHIPPED
-#     shoulder radius at 2 board sizes, flagged for the advisor/Fred, not resolved here).
-# (2) MEASURED directly (bisected in the t10-reconstruction worktree): the exact sketch value is an
-#     UNDERCUT at frame_thickness=0.75in (`outlineHasUndercut` -- the shoulder's drawn radius has to
-#     clear the frame band's own width or the offset band crosses itself). The undercut clears at
-#     ~0.88in; 0.9in (this value) gives a small margin. Fred approved this rounder shoulder rather than
-#     a thinner frame band or a wider sketch.
-# The SEPARATE no-hook guard (`_frameRecordBreaksNoHookRule`, frame-panel.js) is STILL broken at this
-# value (confirmed, not assumed) -- raising the shoulder radius alone does not fix it; root cause not
-# yet found (H23 item 78b step 2, not this pass). `FRAME_HIDDEN` stays True until it is.
+# F8: this template's app shape is a MODEL. No live Fusion goldens exist yet (this template is brand new, "no
+# Fusion" dispatch): a PROVISIONAL model derived from Template 1's own FITTED one (the sides/base are literally
+# Template 1's), plus the one new `archRise` feature -- the SAME "a shape of its own, but with a `from` base"
+# pattern Template 3's topInset and Template 5's own dip already use (frame_definition.py's own
+# `template_shape_model` dispatch, frame_shape_fit.provisional_arched_top_model). 0.35 x hw: a gentle dome,
+# Fred's own sketch, confirmed against the 7x9 preview he approved ("looks perfect").
+FRAME_SHAPE_EXTRACTOR = "hourglass_arched_top"
+# T84 item 7: `taperAngleDeg` re-applied, matching T12/T13's own identical key -- frame_definition.py's
+# own `template_shape_model` re-applies `taperAngle` unconditionally whenever this key is present,
+# the SAME generic mechanism T12/T13 already use (no new dispatch branch needed here).
+FRAME_PROVISIONAL_SHAPE = {"from": "template_1", "archRiseOfHw": 0.35, "taperAngleDeg": 8.0}
 
-# H23 item 78b: hidden from the template picker again (same mechanism F29 item 1 used for the OLD shape's
-# own Fusion-build defect) -- the APP preview above already draws the NEW narrow-head+arch shape, but the
-# Fusion phases below still build the OLD full-width-dome one: sending this template right now would
-# produce a part that doesn't match its own preview, exactly the mismatch H23 item 19's investigation
-# flagged (seat C's b31f5ed, dropped for the same reason). A saved project that already picked Template
-# 10 keeps loading and drawing exactly as before -- every lookup is still by id over the full template
-# list (frame-record.js findFrameTemplate); only the picker's own dropdown (frame-panel.js) reads this
-# flag. Flip back to False once the Fusion phases are rebuilt to match and live-verified.
-FRAME_HIDDEN = True
+# F29 item 1 (seat A's live Fusion check, H23 item 14: the arch sweeps the wrong branch in Fusion at every
+# board size -- the app's own preview/tests are unaffected, this is a Fusion-build-only defect): hidden from
+# the template picker until that fix lands. A saved project that already picked Template 10 keeps loading and
+# drawing exactly as before -- every lookup is still by id over the full template list (frame-record.js
+# findFrameTemplate); only the picker's own dropdown (frame-panel.js) reads this flag. Flip back to False once
+# the Fusion fix is in.
+FRAME_HIDDEN = False
 
 
 def get_template_logic(ui_data=None):

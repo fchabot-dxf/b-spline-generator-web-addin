@@ -504,18 +504,7 @@ describe('H23 item 63 (a): the undercut guard catches the matrix REFLEX cases', 
       expect(outlineHasUndercut(rangeEnd('template_1', key, end).primitives)).toBe(true);
     });
   it('every template default is not an undercut', () => {
-    // H23 item 78b: `hidden` templates are unreachable from the picker (frame-panel.js's own dropdown is the
-    // only thing that reads the flag) -- this guard protects a USER from landing on a broken default, so it
-    // doesn't need to hold for one yet. MEASURED, not assumed: Template 10's new narrow-head+arch default (its
-    // own shapeModel is correct, matches Fred's sketch) genuinely undercuts at frame_thickness=0.75in with its
-    // own declared cornerRadiusTopOfHw -- bisected the shoulder radius needed to clear JUST the undercut
-    // (~0.28 x hw, 0.91in) and found the SEPARATE no-hook guard (next describe block) still rejects it even at
-    // the old T10's own 0.35 x hw shoulder, so this isn't a one-parameter fix -- tracked in WORK-LOG, not
-    // resolved here. Un-hide T10 (template_10/template_data.py FRAME_HIDDEN) once it clears both guards for
-    // real and remove it from both skip lists in this file.
-    const stillHidden = new Set(['template_10']);
     for (const tpl of FRAME_DEFS.templates) {
-      if (tpl.hidden && stillHidden.has(tpl.id)) continue;
       expect(outlineHasUndercut(profile(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id })).primitives), tpl.id).toBe(false);
     }
   });
@@ -539,13 +528,7 @@ describe('H23 item 63: the drag-stop refuses crossing miters (Fred: guard the ha
     expect(_frameRecordBreaksNoHookRule(normalizeFrameRecord({ templateId: id, seeds: { neckWidth: ranges.neckWidth.min } }))).toBe(true);
   });
   it('no template default at 7x9 is refused', () => {
-    // H23 item 78b: same `hidden` exemption as the undercut guard above (that describe block's own comment
-    // has the measured detail) -- Template 10's new default is ALSO refused by this guard, and raising its
-    // shoulder radius enough to clear the undercut above did not clear this one too, so it's a separate,
-    // still-open finding. Un-hide T10 and remove it from both skip lists together once it clears both for real.
-    const stillHidden = new Set(['template_10']);
     for (const tpl of FRAME_DEFS.templates) {
-      if (tpl.hidden && stillHidden.has(tpl.id)) continue;
       expect(_frameRecordBreaksNoHookRule(normalizeFrameRecord({ templateId: tpl.id })), tpl.id).toBe(false);
     }
   });
