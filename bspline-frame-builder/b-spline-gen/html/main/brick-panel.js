@@ -347,11 +347,12 @@ function syncControlsFromState() {
   syncToolSections();
 }
 
-/** F35 item 10 follow-up (Fred, folded in with the slider-timing ask): a Brick-tab slider
- *  regenerates on RELEASE ('change': blur/Enter/mouse-up), not on every raw drag tick ('input') --
- *  but WITH a live, throttled 2D-only preview while dragging so the canvas doesn't sit stale for
- *  the length of the drag. Declared ONCE here -- every bindSlider call site below shares this one
- *  mechanism, not a per-slider copy. Wall/Frame only: a Brush stroke's own settings are frozen at
+/** F35 item 10 follow-up (Fred, folded in with the slider-timing ask): an 'auto'-committed brick
+ *  slider (the main sidebar's -- BRICK_COMMIT below) regenerates on RELEASE ('change': blur/Enter/
+ *  mouse-up), not on every raw drag tick ('input'), WITH a live, throttled 2D-only preview while
+ *  dragging. The editor Brick tab's own sliders are 'generate' bindings: no preview, no re-lay,
+ *  they only mark Generate pending (audit K4: this header used to describe them as re-laying).
+ *  Declared ONCE here -- every bindSlider call site below shares this one mechanism. Wall/Frame only: a Brush stroke's own settings are frozen at
  *  draw time (no existing "edit an already-drawn element" mechanism, see the Brush-section header
  *  above), so there is nothing for a slider to live-preview while Brush is the active tool. */
 const LIVE_PREVIEW_INTERVAL_MS = 100; // ~10/sec, Fred's own spec
