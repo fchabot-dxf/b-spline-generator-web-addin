@@ -7,6 +7,8 @@ import { describe, it, expect } from 'vitest';
 import {
   PIECE_CATALOGUE, BRICK_SETS, FRAME_PRESETS, brickSetById, enabledPieces,
 } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { bandCourseBricks } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/band-course.js';
+import { inwardSignFor } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 
 describe('PIECE_CATALOGUE', () => {
   it('has exactly 1 single + 6 two-brick (A) + 9 three-brick (B) pieces = 16 total', () => {
@@ -83,23 +85,40 @@ describe('BRICK_SETS', () => {
 });
 
 describe('FRAME_PRESETS', () => {
-  it('declares exactly the 6 named presets, each a non-empty band list with widthIn > 0', () => {
-    // T86 item 1: butt_frame, quoin_corners and double_course join the 3 original mitre-only presets.
-    expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['butt_frame', 'double_course', 'quoin_corners', 'single_soldier', 'soldier_stretcher', 'three_band'].sort());
+  it('declares exactly the 7 named presets, each a non-empty band list with widthIn > 0', () => {
+    // T86 item 1: butt_frame, quoin_corners, double_course and header_band join the 3 original
+    // mitre-only presets -- the dispatch's own full 6 corner-style/pattern presets plus the original 3.
+    expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['butt_frame', 'double_course', 'header_band', 'quoin_corners', 'single_soldier', 'soldier_stretcher', 'three_band'].sort());
     for (const bands of Object.values(FRAME_PRESETS)) {
       expect(bands.length).toBeGreaterThan(0);
       for (const b of bands) expect(b.widthIn).toBeGreaterThan(0);
     }
   });
 
-  it('butt_frame/quoin_corners/double_course declare their own cornerStyle; every mitre-only preset stays silent', () => {
+  it('butt_frame/quoin_corners/double_course declare their own cornerStyle; every mitre-only preset (header_band included) stays silent', () => {
     expect(FRAME_PRESETS.butt_frame.every((b) => b.cornerStyle === 'butt')).toBe(true);
     expect(FRAME_PRESETS.quoin_corners.every((b) => b.cornerStyle === 'block')).toBe(true);
     expect(FRAME_PRESETS.double_course.every((b) => b.cornerStyle === 'lapped')).toBe(true);
     expect(FRAME_PRESETS.double_course.length).toBeGreaterThanOrEqual(2); // the minimum that shows the alternation at all
-    for (const name of ['single_soldier', 'soldier_stretcher', 'three_band']) {
+    for (const name of ['single_soldier', 'soldier_stretcher', 'three_band', 'header_band']) {
       expect(FRAME_PRESETS[name].every((b) => b.cornerStyle === undefined)).toBe(true);
     }
+  });
+
+  it('header_band uses the header pattern, routed through band-course.js not along-path.js', () => {
+    expect(FRAME_PRESETS.header_band.every((b) => b.pattern === 'header')).toBe(true);
+  });
+
+  it('header_band actually builds through bandCourseBricks (F35 item 8) -- geometric correctness of the "header" pattern itself is tests/bricks-band-course.test.js\'s own territory, not re-derived here', () => {
+    const pts = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+    const inwardSign = inwardSignFor(pts);
+    const line = (p0, p1) => {
+      const dx = p1.x - p0.x, dy = p1.y - p0.y, len = Math.hypot(dx, dy);
+      return { type: 'line', p0, p1, nx: (-dy / len) * inwardSign, ny: (dx / len) * inwardSign };
+    };
+    const primitives = [line(pts[0], pts[1]), line(pts[1], pts[2]), line(pts[2], pts[3]), line(pts[3], pts[0])];
+    const { bricks } = bandCourseBricks(primitives, FRAME_PRESETS.header_band, BRICK_SETS[0], { seed: 1 });
+    expect(bricks.length).toBeGreaterThan(0);
   });
 });
 

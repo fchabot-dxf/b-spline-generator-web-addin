@@ -18946,3 +18946,51 @@ function in a shared planner, not the mechanism the advisor's own report guessed
 measurement before accepting either claim), not a narrow one-off patch -- the SAME planner serves
 mitre too, so this also improves any future mitre-corner run that happened to land in the same
 narrow-tolerance trap. Moving to the header-band coordination with de next, as directed.
+
+## T86 item 1, header_band: the 6th and final dispatched preset -- DONE, item complete
+
+de (F35 item 8, `fb-app` branch, commit `d773da7`) replied that header/flemish/stack now route
+through a NEW file, `core/bricks/band-course.js`, via `editor-brick-tool.js`'s own `frameBricksFor`
+split -- `bricksContourBands`/`along-path.js` stay untouched, still soldier/stretcher-only. Merged
+`origin/fb-app` into `lane-b` (2 commits, clean, no conflicts; full suite 202 files/3734 tests green
+immediately after, before any of my own changes) rather than re-deriving any of it.
+
+**Confirmed "king-closer mitres" needs no new code, on either side:** read `band-course.js` directly
+before assuming anything -- it already does TRUE mitre-corner handling (`mitreOffset`, an explicit
+corner-point insertion via the real bisector, not a naive (u,v) approximation), so a header band's
+own small pitch naturally produces whole-brick (king-closer-fraction) corner pieces through the SAME
+mechanism `single_soldier`'s own default mitre corners already use. No `cornerStyle` override, no
+change to `primitive-ribbon.js` at all.
+
+**`library.js`:** corrected the now-stale "header... not yet implemented" comment (it was accurate
+when first written, before F35 item 8 landed); new preset `header_band` -- one band, pattern
+`'header'`, `widthIn: 0.6` (3 rows at header's own natural 0.2in depth) -- de's own measured safe
+range on a tight template (T1's shoulder fillet) is roughly 1.2-1.5in before `band-course.js`
+degrades, so this stays comfortably inside it.
+
+**Verification.** de's own `tests/bricks-band-course.test.js` already covers `header` pattern's own
+geometric correctness thoroughly (no-overlap via exact SAT, grout +-10% tolerance, substantial piece
+count) on BOTH the plain square and T1(7x9) at a 2-row depth -- re-deriving that here would be
+duplicate coverage for no benefit. Added 2 narrower, genuinely new tests instead (`bricks-
+library.test.js`, alongside the other preset tests): the preset count/shape (now 7 presets: the 6
+the dispatch named plus the pre-existing `three_band`) and cornerStyle-silence checks extended to
+include `header_band`; one new end-to-end smoke test confirming `FRAME_PRESETS.header_band` itself
+(not just the `header` pattern in the abstract) actually builds through the real `bandCourseBricks`
+entry point. Mutation-tested: 4/4 relevant assertions fail without the preset declared (`git stash`).
+Full `vitest`: 202 files/3736 tests, 0 failures.
+
+**Live previews** (new tool, `tools/repro/t86_item1_header_band_preview.mjs`, calling
+`bandCourseBricks` directly -- NOT `bricksContourBands`, since header needs the new engine): saved to
+`shots/seatB/t86_item1_header_{square,template_1,square_corner_closeup}.png`. The square shows a
+dense, correctly-mitred header-bond band at all 4 corners; the 1:1 close-up makes the true mitre
+corner point (and its own small king-closer-fraction pieces) clearly visible; template_1 confirms
+clean, non-overlapping coursing even around BOTH concave waist fillets -- `band-course.js`'s own
+(u,v) sampling handles arcs directly, with no "fall back to mitre" special-casing needed (unlike my
+own `primitive-ribbon.js` work, which only ever handles line-line corners for butt/lapped/block).
+
+**Commit `[pending]`, pushed to origin/lane-b.** T86 ITEM 1 IS NOW COMPLETE: all 6 of the dispatch's
+own named FRAME_PRESETS exist and are live-verified (single_soldier, soldier_stretcher pre-existing;
+butt_frame, double_course, quoin_corners, header_band built across this session's own turns), plus
+BUTT/LAPPED/BLOCK corner-style code, a real cross-cutting sliver-fix (twice, the second time
+correcting the first), and 9+3=12 live preview renders across 4 corner-style/pattern families.
+Replying to de and passing back to the advisor with the full item status.

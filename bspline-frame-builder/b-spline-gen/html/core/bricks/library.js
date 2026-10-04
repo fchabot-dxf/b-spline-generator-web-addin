@@ -286,8 +286,10 @@ export const BRICK_PATTERNS = Object.freeze({
 /**
  * H23 item 72, frame refinement (Fred: "patterns of different width"): the brick-contour FRAME is
  * a declared list of BANDS, outside -> in, each its own width + pattern -- `pattern` is any
- * `BRICK_PATTERNS` key above (today: 'stretcher'/'soldier'; 'header' is declared there but not yet
- * implemented by along-path.js's own orientation switch, so no preset below uses it yet).
+ * `BRICK_PATTERNS` key above. F35 item 8 (de): 'header'/'flemish'/'stack' are now real too, routed
+ * through `editor-brick-tool.js`'s own `frameBricksFor` to `band-course.js` (never `along-path.js`'s
+ * own orientation switch, which stays untouched, soldier/stretcher-only) -- `header_band` below is
+ * the first preset to use one.
  * `widthIn` is SNAPPED by contour-bands.js to the nearest whole number of that pattern's own
  * brick-row width (never stretched) -- the values below are chosen to land exactly on that
  * rounding (0.75 = one soldier row at this set's own brickLengthIn, 0.2/0.6 = 1/3 stretcher rows
@@ -322,6 +324,14 @@ export const FRAME_PRESETS = Object.freeze({
     { widthIn: 0.75, pattern: 'soldier', cornerStyle: 'lapped' },
     { widthIn: 0.75, pattern: 'soldier', cornerStyle: 'lapped' },
   ],
+  // F35 item 8 (de) + T86 item 1: "header pattern + king-closer mitres" needs no cornerStyle
+  // override at all -- band-course.js's own mitre-corner handling (confirmed: it explicitly inserts
+  // the TRUE mitre corner point via mitreOffset, not a naive (u,v) approximation) already produces
+  // whole-brick (king-closer-fraction) corner pieces for header's own small pitch, the same way
+  // single_soldier's own default mitre corners do. 3 rows (0.6in total depth) -- de's own measured
+  // safe range on a tight template (T1's shoulder fillet) is roughly 1.2-1.5in before band-course.js
+  // degrades, so this stays comfortably inside it.
+  header_band: [{ widthIn: 0.6, pattern: 'header' }],
 });
 
 export function brickSetById(id) {
