@@ -12305,3 +12305,46 @@ design of that table), while a VISIBLE layer with carve OFF is exported and not 
 case). If Fred wants hidden layers' art to still arrive as sketches, that is a change to isExported (a
 product decision) -- not made here.
 Holder written back to 'none'.
+
+## turn 195 (seat C = 37): F35 item 20 brush-over-wall + Generate failure keeps bricks + Stripe ONE panel
+
+Merged origin/main first (clean). 88's tools/brick-matrix is not on main yet -> matrix rows owed (listed below).
+
+**Item 20 (Fred / audit C10 option B: the wall flows around a brush stroke).** Engine signature AGREED
+with d3 by DM (T86 item 13, after their big-brick crash): `generateBricks(input)` gets optional
+`input.exclusions = [{polygon:[{x,y}]}]`, board inches; the engine DROPS any wall piece overlapping an
+exclusion (overlap = edges crossing OR either containing a vertex of the other) and will return
+`exclusionsApplied: true`. My side (editor-brick-tool.js): `brushExclusions(editor)` = every brush brick
+on the canvas, passed on every Wall lay; until the engine returns exclusionsApplied, the STUB
+`dropExcludedWallBricks` applies the SAME overlap test (`polygonsOverlap`). A centroid-only stub was tried
+first and MEASURED wrong live: the wall row's centres sat at y 4.38, just outside the brush bricks
+(4.40-4.60), so nothing dropped though they visibly overlapped -- switched to d3's any-overlap rule so the
+stub and the engine agree. Pending (brick-panel.js): the laid key = settings key + `#brush:<footprints>`
+while a Wall is on the canvas (`_brushKey`), and an 'editorCommit' listener re-derives pending, so adding,
+editing or deleting a stroke makes the Wall pending; Generate clears it.
+**Generate failure (advisor).** runBricks' engine call now runs BEFORE anything is cleared, so a throw
+leaves the canvas exactly as it was; `_layBricks` catches it (withLoadingStage is async -- the throw used
+to become a silent unhandled rejection after the clear), shows an error toast "Generate failed -- the
+previous bricks are kept (...)", returns false, and the layout stays pending.
+**Stripe ONE panel in the Brick tab (advisor: declared in the tab/mode registry).** main/editor-tabs.js
+EDITOR_TABS brick gets `modeHosts: { stripe: { content: 'editorStripePanelBody', host:
+'brickStripeSection', panel: 'editorStripePanel' } }`; `applyModeHosts` (run by setEditorTab) moves the
+content into the active tab's host and back to its declared `panel` otherwise -- homes are declared, not
+remembered (a remembered-home Map was tried first and broke on a rebuilt DOM in the test). editor-ui.js
+TOOLBAR_GROUPS.editorStripePanel = stripe mode AND `panelHoldsContent` (the side panel shows only while it
+holds its own settings) -- no tab check in editor-ui. BRICK_TOOLS stripe -> settingsSection
+'brickStripeSection'. Artwork's Stripe unchanged. Still visible under Stripe in the Brick panel: the shared
+rows (Set, Size, Grout...) -- they don't apply to a stripe pick; say if they should hide for Stripe.
+
+Tests: brick-tool-kinds +6 (throw keeps the canvas; brushExclusions; any-overlap with the live numbers;
+centroid-inside drop; exclusions reach the engine + covered piece gone; exclusionsApplied bypasses the
+stub); panel +2 (throw -> error toast + pending kept; stroke add/delete -> pending, Generate clears);
+new editor-tab-mode-hosts.test.js (3). Against the previous sources 8 fail (the 2 passing pin defaults).
+Fast tier 71 files, 770 passed, 0 failed.
+Live (served fb-app, T1 7x9): Wall 193 laid, not pending -> brush stroke across it -> pending -> Generate ->
+185 wall, 0 under the stroke, not pending; Stripe tool in the Brick tab: settings inside the Brick panel,
+side column hidden. Shots shots/seat37/f35item20_{wall_around_stroke,stripe_one_panel}.png.
+**Matrix rows owed (88's format, once tools/brick-matrix is on main):** brush stroke add/delete ->
+{pending: true, canvas: null, threeD: null} with a Wall laid; Generate with a throwing engine ->
+{pending: true (stays), canvas: false (unchanged), toast}.
+Fusion holder: 39 wrote itself in after I released ("self-serve when free") -- protocol question for you.

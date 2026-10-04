@@ -292,8 +292,16 @@ export const TOOLBAR_GROUPS = {
   editorAutoNodesGroup: (rawMode, el, currentMode) => currentMode === 'lattice', // SE7a
   editorLatticePanel: (rawMode, el, currentMode) => currentMode === 'lattice', // SE7b slice 3
   editorShapeLatticePanel: (rawMode, el, currentMode) => currentMode === 'shapeLattice', // T58 (SE14 Slice 3)
-  editorStripePanel: (rawMode, el, currentMode) => currentMode === 'stripe', // F27 item 3
+  // F27 item 3; turn 195: and only while it still HOLDS its own settings -- a tab may host them in its
+  // own panel instead (main/editor-tabs.js EDITOR_TABS `modeHosts`: the Brick tab's Stripe)
+  editorStripePanel: (rawMode, el, currentMode) => currentMode === 'stripe' && panelHoldsContent('editorStripePanel', 'editorStripePanelBody'),
 };
+
+/** Does `panelId` still contain its own `contentId` (true when either is absent -- the old behaviour)? */
+export function panelHoldsContent(panelId, contentId) {
+  const panel = getEl(panelId), content = getEl(contentId);
+  return !panel || !content || panel.contains(content);
+}
 
 function _resolveGroupNode(key) {
   return (key[0] === '.' || key[0] === '#') ? query(key) : getEl(key);
