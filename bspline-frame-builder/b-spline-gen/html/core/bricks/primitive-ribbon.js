@@ -446,10 +446,13 @@ function buildNotchJoint(primitives, prevIdx, droppedIdx, curIdx, d0, d1, pitch,
   // isn't a facing gap at all (defensive -- falls through to the ordinary, unclamped construction
   // below, same as item 4b's own reverted version, rather than risk a wrong clip on a case this
   // formula was never derived for).
-  const junctionA = originalJunctionPoint(prevPrim), junctionB = { x: curPrim.p0.x, y: curPrim.p0.y };
-  const D = prevPrim.type === 'line' && curPrim.type === 'line'
-    ? (junctionB.x - junctionA.x) * prevPrim.nx + (junctionB.y - junctionA.y) * prevPrim.ny
-    : -1;
+  // T86 item 9 bug (found via the SCALE matrix, a crash at scale=2 -- `curPrim.p0` doesn't exist
+  // on an ARC primitive at all; MEASURED directly that this formula is only ever meaningful for a
+  // line/line notch anyway, same as `D`'s own existing type guard, just one statement too late).
+  const bothLines = prevPrim.type === 'line' && curPrim.type === 'line';
+  const junctionA = bothLines ? originalJunctionPoint(prevPrim) : null;
+  const junctionB = bothLines ? { x: curPrim.p0.x, y: curPrim.p0.y } : null;
+  const D = bothLines ? (junctionB.x - junctionA.x) * prevPrim.nx + (junctionB.y - junctionA.y) * prevPrim.ny : -1;
   const medialDepth = D / 2;
 
   const dropped = primitives[droppedIdx];
