@@ -9737,3 +9737,51 @@ WORK-LOG already documents multiple compounding bugs just for mitre-corner clipp
 to hand-roll in this adapter by re-clipping SVG output after the fact. Sent f3 the precise repro
 (the exact `isConvex`/`clipPolygonToBoard` code path, template_1's own concave `innerPath`, and the
 measured gap scan at both brick lengths) directly via SendMessage.
+
+Advisor reviewed, agreed the diagnosis, routed the actual fix to f3. Next: F35 item 7.
+
+### F35 item 7 (started): PATTERN MAPS (herringbone, basketweave, flemish, header) -- moved from f3
+
+Dispatch (NEXT-SESSION-fb-app.md): 4 new patterns, "same piece set, grout, clip-to-outline, never
+stretched. One declared pattern table consumed by BOTH the Wall and the Frame bands... agree the
+table shape with f3 by DM first (f3 owns contour bands)." Moved to this seat specifically "to unload
+f3" -- so the FIRST job is the shape agreement, not code.
+
+**Read the full existing architecture before proposing anything** (bond.js, fieldstone.js,
+along-path.js, contour-bands.js, engine.js, in full):
+- **`zone.bond` (Wall) and `band.pattern` (Frame) are two separate, NEVER-unified vocabularies
+  today.** Wall's bond.js has a real lookup table (`BOND_KINDS`: running/stack/soldier, each just
+  `{stagger, rotated}`); Frame's along-path.js has no table at all, just a bare `orientation ===
+  'soldier'` ternary with NO validation -- an unrecognized value (e.g. 'header', which library.js's
+  own FRAME_PRESETS comment already calls "declared, not yet implemented") silently falls through to
+  plain stretcher behaviour today, not an error. This is the actual gap the dispatch's "one declared
+  pattern table" is asking to close -- there's no existing shared scaffolding to extend, this is a
+  first unification, not an addition to one.
+- **Herringbone/basketweave structurally CANNOT be `BOND_KINDS` entries.** `bondKind()`'s entire
+  vocabulary is stagger (half-pitch offset) + rotated (swap length/height axis) -- nothing 45-degree,
+  nothing two-axis/alternating. This is the SAME category of limitation that made fieldstone its own
+  layout FILE (Poisson-disc->Voronoi->shrink->round) rather than a bond.js variant; herringbone/
+  basketweave need their own new layout files the same way.
+- **Flemish/header fit the EXISTING course-based model much more closely** (still row-by-row,
+  grout-and-clip the same way) -- flemish needs a within-course ALTERNATION (header brick centred on
+  the stretcher below, a relationship between adjacent courses bond.js doesn't have today); header
+  needs its own pitch+cross-width (both brickHeightIn-driven, not a 3rd branch of the existing
+  2-branch ternary).
+
+**Proposal sent to f3 (not built yet, per the dispatch's own explicit gate):** a 3-tier declared
+`BRICK_PATTERNS` table tagged by `kind`: `'course'` (today's bond.js model, generalised --
+stretcher/stack/soldier/header all fit), `'course-alternating'` (flemish -- still row-based, an
+extended within-course placement rule), `'tile2d'` (herringbone/basketweave -- genuinely 2D, new
+layout files like fieldstone.js). Proposed unifying Wall vs Frame-band consumption via a shared local
+(u,v) framing -- u=along, v=across -- with Wall as the identity frame (u=x, v=y) and Frame bands
+using the path's own existing local-frame machinery (arc-length + perpendicular offset, same
+technique `bricksAlongPath`/arc-voussoir already use). Asked f3 4 concrete questions: does the
+3-tier split make sense; OK to turn along-path.js's bare ternary into a table lookup
+(backward-compatible); who designs the tile2d-on-a-curved-Frame-band mapping (offered to take a
+first pass, arc-length-straightened, since f3 owns contour-bands and that's the genuinely novel
+part); any objection to `core/bricks/layouts/herringbone.js`/`basketweave.js` file placement.
+
+Not building until this comes back -- flagged header/flemish as the lower-risk starting point once
+the table shape is confirmed (they fit the existing model; herringbone/basketweave's Frame-band
+mapping is the part that genuinely needs f3's own judgment). Passing back to the advisor now with
+this status rather than holding the turn open indefinitely waiting on a peer's reply.
