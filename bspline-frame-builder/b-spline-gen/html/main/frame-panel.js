@@ -33,6 +33,8 @@ import { syncDrawerForMode } from '../editor/editor-drawer.js';
 import { inputProfileFor } from '../editor/editor-input.js';
 import { FRAME_HANDLE_RADIUS } from '../editor/editor-frame-profile.js';
 import { insetWindowGeometry, insetWindowOuterRect } from '../core/inset-window.js';
+import { mountIconSelect, refreshIconSelect } from './icon-select.js';
+import { templateIconSvg } from '../editor/frame-template-icon.js';
 
 /** F9: how close (screen px) a press must land to grab a frame shape handle -- the FLOOR (a mouse). Audit
  *  (batch 1): the reach is now the pointer's own, the same `handlePx * 1.8` Shape Lattice's identical handles
@@ -205,6 +207,7 @@ function _syncTemplateSelect(sel, templateId) {
     if (t) { const o = _option(t.id, frameLabel(t)); o.dataset.hiddenCurrent = '1'; sel.appendChild(o); }
   }
   sel.value = templateId || '';
+  refreshIconSelect(sel); // advisor turn 203: the icon dropdown over it follows a programmatic value too
 }
 
 let _openEditorOn = null;
@@ -817,6 +820,11 @@ export function initFramePanel() {
   }
   for (const sel of [woodSel].filter(Boolean)) {
     for (const w of FRAME_DEFS.appearance?.options || []) sel.appendChild(_option(w, w.replace(/^3D /, '')));
+  }
+  // advisor turn 203 (Fred's rule): the template list is a long VISUAL list -> an icon dropdown, icons drawn
+  // by the frame engine from each template's own outline (editor/frame-template-icon.js), the name as tooltip.
+  for (const sel of [tplSel, $('editorFrameTemplate')].filter(Boolean)) {
+    mountIconSelect(sel, { iconFor: (v) => templateIconSvg(FRAME_DEFS, v), label: 'Frame template' });
   }
   $('editorFrameTemplate')?.addEventListener('change', (e) => editFrame({ templateId: e.target.value || null, params: {} }));
   $('editorFrameGenerate')?.addEventListener('click', () => generateFrame());
