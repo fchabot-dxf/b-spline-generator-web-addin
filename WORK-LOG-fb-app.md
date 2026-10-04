@@ -11323,3 +11323,93 @@ item 16's own broader toolbar restructuring); (5) item 16's remaining scope (Wal
 tools/elements, contextual panel, Brick tab's empty-selection state = the shared Layers panel, base
 Level per element, Raised brush mode 2). No live Fusion/Chrome verification done yet this turn --
 state/engine/UI change confirmed by the unit suite only.
+
+## F35 item 16 follow-up: measured resolution x brick-size grid (+ the 8" life-size floor check)
+
+Per the advisor's own explicit ask ("Fred wants it measured, not theorised"): a real, rendered grid
+-- rows = terrain spacing 0.05/0.03/0.02/0.015/0.011in, cols = the new global brick size
+0.375/0.75/1.5/3/8in -- each cell a real 3D close-up + its own rebuild time (ms) and point count,
+on the app's own DEFAULT board (confirmed live: 7x9in, `template_1` already active -- exactly the
+"7x9 board" the advisor's life-size-floor question was about, no special setup needed).
+
+**New tool, `tools/repro/brick_resolution_grid_shots.mjs`**: forks the established
+`frame_3d_shots.mjs`/`filter_shots.mjs` headless-Chrome CDP driver pattern. Opens the editor
+(`btnEditFrameShape`), switches to the Brick tab, selects the Wall tool (draws Frame bands too --
+`_commitBrickSlider` always passes `resolveFrameGeom(editor)` regardless of which brick tool is
+active, confirmed by reading brick-panel.js directly rather than assumed). Per cell: commits the
+brick-size slider to the real UI value, writes `P.spacing` directly, times ONE real
+`updateStampMasks` + `rebuild()` pass, reads back wall/frame/total brick counts, frames a
+close-up camera (radius `min(9, max(2.2, sizeIn*3.2))` -- proportional zoom per column, capped so
+the 8in column's own "3x brick length" radius doesn't exceed the whole 7x9 board), and captures via
+`window.__preview.getSnapshot()`. **New reusable compositor, `tools/grid_composite.py`** (Pillow):
+takes the driver's own JSON report + per-cell PNGs and lays out a labeled rows x cols grid --
+declared once since this is the second "render a grid of real close-ups" ask this project has had
+(the first, an earlier spacing x scale grid, was superseded before it was ever built), not a
+one-off. Output: `shots/seatC/resolution_scale_grid.png` (+ `grid_run_report.json`, the raw numbers).
+
+**Three real bugs found and fixed while building this, each caught by comparing the actual
+screenshot/numbers against what should have been there, not assumed from the code reading clean**:
+
+1. **Stale server, not stale code.** The first `python -m http.server 8784` for this probe landed on
+   a port a DIFFERENT, two-day-old orphaned python process (PID from 2026-10-02) already held --
+   Python's `allow_reuse_address` let my new server bind anyway, and curl/Chrome both silently kept
+   talking to the OLD one the whole time (confirmed: `curl .../bspline_gen_palette.html | grep -c
+   brickSizeSlider` returned 0 even though the string is on disk at bspline_gen_palette.html:3091).
+   This is exactly the `project_scratch_server_zombies` failure mode from memory -- fixed by picking
+   a verified-free port (8791) instead of fighting over 8784 (not mine to kill, per the no-blanket-
+   kills rule), and now ALWAYS curl-diffing served bytes vs disk before trusting a screenshot.
+2. **Orthographic zoom needs the frustum updated, not just the camera moved.** My first close-up
+   camera override set `_orb`/`_camera.position`/`quaternion` correctly but called only
+   `p.updateFrustum?.()` -- that method lives on `OrbitController` (`o`), not `TerrainPreview` (`p`);
+   dropping `filter_shots.mjs`'s own `else if (o.updateFrustum)` fallback when I wrote this fresh
+   meant the orthographic frustum (which is what ACTUALLY controls zoom for an orthographic camera,
+   not camera distance) never updated -- every "close-up" rendered as the full board regardless of
+   the computed radius. Caught by actually looking at cell_0_0.png (Read tool), not by code review.
+3. **A genuine race in `core/engine/rebuild.js`'s own re-entrancy guard** (`rebuild.isRebuilding`):
+   something else in the app (one of ~10 other `scheduleRebuild` call sites -- `sculpt-interaction.js`,
+   `global-events.js`, `main.js`'s own `onChange` handlers, etc. -- never fully root-caused, out of
+   scope for this task) occasionally already has a rebuild in flight when this script's own explicit,
+   awaited `rebuild()` call starts. The guard's early `return` on a live `isRebuilding` gives back
+   `undefined` -- NOT a promise standing in for the real completion -- so an awaiting caller "finishes"
+   instantly having done zero work. Measured live, twice, non-deterministically (same inputs, same
+   script, different runs): one full 25-cell run came back with every single `rebuildMs` reading
+   either a 3x-too-low average (an earlier mean-of-3-reps version) or exactly 0 (the later single-pass
+   version) with `isRebuildingBeforeMask`/`isRebuildingBeforeRebuild` both `true` in the diagnostic
+   fields added specifically to pin this down. **Fixed in the script** with a poll-until-quiescent
+   wait (`while (rebuild.isRebuilding) await W(50)`, 20s cap) before the timed call -- this is a
+   tooling-side fix (the function's actual contract is fire-and-forget/re-entrant-safe via its own
+   `pendingRebuild` chaining, fine for every REAL caller, none of which await it for a timing
+   guarantee the way this measurement script does) rather than a product bug, so nothing in
+   `core/engine/rebuild.js` itself was touched. Re-ran the full grid after the fix: all 25 cells'
+   `isRebuildingBeforeRebuild` read `false` and timings came back internally consistent (see below).
+
+**The measured numbers** (`grid_run_report.json`, full 7x9 board, Wall + Frame together):
+- **Rebuild cost scales with mesh resolution (spacing), essentially NOT with brick size** -- every
+  column at a given row lands within ~10% of the row's own mean: ~440ms at 0.05in (25,521 pts),
+  ~870ms at 0.03in (70,735 pts), ~1,950ms at 0.02in (158,301 pts), ~3,800ms at 0.015in (281,869 pts),
+  **~8,200ms (over 8 SECONDS) at 0.011in (524,619 pts)**. The current UI's own finest dropdown option
+  (0.03in, "Ultimate") costs well under a second; 0.011in is nearly an order of magnitude slower and
+  was never in the dropdown or even in `RESOLUTIONS` (core/state.js tops out at 0.02 "Extreme") --
+  this grid is itself a measured argument for NOT adding 0.011 as a real option, only using it here
+  as a diagnostic upper bound per the advisor's own request.
+- **The 8" life-size floor, on this board, is NOT empty or degenerate** -- every spacing row produced
+  the exact same **16 Wall bricks + 18 Frame bricks = 34 total** (brick layout depends only on board
+  geometry + brick settings, never on terrain mesh resolution, confirmed by the counts being
+  byte-identical down every column). The engine handles the extreme case gracefully: no crash, no
+  zero-brick layout, no exception, at any of the 5 spacings tested.
+- **But visually, life-size bricks on a 7x9 board read as the board's own underlying sculpted relief,
+  not as "bricks."** At 0.375-1.5in, every cell shows crisp, individually-distinguishable raised brick
+  slabs with visible grout grooves. At 3in and especially 8in, the close-ups look like rolling terrain
+  rather than flat rectangular blocks -- NOT a bricks-engine bug (the same camera, same board, same
+  underlying height-field machinery renders perfect bricks at the smaller sizes) but a straightforward
+  consequence of scale: the board's own default sculpted base terrain has real height variation of its
+  own, and at 7-9in board dimensions a handful of 8in bricks are each large enough that the board's
+  OWN bumps dominate the visual read over the brick relief sitting on top of them. This is the
+  concrete, measured answer to "a few bricks across must still lay out cleanly; report what happens":
+  they lay out cleanly (34 real bricks, no degenerate geometry) but do not look like a brick wall at
+  this board size -- worth relaying to Fred as-is rather than silently smoothing over in the screenshot.
+
+**Not done this turn** (per the advisor's own stated sequencing -- next in order): (1) the
+frame-band-depth-vs-neck-narrowness hint and the resolution hint's own wording (this grid was the
+prerequisite measurement for both); (2) the rest of item 16 (Wall/Frame as tools, contextual panel,
+shared Layers empty-state, Level, Raised brush, toolbar popover relocation).
