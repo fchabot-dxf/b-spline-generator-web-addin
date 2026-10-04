@@ -12,7 +12,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-surface.
 }));
 
 import {
-  BRICK_SURFACE_STYLES, surfaceStyleById, styledSet, styledDetail, styleTopJitter,
+  BRICK_SURFACE_STYLES, surfaceStyleById, styledSet, styledDetail, styleTopJitter, styleAtWear,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-surface-styles.js';
 import { brickTopHeight } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/height-profile.js';
 import { brickSetById } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
@@ -35,20 +35,20 @@ describe('the declared styles', () => {
 
   it("Weathered scales the set's OWN profile, caps the fractions at 1, adds edge wear, leaves the library set alone", () => {
     const before = JSON.stringify(SET1.heightProfile);
-    const s = styledSet(SET1, WEATHERED);
+    const s = styledSet(SET1, styleAtWear(WEATHERED, 0.5));
     const hp = SET1.heightProfile;
     expect(s.heightProfile.edgeRadiusIn).toBeCloseTo(hp.edgeRadiusIn * WEATHERED.profileScale.edgeRadiusIn, 9);
     expect(s.heightProfile.chipSizeIn).toBeCloseTo(hp.chipSizeIn * WEATHERED.profileScale.chipSizeIn, 9);
     expect(s.heightProfile.chipRate).toBeLessThanOrEqual(1);
     expect(s.heightProfile.surfaceShare).toBeLessThanOrEqual(1);
     expect(s.heightProfile.surfaceShare).toBeGreaterThan(hp.surfaceShare);
-    expect(s.heightProfile.edgeNoiseIn).toBe(WEATHERED.profileSet.edgeNoiseIn);
+    expect(s.heightProfile.edgeNoiseIn).toBeCloseTo(0.02, 12); // Wear 0.5 = the middle of 0..0.04
     expect(JSON.stringify(SET1.heightProfile)).toBe(before);
   });
 
   it('pit contrast amplifies the negative half only', () => {
-    const d = styledDetail((x) => x, WEATHERED);
-    expect(d(-0.4)).toBeCloseTo(-0.4 * WEATHERED.pitGain, 9);
+    const d = styledDetail((x) => x, styleAtWear(WEATHERED, 0.5)); // pit gain 2.5 at Wear 0.5
+    expect(d(-0.4)).toBeCloseTo(-0.4 * 2.5, 9);
     expect(d(0.4)).toBe(0.4);
   });
 
@@ -184,5 +184,25 @@ describe('F35 item 16: per-element Level in the height mask', () => {
     const a = await run({});
     const b = await run({ levels: { wall: 0, frame: 0 } });
     expect(Array.from(b.body)).toEqual(Array.from(a.body));
+  });
+});
+
+describe("turn 189 (Fred): Weathered's WEAR slider, 0..1 along declared ranges", () => {
+  it('the ranges and default are declared on the style: edge 0..0.04 in, pit gain 1..4, default 0.5', () => {
+    expect(WEATHERED.wear).toEqual({ default: 0.5, edgeNoiseIn: [0, 0.04], pitGain: [1, 4] });
+  });
+  it.each([[0, 0, 1], [0.5, 0.02, 2.5], [1, 0.04, 4]])('wear %s -> edge %s in, pit gain %s', (w, edge, pit) => {
+    const s = styleAtWear(WEATHERED, w);
+    expect(s.profileSet.edgeNoiseIn).toBeCloseTo(edge, 12);
+    expect(s.pitGain).toBeCloseTo(pit, 12);
+    expect(s.profileSet.edgeNoiseScaleIn).toBe(WEATHERED.profileSet.edgeNoiseScaleIn); // the rest kept
+  });
+  it('absent / non-numeric -> the default; out of range -> clamped; a style without wear is untouched', () => {
+    expect(styleAtWear(WEATHERED, undefined).pitGain).toBeCloseTo(2.5, 12);
+    expect(styleAtWear(WEATHERED, null).pitGain).toBeCloseTo(2.5, 12);
+    expect(styleAtWear(WEATHERED, 'x').pitGain).toBeCloseTo(2.5, 12);
+    expect(styleAtWear(WEATHERED, 7).pitGain).toBeCloseTo(4, 12);
+    expect(styleAtWear(WEATHERED, -1).pitGain).toBeCloseTo(1, 12);
+    expect(styleAtWear(BRICK_SURFACE_STYLES.clean, 1)).toBe(BRICK_SURFACE_STYLES.clean);
   });
 });

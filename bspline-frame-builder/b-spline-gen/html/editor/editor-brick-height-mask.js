@@ -21,7 +21,7 @@
 import { buildSpatialIndex, sampleHeight, brickSetById, pointInPolygon } from '../core/bricks/index.js';
 import { preloadSetDetail, sampleDetailAtFor } from './editor-brick-surface.js';
 import { BRICK_GEN_ATTR, BRICK_ATTR } from './editor-brick-tool.js';
-import { surfaceStyleById, styledSet, styledDetail, styleTopJitter } from './brick-surface-styles.js';
+import { surfaceStyleById, styledSet, styledDetail, styleTopJitter, styleAtWear } from './brick-surface-styles.js';
 
 // F35 item 16 follow-up (Fred: "keep the UI responsive... yield between stages if they block the
 // main thread"): at Masonry/Masonry max resolution this loop runs up to ~525,000 iterations fully
@@ -107,7 +107,7 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
 
   await Promise.all(groups.map((g) => preloadSetDetail(g.setId)));
 
-  const style = surfaceStyleById(opts.surfaceStyle);
+  const style = styleAtWear(surfaceStyleById(opts.surfaceStyle), opts.surfaceWear); // F35 item 18: the Wear slider
   let brickCount = 0;
   const built = groups.map((g) => {
     const librarySet = brickSetById(g.setId) || brickSetById(1);

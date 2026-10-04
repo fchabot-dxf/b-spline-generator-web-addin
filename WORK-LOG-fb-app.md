@@ -12210,3 +12210,26 @@ Frame Level +0.0625 then Apply: a frame brick's centre height 0.7225 -> 0.7850 i
 Generate not pending. Shots shots/seat37/f35item16_frame_offset_{0,0.3,off}.png.
 (My first OFF bbox read NaN: the probe's number regex split exponent values like 1e-16 -- a probe bug,
 the shot was right; re-measured with a points parser.)
+
+**Turn 189 amendments.**
+(1) MERGE: done before the amendment arrived (7a259fd, one import-line conflict, union kept 88's
+onBricksLayer at all 3 draw sites + my kinds logic; the "5 failing brick test files" were my kinds-test
+fake lacking SVG.js addClass/removeClass, fixed 7fec7d4). Main moved again (T19) -> merged clean,
+beefec7, brick tier 59 files / 632 passed, pushed, DM'd the advisor the sha.
+(2) FRED, Weathered WEAR as a SLIDER (the correction superseding 3 buttons). Declared on the style:
+`BRICK_SURFACE_STYLES.weathered.wear = { default: 0.5, edgeNoiseIn: [0, 0.04], pitGain: [1, 4] }` (the
+grid's diagonal); the fixed edgeNoiseIn 0.015 / pitGain 1.8 are gone. `styleAtWear(style, wear)` resolves
+it (clamped 0..1, absent = default; a style without `wear` untouched); the rasterizer applies it with
+`opts.surfaceWear` = P.brickSettings.surfaceWear (default 0.5, 3D-only key). Sidebar 3D: a "Wear" slider
+row under Surface, shown only while the surface style declares `wear`. Also: the 'surface' commit now
+only SAVES on a drag tick and re-masks once on release (a re-mask per slider tick is the expensive height
+pass); the grout depth field gained a 'change' listener so a typed depth still re-masks when it settles
+(its test now asserts 1 notify on input, 2 after change -- updated on purpose). The tuning-grid script's
+inline cells drop `wear` so the slider can't override an explicit (edge, pit) cell.
+Tests: wear table + 3 points + clamp/default (styleAtWear), the 2 existing style tests moved onto
+styleAtWear, panel: row hidden for Clean / shown for Weathered / hidden again, drag saves only, release
+re-masks once, never re-lays. Against the previous sources 8 fail. Fast tier 58 files, 623 passed, 0 failed.
+Live: row hidden for Clean, shown for Weathered (grout -> Recessed), Wear 0 vs 1 changes the real heights
+by RMS 0.0206 in. Shot shots/seat37/f35item18_wear_slider_sidebar.png.
+CHECKLIST: the amendment asks for a checklist line; NEXT-SESSION-fb-app.md is the advisor's file (worker
+never edits it) -- please add the [F35-item-N] line for the Wear slider.

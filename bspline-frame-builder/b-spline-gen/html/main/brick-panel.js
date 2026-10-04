@@ -261,9 +261,16 @@ function renderSurfaceStyleToggle(container) {
 }
 
 function syncSurfaceStyleToggle() {
-  const current = surfaceStyleById(P.brickSettings.surfaceStyle).id;
+  const current = surfaceStyleById(P.brickSettings.surfaceStyle);
   for (const style of Object.values(BRICK_SURFACE_STYLES)) {
-    document.getElementById(`brickSurfaceStyle_${style.id}`)?.classList.toggle('active', style.id === current);
+    document.getElementById(`brickSurfaceStyle_${style.id}`)?.classList.toggle('active', style.id === current.id);
+  }
+  // the Wear slider shows only for a style that declares `wear` (Weathered)
+  const row = document.getElementById('brickSurfaceWearRow');
+  if (row) row.style.display = current.wear ? '' : 'none';
+  if (current.wear) {
+    const w = Number.isFinite(P.brickSettings.surfaceWear) ? P.brickSettings.surfaceWear : current.wear.default;
+    setPair('brickSurfaceWearSlider', 'brickSurfaceWear', w);
   }
 }
 
@@ -447,8 +454,9 @@ const BRICK_COMMIT = {
   // F35 item 18: a 3D-only setting (SURFACE_ONLY_SETTING_KEYS below) -- the 2D layout is unchanged,
   // so nothing to re-lay and nothing pending: just re-mask the heights through the editor's own
   // change pipeline (main/app-init.js onChange -> refreshAllStampMasks), from either entry point.
+  // a drag tick only saves; the re-mask (the expensive height pass) runs once on release
   surface: {
-    onDrag: () => { notifyChange(); _remaskSurface(); },
+    onDrag: () => { notifyChange(); },
     onRelease: () => { notifyChange(); _remaskSurface(); },
   },
 };
@@ -468,7 +476,7 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
 const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation'];
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'groutProfileBeforeStyle', 'elementLevelIn'];
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'elementLevelIn'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 const LAYOUT_IGNORED_SETTING_KEYS = [...BRUSH_ONLY_SETTING_KEYS, ...SURFACE_ONLY_SETTING_KEYS];
@@ -601,12 +609,14 @@ function bindBrickSizeControls(commit = 'generate') {
 }
 
 function bindGroutField(id, key, commit = 'generate') {
-  document.getElementById(id)?.addEventListener('input', (e) => {
+  const write = (e, phase) => {
     const v = parseFloat(e.target.value);
     if (!Number.isFinite(v)) return;
     P.brickSettings.grout[key] = v;
-    commitBrickSetting(commit, 'onDrag');
-  });
+    commitBrickSetting(commit, phase);
+  };
+  document.getElementById(id)?.addEventListener('input', (e) => write(e, 'onDrag'));
+  document.getElementById(id)?.addEventListener('change', (e) => write(e, 'onRelease')); // typed value settled
 }
 
 /** F35 item 10: this list now renders into the left-rail toolbar
@@ -1074,6 +1084,7 @@ export function initBrickPanel() {
   document.getElementById('brickBtnTopOrganic')?.addEventListener('click', () => setBrickTopMode('organic'));
   document.getElementById('brickBtnTopFlat')?.addEventListener('click', () => setBrickTopMode('flat'));
   renderSurfaceStyleToggle(document.getElementById('brickSurfaceStyleToggle'));
+  bindSlider('brickSurfaceWearSlider', 'brickSurfaceWear', 'surfaceWear', (v) => Math.max(0, Math.min(1, parseFloat(v))), 'surface');
   document.getElementById('brickFrameOffsetOn')?.addEventListener('change', (e) => setFrameOffset({ on: e.target.checked }));
   document.getElementById('brickFrameOffsetDistance')?.addEventListener('change', (e) => setFrameOffset({ distance: e.target.value }));
   for (const kind of BRICK_KINDS) {

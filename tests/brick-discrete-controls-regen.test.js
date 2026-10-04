@@ -55,6 +55,7 @@ const FIXTURE = `
   <button id="brickBtnReliefRaised"></button><button id="brickBtnReliefCarved"></button>
   <button id="brickBtnTopOrganic" class="active"></button><button id="brickBtnTopFlat"></button>
   <div id="brickSurfaceStyleToggle"></div>
+  <div id="brickSurfaceWearRow" style="display:none;"><input type="range" id="brickSurfaceWearSlider" min="0" max="1" step="0.05"><input id="brickSurfaceWear"></div>
   <div id="brickQuickSettings"></div>
   <input type="checkbox" id="brickFrameOffsetOn" checked><input id="brickFrameOffsetDistance" value="0">
   <input id="brickLevel_wall" value="0"><input id="brickLevel_frame" value="0">
@@ -126,8 +127,10 @@ describe('Editor Brick tab (Wall tool): a setting change marks pending; only Gen
     window.svgEditor._notifyChange = notify;
     const other = P.brickSettings.grout.profile === 'flush' ? 'brickBtnGroutRecessed' : 'brickBtnGroutFlush';
     $(other).click();
-    fire('brickGroutDepth', 0.07, 'input');
+    fire('brickGroutDepth', 0.07, 'input'); // typing: saved, no re-mask yet (turn 189)
     expect(P.brickSettings.grout.depthIn).toBe(0.07);
+    expect(notify).toHaveBeenCalledTimes(1);
+    fire('brickGroutDepth', 0.07, 'change'); // settled: re-mask
     expect(notify).toHaveBeenCalledTimes(2);
     expect(runBricks).not.toHaveBeenCalled();
     expect(pending()).toBe(false);
@@ -528,6 +531,37 @@ describe('F35 item 16: the Frame tool\'s offset from frame, and per-element Leve
     fire('brickLevel_wall', -0.03125, 'change');
     expect(P.brickSettings.elementLevelIn).toEqual({ wall: -0.03125, frame: 0.0625 });
     expect(notify).toHaveBeenCalledTimes(2);
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(pending()).toBe(false);
+  });
+});
+
+describe("turn 189 (Fred): the Wear slider shows only for Weathered, saves on drag, re-masks on release", () => {
+  let notify;
+  beforeEach(() => {
+    P.brickSettings.surfaceStyle = 'clean';
+    P.brickSettings.surfaceWear = 0.5;
+    setup('wall');
+    notify = vi.fn();
+    window.svgEditor._notifyChange = notify;
+  });
+  it('hidden for Clean, shown (at the saved value) for Weathered, hidden again for Clean', () => {
+    expect($('brickSurfaceWearRow').style.display).toBe('none');
+    $('brickSurfaceStyle_weathered').click();
+    expect($('brickSurfaceWearRow').style.display).toBe('');
+    expect($('brickSurfaceWear').value).toBe('0.5');
+    $('brickSurfaceStyle_clean').click();
+    expect($('brickSurfaceWearRow').style.display).toBe('none');
+  });
+  it('drag ticks only save; release re-masks once; never re-lays, never pending', () => {
+    $('brickSurfaceStyle_weathered').click();
+    notify.mockClear();
+    fire('brickSurfaceWearSlider', 0.8, 'input');
+    fire('brickSurfaceWearSlider', 0.9, 'input');
+    expect(P.brickSettings.surfaceWear).toBe(0.9);
+    expect(notify).not.toHaveBeenCalled();
+    fire('brickSurfaceWearSlider', 0.9, 'change');
+    expect(notify).toHaveBeenCalledTimes(1);
     expect(runBricks).not.toHaveBeenCalled();
     expect(pending()).toBe(false);
   });
