@@ -7,18 +7,21 @@
  * normalizing gate). It also registers the editor's cut-profile provider, so
  * the editor draws the board as the chosen frame's cut profile.
  *
- * F8: the editor's [Frame | Artwork] tabs. "Edit frame shape" opens the editor
- * on the Frame tab (the frame's template + params + wood, with the live cut
- * profile; gate 3.2 = (c): numeric fields, no on-canvas handles), "Open SVG
- * Editor" on the Artwork tab. In the Frame tab the artwork is view-only: a
- * shield over the canvas stops every tool, the editor's artwork lock stops
- * every shortcut, and the focus rule dims whichever side is not being edited
- * (editor-frame-profile.js setEditorFocus; display only).
+ * F8 + F35 item 10: the editor's [Frame | Artwork | Photo | Brick] tabs. "Edit frame shape" opens the
+ * editor on the Frame tab (the frame's template + params + wood, with the live cut profile; gate
+ * 3.2 = (c): numeric fields, no on-canvas handles), "Open SVG Editor" on the Artwork tab. In the Frame
+ * tab the artwork is view-only: a shield over the canvas stops every tool, the editor's artwork lock
+ * stops every shortcut, and the focus rule dims whichever side is not being edited (editor-frame-
+ * profile.js setEditorFocus; display only). The actual N-way tab switch (buttons, panels, toolbars)
+ * is main/editor-tabs.js's own declared registry -- this file only keeps its OWN Frame-specific
+ * reaction to a switch (below, the 'editorTabChanged' listener), same as photo-panel.js/
+ * brick-panel.js keep theirs.
  */
 import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange } from '../core/frame-record.js';
 import { P } from '../core/state.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
 import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
+import { setEditorTab as switchEditorTab, getEditorTab } from './editor-tabs.js';
 import { AppState } from './app-state.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../editor/frame-handles.js';
 import { paramsFromShapeModel } from '../editor/editor-shape-lattice-generator.js';
@@ -204,10 +207,8 @@ function _syncTemplateSelect(sel, templateId) {
   sel.value = templateId || '';
 }
 
-let _editorTab = 'artwork';
 let _openEditorOn = null;
 
-/** Switch the editor between its Frame and Artwork modes. */
 /** A frame template's name as shown: numbered (Fred: "Number the other frames too") -- "Template 1 - Hourglass"
  *  -> "1. Hourglass"; a name without the "Template N - " prefix is shown as is. */
 export function frameLabel(tpl) {
@@ -216,27 +217,27 @@ export function frameLabel(tpl) {
   return m ? `${m[1]}. ${m[2]}` : name;
 }
 
+// F35 item 10: the actual N-way button/panel/toolbar switch is editor-tabs.js's own declared
+// registry (imported above as `switchEditorTab`/`getEditorTab`); this file re-exports both under
+// their historical names (tests/frame-tabs.test.js imports them from here) and keeps ONLY its own
+// Frame-specific reaction below.
 export function setEditorTab(tab) {
-  _editorTab = tab === 'frame' ? 'frame' : 'artwork';
-  const frame = _editorTab === 'frame';
-  $('editorTabFrame')?.classList.toggle('active', frame);
-  $('editorTabArtwork')?.classList.toggle('active', !frame);
-  if ($('editorFramePanel')) $('editorFramePanel').style.display = frame ? '' : 'none';
-  if ($('editorLayersPanel')) $('editorLayersPanel').style.display = frame ? 'none' : '';
+  return switchEditorTab(tab);
+}
+export { getEditorTab };
+
+document.addEventListener('editorTabChanged', (e) => {
+  const frame = e.detail.tab === 'frame';
   if ($('editorFrameShield')) $('editorFrameShield').style.display = frame ? '' : 'none';
-  // Mobile: the editor's bottom drawer labels its side panel; name it for the mode.
-  if ($('editorDrawerTab-layers')) $('editorDrawerTab-layers').textContent = frame ? 'Frame' : 'Layers';
   const ed = typeof window !== 'undefined' ? window.svgEditor : null;
-  setEditorFocus(ed, _editorTab);
+  setEditorFocus(ed, e.detail.tab);
   // Fred: "the tab should be the toggle" -- the phone drawer follows this switch (Frame: frame settings only).
   if (ed) syncDrawerForMode(ed, ed._currentMode);
   // T81 item 1: leaving the Frame tab drops its handles entirely (below) --
   // a hover/grab cursor read from the OLD tab must not stick around either.
   if (!frame) _clearFrameHover();
   if (ed) drawFrameProfile(ed); // F9: the shape handles show in the Frame tab only
-  return _editorTab;
-}
-export const getEditorTab = () => _editorTab;
+});
 
 /** The frame as fb_engine/send_frame.py reads it, or null when no frame is chosen. Fred ("no send frame"): it rides
  *  in the one Send's payload (export-flow.js `frame`); the add-in builds it right after the B-spline body. */
@@ -536,7 +537,7 @@ function _wireHandleDrag() {
   let dragStartRecord = null;
   let dragLastPt = null;
   const editor = () => (typeof window !== 'undefined' ? window.svgEditor : null);
-  const inFrameTab = () => _editorTab === 'frame';
+  const inFrameTab = () => getEditorTab() === 'frame';
   // T81 item 1: hover state lives on the editor (ed._frameHandleHover/Drag)
   // so editor-frame-profile.js's own draw loop -- a different module, no
   // access to this closure -- can read it; `_frameHoverKey` is just this
@@ -733,7 +734,7 @@ function _wireWindowDrag() {
     if (ed) { ed._windowHandleHover = key; if (ed._frameProfile) drawFrameProfile(ed); }
   };
   surface.addEventListener('pointerdown', (e) => {
-    if (_editorTab !== 'frame') return;
+    if (getEditorTab() !== 'frame') return;
     const ed = editor();
     if (!ed || ed._frameHandleDrag) return; // a shape-handle drag already owns this press
     const h = hit(ed, e.clientX, e.clientY);
@@ -751,7 +752,7 @@ function _wireWindowDrag() {
   surface.addEventListener('pointermove', (e) => {
     const ed = editor();
     if (!mode) {
-      const h = _editorTab === 'frame' && ed && ed._frameProfile ? hit(ed, e.clientX, e.clientY) : null;
+      const h = getEditorTab() === 'frame' && ed && ed._frameProfile ? hit(ed, e.clientX, e.clientY) : null;
       setHover(ed, h && h.mode !== 'body' ? h.mode : null);
       return;
     }
@@ -824,7 +825,7 @@ export function initFramePanel() {
   if (!_undoKeyWired) { // once per page (initFramePanel may run again, e.g. in tests)
     _undoKeyWired = true;
     window.addEventListener('keydown', (e) => {
-      if (_editorTab !== 'frame' || !(e.ctrlKey || e.metaKey) || e.shiftKey || (e.key !== 'z' && e.key !== 'Z')) return;
+      if (getEditorTab() !== 'frame' || !(e.ctrlKey || e.metaKey) || e.shiftKey || (e.key !== 'z' && e.key !== 'Z')) return;
       e.preventDefault();
       undoFrame();
     });

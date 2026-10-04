@@ -36,9 +36,53 @@ import { ensurePhotoDecoded, getRawPhotoImage } from '../core/photo/state.js';
 import { computeMirrorDimRects } from '../core/photo/mirror-dim.js';
 import { registerTweaksTarget, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { applyParam } from './param-manager.js';
+import { setEditorTab } from './editor-tabs.js';
 
+/** F35 item 10 (advisor, Fred's own reasoning: "each tab uses a completely different toolbar"):
+ *  Photo's own left-rail toolbar, moved here from the old sidebar panel's single always-visible
+ *  column -- picking a tool shows just that tool's own settings (its own `photoToolSection_<id>` div
+ *  in #editorPhotoPanel), everything else (pattern/load/preview/relief/height/tweaks/save) stays
+ *  visible regardless, the SAME "common controls every tool shares" split main/brick-panel.js's own
+ *  BRICK_TOOLS already established -- not a new mechanism. */
+const PHOTO_TOOLS = [
+  { id: 'crop', label: 'Crop', icon: '⬚', hint: 'Crop the photo to a region before it becomes the terrain.' },
+  { id: 'straighten', label: 'Straighten', icon: '📐', hint: 'Rotate by a small angle to level a tilted photo.' },
+  { id: 'rotateFlip', label: 'Rotate/Flip', icon: '🔄', hint: 'Rotate 90° or flip the photo horizontally/vertically.' },
+  { id: 'levels', label: 'Levels', icon: '🎚️', hint: 'Black/white/mid points plus brightness and contrast.' },
+  { id: 'blur', label: 'Blur', icon: '🌫️', hint: 'Smooth the photo before it becomes height.' },
+];
+
+let _activePhotoTool = PHOTO_TOOLS[0].id;
 let _onChange = null;
 let _patterns = [];
+
+function renderPhotoToolbar(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const tool of PHOTO_TOOLS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = `photoTool_${tool.id}`;
+    btn.className = 'tool-btn';
+    btn.title = `${tool.label} — ${tool.hint}`;
+    btn.textContent = tool.icon;
+    btn.addEventListener('click', () => selectPhotoTool(tool.id));
+    container.appendChild(btn);
+  }
+}
+
+function syncPhotoToolButtons() {
+  for (const tool of PHOTO_TOOLS) {
+    document.getElementById(`photoTool_${tool.id}`)?.classList.toggle('active', tool.id === _activePhotoTool);
+    const section = document.getElementById(`photoToolSection_${tool.id}`);
+    if (section) section.style.display = tool.id === _activePhotoTool ? '' : 'none';
+  }
+}
+
+function selectPhotoTool(id) {
+  _activePhotoTool = id;
+  syncPhotoToolButtons();
+}
 
 function notifyChange() {
   saveLastSession();
@@ -305,6 +349,10 @@ function bindSlider(sliderId, numberId, opName, paramKey, fallback) {
 
 export function initPhotoPanel({ onChange }) {
   _onChange = onChange;
+
+  document.getElementById('editorTabPhoto')?.addEventListener('click', () => setEditorTab('photo'));
+  renderPhotoToolbar(document.getElementById('editorToolbarPhoto'));
+  syncPhotoToolButtons();
 
   // F34 item 1 (Fred: "show the photo's effect params inside the Photo tab
   // too ... reuse the same generic Edit Filter control rendering, not a

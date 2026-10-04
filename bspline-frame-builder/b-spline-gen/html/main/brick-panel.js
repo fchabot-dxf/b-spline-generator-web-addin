@@ -23,6 +23,7 @@ import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
 import { applyParam } from './param-manager.js';
+import { setEditorTab } from './editor-tabs.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -147,15 +148,20 @@ function bindGroutField(id, key) {
   });
 }
 
+/** F35 item 10: this list now renders into the left-rail toolbar
+ *  (#editorToolbarBrick, icon-only, same convention Artwork's own tool rail
+ *  already uses), not the old sidebar's horizontal icon+label row -- the
+ *  label moves into the button's own title tooltip instead. */
 function renderToolList(container) {
   if (!container) return;
   container.innerHTML = '';
   for (const tool of BRICK_TOOLS) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn';
+    btn.className = 'tool-btn';
     btn.id = `brickTool_${tool.id}`;
-    btn.textContent = `${tool.icon} ${tool.label}`;
+    btn.title = `${tool.label} — ${tool.hint}`;
+    btn.textContent = tool.icon;
     btn.addEventListener('click', () => selectTool(tool.id));
     container.appendChild(btn);
   }
@@ -427,7 +433,8 @@ function ensureFineEnoughMesh(groutWidthIn) {
 export function initBrickPanel() {
   document.addEventListener('bricksGenerated', (e) => ensureFineEnoughMesh(e.detail?.groutWidthIn));
 
-  renderToolList(document.getElementById('brickToolList'));
+  document.getElementById('editorTabBrick')?.addEventListener('click', () => setEditorTab('brick'));
+  renderToolList(document.getElementById('editorToolbarBrick'));
   syncToolButtons();
   renderFramePresetList(document.getElementById('brickFramePresetList'));
   syncFramePresetButtons();
