@@ -21379,3 +21379,57 @@ the waist) -- `~/.bspline-status/shots/seatB/t86_item14_{before,after}.png`.
 
 **Commit** (`engine.js`, `library.js`'s comment, `tests/bricks-engine.test.js`, the new preview tool;
 this entry). Passing back with shots; picking up item 15 (cut course + the 16(b) gaps sweep) next.
+
+## T86 item 15: the top course now reaches the board's real edge via one cut course; MEASURED it does NOT fix 16(b) -- honestly reporting that, not claiming it (d3)
+
+**Full spec from `NEXT-SESSION-lane-b.md`** (Fred 2026-10-04, shots/fred/empty_course_top.png: "empty
+line of brick, can it be filled with half bricks"): a residual strip >= a quarter brick above the
+last course gets a CUT course (split/half-height bricks, same bond/stagger as below); narrower stays
+open (grows the joint instead). General fill-planning rule, not a T1 patch.
+
+**Root-caused in `bondLayout`'s own course stack, not guessed.** `clipPolygonToBoard` only ever
+SHRINKS a cell to fit the board outline -- it can never GROW one to reach further than its own
+declared rectangle. Course pitch (`brickHeightIn + grout`) rarely divides the available height
+evenly, so the stack's last course routinely ends with its own top edge short of the board's real
+top -- a genuine strip nothing was ever generated to cover (not a clipping bug; clipping had nothing
+TO clip there). **Only shows up with an EXPLICITLY sized zone** (`{pattern, rows: N}` -- Fred's own
+declared row count, or a Frame band's own course planning): a single UNSIZED zone (today's default,
+no `zones` passed at all) already over-provisions via `resolveZones`'s own `Math.ceil(share/pitch)`,
+so its own last course's rectangle already reaches past the true top and gets correctly clipped down
+by the EXISTING mechanism -- confirmed by writing the regression test first with an unsized zone,
+watching it fail to reproduce the bug at all, then rebuilding it against a sized zone instead (see
+the test file's own comment on this).
+
+**Fix**: after the declared course stack settles, if the remaining gap (`maxY - cy`) is
+`>= 0.25 * brickHeightIn`, push ONE more course -- same pattern as the course below (`uniformRow`/
+`flemishRow`, same row-generator, same `cx` grid, same stagger), just `cH = remaining` instead of the
+pattern's own declared course height. `clipPolygonToBoard` trims it the normal way afterward, so an
+arched/curved top still comes out right (less of the cut course survives near the curve, same as any
+other course) -- confirmed, not assumed: tested on both a straight top and a circular-arc top.
+
+**New test** (`tests/bricks-bond-cut-course.test.js`, 5 cases: straight-top residual 0.5/0.3 x H get
+a cut course reaching the real top exactly, 0.2 x H stays open (below the quarter-brick floor),
+arched-top apex 0.6/0.3 x H get cut-course cells near the apex, no overlap anywhere). MEASURED
+non-vacuous via `git stash` on just `bond.js`: 4/5 fail pre-fix (the "stays open" case correctly
+still passes either way, since nothing should change there).
+
+**The dispatch's own "+ 16(b) gaps size sweep before/after"**: MEASURED, not assumed -- ran a union-
+coverage sweep (T1/T12, brickLengthIn 1.25/1.5, Stretcher wall + Soldier band, the exact item-16(a)
+repro conditions) against both the pre-fix and post-fix `bondLayout`. **Identical numbers both ways**
+(e.g. template_1@1.25: 90 cells/82.9% both runs) -- this fix does NOT touch 16(b)'s own symptom at
+all. Root cause, confirmed by the SAME single-unsized-zone reasoning above: Wall's own zone (default,
+no explicit `rows`) already over-provisions and gets clipped correctly by the existing mechanism, so
+there's no "missing last course" here to begin with -- 16(b)'s own "wide bare strips at the top/sides,
+voids beside the lobes" symptom has a DIFFERENT root cause, not yet identified. Flagging this
+honestly rather than claiming item 15 incidentally closed it: 16(b) still needs its own dispatch.
+
+**Verified**: targeted run (4 files/37 tests), then a full suite gate given `bond.js` is load-bearing
+for every layout that composes through `bricksFillShape` (244 files / 4195/4195, clean).
+
+**Shots**: `tools/repro/t86_item15_cut_course_preview.mjs` (new, same headless-Chrome pattern) --
+straight-top and arched-top, before (visible gap/void under the arch) / after (cut course fills it)
+-- `~/.bspline-status/shots/seatB/t86_item15_{straight,arched}_{before,after}.png`. The 16(b) sweep's
+own numbers are in this entry directly (a measured negative result, not a visual).
+
+**Commit** (`layouts/bond.js`, the new test, the new preview tool; this entry). Passing back with
+shots AND the honest 16(b) non-result; picking up item 17 (largeStones + ENGINE_OPTIONS) next.
