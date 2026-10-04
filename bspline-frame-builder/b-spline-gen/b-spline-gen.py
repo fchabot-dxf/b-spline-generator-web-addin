@@ -1026,6 +1026,9 @@ def _svg_layer_import_plan(layers, design_available):
         prof = cfg.get('profile', 'flat')
         depth = cfg.get('depth', 0)
         plan.append({
+            # turn 193: does this layer carve? export-flow.js declares it (config.carve); a payload from
+            # before that field reads as "carves" when it has a real depth, the old assumption.
+            'carves': bool(cfg['carve']) if 'carve' in cfg else abs(float(depth or 0)) > 0.001,
             # BOUNDARY-GUIDE (L1): a manifest-only entry (the "Lattice
             # Boundary" sketch, export-flow.js) declares its own name.
             'sketch_name': layer.get('sketchName') or f"L{idx} - {prof} ({depth}\")",
@@ -1075,7 +1078,32 @@ def _ordered_svg_layer_import_plan(layers, design_available):
 
     indexed = list(enumerate(plan))
     indexed.sort(key=lambda pair: sort_key(pair[1], pair[0]))
-    return [item for _, item in indexed]
+    ordered = [item for _, item in indexed]
+    _assign_sketch_targets(ordered)
+    return ordered
+
+
+def _assign_sketch_targets(plan):
+    """turn 193 (Fred, after F35 item 12 dropped every sketch of a Send with no Carved component):
+    WHERE each step's sketch goes, declared on the step as `target`:
+      'carved' -> the Stamped (Carved) component: the stamp cuts THAT body (F35 item 12);
+      'root'   -> the Send's own top (root), as before item 12: a layer that does not carve (3D off,
+                  hidden from carving, depth 0) still sends its art as a sketch.
+    A kind-split pattern (same manifest patternId: contour/rails/ties/nodes + its Lattice Boundary)
+    stays in ONE component -- its kinds project each other's curves and share one plane -- so the
+    whole group is 'carved' if ANY of its layers carves. Pure, mutates and returns `plan`."""
+    group_carves = {}
+    for item in plan:
+        m = item.get('manifest')
+        pid = m.get('patternId') if m else None
+        if pid:
+            group_carves[pid] = group_carves.get(pid, False) or item.get('carves', False)
+    for item in plan:
+        m = item.get('manifest')
+        pid = m.get('patternId') if m else None
+        carves = group_carves[pid] if pid else item.get('carves', False)
+        item['target'] = 'carved' if carves else 'root'
+    return plan
 
 
 # ── Palette HTML event handler ────────────────────────────────────────────────
@@ -1828,17 +1856,17 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     elif last_imported_occurrences:
                         body_target = last_imported_occurrences[0].component
 
-                    # F35 item 12: every carving sketch goes in the Stamped (Carved) component,
-                    # never root, never Clean -- the stamp cuts THAT body, so a sketch anywhere
-                    # else is at best orphaned, at worst confusing stray geometry in root/Clean.
-                    # No Carved component this Send (e.g. only Clean was sent) -> log + skip,
-                    # never fall back to root (_find_stamped_component's own declared contract).
-                    sketch_target = _find_stamped_component(current_import_group)
-                    if sketch_target is None:
-                        _log('SVG Stamp Import/Project skipped: no Stamped (Carved) component in this Send.')
-                    else:
-                        _send_progress('Projecting SVG Artwork...')
-                        self._import_all_svg_layers(sketch_target, body_target, stamp_data, orientation, params, des)
+                    # F35 item 12 + turn 193 (Fred): a CARVING layer's sketch goes in the Stamped (Carved)
+                    # component -- the stamp cuts THAT body; every other exported layer's sketch goes on
+                    # root, exactly where it went before item 12. No Carved component this Send skips
+                    # ONLY the carving sketches (never falls back to root for them); the root ones always
+                    # arrive. Per-step target: _assign_sketch_targets.
+                    sketch_targets = {
+                        'carved': _find_stamped_component(current_import_group),
+                        'root': current_import_group.component if _in_active_design(des, current_import_group) else root_comp,
+                    }
+                    _send_progress('Projecting SVG Artwork...')
+                    self._import_all_svg_layers(sketch_targets, body_target, stamp_data, orientation, params, des)
                 except Exception as e:
                     _log(f'SVG Stamp Import/Project failed: {e}')
 
@@ -1907,7 +1935,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if not data.get('isPreview', False):
                 _send_import_failed('The Send failed in Fusion -- see the message there (and the add-in log).')
 
-    def _import_all_svg_layers(self, sketch_target, body_target, stamp_data, orientation='z-up', params=None, design=None):
+    def _import_all_svg_layers(self, sketch_targets, body_target, stamp_data, orientation='z-up', params=None, design=None):
         """Processes multiple SVG layers if available, otherwise falls back to single SVG.
 
         T63 (SE15 §7): a layer carrying a `sketchManifest` (set by
@@ -1988,10 +2016,17 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         pattern_ctx = {}
         pattern_kind_to_sketch = {}
 
+        skipped_carved = []
         for step in _ordered_svg_layer_import_plan(layers, design is not None):
             sketch_name = step['sketch_name']
             manifest = step.get('manifest')
             pattern_id = manifest.get('patternId') if manifest else None
+            # turn 193: this step's own component (_assign_sketch_targets); a carving step with no Carved
+            # component this Send is skipped ALONE -- the root steps still import
+            sketch_target = sketch_targets.get(step.get('target', 'carved'))
+            if sketch_target is None:
+                skipped_carved.append(sketch_name)
+                continue
 
             # T74 AMEND 5: ONE construction plane per layer, computed lazily
             # (only if this layer actually imports something) and SHARED by
@@ -2023,6 +2058,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 if plane is None:
                     plane = self._compute_artwork_plane(sketch_target, sketch_name, top_face, orientation)
                 self._import_single_layer_svg(sketch_target, step['svg'], plane, sketch_name, params)
+        if skipped_carved:
+            _log(f'SVG Stamp Import: no Stamped (Carved) component in this Send -- skipped carving sketches only: {skipped_carved}')
 
     def _compute_artwork_plane(self, sketch_target, sketch_name, top_face, orientation='z-up'):
         """The SAME offset-above-peak construction plane every flat 2D
@@ -2159,16 +2196,25 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             bricks_data = (stamp_data or {}).get('bricks')
             if bricks_data is None:
                 return  # no instruction at all (append) -- leave it alone
-            sketch_target = _find_stamped_component(current_import_group)
-            if not sketch_target:
-                if bricks_data.get('enabled'):
-                    _log('[BRICKS] enabled but no Stamped (Carved) component in this Send -- skipped')
-                return
+            # turn 193 (Fred): a CARVING Bricks layer's sketch -> the Stamped (Carved) component; a
+            # non-carving one -> root, like every other non-carving art layer. `carve` absent (an older
+            # palette) = carving, item 11's original behaviour. Both homes are cleared of an older
+            # 'Bricks' sketch first, so switching carve on/off never leaves a stale copy behind.
+            carved = _find_stamped_component(current_import_group)
+            root = getattr(current_import_group, 'component', None)  # the Send's own top, as the art layers' 'root'
+            homes = [c for c in (carved, root) if c is not None]
             if not bricks_data.get('enabled'):
-                n = _remove_named_sketch(sketch_target, BRICKS_SKETCH_NAME)
+                n = sum(_remove_named_sketch(c, BRICKS_SKETCH_NAME) for c in homes)
                 if n:
                     _log(f'[BRICKS] removed {n} existing "{BRICKS_SKETCH_NAME}" sketch(es) (no bricks this Send)')
                 return
+            sketch_target = carved if bricks_data.get('carve', True) else root
+            if not sketch_target:
+                _log('[BRICKS] enabled but no ' + ('Stamped (Carved) component' if bricks_data.get('carve', True) else 'root component') + ' in this Send -- skipped')
+                return
+            for c in homes:
+                if c is not sketch_target:
+                    _remove_named_sketch(c, BRICKS_SKETCH_NAME)
             svg_text = bricks_data.get('svg') or ''
             if not svg_text:
                 _log('[BRICKS] enabled but no svg data -- skipped')
