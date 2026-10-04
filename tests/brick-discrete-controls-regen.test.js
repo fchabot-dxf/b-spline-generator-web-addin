@@ -123,33 +123,34 @@ function setup(tool) {
 }
 afterEach(() => { root.remove(); window.svgEditor = null; vi.unstubAllGlobals(); });
 
-/** Each editor control: changing it never re-lays and marks Generate pending; Generate then re-lays
- *  once with the new settings and clears pending. */
-function expectPendingThenGenerate(check) {
-  expect(runBricks).not.toHaveBeenCalled();
-  expect(runBricksPreview).not.toHaveBeenCalled();
-  expect(pending()).toBe(true);
-  expect($('brickGenerate').textContent).toContain('•');
-  $('brickGenerate').click();
+/** F35 item 27 (Fred, reversing the morning's "the editor waits for Generate"): an editor control re-lays at
+ *  once, exactly once, with the new settings -- and nothing is ever pending (no dot, no tab badge). */
+function expectReLaidAtOnce(check) {
   expect(runBricks).toHaveBeenCalledTimes(1);
   if (check) check(runBricks.mock.calls[0]);
   expect(pending()).toBe(false);
   expect($('brickGenerate').textContent).toBe('Generate');
+  expect($('editorTabBrick').hasAttribute('data-brick-pending')).toBe(false);
 }
 
-describe('Editor Brick tab (Wall tool): a setting change marks pending; only Generate re-lays', () => {
+describe('Editor Brick tab (Wall tool): item 27 -- a setting change re-lays at once, never pending', () => {
   beforeEach(() => setup('wall'));
+  afterEach(() => vi.useRealTimers());
   it('not pending right after the tool laid the bricks', () => { expect(pending()).toBe(false); });
   it('a Wall pattern button', () => {
     $('brickPattern_herringbone').click();
     expect(P.brickSettings.pattern).toBe('herringbone');
-    expectPendingThenGenerate((call) => expect(call[1].pattern).toBe('herringbone'));
+    expectReLaidAtOnce((call) => expect(call[1].pattern).toBe('herringbone'));
   });
-  it('the set picker', () => { $('brickSetWhite').click(); expectPendingThenGenerate((c) => expect(c[1].setId).toBe(3)); });
-  it('a brick-size preset button', () => { firstInactive('[id^=brickSizePreset_]').click(); expectPendingThenGenerate(); });
+  it('the set picker', () => { $('brickSetWhite').click(); expectReLaidAtOnce((c) => expect(c[1].setId).toBe(3)); });
+  it('a brick-size preset button', () => { firstInactive('[id^=brickSizePreset_]').click(); expectReLaidAtOnce(); });
   it('the brick-size stepper, drag and release', () => {
     fire('brickSize', 1.5, 'input'); fire('brickSize', 1.5, 'change');
-    expectPendingThenGenerate((c) => expect(c[1].brickLengthIn).toBe(1.5));
+    expectReLaidAtOnce((c) => expect(c[1].brickLengthIn).toBe(1.5));
+  });
+  it('Generate is "re-lay now": the same settings, one more lay', () => {
+    $('brickGenerate').click();
+    expectReLaidAtOnce((c) => expect(c[1].pattern).toBe(P.brickSettings.pattern));
   });
   // F35 item 18 turn 181: the grout PROFILE and DEPTH only drive the joint recess in the height mask --
   // 3D-only ('surface'): re-mask at once, never re-lay, never pending. Grout WIDTH stays a layout setting.
@@ -166,13 +167,25 @@ describe('Editor Brick tab (Wall tool): a setting change marks pending; only Gen
     expect(runBricks).not.toHaveBeenCalled();
     expect(pending()).toBe(false);
   });
-  it('a grout width field', () => { fire('brickGroutWidth', 0.09, 'input'); expectPendingThenGenerate((c) => expect(c[1].grout.widthIn).toBe(0.09)); });
-  it('the seed field', () => { fire('brickSeed', 42, 'input'); expectPendingThenGenerate((c) => expect(c[1].seed).toBe(42)); });
-  it('the random-seed button', () => { $('brickBtnRandomSeed').click(); expectPendingThenGenerate(); });
-  it('changing a setting and changing it back is not pending', () => {
+  it('a grout width field: re-lays once the typing pauses (400 ms)', () => {
+    vi.useFakeTimers();
+    fire('brickGroutWidth', 0.09, 'input');
+    expect(runBricks).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(400);
+    expectReLaidAtOnce((c) => expect(c[1].grout.widthIn).toBe(0.09));
+  });
+  it('the seed field: re-lays once the typing pauses (400 ms)', () => {
+    vi.useFakeTimers();
+    fire('brickSeed', 4, 'input'); fire('brickSeed', 42, 'input');
+    expect(runBricks).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(400);
+    expectReLaidAtOnce((c) => expect(c[1].seed).toBe(42));
+  });
+  it('the random-seed button re-rolls and re-lays', () => { $('brickBtnRandomSeed').click(); expectReLaidAtOnce(); });
+  it('changing a setting and changing it back re-lays each time, never pending', () => {
     $('brickPattern_herringbone').click();
-    expect(pending()).toBe(true);
     $('brickPattern_stretcher').click();
+    expect(runBricks).toHaveBeenCalledTimes(2);
     expect(pending()).toBe(false);
   });
   it('a Brush-only setting never makes the Wall/Frame layout pending', () => {
@@ -189,9 +202,9 @@ describe('Editor Brick tab (Frame tool)', () => {
   beforeEach(() => setup('frame'));
   it('a Frame band preset button', () => {
     $('brickFramePreset_soldier_stretcher').click();
-    expectPendingThenGenerate((c) => expect(c[2].bands.length).toBe(2));
+    expectReLaidAtOnce((c) => expect(c[2].bands.length).toBe(2));
   });
-  it('a per-band pattern button', () => { firstInactive('#brickFrameBandPatternList button').click(); expectPendingThenGenerate(); });
+  it('a per-band pattern button', () => { firstInactive('#brickFrameBandPatternList button').click(); expectReLaidAtOnce(); });
 });
 
 describe('Generate with nothing to re-lay', () => {
@@ -239,10 +252,10 @@ describe("F35 item 18: brick top Flat | Organic is a 3D-only ('surface') setting
     expect(notify).toHaveBeenCalledTimes(2);
     expect(pending()).toBe(false);
   });
-  it('a pending layout change stays pending (and only that) across a Flat toggle', () => {
+  it('a layout change re-lays once; a Flat toggle after it only re-masks (no second lay)', () => {
     $('brickPattern_herringbone').click();
     $('brickBtnTopFlat').click();
-    expectPendingThenGenerate((c) => expect(c[1].pattern).toBe('herringbone'));
+    expectReLaidAtOnce((c) => expect(c[1].pattern).toBe('herringbone'));
   });
   it('the sidebar entry point (default commit) behaves the same', () => {
     setBrickTopMode('flat');
@@ -371,10 +384,10 @@ describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + 
     expect($(quickId).classList.contains('active')).toBe(true);
     expect($(editorId).classList.contains('active')).toBe(true);
   });
-  it("an editor change (pending) is mirrored by the quick row, which is not itself a re-lay", () => {
+  it('an editor change (re-laid at once, item 27) is mirrored by the quick row, which adds no second lay', () => {
     $('brickPattern_flemish').click();
     expect($('brickQuick_pattern_flemish').classList.contains('active')).toBe(true);
-    expect(runBricks).not.toHaveBeenCalled();
+    expect(runBricks).toHaveBeenCalledTimes(1);
   });
   it('quick brick size re-lays at once', () => {
     $('brickQuick_size_three').click();
@@ -384,9 +397,9 @@ describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + 
   });
 });
 
-// Audit B1-B3: pending is derived from the key stamped on the Bricks layer, which undo/redo, Cancel and
-// reload all carry -- not from module memory that none of them touch.
-describe('pending follows the Bricks layer key through undo, reload and Cancel', () => {
+// Audit B1-B3: the key stamped on the Bricks layer records what is on the canvas; undo/redo, Cancel and reload
+// all carry it. Item 27: nothing is pending, whatever the key says.
+describe('the Bricks layer key through undo, reload and Cancel (item 27: never pending)', () => {
   beforeEach(() => setup('wall'));
   const layer = () => window.svgEditor._layers[0];
   const layersChanged = () => document.dispatchEvent(new CustomEvent('editorLayersChanged'));
@@ -399,46 +412,28 @@ describe('pending follows the Bricks layer key through undo, reload and Cancel',
     expect(layer().brickLaidKey).toContain('herringbone');
   });
 
-  it('undo restoring the older layer key shows pending; redo clears it', () => {
+  it('undo restoring an older layer key, a reloaded document with a different key, a key-less old board: never pending, never re-laid', () => {
     const stretcherKey = layer().brickLaidKey;
-    $('brickPattern_herringbone').click();
-    $('brickGenerate').click();
-    const herringboneKey = layer().brickLaidKey;
-    layer().brickLaidKey = stretcherKey; layersChanged(); // what editor.undo() restores
-    expect(pending()).toBe(true);
-    layer().brickLaidKey = herringboneKey; layersChanged(); // redo
+    layer().brickLaidKey = stretcherKey.replace('stretcher', 'stack'); layersChanged(); // what undo / a reopen restores
     expect(pending()).toBe(false);
+    delete layer().brickLaidKey; layersChanged(); // bricks saved before the key existed
+    expect(pending()).toBe(false);
+    expect(runBricks).not.toHaveBeenCalled();
   });
 
-  it('a reopened/reloaded document whose layer key differs from the settings shows pending at once', () => {
-    layer().brickLaidKey = layer().brickLaidKey.replace('stretcher', 'stack');
-    layersChanged();
-    expect(pending()).toBe(true);
-  });
-
-  it('Cancel restoring the entry settings (brickSettingsRestored) re-syncs the panel and the pending state', () => {
+  it('Cancel restoring the entry settings (brickSettingsRestored) re-syncs the panel', () => {
     const entry = JSON.parse(JSON.stringify(P.brickSettings));
     $('brickPattern_basketweave').click();
-    expect(pending()).toBe(true);
     Object.assign(P.brickSettings, entry);
     document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
     expect($('brickPattern_stretcher').classList.contains('active')).toBe(true);
     expect($('brickPattern_basketweave').classList.contains('active')).toBe(false);
     expect(pending()).toBe(false);
   });
-
-  it('bricks with no key yet (saved before this field) are not pending until a setting changes', () => {
-    delete layer().brickLaidKey; layersChanged();
-    expect(pending()).toBe(false);
-    $('brickPattern_flemish').click();
-    expect(pending()).toBe(true);
-    $('brickGenerate').click();
-    expect(pending()).toBe(false);
-  });
 });
 
-// Audit C3/C9/C8/C11.
-describe('Generate visibility, the pending badge and a hidden Bricks layer', () => {
+// Audit C9/C8 (C3/C11's pending badge retired by item 27).
+describe('Generate visibility, no pending badge, and a hidden Bricks layer', () => {
   const slotShown = () => $('brickGenerate').closest('.sticky-actions').style.display !== 'none';
   const badged = (id) => $(id).hasAttribute('data-brick-pending');
 
@@ -450,35 +445,18 @@ describe('Generate visibility, the pending badge and a hidden Bricks layer', () 
     expect(slotShown()).toBe(true);
   });
 
-  it('C3: the Brick tab button carries the pending dot, also once the tool is put away', () => {
-    setup('wall');
-    expect(badged('editorTabBrick')).toBe(false);
-    $('brickPattern_herringbone').click();
-    expect(badged('editorTabBrick')).toBe(true);
-    deselectTool(); // Esc's path: the Brick panel (and its Generate) gives way to Layers; the badge stays
-    expect(badged('editorTabBrick')).toBe(true);
-    window.svgEditor._sketchLayer = { node: { querySelector: () => ({}) } }; // Wall/Frame bricks are on the canvas
-    $('brickGenerate').click(); // with no tool, Generate re-lays the bricks already there
-    expect(badged('editorTabBrick')).toBe(false);
-  });
-
-  it('C11: the drawer tab label carries the dot only while it names the Brick tab', () => {
+  it('item 27: no pending badge anywhere -- the Brick tab button, the drawer label -- after a change, with or without a tool', () => {
     setup('wall');
     setEditorTab('brick');
     $('brickPattern_herringbone').click();
-    expect(badged('editorDrawerTab-layers')).toBe(true);
-    setEditorTab('artwork'); // the drawer label now names Artwork's panel
-    expect(badged('editorDrawerTab-layers')).toBe(false);
-    expect(badged('editorTabBrick')).toBe(true); // the Brick tab button keeps it
-    setEditorTab('brick');
-    expect(badged('editorDrawerTab-layers')).toBe(true);
+    deselectTool();
+    for (const id of ['editorTabBrick', 'editorDrawerTab-layers']) expect(badged(id), id).toBe(false);
   });
 
   it('C8: laying bricks onto a hidden Bricks layer warns, and leaves the layer hidden', () => {
     setup('wall');
     window.svgEditor._layers[0].visible = false;
-    $('brickPattern_flemish').click();
-    $('brickGenerate').click();
+    $('brickPattern_flemish').click(); // item 27: this change re-lays (and warns) at once
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast.mock.calls[0][1]).toBe('warn');
     expect(window.svgEditor._layers[0].visible).toBe(false);
@@ -558,10 +536,10 @@ describe('F35 item 16: the Frame tool\'s offset from frame, and per-element Leve
     $('brickGenerate').click();
     expect(frameContourSilhouette.mock.calls.at(-1)[1]).toBe(0);
   });
-  it('a distance is a LAYOUT change: pending, then Generate lays the bands at that distance', () => {
+  it('a distance is a LAYOUT change: the bands are re-laid at once at that distance', () => {
     fire('brickFrameOffsetDistance', 0.3, 'change');
     expect(P.brickSettings.frameOffset).toEqual({ on: true, distance: 0.3 });
-    expectPendingThenGenerate();
+    expectReLaidAtOnce();
     expect(frameContourSilhouette.mock.calls.at(-1)[1]).toBe(0.3);
   });
   it('OFF = free placement: the bands follow the board outline, the distance field is disabled', () => {
@@ -574,11 +552,13 @@ describe('F35 item 16: the Frame tool\'s offset from frame, and per-element Leve
     const contour = buildRibbonPrimitives.mock.calls.at(-1)[0];
     expect(contour.map((p) => [p.p0.x, p.p0.y])).toEqual([[0, 0], [7, 0], [7, 9], [0, 9]]);
   });
-  it('audit v2 N6: Level, saved per element kind, shows the Generate dot (it showed nothing before); Generate clears it', () => {
+  it('audit v2 N6 (closed by item 27): Level, saved per element kind, re-lays at once like every setting', () => {
     fire('brickLevel_frame', 0.0625, 'change');
     fire('brickLevel_wall', -0.03125, 'change');
     expect(P.brickSettings.elementLevelIn).toEqual({ wall: -0.03125, frame: 0.0625 });
-    expectPendingThenGenerate((c) => expect(c[1].elementLevelIn).toEqual({ wall: -0.03125, frame: 0.0625 }));
+    expect(runBricks).toHaveBeenCalledTimes(2);
+    expect(runBricks.mock.calls[1][1].elementLevelIn).toEqual({ wall: -0.03125, frame: 0.0625 });
+    expect(pending()).toBe(false);
   });
 });
 
@@ -662,35 +642,34 @@ describe('audit C6: the Brick tab Stripe picks a brick STYLE per run (A/B/C thum
   });
 });
 
-describe('turn 195: Generate failure, and item 20 (a brush stroke change makes the Wall pending)', () => {
+describe('turn 195: Generate failure, and items 20 + 27 (a brush stroke change re-lays the Wall at once)', () => {
   beforeEach(() => setup('wall'));
-  it('an engine throw: error toast, Generate reports failure, the layout stays pending', () => {
-    $('brickPattern_herringbone').click();
+  it('an engine throw: error toast, the change reports failure, the previous bricks are kept', () => {
     runBricks.mockImplementationOnce(() => { throw new Error('engine boom'); });
-    $('brickGenerate').click();
+    $('brickPattern_herringbone').click();
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast.mock.calls[0][1]).toBe('error');
     expect(showToast.mock.calls[0][0]).toMatch(/previous bricks are kept/);
-    expect(pending()).toBe(true);
-  });
-  it('with a Wall laid, adding a brush stroke (an editor commit) marks it pending; Generate clears it', () => {
-    const node = document.createElement('div');
-    const wall = document.createElement('polygon');
-    wall.setAttribute('data-brick-gen', '1'); wall.setAttribute('data-brick', 'wall');
-    node.appendChild(wall);
-    window.svgEditor._sketchLayer = { node, children: () => ({ toArray: () => [] }) };
-    $('brickGenerate').click(); // lays with the wall present: its key now covers the (empty) brush set
     expect(pending()).toBe(false);
+  });
+  it('with a Wall laid, adding or deleting a brush stroke (an editor commit) re-lays the Wall once; an unrelated commit does not', () => {
+    const node = window.svgEditor._sketchLayer.node; // setup laid the wall onto it
+    window.svgEditor._sketchLayer.children = () => ({ toArray: () => [] });
+    const commit = () => document.dispatchEvent(new CustomEvent('editorCommit', { detail: { editor: window.svgEditor } }));
+    commit(); // nothing changed: no re-lay
+    expect(runBricks).not.toHaveBeenCalled();
     const stroke = document.createElement('polygon');
     stroke.setAttribute('data-brick-gen', '1'); stroke.setAttribute('data-brick', 'brush'); stroke.setAttribute('points', '1,1 2,1 2,1.3 1,1.3');
     node.appendChild(stroke);
-    document.dispatchEvent(new CustomEvent('editorCommit', { detail: { editor: window.svgEditor } }));
-    expect(pending()).toBe(true);
-    $('brickGenerate').click();
+    commit();
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    expect(runBricks.mock.calls[0][3].kinds).toContain('wall');
+    commit(); // laid around it now: no second re-lay
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    stroke.remove();
+    commit();
+    expect(runBricks).toHaveBeenCalledTimes(2);
     expect(pending()).toBe(false);
-    stroke.remove(); // deleting the stroke: pending again
-    document.dispatchEvent(new CustomEvent('editorCommit', { detail: { editor: window.svgEditor } }));
-    expect(pending()).toBe(true);
   });
 });
 
@@ -723,14 +702,14 @@ describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fiel
     expect(shown('brickLargeStonesRow')).toBe(true);
     engineOpts.extra = [];
   });
-  it('a layout setting: the slider marks pending, Generate lays with it', () => {
+  it('a layout setting: the slider previews while dragged, re-lays with it on release', () => {
     $('brickPattern_fieldstone').click();
-    $('brickGenerate').click();
     runBricks.mockClear();
     fire('brickLargeStonesSlider', 0.8, 'input');
+    expect(runBricks).not.toHaveBeenCalled();
     fire('brickLargeStonesSlider', 0.8, 'change');
     expect(P.brickSettings.largeStones).toBe(0.8);
-    expectPendingThenGenerate((c) => expect(c[1].largeStones).toBe(0.8));
+    expectReLaidAtOnce((c) => expect(c[1].largeStones).toBe(0.8));
   });
 });
 
@@ -985,24 +964,42 @@ describe('turn 207 (Fred / 88): the Frame element (and the Wall in it) follows t
   };
   afterEach(() => { modal?.remove(); modal = null; P.frame = null; });
 
-  it('editor open: a template change marks the laid Wall/Frame PENDING (no re-lay); Generate re-lays and clears it', () => {
+  afterEach(() => vi.useRealTimers());
+  it.each([['editor open', true], ['editor closed (sidebar)', false]])('%s: a template change re-lays the laid kinds once it settles (350 ms), never pending (item 27)', (_n, open) => {
+    vi.useFakeTimers();
     setup('wall');
-    openEditor(true);
+    openEditor(open);
     setFrameRecord({ templateId: 'template_3', params: {} });
-    expect(runBricks).not.toHaveBeenCalled();
-    expect(pending()).toBe(true);
-    $('brickGenerate').click();
-    expect(runBricks).toHaveBeenCalledTimes(1);
-    expect(pending()).toBe(false);
-  });
-
-  it('editor closed (sidebar): a template change re-lays the laid kinds at once, never pending', () => {
-    setup('wall');
-    openEditor(false);
-    setFrameRecord({ templateId: 'template_3', params: {} });
+    expect(runBricks).not.toHaveBeenCalled(); // settling
+    vi.advanceTimersByTime(350);
     expect(runBricks).toHaveBeenCalledTimes(1);
     expect(runBricks.mock.calls[0][3].kinds).toEqual(['wall']);
     expect(pending()).toBe(false);
+  });
+
+  it('a handle DRAG re-lays once, after the release settles -- not per drag tick', () => {
+    vi.useFakeTimers();
+    setup('wall');
+    openEditor(true);
+    window.svgEditor._frameHandleDrag = 'h1';
+    for (let k = 1; k <= 5; k++) { setFrameRecord({ templateId: 'template_3', params: { k } }); vi.advanceTimersByTime(100); }
+    vi.advanceTimersByTime(1000);
+    expect(runBricks).not.toHaveBeenCalled(); // still dragging
+    window.svgEditor._frameHandleDrag = null; // released
+    vi.advanceTimersByTime(350);
+    expect(runBricks).toHaveBeenCalledTimes(1);
+  });
+
+  it('a frame write that leaves the frame as laid re-lays nothing; a tab switch never re-lays', () => {
+    vi.useFakeTimers();
+    setFrameRecord({ templateId: 'template_3', params: {} }); // a real record, then the bricks laid on it
+    setup('wall');
+    vi.advanceTimersByTime(350); // that write's own settle: laid on it already -> nothing
+    setFrameRecord({}); // a write that changes nothing
+    vi.advanceTimersByTime(350);
+    setEditorTab('frame'); setEditorTab('brick');
+    vi.advanceTimersByTime(1000);
+    expect(runBricks).not.toHaveBeenCalled();
   });
 
   it('no laid bricks: a frame change re-lays nothing', () => {

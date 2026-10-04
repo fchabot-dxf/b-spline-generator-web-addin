@@ -12751,3 +12751,66 @@ item 22 design note; then item 23.
     with --root).
 - Main-checkout incident (the advisor's DM): not mine. The advisor stashed the outside agent's edits; my
   8edb723 "frame follows its frame" stands; BRICK_COMMIT untouched until the advisor confirms Fred's wish.
+
+### turn 209 -- merge origin/main (x2), then F35 item 27: the editor re-lays at once (seat 37)
+
+**Merges first** (advisor DM: 88's peekEssentials + layout group conflicted with 9328fcb):
+- 7d9bc01: editor-tabs.js keeps both sides -- 88's `peekEssentials` and my `brickAccentClick` mode. run.mjs
+  GROUPS keeps 'layout', and groupOf keeps 'opens'.
+- 79de318: the later origin/main, with 88's settled-page waits (9aff195).
+- Results: fast tier 2008/2008 (+3 todo); matrix layout group 6/6 (2 FAIL before 9aff195 came in -- the
+  unsettled page it fixes); sidebar-quick 7/7. Main is now 79de318 (advisor).
+
+**Item 27 (Fred, reversing the morning's "the editor waits for Generate"):**
+- `BRICK_COMMIT.generate` and `.auto` are ONE declared object (`AUTO_COMMIT`). 'generate' stays the editor
+  bindings' name (their entry point) and commits the same way: a release / click re-lays, a slider drag
+  live-previews. `APPLIES_AT_ONCE` includes 'generate', so typed boxes re-lay 400 ms after the typing pauses.
+  - Found: the SEED field committed only `onDrag` (it relied on pending), so typing a seed would never re-lay.
+    It now settles like the other boxes (settleAfterTyping('generate')).
+- **Nothing is ever pending.** REMOVED, every link of the chain:
+  - `_changedWhileUnknown`, `_noteSettingChanged`, `isGeneratePending`, `PENDING_INDICATORS` and
+    `syncGeneratePending`, plus every call site (init, editorLayersChanged, editorTabChanged, editorCommit,
+    brickSettingsRestored, _layBricks);
+  - the `data-brick-pending` dot CSS (styles/editor.css) and the Generate button's `.pending` class and
+    "Generate •" text;
+  - the palette comment that described the pending model (now says "re-lay now"; title set on the button).
+  - Swept with grep: no `data-brick-pending`, `isGeneratePending` or `syncGeneratePending` left in
+    bspline-frame-builder/.
+  - KEPT with a reason: `_layoutKey` / the stamped `brickLaidKey` (the record of what is on the canvas; undo,
+    Cancel and reload carry it) and `_laidLayoutKey`, which the two re-lays below now read.
+  - The `isEditorOpen` import (turn 207) went with the editor/sidebar split.
+- **Frame changes re-lay in the editor too,** taking the Cowork handoff's two ideas (reference only; the main
+  checkout and its file untouched):
+  - 'frameRecordChanged' schedules a re-lay FRAME_RELAY_SETTLE_MS (350) later, and re-schedules while
+    `editor._frameHandleDrag` is set, so a drag re-lays once after release, not per tick;
+  - it re-lays only when the laid key's `#frame:` part differs from the current frame key;
+  - nothing listens to tab switches, so an old board is never re-laid by surprise.
+- **Brush strokes re-lay the Wall at once.** Item 20's "a stroke change makes the Wall pending" had no dot to
+  show any more, so the same rule now holds for strokes. On an editor commit, if a Wall is on the canvas and
+  the laid key's `#brush:` part differs from the current brush footprints, the Wall is re-laid; the re-lay's own
+  commit then finds them equal.
+  - `_brushKey` is now ALWAYS the footprints. Its old "'' while no Wall is on the canvas" only served the dot,
+    and it made a first lay's key omit the strokes (a needless second lay).
+- **Audit N4 / N6 close with this** (no dot exists; Level re-lays like every setting).
+- **Tests:**
+  - The regen file's pending model is rewritten to `expectReLaidAtOnce` (re-laid once with the new settings,
+    no dot, no badge). New cases: Generate = re-lay now; typed grout width / seed re-lay after 400 ms (fake
+    timers); a stroke add / delete re-lays the Wall and an unrelated commit does not; a frame change re-lays
+    after 350 ms with the editor open AND closed; a handle drag re-lays once after release; a no-op frame write
+    and a tab switch re-lay nothing.
+  - Retired, with their reason: C3 / C11 (the badge), "undo/reload shows pending", "no key -> pending after a
+    change", "the layout stays pending after a throw" (now: the error toast, previous bricks kept, not pending).
+  - brick-size-log-slider: a slider release re-lays again.
+  - Non-vacuous: against the pre-item-27 brick-panel.js, 25 of the regen + size tests FAIL.
+- **Fast tier** (126 files): 2011/2011 (+3 todo).
+- **Matrix:** 30 'editor' rows change, pending true -> false only (LAYOUT -> E(false, true, true), the 4 Level
+  rows -> E(false, null, true)). Exact list DM'd to 88, who re-declares them. A scratch copy with exactly that
+  flip, run --parallel on this tree: **69 rows, 0 FAIL**. My branch's controls.mjs is NOT changed (88's
+  re-declaration merges with this).
+- **Live** (served, headless Chrome, editor open, no Generate pressed after the first lay):
+  - a pattern click re-laid at once (wall 98 -> 116), no dot, button "Generate";
+  - a size preset re-laid at once (42 / 76);
+  - an editor template change: unchanged during the settle (150 ms), re-laid after (37 / 67);
+  - a real brush stroke over the Wall re-laid it around the stroke (37 -> 31, 3 brush bricks);
+  - 0 page errors.
+- Server 8851 (my own task) stopped.
