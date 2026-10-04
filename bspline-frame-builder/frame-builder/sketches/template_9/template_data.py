@@ -154,10 +154,15 @@ FRAME_SEED_MAP = [
 FRAME_FEATURES = frame_features([b["name"] for b in FRAME_BARS])
 # F8: the app shape MODEL. Fitted from recorded goldens by the i_shape extractor once they exist (LIVE_CHECK.md);
 # until then a PROVISIONAL model of its own (no base template to derive it from, as Template 6): the stem half
-# width 0.45 x hw and the flange height 0.4 x hh (7x9: a 1.4625 in half-stem, 1.7 in flange). The app clamps it
-# to the frame thickness rule (12x6: the flange height is clamped up to the frame's own opening floor there).
+# width 0.45 x hw and the flange height 0.7 x hh (7x9: a 1.4625 in half-stem, 2.975 in flange -- H23 item 79,
+# Fred's own pick, up from the original 0.4 x hh / 1.7 in). The app clamps it to the frame thickness rule --
+# MEASURED (this item): 0.7 draws exactly where the board is roomy enough (7x9, 9x12), and silently clamps
+# DOWN to whatever the board's own opening rule allows where it isn't (12x6: 0.591; 5x7/9x7: 0.654) -- zero
+# defects at every size tried, the SAME existing frameCutProfile clamp-before-draw mechanism this comment's
+# own prior note already described (T6/T9 are the two templates whose DRAWN frame, not just a drag, obeys
+# the frame rule), not a new guard.
 FRAME_SHAPE_EXTRACTOR = "i_shape"
-FRAME_PROVISIONAL_SHAPE = {"stemHalfWidthOfHw": 0.45, "flangeHeightOfHh": 0.4}
+FRAME_PROVISIONAL_SHAPE = {"stemHalfWidthOfHw": 0.45, "flangeHeightOfHh": 0.7}
 
 
 def get_template_logic(ui_data=None):

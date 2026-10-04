@@ -22,7 +22,8 @@ def get_block(ui_data=None):
     The 4 INSIDE corners (a shoulder meeting a stem side) are reflex (270 deg).
 
     Seeds: the 7x9 solve of the app's provisional I Shape (stem half width
-    0.45 x hw = 1.4625 in, flange height 0.4 x hh = 1.7 in; frame-defs
+    0.45 x hw = 1.4625 in, flange height 0.7 x hh = 2.975 in -- H23 item 79,
+    Fred's own pick, up from the original 0.4 x hh = 1.7 in; frame-defs
     shapeModel), as widthIn / heightIn fractions. Each line starts ON its
     corner and ends 0.001 short of the next one (no auto-coincidence before
     the explicit Coincidents of p02_03), matching Template 6's own seed style.
@@ -38,17 +39,17 @@ def get_block(ui_data=None):
     """
     seq = [
         {'ID': 'top_edge',       'Type': 'Line', 'Points': [['-widthIn * 0.464286', 'heightIn * 0.472222'], ['widthIn * 0.464286 - 0.001', 'heightIn * 0.472222']], 'StartID': 'top_edge:S', 'EndID': 'top_edge:E'},
-        {'ID': 'flange_side_R',  'Type': 'Line', 'Points': [['widthIn * 0.464286', 'heightIn * 0.472222'], ['widthIn * 0.464286', 'heightIn * 0.283333 + 0.001']], 'StartID': 'flange_side_R:S', 'EndID': 'flange_side_R:E'},
-        {'ID': 'shoulder_TR',    'Type': 'Line', 'Points': [['widthIn * 0.464286', 'heightIn * 0.283333'], ['widthIn * 0.208928 + 0.001', 'heightIn * 0.283333']], 'StartID': 'shoulder_TR:S', 'EndID': 'shoulder_TR:E'},
-        {'ID': 'stem_side_R',    'Type': 'Line', 'Points': [['widthIn * 0.208928', 'heightIn * 0.283333'], ['widthIn * 0.208928', '-heightIn * 0.283333 + 0.001']], 'StartID': 'stem_side_R:S', 'EndID': 'stem_side_R:E'},
-        {'ID': 'shoulder_BR',    'Type': 'Line', 'Points': [['widthIn * 0.208928', '-heightIn * 0.283333'], ['widthIn * 0.464286 - 0.001', '-heightIn * 0.283333']], 'StartID': 'shoulder_BR:S', 'EndID': 'shoulder_BR:E'},
-        {'ID': 'flange_side_BR', 'Type': 'Line', 'Points': [['widthIn * 0.464286', '-heightIn * 0.283333'], ['widthIn * 0.464286', '-heightIn * 0.472222 + 0.001']], 'StartID': 'flange_side_BR:S', 'EndID': 'flange_side_BR:E'},
+        {'ID': 'flange_side_R',  'Type': 'Line', 'Points': [['widthIn * 0.464286', 'heightIn * 0.472222'], ['widthIn * 0.464286', 'heightIn * 0.141667 + 0.001']], 'StartID': 'flange_side_R:S', 'EndID': 'flange_side_R:E'},
+        {'ID': 'shoulder_TR',    'Type': 'Line', 'Points': [['widthIn * 0.464286', 'heightIn * 0.141667'], ['widthIn * 0.208928 + 0.001', 'heightIn * 0.141667']], 'StartID': 'shoulder_TR:S', 'EndID': 'shoulder_TR:E'},
+        {'ID': 'stem_side_R',    'Type': 'Line', 'Points': [['widthIn * 0.208928', 'heightIn * 0.141667'], ['widthIn * 0.208928', '-heightIn * 0.141667 + 0.001']], 'StartID': 'stem_side_R:S', 'EndID': 'stem_side_R:E'},
+        {'ID': 'shoulder_BR',    'Type': 'Line', 'Points': [['widthIn * 0.208928', '-heightIn * 0.141667'], ['widthIn * 0.464286 - 0.001', '-heightIn * 0.141667']], 'StartID': 'shoulder_BR:S', 'EndID': 'shoulder_BR:E'},
+        {'ID': 'flange_side_BR', 'Type': 'Line', 'Points': [['widthIn * 0.464286', '-heightIn * 0.141667'], ['widthIn * 0.464286', '-heightIn * 0.472222 + 0.001']], 'StartID': 'flange_side_BR:S', 'EndID': 'flange_side_BR:E'},
         {'ID': 'bottom_edge',    'Type': 'Line', 'Points': [['widthIn * 0.464286', '-heightIn * 0.472222'], ['-widthIn * 0.464286 + 0.001', '-heightIn * 0.472222']], 'StartID': 'bottom_edge:S', 'EndID': 'bottom_edge:E'},
-        {'ID': 'flange_side_BL', 'Type': 'Line', 'Points': [['-widthIn * 0.464286', '-heightIn * 0.472222'], ['-widthIn * 0.464286', '-heightIn * 0.283333 - 0.001']], 'StartID': 'flange_side_BL:S', 'EndID': 'flange_side_BL:E'},
-        {'ID': 'shoulder_BL',    'Type': 'Line', 'Points': [['-widthIn * 0.464286', '-heightIn * 0.283333'], ['-widthIn * 0.208928 - 0.001', '-heightIn * 0.283333']], 'StartID': 'shoulder_BL:S', 'EndID': 'shoulder_BL:E'},
-        {'ID': 'stem_side_L',    'Type': 'Line', 'Points': [['-widthIn * 0.208928', '-heightIn * 0.283333'], ['-widthIn * 0.208928', 'heightIn * 0.283333 - 0.001']], 'StartID': 'stem_side_L:S', 'EndID': 'stem_side_L:E'},
-        {'ID': 'shoulder_TL',    'Type': 'Line', 'Points': [['-widthIn * 0.208928', 'heightIn * 0.283333'], ['-widthIn * 0.464286 + 0.001', 'heightIn * 0.283333']], 'StartID': 'shoulder_TL:S', 'EndID': 'shoulder_TL:E'},
-        {'ID': 'flange_side_TL', 'Type': 'Line', 'Points': [['-widthIn * 0.464286', 'heightIn * 0.283333'], ['-widthIn * 0.464286', 'heightIn * 0.472222 - 0.001']], 'StartID': 'flange_side_TL:S', 'EndID': 'flange_side_TL:E'},
+        {'ID': 'flange_side_BL', 'Type': 'Line', 'Points': [['-widthIn * 0.464286', '-heightIn * 0.472222'], ['-widthIn * 0.464286', '-heightIn * 0.141667 - 0.001']], 'StartID': 'flange_side_BL:S', 'EndID': 'flange_side_BL:E'},
+        {'ID': 'shoulder_BL',    'Type': 'Line', 'Points': [['-widthIn * 0.464286', '-heightIn * 0.141667'], ['-widthIn * 0.208928 - 0.001', '-heightIn * 0.141667']], 'StartID': 'shoulder_BL:S', 'EndID': 'shoulder_BL:E'},
+        {'ID': 'stem_side_L',    'Type': 'Line', 'Points': [['-widthIn * 0.208928', '-heightIn * 0.141667'], ['-widthIn * 0.208928', 'heightIn * 0.141667 - 0.001']], 'StartID': 'stem_side_L:S', 'EndID': 'stem_side_L:E'},
+        {'ID': 'shoulder_TL',    'Type': 'Line', 'Points': [['-widthIn * 0.208928', 'heightIn * 0.141667'], ['-widthIn * 0.464286 + 0.001', 'heightIn * 0.141667']], 'StartID': 'shoulder_TL:S', 'EndID': 'shoulder_TL:E'},
+        {'ID': 'flange_side_TL', 'Type': 'Line', 'Points': [['-widthIn * 0.464286', 'heightIn * 0.141667'], ['-widthIn * 0.464286', 'heightIn * 0.472222 - 0.001']], 'StartID': 'flange_side_TL:S', 'EndID': 'flange_side_TL:E'},
     ]
     return {
         'Name': 'Silhouette Loop',

@@ -12233,3 +12233,201 @@ Live: row hidden for Clean, shown for Weathered (grout -> Recessed), Wear 0 vs 1
 by RMS 0.0206 in. Shot shots/seat37/f35item18_wear_slider_sidebar.png.
 CHECKLIST: the amendment asks for a checklist line; NEXT-SESSION-fb-app.md is the advisor's file (worker
 never edits it) -- please add the [F35-item-N] line for the Wear slider.
+
+## F35 item 16 slice 3, turn 191 (seat C = 37): audit C6 -- the Brick Stripe picks a brick STYLE per run
+
+Pulled 5f2c04d (advisor's item 19/20 lines), merged origin/main (clean).
+
+**Before:** the Brick tab's Stripe opened Artwork's colour panel (swatches/presets/lattice text that mean
+nothing for bricks); striped runs cycled a FIXED 2-entry STYLE_CYCLE by position.
+**Now, declared:** editor-brick-tool.js `BRICK_STRIPE_STYLES` (red bricks / white rocks one band / red one
+band / white rocks) + `DEFAULT_STRIPE_STYLE_PICKS` (A red bricks, B white one band, C red one band) and
+`stripeCycleFor(picks, useC)` (2 slots, 3 with the panel's own "Use C"; unknown pick = that slot's
+default). STYLE_CYCLE is gone: the default picks ARE the old cycle, so striped boards look the same.
+`P.brickSettings.stripeStyles` holds the picks (Brush-only key: never pends the Wall/Frame).
+regenerateOwnedBrickElements reads the picks LIVE (editor._brickSettings) -- one setting for every
+striped run, so a pick re-commits (commitEdit) and every run follows at once.
+**Panel:** in the Brick tab the Stripe panel hides the colour swatches/presets/reset, relabels
+"Colours" -> "Brick styles", shows A/B(/C) rows of sample-photo thumbnails (one band marked "="), and
+its hint says "Tap a brush stroke..."; back in Artwork it is the colour panel again (hint restored). New
+ids only (stripeColoursLabel, stripeColorSwatches, stripeBrickStyles, stripeTargetHint); the Artwork
+stripe module is untouched.
+
+**A real bug the live check caught (not the unit tests):** regenerateOwnedBrickElements skips work when a
+fingerprint of its inputs is unchanged ("every input its own output depends on"); the new stripe picks
+were NOT in it, so a pick change was silently skipped. Measured live: B -> red one band left runs 1 and 3
+on set 3; with the cycle ids added to the fingerprint they turn set 1 at once. Not unit-covered (the
+regenerate path needs the real SVG.js sketch layer); the live probe is the proof, run before and after.
+
+Tests: new tests/brick-stripe-styles.test.js (4: default = old cycle; Use C + picks; unknown pick ->
+default; every style a real set+profile); panel +3 (Brick-tab Stripe shows brick slots not swatches, C
+only with Use C, picks highlighted; back in Artwork the colour panel + hint return; a pick saves,
+re-commits once, never re-lays/pends). Against the previous sources 6 fail. Fast tier 61 files, 668
+passed, 0 failed. Live: a scripted brush stroke striped into 4 runs -> sets 1/3/1/3 (default); B = red one
+band -> 1/1/1/1. Shot shots/seat37/f35item16_c6_stripe_brick_styles.png.
+Control matrix (Fred's new rule): asked 88 for the file + format with my 9 new controls and their
+expected {pending, canvas, 3D}; rows to follow once it exists.
+
+## turn 193 (seat C = 37): PRIORITY -- Send dropped ALL art when no Carved component (item 12 regression)
+
+Fred's live Send 16:21: stamp layers=4, none carving -> only Clean sent -> "SVG Stamp Import/Project
+skipped: no Stamped (Carved) component" -> every art sketch dropped. Cause: F35 item 12 (50025a6) sent
+EVERY art-layer sketch to the Carved component and skipped them all without one; the payload gave Python
+no way to tell carving layers from the rest (config was {profile, depth} only).
+**Fix (e9b9acc), declared:** export-flow.js sends `config.carve = isCarvingLayer(l)` per layer and
+`bricks.carve = isCarved(Bricks layer)`. b-spline-gen.py: `_svg_layer_import_plan` records `carves` (absent
+key = real depth, the old assumption); `_assign_sketch_targets` (pure, run by _ordered_svg_layer_import_plan)
+sets each step's `target` 'carved' | 'root' -- a kind-split pattern (incl. its Lattice Boundary, same
+patternId) stays in ONE component, carved if any of its kinds carves, since its kinds project each other
+and share a plane. The handler passes {'carved': _find_stamped_component(group), 'root': the group's own
+component (pre-item-12's exact target)}; _import_all_svg_layers skips ONLY steps whose target is None and
+logs which. _apply_bricks_sketch follows the same rule (carve absent = carving = item 11's behaviour) and
+clears an older 'Bricks' sketch from BOTH homes so toggling carve never leaves a stale copy.
+Tests: new test_sketch_targets.py (10): plan targets (carve/no-carve/depth fallback/pattern grouping both
+ways), the advisor's case (no Stamped + 1 non-carving layer -> 1 root sketch, nothing logged as skipped),
+carving-only skipped, both homes with a Stamped variant, bricks root / Stamped / no-key. 8/10 fail against
+the old b-spline-gen.py (the 2 passing pin preserved behaviour). b-spline-gen pytest 138, frame-builder
+pytest 1287 (+25 skipped), JS export/send 38 -- all passed, 0 failed. The JS payload field itself is not
+unit-covered (the full executeExport needs a live editor + preview); covered by the live run below.
+**Live in Fusion** (holder 37 granted by the advisor, ONE call, fingerprinted scratch doc closed by its own
+handle, worktree module loaded as 'scratch37_bsg', sys.path + sys.modules restored: 0 modules left over,
+4 docs before/after). Note: the scratch doc first lacked widthIn/heightIn parameters and the import failed
+on a PRE-EXISTING eager default in _import_single_layer_svg (`params.get('widthIn', board['widthIn'])`
+evaluates board['widthIn'] even when params has it) -- a real Send's design always has them; added them,
+flagging the latent KeyError rather than changing it here.
+| case | B-Spline Set (root) | Stamped |
+|---|---|---|
+| no Stamped variant: L1 carve off, L2 carve on, Bricks carve off | "Source - L1" (4 curves), "Bricks" (4) | -- (L2 logged "skipped carving sketches only") |
+| Stamped added: L3 carve on, L4 carve off | + "Source - L4" (4) | "Source - L3" (4) |
+**Hidden layer (advisor's extra case):** editor/layers.js's declared truth table makes visibility the master:
+isExported = visible, isCarved = visible && carve. So a HIDDEN layer is not exported at all (no sketch, by
+design of that table), while a VISIBLE layer with carve OFF is exported and not carved -> root (the live L1/L4
+case). If Fred wants hidden layers' art to still arrive as sketches, that is a change to isExported (a
+product decision) -- not made here.
+Holder written back to 'none'.
+
+## turn 195 (seat C = 37): F35 item 20 brush-over-wall + Generate failure keeps bricks + Stripe ONE panel
+
+Merged origin/main first (clean). 88's tools/brick-matrix is not on main yet -> matrix rows owed (listed below).
+
+**Item 20 (Fred / audit C10 option B: the wall flows around a brush stroke).** Engine signature AGREED
+with d3 by DM (T86 item 13, after their big-brick crash): `generateBricks(input)` gets optional
+`input.exclusions = [{polygon:[{x,y}]}]`, board inches; the engine DROPS any wall piece overlapping an
+exclusion (overlap = edges crossing OR either containing a vertex of the other) and will return
+`exclusionsApplied: true`. My side (editor-brick-tool.js): `brushExclusions(editor)` = every brush brick
+on the canvas, passed on every Wall lay; until the engine returns exclusionsApplied, the STUB
+`dropExcludedWallBricks` applies the SAME overlap test (`polygonsOverlap`). A centroid-only stub was tried
+first and MEASURED wrong live: the wall row's centres sat at y 4.38, just outside the brush bricks
+(4.40-4.60), so nothing dropped though they visibly overlapped -- switched to d3's any-overlap rule so the
+stub and the engine agree. Pending (brick-panel.js): the laid key = settings key + `#brush:<footprints>`
+while a Wall is on the canvas (`_brushKey`), and an 'editorCommit' listener re-derives pending, so adding,
+editing or deleting a stroke makes the Wall pending; Generate clears it.
+**Generate failure (advisor).** runBricks' engine call now runs BEFORE anything is cleared, so a throw
+leaves the canvas exactly as it was; `_layBricks` catches it (withLoadingStage is async -- the throw used
+to become a silent unhandled rejection after the clear), shows an error toast "Generate failed -- the
+previous bricks are kept (...)", returns false, and the layout stays pending.
+**Stripe ONE panel in the Brick tab (advisor: declared in the tab/mode registry).** main/editor-tabs.js
+EDITOR_TABS brick gets `modeHosts: { stripe: { content: 'editorStripePanelBody', host:
+'brickStripeSection', panel: 'editorStripePanel' } }`; `applyModeHosts` (run by setEditorTab) moves the
+content into the active tab's host and back to its declared `panel` otherwise -- homes are declared, not
+remembered (a remembered-home Map was tried first and broke on a rebuilt DOM in the test). editor-ui.js
+TOOLBAR_GROUPS.editorStripePanel = stripe mode AND `panelHoldsContent` (the side panel shows only while it
+holds its own settings) -- no tab check in editor-ui. BRICK_TOOLS stripe -> settingsSection
+'brickStripeSection'. Artwork's Stripe unchanged. Still visible under Stripe in the Brick panel: the shared
+rows (Set, Size, Grout...) -- they don't apply to a stripe pick; say if they should hide for Stripe.
+
+Tests: brick-tool-kinds +6 (throw keeps the canvas; brushExclusions; any-overlap with the live numbers;
+centroid-inside drop; exclusions reach the engine + covered piece gone; exclusionsApplied bypasses the
+stub); panel +2 (throw -> error toast + pending kept; stroke add/delete -> pending, Generate clears);
+new editor-tab-mode-hosts.test.js (3). Against the previous sources 8 fail (the 2 passing pin defaults).
+Fast tier 71 files, 770 passed, 0 failed.
+Live (served fb-app, T1 7x9): Wall 193 laid, not pending -> brush stroke across it -> pending -> Generate ->
+185 wall, 0 under the stroke, not pending; Stripe tool in the Brick tab: settings inside the Brick panel,
+side column hidden. Shots shots/seat37/f35item20_{wall_around_stroke,stripe_one_panel}.png.
+**Matrix rows owed (88's format, once tools/brick-matrix is on main):** brush stroke add/delete ->
+{pending: true, canvas: null, threeD: null} with a Wall laid; Generate with a throwing engine ->
+{pending: true (stays), canvas: false (unchanged), toast}.
+Fusion holder: 39 wrote itself in after I released ("self-serve when free") -- protocol question for you.
+
+## turn 197 (seat C = 37): Stripe hides the shared rows; F35 item 21 Large stones; control greying (88's matrix)
+
+**Stripe hides the shared rows (advisor: declared, not an if).** The Brick panel's shared rows are now two
+containers (#brickSharedSet = Set; #brickSharedLayout = Brick size .. Seed). BRICK_TOOLS declares
+`sharedRows: false` on Stripe; syncToolSections hides BRICK_SHARED_SECTIONS for a tool that declares it.
+**Item 21 Large stones** (advisor's checklist line pulled, b37e412). `P.brickSettings.largeStones` 0.5 (in the
+laid key = a layout setting: pending in the editor, Generate lays it). editor-brick-tool.js `wallLayoutFor`
+(a tile2d pattern's own layout, else the set's layout -- White Rocks = 'fieldstone') decides both where the
+slider shows (Wall section, fieldstone only) and whether `input.largeStones` reaches generateBricks. STUB:
+d3 hasn't DM'd the option name yet (T86 item 17); `input.largeStones` is the provisional field, inert until
+the engine reads it -- one line to rename if d3 picks another.
+**Control greying (88's matrix; the advisor had batched it to me).** Pure, import-free
+main/brick-control-requires.js `BRICK_CONTROL_REQUIRES` (88's exact shape; path agreed with 88 -- not
+core/bricks/, which is seat B's engine folder) + `requirementMet`. brick-panel greys each listed control
+(disabled + the reason as tooltip) while unmet: Clumping (both inputs) needs Suppression > 0; Grout depth
+needs Recessed. Re-checked after every commitBrickSetting and on restore. 88's matrix imports the module.
+
+Tests: panel +5 (Stripe hides/Wall shows the shared rows; Large stones row visibility red/white/fieldstone;
+slider pending then laid; Clumping greyed at 0 / enabled > 0; Grout depth greyed for Flush); kinds +2
+(wallLayoutFor; largeStones reaches the engine only for fieldstone); new brick-control-requires.test.js
+(3: no imports, ids exist in the palette, requirementMet forms). Against the previous sources the new
+behaviour tests fail (5 + 2). Fast tier: first run had 2 FAILURES in tests/bricks-fieldstone.test.js (seat
+B's engine test, untouched here) -- they pass 7/7 alone (~6 s each, near the 5 s default: load-dependent
+timeouts); RE-RUN of the full fast tier: 72 files, 780 passed, 0 failed. Flagging the flaky timing to seat B.
+Live (served fb-app): Wall -> shared rows shown, Large stones hidden for Red, shown for White Rocks,
+Clumping disabled at Suppression 0; Stripe -> both shared containers hidden, its own settings shown.
+Shots shots/seat37/f35item21_{stripe_no_shared_rows,large_stones_white_rocks}.png.
+Matrix rows: 88's matrix imports BRICK_CONTROL_REQUIRES; rows for item 20/21 still owed once it is on main.
+**Turn-197 amendment (88's matrix: 56 rows, 51 PASS, 2 FAIL):** (1)+(2) the two greying rules are exactly
+the BRICK_CONTROL_REQUIRES above. (3) number boxes now apply WHILE TYPING for commits that apply at once
+('surface', 'auto'): each keystroke saves, one apply runs NUMBER_BOX_SETTLE_MS (400 ms) after the last
+keystroke (`settleAfterTyping`, in bindSlider's number box and bindGroutField); 'generate' boxes already mark
+pending per keystroke. This supersedes turn 189's "grout depth re-masks only on change". Test (fake timers):
+2 keystrokes -> 0 re-masks until 400 ms after the last -> exactly 1; fails 1/1 without the debounce.
+
+## turn 199 (seat C = 37): the Large stones slider stays HIDDEN until the engine honours it (merge blocker)
+
+Advisor: a slider the engine ignores is a dead control (Fred's complaint; the matrix would fail it). Declared:
+core/bricks/engine.js `ENGINE_OPTIONS` (re-exported from core/bricks/index.js) = the generateBricks input
+options the engine actually reads today -- 'largeStones' (T86 item 17) and 'exclusions' (T86 item 13) are NOT
+in it; seat B adds each name in the change that makes the engine read it (small additive edit to seat B's
+file, d3 told by DM). main/brick-control-requires.js: `requires: { engineOption }` + `hides: true` (hidden,
+not greyed); requirementMet(requires, el, { engineOptions }). The Large stones row shows only for a
+fieldstone wall AND once 'largeStones' is in ENGINE_OPTIONS -- it appears by itself, no UI change later.
+syncControlRequires skips `hides` rules (the row's own sync applies them). Tests: panel -- hidden for White
+Rocks while the engine lacks it, shown (fieldstone only) with a stand-in engine list; requires -- the rule hides
+today, met with the option listed. The hide test fails 1/1 on the previous panel. Fast tier 72 files, 783
+passed, 0 failed.
+**Raised brush (2 modes) -- not started, by design; a plan for the advisor.** Its definition is on lane-b:
+T86 item 10 "GROUT-LINE CUT (Fred: Raised brush mode 2 'grout mode': cuts through bricks to add grout
+joints wherever it's drawn)" -- core op bricksGroutCut, seat B, still OPEN. Mode 1 = today's brush. So a
+mode toggle now would show a mode that does nothing -- exactly what this turn's blocker forbade. Proposed:
+declare the Brush's modes as data (BRUSH_MODES: 'bricks' | 'grout'), the 'grout' entry carrying
+requires: { engineOption: 'groutCut' } (hidden until seat B lists it in ENGINE_OPTIONS with T86 item 10);
+the editor side = a cut element with its own spine (same spine/regenerate machinery as brush strokes)
+applied after layout. Building the 'bricks'-only toggle alone would be a one-option toggle -- skip until
+the engine lands, or build now hidden: your call.
+
+## turn 201 (seat C = 37): the RAISED BRUSH (2 modes, mode 2 hidden until seat B's grout cut)
+
+Declared as a BRICK_TOOLS VARIANT of Brush (advisor): `{ id: 'raisedBrush', variantOf: 'brush',
+settingsSection: 'brickRaisedSection', strokeOverrides: () => ({ levelIn, strokeMode }) }` -- the same
+brickBrush mode and stroke machinery; selectTool arms any `variantOf: 'brush'` the same way and hands the
+editor `_brickStrokeOverrides` (a FUNCTION, read at stroke finish, so a Level changed after picking the tool
+still applies; the plain Brush clears it). brickBrushHandler.finish merges the overrides into THIS stroke's
+frozen settings snapshot. Settings `raisedLevelIn` (0.0625 = 1/16 in, Fred's accent default) and
+`raisedMode` ('bricks' | 'grout') -- brush-only keys (never pend the Wall).
+Mode 1: `bricksForStroke` (new, exported; regenerateOwnedBrickElements uses it) lifts every brick of a stroke
+by its own `levelIn` (heightOffset -> the height mask), per stroke, not per kind.
+Mode 2 GROUT CUT: seat B's bricksGroutCut (T86 item 10) does not exist yet -> STUB: a grout-mode stroke keeps
+its spine and lays no bricks; its mode button is hidden by BRICK_CONTROL_REQUIRES
+{ engineOption: 'groutCut' }, hides: true (appears by itself when seat B lists 'groutCut' in ENGINE_OPTIONS);
+setRaisedMode refuses a hidden mode. Placement: the mode picker (rendered from RAISED_BRUSH_MODES) and Level
+live in the Raised brush's OWN section.
+Tests: new tests/brick-raised-brush.test.js (3: plain unchanged; Level lifts every brick by exactly 0.0625;
+grout lays none); panel +4 (button arms brickBrush with live overrides incl. a later Level change; plain Brush
+clears them; grout hidden/refused until the engine lists groutCut, then pickable; never pending). The
+requires-data test now accepts ids main/brick-panel.js renders from a declared prefix. 7 new tests fail on the
+previous sources. Fast tier 73 files, 790 passed, 0 failed.
+Live (served fb-app): a plain and a Raised stroke, 4 bricks each; mean height offset -0.0057 vs +0.0568 in
+(difference 0.0625 = the Level); grout mode hidden; section shown. Shot shots/seat37/f35item16_raised_brush.png.
+Matrix: tools/brick-matrix is still not on origin/main -> rows owed (item 20, 21, Raised brush), listed for 88.

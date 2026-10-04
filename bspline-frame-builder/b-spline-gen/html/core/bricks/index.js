@@ -12,7 +12,7 @@ export { bricksContourBands, bandFrameAt } from './contour-bands.js';
 // internally, now exported directly too (sequence/forcedFStart params included) for a consumer that
 // needs one row's own exact geometry without the whole band/depth-stacking wrapper.
 export { ribbonPieces } from './primitive-ribbon.js';
-export { generateBricks, buildSpatialIndex, sampleHeight } from './engine.js';
+export { generateBricks, buildSpatialIndex, sampleHeight, ENGINE_OPTIONS } from './engine.js';
 export { brickTopHeight } from './height-profile.js';
 export { PIECE_CATALOGUE, BRICK_SETS, FRAME_PRESETS, BRUSH_PRESETS, brickSetById, enabledPieces, scaledSet } from './library.js';
 export { pointInPolygon, polygonCentroid, rectPolygon, offsetPathInward, inwardSignFor, clipToHalfPlane, roundPolygonCorners } from './geometry.js';

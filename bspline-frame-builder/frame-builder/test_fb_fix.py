@@ -53,11 +53,9 @@ class TestFrameFit:
     # of the clean 0 the rule (correctly) predicts for "too small" -- a genuine, already-flagged
     # Fusion construction bug (Template 3 has no "too small" guard the other templates evidently
     # have), not a fault in `frame_fit`'s own rule. See LIVE-RESULTS-ranchy.md item 1.
-    # H23 item 13 (Template 9, 12x6): the golden is a known-broken build -- the frame
-    # enclosure's own inner-offset miter resolution fails at 2 of 12 corners when the
-    # flange height shrinks relative to frame_thickness (66% ratio at 12x6), so NO bars
-    # get built even though `frame_fit`'s rule correctly says this board fits. See
-    # LIVE-RESULTS-ranchy.md item 13 and KNOWN_BROKEN_BUILD in frame-parity-app.test.js.
+    # H23 item 13 (Template 9, 12x6): FIXED by H23 item 79 (raising the default flangeHeight to
+    # 0.7 changed which of frameParamRanges' own two bounds 12x6 clamps against) -- removed from
+    # this set, 12/12 bars now, matching `frame_fit`'s own rule with no exception needed.
     # H23 item 13 (Template 10, 7x9/6x9): FIXED by H23 items 14/15/17, re-recorded live by item
     # 19 -- removed from this set, 4/4 bars now, matching `frame_fit`'s own rule with no
     # exception needed. (12x6 never needed an exception here either: its own build gets some
@@ -67,7 +65,7 @@ class TestFrameFit:
     # 5.51x1.97 above -- 4 named bodies, 3 of them near-zero slivers, top/bottom bars missing entirely (see
     # test_frame_parity_goldens.py's own _DEGENERATE_BAR_COUNT_OVERRIDE for the measured detail).
     _KNOWN_BROKEN_GOLDENS = {
-        "template_3_5.51x1.97.json", "template_9_12x6.json", "template_13_5.51x1.97.json",
+        "template_3_5.51x1.97.json", "template_13_5.51x1.97.json",
     }
 
     @pytest.mark.parametrize("path", _GOLDENS, ids=os.path.basename)

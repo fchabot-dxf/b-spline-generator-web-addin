@@ -112,6 +112,13 @@ export const DEFAULT = {
       // F35 item 18: the Wear slider (0..1) of a style that declares `wear` (Weathered); 0.5 = the
       // declared default (edge wear 0.02 in, pit gain 2.5). Read by the height mask only.
       surfaceWear: 0.5,
+      // F35 item 21: the fieldstone wall's share of LARGE stones, 0..1 (d3's engine option, T86 item 17).
+      // A layout setting (it is in the laid key). A saved session without it reads 0.5.
+      largeStones: 0.5,
+      // F35 item 16 (turn 201): the RAISED BRUSH -- its strokes' Level (laid proud, default 1/16 in) and its
+      // mode ('bricks' | 'grout', main/brick-panel.js RAISED_BRUSH_MODES). Brush-only: frozen per stroke.
+      raisedLevelIn: 0.0625,
+      raisedMode: 'bricks',
       // F35 item 16 (advisor turn 189): the Frame tool's OFFSET FROM FRAME, like the Shape Lattice's --
       // ON = the bands follow the frame's outer edge offset by `distance` (+ inward, - outward), default ON
       // at 0; OFF = free placement, the bands follow the board's own outline instead of the frame.
@@ -152,6 +159,9 @@ export const DEFAULT = {
       // centreline) is the closest match to the OLD orientation-only brush's own default look, so an
       // existing saved session's brush strokes don't visibly change on load.
       brushBandPreset: 'stretcher_1',
+      // Audit C6: the Stripe tool's A/B/C brick-style picks (editor-brick-tool.js BRICK_STRIPE_STYLES ids);
+      // the default A/B is the old fixed cycle, so existing striped strokes look the same.
+      stripeStyles: ['red_bricks', 'white_continuous', 'red_continuous'],
     },
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.

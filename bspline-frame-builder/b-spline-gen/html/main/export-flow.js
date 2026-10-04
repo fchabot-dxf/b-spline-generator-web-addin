@@ -581,7 +581,9 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
             const manifest = manifests[i];
             return {
                 index: i + 1,
-                config: { profile: layersToExport[i].profile, depth: layersToExport[i].depth },
+                // turn 193 (Fred): does this layer CARVE? The add-in puts a carving layer's sketch in the
+                // Carved component and every other exported layer's sketch on root (b-spline-gen.py).
+                config: { profile: layersToExport[i].profile, depth: layersToExport[i].depth, carve: isCarvingLayer(layersToExport[i]) },
                 svg: await bakeSvgForCarving(r.svg, P.widthIn, P.heightIn, 96),
                 ...(manifest ? { sketchManifest: manifest } : {}),
             };
@@ -642,7 +644,12 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
     if (!isAppend) {
         try {
             const raw = await _bricksLayerSvg(editor);
-            bricks = raw ? { enabled: true, svg: await bakeSvgForCarving(raw, P.widthIn, P.heightIn, 96) } : { enabled: false };
+            // turn 193: `carve` -- the Bricks layer's sketch goes in the Carved component only when the
+            // layer carves; otherwise on root, like every other non-carving art layer
+            const bricksLayer = editor && Array.isArray(editor._layers) ? editor._layers.find((l) => l && l.name === BRICKS_LAYER_NAME) : null;
+            bricks = raw
+                ? { enabled: true, carve: !!(bricksLayer && isCarved(bricksLayer)), svg: await bakeSvgForCarving(raw, P.widthIn, P.heightIn, 96) }
+                : { enabled: false };
         } catch (e) {
             if (typeof fusLog === 'function') fusLog('[EXPORT] Bricks SVG failed: ' + (e && e.message));
         }

@@ -14,6 +14,15 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js'
 });
 // A usable frame for the Frame tool (resolveFrameGeom needs a frame context + a valid silhouette).
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/toast.js', () => ({ showToast: vi.fn() }));
+// Audit C6: a Stripe style pick re-commits through commitEdit (the editor's real commit pipeline is not
+// under test here).
+vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js', () => ({ commitEdit: vi.fn() }));
+// turn 199: the engine's honoured-option list, mutable so a test can stand in for "T86 item 17 landed"
+const engineOpts = vi.hoisted(() => ({ extra: [] }));
+vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, get ENGINE_OPTIONS() { return [...actual.ENGINE_OPTIONS, ...engineOpts.extra]; } };
+});
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, frameContext: vi.fn(() => ({})) };
@@ -25,7 +34,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 
 import {
   initBrickPanel, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
-  setBrickTopMode, setSurfaceStyle,
+  setBrickTopMode, setSurfaceStyle, setStripeStyle, setRaisedMode,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, runBricksPreview, buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
@@ -57,6 +66,12 @@ const FIXTURE = `
   <div id="brickSurfaceStyleToggle"></div>
   <div id="brickSurfaceWearRow" style="display:none;"><input type="range" id="brickSurfaceWearSlider" min="0" max="1" step="0.05"><input id="brickSurfaceWear"></div>
   <div id="brickQuickSettings"></div>
+  <div id="brickRaisedSection"><div id="brickRaisedModeToggle"></div><input id="brickRaisedLevel"></div>
+  <div id="brickSharedSet"></div><div id="brickSharedLayout"></div>
+  <div id="brickLargeStonesRow" style="display:none;"><input type="range" id="brickLargeStonesSlider" min="0" max="1" step="0.05"><input id="brickLargeStones"></div>
+  <span id="stripeColoursLabel">Colours</span><input type="checkbox" id="stripeThree"><button id="stripeColorsReset"></button>
+  <div id="stripeColorPresets"></div><div id="stripeColorSwatches"></div><div id="stripeBrickStyles" style="display:none;"></div>
+  <div id="stripeTargetHint">Tap a rail, a contour segment or a line.</div>
   <input type="checkbox" id="brickFrameOffsetOn" checked><input id="brickFrameOffsetDistance" value="0">
   <input id="brickLevel_wall" value="0"><input id="brickLevel_frame" value="0">
   <input id="brickReliefHeightSlider" type="range" min="0" max="1" step="0.001"><input id="brickReliefHeight">
@@ -564,5 +579,216 @@ describe("turn 189 (Fred): the Wear slider shows only for Weathered, saves on dr
     expect(notify).toHaveBeenCalledTimes(1);
     expect(runBricks).not.toHaveBeenCalled();
     expect(pending()).toBe(false);
+  });
+});
+
+describe('audit C6: the Brick tab Stripe picks a brick STYLE per run (A/B/C thumbnails)', () => {
+  let commit;
+  beforeEach(async () => {
+    P.brickSettings.stripeStyles = ['red_bricks', 'white_continuous', 'red_continuous'];
+    setup('brush');
+    commit = (await import('../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js')).commitEdit;
+    commit.mockClear();
+  });
+  const visible = (id) => $(id).style.display !== 'none';
+
+  it('in the Brick tab, Stripe shows brick-style slots (A, B; C with Use C) instead of colour swatches', async () => {
+    const { setEditorTab } = await import('../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js');
+    setEditorTab('brick');
+    $('brickTool_stripe').click();
+    expect(visible('stripeBrickStyles')).toBe(true);
+    expect(visible('stripeColorSwatches')).toBe(false);
+    expect(visible('stripeColorPresets')).toBe(false);
+    expect($('stripeColoursLabel').textContent).toBe('Brick styles');
+    expect($('stripeTargetHint').textContent).toMatch(/brush stroke/);
+    expect(visible('stripeBrickSlot_A')).toBe(true);
+    expect(visible('stripeBrickSlot_C')).toBe(false);
+    $('stripeThree').checked = true;
+    $('stripeThree').dispatchEvent(new Event('change'));
+    expect(visible('stripeBrickSlot_C')).toBe(true);
+    expect($('stripeBrickStyle_A_red_bricks').classList.contains('active')).toBe(true);
+    expect($('stripeBrickStyle_B_white_continuous').classList.contains('active')).toBe(true);
+  });
+  it('back in Artwork, the panel is the colour panel again (its own hint restored)', async () => {
+    const { setEditorTab } = await import('../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js');
+    setEditorTab('brick');
+    $('brickTool_stripe').click();
+    setEditorTab('artwork');
+    expect(visible('stripeBrickStyles')).toBe(false);
+    expect(visible('stripeColorSwatches')).toBe(true);
+    expect($('stripeColoursLabel').textContent).toBe('Colours');
+    expect($('stripeTargetHint').textContent).toBe('Tap a rail, a contour segment or a line.');
+  });
+  it('a pick is saved, re-commits once (every striped run follows), never re-lays or pends the Wall', () => {
+    $('stripeBrickStyle_B_white_bricks').click();
+    expect(P.brickSettings.stripeStyles).toEqual(['red_bricks', 'white_bricks', 'red_continuous']);
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(window.svgEditor._brickSettings).toBe(P.brickSettings);
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(pending()).toBe(false);
+    setStripeStyle(0, 'nope');
+    expect(P.brickSettings.stripeStyles[0]).toBe('red_bricks');
+  });
+});
+
+describe('turn 195: Generate failure, and item 20 (a brush stroke change makes the Wall pending)', () => {
+  beforeEach(() => setup('wall'));
+  it('an engine throw: error toast, Generate reports failure, the layout stays pending', () => {
+    $('brickPattern_herringbone').click();
+    runBricks.mockImplementationOnce(() => { throw new Error('engine boom'); });
+    $('brickGenerate').click();
+    expect(showToast).toHaveBeenCalledTimes(1);
+    expect(showToast.mock.calls[0][1]).toBe('error');
+    expect(showToast.mock.calls[0][0]).toMatch(/previous bricks are kept/);
+    expect(pending()).toBe(true);
+  });
+  it('with a Wall laid, adding a brush stroke (an editor commit) marks it pending; Generate clears it', () => {
+    const node = document.createElement('div');
+    const wall = document.createElement('polygon');
+    wall.setAttribute('data-brick-gen', '1'); wall.setAttribute('data-brick', 'wall');
+    node.appendChild(wall);
+    window.svgEditor._sketchLayer = { node, children: () => ({ toArray: () => [] }) };
+    $('brickGenerate').click(); // lays with the wall present: its key now covers the (empty) brush set
+    expect(pending()).toBe(false);
+    const stroke = document.createElement('polygon');
+    stroke.setAttribute('data-brick-gen', '1'); stroke.setAttribute('data-brick', 'brush'); stroke.setAttribute('points', '1,1 2,1 2,1.3 1,1.3');
+    node.appendChild(stroke);
+    document.dispatchEvent(new CustomEvent('editorCommit', { detail: { editor: window.svgEditor } }));
+    expect(pending()).toBe(true);
+    $('brickGenerate').click();
+    expect(pending()).toBe(false);
+    stroke.remove(); // deleting the stroke: pending again
+    document.dispatchEvent(new CustomEvent('editorCommit', { detail: { editor: window.svgEditor } }));
+    expect(pending()).toBe(true);
+  });
+});
+
+describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fieldstone walls only)', () => {
+  const shown = (id) => $(id).style.display !== 'none';
+  beforeEach(() => {
+    P.brickSettings.largeStones = 0.5;
+    setup('wall');
+  });
+  it('Stripe declares sharedRows: false -> Set and Brick size..Seed hide; back on Wall they show', () => {
+    expect(shown('brickSharedSet')).toBe(true);
+    $('brickTool_stripe').click();
+    expect(shown('brickSharedSet')).toBe(false);
+    expect(shown('brickSharedLayout')).toBe(false);
+    $('brickTool_wall').click();
+    expect(shown('brickSharedSet')).toBe(true);
+    expect(shown('brickSharedLayout')).toBe(true);
+  });
+  it('turn 199: hidden while the engine does not honour largeStones, even for a fieldstone wall', () => {
+    engineOpts.extra = [];
+    $('brickSetWhite').click();
+    expect(shown('brickLargeStonesRow')).toBe(false);
+  });
+  it('the Large stones row shows only for a fieldstone wall (White Rocks, or the Fieldstone pattern)', () => {
+    engineOpts.extra = ['largeStones']; // the engine honours it (T86 item 17)
+    $('brickSetRed').click();
+    expect(shown('brickLargeStonesRow')).toBe(false); // red brick, stretcher
+    $('brickSetWhite').click();
+    expect(shown('brickLargeStonesRow')).toBe(true);
+    $('brickSetRed').click();
+    expect(shown('brickLargeStonesRow')).toBe(false);
+    $('brickPattern_fieldstone').click();
+    expect(shown('brickLargeStonesRow')).toBe(true);
+    engineOpts.extra = [];
+  });
+  it('a layout setting: the slider marks pending, Generate lays with it', () => {
+    $('brickPattern_fieldstone').click();
+    $('brickGenerate').click();
+    runBricks.mockClear();
+    fire('brickLargeStonesSlider', 0.8, 'input');
+    fire('brickLargeStonesSlider', 0.8, 'change');
+    expect(P.brickSettings.largeStones).toBe(0.8);
+    expectPendingThenGenerate((c) => expect(c[1].largeStones).toBe(0.8));
+  });
+});
+
+describe("audit (88's matrix): controls grey out while their declared requirement is unmet", () => {
+  beforeEach(() => {
+    P.brickSettings.suppression = 0;
+    P.brickSettings.grout.profile = 'flush';
+    setup('wall');
+  });
+  it('Clumping (both inputs) is disabled at Suppression 0, with the reason; Suppression > 0 enables it', () => {
+    expect($('brickClumpingSlider').disabled).toBe(true);
+    expect($('brickClumping').disabled).toBe(true);
+    expect($('brickClumping').title).toMatch(/Suppression/);
+    fire('brickSuppressionSlider', 0.3, 'input');
+    fire('brickSuppressionSlider', 0.3, 'change');
+    expect($('brickClumpingSlider').disabled).toBe(false);
+    expect($('brickClumping').title).toBe('');
+  });
+  it('Grout depth is disabled while Flush; Recessed enables it', () => {
+    window.svgEditor._notifyChange = vi.fn();
+    expect($('brickGroutDepth').disabled).toBe(true);
+    $('brickBtnGroutRecessed').click();
+    expect($('brickGroutDepth').disabled).toBe(false);
+    $('brickBtnGroutFlush').click();
+    expect($('brickGroutDepth').disabled).toBe(true);
+  });
+});
+
+describe('turn 197 (88): a number box applies while typing, once the typing pauses', () => {
+  afterEach(() => vi.useRealTimers());
+  it('Grout depth (3D-only): each keystroke saves; ONE re-mask 400 ms after the last one', () => {
+    setup('wall');
+    vi.useFakeTimers();
+    const notify = vi.fn();
+    window.svgEditor._notifyChange = notify;
+    P.brickSettings.grout.profile = 'recessed';
+    fire('brickGroutDepth', 0.06, 'input');
+    vi.advanceTimersByTime(200);
+    fire('brickGroutDepth', 0.07, 'input');
+    expect(P.brickSettings.grout.depthIn).toBe(0.07);
+    expect(notify).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(399);
+    expect(notify).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(runBricks).not.toHaveBeenCalled();
+  });
+});
+
+describe('turn 201: the Raised brush (a Brush variant; Level + modes in its own section)', () => {
+  beforeEach(() => {
+    P.brickSettings.raisedLevelIn = 0.0625;
+    P.brickSettings.raisedMode = 'bricks';
+    engineOpts.extra = [];
+    setup('wall');
+    window.svgEditor.setMode = vi.fn();
+  });
+  it('its own tool button; picking it arms the brush mode with live stroke overrides (Level + mode)', () => {
+    $('brickTool_raisedBrush').click();
+    expect(window.svgEditor.setMode).toHaveBeenCalledWith('brickBrush');
+    expect(window.svgEditor._brickSettings).toBe(P.brickSettings);
+    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ levelIn: 0.0625, strokeMode: 'bricks' });
+    fire('brickRaisedLevel', 0.125, 'input'); // changed AFTER picking the tool: the next stroke still gets it
+    expect(window.svgEditor._brickStrokeOverrides().levelIn).toBe(0.125);
+    expect($('brickRaisedSection').style.display).not.toBe('none');
+  });
+  it('the plain Brush clears the overrides', () => {
+    $('brickTool_raisedBrush').click();
+    $('brickTool_brush').click();
+    expect(window.svgEditor._brickStrokeOverrides).toBe(null);
+  });
+  it('Grout mode is hidden until the engine lists groutCut, then pickable', () => {
+    $('brickTool_raisedBrush').click();
+    expect($('brickRaisedMode_grout').style.display).toBe('none');
+    setRaisedMode('grout');
+    expect(P.brickSettings.raisedMode).toBe('bricks'); // refused while hidden
+    engineOpts.extra = ['groutCut'];
+    $('brickTool_wall').click(); $('brickTool_raisedBrush').click();
+    setRaisedMode('grout');
+    expect(P.brickSettings.raisedMode).toBe('grout');
+    engineOpts.extra = [];
+  });
+  it('Raised brush settings never make the Wall pending', () => {
+    $('brickTool_raisedBrush').click();
+    fire('brickRaisedLevel', 0.1, 'input');
+    expect(pending()).toBe(false);
+    expect(runBricks).not.toHaveBeenCalled();
   });
 });

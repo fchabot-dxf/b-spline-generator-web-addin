@@ -1,11 +1,192 @@
 {
-  "bars": {},
+  "bars": {
+    "frame_bottom": {
+      "bbox": {
+        "max": [
+          5.75,
+          -2.0,
+          0.0
+        ],
+        "min": [
+          -5.75,
+          -2.75,
+          -1.0
+        ]
+      },
+      "volume": 8.0625
+    },
+    "frame_flange_BL": {
+      "bbox": {
+        "max": [
+          -5.0,
+          -0.76706,
+          0.0
+        ],
+        "min": [
+          -5.75,
+          -2.75,
+          -1.0
+        ]
+      },
+      "volume": 0.9247
+    },
+    "frame_flange_BR": {
+      "bbox": {
+        "max": [
+          5.75,
+          -0.76706,
+          0.0
+        ],
+        "min": [
+          5.0,
+          -2.75,
+          -1.0
+        ]
+      },
+      "volume": 0.9247
+    },
+    "frame_flange_TL": {
+      "bbox": {
+        "max": [
+          -5.0,
+          2.75,
+          0.0
+        ],
+        "min": [
+          -5.75,
+          0.76706,
+          -1.0
+        ]
+      },
+      "volume": 0.9247
+    },
+    "frame_flange_TR": {
+      "bbox": {
+        "max": [
+          5.75,
+          2.75,
+          0.0
+        ],
+        "min": [
+          5.0,
+          0.76706,
+          -1.0
+        ]
+      },
+      "volume": 0.9247
+    },
+    "frame_shoulder_BL": {
+      "bbox": {
+        "max": [
+          -1.57857,
+          -0.76706,
+          0.0
+        ],
+        "min": [
+          -5.75,
+          -1.51706,
+          -1.0
+        ]
+      },
+      "volume": 2.56607
+    },
+    "frame_shoulder_BR": {
+      "bbox": {
+        "max": [
+          5.75,
+          -0.76706,
+          0.0
+        ],
+        "min": [
+          1.57857,
+          -1.51706,
+          -1.0
+        ]
+      },
+      "volume": 2.56607
+    },
+    "frame_shoulder_TL": {
+      "bbox": {
+        "max": [
+          -1.57857,
+          1.51706,
+          0.0
+        ],
+        "min": [
+          -5.75,
+          0.76706,
+          -1.0
+        ]
+      },
+      "volume": 2.56607
+    },
+    "frame_shoulder_TR": {
+      "bbox": {
+        "max": [
+          5.75,
+          1.51706,
+          0.0
+        ],
+        "min": [
+          1.57857,
+          0.76706,
+          -1.0
+        ]
+      },
+      "volume": 2.56607
+    },
+    "frame_stem_left": {
+      "bbox": {
+        "max": [
+          -1.57857,
+          1.51706,
+          0.0
+        ],
+        "min": [
+          -2.32857,
+          -1.51706,
+          -1.0
+        ]
+      },
+      "volume": 1.7131
+    },
+    "frame_stem_right": {
+      "bbox": {
+        "max": [
+          2.32857,
+          1.51706,
+          0.0
+        ],
+        "min": [
+          1.57857,
+          -1.51706,
+          -1.0
+        ]
+      },
+      "volume": 1.7131
+    },
+    "frame_top": {
+      "bbox": {
+        "max": [
+          5.75,
+          2.75,
+          0.0
+        ],
+        "min": [
+          -5.75,
+          2.0,
+          -1.0
+        ]
+      },
+      "volume": 8.0625
+    }
+  },
   "meta": {
     "core": "flat box 12x6x0.75 in, underside z=0",
     "frame_height_offset": "-1 in",
     "frame_thickness": "template default (0.75 in)",
     "heightIn": 6,
-    "recorded": "2026-09-30",
+    "recorded": "2026-10-04",
     "recorder": "tools/repro/record_frame_parity.py",
     "template": "template_9",
     "timelineHealthy": true,
@@ -25,7 +206,7 @@
         0.0
       ]
     },
-    "volume": 30.83952
+    "volume": 39.56413
   },
   "sketch2_shape_outline": {
     "bottom_edge": {
@@ -44,7 +225,7 @@
       "construction": false,
       "end": [
         -5.75,
-        -1.61706
+        -0.76706
       ],
       "start": [
         -5.75,
@@ -60,7 +241,7 @@
       ],
       "start": [
         5.75,
-        -1.61706
+        -0.76706
       ],
       "type": "line"
     },
@@ -68,7 +249,7 @@
       "construction": false,
       "end": [
         5.75,
-        1.61706
+        0.76706
       ],
       "start": [
         5.75,
@@ -84,7 +265,7 @@
       ],
       "start": [
         -5.75,
-        1.61706
+        0.76706
       ],
       "type": "line"
     },
@@ -92,11 +273,11 @@
       "construction": false,
       "end": [
         -2.32857,
-        -1.61706
+        -0.76706
       ],
       "start": [
         -5.75,
-        -1.61706
+        -0.76706
       ],
       "type": "line"
     },
@@ -104,11 +285,11 @@
       "construction": false,
       "end": [
         5.75,
-        -1.61706
+        -0.76706
       ],
       "start": [
         2.32857,
-        -1.61706
+        -0.76706
       ],
       "type": "line"
     },
@@ -116,11 +297,11 @@
       "construction": false,
       "end": [
         -5.75,
-        1.61706
+        0.76706
       ],
       "start": [
         -2.32857,
-        1.61706
+        0.76706
       ],
       "type": "line"
     },
@@ -128,11 +309,11 @@
       "construction": false,
       "end": [
         2.32857,
-        1.61706
+        0.76706
       ],
       "start": [
         5.75,
-        1.61706
+        0.76706
       ],
       "type": "line"
     },
@@ -140,11 +321,11 @@
       "construction": false,
       "end": [
         -2.32857,
-        1.61706
+        0.76706
       ],
       "start": [
         -2.32857,
-        -1.61706
+        -0.76706
       ],
       "type": "line"
     },
@@ -152,11 +333,11 @@
       "construction": false,
       "end": [
         2.32857,
-        -1.61706
+        -0.76706
       ],
       "start": [
         2.32857,
-        1.61706
+        0.76706
       ],
       "type": "line"
     },
@@ -177,12 +358,108 @@
     "inner_proj_bottom_edge": {
       "construction": false,
       "end": [
-        -1.57857,
+        -5.0,
         -2.0
       ],
       "start": [
-        1.57857,
+        5.0,
         -2.0
+      ],
+      "type": "line"
+    },
+    "inner_proj_flange_side_BL": {
+      "construction": false,
+      "end": [
+        -5.0,
+        -1.51706
+      ],
+      "start": [
+        -5.0,
+        -2.0
+      ],
+      "type": "line"
+    },
+    "inner_proj_flange_side_BR": {
+      "construction": false,
+      "end": [
+        5.0,
+        -2.0
+      ],
+      "start": [
+        5.0,
+        -1.51706
+      ],
+      "type": "line"
+    },
+    "inner_proj_flange_side_R": {
+      "construction": false,
+      "end": [
+        5.0,
+        1.51706
+      ],
+      "start": [
+        5.0,
+        2.0
+      ],
+      "type": "line"
+    },
+    "inner_proj_flange_side_TL": {
+      "construction": false,
+      "end": [
+        -5.0,
+        2.0
+      ],
+      "start": [
+        -5.0,
+        1.51706
+      ],
+      "type": "line"
+    },
+    "inner_proj_shoulder_BL": {
+      "construction": false,
+      "end": [
+        -1.57857,
+        -1.51706
+      ],
+      "start": [
+        -5.0,
+        -1.51706
+      ],
+      "type": "line"
+    },
+    "inner_proj_shoulder_BR": {
+      "construction": false,
+      "end": [
+        5.0,
+        -1.51706
+      ],
+      "start": [
+        1.57857,
+        -1.51706
+      ],
+      "type": "line"
+    },
+    "inner_proj_shoulder_TL": {
+      "construction": false,
+      "end": [
+        -5.0,
+        1.51706
+      ],
+      "start": [
+        -1.57857,
+        1.51706
+      ],
+      "type": "line"
+    },
+    "inner_proj_shoulder_TR": {
+      "construction": false,
+      "end": [
+        1.57857,
+        1.51706
+      ],
+      "start": [
+        5.0,
+        1.51706
       ],
       "type": "line"
     },
@@ -190,11 +467,11 @@
       "construction": false,
       "end": [
         -1.57857,
-        2.0
+        1.51706
       ],
       "start": [
         -1.57857,
-        -2.0
+        -1.51706
       ],
       "type": "line"
     },
@@ -202,22 +479,22 @@
       "construction": false,
       "end": [
         1.57857,
-        -2.0
+        -1.51706
       ],
       "start": [
         1.57857,
-        2.0
+        1.51706
       ],
       "type": "line"
     },
     "inner_proj_top_edge": {
       "construction": false,
       "end": [
-        1.57857,
+        5.0,
         2.0
       ],
       "start": [
-        -1.57857,
+        -5.0,
         2.0
       ],
       "type": "line"
@@ -225,7 +502,7 @@
     "miter-proj_bottom_edge:S_inner_proj_bottom_edge:S": {
       "construction": false,
       "end": [
-        1.57857,
+        5.0,
         -2.0
       ],
       "start": [
@@ -234,15 +511,111 @@
       ],
       "type": "line"
     },
+    "miter-proj_flange_side_BL:S_inner_proj_flange_side_BL:S": {
+      "construction": false,
+      "end": [
+        -5.0,
+        -2.0
+      ],
+      "start": [
+        -5.75,
+        -2.75
+      ],
+      "type": "line"
+    },
+    "miter-proj_flange_side_BR:S_inner_proj_flange_side_BR:S": {
+      "construction": false,
+      "end": [
+        5.0,
+        -1.51706
+      ],
+      "start": [
+        5.75,
+        -0.76706
+      ],
+      "type": "line"
+    },
+    "miter-proj_flange_side_R:S_inner_proj_flange_side_R:S": {
+      "construction": false,
+      "end": [
+        5.0,
+        2.0
+      ],
+      "start": [
+        5.75,
+        2.75
+      ],
+      "type": "line"
+    },
+    "miter-proj_flange_side_TL:S_inner_proj_flange_side_TL:S": {
+      "construction": false,
+      "end": [
+        -5.0,
+        1.51706
+      ],
+      "start": [
+        -5.75,
+        0.76706
+      ],
+      "type": "line"
+    },
+    "miter-proj_shoulder_BL:S_inner_proj_shoulder_BL:S": {
+      "construction": false,
+      "end": [
+        -5.0,
+        -1.51706
+      ],
+      "start": [
+        -5.75,
+        -0.76706
+      ],
+      "type": "line"
+    },
+    "miter-proj_shoulder_BR:S_inner_proj_shoulder_BR:S": {
+      "construction": false,
+      "end": [
+        1.57857,
+        -1.51706
+      ],
+      "start": [
+        2.32857,
+        -0.76706
+      ],
+      "type": "line"
+    },
+    "miter-proj_shoulder_TL:S_inner_proj_shoulder_TL:S": {
+      "construction": false,
+      "end": [
+        -1.57857,
+        1.51706
+      ],
+      "start": [
+        -2.32857,
+        0.76706
+      ],
+      "type": "line"
+    },
+    "miter-proj_shoulder_TR:S_inner_proj_shoulder_TR:S": {
+      "construction": false,
+      "end": [
+        5.0,
+        1.51706
+      ],
+      "start": [
+        5.75,
+        0.76706
+      ],
+      "type": "line"
+    },
     "miter-proj_stem_side_L:S_inner_proj_stem_side_L:S": {
       "construction": false,
       "end": [
         -1.57857,
-        -2.0
+        -1.51706
       ],
       "start": [
         -2.32857,
-        -1.61706
+        -0.76706
       ],
       "type": "line"
     },
@@ -250,18 +623,18 @@
       "construction": false,
       "end": [
         1.57857,
-        2.0
+        1.51706
       ],
       "start": [
         2.32857,
-        1.61706
+        0.76706
       ],
       "type": "line"
     },
     "miter-proj_top_edge:S_inner_proj_top_edge:S": {
       "construction": false,
       "end": [
-        -1.57857,
+        -5.0,
         2.0
       ],
       "start": [
@@ -286,7 +659,7 @@
       "construction": false,
       "end": [
         -5.75,
-        -1.61706
+        -0.76706
       ],
       "start": [
         -5.75,
@@ -302,7 +675,7 @@
       ],
       "start": [
         5.75,
-        -1.61706
+        -0.76706
       ],
       "type": "line"
     },
@@ -310,7 +683,7 @@
       "construction": false,
       "end": [
         5.75,
-        1.61706
+        0.76706
       ],
       "start": [
         5.75,
@@ -326,7 +699,7 @@
       ],
       "start": [
         -5.75,
-        1.61706
+        0.76706
       ],
       "type": "line"
     },
@@ -334,11 +707,11 @@
       "construction": false,
       "end": [
         -2.32857,
-        -1.61706
+        -0.76706
       ],
       "start": [
         -5.75,
-        -1.61706
+        -0.76706
       ],
       "type": "line"
     },
@@ -346,11 +719,11 @@
       "construction": false,
       "end": [
         5.75,
-        -1.61706
+        -0.76706
       ],
       "start": [
         2.32857,
-        -1.61706
+        -0.76706
       ],
       "type": "line"
     },
@@ -358,11 +731,11 @@
       "construction": false,
       "end": [
         -5.75,
-        1.61706
+        0.76706
       ],
       "start": [
         -2.32857,
-        1.61706
+        0.76706
       ],
       "type": "line"
     },
@@ -370,11 +743,11 @@
       "construction": false,
       "end": [
         2.32857,
-        1.61706
+        0.76706
       ],
       "start": [
         5.75,
-        1.61706
+        0.76706
       ],
       "type": "line"
     },
@@ -382,11 +755,11 @@
       "construction": false,
       "end": [
         -2.32857,
-        1.61706
+        0.76706
       ],
       "start": [
         -2.32857,
-        -1.61706
+        -0.76706
       ],
       "type": "line"
     },
@@ -394,11 +767,11 @@
       "construction": false,
       "end": [
         2.32857,
-        -1.61706
+        -0.76706
       ],
       "start": [
         2.32857,
-        1.61706
+        0.76706
       ],
       "type": "line"
     },
@@ -489,7 +862,7 @@
   },
   "sketch3_profiles": [
     {
-      "area": 71.38064,
+      "area": 59.74783,
       "bbox": {
         "max": [
           7.5,
@@ -504,11 +877,11 @@
       }
     },
     {
-      "area": 8.51452,
+      "area": 0.9247,
       "bbox": {
         "max": [
-          5.75,
-          -1.61706,
+          -5.0,
+          -0.76706,
           0.0
         ],
         "min": [
@@ -519,61 +892,181 @@
       }
     },
     {
-      "area": 5.73089,
+      "area": 8.0625,
       "bbox": {
         "max": [
-          -1.57857,
-          2.75,
+          5.75,
+          -2.0,
           0.0
         ],
         "min": [
           -5.75,
-          -2.0,
-          0.0
-        ]
-      }
-    },
-    {
-      "area": 8.51452,
-      "bbox": {
-        "max": [
-          5.75,
-          2.75,
-          0.0
-        ],
-        "min": [
-          -5.75,
-          1.61706,
-          0.0
-        ]
-      }
-    },
-    {
-      "area": 12.62854,
-      "bbox": {
-        "max": [
-          1.57857,
-          2.0,
-          0.0
-        ],
-        "min": [
-          -1.57857,
-          -2.0,
-          0.0
-        ]
-      }
-    },
-    {
-      "area": 5.73089,
-      "bbox": {
-        "max": [
-          5.75,
-          2.0,
-          0.0
-        ],
-        "min": [
-          1.57857,
           -2.75,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 2.56607,
+      "bbox": {
+        "max": [
+          -1.57857,
+          -0.76706,
+          0.0
+        ],
+        "min": [
+          -5.75,
+          -1.51706,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 0.9247,
+      "bbox": {
+        "max": [
+          -5.0,
+          2.75,
+          0.0
+        ],
+        "min": [
+          -5.75,
+          0.76706,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 2.56607,
+      "bbox": {
+        "max": [
+          -1.57857,
+          1.51706,
+          0.0
+        ],
+        "min": [
+          -5.75,
+          0.76706,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 8.0625,
+      "bbox": {
+        "max": [
+          5.75,
+          2.75,
+          0.0
+        ],
+        "min": [
+          -5.75,
+          2.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 19.23788,
+      "bbox": {
+        "max": [
+          5.0,
+          2.0,
+          0.0
+        ],
+        "min": [
+          -5.0,
+          -2.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 1.7131,
+      "bbox": {
+        "max": [
+          -1.57857,
+          1.51706,
+          0.0
+        ],
+        "min": [
+          -2.32857,
+          -1.51706,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 1.7131,
+      "bbox": {
+        "max": [
+          2.32857,
+          1.51706,
+          0.0
+        ],
+        "min": [
+          1.57857,
+          -1.51706,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 2.56607,
+      "bbox": {
+        "max": [
+          5.75,
+          -0.76706,
+          0.0
+        ],
+        "min": [
+          1.57857,
+          -1.51706,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 2.56607,
+      "bbox": {
+        "max": [
+          5.75,
+          1.51706,
+          0.0
+        ],
+        "min": [
+          1.57857,
+          0.76706,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 0.9247,
+      "bbox": {
+        "max": [
+          5.75,
+          -0.76706,
+          0.0
+        ],
+        "min": [
+          5.0,
+          -2.75,
+          0.0
+        ]
+      }
+    },
+    {
+      "area": 0.9247,
+      "bbox": {
+        "max": [
+          5.75,
+          2.75,
+          0.0
+        ],
+        "min": [
+          5.0,
+          0.76706,
           0.0
         ]
       }
