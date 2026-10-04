@@ -124,6 +124,34 @@ describe('fieldstone as a band pattern (T86 item 20)', () => {
     expect(totalOverlapArea(cells), 'including the band-transition seam').toBeLessThan(0.25);
   });
 
+  // T86 item 21 (the advisor's own amendment, from the mixed-preset shot: "a large EMPTY WEDGE at
+  // the top-right corner... no stones, bare board"): the slit polygon's own bridge used to start at
+  // `outer[0]` -- whatever point `boundaryAtDepth`'s own tessellation happens to begin at, often a
+  // board corner -- and a corner's own sharp turn plus the slit's own degenerate double-edge there
+  // measurably starved Poisson-disc's own candidate acceptance nearby (64.4% coverage in a focused
+  // sample box around that corner, vs the ring's own >=85% elsewhere). Fixed by starting the bridge
+  // at the LONGEST edge instead (reliably mid-straight-run, nowhere near a corner), with inner's own
+  // bridge point found by nearest-WORLD-POSITION match rather than the same raw array index (outer/
+  // inner tessellate independently -- MEASURED a real 102-vs-38-point mismatch that, naively
+  // index-matched, misaligned the bridge enough to collapse total stone count by 40%).
+  it('no large coverage gap concentrated at the ring\'s own bridge seam (a board corner, the default tessellation start)', () => {
+    const SET = { ...SET_BASE, brickLengthIn: 0.75 };
+    const { primitives } = realContour('template_1', 7, 9);
+    const outer = bricksContourBands(primitives, [], { set: SET, seed: 1 }).innerPath;
+    const { bricks: cells, innerPath: inner } = bricksContourBands(primitives, [{ widthIn: 0.75, pattern: 'fieldstone' }], { set: SET, seed: 1 });
+    // the exact corner the pre-fix bridge started at (outer[0], unrotated) -- a focused box around it
+    const minX = 5.6, maxX = 6.7, minY = 0.3, maxY = 1.6, GRID = 40;
+    let total = 0, covered = 0;
+    for (let i = 0; i < GRID; i++) for (let j = 0; j < GRID; j++) {
+      const x = minX + ((maxX - minX) * (i + 0.5)) / GRID, y = minY + ((maxY - minY) * (j + 0.5)) / GRID;
+      if (!pointInPolygon(x, y, outer) || pointInPolygon(x, y, inner)) continue;
+      total++;
+      if (cells.some((c) => pointInPolygon(x, y, c.polygon))) covered++;
+    }
+    const coverage = total > 0 ? covered / total : 1;
+    expect(coverage, `corner-box coverage: ${covered}/${total}`).toBeGreaterThanOrEqual(0.85);
+  });
+
   it('BRICK_PATTERNS declares fieldstone as band-capable (the flag 37\'s own picker reads)', async () => {
     const { BRICK_PATTERNS } = await import('../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js');
     expect(BRICK_PATTERNS.fieldstone.bandCapable).toBe(true);
