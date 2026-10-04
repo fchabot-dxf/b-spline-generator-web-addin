@@ -77,6 +77,10 @@ export const DEFAULT = {
       suppression: 0,
       clumping: 0.3,
       seed: 1,
+      // F35 item 4: which core/bricks/library.js FRAME_PRESETS entry the
+      // Frame tool bands with -- a key, not the bands array itself, so it
+      // always tracks library.js's own current declaration.
+      frameBandPreset: 'single_soldier',
     },
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.
