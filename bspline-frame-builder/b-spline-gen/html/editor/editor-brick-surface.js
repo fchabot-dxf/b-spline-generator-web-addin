@@ -92,12 +92,15 @@ async function computeDetailGrid(url, targetAspect) {
     grey[k] = (0.299 * rgba[o] + 0.587 * rgba[o + 1] + 0.114 * rgba[o + 2]) / 255;
   }
   const heavyBlur = boxBlur(grey, DETAIL_GRID, DETAIL_GRID, Math.round(DETAIL_GRID / 4));
-  const highPass = new Float32Array(grey.length);
+  let highPass = new Float32Array(grey.length);
+  for (let k = 0; k < grey.length; k++) highPass[k] = grey[k] - heavyBlur[k];
+  // F35 item 5 review (advisor): a LIGHT blur on the high-pass signal itself (not the de-lighting
+  // blur above) -- the raw per-pixel detail read as fine, sharp spikes competing with the brick's
+  // own shoulder/crown/grout shape instead of a soft surface grain riding on top of it. Softens
+  // single-cell noise without erasing the sample's own larger texture features.
+  highPass = boxBlur(highPass, DETAIL_GRID, DETAIL_GRID, 1);
   let sumSq = 0;
-  for (let k = 0; k < grey.length; k++) {
-    highPass[k] = grey[k] - heavyBlur[k];
-    sumSq += highPass[k] * highPass[k];
-  }
+  for (let k = 0; k < highPass.length; k++) sumSq += highPass[k] * highPass[k];
   // RMS-based scale (2.5 sigma -> +-1), not raw max-abs: a single stray bright
   // JPEG pixel setting the whole scale made typical texture read as sharp,
   // aliased spikes rather than the photo's own soft grain (MEASURED live,

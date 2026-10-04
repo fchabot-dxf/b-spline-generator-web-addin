@@ -18,7 +18,11 @@ import { brickTopHeight } from './height-profile.js';
  * @param {object} input
  * @param {{x:number,y:number}[]} input.boardOutline — closed polygon, board inches
  * @param {object} input.set — a library.BRICK_SETS entry
- * @param {object} [input.frame] — { path, cornerIndices, bands } or omitted/null for no frame
+ * @param {object} [input.frame] — { path, cornerIndices, bands, arcSegments, set } or omitted/null
+ *   for no frame (arcSegments, H23 item 76: declared TRUE circular arcs within path, passed through
+ *   to bricksContourBands verbatim -- see that function's own header; `set`, F35 item 5 review: an
+ *   OPTIONAL override used for the frame bands ONLY, defaulting to the top-level `input.set` when
+ *   omitted -- Wall's own bricksFillShape call below always uses `input.set`, never this)
  * @param {number} [input.suppression=0]
  * @param {number} [input.topBias=0.8]
  * @param {number} [input.clumping=0.3]
@@ -35,7 +39,15 @@ export function generateBricks(input) {
   let interiorOutline = boardOutline;
   let frameBricks = [];
   if (frame && frame.bands && frame.bands.length) {
-    const res = bricksContourBands(frame.path, frame.bands, { set, cornerIndices: frame.cornerIndices || [], seed, scale });
+    // F35 item 5 review: frame.set is an OPTIONAL Frame-only override (Fred's
+    // own "frame thickness" = the brick LENGTH across a band) -- defaults to
+    // the top-level `set` so every existing caller (nothing passed frame.set
+    // before this) is unaffected; Wall's own bricksFillShape call below
+    // always keeps the top-level `set`, never this override.
+    const frameSet = frame.set || set;
+    const res = bricksContourBands(frame.path, frame.bands, {
+      set: frameSet, cornerIndices: frame.cornerIndices || [], arcSegments: frame.arcSegments || [], seed, scale,
+    });
     frameBricks = res.bricks;
     interiorOutline = res.innerPath;
   }

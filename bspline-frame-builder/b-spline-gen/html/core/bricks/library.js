@@ -141,7 +141,12 @@ export const BRICK_SETS = Object.freeze([
       crown: 0.12, // within the advisor's own declared 0-0.2 range
       chipRate: 0.06, // Fred's own "chipped corners" -- occasional, not universal
       chipSizeIn: 0.045,
-      surfaceShare: 0.3, // the advisor's own earlier number ("a declared share of the budget, e.g. 30%")
+      // F35 item 5 review (advisor, after f35item5_01_red_3d_closeup.png: "bricks read as spiky
+      // bark, grout barely shows"): LOWERED from the original 0.3 -- at this set's own miniature
+      // scale (brickHeightIn=0.2) the full photo-detail amplitude competed with the shoulder/crown/
+      // grout shape instead of riding on top of it. 0.12 keeps the shape dominant; re-tunable again
+      // once Fred sees this live.
+      surfaceShare: 0.12,
     },
     oddSampleRate: 0.08, // ~1 in 12 bricks draws from the odd (darker) pool instead of the main one
     // H23 item 73(b): re-encoded from the original 47 PNG crops (~10MB total) to JPEG q85, max
