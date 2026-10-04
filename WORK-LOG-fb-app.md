@@ -10579,3 +10579,79 @@ connected in this session, and per standing protocol a live Fusion check needs t
 coordinated with the advisor first ("ask me for the Fusion holder for the probe," the dispatch's own
 words) before touching the live app at all. Flagging this explicitly in the pass-back rather than
 skipping it silently or guessing at the Fusion-side result.
+
+## H23 item 78b: Template 10 target (Fred's reconstruction) vs the current app default -- diagram only, stopped for OK
+
+Seat A epoch 7 (seat 39). Original dispatch (H23 item 78) was a new Template 18 "Arched Head"; the
+advisor redirected mid-task (cross-session message + `handoff.py amend`, both say the same thing):
+there is no new template -- Template 10 ITSELF must become Fred's own narrow-head + arched-top
+reconstruction. No Template-18 work had been committed when the redirect arrived (only reading files
+so far), so nothing to drop.
+
+**Read the prior history on this exact question first (WORK-LOG-fb-app.md, 2026-10-01, H23 item 19)
+before building anything**, since it's directly relevant: an earlier seat (C) built an app-side-only
+version of this same reconstruction (`b31f5ed`, F29 item 2) by repurposing `hourglassConstruction`'s
+existing `topInset`/`cornerRadiusTop`/`cornerRadiusBottom` knobs plus a new `archCornerAngle` concept
+replacing `archRise` (archRise alone "built wrong in Fusion" once combined with a narrow top, per that
+commit's own message). Item 19 then found the COMMITTED Fusion phase code was never actually changed
+to match, and that commit was later dropped (`57443e2`, "dropping b31f5ed's superseded T10 shape") to
+avoid shipping an app preview that disagreed with what Fusion would actually build. Today's dispatch
+(78b) resolves the ambiguity that left open: Fred has now explicitly confirmed the reconstruction IS
+the intended target, and wants target-vs-current shown before any code changes resume.
+
+**Decided NOT to reuse `b31f5ed`'s `archCornerAngle` approach for this diagram.** It was reverted,
+its closed-form angle-to-rise formula isn't in the current tree, and it's exactly the piece item 19
+flagged as unproven in Fusion. Fred's own dump
+(`~/.bspline-status/shots/fred/t10_fred_reconstructed_sketch_dump_2026-10-01.txt`) already gives
+every arc's start/centre/end plus a 4th point known to lie on the curve, in absolute (fraction-of-W/H)
+form -- ground truth, no formula needed -- so the target shape is built directly from that, and the
+current shape is built from the REAL production path (`paramsFromShapeModel` + `generateSilhouette`
+against the committed `frame-defs.json` `shapeModel`, the same call the app's own Frame tab preview
+makes). Two independently-sourced shapes, no shared code path between them, so an error in one can't
+hide an error in the other.
+
+New script: `tools/repro/h23_item78b_t10_target_vs_current.mjs`. Converts the dump's board-centre,
+y-up fractions into `generateSilhouette`'s own frame (safe-zone top-left origin, y DOWN) -- derived
+algebraically, then VERIFIED against the real `generateSilhouette` output (the dump's own `bottom_edge`
+corners land exactly on the two keypoints the real T10 call produces for its own bottom edge: `(w,h)`
+and `(0,h)`). Each target arc is reconstructed from (start, centre, end) with the dump's 4th "mid"
+point used only to pick the sweep DIRECTION (same `onSweep` technique f30/f31/t84's own `bulgeArc`
+uses) -- never trusted for the radius, so a bad transcription would show as a radius spread, not a
+silently-wrong curve. All 7 distinct arcs' 3 independently-computed radii agree to within 0.0007in.
+
+**Caught my own bug via the non-vacuous continuity check, not by eyeballing the render**: first pass
+wired `horn_TL`'s start point wrong (copy-paste from the wrong intermediate variable), producing a
+0.51in gap between `arc_shoulder_L` and `horn_TL` -- the scripted continuity check (same "every
+piece's end must exactly meet the next piece's start" check f30/f31/t84 already use) caught it
+immediately; after the fix the worst gap is 0.00045in, consistent with the dump's own 4-decimal
+rounding, not a real defect. `outlineDefects` is clean (`[]`) for both shapes.
+
+**Tooling note for the next session that screenshots an HTML/SVG diagram from THIS machine/seat**:
+the established CDP pattern (`tools/repro/t86_item3_shoulder_preview.mjs`'s `spawn` + WebSocket +
+`Page.captureScreenshot`) fails here -- chrome.exe exits immediately with status 21 and no stderr,
+confirmed identical whether launched via async `spawn` or sync `execFileSync`. The SAME chrome.exe
+invocation works fine launched from bash job control directly. Isolated the actual cause: RELATIVE
+`--user-data-dir`/`--screenshot` path arguments -- once both are resolved to absolute paths before
+being handed to `execFileSync`, Chrome's own single-shot `--screenshot=<path>` CLI flag (no CDP/
+WebSocket needed at all) works reliably. This script uses that simpler path; left a comment at the
+call site rather than touching `t86_item3`'s own script (unrelated, not broken on whatever machine it
+was last run on).
+
+Rendered both shapes at 7x9 side by side (board + safe-zone dashed outline, filled outline, captioned)
+to `bspline-frame-builder/scratch/h23_item78b/h23_item78b_t10_target_vs_current.png`, then published to
+the shared status folder: `C:/Users/danse/.bspline-status/shots/seatA/h23_item78b_t10_target_vs_current.png`.
+Visually confirms the two shapes are clearly different in exactly the way the dispatch describes: the
+current default is a full-width (±hw) gentle dome over Template 1's own modest hourglass pinch;
+Fred's reconstruction is a much narrower (±0.2735W, roughly 60% of the current head width) vertical-
+sided head topped by a taller, tighter arch, over a visibly deeper, rounder waist pinch.
+
+**Stopping here per the dispatch** -- no template code, `frame-defs.json`, or Fusion phase touched.
+Nothing committed to app/Fusion geometry; only the new diagram script (and this log entry) committed.
+Waiting for Fred's OK on the target before scoping the actual rebuild (new handle: head/top width;
+`archRise` with the `MIN_ARCH_RISE_IN` 1/8in floor or a revived `archCornerAngle`, whichever Fusion
+actually builds cleanly this time -- that choice needs a live Fusion check either way, which needs
+the holder file, which needs the advisor).
+
+Full suite not re-run this turn (diagram-only change, no app/test code touched; same "a style tweak
+does not need 1,500 tests" gate-tiering rule). `node tools/repro/h23_item78b_t10_target_vs_current.mjs
+<repoRoot> [outDir]` re-runs cleanly end to end (verified twice from a clean scratch dir).
