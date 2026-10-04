@@ -123,7 +123,9 @@ function applyBrickLayerTooling(layer, settings) {
   layer.depth = settings.invert ? -settings.reliefIn : settings.reliefIn;
   layer.profile = 'flat';
   layer.edgeFilletRadius = 0;
-  layer.carve = true;
+  // Audit C7: `carve` is NOT forced back on here. A new Bricks layer carves by default
+  // (layers.js TOOLING_DEFAULTS); after that it is the user's own Layers-row toggle, which a
+  // Generate must not silently undo.
 }
 
 /** F35 item 4 (a): a declared flat colour per SET, so White Rocks (and a
