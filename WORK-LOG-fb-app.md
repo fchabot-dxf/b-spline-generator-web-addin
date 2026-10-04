@@ -11976,3 +11976,51 @@ are clean. Reproduce: Wall tool on the default board, setBrickSize(1.5,'auto'), 
 [data-brick-gen="1"] polygons by area.
 
 Processes: my http.server (8838) and headless Chromes are stopped before the pass.
+
+## F35 item 18 part (2), turn 179 (seat C = 37): brick SURFACE style, Clean | Weathered, as data
+
+**Declared** in a new editor/brick-surface-styles.js, `BRICK_SURFACE_STYLES` (rendered into the Brick
+tab's new Surface toggle, one button per entry). Clean declares NOTHING, so it is exactly the set's own
+library look (proved byte-identical below). Weathered = overrides read by the mask rasterizer:
+- `profileScale`: multipliers on the SET's own heightProfile (edgeRadiusIn x1.8, crown x0.5, chipRate
+  x5, chipSizeIn x1.8, surfaceShare x2.5; chipRate/surfaceShare capped at 1). Multipliers, not
+  absolutes, so Set 3's bigger declared profile keeps its own proportions;
+- `profileSet`: edgeNoiseIn 0.015 / edgeNoiseScaleIn 0.06 = worn RAGGED edges (below);
+- `pitGain` 1.8: the photo detail's negative half (pits/cracks) amplified, positive half kept;
+- `topJitterIn` 0.012: extra seeded per-brick top offset (seed + brick id), on top of the layout's own;
+- `jointDepthIn` 0.03: joints recessed below the ground. A joint = a non-brick grid point with a brick
+  within one grout width at one of the 4 axis offsets (any joint angle has an axis reaching across it).
+  Points with no brick nearby are untouched, so the board outside the brickwork never sinks. Body is
+  normalised by layer.depth, so joints go DOWN for Raised and Carved alike.
+
+**Engine touch, agreed with seat B first** (d3, turn 317: "Go ahead, add them yourself"): two optional
+heightProfile fields in core/bricks/height-profile.js, `edgeNoiseIn`/`edgeNoiseScaleIn` -- the shoulder's
+distance-to-edge perturbed by noise2d.js valueNoise2 in board space. Default 0 = exactly the old
+shoulder; chips and crown still read the true distance. No other core/bricks change; no library set
+declares them, so every existing look is unchanged.
+
+**Setting + UI.** `P.brickSettings.surfaceStyle` ('clean'; unknown/missing = Clean). Joins
+SURFACE_ONLY_SETTING_KEYS with brickTopMode: committed with 'surface' (re-masks at once, never re-lays,
+never marks Generate pending). `setSurfaceStyle(id, commit='surface')` = the sidebar entry point (3).
+Not merged with the existing Recessed/Flush grout buttons (still "not yet visually implemented"): the
+style's jointDepthIn is its own field. Flagging for the advisor whether Recessed should reuse the joint
+recess code now that it exists.
+
+**Tests.** New tests/brick-surface-style.test.js (9): Clean/unknown/missing = Clean and identity;
+Weathered scales the set's own profile, caps fractions, leaves the frozen library set alone; pit gain
+negative-only; jitter seeded, bounded, varies; edgeNoise absent/0 = plain shoulder, on = the shoulder
+line wanders along an edge, never above full height, interior untouched; rasterizer Clean (explicit,
+unknown, absent) byte-identical to no style; Weathered joint recessed by exactly jointDepthIn, open
+board untouched, bricks changed; Carved joint still goes down. tests/brick-discrete-controls-regen +3
+(buttons from data, toggle saves/re-masks/never pending, unknown id -> Clean). Mutations: joint recess
+off -> 2/9 fail; edge noise off -> 1/9 fail; restored -> 9/9. Fast tier: 41 files, 435 passed, 0 failed.
+
+**Live** (served fb-app, headless Chrome, real Wall+Frame on T1 7x9, brick 0.75 in, spacing 0.015):
+Weathered recesses 76,683 joint points at a mean 0.030 in, Clean 0. Shots:
+shots/seat37/f35item18_{clean,weathered}_0.75in_r2.2_t0.55.png. Weathered reads clearly worn (ragged
+edges, pitted faces, deeper joints) and probably HEAVY for Fred's taste -- every value is one declared
+number; a 3x3 grid for Fred to mark is the cheap next tuning step if wanted. Unverified: a low oblique
+view at the board edge showed a few thin needle spikes; not reproduced in the top-down view, not chased.
+
+Script: tools/repro/f35item18_flat_organic_shots.mjs is now generic (VARIANTS name:buttonId list, RADIUS,
+TARGET, TILT env). Server PID 16604 (mine) killed by PID; no listeners left.

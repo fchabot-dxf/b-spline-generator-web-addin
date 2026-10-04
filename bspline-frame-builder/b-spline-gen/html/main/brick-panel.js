@@ -25,6 +25,7 @@ import { frameContourSilhouette } from '../editor/contour-from-frame.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
+import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -192,6 +193,37 @@ export function setBrickTopMode(mode, commit = 'surface') {
   commitBrickSetting(commit);
 }
 
+/** F35 item 18 (2): the Surface style toggle, one button per declared BRICK_SURFACE_STYLES entry. */
+function renderSurfaceStyleToggle(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const style of Object.values(BRICK_SURFACE_STYLES)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'relief-toggle-btn';
+    btn.id = `brickSurfaceStyle_${style.id}`;
+    btn.title = style.title;
+    const label = document.createElement('span');
+    label.textContent = style.label;
+    btn.appendChild(label);
+    btn.addEventListener('click', () => setSurfaceStyle(style.id));
+    container.appendChild(btn);
+  }
+}
+
+function syncSurfaceStyleToggle() {
+  const current = surfaceStyleById(P.brickSettings.surfaceStyle).id;
+  for (const style of Object.values(BRICK_SURFACE_STYLES)) {
+    document.getElementById(`brickSurfaceStyle_${style.id}`)?.classList.toggle('active', style.id === current);
+  }
+}
+
+export function setSurfaceStyle(styleId, commit = 'surface') {
+  P.brickSettings.surfaceStyle = surfaceStyleById(styleId).id;
+  syncSurfaceStyleToggle();
+  commitBrickSetting(commit);
+}
+
 /** F35 item 10 follow-up: the Brush tool's own Profile/Orientation toggles --
  *  same 2-state `.relief-toggle` convention as Relief above. Both settings
  *  already had real engine support (bricksAlongPath's own opts.profile/
@@ -283,6 +315,7 @@ function syncControlsFromState() {
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', s.grout.profile === 'flush');
   syncReliefToggle();
   syncBrickTopToggle();
+  syncSurfaceStyleToggle();
   setPair('brickReliefHeightSlider', 'brickReliefHeight', s.reliefIn);
   setPair('brickSuppressionSlider', 'brickSuppression', s.suppression);
   setPair('brickClumpingSlider', 'brickClumping', s.clumping);
@@ -371,7 +404,7 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
 const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation'];
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode'];
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle'];
 const LAYOUT_IGNORED_SETTING_KEYS = [...BRUSH_ONLY_SETTING_KEYS, ...SURFACE_ONLY_SETTING_KEYS];
 // Top-level keys only (the replacer's `this` is the holder) -- grout.profile is a Wall/Frame setting.
 const _layoutKey = () => JSON.stringify(P.brickSettings, function (k, v) {
@@ -883,6 +916,7 @@ export function initBrickPanel() {
   document.getElementById('brickBtnReliefCarved')?.addEventListener('click', () => setInvert(true));
   document.getElementById('brickBtnTopOrganic')?.addEventListener('click', () => setBrickTopMode('organic'));
   document.getElementById('brickBtnTopFlat')?.addEventListener('click', () => setBrickTopMode('flat'));
+  renderSurfaceStyleToggle(document.getElementById('brickSurfaceStyleToggle'));
   document.getElementById('brickBtnProfileStripped')?.addEventListener('click', () => setProfile('bricks'));
   document.getElementById('brickBtnProfileContinuous')?.addEventListener('click', () => setProfile('continuous'));
   document.getElementById('brickBtnOrientationStretcher')?.addEventListener('click', () => setOrientation('stretcher'));
