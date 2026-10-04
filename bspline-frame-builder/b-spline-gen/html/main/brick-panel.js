@@ -18,6 +18,7 @@
  * `window.svgEditor` fresh at the point of use instead of caching it.
  */
 import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
+import { withLoadingStage } from '../core/loading-signal.js';
 import { runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives } from '../editor/editor-brick-tool.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette } from '../editor/contour-from-frame.js';
@@ -322,10 +323,10 @@ function _commitBrickSlider() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (!editor) return;
   if (_activeTool === 'wall') {
-    runBricks(editor, P.brickSettings, resolveFrameGeom(editor));
+    withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, resolveFrameGeom(editor)));
   } else if (_activeTool === 'frame') {
     const frameGeom = resolveFrameGeom(editor);
-    if (frameGeom) runBricks(editor, P.brickSettings, frameGeom);
+    if (frameGeom) withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom));
   }
 }
 
@@ -599,7 +600,7 @@ function selectTool(id) {
     // interior, not just fill the raw board -- resolve the frame the same
     // way the Frame tool does; runBricks clips Wall to it via generateBricks
     // when one is usable, and simply fills the whole board when there isn't.
-    runBricks(editor, P.brickSettings, resolveFrameGeom(editor));
+    withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, resolveFrameGeom(editor)));
     notifyChange();
     return;
   }
@@ -609,7 +610,7 @@ function selectTool(id) {
       console.warn('Brick Frame tool: no usable frame contour on this board.');
       return;
     }
-    runBricks(editor, P.brickSettings, frameGeom);
+    withLoadingStage('bricks', () => runBricks(editor, P.brickSettings, frameGeom));
     notifyChange();
     return;
   }
