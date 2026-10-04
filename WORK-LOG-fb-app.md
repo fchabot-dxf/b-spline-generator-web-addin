@@ -12397,3 +12397,12 @@ syncControlRequires skips `hides` rules (the row's own sync applies them). Tests
 Rocks while the engine lacks it, shown (fieldstone only) with a stand-in engine list; requires -- the rule hides
 today, met with the option listed. The hide test fails 1/1 on the previous panel. Fast tier 72 files, 783
 passed, 0 failed.
+**Raised brush (2 modes) -- not started, by design; a plan for the advisor.** Its definition is on lane-b:
+T86 item 10 "GROUT-LINE CUT (Fred: Raised brush mode 2 'grout mode': cuts through bricks to add grout
+joints wherever it's drawn)" -- core op bricksGroutCut, seat B, still OPEN. Mode 1 = today's brush. So a
+mode toggle now would show a mode that does nothing -- exactly what this turn's blocker forbade. Proposed:
+declare the Brush's modes as data (BRUSH_MODES: 'bricks' | 'grout'), the 'grout' entry carrying
+requires: { engineOption: 'groutCut' } (hidden until seat B lists it in ENGINE_OPTIONS with T86 item 10);
+the editor side = a cut element with its own spine (same spine/regenerate machinery as brush strokes)
+applied after layout. Building the 'bricks'-only toggle alone would be a one-option toggle -- skip until
+the engine lands, or build now hidden: your call.
