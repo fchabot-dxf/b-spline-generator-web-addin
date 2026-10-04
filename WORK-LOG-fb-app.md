@@ -12457,3 +12457,30 @@ Fast tier (brick/frame/tab/template/... 111 files): 1858 passed, 0 failed.
 Live: sidebar list = None + 19 icons; picking T3 from the icon list set the frame record and the editor's
 picker followed. Shots: shots/seat37/f35_template_icon_dropdown_editor.png, f35_clumping_greyed_raised.png.
 Matrix: tools/brick-matrix still not on main -> rows still owed (88 will DM when it lands).
+
+### turn 205 -- F35 item 13: wall-pattern pickers become engine-drawn icon grids (seat 37)
+**Declared, not drawn:** `wallPatternIconSvg(patternId)` (editor-brick-tool.js) LAYS each pattern with the real
+engine -- the same applyWallPattern + generateBricks a Wall uses -- on a small PATTERN_ICON_BOARD (1.8 x 1.2 in,
+about 3 bricks across) with Set 1's brick size, and draws one polygon per brick. A new BRICK_PATTERNS entry gets
+its icon for free; 'none' (no bricks) draws a diagonal line; an engine error gives null and the button falls back
+to its name. First try used a 3 x 2 board with a dark stroke: the bonds were too small to tell apart in the shot,
+so it was zoomed to 1.8 x 1.2 with a light grout-coloured stroke (re-shot, every bond readable).
+**Families declared:** WALL_PATTERN_FAMILIES in brick-panel.js (Bonds: none/stretcher/stack/soldier/header/flemish;
+Herringbone; Basketweave; Fieldstone; 'More' collects any unlisted key so a new pattern can never fall out of
+the picker). The Wall-tool picker renders one labelled icon row per family; icons only, the name as
+title + aria-label; ids stay brickPattern_<id>, so every existing test and click path is unchanged.
+The sidebar quick "Wall pattern" row gains a declared `iconFor` (BRICK_QUICK_SETTINGS), and renderQuickSettings
+shows an icon for any row that declares one (other rows, e.g. Set, stay text).
+**NOT done, needs a call:** Fred's item-13 sheet also lists new layouts (2)-(12) and a rotation option. Those are
+new core/bricks/layouts engine work (seat B, d3's territory). Asked the advisor whether d3 builds them or I do;
+the picker already shows them as soon as they are in BRICK_PATTERNS.
+Tests: new tests/wall-pattern-icons.test.js (2: every pattern gets an icon on the declared viewBox, none has no
+polygon, the rest > 3 polygons; all icons distinct); brick-discrete-controls-regen gains an "F35 item 13" block
+(families in order, every pattern once with an svg, title, no visible text; the quick row is iconic, the Set row
+stays text). Non-vacuous: against the pre-change sources, 4 failed.
+Fast tier (brick* + icon tests, 49 files): 536 passed, 3 failed in parallel -- all seat-B engine tests timing out
+at 5 s (bricks-fieldstone x2, bricks-pattern-sequences x1); re-run: pattern-sequences green, fieldstone 7/7 alone.
+No core/ file touched by this turn.
+Live (served 8851, headless Chrome): 9 buttons, all with an svg, families [Bonds, Herringbone, Basketweave,
+Fieldstone], the active pattern outlined. Shot: shots/seat37/f35item13_pattern_icon_grid.png.
+Server 8851 (my own task) stopped.

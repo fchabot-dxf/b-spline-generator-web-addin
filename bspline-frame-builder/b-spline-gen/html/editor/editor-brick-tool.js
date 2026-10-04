@@ -300,6 +300,39 @@ export function wallLayoutFor(settings) {
   return set.layout;
 }
 
+/** F35 item 13 (advisor: "icons from the engine"): a wall pattern's picker icon, LAID by the real engine --
+ *  the same applyWallPattern + generateBricks a Wall uses, on a small PATTERN_ICON_BOARD patch with Set 1's
+ *  own brick size -- drawn as one polygon per brick over the grout colour. A new BRICK_PATTERNS entry gets its
+ *  icon for free. Cached per pattern; null if the engine can't lay it. */
+export const PATTERN_ICON_BOARD = Object.freeze({ widthIn: 1.8, heightIn: 1.2 }); // ~3 bricks across: the bond reads at icon size
+const _patternIcons = new Map();
+export function wallPatternIconSvg(patternId, heightPx = 30) {
+  const key = `${patternId}:${heightPx}`;
+  if (_patternIcons.has(key)) return _patternIcons.get(key);
+  const { widthIn: w, heightIn: h } = PATTERN_ICON_BOARD;
+  const widthPx = Math.round((heightPx * w) / h);
+  const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${widthPx}" height="${heightPx}" viewBox="0 0 ${w} ${h}" aria-hidden="true">`
+    + `<rect width="${w}" height="${h}" fill="#efe6da"/>`;
+  let svg = null;
+  try {
+    const settings = { setId: 1, pattern: patternId, seed: 7, suppression: 0, clumping: 0, grout: { widthIn: 0.05 }, brickLengthIn: 0.6 };
+    const input = {
+      boardOutline: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }],
+      set: resolvedSetFor(settings), scale: scaleFor(settings), suppression: 0, clumping: 0, seed: settings.seed,
+    };
+    applyWallPattern(input, settings);
+    const { bricks } = generateBricks(input);
+    const polys = bricks.map((b) => `<polygon points="${b.polygon.map((p) => `${+p.x.toFixed(3)},${+p.y.toFixed(3)}`).join(' ')}"/>`).join('');
+    svg = bricks.length
+      ? `${open}<g fill="#b5533c" stroke="#efe6da" stroke-width="0.025">${polys}</g></svg>`
+      : `${open}<line x1="0.3" y1="${h - 0.3}" x2="${w - 0.3}" y2="0.3" stroke="#8a8078" stroke-width="0.08"/></svg>`; // 'none'
+  } catch (_) {
+    svg = null;
+  }
+  _patternIcons.set(key, svg);
+  return svg;
+}
+
 function applyWallPattern(input, settings) {
   const pattern = settings.pattern;
   const def = pattern && BRICK_PATTERNS[pattern];
