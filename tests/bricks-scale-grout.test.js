@@ -5,8 +5,9 @@
  *    parameter"). widthIn is what the layout itself reads for the joint gap; depthIn/profile are
  *    the height-map adapter's own concern, not read by core/bricks/ at all (declared here only).
  *  - opts.scale: a uniform multiplier on the active set's own brickLengthIn/brickHeightIn, taken
- *    by all three primitives (and generateBricks), default 1. Grout width is NEVER scaled (Fred:
- *    "grout width unaffected").
+ *    by all three primitives (and generateBricks), default 1. F35 item 7 review (advisor, REVISING
+ *    the original "grout width unaffected" rule): grout.widthIn now scales WITH the brick too, so
+ *    a set's own measured grout:brickHeightIn ratio stays correct at any Scale value.
  */
 import { describe, it, expect } from 'vitest';
 import { bricksAlongPath } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/along-path.js';
@@ -36,12 +37,15 @@ describe('grout (declared data)', () => {
 });
 
 describe('opts.scale', () => {
-  it('scaledSet(set, 2) doubles brickLengthIn/brickHeightIn, keeps the aspect, leaves grout untouched', () => {
+  it('scaledSet(set, 2) doubles brickLengthIn/brickHeightIn/grout.widthIn together, keeps every ratio', () => {
     const scaled = scaledSet(SET, 2);
     expect(scaled.brickLengthIn).toBeCloseTo(SET.brickLengthIn * 2, 9);
     expect(scaled.brickHeightIn).toBeCloseTo(SET.brickHeightIn * 2, 9);
+    expect(scaled.grout.widthIn).toBeCloseTo(SET.grout.widthIn * 2, 9);
     expect(scaled.brickLengthIn / scaled.brickHeightIn).toBeCloseTo(SET.brickLengthIn / SET.brickHeightIn, 9);
-    expect(scaled.grout).toEqual(SET.grout); // same object -- not scaled, not even copied differently
+    expect(scaled.grout.widthIn / scaled.brickHeightIn).toBeCloseTo(SET.grout.widthIn / SET.brickHeightIn, 9);
+    expect(scaled.grout.depthIn).toBe(SET.grout.depthIn); // depthIn/profile are NOT part of this scaling
+    expect(scaled.grout.profile).toBe(SET.grout.profile);
   });
 
   it('scaledSet(set) / scaledSet(set, 1) returns the SAME object (no-op, no allocation)', () => {

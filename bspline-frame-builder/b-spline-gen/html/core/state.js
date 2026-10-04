@@ -89,6 +89,10 @@ export const DEFAULT = {
       // grout/reliefIn above; resets to the newly-picked set's own
       // brickLengthIn on a set switch (main/brick-panel.js's selectSet).
       frameBrickLengthIn: 0.75,
+      // F35 item 7: the Wall pattern picker's own choice -- any core/bricks/library.js
+      // BRICK_PATTERNS key. A key, not the pattern definition itself, same "track the current
+      // declaration" convention as frameBandPreset above.
+      pattern: 'stretcher',
     },
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.

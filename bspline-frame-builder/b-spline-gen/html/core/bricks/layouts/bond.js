@@ -3,14 +3,21 @@
  * horizontal courses, clipped to `boardOutline`.
  *
  * H23 item 72 (advisor, "patterns of different width" / ref_brick_bond_zones.jpg): the wall can be
- * split into horizontal ZONES, top -> bottom, each with its own BOND KIND:
- *   'running' — half-brick stagger (the original/default behaviour)
- *   'stack'   — same orientation as running, no stagger (joints line up vertically)
- *   'soldier' — bricks stood on end: length/height SWAPPED, no stagger
- * Each zone is `{ bond, rows }` or `{ bond, heightIn }`; a zone with neither is a FILL zone that
- * absorbs whatever height the sized zones don't claim (if several zones are unsized, they split
- * the leftover height evenly). Default (no zones given) = a single running zone covering the
- * whole board, i.e. byte-identical to the pre-zones behaviour.
+ * split into horizontal ZONES, top -> bottom, each with its own declared PATTERN (library.js's own
+ * `BRICK_PATTERNS` table -- F35 item 7, the SAME table Frame bands read, per the advisor-approved
+ * shared (u,v) proposal: u=along a course, v=across courses, exactly `colPitch`/`coursePitch` below).
+ * Each zone is `{ pattern, rows }` or `{ pattern, heightIn }` (`bond` is kept as a deprecated alias
+ * for `pattern` -- every pre-item-7 caller used that field name); a zone with neither is a FILL zone
+ * that absorbs whatever height the sized zones don't claim (if several zones are unsized, they split
+ * the leftover height evenly). Default (no zones given) = a single stretcher zone covering the whole
+ * board, i.e. byte-identical to the pre-zones behaviour.
+ *
+ * Only `BRICK_PATTERNS` entries of `kind:'course'` (stretcher/stack/soldier/header) or
+ * `'course-alternating'` (flemish) are meaningful here -- a `'tile2d'` pattern (herringbone/
+ * basketweave) needs a genuinely different cell-generation algorithm (its own layout file, same
+ * category as fieldstone.js) and is never reachable through a zone; `patternFor` falls back to
+ * stretcher for any name this file can't lay out itself, same graceful-fallback convention the
+ * pre-item-7 `bondKind()` already used.
  *
  * Produces CELLS only (geometry + adjacency) -- no pieces, no suppression, no samples. Those are
  * shape-agnostic and live in pieces.js/suppression.js/samples.js, operating on whatever a layout
@@ -22,36 +29,44 @@
  * clipPolygonToBoard -- an EXACT cut for a convex board (every real board so far), never
  * stretched (a cut-down brick's own remaining shape is still its true physical size, just
  * trimmed, same as a real last-brick-in-a-row cut to fit a wall) -- with `boardOutline`'s own
- * documented concave fallback (keep WHOLE or drop, the prior behaviour) when it isn't convex.
- * Adjacency/course assignment below still uses each cell's own UNCLIPPED grid centre (cx/cy) --
- * clipping only trims the stored polygon, never the logical grid position neighbours/suppression
- * reason about.
+ * documented concave fallback (keep WHOLE or drop, the prior behaviour) when it isn't convex (F35
+ * item 6 correction: this is the UNFIXED fallback that produces a visible gap on a concave Frame
+ * interior -- tracked separately, not this item's own scope). Adjacency/course assignment below
+ * still uses each cell's own UNCLIPPED grid centre (cx/cy) -- clipping only trims the stored
+ * polygon, never the logical grid position neighbours/suppression reason about.
  */
 import { rectPolygon, clipPolygonToBoard } from '../geometry.js';
+import { BRICK_PATTERNS } from '../library.js';
 
-const BOND_KINDS = {
-  running: { stagger: true, rotated: false },
-  stack: { stagger: false, rotated: false },
-  soldier: { stagger: false, rotated: true },
-};
+function patternFor(name) {
+  const p = BRICK_PATTERNS[name];
+  return (p && (p.kind === 'course' || p.kind === 'course-alternating')) ? p : BRICK_PATTERNS.stretcher;
+}
 
-function bondKind(name) {
-  return BOND_KINDS[name] || BOND_KINDS.running;
+const axisLen = (axis, L, H) => (axis === 'height' ? H : L);
+
+/** This pattern's own COURSE HEIGHT (the `v`/cross dimension every row-generator below agrees on,
+ *  used by resolveZones for pitch/row-count math before any row is actually built). flemish's own
+ *  course height is simply brickHeightIn regardless of its own stretcher/header alternation -- a
+ *  header SHOWS its end face but is still the SAME physical brick height as the stretcher beside it
+ *  in a real flemish course (one course = one row of bricks, always). */
+function courseHeightFor(pattern, L, H) {
+  return pattern.kind === 'course-alternating' ? H : axisLen(pattern.crossAxis, L, H);
 }
 
 /** Resolve a declared zone list into a concrete per-zone row count, given the board's total
  *  height -- an unsized zone (no `rows`/`heightIn`) fills whatever's left over. */
 function resolveZones(set, zones, totalHeight) {
-  const list = (zones && zones.length) ? zones : [{ bond: 'running' }];
+  const list = (zones && zones.length) ? zones : [{ pattern: 'stretcher' }];
   const J = set.grout.widthIn;
-  const pitchFor = (bond) => (bondKind(bond).rotated ? set.brickLengthIn : set.brickHeightIn) + J;
+  const pitchFor = (name) => courseHeightFor(patternFor(name), set.brickLengthIn, set.brickHeightIn) + J;
 
   const sized = list.map((z) => {
-    const bond = z.bond || 'running';
-    const pitch = pitchFor(bond);
-    if (z.rows != null) return { bond, pitch, rows: z.rows };
-    if (z.heightIn != null) return { bond, pitch, rows: Math.max(1, Math.round(z.heightIn / pitch)) };
-    return { bond, pitch, rows: null };
+    const pattern = z.pattern || z.bond || 'stretcher'; // z.bond: deprecated pre-item-7 alias
+    const pitch = pitchFor(pattern);
+    if (z.rows != null) return { pattern, pitch, rows: z.rows };
+    if (z.heightIn != null) return { pattern, pitch, rows: Math.max(1, Math.round(z.heightIn / pitch)) };
+    return { pattern, pitch, rows: null };
   });
 
   const fixedHeight = sized.filter((z) => z.rows != null).reduce((s, z) => s + z.rows * z.pitch, 0);
@@ -63,10 +78,60 @@ function resolveZones(set, zones, totalHeight) {
   return sized;
 }
 
+/** 'course' kind (stretcher/stack/soldier/header): the pre-item-7 uniform-grid row, generalised
+ *  from a `rotated` boolean to an explicit `pitchAxis`/`crossAxis` pair -- `rotated` could only ever
+ *  express "swap both axes together", which covers stretcher/stack/soldier but not header (header
+ *  needs ONLY its pitch axis swapped; its own cross/course-height axis is brickHeightIn either way,
+ *  same as stretcher/stack -- "the brick's own HEIGHT face shows AND also spans the course height",
+ *  library.js's own FRAME_PRESETS comment). `staggerFrac` (0..1, a FRACTION of colPitch, not a bare
+ *  bool) generalises the old `stagger && c%2===1 ? colPitch/2 : 0` to any declared offset fraction. */
+function uniformRow(courseIndex, pattern, minX, maxX, courseCy, cH, L, H, J) {
+  const cL = axisLen(pattern.pitchAxis, L, H);
+  const colPitch = cL + J;
+  const staggerFrac = pattern.staggerFrac || 0;
+  const stagger = (staggerFrac > 0 && courseIndex % 2 === 1) ? colPitch * staggerFrac : 0;
+  const colCount = Math.ceil((maxX - minX + colPitch) / colPitch) + 1;
+  const row = [];
+  for (let i = -1; i < colCount; i++) {
+    const cx = minX - stagger + i * colPitch + cL / 2;
+    if (cx + cL / 2 < minX - 1e-6 || cx - cL / 2 > maxX + 1e-6) continue;
+    const polygon = rectPolygon(cx, courseCy, cL / 2, cH / 2);
+    row.push({ courseIndex, colIndex: row.length, cx, cy: courseCy, polygon });
+  }
+  return row;
+}
+
+/** 'course-alternating' (flemish): the textbook bond -- one course repeats [stretcher(L), header(H)]
+ *  end to end (period = L+J+H+J), and alternate courses are offset by HALF that period so every
+ *  header centres over the MIDDLE of a stretcher in the course below (and vice versa) -- the
+ *  standard historical flemish-bond stagger, not independently re-derived. Walks a generous run of
+ *  repeat units from well before `minX` so a partial unit at either true edge is still included
+ *  (clipPolygonToBoard trims it to the real outline afterward, same as every other pattern here). */
+function flemishRow(courseIndex, minX, maxX, courseCy, cH, L, H, J) {
+  const period = L + J + H + J;
+  const phase = (courseIndex % 2 === 1) ? period / 2 : 0;
+  const row = [];
+  let x = minX - phase - period;
+  while (x < maxX + period) {
+    const units = [{ x0: x, w: L }, { x0: x + L + J, w: H }];
+    for (const u of units) {
+      const cx = u.x0 + u.w / 2;
+      if (!(cx + u.w / 2 < minX - 1e-6 || cx - u.w / 2 > maxX + 1e-6)) {
+        const polygon = rectPolygon(cx, courseCy, u.w / 2, cH / 2);
+        row.push({ courseIndex, colIndex: row.length, cx, cy: courseCy, polygon });
+      }
+    }
+    x += period;
+  }
+  return row;
+}
+
 /**
  * @param {{x:number,y:number}[]} boardOutline — closed polygon, board inches
  * @param {{brickLengthIn:number, brickHeightIn:number, grout:{widthIn:number}}} set — the active brick set
- * @param {{bond?:'running'|'stack'|'soldier', rows?:number, heightIn?:number}[]} [zones] — top -> bottom
+ * @param {{pattern?:string, bond?:string, rows?:number, heightIn?:number}[]} [zones] — top -> bottom
+ *   (`pattern` is any library.BRICK_PATTERNS key of kind 'course'/'course-alternating'; `bond` is a
+ *   deprecated pre-item-7 alias, still read when `pattern` is omitted)
  * @returns {{cells: Array}} cells[i] = { id, polygon, courseIndex, colIndex, neighbors:{left,right,above,below} }
  */
 export function bondLayout(boardOutline, set, zones) {
@@ -77,29 +142,23 @@ export function bondLayout(boardOutline, set, zones) {
   const maxDim = Math.max(L, H);
 
   const resolvedZones = resolveZones(set, zones, maxY - minY);
-  const courseBonds = [];
-  for (const z of resolvedZones) for (let i = 0; i < z.rows; i++) courseBonds.push(z.bond);
+  const coursePatterns = [];
+  for (const z of resolvedZones) for (let i = 0; i < z.rows; i++) coursePatterns.push(z.pattern);
 
   // course-by-course grid, keyed by [courseIndex] -> array of cells (so adjacency can look sideways
   // within a course directly by array index, and up/down by matching column-centre proximity --
-  // adjacent courses can be staggered and/or a different bond kind, so "the cell above" is
-  // whichever overlaps this one's own x-span the most, not a fixed column index).
+  // adjacent courses can be staggered and/or a different pattern, so "the cell above" is whichever
+  // overlaps this one's own x-span the most, not a fixed column index).
   const courses = [];
   let cy = minY;
-  for (let c = 0; c < courseBonds.length; c++) {
-    const kind = bondKind(courseBonds[c]);
-    const cL = kind.rotated ? H : L, cH = kind.rotated ? L : H;
-    const coursePitch = cH + J, colPitch = cL + J;
+  for (let c = 0; c < coursePatterns.length; c++) {
+    const pattern = patternFor(coursePatterns[c]);
+    const cH = courseHeightFor(pattern, L, H);
+    const coursePitch = cH + J;
     const courseCy = cy + cH / 2;
-    const stagger = (kind.stagger && c % 2 === 1) ? colPitch / 2 : 0;
-    const colCount = Math.ceil((maxX - minX + colPitch) / colPitch) + 1;
-    const row = [];
-    for (let i = -1; i < colCount; i++) {
-      const cx = minX - stagger + i * colPitch + cL / 2;
-      if (cx + cL / 2 < minX - 1e-6 || cx - cL / 2 > maxX + 1e-6) continue;
-      const polygon = rectPolygon(cx, courseCy, cL / 2, cH / 2);
-      row.push({ courseIndex: c, colIndex: row.length, cx, cy: courseCy, polygon });
-    }
+    const row = pattern.kind === 'course-alternating'
+      ? flemishRow(c, minX, maxX, courseCy, cH, L, H, J)
+      : uniformRow(c, pattern, minX, maxX, courseCy, cH, L, H, J);
     courses.push(row);
     cy += coursePitch;
     if (cy > maxY + maxDim) break; // past the board -- later zones (if any) would be invisible anyway
