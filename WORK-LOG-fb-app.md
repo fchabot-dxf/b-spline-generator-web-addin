@@ -10500,3 +10500,82 @@ existed and is unchanged in count, no new test file added this item; the full su
 once mid-fix to catch the two regressions above, then again clean after both fixes). Commit by
 explicit path, push, report back to the advisor: the design as RESUMED (declared per-tab toolbar +
 panel, both sidebar sections removed with no duplicates, screenshots of all 4 tabs at both widths).
+
+## F35 item 10 follow-up: 2 polish fixes from the advisor's own 1:1 review of the merged tabs
+
+(1) The Artwork top toolbar (Stroke width/Color/Grid/Style) was still showing on Photo/Brick/Frame --
+it only applies to hand-drawn Artwork shapes, so it's meaningless (and visually confusing) elsewhere.
+Gave it `id="editorToolbarTop"` and one more rule in `editor-tabs.js`'s own `setEditorTab` (show only
+when `_editorTab==='artwork'`) -- not a 5th entry in `EDITOR_TABS` since it isn't a tab's own content,
+just shared chrome for one of them.
+
+(2) The Frame band preset picker only ever showed 3 presets (`single_soldier`/`soldier_stretcher`/
+`three_band`) via a hand-maintained `FRAME_PRESET_LIST` array in brick-panel.js, whose own header
+comment already named the reason: only 3 of 5 named presets existed in library.js's own
+`FRAME_PRESETS` at the time it was written. Since then 5 MORE landed there (`butt_frame`,
+`quoin_corners`, `double_course`, `header_band`, `mixed_bands`) and the hand-copied list never caught
+up -- exactly the "a reusable concept deserves ONE declared source" lesson this project already
+applies via `WALL_PATTERN_LABELS`/`WALL_PATTERN_LIST` a few lines above it in the SAME file. Replaced
+it with the identical pattern: `Object.keys(FRAME_PRESETS).map(id => ({id, label: FRAME_PRESET_LABELS[id] || id}))`,
+so a new preset declared in library.js shows up here automatically, with its own key as a fallback
+label if nobody's named it a nicer one yet.
+
+Live-verified: top toolbar now hidden on Frame/Photo/Brick, shown on Artwork; the Brick tab's own
+Frame band preset list now shows all 8 real presets. Re-shot all 8 tab screenshots (the top-toolbar
+fix changes what they show). Full suite green: 205 files / 3784 tests.
+
+## F35 item 12: carving sketches go in the Carved component; Fieldstone in the Wall picker
+
+**(b) Fieldstone, done first (small, app-only).** `fieldstoneLayout` (layouts/fieldstone.js, f3's own
+item 74) was already a real `fill-shape.js` LAYOUTS entry -- a Poisson-disc Voronoi tiling, reading
+only `brickLengthIn`/`grout.widthIn`, nothing White-Rocks-specific -- but had no `BRICK_PATTERNS` key,
+so the Wall picker could never select it; White Rocks only rendered it via its own set-level default
+`layout:'fieldstone'`, invisibly. Added `fieldstone: { kind: 'tile2d' }` to `BRICK_PATTERNS`
+(library.js) -- the exact same `kind` herringbone/basketweave already use, so `applyWallPattern`'s own
+existing tile2d branch (`input.set = {...input.set, layout: pattern}`) and the Wall/Frame-band pickers
+(both already read `Object.keys(BRICK_PATTERNS)` directly) needed ZERO other code changes. Live-
+verified the exact claim "usable with either set": Red Brick (set 1, normally rectangular bond) +
+Fieldstone now renders real Voronoi stone shapes textured with RED BRICK photos -- a capability that
+flatly didn't exist before (fieldstone was only ever reachable via White Rocks). Screenshot:
+`shots/seatC/f35item12b_fieldstone_redbrick.png`.
+
+**(a) Carving sketches land in the Stamped (Carved) component, never root, never Clean.** Read
+`b-spline-gen.py` (the Fusion add-in) before touching it: `sketch_target` (line 1787, inside
+`_handle_generate`'s SVG-stamping block) was `current_import_group.component` ("B-Spline Set", the
+WHOLE Send's own container) or `root_comp` -- never the Stamped/Carved sub-component the stamp
+actually cuts (`body_target`, correctly resolved just above it). "Carved"/"Clean" aren't Fusion
+components named that in this code at all -- they arrive from the imported STEP file loosely named
+(e.g. "Stamped v3") and get normalized to the canonical strings `'Stamped'`/`'Clean'` by
+`_normalize_occurrence`; there is no stored reference, only a name-match search
+(`_find_clean_stamped`, recursive, case-insensitive substring).
+
+The exact "resolve Stamped, never fall back" convention already existed one function away:
+`_find_stamped_panel_body` (used by the H23 item 71 colour decal, already shipped and tested) does
+this same search for the decal's own BODY target. Declared the ONE helper the dispatch asked for,
+`_find_stamped_component`, as that function's direct sibling (same `_find_clean_stamped` search,
+returns the Stamped occurrence's own `.component` instead of a body) -- not a new mechanism. Fixed
+line 1787 to call it, and to LOG + SKIP (never import any art-layer sketch at all) when it returns
+`None` (no Stamped/Carved component in this Send), per the dispatch's own explicit rule --
+`_apply_colour_decal` (the sibling feature, called a few lines later in the SAME function) already
+establishes this exact "skip, don't fall back" precedent and does NOT re-check `_in_active_design`
+at this point in the flow, so I didn't add it here either (would have been an inconsistency with the
+already-shipped, already-tested sibling at the identical point in the Send).
+
+Tests: `TestFindStampedComponent` in `test_colour_decal_handler.py` (the natural home -- the sibling
+helper's own tests already live there, reusing its exact fakes rather than standing up a new file's
+worth of Fusion-API stubs for one small class): finds Stamped, never falls back to Clean, None for an
+empty import group, finds Stamped nested under a non-matching wrapper occurrence (matching
+`_find_clean_stamped`'s own real recursive behaviour, not assumed). PROVEN non-vacuous, not just
+asserted: temporarily stubbed the new helper to always return `None` and confirmed exactly the 2
+tests that assert a real match FAILED (the 2 "never falls back" tests correctly stayed green, since
+they already expect `None`) -- restored from a saved copy (not HEAD, uncommitted) and purged
+`__pycache__` before re-confirming green, per this project's own mutation-testing discipline. Full
+suite across all 3 pytest roots green: 116 (b-spline-gen) + 1122 passed/25 skipped (bspline-frame-
+builder) + 32 (tools).
+
+**NOT YET DONE**: the dispatch's own live-Fusion step ("one live Send in Fusion... sketch tree
+screenshot showing Carved > sketches, Clean untouched, root clean") -- the fusion360-bridge MCP is not
+connected in this session, and per standing protocol a live Fusion check needs the holder file
+coordinated with the advisor first ("ask me for the Fusion holder for the probe," the dispatch's own
+words) before touching the live app at all. Flagging this explicitly in the pass-back rather than
+skipping it silently or guessing at the Fusion-side result.

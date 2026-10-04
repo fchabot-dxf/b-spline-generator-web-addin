@@ -281,6 +281,12 @@ export const BRICK_PATTERNS = Object.freeze({
   flemish: { kind: 'course-alternating' },
   herringbone: { kind: 'tile2d' },
   basketweave: { kind: 'tile2d' },
+  // F35 item 12(b): fieldstone was already a real `fill-shape.js` LAYOUTS entry (f3's own item 74,
+  // for the White Rocks set's own declared `layout:'fieldstone'` default) but had no BRICK_PATTERNS
+  // key, so the Wall picker couldn't select it -- a Poisson-disc Voronoi tiling, not tied to any
+  // one set's own sample photos (`fieldstoneLayout` only reads brickLengthIn/grout.widthIn), so it
+  // works with either set exactly like herringbone/basketweave already do.
+  fieldstone: { kind: 'tile2d' },
 });
 
 /**
