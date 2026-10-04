@@ -98,11 +98,34 @@ const CONTROLS = arg('group') ? BRICK_CONTROLS.filter((c) => groupOf(c) === arg(
 // profile starts the matrix from the previous run's end state (a row that re-picks the current value then
 // "does nothing"). Removed again in stop().
 const profile = mkdtempSync(path.join(os.tmpdir(), `brick-matrix-chrome-${PORT}-`));
+// ... and nothing may already answer on that port: two trees often serve an identical palette page, so the
+// byte check below alone cannot tell another seat's server from ours.
+if (await fetch(`http://127.0.0.1:${HTTP}/`).then(() => true, () => false)) {
+  rmSync(profile, { recursive: true, force: true }); console.error(`brick-matrix: port ${HTTP} is already serving something (another seat's run?); pick another --port`); process.exit(2);
+}
 const server = spawn('python', ['-m', 'http.server', String(HTTP), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, '--no-first-run',
   '--no-default-browser-check', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'], { stdio: 'ignore' });
 const stop = () => { try { chrome.kill(); } catch {} try { server.kill(); } catch {} };
 const dropProfile = () => { try { rmSync(profile, { recursive: true, force: true }); } catch {} };
+// The served app must BE --root (37, turn 207: a run whose HTTP port was already held by another seat's server
+// silently drove that other build -- 329 baseline bricks instead of 204, rows "not in this build"). http.server
+// failing to bind exits quietly, so compare one served file byte-for-byte with the same file under ROOT.
+const SERVED_CHECK = 'b-spline-gen/html/bspline_gen_palette.html';
+let serverExit = null; server.on('exit', (code) => { serverExit = code; });
+{
+  const want = readFileSync(path.join(ROOT, SERVED_CHECK));
+  let got = null;
+  for (let i = 0; i < 50 && serverExit === null; i++) {
+    await sleep(200);
+    try { got = Buffer.from(await (await fetch(`http://127.0.0.1:${HTTP}/${SERVED_CHECK}`)).arrayBuffer()); if (got.equals(want)) break; } catch {}
+  }
+  if (serverExit !== null || !got || !got.equals(want)) {
+    stop(); dropProfile();
+    console.error(`brick-matrix: port ${HTTP} is not serving --root ${ROOT} (${serverExit !== null ? `own server exited ${serverExit}, port likely taken` : got ? `${SERVED_CHECK} differs from the file under --root` : 'no response'}); pick another --port`);
+    process.exit(2);
+  }
+}
 let wsUrl = null;
 for (let i = 0; i < 50 && !wsUrl; i++) { await sleep(200); try { wsUrl = (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).find((t) => t.type === 'page')?.webSocketDebuggerUrl; } catch {} }
 if (!wsUrl) { stop(); console.error('brick-matrix: no Chrome DevTools endpoint'); process.exit(2); }
@@ -114,7 +137,18 @@ ws.addEventListener('message', (ev) => {
   if (m.method === 'Runtime.exceptionThrown') pageErrors.push((m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text).split('\n')[0]);
   if (m.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
 });
-const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+// A DevTools reply that never comes (MEASURED: three runs booting at once, one sat 12+ min at "baseline
+// attempt 2" on an evaluate with no answer) must be a reported error, never a hang. CDP_TIMEOUT_MS is far
+// above the longest legitimate single call (an in-page click wait of 2.5 s; Page.navigate/reload return at
+// commit), so it only ever fires on a lost reply. The rejection lands in the run's own catch: a page error,
+// exit 1.
+const CDP_TIMEOUT_MS = 60000;
+const send = (method, params = {}) => new Promise((resolve, reject) => {
+  const i = ++id;
+  const timer = setTimeout(() => { pending.delete(i); reject(new Error(`DevTools ${method} got no reply in ${CDP_TIMEOUT_MS / 1000}s`)); }, CDP_TIMEOUT_MS);
+  pending.set(i, (m) => { clearTimeout(timer); resolve(m); });
+  ws.send(JSON.stringify({ id: i, method, params }));
+});
 const js = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); return r.result?.result?.value; };
 const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(path.join(OUT, `${name}.png`), Buffer.from(r.result.data, 'base64')); };
 const click = (elId, wait = 1200) => js(`(async()=>{ const b=document.getElementById(${JSON.stringify(elId)}); if(!b) return 'MISSING'; if(b.disabled) return 'DISABLED'; b.click(); await new Promise(r=>setTimeout(r,${wait})); return 'ok'; })()`);
