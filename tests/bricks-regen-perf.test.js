@@ -32,6 +32,8 @@ function makeMockEditor() {
         type: 'polygon', _attrs: {},
         fill() { return el; }, stroke() { return el; },
         attr(k, ...rest) { if (rest.length === 0) return el._attrs[k]; el._attrs[k] = rest[0]; return el; },
+        // a real svg.js element's class API -- every brick draw now takes its layer's state (layers.js applyLayerStateTo)
+        _classes: new Set(), addClass(c) { el._classes.add(c); return el; }, removeClass(c) { el._classes.delete(c); return el; },
         remove() { elements = elements.filter((e) => e !== el); },
       };
       elements.push(el);
