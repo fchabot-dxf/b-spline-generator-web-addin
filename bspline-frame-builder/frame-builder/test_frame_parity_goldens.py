@@ -107,6 +107,10 @@ _ALLOWED_GOLDEN_STATES = {
                      {f"template_15_{s}.json" for s in _SIZES}],
     "template_16": [set(), {"template_16_7x9.json"}, {f"template_16_{s}.json" for s in _SIZES}],
     "template_17": [set(), {"template_17_7x9.json"}, {f"template_17_{s}.json" for s in _SIZES}],
+    # H23 item 80 (2026-10-04): Template 19's own first-ever live goldens, recorded at the same two
+    # sizes its own live build check used (7x9/9x12, T18's own precedent -- not T9/T10's own
+    # 7x9/6x9/12x6 portrait set, and not the plain 3-size set either).
+    "template_19": [set(), {"template_19_7x9.json", "template_19_9x12.json"}],
 }
 # T1/T2 are the only templates held to a FIXED, always-fully-recorded set (no "not yet recorded"
 # or partial state ever allowed for them) -- the baseline every other template's own partial/empty

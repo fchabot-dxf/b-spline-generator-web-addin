@@ -54,9 +54,11 @@ const mount = () => {
 // Fusion; both passed the real panel-join check on the merged code, so neither stayed hidden.
 // H23 item 78c / turn 550: Template 18 ("Arched Head") joined the list the same way, un-hidden now that its own
 // 18-case live matrix is all-BUILT (template_18/template_data.py FRAME_HIDDEN -> False) -- same as T12/T13 before it.
-const HIDDEN_IDS = [];
+// H23 item 80: Template 19 ("Arched Head - Tapered sides") joins the list the same way -- hidden until its own
+// Fusion phases are confirmed live. Remove it here once it un-hides, same as every template before it.
+const HIDDEN_IDS = ['template_19'];
 
-describe('F30 item 4 / H23 item 25 / H23 item 78c: only genuinely in-progress templates are hidden (currently: none)', () => {
+describe('F30 item 4 / H23 item 25 / H23 item 78c: only genuinely in-progress templates are hidden (currently: Template 19)', () => {
   beforeEach(mount);
   afterEach(() => { root.remove(); setEditorTab('artwork'); });
 
