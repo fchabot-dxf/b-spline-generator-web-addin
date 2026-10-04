@@ -24,24 +24,21 @@
  * HEIGHT INTO THE TERRAIN (Fred's own brief: "like the other sources"): the
  * Bricks layer is tagged with the SAME tooling fields (`depth`, `profile`,
  * `edgeFilletRadius`) every other carved layer already has (layers.js's own
- * TOOLING_DEFAULTS) -- `profile:'flat'` (core/stamp/profiles/flat.js: a
- * vertical wall + flat plateau at maxDepth, no taper) matches a brick's own
- * flat top far better than the generic vbit/ballnose stamp profiles, and
- * `edgeFilletRadius:0` keeps joints sharp. This reuses the EXISTING generic
- * SVG-rasterize-to-mask pipeline (main/stamp-mask-manager.js's own
- * updateStampMasks, which treats ANY carved layer's content this way,
- * regardless of what tool drew it) wholesale -- no bespoke brick-height
- * compositing code. KNOWN, NAMED SIMPLIFICATION (not a silent gap): every
- * brick renders at a UNIFORM depth (the layer's own `depth` field); the
- * engine's own per-brick `heightOffset` jitter and 'continuous' profile's
- * undulation (core/bricks/engine.js's sampleHeight, built for exactly this)
- * are NOT yet wired in -- that needs a brick-specific mask rasterizer
- * (sampleHeight + buildSpatialIndex per grid point) instead of the generic
- * SVG rasterizer, a real follow-up, not attempted here. Likewise
- * `grout.profile:'recessed'` is accepted/stored but has NO visual effect
- * yet (joints simply sit at the base terrain level, which is exactly
- * 'flush' -- a genuine carved recess needs a second, inverse-shaped stamp
- * layer at a negative depth, also not built here).
+ * TOOLING_DEFAULTS), but F35 item 5 routes it through its OWN rasterizer
+ * (editor-brick-height-mask.js, wired in by main/stamp-mask-manager.js's own
+ * isBricksLayer branch) instead of the generic SVG-polygon one every other
+ * carved layer uses -- a flat per-layer depth has no way to express a
+ * brick's own real top-face shape. That rasterizer calls core/bricks/'s own
+ * sampleHeight/buildSpatialIndex per terrain grid point (shoulder, crown,
+ * seeded corner chips, and -- via editor-brick-surface.js's sampleDetailAt --
+ * a de-lit sample-photo detail layer), reading the SAME drawn polygons back
+ * off the DOM via the `data-brick-*` attributes drawBrick stashes below.
+ * `profile`/`edgeFilletRadius` stay set (harmless, and still what a non-brick
+ * reader of this layer's tooling would see) even though the brick rasterizer
+ * itself doesn't consult them. `grout.profile:'recessed'` is still accepted/
+ * stored but has NO visual effect (joints simply sit at the base terrain
+ * level, 'flush' -- a genuine carved recess needs a second, inverse-shaped
+ * stamp layer at a negative depth, not built here; a named gap, not silent).
  *
  * F35 item 3: Wall/Frame stay exactly this item-1 fire-and-forget regime
  * (regenerated fresh from current settings on each button click; their own
@@ -59,10 +56,20 @@ import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
 import { bricksAlongPath, generateBricks } from '../core/bricks/index.js';
 import { brickSetById } from '../core/bricks/library.js';
+import { brickFillPaint } from './editor-brick-surface.js';
 
 export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-spine'
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
-const BRICKS_LAYER_NAME = 'Bricks';
+export const BRICKS_LAYER_NAME = 'Bricks';
+
+/** F35 item 5: the generic stamp-mask pipeline (main/stamp-mask-manager.js)
+ *  checks this to route the Bricks layer through the brick-aware height-mask
+ *  rasterizer (editor-brick-height-mask.js) instead of the generic SVG-mask
+ *  one -- by NAME, matching ensureBricksLayer's own lookup (there's no
+ *  reserved id scheme for named layers here). */
+export function isBricksLayer(layer) {
+  return !!layer && layer.name === BRICKS_LAYER_NAME;
+}
 
 // F35 item 3 (advisor: "brick elements as declared spine + settings... the
 // prerequisite for Scissors/Stripe"): a Brush stroke is no longer baked
@@ -127,26 +134,43 @@ function applyBrickLayerTooling(layer, settings) {
 const SET_COLORS = Object.freeze({ 1: '#aa4433', 3: '#c9c3b2' });
 const DEFAULT_BRICK_COLOR = SET_COLORS[1];
 
-/** Draws one `{id, polygon:{x,y}[], ...}` brick as a filled polygon on
- *  `layer`, tagged per this file's own header convention. No stroke (a
- *  stroke would draw a visible line INSIDE the joint gaps between flush-
- *  fitting bricks, which core/bricks/ already sizes correctly via its own
- *  grout.widthIn -- adding our own outline would just redraw over that).
- *  `setId` picks the fill colour (SET_COLORS); omitted callers (none left
- *  after this item) would fall back to Set 1's own red. */
-function drawBrick(editor, layer, brick, kind, setId) {
+/** Draws one `{id, polygon:{x,y}[], sampleId, flip, heightOffset}` brick as a
+ *  filled polygon on `layer`, tagged per this file's own header convention.
+ *  No stroke (a stroke would draw a visible line INSIDE the joint gaps
+ *  between flush-fitting bricks, which core/bricks/ already sizes correctly
+ *  via its own grout.widthIn -- adding our own outline would just redraw
+ *  over that).
+ *
+ *  F35 item 5: the fill is the brick's own real sample photo
+ *  (editor-brick-surface.js's brickFillPaint, an SVG <pattern>) when one
+ *  resolves, falling back to the flat SET_COLORS stand-in otherwise (no
+ *  sample -- e.g. the parked 'mc' engine -- or the pattern can't be built).
+ *  The extra `data-brick-*` attributes are this brick's own height-relevant
+ *  state, read back by editor-brick-height-mask.js's own rasterizer -- the
+ *  DOM is that rasterizer's sole source of truth (see its header), so every
+ *  field `sampleHeight`/`brickTopHeight` need must be stashed here, at the
+ *  one place that already has the real brick object in hand. */
+function drawBrick(editor, layer, brick, kind, setId, seed, reliefIn) {
   const pts = brick.polygon.map((p) => `${p.x},${p.y}`).join(' ');
+  const paint = brickFillPaint(editor, setId, brick.sampleId, brick.flip) || SET_COLORS[setId] || DEFAULT_BRICK_COLOR;
   return editor._sketchLayer
     .polygon(pts)
-    .fill(SET_COLORS[setId] || DEFAULT_BRICK_COLOR)
+    .fill(paint)
     .stroke('none')
     .attr('data-layer', layer.id)
     .attr(BRICK_ATTR, kind)
-    .attr(BRICK_GEN_ATTR, '1');
+    .attr(BRICK_GEN_ATTR, '1')
+    .attr('data-brick-set', setId)
+    .attr('data-brick-seed', seed)
+    .attr('data-brick-relief', reliefIn)
+    .attr('data-brick-sample', brick.sampleId || '')
+    .attr('data-brick-flip', brick.flip ? '1' : '0')
+    .attr('data-brick-id', String(brick.id))
+    .attr('data-brick-height-offset', brick.heightOffset || 0);
 }
 
-function drawBricks(editor, layer, bricks, kind, setId) {
-  for (const b of bricks) drawBrick(editor, layer, b, kind, setId);
+function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn) {
+  for (const b of bricks) drawBrick(editor, layer, b, kind, setId, seed, reliefIn);
 }
 
 /** Removes this adapter's own previously-generated pieces of `kind` from
@@ -219,8 +243,8 @@ export function runBricks(editor, settings, frameGeom) {
   if (frameGeom) input.frame = frameGeom;
 
   const { bricks, frameBricks } = generateBricks(input);
-  drawBricks(editor, layer, frameBricks, 'frame', settings.setId);
-  drawBricks(editor, layer, bricks, 'wall', settings.setId);
+  drawBricks(editor, layer, frameBricks, 'frame', settings.setId, settings.seed, settings.reliefIn);
+  drawBricks(editor, layer, bricks, 'wall', settings.setId, settings.seed, settings.reliefIn);
   commitEdit(editor);
   notifyBricksGenerated(settings);
   return { wallCount: bricks.length, frameCount: frameBricks.length };
@@ -542,7 +566,9 @@ export function regenerateOwnedBrickElements(editor) {
         : settingsVariantForCycle(chain.settings, chain.cycleIndex);
       const { bricks } = bricksAlongPath(chain.points, { ...toBrickOpts(settings), closed: false });
       const ownerId = `${elementId}:${chainIdx}`;
-      for (const b of bricks) drawBrick(editor, layer, b, 'brush', settings.setId).attr(BRICK_OWNER_ATTR, ownerId);
+      for (const b of bricks) {
+        drawBrick(editor, layer, b, 'brush', settings.setId, settings.seed, settings.reliefIn).attr(BRICK_OWNER_ATTR, ownerId);
+      }
     });
   }
 }

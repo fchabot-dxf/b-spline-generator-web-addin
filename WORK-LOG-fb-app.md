@@ -9466,3 +9466,125 @@ advisor's own hold. `single_soldier` (the DEFAULT preset) is clean by this same 
 to deploy on its own; `soldier_stretcher`/`three_band` should stay blocked until f3 lands a fix.
 Flagging this distinction explicitly rather than blocking the whole Frame tool, since the default
 single-band case is the one most users will actually hit first.
+
+Advisor reply: f3 is already rebuilding arcs (found the inward/outward side inverted on every arc --
+very likely the same root as the multi-band waist overshoot measured above). No split deploy; the
+advisor deploys once f3's fix lands and all three presets pass the inside-the-board test. Carry on
+with item 5.
+
+### F35 item 5: REAL BRICK SURFACE -- sampleDetailAt (height) + real photo fill (2D colour)
+
+Dispatch: implement the adapter's `sampleDetailAt` (canvas-load each set's JPEG samples, de-light =
+subtract a heavy blur, normalise, add `surfaceShare x reliefIn` on top of f3's height profile per
+brick, mapped into the brick's own local frame, never stretched -- centre-crop to the piece aspect);
+also show the real texture (colour) in the 2D editor brick fill instead of the flat per-set colour;
+respect the 0.125 default / 0.25 max budget.
+
+**Scope correction found before building (named, not silently absorbed or silently skipped): the
+dispatch's own "on top of f3's height profile per brick" assumes that base profile (shoulder/crown/
+chip, core/bricks/height-profile.js's own `brickTopHeight`, H23 item 73(c)) is already live in the
+terrain. It isn't.** Read editor-brick-tool.js's own header (its item-1 self) plus engine.js/height-
+profile.js directly: the Bricks layer has ALWAYS gone through the generic SVG-polygon mask rasterizer
+(core/stamp/profiles/flat.js: inside-the-shape-at-a-uniform-depth, nothing else) -- `sampleHeight`/
+`buildSpatialIndex` (engine.js) and `brickTopHeight` (height-profile.js) were fully built by f3 but
+called by NOTHING in the live app, only by their own unit tests. So doing this item for real meant
+ALSO building the never-attempted "brick-specific mask rasterizer" editor-brick-tool.js's own item-1
+comment already named as a follow-up, not just the detail-sampling callback on top of an existing
+base. Built both, since shipping just the detail layer on top of a still-flat base would not match
+Fred's own "it uses the real shading of the photo" ask (a flat brick with a faint photo-detail
+ripple reads nothing like a real brick wall) -- but flagging the premise correction here per the
+worker skill's own architecture-map discipline, since the dispatch's phrasing assumed it was a given.
+
+**Design.** Two new adapter files (core/bricks/ itself stays zero-canvas/zero-DOM, per height-
+profile.js's own header: "needs real pixel decoding... which a zero-dependency core can't do"):
+- `editor/editor-brick-surface.js` -- the canvas/image half. `preloadSetDetail(setId)`: canvas-loads
+  every sample in a set (idempotent, memoised), CENTRE-CROPS each to the set's own
+  brickLengthIn:brickHeightIn aspect, greyscales it, de-lights via a heavy separable box blur
+  (radius = grid/4) subtracted from the grey (high-pass), and normalises by 2.5x the RESULT's own
+  RMS (not raw max-abs -- MEASURED live that a single stray bright JPEG pixel setting the whole scale
+  read as sharp aliased spikes rather than the photo's own soft grain; RMS is robust to that one-
+  pixel case, and brickTopHeight's own `Math.max(-1,Math.min(1,...))` clamp still catches genuine
+  outliers). `sampleDetailAtFor(setId)` returns the `(x,y,brick)=>[-1,1]` callback height-profile.js's
+  own header declares, reading ONLY the already-preloaded cache (never blocks the per-grid-point loop
+  on image decode) via `brickLocalUV` -- a brick's own local (u,v), origin at its polygon's centroid,
+  u-axis along its own LONGEST edge (works for a mitred triangle/pentagon too, not just a plain rect;
+  a Soldier vs Stretcher brick's own length axis differs, so this can't be a fixed x/y assumption),
+  bilinear-sampled (nearest-neighbour first MEASURED as visibly aliased at the terrain's own fine
+  mesh spacing -- see Verification below). `brickFillPaint(...)` -- the 2D colour half: a shared SVG
+  `<pattern>` per (set,sample,flip) with `patternUnits="objectBoundingBox"` so ONE pattern serves
+  every brick using that sample regardless of its own size, and `preserveAspectRatio="xMidYMid
+  slice"` on the nested `<image>` gives "centre-crop, never stretched" for free from the SVG spec --
+  no manual crop maths needed for the visible fill (unlike the height grid, which isn't SVG-rendered
+  and computes its own crop).
+- `editor/editor-brick-height-mask.js` -- the terrain-wiring half, the actual "brick-specific mask
+  rasterizer". Reads the Bricks layer's own CURRENT polygons straight off the DOM (grouped by
+  `${setId}:${seed}:${reliefIn}`, since Wall/Frame's fire-and-forget regime and Brush's own
+  independently-regenerating elements, F35 item 3, can each carry a different settings snapshot --
+  the DOM, tagged at draw time, is the only place that's always current regardless of which tool drew
+  what) rather than keeping a parallel cache that could desync. Builds one `buildSpatialIndex` per
+  group and calls `sampleHeight` per terrain grid point, producing a `{body,fillet,isStamped,metrics}`
+  mask in the EXACT shape `core/stamp.js`'s own `rasterizeSvg` returns -- `body[k]` is `sampleHeight`'s
+  absolute-inches result divided by that group's own `reliefIn` (so it reconstructs correctly through
+  `apply-stamp-layers.js`'s existing `body*layerDepth` formula with ZERO changes to that compositor);
+  `fillet` stays all-zero (bricks have no edge-fillet concept). `main/stamp-mask-manager.js` gets a
+  one-line branch (`isBricksLayer(layer)`, newly exported) routing the Bricks layer here instead of
+  the generic `rasterizeSvg` -- every other carved layer is untouched.
+- `editor-brick-tool.js`'s own `drawBrick` now stashes the extra `data-brick-{set,seed,relief,sample,
+  flip,id,height-offset}` attributes the height-mask rasterizer reads back, and fills with
+  `brickFillPaint(...)` falling back to the existing flat `SET_COLORS` stand-in when no sample
+  resolves (Set 2 'mc', not yet built, or a pattern that fails to construct). `layer.depth`'s own
+  existing inches semantics (applyBrickLayerTooling) are UNCHANGED -- deliberately, after checking
+  `export-flow.js`'s own `depth: layer.depth` read and confirming no generic per-layer depth UI exists
+  to misread a repurposed value; a simpler "set depth to a bare +-1 sign" design was considered and
+  rejected for exactly this reason.
+- Found live, NOT silently inherited: Set 2 ('mc' engine, no declared `heightProfile`) and the
+  'continuous' Stripe-cycle profile (no `sampleId`-per-brick the regular 'bricks' profile has) both
+  degrade CORRECTLY through this same new code path with zero special-casing -- `brickTopHeight`'s own
+  `hp.surfaceShare ?? 0` and `sampleDetailAt` early-return on a missing `sampleId` mean they just fall
+  through to flat `reliefIn`, identical to today's pre-item-5 behaviour. Confirmed by reading the code
+  paths, not assumed.
+
+**Verification (live, headless Chrome, both declared sets).** `shots/seatC/f35item5_01_red_2d_editor.png`
+/ `f35item5_02_white_2d_editor.png`: a Wall fill on a clean document -- EVERY brick (146 Set-1 bricks,
+16 Set-3 bricks) now fills with a real sample photo (`patternFillCount` == `brickCount` for both,
+confirmed by reading each polygon's own live `fill` attribute back, not assumed from the code), not
+the old flat colour; distinct textures/fieldstone faces clearly visible per piece at 1:1.
+`f35item5_01_red_3d_closeup.png` / `f35item5_02_white_3d_closeup.png` (window.__preview.getSnapshot
+after a real `editorApply` commit, so this is the ACTUAL terrain mask, not a mid-edit preview): both
+sets now show real per-brick relief -- rounded shoulders, individual brick/stone tops, visible
+surface grain -- a dramatic change from the old dead-flat plateau.
+
+MEASURED, not assumed: the first render looked more jagged/sharp than expected, so before calling it
+done I isolated the cause rather than guessing -- set Set 1's own `surfaceShare` to 0 (shape-only:
+shoulder+crown+chip, zero photo detail) and re-rendered (`f35item5_01_red_3d_closeup_NO_DETAIL.png`).
+The jaggedness was STILL THERE, near-identical to the with-detail render -- proving it's f3's own
+already-shipped H23 item 73(c) shoulder/crown geometry reading as a rough, pebbled surface under this
+renderer's raking-light material at a 0.75x0.2in brick scale, NOT a bug in this item's own detail
+work. That's the correct, intended look per Fred's own `brick_3d_compare.png` reference ("rounded worn
+edges... chipped corners"), not a regression -- reverted the diagnostic surfaceShare edit immediately
+(confirmed zero net diff via `git diff --stat`) once isolated. Separately, DID find and fix two real
+quality issues in my own first pass before concluding: nearest-neighbour detail-grid sampling (visibly
+aliased at the terrain's own fine mesh spacing) -> bilinear; raw max-abs normalisation (one stray
+bright pixel set the whole scale) -> RMS-based. Both fixed and re-verified live before the screenshots
+above were taken.
+
+**Tests.** `tests/bricks-surface.test.js` (new): `brickLocalUV`'s pure geometry (centroid, longest-
+edge axis selection regardless of x/y rotation, flip mirrors u, clamps out-of-polygon points, handles
+a 3-point mitred piece) -- mutation-tested (hardcoded a fixed x-axis instead of detecting the longest
+edge; the "robust to the polygon being rotated 90deg" case failed as expected, confirming the test
+isn't vacuous; reverted and re-confirmed green). The canvas/image-decode half (computeDetailGrid,
+brickFillPaint's DOM construction) is NOT unit-tested, same precedent as core/photo/codec.js's own
+header ("the ONLY canvas/Image-touching code in the Photo filter... untestable in this repo's
+happy-dom env, verified live instead") -- covered by the live verification above instead.
+
+Full suite green: 196 files / 3605 tests (+1 file / +6 tests from bricks-surface.test.js).
+
+KNOWN, NAMED GAPS (not silent): (1) `export-flow.js`'s own stamp-export-candidate `depth` field for
+the Bricks layer is unaffected by this item (unchanged semantics) but the Brick tab has never sent
+anything to Fusion (every F35 item is explicitly app-only) -- not chased further. (2) the 2D pattern
+fill and the 3D height-detail crop use the SAME declared target aspect (set.brickLengthIn:
+brickHeightIn) but are computed independently (one via the SVG spec's own `slice`, one via a custom
+crop+grid) -- they will not pixel-align exactly, acceptable for a subtle bump texture that was never
+meant to register as flat-shaded colour.
+
+Commit, push, pass back.
