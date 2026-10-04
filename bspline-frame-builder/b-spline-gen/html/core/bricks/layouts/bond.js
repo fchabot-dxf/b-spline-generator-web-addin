@@ -42,6 +42,12 @@ function patternFor(name) {
   return (p && (p.kind === 'course' || p.kind === 'course-alternating')) ? p : BRICK_PATTERNS.stretcher;
 }
 
+// T86 item 15 (Fred, shots/fred/empty_course_top.png: "empty line of brick, can it be filled with
+// half bricks"): the SAME quarter-brick floor this project already uses elsewhere for "is a leftover
+// piece worth keeping" (fieldstone.js's own MIN_PIECE_FLOOR_FRACTION) -- declared locally here since
+// bond.js and fieldstone.js are independent layout files with no shared constant between them.
+const MIN_PIECE_FRACTION = 0.25;
+
 // Exported for band-course.js's own reuse (F35 item 8: the Frame per-band pattern picker needs the
 // SAME pitch/cross-axis convention, placed along a curved band's own (u,v) frame instead of flat x/y).
 export const axisLen = (axis, L, H) => (axis === 'height' ? H : L);
@@ -165,6 +171,31 @@ export function bondLayout(boardOutline, set, zones) {
     courses.push(row);
     cy += coursePitch;
     if (cy > maxY + maxDim) break; // past the board -- later zones (if any) would be invisible anyway
+  }
+
+  // T86 item 15: `clipPolygonToBoard` below only ever SHRINKS a cell to fit the board outline -- it
+  // can never GROW one to reach further than its own declared rectangle. Course pitch rarely divides
+  // `maxY - minY` evenly, so the stack above routinely ends with its last course's own top edge short
+  // of the board's real top, a genuine strip no cell was ever generated to cover (MEASURED: this is
+  // the actual mechanism behind Fred's own screenshot, not a clipping bug -- clipping had nothing to
+  // clip). Fixed here, once, after the declared stack settles, rather than inside the loop above: a
+  // CUT course, same pattern/bond/stagger as the course directly below it (same row-generator, same
+  // `cx` grid), just a SHORTER `cH` sized to the exact remaining gap instead of the pattern's own
+  // declared course height -- `clipPolygonToBoard` trims it the normal way afterward, so a curved or
+  // arched top still comes out right (less of this course survives near the curve, same as any other).
+  // Below the quarter-brick floor, the leftover simply stays open -- it reads as a slightly wider
+  // joint against the board's own edge, not a separate sliver brick nobody could keep clean anyway.
+  if (courses.length) {
+    const remaining = maxY - cy;
+    if (remaining >= MIN_PIECE_FRACTION * H) {
+      const c = courses.length;
+      const pattern = patternFor(coursePatterns[c - 1]);
+      const courseCy = cy + remaining / 2;
+      const row = pattern.kind === 'course-alternating'
+        ? flemishRow(c, minX, maxX, courseCy, remaining, L, H, J)
+        : uniformRow(c, pattern, minX, maxX, courseCy, remaining, L, H, J);
+      courses.push(row);
+    }
   }
 
   const cells = [];
