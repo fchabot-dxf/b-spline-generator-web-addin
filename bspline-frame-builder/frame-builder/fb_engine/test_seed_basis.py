@@ -117,13 +117,19 @@ def test_seed_sketch_does_not_corrupt_a_seedfrom_point_marker():
     assert "boundingboxoffset" in pts[1][0] and "boundingboxoffset" in pts[1][1]
 
 
-def test_template_10_arch_rebuild_tracks_top_edges_live_endpoints_not_a_literal():
+def test_template_10_arch_rebuild_tracks_top_edges_live_endpoints_and_its_own_minor_arc_mid():
     """H23 item 47: the rebuild's two END points must be declared SeedFrom markers reading
     top_edge's own live left/right endpoint -- MEASURED (item 46's own step-level SeedFrom, a pure
     template-resolution-time copy made before any seed was applied) to leave the rebuild frozen at
     the unseeded literal regardless of what was actually dragged, reproducing item 45's own bug one
-    layer removed. The APEX (middle point) stays a plain literal -- it only forces the correct arc
-    branch and must NOT track the seed."""
+    layer removed.
+
+    H23 item 78c: the APEX (middle point) is NO LONGER a fixed literal -- item 47's own claim that
+    it "has nothing to do with WHERE the seeded ends are" was MEASURED WRONG (Template 18's own
+    archRise handle dragged to its declared max silently failed to build sketch_3 at all; the fixed
+    literal only ever matched the ONE archRise value item 47's own test happened to use). It is now
+    also a SeedFrom marker, `side: 'short-arc-mid'` -- the source arc's own CURRENT minor-arc
+    midpoint, which needs no stored apex height at all and is correct for every archRise."""
     sk2 = resolve_template("template_10")[0]["Sketches"][1]
     rebuilds = [st for block in sk2["Blocks"] for st in block.get("BuildSequence", [])
                 if st.get("ID") == "top_edge" and st.get("Rebuild")]
@@ -132,7 +138,7 @@ def test_template_10_arch_rebuild_tracks_top_edges_live_endpoints_not_a_literal(
     assert len(pts) == 3
     assert pts[0] == {"SeedFrom": {"id": "top_edge", "side": "left"}}
     assert pts[2] == {"SeedFrom": {"id": "top_edge", "side": "right"}}
-    assert isinstance(pts[1], list) and "SeedFrom" not in pts[1]
+    assert pts[1] == {"SeedFrom": {"id": "top_edge", "side": "short-arc-mid"}}
 
 
 def _has_seedfrom(step):

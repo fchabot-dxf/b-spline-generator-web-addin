@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "dae72ee57adf76dd8929ee04a3e0dfb6c0241fbd464bb003a8e40c2e8458da5a",
+  "sourceHash": "296ebfbed9dda5385e053c53990fc33eab70fb3bddfd6c21b531e5cdd3ffe36d",
   "templates": [
     {
       "features": [
@@ -3057,10 +3057,12 @@ export default {
                         "side": "left"
                       }
                     },
-                    [
-                      "0.001",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.25 in"
-                    ],
+                    {
+                      "SeedFrom": {
+                        "id": "top_edge",
+                        "side": "short-arc-mid"
+                      }
+                    },
                     {
                       "SeedFrom": {
                         "id": "top_edge",
@@ -14206,10 +14208,12 @@ export default {
                         "side": "left"
                       }
                     },
-                    [
-                      "0.001",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in))/2 - 0.25 in"
-                    ],
+                    {
+                      "SeedFrom": {
+                        "id": "top_edge",
+                        "side": "short-arc-mid"
+                      }
+                    },
                     {
                       "SeedFrom": {
                         "id": "top_edge",

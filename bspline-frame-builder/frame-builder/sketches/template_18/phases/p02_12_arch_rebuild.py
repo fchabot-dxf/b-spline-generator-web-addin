@@ -50,25 +50,35 @@ def get_block(ui_data=None):
     unseeded literal regardless of what was actually sent, reproducing the exact bug item 46 set out
     to fix, one layer removed.
 
-    H23 item 47 (the real fix): the two ENDS track `top_edge`'s own CURRENT, just-built endpoints at
-    BUILD TIME, chosen by left/right position (`fb_engine/geometry.py`'s own `_resolve_point_spec` +
-    `_point_seed_from`, item 46's own measured fix for picking by geometry, not by Fusion's `:S`/`:E`
-    label) -- resolved BEFORE this step's own `Rebuild` deletes the prior `top_edge`, so there is
-    something live left to read. The APEX stays the one, genuinely-needed fixed literal (`LY`
-    below): it exists only to force the correct (short) arc branch on `addByThreePoints`, a role
-    that has nothing to do with WHERE the seeded ends are and must not track them (the two
-    constraints -- "track the seed" and "force the branch" -- are now cleanly separated onto the
-    one point each actually governs, instead of one literal doing neither job half-right). Confirmed
-    live: both ends of T10's own Arch-rise handle now build 4/4 with DIFFERENT volumes (previously
-    identical at both ends); the unseeded default stays byte-identical (nothing here changes what
-    the LEFT/RIGHT endpoints of an un-dragged `top_edge` physically are).
-    """
-    LY = 'heightIn/2 - 0.25 in'  # the safe zone's own top line -- the apex's fixed ceiling, independent of any seed
+    H23 item 47 (the real fix for the two ENDS): they track `top_edge`'s own CURRENT, just-built
+    endpoints at BUILD TIME, chosen by left/right position (`fb_engine/geometry.py`'s own
+    `_resolve_point_spec` + `_point_seed_from`, item 46's own measured fix for picking by geometry,
+    not by Fusion's `:S`/`:E` label) -- resolved BEFORE this step's own `Rebuild` deletes the prior
+    `top_edge`, so there is something live left to read.
 
+    H23 item 47's OWN apex claim, corrected by item 78c: this used to say the apex stays a fixed
+    literal (`LY = 'heightIn/2 - 0.25 in'`, the safe zone's own top line) because "that has nothing
+    to do with WHERE the seeded ends are." MEASURED WRONG (H23 item 78c, Template 18's own archRise
+    handle dragged to its declared max: `sketch_3` silently never got built, no exception):
+    `hourglassConstruction`'s own sagitta-circle `arch` block (editor-shape-lattice-generator.js)
+    puts the REAL apex at `chord height + archRise`, with NO fixed ceiling at all -- `LY` only ever
+    matched the one archRise value (0.35 of hw) item 47's own test happened to use; every OTHER
+    archRise seeds a genuinely different apex height, so the fixed literal was quietly building the
+    WRONG circle at the range ends (not a branch-selection ambiguity like the rest of this docstring
+    -- a flatly incorrect target). Fixed by reading the apex from the SAME place the two ends already
+    read theirs: `top_edge`'s own CURRENT (reflex, but already geometrically correct -- only its trim
+    is wrong) center/radius, via a new `SeedFrom` mode, `side: 'short-arc-mid'`
+    (`fb_engine/geometry.py`'s own `_point_seed_from`) -- the minor-arc's own midpoint needs no
+    stored apex height at all, so this is correct for every archRise, not just the one `LY` was tuned
+    against. Confirmed live: both ends of T10's own Arch-rise handle now build 4/4 with DIFFERENT
+    volumes (previously identical at both ends); the unseeded default stays byte-identical (nothing
+    here changes what the LEFT/RIGHT endpoints of an un-dragged `top_edge` physically are, and the
+    minor-arc midpoint of an unchanged circle is itself unchanged).
+    """
     seq = [
         {'ID': 'top_edge', 'Type': 'Arc3Point', 'Rebuild': True, 'Points': [
             {'SeedFrom': {'id': 'top_edge', 'side': 'left'}},
-            ['0.001', LY],
+            {'SeedFrom': {'id': 'top_edge', 'side': 'short-arc-mid'}},
             {'SeedFrom': {'id': 'top_edge', 'side': 'right'}},
         ], 'StartID': 'top_edge:S', 'EndID': 'top_edge:E'},
         {'Type': 'Fix', 'Targets': ['top_edge:S', 'top_edge:E']},
