@@ -61,9 +61,11 @@ describe('Template 9: listing and declaration', () => {
     expect(T9.regions.corners.filter((c) => c.reflex).map((c) => c.id)).toEqual(
       ['notch_TR_inner', 'notch_BR_inner', 'notch_BL_inner', 'notch_TL_inner']);
     // H23 item 13: the provisional shim is retired -- T9 now has its own shapeModel,
-    // fitted from its own live goldens (12x6's golden is a known-broken build -- see
-    // KNOWN_BROKEN_BUILD in frame-parity-app.test.js -- but its OUTLINE still fits cleanly,
-    // so it stays in the fit; nothing is excluded).
+    // fitted from its own live goldens. H23 item 79 raised the default flangeHeight to 0.7,
+    // which also fixed 12x6's build (was 0 bars, now all 12); its OUTLINE/INNER still diverge
+    // from the app's own clamped default there for an unrelated, declared reason -- see
+    // CLAMP_DIVERGENT_OUTLINE/_INNER in frame-parity-app.test.js -- so nothing is excluded
+    // from the fit itself.
     expect(T9.shapeModel.provisional).toBeUndefined();
     expect(T9.shapeModel.fit.fittedFrom).toEqual(['12x6', '6x9', '7x9']);
     expect(T9.shapeModel.fit.excluded).toEqual([]);
@@ -98,17 +100,20 @@ describe('Template 9: the outline', () => {
     expect(ruleOk(prof, T)).toBe(true);
   });
 
-  it('7x9 defaults: a ~1.47 in half-width stem, a ~1.70 in flange height (H23 item 13: the live-fitted model)', () => {
+  it('7x9 defaults: a ~1.47 in half-width stem, a ~2.98 in flange height (H23 item 79: 0.7 x hh, Fred\'s own pick)', () => {
     const prof = profile({});
     expect(stemHalfWidth(prof)).toBeCloseTo(1.4705457499999994, 9);
-    expect(flangeHeightIn(prof)).toBeCloseTo(1.7018597500000001, 9);
+    expect(flangeHeightIn(prof)).toBeCloseTo(2.97853975, 9);
   });
 
-  it('12x6: the provisional flange height is clamped up near the frame\'s own floor (a flange side >= ~2 x the thickness)', () => {
-    // MEASURED: at 12x6 the bare 0.4 default (1.1 in) is well under 2T (1.5 in); frameParamRanges' own floor wins.
+  it('12x6: the flange height is clamped DOWN to the frame\'s own ceiling (H23 item 79: 0.7 x hh is now ABOVE it here, not below the floor)', () => {
+    // MEASURED: 0.7 x hh (2.75) = 1.925 in would leave the stem's own opening under frame_thickness;
+    // frameParamRanges' own ceiling (the stem opening >= t rule) wins instead, same mechanism as the
+    // OLD 0.4 default's floor clamp, just the opposite bound. See CLAMP_DIVERGENT_OUTLINE/_INNER in
+    // frame-parity-app.test.js for how this reads against the (unclamped) recorded golden.
     const prof = profile({}, 12, 6);
-    expect(flangeHeightIn(prof)).toBeGreaterThanOrEqual(2 * T);
-    expect(prof.params.flangeHeight).toBeCloseTo((2 * T + 0.05) / (6 / 2 - 0.25), 9);
+    expect(flangeHeightIn(prof)).toBeCloseTo(1.625, 9);
+    expect(prof.params.flangeHeight).toBeCloseTo((2 * (6 / 2 - 0.25) - 3 * T) / (2 * (6 / 2 - 0.25)), 9);
   });
 
   it('5.51x1.97: still a clean 12-piece outline (the board is too small for the frame: 0 bars, like the others)', () => {

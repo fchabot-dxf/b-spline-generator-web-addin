@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "e24897ce111a8cfe6f0529115da3b9e5b51151e7a9eceb2e3d317cc99454b59b",
+  "sourceHash": "267bf28c420a0d943ec1a02e29e833e27b1d775e323198b1bcc0055a8c25a3e3",
   "templates": [
     {
       "features": [
@@ -26936,8 +26936,8 @@ export default {
       "shapeModel": {
         "features": {
           "flangeHeight": {
-            "hh": 0.393842,
-            "hw": 0.008625
+            "hh": 0.689269,
+            "hw": 0.015122
           },
           "stemHalfWidth": {
             "hh": 0.057488,
@@ -26956,9 +26956,9 @@ export default {
           "model": "feature = hw * features[f].hw + hh * features[f].hh (safe-zone half sizes, in)",
           "residualsIn": {
             "flangeHeight": [
-              -0.0003,
-              -0.0021,
-              0.0022
+              -0.0005,
+              -0.0036,
+              0.0039
             ],
             "stemHalfWidth": [
               -0.001,
@@ -27133,7 +27133,7 @@ export default {
                     ],
                     [
                       "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333 + 0.001"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667 + 0.001"
                     ]
                   ],
                   "StartID": "flange_side_R:S",
@@ -27145,11 +27145,11 @@ export default {
                   "Points": [
                     [
                       "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667"
                     ],
                     [
                       "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928 + 0.001",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667"
                     ]
                   ],
                   "StartID": "shoulder_TR:S",
@@ -27161,11 +27161,11 @@ export default {
                   "Points": [
                     [
                       "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667"
                     ],
                     [
                       "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928",
-                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333 + 0.001"
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667 + 0.001"
                     ]
                   ],
                   "StartID": "stem_side_R:S",
@@ -27177,11 +27177,11 @@ export default {
                   "Points": [
                     [
                       "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928",
-                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667"
                     ],
                     [
                       "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286 - 0.001",
-                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667"
                     ]
                   ],
                   "StartID": "shoulder_BR:S",
@@ -27193,7 +27193,7 @@ export default {
                   "Points": [
                     [
                       "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
-                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667"
                     ],
                     [
                       "(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
@@ -27229,7 +27229,7 @@ export default {
                     ],
                     [
                       "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
-                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333 - 0.001"
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667 - 0.001"
                     ]
                   ],
                   "StartID": "flange_side_BL:S",
@@ -27241,11 +27241,11 @@ export default {
                   "Points": [
                     [
                       "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
-                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667"
                     ],
                     [
                       "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928 - 0.001",
-                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667"
                     ]
                   ],
                   "StartID": "shoulder_BL:S",
@@ -27257,11 +27257,11 @@ export default {
                   "Points": [
                     [
                       "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928",
-                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                      "-(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667"
                     ],
                     [
                       "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333 - 0.001"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667 - 0.001"
                     ]
                   ],
                   "StartID": "stem_side_L:S",
@@ -27273,11 +27273,11 @@ export default {
                   "Points": [
                     [
                       "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.208928",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667"
                     ],
                     [
                       "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286 + 0.001",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667"
                     ]
                   ],
                   "StartID": "shoulder_TL:S",
@@ -27289,7 +27289,7 @@ export default {
                   "Points": [
                     [
                       "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
-                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.283333"
+                      "(heightIn - 2 * (boundingboxoffset - 0.25 in)) * 0.141667"
                     ],
                     [
                       "-(widthIn - 2 * (boundingboxoffset - 0.25 in)) * 0.464286",
