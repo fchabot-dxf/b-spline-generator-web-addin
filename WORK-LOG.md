@@ -20782,3 +20782,62 @@ Fusion holder released. Commits this turn (all on `t10-reconstruction`, nothing 
 Passing back to the advisor for the merge, with the apex-drift finding flagged as its own follow-up,
 not a blocker for this item's own explicit mandate (both live-build failures fixed and verified,
 matrix all-BUILT, T18 genuinely ready to ship).
+
+## H23 item 78c, turn 552: split T10 back out per Fred's "T10 must stay exactly as it is" -- branch now mergeable
+
+Seat 39, turn 552. Advisor review of turn 550 (confirmed via both a direct DM and the formal turn
+dispatch): T18 18/18 BUILT is great, but the branch wasn't mergeable as-is -- it changed TEMPLATE 10's
+own phases (the short-arc-mid fix) while T10's goldens stayed old, and per turn 550's own flagged
+finding, re-recording them exposes the apex-drift bug. Fred's own call: T10 stays exactly as it is.
+Dispatch: (1) revert every template_10 phase/data change to origin/main's version; (2) keep the new
+generic SeedFrom mode in shared code, used ONLY by template_18; (3) full gate green including
+`check_golden_freshness.py --check` and `pytest test_golden_freshness.py` explicitly; (4) queue "T10
+archRise_min + apex drift" as its own item (H23 item 81) -- the advisor added it to NEXT-SESSION.md
+directly (not touched here, that file is the advisor's own). Also noted: two deploys this session
+(-16/-17) had been made from a dirty, uncommitted tree -- deploy only from a clean, committed,
+merged-with-main state going forward.
+
+**The split, mechanically:** `template_10/phases/p02_12_arch_rebuild.py` reverted BYTE-FOR-BYTE to
+origin/main's own version (confirmed identical to `26441c6`, the pre-78c commit, which is also what
+origin/main already has -- diffed the WHOLE `sketches/template_10/` tree plus its goldens against
+origin/main afterward: empty, exact match). `fb_engine/geometry.py`'s own `short-arc-mid` `SeedFrom`
+mode stays (generic, shared, a pure no-op for every template that doesn't ask for it by name) --
+`template_18/phases/p02_12_arch_rebuild.py` keeps using it, untouched. `test_seed_basis.py`: restored
+T10's own structural test to its original (literal-apex) expectation, and added the mirror test for
+template_18 asserting the new pattern there, so the "which template uses which approach" split stays
+covered by its own test instead of silently losing coverage on the T10 side.
+
+**Verified the revert is EXACT, not just a file match -- live, per the advisor's own explicit
+criterion ("if ANY geometry differs, stop and tell me"):** merged `origin/main` again (clean, no
+conflicts, confirmed byte-identical against my own pre-merge tip for every file touched this turn),
+ran the full suite as the gate BEFORE touching Fusion, confirmed `git status` was fully clean
+(tracked files) immediately before deploying -- this time from a genuinely committed, merged,
+non-dirty state (`build-info.json`: version `2026.10.04-19`, sha `21860c1`, `dirty: false`, addressing
+the advisor's own feedback about the prior session's -16/-17 deploys). Purged the stale module cache,
+confirmed T10's deployed phase file has NO `short-arc-mid` reference, T18's has it, `geometry.py`
+supports it -- the 3-way split is exactly as intended. **Live re-recorded T10's own 6x9/7x9 goldens
+with the reverted phase file:** geometry came back IDENTICAL to the already-committed recording (same
+radius 5.21161, same apex at (0, 4.25), same bar volumes) -- the only diffs were metadata (recorded
+date, recorder script name, an old historical note dropped) plus one harmless `-0.0` vs `0.0` sign-bit
+artifact on an essentially-zero coordinate (reported plainly rather than silently rounding it away;
+not a real geometric difference). Committed this re-recording anyway, specifically BECAUSE
+`check_golden_freshness.py`'s own check is commit-timestamp-based, not content-aware -- a
+byte-identical revert still reads as newer-than-its-goldens until a fresh commit re-establishes which
+came last; confirmed clean afterward: **"all golden fixtures are fresh", exit 0.** Regenerated
+frame-defs (only `sourceHash` changed -- confirms the metadata-only golden diff produced zero change
+to any template's own resolved shapeModel). A quick T18 sanity build (default seed, 7x9) after the
+redeploy: still 4 bars, `sketch_3` built, healthy -- confirms the split didn't regress T18 at all
+(expected, since none of T18's own files or the shared code it depends on changed in this turn).
+
+**Full gate, both languages, genuinely green:** Python 1033/1033 (0 skipped-but-relevant failures).
+JS 4041/4041 -- one single flaky timeout (`frame-bartop-drawn.test.js`, a template_3 bar-top mesh
+case, nothing to do with T10/T18) under the default 5s per-test timeout during full-suite parallel
+load; passed cleanly in isolation AND in a full re-run with a longer global timeout (`--testTimeout
+20000`), so treated as confirmed resource-contention noise, not a regression -- same pattern as
+turn 550's own single flake.
+
+**Fusion holder released.** Commits this turn, all on `t10-reconstruction`: `6291c0a` (the T10 phase
+revert + test split), `21860c1` (merge), `a306c4b` (re-recorded T10 goldens), `e23f698` (frame-defs
+regen). Passing back to the advisor: the branch should now be genuinely mergeable -- T10 untouched
+(confirmed byte-identical to origin/main), T18's own fix intact and verified, full gate green
+including the two checks the advisor named explicitly.
