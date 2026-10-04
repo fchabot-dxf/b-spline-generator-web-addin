@@ -16,6 +16,18 @@
  *     has the SAME primitive count/order as the input (the bars and miters pair
  *     outer and inner by index).
  *
+ * t === 0 is a declared special case, returned verbatim (a clone, never the input objects) rather
+ * than run through the joint solver below. MEASURED (d3, T16/T17 "Arched Funnel"/"Tulip", both
+ * all-miter outlines with a line-arc corner): at t=0 every carrier is exactly the ORIGINAL
+ * line/circle, so a corner joint's true solution is one of `_intersect`'s own candidate roots AT
+ * ZERO distance from `ref` -- except `onOffset`'s `_inside(q, poly)` ray-cast is evaluated AT a
+ * vertex of that same tessellated polygon, which is exactly the one place a ray-cast's left/right
+ * convention is undefined, so it can reject the true (zero-distance) root and keep only the far,
+ * wrong one of a 2-root circle/line intersection -- collapsing that joint's own pieces as
+ * "backwards" and cascading into their neighbours (confirmed: T16/T17 lose 3 of 6 primitives at
+ * t=0 this way, while t=1e-6 through t=0.25 all come back with zero collapses -- the failure is
+ * genuinely isolated to the t=0 boundary, not a "small offsets are unreliable" problem).
+ *
  * Pure: primitives in, primitives out ({type:'L',p0,p1} | {type:'A',cx,cy,rx,ry,phi,theta1,dTheta}).
  */
 
@@ -135,6 +147,9 @@ function _signedSweep(c, p0, p1, orig) {
 }
 
 export function offsetOutlineInward(prims, t) {
+  if (Math.abs(t) < 1e-9) {
+    return prims.map((p) => (p.type === 'L' ? { type: 'L', p0: { ...p.p0 }, p1: { ...p.p1 } } : { ...p }));
+  }
   const n = prims.length, inSign = _inwardSign(prims);
   const carriers = prims.map((p) => _carrier(p, t, inSign));
   const alive = prims.map((p, i) => !(carriers[i].kind === 'circle' && carriers[i].r <= 1e-9));

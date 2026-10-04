@@ -10686,3 +10686,55 @@ throughout. Screenshots: `shots/seatC/f35item10b_brush_stripped.png` (five joint
 Not yet done from this DM batch: the Brush pattern-picker's real band-list UI (deliberately a
 placeholder, see above), and the slider commit-timing / live-2D-preview-during-drag work (not
 started).
+
+## Bug fix (d3's find, dispatched ahead of item 11): outline-offset.js t=0 collapses T16/T17
+
+d3 found that `offsetOutlineInward(primitives, 0)` -- "Offset from frame" at its own live default
+distance (0) -- collapsed 3 of T16/T17's (Arched Funnel/Tulip) 6 primitives (both upper sides + the
+arch) into a single point, instead of returning the outline unchanged. Measured with the templates'
+own real geometry (`frameCutProfile` + `offsetOutlineInward` direct, both boards): **the failure is
+isolated to EXACTLY t=0** -- t=1e-6 through t=0.25 all come back with zero collapses on both
+templates. This matters because it rules out "small offsets are generally unreliable" (the dispatch's
+own hedge) as the actual scope; the real bug is a boundary case at the single value t=0.
+
+**Root cause**: at t=0 every offset "carrier" (outline-offset.js's own `_carrier`) is exactly the
+ORIGINAL line/circle, so a corner joint's true solution is one of `_intersect`'s own 2 candidate
+roots, AT ZERO distance from `ref` (the un-offset joint). But `_intersect`'s `onOffset` filter calls
+`_inside(q, poly)` -- a ray-cast point-in-polygon test -- evaluated AT a VERTEX of that same
+tessellated polygon, which is exactly the one place a ray-cast's left/right convention is undefined.
+At t=0 this can reject the true (zero-distance) root and keep only the far, wrong one of the 2-root
+circle/line intersection, which the `_join`/`offsetOutlineInward` "backwards" check then reads as
+that piece's own joints having crossed -- marking it (and, cascading, its neighbours) `collapsed`.
+Every OTHER tested t (even 1e-6) moves the carriers just enough that the ambiguous-vertex case never
+arises.
+
+**Fix** (`bspline-frame-builder/b-spline-gen/html/editor/outline-offset.js`): `offsetOutlineInward`
+now special-cases `Math.abs(t) < 1e-9` as an exact identity -- returns a CLONE of the input
+primitives (never the same objects, so callers stay free to mutate the result) without running the
+joint solver at all. This is mathematically exact (an offset by 0 is the identity by definition) and
+touches nothing about the solver's behavior at any other t -- confirmed by the full existing
+outline-offset/contour-from-frame/frame-parity-app suites staying green (209 tests) with no
+assertions changed.
+
+**Tests** (both files, mutation-tested together: commenting out the t=0 fast path made exactly 9 of
+133 tests fail -- the 9 new ones below, nothing pre-existing -- then restored from a pre-mutation
+copy, confirmed byte-identical):
+- `tests/outline-offset.test.js`: a line+arc outline (the same corner KIND that broke -- a line-arc
+  joint, not just all-line) at t=0 returns every primitive unchanged (type, coordinates, radii) with
+  zero `collapsed`, and the returned objects are clones, not the original references.
+- `tests/contour-from-frame.test.js`, two new `describe` blocks:
+  1. Every template, all 3 board sizes, `frameContourSilhouette(frame, 0, 0)` (distance 0, SW=0 --
+     the TRUE t=0 edge; the existing "T84 item 6" suite's own SW=0.07 never actually reaches t=0, so
+     it could not have caught this) matches the un-offset `frameCutProfile`'s own primitive count and
+     bounding box exactly -- t=0 can never legitimately collapse anything, so this is a hard
+     invariant, not an empirical observation.
+  2. T16/T17 specifically, at the dispatch's own named distances (0, 0.1, 0.25): all 6 primitives
+     survive every one, per this codebase's own already-declared invariant (contour-from-frame.js:
+     "T16/T17: every joint is a real corner, nothing ever collapses there").
+
+Full suite green: 206 files / 3811 tests.
+
+**Live-verified**: Shape Lattice pattern on T16 and T17, "Offset from frame" checked, distance 0 --
+both show a single smooth, closed, unbroken contour tracing the full funnel/hourglass outline (no
+stray point, no gap, no sharp jump). Screenshots: `shots/seatC/f8_offset0_fix_t16_arched_funnel.png`,
+`f8_offset0_fix_t17_tulip.png`.
