@@ -142,8 +142,48 @@ const SIZE_TIERS = Object.freeze([
 // repeating the same narrow-generalisation mistake -- re-verified directly against seat 88's own
 // exact reported combos (T1 7x9, T12 7x9, T9 9x12) afterward: medium moved from 22-24% to 32-33%,
 // large from 55-58% to 47-49%, both now comfortably inside the declared +/-10 points for every
-// case checked, not just the ones this file's own pooled test happens to sample.
-const GATE_AREA_SHARES = Object.freeze([0.13, 0.55, 0.32]);
+// case checked, not just the ones this file's own pooled test happens to sample. This is the
+// VERIFIED ANCHOR `gateAreaSharesFor` (below) is built from -- `largeStones` defaults to 0.5, which
+// reproduces this exact array, unchanged.
+const DEFAULT_GATE_AREA_SHARES = Object.freeze([0.13, 0.55, 0.32]);
+
+// T86 item 17 (Fred, White rocks v3 preview: "Wow" / "slider for more or less large ones"):
+// `largeStones` in 0..1 moves the large tier's own target AREA share along this declared range
+// (default 0.5 -> 0.5, i.e. today's split, unchanged); medium/small rescale in their CURRENT
+// proportion (35:15, i.e. 7:3) to fill whatever's left.
+const LARGE_SHARE_RANGE = Object.freeze([0.2, 0.8]);
+function targetAreaSharesFor(largeStones) {
+  const s = Number.isFinite(largeStones) ? Math.min(1, Math.max(0, largeStones)) : 0.5;
+  const large = LARGE_SHARE_RANGE[0] + (LARGE_SHARE_RANGE[1] - LARGE_SHARE_RANGE[0]) * s;
+  const remaining = 1 - large;
+  const mediumFracOfRemaining = SIZE_TIERS[1].areaShare / (SIZE_TIERS[1].areaShare + SIZE_TIERS[2].areaShare);
+  return [large, remaining * mediumFracOfRemaining, remaining * (1 - mediumFracOfRemaining)];
+}
+
+// Re-derives `tierAt`'s own point-count shares for ANY target area-share vector by the SAME
+// radius^2 rule documented above (raw_i = target_i / fraction_i^2, normalized) -- but the raw rule
+// ALONE does not land on the measured-correct DEFAULT_GATE_AREA_SHARES at largeStones=0.5 (MEASURED:
+// the raw rule alone gives [0.116,0.326,0.558] there, not [0.13,0.55,0.32] -- Poisson-disc's own
+// point density also scales with each tier's own spacing, and large's own pass-order precedence
+// compounds on top, neither of which a closed r^-2 form alone predicts). Rather than a SEPARATE
+// hand-tuned table per slider value (ruled out by the dispatch itself), `GATE_CORRECTION` is derived
+// ONCE -- "how far off the raw rule was at the one point this project has actually measured and
+// verified against real templates" -- and applied as a constant per-tier multiplier at every other
+// target. By construction this reproduces `DEFAULT_GATE_AREA_SHARES` EXACTLY at largeStones=0.5.
+const GATE_CORRECTION = Object.freeze((() => {
+  const targets = targetAreaSharesFor(0.5); // === SIZE_TIERS[i].areaShare
+  const fractionsSq = SIZE_TIERS.map((t) => t.fraction * t.fraction);
+  const raw = targets.map((a, i) => a / fractionsSq[i]);
+  const rawSum = raw.reduce((s, v) => s + v, 0);
+  return raw.map((r, i) => DEFAULT_GATE_AREA_SHARES[i] / (r / rawSum));
+})());
+function gateAreaSharesFor(largeStones) {
+  const targets = targetAreaSharesFor(largeStones);
+  const fractionsSq = SIZE_TIERS.map((t) => t.fraction * t.fraction);
+  const corrected = targets.map((a, i) => (a / fractionsSq[i]) * GATE_CORRECTION[i]);
+  const sum = corrected.reduce((s, v) => s + v, 0);
+  return corrected.map((v) => v / sum);
+}
 const NOISE_CELL_FACTOR = 1.5; // TEMP for tuning sweep (was 4) -- advisor/Fred: "sizes form zones...
 // raise the noise frequency to about 1-2 large-stone diameters" so medium/small mix THROUGHOUT the
 // board, not segregated into their own large all-one-size regions.
@@ -225,13 +265,15 @@ const NOISE_BIAS = 0.25; // T86 item 6 (advisor review, "sizes form zones... Fre
  *  lookup against a blend of the smooth spatial noise field and (when `rng` is given) a fresh
  *  per-candidate random draw, so results are NOT purely a function of position: two different
  *  candidates at the very same spot can draw different tiers. `rng` omitted falls back to the pure
- *  spatial field (used only by callers that need a position-only read, e.g. diagnostics). */
-function tierAt(x, y, cellSize, seed, rng) {
+ *  spatial field (used only by callers that need a position-only read, e.g. diagnostics).
+ *  `gateShares` (T86 item 17): `gateAreaSharesFor(largeStones)`'s own output, threaded through
+ *  rather than read from the old module-level constant, so each `fieldstoneLayout` call can move it. */
+function tierAt(x, y, cellSize, seed, rng, gateShares) {
   const n = uniformizeNoise(valueNoiseAt(x, y, cellSize, seed));
   const blended = rng ? NOISE_BIAS * n + (1 - NOISE_BIAS) * rng() : n;
   let cum = 0;
   for (let i = 0; i < SIZE_TIERS.length; i++) {
-    cum += GATE_AREA_SHARES[i];
+    cum += gateShares[i];
     if (blended < cum) return SIZE_TIERS[i];
   }
   return SIZE_TIERS[SIZE_TIERS.length - 1];
@@ -402,13 +444,17 @@ function powerCell(point, allPoints, boxPoly, pointShrink) {
  * @param {object} set — {brickLengthIn (reused as target spacing), grout:{widthIn}}
  * @param {*} _zones — unused (fieldstone has no banding concept); kept for call-signature parity with bondLayout
  * @param {number} seed
+ * @param {number} [largeStones=0.5] — T86 item 17: 0..1, moves the large tier's own target area
+ *   share along `LARGE_SHARE_RANGE` (~0.2 at 0, ~0.8 at 1); 0.5 reproduces today's declared 50/35/15
+ *   split exactly. Omitted/non-finite falls back to 0.5, same as every pre-item-17 caller.
  * @returns {{cells: Array}} cells[i] = { id, polygon, courseIndex, cx, cy, neighbors:{} }
  */
-export function fieldstoneLayout(boardOutline, set, _zones, seed) {
+export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones) {
   const spacing = set.brickLengthIn;
   const shrink = (set.grout?.widthIn ?? 0) / 2;
   const grout = set.grout?.widthIn ?? 0;
   const seedBase = seed ?? 0;
+  const gateShares = gateAreaSharesFor(largeStones);
 
   const tierSpacings = SIZE_TIERS.map((tier) => Math.max(spacing * tier.fraction, GROUT_CLEARANCE_FACTOR * grout));
   const maxSpacing = Math.max(...tierSpacings), minSpacing = Math.min(...tierSpacings);
@@ -434,7 +480,7 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed) {
   for (let i = 0; i < SIZE_TIERS.length; i++) {
     const tier = SIZE_TIERS[i];
     const tierSpacing = tierSpacings[i];
-    const gate = (x, y, rng) => tierAt(x, y, noiseCellSize, seedBase, rng) === tier;
+    const gate = (x, y, rng) => tierAt(x, y, noiseCellSize, seedBase, rng, gateShares) === tier;
     const found = poissonDiscSample(boardOutline, tierSpacing, seedFor(seedBase, 'fieldstone-tier', i), points, gate);
     for (const p of found) points.push({ ...p, tierIndex: i });
   }

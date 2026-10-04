@@ -32,6 +32,10 @@ export const EDITOR_TABS = [
     modes: ['select'] },
   { id: 'brick', label: 'Brick', drawerLabel: 'Brick', buttonId: 'editorTabBrick', panelId: 'editorBrickPanel', toolbarId: 'editorToolbarBrick',
     modes: ['select', 'brickBrush', 'cut', 'stripe', 'brickAccentClick'],
+    // `peekEssentials` (Fred, live: "Wall is missing the generate button"): what must show IN FULL when the
+    // phone / narrow-palette drawer sits at peek height (editor/editor-drawer.js measures them into its peek
+    // floor). The Brick panel's pinned Generate -- at peek only 10 of its 32 px showed.
+    peekEssentials: ['#editorBrickPanel > .sticky-actions'],
     // `modeHosts` (turn 195, advisor: "one contextual panel"): which panel a mode's settings open in, per
     // tab. Here the stripe mode's settings (#editorStripePanelBody) live INSIDE this tab's own panel
     // (#brickStripeSection, shown for the Stripe tool) instead of opening a second side column. A tab
@@ -99,6 +103,10 @@ export function setEditorTab(tab) {
   // Mobile: the editor's bottom drawer labels its side panel; name it for the active tab.
   const drawerTab = document.getElementById('editorDrawerTab-layers');
   if (drawerTab) drawerTab.textContent = EDITOR_TABS.find((t) => t.id === _editorTab)?.drawerLabel || 'Layers';
+  // ... and hands it the active tab's declared peek essentials (editor/ never imports main/, so as data on
+  // the drawer element; editor-drawer.js re-measures its peek floor on 'editorTabChanged' below).
+  const drawer = document.getElementById('editorMobileDrawer');
+  if (drawer) drawer.dataset.peekEssentials = JSON.stringify(EDITOR_TABS.find((t) => t.id === _editorTab)?.peekEssentials || []);
   // F35 item 10 follow-up (advisor): the top toolbar's own GROUPS are shared chrome, not one tab's
   // content -- the bar itself now always shows (whenever any tab needs at least one group); WHICH
   // groups show is the per-tab table above.

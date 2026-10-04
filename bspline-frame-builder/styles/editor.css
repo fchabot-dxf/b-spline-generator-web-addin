@@ -201,7 +201,7 @@
     }
 }
 
-@media (pointer: coarse) and (max-width: 720px) {
+@media (pointer: coarse) and (max-width: 900px) {
     /* T32/MOB3: lift the pill above the mobile drawer (editor-drawer.js)
        when it's open — but the drawer only becomes a FIXED, viewport-
        bottom element under this SAME width breakpoint; outside it (e.g. a
@@ -266,7 +266,7 @@
 }
 
 /* 2-STATE RESPONSIVE: NARROW MODE */
-@media (max-width: 720px) {
+@media (max-width: 900px) {
     .cad-modal-window.overhauled {
         width: 100vw !important;
         height: 100vh !important;
@@ -620,7 +620,7 @@
    conditions from ever both matching the same viewport. Only each
    orientation's OWN drawer POSITIONING + handle SHAPE differ — those stay
    in their own narrower blocks below this one. */
-@media (max-width: 720px), (pointer: coarse) and (max-height: 500px) and (min-width: 721px) {
+@media (max-width: 900px), (pointer: coarse) and (max-height: 500px) and (min-width: 901px) {
     /* Overrides the base `display:contents` — a real box, always column-
        internally (tabs bar above the scrollable body) regardless of
        whether the OUTER drawer itself is laid out as a column (portrait)
@@ -863,7 +863,7 @@
 /* =========================================================================
    ===== Mobile: PORTRAIT-only (bottom drawer, narrow-width layout) =====
    ========================================================================= */
-@media (max-width: 720px) {
+@media (max-width: 900px) {
     #svgEditorModal .modal-window>div:nth-child(2) {
         flex-direction: column;
     }
@@ -1022,7 +1022,7 @@
    between portrait and landscape keeps each their own remembered split,
    never fighting over one value).
    ========================================================================= */
-@media (pointer: coarse) and (max-height: 500px) and (min-width: 721px) {
+@media (pointer: coarse) and (max-height: 500px) and (min-width: 901px) {
     /* NOT position:fixed — a normal flex sibling in the SAME row
        .cad-modal-body already lays .editor-sidebar/#editorCanvasContainer
        out in (bspline_gen_palette.html's own `.cad-modal-body{display:
@@ -1085,7 +1085,7 @@
     }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
     /* H4 (Fred, phone shot 11:09: "can't scroll the header"): the RIGHT
        group's own overflow-x:auto (below) already technically scrolls
        (proven live: scrollLeft moves Cancel/Apply fully into view) -- the
@@ -1203,7 +1203,9 @@
         flex-wrap: nowrap;
         gap: 8px;
         padding: 10px 10px 10px 8px;
-        height: auto;
+        /* !important: the element's own inline `height: 38px` (the desktop row) otherwise wins, and the taller
+           phone groups (Stroke stepper, Style buttons) were cut off at the bar's bottom edge. */
+        height: auto !important;
         /* !important: the element's own inline `overflow: hidden` (the desktop row) otherwise wins over this
            rule, so on a phone the Stroke / Color / Grid row clipped instead of scrolling (Fred, phone shot 6:27:
            "this toolbar isn't scrollable"). */
@@ -1294,7 +1296,7 @@
    selector short of `!important`), matching this file's own established
    convention for every other mobile override that beats an inline style.
    ========================================================================= */
-@media (max-width: 720px), (pointer: coarse) {
+@media (max-width: 900px), (pointer: coarse) {
     :root {
         --cad-stepper-touch: 44px;
         /* H10 (Fred: "change just the WIDTH of the stepper" -- an earlier
@@ -1923,7 +1925,7 @@
    the controls' own inline height:22-28px without !important; desktop sizes are untouched. A segmented
    group's fixed 24px height (base.css) is released so its buttons can grow. Section and sub-section
    labels (the fold toggles) get the same height. */
-@media (max-width: 720px), (pointer: coarse) and (max-height: 500px) and (min-width: 721px) {
+@media (max-width: 900px), (pointer: coarse) and (max-height: 500px) and (min-width: 901px) {
     #editorShapeLatticePanel .segmented-group {
         height: auto;
     }

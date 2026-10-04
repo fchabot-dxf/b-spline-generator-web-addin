@@ -197,3 +197,25 @@ describe('sampleHeight', () => {
     }
   });
 });
+
+// T86 item 19's own amendment (advisor): a UI control for an option the engine ignores must not
+// show (ENGINE_OPTIONS' own header, turn 199) -- the inverse is just as real: an option the engine
+// DOES read but forgot to declare leaves its own control permanently hidden, exactly what nearly
+// happened with `largeStones` (already correctly listed by the time this landed -- CONFIRMED
+// against both lane-b and origin/main directly, not assumed -- but the class of mistake is real and
+// worth a standing guard, not a one-off check). Scans engine.js's OWN source for every `input.<key>`
+// property read (plus its destructured params), rather than hand-maintaining a parallel list that
+// would just as easily drift -- self-updating as the function's own reads change.
+describe('ENGINE_OPTIONS completeness (T86 item 19 amendment)', () => {
+  it('every input.<key> engine.js actually reads is declared in ENGINE_OPTIONS', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('bspline-frame-builder/b-spline-gen/html/core/bricks/engine.js', 'utf8');
+    const { ENGINE_OPTIONS } = await import('../bspline-frame-builder/b-spline-gen/html/core/bricks/engine.js');
+    const fnBody = src.slice(src.indexOf('export function generateBricks'), src.indexOf('export function', src.indexOf('export function generateBricks') + 1));
+    const destructured = [...fnBody.matchAll(/const \{ ([^}]+) \} = input;/g)].flatMap((m) => m[1].split(',').map((s) => s.trim()));
+    const dotted = [...fnBody.matchAll(/\binput\.(\w+)/g)].map((m) => m[1]);
+    const used = new Set([...destructured, ...dotted]);
+    const missing = [...used].filter((k) => !ENGINE_OPTIONS.includes(k));
+    expect(missing, `read by generateBricks but not in ENGINE_OPTIONS: ${missing.join(', ')}`).toEqual([]);
+  });
+});
