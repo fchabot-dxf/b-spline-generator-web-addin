@@ -18941,7 +18941,7 @@ strips next to the top/bottom runs are now uniform whole bricks; the lapped clos
 strip is gone; the block square's own thin strips next to each grey quoin are gone, every piece now a
 full brick right up to the block's own face.
 
-**Commit `[pending]`, pushed to origin/lane-b.** Fixed the actual root cause (the wrong objective
+**Commit `cce8bcf`, pushed to origin/lane-b.** Fixed the actual root cause (the wrong objective
 function in a shared planner, not the mechanism the advisor's own report guessed at, confirmed by
 measurement before accepting either claim), not a narrow one-off patch -- the SAME planner serves
 mitre too, so this also improves any future mitre-corner run that happened to land in the same
