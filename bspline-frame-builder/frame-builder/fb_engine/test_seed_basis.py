@@ -123,7 +123,19 @@ def test_template_10_arch_rebuild_tracks_top_edges_live_endpoints_not_a_literal(
     template-resolution-time copy made before any seed was applied) to leave the rebuild frozen at
     the unseeded literal regardless of what was actually dragged, reproducing item 45's own bug one
     layer removed. The APEX (middle point) stays a plain literal -- it only forces the correct arc
-    branch and must NOT track the seed."""
+    branch and must NOT track the seed.
+
+    H23 item 78c / turn 552: item 78c found this literal apex is WRONG for every archRise but the one
+    it was tuned against (Template 18's own archRise handle at its declared max silently failed to
+    build sketch_3 at all) and fixed it with a new SeedFrom mode, `side: 'short-arc-mid'` (see
+    test_template_18_arch_rebuild_tracks_top_edges_live_endpoints_and_its_own_minor_arc_mid below).
+    But re-recording T10's OWN goldens under that fix exposed a SEPARATE, pre-existing bug (top_edge's
+    own curvature drifts between its seeded creation and this rebuild, even though its endpoints stay
+    correctly pinned) that broke T10's real-fit-from-goldens pipeline -- the advisor's call (Fred:
+    "T10 must stay exactly as it is"): keep T10 on the old literal-apex rebuild for now, queued as its
+    own item (H23 item 81, T10 archRise_min + the apex drift) rather than ship a degraded fit on a
+    live template. `short-arc-mid` itself stays in fb_engine/geometry.py (shared, generic, used only
+    by template_18 today)."""
     sk2 = resolve_template("template_10")[0]["Sketches"][1]
     rebuilds = [st for block in sk2["Blocks"] for st in block.get("BuildSequence", [])
                 if st.get("ID") == "top_edge" and st.get("Rebuild")]
@@ -133,6 +145,23 @@ def test_template_10_arch_rebuild_tracks_top_edges_live_endpoints_not_a_literal(
     assert pts[0] == {"SeedFrom": {"id": "top_edge", "side": "left"}}
     assert pts[2] == {"SeedFrom": {"id": "top_edge", "side": "right"}}
     assert isinstance(pts[1], list) and "SeedFrom" not in pts[1]
+
+
+def test_template_18_arch_rebuild_tracks_top_edges_live_endpoints_and_its_own_minor_arc_mid():
+    """H23 item 78c / turn 550: Template 18's own copy of the arch-rebuild phase uses the NEW
+    SeedFrom mode for all 3 points, including the apex -- `side: 'short-arc-mid'`, the source arc's
+    own CURRENT minor-arc midpoint, needing no stored apex height at all and correct for every
+    archRise (unlike T10's own literal-apex rebuild above, kept on the old behavior per turn 552's
+    own advisor decision -- T10 stays exactly as it was, this fix is T18-only for now)."""
+    sk2 = resolve_template("template_18")[0]["Sketches"][1]
+    rebuilds = [st for block in sk2["Blocks"] for st in block.get("BuildSequence", [])
+                if st.get("ID") == "top_edge" and st.get("Rebuild")]
+    assert len(rebuilds) == 1
+    pts = rebuilds[0]["Points"]
+    assert len(pts) == 3
+    assert pts[0] == {"SeedFrom": {"id": "top_edge", "side": "left"}}
+    assert pts[2] == {"SeedFrom": {"id": "top_edge", "side": "right"}}
+    assert pts[1] == {"SeedFrom": {"id": "top_edge", "side": "short-arc-mid"}}
 
 
 def _has_seedfrom(step):

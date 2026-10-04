@@ -62,13 +62,12 @@
     }
   },
   "meta": {
-    "core": "flat box 6x9x0.75 in, underside at z=0 (record_frame_parity._make_core convention, extruded upward) (item 44 re-record, send_frame path)",
+    "core": "flat box 6x9x0.75 in, underside z=0",
     "frame_height_offset": "-1 in",
     "frame_thickness": "template default (0.75 in)",
     "heightIn": 9,
-    "recorded": "2026-10-03",
-    "recorder": "tools/repro/fusion_t11/item44_record_t10_goldens.py",
-    "reverifiedAfter": "H23 item 63 / T84 item 7 (2026-10-03): T10 taperAngle added; top horns' Vertical made UnseededOnly. Re-recorded live (advisor): geometry identical to the item 47 recording (0 numeric diffs > 1e-4).",
+    "recorded": "2026-10-04",
+    "recorder": "tools/repro/record_frame_parity.py",
     "template": "template_10",
     "timelineHealthy": true,
     "units": "in / in^2 / in^3",

@@ -6,6 +6,7 @@ and the geometry spec dict from the template data.
 """
 import adsk.core, adsk.fusion
 import json
+import math
 import random
 
 
@@ -164,10 +165,39 @@ def _point_seed_from(ctx, s_name, seed_from, geo_id):
     geometry at build time (the source entity must already exist in `entity_map` -- its own step
     must come earlier in this SAME build sequence, and if the source is about to be rebuilt itself,
     this must be called BEFORE that deletion happens) -- a Point anchor needs to track wherever the
-    seeded arc's endpoint ACTUALLY landed after `addByThreePoints`, not a declaration-time literal."""
+    seeded arc's endpoint ACTUALLY landed after `addByThreePoints`, not a declaration-time literal.
+
+    H23 item 78c: `'side': 'short-arc-mid'` -- the SOURCE ARC's own minor-arc midpoint, derived from
+    its CURRENT center/radius/endpoints, not a declaration-time literal either. Fixes a real bug
+    this item found (affects T10's own archRise handle too, not just T18's): a `Rebuild` arc whose
+    two ends track a seed via `SeedFrom` but whose own forcing/apex point was a FIXED literal (e.g.
+    `template_10/phases/p02_12_arch_rebuild.py`'s own old `LY`, "the safe zone's own top line")
+    assumed the apex always sits on that one fixed line -- true only for the ONE archRise value that
+    literal happened to be tuned against. Every OTHER archRise sends a seeded arc whose real apex is
+    at a genuinely different height (`hourglassConstruction`'s own sagitta-circle `arch` block:
+    apex = chord + archRise, no fixed ceiling at all), so the old literal silently built the WRONG
+    circle at the range ends -- not a branch-selection ambiguity like the entries above, a flatly
+    incorrect target. The MINOR arc's own midpoint needs no stored apex at all: for a circle of
+    radius `r` centred at `C` through two known points `S`/`E`, it is the point `r` out from `C`
+    along `unit(S-C) + unit(E-C)` -- the two points' own angular bisector, which always lies on the
+    SHORTER of the two arcs they divide the circle into (the sum of two unit vectors across an angle
+    < 180 deg always leans into that smaller angle; exactly 180 deg, S and E diametrically opposite,
+    has no unique minor arc and is treated as an error rather than guessed at)."""
     src = ctx.entity_map.get(s_name, {}).get(seed_from["id"])
     if src is None:
         raise ValueError(f"SeedFrom {seed_from['id']!r} (point {geo_id!r}): no such built entity yet")
+    if seed_from.get("side") == "short-arc-mid":
+        c = src.centerSketchPoint.geometry
+        r = src.radius
+        s, e = src.startSketchPoint.geometry, src.endSketchPoint.geometry
+        us, ue = (s.x - c.x, s.y - c.y), (e.x - c.x, e.y - c.y)
+        us_n, ue_n = math.hypot(*us), math.hypot(*ue)
+        bx, by = us[0] / us_n + ue[0] / ue_n, us[1] / us_n + ue[1] / ue_n
+        b_n = math.hypot(bx, by)
+        if b_n < 1e-9:
+            raise ValueError(f"SeedFrom {seed_from['id']!r} (point {geo_id!r}): short-arc-mid is "
+                              f"undefined -- source arc's own two endpoints are diametrically opposite")
+        return c.x + r * bx / b_n, c.y + r * by / b_n
     ends = [src.startSketchPoint.geometry, src.endSketchPoint.geometry]
     ends.sort(key=lambda g: g.x)
     chosen = ends[0] if seed_from.get("side") == "left" else ends[-1]
@@ -179,8 +209,9 @@ def _resolve_point_spec(ctx, s_name, p, geo_id):
     `[x_expr, y_expr]` pair (resolved via `ctx.resolve_val`), or a `{'SeedFrom': {...}}` dict
     (resolved via `_point_seed_from`, live geometry). Declared ONCE, shared by every geometry
     creator so a template can mix literal and SeedFrom points within the SAME step (e.g. a
-    Rebuild arc whose two ends must track a seed but whose apex must stay a fixed literal to force
-    the correct branch -- see sketches/template_10/phases/p02_12_arch_rebuild.py)."""
+    Rebuild arc whose two ends track a seed (`side: 'left'`/`'right'`) and whose own forcing/apex
+    point tracks that SAME arc's own minor-arc midpoint (`side: 'short-arc-mid'`) -- see
+    sketches/template_10/phases/p02_12_arch_rebuild.py)."""
     if isinstance(p, dict) and "SeedFrom" in p:
         return _point_seed_from(ctx, s_name, p["SeedFrom"], geo_id)
     return ctx.resolve_val(p[0]), ctx.resolve_val(p[1])

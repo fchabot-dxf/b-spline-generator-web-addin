@@ -88,11 +88,15 @@ class FakePoint:
 
 
 class FakeArc:
-    """Stands in for a built SketchArc/SketchLine: only startSketchPoint/endSketchPoint matter
-    to `_point_seed_from`."""
-    def __init__(self, start_xy, end_xy):
+    """Stands in for a built SketchArc/SketchLine: only startSketchPoint/endSketchPoint matter to
+    `_point_seed_from`'s `side: 'left'`/`'right'` -- `center_xy`/`radius` (H23 item 78c's own
+    `side: 'short-arc-mid'`) are optional and unused by a plain Line stand-in."""
+    def __init__(self, start_xy, end_xy, center_xy=None, radius=None):
         self.startSketchPoint = FakePoint(*start_xy)
         self.endSketchPoint = FakePoint(*end_xy)
+        if center_xy is not None:
+            self.centerSketchPoint = FakePoint(*center_xy)
+        self.radius = radius
 
 
 class FakeSketchPoints:
@@ -158,6 +162,59 @@ def test_seed_from_missing_source_raises():
     geom = {'ID': 'top_S_anchor', 'Type': 'Point', 'Points': [{'SeedFrom': {'id': 'nonexistent', 'side': 'left'}}]}
     with pytest.raises(ValueError, match="nonexistent"):
         geometry._create_point(ctx, sketch, S, geom, 'top_S_anchor')
+
+
+def test_seed_from_short_arc_mid_picks_the_minor_arc_bisector_point():
+    """H23 item 78c: circle centred at origin, r=5, S=(-4,3), E=(4,3) -- the MINOR arc is the one
+    bulging toward +y (the major arc bulges the long way round through -y), so its own midpoint is
+    the top of the circle, (0, 5), not the bottom (0, -5) a naive "just above the chord" guess might
+    pick for a y-symmetric case like this one."""
+    ctx = _ctx()
+    ctx.entity_map[S] = {'top_edge': FakeArc(start_xy=(-4, 3), end_xy=(4, 3), center_xy=(0, 0), radius=5)}
+    sketch = FakeSketch()
+    geom = {'ID': 'mid', 'Points': [{'SeedFrom': {'id': 'top_edge', 'side': 'short-arc-mid'}}]}
+    entity = geometry._create_point(ctx, sketch, S, geom, 'mid')
+    assert entity.geometry.x == pytest.approx(0, abs=1e-9)
+    assert entity.geometry.y == pytest.approx(5, abs=1e-9)
+
+
+def test_seed_from_short_arc_mid_follows_the_chord_to_the_other_side():
+    """The mirror of the case above (chord below centre instead of above) -- the minor arc's own
+    midpoint must flip to the BOTTOM of the circle, proving this isn't hardcoded to "always +y" (the
+    exact bug class this fix replaces: a fixed-literal apex that only matched ONE specific chord)."""
+    ctx = _ctx()
+    ctx.entity_map[S] = {'top_edge': FakeArc(start_xy=(-4, -3), end_xy=(4, -3), center_xy=(0, 0), radius=5)}
+    sketch = FakeSketch()
+    geom = {'ID': 'mid', 'Points': [{'SeedFrom': {'id': 'top_edge', 'side': 'short-arc-mid'}}]}
+    entity = geometry._create_point(ctx, sketch, S, geom, 'mid')
+    assert entity.geometry.x == pytest.approx(0, abs=1e-9)
+    assert entity.geometry.y == pytest.approx(-5, abs=1e-9)
+
+
+def test_seed_from_short_arc_mid_tracks_an_off_center_asymmetric_chord():
+    """Not just the symmetric textbook case: an off-centre circle with S/E at different y's too, and
+    an EXACT expected point (not a loose inequality -- a loose "closer than the major arc" bound
+    would pass even for a wrong fallback that just returns one of the two endpoints verbatim, since
+    an endpoint is trivially distance-0 from itself and still on the circle)."""
+    ctx = _ctx()
+    # Circle centred at (2, 1), r=5. Points on it: (2+3,1+4)=(5,5) and (2+5,1+0)=(7,1). Bisector
+    # direction = unit(3,4) + unit(5,0) = (0.6,0.8) + (1,0) = (1.6,0.8), normalized (0.894427,0.447214).
+    ctx.entity_map[S] = {'top_edge': FakeArc(start_xy=(5, 5), end_xy=(7, 1), center_xy=(2, 1), radius=5)}
+    sketch = FakeSketch()
+    geom = {'ID': 'mid', 'Points': [{'SeedFrom': {'id': 'top_edge', 'side': 'short-arc-mid'}}]}
+    entity = geometry._create_point(ctx, sketch, S, geom, 'mid')
+    assert entity.geometry.x == pytest.approx(2 + 5 * 0.8944271910, abs=1e-6)
+    assert entity.geometry.y == pytest.approx(1 + 5 * 0.4472135955, abs=1e-6)
+
+
+def test_seed_from_short_arc_mid_raises_on_diametrically_opposite_endpoints():
+    """No unique minor arc when S/E are a diameter apart -- must fail loudly, not guess."""
+    ctx = _ctx()
+    ctx.entity_map[S] = {'top_edge': FakeArc(start_xy=(-5, 0), end_xy=(5, 0), center_xy=(0, 0), radius=5)}
+    sketch = FakeSketch()
+    geom = {'ID': 'mid', 'Points': [{'SeedFrom': {'id': 'top_edge', 'side': 'short-arc-mid'}}]}
+    with pytest.raises(ValueError, match="short-arc-mid"):
+        geometry._create_point(ctx, sketch, S, geom, 'mid')
 
 
 def test_without_seedfrom_still_resolves_a_literal_points_value():
