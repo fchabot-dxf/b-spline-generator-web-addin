@@ -83,18 +83,18 @@ describe('BRICK_SETS', () => {
 });
 
 describe('FRAME_PRESETS', () => {
-  it('declares exactly the 5 named presets, each a non-empty band list with widthIn > 0', () => {
-    // T86 item 1: butt_frame and double_course join the 3 original mitre-only presets; block lands
-    // in its own later item.
-    expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['butt_frame', 'double_course', 'single_soldier', 'soldier_stretcher', 'three_band'].sort());
+  it('declares exactly the 6 named presets, each a non-empty band list with widthIn > 0', () => {
+    // T86 item 1: butt_frame, quoin_corners and double_course join the 3 original mitre-only presets.
+    expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['butt_frame', 'double_course', 'quoin_corners', 'single_soldier', 'soldier_stretcher', 'three_band'].sort());
     for (const bands of Object.values(FRAME_PRESETS)) {
       expect(bands.length).toBeGreaterThan(0);
       for (const b of bands) expect(b.widthIn).toBeGreaterThan(0);
     }
   });
 
-  it('butt_frame/double_course declare their own cornerStyle; every mitre-only preset stays silent', () => {
+  it('butt_frame/quoin_corners/double_course declare their own cornerStyle; every mitre-only preset stays silent', () => {
     expect(FRAME_PRESETS.butt_frame.every((b) => b.cornerStyle === 'butt')).toBe(true);
+    expect(FRAME_PRESETS.quoin_corners.every((b) => b.cornerStyle === 'block')).toBe(true);
     expect(FRAME_PRESETS.double_course.every((b) => b.cornerStyle === 'lapped')).toBe(true);
     expect(FRAME_PRESETS.double_course.length).toBeGreaterThanOrEqual(2); // the minimum that shows the alternation at all
     for (const name of ['single_soldier', 'soldier_stretcher', 'three_band']) {

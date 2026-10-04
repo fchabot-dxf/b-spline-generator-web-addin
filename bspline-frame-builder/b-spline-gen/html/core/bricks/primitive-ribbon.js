@@ -45,7 +45,7 @@ import { curveIntersection, lineLineIntersection } from './curve-intersect.js';
 import { clipToHalfPlane, signedArea } from './geometry.js';
 import { planCornerRun, mergeSlivers, pickSample } from './piece-plan.js';
 import { isArcFeasible, voussoirPieces } from './arc-voussoir.js';
-import { FILL_FRACTIONS } from './library.js';
+import { FILL_FRACTIONS, brickSetById } from './library.js';
 import { mulberry32, seedFor } from './rng.js';
 
 function offsetPrimitive(prim, d) {
@@ -194,10 +194,70 @@ function buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipTh
  *  to its own exact natural endpoint, see `buildButtJoint`'s own header), the butt primitive gets
  *  the square-cut line -- same object either way regardless of whether `idx` is this joint's own
  *  `prevIdx` or `curIdx`, since `buildButtJoint` already set both `keepRefAsStart`/`keepRefAsEnd` to
- *  the one physically-correct reference point for that single primitive. */
+ *  the one physically-correct reference point for that single primitive. A block joint (`.isBlock`,
+ *  `buildBlockJoint` below) is a DIFFERENT kind of asymmetric: unlike butt, BOTH sides get their own
+ *  independent square cut (there's no "through" side), so it carries `forPrev`/`forCur` directly
+ *  instead of a through/butt pair -- `idx` picks whichever this joint's own `prevIdx`/`curIdx` it is. */
 function jointFor(joint, idx) {
-  if (!joint || !joint.isButt) return joint;
-  return idx === joint.throughIdx ? joint.forThrough : joint.forButt;
+  if (!joint) return joint;
+  if (joint.isButt) return idx === joint.throughIdx ? joint.forThrough : joint.forButt;
+  if (joint.isBlock) return idx === joint.prevIdx ? joint.forPrev : joint.forCur;
+  return joint;
+}
+
+const QUOIN_SET = brickSetById(3); // "White rocks" (library.js:181) -- already declared for exactly
+// this purpose (its own comment: "this item's own earlier Set-3 comment already earmarked THIS slot
+// for exactly this ashlar/stone follow-up"). `ribbonPieces`/`contour-bands.js` never read
+// `set.shape`/`set.layout` (grepped: no hits) -- only `brickLengthIn`/grout/samples/heightProfile,
+// which this pipeline already knows how to use for a plain piece, so the quoin block is built the
+// SAME way every other piece here is, no fieldstone/Voronoi engine needed.
+
+/**
+ * T86 item 1, BLOCK (dispatch: "one solid corner unit from the White rocks set; each band butts
+ * square into its faces (quoin look)"): unlike BUTT/LAPPED (one through, one butt), BOTH primitives
+ * get the SAME treatment -- a square cut (perpendicular to EACH primitive's own tangent) one full
+ * `blockSize` back from the true corner (`blockSize` = the White rocks set's own declared
+ * `brickLengthIn`, its own unit size, independent of whichever set the surrounding band itself
+ * uses). The resulting `blockSize x blockSize` square pocket, anchored at the TRUE outer corner (a
+ * real quoin unit's own natural depth equals its own face size, not the surrounding row's `d1-d0` --
+ * see WORK-LOG's own "one real open question" entry, resolved this way as the simpler, more literal
+ * "solid corner unit" reading), is the block's own piece, built directly here and collected the same
+ * way a `kiteFan` already is.
+ *
+ * Returns `null` for the same reason `buildButtJoint` does (parallel tangents, no genuine corner).
+ * Returns the block's own PLAIN POLYGON only -- no id/sample assigned here (this runs inside the
+ * `jointBefore` map, before the main per-primitive loop's own `nextId` counter exists; the main loop
+ * builds the actual piece from `blockPolygon`, the exact same deferred pattern `kiteFan` already
+ * uses, for the exact same reason: an id assigned here could collide with one the main loop hands
+ * out later).
+ */
+function buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint) {
+  const tPrev = tangentAt(primitives[prevIdx], o);
+  const tCur = tangentAt(primitives[curIdx], o);
+  if (Math.abs(tPrev.x * tCur.x + tPrev.y * tCur.y) >= BUTT_PARALLEL_DOT) return null;
+  const blockSize = QUOIN_SET.brickLengthIn;
+  const prevPrim = primitives[prevIdx], curPrim = primitives[curIdx];
+  // The block's OWN face sits exactly `blockSize` from the corner (a quoin unit's own declared size,
+  // unaffected by grout). The SURROUNDING band's own cut stops `nominalJoint` further out still,
+  // leaving a real mortar-width gap between the block's own face and the band's own first piece --
+  // same convention `buildButtJoint`'s own grout gap already established.
+  const blockPrevPoint = stepFrom(o, tPrev, -blockSize); // prevIdx ENDS at o -- step backward, away from it
+  const blockCurPoint = stepFrom(o, tCur, blockSize); // curIdx STARTS at o -- step forward, away from it
+  const cutPrevPoint = stepFrom(blockPrevPoint, tPrev, -nominalJoint);
+  const cutCurPoint = stepFrom(blockCurPoint, tCur, nominalJoint);
+  const keepRefPrev = stepFrom(cutPrevPoint, tPrev, -1); // further into prevIdx's own run
+  const keepRefCur = stepFrom(cutCurPoint, tCur, 1); // further into curIdx's own run
+  const forPrev = { point: cutPrevPoint, q: cutPrevPoint, dirX: prevPrim.nx, dirY: prevPrim.ny, keepRefAsStart: keepRefPrev, keepRefAsEnd: keepRefPrev, trustO: true };
+  const forCur = { point: cutCurPoint, q: cutCurPoint, dirX: curPrim.nx, dirY: curPrim.ny, keepRefAsStart: keepRefCur, keepRefAsEnd: keepRefCur, trustO: true };
+
+  // The block's own square: o (the true corner) -> blockPrevPoint -> inner -> blockCurPoint -> back
+  // to o. `inner` is `blockPrevPoint` stepped along curIdx's own tangent by `blockSize` -- exact at a
+  // 90deg corner (the common case); a reasonable approximation at any other angle, matching how
+  // `buildButtJoint`'s own square cut already isn't exact off-90deg either.
+  const inner = stepFrom(blockPrevPoint, tCur, blockSize);
+  const blockPolygon = [o, blockPrevPoint, inner, blockCurPoint];
+
+  return { isBlock: true, prevIdx, curIdx, forPrev, forCur, blockPolygon };
 }
 
 const EXTENSION_ARC_STEPS = 10; // a smoothness floor for the dropped-arc extension points below, same
@@ -428,13 +488,15 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
  * @param {number} pitch — one whole piece's own along-run length
  * @param {number} nominalJoint — the set's own declared grout.widthIn
  * @param {number} seed @param {string} pieceId @param {number} startId
- * @param {'mitre'|'butt'|'lapped'} [cornerStyle='mitre'] — T86 item 1: 'butt'/'lapped' try the
- *   asymmetric through/butt square-cut joint (see `buildButtJoint`'s own header) at every genuine
- *   line-line corner with no dropped primitive between its two neighbours; every other corner
- *   (arc-involved, a dropped primitive, or a near-parallel non-corner) still gets the ordinary mitre,
- *   same as today. 'lapped' is the exact same construction with the through side flipped on every
- *   other `bandIndex` (the advisor's own decision, turn 291: "band 0 horizontal-through, band 1
- *   vertical-through, ..." -- a single-band lapped frame is identical to 'butt' by construction).
+ * @param {'mitre'|'butt'|'lapped'|'block'} [cornerStyle='mitre'] — T86 item 1: 'butt'/'lapped' try
+ *   the asymmetric through/butt square-cut joint (see `buildButtJoint`'s own header) at every
+ *   genuine line-line corner with no dropped primitive between its two neighbours; every other
+ *   corner (arc-involved, a dropped primitive, or a near-parallel non-corner) still gets the
+ *   ordinary mitre, same as today. 'lapped' is the exact same construction with the through side
+ *   flipped on every other `bandIndex` (the advisor's own decision, turn 291: "band 0 horizontal-
+ *   through, band 1 vertical-through, ..." -- a single-band lapped frame is identical to 'butt' by
+ *   construction). 'block' inserts a solid White-rocks quoin unit at the same corners instead (see
+ *   `buildBlockJoint`'s own header) -- both bands square-cut into ITS faces, neither is "through".
  * @param {number} [bandIndex=0] — only read when `cornerStyle==='lapped'`; the caller's own band
  *   index (`contour-bands.js`'s own `bandIndex`, NOT `row` -- the alternation is band-to-band, per
  *   the advisor's own decision, not row-to-row within one band).
@@ -471,16 +533,21 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     for (let idx = (prevIdx + 1) % n; idx !== curIdx; idx = (idx + 1) % n) {
       if (primitiveLiveAtDepth(primitives[idx], d0)) { trustO = false; droppedIdx = idx; break; }
     }
-    // T86 item 1: a butt/lapped corner only ever applies at a genuine, undropped, line-line joint --
-    // a dropped primitive between the neighbours (almost always a fillet/arc) and any arc-involved
-    // corner both declare straight to the ordinary mitre below (the architecture plan's own "arc-
-    // involved corners fall back to mitre"). `buildButtJoint` itself also returns null (same
-    // fallback) for a near-parallel non-corner or a degenerate through/butt intersection.
+    // T86 item 1: a butt/lapped/block corner only ever applies at a genuine, undropped, line-line
+    // joint -- a dropped primitive between the neighbours (almost always a fillet/arc) and any
+    // arc-involved corner both declare straight to the ordinary mitre below (the architecture plan's
+    // own "arc-involved corners fall back to mitre"). `buildButtJoint`/`buildBlockJoint` themselves
+    // also return null (same fallback) for a near-parallel non-corner or a degenerate cut.
     if ((cornerStyle === 'butt' || cornerStyle === 'lapped') && droppedIdx === null
         && primitives[prevIdx].type === 'line' && primitives[curIdx].type === 'line') {
       const flipThrough = cornerStyle === 'lapped' && bandIndex % 2 === 1;
       const butt = buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipThrough);
       if (butt) return butt;
+    }
+    if (cornerStyle === 'block' && droppedIdx === null
+        && primitives[prevIdx].type === 'line' && primitives[curIdx].type === 'line') {
+      const block = buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint);
+      if (block) return block;
     }
     // the SAME joint, approached by its own two DIFFERENT primitives, must keep OPPOSITE sides of
     // its own mitre line (each keeps only its own half of the cut) -- `keepRefAsStart` (stepping
@@ -515,11 +582,16 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
   for (let k = 0; k < m; k++) {
     const idx = liveIndices[k];
     const prim = primitives[idx];
-    // T86 item 1: `jointFor` resolves a butt joint to the SIDE this specific primitive owns (`null`
-    // for the through side, the square cut for the butt side); an ordinary mitre joint is returned
-    // unchanged, read identically by both neighbours exactly as before this item.
+    // T86 item 1: `jointFor` resolves a butt/block joint to the SIDE this specific primitive owns
+    // (`null`/a square cut for butt, one of two independent square cuts for block); an ordinary
+    // mitre joint is returned unchanged, read identically by both neighbours exactly as before this
+    // item. `rawJointEnd` (NOT run through `jointFor`) is kept alongside for reading `.kiteFan`/
+    // `.blockPolygon` below -- both are properties of the JOINT itself (shared context, not a
+    // per-side clip object), so they must be read from the raw joint, not its per-side resolution
+    // (a block joint's own resolved `forPrev`/`forCur` carry no such field at all).
     const jointStart = jointFor(jointBefore[k], idx);
-    const jointEnd = jointFor(jointBefore[(k + 1) % m], idx);
+    const rawJointEnd = jointBefore[(k + 1) % m];
+    const jointEnd = jointFor(rawJointEnd, idx);
     const built = prim.type === 'line'
       ? linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set, seed, pieceId, nextId)
       : (() => {
@@ -539,13 +611,22 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     // of 5in -- comparing two utterly unrelated bricks -- when kite pieces were collected in a
     // separate pass at the end instead). Each joint is exactly one primitive's own `jointEnd`, so this
     // fires exactly once per joint, never duplicated, including the wrap-around one.
-    if (jointEnd && jointEnd.kiteFan) {
-      for (const polygon of jointEnd.kiteFan) {
+    if (rawJointEnd && rawJointEnd.kiteFan) {
+      for (const polygon of rawJointEnd.kiteFan) {
         const { sampleId, flip } = pickSample(set, seed, 'bricks', nextId);
         const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
         pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset });
         nextId++;
       }
+    }
+    // T86 item 1, BLOCK: the quoin corner piece, same deferred-build pattern as `kiteFan` above (see
+    // `buildBlockJoint`'s own header for why it can't assign its own id/sample earlier) -- built from
+    // the White rocks set (`QUOIN_SET`), never the surrounding band's own `set`.
+    if (rawJointEnd && rawJointEnd.isBlock && rawJointEnd.blockPolygon) {
+      const { sampleId, flip } = pickSample(QUOIN_SET, seed, 'bricks-block', nextId);
+      const heightOffset = (mulberry32(seedFor(seed, 'bricks-block-jitter', nextId))() * 2 - 1) * (QUOIN_SET.heightJitterIn || 0);
+      pieces.push({ id: `${pieceId}-${nextId}`, polygon: rawJointEnd.blockPolygon, pieceId, sampleId, flip, heightOffset });
+      nextId++;
     }
   }
   return { pieces, nextId };

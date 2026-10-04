@@ -423,3 +423,106 @@ describe('ribbonPieces with cornerStyle="lapped" (T86 item 1, advisor decision t
     expect(outOfBounds, `${outOfBounds} vertices outside the board`).toBe(0);
   });
 });
+
+describe('ribbonPieces with cornerStyle="block" (T86 item 1)', () => {
+  // Same square fixture as the butt/lapped describe blocks above.
+  function square() {
+    const pts = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+    const inwardSign = inwardSignFor(pts);
+    const line = (p0, p1) => {
+      const dx = p1.x - p0.x, dy = p1.y - p0.y, len = Math.hypot(dx, dy);
+      return { type: 'line', p0, p1, nx: (-dy / len) * inwardSign, ny: (dx / len) * inwardSign };
+    };
+    return [line(pts[0], pts[1]), line(pts[1], pts[2]), line(pts[2], pts[3]), line(pts[3], pts[0])];
+  }
+  const D0 = 0, D1 = SET.brickLengthIn, GROUT = SET.grout.widthIn;
+  const QUOIN = BRICK_SETS[2]; // "White rocks" -- the BLOCK corner unit's own declared set
+  const BLOCK = QUOIN.brickLengthIn; // 1.1
+
+  function blockPieces(pieces) {
+    return pieces.filter((p) => {
+      let area = 0;
+      for (let i = 0; i < p.polygon.length; i++) {
+        const a = p.polygon[i], b = p.polygon[(i + 1) % p.polygon.length];
+        area += a.x * b.y - b.x * a.y;
+      }
+      return Math.abs(area / 2) > BLOCK * BLOCK * 0.5; // the quoin squares are the only pieces anywhere near this area
+    });
+  }
+
+  it('exactly 4 quoin squares, one per corner, each BLOCK x BLOCK, anchored at the true corner', () => {
+    const primitives = square();
+    const { pieces } = ribbonPieces(primitives, D0, D1, SET, 'soldier', SET.brickHeightIn, GROUT, 1, 'test', 0, 'block');
+    const blocks = blockPieces(pieces);
+    expect(blocks.length).toBe(4);
+    for (const b of blocks) {
+      let area = 0;
+      for (let i = 0; i < b.polygon.length; i++) {
+        const a = b.polygon[i], c = b.polygon[(i + 1) % b.polygon.length];
+        area += a.x * c.y - c.x * a.y;
+      }
+      expect(Math.abs(area / 2)).toBeCloseTo(BLOCK * BLOCK, 6);
+    }
+  });
+
+  it('HAND-COMPUTED: the bottom-right corner\'s own quoin square is exactly [(10,0),(10-BLOCK,0),(10-BLOCK,BLOCK),(10,BLOCK)]', () => {
+    const primitives = square();
+    const { pieces } = ribbonPieces(primitives, D0, D1, SET, 'soldier', SET.brickHeightIn, GROUT, 1, 'test', 0, 'block');
+    const blocks = blockPieces(pieces);
+    const bottomRight = blocks.find((b) => b.polygon.some((pt) => Math.abs(pt.x - 10) < 1e-6 && Math.abs(pt.y - 0) < 1e-6));
+    expect(bottomRight).toBeTruthy();
+    const expected = [{ x: 10, y: 0 }, { x: 10 - BLOCK, y: 0 }, { x: 10 - BLOCK, y: BLOCK }, { x: 10, y: BLOCK }];
+    for (const e of expected) {
+      expect(bottomRight.polygon.some((pt) => Math.abs(pt.x - e.x) < 1e-6 && Math.abs(pt.y - e.y) < 1e-6)).toBe(true);
+    }
+  });
+
+  it('HAND-COMPUTED: each band\'s own run stops BLOCK+GROUT short of the corner, not just BLOCK', () => {
+    // The block's own face sits at BLOCK from the corner; the band's own cut stops one more grout
+    // gap past that, at BLOCK+GROUT -- so the bottom band's own x-extent must reach exactly
+    // [BLOCK+GROUT, 10-BLOCK-GROUT], never all the way to the block's own bare face. The quoin
+    // squares themselves also span y through [0,D1] (they're BLOCK=1.1 tall, D1=0.75), so they must
+    // be excluded explicitly -- a plain y-range filter alone (no area check) catches them too, which
+    // is exactly what silently broke this test's own first draft (min read 0, the TRUE corner, not
+    // BLOCK+GROUT, because a quoin square's own x reaches all the way to the corner).
+    const primitives = square();
+    const { pieces } = ribbonPieces(primitives, D0, D1, SET, 'soldier', SET.brickHeightIn, GROUT, 1, 'test', 0, 'block');
+    const blocks = blockPieces(pieces);
+    const bottomBand = pieces.filter((p) => {
+      if (blocks.includes(p)) return false;
+      const ys = p.polygon.map((pt) => pt.y);
+      return Math.min(...ys) <= 1e-6 && Math.max(...ys) >= D1 - 1e-6;
+    });
+    const xs = bottomBand.flatMap((p) => p.polygon.map((pt) => pt.x));
+    expect(Math.min(...xs)).toBeCloseTo(BLOCK + GROUT, 6);
+    expect(Math.max(...xs)).toBeCloseTo(10 - BLOCK - GROUT, 6);
+  });
+
+  it('no overlap anywhere (quoin squares included)', () => {
+    const primitives = square();
+    const { pieces } = ribbonPieces(primitives, D0, D1, SET, 'soldier', SET.brickHeightIn, GROUT, 1, 'test', 0, 'block');
+    for (let i = 0; i < pieces.length; i++) {
+      for (let j = i + 1; j < pieces.length; j++) {
+        const A = bbox(pieces[i].polygon), B = bbox(pieces[j].polygon);
+        if (A.maxX < B.minX - 1e-6 || B.maxX < A.minX - 1e-6 || A.maxY < B.minY - 1e-6 || B.maxY < A.minY - 1e-6) continue;
+        expect(overlapFraction(pieces[i].polygon, pieces[j].polygon), `${pieces[i].id} vs ${pieces[j].id}`).toBe(0);
+      }
+    }
+  });
+
+  it('template_1 (arcs present): block also falls back to mitre at every arc-involved corner -- still simple, 0 outside the board', () => {
+    const primitives = realPrimitives('template_1', 7, 9);
+    const pieces = allRibbonPieces(primitives, FRAME_PRESETS.quoin_corners);
+    expect(pieces.length).toBeGreaterThan(0);
+    let notSimple = 0, outOfBounds = 0;
+    for (const p of pieces) {
+      if (!isSimplePolygon(p.polygon)) notSimple++;
+      for (const pt of p.polygon) {
+        const dx = Math.max(0 - pt.x, pt.x - 7, 0), dy = Math.max(0 - pt.y, pt.y - 9, 0);
+        if (Math.max(dx, dy) > 0.001) outOfBounds++;
+      }
+    }
+    expect(notSimple, `${notSimple} self-intersecting pieces`).toBe(0);
+    expect(outOfBounds, `${outOfBounds} vertices outside the board`).toBe(0);
+  });
+});

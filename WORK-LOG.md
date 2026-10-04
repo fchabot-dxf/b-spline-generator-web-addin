@@ -18790,3 +18790,111 @@ wedges included.
 decided scope (no speculative geometry beyond what was asked for), mutation-tested including a
 direct equivalence check against BUTT, verified end to end through the real preset, previews
 confirm the interlock visually. Continuing straight into BLOCK next, as directed.
+
+## T86 item 1, BLOCK: traced the mechanism, one concrete question before building
+
+Same discipline as LAPPED's own plan-first turn, kept short since most of it resolved cleanly from
+reading the code directly rather than guessing.
+
+**"The White rocks set" is already the right one, by the SET's own declared intent, not a guess:**
+`BRICK_SETS[2]` (id 3, "White rocks") carries a comment that already earmarks it for exactly this --
+"this item's own earlier Set-3 comment already earmarked THIS slot for exactly this ashlar/stone
+follow-up" (library.js:185). It declares `shape:'irregular', layout:'fieldstone'` (the Wall tool's
+own Voronoi engine) -- but grepped `core/bricks/` for any read of `set.shape`/`set.layout`: NONE.
+`ribbonPieces`/`contour-bands.js` never branch on them at all -- those fields are consumed entirely
+outside this pipeline (the Wall/Brush tool's own layout dispatcher). So a BLOCK corner piece built
+through `ribbonPieces`' own machinery can use `BRICK_SETS[2]`'s own `brickLengthIn`/grout/samples/
+heightProfile directly as a plain rectangular unit's own size/texture, the same way Set 1's own
+`brickLengthIn` already governs a soldier piece's own cross-width -- no fieldstone/Voronoi engine
+needed, confirmed by what this pipeline actually reads rather than assumed from the set's own label.
+
+**The symmetric half (not asymmetric like BUTT/LAPPED):** "each band butts square into its faces"
+reads as BOTH bands getting the SAME treatment at a block corner (unlike BUTT/LAPPED's one-through-
+one-butt split) -- each band's own nearest piece square-cut (perpendicular to ITS OWN tangent, the
+exact same clip direction `buildButtJoint` already uses for its own butt side) at `blockSize/2` from
+the true corner along its own tangent, with the block itself filling the square pocket between the
+two cuts -- a genuinely NEW piece (a discrete square polygon, not a `linePieces` run-piece), likely
+its own small builder near `buildPatch`'s own neighbourhood, reusing `buildButtJoint`'s own square-
+cut math for computing each cut line rather than re-deriving it.
+
+**The one real open question:** does the block's own DEPTH (into the frame, the `[d0,d1]` axis)
+match THIS ROW's own depth (flush with the surrounding course, `blockSize` only governs its
+along-run footprint in both directions) -- or is the block sized `blockSize` x `blockSize`
+independently, overriding the row's own `[d0,d1]` near the corner (a real quoin typically reads
+slightly larger/proud of the surrounding coursing, which the dispatch's own "solid corner unit" and
+"quoin look" wording could support either way)? Defaulting to ROW-FLUSH depth (simpler, no
+cross-row interaction, no risk of a block from one row poking into a NEIGHBOURING row's own
+territory) unless told otherwise, and building that now rather than waiting on a reply -- flagging
+the alternative so it's a quick correction if row-flush isn't what's wanted, not a silent guess.
+
+No code this entry; building BLOCK next on the row-flush-depth reading above.
+
+## T86 item 1, BLOCK: built, and the open question's answer corrected while building it
+
+While actually constructing the block's own polygon (not just reasoning about it), found the
+"row-flush depth" default I'd just written down above was wrong on contact with the geometry, and
+switched to the alternative I'd already flagged as possible -- recorded here rather than silently
+fixed, since it changes what the open question's own answer actually is.
+
+**What went wrong with row-flush depth:** offsetting the band's own cut point along EACH primitive's
+own normal by that primitive's own `[d0,d1]` independently (bottom's own normal is vertical, right's
+own is horizontal) does NOT produce a clean rectangle at a shared corner -- the two offset pairs land
+at DIFFERENT, inconsistent points unless the along-run cut distance and the depth happen to be the
+same number already. **Corrected to a BLOCKSIZE x BLOCKSIZE square instead**, anchored at the TRUE
+outer corner (`o`, this row's own d0 point) and extending inward by `blockSize` along BOTH
+primitives' own tangents -- a real quoin unit's own natural depth equals its own face size, not the
+surrounding row's `d1-d0`, which is also the more architecturally correct reading of "solid corner
+unit" / "quoin look" (a real quoin often reads proud of the surrounding coursing, which this gives
+for free when `blockSize` > the row's own depth, as it is here: 1.1in vs 0.75in).
+
+**`primitive-ribbon.js`:** `brickSetById` imported from `library.js`; `QUOIN_SET = brickSetById(3)`
+("White rocks", already earmarked for this in its own comment -- confirmed via grep that
+`set.shape`/`set.layout` are never read anywhere in `core/bricks/`, so this pipeline can use it as a
+plain rectangular-unit set, same as any other). `jointFor` generalized: a block joint (`.isBlock`)
+carries `forPrev`/`forCur` directly (both sides get their OWN independent square cut -- unlike
+butt/lapped, there's no "through" side at all) rather than the through/butt pair. `buildBlockJoint`
+computes each band's own square cut at `blockSize + nominalJoint` from the corner (one real grout
+gap past the block's own bare face) and returns the block's own plain polygon (NOT yet an assigned
+piece -- same deferred-id pattern `kiteFan` already established, since this runs before the main
+loop's own `nextId` counter exists); the main loop builds the actual piece from it, sampled from
+`QUOIN_SET` -- never the surrounding band's own `set` -- right next to its own existing `kiteFan`
+collection step.
+
+**`library.js`:** new preset `quoin_corners` -- one soldier band, `cornerStyle:'block'`.
+
+**Verification.** 5 new tests: (1) exactly 4 quoin squares on the square fixture, each
+`blockSize x blockSize`; (2) HAND-COMPUTED the bottom-right corner's own exact polygon --
+`[(10,0),(10-BLOCK,0),(10-BLOCK,BLOCK),(10,BLOCK)]`, matching what a live dump of the engine's own
+output already showed byte-for-byte before the test was even written; (3) HAND-COMPUTED the
+surrounding band's own run stops `BLOCK+GROUT` short of the corner, not just `BLOCK` -- caught a real
+bug in the TEST itself while writing it (the first draft's own y-range filter also matched the quoin
+squares, since they span `[0,BLOCK]` which overlaps `[0,D1]`, reading the band's own min-x as the
+TRUE corner (0) instead of the expected `BLOCK+GROUT`; fixed by excluding block-area pieces from the
+band filter explicitly); (4) no overlap anywhere, quoin squares included; (5) `template_1`'s own arcs
+fall back to mitre under `'block'` too. Mutation-tested: 7/7 new assertions (5 tests + 2 updated
+`FRAME_PRESETS` tests) fail against the pre-item code via `git stash`. Full `vitest`: 201 files/3699
+tests, 0 failures.
+
+**Live previews** (`tools/repro/t86_item1_block_preview.mjs`, quoin pieces flagged by area and
+rendered solid grey so they read distinctly from the surrounding brick colours): saved to
+`shots/seatB/t86_item1_block_{square,template_1,square_corner_closeup}.png`. The square shows 4
+solid grey quoin squares, visibly larger than the surrounding bricks, each band butting square into
+2 of its faces with a real grout gap; the close-up makes the "proud of the coursing" quoin look
+obvious at true scale; template_1 confirms the same at its own 4 straight corners while both waist
+fillets fall back to mitre.
+
+**5 of the dispatch's own 6 FRAME_PRESETS now exist** (`single_soldier`, `soldier_stretcher`
+pre-existing; `butt_frame`, `double_course`, `quoin_corners` built this item). The 6th,
+`header-band` ("header pattern + king-closer mitres"), needs the 'header' PATTERN itself first --
+`library.js`'s own `BRICK_PATTERNS` comment already flags it as "declared there but not yet
+implemented by along-path.js's own orientation switch" -- a genuinely different, unrelated piece of
+work (which FACE of the brick shows along a run, not a corner treatment at all); the corner side of
+that preset needs no new code at all, per this item's own earlier finding that kingCloser/
+mitredThreeQuarter/mitredHalf are craft names for fractions the existing mitre path already builds.
+
+**Commit `[pending]`, pushed to origin/lane-b.** BLOCK is DONE: the one open question resolved
+correctly on contact with the real geometry rather than guessed from the armchair, mutation-tested
+including a bug the TEST itself first had, verified end to end, previews confirm the quoin look.
+BUTT, the sliver fix, LAPPED and BLOCK are all now complete and live-verified in this session --
+header-band is the one remaining preset, blocked on the separate 'header' pattern feature. Passing
+back to report the full status and flag that gap before attempting it.
