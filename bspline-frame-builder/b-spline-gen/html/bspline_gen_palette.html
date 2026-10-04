@@ -1033,6 +1033,15 @@
             <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
           </div>
 
+          <!-- F35 item 8: per-band pattern picker -- one row per band in the current preset, each
+               offering every core/bricks/library.js BRICK_PATTERNS key (herringbone/basketweave
+               disabled, "Wall only for now"). Bricks placed via band-course.js's (u,v) generator,
+               built on f3's own bandFrameAt hook (main 8286930). -->
+          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Band patterns</label>
+          <div id="brickFrameBandPatternList" style="margin-bottom:12px;">
+            <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
+          </div>
+
           <!-- F35 item 5 review (Fred, via advisor correction): "frame thickness" is the LENGTH of
                the bricks across a Frame band (a soldier band's own width IS the brick length) --
                NOT a proportional band-width scaler. Frame-only: Wall/Brush keep the set's own

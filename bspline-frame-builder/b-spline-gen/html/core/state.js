@@ -93,6 +93,14 @@ export const DEFAULT = {
       // BRICK_PATTERNS key. A key, not the pattern definition itself, same "track the current
       // declaration" convention as frameBandPreset above.
       pattern: 'stretcher',
+      // F35 item 8: the per-band pattern picker's own choice, one entry per band INDEX (0 =
+      // outermost, matching frameBandPreset's own declared band order) -- a missing/falsy index
+      // means "use that band's own declared pattern" (frameBandPreset's own default). Keyed by
+      // index rather than by preset id so an override survives switching presets where the index
+      // still exists (e.g. picking band 0's pattern on three_band, then switching to
+      // soldier_stretcher, keeps band 0's own override). Only course/course-alternating kinds are
+      // meaningful here (main/brick-panel.js's own FRAME_BAND_PATTERN_LIST greys out the rest).
+      frameBandPatterns: [],
     },
     detailDensity: 1.0,
     // detailStrength = floor for the "empty" zones carved out by detailDensity.

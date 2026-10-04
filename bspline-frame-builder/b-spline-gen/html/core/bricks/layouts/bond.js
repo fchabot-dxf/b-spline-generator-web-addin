@@ -42,7 +42,9 @@ function patternFor(name) {
   return (p && (p.kind === 'course' || p.kind === 'course-alternating')) ? p : BRICK_PATTERNS.stretcher;
 }
 
-const axisLen = (axis, L, H) => (axis === 'height' ? H : L);
+// Exported for band-course.js's own reuse (F35 item 8: the Frame per-band pattern picker needs the
+// SAME pitch/cross-axis convention, placed along a curved band's own (u,v) frame instead of flat x/y).
+export const axisLen = (axis, L, H) => (axis === 'height' ? H : L);
 
 /** This pattern's own COURSE HEIGHT (the `v`/cross dimension every row-generator below agrees on,
  *  used by resolveZones for pitch/row-count math before any row is actually built). flemish's own

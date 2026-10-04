@@ -108,6 +108,8 @@ function syncControlsFromState() {
   syncSetPicker();
   syncFramePresetButtons();
   syncWallPatternButtons();
+  renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
+  syncFrameBandPatternButtons();
   setPair('brickScaleSlider', 'brickScale', s.scale);
   document.getElementById('brickGroutWidth').value = s.grout.widthIn;
   document.getElementById('brickGroutDepth').value = s.grout.depthIn;
@@ -180,6 +182,10 @@ function renderFramePresetList(container) {
     btn.addEventListener('click', () => {
       P.brickSettings.frameBandPreset = preset.id;
       syncFramePresetButtons();
+      // F35 item 8: a different preset can have a different BAND COUNT, so the per-band pattern
+      // picker is fully re-rendered here (not just re-synced) every time the preset changes.
+      renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
+      syncFrameBandPatternButtons();
       notifyChange();
     });
     container.appendChild(btn);
@@ -227,6 +233,60 @@ function syncWallPatternButtons() {
   for (const pattern of WALL_PATTERN_LIST) {
     document.getElementById(`brickPattern_${pattern.id}`)?.classList.toggle('active', pattern.id === P.brickSettings.pattern);
   }
+}
+
+/** F35 item 8: the per-band pattern picker -- one row per band in the CURRENT frameBandPreset, each
+ *  offering every BRICK_PATTERNS key (the same table/labels the Wall picker above reads). 'tile2d'
+ *  entries (herringbone/basketweave) are disabled here -- bricks must never stretch around a curve,
+ *  and tile2d-on-a-curve is still an open design (library.js's own BRICK_PATTERNS header names it
+ *  that way, core/bricks/band-course.js only ever handles 'course'/'course-alternating' kinds).
+ *  Fully re-rendered (not just re-synced) whenever the band PRESET changes, since a different preset
+ *  can have a different band COUNT. */
+function renderFrameBandPatternList(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
+  bands.forEach((band, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; gap:4px; margin-bottom:4px; flex-wrap:wrap; align-items:center;';
+    const label = document.createElement('span');
+    label.textContent = `Band ${i + 1}`;
+    label.style.cssText = 'font-size:10px; opacity:0.65; width:44px; flex:0 0 auto;';
+    row.appendChild(label);
+    for (const pattern of WALL_PATTERN_LIST) {
+      const def = BRICK_PATTERNS[pattern.id];
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cad-btn';
+      btn.id = `brickFrameBandPattern_${i}_${pattern.id}`;
+      btn.textContent = pattern.label;
+      if (def && def.kind === 'tile2d') {
+        btn.disabled = true;
+        btn.title = 'Wall only for now';
+        btn.style.opacity = '0.4';
+      } else {
+        btn.addEventListener('click', () => {
+          if (!P.brickSettings.frameBandPatterns) P.brickSettings.frameBandPatterns = [];
+          P.brickSettings.frameBandPatterns[i] = pattern.id;
+          syncFrameBandPatternButtons();
+          notifyChange();
+        });
+      }
+      row.appendChild(btn);
+    }
+    container.appendChild(row);
+  });
+}
+
+function syncFrameBandPatternButtons() {
+  const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
+  const overrides = P.brickSettings.frameBandPatterns || [];
+  bands.forEach((band, i) => {
+    const active = overrides[i] || band.pattern || 'stretcher';
+    for (const pattern of WALL_PATTERN_LIST) {
+      document.getElementById(`brickFrameBandPattern_${i}_${pattern.id}`)?.classList.toggle('active', pattern.id === active);
+    }
+  });
 }
 
 /** Brush arms interactive stroke drawing (editor._currentMode =
@@ -299,18 +359,25 @@ const FRAME_PRESET_LIST = [
 ];
 
 /** The current frame's own contour, as `{primitives, bands, set}` for
- *  generateBricks/bricksContourBands -- or null when no real frame resolves
- *  (no template selected, or the offset is degenerate). H23 item 76 (the
- *  primitive-ribbon.js rebuild): `sil.primitives` converts DIRECTLY to raw
- *  lines+arcs via buildRibbonPrimitives -- no polyline, no declared corner
- *  indices; bricksContourBands derives every joint (corner or otherwise)
- *  straight from where consecutive primitives actually meet. */
+ *  generateBricks/bricksContourBands -- or null when no real frame resolves (no template selected,
+ *  or the offset is degenerate). H23 item 76 (the primitive-ribbon.js rebuild): `sil.primitives`
+ *  converts DIRECTLY to raw lines+arcs via buildRibbonPrimitives -- no polyline, no declared corner
+ *  indices; bricksContourBands derives every joint (corner or otherwise) straight from where
+ *  consecutive primitives actually meet.
+ *
+ *  F35 item 8: each declared band's own `pattern` is overridden by the per-band picker's own choice
+ *  (`frameBandPatterns[i]`) when one was made for that index -- a NEW array (never mutates
+ *  FRAME_PRESETS' own frozen entries), falling back to the preset's own declared pattern for any
+ *  index the user hasn't touched. editor-brick-tool.js's own `frameBricksFor` decides PER BAND which
+ *  engine a given pattern needs (see its own header) -- this function just builds the real band list. */
 function resolveFrameGeom(editor) {
   const ctx = frameContext(editor);
   const sil = ctx ? frameContourSilhouette(ctx, 0, 0) : { error: 'noFrame' };
   if (sil.error) return null;
   const primitives = buildRibbonPrimitives(sil.primitives);
-  const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
+  const basePreset = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
+  const overrides = P.brickSettings.frameBandPatterns || [];
+  const bands = basePreset.map((band, i) => (overrides[i] ? { ...band, pattern: overrides[i] } : band));
   return { primitives, bands, set: resolveFrameBrickSet() };
 }
 
