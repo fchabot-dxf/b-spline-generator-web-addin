@@ -264,8 +264,16 @@ export const BRICK_SETS = Object.freeze([
  *                          scope line matching fieldstone's own precedent, not a silent gap: mixing
  *                          a tile2d pattern into one zone of an otherwise course-based Wall fill is
  *                          a bigger, separate unification not attempted here).
+ *   'none'                — F35 item 12 follow-up (Fred): the Wall picker's own OFF switch -- no
+ *                          wall bricks at all (editor-brick-tool.js's own applyWallPattern reads
+ *                          this `kind` and tells generateBricks to skip the Wall fill entirely,
+ *                          one check in the ONE generator, not a special case per button). Not
+ *                          band-mixable (same reason a tile2d pattern isn't): main/brick-panel.js's
+ *                          own per-band picker disables it right alongside tile2d entries -- "no
+ *                          pattern" isn't a real band, only a real top-level "fill nothing" choice.
  */
 export const BRICK_PATTERNS = Object.freeze({
+  none: { kind: 'none' },
   stretcher: { kind: 'course', pitchAxis: 'length', crossAxis: 'height', staggerFrac: 0.5 },
   stack: { kind: 'course', pitchAxis: 'length', crossAxis: 'height', staggerFrac: 0 },
   soldier: { kind: 'course', pitchAxis: 'height', crossAxis: 'length', staggerFrac: 0 },
@@ -314,6 +322,12 @@ export const BRICK_PATTERNS = Object.freeze({
  * corners instead -- `quoin_corners` below.
  */
 export const FRAME_PRESETS = Object.freeze({
+  // F35 item 12 follow-up (Fred): the Frame band preset's own OFF switch -- an EMPTY band list,
+  // not a special case anywhere downstream: engine.js's own generateBricks already treats
+  // `frame.bands.length === 0` as "no frame" (`if (frame && frame.bands && frame.bands.length)`,
+  // written for the omitted-frame case, applies here unchanged), so Wall fills right up to the
+  // board/frame's own true outer contour, exactly as if no Frame tool had ever run.
+  none: [],
   single_soldier: [{ widthIn: 0.75, pattern: 'soldier' }],
   soldier_stretcher: [
     { widthIn: 0.75, pattern: 'soldier' },

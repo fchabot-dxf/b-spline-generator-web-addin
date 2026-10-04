@@ -10579,3 +10579,40 @@ connected in this session, and per standing protocol a live Fusion check needs t
 coordinated with the advisor first ("ask me for the Fusion holder for the probe," the dispatch's own
 words) before touching the live app at all. Flagging this explicitly in the pass-back rather than
 skipping it silently or guessing at the Fusion-side result.
+
+## F35 item 12 follow-up: a 'None' OFF switch for Wall and Frame band preset
+
+Fred: "the Wall and the Frame each need an OFF state" -- Wall=None means no wall bricks (frame only);
+Frame band preset=None means no frame bands (wall fills to the board/frame contour). Both declared as
+DATA, not an if-branch per button, per the dispatch's own instruction.
+
+**Frame band preset=None was free**: `FRAME_PRESETS.none = []` (an empty band list). `generateBricks`
+(engine.js) already had `if (frame && frame.bands && frame.bands.length)` -- written for the
+omitted-frame case, but an EMPTY array fails that check identically, so zero frame bricks and
+`interiorOutline = boardOutline` (unchanged) fall out with ZERO code changes anywhere downstream.
+`FRAME_PRESET_LIST` already reads `Object.keys(FRAME_PRESETS)` directly (this round's own earlier
+fix), so the button appeared with no UI code either -- just a label.
+
+**Wall pattern=None needed one new declared flag**: `BRICK_PATTERNS.none = { kind: 'none' }` (the Wall
+picker already reads `Object.keys(BRICK_PATTERNS)` too). `applyWallPattern` (editor-brick-tool.js)
+sets `input.skipWallFill = true` for this `kind` (matching its own existing `tile2d`/course-kind
+dispatch, just one more case); `generateBricks` checks that ONE flag once, skipping `bricksFillShape`
+entirely when set -- Frame is completely untouched (the `skipWallFill` check is scoped to the Wall
+call only). Since 'none' is now a `BRICK_PATTERNS` key, it also auto-appeared in the per-band Frame
+picker (which reads the SAME `WALL_PATTERN_LIST`) -- disabled it there alongside `tile2d` entries
+("a band needs a real pattern"), the identical treatment that list already gives herringbone/
+basketweave, not a new mechanism.
+
+Tests: `FRAME_PRESETS.none` asserted empty and excluded from the "every preset has non-empty bands"
+check (bricks-library.test.js); `bricksContourBands` with `FRAME_PRESETS.none` asserted to yield
+ZERO bricks, not "produced no bricks" treated as a failure (bricks-contour-bands.test.js); two new
+`generateBricks` tests (bricks-engine.test.js): `skipWallFill` zeroes Wall while leaving Frame's own
+brick count identical to the non-skipped case, and `FRAME_PRESETS.none` behaves byte-identically to
+passing no `frame` object at all. Full suite green: 205 files / 3786 tests.
+
+Live-verified both scenarios on T1 (three_band preset): Wall=None with Frame still active -- 0 wall
+pieces, 300 frame pieces (the 3-band perimeter clearly visible, terrain showing through the interior
+where Wall bricks used to be); Frame=None with Wall=stretcher -- 0 frame pieces, 332 wall pieces (a
+plain brick wall filling right up to the board's own hourglass contour, no frame band at all). Zero
+console errors either way. Screenshots: `shots/seatC/f35item12_wall_none.png`,
+`f35item12_frame_none.png`.

@@ -85,12 +85,16 @@ describe('BRICK_SETS', () => {
 });
 
 describe('FRAME_PRESETS', () => {
-  it('declares exactly the 8 named presets, each a non-empty band list with widthIn > 0', () => {
+  it('declares exactly the 9 named presets, each (except the declared-empty "none") a non-empty band list with widthIn > 0', () => {
     // T86 item 1: butt_frame, quoin_corners, double_course and header_band join the 3 original
     // mitre-only presets -- the dispatch's own full 6 corner-style/pattern presets plus the original 3.
     // T86 item 2: mixed_bands (header/flemish/soldier) joins as the declared sequence-based preview combo.
-    expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['butt_frame', 'double_course', 'header_band', 'mixed_bands', 'quoin_corners', 'single_soldier', 'soldier_stretcher', 'three_band'].sort());
-    for (const bands of Object.values(FRAME_PRESETS)) {
+    // F35 item 12 follow-up: 'none' joins as the Frame band preset's own OFF switch -- an empty band
+    // list is its ENTIRE point (no frame bands at all), not a bug this test should flag.
+    expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['butt_frame', 'double_course', 'header_band', 'mixed_bands', 'none', 'quoin_corners', 'single_soldier', 'soldier_stretcher', 'three_band'].sort());
+    expect(FRAME_PRESETS.none).toEqual([]);
+    for (const [name, bands] of Object.entries(FRAME_PRESETS)) {
+      if (name === 'none') continue;
       expect(bands.length).toBeGreaterThan(0);
       for (const b of bands) expect(b.widthIn).toBeGreaterThan(0);
     }

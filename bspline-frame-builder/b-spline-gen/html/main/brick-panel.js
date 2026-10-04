@@ -212,7 +212,7 @@ function syncFramePresetButtons() {
  *  keys directly rather than a second, hand-maintained list, so a pattern added to BRICK_PATTERNS
  *  later needs no change here. */
 const WALL_PATTERN_LABELS = {
-  stretcher: 'Stretcher', stack: 'Stack', soldier: 'Soldier', header: 'Header',
+  none: 'None', stretcher: 'Stretcher', stack: 'Stack', soldier: 'Soldier', header: 'Header',
   flemish: 'Flemish', herringbone: 'Herringbone', basketweave: 'Basketweave',
   fieldstone: 'Fieldstone',
 };
@@ -267,9 +267,9 @@ function renderFrameBandPatternList(container) {
       btn.className = 'cad-btn';
       btn.id = `brickFrameBandPattern_${i}_${pattern.id}`;
       btn.textContent = pattern.label;
-      if (def && def.kind === 'tile2d') {
+      if (def && (def.kind === 'tile2d' || def.kind === 'none')) {
         btn.disabled = true;
-        btn.title = 'Wall only for now';
+        btn.title = def.kind === 'none' ? 'A band needs a real pattern -- use the Frame band preset\'s own None instead' : 'Wall only for now';
         btn.style.opacity = '0.4';
       } else {
         btn.addEventListener('click', () => {
@@ -357,6 +357,7 @@ function selectTool(id) {
  *  "a reusable concept deserves one declared source, not a second copy that rots" lesson this
  *  project already applies elsewhere. A preset without its own label here just shows its own key. */
 const FRAME_PRESET_LABELS = {
+  none: 'None',
   single_soldier: 'Soldier',
   soldier_stretcher: 'Soldier + Stretcher',
   three_band: 'Soldier / Stretcher / Soldier',

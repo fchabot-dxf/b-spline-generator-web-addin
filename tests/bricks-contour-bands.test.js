@@ -45,10 +45,14 @@ describe('bricksContourBands — the Frame tool', () => {
     expect(Math.sqrt(polygonArea(innerPath))).toBeCloseTo(expectedInnerSide, 2);
   });
 
-  it('every declared FRAME_PRESETS entry runs without throwing and yields bricks', () => {
+  it('every declared FRAME_PRESETS entry runs without throwing; every one but the declared-empty "none" yields bricks', () => {
     for (const [name, bands] of Object.entries(FRAME_PRESETS)) {
       const { bricks } = bricksContourBands(SQUARE_PRIMITIVES, bands, { set: SET, seed: 3 });
-      expect(bricks.length, `preset "${name}" produced no bricks`).toBeGreaterThan(0);
+      if (name === 'none') {
+        expect(bricks.length, 'preset "none" is the Frame band OFF switch -- zero bands in, zero bricks out').toBe(0);
+      } else {
+        expect(bricks.length, `preset "${name}" produced no bricks`).toBeGreaterThan(0);
+      }
     }
   });
 
