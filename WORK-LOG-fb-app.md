@@ -14136,3 +14136,7 @@ WallPattern = {
   - the held quoin case;
   - the known heavy load timeouts (boundary-at-depth, fieldstone large stones, template 10, radius handles), which pass alone at 19/19, 5/5, 32/32 and 28/28;
   - discrete-controls N2, which passes alone at 98/98.
+- **turn 249 part 2, the quoin fill:** 88 landed option (a), quoin-element-set 31c0824. The block's sample and jitter now come from the band's own set; its size stays QUOIN_SET's. I merged it into fb-app.
+  - tests/frame-corner-fills.test.js is now committed: every corner style x every bond set's pieces resolve in the element's set. It failed before the merge (set 1, block: 8 stone_07 samples) and passes after it.
+  - Live re-probe: Quoin gives 86 bricks with 0 flat fills (4 before). Shot: shots/seatC/frame_corners_quoin_canvas_fixed.png, quoins in red-brick texture.
+  - Still to come: the paint-fix sha from the advisor, to merge origin/main.
