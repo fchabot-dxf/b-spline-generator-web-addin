@@ -12,10 +12,10 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js'
   return { ...actual, runBricks: vi.fn(() => ({ wallCount: 3, frameCount: 0 })), runBricksPreview: vi.fn(), runBricksOutlinePreview: vi.fn(), buildRibbonPrimitives: vi.fn(() => []) };
 });
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/toast.js', () => ({ showToast: vi.fn() }));
-const engineOpts = vi.hoisted(() => ({ extra: [] }));
+const engineOpts = vi.hoisted(() => ({ extra: [], without: ['accentCuts', 'customBond'] })); // T86 items 26 + 27 list accentCuts + customBond: test both states
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, get ENGINE_OPTIONS() { return [...actual.ENGINE_OPTIONS, ...engineOpts.extra]; } };
+  return { ...actual, get ENGINE_OPTIONS() { return [...actual.ENGINE_OPTIONS.filter((o) => !engineOpts.without.includes(o)), ...engineOpts.extra]; } };
 });
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -28,7 +28,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 
 import {
   initBrickPanel, openPatternBuilder, closePatternBuilder, builderToggleCell, builderResize, builderSetBase, builderStartFrom,
-  builderSave, applyUserPattern, setWallPattern, setAccentPreset, setAccentLevel, patternBuilderState,
+  builderSave, applyUserPattern, setWallPattern, setAccentPreset, setAccentLevel, patternBuilderState, builderSetUnit, builderSplit, builderShift,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { ACCENT_LEVEL_RANGE, tileOf, ACCENT_PRESETS, accentedBrickIndices } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js';
@@ -212,5 +212,131 @@ describe('item 32: the signed accent level', () => {
     const down = accentedBrickIndices(wall, { preset: 'tile', tile, levelIn: -0.06 });
     expect([...down]).toEqual([...up]);
     expect(up.size).toBeGreaterThan(0);
+  });
+});
+
+describe('item 31b: the tile at 1/2 and 1/4 brick', () => {
+  beforeEach(() => { resetAccent(); engineOpts.extra = ['accentCuts']; setup('wall'); });
+  const cellWidth = (id) => parseFloat($(id).style.width);
+
+  it('a unit change re-lays the wall at once (the engine cuts the bricks), and so does a cell tap at 1/2; at 1 a tap only re-masks', () => {
+    openPatternBuilder();
+    runBricks.mockClear();
+    builderToggleCell(0, 0);
+    expect(runBricks).not.toHaveBeenCalled(); // unit 1: the marks only (3D), the bricks are unchanged
+    builderSetUnit(0.5);
+    expect(acc().tile.unit).toBe(0.5);
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    runBricks.mockClear();
+    builderToggleCell(0, 1);
+    expect(runBricks).toHaveBeenCalledTimes(1); // the cut moves
+    runBricks.mockClear();
+    setAccentLevel(-0.0625);
+    expect(runBricks).not.toHaveBeenCalled(); // a level never cuts
+  });
+
+  it('leaving a cut tile for a preset re-lays (whole bricks again)', () => {
+    openPatternBuilder();
+    builderSetUnit(0.25);
+    builderToggleCell(0, 0);
+    runBricks.mockClear();
+    setAccentPreset('checker');
+    expect(runBricks).toHaveBeenCalledTimes(1);
+  });
+
+  it('the builder draws a cell as that fraction of a brick, on the unstaggered grid, counted as Cells', () => {
+    openPatternBuilder();
+    const whole = cellWidth('brickBuilderCell_0_0');
+    expect($('brickBuilderCell_1_0').style.left).not.toBe($('brickBuilderCell_0_0').style.left); // unit 1: the bond's stagger
+    builderSetUnit(0.5);
+    expect(cellWidth('brickBuilderCell_0_0')).toBeLessThan(whole);
+    expect($('brickBuilderCell_1_0').style.left).toBe($('brickBuilderCell_0_0').style.left);
+    expect($('brickPatternBuilder').textContent).toMatch(/Cells/);
+    expect($('brickBuilderCell_0_0').title).toBe('course 1, cell 1');
+  });
+
+  it('a saved pattern keeps its unit and lays cut when picked', () => {
+    openPatternBuilder();
+    builderSetUnit(0.5);
+    builderToggleCell(0, 1);
+    builderSave('Half');
+    resetAccent();
+    runBricks.mockClear();
+    applyUserPattern('user:half');
+    expect(acc().tile.unit).toBe(0.5);
+    expect(runBricks).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('item 31e: the builder edits the bond (base Custom)', () => {
+  beforeEach(() => { try { localStorage.clear(); } catch { /* */ } P.brickSettings.userPatterns = []; resetAccent(); engineOpts.extra = ['accentCuts', 'customBond']; setup('wall'); });
+  const pieces = (r) => acc().tile.bond.courses[r].pieces;
+  const fire = (target, type) => target.dispatchEvent(new Event(type, { bubbles: true }));
+  const drag = (r, from, to) => { fire($(`brickBuilderCell_${r}_${from}`), 'pointerdown'); fire($(`brickBuilderCell_${r}_${to}`), 'pointerenter'); fire(window, 'pointerup'); };
+
+  it('Custom is hidden until the engine lists customBond', () => {
+    root.remove(); engineOpts.extra = ['accentCuts']; setup('wall'); openPatternBuilder();
+    expect($('brickBuilderBase_custom')).toBeNull();
+    closePatternBuilder(); root.remove(); engineOpts.extra = ['accentCuts', 'customBond']; setup('wall'); openPatternBuilder();
+    expect($('brickBuilderBase_custom')).toBeTruthy();
+  });
+
+  it('Custom starts from a blank grid on the stretcher course grid, and re-lays', () => {
+    openPatternBuilder();
+    runBricks.mockClear();
+    $('brickBuilderBase_custom').click();
+    expect(acc().tile.base).toBe('custom');
+    expect(acc().tile.bond.courses).toHaveLength(4);
+    expect(pieces(0)).toEqual([1, 1, 1, 1, 1, 1]);
+    expect(P.brickSettings.pattern).toBe('stretcher');
+    expect(runBricks).toHaveBeenCalledTimes(1);
+  });
+
+  it('a drag across cells JOINS them into one brick (one re-lay = one undo step); a press-release on a brick raises all of it', () => {
+    openPatternBuilder(); $('brickBuilderBase_custom').click();
+    runBricks.mockClear();
+    drag(0, 1, 3);
+    expect(pieces(0)).toEqual([3, 1, 1, 1]);
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    expect($('brickBuilderJoint_0_2')).toBeTruthy(); // the joints inside the joined brick are split handles
+    expect($('brickBuilderJoint_0_4')).toBeNull(); // between two bricks: a real joint, no handle
+    runBricks.mockClear();
+    drag(0, 2, 2); // a tap
+    expect(acc().tile.cells[0].map(Number).join('')).toBe('011100');
+    expect(runBricks).toHaveBeenCalledTimes(1); // the engine marks custom pieces: a re-lay
+  });
+
+  it('a tap on a joint splits the brick; the course offset buttons shift a course (marks travel with it)', () => {
+    openPatternBuilder(); $('brickBuilderBase_custom').click();
+    drag(1, 0, 3); drag(1, 0, 0);
+    expect(pieces(1)).toEqual([4, 1, 1]);
+    $('brickBuilderJoint_1_2').click();
+    expect(pieces(1)).toEqual([2, 2, 1, 1]);
+    runBricks.mockClear();
+    $('brickBuilderOffset_1_right').click();
+    expect(acc().tile.bond.courses[1].offset).toBe(5); // the engine's sense: 5 cells left = 1 right, mod 6
+    expect(acc().tile.cells[1].map(Number).join('')).toBe('011110');
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    builderShift(1, -1);
+    expect(acc().tile.bond.courses[1].offset).toBe(0);
+    builderSplit(1, 0); // a brick's own start: nothing
+    expect(pieces(1)).toEqual([2, 2, 1, 1]);
+  });
+
+  it('Save -> { bond: custom, accent, unit, level }; another bond drops it; picking the saved one brings bond + marks back', () => {
+    openPatternBuilder(); $('brickBuilderBase_custom').click();
+    builderSetUnit(0.5);
+    drag(0, 0, 1); drag(0, 0, 0);
+    const u = builderSave('Half bond');
+    expect(u).toMatchObject({ bond: { custom: { courses: expect.any(Array) } }, unit: 0.5, level: 0.0625 });
+    expect(u.bond.custom.courses[0].pieces).toEqual([2, 1, 1, 1, 1]);
+    setWallPattern('stretcher'); // the plain bond: the custom tile goes (it belongs to its own bond)
+    expect(acc().preset).toBe('none');
+    runBricks.mockClear();
+    applyUserPattern('user:half-bond');
+    expect(P.brickSettings.pattern).toBe('stretcher');
+    expect(acc().tile).toMatchObject({ base: 'custom', unit: 0.5, userId: 'user:half-bond' });
+    expect(acc().tile.bond.courses[0].pieces).toEqual([2, 1, 1, 1, 1]);
+    expect(runBricks).toHaveBeenCalledTimes(1);
   });
 });

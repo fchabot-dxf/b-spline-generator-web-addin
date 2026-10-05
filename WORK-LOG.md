@@ -22398,3 +22398,50 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
   name 'B-spline Back' -> key 'b_spline_back' never matches SETUP_KEYS 'bspline_back' (the match strips only ONE
   underscore from the key). Only 'stock' and 'frame' light up.
 - Acceptance on the ruled shape: pending (Fusion still busy with the abandoned boolean when this was written).
+## T86 item 26 -- accent cuts at 1/2 and 1/4 brick (seat B / 88, 2026-10-05)
+- generateBricks `accentCuts: { unit, tile: { rows, cols, cells } }` (ENGINE_OPTIONS 'accentCuts') -> fill-shape ->
+  bondLayout's 7th arg -> applyAccentCuts, after the courses are planned and before the board clip: cells are unit x
+  (brick + joint) along a course, one course high; tile row 0 = the wall's BOTTOM course (37's accentGrid
+  convention), columns from the wall's left edge (a half-bond stagger is a whole number of 1/2 and 1/4 cells, so one
+  grid fits every course). A brick whose cells are not marked alike splits where the mark changes (each piece = its
+  cells less one joint, the joint between them). EVERY cell carries `accentMarked` (fill-shape copies it onto the
+  brick; the exclusion / region recut keeps it), so the app raises exactly the marked fraction. Off the grid (unit 1,
+  flemish headers): no cut, the mark under the centre, columns by 37's half-bond rule floor(x / pitch + 0.25).
+- Listed in ENGINE_OPTIONS (the completeness invariant -- the advisor's revised ruling); merges WITH 37's builder
+  wiring (31b), as wall-region does with slice 2. 37's tests/pattern-builder.test.js: its ENGINE_OPTIONS mock base
+  leaves accentCuts out (two lines), so "hidden until listed" still tests both states.
+- Tests bricks-accent-cuts (5): the spec's 4x6 tile at 1/2 and 1/4 on T1 running bond -- every split piece on the cell
+  grid and whole cells less a joint, its mark = the tile at every cell it covers, no overlap, every piece inside one
+  uncut brick which is its pieces + joints (union unchanged); unit 1 marks without cutting; no option = as before.
+  Cuts off -> 3/5 fail. Domain green but N2 (the known timeout, fixed on fb-app c70b3e5).
+- Branch sits on wall-region 0444b91 (rotation + region): its edits anchor next to rotationDeg.
+- Shot: shots/seatB/item26_accent_cuts.png.
+
+## T86 item 27 -- custom bond from a tile (seat B / 88, 2026-10-05)
+- generateBricks `customBond: { courses: [{ pieces, offset }] }` (ENGINE_OPTIONS 'customBond') -> bondLayout customRow:
+  course c lays courses[c mod n] (counted from the first course laid, as the built-in stagger is); pieces in brick
+  units repeat along the course, a piece of p bricks = L + (p - 1)(L + J) (two halves + their joint = one brick);
+  offset in pitches; the board clip makes the end closers; courses are stretcher-high. The layout's extra options are
+  now one object ({ accentCuts, customBond }) instead of a growing positional list.
+- PIN: stretcher = [{[1],0},{[1],0.5}] and stack = [{[1],0}] lay byte-identical bricks to the built-ins (customRow uses
+  uniformRow's own arithmetic order and L + 0 for a whole brick, so no float drift).
+- Tests bricks-custom-bond (4): the pins; the spec tile {[1, 1/2, 1], offset 1/2} on T1 -- every whole piece of a
+  declared length, on the course grid, in the tile's cyclic order; no overlap; no void beyond a joint (sampled with
+  diagonal probes: this tile lines some vertical joints up across courses, so joint crossings exist). Offsets ignored
+  -> 2/4 fail. Domain green but N2 (the known timeout).
+- Branch sits on accent-cuts 368ca32 (both feed 37's pattern builder; merge them with 37's 31b / 31e wiring).
+- Shot: shots/seatB/item27_custom_bond.png.
+
+## T86-27 CORRECTION + T86-26/27 composed -- by seat C (02) while wiring F35 31b/31e (advisor 45 ruling A, 2026-10-05)
+For the next seat B: two seams between accent-cuts and custom-bond were MEASURED and fixed on branch pattern-builder.
+- **One course-row origin** (d2d8103):
+  - Before: customBond counted its courses from the TOP, accentCuts its rows from the BOTTOM, so which bond course a tile row marked flipped with the wall's course-count parity.
+  - Measured on a 4 in wide wall, bond [whole]/[halves], tile row 0 marked: at 3.0 and 3.4 in tall the marks landed on the HALF courses, at 3.8 in on the WHOLE ones.
+  - Now `library.js COURSE_ROW_ORIGIN = 'bottom'`, read by both through bond.js `tileRowOf`. The custom rows are laid once the course count is known.
+  - The built-in bonds keep their top-down stagger, so every saved wall is unchanged.
+  - The built-in-as-tile pin now holds as written on an ODD course count, and with the tile's courses reversed on an EVEN one (bricks-course-row-origin covers both: 12 and 13 courses).
+  - bricks-custom-bond adapted: it counts from the bottom; its closer tolerance went 1e-6 -> 1e-3 because the bottom course now starts AT the curved side, trimmed by ~2e-5 in.
+- **An accent cell is `unit` of a BRICK's pitch** (2466d4a):
+  - Before: applyAccentCuts sized each cell from the piece's own length, which is right only for one-brick pieces. On a custom [2, 1/2, 1/2] course it cut the 2-brick piece in two and put a mark on a half.
+  - Now pitch = L + J, and a piece spans (its length + J) / (unit x pitch) cells.
+- Tests: bricks-course-row-origin (8): 4/7 fail before the origin fix, and 1/1 before the cell fix. All 53 bricks-* files are green after.

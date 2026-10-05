@@ -14584,3 +14584,50 @@ WallPattern = {
 - **Heavy-test list (the advisor's ask):** 12 test files that timed out at 5 s under load this session now use the declared `HEAVY_TEST_MS` (vi.setConfig): frame-radius-handles, frame-template-10/5/6, frame-no-hooked-miters, silhouette-resolve, bands-reduced-note, brick-element-laid-key-panel, frame-corners-panel, wall-rotation-panel, wall-areas-panel, stroke-select. frame-3d-sweep keeps its own explicit 90 s.
 - **Merged origin/main c748016** (88's rustic + wear on rocks), clean.
 - **Full suite: 308 files, 4647 passed, 0 failed.**
+
+## seat C (02) turn 1: F35 items 31b + 31e, the pattern builder at 1/2 + 1/4 brick and with its own bond (branch pattern-builder)
+- **Setup:** worktree -wt\02, branch pattern-builder from origin/main afd27be, node_modules = a junction.
+- **Merge:** origin/custom-bond ff1276d in ONE merge (it contains accent-cuts 368ca32) = bbc5eab. Four conflicts against main's rustic (T86-22), each kept as a union:
+  - ENGINE_OPTIONS;
+  - the layoutFn opts `{ rustic, accentCuts, customBond }`;
+  - bondLayout picks rows in the order custom -> flemish -> rustic -> uniform;
+  - seat B's WORK-LOG, both sides kept.
+- **Engine, two seams fixed (advisor ruling A; details in WORK-LOG.md "T86-27 CORRECTION"):**
+  - one course-row origin, `COURSE_ROW_ORIGIN = 'bottom'` (d2d8103 + 10bccb9);
+  - an accent cell = `unit` of a brick's pitch (2466d4a).
+- **31b (ff7d6ba).** One declaration in brick-accents.js: `accentCutsFor` (a tile at 1/2 or 1/4 -> the engine's accentCuts). Unit 1, a preset or none adds no key, so the lay is byte-identical.
+  - The engine's per-piece mark is kept on the drawn brick (`ACCENT_MARK_ATTR`, editor-only via BRICK_EDITOR_ONLY_ATTRS, so Send and the download stay byte-identical).
+  - The outline, the icons and the height mask answer from the marks.
+  - Panel: an accent edit whose lay input changes re-lays at once (`_accentChanged(commit, before)`, one commit).
+  - The builder draws a cell as that fraction of a brick on the engine's unstaggered grid, labelled "Cells".
+- **31e (1f7e9d3).** The custom bond lives INSIDE the tile, as one pattern object with no new persisted key:
+  - `base: 'custom'`, `tile.bond.courses[{ pieces (cells), offset (cells, the engine's sense) }]`, row 0 = the bottom course.
+  - Pure ops: blankBond, resizeBond, bondJoin, bondSplit, bondShift, bondTogglePiece (a tap raises the whole piece).
+  - `customBondFor` scales cells by the unit into the engine's shape.
+  - `accentLayInput` is the ONE thing the accent adds to a lay (cuts + bond, each only while listed; a custom tile adds nothing until customBond is listed). The lay, the icons and the re-lay key all read it.
+  - A saved pattern = `{ bond: { custom: { courses } } | { builtin }, accent, unit, level }`; a custom bond lays on the stretcher course grid (`wallPatternOfBase`).
+  - UI: base "Custom" (hidden until customBond) = a blank grid.
+    - A drag across cells joins them into one brick: pointerdown + pointerenter + a window pointerup, with pointer capture released so a touch drag works too.
+    - A press and release on one cell raises the piece.
+    - A joint handle inside a piece (drawn in the piece's colour) splits it.
+    - The arrow buttons offset each course.
+  - Every bond edit = one commit, and the wall re-lays at once.
+- **Layout fix (ff8cf3e), measured live:**
+  - Before: the Unit row (3 x 75 px) overflowed the 162 px panel, with 1/4 wholly outside; the Name field was 8 px; the Custom grid's offsets sat behind a scrollbar.
+  - After: everything fits (re-measured; shot f35_31e_builder_panel_fit.png).
+- **Tests** (non-vacuous, run against the pre-change source, restored from my own copies with cmp clean):
+  - 31b: pattern-builder-cuts (7) + pattern-builder 31b (4). 8/11 fail before. The 3 that pass pin things already true: unit 1 byte-identical, no key while hidden, a saved pattern already re-laid on pick.
+  - 31e: pattern-builder-bond (8) + pattern-builder 31e (5). 13/13 fail before.
+  - The mock-base rule: the pattern-builder base drops accentCuts AND customBond; the new files test both states.
+  - Fast tier: 115 brick/accent/pattern/wall files, 1208 passed.
+- **Live** (headless Chrome, the default 7x9 T1, Wall only; probe live_31.mjs; 0 page errors):
+  - 31b, unit 1/2 with a column of half cells raised: pieces 59 -> 73, 17 marked = 17 outlined, all 73 carry the mark. Brick mask: marked 1.478 vs plain 1.000. The 3D changed.
+  - 31e, Custom at 1/2, 8 joins by REAL mouse drags: courses [2,1,1,2] at offsets 4/3 (= [2,2,1,1] from cell 0, alternately shifted). The wall lays whole + half pieces per course as built, with the bottom course = tile row 0. 8 raised whole bricks = 8 outlined. Mask: 1.483 vs 0.996.
+  - Each drag = exactly 1 undo step. Save gives `user:seat-c-bond`, bond custom, unit 0.5.
+  - Shots (shots/seatC): f35_31b_half_unit_2d/_3d.png, f35_31e_custom_bond_2d/_3d.png, f35_31e_builder_panel_fit.png.
+- **Known, measured, NOT caused here:**
+  - **Undo restores the canvas but not the panel's settings, for every wall setting.** A plain Wall pattern change stretcher -> stack, then Undo: the canvas is back, P.brickSettings.pattern is still stack. A custom join behaves the same: the canvas is back, the tile is not. The editor snapshot holds the drawing and its layers, not P.brickSettings. Fixing that is an app-wide undo-model change and is left for the advisor.
+  - **The 3D "thin" markers come from the existing solid check (the overlay caps at 20).** The plain wall has 20 (thinnest 0.052 in), and so does the same tile at unit 1. The 1/2 cut wall also has 20, thinnest 0.045 in: the extra joints between cut pieces add a few thin spots. No guard was added (ask-before-guards).
+- **Matrix (60ffb6a):** 6 wall rows: open; start from Checker; unit 1/2; base Custom (3D unchecked by construction); offset; back to Stretcher. `run.mjs --group wall`: 47 rows, 0 FAIL, 0 page errors.
+  - Measured first: a tapped cell (0,1) hits no brick on the matrix baseline (a wall inside a Soldier frame, T1's waist), because unit-1 columns are absolute. That is why the row starts from Checker instead.
+- **Not done / for later:** join and split on a BUILT-IN base (they act on Custom only; a built-in -> tile conversion is ambiguous because built-in stagger counts from the top); a unit change on Custom keeps the CELL counts (the bricks rescale with the unit).

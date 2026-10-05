@@ -124,6 +124,122 @@ export const ACCENT_TILE_UNITS = Object.freeze([
   { id: 0.5, label: '½', title: 'A cell is half a brick', requires: { engineOption: 'accentCuts' } },
   { id: 0.25, label: '¼', title: 'A cell is a quarter brick', requires: { engineOption: 'accentCuts' } },
 ]);
+/** F35 item 31b: the engine input a tile at a FRACTION of a brick lays with -- generateBricks `accentCuts` (seat B
+ *  T86-26): the wall's bricks are CUT at the tile's cell boundaries and each piece comes back `accentMarked`. A whole-
+ *  brick tile (unit 1), a preset or no accent -> null: no key, today's lay (byte-identical). */
+export function accentCutsFor(accent) {
+  const t = accent && accent.preset === ACCENT_TILE.id && accent.tile;
+  if (!t || !t.rows || !t.cols || !Array.isArray(t.cells)) return null;
+  // item 31e: a CUSTOM bond is always marked by the engine (its pieces are not the accent grid's bricks), any unit
+  if (!isCustomBondTile(t) && !(Number(t.unit) > 0 && Number(t.unit) < 1)) return null;
+  return { unit: Number(t.unit) || 1, tile: { rows: t.rows, cols: t.cols, cells: t.cells.map((r) => r.map(Boolean)) } };
+}
+
+/* ------------------------------------------------------------------------------------------------------------
+ * F35 item 31e (Fred: "the pattern builder is both pattern and raised-brick editor"): the tile edits the BOND too.
+ * Base 'custom' = a CUSTOM BOND carried by the tile itself (one pattern object): tile.bond = { courses: [{ pieces,
+ * offset }] }, one course per tile row (row 0 = the wall's bottom course, core COURSE_ROW_ORIGIN), `pieces` = each
+ * piece's length in CELLS (summing to cols), `offset` = the course's shift in cells, the engine's sense (the pieces
+ * start `offset` cells LEFT of the wall's left edge). customBondFor scales both by the unit into the engine's
+ * customBond (brick units / pitches, seat B T86-27). A piece's cells are marked together (a tap raises the piece).
+ * ---------------------------------------------------------------------------------------------------------- */
+export const BOND_CUSTOM = 'custom';
+export const isCustomBondTile = (t) => !!(t && t.base === BOND_CUSTOM && t.bond && Array.isArray(t.bond.courses));
+const _blankCourse = (cols) => ({ pieces: Array(cols).fill(1), offset: 0 });
+/** "Custom" starts from a blank grid: every cell its own piece, no offset. */
+export const blankBond = (rows, cols) => ({ courses: Array.from({ length: rows }, () => _blankCourse(cols)) });
+/** Resized: rows kept / added blank; each course's pieces kept in order up to `cols` (the last one cut), the rest
+ *  single cells; offsets wrapped. */
+export function resizeBond(bond, rows, cols) {
+  const courses = Array.from({ length: rows }, (_, r) => {
+    const c = bond && bond.courses && bond.courses[r];
+    if (!c) return _blankCourse(cols);
+    const pieces = [];
+    let used = 0;
+    for (const n of c.pieces) { if (used >= cols) break; const k = Math.min(n, cols - used); pieces.push(k); used += k; }
+    while (used < cols) { pieces.push(1); used++; }
+    return { pieces, offset: mod(c.offset || 0, cols) };
+  });
+  return { courses };
+}
+/** cell (0..cols-1) -> the index of the course's piece covering it. */
+export function pieceOfCells(course, cols) {
+  const of = Array(cols).fill(0);
+  let x = -(course.offset || 0);
+  course.pieces.forEach((n, k) => { for (let j = 0; j < n; j++) of[mod(x + j, cols)] = k; x += n; });
+  return of;
+}
+/** The cells (absolute, in order) of piece k of a course. */
+export function cellsOfPiece(course, cols, k) {
+  let x = -(course.offset || 0);
+  for (let i = 0; i < k; i++) x += course.pieces[i];
+  return Array.from({ length: course.pieces[k] }, (_, j) => mod(x + j, cols));
+}
+const _withCourse = (tile, row, course, cells = tile.cells) => ({ ...tile, cells,
+  bond: { courses: tile.bond.courses.map((c, r) => (r === row ? course : c)) } });
+/** Tap a cell: its whole PIECE is raised / un-raised (marks never split a custom piece). */
+export function bondTogglePiece(tile, row, col) {
+  const course = tile.bond.courses[row];
+  const cells = cellsOfPiece(course, tile.cols, pieceOfCells(course, tile.cols)[col]);
+  const on = !tile.cells[row][col];
+  return { ...tile, cells: tile.cells.map((r, i) => (i === row ? r.map((v, c) => (cells.includes(c) ? on : v)) : r)) };
+}
+/** Drag across cells a..b of a row: every piece they touch becomes ONE piece (walking right from a's piece, so a drag
+ *  across the tile's edge joins round it); the joined piece takes a's piece's mark. A join that would leave the course
+ *  a single ring piece is a no-op (a course needs a joint). */
+export function bondJoin(tile, row, a, b) {
+  const course = tile.bond.courses[row], n = course.pieces.length;
+  const of = pieceOfCells(course, tile.cols);
+  const first = of[a], last = of[b];
+  if (first === last) return tile;
+  const span = mod(last - first, n) + 1; // pieces first..last, walking right (wrapping)
+  if (span >= n) return tile;
+  const take = Array.from({ length: span }, (_, i) => mod(first + i, n));
+  const order = Array.from({ length: n }, (_, i) => mod(first + i, n));
+  const start = cellsOfPiece(course, tile.cols, first)[0];
+  const pieces = [take.reduce((sum, k) => sum + course.pieces[k], 0), ...order.slice(span).map((k) => course.pieces[k])];
+  const mark = tile.cells[row][start];
+  const joinedCells = take.flatMap((k) => cellsOfPiece(course, tile.cols, k));
+  const cells = tile.cells.map((r, i) => (i === row ? r.map((v, c) => (joinedCells.includes(c) ? mark : v)) : r));
+  return _withCourse(tile, row, { pieces, offset: mod(-start, tile.cols) }, cells);
+}
+/** Tap the joint before cell `col` inside a piece: split it there (both halves keep the mark). */
+export function bondSplit(tile, row, col) {
+  const course = tile.bond.courses[row];
+  const k = pieceOfCells(course, tile.cols)[col];
+  const at = cellsOfPiece(course, tile.cols, k).indexOf(col);
+  if (at <= 0) return tile; // the piece's own start: there is no joint inside it there
+  const pieces = [...course.pieces.slice(0, k), at, course.pieces[k] - at, ...course.pieces.slice(k + 1)];
+  return _withCourse(tile, row, { ...course, pieces });
+}
+/** Offset a course by `delta` cells to the RIGHT (its marks travel with its pieces). */
+export function bondShift(tile, row, delta) {
+  const course = tile.bond.courses[row];
+  const cells = tile.cells.map((r, i) => (i === row ? r.map((_, c) => r[mod(c - delta, tile.cols)]) : r));
+  return _withCourse(tile, row, { ...course, offset: mod((course.offset || 0) - delta, tile.cols) }, cells);
+}
+/** The engine's customBond for a custom-bond tile (cells x unit = brick units / pitches); null otherwise. */
+export function customBondFor(tile) {
+  if (!isCustomBondTile(tile)) return null;
+  const u = Number(tile.unit) || 1;
+  return { courses: tile.bond.courses.map((c) => ({ pieces: c.pieces.map((n) => n * u), offset: (c.offset || 0) * u })) };
+}
+/** What the Wall accent adds to a lay, declared ONCE (the lay input, the icons and the panel's re-lay rule read it):
+ *  accentCuts (a cut / custom tile) and customBond (a custom tile), each only while the engine lists it. */
+export function accentLayInput(accent, engineOptions = []) {
+  const out = {};
+  // a custom-bond tile adds NOTHING until the engine lays custom bonds (its cells index a bond that is not laid)
+  if (accent && accent.preset === ACCENT_TILE.id && isCustomBondTile(accent.tile) && !engineOptions.includes('customBond')) return out;
+  const cuts = engineOptions.includes('accentCuts') ? accentCutsFor(accent) : null;
+  if (cuts) out.accentCuts = cuts;
+  const bond = engineOptions.includes('customBond') && accent && accent.preset === ACCENT_TILE.id ? customBondFor(accent.tile) : null;
+  if (bond) out.customBond = bond;
+  return out;
+}
+/** The engine's per-brick mark, kept on each drawn Wall brick (editor-only: never baked) -- the 2D outline, the icons
+ *  and the height mask read it whenever the accent is cut (accentCutsFor), so all three show the engine's own pieces. */
+export const ACCENT_MARK_ATTR = 'data-brick-accent-marked';
+
 /** The builder's declared scope (Fred: "Custom is for wall only for now"): which element kinds may open it. */
 export const PATTERN_BUILDER_SCOPE = Object.freeze(['wall']);
 
@@ -139,11 +255,17 @@ export function makeTile(rows = ACCENT_TILE_LIMITS.rows, cols = ACCENT_TILE_LIMI
  *  tile unit and the signed level. Stored with the project (P.brickSettings.userPatterns) + in the browser. */
 export function userPatternFrom(label, tile, levelIn) {
   const slug = String(label || 'pattern').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'pattern';
-  return { id: `user:${slug}`, label: String(label || 'Pattern').trim(), bond: { builtin: tile.base },
+  // item 31e: the bond is the built-in one the tile was drawn on, or the tile's own CUSTOM bond (its courses, in cells)
+  const bond = isCustomBondTile(tile) ? { custom: { courses: tile.bond.courses.map((c) => ({ pieces: c.pieces.slice(), offset: c.offset || 0 })) } } : { builtin: tile.base };
+  return { id: `user:${slug}`, label: String(label || 'Pattern').trim(), bond,
     accent: { tile: { rows: tile.rows, cols: tile.cols, cells: tile.cells.map((r) => r.slice()) } }, unit: tile.unit || 1, level: clampAccentLevel(levelIn) };
 }
 /** The accent a saved pattern applies (its tile ON its own bond -- marks never move to another bond). */
-export const accentOfUserPattern = (u) => ({ preset: ACCENT_TILE.id, tile: { ...u.accent.tile, unit: u.unit, base: u.bond.builtin, userId: u.id }, levelIn: u.level });
+export const accentOfUserPattern = (u) => ({ preset: ACCENT_TILE.id, levelIn: u.level, tile: { ...u.accent.tile, unit: u.unit, userId: u.id,
+  ...(u.bond.custom ? { base: BOND_CUSTOM, bond: { courses: u.bond.custom.courses.map((c) => ({ ...c, pieces: c.pieces.slice() })) } } : { base: u.bond.builtin }) } });
+/** item 31e: the Wall PATTERN (BRICK_PATTERNS id) a tile's base lays on -- a custom bond on the stretcher course grid
+ *  (stretcher-high courses, the bond layout), a built-in bond as itself. */
+export const wallPatternOfBase = (base) => (base === BOND_CUSTOM ? 'stretcher' : base);
 
 export const accentPresetById = (id) => ACCENT_PRESETS.find((p) => p.id === id) || null;
 
@@ -216,6 +338,11 @@ export function accentedBrickIndices(bricks, accent, ctx = {}) {
       const k = bricks.findIndex((b) => pointInPolygon(pt.x, pt.y, b.polygon));
       if (k >= 0) out.add(k);
     }
+    return out;
+  }
+  // item 31b: a CUT tile -- the engine marked every piece it laid (accentMarked); that is the answer, no grid
+  if (accentCutsFor(accent) && bricks.every((b) => typeof b.accentMarked === 'boolean')) {
+    bricks.forEach((b, k) => { if (b.accentMarked) out.add(k); });
     return out;
   }
   // item 31: `preset` may also be an ad-hoc preset object (a user tile, before it is saved)

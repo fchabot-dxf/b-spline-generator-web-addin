@@ -21,7 +21,7 @@
 import { buildSpatialIndex, sampleHeight, brickSetById, pointInPolygon } from '../core/bricks/index.js';
 import { preloadSetDetail, sampleDetailAtFor } from './editor-brick-surface.js';
 import { BRICK_GEN_ATTR, BRICK_ATTR } from './editor-brick-tool.js';
-import { accentedBrickIndices, accentedRunIndices, clampAccentLevel } from './brick-accents.js';
+import { accentedBrickIndices, accentedRunIndices, clampAccentLevel, ACCENT_MARK_ATTR } from './brick-accents.js';
 import { surfaceStyleById, styledSet, styledDetail, styleTopJitter, styleAtWear } from './brick-surface-styles.js';
 
 // F35 item 16 follow-up (Fred: "keep the UI responsive... yield between stages if they block the
@@ -72,6 +72,8 @@ function collectLiveBrickGroups(editor, layer, levels = {}) {
       row: Number(n.getAttribute('data-brick-row')) || 0,
       piece: Number(n.getAttribute('data-brick-piece')) || 0,
       owner: n.getAttribute('data-brick-owner') || null,
+      // item 31b: the engine's cut mark (a Wall tile at 1/2 or 1/4 brick)
+      ...(n.hasAttribute(ACCENT_MARK_ATTR) ? { accentMarked: n.getAttribute(ACCENT_MARK_ATTR) === '1' } : {}),
     });
   });
   return [...groups.values()];
