@@ -22312,3 +22312,44 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
       Frame        | frame          | as today
   'top 1' cannot serve as the shared point for Carved Top: its stock is the Clean solid, whose bbox top differs from
   the fixed box top (the 0.25 in above) -- hence a declared point.
+
+## H23 item 82 -- probe part 2: items (a)-(e) measured, (f) partial (seat A / 77, 2026-10-05)
+- Fusion window from the advisor (Fred free); add-in = main 0c81ed3 (the enum fix) deployed by the advisor. Same
+  scratch doc as part 1, held by handle; closed by that handle at the end, Fred's 'Untitled' re-activated, holder none.
+- (a) Cut participants fixed (each Carved cut rolled back, participantBodies = the Carved body only; both cuts HAD
+  listed claude-clean + claude-carved, confirming the part-1 artefact). Now Clean 63.0 in3, Carved 61.3 in3.
+  Carved setup (MM Carved), stock SolidStock = the REAL Clean body from MM Clean: rest-only toolpath 206.3 s /
+  89.8 in feed, no warning -- identical to the stand-in box. FROM-SOLID ACROSS MMs WORKS.
+- (b) Fred's case: Carved setup (MM Carved) right after the Clean setup (MM Clean), PreviousSetupStock (typed enum
+  -> job_stockMode 'previoussetup', i.e. the fix works live) + job_continueMachining true: NOT a hard refusal --
+  it generates (177.7 s / 76.2 in) but carries the warning "Continue Rest Machining: Cannot verify that the stock is
+  transferred from the previous setup for rest machining. Verify that the model selections in both setups are the
+  same." So "from previous setup" across non-identical models is the unverified path; (a) is the clean one.
+- (c) Shared WCS point: a design ConstructionPoint by coordinates is refused in a parametric design ("Environment is
+  not supported"); a root sketch point on an offset plane works and is declared once. Every MM carries its own copy
+  (inside the MM's root wrapper occurrence); binding each setup to ITS MM's copy (createForAssemblyContext of the
+  wrapper occurrence): wcs_origin_mode "'point'", wcs_origin_point size 1, both setups' WCS origin identical
+  (0, 0, 31.75) = 1.25 in. Under flipY (Carved, as B-spline Top) the origin stays on the point, only the axes flip
+  (z (0,0,1) -> (0,0,-1), y (0,1,0) -> (0,-1,0)). workCoordinateSystem translation reads in mm here (31.75 for
+  1.25 in, 25.4 for 1.0 in in part 1): two readings, same doc -- most likely the doc's units, UNVERIFIED as a rule.
+- (d) Fixed box bottom-aligned: job_stockFixedZMode choices = 'top' | 'center' | 'bottom' | 'model' (labels "Offset
+  from top (+Z)", "Center", "Offset from bottom (-Z)", "Offset from model origin"). X/Y 'center' offset 0, Z
+  'bottom' offset 0, 7 x 9 x 1.25 in on both setups -> identical stock X 0-7 / Y 0-9 / Z -1.25..0 in the shared WCS,
+  each model's bottom on the stock bottom. SIDE FINDING: a fresh FixedBoxStock defaults to 13 in x 10 in X/Y
+  (Z = model height rounded) -- B-spline mode's 'fixed_box' setups (Back, Frame) never write the dims (only the
+  generic path calls _set_fixed_stock_dims), so they likely inherit that default. To confirm on a real BUILD.
+- (e) Height modes (op topHeight_mode / bottomHeight_mode choices): 'from stock top', 'from stock bottom', 'from
+  surface top' (Model top), 'from surface bottom', 'from point' (Selection), 'from wcs', 'from top' / 'from bottom',
+  clearance/retract, fixture, highest/lowest. Written 'from stock top' / 'from stock bottom' on a live op and read
+  back; evaluated bottom = -1.2303 in = stock bottom + the default offset expression verticalStockToLeave (0.5 mm),
+  so the declaration must state the bottom offset explicitly.
+- (f) PARTIAL: the real 7x9 T7 capture (scratch/real_send_t7_7x9_full.json, frame dropped) replayed through the
+  deployed bspline_ui._handle_generate in a second tagged scratch doc: 3.0 s, Clean only -- panel 12.39 in3, bbox
+  z 0.032..1.044 in (the real bottom is NOT at z 0: bottom-aligned stock must use the body's bbox bottom). No Stamped
+  body: the app sends Stamped as its OWN STEP variant (export-flow.js sendToFusion: options.stamped -> base
+  'Stamped', heights = the stamped height map; Clean = unstampedHeights); this capture was made with Clean only. A
+  real Clean + Stamped pair needs a new capture with the Stamped export on -- not done, asked the advisor.
+- Shape for the declaration (confirmed by (a)-(e)): CAM_POSITION = one fixed box (X/Y center 0, Z 'bottom' 0,
+  dims declared), one WCS = a builder-declared sketch point (bound per setup to its own MM's copy), op heights
+  'from stock top' / 'from stock bottom' + an explicit bottom offset; Carved Top stock = SolidStock -> the Clean
+  body (NOT PreviousSetupStock, which warns across MMs).
