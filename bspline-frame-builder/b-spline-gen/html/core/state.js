@@ -99,7 +99,8 @@ export const DEFAULT = {
       // user picked; main/brick-panel.js selectSet).
       // A legacy saved session's own `scale` migrates via brickLengthIn = its set's own declared
       // length x that scale, once, on load (main/brick-panel.js).
-      brickLengthIn: 1,
+      // Fred (2026-10-05, the v3 size sheet): a NEW board now starts at 1 1/4 in; a saved board keeps its own.
+      brickLengthIn: 1.25,
       // width/depth from Set 1 (audit C4). Fred (turn 207): a NEW board's joints are RECESSED (depth 0.05 in,
       // Set 1's); a saved board keeps its own profile (the session/project load replaces brickSettings whole).
       // the joint WIDTH is per element (groutByElement, below); depth + profile stay board-wide (the 3D recess)

@@ -20,8 +20,8 @@ describe('the default brick grout is Set 1 (Red Brick)\'s own', () => {
   it('is a copy: editing the settings never writes into the frozen set', () => {
     expect(DEFAULT.brickSettings.grout).not.toBe(set1.grout);
   });
-  it("Fred (turn 207): a new board starts at 1 in, not the set's own 0.75", () => {
-    expect(DEFAULT.brickSettings.brickLengthIn).toBe(1);
+  it("Fred (2026-10-05): a new board starts at 1 1/4 in (was 1 in since turn 207), not the set's own 0.75", () => {
+    expect(DEFAULT.brickSettings.brickLengthIn).toBe(1.25);
     expect(set1.brickLengthIn).toBe(0.75); // the set's own declaration is unchanged
   });
   it("Fred (turn 207): a new board starts with RECESSED joints (Set 1's 0.05 in) and FLAT brick tops", () => {

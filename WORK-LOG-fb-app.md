@@ -14201,3 +14201,51 @@ WallPattern = {
   - Shots: shots/seatC/item34_password_prompt.png, item34_settings_field.png.
 - **Suite:** the full run hit 28 failures under heavy load (21 "timed out"; the rest are heavy engine tests). All 16 failing files pass alone. pytest b-spline-gen: 148 passed.
 - **Neutral-set rule (advisor, this turn):** item 34 adds NO persisted P.brickSettings field (the password lives in localStorage and the add-in config), so the fixture's neutral set is unchanged.
+- **turn 251, amendment: the new-board brick size is 1 1/4 in** (Fred, the v3 size sheet; saved boards keep theirs).
+  - One declared default: core/state.js `brickLengthIn: 1.25`.
+  - BRICK_SIZE_PRESETS gains `one_quarter1` '1¼″' (1.25) right after 1″. The active highlight follows (preset.lengthIn === brickLengthIn), and the quick-settings size row shows it too, since it reads BRICK_SIZE_PRESETS.
+  - Pinned tests updated: brick-size-log-slider (7 presets, 1¼″ beside 1″, the default picked; setup now starts at the default) and brick-default-grout (DEFAULT 1.25).
+  - The 3 changed tests fail against the pre-change copies; restored and cmp identical.
+  - Matrix: only tools/brick-matrix/controls.mjs:80 'Brick size stepper 1.0' touched the old default. It was a set-to-default; it is now a real change. The ¾ and 1½ preset and quick rows move away from the default either way. Told 88.
+  - discrete-controls N2 timed out under load (9.7 s in-file, against 0.3 s isolated with -t).
+  - No new persisted P.brickSettings field, so the fixture's neutral set is unchanged.
+
+## turn 253 (interrupt): the "1.25 re-lays saved boards" blocker was a harness clobber, not an app bug
+- **Advisor's report:** the matrix migration rows showed the pre-item-22 fixture (saved at 1 in) re-laying at 1.25.
+- **Measured instead of patched:**
+  - The fixture's brickSettings carries `brickLengthIn: 1`.
+  - Set the session, then reload (exactly as run.mjs:739-740 does) → live 1.25, 0 bricks, a default board.
+  - Cause: main.js:71 `pagehide → saveLastSession()`. The OLD page saves its own default session over the fixture as it unloads; the reload restores that.
+  - The same steps with the old page's session write blocked → 1 in, 205 bricks (99 + 106). Only the expected grout migration differs.
+  - The report's "frame 88/106" is a default single-soldier frame at 1.25 in.
+  - Fix belongs in 88's run.mjs: stub Storage.setItem for the session key before the reload. Told the advisor and 88.
+- **No legacyDefaults table and no version stamp (advisor agreed).** brickSettings is restored WHOLE, and each changed default reads its OLD behaviour when the field is absent:
+  - no brickLengthIn → scaleFor 1 → the set's own 0.75;
+  - no brickTopMode → organic;
+  - no grout.profile → flush;
+  - no accent → none.
+- **Pinned in tests/saved-board-keeps-settings.test.js (4):**
+  - the real fixture loads at 1 in through loadLastSession + runMigrations, with DEFAULT asserted at 1.25;
+  - the absent-field reads (each with a control that the non-legacy value does change the mask).
+  - They pin truths, so they pass on today's code by design.
+  - Mutation check: loadLastSession made to fill brickLengthIn from DEFAULT → the fixture test fails (1/4). Restored from a copy; cmp clean.
+- Slice 3 (bricks on the active layer) is paused at the design stage, no code changed. A golden board capture exists in my scratchpad; see the next entry.
+
+## turn 253 (interrupt 2): "Frame Set: Red Brick, the rock wall stays" fails at 124b799 -- a FINDING, not an app bug
+- **Reproduced:** the matrix frame group, run from a scratch worktree at origin/fb-app 5a0744e, gives 12 rows, 1 FAIL (this row).
+- **Measured, the row replayed step by step** (probe rockwall.mjs; counts, sets and lay warnings after every click):
+  - At 1¼ in (the new default):
+    - wall + frame: 59 / 88;
+    - 3-band: **wall 0**, frame 300, B1 warning "The frame bands cover the whole board -- no room for the wall";
+    - Band 1 Header: 10 / 274;
+    - Band 1 Fieldstone (rock frame): 23 / 138;
+    - Wall Fieldstone: 10 (set 3) / 138;
+    - Frame Set Red Brick (the brick 3-band again): **wall 0**, frame 300 (set 1), the B1 warning again.
+  - The wall RECORD stays throughout, so the wall comes back as soon as there is room.
+  - At 1 in: the same row ends with wall **2** (set 3) / frame 220. It only passed by two stones.
+- **So:** the app neither drops nor skips the wall record. Three brick soldier bands at 1¼ in leave no interior on T1 7x9; the engine lays no wall there and the declared warning says so.
+  - The row's precondition (room for a wall inside a 3-band brick frame) depends on the new-board brick size.
+  - Fix in 88's controls.mjs: the frame group pins its own brick size at setup (1 in, or ¾), the same "a default must not leak into a fixture" class.
+- **Engine finding for 88** (shots/seatC/rockwall_default.png, ~/.bspline-status/shots/seatC): at 1¼ in, the 3-band brick frame OVERRUNS the board. Bands fan out past the right and left board edges and cross themselves near the waist arcs.
+  - That is the band-overrun case (88's fix) and the subject of item 35 (bands reduced to fit).
+  - At 1 in the same frame stays inside (rockwall_one.png).
