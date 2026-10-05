@@ -14230,3 +14230,22 @@ WallPattern = {
   - They pin truths, so they pass on today's code by design.
   - Mutation check: loadLastSession made to fill brickLengthIn from DEFAULT → the fixture test fails (1/4). Restored from a copy; cmp clean.
 - Slice 3 (bricks on the active layer) is paused at the design stage, no code changed. A golden board capture exists in my scratchpad; see the next entry.
+
+## turn 253 (interrupt 2): "Frame Set: Red Brick, the rock wall stays" fails at 124b799 -- a FINDING, not an app bug
+- **Reproduced:** the matrix frame group, run from a scratch worktree at origin/fb-app 5a0744e, gives 12 rows, 1 FAIL (this row).
+- **Measured, the row replayed step by step** (probe rockwall.mjs; counts, sets and lay warnings after every click):
+  - At 1¼ in (the new default):
+    - wall + frame: 59 / 88;
+    - 3-band: **wall 0**, frame 300, B1 warning "The frame bands cover the whole board -- no room for the wall";
+    - Band 1 Header: 10 / 274;
+    - Band 1 Fieldstone (rock frame): 23 / 138;
+    - Wall Fieldstone: 10 (set 3) / 138;
+    - Frame Set Red Brick (the brick 3-band again): **wall 0**, frame 300 (set 1), the B1 warning again.
+  - The wall RECORD stays throughout, so the wall comes back as soon as there is room.
+  - At 1 in: the same row ends with wall **2** (set 3) / frame 220. It only passed by two stones.
+- **So:** the app neither drops nor skips the wall record. Three brick soldier bands at 1¼ in leave no interior on T1 7x9; the engine lays no wall there and the declared warning says so.
+  - The row's precondition (room for a wall inside a 3-band brick frame) depends on the new-board brick size.
+  - Fix in 88's controls.mjs: the frame group pins its own brick size at setup (1 in, or ¾), the same "a default must not leak into a fixture" class.
+- **Engine finding for 88** (shots/seatC/rockwall_default.png, ~/.bspline-status/shots/seatC): at 1¼ in, the 3-band brick frame OVERRUNS the board. Bands fan out past the right and left board edges and cross themselves near the waist arcs.
+  - That is the band-overrun case (88's fix) and the subject of item 35 (bands reduced to fit).
+  - At 1 in the same frame stays inside (rockwall_one.png).
