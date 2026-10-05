@@ -22251,3 +22251,37 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
   and > 0.5x a brick's; bricks untouched. Flag ignored -> 2/7 fail. Domain green (3 of 37's app tests time out at 5 s
   only under the full concurrent load; 16/16 alone).
 - Shot: shots/seatB/item23_wear_rocks.png (White rocks height map, Wear 0 / 0.5 / 1, before vs after).
+
+## T86 item 26 -- accent cuts at 1/2 and 1/4 brick (seat B / 88, 2026-10-05)
+- generateBricks `accentCuts: { unit, tile: { rows, cols, cells } }` (ENGINE_OPTIONS 'accentCuts') -> fill-shape ->
+  bondLayout's 7th arg -> applyAccentCuts, after the courses are planned and before the board clip: cells are unit x
+  (brick + joint) along a course, one course high; tile row 0 = the wall's BOTTOM course (37's accentGrid
+  convention), columns from the wall's left edge (a half-bond stagger is a whole number of 1/2 and 1/4 cells, so one
+  grid fits every course). A brick whose cells are not marked alike splits where the mark changes (each piece = its
+  cells less one joint, the joint between them). EVERY cell carries `accentMarked` (fill-shape copies it onto the
+  brick; the exclusion / region recut keeps it), so the app raises exactly the marked fraction. Off the grid (unit 1,
+  flemish headers): no cut, the mark under the centre, columns by 37's half-bond rule floor(x / pitch + 0.25).
+- Listed in ENGINE_OPTIONS (the completeness invariant -- the advisor's revised ruling); merges WITH 37's builder
+  wiring (31b), as wall-region does with slice 2. 37's tests/pattern-builder.test.js: its ENGINE_OPTIONS mock base
+  leaves accentCuts out (two lines), so "hidden until listed" still tests both states.
+- Tests bricks-accent-cuts (5): the spec's 4x6 tile at 1/2 and 1/4 on T1 running bond -- every split piece on the cell
+  grid and whole cells less a joint, its mark = the tile at every cell it covers, no overlap, every piece inside one
+  uncut brick which is its pieces + joints (union unchanged); unit 1 marks without cutting; no option = as before.
+  Cuts off -> 3/5 fail. Domain green but N2 (the known timeout, fixed on fb-app c70b3e5).
+- Branch sits on wall-region 0444b91 (rotation + region): its edits anchor next to rotationDeg.
+- Shot: shots/seatB/item26_accent_cuts.png.
+
+## T86 item 27 -- custom bond from a tile (seat B / 88, 2026-10-05)
+- generateBricks `customBond: { courses: [{ pieces, offset }] }` (ENGINE_OPTIONS 'customBond') -> bondLayout customRow:
+  course c lays courses[c mod n] (counted from the first course laid, as the built-in stagger is); pieces in brick
+  units repeat along the course, a piece of p bricks = L + (p - 1)(L + J) (two halves + their joint = one brick);
+  offset in pitches; the board clip makes the end closers; courses are stretcher-high. The layout's extra options are
+  now one object ({ accentCuts, customBond }) instead of a growing positional list.
+- PIN: stretcher = [{[1],0},{[1],0.5}] and stack = [{[1],0}] lay byte-identical bricks to the built-ins (customRow uses
+  uniformRow's own arithmetic order and L + 0 for a whole brick, so no float drift).
+- Tests bricks-custom-bond (4): the pins; the spec tile {[1, 1/2, 1], offset 1/2} on T1 -- every whole piece of a
+  declared length, on the course grid, in the tile's cyclic order; no overlap; no void beyond a joint (sampled with
+  diagonal probes: this tile lines some vertical joints up across courses, so joint crossings exist). Offsets ignored
+  -> 2/4 fail. Domain green but N2 (the known timeout).
+- Branch sits on accent-cuts 368ca32 (both feed 37's pattern builder; merge them with 37's 31b / 31e wiring).
+- Shot: shots/seatB/item27_custom_bond.png.

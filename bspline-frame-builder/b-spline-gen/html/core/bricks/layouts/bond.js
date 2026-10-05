@@ -115,6 +115,36 @@ function uniformRow(courseIndex, pattern, minX, maxX, courseCy, cH, L, H, J) {
  *  standard historical flemish-bond stagger, not independently re-derived. Walks a generous run of
  *  repeat units from well before `minX` so a partial unit at either true edge is still included
  *  (clipPolygonToBoard trims it to the real outline afterward, same as every other pattern here). */
+/**
+ * T86 item 27 (Fred, for 37's pattern builder F35-31e): a CUSTOM BOND from a tile -- `customBond = { courses: [{
+ * pieces, offset }] }`, repeated course by course (course c uses courses[c mod n], counted from the first course laid,
+ * as the built-in bonds' own stagger is). `pieces` = lengths in brick units (1, 1/2, 1/4, 3/4 ...), repeated along the
+ * course; a piece of p bricks spans p pitches less one joint (L + (p - 1)(L + J): two halves + their joint = one
+ * brick). `offset` = the course's shift in brick pitches. The ends are cut by the board clip like any course
+ * (closers). Courses are stretcher-high. A built-in bond is a tile too: stretcher = [{pieces:[1], offset:0},
+ * {pieces:[1], offset:0.5}] lays exactly uniformRow's bricks (the same arithmetic, pinned by a test).
+ */
+function customRow(courseIndex, bond, minX, maxX, courseCy, cH, L, J) {
+  const course = bond.courses[courseIndex % bond.courses.length] || {};
+  const seq = (course.pieces || []).map(Number).filter((p) => p > 0);
+  if (!seq.length) return [];
+  const pitch = L + J, offset = Number(course.offset) || 0;
+  const periodUnits = seq.reduce((s, p) => s + p, 0);
+  let u = 0; // the first piece's start, in pitches from minX - offset * pitch: one period before the course's left edge
+  while (-offset + u > 0) u -= periodUnits;
+  u -= periodUnits;
+  const row = [];
+  for (let k = 0; minX - offset * pitch + u * pitch < maxX + pitch; k++) {
+    const p = seq[k % seq.length], len = L + (p - 1) * pitch;
+    const cx = minX - offset * pitch + u * pitch + len / 2;
+    if (!(cx + len / 2 < minX - 1e-6 || cx - len / 2 > maxX + 1e-6)) {
+      row.push({ courseIndex, colIndex: row.length, cx, cy: courseCy, polygon: rectPolygon(cx, courseCy, len / 2, cH / 2) });
+    }
+    u += p;
+  }
+  return row;
+}
+
 function flemishRow(courseIndex, minX, maxX, courseCy, cH, L, H, J) {
   const period = L + J + H + J;
   const phase = (courseIndex % 2 === 1) ? period / 2 : 0;
@@ -168,8 +198,57 @@ function rusticRow(courseIndex, minX, maxX, courseCy, cH, L, J, stagger, rustic,
 }
 const isRunningBondPattern = (p) => p.kind === 'course' && (p.staggerFrac || 0) > 0 && p.pitchAxis === 'length';
 
-export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fences, { rustic = 0 } = {}) {
+/**
+ * T86 item 26 (Fred, for 37's pattern maker F35-31b): ACCENT CUTS -- an accent tile at sub-brick resolution.
+ * `accentCuts = { unit, tile: { rows, cols, cells[row][col] } }`: a cell is `unit` (1/2 or 1/4) of a brick's pitch
+ * (brick + joint) along a course and one course high; row 0 = the wall's BOTTOM course (37's accentGrid
+ * convention), columns counted from the wall's left edge (minX) -- a half-bond stagger is a whole number of 1/2 and
+ * 1/4 cells, so one grid fits every course. A brick whose cells are not all marked alike is SPLIT where the mark
+ * changes: each piece spans its cells less one joint (the joint between them), like two closers. Every cell comes
+ * out with `accentMarked` (true = the tile marks it), so only the marked fraction is raised / sunk. A brick off the
+ * grid (unit 1, flemish's headers) is not cut: it takes the mark under its centre, columns by 37's own half-bond
+ * rule (floor(x / pitch + 0.25)).
+ */
+function applyAccentCuts(courses, accentCuts, minX, J) {
+  const { unit, tile } = accentCuts;
+  if (!tile || !tile.rows || !tile.cols || !tile.cells) return courses;
+  const mod = (a, n) => ((a % n) + n) % n;
+  const marked = (row, col) => !!(tile.cells[mod(row, tile.rows)] && tile.cells[mod(row, tile.rows)][mod(col, tile.cols)]);
+  const last = courses.length - 1;
+  return courses.map((row, c) => {
+    const tileRow = last - c; // the bottom course is tile row 0
+    const out = [];
+    for (const cell of row) {
+      const xs = cell.polygon.map((p) => p.x), ys = cell.polygon.map((p) => p.y);
+      const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+      const pitch = x1 - x0 + J;
+      const u = unit * pitch, n = Math.round(1 / unit);
+      const k0 = (x0 - minX) / u;
+      const onGrid = unit < 1 && Math.abs(n * unit - 1) < 1e-9 && Math.abs(k0 - Math.round(k0)) < 1e-6;
+      if (!onGrid) {
+        const col = unit < 1 ? Math.floor(((x0 + x1) / 2 - minX) / u) : Math.floor(((x0 + x1) / 2 - minX) / pitch + 0.25);
+        out.push({ ...cell, colIndex: out.length, accentMarked: marked(tileRow, col) });
+        continue;
+      }
+      const first = Math.round(k0);
+      let a = 0;
+      while (a < n) {
+        const m = marked(tileRow, first + a);
+        let b = a;
+        while (b + 1 < n && marked(tileRow, first + b + 1) === m) b++;
+        const px0 = x0 + a * u, px1 = x0 + (b + 1) * u - J;
+        const cx = (px0 + px1) / 2;
+        out.push({ ...cell, colIndex: out.length, cx, polygon: rectPolygon(cx, (y0 + y1) / 2, (px1 - px0) / 2, (y1 - y0) / 2), accentMarked: m });
+        a = b + 1;
+      }
+    }
+    return out;
+  });
+}
+
+export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fences, { rustic = 0, accentCuts, customBond } = {}) {
   let below = []; // T86 item 22: the previous rustic course's joints
+  const custom = customBond && Array.isArray(customBond.courses) && customBond.courses.length ? customBond : null;
   const xs = boardOutline.map((p) => p.x), ys = boardOutline.map((p) => p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
 
@@ -187,15 +266,16 @@ export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fe
   const courses = [];
   let cy = minY;
   for (let c = 0; c < coursePatterns.length; c++) {
-    const pattern = patternFor(coursePatterns[c]);
+    const pattern = custom ? BRICK_PATTERNS.stretcher : patternFor(coursePatterns[c]);
     const cH = courseHeightFor(pattern, L, H);
     const coursePitch = cH + J;
     const courseCy = cy + cH / 2;
-    const row = pattern.kind === 'course-alternating'
-      ? flemishRow(c, minX, maxX, courseCy, cH, L, H, J)
-      : rustic > 0 && isRunningBondPattern(pattern)
-        ? (() => { const r = rusticRow(c, minX, maxX, courseCy, cH, L, J, c % 2 === 1 ? (L + J) * pattern.staggerFrac : 0, rustic, seed, below); below = r.joints; return r.row; })()
-        : uniformRow(c, pattern, minX, maxX, courseCy, cH, L, H, J);
+    const row = custom ? customRow(c, custom, minX, maxX, courseCy, cH, L, J)
+      : pattern.kind === 'course-alternating'
+        ? flemishRow(c, minX, maxX, courseCy, cH, L, H, J)
+        : rustic > 0 && isRunningBondPattern(pattern)
+          ? (() => { const r = rusticRow(c, minX, maxX, courseCy, cH, L, J, c % 2 === 1 ? (L + J) * pattern.staggerFrac : 0, rustic, seed, below); below = r.joints; return r.row; })()
+          : uniformRow(c, pattern, minX, maxX, courseCy, cH, L, H, J);
     courses.push(row);
     cy += coursePitch;
     if (cy > maxY + maxDim) break; // past the board -- later zones (if any) would be invisible anyway
@@ -219,26 +299,29 @@ export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fe
       const c = courses.length;
       const pattern = patternFor(coursePatterns[c - 1]);
       const courseCy = cy + remaining / 2;
-      const row = pattern.kind === 'course-alternating'
-        ? flemishRow(c, minX, maxX, courseCy, remaining, L, H, J)
-        : rustic > 0 && isRunningBondPattern(pattern)
-          ? rusticRow(c, minX, maxX, courseCy, remaining, L, J, c % 2 === 1 ? (L + J) * pattern.staggerFrac : 0, rustic, seed, below).row
-          : uniformRow(c, pattern, minX, maxX, courseCy, remaining, L, H, J);
+      const row = custom ? customRow(c, custom, minX, maxX, courseCy, remaining, L, J)
+        : pattern.kind === 'course-alternating'
+          ? flemishRow(c, minX, maxX, courseCy, remaining, L, H, J)
+          : rustic > 0 && isRunningBondPattern(pattern)
+            ? rusticRow(c, minX, maxX, courseCy, remaining, L, J, c % 2 === 1 ? (L + J) * pattern.staggerFrac : 0, rustic, seed, below).row
+            : uniformRow(c, pattern, minX, maxX, courseCy, remaining, L, H, J);
       courses.push(row);
     }
   }
 
+  const laid = accentCuts ? applyAccentCuts(courses, accentCuts, minX, J) : courses;
   const cells = [];
   let nextId = 0;
-  const idGrid = courses.map(() => []);
-  for (let c = 0; c < courses.length; c++) {
-    for (let k = 0; k < courses[c].length; k++) {
-      const cell = courses[c][k];
+  const idGrid = laid.map(() => []);
+  for (let c = 0; c < laid.length; c++) {
+    for (let k = 0; k < laid[c].length; k++) {
+      const cell = laid[c][k];
       const clipped = clipPolygonToBoard(cell.polygon, boardOutline, { x: cell.cx, y: cell.cy });
       if (clipped.length < 3) { idGrid[c].push(-1); continue; } // fully outside, or clipped to a degenerate sliver
       const id = nextId++;
       idGrid[c].push(id);
-      cells.push({ id, polygon: clipped, courseIndex: c, colIndex: k, cx: cell.cx, cy: cell.cy, neighbors: {} });
+      cells.push({ id, polygon: clipped, courseIndex: c, colIndex: k, cx: cell.cx, cy: cell.cy, neighbors: {},
+        ...(cell.accentMarked !== undefined ? { accentMarked: cell.accentMarked } : {}) });
     }
   }
   const byId = new Map(cells.map((c) => [c.id, c]));
