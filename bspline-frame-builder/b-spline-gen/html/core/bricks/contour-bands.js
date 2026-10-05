@@ -33,7 +33,7 @@
  * full-size bricks, never one row of stretched ones, and the next band always starts exactly where
  * the actual (snapped) rows end, with no seam gap.
  */
-import { inwardSignFor, cumulativeLengths, pointAtArcLength } from './geometry.js';
+import { inwardSignFor, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, boundaryAtDepth } from './primitive-ribbon.js';
 import { scaledSet, BRICK_PATTERNS } from './library.js';
@@ -44,12 +44,12 @@ const ARC_TESS_STEPS = 16; // only for inwardSignFor's own tessellation -- a smo
 // deciding which way is "inward", never a correctness requirement (ribbonPieces itself never
 // tessellates an arc's own interior; its only geometry is the exact analytic circle).
 
-function tessellate(primitives) {
+function tessellate(primitives, steps = ARC_TESS_STEPS) {
   const points = [];
   for (const prim of primitives) {
     if (prim.type === 'arc') {
-      for (let k = 0; k < ARC_TESS_STEPS; k++) {
-        const t = prim.theta1 + ((prim.theta2 - prim.theta1) * k) / ARC_TESS_STEPS;
+      for (let k = 0; k < steps; k++) {
+        const t = prim.theta1 + ((prim.theta2 - prim.theta1) * k) / steps;
         points.push({ x: prim.cx + prim.r * Math.cos(t), y: prim.cy + prim.r * Math.sin(t) });
       }
     } else {
@@ -228,6 +228,30 @@ function buildAreaBandBricks(enriched, depthSoFar, band, patternName, set, seed,
  *   `opts.closed===false` (`boundaryAtDepth` is a closed-contour concept; an open stroke has no
  *   Wall-starting inner edge to give it).
  */
+/** T86 (advisor, size sheet v3: T1 7x9 three_band at 1.25 in, the middle band fanned out past the board): no band
+ *  piece is laid outside the board -- item 19's wall invariant, extended to bands. A piece with real area outside
+ *  the outline (more than BOARD_CLIP_TOLERANCE_SQIN) is cut to it (geometry polygonIntersection); what is left under
+ *  BAND_MIN_PIECE_FRACTION of a brick drops. A piece inside the board is kept exactly as built. WHY it reaches out:
+ *  a band deeper than the board's medial line (half the waist) inverts the offset ring -- a waist arc's offset circle
+ *  grows past the far side and meets its neighbours outside the board; the fit rule for that is T86 item 28. */
+const BAND_MIN_PIECE_FRACTION = 0.25; // the same quarter-brick floor as layouts/bond.js and layouts/fieldstone.js
+const BOARD_CLIP_TOLERANCE_SQIN = 1e-3; // above the fine tessellation's own chord error on a piece
+const BOARD_CLIP_ARC_STEPS = 128; // per arc: a chord sags < 1e-4 in on the templates' fillets
+function clipBandPiecesToBoard(bricks, board, set) {
+  const minArea = BAND_MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of board) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  const out = [];
+  for (const b of bricks) {
+    const area = Math.abs(signedArea(b.polygon));
+    const inside = polygonIntersection(b.polygon, board);
+    const kept = inside.length >= 3 ? Math.abs(signedArea(inside)) : 0;
+    if (area - kept <= BOARD_CLIP_TOLERANCE_SQIN && b.polygon.every((p) => p.x >= x0 - 1e-6 && p.x <= x1 + 1e-6 && p.y >= y0 - 1e-6 && p.y <= y1 + 1e-6)) { out.push(b); continue; }
+    if (kept >= minArea) out.push({ ...b, polygon: inside });
+  }
+  return out;
+}
+
 export function bricksContourBands(primitives, bands, opts) {
   const { seed } = opts;
   const closed = opts.closed !== false;
@@ -286,7 +310,9 @@ export function bricksContourBands(primitives, bands, opts) {
     depthSoFar += naturalWidth * rows;
   });
 
-  return { bricks, innerPath: closed ? boundaryAtDepth(enriched, depthSoFar) : [] };
+  // centred bands straddle the path by design, and an open path has no board: only a closed outer stack is clipped
+  const laid = closed && !opts.centered ? clipBandPiecesToBoard(bricks, tessellate(primitives, BOARD_CLIP_ARC_STEPS), set) : bricks;
+  return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, depthSoFar) : [] };
 }
 
 /**

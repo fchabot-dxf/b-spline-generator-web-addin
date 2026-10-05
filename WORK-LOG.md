@@ -22036,3 +22036,23 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
   footprint, no cut piece under 1/4 brick). Mutation: the old winding line back -> 6/11 fail. Bricks domain 70 files /
   714 pass; the 6 other test files importing core/bricks 66/66.
 - Shot: shots/seatB/item13_exclusions.png (before/after, 4 cases).
+
+## Band overrun -- no band piece outside the board (seat B / 88, 2026-10-05)
+- Advisor (size sheet v3): T1 7x9 three_band at 1.25 in, the middle band fanned out past the frame outline. Measured
+  across T1/T9/T12/T18 x 0.75/1/1.25/1.5 in x single_soldier/three_band: up to 26.6 sq in of band outside the board
+  (T1 1.25, 100 pieces); every three_band at 1.25+ on T1/T9/T12/T18 had some; one single_soldier (T18 1.5) too.
+- WHY: the stack is deeper than the board's medial line (half the waist). The innermost band's offset ring inverts: a
+  waist arc's offset circle (radius = notch r + depth) grows past the far side and meets its neighbours OUTSIDE the
+  board, and voussoirs are laid along that huge circle. At 1.5 in the same inversion makes a lens that leaves the four
+  bare patches at the middle band's inner corners (shots/seatB/band_overrun_T1_1p5_inverted_ring.png).
+- FIX HERE (the invariant only): contour-bands clipBandPiecesToBoard -- a piece with > 1e-3 sq in outside the board
+  (a 128-step-per-arc tessellation) is cut to it, under a quarter brick drops; a piece inside is kept byte-identical
+  (saved boards do not re-lay). Closed, non-centred stacks only.
+- NOT FIXED HERE, by design: the inverted band still overlaps the outer bands INSIDE the board, and the 1.5 in bare
+  patches remain -- both are the "stack does not fit" case that item 28's declared fit rule (reduce/drop the
+  innermost band) fixes. Building it here would pre-empt 28's declared reduction order.
+- Branch carries origin/engine-exclusions (the polygonIntersection winding fix -- band pieces touch the board edge
+  with opposite winding; without it the clip measures wrong).
+- Tests: bricks-band-inside-board (8 cases); clip disabled -> 5/8 fail (up to 242 pieces outside). Bricks domain +
+  the 7 other core/bricks importers: 77 files / 788 pass. Note: 0.25 quarter-brick floor is now declared in four
+  places (bond, fieldstone, fill-shape exclusions, contour-bands) -- worth one shared declaration later.
