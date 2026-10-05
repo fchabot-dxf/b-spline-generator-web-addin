@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'persistence'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'persistence'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -45,6 +45,12 @@ const CLOUD_STAND_IN = `(() => {
     const url = typeof input === 'string' ? input : input.url;
     const api = window.BSPLINE_PRESETS_API_URL ? String(window.BSPLINE_PRESETS_API_URL).replace(/[/]+$/, '') : null;
     if (!api || !url.startsWith(api + '/projects')) return real(input, init);
+    // item 34: a write that carries a password must carry the declared test one (the worker answers 401 otherwise);
+    // a write with NO Authorization header is pre-item-34 code and is accepted as before
+    const hdrs = init.headers || {};
+    const auth = typeof hdrs.get === 'function' ? hdrs.get('Authorization') : (hdrs.Authorization || hdrs.authorization);
+    const writes = ['PUT', 'DELETE'].includes(String(init.method || 'GET').toUpperCase());
+    if (writes && auth && auth !== 'Bearer __EDIT_PASSWORD__') return new Response(JSON.stringify({ error: 'wrong password (brick-matrix stand-in)' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     const m = load(); const method = String(init.method || 'GET').toUpperCase();
     const name = decodeURIComponent(url.slice((api + '/projects').length).split('?')[0].replace(/^[/]/, ''));
     const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json' } });
@@ -263,7 +269,7 @@ async function record(c, obs) {
 
 try {
   await send('Runtime.enable'); await send('Page.enable');
-  await send('Page.addScriptToEvaluateOnNewDocument', { source: CLOUD_STAND_IN });
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: CLOUD_STAND_IN.replace('__EDIT_PASSWORD__', EDIT_PASSWORD_TEST.password) });
   await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html` });
   for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; }
@@ -410,6 +416,8 @@ try {
   if (!arg('group') || arg('group') === 'lay') await runLayWarnings();
   if (!arg('group') || arg('group') === 'select') await runSelect();
   if (!arg('group') || arg('group') === 'migration') await runMigration();
+  if (!arg('group') || arg('group') === 'frame-ui') await runFrameUi();
+  if (!arg('group') || arg('group') === 'password') await runPassword();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') await runPersistence();
 } catch (e) {
@@ -464,14 +472,18 @@ async function runPersistence() {
   await checkPersisted('reload');
   // 3. project Save As -> (fresh app) -> Load, through the real Project Manager modal (cloud stand-in)
   if (await editorOpen()) await apply();
+  await js(`(()=>{ localStorage.setItem(${JSON.stringify(EDIT_PASSWORD_TEST.storageKey)}, ${JSON.stringify(EDIT_PASSWORD_TEST.password)}); return 1; })()`); // item 34: saves need it
   await click('btnOpenProjectManager', 1500);
   await click('fmBtnSaveAs', 1200);
   await js(`(async()=>{ const i=document.querySelector('.pm-prompt-input'); if(!i) return 'no prompt'; i.value='brick-matrix-persist'; document.querySelector('.pm-prompt-ok').click(); await new Promise(r=>setTimeout(r,4000)); return 'ok'; })()`);
   const saved = await js(`Object.keys(JSON.parse(localStorage.getItem('brickMatrixCloudStandIn')||'{}'))`);
   console.log('project saved to the stand-in:', JSON.stringify(saved));
-  // a fresh app: drop the app's own saved session (keep only the stand-in's store), reload -> defaults
-  await js(`(()=>{ const keep=localStorage.getItem('brickMatrixCloudStandIn'); localStorage.clear(); if (keep) localStorage.setItem('brickMatrixCloudStandIn', keep); return 1; })()`);
-  await send('Page.reload', {}); await waitApp();
+  // a fresh app: drop the app's own saved session (keep only the stand-in's store), reload -> defaults. At the next
+  // document's start (reloadWithStorage): cleared here, the old page's pagehide saved the session straight back and
+  // the load below proved nothing
+  const keep = await js(`localStorage.getItem('brickMatrixCloudStandIn')`);
+  await reloadWithStorage(keep ? { brickMatrixCloudStandIn: keep } : {});
+  console.log('fresh app state:', await js(`(async()=>{ const { P } = await import('./core/state.js'); return JSON.stringify({ setId: P.brickSettings?.setId, frameBandPreset: P.brickSettings?.frameBandPreset }); })()`));
   await click('btnOpenProjectManager', 2500);
   const picked = await js(`(async()=>{ const it=[...document.querySelectorAll('#fmProjectList [data-name]')].find(e=>e.getAttribute('data-name')==='brick-matrix-persist'); if(!it) return 'not listed'; it.click(); await new Promise(r=>setTimeout(r,500)); document.getElementById('fmBtnLoad').click(); await new Promise(r=>setTimeout(r,6000)); return 'loaded'; })()`);
   console.log('project load:', picked);
@@ -740,7 +752,9 @@ function sameLay(oldKey, newKey, setGrout, neutral = MIGRATION.neutralNewFields 
   for (const x of [o, n]) { delete x.grout; delete x.groutByElement; }
   // a field the old key lacks lays as before when every leaf of it is its declared neutral value
   const leaves = (v) => (v && typeof v === 'object' ? Object.values(v).flatMap(leaves) : [v]);
-  const isNeutral = (v, value) => (value === 'empty' ? Array.isArray(v) && v.length === 0 : leaves(v).every((x) => x === value));
+  const isNeutral = (v, value) => (value === 'empty' ? Array.isArray(v) && v.length === 0
+    : value && typeof value === 'object' ? JSON.stringify(v) === JSON.stringify(value)
+    : leaves(v).every((x) => x === value));
   for (const [k, value] of Object.entries(neutral)) if (!(k in o) && k in n && isNeutral(n[k], value)) delete n[k];
   return JSON.stringify(o) === JSON.stringify(n) && Math.abs((oldWidth ?? setGrout) - (newWidth ?? setGrout)) < 1e-9;
 }
@@ -760,9 +774,10 @@ async function runMigration() {
     const bricks=[...svg.querySelectorAll('[data-brick="wall"],[data-brick="frame"]')];
     return JSON.stringify({ key, polys: bricks.map((n)=>n.getAttribute('data-brick')+':'+(n.getAttribute('points')||'').trim()).sort().join('|') }); })()`));
   if (!old.key) throw new Error('setup: the migration fixture holds no shared brickLaidKey (not a pre-item-22 board?)');
-  // the app restores its last session on load: seed it with the old board, reload -> migrated in place
-  await js(`(()=>{ localStorage.clear(); localStorage.setItem(${JSON.stringify(M.sessionKey)}, ${JSON.stringify(body)}); return 1; })()`);
-  await send('Page.reload', {}); await waitApp();
+  // the app restores its last session on load: seed it with the old board, reload -> migrated in place. Seeded at the
+  // NEXT document's start (reloadWithSession): seeding here, then reloading, let the old page's pagehide save its own
+  // default board over the fixture (37, measured: it only showed once the default brick length moved off 1 in)
+  await reloadWithSession(M.sessionKey, body);
   const z1 = await heightsSettled(null);
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
@@ -796,6 +811,166 @@ function layDiff(oldKey, newKey) {
     const keys = [...new Set([...Object.keys(o), ...Object.keys(n)])].filter((k) => JSON.stringify(o[k]) !== JSON.stringify(n[k]));
     return keys.map((k) => `${k}: ${JSON.stringify(o[k])} -> ${JSON.stringify(n[k])}`).join('; ').slice(0, 300) + ((oldKey.split('#')[1] || '') !== ((newKey || '').split('#')[1] || '') ? '; FRAME PART differs' : '');
   } catch { return 'unparseable'; }
+}
+
+// ---------------------------------------------------------------- frame corners + per-element accents (hoisted)
+// Seat 37: item 33 (fb-app f0e3728, the Frame's Corners row) and per-element accents (ed618f3). Expected values are
+// read from the app's OWN declarations in the page (editor-brick-tool.js FRAME_CORNERS / FOLDED_FRAME_PRESETS /
+// frameCornerOf, core FRAME_PRESETS) -- never copied numbers.
+function frameUiState() {
+  return `(async()=>{ const T=await import('./editor/editor-brick-tool.js'); const { P } = await import('./core/state.js'); const L=await import('./core/bricks/library.js');
+    const list=document.getElementById('brickFrameCornerList'); const s=P.brickSettings||{};
+    const frames=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')];
+    return JSON.stringify({ corners: T.FRAME_CORNERS.map((c)=>c.id), folded: T.FOLDED_FRAME_PRESETS,
+      ownCorner: T.frameCornerOf(s), preset: s.frameBandPreset, pick: s.frameCorner ?? null,
+      presetCorners: Object.fromEntries(Object.entries(L.FRAME_PRESETS).map(([k,b])=>[k,(b[0]&&b[0].cornerStyle)||'mitre'])),
+      listShown: !!list && list.offsetParent !== null && getComputedStyle(list).display !== 'none',
+      buttons: list ? list.querySelectorAll('[id^="brickFrameCorner_"]').length : 0,
+      active: list ? [...list.querySelectorAll('[id^="brickFrameCorner_"].active')].map((b)=>b.id.replace('brickFrameCorner_','')) : [],
+      frames: frames.length, flat: frames.filter((n)=>!String(n.getAttribute('fill')||'').startsWith('url(')).length }); })()`;
+}
+async function frameUiRead() { return jsJSON(frameUiState()); }
+// Reload with `key` = `value` in localStorage as the app starts. MEASURED: seeding storage and then reloading a
+// DIRTY page loses the seed -- the page saves its own session on the way out, over it. A one-shot script that runs
+// at the start of the next document (after that save, before the app reads storage) cannot be overwritten.
+async function reloadWithSession(key, value) { return reloadWithStorage({ [key]: value }); }
+// The same, for any set of keys: localStorage is exactly `entries` as the next document starts.
+async function reloadWithStorage(entries) {
+  const added = await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.clear(); for (const [k, v] of Object.entries(${JSON.stringify(entries)})) localStorage.setItem(k, v); } catch (e) {}` });
+  try { await send('Page.reload', {}); await waitApp(); }
+  finally { await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: added.result.identifier }); }
+}
+async function relaid(before) { return (await canvasSettled(before)) !== before; }
+
+async function runFrameUi() {
+  await send('Page.reload', {}); await waitApp();
+  await openEditorTab('editorTabBrick');
+  await click('brickTool_wall', 800); await click('brickGenerate', 2000);
+  await click('brickTool_frame', 900);
+  if (!(await exists('brickFrameCornerList'))) { checkRow('frame-ui', 'Corners row', false, '', 'f0e3728'); return; }
+  await click('brickFramePreset_single_soldier', 2000);
+  // 1. Soldier: the row shows every declared corner, the preset's own (Mitre) active
+  let st = await frameUiRead();
+  checkRow('frame-ui', 'Corners: Soldier shows every corner, its own active', st.listShown && st.buttons === st.corners.length && st.active.length === 1 && st.active[0] === st.presetCorners.single_soldier,
+    `shown ${st.listShown}, ${st.buttons}/${st.corners.length} buttons, active ${st.active.join(',')} (preset's own: ${st.presetCorners.single_soldier})`);
+  // 2. each other corner re-lays the frame at once and becomes the active one
+  for (const id of st.corners.filter((c) => c !== st.presetCorners.single_soldier)) {
+    const before = await js(CANVAS);
+    await click(`brickFrameCorner_${id}`, 400);
+    const moved = await relaid(before);
+    const s2 = await frameUiRead();
+    checkRow('frame-ui', `Corners: ${id} re-lays the frame at once`, moved && s2.active[0] === id && s2.frames > 0,
+      `re-laid ${moved}, active ${s2.active.join(',')}, ${s2.frames} frame bricks${id === 'block' ? `, ${s2.flat} without a texture` : ''}`);
+    if (id === 'block') checkRow('frame-ui', 'Corners: quoin blocks wear the frame texture', s2.flat === 0, `${s2.flat} of ${s2.frames} frame bricks drawn flat (quoin-element-set)`);
+  }
+  // 3. a preset with its own corner: picking it shows that corner; a pick is dropped on a preset change
+  const twoBand = Object.entries(st.presetCorners).find(([k, c]) => c !== 'mitre' && !(k in st.folded) && k !== 'none');
+  if (twoBand) {
+    await click(`brickFramePreset_${twoBand[0]}`, 2000);
+    const s3 = await frameUiRead();
+    checkRow('frame-ui', `Corners: ${twoBand[0]} shows its own corner`, s3.active[0] === twoBand[1], `active ${s3.active.join(',')}, preset's own ${twoBand[1]}`);
+  }
+  await click('brickFrameCorner_butt', 1500);
+  await click('brickFramePreset_single_soldier', 2000);
+  const s4 = await frameUiRead();
+  checkRow('frame-ui', 'Corners: a preset change returns to the preset\'s own corner', s4.active[0] === s4.presetCorners.single_soldier && s4.pick === null,
+    `after Butt then Soldier: active ${s4.active.join(',')}, pick ${s4.pick}`);
+  // 4. no bands, or a rock frame: no corners row
+  await click('brickFramePreset_none', 2000);
+  const s5 = await frameUiRead();
+  checkRow('frame-ui', 'Corners: hidden with no bands', !s5.listShown, `row ${s5.listShown ? 'SHOWN' : 'hidden'}`);
+  await click('brickFramePreset_single_soldier', 2000);
+  await click('brickFrameBandPattern_0_fieldstone', 2000);
+  const s6 = await frameUiRead();
+  checkRow('frame-ui', 'Corners: hidden on a rock frame', !s6.listShown, `row ${s6.listShown ? 'SHOWN' : 'hidden'}`);
+  // 5. per-element accents (ed618f3): a band's own accent marks only that band; its level moves the relief
+  if (await editorOpen()) await apply();
+  let Z = await heightsSettled(null);
+  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await click('brickFramePreset_three_band', 2000);
+  if (!(await exists('brickAccent_band1_checker'))) { checkRow('frame-ui', 'Accents: band 1', false, '', 'ed618f3'); return; }
+  await apply(); Z = await heightsSettled(Z);
+  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await click('brickAccent_band1_checker', 2000);
+  const acc = await jsJSON(`JSON.stringify((()=>{ const f=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')]; const by=(b)=>f.filter((n)=>n.getAttribute('data-brick-band')===String(b)); return { b1: by(1).filter((n)=>n.getAttribute('data-brick-accent')==='1').length, b1n: by(1).length, b0: by(0).filter((n)=>n.getAttribute('data-brick-accent')==='1').length }; })())`);
+  await apply(); const Z1 = await heightsSettled(Z);
+  checkRow('frame-ui', 'Accents: band 1 checker marks band 1 only, 3D moves', acc.b1 > 0 && acc.b0 === 0 && Z1 !== Z, `band 1 outlined ${acc.b1}/${acc.b1n}, band 0 outlined ${acc.b0}, 3D ${Z1 !== Z ? 'changed' : 'UNCHANGED'}`);
+  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await setValue('brickAccentLevel_band1', -0.0625, 'change'); await sleep(1500);
+  await apply(); const Z2 = await heightsSettled(Z1);
+  checkRow('frame-ui', 'Accents: band 1 level -1/16 moves the relief', Z2 !== Z1, `3D ${Z2 !== Z1 ? 'changed' : 'UNCHANGED'}`);
+  // 6. the brush's own accent outlines its bricks
+  await openEditorTab('editorTabBrick'); await click('brickTool_brush', 900);
+  if (await exists('brickAccent_brush_checker')) {
+    await click('brickAccent_brush_checker', 800);
+    await click('brickTool_brush', 300); await drag([[0.3, 0.5], [0.5, 0.55], [0.7, 0.5]]);
+    const br = await jsJSON(`JSON.stringify((()=>{ const b=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="brush"]')]; return { n: b.length, marked: b.filter((n)=>n.getAttribute('data-brick-accent')==='1').length }; })())`);
+    checkRow('frame-ui', 'Accents: brush checker outlines brush bricks', br.n > 0 && br.marked > 0, `${br.marked}/${br.n} brush bricks outlined`);
+  }
+  if (await editorOpen()) await apply();
+  // 7. a board saved on a retired corner preset (butt_frame / quoin_corners) restores as its folded preset + corner:
+  //    the migration fixture's own session with its preset rewritten, one per FOLDED_FRAME_PRESETS entry
+  const folded = await jsJSON(`(async()=>{ const T=await import('./editor/editor-brick-tool.js'); return JSON.stringify(T.FOLDED_FRAME_PRESETS); })()`);
+  const session = JSON.parse(readFileSync(path.join(HERE, MIGRATION.fixture), 'utf8'));
+  for (const [old, want] of Object.entries(folded)) {
+    session.P.brickSettings.frameBandPreset = old;
+    await reloadWithSession(MIGRATION.sessionKey, JSON.stringify(session));
+    await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+    const st = await frameUiRead();
+    checkRow('frame-ui', `Corners: a board saved on ${old} restores as ${want.preset} + ${want.corner}`, st.preset === want.preset && st.ownCorner === want.corner && st.active[0] === want.corner,
+      `preset ${st.preset}, corner ${st.ownCorner}, active ${st.active.join(',')}`);
+    if (await editorOpen()) await apply();
+  }
+}
+
+// ---------------------------------------------------------------- the password to save (hoisted; EDIT_PASSWORD_TEST)
+async function standInNames() { return jsJSON(`JSON.stringify(Object.keys(JSON.parse(localStorage.getItem('brickMatrixCloudStandIn')||'{}')))`); }
+async function cachedPassword() { return js(`localStorage.getItem(${JSON.stringify(EDIT_PASSWORD_TEST.storageKey)})`); }
+// Save As `name`; answer every password prompt with the next of `answers`. Returns the titles the app asked with.
+async function saveAsAnswering(name, answers) {
+  await click('btnOpenProjectManager', 1500);
+  await click('fmBtnSaveAs', 1200);
+  await js(`(async()=>{ const i=document.querySelector('.pm-prompt-input:not([type=password])'); if(!i) return 0; i.value=${JSON.stringify(name)}; i.closest('.pm-prompt-overlay').querySelector('.pm-prompt-ok').click(); return 1; })()`);
+  const asked = [];
+  for (let k = 0; k < 6; k++) {
+    await sleep(800);
+    const title = await js(`(()=>{ const i=document.querySelector('.pm-prompt-overlay input[type=password]'); return i ? i.closest('.pm-prompt-overlay').querySelector('.pm-prompt-title').textContent.trim() : null; })()`);
+    if (!title) continue;
+    asked.push(title);
+    const answer = answers[asked.length - 1] ?? '';
+    await js(`(()=>{ const i=document.querySelector('.pm-prompt-overlay input[type=password]'); i.value=${JSON.stringify(answer)}; i.closest('.pm-prompt-overlay').querySelector('.pm-prompt-ok').click(); return 1; })()`);
+  }
+  await sleep(1500);
+  await js(`(()=>{ document.querySelectorAll('.pm-prompt-overlay .pm-prompt-cancel').forEach((b)=>b.click()); return 1; })()`);
+  return asked;
+}
+async function runPassword() {
+  const W = EDIT_PASSWORD_TEST;
+  await send('Page.reload', {}); await waitApp();
+  if (!(await exists('editPasswordStatus'))) { checkRow('password', 'Password to save', false, '', W.introducedBy); return; }
+  if (await editorOpen()) await apply();
+  // 1. no cached password: Save As asks once, the write is accepted, the password is cached
+  await js(`(()=>{ localStorage.removeItem(${JSON.stringify(W.storageKey)}); return 1; })()`);
+  let asked = await saveAsAnswering('brick-matrix-pw-1', [W.password]);
+  let names = await standInNames();
+  checkRow('password', 'First save asks once, saves, caches it', asked.length === 1 && asked[0] === W.askTitle && names.includes('brick-matrix-pw-1') && (await cachedPassword()) === W.password,
+    `asked ${JSON.stringify(asked)}, saved ${names.includes('brick-matrix-pw-1')}, cached ${(await cachedPassword()) === W.password}`);
+  // 2. cached: no prompt at all
+  asked = await saveAsAnswering('brick-matrix-pw-2', []);
+  names = await standInNames();
+  checkRow('password', 'Next save: no prompt', asked.length === 0 && names.includes('brick-matrix-pw-2'), `asked ${JSON.stringify(asked)}, saved ${names.includes('brick-matrix-pw-2')}`);
+  // 3. a wrong cached password: 401 -> re-asked with the retry title -> the right one -> saved and cached
+  await js(`(()=>{ localStorage.setItem(${JSON.stringify(W.storageKey)}, 'not-the-password'); return 1; })()`);
+  asked = await saveAsAnswering('brick-matrix-pw-3', [W.password]);
+  names = await standInNames();
+  checkRow('password', 'Wrong password: re-asked, then saved', asked.length === 1 && asked[0] === W.retryTitle && names.includes('brick-matrix-pw-3') && (await cachedPassword()) === W.password,
+    `asked ${JSON.stringify(asked)}, saved ${names.includes('brick-matrix-pw-3')}, cached ${(await cachedPassword()) === W.password}`);
+  // 4. Settings: the status says so; Clear forgets it
+  const st1 = await js(`(document.getElementById('editPasswordStatus')?.textContent||'').trim()`);
+  await js(`(()=>{ document.getElementById('editPasswordClear')?.click(); return 1; })()`); await sleep(500);
+  const st2 = await js(`(document.getElementById('editPasswordStatus')?.textContent||'').trim()`);
+  checkRow('password', 'Settings: status, then Clear forgets it', st1 === W.statusSaved && st2.startsWith(W.statusUnsetStarts) && !(await cachedPassword()),
+    `before "${st1}", after Clear "${st2.slice(0, 40)}", cached ${!!(await cachedPassword())}`);
 }
 
 // ---------------------------------------------------------------- report (hoisted; shared by --parallel)
