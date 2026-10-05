@@ -88,7 +88,8 @@ function enrichPrimitives(primitives, inwardSign) {
  *  slit polygon); an open brush stroke has no ring, so its bands keep their own patterns. */
 export function setBandPattern(set, closed = true) {
   if (!closed) return null;
-  const name = set && set.layout;
+  // a set may declare the area pattern its bands lay (`bandLayout`, e.g. Grey stone: rubble walls, stone-ring bands)
+  const name = set && (set.bandLayout || set.layout);
   const def = name && BRICK_PATTERNS[name];
   return def && def.kind === 'tile2d' && def.bandCapable ? name : null;
 }

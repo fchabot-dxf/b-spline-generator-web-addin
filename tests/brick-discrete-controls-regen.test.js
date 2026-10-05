@@ -1032,8 +1032,10 @@ describe('F35 item 23: per-element Set, Fieldstone = the rock set', () => {
 
   it('the Set row lists the BRICK sets from their declarations -- no White Rocks', () => {
     setup('wall');
-    expect([...document.querySelectorAll('#brickSetRow button')].map((b) => [b.id, b.textContent])).toEqual([['brickSet_1', 'Red Brick']]);
-    expect([...document.querySelectorAll('#brickQuickSettings [id^=brickQuick_set_]')].map((b) => b.id)).toEqual(['brickQuick_set_1']);
+    // T86 item 24 (seat B): Grey brick (set 4, a bond set) joins by its own declaration; Grey stone (set 5, coursed
+    // rubble) is not a bond set, so like White Rocks it is not listed here
+    expect([...document.querySelectorAll('#brickSetRow button')].map((b) => [b.id, b.textContent])).toEqual([['brickSet_1', 'Red Brick'], ['brickSet_4', 'Grey brick']]);
+    expect([...document.querySelectorAll('#brickQuickSettings [id^=brickQuick_set_]')].map((b) => b.id)).toEqual(['brickQuick_set_1', 'brickQuick_set_4']);
   });
 
   it('Wall + Fieldstone: the wall is rock (no brick set shown active), laid with the Fieldstone pattern', () => {
