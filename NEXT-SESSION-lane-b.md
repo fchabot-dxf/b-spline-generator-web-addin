@@ -136,3 +136,6 @@ Queue, in order, one pass-back each, full-board shots to shots/seatB, bricks-dom
 4. [T86-item-18] painted strokes -> wall region (agree the signature with 37).
 5. [T86-item-10] groutCut (add 'groutCut' to ENGINE_OPTIONS).
 6. [T86-item-21b] the three-band corner reach (parked; needs the rested pass).
+7. [T86-item-22] RUSTIC RUNNING BOND (Fred 2026-10-04 evening): opts.rustic 0..1 (default 0 = uniform) varies brick lengths within a course from a declared range (e.g. 0.6-1.4 x nominal at 1), bond stays staggered and closed (closers still fill the ends), same sample/texture rules; ENGINE_OPTIONS 'rustic'; 37 adds the slider in the Wall/Brush sections. Previews at 0 / 0.5 / 1.
+8. [T86-item-23] WEAR ON FIELDSTONE ROCKS (Fred): the Weathered Wear amount also applies to stones (worn edges + pits), through the same surface profile the bricks use; coordinate with 37 (editor/brick-surface-styles.js + the height mask); preview Wear 0 vs 1 on White Rocks.
+9. [T86-item-24] GREY BRICK SET (Fred): extract a third set from Fred's grey target photos with tools/extract_bricks.py (the advisor DMs the photo paths), declared like Red Brick (BRICK_SETS entry: sizes, grout, textures); it appears in the Set picker by itself.
