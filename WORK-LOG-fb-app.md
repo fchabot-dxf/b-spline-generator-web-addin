@@ -14493,3 +14493,27 @@ WallPattern = {
 - **Merged origin/main 99c735f** (clean). Full suite on the merged tree: 2 failed / 4600 passed.
   - editor-tab-mode-scope: mine, fixed (the mode declared).
   - frame-3d-sweep: a 90 s timeout; passes alone (2 files 27/27).
+
+### turn 263 (amendment): Coursed rubble Wall pattern (Grey stone, Set 5) (seat 37)
+- **Hold on slice 2, then resolved (advisor DMs):**
+  - Fred: "Not a fan of wall brush". His answer: painting is fine, but he wants COMPLETE bricks, no cut bricks at an area edge.
+  - Slice 2 stays as pushed. 88 does T86 18b (a brick is laid when its centroid is inside the region; nothing is clipped at the region edge).
+  - When that sha lands: merge it into fb-app, re-shoot the 3 slice-2 shots, re-check Select + persistence, then pass.
+- **Merged origin/grey-sets 23a6062** (advisor OK) as 9e229bf. Two add/add conflicts, both kept as unions:
+  - core/bricks/index.js: the strokesToRegion + bricksGroutCut exports;
+  - 88's WORK-LOG.md: both log sections.
+- **The entry:**
+  - `BRICK_PATTERNS.coursed_rubble = { kind: 'tile2d', family: 'fieldstone' }` (a registration line in library.js). The family declaration places it next to Fieldstone in the Wall grid, with nothing else to list. It is not band-capable, so band rows don't list it.
+  - The engine-drawn icon (Set 1 sizes) shows uneven course lengths and reads distinct from running bond.
+  - The label is "Coursed rubble".
+- **The set, declared once:** `patternSetId(pattern)`: a Wall pattern named after a stone set's LAYOUT implies that set (fieldstone -> Set 3, coursed_rubble -> Set 5).
+  - elementSetId('wall') and selectSet's "a brick set turns a stone wall back into bricks" now read it, instead of the hard-coded fieldstone check.
+  - The Frame's rock rule (isRockFrame) is unchanged.
+- **Tests:** coursed-rubble-pattern (3). 2/3 fail against the pre-change files (git stash of the 3 files, restored, cmp clean). The engine-lay test pins 88's engine.
+- **Live** (7x9 T1, Wall only, one session):
+  - stretcher: canvas 4c894654, 59 bricks, 3D 9b806b3a;
+  - Coursed rubble: canvas ba397766, 19 stones, every one data-brick-set 5, no Set-row chip active, 3D 8e711f1c.
+  - 0 errors.
+  - The stones are big because the shared 1.25 in brick size scales Set 5 (1.1 in) by 1.14, the same rule as Fieldstone.
+- **Shots** (seat37): coursed_rubble_wall_editor.png, coursed_rubble_wall_3d.png.
+- **Full suite:** 6 failed / 4618 passed. All 6 are timeouts in heavy tests (bands-reduced-note, frame-3d-sweep, frame-radius-handles, frame-template-10, silhouette-resolve); the 5 files pass alone, 89/89.
