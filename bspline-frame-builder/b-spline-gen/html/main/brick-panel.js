@@ -25,6 +25,7 @@ import {
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
   BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
+  elementGroutWidth, JOINT_ELEMENT,
 } from '../editor/editor-brick-tool.js';
 import { ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
@@ -148,7 +149,7 @@ export function selectSet(setId, commit = 'generate', kinds = [_setKind()]) {
     if (kind === 'wall' && P.brickSettings.pattern === 'fieldstone') P.brickSettings.pattern = DEFAULT_WALL_PATTERN;
     if (kind === 'frame' && isRockFrame(P.brickSettings)) P.brickSettings.frameBandPatterns = [];
   }
-  P.brickSettings.grout.widthIn = set.grout.widthIn;
+  // (the elements' joints fall back to the new set's own: _resetJointsOnSetChange, in commitBrickSetting)
   syncSetPicker();
   syncControlsFromState();
   commitBrickSetting(commit);
@@ -693,7 +694,7 @@ function syncControlsFromState() {
   syncFrameBandPatternButtons();
   syncBrickSizeControls(s.brickLengthIn);
   syncBrickSizePresetButtons();
-  document.getElementById('brickGroutWidth').value = s.grout.widthIn;
+  syncGroutWidthBox();
   document.getElementById('brickGroutDepth').value = s.grout.depthIn;
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', s.grout.profile === 'recessed');
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', s.grout.profile === 'flush');
@@ -800,8 +801,39 @@ function _remaskSurface() {
   if (editor && typeof editor._notifyChange === 'function') editor._notifyChange('commit');
 }
 
+/** Grout per element: the Grout box shows + edits the ACTIVE element's joint (the Raised brush shares the Brush's;
+ *  no element tool = the Wall's). */
+const JOINT_ELEMENTS = ['wall', 'frame', 'brush'];
+const _jointKind = () => JOINT_ELEMENT[_setKind()] || 'wall';
+function syncGroutWidthBox() {
+  const box = document.getElementById('brickGroutWidth');
+  if (box) box.value = String(+elementGroutWidth(P.brickSettings, _jointKind()).toFixed(4));
+}
+export function setElementGrout(kind, widthIn, phase = 'onRelease') {
+  const v = Number(widthIn);
+  if (!Number.isFinite(v) || v < 0) return;
+  P.brickSettings.groutByElement = { ...(P.brickSettings.groutByElement || {}), [JOINT_ELEMENT[kind] || kind]: v };
+  commitBrickSetting('generate', phase);
+}
+/** An element whose SET changed (the Set picker, the quick Set, a Fieldstone pick making it rock) drops its own
+ *  joint: it lays with the new set's declared one. Watched here, in the one commit entry point, so every path
+ *  that changes a set is covered without each one remembering to. */
+let _jointSets = null;
+const _currentJointSets = () => Object.fromEntries(JOINT_ELEMENTS.map((k) => [k, elementSetId(P.brickSettings, k)]));
+function _resetJointsOnSetChange() {
+  const now = _currentJointSets();
+  if (_jointSets) {
+    for (const k of JOINT_ELEMENTS) {
+      if (now[k] !== _jointSets[k]) P.brickSettings.groutByElement = { ...(P.brickSettings.groutByElement || {}), [k]: null };
+    }
+  }
+  _jointSets = now;
+  syncGroutWidthBox();
+}
+
 /** The one entry point every brick-setting control calls after writing P.brickSettings. */
 export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
+  _resetJointsOnSetChange();
   (BRICK_COMMIT[commit] || BRICK_COMMIT.generate)[phase]();
   syncControlRequires();
 }
@@ -1275,7 +1307,8 @@ const WALL_PATTERN_LIST = Object.keys(BRICK_PATTERNS).map((id) => ({ id, label: 
 
 /** F35 item 13 (Fred's sheets: "group the picker into families"): the Wall pattern picker's FAMILIES, in
  *  order. Any BRICK_PATTERNS key not listed lands in the last family ('More'), so a new pattern is never
- *  lost from the picker. Combinations / Tiles join here as their patterns land. */
+ *  lost from the picker. Combinations / Tiles join here as their patterns land. Since the flattening the picker
+ *  shows no family headings: this table is the ORDER (and the place a new family is declared). */
 const WALL_PATTERN_FAMILIES = [
   { id: 'bonds', label: 'Bonds', patterns: ['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish'] },
   { id: 'herringbone', label: 'Herringbone', patterns: ['herringbone'] },
@@ -1295,30 +1328,21 @@ const _patternLabel = (id) => WALL_PATTERN_LABELS[id] || id;
 function renderWallPatternList(container) {
   if (!container) return;
   container.innerHTML = '';
-  // F35 item 13: an engine-drawn ICON grid, one row per family, icons only (the name is the tooltip)
-  container.style.flexDirection = 'column';
-  for (const family of wallPatternFamilies()) {
-    const label = document.createElement('div');
-    label.className = 'brick-pattern-family-label';
-    label.textContent = family.label;
-    label.style.cssText = 'font-size:9px; opacity:0.6; text-transform:uppercase; letter-spacing:0.05em; margin:2px 0;';
-    const row = document.createElement('div');
-    row.className = 'brick-pattern-family';
-    row.dataset.family = family.id;
-    row.style.cssText = 'display:flex; gap:4px; flex-wrap:wrap; margin-bottom:6px;';
-    for (const id of family.patterns) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'cad-btn brick-pattern-icon';
-      btn.id = `brickPattern_${id}`;
-      btn.title = _patternLabel(id);
-      btn.setAttribute('aria-label', _patternLabel(id));
-      btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
-      btn.innerHTML = wallPatternIconSvg(id) || _patternLabel(id);
-      btn.addEventListener('click', () => setWallPattern(id));
-      row.appendChild(btn);
-    }
-    container.append(label, row);
+  // F35 item 13: an engine-drawn ICON grid, icons only (the name is the tooltip). Flattened (advisor): ONE grid
+  // in the declared family ORDER (WALL_PATTERN_FAMILIES), no family sub-headings.
+  container.style.flexDirection = 'row';
+  container.style.flexWrap = 'wrap';
+  for (const id of wallPatternFamilies().flatMap((f) => f.patterns)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cad-btn brick-pattern-icon';
+    btn.id = `brickPattern_${id}`;
+    btn.title = _patternLabel(id);
+    btn.setAttribute('aria-label', _patternLabel(id));
+    btn.style.cssText = 'padding:2px; min-width:0; height:auto; line-height:0;';
+    btn.innerHTML = wallPatternIconSvg(id) || _patternLabel(id);
+    btn.addEventListener('click', () => setWallPattern(id));
+    container.appendChild(btn);
   }
 }
 
@@ -1493,6 +1517,7 @@ function selectTool(id, { keepSelection = false } = {}) {
   if (!keepSelection && _selectedElement) { _selectedElement = null; showElementSelection(typeof window !== 'undefined' ? window.svgEditor : null, null); }
   _activeTool = id;
   syncToolButtons();
+  syncGroutWidthBox(); // the Grout box follows the active element's joint
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (!editor) {
     console.warn('Brick tool: open the SVG editor first (Edit Artwork) -- no editor instance yet.');
@@ -1502,7 +1527,9 @@ function selectTool(id, { keepSelection = false } = {}) {
   if (id === 'brush' || (tool && tool.variantOf === 'brush')) {
     editor._brickSettings = P.brickSettings; // same object, mutated in place -- see header
     // turn 201: a variant's own stroke fields; item 23: + the tool's own set, frozen into each stroke
-    editor._brickStrokeOverrides = () => ({ setId: elementSetId(P.brickSettings, tool.id), rustic: _rustic('brush'), ...(tool.strokeOverrides ? tool.strokeOverrides() : {}) });
+    editor._brickStrokeOverrides = () => ({ setId: elementSetId(P.brickSettings, tool.id), rustic: _rustic('brush'),
+      grout: { ...P.brickSettings.grout, widthIn: elementGroutWidth(P.brickSettings, tool.id) }, // its own joint, frozen
+      ...(tool.strokeOverrides ? tool.strokeOverrides() : {}) });
     editor.setMode('brickBrush');
     return;
   }
@@ -1675,7 +1702,7 @@ const BRICK_HINT_MAX_SIZE_IN = 1.5;
  *  #spacingGroutHint, since #exportSpacingGroutHint lives inside the Export section that's hidden
  *  in exactly that default case. */
 function updateSpacingHint(groutWidthIn) {
-  const gw = groutWidthIn ?? P.brickSettings.grout.widthIn;
+  const gw = groutWidthIn ?? Math.min(...BRICK_KINDS.map((k) => elementGroutWidth(P.brickSettings, k)));
   const bricksExist = document.querySelectorAll('[data-brick-gen="1"]').length > 0;
   const smallEnoughToHelp = P.brickSettings.brickLengthIn <= BRICK_HINT_MAX_SIZE_IN;
   const targetSpacing = gw > 0 ? gw / GROUT_SAMPLES_ACROSS : null;
@@ -1702,6 +1729,7 @@ function updateSpacingHint(groutWidthIn) {
 }
 
 export function initBrickPanel() {
+  _jointSets = _currentJointSets(); // grout per element: the sets at init are the baseline, not a set change
   document.addEventListener('bricksGenerated', (e) => updateSpacingHint(e.detail?.groutWidthIn));
   // setTimeout(0): this listener's own registration order relative to the generic param-input
   // binding that actually writes P.spacing isn't declared anywhere -- deferring one tick guarantees
@@ -1738,7 +1766,11 @@ export function initBrickPanel() {
   renderSetRow(document.getElementById('brickSetRow')); // item 23: from the brick sets' declarations
 
   bindBrickSizeControls();
-  bindGroutField('brickGroutWidth', 'widthIn');
+  // the joint WIDTH is per element (setElementGrout); depth + profile stay board-wide (bindGroutField)
+  const groutBox = document.getElementById('brickGroutWidth');
+  const groutSettle = settleAfterTyping('generate');
+  groutBox?.addEventListener('input', (e) => { setElementGrout(_jointKind(), e.target.value, 'onDrag'); groutSettle(); });
+  groutBox?.addEventListener('change', (e) => setElementGrout(_jointKind(), e.target.value, 'onRelease'));
   bindGroutField('brickGroutDepth', 'depthIn', 'surface'); // F35 item 18: the joint recess depth, height-only
   document.getElementById('brickBtnGroutRecessed')?.addEventListener('click', () => setGroutProfile('recessed'));
   document.getElementById('brickBtnGroutFlush')?.addEventListener('click', () => setGroutProfile('flush'));
@@ -1801,6 +1833,7 @@ export function initBrickPanel() {
   // app-init.js announceBrickSettingsRestored). A load swaps in a NEW object: an armed Brush keeps
   // reading the editor's own reference, so it is re-pointed too.
   document.addEventListener('brickSettingsRestored', () => {
+    _jointSets = _currentJointSets(); // a replaced P.brickSettings: its sets are the new baseline, not a set change
     const editor = typeof window !== 'undefined' ? window.svgEditor : null;
     if (editor && editor._brickSettings) editor._brickSettings = P.brickSettings;
     syncControlsFromState();

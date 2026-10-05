@@ -7,7 +7,7 @@ import { isCarved } from '../editor/layers.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameWindowGeometry } from '../editor/contour-from-frame.js';
 import { rectContains } from '../core/inset-window.js';
-import { isBricksLayer } from '../editor/editor-brick-tool.js';
+import { isBricksLayer, elementGroutWidth, BRICK_KINDS } from '../editor/editor-brick-tool.js';
 import { rasterizeBrickHeightMask } from '../editor/editor-brick-height-mask.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 
@@ -159,7 +159,8 @@ export async function updateStampMasks(nx, nz) {
           { topMode: P.brickSettings && P.brickSettings.brickTopMode, // F35 item 18: Flat | Organic brick tops
             surfaceStyle: P.brickSettings && P.brickSettings.surfaceStyle, // F35 item 18 (2): Clean | Weathered
             surfaceWear: P.brickSettings && P.brickSettings.surfaceWear, // the Weathered Wear slider (0..1)
-            groutWidthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.widthIn,
+            // the joint recess reaches the WIDEST element joint (per-element grout): every joint's gap is covered
+            groutWidthIn: P.brickSettings ? Math.max(...BRICK_KINDS.map((k) => elementGroutWidth(P.brickSettings, k))) : undefined,
             groutProfile: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.profile, // Recessed | Flush
             groutDepthIn: P.brickSettings && P.brickSettings.grout && P.brickSettings.grout.depthIn,
             levels: P.brickSettings && P.brickSettings.elementLevelIn, // F35 item 16: per-element Level

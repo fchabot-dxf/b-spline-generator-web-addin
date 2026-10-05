@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
-import { ROCK_SET_ID, BRICK_SET_IDS, elementSetId, elementSettings, isRockFrame } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { ROCK_SET_ID, BRICK_SET_IDS, elementSetId, elementSettings, elementGroutWidth, isRockFrame } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { MIGRATIONS, runMigrations } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 
 describe('rock vs brick sets, from the declared layouts', () => {
@@ -36,7 +36,8 @@ describe('elementSetId', () => {
   });
   it('a pre-item-23 settings object (one setId) still resolves; elementSettings carries the element\'s set', () => {
     expect(elementSetId({ setId: 1, pattern: 'stretcher' }, 'frame')).toBe(1);
-    expect(elementSettings(base, 'frame')).toEqual({ ...base, setId: 5 });
+    // + its own joint (grout per element): none set -> the element's set's declared one
+    expect(elementSettings(base, 'frame')).toEqual({ ...base, setId: 5, grout: { ...(base.grout || {}), widthIn: elementGroutWidth(base, 'frame') } });
   });
 });
 
@@ -63,6 +64,7 @@ describe("migration 'brick-set-per-element'", () => {
   });
   it('a board already per element is left alone', () => {
     const b = migrate({ setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 }, pattern: 'stack' });
-    expect(b).toEqual({ setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 }, pattern: 'stack' });
+    // (the later 'grout-per-element' migration adds its own field; this one changes nothing)
+    expect(b).toEqual({ setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 }, pattern: 'stack', groutByElement: { wall: null, frame: null, brush: null } });
   });
 });

@@ -180,7 +180,7 @@ describe('Editor Brick tab (Wall tool): item 27 -- a setting change re-lays at o
     fire('brickGroutWidth', 0.09, 'input');
     expect(runBricks).not.toHaveBeenCalled();
     vi.advanceTimersByTime(400);
-    expectReLaidAtOnce((c) => expect(c[1].grout.widthIn).toBe(0.09));
+    expectReLaidAtOnce((c) => expect(c[1].groutByElement.wall).toBe(0.09)); // the ACTIVE element's joint (Wall)
   });
   it('the seed field: re-lays once the typing pauses (400 ms)', () => {
     vi.useFakeTimers();
@@ -775,7 +775,8 @@ describe('turn 201: the Raised brush (a Brush variant; Level + modes in its own 
     $('brickTool_raisedBrush').click();
     expect(window.svgEditor.setMode).toHaveBeenCalledWith('brickBrush');
     expect(window.svgEditor._brickSettings).toBe(P.brickSettings);
-    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ setId: 1, rustic: 0, levelIn: 0.0625, strokeMode: 'bricks' }); // item 23: + its set; item 29: + Rustic
+    expect(window.svgEditor._brickStrokeOverrides()).toMatchObject({ setId: 1, rustic: 0, levelIn: 0.0625, strokeMode: 'bricks' }); // item 23: + its set; item 29: + Rustic
+    expect(window.svgEditor._brickStrokeOverrides().grout.widthIn).toBe(0.034); // + its own joint (grout per element)
     fire('brickRaisedLevel', 0.125, 'input'); // changed AFTER picking the tool: the next stroke still gets it
     expect(window.svgEditor._brickStrokeOverrides().levelIn).toBe(0.125);
     expect($('brickRaisedSection').style.display).not.toBe('none');
@@ -783,7 +784,7 @@ describe('turn 201: the Raised brush (a Brush variant; Level + modes in its own 
   it('the plain Brush clears the Raised brush\'s overrides (item 23: only its own set is frozen in)', () => {
     $('brickTool_raisedBrush').click();
     $('brickTool_brush').click();
-    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ setId: 1, rustic: 0 }); // item 29: each stroke freezes its Rustic too
+    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ setId: 1, rustic: 0, grout: expect.objectContaining({ widthIn: 0.034 }) }); // item 29: + Rustic; + its joint
   });
   it('Grout mode is hidden until the engine lists groutCut, then pickable', () => {
     $('brickTool_raisedBrush').click();
@@ -804,12 +805,14 @@ describe('turn 201: the Raised brush (a Brush variant; Level + modes in its own 
   });
 });
 
-describe('F35 item 13: the Wall pattern picker is an engine-drawn icon grid, grouped into families', () => {
+describe('F35 item 13: the Wall pattern picker is an engine-drawn icon grid (flattened: one grid, family order)', () => {
   beforeEach(() => setup('wall'));
-  it('every pattern appears once, in a family row, icon only with the name as tooltip', async () => {
+  it('every pattern appears once, in ONE grid with no family headings, in the declared family order; icon only, name as tooltip', async () => {
     const { BRICK_PATTERNS } = await import('../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js');
-    const families = [...$('brickPatternList').querySelectorAll('.brick-pattern-family')].map((r) => r.dataset.family);
-    expect(families).toEqual(['bonds', 'herringbone', 'basketweave', 'fieldstone']);
+    expect($('brickPatternList').querySelectorAll('.brick-pattern-family, .brick-pattern-family-label')).toHaveLength(0);
+    const order = [...$('brickPatternList').children].map((b) => b.id.replace('brickPattern_', ''));
+    expect(order.slice(0, 6)).toEqual(['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish']); // Bonds first
+    expect(order.indexOf('herringbone')).toBeLessThan(order.indexOf('fieldstone'));
     const btns = [...$('brickPatternList').querySelectorAll('button')];
     expect(btns.map((b) => b.id.replace('brickPattern_', '')).sort()).toEqual(Object.keys(BRICK_PATTERNS).sort());
     const hb = $('brickPattern_herringbone');

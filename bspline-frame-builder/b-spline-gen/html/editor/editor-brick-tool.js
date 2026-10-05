@@ -303,7 +303,9 @@ function boardPolygon(editor) {
  *  UNSCALED base every `scale` multiplier is computed relative to. */
 export function resolvedSetFor(settings) {
   const base = setForId(settings.setId);
-  return { ...base, grout: { ...base.grout, widthIn: settings.grout.widthIn } };
+  // the element's own joint (elementSettings) when given; else the set's declared one
+  const widthIn = settings.grout && Number.isFinite(settings.grout.widthIn) ? settings.grout.widthIn : base.grout.widthIn;
+  return { ...base, grout: { ...base.grout, widthIn } };
 }
 
 /** F35 item 16 (Fred: "I'd rather they all have the same size"): the ONE global brick length
@@ -393,7 +395,22 @@ export function elementSetId(settings, kind) {
   return own ?? settings.setId ?? BRICK_SET_IDS[0] ?? 1;
 }
 /** The settings an element is laid with: the shared ones, with that element's own set. */
-export const elementSettings = (settings, kind) => ({ ...settings, setId: elementSetId(settings, kind) });
+/** Grout per ELEMENT (advisor, Fred: rubble gets wider joints; a rock frame + a brick wall on one board need two
+ *  joints): `settings.groutByElement = { wall, frame, brush }` (the Raised brush shares the Brush's). A number =
+ *  the user's own joint; null / missing = the element's CURRENT set's declared joint (Red 0.034, the rock set its
+ *  wider one) -- so a set change falls back to the new set's joint (main/brick-panel.js clears the override). */
+export const JOINT_ELEMENT = Object.freeze({ wall: 'wall', frame: 'frame', brush: 'brush', raisedBrush: 'brush' });
+export function elementGroutWidth(settings, kind) {
+  const v = settings && settings.groutByElement && settings.groutByElement[JOINT_ELEMENT[kind] || kind];
+  if (Number.isFinite(v)) return v;
+  const set = setForId(elementSetId(settings || {}, kind));
+  return (set && set.grout && set.grout.widthIn) ?? 0.034;
+}
+export const elementSettings = (settings, kind) => ({
+  ...settings,
+  setId: elementSetId(settings, kind),
+  grout: { ...(settings.grout || {}), widthIn: elementGroutWidth(settings, kind) },
+});
 
 /** F35 item 29 (a): a RUNNING bond -- a coursed pattern whose courses stagger (BRICK_PATTERNS staggerFrac > 0:
  *  stretcher, header). Rustic applies to those only. Read from the declared pattern, never a list of names. */
@@ -798,7 +815,8 @@ export function runBricksOutlinePreview(editor) {
  *  'layer-tooling-commit' / stamp-mask-manager.js's 'stampMaskUpdated'. */
 function notifyBricksGenerated(settings) {
   if (typeof document === 'undefined' || typeof CustomEvent === 'undefined') return;
-  document.dispatchEvent(new CustomEvent('bricksGenerated', { detail: { groutWidthIn: settings.grout.widthIn } }));
+  // the hint aims at the NARROWEST joint on the board (every element's own, item: grout per element)
+  document.dispatchEvent(new CustomEvent('bricksGenerated', { detail: { groutWidthIn: Math.min(...BRICK_KINDS.map((k) => elementGroutWidth(settings, k))) } }));
 }
 
 /** primitives (contour-from-frame.js's own {type:'L'|'A', ...} loop) -> a

@@ -556,6 +556,18 @@ export const MIGRATIONS = [
       delete b.setId;
     },
   },
+  {
+    id: 'grout-per-element',
+    // the one board-wide joint width -> a joint per element (groutByElement). A saved board keeps its exact width
+    // on every element (it lays as before); a new board starts at each element's set's joint (null).
+    when: (p) => p.brickSettings && !p.brickSettings.groutByElement,
+    apply: (p) => {
+      const b = p.brickSettings;
+      const w = b.grout && Number.isFinite(b.grout.widthIn) ? b.grout.widthIn : null;
+      b.groutByElement = { wall: w, frame: w, brush: w };
+      if (b.grout) delete b.grout.widthIn;
+    },
+  },
 ];
 
 export function runMigrations(p = P) {

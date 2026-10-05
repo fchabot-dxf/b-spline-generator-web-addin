@@ -196,3 +196,14 @@ describe('item 29 (a): the Wall’s Rustic reaches the engine for a running bond
     expect(lay('stretcher', 0).rustic).toBeUndefined();
   });
 });
+
+describe('grout per element: each element reaches the engine with its OWN joint', () => {
+  it('a rock wall + a brick frame: the wall set carries the rock joint, the frame set the Red one', () => {
+    engineGenerate.mockClear();
+    runBricks(fakeEditor(), { ...P.brickSettings, pattern: 'fieldstone', groutByElement: { wall: null, frame: 0.05, brush: null } }, { primitives: [], bands: [] });
+    const input = engineGenerate.mock.calls[0][0];
+    expect(input.set.layout).toBe('fieldstone');
+    expect(input.set.grout.widthIn).toBeGreaterThan(0.05); // the rock set's declared joint
+    expect(input.frame.set.grout.widthIn).toBeCloseTo(0.05, 5); // the frame set is pre-scaled; grout is not scaled
+  });
+});

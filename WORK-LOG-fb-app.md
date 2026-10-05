@@ -13917,3 +13917,46 @@ and persistence rows below. 88 queues them on matrix-clear-rows after the ring-s
     "Start from" converts them.
 - Whole vitest: 274 files; in the parallel run 3 FAILED (bricks-fieldstone-large-stones x2, frame-template-10's
   500-seed sweep: load timeouts; the change touches no frame or fieldstone code); alone 37/37.
+
+### turn 243 -- GROUT PER ELEMENT (the turn-241 amendment, advisor's decision) + the flattened Wall-pattern grid (seat 37)
+
+- **Grout per element** (Fred: rubble gets wider joints; a rock frame + a brick wall on one board need two joints):
+  - `P.brickSettings.groutByElement = { wall, frame, brush }`; a number = that element's own joint, null = its
+    CURRENT set's declared joint. Depth + profile stay board-wide (`grout {depthIn, profile}`: the 3D recess).
+  - `elementGroutWidth(settings, kind)` (editor-brick-tool.js, the Raised brush shares the Brush's via
+    JOINT_ELEMENT) is the one reader. `elementSettings` now carries `grout.widthIn` too, so `resolvedSetFor`
+    lays each element with its own joint (wall input set, the frame's pre-scaled set). resolvedSetFor falls back
+    to the set's declared joint when none is given.
+  - The **Grout box** shows + edits the ACTIVE element's joint (`setElementGrout`; it re-syncs on a tool switch).
+  - **Any set change** (the Set picker, the quick Set = all elements, a Fieldstone pick making the wall rock, a
+    Fieldstone band) drops that element's own joint, so it lays with the new set's. This is watched in the ONE
+    commit entry point (`_resetJointsOnSetChange` in commitBrickSetting, against a baseline taken at init and
+    on a restore), so no path has to remember it. selectSet's old global `grout.widthIn = set.grout.widthIn` is
+    gone.
+  - A **Brush stroke** freezes its own joint (the stroke overrides carry `grout`).
+  - The **mask's joint recess** reaches the WIDEST element joint, so every gap is covered. The **resolution
+    hint** aims at the NARROWEST (bricksGenerated detail).
+  - **Migration** 'grout-per-element' (after brick-set-per-element): a saved board's single width goes to every
+    element (it lays exactly as before); `grout.widthIn` is deleted.
+  - Live:
+    - default box 0.034;
+    - pick Fieldstone -> the wall becomes rock: the box reads 0.12 (the rock set's declared joint today; 88 is
+      setting it to 0.10, read from the declaration) and the wall re-lays as 85 stones; the frame keeps 0.034;
+    - the Frame tool's box reads 0.034.
+- **The flattened Wall-pattern grid:** ONE icon grid in the declared family order (WALL_PATTERN_FAMILIES is now
+  the order only), no family sub-headings. Live: 9 icons, 0 headings. Shot: shots/seat37/f35_pattern_grid_flat.png.
+- **Tests:**
+  - New grout-per-element (4): the box edits the active element's joint, the other keeps its own; Fieldstone ->
+    the rock joint + re-lay; the same set changes nothing; the migration.
+  - brick-element-records +1: a rock wall + a brick frame reach the engine with their own joints.
+  - Updated for the contract:
+    - brick-default-grout: a new board has no own joints; the wall = set 1's;
+    - brick-element-set: elementSettings carries grout; the later migration adds groutByElement;
+    - regen: the grout box writes groutByElement.wall; the stroke overrides carry grout;
+    - regen's family test INVERTED to the flat grid (it fails on the old renderer).
+  - The new grout tests fail on the pre-change code 4/5 (the same-set one pins existing behaviour). Restored, cmp
+    clean.
+- Whole vitest: 275 files, **4431 passed, 0 failed**. frame-3d-sweep + frame-template-10 run together once showed
+  1 load timeout; alone 8/8 + 32/32.
+- **Matrix row for 88** (DM'd): pick brickPattern_fieldstone -> `#brickGroutWidth` reads the rock set's joint
+  and the stones re-lay with it; the Frame tool's box keeps the Red joint.

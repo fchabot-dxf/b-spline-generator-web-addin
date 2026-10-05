@@ -102,7 +102,10 @@ export const DEFAULT = {
       brickLengthIn: 1,
       // width/depth from Set 1 (audit C4). Fred (turn 207): a NEW board's joints are RECESSED (depth 0.05 in,
       // Set 1's); a saved board keeps its own profile (the session/project load replaces brickSettings whole).
-      grout: { widthIn: DEFAULT_BRICK_SET.grout.widthIn, depthIn: DEFAULT_BRICK_SET.grout.depthIn, profile: 'recessed' },
+      // the joint WIDTH is per element (groutByElement, below); depth + profile stay board-wide (the 3D recess)
+      grout: { depthIn: DEFAULT_BRICK_SET.grout.depthIn, profile: 'recessed' },
+      // advisor (Fred: rubble gets wider joints): a joint width per element; null = that element's set's own
+      groutByElement: { wall: null, frame: null, brush: null },
       reliefIn: 0.125,
       invert: false,
       // F35 item 18 (1): 'organic' = each brick's top drapes over the terrain under it (the original
