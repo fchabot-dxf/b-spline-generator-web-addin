@@ -1,3 +1,4 @@
+import { TILE_PARAMS } from './layouts/tiles.js'; // F35 item 14: the tile patterns' declared params
 /**
  * core/bricks/library.js — PORTABLE declared data (see rng.js's own header for the portability
  * rule). No logic here beyond trivial lookups -- the piece catalogue and the brick-sample sets,
@@ -339,6 +340,20 @@ export const BRICK_PATTERNS = Object.freeze({
   flemish: { kind: 'course-alternating' },
   herringbone: { kind: 'tile2d' },
   basketweave: { kind: 'tile2d' },
+  // F35 item 13: Fred's sheet (shots/fred/ref_brick_pattern_sheet.jpg), layouts/sheet-patterns.js -- Wall-only
+  stacked_horizontal: { kind: 'tile2d' },
+  chevron: { kind: 'tile2d' },
+  stacked_variation: { kind: 'tile2d' },
+  basketweave_variation: { kind: 'tile2d' },
+  basketweave_stacked: { kind: 'tile2d' },
+  // F35 item 14: tiles / pavers (Fred's sheet 3, layouts/tiles.js) -- Wall-only. `family` groups them in the picker;
+  // `params` = what the user picks (TILE_PARAMS: options + one default); `fixed` = layout params the entry pins.
+  square_grid: { kind: 'tile2d', family: 'tiles' },
+  square_diamond: { kind: 'tile2d', family: 'tiles', params: TILE_PARAMS.squareDiamond, fixed: { rotationDeg: 0 } },
+  octagon_square: { kind: 'tile2d', family: 'tiles', params: TILE_PARAMS.octagonDot, fixed: { rotationDeg: 45 } },
+  hexagon: { kind: 'tile2d', family: 'tiles' },
+  lozenge: { kind: 'tile2d', family: 'tiles' },
+  framed_square: { kind: 'tile2d', family: 'tiles' },
   // F35 item 12(b): fieldstone was already a real `fill-shape.js` LAYOUTS entry (f3's own item 74,
   // for the White Rocks set's own declared `layout:'fieldstone'` default) but had no BRICK_PATTERNS
   // key, so the Wall picker couldn't select it -- a Poisson-disc Voronoi tiling, not tied to any

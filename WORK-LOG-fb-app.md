@@ -14249,3 +14249,180 @@ WallPattern = {
 - **Engine finding for 88** (shots/seatC/rockwall_default.png, ~/.bspline-status/shots/seatC): at 1¼ in, the 3-band brick frame OVERRUNS the board. Bands fan out past the right and left board edges and cross themselves near the waist arcs.
   - That is the band-overrun case (88's fix) and the subject of item 35 (bands reduced to fit).
   - At 1 in the same frame stays inside (rockwall_one.png).
+
+## turn 253: F35 item 22 SLICE 3, bricks on the ACTIVE layer like art (seat 37)
+**Model (declared, one place each):**
+- **Where an element lays.** editor-brick-tool.js `elementLayer(editor, kind)`: its record's layer, else (a new element) the ACTIVE layer.
+  - A Brush stroke goes on the active layer at draw time; its bricks are re-drawn on its spine's layer.
+  - `ensureBricksLayer` is retired: no "Bricks" layer is created any more.
+  - The legacy flagged layer (`holdsBricks`, pre-slice-3 boards) is still read by the pre-item-22 record migration only.
+  - `applyBrickLayerTooling` now writes tooling only on that legacy layer. An art layer that holds bricks keeps its own depth and profile.
+- **What a brick-tool node is.** layers.js `isBrickToolNode`: `data-brick-gen="1"` or `data-brick="brush-spine"`.
+  - `getLayerSvg` (editor-io `_parseLayerContent`) leaves those nodes out of a layer's ART by default; `bricks: 'only'` keeps only them, always as centerline polygons.
+- **Bricks' height.** `brickDepth(settings)` = ±relief (Carved negative), never the layer's art depth.
+- **Per-layer height combine.**
+  - stamp-mask-manager: each carved layer gets `_mask` (its art → rasterizeSvg at the layer's depth/profile) and `_brickMask` (its pieces → rasterizeBrickHeightMask at brickDepth), plus `_brickDepth`.
+  - rebuild `_collectStampPasses` (exported for tests) emits the layer's art pass, then its brick pass. The brick pass has id `<id>#bricks` (so applyStampLayers' editor-layer join never lends it the art tooling), Flat, no fillet, and the layer's suppression/smoothing.
+  - The empty-layer invariant clears both masks.
+- **Send (advisor ruling A).**
+  - Art layers ship art only; the old duplicate "stamp layer" copy of the brick polygons is gone.
+  - `_bricksLayerSvg` merges every layer's pieces (`brickPieceLayers`, roster order) into the ONE Bricks sketch, with carve = any of those layers carves.
+  - A pure-brick layer still carves through `_brickMask` (the candidate takes its mask + depth) but doesn't count toward includeSVG.
+  - Python: b-spline-gen.py:1557/1955/2265 read `stamp.bricks` independently of `stamp.enabled` and the layer list, so the Bricks sketch is still made. Verified by reading the code; Fusion is not live this session.
+- **Move to layer** (context menu): a selected piece, spine or record moves its WHOLE element.
+  - layers.js `brickElementNodes`: a record + its pieces, or a stroke's spine segments + its `<id>:<chain>` pieces. Plain art moves alone.
+  - BRICK_ELEMENT_ATTR / BRICK_OWNER_ATTR are now declared in layers.js (re-exported by editor-brick-tool), so the context menu doesn't pull in the brick tool.
+- **Clear.**
+  - Bricks removes every brick-element node on any layer, keeping the art.
+  - Artwork removes every non-brick node, keeps the layers that still hold brick elements (and the legacy one), and adds a fresh Layer 1 in front, as before.
+- The hidden-layer toast reads the laid elements' own layers (`layerOfElement`, read-only).
+
+**Byte-identity (live, real code, golden board = art on Layer 1 + Wall + Frame + one Brush stroke, all bricks on the old layer; built and saved on the OLD code, loaded on old and new; Math.random seeded, the time-based ids normalised):**
+- art layer 1: identical;
+- the Bricks sketch: identical (79344 chars);
+- the 3D heights hash: identical (2aba8bf0) — re-checked after the last edits;
+- the brick layer's duplicate art entry: gone (the ruled output change).
+- A FRESH board on the new code (bricks on Layer 1 beside the art) gives the same heights as the old code's fresh board (2aba8bf0 on both old runs and on the new one). The Bricks sketch is the same, modulo data-layer and the editor's `inactive-layer` display class.
+  - One of two new fresh runs read mid-rebuild (a timing artefact of the probe's fixed wait).
+- Determinism of the golden itself: two old-code loads are identical. The probe blocks the old page's pagehide session save, the same clobber found in the matrix.
+
+**Live (fresh board, headless):**
+- Wall + Frame land on Layer 1 (the only layer; no Bricks layer).
+- Move to layer → "New layer…" on one wall brick moves the record + all 59 wall bricks to Layer 2; the frame stays.
+- A frame re-lay keeps the wall on Layer 2.
+- Layer 2 carve off changes the 3D; back on restores the identical hash.
+- Reload keeps both layers, the placement and carve=true.
+- Shots: ~/.bspline-status/shots/seat37/item22s3_editor_artwork_tab.png (Layers: Layer 2, Layer 1).
+- One earlier run on a REUSED profile showed Layer 2 carve=false after reload. It did not reproduce: two fresh-profile runs, plus a minimal art-only and a moved-wall reproduction, all gave true.
+
+**Tests:**
+- New tests/bricks-any-layer.test.js (10): placement + re-lay stays put, the art layer's tooling untouched, getLayerSvg art vs bricks-only, the per-layer combine (masks + pass order/fields), a bricks-only layer, Move to layer (wall, brush, plain art), Clear bricks/artwork.
+  - Fails 10/10 against the pre-change copies (with only the test-seam export added). Restored; cmp clean.
+- Adapted to the new contract (each keeps its intent):
+  - brick-element-records: the byte-identity of the brick content now uses `bricks: 'only'`, and the art export asserts no pieces;
+  - export-flow: an XML-parsed querySelector fixture, plus a NEW several-layers-in-roster-order case;
+  - brick-layer-carve: the legacy layer active;
+  - brick-hidden-layer-draw: the active layer; dimming via a record on a non-active layer; a NEW "a new element is not dimmed";
+  - bricks-regen-perf: spines carry data-layer, as real ones do;
+  - h20-clear-scoped: fixture bricks are real pieces;
+  - editor-context-menu: mock gains brickElementNodes;
+  - discrete-controls C8: the wall's record is on the hidden layer.
+- Full vitest: 1 failure, the known N2 load timeout (98/98 alone).
+
+**Neutral set:** no new persisted P.brickSettings field (masks are runtime `_` fields, not in the persisted layer list); fixture unchanged.
+
+## turn 255 (1): F26 item 2 (b), Delete frame (857a62c), live in Fusion
+- **App:**
+  - [Delete frame] (#btnDeleteFrame, secondary) sits at the end of the sidebar Frame section. The Send frame button it was to sit beside is gone, since the frame rides the one Send.
+  - `deleteFrame()` = `editFrame({ templateId: null, params: {} })`: the same reset as the Clear menu's frame handler. One Frame undo step; the artwork untouched.
+  - In Fusion mode it also sends 'delete_frame'. The reply 'delete_frame_result' goes on the status line ("Frame deleted in Fusion: …" / "No frame to delete in Fusion" / a warn).
+- **Python:** action 'delete_frame' → `_handle_delete_frame`, which runs `_delete_frames(des)` only: the same fb_engine.send_frame.delete_previous_frames a Send uses, by the FrameBuilder/ComponentType tag. B-spline sets, the last import and graphics are untouched. Errors are reported, never shown as a dialog.
+- **Tests:**
+  - JS delete-frame 3 (fail 3/3 pre-change).
+  - pytest test_delete_frame_handler 3 (2/3 fail pre-change; the third pins that nothing else is called).
+  - pytest b-spline-gen 151 green.
+- **Live in Fusion:**
+  - Took the holder (37). Merged main 1f284e4 → 0a9986c and pushed. Stopped the add-in through its module, deployed 2026.10.05-3 from fb-app 0a9986c, ran it again (no stale palette), confirmed the live `bspline_ui` module carries `_handle_delete_frame`.
+  - Scratch document with a tagged "Frame_T" + an untagged "B-Spline Set" (both with a body), then `_handle_delete_frame()` → {ok: true, frames: ['Frame_T']}. After: only B-Spline Set, 1 body left. Scratch document closed; Fred's active document restored.
+  - Holder written back to none.
+- **INCIDENT (mine, recovered):** my first live attempt called `PaletteHTMLEventHandler().notify()` with a plain stand-in object. notify casts to HTMLEventArgs, got None, and its error path opened a MODAL ui.messageBox. That blocked the bridge; every call timed out.
+  - Found it by capturing Fusion's windows without stealing focus (PrintWindow) and closed it with WM_CLOSE to that dialog's hwnd only. Fusion recovered; the scratch document closed through the script's finally.
+  - Lesson: never drive notify() from a script. Call the action's handler method; its own dispatch line is covered by pytest.
+  - Also seen: the live Fusion session holds ~300 stale `bsg_*` probe modules from other seats' tests (sys.modules). Not mine; not touched.
+- Not clicked live: the palette button itself in Fusion. JS sends the action through the same `adsk.fusionSendData` route as every other action.
+- Shots: ~/.bspline-status/shots/seat37/f26_delete_frame_before.png, f26_delete_frame_after.png (web), f26_fusion_win1.png (the dialog I caused).
+
+## turn 255 (2): F35 item 13, the sheet patterns (rotation follows)
+- **Advisor's ruling:** build what Fred's sheet (shots/fred/ref_brick_pattern_sheet.jpg) DRAWS, under the sheet's own names; "rotation" is a declared angle, not a pattern.
+- **New:** core/bricks/layouts/sheet-patterns.js, one file, closed-form, the basketweave.js contract (the set's L x W never stretched, joints = the set's grout, clipped at the end, courseIndex per row). Each drawing was read from an enlarged crop of the sheet:
+  - **stacked horizontal:** a soldier course, then a stretcher course; repeat.
+  - **chevron:** columns L/sqrt2 wide of parallelograms with ±45° long edges (L along the slope, W across); neighbouring columns mirrored, so the rows read as V's.
+  - **stacked variation:** a row of L x L units alternating standing / lying, then ONE stretcher course; the next unit row starts on the other orientation.
+  - **basketweave variation:** a lying unit, then ONE standing brick (period L + W); each row shifted by W.
+  - **basketweave + stacked:** a stacked-stretcher column, then a pinwheel column (4 bricks round an (L - W - g) centre square).
+  - A unit = basketweave's n = round(L/(W+g)) bricks per L x L square: n = 2 on the sheet (L = 2W), 3 for Set 1.
+- **Registration only:**
+  - library.js BRICK_PATTERNS (5 x `{ kind: 'tile2d' }`, Wall-only);
+  - fill-shape.js LAYOUTS (5 lines + import);
+  - brick-panel WALL_PATTERN_LABELS (the sheet's names) + WALL_PATTERN_FAMILIES (Bonds += stacked horizontal / stacked variation; Herringbone += chevron; Basketweave += variation / + stacked).
+  - The icons are engine-drawn for free (wallPatternIconSvg).
+- **Tests:** tests/sheet-patterns.test.js (7): declared + named; per pattern, on a 7x9 wall at 1.25 in: lays, inside the board, 0 overlaps (bricks shrunk 0.004 so touching joints don't count), longest edge ≤ L; all five differ.
+  - Fails 7/7 with the registrations reverted. Restored; cmp clean.
+  - The chevron first failed my own bbox-span check: a 45° brick's bbox is wider than L, its edge is L. The test now measures the longest edge.
+- **Live:**
+  - The five icons are in the Wall grid with the sheet's names as tooltips.
+  - Each pick re-lays (stretcher 59; stacked horizontal 53; chevron 64; stacked variation 51; basketweave variation 51; basketweave + stacked 53), with a distinct 3D hash each time. 0 errors.
+  - Shots: ~/.bspline-status/shots/seat37/item13_preview_sheet_7x9.png (the five at 7x9, 1¼ in), item13_wall_grid_icons.png, item13_last_pattern_canvas.png.
+- **Not yet:** the declared pattern ROTATION (0 / 45 / 90; "running bond at 45" = stretcher + 45). It needs `rotationDeg` through generateBricks → bricksFillShape (88's engine.js / fill-shape.js). Proposal DM'd to 88; waiting.
+- **Suite:** 2 failures = discrete-controls timeouts. N2 isolated: 252 / 289 ms with item 13, 420 / 480 ms without it, so no slowdown.
+
+## turn 257: F35 item 14, TILE / PAVER patterns (Fred's sheet 3)
+- **What the sheet draws** (read from an enlarged crop; the sheet has no captions, so each is named by what it shows):
+  - square grid;
+  - octagons + small square "dots" in two drawings: flats horizontal with diamond dots ("square + diamond inserts"), and the same lattice turned 45° with square dots ("octagon + small square"), each at three dot sizes;
+  - pointy-top hexagon;
+  - tall lozenge lattice;
+  - framed square (a U square, a W bar right and below, a W x W square where the bars cross).
+- **Declared, closed-form:** core/bricks/layouts/tiles.js (squareGrid, octagonDot, hexagon, lozenge, framedSquare). Unit U = the set's brick length (the size slider scales it); every joint the set's grout; each unit is one cell (its own sample, centre-cropped by the fill).
+  - `TILE_PARAMS` is the data: octagonDot / squareDiamond `ratio` (the dot's diagonal / U) with options [0.15, 0.3, 0.58] and defaults 0.3 / 0.15; lozenge aspect 1.6.
+- **Pattern entries** (library.js, registration lines + one import): `family: 'tiles'`, `params` = what the user picks, `fixed` = what the entry pins (`octagon_square` pins rotationDeg 45, `square_diamond` 0). The two drawings share octagonDotLayout (LAYOUTS lines in fill-shape.js).
+- **Params flow:**
+  - fill-shape.js resolves defaults + the caller's `set.layoutParams` + `fixed` before calling the layout, so every caller (icons, engine-only scripts) lays the same pattern.
+  - The app passes only the user's pick (`P.brickSettings.patternParams[id]`, new persisted field, default {}).
+  - `patternParamsFor` (the panel's current value) = defaults + pick.
+  - **Neutral set:** tools/brick-matrix/controls.mjs neutralNewFields += `patternParams: {}`, in this commit, per the rule.
+- **Panel:**
+  - The Wall grid gets a "Tiles" heading (WALL_PATTERN_FAMILIES `heading: true`; the patterns join by their own `family`).
+  - #brickPatternParams under the grid shows the active pattern's params as S / M / L chips (the default or pick active; hidden for a pattern without params). A pick re-lays at once.
+- **Tests:**
+  - tests/tile-patterns.test.js (10): declared; per tile on a 7x9 wall: inside, 0 overlaps, whole units ≤ U per edge (a board-edge clip can cut a longer chord, so only unclipped units are checked); all six differ; each dot option differs, and no pick = the default; patternParamsFor.
+  - tests/tile-patterns-panel.test.js (3): heading + order, chips shown or hidden + default active, a chip stores the pick per pattern + re-lays.
+  - Fails 13/13 with the registrations reverted. Restored; cmp clean.
+- **Live:**
+  - Heading "Tiles"; each tile re-lays with a distinct 3D (square grid 19 / diamond 35 / octagon 39 / hexagon 26 / lozenge 24 / framed 34 wall pieces on T1).
+  - Re-picking the octagon = the identical hash; dot S / L = new hashes (39 / 29 pieces).
+  - The pick survives a real reload (L chip active). 0 errors.
+- **Shots** (~/.bspline-status/shots/seat37):
+  - item14_preview_sheet_7x9.png: the six, plus both octagon drawings at all three dot sizes. **For Fred: the largest octagon dot (0.58) reads a little smaller than the sheet's third drawing; it's one number in TILE_PARAMS.**
+  - item14_wall_grid_tiles.png, item14_octagon_large_dot_canvas.png.
+- **Suite:** 1 failure, the known N2 timeout.
+- **Also this turn:** 88 asked whether Clear → Artwork re-stamping the wall record is expected. Measured on a fresh board: the record is unchanged (settings + laid key). The snapshot is rewritten on every lay, so a re-lay after a surface-only change (which doesn't re-lay) shows those keys; told 88.
+
+## turn 259: F35 item 35 the bands-reduced note (21a1ffd) + NEXT-SESSION bookkeeping
+- **Contract (88's band-fit, on main 98d5b55):** generateBricks returns `bandsReduced { requested, kept, steps[{band, step: row|course|drop}], gapIn, limitIn, requestedDepthIn, depthIn, fits }` when the frame stack was reduced; ENGINE_OPTIONS lists `bandFit`.
+- **App:**
+  - runBricks' counts carry `bandsReduced` (frame lays).
+  - BRICK_LAY_WARNINGS gains `where` (none = the lay warnings; 'frame' = the Frame section's own note line `#brickFrameBandsNote`, data-brick-lay-notes="frame") and text that may read the counts.
+  - **New entry `bandsReduced`:** `bandsReducedText` = "Bands reduced to fit the board: N of M laid" (+ "band k narrowed" for row / course steps on kept bands).
+  - **`wallEmpty`** no longer shows when the reduced stack FITS (the note says it instead); it stays when fits is false and the wall is empty.
+  - The last frame lay's note greys out the bands it dropped (index ≥ kept): pattern buttons + accent row disabled, with "Band N was dropped to fit the board …" as the tooltip. A note change re-renders the band rows.
+  - The note row (#brickFrameBandsNoteRow) is gated `requires: { engineOption: 'bandFit' }, hides: true` in BRICK_CONTROL_REQUIRES, like every hidden control. The inner line shows only when a note exists.
+- **Tests:** tests/bands-reduced-note.test.js (5): the text, the note + no warning when it fits, the warning kept when it does not fit, nothing for an unreduced stack, the gating declaration. 4/5 fail pre-change (the 5th pins an absence).
+- **Merged main 98d5b55** (band-fit) as 4f054ef: one import-line conflict in fill-shape.js (main + MIN_PIECE_FRACTION, mine + BRICK_PATTERNS); both kept. 43 affected tests green.
+- **Live (the advisor's matrix row):** T1 7x9, wall + frame, 1.25 in.
+  - single soldier: wall 59, no note.
+  - three_band: wall 59 (> 0), note "Bands reduced to fit the board: 1 of 3 laid." (engine: kept 1 of 3, steps drop / row / drop, fits false, wall still laid), no empty-wall warning, bands 2 + 3 greyed with the tooltip.
+  - Back to one band: no note, no greyed rows. 0 errors.
+  - Shots: ~/.bspline-status/shots/seat37/item35_frame_note_three_band.png, item35_canvas_three_band.png.
+- **Noticed, not changed:** each band row's pattern picker now lists every Wall-only pattern (the item 13 / 14 additions) greyed "Wall only for now", which makes the rows long. Hiding non-band-capable entries there is a one-line declaration change; it needs the advisor's word.
+- **NEXT-SESSION-fb-app.md** (the advisor's housekeeping ask; committed by path):
+  - Ticked with shas: F26-2, 14, 23, 24, 26, 30, 31, 31c, 31d, 32, 33, 34, 35.
+  - Left open with the engine blocker named: 13 (rotation, T86 29), 22 (slice 2, T86 18), 29 (rustic, T86 22), 31b (accentCuts), 31e (customBond). Item 9 already names its blocker.
+
+## turn 261: band rows = band-capable only (d471af6) + BRICK TAB AUDIT v3
+- **Band rows** (advisor approved my NOTICED): `bandCanLay(def)` = course / course-alternating / bandCapable. A band row lists only those (Wall grid unchanged). The greyed "Wall only for now" branch is removed; my frame-corners-panel test that pinned it is INVERTED to assert absence (fails on the old code).
+- **Audit v3:** 7x9 T1, Wall + three_band (Layer 1) + a Brush + a Raised stroke (Layer 2), art on both. Probes audit3_desktop.mjs / audit3_layout.mjs at 1500 x 1100 (sidebar 260 and 572 = 2.2x) and 900 x 1600.
+  - **(a)** every tool's own section scanned (greyed without a tooltip, zero size, past the right edge, clipped text, nameless icon buttons): 0 automated hits at all three sizes. By eye, two buttons spill text: #2, #3.
+  - **Dead-control sweep** (canvas + state hash) of the new controls: all live. At 1¼ in the multi-band presets lay the same one band (band-fit): #5, not dead.
+  - **(b)** quick settings at 260 / 572 wrap cleanly. A "left-aligned icons" finding was a FALSE POSITIVE: measured, the svg sits at x 19.5 in a 75 px button (centred) before and after. The CSS change for it was reverted, not shipped.
+  - **(c) Clear:** all / frame / photo / bricks correct on two layers, each undoes fully. Artwork made a SECOND "Layer 1": #1.
+  - **(d) Select:** Wall / Frame show "Editing: this Wall/Frame" + the outline. Brush / Raised have no Select sub-tool in the Brick tab: #4.
+  - **(e) Phone 900:** the 2D/3D pill is visible and clear of the toolbar; the drawer opens at peek (header + Generate), sections below the fold as designed.
+- **Fixed** (one commit):
+  - #1 clearArtworkLayers: a kept plain layer holding bricks becomes the active one; a fresh "Layer 1" only when none is kept (or only the legacy brick layer). The new test fails on the old code; h20 (legacy) stays green.
+  - #2 brush-width preset buttons: auto height so a long label wraps inside.
+  - #3 "Click bricks" + "Custom…": auto height.
+- **For the advisor** (not fixed, features / product calls):
+  - #4 no Select for Brush / Raised strokes in the Brick tab;
+  - #5 at a size where band-fit keeps only one band, every multi-band preset looks the same (only the note says so): grey them, or say it on the preset tooltips?
+- **Sheet:** ~/.bspline-status/shots/seat37/brick_tab_audit_v3.png (numbered red boxes, before | after).

@@ -62,7 +62,7 @@ import { CONTOUR_SEG_INDEX_ATTR } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
 import { cutAt, join, cutIntent } from './editor-cut-tool.js';
 import { copySelection, pasteClipboard, selectAllVisible } from './editor-interaction.js';
-import { applyLayerState, addLayer } from './layers.js';
+import { applyLayerState, addLayer, brickElementNodes } from './layers.js';
 import { haptic } from '../core/haptics.js';
 import { commitEdit } from './editor-commit.js';
 
@@ -80,7 +80,11 @@ export function targetKindOf(el) {
 }
 
 function _moveSelectionToLayer(editor, selection, layerId) {
-  for (const el of selection) { try { el.attr('data-layer', String(layerId)); } catch (_) {} }
+  // F35 item 22 slice 3: a selected brick / spine / record moves its WHOLE element (record + pieces, or a stroke's
+  // spine + pieces) -- never one brick away from its element
+  const nodes = new Set();
+  for (const el of selection) for (const n of brickElementNodes(editor, el && el.node)) nodes.add(n);
+  for (const n of nodes) { try { n.setAttribute('data-layer', String(layerId)); } catch (_) {} }
   applyLayerState(editor);
   commitEdit(editor);
 }

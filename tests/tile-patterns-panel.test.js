@@ -1,6 +1,6 @@
 /**
- * Item 33: the Frame element's CORNERS row (panel side): an engine-drawn mini corner per FRAME_CORNERS entry, the
- * preset's own corner active by default, a pick re-lays at once, the old corner-variant presets no longer listed.
+ * F35 item 14 (panel side): the Tiles family in the Wall grid (a heading declared on the family) and a pattern's
+ * declared params as chips under the grid (the user's pick kept per pattern, re-laid at once).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
@@ -24,8 +24,8 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
   return { ...actual, frameContourSilhouette: vi.fn(() => ({ primitives: [] })) };
 });
 
-import { initBrickPanel, setFrameRock } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
-import { runBricks, FRAME_CORNERS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { initBrickPanel } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
+import { runBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
@@ -36,7 +36,7 @@ const FIXTURE = `
     <div id="brickBrushProfileToggle"><button id="brickBtnProfileStripped" class="active"></button><button id="brickBtnProfileContinuous"></button></div>
     <div id="brickBrushOrientationToggle"><button id="brickBtnOrientationStretcher" class="active"></button><button id="brickBtnOrientationSoldier"></button></div>
   </div>
-  <div id="brickFramePresetList"></div><label id="brickFrameCornerLabel">Corners</label><div id="brickFrameCornerList"></div>
+  <div id="brickFramePresetList"></div>
   <div id="brickBrushPresetList"></div>
   <div id="brickPatternList"></div><div id="brickRusticRow_wall" style="display:none;"><input type="range" id="brickRusticSlider_wall"><input id="brickRustic_wall"></div><div id="brickRusticRow_brush" style="display:none;"><input type="range" id="brickRusticSlider_brush"><input id="brickRustic_brush"></div>
   <label id="brickFrameBandPatternLabel">Band patterns</label><div id="brickFrameBandPatternList"></div>
@@ -87,53 +87,33 @@ afterEach(() => { root?.remove(); window.svgEditor = null; vi.unstubAllGlobals()
 const shown = (id) => $(id).style.display !== 'none';
 
 
-
-const activeCorner = () => [...document.querySelectorAll('[id^=brickFrameCorner_]')].filter((b) => b.classList.contains('active')).map((b) => b.id);
-
-describe('item 33: the Corners row in the Frame section', () => {
-  beforeEach(() => { P.brickSettings.frameBandPreset = 'single_soldier'; P.brickSettings.frameCorner = null; P.brickSettings.frameBandPatterns = []; });
-  it('one button per corner style, each with its tooltip; plain Soldier shows Mitre active', () => {
-    setup('frame');
-    for (const c of FRAME_CORNERS) expect($(`brickFrameCorner_${c.id}`).title, c.id).toBe(c.title);
-    expect(activeCorner()).toEqual(['brickFrameCorner_mitre']);
-    expect(shown('brickFrameCornerList')).toBe(true);
+describe('F35 item 14: the Tiles in the Wall grid + their param chips', () => {
+  beforeEach(() => { P.brickSettings.patternParams = {}; P.brickSettings.pattern = 'stretcher'; });
+  it('the grid shows a Tiles heading before the tile patterns, each an icon button', () => {
+    setup('wall');
+    const heading = $('brickPatternFamily_tiles');
+    expect(heading && heading.textContent).toBe('Tiles');
+    const after = [];
+    for (let n = heading.nextElementSibling; n && after.length < 6; n = n.nextElementSibling) after.push(n.id);
+    expect(after).toEqual(['square_grid', 'square_diamond', 'octagon_square', 'hexagon', 'lozenge', 'framed_square'].map((id) => `brickPattern_${id}`));
   });
-  it('the folded variants are gone from the preset list; Soldier x2 stays (its own corner: lapped)', () => {
-    setup('frame');
-    expect($('brickFramePreset_butt_frame')).toBeNull();
-    expect($('brickFramePreset_quoin_corners')).toBeNull();
-    expect($('brickFramePreset_double_course').title).toBe('Soldier x2');
-    $('brickFramePreset_double_course').click();
-    expect(activeCorner()).toEqual(['brickFrameCorner_lapped']);
+  it('a pattern with declared params shows its chips (the default active); one without shows none', () => {
+    setup('wall');
+    $('brickPattern_square_grid').click();
+    expect($('brickPatternParams').style.display).toBe('none');
+    $('brickPattern_octagon_square').click();
+    expect($('brickPatternParams').style.display).toBe('');
+    const chips = [0, 1, 2].map((i) => $(`brickPatternParam_ratio_${i}`));
+    expect(chips.every(Boolean)).toBe(true);
+    expect(chips.map((c) => c.classList.contains('active'))).toEqual([false, true, false]);
   });
-  it('a pick sets the element\u2019s corner and re-lays at once; a new preset starts on its own corner again', () => {
-    setup('frame');
+  it('a chip stores the pick for THAT pattern and re-lays at once', () => {
+    setup('wall');
+    $('brickPattern_octagon_square').click();
     runBricks.mockClear();
-    $('brickFrameCorner_block').click();
-    expect(P.brickSettings.frameCorner).toBe('block');
-    expect(activeCorner()).toEqual(['brickFrameCorner_block']);
+    $('brickPatternParam_ratio_2').click();
+    expect(P.brickSettings.patternParams).toEqual({ octagon_square: { ratio: 0.58 } });
     expect(runBricks).toHaveBeenCalled();
-    $('brickFramePreset_three_band').click();
-    expect(P.brickSettings.frameCorner).toBeNull();
-    expect(activeCorner()).toEqual(['brickFrameCorner_mitre']);
-  });
-  it('hidden for no bands (None) and for a rock frame', () => {
-    setup('frame');
-    $('brickFramePreset_none').click();
-    expect(shown('brickFrameCornerList')).toBe(false);
-    $('brickFramePreset_single_soldier').click();
-    expect(shown('brickFrameCornerList')).toBe(true);
-    setFrameRock(true);
-    expect(shown('brickFrameCornerList')).toBe(false);
-    setFrameRock(false);
-  });
-  it('audit N10: the preset buttons and every band’s pattern buttons carry their name as the tooltip', () => {
-    setup('frame');
-    $('brickFramePreset_three_band').click();
-    expect($('brickFramePreset_three_band').title).toBe('Soldier / Stretcher / Soldier');
-    for (const i of [0, 1, 2]) expect($(`brickFrameBandPattern_${i}_header`).title, `band ${i}`).toBe('Header');
-    // turn 261: a band row lists only what a band can lay -- the Wall-only patterns are absent, not greyed
-    for (const id of ['herringbone', 'basketweave', 'chevron', 'square_grid', 'none']) expect($(`brickFrameBandPattern_0_${id}`), id).toBeNull();
-    expect($('brickFrameBandPattern_0_fieldstone')).toBeTruthy(); // band-capable
+    expect($('brickPatternParam_ratio_2').classList.contains('active')).toBe(true);
   });
 });

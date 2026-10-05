@@ -7,7 +7,7 @@ import { encodeLayersAttr, repairLayersAttr } from './layers-attr.js';
 import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { applyToolingDefaults, migrateLegacyBricksLayer, BRICK_RECORD_ATTR, stripEditorOnlyBrickAttrs, addLayer, setActiveLayer, isExported, syncLayerZOrder } from './layers.js';
+import { applyToolingDefaults, migrateLegacyBricksLayer, BRICK_RECORD_ATTR, stripEditorOnlyBrickAttrs, isBrickToolNode, addLayer, setActiveLayer, isExported, syncLayerZOrder } from './layers.js';
 import { OWNERSHIP_ATTR, BOUNDARY_REF_ATTR, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
@@ -196,10 +196,14 @@ function _parseLayerContent(editor, layerId, dpi, options = {}) {
     // (`display:none`), two consumers: the browser's own renderer skips
     // it for free on-canvas; this export path drops it explicitly here,
     // since a serialized SVG string has no renderer of its own to rely on.
+    // F35 item 22 slice 3: the brick tools' own nodes are not the layer's ART (layers.js isBrickToolNode): skipped
+    // by default (the art mask, Send's art sketches); `bricks: 'only'` keeps ONLY them (Send's Bricks sketch).
+    const bricksOnly = options.bricks === 'only';
     let kept = 0;
     Array.from(root.children).forEach(ch => {
         const lid = ch.getAttribute('data-layer');
         if (lid == null || String(lid) !== targetId || ch.getAttribute('display') === 'none') { ch.remove(); return; }
+        if (isBrickToolNode(ch) !== bricksOnly) { ch.remove(); return; }
         if (excludePattern && (ch.hasAttribute(OWNERSHIP_ATTR)
             || (excludeShapeId && ch.getAttribute(BOUNDARY_REF_ATTR) === excludeShapeId))) { ch.remove(); return; }
         stripEditorOnlyBrickAttrs(ch); // item 22: editor-only brick attributes are never baked
@@ -327,7 +331,8 @@ async function _getLayerSvgForFusion(editor, layerId, dpi, options = {}) {
     const { doc, root, svgOpen, targetId } = parsed;
 
     const layer = Array.isArray(editor._layers) ? editor._layers.find((l) => String(l.id) === targetId) : null;
-    const kind = (layer && layer.fusionGeometry) || 'centerline';
+    // bricks are polygons as laid, whatever the layer's own art geometry pick (item 22 slice 3)
+    const kind = options.bricks === 'only' ? 'centerline' : ((layer && layer.fusionGeometry) || 'centerline');
     if (kind === 'centerline') {
         const inner = stripSvgjsAttributes(root.innerHTML);
         return { svg: `${svgOpen}${inner}</svg>`, declined: 0, declinedKinds: [] };

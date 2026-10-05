@@ -22096,6 +22096,31 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
 - FOR T86 16(c) part 2: T18 7x9 single_soldier at 1.5 in has open wedges at its top fan corners (identical before and
   after the band-overrun clip + the fit rule: a fan void, not an overrun) -- shots/seatB/item28_before_after.png, row 2.
 
+## T86 item 29 -- pattern rotation (seat B / 88, 2026-10-05)
+- generateBricks `rotationDeg` (ENGINE_OPTIONS 'rotationDeg', so 37's 0/45/90 chips gate on it) -> bricksFillShape
+  -> fill-shape.js rotatedFill: the outline (holes, exclusions, fences too) turned by -angle about the outline's bbox
+  centre, laid exactly as at 0 (same seed; every layout's own clip against the turned outline, so no new clip code),
+  each brick turned back. Absent / 0 = the plain path, byte-identical. Wall only: the brush follows its own path and
+  the frame its contour, so neither reads it (37's proposal: Wall only for now).
+- Tests bricks-pattern-rotation: running bond at 45 / 90 on a 7x9 -> every whole brick's long axis at the angle
+  (< 0.01 deg), pieces 0.8-1.25x the 0 count, all inside the board; herringbone at 45; exclusions turn with it; 0 =
+  absent byte-identical. Rotation off -> 3/6 fail. Bricks domain + core/bricks importers 84 files / 825 pass.
+- Shot: shots/seatB/item29_rotation.png (T1 7x9 Soldier frame, 1.25 in: running bond 0 / 45 / 90, herringbone 45).
+## T86 item 10 -- grout cut (seat B / 88, 2026-10-05)
+- core/bricks/grout-cut.js bricksGroutCut(bricks, polyline, { widthIn, minPieceArea }) (also from core/bricks/index.js):
+  the polyline swept by a round brush of widthIn (one convex capsule per segment, 8-step caps) is subtracted from every
+  brick it crosses (polygonDifference); a cut brick becomes its pieces with ids <id>.<k>, each keeping the brick's
+  fields (sample, flip, heightOffset ...); pieces under minPieceArea drop (the caller passes the quarter floor);
+  untouched bricks come back as the same objects; a cut wholly inside one brick (no edge reached) leaves it whole; a
+  touch-only cut is not a cut. Post-op on any brick list, so the app re-applies its list of cuts after a rebuild.
+- NOT listed in ENGINE_OPTIONS (the advisor's wallRegion ruling, applied as precedent): listing 'groutCut' shows 37's
+  Raised-brush grout mode, whose stroke is a stub until 37 wires it; that line is 37's when the mode works.
+- Tests bricks-grout-cut (7): straight + curved across running bond (nothing within 95% of the half-width, no overlap,
+  no sliver, fields kept, area removed bounded by the cut), a wide cut drops its slivers, a cut across T1's band and
+  the wall cuts both elements, a dab, no-ops, the unlisted pin. Cut made a no-op -> 4/7 fail. Domain 825 pass (N2's
+  5 s timeout under the full concurrent load only, as before).
+- Shot: shots/seatB/item10_grout_cut.png. Note: where a cut runs nearly along a course joint the dropped slivers make
+  the joint look wider -- the declared sliver rule doing its job, worth Fred's eye.
 ## T86 items 24/25 -- grey brick + grey stone sets, coursed rubble (seat B / 88, 2026-10-05)
 - Faces: ~/.bspline-status/tools/extract_grey.py (NEW, beside extract_bricks.py whose redness test has no hue to use on
   grey): luminance split (light faces, dark joints), row runs then column runs, a margin trim, a median-size filter.

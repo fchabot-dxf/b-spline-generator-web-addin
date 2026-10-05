@@ -20,11 +20,13 @@ import { fieldstoneLayout } from './layouts/fieldstone.js';
 import { herringboneLayout } from './layouts/herringbone.js';
 import { basketweaveLayout } from './layouts/basketweave.js';
 import { coursedRubbleLayout } from './layouts/coursed-rubble.js';
+import { stackedHorizontalLayout, chevronLayout, stackedVariationLayout, basketweaveVariationLayout, basketweaveStackedLayout } from './layouts/sheet-patterns.js';
+import { squareGridLayout, octagonDotLayout, hexagonLayout, lozengeLayout, framedSquareLayout } from './layouts/tiles.js';
 import { assignPieces } from './pieces.js';
 import { computeSuppressedCells } from './suppression.js';
 import { assignSamples } from './samples.js';
 import { pointInPolygon, polygonDifference, polygonCentroid, signedArea, offsetPathInward, inwardSignFor } from './geometry.js';
-import { PIECE_CATALOGUE, enabledPieces, scaledSet, MIN_PIECE_FRACTION } from './library.js';
+import { PIECE_CATALOGUE, enabledPieces, scaledSet, MIN_PIECE_FRACTION, BRICK_PATTERNS } from './library.js';
 
 // F35 item 7: herringbone/basketweave are 'tile2d' BRICK_PATTERNS (library.js) promoted to full
 // `set.layout` choices, same tier as 'bond'/'fieldstone' -- not zone-mixable with course-kind
@@ -32,6 +34,12 @@ import { PIECE_CATALOGUE, enabledPieces, scaledSet, MIN_PIECE_FRACTION } from '.
 const LAYOUTS = Object.freeze({
   bond: bondLayout, fieldstone: fieldstoneLayout, herringbone: herringboneLayout, basketweave: basketweaveLayout,
   coursed_rubble: coursedRubbleLayout, // T86 item 25
+  // F35 item 13: Fred's sheet (layouts/sheet-patterns.js)
+  stacked_horizontal: stackedHorizontalLayout, chevron: chevronLayout, stacked_variation: stackedVariationLayout,
+  basketweave_variation: basketweaveVariationLayout, basketweave_stacked: basketweaveStackedLayout,
+  // F35 item 14: the tiles / pavers (Fred's sheet 3, layouts/tiles.js); two sheet drawings share octagonDotLayout
+  square_grid: squareGridLayout, square_diamond: octagonDotLayout, octagon_square: octagonDotLayout,
+  hexagon: hexagonLayout, lozenge: lozengeLayout, framed_square: framedSquareLayout,
 });
 
 /**
@@ -47,6 +55,7 @@ const LAYOUTS = Object.freeze({
  * @param {number} opts.seed
  * @param {number} [opts.largeStones] — T86 item 17: fieldstoneLayout-only (ignored by every other
  *   layout here, same as `opts.zones` is bond-only); see its own header for the declared range.
+ * @param {number} [opts.rotationDeg=0] -- T86 item 29: the pattern turned by this angle (rotatedFill)
  * @param {{polygon:{x:number,y:number}[]}[]} [opts.exclusions] -- T86 item 13: brush-stroke footprints the wall
  *   flows around (cutExclusions below)
  * @param {{x:number,y:number}[][]} [opts.fences] -- fieldstone only: closed lines that bound the stones exactly
@@ -108,7 +117,29 @@ function cutExclusions(cells, exclusions, set) {
   return out;
 }
 
+/**
+ * T86 item 29 (advisor: not a pattern but an angle every wall pattern gets; "running bond at 45" = stretcher +
+ * rotation 45): `opts.rotationDeg` turns the whole pattern about the outline's bounding-box centre. The outline (and
+ * holes, exclusions, fences) is turned by -rotationDeg, laid exactly as at 0 (same seed, every layout's own exact
+ * clip against the turned outline), and every brick is turned back by +rotationDeg. Absent or 0: the plain path.
+ */
+function rotatedFill(polygon, holes, opts) {
+  const t = (opts.rotationDeg * Math.PI) / 180;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of polygon) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const turn = (a) => { const c = Math.cos(a), s = Math.sin(a); return (p) => ({ x: cx + (p.x - cx) * c - (p.y - cy) * s, y: cy + (p.x - cx) * s + (p.y - cy) * c }); };
+  const into = turn(-t), back = turn(t);
+  const res = bricksFillShape(polygon.map(into), holes && holes.map((h) => h.map(into)), {
+    ...opts, rotationDeg: 0,
+    ...(opts.exclusions ? { exclusions: opts.exclusions.map((e) => ({ ...e, polygon: e.polygon.map(into) })) } : {}),
+    ...(opts.fences ? { fences: opts.fences.map((f) => f.map(into)) } : {}),
+  });
+  return { ...res, bricks: res.bricks.map((b) => ({ ...b, polygon: b.polygon.map(back) })) };
+}
+
 export function bricksFillShape(polygon, holes, opts) {
+  if (opts.rotationDeg) return rotatedFill(polygon, holes, opts);
   const { seed } = opts;
   const set = scaledSet(opts.set, opts.scale);
   const suppression = opts.suppression ?? 0;
@@ -117,7 +148,13 @@ export function bricksFillShape(polygon, holes, opts) {
 
   const layoutFn = LAYOUTS[set.layout];
   if (!layoutFn) return { bricks: [] };
-  const { cells: allCells } = layoutFn(polygon, set, opts.zones, seed, opts.largeStones, opts.fences);
+  // F35 item 14: a pattern's declared layout params (BRICK_PATTERNS[id].params defaults, the caller's picks in
+  // set.layoutParams, the entry's pinned `fixed` ones) -- resolved here, so every caller lays the same pattern
+  const def = BRICK_PATTERNS[set.layout];
+  const layoutSet = def && (def.params || def.fixed) ? { ...set, layoutParams: {
+    ...Object.fromEntries(Object.entries(def.params || {}).filter(([, p]) => p && 'default' in p).map(([k, p]) => [k, p.default])),
+    ...(set.layoutParams || {}), ...(def.fixed || {}) } } : set;
+  const { cells: allCells } = layoutFn(polygon, layoutSet, opts.zones, seed, opts.largeStones, opts.fences);
   let cells = (holes && holes.length)
     ? allCells.filter((c) => !holes.some((h) => pointInPolygon(c.cx, c.cy, h)))
     : allCells;

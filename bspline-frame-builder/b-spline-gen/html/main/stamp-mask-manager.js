@@ -7,7 +7,7 @@ import { isCarved } from '../editor/layers.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameWindowGeometry } from '../editor/contour-from-frame.js';
 import { rectContains } from '../core/inset-window.js';
-import { isBricksLayer, elementGroutWidth, BRICK_KINDS } from '../editor/editor-brick-tool.js';
+import { layerHasBrickPieces, brickDepth, elementGroutWidth, BRICK_KINDS } from '../editor/editor-brick-tool.js';
 import { rasterizeBrickHeightMask } from '../editor/editor-brick-height-mask.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 
@@ -29,7 +29,7 @@ let _refreshGeneration = 0;
 export function clearEmptyLayerMasks(editorLayers, emptyIdxs) {
   for (const idx of emptyIdxs) {
     const layer = editorLayers[idx];
-    if (layer) layer._mask = null;
+    if (layer) { layer._mask = null; layer._brickMask = null; }
   }
 }
 
@@ -112,9 +112,12 @@ export async function updateStampMasks(nx, nz) {
       // never carves regardless of its own carve flag (mirrors the same
       // gate change in core/engine/rebuild.js).
       if (!isCarved(layer)) return;
+      // F35 item 22 slice 3: a layer's ART (getLayerSvg leaves the brick-tool nodes out) and its BRICKS, each
+      // its own mask -- combined per layer by the compositor (rebuild.js: the art pass, then the brick pass)
       const svg = getLayerSvg(editor, layer.id);
-      if (!svg) { emptyIdxs.push(idx); return; }   // nothing on this layer yet — skip
-      work.push({ idx, layer, svg });
+      const bricks = layerHasBrickPieces(editor, layer.id);
+      if (!svg && !bricks) { emptyIdxs.push(idx); return; }   // nothing on this layer yet — skip
+      work.push({ idx, layer, svg, bricks });
     });
   }
 
@@ -126,7 +129,7 @@ export async function updateStampMasks(nx, nz) {
 
   if (work.length === 0) return myGeneration === _refreshGeneration;
 
-  const promises = work.map(async ({ layer, svg }) => {
+  const promises = work.map(async ({ layer, svg, bricks }) => {
     // Resolve tooling: editor wins, then the matching legacy P.stampLayers
     // entry (H22 item 3: joined by id, not by idx — see
     // resolveLegacyStampLayer above), then global P.*
@@ -154,8 +157,10 @@ export async function updateStampMasks(nx, nz) {
     // routed to its own rasterizer instead, which reads the SAME layer
     // content but produces a per-grid-point-varying mask. See
     // editor-brick-height-mask.js's own header.
-    const result = isBricksLayer(eLayer)
-      ? await withLoadingStage('heightMask', () => rasterizeBrickHeightMask(editor, eLayer, nx, nz, P.widthIn, P.heightIn,
+    // the bricks' own height (brickDepth: relief + Raised/Carved), never the layer's art depth
+    const bDepth = brickDepth(P.brickSettings);
+    const brickResult = !bricks ? null
+      : await withLoadingStage('heightMask', () => rasterizeBrickHeightMask(editor, { id: eLayer.id, depth: bDepth }, nx, nz, P.widthIn, P.heightIn,
           { topMode: P.brickSettings && P.brickSettings.brickTopMode, // F35 item 18: Flat | Organic brick tops
             surfaceStyle: P.brickSettings && P.brickSettings.surfaceStyle, // F35 item 18 (2): Clean | Weathered
             surfaceWear: P.brickSettings && P.brickSettings.surfaceWear, // the Weathered Wear slider (0..1)
@@ -167,7 +172,8 @@ export async function updateStampMasks(nx, nz) {
             accent: P.brickSettings && P.brickSettings.accent, // F35 item 15: raised accents (Wall)
             frameBandAccents: P.brickSettings && P.brickSettings.frameBandAccents, // per band (advisor)
             brushAccent: P.brickSettings && P.brickSettings.brushAccent, // the Brush element's, per stroke
-            accentSeed: P.brickSettings && P.brickSettings.seed }))
+            accentSeed: P.brickSettings && P.brickSettings.seed }));
+    const result = !svg ? null
       : await rasterizeSvg(
           applyLayerTransform(svg, layerTransform, P.widthIn, P.heightIn),
           nx,
@@ -185,8 +191,10 @@ export async function updateStampMasks(nx, nz) {
     // global generation (rather than just `myGeneration === current`)
     // means newer raster passes can clobber older ones in any order.
     if (myGeneration !== _refreshGeneration) return;
-    if (windowHole) clearStampMaskInWindow(result, windowHole, nx, nz, P.widthIn, P.heightIn);
+    for (const m of [result, brickResult]) if (m && windowHole) clearStampMaskInWindow(m, windowHole, nx, nz, P.widthIn, P.heightIn);
     layer._mask = result;
+    layer._brickMask = brickResult;
+    layer._brickDepth = bDepth;
   });
   await Promise.all(promises);
   return myGeneration === _refreshGeneration;
