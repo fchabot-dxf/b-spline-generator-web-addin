@@ -1636,14 +1636,12 @@ function syncStartHint() {
   hint.style.display = getEditorTab() === 'brick' && _activeTool === null && !anyBricks ? '' : 'none';
 }
 
+/** F35 item 40 (supersedes item 16's swap): the Brick tab shows its OWN panel always -- the pinned Generate and the
+ *  shared Layers component it hosts (editor-tabs.js EDITOR_TABS brick.panelHosts) -- with or without a tool. Measured
+ *  before: with a tool picked the layers were hidden (desktop + 900 px), and with none the panel swapped to Layers,
+ *  which hid Generate on a restored board (item 39 (c)). Only the start hint still depends on "no tool". */
 function syncEmptySelectionPanel() {
   syncStartHint();
-  if (getEditorTab() !== 'brick') return;
-  const brickPanel = document.getElementById('editorBrickPanel');
-  const layersPanel = document.getElementById('editorLayersPanel');
-  const showLayers = _activeTool === null;
-  if (brickPanel) brickPanel.style.display = showLayers ? 'none' : '';
-  if (layersPanel) layersPanel.style.display = showLayers ? '' : 'none';
 }
 
 /** F35 (advisor: "Esc = back to the select tool in every tab"): Brick has no Select tool of its

@@ -339,6 +339,9 @@ export const BRICK_LAYERS = {
   clears: CLEAR_MENU.options.filter((o) => o.item === 'editorClear_bricks' || o.item === 'editorClear_artwork'),
   stroke: [[0.3, 0.5], [0.5, 0.56], [0.7, 0.5]],
   introducedBy: 'bb9e664',
+  // F35 item 40 (Fred: "We don't see layers still"): the Brick tab hosts the ONE Layers list in its own panel
+  // (slot), with a tool picked too; a row picked there is where the next lay goes; Artwork gets the list back
+  brickTab: { slot: 'brickLayersSlot', list: 'editorLayersList', wallTool: 'brickTool_wall', generate: 'brickGenerate', artworkTab: 'editorTabArtwork' },
 };
 
 // ---- wall areas (F35 item 22 slice 2, seat 37 fb-app 58be3ed, on T86 18b/18c): the Area brush paints walls of whole

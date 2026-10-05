@@ -37,12 +37,23 @@ export const EDITOR_TABS = [
     // `peekEssentials` (Fred, live: "Wall is missing the generate button"): what must show IN FULL when the
     // phone / narrow-palette drawer sits at peek height (editor/editor-drawer.js measures them into its peek
     // floor). The Brick panel's pinned Generate -- at peek only 10 of its 32 px showed.
-    peekEssentials: ['#editorBrickPanel > .sticky-actions'],
+    // F35 item 40: + the hosted Layers (Fred, phone: "We don't see layers still") -- at peek the drawer shows Generate AND
+    // the layer list (it grows with the number of layers; no cap)
+    peekEssentials: ['#editorBrickPanel > .sticky-actions', '#brickLayersSlot'],
     // `modeHosts` (turn 195, advisor: "one contextual panel"): which panel a mode's settings open in, per
     // tab. Here the stripe mode's settings (#editorStripePanelBody) live INSIDE this tab's own panel
     // (#brickStripeSection, shown for the Stripe tool) instead of opening a second side column. A tab
     // without an entry keeps the mode's own panel (Artwork's Stripe is unchanged).
-    modeHosts: { stripe: { content: 'editorStripePanelBody', host: 'brickStripeSection', panel: 'editorStripePanel' } } },
+    modeHosts: { stripe: { content: 'editorStripePanelBody', host: 'brickStripeSection', panel: 'editorStripePanel' } },
+    // `panelHosts` (F35 item 40, Fred: "We don't see layers still"): blocks of ANOTHER panel this tab shows inside its
+    // own, whatever the mode -- the ONE Layers component (header + list; the Brick start hint lives with it), in the
+    // order given, under the pinned Generate. Bricks land on the ACTIVE layer (item 22 slice 3), so the Brick tab
+    // must show the layers and let the user pick one; no second list. Home = `panel`, in this order, on any other tab.
+    panelHosts: [
+      { content: 'editorLayersHeader', host: 'brickLayersSlot', panel: 'editorLayersPanel' },
+      { content: 'brickStartHint', host: 'brickLayersSlot', panel: 'editorLayersPanel' },
+      { content: 'editorLayersList', host: 'brickLayersSlot', panel: 'editorLayersPanel' },
+    ] },
 ];
 
 /** Apply EDITOR_TABS' `modeHosts` for the active tab: its hosted content moves into the tab's own host;
@@ -52,7 +63,7 @@ export const EDITOR_TABS = [
 export function applyModeHosts(tab = _editorTab) {
   const panels = new Set();
   for (const t of EDITOR_TABS) {
-    for (const h of Object.values(t.modeHosts || {})) {
+    for (const h of [...Object.values(t.modeHosts || {}), ...(t.panelHosts || [])]) { // item 40: panelHosts move the same way
       panels.add(h.panel);
       const content = document.getElementById(h.content);
       const target = document.getElementById(t.id === tab ? h.host : h.panel);
