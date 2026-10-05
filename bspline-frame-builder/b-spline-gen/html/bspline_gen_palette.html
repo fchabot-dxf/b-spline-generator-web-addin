@@ -3136,6 +3136,9 @@
             <!-- F35 item 10 follow-up (Fred): the Brush tool's own section, shown only while Brush
                  is the active tool (main/brick-panel.js's syncToolButtons). -->
             <div id="brickBrushSection" style="display:none;">
+              <!-- F35 item 36: Draw / Select a stroke (main/brick-panel.js BRICK_SUB_TOOLS) + what the section edits -->
+              <div id="brickSubTools_brush" style="display:flex; gap:6px; margin-bottom:4px; flex-wrap:wrap;"></div>
+              <div id="brickElementLabel_brush" style="font-size:10px; opacity:0.65; margin:0 0 10px;"></div>
               <!-- per-element accents (advisor): the Brush's Accent row -- presets + Click bricks + its signed level,
                    on every stroke's own grid (main/brick-panel.js renderAccentRowFor) -->
               <div id="brickBrushAccentRow"></div>
@@ -3223,6 +3226,9 @@
             <!-- F35 item 16 (turn 201): the RAISED BRUSH's own section -- its mode picker (rendered from
                  main/brick-panel.js RAISED_BRUSH_MODES) and its Level -->
             <div id="brickRaisedSection" style="display:none;">
+              <!-- F35 item 36: Draw / Select a raised stroke -->
+              <div id="brickSubTools_raisedBrush" style="display:flex; gap:6px; margin-bottom:4px; flex-wrap:wrap;"></div>
+              <div id="brickElementLabel_raisedBrush" style="font-size:10px; opacity:0.65; margin:0 0 10px;"></div>
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Raised brush: Mode</label>
               <div class="relief-toggle" id="brickRaisedModeToggle" style="margin-bottom:12px;"></div>
               <label class="cad-label">Level (in, proud of the other bricks)</label>
