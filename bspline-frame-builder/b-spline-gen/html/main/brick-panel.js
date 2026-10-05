@@ -560,7 +560,7 @@ export function renderPatternBuilder() {
   box.appendChild(label('Unit (of a brick)'));
   const units = el('div', 'display:flex; gap:4px;');
   for (const u of ACCENT_TILE_UNITS) {
-    const b = el('button', 'flex:1;', u.label);
+    const b = el('button', 'flex:1; min-width:0; padding-left:0; padding-right:0;', u.label); // 31b: three fit the panel (measured: 3 x 75 px overflowed 162)
     b.type = 'button'; b.className = 'cad-btn' + (u.id === t.unit ? ' active' : ''); b.title = u.title;
     b.id = `brickBuilderUnit_${{ 1: 'whole', 0.5: 'half', 0.25: 'quarter' }[u.id]}`;
     if (!_engineHas(u.requires)) b.style.display = 'none';
@@ -589,11 +589,12 @@ export function renderPatternBuilder() {
   // beyond. At 1 a cell is a brick, staggered per the base (accentGrid's half-bond rule); at 1/2 or 1/4 a cell is that
   // fraction of a brick on the engine's own grid (accentCuts: columns from the wall's left edge, no stagger), drawn
   // that fraction of a brick wide
-  const avail = Math.max(120, (box.clientWidth || 200) - 18 - (custom ? 40 : 0)); // 31e: room for the course offsets
+  const OFFSET_COL = 30; // 31e: the course offsets' column (2 x 12 px buttons), reserved so the cells shrink instead
+  const avail = custom ? Math.max(60, (box.clientWidth || 200) - 18 - OFFSET_COL) : Math.max(120, (box.clientWidth || 200) - 18);
   const stagger = cut ? 0 : _staggerOf(t.base), gap = custom ? 4 : 2; // 31e: a joint wide enough to tap
   const cw = Math.max(9, Math.min(30 * unit, avail / (Math.min(t.cols, L.maxCellsAcross) + stagger) - gap)); // the stagger's half brick too
   const ch = Math.max(8, Math.round(Math.min(30, (cw + gap) / unit) * 0.45)); // a course is as high as a whole brick reads
-  const grid = el('div', `position:relative; height:${t.rows * (ch + gap)}px; width:${(t.cols + stagger) * (cw + gap) + (custom ? 40 : 0)}px; margin:4px 0 8px;`);
+  const grid = el('div', `position:relative; height:${t.rows * (ch + gap)}px; width:${(t.cols + stagger) * (cw + gap) + (custom ? OFFSET_COL : 0)}px; margin:4px 0 8px;`);
   grid.id = 'brickBuilderTile';
   const wrap = el('div', 'overflow-x:auto;');
   const fill = (on) => (on ? 'background:#8e2f1c; box-shadow:1px 1px 0 #2b1a14;' : 'background:#d07a5c; opacity:0.85;');
@@ -620,7 +621,7 @@ export function renderPatternBuilder() {
     }
     if (custom) { // 31e: offset this course by one cell
       for (const [d, sym, side] of [[-1, '‹', 'left'], [1, '›', 'right']]) {
-        const o = el('button', `position:absolute; left:${t.cols * (cw + gap) + 4 + (d > 0 ? 18 : 0)}px; top:${top}px; width:16px; height:${ch}px; padding:0; min-width:0; font-size:10px; line-height:${ch}px;`, sym);
+        const o = el('button', `position:absolute; left:${t.cols * (cw + gap) + 4 + (d > 0 ? 14 : 0)}px; top:${top}px; width:12px; height:${ch}px; padding:0; min-width:0; font-size:10px; line-height:${ch}px;`, sym);
         o.type = 'button'; o.className = 'cad-btn'; o.id = `brickBuilderOffset_${r}_${side}`; o.title = `Offset course ${r + 1} ${side}`;
         o.addEventListener('click', () => builderShift(r, d));
         grid.appendChild(o);
@@ -639,13 +640,14 @@ export function renderPatternBuilder() {
   from.addEventListener('change', () => builderStartFrom(from.value));
   box.appendChild(from);
   // name + save / close
-  const row = el('div', 'display:flex; gap:4px;');
-  const name = el('input', 'flex:1; min-width:0; font-size:11px;');
+  // the name on its own line, Save + Close sharing the next (measured: in one row the name field was 8 px wide)
+  const row = el('div', 'display:flex; flex-wrap:wrap; gap:4px;');
+  const name = el('input', 'flex:1 1 100%; min-width:0; font-size:11px;');
   name.id = 'brickBuilderName'; name.placeholder = 'Name'; name.value = _builder.name;
   name.addEventListener('input', () => { _builder.name = name.value; });
-  const save = el('button', '', 'Save'); save.type = 'button'; save.className = 'cad-btn cad-btn-primary'; save.id = 'brickBuilderSave';
+  const save = el('button', 'flex:1; min-width:0;', 'Save'); save.type = 'button'; save.className = 'cad-btn cad-btn-primary'; save.id = 'brickBuilderSave';
   save.addEventListener('click', () => builderSave(name.value));
-  const close = el('button', '', 'Close'); close.type = 'button'; close.className = 'cad-btn'; close.id = 'brickBuilderClose';
+  const close = el('button', 'flex:1; min-width:0;', 'Close'); close.type = 'button'; close.className = 'cad-btn'; close.id = 'brickBuilderClose';
   close.addEventListener('click', () => closePatternBuilder());
   row.append(name, save, close);
   box.appendChild(row);
