@@ -42,7 +42,7 @@ import { latticeOwnedElementsOnLayer, _ownedOnLayer, resolvePatternLayer, _findB
 import { primitiveFromContourD } from '../editor/editor-contour-cut.js';
 import { buildArtworkDecalPng } from '../core/stamp/decal-png.js';
 import { showToast } from '../core/toast.js';
-import { BRICKS_LAYER_NAME, BRICK_GEN_ATTR } from '../editor/editor-brick-tool.js';
+import { bricksLayerOf, BRICK_GEN_ATTR } from '../editor/editor-brick-tool.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
@@ -149,7 +149,7 @@ export async function _fusionLayerSvg(editor, l, excludePattern) {
  *  layer-export path brick-specific knowledge no other caller needs. */
 export async function _bricksLayerSvg(editor) {
     if (!editor || !Array.isArray(editor._layers)) return '';
-    const layer = editor._layers.find((l) => l && l.name === BRICKS_LAYER_NAME);
+    const layer = bricksLayerOf(editor);
     if (!layer) return '';
     const { svg } = await getLayerSvg(editor, layer.id, 96, { geometry: 'fusion' });
     if (!svg) return '';
@@ -646,7 +646,7 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
             const raw = await _bricksLayerSvg(editor);
             // turn 193: `carve` -- the Bricks layer's sketch goes in the Carved component only when the
             // layer carves; otherwise on root, like every other non-carving art layer
-            const bricksLayer = editor && Array.isArray(editor._layers) ? editor._layers.find((l) => l && l.name === BRICKS_LAYER_NAME) : null;
+            const bricksLayer = bricksLayerOf(editor);
             bricks = raw
                 ? { enabled: true, carve: !!(bricksLayer && isCarved(bricksLayer)), svg: await bakeSvgForCarving(raw, P.widthIn, P.heightIn, 96) }
                 : { enabled: false };

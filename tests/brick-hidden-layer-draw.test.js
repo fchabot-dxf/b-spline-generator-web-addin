@@ -30,7 +30,7 @@ function fakeEditor({ bricksVisible }) {
   return {
     elements,
     _mW: 7, _mH: 9, _activeLayer: '0',
-    _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', visible: bricksVisible }],
+    _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', holdsBricks: true, visible: bricksVisible }],
     _sketchLayer: { polygon: make, line: make, node: { querySelectorAll: () => [] }, children: () => ({ toArray: () => elements, forEach: (f) => elements.forEach(f) }) },
   };
 }

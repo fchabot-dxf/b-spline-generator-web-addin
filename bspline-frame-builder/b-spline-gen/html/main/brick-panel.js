@@ -21,7 +21,7 @@ import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core
 import { withLoadingStage, withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
 import {
-  runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS,
+  runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, bricksLayerOf, BRICK_KINDS,
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
   BRICK_SET_IDS, elementSetId, isRockFrame,
@@ -856,8 +856,7 @@ const _layoutKey = () => {
 
 function _laidLayoutKey() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  const layer = (editor?._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
-  return layer?.brickLaidKey ?? null;
+  return bricksLayerOf(editor)?.brickLaidKey ?? null;
 }
 
 /** The element kinds whose Generate-laid bricks are on the canvas now. */
@@ -865,7 +864,7 @@ function _presentKinds(editor) {
   const node = editor?._sketchLayer?.node;
   // blind-spot audit B1: + the kinds the last lay was FOR (the Bricks layer's brickLaidKinds) -- a Wall the frame
   // bands squeezed to zero bricks has nothing on the canvas, yet it is still the board's wall and must come back
-  const laid = (editor?._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME)?.brickLaidKinds || [];
+  const laid = bricksLayerOf(editor)?.brickLaidKinds || [];
   return BRICK_KINDS.filter((kind) => laid.includes(kind) || !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`));
 }
 
@@ -976,7 +975,7 @@ function _layBricks(editor, frameGeom, kinds, { amend = null } = {}) {
   syncControlRequires(); // audit v2 N5: the board now has bricks -- the sidebar controls apply
   // Audit C8: the layer's visibility is the user's choice, so it is not flipped back on -- but a
   // re-lay nobody can see must not pass silently.
-  const layer = (editor._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
+  const layer = bricksLayerOf(editor);
   if (layer && layer.visible === false) showToast('Bricks re-laid on the hidden Bricks layer -- show it in Layers to see them', 'warn');
 }
 

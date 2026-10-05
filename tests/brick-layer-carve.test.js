@@ -17,7 +17,7 @@ import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 const fakeEditor = (bricksLayer) => ({
   _mW: 7, _mH: 9, _activeLayer: '0',
-  _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', visible: true, ...bricksLayer }],
+  _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', holdsBricks: true, visible: true, ...bricksLayer }],
   _sketchLayer: { node: { querySelectorAll: () => [] }, children: () => ({ toArray: () => [] }) },
 });
 

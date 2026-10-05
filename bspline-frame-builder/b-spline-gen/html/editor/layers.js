@@ -259,6 +259,7 @@ export function addLayer(editor, opts = {}) {
   // fields from TOOLING_DEFAULTS. This lets future call sites override
   // depth/profile/etc. via opts without us having to enumerate them.
   const layer = { id, name, visible };
+  if (opts.holdsBricks) layer.holdsBricks = true; // item 22 slice 1: a brick layer is DECLARED as one
   for (const key in TOOLING_DEFAULTS) {
     if (Object.prototype.hasOwnProperty.call(opts, key)) layer[key] = opts[key];
   }
@@ -731,12 +732,23 @@ export function renderLayersPanel(editor) {
 // ("V-Bit (Linear)") that wouldn't fit a 44px row.
 const PROFILE_LABELS = { vbit: 'V', adaptive: 'Adapt', ballnose: 'Ball', flat: 'Flat' };
 
-/** The Bricks layer (editor-brick-tool.js ensureBricksLayer), by NAME: the stamp-mask pipeline
- *  (main/stamp-mask-manager.js) routes it through the brick-aware height mask
- *  (editor-brick-height-mask.js), matching ensureBricksLayer's own lookup (no reserved id scheme). */
+/** F35 item 22 slice 1: a layer HOLDS bricks by a declared, persisted flag (`holdsBricks`), never by its name --
+ *  so it can be renamed. The stamp-mask pipeline (main/stamp-mask-manager.js) routes it through the brick-aware
+ *  height mask (editor-brick-height-mask.js); Send bakes it as the Bricks sketch (export-flow.js).
+ *  BRICKS_LAYER_NAME is only the DEFAULT name a new brick layer gets (editor-brick-tool.js ensureBricksLayer). */
 export const BRICKS_LAYER_NAME = 'Bricks';
 export function isBricksLayer(layer) {
-  return !!layer && layer.name === BRICKS_LAYER_NAME;
+  return !!layer && layer.holdsBricks === true;
+}
+/** The board's brick layer (one, until slice 3 puts bricks on any layer), or null. */
+export function bricksLayerOf(editor) {
+  return ((editor && editor._layers) || []).find(isBricksLayer) || null;
+}
+/** Migration (a board saved before item 22): its brick layer is the one NAMED "Bricks" -- the ONLY place the name
+ *  is read. Applied where a saved roster is restored (editor-io.js). */
+export function migrateLegacyBricksLayer(layer) {
+  if (layer && layer.holdsBricks === undefined && layer.name === BRICKS_LAYER_NAME) layer.holdsBricks = true;
+  return layer;
 }
 
 /** Audit K7: the Bricks layer's carve profile is never read (its height comes from the brick mask), so

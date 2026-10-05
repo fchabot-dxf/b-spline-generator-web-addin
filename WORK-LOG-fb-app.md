@@ -13490,3 +13490,53 @@ layer, which is usually an art layer ("Layer 1"), that layer then holds art AND 
   - a migrated PERSIST_BOARD reload.
 
 **Your call:** B (recommended) or A. On B I start slice 1 next turn, fresh.
+
+### turn 225 -- F35 item 22 slice 1, STEP 1 of 5: the brick layer is DECLARED (holdsBricks), the name retired (seat 37)
+
+Option B (advisor). Slice 1 in steps, each committed green:
+1. the flag -- **this turn**;
+2. records + owners;
+3. laid key per element;
+4. Select + the hidden Area sub-tool;
+5. migration of the records + Clear + matrix rows.
+
+This turn stops at a clean break after step 1.
+
+- **layers.js:**
+  - `isBricksLayer(layer)` = `layer.holdsBricks === true` (was `layer.name === 'Bricks'`);
+  - new `bricksLayerOf(editor)` = the one lookup;
+  - `addLayer({ holdsBricks })` declares it;
+  - `migrateLegacyBricksLayer(layer)`: a layer saved before the flag and NAMED "Bricks" gets `holdsBricks: true`
+    (an explicit flag always wins). This is now the ONLY place the name is read; `BRICKS_LAYER_NAME` is just
+    the default name of a new brick layer.
+- **editor-io.js:** `holdsBricks` is a persisted roster field; the restore runs `migrateLegacyBricksLayer` on every
+  restored layer. Undo snapshots deep-clone layers, so the flag rides every step.
+- **All the name lookups now read the flag:**
+  - ensureBricksLayer (finds by the flag, creates with it);
+  - the brush-element lookup in editor-brick-tool;
+  - brick-panel's laid key / laid kinds / hidden-layer toast;
+  - export-flow's Bricks sketch + its carve flag;
+  - stamp-mask-manager + layers' summary label (via isBricksLayer);
+  - editor-clear (via isBricksLayer).
+  - `grep BRICKS_LAYER_NAME` in app code: only the default name + the migration.
+- **Tests:**
+  - New brick-layer-flag (4): the flag decides, not the name (a layer merely called "Bricks" is ordinary; a
+    renamed brick layer still is one); addLayer declares it; the migration (incl. an explicit false winning);
+    the flag is saved in the roster. All 4 fail against the pre-change files (on assertions), restored, cmp
+    clean.
+  - 10 test files built a layer `{ name: 'Bricks' }` as the brick layer and failed (26 tests) once the name
+    stopped counting; their doubles now carry `holdsBricks: true`. That is the contract change, not a loosened
+    assertion.
+- **Live, byte-identical (one headless browser, the old code then the new code on disk):**
+  - The OLD code builds a board (wall + frame, 205 bricks) and Applies; the page then reloads on the NEW code.
+    Same 205 bricks and the same saved SVG; the 3D hash after the rebuild equals the reopened one; the layer
+    reads "Bricks[holdsBricks]".
+  - After reopen + Apply the saved SVG minus `,"holdsBricks":true` hashes 1n6fcmi, identical to the same run on
+    the OLD code in both phases (control). So the only byte that changes in a saved board is the flag itself.
+  - (A first attempt across two browser launches lost the session for old AND new code alike: headless Chrome
+    killed before flushing localStorage. That was the probe, not the app; hence the single-browser run.)
+- Whole vitest: 267 files, **4389 passed, 0 failed**.
+
+**Next (step 2):** records -- one invisible `<g data-brick-element data-brick="wall-full|frame" data-brick-settings
+data-brick-laid>` per element on the brick layer, its bricks' `data-brick-owner`, written in the same undo step as
+the lay; laid key per element after that.

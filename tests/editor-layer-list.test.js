@@ -94,7 +94,7 @@ describe('renderLayerList', () => {
   // row says Raised/Carved + height, never "Flat" (which also clashed with the Flat | Organic setting).
   it('the Bricks layer row reads Raised/Carved + height, never its unused profile', () => {
     for (const [depth, want] of [[0.125, ' · Raised .13"'], [-0.125, ' · Carved .13"']]) {
-      const editor = mockEditor([mockLayer('0', { name: 'Bricks', profile: 'flat', depth })], '0');
+      const editor = mockEditor([mockLayer('0', { name: 'Bricks', holdsBricks: true, profile: 'flat', depth })], '0');
       renderLayerList(container, editor);
       const summary = container.querySelector('.layer-tool-summary');
       expect(summary.textContent).toBe(want);

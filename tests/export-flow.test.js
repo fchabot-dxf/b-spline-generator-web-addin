@@ -537,7 +537,7 @@ describe('export-flow: _bricksLayerSvg (F35 item 11 -- Send bricks with the B-sp
       _draw: {},
       _sketchLayer: { node: { innerHTML } },
       _mW: 7, _mH: 9,
-      _layers: [{ id: layerId, name: 'Bricks' }],
+      _layers: [{ id: layerId, name: 'Bricks', holdsBricks: true }],
       _activeLayer: null,
     };
   }

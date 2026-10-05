@@ -88,7 +88,7 @@ function setup(tool) {
   root.innerHTML = FIXTURE;
   document.body.appendChild(root);
   const top = { svg: 'top' };
-  window.svgEditor = { setMode: () => {}, _layers: [{ id: 'b', name: 'Bricks' }], _sketchLayer: { node: document.createElement('div') }, _undoStack: [{ svg: 'a' }, top] };
+  window.svgEditor = { setMode: () => {}, _layers: [{ id: 'b', name: 'Bricks', holdsBricks: true }], _sketchLayer: { node: document.createElement('div') }, _undoStack: [{ svg: 'a' }, top] };
   counts = { wallCount: 40, frameCount: 30 };
   runBricks.mockImplementation((ed, _s, _fg, opts) => {
     // the real contract: the laid key AND the kinds it was laid for (audit B1) go on the Bricks layer

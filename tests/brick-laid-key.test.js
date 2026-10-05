@@ -25,7 +25,7 @@ function fakeEditor() {
   return {
     _mW: 7, _mH: 9,
     _activeLayer: '0',
-    _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', visible: true }],
+    _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', holdsBricks: true, visible: true }],
     _sketchLayer: { node: { querySelectorAll: () => [], innerHTML: '' }, children: () => ({ toArray: () => [] }) },
   };
 }
@@ -48,7 +48,7 @@ describe('runBricks stamps the laid key on the Bricks layer', () => {
 describe('the laid key survives save -> reload (data-editor-layers)', () => {
   it('is written into the persisted layer roster', () => {
     const editor = { _draw: {}, _sketchLayer: { node: { innerHTML: '' } }, _mW: 7, _mH: 9, _activeLayer: '1',
-      _layers: [{ id: '1', name: 'Bricks', visible: true, brickLaidKey: '{"pattern":"herringbone"}' }] };
+      _layers: [{ id: '1', name: 'Bricks', holdsBricks: true, visible: true, brickLaidKey: '{"pattern":"herringbone"}' }] };
     const out = save(editor);
     expect(out).toMatch(/&quot;brickLaidKey&quot;:&quot;\{\\&quot;pattern\\&quot;:\\&quot;herringbone\\&quot;\}&quot;/);
   });

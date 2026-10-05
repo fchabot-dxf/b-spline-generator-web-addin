@@ -97,7 +97,7 @@ function setup(tool) {
   root.innerHTML = FIXTURE;
   document.body.appendChild(root);
   // A Bricks layer + a runBricks mock honouring the real contract: the laid key is stamped on it.
-  window.svgEditor = { setMode: () => {}, _layers: [{ id: 'b', name: 'Bricks' }], _sketchLayer: { node: document.createElement('div') } };
+  window.svgEditor = { setMode: () => {}, _layers: [{ id: 'b', name: 'Bricks', holdsBricks: true }], _sketchLayer: { node: document.createElement('div') } };
   // ...and, like the real one, it leaves the laid kinds' bricks on the canvas (audit v2 N4/N5 read them)
   runBricks.mockImplementation((ed, _s, _fg, opts) => {
     if (opts?.laidKey != null) ed._layers[0].brickLaidKey = opts.laidKey;

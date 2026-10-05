@@ -49,7 +49,7 @@
  * BRICK_ELEMENT_ATTR/BRICK_SETTINGS_ATTR/reconstructChains/
  * regenerateOwnedBrickElements block below for the full mechanism.
  */
-import { ensureActiveLayer, addLayer, BRICKS_LAYER_NAME, isBricksLayer, applyLayerStateTo } from './layers.js';
+import { ensureActiveLayer, addLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo } from './layers.js';
 import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
@@ -66,7 +66,7 @@ export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-s
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
 // Audit K7: the Bricks layer's identity now lives in layers.js (the layer-row summary needs it, and
 // layers.js cannot import this file -- this file imports layers.js). Re-exported for every importer.
-export { BRICKS_LAYER_NAME, isBricksLayer };
+export { BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf };
 
 // F35 item 3 (advisor: "brick elements as declared spine + settings... the
 // prerequisite for Scissors/Stripe"): a Brush stroke is no longer baked
@@ -92,10 +92,11 @@ const SPINE_KIND = 'brush-spine';
  *  happened to be "active" from unrelated earlier editing. */
 export function ensureBricksLayer(editor) {
   ensureActiveLayer(editor); // guarantees editor._layers is a real, non-empty array
-  const existing = editor._layers.find((l) => l && l.name === BRICKS_LAYER_NAME);
+  const existing = bricksLayerOf(editor); // item 22 slice 1: the DECLARED brick layer, whatever it is named
   if (existing) return existing;
   return addLayer(editor, {
     name: BRICKS_LAYER_NAME,
+    holdsBricks: true,
     skipUndo: true, // bundled into the SAME undo step as the content about to be drawn onto it
     profile: 'flat',
     edgeFilletRadius: 0,
@@ -1048,7 +1049,7 @@ export function bricksForStroke(points, settings) {
 
 export function regenerateOwnedBrickElements(editor) {
   if (!editor || !editor._sketchLayer) return;
-  const layer = (editor._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
+  const layer = bricksLayerOf(editor);
   if (!layer) return;
 
   const children = editor._sketchLayer.children().toArray();

@@ -152,7 +152,7 @@ describe('H20 item 3: resetArtworkToFresh matches a brand-new session\'s artwork
 // F35 item 28 (Fred): the header's Clear is a MENU -- All / Frame / Artwork / Photo / Bricks -- built from the tab
 // registry (main/editor-clear-menu.js). It supersedes H20 item 3's tab-scoped Clear (that block's tests retired).
 describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)', () => {
-  const BRICKS = { id: '7', name: 'Bricks', visible: true, brickLaidKey: 'KEY' };
+  const BRICKS = { id: '7', name: 'Bricks', holdsBricks: true, visible: true, brickLaidKey: 'KEY' };
   function editorWithBricks() {
     const editor = makeEditor();
     editor._layers = [...editor._layers, { ...BRICKS }];
@@ -273,7 +273,7 @@ describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)',
 
 // 88's rows (matrix-clear-rows 67bf49e) + the advisor's rule: ONE undo restores everything a Clear removed.
 describe('F35 item 28 follow-up: one undo takes the WHOLE Clear back', () => {
-  const BRICKS = { id: '7', name: 'Bricks', visible: true, brickLaidKey: 'KEY' };
+  const BRICKS = { id: '7', name: 'Bricks', holdsBricks: true, visible: true, brickLaidKey: 'KEY' };
   function board() {
     const editor = makeEditor();
     editor._layers = [...editor._layers, { ...BRICKS }];

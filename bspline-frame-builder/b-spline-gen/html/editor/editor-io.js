@@ -7,7 +7,7 @@ import { encodeLayersAttr, repairLayersAttr } from './layers-attr.js';
 import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { applyToolingDefaults, addLayer, setActiveLayer, isExported, syncLayerZOrder } from './layers.js';
+import { applyToolingDefaults, migrateLegacyBricksLayer, addLayer, setActiveLayer, isExported, syncLayerZOrder } from './layers.js';
 import { OWNERSHIP_ATTR, BOUNDARY_REF_ATTR, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
@@ -97,6 +97,8 @@ const _PERSISTED_LAYER_FIELDS = [
     'brickLaidKey',
     // Blind-spot audit B1: the element kinds that key was laid for (a Wall squeezed to zero bricks stays one).
     'brickLaidKinds',
+    // F35 item 22 slice 1: the layer HOLDS the bricks (layers.js isBricksLayer) -- declared, not by its name.
+    'holdsBricks',
 ];
 
 /** Serialize the layer roster as a string attribute we can stamp onto
@@ -1025,7 +1027,7 @@ export function open(editor, svgString, w, h) {
                         name: l.name || `Layer`,
                         visible: l.visible !== false,
                     };
-                    return applyToolingDefaults(restored);
+                    return migrateLegacyBricksLayer(applyToolingDefaults(restored)); // item 22: name -> holdsBricks
                 });
                 // Bump _nextLayerId past any numeric id we just restored.
                 const numericIds = editor._layers
