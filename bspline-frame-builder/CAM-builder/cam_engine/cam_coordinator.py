@@ -23,17 +23,10 @@ from . import cam_workspace, mm_builder, setup_builder
 
 # Names of MMs and Setups this addin creates. Used by _cleanup_previous_build
 # to identify and delete the prior run's artifacts before a fresh build.
-_ADDIN_MM_NAMES = frozenset([
-    'MM - Stock (raw blank)',
-    'MM - B-spline set',
-    'MM - Frame (lay-flat)',
-])
-_ADDIN_SETUP_NAMES = frozenset([
-    'Stock',
-    'B-spline Back',
-    'B-spline Top',
-    'Frame',
-])
+# Derived from the declarations (MM_RULES / SETUP_SPECS), so a new setup is cleaned
+# up without a second list to edit.
+_ADDIN_MM_NAMES = frozenset(mm_builder._mm_display_name(r) for r in mm_builder.MM_RULES)
+_ADDIN_SETUP_NAMES = frozenset(spec['name'] for spec in setup_builder.SETUP_SPECS)
 
 
 def _cleanup_previous_build(cam, logger):
@@ -105,7 +98,7 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
         Body-classifier function ``(BRepBody) -> str``. Used only in
         B-spline mode; ignored in generic mode.
     mode : str
-        ``'bspline'`` (default) — hardcoded 3-MM / 4-setup B-spline
+        ``'bspline'`` (default) — declared (MM_RULES / SETUP_SPECS) B-spline
         pipeline. ``'generic'`` — one MM + Setup per component name in
         ``component_names``.
     component_names : list[str] or None
@@ -232,7 +225,7 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
         )
 
     else:
-        # ── B-spline: hardcoded 3-MM / 4-setup pipeline ──────────────────────
+        # ── B-spline: the declared MM_RULES / SETUP_SPECS pipeline ─────────────
 
         # Auto-cleanup: delete any prior build's Setups and MMs with our
         # known names so a re-run REPLACES instead of DOUBLING.
@@ -243,6 +236,13 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
         except Exception as e:
             import traceback as _tb
             _log(logger, f"COORDINATOR: cleanup raised {type(e).__name__}: {e}\n{_tb.format_exc()}", "WARNING")
+
+        # H23 item 82: the shared WCS points go into the SOURCE design before the MMs
+        # snapshot it, so every MM carries its own copy for its setups to bind.
+        try:
+            setup_builder.ensure_wcs_sketches(design, logger)
+        except Exception as e:
+            _log(logger, f"COORDINATOR: ensure_wcs_sketches raised {type(e).__name__}: {e}", "WARNING")
 
         mms = mm_builder.build_all_mms(cam, design, classifier, logger)
         for rule in mm_builder.MM_RULES:

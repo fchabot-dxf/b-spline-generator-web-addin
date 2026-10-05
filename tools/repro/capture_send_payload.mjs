@@ -16,12 +16,15 @@
 //          ({W, H, rails:[{x1,y1,x2,y2}], ties:[...], moved:{rail, tie}}), in canvas order = manifest id order.
 //   --cut  (F18, SE16): after Generate, CUT the rail with the most tie contacts at a tie contact AND mid-rail (the
 //          editor's own cutAt command), colour 2 of its 3 segments, write <out>.drawn.json with `cut`.
+//   --carve (H23 item 82, CAM same-position stock): after the scenario, turn 3D carve ON for the layers it drew
+//          (CARVE_LAYERS below) so the stamp bakes and the Send carries the STAMPED STEP variant next to Clean
+//          (export-flow.js ships 'Stamped' only when a carving layer exists). Without it: Clean only, as before.
 // Serve with tools/serve_app.py so the CSS loads.
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const ARGS = process.argv.slice(2).filter((a) => a !== '--drag' && a !== '--cut' && !a.startsWith('--lip=') && !a.startsWith('--template=') && !a.startsWith('--board='));
+const ARGS = process.argv.slice(2).filter((a) => a !== '--drag' && a !== '--cut' && a !== '--carve' && !a.startsWith('--lip=') && !a.startsWith('--template=') && !a.startsWith('--board='));
 // F22: --lip=<in> sets the Frame section's "Panel lip" (the real field) before the frame payload is taken
 const LIP = (process.argv.find((a) => a.startsWith('--lip=')) || '').slice(6);
 // F30 item 3: --template=<id> picks the shape-lattice-frame scenario's own Frame tab template (default template_1).
@@ -31,6 +34,9 @@ const TEMPLATE = (process.argv.find((a) => a.startsWith('--template=')) || '').s
 const BOARD = (process.argv.find((a) => a.startsWith('--board=')) || '').slice(8); // "WxH" or ''
 const DRAG = process.argv.includes('--drag');
 const CUT = process.argv.includes('--cut');
+// --carve: the layer names the lattice scenarios draw into (editor layer .name), carved for a Stamped Send.
+const CARVE = process.argv.includes('--carve');
+const CARVE_LAYERS = ['Rails', 'Contour', 'Ties', 'Nodes'];
 const [OUT, URL, SCENARIO = 'shape-lattice', PORTARG] = ARGS;
 const PORT = Number(PORTARG || 9395);
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
@@ -170,10 +176,27 @@ if (CUT) {
   writeFileSync(OUT.replace(/\.json$/, '') + '.drawn.json', JSON.stringify(drawn, null, 1));
   console.log('cut:', JSON.stringify(cut));
 }
+if (CARVE) {
+  const carved = await evalJS(`(async()=>{ const L = await import('./editor/layers.js'); const ed = window.svgEditor;
+    const want = ${JSON.stringify(CARVE_LAYERS)}; const done = [];
+    for (const l of ed._layers || []) if (want.includes(l.name)) { L.setLayerCarve(ed, l.id, true); done.push(l.name); }
+    await new Promise(r=>setTimeout(r,800));
+    // the editor's own Apply (#editorApply -> onCommit -> refreshAllStampMasks) bakes the carving masks; the
+    // 'apply stencils' button the step below looks for no longer exists. The remask is not awaited by the app.
+    document.getElementById('editorApply').click(); await new Promise(r=>setTimeout(r,8000));
+    return done.join(','); })()`);
+  console.log('carve ON:', carved || 'NONE (no matching layer)');
+}
 await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
   [...document.querySelectorAll('button')].find(b => /apply stencils/i.test(b.textContent))?.click(); await W(4000);
 })()`);
 console.log('lattice pieces drawn:', built);
+if (CARVE) {
+  const st = await evalJS(`(async()=>{ const X = await import('./main/export-flow.js');
+    return JSON.stringify({ carving: X.activeStampLayers().length, exportable: X.exportableStampLayers().length,
+      stencilBtn: !![...document.querySelectorAll('button')].find(b => /apply stencils/i.test(b.textContent)) }); })()`);
+  console.log('after stencils:', st);
+}
 await evalJS(`(async()=>{ document.getElementById('btnDownload').click(); await new Promise(r=>setTimeout(r,30000)); })()`);
 const sends = await evalJS('window.__sends');
 const actions = (sends || []).map((s) => s[0]);

@@ -22312,6 +22312,92 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
       Frame        | frame          | as today
   'top 1' cannot serve as the shared point for Carved Top: its stock is the Clean solid, whose bbox top differs from
   the fixed box top (the 0.25 in above) -- hence a declared point.
+
+## H23 item 82 -- probe part 2: items (a)-(e) measured, (f) partial (seat A / 77, 2026-10-05)
+- Fusion window from the advisor (Fred free); add-in = main 0c81ed3 (the enum fix) deployed by the advisor. Same
+  scratch doc as part 1, held by handle; closed by that handle at the end, Fred's 'Untitled' re-activated, holder none.
+- (a) Cut participants fixed (each Carved cut rolled back, participantBodies = the Carved body only; both cuts HAD
+  listed claude-clean + claude-carved, confirming the part-1 artefact). Now Clean 63.0 in3, Carved 61.3 in3.
+  Carved setup (MM Carved), stock SolidStock = the REAL Clean body from MM Clean: rest-only toolpath 206.3 s /
+  89.8 in feed, no warning -- identical to the stand-in box. FROM-SOLID ACROSS MMs WORKS.
+- (b) Fred's case: Carved setup (MM Carved) right after the Clean setup (MM Clean), PreviousSetupStock (typed enum
+  -> job_stockMode 'previoussetup', i.e. the fix works live) + job_continueMachining true: NOT a hard refusal --
+  it generates (177.7 s / 76.2 in) but carries the warning "Continue Rest Machining: Cannot verify that the stock is
+  transferred from the previous setup for rest machining. Verify that the model selections in both setups are the
+  same." So "from previous setup" across non-identical models is the unverified path; (a) is the clean one.
+- (c) Shared WCS point: a design ConstructionPoint by coordinates is refused in a parametric design ("Environment is
+  not supported"); a root sketch point on an offset plane works and is declared once. Every MM carries its own copy
+  (inside the MM's root wrapper occurrence); binding each setup to ITS MM's copy (createForAssemblyContext of the
+  wrapper occurrence): wcs_origin_mode "'point'", wcs_origin_point size 1, both setups' WCS origin identical
+  (0, 0, 31.75) = 1.25 in. Under flipY (Carved, as B-spline Top) the origin stays on the point, only the axes flip
+  (z (0,0,1) -> (0,0,-1), y (0,1,0) -> (0,-1,0)). workCoordinateSystem translation reads in mm here (31.75 for
+  1.25 in, 25.4 for 1.0 in in part 1): two readings, same doc -- most likely the doc's units, UNVERIFIED as a rule.
+- (d) Fixed box bottom-aligned: job_stockFixedZMode choices = 'top' | 'center' | 'bottom' | 'model' (labels "Offset
+  from top (+Z)", "Center", "Offset from bottom (-Z)", "Offset from model origin"). X/Y 'center' offset 0, Z
+  'bottom' offset 0, 7 x 9 x 1.25 in on both setups -> identical stock X 0-7 / Y 0-9 / Z -1.25..0 in the shared WCS,
+  each model's bottom on the stock bottom. SIDE FINDING: a fresh FixedBoxStock defaults to 13 in x 10 in X/Y
+  (Z = model height rounded) -- B-spline mode's 'fixed_box' setups (Back, Frame) never write the dims (only the
+  generic path calls _set_fixed_stock_dims), so they likely inherit that default. To confirm on a real BUILD.
+- (e) Height modes (op topHeight_mode / bottomHeight_mode choices): 'from stock top', 'from stock bottom', 'from
+  surface top' (Model top), 'from surface bottom', 'from point' (Selection), 'from wcs', 'from top' / 'from bottom',
+  clearance/retract, fixture, highest/lowest. Written 'from stock top' / 'from stock bottom' on a live op and read
+  back; evaluated bottom = -1.2303 in = stock bottom + the default offset expression verticalStockToLeave (0.5 mm),
+  so the declaration must state the bottom offset explicitly.
+- (f) PARTIAL: the real 7x9 T7 capture (scratch/real_send_t7_7x9_full.json, frame dropped) replayed through the
+  deployed bspline_ui._handle_generate in a second tagged scratch doc: 3.0 s, Clean only -- panel 12.39 in3, bbox
+  z 0.032..1.044 in (the real bottom is NOT at z 0: bottom-aligned stock must use the body's bbox bottom). No Stamped
+  body: the app sends Stamped as its OWN STEP variant (export-flow.js sendToFusion: options.stamped -> base
+  'Stamped', heights = the stamped height map; Clean = unstampedHeights); this capture was made with Clean only. A
+  real Clean + Stamped pair needs a new capture with the Stamped export on -- not done, asked the advisor.
+- Shape for the declaration (confirmed by (a)-(e)): CAM_POSITION = one fixed box (X/Y center 0, Z 'bottom' 0,
+  dims declared), one WCS = a builder-declared sketch point (bound per setup to its own MM's copy), op heights
+  'from stock top' / 'from stock bottom' + an explicit bottom offset; Carved Top stock = SolidStock -> the Clean
+  body (NOT PreviousSetupStock, which warns across MMs).
+
+## H23 item 82 -- wiring, the real Clean+Stamped Send, and the ruling (seat A / 77, 2026-10-05)
+- Wired first as approved (option 2): CAM_POSITION + a Clean/Carved MM split + a 'B-spline Carved' setup (From solid
+  -> the Clean body). Then the acceptance Send showed the premise is wrong, and the advisor ruled; the branch now holds
+  the ruled shape (commits below), the Carved machinery is removed, not parked.
+- Capture tool (tools/repro/capture_send_payload.mjs): new declared option --carve. The app ships the Stamped STEP
+  variant only when a carving layer has a baked mask (export-flow.js isCarvingLayer = carve && mask && depth); the
+  tool's old 'apply stencils' click finds nothing any more (readback stencilBtn:false), so every earlier capture was
+  Clean only. --carve sets 3D carve on CARVE_LAYERS (Rails, Contour, Ties, Nodes) and clicks the editor's own
+  #editorApply (-> refreshAllStampMasks), then waits 8 s. Measured: carving layers 0 -> 4; payload Clean + Stamped,
+  7x9, 10.1 MB (scratchpad, not committed). Served from this worktree on 8877 (curl md5 = disk); the server task was
+  stopped and its PID was gone; no leftover headless Chrome (profile chrome-capture-9477).
+- REAL GEOMETRY (that payload through the deployed bspline_ui._handle_generate, frame dropped, tagged scratch doc):
+    Clean   panel 13.771 in3, z 0.018 .. 0.980 in, x -3.5..3.5, y -4.5..4.5
+    Stamped panel 15.916 in3, z 0.018 .. 1.088 in, same outline
+  Same bottom + outline, but Stamped is 2.145 in3 bigger and 0.108 in taller: the stamp RAISES material by design
+  (advisor: bricks / raised strokes stand proud of the clean surface, relief 0.125 in). The Clean body cannot be the
+  Carved setup's stock. (An exact Stamped-minus-Clean boolean on these two bodies was started and ran > 20 min at one
+  core with Fusion not responding; not needed for the ruling -- the volumes and bboxes above decide it.)
+- RULING (advisor, Fred may overrule): no Clean -> Carved rest chain. ONE panel MM = the body to make (Stamped when it
+  exists, else Clean: the original 'Stamped wins' filter). B-spline Back (shared fixed box, bottom-aligned, centred,
+  dims written; WCS = declared 'back' point) -> B-spline Top (PreviousSetupStock in the SAME MM, rest machining from
+  Back's IPV, no cross-MM warning; WCS = declared 'flipped' point) -> Frame as today. Names Back/Top kept (Fred's
+  template overrides).
+- Rework (dead declarations removed, each link accounted for):
+    MM rules bspline_clean/bspline_carved + _BSPLINE_KEEP + the keep= filter      -> removed (mm_builder = main's
+                                                                                       + the placeholder change)
+    'B-spline Carved' spec, skip_if_no_bodies, stock_solid_from, _set_solid_stock  -> removed
+    coordinator legacy MM name + the 'skipped' report entry                        -> removed
+    palette Carved card, 'MM: B-spline Clean' tags, 4 MMs / 5 SETUPS header         -> removed (back to main's)
+    Carved busy-check test, solid-stock test, MM-split test                         -> removed with the code
+  Kept: cam_position.py (CAM_POSITION + box/point math), ensure_wcs_sketches (panel bbox now Stamped-first, matching
+  the MM), _apply_stock_box, _bind_wcs_point, 3D-only _apply_op_heights, SETUP_SPECS-derived name lists (coordinator
+  cleanup + cam-builder's BUILD busy check), the placeholder reading CAM_POSITION['stock'], palette Back/Top card text
+  (shared box / shared point) and the derived 'done' counts, the enum fix (3e5c5bb).
+- Tests: test_cam_position.py 10 (Back/Top share the declared position on one MM, no from_prev_setup across MMs, the
+  box/point math on the real 7x9 bbox, 3D-only heights, the box writes, the WCS bind to the MM's own copy, a missing
+  point reported not faked, derived names, placeholder numbers). CAM-builder 23/23.
+- PARKED (option B, only if Fred asks): a Clean roughing pass before the Carved finish, with a declared
+  stock-to-leave >= the maximum raise (0.108 in measured on this board; relief up to 0.125 in) so the roughing never
+  removes the raised material. Not built.
+- NOTE for the advisor: the CAM palette's B-spline status dots never update (pre-existing, not touched): the report
+  name 'B-spline Back' -> key 'b_spline_back' never matches SETUP_KEYS 'bspline_back' (the match strips only ONE
+  underscore from the key). Only 'stock' and 'frame' light up.
+- Acceptance on the ruled shape: pending (Fusion still busy with the abandoned boolean when this was written).
 ## T86 item 26 -- accent cuts at 1/2 and 1/4 brick (seat B / 88, 2026-10-05)
 - generateBricks `accentCuts: { unit, tile: { rows, cols, cells } }` (ENGINE_OPTIONS 'accentCuts') -> fill-shape ->
   bondLayout's 7th arg -> applyAccentCuts, after the courses are planned and before the board clip: cells are unit x
@@ -22359,3 +22445,52 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
   - Before: applyAccentCuts sized each cell from the piece's own length, which is right only for one-brick pieces. On a custom [2, 1/2, 1/2] course it cut the 2-brick piece in two and put a mark on a half.
   - Now pitch = L + J, and a piece spans (its length + J) / (unit x pitch) cells.
 - Tests: bricks-course-row-origin (8): 4/7 fail before the origin fix, and 1/1 before the cell fix. All 53 bricks-* files are green after.
+
+## H23 item 82 -- acceptance on the ruled shape (seat A / 77, 2026-10-05)
+- Fusion restarted by Fred after the boolean hang (fusion360-quirks 14e93c0); advisor deployed main 2b8a3c0 and gave
+  the GO. Fresh tagged scratch doc ('item82-acceptance', held by handle), the --carve capture replayed through the
+  deployed _handle_generate (frame dropped): Clean 13.771 in3 z 0.018..0.980, Stamped 15.916 in3 z 0.018..1.088 (same
+  as before). The WORKTREE engine ran through a sys.path swap + cam_engine/cam_utils purge restored in a finally
+  (verified afterwards: worktree not on sys.path), B-spline mode, skip_machine, templates applied separately.
+  Scratch-pad script: acc82.py (phases send / bodies / build / readback / legacy_corner / templates / gen / ops /
+  heights / close). No booleans.
+- FIRST BUILD found two real bugs (fixed in data / one writer, commit "acceptance fixes"):
+  1. Back's WCS Z axis points DOWN (0,0,-1) (the builder's existing axes swap); job_stockFixedZMode is read in the
+     setup frame, so 'bottom' put the box on the panel's world TOP: stock world z 1.088 .. -0.912, inherited by Top.
+     Now CAM_POSITION stock z_align = 'world_bottom', mapped through the resolved Z axis ('top' on Back).
+  2. Flag 1 measured: today's 'top 1' lands at Back (x min, y min, its frame top = world bottom) and Top (x MAX,
+     y min, world top). My declared points had Back z top and Top (x min, y max, z bottom). Corrected in DATA.
+- SECOND BUILD found a third: ensure_wcs_sketches deleted + recreated the plane/sketch under the same names, and the
+  MM built right after bound the OLD point (its copy's sketch: 2 points, the old position, referencePlane ->
+  'InternalValidationError : dcSketch'). Now the point is created once and moved IN PLACE on later BUILDs (plane
+  offset parameter + point.move). Live-measured only (no fake models the derive).
+- FINAL (fresh doc, create path; then both points knocked +1 in X / +0.5 in Z and re-BUILT -> moved back, readback
+  identical to the fresh build). Origins read in mm (workCoordinateSystem), shown here in inches:
+    B-spline Back : WCS = declared 'back' point (-4, -5, 0.0175), Z down; stock (own frame) X 0-10, Y 0-8, Z -2..0
+                    = the 'top 1' corner exactly; model Z -1.0706..0 (the back face flush with the stock face);
+                    fixed box exprs '(surfaceXHigh - surfaceXLow) + 1.0 in' / Y / '2.0 in', Z mode 'top'.
+    B-spline Top  : WCS = declared 'flipped' point (4, -5, 2.0175), Z up; stock (PreviousSetupStock, same MM)
+                    X 0-10, Y 0-8, Z -2..0 = the same physical box (world z 0.0175..2.0175); model Z -2..-0.9294;
+                    continueMachining true.
+  So: one stock (10 x 8 x 2 in = (7 + 1) x (9 + 1) x 2, on the panel bottom), each side's WCS on its declared point,
+  independent of the model bbox; build 8-12 s, report ok, errors [].
+- Templates (Fred's cloud ones) and heights, per op: strategy, then time / feed before -> after the 3D-only heights:
+    Back  Pocket back            pocket_clearing  'from highest of'/'from lowest of'      685.6 s / 1633.3 in -> 685.6 / 1633.3
+    Back  Morphed Spiral         morphed_spiral   'from stock top'/'from surface bottom'  101.8 s / 1013.8 in -> 101.8 / 1013.8
+    Top   Pocket front FRED      pocket_clearing  highest of / lowest of                  714.3 s / 5848.1 in -> 714.3 / 5848.1
+    Top   Morphed Spiral         morphed_spiral   stock top / surface bottom              107.4 s / 1067.1 in -> 107.4 / 1067.1
+    Top   Pocket front deloge    pocket_clearing  highest of / lowest of                  263.8 s / 1449.0 in -> 263.8 / 1449.0
+  All five templates are 3D strategies (no 2D op exists in them today); after the write every op reads 'from stock
+  top' / 'from stock bottom' / offset '0 in', evaluated top 0 / bottom -2.0 in, isToolpathValid True, no warning,
+  and the toolpaths are unchanged to the 0.1 s: the bottom is only a limit there. Top generated with no warning
+  (PreviousSetupStock inside one MM: no "Cannot verify that the stock is transferred").
+- 13 x 10 finding CONFIRMED on a real build: the Frame setup (fixed_box, dims never written) has stock X 0-13,
+  Y 0-10 (exprs '13in' / '10in', Fusion's defaults) around a 10 x 8 model. Frame untouched in this item.
+- Shots (shots/seatA): h23_item82_acceptance_bspline_mm_stamped_panel_iso.png (the real Stamped panel in the
+  B-spline MM with its stamp artwork sketches; the stock box / WCS triad do not render outside the setup editor, so
+  the readback above is the evidence for them); h23_item82_acceptance_mm_stock_placeholder_iso.png (the MM-Stock
+  placeholder, 8 x 10 x 2 in from CAM_POSITION). fusion_screenshot returned the stale active-MM view twice; the
+  second shot is viewport.saveAsImageFile after mm.activate().
+- Hygiene: two scratch docs created and closed by handle; Fred's 'Untitled' untouched and re-activated; holder none.
+- Candidate quirks, ONE observation each (not recorded in the skill yet): job_stockFixedZMode is read in the setup's
+  frame; an MM built after a same-name delete + recreate binds the deleted geometry; workCoordinateSystem reads mm.
