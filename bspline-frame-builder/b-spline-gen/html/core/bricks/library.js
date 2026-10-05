@@ -262,6 +262,9 @@ export const BRICK_SETS = Object.freeze([
     engine: 'masonry',
     shape: 'irregular',
     layout: 'coursed_rubble',
+    // advisor ruling by precedent (Fred: a stone set's bands are the stone ring, as White rocks): its frame bands are
+    // fieldstone rings with these grey faces (contour-bands.js setBandPattern reads bandLayout)
+    bandLayout: 'fieldstone',
     brickLengthIn: 1.1,
     brickHeightIn: 0.7,
     grout: { widthIn: 0.08, depthIn: 0.06, profile: 'recessed' },

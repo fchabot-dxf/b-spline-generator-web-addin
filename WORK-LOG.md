@@ -22120,3 +22120,6 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
   declaration). Domain green but N2 (the known timeout).
 - Sheet: shots/seatB/item24_25_grey_sets.png (Red brick, Grey brick, White rocks, Grey stone on T1 7x9 + Soldier band,
   and Grey stone unframed).
+- Follow-up (advisor ruling by precedent: a stone set's bands are the stone ring, as White rocks): Set 5 declares
+  `bandLayout: 'fieldstone'`; contour-bands setBandPattern reads `set.bandLayout || set.layout`, so Grey stone frames
+  lay fieldstone rings with grey faces (a bond set keeps course bands -- tested). Sheet re-rendered.

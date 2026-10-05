@@ -76,6 +76,13 @@ describe('grey sets (T86 items 24/25)', () => {
     expect(b).toEqual(a);
     expect(c).not.toEqual(a);
   });
+  it('Grey stone frame bands are stone rings (bandLayout fieldstone) with grey faces', () => {
+    const r = lay(STONE, { frame });
+    const ids = new Set(STONE.samples.map((s) => s.id));
+    expect(r.frameBricks.length).toBeGreaterThan(20);
+    expect(r.frameBricks.every((b) => String(b.id).startsWith('fieldstone-') && ids.has(b.sampleId))).toBe(true);
+    expect(lay(GREY, { frame }).frameBricks.some((b) => String(b.id).startsWith('fieldstone-'))).toBe(false); // a bond set keeps course bands
+  });
   for (const set of [GREY, STONE]) {
     it(`${set.name} lays with only its own samples`, () => {
       const ids = new Set(set.samples.map((s) => s.id));
