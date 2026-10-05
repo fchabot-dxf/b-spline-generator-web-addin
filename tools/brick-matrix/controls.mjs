@@ -78,6 +78,10 @@ export const BRICK_CONTROLS = [
   { name: 'Large stones 0.6 (Fieldstone)', kind: 'editor', tool: 'wall', do: set('brickLargeStones', 0.6), expect: LAYOUT, introducedBy: '88c7616' },
   { name: 'Wall pattern: None', kind: 'editor', tool: 'wall', do: click('brickPattern_none'), expect: LAYOUT },
   { name: 'Wall pattern: Stretcher', kind: 'editor', tool: 'wall', do: click('brickPattern_stretcher'), expect: LAYOUT },
+  // T86 item 29 + F35 item 13 (37, fb-app 8d8d3f1): the wall rotation chips; 45 then back to 0 -- `backTo`: this row's
+  // canvas and 3D must equal the named row's BEFORE-state (the same lay as before the turn)
+  { name: 'Wall rotation 45', kind: 'editor', tool: 'wall', do: click('brickWallRotation_45'), expect: LAYOUT, introducedBy: '8d8d3f1' },
+  { name: 'Wall rotation 0 (back)', kind: 'editor', tool: 'wall', do: click('brickWallRotation_0'), expect: { ...LAYOUT, backTo: 'Wall rotation 45' }, introducedBy: '8d8d3f1' },
   // Level (audit v2 N6; item 27): an editor Level change re-lays at once like every editor setting (LEVEL
   // profile: no pending dot, relief changes); the 2D canvas is not checked (a level is height only)
   { name: 'Wall Level +1/8', kind: 'editor', tool: 'wall', do: set('brickLevel_wall', 0.125), expect: LEVEL, introducedBy: '90a1483' },

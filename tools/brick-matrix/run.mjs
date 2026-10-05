@@ -260,10 +260,13 @@ async function record(c, obs) {
   const v = { pending: verdict(obs.pending, c.expect.pending), canvas: verdict(obs.canvas, c.expect.canvas), threeD: verdict(obs.threeD, c.expect.threeD) };
   if (c.expect.sets) v.set = obs.setsOk ? 'PASS' : 'FAIL'; // item 23: per-element brick sets
   if (c.expect.reads) v.reads = obs.readsOk ? 'PASS' : 'FAIL'; // per-element joint (fb-app 1404b72)
+  // `backTo`: the named earlier row's before-state (canvas c0 and 3D z0) is where this row must land
+  const back = c.expect.backTo ? rows.find((r) => r.name === c.expect.backTo) : null;
+  if (c.expect.backTo) v.back = back && back.hashes && obs.hashes.c1 === back.hashes.c0 && obs.hashes.z1 === back.hashes.z0 ? 'PASS' : 'FAIL';
   const row = { name: c.name, kind: c.kind, tool: c.tool || null, result: obs.result, observed: { pending: obs.pending, canvas: obs.canvas, threeD: obs.threeD, sets: obs.sets, reads: obs.reads }, expect: c.expect, verdict: v, hashes: obs.hashes };
   rows.push(row);
   const fail = Object.values(v).includes('FAIL') || obs.result !== 'ok';  // e.g. 'MISSING' / 'DISABLED' control
-  console.log(`${fail ? 'FAIL' : 'pass'}  ${c.name.padEnd(34)} pending ${v.pending.padEnd(4)} canvas ${v.canvas.padEnd(4)} 3D ${v.threeD}${v.set ? ' sets ' + v.set + ' ' + JSON.stringify(obs.sets) : ''}${v.reads ? ' reads ' + v.reads + ' ' + JSON.stringify(obs.reads) : ''}${obs.result !== 'ok' ? '  (' + obs.result + ')' : ''}`);
+  console.log(`${fail ? 'FAIL' : 'pass'}  ${c.name.padEnd(34)} pending ${v.pending.padEnd(4)} canvas ${v.canvas.padEnd(4)} 3D ${v.threeD}${v.set ? ' sets ' + v.set + ' ' + JSON.stringify(obs.sets) : ''}${v.reads ? ' reads ' + v.reads + ' ' + JSON.stringify(obs.reads) : ''}${v.back ? ' back ' + v.back : ''}${obs.result !== 'ok' ? '  (' + obs.result + ')' : ''}`);
   if (fail) await shot(`FAIL_${c.name.replace(/[^a-z0-9]+/gi, '_')}`);
 }
 
