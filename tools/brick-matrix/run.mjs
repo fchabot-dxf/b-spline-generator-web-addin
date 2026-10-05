@@ -407,7 +407,16 @@ async function runPersistence() {
   for (const step of PERSIST_BOARD.setup) {
     if (step.tool) { await openBrickTool(step.tool); continue; }
     if (step.stroke) { await click('brickTool_brush', 300); await drag(step.stroke); continue; }
-    if (step.apply) { await apply(); await heightsSettled(null); continue; }
+    if (step.apply) {
+      // the declared board must really lay every kind it checks, BEFORE anything is persisted: an empty kind
+      // would make its "painted" row pass vacuously or fail as 0/0 far from the cause (MEASURED: 1.5 in bricks +
+      // three White Rocks rings filled T1 completely once item 16(c) stopped the wall filling a bogus region)
+      const counts = JSON.parse(await js(`JSON.stringify(Object.fromEntries(${JSON.stringify(PERSIST_BOARD.bricks.map((b) => b.kind))}.map((k) => [k, window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="' + k + '"]').length || 0])))`));
+      const empty = Object.entries(counts).filter(([, n]) => !n).map(([k]) => k);
+      if (empty.length) throw new Error(`setup: the persistence board lays no ${empty.join(', ')} bricks (${JSON.stringify(counts)})`);
+      console.log(`persistence board laid ${JSON.stringify(counts)}`);
+      await apply(); await heightsSettled(null); continue;
+    }
     if (step.sidebar) {
       if (await editorOpen()) await apply();
       await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);

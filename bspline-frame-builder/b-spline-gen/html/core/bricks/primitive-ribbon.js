@@ -1005,7 +1005,98 @@ function simpleEndpointAtDepth(prim, depth) {
   return prim.type === 'line' ? off.p1 : { x: off.cx + off.r * Math.cos(prim.theta2), y: off.cy + off.r * Math.sin(prim.theta2) };
 }
 
+// ---------------------------------------------------------------- T86 item 16(c): the band yields at a pinch
+// Where a band is deeper than half the local gap (a neck, a waist), offset curves from OPPOSITE sides of the
+// contour cross: the boundary at that depth loops back over itself, enclosing an inside-out region (the two
+// bands overlapping) and possibly cutting the remaining interior into separate lobes. MEASURED on main: 50 of
+// 76 (19 templates x 4 depths) inner boundaries self-intersecting; 18 still after the arc-span fix, all
+// opposite-side collisions (T14/T18/T19 from 1 in, more at 1.25/1.5). Standard offset-curve cleanup:
+// repeatedly cut off the SMALLEST self-crossing loop; a loop wound against the contour is band overlap and is
+// dropped, a loop wound with it is a real pinched-off lobe and is kept. The surviving lobes are joined by
+// zero-width bridges -- the same slit technique contour-bands.js ribbonSlitPolygon uses for the ring -- so
+// callers still get ONE polygon and every lobe keeps its wall fill.
+const PINCH_MIN_AREA = 1e-6; // sq in: a loop smaller than this is numerical noise, not a region
+
+function polyArea(pts) {
+  let a = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) a += pts[j].x * pts[i].y - pts[i].x * pts[j].y;
+  return a / 2; // positive = counter-clockwise in math axes
+}
+
+function properCrossing(a, b, c, d) {
+  const d1x = b.x - a.x, d1y = b.y - a.y, d2x = d.x - c.x, d2y = d.y - c.y;
+  const den = d1x * d2y - d1y * d2x;
+  if (Math.abs(den) < 1e-15) return null;
+  const t = ((c.x - a.x) * d2y - (c.y - a.y) * d2x) / den;
+  const u = ((c.x - a.x) * d1y - (c.y - a.y) * d1x) / den;
+  if (t <= 1e-9 || t >= 1 - 1e-9 || u <= 1e-9 || u >= 1 - 1e-9) return null;
+  return { x: a.x + t * d1x, y: a.y + t * d1y };
+}
+
+/** The self-crossing whose cut-off loop has the fewest vertices: { loop, rest }, or null when simple. */
+function smallestCrossingLoop(p) {
+  const n = p.length;
+  let best = null;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue; // adjacent through the wrap
+      const x = properCrossing(p[i], p[(i + 1) % n], p[j], p[(j + 1) % n]);
+      if (!x) continue;
+      const inner = j - i, outer = n - inner;
+      const size = Math.min(inner, outer);
+      if (best && best.size <= size) continue;
+      const between = p.slice(i + 1, j + 1); // p[i+1..j]
+      const around = [...p.slice(j + 1), ...p.slice(0, i + 1)]; // p[j+1..n-1], p[0..i]
+      best = inner <= outer
+        ? { size, loop: [x, ...between], rest: [x, ...around] }
+        : { size, loop: [x, ...around], rest: [x, ...between] };
+    }
+  }
+  return best;
+}
+
+function bridgeLobes(lobes) {
+  const sorted = [...lobes].sort((a, b) => Math.abs(polyArea(b)) - Math.abs(polyArea(a)));
+  let out = sorted[0];
+  for (const lobe of sorted.slice(1)) {
+    let bi = 0, bj = 0, bd = Infinity;
+    for (let i = 0; i < out.length; i++) for (let j = 0; j < lobe.length; j++) {
+      const d = Math.hypot(out[i].x - lobe[j].x, out[i].y - lobe[j].y);
+      if (d < bd) { bd = d; bi = i; bj = j; }
+    }
+    const rotated = [...lobe.slice(bj), ...lobe.slice(0, bj)];
+    out = [...out.slice(0, bi + 1), ...rotated, rotated[0], ...out.slice(bi)];
+  }
+  return out;
+}
+
+/** `points` (a closed polyline that may cross itself) -> one weakly-simple polygon of the regions wound like
+ *  `sign` (+1 counter-clockwise, -1 clockwise), or [] when none is left. */
+function untangleBoundary(points, sign) {
+  let p = points.slice();
+  const lobes = [];
+  for (let guard = 0; guard < 4 * points.length && p.length >= 3; guard++) {
+    const cut = smallestCrossingLoop(p);
+    if (!cut) break;
+    const a = polyArea(cut.loop);
+    if (Math.sign(a) === sign && Math.abs(a) > PINCH_MIN_AREA) lobes.push(cut.loop);
+    p = cut.rest;
+  }
+  const a = polyArea(p);
+  if (p.length >= 3 && Math.sign(a) === sign && Math.abs(a) > PINCH_MIN_AREA) lobes.push(p);
+  if (!lobes.length) return [];
+  return lobes.length === 1 ? lobes[0] : bridgeLobes(lobes);
+}
+
 export function boundaryAtDepth(primitives, depth) {
+  const points = rawBoundaryAtDepth(primitives, depth);
+  if (points.length < 3 || !(depth > 0)) return points;
+  // the contour's own winding (depth 0 never crosses itself) says which loops are real interior
+  const sign = Math.sign(polyArea(rawBoundaryAtDepth(primitives, 0))) || 1;
+  return untangleBoundary(points, sign);
+}
+
+function rawBoundaryAtDepth(primitives, depth) {
   const n = primitives.length;
   const liveIndices = [];
   for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives, i, depth)) liveIndices.push(i);
@@ -1045,15 +1136,28 @@ export function boundaryAtDepth(primitives, depth) {
   for (let k = 0; k < m; k++) {
     const prim = primitives[liveIndices[k]];
     const startPt = joints[k];
-    if (prim.type === 'line') {
-      points.push(startPt);
-    } else {
-      const offPrim = offsetPrimitive(prim, depth);
-      for (let s = 0; s < BOUNDARY_ARC_STEPS; s++) {
-        if (s === 0) { points.push(startPt); continue; }
-        const t = prim.theta1 + ((prim.theta2 - prim.theta1) * s) / BOUNDARY_ARC_STEPS;
-        points.push({ x: offPrim.cx + offPrim.r * Math.cos(t), y: offPrim.cy + offPrim.r * Math.sin(t) });
-      }
+    points.push(startPt);
+    if (prim.type === 'line') continue;
+    // T86 item 16(c): an arc is sampled only BETWEEN its own two joints at this depth -- from the joint
+    // with its previous neighbour to the joint with its next -- never across its full depth-0 angle
+    // range. MEASURED on T18 (7x9, band 0.75/1 in): the neck's large bottom arc (r 2.633 -> 1.883 at
+    // 0.75) meets the short vertical line beside it at a mitred joint well BEFORE its own theta2, and the
+    // old full-range samples ran on past that joint and back across the line's offset -- the
+    // self-intersecting inner boundary d3 located (WORK-LOG 8326c9f). If the two joints have crossed
+    // (the arc is used up at this depth), it contributes no samples, only its start joint.
+    const offPrim = offsetPrimitive(prim, depth);
+    const endPt = joints[(k + 1) % m];
+    const dir = prim.theta2 >= prim.theta1 ? 1 : -1;
+    const span = Math.abs(prim.theta2 - prim.theta1);
+    const wrap = (a) => { let v = a; while (v > Math.PI) v -= 2 * Math.PI; while (v <= -Math.PI) v += 2 * Math.PI; return v; };
+    const angleOf = (pt) => Math.atan2(pt.y - offPrim.cy, pt.x - offPrim.cx);
+    // the joints sit near the arc's own two ends, so each is measured LOCALLY from its own end
+    const uStart = dir * wrap(angleOf(startPt) - prim.theta1);
+    const uEnd = span + dir * wrap(angleOf(endPt) - prim.theta2);
+    if (!(uEnd > uStart)) continue;
+    for (let s = 1; s < BOUNDARY_ARC_STEPS; s++) {
+      const t = prim.theta1 + dir * (uStart + ((uEnd - uStart) * s) / BOUNDARY_ARC_STEPS);
+      points.push({ x: offPrim.cx + offPrim.r * Math.cos(t), y: offPrim.cy + offPrim.r * Math.sin(t) });
     }
   }
   return points;
