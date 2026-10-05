@@ -22445,3 +22445,52 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
   - Before: applyAccentCuts sized each cell from the piece's own length, which is right only for one-brick pieces. On a custom [2, 1/2, 1/2] course it cut the 2-brick piece in two and put a mark on a half.
   - Now pitch = L + J, and a piece spans (its length + J) / (unit x pitch) cells.
 - Tests: bricks-course-row-origin (8): 4/7 fail before the origin fix, and 1/1 before the cell fix. All 53 bricks-* files are green after.
+
+## H23 item 82 -- acceptance on the ruled shape (seat A / 77, 2026-10-05)
+- Fusion restarted by Fred after the boolean hang (fusion360-quirks 14e93c0); advisor deployed main 2b8a3c0 and gave
+  the GO. Fresh tagged scratch doc ('item82-acceptance', held by handle), the --carve capture replayed through the
+  deployed _handle_generate (frame dropped): Clean 13.771 in3 z 0.018..0.980, Stamped 15.916 in3 z 0.018..1.088 (same
+  as before). The WORKTREE engine ran through a sys.path swap + cam_engine/cam_utils purge restored in a finally
+  (verified afterwards: worktree not on sys.path), B-spline mode, skip_machine, templates applied separately.
+  Scratch-pad script: acc82.py (phases send / bodies / build / readback / legacy_corner / templates / gen / ops /
+  heights / close). No booleans.
+- FIRST BUILD found two real bugs (fixed in data / one writer, commit "acceptance fixes"):
+  1. Back's WCS Z axis points DOWN (0,0,-1) (the builder's existing axes swap); job_stockFixedZMode is read in the
+     setup frame, so 'bottom' put the box on the panel's world TOP: stock world z 1.088 .. -0.912, inherited by Top.
+     Now CAM_POSITION stock z_align = 'world_bottom', mapped through the resolved Z axis ('top' on Back).
+  2. Flag 1 measured: today's 'top 1' lands at Back (x min, y min, its frame top = world bottom) and Top (x MAX,
+     y min, world top). My declared points had Back z top and Top (x min, y max, z bottom). Corrected in DATA.
+- SECOND BUILD found a third: ensure_wcs_sketches deleted + recreated the plane/sketch under the same names, and the
+  MM built right after bound the OLD point (its copy's sketch: 2 points, the old position, referencePlane ->
+  'InternalValidationError : dcSketch'). Now the point is created once and moved IN PLACE on later BUILDs (plane
+  offset parameter + point.move). Live-measured only (no fake models the derive).
+- FINAL (fresh doc, create path; then both points knocked +1 in X / +0.5 in Z and re-BUILT -> moved back, readback
+  identical to the fresh build). Origins read in mm (workCoordinateSystem), shown here in inches:
+    B-spline Back : WCS = declared 'back' point (-4, -5, 0.0175), Z down; stock (own frame) X 0-10, Y 0-8, Z -2..0
+                    = the 'top 1' corner exactly; model Z -1.0706..0 (the back face flush with the stock face);
+                    fixed box exprs '(surfaceXHigh - surfaceXLow) + 1.0 in' / Y / '2.0 in', Z mode 'top'.
+    B-spline Top  : WCS = declared 'flipped' point (4, -5, 2.0175), Z up; stock (PreviousSetupStock, same MM)
+                    X 0-10, Y 0-8, Z -2..0 = the same physical box (world z 0.0175..2.0175); model Z -2..-0.9294;
+                    continueMachining true.
+  So: one stock (10 x 8 x 2 in = (7 + 1) x (9 + 1) x 2, on the panel bottom), each side's WCS on its declared point,
+  independent of the model bbox; build 8-12 s, report ok, errors [].
+- Templates (Fred's cloud ones) and heights, per op: strategy, then time / feed before -> after the 3D-only heights:
+    Back  Pocket back            pocket_clearing  'from highest of'/'from lowest of'      685.6 s / 1633.3 in -> 685.6 / 1633.3
+    Back  Morphed Spiral         morphed_spiral   'from stock top'/'from surface bottom'  101.8 s / 1013.8 in -> 101.8 / 1013.8
+    Top   Pocket front FRED      pocket_clearing  highest of / lowest of                  714.3 s / 5848.1 in -> 714.3 / 5848.1
+    Top   Morphed Spiral         morphed_spiral   stock top / surface bottom              107.4 s / 1067.1 in -> 107.4 / 1067.1
+    Top   Pocket front deloge    pocket_clearing  highest of / lowest of                  263.8 s / 1449.0 in -> 263.8 / 1449.0
+  All five templates are 3D strategies (no 2D op exists in them today); after the write every op reads 'from stock
+  top' / 'from stock bottom' / offset '0 in', evaluated top 0 / bottom -2.0 in, isToolpathValid True, no warning,
+  and the toolpaths are unchanged to the 0.1 s: the bottom is only a limit there. Top generated with no warning
+  (PreviousSetupStock inside one MM: no "Cannot verify that the stock is transferred").
+- 13 x 10 finding CONFIRMED on a real build: the Frame setup (fixed_box, dims never written) has stock X 0-13,
+  Y 0-10 (exprs '13in' / '10in', Fusion's defaults) around a 10 x 8 model. Frame untouched in this item.
+- Shots (shots/seatA): h23_item82_acceptance_bspline_mm_stamped_panel_iso.png (the real Stamped panel in the
+  B-spline MM with its stamp artwork sketches; the stock box / WCS triad do not render outside the setup editor, so
+  the readback above is the evidence for them); h23_item82_acceptance_mm_stock_placeholder_iso.png (the MM-Stock
+  placeholder, 8 x 10 x 2 in from CAM_POSITION). fusion_screenshot returned the stale active-MM view twice; the
+  second shot is viewport.saveAsImageFile after mm.activate().
+- Hygiene: two scratch docs created and closed by handle; Fred's 'Untitled' untouched and re-activated; holder none.
+- Candidate quirks, ONE observation each (not recorded in the skill yet): job_stockFixedZMode is read in the setup's
+  frame; an MM built after a same-name delete + recreate binds the deleted geometry; workCoordinateSystem reads mm.
