@@ -1660,6 +1660,7 @@ function renderBrushPresetList(container) {
     btn.className = 'cad-btn';
     btn.id = `brickBrushPreset_${preset.id}`;
     btn.textContent = preset.label;
+    btn.style.cssText = 'height:auto; min-height:22px; white-space:normal; line-height:1.25; padding:3px 6px;'; // audit v3 #2
     btn.addEventListener('click', () => {
       P.brickSettings.brushBandPreset = preset.id;
       syncBrushPresetButtons();

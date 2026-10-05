@@ -192,4 +192,12 @@ describe('item 22 slice 3: Clear finds bricks on any layer', () => {
     expect(ed._layers.map((l) => l.id)).toContain('0'); // holds the bricks
     expect(ed._layers.map((l) => l.id)).not.toContain('5'); // art only: gone
   });
+  it('audit v3 #1: a kept plain layer holding bricks becomes the active one -- no second "Layer 1"', () => {
+    const ed = fakeEditor();
+    art(ed, '0'); art(ed, '5');
+    runBricks(ed, P.brickSettings, null);
+    clearArtworkLayers(ed);
+    expect(ed._layers.map((l) => l.name)).toEqual(['Layer 1']);
+    expect(ed._activeLayer).toBe('0');
+  });
 });

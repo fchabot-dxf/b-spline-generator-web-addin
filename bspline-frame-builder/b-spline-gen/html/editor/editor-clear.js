@@ -30,6 +30,10 @@ export function clearArtworkLayers(editor) {
   const kept = (editor._layers || []).filter((l) => isBricksLayer(l) || holding.has(String(l.id)));
   editor._layers = kept;
   editor._activeLayer = null;
+  // audit v3 #1: a kept PLAIN layer (it holds bricks, slice 3) is already an art layer -- it becomes the active one;
+  // a fresh "Layer 1" is added only when none is left (none kept, or only the legacy brick layer), as before
+  const plain = kept.find((l) => !isBricksLayer(l));
+  if (plain) { setActiveLayer(editor, plain.id); return; }
   // a new board's first art layer (its default name counts every layer, the Bricks one too); the caller's commit
   // makes it one undo step
   const layer = addLayer(editor, { skipUndo: true, name: 'Layer 1' });

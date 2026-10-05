@@ -14408,3 +14408,21 @@ WallPattern = {
 - **NEXT-SESSION-fb-app.md** (the advisor's housekeeping ask; committed by path):
   - Ticked with shas: F26-2, 14, 23, 24, 26, 30, 31, 31c, 31d, 32, 33, 34, 35.
   - Left open with the engine blocker named: 13 (rotation, T86 29), 22 (slice 2, T86 18), 29 (rustic, T86 22), 31b (accentCuts), 31e (customBond). Item 9 already names its blocker.
+
+## turn 261: band rows = band-capable only (d471af6) + BRICK TAB AUDIT v3
+- **Band rows** (advisor approved my NOTICED): `bandCanLay(def)` = course / course-alternating / bandCapable. A band row lists only those (Wall grid unchanged). The greyed "Wall only for now" branch is removed; my frame-corners-panel test that pinned it is INVERTED to assert absence (fails on the old code).
+- **Audit v3:** 7x9 T1, Wall + three_band (Layer 1) + a Brush + a Raised stroke (Layer 2), art on both. Probes audit3_desktop.mjs / audit3_layout.mjs at 1500 x 1100 (sidebar 260 and 572 = 2.2x) and 900 x 1600.
+  - **(a)** every tool's own section scanned (greyed without a tooltip, zero size, past the right edge, clipped text, nameless icon buttons): 0 automated hits at all three sizes. By eye, two buttons spill text: #2, #3.
+  - **Dead-control sweep** (canvas + state hash) of the new controls: all live. At 1¼ in the multi-band presets lay the same one band (band-fit): #5, not dead.
+  - **(b)** quick settings at 260 / 572 wrap cleanly. A "left-aligned icons" finding was a FALSE POSITIVE: measured, the svg sits at x 19.5 in a 75 px button (centred) before and after. The CSS change for it was reverted, not shipped.
+  - **(c) Clear:** all / frame / photo / bricks correct on two layers, each undoes fully. Artwork made a SECOND "Layer 1": #1.
+  - **(d) Select:** Wall / Frame show "Editing: this Wall/Frame" + the outline. Brush / Raised have no Select sub-tool in the Brick tab: #4.
+  - **(e) Phone 900:** the 2D/3D pill is visible and clear of the toolbar; the drawer opens at peek (header + Generate), sections below the fold as designed.
+- **Fixed** (one commit):
+  - #1 clearArtworkLayers: a kept plain layer holding bricks becomes the active one; a fresh "Layer 1" only when none is kept (or only the legacy brick layer). The new test fails on the old code; h20 (legacy) stays green.
+  - #2 brush-width preset buttons: auto height so a long label wraps inside.
+  - #3 "Click bricks" + "Custom…": auto height.
+- **For the advisor** (not fixed, features / product calls):
+  - #4 no Select for Brush / Raised strokes in the Brick tab;
+  - #5 at a size where band-fit keeps only one band, every multi-band preset looks the same (only the note says so): grey them, or say it on the preset tooltips?
+- **Sheet:** ~/.bspline-status/shots/seat37/brick_tab_audit_v3.png (numbered red boxes, before | after).
