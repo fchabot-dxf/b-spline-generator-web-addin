@@ -220,12 +220,25 @@ let patternCounter = 0;
  *  stretched" for free from the SVG spec -- no manual crop maths needed for
  *  the visible fill (unlike the height-detail grid above, which computes its
  *  own crop since it isn't SVG-rendered). */
-export function brickFillPaint(editor, setId, sampleId, flip) {
+//
+// T86 item 16(b) (reopened: "the wall drops bricks at 1.25 in+"): the pattern tile is the brick's bounding box
+// (patternUnits objectBoundingBox) but the <image> inside it is sized in the CONTENT units, which default to user
+// space -- inches. A 1x1 image is a 1-inch square: it covers a 3/4 in brick, but a 1.5 x 0.4 in brick only for
+// its first inch, and the board shows through the rest. MEASURED with every laid polygon drawn over the editor
+// shot (T1, 1.5 in, single soldier): every grey patch lies INSIDE a wall or frame polygon. So the image square
+// is `span` inches, the brick's longest side rounded UP to a quarter inch, never under 1 -- every brick up to
+// 1 in keeps exactly today's pattern (id and look); larger bricks get their own, big enough to cover them.
+function paintSpanIn(sizeIn) {
+  return Math.max(1, Math.ceil((Number(sizeIn) || 0) * 4 - 1e-9) / 4);
+}
+
+export function brickFillPaint(editor, setId, sampleId, flip, sizeIn = 1) {
   const set = brickSetById(setId);
   const sample = set && set.samples && set.samples.find((s) => s.id === sampleId);
   if (!sample || typeof document === 'undefined') return null;
 
-  const key = `${setId}:${sampleId}:${flip ? 1 : 0}`;
+  const span = paintSpanIn(sizeIn);
+  const key = span === 1 ? `${setId}:${sampleId}:${flip ? 1 : 0}` : `${setId}:${sampleId}:${flip ? 1 : 0}:${span}`;
   const svgRoot = editor._sketchLayer.node.ownerSVGElement || editor._sketchLayer.node.closest('svg');
   if (!svgRoot) return null;
 
@@ -245,12 +258,12 @@ export function brickFillPaint(editor, setId, sampleId, flip) {
   pattern.setAttribute('width', '1');
   pattern.setAttribute('height', '1');
   const image = document.createElementNS(SVG_NS, 'image');
-  image.setAttribute('width', '1');
-  image.setAttribute('height', '1');
+  image.setAttribute('width', String(span));
+  image.setAttribute('height', String(span));
   image.setAttribute('preserveAspectRatio', 'xMidYMid slice');
   image.setAttributeNS(XLINK_NS, 'href', sample.image);
   image.setAttribute('href', sample.image);
-  if (flip) image.setAttribute('transform', 'translate(1,0) scale(-1,1)');
+  if (flip) image.setAttribute('transform', `translate(${span},0) scale(-1,1)`);
   pattern.appendChild(image);
   defs.appendChild(pattern);
   PATTERN_IDS.set(key, id);
