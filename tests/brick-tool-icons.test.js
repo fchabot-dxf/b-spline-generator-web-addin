@@ -4,7 +4,7 @@
  * toolMiniBricks). currentColor only, so the button's idle / active colour drives it. Not wired yet (step 2).
  */
 import { describe, it, expect } from 'vitest';
-import { BRICK_TOOL_ICONS, brickToolIconSvg, RAISED_DEPTHS } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-tool-icons.js';
+import { BRICK_TOOL_ICONS, brickToolIconSvg, RAISED_DEPTHS, RAISED_V3 } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-tool-icons.js';
 import { toolMiniBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
 const TOOLS = ['brush', 'raisedBrush', 'wall', 'frame', 'scissors', 'stripe']; // main/brick-panel.js BRICK_TOOLS
@@ -52,12 +52,32 @@ describe('Brick tool icons', () => {
 describe('sheet v2: the Raised brush depth treatments (Fred: "needs a bit more perspective")', () => {
   it('each declared treatment draws something UNDER the run (offset copies, a shadow band, side faces), still currentColor', () => {
     expect(Object.keys(RAISED_DEPTHS)).toEqual(['extrude', 'shadow', 'sides']);
-    const flat = parse(brickToolIconSvg('raisedBrush', 20, { lifted: false })).querySelectorAll('*').length;
+    const flat = parse(brickToolIconSvg('raisedBrush', 20, { mini: { lifted: false } })).querySelectorAll('*').length;
     for (const id of Object.keys(RAISED_DEPTHS)) {
-      const svg = brickToolIconSvg('raisedBrush', 20, { lifted: false, depth: id });
+      const svg = brickToolIconSvg('raisedBrush', 20, { mini: { lifted: false, depth: id } });
       expect(parse(svg).querySelectorAll('*').length, id).toBeGreaterThan(flat);
       expect(svg, id).not.toMatch(/#[0-9a-f]{3,6}|rgb\(/i);
     }
     expect(brickToolIconSvg('raisedBrush')).toBe(brickToolIconSvg('raisedBrush', 20, null)); // no override = the declared icon
+  });
+});
+
+describe('sheet v3: the Raised brush as a one-row run with ONE brick raised (Fred: "2 or 3; with 3, the middle one")', () => {
+  it('2 bricks -> the second raised; 3 bricks -> the middle raised; a side face under it; the paintbrush, no arrow', () => {
+    expect(toolMiniBricks('row2')).toHaveLength(2);
+    expect(toolMiniBricks('row3')).toHaveLength(3);
+    for (const [id, v] of Object.entries(RAISED_V3)) {
+      const svg = brickToolIconSvg('raisedBrush', 40, v);
+      const doc = parse(svg);
+      const polys = [...doc.querySelectorAll('polygon')];
+      expect(polys.length, id).toBe(v.mini.kind === 'row2' ? 2 : 3);
+      expect(doc.querySelectorAll('rect[opacity]').length, id).toBe(1); // the raised brick's side face
+      expect(svg, id).not.toMatch(/M20\.5 22v-6\.5/); // no up arrow
+      // the raised one sits higher than the others
+      const top = (p) => Math.min(...p.getAttribute('points').split(' ').map((q) => +q.split(',')[1]));
+      const tops = polys.map(top); // drawn left to right: the 2nd of 2 (last) and the 2nd of 3 (middle) is the raised one
+      expect(Math.min(...tops)).toBe(tops[1]);
+      expect(tops.filter((t) => t === tops[1])).toHaveLength(1);
+    }
   });
 });

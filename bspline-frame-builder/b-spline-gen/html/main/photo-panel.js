@@ -238,6 +238,22 @@ function loadImage(urlOrDataUrl, edits, tweaks, reliefIn = DEFAULT_PHOTO_RELIEF_
 
 /** F35 item 28: the editor's Clear > Photo -- no photo, as on a new board (core/state.js defaults: no image,
  *  no edits, no pattern); the controls, the preview and the terrain follow through the usual change. */
+/** F35 item 28: the photo's own state (for the Clear's one-step undo). */
+export function photoState() {
+  return { url: P.photoImageDataUrl ?? null, edits: JSON.parse(JSON.stringify(P.photoEdits || [])), patternId: P.photoPatternId ?? null };
+}
+/** Put a photoState() back (the Clear's undo), with the same follow-through as a clear. */
+export function restorePhoto(state) {
+  P.photoImageDataUrl = state.url;
+  P.photoEdits = JSON.parse(JSON.stringify(state.edits || []));
+  P.photoPatternId = state.patternId;
+  syncControlsFromState();
+  syncSaveButtonState();
+  if (state.url) ensurePhotoDecoded(state.url).then(() => { drawPreview(); notifyChange(); });
+  drawPreview();
+  notifyChange();
+}
+
 export function clearPhoto() {
   P.photoImageDataUrl = null;
   P.photoEdits = [];

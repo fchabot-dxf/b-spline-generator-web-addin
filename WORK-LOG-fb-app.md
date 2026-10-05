@@ -13034,3 +13034,38 @@ Contract agreed with 88 by DM (88's engine half: rock-bands-fieldstone 39ca112, 
   set-3 bricks; Fieldstone band => every band set 3; a per-element row; PERSIST_BOARD clicks
   brickPattern_fieldstone; brickSetRed -> brickSet_1).
 - Server 8851 (my own task) stopped.
+
+### turn 217 addendum -- the Clear is ONE undo step (item 28 follow-up) + the Raised brush sheet v3 (seat 37)
+
+**Clear = one step in the global undo.** 88's rows (matrix-clear-rows 67bf49e) are the spec.
+- How it works (editor-clear-menu.js):
+  - `runClear` counts every `editorCommit` fired inside the Clear and records `_lastClear` = { editorSteps,
+    frameSteps (the Frame-tab history depth delta), the photo it replaced, the frame + photo it left }.
+  - `undoLastClear` pops exactly those editor steps, undoFrame()s those frame steps, and restorePhoto()s
+    (photo-panel.js gains `photoState` and `restorePhoto`).
+  - Interception: a window CAPTURE Ctrl+Z (ahead of the editor's and the Frame tab's own handlers) and a capture
+    click on #editorUndo.
+- The bricks follow the frame:
+  - A Clear Frame (bricks kept) re-lays the bricks on the rectangle INSIDE the Clear, synchronously
+    (`generateBricks()`), not after the 350 ms settle.
+  - Its undo therefore takes the re-lay back too, and the bricks return to the template.
+- Voiding: it is only the latest change while nothing else changes. A later editorCommit or frameRecordChanged, or
+  a frame/photo state that differs from what the Clear left, voids it, and normal undo applies.
+- Tests: h20-clear-scoped gains 5 tests (All, Frame + re-lay, Photo touching nothing else, voiding, Ctrl+Z ahead of
+  a bubble handler). 17/17.
+- 88's matrix clear group (run with `--root` = this tree): 11 rows / 0 FAIL. With the fix reverted it gives exactly
+  88's 3 FAILs.
+
+**Raised brush sheet v3** (Fred: "2 OR 3 bricks; with 3 the MIDDLE one raised"). Nothing is wired.
+- `RAISED_V3` in brick-tool-icons.js declares the two candidates:
+  - twoBricks: row2, the second brick raised;
+  - threeBricks: row3, the middle brick raised.
+- Both: the paintbrush glyph, no arrow, the raised brick lifted with its side face showing.
+- The runs are new TOOL_MINI_RUNS row2 / row3 (stretcher_1, 2 or 3 x 0.82 in).
+- Mini options added: `raise` ('last' | 'middle'), `lift`, `yScale` (yScale 1.8 gives brick 2:1 proportions;
+  3 read as cubes).
+- `brickToolIconSvg`'s override is now { glyph?, mini? }; the v2 tests are updated, and a new v3 test checks the
+  polygon count, one side face, no arrow and the raised brick highest. 7/7.
+- Shot: shots/seat37/f35item24_icon_sheet_v3_raised.png (20 + 40 px, idle + active).
+
+**Fast tier (whole vitest run): 262 files, 4327 passed, 0 failed.**
