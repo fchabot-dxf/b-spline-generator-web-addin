@@ -14426,3 +14426,22 @@ WallPattern = {
   - #4 no Select for Brush / Raised strokes in the Brick tab;
   - #5 at a size where band-fit keeps only one band, every multi-band preset looks the same (only the note says so): grey them, or say it on the preset tooltips?
 - **Sheet:** ~/.bspline-status/shots/seat37/brick_tab_audit_v3.png (numbered red boxes, before | after).
+
+## turn 261 (amendment): F35 item 13 Wall rotation chips
+- **Declared:** `WALL_ROTATIONS = [0, 45, 90]` (main/brick-panel.js). Static `#brickWallRotationRow` sits right under the Wall pattern grid; its chips `brickWallRotation_<deg>` are rendered from the declaration.
+- **State:** `P.brickSettings.wallRotationDeg` (default 0) is a plain settings key like `pattern`. It persists with the session and rides in each wall record's settings attr (elementSettings spreads settings). The matrix neutral set (controls.mjs `neutralNewFields`) gets `wallRotationDeg: 0` in the same commit.
+- **Engine input:** `_generateAndDraw` sets `input.rotationDeg` only when non-zero, so 0 leaves the input exactly as today (88's byte-identical contract).
+- **Gate:** BRICK_CONTROL_REQUIRES `{brickWallRotationRow, engineOption rotationDeg, hides}`. Hide rules are applied by the row's own sync (as for Rustic), so renderWallRotation calls `_hiddenUntilMet`. My first draft missed that and the test caught it.
+- **Tests:**
+  - wall-rotation-panel: declaration, hidden until the option is listed, chips + active state, a click persists and re-lays, an undeclared angle is ignored, neutral set.
+  - wall-rotation-input: 45/90 reach generateBricks; 0/missing add no key.
+  - Against the pre-change files: 5/6 fail. The 6th (0 = no key) pins something already true.
+- **Live** (scratch worktree = fb-app + origin/pattern-rotation 8d26056, port 8852; removed afterwards, server stopped), on the 7x9 default board:
+  - The row shows, 0 active.
+  - Running bond 0: canvas 4c894654, 3D 969be263 (59 bricks).
+  - Running bond 45: canvas 63a40d47, 3D 3cda31a8 (65).
+  - Running bond 0 again: 4c894654 / 969be263, exactly the baseline.
+  - Herringbone 0 → 45: canvas c5cbab52 → 4e8da265, 3D 2bc89c1b → 17f61c92.
+  - 0 errors.
+- **Shots** (~/.bspline-status/shots/seat37): item13_running_bond_45_editor.png, item13_herringbone_45_editor.png, item13_herringbone_45_3d.png.
+- **Noticed:** the herringbone 45 3D shows a few "thin 0.065-0.071 in" markers (the existing thin-piece check on rotated edge cuts). These are not new machinery.

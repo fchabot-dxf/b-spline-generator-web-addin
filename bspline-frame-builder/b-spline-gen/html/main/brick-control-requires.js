@@ -28,6 +28,8 @@ export const BRICK_CONTROL_REQUIRES = [
     why: 'Rustic coursing is laid by the engine (seat B, T86 item 22) -- hidden until it reads it' },
   { controls: ['brickSubTool_wall_area'], requires: { engineOption: 'wallRegion' }, hides: true,
     why: 'Painting wall areas needs the engine\'s strokes-to-region op (seat B, T86 item 18) -- hidden until it exists' },
+  { controls: ['brickWallRotationRow'], requires: { engineOption: 'rotationDeg' }, hides: true,
+    why: 'Pattern rotation is laid by the engine (seat B, T86 item 29) -- hidden until it reads rotationDeg' },
   { controls: ['brickFrameBandsNoteRow'], requires: { engineOption: 'bandFit' }, hides: true,
     why: 'The band-fit note comes from the engine\'s fit rule (seat B, T86 item 28) -- hidden until it exists' },
   { controls: ['brickRaisedMode_grout'], requires: { engineOption: 'groutCut' }, hides: true,

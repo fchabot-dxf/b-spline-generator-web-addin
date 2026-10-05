@@ -908,6 +908,9 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   // F35 item 29 (a): the Wall's Rustic amount, for a running bond only (0 = absent = today's clean coursing)
   const rustic = Number(settings.rusticByElement && settings.rusticByElement.wall) || 0;
   if (rustic > 0 && isRunningBond(settings.pattern)) input.rustic = rustic;
+  // F35 item 13: the Wall pattern's rotation (wall only; 0 = absent = today's lay, byte-identical)
+  const rotationDeg = Number(settings.wallRotationDeg) || 0;
+  if (rotationDeg) input.rotationDeg = rotationDeg;
   const exclusions = kinds.includes('wall') ? brushExclusions(editor) : [];
   if (exclusions.length) input.exclusions = exclusions;
 

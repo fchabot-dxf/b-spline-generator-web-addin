@@ -296,6 +296,7 @@ export const MIGRATION = {
     frameBandAccents: 'empty', brushAccent: { preset: 'none', levelIn: 0.0625, clicks: [] }, // per-element accents (ed618f3)
     frameCorner: null, // the Frame's corner pick (f0e3728): null = the preset's own
     patternParams: {}, // a pattern's declared params, per pattern (37: F35 item 14); {} = every pattern's defaults
+    wallRotationDeg: 0, // the Wall pattern's rotation (37: F35 item 13); 0 = as laid
   },
   introducedBy: 'b75e836',
 };

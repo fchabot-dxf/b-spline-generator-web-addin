@@ -1787,6 +1787,39 @@ function syncWallPatternButtons() {
   syncLargeStonesRow();
   syncRusticRows();
   renderPatternParams();
+  renderWallRotation();
+}
+
+/** F35 item 13: the Wall pattern's ROTATION, declared: the chips the Wall section offers (degrees), 0 = as laid. */
+export const WALL_ROTATIONS = Object.freeze([0, 45, 90]);
+function renderWallRotation() {
+  const row = document.getElementById('brickWallRotationRow');
+  if (!row) return;
+  row.style.display = _hiddenUntilMet('brickWallRotationRow') ? 'none' : 'flex';
+  row.innerHTML = '';
+  const label = document.createElement('span');
+  label.textContent = 'Rotation';
+  label.style.cssText = 'font-size:10px; opacity:0.65; width:70px;';
+  row.appendChild(label);
+  const current = Number(P.brickSettings.wallRotationDeg) || 0;
+  for (const deg of WALL_ROTATIONS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cad-btn' + (deg === current ? ' active' : '');
+    b.id = `brickWallRotation_${deg}`;
+    b.textContent = `${deg}\u00b0`;
+    b.title = deg ? `Turn the wall pattern ${deg}\u00b0` : 'The wall pattern as laid (not turned)';
+    b.style.cssText = 'flex:0 0 auto; min-width:0; width:auto; padding:2px 10px;';
+    b.addEventListener('click', () => setWallRotation(deg));
+    row.appendChild(b);
+  }
+}
+/** F35 item 13: turn the Wall pattern (a WALL_ROTATIONS angle) -- re-lays at once. */
+export function setWallRotation(deg, commit = 'generate') {
+  if (!WALL_ROTATIONS.includes(deg)) return;
+  P.brickSettings.wallRotationDeg = deg;
+  renderWallRotation();
+  commitBrickSetting(commit);
 }
 
 /** F35 item 14: the active Wall pattern's declared params (BRICK_PATTERNS[id].params) as chip rows under the grid --
