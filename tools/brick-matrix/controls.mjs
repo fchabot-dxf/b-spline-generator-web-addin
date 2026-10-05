@@ -71,13 +71,14 @@ export const BRICK_CONTROLS = [
   { name: 'Octagon + square: ratio S', kind: 'editor', tool: 'wall', do: click('brickPatternParam_ratio_0'), expect: LAYOUT, introducedBy: '59550fe' },
   { name: 'Octagon + square: ratio L', kind: 'editor', tool: 'wall', do: click('brickPatternParam_ratio_2'), expect: LAYOUT, introducedBy: '59550fe' },
   { name: 'Wall pattern: Fieldstone', kind: 'editor', tool: 'wall', do: click('brickPattern_fieldstone'), expect: { ...LAYOUT, sets: { wall: 3 }, reads: { brickGroutWidth: ROCK_SET.grout.widthIn } } },
-  // T86 item 25 + 37's a30a605: Coursed rubble picks Set 5 (Grey stone) the way Fieldstone picks Set 3
-  { name: 'Wall pattern: Coursed rubble', kind: 'editor', tool: 'wall', do: click('brickPattern_coursed_rubble'), expect: { ...LAYOUT, sets: { wall: 5 } }, introducedBy: 'a30a605' },
   // per-element joint: the Frame tool shows the frame's own (Red Brick) joint while the wall is rock
   { name: 'Frame tool shows its own joint', kind: 'editor', tool: 'wall', do: click('brickTool_frame'), expect: { ...E(false, false, false), commit: 'at once', reads: { brickGroutWidth: RED_SET.grout.widthIn } }, introducedBy: '1404b72' },
   { name: 'Back to the Wall tool', kind: 'editor', tool: 'wall', do: click('brickTool_wall'), expect: { ...E(false, false, false), commit: 'at once', reads: { brickGroutWidth: ROCK_SET.grout.widthIn } }, introducedBy: '1404b72' },
   // shown only for a fieldstone wall (White Rocks or the Fieldstone pattern) -- hence right after the row above
   { name: 'Large stones 0.6 (Fieldstone)', kind: 'editor', tool: 'wall', do: set('brickLargeStones', 0.6), expect: LAYOUT, introducedBy: '88c7616' },
+  // T86 item 25 + 37's a30a605: Coursed rubble picks Set 5 (Grey stone) the way Fieldstone picks Set 3 (after the
+  // fieldstone rows: rows run in sequence, and Large stones needs the Fieldstone wall)
+  { name: 'Wall pattern: Coursed rubble', kind: 'editor', tool: 'wall', do: click('brickPattern_coursed_rubble'), expect: { ...LAYOUT, sets: { wall: 5 } }, introducedBy: 'a30a605' },
   { name: 'Wall pattern: None', kind: 'editor', tool: 'wall', do: click('brickPattern_none'), expect: LAYOUT },
   { name: 'Wall pattern: Stretcher', kind: 'editor', tool: 'wall', do: click('brickPattern_stretcher'), expect: LAYOUT },
   // T86 item 29 + F35 item 13 (37, fb-app 8d8d3f1): the wall rotation chips; 45 then back to 0 -- `backTo`: this row's
@@ -322,6 +323,19 @@ export const BRICK_LAYERS = {
   clears: CLEAR_MENU.options.filter((o) => o.item === 'editorClear_bricks' || o.item === 'editorClear_artwork'),
   stroke: [[0.3, 0.5], [0.5, 0.56], [0.7, 0.5]],
   introducedBy: 'bb9e664',
+};
+
+// ---- wall areas (F35 item 22 slice 2, seat 37 fb-app 58be3ed, on T86 18b/18c): the Area brush paints walls of whole
+// bricks, newest first. 37's measured scenario on T1 7x9 (wall + Soldier frame); points in board inches.
+export const WALL_AREAS = {
+  template: 'template_1', areaTool: 'brickSubTool_wall_area', selectTool: 'brickSubTool_wall_select', clearAreas: 'brickWallAreasClear',
+  wallLabel: { id: 'brickElementLabel_wall', text: 'Editing: this Wall' },
+  strokes: [
+    { pattern: 'brickPattern_stretcher', width: 'brickWallAreaWidth_2', points: [[2.2, 2.4], [4.6, 5.0]] },
+    { pattern: 'brickPattern_herringbone', width: 'brickWallAreaWidth_2', points: [[4.8, 2.4], [2.2, 5.2]] },
+    { pattern: 'brickPattern_stack', width: 'brickWallAreaWidth_1', points: [[3.5, 6.4], [3.5, 8.9]] },
+  ],
+  introducedBy: '58be3ed',
 };
 
 export const MIGRATION = {

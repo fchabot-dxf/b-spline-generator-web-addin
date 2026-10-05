@@ -15,9 +15,9 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import os from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'persistence'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'persistence'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -440,6 +440,7 @@ try {
   if (!arg('group') || arg('group') === 'frame-ui') await runFrameUi();
   if (!arg('group') || arg('group') === 'password') await runPassword();
   if (!arg('group') || arg('group') === 'layers') await runBrickLayers();
+  if (!arg('group') || arg('group') === 'areas') await runWallAreas();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') { await runPersistence(); await runPatternParamPersist(); }
 } catch (e) {
@@ -771,7 +772,8 @@ async function runSelect() {
   // 1. the Wall tool arms element Select; the Area sub-tool stays hidden until the engine offers 'wallRegion'
   await click(S.wallTool, 900);
   const st = (await jsJSON(`JSON.stringify({ mode: window.svgEditor._currentMode, sel: !!document.getElementById(${JSON.stringify(S.wallSelect)})?.classList.contains('active'), area: (()=>{ const n=document.getElementById(${JSON.stringify(S.wallArea)}); return !!n && n.offsetParent !== null; })() })`));
-  checkRow('select', 'Wall tool -> element Select', st.mode === S.selectMode && st.sel && !st.area, `mode ${st.mode}, Select ${st.sel ? 'active' : 'not active'}, Area ${st.area ? 'SHOWN' : 'hidden'}`);
+  const listed = await js(`import('./core/bricks/engine.js').then((m) => m.ENGINE_OPTIONS.includes('wallRegion'))`); // Area is shown iff the engine lists wallRegion (brick-control-requires)
+  checkRow('select', 'Wall tool -> element Select', st.mode === S.selectMode && st.sel && st.area === listed, `mode ${st.mode}, Select ${st.sel ? 'active' : 'not active'}, Area ${st.area ? 'SHOWN' : 'hidden'} (wallRegion ${listed ? 'listed' : 'not listed'})`);
   // 2. a real click on a frame brick selects the Frame element: its tool, its label, its outline -- drawing untouched
   const before = await js(CANVAS);
   const at = (await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')]; const n=ns[Math.floor(ns.length/2)]; if(!n) return null; const r=n.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height/2, frames: ns.length }; })())`));
@@ -1198,6 +1200,111 @@ async function runBrickLayers() {
   checkRow('layers', 'Move one brush piece to Layer 1: its spine and every piece follow',
     !!layer1 && s7b.brushN === s7.brushN && s7b.brush.join() === layer1.id && s7b.spine.join() === layer1.id,
     `${m7}; bricks (${s7b.brushN}) on ${s7b.brush}, spine on ${s7b.spine} (Layer 1 = ${layer1 ? layer1.id : 'none'})`);
+  if (await editorOpen()) await apply();
+}
+
+// ---------------------------------------------------------------- wall areas (hoisted; WALL_AREAS in controls.mjs)
+// F35 item 22 slice 2 (37, fb-app 58be3ed) on T86 18b/18c: the Area brush paints wall areas of COMPLETE bricks,
+// newest first (an older area drops the bricks that would touch a newer one). The sketch layer's units are board
+// inches (the brush's own stroke width is widthIn), so a board point maps to the screen by the layer's own CTM.
+async function dragIn(ptsIn) {
+  const ps = await jsJSON(`JSON.stringify((()=>{ const m=window.svgEditor._sketchLayer.node.getScreenCTM(); return ${JSON.stringify(ptsIn)}.map(([x,y])=>({ x: m.a*x + m.c*y + m.e, y: m.b*x + m.d*y + m.f })); })())`);
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: ps[0].x, y: ps[0].y, button: 'none', buttons: 0 });
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: ps[0].x, y: ps[0].y, button: 'left', buttons: 1, clickCount: 1 });
+  for (let i = 1; i < ps.length; i++) for (let k = 1; k <= 12; k++) {
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: ps[i - 1].x + (ps[i].x - ps[i - 1].x) * k / 12, y: ps[i - 1].y + (ps[i].y - ps[i - 1].y) * k / 12, button: 'left', buttons: 1 });
+    await sleep(15);
+  }
+  const z = ps[ps.length - 1];
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: z.x, y: z.y, button: 'left', buttons: 0, clickCount: 1 });
+  await sleep(2500);
+}
+/** the areas (records in order) and their bricks, in board inches */
+function areasState() {
+  return `JSON.stringify((()=>{ const n=window.svgEditor._sketchLayer.node;
+    const poly=(e)=>(e.getAttribute('points')||'').trim().split(/\\s+/).map((p)=>p.split(',').map(Number)).map(([x,y])=>({x,y}));
+    const recs=[...n.querySelectorAll('[data-brick-record="wall-area"]')].map((r)=>r.getAttribute('data-brick-element'));
+    const owned=(id)=>[...n.querySelectorAll('[data-brick="wall"]')].filter((e)=>e.getAttribute('data-brick-owner')===id).map(poly);
+    return { areas: recs, full: n.querySelectorAll('[data-brick-record="wall-full"]').length, wall: n.querySelectorAll('[data-brick="wall"]').length,
+      bricks: Object.fromEntries(recs.map((id)=>[id, owned(id)])), frame: [...n.querySelectorAll('[data-brick="frame"]')].map(poly) }; })())`;
+}
+async function overlapPairs(a, b, tol) {
+  const G = await import(pathToFileURL(path.join(ROOT, 'b-spline-gen/html/core/bricks/geometry.js')).href);
+  let pairs = 0;
+  for (const p of a) for (const q of b) if (Math.abs(G.signedArea(G.polygonIntersection(p, q))) > tol) pairs++;
+  return pairs;
+}
+
+async function runWallAreas() {
+  const A = WALL_AREAS;
+  await reloadWithStorage({});
+  await openEditorTab('editorTabFrame');
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(A.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  await openEditorTab('editorTabBrick');
+  await click('brickTool_wall', 800); await click('brickGenerate', 2000);
+  await click('brickTool_frame', 900); await click('brickGenerate', 2000);
+  await click('brickTool_wall', 900);
+  if (!(await exists(A.areaTool))) { checkRow('areas', 'Area paints a wall of whole bricks', false, '', A.introducedBy); return; }
+  const wall0 = await wallCount(), canvas0 = await js(CANVAS);
+  const paint = async (pattern, width, stroke) => {
+    await click('brickTool_wall', 700); // a tool pick clears the element selection: the next stroke starts a NEW area
+    await click(pattern, 1500); await click(A.areaTool, 700); await click(width, 500);
+    await dragIn(stroke);
+    return jsJSON(areasState());
+  };
+  // 1. a stroke paints a wall area: one area record, the full wall's record gone, the area's own bricks
+  const s1 = await paint(A.strokes[0].pattern, A.strokes[0].width, A.strokes[0].points);
+  const a = s1.areas[0];
+  checkRow('areas', 'Area paints a wall (one area, no full wall)', s1.areas.length === 1 && s1.full === 0 && (s1.bricks[a] || []).length > 0,
+    `${s1.areas.length} area(s), full-wall records ${s1.full}, area bricks ${(s1.bricks[a] || []).length}`);
+  // 2. a newer area with another pattern: the older one keeps whole bricks around it, no pair overlaps
+  const s2 = await paint(A.strokes[1].pattern, A.strokes[1].width, A.strokes[1].points);
+  const b = s2.areas.find((id) => id !== a);
+  const ov = b ? await overlapPairs(s2.bricks[a] || [], s2.bricks[b] || [], 1e-4) : -1;
+  checkRow('areas', 'Newest wins: the older area flows round, no overlap', s2.areas.length === 2 && !!b && ov === 0 && (s2.bricks[a] || []).length > 0 && (s2.bricks[b] || []).length > 0,
+    `${s2.areas.length} areas; older ${(s2.bricks[a] || []).length} bricks, newer ${b ? (s2.bricks[b] || []).length : 0}; overlapping pairs ${ov}`);
+  // 3. one undo step per stroke
+  await key('z'); await sleep(1500);
+  const u = await jsJSON(areasState());
+  await key('y'); await sleep(1500);
+  const r = await jsJSON(areasState());
+  checkRow('areas', 'Undo / Redo: one step per stroke', u.areas.length === 1 && r.areas.length === 2, `after undo ${u.areas.length} area(s), after redo ${r.areas.length}`);
+  // 4. an area across the frame band: its bricks stop at the band
+  const s4 = await paint(A.strokes[2].pattern, A.strokes[2].width, A.strokes[2].points);
+  const c = s4.areas.find((id) => !s2.areas.includes(id));
+  const onBand = c ? await overlapPairs(s4.bricks[c] || [], s4.frame, 1e-3) : -1;
+  checkRow('areas', 'An area across the band stops at the band', !!c && (s4.bricks[c] || []).length > 0 && onBand === 0,
+    `area ${c ? 'painted' : 'MISSING'}, ${(c && s4.bricks[c] || []).length} bricks, ${onBand} on a frame brick`);
+  // 5. Select on an area brings its own settings back
+  await click('brickTool_wall', 700); await click(A.selectTool, 700);
+  const at = await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].filter((e)=>e.getAttribute('data-brick-owner')===${JSON.stringify(a)});
+    for (const n of ns) { const q=n.getBoundingClientRect(); const x=q.left+q.width/2, y=q.top+q.height/2; if (document.elementFromPoint(x,y)===n) return {x,y}; } return null; })())`);
+  if (at) {
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 });
+    await sleep(1200);
+  }
+  const sel = await jsJSON(`JSON.stringify({ pattern: !!document.getElementById(${JSON.stringify(A.strokes[0].pattern)})?.classList.contains('active'), label: (document.getElementById(${JSON.stringify(A.wallLabel.id)})?.textContent||'').trim() })`);
+  checkRow('areas', 'Select an area: its own pattern, "Editing: this Wall"', !!at && sel.pattern && sel.label.includes(A.wallLabel.text), `${at ? '' : 'no brick of the first area under the pointer; '}pattern active ${sel.pattern}, label "${sel.label}"`);
+  // 6. Apply + reopen: the areas persist
+  await apply(); await heightsSettled(null);
+  const saved = await js(`import('./core/state.js').then(({ P }) => (String(P.editorSvg || '').match(/data-brick-record="wall-area"/g) || []).length)`);
+  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
+  const re = await jsJSON(areasState());
+  checkRow('areas', 'Apply + reopen: the areas persist', saved === 3 && re.areas.length === 3, `saved ${saved} area records, reopened ${re.areas.length}`);
+  // 7. Clear areas: the full wall back, exactly the baseline
+  await openEditorTab('editorTabBrick'); await click('brickTool_wall', 700);
+  await click(A.strokes[0].pattern, 1500); await click(A.areaTool, 700); await click(A.clearAreas, 2500);
+  const cl = await jsJSON(areasState()), canvas1 = await canvasSettled(null);
+  checkRow('areas', 'Clear areas: the full wall back (the baseline)', cl.areas.length === 0 && cl.full === 1 && cl.wall === wall0 && canvas1 === canvas0,
+    `${cl.areas.length} areas, full-wall records ${cl.full}, wall ${cl.wall}/${wall0}, canvas ${canvas1 === canvas0 ? 'identical' : canvas1 + ' vs ' + canvas0}`);
+  // 8. Clear > Bricks removes the areas
+  await paint(A.strokes[0].pattern, A.strokes[0].width, A.strokes[0].points);
+  const before = await jsJSON(areasState());
+  await click('editorTabBrick', 600); await click(CLEAR_MENU.button, 600); await click('editorClear_bricks', 2000);
+  const after = await jsJSON(areasState());
+  checkRow('areas', 'Clear > Bricks removes the areas', before.areas.length === 1 && after.areas.length === 0, `areas ${before.areas.length} -> ${after.areas.length}`);
   if (await editorOpen()) await apply();
 }
 
