@@ -3123,6 +3123,14 @@
             <!-- F35 item 10 follow-up (Fred): the Brush tool's own section, shown only while Brush
                  is the active tool (main/brick-panel.js's syncToolButtons). -->
             <div id="brickBrushSection" style="display:none;">
+              <!-- F35 item 29 (a): RUSTIC for the strokes drawn from now on (frozen into each stroke) -->
+              <div id="brickRusticRow_brush" style="display:none;">
+                <label class="cad-label">Rustic</label>
+                <div class="cad-slider-row" style="margin-bottom:12px;">
+                  <input type="range" id="brickRusticSlider_brush" class="cad-slider" min="0" max="1" step="0.05" value="0">
+                  <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickRustic_brush" value="0" min="0" max="1" step="0.05"></div>
+                </div>
+              </div>
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Brush: Profile</label>
               <div class="relief-toggle" id="brickBrushProfileToggle" style="margin-bottom:12px;">
                 <button type="button" class="relief-toggle-btn active" id="brickBtnProfileStripped" title="Individual bricks with grout joints"><span>Stripped</span></button>
@@ -3160,6 +3168,15 @@
                 <div class="cad-slider-row" style="margin-bottom:12px;">
                   <input type="range" id="brickLargeStonesSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.5">
                   <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickLargeStones" value="0.5" min="0" max="1" step="0.05"></div>
+                </div>
+              </div>
+              <!-- F35 item 29 (a): RUSTIC for a running bond (main/brick-panel.js syncRusticRows; hidden until the
+                   engine lists 'rustic') -->
+              <div id="brickRusticRow_wall" style="display:none;">
+                <label class="cad-label">Rustic</label>
+                <div class="cad-slider-row" style="margin-bottom:12px;">
+                  <input type="range" id="brickRusticSlider_wall" class="cad-slider" min="0" max="1" step="0.05" value="0">
+                  <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickRustic_wall" value="0" min="0" max="1" step="0.05"></div>
                 </div>
               </div>
               <!-- F35 item 16: LEVEL, this element's height offset (+ proud / - recessed), 3D only -->

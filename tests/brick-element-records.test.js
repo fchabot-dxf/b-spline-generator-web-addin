@@ -21,6 +21,7 @@ import { clearBrickElements, clearArtworkLayers } from '../bspline-frame-builder
 import { saveWithTextCopies, getLayerSvg } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 import { isEditableByLayer, isOnVisibleLayer, BRICK_EDITOR_ONLY_ATTRS } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
+import { generateBricks as engineGenerate } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js';
 
 /** An SVG.js-shaped sketch layer over a real DOM node (chainable elements, children() over the live DOM). */
 function fakeEditor() {
@@ -184,5 +185,14 @@ describe('item 22 step 5: Clear per kind = its records + bricks', () => {
     clearBrickElements(ed);
     expect(q(ed, `[${BRICK_RECORD_ATTR}]`)).toHaveLength(0);
     expect(q(ed, '[data-brick-gen="1"]')).toHaveLength(0);
+  });
+});
+
+describe('item 29 (a): the Wall’s Rustic reaches the engine for a running bond only', () => {
+  it('input.rustic = the wall amount for stretcher; absent for stack, and absent at 0', () => {
+    const lay = (pattern, wall) => { engineGenerate.mockClear(); runBricks(fakeEditor(), { ...P.brickSettings, pattern, rusticByElement: { wall, brush: 0 } }, null, { kinds: ['wall'] }); return engineGenerate.mock.calls[0][0]; };
+    expect(lay('stretcher', 0.3).rustic).toBe(0.3);
+    expect(lay('stack', 0.3).rustic).toBeUndefined();
+    expect(lay('stretcher', 0).rustic).toBeUndefined();
   });
 });

@@ -330,6 +330,8 @@ function toBrickOpts(settings) {
     // keeps defaulting to bricksAlongPath's own 'bricks' -- no behavior
     // change for Wall/Frame or an un-striped Brush stroke.
     profile: settings.profile || 'bricks',
+    // F35 item 29 (a): a Brush stroke's own frozen Rustic amount (engine 'rustic', seat B) -- 0/absent = clean
+    ...(Number(settings.rustic) > 0 ? { rustic: Number(settings.rustic) } : {}),
     // F35 item 10 follow-up: the Brush panel's own Orientation toggle -- bricksAlongPath already
     // declared this opt (along-path.js), only Brush's own UI control was missing. Wall/Frame never
     // read this (bricksFillShape/bricksContourBands have their own, unrelated pattern mechanisms),
@@ -392,6 +394,13 @@ export function elementSetId(settings, kind) {
 }
 /** The settings an element is laid with: the shared ones, with that element's own set. */
 export const elementSettings = (settings, kind) => ({ ...settings, setId: elementSetId(settings, kind) });
+
+/** F35 item 29 (a): a RUNNING bond -- a coursed pattern whose courses stagger (BRICK_PATTERNS staggerFrac > 0:
+ *  stretcher, header). Rustic applies to those only. Read from the declared pattern, never a list of names. */
+export function isRunningBond(patternId) {
+  const def = BRICK_PATTERNS[patternId];
+  return !!def && def.kind === 'course' && Number(def.staggerFrac) > 0;
+}
 
 /** F35 item 7: `settings.pattern` (main/brick-panel.js's Wall pattern picker) is a single
  *  BRICK_PATTERNS key the user picked for the WHOLE Wall fill -- no per-zone mixing UI exists yet
@@ -709,6 +718,9 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   applyWallPattern(input, wallSettings);
   // F35 item 21: the fieldstone layout's share of large stones (d3's T86 item 17 reads it; inert until then)
   if (wallLayoutFor(settings) === 'fieldstone') input.largeStones = Number.isFinite(settings.largeStones) ? settings.largeStones : 0.5;
+  // F35 item 29 (a): the Wall's Rustic amount, for a running bond only (0 = absent = today's clean coursing)
+  const rustic = Number(settings.rusticByElement && settings.rusticByElement.wall) || 0;
+  if (rustic > 0 && isRunningBond(settings.pattern)) input.rustic = rustic;
   const exclusions = kinds.includes('wall') ? brushExclusions(editor) : [];
   if (exclusions.length) input.exclusions = exclusions;
 

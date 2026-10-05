@@ -133,6 +133,9 @@ export const DEFAULT = {
       // by the height mask; in the laid key (audit v2 N6: an editor change re-lays at once, item 27). A saved
       // session without it is level 0.
       elementLevelIn: { wall: 0, frame: 0 },
+      // F35 item 29 (a): RUSTIC 0..1 per element (Wall, Brush) -- how irregular a running bond is laid; read by the
+      // engine once it lists 'rustic' (seat B, T86 item 22); 0 = today's clean coursing. Hidden until then.
+      rusticByElement: { wall: 0, brush: 0 },
       // F35 item 15: RAISED ACCENTS on the Wall -- `preset` = an editor/brick-accents.js ACCENT_PRESETS id,
       // 'custom' (the bricks under `clicks`, wall-local board points, re-mapped after every re-lay) or
       // 'none'; `levelIn` = how far they sit proud (+) or recessed (-). 3D-only (never re-lays). A saved

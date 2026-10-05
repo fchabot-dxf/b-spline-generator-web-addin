@@ -13774,3 +13774,38 @@ and persistence rows below. 88 queues them on matrix-clear-rows after the ring-s
   - tokens for light AND dark, a Brick tool section = a shade of the brick hue.
   - They need the new module, so they fail before it exists.
 - Whole vitest: green (count in the pass note).
+
+### turn 237 -- F35 item 29: Rustic slider (hidden until the engine), Wear on rocks, Grey set by declaration (seat 37)
+
+- **(a) Rustic** 0..1, default 0, PER ELEMENT: `P.brickSettings.rusticByElement = { wall, brush }` (state.js).
+  - The rows are `#brickRusticRow_wall` (Wall section, above Level) and `#brickRusticRow_brush` (Brush section).
+  - Hidden by one brick-control-requires rule until ENGINE_OPTIONS lists `'rustic'` (seat B, T86-22).
+  - The Wall row shows only for a RUNNING bond: `isRunningBond(pattern)` = a BRICK_PATTERNS 'course' with
+    staggerFrac > 0 (stretcher, header), read from the declaration, never a name list. The Brush row always
+    shows (a stroke is a run).
+  - Engine inputs:
+    - Wall: `input.rustic` = the amount, running bond and > 0 only (0 / another pattern = absent = today's
+      layout);
+    - Brush: each stroke FREEZES `rustic` (the stroke overrides, like its set) and toBrickOpts passes
+      `opts.rustic` (> 0 only) to bricksAlongPath.
+  - A Wall change re-lays; a Brush change only saves (it applies to the strokes drawn next).
+  - Input names sent to 88 by DM to confirm.
+- **(b) Wear on rocks:** nothing to build. The Weathered Wear row's visibility follows the surface STYLE only
+  (syncSurfaceStyleToggle), never the wall layout, so it already shows for a fieldstone wall. Pinned by a test
+  (fieldstone + Weathered -> shown; Clean -> hidden). The engine side (the stone profile reading Wear) is seat B's
+  T86-23.
+- **(c) Grey set:** nothing to build. The editor Set row and the sidebar quick Set row render from BRICK_SET_IDS
+  (the bond sets in BRICK_SETS, item 23). A test declares a Grey Brick set (id 7, bond) in a mocked BRICK_SETS:
+  `brickSet_7` "Grey Brick" + `brickQuick_set_7` appear.
+- **Tests:**
+  - item29-rustic-wear (4);
+  - item29-grey-set (1);
+  - brick-element-records +1 (`input.rustic` for stretcher only, absent for stack / 0);
+  - regen: the two stroke-override expectations gained `rustic: 0` (each stroke freezes it: the contract).
+  - Against the pre-item-29 code the 4 Rustic tests fail. The Wear + Grey ones pass there too: they pin behaviour
+    that already holds by declaration, which is legitimate here.
+- **Live:** both rows exist and are hidden (the engine has no 'rustic' yet); a default board lays as before (wall
+  99); a brush stroke freezes `rustic: 0`; 0 errors.
+- Whole vitest: 273 files, **4418 passed, 0 failed**.
+- **Matrix (88):** the rows are greyed/hidden-until-met like largeStones/groutCut. Rows can come when 'rustic'
+  lands: the Wall Rustic on stretcher re-lays; on stack it is hidden.

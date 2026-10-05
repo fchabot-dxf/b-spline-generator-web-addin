@@ -24,7 +24,7 @@ import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, bricksLayerOf, BRICK_KINDS,
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
-  BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection,
+  BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
 } from '../editor/editor-brick-tool.js';
 import { ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
@@ -122,6 +122,7 @@ function syncSetPicker() {
   for (const id of BRICK_SET_IDS) document.getElementById(`brickSet_${id}`)?.classList.toggle('active', id === current);
   syncQuickSettings();
   syncLargeStonesRow();
+  syncRusticRows();
 }
 
 /** Switching sets also resets the grout WIDTH field to that set's own
@@ -643,6 +644,27 @@ const _hiddenUntilMet = (id) => {
   const rule = BRICK_CONTROL_REQUIRES.find((r) => r.hides && r.controls.includes(id));
   return !!rule && !requirementMet(rule.requires, document.getElementById(rule.requires.control), { engineOptions: ENGINE_OPTIONS });
 };
+
+/** F35 item 29 (a): the Rustic rows -- hidden until the engine lists 'rustic'; the Wall's only for a running bond
+ *  (isRunningBond), the Brush's always (a stroke is a run). One value per element: rusticByElement. */
+const RUSTIC_ELEMENTS = ['wall', 'brush'];
+const _rustic = (kind) => Number((P.brickSettings.rusticByElement || {})[kind]) || 0;
+function syncRusticRows() {
+  for (const kind of RUSTIC_ELEMENTS) {
+    const row = document.getElementById(`brickRusticRow_${kind}`);
+    const applies = kind !== 'wall' || isRunningBond(P.brickSettings.pattern);
+    if (row) row.style.display = applies && !_hiddenUntilMet(`brickRusticRow_${kind}`) ? '' : 'none';
+    setPair(`brickRusticSlider_${kind}`, `brickRustic_${kind}`, _rustic(kind));
+  }
+}
+export function setRustic(kind, value, phase = 'onRelease') {
+  const v = Math.max(0, Math.min(1, Number(value)));
+  if (!Number.isFinite(v) || !RUSTIC_ELEMENTS.includes(kind)) return;
+  P.brickSettings.rusticByElement = { ...(P.brickSettings.rusticByElement || {}), [kind]: v };
+  setPair(`brickRusticSlider_${kind}`, `brickRustic_${kind}`, v);
+  // the Wall re-lays; a Brush value only applies to strokes drawn from now on (each freezes its own)
+  if (kind === 'wall') commitBrickSetting('generate', phase); else notifyChange();
+}
 
 function syncLargeStonesRow() {
   const row = document.getElementById('brickLargeStonesRow');
@@ -1311,6 +1333,7 @@ function syncWallPatternButtons() {
   }
   syncQuickSettings();
   syncLargeStonesRow();
+  syncRusticRows();
 }
 
 /** F35 item 8: the per-band pattern picker -- one row per band in the CURRENT frameBandPreset, each
@@ -1477,7 +1500,7 @@ function selectTool(id, { keepSelection = false } = {}) {
   if (id === 'brush' || (tool && tool.variantOf === 'brush')) {
     editor._brickSettings = P.brickSettings; // same object, mutated in place -- see header
     // turn 201: a variant's own stroke fields; item 23: + the tool's own set, frozen into each stroke
-    editor._brickStrokeOverrides = () => ({ setId: elementSetId(P.brickSettings, tool.id), ...(tool.strokeOverrides ? tool.strokeOverrides() : {}) });
+    editor._brickStrokeOverrides = () => ({ setId: elementSetId(P.brickSettings, tool.id), rustic: _rustic('brush'), ...(tool.strokeOverrides ? tool.strokeOverrides() : {}) });
     editor.setMode('brickBrush');
     return;
   }
@@ -1738,6 +1761,11 @@ export function initBrickPanel() {
   document.getElementById('brickFrameOffsetDistance')?.addEventListener('change', (e) => setFrameOffset({ distance: e.target.value }));
   for (const kind of BRICK_KINDS) {
     document.getElementById(`brickLevel_${kind}`)?.addEventListener('change', (e) => setElementLevel(kind, e.target.value));
+  }
+  // F35 item 29 (a): Rustic per element -- applies on release / Enter (the Wall re-lays; Brush = next strokes)
+  for (const kind of RUSTIC_ELEMENTS) {
+    document.getElementById(`brickRusticSlider_${kind}`)?.addEventListener('change', (e) => setRustic(kind, e.target.value));
+    document.getElementById(`brickRustic_${kind}`)?.addEventListener('change', (e) => setRustic(kind, e.target.value));
   }
   document.getElementById('brickBtnProfileStripped')?.addEventListener('click', () => setProfile('bricks'));
   document.getElementById('brickBtnProfileContinuous')?.addEventListener('click', () => setProfile('continuous'));

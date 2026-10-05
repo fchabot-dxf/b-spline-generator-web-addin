@@ -775,7 +775,7 @@ describe('turn 201: the Raised brush (a Brush variant; Level + modes in its own 
     $('brickTool_raisedBrush').click();
     expect(window.svgEditor.setMode).toHaveBeenCalledWith('brickBrush');
     expect(window.svgEditor._brickSettings).toBe(P.brickSettings);
-    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ setId: 1, levelIn: 0.0625, strokeMode: 'bricks' }); // item 23: + its set
+    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ setId: 1, rustic: 0, levelIn: 0.0625, strokeMode: 'bricks' }); // item 23: + its set; item 29: + Rustic
     fire('brickRaisedLevel', 0.125, 'input'); // changed AFTER picking the tool: the next stroke still gets it
     expect(window.svgEditor._brickStrokeOverrides().levelIn).toBe(0.125);
     expect($('brickRaisedSection').style.display).not.toBe('none');
@@ -783,7 +783,7 @@ describe('turn 201: the Raised brush (a Brush variant; Level + modes in its own 
   it('the plain Brush clears the Raised brush\'s overrides (item 23: only its own set is frozen in)', () => {
     $('brickTool_raisedBrush').click();
     $('brickTool_brush').click();
-    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ setId: 1 });
+    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ setId: 1, rustic: 0 }); // item 29: each stroke freezes its Rustic too
   });
   it('Grout mode is hidden until the engine lists groutCut, then pickable', () => {
     $('brickTool_raisedBrush').click();
