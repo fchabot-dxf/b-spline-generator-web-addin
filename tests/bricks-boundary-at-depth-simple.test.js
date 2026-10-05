@@ -6,7 +6,10 @@
  * may still TOUCH itself: where the band pinches the interior into separate lobes they are joined by a
  * zero-width bridge (one polygon for every caller), so shared vertices and coincident bridge edges are allowed.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
+
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // a heavy sweep: see heavy-test-timeout.js
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
