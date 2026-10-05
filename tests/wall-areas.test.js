@@ -10,7 +10,8 @@ const SQ = [{ x: 1, y: 1 }, { x: 2, y: 1 }, { x: 2, y: 1.5 }, { x: 1, y: 1.5 }];
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, generateBricks: vi.fn((input) => ({
-    bricks: !input || input.skipWallFill ? [] : [{ id: 'b0', polygon: SQ, sampleId: 0, flip: false, heightOffset: 0 }], frameBricks: [] })) };
+    bricks: !input || input.skipWallFill ? [] : [{ id: 'b0', polygon: SQ, sampleId: 0, flip: false, heightOffset: 0 }], frameBricks: [],
+    ...(input && Array.isArray(input.exclusions) ? { exclusionsApplied: true } : {}) })) }; // as the engine reports it
 });
 
 import {
@@ -70,7 +71,7 @@ describe('slice 2: laying the areas', () => {
     expect(generateBricks).toHaveBeenCalledTimes(1);
     expect('wallRegion' in generateBricks.mock.calls[0][0]).toBe(false);
   });
-  it('areas: the main call skips the wall fill; one call per area, its strokes minus every NEWER area', () => {
+  it('areas: the main call skips the wall fill; one call per area (newest first), its strokes minus every NEWER area, the newer laid bricks as drop exclusions', () => {
     const ed = fakeEditor();
     const a = addWallAreaStroke(ed, stroke(1), S());
     const b = addWallAreaStroke(ed, stroke(3), S());
@@ -78,10 +79,15 @@ describe('slice 2: laying the areas', () => {
     expect(generateBricks.mock.calls[0][0].skipWallFill).toBe(true);
     const recs = wallAreaRecords(ed);
     expect(wallCalls().map((i) => i.wallRegion)).toEqual([
-      { strokes: recs[0].strokes, minus: recs[1].strokes },
       { strokes: recs[1].strokes, minus: [] },
+      { strokes: recs[0].strokes, minus: recs[1].strokes },
     ]);
     expect([owned(ed, a), owned(ed, b)]).toEqual([1, 1]);
+    // T86 18c: laid NEWEST first; the older area gets the newer one's laid bricks as DROP exclusions
+    const calls = wallCalls();
+    expect(calls[0].wallRegion.strokes).toEqual(recs[1].strokes);
+    expect(calls[0].exclusions).toBeUndefined();
+    expect(calls[1].exclusions).toEqual([{ polygon: SQ, drop: true }]);
     expect(counts.wallCount).toBe(2);
     expect(fullRecord(ed)).toBeNull();
   });
@@ -91,7 +97,7 @@ describe('slice 2: laying the areas', () => {
     const b = addWallAreaStroke(ed, stroke(3), S());
     ed._brickWallAreaId = b;
     runBricks(ed, { ...S(), wallRotationDeg: 90 }, null, { laidKey: 'K' });
-    expect(wallCalls().map((i) => i.rotationDeg)).toEqual([45, 90]);
+    expect(wallCalls().map((i) => i.rotationDeg)).toEqual([90, 45]); // newest first
     const recs = wallAreaRecords(ed);
     expect(recs.map((r) => r.settings.wallRotationDeg)).toEqual([45, 90]);
     expect(recs.map((r) => r.node.getAttribute(BRICK_LAID_ATTR))).toEqual(['K', 'K']);

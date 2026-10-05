@@ -994,7 +994,9 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const exclusions = kinds.includes('wall') ? brushExclusions(editor) : [];
   if (exclusions.length) input.exclusions = exclusions;
   // slice 2: once any area is painted only the areas get bricks -- each its own engine call (its own settings,
-  // its strokes as wallRegion, every NEWER area's strokes as minus: newest wins, the older wall flows around it)
+  // its strokes as wallRegion, every NEWER area's strokes as minus: newest wins, the older wall flows around it).
+  // T86 18c: laid NEWEST first; each older area also gets the newer areas' laid bricks as DROP exclusions (a brick
+  // touching one is dropped, never cut), so two areas with different patterns never overlap
   const areas = kinds.includes('wall') ? wallAreaRecords(editor) : [];
   if (areas.length) input.skipWallFill = true;
 
@@ -1003,14 +1005,17 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const result = generateBricks(input);
   const bricks = result.exclusionsApplied ? result.bricks : dropExcludedWallBricks(result.bricks, exclusions);
   const { frameBricks } = result;
-  const areaLays = areas.map((area, i) => {
+  const areaLays = [];
+  for (let i = areas.length - 1; i >= 0; i--) {
+    const area = areas[i];
     const s = wallAreaSettings(editor, area, settings);
     const ai = _layInput(editor, s, frameGeom);
-    if (exclusions.length) ai.exclusions = exclusions;
+    const newer = areaLays.flatMap((l) => l.bricks.map((b) => ({ polygon: b.polygon, drop: true })));
+    if (exclusions.length || newer.length) ai.exclusions = [...exclusions, ...newer];
     ai.wallRegion = { strokes: area.strokes, minus: areas.slice(i + 1).flatMap((a) => a.strokes) };
     const r = generateBricks(ai);
-    return { area, settings: s, bricks: r.exclusionsApplied ? r.bricks : dropExcludedWallBricks(r.bricks, exclusions) };
-  });
+    areaLays.unshift({ area, settings: s, bricks: r.exclusionsApplied ? r.bricks : dropExcludedWallBricks(r.bricks, ai.exclusions || []) });
+  }
   for (const kind of kinds) clearGenerated(editor, kind);
   const lays = (kind) => kinds.includes(kind);
   for (const kind of kinds) applyBrickLayerTooling(layerOf[kind], settings);
