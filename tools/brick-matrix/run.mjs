@@ -1244,7 +1244,8 @@ async function runWallAreas() {
   await click('brickTool_wall', 800); await click('brickGenerate', 2000);
   await click('brickTool_frame', 900); await click('brickGenerate', 2000);
   await click('brickTool_wall', 900);
-  if (!(await exists(A.areaTool))) { checkRow('areas', 'Area paints a wall of whole bricks', false, '', A.introducedBy); return; }
+  // slice 2's own marker (the Area brush handler): main already carries the hidden Area button, so its presence is no guard
+  if (!(await js(`import('./editor/editor-brick-tool.js').then((m) => !!m.brickWallAreaHandler)`))) { checkRow('areas', 'Area paints a wall of whole bricks', false, '', A.introducedBy); return; }
   const wall0 = await wallCount(), canvas0 = await js(CANVAS);
   const paint = async (pattern, width, stroke) => {
     await click('brickTool_wall', 700); // a tool pick clears the element selection: the next stroke starts a NEW area
