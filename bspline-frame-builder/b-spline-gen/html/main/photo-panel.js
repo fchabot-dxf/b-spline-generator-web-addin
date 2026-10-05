@@ -236,6 +236,18 @@ function loadImage(urlOrDataUrl, edits, tweaks, reliefIn = DEFAULT_PHOTO_RELIEF_
   notifyChange();
 }
 
+/** F35 item 28: the editor's Clear > Photo -- no photo, as on a new board (core/state.js defaults: no image,
+ *  no edits, no pattern); the controls, the preview and the terrain follow through the usual change. */
+export function clearPhoto() {
+  P.photoImageDataUrl = null;
+  P.photoEdits = [];
+  P.photoPatternId = null;
+  syncControlsFromState();
+  syncSaveButtonState();
+  drawPreview();
+  notifyChange();
+}
+
 function syncSaveButtonState() {
   const btn = document.getElementById('photoBtnSaveToPattern');
   if (!btn) return;

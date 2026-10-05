@@ -5,7 +5,7 @@
  */
 import { P } from '../../core/state.js';
 import { openingMode } from '../../editor/editor-ui.js';
-import { SvgEditorSnapshot, editorRestoreSvg } from '../app-init.js';
+import { SvgEditorSnapshot, editorRestoreSvg, editorSessionFingerprint } from '../app-init.js';
 import { addLayer, setActiveLayer, setLayerVisible } from '../../editor/layers.js';
 
 /**
@@ -96,7 +96,7 @@ export function initSvgSource(ctx, layerModule) {
   // this used to only null the P.stampLayers mirror, leaving the editor's
   // actual drawing (and therefore the next Apply's carve) untouched — two
   // buttons named "Clear" with two different real effects. Now mirrors the
-  // editor modal's own Clear (editorClear, editor/tools/action-tools.js):
+  // editor modal's own Clear (editorClear, now main/editor-clear-menu.js's Artwork entry):
   // deselect, mutate, pushState, onChange — just scoped to one layer's
   // children instead of the whole sketch.
   if (btnClear) {
@@ -142,6 +142,7 @@ export function initSvgSource(ctx, layerModule) {
         SvgEditorSnapshot.active = true;
         SvgEditorSnapshot.editorSvg = P.editorSvg ?? null;
         SvgEditorSnapshot.brickSettings = P.brickSettings ? JSON.parse(JSON.stringify(P.brickSettings)) : null;
+        SvgEditorSnapshot.fingerprint = editorSessionFingerprint(); // F35 item 25: [3D] closes unchanged sessions
       }
       if (window.svgEditor && currentLayer) {
         // Restore the unified editor document (P.editorSvg), NOT currentLayer.svg:

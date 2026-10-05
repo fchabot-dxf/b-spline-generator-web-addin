@@ -351,9 +351,13 @@ try {
       const opened = await editorOpen();
       const tab = await js(`(async()=>{ const m = await import('./main/editor-tabs.js'); return m.getEditorTab(); })()`);
       const v = { opened: opened ? 'PASS' : 'FAIL', tab: tab === c.expect.tab ? 'PASS' : 'FAIL' };
-      rows.push({ name: c.name, kind: c.kind, result, observed: { opened, tab }, expect: c.expect, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', opens: v.opened === 'PASS' && v.tab === 'PASS' ? 'PASS' : 'FAIL' } });
-      console.log(`${v.opened === 'PASS' && v.tab === 'PASS' ? 'pass' : 'FAIL'}  ${c.name.padEnd(34)} opened ${v.opened} tab ${tab} (${v.tab})`);
-      if (opened) { await apply(); Z = await heightsSettled(Z); }
+      // `closeWith` (item 25, the [2D|3D] pill): that control must close the editor again
+      let closed = null;
+      if (opened && c.closeWith) { await click(c.closeWith, 2500); closed = !(await editorOpen()); Z = await heightsSettled(Z); }
+      const ok = v.opened === 'PASS' && v.tab === 'PASS' && closed !== false;
+      rows.push({ name: c.name, kind: c.kind, result, observed: { opened, tab, closed }, expect: c.expect, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', opens: ok ? 'PASS' : 'FAIL' } });
+      console.log(`${ok ? 'pass' : 'FAIL'}  ${c.name.padEnd(34)} opened ${v.opened} tab ${tab} (${v.tab})${c.closeWith ? ` closed by ${c.closeWith}: ${closed}` : ''}`);
+      if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
     } else if (c.kind === 'sidebar') {
       if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
       await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);

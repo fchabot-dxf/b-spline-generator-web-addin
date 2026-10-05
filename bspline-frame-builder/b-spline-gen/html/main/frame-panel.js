@@ -215,6 +215,12 @@ function _syncTemplateSelect(sel, templateId) {
 }
 
 let _openEditorOn = null;
+/** Open the editor (btnStampEdit's own path) on `tab` -- the sidebar buttons below and the viewport's [2D]
+ *  (main/view-mode-toggle.js) all go through here. */
+export function openEditorOn(tab) {
+  _openEditorOn = tab;
+  $('btnStampEdit')?.click();
+}
 export const OPEN_EDITOR_BUTTONS = Object.freeze([
   { id: 'btnEditFrameShape', tab: 'frame' },
   { id: 'btnEditBricks', tab: 'brick' },
@@ -892,7 +898,7 @@ export function initFramePanel() {
   }
   // The sidebar sections' open-the-editor buttons, declared: each opens the SAME editor (btnStampEdit's own
   // path) on its own tab. Turn 207 (Fred): the BRICK section's "Brick editor" joins the Frame section's.
-  for (const { id, tab } of OPEN_EDITOR_BUTTONS) $(id)?.addEventListener('click', () => { _openEditorOn = tab; $('btnStampEdit')?.click(); });
+  for (const { id, tab } of OPEN_EDITOR_BUTTONS) $(id)?.addEventListener('click', () => openEditorOn(tab));
   _wireHandleDrag();
   _wireWindowDrag();
   // The fit warning (and the editor's profile) depend on the board size.

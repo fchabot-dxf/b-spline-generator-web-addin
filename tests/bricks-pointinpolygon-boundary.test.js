@@ -107,5 +107,13 @@ describe('pointInPolygon (T86 item 19): tolerant of a point built to land exactl
   // reverted rather than shipped. `it.todo` preserves this MINIMAL, already-isolated reproduction
   // (a plain axis-aligned rectangle, no template/board involved at all) so the next attempt starts
   // here instead of re-deriving it from the real template geometry.
-  it.todo('polygonIntersection: a rectangle genuinely straddling a clip edge (2 vertices in, 2 out) must clip, not return empty -- BLOCKED, see WORK-LOG T86 item 21');
+  // T86 item 21c (seat 88/B): fixed by perturbing touching inputs in polygonIntersection; the general
+  // properties (area, operand bound, simplicity, argument order) are in bricks-polygon-intersection-properties.test.js.
+  it('polygonIntersection: a rectangle genuinely straddling a clip edge (2 vertices in, 2 out) must clip, not return empty', () => {
+    const brick = [{ x: 6.522, y: 0.25 }, { x: 7.272, y: 0.25 }, { x: 7.272, y: 0.45 }, { x: 6.522, y: 0.45 }];
+    const board = [{ x: 0.25, y: 0.25 }, { x: 6.75, y: 0.25 }, { x: 6.75, y: 9 }, { x: 0.25, y: 9 }];
+    const inter = polygonIntersection(brick, board);
+    expect(Math.abs(signedArea(inter))).toBeCloseTo(0.0456, 4);
+    for (const p of inter) expect(p.x).toBeLessThanOrEqual(6.75 + 1e-4);
+  });
 });

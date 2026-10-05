@@ -1786,15 +1786,6 @@
     min-width: 90px;
 }
 
-/* Audit C3/C11 (main/brick-panel.js PENDING_INDICATORS): brick settings changed since the bricks were
-   laid -- the same dot the Brick panel's Generate shows, on the Brick tab button and on the phone
-   drawer's tab label, where it stays visible with no tool picked and at peek height. */
-[data-brick-pending]::after {
-    content: ' \2022';
-    color: #1a8cff;
-    font-weight: 700;
-}
-
 .editor-layers-panel .layers-header {
     height: 32px;
     padding: 0 10px;

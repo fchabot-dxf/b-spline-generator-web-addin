@@ -18,7 +18,8 @@
 //   'stripe'    a Stripe-panel brick-style pick: a fresh brush stroke is striped (count 4), then the pick
 //               must re-style the striped runs at once (canvas), never pending
 //   'opens'     a main-sidebar button that opens the editor: expect { tab } = the editor tab it must open on
-//               (seat 37, turn 207); the row closes the editor again (Apply)
+//               (seat 37, turn 207); the row closes the editor again (Apply), or with `closeWith` (a control that
+//               must close it, e.g. the [2D|3D] pill's 3D)
 // introducedBy: the commit that added the control -- on a build without it the row is SKIPPED, not failed.
 // tool:   the Brick tool that must be active for an 'editor'/'editor3d' row (its settings section shows)
 // do:     { click: id } | { set: id, value, event }   (event: 'input' | 'change')
@@ -122,6 +123,9 @@ export const BRICK_CONTROLS = [
   { name: 'Hide filter texture', kind: 'sidebar', do: click('isolateSkeleton'), expect: SURFACE },
   // turn 207 (Fred): the BRICK section's "Brick editor" button opens the editor on the Brick tab
   { name: 'Brick editor button', kind: 'opens', do: click('btnEditBricks'), expect: { tab: 'brick' }, introducedBy: '979ada1' },
+  // F35 item 25: the viewport's [2D] opens the editor on the last-used tab (Brick: the row above left it there),
+  // the editor's [3D] closes it again (Apply, or just close when nothing changed)
+  { name: 'Viewport 2D / 3D pill', kind: 'opens', do: click('viewMode_2d'), expect: { tab: 'brick' }, closeWith: 'viewMode_3d_editor', introducedBy: '3447e95' },
 ];
 
 // The APP's own declaration wins when it exists (seat 37: main/brick-control-requires.js, a pure data
