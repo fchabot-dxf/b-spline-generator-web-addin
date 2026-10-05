@@ -274,7 +274,14 @@ export const SELECT_ELEMENT = {
 // into a fixture, the same class as MIGRATION's neutral set. Applied when the group runs on its own (--parallel = the
 // gate); an all-groups run shares one baseline with the wall group's own size rows, so it is left as is.
 export const GROUP_SETUP = {
-  frame: { set: 'brickSize', value: 1, event: 'change', why: 'the frame rows were measured at 1 in' },
+  frame: [{ set: 'brickSize', value: 1, event: 'change', why: 'the frame rows were measured at 1 in' }],
+  // T86 item 28: frame-ui accents band 1 of three_band after its rock-frame row, so three ROCK rings (0.75 + 0.6 +
+  // 0.75 in, declared widths that no brick size changes). On a 7x9 the fit rule keeps one ring at a 1/3 share; on a
+  // 9x12 two fit under 1/3 and 1/2 alike (T1's narrowest gap 4.96 in). runFrameUi's own reload keeps the board.
+  'frame-ui': [
+    { set: 'widthIn', value: 9, event: 'change', why: 'band 1 of three rock rings exists on a 9x12 board' },
+    { set: 'heightIn', value: 12, event: 'change', why: 'band 1 of three rock rings exists on a 9x12 board' },
+  ],
 };
 
 export const MIGRATION = {

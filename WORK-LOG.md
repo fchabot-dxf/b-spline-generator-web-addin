@@ -22086,3 +22086,12 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
 - Shots: shots/seatB/item28_share_sheet.png (Fred: 1/3 vs 1/2 on T1 7x9 at 0.75/1/1.25, 9x12 at 1/3),
   item28_before_after.png (T1 three_band 1.25, T18 single_soldier 1.5, T12 three_band 1.25). NOT fixed: T18's open
   wedges at its top fan corners at 1.5 in (identical before/after: a fan void, not the overrun).
+
+## band-fit follow-ups (seat B / 88, 2026-10-05)
+- Gate: frame-ui's accent rows lay three_band after its rock-frame row, so three ROCK rings (declared 0.75 + 0.6 +
+  0.75 in, unscaled by brick size); on T1 7x9 the fit rule keeps one ring -> no band 1 to accent. controls.mjs
+  GROUP_SETUP is now a LIST per group; frame-ui pins a 9x12 board (two rings fit under 1/3 and 1/2). frame-ui 14/14,
+  frame 13/13.
+- geometry.js signedArea header corrected to what it measures (negative = counter-clockwise, y up; -1 on a unit square).
+- FOR T86 16(c) part 2: T18 7x9 single_soldier at 1.5 in has open wedges at its top fan corners (identical before and
+  after the band-overrun clip + the fit rule: a fan void, not an overrun) -- shots/seatB/item28_before_after.png, row 2.

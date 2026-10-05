@@ -287,8 +287,9 @@ try {
     }
     await openBrickTool('wall');
     for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
-    const pin = GROUP_SETUP[arg('group')]; // a group's declared setup (controls.mjs GROUP_SETUP), before the baseline lay
-    if (pin) { const r = await setValue(pin.set, pin.value, pin.event); console.log(`setup pin ${pin.set}=${pin.value}: ${r} (${pin.why})`); await sleep(1500); }
+    for (const pin of GROUP_SETUP[arg('group')] || []) { // a group's declared setup (controls.mjs GROUP_SETUP), before the baseline lay
+      const r = await setValue(pin.set, pin.value, pin.event); console.log(`setup pin ${pin.set}=${pin.value}: ${r} (${pin.why})`); await sleep(1500);
+    }
     await click('brickGenerate', 1800);
     await openBrickTool('frame'); await click('brickGenerate', 1800);
     baseline = await js(CANVAS);
