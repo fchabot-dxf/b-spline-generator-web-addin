@@ -21860,3 +21860,154 @@ re-run item 20's own `template_18` `it.todo` (should un-block once this lands).
 **Commit**: this entry only (no code -- nothing was changed in `primitive-ribbon.js`, confirmed
 clean). Passing back with the plan; this exhausts my own queue for this turn (16(b)/13/18/10
 remain, per the advisor's own ordering, for whenever a fresh pass picks up).
+
+## H23 item 81, turn 562: PLAN ONLY, no execution -- a written investigation plan, capacity flagged, recommending a fresh seat A
+
+Seat 39, turn 562. Dispatch: T10's own archRise_min + apex-drift bug (root cause, declared fix,
+7x9+9x12 matrix, shots). This is the item I MYSELF flagged for "a future, rested seat" at the end of
+turn 550 (see that entry above) -- this session has since run a full context compaction and then a
+complete additional turn (560, T9 flangeHeight) on top of the turns that led to that original
+flag. Per the project's own capacity-reporting convention, and the advisor's own explicit built-in
+off-ramp on this dispatch ("if this session is too long for a deep root-cause pass, say so... no
+shame either way"), I'm passing back a written plan instead of starting execution -- recommending
+Fred start a fresh, rested seat A on it rather than this session pushing through emit-class
+geometric root-cause work tired. Nothing built, no branch work beyond this entry; this worktree
+(`t10-item81-plan`, `origin/main` @ 6d277f6) holds only this WORK-LOG append.
+
+**The symptom, already measured (turn 550's own finding, restated here so the next seat doesn't
+have to re-find it):** `top_edge`'s own CURVATURE (not its endpoints, which stay correctly pinned by
+the anchor+Coincident mechanism, item 47) measurably changes somewhere between its initial seeded
+creation and the `p02_12_arch_rebuild.py` rebuild step -- confirmed via a real seeded build at T10's
+own default archRise: the app's own sent seed has the geometrically correct apex (4.25in at 7x9,
+matching `frame-template-10.test.js`'s own "apex on the safe zone top line" assertion), but the
+RE-RECORDED golden shows a measurably flatter arch (~3.21in apex, not 4.25in). The OLD code (fixed
+`LY` literal, archRise fix's own original bug, turn 550) never exposed this because it
+unconditionally forced the apex back to a hardcoded value every rebuild, which happened to coincide
+with the undrifted position for exactly the one archRise value that literal was tuned against --
+masking the drift rather than preventing it.
+
+**What's already ruled out:** not a seed-vs-rebuild ENDPOINT problem (endpoints are correctly pinned
+throughout, confirmed via the anchor+Coincident mechanism already working as designed elsewhere);
+not the archRise fix itself (the fix's OWN 18-case matrix at T18, which shares the same
+`short-arc-mid` SeedFrom mode, built clean 18/18 -- so this isn't a flaw in the new SeedFrom logic
+itself, it's specifically in T10's OWN shoulder/waist/hip tangent chain, p02_04-p02_11, which T18
+doesn't share verbatim). The log's own three candidate mechanisms, not yet distinguished: solver
+slack, a shared tangency pulling `top_edge` indirectly, or a re-solve order effect.
+
+**Proposed methodology (measure incrementally, don't re-reason from the final state):**
+1. In a scratch Fusion doc, build T10 at 7x9 through `p02_01`-`p02_12` ONE PHASE AT A TIME (the
+   project's own `fusion_execute`-driven phase-by-phase build pattern used elsewhere in this log),
+   recording `top_edge`'s own sagitta/apex height (or a cheaper proxy: its own 3-point curvature,
+   `_point_seed_from`'s own bisector math already computes this shape) after EVERY phase from
+   `p02_04` through `p02_12`, not just before/after. This isolates which SINGLE phase first moves
+   it, rather than only knowing the drift exists somewhere across 8 phases.
+2. Once the phase is isolated, read that phase file's own constraints on `top_edge` (or on geometry
+   sharing a point/tangency with it) -- the project's own fusion360-quirks skill already documents
+   two mechanisms that could plausibly cause an UNCONSTRAINED curve to move indirectly: solver
+   convergence settling to "the nearest configuration satisfying the constraints" when a seed is
+   rough (not exact), and `Tangent` on a chain only locking an arc that has ZERO remaining DOF (a
+   free end drifts). Check whether `top_edge`'s own endpoints are genuinely fully constrained
+   (isFixed, or pinned via two independent constraints) at the moment the suspect phase runs, or
+   whether something upstream left them with residual freedom the chain then exploits.
+3. Confirm on BOTH 7x9 and 9x12 (the dispatch's own two sizes) before declaring the mechanism, per
+   this project's own "confirm findings on varied geometry" rule -- a mechanism found at one size
+   could be a different, size-coincidental effect.
+4. **Before touching ANY T10 phase file**, re-raise with the advisor/Fred: turn 552's own explicit
+   ruling was "T10 must stay exactly as it is," specifically because re-recording its goldens after
+   a phase change breaks its own real-fit-from-goldens pipeline (this exact drift). Whatever fix
+   direction (b)/(c) above lands on will almost certainly require a T10 phase-file edit to CARRY IT
+   OUT -- that edit, and the consequent golden re-record, needs the same kind of explicit go-ahead
+   turn 552 established, not an assumption that "a root-cause fix is obviously fine to ship."
+
+**Matrix + shots** (7x9 + 9x12, the dispatch's own two sizes) were not run this turn -- no fix exists
+yet to matrix. Once a fix is declared and approved, re-run T10's own existing archRise/waistReach/
+waistCenterY live matrix (turn 550's pattern) at both sizes, confirming the recorded apex position
+against the SEEDED default (4.25in @ 7x9) rather than just "it builds," since "it builds" was never
+the part that was broken.
+
+Passing back turn 562 with this plan; Fusion holder was never taken (self-serve, confirmed `none`
+before stopping). Recommending a fresh seat A per the advisor's own offer.
+
+## T86 item 16(c) part 2 -- PLAN, not shipped: band rows yielding to each other at a neck (seat B / 88, 2026-10-04)
+
+**Part 1 is on main** (6a489d4 + fixture 6d277f6): the band's INNER BOUNDARY never crosses itself any more
+(arcs sampled only between their own joints; opposite-side collisions untangled into lobes joined by
+zero-width bridges). Measured: 50 -> 0 self-crossing inner boundaries over 19 visible templates x
+0.75/1/1.25/1.5 in; wall-into-band overlap T18 Soldier x2 2.01 -> 0.006 sq in, T14 x2 2.48 -> 0.0004.
+Guarded by tests/bricks-boundary-at-depth-simple.test.js.
+
+**Part 2 = the band PIECES themselves.** Rows are built per contour stretch with no knowledge of the
+opposite side, so deeper than half the local gap, pieces from different stretches lay over the same
+ground. Baseline (main, 19 templates x 6 presets = 114 cases, Red Brick seed 1 7x9): total pairwise
+band-on-band overlap **135.5 sq in**; worst T11 three_band 39.3, T19 three_band 20.7, T18 three_band 16.1,
+T18 double_course 4.22, T14 double_course 1.70. Corners on ordinary templates are ~0 (T1 x2: 0.0004).
+
+Metric that matters (learned the hard way): **ground covered = the UNION of the band pieces must not
+shrink**; pairwise overlap alone hides voids. Measured with shapely over the 114 cases (scratch
+scripts: wide sweep dumps every piece polygon, union.py compares unions).
+
+**Attempt A -- pairwise yield at the overlap's chord** (stash "16c part 2 v3"): for every overlapping
+pair of course pieces (> 1e-3 sq in; smaller = mitre slivers left as main lays them), cut both at the
+chord through the two points where their outlines cross, falling back to the centroid bisector; pick
+the cut with no residual overlap, then least ground lost, then least trimmed.
+Result: overlap 135.5 -> **0.77**, but ground lost **11.6 sq in** (T19 three_band 1.88, T11 1.87, T9 1.36,
+T18 1.31). Why: where 3+ rows stack (notch tips, deep three_band), sequential pairwise cuts hand a
+region round a cycle (A yields to B, B to C, C to A) and nobody keeps it; and the chord is only
+loss-free for two convex pieces whose outlines cross exactly twice.
+Rejected along the way, all measured: (i) projecting pieces to their nearest contour point to find
+"opposite sides" (a deep piece pushed past the medial line projects to the OPPOSITE wall; a notch's two
+flanks project to the same tip); (ii) the centroid bisector alone (cut a 0.22 sq in diagonal off T1 x2
+corners whose overlap was 0.0004); (iii) "only the deeper row yields" (a one-sided chord cut leaves the
+other half of the lens overlapping).
+
+**Attempt B -- clip each colliding piece to its own row's ring** (stash "16c part 2 v4"): ring = the
+region between the untangled boundaries at the row's [d0, d1], as a slit polygon; then chord-cut only
+same-row leftovers. Result: overlap 135.5 -> 3.5, ground lost **43.2 sq in** (T11 three_band 6.9), and
+negative "sum - union" = invalid output polygons. Why: the ring is a slit polygon whose inner boundary
+can itself be several lobes joined by bridges; polygonIntersection keeps only the LARGEST loop and is
+not reliable on that shape.
+
+**Recommended next step**: build each row's pieces INSIDE its ring from the start rather than repairing
+them afterwards -- i.e. treat a row like the fieldstone area band does: compute the row's ring from the
+untangled boundaries, split it into its lobes (no slit; one simple polygon per lobe), and clip each
+course piece to the lobe it belongs to (the lobe containing its own outer-edge midpoint). Same-row
+collisions then only remain where ONE lobe is pinched by its own two sides; there the chord cut is
+exact (two pieces, same depth, convex). Needs from geometry.js: a lobe split of the untangled boundary
+(untangleBoundary already has the lobes before bridging -- expose them) and nothing else. Invariants
+for the test: over the 114-case sweep, union(after) >= union(before) - 0.01 sq in per case AND pairwise
+overlap < 0.01 per case; plus T1 corners byte-identical (no collision -> no change). Expected cost: one
+fresh, unhurried pass.
+
+**Parked**: both attempts are in `git stash` on wt-88 (messages above). Moving to 16(b), then 13.
+
+## T86 item 16(b) -- geometry measured CLEAN on main (test added); an in-app rendering contradiction left OPEN (seat B / 88, 2026-10-04)
+
+**Geometry (engine, Red Brick Stretcher wall + Soldier band, 7x9, seed 1, shapely, grout joints closed):**
+- On 5559125 (where 16(b) was filed) the wall inside the band's inner edge has a real void at every size:
+  T1 0.06 / 0.11 / 0.12 / 0.32 sq in at 0.75 / 1 / 1.25 / 1.5 in, T12 up to 0.24 -- one hole each, at the
+  bottom-right end of a course (the 21c missing-piece bug).
+- On main (21c + 16(c) part 1): 0.000 sq in on T1 and T12 at every size. Pinned by new
+  tests/bricks-wall-meets-band.test.js (grid sample, a point is a void if inside no wall brick and farther
+  than one grout joint from all): 8/8 on main, **7/8 FAIL on 5559125** (0.063..0.328 sq in), 4.5 s.
+- The band's own ring coverage is clean on T1/T12 too (<= 0.18 sq in, T12 1.5 in). The remaining band voids
+  are the pinch cases, 16(c) part 2 territory: T9 1.5 in 15.6 sq in (34% of the ring; the band fills the board
+  and its rows are dropped at the pinch), T18 1.5 in 2.0, T18 1.25 in 0.27.
+
+**OPEN -- the app view disagrees with the data.** In the real editor (main, T1 / T12, Red, 1.5 in, single
+soldier) the canvas shows wide grey strips between band and wall and grey cells inside the wall
+(shots/seatB/gaps16b/T1_T12_1.5_editor.png). Measured so far:
+- the app lays the SAME geometry as the engine call (34 wall + 76 frame on T1); its own polygons, read off the
+  canvas (`points`), cover the contour completely once joints are closed (T1 void 0.000, T12 0.18);
+- not texture size: every brick's pattern is objectBoundingBox 1x1 with its image `xMidYMid slice` (fills);
+- not image loading: identical 0.3 s and 10 s after Generate (gaps16b/t1_1.5_load_timing.png);
+- not hiding: no clip-path / mask / transform on the bricks or #sketch-layer; all 34 visible, opacity 1;
+- elementsFromPoint at the grey spots returns only the background <image> -- inconclusive, the brick
+  polygons are pointer-events:none.
+**Next step:** draw the dumped app polygons as outlines over the same screenshot (same viewBox mapping) to see
+whether the grey spots are inside a polygon (then it is paint: fill/pattern resolution per brick at that size)
+or outside every polygon (then the dump/coverage mapping is wrong). The dump and probe scripts are s30-s35 in
+seat 88's scratch audit folder.
+
+Also queued from the advisor's blind-spot audit (B1): three_band leaves ZERO wall bricks on T6 T9 T11 T14 T15
+T18 at 1 in, and on T9/T11/T18/T19 at every size -- folded into 16(c) part 2's acceptance; (B8) fieldstone lays
+at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.

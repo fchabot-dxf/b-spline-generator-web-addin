@@ -11,6 +11,12 @@ From the outgoing advisor (session `b-spline-generator-web-addin-54`) to the new
    from its own worktree root, in the background:
    `cd <root> && until python ~/.claude/skills/multi-agent-handoff/handoff.py wait --role advisor --timeout 3000; do :; done`
    Roots: `C:\Users\danse\APPS\b-spline-generator-web-addin` (seat A), `...-lane-b` (seat B), `...-fb-app` (seat C).
+   WORKTREE LAYOUT (Fred 2026-10-04, "organise the branches into single app folder names"): every OTHER worktree
+   of this repo lives under `C:\Users\danse\APPS\b-spline-generator-web-addin-wt\<name>` (88 = seat B's copy,
+   adv-merge = the advisor's merge copy, adv = the advisor's review copy once its lock clears, t9-taller-flanges,
+   fusion-scratch). The main checkout stays where it is: Fred deploys from it. `-lane-b` and `-fb-app` move there
+   too the next time their sessions are closed (a Windows folder can't move while a session's shell sits in it).
+   Create new worktrees ONLY there: `git worktree add C:\Users\danse\APPS\b-spline-generator-web-addin-wt\<name> origin/<branch>`.
 3. Message every seat and spare once: "new advisor is session <you>".
 4. Message Fred in one line that you've taken over.
 
@@ -18,10 +24,10 @@ From the outgoing advisor (session `b-spline-generator-web-addin-54`) to the new
 
 | Seat | Session | Worktree / branch | Epoch | Seat lock | Doing now |
 |---|---|---|---|---|---|
-| A | `b-spline-generator-web-addin-39` | main checkout / `main` | 7 | 39 | H23 item 78: Template 18 Arched Head (diagram first) -- f3 DECOMMISSIONED 17fe1c6 |
-| B | (FRESH SEAT NEEDED; d3 HELD at turn 342, 2026-10-04 evening, 3-day session) | `-lane-b` / `lane-b` | 11 on adoption | -- | start block at the END of NEXT-SESSION-lane-b.md: 16(c) plan (WORK-LOG 8326c9f) -> 16(b) -> 13 -> 18 -> 10 -> 21b |
+| A | (FRESH SEAT NEEDED; 39 HELD at turn 563, 2026-10-04 evening, after a compaction) | main checkout / `main` | 8 on adoption | -- | start block at the END of NEXT-SESSION.md: item 81 (T10, from 39's plan branch t10-item81-plan) -> item 82 (CAM same-position stock) |
+| B | `b-spline-generator-web-addin-88` (promoted by Fred 2026-10-04 evening; d3 held at turn 342) | wt-88, one branch per item from origin/main; coordination by DM (no handoff.py loop) | -- | 88 | the lane-b queue from NEXT-SESSION-lane-b.md's start block: 16(c) part 2 -> 16(b) -> 13 -> 18 -> 10 -> 24 (grey sets) -> 25 (coursed rubble) -> 22-23 (rustic, wear on rocks) -> 21b |
 | C | `b-spline-generator-web-addin-37` | `-fb-app` / `fb-app` | 6 | 37 | F35 item 18: Flat/Organic, Weathered, sidebar split, 2D-only editor (de DECOMMISSIONED cb79c86) |
-| spare | `-88` | wt-88 (ad-hoc fixes) | none | none | on-call for small fixes; b5, f3, de DECOMMISSIONED |
+| spare | (none: 88 took seat B, 2026-10-04 evening) | -- | none | none | b5, f3, de DECOMMISSIONED |
 
 Decommissioned, all signed with 🪦 except `af`, which is closed: af, 66, d6, 55, 4a (archived 2026-10-03, never had a task).
 
@@ -133,6 +139,9 @@ are the morning's; this block supersedes them where they disagree.
    - frame-defs.js/.json: `git checkout --theirs`, then `python tools/gen_frame_defs.py`.
 3. Run the gate:
    - `npm ci`, then `npx vitest run`;
+   - the Brick matrix, from the merge worktree: `node tools/brick-matrix/run.mjs --parallel --only-if-changed origin/main --out <dir>`
+     (exit 0 = pass or skipped, 1 = FAIL or setup error). It runs only when `origin/main...HEAD` (= what the merge
+     brings in) touches a path declared in `tools/brick-matrix/gate-paths.mjs`; the gate paths are data there, not memory;
    - `python -m pytest -q` in `bspline-frame-builder/frame-builder`, in `bspline-frame-builder/b-spline-gen`, and at the
      root with `--ignore=.claude`;
    - `python tools/gen_frame_defs.py --check`.
