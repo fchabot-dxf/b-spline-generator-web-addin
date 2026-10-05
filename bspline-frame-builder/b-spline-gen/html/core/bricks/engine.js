@@ -52,8 +52,7 @@ export const ENGINE_OPTIONS = Object.freeze([
   'exclusions', // T86 item 13
   'bandFit', // T86 item 28: false = draw the frame stack as requested (icons); default: the fit rule
   'rotationDeg', // T86 item 29: the wall pattern turned by this angle (0 / 45 / 90 chips); default 0
-  // 'wallRegion' (T86 item 18) is honoured (wallRegionOf) but NOT listed yet (advisor): listing it shows the Area
-  // sub-tool, so it is slice 2's own first line when 37 wires that tool -- nothing dead on the live site
+  'wallRegion', // T86 item 18: the wall lays only in the painted areas (wallRegionOf)
 ]);
 
 export function generateBricks(input) {

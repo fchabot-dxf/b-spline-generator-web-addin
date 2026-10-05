@@ -85,10 +85,7 @@ describe('strokesToRegion (T86 item 18)', () => {
 });
 
 describe('generateBricks wallRegion (T86 item 18)', () => {
-  it('honoured but not listed yet: slice 2 (37) lists it with the Area tool it shows', () => {
-    expect(ENGINE_OPTIONS).not.toContain('wallRegion');
-    expect(lay({ wallRegion: { strokes: [{ points: P([1, 4], [5, 4]), widthIn: 1 }] } }).wallRegionApplied).toBe(true);
-  });
+  it('is an option the engine honours', () => expect(ENGINE_OPTIONS).toContain('wallRegion'));
   it('no strokes = the full fill as today, and it says it read it', () => {
     const plain = lay({});
     const empty = lay({ wallRegion: { strokes: [] } });
