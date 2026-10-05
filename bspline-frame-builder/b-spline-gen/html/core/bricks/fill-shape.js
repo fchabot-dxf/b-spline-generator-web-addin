@@ -19,17 +19,25 @@ import { bondLayout } from './layouts/bond.js';
 import { fieldstoneLayout } from './layouts/fieldstone.js';
 import { herringboneLayout } from './layouts/herringbone.js';
 import { basketweaveLayout } from './layouts/basketweave.js';
+import { stackedHorizontalLayout, chevronLayout, stackedVariationLayout, basketweaveVariationLayout, basketweaveStackedLayout } from './layouts/sheet-patterns.js';
+import { squareGridLayout, octagonDotLayout, hexagonLayout, lozengeLayout, framedSquareLayout } from './layouts/tiles.js';
 import { assignPieces } from './pieces.js';
 import { computeSuppressedCells } from './suppression.js';
 import { assignSamples } from './samples.js';
 import { pointInPolygon, polygonDifference, polygonCentroid, signedArea, offsetPathInward, inwardSignFor } from './geometry.js';
-import { PIECE_CATALOGUE, enabledPieces, scaledSet, MIN_PIECE_FRACTION } from './library.js';
+import { PIECE_CATALOGUE, enabledPieces, scaledSet, MIN_PIECE_FRACTION, BRICK_PATTERNS } from './library.js';
 
 // F35 item 7: herringbone/basketweave are 'tile2d' BRICK_PATTERNS (library.js) promoted to full
 // `set.layout` choices, same tier as 'bond'/'fieldstone' -- not zone-mixable with course-kind
 // patterns this round (an honest, named scope line; see library.js's own BRICK_PATTERNS header).
 const LAYOUTS = Object.freeze({
   bond: bondLayout, fieldstone: fieldstoneLayout, herringbone: herringboneLayout, basketweave: basketweaveLayout,
+  // F35 item 13: Fred's sheet (layouts/sheet-patterns.js)
+  stacked_horizontal: stackedHorizontalLayout, chevron: chevronLayout, stacked_variation: stackedVariationLayout,
+  basketweave_variation: basketweaveVariationLayout, basketweave_stacked: basketweaveStackedLayout,
+  // F35 item 14: the tiles / pavers (Fred's sheet 3, layouts/tiles.js); two sheet drawings share octagonDotLayout
+  square_grid: squareGridLayout, square_diamond: octagonDotLayout, octagon_square: octagonDotLayout,
+  hexagon: hexagonLayout, lozenge: lozengeLayout, framed_square: framedSquareLayout,
 });
 
 /**
@@ -138,7 +146,13 @@ export function bricksFillShape(polygon, holes, opts) {
 
   const layoutFn = LAYOUTS[set.layout];
   if (!layoutFn) return { bricks: [] };
-  const { cells: allCells } = layoutFn(polygon, set, opts.zones, seed, opts.largeStones, opts.fences);
+  // F35 item 14: a pattern's declared layout params (BRICK_PATTERNS[id].params defaults, the caller's picks in
+  // set.layoutParams, the entry's pinned `fixed` ones) -- resolved here, so every caller lays the same pattern
+  const def = BRICK_PATTERNS[set.layout];
+  const layoutSet = def && (def.params || def.fixed) ? { ...set, layoutParams: {
+    ...Object.fromEntries(Object.entries(def.params || {}).filter(([, p]) => p && 'default' in p).map(([k, p]) => [k, p.default])),
+    ...(set.layoutParams || {}), ...(def.fixed || {}) } } : set;
+  const { cells: allCells } = layoutFn(polygon, layoutSet, opts.zones, seed, opts.largeStones, opts.fences);
   let cells = (holes && holes.length)
     ? allCells.filter((c) => !holes.some((h) => pointInPolygon(c.cx, c.cy, h)))
     : allCells;

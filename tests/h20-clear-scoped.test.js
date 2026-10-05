@@ -44,9 +44,9 @@ import { setFrameClearHandler } from '../bspline-frame-builder/b-spline-gen/html
 /** A minimal SVG.js-like child element: enough for pushState's `.svg()`
  *  read, _restoreState's `.svg(str)` write + reconstruction, and
  *  applyLayerState's addClass/removeClass/getAttribute calls. */
-function makeChild(id, layerId) {
+function makeChild(id, layerId, extra = {}) {
   const classes = new Set();
-  const attrs = { 'data-layer': layerId, id };
+  const attrs = { 'data-layer': layerId, id, ...extra };
   return {
     node: {
       getAttribute: (k) => (k === 'class' ? [...classes].join(' ') : (attrs[k] ?? null)),
@@ -156,7 +156,9 @@ describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)',
   function editorWithBricks() {
     const editor = makeEditor();
     editor._layers = [...editor._layers, { ...BRICKS }];
-    editor._sketchLayer = makeSketchLayer([makeChild('path-1', '1'), makeChild('brick-1', '7'), makeChild('brick-2', '7')]);
+    // laid pieces (item 22 slice 3: a brick is a brick-tool node -- found by what it is, on whatever layer)
+    const piece = { 'data-brick': 'wall', 'data-brick-gen': '1' };
+    editor._sketchLayer = makeSketchLayer([makeChild('path-1', '1'), makeChild('brick-1', '7', piece), makeChild('brick-2', '7', piece)]);
     editor._undoStack = [];
     editor.pushState();
     return editor;

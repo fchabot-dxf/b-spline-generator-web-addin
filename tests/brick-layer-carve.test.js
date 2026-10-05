@@ -34,8 +34,9 @@ describe('Generate keeps the Bricks layer carve toggle', () => {
     runBricks(editor, P.brickSettings, null, { laidKey: 'K' });
     expect(editor._layers[1].carve).toBe(true);
   });
-  it('the brick-owned depth is still written from the settings (Carved = negative)', () => {
+  it('the brick-owned depth is still written from the settings (Carved = negative) -- on the LEGACY Bricks layer', () => {
     const editor = fakeEditor({ carve: true, depth: 9 });
+    editor._activeLayer = '1'; // item 22 slice 3: a new element lays on the active layer -- here the legacy Bricks layer
     runBricks(editor, { ...P.brickSettings, invert: true, reliefIn: 0.2 }, null);
     expect(editor._layers[1].depth).toBe(-0.2);
     expect(editor._layers[1].profile).toBe('flat');

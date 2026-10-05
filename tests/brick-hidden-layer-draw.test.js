@@ -17,7 +17,7 @@ import { runBricks, runBricksOutlinePreview } from '../bspline-frame-builder/b-s
 import { applyLayerStateTo } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
-function fakeEditor({ bricksVisible }) {
+function fakeEditor({ bricksVisible, active = '1', recordOn = null }) {
   const elements = [];
   const make = () => {
     const el = { _attrs: {}, _classes: new Set(),
@@ -29,9 +29,12 @@ function fakeEditor({ bricksVisible }) {
   };
   return {
     elements,
-    _mW: 7, _mH: 9, _activeLayer: '0',
+    _mW: 7, _mH: 9, _activeLayer: active, // item 22 slice 3: a new element lays on the ACTIVE layer
     _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', holdsBricks: true, visible: bricksVisible }],
-    _sketchLayer: { polygon: make, line: make, group: make, node: { querySelectorAll: () => [] }, children: () => ({ toArray: () => elements, forEach: (f) => elements.forEach(f) }) },
+    _sketchLayer: { polygon: make, line: make, group: make, node: { querySelectorAll: () => [],
+      // an existing element's record (recordOn = its layer): a re-lay draws there, active or not
+      querySelector: (sel) => (recordOn && sel.includes('data-brick-record') ? { getAttribute: (k) => (k === 'data-layer' ? recordOn : 'be1'), setAttribute: () => {} } : null) },
+      children: () => ({ toArray: () => elements, forEach: (f) => elements.forEach(f) }) },
   };
 }
 const hidden = (el) => el._classes.has('layer-hidden');
@@ -54,10 +57,15 @@ describe('bricks drawn onto the Bricks layer take its current state', () => {
     expect(ed.elements.length).toBe(1);
     expect(hidden(ed.elements[0])).toBe(true);
   });
-  it('the Bricks layer is not the active one: new bricks are dimmed like the rest of it (inactive-layer)', () => {
-    const ed = fakeEditor({ bricksVisible: true });
+  it('an element whose layer is not the active one: its re-laid bricks are dimmed like the rest of it (inactive-layer)', () => {
+    const ed = fakeEditor({ bricksVisible: true, active: '0', recordOn: '1' });
     runBricks(ed, P.brickSettings, null);
-    expect(ed.elements.every((e) => e._classes.has('inactive-layer'))).toBe(true);
+    expect(ed.elements.filter((e) => e._attrs['data-brick']).every((e) => e._attrs['data-layer'] === '1' && e._classes.has('inactive-layer'))).toBe(true);
+  });
+  it('a NEW element lays on the active layer: not dimmed', () => {
+    const ed = fakeEditor({ bricksVisible: true, active: '0' });
+    runBricks(ed, P.brickSettings, null);
+    expect(ed.elements.filter((e) => e._attrs['data-brick']).every((e) => e._attrs['data-layer'] === '0' && !e._classes.has('inactive-layer'))).toBe(true);
   });
 });
 

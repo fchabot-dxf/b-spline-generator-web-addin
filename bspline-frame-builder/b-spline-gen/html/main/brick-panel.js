@@ -21,12 +21,12 @@ import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core
 import { withLoadingStage, withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
 import {
-  runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, bricksLayerOf, BRICK_KINDS,
+  runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, layerOfElement, BRICK_KINDS,
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
   BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
-  elementGroutWidth, JOINT_ELEMENT,
+  elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
   FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg,
 } from '../editor/editor-brick-tool.js';
 import {
@@ -1304,19 +1304,40 @@ function _relayIfFrameChanged() {
 /** Lay the given element kinds with the current settings, stamping their key on the Bricks layer. */
 /** Blind-spot audit B1: what a lay can produce that the user must be TOLD, declared once -- the toast after the
  *  lay and the sidebar note (#brickLayWarnings) read the same entry. `when(counts, kinds)`. */
+/** F35 item 35: the engine's band-fit note (generateBricks `bandsReduced`, T86 item 28) in plain words: how many
+ *  of the requested bands were laid, and which ones were narrowed (a row / a course fewer). */
+export function bandsReducedText(note) {
+  if (!note) return '';
+  const narrowed = [...new Set((note.steps || []).filter((s) => s.step !== 'drop').map((s) => s.band + 1))]
+    .filter((b) => b <= note.kept);
+  const parts = [`Bands reduced to fit the board: ${note.kept} of ${note.requested} laid`];
+  if (narrowed.length) parts.push(`band ${narrowed.join(', ')} narrowed`);
+  return parts.join('; ') + '.';
+}
+/** `where` = which note line shows it: none = the lay warnings (sidebar + editor Brick tab), 'frame' = the Frame
+ *  section's own note line. `text` may read the counts. */
 export const BRICK_LAY_WARNINGS = Object.freeze([
+  // F35 item 35: no longer when the frame stack was reduced and now FITS (the note below says it instead)
   { id: 'wallEmpty', text: 'The frame bands cover the whole board -- no room for the wall: fewer bands or smaller bricks.',
-    when: (c, kinds, s) => kinds.includes('wall') && s.pattern !== 'none' && c.frameCount > 0 && c.wallCount === 0 },
+    when: (c, kinds, s) => kinds.includes('wall') && s.pattern !== 'none' && c.frameCount > 0 && c.wallCount === 0
+      && !(c.bandsReduced && c.bandsReduced.fits) },
+  { id: 'bandsReduced', where: 'frame', text: (c) => bandsReducedText(c.bandsReduced),
+    when: (c) => !!c.bandsReduced },
 ]);
+// F35 item 35: the last lay's band-fit note (the Frame section greys out the bands it dropped)
+let _bandsReduced = null;
+export const lastBandsReduced = () => _bandsReduced;
 let _layWarnings = [];
+let _layCounts = null;
 export const currentLayWarnings = () => _layWarnings.slice();
+const _warningText = (w) => (typeof w.text === 'function' ? w.text(_layCounts || {}) : w.text);
 function _syncLayWarnings() {
   if (typeof document === 'undefined') return;
-  // every place that shows them is marked data-brick-lay-warnings: the sidebar's note + the editor Brick tab's
-  for (const el of document.querySelectorAll('[data-brick-lay-warnings]')) {
-    el.textContent = _layWarnings.map((w) => w.text).join(' ');
-    el.style.display = _layWarnings.length ? '' : 'none';
-  }
+  // every place that shows them is marked data-brick-lay-warnings (the sidebar's note + the editor Brick tab's) or,
+  // for a note of one section, data-brick-lay-notes="<where>" (F35 item 35: the Frame section's)
+  const show = (el, list) => { el.textContent = list.map(_warningText).join(' '); el.style.display = list.length ? '' : 'none'; };
+  for (const el of document.querySelectorAll('[data-brick-lay-warnings]')) show(el, _layWarnings.filter((w) => !w.where));
+  for (const el of document.querySelectorAll('[data-brick-lay-notes]')) show(el, _layWarnings.filter((w) => w.where === el.getAttribute('data-brick-lay-notes')));
 }
 
 function _layBricks(editor, frameGeom, kinds, { amend = null } = {}) {
@@ -1337,15 +1358,26 @@ function _layBricks(editor, frameGeom, kinds, { amend = null } = {}) {
   // audit B1: a lay that leaves something the user must know about says so: a toast when it starts, the sidebar
   // note for as long as it lasts
   const before = new Set(_layWarnings.map((w) => w.id));
+  _layCounts = counts;
   _layWarnings = counts ? BRICK_LAY_WARNINGS.filter((w) => w.when(counts, kinds, P.brickSettings)) : [];
-  for (const w of _layWarnings) if (!before.has(w.id)) showToast(w.text, 'warn');
+  for (const w of _layWarnings) if (!before.has(w.id)) showToast(_warningText(w), 'warn');
   _syncLayWarnings();
+  // F35 item 35: a frame lay's band-fit note decides which band rows are greyed (only a frame lay changes it)
+  if (counts && (kinds || BRICK_KINDS).includes('frame')) {
+    const next = counts.bandsReduced || null;
+    if (JSON.stringify(next) !== JSON.stringify(_bandsReduced)) {
+      _bandsReduced = next;
+      renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
+      syncFrameBandPatternButtons();
+    }
+  }
   if (_selectedElement) showElementSelection(editor, _selectedElement.id); // item 22: the re-laid bricks keep the outline
   syncControlRequires(); // audit v2 N5: the board now has bricks -- the sidebar controls apply
   // Audit C8: the layer's visibility is the user's choice, so it is not flipped back on -- but a
   // re-lay nobody can see must not pass silently.
-  const layer = bricksLayerOf(editor);
-  if (layer && layer.visible === false) showToast('Bricks re-laid on the hidden Bricks layer -- show it in Layers to see them', 'warn');
+  // item 22 slice 3: each laid element on its own layer -- any of those layers hidden says so
+  const hidden = [...new Set((kinds || BRICK_KINDS).map((k) => layerOfElement(editor, k)).filter(Boolean))].filter((l) => l.visible === false);
+  if (hidden.length) showToast(`Bricks re-laid on the hidden layer ${hidden.map((l) => `"${l.name}"`).join(', ')} -- show it in Layers to see them`, 'warn');
 }
 
 /** Audit C1: what Generate lays -- every element kind already on the canvas, plus the active tool's
@@ -1628,6 +1660,7 @@ function renderBrushPresetList(container) {
     btn.className = 'cad-btn';
     btn.id = `brickBrushPreset_${preset.id}`;
     btn.textContent = preset.label;
+    btn.style.cssText = 'height:auto; min-height:22px; white-space:normal; line-height:1.25; padding:3px 6px;'; // audit v3 #2
     btn.addEventListener('click', () => {
       P.brickSettings.brushBandPreset = preset.id;
       syncBrushPresetButtons();
@@ -1653,6 +1686,12 @@ function syncBrushPresetButtons() {
 const WALL_PATTERN_LABELS = {
   none: 'None', stretcher: 'Stretcher', stack: 'Stack', soldier: 'Soldier', header: 'Header',
   flemish: 'Flemish', herringbone: 'Herringbone', basketweave: 'Basketweave',
+  // F35 item 13: the sheet's own names
+  stacked_horizontal: 'Stacked horizontal', chevron: 'Chevron', stacked_variation: 'Stacked variation',
+  basketweave_variation: 'Basketweave variation', basketweave_stacked: 'Basketweave + stacked',
+  // F35 item 14: the tiles (named by what the sheet draws; the sheet has no captions)
+  square_grid: 'Square grid', square_diamond: 'Square + diamond inserts', octagon_square: 'Octagon + small square',
+  hexagon: 'Hexagon', lozenge: 'Lozenge', framed_square: 'Framed square',
   fieldstone: 'Fieldstone',
 };
 // item 23: what a ROCK wall becomes when a brick set is picked for it
@@ -1664,17 +1703,21 @@ const WALL_PATTERN_LIST = Object.keys(BRICK_PATTERNS).map((id) => ({ id, label: 
  *  lost from the picker. Combinations / Tiles join here as their patterns land. Since the flattening the picker
  *  shows no family headings: this table is the ORDER (and the place a new family is declared). */
 const WALL_PATTERN_FAMILIES = [
-  { id: 'bonds', label: 'Bonds', patterns: ['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish'] },
-  { id: 'herringbone', label: 'Herringbone', patterns: ['herringbone'] },
-  { id: 'basketweave', label: 'Basketweave', patterns: ['basketweave'] },
+  { id: 'bonds', label: 'Bonds', patterns: ['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish', 'stacked_horizontal', 'stacked_variation'] },
+  { id: 'herringbone', label: 'Herringbone', patterns: ['herringbone', 'chevron'] },
+  { id: 'basketweave', label: 'Basketweave', patterns: ['basketweave', 'basketweave_variation', 'basketweave_stacked'] },
   { id: 'fieldstone', label: 'Fieldstone', patterns: ['fieldstone'] },
+  // F35 item 14: every BRICK_PATTERNS entry declaring `family: 'tiles'` lands here, under its own heading
+  { id: 'tiles', label: 'Tiles', heading: true, patterns: [] },
   { id: 'more', label: 'More', patterns: [] },
 ];
 function wallPatternFamilies() {
-  const listed = new Set(WALL_PATTERN_FAMILIES.flatMap((f) => f.patterns));
+  // a pattern entry may declare its own family (F35 item 14: `family: 'tiles'`)
+  const byFamily = (fid) => WALL_PATTERN_LIST.map((p) => p.id).filter((id) => BRICK_PATTERNS[id] && BRICK_PATTERNS[id].family === fid);
+  const listed = new Set(WALL_PATTERN_FAMILIES.flatMap((f) => [...f.patterns, ...byFamily(f.id)]));
   const extra = WALL_PATTERN_LIST.map((p) => p.id).filter((id) => !listed.has(id));
   return WALL_PATTERN_FAMILIES
-    .map((f) => ({ ...f, patterns: (f.id === 'more' ? [...f.patterns, ...extra] : f.patterns).filter((id) => BRICK_PATTERNS[id]) }))
+    .map((f) => ({ ...f, patterns: [...f.patterns, ...byFamily(f.id), ...(f.id === 'more' ? extra : [])].filter((id) => BRICK_PATTERNS[id]) }))
     .filter((f) => f.patterns.length);
 }
 const _patternLabel = (id) => WALL_PATTERN_LABELS[id] || id;
@@ -1686,7 +1729,15 @@ function renderWallPatternList(container) {
   // in the declared family ORDER (WALL_PATTERN_FAMILIES), no family sub-headings.
   container.style.flexDirection = 'row';
   container.style.flexWrap = 'wrap';
-  for (const id of wallPatternFamilies().flatMap((f) => f.patterns)) {
+  for (const fam of wallPatternFamilies()) for (const id of fam.patterns) {
+    if (fam.heading && id === fam.patterns[0]) { // F35 item 14: a family that declares a heading starts a labelled row
+      const h = document.createElement('div');
+      h.className = 'brick-pattern-family-heading';
+      h.id = `brickPatternFamily_${fam.id}`;
+      h.textContent = fam.label;
+      h.style.cssText = 'flex:0 0 100%; font-size:10px; opacity:0.65; margin:4px 0 2px;';
+      container.appendChild(h);
+    }
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'cad-btn brick-pattern-icon';
@@ -1735,6 +1786,54 @@ function syncWallPatternButtons() {
   syncQuickSettings();
   syncLargeStonesRow();
   syncRusticRows();
+  renderPatternParams();
+}
+
+/** F35 item 14: the active Wall pattern's declared params (BRICK_PATTERNS[id].params) as chip rows under the grid --
+ *  one chip per declared option, the user's pick (else the default) active. Hidden for a pattern with none. */
+function renderPatternParams() {
+  const grid = document.getElementById('brickPatternList');
+  if (!grid || !grid.parentNode) return;
+  let row = document.getElementById('brickPatternParams');
+  if (!row) {
+    row = document.createElement('div');
+    row.id = 'brickPatternParams';
+    row.style.cssText = 'margin:4px 0 8px;';
+    grid.parentNode.insertBefore(row, grid.nextSibling);
+  }
+  row.innerHTML = '';
+  const id = P.brickSettings.pattern;
+  const def = BRICK_PATTERNS[id];
+  const params = Object.entries((def && def.params) || {}).filter(([, p]) => p && Array.isArray(p.options));
+  row.style.display = params.length ? '' : 'none';
+  const current = patternParamsFor(P.brickSettings, id);
+  for (const [key, p] of params) {
+    const line = document.createElement('div');
+    line.style.cssText = 'display:flex; gap:4px; align-items:center; flex-wrap:nowrap; margin-bottom:4px;';
+    const label = document.createElement('span');
+    label.textContent = p.label || key;
+    label.style.cssText = 'font-size:10px; opacity:0.65; width:70px;';
+    line.appendChild(label);
+    p.options.forEach((v, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cad-btn' + (v === current[key] ? ' active' : '');
+      b.id = `brickPatternParam_${key}_${i}`;
+      b.textContent = ['S', 'M', 'L'][i] || String(v);
+      b.style.cssText = 'flex:0 0 auto; min-width:0; width:auto; padding:2px 10px;';
+      b.title = `${p.label || key}: ${v}`;
+      b.addEventListener('click', () => setPatternParam(id, key, v));
+      line.appendChild(b);
+    });
+    row.appendChild(line);
+  }
+}
+/** F35 item 14: pick a pattern param (kept per pattern) -- re-lays at once. */
+export function setPatternParam(patternId, key, value, commit = 'generate') {
+  const all = P.brickSettings.patternParams || {};
+  P.brickSettings.patternParams = { ...all, [patternId]: { ...(all[patternId] || {}), [key]: value } };
+  renderPatternParams();
+  commitBrickSetting(commit);
 }
 
 /** F35 item 8: the per-band pattern picker -- one row per band in the CURRENT frameBandPreset, each
@@ -1756,9 +1855,17 @@ function renderFrameBandPatternList(container) {
   // F35 item 23: a ROCK frame (fieldstone bands) offers only the fieldstone band (the engine lays every band of a
   // rock frame as the fieldstone ring); a brick frame offers the brick patterns + every `bandCapable` one
   const rock = isRockFrame(P.brickSettings);
+  // F35 item 35: a band the last lay dropped to fit the board (bandsReduced.kept) greys out, with why
+  const keptBands = _bandsReduced ? _bandsReduced.kept : bands.length;
   bands.forEach((band, i) => {
+    const dropped = i >= keptBands;
     const row = document.createElement('div');
     row.style.cssText = 'display:flex; gap:4px; margin-bottom:4px; flex-wrap:wrap; align-items:center;';
+    if (dropped) {
+      row.dataset.bandDropped = '1';
+      row.title = `Band ${i + 1} was dropped to fit the board (Bands reduced to fit) -- fewer bands or smaller bricks bring it back`;
+      row.style.opacity = '0.4';
+    }
     const label = document.createElement('span');
     label.textContent = `Band ${i + 1}`;
     label.style.cssText = 'font-size:10px; opacity:0.65; width:44px; flex:0 0 auto;';
@@ -1766,6 +1873,7 @@ function renderFrameBandPatternList(container) {
     for (const pattern of WALL_PATTERN_LIST) {
       const def = BRICK_PATTERNS[pattern.id];
       if (rock && pattern.id !== 'fieldstone') continue;
+      if (!bandCanLay(def)) continue; // advisor (turn 261): a band lists only what a band can lay; the rest is absent
       const btn = document.createElement('button');
       btn.type = 'button';
       // item 33 (audit N10): the Wall grid's own engine icon, the name as the tooltip
@@ -1778,10 +1886,6 @@ function renderFrameBandPatternList(container) {
       if (def && def.bandCapable) {
         // picking it on one band makes the whole frame rock: every band fieldstone (one set per element)
         btn.addEventListener('click', () => setFrameRock(true));
-      } else if (def && (def.kind === 'tile2d' || def.kind === 'none')) {
-        btn.disabled = true;
-        btn.title = `${pattern.label}: ` + (def.kind === 'none' ? 'A band needs a real pattern -- use the Frame band preset\'s own None instead' : 'Wall only for now');
-        btn.style.opacity = '0.4';
       } else {
         btn.addEventListener('click', () => {
           if (!P.brickSettings.frameBandPatterns) P.brickSettings.frameBandPatterns = [];
@@ -1792,10 +1896,19 @@ function renderFrameBandPatternList(container) {
       }
       row.appendChild(btn);
     }
+    if (dropped) for (const b of row.querySelectorAll('button')) { b.disabled = true; b.title = row.title; }
     container.appendChild(row);
     renderAccentRowFor(container, { kind: 'frameBand', band: i }, 16); // per-band accent (advisor)
+    if (dropped) {
+      const acc = container.lastElementChild;
+      if (acc) { acc.style.opacity = '0.4'; acc.title = row.title; for (const b of acc.querySelectorAll('button, input')) b.disabled = true; }
+    }
   });
 }
+
+/** What a Frame BAND can lay: a course pattern (a run of bricks along the band) or an entry declaring `bandCapable`
+ *  (fieldstone). Tiles, the sheet's 2D weaves and 'none' are Wall-only, so a band row does not list them. */
+export const bandCanLay = (def) => !!def && (def.kind === 'course' || def.kind === 'course-alternating' || !!def.bandCapable);
 
 function syncFrameBandPatternButtons() {
   const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;

@@ -743,6 +743,22 @@ export function isBricksLayer(layer) {
 /** F35 item 22 slice 1: the attribute that marks a brick ELEMENT RECORD (editor-brick-tool.js) -- an invisible
  *  bookkeeping node (display none: never drawn, hit, exported or downloaded), never part of the drawing. */
 export const BRICK_RECORD_ATTR = 'data-brick-record';
+/** A brick ELEMENT's id: on its record (Wall / Frame) and on each segment of a Brush stroke's spine. */
+export const BRICK_ELEMENT_ATTR = 'data-brick-element';
+/** On a laid brick: the element that laid it (a record's id; a Brush stroke's `<id>:<chain>`). */
+export const BRICK_OWNER_ATTR = 'data-brick-owner';
+/** F35 item 22 slice 3: every node of the brick ELEMENT `node` belongs to (a Wall / Frame record + its pieces; a
+ *  Brush stroke's spine segments + its pieces), so the element moves between layers as ONE thing (the context
+ *  menu's Move to layer). A node of no brick element -> just itself. Plain DOM nodes. */
+export function brickElementNodes(editor, node) {
+  const root = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!root || !node || !node.getAttribute) return node ? [node] : [];
+  const owner = node.getAttribute(BRICK_OWNER_ATTR);
+  const id = node.getAttribute(BRICK_ELEMENT_ATTR) || (owner ? owner.split(':')[0] : null);
+  if (!id) return [node];
+  return [...root.querySelectorAll(`[${BRICK_ELEMENT_ATTR}="${id}"], [${BRICK_OWNER_ATTR}="${id}"], [${BRICK_OWNER_ATTR}^="${id}:"]`)];
+}
+
 /** F35 item 22 (advisor): brick attributes the editor keeps for ITSELF and never bakes -- stripped from every
  *  baked output (getLayerSvg -> Send's sketches; the SVG download), so those stay byte-identical to before item
  *  22. Keyed by the brick's `data-brick` kind: Wall/Frame bricks gained an owner in item 22 slice 1; Brush bricks
@@ -761,7 +777,15 @@ export function stripEditorOnlyBrickAttrs(el) {
   for (const a of attrs) if (el.hasAttribute(a)) { el.removeAttribute(a); changed = true; }
   return changed;
 }
-/** The board's brick layer (one, until slice 3 puts bricks on any layer), or null. */
+/** F35 item 22 slice 3: a node the BRICK TOOLS own -- a laid piece (data-brick-gen) or a Brush stroke's spine
+ *  (data-brick="brush-spine"); a record is display:none and never exported anyway. Bricks live on ANY layer, like
+ *  art, and these never belong to the layer's ART: getLayerSvg (editor-io.js) leaves them out of the art (the
+ *  mask's rasterizeSvg, Send's art sketches), the brick height mask and Send's Bricks sketch read them instead. */
+export function isBrickToolNode(el) {
+  return !!(el && el.getAttribute) && (el.getAttribute('data-brick-gen') === '1' || el.getAttribute('data-brick') === 'brush-spine');
+}
+/** The LEGACY brick layer (a board from before slice 3 has one, flagged `holdsBricks`), or null. Since slice 3 new
+ *  elements go on the active layer; this is read only by the pre-item-22 record migration. */
 export function bricksLayerOf(editor) {
   return ((editor && editor._layers) || []).find(isBricksLayer) || null;
 }

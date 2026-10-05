@@ -1,6 +1,7 @@
 /**
- * Item 33: the Frame element's CORNERS row (panel side): an engine-drawn mini corner per FRAME_CORNERS entry, the
- * preset's own corner active by default, a pick re-lays at once, the old corner-variant presets no longer listed.
+ * F35 item 35: the Frame's band-fit note. When the engine reduces a frame stack to fit the board (generateBricks
+ * `bandsReduced`, T86 item 28), the Frame section says so in plain words in place of the empty-wall warning (which
+ * stays only when the reduced stack still does not fit), and the bands it dropped grey out with why.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
@@ -24,8 +25,9 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
   return { ...actual, frameContourSilhouette: vi.fn(() => ({ primitives: [] })) };
 });
 
-import { initBrickPanel, setFrameRock } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
-import { runBricks, FRAME_CORNERS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { initBrickPanel, bandsReducedText } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
+import { runBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { BRICK_CONTROL_REQUIRES } from '../bspline-frame-builder/b-spline-gen/html/main/brick-control-requires.js';
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
@@ -36,10 +38,10 @@ const FIXTURE = `
     <div id="brickBrushProfileToggle"><button id="brickBtnProfileStripped" class="active"></button><button id="brickBtnProfileContinuous"></button></div>
     <div id="brickBrushOrientationToggle"><button id="brickBtnOrientationStretcher" class="active"></button><button id="brickBtnOrientationSoldier"></button></div>
   </div>
-  <div id="brickFramePresetList"></div><label id="brickFrameCornerLabel">Corners</label><div id="brickFrameCornerList"></div>
+  <div id="brickFramePresetList"></div>
   <div id="brickBrushPresetList"></div>
   <div id="brickPatternList"></div><div id="brickRusticRow_wall" style="display:none;"><input type="range" id="brickRusticSlider_wall"><input id="brickRustic_wall"></div><div id="brickRusticRow_brush" style="display:none;"><input type="range" id="brickRusticSlider_brush"><input id="brickRustic_brush"></div>
-  <label id="brickFrameBandPatternLabel">Band patterns</label><div id="brickFrameBandPatternList"></div>
+  <div id="brickFrameBandsNoteRow"><div id="brickFrameBandsNote" data-brick-lay-notes="frame" style="display:none;"></div></div><div id="brickLayWarnings" data-brick-lay-warnings style="display:none;"></div><label id="brickFrameBandPatternLabel">Band patterns</label><div id="brickFrameBandPatternList"></div>
   <div id="brickSetRow"></div>
   <div id="brickSizePresetList"></div>
   <input id="brickSizeSlider" type="range" min="0" max="1000" step="1" value="226"><input id="brickSize" type="number" value="0.75">
@@ -87,53 +89,49 @@ afterEach(() => { root?.remove(); window.svgEditor = null; vi.unstubAllGlobals()
 const shown = (id) => $(id).style.display !== 'none';
 
 
+const NOTE_DROP = { requested: 3, kept: 2, steps: [{ band: 2, step: 'row' }, { band: 2, step: 'drop' }], gapIn: 0.1, limitIn: 2, requestedDepthIn: 3, depthIn: 1.9, fits: true };
+// a real change each time (re-picking the same preset re-lays nothing): away, then back to 3 bands
+const lay = (counts) => { runBricks.mockReturnValue(counts); $('brickFramePreset_soldier_stretcher').click(); $('brickFramePreset_three_band').click(); };
 
-const activeCorner = () => [...document.querySelectorAll('[id^=brickFrameCorner_]')].filter((b) => b.classList.contains('active')).map((b) => b.id);
-
-describe('item 33: the Corners row in the Frame section', () => {
-  beforeEach(() => { P.brickSettings.frameBandPreset = 'single_soldier'; P.brickSettings.frameCorner = null; P.brickSettings.frameBandPatterns = []; });
-  it('one button per corner style, each with its tooltip; plain Soldier shows Mitre active', () => {
-    setup('frame');
-    for (const c of FRAME_CORNERS) expect($(`brickFrameCorner_${c.id}`).title, c.id).toBe(c.title);
-    expect(activeCorner()).toEqual(['brickFrameCorner_mitre']);
-    expect(shown('brickFrameCornerList')).toBe(true);
+describe('F35 item 35: the bands-reduced note', () => {
+  beforeEach(() => { runBricks.mockReset(); });
+  it('in plain words: how many of the bands were laid, and which were narrowed', () => {
+    expect(bandsReducedText(NOTE_DROP)).toBe('Bands reduced to fit the board: 2 of 3 laid.');
+    expect(bandsReducedText({ ...NOTE_DROP, kept: 3, steps: [{ band: 2, step: 'row' }] })).toBe('Bands reduced to fit the board: 3 of 3 laid; band 3 narrowed.');
+    expect(bandsReducedText(null)).toBe('');
   });
-  it('the folded variants are gone from the preset list; Soldier x2 stays (its own corner: lapped)', () => {
+  it('a reduced stack that FITS: the Frame note line, no empty-wall warning; band 3 greyed with why', () => {
     setup('frame');
-    expect($('brickFramePreset_butt_frame')).toBeNull();
-    expect($('brickFramePreset_quoin_corners')).toBeNull();
-    expect($('brickFramePreset_double_course').title).toBe('Soldier x2');
-    $('brickFramePreset_double_course').click();
-    expect(activeCorner()).toEqual(['brickFrameCorner_lapped']);
+    lay({ wallCount: 12, frameCount: 200, bandsReduced: NOTE_DROP });
+    expect(shown('brickFrameBandsNote')).toBe(true);
+    expect($('brickFrameBandsNote').textContent).toBe('Bands reduced to fit the board: 2 of 3 laid.');
+    expect(shown('brickLayWarnings')).toBe(false);
+    const b3 = $('brickFrameBandPattern_2_header');
+    expect(b3.disabled).toBe(true);
+    expect(b3.title).toMatch(/dropped to fit the board/);
+    expect($('brickFrameBandPattern_1_header').disabled).toBe(false);
   });
-  it('a pick sets the element\u2019s corner and re-lays at once; a new preset starts on its own corner again', () => {
+  it('even with an empty wall, a stack that FITS says the note, not the warning; one that still does NOT fit keeps the warning', () => {
     setup('frame');
-    runBricks.mockClear();
-    $('brickFrameCorner_block').click();
-    expect(P.brickSettings.frameCorner).toBe('block');
-    expect(activeCorner()).toEqual(['brickFrameCorner_block']);
-    expect(runBricks).toHaveBeenCalled();
-    $('brickFramePreset_three_band').click();
-    expect(P.brickSettings.frameCorner).toBeNull();
-    expect(activeCorner()).toEqual(['brickFrameCorner_mitre']);
+    // a Wall element on the board (its record), so a frame change re-lays the wall too
+    const rec = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    rec.setAttribute('data-brick-record', 'wall-full'); rec.setAttribute('data-layer', 'b');
+    window.svgEditor._sketchLayer.node.appendChild(rec);
+    lay({ wallCount: 0, frameCount: 300, bandsReduced: NOTE_DROP });
+    expect(shown('brickLayWarnings')).toBe(false);
+    lay({ wallCount: 0, frameCount: 300, bandsReduced: { ...NOTE_DROP, kept: 1, fits: false } });
+    expect(shown('brickLayWarnings')).toBe(true);
+    expect(shown('brickFrameBandsNote')).toBe(true);
   });
-  it('hidden for no bands (None) and for a rock frame', () => {
+  it('a stack laid as requested: no note, nothing greyed', () => {
     setup('frame');
-    $('brickFramePreset_none').click();
-    expect(shown('brickFrameCornerList')).toBe(false);
-    $('brickFramePreset_single_soldier').click();
-    expect(shown('brickFrameCornerList')).toBe(true);
-    setFrameRock(true);
-    expect(shown('brickFrameCornerList')).toBe(false);
-    setFrameRock(false);
+    lay({ wallCount: 40, frameCount: 120 });
+    expect(shown('brickFrameBandsNote')).toBe(false);
+    expect($('brickFrameBandPattern_2_header').disabled).toBe(false);
   });
-  it('audit N10: the preset buttons and every band’s pattern buttons carry their name as the tooltip', () => {
-    setup('frame');
-    $('brickFramePreset_three_band').click();
-    expect($('brickFramePreset_three_band').title).toBe('Soldier / Stretcher / Soldier');
-    for (const i of [0, 1, 2]) expect($(`brickFrameBandPattern_${i}_header`).title, `band ${i}`).toBe('Header');
-    // turn 261: a band row lists only what a band can lay -- the Wall-only patterns are absent, not greyed
-    for (const id of ['herringbone', 'basketweave', 'chevron', 'square_grid', 'none']) expect($(`brickFrameBandPattern_0_${id}`), id).toBeNull();
-    expect($('brickFrameBandPattern_0_fieldstone')).toBeTruthy(); // band-capable
+  it('the note row is gated on the engine\u2019s bandFit option (declared like every hidden control)', () => {
+    const entry = BRICK_CONTROL_REQUIRES.find((r) => r.controls.includes('brickFrameBandsNoteRow'));
+    expect(entry && entry.requires).toEqual({ engineOption: 'bandFit' });
+    expect(entry.hides).toBe(true);
   });
 });
