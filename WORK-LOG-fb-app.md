@@ -14140,3 +14140,16 @@ WallPattern = {
   - tests/frame-corner-fills.test.js is now committed: every corner style x every bond set's pieces resolve in the element's set. It failed before the merge (set 1, block: 8 stone_07 samples) and passes after it.
   - Live re-probe: Quoin gives 86 bricks with 0 flat fills (4 before). Shot: shots/seatC/frame_corners_quoin_canvas_fixed.png, quoins in red-brick texture.
   - Still to come: the paint-fix sha from the advisor, to merge origin/main.
+- **turn 249 part 3: merged main 201f94b** (88's paint fix plus the migration checks), as 7e15d99. Item 33 tests are still 15/15.
+- **turn 249 part 4: amendment (audit N10, the long-list rule): the Frame preset list and the per-band pattern pickers are now ICONS with tooltips.**
+  - `_miniFrame(key, bands)` in editor-brick-tool.js generalises the corner icon. It lays any band stack on a square sized to the stack (2 x depth + 0.4 in) and crops one corner (depth + 0.4 in).
+    - The corner icons go through it unchanged: 2 bands give 3.4 / 1.9, as before.
+    - `framePresetIconSvg(id)` draws each preset's own stack; None is a struck-through tile.
+    - The quick-settings "Frame bands" row gets the same icons through `iconFor`.
+  - The band pattern buttons use the Wall grid's `wallPatternIconSvg` with the name as the tooltip. Disabled ones stay greyed, and their title becomes "<name>: <reason>".
+  - Tests: one in frame-corners (every listed preset has a distinct engine icon), one new in frame-corners-panel (tooltips on the preset and band-pattern buttons), and one changed there (the preset button's name moved to its tooltip). All three fail against the pre-icon copies; restored and cmp identical.
+  - Live: shots/seatC/frame_corners_row_icons.png (three-band preset, 3 band rows of icons).
+- **Suite after the icons:**
+  - 5 failures in the full run, all "Test timed out" under load.
+  - Alone: boundary-at-depth 19/19 and fieldstone 5/5 pass. frame-3d-sweep failed 1/8 alone once, then passed on a rerun (flake). discrete-controls N2 timed out once alone at 5.19 s.
+  - A/B on N2 isolated (-t), x3 each: new 297 / 398 / 455 ms, old 353 / 326 / 354 ms. The icons don't slow it; whole-file timings swing from 3.4 to 10.9 s with machine load. The 5 s timeout on N2 is a load flake, not this change.

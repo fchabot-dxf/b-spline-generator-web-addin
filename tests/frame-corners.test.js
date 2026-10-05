@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerBricks, frameCornerIconSvg,
+  FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerBricks, frameCornerIconSvg, framePresetIconSvg,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { runMigrations } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
@@ -32,6 +32,16 @@ describe('item 33: the corner styles', () => {
     for (const [i, svg] of icons.entries()) expect(svg, FRAME_CORNERS[i].id).toMatch(/<polygon /);
     expect(new Set(icons).size).toBe(4);
     for (const c of FRAME_CORNERS) expect(frameCornerBricks(c.id).length, c.id).toBeGreaterThan(0);
+  });
+});
+
+describe('item 33 (audit N10): the band-preset icons', () => {
+  it('every listed preset has an engine-drawn icon of its band stack, all different; None is a struck tile', () => {
+    const listed = Object.keys(FRAME_PRESETS).filter((id) => !FOLDED_FRAME_PRESETS[id] && id !== 'none');
+    const icons = listed.map((id) => framePresetIconSvg(id, 26));
+    for (const [i, svg] of icons.entries()) expect(svg, listed[i]).toMatch(/<polygon /);
+    expect(new Set(icons).size).toBe(listed.length);
+    expect(framePresetIconSvg('none', 26)).toMatch(/<line /);
   });
 });
 

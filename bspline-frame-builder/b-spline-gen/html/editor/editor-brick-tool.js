@@ -573,33 +573,51 @@ export function toolMiniBricks(kind) {
   _toolMinis.set(kind, bricks);
   return bricks;
 }
-/** Item 33: a corner style's picker icon -- two soldier bands round a square, laid by the real engine with that
- *  `cornerStyle` (Set 1 at the tool-icon size), cropped to ONE corner. A new FRAME_CORNERS entry gets its icon free. */
-const CORNER_ICON = Object.freeze({ boardIn: 3.4, cropIn: 1.9 });
-const _cornerIcons = new Map();
-export function frameCornerBricks(cornerId) {
-  if (_cornerIcons.has(cornerId)) return _cornerIcons.get(cornerId);
+/** Item 33: a MINI FRAME corner -- `bands` laid by the real engine round a square just big enough for the band
+ *  stack (Set 1 at the tool-icon size), cropped to ONE corner (the stack + MINI_FRAME.marginIn of the board inside).
+ *  Draws the corner-style icons and the band-preset icons; a new FRAME_CORNERS / FRAME_PRESETS entry gets its icon
+ *  free. Cached by `key`. */
+const MINI_FRAME = Object.freeze({ marginIn: 0.4 });
+const _miniFrames = new Map();
+function _miniFrame(key, bands) {
+  if (_miniFrames.has(key)) return _miniFrames.get(key);
+  const depth = bands.reduce((a, b) => a + b.widthIn, 0);
+  const crop = depth + MINI_FRAME.marginIn, w = 2 * depth + MINI_FRAME.marginIn;
   let bricks = [];
   try {
-    const s = TOOL_MINI_BRICK, w = CORNER_ICON.boardIn;
-    const band = { widthIn: 0.75, pattern: 'soldier', cornerStyle: cornerId };
+    const s = TOOL_MINI_BRICK;
     bricks = generateBricks({
       boardOutline: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: w }, { x: 0, y: w }],
       set: resolvedSetFor(s), scale: scaleFor(s), suppression: 0, clumping: 0, seed: s.seed, skipWallFill: true,
-      frame: { primitives: buildRibbonPrimitives(rectToPrimitives({ x1: 0, y1: 0, x2: w, y2: w })), bands: [band, band] },
+      frame: { primitives: buildRibbonPrimitives(rectToPrimitives({ x1: 0, y1: 0, x2: w, y2: w })), bands },
     }).frameBricks;
   } catch (_) {
     bricks = [];
   }
-  _cornerIcons.set(cornerId, bricks);
-  return bricks;
+  const out = { bricks, crop };
+  _miniFrames.set(key, out);
+  return out;
 }
-export function frameCornerIconSvg(cornerId, heightPx = 26) {
-  const c = CORNER_ICON.cropIn;
-  const polys = frameCornerBricks(cornerId).filter((b) => b.polygon.some((p) => p.x < c && p.y < c)).map((b) => _iconPolygon(b)).join('');
+function _miniFrameSvg({ bricks, crop: c }, heightPx) {
+  const polys = bricks.filter((b) => b.polygon.some((p) => p.x < c && p.y < c)).map((b) => _iconPolygon(b)).join('');
   if (!polys) return null;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 ${c} ${c}" aria-hidden="true">`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 ${+c.toFixed(3)} ${+c.toFixed(3)}" aria-hidden="true">`
     + `<rect width="${c}" height="${c}" fill="#efe6da"/><g fill="#b5533c" stroke="#efe6da" stroke-width="0.04">${polys}</g></svg>`;
+}
+/** A corner style's picker icon: two soldier bands with that `cornerStyle`. */
+const _cornerBands = (cornerId) => { const band = { widthIn: 0.75, pattern: 'soldier', cornerStyle: cornerId }; return [band, band]; };
+export const frameCornerBricks = (cornerId) => _miniFrame(`corner:${cornerId}`, _cornerBands(cornerId)).bricks;
+export const frameCornerIconSvg = (cornerId, heightPx = 26) => _miniFrameSvg(_miniFrame(`corner:${cornerId}`, _cornerBands(cornerId)), heightPx);
+/** Item 33 (audit N10, Fred's long-list rule): a band PRESET's icon -- its band stack at a corner, as laid; None = a
+ *  struck-through tile (the Wall grid's own 'none'). */
+export function framePresetIconSvg(presetId, heightPx = 26) {
+  const bands = FRAME_PRESETS[presetId];
+  if (!bands) return null;
+  if (!bands.length) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 1 1" aria-hidden="true">`
+      + `<rect width="1" height="1" fill="#efe6da"/><line x1="0.15" y1="0.85" x2="0.85" y2="0.15" stroke="#8a8078" stroke-width="0.06"/></svg>`;
+  }
+  return _miniFrameSvg(_miniFrame(`preset:${presetId}`, bands), heightPx);
 }
 // one argument only: it is passed straight to .map(), whose index must never reach the markup (a second
 // `attrs` parameter once turned every pattern icon into `<polygon0 ...>` -- drawn as nothing, measured live)

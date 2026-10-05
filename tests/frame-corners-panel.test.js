@@ -102,7 +102,7 @@ describe('item 33: the Corners row in the Frame section', () => {
     setup('frame');
     expect($('brickFramePreset_butt_frame')).toBeNull();
     expect($('brickFramePreset_quoin_corners')).toBeNull();
-    expect($('brickFramePreset_double_course').textContent).toBe('Soldier x2');
+    expect($('brickFramePreset_double_course').title).toBe('Soldier x2');
     $('brickFramePreset_double_course').click();
     expect(activeCorner()).toEqual(['brickFrameCorner_lapped']);
   });
@@ -126,5 +126,13 @@ describe('item 33: the Corners row in the Frame section', () => {
     setFrameRock(true);
     expect(shown('brickFrameCornerList')).toBe(false);
     setFrameRock(false);
+  });
+  it('audit N10: the preset buttons and every band’s pattern buttons carry their name as the tooltip', () => {
+    setup('frame');
+    $('brickFramePreset_three_band').click();
+    expect($('brickFramePreset_three_band').title).toBe('Soldier / Stretcher / Soldier');
+    for (const i of [0, 1, 2]) expect($(`brickFrameBandPattern_${i}_header`).title, `band ${i}`).toBe('Header');
+    expect($('brickFrameBandPattern_0_herringbone').disabled).toBe(true);
+    expect($('brickFrameBandPattern_0_herringbone').title).toMatch(/^Herringbone: /);
   });
 });

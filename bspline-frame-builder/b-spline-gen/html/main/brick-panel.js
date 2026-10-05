@@ -27,7 +27,7 @@ import {
   BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT,
-  FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg,
+  FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg,
 } from '../editor/editor-brick-tool.js';
 import {
   ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick, ACCENT_LEVEL_RANGE, clampAccentLevel, ACCENT_TILE,
@@ -1528,9 +1528,12 @@ function renderFramePresetList(container) {
   for (const preset of FRAME_PRESET_LIST) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn';
+    btn.className = 'cad-btn brick-accent-icon'; // item 33 (audit N10): the band stack as an icon, the name as the tooltip
     btn.id = `brickFramePreset_${preset.id}`;
-    btn.textContent = preset.label;
+    btn.title = preset.label;
+    btn.setAttribute('aria-label', preset.label);
+    btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
+    btn.innerHTML = framePresetIconSvg(preset.id, 30) || preset.label;
     btn.addEventListener('click', () => setFrameBandPreset(preset.id));
     container.appendChild(btn);
   }
@@ -1764,15 +1767,19 @@ function renderFrameBandPatternList(container) {
       if (rock && pattern.id !== 'fieldstone') continue;
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'cad-btn';
+      // item 33 (audit N10): the Wall grid's own engine icon, the name as the tooltip
+      btn.className = 'cad-btn brick-accent-icon';
       btn.id = `brickFrameBandPattern_${i}_${pattern.id}`;
-      btn.textContent = pattern.label;
+      btn.title = pattern.label;
+      btn.setAttribute('aria-label', pattern.label);
+      btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
+      btn.innerHTML = wallPatternIconSvg(pattern.id, 22) || pattern.label;
       if (def && def.bandCapable) {
         // picking it on one band makes the whole frame rock: every band fieldstone (one set per element)
         btn.addEventListener('click', () => setFrameRock(true));
       } else if (def && (def.kind === 'tile2d' || def.kind === 'none')) {
         btn.disabled = true;
-        btn.title = def.kind === 'none' ? 'A band needs a real pattern -- use the Frame band preset\'s own None instead' : 'Wall only for now';
+        btn.title = `${pattern.label}: ` + (def.kind === 'none' ? 'A band needs a real pattern -- use the Frame band preset\'s own None instead' : 'Wall only for now');
         btn.style.opacity = '0.4';
       } else {
         btn.addEventListener('click', () => {
@@ -1963,7 +1970,7 @@ const BRICK_QUICK_SETTINGS = [
     isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
   { id: 'pattern', label: 'Wall pattern', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternIconSvg(c.id, 24),
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
-  { id: 'frameBands', label: 'Frame bands', choices: () => FRAME_PRESET_LIST,
+  { id: 'frameBands', label: 'Frame bands', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetIconSvg(c.id, 24),
     isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
 ];
 const quickButtonId = (row, choice) => `brickQuick_${row.id}_${choice.id}`;
