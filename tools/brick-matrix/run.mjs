@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'persistence'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'persistence'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -45,6 +45,12 @@ const CLOUD_STAND_IN = `(() => {
     const url = typeof input === 'string' ? input : input.url;
     const api = window.BSPLINE_PRESETS_API_URL ? String(window.BSPLINE_PRESETS_API_URL).replace(/[/]+$/, '') : null;
     if (!api || !url.startsWith(api + '/projects')) return real(input, init);
+    // item 34: a write that carries a password must carry the declared test one (the worker answers 401 otherwise);
+    // a write with NO Authorization header is pre-item-34 code and is accepted as before
+    const hdrs = init.headers || {};
+    const auth = typeof hdrs.get === 'function' ? hdrs.get('Authorization') : (hdrs.Authorization || hdrs.authorization);
+    const writes = ['PUT', 'DELETE'].includes(String(init.method || 'GET').toUpperCase());
+    if (writes && auth && auth !== 'Bearer __EDIT_PASSWORD__') return new Response(JSON.stringify({ error: 'wrong password (brick-matrix stand-in)' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     const m = load(); const method = String(init.method || 'GET').toUpperCase();
     const name = decodeURIComponent(url.slice((api + '/projects').length).split('?')[0].replace(/^[/]/, ''));
     const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json' } });
@@ -69,10 +75,21 @@ if (arg('only-if-changed')) {
 
 if (flag('parallel')) {
   const t0 = Date.now();
+  // MEASURED: two gates at once (the advisor's and a seat's) -- one group's served-root check found its port taken
+  // and the group never ran. Pick a base whose every group port (DevTools + HTTP) answers nothing; shift by 1000.
+  const answers = (port) => fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(400) }).then(() => true, () => false);
+  let base = PORT;
+  for (let tries = 0; tries < 5; tries++) {
+    const ports = GROUPS.flatMap((_, i) => [base + 10 * (i + 1), base + 10 * (i + 1) + 1]);
+    const busy = (await Promise.all(ports.map(answers))).some(Boolean);
+    if (!busy) break;
+    console.log(`ports ${base + 10}..${base + 10 * GROUPS.length + 1} in use (another run?) -- trying ${base + 1000}`);
+    base += 1000;
+  }
   const kids = GROUPS.map((g, i) => new Promise(async (resolve) => {
     await sleep(10000 * i); // staggered: N apps booting at once starve each other (measured: 2 of 4 never came up)
     const out = path.join(OUT, g);
-    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--group', g, '--port', String(PORT + 10 * (i + 1)), '--out', out, '--root', ROOT], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--group', g, '--port', String(base + 10 * (i + 1)), '--out', out, '--root', ROOT], { stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', (d) => process.stdout.write(String(d).split('\n').filter(Boolean).map((l) => `[${g}] ${l}`).join('\n') + '\n'));
     child.stderr.on('data', (d) => process.stderr.write(`[${g}] ${d}`));
     child.on('exit', (code) => resolve({ g, code, out }));
@@ -150,6 +167,22 @@ const send = (method, params = {}) => new Promise((resolve, reject) => {
   ws.send(JSON.stringify({ id: i, method, params }));
 });
 const js = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); return r.result?.result?.value; };
+// A JSON probe that returns nothing is retried once (MEASURED in the advisor's loaded --parallel gate: the clear
+// group's fingerprint came back undefined once, "undefined" is not valid JSON, and the same group passed alone),
+// then fails NAMING the probe and the page's own exception instead of a bare JSON parse error.
+async function jsJSON(expr) {
+  for (let attempt = 1; ; attempt++) {
+    const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
+    const v = r.result?.result?.value;
+    if (typeof v === 'string') { try { return JSON.parse(v); } catch { /* fall through */ } }
+    if (attempt >= 2) {
+      const ex = r.result?.exceptionDetails;
+      const why = ex ? ' -- the page threw: ' + String(ex.exception?.description || ex.text || '').split('\n')[0] : '';
+      throw new Error(`probe returned ${v === undefined ? 'nothing' : JSON.stringify(v).slice(0, 60)}${why} [${expr.replace(/\s+/g, ' ').slice(0, 100)}]`);
+    }
+    await sleep(1000);
+  }
+}
 const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(path.join(OUT, `${name}.png`), Buffer.from(r.result.data, 'base64')); };
 const click = (elId, wait = 1200) => js(`(async()=>{ const b=document.getElementById(${JSON.stringify(elId)}); if(!b) return 'MISSING'; if(b.disabled) return 'DISABLED'; b.click(); await new Promise(r=>setTimeout(r,${wait})); return 'ok'; })()`);
 const setValue = (elId, v, event) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(elId)}); if(!e) return 'MISSING'; if(e.disabled) return 'DISABLED'; e.value=${JSON.stringify(String(v))}; e.dispatchEvent(new Event(${JSON.stringify(event)})); return 'ok'; })()`);
@@ -175,7 +208,7 @@ const exists = (elId) => js(`!!document.getElementById(${JSON.stringify(elId)})`
 // 2D: every brick-tool element, attributes SORTED (serialization order differs after a reopen), ids and
 // display-only classes dropped -- so equal layouts hash equal.
 const CANVAS = `(()=>{ const ed=window.svgEditor; if(!ed?._sketchLayer) return 'none';
-  const SKIP=new Set(['id','class','data-brick-element','data-brick-owner']);
+  const SKIP=new Set(['id','class','data-brick-element','data-brick-owner','data-brick-band','data-brick-row','data-brick-piece']); // editor-only, stripped at bake
   const ns=[...ed._sketchLayer.node.querySelectorAll('[data-brick]')];
   // fill-pattern ids carry a global creation counter (editor-brick-surface.js brickfill-<sample>-<N>): drop it
   const norm=(v)=>v.replace(/(url[(]#brickfill-[^)]*?)-[0-9]+[)]/g,'$1)'); // no backslashes: this is inside a template literal
@@ -236,7 +269,7 @@ async function record(c, obs) {
 
 try {
   await send('Runtime.enable'); await send('Page.enable');
-  await send('Page.addScriptToEvaluateOnNewDocument', { source: CLOUD_STAND_IN });
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: CLOUD_STAND_IN.replace('__EDIT_PASSWORD__', EDIT_PASSWORD_TEST.password) });
   await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html` });
   for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; }
@@ -302,7 +335,7 @@ try {
       if (!atOnce && c.kind === 'editor' && await js(`!!document.getElementById('brickGenerate')?.offsetParent`)) await click('brickGenerate', 1800);
       const c1 = atOnce ? await canvasSettled(c0) : await js(CANVAS);
       const sets = c.expect.sets ? await brickSets(Object.keys(c.expect.sets)) : null;
-      const reads = c.expect.reads ? JSON.parse(await js(`JSON.stringify(Object.fromEntries(${JSON.stringify(Object.keys(c.expect.reads))}.map((id) => [id, Number(document.getElementById(id)?.value)])))`)) : null;
+      const reads = c.expect.reads ? (await jsJSON(`JSON.stringify(Object.fromEntries(${JSON.stringify(Object.keys(c.expect.reads))}.map((id) => [id, Number(document.getElementById(id)?.value)])))`)) : null;
       const readsOk = !!reads && Object.entries(c.expect.reads).every(([id, v]) => Math.abs(reads[id] - v) < 1e-6);
       const setsOk = !!sets && Object.entries(c.expect.sets).every(([k, id]) => sets[k] && sets[k].length === 1 && sets[k][0] === String(id));
       await apply();
@@ -383,6 +416,8 @@ try {
   if (!arg('group') || arg('group') === 'lay') await runLayWarnings();
   if (!arg('group') || arg('group') === 'select') await runSelect();
   if (!arg('group') || arg('group') === 'migration') await runMigration();
+  if (!arg('group') || arg('group') === 'frame-ui') await runFrameUi();
+  if (!arg('group') || arg('group') === 'password') await runPassword();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') await runPersistence();
 } catch (e) {
@@ -417,7 +452,7 @@ async function runPersistence() {
       // the declared board must really lay every kind it checks, BEFORE anything is persisted: an empty kind
       // would make its "painted" row pass vacuously or fail as 0/0 far from the cause (MEASURED: 1.5 in bricks +
       // three White Rocks rings filled T1 completely once item 16(c) stopped the wall filling a bogus region)
-      const counts = JSON.parse(await js(`JSON.stringify(Object.fromEntries(${JSON.stringify(PERSIST_BOARD.bricks.map((b) => b.kind))}.map((k) => [k, window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="' + k + '"]').length || 0])))`));
+      const counts = (await jsJSON(`JSON.stringify(Object.fromEntries(${JSON.stringify(PERSIST_BOARD.bricks.map((b) => b.kind))}.map((k) => [k, window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="' + k + '"]').length || 0])))`));
       const empty = Object.entries(counts).filter(([, n]) => !n).map(([k]) => k);
       if (empty.length) throw new Error(`setup: the persistence board lays no ${empty.join(', ')} bricks (${JSON.stringify(counts)})`);
       console.log(`persistence board laid ${JSON.stringify(counts)}`);
@@ -437,14 +472,18 @@ async function runPersistence() {
   await checkPersisted('reload');
   // 3. project Save As -> (fresh app) -> Load, through the real Project Manager modal (cloud stand-in)
   if (await editorOpen()) await apply();
+  await js(`(()=>{ localStorage.setItem(${JSON.stringify(EDIT_PASSWORD_TEST.storageKey)}, ${JSON.stringify(EDIT_PASSWORD_TEST.password)}); return 1; })()`); // item 34: saves need it
   await click('btnOpenProjectManager', 1500);
   await click('fmBtnSaveAs', 1200);
   await js(`(async()=>{ const i=document.querySelector('.pm-prompt-input'); if(!i) return 'no prompt'; i.value='brick-matrix-persist'; document.querySelector('.pm-prompt-ok').click(); await new Promise(r=>setTimeout(r,4000)); return 'ok'; })()`);
   const saved = await js(`Object.keys(JSON.parse(localStorage.getItem('brickMatrixCloudStandIn')||'{}'))`);
   console.log('project saved to the stand-in:', JSON.stringify(saved));
-  // a fresh app: drop the app's own saved session (keep only the stand-in's store), reload -> defaults
-  await js(`(()=>{ const keep=localStorage.getItem('brickMatrixCloudStandIn'); localStorage.clear(); if (keep) localStorage.setItem('brickMatrixCloudStandIn', keep); return 1; })()`);
-  await send('Page.reload', {}); await waitApp();
+  // a fresh app: drop the app's own saved session (keep only the stand-in's store), reload -> defaults. At the next
+  // document's start (reloadWithStorage): cleared here, the old page's pagehide saved the session straight back and
+  // the load below proved nothing
+  const keep = await js(`localStorage.getItem('brickMatrixCloudStandIn')`);
+  await reloadWithStorage(keep ? { brickMatrixCloudStandIn: keep } : {});
+  console.log('fresh app state:', await js(`(async()=>{ const { P } = await import('./core/state.js'); return JSON.stringify({ setId: P.brickSettings?.setId, frameBandPreset: P.brickSettings?.frameBandPreset }); })()`));
   await click('btnOpenProjectManager', 2500);
   const picked = await js(`(async()=>{ const it=[...document.querySelectorAll('#fmProjectList [data-name]')].find(e=>e.getAttribute('data-name')==='brick-matrix-persist'); if(!it) return 'not listed'; it.click(); await new Promise(r=>setTimeout(r,500)); document.getElementById('fmBtnLoad').click(); await new Promise(r=>setTimeout(r,6000)); return 'loaded'; })()`);
   console.log('project load:', picked);
@@ -464,7 +503,7 @@ async function checkPersisted(phase) {
     persistRow(`Persist (${phase}): ${p.name}`, shown, p.active ? `active ${p.active}` : `${p.value[0]} = ${p.value[1]}`);
   }
   for (const b of PERSIST_BOARD.bricks) {
-    const r = JSON.parse(await js(`JSON.stringify((()=>{ const ns=[...(window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="${b.kind}"]') || [])];
+    const r = (await jsJSON(`JSON.stringify((()=>{ const ns=[...(window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="${b.kind}"]') || [])];
       const painted=ns.filter((n)=>{ const f=n.getAttribute('fill')||''; const m=f.match(/url[(]#([^)]+)[)]/); return !m || !!document.getElementById(m[1]); }).length;
       return { n: ns.length, painted }; })())`));
     persistRow(`Persist (${phase}): ${b.name}`, r.n > 0 && r.painted === r.n, `${r.painted}/${r.n} painted`);
@@ -493,7 +532,7 @@ async function settledLayout(tool) {
   const SETTLE_SAMPLES = 4, SETTLE_POLL_MS = 300, SETTLE_MAX_MS = 20000;
   let last = null, same = 0, r = null;
   for (let t = 0; t < SETTLE_MAX_MS; t += SETTLE_POLL_MS) {
-    r = JSON.parse(await js(LAYOUT_PROBE(tool)));
+    r = (await jsJSON(LAYOUT_PROBE(tool)));
     const ready = r.drawerLayout && !r.dragging && r.toolActive && r.h > 0;
     const key = `${r.top}/${r.h}/${r.innerW}`;
     same = ready && key === last ? same + 1 : 0; last = key;
@@ -543,7 +582,7 @@ function clearProbe() { return `(async()=>{ const { P } = await import('./core/s
     photo: { empty: P.photoImageDataUrl == null && !(P.photoEdits || []).length && P.photoPatternId == null,
       hash: h(String(P.photoImageDataUrl).slice(-300) + JSON.stringify(P.photoEdits || []) + P.photoPatternId) },
     bricks: { empty: gen.length === 0 && records.length === 0, hash: gen.length + '/' + records.length + '#' + h(canon(gen)) } }); })()`; }
-async function clearFingerprint() { return JSON.parse(await js(clearProbe())); }
+async function clearFingerprint() { return (await jsJSON(clearProbe())); }
 // A board holding all four kinds, each made through the real UI: a photo through the Photo panel's file input,
 // the template_1 frame, a Pen stroke on the Artwork tab, a Wall laid with Generate.
 async function seedClearBoard() {
@@ -615,7 +654,7 @@ async function plainKey(keyName) {
 }
 async function wallCount() { return js(`window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="wall"]').length ?? -1`); }
 async function noteState(id) {
-  return JSON.parse(await js(`JSON.stringify((()=>{ const n=document.getElementById(${JSON.stringify(id)}); if(!n) return { missing: true }; return { shown: n.offsetParent !== null && getComputedStyle(n).display !== 'none', text: (n.textContent||'').trim() }; })())`));
+  return (await jsJSON(`JSON.stringify((()=>{ const n=document.getElementById(${JSON.stringify(id)}); if(!n) return { missing: true }; return { shown: n.offsetParent !== null && getComputedStyle(n).display !== 'none', text: (n.textContent||'').trim() }; })())`));
 }
 async function openEditorTab(tabId) {
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
@@ -659,24 +698,24 @@ async function runSelect() {
   if (!(await exists(S.wallSelect))) { checkRow('select', 'Wall tool -> element Select', false, '', S.introducedBy); return; }
   // 1. the Wall tool arms element Select; the Area sub-tool stays hidden until the engine offers 'wallRegion'
   await click(S.wallTool, 900);
-  const st = JSON.parse(await js(`JSON.stringify({ mode: window.svgEditor._currentMode, sel: !!document.getElementById(${JSON.stringify(S.wallSelect)})?.classList.contains('active'), area: (()=>{ const n=document.getElementById(${JSON.stringify(S.wallArea)}); return !!n && n.offsetParent !== null; })() })`));
+  const st = (await jsJSON(`JSON.stringify({ mode: window.svgEditor._currentMode, sel: !!document.getElementById(${JSON.stringify(S.wallSelect)})?.classList.contains('active'), area: (()=>{ const n=document.getElementById(${JSON.stringify(S.wallArea)}); return !!n && n.offsetParent !== null; })() })`));
   checkRow('select', 'Wall tool -> element Select', st.mode === S.selectMode && st.sel && !st.area, `mode ${st.mode}, Select ${st.sel ? 'active' : 'not active'}, Area ${st.area ? 'SHOWN' : 'hidden'}`);
   // 2. a real click on a frame brick selects the Frame element: its tool, its label, its outline -- drawing untouched
   const before = await js(CANVAS);
-  const at = JSON.parse(await js(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')]; const n=ns[Math.floor(ns.length/2)]; if(!n) return null; const r=n.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height/2, frames: ns.length }; })())`));
+  const at = (await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')]; const n=ns[Math.floor(ns.length/2)]; if(!n) return null; const r=n.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height/2, frames: ns.length }; })())`));
   if (!at) { checkRow('select', 'Click a frame brick -> the Frame element', false, 'no frame brick on the canvas'); return; }
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y, button: 'none', buttons: 0 });
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 });
   await sleep(1000);
-  const sel = JSON.parse(await js(`JSON.stringify({ frameTool: !!document.getElementById(${JSON.stringify(S.frameTool)})?.classList.contains('active'), label: (document.getElementById(${JSON.stringify(S.frameLabel.id)})?.textContent||'').trim(), outline: (window.svgEditor._brickElementOutline||[]).length })`));
+  const sel = (await jsJSON(`JSON.stringify({ frameTool: !!document.getElementById(${JSON.stringify(S.frameTool)})?.classList.contains('active'), label: (document.getElementById(${JSON.stringify(S.frameLabel.id)})?.textContent||'').trim(), outline: (window.svgEditor._brickElementOutline||[]).length })`));
   const after = await js(CANVAS);
   checkRow('select', 'Click a frame brick -> the Frame element', sel.frameTool && sel.label.includes(S.frameLabel.text) && sel.outline === at.frames,
     `frame tool ${sel.frameTool ? 'active' : 'NOT active'}, label "${sel.label}", outline ${sel.outline} of ${at.frames} frame bricks`);
   checkRow('select', 'Selecting adds nothing to the drawing', before === after, before === after ? 'canvas hash unchanged' : `canvas changed ${before} -> ${after}`);
   // 3. Esc once clears the selection (tool stays), Esc twice clears the tool
   await plainKey('Escape');
-  const e1 = JSON.parse(await js(`JSON.stringify({ outline: (window.svgEditor._brickElementOutline||[]).length, frameTool: !!document.getElementById(${JSON.stringify(S.frameTool)})?.classList.contains('active') })`));
+  const e1 = (await jsJSON(`JSON.stringify({ outline: (window.svgEditor._brickElementOutline||[]).length, frameTool: !!document.getElementById(${JSON.stringify(S.frameTool)})?.classList.contains('active') })`));
   checkRow('select', 'Esc once -> selection cleared, tool stays', e1.outline === 0 && e1.frameTool, `outline ${e1.outline}, frame tool ${e1.frameTool ? 'active' : 'cleared'}`);
   await plainKey('Escape');
   const e2 = await js(`[...document.querySelectorAll('[id^="brickTool_"].active')].map((b)=>b.id).join(',')`);
@@ -713,7 +752,9 @@ function sameLay(oldKey, newKey, setGrout, neutral = MIGRATION.neutralNewFields 
   for (const x of [o, n]) { delete x.grout; delete x.groutByElement; }
   // a field the old key lacks lays as before when every leaf of it is its declared neutral value
   const leaves = (v) => (v && typeof v === 'object' ? Object.values(v).flatMap(leaves) : [v]);
-  const isNeutral = (v, value) => (value === 'empty' ? Array.isArray(v) && v.length === 0 : leaves(v).every((x) => x === value));
+  const isNeutral = (v, value) => (value === 'empty' ? Array.isArray(v) && v.length === 0
+    : value && typeof value === 'object' ? JSON.stringify(v) === JSON.stringify(value)
+    : leaves(v).every((x) => x === value));
   for (const [k, value] of Object.entries(neutral)) if (!(k in o) && k in n && isNeutral(n[k], value)) delete n[k];
   return JSON.stringify(o) === JSON.stringify(n) && Math.abs((oldWidth ?? setGrout) - (newWidth ?? setGrout)) < 1e-9;
 }
@@ -728,18 +769,19 @@ async function runMigration() {
   const body = readFileSync(path.join(HERE, M.fixture), 'utf8');
   // the OLD board, as it was saved: its bricks and its shared key, read from the fixture's own SVG in the page
   await send('Page.reload', {}); await waitApp();
-  const old = JSON.parse(await js(`(()=>{ const body=${JSON.stringify(body)}; const svg=new DOMParser().parseFromString(JSON.parse(body).P.editorSvg, 'image/svg+xml');
+  const old = (await jsJSON(`(()=>{ const body=${JSON.stringify(body)}; const svg=new DOMParser().parseFromString(JSON.parse(body).P.editorSvg, 'image/svg+xml');
     const layers=JSON.parse(svg.documentElement.getAttribute('data-editor-layers')||'[]'); const key=(layers.find((l)=>l.brickLaidKey)||{}).brickLaidKey||null;
     const bricks=[...svg.querySelectorAll('[data-brick="wall"],[data-brick="frame"]')];
     return JSON.stringify({ key, polys: bricks.map((n)=>n.getAttribute('data-brick')+':'+(n.getAttribute('points')||'').trim()).sort().join('|') }); })()`));
   if (!old.key) throw new Error('setup: the migration fixture holds no shared brickLaidKey (not a pre-item-22 board?)');
-  // the app restores its last session on load: seed it with the old board, reload -> migrated in place
-  await js(`(()=>{ localStorage.clear(); localStorage.setItem(${JSON.stringify(M.sessionKey)}, ${JSON.stringify(body)}); return 1; })()`);
-  await send('Page.reload', {}); await waitApp();
+  // the app restores its last session on load: seed it with the old board, reload -> migrated in place. Seeded at the
+  // NEXT document's start (reloadWithSession): seeding here, then reloading, let the old page's pagehide save its own
+  // default board over the fixture (37, measured: it only showed once the default brick length moved off 1 in)
+  await reloadWithSession(M.sessionKey, body);
   const z1 = await heightsSettled(null);
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
-  const a = JSON.parse(await js(migrationProbe()));
+  const a = (await jsJSON(migrationProbe()));
   const setGrout = M.setGroutWidthIn;
   const lay = (k) => sameLay(old.key, k, setGrout);
   checkRow('migration', 'Pre-item-22 board: records carry the old lay', lay(a.records['wall-full']) && lay(a.records.frame),
@@ -756,7 +798,7 @@ async function runMigration() {
   const z2 = await heightsSettled(null);
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
-  const b = JSON.parse(await js(migrationProbe()));
+  const b = (await jsJSON(migrationProbe()));
   const keptOk = b.records['wall-full'] === a.records['wall-full'] && b.records.frame === a.records.frame;
   checkRow('migration', 'Migrated board: restore keeps records, bricks and 3D', keptOk && z1 === z2 && b.polys === a.polys,
     `records kept ${keptOk}, 3D ${z1 === z2 ? 'identical' : z1 + ' -> ' + z2}, polygons ${b.polys === a.polys ? 'identical' : 'CHANGED'}`);
@@ -769,6 +811,166 @@ function layDiff(oldKey, newKey) {
     const keys = [...new Set([...Object.keys(o), ...Object.keys(n)])].filter((k) => JSON.stringify(o[k]) !== JSON.stringify(n[k]));
     return keys.map((k) => `${k}: ${JSON.stringify(o[k])} -> ${JSON.stringify(n[k])}`).join('; ').slice(0, 300) + ((oldKey.split('#')[1] || '') !== ((newKey || '').split('#')[1] || '') ? '; FRAME PART differs' : '');
   } catch { return 'unparseable'; }
+}
+
+// ---------------------------------------------------------------- frame corners + per-element accents (hoisted)
+// Seat 37: item 33 (fb-app f0e3728, the Frame's Corners row) and per-element accents (ed618f3). Expected values are
+// read from the app's OWN declarations in the page (editor-brick-tool.js FRAME_CORNERS / FOLDED_FRAME_PRESETS /
+// frameCornerOf, core FRAME_PRESETS) -- never copied numbers.
+function frameUiState() {
+  return `(async()=>{ const T=await import('./editor/editor-brick-tool.js'); const { P } = await import('./core/state.js'); const L=await import('./core/bricks/library.js');
+    const list=document.getElementById('brickFrameCornerList'); const s=P.brickSettings||{};
+    const frames=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')];
+    return JSON.stringify({ corners: T.FRAME_CORNERS.map((c)=>c.id), folded: T.FOLDED_FRAME_PRESETS,
+      ownCorner: T.frameCornerOf(s), preset: s.frameBandPreset, pick: s.frameCorner ?? null,
+      presetCorners: Object.fromEntries(Object.entries(L.FRAME_PRESETS).map(([k,b])=>[k,(b[0]&&b[0].cornerStyle)||'mitre'])),
+      listShown: !!list && list.offsetParent !== null && getComputedStyle(list).display !== 'none',
+      buttons: list ? list.querySelectorAll('[id^="brickFrameCorner_"]').length : 0,
+      active: list ? [...list.querySelectorAll('[id^="brickFrameCorner_"].active')].map((b)=>b.id.replace('brickFrameCorner_','')) : [],
+      frames: frames.length, flat: frames.filter((n)=>!String(n.getAttribute('fill')||'').startsWith('url(')).length }); })()`;
+}
+async function frameUiRead() { return jsJSON(frameUiState()); }
+// Reload with `key` = `value` in localStorage as the app starts. MEASURED: seeding storage and then reloading a
+// DIRTY page loses the seed -- the page saves its own session on the way out, over it. A one-shot script that runs
+// at the start of the next document (after that save, before the app reads storage) cannot be overwritten.
+async function reloadWithSession(key, value) { return reloadWithStorage({ [key]: value }); }
+// The same, for any set of keys: localStorage is exactly `entries` as the next document starts.
+async function reloadWithStorage(entries) {
+  const added = await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.clear(); for (const [k, v] of Object.entries(${JSON.stringify(entries)})) localStorage.setItem(k, v); } catch (e) {}` });
+  try { await send('Page.reload', {}); await waitApp(); }
+  finally { await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: added.result.identifier }); }
+}
+async function relaid(before) { return (await canvasSettled(before)) !== before; }
+
+async function runFrameUi() {
+  await send('Page.reload', {}); await waitApp();
+  await openEditorTab('editorTabBrick');
+  await click('brickTool_wall', 800); await click('brickGenerate', 2000);
+  await click('brickTool_frame', 900);
+  if (!(await exists('brickFrameCornerList'))) { checkRow('frame-ui', 'Corners row', false, '', 'f0e3728'); return; }
+  await click('brickFramePreset_single_soldier', 2000);
+  // 1. Soldier: the row shows every declared corner, the preset's own (Mitre) active
+  let st = await frameUiRead();
+  checkRow('frame-ui', 'Corners: Soldier shows every corner, its own active', st.listShown && st.buttons === st.corners.length && st.active.length === 1 && st.active[0] === st.presetCorners.single_soldier,
+    `shown ${st.listShown}, ${st.buttons}/${st.corners.length} buttons, active ${st.active.join(',')} (preset's own: ${st.presetCorners.single_soldier})`);
+  // 2. each other corner re-lays the frame at once and becomes the active one
+  for (const id of st.corners.filter((c) => c !== st.presetCorners.single_soldier)) {
+    const before = await js(CANVAS);
+    await click(`brickFrameCorner_${id}`, 400);
+    const moved = await relaid(before);
+    const s2 = await frameUiRead();
+    checkRow('frame-ui', `Corners: ${id} re-lays the frame at once`, moved && s2.active[0] === id && s2.frames > 0,
+      `re-laid ${moved}, active ${s2.active.join(',')}, ${s2.frames} frame bricks${id === 'block' ? `, ${s2.flat} without a texture` : ''}`);
+    if (id === 'block') checkRow('frame-ui', 'Corners: quoin blocks wear the frame texture', s2.flat === 0, `${s2.flat} of ${s2.frames} frame bricks drawn flat (quoin-element-set)`);
+  }
+  // 3. a preset with its own corner: picking it shows that corner; a pick is dropped on a preset change
+  const twoBand = Object.entries(st.presetCorners).find(([k, c]) => c !== 'mitre' && !(k in st.folded) && k !== 'none');
+  if (twoBand) {
+    await click(`brickFramePreset_${twoBand[0]}`, 2000);
+    const s3 = await frameUiRead();
+    checkRow('frame-ui', `Corners: ${twoBand[0]} shows its own corner`, s3.active[0] === twoBand[1], `active ${s3.active.join(',')}, preset's own ${twoBand[1]}`);
+  }
+  await click('brickFrameCorner_butt', 1500);
+  await click('brickFramePreset_single_soldier', 2000);
+  const s4 = await frameUiRead();
+  checkRow('frame-ui', 'Corners: a preset change returns to the preset\'s own corner', s4.active[0] === s4.presetCorners.single_soldier && s4.pick === null,
+    `after Butt then Soldier: active ${s4.active.join(',')}, pick ${s4.pick}`);
+  // 4. no bands, or a rock frame: no corners row
+  await click('brickFramePreset_none', 2000);
+  const s5 = await frameUiRead();
+  checkRow('frame-ui', 'Corners: hidden with no bands', !s5.listShown, `row ${s5.listShown ? 'SHOWN' : 'hidden'}`);
+  await click('brickFramePreset_single_soldier', 2000);
+  await click('brickFrameBandPattern_0_fieldstone', 2000);
+  const s6 = await frameUiRead();
+  checkRow('frame-ui', 'Corners: hidden on a rock frame', !s6.listShown, `row ${s6.listShown ? 'SHOWN' : 'hidden'}`);
+  // 5. per-element accents (ed618f3): a band's own accent marks only that band; its level moves the relief
+  if (await editorOpen()) await apply();
+  let Z = await heightsSettled(null);
+  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await click('brickFramePreset_three_band', 2000);
+  if (!(await exists('brickAccent_band1_checker'))) { checkRow('frame-ui', 'Accents: band 1', false, '', 'ed618f3'); return; }
+  await apply(); Z = await heightsSettled(Z);
+  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await click('brickAccent_band1_checker', 2000);
+  const acc = await jsJSON(`JSON.stringify((()=>{ const f=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')]; const by=(b)=>f.filter((n)=>n.getAttribute('data-brick-band')===String(b)); return { b1: by(1).filter((n)=>n.getAttribute('data-brick-accent')==='1').length, b1n: by(1).length, b0: by(0).filter((n)=>n.getAttribute('data-brick-accent')==='1').length }; })())`);
+  await apply(); const Z1 = await heightsSettled(Z);
+  checkRow('frame-ui', 'Accents: band 1 checker marks band 1 only, 3D moves', acc.b1 > 0 && acc.b0 === 0 && Z1 !== Z, `band 1 outlined ${acc.b1}/${acc.b1n}, band 0 outlined ${acc.b0}, 3D ${Z1 !== Z ? 'changed' : 'UNCHANGED'}`);
+  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await setValue('brickAccentLevel_band1', -0.0625, 'change'); await sleep(1500);
+  await apply(); const Z2 = await heightsSettled(Z1);
+  checkRow('frame-ui', 'Accents: band 1 level -1/16 moves the relief', Z2 !== Z1, `3D ${Z2 !== Z1 ? 'changed' : 'UNCHANGED'}`);
+  // 6. the brush's own accent outlines its bricks
+  await openEditorTab('editorTabBrick'); await click('brickTool_brush', 900);
+  if (await exists('brickAccent_brush_checker')) {
+    await click('brickAccent_brush_checker', 800);
+    await click('brickTool_brush', 300); await drag([[0.3, 0.5], [0.5, 0.55], [0.7, 0.5]]);
+    const br = await jsJSON(`JSON.stringify((()=>{ const b=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="brush"]')]; return { n: b.length, marked: b.filter((n)=>n.getAttribute('data-brick-accent')==='1').length }; })())`);
+    checkRow('frame-ui', 'Accents: brush checker outlines brush bricks', br.n > 0 && br.marked > 0, `${br.marked}/${br.n} brush bricks outlined`);
+  }
+  if (await editorOpen()) await apply();
+  // 7. a board saved on a retired corner preset (butt_frame / quoin_corners) restores as its folded preset + corner:
+  //    the migration fixture's own session with its preset rewritten, one per FOLDED_FRAME_PRESETS entry
+  const folded = await jsJSON(`(async()=>{ const T=await import('./editor/editor-brick-tool.js'); return JSON.stringify(T.FOLDED_FRAME_PRESETS); })()`);
+  const session = JSON.parse(readFileSync(path.join(HERE, MIGRATION.fixture), 'utf8'));
+  for (const [old, want] of Object.entries(folded)) {
+    session.P.brickSettings.frameBandPreset = old;
+    await reloadWithSession(MIGRATION.sessionKey, JSON.stringify(session));
+    await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+    const st = await frameUiRead();
+    checkRow('frame-ui', `Corners: a board saved on ${old} restores as ${want.preset} + ${want.corner}`, st.preset === want.preset && st.ownCorner === want.corner && st.active[0] === want.corner,
+      `preset ${st.preset}, corner ${st.ownCorner}, active ${st.active.join(',')}`);
+    if (await editorOpen()) await apply();
+  }
+}
+
+// ---------------------------------------------------------------- the password to save (hoisted; EDIT_PASSWORD_TEST)
+async function standInNames() { return jsJSON(`JSON.stringify(Object.keys(JSON.parse(localStorage.getItem('brickMatrixCloudStandIn')||'{}')))`); }
+async function cachedPassword() { return js(`localStorage.getItem(${JSON.stringify(EDIT_PASSWORD_TEST.storageKey)})`); }
+// Save As `name`; answer every password prompt with the next of `answers`. Returns the titles the app asked with.
+async function saveAsAnswering(name, answers) {
+  await click('btnOpenProjectManager', 1500);
+  await click('fmBtnSaveAs', 1200);
+  await js(`(async()=>{ const i=document.querySelector('.pm-prompt-input:not([type=password])'); if(!i) return 0; i.value=${JSON.stringify(name)}; i.closest('.pm-prompt-overlay').querySelector('.pm-prompt-ok').click(); return 1; })()`);
+  const asked = [];
+  for (let k = 0; k < 6; k++) {
+    await sleep(800);
+    const title = await js(`(()=>{ const i=document.querySelector('.pm-prompt-overlay input[type=password]'); return i ? i.closest('.pm-prompt-overlay').querySelector('.pm-prompt-title').textContent.trim() : null; })()`);
+    if (!title) continue;
+    asked.push(title);
+    const answer = answers[asked.length - 1] ?? '';
+    await js(`(()=>{ const i=document.querySelector('.pm-prompt-overlay input[type=password]'); i.value=${JSON.stringify(answer)}; i.closest('.pm-prompt-overlay').querySelector('.pm-prompt-ok').click(); return 1; })()`);
+  }
+  await sleep(1500);
+  await js(`(()=>{ document.querySelectorAll('.pm-prompt-overlay .pm-prompt-cancel').forEach((b)=>b.click()); return 1; })()`);
+  return asked;
+}
+async function runPassword() {
+  const W = EDIT_PASSWORD_TEST;
+  await send('Page.reload', {}); await waitApp();
+  if (!(await exists('editPasswordStatus'))) { checkRow('password', 'Password to save', false, '', W.introducedBy); return; }
+  if (await editorOpen()) await apply();
+  // 1. no cached password: Save As asks once, the write is accepted, the password is cached
+  await js(`(()=>{ localStorage.removeItem(${JSON.stringify(W.storageKey)}); return 1; })()`);
+  let asked = await saveAsAnswering('brick-matrix-pw-1', [W.password]);
+  let names = await standInNames();
+  checkRow('password', 'First save asks once, saves, caches it', asked.length === 1 && asked[0] === W.askTitle && names.includes('brick-matrix-pw-1') && (await cachedPassword()) === W.password,
+    `asked ${JSON.stringify(asked)}, saved ${names.includes('brick-matrix-pw-1')}, cached ${(await cachedPassword()) === W.password}`);
+  // 2. cached: no prompt at all
+  asked = await saveAsAnswering('brick-matrix-pw-2', []);
+  names = await standInNames();
+  checkRow('password', 'Next save: no prompt', asked.length === 0 && names.includes('brick-matrix-pw-2'), `asked ${JSON.stringify(asked)}, saved ${names.includes('brick-matrix-pw-2')}`);
+  // 3. a wrong cached password: 401 -> re-asked with the retry title -> the right one -> saved and cached
+  await js(`(()=>{ localStorage.setItem(${JSON.stringify(W.storageKey)}, 'not-the-password'); return 1; })()`);
+  asked = await saveAsAnswering('brick-matrix-pw-3', [W.password]);
+  names = await standInNames();
+  checkRow('password', 'Wrong password: re-asked, then saved', asked.length === 1 && asked[0] === W.retryTitle && names.includes('brick-matrix-pw-3') && (await cachedPassword()) === W.password,
+    `asked ${JSON.stringify(asked)}, saved ${names.includes('brick-matrix-pw-3')}, cached ${(await cachedPassword()) === W.password}`);
+  // 4. Settings: the status says so; Clear forgets it
+  const st1 = await js(`(document.getElementById('editPasswordStatus')?.textContent||'').trim()`);
+  await js(`(()=>{ document.getElementById('editPasswordClear')?.click(); return 1; })()`); await sleep(500);
+  const st2 = await js(`(document.getElementById('editPasswordStatus')?.textContent||'').trim()`);
+  checkRow('password', 'Settings: status, then Clear forgets it', st1 === W.statusSaved && st2.startsWith(W.statusUnsetStarts) && !(await cachedPassword()),
+    `before "${st1}", after Clear "${st2.slice(0, 40)}", cached ${!!(await cachedPassword())}`);
 }
 
 // ---------------------------------------------------------------- report (hoisted; shared by --parallel)
@@ -792,7 +994,7 @@ async function key(k) {
   await sleep(900);
 }
 async function drag(pts) {
-  const at = async ([fx, fy]) => JSON.parse(await js(`(()=>{ const svg=window.svgEditor._sketchLayer.node.ownerSVGElement; const r=svg.getBoundingClientRect(); return JSON.stringify({x:r.left+r.width*${fx}, y:r.top+r.height*${fy}}); })()`));
+  const at = async ([fx, fy]) => (await jsJSON(`(()=>{ const svg=window.svgEditor._sketchLayer.node.ownerSVGElement; const r=svg.getBoundingClientRect(); return JSON.stringify({x:r.left+r.width*${fx}, y:r.top+r.height*${fy}}); })()`));
   const ps = []; for (const p of pts) ps.push(await at(p));
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: ps[0].x, y: ps[0].y, button: 'none', buttons: 0 });
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: ps[0].x, y: ps[0].y, button: 'left', buttons: 1, clickCount: 1 });
