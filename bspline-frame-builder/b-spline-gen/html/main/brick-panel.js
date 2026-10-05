@@ -1654,6 +1654,9 @@ function syncBrushPresetButtons() {
 const WALL_PATTERN_LABELS = {
   none: 'None', stretcher: 'Stretcher', stack: 'Stack', soldier: 'Soldier', header: 'Header',
   flemish: 'Flemish', herringbone: 'Herringbone', basketweave: 'Basketweave',
+  // F35 item 13: the sheet's own names
+  stacked_horizontal: 'Stacked horizontal', chevron: 'Chevron', stacked_variation: 'Stacked variation',
+  basketweave_variation: 'Basketweave variation', basketweave_stacked: 'Basketweave + stacked',
   fieldstone: 'Fieldstone',
 };
 // item 23: what a ROCK wall becomes when a brick set is picked for it
@@ -1665,9 +1668,9 @@ const WALL_PATTERN_LIST = Object.keys(BRICK_PATTERNS).map((id) => ({ id, label: 
  *  lost from the picker. Combinations / Tiles join here as their patterns land. Since the flattening the picker
  *  shows no family headings: this table is the ORDER (and the place a new family is declared). */
 const WALL_PATTERN_FAMILIES = [
-  { id: 'bonds', label: 'Bonds', patterns: ['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish'] },
-  { id: 'herringbone', label: 'Herringbone', patterns: ['herringbone'] },
-  { id: 'basketweave', label: 'Basketweave', patterns: ['basketweave'] },
+  { id: 'bonds', label: 'Bonds', patterns: ['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish', 'stacked_horizontal', 'stacked_variation'] },
+  { id: 'herringbone', label: 'Herringbone', patterns: ['herringbone', 'chevron'] },
+  { id: 'basketweave', label: 'Basketweave', patterns: ['basketweave', 'basketweave_variation', 'basketweave_stacked'] },
   { id: 'fieldstone', label: 'Fieldstone', patterns: ['fieldstone'] },
   { id: 'more', label: 'More', patterns: [] },
 ];

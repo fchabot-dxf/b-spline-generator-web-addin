@@ -14331,3 +14331,27 @@ WallPattern = {
   - Also seen: the live Fusion session holds ~300 stale `bsg_*` probe modules from other seats' tests (sys.modules). Not mine; not touched.
 - Not clicked live: the palette button itself in Fusion. JS sends the action through the same `adsk.fusionSendData` route as every other action.
 - Shots: ~/.bspline-status/shots/seat37/f26_delete_frame_before.png, f26_delete_frame_after.png (web), f26_fusion_win1.png (the dialog I caused).
+
+## turn 255 (2): F35 item 13, the sheet patterns (rotation follows)
+- **Advisor's ruling:** build what Fred's sheet (shots/fred/ref_brick_pattern_sheet.jpg) DRAWS, under the sheet's own names; "rotation" is a declared angle, not a pattern.
+- **New:** core/bricks/layouts/sheet-patterns.js, one file, closed-form, the basketweave.js contract (the set's L x W never stretched, joints = the set's grout, clipped at the end, courseIndex per row). Each drawing was read from an enlarged crop of the sheet:
+  - **stacked horizontal:** a soldier course, then a stretcher course; repeat.
+  - **chevron:** columns L/sqrt2 wide of parallelograms with ±45° long edges (L along the slope, W across); neighbouring columns mirrored, so the rows read as V's.
+  - **stacked variation:** a row of L x L units alternating standing / lying, then ONE stretcher course; the next unit row starts on the other orientation.
+  - **basketweave variation:** a lying unit, then ONE standing brick (period L + W); each row shifted by W.
+  - **basketweave + stacked:** a stacked-stretcher column, then a pinwheel column (4 bricks round an (L - W - g) centre square).
+  - A unit = basketweave's n = round(L/(W+g)) bricks per L x L square: n = 2 on the sheet (L = 2W), 3 for Set 1.
+- **Registration only:**
+  - library.js BRICK_PATTERNS (5 x `{ kind: 'tile2d' }`, Wall-only);
+  - fill-shape.js LAYOUTS (5 lines + import);
+  - brick-panel WALL_PATTERN_LABELS (the sheet's names) + WALL_PATTERN_FAMILIES (Bonds += stacked horizontal / stacked variation; Herringbone += chevron; Basketweave += variation / + stacked).
+  - The icons are engine-drawn for free (wallPatternIconSvg).
+- **Tests:** tests/sheet-patterns.test.js (7): declared + named; per pattern, on a 7x9 wall at 1.25 in: lays, inside the board, 0 overlaps (bricks shrunk 0.004 so touching joints don't count), longest edge ≤ L; all five differ.
+  - Fails 7/7 with the registrations reverted. Restored; cmp clean.
+  - The chevron first failed my own bbox-span check: a 45° brick's bbox is wider than L, its edge is L. The test now measures the longest edge.
+- **Live:**
+  - The five icons are in the Wall grid with the sheet's names as tooltips.
+  - Each pick re-lays (stretcher 59; stacked horizontal 53; chevron 64; stacked variation 51; basketweave variation 51; basketweave + stacked 53), with a distinct 3D hash each time. 0 errors.
+  - Shots: ~/.bspline-status/shots/seat37/item13_preview_sheet_7x9.png (the five at 7x9, 1¼ in), item13_wall_grid_icons.png, item13_last_pattern_canvas.png.
+- **Not yet:** the declared pattern ROTATION (0 / 45 / 90; "running bond at 45" = stretcher + 45). It needs `rotationDeg` through generateBricks → bricksFillShape (88's engine.js / fill-shape.js). Proposal DM'd to 88; waiting.
+- **Suite:** 2 failures = discrete-controls timeouts. N2 isolated: 252 / 289 ms with item 13, 420 / 480 ms without it, so no slowdown.
