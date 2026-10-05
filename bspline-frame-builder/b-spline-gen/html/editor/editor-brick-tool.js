@@ -885,10 +885,33 @@ export function brickElementAt(editor, pt) {
   const owned = [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}]`)].reverse();
   for (const n of owned) {
     const kind = n.getAttribute(BRICK_ATTR);
-    if (!BRICK_RECORD_KINDS[kind]) continue;
-    if (pointInPolygon(pt.x, pt.y, _nodePolygon(n))) return { id: n.getAttribute(BRICK_OWNER_ATTR), kind };
+    if (!BRICK_RECORD_KINDS[kind] && kind !== 'brush') continue;
+    if (!pointInPolygon(pt.x, pt.y, _nodePolygon(n))) continue;
+    if (kind !== 'brush') return { id: n.getAttribute(BRICK_OWNER_ATTR), kind };
+    // F35 item 36: a stroke's bricks are owned by `<element id>:<chain>`; the element is its spine
+    const id = n.getAttribute(BRICK_OWNER_ATTR).split(':')[0];
+    return { id, kind: strokeKindOf(brushStrokeSettings(editor, id)) };
   }
   return null;
+}
+
+/** F35 item 36: a Brush stroke's own settings -- its spine's snapshot (every segment carries the same), or null. */
+const _spinesOf = (editor, id) => [...editor._sketchLayer.node.querySelectorAll(`[${BRICK_ATTR}="${SPINE_KIND}"][${BRICK_ELEMENT_ATTR}="${id}"]`)];
+export function brushStrokeSettings(editor, id) {
+  const spine = editor && editor._sketchLayer && _spinesOf(editor, id)[0];
+  return spine ? decodeBrickSettings(spine.getAttribute(BRICK_SETTINGS_ATTR)) : null;
+}
+/** A stroke drawn with the Raised brush carries its strokeOverrides (strokeMode + levelIn); a Brush stroke does not. */
+export const strokeKindOf = (settings) => (settings && settings.strokeMode != null ? 'raisedBrush' : 'brush');
+/** F35 item 36: give a stroke new settings (every segment of its spine) -- its bricks regenerate on the commit
+ *  (regenerateOwnedBrickElements: the snapshot is in its fingerprint). One undo step; false when unchanged. */
+export function restyleBrushStroke(editor, id, settings) {
+  const spines = editor && editor._sketchLayer ? _spinesOf(editor, id) : [];
+  const json = JSON.stringify(settings);
+  if (!spines.length || spines.every((s) => s.getAttribute(BRICK_SETTINGS_ATTR) === json)) return false;
+  for (const s of spines) s.setAttribute(BRICK_SETTINGS_ATTR, json);
+  commitEdit(editor);
+  return true;
 }
 
 /** The selected element's outline: each of its bricks, outlined in the editor's HIGHLIGHT layer (the same
@@ -900,7 +923,8 @@ export function showElementSelection(editor, elementId) {
   editor._brickElementOutline = [];
   const node = editor._sketchLayer && editor._sketchLayer.node;
   if (!elementId || !editor._highlightLayer || !node || !node.querySelectorAll) return 0;
-  for (const n of node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}="${elementId}"]`)) {
+  // a stroke's bricks are owned per chain (`<id>:<chain>`, F35 item 36)
+  for (const n of node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}="${elementId}"], [${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}^="${elementId}:"]`)) {
     const outline = editor._highlightLayer.polygon(n.getAttribute('points') || '')
       .fill('none')
       .stroke({ color: ELEMENT_SELECT_OUTLINE.color, width: ELEMENT_SELECT_OUTLINE.widthIn })

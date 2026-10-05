@@ -3,6 +3,7 @@
  * preset's own corner active by default, a pick re-lays at once, the old corner-variant presets no longer listed.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js', async (importOriginal) => {
@@ -26,6 +27,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 
 import { initBrickPanel, setFrameRock } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, FRAME_CORNERS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>

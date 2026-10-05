@@ -29,6 +29,7 @@ import {
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
   FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
+  brushStrokeSettings, restyleBrushStroke,
 } from '../editor/editor-brick-tool.js';
 import {
   ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick, ACCENT_LEVEL_RANGE, clampAccentLevel, ACCENT_TILE,
@@ -64,11 +65,13 @@ const BRICK_TOOLS = [
   // `ownsSet` (F35 item 23): the tool lays an ELEMENT with its own brick set (P.brickSettings.setIds[tool id]);
   // the Set row edits the active tool's.
   { id: 'brush', buttonId: 'brickTool_brush', iconSvg: () => brickToolIconSvg('brush'), label: 'Brush', icon: '✏️', settingsSection: 'brickBrushSection', ownsSet: true,
+    subTools: ['draw', 'select'], // F35 item 36
     hint: 'Click here, then drag a stroke on the canvas to lay bricks along it.' },
   // F35 item 16 (turn 201): the RAISED BRUSH -- a variant of Brush (`variantOf`: the same brickBrush mode,
   // same stroke machinery) whose strokes carry `strokeOverrides` (its Level + mode), frozen per stroke.
   { id: 'raisedBrush', buttonId: 'brickTool_raisedBrush', iconSvg: () => brickToolIconSvg('raisedBrush'), label: 'Raised brush', icon: '⏫', settingsSection: 'brickRaisedSection', ownsSet: true,
     variantOf: 'brush', strokeOverrides: () => ({ levelIn: P.brickSettings.raisedLevelIn, strokeMode: P.brickSettings.raisedMode }),
+    subTools: ['draw', 'select'], // F35 item 36
     hint: 'Drag a stroke: bricks laid proud of the others by Level.' },
   // `generates` (audit C9): Generate re-lays this tool's output, so the pinned Generate shows for it.
   // Brush/Scissors/Stripe act on drawn strokes, whose settings freeze at draw time.
@@ -99,7 +102,7 @@ const BRICK_TOOLS = [
 let _activeTool = null;
 let _frameListenerWired = false;
 
-function notifyChange() { saveLastSession(); }
+function notifyChange() { saveLastSession(); _scheduleStrokeRestyle(); }
 
 /** F35 item 23: the Set row lists the BRICK sets (editor-brick-tool.js BRICK_SET_IDS, from each set's declared
  *  layout -- a new brick set appears by itself) and edits the ACTIVE tool's element (BRICK_TOOLS `ownsSet`;
@@ -1966,6 +1969,8 @@ function syncFrameBandPatternButtons() {
  *  settings the next element gets; Esc deselects. Area = paint a wall area (slice 2) -- hidden until the engine
  *  lists 'wallRegion' (brick-control-requires.js). `mode` = the editor mode it arms. */
 export const BRICK_SUB_TOOLS = Object.freeze({
+  // F35 item 36: a brush draws strokes (its own mode, armed on picking it) or selects one
+  draw: { label: 'Draw', mode: 'brickBrush', title: 'Drag a stroke on the canvas to lay bricks along it.' },
   select: { label: 'Select', mode: 'brickElementSelect',
     title: 'Click a brick: its element is selected and this section edits only it. Esc deselects.' },
   area: { label: 'Area', mode: 'brickWallArea',
@@ -2038,7 +2043,43 @@ export function clearAllWallAreas() {
   generateBricks();
   return true;
 }
-const ELEMENT_LABELS = { wall: 'Wall', frame: 'Frame' };
+const ELEMENT_LABELS = { wall: 'Wall', frame: 'Frame', brush: 'stroke', raisedBrush: 'raised stroke' };
+/** F35 item 36: what a selected STROKE's snapshot means in the section -- [panel field, snapshot field] ('{kind}' =
+ *  the stroke's tool). Loading a stroke copies these into P.brickSettings; any edit writes the stroke back as the
+ *  Brush tool freezes a new one ({ ...P.brickSettings, ...its strokeOverrides }). */
+export const STROKE_FIELDS = Object.freeze([
+  ['brushBandPreset', 'brushBandPreset'], ['profile', 'profile'], ['orientation', 'orientation'], ['brushAccent', 'brushAccent'],
+  ['rusticByElement.brush', 'rustic'], ['groutByElement.brush', 'grout.widthIn'], ['setIds.{kind}', 'setId'],
+  ['raisedLevelIn', 'levelIn'], ['raisedMode', 'strokeMode'],
+]);
+const _getPath = (o, path) => path.split('.').reduce((v, k) => (v == null ? undefined : v[k]), o);
+function _loadStroke(snap, kind) {
+  for (const [field, from] of STROKE_FIELDS) {
+    const v = _getPath(snap, from);
+    if (v === undefined) continue;
+    const [k, sub] = field.replace('{kind}', kind).split('.');
+    if (sub) P.brickSettings[k] = { ...(P.brickSettings[k] || {}), [sub]: JSON.parse(JSON.stringify(v)) };
+    else P.brickSettings[k] = JSON.parse(JSON.stringify(v));
+  }
+}
+const _isStroke = (el) => !!el && (el.kind === 'brush' || el.kind === 'raisedBrush');
+export const STROKE_RESTYLE_SETTLE_MS = 300;
+let _strokeRestyleTimer = null;
+function _scheduleStrokeRestyle() {
+  if (!_isStroke(_selectedElement)) return;
+  clearTimeout(_strokeRestyleTimer);
+  _strokeRestyleTimer = setTimeout(restyleSelectedStroke, STROKE_RESTYLE_SETTLE_MS);
+}
+/** The selected stroke takes the section's settings now (its bricks re-lay; one undo step). */
+export function restyleSelectedStroke() {
+  clearTimeout(_strokeRestyleTimer);
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!editor || !_isStroke(_selectedElement)) return false;
+  const overrides = typeof editor._brickStrokeOverrides === 'function' ? editor._brickStrokeOverrides() : {};
+  const changed = restyleBrushStroke(editor, _selectedElement.id, { ...P.brickSettings, ...overrides });
+  if (changed) showElementSelection(editor, _selectedElement.id);
+  return changed;
+}
 let _subTool = 'select';
 let _selectedElement = null; // { id, kind } -- the selected Wall/Frame element (its record), or null
 
@@ -2072,9 +2113,10 @@ function _syncSubTools() {
       document.getElementById(`brickSubTool_${tool.id}_${sid}`)?.classList.toggle('active', tool.id === _activeTool && sid === _subTool);
     }
     const label = document.getElementById(`brickElementLabel_${tool.id}`);
+    const own = tool.lays || tool.id;
     if (label) {
-      label.textContent = _selectedElement && _selectedElement.kind === tool.lays
-        ? `Editing: this ${ELEMENT_LABELS[tool.lays]}` : `Settings for the next ${(ELEMENT_LABELS[tool.lays] || '').toLowerCase()}`;
+      label.textContent = _selectedElement && _selectedElement.kind === own
+        ? `Editing: this ${ELEMENT_LABELS[own]}` : `Settings for the next ${(ELEMENT_LABELS[own] || '').toLowerCase()}`;
     }
   }
 }
@@ -2090,6 +2132,11 @@ function _armSubTool(sid) {
       selectBrickElement(hit);
     };
     editor.setMode('brickElementSelect');
+  }
+  if (editor && def && def.mode === 'brickBrush') { // F35 item 36: back to drawing strokes (nothing selected)
+    if (_selectedElement) selectBrickElement(null);
+    _subTool = sid;
+    editor.setMode('brickBrush');
   }
   if (editor && def && def.mode === 'brickWallArea') { // slice 2: paint wall areas
     editor._brickAreaWidthIn = Number(P.brickSettings.wallAreaWidthIn) || 1;
@@ -2109,9 +2156,14 @@ export function selectBrickElement(element) {
   const area = editor && element ? wallAreaRecords(editor).find((a) => a.id === element.id) : null;
   if (editor) editor._brickWallAreaId = area ? area.id : null;
   if (area && area.settings) { Object.assign(P.brickSettings, withWallFields(P.brickSettings, area.settings)); syncControlsFromState(); }
+  // F35 item 36: a STROKE's own settings come into its brush's section
+  const stroke = editor && _isStroke(element) ? brushStrokeSettings(editor, element.id) : null;
+  if (stroke) _loadStroke(stroke, element.kind);
   if (element) {
-    const tool = BRICK_TOOLS.find((t) => t.lays === element.kind);
-    if (tool && tool.id !== _activeTool) selectTool(tool.id, { keepSelection: true });
+    const tool = BRICK_TOOLS.find((t) => (t.lays || t.id) === element.kind);
+    // a stroke's brush is (re)armed even when already active: its editor needs the brush's stroke overrides
+    if (tool && (tool.id !== _activeTool || stroke)) selectTool(tool.id, { keepSelection: true });
+    if (stroke) { _armSubTool('select'); syncControlsFromState(); syncBrushPresetButtons(); syncProfileToggle(); syncOrientationToggle(); syncRaisedSection(); syncAccentControls(); }
   }
   showElementSelection(editor, _selectedElement && _selectedElement.id);
   _syncSubTools();
@@ -2142,6 +2194,7 @@ function selectTool(id, { keepSelection = false } = {}) {
       grout: { ...P.brickSettings.grout, widthIn: elementGroutWidth(P.brickSettings, tool.id) }, // its own joint, frozen
       ...(tool.strokeOverrides ? tool.strokeOverrides() : {}) });
     editor.setMode('brickBrush');
+    if (!keepSelection) { _subTool = 'draw'; _syncSubTools(); } // F35 item 36: a brush opens on Draw
     return;
   }
   // Audit C2: picking Wall or Frame only shows its settings (and the pinned Generate); it never lays.

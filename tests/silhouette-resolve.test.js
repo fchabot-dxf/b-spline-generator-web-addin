@@ -9,10 +9,12 @@
  * tangent at every arc joint, positive radius, no reversed arc), for every
  * slider combination, on several board sizes, in both orientations.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import {
   generateSilhouette, generateContourSilhouette, outlineDefects, feasibleParamRanges, PRESETS,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const R79 = { x: 0, y: 0, w: 7, h: 9 };
 

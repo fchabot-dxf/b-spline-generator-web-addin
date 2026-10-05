@@ -5,6 +5,7 @@
  * before item 22 (no records) still reads the old shared layer key (covered by the existing panel tests).
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js', async (importOriginal) => {
@@ -24,6 +25,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 import { initBrickPanel } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, BRICK_RECORD_KINDS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>

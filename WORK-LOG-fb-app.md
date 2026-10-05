@@ -14537,3 +14537,50 @@ WallPattern = {
   - Shots re-shot (seat37): item22s2_two_overlapping_areas.png, item22s2_area_across_band.png, item22s2_after_clear_areas.png (+ item22s2_reopened.png).
 - **Probe flake, seen twice this turn:** the first eval right after the reload sometimes gets "Failed to fetch dynamically imported module" for editor-brick-tool.js; a retry passes. A module-by-module import check passes, so this is the probe's timing, not the app.
 - **Full suite:** 3 failed / 4624 passed, all 3 heavy-test timeouts (frame-3d-sweep, frame-radius-handles, frame-template-10); those files pass alone, 68/68.
+
+## turn 265: F35 item 37, MEASURE FIRST: 3D heights per page load (seat 37); report DM'd, no fix yet
+- **Method:** headless Chrome, 7x9 T1, every run its own page load. The probes (scratchpad drift*.mjs) hash and dump every stage: art `_mask`, brick `_brickMask`, lastResult baseHeights / cleanHeights / heights. The arrays are diffed offline (141x181 = 25521 cells).
+- **0. The SAME saved board, restored 3 times: identical at every stage** (seed 39839, brick mask 4944f7b3, baseHeights c33b6aad, heights a11038c8; 0 cells differ). My turn-263 "differs per page load" came from my probe clearing localStorage, so every load was a FRESH START.
+- **1. A fresh start rolls a random terrain seed: by design.** app-init.js:603 `P.seed = Math.floor(Math.random()*99999)` with no saved session; a restored session keeps its seed (Save audit #4).
+  - baseHeights differ on 100% of cells: max 0.57 in on a wall board, 0.82 in on an empty board.
+  - The art mask is not involved: on the empty board, baseHeights = heights.
+- **2. A small real drift: the brick mask on the FIRST lay in a fresh page.**
+  - Size: 1.2-11.6% of cells, max 0.0036 in in the mask, up to 0.00045 in in the final heights.
+  - Where: only inside the wall, as row bands. The change is multiplicative, 0.974-1.005 on cells already raised, never zero vs non-zero.
+  - About 12 different hashes over 20+ fresh lays; roughly a third match the restored 4944f7b3.
+- **Ruled out, each measured across sessions:**
+  - the brick DOM inputs (points, id, sample, flip, height offset, set, seed, relief): identical;
+  - the photo detail grids (47 samples): identical, with 0 image errors;
+  - per-brick detail + isolated sampleHeight at 5 points: identical;
+  - P.brickSettings, P.frame, the layer record, depth, top mode: identical;
+  - the BRICK_SETS and surface-style tables: identical;
+  - timing within a session: stable from 9 s to 25 s, and a recompute reproduces it;
+  - the DOM: reopening the page's own saved drawing in the SAME page keeps the bad hash, while a NEW page restoring the same board gives the good one;
+  - Math.random / Date.now / performance.now in the mask path: none (grep).
+  - => in-page module state left behind by the first lay, read only in the full-board mask build. Not pinned yet.
+- **The advisor's call requested:** keep digging (instrument one differing cell), or park item 37 with this report.
+
+## turn 265 (cont.): F35 item 36, Select a Brush / Raised stroke (seat 37)
+- **Advisor ruling on item 37:** (b), parked in NEXT-SESSION with the measured report (47900cd).
+- **Model:** a stroke already is a record (its spine segments carry the element id + a full settings snapshot). Its bricks are owned per chain (`<id>:<chain>`) and regenerate when the snapshot changes (regenerateOwnedBrickElements: the snapshot is in its fingerprint). No new storage was needed.
+- **Editor (editor-brick-tool.js):**
+  - brickElementAt: a brush brick selects its STROKE (the id before ':'); the kind comes from the snapshot (`strokeKindOf`: strokeMode = the Raised brush).
+  - showElementSelection outlines every chain.
+  - `brushStrokeSettings` / `restyleBrushStroke(editor, id, settings)`: writes all segments, then one commitEdit. Unchanged = no-op.
+- **Panel (brick-panel.js):**
+  - Brush + Raised brush get the declared sub-tools `['draw', 'select']` (BRICK_SUB_TOOLS.draw = the brickBrush mode). A brush opens on Draw; Draw drops a selection.
+  - Selecting a stroke arms its brush (even when that tool is already active: a new editor needs the stroke overrides; a test caught it) and Select.
+  - The stroke's settings come into the section through the declared `STROKE_FIELDS` [panel field, snapshot field]: preset, profile, orientation, accent, rustic, grout, set (per kind), level, mode.
+  - Any change to the panel goes through its central `notifyChange()`, which now also schedules `restyleSelectedStroke` after STROKE_RESTYLE_SETTLE_MS (300). A slider drag is therefore one undo step. The write is `{ ...P.brickSettings, ...the brush's strokeOverrides }`, exactly how a brush freezes a new stroke.
+- **Tests:**
+  - stroke-select (6). Against the pre-item-36 files: 6/6 fail.
+  - brick-element-select's pin of the sub-tool declaration now includes 'draw'.
+- **Live** (real drags + a real click; stroke_live.mjs; 7x9):
+  - A Brush stroke and a Raised stroke; the Raised section shows Draw* / Select.
+  - Select + click on a raised brick: "Editing: this raised stroke", Level 0.0625 (its own), 3 outlines, mode brickElementSelect.
+  - Level 0.15: that stroke's snapshot levelIn 0.15, the Brush stroke unchanged, exactly 1 undo step. Undo → 0.0625, Redo → 0.15.
+  - 3D 996fecb6 → 48a43b0f (same session). 0 errors.
+  - Shots: seat37/item36_raised_stroke_selected.png, item36_raised_stroke_level_015.png.
+- **Heavy-test list (the advisor's ask):** 12 test files that timed out at 5 s under load this session now use the declared `HEAVY_TEST_MS` (vi.setConfig): frame-radius-handles, frame-template-10/5/6, frame-no-hooked-miters, silhouette-resolve, bands-reduced-note, brick-element-laid-key-panel, frame-corners-panel, wall-rotation-panel, wall-areas-panel, stroke-select. frame-3d-sweep keeps its own explicit 90 s.
+- **Merged origin/main c748016** (88's rustic + wear on rocks), clean.
+- **Full suite: 308 files, 4647 passed, 0 failed.**

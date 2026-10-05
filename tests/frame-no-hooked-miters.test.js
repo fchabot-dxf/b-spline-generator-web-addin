@@ -9,7 +9,8 @@
  * file: a pure sweep over every template's own real generateFrame() logic, mutation-tested two
  * ways (removing the check; reverting the attempts budget).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord, frameParam } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import {
@@ -18,6 +19,7 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { generateFrameSeeds, generateValidFrameSeeds } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import { paramsFromShapeModel } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const board = (W, H) => ({ widthIn: W, heightIn: H });
 const primLength = (p) => (p.type === 'L' ? Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y) : Math.abs(p.rx * p.dTheta));

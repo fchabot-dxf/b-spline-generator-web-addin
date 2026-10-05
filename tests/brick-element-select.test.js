@@ -143,7 +143,7 @@ describe('item 22 step 4: Select in the panel', () => {
     expect($('brickSubTool_wall_area').style.display).toBe('none');
     expect($('brickSubTool_frame_select')).toBeTruthy();
     expect($('brickSubTool_frame_area')).toBeNull(); // Frame = Select only
-    expect(Object.keys(BRICK_SUB_TOOLS)).toEqual(['select', 'area']);
+    expect(Object.keys(BRICK_SUB_TOOLS)).toEqual(['draw', 'select', 'area']); // F35 item 36: + the brushes' Draw
     root.remove(); engineOpts.extra = ['wallRegion'];
     setup();
     expect($('brickSubTool_wall_area').style.display).toBe('');
