@@ -256,3 +256,16 @@ export const SELECT_ELEMENT = {
   frameLabel: { id: 'brickElementLabel_frame', text: 'Editing: this Frame' },
   introducedBy: '2482482',
 };
+
+// ---- migration (item 22, seat 37 fb-app 8fe50e2): a board saved BEFORE item 22 (a Bricks layer with the shared
+// brickLaidKey, no records) restores migrated in place. fixtures/pre-item22-board.splineGenLastSession.json is seat 37's
+// raw localStorage['splineGenLastSession'] saved at b75e836~1 (T1 7x9, Wall + Frame, Red Brick, Applied): 99 wall +
+// 106 frame bricks, no records.
+export const MIGRATION = {
+  fixture: 'fixtures/pre-item22-board.splineGenLastSession.json', sessionKey: 'splineGenLastSession', wall: 99, frame: 106,
+  setGroutWidthIn: RED_SET.grout.widthIn, // the fixture's wall/frame are Red Brick: groutByElement null = this
+  // settings fields added since the fixture was saved, at the value that lays exactly as before: every leaf equals
+  // the declared value, or 'empty' = an empty list. The migrated key carries them, the old one did not.
+  neutralNewFields: { groutByElement: null, rusticByElement: 0, userPatterns: 'empty' }, // userPatterns: 37's pattern builder (b91d0f6)
+  introducedBy: 'b75e836',
+};

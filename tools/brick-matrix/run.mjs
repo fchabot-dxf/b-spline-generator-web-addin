@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'persistence'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'persistence'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -382,6 +382,7 @@ try {
   if (!arg('group') || arg('group') === 'clear') await runClear();
   if (!arg('group') || arg('group') === 'lay') await runLayWarnings();
   if (!arg('group') || arg('group') === 'select') await runSelect();
+  if (!arg('group') || arg('group') === 'migration') await runMigration();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') await runPersistence();
 } catch (e) {
@@ -681,6 +682,93 @@ async function runSelect() {
   const e2 = await js(`[...document.querySelectorAll('[id^="brickTool_"].active')].map((b)=>b.id).join(',')`);
   checkRow('select', 'Esc twice -> no Brick tool active', !e2, e2 ? `still active: ${e2}` : 'no tool active');
   if (await editorOpen()) { await apply(); await heightsSettled(null); }
+}
+
+// ---------------------------------------------------------------- migration (hoisted; MIGRATION in controls.mjs)
+// A board saved by pre-item-22 code (fixtures/pre22-board.json: laid + saved by b75e836^ through the real Project
+// Manager into the cloud stand-in) must load on today's code migrated in place: records added, owners stamped,
+// the roster's shared key retired -- and nothing re-laid, nothing in the 3D changed, through a save + load too.
+function migrationProbe() {
+  return `(async()=>{ const ed=window.svgEditor; const layer=ed._sketchLayer.node; const L=await import('./editor/layers.js');
+    const recs={}; for (const r of layer.querySelectorAll('[data-brick-record]')) recs[r.getAttribute('data-brick-record')]=r.getAttribute('data-brick-laid');
+    const bricks=[...layer.querySelectorAll('[data-brick="wall"],[data-brick="frame"]')];
+    const canon=(ns)=>ns.map((n)=>n.getAttribute('data-brick')+':'+(n.getAttribute('points')||'').trim()).sort().join('|');
+    const bricksLayers=(ed._layers||[]).filter(L.isBricksLayer);
+    const { lastResult } = await import('./core/state.js');
+    return JSON.stringify({ wall: layer.querySelectorAll('[data-brick="wall"]').length, frame: layer.querySelectorAll('[data-brick="frame"]').length,
+      records: recs, unowned: bricks.filter((n)=>!n.getAttribute('data-brick-owner')).length,
+      roster: bricksLayers.map((l)=>({ holdsBricks: !!l.holdsBricks, key: l.brickLaidKey ?? null, kinds: l.brickLaidKinds ?? null })),
+      polys: canon(bricks) }); })()`;
+}
+// '<settings JSON>#frame:<frame JSON>' -- equal lays: identical frame part, identical settings except grout,
+// whose width is compared as the effective one (groutByElement null = the set's declared default)
+function sameLay(oldKey, newKey, setGrout, neutral = MIGRATION.neutralNewFields || {}) {
+  if (!oldKey || !newKey) return false;
+  const split = (k) => { const i = k.indexOf('#'); return [k.slice(0, i < 0 ? k.length : i), i < 0 ? '' : k.slice(i)]; };
+  const [os, of] = split(oldKey), [ns, nf] = split(newKey);
+  if (of !== nf) return false;
+  let o, n; try { o = JSON.parse(os); n = JSON.parse(ns); } catch { return os === ns; }
+  const oldWidth = o.grout?.widthIn;
+  const newWidth = n.groutByElement ? (n.groutByElement.wall ?? setGrout) : n.grout?.widthIn;
+  for (const x of [o, n]) { delete x.grout; delete x.groutByElement; }
+  // a field the old key lacks lays as before when every leaf of it is its declared neutral value
+  const leaves = (v) => (v && typeof v === 'object' ? Object.values(v).flatMap(leaves) : [v]);
+  const isNeutral = (v, value) => (value === 'empty' ? Array.isArray(v) && v.length === 0 : leaves(v).every((x) => x === value));
+  for (const [k, value] of Object.entries(neutral)) if (!(k in o) && k in n && isNeutral(n[k], value)) delete n[k];
+  return JSON.stringify(o) === JSON.stringify(n) && Math.abs((oldWidth ?? setGrout) - (newWidth ?? setGrout)) < 1e-9;
+}
+
+async function loadFromStandIn(name) {
+  await click('btnOpenProjectManager', 2500);
+  const r = await js(`(async()=>{ const it=[...document.querySelectorAll('#fmProjectList [data-name]')].find(e=>e.getAttribute('data-name')===${JSON.stringify(name)}); if(!it) return 'not listed'; it.click(); await new Promise(r=>setTimeout(r,500)); document.getElementById('fmBtnLoad').click(); await new Promise(r=>setTimeout(r,6000)); return 'loaded'; })()`);
+  if (r !== 'loaded') throw new Error(`setup: project "${name}" ${r}`);
+}
+async function runMigration() {
+  const M = MIGRATION;
+  const body = readFileSync(path.join(HERE, M.fixture), 'utf8');
+  // the OLD board, as it was saved: its bricks and its shared key, read from the fixture's own SVG in the page
+  await send('Page.reload', {}); await waitApp();
+  const old = JSON.parse(await js(`(()=>{ const body=${JSON.stringify(body)}; const svg=new DOMParser().parseFromString(JSON.parse(body).P.editorSvg, 'image/svg+xml');
+    const layers=JSON.parse(svg.documentElement.getAttribute('data-editor-layers')||'[]'); const key=(layers.find((l)=>l.brickLaidKey)||{}).brickLaidKey||null;
+    const bricks=[...svg.querySelectorAll('[data-brick="wall"],[data-brick="frame"]')];
+    return JSON.stringify({ key, polys: bricks.map((n)=>n.getAttribute('data-brick')+':'+(n.getAttribute('points')||'').trim()).sort().join('|') }); })()`));
+  if (!old.key) throw new Error('setup: the migration fixture holds no shared brickLaidKey (not a pre-item-22 board?)');
+  // the app restores its last session on load: seed it with the old board, reload -> migrated in place
+  await js(`(()=>{ localStorage.clear(); localStorage.setItem(${JSON.stringify(M.sessionKey)}, ${JSON.stringify(body)}); return 1; })()`);
+  await send('Page.reload', {}); await waitApp();
+  const z1 = await heightsSettled(null);
+  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
+  const a = JSON.parse(await js(migrationProbe()));
+  const setGrout = M.setGroutWidthIn;
+  const lay = (k) => sameLay(old.key, k, setGrout);
+  checkRow('migration', 'Pre-item-22 board: records carry the old lay', lay(a.records['wall-full']) && lay(a.records.frame),
+    `records ${JSON.stringify(Object.keys(a.records))}, same lay: wall ${lay(a.records['wall-full'])}, frame ${lay(a.records.frame)}${a.records['wall-full'] === old.key ? ' (byte-equal)' : ' -- differs in: ' + layDiff(old.key, a.records['wall-full'])}`);
+  checkRow('migration', 'Pre-item-22 board: every brick owned', a.unowned === 0, `${a.unowned} of ${a.wall + a.frame} bricks without data-brick-owner`);
+  const rosterOk = a.roster.length > 0 && a.roster.every((l) => l.holdsBricks && l.key === null && l.kinds === null);
+  checkRow('migration', 'Pre-item-22 board: roster migrated', rosterOk, JSON.stringify(a.roster));
+  checkRow('migration', 'Pre-item-22 board: nothing re-laid', a.wall === M.wall && a.frame === M.frame && a.polys === old.polys,
+    `wall ${a.wall}/${M.wall}, frame ${a.frame}/${M.frame}, polygons ${a.polys === old.polys ? 'identical' : 'CHANGED'}`);
+  // the migrated board through another save + restore: records kept, nothing re-laid, 3D identical
+  if (await editorOpen()) await apply();
+  await sleep(1500);
+  await send('Page.reload', {}); await waitApp();
+  const z2 = await heightsSettled(null);
+  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
+  const b = JSON.parse(await js(migrationProbe()));
+  const keptOk = b.records['wall-full'] === a.records['wall-full'] && b.records.frame === a.records.frame;
+  checkRow('migration', 'Migrated board: restore keeps records, bricks and 3D', keptOk && z1 === z2 && b.polys === a.polys,
+    `records kept ${keptOk}, 3D ${z1 === z2 ? 'identical' : z1 + ' -> ' + z2}, polygons ${b.polys === a.polys ? 'identical' : 'CHANGED'}`);
+  if (await editorOpen()) await apply();
+}
+// the settings fields that differ between two lay keys (for the report)
+function layDiff(oldKey, newKey) {
+  try {
+    const o = JSON.parse(oldKey.split('#')[0]), n = JSON.parse((newKey || '').split('#')[0]);
+    const keys = [...new Set([...Object.keys(o), ...Object.keys(n)])].filter((k) => JSON.stringify(o[k]) !== JSON.stringify(n[k]));
+    return keys.map((k) => `${k}: ${JSON.stringify(o[k])} -> ${JSON.stringify(n[k])}`).join('; ').slice(0, 300) + ((oldKey.split('#')[1] || '') !== ((newKey || '').split('#')[1] || '') ? '; FRAME PART differs' : '');
+  } catch { return 'unparseable'; }
 }
 
 // ---------------------------------------------------------------- report (hoisted; shared by --parallel)
