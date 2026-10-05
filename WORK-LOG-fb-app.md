@@ -14387,3 +14387,24 @@ WallPattern = {
   - item14_wall_grid_tiles.png, item14_octagon_large_dot_canvas.png.
 - **Suite:** 1 failure, the known N2 timeout.
 - **Also this turn:** 88 asked whether Clear → Artwork re-stamping the wall record is expected. Measured on a fresh board: the record is unchanged (settings + laid key). The snapshot is rewritten on every lay, so a re-lay after a surface-only change (which doesn't re-lay) shows those keys; told 88.
+
+## turn 259: F35 item 35 the bands-reduced note (21a1ffd) + NEXT-SESSION bookkeeping
+- **Contract (88's band-fit, on main 98d5b55):** generateBricks returns `bandsReduced { requested, kept, steps[{band, step: row|course|drop}], gapIn, limitIn, requestedDepthIn, depthIn, fits }` when the frame stack was reduced; ENGINE_OPTIONS lists `bandFit`.
+- **App:**
+  - runBricks' counts carry `bandsReduced` (frame lays).
+  - BRICK_LAY_WARNINGS gains `where` (none = the lay warnings; 'frame' = the Frame section's own note line `#brickFrameBandsNote`, data-brick-lay-notes="frame") and text that may read the counts.
+  - **New entry `bandsReduced`:** `bandsReducedText` = "Bands reduced to fit the board: N of M laid" (+ "band k narrowed" for row / course steps on kept bands).
+  - **`wallEmpty`** no longer shows when the reduced stack FITS (the note says it instead); it stays when fits is false and the wall is empty.
+  - The last frame lay's note greys out the bands it dropped (index ≥ kept): pattern buttons + accent row disabled, with "Band N was dropped to fit the board …" as the tooltip. A note change re-renders the band rows.
+  - The note row (#brickFrameBandsNoteRow) is gated `requires: { engineOption: 'bandFit' }, hides: true` in BRICK_CONTROL_REQUIRES, like every hidden control. The inner line shows only when a note exists.
+- **Tests:** tests/bands-reduced-note.test.js (5): the text, the note + no warning when it fits, the warning kept when it does not fit, nothing for an unreduced stack, the gating declaration. 4/5 fail pre-change (the 5th pins an absence).
+- **Merged main 98d5b55** (band-fit) as 4f054ef: one import-line conflict in fill-shape.js (main + MIN_PIECE_FRACTION, mine + BRICK_PATTERNS); both kept. 43 affected tests green.
+- **Live (the advisor's matrix row):** T1 7x9, wall + frame, 1.25 in.
+  - single soldier: wall 59, no note.
+  - three_band: wall 59 (> 0), note "Bands reduced to fit the board: 1 of 3 laid." (engine: kept 1 of 3, steps drop / row / drop, fits false, wall still laid), no empty-wall warning, bands 2 + 3 greyed with the tooltip.
+  - Back to one band: no note, no greyed rows. 0 errors.
+  - Shots: ~/.bspline-status/shots/seat37/item35_frame_note_three_band.png, item35_canvas_three_band.png.
+- **Noticed, not changed:** each band row's pattern picker now lists every Wall-only pattern (the item 13 / 14 additions) greyed "Wall only for now", which makes the rows long. Hiding non-band-capable entries there is a one-line declaration change; it needs the advisor's word.
+- **NEXT-SESSION-fb-app.md** (the advisor's housekeeping ask; committed by path):
+  - Ticked with shas: F26-2, 14, 23, 24, 26, 30, 31, 31c, 31d, 32, 33, 34, 35.
+  - Left open with the engine blocker named: 13 (rotation, T86 29), 22 (slice 2, T86 18), 29 (rustic, T86 22), 31b (accentCuts), 31e (customBond). Item 9 already names its blocker.
