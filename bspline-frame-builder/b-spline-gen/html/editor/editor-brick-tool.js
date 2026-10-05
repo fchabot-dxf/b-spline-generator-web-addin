@@ -516,7 +516,8 @@ const _iconPolygon = (b) => `<polygon points="${b.polygon.map((p) => `${+p.x.toF
 export const ACCENT_ICON_BOARD = Object.freeze({ widthIn: 3, heightIn: 1.5 });
 const _accentIcons = new Map();
 export function accentIconSvg(presetId, heightPx = 26) {
-  const key = `${presetId}:${heightPx}`;
+  // item 31: a preset id, or an ad-hoc preset object (a user tile) -- keyed by its content
+  const key = `${typeof presetId === 'object' ? JSON.stringify(presetId) : presetId}:${heightPx}`;
   if (_accentIcons.has(key)) return _accentIcons.get(key);
   const { widthIn: w, heightIn: h } = ACCENT_ICON_BOARD;
   const widthPx = Math.round((heightPx * w) / h);

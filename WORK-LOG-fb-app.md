@@ -13877,3 +13877,43 @@ and persistence rows below. 88 queues them on matrix-clear-rows after the ring-s
     is the busiest at 20 px; one to retune if Fred wants.
 - **Matrix:** no control's position or behaviour changes (same buttons, same ids, an icon inside); no new row.
 - Whole vitest: 273 files, **4422 passed, 0 failed**.
+
+### turn 241 -- F35 item 31 STEP 1: the custom raised-pattern maker MOCKUP (not wired) (seat 37)
+
+- **The sheet:** shots/seat37/f35item31_custom_pattern_mockup.png, built inside the live page so the preview and
+  the icons are laid by the real engine.
+  1. **The tile editor** ("Custom pattern"):
+     - Courses / Bricks steppers (default 4 x 6, range 2-8);
+     - the tile drawn as a running-bond strip, odd courses half a brick over, row 0 = the BOTTOM course (the
+       accent grid's own origin); tap a brick to raise it (a small diamond raised);
+     - "Start from" a preset, listing the presets that HAVE a tile with their size;
+     - a name + "Save as preset".
+  2. **The live preview:** the engine-laid wall with the tile repeated over it, the stagger included.
+  3. **The Raised accents grid after saving:** the 10 presets + the new "My diamond" icon (engine-drawn, the name
+     as tooltip, marked new) + a "Custom pattern…" tile that opens the editor; saved with the project + in
+     browser presets (all projects).
+- **Declared groundwork** (inert: no UI uses it yet; it makes the sheet truthful and is what step 2 builds on):
+  - `ACCENT_MOTIFS.tile`: cell = (course mod rows, brick mod cols), row 0 = the zone's bottom course. The bond's
+    stagger is already in the columns (accentGrid's half-bond rule), so a tile repeats WITH the stagger.
+  - `tileOf(preset, max = 8)`: the tile a preset repeats with, MEASURED (the smallest rows x cols <= 8 that
+    reproduces its rule over a 48 x 48 window), not hand-declared.
+    - checker 2x2, staircase 6x6, double staircase 8x8, zigzag 6x8, course bands 4x1, double bands 6x1,
+      crenellation 3x2, sparse dots 6x4;
+    - pyramid (bounded in courses) and random (seeded) have none and stay rule-based.
+    - So "the existing periodic presets become the same tile data": a preset converts with tileOf.
+  - accentedBrickIndices + accentIconSvg accept an ad-hoc preset OBJECT as well as an id (a user tile before it
+    is saved; the icon cache is keyed by its content).
+- **Tests:** new accent-tiles (4):
+  - the tile rule (mod, repeat, negative);
+  - tileOf's sizes, pyramid/random null;
+  - each periodic preset and ITS TILE raise exactly the same bricks on a real 12 x 16 running-bond wall (same
+    data, two forms);
+  - an object preset is accepted + drawn.
+  - 4/4 fail against the pre-change files (restored, cmp clean).
+- **Step 2 (on Fred's OK)**, to be decided with him:
+  - where saved presets live: `P.brickSettings.accent.userPresets` with the project + a localStorage list for
+    "all projects";
+  - whether the periodic presets are REPLACED by their tiles in the table, or keep their rules and only
+    "Start from" converts them.
+- Whole vitest: 274 files; in the parallel run 3 FAILED (bricks-fieldstone-large-stones x2, frame-template-10's
+  500-seed sweep: load timeouts; the change touches no frame or fieldstone code); alone 37/37.
