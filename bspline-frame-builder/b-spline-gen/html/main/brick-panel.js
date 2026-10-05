@@ -38,6 +38,7 @@ import {
   bondShift, wallPatternOfBase,
 } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
+import { registerUndoPart } from '../editor/undo-parts.js';
 import { BRICK_CONTROL_REQUIRES, requirementMet } from './brick-control-requires.js';
 import { ENGINE_OPTIONS } from '../core/bricks/index.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
@@ -1197,8 +1198,38 @@ const BRICK_COMMIT = {
 
 function _remaskSurface() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  if (editor && typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+  // F35 item 38: a 3D-only change is an undo step of its own too (its entry carries the settings; the canvas is the
+  // same) -- commitEdit = push + the same commit pipeline the bare _notifyChange ran
+  if (editor && typeof editor.pushState === 'function') commitEdit(editor);
+  else if (editor && typeof editor._notifyChange === 'function') editor._notifyChange('commit');
 }
+
+/** F35 item 38: the brick SETTINGS ride in every editor undo entry (editor/undo-parts.js), so Undo / Redo put back the
+ *  settings that laid the canvas they restore -- every brick element setting at once (pattern, set, unit, accent +
+ *  builder tile, level, rustic, rotation, area width ...), one stack. BRICK_UNDO_KEEPS = what an undo never takes back:
+ *  the saved patterns are a library the user keeps, not an edit of this canvas. Restoring replaces P.brickSettings and
+ *  announces it ('brickSettingsRestored': the panel re-syncs, no re-lay -- the canvas came back with the entry). */
+export const BRICK_UNDO_KEEPS = Object.freeze(['userPatterns']);
+const _cloneSettings = (s) => (typeof structuredClone === 'function' ? structuredClone(s) : JSON.parse(JSON.stringify(s)));
+function _takeBrickSettings() {
+  const s = _cloneSettings(P.brickSettings || {});
+  for (const k of BRICK_UNDO_KEEPS) delete s[k];
+  return s;
+}
+function _restoreBrickSettings(snap) {
+  if (!snap) return;
+  const keep = Object.fromEntries(BRICK_UNDO_KEEPS.filter((k) => P.brickSettings && k in P.brickSettings).map((k) => [k, P.brickSettings[k]]));
+  P.brickSettings = { ..._cloneSettings(snap), ...keep };
+  // the open builder follows the restored accent (its tile), or closes when the accent is no longer a tile
+  if (_builder.open) {
+    const a = P.brickSettings.accent;
+    if (a && a.preset === ACCENT_TILE.id && a.tile) _builder.tile = _tileCopy(a.tile.rows, a.tile.cols, a.tile);
+    else _builder.open = false;
+    renderPatternBuilder();
+  }
+  if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
+}
+registerUndoPart('brickSettings', { take: _takeBrickSettings, restore: _restoreBrickSettings });
 
 /** Grout per element: the Grout box shows + edits the ACTIVE element's joint (the Raised brush shares the Brush's;
  *  no element tool = the Wall's). */

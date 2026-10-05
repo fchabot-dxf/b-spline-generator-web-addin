@@ -379,3 +379,13 @@ export const EDIT_PASSWORD_TEST = {
   statusSaved: 'Saved on this device.', statusUnsetStarts: 'Not set',
   introducedBy: '68feae7',
 };
+
+// ---- editor Undo / Redo restore the brick SETTINGS (F35 item 38, seat C 02): measured before, Undo put the canvas back
+// while the panel kept the new setting (stretcher -> stack -> Undo: canvas back, pattern still 'stack'). A pattern pick,
+// Undo -> the canvas hash back to the baseline AND the baseline's chip active; Redo -> forward again; a 3D-only change
+// (the accent level) is its own step and comes back too. `marker` = this build's own module (absent = skipped).
+export const UNDO_SETTINGS = {
+  from: 'brickPattern_stretcher', to: 'brickPattern_stack', undo: 'editorUndo', redo: 'editorRedo',
+  accent: 'brickAccent_checker', level: { id: 'brickAccentLevel', value: -0.0625 },
+  marker: './editor/undo-parts.js',
+};

@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, UNDO_SETTINGS } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'persistence'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'undo', 'persistence'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -441,6 +441,7 @@ try {
   if (!arg('group') || arg('group') === 'password') await runPassword();
   if (!arg('group') || arg('group') === 'layers') await runBrickLayers();
   if (!arg('group') || arg('group') === 'areas') await runWallAreas();
+  if (!arg('group') || arg('group') === 'undo') await runUndoSettings();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') { await runPersistence(); await runPatternParamPersist(); }
 } catch (e) {
@@ -1306,6 +1307,34 @@ async function runWallAreas() {
   await click('editorTabBrick', 600); await click(CLEAR_MENU.button, 600); await click('editorClear_bricks', 2000);
   const after = await jsJSON(areasState());
   checkRow('areas', 'Clear > Bricks removes the areas', before.areas.length === 1 && after.areas.length === 0, `areas ${before.areas.length} -> ${after.areas.length}`);
+  if (await editorOpen()) await apply();
+}
+
+// F35 item 38 (controls.mjs UNDO_SETTINGS): editor Undo / Redo bring back the brick settings with the canvas
+async function runUndoSettings() {
+  const U = UNDO_SETTINGS;
+  await reloadWithStorage({});
+  await openEditorTab('editorTabBrick');
+  if (!(await js(`import(${JSON.stringify(U.marker)}).then(() => true, () => false)`))) { checkRow('undo', 'Undo restores the pattern AND its chip', false, '', U.marker); return; }
+  await click('brickTool_wall', 800); await click(U.from, 1500); await click('brickGenerate', 2000);
+  const chips = () => jsJSON(`JSON.stringify({ from: !!document.getElementById(${JSON.stringify(U.from)})?.classList.contains('active'), to: !!document.getElementById(${JSON.stringify(U.to)})?.classList.contains('active') })`);
+  const c0 = await canvasSettled(null);
+  await click(U.to, 1500);
+  const c1 = await canvasSettled(c0);
+  await click(U.undo, 1500);
+  const c2 = await canvasSettled(c1), k2 = await chips();
+  checkRow('undo', 'Undo restores the pattern AND its chip', c1 !== c0 && c2 === c0 && k2.from && !k2.to,
+    `pick ${c0} -> ${c1}; undo -> ${c2 === c0 ? 'the baseline' : c2}; chips from ${k2.from} to ${k2.to}`);
+  await click(U.redo, 1500);
+  const c3 = await canvasSettled(c2), k3 = await chips();
+  checkRow('undo', 'Redo brings the pick back, chip too', c3 === c1 && k3.to && !k3.from, `redo -> ${c3 === c1 ? 'the pick' : c3}; chips from ${k3.from} to ${k3.to}`);
+  // a 3D-only change is its own step: Undo puts the level back (the canvas is not re-laid)
+  await click(U.accent, 1200);
+  const lv0 = Number(await js(`document.getElementById(${JSON.stringify(U.level.id)})?.value`));
+  await setValue(U.level.id, U.level.value, 'change'); await sleep(1200);
+  await click(U.undo, 1500);
+  const lv1 = Number(await js(`document.getElementById(${JSON.stringify(U.level.id)})?.value`));
+  checkRow('undo', 'Undo puts a 3D-only setting back (accent level)', lv1 === lv0 && lv0 !== U.level.value, `level ${lv0} -> ${U.level.value} -> undo -> ${lv1}`);
   if (await editorOpen()) await apply();
 }
 

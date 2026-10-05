@@ -29,10 +29,13 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 import {
   initBrickPanel, openPatternBuilder, closePatternBuilder, builderToggleCell, builderResize, builderSetBase, builderStartFrom,
   builderSave, applyUserPattern, setWallPattern, setAccentPreset, setAccentLevel, patternBuilderState, builderSetUnit, builderSplit, builderShift,
+  builderJoin as builderJoinAt,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { ACCENT_LEVEL_RANGE, tileOf, ACCENT_PRESETS, accentedBrickIndices } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js';
 import { readFileSync } from 'node:fs';
+import { VectorEditor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor.js';
+import { commitEdit } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js';
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
@@ -338,5 +341,83 @@ describe('item 31e: the builder edits the bond (base Custom)', () => {
     expect(acc().tile).toMatchObject({ base: 'custom', unit: 0.5, userId: 'user:half-bond' });
     expect(acc().tile.bond.courses[0].pieces).toEqual([2, 1, 1, 1, 1]);
     expect(runBricks).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('item 38: editor Undo / Redo restore the brick SETTINGS that laid the canvas', () => {
+  // the REAL VectorEditor push / undo / redo / restore (h20 convention: .call on a mock editor); a lay = the runBricks
+  // mock writing the canvas the settings produce, then the real commitEdit (one entry), as the real runBricks does
+  function undoEditor() {
+    let content = '';
+    const el = document.createElement('i');
+    el.setAttribute('data-layer', 'b');
+    const child = { svg: () => content, node: el, attr: (k) => el.getAttribute(k), addClass: (c) => el.classList.add(c), removeClass: (c) => el.classList.remove(c),
+      hasClass: (c) => el.classList.contains(c), toggleClass: (c, on) => el.classList.toggle(c, on), remove() {} };
+    const sketch = { node: document.createElement('div'), clear() { content = ''; }, svg(str) { if (str === undefined) return content; content = str; return sketch; },
+      children() { const arr = content ? [child] : []; arr.toArray = () => arr; return arr; } };
+    const ed = { _sketchLayer: sketch, _layers: [{ id: 'b', name: 'Bricks', visible: true, holdsBricks: true }], _activeLayer: 'b', _undoStack: [], _redoStack: [], _maxUndo: 40,
+      _selectedElement: null, _selectedElements: [], _onChange: null, _onCommit: null, _deselect() {}, setMode() {},
+      pushState: VectorEditor.prototype.pushState, _snapshotState: VectorEditor.prototype._snapshotState, undo: VectorEditor.prototype.undo,
+      redo: VectorEditor.prototype.redo, _restoreState: VectorEditor.prototype._restoreState, _notifyChange: VectorEditor.prototype._notifyChange };
+    ed.canvas = () => content;
+    return ed;
+  }
+  let ed;
+  const layFrom = (s) => `wall:${s.pattern}:${JSON.stringify(s.accent && s.accent.tile && s.accent.tile.bond ? s.accent.tile.bond.courses.map((c) => c.pieces) : null)}`;
+  beforeEach(() => {
+    try { localStorage.clear(); } catch { /* */ }
+    P.brickSettings.userPatterns = []; resetAccent(); engineOpts.extra = ['accentCuts', 'customBond'];
+    setup('wall');
+    ed = undoEditor();
+    window.svgEditor = ed;
+    runBricks.mockImplementation(() => { ed._sketchLayer.svg(layFrom(P.brickSettings)); commitEdit(ed); return { wallCount: 3, frameCount: 0 }; });
+    runBricks(); // the session's first lay: the baseline entry
+  });
+  afterEach(() => { runBricks.mockImplementation(() => ({ wallCount: 3, frameCount: 0 })); });
+
+  it('stretcher -> stack -> Undo: the pattern reads stretcher, its chip is active, the canvas is back; Redo: stack again', () => {
+    const base = ed.canvas();
+    setWallPattern('stack');
+    expect(ed.canvas()).toBe('wall:stack:null');
+    expect(ed._undoStack).toHaveLength(2);
+    ed.undo();
+    expect(ed.canvas()).toBe(base);
+    expect(P.brickSettings.pattern).toBe('stretcher');
+    expect($('brickPattern_stretcher').classList.contains('active')).toBe(true);
+    expect($('brickPattern_stack').classList.contains('active')).toBe(false);
+    ed.redo();
+    expect(P.brickSettings.pattern).toBe('stack');
+    expect($('brickPattern_stack').classList.contains('active')).toBe(true);
+  });
+
+  it('a custom join -> Undo: the tile (its bond) is back, in the open builder too', () => {
+    openPatternBuilder(); $('brickBuilderBase_custom').click();
+    const before = JSON.stringify(acc().tile.bond);
+    builderJoinAt(0, 0, 2);
+    expect(acc().tile.bond.courses[0].pieces).toEqual([3, 1, 1, 1]);
+    ed.undo();
+    expect(JSON.stringify(acc().tile.bond)).toBe(before);
+    expect(patternBuilderState().tile.bond.courses[0].pieces).toEqual([1, 1, 1, 1, 1, 1]); // the builder shows it
+    expect($('brickBuilderJoint_0_1')).toBeNull(); // no joined brick drawn any more
+  });
+
+  it('a 3D-only change (the accent level) is an undo step of its own; Undo puts the level back, nothing re-lays', () => {
+    setAccentPreset('checker');
+    const depth = ed._undoStack.length;
+    setAccentLevel(-0.0625);
+    expect(ed._undoStack).toHaveLength(depth + 1);
+    runBricks.mockClear();
+    ed.undo();
+    expect(acc().levelIn).toBe(0.0625);
+    expect(acc().preset).toBe('checker');
+    expect(runBricks).not.toHaveBeenCalled();
+  });
+
+  it('Undo never takes back a SAVED pattern (BRICK_UNDO_KEEPS: the library is kept)', () => {
+    openPatternBuilder(); builderToggleCell(0, 0);
+    builderSave('Kept');
+    setWallPattern('stack');
+    ed.undo(); ed.undo(); ed.undo();
+    expect(P.brickSettings.userPatterns.map((u) => u.id)).toEqual(['user:kept']);
   });
 });
