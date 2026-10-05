@@ -114,6 +114,36 @@ function uniformRow(courseIndex, pattern, minX, maxX, courseCy, cH, L, H, J) {
  *  standard historical flemish-bond stagger, not independently re-derived. Walks a generous run of
  *  repeat units from well before `minX` so a partial unit at either true edge is still included
  *  (clipPolygonToBoard trims it to the real outline afterward, same as every other pattern here). */
+/**
+ * T86 item 27 (Fred, for 37's pattern builder F35-31e): a CUSTOM BOND from a tile -- `customBond = { courses: [{
+ * pieces, offset }] }`, repeated course by course (course c uses courses[c mod n], counted from the first course laid,
+ * as the built-in bonds' own stagger is). `pieces` = lengths in brick units (1, 1/2, 1/4, 3/4 ...), repeated along the
+ * course; a piece of p bricks spans p pitches less one joint (L + (p - 1)(L + J): two halves + their joint = one
+ * brick). `offset` = the course's shift in brick pitches. The ends are cut by the board clip like any course
+ * (closers). Courses are stretcher-high. A built-in bond is a tile too: stretcher = [{pieces:[1], offset:0},
+ * {pieces:[1], offset:0.5}] lays exactly uniformRow's bricks (the same arithmetic, pinned by a test).
+ */
+function customRow(courseIndex, bond, minX, maxX, courseCy, cH, L, J) {
+  const course = bond.courses[courseIndex % bond.courses.length] || {};
+  const seq = (course.pieces || []).map(Number).filter((p) => p > 0);
+  if (!seq.length) return [];
+  const pitch = L + J, offset = Number(course.offset) || 0;
+  const periodUnits = seq.reduce((s, p) => s + p, 0);
+  let u = 0; // the first piece's start, in pitches from minX - offset * pitch: one period before the course's left edge
+  while (-offset + u > 0) u -= periodUnits;
+  u -= periodUnits;
+  const row = [];
+  for (let k = 0; minX - offset * pitch + u * pitch < maxX + pitch; k++) {
+    const p = seq[k % seq.length], len = L + (p - 1) * pitch;
+    const cx = minX - offset * pitch + u * pitch + len / 2;
+    if (!(cx + len / 2 < minX - 1e-6 || cx - len / 2 > maxX + 1e-6)) {
+      row.push({ courseIndex, colIndex: row.length, cx, cy: courseCy, polygon: rectPolygon(cx, courseCy, len / 2, cH / 2) });
+    }
+    u += p;
+  }
+  return row;
+}
+
 function flemishRow(courseIndex, minX, maxX, courseCy, cH, L, H, J) {
   const period = L + J + H + J;
   const phase = (courseIndex % 2 === 1) ? period / 2 : 0;
@@ -189,7 +219,8 @@ function applyAccentCuts(courses, accentCuts, minX, J) {
   });
 }
 
-export function bondLayout(boardOutline, set, zones, _seed, _largeStones, _fences, accentCuts) {
+export function bondLayout(boardOutline, set, zones, _seed, _largeStones, _fences, { accentCuts, customBond } = {}) {
+  const custom = customBond && Array.isArray(customBond.courses) && customBond.courses.length ? customBond : null;
   const xs = boardOutline.map((p) => p.x), ys = boardOutline.map((p) => p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
 
@@ -207,13 +238,14 @@ export function bondLayout(boardOutline, set, zones, _seed, _largeStones, _fence
   const courses = [];
   let cy = minY;
   for (let c = 0; c < coursePatterns.length; c++) {
-    const pattern = patternFor(coursePatterns[c]);
+    const pattern = custom ? BRICK_PATTERNS.stretcher : patternFor(coursePatterns[c]);
     const cH = courseHeightFor(pattern, L, H);
     const coursePitch = cH + J;
     const courseCy = cy + cH / 2;
-    const row = pattern.kind === 'course-alternating'
-      ? flemishRow(c, minX, maxX, courseCy, cH, L, H, J)
-      : uniformRow(c, pattern, minX, maxX, courseCy, cH, L, H, J);
+    const row = custom ? customRow(c, custom, minX, maxX, courseCy, cH, L, J)
+      : pattern.kind === 'course-alternating'
+        ? flemishRow(c, minX, maxX, courseCy, cH, L, H, J)
+        : uniformRow(c, pattern, minX, maxX, courseCy, cH, L, H, J);
     courses.push(row);
     cy += coursePitch;
     if (cy > maxY + maxDim) break; // past the board -- later zones (if any) would be invisible anyway
@@ -237,9 +269,10 @@ export function bondLayout(boardOutline, set, zones, _seed, _largeStones, _fence
       const c = courses.length;
       const pattern = patternFor(coursePatterns[c - 1]);
       const courseCy = cy + remaining / 2;
-      const row = pattern.kind === 'course-alternating'
-        ? flemishRow(c, minX, maxX, courseCy, remaining, L, H, J)
-        : uniformRow(c, pattern, minX, maxX, courseCy, remaining, L, H, J);
+      const row = custom ? customRow(c, custom, minX, maxX, courseCy, remaining, L, J)
+        : pattern.kind === 'course-alternating'
+          ? flemishRow(c, minX, maxX, courseCy, remaining, L, H, J)
+          : uniformRow(c, pattern, minX, maxX, courseCy, remaining, L, H, J);
       courses.push(row);
     }
   }

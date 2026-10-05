@@ -22152,3 +22152,18 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
   Cuts off -> 3/5 fail. Domain green but N2 (the known timeout, fixed on fb-app c70b3e5).
 - Branch sits on wall-region 0444b91 (rotation + region): its edits anchor next to rotationDeg.
 - Shot: shots/seatB/item26_accent_cuts.png.
+
+## T86 item 27 -- custom bond from a tile (seat B / 88, 2026-10-05)
+- generateBricks `customBond: { courses: [{ pieces, offset }] }` (ENGINE_OPTIONS 'customBond') -> bondLayout customRow:
+  course c lays courses[c mod n] (counted from the first course laid, as the built-in stagger is); pieces in brick
+  units repeat along the course, a piece of p bricks = L + (p - 1)(L + J) (two halves + their joint = one brick);
+  offset in pitches; the board clip makes the end closers; courses are stretcher-high. The layout's extra options are
+  now one object ({ accentCuts, customBond }) instead of a growing positional list.
+- PIN: stretcher = [{[1],0},{[1],0.5}] and stack = [{[1],0}] lay byte-identical bricks to the built-ins (customRow uses
+  uniformRow's own arithmetic order and L + 0 for a whole brick, so no float drift).
+- Tests bricks-custom-bond (4): the pins; the spec tile {[1, 1/2, 1], offset 1/2} on T1 -- every whole piece of a
+  declared length, on the course grid, in the tile's cyclic order; no overlap; no void beyond a joint (sampled with
+  diagonal probes: this tile lines some vertical joints up across courses, so joint crossings exist). Offsets ignored
+  -> 2/4 fail. Domain green but N2 (the known timeout).
+- Branch sits on accent-cuts 368ca32 (both feed 37's pattern builder; merge them with 37's 31b / 31e wiring).
+- Shot: shots/seatB/item27_custom_bond.png.

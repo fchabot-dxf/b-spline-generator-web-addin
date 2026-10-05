@@ -49,6 +49,8 @@ const LAYOUTS = Object.freeze({
  *   inside these (clipCellsToRegion); absent = the whole outline
  * @param {{unit:number, tile:{rows:number, cols:number, cells:boolean[][]}}} [opts.accentCuts] -- T86 item 26: bond
  *   layouts split bricks on the accent tile's sub-brick grid and mark each piece (layouts/bond.js applyAccentCuts)
+ * @param {{courses:{pieces:number[], offset:number}[]}} [opts.customBond] -- T86 item 27: a bond layout lays this tile's
+ *   courses instead of its pattern's (layouts/bond.js customRow)
  * @param {number} [opts.rotationDeg=0] -- T86 item 29: the pattern turned by this angle (rotatedFill)
  * @param {{polygon:{x:number,y:number}[]}[]} [opts.exclusions] -- T86 item 13: brush-stroke footprints the wall
  *   flows around (cutExclusions below)
@@ -186,7 +188,7 @@ export function bricksFillShape(polygon, holes, opts) {
 
   const layoutFn = LAYOUTS[set.layout];
   if (!layoutFn) return { bricks: [] };
-  const { cells: allCells } = layoutFn(polygon, set, opts.zones, seed, opts.largeStones, opts.fences, opts.accentCuts);
+  const { cells: allCells } = layoutFn(polygon, set, opts.zones, seed, opts.largeStones, opts.fences, { accentCuts: opts.accentCuts, customBond: opts.customBond });
   let cells = (holes && holes.length)
     ? allCells.filter((c) => !holes.some((h) => pointInPolygon(c.cx, c.cy, h)))
     : allCells;
