@@ -35,7 +35,8 @@
  * the logical grid position neighbours/suppression reason about.
  */
 import { rectPolygon, clipPolygonToBoard } from '../geometry.js';
-import { BRICK_PATTERNS, MIN_PIECE_FRACTION } from '../library.js';
+import { BRICK_PATTERNS, MIN_PIECE_FRACTION, RUSTIC } from '../library.js';
+import { hashedRandom } from '../rng.js';
 
 function patternFor(name) {
   const p = BRICK_PATTERNS[name];
@@ -141,7 +142,34 @@ function flemishRow(courseIndex, minX, maxX, courseCy, cH, L, H, J) {
  *   deprecated pre-item-7 alias, still read when `pattern` is omitted)
  * @returns {{cells: Array}} cells[i] = { id, polygon, courseIndex, colIndex, neighbors:{left,right,above,below} }
  */
-export function bondLayout(boardOutline, set, zones) {
+/** T86 item 22: a RUNNING-BOND course with rustic lengths (library.js RUSTIC): the same start as uniformRow (stagger
+ *  included), each brick's length drawn in the declared range (seeded), nudged so its joint keeps RUSTIC.minLap of a
+ *  brick away from every joint of the course below. Returns the row and its joints (for the next course). */
+function rusticRow(courseIndex, minX, maxX, courseCy, cH, L, J, stagger, rustic, seed, below) {
+  const lo = L * (1 - RUSTIC.lengthSpread * rustic), hi = L * (1 + RUSTIC.lengthSpread * rustic), lap = RUSTIC.minLap * L;
+  const row = [], joints = [];
+  let x = minX - stagger - (L + J);
+  for (let k = 0; x < maxX + L + J; k++) {
+    let len = lo + (hi - lo) * hashedRandom(seed, 'rustic-length', courseIndex * 100003 + k);
+    const clear = (l) => below.every((j) => Math.abs(x + l + J / 2 - j) >= lap - 1e-9);
+    if (!clear(len)) {
+      // the length closest to the drawn one, in range, whose joint clears EVERY joint below (just past one of them)
+      const options = below.flatMap((j) => [j + lap - J / 2 - x, j - lap - J / 2 - x]).filter((l) => l >= lo && l <= hi && clear(l));
+      if (options.length) len = options.reduce((a, b) => (Math.abs(b - len) < Math.abs(a - len) ? b : a));
+    }
+    const cx = x + len / 2;
+    if (!(cx + len / 2 < minX - 1e-6 || cx - len / 2 > maxX + 1e-6)) {
+      row.push({ courseIndex, colIndex: row.length, cx, cy: courseCy, polygon: rectPolygon(cx, courseCy, len / 2, cH / 2) });
+    }
+    joints.push(x + len + J / 2);
+    x += len + J;
+  }
+  return { row, joints };
+}
+const isRunningBondPattern = (p) => p.kind === 'course' && (p.staggerFrac || 0) > 0 && p.pitchAxis === 'length';
+
+export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fences, { rustic = 0 } = {}) {
+  let below = []; // T86 item 22: the previous rustic course's joints
   const xs = boardOutline.map((p) => p.x), ys = boardOutline.map((p) => p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
 
@@ -165,7 +193,9 @@ export function bondLayout(boardOutline, set, zones) {
     const courseCy = cy + cH / 2;
     const row = pattern.kind === 'course-alternating'
       ? flemishRow(c, minX, maxX, courseCy, cH, L, H, J)
-      : uniformRow(c, pattern, minX, maxX, courseCy, cH, L, H, J);
+      : rustic > 0 && isRunningBondPattern(pattern)
+        ? (() => { const r = rusticRow(c, minX, maxX, courseCy, cH, L, J, c % 2 === 1 ? (L + J) * pattern.staggerFrac : 0, rustic, seed, below); below = r.joints; return r.row; })()
+        : uniformRow(c, pattern, minX, maxX, courseCy, cH, L, H, J);
     courses.push(row);
     cy += coursePitch;
     if (cy > maxY + maxDim) break; // past the board -- later zones (if any) would be invisible anyway
@@ -191,7 +221,9 @@ export function bondLayout(boardOutline, set, zones) {
       const courseCy = cy + remaining / 2;
       const row = pattern.kind === 'course-alternating'
         ? flemishRow(c, minX, maxX, courseCy, remaining, L, H, J)
-        : uniformRow(c, pattern, minX, maxX, courseCy, remaining, L, H, J);
+        : rustic > 0 && isRunningBondPattern(pattern)
+          ? rusticRow(c, minX, maxX, courseCy, remaining, L, J, c % 2 === 1 ? (L + J) * pattern.staggerFrac : 0, rustic, seed, below).row
+          : uniformRow(c, pattern, minX, maxX, courseCy, remaining, L, H, J);
       courses.push(row);
     }
   }

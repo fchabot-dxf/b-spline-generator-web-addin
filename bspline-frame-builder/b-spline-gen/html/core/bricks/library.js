@@ -64,6 +64,12 @@ export const FILL_FRACTIONS = Object.freeze([1, 3 / 4, 1 / 2, 1 / 4]);
  *  fill-shape.js (a wall piece cut by a brush stroke) and contour-bands.js (a band piece cut to the board) read it. */
 export const MIN_PIECE_FRACTION = 0.25;
 
+/** T86 item 22 (Fred: rustic running bond): `rustic` 0..1 (0 = today's uniform bricks) varies brick lengths within a
+ *  course -- lengths in [1 - lengthSpread x rustic, 1 + lengthSpread x rustic] x the brick (0.6-1.4 at 1) -- keeping a
+ *  joint at least minLap x the brick away from every joint of the course below (the bond stays staggered), and lifts or
+ *  sinks each brick by up to levelIn x rustic. Wall (layouts/bond.js, running bond) and Brush (along-path.js). */
+export const RUSTIC = Object.freeze({ lengthSpread: 0.4, minLap: 0.25, levelIn: 0.02 });
+
 /**
  * H23 item 76 (advisor's own FINAL piece set): the 4 declared CORNER-specific pieces, used only
  * where a run meets a declared corner (never mid-run) -- a mason's own real vocabulary for turning

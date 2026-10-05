@@ -22148,3 +22148,18 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
 - Follow-up (advisor ruling by precedent: a stone set's bands are the stone ring, as White rocks): Set 5 declares
   `bandLayout: 'fieldstone'`; contour-bands setBandPattern reads `set.bandLayout || set.layout`, so Grey stone frames
   lay fieldstone rings with grey faces (a bond set keeps course bands -- tested). Sheet re-rendered.
+
+## T86 item 22 -- rustic running bond (seat B / 88, 2026-10-05)
+- library.js RUSTIC { lengthSpread 0.4, minLap 0.25, levelIn 0.02 }; generateBricks `rustic` 0..1 (ENGINE_OPTIONS
+  'rustic', so 37's Wall/Brush rows appear). Wall: layouts/bond.js rusticRow for RUNNING-BOND courses only (course
+  kind, staggered, length axis -- the app sends it for running bond only): seeded lengths in [1 -/+ 0.4 r] x L, the
+  usual start and stagger, each joint placed at least minLap x L off EVERY joint of the course below (the length
+  closest to the drawn one that clears them all, in range; first try nudged off one joint only and left 6.5% of joints
+  too close at r = 1). Closers from the clip, as ever. Levels: fill-shape adds +/- levelIn x r (seeded) to heightOffset.
+  Brush: piece-plan.js planRusticLengths -- random whole lengths in range, then one end piece (two halves if too long),
+  nominal joints; along-path uses it when opts.rustic > 0 (arc voussoir runs unchanged).
+- Tests bricks-rustic (7): 0 = today exactly; r = 1 and 0.5 -- lengths in range and varied, < 3% of joints within the
+  lap (the length range bounds the nudge), no overlap, coverage = the uniform wall's; levels within the jitter; a stack
+  bond untouched; a brush stroke varied, in range, no overlap, seeded. Rustic off in the bond -> 2/7 fail. 37's
+  item29-rustic-wear test: mock base drops 'rustic' (both states still tested). Domain green.
+- Shot: shots/seatB/item22_rustic.png (0 / 0.5 / 1, wall + brush).

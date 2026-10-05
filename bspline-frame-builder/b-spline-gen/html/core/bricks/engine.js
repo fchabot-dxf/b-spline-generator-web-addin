@@ -51,6 +51,7 @@ export const ENGINE_OPTIONS = Object.freeze([
   'exclusions', // T86 item 13
   'bandFit', // T86 item 28: false = draw the frame stack as requested (icons); default: the fit rule
   'rotationDeg', // T86 item 29: the wall pattern turned by this angle (0 / 45 / 90 chips); default 0
+  'rustic', // T86 item 22: rustic running bond, 0..1 (library.js RUSTIC); the Brush reads it too (along-path)
 ]);
 
 export function generateBricks(input) {
@@ -95,6 +96,7 @@ export function generateBricks(input) {
     zones: input.zones,
     largeStones: input.largeStones,
     rotationDeg: input.rotationDeg,
+    rustic: input.rustic,
     exclusions: input.exclusions,
   }).bricks;
   // T86 item 13: the app's own stub (editor-brick-tool.js dropExcludedWallBricks) stands down when this is set

@@ -26,7 +26,8 @@ import { assignPieces } from './pieces.js';
 import { computeSuppressedCells } from './suppression.js';
 import { assignSamples } from './samples.js';
 import { pointInPolygon, polygonDifference, polygonCentroid, signedArea, offsetPathInward, inwardSignFor } from './geometry.js';
-import { PIECE_CATALOGUE, enabledPieces, scaledSet, MIN_PIECE_FRACTION, BRICK_PATTERNS } from './library.js';
+import { PIECE_CATALOGUE, enabledPieces, scaledSet, MIN_PIECE_FRACTION, BRICK_PATTERNS, RUSTIC } from './library.js';
+import { hashedRandom } from './rng.js';
 
 // F35 item 7: herringbone/basketweave are 'tile2d' BRICK_PATTERNS (library.js) promoted to full
 // `set.layout` choices, same tier as 'bond'/'fieldstone' -- not zone-mixable with course-kind
@@ -154,7 +155,7 @@ export function bricksFillShape(polygon, holes, opts) {
   const layoutSet = def && (def.params || def.fixed) ? { ...set, layoutParams: {
     ...Object.fromEntries(Object.entries(def.params || {}).filter(([, p]) => p && 'default' in p).map(([k, p]) => [k, p.default])),
     ...(set.layoutParams || {}), ...(def.fixed || {}) } } : set;
-  const { cells: allCells } = layoutFn(polygon, layoutSet, opts.zones, seed, opts.largeStones, opts.fences);
+  const { cells: allCells } = layoutFn(polygon, layoutSet, opts.zones, seed, opts.largeStones, opts.fences, { rustic: opts.rustic });
   let cells = (holes && holes.length)
     ? allCells.filter((c) => !holes.some((h) => pointInPolygon(c.cx, c.cy, h)))
     : allCells;
@@ -176,7 +177,8 @@ export function bricksFillShape(polygon, holes, opts) {
       pieceId: info ? info.pieceId : 'single',
       sampleId: sample ? sample.sampleId : null,
       flip: sample ? sample.flip : false,
-      heightOffset: sample ? sample.heightOffset : 0,
+      heightOffset: (sample ? sample.heightOffset : 0)
+        + (opts.rustic > 0 ? RUSTIC.levelIn * opts.rustic * (2 * hashedRandom(seed, 'rustic-level', cell.id) - 1) : 0), // T86 item 22
     });
   }
   return { bricks };
