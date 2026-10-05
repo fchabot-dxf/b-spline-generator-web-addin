@@ -14,7 +14,8 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/toast.js', () => ({ sho
 const engineOpts = vi.hoisted(() => ({ extra: [] }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, get ENGINE_OPTIONS() { return [...actual.ENGINE_OPTIONS, ...engineOpts.extra]; } };
+  // the base drops rotationDeg (the engine lists it now) so both states are tested
+  return { ...actual, get ENGINE_OPTIONS() { return [...actual.ENGINE_OPTIONS.filter((o) => o !== 'rotationDeg'), ...engineOpts.extra]; } };
 });
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js', async (importOriginal) => {
   const actual = await importOriginal();
