@@ -966,10 +966,12 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     }
     // T86 item 1, BLOCK: the quoin corner piece, same deferred-build pattern as `kiteFan` above (see
     // `buildBlockJoint`'s own header for why it can't assign its own id/sample earlier) -- built from
-    // the White rocks set (`QUOIN_SET`), never the surrounding band's own `set`.
+    // its SIZE from QUOIN_SET (geometry, buildBlockJoint), its TEXTURE from the band's own `set` (F35 item 33, seat 37:
+    // the app looks a piece's sampleId up in the ELEMENT's set, so a White-rocks sample on a red frame found nothing
+    // -- every quoin drew a flat colour with no height detail; Fred wants the quoins in their frame's texture).
     if (rawJointEnd && rawJointEnd.isBlock && rawJointEnd.blockPolygon) {
-      const { sampleId, flip } = pickSample(QUOIN_SET, seed, 'bricks-block', nextId);
-      const heightOffset = (mulberry32(seedFor(seed, 'bricks-block-jitter', nextId))() * 2 - 1) * (QUOIN_SET.heightJitterIn || 0);
+      const { sampleId, flip } = pickSample(set, seed, 'bricks-block', nextId);
+      const heightOffset = (mulberry32(seedFor(seed, 'bricks-block-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
       pieces.push({ id: `${pieceId}-${nextId}`, polygon: rawJointEnd.blockPolygon, pieceId, sampleId, flip, heightOffset });
       nextId++;
     }
