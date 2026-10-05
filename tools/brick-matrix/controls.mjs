@@ -25,6 +25,11 @@
 // do:     { click: id } | { set: id, value, event }   (event: 'input' | 'change')
 // expect: { pending, canvas, threeD }: true / false = must / must not change; null = not checked.
 //   commit: 'at once' -- the canvas is read straight after the change (no Generate click).
+//   reads: { <input id>: <number> } -- after the change that field reads that value (seat 37 fb-app 1404b72: the
+//     Grout width shows the selected element's joint, its set's declared grout.widthIn unless changed)
+//   sets: { <brick kind>: <set id> } -- after the change every brick of that kind carries that data-brick-set
+//     (item 23, seat 37 fb-app 40c4bdf: the set is per element; a Fieldstone wall or band lays the rock set).
+// group: run the row in another group than its tool's own (it needs that group's state).
 // requires: { control, satisfied, why } -- the setting only has an effect while ANOTHER control is in a
 //   given state (satisfied: { gt: n } on a number input's value, or { active: true } on a button). While it
 //   is NOT satisfied the control must be greyed out (disabled, tooltip = why) and the row checks exactly that;
@@ -32,7 +37,11 @@
 //   be hidden instead of greyed out.) (Advisor, 2026-10-04: "a disabled-by-design control isn't a FAIL".)
 //   A control the user can change is expected to do something visible -- a row that changes nothing
 //   (e.g. Clumping while Suppression is 0) FAILS on purpose: it is a control that "does nothing".
+import { BRICK_SETS as BRICK_SETS_DECL } from '../../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 const E = (pending, canvas, threeD) => ({ pending, canvas, threeD });
+// the sets' own declared values (the app reads them; so does the matrix -- never a copied number)
+const RED_SET = BRICK_SETS_DECL.find((s) => s.layout === 'bond');
+const ROCK_SET = BRICK_SETS_DECL.find((s) => s.layout === 'fieldstone');
 const AT_ONCE = { commit: 'at once' };
 const LAYOUT = { ...E(false, true, true), ...AT_ONCE };       // a 2D layout setting: re-laid at once, new relief (F35 item 27)
 const LEVEL = { ...E(false, null, true), ...AT_ONCE };        // a brick level: at once, relief only
@@ -47,17 +56,20 @@ const set = (id, value, event = 'change') => ({ set: id, value, event });
 
 export const BRICK_CONTROLS = [
   // ---- editor, Wall tool
-  { name: 'Set: White Rocks', kind: 'editor', tool: 'wall', do: click('brickSetWhite'), expect: LAYOUT },
-  { name: 'Set: Red Brick', kind: 'editor', tool: 'wall', do: click('brickSetRed'), expect: LAYOUT },
+  // (item 23: the Set row lists the brick sets only -- today just Red Brick -- so it has no row to change;
+  // rocks come from the Fieldstone pattern, checked by `sets` below)
   { name: 'Wall pattern: Herringbone', kind: 'editor', tool: 'wall', do: click('brickPattern_herringbone'), expect: LAYOUT },
   { name: 'Wall pattern: Basketweave', kind: 'editor', tool: 'wall', do: click('brickPattern_basketweave'), expect: LAYOUT },
-  { name: 'Wall pattern: Fieldstone', kind: 'editor', tool: 'wall', do: click('brickPattern_fieldstone'), expect: LAYOUT },
+  { name: 'Wall pattern: Fieldstone', kind: 'editor', tool: 'wall', do: click('brickPattern_fieldstone'), expect: { ...LAYOUT, sets: { wall: 3 }, reads: { brickGroutWidth: ROCK_SET.grout.widthIn } } },
+  // per-element joint: the Frame tool shows the frame's own (Red Brick) joint while the wall is rock
+  { name: 'Frame tool shows its own joint', kind: 'editor', tool: 'wall', do: click('brickTool_frame'), expect: { ...E(false, false, false), commit: 'at once', reads: { brickGroutWidth: RED_SET.grout.widthIn } }, introducedBy: '1404b72' },
+  { name: 'Back to the Wall tool', kind: 'editor', tool: 'wall', do: click('brickTool_wall'), expect: { ...E(false, false, false), commit: 'at once', reads: { brickGroutWidth: ROCK_SET.grout.widthIn } }, introducedBy: '1404b72' },
   // shown only for a fieldstone wall (White Rocks or the Fieldstone pattern) -- hence right after the row above
   { name: 'Large stones 0.6 (Fieldstone)', kind: 'editor', tool: 'wall', do: set('brickLargeStones', 0.6), expect: LAYOUT, introducedBy: '88c7616' },
   { name: 'Wall pattern: None', kind: 'editor', tool: 'wall', do: click('brickPattern_none'), expect: LAYOUT },
   { name: 'Wall pattern: Stretcher', kind: 'editor', tool: 'wall', do: click('brickPattern_stretcher'), expect: LAYOUT },
-  // Level (audit v2 N6, seat 37): an editor Level change now shows the Generate dot; Generate keeps the 2D
-  // layout (Level is a height), Apply builds it -- so pending + 3D, canvas not checked
+  // Level (audit v2 N6; item 27): an editor Level change re-lays at once like every editor setting (LEVEL
+  // profile: no pending dot, relief changes); the 2D canvas is not checked (a level is height only)
   { name: 'Wall Level +1/8', kind: 'editor', tool: 'wall', do: set('brickLevel_wall', 0.125), expect: LEVEL, introducedBy: '90a1483' },
   { name: 'Wall Level 0', kind: 'editor', tool: 'wall', do: set('brickLevel_wall', 0), expect: LEVEL, introducedBy: '90a1483' },
   // F35 item 15 (seat 37): raised accents on the Wall -- 3D-only (never pending); the 2D shows an outline only
@@ -79,6 +91,11 @@ export const BRICK_CONTROLS = [
   // ---- editor, Frame tool
   { name: 'Frame preset: 3-band', kind: 'editor', tool: 'frame', do: click('brickFramePreset_three_band'), expect: LAYOUT },
   { name: 'Band 1 pattern: Header', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_header'), expect: LAYOUT },
+  // item 23: a Fieldstone band makes the whole frame rock (every band); then the per-element rule -- the Frame
+  // tool's Set changes the frame only, a rock wall stays rock
+  { name: 'Band 1 pattern: Fieldstone', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_fieldstone'), expect: { ...LAYOUT, sets: { frame: 3 } }, introducedBy: '40c4bdf' },
+  { name: 'Wall pattern: Fieldstone (frame group)', kind: 'editor', tool: 'wall', group: 'frame', do: click('brickPattern_fieldstone'), expect: { ...LAYOUT, sets: { wall: 3 } }, introducedBy: '40c4bdf' },
+  { name: 'Frame Set: Red Brick, the rock wall stays', kind: 'editor', tool: 'frame', do: click('brickSet_1'), expect: { ...LAYOUT, sets: { frame: 1, wall: 3 } }, introducedBy: '40c4bdf' },
   { name: 'Frame offset distance 0.25', kind: 'editor', tool: 'frame', do: set('brickFrameOffsetDistance', 0.25), expect: LAYOUT },
   { name: 'Frame offset off', kind: 'editor', tool: 'frame', do: click('brickFrameOffsetOn'), expect: LAYOUT },
   { name: 'Frame offset on', kind: 'editor', tool: 'frame', do: click('brickFrameOffsetOn'), expect: LAYOUT },
@@ -101,8 +118,7 @@ export const BRICK_CONTROLS = [
   { name: 'Stripe B: Red continuous', kind: 'stripe', do: click('stripeBrickStyle_B_red_continuous'), expect: STRIPE, introducedBy: '702876d' },
   { name: 'Stripe C: White bricks', kind: 'stripe', do: click('stripeBrickStyle_C_white_bricks'), expect: STRIPE, introducedBy: '702876d', requires: NEEDS_THREE_STYLES },
   // ---- main sidebar
-  { name: 'Quick set: White Rocks', kind: 'sidebar', do: click('brickQuick_set_3'), expect: AUTO },
-  { name: 'Quick set: Red Brick', kind: 'sidebar', do: click('brickQuick_set_1'), expect: AUTO },
+  // (item 23: the quick Set row lists the brick sets only -- one choice today, nothing to change)
   { name: 'Quick size: 1-1/2', kind: 'sidebar', do: click('brickQuick_size_half1'), expect: AUTO },
   { name: 'Quick size: 3/4', kind: 'sidebar', do: click('brickQuick_size_quarter3'), expect: AUTO },
   { name: 'Quick pattern: Herringbone', kind: 'sidebar', do: click('brickQuick_pattern_herringbone'), expect: AUTO },
@@ -158,7 +174,7 @@ export const REQUIRES_SOURCE = Array.isArray(appRequires) ? 'app (main/brick-con
 //   bricks: { name, kind } -- the canvas holds bricks of that kind and every one of them is painted
 export const PERSIST_BOARD = {
   setup: [
-    { tool: 'wall' }, click('brickSetWhite'), click('brickPattern_herringbone'), click('brickSizePreset_quarter3'),
+    { tool: 'wall' }, click('brickPattern_fieldstone'), click('brickSizePreset_quarter3'),
     set('brickLevel_wall', 0.0625), click('brickGenerate'),
     { tool: 'frame' }, click('brickFramePreset_three_band'), click('brickGenerate'),
     { tool: 'brush' }, { stroke: [[0.3, 0.45], [0.7, 0.45]] },
@@ -166,15 +182,13 @@ export const PERSIST_BOARD = {
     { sidebar: true }, click('brickSurfaceStyle_weathered'), set('brickReliefHeight', 0.2),
   ],
   panel: [
-    { name: 'Set: White Rocks', active: 'brickSetWhite' },
-    { name: 'Wall pattern: Herringbone', active: 'brickPattern_herringbone' },
+    { name: 'Wall pattern: Fieldstone', active: 'brickPattern_fieldstone' },
     { name: 'Brick size 0.75', value: ['brickSize', 0.75] },
     { name: 'Wall Level 1/16', value: ['brickLevel_wall', 0.0625] },
     { name: 'Frame preset: 3-band', active: 'brickFramePreset_three_band' },
     { name: 'Surface: Weathered', active: 'brickSurfaceStyle_weathered' },
     { name: 'Max Height 0.2', value: ['brickReliefHeight', 0.2] },
-    { name: 'Quick set: White Rocks', active: 'brickQuick_set_3' },
-    { name: 'Quick pattern: Herringbone', active: 'brickQuick_pattern_herringbone' },
+    { name: 'Quick pattern: Fieldstone', active: 'brickQuick_pattern_fieldstone' },
   ],
   bricks: [
     { name: 'Wall bricks painted', kind: 'wall' },
@@ -194,4 +208,51 @@ export const PEEK_LAYOUT = {
   ],
   tools: ['wall', 'frame'],
   element: 'brickGenerate',
+};
+
+// ---- Clear menu (F35 item 28; seat 37 fb-app 678c746). The editor header's Clear opens a menu: All / Frame /
+// Artwork / Photo / Bricks. Answers declared by the advisor (2026-10-04): Clear Frame removes the frame SHAPE only
+// (template -> Rectangle) and the frame/wall bricks re-lay on the rectangle at once; Clear Bricks removes every
+// brick element and nulls the laid key; Clear All resets everything incl. the template and the photo; ONE undo
+// restores everything a Clear removed. Each row seeds a board holding all four kinds, uses the option from the
+// tab that owns its kind, then checks: every `clears` kind is empty, every `changes` kind is still present (it
+// may differ), every other kind is byte-identical; then one Ctrl+Z must bring every kind back.
+//   kinds:   how each kind is fingerprinted in the page -- see run.mjs CLEAR_PROBE (frame: P.frame; artwork: the
+//            sketch children on non-Bricks layers; photo: P.photoImageDataUrl / photoEdits / photoPatternId;
+//            bricks: [data-brick-gen="1"] + the wall/frame records <g data-brick-record> (item 22, seat 37
+//            fb-app 8fe50e2: the old shared layer key brickLaidKey is retired; records are hidden <g>s, never art)
+export const CLEAR_MENU = {
+  button: 'editorClear',
+  confirmOk: '.pm-prompt-ok',
+  seed: { photoFile: 'b-spline-gen/html/assets/logo-64.png', stroke: [[0.35, 0.4], [0.5, 0.55], [0.65, 0.4]] },
+  options: [
+    { name: 'Clear All', item: 'editorClear_all', tab: 'editorTabArtwork', confirm: 'ok', clears: ['frame', 'artwork', 'photo', 'bricks'], changes: [] },
+    { name: 'Clear All, then Keep', item: 'editorClear_all', tab: 'editorTabArtwork', confirm: 'keep', clears: [], changes: [], undo: false },
+    { name: 'Clear Frame', item: 'editorClear_frame', tab: 'editorTabFrame', clears: ['frame'], changes: ['bricks'] },
+    { name: 'Clear Artwork', item: 'editorClear_artwork', tab: 'editorTabArtwork', clears: ['artwork'], changes: [] },
+    { name: 'Clear Photo', item: 'editorClear_photo', tab: 'editorTabPhoto', clears: ['photo'], changes: [] },
+    { name: 'Clear Bricks', item: 'editorClear_bricks', tab: 'editorTabBrick', clears: ['bricks'], changes: [] },
+  ],
+  introducedBy: '678c746',
+};
+
+// ---- lay warnings (seat 37, audit B1, fb-app dd5a59c): bands that cover the whole board leave no room for the
+// wall -- the app says so, and the wall comes back when the bands fit again (before the fix it never did).
+export const LAY_WARNING = {
+  template: 'template_9',
+  tooMany: 'brickQuick_frameBands_three_band',
+  fits: 'brickQuick_frameBands_single_soldier',
+  notes: { sidebar: 'brickLayWarnings', editor: 'brickEditorLayWarnings' },
+  text: 'no room for the wall', // a stable part of "The frame bands cover the whole board -- no room for the wall: ..."
+  introducedBy: 'dd5a59c',
+};
+
+// ---- Select (item 22 slice 1, seat 37 fb-app 2482482): picking a Wall/Frame element in the Brick tab.
+export const SELECT_ELEMENT = {
+  wallTool: 'brickTool_wall',
+  selectMode: 'brickElementSelect',
+  wallSelect: 'brickSubTool_wall_select', wallArea: 'brickSubTool_wall_area', // area is hidden until 'wallRegion'
+  frameTool: 'brickTool_frame',
+  frameLabel: { id: 'brickElementLabel_frame', text: 'Editing: this Frame' },
+  introducedBy: '2482482',
 };

@@ -423,6 +423,52 @@ function poissonDiscSample(polygon, spacing, seed, existingPoints, gate) {
  *  bisector toward themselves by their OWN `pointShrink`, so the final gap between two finished
  *  cells is `shrinkA + shrinkB` -- symmetric for two same-tier neighbours, tapering for a cross-tier
  *  pair, exactly the "thinner mortar near small stones" intent `tierShrinks` already declares. */
+/** T86 (seat 37's trace, 2026-10-04: "a self-crossing rock-frame stone covers the wall"): a fieldstone band
+ *  ring has NO seeds in its hole, so the cells along the ring's inner edge reach across the hole; clipped to
+ *  the slit ring, such a cell becomes a piece wrapping along the inner boundary through the slit -- MEASURED on
+ *  White Rocks three_band, every visible template: bands 1 and 2 grew self-crossing stones of 2.8-27 sq in
+ *  (median 0.15-0.34) from cells of 25-29 sq in, one covering T1's whole wall -- and an inner ring's OUTER edge
+ *  is just as open (the band outside it is laid separately). Fix: MIRROR seeds -- every real seed within
+ *  FENCE_REACH_FACTOR x the largest spacing of a fence (the ring's outer edge, its inner edge -- each its own
+ *  closed line, never the slit polygon: a seed whose nearest ring point is the zero-width bridge got no outer
+ *  twin, MEASURED a 19.5 sq in cell reaching the box corner) gets a phantom twin reflected across its nearest
+ *  point on that fence (same radius), kept only where the twin lands OUTSIDE the region being filled. A seed and its mirror are equidistant from the edge, so their bisector IS the edge
+ *  there (stretched past it, see FENCE_STRETCH): no stone can reach across a hole or past the outer edge. Phantoms
+ *  bound the cells and never become stones. (A first try, phantoms at a FIXED depth inside the hole, MEASURED
+ *  no effect: in a narrow hole most of them fell outside it and were skipped -- 2 phantoms for a whole ring.) */
+const FENCE_REACH_FACTOR = 2;
+// The twin sits FENCE_STRETCH x the seed's distance beyond the edge (5 = the bisector two seed-distances OUTSIDE
+// the edge), not at the exact mirror image: an exact mirror makes the cell's edge the boundary's TANGENT, which
+// cuts the sliver off wherever the boundary curves into the region (MEASURED: ring coverage 0.83-0.84 < 0.85
+// on T18 and at the bridge corner). The fence only has to stop runaway cells; the stone still meets the true
+// edge through the usual clip, flush, as before. MEASURED window: 3 still lost coverage (T18 1 in band 0.845),
+// 8 let wrap-around stones back on T6 / T12 / T18; 5 passes both (bricks-fieldstone-band + rock-ring-stones).
+const FENCE_STRETCH = 5;
+function fencePoints(fences, points, reach, region) {
+  // one twin per boundary SEGMENT whose perpendicular foot lies inside it (within `reach`): at a corner a seed
+  // gets a twin across each side, which bounds its cell exactly like the corner. (Mirroring only across the
+  // single NEAREST boundary point MEASURED a coverage loss at corners: the nearest point there is the corner
+  // vertex, and the twin through it cut the corner off diagonally -- T18 band 1 in 0.835, corner box 0.84.)
+  const out = [];
+  for (const fence of fences || []) {
+    if (!fence || fence.length < 3) continue;
+    for (const p of points) {
+      for (let i = 0; i < fence.length; i++) {
+        const a = fence[i], b = fence[(i + 1) % fence.length];
+        const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy;
+        if (L2 < 1e-18) continue;
+        const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2;
+        if (t <= 0 || t >= 1) continue;
+        const qx = a.x + t * dx, qy = a.y + t * dy, d = Math.hypot(p.x - qx, p.y - qy);
+        if (d > reach || d < 1e-9) continue;
+        const m = { x: qx + FENCE_STRETCH * (qx - p.x), y: qy + FENCE_STRETCH * (qy - p.y) };
+        if (!pointInPolygon(m.x, m.y, region)) out.push({ ...m, radius: p.radius, tierIndex: p.tierIndex, phantom: true });
+      }
+    }
+  }
+  return out;
+}
+
 function powerCell(point, allPoints, boxPoly, pointShrink) {
   let poly = boxPoly;
   for (const other of allPoints) {
@@ -431,7 +477,9 @@ function powerCell(point, allPoints, boxPoly, pointShrink) {
     const d2 = dx * dx + dy * dy;
     if (d2 < 1e-12) continue; // coincident seeds -- cannot happen post Poisson-disc rejection, guarded anyway
     const len = Math.sqrt(d2);
-    const t = 0.5 + (point.radius * point.radius - other.radius * other.radius) / (2 * d2) - pointShrink / len;
+    // a joint is between two real stones: a fence phantom's bisector is the region's edge itself, no grout
+    // shrink (MEASURED with it: ring stones stood half a joint off both ring edges, coverage 0.79-0.85 < 0.85)
+    const t = 0.5 + (point.radius * point.radius - other.radius * other.radius) / (2 * d2) - (other.phantom ? 0 : pointShrink / len);
     const bisector = { x: point.x + t * dx, y: point.y + t * dy };
     const line = { point: bisector, dirX: -dy / len, dirY: dx / len };
     poly = clipToHalfPlane(poly, line, point);
@@ -447,9 +495,11 @@ function powerCell(point, allPoints, boxPoly, pointShrink) {
  * @param {number} [largeStones=0.5] — T86 item 17: 0..1, moves the large tier's own target area
  *   share along `LARGE_SHARE_RANGE` (~0.2 at 0, ~0.8 at 1); 0.5 reproduces today's declared 50/35/15
  *   split exactly. Omitted/non-finite falls back to 0.5, same as every pre-item-17 caller.
+ * @param {{x:number,y:number}[][]} [fences] -- closed lines that must bound the stones exactly (a band ring passes
+ *   its outer and inner edges). See fencePoints: mirrored phantom seeds.
  * @returns {{cells: Array}} cells[i] = { id, polygon, courseIndex, cx, cy, neighbors:{} }
  */
-export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones) {
+export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones, fences) {
   const spacing = set.brickLengthIn;
   const shrink = (set.grout?.widthIn ?? 0) / 2;
   const grout = set.grout?.widthIn ?? 0;
@@ -494,6 +544,7 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones) {
     { x: maxX + margin, y: maxY + margin }, { x: minX - margin, y: maxY + margin },
   ];
   const minPieceArea = MIN_PIECE_FLOOR_FRACTION * minSpacing ** 2;
+  const phantoms = fencePoints(fences, points, maxSpacing * FENCE_REACH_FACTOR, boardOutline);
 
   // T86 item 6 (MEASURED): a fixed `neighborRadius` cutoff is NOT a safe bound here the way it was
   // for the single-density original -- a tier-gated region can legitimately go sparse (few/no seeds
@@ -517,7 +568,7 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones) {
   // each claim a little more, never a gap) -- "merge an undersized cell into its neighbour" without
   // an actual polygon-union operation this codebase doesn't have.
   const buildCells = (pts) => pts.map((point) => {
-    const others = pts.filter((q) => q !== point);
+    const others = phantoms.length ? pts.filter((q) => q !== point).concat(phantoms) : pts.filter((q) => q !== point);
     const pointShrink = tierShrinks[point.tierIndex];
     let poly = powerCell(point, others, box, pointShrink);
     if (poly.length < 3) return null;

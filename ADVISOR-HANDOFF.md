@@ -11,6 +11,12 @@ From the outgoing advisor (session `b-spline-generator-web-addin-54`) to the new
    from its own worktree root, in the background:
    `cd <root> && until python ~/.claude/skills/multi-agent-handoff/handoff.py wait --role advisor --timeout 3000; do :; done`
    Roots: `C:\Users\danse\APPS\b-spline-generator-web-addin` (seat A), `...-lane-b` (seat B), `...-fb-app` (seat C).
+   WORKTREE LAYOUT (Fred 2026-10-04, "organise the branches into single app folder names"): every OTHER worktree
+   of this repo lives under `C:\Users\danse\APPS\b-spline-generator-web-addin-wt\<name>` (88 = seat B's copy,
+   adv-merge = the advisor's merge copy, adv = the advisor's review copy once its lock clears, t9-taller-flanges,
+   fusion-scratch). The main checkout stays where it is: Fred deploys from it. `-lane-b` and `-fb-app` move there
+   too the next time their sessions are closed (a Windows folder can't move while a session's shell sits in it).
+   Create new worktrees ONLY there: `git worktree add C:\Users\danse\APPS\b-spline-generator-web-addin-wt\<name> origin/<branch>`.
 3. Message every seat and spare once: "new advisor is session <you>".
 4. Message Fred in one line that you've taken over.
 

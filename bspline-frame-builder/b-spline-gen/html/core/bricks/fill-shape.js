@@ -45,6 +45,8 @@ const LAYOUTS = Object.freeze({
  * @param {number} opts.seed
  * @param {number} [opts.largeStones] — T86 item 17: fieldstoneLayout-only (ignored by every other
  *   layout here, same as `opts.zones` is bond-only); see its own header for the declared range.
+ * @param {{x:number,y:number}[][]} [opts.fences] -- fieldstone only: closed lines that bound the stones exactly
+ *   (fieldstone.js fencePoints); a band ring passes its outer and inner edges
  * @returns {{ bricks: Array }}
  */
 export function bricksFillShape(polygon, holes, opts) {
@@ -56,7 +58,7 @@ export function bricksFillShape(polygon, holes, opts) {
 
   const layoutFn = LAYOUTS[set.layout];
   if (!layoutFn) return { bricks: [] };
-  const { cells: allCells } = layoutFn(polygon, set, opts.zones, seed, opts.largeStones);
+  const { cells: allCells } = layoutFn(polygon, set, opts.zones, seed, opts.largeStones, opts.fences);
   const cells = (holes && holes.length)
     ? allCells.filter((c) => !holes.some((h) => pointInPolygon(c.cx, c.cy, h)))
     : allCells;

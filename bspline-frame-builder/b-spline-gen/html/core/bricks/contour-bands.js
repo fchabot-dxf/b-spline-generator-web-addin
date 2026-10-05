@@ -197,6 +197,7 @@ function buildAreaBandBricks(enriched, depthSoFar, band, patternName, set, seed,
   const ribbon = ribbonSlitPolygon(outer, inner);
   const { bricks } = bricksFillShape(ribbon, null, {
     set: { ...set, layout: patternName }, seed, largeStones: band.largeStones,
+    fences: [outer, inner], // the ring's own edges bound its stones exactly (fieldstone.js fencePoints)
   });
   const pieces = bricks.map((b, i) => ({ ...b, id: `${patternName}-${nextId + i}`, bandIndex, rowIndex: 0, pieceIndex: i }));
   return { pieces, nextId: nextId + pieces.length };
