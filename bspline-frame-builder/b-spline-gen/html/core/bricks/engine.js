@@ -48,6 +48,7 @@ import { brickTopHeight } from './height-profile.js';
 export const ENGINE_OPTIONS = Object.freeze([
   'boardOutline', 'set', 'frame', 'suppression', 'topBias', 'clumping', 'zones', 'scale', 'skipWallFill', 'seed',
   'largeStones', // T86 item 17
+  'exclusions', // T86 item 13
 ]);
 
 export function generateBricks(input) {
@@ -89,7 +90,10 @@ export function generateBricks(input) {
     clumping: input.clumping ?? 0.3,
     zones: input.zones,
     largeStones: input.largeStones,
+    exclusions: input.exclusions,
   }).bricks;
+  // T86 item 13: the app's own stub (editor-brick-tool.js dropExcludedWallBricks) stands down when this is set
+  if (Array.isArray(input.exclusions)) return { bricks, frameBricks, seed, exclusionsApplied: true };
   return { bricks, frameBricks, seed };
 }
 

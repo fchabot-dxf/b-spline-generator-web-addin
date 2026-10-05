@@ -322,6 +322,19 @@ function touchesDegenerately(a, b) {
 }
 
 function intersectGeneral(subject, clip) {
+  const loops = clipLoops(subject, clip, false);
+  if (!Array.isArray(loops[0])) return loops; // a no-crossing answer: one polygon or []
+  return largestWithinSubject(loops, subject);
+}
+
+/** The Greiner-Hormann walk, every loop. `difference` = subject MINUS clip: the clip is walked backwards (its
+ *  winding opposite the subject's) and "inside" means inside the clip's complement -- the textbook variant. A no-crossing
+ *  input answers directly: a polygon (intersection) or the pieces (difference), not a list of loops. */
+function clipLoops(subject, clipIn, difference) {
+  // the walk needs the clip wound WITH the subject (intersection) or AGAINST it (difference), whichever way either
+  // came in: MEASURED, a touching pair wound opposite ways intersected to 0.2375 sq in where the truth is 0.0555
+  const same = (signedArea(clipIn) > 0) === (signedArea(subject) > 0);
+  const clip = same === difference ? clipIn.slice().reverse() : clipIn;
   const n = subject.length, m = clip.length;
   const onSubject = subject.map(() => []);
   const onClip = clip.map(() => []);
@@ -336,6 +349,11 @@ function intersectGeneral(subject, clip) {
       onSubject[i].push({ t: hit.t, x: hit.x, y: hit.y });
       onClip[j].push({ t: hit.u, x: hit.x, y: hit.y });
     }
+  }
+  if (!anyHit && difference) {
+    // no crossings: subject wholly inside the clip (nothing left), or disjoint / the clip wholly inside it (a hole
+    // a single loop cannot hold -- the subject is kept whole, see polygonDifference)
+    return pointInPolygon(subject[0].x, subject[0].y, clipIn) ? [] : [subject.slice()];
   }
   if (!anyHit) {
     // No crossings: nested (either way round) or disjoint. T86 item 21c: polygonIntersection sends every
@@ -379,7 +397,7 @@ function intersectGeneral(subject, clip) {
     if (match) { node.twin = match; match.twin = node; }
   }
 
-  let inside = pointInPolygon(subject[0].x, subject[0].y, clip);
+  let inside = pointInPolygon(subject[0].x, subject[0].y, clip) !== difference;
   for (const node of nodesSubject) {
     if (node.isect) { inside = !inside; node.entry = inside; }
   }
@@ -406,6 +424,10 @@ function intersectGeneral(subject, clip) {
     } while (cur !== startNode && cur !== startNode.twin && steps < maxSteps);
     if (loop.length >= 3) loops.push(loop);
   }
+  return loops;
+}
+
+function largestWithinSubject(loops, subject) {
   if (!loops.length) return [];
   let best = loops[0], bestArea = Math.abs(signedArea(best));
   for (let i = 1; i < loops.length; i++) {
@@ -433,6 +455,55 @@ function intersectGeneral(subject, clip) {
   const subjectArea = Math.abs(signedArea(subject));
   if (bestArea > subjectArea * 1.0001 + 1e-9) return [];
   return best;
+}
+
+/**
+ * T86 item 13 (Fred: "brush over wall = the wall flows around"): `subject` MINUS `clip` -- every piece that is
+ * left, as separate simple polygons (a stroke across a brick can cut it in two). Greiner-Hormann's difference
+ * variant (clipLoops). Touching inputs take the same shifted path as polygonIntersection (DEGENERACY_SHIFT); a
+ * piece no larger than the sliver the shift can make is dropped. A clip lying wholly inside the subject would
+ * make a hole, which a simple polygon cannot hold: the subject is returned whole and `holeIgnored` is set on the
+ * result -- the caller decides (fill-shape drops such a brick: a wall brick with a stroke wholly inside it is
+ * covered by the stroke anyway). Invariant (tests/bricks-polygon-difference.test.js): the pieces' areas sum to
+ * area(subject) - area(subject & clip).
+ */
+export function polygonDifference(subject, clip) {
+  if (subject.length < 3) return [];
+  if (clip.length < 3) return [subject.slice()];
+  const finish = (pieces, sliver) => {
+    const out = pieces.filter((q) => q.length >= 3 && Math.abs(signedArea(q)) > sliver);
+    const whole = out.length === 1 && out[0].length === subject.length && Math.abs(Math.abs(signedArea(out[0])) - Math.abs(signedArea(subject))) <= sliver;
+    if (whole && clip.every((q) => pointInPolygon(q.x, q.y, subject))) out.holeIgnored = true;
+    return out;
+  };
+  if (!touchesDegenerately(subject, clip)) return finish(clipLoops(subject, clip, true), 0);
+  let perimeter = 0;
+  for (let i = 0; i < subject.length; i++) { const a = subject[i], b = subject[(i + 1) % subject.length]; perimeter += Math.hypot(b.x - a.x, b.y - a.y); }
+  // A shift can lift the subject's edge clear of a clip that shares it from inside (the clip then sits wholly in the
+  // shifted subject and the notch is lost), so a direction is accepted only when its pieces add up to what the
+  // intersection says is left: area(subject) - area(subject & clip). A shift can also keep two pieces joined by a
+  // shift-wide bridge along a shared edge (one loop, two lobes, a hairline between), so of the accepted directions
+  // the one giving the most pieces wins -- a bridge only ever merges pieces. The clip grown by the shift is one more
+  // candidate: it crosses every edge it shared, so it splits a subject that a clip spanning it edge-to-edge
+  // leaves bridged on whichever side any shift goes.
+  const slack = 2 * DEGENERACY_SHIFT * perimeter;
+  const whole = Math.abs(signedArea(subject));
+  const left = whole - Math.abs(signedArea(polygonIntersection(subject, clip)));
+  if (left >= whole - slack) return [subject.slice()]; // the clip only touched: nothing really removed
+  let best = null;
+  const grown = offsetPathInward(clip, DEGENERACY_SHIFT, -inwardSignFor(clip));
+  if (!touchesDegenerately(subject, grown)) {
+    const pieces = finish(clipLoops(subject, grown, true), slack);
+    if (Math.abs(pieces.reduce((sum, q) => sum + Math.abs(signedArea(q)), 0) - left) <= 2 * slack) best = pieces;
+  }
+  for (const [dx, dy] of DEGENERACY_DIRECTIONS) {
+    const shifted = subject.map((p) => ({ x: p.x + dx * DEGENERACY_SHIFT, y: p.y + dy * DEGENERACY_SHIFT }));
+    if (touchesDegenerately(shifted, clip)) continue;
+    const pieces = finish(clipLoops(shifted, clip, true), slack);
+    if (Math.abs(pieces.reduce((sum, q) => sum + Math.abs(signedArea(q)), 0) - left) > 2 * slack) continue;
+    if (!best || pieces.length > best.length) best = pieces;
+  }
+  return best || finish(clipLoops(subject, clip, true), 0);
 }
 
 /**

@@ -22,7 +22,7 @@ import { basketweaveLayout } from './layouts/basketweave.js';
 import { assignPieces } from './pieces.js';
 import { computeSuppressedCells } from './suppression.js';
 import { assignSamples } from './samples.js';
-import { pointInPolygon } from './geometry.js';
+import { pointInPolygon, polygonDifference, polygonCentroid, signedArea, offsetPathInward, inwardSignFor } from './geometry.js';
 import { PIECE_CATALOGUE, enabledPieces, scaledSet } from './library.js';
 
 // F35 item 7: herringbone/basketweave are 'tile2d' BRICK_PATTERNS (library.js) promoted to full
@@ -45,10 +45,71 @@ const LAYOUTS = Object.freeze({
  * @param {number} opts.seed
  * @param {number} [opts.largeStones] — T86 item 17: fieldstoneLayout-only (ignored by every other
  *   layout here, same as `opts.zones` is bond-only); see its own header for the declared range.
+ * @param {{polygon:{x:number,y:number}[]}[]} [opts.exclusions] -- T86 item 13: brush-stroke footprints the wall
+ *   flows around (cutExclusions below)
  * @param {{x:number,y:number}[][]} [opts.fences] -- fieldstone only: closed lines that bound the stones exactly
  *   (fieldstone.js fencePoints); a band ring passes its outer and inner edges
  * @returns {{ bricks: Array }}
  */
+/** T86 item 13: a wall piece left smaller than this fraction of one brick (brickLengthIn x brickHeightIn) after
+ *  the exclusion cut drops into the joint -- the usual min-piece rule. */
+export const EXCLUSION_MIN_PIECE_FRACTION = 0.25;
+
+/**
+ * T86 item 13 (Fred: "brush over wall = the wall flows around"): every exclusion (a brush brick's polygon, sent by
+ * editor-brick-tool.js's brushExclusions) grown by one grout width is a HOLE in the wall fill. Each cell is cut by
+ * every exclusion it overlaps (geometry.js polygonDifference); a cut that leaves several pieces makes several
+ * cells (fresh ids, no neighbours: pieces.js then treats each as a lone 'single'); pieces under
+ * EXCLUSION_MIN_PIECE_FRACTION of a brick drop; a cell with an exclusion wholly inside it is covered by the
+ * stroke and drops. Neighbour links to a cut cell are cleared so no piece chain reaches a cell that is gone.
+ */
+function cutExclusions(cells, exclusions, set) {
+  const J = set.grout.widthIn;
+  const minArea = EXCLUSION_MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
+  const bbox = (poly) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of poly) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+    return { x0, y0, x1, y1 };
+  };
+  const overlaps = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+  const holes = exclusions.filter((e) => e && e.polygon && e.polygon.length >= 3).map((e) => {
+    const grown = offsetPathInward(e.polygon, J, -inwardSignFor(e.polygon));
+    return { polygon: grown, box: bbox(grown) };
+  });
+  let nextId = cells.reduce((m, c) => Math.max(m, typeof c.id === 'number' ? c.id : 0), 0) + 1;
+  const out = [];
+  const gone = new Set();
+  for (const cell of cells) {
+    let pieces = [cell.polygon];
+    let covered = false;
+    const box = bbox(cell.polygon);
+    for (const h of holes) {
+      if (!overlaps(box, h.box)) continue;
+      const next = [];
+      for (const piece of pieces) {
+        const cut = polygonDifference(piece, h.polygon);
+        if (cut.holeIgnored) { covered = true; break; }
+        next.push(...cut);
+      }
+      if (covered) break;
+      pieces = next;
+    }
+    if (pieces.length === 1 && pieces[0] === cell.polygon) { out.push(cell); continue; }
+    gone.add(cell);
+    if (covered) continue;
+    for (const polygon of pieces) {
+      if (Math.abs(signedArea(polygon)) < minArea) continue;
+      const c = polygonCentroid(polygon);
+      out.push({ ...cell, id: nextId++, polygon, cx: c.x, cy: c.y, neighbors: {} });
+    }
+  }
+  if (gone.size) for (const cell of out) {
+    if (!cell.neighbors) continue;
+    for (const k of Object.keys(cell.neighbors)) if (gone.has(cell.neighbors[k])) cell.neighbors[k] = null;
+  }
+  return out;
+}
+
 export function bricksFillShape(polygon, holes, opts) {
   const { seed } = opts;
   const set = scaledSet(opts.set, opts.scale);
@@ -59,9 +120,10 @@ export function bricksFillShape(polygon, holes, opts) {
   const layoutFn = LAYOUTS[set.layout];
   if (!layoutFn) return { bricks: [] };
   const { cells: allCells } = layoutFn(polygon, set, opts.zones, seed, opts.largeStones, opts.fences);
-  const cells = (holes && holes.length)
+  let cells = (holes && holes.length)
     ? allCells.filter((c) => !holes.some((h) => pointInPolygon(c.cx, c.cy, h)))
     : allCells;
+  if (opts.exclusions && opts.exclusions.length) cells = cutExclusions(cells, opts.exclusions, set);
 
   const catalogue = enabledPieces(PIECE_CATALOGUE);
   const pieceOf = assignPieces(cells, catalogue, seed);
