@@ -22353,3 +22353,48 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
   dims declared), one WCS = a builder-declared sketch point (bound per setup to its own MM's copy), op heights
   'from stock top' / 'from stock bottom' + an explicit bottom offset; Carved Top stock = SolidStock -> the Clean
   body (NOT PreviousSetupStock, which warns across MMs).
+
+## H23 item 82 -- wiring, the real Clean+Stamped Send, and the ruling (seat A / 77, 2026-10-05)
+- Wired first as approved (option 2): CAM_POSITION + a Clean/Carved MM split + a 'B-spline Carved' setup (From solid
+  -> the Clean body). Then the acceptance Send showed the premise is wrong, and the advisor ruled; the branch now holds
+  the ruled shape (commits below), the Carved machinery is removed, not parked.
+- Capture tool (tools/repro/capture_send_payload.mjs): new declared option --carve. The app ships the Stamped STEP
+  variant only when a carving layer has a baked mask (export-flow.js isCarvingLayer = carve && mask && depth); the
+  tool's old 'apply stencils' click finds nothing any more (readback stencilBtn:false), so every earlier capture was
+  Clean only. --carve sets 3D carve on CARVE_LAYERS (Rails, Contour, Ties, Nodes) and clicks the editor's own
+  #editorApply (-> refreshAllStampMasks), then waits 8 s. Measured: carving layers 0 -> 4; payload Clean + Stamped,
+  7x9, 10.1 MB (scratchpad, not committed). Served from this worktree on 8877 (curl md5 = disk); the server task was
+  stopped and its PID was gone; no leftover headless Chrome (profile chrome-capture-9477).
+- REAL GEOMETRY (that payload through the deployed bspline_ui._handle_generate, frame dropped, tagged scratch doc):
+    Clean   panel 13.771 in3, z 0.018 .. 0.980 in, x -3.5..3.5, y -4.5..4.5
+    Stamped panel 15.916 in3, z 0.018 .. 1.088 in, same outline
+  Same bottom + outline, but Stamped is 2.145 in3 bigger and 0.108 in taller: the stamp RAISES material by design
+  (advisor: bricks / raised strokes stand proud of the clean surface, relief 0.125 in). The Clean body cannot be the
+  Carved setup's stock. (An exact Stamped-minus-Clean boolean on these two bodies was started and ran > 20 min at one
+  core with Fusion not responding; not needed for the ruling -- the volumes and bboxes above decide it.)
+- RULING (advisor, Fred may overrule): no Clean -> Carved rest chain. ONE panel MM = the body to make (Stamped when it
+  exists, else Clean: the original 'Stamped wins' filter). B-spline Back (shared fixed box, bottom-aligned, centred,
+  dims written; WCS = declared 'back' point) -> B-spline Top (PreviousSetupStock in the SAME MM, rest machining from
+  Back's IPV, no cross-MM warning; WCS = declared 'flipped' point) -> Frame as today. Names Back/Top kept (Fred's
+  template overrides).
+- Rework (dead declarations removed, each link accounted for):
+    MM rules bspline_clean/bspline_carved + _BSPLINE_KEEP + the keep= filter      -> removed (mm_builder = main's
+                                                                                       + the placeholder change)
+    'B-spline Carved' spec, skip_if_no_bodies, stock_solid_from, _set_solid_stock  -> removed
+    coordinator legacy MM name + the 'skipped' report entry                        -> removed
+    palette Carved card, 'MM: B-spline Clean' tags, 4 MMs / 5 SETUPS header         -> removed (back to main's)
+    Carved busy-check test, solid-stock test, MM-split test                         -> removed with the code
+  Kept: cam_position.py (CAM_POSITION + box/point math), ensure_wcs_sketches (panel bbox now Stamped-first, matching
+  the MM), _apply_stock_box, _bind_wcs_point, 3D-only _apply_op_heights, SETUP_SPECS-derived name lists (coordinator
+  cleanup + cam-builder's BUILD busy check), the placeholder reading CAM_POSITION['stock'], palette Back/Top card text
+  (shared box / shared point) and the derived 'done' counts, the enum fix (3e5c5bb).
+- Tests: test_cam_position.py 10 (Back/Top share the declared position on one MM, no from_prev_setup across MMs, the
+  box/point math on the real 7x9 bbox, 3D-only heights, the box writes, the WCS bind to the MM's own copy, a missing
+  point reported not faked, derived names, placeholder numbers). CAM-builder 23/23.
+- PARKED (option B, only if Fred asks): a Clean roughing pass before the Carved finish, with a declared
+  stock-to-leave >= the maximum raise (0.108 in measured on this board; relief up to 0.125 in) so the roughing never
+  removes the raised material. Not built.
+- NOTE for the advisor: the CAM palette's B-spline status dots never update (pre-existing, not touched): the report
+  name 'B-spline Back' -> key 'b_spline_back' never matches SETUP_KEYS 'bspline_back' (the match strips only ONE
+  underscore from the key). Only 'stock' and 'frame' light up.
+- Acceptance on the ruled shape: pending (Fusion still busy with the abandoned boolean when this was written).
