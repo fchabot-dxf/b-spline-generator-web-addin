@@ -60,7 +60,7 @@ import { rectToPrimitives } from '../core/inset-window.js';
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
 import { radialSignAt } from '../core/bricks/arc-voussoir.js';
-import { accentedBrickIndices, accentedRunIndices, accentCutsFor, ACCENT_MARK_ATTR } from './brick-accents.js';
+import { accentedBrickIndices, accentedRunIndices, accentLayInput, ACCENT_MARK_ATTR } from './brick-accents.js';
 
 export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-spine'
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
@@ -724,9 +724,8 @@ export function accentIconSvg(presetId, heightPx = 26, { sunk = false, bond = 's
   let svg = null;
   try {
     const accent = presetId && typeof presetId === 'object' && presetId.preset ? presetId : { preset: presetId };
-    // item 31b: a tile at 1/2 or 1/4 is drawn on the engine's own cut pieces
-    const cuts = ENGINE_OPTIONS.includes('accentCuts') ? accentCutsFor(accent) : null;
-    const bricks = _iconBricks(ACCENT_ICON_BOARD, BRICK_PATTERNS[bond] ? bond : 'stretcher', 0.36, 0.03, cuts ? { accentCuts: cuts } : {});
+    // item 31b / 31e: a tile at 1/2 or 1/4, or with its own custom bond, is drawn on the engine's own pieces
+    const bricks = _iconBricks(ACCENT_ICON_BOARD, BRICK_PATTERNS[bond] ? bond : 'stretcher', 0.36, 0.03, accentLayInput(accent, ENGINE_OPTIONS));
     const raised = accentedBrickIndices(bricks, accent, { seed: 7, zone: [0, 1] });
     const flat = bricks.filter((b, k) => !raised.has(k)).map((b) => _iconPolygon(b)).join('');
     const up = bricks.filter((b, k) => raised.has(k));
@@ -1006,9 +1005,9 @@ function _layInput(editor, settings, frameGeom) {
   // F35 item 13: the Wall pattern's rotation (wall only; 0 = absent = today's lay, byte-identical)
   const rotationDeg = Number(settings.wallRotationDeg) || 0;
   if (rotationDeg) input.rotationDeg = rotationDeg;
-  // F35 item 31b: a Wall accent tile at 1/2 or 1/4 brick -- the engine cuts the bricks at its cells (unit 1 = no key)
-  const accentCuts = ENGINE_OPTIONS.includes('accentCuts') ? accentCutsFor(settings.accent) : null;
-  if (accentCuts) input.accentCuts = accentCuts;
+  // F35 item 31b / 31e: what the Wall accent adds -- accentCuts (a tile at 1/2 or 1/4 brick, or a custom bond: the engine
+  // cuts + marks the pieces) and customBond (the tile's own bond); a whole-brick tile on a built-in bond adds nothing
+  Object.assign(input, accentLayInput(settings.accent, ENGINE_OPTIONS));
   return input;
 }
 

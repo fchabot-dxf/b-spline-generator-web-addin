@@ -34,7 +34,8 @@ import {
 import {
   ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick, ACCENT_LEVEL_RANGE, clampAccentLevel, ACCENT_TILE,
   ACCENT_TILE_LIMITS, ACCENT_TILE_UNITS, PATTERN_BUILDER_SCOPE, makeTile, tileOf, userPatternFrom, accentOfUserPattern,
-  accentCutsFor,
+  accentLayInput, BOND_CUSTOM, isCustomBondTile, blankBond, resizeBond, pieceOfCells, bondTogglePiece, bondJoin, bondSplit,
+  bondShift, wallPatternOfBase,
 } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { BRICK_CONTROL_REQUIRES, requirementMet } from './brick-control-requires.js';
@@ -342,10 +343,10 @@ function syncAccentControls() {
   for (const u of _userPatterns()) document.getElementById(_userPatternButtonId(u))?.classList.toggle('active', a.preset === ACCENT_TILE.id && a.tile && a.tile.userId === u.id);
 }
 
-/** item 31b: the Wall accent's engine CUTS (a tile at 1/2 or 1/4, accentCutsFor), as a key. An edit that changes them
- *  re-lays the wall (the pieces themselves change), not just its heights -- `before` = the key captured before the
- *  edit (settings and canvas agree then: undo restores both). */
-const _cutsKey = () => JSON.stringify(accentCutsFor(P.brickSettings.accent));
+/** item 31b / 31e: what the Wall accent adds to the LAY (brick-accents.js accentLayInput: the engine cuts of a tile at
+ *  1/2 or 1/4, a custom bond), as a key. An edit that changes it re-lays the wall (the pieces themselves change), not
+ *  just its heights -- `before` = the key captured before the edit (settings and canvas agree then: undo restores both). */
+const _cutsKey = () => JSON.stringify(accentLayInput(P.brickSettings.accent, ENGINE_OPTIONS));
 function _accentChanged(commit, before = null) {
   if (before !== null && before !== _cutsKey()) commit = 'generate';
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
@@ -377,12 +378,21 @@ export function setAccentLevel(levelIn, commit = 'surface') {
  * closed at rest. A TILE of courses x bricks on a BASE bond (31c), its cells raised / sunk (the signed level, 32),
  * at a UNIT of a brick (31b: 1/2, 1/4 hidden until the engine's 'accentCuts'). While open, the wall's accent IS
  * the builder's tile (a live preview, 2D highlight + 3D). Save -> a pattern of its own in the Wall pattern grid
- * (bond + tile + unit + level; with the project + in this browser). Join / split cells (31e) waits for the
- * engine's 'customBond'.
+ * (bond + tile + unit + level; with the project + in this browser). 31e: base 'Custom' (hidden until the engine's
+ * 'customBond') edits the BOND too -- drag across cells to join them into one brick, tap a joint to split, offset each
+ * course; the tile then carries its own bond (brick-accents.js BOND_CUSTOM).
  * ---------------------------------------------------------------------------------------------------------- */
 const USER_PATTERNS_KEY = 'bspline.brick.userPatterns';
 /** The bases a tile can be drawn on: the COURSED bonds (a tile is courses x bricks). */
-const BUILDER_BASES = () => Object.keys(BRICK_PATTERNS).filter((id) => ['course', 'course-alternating'].includes(BRICK_PATTERNS[id].kind));
+const BUILDER_BASES = () => [...Object.keys(BRICK_PATTERNS).filter((id) => ['course', 'course-alternating'].includes(BRICK_PATTERNS[id].kind)),
+  ...(_engineHas({ engineOption: 'customBond' }) ? [BOND_CUSTOM] : [])]; // 31e: 'Custom' = a blank grid, its own bond
+/** A builder tile copied (makeTile keeps cells / unit / base), with its custom bond resized to it (31e). */
+const _tileCopy = (rows, cols, from, extra = {}) => {
+  const t = makeTile(rows, cols, from, extra);
+  const bond = extra.bond || (from && from.bond);
+  if (t.base === BOND_CUSTOM && bond) t.bond = resizeBond(bond, t.rows, t.cols);
+  return t;
+};
 const _builder = { open: false, tile: null, name: '' };
 const _browserPatterns = () => { try { return JSON.parse(localStorage.getItem(USER_PATTERNS_KEY) || '[]') || []; } catch { return []; } };
 /** Every saved pattern offered: the board's own + the browser's (the board's copy wins by id). */
@@ -399,7 +409,7 @@ export function openPatternBuilder() {
   if (!PATTERN_BUILDER_SCOPE.includes('wall')) return;
   const a = _accent();
   const base = BUILDER_BASES().includes(P.brickSettings.pattern) ? P.brickSettings.pattern : 'stretcher';
-  _builder.tile = a.preset === ACCENT_TILE.id && a.tile ? makeTile(a.tile.rows, a.tile.cols, a.tile) : makeTile(ACCENT_TILE_LIMITS.rows, ACCENT_TILE_LIMITS.cols, null, { base });
+  _builder.tile = a.preset === ACCENT_TILE.id && a.tile ? _tileCopy(a.tile.rows, a.tile.cols, a.tile) : makeTile(ACCENT_TILE_LIMITS.rows, ACCENT_TILE_LIMITS.cols, null, { base });
   _builder.tile.base = _builder.tile.base || base;
   _builder.open = true;
   _builder.name = '';
@@ -412,31 +422,52 @@ export function closePatternBuilder() {
   renderPatternBuilder();
   syncAccentControls();
 }
-export const patternBuilderState = () => (_builder.open ? { tile: makeTile(_builder.tile.rows, _builder.tile.cols, _builder.tile), name: _builder.name } : null);
+export const patternBuilderState = () => (_builder.open ? { tile: _tileCopy(_builder.tile.rows, _builder.tile.cols, _builder.tile), name: _builder.name } : null);
 
 /** The live preview: the wall's accent = the builder's tile; a base change re-lays the wall on that bond. */
 function _applyBuilderTile(commit = 'surface') {
   const t = _builder.tile;
   const before = _cutsKey();
-  P.brickSettings.accent = { ..._accent(), preset: ACCENT_TILE.id, tile: { rows: t.rows, cols: t.cols, cells: t.cells.map((r) => r.slice()), unit: t.unit, base: t.base } };
-  if (P.brickSettings.pattern !== t.base) { P.brickSettings.pattern = t.base; syncWallPatternButtons(); commit = 'generate'; }
+  P.brickSettings.accent = { ..._accent(), preset: ACCENT_TILE.id, tile: { rows: t.rows, cols: t.cols, cells: t.cells.map((r) => r.slice()), unit: t.unit, base: t.base,
+    ...(isCustomBondTile(t) ? { bond: { courses: t.bond.courses.map((c) => ({ ...c, pieces: c.pieces.slice() })) } } : {}) } };
+  const pattern = wallPatternOfBase(t.base); // 31e: a custom bond lays on the stretcher course grid
+  if (P.brickSettings.pattern !== pattern) { P.brickSettings.pattern = pattern; syncWallPatternButtons(); commit = 'generate'; }
   _accentChanged(commit, before);
 }
 export function builderToggleCell(row, col) {
   if (!_builder.open || !_builder.tile.cells[row] || _builder.tile.cells[row][col] === undefined) return;
-  _builder.tile.cells[row][col] = !_builder.tile.cells[row][col];
+  if (isCustomBondTile(_builder.tile)) _builder.tile = bondTogglePiece(_builder.tile, row, col); // 31e: the whole piece
+  else _builder.tile.cells[row][col] = !_builder.tile.cells[row][col];
   _applyBuilderTile();
   renderPatternBuilder();
 }
+/** 31e, the bond edits on a Custom base (one commit each = one undo step; the wall re-lays at once). */
+const _bondEdit = (next) => {
+  if (!_builder.open || !isCustomBondTile(_builder.tile)) return;
+  const tile = next(_builder.tile);
+  if (tile === _builder.tile) return; // nothing to join / split
+  _builder.tile = tile;
+  _applyBuilderTile();
+  renderPatternBuilder();
+};
+/** Drag across cells `a`..`b` of a course: one brick. */
+export const builderJoin = (row, a, b) => _bondEdit((t) => (t.bond.courses[row] ? bondJoin(t, row, a, b) : t));
+/** Tap the joint before cell `col`: split the brick there. */
+export const builderSplit = (row, col) => _bondEdit((t) => (t.bond.courses[row] ? bondSplit(t, row, col) : t));
+/** Offset a course by `delta` cells (+ = right). */
+export const builderShift = (row, delta) => _bondEdit((t) => (t.bond.courses[row] ? bondShift(t, row, delta) : t));
 export function builderResize(rows, cols) {
   if (!_builder.open) return;
-  _builder.tile = makeTile(rows, cols, _builder.tile);
+  _builder.tile = _tileCopy(rows, cols, _builder.tile);
   _applyBuilderTile();
   renderPatternBuilder();
 }
 export function builderSetBase(base) {
   if (!_builder.open || !BUILDER_BASES().includes(base)) return;
   _builder.tile.base = base;
+  // 31e: Custom starts from a blank grid (every cell its own piece); a built-in base drops the custom bond
+  if (base === BOND_CUSTOM) _builder.tile.bond = blankBond(_builder.tile.rows, _builder.tile.cols);
+  else delete _builder.tile.bond;
   _applyBuilderTile('generate');
   renderPatternBuilder();
 }
@@ -452,7 +483,7 @@ export function builderStartFrom(presetId) {
   const preset = ACCENT_PRESETS.find((x) => x.id === presetId);
   const t = preset && tileOf(preset);
   if (!_builder.open || !t) return;
-  _builder.tile = makeTile(t.rows, t.cols, t, { base: _builder.tile.base, unit: _builder.tile.unit });
+  _builder.tile = _tileCopy(t.rows, t.cols, t, { base: _builder.tile.base, unit: _builder.tile.unit, bond: _builder.tile.bond });
   _applyBuilderTile();
   renderPatternBuilder();
 }
@@ -476,11 +507,29 @@ export function applyUserPattern(id) {
   const u = _userPatterns().find((x) => x.id === id);
   if (!u) return;
   _disarmAccentClick();
-  P.brickSettings.pattern = u.bond.builtin;
   P.brickSettings.accent = { ...accentOfUserPattern(u), clicks: _accent().clicks || [] };
+  P.brickSettings.pattern = wallPatternOfBase(P.brickSettings.accent.tile.base); // 31e: a custom bond on the stretcher grid
   syncWallPatternButtons();
   syncSetPicker();
   _accentChanged('generate');
+}
+
+/** 31e: press on a cell, move across its course, release: a drag over 2+ cells JOINS them into one brick, a press and
+ *  release on one cell raises its brick. Pointer capture is released so a touch drag reaches the cells it crosses. */
+let _drag = null;
+function _dragJoin(cell, row, col) {
+  cell.addEventListener('pointerdown', (e) => {
+    try { if (e.pointerId != null && cell.releasePointerCapture) cell.releasePointerCapture(e.pointerId); } catch { /* not captured */ }
+    _drag = { row, from: col, to: col };
+    const done = () => {
+      window.removeEventListener('pointerup', done);
+      const d = _drag; _drag = null;
+      if (!d) return;
+      if (d.to === d.from) builderToggleCell(d.row, d.from); else builderJoin(d.row, Math.min(d.from, d.to), Math.max(d.from, d.to));
+    };
+    window.addEventListener('pointerup', done);
+  });
+  cell.addEventListener('pointerenter', () => { if (_drag && _drag.row === row) _drag.to = col; });
 }
 
 export function renderPatternBuilder() {
@@ -499,7 +548,10 @@ export function renderPatternBuilder() {
   for (const id of BUILDER_BASES()) {
     const b = el('button', 'padding:2px; min-width:0; height:auto; line-height:0;');
     b.type = 'button'; b.className = 'cad-btn' + (id === t.base ? ' active' : ''); b.id = `brickBuilderBase_${id}`;
-    b.title = _patternLabel(id); b.innerHTML = wallPatternIconSvg(id) || _patternLabel(id);
+    if (id === BOND_CUSTOM) {
+      b.style.cssText = 'padding:2px 6px; min-width:0; font-size:11px;';
+      b.textContent = 'Custom'; b.title = 'Custom bond: start from a blank grid -- drag across cells to join them into one brick, tap a joint to split it';
+    } else { b.title = _patternLabel(id); b.innerHTML = wallPatternIconSvg(id) || _patternLabel(id); }
     b.addEventListener('click', () => builderSetBase(id));
     bases.appendChild(b);
   }
@@ -518,7 +570,7 @@ export function renderPatternBuilder() {
   box.appendChild(units);
   // size: courses x bricks, 2..8 each
   const size = el('div', 'display:flex; flex-wrap:wrap; gap:6px 10px; margin:6px 0;');
-  const unit = t.unit || 1, cut = unit < 1; // 31b: at 1/2 or 1/4 a column is that fraction of a brick
+  const unit = t.unit || 1, custom = isCustomBondTile(t), cut = unit < 1 || custom; // 31b: at 1/2 or 1/4 a column is that fraction of a brick
   for (const [key, text, val] of [['rows', 'Courses', t.rows], ['cols', cut ? 'Cells' : 'Bricks', t.cols]]) {
     const w = el('div', 'display:flex; align-items:center; gap:4px; font-size:11px;', '');
     w.appendChild(el('span', '', text));
@@ -537,26 +589,47 @@ export function renderPatternBuilder() {
   // beyond. At 1 a cell is a brick, staggered per the base (accentGrid's half-bond rule); at 1/2 or 1/4 a cell is that
   // fraction of a brick on the engine's own grid (accentCuts: columns from the wall's left edge, no stagger), drawn
   // that fraction of a brick wide
-  const avail = Math.max(120, (box.clientWidth || 200) - 18);
-  const stagger = cut ? 0 : _staggerOf(t.base), gap = 2;
+  const avail = Math.max(120, (box.clientWidth || 200) - 18 - (custom ? 40 : 0)); // 31e: room for the course offsets
+  const stagger = cut ? 0 : _staggerOf(t.base), gap = custom ? 4 : 2; // 31e: a joint wide enough to tap
   const cw = Math.max(9, Math.min(30 * unit, avail / (Math.min(t.cols, L.maxCellsAcross) + stagger) - gap)); // the stagger's half brick too
   const ch = Math.max(8, Math.round(Math.min(30, (cw + gap) / unit) * 0.45)); // a course is as high as a whole brick reads
-  const grid = el('div', `position:relative; height:${t.rows * (ch + gap)}px; width:${(t.cols + stagger) * (cw + gap)}px; margin:4px 0 8px;`);
+  const grid = el('div', `position:relative; height:${t.rows * (ch + gap)}px; width:${(t.cols + stagger) * (cw + gap) + (custom ? 40 : 0)}px; margin:4px 0 8px;`);
   grid.id = 'brickBuilderTile';
   const wrap = el('div', 'overflow-x:auto;');
+  const fill = (on) => (on ? 'background:#8e2f1c; box-shadow:1px 1px 0 #2b1a14;' : 'background:#d07a5c; opacity:0.85;');
   for (let r = 0; r < t.rows; r++) {
     const shift = (r % 2) * stagger * (cw + gap);
+    const top = (t.rows - 1 - r) * (ch + gap);
+    const pieceOf = custom ? pieceOfCells(t.bond.courses[r], t.cols) : null;
     for (let i = 0; i < t.cols; i++) {
       const on = t.cells[r][i];
-      const c = el('button', `position:absolute; left:${shift + i * (cw + gap)}px; top:${(t.rows - 1 - r) * (ch + gap)}px; width:${cw}px; height:${ch}px; padding:0; min-width:0; border:0; border-radius:2px; cursor:pointer; `
-        + (on ? 'background:#8e2f1c; box-shadow:1px 1px 0 #2b1a14;' : 'background:#d07a5c; opacity:0.85;'));
+      const c = el('button', `position:absolute; left:${shift + i * (cw + gap)}px; top:${top}px; width:${cw}px; height:${ch}px; padding:0; min-width:0; border:0; border-radius:2px; cursor:pointer; `
+        + fill(on));
       c.type = 'button'; c.id = `brickBuilderCell_${r}_${i}`; c.title = `course ${r + 1}, ${cut ? 'cell' : 'brick'} ${i + 1}`;
-      c.addEventListener('click', () => builderToggleCell(r, i));
+      if (custom) _dragJoin(c, r, i);
+      else c.addEventListener('click', () => builderToggleCell(r, i));
       grid.appendChild(c);
+      // 31e: inside a piece the gap before a cell is a JOINT handle drawn in the piece's colour (the piece reads as one
+      // brick); tapping it splits the brick there. Between pieces the gap stays open (a real joint).
+      if (custom && i > 0 && pieceOf[i] === pieceOf[i - 1]) {
+        const j = el('button', `position:absolute; left:${shift + i * (cw + gap) - gap - 1}px; top:${top}px; width:${gap + 2}px; height:${ch}px; padding:0; min-width:0; border:0; cursor:col-resize; z-index:1; ` + fill(on));
+        j.type = 'button'; j.id = `brickBuilderJoint_${r}_${i}`; j.title = 'Split the brick here';
+        j.addEventListener('click', () => builderSplit(r, i));
+        grid.appendChild(j);
+      }
+    }
+    if (custom) { // 31e: offset this course by one cell
+      for (const [d, sym, side] of [[-1, '‹', 'left'], [1, '›', 'right']]) {
+        const o = el('button', `position:absolute; left:${t.cols * (cw + gap) + 4 + (d > 0 ? 18 : 0)}px; top:${top}px; width:16px; height:${ch}px; padding:0; min-width:0; font-size:10px; line-height:${ch}px;`, sym);
+        o.type = 'button'; o.className = 'cad-btn'; o.id = `brickBuilderOffset_${r}_${side}`; o.title = `Offset course ${r + 1} ${side}`;
+        o.addEventListener('click', () => builderShift(r, d));
+        grid.appendChild(o);
+      }
     }
   }
   wrap.appendChild(grid);
   box.appendChild(wrap);
+  if (custom) box.appendChild(el('div', 'font-size:10px; opacity:0.7; margin:-4px 0 6px;', 'Tap a brick to raise it · drag across cells to join · tap a joint to split · ‹ › offset a course'));
   // start from a built-in preset (its tile; the preset itself stays)
   const from = el('select', 'width:100%; font-size:11px; margin-bottom:6px;');
   from.id = 'brickBuilderStartFrom';
