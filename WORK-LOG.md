@@ -21860,3 +21860,70 @@ re-run item 20's own `template_18` `it.todo` (should un-block once this lands).
 **Commit**: this entry only (no code -- nothing was changed in `primitive-ribbon.js`, confirmed
 clean). Passing back with the plan; this exhausts my own queue for this turn (16(b)/13/18/10
 remain, per the advisor's own ordering, for whenever a fresh pass picks up).
+
+## H23 item 81, turn 562: PLAN ONLY, no execution -- a written investigation plan, capacity flagged, recommending a fresh seat A
+
+Seat 39, turn 562. Dispatch: T10's own archRise_min + apex-drift bug (root cause, declared fix,
+7x9+9x12 matrix, shots). This is the item I MYSELF flagged for "a future, rested seat" at the end of
+turn 550 (see that entry above) -- this session has since run a full context compaction and then a
+complete additional turn (560, T9 flangeHeight) on top of the turns that led to that original
+flag. Per the project's own capacity-reporting convention, and the advisor's own explicit built-in
+off-ramp on this dispatch ("if this session is too long for a deep root-cause pass, say so... no
+shame either way"), I'm passing back a written plan instead of starting execution -- recommending
+Fred start a fresh, rested seat A on it rather than this session pushing through emit-class
+geometric root-cause work tired. Nothing built, no branch work beyond this entry; this worktree
+(`t10-item81-plan`, `origin/main` @ 6d277f6) holds only this WORK-LOG append.
+
+**The symptom, already measured (turn 550's own finding, restated here so the next seat doesn't
+have to re-find it):** `top_edge`'s own CURVATURE (not its endpoints, which stay correctly pinned by
+the anchor+Coincident mechanism, item 47) measurably changes somewhere between its initial seeded
+creation and the `p02_12_arch_rebuild.py` rebuild step -- confirmed via a real seeded build at T10's
+own default archRise: the app's own sent seed has the geometrically correct apex (4.25in at 7x9,
+matching `frame-template-10.test.js`'s own "apex on the safe zone top line" assertion), but the
+RE-RECORDED golden shows a measurably flatter arch (~3.21in apex, not 4.25in). The OLD code (fixed
+`LY` literal, archRise fix's own original bug, turn 550) never exposed this because it
+unconditionally forced the apex back to a hardcoded value every rebuild, which happened to coincide
+with the undrifted position for exactly the one archRise value that literal was tuned against --
+masking the drift rather than preventing it.
+
+**What's already ruled out:** not a seed-vs-rebuild ENDPOINT problem (endpoints are correctly pinned
+throughout, confirmed via the anchor+Coincident mechanism already working as designed elsewhere);
+not the archRise fix itself (the fix's OWN 18-case matrix at T18, which shares the same
+`short-arc-mid` SeedFrom mode, built clean 18/18 -- so this isn't a flaw in the new SeedFrom logic
+itself, it's specifically in T10's OWN shoulder/waist/hip tangent chain, p02_04-p02_11, which T18
+doesn't share verbatim). The log's own three candidate mechanisms, not yet distinguished: solver
+slack, a shared tangency pulling `top_edge` indirectly, or a re-solve order effect.
+
+**Proposed methodology (measure incrementally, don't re-reason from the final state):**
+1. In a scratch Fusion doc, build T10 at 7x9 through `p02_01`-`p02_12` ONE PHASE AT A TIME (the
+   project's own `fusion_execute`-driven phase-by-phase build pattern used elsewhere in this log),
+   recording `top_edge`'s own sagitta/apex height (or a cheaper proxy: its own 3-point curvature,
+   `_point_seed_from`'s own bisector math already computes this shape) after EVERY phase from
+   `p02_04` through `p02_12`, not just before/after. This isolates which SINGLE phase first moves
+   it, rather than only knowing the drift exists somewhere across 8 phases.
+2. Once the phase is isolated, read that phase file's own constraints on `top_edge` (or on geometry
+   sharing a point/tangency with it) -- the project's own fusion360-quirks skill already documents
+   two mechanisms that could plausibly cause an UNCONSTRAINED curve to move indirectly: solver
+   convergence settling to "the nearest configuration satisfying the constraints" when a seed is
+   rough (not exact), and `Tangent` on a chain only locking an arc that has ZERO remaining DOF (a
+   free end drifts). Check whether `top_edge`'s own endpoints are genuinely fully constrained
+   (isFixed, or pinned via two independent constraints) at the moment the suspect phase runs, or
+   whether something upstream left them with residual freedom the chain then exploits.
+3. Confirm on BOTH 7x9 and 9x12 (the dispatch's own two sizes) before declaring the mechanism, per
+   this project's own "confirm findings on varied geometry" rule -- a mechanism found at one size
+   could be a different, size-coincidental effect.
+4. **Before touching ANY T10 phase file**, re-raise with the advisor/Fred: turn 552's own explicit
+   ruling was "T10 must stay exactly as it is," specifically because re-recording its goldens after
+   a phase change breaks its own real-fit-from-goldens pipeline (this exact drift). Whatever fix
+   direction (b)/(c) above lands on will almost certainly require a T10 phase-file edit to CARRY IT
+   OUT -- that edit, and the consequent golden re-record, needs the same kind of explicit go-ahead
+   turn 552 established, not an assumption that "a root-cause fix is obviously fine to ship."
+
+**Matrix + shots** (7x9 + 9x12, the dispatch's own two sizes) were not run this turn -- no fix exists
+yet to matrix. Once a fix is declared and approved, re-run T10's own existing archRise/waistReach/
+waistCenterY live matrix (turn 550's pattern) at both sizes, confirming the recorded apex position
+against the SEEDED default (4.25in @ 7x9) rather than just "it builds," since "it builds" was never
+the part that was broken.
+
+Passing back turn 562 with this plan; Fusion holder was never taken (self-serve, confirmed `none`
+before stopping). Recommending a fresh seat A per the advisor's own offer.
