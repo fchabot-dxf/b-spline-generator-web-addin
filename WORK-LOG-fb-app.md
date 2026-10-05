@@ -13740,3 +13740,37 @@ the lay; laid key per element after that.
 
 **Matrix rows for 88** (DM'd): Select wall / Select frame / empty click deselects / Esc order, and the migration
 and persistence rows below. 88 queues them on matrix-clear-rows after the ring-stone engine fix.
+
+### turn 235 -- F35 item 30 STEP 1: the tint sheet (SECTION_THEMES declared; nothing wired) (seat 37)
+
+- **Declared:** `main/section-themes.js`, not imported by the app yet; step 2 wires it on Fred's OK.
+  - `SECTION_THEMES` = { id: { hue } } for the 12 main-sidebar sections + photo.
+  - `EDITOR_SECTION_THEMES` maps the editor's right panels / Brick tool sections to those themes:
+    - Frame panel = frame;
+    - Artwork (Layers) = stamp, i.e. Vector Stamping;
+    - Photo = photo;
+    - Brick Wall / Frame / Brush / Raised / Stripe = brick, each one `shade` lighter or darker.
+  - `THEME_RULES` + `themeTokens(id, mode)` DERIVE every colour from the hue: body (soft), header (stronger),
+    stripe (saturated, a 4 px left edge), header text, for 'light' and 'dark'. No section has hand-picked CSS.
+- **Hues** (degrees):
+  - stock 210, frame 28, skeleton 265, filter 175, brick 6, stamp 135, sculpt-top 320, thicken 48,
+    sculpt-bot 295, view 195, export 90, resolution 235, photo 345;
+  - neighbours in both the 1-column and 2-column flow differ clearly.
+- **The sheet** (shots/seat37): the tokens are injected as a stylesheet into a LIVE page from the declared table.
+  - `f35item30_sidebar_1x.png`, `f35item30_sidebar_2.2x.png` (two columns);
+  - `f35item30_editor_brick_wall.png`, `f35item30_editor_brick_frame.png`, `f35item30_editor_artwork.png`;
+  - `f35item30_swatches_light_dark.png`: every theme as a header + body + stripe card, light | dark.
+  - **Dark is shown as derived tokens on sample cards only:** the app has NO dark UI today (no
+    prefers-color-scheme / theme switch in its styles), so a real dark screenshot is not possible. Wiring dark
+    means a dark theme for the controls first.
+- **Step-2 notes:**
+  - The editor panels have no per-section headers. The tint shows as body + stripe there; the panel's own grey
+    "BRICK" / "LAYERS" header could take the theme's header colour too, if Fred wants.
+  - The section bodies' white inline background (`.cad-sidebar .panel-body { background: #fff }`) becomes the
+    body token.
+- Tests: new section-themes (3):
+  - every main-sidebar panel in the palette (read from the HTML, not a copied list) has a theme;
+  - every editor mapping names a real theme + element, with the matching tab hues;
+  - tokens for light AND dark, a Brick tool section = a shade of the brick hue.
+  - They need the new module, so they fail before it exists.
+- Whole vitest: green (count in the pass note).
