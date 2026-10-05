@@ -1,3 +1,4 @@
+import { TILE_PARAMS } from './layouts/tiles.js'; // F35 item 14: the tile patterns' declared params
 /**
  * core/bricks/library.js — PORTABLE declared data (see rng.js's own header for the portability
  * rule). No logic here beyond trivial lookups -- the piece catalogue and the brick-sample sets,
@@ -236,6 +237,44 @@ export const BRICK_SETS = Object.freeze([
     samples: ['stone_02', 'stone_03', 'stone_04', 'stone_05', 'stone_06', 'stone_07', 'stone_08', 'stone_09', 'stone_10', 'stone_11']
       .map((id) => ({ id, image: `data/bricks/${id}.jpg` })),
   },
+  // T86 item 24 (Fred's grey photos, shots/fred/grey_set): faces cut by ~/.bspline-status/tools/extract_grey.py
+  // (luminance: light faces, dark joints -- extract_bricks.py's redness test has no hue to work with). Proportions and
+  // joint read off grey_brick_512.png: faces ~90 x 40 px (2.3:1), joints ~8 px (~9% of a face's length).
+  {
+    id: 4,
+    name: 'Grey brick',
+    engine: 'masonry',
+    shape: 'rect',
+    layout: 'bond',
+    brickLengthIn: 0.75,
+    brickHeightIn: 0.32,
+    grout: { widthIn: 0.05, depthIn: 0.05, profile: 'recessed' },
+    reliefIn: 0.125,
+    reliefMaxIn: 0.25,
+    heightJitterIn: 0.015,
+    heightProfile: { edgeRadiusIn: 0.04, crown: 0.12, chipRate: 0.08, chipSizeIn: 0.05, surfaceShare: 0.15 },
+    samples: Array.from({ length: 42 }, (_, i) => `gb_${String(i + 1).padStart(2, '0')}`).map((id) => ({ id, image: `data/bricks/${id}.jpg` })),
+  },
+  // T86 item 25: grey stone in COURSED RUBBLE (layouts/coursed-rubble.js), faces from rubble_coursed_stone_600.png
+  // (gs_01..27, stones ~80 x 55 px) and grey_stone_ashlar_2048.png (gs_28..64). Dark joints like the rock set's.
+  {
+    id: 5,
+    name: 'Grey stone',
+    engine: 'masonry',
+    shape: 'irregular',
+    layout: 'coursed_rubble',
+    // advisor ruling by precedent (Fred: a stone set's bands are the stone ring, as White rocks): its frame bands are
+    // fieldstone rings with these grey faces (contour-bands.js setBandPattern reads bandLayout)
+    bandLayout: 'fieldstone',
+    brickLengthIn: 1.1,
+    brickHeightIn: 0.7,
+    grout: { widthIn: 0.08, depthIn: 0.06, profile: 'recessed' },
+    reliefIn: 0.125,
+    reliefMaxIn: 0.25,
+    heightJitterIn: 0.02,
+    heightProfile: { edgeRadiusIn: 0.05, crown: 0.1, chipRate: 0.1, chipSizeIn: 0.07, surfaceShare: 0.35 },
+    samples: Array.from({ length: 64 }, (_, i) => `gs_${String(i + 1).padStart(2, '0')}`).map((id) => ({ id, image: `data/bricks/${id}.jpg` })),
+  },
 ]);
 
 /**
@@ -301,6 +340,20 @@ export const BRICK_PATTERNS = Object.freeze({
   flemish: { kind: 'course-alternating' },
   herringbone: { kind: 'tile2d' },
   basketweave: { kind: 'tile2d' },
+  // F35 item 13: Fred's sheet (shots/fred/ref_brick_pattern_sheet.jpg), layouts/sheet-patterns.js -- Wall-only
+  stacked_horizontal: { kind: 'tile2d' },
+  chevron: { kind: 'tile2d' },
+  stacked_variation: { kind: 'tile2d' },
+  basketweave_variation: { kind: 'tile2d' },
+  basketweave_stacked: { kind: 'tile2d' },
+  // F35 item 14: tiles / pavers (Fred's sheet 3, layouts/tiles.js) -- Wall-only. `family` groups them in the picker;
+  // `params` = what the user picks (TILE_PARAMS: options + one default); `fixed` = layout params the entry pins.
+  square_grid: { kind: 'tile2d', family: 'tiles' },
+  square_diamond: { kind: 'tile2d', family: 'tiles', params: TILE_PARAMS.squareDiamond, fixed: { rotationDeg: 0 } },
+  octagon_square: { kind: 'tile2d', family: 'tiles', params: TILE_PARAMS.octagonDot, fixed: { rotationDeg: 45 } },
+  hexagon: { kind: 'tile2d', family: 'tiles' },
+  lozenge: { kind: 'tile2d', family: 'tiles' },
+  framed_square: { kind: 'tile2d', family: 'tiles' },
   // F35 item 12(b): fieldstone was already a real `fill-shape.js` LAYOUTS entry (f3's own item 74,
   // for the White Rocks set's own declared `layout:'fieldstone'` default) but had no BRICK_PATTERNS
   // key, so the Wall picker couldn't select it -- a Poisson-disc Voronoi tiling, not tied to any

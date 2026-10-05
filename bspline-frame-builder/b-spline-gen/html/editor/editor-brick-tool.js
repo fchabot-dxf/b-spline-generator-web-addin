@@ -49,7 +49,7 @@
  * BRICK_ELEMENT_ATTR/BRICK_SETTINGS_ATTR/reconstructChains/
  * regenerateOwnedBrickElements block below for the full mechanism.
  */
-import { ensureActiveLayer, addLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR } from './layers.js';
+import { ensureActiveLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR, BRICK_ELEMENT_ATTR, BRICK_OWNER_ATTR, brickElementNodes } from './layers.js';
 import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
@@ -66,7 +66,7 @@ export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-s
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
 // Audit K7: the Bricks layer's identity now lives in layers.js (the layer-row summary needs it, and
 // layers.js cannot import this file -- this file imports layers.js). Re-exported for every importer.
-export { BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf };
+export { BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, BRICK_ELEMENT_ATTR, BRICK_OWNER_ATTR, brickElementNodes };
 
 // F35 item 3 (advisor: "brick elements as declared spine + settings... the
 // prerequisite for Scissors/Stripe"): a Brush stroke is no longer baked
@@ -80,27 +80,42 @@ export { BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf };
 // file -- Scissors/Stripe reuse the EXISTING, unmodified cut/stripe modes
 // verbatim; this module's own job is purely: keep the spine real, and
 // regenerate bricks from (spine, settings) whenever either changes.
-export const BRICK_ELEMENT_ATTR = 'data-brick-element';
+// BRICK_ELEMENT_ATTR / BRICK_OWNER_ATTR: declared in layers.js (item 22 slice 3: the context menu reads them too)
 export const BRICK_SETTINGS_ATTR = 'data-brick-settings';
-export const BRICK_OWNER_ATTR = 'data-brick-owner'; // on a generated brick: which regenerate-unit made it
 const SPINE_KIND = 'brush-spine';
 
-/** Find the editor's own "Bricks" layer by NAME (not id -- there's no
- *  reserved id scheme for named layers here), creating one if it doesn't
- *  exist yet. Every brick-tool action shares this one layer so Brush/Wall/
- *  Frame output always lands together, regardless of whichever layer
- *  happened to be "active" from unrelated earlier editing. */
-export function ensureBricksLayer(editor) {
-  ensureActiveLayer(editor); // guarantees editor._layers is a real, non-empty array
-  const existing = bricksLayerOf(editor); // item 22 slice 1: the DECLARED brick layer, whatever it is named
-  if (existing) return existing;
-  return addLayer(editor, {
-    name: BRICKS_LAYER_NAME,
-    holdsBricks: true,
-    skipUndo: true, // bundled into the SAME undo step as the content about to be drawn onto it
-    profile: 'flat',
-    edgeFilletRadius: 0,
-  });
+/** F35 item 22 slice 3: bricks go on the ACTIVE layer, like art -- each element on its own layer, so a wall or a
+ *  stroke can be hidden / shown / carved with its layer. An element stays where it is: a re-lay draws it on its
+ *  RECORD's layer (Wall / Frame), a Brush stroke on its spine's; only a NEW element takes the active layer. (Was
+ *  ensureBricksLayer: one shared "Bricks" layer for everything, created on first use.) */
+const layerById = (editor, id) => (editor._layers || []).find((l) => String(l.id) === String(id)) || null;
+function activeLayerOf(editor) {
+  return layerById(editor, ensureActiveLayer(editor));
+}
+/** The layer a Wall / Frame element IS on (its record's), or null when it has none yet -- read only, never creates. */
+export function layerOfElement(editor, kind) {
+  const rec = brickRecordNode(editor, kind);
+  return (rec && layerById(editor, rec.getAttribute('data-layer'))) || null;
+}
+/** The layer a Wall / Frame element lays on: its record's, else (a new element) the active layer. */
+export function elementLayer(editor, kind) {
+  const rec = brickRecordNode(editor, kind);
+  return (rec && layerById(editor, rec.getAttribute('data-layer'))) || activeLayerOf(editor);
+}
+/** Does this layer hold laid brick pieces (its height mask is the brick mask)? Read off the drawing, per layer. */
+export function layerHasBrickPieces(editor, layerId) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  return !!(node && node.querySelector && node.querySelector(`[data-layer="${layerId}"][${BRICK_GEN_ATTR}="1"]`));
+}
+/** The layers holding laid bricks, in roster order. */
+export function brickPieceLayers(editor) {
+  return ((editor && editor._layers) || []).filter((l) => layerHasBrickPieces(editor, l.id));
+}
+/** The bricks' height scale + direction: the relief, negative when Carved. Not the layer's art depth (slice 3): a
+ *  layer holding art AND bricks carves its art at its own depth and its bricks at this. */
+export function brickDepth(settings) {
+  const r = Number(settings && settings.reliefIn) || 0;
+  return settings && settings.invert ? -r : r;
 }
 
 /** Writes this brick-tool run's OWN tooling (depth from reliefIn, grout-
@@ -111,12 +126,15 @@ export function ensureBricksLayer(editor) {
  *  for a layer's own tooling (there's no dedicated setLayerDepth -- those
  *  fields are read as plain object properties throughout this codebase). */
 function applyBrickLayerTooling(layer, settings) {
+  // item 22 slice 3: only the LEGACY brick layer (a board from before slice 3) keeps its tooling in step with the
+  // bricks -- an art layer that holds bricks keeps its own (the bricks' height is brickDepth, not the layer's)
+  if (!isBricksLayer(layer)) return;
   // Raised/Carved (settings.invert, the same Photo-style 2-state toggle):
   // the generic stamp compositor (core/engine/apply-stamp-layers.js) already
   // treats a NEGATIVE layer depth as "carve down from the base" (its own
   // layerSign/filletAmplitude math is explicitly signed, not clamped) -- so
   // Carved is just this one sign flip, no separate code path needed.
-  layer.depth = settings.invert ? -settings.reliefIn : settings.reliefIn;
+  layer.depth = brickDepth(settings);
   layer.profile = 'flat';
   layer.edgeFilletRadius = 0;
   // Audit C7: `carve` is NOT forced back on here. A new Bricks layer carves by default
@@ -293,10 +311,9 @@ function ensureBrickRecord(editor, layer, kind) {
  *  by hand on the same layer). Each tool action re-runs this first so
  *  clicking Wall/Frame again replaces its own prior output instead of
  *  piling up duplicates underneath it. */
-function clearGenerated(editor, layer, kind) {
-  const nodes = editor._sketchLayer.node.querySelectorAll(
-    `[data-layer="${layer.id}"][${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="${kind}"]`,
-  );
+function clearGenerated(editor, kind) {
+  // Wall / Frame are one element each: their pieces go wherever they are (item 22 slice 3: on any layer)
+  const nodes = editor._sketchLayer.node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="${kind}"]`);
   nodes.forEach((n) => n.remove());
 }
 
@@ -658,6 +675,15 @@ export function accentIconSvg(presetId, heightPx = 26, { sunk = false, bond = 's
   return svg;
 }
 
+/** F35 item 14: a pattern's current user-facing params (the panel's chips): each declared param's default, then the
+ *  user's pick for THIS pattern (`settings.patternParams[pattern]`). The fill (fill-shape.js) resolves the same,
+ *  plus the entry's pinned `fixed` ones. */
+export function patternParamsFor(settings, pattern) {
+  const def = BRICK_PATTERNS[pattern] || {};
+  const defaults = Object.fromEntries(Object.entries(def.params || {}).filter(([, p]) => p && 'default' in p).map(([k, p]) => [k, p.default]));
+  return { ...defaults, ...((settings && settings.patternParams && settings.patternParams[pattern]) || {}) };
+}
+
 function applyWallPattern(input, settings) {
   const pattern = settings.pattern;
   const def = pattern && BRICK_PATTERNS[pattern];
@@ -666,6 +692,9 @@ function applyWallPattern(input, settings) {
     input.skipWallFill = true;
   } else if (def.kind === 'tile2d') {
     input.set = { ...input.set, layout: pattern };
+    // F35 item 14: the user's pick of the pattern's declared params (the fill adds the defaults + pinned ones)
+    const picked = settings.patternParams && settings.patternParams[pattern];
+    if (picked && Object.keys(picked).length) input.set.layoutParams = { ...picked };
   } else {
     input.zones = [{ pattern }];
   }
@@ -856,7 +885,8 @@ export function dropExcludedWallBricks(bricks, exclusions) {
 }
 
 function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
-  const layer = ensureBricksLayer(editor);
+  // item 22 slice 3: each element on its own layer (its record's; a new one on the active layer)
+  const layerOf = { wall: elementLayer(editor, 'wall'), frame: elementLayer(editor, 'frame') };
 
   // F35 item 23: each element is laid with its OWN set (elementSettings); size + grout stay global
   const wallSettings = elementSettings(settings, 'wall');
@@ -886,15 +916,17 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const result = generateBricks(input);
   const bricks = result.exclusionsApplied ? result.bricks : dropExcludedWallBricks(result.bricks, exclusions);
   const { frameBricks } = result;
-  for (const kind of kinds) clearGenerated(editor, layer, kind);
-  applyBrickLayerTooling(layer, settings);
+  for (const kind of kinds) clearGenerated(editor, kind);
   const lays = (kind) => kinds.includes(kind);
-  const owner = (kind) => ensureBrickRecord(editor, layer, kind); // item 22: the element that lays them
-  if (lays('frame')) drawBricks(editor, layer, frameBricks, 'frame', frameSettings.setId, settings.seed, settings.reliefIn, owner('frame'));
-  if (lays('wall')) drawBricks(editor, layer, bricks, 'wall', wallSettings.setId, settings.seed, settings.reliefIn, owner('wall'));
+  for (const kind of kinds) applyBrickLayerTooling(layerOf[kind], settings);
+  const owner = (kind) => ensureBrickRecord(editor, layerOf[kind], kind); // item 22: the element that lays them
+  if (lays('frame')) drawBricks(editor, layerOf.frame, frameBricks, 'frame', frameSettings.setId, settings.seed, settings.reliefIn, owner('frame'));
+  if (lays('wall')) drawBricks(editor, layerOf.wall, bricks, 'wall', wallSettings.setId, settings.seed, settings.reliefIn, owner('wall'));
   if (lays('wall')) syncAccentHighlight(editor, settings.accent, settings.seed);
   if (lays('frame')) syncRunAccentHighlight(editor, settings); // per-band accents
-  return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0 };
+  // F35 item 35: the engine's band-fit note (T86 item 28) when the Frame's stack was reduced to fit the board
+  return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0,
+    bandsReduced: lays('frame') ? (result.bandsReduced || null) : null };
 }
 
 /** `laidKey` (audit B1-B3): the caller's key for the settings this run lays. Item 22 step 3: it is stamped on
@@ -936,9 +968,9 @@ export function runBricksPreview(editor, settings, frameGeom, kinds) {
  *  this exists for) since it never calls generateBricks at all. The next commit (runBricks) always
  *  draws the real fill -- this is a drag-only placeholder, never a final state. */
 export function runBricksOutlinePreview(editor) {
-  const layer = ensureBricksLayer(editor);
-  clearGenerated(editor, layer, 'wall');
-  clearGenerated(editor, layer, 'frame');
+  const layer = elementLayer(editor, 'wall');
+  clearGenerated(editor, 'wall');
+  clearGenerated(editor, 'frame');
   const pts = boardPolygon(editor).map((p) => `${p.x},${p.y}`).join(' ');
   onBricksLayer(editor, layer, editor._sketchLayer.polygon(pts))
     .fill('none')
@@ -1117,7 +1149,7 @@ export const brickBrushHandler = {
     const overrides = typeof editor._brickStrokeOverrides === 'function' ? editor._brickStrokeOverrides() : null;
     const settings = editor._brickSettings ? { ...editor._brickSettings, ...(overrides || {}) } : null;
     if (!settings) return;
-    const layer = ensureBricksLayer(editor);
+    const layer = activeLayerOf(editor); // item 22 slice 3: a new stroke goes on the active layer, like art
     applyBrickLayerTooling(layer, settings);
 
     // F35 item 3: draw the SPINE (real, persistent, plain <line> segments --
@@ -1335,24 +1367,25 @@ export function bricksForStroke(points, settings) {
 }
 
 export function regenerateOwnedBrickElements(editor) {
-  if (!editor || !editor._sketchLayer) return;
-  const layer = bricksLayerOf(editor);
-  if (!layer) return;
+  if (!editor || !editor._sketchLayer || !Array.isArray(editor._layers)) return;
 
   const children = editor._sketchLayer.children().toArray();
   const spineEls = children.filter((el) => el.attr(BRICK_ATTR) === SPINE_KIND);
+  if (!spineEls.length && !children.some((el) => el.attr(BRICK_OWNER_ATTR) && el.attr(BRICK_ATTR) === 'brush')) return;
 
   // audit C6: the striped runs' style cycle (the A/B/C picks + Use C) is an input too -- without it in the
   // fingerprint a pick change was skipped as "nothing changed" (measured live, turn 191)
   const stripeCycle = stripeCycleFor(editor._brickSettings && editor._brickSettings.stripeStyles, !!(editor._stripe && editor._stripe.three));
   const fingerprint = spineEls.map((el) => {
     const [a, b] = pieceEnds(el);
-    return `${el.attr(BRICK_ELEMENT_ATTR)}|${a.x},${a.y},${b.x},${b.y}|${el.attr(STRIPE_ATTR) || ''}|${el.attr(BRICK_SETTINGS_ATTR) || ''}`;
+    // + its layer (item 22 slice 3: a stroke's bricks are drawn on its spine's layer)
+    return `${el.attr(BRICK_ELEMENT_ATTR)}|${a.x},${a.y},${b.x},${b.y}|${el.attr(STRIPE_ATTR) || ''}|${el.attr(BRICK_SETTINGS_ATTR) || ''}|${el.attr('data-layer')}`;
   }).join(';') + `#${stripeCycle.map((v) => v.id).join(',')}`;
   if (fingerprint === _lastSpineFingerprint) return;
   _lastSpineFingerprint = fingerprint;
 
   const byElement = new Map();
+  const strokeLayer = new Map(); // a stroke's bricks go on its spine's layer
   for (const el of spineEls) {
     const elementId = el.attr(BRICK_ELEMENT_ATTR);
     if (!elementId) continue;
@@ -1362,6 +1395,7 @@ export function regenerateOwnedBrickElements(editor) {
     const stripeId = el.attr(STRIPE_ATTR) || null;
     if (!byElement.has(elementId)) byElement.set(elementId, []);
     byElement.get(elementId).push({ a, b, stripeId, settings });
+    if (!strokeLayer.has(elementId)) strokeLayer.set(elementId, layerById(editor, el.attr('data-layer')));
   }
 
   // only the BRUSH strokes' own bricks -- Wall/Frame bricks carry an owner too since item 22 (their record)
@@ -1376,6 +1410,8 @@ export function regenerateOwnedBrickElements(editor) {
         : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
       const bricks = bricksForStroke(chain.points, settings);
       const ownerId = `${elementId}:${chainIdx}`;
+      const layer = strokeLayer.get(elementId);
+      if (!layer) return;
       bricks.forEach((b, i) => {
         // + its place on the stroke's own grid (the Brush accent, per stroke)
         stampRunPlace(drawBrick(editor, layer, b, 'brush', settings.setId, settings.seed, settings.reliefIn).attr(BRICK_OWNER_ATTR, ownerId), b, i);

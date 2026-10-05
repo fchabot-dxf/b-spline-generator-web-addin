@@ -6,6 +6,10 @@
  * Declared per binding in main/brick-panel.js (BRICK_COMMIT), not per call site.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
+// N2 ("P.brickSettings REPLACED") re-renders every panel; MEASURED timing out at 5 s under the fleet's shared CPU (8.1 s alone
+// on a loaded machine, 0.3 s on a quiet one) -- the declared heavy-test timeout, not a known failure (advisor)
+vi.setConfig({ testTimeout: HEAVY_TEST_MS });
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js', async (importOriginal) => {
@@ -465,6 +469,11 @@ describe('Generate visibility, no pending badge, and a hidden Bricks layer', () 
   it('C8: laying bricks onto a hidden Bricks layer warns, and leaves the layer hidden', () => {
     setup('wall');
     window.svgEditor._layers[0].visible = false;
+    // item 22 slice 3: the warning reads the laid ELEMENT's layer (its record's) -- the wall lives on that hidden layer
+    const node = window.svgEditor._sketchLayer.node;
+    let rec = node.querySelector('[data-brick-record="wall-full"]');
+    if (!rec) { rec = document.createElementNS('http://www.w3.org/2000/svg', 'g'); rec.setAttribute('data-brick-record', 'wall-full'); node.appendChild(rec); }
+    rec.setAttribute('data-layer', window.svgEditor._layers[0].id);
     $('brickPattern_flemish').click(); // item 27: this change re-lays (and warns) at once
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast.mock.calls[0][1]).toBe('warn');
@@ -1023,8 +1032,10 @@ describe('F35 item 23: per-element Set, Fieldstone = the rock set', () => {
 
   it('the Set row lists the BRICK sets from their declarations -- no White Rocks', () => {
     setup('wall');
-    expect([...document.querySelectorAll('#brickSetRow button')].map((b) => [b.id, b.textContent])).toEqual([['brickSet_1', 'Red Brick']]);
-    expect([...document.querySelectorAll('#brickQuickSettings [id^=brickQuick_set_]')].map((b) => b.id)).toEqual(['brickQuick_set_1']);
+    // T86 item 24 (seat B): Grey brick (set 4, a bond set) joins by its own declaration; Grey stone (set 5, coursed
+    // rubble) is not a bond set, so like White Rocks it is not listed here
+    expect([...document.querySelectorAll('#brickSetRow button')].map((b) => [b.id, b.textContent])).toEqual([['brickSet_1', 'Red Brick'], ['brickSet_4', 'Grey brick']]);
+    expect([...document.querySelectorAll('#brickQuickSettings [id^=brickQuick_set_]')].map((b) => b.id)).toEqual(['brickQuick_set_1', 'brickQuick_set_4']);
   });
 
   it('Wall + Fieldstone: the wall is rock (no brick set shown active), laid with the Fieldstone pattern', () => {

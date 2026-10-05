@@ -52,7 +52,7 @@ describe('runBricks lays only the kinds it is given (audit C1)', () => {
     const counts = runBricks(ed, P.brickSettings, null);
     expect(ids(ed, 'wall')).toEqual(['w1', 'w2']);
     expect(ids(ed, 'frame')).toEqual(['f1']);
-    expect(counts).toEqual({ wallCount: 2, frameCount: 1 });
+    expect(counts).toEqual({ wallCount: 2, frameCount: 1, bandsReduced: null }); // item 35: + the engine's band-fit note (none here)
   });
 
   it("['wall'] on a fresh board: wall only, no frame bands", () => {
@@ -60,7 +60,7 @@ describe('runBricks lays only the kinds it is given (audit C1)', () => {
     const counts = runBricks(ed, P.brickSettings, null, { kinds: ['wall'] });
     expect(ids(ed, 'wall')).toEqual(['w1', 'w2']);
     expect(ids(ed, 'frame')).toEqual([]);
-    expect(counts).toEqual({ wallCount: 2, frameCount: 0 });
+    expect(counts).toEqual({ wallCount: 2, frameCount: 0, bandsReduced: null });
   });
 
   it("['frame'] re-lays the bands and leaves the existing wall exactly as it was", () => {

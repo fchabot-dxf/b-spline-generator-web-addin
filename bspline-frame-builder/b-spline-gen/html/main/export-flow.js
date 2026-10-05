@@ -42,7 +42,7 @@ import { latticeOwnedElementsOnLayer, _ownedOnLayer, resolvePatternLayer, _findB
 import { primitiveFromContourD } from '../editor/editor-contour-cut.js';
 import { buildArtworkDecalPng } from '../core/stamp/decal-png.js';
 import { showToast } from '../core/toast.js';
-import { bricksLayerOf, BRICK_GEN_ATTR } from '../editor/editor-brick-tool.js';
+import { brickPieceLayers, BRICK_GEN_ATTR } from '../editor/editor-brick-tool.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
@@ -98,7 +98,11 @@ function _stampExportCandidates() {
             carve: isCarved(layer),
             depth: layer.depth,
             profile: layer.profile,
-            mask: layer._mask || null,
+            // item 22 slice 3: a layer holding only bricks carves through its brick mask (as the old brick layer
+            // did), at the bricks' depth; its art (none) is not shipped as an art sketch -- the bricks go in the
+            // Bricks sketch alone (the old duplicate "stamp layer" copy of them is gone)
+            mask: layer._mask || layer._brickMask || null,
+            ...(!layer._mask && layer._brickMask ? { depth: layer._brickDepth } : {}),
             svg: editor ? (getLayerSvg(editor, layer.id) || null) : null,
         };
     });
@@ -135,34 +139,36 @@ export async function _fusionLayerSvg(editor, l, excludePattern) {
     return { svg: svg || (excludePattern ? '' : l.svg), declined, declinedKinds };
 }
 
-/** F35 item 11 (Fred: "I just want it sent with bspline"): the Bricks editor layer's own generated
- *  brick polygons (wall/frame/brush), as a Fusion-ready SVG string, or '' when there's nothing to
- *  send (no Bricks layer yet, or it's empty right now -- the explicit "no bricks" case, distinct
- *  from append's "no instruction" null, see sendToFusion's own `bricks` tri-state below).
+/** F35 item 11 (Fred: "I just want it sent with bspline"): the board's generated brick polygons
+ *  (wall/frame/brush), as ONE Fusion-ready SVG string (the Bricks sketch), or '' when there's nothing
+ *  to send (the explicit "no bricks" case, distinct from append's "no instruction" null, see
+ *  sendToFusion's own `bricks` tri-state below).
  *
- *  The Bricks layer ALSO carries each Brush stroke's own invisible SPINE `<line>` (editor-brick-
- *  tool.js's own hit-testing/regenerate anchor, stroke-opacity 0.15 -- never meant to be real
- *  geometry) on the SAME layer (`ensureBricksLayer`'s own "every brick-tool action shares this ONE
- *  layer" convention) -- getLayerSvg's by-LAYER filter has no way to tell spine from real brick
- *  fill apart, so this filters to BRICK_GEN_ATTR='1' (every real generated piece carries it, the
- *  spine never does) AFTER the generic by-layer extraction, rather than teaching the generic
- *  layer-export path brick-specific knowledge no other caller needs. */
+ *  Item 22 slice 3: bricks live on any layer. getLayerSvg's `bricks: 'only'` reads a layer's
+ *  brick-tool nodes (layers.js isBrickToolNode; its art is everything else), and this keeps the laid
+ *  pieces (BRICK_GEN_ATTR='1') -- a Brush stroke's invisible SPINE `<line>` (its hit-testing /
+ *  regenerate anchor, never real geometry) is a brick-tool node too and is dropped here. */
 export async function _bricksLayerSvg(editor) {
     if (!editor || !Array.isArray(editor._layers)) return '';
-    const layer = bricksLayerOf(editor);
-    if (!layer) return '';
-    const { svg } = await getLayerSvg(editor, layer.id, 96, { geometry: 'fusion' });
-    if (!svg) return '';
-    let doc;
-    try { doc = new DOMParser().parseFromString(svg, 'image/svg+xml'); } catch { return ''; }
-    const root = doc.documentElement;
-    if (!root) return '';
+    // F35 item 22 slice 3: bricks live on any layer -- every layer's laid pieces, in roster order, into the ONE
+    // Bricks sketch (a board with all its bricks on one layer: byte-identical to before)
+    let root = null;
     let kept = 0;
-    Array.from(root.children).forEach((ch) => {
-        if (ch.getAttribute(BRICK_GEN_ATTR) === '1') { kept++; return; }
-        ch.remove();
-    });
-    if (kept === 0) return '';
+    for (const layer of brickPieceLayers(editor)) {
+        const { svg } = await getLayerSvg(editor, layer.id, 96, { geometry: 'fusion', bricks: 'only' });
+        if (!svg) continue;
+        let doc;
+        try { doc = new DOMParser().parseFromString(svg, 'image/svg+xml'); } catch { continue; }
+        const r = doc.documentElement;
+        if (!r) continue;
+        Array.from(r.children).forEach((ch) => {
+            if (ch.getAttribute(BRICK_GEN_ATTR) !== '1') { ch.remove(); return; }
+            kept++;
+            if (root) root.appendChild(ch);
+        });
+        if (!root) root = r;
+    }
+    if (!root || kept === 0) return '';
     return new XMLSerializer().serializeToString(root);
 }
 
@@ -644,11 +650,12 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
     if (!isAppend) {
         try {
             const raw = await _bricksLayerSvg(editor);
-            // turn 193: `carve` -- the Bricks layer's sketch goes in the Carved component only when the
-            // layer carves; otherwise on root, like every other non-carving art layer
-            const bricksLayer = bricksLayerOf(editor);
+            // turn 193: `carve` -- the Bricks sketch goes in the Carved component when its layer carves; otherwise
+            // on root, like every other non-carving art layer. Item 22 slice 3: bricks on several layers share the
+            // one sketch, Carved when ANY of their layers carves
+            const carve = brickPieceLayers(editor).some((l) => isCarved(l));
             bricks = raw
-                ? { enabled: true, carve: !!(bricksLayer && isCarved(bricksLayer)), svg: await bakeSvgForCarving(raw, P.widthIn, P.heightIn, 96) }
+                ? { enabled: true, carve, svg: await bakeSvgForCarving(raw, P.widthIn, P.heightIn, 96) }
                 : { enabled: false };
         } catch (e) {
             if (typeof fusLog === 'function') fusLog('[EXPORT] Bricks SVG failed: ' + (e && e.message));

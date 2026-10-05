@@ -148,6 +148,9 @@ export const DEFAULT = {
       // F35 item 31: the board's SAVED custom patterns ({ id, label, bond, accent, unit, level }); the browser keeps
       // its own list too (main/brick-panel.js USER_PATTERNS_KEY) -- a board's own copy wins on load
       userPatterns: [],
+      // F35 item 14: the user's pick of a pattern's declared params, per pattern ({ octagon_square: { ratio: 0.58 } });
+      // a pattern not listed lays with its declared defaults (library.js BRICK_PATTERNS[id].params)
+      patternParams: {},
       // per-element accents (advisor): one per Frame band (index = the band) and the Brush element's (every stroke,
       // each on its own grid); same shape as `accent`, periodic presets + Click bricks (no custom tile)
       frameBandAccents: [],

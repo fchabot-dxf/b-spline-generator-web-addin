@@ -44,8 +44,14 @@ describe('PIECE_CATALOGUE', () => {
 });
 
 describe('BRICK_SETS', () => {
-  it('has exactly 3 slots (a fixed max, no open-ended library machinery)', () => {
-    expect(BRICK_SETS.length).toBe(3);
+  it('has the declared sets, ids 1..5 in order (T86 items 24/25 added Grey brick and Grey stone)', () => {
+    expect(BRICK_SETS.map((s) => s.id)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('every declared sample image is on disk (data/bricks)', async () => {
+    const { existsSync } = await import('node:fs');
+    const missing = BRICK_SETS.flatMap((s) => s.samples.map((x) => x.image)).filter((img) => !existsSync(`bspline-frame-builder/b-spline-gen/html/${img}`));
+    expect(missing).toEqual([]);
   });
 
   it('Set 1 is the red-brick swap: 47 samples, 4 flagged odd, no leftover b1_* garden-edging ids', () => {

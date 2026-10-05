@@ -37,7 +37,7 @@ import { initApp, initSvgEditor } from './app-init.js';
 import { bindControls } from './ui-bindings.js';
 import { bindProjectManager } from './cloud-project-manager.js';
 import { receiveEditPasswordFromFusion } from './edit-password.js';
-import { initFramePanel, onFrameResult, syncFramePanel } from './frame-panel.js';
+import { initFramePanel, onFrameResult, onDeleteFrameResult, syncFramePanel } from './frame-panel.js';
 import { initClearMenu } from './editor-clear-menu.js';
 import { initViewModeToggle } from './view-mode-toggle.js';
 import { bindHeaderAndSettings } from './header-controls.js';
@@ -225,6 +225,7 @@ function handleFusionHandshake(ev) {
         return;
     }
     if (action === 'frame_result') { onFrameResult(ev.detail.data); return; } // the frame, built by the one Send
+    if (action === 'delete_frame_result') { onDeleteFrameResult(ev.detail.data); return; } // F26 item 2 (b)
     if (action === 'clear_result') { // Fred: "Clear Fusion design"
         let r = {}; try { r = JSON.parse(ev.detail.data || '{}'); } catch (e) {}
         if (!r.ok) { setFusionStatus(r.error || 'The Fusion design was not cleared.', 'warn'); return; }
