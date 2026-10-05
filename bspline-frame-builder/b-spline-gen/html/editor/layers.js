@@ -740,6 +740,9 @@ export const BRICKS_LAYER_NAME = 'Bricks';
 export function isBricksLayer(layer) {
   return !!layer && layer.holdsBricks === true;
 }
+/** F35 item 22 slice 1: the attribute that marks a brick ELEMENT RECORD (editor-brick-tool.js) -- an invisible
+ *  bookkeeping node (display none: never drawn, hit, exported or downloaded), never part of the drawing. */
+export const BRICK_RECORD_ATTR = 'data-brick-record';
 /** The board's brick layer (one, until slice 3 puts bricks on any layer), or null. */
 export function bricksLayerOf(editor) {
   return ((editor && editor._layers) || []).find(isBricksLayer) || null;

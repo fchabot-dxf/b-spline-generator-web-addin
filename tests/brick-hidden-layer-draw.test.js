@@ -31,7 +31,7 @@ function fakeEditor({ bricksVisible }) {
     elements,
     _mW: 7, _mH: 9, _activeLayer: '0',
     _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', holdsBricks: true, visible: bricksVisible }],
-    _sketchLayer: { polygon: make, line: make, node: { querySelectorAll: () => [] }, children: () => ({ toArray: () => elements, forEach: (f) => elements.forEach(f) }) },
+    _sketchLayer: { polygon: make, line: make, group: make, node: { querySelectorAll: () => [] }, children: () => ({ toArray: () => elements, forEach: (f) => elements.forEach(f) }) },
   };
 }
 const hidden = (el) => el._classes.has('layer-hidden');
@@ -40,7 +40,7 @@ describe('bricks drawn onto the Bricks layer take its current state', () => {
   it('a hidden Bricks layer: every newly laid brick is hidden', () => {
     const ed = fakeEditor({ bricksVisible: false });
     runBricks(ed, P.brickSettings, null);
-    expect(ed.elements.length).toBe(3);
+    expect(ed.elements.filter((e) => e._attrs['data-brick']).length).toBe(3); // the bricks (item 22's records aside)
     expect(ed.elements.every(hidden)).toBe(true);
   });
   it('a visible Bricks layer: none hidden', () => {

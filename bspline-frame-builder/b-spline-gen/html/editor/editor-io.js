@@ -7,7 +7,7 @@ import { encodeLayersAttr, repairLayersAttr } from './layers-attr.js';
 import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { applyToolingDefaults, migrateLegacyBricksLayer, addLayer, setActiveLayer, isExported, syncLayerZOrder } from './layers.js';
+import { applyToolingDefaults, migrateLegacyBricksLayer, BRICK_RECORD_ATTR, addLayer, setActiveLayer, isExported, syncLayerZOrder } from './layers.js';
 import { OWNERSHIP_ATTR, BOUNDARY_REF_ATTR, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
@@ -64,6 +64,7 @@ function _serializeVisibleLayers(editor) {
     );
     const raw = editor._sketchLayer.children().toArray()
         .filter(ch => exportedIds.has(String(ch.attr('data-layer'))))
+        .filter(ch => !ch.attr(BRICK_RECORD_ATTR)) // item 22: an element record is bookkeeping, never downloaded
         .map(ch => ch.node.outerHTML)
         .join('');
     return stripSvgjsAttributes(raw);

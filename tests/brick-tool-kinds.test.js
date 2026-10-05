@@ -37,6 +37,7 @@ function fakeEditor() {
     _sketchLayer: {
       node,
       polygon: (pts) => { const el = document.createElement('polygon'); el.setAttribute('points', pts); node.appendChild(el); return wrap(el); },
+      group: () => { const el = document.createElement('g'); node.appendChild(el); return wrap(el); }, // item 22: element records
       children: () => ({ toArray: () => [] }),
     },
   };

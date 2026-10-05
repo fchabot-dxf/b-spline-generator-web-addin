@@ -49,7 +49,7 @@
  * BRICK_ELEMENT_ATTR/BRICK_SETTINGS_ATTR/reconstructChains/
  * regenerateOwnedBrickElements block below for the full mechanism.
  */
-import { ensureActiveLayer, addLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo } from './layers.js';
+import { ensureActiveLayer, addLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR } from './layers.js';
 import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
@@ -195,8 +195,36 @@ export function repaintBricks(editor) {
   return nodes.length;
 }
 
-function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn) {
-  for (const b of bricks) drawBrick(editor, layer, b, kind, setId, seed, reliefIn);
+function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn, ownerId = null) {
+  for (const b of bricks) {
+    const el = drawBrick(editor, layer, b, kind, setId, seed, reliefIn);
+    if (ownerId) el.attr(BRICK_OWNER_ATTR, ownerId); // item 22: which element (record) laid it
+  }
+}
+
+/** F35 item 22 slice 1: each Wall / Frame ELEMENT has a RECORD -- one invisible node on the brick layer
+ *  (`display="none"`: never drawn, hit-tested or exported -- getLayerSvg and the download drop it; no
+ *  [data-brick] query sees it) carrying the element's id (BRICK_ELEMENT_ATTR) and the settings it was laid with
+ *  (BRICK_SETTINGS_ATTR, the same snapshot a Brush stroke's spine carries). Every brick it lays carries
+ *  BRICK_OWNER_ATTR = that id. Brush strokes already are records (their spines). Slice 2's painted areas add
+ *  'wall-area' records; until then there is one 'wall-full' and one 'frame'. */
+export const BRICK_RECORD_KINDS = Object.freeze({ wall: 'wall-full', frame: 'frame' });
+export { BRICK_RECORD_ATTR };
+export function brickRecordNode(editor, kind) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  const recordKind = BRICK_RECORD_KINDS[kind];
+  return recordKind && node && node.querySelector ? node.querySelector(`[${BRICK_RECORD_ATTR}="${recordKind}"]`) : null;
+}
+/** The element's record, created on first lay (its id is stable across re-lays). */
+function ensureBrickRecord(editor, layer, kind) {
+  const found = brickRecordNode(editor, kind);
+  if (found) return found.getAttribute(BRICK_ELEMENT_ATTR);
+  const id = newBrickElementId();
+  onBricksLayer(editor, layer, editor._sketchLayer.group())
+    .attr('display', 'none')
+    .attr(BRICK_RECORD_ATTR, BRICK_RECORD_KINDS[kind])
+    .attr(BRICK_ELEMENT_ATTR, id);
+  return id;
 }
 
 /** Removes this adapter's own previously-generated pieces of `kind` from
@@ -607,8 +635,9 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   for (const kind of kinds) clearGenerated(editor, layer, kind);
   applyBrickLayerTooling(layer, settings);
   const lays = (kind) => kinds.includes(kind);
-  if (lays('frame')) drawBricks(editor, layer, frameBricks, 'frame', frameSettings.setId, settings.seed, settings.reliefIn);
-  if (lays('wall')) drawBricks(editor, layer, bricks, 'wall', wallSettings.setId, settings.seed, settings.reliefIn);
+  const owner = (kind) => ensureBrickRecord(editor, layer, kind); // item 22: the element that lays them
+  if (lays('frame')) drawBricks(editor, layer, frameBricks, 'frame', frameSettings.setId, settings.seed, settings.reliefIn, owner('frame'));
+  if (lays('wall')) drawBricks(editor, layer, bricks, 'wall', wallSettings.setId, settings.seed, settings.reliefIn, owner('wall'));
   if (lays('wall')) syncAccentHighlight(editor, settings.accent, settings.seed);
   return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0 };
 }
@@ -618,6 +647,10 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
  *  roster (editor-io.js) and Cancel's restored document all carry the key of the bricks they hold. */
 export function runBricks(editor, settings, frameGeom, { laidKey, kinds, amend } = {}) {
   const counts = _generateAndDraw(editor, settings, frameGeom, kinds);
+  // item 22: each laid element's record keeps the settings it was laid with (its own, per element)
+  for (const kind of (kinds || BRICK_KINDS)) {
+    brickRecordNode(editor, kind)?.setAttribute(BRICK_SETTINGS_ATTR, JSON.stringify(elementSettings(settings, kind)));
+  }
   if (laidKey != null) {
     const layer = ensureBricksLayer(editor);
     layer.brickLaidKey = laidKey;
@@ -1077,7 +1110,8 @@ export function regenerateOwnedBrickElements(editor) {
     byElement.get(elementId).push({ a, b, stripeId, settings });
   }
 
-  children.filter((el) => el.attr(BRICK_OWNER_ATTR)).forEach((el) => el.remove());
+  // only the BRUSH strokes' own bricks -- Wall/Frame bricks carry an owner too since item 22 (their record)
+  children.filter((el) => el.attr(BRICK_OWNER_ATTR) && el.attr(BRICK_ATTR) === 'brush').forEach((el) => el.remove());
 
   for (const [elementId, segs] of byElement) {
     const chains = reconstructChains(segs);

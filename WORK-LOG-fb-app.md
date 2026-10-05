@@ -13540,3 +13540,49 @@ This turn stops at a clean break after step 1.
 **Next (step 2):** records -- one invisible `<g data-brick-element data-brick="wall-full|frame" data-brick-settings
 data-brick-laid>` per element on the brick layer, its bricks' `data-brick-owner`, written in the same undo step as
 the lay; laid key per element after that.
+
+### turn 227 -- F35 item 22 slice 1, STEP 2 of 5: element records + brick owners (seat 37)
+
+- **The record** (editor-brick-tool.js): each Wall / Frame element = ONE `<g>` on the brick layer with
+  `display="none"`, `data-brick-record="wall-full" | "frame"` (BRICK_RECORD_KINDS) and `data-brick-element` = a
+  stable id (created on the first lay, kept across re-lays).
+  - runBricks writes `data-brick-settings` = that element's own settings (elementSettings: per-element set),
+    the same snapshot a Brush spine carries.
+  - Every brick a lay draws carries `data-brick-owner` = its record's id.
+  - `brickRecordNode(editor, kind)` is the lookup.
+  - `BRICK_RECORD_ATTR` is declared in layers.js (editor-io reads it too, no cycle).
+- **Why a separate attribute, not `data-brick`:** every `[data-brick=...]` query (the height mask, _presentKinds,
+  Clear, 88's CANVAS hash, the brush exclusions) stays blind to records with zero edits.
+- **Invisible by the existing declared signal (`display="none"`):**
+  - getLayerSvg already drops it, so the art-layer export of the brick layer and every mask never see a record;
+  - `_hiddenItself` keeps it out of the hit test and the marquee;
+  - Send's Bricks sketch keeps only `data-brick-gen="1"`.
+  - The download serializer (`_serializeVisibleLayers`) is the one path that took every child: it now skips
+    records too.
+- **Found and fixed on the way:** Brush regeneration removed EVERY child with an owner attribute. With owners on
+  Wall/Frame bricks, any brush edit would have deleted the whole wall and frame. It now removes only owned
+  BRUSH bricks; a mutation back to the old filter is caught by the new test.
+- **Tests:**
+  - New brick-element-records (5): one record per element, invisible, on the brick layer, its bricks owned; the
+    per-element settings snapshot; a re-lay keeps the same id with no duplicate; Brush regeneration leaves owned
+    Wall/Frame bricks alone; records are never picked and never downloaded.
+  - Against the pre-step-2 files 4/5 fail. The brush one passes there (no owners existed then); the mutation
+    proves it guards the scope. Restored, cmp clean.
+  - 4 existing files' fake sketch layers gained `group()` (the record node). brick-hidden-layer-draw now counts
+    BRICKS, records aside, as its own title says.
+- **Live output check** (one headless browser: step-1 code builds a board + captures, then the step-2 code
+  reloads, re-lays, captures; 3 runs + a step-1-only control):
+  - **Send's Bricks SVG and the SVG download are identical except `data-brick-owner` on the 205 Wall/Frame
+    polygons** (after normalising the brick-fill pattern counter, which differs in the control run too: a global
+    creation counter 88's matrix already normalises).
+  - No record reaches either output.
+  - 3D heights hash identical (2/2 reruns; a first run's mismatch was the capture racing the rebuild, as the
+    control's own A-vs-B noise showed earlier).
+- **FLAG for the advisor:** "byte-identical" holds for geometry, records and 3D, but each Wall/Frame polygon in
+  Send/download now carries one more editor attribute (`data-brick-owner`, as Brush bricks already did). Fusion
+  ignores data-* attributes. If you want the bytes exact, the bake can strip owners from Wall/Frame bricks
+  (one filter in `_bricksLayerSvg` + the download); say so.
+- Whole vitest: 268 files, **4394 passed, 0 failed**.
+
+**Next (step 3):** the laid key per element: the records' `data-brick-laid` replaces `layer.brickLaidKey` /
+`brickLaidKinds`, and the item-27 frame / brush re-lays compare their own element's key.

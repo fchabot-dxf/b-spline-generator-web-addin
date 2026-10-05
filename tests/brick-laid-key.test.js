@@ -26,7 +26,9 @@ function fakeEditor() {
     _mW: 7, _mH: 9,
     _activeLayer: '0',
     _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', holdsBricks: true, visible: true }],
-    _sketchLayer: { node: { querySelectorAll: () => [], innerHTML: '' }, children: () => ({ toArray: () => [] }) },
+    _sketchLayer: { node: { querySelectorAll: () => [], innerHTML: '' }, children: () => ({ toArray: () => [] }),
+      group: () => { const api = { node: {}, attr: () => api, addClass: () => api, removeClass: () => api, hasClass: () => false }; return api; }, // item 22: element records
+  },
   };
 }
 
