@@ -160,9 +160,16 @@ function onBricksLayer(editor, layer, el) {
   return el;
 }
 
+/** A brick's longest side, inches -- the size its fill pattern must cover (editor-brick-surface.js brickFillPaint). */
+function brickSpanIn(polygon) {
+  if (!polygon || !polygon.length) return 1;
+  const xs = polygon.map((p) => p.x), ys = polygon.map((p) => p.y);
+  return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+}
+
 function drawBrick(editor, layer, brick, kind, setId, seed, reliefIn) {
   const pts = brick.polygon.map((p) => `${p.x},${p.y}`).join(' ');
-  const paint = brickFillPaint(editor, setId, brick.sampleId, brick.flip) || SET_COLORS[setId] || DEFAULT_BRICK_COLOR;
+  const paint = brickFillPaint(editor, setId, brick.sampleId, brick.flip, brickSpanIn(brick.polygon)) || SET_COLORS[setId] || DEFAULT_BRICK_COLOR;
   return onBricksLayer(editor, layer, editor._sketchLayer.polygon(pts))
     .fill(paint)
     .stroke('none')
@@ -195,7 +202,9 @@ export function repaintBricks(editor) {
   const nodes = node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][data-brick-set]`);
   nodes.forEach((el) => {
     const setId = Number(el.getAttribute('data-brick-set'));
-    const paint = brickFillPaint(editor, setId, el.getAttribute('data-brick-sample') || null, el.getAttribute('data-brick-flip') === '1')
+    const nums = (el.getAttribute('points') || '').trim().split(/[ ,]+/).map(Number);
+    const poly = []; for (let i = 0; i + 1 < nums.length; i += 2) poly.push({ x: nums[i], y: nums[i + 1] });
+    const paint = brickFillPaint(editor, setId, el.getAttribute('data-brick-sample') || null, el.getAttribute('data-brick-flip') === '1', brickSpanIn(poly))
       || SET_COLORS[setId] || DEFAULT_BRICK_COLOR;
     el.setAttribute('fill', paint);
   });
