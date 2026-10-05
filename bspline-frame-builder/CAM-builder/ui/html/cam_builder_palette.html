@@ -738,6 +738,14 @@
   // ── B-SPLINE tab (from cam_builder_palette.html) ──────────────────────────
   const SETUP_KEYS = ['stock', 'bspline_back', 'bspline_top', 'frame'];
 
+  // The status-dot key of a report setup name (a SETUP_SPECS name): letters only on both sides, so
+  // 'B-spline Back' -> 'bspline_back'. null for a name with no card. (H23 item 82: the old inline match
+  // stripped one underscore from the key and never matched a B-spline setup.)
+  function setupKeyFor(name) {
+    const flat = String(name || '').toLowerCase().replace(/[^a-z]/g, '');
+    return SETUP_KEYS.find(k => k.replace(/[^a-z]/g, '') === flat) || null;
+  }
+
   function send(action, payload) {
     const data = JSON.stringify(Object.assign({ action }, payload || {}));
     if (window.adsk && window.adsk.fusionSendData)
@@ -1491,9 +1499,8 @@
             setStatus((ok ? '✓ ' : '✗ ') + payload.msg);
           }
           (payload.setups || []).forEach(s => {
-            const key = s.name.toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_|_$/g, '');
-            const matched = SETUP_KEYS.find(k => key.includes(k.replace('_', ''))) || key;
-            setSetupState(matched, s.ok ? 'ok' : 'fail');
+            const key = setupKeyFor(s.name);
+            if (key) setSetupState(key, s.ok ? 'ok' : 'fail');
           });
           if (payload.ok) {
             const nMms = Object.values(payload.mms || {}).filter(Boolean).length;
