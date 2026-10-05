@@ -12,6 +12,7 @@ import { makeSplitter } from '../bspline-frame-builder/b-spline-gen/html/editor/
 const ROOT = 'bspline-frame-builder/';
 const html = readFileSync(ROOT + 'b-spline-gen/html/bspline_gen_palette.html', 'utf-8');
 const css = readFileSync(ROOT + 'styles/layout-app.css', 'utf-8');
+const baseCss = readFileSync(ROOT + 'styles/base.css', 'utf-8');
 
 function stubMedia(phone) {
   window.matchMedia = vi.fn(() => ({ matches: phone, addEventListener: () => {}, removeEventListener: () => {} }));
@@ -27,6 +28,11 @@ describe('F35 item 26: the declaration', () => {
     expect(SIDEBAR_LAYOUT.twoColumnPx).toBe(2 * SIDEBAR_LAYOUT.defaultPx);
     expect(isTwoColumn(SIDEBAR_LAYOUT.twoColumnPx - 1)).toBe(false);
     expect(isTwoColumn(SIDEBAR_LAYOUT.twoColumnPx)).toBe(true);
+  });
+  it('a tap on the handle cycles the DECLARED widths (one column <-> two columns), told by the declared tooltip', () => {
+    expect(SIDEBAR_LAYOUT.tapSnaps).toEqual(['defaultPx', 'twoColumnPx']);
+    for (const key of SIDEBAR_LAYOUT.tapSnaps) expect(typeof SIDEBAR_LAYOUT[key]).toBe('number');
+    expect(SIDEBAR_LAYOUT.handleTitle).toMatch(/Drag.*Click/);
   });
   it('the default is the CSS default (one number, two readers)', () => {
     expect(css).toContain(`--cad-sidebar-width: ${SIDEBAR_LAYOUT.defaultPx}px;`);
@@ -74,6 +80,7 @@ describe('F35 item 26: initSidebarLayout', () => {
     expect(sidebar().classList.contains('sidebar-two-col')).toBe(true);
     expect(sidebar().classList.contains('sidebar-desktop')).toBe(true);
     expect(document.documentElement.style.getPropertyValue('--sidebar-cell-min')).toBe(`${SIDEBAR_LAYOUT.cellMinPx}px`);
+    expect(document.getElementById('resizer').title).toBe(SIDEBAR_LAYOUT.handleTitle);
   });
   it('a fresh viewer gets the default, one column', () => {
     stubMedia(false);
@@ -93,6 +100,7 @@ describe('F35 item 26: initSidebarLayout', () => {
     initSidebarLayout();
     expect(width()).toBe('');
     expect(sidebar().className).toBe('cad-sidebar');
+    expect(document.getElementById('resizer').hasAttribute('title')).toBe(false);
   });
 });
 
@@ -110,6 +118,17 @@ describe('F35 item 26: the page and the CSS read the declaration', () => {
   it('two columns never split a section; grids auto-fit the declared cell; both desktop-scoped', () => {
     expect(css).toMatch(/\.cad-sidebar\.sidebar-two-col \.cad-sidebar-sections\s*\{[^}]*column-count:\s*2/);
     expect(css).toMatch(/\.cad-sidebar-sections > \.panel\s*\{[^}]*break-inside:\s*avoid/);
-    expect(css).toMatch(/\.cad-sidebar\.sidebar-desktop \.cad-tool-group\s*\{[^}]*repeat\(auto-fit, minmax\(var\(--sidebar-cell-min\), 1fr\)\)/);
+  });
+  it('a tool group is 1, 2 or 4 per row, never 3 + 1: the cell switches between 25% / 50% / 100% at 4 / 2 declared cells', () => {
+    const rule = css.slice(css.indexOf('.cad-sidebar.sidebar-desktop .cad-tool-group {'));
+    const body = rule.slice(0, rule.indexOf('}'));
+    expect(body).toContain('clamp(calc(25% - 2px), calc((4 * var(--sidebar-cell-min) + 6px - 100%) * 999), calc(50% - 2px))');
+    expect(body).toContain('calc((2 * var(--sidebar-cell-min) + 2px - 100%) * 999)');
+    expect(body).toMatch(/min\(100%, max\(/);
+    expect(body).toContain('repeat(auto-fit, minmax(var(--tool-cell), 1fr))');
+  });
+  it('a slider never sets its row minimum (width 0 + flex 1): the paired Offset X | Y rows fit the default width', () => {
+    const rule = baseCss.slice(baseCss.indexOf('input[type="range"].cad-slider {'));
+    expect(rule.slice(0, rule.indexOf('}'))).toMatch(/flex: 1;[\s\S]*width: 0;/);
   });
 });

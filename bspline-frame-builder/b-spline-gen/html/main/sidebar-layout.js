@@ -10,7 +10,7 @@
  *   - past `twoColumnPx` (~2x the default) the sections flow into two columns in reading order, a section never
  *     split (.cad-sidebar.sidebar-two-col, styles/layout-app.css).
  * Desktop only: phones (portrait and landscape) keep mobile-resizer.js's own splitters and one column.
- * A tap on the handle cycles the declared snaps (default <-> two columns), as every splitter's tap does.
+ * A tap on the handle cycles the declared `tapSnaps` (default <-> two columns), told by `handleTitle`.
  */
 import { makeSplitter } from '../editor/splitter.js';
 import { MOBILE_QUERY, LANDSCAPE_PHONE_QUERY } from '../editor/breakpoints.js';
@@ -22,6 +22,9 @@ export const SIDEBAR_LAYOUT = Object.freeze({
   keepViewportPx: 300, // the 3D view never gets narrower than this
   twoColumnPx: 520, // 2x the default: from here the sections flow into two columns
   cellMinPx: 72, // one grid cell's minimum width: a 4-button group is 2 per row at the default, 4 at 1.5x, 2 at twoColumnPx
+  // a tap (a click without dragging) on the handle cycles these widths -- one column <-> two columns
+  tapSnaps: Object.freeze(['defaultPx', 'twoColumnPx']),
+  handleTitle: 'Drag to resize the sidebar. Click: one / two columns.',
   storageKey: 'bspline.main.sidebarWidthPx',
 });
 
@@ -44,7 +47,11 @@ export function initSidebarLayout() {
   const mqlLandscapePhone = window.matchMedia(LANDSCAPE_PHONE_QUERY);
   const desktop = () => !mqlMobile.matches && !mqlLandscapePhone.matches;
   const setTwoColumn = (on) => sidebar.classList.toggle('sidebar-two-col', on);
-  sidebar.classList.toggle('sidebar-desktop', desktop());
+  const setDesktop = () => {
+    sidebar.classList.toggle('sidebar-desktop', desktop());
+    if (desktop()) resizer.title = SIDEBAR_LAYOUT.handleTitle; else resizer.removeAttribute('title');
+  };
+  setDesktop();
 
   const splitter = makeSplitter(root, {
     handle: resizer,
@@ -53,8 +60,8 @@ export function initSidebarLayout() {
     computeRawSize: (clientX, drag) => drag.startSize + (clientX - drag.startCoord),
     applySize: (px) => root.style.setProperty('--cad-sidebar-width', `${px}px`),
     readSize: () => sidebar.getBoundingClientRect().width,
-    snaps: () => [{ name: 'default', px: SIDEBAR_LAYOUT.defaultPx }, { name: 'twoColumn', px: SIDEBAR_LAYOUT.twoColumnPx }],
-    initialSnapName: 'default',
+    snaps: () => SIDEBAR_LAYOUT.tapSnaps.map((key) => ({ name: key, px: SIDEBAR_LAYOUT[key] })),
+    initialSnapName: 'defaultPx',
     min: () => sidebarBounds(window.innerWidth).min,
     max: () => sidebarBounds(window.innerWidth).max,
     storageKey: SIDEBAR_LAYOUT.storageKey,
@@ -66,7 +73,7 @@ export function initSidebarLayout() {
   // crossing into a phone layout: one column (mobile-resizer.js owns the width there); back to desktop: the
   // viewer's own width again (the landscape splitter removes --cad-sidebar-width when it lets go)
   const onModeChange = () => {
-    sidebar.classList.toggle('sidebar-desktop', desktop());
+    setDesktop();
     if (desktop()) splitter.reapply(); else setTwoColumn(false);
   };
   mqlMobile.addEventListener('change', onModeChange);
