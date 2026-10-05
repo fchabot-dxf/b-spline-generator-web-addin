@@ -89,6 +89,9 @@ export const BRICK_CONTROLS = [
   { name: 'Random seed', kind: 'editor', tool: 'wall', do: click('brickBtnRandomSeed'), expect: LAYOUT },
   { name: 'Generate re-lays now (wall)', kind: 'relay', tool: 'wall', do: click('brickGenerate'), expect: { restores: true }, introducedBy: '9eb45d2' },
   // ---- editor, Frame tool
+  // item 28: a 3-band stack is reduced to what fits the board; at the 1 in default it keeps only its outer band on
+  // T1 7x9 (= the Soldier the frame already has, nothing to see), at 3/4 in it keeps two
+  { name: 'Brick size 3/4 (frame group: 3-band fits T1 7x9 from here)', kind: 'editor', tool: 'wall', group: 'frame', do: click('brickSizePreset_quarter3'), expect: LAYOUT },
   { name: 'Frame preset: 3-band', kind: 'editor', tool: 'frame', do: click('brickFramePreset_three_band'), expect: LAYOUT },
   { name: 'Band 1 pattern: Header', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_header'), expect: LAYOUT },
   // item 23: a Fieldstone band makes the whole frame rock (every band); then the per-element rule -- the Frame
@@ -240,6 +243,10 @@ export const CLEAR_MENU = {
 // wall -- the app says so, and the wall comes back when the bands fit again (before the fix it never did).
 export const LAY_WARNING = {
   template: 'template_9',
+  // item 28: a stack too deep for the board is reduced first, so "no room for the wall" is now a board too narrow
+  // for even ONE band: T9 7x9 at 1-1/2 in (measured: no wall; at 3/4 in a 146-brick wall)
+  tooManySize: 'brickSizePreset_half1',
+  fitsSize: 'brickSizePreset_quarter3',
   tooMany: 'brickQuick_frameBands_three_band',
   fits: 'brickQuick_frameBands_single_soldier',
   notes: { sidebar: 'brickLayWarnings', editor: 'brickEditorLayWarnings' },

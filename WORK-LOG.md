@@ -22056,3 +22056,33 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
 - Tests: bricks-band-inside-board (8 cases); clip disabled -> 5/8 fail (up to 242 pieces outside). Bricks domain +
   the 7 other core/bricks importers: 77 files / 788 pass. Note: 0.25 quarter-brick floor is now declared in four
   places (bond, fieldstone, fill-shape exclusions, contour-bands) -- worth one shared declaration later.
+
+## T86 item 28 -- band stacks that do not fit: the engine makes the best result (seat B / 88, 2026-10-05)
+- FIT RULE (contour-bands.js): a closed frame stack may take at most BAND_FIT_SHARE (1/3, the spec's own figure) of
+  the board's narrowest gap (narrowestGap: from every boundary edge's middle, a ray along the inward normal to the
+  first boundary hit; the shortest). Deeper: reduced innermost-first in BAND_FIT_STEPS order (a course band's extra
+  row, an area band to one course, drop the band), one step at a time. The OUTERMOST band is never reduced -- a board
+  too narrow for one band keeps today's lay and B1's wallEmpty warning. A stack that fits is laid as requested.
+  generateBricks returns `bandsReduced` {requested, kept, steps, gapIn, limitIn, requestedDepthIn, depthIn, fits}
+  only when a step was taken (the UI note is 37's, F35 item 35). `bandFit: false` (ENGINE_OPTIONS) draws the stack
+  as requested -- the advisor's ruling for icons (an icon is a schematic on a tiny board); editor-brick-tool's
+  _miniFrame is the one call site.
+- TRAP measured on the way: geometry.js signedArea is NEGATIVE for a counter-clockwise loop (x right, y up; -1 on a
+  unit square), contrary to its own header comment -- my first narrowestGap read the sign the header's way and cast
+  its rays OUTWARD (T1 "gap" 1.59 = across a notch's cavity). Fixed with the measured sign + a both-windings test.
+- Narrowest gaps are not always the waist: T1 7x9 is 3.67 in from a notch end to the top edge (waist ~4.5); T18 has a
+  1.75 in neck, so at 1/3 it keeps one band at every size.
+- Sweep 19 templates x 6x9/7x9/9x12 x 0.75/1/1.25/1.5 x three_band/single_soldier (456 lays), before -> after: no
+  wall 100 -> 4 (T9 at 1.5: one band too wide, today's warning); band-on-band overlap 2498.8 -> 1.3 sq in, cases >
+  0.05 sq in 164 -> 2 (T16 7x9 1 in 0.15, 9x12 1.5 in 1.02: two bands that FIT, the tight-curve corner residual --
+  declared caps in the test); 228 reduced (all three_band), 228 untouched.
+- ONE quarter-brick floor: library.js MIN_PIECE_FRACTION, read by bond / fieldstone / fill-shape / contour-bands.
+- Tests: bricks-band-fit (T1 7x9 1.25 primary: steps [2 drop, 1 row, 1 drop], a wall, no overlap; the sweep;
+  narrowestGap both windings), bricks-band-inside-board + T1 7x9 three_band 1.25 / 1.5 through the engine (a wall,
+  nothing outside, no overlap, no bare patch). Fit off -> 2/4 and 2/10 fail. Two tests moved to T1 9x12 where their
+  two-band stacks fit (rock-set rings, fieldstone+soldier mix). Matrix: a frame-group "Brick size 3/4" row before
+  3-band (at 1 in 3-band reduces to the Soldier already there); LAY_WARNING measured at 1-1/2 in / fits at 3/4.
+  Bricks domain + core/bricks importers 82 files / 815 pass; matrix frame 13/13, lay 2/2.
+- Shots: shots/seatB/item28_share_sheet.png (Fred: 1/3 vs 1/2 on T1 7x9 at 0.75/1/1.25, 9x12 at 1/3),
+  item28_before_after.png (T1 three_band 1.25, T18 single_soldier 1.5, T12 three_band 1.25). NOT fixed: T18's open
+  wedges at its top fan corners at 1.5 in (identical before/after: a fan void, not the overrun).

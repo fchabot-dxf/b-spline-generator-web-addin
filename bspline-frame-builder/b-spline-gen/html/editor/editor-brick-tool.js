@@ -588,7 +588,7 @@ function _miniFrame(key, bands) {
     const s = TOOL_MINI_BRICK;
     bricks = generateBricks({
       boardOutline: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: w }, { x: 0, y: w }],
-      set: resolvedSetFor(s), scale: scaleFor(s), suppression: 0, clumping: 0, seed: s.seed, skipWallFill: true,
+      set: resolvedSetFor(s), scale: scaleFor(s), suppression: 0, clumping: 0, seed: s.seed, skipWallFill: true, bandFit: false, // an icon: the stack as requested (T86 item 28)
       frame: { primitives: buildRibbonPrimitives(rectToPrimitives({ x1: 0, y1: 0, x2: w, y2: w })), bands },
     }).frameBricks;
   } catch (_) {

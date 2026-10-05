@@ -670,7 +670,13 @@ async function runLayWarnings() {
   await apply(); await heightsSettled(null);
   await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
   if (!(await exists(W.tooMany))) { checkRow('lay', `${W.template}: too many bands -> no wall + notes`, false, '', W.introducedBy); return; }
+  const size = async (id) => { // the Wall tool's brick size, then back to the sidebar
+    await openEditorTab('editorTabBrick'); await click('brickTool_wall', 900); await click(id, 2500);
+    await apply(); await heightsSettled(null);
+    await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+  };
   // 1. bands that cover the board: no wall, both notes say so
+  await size(W.tooManySize);
   await click(W.tooMany, 2500);
   const side1 = await noteState(W.notes.sidebar);
   await openEditorTab('editorTabBrick'); await click('brickTool_wall', 900); // the Brick panel (and its note) shows once a tool is picked
@@ -679,7 +685,7 @@ async function runLayWarnings() {
   checkRow('lay', `${W.template}: too many bands -> no wall + notes`, ok1, `wall ${walls1}, sidebar note ${side1.shown ? 'shown' : 'hidden'}, editor note ${ed1.shown ? 'shown' : 'hidden'}${side1.text.includes(W.text) ? '' : ' (text differs: ' + side1.text.slice(0, 60) + ')'}`);
   await apply(); await heightsSettled(null);
   // 2. bands that fit again: the wall comes back, both notes go
-  await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+  await size(W.fitsSize);
   await click(W.fits, 2500);
   const side2 = await noteState(W.notes.sidebar);
   await openEditorTab('editorTabBrick'); await click('brickTool_wall', 900);

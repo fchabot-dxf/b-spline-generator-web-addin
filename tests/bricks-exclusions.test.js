@@ -6,15 +6,14 @@
  *   - no wall brick lies under a stroke's footprint
  *   - the wall still covers what it covered before, outside the footprint (no voids beyond the grout and the
  *     dropped slivers)
- *   - every cut piece is at least EXCLUSION_MIN_PIECE_FRACTION of a brick
+ *   - every cut piece is at least MIN_PIECE_FRACTION of a brick (library.js)
  *   - the engine says it applied them (37's app stub stands down on `exclusionsApplied`)
  */
 import { describe, it, expect, vi } from 'vitest';
 import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import { generateBricks, ENGINE_OPTIONS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/engine.js';
 import { bricksAlongPath } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/along-path.js';
-import { EXCLUSION_MIN_PIECE_FRACTION } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/fill-shape.js';
-import { brickSetById } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { brickSetById, MIN_PIECE_FRACTION } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { pointInPolygon, signedArea, offsetPathInward, inwardSignFor } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 
 vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // a sampled sweep: see heavy-test-timeout.js
@@ -65,7 +64,7 @@ describe('exclusions (T86 item 13)', () => {
       expect(overlap, 'wall samples under the stroke').toBe(0);
       expect(kept / wanted, 'wall kept outside the footprint').toBeGreaterThan(0.97);
       // the cut pieces (a polygon not in the uncut wall) are never slivers
-      const minArea = EXCLUSION_MIN_PIECE_FRACTION * SET.brickLengthIn * SET.brickHeightIn;
+      const minArea = MIN_PIECE_FRACTION * SET.brickLengthIn * SET.brickHeightIn;
       const untouched = new Set(before.map((p) => JSON.stringify(p)));
       const cut = after.filter((p) => !untouched.has(JSON.stringify(p)));
       expect(cut.length).toBeGreaterThan(0);

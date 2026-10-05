@@ -49,6 +49,7 @@ export const ENGINE_OPTIONS = Object.freeze([
   'boardOutline', 'set', 'frame', 'suppression', 'topBias', 'clumping', 'zones', 'scale', 'skipWallFill', 'seed',
   'largeStones', // T86 item 17
   'exclusions', // T86 item 13
+  'bandFit', // T86 item 28: false = draw the frame stack as requested (icons); default: the fit rule
 ]);
 
 export function generateBricks(input) {
@@ -56,6 +57,7 @@ export function generateBricks(input) {
 
   let interiorOutline = boardOutline;
   let frameBricks = [];
+  let bandsReduced; // T86 item 28: contour-bands' fit-rule note, when the requested stack did not fit
   // T86 item 14 (Fred: a Wall with no Frame bands was filling `boardOutline` -- in the live app,
   // ALWAYS a plain bounding rectangle (editor-brick-tool.js's own `boardPolygon`), never the
   // template's own true (often non-rectangular: hourglass waists, tapered sides, arched tops)
@@ -78,9 +80,10 @@ export function generateBricks(input) {
     // before this) is unaffected; Wall's own bricksFillShape call below
     // always keeps the top-level `set`, never this override.
     const frameSet = frame.set || set;
-    const res = bricksContourBands(frame.primitives, frame.bands || [], { set: frameSet, seed, scale });
+    const res = bricksContourBands(frame.primitives, frame.bands || [], { set: frameSet, seed, scale, bandFit: input.bandFit });
     frameBricks = res.bricks;
     interiorOutline = res.innerPath;
+    bandsReduced = res.bandsReduced;
   }
 
   const bricks = input.skipWallFill ? [] : bricksFillShape(interiorOutline, null, {
@@ -93,8 +96,9 @@ export function generateBricks(input) {
     exclusions: input.exclusions,
   }).bricks;
   // T86 item 13: the app's own stub (editor-brick-tool.js dropExcludedWallBricks) stands down when this is set
-  if (Array.isArray(input.exclusions)) return { bricks, frameBricks, seed, exclusionsApplied: true };
-  return { bricks, frameBricks, seed };
+  const notes = bandsReduced ? { bandsReduced } : {};
+  if (Array.isArray(input.exclusions)) return { bricks, frameBricks, seed, exclusionsApplied: true, ...notes };
+  return { bricks, frameBricks, seed, ...notes };
 }
 
 /** A simple grid-bucket spatial index over a brick list, so repeated point queries (a terrain

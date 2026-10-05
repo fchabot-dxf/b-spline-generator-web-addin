@@ -23,7 +23,7 @@ import { assignPieces } from './pieces.js';
 import { computeSuppressedCells } from './suppression.js';
 import { assignSamples } from './samples.js';
 import { pointInPolygon, polygonDifference, polygonCentroid, signedArea, offsetPathInward, inwardSignFor } from './geometry.js';
-import { PIECE_CATALOGUE, enabledPieces, scaledSet } from './library.js';
+import { PIECE_CATALOGUE, enabledPieces, scaledSet, MIN_PIECE_FRACTION } from './library.js';
 
 // F35 item 7: herringbone/basketweave are 'tile2d' BRICK_PATTERNS (library.js) promoted to full
 // `set.layout` choices, same tier as 'bond'/'fieldstone' -- not zone-mixable with course-kind
@@ -51,21 +51,17 @@ const LAYOUTS = Object.freeze({
  *   (fieldstone.js fencePoints); a band ring passes its outer and inner edges
  * @returns {{ bricks: Array }}
  */
-/** T86 item 13: a wall piece left smaller than this fraction of one brick (brickLengthIn x brickHeightIn) after
- *  the exclusion cut drops into the joint -- the usual min-piece rule. */
-export const EXCLUSION_MIN_PIECE_FRACTION = 0.25;
-
 /**
  * T86 item 13 (Fred: "brush over wall = the wall flows around"): every exclusion (a brush brick's polygon, sent by
  * editor-brick-tool.js's brushExclusions) grown by one grout width is a HOLE in the wall fill. Each cell is cut by
  * every exclusion it overlaps (geometry.js polygonDifference); a cut that leaves several pieces makes several
  * cells (fresh ids, no neighbours: pieces.js then treats each as a lone 'single'); pieces under
- * EXCLUSION_MIN_PIECE_FRACTION of a brick drop; a cell with an exclusion wholly inside it is covered by the
+ * library.js MIN_PIECE_FRACTION of a brick (brickLengthIn x brickHeightIn) drop; a cell with an exclusion wholly inside it is covered by the
  * stroke and drops. Neighbour links to a cut cell are cleared so no piece chain reaches a cell that is gone.
  */
 function cutExclusions(cells, exclusions, set) {
   const J = set.grout.widthIn;
-  const minArea = EXCLUSION_MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
+  const minArea = MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
   const bbox = (poly) => {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const p of poly) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }

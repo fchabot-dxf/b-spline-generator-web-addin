@@ -17,9 +17,9 @@ import { BRICK_SETS } from '../bspline-frame-builder/b-spline-gen/html/core/bric
 const ROCKS = BRICK_SETS.find((s) => s.layout === 'fieldstone');
 const RED = BRICK_SETS.find((s) => s.layout === 'bond');
 
-function t1Primitives() {
+function t1Primitives(W = 7, H = 9) {
   const record = normalizeFrameRecord({ templateId: 'template_1' });
-  const sil = frameContourSilhouette({ defs: FRAME_DEFS, record, board: { widthIn: 7, heightIn: 9 } }, 0, 0);
+  const sil = frameContourSilhouette({ defs: FRAME_DEFS, record, board: { widthIn: W, heightIn: H } }, 0, 0);
   return buildRibbonPrimitives(sil.primitives);
 }
 const COURSE_BANDS = [{ widthIn: 0.75, pattern: 'soldier' }, { widthIn: 0.75, pattern: 'stretcher' }];
@@ -33,7 +33,8 @@ describe('a rock set lays every frame band as its own fieldstone ring', () => {
   });
 
   it('White Rocks + soldier/stretcher bands on T1: every piece is a fieldstone stone, both bands filled', () => {
-    const { bricks } = bricksContourBands(t1Primitives(), COURSE_BANDS, { set: ROCKS, seed: 1 });
+    // 9x12: two 0.75 in rings (1.5 in) fit T1's narrowest gap there; on a 7x9 the fit rule (T86 item 28) keeps one
+    const { bricks } = bricksContourBands(t1Primitives(9, 12), COURSE_BANDS, { set: ROCKS, seed: 1 });
     expect(bricks.length).toBeGreaterThan(0);
     const notStone = bricks.filter((b) => !String(b.id).startsWith('fieldstone-'));
     expect(notStone.map((b) => b.id).slice(0, 3)).toEqual([]);

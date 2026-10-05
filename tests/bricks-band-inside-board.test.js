@@ -10,7 +10,8 @@ import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-de
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
-import { polygonIntersection, signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { polygonIntersection, signedArea, pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { generateBricks } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/engine.js';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
@@ -41,5 +42,32 @@ describe('band pieces stay inside the board', () => {
         expect(outside.slice(0, 5), `${outside.length} pieces outside`).toEqual([]);
       });
     }
+  }
+
+  // T86 item 28 (advisor): Fred's default -- T1 7x9, three_band, Red Brick at 1.25 in -- overran the board and left
+  // no wall; at 1.5 in the inverted ring made a lens with four bare patches. Through the whole engine now: the stack
+  // is reduced, a wall region remains, nothing outside, no band overlap, and the board is covered (no bare patch
+  // wider than a joint: every sample point is in a piece or within 1.5 grout widths of one).
+  for (const L of [1.25, 1.5]) {
+    it(`T1 7x9 three_band Red Brick at ${L} in: reduced, a wall, nothing outside, no overlap, no bare patch`, () => {
+      const sil = frameContourSilhouette({ defs: FRAME_DEFS, record: normalizeFrameRecord({ templateId: 'template_1' }), board: { widthIn: 7, heightIn: 9 } }, 0, 0);
+      const prims = buildRibbonPrimitives(sil.primitives);
+      const board = boardOf(prims);
+      const r = generateBricks({ boardOutline: [{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 7, y: 9 }, { x: 0, y: 9 }], set: SET, seed: 1,
+        scale: L / SET.brickLengthIn, suppression: 0, clumping: 0, frame: { primitives: prims, bands: FRAME_PRESETS.three_band } });
+      expect(r.bandsReduced && r.bandsReduced.kept).toBeLessThan(3);
+      expect(r.bricks.length).toBeGreaterThan(0);
+      const pieces = [...r.frameBricks, ...r.bricks].map((b) => b.polygon);
+      for (const q of r.frameBricks.map((b) => b.polygon)) expect(Math.abs(signedArea(q)) - Math.abs(signedArea(polygonIntersection(q, board)))).toBeLessThan(TOL);
+      for (let i = 0; i < r.frameBricks.length; i++) for (let j = i + 1; j < r.frameBricks.length; j++) {
+        if (r.frameBricks[i].bandIndex === r.frameBricks[j].bandIndex) continue;
+        expect(Math.abs(signedArea(polygonIntersection(r.frameBricks[i].polygon, r.frameBricks[j].polygon)))).toBeLessThan(TOL);
+      }
+      const reach = 1.5 * SET.grout.widthIn;
+      const near = (x, y) => pieces.some((q) => pointInPolygon(x, y, q) || [[reach, 0], [-reach, 0], [0, reach], [0, -reach]].some(([dx, dy]) => pointInPolygon(x + dx, y + dy, q)));
+      const bare = [];
+      for (let x = 0.3; x < 6.75; x += 0.1) for (let y = 0.3; y < 8.75; y += 0.1) if (pointInPolygon(x, y, board) && !near(x, y)) bare.push(`(${x.toFixed(1)},${y.toFixed(1)})`);
+      expect(bare.slice(0, 5), `${bare.length} bare sample points`).toEqual([]);
+    });
   }
 });
