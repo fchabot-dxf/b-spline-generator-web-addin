@@ -36,6 +36,7 @@ import { updateStampMasks } from './stamp-mask-manager.js';
 import { initApp, initSvgEditor } from './app-init.js';
 import { bindControls } from './ui-bindings.js';
 import { bindProjectManager } from './cloud-project-manager.js';
+import { receiveEditPasswordFromFusion } from './edit-password.js';
 import { initFramePanel, onFrameResult, syncFramePanel } from './frame-panel.js';
 import { initClearMenu } from './editor-clear-menu.js';
 import { initViewModeToggle } from './view-mode-toggle.js';
@@ -233,6 +234,13 @@ function handleFusionHandshake(ev) {
     }
 
     if (action === 'pong') return;
+
+    // F35 item 34: the add-in's cached edit password (its config outside the deployed folder), at startup
+    if (action === 'edit_password') {
+        let d = {}; try { d = JSON.parse(ev.detail.data || '{}'); } catch (e) {}
+        receiveEditPasswordFromFusion(d.password || null);
+        return;
+    }
 
     if (action === 'build_info') {
         // Python pushed the deployed build stamp {sha, built_at, dirty, status,

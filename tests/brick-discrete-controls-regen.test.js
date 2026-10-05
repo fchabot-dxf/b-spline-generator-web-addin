@@ -1018,7 +1018,7 @@ describe('turn 207 (Fred / 88): the Frame element (and the Wall in it) follows t
 });
 
 describe('F35 item 23: per-element Set, Fieldstone = the rock set', () => {
-  const bandIds = () => [...document.querySelectorAll('#brickFrameBandPatternList button')].map((b) => b.id);
+  const bandIds = () => [...document.querySelectorAll('#brickFrameBandPatternList button[id^=brickFrameBandPattern_]')].map((b) => b.id);
   beforeEach(() => { P.brickSettings.frameBandPatterns = []; });
 
   it('the Set row lists the BRICK sets from their declarations -- no White Rocks', () => {

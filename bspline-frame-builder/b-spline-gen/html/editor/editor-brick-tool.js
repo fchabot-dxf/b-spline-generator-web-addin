@@ -60,7 +60,7 @@ import { rectToPrimitives } from '../core/inset-window.js';
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
 import { radialSignAt } from '../core/bricks/arc-voussoir.js';
-import { accentedBrickIndices } from './brick-accents.js';
+import { accentedBrickIndices, accentedRunIndices } from './brick-accents.js';
 
 export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-spine'
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
@@ -183,6 +183,13 @@ function drawBrick(editor, layer, brick, kind, setId, seed, reliefIn) {
     .attr('data-brick-id', String(brick.id))
     .attr('data-brick-height-offset', brick.heightOffset || 0);
 }
+/** Per-element run accents: a band / stroke brick's place on its run's grid (the engine's band/row/piece). */
+function stampRunPlace(el, brick, fallbackPiece) {
+  if (Number.isInteger(brick.bandIndex)) el.attr('data-brick-band', brick.bandIndex);
+  el.attr('data-brick-row', Number.isInteger(brick.rowIndex) ? brick.rowIndex : 0);
+  el.attr('data-brick-piece', Number.isInteger(brick.pieceIndex) ? brick.pieceIndex : fallbackPiece);
+  return el;
+}
 
 /** Audit v2 N1: a brick's FILL is derived from its own declared attributes (set, sample, flip -- written by
  *  drawBrick above), but the <pattern> it points at lives in the editor's outer <defs>, OUTSIDE the saved
@@ -205,8 +212,9 @@ export function repaintBricks(editor) {
 }
 
 function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn, ownerId = null) {
-  for (const b of bricks) {
+  for (const [i, b] of bricks.entries()) {
     const el = drawBrick(editor, layer, b, kind, setId, seed, reliefIn);
+    if (kind === 'frame') stampRunPlace(el, b, i); // per-band accents read it
     if (ownerId) el.attr(BRICK_OWNER_ATTR, ownerId); // item 22: which element (record) laid it
   }
 }
@@ -397,6 +405,40 @@ export function isRockFrame(settings) {
   const p = settings && settings.frameBandPatterns;
   return Array.isArray(p) && p.length > 0 && p.every((x) => x === 'fieldstone');
 }
+/** Item 33: the frame CORNER styles a Frame element can pick (the engine's band `cornerStyle` vocabulary,
+ *  core/bricks/contour-bands.js), in picker order. `id` = the engine's value. */
+export const FRAME_CORNERS = Object.freeze([
+  { id: 'mitre', label: 'Mitre', title: 'Mitre: the bricks meet on the diagonal' },
+  { id: 'butt', label: 'Butt', title: 'Butt: one side runs through, the other stops square against it' },
+  { id: 'block', label: 'Quoin', title: 'Quoin: a square corner block, the bands stop against it' },
+  { id: 'lapped', label: 'Lapped', title: 'Lapped: butt corners alternating band by band, laced together' },
+]);
+/** Item 33: the old corner VARIANT presets, folded into a preset + a corner choice (the picker). Their
+ *  FRAME_PRESETS entries stay (the engine's own data); the app lists the folded ones no more, and a saved board on
+ *  one maps to the same result (main/app-init.js migration 'frame-corner-presets'). */
+export const FOLDED_FRAME_PRESETS = Object.freeze({
+  butt_frame: { preset: 'single_soldier', corner: 'butt' },
+  quoin_corners: { preset: 'single_soldier', corner: 'block' },
+});
+/** The corner a Frame element is laid with: its own pick (`settings.frameCorner`), else its preset's own
+ *  (Fred: mitred for plain Soldier). */
+export function frameCornerOf(settings) {
+  if (settings && FRAME_CORNERS.some((c) => c.id === settings.frameCorner)) return settings.frameCorner;
+  const bands = FRAME_PRESETS[settings && settings.frameBandPreset] || FRAME_PRESETS.single_soldier;
+  return (bands[0] && bands[0].cornerStyle) || 'mitre';
+}
+/** The bands a Frame element lays: its preset's, each band's own pattern pick (`frameBandPatterns[i]`) and the
+ *  element's corner applied (a NEW array -- FRAME_PRESETS' frozen entries are never touched). */
+export function frameBandsOf(settings) {
+  const base = FRAME_PRESETS[settings && settings.frameBandPreset] || FRAME_PRESETS.single_soldier;
+  const overrides = (settings && settings.frameBandPatterns) || [];
+  const corner = settings && settings.frameCorner ? frameCornerOf(settings) : null;
+  return base.map((band, i) => ({
+    ...band,
+    ...(overrides[i] ? { pattern: overrides[i] } : {}),
+    ...(corner ? { cornerStyle: corner } : {}),
+  }));
+}
 /** The set an element is laid with. */
 export function elementSetId(settings, kind) {
   if (ROCK_SET_ID != null && ((kind === 'wall' && settings.pattern === 'fieldstone') || (kind === 'frame' && isRockFrame(settings)))) return ROCK_SET_ID;
@@ -531,6 +573,52 @@ export function toolMiniBricks(kind) {
   _toolMinis.set(kind, bricks);
   return bricks;
 }
+/** Item 33: a MINI FRAME corner -- `bands` laid by the real engine round a square just big enough for the band
+ *  stack (Set 1 at the tool-icon size), cropped to ONE corner (the stack + MINI_FRAME.marginIn of the board inside).
+ *  Draws the corner-style icons and the band-preset icons; a new FRAME_CORNERS / FRAME_PRESETS entry gets its icon
+ *  free. Cached by `key`. */
+const MINI_FRAME = Object.freeze({ marginIn: 0.4 });
+const _miniFrames = new Map();
+function _miniFrame(key, bands) {
+  if (_miniFrames.has(key)) return _miniFrames.get(key);
+  const depth = bands.reduce((a, b) => a + b.widthIn, 0);
+  const crop = depth + MINI_FRAME.marginIn, w = 2 * depth + MINI_FRAME.marginIn;
+  let bricks = [];
+  try {
+    const s = TOOL_MINI_BRICK;
+    bricks = generateBricks({
+      boardOutline: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: w }, { x: 0, y: w }],
+      set: resolvedSetFor(s), scale: scaleFor(s), suppression: 0, clumping: 0, seed: s.seed, skipWallFill: true,
+      frame: { primitives: buildRibbonPrimitives(rectToPrimitives({ x1: 0, y1: 0, x2: w, y2: w })), bands },
+    }).frameBricks;
+  } catch (_) {
+    bricks = [];
+  }
+  const out = { bricks, crop };
+  _miniFrames.set(key, out);
+  return out;
+}
+function _miniFrameSvg({ bricks, crop: c }, heightPx) {
+  const polys = bricks.filter((b) => b.polygon.some((p) => p.x < c && p.y < c)).map((b) => _iconPolygon(b)).join('');
+  if (!polys) return null;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 ${+c.toFixed(3)} ${+c.toFixed(3)}" aria-hidden="true">`
+    + `<rect width="${c}" height="${c}" fill="#efe6da"/><g fill="#b5533c" stroke="#efe6da" stroke-width="0.04">${polys}</g></svg>`;
+}
+/** A corner style's picker icon: two soldier bands with that `cornerStyle`. */
+const _cornerBands = (cornerId) => { const band = { widthIn: 0.75, pattern: 'soldier', cornerStyle: cornerId }; return [band, band]; };
+export const frameCornerBricks = (cornerId) => _miniFrame(`corner:${cornerId}`, _cornerBands(cornerId)).bricks;
+export const frameCornerIconSvg = (cornerId, heightPx = 26) => _miniFrameSvg(_miniFrame(`corner:${cornerId}`, _cornerBands(cornerId)), heightPx);
+/** Item 33 (audit N10, Fred's long-list rule): a band PRESET's icon -- its band stack at a corner, as laid; None = a
+ *  struck-through tile (the Wall grid's own 'none'). */
+export function framePresetIconSvg(presetId, heightPx = 26) {
+  const bands = FRAME_PRESETS[presetId];
+  if (!bands) return null;
+  if (!bands.length) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 1 1" aria-hidden="true">`
+      + `<rect width="1" height="1" fill="#efe6da"/><line x1="0.15" y1="0.85" x2="0.85" y2="0.15" stroke="#8a8078" stroke-width="0.06"/></svg>`;
+  }
+  return _miniFrameSvg(_miniFrame(`preset:${presetId}`, bands), heightPx);
+}
 // one argument only: it is passed straight to .map(), whose index must never reach the markup (a second
 // `attrs` parameter once turned every pattern icon into `<polygon0 ...>` -- drawn as nothing, measured live)
 const _iconPolygon = (b) => `<polygon points="${b.polygon.map((p) => `${+p.x.toFixed(3)},${+p.y.toFixed(3)}`).join(' ')}"/>`;
@@ -622,6 +710,43 @@ export const wallBrickPolygons = (editor) => wallBrickNodes(editor).map((n) => (
 /** F35 item 15: shows which Wall bricks the raised accent lifts -- a dark outline + `data-brick-accent` on
  *  each, from the SAME rule the height mask applies (brick-accents.js accentedBrickIndices). 2D only. */
 export const ACCENT_OUTLINE = Object.freeze({ color: '#ffc61a', widthIn: 0.05 }); // amber: reads against the photo's own dark joints
+function _markAccent(n, on) {
+  if (on) {
+    n.setAttribute('data-brick-accent', '1');
+    n.setAttribute('stroke', ACCENT_OUTLINE.color);
+    n.setAttribute('stroke-width', String(ACCENT_OUTLINE.widthIn));
+  } else if (n.hasAttribute('data-brick-accent')) {
+    n.removeAttribute('data-brick-accent');
+    n.setAttribute('stroke', 'none');
+    n.removeAttribute('stroke-width');
+  }
+}
+/** Per-element accents on RUNS (advisor): the same outline on the Frame bands' and the Brush strokes' accented
+ *  bricks, from the SAME rule the mask applies (brick-accents.js accentedRunIndices on each run's own grid). */
+export function syncRunAccentHighlight(editor, settings) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll || !settings) return 0;
+  const seed = settings.seed || 1;
+  const asRun = (n) => ({ polygon: _nodePolygon(n), row: Number(n.getAttribute('data-brick-row')) || 0, piece: Number(n.getAttribute('data-brick-piece')) || 0 });
+  let count = 0;
+  const apply = (nodes, acc) => {
+    const on = accentedRunIndices(nodes.map(asRun), acc, { seed });
+    nodes.forEach((n, k) => _markAccent(n, on.has(k)));
+    count += on.size;
+  };
+  const frame = [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="frame"]`)];
+  const bands = new Map();
+  for (const n of frame) { const b = Number(n.getAttribute('data-brick-band')) || 0; if (!bands.has(b)) bands.set(b, []); bands.get(b).push(n); }
+  for (const [b, nodes] of bands) apply(nodes, (settings.frameBandAccents || [])[b]);
+  const strokes = new Map();
+  for (const n of node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="brush"]`)) {
+    const k = n.getAttribute(BRICK_OWNER_ATTR) || 'stroke';
+    if (!strokes.has(k)) strokes.set(k, []);
+    strokes.get(k).push(n);
+  }
+  for (const nodes of strokes.values()) apply(nodes, settings.brushAccent);
+  return count;
+}
 export function syncAccentHighlight(editor, accent, seed) {
   const nodes = wallBrickNodes(editor);
   const raised = accentedBrickIndices(nodes.map((n) => ({ polygon: _nodePolygon(n) })), accent, { seed: seed || 1 });
@@ -768,6 +893,7 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   if (lays('frame')) drawBricks(editor, layer, frameBricks, 'frame', frameSettings.setId, settings.seed, settings.reliefIn, owner('frame'));
   if (lays('wall')) drawBricks(editor, layer, bricks, 'wall', wallSettings.setId, settings.seed, settings.reliefIn, owner('wall'));
   if (lays('wall')) syncAccentHighlight(editor, settings.accent, settings.seed);
+  if (lays('frame')) syncRunAccentHighlight(editor, settings); // per-band accents
   return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0 };
 }
 
@@ -1250,11 +1376,14 @@ export function regenerateOwnedBrickElements(editor) {
         : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
       const bricks = bricksForStroke(chain.points, settings);
       const ownerId = `${elementId}:${chainIdx}`;
-      for (const b of bricks) {
-        drawBrick(editor, layer, b, 'brush', settings.setId, settings.seed, settings.reliefIn).attr(BRICK_OWNER_ATTR, ownerId);
-      }
+      bricks.forEach((b, i) => {
+        // + its place on the stroke's own grid (the Brush accent, per stroke)
+        stampRunPlace(drawBrick(editor, layer, b, 'brush', settings.setId, settings.seed, settings.reliefIn).attr(BRICK_OWNER_ATTR, ownerId), b, i);
+      });
     });
   }
+  // the Brush accent's outline on the (re)drawn strokes (per-element accents)
+  if (editor._brickSettings) syncRunAccentHighlight(editor, editor._brickSettings);
 }
 
 if (typeof document !== 'undefined') {

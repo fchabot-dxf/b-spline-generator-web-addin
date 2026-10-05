@@ -14056,3 +14056,148 @@ WallPattern = {
   - the Accent rows for Frame bands and Brush (31d says same structure there, but the mask applies accents to
     Wall bricks only today; that needs the per-element accent model -- next);
   - join/split cells (31e), hidden until 'customBond'.
+
+### turn 247 -- PER-ELEMENT ACCENTS: Frame bands + Brush strokes (the Accent row, the mask applies each element's own) (seat 37)
+
+- **The grid of a RUN:** the engine already stamps `bandIndex` / `rowIndex` / `pieceIndex` on every band brick
+  (primitive-ribbon ribbonPieces, the area bands too), and brush masonry strokes go through the same contour
+  bands.
+  - drawBrick now writes them: `data-brick-band/row/piece` on Frame bricks, `row/piece` on Brush bricks (a
+    continuous stroke has none: its order along the stroke).
+  - They are editor-only, so BRICK_EDITOR_ONLY_ATTRS strips them at bake: frame + brush entries; Send/download
+    stay byte-identical; the byte-identity test is updated for them.
+- **brick-accents.js:**
+  - `accentedRunIndices(bricks, accent)`: a periodic preset on the run's OWN (row, piece) grid, over the whole
+    run; Click bricks = points; the tile builder stays Wall-only;
+  - `elementAccents(settings)`: the declared map wall / frameBands[i] / brush.
+- **State:** `frameBandAccents: []` (index = the band) + `brushAccent` (the Brush element's, on every stroke's own
+  grid), the same shape as `accent`.
+- **The mask:** each band's own accent and signed level (clamped like the Wall's) + the Brush accent per stroke
+  (grouped by data-brick-owner); stamp-mask-manager passes both.
+- **The 2D highlight:** `syncRunAccentHighlight`, the same amber outline as the Wall's; it runs after a frame lay,
+  after brush regeneration and on every accent change.
+- **The panel:**
+  - one renderer `renderAccentRowFor(container, target, iconPx)`: None + the presets as engine icons (name =
+    tooltip, drawn SUNK when the level is negative), Click, and the signed level when not None;
+  - ids `brickAccent_<band0|band1|brush>_<preset>`, `brickAccentClick_<key>`, `brickAccentLevel_<key>`;
+  - each Frame band row gets one (16 px icons); the Brush section gets one (#brickBrushAccentRow, 22 px);
+  - Click bricks is targeted: `toggleAccentClickMode(target)` + an `ELEMENT_ACCENTS` table (where each element's
+    accent lives + which bricks a click hits);
+  - `setElementAccent(target, patch)` clamps the level.
+- **Live** (T1, three_band):
+  - frame bricks carry bands 0/1/2;
+  - band 0 Checker -> 53 of its 106 bricks outlined, band 1 untouched;
+  - the mask body sum: none 11631.9 -> raised 13323.8 -> sunk 10023.1;
+  - shots/seat37/element_accents_frame_bands.png (+ _frame_canvas.png).
+- **Tests:**
+  - new element-accents (5): the run rule (checker along / across rows, clicks, no tile); the MASK (band 0 checker
+    raises only band 0's piece 0; the Brush sunk lowers only its piece 0; band 1 untouched); the panel (a row per
+    band, a pick sets that band only, the clamp; the Brush row + Click arms the mode).
+  - 5/5 fail against the pre-change files (restored, cmp clean).
+  - regen's bandIds helper is narrowed to the band-pattern buttons (the rows now hold accent buttons too).
+- Whole vitest (278 files): the parallel run failed only in heavy files (boundary-at-depth T10, fieldstone, frame
+  template 10; regen once); alone 19/19, 32/32, 98/98; fieldstone is the known 5 s load timeout on this machine.
+- **Matrix rows for 88:**
+  - Frame band 1 Accent Checker -> band-1 bricks outlined, a 3D change, band 0 unchanged;
+  - Brush Accent -> brush bricks outlined.
+- **Next:** item 33 (corner picker + the quoin texture fix).
+
+## turn 249: item 33, the frame CORNER picker (part 1; the quoin fill waits on 88)
+- **Declared** in editor/editor-brick-tool.js:
+  - `FRAME_CORNERS`: the engine's cornerStyle ids, each with a name and a tooltip.
+  - `FOLDED_FRAME_PRESETS`: butt_frame -> single_soldier + butt; quoin_corners -> single_soldier + block.
+  - `frameCornerOf(settings)`: the element's pick, else the preset's band-0 own corner, else mitre.
+  - `frameBandsOf(settings)`: the preset's bands, plus each band's pattern pick, plus the element's corner on EVERY band.
+  - `resolveFrameGeom` now reads frameBandsOf instead of its inline map.
+- **State:** `brickSettings.frameCorner = null`, meaning the preset's own corner. A preset change resets it to null, so the new preset starts on its own corner (Fred: mitred for plain Soldier).
+- **Panel:**
+  - The "Corners" row sits between the preset list and the band patterns (#brickFrameCornerList).
+  - Each button is the same small icon button as the Accent row, with the tooltip as its title.
+  - The icon is `frameCornerIconSvg`: two soldier bands round a 3.4 in square, laid by the real engine, cropped to one corner. A new FRAME_CORNERS entry gets its icon for free.
+  - The row is hidden for None and for a rock frame (one fieldstone ring has no corner joints). That is visibility, not a guard.
+- **The fold:**
+  - FRAME_PRESETS (core, 88's data) is UNTOUCHED: core tests and the tools/repro matrices still name butt_frame and the others.
+  - The app's FRAME_PRESET_LIST filters out the folded ids. The quick-settings row follows, since it reads FRAME_PRESET_LIST.
+  - Migration 'frame-corner-presets' maps a saved board to the same bands. The test asserts `frameBandsOf(migrated)` deep-equals the old FRAME_PRESETS entry.
+- **Deviation, for the advisor:** 'Soldier x2 (lapped)' is NOT folded into Soldier, because it is TWO bands. Folding it would change the lay, and lapped on one band equals butt. It stays as 'Soldier x2', and its own default corner = lapped (the picker overrides).
+- **The quoin texture bug:** root cause in core (88's). primitive-ribbon.js:971 does `pickSample(QUOIN_SET, ...)`, but the app resolves the sampleId in the ELEMENT's set, so quoins get a flat colour and no height detail.
+  - Live: Soldier + Quoin gives 86 frame bricks, 4 of them flat-filled.
+  - DM'd 88 the 2-line fix: `pickSample(set, ...)` plus `set.heightJitterIn`, with the block SIZE kept as QUOIN_SET.brickLengthIn.
+  - No app change is needed for the "block-sized crop": the fill pattern is objectBoundingBox with xMidYMid slice.
+  - tests/frame-corner-fills.test.js is written and fails today (set 1, block: 8 stone_07 samples). It is HELD uncommitted until 88's fix lands.
+- **Tests:**
+  - frame-corners: 6 tests. Against the pre-change tree, the file fails to load (missing exports).
+  - frame-corners-panel: 4 tests. Fails 4/4 against the pre-change tree. Restored from the scratch copies; cmp identical.
+- **Live check** (headless, shots/seatC/frame_corners_*):
+  - The row shows 4 engine icons, Mitre active on Soldier.
+  - Each pick re-lays at once: mitre 106, butt 102, lapped 102, block 86 bricks.
+  - The preset list reads None | Soldier | Soldier + Stretcher | S/S/S | Soldier x2 | Header | H/F/S. 0 errors.
+- **Full suite:** 11 failures, all accounted for:
+  - the held quoin case;
+  - the known heavy load timeouts (boundary-at-depth, fieldstone large stones, template 10, radius handles), which pass alone at 19/19, 5/5, 32/32 and 28/28;
+  - discrete-controls N2, which passes alone at 98/98.
+- **turn 249 part 2, the quoin fill:** 88 landed option (a), quoin-element-set 31c0824. The block's sample and jitter now come from the band's own set; its size stays QUOIN_SET's. I merged it into fb-app.
+  - tests/frame-corner-fills.test.js is now committed: every corner style x every bond set's pieces resolve in the element's set. It failed before the merge (set 1, block: 8 stone_07 samples) and passes after it.
+  - Live re-probe: Quoin gives 86 bricks with 0 flat fills (4 before). Shot: shots/seatC/frame_corners_quoin_canvas_fixed.png, quoins in red-brick texture.
+  - Still to come: the paint-fix sha from the advisor, to merge origin/main.
+- **turn 249 part 3: merged main 201f94b** (88's paint fix plus the migration checks), as 7e15d99. Item 33 tests are still 15/15.
+- **turn 249 part 4: amendment (audit N10, the long-list rule): the Frame preset list and the per-band pattern pickers are now ICONS with tooltips.**
+  - `_miniFrame(key, bands)` in editor-brick-tool.js generalises the corner icon. It lays any band stack on a square sized to the stack (2 x depth + 0.4 in) and crops one corner (depth + 0.4 in).
+    - The corner icons go through it unchanged: 2 bands give 3.4 / 1.9, as before.
+    - `framePresetIconSvg(id)` draws each preset's own stack; None is a struck-through tile.
+    - The quick-settings "Frame bands" row gets the same icons through `iconFor`.
+  - The band pattern buttons use the Wall grid's `wallPatternIconSvg` with the name as the tooltip. Disabled ones stay greyed, and their title becomes "<name>: <reason>".
+  - Tests: one in frame-corners (every listed preset has a distinct engine icon), one new in frame-corners-panel (tooltips on the preset and band-pattern buttons), and one changed there (the preset button's name moved to its tooltip). All three fail against the pre-icon copies; restored and cmp identical.
+  - Live: shots/seatC/frame_corners_row_icons.png (three-band preset, 3 band rows of icons).
+- **Suite after the icons:**
+  - 5 failures in the full run, all "Test timed out" under load.
+  - Alone: boundary-at-depth 19/19 and fieldstone 5/5 pass. frame-3d-sweep failed 1/8 alone once, then passed on a rerun (flake). discrete-controls N2 timed out once alone at 5.19 s.
+  - A/B on N2 isolated (-t), x3 each: new 297 / 398 / 455 ms, old 353 / 326 / 354 ms. The icons don't slow it; whole-file timings swing from 3.4 to 10.9 s with machine load. The 5 s timeout on N2 is a load flake, not this change.
+
+## turn 251: item 34, PASSWORD TO EDIT (reads open, writes need the password, cached)
+- **Worker** (cloud/preset-worker, wrangler name projects-dansemur):
+  - New src/edit-gate.js declares `EDIT_GATE`:
+    - secret EDIT_PASSWORD;
+    - covers PUT/DELETE/POST on `/projects|/presets`;
+    - `exemptNamePrefixes: ['connery:']`;
+    - 3 failures per IP per 600 s, counters under the PRESETS key prefix `editfail::`.
+  - `checkEditGate` runs before the /projects and /presets routes. It answers:
+    - 401 "password required" when none is sent (not counted);
+    - 401 "wrong password" (counted; TTL = window);
+    - 429 at the limit;
+    - 503 when the secret is unset.
+  - The password is compared by SHA-256 digests, so timing doesn't leak how much of a guess was right.
+  - The project list filters the counter keys out. CORS Allow-Headers now includes Authorization. README and health note updated.
+- **SCOPE FINDING (for the advisor):** Mathieu Connery's app (APPS/MathieuConnery/html/src/connery-project-manager.js) WRITES PUT/DELETE /projects on the same worker, with keys namespaced `connery:`.
+  - A blanket /projects gate would have broken it.
+  - Declared exempt instead: its writes stay open, and they cannot touch a B-spline key, because the prefix is in the name.
+  - Untouched: CAM Studio (/cam-profiles), the Loader (/loader/apps), the pen plotter (X-API-Key), the bus and page-view routes, and the art commits.
+- **Decision (for the advisor): fail CLOSED.** With no secret set, project writes answer 503. **Set the secret BEFORE fb-app reaches main.** The deploy-worker workflow redeploys on main, and saves stop until the secret exists.
+- **App:** new main/edit-password.js.
+  - `EDIT_PASSWORD` declares the storage key, prompt titles and messages.
+  - `editFetch` wraps every cloud write:
+    - asks once ("Password to save", a masked field in the Project Manager's dialog style);
+    - caches the password only after the worker accepted it;
+    - on 401 clears it, re-asks once ("Wrong password -- try again") and retries once;
+    - on 429 shows a toast to wait 10 minutes;
+    - a cancel answers a 401 Response, so each caller's own `!r.ok` path reports it.
+  - All 7 PUT/DELETE sites in cloud-project-manager.js now use it: save, rename (2), folder rename (2), delete, folder delete, migration upload. A test checks no plain-fetch write remains.
+  - Settings: a "Password to save" field with Set and Clear, plus a status line.
+- **Fusion:** b-spline-gen.py keeps `{editPassword}` in `%APPDATA%\bspline-frame-builder\config.json`.
+  - That file is outside the deployed add-in folder, and `BSPLINE_USER_CONFIG` is the test seam for its path.
+  - At startup (the get_design_params handshake, beside build_info) Python sends 'edit_password' to the palette.
+  - A new 'store_edit_password' action stores or clears it. The log says only "stored" or "cleared", never the value.
+  - In Fusion, setEditPassword writes localStorage AND sends the value to Python, so a redeploy never asks again.
+- **Tests:**
+  - edit-gate-worker 8, edit-password 8, test_edit_password_config.py 6.
+  - Against the pre-change tree: the JS files fail to import and Python fails 6/6.
+  - Stronger check (the new modules kept, only the wiring reverted): 8 fail. The 8 that still pass pin unchanged truths (reads open, Connery open, module-internal behaviour).
+  - Restored from scratch copies; cmp identical.
+- **Matrix / persistence row, live:** the real worker code behind a local Node adapter (in-memory KV, dummy secret), with the app pointed at it in headless Chrome.
+  - First Save As: asked once, PUT 200 with auth, cached.
+  - Second save: no ask.
+  - A wrong cached password: PUT 401, re-asked "Wrong password -- try again", PUT 200, the good one cached.
+  - Settings shows "Saved on this device." 0 page errors.
+  - Shots: shots/seatC/item34_password_prompt.png, item34_settings_field.png.
+- **Suite:** the full run hit 28 failures under heavy load (21 "timed out"; the rest are heavy engine tests). All 16 failing files pass alone. pytest b-spline-gen: 148 passed.
+- **Neutral-set rule (advisor, this turn):** item 34 adds NO persisted P.brickSettings field (the password lives in localStorage and the add-in config), so the fixture's neutral set is unchanged.
