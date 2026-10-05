@@ -153,7 +153,9 @@ let serverExit = null; server.on('exit', (code) => { serverExit = code; });
   }
 }
 let wsUrl = null;
-for (let i = 0; i < 50 && !wsUrl; i++) { await sleep(200); try { wsUrl = (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).find((t) => t.type === 'page')?.webSocketDebuggerUrl; } catch {} }
+// 30 s, as the server check above: under a 14-group --parallel load the 11th Chrome (frame-ui) missed a 10 s wait
+// twice ("no Chrome DevTools endpoint"; alone it is 14/14)
+for (let i = 0; i < 150 && !wsUrl; i++) { await sleep(200); try { wsUrl = (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).find((t) => t.type === 'page')?.webSocketDebuggerUrl; } catch {} }
 if (!wsUrl) { stop(); console.error('brick-matrix: no Chrome DevTools endpoint'); process.exit(2); }
 const ws = new WebSocket(wsUrl); await new Promise((r) => ws.addEventListener('open', r));
 let id = 0; const pending = new Map(); const pageErrors = [];

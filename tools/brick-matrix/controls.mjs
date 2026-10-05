@@ -71,6 +71,8 @@ export const BRICK_CONTROLS = [
   { name: 'Octagon + square: ratio S', kind: 'editor', tool: 'wall', do: click('brickPatternParam_ratio_0'), expect: LAYOUT, introducedBy: '59550fe' },
   { name: 'Octagon + square: ratio L', kind: 'editor', tool: 'wall', do: click('brickPatternParam_ratio_2'), expect: LAYOUT, introducedBy: '59550fe' },
   { name: 'Wall pattern: Fieldstone', kind: 'editor', tool: 'wall', do: click('brickPattern_fieldstone'), expect: { ...LAYOUT, sets: { wall: 3 }, reads: { brickGroutWidth: ROCK_SET.grout.widthIn } } },
+  // T86 item 25 + 37's a30a605: Coursed rubble picks Set 5 (Grey stone) the way Fieldstone picks Set 3
+  { name: 'Wall pattern: Coursed rubble', kind: 'editor', tool: 'wall', do: click('brickPattern_coursed_rubble'), expect: { ...LAYOUT, sets: { wall: 5 } }, introducedBy: 'a30a605' },
   // per-element joint: the Frame tool shows the frame's own (Red Brick) joint while the wall is rock
   { name: 'Frame tool shows its own joint', kind: 'editor', tool: 'wall', do: click('brickTool_frame'), expect: { ...E(false, false, false), commit: 'at once', reads: { brickGroutWidth: RED_SET.grout.widthIn } }, introducedBy: '1404b72' },
   { name: 'Back to the Wall tool', kind: 'editor', tool: 'wall', do: click('brickTool_wall'), expect: { ...E(false, false, false), commit: 'at once', reads: { brickGroutWidth: ROCK_SET.grout.widthIn } }, introducedBy: '1404b72' },
