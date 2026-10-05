@@ -95,7 +95,18 @@ describe('fieldstone as a band pattern (T86 item 20)', () => {
   // (MEASURED up to ~7.8 sq in at widthIn=1, not a small cosmetic residual), so no honest threshold
   // exists here until 16(c) itself is fixed -- `it.todo` keeps the finding visible with the real
   // numbers rather than picking a number that would hide it or silently losing the coverage.
-  it.todo('template_18, band widthIn=0.75/1: BLOCKED on item 16(c) (boundaryAtDepth self-intersects at this neck; worst measured overlap 0.0297/7.76 sq in)');
+  // T86 item 16(c) (seat B): unblocked -- boundaryAtDepth now samples an arc only between its own two
+  // joints, so T18's neck no longer self-intersects at these depths.
+  for (const widthIn of [0.75, 1]) {
+    it(`template_18, band widthIn=${widthIn}: no overlap, every stone stays inside the ring, reasonable coverage`, () => {
+      const r = ringContainmentCheck('template_18', widthIn);
+      expect(r.cells.length).toBeGreaterThan(0);
+      expect(r.overlap).toBeLessThan(1e-6);
+      expect(r.worstOutside, 'worst area escaping the outer edge').toBeLessThan(1e-6);
+      expect(r.worstInside, 'worst area intruding the inner hole').toBeLessThan(1e-6);
+      expect(r.ringCoverage).toBeGreaterThanOrEqual(0.85);
+    });
+  }
 
   // T86 item 20: a KNOWN, bounded residual at band TRANSITIONS (fieldstone's own ring boundary vs
   // the next band's own independently-built mitred corner pieces) -- the SAME class of "two
