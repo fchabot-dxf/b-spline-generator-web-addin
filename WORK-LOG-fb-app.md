@@ -14355,3 +14355,35 @@ WallPattern = {
   - Shots: ~/.bspline-status/shots/seat37/item13_preview_sheet_7x9.png (the five at 7x9, 1¼ in), item13_wall_grid_icons.png, item13_last_pattern_canvas.png.
 - **Not yet:** the declared pattern ROTATION (0 / 45 / 90; "running bond at 45" = stretcher + 45). It needs `rotationDeg` through generateBricks → bricksFillShape (88's engine.js / fill-shape.js). Proposal DM'd to 88; waiting.
 - **Suite:** 2 failures = discrete-controls timeouts. N2 isolated: 252 / 289 ms with item 13, 420 / 480 ms without it, so no slowdown.
+
+## turn 257: F35 item 14, TILE / PAVER patterns (Fred's sheet 3)
+- **What the sheet draws** (read from an enlarged crop; the sheet has no captions, so each is named by what it shows):
+  - square grid;
+  - octagons + small square "dots" in two drawings: flats horizontal with diamond dots ("square + diamond inserts"), and the same lattice turned 45° with square dots ("octagon + small square"), each at three dot sizes;
+  - pointy-top hexagon;
+  - tall lozenge lattice;
+  - framed square (a U square, a W bar right and below, a W x W square where the bars cross).
+- **Declared, closed-form:** core/bricks/layouts/tiles.js (squareGrid, octagonDot, hexagon, lozenge, framedSquare). Unit U = the set's brick length (the size slider scales it); every joint the set's grout; each unit is one cell (its own sample, centre-cropped by the fill).
+  - `TILE_PARAMS` is the data: octagonDot / squareDiamond `ratio` (the dot's diagonal / U) with options [0.15, 0.3, 0.58] and defaults 0.3 / 0.15; lozenge aspect 1.6.
+- **Pattern entries** (library.js, registration lines + one import): `family: 'tiles'`, `params` = what the user picks, `fixed` = what the entry pins (`octagon_square` pins rotationDeg 45, `square_diamond` 0). The two drawings share octagonDotLayout (LAYOUTS lines in fill-shape.js).
+- **Params flow:**
+  - fill-shape.js resolves defaults + the caller's `set.layoutParams` + `fixed` before calling the layout, so every caller (icons, engine-only scripts) lays the same pattern.
+  - The app passes only the user's pick (`P.brickSettings.patternParams[id]`, new persisted field, default {}).
+  - `patternParamsFor` (the panel's current value) = defaults + pick.
+  - **Neutral set:** tools/brick-matrix/controls.mjs neutralNewFields += `patternParams: {}`, in this commit, per the rule.
+- **Panel:**
+  - The Wall grid gets a "Tiles" heading (WALL_PATTERN_FAMILIES `heading: true`; the patterns join by their own `family`).
+  - #brickPatternParams under the grid shows the active pattern's params as S / M / L chips (the default or pick active; hidden for a pattern without params). A pick re-lays at once.
+- **Tests:**
+  - tests/tile-patterns.test.js (10): declared; per tile on a 7x9 wall: inside, 0 overlaps, whole units ≤ U per edge (a board-edge clip can cut a longer chord, so only unclipped units are checked); all six differ; each dot option differs, and no pick = the default; patternParamsFor.
+  - tests/tile-patterns-panel.test.js (3): heading + order, chips shown or hidden + default active, a chip stores the pick per pattern + re-lays.
+  - Fails 13/13 with the registrations reverted. Restored; cmp clean.
+- **Live:**
+  - Heading "Tiles"; each tile re-lays with a distinct 3D (square grid 19 / diamond 35 / octagon 39 / hexagon 26 / lozenge 24 / framed 34 wall pieces on T1).
+  - Re-picking the octagon = the identical hash; dot S / L = new hashes (39 / 29 pieces).
+  - The pick survives a real reload (L chip active). 0 errors.
+- **Shots** (~/.bspline-status/shots/seat37):
+  - item14_preview_sheet_7x9.png: the six, plus both octagon drawings at all three dot sizes. **For Fred: the largest octagon dot (0.58) reads a little smaller than the sheet's third drawing; it's one number in TILE_PARAMS.**
+  - item14_wall_grid_tiles.png, item14_octagon_large_dot_canvas.png.
+- **Suite:** 1 failure, the known N2 timeout.
+- **Also this turn:** 88 asked whether Clear → Artwork re-stamping the wall record is expected. Measured on a fresh board: the record is unchanged (settings + laid key). The snapshot is rewritten on every lay, so a re-lay after a surface-only change (which doesn't re-lay) shows those keys; told 88.

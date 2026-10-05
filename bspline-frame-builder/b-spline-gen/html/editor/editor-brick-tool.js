@@ -675,6 +675,15 @@ export function accentIconSvg(presetId, heightPx = 26, { sunk = false, bond = 's
   return svg;
 }
 
+/** F35 item 14: a pattern's current user-facing params (the panel's chips): each declared param's default, then the
+ *  user's pick for THIS pattern (`settings.patternParams[pattern]`). The fill (fill-shape.js) resolves the same,
+ *  plus the entry's pinned `fixed` ones. */
+export function patternParamsFor(settings, pattern) {
+  const def = BRICK_PATTERNS[pattern] || {};
+  const defaults = Object.fromEntries(Object.entries(def.params || {}).filter(([, p]) => p && 'default' in p).map(([k, p]) => [k, p.default]));
+  return { ...defaults, ...((settings && settings.patternParams && settings.patternParams[pattern]) || {}) };
+}
+
 function applyWallPattern(input, settings) {
   const pattern = settings.pattern;
   const def = pattern && BRICK_PATTERNS[pattern];
@@ -683,6 +692,9 @@ function applyWallPattern(input, settings) {
     input.skipWallFill = true;
   } else if (def.kind === 'tile2d') {
     input.set = { ...input.set, layout: pattern };
+    // F35 item 14: the user's pick of the pattern's declared params (the fill adds the defaults + pinned ones)
+    const picked = settings.patternParams && settings.patternParams[pattern];
+    if (picked && Object.keys(picked).length) input.set.layoutParams = { ...picked };
   } else {
     input.zones = [{ pattern }];
   }

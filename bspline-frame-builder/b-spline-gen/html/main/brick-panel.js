@@ -26,7 +26,7 @@ import {
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
   BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
-  elementGroutWidth, JOINT_ELEMENT,
+  elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
   FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg,
 } from '../editor/editor-brick-tool.js';
 import {
@@ -1657,6 +1657,9 @@ const WALL_PATTERN_LABELS = {
   // F35 item 13: the sheet's own names
   stacked_horizontal: 'Stacked horizontal', chevron: 'Chevron', stacked_variation: 'Stacked variation',
   basketweave_variation: 'Basketweave variation', basketweave_stacked: 'Basketweave + stacked',
+  // F35 item 14: the tiles (named by what the sheet draws; the sheet has no captions)
+  square_grid: 'Square grid', square_diamond: 'Square + diamond inserts', octagon_square: 'Octagon + small square',
+  hexagon: 'Hexagon', lozenge: 'Lozenge', framed_square: 'Framed square',
   fieldstone: 'Fieldstone',
 };
 // item 23: what a ROCK wall becomes when a brick set is picked for it
@@ -1672,13 +1675,17 @@ const WALL_PATTERN_FAMILIES = [
   { id: 'herringbone', label: 'Herringbone', patterns: ['herringbone', 'chevron'] },
   { id: 'basketweave', label: 'Basketweave', patterns: ['basketweave', 'basketweave_variation', 'basketweave_stacked'] },
   { id: 'fieldstone', label: 'Fieldstone', patterns: ['fieldstone'] },
+  // F35 item 14: every BRICK_PATTERNS entry declaring `family: 'tiles'` lands here, under its own heading
+  { id: 'tiles', label: 'Tiles', heading: true, patterns: [] },
   { id: 'more', label: 'More', patterns: [] },
 ];
 function wallPatternFamilies() {
-  const listed = new Set(WALL_PATTERN_FAMILIES.flatMap((f) => f.patterns));
+  // a pattern entry may declare its own family (F35 item 14: `family: 'tiles'`)
+  const byFamily = (fid) => WALL_PATTERN_LIST.map((p) => p.id).filter((id) => BRICK_PATTERNS[id] && BRICK_PATTERNS[id].family === fid);
+  const listed = new Set(WALL_PATTERN_FAMILIES.flatMap((f) => [...f.patterns, ...byFamily(f.id)]));
   const extra = WALL_PATTERN_LIST.map((p) => p.id).filter((id) => !listed.has(id));
   return WALL_PATTERN_FAMILIES
-    .map((f) => ({ ...f, patterns: (f.id === 'more' ? [...f.patterns, ...extra] : f.patterns).filter((id) => BRICK_PATTERNS[id]) }))
+    .map((f) => ({ ...f, patterns: [...f.patterns, ...byFamily(f.id), ...(f.id === 'more' ? extra : [])].filter((id) => BRICK_PATTERNS[id]) }))
     .filter((f) => f.patterns.length);
 }
 const _patternLabel = (id) => WALL_PATTERN_LABELS[id] || id;
@@ -1690,7 +1697,15 @@ function renderWallPatternList(container) {
   // in the declared family ORDER (WALL_PATTERN_FAMILIES), no family sub-headings.
   container.style.flexDirection = 'row';
   container.style.flexWrap = 'wrap';
-  for (const id of wallPatternFamilies().flatMap((f) => f.patterns)) {
+  for (const fam of wallPatternFamilies()) for (const id of fam.patterns) {
+    if (fam.heading && id === fam.patterns[0]) { // F35 item 14: a family that declares a heading starts a labelled row
+      const h = document.createElement('div');
+      h.className = 'brick-pattern-family-heading';
+      h.id = `brickPatternFamily_${fam.id}`;
+      h.textContent = fam.label;
+      h.style.cssText = 'flex:0 0 100%; font-size:10px; opacity:0.65; margin:4px 0 2px;';
+      container.appendChild(h);
+    }
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'cad-btn brick-pattern-icon';
@@ -1739,6 +1754,54 @@ function syncWallPatternButtons() {
   syncQuickSettings();
   syncLargeStonesRow();
   syncRusticRows();
+  renderPatternParams();
+}
+
+/** F35 item 14: the active Wall pattern's declared params (BRICK_PATTERNS[id].params) as chip rows under the grid --
+ *  one chip per declared option, the user's pick (else the default) active. Hidden for a pattern with none. */
+function renderPatternParams() {
+  const grid = document.getElementById('brickPatternList');
+  if (!grid || !grid.parentNode) return;
+  let row = document.getElementById('brickPatternParams');
+  if (!row) {
+    row = document.createElement('div');
+    row.id = 'brickPatternParams';
+    row.style.cssText = 'margin:4px 0 8px;';
+    grid.parentNode.insertBefore(row, grid.nextSibling);
+  }
+  row.innerHTML = '';
+  const id = P.brickSettings.pattern;
+  const def = BRICK_PATTERNS[id];
+  const params = Object.entries((def && def.params) || {}).filter(([, p]) => p && Array.isArray(p.options));
+  row.style.display = params.length ? '' : 'none';
+  const current = patternParamsFor(P.brickSettings, id);
+  for (const [key, p] of params) {
+    const line = document.createElement('div');
+    line.style.cssText = 'display:flex; gap:4px; align-items:center; flex-wrap:nowrap; margin-bottom:4px;';
+    const label = document.createElement('span');
+    label.textContent = p.label || key;
+    label.style.cssText = 'font-size:10px; opacity:0.65; width:70px;';
+    line.appendChild(label);
+    p.options.forEach((v, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cad-btn' + (v === current[key] ? ' active' : '');
+      b.id = `brickPatternParam_${key}_${i}`;
+      b.textContent = ['S', 'M', 'L'][i] || String(v);
+      b.style.cssText = 'flex:0 0 auto; min-width:0; width:auto; padding:2px 10px;';
+      b.title = `${p.label || key}: ${v}`;
+      b.addEventListener('click', () => setPatternParam(id, key, v));
+      line.appendChild(b);
+    });
+    row.appendChild(line);
+  }
+}
+/** F35 item 14: pick a pattern param (kept per pattern) -- re-lays at once. */
+export function setPatternParam(patternId, key, value, commit = 'generate') {
+  const all = P.brickSettings.patternParams || {};
+  P.brickSettings.patternParams = { ...all, [patternId]: { ...(all[patternId] || {}), [key]: value } };
+  renderPatternParams();
+  commitBrickSetting(commit);
 }
 
 /** F35 item 8: the per-band pattern picker -- one row per band in the CURRENT frameBandPreset, each
