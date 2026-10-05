@@ -139,6 +139,13 @@ class TestSetupsWithOperations:
         cb = _import_module()
         assert cb._setups_with_operations() == []
 
+    def test_the_carved_setup_counts_as_a_build_setup(self):
+        """H23 item 82: BUILD rebuilds every SETUP_SPECS setup, so its busy check must cover the new
+        'B-spline Carved' too -- the names come from the declaration, not a second hand-kept list."""
+        _install_fake_adsk([("B-spline Carved", 4)])
+        cb = _import_module()
+        assert cb._setups_with_operations() == [{"name": "B-spline Carved", "ops": 4}]
+
     def test_ignores_a_setup_whose_name_is_not_a_build_setup(self):
         _install_fake_adsk([("Some Other Setup", 5)])
         cb = _import_module()

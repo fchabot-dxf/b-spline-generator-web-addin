@@ -8,8 +8,9 @@ the binding is implicit through the bodies/occurrences supplied).
   | Setup                  | MM rule        | Stock + WCS notes      |
   +========================+================+========================+
   | Stock                  | ``stock``      | auto bbox / model orig |
-  | B-spline Back          | ``bspline_set``| auto bbox / back face  |
-  | B-spline Top           | ``bspline_set``| from prev / flipped Y  |
+  | B-spline Back          | bspline_clean  | CAM_POSITION box / pt  |
+  | B-spline Top           | bspline_clean  | from prev / flipped pt |
+  | B-spline Carved        | bspline_carved | solid=Clean / flipped  |
   | Frame                  | ``frame``      | auto bbox / reoriented |
   +------------------------+----------------+------------------------+
 
@@ -25,6 +26,7 @@ import adsk.cam
 import adsk.fusion
 
 from . import parameter_introspect as pi
+from .cam_position import CAM_POSITION, WCS_SKETCH_NAME, stock_box_cm, wcs_point_cm
 from cam_utils import get_design
 
 
@@ -167,6 +169,8 @@ def apply_templates_to_existing_setups(cam, logger=None):
             continue
         try:
             _apply_cloud_templates(setup, cloud_templates, name, logger)
+            if spec.get('op_heights'):
+                _apply_op_heights(setup, name, logger)
             n_processed += 1
         except Exception as e:
             _log(logger, f"APPLY TEMPLATES ({name}): raised {type(e).__name__}: {e}", "WARNING")
@@ -843,14 +847,19 @@ SETUP_SPECS = [
         'stock_offset_sides':  '0 in',
         'stock_offset_bottom': '0 in',
     },
+    # H23 item 82: the three B-spline panel setups machine ONE part, so they share CAM_POSITION
+    # (cam_position.py): one fixed stock box ('stock_box'), one declared WCS point per side
+    # ('wcs_point'), and stock-relative heights on their 3D operations ('op_heights'). The legacy
+    # 'wcs_origin' / 'box_point' keys stay as the fallback when the WCS sketch is missing.
     {
         'name':         'B-spline Back',
-        'mm_rule':      'bspline_set',
-        # Fixed-box stock: dimensions come from the parametric stock body
-        # in MM-Stock rather than auto-bboxing the panel itself. Lets the
-        # back-side toolpaths see the FULL stock blank (including the 1in
-        # top offset air), not just the panel surface bbox.
+        'mm_rule':      'bspline_clean',
+        # Fixed-box stock = CAM_POSITION['stock'] (the box the MM-Stock placeholder is built from),
+        # dims WRITTEN (an unwritten FixedBoxStock defaults to 13 x 10 in X/Y -- measured).
         'stock_intent': 'fixed_box',
+        'stock_box':    True,
+        'wcs_point':    'back',
+        'op_heights':   True,
         'wcs_origin':   'box_point',          # corner of stock bbox
         'wcs_orient':   'select_x_y',         # axesXY -- pick X & Y axes from model
         'box_point':    'top 1',              # verified from audit JSON
@@ -867,7 +876,7 @@ SETUP_SPECS = [
     },
     {
         'name':         'B-spline Top',
-        'mm_rule':      'bspline_set',
+        'mm_rule':      'bspline_clean',     # same MM as Back: PreviousSetupStock stays verified
         # 'from_prev_setup' tells Fusion to inherit the stock state from
         # the previous setup's IPV (in-process view) — i.e. the material
         # left behind after B-spline Back has cut its pocket. Combined
@@ -882,6 +891,8 @@ SETUP_SPECS = [
         # Rest machining: Fusion subtracts the prior setup's removed
         # material so Top's toolpaths skip already-machined regions.
         'continue_machining': True,
+        'wcs_point':    'flipped',
+        'op_heights':   True,
         # B-spline Top default templates. "Front" in the cloud library's
         # naming maps to the panel's top-side (the face that becomes the
         # visible/top after the flipY between Back and Top setups), so
@@ -895,6 +906,25 @@ SETUP_SPECS = [
             'Morphed Spiral.f3dhsm-template',
             'Pocket front deloge FRED.f3dhsm-template',
         ],
+    },
+    {
+        # The Carved (Stamped) panel, same side as Top. Its stock is the CLEAN body (From solid): Fusion
+        # refuses to verify PreviousSetupStock across two non-identical models (measured warning), while
+        # From solid -> the Clean body machines exactly Carved minus Clean, no warning (measured).
+        'name':             'B-spline Carved',
+        'mm_rule':          'bspline_carved',
+        'skip_if_no_bodies': True,           # a Send without a Stamped panel: no Carved setup
+        'stock_intent':     'from_solid',
+        'stock_solid_from': 'bspline_clean',
+        'continue_machining': True,
+        'wcs_origin':       'box_point',     # fallback only (no WCS sketch)
+        'wcs_orient':       'select_x_y',
+        'box_point':        'top 1',
+        'flip_y':           True,
+        'wcs_point':        'flipped',
+        'op_heights':       True,
+        # Fred's finishing templates for the carved face -- empty until he names them.
+        'cloud_templates':  [],
     },
     {
         'name':         'Frame',
@@ -1000,6 +1030,7 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
     # was built from a stripped-empty component (Stock rule), the body
     # list is empty -- the API still accepts that and the Setup just
     # carries no model bodies, only stock.
+    bodies = []
     try:
         bodies = _collect_bodies(mm)
         if bodies:
@@ -1007,6 +1038,9 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
         _log(logger, f"SETUP BUILD ({spec['name']}): bound {len(bodies)} bodies", "DEBUG")
     except Exception as e:
         _log(logger, f"SETUP BUILD ({spec['name']}): models bind failed: {e}", "WARNING")
+    if not bodies and spec.get('skip_if_no_bodies'):
+        _log(logger, f"SETUP BUILD ({spec['name']}): MM {spec['mm_rule']!r} holds no body; setup skipped", "INFO")
+        return None
 
     # The fence-anchored WCS binding doesn't happen here — it's done
     # in a second pass after every Setup has had a machine attached,
@@ -1050,7 +1084,10 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
     # problem. We fall back to the parameter dict path only if the typed
     # enum write raises (older builds, unexpected modes).
     try:
-        _set_stock_mode(setup, spec['stock_intent'], spec['name'], logger)
+        if spec.get('stock_solid_from'):
+            _set_solid_stock(setup, mms.get(spec['stock_solid_from']), spec['name'], logger)
+        else:
+            _set_stock_mode(setup, spec['stock_intent'], spec['name'], logger)
     except Exception as e:
         _log(logger, f"SETUP BUILD ({spec['name']}): stockMode set raised: {e}", "WARNING")
 
@@ -1119,8 +1156,19 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
         pi.set_choice(setup.parameters, 'wcs_origin_boxPoint',
                       [pt, pt.replace(' ', ''), pt.replace(' ', '_')], logger)
 
-    # NOTE: WCS stays at the spec-defined stock corner (g-code zero).
-    # The fence is bound separately via ``job_positionAttach`` in
+    # 5. H23 item 82: the shared WCS point (CAM_POSITION) replaces the stock corner when the design
+    # carries the WCS sketch (ensure_wcs_sketches, run by the coordinator before the MMs are built);
+    # otherwise the box point above stays (logged).
+    if spec.get('wcs_point'):
+        if not _bind_wcs_point(setup, mm, spec['wcs_point'], spec['name'], logger):
+            _log(logger, f"SETUP BUILD ({spec['name']}): shared WCS point {spec['wcs_point']!r} not bound; "
+                         f"WCS stays at box point {spec.get('box_point')!r}", "WARNING")
+
+    # 6. The shared fixed stock box, written AFTER the WCS (its dims live in the WCS frame).
+    if spec.get('stock_box'):
+        _apply_stock_box(setup, spec['name'], logger)
+
+    # NOTE: the fence is bound separately via ``job_positionAttach`` in
     # :func:`_propagate_part_position_pass` after the build pass.
 
     # Continue rest machining — when True, the setup only cuts material
@@ -1182,6 +1230,8 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
             cloud_templates = spec.get('cloud_templates') or []
         if cloud_templates:
             _apply_cloud_templates(setup, cloud_templates, spec['name'], logger)
+            if spec.get('op_heights'):
+                _apply_op_heights(setup, spec['name'], logger)
     else:
         _log(logger, f"SETUP BUILD ({spec['name']}): skip_templates=True, templates deferred", "DEBUG")
 
@@ -1433,6 +1483,187 @@ def _set_stock_mode(setup, intent, setup_name, logger):
              f"SETUP BUILD ({setup_name}): job_stockMode fallback raised: {e}",
              "WARNING")
         return False
+
+
+# ---------------------------------------------------------------------------
+# H23 item 82 -- CAM_POSITION writers (one stock, one WCS, stock-relative heights)
+# ---------------------------------------------------------------------------
+
+def _apply_stock_box(setup, setup_name, logger):
+    """Write the shared fixed stock box (CAM_POSITION['stock']) on a live setup.
+
+    X/Y = the model's extent in the setup's own frame + the declared margin, centred; Z = the declared
+    thickness from the model bottom (Clean and Carved share bottom + outline). Expressions are evaluated
+    by Fusion in the setup frame, so the axes swap of 'select_x_y' needs no handling here. Measured
+    (item 82 probe d): identical boxes on two setups in two MMs.
+    """
+    st = CAM_POSITION['stock']
+    m = st['margin_xy_in']
+    _set_stock_mode(setup, 'fixed_box', setup_name, logger)
+    n_ok = 0
+    for name, expr in (
+        ('job_stockFixedX', f"(surfaceXHigh - surfaceXLow) + {m} in"),
+        ('job_stockFixedY', f"(surfaceYHigh - surfaceYLow) + {m} in"),
+        ('job_stockFixedZ', f"{st['z_in']} in"),
+        ('job_stockFixedXMode', f"'{st['xy_mode']}'"),
+        ('job_stockFixedYMode', f"'{st['xy_mode']}'"),
+        ('job_stockFixedZMode', f"'{st['z_mode']}'"),
+        ('job_stockFixedXOffset', '0 in'),
+        ('job_stockFixedYOffset', '0 in'),
+        ('job_stockFixedZOffset', '0 in'),
+    ):
+        if _set_expr_param(setup.parameters, name, expr, setup_name, logger):
+            n_ok += 1
+    _log(logger, f"SETUP BUILD ({setup_name}): CAM_POSITION stock box written ({n_ok}/9)", "INFO")
+    return n_ok
+
+
+def _find_wcs_point(mm, side):
+    """This MM's own copy of the declared WCS point for ``side``, as an entity a setup can bind.
+
+    The design's WCS sketches ride into every MM snapshot inside its root wrapper occurrence (measured);
+    the point is the sketch's one non-origin point, proxied into the wrapper's context.
+    """
+    sk_name = f"{WCS_SKETCH_NAME}_{side}"
+    root = mm.occurrence.component
+    places = [(root, None)] + [(o.component, o) for o in root.allOccurrences]
+    for comp, occ in places:
+        sk = comp.sketches.itemByName(sk_name)
+        if not sk:
+            continue
+        pts = [p for p in sk.sketchPoints if p is not sk.originPoint]
+        if not pts:
+            return None
+        pt = pts[-1]
+        if occ is not None and occ.assemblyContext is None:
+            return pt.createForAssemblyContext(occ)
+        return pt
+    return None
+
+
+def _bind_wcs_point(setup, mm, side, setup_name, logger):
+    """Bind the setup's WCS origin to this MM's copy of the declared point. Returns True when bound."""
+    try:
+        pt = _find_wcs_point(mm, side)
+    except Exception as e:
+        _log(logger, f"SETUP BUILD ({setup_name}): WCS point lookup raised: {e}", "WARNING")
+        pt = None
+    if pt is None:
+        _log(logger, f"SETUP BUILD ({setup_name}): no {WCS_SKETCH_NAME}_{side} point in MM", "WARNING")
+        return False
+    try:
+        setup.parameters.itemByName('wcs_origin_mode').expression = "'point'"
+        p = setup.parameters.itemByName('wcs_origin_point')
+        p.value.value = [pt]
+        n = p.value.value.size() if hasattr(p.value.value, 'size') else len(p.value.value)
+    except Exception as e:
+        _log(logger, f"SETUP BUILD ({setup_name}): WCS point bind raised: {e}", "WARNING")
+        return False
+    _log(logger, f"SETUP BUILD ({setup_name}): WCS origin = shared point {side!r} (bound {n})", "INFO")
+    return n > 0
+
+
+def _set_solid_stock(setup, src_mm, setup_name, logger):
+    """Stock = From solid -> the solid bodies of ``src_mm`` (the Clean panel for the Carved setup).
+
+    ``setup.stockSolids`` needs an ObjectCollection (a Python list raises -- measured). Returns True when
+    at least one body was set.
+    """
+    if src_mm is None:
+        _log(logger, f"SETUP BUILD ({setup_name}): stock source MM not built; stock left default", "WARNING")
+        return False
+    bodies = [b for b in _collect_bodies(src_mm) if getattr(b, 'isSolid', True)]
+    if not bodies:
+        _log(logger, f"SETUP BUILD ({setup_name}): stock source MM holds no solid body", "WARNING")
+        return False
+    _set_stock_mode(setup, 'from_solid', setup_name, logger)
+    coll = adsk.core.ObjectCollection.create()
+    for b in bodies:
+        coll.add(b)
+    setup.stockSolids = coll
+    _log(logger, f"SETUP BUILD ({setup_name}): stock = From solid ({len(bodies)} body/bodies)", "INFO")
+    return True
+
+
+def _apply_op_heights(setup, setup_name, logger):
+    """Top = Stock top, Bottom = Stock bottom + the declared offset, on every 3D operation of the setup.
+
+    Only CAM_POSITION['op_heights']['strategies'] are touched: a 2D pocket's bottom is its design depth,
+    'stock bottom' there would cut through, so it keeps its template heights. Every op is logged with its
+    strategy either way. Returns the number of operations written.
+    """
+    oh = CAM_POSITION['op_heights']
+    n = 0
+    for i in range(setup.operations.count):
+        op = setup.operations.item(i)
+        strategy = getattr(op, 'strategy', '?')
+        if strategy not in oh['strategies']:
+            _log(logger, f"OP HEIGHTS ({setup_name}): '{op.name}' strategy={strategy} kept (not 3D)", "INFO")
+            continue
+        ok = 0
+        for pname, expr in (('topHeight_mode', oh['top']), ('bottomHeight_mode', oh['bottom']),
+                            ('bottomHeight_offset', oh['bottom_offset'])):
+            if _set_expr_param(op.parameters, pname, expr, setup_name, logger):
+                ok += 1
+        _log(logger, f"OP HEIGHTS ({setup_name}): '{op.name}' strategy={strategy} stock top/bottom ({ok}/3)", "INFO")
+        n += 1
+    return n
+
+
+def _source_panel_bbox_cm(design):
+    """(min, max) world bbox in cm of the source design's Clean panel (else the Stamped one), or None."""
+    root = design.rootComponent
+    for want in ('clean', 'stamped'):
+        for occ in root.allOccurrences:
+            path = (occ.fullPathName or '').lower()
+            if 'b-spline set' not in path or want not in (occ.component.name or '').lower():
+                continue
+            for b in occ.bRepBodies:
+                if getattr(b, 'isSolid', False) and (b.name or '').lower().startswith('panel'):
+                    bb = b.boundingBox
+                    return (bb.minPoint.asArray(), bb.maxPoint.asArray())
+    return None
+
+
+def ensure_wcs_sketches(design, logger=None):
+    """Write the declared WCS points into the SOURCE design (one hidden offset plane + sketch per side),
+    replacing any from a previous BUILD. Run before the MMs are built: every MM snapshot then carries its
+    own copy, which each setup binds (_bind_wcs_point). Measured: creating them works with the Manufacture
+    workspace active, and modelToSketchSpace places the point exactly.
+
+    Returns {side: (x, y, z) cm} or None when the design has no B-spline panel (setups then keep their
+    box point).
+    """
+    bbox = _source_panel_bbox_cm(design)
+    if bbox is None:
+        _log(logger, "WCS SKETCH: no B-Spline Set panel in the design; shared WCS skipped", "WARNING")
+        return None
+    box = stock_box_cm(bbox[0], bbox[1])
+    root = design.rootComponent
+    for side in CAM_POSITION['wcs_points']:
+        name = f"{WCS_SKETCH_NAME}_{side}"
+        old = root.sketches.itemByName(name)
+        if old:
+            old.deleteMe()
+        oldp = root.constructionPlanes.itemByName(name)
+        if oldp:
+            oldp.deleteMe()
+    out = {}
+    for side in CAM_POSITION['wcs_points']:
+        name = f"{WCS_SKETCH_NAME}_{side}"
+        x, y, z = wcs_point_cm(box, side)
+        pin = root.constructionPlanes.createInput()
+        pin.setByOffset(root.xYConstructionPlane, adsk.core.ValueInput.createByReal(z))
+        plane = root.constructionPlanes.add(pin)
+        plane.name = name
+        sk = root.sketches.add(plane)
+        sk.name = name
+        sk.sketchPoints.add(sk.modelToSketchSpace(adsk.core.Point3D.create(x, y, z)))
+        sk.isVisible = False
+        plane.isLightBulbOn = False
+        out[side] = (x, y, z)
+        _log(logger, f"WCS SKETCH: {side} point at ({x / 2.54:.4f}, {y / 2.54:.4f}, {z / 2.54:.4f}) in", "INFO")
+    return out
 
 
 def _collect_bodies(mm):
