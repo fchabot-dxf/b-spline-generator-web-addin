@@ -35,7 +35,7 @@
  * the logical grid position neighbours/suppression reason about.
  */
 import { rectPolygon, clipPolygonToBoard } from '../geometry.js';
-import { BRICK_PATTERNS, MIN_PIECE_FRACTION, RUSTIC } from '../library.js';
+import { BRICK_PATTERNS, MIN_PIECE_FRACTION, RUSTIC, COURSE_ROW_ORIGIN } from '../library.js';
 import { hashedRandom } from '../rng.js';
 
 function patternFor(name) {
@@ -196,6 +196,9 @@ function rusticRow(courseIndex, minX, maxX, courseCy, cH, L, J, stagger, rustic,
   }
   return { row, joints };
 }
+/** A tile row for course `c` (counted from the top, as laid) of `last + 1` courses -- library.js COURSE_ROW_ORIGIN, the
+ *  ONE origin every tile input reads (customBond, accentCuts). */
+const tileRowOf = (c, last) => (COURSE_ROW_ORIGIN === 'bottom' ? last - c : c);
 const isRunningBondPattern = (p) => p.kind === 'course' && (p.staggerFrac || 0) > 0 && p.pitchAxis === 'length';
 
 /**
@@ -216,7 +219,7 @@ function applyAccentCuts(courses, accentCuts, minX, J) {
   const marked = (row, col) => !!(tile.cells[mod(row, tile.rows)] && tile.cells[mod(row, tile.rows)][mod(col, tile.cols)]);
   const last = courses.length - 1;
   return courses.map((row, c) => {
-    const tileRow = last - c; // the bottom course is tile row 0
+    const tileRow = tileRowOf(c, last);
     const out = [];
     for (const cell of row) {
       const xs = cell.polygon.map((p) => p.x), ys = cell.polygon.map((p) => p.y);
@@ -270,7 +273,7 @@ export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fe
     const cH = courseHeightFor(pattern, L, H);
     const coursePitch = cH + J;
     const courseCy = cy + cH / 2;
-    const row = custom ? customRow(c, custom, minX, maxX, courseCy, cH, L, J)
+    const row = custom ? { courseCy, cH } // laid below, once the course count (the tile row origin) is known
       : pattern.kind === 'course-alternating'
         ? flemishRow(c, minX, maxX, courseCy, cH, L, H, J)
         : rustic > 0 && isRunningBondPattern(pattern)
@@ -299,7 +302,7 @@ export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fe
       const c = courses.length;
       const pattern = patternFor(coursePatterns[c - 1]);
       const courseCy = cy + remaining / 2;
-      const row = custom ? customRow(c, custom, minX, maxX, courseCy, remaining, L, J)
+      const row = custom ? { courseCy, cH: remaining }
         : pattern.kind === 'course-alternating'
           ? flemishRow(c, minX, maxX, courseCy, remaining, L, H, J)
           : rustic > 0 && isRunningBondPattern(pattern)
@@ -309,6 +312,11 @@ export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fe
     }
   }
 
+  // T86-27 correction: a custom bond's course = its tile row from COURSE_ROW_ORIGIN (as accentCuts' rows are)
+  if (custom) {
+    const last = courses.length - 1;
+    courses.forEach((slot, c) => { courses[c] = customRow(tileRowOf(c, last), custom, minX, maxX, slot.courseCy, slot.cH, L, J); });
+  }
   const laid = accentCuts ? applyAccentCuts(courses, accentCuts, minX, J) : courses;
   const cells = [];
   let nextId = 0;

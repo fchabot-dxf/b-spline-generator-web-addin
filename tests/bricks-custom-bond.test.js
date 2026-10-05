@@ -25,6 +25,8 @@ const sil = frameContourSilhouette({ defs: FRAME_DEFS, record: normalizeFrameRec
 const frame = { primitives: buildRibbonPrimitives(sil.primitives), bands: FRAME_PRESETS.single_soldier };
 const lay = (extra) => generateBricks({ boardOutline: board, set: SET, seed: 3, scale: SCALE, suppression: 0, clumping: 0, frame, ...extra }).bricks;
 const box = (p) => { const xs = p.map((q) => q.x), ys = p.map((q) => q.y); return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }; };
+/** the course count of a lay: its bottom course's index from the top + 1 (the bottom course is always laid) */
+const coursesOf = (bricks) => { const y0 = Math.min(...bricks.map((b) => box(b.polygon).y0)); return Math.round((Math.max(...bricks.map((b) => box(b.polygon).y0)) - y0) / (S.brickHeightIn + J)) + 1; };
 const TILE = { courses: [{ pieces: [1, 0.5, 1], offset: 0 }, { pieces: [1, 0.5, 1], offset: 0.5 }] };
 
 describe('custom bond from a tile (T86 item 27)', () => {
@@ -34,7 +36,11 @@ describe('custom bond from a tile (T86 item 27)', () => {
     ['stack', { courses: [{ pieces: [1], offset: 0 }] }],
   ]) {
     it(`the built-in ${name} bond written as a tile lays the same bricks (pin)`, () => {
-      const builtin = lay({ zones: [{ pattern: name }] }), custom = lay({ zones: [{ pattern: name }], customBond: tile });
+      // T86-27 correction: a tile counts its courses from the BOTTOM (COURSE_ROW_ORIGIN), the built-in stagger from the
+      // top -- so the tile matches as written on an odd course count, and with its courses reversed on an even one
+      const builtin = lay({ zones: [{ pattern: name }] });
+      const courses = coursesOf(builtin) % 2 === 1 ? tile.courses : [...tile.courses].reverse();
+      const custom = lay({ zones: [{ pattern: name }], customBond: { courses } });
       expect(custom.length).toBe(builtin.length);
       expect(custom.map((b) => b.polygon)).toEqual(builtin.map((b) => b.polygon));
     });
@@ -46,16 +52,21 @@ describe('custom bond from a tile (T86 item 27)', () => {
     const bad = [];
     // whole (unclipped) pieces: a declared length, starting on the course's grid, in the tile's cyclic order
     const halfLen = L - 0.5 * PITCH;
+    // T86-27 correction: tile row = the course counted from the BOTTOM (the bottom course is always laid; its top edge
+    // is unclipped where the arch clips the top courses)
+    const last = Math.round((Math.max(...bricks.map((b) => box(b.polygon).y0)) - minY) / (S.brickHeightIn + J));
     const byCourse = new Map();
     for (const b of bricks) {
       const q = box(b.polygon);
       if (area(b.polygon) < 0.999 * (q.x1 - q.x0) * (q.y1 - q.y0)) continue; // clipped by the curve
-      if (q.x0 < minX + 1e-6 || q.x1 > maxX - 1e-6) continue; // a closer at the wall's straight side (a whole brick cut by half a pitch is as long as a half)
+      // a closer at the wall's side (a whole brick cut by half a pitch is as long as a half); 1e-3: the curved side trims a
+      // piece that starts AT the side by ~2e-5 in (T86-27 correction: the bottom course now has offset 0 on T1)
+      if (q.x0 < minX + 1e-3 || q.x1 > maxX - 1e-3) continue;
       const c = Math.round((q.y0 - minY) / (S.brickHeightIn + J));
       const len = q.x1 - q.x0;
       const p = Math.abs(len - L) < 1e-9 ? 1 : Math.abs(len - halfLen) < 1e-9 ? 0.5 : null;
       if (p === null) { bad.push(`piece of length ${len.toFixed(4)} mid-course`); continue; }
-      const u = (q.x0 - minX) / PITCH + TILE.courses[c % 2].offset;
+      const u = (q.x0 - minX) / PITCH + TILE.courses[(last - c) % 2].offset;
       if (Math.abs(u * 2 - Math.round(u * 2)) > 1e-6) bad.push(`course ${c} piece off the grid at ${u.toFixed(4)} pitches`);
       if (!byCourse.has(c)) byCourse.set(c, []);
       byCourse.get(c).push({ u: Math.round(u * 2) / 2, p });

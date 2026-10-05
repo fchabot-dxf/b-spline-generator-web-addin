@@ -64,6 +64,15 @@ export const FILL_FRACTIONS = Object.freeze([1, 3 / 4, 1 / 2, 1 / 4]);
  *  fill-shape.js (a wall piece cut by a brush stroke) and contour-bands.js (a band piece cut to the board) read it. */
 export const MIN_PIECE_FRACTION = 0.25;
 
+/** T86-27 correction (seat C 02, advisor ruling, 2026-10-05): where a TILE's row 0 sits on the wall, for EVERY tile
+ *  input of the bond layout -- customBond's courses and accentCuts' rows (layouts/bond.js tileRowOf). 'bottom' = the
+ *  wall's bottom course (the pattern builder draws row 0 at the bottom: walls are laid up from the ground). Declared
+ *  once because two matching conventions drifted: customBond counted from the top and accentCuts from the bottom,
+ *  so which bond course a tile row marked flipped with the wall's course-count parity (measured: a 3.4 in wall
+ *  marked the half-brick courses, a 3.8 in wall the whole ones). The built-in bonds' own stagger is NOT a tile and
+ *  keeps counting from the top (every saved wall lays as before). */
+export const COURSE_ROW_ORIGIN = 'bottom';
+
 /** T86 item 22 (Fred: rustic running bond): `rustic` 0..1 (0 = today's uniform bricks) varies brick lengths within a
  *  course -- lengths in [1 - lengthSpread x rustic, 1 + lengthSpread x rustic] x the brick (0.6-1.4 at 1) -- keeping a
  *  joint at least minLap x the brick away from every joint of the course below (the bond stays staggered), and lifts or
