@@ -236,6 +236,41 @@ export const BRICK_SETS = Object.freeze([
     samples: ['stone_02', 'stone_03', 'stone_04', 'stone_05', 'stone_06', 'stone_07', 'stone_08', 'stone_09', 'stone_10', 'stone_11']
       .map((id) => ({ id, image: `data/bricks/${id}.jpg` })),
   },
+  // T86 item 24 (Fred's grey photos, shots/fred/grey_set): faces cut by ~/.bspline-status/tools/extract_grey.py
+  // (luminance: light faces, dark joints -- extract_bricks.py's redness test has no hue to work with). Proportions and
+  // joint read off grey_brick_512.png: faces ~90 x 40 px (2.3:1), joints ~8 px (~9% of a face's length).
+  {
+    id: 4,
+    name: 'Grey brick',
+    engine: 'masonry',
+    shape: 'rect',
+    layout: 'bond',
+    brickLengthIn: 0.75,
+    brickHeightIn: 0.32,
+    grout: { widthIn: 0.05, depthIn: 0.05, profile: 'recessed' },
+    reliefIn: 0.125,
+    reliefMaxIn: 0.25,
+    heightJitterIn: 0.015,
+    heightProfile: { edgeRadiusIn: 0.04, crown: 0.12, chipRate: 0.08, chipSizeIn: 0.05, surfaceShare: 0.15 },
+    samples: Array.from({ length: 42 }, (_, i) => `gb_${String(i + 1).padStart(2, '0')}`).map((id) => ({ id, image: `data/bricks/${id}.jpg` })),
+  },
+  // T86 item 25: grey stone in COURSED RUBBLE (layouts/coursed-rubble.js), faces from rubble_coursed_stone_600.png
+  // (gs_01..27, stones ~80 x 55 px) and grey_stone_ashlar_2048.png (gs_28..64). Dark joints like the rock set's.
+  {
+    id: 5,
+    name: 'Grey stone',
+    engine: 'masonry',
+    shape: 'irregular',
+    layout: 'coursed_rubble',
+    brickLengthIn: 1.1,
+    brickHeightIn: 0.7,
+    grout: { widthIn: 0.08, depthIn: 0.06, profile: 'recessed' },
+    reliefIn: 0.125,
+    reliefMaxIn: 0.25,
+    heightJitterIn: 0.02,
+    heightProfile: { edgeRadiusIn: 0.05, crown: 0.1, chipRate: 0.1, chipSizeIn: 0.07, surfaceShare: 0.35 },
+    samples: Array.from({ length: 64 }, (_, i) => `gs_${String(i + 1).padStart(2, '0')}`).map((id) => ({ id, image: `data/bricks/${id}.jpg` })),
+  },
 ]);
 
 /**

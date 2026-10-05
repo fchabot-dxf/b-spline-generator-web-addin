@@ -19,6 +19,7 @@ import { bondLayout } from './layouts/bond.js';
 import { fieldstoneLayout } from './layouts/fieldstone.js';
 import { herringboneLayout } from './layouts/herringbone.js';
 import { basketweaveLayout } from './layouts/basketweave.js';
+import { coursedRubbleLayout } from './layouts/coursed-rubble.js';
 import { assignPieces } from './pieces.js';
 import { computeSuppressedCells } from './suppression.js';
 import { assignSamples } from './samples.js';
@@ -30,6 +31,7 @@ import { PIECE_CATALOGUE, enabledPieces, scaledSet, MIN_PIECE_FRACTION } from '.
 // patterns this round (an honest, named scope line; see library.js's own BRICK_PATTERNS header).
 const LAYOUTS = Object.freeze({
   bond: bondLayout, fieldstone: fieldstoneLayout, herringbone: herringboneLayout, basketweave: basketweaveLayout,
+  coursed_rubble: coursedRubbleLayout, // T86 item 25
 });
 
 /**

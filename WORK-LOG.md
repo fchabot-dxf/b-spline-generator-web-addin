@@ -22095,3 +22095,28 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
 - geometry.js signedArea header corrected to what it measures (negative = counter-clockwise, y up; -1 on a unit square).
 - FOR T86 16(c) part 2: T18 7x9 single_soldier at 1.5 in has open wedges at its top fan corners (identical before and
   after the band-overrun clip + the fit rule: a fan void, not an overrun) -- shots/seatB/item28_before_after.png, row 2.
+
+## T86 items 24/25 -- grey brick + grey stone sets, coursed rubble (seat B / 88, 2026-10-05)
+- Faces: ~/.bspline-status/tools/extract_grey.py (NEW, beside extract_bricks.py whose redness test has no hue to use on
+  grey): luminance split (light faces, dark joints), row runs then column runs, a margin trim, a median-size filter.
+  grey_brick_512 -> gb_01..42 (faces ~90 x 40 px); rubble_coursed_stone_600 -> gs_01..27; grey_stone_ashlar_2048 ->
+  gs_28..64 (only crops at least 0.9 as wide as tall: dark texture split some ashlar faces into strips). grey_brick_
+  tile_320 dropped (faces 14 x 6 px, too small). 106 jpgs, 276 KB, in html/data/bricks. Contact / detect images in
+  shots/seatB/grey_extract.
+- library.js: Set 4 'Grey brick' (bond, 0.75 x 0.32 in = the photo's 2.3:1, joint 0.05 in ~ the photo's ~9%), Set 5
+  'Grey stone' (layout 'coursed_rubble', 1.1 x 0.7 in, rock-like joint 0.08 in and surface).
+- layouts/coursed-rubble.js (registered in fill-shape LAYOUTS): rough courses (height +/-25%), stone lengths 0.6-1.6
+  x, a random start per course, 12% of stones span two courses (the course above leaves the stretch free), corners
+  pulled IN at random (never an overlap) then rounded, seeded, region clip + quarter floor; all in COURSED_RUBBLE.
+  TUNED on the sheet: the first corner pull / round (0.16 / 0.18) left joints several times the photo's (coverage
+  0.615); 0.06 / 0.12 gives 0.737-0.772 over seeds 1-5 (the test's floor 0.72 holds it), plus minLength 0.2 so a
+  stone shortened by a tall neighbour no longer leaves a hole.
+- Not done here (37's side, told): Grey stone is not a bond set, so like White Rocks it needs an entry point (a wall
+  pattern that picks set 5, as Fieldstone picks set 3); no BRICK_PATTERNS entry added (it would show a button).
+  Frame bands in Grey stone lay soldier courses with stone faces (coursed_rubble is not band-capable) -- for Fred.
+- Tests: bricks-grey-sets (5: rubble on a 7x9 and in T1's frame -- no overlap, inside, <= 2 courses tall with some
+  tall, lengths in range, coverage; seeded; each set only its own samples), bricks-library (ids 1..5; every declared
+  sample image on disk). 37's brick-discrete-controls-regen Set row expectation now lists Grey brick (it joins by
+  declaration). Domain green but N2 (the known timeout).
+- Sheet: shots/seatB/item24_25_grey_sets.png (Red brick, Grey brick, White rocks, Grey stone on T1 7x9 + Soldier band,
+  and Grey stone unframed).
