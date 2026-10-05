@@ -264,8 +264,14 @@ export const SELECT_ELEMENT = {
 export const MIGRATION = {
   fixture: 'fixtures/pre-item22-board.splineGenLastSession.json', sessionKey: 'splineGenLastSession', wall: 99, frame: 106,
   setGroutWidthIn: RED_SET.grout.widthIn, // the fixture's wall/frame are Red Brick: groutByElement null = this
-  // settings fields added since the fixture was saved, at the value that lays exactly as before: every leaf equals
-  // the declared value, or 'empty' = an empty list. The migrated key carries them, the old one did not.
-  neutralNewFields: { groutByElement: null, rusticByElement: 0, userPatterns: 'empty' }, // userPatterns: 37's pattern builder (b91d0f6)
+  // settings fields added since the fixture was saved, at the value that lays exactly as before. The migrated key
+  // carries them, the old one did not. A value is: 'empty' (an empty list), an object/array (that exact value), or a
+  // plain value every leaf must equal. Advisor: a commit adding a persisted brick field adds its neutral here too.
+  neutralNewFields: {
+    groutByElement: null, rusticByElement: 0, // per-element grout / rustic (37: 1404b72 / item 29)
+    userPatterns: 'empty', // the pattern builder (b91d0f6)
+    frameBandAccents: 'empty', brushAccent: { preset: 'none', levelIn: 0.0625, clicks: [] }, // per-element accents (ed618f3)
+    frameCorner: null, // the Frame's corner pick (f0e3728): null = the preset's own
+  },
   introducedBy: 'b75e836',
 };
