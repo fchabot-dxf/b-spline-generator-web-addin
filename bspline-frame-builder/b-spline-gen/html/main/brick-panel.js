@@ -1872,6 +1872,7 @@ function renderFrameBandPatternList(container) {
     for (const pattern of WALL_PATTERN_LIST) {
       const def = BRICK_PATTERNS[pattern.id];
       if (rock && pattern.id !== 'fieldstone') continue;
+      if (!bandCanLay(def)) continue; // advisor (turn 261): a band lists only what a band can lay; the rest is absent
       const btn = document.createElement('button');
       btn.type = 'button';
       // item 33 (audit N10): the Wall grid's own engine icon, the name as the tooltip
@@ -1884,10 +1885,6 @@ function renderFrameBandPatternList(container) {
       if (def && def.bandCapable) {
         // picking it on one band makes the whole frame rock: every band fieldstone (one set per element)
         btn.addEventListener('click', () => setFrameRock(true));
-      } else if (def && (def.kind === 'tile2d' || def.kind === 'none')) {
-        btn.disabled = true;
-        btn.title = `${pattern.label}: ` + (def.kind === 'none' ? 'A band needs a real pattern -- use the Frame band preset\'s own None instead' : 'Wall only for now');
-        btn.style.opacity = '0.4';
       } else {
         btn.addEventListener('click', () => {
           if (!P.brickSettings.frameBandPatterns) P.brickSettings.frameBandPatterns = [];
@@ -1907,6 +1904,10 @@ function renderFrameBandPatternList(container) {
     }
   });
 }
+
+/** What a Frame BAND can lay: a course pattern (a run of bricks along the band) or an entry declaring `bandCapable`
+ *  (fieldstone). Tiles, the sheet's 2D weaves and 'none' are Wall-only, so a band row does not list them. */
+export const bandCanLay = (def) => !!def && (def.kind === 'course' || def.kind === 'course-alternating' || !!def.bandCapable);
 
 function syncFrameBandPatternButtons() {
   const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;

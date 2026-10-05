@@ -132,7 +132,8 @@ describe('item 33: the Corners row in the Frame section', () => {
     $('brickFramePreset_three_band').click();
     expect($('brickFramePreset_three_band').title).toBe('Soldier / Stretcher / Soldier');
     for (const i of [0, 1, 2]) expect($(`brickFrameBandPattern_${i}_header`).title, `band ${i}`).toBe('Header');
-    expect($('brickFrameBandPattern_0_herringbone').disabled).toBe(true);
-    expect($('brickFrameBandPattern_0_herringbone').title).toMatch(/^Herringbone: /);
+    // turn 261: a band row lists only what a band can lay -- the Wall-only patterns are absent, not greyed
+    for (const id of ['herringbone', 'basketweave', 'chevron', 'square_grid', 'none']) expect($(`brickFrameBandPattern_0_${id}`), id).toBeNull();
+    expect($('brickFrameBandPattern_0_fieldstone')).toBeTruthy(); // band-capable
   });
 });
