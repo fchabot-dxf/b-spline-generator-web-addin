@@ -14153,3 +14153,51 @@ WallPattern = {
   - 5 failures in the full run, all "Test timed out" under load.
   - Alone: boundary-at-depth 19/19 and fieldstone 5/5 pass. frame-3d-sweep failed 1/8 alone once, then passed on a rerun (flake). discrete-controls N2 timed out once alone at 5.19 s.
   - A/B on N2 isolated (-t), x3 each: new 297 / 398 / 455 ms, old 353 / 326 / 354 ms. The icons don't slow it; whole-file timings swing from 3.4 to 10.9 s with machine load. The 5 s timeout on N2 is a load flake, not this change.
+
+## turn 251: item 34, PASSWORD TO EDIT (reads open, writes need the password, cached)
+- **Worker** (cloud/preset-worker, wrangler name projects-dansemur):
+  - New src/edit-gate.js declares `EDIT_GATE`:
+    - secret EDIT_PASSWORD;
+    - covers PUT/DELETE/POST on `/projects|/presets`;
+    - `exemptNamePrefixes: ['connery:']`;
+    - 3 failures per IP per 600 s, counters under the PRESETS key prefix `editfail::`.
+  - `checkEditGate` runs before the /projects and /presets routes. It answers:
+    - 401 "password required" when none is sent (not counted);
+    - 401 "wrong password" (counted; TTL = window);
+    - 429 at the limit;
+    - 503 when the secret is unset.
+  - The password is compared by SHA-256 digests, so timing doesn't leak how much of a guess was right.
+  - The project list filters the counter keys out. CORS Allow-Headers now includes Authorization. README and health note updated.
+- **SCOPE FINDING (for the advisor):** Mathieu Connery's app (APPS/MathieuConnery/html/src/connery-project-manager.js) WRITES PUT/DELETE /projects on the same worker, with keys namespaced `connery:`.
+  - A blanket /projects gate would have broken it.
+  - Declared exempt instead: its writes stay open, and they cannot touch a B-spline key, because the prefix is in the name.
+  - Untouched: CAM Studio (/cam-profiles), the Loader (/loader/apps), the pen plotter (X-API-Key), the bus and page-view routes, and the art commits.
+- **Decision (for the advisor): fail CLOSED.** With no secret set, project writes answer 503. **Set the secret BEFORE fb-app reaches main.** The deploy-worker workflow redeploys on main, and saves stop until the secret exists.
+- **App:** new main/edit-password.js.
+  - `EDIT_PASSWORD` declares the storage key, prompt titles and messages.
+  - `editFetch` wraps every cloud write:
+    - asks once ("Password to save", a masked field in the Project Manager's dialog style);
+    - caches the password only after the worker accepted it;
+    - on 401 clears it, re-asks once ("Wrong password -- try again") and retries once;
+    - on 429 shows a toast to wait 10 minutes;
+    - a cancel answers a 401 Response, so each caller's own `!r.ok` path reports it.
+  - All 7 PUT/DELETE sites in cloud-project-manager.js now use it: save, rename (2), folder rename (2), delete, folder delete, migration upload. A test checks no plain-fetch write remains.
+  - Settings: a "Password to save" field with Set and Clear, plus a status line.
+- **Fusion:** b-spline-gen.py keeps `{editPassword}` in `%APPDATA%\bspline-frame-builder\config.json`.
+  - That file is outside the deployed add-in folder, and `BSPLINE_USER_CONFIG` is the test seam for its path.
+  - At startup (the get_design_params handshake, beside build_info) Python sends 'edit_password' to the palette.
+  - A new 'store_edit_password' action stores or clears it. The log says only "stored" or "cleared", never the value.
+  - In Fusion, setEditPassword writes localStorage AND sends the value to Python, so a redeploy never asks again.
+- **Tests:**
+  - edit-gate-worker 8, edit-password 8, test_edit_password_config.py 6.
+  - Against the pre-change tree: the JS files fail to import and Python fails 6/6.
+  - Stronger check (the new modules kept, only the wiring reverted): 8 fail. The 8 that still pass pin unchanged truths (reads open, Connery open, module-internal behaviour).
+  - Restored from scratch copies; cmp identical.
+- **Matrix / persistence row, live:** the real worker code behind a local Node adapter (in-memory KV, dummy secret), with the app pointed at it in headless Chrome.
+  - First Save As: asked once, PUT 200 with auth, cached.
+  - Second save: no ask.
+  - A wrong cached password: PUT 401, re-asked "Wrong password -- try again", PUT 200, the good one cached.
+  - Settings shows "Saved on this device." 0 page errors.
+  - Shots: shots/seatC/item34_password_prompt.png, item34_settings_field.png.
+- **Suite:** the full run hit 28 failures under heavy load (21 "timed out"; the rest are heavy engine tests). All 16 failing files pass alone. pytest b-spline-gen: 148 passed.
+- **Neutral-set rule (advisor, this turn):** item 34 adds NO persisted P.brickSettings field (the password lives in localStorage and the add-in config), so the fixture's neutral set is unchanged.

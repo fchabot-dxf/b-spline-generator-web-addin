@@ -75,6 +75,61 @@ def _send_build_info(pal):
         }))
     except Exception:
         pass
+# ── F35 item 34: the user's own config, OUTSIDE the deployed add-in folder ──────
+# (a deploy replaces the add-in folder; this file survives it, so Fusion never asks for the edit password twice).
+# Holds { "editPassword": "..." } -- the password to save projects to the cloud. Never logged.
+USER_CONFIG_ENV = 'BSPLINE_USER_CONFIG'  # test seam: the config file path
+
+
+def user_config_path():
+    override = os.environ.get(USER_CONFIG_ENV)
+    if override:
+        return override
+    base = os.environ.get('APPDATA') or os.path.expanduser('~')
+    return os.path.join(base, 'bspline-frame-builder', 'config.json')
+
+
+def read_user_config():
+    try:
+        with open(user_config_path(), 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def write_user_config(updates):
+    """Merges `updates` into the config (a None value removes that key)."""
+    data = read_user_config()
+    for k, v in updates.items():
+        if v is None:
+            data.pop(k, None)
+        else:
+            data[k] = v
+    path = user_config_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f)
+
+
+def _send_edit_password(pal):
+    """Hands the cached edit password to the palette at startup (the 'edit_password' handshake)."""
+    try:
+        pal.sendInfoToHTML('edit_password', json.dumps({'password': read_user_config().get('editPassword')}))
+    except Exception:
+        pass
+
+
+def _store_edit_password(data):
+    """The palette's 'store_edit_password' action: { password } caches it, { password: null } clears it."""
+    try:
+        pw = json.loads(data or '{}').get('password')
+    except Exception:
+        pw = None
+    write_user_config({'editPassword': pw if pw else None})
+    _log('edit password ' + ('stored' if pw else 'cleared'))  # never the value
+
+
 ui  = None
 app = adsk.core.Application.get()
 if app:
@@ -1206,6 +1261,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     # Piggy-back the deployed version stamp on this first
                     # handshake reply so the header badge fills in at open.
                     _send_build_info(pal)
+                    _send_edit_password(pal)  # F35 item 34
+                return
+
+            if action == 'store_edit_password':
+                _store_edit_password(htmlArgs.data)
                 return
 
             # ── Reset UI / session restart (from JS)

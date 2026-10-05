@@ -1516,6 +1516,16 @@
           <button type="button" id="btnCopyLog" class="cad-btn cad-btn-secondary" style="width:100%; height:34px;">Save log (.json)</button>
           <div style="font-size:11px; color:#666; margin-top:6px;">Your last actions + the drawing now: saved as a .json file (also copied). Attach or paste it in the chat.</div>
         </div>
+        <!-- F35 item 34: the password to save to the cloud, cached per device (main/edit-password.js) -->
+        <div class="cad-panel-section" id="editPasswordSection">
+          <label class="cad-label" for="editPasswordInput">Password to save</label>
+          <div style="display:flex; gap:6px;">
+            <input type="password" id="editPasswordInput" autocomplete="current-password" placeholder="password" style="flex:1; min-width:0;">
+            <button type="button" id="editPasswordSave" class="cad-btn cad-btn-secondary">Set</button>
+            <button type="button" id="editPasswordClear" class="cad-btn cad-btn-secondary">Clear</button>
+          </div>
+          <div id="editPasswordStatus" style="font-size:11px; color:#666; margin-top:6px;"></div>
+        </div>
         <div class="cad-panel-section">
           <label class="cad-label">Undo Limit</label>
           <div class="cad-nested-input" style="width:100%;">

@@ -3,7 +3,8 @@
 // Routing dispatches on X-API-Key header presence:
 //
 // ── Bspline / Connery / CAM Studio (no X-API-Key) ───────────────────────────
-//   Uses env.PRESETS KV. Name-keyed storage. No authentication.
+//   Uses env.PRESETS KV. Name-keyed storage. Reads open; a PUT/DELETE on /projects or /presets needs the edit
+//   password (Authorization: Bearer, secret EDIT_PASSWORD) -- src/edit-gate.js EDIT_GATE declares the scope.
 //
 //   GET    /projects              -> { names: [...], items: [{name, savedAt?, size?}, ...] }
 //   GET    /projects/:name        -> snapshot JSON | 404
@@ -35,6 +36,7 @@
 import { handlePageViews } from './pageviews-route.js';
 import { handleBus } from './bus-route.js';
 import { readBoundedBody } from './body.js';
+import { checkEditGate, isGateKey } from './edit-gate.js';
 
 export default {
   async fetch(request, env) {
@@ -165,7 +167,7 @@ async function handleBspline(request, env, method) {
           save:        'PUT /projects/:name',
           remove:      'DELETE /projects/:name',
           camProfiles: 'GET|PUT|DELETE /cam-profiles/:name',
-          note:        'No auth required.',
+          note:        'Reads open; PUT/DELETE /projects needs the edit password (Authorization: Bearer).',
         },
         penplotter: {
           list:   'GET /{projects|palettes}',
@@ -207,11 +209,15 @@ async function handleBspline(request, env, method) {
     return json({ error: 'method not allowed' }, 405);
   }
 
+  // F35 item 34: the edit password on project writes (EDIT_GATE: PUT/DELETE /projects|/presets, Connery's exempt)
+  const gated = await checkEditGate(request, env, method, path, json);
+  if (gated) return gated;
+
   // List: GET /projects or /presets
   if ((path === '/projects' || path === '/presets') && method === 'GET') {
     try {
       const list  = await env.PRESETS.list();
-      const items = list.keys.map((k) => ({ name: k.name, ...(k.metadata || {}) }));
+      const items = list.keys.filter((k) => !isGateKey(k.name)).map((k) => ({ name: k.name, ...(k.metadata || {}) }));
       return json({ names: items.map((i) => i.name), items });
     } catch (e) {
       return json({ error: 'list failed', detail: String(e) }, 500);
@@ -299,7 +305,7 @@ function corsHeaders() {
   return {
     'Access-Control-Allow-Origin':  '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-API-Key',
+    'Access-Control-Allow-Headers': 'Content-Type, X-API-Key, Authorization',
     'Access-Control-Max-Age':       '86400',
   };
 }
