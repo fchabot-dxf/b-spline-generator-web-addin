@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -365,7 +365,9 @@ try {
       Z = z1;
     } else if (c.kind === 'relay') {
       // Generate = "re-lay now": take one brick of the tool's kind off the canvas by hand, then Generate must
-      // put back exactly the layout the current settings make (canonical canvas hash equal to before).
+      // put back exactly the layout the current settings make (canonical canvas hash equal to before) -- or, with
+      // expect.newSeed (F35 item 39: Generate rolls a new brick seed), a NEW layout with the removed brick back
+      // (the same piece count, a different canvas).
       await openBrickTool(c.tool);
       // the baseline is what the current settings lay (one Generate first): a reopened editor shows the
       // saved board, whose canonical hash can differ after the save/load round trip (MEASURED on fb-app
@@ -377,10 +379,12 @@ try {
       const cGap = await js(CANVAS);
       const result = await act(c.do);
       const c1 = await canvasSettled(cGap);
-      const ok = removed && cGap !== c0 && c1 === c0;
-      rows.push({ name: c.name, kind: c.kind, tool: c.tool, result, observed: { removed, disturbed: cGap !== c0, restored: c1 === c0 }, expect: c.expect,
+      const count = (h) => String(h).split('#')[0];
+      const restored = c.expect.newSeed ? count(c1) === count(c0) && c1 !== c0 : c1 === c0;
+      const ok = removed && cGap !== c0 && restored;
+      rows.push({ name: c.name, kind: c.kind, tool: c.tool, result, observed: { removed, disturbed: cGap !== c0, restored }, expect: c.expect,
         verdict: { pending: 'n/a', canvas: ok ? 'PASS' : 'FAIL', threeD: 'n/a' }, hashes: { c0, cGap, c1 } });
-      console.log(`${ok ? 'pass' : 'FAIL'}  ${c.name.padEnd(34)} brick removed ${removed}, canvas restored ${c1 === c0}`);
+      console.log(`${ok ? 'pass' : 'FAIL'}  ${c.name.padEnd(34)} brick removed ${removed}, ${c.expect.newSeed ? `the count back ${count(c1) === count(c0)}, a new layout ${c1 !== c0}` : `canvas restored ${c1 === c0}`}`);
       if (!ok) await shot(`FAIL_${c.name.replace(/[^a-z0-9]+/gi, '_')}`);
     } else if (c.kind === 'brush') {
       const brushTool = c.tool || 'brush'; // e.g. 'raisedBrush' -- any stroke-drawing Brick tool
@@ -527,6 +531,32 @@ async function runPersistence() {
   const picked = await js(`(async()=>{ const it=[...document.querySelectorAll('#fmProjectList [data-name]')].find(e=>e.getAttribute('data-name')==='brick-matrix-persist'); if(!it) return 'not listed'; it.click(); await new Promise(r=>setTimeout(r,500)); document.getElementById('fmBtnLoad').click(); await new Promise(r=>setTimeout(r,6000)); return 'loaded'; })()`);
   console.log('project load:', picked);
   await checkPersisted('project load');
+  // F35 item 39: Generate refreshes the LOADED project, then a RELOADED session; Apply + reopen keeps the new lay
+  await checkGenerateAfterRestore('project load');
+  await send('Page.reload', {}); await waitApp();
+  await checkGenerateAfterRestore('reload');
+}
+
+async function checkGenerateAfterRestore(when) {
+  const G = GENERATE_AFTER_RESTORE;
+  const name = `Generate refreshes the board after ${when}`;
+  if (!(await js(G.marker))) { checkRow('persistence', name, false, '', 'F35 item 39'); return; }
+  const wallState = () => jsJSON(`JSON.stringify((()=>{ const ns=[...(window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick=${JSON.stringify(G.kind)}]')||[])];
+    return { n: ns.length, seeds: [...new Set(ns.map((e)=>e.getAttribute(${JSON.stringify(G.seedAttr)})))] }; })())`);
+  await openEditorTab('editorTabBrick'); await click(G.tool, 900);
+  const before = await wallState();
+  const c0 = await js(CANVAS);
+  await click(G.generate, 1800);
+  await canvasSettled(c0);
+  const after = await wallState();
+  await apply(); await heightsSettled(null);
+  await openEditorTab('editorTabBrick');
+  const kept = await wallState();
+  const fresh = after.seeds.length === 1 && before.seeds.length === 1 && after.seeds[0] !== before.seeds[0];
+  // not the piece count: this board's wall is Fieldstone, whose stone count follows the seed (measured 152 -> 142)
+  checkRow('persistence', name, before.n > 0 && after.n > 0 && fresh && kept.n === after.n && kept.seeds.join() === after.seeds.join(),
+    `wall ${before.n} pieces seed ${before.seeds} -> Generate ${after.n} seed ${after.seeds} -> Apply + reopen ${kept.n} seed ${kept.seeds}`);
+  await apply(); await heightsSettled(null);
 }
 async function checkPersisted(phase) {
   await openBrickTab();

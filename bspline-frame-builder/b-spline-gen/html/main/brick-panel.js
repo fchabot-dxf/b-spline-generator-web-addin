@@ -1489,6 +1489,18 @@ function _kindsToLay(editor, frameGeom) {
  *  console. (Offset from frame OFF lays the bands along the board's edge instead -- no frame needed.) */
 export const FRAME_NEEDS_A_FRAME = "No frame on this board -- pick a frame template, or turn Offset from frame off to lay the bands along the board's edge.";
 
+/** F35 item 39 (Fred, on a restored board: "the opened geometry isn't refreshable by a simple Generate; it needs a
+ *  setting changed"): the Generate BUTTON = re-lay now with a NEW brick seed, like the terrain's Generate New Seed --
+ *  unconditionally, every brick element on the board, one undo step (setSeed's re-lay). Measured before: a restored
+ *  board whose settings already matched its pieces re-laid byte-identical bricks (205#yd55hp -> 205#yd55hp), so the
+ *  press showed nothing. The re-lays the app runs by itself (a setting change, a frame or brush change) keep calling
+ *  generateBricks() and keep the seed. BRICK_SEED_RANGE / newBrickSeed: the one seed rule (Random seed reads it too). */
+export const BRICK_SEED_RANGE = 1000000;
+export const newBrickSeed = () => Math.floor(Math.random() * BRICK_SEED_RANGE);
+export function generateNow() {
+  setSeed(newBrickSeed());
+}
+
 export function generateBricks({ amend = null } = {}) {
   _cancelLivePreview();
   _dragSlow = false;
@@ -2570,8 +2582,8 @@ export function initBrickPanel() {
     commitBrickSetting('generate', 'onDrag');
     settleSeed();
   });
-  document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => setSeed(Math.floor(Math.random() * 1000000)));
-  document.getElementById('brickGenerate')?.addEventListener('click', () => generateBricks());
+  document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => setSeed(newBrickSeed()));
+  document.getElementById('brickGenerate')?.addEventListener('click', () => generateNow()); // item 39: a new seed, every element
   document.addEventListener('editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); });
   document.addEventListener('bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
   // the frame changed (template, shape): re-lay once it settles (item 27 -- the editor too; a template with no
