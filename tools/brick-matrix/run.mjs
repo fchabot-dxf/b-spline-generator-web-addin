@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'persistence'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'persistence'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -45,6 +45,12 @@ const CLOUD_STAND_IN = `(() => {
     const url = typeof input === 'string' ? input : input.url;
     const api = window.BSPLINE_PRESETS_API_URL ? String(window.BSPLINE_PRESETS_API_URL).replace(/[/]+$/, '') : null;
     if (!api || !url.startsWith(api + '/projects')) return real(input, init);
+    // item 34: a write that carries a password must carry the declared test one (the worker answers 401 otherwise);
+    // a write with NO Authorization header is pre-item-34 code and is accepted as before
+    const hdrs = init.headers || {};
+    const auth = typeof hdrs.get === 'function' ? hdrs.get('Authorization') : (hdrs.Authorization || hdrs.authorization);
+    const writes = ['PUT', 'DELETE'].includes(String(init.method || 'GET').toUpperCase());
+    if (writes && auth && auth !== 'Bearer __EDIT_PASSWORD__') return new Response(JSON.stringify({ error: 'wrong password (brick-matrix stand-in)' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     const m = load(); const method = String(init.method || 'GET').toUpperCase();
     const name = decodeURIComponent(url.slice((api + '/projects').length).split('?')[0].replace(/^[/]/, ''));
     const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json' } });
@@ -263,7 +269,7 @@ async function record(c, obs) {
 
 try {
   await send('Runtime.enable'); await send('Page.enable');
-  await send('Page.addScriptToEvaluateOnNewDocument', { source: CLOUD_STAND_IN });
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: CLOUD_STAND_IN.replace('__EDIT_PASSWORD__', EDIT_PASSWORD_TEST.password) });
   await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html` });
   for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; }
@@ -411,6 +417,7 @@ try {
   if (!arg('group') || arg('group') === 'select') await runSelect();
   if (!arg('group') || arg('group') === 'migration') await runMigration();
   if (!arg('group') || arg('group') === 'frame-ui') await runFrameUi();
+  if (!arg('group') || arg('group') === 'password') await runPassword();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') await runPersistence();
 } catch (e) {
@@ -465,6 +472,7 @@ async function runPersistence() {
   await checkPersisted('reload');
   // 3. project Save As -> (fresh app) -> Load, through the real Project Manager modal (cloud stand-in)
   if (await editorOpen()) await apply();
+  await js(`(()=>{ localStorage.setItem(${JSON.stringify(EDIT_PASSWORD_TEST.storageKey)}, ${JSON.stringify(EDIT_PASSWORD_TEST.password)}); return 1; })()`); // item 34: saves need it
   await click('btnOpenProjectManager', 1500);
   await click('fmBtnSaveAs', 1200);
   await js(`(async()=>{ const i=document.querySelector('.pm-prompt-input'); if(!i) return 'no prompt'; i.value='brick-matrix-persist'; document.querySelector('.pm-prompt-ok').click(); await new Promise(r=>setTimeout(r,4000)); return 'ok'; })()`);
@@ -907,6 +915,56 @@ async function runFrameUi() {
       `preset ${st.preset}, corner ${st.ownCorner}, active ${st.active.join(',')}`);
     if (await editorOpen()) await apply();
   }
+}
+
+// ---------------------------------------------------------------- the password to save (hoisted; EDIT_PASSWORD_TEST)
+async function standInNames() { return jsJSON(`JSON.stringify(Object.keys(JSON.parse(localStorage.getItem('brickMatrixCloudStandIn')||'{}')))`); }
+async function cachedPassword() { return js(`localStorage.getItem(${JSON.stringify(EDIT_PASSWORD_TEST.storageKey)})`); }
+// Save As `name`; answer every password prompt with the next of `answers`. Returns the titles the app asked with.
+async function saveAsAnswering(name, answers) {
+  await click('btnOpenProjectManager', 1500);
+  await click('fmBtnSaveAs', 1200);
+  await js(`(async()=>{ const i=document.querySelector('.pm-prompt-input:not([type=password])'); if(!i) return 0; i.value=${JSON.stringify(name)}; i.closest('.pm-prompt-overlay').querySelector('.pm-prompt-ok').click(); return 1; })()`);
+  const asked = [];
+  for (let k = 0; k < 6; k++) {
+    await sleep(800);
+    const title = await js(`(()=>{ const i=document.querySelector('.pm-prompt-overlay input[type=password]'); return i ? i.closest('.pm-prompt-overlay').querySelector('.pm-prompt-title').textContent.trim() : null; })()`);
+    if (!title) continue;
+    asked.push(title);
+    const answer = answers[asked.length - 1] ?? '';
+    await js(`(()=>{ const i=document.querySelector('.pm-prompt-overlay input[type=password]'); i.value=${JSON.stringify(answer)}; i.closest('.pm-prompt-overlay').querySelector('.pm-prompt-ok').click(); return 1; })()`);
+  }
+  await sleep(1500);
+  await js(`(()=>{ document.querySelectorAll('.pm-prompt-overlay .pm-prompt-cancel').forEach((b)=>b.click()); return 1; })()`);
+  return asked;
+}
+async function runPassword() {
+  const W = EDIT_PASSWORD_TEST;
+  await send('Page.reload', {}); await waitApp();
+  if (!(await exists('editPasswordStatus'))) { checkRow('password', 'Password to save', false, '', W.introducedBy); return; }
+  if (await editorOpen()) await apply();
+  // 1. no cached password: Save As asks once, the write is accepted, the password is cached
+  await js(`(()=>{ localStorage.removeItem(${JSON.stringify(W.storageKey)}); return 1; })()`);
+  let asked = await saveAsAnswering('brick-matrix-pw-1', [W.password]);
+  let names = await standInNames();
+  checkRow('password', 'First save asks once, saves, caches it', asked.length === 1 && asked[0] === W.askTitle && names.includes('brick-matrix-pw-1') && (await cachedPassword()) === W.password,
+    `asked ${JSON.stringify(asked)}, saved ${names.includes('brick-matrix-pw-1')}, cached ${(await cachedPassword()) === W.password}`);
+  // 2. cached: no prompt at all
+  asked = await saveAsAnswering('brick-matrix-pw-2', []);
+  names = await standInNames();
+  checkRow('password', 'Next save: no prompt', asked.length === 0 && names.includes('brick-matrix-pw-2'), `asked ${JSON.stringify(asked)}, saved ${names.includes('brick-matrix-pw-2')}`);
+  // 3. a wrong cached password: 401 -> re-asked with the retry title -> the right one -> saved and cached
+  await js(`(()=>{ localStorage.setItem(${JSON.stringify(W.storageKey)}, 'not-the-password'); return 1; })()`);
+  asked = await saveAsAnswering('brick-matrix-pw-3', [W.password]);
+  names = await standInNames();
+  checkRow('password', 'Wrong password: re-asked, then saved', asked.length === 1 && asked[0] === W.retryTitle && names.includes('brick-matrix-pw-3') && (await cachedPassword()) === W.password,
+    `asked ${JSON.stringify(asked)}, saved ${names.includes('brick-matrix-pw-3')}, cached ${(await cachedPassword()) === W.password}`);
+  // 4. Settings: the status says so; Clear forgets it
+  const st1 = await js(`(document.getElementById('editPasswordStatus')?.textContent||'').trim()`);
+  await js(`(()=>{ document.getElementById('editPasswordClear')?.click(); return 1; })()`); await sleep(500);
+  const st2 = await js(`(document.getElementById('editPasswordStatus')?.textContent||'').trim()`);
+  checkRow('password', 'Settings: status, then Clear forgets it', st1 === W.statusSaved && st2.startsWith(W.statusUnsetStarts) && !(await cachedPassword()),
+    `before "${st1}", after Clear "${st2.slice(0, 40)}", cached ${!!(await cachedPassword())}`);
 }
 
 // ---------------------------------------------------------------- report (hoisted; shared by --parallel)

@@ -275,3 +275,13 @@ export const MIGRATION = {
   },
   introducedBy: 'b75e836',
 };
+
+// ---- the password to save (item 34, seat 37 fb-app 68feae7): every cloud WRITE carries `Authorization: Bearer <pw>`;
+// the worker answers 401 to a wrong one. The matrix's cloud stand-in (run.mjs CLOUD_STAND_IN) mirrors that contract
+// with this declared test password -- never a real one.
+export const EDIT_PASSWORD_TEST = {
+  password: 'brick-matrix-test-password', storageKey: 'bspline.editPassword',
+  askTitle: 'Password to save', retryTitle: 'Wrong password -- try again',
+  statusSaved: 'Saved on this device.', statusUnsetStarts: 'Not set',
+  introducedBy: '68feae7',
+};
