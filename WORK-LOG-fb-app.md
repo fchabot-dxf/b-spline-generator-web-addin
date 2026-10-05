@@ -13149,3 +13149,179 @@ so no row is needed. A width row would need a drag gesture in 88's harness; offe
   splitter/html/css, 6/12 fail. Restored from my copies, cmp clean.
 - Fast tier (whole vitest): 264 files, 4358 passed, **2 FAILED** in the parallel run, both
   bricks-fieldstone-large-stones (seat B's heavy engine file, the same load timeouts as turn 217); alone 5/5.
+
+### turn 221 -- item 26 follow-ups; 88's item 23 FAIL is an engine stone; F35 item 22 DESIGN NOTE (seat 37)
+
+**Item 26 follow-ups (673c416):**
+- **(1) Tool groups never split 3+1.** No single cell min can do it: turn 219's measurements need c <= 78 (4 per row
+  at 1.5x) AND c > 90 (2 per row at 650). So the CSS now switches the cell between 25% / 50% / 100%: 4 per row when
+  4 declared cells fit, else 2 when 2 fit, else 1.
+  - Pure CSS (clamp/max with the "x * 999" switch), still driven by the ONE declared cellMinPx (72).
+  - Live sweep, every even sidebar width 200..650: 1 col 200-216, 2 cols 218-364, 4 cols 366-518, 2 cols 520-650
+    (two-column mode). **3 never occurs.**
+- **(2) The tap toggle is declared:** `SIDEBAR_LAYOUT.tapSnaps = ['defaultPx', 'twoColumnPx']` plus `handleTitle`
+  ("Drag to resize the sidebar. Click: one / two columns."), set on #resizer on desktop only (removed on phones).
+- **(3) Offset X | Offset Y fixed at 260:** cause = a range input's ~129 px intrinsic width set the paired half's
+  automatic minimum, so the two halves could not shrink below 2 x 129. The fix is `width: 0` (still `flex: 1`) on
+  `input[type=range].cad-slider`.
+  - All 46 .cad-slider sit in flex rows (probed), so nothing else moves: only the 4 paired sliders changed width
+    (260: 129 -> 34; 390: 129 -> 99; 572: 129 -> 58).
+  - Overflowing controls: 260: 4 -> 0; 390: 2 -> 0; 572: 4 -> 0.
+  - At 260 the paired sliders are short (34 px). Stacking the pair would give them full width but moves controls;
+    say if Fred prefers that.
+  - Shot: shots/seat37/f35item26_offsets_260_after.png.
+- Tests: sidebar-layout 15 (3 new + 2 extended). The new/extended ones fail 4/4 against the pre-fix copies
+  (restored, cmp clean). Whole vitest: 4362 passed, **1 FAILED** (bricks-fieldstone-large-stones parallel-load
+  timeout, as in turns 217/219; alone 5/5).
+
+**88's item 23 matrix FAIL (Wall pattern -> Fieldstone with a rock frame: canvas changes, 3D identical) =
+an ENGINE stone, not the item 23 wiring.**
+- Reproduced with 88's 7fb9322 harness against this tree (frame group: 12 rows, 1 FAIL) and with my own probe
+  (+ Apply).
+- Rasterizing the brick mask with and without the 12 wall stones: **0 cells differ**.
+- One rock-frame stone covers all 12 wall-stone centroids:
+  - `fieldstone-161`: 81 points, **3 self-crossings**, bbox 2.35-5.4 x 2.35-7.4 in (the wall's bbox is
+    2.35-4.65 x 2.35-6.65);
+  - area 3.49 sq in, against a median frame stone of 0.156.
+- The mask samples the frame first and stops at the first hit, so the wall never reaches the 3D.
+- The frame is identical before and after the wall click, so it is the rock band ring (core/bricks, 39ca112's rule),
+  not the frame-set scaling.
+- DM'd 88 with the repro; no engine edit from here.
+
+---
+
+## F35 item 22 -- DESIGN NOTE (no code; for the advisor's OK)
+
+**Fred's ask (NEXT-SESSION-fb-app [F35-item-22]):**
+- Wall: Select + Area brush.
+- Frame: Select only.
+- Bricks on the ACTIVE layer like art.
+- Once ANY area is painted, only painted areas get bricks; clearing every area returns to the full fill.
+- Overlaps: newest wins, older walls flow around it.
+
+### 1. One idea: every brick element is a declared record IN the drawing
+
+Today a Brush stroke already is one: an invisible spine `<line>` carrying `data-brick-element` (id) +
+`data-brick-settings` (a JSON settings snapshot). Its bricks are regenerated from (spine, settings), and undo, save,
+layers and Scissors come free because it is ordinary SVG. **Extend that same declaration to walls and the frame**
+rather than building a parallel state store:
+
+```
+ element record (an invisible SVG node, on its layer)                     its bricks (generated polygons)
+ +---------------------------------------------------------------+        +------------------------------+
+ | data-brick-element  = be...           (id)                    | -lays->| data-brick="wall"            |
+ | data-brick          = wall-area | wall-full | frame | brush-spine|      | data-brick-owner = be...     |
+ | data-brick-settings = {pattern,setId,accent,level,invert,...}  |        | data-layer = <same layer>    |
+ | data-brick-laid     = <laid key>   (B1-B3 moves HERE)          |        +------------------------------+
+ | data-layer          = <the active layer when it was made>      |
+ | geometry: wall-area = the painted strokes (polyline + width)   |
+ |           wall-full / frame = none (board / frame geometry)    |
+ +---------------------------------------------------------------+
+```
+
+- **wall-full**: the implicit whole-board wall of today. It exists only while NO wall-area exists. Painting the
+  first area replaces it; deleting the last area restores it (with the settings it had).
+- **wall-area**: one per painted area. Engine side is seat B's T86 item 18 (strokes -> region polygon, holes
+  allowed), filled by the existing `bricksFillShape(polygon, holes, opts)`.
+  - Several areas: newest wins, older ones get the newer as holes (T86-18's own rule).
+  - Brush strokes still carve exclusions out of every wall (C10 B, unchanged).
+- **frame**: one record (one frame per board), Select only.
+
+### 2. The Brick tab (mockup)
+
+```
+ +- Brick toolbar -+  +- Wall section ---------------------------------------+
+ | [brush]         |  |  [Select] [Area]       <- the Wall's two sub-tools    |
+ | [raised]        |  |  -- selected: Wall 2 (layer "Sky") -------------------|
+ | [WALL] <--------+--|  Set [Red][Grey]  Pattern [icons...]  Accent [...]   |
+ | [frame]         |  |  Level --o--   Raised|Carved                          |
+ | [scissors]      |  |  Area brush width --o--  (Area sub-tool only)         |
+ | [stripe]        |  |  [Delete area]   (no areas = the whole board)         |
+ +-----------------+  +-------------------------------------------------------+
+
+ canvas:  +------------- frame (rock) ------------+
+          |  :::::::: Wall 1 (soldier) :::::      |   Select: click a brick -> its element is selected,
+          |  ::::::##################::::::::     |   its outline shows, the section edits ONLY it
+          |        # Wall 2 (stretcher, newer) #  |   Area: paint -> a NEW wall-area with the section's
+          |        ##########################     |   current settings, on the ACTIVE layer
+          |   (unpainted: no bricks once any area |   Ctrl-drag in Area = erase from the selected area
+          |    exists)                            |
+          +---------------------------------------+
+ Frame section: [Select] only; clicking a frame brick selects the frame record.
+```
+
+- With nothing selected, the section shows the settings the NEXT area will use (the last edited ones). The sidebar
+  quick settings keep applying to ALL walls (as the quick Set does since item 23).
+
+### 3. Bricks on any layer -- what the "Bricks" layer special case becomes
+
+- `ensureBricksLayer` (find-or-create by NAME) is retired. A new element goes on the ACTIVE layer, and the editor's
+  existing context menu "move to layer" (editor-context-menu.js) moves its record + bricks together (they share
+  the element id).
+- Height: today stamp-mask-manager routes the layer NAMED "Bricks" through the brick mask. Instead, any layer with
+  brick nodes:
+  - its brick nodes -> rasterizeBrickHeightMask;
+  - its art -> the normal rasterizeSvg (getLayerSvg must skip brick nodes);
+  - the two masks combine per layer.
+  - Brick height = each element's own relief + Raised/Carved (`settings.invert`, per element), NOT the layer's
+    depth (the layer depth stays the art's). Layer eye / carve toggle apply to both.
+- 14 name-based references in 5 files (editor-brick-tool, layers, brick-panel, export-flow, stamp-mask-manager)
+  become "has brick nodes" / per-element lookups.
+
+### 4. Laid key (B1-B3) per element
+
+- `layer.brickLaidKey` moves to `data-brick-laid` on each record. A re-lay compares the element's own key, so
+  editing Wall 2 re-lays Wall 2 only.
+- Item 27's frame-settle re-lay keys on the frame record. Undo/redo/Cancel/reload still carry it (it is in the SVG).
+
+### 5. Send (export-flow + the Fusion add-in)
+
+- `_bricksLayerSvg` -> `_brickElementSvgs`: one baked SVG PER ELEMENT. The payload becomes
+  `bricks: [{ name, carve, svg }]`, named "Bricks - Wall 1", "Bricks - Frame", "Bricks - Brush 3".
+  - Each element's `carve` = its layer's carve toggle (turn 193's rule, per element).
+  - Brush strokes: one sketch per stroke could be many; propose ONE "Bricks - Brushes" sketch per layer.
+    Advisor's call.
+- b-spline-gen.py `_apply_bricks_sketch`: accepts the list; removes every older "Bricks*" sketch in both homes
+  first; then imports each.
+  - An old single-dict payload (an older palette) = one sketch named "Bricks", today's behaviour.
+  - Never raises (same contract).
+
+### 6. Migration (existing boards look identical)
+
+On load (a declared MIGRATIONS entry, after 'brick-set-per-element'), a board with a "Bricks" layer:
+- gets a **wall-full** record (P.brickSettings' wall settings, laid key = the layer's brickLaidKey) and a **frame**
+  record (if frame bricks exist), both on that same layer;
+- existing wall/frame polygons get `data-brick-owner` = their record's id;
+- brush spines are already records;
+- the layer stays, named "Bricks" -- now an ordinary layer (it can be renamed, and new elements land wherever is
+  active);
+- `layer.brickLaidKey` is deleted;
+- a board with no bricks: nothing.
+
+### 7. What changes, by file
+
+| area | change |
+| --- | --- |
+| editor-brick-tool.js | element records (wall-full / wall-area / frame) + regenerate-from-record (as Brush does); wall-full <-> areas rule; overlap holes; retire ensureBricksLayer |
+| brick-panel.js | Wall sub-tools Select / Area (declared on BRICK_TOOLS as `subTools`), Frame `subTools: ['select']`; section edits the SELECTED element; `_laidLayoutKey` per element |
+| new editor-brick-area.js | the Area brush gesture (stroke capture, width, Ctrl erase) -> wall-area record |
+| layers.js | "Bricks" special case -> "has brick nodes"; layer summary keeps "Raised/Carved" only for an all-brick layer |
+| stamp-mask-manager.js + editor-brick-height-mask.js | per-layer brick + art masks combined; relief per element |
+| export-flow.js + b-spline-gen.py | per-element sketches (above) |
+| editor-clear(-menu) | 'bricks' kind = every brick record + its bricks on every layer; 'frame' = the frame record |
+| app-init MIGRATIONS | 'brick-elements' (section 6) |
+| engine (seat B) | T86 item 18: `strokesToRegion(strokes:[{points,widthIn}]) -> {polygon, holes}`; signature to agree by DM |
+| matrix (88) | rows: Area paints a wall; only-painted; newest-wins overlap; Select edits one wall; per-layer hide; Send sketches |
+
+### 8. Build order (each a pass, nothing hidden on main)
+
+1. Records + migration + per-element laid key, on the existing single layer (no UI change: proves sections 1/4/6).
+2. Bricks on the active layer + per-layer masks + Send per element (sections 3/5).
+3. Wall Select / Frame Select.
+4. Area brush, once seat B's strokes-to-region lands.
+
+### 9. Open questions (only these)
+
+1. Brush sketches in Fusion: one per stroke, or one per layer?
+2. Area erase gesture: Ctrl-drag (proposed), or a separate Erase sub-tool?
+3. Can the frame move to another layer (yes by default via "move to layer"), or should it stay with the board?
