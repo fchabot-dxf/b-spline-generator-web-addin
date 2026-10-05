@@ -28,7 +28,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 
 import {
   initBrickPanel, openPatternBuilder, closePatternBuilder, builderToggleCell, builderResize, builderSetBase, builderStartFrom,
-  builderSave, applyUserPattern, setWallPattern, setAccentPreset, setAccentLevel, patternBuilderState,
+  builderSave, applyUserPattern, setWallPattern, setAccentPreset, setAccentLevel, patternBuilderState, builderSetUnit,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { ACCENT_LEVEL_RANGE, tileOf, ACCENT_PRESETS, accentedBrickIndices } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js';
@@ -212,5 +212,58 @@ describe('item 32: the signed accent level', () => {
     const down = accentedBrickIndices(wall, { preset: 'tile', tile, levelIn: -0.06 });
     expect([...down]).toEqual([...up]);
     expect(up.size).toBeGreaterThan(0);
+  });
+});
+
+describe('item 31b: the tile at 1/2 and 1/4 brick', () => {
+  beforeEach(() => { resetAccent(); engineOpts.extra = ['accentCuts']; setup('wall'); });
+  const cellWidth = (id) => parseFloat($(id).style.width);
+
+  it('a unit change re-lays the wall at once (the engine cuts the bricks), and so does a cell tap at 1/2; at 1 a tap only re-masks', () => {
+    openPatternBuilder();
+    runBricks.mockClear();
+    builderToggleCell(0, 0);
+    expect(runBricks).not.toHaveBeenCalled(); // unit 1: the marks only (3D), the bricks are unchanged
+    builderSetUnit(0.5);
+    expect(acc().tile.unit).toBe(0.5);
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    runBricks.mockClear();
+    builderToggleCell(0, 1);
+    expect(runBricks).toHaveBeenCalledTimes(1); // the cut moves
+    runBricks.mockClear();
+    setAccentLevel(-0.0625);
+    expect(runBricks).not.toHaveBeenCalled(); // a level never cuts
+  });
+
+  it('leaving a cut tile for a preset re-lays (whole bricks again)', () => {
+    openPatternBuilder();
+    builderSetUnit(0.25);
+    builderToggleCell(0, 0);
+    runBricks.mockClear();
+    setAccentPreset('checker');
+    expect(runBricks).toHaveBeenCalledTimes(1);
+  });
+
+  it('the builder draws a cell as that fraction of a brick, on the unstaggered grid, counted as Cells', () => {
+    openPatternBuilder();
+    const whole = cellWidth('brickBuilderCell_0_0');
+    expect($('brickBuilderCell_1_0').style.left).not.toBe($('brickBuilderCell_0_0').style.left); // unit 1: the bond's stagger
+    builderSetUnit(0.5);
+    expect(cellWidth('brickBuilderCell_0_0')).toBeLessThan(whole);
+    expect($('brickBuilderCell_1_0').style.left).toBe($('brickBuilderCell_0_0').style.left);
+    expect($('brickPatternBuilder').textContent).toMatch(/Cells/);
+    expect($('brickBuilderCell_0_0').title).toBe('course 1, cell 1');
+  });
+
+  it('a saved pattern keeps its unit and lays cut when picked', () => {
+    openPatternBuilder();
+    builderSetUnit(0.5);
+    builderToggleCell(0, 1);
+    builderSave('Half');
+    resetAccent();
+    runBricks.mockClear();
+    applyUserPattern('user:half');
+    expect(acc().tile.unit).toBe(0.5);
+    expect(runBricks).toHaveBeenCalledTimes(1);
   });
 });

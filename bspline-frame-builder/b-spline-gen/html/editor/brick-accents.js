@@ -124,6 +124,18 @@ export const ACCENT_TILE_UNITS = Object.freeze([
   { id: 0.5, label: '½', title: 'A cell is half a brick', requires: { engineOption: 'accentCuts' } },
   { id: 0.25, label: '¼', title: 'A cell is a quarter brick', requires: { engineOption: 'accentCuts' } },
 ]);
+/** F35 item 31b: the engine input a tile at a FRACTION of a brick lays with -- generateBricks `accentCuts` (seat B
+ *  T86-26): the wall's bricks are CUT at the tile's cell boundaries and each piece comes back `accentMarked`. A whole-
+ *  brick tile (unit 1), a preset or no accent -> null: no key, today's lay (byte-identical). */
+export function accentCutsFor(accent) {
+  const t = accent && accent.preset === ACCENT_TILE.id && accent.tile;
+  if (!t || !(Number(t.unit) > 0 && Number(t.unit) < 1) || !t.rows || !t.cols || !Array.isArray(t.cells)) return null;
+  return { unit: Number(t.unit), tile: { rows: t.rows, cols: t.cols, cells: t.cells.map((r) => r.map(Boolean)) } };
+}
+/** The engine's per-brick mark, kept on each drawn Wall brick (editor-only: never baked) -- the 2D outline, the icons
+ *  and the height mask read it whenever the accent is cut (accentCutsFor), so all three show the engine's own pieces. */
+export const ACCENT_MARK_ATTR = 'data-brick-accent-marked';
+
 /** The builder's declared scope (Fred: "Custom is for wall only for now"): which element kinds may open it. */
 export const PATTERN_BUILDER_SCOPE = Object.freeze(['wall']);
 
@@ -216,6 +228,11 @@ export function accentedBrickIndices(bricks, accent, ctx = {}) {
       const k = bricks.findIndex((b) => pointInPolygon(pt.x, pt.y, b.polygon));
       if (k >= 0) out.add(k);
     }
+    return out;
+  }
+  // item 31b: a CUT tile -- the engine marked every piece it laid (accentMarked); that is the answer, no grid
+  if (accentCutsFor(accent) && bricks.every((b) => typeof b.accentMarked === 'boolean')) {
+    bricks.forEach((b, k) => { if (b.accentMarked) out.add(k); });
     return out;
   }
   // item 31: `preset` may also be an ad-hoc preset object (a user tile, before it is saved)

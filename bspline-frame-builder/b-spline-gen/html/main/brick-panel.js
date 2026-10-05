@@ -34,6 +34,7 @@ import {
 import {
   ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick, ACCENT_LEVEL_RANGE, clampAccentLevel, ACCENT_TILE,
   ACCENT_TILE_LIMITS, ACCENT_TILE_UNITS, PATTERN_BUILDER_SCOPE, makeTile, tileOf, userPatternFrom, accentOfUserPattern,
+  accentCutsFor,
 } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { BRICK_CONTROL_REQUIRES, requirementMet } from './brick-control-requires.js';
@@ -341,7 +342,12 @@ function syncAccentControls() {
   for (const u of _userPatterns()) document.getElementById(_userPatternButtonId(u))?.classList.toggle('active', a.preset === ACCENT_TILE.id && a.tile && a.tile.userId === u.id);
 }
 
-function _accentChanged(commit) {
+/** item 31b: the Wall accent's engine CUTS (a tile at 1/2 or 1/4, accentCutsFor), as a key. An edit that changes them
+ *  re-lays the wall (the pieces themselves change), not just its heights -- `before` = the key captured before the
+ *  edit (settings and canvas agree then: undo restores both). */
+const _cutsKey = () => JSON.stringify(accentCutsFor(P.brickSettings.accent));
+function _accentChanged(commit, before = null) {
+  if (before !== null && before !== _cutsKey()) commit = 'generate';
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (editor) { syncAccentHighlight(editor, P.brickSettings.accent, P.brickSettings.seed); syncRunAccentHighlight(editor, P.brickSettings); }
   syncAccentControls();
@@ -352,8 +358,9 @@ export function setAccentPreset(id, commit = 'surface') {
   if (id !== 'none' && id !== ACCENT_CUSTOM.id && !ACCENT_PRESETS.some((p) => p.id === id)) return;
   if (id !== ACCENT_CUSTOM.id) _disarmAccentClick();
   if (_builder.open) { _builder.open = false; renderPatternBuilder(); } // a preset pick ends the builder's live tile
+  const before = _cutsKey();
   P.brickSettings.accent = { ..._accent(), preset: id };
-  _accentChanged(commit);
+  _accentChanged(commit, before);
 }
 
 export function setAccentLevel(levelIn, commit = 'surface') {
@@ -410,9 +417,10 @@ export const patternBuilderState = () => (_builder.open ? { tile: makeTile(_buil
 /** The live preview: the wall's accent = the builder's tile; a base change re-lays the wall on that bond. */
 function _applyBuilderTile(commit = 'surface') {
   const t = _builder.tile;
+  const before = _cutsKey();
   P.brickSettings.accent = { ..._accent(), preset: ACCENT_TILE.id, tile: { rows: t.rows, cols: t.cols, cells: t.cells.map((r) => r.slice()), unit: t.unit, base: t.base } };
   if (P.brickSettings.pattern !== t.base) { P.brickSettings.pattern = t.base; syncWallPatternButtons(); commit = 'generate'; }
-  _accentChanged(commit);
+  _accentChanged(commit, before);
 }
 export function builderToggleCell(row, col) {
   if (!_builder.open || !_builder.tile.cells[row] || _builder.tile.cells[row][col] === undefined) return;
@@ -451,6 +459,7 @@ export function builderStartFrom(presetId) {
 /** Save: a pattern of its own (with the project + in this browser), shown in the Wall pattern grid. */
 export function builderSave(name) {
   if (!_builder.open) return null;
+  const before = _cutsKey();
   const u = userPatternFrom(name || _builder.name || 'My pattern', _builder.tile, _accent().levelIn);
   const keep = (list) => [...list.filter((x) => x && x.id !== u.id), u];
   P.brickSettings.userPatterns = keep(Array.isArray(P.brickSettings.userPatterns) ? P.brickSettings.userPatterns : []);
@@ -459,7 +468,7 @@ export function builderSave(name) {
   _builder.open = false;
   renderWallPatternList(document.getElementById('brickPatternList'));
   renderPatternBuilder();
-  _accentChanged('surface');
+  _accentChanged('surface', before);
   return u;
 }
 /** A saved pattern picked in the Wall grid: bond + its accent tile + level at once. */
@@ -509,7 +518,8 @@ export function renderPatternBuilder() {
   box.appendChild(units);
   // size: courses x bricks, 2..8 each
   const size = el('div', 'display:flex; flex-wrap:wrap; gap:6px 10px; margin:6px 0;');
-  for (const [key, text, val] of [['rows', 'Courses', t.rows], ['cols', 'Bricks', t.cols]]) {
+  const unit = t.unit || 1, cut = unit < 1; // 31b: at 1/2 or 1/4 a column is that fraction of a brick
+  for (const [key, text, val] of [['rows', 'Courses', t.rows], ['cols', cut ? 'Cells' : 'Bricks', t.cols]]) {
     const w = el('div', 'display:flex; align-items:center; gap:4px; font-size:11px;', '');
     w.appendChild(el('span', '', text));
     for (const [d, sym] of [[-1, '-'], [1, '+']]) {
@@ -523,13 +533,14 @@ export function renderPatternBuilder() {
     size.appendChild(w);
   }
   box.appendChild(size);
-  // the tile: running-bond cells per the base's stagger, row 0 = the BOTTOM course; caps at ~16 cells across and
-  // zooms (the cell width shrinks to fit), scrolling beyond
-  const across = t.cols / (t.unit || 1);
+  // the tile: row 0 = the BOTTOM course; caps at ~16 cells across and zooms (the cell width shrinks to fit), scrolling
+  // beyond. At 1 a cell is a brick, staggered per the base (accentGrid's half-bond rule); at 1/2 or 1/4 a cell is that
+  // fraction of a brick on the engine's own grid (accentCuts: columns from the wall's left edge, no stagger), drawn
+  // that fraction of a brick wide
   const avail = Math.max(120, (box.clientWidth || 200) - 18);
-  const stagger = _staggerOf(t.base), gap = 2;
-  const cw = Math.max(9, Math.min(30, avail / (Math.min(across, L.maxCellsAcross) + stagger) - gap)); // the stagger's half brick too
-  const ch = Math.max(8, Math.round(cw * 0.45));
+  const stagger = cut ? 0 : _staggerOf(t.base), gap = 2;
+  const cw = Math.max(9, Math.min(30 * unit, avail / (Math.min(t.cols, L.maxCellsAcross) + stagger) - gap)); // the stagger's half brick too
+  const ch = Math.max(8, Math.round(Math.min(30, (cw + gap) / unit) * 0.45)); // a course is as high as a whole brick reads
   const grid = el('div', `position:relative; height:${t.rows * (ch + gap)}px; width:${(t.cols + stagger) * (cw + gap)}px; margin:4px 0 8px;`);
   grid.id = 'brickBuilderTile';
   const wrap = el('div', 'overflow-x:auto;');
@@ -539,7 +550,7 @@ export function renderPatternBuilder() {
       const on = t.cells[r][i];
       const c = el('button', `position:absolute; left:${shift + i * (cw + gap)}px; top:${(t.rows - 1 - r) * (ch + gap)}px; width:${cw}px; height:${ch}px; padding:0; min-width:0; border:0; border-radius:2px; cursor:pointer; `
         + (on ? 'background:#8e2f1c; box-shadow:1px 1px 0 #2b1a14;' : 'background:#d07a5c; opacity:0.85;'));
-      c.type = 'button'; c.id = `brickBuilderCell_${r}_${i}`; c.title = `course ${r + 1}, brick ${i + 1}`;
+      c.type = 'button'; c.id = `brickBuilderCell_${r}_${i}`; c.title = `course ${r + 1}, ${cut ? 'cell' : 'brick'} ${i + 1}`;
       c.addEventListener('click', () => builderToggleCell(r, i));
       grid.appendChild(c);
     }
@@ -583,9 +594,10 @@ export function toggleAccentClickMode(target = { kind: 'wall' }) {
     acc.set(target, { ...a, preset: ACCENT_CUSTOM.id, clicks: toggleAccentClick(a.clicks || [], pt, acc.bricks(editor, target)) });
     _accentChanged('surface');
   };
+  const before = _cutsKey(); // Click bricks over a CUT tile: the wall goes back to whole bricks
   acc.set(target, { ...acc.get(target), preset: ACCENT_CUSTOM.id });
   editor.setMode('brickAccentClick');
-  _accentChanged('surface');
+  _accentChanged('surface', before);
 }
 
 /* Per-element ACCENTS (advisor: Frame bands + Brush strokes, like the Wall): where each element's accent lives and
