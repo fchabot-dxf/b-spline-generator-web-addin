@@ -109,6 +109,13 @@ export function brickTopHeight(x, y, brick, set, seed, sampleDetailAt) {
     const detail = Math.max(-1, Math.min(1, sampleDetailAt(x, y, brick)));
     height += detail * reliefIn * surfaceShare;
   }
+  // T86 item 23 (Fred: the Wear amount wears stones too): a stone's face is mostly photo detail (the Weathered style
+  // multiplies surfaceShare; White rocks reach 0.875), so the worn shoulder above barely shows on it. A set declaring
+  // `wearWholeFace` lets the WHOLE face follow the wear: where the edge noise pulls the shoulder line inward, the detail
+  // share dips by the same amount. No wear (edgeNoiseIn 0) = the worn and plain shoulders agree = no change.
+  if (hp.wearWholeFace && edgeNoiseIn > 0 && edgeRadiusIn > 1e-6) {
+    height -= reliefIn * surfaceShare * Math.max(0, sineEase(dist / edgeRadiusIn) - shoulder);
+  }
 
   // CHIPS: a declared per-brick chance of ONE small corner dip (Fred: "chipped corners" --
   // MEASURED off brick_3d_compare.png as an occasional, not universal, detail). Chip/no-chip and

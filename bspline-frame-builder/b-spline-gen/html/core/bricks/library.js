@@ -64,6 +64,12 @@ export const FILL_FRACTIONS = Object.freeze([1, 3 / 4, 1 / 2, 1 / 4]);
  *  fill-shape.js (a wall piece cut by a brush stroke) and contour-bands.js (a band piece cut to the board) read it. */
 export const MIN_PIECE_FRACTION = 0.25;
 
+/** T86 item 22 (Fred: rustic running bond): `rustic` 0..1 (0 = today's uniform bricks) varies brick lengths within a
+ *  course -- lengths in [1 - lengthSpread x rustic, 1 + lengthSpread x rustic] x the brick (0.6-1.4 at 1) -- keeping a
+ *  joint at least minLap x the brick away from every joint of the course below (the bond stays staggered), and lifts or
+ *  sinks each brick by up to levelIn x rustic. Wall (layouts/bond.js, running bond) and Brush (along-path.js). */
+export const RUSTIC = Object.freeze({ lengthSpread: 0.4, minLap: 0.25, levelIn: 0.02 });
+
 /**
  * H23 item 76 (advisor's own FINAL piece set): the 4 declared CORNER-specific pieces, used only
  * where a run meets a declared corner (never mid-run) -- a mason's own real vocabulary for turning
@@ -230,6 +236,7 @@ export const BRICK_SETS = Object.freeze([
       chipRate: 0.1, // rock-faced stones read "chippier" than smooth brick -- a higher declared rate
       chipSizeIn: 0.07,
       surfaceShare: 0.35,
+      wearWholeFace: true, // T86 item 23: the Wear amount wears the whole stone face at its edge (height-profile.js)
     },
     // H23 item 74b: 10 stones (shots/advisor/stones_white/stone_02..11.png -- stone_01 excluded,
     // it's a corner/context crop showing the adjacent brick coursing, not a clean stone face),
@@ -272,7 +279,7 @@ export const BRICK_SETS = Object.freeze([
     reliefIn: 0.125,
     reliefMaxIn: 0.25,
     heightJitterIn: 0.02,
-    heightProfile: { edgeRadiusIn: 0.05, crown: 0.1, chipRate: 0.1, chipSizeIn: 0.07, surfaceShare: 0.35 },
+    heightProfile: { edgeRadiusIn: 0.05, crown: 0.1, chipRate: 0.1, chipSizeIn: 0.07, surfaceShare: 0.35, wearWholeFace: true }, // T86 item 23
     samples: Array.from({ length: 64 }, (_, i) => `gs_${String(i + 1).padStart(2, '0')}`).map((id) => ({ id, image: `data/bricks/${id}.jpg` })),
   },
 ]);
