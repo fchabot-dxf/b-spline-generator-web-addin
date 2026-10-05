@@ -69,10 +69,21 @@ if (arg('only-if-changed')) {
 
 if (flag('parallel')) {
   const t0 = Date.now();
+  // MEASURED: two gates at once (the advisor's and a seat's) -- one group's served-root check found its port taken
+  // and the group never ran. Pick a base whose every group port (DevTools + HTTP) answers nothing; shift by 1000.
+  const answers = (port) => fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(400) }).then(() => true, () => false);
+  let base = PORT;
+  for (let tries = 0; tries < 5; tries++) {
+    const ports = GROUPS.flatMap((_, i) => [base + 10 * (i + 1), base + 10 * (i + 1) + 1]);
+    const busy = (await Promise.all(ports.map(answers))).some(Boolean);
+    if (!busy) break;
+    console.log(`ports ${base + 10}..${base + 10 * GROUPS.length + 1} in use (another run?) -- trying ${base + 1000}`);
+    base += 1000;
+  }
   const kids = GROUPS.map((g, i) => new Promise(async (resolve) => {
     await sleep(10000 * i); // staggered: N apps booting at once starve each other (measured: 2 of 4 never came up)
     const out = path.join(OUT, g);
-    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--group', g, '--port', String(PORT + 10 * (i + 1)), '--out', out, '--root', ROOT], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--group', g, '--port', String(base + 10 * (i + 1)), '--out', out, '--root', ROOT], { stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', (d) => process.stdout.write(String(d).split('\n').filter(Boolean).map((l) => `[${g}] ${l}`).join('\n') + '\n'));
     child.stderr.on('data', (d) => process.stderr.write(`[${g}] ${d}`));
     child.on('exit', (code) => resolve({ g, code, out }));
@@ -150,6 +161,22 @@ const send = (method, params = {}) => new Promise((resolve, reject) => {
   ws.send(JSON.stringify({ id: i, method, params }));
 });
 const js = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true }); return r.result?.result?.value; };
+// A JSON probe that returns nothing is retried once (MEASURED in the advisor's loaded --parallel gate: the clear
+// group's fingerprint came back undefined once, "undefined" is not valid JSON, and the same group passed alone),
+// then fails NAMING the probe and the page's own exception instead of a bare JSON parse error.
+async function jsJSON(expr) {
+  for (let attempt = 1; ; attempt++) {
+    const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
+    const v = r.result?.result?.value;
+    if (typeof v === 'string') { try { return JSON.parse(v); } catch { /* fall through */ } }
+    if (attempt >= 2) {
+      const ex = r.result?.exceptionDetails;
+      const why = ex ? ' -- the page threw: ' + String(ex.exception?.description || ex.text || '').split('\n')[0] : '';
+      throw new Error(`probe returned ${v === undefined ? 'nothing' : JSON.stringify(v).slice(0, 60)}${why} [${expr.replace(/\s+/g, ' ').slice(0, 100)}]`);
+    }
+    await sleep(1000);
+  }
+}
 const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(path.join(OUT, `${name}.png`), Buffer.from(r.result.data, 'base64')); };
 const click = (elId, wait = 1200) => js(`(async()=>{ const b=document.getElementById(${JSON.stringify(elId)}); if(!b) return 'MISSING'; if(b.disabled) return 'DISABLED'; b.click(); await new Promise(r=>setTimeout(r,${wait})); return 'ok'; })()`);
 const setValue = (elId, v, event) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(elId)}); if(!e) return 'MISSING'; if(e.disabled) return 'DISABLED'; e.value=${JSON.stringify(String(v))}; e.dispatchEvent(new Event(${JSON.stringify(event)})); return 'ok'; })()`);
@@ -175,7 +202,7 @@ const exists = (elId) => js(`!!document.getElementById(${JSON.stringify(elId)})`
 // 2D: every brick-tool element, attributes SORTED (serialization order differs after a reopen), ids and
 // display-only classes dropped -- so equal layouts hash equal.
 const CANVAS = `(()=>{ const ed=window.svgEditor; if(!ed?._sketchLayer) return 'none';
-  const SKIP=new Set(['id','class','data-brick-element','data-brick-owner']);
+  const SKIP=new Set(['id','class','data-brick-element','data-brick-owner','data-brick-band','data-brick-row','data-brick-piece']); // editor-only, stripped at bake
   const ns=[...ed._sketchLayer.node.querySelectorAll('[data-brick]')];
   // fill-pattern ids carry a global creation counter (editor-brick-surface.js brickfill-<sample>-<N>): drop it
   const norm=(v)=>v.replace(/(url[(]#brickfill-[^)]*?)-[0-9]+[)]/g,'$1)'); // no backslashes: this is inside a template literal
@@ -302,7 +329,7 @@ try {
       if (!atOnce && c.kind === 'editor' && await js(`!!document.getElementById('brickGenerate')?.offsetParent`)) await click('brickGenerate', 1800);
       const c1 = atOnce ? await canvasSettled(c0) : await js(CANVAS);
       const sets = c.expect.sets ? await brickSets(Object.keys(c.expect.sets)) : null;
-      const reads = c.expect.reads ? JSON.parse(await js(`JSON.stringify(Object.fromEntries(${JSON.stringify(Object.keys(c.expect.reads))}.map((id) => [id, Number(document.getElementById(id)?.value)])))`)) : null;
+      const reads = c.expect.reads ? (await jsJSON(`JSON.stringify(Object.fromEntries(${JSON.stringify(Object.keys(c.expect.reads))}.map((id) => [id, Number(document.getElementById(id)?.value)])))`)) : null;
       const readsOk = !!reads && Object.entries(c.expect.reads).every(([id, v]) => Math.abs(reads[id] - v) < 1e-6);
       const setsOk = !!sets && Object.entries(c.expect.sets).every(([k, id]) => sets[k] && sets[k].length === 1 && sets[k][0] === String(id));
       await apply();
@@ -417,7 +444,7 @@ async function runPersistence() {
       // the declared board must really lay every kind it checks, BEFORE anything is persisted: an empty kind
       // would make its "painted" row pass vacuously or fail as 0/0 far from the cause (MEASURED: 1.5 in bricks +
       // three White Rocks rings filled T1 completely once item 16(c) stopped the wall filling a bogus region)
-      const counts = JSON.parse(await js(`JSON.stringify(Object.fromEntries(${JSON.stringify(PERSIST_BOARD.bricks.map((b) => b.kind))}.map((k) => [k, window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="' + k + '"]').length || 0])))`));
+      const counts = (await jsJSON(`JSON.stringify(Object.fromEntries(${JSON.stringify(PERSIST_BOARD.bricks.map((b) => b.kind))}.map((k) => [k, window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="' + k + '"]').length || 0])))`));
       const empty = Object.entries(counts).filter(([, n]) => !n).map(([k]) => k);
       if (empty.length) throw new Error(`setup: the persistence board lays no ${empty.join(', ')} bricks (${JSON.stringify(counts)})`);
       console.log(`persistence board laid ${JSON.stringify(counts)}`);
@@ -464,7 +491,7 @@ async function checkPersisted(phase) {
     persistRow(`Persist (${phase}): ${p.name}`, shown, p.active ? `active ${p.active}` : `${p.value[0]} = ${p.value[1]}`);
   }
   for (const b of PERSIST_BOARD.bricks) {
-    const r = JSON.parse(await js(`JSON.stringify((()=>{ const ns=[...(window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="${b.kind}"]') || [])];
+    const r = (await jsJSON(`JSON.stringify((()=>{ const ns=[...(window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="${b.kind}"]') || [])];
       const painted=ns.filter((n)=>{ const f=n.getAttribute('fill')||''; const m=f.match(/url[(]#([^)]+)[)]/); return !m || !!document.getElementById(m[1]); }).length;
       return { n: ns.length, painted }; })())`));
     persistRow(`Persist (${phase}): ${b.name}`, r.n > 0 && r.painted === r.n, `${r.painted}/${r.n} painted`);
@@ -493,7 +520,7 @@ async function settledLayout(tool) {
   const SETTLE_SAMPLES = 4, SETTLE_POLL_MS = 300, SETTLE_MAX_MS = 20000;
   let last = null, same = 0, r = null;
   for (let t = 0; t < SETTLE_MAX_MS; t += SETTLE_POLL_MS) {
-    r = JSON.parse(await js(LAYOUT_PROBE(tool)));
+    r = (await jsJSON(LAYOUT_PROBE(tool)));
     const ready = r.drawerLayout && !r.dragging && r.toolActive && r.h > 0;
     const key = `${r.top}/${r.h}/${r.innerW}`;
     same = ready && key === last ? same + 1 : 0; last = key;
@@ -543,7 +570,7 @@ function clearProbe() { return `(async()=>{ const { P } = await import('./core/s
     photo: { empty: P.photoImageDataUrl == null && !(P.photoEdits || []).length && P.photoPatternId == null,
       hash: h(String(P.photoImageDataUrl).slice(-300) + JSON.stringify(P.photoEdits || []) + P.photoPatternId) },
     bricks: { empty: gen.length === 0 && records.length === 0, hash: gen.length + '/' + records.length + '#' + h(canon(gen)) } }); })()`; }
-async function clearFingerprint() { return JSON.parse(await js(clearProbe())); }
+async function clearFingerprint() { return (await jsJSON(clearProbe())); }
 // A board holding all four kinds, each made through the real UI: a photo through the Photo panel's file input,
 // the template_1 frame, a Pen stroke on the Artwork tab, a Wall laid with Generate.
 async function seedClearBoard() {
@@ -615,7 +642,7 @@ async function plainKey(keyName) {
 }
 async function wallCount() { return js(`window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="wall"]').length ?? -1`); }
 async function noteState(id) {
-  return JSON.parse(await js(`JSON.stringify((()=>{ const n=document.getElementById(${JSON.stringify(id)}); if(!n) return { missing: true }; return { shown: n.offsetParent !== null && getComputedStyle(n).display !== 'none', text: (n.textContent||'').trim() }; })())`));
+  return (await jsJSON(`JSON.stringify((()=>{ const n=document.getElementById(${JSON.stringify(id)}); if(!n) return { missing: true }; return { shown: n.offsetParent !== null && getComputedStyle(n).display !== 'none', text: (n.textContent||'').trim() }; })())`));
 }
 async function openEditorTab(tabId) {
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
@@ -659,24 +686,24 @@ async function runSelect() {
   if (!(await exists(S.wallSelect))) { checkRow('select', 'Wall tool -> element Select', false, '', S.introducedBy); return; }
   // 1. the Wall tool arms element Select; the Area sub-tool stays hidden until the engine offers 'wallRegion'
   await click(S.wallTool, 900);
-  const st = JSON.parse(await js(`JSON.stringify({ mode: window.svgEditor._currentMode, sel: !!document.getElementById(${JSON.stringify(S.wallSelect)})?.classList.contains('active'), area: (()=>{ const n=document.getElementById(${JSON.stringify(S.wallArea)}); return !!n && n.offsetParent !== null; })() })`));
+  const st = (await jsJSON(`JSON.stringify({ mode: window.svgEditor._currentMode, sel: !!document.getElementById(${JSON.stringify(S.wallSelect)})?.classList.contains('active'), area: (()=>{ const n=document.getElementById(${JSON.stringify(S.wallArea)}); return !!n && n.offsetParent !== null; })() })`));
   checkRow('select', 'Wall tool -> element Select', st.mode === S.selectMode && st.sel && !st.area, `mode ${st.mode}, Select ${st.sel ? 'active' : 'not active'}, Area ${st.area ? 'SHOWN' : 'hidden'}`);
   // 2. a real click on a frame brick selects the Frame element: its tool, its label, its outline -- drawing untouched
   const before = await js(CANVAS);
-  const at = JSON.parse(await js(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')]; const n=ns[Math.floor(ns.length/2)]; if(!n) return null; const r=n.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height/2, frames: ns.length }; })())`));
+  const at = (await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')]; const n=ns[Math.floor(ns.length/2)]; if(!n) return null; const r=n.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height/2, frames: ns.length }; })())`));
   if (!at) { checkRow('select', 'Click a frame brick -> the Frame element', false, 'no frame brick on the canvas'); return; }
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y, button: 'none', buttons: 0 });
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
   await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 });
   await sleep(1000);
-  const sel = JSON.parse(await js(`JSON.stringify({ frameTool: !!document.getElementById(${JSON.stringify(S.frameTool)})?.classList.contains('active'), label: (document.getElementById(${JSON.stringify(S.frameLabel.id)})?.textContent||'').trim(), outline: (window.svgEditor._brickElementOutline||[]).length })`));
+  const sel = (await jsJSON(`JSON.stringify({ frameTool: !!document.getElementById(${JSON.stringify(S.frameTool)})?.classList.contains('active'), label: (document.getElementById(${JSON.stringify(S.frameLabel.id)})?.textContent||'').trim(), outline: (window.svgEditor._brickElementOutline||[]).length })`));
   const after = await js(CANVAS);
   checkRow('select', 'Click a frame brick -> the Frame element', sel.frameTool && sel.label.includes(S.frameLabel.text) && sel.outline === at.frames,
     `frame tool ${sel.frameTool ? 'active' : 'NOT active'}, label "${sel.label}", outline ${sel.outline} of ${at.frames} frame bricks`);
   checkRow('select', 'Selecting adds nothing to the drawing', before === after, before === after ? 'canvas hash unchanged' : `canvas changed ${before} -> ${after}`);
   // 3. Esc once clears the selection (tool stays), Esc twice clears the tool
   await plainKey('Escape');
-  const e1 = JSON.parse(await js(`JSON.stringify({ outline: (window.svgEditor._brickElementOutline||[]).length, frameTool: !!document.getElementById(${JSON.stringify(S.frameTool)})?.classList.contains('active') })`));
+  const e1 = (await jsJSON(`JSON.stringify({ outline: (window.svgEditor._brickElementOutline||[]).length, frameTool: !!document.getElementById(${JSON.stringify(S.frameTool)})?.classList.contains('active') })`));
   checkRow('select', 'Esc once -> selection cleared, tool stays', e1.outline === 0 && e1.frameTool, `outline ${e1.outline}, frame tool ${e1.frameTool ? 'active' : 'cleared'}`);
   await plainKey('Escape');
   const e2 = await js(`[...document.querySelectorAll('[id^="brickTool_"].active')].map((b)=>b.id).join(',')`);
@@ -728,7 +755,7 @@ async function runMigration() {
   const body = readFileSync(path.join(HERE, M.fixture), 'utf8');
   // the OLD board, as it was saved: its bricks and its shared key, read from the fixture's own SVG in the page
   await send('Page.reload', {}); await waitApp();
-  const old = JSON.parse(await js(`(()=>{ const body=${JSON.stringify(body)}; const svg=new DOMParser().parseFromString(JSON.parse(body).P.editorSvg, 'image/svg+xml');
+  const old = (await jsJSON(`(()=>{ const body=${JSON.stringify(body)}; const svg=new DOMParser().parseFromString(JSON.parse(body).P.editorSvg, 'image/svg+xml');
     const layers=JSON.parse(svg.documentElement.getAttribute('data-editor-layers')||'[]'); const key=(layers.find((l)=>l.brickLaidKey)||{}).brickLaidKey||null;
     const bricks=[...svg.querySelectorAll('[data-brick="wall"],[data-brick="frame"]')];
     return JSON.stringify({ key, polys: bricks.map((n)=>n.getAttribute('data-brick')+':'+(n.getAttribute('points')||'').trim()).sort().join('|') }); })()`));
@@ -739,7 +766,7 @@ async function runMigration() {
   const z1 = await heightsSettled(null);
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
-  const a = JSON.parse(await js(migrationProbe()));
+  const a = (await jsJSON(migrationProbe()));
   const setGrout = M.setGroutWidthIn;
   const lay = (k) => sameLay(old.key, k, setGrout);
   checkRow('migration', 'Pre-item-22 board: records carry the old lay', lay(a.records['wall-full']) && lay(a.records.frame),
@@ -756,7 +783,7 @@ async function runMigration() {
   const z2 = await heightsSettled(null);
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
-  const b = JSON.parse(await js(migrationProbe()));
+  const b = (await jsJSON(migrationProbe()));
   const keptOk = b.records['wall-full'] === a.records['wall-full'] && b.records.frame === a.records.frame;
   checkRow('migration', 'Migrated board: restore keeps records, bricks and 3D', keptOk && z1 === z2 && b.polys === a.polys,
     `records kept ${keptOk}, 3D ${z1 === z2 ? 'identical' : z1 + ' -> ' + z2}, polygons ${b.polys === a.polys ? 'identical' : 'CHANGED'}`);
@@ -792,7 +819,7 @@ async function key(k) {
   await sleep(900);
 }
 async function drag(pts) {
-  const at = async ([fx, fy]) => JSON.parse(await js(`(()=>{ const svg=window.svgEditor._sketchLayer.node.ownerSVGElement; const r=svg.getBoundingClientRect(); return JSON.stringify({x:r.left+r.width*${fx}, y:r.top+r.height*${fy}}); })()`));
+  const at = async ([fx, fy]) => (await jsJSON(`(()=>{ const svg=window.svgEditor._sketchLayer.node.ownerSVGElement; const r=svg.getBoundingClientRect(); return JSON.stringify({x:r.left+r.width*${fx}, y:r.top+r.height*${fy}}); })()`));
   const ps = []; for (const p of pts) ps.push(await at(p));
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: ps[0].x, y: ps[0].y, button: 'none', buttons: 0 });
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: ps[0].x, y: ps[0].y, button: 'left', buttons: 1, clickCount: 1 });
