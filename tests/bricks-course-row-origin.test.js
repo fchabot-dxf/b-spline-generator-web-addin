@@ -52,4 +52,19 @@ describe('one course-row origin for every tile input (T86-27 correction)', () =>
   it('the pin covers both parities', () => {
     expect(new Set([3.4, 3.8].map((h) => coursesBottomUp(lay(h, {})).length % 2))).toEqual(new Set([0, 1]));
   });
+
+  // T86-26 + T86-27 composed (seat C 02, measured): accentCuts' cell is `unit` of a BRICK's pitch (its declared contract),
+  // so a custom piece of p bricks spans p / unit cells -- before, the cell was sized from each piece's own length, which
+  // cut a 2-brick piece in two and shifted the marks onto the half pieces
+  it('accentCuts on a custom bond: a piece of p bricks = p / unit cells (a 2-brick piece marked whole, its halves not)', () => {
+    const board = [{ x: 0, y: 0 }, { x: 6, y: 0 }, { x: 6, y: 0.3 }, { x: 0, y: 0.3 }]; // one course
+    const b = generateBricks({ boardOutline: board, set: SET, seed: 3, scale: SCALE, suppression: 0, clumping: 0, zones: [{ pattern: 'stretcher' }],
+      customBond: { courses: [{ pieces: [2, 0.5, 0.5], offset: 0 }] },
+      accentCuts: { unit: 0.5, tile: { rows: 1, cols: 6, cells: [[true, true, true, true, false, false]] } } }).bricks;
+    const pitch = SET.brickLengthIn * SCALE + SET.grout.widthIn;
+    const pieces = b.map((k) => ({ x0: Math.min(...k.polygon.map((p) => p.x)), w: width(k), m: k.accentMarked })).sort((p, q) => p.x0 - q.x0)
+      .filter((p) => p.x0 + p.w < 6 - 1e-6); // whole pieces (the board edge clips the last)
+    expect(pieces.map((p) => [Math.round((p.w + SET.grout.widthIn) / pitch * 2) / 2, p.m])).toEqual([[2, true], [0.5, false], [0.5, false], [2, true], [0.5, false]]);
+  });
 });
+

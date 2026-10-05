@@ -212,7 +212,7 @@ const isRunningBondPattern = (p) => p.kind === 'course' && (p.staggerFrac || 0) 
  * grid (unit 1, flemish's headers) is not cut: it takes the mark under its centre, columns by 37's own half-bond
  * rule (floor(x / pitch + 0.25)).
  */
-function applyAccentCuts(courses, accentCuts, minX, J) {
+function applyAccentCuts(courses, accentCuts, minX, L, J) {
   const { unit, tile } = accentCuts;
   if (!tile || !tile.rows || !tile.cols || !tile.cells) return courses;
   const mod = (a, n) => ((a % n) + n) % n;
@@ -224,10 +224,12 @@ function applyAccentCuts(courses, accentCuts, minX, J) {
     for (const cell of row) {
       const xs = cell.polygon.map((p) => p.x), ys = cell.polygon.map((p) => p.y);
       const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-      const pitch = x1 - x0 + J;
-      const u = unit * pitch, n = Math.round(1 / unit);
+      // a cell = `unit` of a BRICK's pitch (L + J), so a piece of p bricks (a custom bond's 2, 1/2 ...) spans p / unit
+      // cells (seat C 02, measured: sizing the cell from each piece's own length cut a 2-brick piece in two)
+      const pitch = L + J;
+      const u = unit * pitch, n = Math.round((x1 - x0 + J) / u);
       const k0 = (x0 - minX) / u;
-      const onGrid = unit < 1 && Math.abs(n * unit - 1) < 1e-9 && Math.abs(k0 - Math.round(k0)) < 1e-6;
+      const onGrid = unit < 1 && n >= 1 && Math.abs(n * u - (x1 - x0 + J)) < 1e-6 && Math.abs(k0 - Math.round(k0)) < 1e-6;
       if (!onGrid) {
         const col = unit < 1 ? Math.floor(((x0 + x1) / 2 - minX) / u) : Math.floor(((x0 + x1) / 2 - minX) / pitch + 0.25);
         out.push({ ...cell, colIndex: out.length, accentMarked: marked(tileRow, col) });
@@ -317,7 +319,7 @@ export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fe
     const last = courses.length - 1;
     courses.forEach((slot, c) => { courses[c] = customRow(tileRowOf(c, last), custom, minX, maxX, slot.courseCy, slot.cH, L, J); });
   }
-  const laid = accentCuts ? applyAccentCuts(courses, accentCuts, minX, J) : courses;
+  const laid = accentCuts ? applyAccentCuts(courses, accentCuts, minX, L, J) : courses;
   const cells = [];
   let nextId = 0;
   const idGrid = laid.map(() => []);
