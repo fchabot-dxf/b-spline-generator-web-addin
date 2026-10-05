@@ -27,6 +27,7 @@ import {
   BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT,
+  FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg,
 } from '../editor/editor-brick-tool.js';
 import {
   ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick, ACCENT_LEVEL_RANGE, clampAccentLevel, ACCENT_TILE,
@@ -1542,6 +1543,7 @@ export function setFrameRock(rock, commit = 'generate') {
   P.brickSettings.frameBandPatterns = rock ? bands.map(() => 'fieldstone') : [];
   renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
   syncFrameBandPatternButtons();
+  syncFrameCornerButtons();
   syncSetPicker();
   commitBrickSetting(commit);
 }
@@ -1549,6 +1551,7 @@ export function setFrameRock(rock, commit = 'generate') {
 export function setFrameBandPreset(presetId, commit = 'generate') {
   const wasRock = isRockFrame(P.brickSettings);
   P.brickSettings.frameBandPreset = presetId;
+  P.brickSettings.frameCorner = null; // item 33: a new preset starts on its OWN corner (the picker overrides)
   // a rock frame stays rock with another band count: every band of the new preset fieldstone
   if (wasRock) P.brickSettings.frameBandPatterns = (FRAME_PRESETS[presetId] || []).map(() => 'fieldstone');
   syncFramePresetButtons();
@@ -1563,7 +1566,48 @@ function syncFramePresetButtons() {
   for (const preset of FRAME_PRESET_LIST) {
     document.getElementById(`brickFramePreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.frameBandPreset);
   }
+  syncFrameCornerButtons();
   syncQuickSettings();
+}
+
+/** Item 33: the Frame element's CORNERS row -- one engine-drawn mini corner per FRAME_CORNERS entry (the name
+ *  + what it does as the tooltip). The active one = frameCornerOf (the element's pick, else its preset's own). */
+function renderFrameCornerList(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const corner of FRAME_CORNERS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cad-btn brick-accent-icon'; // the same small icon button as the Accent row
+    btn.id = `brickFrameCorner_${corner.id}`;
+    btn.title = corner.title;
+    btn.setAttribute('aria-label', corner.label);
+    btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
+    btn.innerHTML = frameCornerIconSvg(corner.id, 30) || corner.label;
+    btn.addEventListener('click', () => setFrameCorner(corner.id));
+    container.appendChild(btn);
+  }
+  syncFrameCornerButtons();
+}
+/** The corners row shows for a brick frame with bands (a rock frame is one fieldstone ring: no corner joints). */
+function syncFrameCornerButtons() {
+  const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || [];
+  const show = bands.length > 0 && !isRockFrame(P.brickSettings);
+  for (const id of ['brickFrameCornerLabel', 'brickFrameCornerList']) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = show ? '' : 'none';
+  }
+  const active = frameCornerOf(P.brickSettings);
+  for (const corner of FRAME_CORNERS) {
+    document.getElementById(`brickFrameCorner_${corner.id}`)?.classList.toggle('active', corner.id === active);
+  }
+}
+/** Item 33: pick the Frame element's corner -- re-lays at once. */
+export function setFrameCorner(cornerId, commit = 'generate') {
+  if (!FRAME_CORNERS.some((c) => c.id === cornerId)) return;
+  P.brickSettings.frameCorner = cornerId;
+  syncFrameCornerButtons();
+  commitBrickSetting(commit);
 }
 
 /** T86 item 7 (Fred: "a brush line can have a few brick patterns, maybe 2 and 3 bricks wide") --
@@ -1898,13 +1942,13 @@ const FRAME_PRESET_LABELS = {
   single_soldier: 'Soldier',
   soldier_stretcher: 'Soldier + Stretcher',
   three_band: 'Soldier / Stretcher / Soldier',
-  butt_frame: 'Soldier (butt corners)',
-  quoin_corners: 'Soldier (quoin corners)',
-  double_course: 'Soldier x2 (lapped)',
+  // item 33: butt_frame / quoin_corners are folded into Soldier + the Corners row (FOLDED_FRAME_PRESETS)
+  double_course: 'Soldier x2',
   header_band: 'Header',
   mixed_bands: 'Header / Flemish / Soldier',
 };
-const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
+const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).filter((id) => !FOLDED_FRAME_PRESETS[id])
+  .map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
 
 /** F35 item 18 (3), the sidebar's QUICK settings (#brickQuickSettings, main sidebar 🧱 BRICK): a few
  *  2D settings mirrored from the editor's Brick tab -- the SAME P.brickSettings and the SAME setters,
@@ -2001,10 +2045,8 @@ function resolveFrameGeom(editor) {
   const contour = frameBandContour(editor);
   if (!contour) return null;
   const primitives = buildRibbonPrimitives(contour);
-  const basePreset = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
-  const overrides = P.brickSettings.frameBandPatterns || [];
-  const bands = basePreset.map((band, i) => (overrides[i] ? { ...band, pattern: overrides[i] } : band));
-  return { primitives, bands };
+  // item 33: + the element's corner (frameBandsOf -- the preset's own unless the Corners row picked one)
+  return { primitives, bands: frameBandsOf(P.brickSettings) };
 }
 
 // F35 (Fred: "resolution is his own responsibility via the resolution panel" -- REVERSING the
@@ -2078,6 +2120,7 @@ export function initBrickPanel() {
   renderToolList(document.getElementById('editorToolbarBrick'));
   syncToolButtons();
   renderFramePresetList(document.getElementById('brickFramePresetList'));
+  renderFrameCornerList(document.getElementById('brickFrameCornerList'));
   syncFramePresetButtons();
   renderBrushPresetList(document.getElementById('brickBrushPresetList'));
   syncBrushPresetButtons();

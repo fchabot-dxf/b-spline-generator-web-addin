@@ -24,7 +24,7 @@ import { FRAME_DEFS, frameParam, normalizeFrameRecord, setFrameRecord } from '..
 import { syncFramePanel } from './frame-panel.js';
 import { endEditorSession } from '../editor/editor-text-session.js';
 import { brickSetById, FRAME_PRESETS } from '../core/bricks/library.js';
-import { ROCK_SET_ID, BRICK_SET_IDS } from '../editor/editor-brick-tool.js';
+import { ROCK_SET_ID, BRICK_SET_IDS, FOLDED_FRAME_PRESETS } from '../editor/editor-brick-tool.js';
 
 /** The frame a fresh start opens on (data/frame-defs: "Template 1 - Hourglass"). */
 const FRESH_START_FRAME_TEMPLATE = 'template_1';
@@ -566,6 +566,17 @@ export const MIGRATIONS = [
       const w = b.grout && Number.isFinite(b.grout.widthIn) ? b.grout.widthIn : null;
       b.groutByElement = { wall: w, frame: w, brush: w };
       if (b.grout) delete b.grout.widthIn;
+    },
+  },
+  {
+    id: 'frame-corner-presets',
+    // item 33: a board on a folded corner-variant preset ('Soldier (butt corners)' / '(quoin corners)') becomes
+    // Soldier + that corner on the Corners row -- the same bands, the same lay.
+    when: (p) => p.brickSettings && !!FOLDED_FRAME_PRESETS[p.brickSettings.frameBandPreset],
+    apply: (p) => {
+      const f = FOLDED_FRAME_PRESETS[p.brickSettings.frameBandPreset];
+      p.brickSettings.frameBandPreset = f.preset;
+      p.brickSettings.frameCorner = f.corner;
     },
   },
 ];

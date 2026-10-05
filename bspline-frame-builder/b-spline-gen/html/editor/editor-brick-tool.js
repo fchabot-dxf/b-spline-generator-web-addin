@@ -396,6 +396,40 @@ export function isRockFrame(settings) {
   const p = settings && settings.frameBandPatterns;
   return Array.isArray(p) && p.length > 0 && p.every((x) => x === 'fieldstone');
 }
+/** Item 33: the frame CORNER styles a Frame element can pick (the engine's band `cornerStyle` vocabulary,
+ *  core/bricks/contour-bands.js), in picker order. `id` = the engine's value. */
+export const FRAME_CORNERS = Object.freeze([
+  { id: 'mitre', label: 'Mitre', title: 'Mitre: the bricks meet on the diagonal' },
+  { id: 'butt', label: 'Butt', title: 'Butt: one side runs through, the other stops square against it' },
+  { id: 'block', label: 'Quoin', title: 'Quoin: a square corner block, the bands stop against it' },
+  { id: 'lapped', label: 'Lapped', title: 'Lapped: butt corners alternating band by band, laced together' },
+]);
+/** Item 33: the old corner VARIANT presets, folded into a preset + a corner choice (the picker). Their
+ *  FRAME_PRESETS entries stay (the engine's own data); the app lists the folded ones no more, and a saved board on
+ *  one maps to the same result (main/app-init.js migration 'frame-corner-presets'). */
+export const FOLDED_FRAME_PRESETS = Object.freeze({
+  butt_frame: { preset: 'single_soldier', corner: 'butt' },
+  quoin_corners: { preset: 'single_soldier', corner: 'block' },
+});
+/** The corner a Frame element is laid with: its own pick (`settings.frameCorner`), else its preset's own
+ *  (Fred: mitred for plain Soldier). */
+export function frameCornerOf(settings) {
+  if (settings && FRAME_CORNERS.some((c) => c.id === settings.frameCorner)) return settings.frameCorner;
+  const bands = FRAME_PRESETS[settings && settings.frameBandPreset] || FRAME_PRESETS.single_soldier;
+  return (bands[0] && bands[0].cornerStyle) || 'mitre';
+}
+/** The bands a Frame element lays: its preset's, each band's own pattern pick (`frameBandPatterns[i]`) and the
+ *  element's corner applied (a NEW array -- FRAME_PRESETS' frozen entries are never touched). */
+export function frameBandsOf(settings) {
+  const base = FRAME_PRESETS[settings && settings.frameBandPreset] || FRAME_PRESETS.single_soldier;
+  const overrides = (settings && settings.frameBandPatterns) || [];
+  const corner = settings && settings.frameCorner ? frameCornerOf(settings) : null;
+  return base.map((band, i) => ({
+    ...band,
+    ...(overrides[i] ? { pattern: overrides[i] } : {}),
+    ...(corner ? { cornerStyle: corner } : {}),
+  }));
+}
 /** The set an element is laid with. */
 export function elementSetId(settings, kind) {
   if (ROCK_SET_ID != null && ((kind === 'wall' && settings.pattern === 'fieldstone') || (kind === 'frame' && isRockFrame(settings)))) return ROCK_SET_ID;
@@ -529,6 +563,34 @@ export function toolMiniBricks(kind) {
   }
   _toolMinis.set(kind, bricks);
   return bricks;
+}
+/** Item 33: a corner style's picker icon -- two soldier bands round a square, laid by the real engine with that
+ *  `cornerStyle` (Set 1 at the tool-icon size), cropped to ONE corner. A new FRAME_CORNERS entry gets its icon free. */
+const CORNER_ICON = Object.freeze({ boardIn: 3.4, cropIn: 1.9 });
+const _cornerIcons = new Map();
+export function frameCornerBricks(cornerId) {
+  if (_cornerIcons.has(cornerId)) return _cornerIcons.get(cornerId);
+  let bricks = [];
+  try {
+    const s = TOOL_MINI_BRICK, w = CORNER_ICON.boardIn;
+    const band = { widthIn: 0.75, pattern: 'soldier', cornerStyle: cornerId };
+    bricks = generateBricks({
+      boardOutline: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: w }, { x: 0, y: w }],
+      set: resolvedSetFor(s), scale: scaleFor(s), suppression: 0, clumping: 0, seed: s.seed, skipWallFill: true,
+      frame: { primitives: buildRibbonPrimitives(rectToPrimitives({ x1: 0, y1: 0, x2: w, y2: w })), bands: [band, band] },
+    }).frameBricks;
+  } catch (_) {
+    bricks = [];
+  }
+  _cornerIcons.set(cornerId, bricks);
+  return bricks;
+}
+export function frameCornerIconSvg(cornerId, heightPx = 26) {
+  const c = CORNER_ICON.cropIn;
+  const polys = frameCornerBricks(cornerId).filter((b) => b.polygon.some((p) => p.x < c && p.y < c)).map((b) => _iconPolygon(b)).join('');
+  if (!polys) return null;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 ${c} ${c}" aria-hidden="true">`
+    + `<rect width="${c}" height="${c}" fill="#efe6da"/><g fill="#b5533c" stroke="#efe6da" stroke-width="0.04">${polys}</g></svg>`;
 }
 // one argument only: it is passed straight to .map(), whose index must never reach the markup (a second
 // `attrs` parameter once turned every pattern icon into `<polygon0 ...>` -- drawn as nothing, measured live)

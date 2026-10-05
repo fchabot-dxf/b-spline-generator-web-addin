@@ -158,6 +158,8 @@ export const DEFAULT = {
       // Frame tool bands with -- a key, not the bands array itself, so it
       // always tracks library.js's own current declaration.
       frameBandPreset: 'single_soldier',
+      // item 33: the Frame element's corner (editor-brick-tool.js FRAME_CORNERS id); null = the preset's own
+      frameCorner: null,
       // F35 item 7: the Wall pattern picker's own choice -- any core/bricks/library.js
       // BRICK_PATTERNS key. A key, not the pattern definition itself, same "track the current
       // declaration" convention as frameBandPreset above.

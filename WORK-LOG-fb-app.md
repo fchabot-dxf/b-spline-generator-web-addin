@@ -14101,3 +14101,38 @@ WallPattern = {
   - Frame band 1 Accent Checker -> band-1 bricks outlined, a 3D change, band 0 unchanged;
   - Brush Accent -> brush bricks outlined.
 - **Next:** item 33 (corner picker + the quoin texture fix).
+
+## turn 249: item 33, the frame CORNER picker (part 1; the quoin fill waits on 88)
+- **Declared** in editor/editor-brick-tool.js:
+  - `FRAME_CORNERS`: the engine's cornerStyle ids, each with a name and a tooltip.
+  - `FOLDED_FRAME_PRESETS`: butt_frame -> single_soldier + butt; quoin_corners -> single_soldier + block.
+  - `frameCornerOf(settings)`: the element's pick, else the preset's band-0 own corner, else mitre.
+  - `frameBandsOf(settings)`: the preset's bands, plus each band's pattern pick, plus the element's corner on EVERY band.
+  - `resolveFrameGeom` now reads frameBandsOf instead of its inline map.
+- **State:** `brickSettings.frameCorner = null`, meaning the preset's own corner. A preset change resets it to null, so the new preset starts on its own corner (Fred: mitred for plain Soldier).
+- **Panel:**
+  - The "Corners" row sits between the preset list and the band patterns (#brickFrameCornerList).
+  - Each button is the same small icon button as the Accent row, with the tooltip as its title.
+  - The icon is `frameCornerIconSvg`: two soldier bands round a 3.4 in square, laid by the real engine, cropped to one corner. A new FRAME_CORNERS entry gets its icon for free.
+  - The row is hidden for None and for a rock frame (one fieldstone ring has no corner joints). That is visibility, not a guard.
+- **The fold:**
+  - FRAME_PRESETS (core, 88's data) is UNTOUCHED: core tests and the tools/repro matrices still name butt_frame and the others.
+  - The app's FRAME_PRESET_LIST filters out the folded ids. The quick-settings row follows, since it reads FRAME_PRESET_LIST.
+  - Migration 'frame-corner-presets' maps a saved board to the same bands. The test asserts `frameBandsOf(migrated)` deep-equals the old FRAME_PRESETS entry.
+- **Deviation, for the advisor:** 'Soldier x2 (lapped)' is NOT folded into Soldier, because it is TWO bands. Folding it would change the lay, and lapped on one band equals butt. It stays as 'Soldier x2', and its own default corner = lapped (the picker overrides).
+- **The quoin texture bug:** root cause in core (88's). primitive-ribbon.js:971 does `pickSample(QUOIN_SET, ...)`, but the app resolves the sampleId in the ELEMENT's set, so quoins get a flat colour and no height detail.
+  - Live: Soldier + Quoin gives 86 frame bricks, 4 of them flat-filled.
+  - DM'd 88 the 2-line fix: `pickSample(set, ...)` plus `set.heightJitterIn`, with the block SIZE kept as QUOIN_SET.brickLengthIn.
+  - No app change is needed for the "block-sized crop": the fill pattern is objectBoundingBox with xMidYMid slice.
+  - tests/frame-corner-fills.test.js is written and fails today (set 1, block: 8 stone_07 samples). It is HELD uncommitted until 88's fix lands.
+- **Tests:**
+  - frame-corners: 6 tests. Against the pre-change tree, the file fails to load (missing exports).
+  - frame-corners-panel: 4 tests. Fails 4/4 against the pre-change tree. Restored from the scratch copies; cmp identical.
+- **Live check** (headless, shots/seatC/frame_corners_*):
+  - The row shows 4 engine icons, Mitre active on Soldier.
+  - Each pick re-lays at once: mitre 106, butt 102, lapped 102, block 86 bricks.
+  - The preset list reads None | Soldier | Soldier + Stretcher | S/S/S | Soldier x2 | Header | H/F/S. 0 errors.
+- **Full suite:** 11 failures, all accounted for:
+  - the held quoin case;
+  - the known heavy load timeouts (boundary-at-depth, fieldstone large stones, template 10, radius handles), which pass alone at 19/19, 5/5, 32/32 and 28/28;
+  - discrete-controls N2, which passes alone at 98/98.
