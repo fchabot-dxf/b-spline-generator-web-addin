@@ -33,7 +33,7 @@ export const EDITOR_TABS = [
   { id: 'photo', clears: 'photo', label: 'Photo', drawerLabel: 'Photo', buttonId: 'editorTabPhoto', panelId: 'editorPhotoPanel', toolbarId: 'editorToolbarPhoto',
     modes: ['select'] },
   { id: 'brick', clears: 'bricks', label: 'Brick', drawerLabel: 'Brick', buttonId: 'editorTabBrick', panelId: 'editorBrickPanel', toolbarId: 'editorToolbarBrick',
-    modes: ['select', 'brickBrush', 'cut', 'stripe', 'brickAccentClick'],
+    modes: ['select', 'brickBrush', 'cut', 'stripe', 'brickAccentClick', 'brickElementSelect'],
     // `peekEssentials` (Fred, live: "Wall is missing the generate button"): what must show IN FULL when the
     // phone / narrow-palette drawer sits at peek height (editor/editor-drawer.js measures them into its peek
     // floor). The Brick panel's pinned Generate -- at peek only 10 of its 32 px showed.

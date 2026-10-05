@@ -12,10 +12,6 @@
  * input INSIDE those containers too (their buttons are rendered from data, ids not listed here).
  * A control under several rules is greyed while ANY of them is unmet.
  */
-// Audit v2 N3: the 'course' / 'course-alternating' BRICK_PATTERNS (core/bricks/library.js) -- the
-// fieldstone layout (White Rocks) never reads them (tests/brick-control-requires-v2.test.js checks this list
-// against the pattern kinds)
-const COURSE_BONDS = ['stretcher', 'stack', 'soldier', 'header', 'flemish'];
 // Audit v2 N5: the main sidebar's BRICK controls (quick settings + 3D) -- they act on laid Wall/Frame bricks
 const SIDEBAR_BRICK_CONTROLS = ['brickBtnReliefRaised', 'brickBtnReliefCarved', 'brickBtnTopOrganic', 'brickBtnTopFlat',
   'brickSurfaceWear', 'brickSurfaceWearSlider', 'brickReliefHeight', 'brickReliefHeightSlider', 'brickGroutDepth',
@@ -28,13 +24,12 @@ export const BRICK_CONTROL_REQUIRES = [
     why: 'Grout depth is the recess depth -- no effect while the grout is Flush' },
   { controls: ['brickLargeStonesRow'], requires: { engineOption: 'largeStones' }, hides: true,
     why: 'Large stones needs the fieldstone engine option (seat B, T86 item 17) -- hidden until the engine reads it' },
+  { controls: ['brickRusticRow_wall', 'brickRusticRow_brush'], requires: { engineOption: 'rustic' }, hides: true,
+    why: 'Rustic coursing is laid by the engine (seat B, T86 item 22) -- hidden until it reads it' },
+  { controls: ['brickSubTool_wall_area'], requires: { engineOption: 'wallRegion' }, hides: true,
+    why: 'Painting wall areas needs the engine\'s strokes-to-region op (seat B, T86 item 18) -- hidden until it exists' },
   { controls: ['brickRaisedMode_grout'], requires: { engineOption: 'groutCut' }, hides: true,
     why: 'Grout mode cuts joints with the engine\'s bricksGroutCut (seat B, T86 item 10) -- hidden until it exists' },
-  { controls: [...COURSE_BONDS.map((id) => `brickPattern_${id}`), ...COURSE_BONDS.map((id) => `brickQuick_pattern_${id}`)],
-    requires: { control: 'brickSetWhite', satisfied: { active: false } },
-    why: 'White Rocks lays its own fieldstone stones -- course bonds don\'t apply (Herringbone, Basketweave and None still do)' },
-  { controls: ['brickFrameBandPatternLabel', 'brickFrameBandPatternList'], requires: { control: 'brickSetWhite', satisfied: { active: false } },
-    hides: true, why: 'White Rocks frame bands are fieldstone -- a band\'s pattern doesn\'t apply' },
   { controls: SIDEBAR_BRICK_CONTROLS, within: ['brickQuickSettings', 'brickSurfaceStyleToggle'], requires: { fact: 'bricksLaid' },
     why: 'No Wall or Frame bricks on this board yet -- lay them in the editor\'s Brick tab first' },
 ];

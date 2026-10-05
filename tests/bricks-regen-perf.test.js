@@ -44,7 +44,7 @@ function makeMockEditor() {
   return {
     editor: {
       _sketchLayer: sketchLayer,
-      _layers: [{ id: 'L1', name: BRICKS_LAYER_NAME }],
+      _layers: [{ id: 'L1', name: BRICKS_LAYER_NAME, holdsBricks: true }],
     },
     addSpine(elementId, x1, y1, x2, y2, settingsJson) {
       elements.push(makeSpineLine(elementId, x1, y1, x2, y2, settingsJson));

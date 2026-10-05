@@ -24,9 +24,21 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/confirm-dialog.js', () 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 import { VectorEditor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor.js';
 import { resetArtworkToFresh, sync3DBackground } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
-vi.mock('../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js', () => ({ clearPhoto: vi.fn() }));
-import { clearPhoto } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
-import { CLEAR_KINDS, clearOptions, runClear, initClearMenu } from '../bspline-frame-builder/b-spline-gen/html/main/editor-clear-menu.js';
+const photoMock = vi.hoisted(() => ({ state: { url: null, edits: [], patternId: null } }));
+vi.mock('../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js', () => ({
+  clearPhoto: vi.fn(), restorePhoto: vi.fn(), photoState: () => photoMock.state,
+}));
+const frameHist = vi.hoisted(() => ({ depth: 0 }));
+vi.mock('../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js', () => ({
+  frameHistoryDepth: () => frameHist.depth, undoFrame: vi.fn(() => { frameHist.depth--; return true; }),
+}));
+// the bricks' re-lay commits like the real one (one editor undo step)
+const relay = vi.hoisted(() => ({ calls: 0, onCall: null }));
+vi.mock('../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js', () => ({ generateBricks: () => { relay.calls++; relay.onCall?.(); } }));
+import { clearPhoto, restorePhoto } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
+import { undoFrame } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+import { commitEdit } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js';
+import { CLEAR_KINDS, clearOptions, runClear, initClearMenu, undoLastClear } from '../bspline-frame-builder/b-spline-gen/html/main/editor-clear-menu.js';
 import { setFrameClearHandler } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 
 /** A minimal SVG.js-like child element: enough for pushState's `.svg()`
@@ -140,7 +152,7 @@ describe('H20 item 3: resetArtworkToFresh matches a brand-new session\'s artwork
 // F35 item 28 (Fred): the header's Clear is a MENU -- All / Frame / Artwork / Photo / Bricks -- built from the tab
 // registry (main/editor-clear-menu.js). It supersedes H20 item 3's tab-scoped Clear (that block's tests retired).
 describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)', () => {
-  const BRICKS = { id: '7', name: 'Bricks', visible: true, brickLaidKey: 'KEY' };
+  const BRICKS = { id: '7', name: 'Bricks', holdsBricks: true, visible: true, brickLaidKey: 'KEY' };
   function editorWithBricks() {
     const editor = makeEditor();
     editor._layers = [...editor._layers, { ...BRICKS }];
@@ -175,12 +187,12 @@ describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)',
     expect(editor._layers.find((l) => l.id === '1').pattern).toEqual({ id: 'lattice-1', seed: 42, threeDOff: true });
   });
 
-  it('Bricks: every brick element goes, the laid key is nulled, the artwork stays; one undo step', async () => {
+  it('Bricks: every brick element goes (records too, item 22), no shared key is left, the artwork stays; one undo step', async () => {
     const editor = editorWithBricks();
     const depth = editor._undoStack.length;
     await runClear('bricks', editor);
     expect(ids(editor)).toEqual(['path-1']);
-    expect(editor._layers.find((l) => l.name === 'Bricks').brickLaidKey).toBe(null);
+    // item 22: each element's key lives on its RECORD, which goes with the layer's children (brick-element-records.test.js)
     expect(editor._layers.map((l) => l.name)).toEqual(['Layer 1', 'Rails', 'Bricks']);
     expect(editor._undoStack.length).toBe(depth + 1);
   });
@@ -255,6 +267,92 @@ describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)',
     await flush();
     expect(frameClear).toHaveBeenCalledTimes(1);
     expect(menu.style.display).toBe('none');
+    window.svgEditor = null;
+  });
+});
+
+// 88's rows (matrix-clear-rows 67bf49e) + the advisor's rule: ONE undo restores everything a Clear removed.
+describe('F35 item 28 follow-up: one undo takes the WHOLE Clear back', () => {
+  const BRICKS = { id: '7', name: 'Bricks', holdsBricks: true, visible: true, brickLaidKey: 'KEY' };
+  function board() {
+    const editor = makeEditor();
+    editor._layers = [...editor._layers, { ...BRICKS }];
+    editor._sketchLayer = makeSketchLayer([makeChild('path-1', '1'), makeChild('brick-1', '7')]);
+    editor._undoStack = [];
+    editor.pushState();
+    return editor;
+  }
+  const ids = (editor) => editor._sketchLayer.children().toArray().map((c) => c.node.getAttribute('id'));
+  let frameClear;
+  beforeEach(() => {
+    frameHist.depth = 0; undoFrame.mockClear(); restorePhoto.mockClear(); clearPhoto.mockClear(); relay.calls = 0; relay.onCall = null;
+    photoMock.state = { url: 'data:x', edits: [], patternId: null };
+    frameClear = vi.fn(() => { frameHist.depth++; }); // the real handler pushes a Frame-tab history step
+    setFrameClearHandler(frameClear);
+    dialog.answer = true;
+  });
+  afterEach(() => setFrameClearHandler(null));
+
+  it('Clear All: one undo brings back the drawing, the frame (its step) and the photo', async () => {
+    const editor = board();
+    await runClear('all', editor);
+    expect(ids(editor)).toEqual([]);
+    expect(undoLastClear(editor)).toBe(true);
+    expect(ids(editor)).toEqual(['path-1', 'brick-1']);
+    expect(undoFrame).toHaveBeenCalledTimes(1);
+    expect(restorePhoto).toHaveBeenCalledWith({ url: 'data:x', edits: [], patternId: null });
+  });
+
+  it('Clear Frame: the bricks re-lay on the rectangle INSIDE the Clear, and one undo takes the re-lay AND the frame back', async () => {
+    const editor = board();
+    relay.onCall = () => commitEdit(editor); // the re-lay commits, like the real one
+    const depth = editor._undoStack.length;
+    await runClear('frame', editor);
+    expect(relay.calls).toBe(1); // generateBricks, inside the Clear
+    expect(editor._undoStack.length).toBe(depth + 1); // the re-lay's own commit
+    expect(undoLastClear(editor)).toBe(true);
+    expect(editor._undoStack.length).toBe(depth); // the re-lay taken back
+    expect(undoFrame).toHaveBeenCalledTimes(1);
+    expect(restorePhoto).not.toHaveBeenCalled();
+  });
+
+  it('Clear Photo: one undo restores the photo and touches NOTHING else (no earlier editor step popped)', async () => {
+    const editor = board();
+    commitEdit(editor); // an earlier, unrelated step (e.g. a brick Generate)
+    const depth = editor._undoStack.length;
+    await runClear('photo', editor);
+    expect(undoLastClear(editor)).toBe(true);
+    expect(restorePhoto).toHaveBeenCalledTimes(1);
+    expect(editor._undoStack.length).toBe(depth);
+    expect(undoFrame).not.toHaveBeenCalled();
+  });
+
+  it('only while the Clear is the latest change: a later edit, frame change or photo change voids it (normal undo then)', async () => {
+    const editor = board();
+    await runClear('bricks', editor);
+    commitEdit(editor);
+    expect(undoLastClear(editor)).toBe(false);
+    await runClear('artwork', editor);
+    document.dispatchEvent(new CustomEvent('frameRecordChanged'));
+    expect(undoLastClear(editor)).toBe(false);
+    await runClear('frame', editor);
+    photoMock.state = { url: 'data:y', edits: [], patternId: null };
+    expect(undoLastClear(editor)).toBe(false);
+  });
+
+  it('Ctrl+Z in the open editor runs it, ahead of the editor\'s own undo (one step for the whole Clear)', async () => {
+    document.body.innerHTML = '<div id="svgEditorModal" style="display:flex"></div><button id="editorClear">Clear</button><button id="editorUndo"></button>';
+    initClearMenu();
+    const editor = board();
+    window.svgEditor = editor;
+    await runClear('all', editor);
+    const ownUndo = vi.fn();
+    window.addEventListener('keydown', ownUndo); // a bubble-phase handler like the editor's / the Frame tab's
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+    expect(ids(editor)).toEqual(['path-1', 'brick-1']);
+    expect(undoFrame).toHaveBeenCalledTimes(1);
+    expect(ownUndo).not.toHaveBeenCalled();
+    window.removeEventListener('keydown', ownUndo);
     window.svgEditor = null;
   });
 });

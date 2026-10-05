@@ -133,15 +133,16 @@ export function applyToolingDefaults(layer) {
  *  every gate (mask generation, heightfield, Fusion sketch, SVG download,
  *  canvas coloring, seat A's drape) reads a layer through these, never a
  *  raw `layer.carve`/`layer.showColor` check of its own, so the rule
- *  can't drift between call sites. `visible` is the master: off collapses
- *  all three to false regardless of the layer's own carve/showColor
- *  values (which stay stored, unchanged, for when it's shown again). */
+ *  can't drift between call sites.
+ *  Blind-spot audit B6 (Fred turn 207, "hidden is DISPLAY-ONLY", now fully): `visible` no longer gates carving.
+ *  A hidden layer keeps its own carve setting -- it still carves the 3D and goes to the Carved component on Send,
+ *  exactly as when shown; hiding only takes it off the CANVAS (isShown, below). */
 export function isCarved(l) {
-  return !!l && l.visible !== false && l.carve !== false;
+  return !!l && l.carve !== false;
 }
 /** Fred (turn 207): hidden is DISPLAY-ONLY -- every art layer ships on Send, visible or hidden (a carved one
- *  to the Carved component, the rest to root: isCarved, above, still needs `visible`). The SVG download reads
- *  the same gate. */
+ *  to the Carved component, the rest to root, by isCarved above, which ignores `visible`). The SVG download
+ *  reads the same gate. */
 export function isExported(l) {
   return !!l;
 }
@@ -258,6 +259,7 @@ export function addLayer(editor, opts = {}) {
   // fields from TOOLING_DEFAULTS. This lets future call sites override
   // depth/profile/etc. via opts without us having to enumerate them.
   const layer = { id, name, visible };
+  if (opts.holdsBricks) layer.holdsBricks = true; // item 22 slice 1: a brick layer is DECLARED as one
   for (const key in TOOLING_DEFAULTS) {
     if (Object.prototype.hasOwnProperty.call(opts, key)) layer[key] = opts[key];
   }
@@ -730,12 +732,39 @@ export function renderLayersPanel(editor) {
 // ("V-Bit (Linear)") that wouldn't fit a 44px row.
 const PROFILE_LABELS = { vbit: 'V', adaptive: 'Adapt', ballnose: 'Ball', flat: 'Flat' };
 
-/** The Bricks layer (editor-brick-tool.js ensureBricksLayer), by NAME: the stamp-mask pipeline
- *  (main/stamp-mask-manager.js) routes it through the brick-aware height mask
- *  (editor-brick-height-mask.js), matching ensureBricksLayer's own lookup (no reserved id scheme). */
+/** F35 item 22 slice 1: a layer HOLDS bricks by a declared, persisted flag (`holdsBricks`), never by its name --
+ *  so it can be renamed. The stamp-mask pipeline (main/stamp-mask-manager.js) routes it through the brick-aware
+ *  height mask (editor-brick-height-mask.js); Send bakes it as the Bricks sketch (export-flow.js).
+ *  BRICKS_LAYER_NAME is only the DEFAULT name a new brick layer gets (editor-brick-tool.js ensureBricksLayer). */
 export const BRICKS_LAYER_NAME = 'Bricks';
 export function isBricksLayer(layer) {
-  return !!layer && layer.name === BRICKS_LAYER_NAME;
+  return !!layer && layer.holdsBricks === true;
+}
+/** F35 item 22 slice 1: the attribute that marks a brick ELEMENT RECORD (editor-brick-tool.js) -- an invisible
+ *  bookkeeping node (display none: never drawn, hit, exported or downloaded), never part of the drawing. */
+export const BRICK_RECORD_ATTR = 'data-brick-record';
+/** F35 item 22 (advisor): brick attributes the editor keeps for ITSELF and never bakes -- stripped from every
+ *  baked output (getLayerSvg -> Send's sketches; the SVG download), so those stay byte-identical to before item
+ *  22. Keyed by the brick's `data-brick` kind: Wall/Frame bricks gained an owner in item 22 slice 1; Brush bricks
+ *  have always shipped theirs, so they keep it (byte-identical either way). One declared list. */
+export const BRICK_EDITOR_ONLY_ATTRS = Object.freeze({ wall: ['data-brick-owner'], frame: ['data-brick-owner'] });
+/** Strip BRICK_EDITOR_ONLY_ATTRS from one (plain DOM) element; true when it changed anything. */
+export function stripEditorOnlyBrickAttrs(el) {
+  const attrs = el && el.getAttribute ? BRICK_EDITOR_ONLY_ATTRS[el.getAttribute('data-brick')] : null;
+  if (!attrs) return false;
+  let changed = false;
+  for (const a of attrs) if (el.hasAttribute(a)) { el.removeAttribute(a); changed = true; }
+  return changed;
+}
+/** The board's brick layer (one, until slice 3 puts bricks on any layer), or null. */
+export function bricksLayerOf(editor) {
+  return ((editor && editor._layers) || []).find(isBricksLayer) || null;
+}
+/** Migration (a board saved before item 22): its brick layer is the one NAMED "Bricks" -- the ONLY place the name
+ *  is read. Applied where a saved roster is restored (editor-io.js). */
+export function migrateLegacyBricksLayer(layer) {
+  if (layer && layer.holdsBricks === undefined && layer.name === BRICKS_LAYER_NAME) layer.holdsBricks = true;
+  return layer;
 }
 
 /** Audit K7: the Bricks layer's carve profile is never read (its height comes from the brick mask), so
@@ -867,7 +896,7 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   vis.type = 'button';
   vis.className = 'editor-fillmode-btn layer-visibility' + (layer.visible === false ? ' is-hidden' : '');
   vis.innerHTML = layer.visible === false ? _eyeClosedSVG() : _eyeOpenSVG();
-  vis.title = layer.visible === false ? 'Show layer' : 'Hide layer';
+  vis.title = layer.visible === false ? 'Show layer (it still exports and carves)' : 'Hide layer (still exports)'; // audit B6
   vis.setAttribute('aria-pressed', String(layer.visible !== false));
   vis.addEventListener('click', (e) => {
     e.stopPropagation();

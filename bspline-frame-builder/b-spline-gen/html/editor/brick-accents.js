@@ -35,7 +35,31 @@ export const ACCENT_MOTIFS = Object.freeze({
   crenellation: (c, i, p) => mod(c, p.every) === 0 && mod(i, 2) === 0,
   // a seeded share of the zone's bricks
   random: (c, i, p, ctx) => hashedRandom(ctx.seed, 'accent-random', c * 100003 + i) < p.share,
+  // F35 item 31: a user TILE -- `rows` x `cols` cells, cells[row][col] true = raised; row 0 = the zone's bottom
+  // course. Cell = (course mod rows, brick mod cols); the bond's stagger is already in the columns (accentGrid's
+  // half-bond rule), so the tile repeats over the wall WITH the stagger.
+  tile: (c, i, p) => !!(p.cells && p.cells[mod(c, p.rows)] && p.cells[mod(c, p.rows)][mod(i, p.cols)]),
 });
+
+/** F35 item 31: the TILE a preset repeats with (rows x cols, each <= `max`), measured, not declared: the
+ *  smallest tile that reproduces the preset's rule over a 48 x 48 window -- or null when it has none (a
+ *  course-bounded or seeded motif: pyramid, random). The periodic presets become the same tile data a user tile
+ *  is. */
+export function tileOf(preset, max = 8, ctx = { seed: 1 }) {
+  const rule = preset && ACCENT_MOTIFS[preset.motif];
+  if (!rule) return null;
+  const at = (c, i) => !!rule(c, i, preset.params || {}, ctx);
+  const WINDOW = 48;
+  const sizes = [];
+  for (let rows = 1; rows <= max; rows++) for (let cols = 1; cols <= max; cols++) sizes.push([rows, cols]);
+  sizes.sort((a, b) => a[0] * a[1] - b[0] * b[1]);
+  for (const [rows, cols] of sizes) {
+    let ok = true;
+    for (let c = 0; c < WINDOW && ok; c++) for (let i = 0; i < WINDOW && ok; i++) if (at(c, i) !== at(c % rows, i % cols)) ok = false;
+    if (ok) return { rows, cols, cells: Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_, k) => at(r, k))) };
+  }
+  return null;
+}
 
 const LOWER_THIRD = Object.freeze([0, 1 / 3]); // zone = [from, to] as fractions of the board height, from the bottom
 
@@ -128,7 +152,8 @@ export function accentedBrickIndices(bricks, accent, ctx = {}) {
     }
     return out;
   }
-  const preset = accentPresetById(accent.preset);
+  // item 31: `preset` may also be an ad-hoc preset object (a user tile, before it is saved)
+  const preset = typeof accent.preset === 'object' ? accent.preset : accentPresetById(accent.preset);
   const rule = preset && ACCENT_MOTIFS[preset.motif];
   if (!rule) return out;
   const zone = ctx.zone || preset.zone;

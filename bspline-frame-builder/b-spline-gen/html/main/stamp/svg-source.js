@@ -142,6 +142,7 @@ export function initSvgSource(ctx, layerModule) {
         SvgEditorSnapshot.active = true;
         SvgEditorSnapshot.editorSvg = P.editorSvg ?? null;
         SvgEditorSnapshot.brickSettings = P.brickSettings ? JSON.parse(JSON.stringify(P.brickSettings)) : null;
+        SvgEditorSnapshot.frame = P.frame ? JSON.parse(JSON.stringify(P.frame)) : null; // audit B9: Cancel restores it
         SvgEditorSnapshot.fingerprint = editorSessionFingerprint(); // F35 item 25: [3D] closes unchanged sessions
       }
       if (window.svgEditor && currentLayer) {

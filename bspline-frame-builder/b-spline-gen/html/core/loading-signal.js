@@ -29,6 +29,19 @@ export const LOADING_STAGES = {
   rebuild: { label: (ctx) => `Building surface${ctx?.spacing != null ? ` ${ctx.spacing}″` : ''}…` },
 };
 
+/** Blind-spot audit B8: for a SYNCHRONOUS slow job (a rock-set brick re-lay) withLoadingStage's timer can never
+ *  fire -- the job blocks it. This shows the stage FIRST, lets the browser paint it (two frames), then runs `fn`
+ *  and clears it. Use only when the caller already knows the job is slow (it costs two frames). */
+export function withLoadingStageShownFirst(stageId, fn, ctx) {
+  const stage = LOADING_STAGES[stageId];
+  const label = stage ? (typeof stage.label === 'function' ? stage.label(ctx) : stage.label) : null;
+  if (label) setFusionStatus(label, 'busy');
+  const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
+  return new Promise((resolve) => raf(() => raf(() => {
+    try { resolve(fn()); } finally { if (label) setFusionStatus('', 'busy'); }
+  })));
+}
+
 export async function withLoadingStage(stageId, fn, ctx) {
   const stage = LOADING_STAGES[stageId];
   const label = stage ? (typeof stage.label === 'function' ? stage.label(ctx) : stage.label) : null;

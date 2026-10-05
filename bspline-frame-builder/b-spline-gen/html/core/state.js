@@ -86,7 +86,11 @@ export const DEFAULT = {
     // grout/reliefIn start at Set 1's own declared values (library.js) so the
     // panel shows real numbers on first use, not a second, independent guess.
     brickSettings: {
-      setId: 1,
+      // F35 item 23: the brick SET per element (keyed by Brick tool: wall / frame / brush / raisedBrush) -- a
+      // BRICK set (editor-brick-tool.js BRICK_SET_IDS); the ROCK set is never stored here, the Fieldstone pattern
+      // implies it. Brick size and grout stay global. A save from before item 23 carries one `setId` instead
+      // (main/app-init.js MIGRATIONS 'brick-set-per-element' converts it).
+      setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 },
       // F35 item 16 (Fred: "I'd rather they all have the same size" -- replacing the old 0.5-2x
       // Scale multiplier AND the separate frameBrickLengthIn override that used to live here):
       // ONE global brick LENGTH in real inches (0.375-8), shared by Wall, every Frame band, and
@@ -98,7 +102,10 @@ export const DEFAULT = {
       brickLengthIn: 1,
       // width/depth from Set 1 (audit C4). Fred (turn 207): a NEW board's joints are RECESSED (depth 0.05 in,
       // Set 1's); a saved board keeps its own profile (the session/project load replaces brickSettings whole).
-      grout: { widthIn: DEFAULT_BRICK_SET.grout.widthIn, depthIn: DEFAULT_BRICK_SET.grout.depthIn, profile: 'recessed' },
+      // the joint WIDTH is per element (groutByElement, below); depth + profile stay board-wide (the 3D recess)
+      grout: { depthIn: DEFAULT_BRICK_SET.grout.depthIn, profile: 'recessed' },
+      // advisor (Fred: rubble gets wider joints): a joint width per element; null = that element's set's own
+      groutByElement: { wall: null, frame: null, brush: null },
       reliefIn: 0.125,
       invert: false,
       // F35 item 18 (1): 'organic' = each brick's top drapes over the terrain under it (the original
@@ -126,9 +133,12 @@ export const DEFAULT = {
       frameOffset: { on: true, distance: 0 },
       // F35 item 16: LEVEL, a per-element height offset in inches (+ proud, - recessed; item 15's accent
       // level applied to a whole element), keyed by element kind (editor-brick-tool.js BRICK_KINDS). Read
-      // by the height mask; in the laid key (audit v2 N6: an editor change shows the Generate dot). A saved
+      // by the height mask; in the laid key (audit v2 N6: an editor change re-lays at once, item 27). A saved
       // session without it is level 0.
       elementLevelIn: { wall: 0, frame: 0 },
+      // F35 item 29 (a): RUSTIC 0..1 per element (Wall, Brush) -- how irregular a running bond is laid; read by the
+      // engine once it lists 'rustic' (seat B, T86 item 22); 0 = today's clean coursing. Hidden until then.
+      rusticByElement: { wall: 0, brush: 0 },
       // F35 item 15: RAISED ACCENTS on the Wall -- `preset` = an editor/brick-accents.js ACCENT_PRESETS id,
       // 'custom' (the bricks under `clicks`, wall-local board points, re-mapped after every re-lay) or
       // 'none'; `levelIn` = how far they sit proud (+) or recessed (-). 3D-only (never re-lays). A saved
