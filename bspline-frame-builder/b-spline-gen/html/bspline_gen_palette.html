@@ -676,7 +676,10 @@
                  -- read-only, the same pattern frameFitWarning above uses. -->
             <div id="frameJoinInfo" style="display:none; color:#666; font-size:11px; margin-bottom:10px;"></div>
           </div>
-          <!-- Fred ("no send frame"): the frame goes with the one Send (export-flow payload.frame) -- no button here. -->
+          <!-- Fred ("no send frame"): the frame goes with the one Send (export-flow payload.frame) -- no Send button.
+               F26 item 2 (b), Fred ("add a delete frame button"): the frame back to none; in Fusion its built frame
+               goes too (main/frame-panel.js deleteFrame) -->
+          <button type="button" id="btnDeleteFrame" class="cad-btn cad-btn-secondary" style="width:100%; height:30px; margin-top:4px;">Delete frame</button>
         </div>
       </div>
 

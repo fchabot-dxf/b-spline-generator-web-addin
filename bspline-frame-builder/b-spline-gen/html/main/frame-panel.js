@@ -18,7 +18,7 @@
  * brick-panel.js keep theirs.
  */
 import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange } from '../core/frame-record.js';
-import { P } from '../core/state.js';
+import { P, isFusionMode } from '../core/state.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
 import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
 import { setEditorTab as switchEditorTab, getEditorTab } from './editor-tabs.js';
@@ -286,6 +286,29 @@ export function sendFrame() {
   adsk.fusionSendData('send_frame', JSON.stringify(payload));
   setFusionStatus('Sending the frame to Fusion...', 'busy');
   return true;
+}
+
+/** F26 item 2 (b), Fred ("add a delete frame button"): the frame goes back to none -- template None, the same reset
+ *  as a fresh session (the artwork untouched), ONE Frame undo step (editFrame). Inside Fusion it also asks the
+ *  add-in to delete the frame Send built ('delete_frame': only the frames fb_engine/send_frame.py tagged, the same
+ *  ones a Send replaces); no confirm dialog. */
+export function deleteFrame() {
+  editFrame({ templateId: null, params: {} });
+  if (isFusionMode) {
+    try {
+      adsk.fusionSendData('delete_frame', '{}');
+      setFusionStatus('Deleting the frame in Fusion...', 'busy');
+    } catch (_) { /* not in Fusion */ }
+  }
+}
+/** The add-in's reply to 'delete_frame': { ok, frames: [names], error }. */
+export function onDeleteFrameResult(data) {
+  let r = {};
+  try { r = typeof data === 'string' ? JSON.parse(data || '{}') : (data || {}); } catch (_) { r = { ok: false, error: 'Unreadable reply from Fusion.' }; }
+  if (!r.ok) { setFusionStatus(r.error || 'The frame was not deleted in Fusion.', 'warn'); return r; }
+  const n = (r.frames || []).length;
+  setFusionStatus(n ? `Frame deleted in Fusion: ${r.frames.join(', ')}` : 'No frame to delete in Fusion', 'ok');
+  return r;
 }
 
 /** The add-in's reply to [Send frame]. */
@@ -842,6 +865,7 @@ export function initFramePanel() {
   }
   $('editorFrameTemplate')?.addEventListener('change', (e) => editFrame({ templateId: e.target.value || null, params: {} }));
   $('editorFrameGenerate')?.addEventListener('click', () => generateFrame());
+  $('btnDeleteFrame')?.addEventListener('click', () => deleteFrame()); // F26 item 2 (b)
   $('editorFrameUndo')?.addEventListener('click', () => undoFrame());
   // Ctrl/Cmd+Z in the Frame tab undoes the FRAME (the artwork's undo is locked there, F8)
   if (!_undoKeyWired) { // once per page (initFramePanel may run again, e.g. in tests)
