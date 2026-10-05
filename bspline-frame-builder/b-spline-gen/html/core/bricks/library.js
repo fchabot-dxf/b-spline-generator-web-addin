@@ -204,7 +204,12 @@ export const BRICK_SETS = Object.freeze([
     // no clean band found, unlike Set 1's smoother brick faces. Declared instead, using the
     // real-world brick:fieldstone joint-width ratio (fieldstone joints typically read ~1.5-2.5x a
     // brick's own) as a guide -- 0.12in, 2x Set 1's measured 0.06.
-    grout: { widthIn: 0.12, depthIn: 0.06, profile: 'recessed' },
+    // Fred (2026-10-05, via advisor): rubble/fieldstone gets WIDER joints by default -- 0.10 in (Red Brick keeps
+    // its 0.034). MEASURED: the app laid rocks at 0.034 regardless of this field (editor-brick-tool.js
+    // resolvedSetFor replaces the set's width with the user's one Grout width, whose default is Red Brick's);
+    // seat 37 makes that control start from the selected element's set default. Walls and bands alike: the
+    // fieldstone layout shrinks every stone by half this joint.
+    grout: { widthIn: 0.10, depthIn: 0.06, profile: 'recessed' },
     reliefIn: 0.125,
     reliefMaxIn: 0.25,
     heightJitterIn: 0.02,
