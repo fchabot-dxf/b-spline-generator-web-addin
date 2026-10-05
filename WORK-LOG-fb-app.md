@@ -13960,3 +13960,39 @@ and persistence rows below. 88 queues them on matrix-clear-rows after the ring-s
   1 load timeout; alone 8/8 + 32/32.
 - **Matrix row for 88** (DM'd): pick brickPattern_fieldstone -> `#brickGroutWidth` reads the rock set's joint
   and the stones re-lay with it; the Frame tool's box keeps the Red joint.
+
+### turn 243 note -- item 31 step 2: the DATA SHAPE, planned now (the amendments' rules folded in; for the advisor's OK)
+
+**ONE object for a pattern** (no free-floating accent mask, so pattern and raised data can never conflict):
+```
+WallPattern = {
+  id, label,                                   // a built-in bond id, or 'user:<slug>' for a saved custom one
+  bond:   { builtin: 'stretcher' | ... }       // a built-in bond (BRICK_PATTERNS) ...
+        | { custom: { rows, courses: [{ pieces: [lenUnits...], offsetUnits }] } },  // ... or a custom bond (item 31e;
+                                               //   laid by 88's T86-27 'customBond'; join/split UI hidden until then)
+  accent: null
+        | { preset: '<ACCENT_PRESETS id>' }    // periodic (course, brick index): RE-APPLIED on whatever bond is current
+        | { marks: [[course, piece, sign], ...] },  // a custom tile's marks, ON its own bond's pieces only
+  unit:   <brick length in>,                   // the tile's unit (null = the board's brick size)
+  level:  <signed in, item 32: -1/8..+1/8, default +1/16>,
+}
+```
+- **Rules, each to be pinned by a test:**
+  - `marks` live only on a `bond.custom` (they index its own pieces); a built-in bond carries only a periodic
+    `accent.preset`.
+  - Changing the bond under an accent: a periodic preset re-applies to the new bond; custom marks never survive
+    onto another bond. Test: no mark ever addresses a piece that does not exist.
+  - Today's built-in accent presets stay periodic rules; `tileOf()` (turn 241) converts the periodic ones when
+    "Start from" seeds a custom tile.
+- **Where it lives:**
+  - `P.brickSettings.wallPattern` = the CURRENT WallPattern (it replaces `pattern` + `accent` for the wall;
+    migrated from them);
+  - `P.brickSettings.userPatterns` = the saved ones (with the project), plus localStorage for every project;
+  - bands / brush keep `{ bond builtin, accent preset }` only: the builder's declared scope is `kinds: ['wall']`.
+- **UI** (Fred's layout):
+  - The Wall pattern section stays SMALL at rest: the icon grid, which includes the saved customs (drawn with
+    their accents), then the Accent row [None | presets | Custom…] + Click bricks, then Level.
+  - The BUILDER (tile, unit, base pattern, join/split, name, save) opens as a sub-panel from "Custom…" or from a
+    saved pattern's edit action, and closes back.
+- **Item 33:** the quoin blocks' flat fill (they take their unit from BRICK_SETS[2] under Set 1) goes with the
+  corner picker; each corner style's pieces must carry a resolvable fill from the element's own set.
