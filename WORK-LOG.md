@@ -21979,3 +21979,35 @@ overlap < 0.01 per case; plus T1 corners byte-identical (no collision -> no chan
 fresh, unhurried pass.
 
 **Parked**: both attempts are in `git stash` on wt-88 (messages above). Moving to 16(b), then 13.
+
+## T86 item 16(b) -- geometry measured CLEAN on main (test added); an in-app rendering contradiction left OPEN (seat B / 88, 2026-10-04)
+
+**Geometry (engine, Red Brick Stretcher wall + Soldier band, 7x9, seed 1, shapely, grout joints closed):**
+- On 5559125 (where 16(b) was filed) the wall inside the band's inner edge has a real void at every size:
+  T1 0.06 / 0.11 / 0.12 / 0.32 sq in at 0.75 / 1 / 1.25 / 1.5 in, T12 up to 0.24 -- one hole each, at the
+  bottom-right end of a course (the 21c missing-piece bug).
+- On main (21c + 16(c) part 1): 0.000 sq in on T1 and T12 at every size. Pinned by new
+  tests/bricks-wall-meets-band.test.js (grid sample, a point is a void if inside no wall brick and farther
+  than one grout joint from all): 8/8 on main, **7/8 FAIL on 5559125** (0.063..0.328 sq in), 4.5 s.
+- The band's own ring coverage is clean on T1/T12 too (<= 0.18 sq in, T12 1.5 in). The remaining band voids
+  are the pinch cases, 16(c) part 2 territory: T9 1.5 in 15.6 sq in (34% of the ring; the band fills the board
+  and its rows are dropped at the pinch), T18 1.5 in 2.0, T18 1.25 in 0.27.
+
+**OPEN -- the app view disagrees with the data.** In the real editor (main, T1 / T12, Red, 1.5 in, single
+soldier) the canvas shows wide grey strips between band and wall and grey cells inside the wall
+(shots/seatB/gaps16b/T1_T12_1.5_editor.png). Measured so far:
+- the app lays the SAME geometry as the engine call (34 wall + 76 frame on T1); its own polygons, read off the
+  canvas (`points`), cover the contour completely once joints are closed (T1 void 0.000, T12 0.18);
+- not texture size: every brick's pattern is objectBoundingBox 1x1 with its image `xMidYMid slice` (fills);
+- not image loading: identical 0.3 s and 10 s after Generate (gaps16b/t1_1.5_load_timing.png);
+- not hiding: no clip-path / mask / transform on the bricks or #sketch-layer; all 34 visible, opacity 1;
+- elementsFromPoint at the grey spots returns only the background <image> -- inconclusive, the brick
+  polygons are pointer-events:none.
+**Next step:** draw the dumped app polygons as outlines over the same screenshot (same viewBox mapping) to see
+whether the grey spots are inside a polygon (then it is paint: fill/pattern resolution per brick at that size)
+or outside every polygon (then the dump/coverage mapping is wrong). The dump and probe scripts are s30-s35 in
+seat 88's scratch audit folder.
+
+Also queued from the advisor's blind-spot audit (B1): three_band leaves ZERO wall bricks on T6 T9 T11 T14 T15
+T18 at 1 in, and on T9/T11/T18/T19 at every size -- folded into 16(c) part 2's acceptance; (B8) fieldstone lays
+at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
