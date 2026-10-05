@@ -41,6 +41,7 @@ import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/ht
 import { frameContext } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
+import { FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
 import { deselectTool } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
@@ -58,8 +59,7 @@ const FIXTURE = `
   <div id="brickBrushPresetList"></div>
   <div id="brickPatternList"></div>
   <label id="brickFrameBandPatternLabel">Band patterns</label><div id="brickFrameBandPatternList"></div>
-  <button id="brickSetRed"></button>
-  <button id="brickSetWhite"></button>
+  <div id="brickSetRow"></div>
   <div id="brickSizePresetList"></div>
   <input id="brickSizeSlider" type="range" min="0" max="1000" step="1" value="226"><input id="brickSize" type="number" value="0.75">
   <input id="brickGroutWidth"><input id="brickGroutDepth">
@@ -97,10 +97,18 @@ function setup(tool) {
   root.innerHTML = FIXTURE;
   document.body.appendChild(root);
   // A Bricks layer + a runBricks mock honouring the real contract: the laid key is stamped on it.
-  window.svgEditor = { setMode: () => {}, _layers: [{ id: 'b', name: 'Bricks' }], _sketchLayer: { node: document.createElement('div') } };
+  window.svgEditor = { setMode: () => {}, _layers: [{ id: 'b', name: 'Bricks', holdsBricks: true }], _sketchLayer: { node: document.createElement('div') } };
   // ...and, like the real one, it leaves the laid kinds' bricks on the canvas (audit v2 N4/N5 read them)
   runBricks.mockImplementation((ed, _s, _fg, opts) => {
-    if (opts?.laidKey != null) ed._layers[0].brickLaidKey = opts.laidKey;
+    // the real contract (item 22): each laid element's RECORD carries the key
+    for (const kind of opts?.kinds || []) {
+      const node = ed._sketchLayer?.node;
+      if (!node?.querySelector) continue;
+      const rk = kind === 'wall' ? 'wall-full' : kind;
+      let rec = node.querySelector(`[data-brick-record="${rk}"]`);
+      if (!rec) { rec = document.createElement('g'); rec.setAttribute('data-brick-record', rk); node.appendChild(rec); }
+      if (opts.laidKey != null) rec.setAttribute('data-brick-laid', opts.laidKey);
+    }
     const node = ed._sketchLayer?.node;
     for (const kind of opts?.kinds || []) {
       if (!node?.appendChild || node.querySelector(`[data-brick="${kind}"]`)) continue;
@@ -114,7 +122,7 @@ function setup(tool) {
   P.brickSettings.pattern = 'stretcher';
   P.brickSettings.frameBandPreset = 'single_soldier';
   P.brickSettings.frameBandPatterns = [];
-  P.brickSettings.setId = 1;
+  P.brickSettings.setIds = { wall: 1, frame: 1, brush: 1, raisedBrush: 1 }; // item 23: per element
   P.brickSettings.invert = false;
   initBrickPanel();
   $(`brickTool_${tool}`).click(); // audit C2: selecting the tool only shows its settings...
@@ -142,7 +150,7 @@ describe('Editor Brick tab (Wall tool): item 27 -- a setting change re-lays at o
     expect(P.brickSettings.pattern).toBe('herringbone');
     expectReLaidAtOnce((call) => expect(call[1].pattern).toBe('herringbone'));
   });
-  it('the set picker', () => { $('brickSetWhite').click(); expectReLaidAtOnce((c) => expect(c[1].setId).toBe(3)); });
+  it('the set picker (item 23: the Wall element\'s set)', () => { $('brickSet_1').click(); expectReLaidAtOnce((c) => expect(c[1].setIds.wall).toBe(1)); });
   it('a brick-size preset button', () => { firstInactive('[id^=brickSizePreset_]').click(); expectReLaidAtOnce(); });
   it('the brick-size stepper, drag and release', () => {
     fire('brickSize', 1.5, 'input'); fire('brickSize', 1.5, 'change');
@@ -172,7 +180,7 @@ describe('Editor Brick tab (Wall tool): item 27 -- a setting change re-lays at o
     fire('brickGroutWidth', 0.09, 'input');
     expect(runBricks).not.toHaveBeenCalled();
     vi.advanceTimersByTime(400);
-    expectReLaidAtOnce((c) => expect(c[1].grout.widthIn).toBe(0.09));
+    expectReLaidAtOnce((c) => expect(c[1].groutByElement.wall).toBe(0.09)); // the ACTIVE element's joint (Wall)
   });
   it('the seed field: re-lays once the typing pauses (400 ms)', () => {
     vi.useFakeTimers();
@@ -220,7 +228,7 @@ describe("Main sidebar ('auto'): the same setters re-lay straight away", () => {
   it.each([
     ['wall pattern', () => setWallPattern('flemish', 'auto')],
     ['frame band preset', () => setFrameBandPreset('three_band', 'auto')],
-    ['set', () => selectSet(3, 'auto')],
+    ['set', () => selectSet(1, 'auto')],
     ['brick size', () => setBrickSize(1.5, 'auto')],
     ['relief', () => setInvert(true, 'auto')],
     ['seed', () => setSeed(7, 'auto')],
@@ -373,7 +381,7 @@ describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + 
     expect($('brickQuick_frameBands_single_soldier').classList.contains('active')).toBe(true);
   });
   it.each([
-    ['set', 'brickQuick_set_3', (c) => expect(c[1].setId).toBe(3), 'brickSetWhite'],
+    ['set', 'brickQuick_set_1', (c) => expect(c[1].setIds).toEqual({ wall: 1, frame: 1, brush: 1, raisedBrush: 1 }), 'brickSet_1'],
     ['pattern', 'brickQuick_pattern_herringbone', (c) => expect(c[1].pattern).toBe('herringbone'), 'brickPattern_herringbone'],
     ['frame bands', 'brickQuick_frameBands_three_band', null, 'brickFramePreset_three_band'],
   ])("quick %s: re-lays once, never pending, and the editor's own button follows", (_n, quickId, check, editorId) => {
@@ -397,26 +405,27 @@ describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + 
   });
 });
 
-// Audit B1-B3: the key stamped on the Bricks layer records what is on the canvas; undo/redo, Cancel and reload
-// all carry it. Item 27: nothing is pending, whatever the key says.
-describe('the Bricks layer key through undo, reload and Cancel (item 27: never pending)', () => {
+// Audit B1-B3 + item 22: the key stamped on each element's RECORD records what is on the canvas; undo/redo,
+// Cancel and reload all carry it. Item 27: nothing is pending, whatever the key says.
+describe('the laid key through undo, reload and Cancel (item 27: never pending)', () => {
   beforeEach(() => setup('wall'));
-  const layer = () => window.svgEditor._layers[0];
+  const wallRecord = () => window.svgEditor._sketchLayer.node.querySelector('[data-brick-record="wall-full"]');
+  const wallKey = () => wallRecord()?.getAttribute('data-brick-laid');
   const layersChanged = () => document.dispatchEvent(new CustomEvent('editorLayersChanged'));
 
-  it('Generate stamps the current settings key on the layer', () => {
-    const before = layer().brickLaidKey;
+  it('Generate stamps the current settings key on the wall element', () => {
+    const before = wallKey();
     $('brickPattern_herringbone').click();
     $('brickGenerate').click();
-    expect(layer().brickLaidKey).not.toBe(before);
-    expect(layer().brickLaidKey).toContain('herringbone');
+    expect(wallKey()).not.toBe(before);
+    expect(wallKey()).toContain('herringbone');
   });
 
   it('undo restoring an older layer key, a reloaded document with a different key, a key-less old board: never pending, never re-laid', () => {
-    const stretcherKey = layer().brickLaidKey;
-    layer().brickLaidKey = stretcherKey.replace('stretcher', 'stack'); layersChanged(); // what undo / a reopen restores
+    const stretcherKey = wallKey();
+    wallRecord().setAttribute('data-brick-laid', stretcherKey.replace('stretcher', 'stack')); layersChanged(); // what undo / a reopen restores
     expect(pending()).toBe(false);
-    delete layer().brickLaidKey; layersChanged(); // bricks saved before the key existed
+    wallRecord().removeAttribute('data-brick-laid'); layersChanged(); // bricks saved before the key existed
     expect(pending()).toBe(false);
     expect(runBricks).not.toHaveBeenCalled();
   });
@@ -688,18 +697,13 @@ describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fiel
     expect(shown('brickSharedSet')).toBe(true);
     expect(shown('brickSharedLayout')).toBe(true);
   });
-  it('the Large stones row shows only for a fieldstone wall (White Rocks, or the Fieldstone pattern)', () => {
-    // T86 item 17 shipped: `largeStones` is now really in ENGINE_OPTIONS (the mock's own `extra`
-    // scaffold -- see its header comment -- is a no-op here now, kept only so a future option can
-    // reuse the same pre-staging pattern without copying it back in).
-    $('brickSetRed').click();
+  it('the Large stones row shows only for a fieldstone wall (item 23: the Fieldstone pattern = the rock set)', () => {
     expect(shown('brickLargeStonesRow')).toBe(false); // red brick, stretcher
-    $('brickSetWhite').click();
-    expect(shown('brickLargeStonesRow')).toBe(true);
-    $('brickSetRed').click();
-    expect(shown('brickLargeStonesRow')).toBe(false);
     $('brickPattern_fieldstone').click();
     expect(shown('brickLargeStonesRow')).toBe(true);
+    $('brickSet_1').click(); // a brick set for the rock wall: bricks again
+    expect(P.brickSettings.pattern).toBe('stretcher');
+    expect(shown('brickLargeStonesRow')).toBe(false);
     engineOpts.extra = [];
   });
   it('a layout setting: the slider previews while dragged, re-lays with it on release', () => {
@@ -771,15 +775,16 @@ describe('turn 201: the Raised brush (a Brush variant; Level + modes in its own 
     $('brickTool_raisedBrush').click();
     expect(window.svgEditor.setMode).toHaveBeenCalledWith('brickBrush');
     expect(window.svgEditor._brickSettings).toBe(P.brickSettings);
-    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ levelIn: 0.0625, strokeMode: 'bricks' });
+    expect(window.svgEditor._brickStrokeOverrides()).toMatchObject({ setId: 1, rustic: 0, levelIn: 0.0625, strokeMode: 'bricks' }); // item 23: + its set; item 29: + Rustic
+    expect(window.svgEditor._brickStrokeOverrides().grout.widthIn).toBe(0.034); // + its own joint (grout per element)
     fire('brickRaisedLevel', 0.125, 'input'); // changed AFTER picking the tool: the next stroke still gets it
     expect(window.svgEditor._brickStrokeOverrides().levelIn).toBe(0.125);
     expect($('brickRaisedSection').style.display).not.toBe('none');
   });
-  it('the plain Brush clears the overrides', () => {
+  it('the plain Brush clears the Raised brush\'s overrides (item 23: only its own set is frozen in)', () => {
     $('brickTool_raisedBrush').click();
     $('brickTool_brush').click();
-    expect(window.svgEditor._brickStrokeOverrides).toBe(null);
+    expect(window.svgEditor._brickStrokeOverrides()).toEqual({ setId: 1, rustic: 0, grout: expect.objectContaining({ widthIn: 0.034 }) }); // item 29: + Rustic; + its joint
   });
   it('Grout mode is hidden until the engine lists groutCut, then pickable', () => {
     $('brickTool_raisedBrush').click();
@@ -800,12 +805,14 @@ describe('turn 201: the Raised brush (a Brush variant; Level + modes in its own 
   });
 });
 
-describe('F35 item 13: the Wall pattern picker is an engine-drawn icon grid, grouped into families', () => {
+describe('F35 item 13: the Wall pattern picker is an engine-drawn icon grid (flattened: one grid, family order)', () => {
   beforeEach(() => setup('wall'));
-  it('every pattern appears once, in a family row, icon only with the name as tooltip', async () => {
+  it('every pattern appears once, in ONE grid with no family headings, in the declared family order; icon only, name as tooltip', async () => {
     const { BRICK_PATTERNS } = await import('../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js');
-    const families = [...$('brickPatternList').querySelectorAll('.brick-pattern-family')].map((r) => r.dataset.family);
-    expect(families).toEqual(['bonds', 'herringbone', 'basketweave', 'fieldstone']);
+    expect($('brickPatternList').querySelectorAll('.brick-pattern-family, .brick-pattern-family-label')).toHaveLength(0);
+    const order = [...$('brickPatternList').children].map((b) => b.id.replace('brickPattern_', ''));
+    expect(order.slice(0, 6)).toEqual(['none', 'stretcher', 'stack', 'soldier', 'header', 'flemish']); // Bonds first
+    expect(order.indexOf('herringbone')).toBeLessThan(order.indexOf('fieldstone'));
     const btns = [...$('brickPatternList').querySelectorAll('button')];
     expect(btns.map((b) => b.id.replace('brickPattern_', '')).sort()).toEqual(Object.keys(BRICK_PATTERNS).sort());
     const hb = $('brickPattern_herringbone');
@@ -869,10 +876,12 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
   it("N2: P.brickSettings REPLACED (reload / project load) -> the panel shows the board's values, editor + sidebar", () => {
     setup('brush');
     const before = P.brickSettings;
-    P.brickSettings = { ...JSON.parse(JSON.stringify(before)), setId: 3, pattern: 'herringbone', brickLengthIn: 1.5, surfaceStyle: 'weathered' };
+    P.brickSettings = { ...JSON.parse(JSON.stringify(before)), pattern: 'fieldstone', brickLengthIn: 1.5, surfaceStyle: 'weathered' };
     window.svgEditor._brickSettings = before; // an armed Brush still holds the old object
     document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
-    expect($('brickSetWhite').classList.contains('active')).toBe(true);
+    expect($('brickPattern_fieldstone').classList.contains('active')).toBe(true);
+    P.brickSettings.pattern = 'herringbone';
+    document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
     expect($('brickPattern_herringbone').classList.contains('active')).toBe(true);
     expect($('brickQuick_pattern_herringbone').classList.contains('active')).toBe(true);
     expect($('brickSize').value).toBe('1.5');
@@ -883,24 +892,9 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
   it('N4: a brush-only board never shows a Generate dot (nothing for Generate to re-lay)', () => {
     setup('brush');
     firstInactive('[id^=brickSizePreset_]').click();
-    $('brickSetWhite').click();
+    $('brickSet_1').click();
     expect(pending()).toBe(false);
     expect($('editorTabBrick').hasAttribute('data-brick-pending')).toBe(false);
-  });
-
-  it('N3: White Rocks greys the course bonds (editor + quick row) with the reason, hides the band patterns; Red restores', () => {
-    setup('wall');
-    $('brickSetWhite').click();
-    for (const id of ['brickPattern_stretcher', 'brickPattern_flemish', 'brickQuick_pattern_stack']) {
-      expect($(id).disabled, id).toBe(true);
-      expect($(id).title, id).toMatch(/White Rocks/);
-    }
-    for (const id of ['brickPattern_herringbone', 'brickPattern_basketweave', 'brickPattern_fieldstone', 'brickPattern_none']) expect($(id).disabled, id).toBe(false);
-    expect(shown('brickFrameBandPatternList')).toBe(false);
-    $('brickSetRed').click();
-    expect($('brickPattern_stretcher').disabled).toBe(false);
-    expect($('brickPattern_stretcher').title).toBe('Stretcher'); // its own tooltip is back
-    expect(shown('brickFrameBandPatternList')).toBe(true);
   });
 
   it('N5: no Wall/Frame bricks -> the sidebar BRICK controls are greyed with a visible reason; a Generate enables them', () => {
@@ -1020,5 +1014,75 @@ describe('turn 207 (Fred / 88): the Frame element (and the Wall in it) follows t
     } finally {
       frameContext.mockImplementation(() => ({}));
     }
+  });
+});
+
+describe('F35 item 23: per-element Set, Fieldstone = the rock set', () => {
+  const bandIds = () => [...document.querySelectorAll('#brickFrameBandPatternList button')].map((b) => b.id);
+  beforeEach(() => { P.brickSettings.frameBandPatterns = []; });
+
+  it('the Set row lists the BRICK sets from their declarations -- no White Rocks', () => {
+    setup('wall');
+    expect([...document.querySelectorAll('#brickSetRow button')].map((b) => [b.id, b.textContent])).toEqual([['brickSet_1', 'Red Brick']]);
+    expect([...document.querySelectorAll('#brickQuickSettings [id^=brickQuick_set_]')].map((b) => b.id)).toEqual(['brickQuick_set_1']);
+  });
+
+  it('Wall + Fieldstone: the wall is rock (no brick set shown active), laid with the Fieldstone pattern', () => {
+    setup('wall');
+    $('brickPattern_fieldstone').click();
+    expect($('brickSet_1').classList.contains('active')).toBe(false);
+    expect(runBricks.mock.calls.at(-1)[1].pattern).toBe('fieldstone');
+    $('brickSet_1').click(); // a brick set for it: bricks again
+    expect(P.brickSettings.pattern).toBe('stretcher');
+    expect($('brickSet_1').classList.contains('active')).toBe(true);
+  });
+
+  it('Frame: Fieldstone is offered (bandCapable); picking it on one band makes EVERY band fieldstone, and then only Fieldstone is offered', () => {
+    setup('frame');
+    $('brickFramePreset_three_band').click(); // setup() resets to the 1-band preset
+    expect($('brickFrameBandPattern_0_fieldstone').disabled).toBe(false);
+    expect(bandIds()).toContain('brickFrameBandPattern_0_soldier');
+    $('brickFrameBandPattern_1_fieldstone').click();
+    expect(P.brickSettings.frameBandPatterns).toEqual(FRAME_PRESETS.three_band.map(() => 'fieldstone'));
+    expect(bandIds().every((id) => id.endsWith('_fieldstone'))).toBe(true);
+    expect(bandIds()).toHaveLength(FRAME_PRESETS.three_band.length);
+    expect(runBricks).toHaveBeenCalled();
+  });
+
+  it('a rock frame stays rock across a preset change (every band of the new preset fieldstone)', () => {
+    setup('frame');
+    $('brickFramePreset_three_band').click();
+    $('brickFrameBandPattern_0_fieldstone').click();
+    $('brickFramePreset_single_soldier').click();
+    expect(P.brickSettings.frameBandPatterns).toEqual(FRAME_PRESETS.single_soldier.map(() => 'fieldstone'));
+  });
+
+  it('per element: the Set row with the Frame tool turns ONLY the frame back to bricks; the rock wall stays rock', () => {
+    setup('wall');
+    $('brickPattern_fieldstone').click();
+    $('brickTool_frame').click();
+    $('brickFrameBandPattern_0_fieldstone').click();
+    $('brickSet_1').click(); // with the Frame tool active
+    expect(P.brickSettings.frameBandPatterns).toEqual([]);
+    expect(P.brickSettings.pattern).toBe('fieldstone'); // the wall untouched
+  });
+
+  it('the sidebar quick Set applies to ALL elements (rock ones back to bricks)', () => {
+    setup('wall');
+    $('brickPattern_fieldstone').click();
+    $('brickTool_frame').click();
+    $('brickFrameBandPattern_0_fieldstone').click();
+    $('brickQuick_set_1').click();
+    expect(P.brickSettings.pattern).toBe('stretcher');
+    expect(P.brickSettings.frameBandPatterns).toEqual([]);
+    expect(P.brickSettings.setIds).toEqual({ wall: 1, frame: 1, brush: 1, raisedBrush: 1 });
+    expect($('brickQuick_set_1').classList.contains('active')).toBe(true);
+  });
+
+  it('(c) a wall can carry a raised preset while the frame has none: accents are the Wall\'s alone', () => {
+    setup('wall');
+    $('brickAccent_sparseDots').click();
+    expect(P.brickSettings.accent.preset).toBe('sparseDots');
+    expect(runBricks.mock.calls.every((c) => !c[3].kinds.includes('frame') || c[3].kinds.includes('wall'))).toBe(true);
   });
 });

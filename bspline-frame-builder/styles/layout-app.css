@@ -469,6 +469,43 @@ aside {
     min-height: 0;
 }
 
+/* F35 item 30: colour-coded sections -- the colours are main/section-themes.js's tokens (applySectionThemes writes
+   them as --section-* on each themed section); nothing here names a colour. (0,3,0) beats the page's own
+   `.cad-sidebar .panel-body { background:#fff }`. */
+.cad-sidebar .section-themed > .panel-header,
+.cad-sidebar .section-themed > .panel-header:hover {
+    background: var(--section-header);
+    color: var(--section-text);
+    border-left: 4px solid var(--section-stripe);
+}
+.cad-sidebar .section-themed > .panel-header:hover { filter: brightness(0.97); }
+.cad-sidebar .section-themed > .panel-body {
+    background: var(--section-body);
+    border-left: 4px solid var(--section-stripe);
+}
+
+/* F35 item 26 -- the numbers are main/sidebar-layout.js's SIDEBAR_LAYOUT (it sets --sidebar-cell-min and toggles
+   .sidebar-desktop / .sidebar-two-col); never typed here. Desktop only: a tool group (4 buttons) gains columns
+   with the width -- 1, 2 or 4 per row, NEVER 3 + 1: 4 when 4 declared cells fit, else 2 when 2 fit, else 1. A pure
+   CSS switch on the group's own width ("x * 999" clamps): each term is huge-positive below its threshold and
+   huge-negative above it, so the clamp lands on exactly 25% / 50% / 100% minus the 2px gap. */
+.cad-sidebar.sidebar-desktop .cad-tool-group {
+    --tool-cell: min(100%, max(
+        clamp(calc(25% - 2px), calc((4 * var(--sidebar-cell-min) + 6px - 100%) * 999), calc(50% - 2px)),
+        calc((2 * var(--sidebar-cell-min) + 2px - 100%) * 999)));
+    grid-template-columns: repeat(auto-fit, minmax(var(--tool-cell), 1fr));
+}
+/* past twoColumnPx the sections flow into two columns, top-to-bottom then the next column (reading order), a
+   section never split; the pinned actions stay outside, full width. Height stays auto, so the columns balance. */
+.cad-sidebar.sidebar-two-col .cad-sidebar-sections {
+    column-count: 2;
+    column-gap: 0;
+    column-rule: 1px solid var(--cad-border-standard);
+}
+.cad-sidebar-sections > .panel {
+    break-inside: avoid;
+}
+
 .cad-resizer {
     grid-column: 2;
     grid-row: 1;

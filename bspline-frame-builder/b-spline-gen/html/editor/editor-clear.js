@@ -7,7 +7,8 @@
  *     lives on the layers, so it goes with them); the Bricks layer and its bricks stay; a fresh Layer 1 is made
  *     active, as on a new board.
  *   clearBrickElements(editor) -- every brick element (Wall, Frame, Brush bricks and the strokes' spines) goes;
- *     the Bricks layer stays, its laid key (brickLaidKey) set to null: nothing is laid any more.
+ *     the Bricks layer stays. The Wall/Frame element RECORDS (item 22) are on that layer, so they go too: no
+ *     element is left, nothing re-lays.
  */
 import { addLayer, setActiveLayer, isBricksLayer } from './layers.js';
 
@@ -39,5 +40,5 @@ export function clearBrickElements(editor) {
   if (typeof editor._deselect === 'function') editor._deselect();
   const bricksLayers = (editor._layers || []).filter(isBricksLayer);
   _removeChildrenOf(editor, new Set(bricksLayers.map((l) => String(l.id))), false);
-  for (const l of bricksLayers) l.brickLaidKey = null;
+  // (item 22: the records went with the layer's children -- each element's laid key lives on its record)
 }

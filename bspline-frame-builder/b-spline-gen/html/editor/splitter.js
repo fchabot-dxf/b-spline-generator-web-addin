@@ -85,6 +85,8 @@ export function extremeSnap(px, snaps) {
  * @param {() => number} opts.min - hard floor, re-evaluated live.
  * @param {() => number} opts.max - hard ceiling, re-evaluated live.
  * @param {string} [opts.storageKey] - sessionStorage key the last applied size persists under.
+ * @param {'session'|'local'} [opts.storage='session'] - where it persists: 'session' (Fred's "per session", the
+ *   phone splitters) or 'local' (per viewer, across sessions -- the desktop sidebar, F35 item 26).
  * @param {number} [opts.snapDistance]
  * @param {() => boolean} [opts.enabled] - false suppresses drag entirely
  *   (and the initial/resize auto-apply) — the main-screen splitter's own
@@ -107,6 +109,7 @@ export function makeSplitter(target, {
   min,
   max,
   storageKey,
+  storage = 'session',
   snapDistance = DEFAULT_SNAP_DISTANCE_PX,
   enabled = () => true,
   initialSnapName,
@@ -119,15 +122,16 @@ export function makeSplitter(target, {
   const coordProp = axis === 'width' ? 'clientX' : 'clientY';
   const doApplySize = applySize || ((px) => { target.style[axis] = `${px}px`; });
   const doReadSize = readSize || (() => target.getBoundingClientRect()[axis]);
+  const store = () => (storage === 'local' ? localStorage : sessionStorage);
 
   function persist(px) {
     if (!storageKey) return;
-    try { sessionStorage.setItem(storageKey, String(px)); } catch (_) { /* private mode, quota */ }
+    try { store().setItem(storageKey, String(px)); } catch (_) { /* private mode, quota */ }
   }
   function loadPersisted() {
     if (!storageKey) return null;
     try {
-      const raw = sessionStorage.getItem(storageKey);
+      const raw = store().getItem(storageKey);
       const n = raw === null ? NaN : Number(raw);
       return Number.isFinite(n) ? n : null;
     } catch (_) {

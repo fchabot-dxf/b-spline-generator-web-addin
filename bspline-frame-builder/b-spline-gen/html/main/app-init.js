@@ -20,10 +20,11 @@ import { fusLog } from '../core/fusion-bridge.js';
 import { buildSketchManifest } from '../editor/editor-sketch-manifest.js';
 import { frameContext, drawFrameProfile } from '../editor/editor-frame-profile.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
-import { FRAME_DEFS, frameParam, normalizeFrameRecord } from '../core/frame-record.js';
+import { FRAME_DEFS, frameParam, normalizeFrameRecord, setFrameRecord } from '../core/frame-record.js';
 import { syncFramePanel } from './frame-panel.js';
 import { endEditorSession } from '../editor/editor-text-session.js';
-import { brickSetById } from '../core/bricks/library.js';
+import { brickSetById, FRAME_PRESETS } from '../core/bricks/library.js';
+import { ROCK_SET_ID, BRICK_SET_IDS } from '../editor/editor-brick-tool.js';
 
 /** The frame a fresh start opens on (data/frame-defs: "Template 1 - Hourglass"). */
 const FRESH_START_FRAME_TEMPLATE = 'template_1';
@@ -37,7 +38,9 @@ const FRESH_START_FRAME_TEMPLATE = 'template_1';
 // Audit B1: the brick settings are app state the editor's own undo stack never holds, but every
 // Brick-tab change saves them at once -- so Cancel must put them back too, or the panel shows the
 // discarded settings over the restored bricks (and the next Generate re-lays them).
-export const SvgEditorSnapshot = { active: false, editorSvg: null, brickSettings: null, fingerprint: null };
+// Blind-spot audit B9: the FRAME record likewise (the Frame tab edits it live): Cancel puts it back, or the
+// restored bricks sit on the session's new frame.
+export const SvgEditorSnapshot = { active: false, editorSvg: null, brickSettings: null, frame: null, fingerprint: null };
 
 /** F35 item 25: what an editor session can change, as one comparable string -- the drawing, the frame record,
  *  the brick settings and the photo. Taken when the editor opens (SvgEditorSnapshot.fingerprint); the viewport's
@@ -47,6 +50,17 @@ export function editorSessionFingerprint() {
     svg: P.editorSvg ?? null, frame: P.frame ?? null, bricks: P.brickSettings ?? null,
     photo: [P.photoImageDataUrl ?? null, P.photoEdits ?? []],
   });
+}
+
+/** Cancel's app-state half: put back what the editor session changed outside the drawing's own undo -- the
+ *  document, the brick settings and (blind-spot audit B9) the frame record. The frame goes back FIRST: the
+ *  restored bricks' laid key names that frame, so its re-lay finds them current and lays nothing. */
+export function restoreEditorSnapshotState() {
+  P.editorSvg = SvgEditorSnapshot.editorSvg;
+  restoreBrickSettings(SvgEditorSnapshot.brickSettings);
+  if (SvgEditorSnapshot.frame && JSON.stringify(SvgEditorSnapshot.frame) !== JSON.stringify(P.frame ?? null)) {
+    setFrameRecord(SvgEditorSnapshot.frame);
+  }
 }
 
 /** F35 item 25: close the editor when nothing changed -- Cancel's close without its restore + remask + drape
@@ -522,6 +536,38 @@ export const MIGRATIONS = [
       delete p.brickSettings.frameBrickLengthIn;
     },
   },
+  {
+    id: 'brick-set-per-element',
+    // F35 item 23: one board-wide `setId` -> a set per element (`setIds`). A board that was on the ROCK set
+    // (White Rocks, which leaves the Set row) becomes the Fieldstone pattern on its Wall and fieldstone bands on
+    // its Frame -- the same stones, now implied by the pattern; its elements' brick set falls back to the first
+    // brick set. Runs after the size migration above (which still reads the old `setId`).
+    when: (p) => p.brickSettings && !p.brickSettings.setIds,
+    apply: (p) => {
+      const b = p.brickSettings;
+      const old = b.setId ?? 1;
+      const rock = old === ROCK_SET_ID;
+      const base = rock || !BRICK_SET_IDS.includes(old) ? (BRICK_SET_IDS[0] ?? 1) : old;
+      b.setIds = { wall: base, frame: base, brush: base, raisedBrush: base };
+      if (rock) {
+        b.pattern = 'fieldstone';
+        b.frameBandPatterns = (FRAME_PRESETS[b.frameBandPreset] || []).map(() => 'fieldstone');
+      }
+      delete b.setId;
+    },
+  },
+  {
+    id: 'grout-per-element',
+    // the one board-wide joint width -> a joint per element (groutByElement). A saved board keeps its exact width
+    // on every element (it lays as before); a new board starts at each element's set's joint (null).
+    when: (p) => p.brickSettings && !p.brickSettings.groutByElement,
+    apply: (p) => {
+      const b = p.brickSettings;
+      const w = b.grout && Number.isFinite(b.grout.widthIn) ? b.grout.widthIn : null;
+      b.groutByElement = { wall: w, frame: w, brush: w };
+      if (b.grout) delete b.grout.widthIn;
+    },
+  },
 ];
 
 export function runMigrations(p = P) {
@@ -761,8 +807,7 @@ export function initSvgEditor(preview) {
         // — neither depends on the modal's visibility, checked by reading
         // both, so this is safe regardless of exactly when the modal
         // hides relative to this call.
-        P.editorSvg = SvgEditorSnapshot.editorSvg;
-        restoreBrickSettings(SvgEditorSnapshot.brickSettings);
+        restoreEditorSnapshotState();
         saveLastSession();
         window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn);
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);

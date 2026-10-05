@@ -12965,3 +12965,1034 @@ Fred: "in the viewport have a 2D 3D toggle that enters and exits editor mode".
   - Nothing wired. `brickToolIconSvg(id, size, miniOverride)` lets the sheet draw variants; the declared icon is
     unchanged until Fred picks.
   - Test: each treatment draws under the run, currentColor (brick-tool-icons 6/6).
+
+### turn 217 -- F35 item 23, the FOLD: per-element brick Set; the Fieldstone pattern implies the rock set (seat 37)
+
+Fred: "a frame of fieldstone and a wall of soldier"; then "so white rocks and fieldstone is different?" -> folded.
+Contract agreed with 88 by DM (88's engine half: rock-bands-fieldstone 39ca112, on main as 1291d6f, merged here).
+- **ONE source of truth, each set's declared `layout`** (editor-brick-tool.js):
+  - `ROCK_SET_ID` = the set laid as 'fieldstone' (White Rocks, id 3);
+  - `BRICK_SET_IDS` = the sets laid as 'bond' (Red today; Brick 2's unimplemented 'grid' engine stays out; a
+    Grey bond set appears by itself, item 29).
+  - No set id is hard-coded on either side.
+- **Per element:** `P.brickSettings.setIds` = { wall, frame, brush, raisedBrush }, keyed by Brick tool (BRICK_TOOLS
+  `ownsSet`). `elementSetId(settings, kind)`:
+  - a Wall whose pattern is 'fieldstone' -> the rock set;
+  - a Frame whose bands are ALL 'fieldstone' -> the rock set;
+  - otherwise the element's own brick set.
+  - A pre-item-23 single `setId` is the fallback.
+- **The composer lays each element with its own set.** generateBricks takes ONE `scale` (the Wall's) and applies
+  it to the frame's set too, so the frame's set goes in pre-scaled with the engine's own
+  `scaledSet(set, frameScale / wallScale)`. The rock set declares 1.1 in against the bricks' 0.75, so without
+  this a rock frame beside brick walls was 1.47x too big. Live: the frame's stones measured 0.548 in wide with a
+  brick wall AND with a rock wall.
+- **Brushes** freeze their own element's set into each stroke (selectTool: `_brickStrokeOverrides` carries
+  `setId`).
+- **UI:**
+  - The Set row renders from BRICK_SET_IDS (ids `brickSet_<id>`; labels "Red Brick", else the set's name) and
+    edits the ACTIVE tool's element; a rock element shows no brick set active.
+  - A brick-set pick on a rock element turns it back to bricks: the wall's pattern -> stretcher
+    (DEFAULT_WALL_PATTERN), the frame's band overrides cleared.
+  - The sidebar quick Set applies to ALL elements.
+  - The band picker enables Fieldstone from its declared `bandCapable` (d3's T86 item 20). Picking it on one
+    band writes fieldstone on EVERY band (`setFrameRock`), after which only Fieldstone is offered.
+  - A rock frame stays rock across a preset change: every band of the new preset is fieldstone.
+- **Migration** 'brick-set-per-element' (app-init MIGRATIONS, after the size migration that still reads `setId`):
+  `setId` -> setIds for every element. A White Rocks board becomes the Fieldstone pattern on the wall + fieldstone
+  on every band of its preset, with brick sets elsewhere; `setId` is deleted.
+- **REMOVED with White Rocks** (swept):
+  - the #brickSetWhite button (and the static #brickSetRed, now from data) and their listeners;
+  - audit v2 N3's two rules in brick-control-requires.js (course bonds greyed under White Rocks; band list
+    hidden) with COURSE_BONDS -- the combination no longer exists;
+  - their tests (the v2 rules file and the regen N3 test).
+  - grep: no brickSetWhite, brickSetRed or P.brickSettings.setId left in app code.
+- **Tests:**
+  - New brick-element-set (11): rock / brick from the layouts; elementSetId per element, the rock wall, a rock
+    frame needing EVERY band, the old-setId fallback; the migration order, a Red board, a White Rocks board, an
+    already-migrated board.
+  - New "F35 item 23" block in the regen file (7): the Set row from data, no White Rocks; a Wall + Fieldstone is
+    rock; a Frame Fieldstone pick makes every band fieldstone and offers only it; rock across presets; per element
+    (the Frame tool's Set leaves the rock wall alone); the quick Set applies to all; (c) a wall's raised preset
+    with no frame.
+  - Updated for the fold: the set picker, the quick set, Large stones (now via the Fieldstone pattern), the
+    Raised brush overrides (+ setId), N2, N4, brick-default-grout (setIds).
+  - Non-vacuous: against the pre-item-23 sources 17 of the new tests fail.
+- **Fast tier** (125 files): 2112 passed, 4 FAILED in the parallel run -- bricks-fieldstone-large-stones (3,
+  seat B's engine file) and frame-3d-sweep (1). Both are heavy; re-run alone: 5/5 and 8/8. No engine or frame
+  geometry touched. After merging 1291d6f: the item 23 + band/rock files, 189/189.
+- **Live** (served, headless Chrome):
+  - bricks: wall + frame set 1;
+  - a Fieldstone band -> the frame 207 stones of set 3, the wall still set 1, and only fieldstone band buttons;
+  - the wall Fieldstone -> both set 3;
+  - the Frame tool + Red -> the frame back to set 1, the wall stays 3;
+  - a saved White Rocks board (setId 3) reloads as pattern fieldstone + 3 fieldstone bands, setIds all 1, no
+    setId, the quick Fieldstone active;
+  - Fred's own case: a single-soldier frame on Fieldstone around a soldier wall = 88 stones (set 3) + 113 red
+    bricks (set 1). 0 errors.
+- **Shots:** shots/seat37/f35item23_rock_frame_soldier_wall.png, f35item23_rock_wall_brick_frame.png.
+- **Matrix:** 88 re-declares the rows from this sha (agreed list: drop the White Rocks rows; Fieldstone wall =>
+  set-3 bricks; Fieldstone band => every band set 3; a per-element row; PERSIST_BOARD clicks
+  brickPattern_fieldstone; brickSetRed -> brickSet_1).
+- Server 8851 (my own task) stopped.
+
+### turn 217 addendum -- the Clear is ONE undo step (item 28 follow-up) + the Raised brush sheet v3 (seat 37)
+
+**Clear = one step in the global undo.** 88's rows (matrix-clear-rows 67bf49e) are the spec.
+- How it works (editor-clear-menu.js):
+  - `runClear` counts every `editorCommit` fired inside the Clear and records `_lastClear` = { editorSteps,
+    frameSteps (the Frame-tab history depth delta), the photo it replaced, the frame + photo it left }.
+  - `undoLastClear` pops exactly those editor steps, undoFrame()s those frame steps, and restorePhoto()s
+    (photo-panel.js gains `photoState` and `restorePhoto`).
+  - Interception: a window CAPTURE Ctrl+Z (ahead of the editor's and the Frame tab's own handlers) and a capture
+    click on #editorUndo.
+- The bricks follow the frame:
+  - A Clear Frame (bricks kept) re-lays the bricks on the rectangle INSIDE the Clear, synchronously
+    (`generateBricks()`), not after the 350 ms settle.
+  - Its undo therefore takes the re-lay back too, and the bricks return to the template.
+- Voiding: it is only the latest change while nothing else changes. A later editorCommit or frameRecordChanged, or
+  a frame/photo state that differs from what the Clear left, voids it, and normal undo applies.
+- Tests: h20-clear-scoped gains 5 tests (All, Frame + re-lay, Photo touching nothing else, voiding, Ctrl+Z ahead of
+  a bubble handler). 17/17.
+- 88's matrix clear group (run with `--root` = this tree): 11 rows / 0 FAIL. With the fix reverted it gives exactly
+  88's 3 FAILs.
+
+**Raised brush sheet v3** (Fred: "2 OR 3 bricks; with 3 the MIDDLE one raised"). Nothing is wired.
+- `RAISED_V3` in brick-tool-icons.js declares the two candidates:
+  - twoBricks: row2, the second brick raised;
+  - threeBricks: row3, the middle brick raised.
+- Both: the paintbrush glyph, no arrow, the raised brick lifted with its side face showing.
+- The runs are new TOOL_MINI_RUNS row2 / row3 (stretcher_1, 2 or 3 x 0.82 in).
+- Mini options added: `raise` ('last' | 'middle'), `lift`, `yScale` (yScale 1.8 gives brick 2:1 proportions;
+  3 read as cubes).
+- `brickToolIconSvg`'s override is now { glyph?, mini? }; the v2 tests are updated, and a new v3 test checks the
+  polygon count, one side face, no arrow and the raised brick highest. 7/7.
+- Shot: shots/seat37/f35item24_icon_sheet_v3_raised.png (20 + 40 px, idle + active).
+
+**Fast tier (whole vitest run): 262 files, 4327 passed, 0 failed.**
+
+### turn 219 -- F35 item 26: the sidebar drag-resizes; grids gain columns; two columns past 2x (seat 37)
+
+Merged main 6d277f6 first (9bec1b6, clean).
+
+**What was there:** #resizer already dragged the sidebar on desktop through a hand-rolled inline script in the
+palette (clamped 200 .. innerWidth-300, NOT persisted).
+- core/ui-utils.js `initResizer` also listens on the same handle. Its desktop branch writes `--sidebar-width` on
+  .app, which no CSS reads, but it still calls preview._resize(). **Kept, untouched** (not in scope; flagged here).
+- The phones already use the shared editor/splitter.js (main/mobile-resizer.js).
+
+**Declared:** main/sidebar-layout.js `SIDEBAR_LAYOUT` = { defaultPx 260 (= the CSS default; a test pins the two
+equal), minPx 200, maxPx 650, keepViewportPx 300, twoColumnPx 520 (2x), cellMinPx 72, storageKey }.
+- **Drag:** the desktop drag is now a third `makeSplitter` caller (enabled = not phone, not landscape phone), so
+  there is one drag mechanism instead of a fourth loop.
+  - splitter.js gains `storage: 'session' | 'local'`. Default stays 'session' (the phone splitters, "per
+    session"); the desktop sidebar uses 'local' = per viewer.
+  - Splitter behaviour inherited: release within 24 px of a snap snaps to it; a TAP on the handle cycles the
+    declared snaps, default <-> two columns; a double-tap jumps to the other one. This is new on desktop (the
+    inline drag ignored taps). Say if Fred wants taps inert (snaps -> [] keeps the drag only).
+- **Grids:** `.cad-sidebar.sidebar-desktop .cad-tool-group` = repeat(auto-fit, minmax(var(--sidebar-cell-min), 1fr)).
+  - The module sets --sidebar-cell-min from the declaration, so no number is typed in the CSS.
+  - auto-fit rather than auto-fill: auto-fill kept empty tracks (8 tracks for 4 buttons at a phone width).
+  - Scoped by .sidebar-desktop (the module toggles it), so phones keep 2 x 2.
+  - The two inline `grid-template-columns: 1fr 1fr` on the Sculpt Top/Bottom tool groups are removed.
+  - The brick panel's icon rows are flex-wrap rows of fixed-size icons, so they already gain per-row icons with
+    width; left alone.
+  - The Undo/Redo/Clear 2-col grids are a pair layout (Clear spans 2), not an icon grid; left alone.
+- **cellMinPx 72 is MEASURED:** the tool group's inner width is 132 / 192 / 322 / 214 / 240 / 279 px at sidebar
+  200 / 260 / 390 / 520 / 572 / 650.
+  - 72 gives 2 per row at the default, 4 at 1.5x, and 2 at the two-column threshold.
+  - Any single min leaves a band where a 4-button group shows **3 + 1**: here 292-365 px single-column, and >= ~560
+    two-column (the 2.2x shot shows it).
+  - There is no cell value with no 3 + 1 band across 200..650: 390 -> 4 needs <= 78, and 572 -> 2 needs > 77.3
+    with 650 -> 2 needing > 90. Flagged; one number to retune if Fred minds.
+- **Two columns:** a `.cad-sidebar-sections` wrapper now holds every section (12); the pinned Generate button stays
+  outside, full width.
+  - Past twoColumnPx it gets `column-count: 2` and each `.panel` gets `break-inside: avoid`.
+  - The wrapper's height stays auto, so the columns BALANCE. A multicol directly on the scrolling, fixed-height
+    aside would have filled column 1 and then overflowed sideways.
+  - Reading order: column 1 then column 2. Opening or closing a section rebalances, so a section can move to the
+    other column.
+
+**Removed (swept):**
+- the palette's inline "Resizer Compatibility logic" block: mousedown/touchstart on #resizer, window
+  mousemove/touchmove/mouseup/touchend, and the hand-rolled clamp;
+- the two inline grid styles.
+- Comments in mobile-resizer.js that pointed at the inline script now point at sidebar-layout.js.
+- Nothing persisted before, so there is no old key to sweep. The `.resizing` class + col-resize cursor are kept.
+
+**Live** (served, headless Chrome, real CDP mouse drags at a 1600 px viewport):
+
+| sidebar | layout | tool group |
+| --- | --- | --- |
+| 260 (load) | 1 column | 2 cols |
+| 390 | 1 column | 4 cols |
+| 572 | 2 columns, panels at x 14 and 278: stock..brick / stamp..resolution, none split | 3 cols |
+
+- Clamps: a drag to 5000 -> 650; a drag to 10 -> 200.
+- Saved 572 -> reload -> 572, two columns.
+- An 800 px viewport (phone layout): one column, no .sidebar-desktop, tool group 2 x 2. Back to 1600 -> 572 again.
+- 0 errors.
+- Shots: shots/seat37/f35item26_after_{1x,1.5x,2.2x}.png (the before set: f35item26_before_*).
+- **Pre-existing, not fixed:** the Skeleton/Stamp "Offset X | Offset Y" row overflows its panel at the DEFAULT 260
+  (symOffsetY 178 px past the edge, clipped). It is better at 390 (48 px) and in two columns no worse than the
+  default.
+
+**Matrix:** no control moves at the default width (the default layout is byte-identical apart from the wrapper div),
+so no row is needed. A width row would need a drag gesture in 88's harness; offer it if wanted.
+
+**Tests:** new tests/sidebar-layout.test.js (12):
+- the declaration;
+- the splitter's local vs session storage;
+- init: restore, default, clamp, phones untouched;
+- every panel inside the wrapper, the inline drag gone;
+- the CSS reads the declaration.
+- Non-vacuous: against the pre-change tree 12/12 fail (no module). With the module but the pre-change
+  splitter/html/css, 6/12 fail. Restored from my copies, cmp clean.
+- Fast tier (whole vitest): 264 files, 4358 passed, **2 FAILED** in the parallel run, both
+  bricks-fieldstone-large-stones (seat B's heavy engine file, the same load timeouts as turn 217); alone 5/5.
+
+### turn 221 -- item 26 follow-ups; 88's item 23 FAIL is an engine stone; F35 item 22 DESIGN NOTE (seat 37)
+
+**Item 26 follow-ups (673c416):**
+- **(1) Tool groups never split 3+1.** No single cell min can do it: turn 219's measurements need c <= 78 (4 per row
+  at 1.5x) AND c > 90 (2 per row at 650). So the CSS now switches the cell between 25% / 50% / 100%: 4 per row when
+  4 declared cells fit, else 2 when 2 fit, else 1.
+  - Pure CSS (clamp/max with the "x * 999" switch), still driven by the ONE declared cellMinPx (72).
+  - Live sweep, every even sidebar width 200..650: 1 col 200-216, 2 cols 218-364, 4 cols 366-518, 2 cols 520-650
+    (two-column mode). **3 never occurs.**
+- **(2) The tap toggle is declared:** `SIDEBAR_LAYOUT.tapSnaps = ['defaultPx', 'twoColumnPx']` plus `handleTitle`
+  ("Drag to resize the sidebar. Click: one / two columns."), set on #resizer on desktop only (removed on phones).
+- **(3) Offset X | Offset Y fixed at 260:** cause = a range input's ~129 px intrinsic width set the paired half's
+  automatic minimum, so the two halves could not shrink below 2 x 129. The fix is `width: 0` (still `flex: 1`) on
+  `input[type=range].cad-slider`.
+  - All 46 .cad-slider sit in flex rows (probed), so nothing else moves: only the 4 paired sliders changed width
+    (260: 129 -> 34; 390: 129 -> 99; 572: 129 -> 58).
+  - Overflowing controls: 260: 4 -> 0; 390: 2 -> 0; 572: 4 -> 0.
+  - At 260 the paired sliders are short (34 px). Stacking the pair would give them full width but moves controls;
+    say if Fred prefers that.
+  - Shot: shots/seat37/f35item26_offsets_260_after.png.
+- Tests: sidebar-layout 15 (3 new + 2 extended). The new/extended ones fail 4/4 against the pre-fix copies
+  (restored, cmp clean). Whole vitest: 4362 passed, **1 FAILED** (bricks-fieldstone-large-stones parallel-load
+  timeout, as in turns 217/219; alone 5/5).
+
+**88's item 23 matrix FAIL (Wall pattern -> Fieldstone with a rock frame: canvas changes, 3D identical) =
+an ENGINE stone, not the item 23 wiring.**
+- Reproduced with 88's 7fb9322 harness against this tree (frame group: 12 rows, 1 FAIL) and with my own probe
+  (+ Apply).
+- Rasterizing the brick mask with and without the 12 wall stones: **0 cells differ**.
+- One rock-frame stone covers all 12 wall-stone centroids:
+  - `fieldstone-161`: 81 points, **3 self-crossings**, bbox 2.35-5.4 x 2.35-7.4 in (the wall's bbox is
+    2.35-4.65 x 2.35-6.65);
+  - area 3.49 sq in, against a median frame stone of 0.156.
+- The mask samples the frame first and stops at the first hit, so the wall never reaches the 3D.
+- The frame is identical before and after the wall click, so it is the rock band ring (core/bricks, 39ca112's rule),
+  not the frame-set scaling.
+- DM'd 88 with the repro; no engine edit from here.
+
+---
+
+## F35 item 22 -- DESIGN NOTE (no code; for the advisor's OK)
+
+**Fred's ask (NEXT-SESSION-fb-app [F35-item-22]):**
+- Wall: Select + Area brush.
+- Frame: Select only.
+- Bricks on the ACTIVE layer like art.
+- Once ANY area is painted, only painted areas get bricks; clearing every area returns to the full fill.
+- Overlaps: newest wins, older walls flow around it.
+
+### 1. One idea: every brick element is a declared record IN the drawing
+
+Today a Brush stroke already is one: an invisible spine `<line>` carrying `data-brick-element` (id) +
+`data-brick-settings` (a JSON settings snapshot). Its bricks are regenerated from (spine, settings), and undo, save,
+layers and Scissors come free because it is ordinary SVG. **Extend that same declaration to walls and the frame**
+rather than building a parallel state store:
+
+```
+ element record (an invisible SVG node, on its layer)                     its bricks (generated polygons)
+ +---------------------------------------------------------------+        +------------------------------+
+ | data-brick-element  = be...           (id)                    | -lays->| data-brick="wall"            |
+ | data-brick          = wall-area | wall-full | frame | brush-spine|      | data-brick-owner = be...     |
+ | data-brick-settings = {pattern,setId,accent,level,invert,...}  |        | data-layer = <same layer>    |
+ | data-brick-laid     = <laid key>   (B1-B3 moves HERE)          |        +------------------------------+
+ | data-layer          = <the active layer when it was made>      |
+ | geometry: wall-area = the painted strokes (polyline + width)   |
+ |           wall-full / frame = none (board / frame geometry)    |
+ +---------------------------------------------------------------+
+```
+
+- **wall-full**: the implicit whole-board wall of today. It exists only while NO wall-area exists. Painting the
+  first area replaces it; deleting the last area restores it (with the settings it had).
+- **wall-area**: one per painted area. Engine side is seat B's T86 item 18 (strokes -> region polygon, holes
+  allowed), filled by the existing `bricksFillShape(polygon, holes, opts)`.
+  - Several areas: newest wins, older ones get the newer as holes (T86-18's own rule).
+  - Brush strokes still carve exclusions out of every wall (C10 B, unchanged).
+- **frame**: one record (one frame per board), Select only.
+
+### 2. The Brick tab (mockup)
+
+```
+ +- Brick toolbar -+  +- Wall section ---------------------------------------+
+ | [brush]         |  |  [Select] [Area]       <- the Wall's two sub-tools    |
+ | [raised]        |  |  -- selected: Wall 2 (layer "Sky") -------------------|
+ | [WALL] <--------+--|  Set [Red][Grey]  Pattern [icons...]  Accent [...]   |
+ | [frame]         |  |  Level --o--   Raised|Carved                          |
+ | [scissors]      |  |  Area brush width --o--  (Area sub-tool only)         |
+ | [stripe]        |  |  [Delete area]   (no areas = the whole board)         |
+ +-----------------+  +-------------------------------------------------------+
+
+ canvas:  +------------- frame (rock) ------------+
+          |  :::::::: Wall 1 (soldier) :::::      |   Select: click a brick -> its element is selected,
+          |  ::::::##################::::::::     |   its outline shows, the section edits ONLY it
+          |        # Wall 2 (stretcher, newer) #  |   Area: paint -> a NEW wall-area with the section's
+          |        ##########################     |   current settings, on the ACTIVE layer
+          |   (unpainted: no bricks once any area |   Ctrl-drag in Area = erase from the selected area
+          |    exists)                            |
+          +---------------------------------------+
+ Frame section: [Select] only; clicking a frame brick selects the frame record.
+```
+
+- With nothing selected, the section shows the settings the NEXT area will use (the last edited ones). The sidebar
+  quick settings keep applying to ALL walls (as the quick Set does since item 23).
+
+### 3. Bricks on any layer -- what the "Bricks" layer special case becomes
+
+- `ensureBricksLayer` (find-or-create by NAME) is retired. A new element goes on the ACTIVE layer, and the editor's
+  existing context menu "move to layer" (editor-context-menu.js) moves its record + bricks together (they share
+  the element id).
+- Height: today stamp-mask-manager routes the layer NAMED "Bricks" through the brick mask. Instead, any layer with
+  brick nodes:
+  - its brick nodes -> rasterizeBrickHeightMask;
+  - its art -> the normal rasterizeSvg (getLayerSvg must skip brick nodes);
+  - the two masks combine per layer.
+  - Brick height = each element's own relief + Raised/Carved (`settings.invert`, per element), NOT the layer's
+    depth (the layer depth stays the art's). Layer eye / carve toggle apply to both.
+- 14 name-based references in 5 files (editor-brick-tool, layers, brick-panel, export-flow, stamp-mask-manager)
+  become "has brick nodes" / per-element lookups.
+
+### 4. Laid key (B1-B3) per element
+
+- `layer.brickLaidKey` moves to `data-brick-laid` on each record. A re-lay compares the element's own key, so
+  editing Wall 2 re-lays Wall 2 only.
+- Item 27's frame-settle re-lay keys on the frame record. Undo/redo/Cancel/reload still carry it (it is in the SVG).
+
+### 5. Send (export-flow + the Fusion add-in)
+
+- `_bricksLayerSvg` -> `_brickElementSvgs`: one baked SVG PER ELEMENT. The payload becomes
+  `bricks: [{ name, carve, svg }]`, named "Bricks - Wall 1", "Bricks - Frame", "Bricks - Brush 3".
+  - Each element's `carve` = its layer's carve toggle (turn 193's rule, per element).
+  - Brush strokes: one sketch per stroke could be many; propose ONE "Bricks - Brushes" sketch per layer.
+    Advisor's call.
+- b-spline-gen.py `_apply_bricks_sketch`: accepts the list; removes every older "Bricks*" sketch in both homes
+  first; then imports each.
+  - An old single-dict payload (an older palette) = one sketch named "Bricks", today's behaviour.
+  - Never raises (same contract).
+
+### 6. Migration (existing boards look identical)
+
+On load (a declared MIGRATIONS entry, after 'brick-set-per-element'), a board with a "Bricks" layer:
+- gets a **wall-full** record (P.brickSettings' wall settings, laid key = the layer's brickLaidKey) and a **frame**
+  record (if frame bricks exist), both on that same layer;
+- existing wall/frame polygons get `data-brick-owner` = their record's id;
+- brush spines are already records;
+- the layer stays, named "Bricks" -- now an ordinary layer (it can be renamed, and new elements land wherever is
+  active);
+- `layer.brickLaidKey` is deleted;
+- a board with no bricks: nothing.
+
+### 7. What changes, by file
+
+| area | change |
+| --- | --- |
+| editor-brick-tool.js | element records (wall-full / wall-area / frame) + regenerate-from-record (as Brush does); wall-full <-> areas rule; overlap holes; retire ensureBricksLayer |
+| brick-panel.js | Wall sub-tools Select / Area (declared on BRICK_TOOLS as `subTools`), Frame `subTools: ['select']`; section edits the SELECTED element; `_laidLayoutKey` per element |
+| new editor-brick-area.js | the Area brush gesture (stroke capture, width, Ctrl erase) -> wall-area record |
+| layers.js | "Bricks" special case -> "has brick nodes"; layer summary keeps "Raised/Carved" only for an all-brick layer |
+| stamp-mask-manager.js + editor-brick-height-mask.js | per-layer brick + art masks combined; relief per element |
+| export-flow.js + b-spline-gen.py | per-element sketches (above) |
+| editor-clear(-menu) | 'bricks' kind = every brick record + its bricks on every layer; 'frame' = the frame record |
+| app-init MIGRATIONS | 'brick-elements' (section 6) |
+| engine (seat B) | T86 item 18: `strokesToRegion(strokes:[{points,widthIn}]) -> {polygon, holes}`; signature to agree by DM |
+| matrix (88) | rows: Area paints a wall; only-painted; newest-wins overlap; Select edits one wall; per-layer hide; Send sketches |
+
+### 8. Build order (each a pass, nothing hidden on main)
+
+1. Records + migration + per-element laid key, on the existing single layer (no UI change: proves sections 1/4/6).
+2. Bricks on the active layer + per-layer masks + Send per element (sections 3/5).
+3. Wall Select / Frame Select.
+4. Area brush, once seat B's strokes-to-region lands.
+
+### 9. Open questions (only these)
+
+1. Brush sketches in Fusion: one per stroke, or one per layer?
+2. Area erase gesture: Ctrl-drag (proposed), or a separate Erase sub-tool?
+3. Can the frame move to another layer (yes by default via "move to layer"), or should it stay with the board?
+
+### turn 221 addendum -- blind-spot audit (BLIND-SPOTS-2026-10-04.md): seat C's B1, B6, B7, B8, B9 (seat 37)
+
+Checklist:
+
+- [x] **B1, a frame band set that leaves ZERO wall bricks says so.**
+  - Declared `BRICK_LAY_WARNINGS` (brick-panel.js): `wallEmpty` = the wall was asked for, its pattern is not
+    'none', the frame laid bricks, the wall laid 0. Text: "The frame bands cover the whole board -- no room for
+    the wall: fewer bands or smaller bricks."
+  - `_layBricks` now reads runBricks' counts (they were returned and never read). A toast when the warning
+    starts, and a note for as long as it lasts in EVERY element marked `data-brick-lay-warnings`: the sidebar's
+    #brickLayWarnings (under the quick settings) + the editor Brick tab's #brickEditorLayWarnings (under the
+    tool hint). The sidebar quick buttons re-lay through the same path, so they show it too.
+  - **Found while verifying, and fixed (the warning's own advice did not work):** a wall squeezed to 0 bricks has
+    nothing left on the canvas, and `_presentKinds` read the kinds from the canvas only. So the wall stopped
+    being an element: going back to one band laid the frame alone and the wall NEVER came back (live: T9,
+    3-band, then single_soldier = frame 126, wall 0).
+    - Now runBricks records `brickLaidKinds` on the Bricks layer next to brickLaidKey; it is persisted
+      (editor-io), in every undo snapshot, and set to null by Clear (editor-clear).
+    - `_presentKinds` = canvas UNION laid kinds.
+    - Side effect, stated: a wall whose bricks were ALL deleted by hand comes back on the next lay (the Clear
+      menu is the declared way to remove an element).
+  - Live (T9 7x9, sidebar quick buttons):
+    - before: wall 68 / frame 126;
+    - 3-band: wall 0, the toast + both notes;
+    - Life-size: still 0, the notes stay, no repeat toast;
+    - back to single soldier: wall 68 again, the notes gone.
+  - Shot: shots/seat37/blindspot_B1_wall_empty_note.png (the editor note).
+- [x] **B6, hidden = DISPLAY ONLY, fully.** `isCarved` no longer reads `visible`: a hidden layer keeps its own
+  carve setting, so it still carves the 3D and lands in the Carved component on Send, exactly as when shown.
+  Hiding only takes it off the canvas (isShown).
+  - **Consequence, flagged:** the 3D preview carves hidden layers too (it reads the same gate). That matches
+    what ships; say if Fred wants the 3D to drop hidden layers instead.
+  - Eye tooltip: "Hide layer (still exports)" / "Show layer (it still exports and carves)".
+  - The palette's "Eye = visible = carved" comment and the export-flow doc are rewritten.
+  - 3 tests pinned the old rule exactly; they are INVERTED to assert the new one (not deleted): the truth table
+    row, export-flow's hidden-layer test, stamp-mask-clear's hidden-empty-mask test. A new tooltip test.
+- [x] **B7, stale text.**
+  - The Wall/Frame hints say "Change a setting to lay it/them; Generate re-lays."
+  - The sidebar note drops "Applied at once.".
+  - Comments fixed: the palette item 18 split comment, brick-panel's two "Generate dot" comments, state.js's N6
+    comment.
+  - **Not here:** tools/brick-matrix/controls.mjs:59-60 is 88's file (its matrix-clear-rows branch rewrites
+    it); asked 88 to fix that comment there.
+- [x] **B8, the loading signal above a declared budget.**
+  - `LAY_STATUS_BUDGET_MS = 300`. Every lay is measured, keyed by `_laySignature` (wall layout | rock frame | brick
+    size). A slider release / discrete click whose predicted lay is at or over the budget shows "Laying bricks…"
+    FIRST, waits two frames (so it paints), lays, and clears it (`withLoadingStageShownFirst`, loading-signal.js).
+  - Why not withLoadingStage alone: the lay is synchronous, so its 250 ms timer can never fire before the lay
+    ends; the status never showed.
+  - Releases while one is queued coalesce into ONE lay with the latest settings.
+  - Generate, the frame re-lay and the Clear keep the synchronous path; the Clear's one-step undo counts its
+    re-lay's commit synchronously.
+  - A first lay of a new combination is measured, not predicted.
+  - Live (T1, 0.375 in, Fieldstone wall: 844 stones + 452 frame): measured 565-634 ms. The next release
+    returned in 7 ms with "Laying bricks…" on the status line, then laid.
+- [x] **B9, undo + Cancel keep the bricks with their frame.**
+  - (a) A Frame-tab undo now writes `setFrameRecord(prev, { restored: true })`, and the event carries
+    `restored`. The brick re-lay it triggers corrects, IN PLACE, the editor step that was on top at that moment
+    (`commitEdit(editor, { amend })`, guarded: only while that step is still on top, else a normal push). This
+    is the same rule as generatePattern's `amendUndo.restored`.
+    - Live: editor undo stack 12 -> frame edit + re-lay -> frame undo + re-lay -> still 12, the laid key on the
+      restored frame.
+  - (b) Cancel restores the frame record too: `SvgEditorSnapshot.frame`, taken at open (svg-source.js). The
+    restore steps are now one exported `restoreEditorSnapshotState()` (app-init.js), which puts the frame back
+    before the drawing reloads, so the re-lay finds the restored bricks current.
+
+**Tests:**
+- New tests/blind-spot-audit.test.js (13):
+  - B1: the declaration, toast + both notes, no repeat toast, the wall coming back, 'none' = no warning, the
+    quick buttons;
+  - B7: hints + sidebar text;
+  - B8: under budget = at once; over budget = status first, ONE coalesced lay, cleared;
+  - B9: commitEdit amend, the frame-undo re-lay amends / a plain edit pushes, Cancel restores the frame,
+    undoFrame writes a restore.
+- Plus the 4 B6 tests (3 inverted + the tooltip).
+- Non-vacuous: against the pre-change copies of all 11 touched files, all 15 new/changed tests fail (the audit
+  file's imports do not exist pre-change; the B6 ones fail on their assertions). Restored from my copies, cmp
+  clean 11/11.
+- The later wall-comes-back test was mutation-checked on its own: 1 fail with the union reverted. Restored, cmp
+  clean.
+- Whole vitest: 265 files, **4377 passed, 0 failed**.
+
+**Matrix (88):**
+- Asked for the controls.mjs comment fix and a B1 row: T9 + 3-band at 1 in -> #brickLayWarnings shown, and back to
+  one band -> wall bricks back.
+- B8 can delay a slow release's canvas change by two frames; the harness's canvasSettled already polls for up to
+  10 s.
+
+### turn 223 -- F35 item 22 SLICE 1: plan at a clean break (one fork to settle first) (seat 37)
+
+Merged origin/main b72a6da into fb-app (f1d48e3: docs + tests/bricks-wall-meets-band.test.js, 8/8 here), pushed.
+The session is long (it has been compacted once already), and slice 1 has one ordering conflict that changes its
+scope, so per the dispatch I pass back the plan first rather than start building.
+
+**The fork: "bricks on the ACTIVE layer" needs the per-layer height combine (your slice 3).**
+
+Today the 3D reads bricks ONLY from the layer NAMED "Bricks": stamp-mask-manager routes that layer through
+rasterizeBrickHeightMask, and every other layer through rasterizeSvg. If slice 1 puts a new wall on the active
+layer, which is usually an art layer ("Layer 1"), that layer then holds art AND bricks:
+- its bricks would be carved as flat SVG stamps at the art layer's depth (wrong heights, no grout recess);
+- Send would bake brick polygons into that art layer's sketch (changes Send output).
+
+```
+                 slice 1 (as dispatched)          what the 3D / Send do today
+ Layer 1 (art) ── art + NEW wall bricks ───────▶  rasterizeSvg: bricks = flat stamps  ✗
+ Bricks        ── (migrated records)    ───────▶  rasterizeBrickHeightMask           ✓
+```
+
+**Options:**
+- **A. Pull the per-layer combine into slice 1.** Any layer = its art -> rasterizeSvg + its brick nodes ->
+  rasterizeBrickHeightMask, combined. Send splits brick nodes out of art sketches.
+  - Pro: "active layer" is real from slice 1.
+  - Con: slice 1 roughly doubles, touching the 3D pipeline and Send at once.
+- **B (recommended). Slice 1 = the data model on a DECLARED brick layer; "active layer" lands with slice 3.**
+  - The NAME special case is retired anyway: a layer holds bricks by a declared, persisted layer field
+    `holdsBricks: true`, not by being called "Bricks". The 14 name references in 5 files (editor-brick-tool,
+    layers, brick-panel, export-flow, stamp-mask-manager) read the flag, so renaming the layer is safe.
+  - New elements go on the brick layer (created on first use, named "Bricks", flagged) exactly as today. Slice 3
+    lifts that once masks combine per layer.
+  - Pro: Send/SVG/3D output byte-identical by construction; slice 1 stays reviewable.
+  - Con: "active layer" waits for slice 3.
+- **C. Active layer only when it already holds bricks, else the brick layer.** Half of A's problem with none of
+  its payoff; not recommended.
+
+**Slice 1 under B (what I would build):**
+1. **Records** (editor-brick-tool.js): one invisible `<g>` per element on the brick layer:
+   - `data-brick-element` = id;
+   - `data-brick="wall-full" | "frame"`;
+   - `data-brick-settings` = the JSON snapshot it was laid with;
+   - `data-brick-laid` = ITS part of the laid key: wall = settings + brush strokes; frame = settings + frame
+     record.
+   - Its bricks carry `data-brick-owner` = the record id; Brush spines are already records.
+   - A lay writes the record(s) of the kinds it lays, in the same undo step.
+2. **Laid key per element:** the frame re-lay (item 27 settle) compares the frame record's key; the brush re-lay
+   compares the wall record's key. `layer.brickLaidKey` / `brickLaidKinds` (turn 221's B1 fix) become the
+   records' own attributes. A wall squeezed to 0 bricks keeps its record, so it stays an element (B1's fix
+   becomes structural).
+3. **Select (Wall + Frame):** a Select sub-tool in each section, declared on BRICK_TOOLS (`subTools`), the Area
+   sub-tool declared too but hidden by ENGINE_OPTIONS until 88's item 18.
+   - Click a brick: find its owner record, activate that element's tool, outline the record's bricks, and the
+     section edits it.
+   - With one wall + one frame (no areas yet) the section's settings ARE that element's (P.brickSettings per
+     kind, as item 23 made them).
+   - The record's snapshot is written on every lay, ready for slice 2's several walls.
+4. **Migration** 'brick-elements' (after 'brick-set-per-element'):
+   - a layer named "Bricks" gets `holdsBricks: true`;
+   - a wall-full record if wall bricks exist; a frame record if frame bricks exist;
+   - owners stamped on the existing polygons;
+   - the layer's brickLaidKey split into the records;
+   - brickLaidKey / brickLaidKinds deleted.
+   - The canvas and 3D hashes must be unchanged; PERSIST_BOARD must pass on a migrated board.
+5. **Clear:** 'bricks' removes every record + bricks; 'frame' the frame record (editor-clear + the Clear menu
+   kinds).
+
+**Tests + matrix:**
+- unit: records written per lay; laid key per element; the migration (Red board, rock board, empty board,
+  idempotent); Select picks the owner;
+- live: migrated board = same canvas + 3D hashes;
+- rows for 88:
+  - Select wall: click a wall brick -> brickTool_wall active + outline;
+  - Select frame;
+  - a migrated PERSIST_BOARD reload.
+
+**Your call:** B (recommended) or A. On B I start slice 1 next turn, fresh.
+
+### turn 225 -- F35 item 22 slice 1, STEP 1 of 5: the brick layer is DECLARED (holdsBricks), the name retired (seat 37)
+
+Option B (advisor). Slice 1 in steps, each committed green:
+1. the flag -- **this turn**;
+2. records + owners;
+3. laid key per element;
+4. Select + the hidden Area sub-tool;
+5. migration of the records + Clear + matrix rows.
+
+This turn stops at a clean break after step 1.
+
+- **layers.js:**
+  - `isBricksLayer(layer)` = `layer.holdsBricks === true` (was `layer.name === 'Bricks'`);
+  - new `bricksLayerOf(editor)` = the one lookup;
+  - `addLayer({ holdsBricks })` declares it;
+  - `migrateLegacyBricksLayer(layer)`: a layer saved before the flag and NAMED "Bricks" gets `holdsBricks: true`
+    (an explicit flag always wins). This is now the ONLY place the name is read; `BRICKS_LAYER_NAME` is just
+    the default name of a new brick layer.
+- **editor-io.js:** `holdsBricks` is a persisted roster field; the restore runs `migrateLegacyBricksLayer` on every
+  restored layer. Undo snapshots deep-clone layers, so the flag rides every step.
+- **All the name lookups now read the flag:**
+  - ensureBricksLayer (finds by the flag, creates with it);
+  - the brush-element lookup in editor-brick-tool;
+  - brick-panel's laid key / laid kinds / hidden-layer toast;
+  - export-flow's Bricks sketch + its carve flag;
+  - stamp-mask-manager + layers' summary label (via isBricksLayer);
+  - editor-clear (via isBricksLayer).
+  - `grep BRICKS_LAYER_NAME` in app code: only the default name + the migration.
+- **Tests:**
+  - New brick-layer-flag (4): the flag decides, not the name (a layer merely called "Bricks" is ordinary; a
+    renamed brick layer still is one); addLayer declares it; the migration (incl. an explicit false winning);
+    the flag is saved in the roster. All 4 fail against the pre-change files (on assertions), restored, cmp
+    clean.
+  - 10 test files built a layer `{ name: 'Bricks' }` as the brick layer and failed (26 tests) once the name
+    stopped counting; their doubles now carry `holdsBricks: true`. That is the contract change, not a loosened
+    assertion.
+- **Live, byte-identical (one headless browser, the old code then the new code on disk):**
+  - The OLD code builds a board (wall + frame, 205 bricks) and Applies; the page then reloads on the NEW code.
+    Same 205 bricks and the same saved SVG; the 3D hash after the rebuild equals the reopened one; the layer
+    reads "Bricks[holdsBricks]".
+  - After reopen + Apply the saved SVG minus `,"holdsBricks":true` hashes 1n6fcmi, identical to the same run on
+    the OLD code in both phases (control). So the only byte that changes in a saved board is the flag itself.
+  - (A first attempt across two browser launches lost the session for old AND new code alike: headless Chrome
+    killed before flushing localStorage. That was the probe, not the app; hence the single-browser run.)
+- Whole vitest: 267 files, **4389 passed, 0 failed**.
+
+**Next (step 2):** records -- one invisible `<g data-brick-element data-brick="wall-full|frame" data-brick-settings
+data-brick-laid>` per element on the brick layer, its bricks' `data-brick-owner`, written in the same undo step as
+the lay; laid key per element after that.
+
+### turn 227 -- F35 item 22 slice 1, STEP 2 of 5: element records + brick owners (seat 37)
+
+- **The record** (editor-brick-tool.js): each Wall / Frame element = ONE `<g>` on the brick layer with
+  `display="none"`, `data-brick-record="wall-full" | "frame"` (BRICK_RECORD_KINDS) and `data-brick-element` = a
+  stable id (created on the first lay, kept across re-lays).
+  - runBricks writes `data-brick-settings` = that element's own settings (elementSettings: per-element set),
+    the same snapshot a Brush spine carries.
+  - Every brick a lay draws carries `data-brick-owner` = its record's id.
+  - `brickRecordNode(editor, kind)` is the lookup.
+  - `BRICK_RECORD_ATTR` is declared in layers.js (editor-io reads it too, no cycle).
+- **Why a separate attribute, not `data-brick`:** every `[data-brick=...]` query (the height mask, _presentKinds,
+  Clear, 88's CANVAS hash, the brush exclusions) stays blind to records with zero edits.
+- **Invisible by the existing declared signal (`display="none"`):**
+  - getLayerSvg already drops it, so the art-layer export of the brick layer and every mask never see a record;
+  - `_hiddenItself` keeps it out of the hit test and the marquee;
+  - Send's Bricks sketch keeps only `data-brick-gen="1"`.
+  - The download serializer (`_serializeVisibleLayers`) is the one path that took every child: it now skips
+    records too.
+- **Found and fixed on the way:** Brush regeneration removed EVERY child with an owner attribute. With owners on
+  Wall/Frame bricks, any brush edit would have deleted the whole wall and frame. It now removes only owned
+  BRUSH bricks; a mutation back to the old filter is caught by the new test.
+- **Tests:**
+  - New brick-element-records (5): one record per element, invisible, on the brick layer, its bricks owned; the
+    per-element settings snapshot; a re-lay keeps the same id with no duplicate; Brush regeneration leaves owned
+    Wall/Frame bricks alone; records are never picked and never downloaded.
+  - Against the pre-step-2 files 4/5 fail. The brush one passes there (no owners existed then); the mutation
+    proves it guards the scope. Restored, cmp clean.
+  - 4 existing files' fake sketch layers gained `group()` (the record node). brick-hidden-layer-draw now counts
+    BRICKS, records aside, as its own title says.
+- **Live output check** (one headless browser: step-1 code builds a board + captures, then the step-2 code
+  reloads, re-lays, captures; 3 runs + a step-1-only control):
+  - **Send's Bricks SVG and the SVG download are identical except `data-brick-owner` on the 205 Wall/Frame
+    polygons** (after normalising the brick-fill pattern counter, which differs in the control run too: a global
+    creation counter 88's matrix already normalises).
+  - No record reaches either output.
+  - 3D heights hash identical (2/2 reruns; a first run's mismatch was the capture racing the rebuild, as the
+    control's own A-vs-B noise showed earlier).
+- **FLAG for the advisor:** "byte-identical" holds for geometry, records and 3D, but each Wall/Frame polygon in
+  Send/download now carries one more editor attribute (`data-brick-owner`, as Brush bricks already did). Fusion
+  ignores data-* attributes. If you want the bytes exact, the bake can strip owners from Wall/Frame bricks
+  (one filter in `_bricksLayerSvg` + the download); say so.
+- Whole vitest: 268 files, **4394 passed, 0 failed**.
+
+**Next (step 3):** the laid key per element: the records' `data-brick-laid` replaces `layer.brickLaidKey` /
+`brickLaidKinds`, and the item-27 frame / brush re-lays compare their own element's key.
+
+### turn 229 -- item 22 slice 1: the bake strips editor-only brick attributes (advisor: yes) (seat 37)
+
+- One declared list, `BRICK_EDITOR_ONLY_ATTRS` (layers.js), keyed by the brick's `data-brick` kind:
+  `{ wall: ['data-brick-owner'], frame: ['data-brick-owner'] }`. `stripEditorOnlyBrickAttrs(el)` applies it at
+  the TWO bake choke points:
+  - `_parseLayerContent` (-> getLayerSvg -> Send's art sketches and its Bricks sketch);
+  - the SVG download (`_serializeVisibleLayers`, on a clone; the canvas keeps its owners).
+- Scope = "byte-identical to before item 22": Brush bricks have always shipped their owner and keep it; the other
+  data-brick-* attributes always shipped too. Only what slice 1 ADDED is stripped.
+- Test (brick-element-records, +1): after a slice-1 lay (records + owners, plus a brush brick), the download and
+  getLayerSvg equal the SAME drawing with the records and Wall/Frame owners removed. The brush owner stays.
+  Mutation (the strip reverted) -> it fails. Whole vitest: 4395 passed, 0 failed.
+
+### turn 229 -- item 22 slice 1, STEP 3 of 5: the laid key PER ELEMENT (seat 37)
+
+- `BRICK_LAID_ATTR = 'data-brick-laid'` on each element's record.
+  - runBricks stamps the lay's key on every LAID element's record before its undo commit (so undo snapshots, the
+    saved drawing and Cancel carry it).
+  - A lay of one element re-keys only that element.
+  - The brick layer's shared `brickLaidKey` / `brickLaidKinds` are no longer written.
+- **brick-panel reads per element:**
+  - `_laidKeyOf(editor, kind)` = the record's key;
+  - `_presentKinds` = elements with a record (an element exists by its record, even laid to zero bricks, so B1's
+    fix is now structural) + bricks on the canvas;
+  - the frame re-lay runs when ANY present element was laid on another frame (`_framePartOf` each element's
+    key);
+  - the brush re-lay reads the WALL's key.
+- **A board saved before item 22 (no records yet):** the old shared layer key + laid kinds still stand in
+  (`_laidKeyOf` / `_presentKinds` fall back only when the board has no record at all) until step 5 migrates it.
+  The existing panel tests, whose runBricks mocks write the layer key, exercise exactly that fallback.
+- **Tests:**
+  - brick-laid-key rewritten for records (4): the key on every laid element before the commit; a one-element lay
+    re-keys only it; a preview lay leaves keys alone; the key is in the saved drawing. The legacy-roster tests
+    are kept, renamed "a board saved BEFORE item 22".
+  - New brick-element-laid-key-panel (2): records carry keys; a frame change re-lays once and the same frame
+    again lays nothing; ONE element laid on another frame is enough.
+  - Against the pre-step-3 code 5/6 fail. The last one passes there because the old code read no key on a
+    records board and re-laid every time; the first test's "same frame again lays nothing" pins that.
+- **Live:**
+  - both records carry keys and no shared layer key is written;
+  - a frame change = exactly 1 new undo step (the re-lay); the same frame again = 0;
+  - every wall brick is owned by the wall record.
+- Whole vitest: 269 files, **4399 passed, 0 failed**.
+
+### turn 231 -- item 22 slice 1, STEP 4 of 5: Select for Wall and Frame (+ the Area sub-tool, hidden) (seat 37)
+
+- **Declared:**
+  - `subTools` on BRICK_TOOLS: Wall `['select', 'area']`, Frame `['select']`;
+  - `BRICK_SUB_TOOLS` in brick-panel: label, title, and the editor mode it arms;
+  - rendered into `#brickSubTools_<tool>` at the top of each section, with `#brickElementLabel_<tool>` under it:
+    "Editing: this Wall" / "Settings for the next wall".
+  - The Area button hides by a brick-control-requires rule: `requires: { engineOption: 'wallRegion' }`, until
+    88's T86 item 18 lists it. The option name is proposed to 88 by DM.
+- **The gesture:** a new editor mode `brickElementSelect` (editor-interaction's table, the Brick tab's modes),
+  modelled on the accent picker's `brickAccentClick`. The handler gives the unsnapped point to the panel, and
+  `brickElementAt(editor, pt)` returns the topmost owned Wall/Frame brick's element `{ id, kind }`.
+  - Picking Wall or Frame now opens on Select (that mode is armed); before, those tools left the mode alone.
+  - Clicking a brick selects its element: that element's tool becomes active (a frame brick clicked under the
+    Wall tool switches to Frame), its section shows, and its bricks are outlined.
+  - An empty click deselects. Esc drops the selection first (the tool stays); the next Esc leaves the tool, as
+    before (global-events' returnToSelect -> deselectTool).
+  - A re-lay keeps the outline on the new bricks.
+- **The outline is in the editor's HIGHLIGHT layer** (`showElementSelection`, the overlay layers.js
+  flashLayerGeometry already uses), so it is never in the drawing, saved, exported or hit. (The accent highlight
+  writes stroke attributes onto the bricks themselves; not reused here for that reason.)
+- **Slice-1 scope, stated:** one wall + one frame, so "the section edits only that element" = the kind's settings
+  (P.brickSettings per element, as item 23 made it). Several walls with their own settings arrive with slice 2's
+  areas (the records already carry the per-element snapshot).
+- **Tests:**
+  - New brick-element-select (6): the hit; the outline only in the overlay; Wall opens on Select with Area hidden
+    until the engine lists wallRegion (and shown when it does); Frame has no Area; a frame-brick click selects the
+    frame + switches the section + outlines it; the Esc order + empty click; a re-lay keeps the outline.
+  - All 6 fail against the pre-step-4 files (restored, cmp clean).
+  - brick-control-requires' "every id is a real control" guard learnt the sub-tool id form
+    (`brickSubTool_${tool.id}_${sid}`), like its quick-button rule.
+- **Live** (real CDP clicks):
+  - Wall picked: mode brickElementSelect, Select active, Area hidden;
+  - a click on a frame brick: Frame tool active, "Editing: this Frame", 106 outlines;
+  - a click on empty canvas: 0 outlines, the label back to "next frame";
+  - the saved drawing contains no outline.
+  - Shot: shots/seat37/f35item22_select_frame.png.
+- Whole vitest: 270 files, **4405 passed, 0 failed**.
+
+### turn 231 note -- AGREED with 88: the engine input for painted wall areas (F35 item 22 slice 2 / T86 item 18)
+
+- ENGINE_OPTIONS lists exactly `'wallRegion'` when item 18 lands; the Area sub-tool unhides by it (step 4's rule).
+- The generateBricks input, FIXED (88, by DM):
+  `wallRegion: { strokes: [{ points: [{x,y}...], widthIn }], minus: [{ points, widthIn }] }`, board inches.
+  - `strokes`: this area's painted strokes; `minus`: every NEWER area's strokes (optional).
+  - Missing or `strokes: []` = today's full fill.
+  - Otherwise: the union of the buffered strokes minus the union of the buffered `minus`, clipped to the wall's
+    usual region.
+  - Returns `wallRegionApplied: true` when honoured (the exclusionsApplied pattern).
+- One call per wall-area record, newest wins (the older wall flows around the newer one).
+- The buffer + union live ONCE in core (88). The region op is exported too, but its OUTPUT form is not promised
+  yet: disjoint pieces don't fit `{polygon, holes}`, and core has no polygon union today.
+- The app hands over raw strokes, never approximated outlines.
+
+### turn 233 -- item 22 slice 1, STEP 5 of 5: record migration + Clear per kind; SLICE 1 COMPLETE (seat 37)
+
+- **Migration** (`migrateBrickRecords`, editor-brick-tool.js; called by editor-io open() next to repaintBricks, so
+  on every load). It is one-time and idempotent: a kind that already has a record is untouched.
+  - A board saved before item 22 gets a record per kind that has Wall/Frame bricks on the brick layer, or that is
+    listed in the layer's old `brickLaidKinds` (a wall squeezed to zero).
+  - Each record's key is the layer's old shared `brickLaidKey`, so nothing re-lays on load. Its settings snapshot
+    is that key's settings part (elementSettings, per-element set).
+  - The kind's bricks get the record's id as owner. Then `brickLaidKey` / `brickLaidKinds` are deleted from the
+    layer.
+- **The shared key is retired everywhere:**
+  - editor-io no longer persists brickLaidKey / brickLaidKinds (the roster still READS them, for the migration);
+  - brick-panel's step-3 fallback is gone (`_laidKeyOf` = the record's key; `_presentKinds` = records + canvas
+    bricks);
+  - editor-clear no longer nulls the layer fields.
+  - Sweep: no app code reads them except migrateBrickRecords.
+- **Clear per kind:** Clear Bricks removes every record with its bricks (they are the brick layer's children);
+  Clear Artwork keeps them. Tested (it already held structurally).
+- **Tests:**
+  - brick-element-records +4: the migration (records + the old key + settings part + owners + the layer fields
+    retired); idempotent (a second load and an already-recorded board are unchanged); a zero-brick wall still
+    migrates and a bare board gets nothing; Clear Bricks vs Clear Artwork.
+  - The 3 migration tests fail against the pre-step-5 code (no migrateBrickRecords). The Clear one pins existing
+    behaviour.
+  - Moved to the record contract:
+    - the panel harness mocks in brick-discrete-controls-regen + blind-spot-audit write records, not the layer
+      key;
+    - the regen "laid key through undo/reload/Cancel" tests read the wall record;
+    - brick-laid-key's roster test is INVERTED (a layer still holding the old key does not write it back);
+    - h20's Clear test drops the retired-field assertion (records are covered in brick-element-records).
+- **Live migration, REAL old code** (a scratch worktree at the commit before slice 1, b75e836~1, served on one
+  origin; the browser keeps its session while the server swaps to the current tree):
+  - OLD: wall 99 + frame 106, no records, the layer holds the shared key + kinds.
+  - Reload on the NEW code: the same 99 + 106; records wall-full[keyed] + frame[keyed]; holdsBricks true; the old
+    fields gone; **3D hash identical**.
+  - A second save + reload: records kept, 3D identical.
+  - Send's Bricks SVG and the download after the reload equal the OLD code's own after-reload output (control
+    run, old code both phases). Normalised: the fill counter and the bake-stripped owners; for the download also
+    the step-1 holdsBricks flag and the retired shared key in the roster.
+  - (Reloading itself adds `style="cursor: pointer"` / xmlns to polygons in the old code too, so the comparison
+    is after-reload vs after-reload.)
+  - The scratch worktree was removed.
+- Whole vitest: 270 files, **4409 passed, 0 failed**.
+
+**SLICE 1 SUMMARY** (b75e836 .. this commit), the advisor's option B:
+1. holdsBricks: the brick layer is declared, the name retired;
+2. element records + owners;
+   - bake strip: one declared BRICK_EDITOR_ONLY_ATTRS list, so Send/download stay byte-identical;
+3. the laid key per element;
+4. Select for Wall/Frame + the Area sub-tool declared, hidden until engine 'wallRegion' (agreed with 88, input
+   fixed);
+5. the migration + Clear.
+
+**Matrix rows for 88** (DM'd): Select wall / Select frame / empty click deselects / Esc order, and the migration
+and persistence rows below. 88 queues them on matrix-clear-rows after the ring-stone engine fix.
+
+### turn 235 -- F35 item 30 STEP 1: the tint sheet (SECTION_THEMES declared; nothing wired) (seat 37)
+
+- **Declared:** `main/section-themes.js`, not imported by the app yet; step 2 wires it on Fred's OK.
+  - `SECTION_THEMES` = { id: { hue } } for the 12 main-sidebar sections + photo.
+  - `EDITOR_SECTION_THEMES` maps the editor's right panels / Brick tool sections to those themes:
+    - Frame panel = frame;
+    - Artwork (Layers) = stamp, i.e. Vector Stamping;
+    - Photo = photo;
+    - Brick Wall / Frame / Brush / Raised / Stripe = brick, each one `shade` lighter or darker.
+  - `THEME_RULES` + `themeTokens(id, mode)` DERIVE every colour from the hue: body (soft), header (stronger),
+    stripe (saturated, a 4 px left edge), header text, for 'light' and 'dark'. No section has hand-picked CSS.
+- **Hues** (degrees):
+  - stock 210, frame 28, skeleton 265, filter 175, brick 6, stamp 135, sculpt-top 320, thicken 48,
+    sculpt-bot 295, view 195, export 90, resolution 235, photo 345;
+  - neighbours in both the 1-column and 2-column flow differ clearly.
+- **The sheet** (shots/seat37): the tokens are injected as a stylesheet into a LIVE page from the declared table.
+  - `f35item30_sidebar_1x.png`, `f35item30_sidebar_2.2x.png` (two columns);
+  - `f35item30_editor_brick_wall.png`, `f35item30_editor_brick_frame.png`, `f35item30_editor_artwork.png`;
+  - `f35item30_swatches_light_dark.png`: every theme as a header + body + stripe card, light | dark.
+  - **Dark is shown as derived tokens on sample cards only:** the app has NO dark UI today (no
+    prefers-color-scheme / theme switch in its styles), so a real dark screenshot is not possible. Wiring dark
+    means a dark theme for the controls first.
+- **Step-2 notes:**
+  - The editor panels have no per-section headers. The tint shows as body + stripe there; the panel's own grey
+    "BRICK" / "LAYERS" header could take the theme's header colour too, if Fred wants.
+  - The section bodies' white inline background (`.cad-sidebar .panel-body { background: #fff }`) becomes the
+    body token.
+- Tests: new section-themes (3):
+  - every main-sidebar panel in the palette (read from the HTML, not a copied list) has a theme;
+  - every editor mapping names a real theme + element, with the matching tab hues;
+  - tokens for light AND dark, a Brick tool section = a shade of the brick hue.
+  - They need the new module, so they fail before it exists.
+- Whole vitest: green (count in the pass note).
+
+### turn 237 -- F35 item 29: Rustic slider (hidden until the engine), Wear on rocks, Grey set by declaration (seat 37)
+
+- **(a) Rustic** 0..1, default 0, PER ELEMENT: `P.brickSettings.rusticByElement = { wall, brush }` (state.js).
+  - The rows are `#brickRusticRow_wall` (Wall section, above Level) and `#brickRusticRow_brush` (Brush section).
+  - Hidden by one brick-control-requires rule until ENGINE_OPTIONS lists `'rustic'` (seat B, T86-22).
+  - The Wall row shows only for a RUNNING bond: `isRunningBond(pattern)` = a BRICK_PATTERNS 'course' with
+    staggerFrac > 0 (stretcher, header), read from the declaration, never a name list. The Brush row always
+    shows (a stroke is a run).
+  - Engine inputs:
+    - Wall: `input.rustic` = the amount, running bond and > 0 only (0 / another pattern = absent = today's
+      layout);
+    - Brush: each stroke FREEZES `rustic` (the stroke overrides, like its set) and toBrickOpts passes
+      `opts.rustic` (> 0 only) to bricksAlongPath.
+  - A Wall change re-lays; a Brush change only saves (it applies to the strokes drawn next).
+  - Input names sent to 88 by DM to confirm.
+- **(b) Wear on rocks:** nothing to build. The Weathered Wear row's visibility follows the surface STYLE only
+  (syncSurfaceStyleToggle), never the wall layout, so it already shows for a fieldstone wall. Pinned by a test
+  (fieldstone + Weathered -> shown; Clean -> hidden). The engine side (the stone profile reading Wear) is seat B's
+  T86-23.
+- **(c) Grey set:** nothing to build. The editor Set row and the sidebar quick Set row render from BRICK_SET_IDS
+  (the bond sets in BRICK_SETS, item 23). A test declares a Grey Brick set (id 7, bond) in a mocked BRICK_SETS:
+  `brickSet_7` "Grey Brick" + `brickQuick_set_7` appear.
+- **Tests:**
+  - item29-rustic-wear (4);
+  - item29-grey-set (1);
+  - brick-element-records +1 (`input.rustic` for stretcher only, absent for stack / 0);
+  - regen: the two stroke-override expectations gained `rustic: 0` (each stroke freezes it: the contract).
+  - Against the pre-item-29 code the 4 Rustic tests fail. The Wear + Grey ones pass there too: they pin behaviour
+    that already holds by declaration, which is legitimate here.
+- **Live:** both rows exist and are hidden (the engine has no 'rustic' yet); a default board lays as before (wall
+  99); a brush stroke freezes `rustic: 0`; 0 errors.
+- Whole vitest: 273 files, **4418 passed, 0 failed**.
+- **Matrix (88):** the rows are greyed/hidden-until-met like largeStones/groutCut. Rows can come when 'rustic'
+  lands: the Wall Rustic on stretcher re-lays; on stack it is hidden.
+
+### turn 239 (a) -- F35 item 30 STEP 2: the section tints WIRED (Fred's OK, incl. the editor panel headers) (seat 37)
+
+- **`applySectionThemes(doc)`** (main/section-themes.js; called once by main.js after the sidebar layout):
+  - writes each theme's derived tokens as CSS custom properties: `--section-body/header/stripe/text`, plus
+    `--section-*-dark` for the dark theme the app does not have yet (no CSS reads those today);
+  - the targets are every `.cad-sidebar .panel-<id>` (class `section-themed`), the editor PANELS by id
+    (`section-themed-panel`; the Brick panel `body: false` -> `section-themed-headonly`, since its tool sections
+    tint) and the Brick tool sections (`section-themed-section`);
+  - idempotent.
+  - EDITOR_SECTION_THEMES gained `part: 'panel'` for the Frame / Layers (Artwork) / Photo panels and the new
+    editorBrickPanel entry, so each panel's own grey `.layers-header` takes the theme's header + stripe (Fred).
+- **CSS only reads the tokens** (no colour is named anywhere):
+  - styles/layout-app.css: `.cad-sidebar .section-themed > .panel-header` / `> .panel-body` at (0,3,0), which beats
+    the page's inline `.cad-sidebar .panel-body { background:#fff }`; the hover keeps the tint, slightly darker.
+  - styles/editor.css: the panel header, the panel body unless head-only, and the section (body + stripe).
+- **Live:**
+  - 12 sidebar sections themed;
+  - computed brick header rgb(244,218,215) / body rgb(252,244,243);
+  - the stock stripe rgb(59,133,206);
+  - the editor Brick header = the sidebar brick header; the Wall section tinted.
+  - 0 errors.
+  - Shots: shots/seat37/f35item30_wired_{sidebar_1x, sidebar_2.2x, editor_brick, editor_artwork,
+    editor_frame}.png.
+- Tests: section-themes +2 (applySectionThemes on a fixture: classes + light/dark tokens, head-only Brick panel,
+  idempotent; the CSS reads only tokens + main.js calls it). Both fail on the step-1 files. Whole vitest: 4419
+  passed, 1 FAILED in the parallel run (bricks-fieldstone-large-stones, the known load timeout); alone 5/5.
+
+### turn 239 (b) -- F35 item 24 STEP 2: the six Brick tool icons + the Photo toolbar icons WIRED (seat 37)
+
+- **Fred's pick:** the Raised brush = sheet v3's 3-brick run with the MIDDLE brick raised (side face showing), the
+  same paintbrush, no arrow. Now BRICK_TOOL_ICONS.raisedBrush (`kind: 'row3', raise: 'middle'`).
+- **Declared on the tools:** BRICK_TOOLS (6) and PHOTO_TOOLS (5) carry `iconSvg: () => <tool>IconSvg(id)`.
+  - editor-tool-registry renders a declared `iconSvg` (innerHTML); `icon` (a character) stays the fallback.
+  - Every registry button is `tool-btn-registry` (was `tool-btn-emoji`; renamed everywhere, the css + its test).
+- **Scoped the editor.css rule** `.tool-btn.active svg { stroke:#1a1a1a; stroke-width:2.5px }` to
+  `.tool-btn.active:not(.tool-btn-registry) svg` (Artwork's static buttons only). On a registry button it would
+  have turned the white currentColor icon dark on the blue active fill.
+- **The Photo toolbar** (new editor/photo-tool-icons.js, PHOTO_TOOL_ICONS) has one line glyph per tool in the
+  same 24 box / 2-unit round strokes / currentColor:
+  - crop = two crop corners;
+  - straighten = a tilted dashed horizon + the level line + a turn arrow;
+  - rotate/flip = a quarter-turn arrow + a mirror line with facing triangles;
+  - levels = three point sliders;
+  - blur = a dot with blur rings.
+  - None of them lays anything, so there is no engine miniature (only the Brick icons have one).
+- **REMOVED with the sheets** (swept):
+  - RAISED_DEPTHS + depthMarkup (sheet v2), RAISED_V3 (sheet v3's candidates; the pick is now the declared
+    icon), the UP_TICK arrow, the `lifted` dashed line, brickToolIconSvg's `override` (sheet-only);
+  - TOOL_MINI_RUNS.row2 (the rejected 2-brick variant);
+  - their tests (sheet v2 / v3 describes).
+  - grep: no RAISED_ / depthMarkup / UP_TICK / mini.lifted / row2 / tool-btn-emoji left in app code (one comment
+    names the old class).
+- **Tests** (brick-tool-icons, rewritten for the wired state; 9):
+  - the six icons; the Raised brush = 3 polygons, the middle one highest, one side face, no arrow;
+  - the 5 Photo icons (box, currentColor, parse, all different);
+  - the registry renders iconSvg with the text fallback, and every Brick/Photo tool declares one;
+  - the scoped CSS rule.
+  - editor-tool-registry: the class rename.
+  - Against the pre-step-2 files the test file cannot even load (no photo-tool-icons.js); restored, cmp clean.
+- **Live** (CDP):
+  - Brick toolbar 6/6 SVG; the active Raised brush icon's stroke computes rgb(255,255,255) on rgb(6,150,215);
+  - Photo toolbar 5/5 SVG, the active stroke white;
+  - 0 errors.
+  - Shots: shots/seat37/f35item24_wired_brick_toolbar.png, f35item24_wired_photo_toolbar.png. The Straighten glyph
+    is the busiest at 20 px; one to retune if Fred wants.
+- **Matrix:** no control's position or behaviour changes (same buttons, same ids, an icon inside); no new row.
+- Whole vitest: 273 files, **4422 passed, 0 failed**.
+
+### turn 241 -- F35 item 31 STEP 1: the custom raised-pattern maker MOCKUP (not wired) (seat 37)
+
+- **The sheet:** shots/seat37/f35item31_custom_pattern_mockup.png, built inside the live page so the preview and
+  the icons are laid by the real engine.
+  1. **The tile editor** ("Custom pattern"):
+     - Courses / Bricks steppers (default 4 x 6, range 2-8);
+     - the tile drawn as a running-bond strip, odd courses half a brick over, row 0 = the BOTTOM course (the
+       accent grid's own origin); tap a brick to raise it (a small diamond raised);
+     - "Start from" a preset, listing the presets that HAVE a tile with their size;
+     - a name + "Save as preset".
+  2. **The live preview:** the engine-laid wall with the tile repeated over it, the stagger included.
+  3. **The Raised accents grid after saving:** the 10 presets + the new "My diamond" icon (engine-drawn, the name
+     as tooltip, marked new) + a "Custom pattern…" tile that opens the editor; saved with the project + in
+     browser presets (all projects).
+- **Declared groundwork** (inert: no UI uses it yet; it makes the sheet truthful and is what step 2 builds on):
+  - `ACCENT_MOTIFS.tile`: cell = (course mod rows, brick mod cols), row 0 = the zone's bottom course. The bond's
+    stagger is already in the columns (accentGrid's half-bond rule), so a tile repeats WITH the stagger.
+  - `tileOf(preset, max = 8)`: the tile a preset repeats with, MEASURED (the smallest rows x cols <= 8 that
+    reproduces its rule over a 48 x 48 window), not hand-declared.
+    - checker 2x2, staircase 6x6, double staircase 8x8, zigzag 6x8, course bands 4x1, double bands 6x1,
+      crenellation 3x2, sparse dots 6x4;
+    - pyramid (bounded in courses) and random (seeded) have none and stay rule-based.
+    - So "the existing periodic presets become the same tile data": a preset converts with tileOf.
+  - accentedBrickIndices + accentIconSvg accept an ad-hoc preset OBJECT as well as an id (a user tile before it
+    is saved; the icon cache is keyed by its content).
+- **Tests:** new accent-tiles (4):
+  - the tile rule (mod, repeat, negative);
+  - tileOf's sizes, pyramid/random null;
+  - each periodic preset and ITS TILE raise exactly the same bricks on a real 12 x 16 running-bond wall (same
+    data, two forms);
+  - an object preset is accepted + drawn.
+  - 4/4 fail against the pre-change files (restored, cmp clean).
+- **Step 2 (on Fred's OK)**, to be decided with him:
+  - where saved presets live: `P.brickSettings.accent.userPresets` with the project + a localStorage list for
+    "all projects";
+  - whether the periodic presets are REPLACED by their tiles in the table, or keep their rules and only
+    "Start from" converts them.
+- Whole vitest: 274 files; in the parallel run 3 FAILED (bricks-fieldstone-large-stones x2, frame-template-10's
+  500-seed sweep: load timeouts; the change touches no frame or fieldstone code); alone 37/37.
+
+### turn 243 -- GROUT PER ELEMENT (the turn-241 amendment, advisor's decision) + the flattened Wall-pattern grid (seat 37)
+
+- **Grout per element** (Fred: rubble gets wider joints; a rock frame + a brick wall on one board need two joints):
+  - `P.brickSettings.groutByElement = { wall, frame, brush }`; a number = that element's own joint, null = its
+    CURRENT set's declared joint. Depth + profile stay board-wide (`grout {depthIn, profile}`: the 3D recess).
+  - `elementGroutWidth(settings, kind)` (editor-brick-tool.js, the Raised brush shares the Brush's via
+    JOINT_ELEMENT) is the one reader. `elementSettings` now carries `grout.widthIn` too, so `resolvedSetFor`
+    lays each element with its own joint (wall input set, the frame's pre-scaled set). resolvedSetFor falls back
+    to the set's declared joint when none is given.
+  - The **Grout box** shows + edits the ACTIVE element's joint (`setElementGrout`; it re-syncs on a tool switch).
+  - **Any set change** (the Set picker, the quick Set = all elements, a Fieldstone pick making the wall rock, a
+    Fieldstone band) drops that element's own joint, so it lays with the new set's. This is watched in the ONE
+    commit entry point (`_resetJointsOnSetChange` in commitBrickSetting, against a baseline taken at init and
+    on a restore), so no path has to remember it. selectSet's old global `grout.widthIn = set.grout.widthIn` is
+    gone.
+  - A **Brush stroke** freezes its own joint (the stroke overrides carry `grout`).
+  - The **mask's joint recess** reaches the WIDEST element joint, so every gap is covered. The **resolution
+    hint** aims at the NARROWEST (bricksGenerated detail).
+  - **Migration** 'grout-per-element' (after brick-set-per-element): a saved board's single width goes to every
+    element (it lays exactly as before); `grout.widthIn` is deleted.
+  - Live:
+    - default box 0.034;
+    - pick Fieldstone -> the wall becomes rock: the box reads 0.12 (the rock set's declared joint today; 88 is
+      setting it to 0.10, read from the declaration) and the wall re-lays as 85 stones; the frame keeps 0.034;
+    - the Frame tool's box reads 0.034.
+- **The flattened Wall-pattern grid:** ONE icon grid in the declared family order (WALL_PATTERN_FAMILIES is now
+  the order only), no family sub-headings. Live: 9 icons, 0 headings. Shot: shots/seat37/f35_pattern_grid_flat.png.
+- **Tests:**
+  - New grout-per-element (4): the box edits the active element's joint, the other keeps its own; Fieldstone ->
+    the rock joint + re-lay; the same set changes nothing; the migration.
+  - brick-element-records +1: a rock wall + a brick frame reach the engine with their own joints.
+  - Updated for the contract:
+    - brick-default-grout: a new board has no own joints; the wall = set 1's;
+    - brick-element-set: elementSettings carries grout; the later migration adds groutByElement;
+    - regen: the grout box writes groutByElement.wall; the stroke overrides carry grout;
+    - regen's family test INVERTED to the flat grid (it fails on the old renderer).
+  - The new grout tests fail on the pre-change code 4/5 (the same-set one pins existing behaviour). Restored, cmp
+    clean.
+- Whole vitest: 275 files, **4431 passed, 0 failed**. frame-3d-sweep + frame-template-10 run together once showed
+  1 load timeout; alone 8/8 + 32/32.
+- **Matrix row for 88** (DM'd): pick brickPattern_fieldstone -> `#brickGroutWidth` reads the rock set's joint
+  and the stones re-lay with it; the Frame tool's box keeps the Red joint.
+
+### turn 243 note -- item 31 step 2: the DATA SHAPE, planned now (the amendments' rules folded in; for the advisor's OK)
+
+**ONE object for a pattern** (no free-floating accent mask, so pattern and raised data can never conflict):
+```
+WallPattern = {
+  id, label,                                   // a built-in bond id, or 'user:<slug>' for a saved custom one
+  bond:   { builtin: 'stretcher' | ... }       // a built-in bond (BRICK_PATTERNS) ...
+        | { custom: { rows, courses: [{ pieces: [lenUnits...], offsetUnits }] } },  // ... or a custom bond (item 31e;
+                                               //   laid by 88's T86-27 'customBond'; join/split UI hidden until then)
+  accent: null
+        | { preset: '<ACCENT_PRESETS id>' }    // periodic (course, brick index): RE-APPLIED on whatever bond is current
+        | { marks: [[course, piece, sign], ...] },  // a custom tile's marks, ON its own bond's pieces only
+  unit:   <brick length in>,                   // the tile's unit (null = the board's brick size)
+  level:  <signed in, item 32: -1/8..+1/8, default +1/16>,
+}
+```
+- **Rules, each to be pinned by a test:**
+  - `marks` live only on a `bond.custom` (they index its own pieces); a built-in bond carries only a periodic
+    `accent.preset`.
+  - Changing the bond under an accent: a periodic preset re-applies to the new bond; custom marks never survive
+    onto another bond. Test: no mark ever addresses a piece that does not exist.
+  - Today's built-in accent presets stay periodic rules; `tileOf()` (turn 241) converts the periodic ones when
+    "Start from" seeds a custom tile.
+- **Where it lives:**
+  - `P.brickSettings.wallPattern` = the CURRENT WallPattern (it replaces `pattern` + `accent` for the wall;
+    migrated from them);
+  - `P.brickSettings.userPatterns` = the saved ones (with the project), plus localStorage for every project;
+  - bands / brush keep `{ bond builtin, accent preset }` only: the builder's declared scope is `kinds: ['wall']`.
+- **UI** (Fred's layout):
+  - The Wall pattern section stays SMALL at rest: the icon grid, which includes the saved customs (drawn with
+    their accents), then the Accent row [None | presets | Custom…] + Click bricks, then Level.
+  - The BUILDER (tile, unit, base pattern, join/split, name, save) opens as a sub-panel from "Custom…" or from a
+    saved pattern's edit action, and closes back.
+- **Item 33:** the quoin blocks' flat fill (they take their unit from BRICK_SETS[2] under Set 1) goes with the
+  corner picker; each corner style's pieces must carry a resolvable fill from the element's own set.

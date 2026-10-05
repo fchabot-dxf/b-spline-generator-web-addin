@@ -49,13 +49,13 @@
  * BRICK_ELEMENT_ATTR/BRICK_SETTINGS_ATTR/reconstructChains/
  * regenerateOwnedBrickElements block below for the full mechanism.
  */
-import { ensureActiveLayer, addLayer, BRICKS_LAYER_NAME, isBricksLayer, applyLayerStateTo } from './layers.js';
+import { ensureActiveLayer, addLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR } from './layers.js';
 import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
 import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon } from '../core/bricks/index.js';
-import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS } from '../core/bricks/library.js';
+import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
 import { rectToPrimitives } from '../core/inset-window.js';
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
@@ -66,7 +66,7 @@ export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-s
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
 // Audit K7: the Bricks layer's identity now lives in layers.js (the layer-row summary needs it, and
 // layers.js cannot import this file -- this file imports layers.js). Re-exported for every importer.
-export { BRICKS_LAYER_NAME, isBricksLayer };
+export { BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf };
 
 // F35 item 3 (advisor: "brick elements as declared spine + settings... the
 // prerequisite for Scissors/Stripe"): a Brush stroke is no longer baked
@@ -92,10 +92,11 @@ const SPINE_KIND = 'brush-spine';
  *  happened to be "active" from unrelated earlier editing. */
 export function ensureBricksLayer(editor) {
   ensureActiveLayer(editor); // guarantees editor._layers is a real, non-empty array
-  const existing = editor._layers.find((l) => l && l.name === BRICKS_LAYER_NAME);
+  const existing = bricksLayerOf(editor); // item 22 slice 1: the DECLARED brick layer, whatever it is named
   if (existing) return existing;
   return addLayer(editor, {
     name: BRICKS_LAYER_NAME,
+    holdsBricks: true,
     skipUndo: true, // bundled into the SAME undo step as the content about to be drawn onto it
     profile: 'flat',
     edgeFilletRadius: 0,
@@ -194,8 +195,79 @@ export function repaintBricks(editor) {
   return nodes.length;
 }
 
-function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn) {
-  for (const b of bricks) drawBrick(editor, layer, b, kind, setId, seed, reliefIn);
+function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn, ownerId = null) {
+  for (const b of bricks) {
+    const el = drawBrick(editor, layer, b, kind, setId, seed, reliefIn);
+    if (ownerId) el.attr(BRICK_OWNER_ATTR, ownerId); // item 22: which element (record) laid it
+  }
+}
+
+/** F35 item 22 slice 1: each Wall / Frame ELEMENT has a RECORD -- one invisible node on the brick layer
+ *  (`display="none"`: never drawn, hit-tested or exported -- getLayerSvg and the download drop it; no
+ *  [data-brick] query sees it) carrying the element's id (BRICK_ELEMENT_ATTR) and the settings it was laid with
+ *  (BRICK_SETTINGS_ATTR, the same snapshot a Brush stroke's spine carries). Every brick it lays carries
+ *  BRICK_OWNER_ATTR = that id. Brush strokes already are records (their spines). Slice 2's painted areas add
+ *  'wall-area' records; until then there is one 'wall-full' and one 'frame'. */
+export const BRICK_RECORD_KINDS = Object.freeze({ wall: 'wall-full', frame: 'frame' });
+/** Step 3: the key of the settings (+ frame + brush strokes) an element's bricks were laid with, on its record --
+ *  per element, so a lay of one element never makes the other's key lie. Replaces the brick layer's one shared
+ *  `brickLaidKey` (+ `brickLaidKinds`), which a board saved before item 22 still carries until its records are
+ *  migrated (slice 1 step 5). */
+export const BRICK_LAID_ATTR = 'data-brick-laid';
+export { BRICK_RECORD_ATTR };
+export function brickRecordNode(editor, kind) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  const recordKind = BRICK_RECORD_KINDS[kind];
+  return recordKind && node && node.querySelector ? node.querySelector(`[${BRICK_RECORD_ATTR}="${recordKind}"]`) : null;
+}
+/** Step 5: the settings part of a laid key (everything before `#frame:`), as that element's snapshot -- or
+ *  null when it does not parse. */
+function _settingsOfLaidKey(laid, kind) {
+  if (typeof laid !== 'string') return null;
+  const at = laid.indexOf('#frame:');
+  try { return elementSettings(JSON.parse(at < 0 ? laid : laid.slice(0, at)), kind); } catch { return null; }
+}
+
+/** F35 item 22 slice 1 step 5: a board saved BEFORE item 22 -- Wall/Frame bricks laid, no records -- gets its
+ *  records ON LOAD (editor-io.js open(); one-time, idempotent: a kind that already has a record is untouched).
+ *  Per kind with bricks on the brick layer (or in the layer's old `brickLaidKinds`, a wall squeezed to zero): a
+ *  record whose key is the layer's old shared `brickLaidKey` (so nothing re-lays) and whose settings snapshot is
+ *  that key's settings part; the kind's bricks get its owner. The layer's `brickLaidKey` / `brickLaidKinds` are
+ *  then retired. Returns the kinds migrated. */
+export function migrateBrickRecords(editor) {
+  const layer = bricksLayerOf(editor);
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!layer || !node || !node.querySelectorAll || typeof editor._sketchLayer.group !== 'function') return [];
+  const legacyKinds = Array.isArray(layer.brickLaidKinds) ? layer.brickLaidKinds : [];
+  const migrated = [];
+  for (const kind of BRICK_KINDS) {
+    if (brickRecordNode(editor, kind)) continue;
+    const bricks = node.querySelectorAll(`[data-layer="${layer.id}"][${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="${kind}"]`);
+    if (!bricks.length && !legacyKinds.includes(kind)) continue;
+    const id = ensureBrickRecord(editor, layer, kind);
+    const rec = brickRecordNode(editor, kind);
+    if (layer.brickLaidKey != null) {
+      rec.setAttribute(BRICK_LAID_ATTR, layer.brickLaidKey);
+      const snapshot = _settingsOfLaidKey(layer.brickLaidKey, kind);
+      if (snapshot) rec.setAttribute(BRICK_SETTINGS_ATTR, JSON.stringify(snapshot));
+    }
+    bricks.forEach((n) => n.setAttribute(BRICK_OWNER_ATTR, id));
+    migrated.push(kind);
+  }
+  if ('brickLaidKey' in layer || 'brickLaidKinds' in layer) { delete layer.brickLaidKey; delete layer.brickLaidKinds; }
+  return migrated;
+}
+
+/** The element's record, created on first lay (its id is stable across re-lays). */
+function ensureBrickRecord(editor, layer, kind) {
+  const found = brickRecordNode(editor, kind);
+  if (found) return found.getAttribute(BRICK_ELEMENT_ATTR);
+  const id = newBrickElementId();
+  onBricksLayer(editor, layer, editor._sketchLayer.group())
+    .attr('display', 'none')
+    .attr(BRICK_RECORD_ATTR, BRICK_RECORD_KINDS[kind])
+    .attr(BRICK_ELEMENT_ATTR, id);
+  return id;
 }
 
 /** Removes this adapter's own previously-generated pieces of `kind` from
@@ -231,7 +303,9 @@ function boardPolygon(editor) {
  *  UNSCALED base every `scale` multiplier is computed relative to. */
 export function resolvedSetFor(settings) {
   const base = setForId(settings.setId);
-  return { ...base, grout: { ...base.grout, widthIn: settings.grout.widthIn } };
+  // the element's own joint (elementSettings) when given; else the set's declared one
+  const widthIn = settings.grout && Number.isFinite(settings.grout.widthIn) ? settings.grout.widthIn : base.grout.widthIn;
+  return { ...base, grout: { ...base.grout, widthIn } };
 }
 
 /** F35 item 16 (Fred: "I'd rather they all have the same size"): the ONE global brick length
@@ -258,6 +332,8 @@ function toBrickOpts(settings) {
     // keeps defaulting to bricksAlongPath's own 'bricks' -- no behavior
     // change for Wall/Frame or an un-striped Brush stroke.
     profile: settings.profile || 'bricks',
+    // F35 item 29 (a): a Brush stroke's own frozen Rustic amount (engine 'rustic', seat B) -- 0/absent = clean
+    ...(Number(settings.rustic) > 0 ? { rustic: Number(settings.rustic) } : {}),
     // F35 item 10 follow-up: the Brush panel's own Orientation toggle -- bricksAlongPath already
     // declared this opt (along-path.js), only Brush's own UI control was missing. Wall/Frame never
     // read this (bricksFillShape/bricksContourBands have their own, unrelated pattern mechanisms),
@@ -298,6 +374,51 @@ function setForId(id) {
   return brickSetById(id) || brickSetById(1);
 }
 
+/** F35 item 23 (Fred: "a frame of fieldstone and a wall of soldier"; then "so white rocks and fieldstone is
+ *  different?" -> folded). ONE source of truth, each set's declared `layout`:
+ *   - the ROCK set = the BRICK_SETS entry laid as 'fieldstone' (White Rocks today) -- never picked as a "set" any
+ *     more: the Fieldstone PATTERN implies it (a Wall whose pattern is fieldstone; a Frame whose bands are);
+ *   - the BRICK sets = the sets laid as 'bond' (Red today; a Grey one appears here by itself) -- the Set row.
+ *  The Set is PER ELEMENT (`settings.setIds`, keyed by tool: wall / frame / brush / raisedBrush); brick size and
+ *  grout stay global. A settings object from before item 23 has a single `setId`: it is the fallback. */
+export const ROCK_SET_ID = (BRICK_SETS.find((s) => s.layout === 'fieldstone') || {}).id ?? null;
+export const BRICK_SET_IDS = Object.freeze(BRICK_SETS.filter((s) => s.layout === 'bond').map((s) => s.id));
+/** A Frame is rock when every band pattern is fieldstone (picking it on one band writes it on all). */
+export function isRockFrame(settings) {
+  const p = settings && settings.frameBandPatterns;
+  return Array.isArray(p) && p.length > 0 && p.every((x) => x === 'fieldstone');
+}
+/** The set an element is laid with. */
+export function elementSetId(settings, kind) {
+  if (ROCK_SET_ID != null && ((kind === 'wall' && settings.pattern === 'fieldstone') || (kind === 'frame' && isRockFrame(settings)))) return ROCK_SET_ID;
+  const own = settings.setIds && settings.setIds[kind];
+  return own ?? settings.setId ?? BRICK_SET_IDS[0] ?? 1;
+}
+/** The settings an element is laid with: the shared ones, with that element's own set. */
+/** Grout per ELEMENT (advisor, Fred: rubble gets wider joints; a rock frame + a brick wall on one board need two
+ *  joints): `settings.groutByElement = { wall, frame, brush }` (the Raised brush shares the Brush's). A number =
+ *  the user's own joint; null / missing = the element's CURRENT set's declared joint (Red 0.034, the rock set its
+ *  wider one) -- so a set change falls back to the new set's joint (main/brick-panel.js clears the override). */
+export const JOINT_ELEMENT = Object.freeze({ wall: 'wall', frame: 'frame', brush: 'brush', raisedBrush: 'brush' });
+export function elementGroutWidth(settings, kind) {
+  const v = settings && settings.groutByElement && settings.groutByElement[JOINT_ELEMENT[kind] || kind];
+  if (Number.isFinite(v)) return v;
+  const set = setForId(elementSetId(settings || {}, kind));
+  return (set && set.grout && set.grout.widthIn) ?? 0.034;
+}
+export const elementSettings = (settings, kind) => ({
+  ...settings,
+  setId: elementSetId(settings, kind),
+  grout: { ...(settings.grout || {}), widthIn: elementGroutWidth(settings, kind) },
+});
+
+/** F35 item 29 (a): a RUNNING bond -- a coursed pattern whose courses stagger (BRICK_PATTERNS staggerFrac > 0:
+ *  stretcher, header). Rustic applies to those only. Read from the declared pattern, never a list of names. */
+export function isRunningBond(patternId) {
+  const def = BRICK_PATTERNS[patternId];
+  return !!def && def.kind === 'course' && Number(def.staggerFrac) > 0;
+}
+
 /** F35 item 7: `settings.pattern` (main/brick-panel.js's Wall pattern picker) is a single
  *  BRICK_PATTERNS key the user picked for the WHOLE Wall fill -- no per-zone mixing UI exists yet
  *  (library.js's own BRICK_PATTERNS header names that as a deliberately out-of-scope extension).
@@ -316,7 +437,7 @@ export function wallLayoutFor(settings) {
   const def = settings && settings.pattern && BRICK_PATTERNS[settings.pattern];
   if (def && def.kind === 'none') return 'none';
   if (def && def.kind === 'tile2d') return settings.pattern;
-  const set = brickSetById(settings && settings.setId) || brickSetById(1);
+  const set = brickSetById(settings && elementSetId(settings, 'wall')) || brickSetById(1); // item 23: the WALL's set
   return set.layout;
 }
 
@@ -370,6 +491,9 @@ const TOOL_MINI_RUNS = Object.freeze({
   run: { preset: 'stretcher_2_running', lengthIn: 1.6 },
   runLong: { preset: 'stretcher_2_running', lengthIn: 2.4 },
   band3: { preset: 'flemish_soldier_flemish_3', lengthIn: 3.6 },
+  // sheet v3 (Fred: "a 2-brick long run with one brick higher" / "2 OR 3 bricks"): ONE row, 2 or 3 whole bricks
+  // (a brick + its joint each = 0.75 + 0.07 in)
+  row3: { preset: 'stretcher_1', lengthIn: 3 * 0.82 },
 });
 const _toolMinis = new Map();
 export function toolMiniBricks(kind) {
@@ -409,7 +533,8 @@ const _iconPolygon = (b) => `<polygon points="${b.polygon.map((p) => `${+p.x.toF
 export const ACCENT_ICON_BOARD = Object.freeze({ widthIn: 3, heightIn: 1.5 });
 const _accentIcons = new Map();
 export function accentIconSvg(presetId, heightPx = 26) {
-  const key = `${presetId}:${heightPx}`;
+  // item 31: a preset id, or an ad-hoc preset object (a user tile) -- keyed by its content
+  const key = `${typeof presetId === 'object' ? JSON.stringify(presetId) : presetId}:${heightPx}`;
   if (_accentIcons.has(key)) return _accentIcons.get(key);
   const { widthIn: w, heightIn: h } = ACCENT_ICON_BOARD;
   const widthPx = Math.round((heightPx * w) / h);
@@ -508,6 +633,48 @@ export const brickAccentClickHandler = {
   },
 };
 
+/** F35 item 22 slice 1 step 4, SELECT for brick elements (editor._currentMode === 'brickElementSelect'): a
+ *  click hands its UNSNAPPED board point to editor._brickElementSelect (main/brick-panel.js). */
+export const brickElementSelectHandler = {
+  start(editor, pt, e) {
+    const raw = e && typeof editor._getMousePoint === 'function' ? editor._getMousePoint(e) : pt;
+    if (typeof editor._brickElementSelect === 'function') editor._brickElementSelect(raw || pt);
+  },
+};
+
+/** The Wall/Frame ELEMENT whose brick lies under `pt` -- { id: its record's id, kind } -- or null. The topmost
+ *  brick wins (the last drawn). Brush bricks are their own strokes' business (not a record kind). */
+export function brickElementAt(editor, pt) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll || !pt) return null;
+  const owned = [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}]`)].reverse();
+  for (const n of owned) {
+    const kind = n.getAttribute(BRICK_ATTR);
+    if (!BRICK_RECORD_KINDS[kind]) continue;
+    if (pointInPolygon(pt.x, pt.y, _nodePolygon(n))) return { id: n.getAttribute(BRICK_OWNER_ATTR), kind };
+  }
+  return null;
+}
+
+/** The selected element's outline: each of its bricks, outlined in the editor's HIGHLIGHT layer (the same
+ *  overlay layers.js flashLayerGeometry uses) -- never in the drawing, so never saved, exported or hit. */
+export const ELEMENT_SELECT_OUTLINE = Object.freeze({ color: '#1e88e5', widthIn: 0.04 });
+export function showElementSelection(editor, elementId) {
+  if (!editor) return 0;
+  for (const h of editor._brickElementOutline || []) { try { h.remove(); } catch (_) { /* gone with a reload */ } }
+  editor._brickElementOutline = [];
+  const node = editor._sketchLayer && editor._sketchLayer.node;
+  if (!elementId || !editor._highlightLayer || !node || !node.querySelectorAll) return 0;
+  for (const n of node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}="${elementId}"]`)) {
+    const outline = editor._highlightLayer.polygon(n.getAttribute('points') || '')
+      .fill('none')
+      .stroke({ color: ELEMENT_SELECT_OUTLINE.color, width: ELEMENT_SELECT_OUTLINE.widthIn })
+      .attr('pointer-events', 'none');
+    editor._brickElementOutline.push(outline);
+  }
+  return editor._brickElementOutline.length;
+}
+
 /** F35 item 20 (brush over wall, Fred / audit C10 option B: the wall flows AROUND a brush stroke): every
  *  brush brick on the canvas is an exclusion for the Wall fill -- `input.exclusions = [{polygon}]`, board
  *  inches, the signature agreed with seat B (d3, T86 item 13: the engine DROPS any wall piece overlapping
@@ -551,18 +718,26 @@ export function dropExcludedWallBricks(bricks, exclusions) {
 function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const layer = ensureBricksLayer(editor);
 
+  // F35 item 23: each element is laid with its OWN set (elementSettings); size + grout stay global
+  const wallSettings = elementSettings(settings, 'wall');
+  const frameSettings = elementSettings(settings, 'frame');
   const input = {
     boardOutline: boardPolygon(editor),
-    set: resolvedSetFor(settings),
-    scale: scaleFor(settings),
+    set: resolvedSetFor(wallSettings),
+    scale: scaleFor(wallSettings),
     suppression: settings.suppression,
     clumping: settings.clumping,
     seed: settings.seed,
   };
-  if (frameGeom) input.frame = frameGeom;
-  applyWallPattern(input, settings);
+  // the engine applies ONE `scale` (the Wall's) to the frame's set too -- so the frame's set goes in pre-scaled
+  // by its own scale over the Wall's (the engine's own scaledSet): its bricks / stones keep the global size
+  if (frameGeom) input.frame = { ...frameGeom, set: scaledSet(resolvedSetFor(frameSettings), scaleFor(frameSettings) / input.scale) };
+  applyWallPattern(input, wallSettings);
   // F35 item 21: the fieldstone layout's share of large stones (d3's T86 item 17 reads it; inert until then)
   if (wallLayoutFor(settings) === 'fieldstone') input.largeStones = Number.isFinite(settings.largeStones) ? settings.largeStones : 0.5;
+  // F35 item 29 (a): the Wall's Rustic amount, for a running bond only (0 = absent = today's clean coursing)
+  const rustic = Number(settings.rusticByElement && settings.rusticByElement.wall) || 0;
+  if (rustic > 0 && isRunningBond(settings.pattern)) input.rustic = rustic;
   const exclusions = kinds.includes('wall') ? brushExclusions(editor) : [];
   if (exclusions.length) input.exclusions = exclusions;
 
@@ -574,19 +749,28 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   for (const kind of kinds) clearGenerated(editor, layer, kind);
   applyBrickLayerTooling(layer, settings);
   const lays = (kind) => kinds.includes(kind);
-  if (lays('frame')) drawBricks(editor, layer, frameBricks, 'frame', settings.setId, settings.seed, settings.reliefIn);
-  if (lays('wall')) drawBricks(editor, layer, bricks, 'wall', settings.setId, settings.seed, settings.reliefIn);
+  const owner = (kind) => ensureBrickRecord(editor, layer, kind); // item 22: the element that lays them
+  if (lays('frame')) drawBricks(editor, layer, frameBricks, 'frame', frameSettings.setId, settings.seed, settings.reliefIn, owner('frame'));
+  if (lays('wall')) drawBricks(editor, layer, bricks, 'wall', wallSettings.setId, settings.seed, settings.reliefIn, owner('wall'));
   if (lays('wall')) syncAccentHighlight(editor, settings.accent, settings.seed);
   return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0 };
 }
 
-/** `laidKey` (audit B1-B3): the caller's key for the settings this run lays. It is stamped on the
- *  Bricks layer as `brickLaidKey` BEFORE the undo commit, so every undo snapshot, the saved layer
- *  roster (editor-io.js) and Cancel's restored document all carry the key of the bricks they hold. */
-export function runBricks(editor, settings, frameGeom, { laidKey, kinds } = {}) {
+/** `laidKey` (audit B1-B3): the caller's key for the settings this run lays. Item 22 step 3: it is stamped on
+ *  each LAID element's record (BRICK_LAID_ATTR) BEFORE the undo commit, so every undo snapshot, the saved
+ *  drawing and Cancel's restored document all carry the key of the bricks they hold. */
+export function runBricks(editor, settings, frameGeom, { laidKey, kinds, amend } = {}) {
   const counts = _generateAndDraw(editor, settings, frameGeom, kinds);
-  if (laidKey != null) ensureBricksLayer(editor).brickLaidKey = laidKey;
-  commitEdit(editor);
+  // item 22: each laid element's record keeps the settings it was laid with (its own, per element) and, from a
+  // committed lay, the key of them (step 3). The record itself is what makes the element exist (audit B1: a Wall
+  // the bands squeezed to zero bricks keeps its record, so the next lay brings it back).
+  for (const kind of (kinds || BRICK_KINDS)) {
+    const rec = brickRecordNode(editor, kind);
+    if (!rec) continue;
+    rec.setAttribute(BRICK_SETTINGS_ATTR, JSON.stringify(elementSettings(settings, kind)));
+    if (laidKey != null) rec.setAttribute(BRICK_LAID_ATTR, laidKey);
+  }
+  commitEdit(editor, { amend }); // audit B9: `amend` = the step a frame undo's re-lay corrects in place
   notifyBricksGenerated(settings);
   return counts;
 }
@@ -631,7 +815,8 @@ export function runBricksOutlinePreview(editor) {
  *  'layer-tooling-commit' / stamp-mask-manager.js's 'stampMaskUpdated'. */
 function notifyBricksGenerated(settings) {
   if (typeof document === 'undefined' || typeof CustomEvent === 'undefined') return;
-  document.dispatchEvent(new CustomEvent('bricksGenerated', { detail: { groutWidthIn: settings.grout.widthIn } }));
+  // the hint aims at the NARROWEST joint on the board (every element's own, item: grout per element)
+  document.dispatchEvent(new CustomEvent('bricksGenerated', { detail: { groutWidthIn: Math.min(...BRICK_KINDS.map((k) => elementGroutWidth(settings, k))) } }));
 }
 
 /** primitives (contour-from-frame.js's own {type:'L'|'A', ...} loop) -> a
@@ -1010,7 +1195,7 @@ export function bricksForStroke(points, settings) {
 
 export function regenerateOwnedBrickElements(editor) {
   if (!editor || !editor._sketchLayer) return;
-  const layer = (editor._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME);
+  const layer = bricksLayerOf(editor);
   if (!layer) return;
 
   const children = editor._sketchLayer.children().toArray();
@@ -1038,7 +1223,8 @@ export function regenerateOwnedBrickElements(editor) {
     byElement.get(elementId).push({ a, b, stripeId, settings });
   }
 
-  children.filter((el) => el.attr(BRICK_OWNER_ATTR)).forEach((el) => el.remove());
+  // only the BRUSH strokes' own bricks -- Wall/Frame bricks carry an owner too since item 22 (their record)
+  children.filter((el) => el.attr(BRICK_OWNER_ATTR) && el.attr(BRICK_ATTR) === 'brush').forEach((el) => el.remove());
 
   for (const [elementId, segs] of byElement) {
     const chains = reconstructChains(segs);

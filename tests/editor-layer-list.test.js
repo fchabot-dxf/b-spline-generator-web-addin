@@ -55,6 +55,14 @@ describe('renderLayerList', () => {
     expect(hiddenRow.querySelector('.layer-visibility').classList.contains('is-hidden')).toBe(true);
   });
 
+  it('audit B6: the eye says hiding is display only -- the layer still exports (and carves)', () => {
+    const editor = mockEditor([mockLayer('0', { visible: true }), mockLayer('1', { visible: false })], '0');
+    renderLayerList(container, editor);
+    const eye = (id) => container.querySelector(`.layer-row[data-layer-id="${id}"] .layer-visibility`).title;
+    expect(eye('0')).toBe('Hide layer (still exports)');
+    expect(eye('1')).toMatch(/^Show layer \(it still exports and carves\)$/);
+  });
+
   it('shows an empty-state message and zero rows when there are no layers', () => {
     const editor = mockEditor([], null);
     renderLayerList(container, editor);
@@ -86,7 +94,7 @@ describe('renderLayerList', () => {
   // row says Raised/Carved + height, never "Flat" (which also clashed with the Flat | Organic setting).
   it('the Bricks layer row reads Raised/Carved + height, never its unused profile', () => {
     for (const [depth, want] of [[0.125, ' · Raised .13"'], [-0.125, ' · Carved .13"']]) {
-      const editor = mockEditor([mockLayer('0', { name: 'Bricks', profile: 'flat', depth })], '0');
+      const editor = mockEditor([mockLayer('0', { name: 'Bricks', holdsBricks: true, profile: 'flat', depth })], '0');
       renderLayerList(container, editor);
       const summary = container.querySelector('.layer-tool-summary');
       expect(summary.textContent).toBe(want);
@@ -244,14 +252,15 @@ describe('renderLayersPanel: the editor panel and the sidebar never disagree', (
 });
 
 // T27: the declared truth table every gate rewires to — visible is the
-// master for carve/showColor; turn 207 (Fred): hidden is display-only, so EVERY layer is exported.
+// master for showColor; turn 207 (Fred): hidden is display-only, so EVERY layer is exported; audit B6: and a
+// hidden layer keeps its own carve (display only, fully).
 describe('isCarved / isExported / showsColor — the declared truth table', () => {
   const cases = [
     { visible: true,  carve: true,  showColor: true,  wantCarved: true,  wantExported: true,  wantShows: true  },
     { visible: true,  carve: false, showColor: true,  wantCarved: false, wantExported: true,  wantShows: true  },
     { visible: true,  carve: true,  showColor: false, wantCarved: true,  wantExported: true,  wantShows: false },
     { visible: true,  carve: false, showColor: false, wantCarved: false, wantExported: true,  wantShows: false },
-    { visible: false, carve: true,  showColor: true,  wantCarved: false, wantExported: true,  wantShows: false },
+    { visible: false, carve: true,  showColor: true,  wantCarved: true,  wantExported: true,  wantShows: false },
     { visible: false, carve: false, showColor: false, wantCarved: false, wantExported: true,  wantShows: false },
   ];
   cases.forEach(({ visible, carve, showColor, wantCarved, wantExported, wantShows }) => {

@@ -345,14 +345,15 @@
    treatment just above -- the same pale background alone reads as too weak a highlight on its own.
    A solid, filled background (matching the rest of the app's own "selected" convention, e.g.
    .cad-btn.active) makes the active tool unambiguous at a glance. */
-.tool-btn-emoji.active {
+.tool-btn-registry.active {
     background: var(--cad-accent-blue) !important;
     color: white !important;
     border-color: var(--cad-accent-blue) !important;
 }
 
-/* Ensure SVG icons stay dark and become bold when active */
-.tool-btn.active svg {
+/* Ensure SVG icons stay dark and become bold when active -- Artwork's static buttons only: a registry button's
+   icon (Brick / Photo, F35 item 24) is currentColor on the solid active fill above, so it must stay white. */
+.tool-btn.active:not(.tool-btn-registry) svg {
     stroke: #1a1a1a !important;
     stroke-width: 2.5px !important;
 }
@@ -2003,3 +2004,20 @@
    any width this block could fire at (700 is a subset of 720), so it was
    a dead no-op left behind by that change; removed rather than kept as
    silent, misleading debt. */
+
+/* F35 item 30: the editor's right panels + the Brick tool sections take the SAME tints as the sidebar
+   (main/section-themes.js EDITOR_SECTION_THEMES -> --section-* tokens); Fred: the grey panel headers too. */
+.editor-layers-panel.section-themed-panel > .layers-header {
+    background: var(--section-header);
+    color: var(--section-text);
+    border-left: 4px solid var(--section-stripe);
+}
+.editor-layers-panel.section-themed-panel:not(.section-themed-headonly) {
+    background: var(--section-body);
+}
+.section-themed-section {
+    background: var(--section-body);
+    border-left: 4px solid var(--section-stripe);
+    padding-left: 6px;
+    border-radius: 4px;
+}

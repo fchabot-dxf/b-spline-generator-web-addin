@@ -1959,6 +1959,10 @@ input[type="range"] {
 input[type="range"].cad-slider {
     -webkit-appearance: none;
     flex: 1;
+    /* F35 item 26: width 0, so the slider's own ~129px intrinsic width is not its row's minimum -- `flex: 1` still
+       grows it to fill. Without it a PAIRED row (Offset X | Offset Y) could not shrink below 2 x 129px and pushed
+       its second half past the panel edge at the default 260px sidebar. Every .cad-slider sits in a flex row. */
+    width: 0;
     min-width: 20px;
     height: 4px;
     background: #e0e0e0;

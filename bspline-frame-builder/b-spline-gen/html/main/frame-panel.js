@@ -66,7 +66,7 @@ export function pushFrameHistory() {
 export function undoFrame() {
   const prev = _frameHistory.pop();
   if (!prev) return false;
-  setFrameRecord(prev);
+  setFrameRecord(prev, { restored: true }); // audit B9: the bricks' re-lay then amends, it adds no editor step
   syncFramePanel();
   _syncUndo();
   return true;

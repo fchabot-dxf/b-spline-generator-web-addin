@@ -178,7 +178,9 @@ export function getFrameRecord() {
 
 /** The ONE write path: normalize, store on P, persist, mark the project dirty.
  *  A template change resets the seeds (F9: they belong to that template's shape). */
-export function setFrameRecord(patch) {
+/** `opts.restored` (blind-spot audit B9): this write puts back an EARLIER record (the Frame tab's undo) --
+ *  carried on the event, so what follows it (the brick re-lay) corrects the current step instead of adding one. */
+export function setFrameRecord(patch, opts = {}) {
   const cur = getFrameRecord();
   // F31 item 2c: joint ids are template-specific (a different template's own `regions.joinable`
   // may not even have the same ids), so a template change resets them too, same reason seeds does.
@@ -189,7 +191,7 @@ export function setFrameRecord(patch) {
   // turn 207 (Fred / 88): the bricks laid on this frame (Frame bands, and the Wall filling its interior) follow
   // it -- main/brick-panel.js re-lays them (sidebar) or marks them pending (editor)
   if (typeof document !== 'undefined') {
-    document.dispatchEvent(new CustomEvent('frameRecordChanged', { detail: { templateChanged: 'templateId' in reset || ('templateId' in patch && patch.templateId !== cur.templateId) } }));
+    document.dispatchEvent(new CustomEvent('frameRecordChanged', { detail: { templateChanged: 'templateId' in reset || ('templateId' in patch && patch.templateId !== cur.templateId), restored: !!opts.restored } }));
   }
   return P.frame;
 }

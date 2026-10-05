@@ -24,13 +24,17 @@ export function renderToolRegistry(container, registry, onSelect) {
     // F35 item 16 follow-up (Fred, live use: "can't tell which tool is selected"): a plain text/
     // emoji icon has nothing equivalent to Artwork's own static SVG buttons' `.tool-btn.active svg`
     // bold-stroke treatment (editor.css) -- the SAME pale `.tool-btn.active` background alone reads
-    // as a much weaker highlight without it. `tool-btn-emoji` scopes a stronger, solid-fill active
+    // as a much weaker highlight without it. `tool-btn-registry` (was tool-btn-emoji before item 24's SVG icons) scopes a stronger, solid-fill active
     // style (editor.css) to ONLY registry-rendered buttons (Brick/Photo), leaving Artwork's own
     // static buttons' existing look untouched.
-    btn.className = 'tool-btn tool-btn-emoji';
+    // F35 item 24 step 2: `tool-btn-registry` = every registry-rendered button (the solid active style,
+    // editor.css). A tool that declares `iconSvg` (Brick / Photo, their *-tool-icons.js) shows that line icon --
+    // currentColor, so the active button's white drives it; `icon` (a character) stays the fallback.
+    btn.className = 'tool-btn tool-btn-registry';
     btn.id = tool.buttonId;
     btn.title = tool.hint ? `${tool.label} — ${tool.hint}` : tool.label;
-    btn.textContent = tool.icon;
+    const svg = typeof tool.iconSvg === 'function' ? tool.iconSvg() : null;
+    if (svg) btn.innerHTML = svg; else btn.textContent = tool.icon;
     btn.addEventListener('click', () => onSelect(tool.id));
     container.appendChild(btn);
   }

@@ -33,10 +33,11 @@ function fakeEditor() {
   };
   return {
     _mW: 7, _mH: 9, _activeLayer: '0',
-    _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', visible: true }],
+    _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', holdsBricks: true, visible: true }],
     _sketchLayer: {
       node,
       polygon: (pts) => { const el = document.createElement('polygon'); el.setAttribute('points', pts); node.appendChild(el); return wrap(el); },
+      group: () => { const el = document.createElement('g'); node.appendChild(el); return wrap(el); }, // item 22: element records
       children: () => ({ toArray: () => [] }),
     },
   };

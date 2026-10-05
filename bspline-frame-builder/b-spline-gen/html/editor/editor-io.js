@@ -7,7 +7,7 @@ import { encodeLayersAttr, repairLayersAttr } from './layers-attr.js';
 import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { applyToolingDefaults, addLayer, setActiveLayer, isExported, syncLayerZOrder } from './layers.js';
+import { applyToolingDefaults, migrateLegacyBricksLayer, BRICK_RECORD_ATTR, stripEditorOnlyBrickAttrs, addLayer, setActiveLayer, isExported, syncLayerZOrder } from './layers.js';
 import { OWNERSHIP_ATTR, BOUNDARY_REF_ATTR, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
@@ -17,7 +17,7 @@ import { clearSnapCursor, clearGridHover } from './editor-grid.js';
 import { dbg } from '../core/debug.js';
 import { OUTLINE_KINDS } from './editor-outline-preview.js';
 import { drawFrameProfile } from './editor-frame-profile.js';
-import { repaintBricks } from './editor-brick-tool.js';
+import { repaintBricks, migrateBrickRecords } from './editor-brick-tool.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
  *  layer-restore regressions stay observable. Console output is quiet by
@@ -64,7 +64,12 @@ function _serializeVisibleLayers(editor) {
     );
     const raw = editor._sketchLayer.children().toArray()
         .filter(ch => exportedIds.has(String(ch.attr('data-layer'))))
-        .map(ch => ch.node.outerHTML)
+        .filter(ch => !ch.attr(BRICK_RECORD_ATTR)) // item 22: an element record is bookkeeping, never downloaded
+        .map(ch => {
+            // item 22: editor-only brick attributes never leave the editor (layers.js BRICK_EDITOR_ONLY_ATTRS)
+            const copy = ch.node.cloneNode(true);
+            return stripEditorOnlyBrickAttrs(copy) ? copy.outerHTML : ch.node.outerHTML;
+        })
         .join('');
     return stripSvgjsAttributes(raw);
 }
@@ -92,9 +97,11 @@ const _PERSISTED_LAYER_FIELDS = [
     // (JSON.stringify handles it directly, same as any other field this
     // list's generic `l[field] !== undefined` branch already copies).
     'pattern',
-    // Audit B1-B3: the Bricks layer's key of the settings its Wall/Frame bricks were laid with
-    // (editor-brick-tool.js runBricks), so a reload still knows whether Generate is pending.
-    'brickLaidKey',
+    // ('brickLaidKey' / 'brickLaidKinds' -- the old shared laid key -- retired by F35 item 22: each element's
+    // record carries its own key; a board saved with them is migrated on load, editor-brick-tool.js
+    // migrateBrickRecords, which reads them off the restored roster.)
+    // F35 item 22 slice 1: the layer HOLDS the bricks (layers.js isBricksLayer) -- declared, not by its name.
+    'holdsBricks',
 ];
 
 /** Serialize the layer roster as a string attribute we can stamp onto
@@ -195,6 +202,7 @@ function _parseLayerContent(editor, layerId, dpi, options = {}) {
         if (lid == null || String(lid) !== targetId || ch.getAttribute('display') === 'none') { ch.remove(); return; }
         if (excludePattern && (ch.hasAttribute(OWNERSHIP_ATTR)
             || (excludeShapeId && ch.getAttribute(BOUNDARY_REF_ATTR) === excludeShapeId))) { ch.remove(); return; }
+        stripEditorOnlyBrickAttrs(ch); // item 22: editor-only brick attributes are never baked
         kept++;
     });
     if (kept === 0) return null;
@@ -1023,7 +1031,7 @@ export function open(editor, svgString, w, h) {
                         name: l.name || `Layer`,
                         visible: l.visible !== false,
                     };
-                    return applyToolingDefaults(restored);
+                    return migrateLegacyBricksLayer(applyToolingDefaults(restored)); // item 22: name -> holdsBricks
                 });
                 // Bump _nextLayerId past any numeric id we just restored.
                 const numericIds = editor._layers
@@ -1051,6 +1059,7 @@ export function open(editor, svgString, w, h) {
     // a document saved before the z-order rule (or by an older build) is put in order on open
     syncLayerZOrder(editor);
     // Audit v2 N1: brick fills point at <pattern>s outside the saved document -- re-derive them
+    migrateBrickRecords(editor); // F35 item 22: a board saved before item 22 gets its element records (one-time)
     repaintBricks(editor);
     // Capture the post-load state as the baseline. The first user edit
     // pushes state #2, and Ctrl+Z restores #1 (this freshly-loaded state)

@@ -550,6 +550,10 @@
           Seed</button>
       </div>
 
+      <!-- F35 item 26: the sections, in reading order -- past SIDEBAR_LAYOUT.twoColumnPx (main/sidebar-layout.js) they
+           flow into two columns here (styles/layout-app.css), the pinned actions above staying full width. -->
+      <div class="cad-sidebar-sections">
+
       <!-- 2. Stock Dimensions -->
       <div class="panel panel-stock">
         <div class="panel-header" onclick="togglePanel(this)">📐 STOCK DIMENSIONS</div>
@@ -887,8 +891,8 @@
         </div>
       </div>
 
-      <!-- F35 item 18 (3), the Brick SIDEBAR SPLIT (Fred: the editor waits for Generate, the sidebar
-           auto-rebuilds): the main sidebar holds the brick 3D settings (each lives ONLY here) plus a few
+      <!-- F35 item 18 (3), the Brick SIDEBAR SPLIT (since F35 item 27 both the editor and the sidebar apply
+           at once): the main sidebar holds the brick 3D settings (each lives ONLY here) plus a few
            QUICK settings that mirror the editor Brick tab's own (same P.brickSettings, two entry points),
            both applied at once. The 2D layout (tools, patterns, size slider, grout width, suppression,
            clumping, seed) stays in the editor's Brick tab. Rows rendered by main/brick-panel.js
@@ -900,10 +904,12 @@
                the same mechanism and look as the FRAME section's "Edit frame" -->
           <button type="button" id="btnEditBricks" class="cad-btn cad-btn-secondary" style="width:100%; height:34px; font-size:13px; margin-bottom:12px;">Brick editor 🧱</button>
           <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Quick settings</label>
-          <div style="font-size:10px; opacity:0.65; margin:0 0 8px;">Applied at once. Every other layout setting is in the editor's Brick tab.</div>
+          <div style="font-size:10px; opacity:0.65; margin:0 0 8px;">Every other layout setting is in the editor's Brick tab.</div>
           <!-- audit v2 N5: shown while the board has no Wall/Frame bricks (main/brick-panel.js syncControlRequires) -->
           <div id="brickSidebarNoBricks" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);">No bricks on this board yet. Open the editor's Brick tab, pick Wall or Frame and press Generate -- these settings then apply at once.</div>
           <div id="brickQuickSettings"></div>
+          <!-- blind-spot audit B1: what the last lay left the user must know (main/brick-panel.js BRICK_LAY_WARNINGS) -->
+          <div id="brickLayWarnings" data-brick-lay-warnings role="status" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);"></div>
 
           <label class="cad-label" style="font-weight:600; opacity:0.75; margin:6px 0 4px;">3D</label>
         <label class="cad-label">Relief</label>
@@ -963,8 +969,9 @@
                editor/layers.js's renderLayerList (compact:true), the SAME
                render + handlers the SVG editor's own Layers panel uses
                (#editorLayersList), so the two can never show different
-               layers or disagree on visibility. Eye = visible = carved
-               (SE5 made `visible` the one switch); tapping a row makes it
+               layers or disagree on visibility. Eye = shown on the canvas
+               only (audit B6: a hidden layer still carves and exports, by its
+               own carve toggle); tapping a row makes it
                active, which the Plunge Depth / Tool Profile / V-Bit Angle
                controls below keep editing (main/stamp/layer.js). T29:
                moved above those tool settings (was below SVG Blueprint's
@@ -1186,7 +1193,7 @@
       <div class="panel panel-sculpt-top">
         <div class="panel-header collapsed" onclick="togglePanel(this)">🎨 SCULPT TOP</div>
         <div class="panel-body hidden">
-          <div class="cad-tool-group" style="grid-template-columns: 1fr 1fr; display: grid;">
+          <div class="cad-tool-group">
             <button id="btnToolTopDraw" class="cad-btn cad-tool-btn">
               <span class="material-symbols-outlined">brush</span>
               <span>Draw</span>
@@ -1272,7 +1279,7 @@
       <div class="panel panel-sculpt-bot">
         <div class="panel-header collapsed" onclick="togglePanel(this)">🎨 SCULPT BOTTOM</div>
         <div class="panel-body hidden">
-          <div class="cad-tool-group" style="grid-template-columns: 1fr 1fr; display: grid;">
+          <div class="cad-tool-group">
             <button id="btnToolBotDraw" class="cad-btn cad-tool-btn">
               <span class="material-symbols-outlined">brush</span>
               <span>Draw</span>
@@ -1460,6 +1467,7 @@
           </div>
         </div>
       </div>
+      </div><!-- /.cad-sidebar-sections -->
     </aside>
 
     <div class="cad-resizer" id="resizer"></div>
@@ -1702,69 +1710,7 @@
         closeWizX.addEventListener('click', () => wizardModal.style.display = 'none');
       }
 
-      // 3. Resizer Compatibility logic (desktop only — horizontal, drag X,
-      //    resizes the sidebar column via --cad-sidebar-width).
-      //
-      // MOB3 AMEND: the mobile/vertical case (drag Y, resize the preview
-      // row) moved to main/mobile-resizer.js, which drives the SAME
-      // #resizer handle through the shared splitter.js (also used by the
-      // editor's own bottom-drawer handle) — free-drag + soft snap points
-      // + persistence, instead of this hand-rolled absolute-position
-      // branch. This code now only ever engages on desktop; `start` cedes
-      // the handle to that module below the breakpoint.
-      const resizer = document.getElementById('resizer');
-      const mainContent = document.querySelector('.cad-main-content');
-      if (resizer && mainContent) {
-        const mqlMobile = window.matchMedia('(max-width: 900px)') /* editor/breakpoints.js */;
-        // MOB4: landscape phone reverses the grid (styles/layout-app.css:
-        // viewport first/left, sidebar last/right, `order` + a reversed
-        // grid-template-columns) — this hand-rolled branch's own
-        // `newWidth = x` assumes sidebar-on-the-LEFT (width = cursor's
-        // raw X), which would drag BACKWARDS once the sidebar is on the
-        // right. Ceding this case to main/mobile-resizer.js's own THIRD
-        // splitter (reversed math, from-scratch for this orientation)
-        // rather than special-casing the formula here twice.
-        const mqlLandscapePhone = window.matchMedia('(pointer: coarse) and (max-height: 500px) and (min-width: 901px)');
-        let isResizing = false;
-
-        const getClient = (e) => {
-          if (e.touches && e.touches.length > 0) {
-            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-          }
-          return { x: e.clientX, y: e.clientY };
-        };
-
-        const start = (e) => {
-          if (mqlMobile.matches || mqlLandscapePhone.matches) return; // mobile: main/mobile-resizer.js owns this drag
-          isResizing = true;
-          resizer.classList.add('resizing');
-          document.body.style.cursor = 'col-resize';
-          if (e.cancelable) e.preventDefault();
-        };
-
-        const move = (e) => {
-          if (!isResizing) return;
-          const { x } = getClient(e);
-          const newWidth = Math.max(200, Math.min(x, window.innerWidth - 300));
-          document.documentElement.style.setProperty('--cad-sidebar-width', `${newWidth}px`);
-          if (window.dispatchEvent) window.dispatchEvent(new Event('resize'));
-          if (e.cancelable) e.preventDefault();
-        };
-
-        const stop = () => {
-          if (!isResizing) return;
-          isResizing = false;
-          resizer.classList.remove('resizing');
-          document.body.style.cursor = '';
-        };
-
-        resizer.addEventListener('mousedown', start);
-        resizer.addEventListener('touchstart', start, { passive: false });
-        window.addEventListener('mousemove', move);
-        window.addEventListener('touchmove', move, { passive: false });
-        window.addEventListener('mouseup', stop);
-        window.addEventListener('touchend', stop);
-      }
+      // 3. The #resizer drag lives in main/sidebar-layout.js (desktop, F35 item 26) and main/mobile-resizer.js (phones).
     });
   </script>
   <script>
@@ -3162,20 +3108,29 @@
             <!-- Audit K3: the active tool's hint heads the panel; under the Set picker it read as a caption
                  for Red Brick / White Rocks. -->
             <div id="brickToolHint" style="font-size:10px; opacity:0.65; margin:0 0 12px;"></div>
+            <!-- blind-spot audit B1: the same note as the sidebar's (data-brick-lay-warnings, main/brick-panel.js) -->
+            <div id="brickEditorLayWarnings" data-brick-lay-warnings role="status" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);"></div>
 
             <!-- turn 197: the panel's SHARED rows (Set here; Brick size .. Seed below) -- a tool that declares
                  sharedRows: false (main/brick-panel.js BRICK_TOOLS: Stripe) hides them -->
             <div id="brickSharedSet">
             <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Set</label>
-            <div style="display:flex; gap:6px; margin-bottom:12px;">
-              <button type="button" id="brickSetRed" class="cad-btn brick-set-btn active" title="Red brick (Masonry)">Red Brick</button>
-              <button type="button" id="brickSetWhite" class="cad-btn brick-set-btn" title="White rocks (fieldstone, Masonry)">White Rocks</button>
-            </div>
+            <!-- F35 item 23: rendered from the BRICK sets' declarations (main/brick-panel.js renderSetRow); the rock
+                 set is implied by the Fieldstone pattern. Per element: it edits the active tool's set. -->
+            <div id="brickSetRow" style="display:flex; gap:6px; margin-bottom:12px;"></div>
             </div>
 
             <!-- F35 item 10 follow-up (Fred): the Brush tool's own section, shown only while Brush
                  is the active tool (main/brick-panel.js's syncToolButtons). -->
             <div id="brickBrushSection" style="display:none;">
+              <!-- F35 item 29 (a): RUSTIC for the strokes drawn from now on (frozen into each stroke) -->
+              <div id="brickRusticRow_brush" style="display:none;">
+                <label class="cad-label">Rustic</label>
+                <div class="cad-slider-row" style="margin-bottom:12px;">
+                  <input type="range" id="brickRusticSlider_brush" class="cad-slider" min="0" max="1" step="0.05" value="0">
+                  <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickRustic_brush" value="0" min="0" max="1" step="0.05"></div>
+                </div>
+              </div>
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Brush: Profile</label>
               <div class="relief-toggle" id="brickBrushProfileToggle" style="margin-bottom:12px;">
                 <button type="button" class="relief-toggle-btn active" id="brickBtnProfileStripped" title="Individual bricks with grout joints"><span>Stripped</span></button>
@@ -3200,6 +3155,9 @@
                  what applies"): shown only while Wall is the active tool (main/brick-panel.js's
                  syncWallSection), same contextual-section convention brickBrushSection already set. -->
             <div id="brickWallSection">
+              <!-- F35 item 22: this element tool's sub-tools (main/brick-panel.js BRICK_SUB_TOOLS) + what the section edits -->
+              <div id="brickSubTools_wall" style="display:flex; gap:6px; margin-bottom:4px; flex-wrap:wrap;"></div>
+              <div id="brickElementLabel_wall" style="font-size:10px; opacity:0.65; margin:0 0 10px;"></div>
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
               <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
                 <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
@@ -3210,6 +3168,15 @@
                 <div class="cad-slider-row" style="margin-bottom:12px;">
                   <input type="range" id="brickLargeStonesSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.5">
                   <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickLargeStones" value="0.5" min="0" max="1" step="0.05"></div>
+                </div>
+              </div>
+              <!-- F35 item 29 (a): RUSTIC for a running bond (main/brick-panel.js syncRusticRows; hidden until the
+                   engine lists 'rustic') -->
+              <div id="brickRusticRow_wall" style="display:none;">
+                <label class="cad-label">Rustic</label>
+                <div class="cad-slider-row" style="margin-bottom:12px;">
+                  <input type="range" id="brickRusticSlider_wall" class="cad-slider" min="0" max="1" step="0.05" value="0">
+                  <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickRustic_wall" value="0" min="0" max="1" step="0.05"></div>
                 </div>
               </div>
               <!-- F35 item 16: LEVEL, this element's height offset (+ proud / - recessed), 3D only -->
@@ -3241,6 +3208,9 @@
             <div id="brickStripeSection" style="display:none;"></div>
 
             <div id="brickFrameSection">
+              <!-- F35 item 22: this element tool's sub-tools (main/brick-panel.js BRICK_SUB_TOOLS) + what the section edits -->
+              <div id="brickSubTools_frame" style="display:flex; gap:6px; margin-bottom:4px; flex-wrap:wrap;"></div>
+              <div id="brickElementLabel_frame" style="font-size:10px; opacity:0.65; margin:0 0 10px;"></div>
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
               <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
                 <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
