@@ -95,16 +95,25 @@ if (flag('parallel')) {
     child.on('exit', (code) => resolve({ g, code, out }));
   }));
   const done = await Promise.all(kids);
-  const rows = [], pageErrors = [];
+  const rows = [], pageErrors = [], perGroup = new Map();
   for (const k of done) {
-    try { const r = JSON.parse(readFileSync(path.join(k.out, 'brick-matrix.json'), 'utf8')); rows.push(...r.rows); pageErrors.push(...r.pageErrors); }
-    catch { pageErrors.push(`group ${k.g}: no report (exit ${k.code})`); }
+    try {
+      const r = JSON.parse(readFileSync(path.join(k.out, 'brick-matrix.json'), 'utf8'));
+      rows.push(...r.rows); pageErrors.push(...r.pageErrors);
+      perGroup.set(k.g, { rows: r.rows.length, fail: failRows(r.rows).length, errors: r.pageErrors.length });
+    } catch { pageErrors.push(`group ${k.g}: no report (exit ${k.code})`); }
   }
   const order = new Map(BRICK_CONTROLS.map((c, i) => [c.name, i]));
   rows.sort((a, b) => (order.get(a.name) ?? 999) - (order.get(b.name) ?? 999));
   writeReport(rows, pageErrors);
   const fails = failRows(rows);
   console.log(`\n${rows.length} rows, ${fails.length} FAIL, page errors ${pageErrors.length}, ${Math.round((Date.now() - t0) / 1000)}s (parallel) -> ${OUT}`);
+  // the gate's contract (advisor): one line per DECLARED group, so a re-run can target exactly the groups that failed or
+  // vanished -- "group <name>: rows N, FAIL K, page errors E" or "group <name>: did not report"
+  for (const g of GROUPS) {
+    const r = perGroup.get(g);
+    console.log(r ? `group ${g}: rows ${r.rows}, FAIL ${r.fail}, page errors ${r.errors}` : `group ${g}: did not report`);
+  }
   process.exit(fails.length || pageErrors.length || done.some((k) => k.code > 1) ? 1 : 0);
 }
 
@@ -1052,7 +1061,12 @@ function layersState() {
       artN: art.length, artLayers: [...new Set(art.map((e) => String(e.getAttribute('data-layer'))))],
       undo: (ed._history || ed._undoStack || []).length }); })()`;
 }
-async function layersRead() { return jsJSON(layersState()); }
+async function layersRead() {
+  // the editor must exist before the probe reads it (under --parallel load a reload can leave it booting: measured on the
+  // grey-sets gate, "Cannot read properties of undefined (reading '_sketchLayer')", 8 of 10 rows reported)
+  for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
+  return jsJSON(layersState());
+}
 // The context menu acts on the SELECTION (editor-context-menu.js bindContextMenu): pick the brick with the Artwork
 // Select tool, then right-click it.
 async function rightClickBrick(kind) {
