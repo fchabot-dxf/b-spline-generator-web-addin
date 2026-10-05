@@ -106,16 +106,26 @@ function recutCells(cells, set, cut) {
   return out;
 }
 
+/** T86 item 18c (advisor ruling, option C): an exclusion marked `drop: true` never CUTS a wall brick -- a brick it
+ *  touches (its footprint grown by the grout, overlap above this area) is DROPPED whole, and the gap stays grout. The
+ *  app passes a newer wall area's laid bricks this way to the older area's lay, so two areas with different patterns
+ *  never overlap and no brick is cut (Fred: newest wins, complete bricks). Brush strokes keep cutting (item 13). */
+const DROP_TOUCH_SQIN = 1e-6;
+
 function cutExclusions(cells, exclusions, set) {
   const J = set.grout.widthIn;
   const holes = exclusions.filter((e) => e && e.polygon && e.polygon.length >= 3).map((e) => {
     const grown = offsetPathInward(e.polygon, J, -inwardSignFor(e.polygon));
-    return { polygon: grown, box: bboxOf(grown) };
+    return { polygon: grown, box: bboxOf(grown), drop: e.drop === true };
   });
+  const drops = holes.filter((h) => h.drop), cuts = holes.filter((h) => !h.drop);
   return recutCells(cells, set, (polygon) => {
-    let pieces = [polygon];
     const box = bboxOf(polygon);
-    for (const h of holes) {
+    for (const h of drops) {
+      if (boxesOverlap(box, h.box) && Math.abs(signedArea(polygonIntersection(polygon, h.polygon))) > DROP_TOUCH_SQIN) return [];
+    }
+    let pieces = [polygon];
+    for (const h of cuts) {
       if (!boxesOverlap(box, h.box)) continue;
       const next = [];
       for (const piece of pieces) {

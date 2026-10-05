@@ -120,6 +120,35 @@ describe('generateBricks wallRegion (T86 item 18)', () => {
     const both = strokesToRegion([...older, ...newer]).polygons;
     expect(o.length + n.length).toBe(plain.filter((b) => centroidIn(b, both)).length); // every brick of the union, once
   });
+  it('18c: an older bond area around a newer herringbone area -- no overlap, no cut, only bricks touching a newer one drop', () => {
+    const older = [{ points: P([1, 4.5], [6, 4.5]), widthIn: 2 }], newer = [{ points: P([3.5, 2], [3.5, 7]), widthIn: 1.2 }];
+    const herring = { ...SET, layout: 'herringbone' };
+    const n = generateBricks({ boardOutline: board, set: herring, seed: 3, scale: 1, suppression: 0, clumping: 0, wallRegion: { strokes: newer } }).bricks;
+    const drops = n.map((b) => ({ polygon: b.polygon, drop: true }));
+    const o = lay({ wallRegion: { strokes: older, minus: newer }, exclusions: drops }).bricks;
+    const before = lay({ wallRegion: { strokes: older, minus: newer } }).bricks; // the older area without the drops
+    const plainKeys = new Set(lay({}).bricks.map((b) => key(b.polygon)));
+    const bad = [];
+    for (const b of o) if (!plainKeys.has(key(b.polygon))) bad.push(`older brick ${b.id} cut`);
+    for (const a of o) for (const b of n) if (area(polygonIntersection(a.polygon, b.polygon)) > 1e-4) bad.push(`${a.id}/${b.id} overlap`);
+    // every dropped brick touched a newer brick grown by the grout (sampled: within a grout of it)
+    const kept = new Set(o.map((b) => key(b.polygon)));
+    const dropped = before.filter((b) => !kept.has(key(b.polygon)));
+    const near = (a, b) => b.polygon.some((q) => [[0, 0], [J, 0], [-J, 0], [0, J], [0, -J], [J, J], [-J, -J], [J, -J], [-J, J]].some(([dx, dy]) => pointInPolygon(q.x + dx, q.y + dy, a.polygon)))
+      || a.polygon.some((q) => pointInPolygon(q.x, q.y, b.polygon)) || area(polygonIntersection(a.polygon, b.polygon)) > 0;
+    for (const d of dropped) if (!n.some((b) => near(d, b))) bad.push(`older brick ${d.id} dropped without touching a newer brick`);
+    expect(bad.slice(0, 5)).toEqual([]);
+    expect(dropped.length).toBeGreaterThan(0); // the grids clash here: something had to give way
+    expect(o.length).toBeGreaterThan(10);
+  });
+  it('a drop exclusion never cuts: brush strokes still cut (item 13), drop ones only remove whole bricks', () => {
+    const stroke = [{ polygon: P([2, 4.4], [5, 4.4], [5, 4.6], [2, 4.6]) }];
+    const plainKeys = new Set(lay({}).bricks.map((b) => key(b.polygon)));
+    const cut = lay({ exclusions: stroke }).bricks, dropped = lay({ exclusions: stroke.map((e) => ({ ...e, drop: true })) }).bricks;
+    expect(cut.some((b) => !plainKeys.has(key(b.polygon)))).toBe(true);
+    expect(dropped.every((b) => plainKeys.has(key(b.polygon)))).toBe(true);
+    expect(dropped.length).toBeLessThan(lay({}).bricks.length);
+  });
   it('turns with the pattern (item 29): whole rotated bricks by centroid', () => {
     const strokes = [{ points: P([1, 6], [6, 5]), widthIn: 1.6 }];
     const polys = strokesToRegion(strokes).polygons;

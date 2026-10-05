@@ -22189,3 +22189,10 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
   poke across it (measured: older stretcher - newer herringbone, 30 pairs / 0.61 sq in on a plain 7x9; 19 pairs /
   1.04 sq in on the T1 shot). Same-pattern areas share the board-aligned grid, so they cannot overlap.
 - Shot: shots/seatB/item18_wall_region.png (same three cells; the third shows the mixed-pattern overlap).
+- 18c (advisor ruling, option C: newest wins, whole bricks, no cuts): an exclusion `{ polygon, drop: true }` never
+  cuts -- a wall brick touching it (grown by the grout, overlap > DROP_TOUCH_SQIN) is dropped whole and the gap stays
+  grout; the app passes a newer area's laid bricks this way to the older area's lay. Plain exclusions (brush strokes)
+  still cut. Tests: older stretcher round a newer herringbone -- no overlapping pair, no cut brick, every dropped brick
+  touched a newer one, something dropped; a drop exclusion never cuts while a plain one does. Drop flag ignored ->
+  2/14 fail. Shot's third cell: 0 overlapping pairs; on that board the older strip keeps 3 of its 13 bricks (the
+  herringbone's zigzag edge touches the rest) -- the rule as ruled, for Fred's eye.
