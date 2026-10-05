@@ -21927,3 +21927,55 @@ the part that was broken.
 
 Passing back turn 562 with this plan; Fusion holder was never taken (self-serve, confirmed `none`
 before stopping). Recommending a fresh seat A per the advisor's own offer.
+
+## T86 item 16(c) part 2 -- PLAN, not shipped: band rows yielding to each other at a neck (seat B / 88, 2026-10-04)
+
+**Part 1 is on main** (6a489d4 + fixture 6d277f6): the band's INNER BOUNDARY never crosses itself any more
+(arcs sampled only between their own joints; opposite-side collisions untangled into lobes joined by
+zero-width bridges). Measured: 50 -> 0 self-crossing inner boundaries over 19 visible templates x
+0.75/1/1.25/1.5 in; wall-into-band overlap T18 Soldier x2 2.01 -> 0.006 sq in, T14 x2 2.48 -> 0.0004.
+Guarded by tests/bricks-boundary-at-depth-simple.test.js.
+
+**Part 2 = the band PIECES themselves.** Rows are built per contour stretch with no knowledge of the
+opposite side, so deeper than half the local gap, pieces from different stretches lay over the same
+ground. Baseline (main, 19 templates x 6 presets = 114 cases, Red Brick seed 1 7x9): total pairwise
+band-on-band overlap **135.5 sq in**; worst T11 three_band 39.3, T19 three_band 20.7, T18 three_band 16.1,
+T18 double_course 4.22, T14 double_course 1.70. Corners on ordinary templates are ~0 (T1 x2: 0.0004).
+
+Metric that matters (learned the hard way): **ground covered = the UNION of the band pieces must not
+shrink**; pairwise overlap alone hides voids. Measured with shapely over the 114 cases (scratch
+scripts: wide sweep dumps every piece polygon, union.py compares unions).
+
+**Attempt A -- pairwise yield at the overlap's chord** (stash "16c part 2 v3"): for every overlapping
+pair of course pieces (> 1e-3 sq in; smaller = mitre slivers left as main lays them), cut both at the
+chord through the two points where their outlines cross, falling back to the centroid bisector; pick
+the cut with no residual overlap, then least ground lost, then least trimmed.
+Result: overlap 135.5 -> **0.77**, but ground lost **11.6 sq in** (T19 three_band 1.88, T11 1.87, T9 1.36,
+T18 1.31). Why: where 3+ rows stack (notch tips, deep three_band), sequential pairwise cuts hand a
+region round a cycle (A yields to B, B to C, C to A) and nobody keeps it; and the chord is only
+loss-free for two convex pieces whose outlines cross exactly twice.
+Rejected along the way, all measured: (i) projecting pieces to their nearest contour point to find
+"opposite sides" (a deep piece pushed past the medial line projects to the OPPOSITE wall; a notch's two
+flanks project to the same tip); (ii) the centroid bisector alone (cut a 0.22 sq in diagonal off T1 x2
+corners whose overlap was 0.0004); (iii) "only the deeper row yields" (a one-sided chord cut leaves the
+other half of the lens overlapping).
+
+**Attempt B -- clip each colliding piece to its own row's ring** (stash "16c part 2 v4"): ring = the
+region between the untangled boundaries at the row's [d0, d1], as a slit polygon; then chord-cut only
+same-row leftovers. Result: overlap 135.5 -> 3.5, ground lost **43.2 sq in** (T11 three_band 6.9), and
+negative "sum - union" = invalid output polygons. Why: the ring is a slit polygon whose inner boundary
+can itself be several lobes joined by bridges; polygonIntersection keeps only the LARGEST loop and is
+not reliable on that shape.
+
+**Recommended next step**: build each row's pieces INSIDE its ring from the start rather than repairing
+them afterwards -- i.e. treat a row like the fieldstone area band does: compute the row's ring from the
+untangled boundaries, split it into its lobes (no slit; one simple polygon per lobe), and clip each
+course piece to the lobe it belongs to (the lobe containing its own outer-edge midpoint). Same-row
+collisions then only remain where ONE lobe is pinched by its own two sides; there the chord cut is
+exact (two pieces, same depth, convex). Needs from geometry.js: a lobe split of the untangled boundary
+(untangleBoundary already has the lobes before bridging -- expose them) and nothing else. Invariants
+for the test: over the 114-case sweep, union(after) >= union(before) - 0.01 sq in per case AND pairwise
+overlap < 0.01 per case; plus T1 corners byte-identical (no collision -> no change). Expected cost: one
+fresh, unhurried pass.
+
+**Parked**: both attempts are in `git stash` on wt-88 (messages above). Moving to 16(b), then 13.
