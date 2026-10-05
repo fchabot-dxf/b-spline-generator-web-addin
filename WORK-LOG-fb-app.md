@@ -13413,3 +13413,80 @@ Checklist:
   one band -> wall bricks back.
 - B8 can delay a slow release's canvas change by two frames; the harness's canvasSettled already polls for up to
   10 s.
+
+### turn 223 -- F35 item 22 SLICE 1: plan at a clean break (one fork to settle first) (seat 37)
+
+Merged origin/main b72a6da into fb-app (f1d48e3: docs + tests/bricks-wall-meets-band.test.js, 8/8 here), pushed.
+The session is long (it has been compacted once already), and slice 1 has one ordering conflict that changes its
+scope, so per the dispatch I pass back the plan first rather than start building.
+
+**The fork: "bricks on the ACTIVE layer" needs the per-layer height combine (your slice 3).**
+
+Today the 3D reads bricks ONLY from the layer NAMED "Bricks": stamp-mask-manager routes that layer through
+rasterizeBrickHeightMask, and every other layer through rasterizeSvg. If slice 1 puts a new wall on the active
+layer, which is usually an art layer ("Layer 1"), that layer then holds art AND bricks:
+- its bricks would be carved as flat SVG stamps at the art layer's depth (wrong heights, no grout recess);
+- Send would bake brick polygons into that art layer's sketch (changes Send output).
+
+```
+                 slice 1 (as dispatched)          what the 3D / Send do today
+ Layer 1 (art) ── art + NEW wall bricks ───────▶  rasterizeSvg: bricks = flat stamps  ✗
+ Bricks        ── (migrated records)    ───────▶  rasterizeBrickHeightMask           ✓
+```
+
+**Options:**
+- **A. Pull the per-layer combine into slice 1.** Any layer = its art -> rasterizeSvg + its brick nodes ->
+  rasterizeBrickHeightMask, combined. Send splits brick nodes out of art sketches.
+  - Pro: "active layer" is real from slice 1.
+  - Con: slice 1 roughly doubles, touching the 3D pipeline and Send at once.
+- **B (recommended). Slice 1 = the data model on a DECLARED brick layer; "active layer" lands with slice 3.**
+  - The NAME special case is retired anyway: a layer holds bricks by a declared, persisted layer field
+    `holdsBricks: true`, not by being called "Bricks". The 14 name references in 5 files (editor-brick-tool,
+    layers, brick-panel, export-flow, stamp-mask-manager) read the flag, so renaming the layer is safe.
+  - New elements go on the brick layer (created on first use, named "Bricks", flagged) exactly as today. Slice 3
+    lifts that once masks combine per layer.
+  - Pro: Send/SVG/3D output byte-identical by construction; slice 1 stays reviewable.
+  - Con: "active layer" waits for slice 3.
+- **C. Active layer only when it already holds bricks, else the brick layer.** Half of A's problem with none of
+  its payoff; not recommended.
+
+**Slice 1 under B (what I would build):**
+1. **Records** (editor-brick-tool.js): one invisible `<g>` per element on the brick layer:
+   - `data-brick-element` = id;
+   - `data-brick="wall-full" | "frame"`;
+   - `data-brick-settings` = the JSON snapshot it was laid with;
+   - `data-brick-laid` = ITS part of the laid key: wall = settings + brush strokes; frame = settings + frame
+     record.
+   - Its bricks carry `data-brick-owner` = the record id; Brush spines are already records.
+   - A lay writes the record(s) of the kinds it lays, in the same undo step.
+2. **Laid key per element:** the frame re-lay (item 27 settle) compares the frame record's key; the brush re-lay
+   compares the wall record's key. `layer.brickLaidKey` / `brickLaidKinds` (turn 221's B1 fix) become the
+   records' own attributes. A wall squeezed to 0 bricks keeps its record, so it stays an element (B1's fix
+   becomes structural).
+3. **Select (Wall + Frame):** a Select sub-tool in each section, declared on BRICK_TOOLS (`subTools`), the Area
+   sub-tool declared too but hidden by ENGINE_OPTIONS until 88's item 18.
+   - Click a brick: find its owner record, activate that element's tool, outline the record's bricks, and the
+     section edits it.
+   - With one wall + one frame (no areas yet) the section's settings ARE that element's (P.brickSettings per
+     kind, as item 23 made them).
+   - The record's snapshot is written on every lay, ready for slice 2's several walls.
+4. **Migration** 'brick-elements' (after 'brick-set-per-element'):
+   - a layer named "Bricks" gets `holdsBricks: true`;
+   - a wall-full record if wall bricks exist; a frame record if frame bricks exist;
+   - owners stamped on the existing polygons;
+   - the layer's brickLaidKey split into the records;
+   - brickLaidKey / brickLaidKinds deleted.
+   - The canvas and 3D hashes must be unchanged; PERSIST_BOARD must pass on a migrated board.
+5. **Clear:** 'bricks' removes every record + bricks; 'frame' the frame record (editor-clear + the Clear menu
+   kinds).
+
+**Tests + matrix:**
+- unit: records written per lay; laid key per element; the migration (Red board, rock board, empty board,
+  idempotent); Select picks the owner;
+- live: migrated board = same canvas + 3D hashes;
+- rows for 88:
+  - Select wall: click a wall brick -> brickTool_wall active + outline;
+  - Select frame;
+  - a migrated PERSIST_BOARD reload.
+
+**Your call:** B (recommended) or A. On B I start slice 1 next turn, fresh.
