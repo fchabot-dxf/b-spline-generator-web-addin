@@ -53,10 +53,10 @@
  * the worker/advisor gate on item 72.
  */
 import { cumulativeLengths, pointAtArcLength, clipToHalfPlane } from './geometry.js';
-import { mulberry32, seedFor } from './rng.js';
+import { mulberry32, seedFor, hashedRandom } from './rng.js';
 import { valueNoise2 } from './noise2d.js';
-import { scaledSet, FILL_FRACTIONS } from './library.js';
-import { pickSample, planPieceLengths } from './piece-plan.js';
+import { scaledSet, FILL_FRACTIONS, RUSTIC } from './library.js';
+import { pickSample, planPieceLengths, planRusticLengths } from './piece-plan.js';
 import { voussoirPieces } from './arc-voussoir.js';
 
 function closeLoop(path) { return path.concat([path[0]]); }
@@ -406,7 +406,11 @@ export function bricksAlongPath(polyline, opts) {
       continue;
     }
 
-    const { lengths: pieceLengths, jointWidth } = planPieceLengths(runEnd - runStart, pitch, J, FILL_FRACTIONS);
+    // T86 item 22: a rustic stroke varies its bricks' lengths (library.js RUSTIC), seeded per run
+    const { lengths: pieceLengths, jointWidth } = opts.rustic > 0
+      ? planRusticLengths(runEnd - runStart, pitch, J, FILL_FRACTIONS, opts.rustic, RUSTIC.lengthSpread,
+        (k) => hashedRandom(seed, 'rustic-run', Math.round(runStart * 1000) * 1009 + k))
+      : planPieceLengths(runEnd - runStart, pitch, J, FILL_FRACTIONS);
 
     let s = runStart, guard = 0, pieceIdx = 0, isFirst = true;
     while (s < runEnd - 1e-6 && guard++ < 10000) {

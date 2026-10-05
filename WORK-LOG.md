@@ -22223,3 +22223,31 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
   touched a newer one, something dropped; a drop exclusion never cuts while a plain one does. Drop flag ignored ->
   2/14 fail. Shot's third cell: 0 overlapping pairs; on that board the older strip keeps 3 of its 13 bricks (the
   herringbone's zigzag edge touches the rest) -- the rule as ruled, for Fred's eye.
+## T86 item 22 -- rustic running bond (seat B / 88, 2026-10-05)
+- library.js RUSTIC { lengthSpread 0.4, minLap 0.25, levelIn 0.02 }; generateBricks `rustic` 0..1 (ENGINE_OPTIONS
+  'rustic', so 37's Wall/Brush rows appear). Wall: layouts/bond.js rusticRow for RUNNING-BOND courses only (course
+  kind, staggered, length axis -- the app sends it for running bond only): seeded lengths in [1 -/+ 0.4 r] x L, the
+  usual start and stagger, each joint placed at least minLap x L off EVERY joint of the course below (the length
+  closest to the drawn one that clears them all, in range; first try nudged off one joint only and left 6.5% of joints
+  too close at r = 1). Closers from the clip, as ever. Levels: fill-shape adds +/- levelIn x r (seeded) to heightOffset.
+  Brush: piece-plan.js planRusticLengths -- random whole lengths in range, then one end piece (two halves if too long),
+  nominal joints; along-path uses it when opts.rustic > 0 (arc voussoir runs unchanged).
+- Tests bricks-rustic (7): 0 = today exactly; r = 1 and 0.5 -- lengths in range and varied, < 3% of joints within the
+  lap (the length range bounds the nudge), no overlap, coverage = the uniform wall's; levels within the jitter; a stack
+  bond untouched; a brush stroke varied, in range, no overlap, seeded. Rustic off in the bond -> 2/7 fail. 37's
+  item29-rustic-wear test: mock base drops 'rustic' (both states still tested). Domain green.
+- Shot: shots/seatB/item22_rustic.png (0 / 0.5 / 1, wall + brush).
+## T86 item 23 -- wear on rocks (seat B / 88, 2026-10-05)
+- MEASURED first: the Wear amount already reached stones through the app's styledSet (edgeNoiseIn) and pitGain (photo
+  detail), but the edge wear was nearly invisible on them: max height change Wear 0 -> 1 on one stone 0.010 in
+  (White rocks) / 0.008 (Grey stone) against 0.066 on a red brick. Cause: the Weathered style multiplies surfaceShare
+  x2.5, so a stone face is 87.5% photo detail and only 12.5% the shoulder the edge noise moves.
+- Fix, declared per set: heightProfile.wearWholeFace (White rocks, Grey stone). height-profile.js: where the edge
+  noise pulls the shoulder line inward, the detail share dips by the same amount -- the whole face wears at its edge.
+  Wear 0 (edgeNoiseIn 0): worn and plain shoulders agree, no change. Bricks: no flag, untouched. The pits already scale
+  with Wear for stones (pitGain on the shared photo detail). No ENGINE_OPTIONS entry: 'wear' is not a generateBricks
+  input, and 37's Wear row already shows for rock walls by the style alone (item29-rustic-wear.test.js).
+- Tests bricks-wear-rocks (7): Wear 0 = today exactly (both stone sets); Wear 1 wears a stone's edge > 2x what it did
+  and > 0.5x a brick's; bricks untouched. Flag ignored -> 2/7 fail. Domain green (3 of 37's app tests time out at 5 s
+  only under the full concurrent load; 16/16 alone).
+- Shot: shots/seatB/item23_wear_rocks.png (White rocks height map, Wear 0 / 0.5 / 1, before vs after).

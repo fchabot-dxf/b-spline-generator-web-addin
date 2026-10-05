@@ -34,6 +34,27 @@ export function pickSample(set, seed, purpose, id) {
  * @param {number[]} fractions — FILL_FRACTIONS, descending
  * @returns {{lengths:number[], jointWidth:number}} lengths.length - 1 joints, each `jointWidth`
  */
+/** T86 item 22: a RUSTIC run (library.js RUSTIC, `rustic` 0..1): whole pieces of random length in the declared range
+ *  (`rand(k)` in [0, 1), seeded by the caller) for as long as at least the smallest fraction still fits after them;
+ *  the rest is one end piece (two halves if it is longer than the range allows). Joints stay the nominal width. */
+export function planRusticLengths(runLength, pitch, nominalJoint, fractions, rustic, spread, rand) {
+  const minEnd = Math.min(...fractions) * pitch;
+  if (runLength < minEnd - 1e-9) return { lengths: [runLength], jointWidth: nominalJoint };
+  const lo = pitch * (1 - spread * rustic), hi = pitch * (1 + spread * rustic);
+  const lengths = [];
+  let used = 0;
+  for (let k = 0; ; k++) {
+    const l = lo + (hi - lo) * rand(k);
+    if (used + l + nominalJoint + minEnd > runLength) break;
+    lengths.push(l);
+    used += l + nominalJoint;
+  }
+  const rest = runLength - used;
+  if (rest <= hi) lengths.push(rest);
+  else lengths.push((rest - nominalJoint) / 2, (rest - nominalJoint) / 2);
+  return { lengths, jointWidth: nominalJoint };
+}
+
 export function planPieceLengths(runLength, pitch, nominalJoint, fractions) {
   const minFraction = Math.min(...fractions);
   if (runLength < pitch * minFraction - 1e-9) {
