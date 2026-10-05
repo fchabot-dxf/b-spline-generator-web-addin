@@ -13836,3 +13836,44 @@ and persistence rows below. 88 queues them on matrix-clear-rows after the ring-s
 - Tests: section-themes +2 (applySectionThemes on a fixture: classes + light/dark tokens, head-only Brick panel,
   idempotent; the CSS reads only tokens + main.js calls it). Both fail on the step-1 files. Whole vitest: 4419
   passed, 1 FAILED in the parallel run (bricks-fieldstone-large-stones, the known load timeout); alone 5/5.
+
+### turn 239 (b) -- F35 item 24 STEP 2: the six Brick tool icons + the Photo toolbar icons WIRED (seat 37)
+
+- **Fred's pick:** the Raised brush = sheet v3's 3-brick run with the MIDDLE brick raised (side face showing), the
+  same paintbrush, no arrow. Now BRICK_TOOL_ICONS.raisedBrush (`kind: 'row3', raise: 'middle'`).
+- **Declared on the tools:** BRICK_TOOLS (6) and PHOTO_TOOLS (5) carry `iconSvg: () => <tool>IconSvg(id)`.
+  - editor-tool-registry renders a declared `iconSvg` (innerHTML); `icon` (a character) stays the fallback.
+  - Every registry button is `tool-btn-registry` (was `tool-btn-emoji`; renamed everywhere, the css + its test).
+- **Scoped the editor.css rule** `.tool-btn.active svg { stroke:#1a1a1a; stroke-width:2.5px }` to
+  `.tool-btn.active:not(.tool-btn-registry) svg` (Artwork's static buttons only). On a registry button it would
+  have turned the white currentColor icon dark on the blue active fill.
+- **The Photo toolbar** (new editor/photo-tool-icons.js, PHOTO_TOOL_ICONS) has one line glyph per tool in the
+  same 24 box / 2-unit round strokes / currentColor:
+  - crop = two crop corners;
+  - straighten = a tilted dashed horizon + the level line + a turn arrow;
+  - rotate/flip = a quarter-turn arrow + a mirror line with facing triangles;
+  - levels = three point sliders;
+  - blur = a dot with blur rings.
+  - None of them lays anything, so there is no engine miniature (only the Brick icons have one).
+- **REMOVED with the sheets** (swept):
+  - RAISED_DEPTHS + depthMarkup (sheet v2), RAISED_V3 (sheet v3's candidates; the pick is now the declared
+    icon), the UP_TICK arrow, the `lifted` dashed line, brickToolIconSvg's `override` (sheet-only);
+  - TOOL_MINI_RUNS.row2 (the rejected 2-brick variant);
+  - their tests (sheet v2 / v3 describes).
+  - grep: no RAISED_ / depthMarkup / UP_TICK / mini.lifted / row2 / tool-btn-emoji left in app code (one comment
+    names the old class).
+- **Tests** (brick-tool-icons, rewritten for the wired state; 9):
+  - the six icons; the Raised brush = 3 polygons, the middle one highest, one side face, no arrow;
+  - the 5 Photo icons (box, currentColor, parse, all different);
+  - the registry renders iconSvg with the text fallback, and every Brick/Photo tool declares one;
+  - the scoped CSS rule.
+  - editor-tool-registry: the class rename.
+  - Against the pre-step-2 files the test file cannot even load (no photo-tool-icons.js); restored, cmp clean.
+- **Live** (CDP):
+  - Brick toolbar 6/6 SVG; the active Raised brush icon's stroke computes rgb(255,255,255) on rgb(6,150,215);
+  - Photo toolbar 5/5 SVG, the active stroke white;
+  - 0 errors.
+  - Shots: shots/seat37/f35item24_wired_brick_toolbar.png, f35item24_wired_photo_toolbar.png. The Straighten glyph
+    is the busiest at 20 px; one to retune if Fred wants.
+- **Matrix:** no control's position or behaviour changes (same buttons, same ids, an icon inside); no new row.
+- Whole vitest: 273 files, **4422 passed, 0 failed**.

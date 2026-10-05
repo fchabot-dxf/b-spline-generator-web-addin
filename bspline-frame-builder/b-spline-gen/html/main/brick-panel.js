@@ -37,6 +37,7 @@ import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/libr
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
+import { brickToolIconSvg } from '../editor/brick-tool-icons.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -51,14 +52,15 @@ import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-
  * consumer that justifies the declared table this always meant to become.
  * `run` is this file's own entry point for that tool (not re-exported --
  * core/bricks/ itself stays engine-agnostic of "how a UI triggers it"). */
+// `iconSvg` (F35 item 24 step 2): the tool's line icon (editor/brick-tool-icons.js); `icon` = the text fallback
 const BRICK_TOOLS = [
   // `ownsSet` (F35 item 23): the tool lays an ELEMENT with its own brick set (P.brickSettings.setIds[tool id]);
   // the Set row edits the active tool's.
-  { id: 'brush', buttonId: 'brickTool_brush', label: 'Brush', icon: '✏️', settingsSection: 'brickBrushSection', ownsSet: true,
+  { id: 'brush', buttonId: 'brickTool_brush', iconSvg: () => brickToolIconSvg('brush'), label: 'Brush', icon: '✏️', settingsSection: 'brickBrushSection', ownsSet: true,
     hint: 'Click here, then drag a stroke on the canvas to lay bricks along it.' },
   // F35 item 16 (turn 201): the RAISED BRUSH -- a variant of Brush (`variantOf`: the same brickBrush mode,
   // same stroke machinery) whose strokes carry `strokeOverrides` (its Level + mode), frozen per stroke.
-  { id: 'raisedBrush', buttonId: 'brickTool_raisedBrush', label: 'Raised brush', icon: '⏫', settingsSection: 'brickRaisedSection', ownsSet: true,
+  { id: 'raisedBrush', buttonId: 'brickTool_raisedBrush', iconSvg: () => brickToolIconSvg('raisedBrush'), label: 'Raised brush', icon: '⏫', settingsSection: 'brickRaisedSection', ownsSet: true,
     variantOf: 'brush', strokeOverrides: () => ({ levelIn: P.brickSettings.raisedLevelIn, strokeMode: P.brickSettings.raisedMode }),
     hint: 'Drag a stroke: bricks laid proud of the others by Level.' },
   // `generates` (audit C9): Generate re-lays this tool's output, so the pinned Generate shows for it.
@@ -66,10 +68,10 @@ const BRICK_TOOLS = [
   // `lays` (audit C1): the ONE element kind this tool lays (editor-brick-tool.js BRICK_KINDS). Since item 27 a
   // setting change lays it at once; Generate re-lays it (audit B7: the hints say so).
   // `subTools` (F35 item 22): the element tool's own sub-tools (BRICK_SUB_TOOLS below), shown in its section
-  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true, lays: 'wall', ownsSet: true,
+  { id: 'wall', buttonId: 'brickTool_wall', iconSvg: () => brickToolIconSvg('wall'), label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true, lays: 'wall', ownsSet: true,
     subTools: ['select', 'area'],
     hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Change a setting to lay it; Generate re-lays.' },
-  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
+  { id: 'frame', buttonId: 'brickTool_frame', iconSvg: () => brickToolIconSvg('frame'), label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
     subTools: ['select'],
     hint: 'Bands of bricks along the frame\'s contour (or the board\'s edge with Offset from frame off). Change a setting to lay them; Generate re-lays.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
@@ -79,11 +81,11 @@ const BRICK_TOOLS = [
   // editor-brick-tool.js's own header on why that's a deliberate scope,
   // not an oversight).
   // sharedRows: false (audit v2 N7) -- a cut keeps each piece's draw-time settings, so the shared rows do nothing
-  { id: 'scissors', buttonId: 'brickTool_scissors', label: 'Scissors', icon: '✂️', settingsSection: null, sharedRows: false,
+  { id: 'scissors', buttonId: 'brickTool_scissors', iconSvg: () => brickToolIconSvg('scissors'), label: 'Scissors', icon: '✂️', settingsSection: null, sharedRows: false,
     hint: 'Tap a brush stroke to split it -- each piece regenerates its own bricks independently once moved apart.' },
   // sharedRows: false (turn 197) -- a stripe pick restyles EXISTING strokes, so the panel's shared rows
   // (BRICK_SHARED_SECTIONS: Set, Brick size .. Seed) don't apply and are hidden
-  { id: 'stripe', buttonId: 'brickTool_stripe', label: 'Stripe', icon: '📏', settingsSection: 'brickStripeSection', sharedRows: false,
+  { id: 'stripe', buttonId: 'brickTool_stripe', iconSvg: () => brickToolIconSvg('stripe'), label: 'Stripe', icon: '📏', settingsSection: 'brickStripeSection', sharedRows: false,
     hint: 'Tap a brush stroke to split it into alternating brick-style runs.' },
 ];
 

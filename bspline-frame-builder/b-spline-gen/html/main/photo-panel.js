@@ -38,6 +38,7 @@ import { registerTweaksTarget, renderTweaksPanel } from '../core/noise/tweaks-ui
 import { applyParam } from './param-manager.js';
 import { setEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
+import { photoToolIconSvg } from '../editor/photo-tool-icons.js';
 
 /** F35 item 10 (advisor, Fred's own reasoning: "each tab uses a completely different toolbar"):
  *  Photo's own left-rail toolbar, moved here from the old sidebar panel's single always-visible
@@ -46,11 +47,11 @@ import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-to
  *  visible regardless, the SAME "common controls every tool shares" split main/brick-panel.js's own
  *  BRICK_TOOLS already established -- not a new mechanism. */
 const PHOTO_TOOLS = [
-  { id: 'crop', buttonId: 'photoTool_crop', label: 'Crop', icon: '⬚', hint: 'Crop the photo to a region before it becomes the terrain.' },
-  { id: 'straighten', buttonId: 'photoTool_straighten', label: 'Straighten', icon: '📐', hint: 'Rotate by a small angle to level a tilted photo.' },
-  { id: 'rotateFlip', buttonId: 'photoTool_rotateFlip', label: 'Rotate/Flip', icon: '🔄', hint: 'Rotate 90° or flip the photo horizontally/vertically.' },
-  { id: 'levels', buttonId: 'photoTool_levels', label: 'Levels', icon: '🎚️', hint: 'Black/white/mid points plus brightness and contrast.' },
-  { id: 'blur', buttonId: 'photoTool_blur', label: 'Blur', icon: '🌫️', hint: 'Smooth the photo before it becomes height.' },
+  { id: 'crop', buttonId: 'photoTool_crop', iconSvg: () => photoToolIconSvg('crop'), label: 'Crop', icon: '⬚', hint: 'Crop the photo to a region before it becomes the terrain.' },
+  { id: 'straighten', buttonId: 'photoTool_straighten', iconSvg: () => photoToolIconSvg('straighten'), label: 'Straighten', icon: '📐', hint: 'Rotate by a small angle to level a tilted photo.' },
+  { id: 'rotateFlip', buttonId: 'photoTool_rotateFlip', iconSvg: () => photoToolIconSvg('rotateFlip'), label: 'Rotate/Flip', icon: '🔄', hint: 'Rotate 90° or flip the photo horizontally/vertically.' },
+  { id: 'levels', buttonId: 'photoTool_levels', iconSvg: () => photoToolIconSvg('levels'), label: 'Levels', icon: '🎚️', hint: 'Black/white/mid points plus brightness and contrast.' },
+  { id: 'blur', buttonId: 'photoTool_blur', iconSvg: () => photoToolIconSvg('blur'), label: 'Blur', icon: '🌫️', hint: 'Smooth the photo before it becomes height.' },
 ];
 
 let _activePhotoTool = PHOTO_TOOLS[0].id;

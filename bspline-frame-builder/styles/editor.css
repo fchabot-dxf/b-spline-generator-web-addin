@@ -345,14 +345,15 @@
    treatment just above -- the same pale background alone reads as too weak a highlight on its own.
    A solid, filled background (matching the rest of the app's own "selected" convention, e.g.
    .cad-btn.active) makes the active tool unambiguous at a glance. */
-.tool-btn-emoji.active {
+.tool-btn-registry.active {
     background: var(--cad-accent-blue) !important;
     color: white !important;
     border-color: var(--cad-accent-blue) !important;
 }
 
-/* Ensure SVG icons stay dark and become bold when active */
-.tool-btn.active svg {
+/* Ensure SVG icons stay dark and become bold when active -- Artwork's static buttons only: a registry button's
+   icon (Brick / Photo, F35 item 24) is currentColor on the solid active fill above, so it must stay white. */
+.tool-btn.active:not(.tool-btn-registry) svg {
     stroke: #1a1a1a !important;
     stroke-width: 2.5px !important;
 }

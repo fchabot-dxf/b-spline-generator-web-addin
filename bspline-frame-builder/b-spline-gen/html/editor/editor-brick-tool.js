@@ -476,7 +476,6 @@ const TOOL_MINI_RUNS = Object.freeze({
   band3: { preset: 'flemish_soldier_flemish_3', lengthIn: 3.6 },
   // sheet v3 (Fred: "a 2-brick long run with one brick higher" / "2 OR 3 bricks"): ONE row, 2 or 3 whole bricks
   // (a brick + its joint each = 0.75 + 0.07 in)
-  row2: { preset: 'stretcher_1', lengthIn: 2 * 0.82 },
   row3: { preset: 'stretcher_1', lengthIn: 3 * 0.82 },
 });
 const _toolMinis = new Map();
