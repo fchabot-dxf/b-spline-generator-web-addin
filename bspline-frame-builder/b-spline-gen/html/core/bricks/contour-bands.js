@@ -33,7 +33,7 @@
  * full-size bricks, never one row of stretched ones, and the next band always starts exactly where
  * the actual (snapped) rows end, with no seam gap.
  */
-import { inwardSignFor, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea } from './geometry.js';
+import { inwardSignFor, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToHalfPlane, pointInPolygon, polygonCentroid } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, boundaryAtDepth } from './primitive-ribbon.js';
 import { scaledSet, BRICK_PATTERNS, MIN_PIECE_FRACTION } from './library.js';
@@ -237,6 +237,91 @@ function buildAreaBandBricks(enriched, depthSoFar, band, patternName, set, seed,
  *  grows past the far side and meets its neighbours outside the board; the fit rule for that is T86 item 28. */
 const BOARD_CLIP_TOLERANCE_SQIN = 1e-3; // above the fine tessellation's own chord error on a piece
 const BOARD_CLIP_ARC_STEPS = 128; // per arc: a chord sags < 1e-4 in on the templates' fillets
+/**
+ * T86 item 16(c) part 2: a row that meets ITSELF across a neck. Rows are built per contour stretch, so where the
+ * board narrows the row's two sides lay pieces over the same ground (measured on main after item 28's fit rule:
+ * 14.7 sq in over 19 templates x 3 presets x 0.75-1.25 in, all one row's two sides, worst T18 / T19 at 1.25 in). Two
+ * pieces of ONE row that overlap but are not neighbours along the walk (`NECK_MIN_WALK_GAP` apart or more -- nearer
+ * pairs are a corner's own residual, T86 21b) are each cut at the CHORD through the two points where their outlines
+ * cross, each keeping its own side (the side holding one of its vertices outside the other). Two convex pieces that
+ * cross twice split exactly there: no ground lost, none shared. Outlines that do not cross exactly twice fall back to
+ * the perpendicular bisector of the two centroids. A leftover under the quarter floor drops.
+ */
+const NECK_MIN_WALK_GAP = 2; // never a piece's own neighbours along the walk
+// the two pieces FACE each other: each one's outward direction (its centroid to the nearest board point) opposite
+// the other's (a corner's pieces meet near 90 deg; measured: walk order alone took a T11 corner for a neck)
+const NECK_FACING_DOT = -0.5;
+const NECK_OVERLAP_SQIN = 2e-3; // a real collision; a corner fan's hairline overlaps (~0.0004 sq in, 21b) are left as laid
+function segCross(a, b, c, d) {
+  const r = { x: b.x - a.x, y: b.y - a.y }, q = { x: d.x - c.x, y: d.y - c.y };
+  const den = r.x * q.y - r.y * q.x;
+  if (Math.abs(den) < 1e-14) return null;
+  const t = ((c.x - a.x) * q.y - (c.y - a.y) * q.x) / den, u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? { x: a.x + t * r.x, y: a.y + t * r.y } : null;
+}
+function crossings(P, Q) {
+  const pts = [];
+  for (let i = 0; i < P.length; i++) for (let j = 0; j < Q.length; j++) {
+    const x = segCross(P[i], P[(i + 1) % P.length], Q[j], Q[(j + 1) % Q.length]);
+    if (x && !pts.some((p) => Math.hypot(p.x - x.x, p.y - x.y) < 1e-9)) pts.push(x);
+  }
+  return pts;
+}
+function outwardOf(polygon, board) {
+  const c = polygonCentroid(polygon);
+  let best = null, bd = Infinity;
+  for (let i = 0; i < board.length; i++) {
+    const a = board[i], b = board[(i + 1) % board.length], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((c.x - a.x) * dx + (c.y - a.y) * dy) / l2));
+    const px = a.x + t * dx, py = a.y + t * dy, d = Math.hypot(px - c.x, py - c.y);
+    if (d < bd) { bd = d; best = { x: (px - c.x) / (d || 1), y: (py - c.y) / (d || 1) }; }
+  }
+  return best;
+}
+function yieldAcrossNecks(bricks, set, board) {
+  const minArea = MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
+  const rows = new Map();
+  bricks.forEach((b, k) => { const key = `${b.bandIndex}|${b.rowIndex}`; if (!rows.has(key)) rows.set(key, []); rows.get(key).push(k); });
+  const poly = bricks.map((b) => b.polygon);
+  const box = (p) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const q of p) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); } return { x0, y0, x1, y1 }; };
+  for (const idx of rows.values()) {
+    const n = idx.length;
+    for (let a = 0; a < n; a++) for (let b = a + NECK_MIN_WALK_GAP; b < n; b++) {
+      if (n - (b - a) < NECK_MIN_WALK_GAP) continue; // the walk is a loop: near through the wrap too
+      const i = idx[a], j = idx[b], P = poly[i], Q = poly[j];
+      if (P.length < 3 || Q.length < 3) continue;
+      const A = box(P), Bx = box(Q);
+      if (A.x1 <= Bx.x0 || Bx.x1 <= A.x0 || A.y1 <= Bx.y0 || Bx.y1 <= A.y0) continue;
+      if (Math.abs(signedArea(polygonIntersection(P, Q))) <= NECK_OVERLAP_SQIN) continue;
+      const nP = outwardOf(P, board), nQ = outwardOf(Q, board);
+      if (!nP || !nQ || nP.x * nQ.x + nP.y * nQ.y > NECK_FACING_DOT) continue; // not facing: a corner's own residual (21b)
+      const keepP = P.find((v) => !pointInPolygon(v.x, v.y, Q)), keepQ = Q.find((v) => !pointInPolygon(v.x, v.y, P));
+      if (!keepP || !keepQ) continue; // one wholly inside the other: no side to keep
+      const xs = crossings(P, Q);
+      let line, refP = keepP, refQ = keepQ;
+      if (xs.length === 2) {
+        const dx = xs[1].x - xs[0].x, dy = xs[1].y - xs[0].y, len = Math.hypot(dx, dy) || 1;
+        line = { point: xs[0], dirX: dx / len, dirY: dy / len };
+      } else {
+        // no clean lens: the centroids' bisector, each piece keeping ITS centroid's side (a vertex outside the other
+        // piece can lie on the far side of this line -- measured: T14's crossing fans then both lost the overlap)
+        const cp = polygonCentroid(P), cq = polygonCentroid(Q);
+        const dx = cq.x - cp.x, dy = cq.y - cp.y, len = Math.hypot(dx, dy) || 1;
+        line = { point: { x: (cp.x + cq.x) / 2, y: (cp.y + cq.y) / 2 }, dirX: -dy / len, dirY: dx / len };
+        refP = cp; refQ = cq;
+      }
+      poly[i] = clipToHalfPlane(P, line, refP);
+      poly[j] = clipToHalfPlane(Q, line, refQ);
+    }
+  }
+  const out = [];
+  bricks.forEach((b, k) => {
+    if (poly[k] === b.polygon) { out.push(b); return; }
+    if (poly[k].length >= 3 && Math.abs(signedArea(poly[k])) >= minArea) out.push({ ...b, polygon: poly[k] });
+  });
+  return out;
+}
+
 function clipBandPiecesToBoard(bricks, board, set) {
   const minArea = MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -378,7 +463,7 @@ export function bricksContourBands(primitives, bands, opts) {
   });
 
   // centred bands straddle the path by design, and an open path has no board: only a closed outer stack is clipped
-  const laid = fitBoard ? clipBandPiecesToBoard(bricks, fitBoard, set) : bricks;
+  const laid = fitBoard ? clipBandPiecesToBoard(yieldAcrossNecks(bricks, set, fitBoard), fitBoard, set) : bricks;
   return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, depthSoFar) : [], ...(fit ? { bandsReduced: fit.note } : {}) };
 }
 

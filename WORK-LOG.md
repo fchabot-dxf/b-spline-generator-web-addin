@@ -22148,3 +22148,22 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
 - Follow-up (advisor ruling by precedent: a stone set's bands are the stone ring, as White rocks): Set 5 declares
   `bandLayout: 'fieldstone'`; contour-bands setBandPattern reads `set.bandLayout || set.layout`, so Grey stone frames
   lay fieldstone rings with grey faces (a bond set keeps course bands -- tested). Sheet re-rendered.
+
+## T86 item 16(c) part 2 -- re-measured after item 28; a chord-yield TRIAL, PARKED (seat B / 88, 2026-10-05)
+- NOT FOR MERGE: branch band-yield. Main is unchanged.
+- Re-measured on main 23a6062 (19 templates x single_soldier / three_band / double_course x 0.75 / 1 / 1.25 in, 7x9,
+  Red Brick seed 1; shapely unions): band overlap (sum - union) **17.82 sq in** total (the plan's 135.5 was before
+  the item 28 fit rule). By kind: pairs far apart in the walk 14.72 sq in / 402 pairs (ONE row meeting itself across
+  a neck: T11 / T14 / T16 / T17 / T18 / T19 at 1-1.25 in, worst T18 / T19 1.25 at 1.44 each) vs a corner's own fan
+  residual 3.14 / 139 pairs (21b's).
+- Trial (contour-bands yieldAcrossNecks): two pieces of one row that overlap (> 2e-3 sq in), are not walk neighbours,
+  and FACE each other (outward directions dot < -0.5) are each cut at the chord through their two crossings, else at
+  the centroids' bisector, each keeping its own side. Measured, step by step:
+    walk gap >= 4, any overlap, vertex keep-refs:  overlap 17.82 -> 3.52, ground lost 10.13 (fallback kept the wrong side)
+    + centroid keep-refs for the fallback:         -> 3.50, lost 6.96 (T1 / T10 / T12 corners cut: hairline fans)
+    + overlap > 2e-3:                               -> 3.54, lost 3.47 (a T11 corner taken for a neck)
+    + facing test, walk gap >= 2:                   -> 6.13, lost 1.71 (T14's X neck: 0.63 left at 1.25, voids at 1 in)
+  T18 / T19 necks read clean (shots/seatB/item16c2_neck_trial.png, from the third step); the plan's bar (per case lost
+  < 0.01 AND overlap < 0.01) is NOT met -- repairing pieces after they are built keeps trading overlap for voids.
+- Recommendation stands from the plan: build each row's pieces INSIDE its own side of the medial line from the start
+  (one ring per side, split at the untangled boundary's lobes), in a fresh pass. 21b (the corner fans) is independent.
