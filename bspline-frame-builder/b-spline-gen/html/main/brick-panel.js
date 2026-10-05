@@ -28,7 +28,7 @@ import {
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
   FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg,
-  addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields,
+  addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
 } from '../editor/editor-brick-tool.js';
 import {
   ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick, ACCENT_LEVEL_RANGE, clampAccentLevel, ACCENT_TILE,
@@ -152,7 +152,7 @@ export function selectSet(setId, commit = 'generate', kinds = [_setKind()]) {
   for (const kind of kinds) {
     P.brickSettings.setIds[kind] = setId;
     // a brick set on a ROCK element turns it back into bricks (the Fieldstone pattern is what made it rock)
-    if (kind === 'wall' && P.brickSettings.pattern === 'fieldstone') P.brickSettings.pattern = DEFAULT_WALL_PATTERN;
+    if (kind === 'wall' && patternSetId(P.brickSettings.pattern) != null) P.brickSettings.pattern = DEFAULT_WALL_PATTERN;
     if (kind === 'frame' && isRockFrame(P.brickSettings)) P.brickSettings.frameBandPatterns = [];
   }
   // (the elements' joints fall back to the new set's own: _resetJointsOnSetChange, in commitBrickSetting)
@@ -1693,7 +1693,7 @@ const WALL_PATTERN_LABELS = {
   // F35 item 14: the tiles (named by what the sheet draws; the sheet has no captions)
   square_grid: 'Square grid', square_diamond: 'Square + diamond inserts', octagon_square: 'Octagon + small square',
   hexagon: 'Hexagon', lozenge: 'Lozenge', framed_square: 'Framed square',
-  fieldstone: 'Fieldstone',
+  fieldstone: 'Fieldstone', coursed_rubble: 'Coursed rubble',
 };
 // item 23: what a ROCK wall becomes when a brick set is picked for it
 const DEFAULT_WALL_PATTERN = 'stretcher';

@@ -478,6 +478,9 @@ function setForId(id) {
  *  The Set is PER ELEMENT (`settings.setIds`, keyed by tool: wall / frame / brush / raisedBrush); brick size and
  *  grout stay global. A settings object from before item 23 has a single `setId`: it is the fallback. */
 export const ROCK_SET_ID = (BRICK_SETS.find((s) => s.layout === 'fieldstone') || {}).id ?? null;
+/** A Wall pattern named after a STONE set's layout picks that set (Fieldstone -> White Rocks, Coursed rubble -> Grey
+ *  stone): the set is implied by the pattern, never picked in the Set row. null for every other pattern. */
+export const patternSetId = (pattern) => (pattern && pattern !== 'bond' ? (BRICK_SETS.find((s) => s.layout === pattern) || {}).id ?? null : null);
 export const BRICK_SET_IDS = Object.freeze(BRICK_SETS.filter((s) => s.layout === 'bond').map((s) => s.id));
 /** A Frame is rock when every band pattern is fieldstone (picking it on one band writes it on all). */
 export function isRockFrame(settings) {
@@ -520,7 +523,8 @@ export function frameBandsOf(settings) {
 }
 /** The set an element is laid with. */
 export function elementSetId(settings, kind) {
-  if (ROCK_SET_ID != null && ((kind === 'wall' && settings.pattern === 'fieldstone') || (kind === 'frame' && isRockFrame(settings)))) return ROCK_SET_ID;
+  if (kind === 'wall' && patternSetId(settings.pattern) != null) return patternSetId(settings.pattern);
+  if (ROCK_SET_ID != null && kind === 'frame' && isRockFrame(settings)) return ROCK_SET_ID;
   const own = settings.setIds && settings.setIds[kind];
   return own ?? settings.setId ?? BRICK_SET_IDS[0] ?? 1;
 }
