@@ -14517,3 +14517,23 @@ WallPattern = {
   - The stones are big because the shared 1.25 in brick size scales Set 5 (1.1 in) by 1.14, the same rule as Fieldstone.
 - **Shots** (seat37): coursed_rubble_wall_editor.png, coursed_rubble_wall_3d.png.
 - **Full suite:** 6 failed / 4618 passed. All 6 are timeouts in heavy tests (bands-reduced-note, frame-3d-sweep, frame-radius-handles, frame-template-10, silhouette-resolve); the 5 files pass alone, 89/89.
+
+### turn 263 (close): slice 2 on 88's T86 18b + 18c, whole bricks, newest first (seat 37)
+- **Merged origin/wall-region 6d70cb4** (18b: whole bricks by centroid, no cut at a region edge; 18c: drop-don't-cut exclusions) as 69db8d6. Two add/add conflicts, kept as unions: the fill-shape import (WALL_REGION_PICK) and 88's WORK-LOG.
+- **Wiring (18c, 88's input shape):**
+  - The areas are laid NEWEST first.
+  - Each older area gets exclusions = the brush exclusions (cut, as today) + every newer area's LAID bricks as `{ polygon, drop: true }` (a brick touching one is dropped, never cut).
+  - The minus (newer areas' strokes) is unchanged.
+  - wall-areas tests updated: the call order and the drop exclusions are pinned. The mock reports exclusionsApplied, as the engine does. Against the pre-18c editor file, 2/8 fail.
+- **Live re-shoot** (area_live.mjs, real drags, 7x9 T1 + single_soldier frame):
+  - A (stretcher) + B (herringbone, newer): 0 overlapping brick pairs between A and B. A keeps 8 whole bricks around B's 26.
+  - Undo 2 → 1, Redo 2.
+  - C (stack) across the bottom band: lowest point 7.5 = the top of the band.
+  - Select A: stretcher back, "Editing: this Wall".
+  - Apply: 3 records saved; reopened: 3.
+  - Clear areas: wall 59, canvas 4c894654 = the baseline.
+  - Clear > Bricks removes the areas.
+  - 0 errors.
+  - Shots re-shot (seat37): item22s2_two_overlapping_areas.png, item22s2_area_across_band.png, item22s2_after_clear_areas.png (+ item22s2_reopened.png).
+- **Probe flake, seen twice this turn:** the first eval right after the reload sometimes gets "Failed to fetch dynamically imported module" for editor-brick-tool.js; a retry passes. A module-by-module import check passes, so this is the probe's timing, not the app.
+- **Full suite:** 3 failed / 4624 passed, all 3 heavy-test timeouts (frame-3d-sweep, frame-radius-handles, frame-template-10); those files pass alone, 68/68.
