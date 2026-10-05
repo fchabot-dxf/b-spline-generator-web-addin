@@ -14310,3 +14310,24 @@ WallPattern = {
 - Full vitest: 1 failure, the known N2 load timeout (98/98 alone).
 
 **Neutral set:** no new persisted P.brickSettings field (masks are runtime `_` fields, not in the persisted layer list); fixture unchanged.
+
+## turn 255 (1): F26 item 2 (b), Delete frame (857a62c), live in Fusion
+- **App:**
+  - [Delete frame] (#btnDeleteFrame, secondary) sits at the end of the sidebar Frame section. The Send frame button it was to sit beside is gone, since the frame rides the one Send.
+  - `deleteFrame()` = `editFrame({ templateId: null, params: {} })`: the same reset as the Clear menu's frame handler. One Frame undo step; the artwork untouched.
+  - In Fusion mode it also sends 'delete_frame'. The reply 'delete_frame_result' goes on the status line ("Frame deleted in Fusion: …" / "No frame to delete in Fusion" / a warn).
+- **Python:** action 'delete_frame' → `_handle_delete_frame`, which runs `_delete_frames(des)` only: the same fb_engine.send_frame.delete_previous_frames a Send uses, by the FrameBuilder/ComponentType tag. B-spline sets, the last import and graphics are untouched. Errors are reported, never shown as a dialog.
+- **Tests:**
+  - JS delete-frame 3 (fail 3/3 pre-change).
+  - pytest test_delete_frame_handler 3 (2/3 fail pre-change; the third pins that nothing else is called).
+  - pytest b-spline-gen 151 green.
+- **Live in Fusion:**
+  - Took the holder (37). Merged main 1f284e4 → 0a9986c and pushed. Stopped the add-in through its module, deployed 2026.10.05-3 from fb-app 0a9986c, ran it again (no stale palette), confirmed the live `bspline_ui` module carries `_handle_delete_frame`.
+  - Scratch document with a tagged "Frame_T" + an untagged "B-Spline Set" (both with a body), then `_handle_delete_frame()` → {ok: true, frames: ['Frame_T']}. After: only B-Spline Set, 1 body left. Scratch document closed; Fred's active document restored.
+  - Holder written back to none.
+- **INCIDENT (mine, recovered):** my first live attempt called `PaletteHTMLEventHandler().notify()` with a plain stand-in object. notify casts to HTMLEventArgs, got None, and its error path opened a MODAL ui.messageBox. That blocked the bridge; every call timed out.
+  - Found it by capturing Fusion's windows without stealing focus (PrintWindow) and closed it with WM_CLOSE to that dialog's hwnd only. Fusion recovered; the scratch document closed through the script's finally.
+  - Lesson: never drive notify() from a script. Call the action's handler method; its own dispatch line is covered by pytest.
+  - Also seen: the live Fusion session holds ~300 stale `bsg_*` probe modules from other seats' tests (sys.modules). Not mine; not touched.
+- Not clicked live: the palette button itself in Fusion. JS sends the action through the same `adsk.fusionSendData` route as every other action.
+- Shots: ~/.bspline-status/shots/seat37/f26_delete_frame_before.png, f26_delete_frame_after.png (web), f26_fusion_win1.png (the dialog I caused).
