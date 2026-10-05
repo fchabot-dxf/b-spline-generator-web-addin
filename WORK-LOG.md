@@ -22011,3 +22011,28 @@ seat 88's scratch audit folder.
 Also queued from the advisor's blind-spot audit (B1): three_band leaves ZERO wall bricks on T6 T9 T11 T14 T15
 T18 at 1 in, and on T9/T11/T18/T19 at every size -- folded into 16(c) part 2's acceptance; (B8) fieldstone lays
 at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
+
+## T86 item 13 -- exclusions: the wall flows around brush strokes (seat B / 88, 2026-10-05)
+- `generateBricks({ exclusions: [{polygon}] })` (37's app stub already sends each brush brick's polygon): each footprint grown
+  by one grout width is a hole in the wall fill (fill-shape.js cutExclusions). Cells cut by geometry.js's new
+  `polygonDifference`; a cut into several pieces makes several cells (fresh ids, no neighbours -> lone 'single' pieces;
+  neighbour links to a cut cell cleared); pieces < EXCLUSION_MIN_PIECE_FRACTION (1/4) of a brick drop; a cell with a
+  footprint wholly inside it drops (`holeIgnored`). The engine returns `exclusionsApplied: true` (37's stub stands down);
+  'exclusions' is in ENGINE_OPTIONS.
+- polygonDifference = Greiner-Hormann's difference walk (clipLoops, shared with intersection). Touching inputs: three
+  traps found by the property test, each fixed by a declared rule rather than a patch per shape:
+  1. a shift can lift the subject's edge clear of a clip sharing it from inside (notch lost) -> a candidate is accepted
+     only when its pieces add up to area(A) - area(A & C);
+  2. a shift can keep two pieces joined by a shift-wide bridge along a shared edge -> the accepted candidate with the
+     MOST pieces wins (a bridge only merges);
+  3. a clip spanning the subject edge-to-edge is bridged whichever way any shift goes -> the clip GROWN by the shift is
+     a candidate too (it crosses every edge it shared).
+- LATENT BUG ON MAIN, fixed here: polygonIntersection on a touching pair wound OPPOSITE ways was wrong (0.2375 sq in
+  for a true 0.0555; or 0 the other way round). clipLoops now orients the clip to the subject's winding (with it for
+  intersection, against it for difference). The property test randomises both windings and checks intersection is
+  winding-blind. Brush bricks wind opposite to wall cells, which is how it showed: every stroke cut wrapped the hole.
+- Tests: bricks-polygon-difference (2 x 3000 grid-snapped cases + units), bricks-exclusions (straight + S-curve strokes
+  over stretcher + herringbone, grid-sampled: 0 wall samples under a stroke, > 97% of the old wall kept outside the
+  footprint, no cut piece under 1/4 brick). Mutation: the old winding line back -> 6/11 fail. Bricks domain 70 files /
+  714 pass; the 6 other test files importing core/bricks 66/66.
+- Shot: shots/seatB/item13_exclusions.png (before/after, 4 cases).
