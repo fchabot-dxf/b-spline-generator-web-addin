@@ -1,10 +1,19 @@
 # bspline-preset-worker
 
 Cloudflare Worker that backs cross-device project sync for the B-Spline
-generator palette. Storage is Cloudflare Workers KV. The Worker is **public
-and unauthenticated** — anyone who knows the URL can read, write, or delete
-projects. Acceptable for a single-user prototype; replace with real auth
-before exposing publicly.
+generator palette. Storage is Cloudflare Workers KV. READS are open; a WRITE
+(PUT/DELETE `/projects/*`, `/presets/*`) needs the edit password, sent as
+`Authorization: Bearer <password>` and checked against the worker secret
+`EDIT_PASSWORD` (F35 item 34; scope declared in `src/edit-gate.js` EDIT_GATE:
+Connery's `connery:` projects stay open, the other routes are untouched).
+3 failed writes per IP per 10 minutes -> 429. Set or change the password,
+from this folder:
+
+```
+npx wrangler secret put EDIT_PASSWORD
+```
+
+Until it is set, project writes answer 503 ("edit password not configured").
 
 The folder is still named `preset-worker/` for git history continuity, but
 the active terminology in the palette UI is "project". The Worker accepts

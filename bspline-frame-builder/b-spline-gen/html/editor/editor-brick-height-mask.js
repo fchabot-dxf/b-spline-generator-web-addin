@@ -21,7 +21,7 @@
 import { buildSpatialIndex, sampleHeight, brickSetById, pointInPolygon } from '../core/bricks/index.js';
 import { preloadSetDetail, sampleDetailAtFor } from './editor-brick-surface.js';
 import { BRICK_GEN_ATTR, BRICK_ATTR } from './editor-brick-tool.js';
-import { accentedBrickIndices, clampAccentLevel } from './brick-accents.js';
+import { accentedBrickIndices, accentedRunIndices, clampAccentLevel } from './brick-accents.js';
 import { surfaceStyleById, styledSet, styledDetail, styleTopJitter, styleAtWear } from './brick-surface-styles.js';
 
 // F35 item 16 follow-up (Fred: "keep the UI responsive... yield between stages if they block the
@@ -67,6 +67,11 @@ function collectLiveBrickGroups(editor, layer, levels = {}) {
       // F35 item 16: + the element's LEVEL (opts.levels, keyed by its kind: wall | frame | brush ...)
       heightOffset: (Number(n.getAttribute('data-brick-height-offset')) || 0) + (Number(levels[n.getAttribute(BRICK_ATTR)]) || 0),
       kind: n.getAttribute(BRICK_ATTR),
+      // per-element accents on runs: the band / stroke it belongs to + its place on that run's own grid
+      band: n.hasAttribute('data-brick-band') ? Number(n.getAttribute('data-brick-band')) : null,
+      row: Number(n.getAttribute('data-brick-row')) || 0,
+      piece: Number(n.getAttribute('data-brick-piece')) || 0,
+      owner: n.getAttribute('data-brick-owner') || null,
     });
   });
   return [...groups.values()];
@@ -113,6 +118,20 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
     // item 32: the SIGNED level (raised or sunk), within its declared range; sampleHeight floors the top at the ground
     const level = clampAccentLevel(accent.levelIn);
     for (const k of accentedBrickIndices(wall, accent, { seed: opts.accentSeed || 1 })) wall[k].heightOffset += level;
+  }
+  // per-element accents on runs (advisor): each Frame BAND its own accent, the Brush accent on every stroke, each on
+  // its own (row, piece) grid -- signed levels, clamped like the Wall's
+  const runAccent = (bricks, acc) => {
+    if (!acc || !acc.preset || acc.preset === 'none' || !Number(acc.levelIn)) return;
+    const level = clampAccentLevel(acc.levelIn);
+    for (const k of accentedRunIndices(bricks, acc, { seed: opts.accentSeed || 1 })) bricks[k].heightOffset += level;
+  };
+  const all = groups.flatMap((g) => g.bricks);
+  (opts.frameBandAccents || []).forEach((acc, i) => runAccent(all.filter((b) => b.kind === 'frame' && b.band === i), acc));
+  if (opts.brushAccent) {
+    const strokes = new Map();
+    for (const b of all) if (b.kind === 'brush') { const k = b.owner || 'stroke'; if (!strokes.has(k)) strokes.set(k, []); strokes.get(k).push(b); }
+    for (const bricks of strokes.values()) runAccent(bricks, opts.brushAccent);
   }
   if (!groups.length) return { body, fillet, isStamped, metrics: null, ...(flat ? { flatTop: { brickOf, count: 0 } } : {}) };
 

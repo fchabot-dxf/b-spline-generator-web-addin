@@ -85,6 +85,34 @@ export const DEFAULT_ACCENT = Object.freeze({ preset: 'none', levelIn: 0.0625, c
 export const ACCENT_LEVEL_RANGE = Object.freeze({ min: -0.125, max: 0.125, step: 0.015625, default: 0.0625 });
 export const clampAccentLevel = (v) => Math.max(ACCENT_LEVEL_RANGE.min, Math.min(ACCENT_LEVEL_RANGE.max, Number(v) || 0));
 
+/** Per-element accents on PATH-FOLLOWING runs (advisor: Frame bands + Brush strokes): the same periodic presets
+ *  and Click bricks as the Wall, on the run's OWN grid -- course = its row (rowIndex), brick = its piece along the
+ *  run (pieceIndex), both stamped by the engine on every band / stroke brick -- over the whole run (no zone). The
+ *  custom TILE builder stays Wall-only (PATTERN_BUILDER_SCOPE). `bricks` = [{ polygon, row, piece }]. */
+export function accentedRunIndices(bricks, accent, ctx = {}) {
+  const out = new Set();
+  if (!accent || !accent.preset || accent.preset === 'none' || !bricks.length) return out;
+  if (accent.preset === ACCENT_CUSTOM.id) {
+    for (const pt of accent.clicks || []) {
+      const k = bricks.findIndex((b) => pointInPolygon(pt.x, pt.y, b.polygon));
+      if (k >= 0) out.add(k);
+    }
+    return out;
+  }
+  const preset = accentPresetById(accent.preset);
+  const rule = preset && ACCENT_MOTIFS[preset.motif];
+  if (!rule) return out;
+  bricks.forEach((b, k) => { if (rule(b.row || 0, b.piece || 0, preset.params, ctx)) out.add(k); });
+  return out;
+}
+/** The element accents a lay / the mask read, declared once: the Wall's (`accent`), one per Frame band
+ *  (`frameBandAccents[i]`) and the Brush element's (`brushAccent`, every stroke on its own grid). */
+export const elementAccents = (settings) => ({
+  wall: settings && settings.accent,
+  frameBands: (settings && settings.frameBandAccents) || [],
+  brush: settings && settings.brushAccent,
+});
+
 /** F35 item 31 step 2: the custom pattern TILE (the builder). An accent `{ preset: 'tile', tile }` raises (or sinks)
  *  the tile's cells, repeated over the whole wall: tile = { rows, cols, cells[row][col], unit, base }. `base` = the
  *  bond the tile is drawn on (the wall pattern it was made for), `unit` = a cell's share of a brick (1 / 0.5 /

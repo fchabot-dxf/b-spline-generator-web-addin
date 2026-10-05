@@ -21,6 +21,7 @@ import { isDirty, markClean, onDirtyChange } from '../core/dirty.js';
 import { confirmDialog } from '../core/confirm-dialog.js';
 import { showToast } from '../core/toast.js';
 import { FRAME_DEFS, findFrameTemplate } from '../core/frame-record.js';
+import { editFetch, bindEditPasswordSettings } from './edit-password.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 function getApiUrl() {
@@ -141,6 +142,7 @@ let _listenersWired = false;  // guard so we only wire listener once per modal
 
 // ─── Public entry point ───────────────────────────────────────────────────────
 export function bindProjectManager(preview) {
+  bindEditPasswordSettings(); // F35 item 34: the Settings field (change / clear the cached edit password)
   _preview = preview;
   _API_URL  = getApiUrl();
 
@@ -1029,7 +1031,7 @@ async function _saveTo(fullName) {
   if (_btnSave) _btnSave.disabled = true;
   setMsg(`Saving "${fullName}"…`);
   try {
-    const r = await fetch(`${_API_URL}/projects/${encodeURIComponent(fullName)}`, {
+    const r = await editFetch(`${_API_URL}/projects/${encodeURIComponent(fullName)}`, {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(buildSnapshot()),
@@ -1210,12 +1212,12 @@ async function onRename() {
     if (!r1.ok) throw new Error(`HTTP ${r1.status}`);
     const body = await r1.text();
 
-    const r2 = await fetch(`${_API_URL}/projects/${encodeURIComponent(newName)}`, {
+    const r2 = await editFetch(`${_API_URL}/projects/${encodeURIComponent(newName)}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body,
     });
     if (!r2.ok) throw new Error(`HTTP ${r2.status}`);
 
-    await fetch(`${_API_URL}/projects/${encodeURIComponent(_selected)}`, { method: 'DELETE' });
+    await editFetch(`${_API_URL}/projects/${encodeURIComponent(_selected)}`, { method: 'DELETE' });
 
     setMsg(`✓ Renamed to "${newName}"`, 'ok');
     // Optimistic: drop the old name, add the new one, instant re-render.
@@ -1276,11 +1278,11 @@ async function renameFolder(oldPath) {
       const r1 = await fetch(`${_API_URL}/projects/${encodeURIComponent(p.name)}`);
       if (!r1.ok) throw new Error(`HTTP ${r1.status}`);
       const body = await r1.text();
-      const r2 = await fetch(`${_API_URL}/projects/${encodeURIComponent(newKey)}`, {
+      const r2 = await editFetch(`${_API_URL}/projects/${encodeURIComponent(newKey)}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body,
       });
       if (!r2.ok) throw new Error(`HTTP ${r2.status}`);
-      await fetch(`${_API_URL}/projects/${encodeURIComponent(p.name)}`, { method: 'DELETE' });
+      await editFetch(`${_API_URL}/projects/${encodeURIComponent(p.name)}`, { method: 'DELETE' });
       _optimisticRemove(p.name);
       _optimisticUpsert(newKey);
       _metaCache.delete(p.name);
@@ -1317,7 +1319,7 @@ async function onDelete() {
 
   setMsg('Deleting…');
   try {
-    const r = await fetch(`${_API_URL}/projects/${encodeURIComponent(_selected)}`, { method: 'DELETE' });
+    const r = await editFetch(`${_API_URL}/projects/${encodeURIComponent(_selected)}`, { method: 'DELETE' });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     setMsg(`✓ Deleted "${_selected}"`, 'ok');
     // Optimistic local removal so the row disappears instantly even if
@@ -1364,7 +1366,7 @@ async function deleteFolder(path) {
   let ok = 0, fail = 0;
   for (const p of inside) {
     try {
-      const r = await fetch(`${_API_URL}/projects/${encodeURIComponent(p.name)}`, { method: 'DELETE' });
+      const r = await editFetch(`${_API_URL}/projects/${encodeURIComponent(p.name)}`, { method: 'DELETE' });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       _optimisticRemove(p.name);
       _metaCache.delete(p.name);
@@ -1423,7 +1425,7 @@ async function checkMigration() {
   let ok = 0, fail = 0;
   for (const [name, snap] of Object.entries(store)) {
     try {
-      const r = await fetch(`${_API_URL}/projects/${encodeURIComponent(name)}`, {
+      const r = await editFetch(`${_API_URL}/projects/${encodeURIComponent(name)}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(snap),
       });
       r.ok ? ok++ : fail++;

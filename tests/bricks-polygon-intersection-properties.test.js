@@ -15,7 +15,10 @@
  *   - the area is the same with the arguments swapped (convex pairs)
  * Every coordinate is on a 0.25 in grid so touching cases are common, not luck; the run asserts that.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
+
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // a heavy sweep: see heavy-test-timeout.js
 import { polygonIntersection, signedArea, isSimplePolygon, isConvex } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 
 const area = (p) => (p.length >= 3 ? Math.abs(signedArea(p)) : 0);

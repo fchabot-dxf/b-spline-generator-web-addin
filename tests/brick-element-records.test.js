@@ -117,11 +117,11 @@ describe('item 22 step 2: element records + brick owners', () => {
     expect(now.layer).toContain('data-brick="wall"');
     // "before item 22": the same drawing with no records and no Wall/Frame owners
     q(ed, `[${BRICK_RECORD_ATTR}]`).forEach((n) => n.remove());
-    q(ed, '[data-brick="wall"],[data-brick="frame"]').forEach((n) => n.removeAttribute('data-brick-owner'));
+    q(ed, '[data-brick="wall"],[data-brick="frame"]').forEach((n) => ['data-brick-owner', 'data-brick-band', 'data-brick-row', 'data-brick-piece'].forEach((a) => n.removeAttribute(a)));
     expect(now.dl).toBe(await saveWithTextCopies(ed));
     expect(now.layer).toBe(getLayerSvg(ed, '1', 96));
     expect(now.dl).toContain('data-brick-owner="be1:0"'); // the brush brick's, as before
-    expect(Object.keys(BRICK_EDITOR_ONLY_ATTRS).sort()).toEqual(['frame', 'wall']); // one declared list
+    expect(Object.keys(BRICK_EDITOR_ONLY_ATTRS).sort()).toEqual(['brush', 'frame', 'wall']); // one declared list
   });
 });
 

@@ -747,7 +747,12 @@ export const BRICK_RECORD_ATTR = 'data-brick-record';
  *  baked output (getLayerSvg -> Send's sketches; the SVG download), so those stay byte-identical to before item
  *  22. Keyed by the brick's `data-brick` kind: Wall/Frame bricks gained an owner in item 22 slice 1; Brush bricks
  *  have always shipped theirs, so they keep it (byte-identical either way). One declared list. */
-export const BRICK_EDITOR_ONLY_ATTRS = Object.freeze({ wall: ['data-brick-owner'], frame: ['data-brick-owner'] });
+export const BRICK_EDITOR_ONLY_ATTRS = Object.freeze({
+  wall: ['data-brick-owner'],
+  // per-element run accents: each band / stroke brick's place on its run's grid (editor-only, like the owner)
+  frame: ['data-brick-owner', 'data-brick-band', 'data-brick-row', 'data-brick-piece'],
+  brush: ['data-brick-band', 'data-brick-row', 'data-brick-piece'],
+});
 /** Strip BRICK_EDITOR_ONLY_ATTRS from one (plain DOM) element; true when it changed anything. */
 export function stripEditorOnlyBrickAttrs(el) {
   const attrs = el && el.getAttribute ? BRICK_EDITOR_ONLY_ATTRS[el.getAttribute('data-brick')] : null;

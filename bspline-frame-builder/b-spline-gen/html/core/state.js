@@ -147,6 +147,10 @@ export const DEFAULT = {
       // F35 item 31: the board's SAVED custom patterns ({ id, label, bond, accent, unit, level }); the browser keeps
       // its own list too (main/brick-panel.js USER_PATTERNS_KEY) -- a board's own copy wins on load
       userPatterns: [],
+      // per-element accents (advisor): one per Frame band (index = the band) and the Brush element's (every stroke,
+      // each on its own grid); same shape as `accent`, periodic presets + Click bricks (no custom tile)
+      frameBandAccents: [],
+      brushAccent: { preset: 'none', levelIn: 0.0625, clicks: [] },
       suppression: 0,
       clumping: 0.3,
       seed: 1,
@@ -154,6 +158,8 @@ export const DEFAULT = {
       // Frame tool bands with -- a key, not the bands array itself, so it
       // always tracks library.js's own current declaration.
       frameBandPreset: 'single_soldier',
+      // item 33: the Frame element's corner (editor-brick-tool.js FRAME_CORNERS id); null = the preset's own
+      frameCorner: null,
       // F35 item 7: the Wall pattern picker's own choice -- any core/bricks/library.js
       // BRICK_PATTERNS key. A key, not the pattern definition itself, same "track the current
       // declaration" convention as frameBandPreset above.
