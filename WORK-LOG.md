@@ -22148,3 +22148,18 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
 - Follow-up (advisor ruling by precedent: a stone set's bands are the stone ring, as White rocks): Set 5 declares
   `bandLayout: 'fieldstone'`; contour-bands setBandPattern reads `set.bandLayout || set.layout`, so Grey stone frames
   lay fieldstone rings with grey faces (a bond set keeps course bands -- tested). Sheet re-rendered.
+
+## T86 item 23 -- wear on rocks (seat B / 88, 2026-10-05)
+- MEASURED first: the Wear amount already reached stones through the app's styledSet (edgeNoiseIn) and pitGain (photo
+  detail), but the edge wear was nearly invisible on them: max height change Wear 0 -> 1 on one stone 0.010 in
+  (White rocks) / 0.008 (Grey stone) against 0.066 on a red brick. Cause: the Weathered style multiplies surfaceShare
+  x2.5, so a stone face is 87.5% photo detail and only 12.5% the shoulder the edge noise moves.
+- Fix, declared per set: heightProfile.wearWholeFace (White rocks, Grey stone). height-profile.js: where the edge
+  noise pulls the shoulder line inward, the detail share dips by the same amount -- the whole face wears at its edge.
+  Wear 0 (edgeNoiseIn 0): worn and plain shoulders agree, no change. Bricks: no flag, untouched. The pits already scale
+  with Wear for stones (pitGain on the shared photo detail). No ENGINE_OPTIONS entry: 'wear' is not a generateBricks
+  input, and 37's Wear row already shows for rock walls by the style alone (item29-rustic-wear.test.js).
+- Tests bricks-wear-rocks (7): Wear 0 = today exactly (both stone sets); Wear 1 wears a stone's edge > 2x what it did
+  and > 0.5x a brick's; bricks untouched. Flag ignored -> 2/7 fail. Domain green (3 of 37's app tests time out at 5 s
+  only under the full concurrent load; 16/16 alone).
+- Shot: shots/seatB/item23_wear_rocks.png (White rocks height map, Wear 0 / 0.5 / 1, before vs after).

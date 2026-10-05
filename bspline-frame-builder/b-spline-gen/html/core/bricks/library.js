@@ -230,6 +230,7 @@ export const BRICK_SETS = Object.freeze([
       chipRate: 0.1, // rock-faced stones read "chippier" than smooth brick -- a higher declared rate
       chipSizeIn: 0.07,
       surfaceShare: 0.35,
+      wearWholeFace: true, // T86 item 23: the Wear amount wears the whole stone face at its edge (height-profile.js)
     },
     // H23 item 74b: 10 stones (shots/advisor/stones_white/stone_02..11.png -- stone_01 excluded,
     // it's a corner/context crop showing the adjacent brick coursing, not a clean stone face),
@@ -272,7 +273,7 @@ export const BRICK_SETS = Object.freeze([
     reliefIn: 0.125,
     reliefMaxIn: 0.25,
     heightJitterIn: 0.02,
-    heightProfile: { edgeRadiusIn: 0.05, crown: 0.1, chipRate: 0.1, chipSizeIn: 0.07, surfaceShare: 0.35 },
+    heightProfile: { edgeRadiusIn: 0.05, crown: 0.1, chipRate: 0.1, chipSizeIn: 0.07, surfaceShare: 0.35, wearWholeFace: true }, // T86 item 23
     samples: Array.from({ length: 64 }, (_, i) => `gs_${String(i + 1).padStart(2, '0')}`).map((id) => ({ id, image: `data/bricks/${id}.jpg` })),
   },
 ]);
