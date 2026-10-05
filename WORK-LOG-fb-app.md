@@ -12965,3 +12965,72 @@ Fred: "in the viewport have a 2D 3D toggle that enters and exits editor mode".
   - Nothing wired. `brickToolIconSvg(id, size, miniOverride)` lets the sheet draw variants; the declared icon is
     unchanged until Fred picks.
   - Test: each treatment draws under the run, currentColor (brick-tool-icons 6/6).
+
+### turn 217 -- F35 item 23, the FOLD: per-element brick Set; the Fieldstone pattern implies the rock set (seat 37)
+
+Fred: "a frame of fieldstone and a wall of soldier"; then "so white rocks and fieldstone is different?" -> folded.
+Contract agreed with 88 by DM (88's engine half: rock-bands-fieldstone 39ca112, on main as 1291d6f, merged here).
+- **ONE source of truth, each set's declared `layout`** (editor-brick-tool.js):
+  - `ROCK_SET_ID` = the set laid as 'fieldstone' (White Rocks, id 3);
+  - `BRICK_SET_IDS` = the sets laid as 'bond' (Red today; Brick 2's unimplemented 'grid' engine stays out; a
+    Grey bond set appears by itself, item 29).
+  - No set id is hard-coded on either side.
+- **Per element:** `P.brickSettings.setIds` = { wall, frame, brush, raisedBrush }, keyed by Brick tool (BRICK_TOOLS
+  `ownsSet`). `elementSetId(settings, kind)`:
+  - a Wall whose pattern is 'fieldstone' -> the rock set;
+  - a Frame whose bands are ALL 'fieldstone' -> the rock set;
+  - otherwise the element's own brick set.
+  - A pre-item-23 single `setId` is the fallback.
+- **The composer lays each element with its own set.** generateBricks takes ONE `scale` (the Wall's) and applies
+  it to the frame's set too, so the frame's set goes in pre-scaled with the engine's own
+  `scaledSet(set, frameScale / wallScale)`. The rock set declares 1.1 in against the bricks' 0.75, so without
+  this a rock frame beside brick walls was 1.47x too big. Live: the frame's stones measured 0.548 in wide with a
+  brick wall AND with a rock wall.
+- **Brushes** freeze their own element's set into each stroke (selectTool: `_brickStrokeOverrides` carries
+  `setId`).
+- **UI:**
+  - The Set row renders from BRICK_SET_IDS (ids `brickSet_<id>`; labels "Red Brick", else the set's name) and
+    edits the ACTIVE tool's element; a rock element shows no brick set active.
+  - A brick-set pick on a rock element turns it back to bricks: the wall's pattern -> stretcher
+    (DEFAULT_WALL_PATTERN), the frame's band overrides cleared.
+  - The sidebar quick Set applies to ALL elements.
+  - The band picker enables Fieldstone from its declared `bandCapable` (d3's T86 item 20). Picking it on one
+    band writes fieldstone on EVERY band (`setFrameRock`), after which only Fieldstone is offered.
+  - A rock frame stays rock across a preset change: every band of the new preset is fieldstone.
+- **Migration** 'brick-set-per-element' (app-init MIGRATIONS, after the size migration that still reads `setId`):
+  `setId` -> setIds for every element. A White Rocks board becomes the Fieldstone pattern on the wall + fieldstone
+  on every band of its preset, with brick sets elsewhere; `setId` is deleted.
+- **REMOVED with White Rocks** (swept):
+  - the #brickSetWhite button (and the static #brickSetRed, now from data) and their listeners;
+  - audit v2 N3's two rules in brick-control-requires.js (course bonds greyed under White Rocks; band list
+    hidden) with COURSE_BONDS -- the combination no longer exists;
+  - their tests (the v2 rules file and the regen N3 test).
+  - grep: no brickSetWhite, brickSetRed or P.brickSettings.setId left in app code.
+- **Tests:**
+  - New brick-element-set (11): rock / brick from the layouts; elementSetId per element, the rock wall, a rock
+    frame needing EVERY band, the old-setId fallback; the migration order, a Red board, a White Rocks board, an
+    already-migrated board.
+  - New "F35 item 23" block in the regen file (7): the Set row from data, no White Rocks; a Wall + Fieldstone is
+    rock; a Frame Fieldstone pick makes every band fieldstone and offers only it; rock across presets; per element
+    (the Frame tool's Set leaves the rock wall alone); the quick Set applies to all; (c) a wall's raised preset
+    with no frame.
+  - Updated for the fold: the set picker, the quick set, Large stones (now via the Fieldstone pattern), the
+    Raised brush overrides (+ setId), N2, N4, brick-default-grout (setIds).
+  - Non-vacuous: against the pre-item-23 sources 17 of the new tests fail.
+- **Fast tier** (125 files): 2112 passed, 4 FAILED in the parallel run -- bricks-fieldstone-large-stones (3,
+  seat B's engine file) and frame-3d-sweep (1). Both are heavy; re-run alone: 5/5 and 8/8. No engine or frame
+  geometry touched. After merging 1291d6f: the item 23 + band/rock files, 189/189.
+- **Live** (served, headless Chrome):
+  - bricks: wall + frame set 1;
+  - a Fieldstone band -> the frame 207 stones of set 3, the wall still set 1, and only fieldstone band buttons;
+  - the wall Fieldstone -> both set 3;
+  - the Frame tool + Red -> the frame back to set 1, the wall stays 3;
+  - a saved White Rocks board (setId 3) reloads as pattern fieldstone + 3 fieldstone bands, setIds all 1, no
+    setId, the quick Fieldstone active;
+  - Fred's own case: a single-soldier frame on Fieldstone around a soldier wall = 88 stones (set 3) + 113 red
+    bricks (set 1). 0 errors.
+- **Shots:** shots/seat37/f35item23_rock_frame_soldier_wall.png, f35item23_rock_wall_brick_frame.png.
+- **Matrix:** 88 re-declares the rows from this sha (agreed list: drop the White Rocks rows; Fieldstone wall =>
+  set-3 bricks; Fieldstone band => every band set 3; a per-element row; PERSIST_BOARD clicks
+  brickPattern_fieldstone; brickSetRed -> brickSet_1).
+- Server 8851 (my own task) stopped.
