@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'persistence'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'persistence'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -55,7 +55,7 @@ const CLOUD_STAND_IN = `(() => {
     return json({ error: 'not found (brick-matrix cloud stand-in)' }, 404);
   };
 })();`;
-const groupOf = (c) => (c.kind === 'opens' ? 'sidebar-quick' : c.kind === 'sidebar' ? (c.do.click?.startsWith('brickQuick_') ? 'sidebar-quick' : 'sidebar-3d')
+const groupOf = (c) => (c.group ? c.group : c.kind === 'opens' ? 'sidebar-quick' : c.kind === 'sidebar' ? (c.do.click?.startsWith('brickQuick_') ? 'sidebar-quick' : 'sidebar-3d')
   : c.kind === 'brush' || c.kind === 'stripe' ? 'brush' : c.tool);
 
 if (arg('only-if-changed')) {
@@ -116,7 +116,7 @@ let serverExit = null; server.on('exit', (code) => { serverExit = code; });
 {
   const want = readFileSync(path.join(ROOT, SERVED_CHECK));
   let got = null;
-  for (let i = 0; i < 50 && serverExit === null; i++) {
+  for (let i = 0; i < 150 && serverExit === null; i++) { // 30 s: under a 10-group --parallel load the 10th server took > 10 s
     await sleep(200);
     try { got = Buffer.from(await (await fetch(`http://127.0.0.1:${HTTP}/${SERVED_CHECK}`)).arrayBuffer()); if (got.equals(want)) break; } catch {}
   }
@@ -208,6 +208,8 @@ async function canvasSettled(before) {
   }
   return last;
 }
+// the distinct data-brick-set values on the bricks of each kind (item 23): { wall: ['3'], frame: ['1'] }
+const brickSets = (kinds) => js(`(()=>{ const out={}; for (const k of ${JSON.stringify(kinds)}) out[k]=[...new Set([...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="'+k+'"]')].map(n=>n.getAttribute('data-brick-set')))]; return JSON.stringify(out); })()`).then(JSON.parse);
 const editorOpen = () => js(`getComputedStyle(document.getElementById('svgEditorModal')).display !== 'none'`);
 async function openBrickTool(tool) {
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
@@ -223,10 +225,12 @@ let Z = null; // the heightmap after the last commit
 const verdict = (observed, expected) => (expected === null ? 'n/a' : observed === expected ? 'PASS' : 'FAIL');
 async function record(c, obs) {
   const v = { pending: verdict(obs.pending, c.expect.pending), canvas: verdict(obs.canvas, c.expect.canvas), threeD: verdict(obs.threeD, c.expect.threeD) };
-  const row = { name: c.name, kind: c.kind, tool: c.tool || null, result: obs.result, observed: { pending: obs.pending, canvas: obs.canvas, threeD: obs.threeD }, expect: c.expect, verdict: v, hashes: obs.hashes };
+  if (c.expect.sets) v.set = obs.setsOk ? 'PASS' : 'FAIL'; // item 23: per-element brick sets
+  if (c.expect.reads) v.reads = obs.readsOk ? 'PASS' : 'FAIL'; // per-element joint (fb-app 1404b72)
+  const row = { name: c.name, kind: c.kind, tool: c.tool || null, result: obs.result, observed: { pending: obs.pending, canvas: obs.canvas, threeD: obs.threeD, sets: obs.sets, reads: obs.reads }, expect: c.expect, verdict: v, hashes: obs.hashes };
   rows.push(row);
   const fail = Object.values(v).includes('FAIL') || obs.result !== 'ok';  // e.g. 'MISSING' / 'DISABLED' control
-  console.log(`${fail ? 'FAIL' : 'pass'}  ${c.name.padEnd(34)} pending ${v.pending.padEnd(4)} canvas ${v.canvas.padEnd(4)} 3D ${v.threeD}${obs.result !== 'ok' ? '  (' + obs.result + ')' : ''}`);
+  console.log(`${fail ? 'FAIL' : 'pass'}  ${c.name.padEnd(34)} pending ${v.pending.padEnd(4)} canvas ${v.canvas.padEnd(4)} 3D ${v.threeD}${v.set ? ' sets ' + v.set + ' ' + JSON.stringify(obs.sets) : ''}${v.reads ? ' reads ' + v.reads + ' ' + JSON.stringify(obs.reads) : ''}${obs.result !== 'ok' ? '  (' + obs.result + ')' : ''}`);
   if (fail) await shot(`FAIL_${c.name.replace(/[^a-z0-9]+/gi, '_')}`);
 }
 
@@ -297,9 +301,13 @@ try {
       const atOnce = c.expect.commit === 'at once';
       if (!atOnce && c.kind === 'editor' && await js(`!!document.getElementById('brickGenerate')?.offsetParent`)) await click('brickGenerate', 1800);
       const c1 = atOnce ? await canvasSettled(c0) : await js(CANVAS);
+      const sets = c.expect.sets ? await brickSets(Object.keys(c.expect.sets)) : null;
+      const reads = c.expect.reads ? JSON.parse(await js(`JSON.stringify(Object.fromEntries(${JSON.stringify(Object.keys(c.expect.reads))}.map((id) => [id, Number(document.getElementById(id)?.value)])))`)) : null;
+      const readsOk = !!reads && Object.entries(c.expect.reads).every(([id, v]) => Math.abs(reads[id] - v) < 1e-6);
+      const setsOk = !!sets && Object.entries(c.expect.sets).every(([k, id]) => sets[k] && sets[k].length === 1 && sets[k][0] === String(id));
       await apply();
       const z1 = await heightsSettled(Z);
-      await record(c, { result, pending: p, canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 } });
+      await record(c, { result, pending: p, canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 }, sets, setsOk, reads, readsOk });
       Z = z1;
     } else if (c.kind === 'relay') {
       // Generate = "re-lay now": take one brick of the tool's kind off the canvas by hand, then Generate must
@@ -371,6 +379,9 @@ try {
     }
   }
   if (!arg('group') || arg('group') === 'layout') await runLayout();
+  if (!arg('group') || arg('group') === 'clear') await runClear();
+  if (!arg('group') || arg('group') === 'lay') await runLayWarnings();
+  if (!arg('group') || arg('group') === 'select') await runSelect();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') await runPersistence();
 } catch (e) {
@@ -514,6 +525,164 @@ async function runLayout() {
   }
 }
 
+// ---------------------------------------------------------------- clear menu (hoisted; CLEAR_MENU in controls.mjs)
+function clearKinds() { return ['frame', 'artwork', 'photo', 'bricks']; }
+// One fingerprint per kind: { empty, hash }. Bricks and art are told apart by the Bricks layers (editor/layers.js
+// isBricksLayer), the way the editor's own layer list does; brickfill-<N> pattern ids are stripped (a counter).
+function clearProbe() { return `(async()=>{ const { P } = await import('./core/state.js'); const L = await import('./editor/layers.js'); const ed = window.svgEditor;
+  const bricksLayers = (ed._layers || []).filter(L.isBricksLayer); const ids = new Set(bricksLayers.map((l) => String(l.id)));
+  const kids = [...ed._sketchLayer.node.children]; const onBricks = (n) => ids.has(String(n.getAttribute('data-layer')));
+  const h = (str) => { let x = 5381; for (let i = 0; i < str.length; i++) x = ((x * 33) ^ str.charCodeAt(i)) >>> 0; return x.toString(36); };
+  const canon = (ns) => ns.map((n) => n.outerHTML.replace(/brickfill-[0-9]+/g, '').replace(/ ?svg-selected/g, '')).join('|');
+  const records = [...ed._sketchLayer.node.querySelectorAll('[data-brick-record]')]; // item 22: hidden <g> records, never art
+  const art = kids.filter((n) => !onBricks(n) && !n.hasAttribute('data-brick-record')), gen = [...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"]')];
+  return JSON.stringify({
+    frame: { empty: P.frame?.templateId == null, hash: h(JSON.stringify(P.frame || null)) },
+    artwork: { empty: art.length === 0, hash: art.length + '#' + h(canon(art)) },
+    photo: { empty: P.photoImageDataUrl == null && !(P.photoEdits || []).length && P.photoPatternId == null,
+      hash: h(String(P.photoImageDataUrl).slice(-300) + JSON.stringify(P.photoEdits || []) + P.photoPatternId) },
+    bricks: { empty: gen.length === 0 && records.length === 0, hash: gen.length + '/' + records.length + '#' + h(canon(gen)) } }); })()`; }
+async function clearFingerprint() { return JSON.parse(await js(clearProbe())); }
+// A board holding all four kinds, each made through the real UI: a photo through the Photo panel's file input,
+// the template_1 frame, a Pen stroke on the Artwork tab, a Wall laid with Generate.
+async function seedClearBoard() {
+  await send('Page.reload', {}); await waitApp();
+  const doc = await send('DOM.getDocument', { depth: 0 });
+  const q = await send('DOM.querySelector', { nodeId: doc.result.root.nodeId, selector: '#photoFileInput' });
+  await send('DOM.setFileInputFiles', { nodeId: q.result.nodeId, files: [path.join(ROOT, CLEAR_MENU.seed.photoFile)] });
+  for (let i = 0; i < 30 && !(await js(`(async()=>{ const { P } = await import('./core/state.js'); return P.photoImageDataUrl != null; })()`)); i++) await sleep(500);
+  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
+  await click('editorTabFrame', 800);
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 'none'; s.value='template_1'; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,1500)); return s.value; })()`);
+  await click('editorTabArtwork', 800); await click('toolDraw', 400); await drag(CLEAR_MENU.seed.stroke); await click('toolSelect', 400);
+  await click('editorTabBrick', 800); await click('brickTool_wall', 800); await click('brickGenerate', 2000);
+  return clearFingerprint();
+}
+function clearRow(name, ok, detail) {
+  rows.push({ name, kind: 'clear', result: 'ok', observed: { detail }, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', clear: ok ? 'PASS' : 'FAIL' } });
+  console.log(`${ok ? 'pass' : 'FAIL'}  ${name.padEnd(48)} ${detail}`);
+}
+async function runClear() {
+  for (const o of CLEAR_MENU.options) {
+    const f0 = await seedClearBoard();
+    const unseeded = clearKinds().filter((k) => f0[k].empty);
+    if (unseeded.length) { clearRow(`${o.name}: clears only its kind`, false, `setup: the seeded board lacks ${unseeded.join(', ')}`); continue; }
+    await click(o.tab, 800);
+    await click(CLEAR_MENU.button, 600);
+    if (!(await exists(o.item))) {
+      rows.push({ name: `${o.name}: clears only its kind`, kind: 'clear', result: `skipped: not in this build (introduced by ${CLEAR_MENU.introducedBy})`, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a' } });
+      console.log(`skip  ${o.name.padEnd(48)} not in this build (introduced by ${CLEAR_MENU.introducedBy})`);
+      continue;
+    }
+    await click(o.item, 800);
+    if (o.confirm === 'ok') await js(`(()=>{ document.querySelector(${JSON.stringify(CLEAR_MENU.confirmOk)})?.click(); return 1; })()`);
+    if (o.confirm === 'keep') await js(`(()=>{ const ok=document.querySelector(${JSON.stringify(CLEAR_MENU.confirmOk)}); const keep=[...(ok?.parentElement?.querySelectorAll('button')||[])].find((b)=>b!==ok); keep?.click(); return 1; })()`);
+    await sleep(2500); // the frame clear re-lays after its 350 ms settle; bricks re-lay at once
+    const f1 = await clearFingerprint();
+    const problems = [];
+    for (const k of clearKinds()) {
+      if (o.clears.includes(k)) { if (!f1[k].empty) problems.push(`${k} not cleared`); }
+      else if (o.changes.includes(k)) { if (f1[k].empty) problems.push(`${k} gone`); }
+      else if (f1[k].hash !== f0[k].hash) problems.push(`${k} changed`);
+    }
+    clearRow(`${o.name}: clears only its kind`, !problems.length,
+      problems.length ? problems.join('; ') : `cleared [${o.clears.join(', ')}]${o.changes.length ? `, re-laid [${o.changes.join(', ')}]` : ''}, the rest identical`);
+    await shot(`clear_${o.item}_${o.confirm || 'run'}`);
+    if (o.undo === false || !o.clears.length) continue;
+    await key('z'); await sleep(2500);
+    const f2 = await clearFingerprint();
+    const notBack = clearKinds().filter((k) => f2[k].hash !== f0[k].hash);
+    clearRow(`${o.name}: one undo restores all`, !notBack.length, notBack.length ? `not restored: ${notBack.join(', ')}` : 'every kind back as seeded');
+  }
+}
+
+// ---------------------------------------------------------------- lay warnings + Select (hoisted)
+function checkRow(kind, name, ok, detail, skip) {
+  if (skip) {
+    rows.push({ name, kind, result: `skipped: not in this build (introduced by ${skip})`, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a' } });
+    console.log(`skip  ${name.padEnd(48)} not in this build (introduced by ${skip})`);
+    return;
+  }
+  rows.push({ name, kind, result: 'ok', observed: { detail }, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', check: ok ? 'PASS' : 'FAIL' } });
+  console.log(`${ok ? 'pass' : 'FAIL'}  ${name.padEnd(48)} ${detail}`);
+}
+async function plainKey(keyName) {
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: keyName, code: keyName, windowsVirtualKeyCode: keyName === 'Escape' ? 27 : 0 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: keyName, code: keyName, windowsVirtualKeyCode: keyName === 'Escape' ? 27 : 0 });
+  await sleep(700);
+}
+async function wallCount() { return js(`window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="wall"]').length ?? -1`); }
+async function noteState(id) {
+  return JSON.parse(await js(`JSON.stringify((()=>{ const n=document.getElementById(${JSON.stringify(id)}); if(!n) return { missing: true }; return { shown: n.offsetParent !== null && getComputedStyle(n).display !== 'none', text: (n.textContent||'').trim() }; })())`));
+}
+async function openEditorTab(tabId) {
+  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
+  await click(tabId, 900);
+}
+
+async function runLayWarnings() {
+  const W = LAY_WARNING;
+  await send('Page.reload', {}); await waitApp();
+  await openEditorTab('editorTabFrame');
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(W.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  await apply(); await heightsSettled(null);
+  await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+  if (!(await exists(W.tooMany))) { checkRow('lay', `${W.template}: too many bands -> no wall + notes`, false, '', W.introducedBy); return; }
+  // 1. bands that cover the board: no wall, both notes say so
+  await click(W.tooMany, 2500);
+  const side1 = await noteState(W.notes.sidebar);
+  await openEditorTab('editorTabBrick'); await click('brickTool_wall', 900); // the Brick panel (and its note) shows once a tool is picked
+  const walls1 = await wallCount(), ed1 = await noteState(W.notes.editor);
+  const ok1 = walls1 === 0 && side1.shown && ed1.shown && side1.text.includes(W.text) && ed1.text.includes(W.text);
+  checkRow('lay', `${W.template}: too many bands -> no wall + notes`, ok1, `wall ${walls1}, sidebar note ${side1.shown ? 'shown' : 'hidden'}, editor note ${ed1.shown ? 'shown' : 'hidden'}${side1.text.includes(W.text) ? '' : ' (text differs: ' + side1.text.slice(0, 60) + ')'}`);
+  await apply(); await heightsSettled(null);
+  // 2. bands that fit again: the wall comes back, both notes go
+  await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+  await click(W.fits, 2500);
+  const side2 = await noteState(W.notes.sidebar);
+  await openEditorTab('editorTabBrick'); await click('brickTool_wall', 900);
+  const walls2 = await wallCount(), ed2 = await noteState(W.notes.editor);
+  checkRow('lay', `${W.template}: bands fit again -> wall back, notes hidden`, walls2 > 0 && !side2.shown && !ed2.shown,
+    `wall ${walls2}, sidebar note ${side2.shown ? 'shown' : 'hidden'}, editor note ${ed2.shown ? 'shown' : 'hidden'}`);
+  if (await editorOpen()) { await apply(); await heightsSettled(null); }
+}
+
+async function runSelect() {
+  const S = SELECT_ELEMENT;
+  await send('Page.reload', {}); await waitApp();
+  await openEditorTab('editorTabBrick');
+  await click('brickTool_wall', 800); await click('brickGenerate', 2000);
+  await click('brickTool_frame', 800); await click('brickGenerate', 2000);
+  if (!(await exists(S.wallSelect))) { checkRow('select', 'Wall tool -> element Select', false, '', S.introducedBy); return; }
+  // 1. the Wall tool arms element Select; the Area sub-tool stays hidden until the engine offers 'wallRegion'
+  await click(S.wallTool, 900);
+  const st = JSON.parse(await js(`JSON.stringify({ mode: window.svgEditor._currentMode, sel: !!document.getElementById(${JSON.stringify(S.wallSelect)})?.classList.contains('active'), area: (()=>{ const n=document.getElementById(${JSON.stringify(S.wallArea)}); return !!n && n.offsetParent !== null; })() })`));
+  checkRow('select', 'Wall tool -> element Select', st.mode === S.selectMode && st.sel && !st.area, `mode ${st.mode}, Select ${st.sel ? 'active' : 'not active'}, Area ${st.area ? 'SHOWN' : 'hidden'}`);
+  // 2. a real click on a frame brick selects the Frame element: its tool, its label, its outline -- drawing untouched
+  const before = await js(CANVAS);
+  const at = JSON.parse(await js(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')]; const n=ns[Math.floor(ns.length/2)]; if(!n) return null; const r=n.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height/2, frames: ns.length }; })())`));
+  if (!at) { checkRow('select', 'Click a frame brick -> the Frame element', false, 'no frame brick on the canvas'); return; }
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y, button: 'none', buttons: 0 });
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 });
+  await sleep(1000);
+  const sel = JSON.parse(await js(`JSON.stringify({ frameTool: !!document.getElementById(${JSON.stringify(S.frameTool)})?.classList.contains('active'), label: (document.getElementById(${JSON.stringify(S.frameLabel.id)})?.textContent||'').trim(), outline: (window.svgEditor._brickElementOutline||[]).length })`));
+  const after = await js(CANVAS);
+  checkRow('select', 'Click a frame brick -> the Frame element', sel.frameTool && sel.label.includes(S.frameLabel.text) && sel.outline === at.frames,
+    `frame tool ${sel.frameTool ? 'active' : 'NOT active'}, label "${sel.label}", outline ${sel.outline} of ${at.frames} frame bricks`);
+  checkRow('select', 'Selecting adds nothing to the drawing', before === after, before === after ? 'canvas hash unchanged' : `canvas changed ${before} -> ${after}`);
+  // 3. Esc once clears the selection (tool stays), Esc twice clears the tool
+  await plainKey('Escape');
+  const e1 = JSON.parse(await js(`JSON.stringify({ outline: (window.svgEditor._brickElementOutline||[]).length, frameTool: !!document.getElementById(${JSON.stringify(S.frameTool)})?.classList.contains('active') })`));
+  checkRow('select', 'Esc once -> selection cleared, tool stays', e1.outline === 0 && e1.frameTool, `outline ${e1.outline}, frame tool ${e1.frameTool ? 'active' : 'cleared'}`);
+  await plainKey('Escape');
+  const e2 = await js(`[...document.querySelectorAll('[id^="brickTool_"].active')].map((b)=>b.id).join(',')`);
+  checkRow('select', 'Esc twice -> no Brick tool active', !e2, e2 ? `still active: ${e2}` : 'no tool active');
+  if (await editorOpen()) { await apply(); await heightsSettled(null); }
+}
+
 // ---------------------------------------------------------------- report (hoisted; shared by --parallel)
 function failRows(rows) {
   return rows.filter((r) => Object.values(r.verdict).includes('FAIL') || !(['ok', 'requires unmet'].includes(r.result) || String(r.result).startsWith('skipped')));
@@ -521,8 +690,8 @@ function failRows(rows) {
 function writeReport(rows, pageErrors) {
   const fails = failRows(rows);
   writeFileSync(path.join(OUT, 'brick-matrix.json'), JSON.stringify({ requiresSource: REQUIRES_SOURCE, rows, pageErrors }, null, 1));
-  const md = ['| Control | Kind | Pending | Canvas | 3D | Greyed out (requires) | Persists | Layout |', '|---|---|---|---|---|---|---|---|',
-    ...rows.map((r) => `| ${r.name} | ${r.kind}${r.tool ? ' (' + r.tool + ')' : ''} | ${r.verdict.pending} | ${r.verdict.canvas} | ${r.verdict.threeD} | ${r.verdict.greyedOut || ''} | ${r.verdict.persists || ''} | ${r.verdict.layout || ''} |`)];
+  const md = ['| Control | Kind | Pending | Canvas | 3D | Greyed out (requires) | Persists | Layout | Clear | Check |', '|---|---|---|---|---|---|---|---|---|---|',
+    ...rows.map((r) => `| ${r.name} | ${r.kind}${r.tool ? ' (' + r.tool + ')' : ''} | ${r.verdict.pending} | ${r.verdict.canvas} | ${r.verdict.threeD} | ${r.verdict.greyedOut || ''} | ${r.verdict.persists || ''} | ${r.verdict.layout || ''} | ${r.verdict.clear || ''} | ${r.verdict.check || ''} |`)];
   const NL = String.fromCharCode(10);
   writeFileSync(path.join(OUT, 'brick-matrix.md'), md.join(NL) + NL + NL + `${fails.length} FAIL row(s); page errors: ${pageErrors.length}` + NL);
 }
