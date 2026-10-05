@@ -12865,3 +12865,45 @@ amended (advisor turn 211); the Cowork handoff's Clear notes were the reference 
 - **Matrix:** the option -> kinds table and one probe per kind (the photo probe included) DM'd to 88, who
   writes the rows.
 - Server 8851 (my own task) stopped.
+
+### turn 213 -- merge main 1d50477, F35 item 24 STEP 1: the Brick tool icon sheet (seat 37)
+
+Merged origin/main (1d50477) into fb-app: clean, 9499256.
+
+**The sheet** (for Fred's look; not wired): shots/seat37/f35item24_icon_sheet.png. Rendered inside the real app
+page. One row per Brick tool: today's emoji, then the new icon at 20 and 40 px, each idle (grey) and active
+(white on the app's blue, the Brick toolbar's current active convention).
+- **Each icon = a hand-drawn tool GLYPH + an engine-drawn MINIATURE** (Fred: "keep the brush"; "mimic the 2D
+  part on the model"). Line style as the editor's own Artwork icons: a 24-unit box, round 2-unit strokes,
+  currentColor only, so the button's colour drives it.
+  - Brush: a paintbrush + the 2-wide run it lays.
+  - Raised brush: the same paintbrush + the run lifted over a dashed shadow line + an up arrow.
+  - Wall: a stretcher wall as laid (about 2 bricks x 3 courses).
+  - Frame: a soldier frame band round a square.
+  - Scissors: scissors + a run with a gap where the blades close.
+  - Stripe: a 3-band run (the flemish / soldier / flemish brush preset) whose middle third is hollow.
+- Declared: editor/brick-tool-icons.js `BRICK_TOOL_ICONS` (tool id -> glyph + mini {kind, box, cut / stripe /
+  lifted}). The miniatures come from editor-brick-tool.js `toolMiniBricks(kind)`, laid with the real engine
+  (applyWallPattern + generateBricks, bricksForBrushStroke, the frame composer), Set 1 at its own size. The
+  brush runs are data too (`TOOL_MINI_RUNS`: preset + stroke length).
+- **Iterations (measured on the sheet, not argued):**
+  - Sheet 1: the runs were 3.2 in long x 0.4 in wide, 8:1, and read as a dotted line at 20 px; Stripe's hollow
+    middle and the Scissors gap vanished.
+  - Sheet 2: shorter runs and a narrower wall. Stripe was still thin.
+  - Sheet 3: Stripe and Scissors on the 3-band run; Scissors got crowded.
+  - Sheet 4 (the one passed): Scissors back on a longer 2-wide run with a clear gap; Stripe on a longer
+    3-band run.
+  - Stripe is the WEAKEST at 20 px: its alternation only just reads. If Fred prefers, Stripe can keep a ruler
+    glyph, as the item allows.
+- **Other toolbars:** the Artwork toolbar already uses line SVGs (same style). The PHOTO toolbar is emoji too
+  (crop ⬚, 📐, 🔄, 🎚️, 🌫️): a follow-up in this style, as the item asks.
+- **For step 2 (wiring):** `.tool-btn.active svg` (editor.css) forces every SVG stroke to #1a1a1a at 2.5 px.
+  That would blacken these icons on the Brick toolbar's blue active fill and fatten their hollow runs. The
+  wiring needs that rule scoped away from the registry buttons. The sheet shows the intended look with inline
+  styles.
+- **Tests:** new tests/brick-tool-icons.test.js (5): one icon per tool in the 24 box; real parsed polygons inside
+  it; currentColor only; the metaphors (a brush on both brushes, scissors, a cut gap, hollow stripe runs); all
+  six differ. Mutations: a fixed colour -> the monochrome test fails; no cut -> the metaphor test fails.
+- **Fast tier** (brick / icon / accent, 58 files): 614 passed (+4 todo), 0 failed.
+- Server 8851 (my own task) stopped. One slip: I first started it with a bare `&` (untracked), then found its
+  PID on the port and stopped that one process, and restarted it as a tracked task.
