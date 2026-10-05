@@ -168,16 +168,18 @@ def _point_seed_from(ctx, s_name, seed_from, geo_id):
     seeded arc's endpoint ACTUALLY landed after `addByThreePoints`, not a declaration-time literal.
 
     H23 item 78c: `'side': 'short-arc-mid'` -- the SOURCE ARC's own minor-arc midpoint, derived from
-    its CURRENT center/radius/endpoints, not a declaration-time literal either. Fixes a real bug
-    this item found (affects T10's own archRise handle too, not just T18's): a `Rebuild` arc whose
-    two ends track a seed via `SeedFrom` but whose own forcing/apex point was a FIXED literal (e.g.
-    `template_10/phases/p02_12_arch_rebuild.py`'s own old `LY`, "the safe zone's own top line")
-    assumed the apex always sits on that one fixed line -- true only for the ONE archRise value that
-    literal happened to be tuned against. Every OTHER archRise sends a seeded arc whose real apex is
-    at a genuinely different height (`hourglassConstruction`'s own sagitta-circle `arch` block:
-    apex = chord + archRise, no fixed ceiling at all), so the old literal silently built the WRONG
-    circle at the range ends -- not a branch-selection ambiguity like the entries above, a flatly
-    incorrect target. The MINOR arc's own midpoint needs no stored apex at all: for a circle of
+    its CURRENT center/radius/endpoints, not a declaration-time literal either. For T18 (whose arch
+    apex moves with archRise: `hourglassConstruction`'s sagitta-circle `arch` block, apex = chord +
+    archRise) a FIXED apex literal built the wrong circle at the range ends; this mode fixed it.
+
+    H23 item 81 (MEASURED, app + live) -- NOT FOR TEMPLATE 10: T10's apex sits ON the safe-zone top
+    line for EVERY archRise (the app's frameCutProfile: apex - top = 0.0000 at 7x9 and 9x12; only the
+    chord ends move down), so `template_10/phases/p02_12_arch_rebuild.py`'s fixed `LY` apex IS T10's
+    design rule (live every-handle matrix 18/18 BUILT, apex - LY = 0.0000 in all 18). And between
+    p02_03 and p02_12, T10's `top_edge` has both ends pinned and NO constraint on its bulge -- a free
+    DOF the chain's solve moves freely -- so reading its short-arc midpoint there builds a wrong,
+    drifting arch (the "apex drift" item 78c saw). Use this mode only on an arc whose bulge is
+    actually determined when it is read. The MINOR arc's own midpoint needs no stored apex at all: for a circle of
     radius `r` centred at `C` through two known points `S`/`E`, it is the point `r` out from `C`
     along `unit(S-C) + unit(E-C)` -- the two points' own angular bisector, which always lies on the
     SHORTER of the two arcs they divide the circle into (the sum of two unit vectors across an angle
