@@ -12,10 +12,10 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js'
   return { ...actual, runBricks: vi.fn(() => ({ wallCount: 3, frameCount: 0 })), runBricksPreview: vi.fn(), runBricksOutlinePreview: vi.fn(), buildRibbonPrimitives: vi.fn(() => []) };
 });
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/toast.js', () => ({ showToast: vi.fn() }));
-const engineOpts = vi.hoisted(() => ({ extra: [] }));
+const engineOpts = vi.hoisted(() => ({ extra: [], without: ['accentCuts'] })); // T86 item 26 lists accentCuts: test both states
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, get ENGINE_OPTIONS() { return [...actual.ENGINE_OPTIONS, ...engineOpts.extra]; } };
+  return { ...actual, get ENGINE_OPTIONS() { return [...actual.ENGINE_OPTIONS.filter((o) => !engineOpts.without.includes(o)), ...engineOpts.extra]; } };
 });
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js', async (importOriginal) => {
   const actual = await importOriginal();

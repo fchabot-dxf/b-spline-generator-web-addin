@@ -47,6 +47,8 @@ const LAYOUTS = Object.freeze({
  *   layout here, same as `opts.zones` is bond-only); see its own header for the declared range.
  * @param {{outer:{x:number,y:number}[], holes?:{x:number,y:number}[][]}[]} [opts.region] -- T86 item 18: the wall lays only
  *   inside these (clipCellsToRegion); absent = the whole outline
+ * @param {{unit:number, tile:{rows:number, cols:number, cells:boolean[][]}}} [opts.accentCuts] -- T86 item 26: bond
+ *   layouts split bricks on the accent tile's sub-brick grid and mark each piece (layouts/bond.js applyAccentCuts)
  * @param {number} [opts.rotationDeg=0] -- T86 item 29: the pattern turned by this angle (rotatedFill)
  * @param {{polygon:{x:number,y:number}[]}[]} [opts.exclusions] -- T86 item 13: brush-stroke footprints the wall
  *   flows around (cutExclusions below)
@@ -184,7 +186,7 @@ export function bricksFillShape(polygon, holes, opts) {
 
   const layoutFn = LAYOUTS[set.layout];
   if (!layoutFn) return { bricks: [] };
-  const { cells: allCells } = layoutFn(polygon, set, opts.zones, seed, opts.largeStones, opts.fences);
+  const { cells: allCells } = layoutFn(polygon, set, opts.zones, seed, opts.largeStones, opts.fences, opts.accentCuts);
   let cells = (holes && holes.length)
     ? allCells.filter((c) => !holes.some((h) => pointInPolygon(c.cx, c.cy, h)))
     : allCells;
@@ -208,6 +210,7 @@ export function bricksFillShape(polygon, holes, opts) {
       sampleId: sample ? sample.sampleId : null,
       flip: sample ? sample.flip : false,
       heightOffset: sample ? sample.heightOffset : 0,
+      ...(cell.accentMarked !== undefined ? { accentMarked: cell.accentMarked } : {}), // T86 item 26
     });
   }
   return { bricks };

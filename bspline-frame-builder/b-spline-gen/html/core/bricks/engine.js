@@ -53,6 +53,7 @@ export const ENGINE_OPTIONS = Object.freeze([
   'bandFit', // T86 item 28: false = draw the frame stack as requested (icons); default: the fit rule
   'rotationDeg', // T86 item 29: the wall pattern turned by this angle (0 / 45 / 90 chips); default 0
   'wallRegion', // T86 item 18: the wall lays only in the painted areas (wallRegionOf)
+  'accentCuts', // T86 item 26: an accent tile at 1/2 or 1/4 brick splits bricks and marks the pieces (accentMarked)
 ]);
 
 export function generateBricks(input) {
@@ -98,6 +99,7 @@ export function generateBricks(input) {
     zones: input.zones,
     largeStones: input.largeStones,
     rotationDeg: input.rotationDeg,
+    accentCuts: input.accentCuts,
     exclusions: input.exclusions,
     region,
   }).bricks;
