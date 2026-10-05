@@ -13586,3 +13586,16 @@ the lay; laid key per element after that.
 
 **Next (step 3):** the laid key per element: the records' `data-brick-laid` replaces `layer.brickLaidKey` /
 `brickLaidKinds`, and the item-27 frame / brush re-lays compare their own element's key.
+
+### turn 229 -- item 22 slice 1: the bake strips editor-only brick attributes (advisor: yes) (seat 37)
+
+- One declared list, `BRICK_EDITOR_ONLY_ATTRS` (layers.js), keyed by the brick's `data-brick` kind:
+  `{ wall: ['data-brick-owner'], frame: ['data-brick-owner'] }`. `stripEditorOnlyBrickAttrs(el)` applies it at
+  the TWO bake choke points:
+  - `_parseLayerContent` (-> getLayerSvg -> Send's art sketches and its Bricks sketch);
+  - the SVG download (`_serializeVisibleLayers`, on a clone; the canvas keeps its owners).
+- Scope = "byte-identical to before item 22": Brush bricks have always shipped their owner and keep it; the other
+  data-brick-* attributes always shipped too. Only what slice 1 ADDED is stripped.
+- Test (brick-element-records, +1): after a slice-1 lay (records + owners, plus a brush brick), the download and
+  getLayerSvg equal the SAME drawing with the records and Wall/Frame owners removed. The brush owner stays.
+  Mutation (the strip reverted) -> it fails. Whole vitest: 4395 passed, 0 failed.

@@ -743,6 +743,19 @@ export function isBricksLayer(layer) {
 /** F35 item 22 slice 1: the attribute that marks a brick ELEMENT RECORD (editor-brick-tool.js) -- an invisible
  *  bookkeeping node (display none: never drawn, hit, exported or downloaded), never part of the drawing. */
 export const BRICK_RECORD_ATTR = 'data-brick-record';
+/** F35 item 22 (advisor): brick attributes the editor keeps for ITSELF and never bakes -- stripped from every
+ *  baked output (getLayerSvg -> Send's sketches; the SVG download), so those stay byte-identical to before item
+ *  22. Keyed by the brick's `data-brick` kind: Wall/Frame bricks gained an owner in item 22 slice 1; Brush bricks
+ *  have always shipped theirs, so they keep it (byte-identical either way). One declared list. */
+export const BRICK_EDITOR_ONLY_ATTRS = Object.freeze({ wall: ['data-brick-owner'], frame: ['data-brick-owner'] });
+/** Strip BRICK_EDITOR_ONLY_ATTRS from one (plain DOM) element; true when it changed anything. */
+export function stripEditorOnlyBrickAttrs(el) {
+  const attrs = el && el.getAttribute ? BRICK_EDITOR_ONLY_ATTRS[el.getAttribute('data-brick')] : null;
+  if (!attrs) return false;
+  let changed = false;
+  for (const a of attrs) if (el.hasAttribute(a)) { el.removeAttribute(a); changed = true; }
+  return changed;
+}
 /** The board's brick layer (one, until slice 3 puts bricks on any layer), or null. */
 export function bricksLayerOf(editor) {
   return ((editor && editor._layers) || []).find(isBricksLayer) || null;

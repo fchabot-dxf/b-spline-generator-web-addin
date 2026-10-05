@@ -16,8 +16,8 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async
 import {
   runBricks, brickRecordNode, BRICK_RECORD_KINDS, BRICK_RECORD_ATTR, regenerateOwnedBrickElements, elementSettings,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
-import { saveWithTextCopies } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
-import { isEditableByLayer, isOnVisibleLayer } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
+import { saveWithTextCopies, getLayerSvg } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
+import { isEditableByLayer, isOnVisibleLayer, BRICK_EDITOR_ONLY_ATTRS } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 /** An SVG.js-shaped sketch layer over a real DOM node (chainable elements, children() over the live DOM). */
@@ -103,5 +103,21 @@ describe('item 22 step 2: element records + brick owners', () => {
     const svg = await saveWithTextCopies(ed);
     expect(svg).toContain('data-brick="wall"');
     expect(svg).not.toContain(BRICK_RECORD_ATTR);
+  });
+
+  it('BYTE-IDENTICAL to before item 22 (advisor): the download and the baked layer SVG equal the same board WITHOUT records or Wall/Frame owners', async () => {
+    const ed = fakeEditor();
+    runBricks(ed, P.brickSettings, null);
+    // a brush brick keeps its owner (it always shipped it)
+    const brush = ed._sketchLayer.polygon('0,0 1,0 1,1'); brush.attr('data-brick', 'brush').attr('data-brick-gen', '1').attr('data-layer', '1').attr('data-brick-owner', 'be1:0');
+    const now = { dl: await saveWithTextCopies(ed), layer: getLayerSvg(ed, '1', 96) };
+    expect(now.layer).toContain('data-brick="wall"');
+    // "before item 22": the same drawing with no records and no Wall/Frame owners
+    q(ed, `[${BRICK_RECORD_ATTR}]`).forEach((n) => n.remove());
+    q(ed, '[data-brick="wall"],[data-brick="frame"]').forEach((n) => n.removeAttribute('data-brick-owner'));
+    expect(now.dl).toBe(await saveWithTextCopies(ed));
+    expect(now.layer).toBe(getLayerSvg(ed, '1', 96));
+    expect(now.dl).toContain('data-brick-owner="be1:0"'); // the brush brick's, as before
+    expect(Object.keys(BRICK_EDITOR_ONLY_ATTRS).sort()).toEqual(['frame', 'wall']); // one declared list
   });
 });

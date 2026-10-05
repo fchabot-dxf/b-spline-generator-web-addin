@@ -7,7 +7,7 @@ import { encodeLayersAttr, repairLayersAttr } from './layers-attr.js';
 import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { applyToolingDefaults, migrateLegacyBricksLayer, BRICK_RECORD_ATTR, addLayer, setActiveLayer, isExported, syncLayerZOrder } from './layers.js';
+import { applyToolingDefaults, migrateLegacyBricksLayer, BRICK_RECORD_ATTR, stripEditorOnlyBrickAttrs, addLayer, setActiveLayer, isExported, syncLayerZOrder } from './layers.js';
 import { OWNERSHIP_ATTR, BOUNDARY_REF_ATTR, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
@@ -65,7 +65,11 @@ function _serializeVisibleLayers(editor) {
     const raw = editor._sketchLayer.children().toArray()
         .filter(ch => exportedIds.has(String(ch.attr('data-layer'))))
         .filter(ch => !ch.attr(BRICK_RECORD_ATTR)) // item 22: an element record is bookkeeping, never downloaded
-        .map(ch => ch.node.outerHTML)
+        .map(ch => {
+            // item 22: editor-only brick attributes never leave the editor (layers.js BRICK_EDITOR_ONLY_ATTRS)
+            const copy = ch.node.cloneNode(true);
+            return stripEditorOnlyBrickAttrs(copy) ? copy.outerHTML : ch.node.outerHTML;
+        })
         .join('');
     return stripSvgjsAttributes(raw);
 }
@@ -200,6 +204,7 @@ function _parseLayerContent(editor, layerId, dpi, options = {}) {
         if (lid == null || String(lid) !== targetId || ch.getAttribute('display') === 'none') { ch.remove(); return; }
         if (excludePattern && (ch.hasAttribute(OWNERSHIP_ATTR)
             || (excludeShapeId && ch.getAttribute(BOUNDARY_REF_ATTR) === excludeShapeId))) { ch.remove(); return; }
+        stripEditorOnlyBrickAttrs(ch); // item 22: editor-only brick attributes are never baked
         kept++;
     });
     if (kept === 0) return null;
