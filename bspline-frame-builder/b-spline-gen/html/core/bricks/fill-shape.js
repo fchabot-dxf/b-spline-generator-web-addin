@@ -45,6 +45,7 @@ const LAYOUTS = Object.freeze({
  * @param {number} opts.seed
  * @param {number} [opts.largeStones] — T86 item 17: fieldstoneLayout-only (ignored by every other
  *   layout here, same as `opts.zones` is bond-only); see its own header for the declared range.
+ * @param {number} [opts.rotationDeg=0] -- T86 item 29: the pattern turned by this angle (rotatedFill)
  * @param {{polygon:{x:number,y:number}[]}[]} [opts.exclusions] -- T86 item 13: brush-stroke footprints the wall
  *   flows around (cutExclusions below)
  * @param {{x:number,y:number}[][]} [opts.fences] -- fieldstone only: closed lines that bound the stones exactly
@@ -106,7 +107,29 @@ function cutExclusions(cells, exclusions, set) {
   return out;
 }
 
+/**
+ * T86 item 29 (advisor: not a pattern but an angle every wall pattern gets; "running bond at 45" = stretcher +
+ * rotation 45): `opts.rotationDeg` turns the whole pattern about the outline's bounding-box centre. The outline (and
+ * holes, exclusions, fences) is turned by -rotationDeg, laid exactly as at 0 (same seed, every layout's own exact
+ * clip against the turned outline), and every brick is turned back by +rotationDeg. Absent or 0: the plain path.
+ */
+function rotatedFill(polygon, holes, opts) {
+  const t = (opts.rotationDeg * Math.PI) / 180;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of polygon) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const turn = (a) => { const c = Math.cos(a), s = Math.sin(a); return (p) => ({ x: cx + (p.x - cx) * c - (p.y - cy) * s, y: cy + (p.x - cx) * s + (p.y - cy) * c }); };
+  const into = turn(-t), back = turn(t);
+  const res = bricksFillShape(polygon.map(into), holes && holes.map((h) => h.map(into)), {
+    ...opts, rotationDeg: 0,
+    ...(opts.exclusions ? { exclusions: opts.exclusions.map((e) => ({ ...e, polygon: e.polygon.map(into) })) } : {}),
+    ...(opts.fences ? { fences: opts.fences.map((f) => f.map(into)) } : {}),
+  });
+  return { ...res, bricks: res.bricks.map((b) => ({ ...b, polygon: b.polygon.map(back) })) };
+}
+
 export function bricksFillShape(polygon, holes, opts) {
+  if (opts.rotationDeg) return rotatedFill(polygon, holes, opts);
   const { seed } = opts;
   const set = scaledSet(opts.set, opts.scale);
   const suppression = opts.suppression ?? 0;
