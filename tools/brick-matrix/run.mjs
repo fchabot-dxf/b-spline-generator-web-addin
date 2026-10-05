@@ -55,7 +55,7 @@ const CLOUD_STAND_IN = `(() => {
     return json({ error: 'not found (brick-matrix cloud stand-in)' }, 404);
   };
 })();`;
-const groupOf = (c) => (c.kind === 'opens' ? 'sidebar-quick' : c.kind === 'sidebar' ? (c.do.click?.startsWith('brickQuick_') ? 'sidebar-quick' : 'sidebar-3d')
+const groupOf = (c) => (c.group ? c.group : c.kind === 'opens' ? 'sidebar-quick' : c.kind === 'sidebar' ? (c.do.click?.startsWith('brickQuick_') ? 'sidebar-quick' : 'sidebar-3d')
   : c.kind === 'brush' || c.kind === 'stripe' ? 'brush' : c.tool);
 
 if (arg('only-if-changed')) {
@@ -208,6 +208,8 @@ async function canvasSettled(before) {
   }
   return last;
 }
+// the distinct data-brick-set values on the bricks of each kind (item 23): { wall: ['3'], frame: ['1'] }
+const brickSets = (kinds) => js(`(()=>{ const out={}; for (const k of ${JSON.stringify(kinds)}) out[k]=[...new Set([...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="'+k+'"]')].map(n=>n.getAttribute('data-brick-set')))]; return JSON.stringify(out); })()`).then(JSON.parse);
 const editorOpen = () => js(`getComputedStyle(document.getElementById('svgEditorModal')).display !== 'none'`);
 async function openBrickTool(tool) {
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
@@ -223,10 +225,11 @@ let Z = null; // the heightmap after the last commit
 const verdict = (observed, expected) => (expected === null ? 'n/a' : observed === expected ? 'PASS' : 'FAIL');
 async function record(c, obs) {
   const v = { pending: verdict(obs.pending, c.expect.pending), canvas: verdict(obs.canvas, c.expect.canvas), threeD: verdict(obs.threeD, c.expect.threeD) };
-  const row = { name: c.name, kind: c.kind, tool: c.tool || null, result: obs.result, observed: { pending: obs.pending, canvas: obs.canvas, threeD: obs.threeD }, expect: c.expect, verdict: v, hashes: obs.hashes };
+  if (c.expect.sets) v.set = obs.setsOk ? 'PASS' : 'FAIL'; // item 23: per-element brick sets
+  const row = { name: c.name, kind: c.kind, tool: c.tool || null, result: obs.result, observed: { pending: obs.pending, canvas: obs.canvas, threeD: obs.threeD, sets: obs.sets }, expect: c.expect, verdict: v, hashes: obs.hashes };
   rows.push(row);
   const fail = Object.values(v).includes('FAIL') || obs.result !== 'ok';  // e.g. 'MISSING' / 'DISABLED' control
-  console.log(`${fail ? 'FAIL' : 'pass'}  ${c.name.padEnd(34)} pending ${v.pending.padEnd(4)} canvas ${v.canvas.padEnd(4)} 3D ${v.threeD}${obs.result !== 'ok' ? '  (' + obs.result + ')' : ''}`);
+  console.log(`${fail ? 'FAIL' : 'pass'}  ${c.name.padEnd(34)} pending ${v.pending.padEnd(4)} canvas ${v.canvas.padEnd(4)} 3D ${v.threeD}${v.set ? ' sets ' + v.set + ' ' + JSON.stringify(obs.sets) : ''}${obs.result !== 'ok' ? '  (' + obs.result + ')' : ''}`);
   if (fail) await shot(`FAIL_${c.name.replace(/[^a-z0-9]+/gi, '_')}`);
 }
 
@@ -297,9 +300,11 @@ try {
       const atOnce = c.expect.commit === 'at once';
       if (!atOnce && c.kind === 'editor' && await js(`!!document.getElementById('brickGenerate')?.offsetParent`)) await click('brickGenerate', 1800);
       const c1 = atOnce ? await canvasSettled(c0) : await js(CANVAS);
+      const sets = c.expect.sets ? await brickSets(Object.keys(c.expect.sets)) : null;
+      const setsOk = !!sets && Object.entries(c.expect.sets).every(([k, id]) => sets[k] && sets[k].length === 1 && sets[k][0] === String(id));
       await apply();
       const z1 = await heightsSettled(Z);
-      await record(c, { result, pending: p, canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 } });
+      await record(c, { result, pending: p, canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 }, sets, setsOk });
       Z = z1;
     } else if (c.kind === 'relay') {
       // Generate = "re-lay now": take one brick of the tool's kind off the canvas by hand, then Generate must

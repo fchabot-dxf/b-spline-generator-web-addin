@@ -25,6 +25,9 @@
 // do:     { click: id } | { set: id, value, event }   (event: 'input' | 'change')
 // expect: { pending, canvas, threeD }: true / false = must / must not change; null = not checked.
 //   commit: 'at once' -- the canvas is read straight after the change (no Generate click).
+//   sets: { <brick kind>: <set id> } -- after the change every brick of that kind carries that data-brick-set
+//     (item 23, seat 37 fb-app 40c4bdf: the set is per element; a Fieldstone wall or band lays the rock set).
+// group: run the row in another group than its tool's own (it needs that group's state).
 // requires: { control, satisfied, why } -- the setting only has an effect while ANOTHER control is in a
 //   given state (satisfied: { gt: n } on a number input's value, or { active: true } on a button). While it
 //   is NOT satisfied the control must be greyed out (disabled, tooltip = why) and the row checks exactly that;
@@ -47,11 +50,11 @@ const set = (id, value, event = 'change') => ({ set: id, value, event });
 
 export const BRICK_CONTROLS = [
   // ---- editor, Wall tool
-  { name: 'Set: White Rocks', kind: 'editor', tool: 'wall', do: click('brickSetWhite'), expect: LAYOUT },
-  { name: 'Set: Red Brick', kind: 'editor', tool: 'wall', do: click('brickSetRed'), expect: LAYOUT },
+  // (item 23: the Set row lists the brick sets only -- today just Red Brick -- so it has no row to change;
+  // rocks come from the Fieldstone pattern, checked by `sets` below)
   { name: 'Wall pattern: Herringbone', kind: 'editor', tool: 'wall', do: click('brickPattern_herringbone'), expect: LAYOUT },
   { name: 'Wall pattern: Basketweave', kind: 'editor', tool: 'wall', do: click('brickPattern_basketweave'), expect: LAYOUT },
-  { name: 'Wall pattern: Fieldstone', kind: 'editor', tool: 'wall', do: click('brickPattern_fieldstone'), expect: LAYOUT },
+  { name: 'Wall pattern: Fieldstone', kind: 'editor', tool: 'wall', do: click('brickPattern_fieldstone'), expect: { ...LAYOUT, sets: { wall: 3 } } },
   // shown only for a fieldstone wall (White Rocks or the Fieldstone pattern) -- hence right after the row above
   { name: 'Large stones 0.6 (Fieldstone)', kind: 'editor', tool: 'wall', do: set('brickLargeStones', 0.6), expect: LAYOUT, introducedBy: '88c7616' },
   { name: 'Wall pattern: None', kind: 'editor', tool: 'wall', do: click('brickPattern_none'), expect: LAYOUT },
@@ -79,6 +82,11 @@ export const BRICK_CONTROLS = [
   // ---- editor, Frame tool
   { name: 'Frame preset: 3-band', kind: 'editor', tool: 'frame', do: click('brickFramePreset_three_band'), expect: LAYOUT },
   { name: 'Band 1 pattern: Header', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_header'), expect: LAYOUT },
+  // item 23: a Fieldstone band makes the whole frame rock (every band); then the per-element rule -- the Frame
+  // tool's Set changes the frame only, a rock wall stays rock
+  { name: 'Band 1 pattern: Fieldstone', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_fieldstone'), expect: { ...LAYOUT, sets: { frame: 3 } }, introducedBy: '40c4bdf' },
+  { name: 'Wall pattern: Fieldstone (frame group)', kind: 'editor', tool: 'wall', group: 'frame', do: click('brickPattern_fieldstone'), expect: { ...LAYOUT, sets: { wall: 3 } }, introducedBy: '40c4bdf' },
+  { name: 'Frame Set: Red Brick, the rock wall stays', kind: 'editor', tool: 'frame', do: click('brickSet_1'), expect: { ...LAYOUT, sets: { frame: 1, wall: 3 } }, introducedBy: '40c4bdf' },
   { name: 'Frame offset distance 0.25', kind: 'editor', tool: 'frame', do: set('brickFrameOffsetDistance', 0.25), expect: LAYOUT },
   { name: 'Frame offset off', kind: 'editor', tool: 'frame', do: click('brickFrameOffsetOn'), expect: LAYOUT },
   { name: 'Frame offset on', kind: 'editor', tool: 'frame', do: click('brickFrameOffsetOn'), expect: LAYOUT },
@@ -101,8 +109,7 @@ export const BRICK_CONTROLS = [
   { name: 'Stripe B: Red continuous', kind: 'stripe', do: click('stripeBrickStyle_B_red_continuous'), expect: STRIPE, introducedBy: '702876d' },
   { name: 'Stripe C: White bricks', kind: 'stripe', do: click('stripeBrickStyle_C_white_bricks'), expect: STRIPE, introducedBy: '702876d', requires: NEEDS_THREE_STYLES },
   // ---- main sidebar
-  { name: 'Quick set: White Rocks', kind: 'sidebar', do: click('brickQuick_set_3'), expect: AUTO },
-  { name: 'Quick set: Red Brick', kind: 'sidebar', do: click('brickQuick_set_1'), expect: AUTO },
+  // (item 23: the quick Set row lists the brick sets only -- one choice today, nothing to change)
   { name: 'Quick size: 1-1/2', kind: 'sidebar', do: click('brickQuick_size_half1'), expect: AUTO },
   { name: 'Quick size: 3/4', kind: 'sidebar', do: click('brickQuick_size_quarter3'), expect: AUTO },
   { name: 'Quick pattern: Herringbone', kind: 'sidebar', do: click('brickQuick_pattern_herringbone'), expect: AUTO },
@@ -158,7 +165,7 @@ export const REQUIRES_SOURCE = Array.isArray(appRequires) ? 'app (main/brick-con
 //   bricks: { name, kind } -- the canvas holds bricks of that kind and every one of them is painted
 export const PERSIST_BOARD = {
   setup: [
-    { tool: 'wall' }, click('brickSetWhite'), click('brickPattern_herringbone'), click('brickSizePreset_half1'),
+    { tool: 'wall' }, click('brickPattern_fieldstone'), click('brickSizePreset_quarter3'),
     set('brickLevel_wall', 0.0625), click('brickGenerate'),
     { tool: 'frame' }, click('brickFramePreset_three_band'), click('brickGenerate'),
     { tool: 'brush' }, { stroke: [[0.3, 0.45], [0.7, 0.45]] },
@@ -166,15 +173,13 @@ export const PERSIST_BOARD = {
     { sidebar: true }, click('brickSurfaceStyle_weathered'), set('brickReliefHeight', 0.2),
   ],
   panel: [
-    { name: 'Set: White Rocks', active: 'brickSetWhite' },
-    { name: 'Wall pattern: Herringbone', active: 'brickPattern_herringbone' },
-    { name: 'Brick size 1.5', value: ['brickSize', 1.5] },
+    { name: 'Wall pattern: Fieldstone', active: 'brickPattern_fieldstone' },
+    { name: 'Brick size 0.75', value: ['brickSize', 0.75] },
     { name: 'Wall Level 1/16', value: ['brickLevel_wall', 0.0625] },
     { name: 'Frame preset: 3-band', active: 'brickFramePreset_three_band' },
     { name: 'Surface: Weathered', active: 'brickSurfaceStyle_weathered' },
     { name: 'Max Height 0.2', value: ['brickReliefHeight', 0.2] },
-    { name: 'Quick set: White Rocks', active: 'brickQuick_set_3' },
-    { name: 'Quick pattern: Herringbone', active: 'brickQuick_pattern_herringbone' },
+    { name: 'Quick pattern: Fieldstone', active: 'brickQuick_pattern_fieldstone' },
   ],
   bricks: [
     { name: 'Wall bricks painted', kind: 'wall' },
