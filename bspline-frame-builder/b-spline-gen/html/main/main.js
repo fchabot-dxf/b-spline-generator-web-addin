@@ -19,6 +19,7 @@
 import { initResizer, resizeApp, setupMobileViewportHandling } from '../core/ui-utils.js';
 import { initMobilePreviewResizer } from './mobile-resizer.js';
 import { initSidebarLayout } from './sidebar-layout.js';
+import { applySectionThemes } from './section-themes.js';
 import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { fusLog, pollMode, stopFusionPolling, setFusionActionState, FUSION_IDLE_LABEL, requestDesignParams, setFusionStatus } from '../core/fusion-bridge.js';
@@ -87,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initResizer(preview);
     initMobilePreviewResizer();
     initSidebarLayout();
+    applySectionThemes(); // F35 item 30: the declared section tints (sidebar + editor panels)
     setupMobileViewportHandling();
     window.addEventListener('resize', () => resizeApp(preview));
 

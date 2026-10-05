@@ -2003,3 +2003,20 @@
    any width this block could fire at (700 is a subset of 720), so it was
    a dead no-op left behind by that change; removed rather than kept as
    silent, misleading debt. */
+
+/* F35 item 30: the editor's right panels + the Brick tool sections take the SAME tints as the sidebar
+   (main/section-themes.js EDITOR_SECTION_THEMES -> --section-* tokens); Fred: the grey panel headers too. */
+.editor-layers-panel.section-themed-panel > .layers-header {
+    background: var(--section-header);
+    color: var(--section-text);
+    border-left: 4px solid var(--section-stripe);
+}
+.editor-layers-panel.section-themed-panel:not(.section-themed-headonly) {
+    background: var(--section-body);
+}
+.section-themed-section {
+    background: var(--section-body);
+    border-left: 4px solid var(--section-stripe);
+    padding-left: 6px;
+    border-radius: 4px;
+}

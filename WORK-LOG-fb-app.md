@@ -13809,3 +13809,30 @@ and persistence rows below. 88 queues them on matrix-clear-rows after the ring-s
 - Whole vitest: 273 files, **4418 passed, 0 failed**.
 - **Matrix (88):** the rows are greyed/hidden-until-met like largeStones/groutCut. Rows can come when 'rustic'
   lands: the Wall Rustic on stretcher re-lays; on stack it is hidden.
+
+### turn 239 (a) -- F35 item 30 STEP 2: the section tints WIRED (Fred's OK, incl. the editor panel headers) (seat 37)
+
+- **`applySectionThemes(doc)`** (main/section-themes.js; called once by main.js after the sidebar layout):
+  - writes each theme's derived tokens as CSS custom properties: `--section-body/header/stripe/text`, plus
+    `--section-*-dark` for the dark theme the app does not have yet (no CSS reads those today);
+  - the targets are every `.cad-sidebar .panel-<id>` (class `section-themed`), the editor PANELS by id
+    (`section-themed-panel`; the Brick panel `body: false` -> `section-themed-headonly`, since its tool sections
+    tint) and the Brick tool sections (`section-themed-section`);
+  - idempotent.
+  - EDITOR_SECTION_THEMES gained `part: 'panel'` for the Frame / Layers (Artwork) / Photo panels and the new
+    editorBrickPanel entry, so each panel's own grey `.layers-header` takes the theme's header + stripe (Fred).
+- **CSS only reads the tokens** (no colour is named anywhere):
+  - styles/layout-app.css: `.cad-sidebar .section-themed > .panel-header` / `> .panel-body` at (0,3,0), which beats
+    the page's inline `.cad-sidebar .panel-body { background:#fff }`; the hover keeps the tint, slightly darker.
+  - styles/editor.css: the panel header, the panel body unless head-only, and the section (body + stripe).
+- **Live:**
+  - 12 sidebar sections themed;
+  - computed brick header rgb(244,218,215) / body rgb(252,244,243);
+  - the stock stripe rgb(59,133,206);
+  - the editor Brick header = the sidebar brick header; the Wall section tinted.
+  - 0 errors.
+  - Shots: shots/seat37/f35item30_wired_{sidebar_1x, sidebar_2.2x, editor_brick, editor_artwork,
+    editor_frame}.png.
+- Tests: section-themes +2 (applySectionThemes on a fixture: classes + light/dark tokens, head-only Brick panel,
+  idempotent; the CSS reads only tokens + main.js calls it). Both fail on the step-1 files. Whole vitest: 4419
+  passed, 1 FAILED in the parallel run (bricks-fieldstone-large-stones, the known load timeout); alone 5/5.

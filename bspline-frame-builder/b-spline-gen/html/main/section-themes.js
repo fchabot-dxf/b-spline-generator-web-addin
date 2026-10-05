@@ -6,8 +6,10 @@
  * (Frame, Brick, and Artwork = Vector Stamping); the Brick tab's tool sections share the brick hue, each a step
  * lighter or darker (`shade`).
  *
- * STEP 1 (this file): declaration + the derivation only, rendered on a tint sheet for Fred's look. Not imported by
- * the app yet -- STEP 2 wires it (on his OK) by writing the tokens as CSS custom properties per section.
+ * STEP 2 (Fred's OK, incl. the editor panels' own headers): applySectionThemes() writes the tokens as CSS custom
+ * properties on each section (+ the `section-themed` class); styles/layout-app.css (sidebar) and styles/editor.css
+ * (editor panels) read them. Light is applied; the dark tokens are written too (`--section-*-dark`) for the dark
+ * theme the app does not have yet -- no CSS reads them today.
  */
 export const SECTION_THEMES = Object.freeze({
   // main sidebar (.panel-<id>)
@@ -29,9 +31,12 @@ export const SECTION_THEMES = Object.freeze({
 
 /** The editor's right panels / sections -> the sidebar theme they share (+ a lightness step within the family). */
 export const EDITOR_SECTION_THEMES = Object.freeze({
-  editorFramePanel: { theme: 'frame' },
-  editorLayersPanel: { theme: 'stamp' },
-  editorPhotoPanel: { theme: 'photo' },
+  // a PANEL: its own grey header (.layers-header) takes the theme's header + stripe (Fred); `body: false` = its
+  // sections carry the tint instead (the Brick panel)
+  editorFramePanel: { theme: 'frame', part: 'panel' },
+  editorLayersPanel: { theme: 'stamp', part: 'panel' },
+  editorPhotoPanel: { theme: 'photo', part: 'panel' },
+  editorBrickPanel: { theme: 'brick', part: 'panel', body: false },
   brickWallSection: { theme: 'brick', shade: 0 },
   brickFrameSection: { theme: 'brick', shade: 1 },
   brickBrushSection: { theme: 'brick', shade: 2 },
@@ -56,4 +61,30 @@ export function themeTokens(id, mode = 'light') {
   const hsl = ({ s, l }, dl = 0) => `hsl(${theme.hue} ${s}% ${Math.max(0, Math.min(100, l + dl))}%)`;
   const dl = shade * SHADE_STEP[mode];
   return { body: hsl(rules.body, dl), header: hsl(rules.header, dl * 2), stripe: hsl(rules.stripe), text: hsl(rules.text) };
+}
+
+const TOKENS = ['body', 'header', 'stripe', 'text'];
+function _writeTokens(el, id) {
+  for (const mode of ['light', 'dark']) {
+    const k = themeTokens(id, mode);
+    for (const t of TOKENS) el.style.setProperty(`--section-${t}${mode === 'dark' ? '-dark' : ''}`, k[t]);
+  }
+}
+/** Step 2: tint every declared section in `doc` -- the main sidebar's `.panel-<id>` and the editor's panels /
+ *  Brick sections by id. Returns how many were themed. Idempotent. */
+export function applySectionThemes(doc = typeof document !== 'undefined' ? document : null) {
+  if (!doc) return 0;
+  let n = 0;
+  for (const id of Object.keys(SECTION_THEMES)) {
+    for (const el of doc.querySelectorAll(`.cad-sidebar .panel-${id}`)) { _writeTokens(el, id); el.classList.add('section-themed'); n++; }
+  }
+  for (const [id, def] of Object.entries(EDITOR_SECTION_THEMES)) {
+    const el = doc.getElementById(id);
+    if (!el) continue;
+    _writeTokens(el, id);
+    el.classList.add(def.part === 'panel' ? 'section-themed-panel' : 'section-themed-section');
+    if (def.part === 'panel' && def.body === false) el.classList.add('section-themed-headonly');
+    n++;
+  }
+  return n;
 }
