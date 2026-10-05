@@ -22251,3 +22251,64 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
   and > 0.5x a brick's; bricks untouched. Flag ignored -> 2/7 fail. Domain green (3 of 37's app tests time out at 5 s
   only under the full concurrent load; 16/16 alone).
 - Shot: shots/seatB/item23_wear_rocks.png (White rocks height map, Wear 0 / 0.5 / 1, before vs after).
+
+## H23 item 82 -- CAM same-position stock: probe part 1 (seat A / 77, 2026-10-05)
+- Scope agreed with the advisor: option A (B-spline mode gets a Clean pair; Carved setup stock = From solid -> the
+  Clean body; one shared stock + WCS; heights as data). Probe first, numbers before any builder edit.
+- Probe: scratch doc tagged claude/scratch=item82-probe (components claude-clean / claude-carved / claude-tallstock),
+  synthetic: Clean = 7x9x1 in box, Carved = the same box + a 1x1x0.2 and a 2.5x2x0.3 in pocket; two MMs built the
+  builder's way (manufacturingModels.add + occ.deleteMe of the other component); one 1/4 in flat (Samples / Milling
+  Tools (Inch)), one 3D adaptive per setup, generated per setup.
+- MEASURED:
+  1. Cross-MM From-solid stock is ACCEPTED. Carved setup (MM Carved): stockMode = SolidStock, stockSolids = the body
+     from MM Clean -> job_stockSolid holds 1 entity, stock bounds X 0-7 / Y 0-9 / Z -1..0 in = the model's. Rest-only
+     toolpath: 206.3 s / 89.8 in feed (the pockets only) vs 1002.6 s / 619.5 in with a fresh relative-box stock.
+     Same numbers with the stock body in the SAME MM (206.3 / 89.8), so no cross-MM effect on from-solid stock.
+     (Stock body for these two runs: an independent 7x9x1.00 in box, same geometry as Clean; see the artefact below.)
+  2. adsk.cam.SetupStockModes = FixedBoxStock, FixedCylinderStock, FixedTubeStock, PreviousSetupStock,
+     RelativeBoxStock, RelativeCylinderStock, RelativeTubeStock, SolidStock. setup.stockSolids takes an
+     ObjectCollection (a Python list raises a SWIG type error); the parameter is job_stockSolid (singular).
+  3. WCS drift: both setups at the builder's box point 'top 1': Clean (relative box, +0.25 in top) WCS z = 1.25 in,
+     Carved (Clean-body stock) z = 1.00 in -> 0.25 in apart for the same part (item point 2, measured).
+     setup.workCoordinateSystem.translation read back in mm in this doc (31.75 for 1.25 in) -- UNVERIFIED as a rule,
+     one reading; re-check before relying on it.
+  4. Op height defaults (3D adaptive, read back): topHeight_mode 'from stock top', bottomHeight_mode 'from surface
+     bottom', retract 'from stock top' +5 mm, clearance 'from retract height' +10 mm, stockToLeave 0.5 mm.
+  5. A from-solid stock whose top face coincides with the model's top is fine: the 7x9x1.00 in box gave 206.3 s
+     (pockets only); at 1.05 in it gave 1107.8 s (plus the 0.05 in skim over the whole top).
+- PROBE ARTEFACT caught (not a finding): the first Carved runs with the "Clean" body as stock gave "Toolpath is empty"
+  (also 3D offset roughing; one same-MM run died with "An unhandled exception occured 0xffffffff" and the bridge timed
+  out once, Fusion recovered by itself). Cause: my Cut features in the Carved component had default participants and
+  also cut the Clean body -> Clean = Carved = 61.3 in3, nothing to remove, so empty was correct. Found by reading
+  volumes after a same-geometry independent box gave 206.3 s while the "Clean" body gave nothing. Cut participants are
+  still to be fixed in the scratch doc (the fix call failed reading participantBodies before the roll-back: "Didn't
+  roll editing feature back"; nothing changed).
+- PAUSED for Fred (he is working in Fusion): holder written back to none, his 'Untitled' re-activated; my scratch doc
+  stays open, held by handle in sys.modules['claude77_probe'].
+- Builder fix (measured, committed): _STOCK_MODE_ENUM_NAMES 'from_solid' -> SolidStock, 'from_prev_setup' ->
+  PreviousSetupStock (were FromSolidStock / FromPreviousSetup, which do not exist: B-spline Top has always used the
+  job_stockMode string fallback). test_stock_mode_enum_names.py pins the table against the recorded enum list: fails
+  3/5 before, 5/5 after; CAM-builder tests 13/13. CAM_API_NOTES corrected (names, ObjectCollection, job_stockSolid).
+  Behaviour change to watch: B-spline Top now sets PreviousSetupStock through the typed path.
+- STILL TO MEASURE (next Fusion window): (a) fixed cut participants -> Carved != Clean, re-run 1 with the real Clean
+  body; (b) PreviousSetupStock across two MMs (Fred's "refused" case) -- accepted / refused / empty, with numbers;
+  (c) a declared shared WCS point (wcs_origin_mode point + a design construction point) read back identically on
+  setups in two MMs incl. flipY; (d) fixed-box stock bottom-aligned (job_stockFixedZMode / job_stockFixedZOffset)
+  identical on Clean and Carved; (e) the bottomHeight_mode string for stock bottom; (f) the real Send geometry
+  (Clean + Stamped) instead of boxes.
+- DRAFT declaration (not wired; shape to confirm after the probe). One shared positioning record, setups refer to it:
+    CAM_POSITION = {                        # one stock + one WCS for every B-spline setup
+      'stock':  {'mode': 'fixed_box', 'z_align': 'bottom', 'z_offset': '0 in',   # bottom + outline are shared
+                 'top_allowance': '0.25 in'},
+      'wcs':    {'origin': 'shared_point',  # a construction point the builder declares in the design,
+                 'point': 'stock top, corner 1'},  # never a per-setup stock/model bbox corner
+      'heights': {'top': 'from stock top', 'bottom': 'from stock bottom'},       # written on every op
+    }
+    SETUP_SPECS rows (B-spline mode):
+      Stock        | stock          | CAM_POSITION.stock
+      Clean Back   | bspline_clean  | CAM_POSITION.stock                         | flipY False
+      Clean Top    | bspline_clean  | from_prev_setup + rest                     | flipY True
+      Carved Top   | bspline_carved | from_solid -> 'bspline_clean' body + rest  | flipY True
+      Frame        | frame          | as today
+  'top 1' cannot serve as the shared point for Carved Top: its stock is the Clean solid, whose bbox top differs from
+  the fixed box top (the 0.25 in above) -- hence a declared point.
