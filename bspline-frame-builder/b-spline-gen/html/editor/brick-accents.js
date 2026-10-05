@@ -79,6 +79,44 @@ export const ACCENT_PRESETS = Object.freeze([
 export const ACCENT_CUSTOM = Object.freeze({ id: 'custom', label: 'Custom (click bricks)' });
 export const DEFAULT_ACCENT = Object.freeze({ preset: 'none', levelIn: 0.0625, clicks: [] });
 
+/** F35 item 32 (Fred: "raised brick should allow sunk bricks"): the accent LEVEL is SIGNED -- + raises the marked
+ *  bricks, - sinks them -- within this declared range. The height mask clamps the brick top at the ground (core
+ *  sampleHeight never returns below 0), so a sunk brick never goes below the grout floor. */
+export const ACCENT_LEVEL_RANGE = Object.freeze({ min: -0.125, max: 0.125, step: 0.015625, default: 0.0625 });
+export const clampAccentLevel = (v) => Math.max(ACCENT_LEVEL_RANGE.min, Math.min(ACCENT_LEVEL_RANGE.max, Number(v) || 0));
+
+/** F35 item 31 step 2: the custom pattern TILE (the builder). An accent `{ preset: 'tile', tile }` raises (or sinks)
+ *  the tile's cells, repeated over the whole wall: tile = { rows, cols, cells[row][col], unit, base }. `base` = the
+ *  bond the tile is drawn on (the wall pattern it was made for), `unit` = a cell's share of a brick (1 / 0.5 /
+ *  0.25; the fractions need the engine's 'accentCuts', seat B T86-26). */
+export const ACCENT_TILE = Object.freeze({ id: 'tile' });
+export const ACCENT_TILE_LIMITS = Object.freeze({ min: 2, max: 8, rows: 4, cols: 6, maxCellsAcross: 16 });
+export const ACCENT_TILE_UNITS = Object.freeze([
+  { id: 1, label: '1', title: 'A cell is a whole brick' },
+  { id: 0.5, label: '½', title: 'A cell is half a brick', requires: { engineOption: 'accentCuts' } },
+  { id: 0.25, label: '¼', title: 'A cell is a quarter brick', requires: { engineOption: 'accentCuts' } },
+]);
+/** The builder's declared scope (Fred: "Custom is for wall only for now"): which element kinds may open it. */
+export const PATTERN_BUILDER_SCOPE = Object.freeze(['wall']);
+
+/** A blank tile (or one resized: the kept cells stay where they were). */
+export function makeTile(rows = ACCENT_TILE_LIMITS.rows, cols = ACCENT_TILE_LIMITS.cols, from = null, extra = {}) {
+  const clamp = (n) => Math.max(ACCENT_TILE_LIMITS.min, Math.min(ACCENT_TILE_LIMITS.max, Math.round(n)));
+  const r = clamp(rows), c = clamp(cols);
+  const cells = Array.from({ length: r }, (_, i) => Array.from({ length: c }, (_, k) => !!(from && from.cells && from.cells[i] && from.cells[i][k])));
+  return { rows: r, cols: c, cells, unit: (from && from.unit) || 1, base: (from && from.base) || 'stretcher', ...extra };
+}
+
+/** A SAVED custom pattern (item 31 data shape, approved): ONE object -- its bond, its accent tile ON that bond, the
+ *  tile unit and the signed level. Stored with the project (P.brickSettings.userPatterns) + in the browser. */
+export function userPatternFrom(label, tile, levelIn) {
+  const slug = String(label || 'pattern').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'pattern';
+  return { id: `user:${slug}`, label: String(label || 'Pattern').trim(), bond: { builtin: tile.base },
+    accent: { tile: { rows: tile.rows, cols: tile.cols, cells: tile.cells.map((r) => r.slice()) } }, unit: tile.unit || 1, level: clampAccentLevel(levelIn) };
+}
+/** The accent a saved pattern applies (its tile ON its own bond -- marks never move to another bond). */
+export const accentOfUserPattern = (u) => ({ preset: ACCENT_TILE.id, tile: { ...u.accent.tile, unit: u.unit, base: u.bond.builtin, userId: u.id }, levelIn: u.level });
+
 export const accentPresetById = (id) => ACCENT_PRESETS.find((p) => p.id === id) || null;
 
 const median = (xs) => {
@@ -153,7 +191,10 @@ export function accentedBrickIndices(bricks, accent, ctx = {}) {
     return out;
   }
   // item 31: `preset` may also be an ad-hoc preset object (a user tile, before it is saved)
-  const preset = typeof accent.preset === 'object' ? accent.preset : accentPresetById(accent.preset);
+  // item 31: a custom TILE (the builder / a saved pattern) repeats over the whole wall
+  const preset = accent.preset === ACCENT_TILE.id && accent.tile
+    ? { motif: 'tile', params: accent.tile, zone: accent.tile.zone || [0, 1] }
+    : typeof accent.preset === 'object' ? accent.preset : accentPresetById(accent.preset);
   const rule = preset && ACCENT_MOTIFS[preset.motif];
   if (!rule) return out;
   const zone = ctx.zone || preset.zone;
