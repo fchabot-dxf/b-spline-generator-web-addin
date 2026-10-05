@@ -115,9 +115,13 @@ brick (set 4) + Grey stone (set 5, coursed rubble, stone-ring bands) (grey-sets 
 (WALL_REGION_PICK), 18c drop-don't-cut exclusions `{ polygon, drop: true }` (wall-region 6d70cb4).
 **With 37's 31b / 31e (pattern builder), not yet merged:** T86-26 accentCuts + accentMarked (accent-cuts 368ca32);
 T86-27 customBond (custom-bond ff1276d, on accent-cuts).
-**In the advisor's gate queue:** T86-22 rustic + T86-23 wear on rocks (items-22-23 6fd619f); matrix-rotation 320bed5
-(areas group = slice-2 rows, select row reads the wallRegion rule, Coursed rubble row, rotation chips, per-group
-summary lines, layers probe waits for the editor, 30 s DevTools wait).
+**Merged later the same evening (advisor):** 37's slice 2 + wall-region 6d70cb4 + matrix-rotation 320bed5 (main
+3cc6993); T86-22 rustic + T86-23 wear on rocks (items-22-23 6fd619f, merged as main c748016: ENGINE_OPTIONS keeps
+wallRegion AND rustic, fill-shape imports are the union). Both deployed to Fusion (2026.10.05-7/-8).
+**FIRST SMALL TASK for the next seat B (from 37, F35 item 36 fb-app 17c4bff, on main):** a matrix row for "Select a
+Brush / Raised stroke": click a raised brick, read the label ("Editing: this raised stroke"), #brickRaisedLevel and the
+outline count; change the level -> 3D hash changes within the session, undo/redo one step; the select-group style.
+Steps measured in WORK-LOG-fb-app turn 265.
 **PARKED -- T86-16c part 2 (one row meeting itself across a neck).** Trial branch band-yield 238293d, NOT for merge.
 Measured on main (19 templates x single/three_band/double_course x 0.75/1/1.25 in, shapely unions): band overlap
 17.8 sq in total after item 28 (was 135.5), 14.7 of it one row's two sides across a neck (T11/14/16/17/18/19 at
