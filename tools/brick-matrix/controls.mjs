@@ -25,6 +25,8 @@
 // do:     { click: id } | { set: id, value, event }   (event: 'input' | 'change')
 // expect: { pending, canvas, threeD }: true / false = must / must not change; null = not checked.
 //   commit: 'at once' -- the canvas is read straight after the change (no Generate click).
+//   reads: { <input id>: <number> } -- after the change that field reads that value (seat 37 fb-app 1404b72: the
+//     Grout width shows the selected element's joint, its set's declared grout.widthIn unless changed)
 //   sets: { <brick kind>: <set id> } -- after the change every brick of that kind carries that data-brick-set
 //     (item 23, seat 37 fb-app 40c4bdf: the set is per element; a Fieldstone wall or band lays the rock set).
 // group: run the row in another group than its tool's own (it needs that group's state).
@@ -35,7 +37,11 @@
 //   be hidden instead of greyed out.) (Advisor, 2026-10-04: "a disabled-by-design control isn't a FAIL".)
 //   A control the user can change is expected to do something visible -- a row that changes nothing
 //   (e.g. Clumping while Suppression is 0) FAILS on purpose: it is a control that "does nothing".
+import { BRICK_SETS as BRICK_SETS_DECL } from '../../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 const E = (pending, canvas, threeD) => ({ pending, canvas, threeD });
+// the sets' own declared values (the app reads them; so does the matrix -- never a copied number)
+const RED_SET = BRICK_SETS_DECL.find((s) => s.layout === 'bond');
+const ROCK_SET = BRICK_SETS_DECL.find((s) => s.layout === 'fieldstone');
 const AT_ONCE = { commit: 'at once' };
 const LAYOUT = { ...E(false, true, true), ...AT_ONCE };       // a 2D layout setting: re-laid at once, new relief (F35 item 27)
 const LEVEL = { ...E(false, null, true), ...AT_ONCE };        // a brick level: at once, relief only
@@ -54,7 +60,10 @@ export const BRICK_CONTROLS = [
   // rocks come from the Fieldstone pattern, checked by `sets` below)
   { name: 'Wall pattern: Herringbone', kind: 'editor', tool: 'wall', do: click('brickPattern_herringbone'), expect: LAYOUT },
   { name: 'Wall pattern: Basketweave', kind: 'editor', tool: 'wall', do: click('brickPattern_basketweave'), expect: LAYOUT },
-  { name: 'Wall pattern: Fieldstone', kind: 'editor', tool: 'wall', do: click('brickPattern_fieldstone'), expect: { ...LAYOUT, sets: { wall: 3 } } },
+  { name: 'Wall pattern: Fieldstone', kind: 'editor', tool: 'wall', do: click('brickPattern_fieldstone'), expect: { ...LAYOUT, sets: { wall: 3 }, reads: { brickGroutWidth: ROCK_SET.grout.widthIn } } },
+  // per-element joint: the Frame tool shows the frame's own (Red Brick) joint while the wall is rock
+  { name: 'Frame tool shows its own joint', kind: 'editor', tool: 'wall', do: click('brickTool_frame'), expect: { ...E(false, false, false), commit: 'at once', reads: { brickGroutWidth: RED_SET.grout.widthIn } }, introducedBy: '1404b72' },
+  { name: 'Back to the Wall tool', kind: 'editor', tool: 'wall', do: click('brickTool_wall'), expect: { ...E(false, false, false), commit: 'at once', reads: { brickGroutWidth: ROCK_SET.grout.widthIn } }, introducedBy: '1404b72' },
   // shown only for a fieldstone wall (White Rocks or the Fieldstone pattern) -- hence right after the row above
   { name: 'Large stones 0.6 (Fieldstone)', kind: 'editor', tool: 'wall', do: set('brickLargeStones', 0.6), expect: LAYOUT, introducedBy: '88c7616' },
   { name: 'Wall pattern: None', kind: 'editor', tool: 'wall', do: click('brickPattern_none'), expect: LAYOUT },

@@ -116,7 +116,7 @@ let serverExit = null; server.on('exit', (code) => { serverExit = code; });
 {
   const want = readFileSync(path.join(ROOT, SERVED_CHECK));
   let got = null;
-  for (let i = 0; i < 50 && serverExit === null; i++) {
+  for (let i = 0; i < 150 && serverExit === null; i++) { // 30 s: under a 10-group --parallel load the 10th server took > 10 s
     await sleep(200);
     try { got = Buffer.from(await (await fetch(`http://127.0.0.1:${HTTP}/${SERVED_CHECK}`)).arrayBuffer()); if (got.equals(want)) break; } catch {}
   }
@@ -226,10 +226,11 @@ const verdict = (observed, expected) => (expected === null ? 'n/a' : observed ==
 async function record(c, obs) {
   const v = { pending: verdict(obs.pending, c.expect.pending), canvas: verdict(obs.canvas, c.expect.canvas), threeD: verdict(obs.threeD, c.expect.threeD) };
   if (c.expect.sets) v.set = obs.setsOk ? 'PASS' : 'FAIL'; // item 23: per-element brick sets
-  const row = { name: c.name, kind: c.kind, tool: c.tool || null, result: obs.result, observed: { pending: obs.pending, canvas: obs.canvas, threeD: obs.threeD, sets: obs.sets }, expect: c.expect, verdict: v, hashes: obs.hashes };
+  if (c.expect.reads) v.reads = obs.readsOk ? 'PASS' : 'FAIL'; // per-element joint (fb-app 1404b72)
+  const row = { name: c.name, kind: c.kind, tool: c.tool || null, result: obs.result, observed: { pending: obs.pending, canvas: obs.canvas, threeD: obs.threeD, sets: obs.sets, reads: obs.reads }, expect: c.expect, verdict: v, hashes: obs.hashes };
   rows.push(row);
   const fail = Object.values(v).includes('FAIL') || obs.result !== 'ok';  // e.g. 'MISSING' / 'DISABLED' control
-  console.log(`${fail ? 'FAIL' : 'pass'}  ${c.name.padEnd(34)} pending ${v.pending.padEnd(4)} canvas ${v.canvas.padEnd(4)} 3D ${v.threeD}${v.set ? ' sets ' + v.set + ' ' + JSON.stringify(obs.sets) : ''}${obs.result !== 'ok' ? '  (' + obs.result + ')' : ''}`);
+  console.log(`${fail ? 'FAIL' : 'pass'}  ${c.name.padEnd(34)} pending ${v.pending.padEnd(4)} canvas ${v.canvas.padEnd(4)} 3D ${v.threeD}${v.set ? ' sets ' + v.set + ' ' + JSON.stringify(obs.sets) : ''}${v.reads ? ' reads ' + v.reads + ' ' + JSON.stringify(obs.reads) : ''}${obs.result !== 'ok' ? '  (' + obs.result + ')' : ''}`);
   if (fail) await shot(`FAIL_${c.name.replace(/[^a-z0-9]+/gi, '_')}`);
 }
 
@@ -301,10 +302,12 @@ try {
       if (!atOnce && c.kind === 'editor' && await js(`!!document.getElementById('brickGenerate')?.offsetParent`)) await click('brickGenerate', 1800);
       const c1 = atOnce ? await canvasSettled(c0) : await js(CANVAS);
       const sets = c.expect.sets ? await brickSets(Object.keys(c.expect.sets)) : null;
+      const reads = c.expect.reads ? JSON.parse(await js(`JSON.stringify(Object.fromEntries(${JSON.stringify(Object.keys(c.expect.reads))}.map((id) => [id, Number(document.getElementById(id)?.value)])))`)) : null;
+      const readsOk = !!reads && Object.entries(c.expect.reads).every(([id, v]) => Math.abs(reads[id] - v) < 1e-6);
       const setsOk = !!sets && Object.entries(c.expect.sets).every(([k, id]) => sets[k] && sets[k].length === 1 && sets[k][0] === String(id));
       await apply();
       const z1 = await heightsSettled(Z);
-      await record(c, { result, pending: p, canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 }, sets, setsOk });
+      await record(c, { result, pending: p, canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 }, sets, setsOk, reads, readsOk });
       Z = z1;
     } else if (c.kind === 'relay') {
       // Generate = "re-lay now": take one brick of the tool's kind off the canvas by hand, then Generate must
