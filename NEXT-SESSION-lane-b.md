@@ -103,6 +103,36 @@ Pass back from the lane-b root: `python ~/.claude/skills/multi-agent-handoff/han
 - [x] [T86-item-21c] MISSING WALL PIECES = polygonIntersection returns [] on a vertex-on-edge + collinear case (d3 turn 340; minimal template-free repro as it.todo in bricks-pointinpolygon-boundary.test.js). Assigned to seat 88 (pure geometry, geometry.js): fix segmentIntersection's vertex-exclusion simplification without producing self-intersecting output; property tests (area invariant, no self-intersection, symmetric in argument order). (done d23c428, 6f42cf3)
 
 ## SEAT B = 88 STARTS HERE (d3 held at turn 342, 2026-10-04 evening; 88 promoted by Fred the same evening: wt-88, one branch per item from origin/main, coordination by DM, no handoff.py loop)
+
+### STATE AT 2026-10-05 END OF DAY (seat B = 88, stopping; written for the next seat B)
+**On main (23a6062):** T86-13 exclusions + the polygonIntersection opposite-winding fix (engine-exclusions 10083c0);
+band overrun / no band piece outside the board (band-overrun a41a0b0); T86-28 band fit rule BAND_FIT_SHARE 1/3 +
+shared MIN_PIECE_FRACTION (band-fit f0b4af9 / 98d5b55); T86-29 rotationDeg (pattern-rotation 8d26056); T86-10
+bricksGroutCut (grout-cut 4e36454; 'groutCut' NOT listed -- 37 lists it when the grout mode is wired); T86-24/25 Grey
+brick (set 4) + Grey stone (set 5, coursed rubble, stone-ring bands) (grey-sets 23a6062); harness: matrix-password
+7db6aa8, matrix-frame-size da14dc7, matrix-slice3 d073bc9.
+**With 37's F35 item 22 slice 2 (on fb-app):** T86-18 wallRegion + strokesToRegion, 18b complete bricks by centroid
+(WALL_REGION_PICK), 18c drop-don't-cut exclusions `{ polygon, drop: true }` (wall-region 6d70cb4).
+**With 37's 31b / 31e (pattern builder), not yet merged:** T86-26 accentCuts + accentMarked (accent-cuts 368ca32);
+T86-27 customBond (custom-bond ff1276d, on accent-cuts).
+**In the advisor's gate queue:** T86-22 rustic + T86-23 wear on rocks (items-22-23 6fd619f); matrix-rotation 320bed5
+(areas group = slice-2 rows, select row reads the wallRegion rule, Coursed rubble row, rotation chips, per-group
+summary lines, layers probe waits for the editor, 30 s DevTools wait).
+**PARKED -- T86-16c part 2 (one row meeting itself across a neck).** Trial branch band-yield 238293d, NOT for merge.
+Measured on main (19 templates x single/three_band/double_course x 0.75/1/1.25 in, shapely unions): band overlap
+17.8 sq in total after item 28 (was 135.5), 14.7 of it one row's two sides across a neck (T11/14/16/17/18/19 at
+1-1.25 in, worst T18/T19 1.44 each), 3.1 corner-fan residual (21b's). The trial (chord yield between FACING pieces of
+one row) took overlap 17.8 -> 6.1 but lost 1.7 sq in of ground; T14's X neck keeps 0.63 at 1.25 in. The bar (per case
+lost < 0.01 AND overlap < 0.01) is NOT met. START HERE, fresh: build each row's pieces INSIDE its own side of the
+medial line from the start (one ring per side, split at the untangled boundary's lobes) instead of repairing pieces
+afterwards -- three repair attempts (A, B, the chord trial) all traded overlap for voids. Full numbers: WORK-LOG.md.
+**PARKED -- T86-21b** (three-band corner reach): unchanged, needs the same rested pass; independent of 16c.
+**Two rules for the next seat:**
+1. ENGINE_OPTIONS completeness: every `input.<key>` generateBricks reads MUST be listed in ENGINE_OPTIONS
+   (tests/bricks-engine.test.js guards it); a UI-gated option therefore merges WITH the app wiring that shows it.
+2. Mock-base rule: when listing an option flips one of 37's "hidden until the engine lists X" tests, make that test's
+   ENGINE_OPTIONS mock drop X from its base (`engineOpts.without`) so it still tests both states -- never delete the check.
+
 Engine items owned by seat B (Fred, 2026-10-04 evening; they live on origin/lane-b c4c0cb5/39bdc18 until the next lane-b -> main merge, so main's copy of this file lacks them): [T86-item-22] rustic running bond, [T86-item-23] wear on rocks (ONE owner = seat B, the engine side; 37's F35 item 29(b) is UI only), [T86-item-24] grey brick set, [T86-item-25] coursed rubble + rock textures. 37's matching UI item is F35 item 29.
 Queue, in order (the order in ADVISOR-HANDOFF.md's seat table), one DM per item, full-board shots to shots/seatB, bricks-domain suite per item (the advisor runs the full gate at merge):
 1. [T86-item-16c] the neck collision: d3's written plan is in WORK-LOG.md (8326c9f): two distinct self-intersection mechanisms (the facing-primitives notch, already handled; and a large arc overshooting an adjacent undropped line when offset inward, T18's neck). Build the recommended general per-joint crossing detector with true intersection-point truncation. Un-todo the T18 fieldstone-band test.
