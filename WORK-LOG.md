@@ -22285,3 +22285,17 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
   -> 2/4 fail. Domain green but N2 (the known timeout).
 - Branch sits on accent-cuts 368ca32 (both feed 37's pattern builder; merge them with 37's 31b / 31e wiring).
 - Shot: shots/seatB/item27_custom_bond.png.
+
+## T86-27 CORRECTION + T86-26/27 composed -- by seat C (02) while wiring F35 31b/31e (advisor 45 ruling A, 2026-10-05)
+For the next seat B: two seams between accent-cuts and custom-bond were MEASURED and fixed on branch pattern-builder.
+- **One course-row origin** (d2d8103):
+  - Before: customBond counted its courses from the TOP, accentCuts its rows from the BOTTOM, so which bond course a tile row marked flipped with the wall's course-count parity.
+  - Measured on a 4 in wide wall, bond [whole]/[halves], tile row 0 marked: at 3.0 and 3.4 in tall the marks landed on the HALF courses, at 3.8 in on the WHOLE ones.
+  - Now `library.js COURSE_ROW_ORIGIN = 'bottom'`, read by both through bond.js `tileRowOf`. The custom rows are laid once the course count is known.
+  - The built-in bonds keep their top-down stagger, so every saved wall is unchanged.
+  - The built-in-as-tile pin now holds as written on an ODD course count, and with the tile's courses reversed on an EVEN one (bricks-course-row-origin covers both: 12 and 13 courses).
+  - bricks-custom-bond adapted: it counts from the bottom; its closer tolerance went 1e-6 -> 1e-3 because the bottom course now starts AT the curved side, trimmed by ~2e-5 in.
+- **An accent cell is `unit` of a BRICK's pitch** (2466d4a):
+  - Before: applyAccentCuts sized each cell from the piece's own length, which is right only for one-brick pieces. On a custom [2, 1/2, 1/2] course it cut the 2-brick piece in two and put a mark on a half.
+  - Now pitch = L + J, and a piece spans (its length + J) / (unit x pitch) cells.
+- Tests: bricks-course-row-origin (8): 4/7 fail before the origin fix, and 1/1 before the cell fix. All 53 bricks-* files are green after.
