@@ -28,6 +28,7 @@ import {
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
   FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg,
+  addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
 } from '../editor/editor-brick-tool.js';
 import {
   ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick, ACCENT_LEVEL_RANGE, clampAccentLevel, ACCENT_TILE,
@@ -151,7 +152,7 @@ export function selectSet(setId, commit = 'generate', kinds = [_setKind()]) {
   for (const kind of kinds) {
     P.brickSettings.setIds[kind] = setId;
     // a brick set on a ROCK element turns it back into bricks (the Fieldstone pattern is what made it rock)
-    if (kind === 'wall' && P.brickSettings.pattern === 'fieldstone') P.brickSettings.pattern = DEFAULT_WALL_PATTERN;
+    if (kind === 'wall' && patternSetId(P.brickSettings.pattern) != null) P.brickSettings.pattern = DEFAULT_WALL_PATTERN;
     if (kind === 'frame' && isRockFrame(P.brickSettings)) P.brickSettings.frameBandPatterns = [];
   }
   // (the elements' joints fall back to the new set's own: _resetJointsOnSetChange, in commitBrickSetting)
@@ -1692,7 +1693,7 @@ const WALL_PATTERN_LABELS = {
   // F35 item 14: the tiles (named by what the sheet draws; the sheet has no captions)
   square_grid: 'Square grid', square_diamond: 'Square + diamond inserts', octagon_square: 'Octagon + small square',
   hexagon: 'Hexagon', lozenge: 'Lozenge', framed_square: 'Framed square',
-  fieldstone: 'Fieldstone',
+  fieldstone: 'Fieldstone', coursed_rubble: 'Coursed rubble',
 };
 // item 23: what a ROCK wall becomes when a brick set is picked for it
 const DEFAULT_WALL_PATTERN = 'stretcher';
@@ -1787,6 +1788,39 @@ function syncWallPatternButtons() {
   syncLargeStonesRow();
   syncRusticRows();
   renderPatternParams();
+  renderWallRotation();
+}
+
+/** F35 item 13: the Wall pattern's ROTATION, declared: the chips the Wall section offers (degrees), 0 = as laid. */
+export const WALL_ROTATIONS = Object.freeze([0, 45, 90]);
+function renderWallRotation() {
+  const row = document.getElementById('brickWallRotationRow');
+  if (!row) return;
+  row.style.display = _hiddenUntilMet('brickWallRotationRow') ? 'none' : 'flex';
+  row.innerHTML = '';
+  const label = document.createElement('span');
+  label.textContent = 'Rotation';
+  label.style.cssText = 'font-size:10px; opacity:0.65; width:70px;';
+  row.appendChild(label);
+  const current = Number(P.brickSettings.wallRotationDeg) || 0;
+  for (const deg of WALL_ROTATIONS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cad-btn' + (deg === current ? ' active' : '');
+    b.id = `brickWallRotation_${deg}`;
+    b.textContent = `${deg}\u00b0`;
+    b.title = deg ? `Turn the wall pattern ${deg}\u00b0` : 'The wall pattern as laid (not turned)';
+    b.style.cssText = 'flex:0 0 auto; min-width:0; width:auto; padding:2px 10px;';
+    b.addEventListener('click', () => setWallRotation(deg));
+    row.appendChild(b);
+  }
+}
+/** F35 item 13: turn the Wall pattern (a WALL_ROTATIONS angle) -- re-lays at once. */
+export function setWallRotation(deg, commit = 'generate') {
+  if (!WALL_ROTATIONS.includes(deg)) return;
+  P.brickSettings.wallRotationDeg = deg;
+  renderWallRotation();
+  commitBrickSetting(commit);
 }
 
 /** F35 item 14: the active Wall pattern's declared params (BRICK_PATTERNS[id].params) as chip rows under the grid --
@@ -1934,8 +1968,76 @@ function syncFrameBandPatternButtons() {
 export const BRICK_SUB_TOOLS = Object.freeze({
   select: { label: 'Select', mode: 'brickElementSelect',
     title: 'Click a brick: its element is selected and this section edits only it. Esc deselects.' },
-  area: { label: 'Area', mode: null, title: 'Paint an area: it fills with this wall -- once an area is painted, only painted areas get bricks.' },
+  area: { label: 'Area', mode: 'brickWallArea',
+    title: 'Paint an area: it fills with this wall -- once an area is painted, only painted areas get bricks. A stroke adds to the selected area; with none selected it starts a new one.' },
 });
+/** F35 item 22 slice 2: the Area brush's widths (inches), declared; P.brickSettings.wallAreaWidthIn. */
+export const WALL_AREA_WIDTHS = Object.freeze([0.5, 1, 2]);
+const _isArea = (editor, id) => !!id && wallAreaRecords(editor).some((a) => a.id === id);
+/** The Area row (width chips + Clear areas): shown with the Area sub-tool only (and while the engine reads
+ *  wallRegion). */
+function renderWallAreaRow() {
+  const row = typeof document !== 'undefined' ? document.getElementById('brickWallAreaRow') : null;
+  if (!row) return;
+  const on = _activeTool === 'wall' && _subTool === 'area' && !_hiddenUntilMet('brickWallAreaRow');
+  row.style.display = on ? 'flex' : 'none';
+  row.innerHTML = '';
+  const label = document.createElement('span');
+  label.textContent = 'Width';
+  label.style.cssText = 'font-size:10px; opacity:0.65; margin-right:2px;';
+  row.appendChild(label);
+  const current = Number(P.brickSettings.wallAreaWidthIn) || 1;
+  for (const w of WALL_AREA_WIDTHS) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cad-btn' + (w === current ? ' active' : '');
+    b.id = `brickWallAreaWidth_${String(w).replace('.', '_')}`;
+    b.textContent = `${w} in`;
+    b.title = `Paint ${w} in wide`;
+    b.style.cssText = 'flex:0 0 auto; min-width:0; width:auto; padding:2px 5px;';
+    b.addEventListener('click', () => setWallAreaWidth(w));
+    row.appendChild(b);
+  }
+  const clear = document.createElement('button');
+  clear.type = 'button';
+  clear.className = 'cad-btn';
+  clear.id = 'brickWallAreasClear';
+  clear.textContent = 'Clear areas';
+  clear.title = 'Remove every painted area: the wall fills the whole frame again';
+  clear.style.cssText = 'flex:1 0 100%; min-width:0; padding:2px 8px;'; // its own line
+  clear.addEventListener('click', () => clearAllWallAreas());
+  row.appendChild(clear);
+}
+/** The Area brush width (a WALL_AREA_WIDTHS value) -- for the next strokes; nothing re-lays. */
+export function setWallAreaWidth(w) {
+  if (!WALL_AREA_WIDTHS.includes(w)) return;
+  P.brickSettings.wallAreaWidthIn = w;
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (editor) editor._brickAreaWidthIn = w;
+  saveLastSession();
+  renderWallAreaRow();
+}
+/** One painted stroke (board points): onto the selected area, else a new area with the section's settings; the
+ *  area becomes the selected one, the wall re-lays -- one undo step. */
+export function paintWallArea(points) {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!editor || !points || !points.length) return null;
+  const into = _selectedElement && _isArea(editor, _selectedElement.id) ? _selectedElement.id : null;
+  const id = addWallAreaStroke(editor, { points, widthIn: Number(P.brickSettings.wallAreaWidthIn) || 1 }, P.brickSettings, into);
+  _selectedElement = { id, kind: 'wall' };
+  editor._brickWallAreaId = id;
+  generateBricks();
+  _syncSubTools();
+  return id;
+}
+/** Clear areas: every painted area goes, the wall fills the whole frame again -- one undo step. */
+export function clearAllWallAreas() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!editor || !clearWallAreas(editor)) return false;
+  selectBrickElement(null);
+  generateBricks();
+  return true;
+}
 const ELEMENT_LABELS = { wall: 'Wall', frame: 'Frame' };
 let _subTool = 'select';
 let _selectedElement = null; // { id, kind } -- the selected Wall/Frame element (its record), or null
@@ -1989,7 +2091,13 @@ function _armSubTool(sid) {
     };
     editor.setMode('brickElementSelect');
   }
+  if (editor && def && def.mode === 'brickWallArea') { // slice 2: paint wall areas
+    editor._brickAreaWidthIn = Number(P.brickSettings.wallAreaWidthIn) || 1;
+    editor._brickWallArea = (points) => paintWallArea(points);
+    editor.setMode('brickWallArea');
+  }
   _syncSubTools();
+  renderWallAreaRow();
 }
 
 /** Select an element ({ id, kind }) -- its tool becomes the active one (its section shows), its bricks are
@@ -1997,6 +2105,10 @@ function _armSubTool(sid) {
 export function selectBrickElement(element) {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   _selectedElement = element ? { id: element.id, kind: element.kind } : null;
+  // slice 2: a painted area's OWN settings come into the section (it edits them); the next lay keeps them on it
+  const area = editor && element ? wallAreaRecords(editor).find((a) => a.id === element.id) : null;
+  if (editor) editor._brickWallAreaId = area ? area.id : null;
+  if (area && area.settings) { Object.assign(P.brickSettings, withWallFields(P.brickSettings, area.settings)); syncControlsFromState(); }
   if (element) {
     const tool = BRICK_TOOLS.find((t) => t.lays === element.kind);
     if (tool && tool.id !== _activeTool) selectTool(tool.id, { keepSelection: true });
@@ -2006,8 +2118,14 @@ export function selectBrickElement(element) {
 }
 
 function selectTool(id, { keepSelection = false } = {}) {
+  if (typeof document !== 'undefined') queueMicrotask(renderWallAreaRow); // the Area row follows the tool
   _disarmAccentClick(); // F35 item 15: a tool pick ends Click bricks
-  if (!keepSelection && _selectedElement) { _selectedElement = null; showElementSelection(typeof window !== 'undefined' ? window.svgEditor : null, null); }
+  if (!keepSelection && _selectedElement) {
+    _selectedElement = null;
+    const ed = typeof window !== 'undefined' ? window.svgEditor : null;
+    if (ed) ed._brickWallAreaId = null;
+    showElementSelection(ed, null);
+  }
   _activeTool = id;
   syncToolButtons();
   syncGroutWidthBox(); // the Grout box follows the active element's joint

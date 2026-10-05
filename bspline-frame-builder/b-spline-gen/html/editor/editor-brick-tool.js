@@ -244,6 +244,64 @@ function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn, ownerId 
  *  BRICK_OWNER_ATTR = that id. Brush strokes already are records (their spines). Slice 2's painted areas add
  *  'wall-area' records; until then there is one 'wall-full' and one 'frame'. */
 export const BRICK_RECORD_KINDS = Object.freeze({ wall: 'wall-full', frame: 'frame' });
+/** F35 item 22 slice 2: a PAINTED wall area -- its own record (on the layer that was active when it was painted):
+ *  its strokes (BRICK_AREA_ATTR, [{ points, widthIn }], the engine's wallRegion input as is), its paint order
+ *  (BRICK_AREA_SEQ_ATTR: newest wins where areas overlap) and its own settings snapshot. While any area exists the
+ *  whole-board 'wall-full' record does not (the first area replaces it; clearing every area brings it back). */
+export const WALL_AREA_RECORD = 'wall-area';
+export const BRICK_AREA_ATTR = 'data-brick-area';
+export const BRICK_AREA_SEQ_ATTR = 'data-brick-area-seq';
+/** The settings each wall area keeps as its OWN (its layout); everything else (size, grout depth, relief, seed,
+ *  suppression, accent, level) stays shared by every wall. 'a.b' = key b of group a. */
+export const WALL_AREA_FIELDS = Object.freeze(['pattern', 'patternParams', 'wallRotationDeg', 'largeStones',
+  'setIds.wall', 'rusticByElement.wall', 'groutByElement.wall']);
+/** `settings` with an area snapshot's own WALL_AREA_FIELDS laid over it (a new object; groups copied). */
+export function withWallFields(settings, snapshot) {
+  if (!snapshot) return settings;
+  const out = { ...settings };
+  for (const path of WALL_AREA_FIELDS) {
+    const [k, sub] = path.split('.');
+    if (!sub) { if (k in snapshot) out[k] = snapshot[k]; continue; }
+    if (snapshot[k] && sub in snapshot[k]) out[k] = { ...(out[k] || {}), [sub]: snapshot[k][sub] };
+  }
+  return out;
+}
+const _json = (raw, fallback) => { try { return raw ? JSON.parse(raw) : fallback; } catch { return fallback; } };
+/** The painted wall areas, oldest first: [{ node, id, seq, strokes, settings, layer }]. */
+export function wallAreaRecords(editor) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll) return [];
+  return [...node.querySelectorAll(`[${BRICK_RECORD_ATTR}="${WALL_AREA_RECORD}"]`)].map((n) => ({
+    node: n, id: n.getAttribute(BRICK_ELEMENT_ATTR), seq: Number(n.getAttribute(BRICK_AREA_SEQ_ATTR)) || 0,
+    strokes: _json(n.getAttribute(BRICK_AREA_ATTR), []), settings: _json(n.getAttribute(BRICK_SETTINGS_ATTR), null),
+    layer: layerById(editor, n.getAttribute('data-layer')),
+  })).sort((a, b) => a.seq - b.seq);
+}
+/** Paint one stroke ({ points, widthIn }, board inches): onto the area `areaId` when it exists, else a NEW area
+ *  (on the active layer, newest, with `settings` as its own) -- the first area replaces the whole-board wall's
+ *  record. Returns the area's id. The caller lays + commits (one undo step per stroke). */
+export function addWallAreaStroke(editor, stroke, settings, areaId = null) {
+  const areas = wallAreaRecords(editor);
+  const clean = { points: stroke.points.map((p) => ({ x: +p.x.toFixed(3), y: +p.y.toFixed(3) })), widthIn: stroke.widthIn };
+  const own = areaId && areas.find((a) => a.id === areaId);
+  if (own) { own.node.setAttribute(BRICK_AREA_ATTR, JSON.stringify([...own.strokes, clean])); return own.id; }
+  const full = editor._sketchLayer.node.querySelector(`[${BRICK_RECORD_ATTR}="${BRICK_RECORD_KINDS.wall}"]`);
+  if (full) full.remove();
+  const id = newBrickElementId();
+  const rec = onBricksLayer(editor, activeLayerOf(editor), editor._sketchLayer.group()).attr('display', 'none').node;
+  rec.setAttribute(BRICK_RECORD_ATTR, WALL_AREA_RECORD);
+  rec.setAttribute(BRICK_ELEMENT_ATTR, id);
+  rec.setAttribute(BRICK_AREA_SEQ_ATTR, String(Math.max(0, ...areas.map((a) => a.seq)) + 1));
+  rec.setAttribute(BRICK_AREA_ATTR, JSON.stringify([clean]));
+  rec.setAttribute(BRICK_SETTINGS_ATTR, JSON.stringify(elementSettings(settings, 'wall')));
+  return id;
+}
+/** Remove every painted area (the wall fills the whole frame again on the next lay). Returns how many. */
+export function clearWallAreas(editor) {
+  const areas = wallAreaRecords(editor);
+  for (const a of areas) a.node.remove();
+  return areas.length;
+}
 /** Step 3: the key of the settings (+ frame + brush strokes) an element's bricks were laid with, on its record --
  *  per element, so a lay of one element never makes the other's key lie. Replaces the brick layer's one shared
  *  `brickLaidKey` (+ `brickLaidKinds`), which a board saved before item 22 still carries until its records are
@@ -253,7 +311,11 @@ export { BRICK_RECORD_ATTR };
 export function brickRecordNode(editor, kind) {
   const node = editor && editor._sketchLayer && editor._sketchLayer.node;
   const recordKind = BRICK_RECORD_KINDS[kind];
-  return recordKind && node && node.querySelector ? node.querySelector(`[${BRICK_RECORD_ATTR}="${recordKind}"]`) : null;
+  const found = recordKind && node && node.querySelector ? node.querySelector(`[${BRICK_RECORD_ATTR}="${recordKind}"]`) : null;
+  if (found || kind !== 'wall') return found;
+  // slice 2: painted areas ARE the wall -- the newest area stands for it (its presence, layer and laid key)
+  const areas = wallAreaRecords(editor);
+  return areas.length ? areas[areas.length - 1].node : null;
 }
 /** Step 5: the settings part of a laid key (everything before `#frame:`), as that element's snapshot -- or
  *  null when it does not parse. */
@@ -416,6 +478,9 @@ function setForId(id) {
  *  The Set is PER ELEMENT (`settings.setIds`, keyed by tool: wall / frame / brush / raisedBrush); brick size and
  *  grout stay global. A settings object from before item 23 has a single `setId`: it is the fallback. */
 export const ROCK_SET_ID = (BRICK_SETS.find((s) => s.layout === 'fieldstone') || {}).id ?? null;
+/** A Wall pattern named after a STONE set's layout picks that set (Fieldstone -> White Rocks, Coursed rubble -> Grey
+ *  stone): the set is implied by the pattern, never picked in the Set row. null for every other pattern. */
+export const patternSetId = (pattern) => (pattern && pattern !== 'bond' ? (BRICK_SETS.find((s) => s.layout === pattern) || {}).id ?? null : null);
 export const BRICK_SET_IDS = Object.freeze(BRICK_SETS.filter((s) => s.layout === 'bond').map((s) => s.id));
 /** A Frame is rock when every band pattern is fieldstone (picking it on one band writes it on all). */
 export function isRockFrame(settings) {
@@ -458,7 +523,8 @@ export function frameBandsOf(settings) {
 }
 /** The set an element is laid with. */
 export function elementSetId(settings, kind) {
-  if (ROCK_SET_ID != null && ((kind === 'wall' && settings.pattern === 'fieldstone') || (kind === 'frame' && isRockFrame(settings)))) return ROCK_SET_ID;
+  if (kind === 'wall' && patternSetId(settings.pattern) != null) return patternSetId(settings.pattern);
+  if (ROCK_SET_ID != null && kind === 'frame' && isRockFrame(settings)) return ROCK_SET_ID;
   const own = settings.setIds && settings.setIds[kind];
   return own ?? settings.setId ?? BRICK_SET_IDS[0] ?? 1;
 }
@@ -884,10 +950,9 @@ export function dropExcludedWallBricks(bricks, exclusions) {
   return bricks.filter((b) => !exclusions.some((e) => polygonsOverlap(b.polygon, e.polygon)));
 }
 
-function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
-  // item 22 slice 3: each element on its own layer (its record's; a new one on the active layer)
-  const layerOf = { wall: elementLayer(editor, 'wall'), frame: elementLayer(editor, 'frame') };
-
+/** The generateBricks input for a lay with these settings (the Wall's own pattern / set / rustic / rotation; the
+ *  frame, when given, also bounds the wall). */
+function _layInput(editor, settings, frameGeom) {
   // F35 item 23: each element is laid with its OWN set (elementSettings); size + grout stay global
   const wallSettings = elementSettings(settings, 'wall');
   const frameSettings = elementSettings(settings, 'frame');
@@ -908,24 +973,65 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   // F35 item 29 (a): the Wall's Rustic amount, for a running bond only (0 = absent = today's clean coursing)
   const rustic = Number(settings.rusticByElement && settings.rusticByElement.wall) || 0;
   if (rustic > 0 && isRunningBond(settings.pattern)) input.rustic = rustic;
+  // F35 item 13: the Wall pattern's rotation (wall only; 0 = absent = today's lay, byte-identical)
+  const rotationDeg = Number(settings.wallRotationDeg) || 0;
+  if (rotationDeg) input.rotationDeg = rotationDeg;
+  return input;
+}
+
+/** F35 item 22 slice 2: the settings a painted area is laid with -- the SELECTED area (editor._brickWallAreaId,
+ *  main/brick-panel.js) takes the section's current ones (it is the one being edited), every other area its own
+ *  snapshot's WALL_AREA_FIELDS over the shared settings. */
+export const wallAreaSettings = (editor, area, settings) =>
+  (editor && area.id === editor._brickWallAreaId ? settings : withWallFields(settings, area.settings));
+
+function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
+  // item 22 slice 3: each element on its own layer (its record's; a new one on the active layer)
+  const layerOf = { wall: elementLayer(editor, 'wall'), frame: elementLayer(editor, 'frame') };
+  const wallSettings = elementSettings(settings, 'wall');
+  const frameSettings = elementSettings(settings, 'frame');
+  const input = _layInput(editor, settings, frameGeom);
   const exclusions = kinds.includes('wall') ? brushExclusions(editor) : [];
   if (exclusions.length) input.exclusions = exclusions;
+  // slice 2: once any area is painted only the areas get bricks -- each its own engine call (its own settings,
+  // its strokes as wallRegion, every NEWER area's strokes as minus: newest wins, the older wall flows around it).
+  // T86 18c: laid NEWEST first; each older area also gets the newer areas' laid bricks as DROP exclusions (a brick
+  // touching one is dropped, never cut), so two areas with different patterns never overlap
+  const areas = kinds.includes('wall') ? wallAreaRecords(editor) : [];
+  if (areas.length) input.skipWallFill = true;
 
   // Turn 195: the engine runs BEFORE anything is cleared -- if it throws, the bricks already on the
   // canvas stay exactly as they were (the caller reports the failure).
   const result = generateBricks(input);
   const bricks = result.exclusionsApplied ? result.bricks : dropExcludedWallBricks(result.bricks, exclusions);
   const { frameBricks } = result;
+  const areaLays = [];
+  for (let i = areas.length - 1; i >= 0; i--) {
+    const area = areas[i];
+    const s = wallAreaSettings(editor, area, settings);
+    const ai = _layInput(editor, s, frameGeom);
+    const newer = areaLays.flatMap((l) => l.bricks.map((b) => ({ polygon: b.polygon, drop: true })));
+    if (exclusions.length || newer.length) ai.exclusions = [...exclusions, ...newer];
+    ai.wallRegion = { strokes: area.strokes, minus: areas.slice(i + 1).flatMap((a) => a.strokes) };
+    const r = generateBricks(ai);
+    areaLays.unshift({ area, settings: s, bricks: r.exclusionsApplied ? r.bricks : dropExcludedWallBricks(r.bricks, ai.exclusions || []) });
+  }
   for (const kind of kinds) clearGenerated(editor, kind);
   const lays = (kind) => kinds.includes(kind);
   for (const kind of kinds) applyBrickLayerTooling(layerOf[kind], settings);
   const owner = (kind) => ensureBrickRecord(editor, layerOf[kind], kind); // item 22: the element that lays them
   if (lays('frame')) drawBricks(editor, layerOf.frame, frameBricks, 'frame', frameSettings.setId, settings.seed, settings.reliefIn, owner('frame'));
-  if (lays('wall')) drawBricks(editor, layerOf.wall, bricks, 'wall', wallSettings.setId, settings.seed, settings.reliefIn, owner('wall'));
+  if (lays('wall') && !areas.length) drawBricks(editor, layerOf.wall, bricks, 'wall', wallSettings.setId, settings.seed, settings.reliefIn, owner('wall'));
+  for (const { area, settings: s, bricks: ab } of areaLays) {
+    const layer = area.layer || layerOf.wall;
+    applyBrickLayerTooling(layer, s);
+    drawBricks(editor, layer, ab, 'wall', elementSettings(s, 'wall').setId, settings.seed, settings.reliefIn, area.id);
+  }
   if (lays('wall')) syncAccentHighlight(editor, settings.accent, settings.seed);
   if (lays('frame')) syncRunAccentHighlight(editor, settings); // per-band accents
   // F35 item 35: the engine's band-fit note (T86 item 28) when the Frame's stack was reduced to fit the board
-  return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0,
+  const wallCount = !lays('wall') ? 0 : areas.length ? areaLays.reduce((n, l) => n + l.bricks.length, 0) : bricks.length;
+  return { wallCount, frameCount: lays('frame') ? frameBricks.length : 0,
     bandsReduced: lays('frame') ? (result.bandsReduced || null) : null };
 }
 
@@ -937,7 +1043,15 @@ export function runBricks(editor, settings, frameGeom, { laidKey, kinds, amend }
   // item 22: each laid element's record keeps the settings it was laid with (its own, per element) and, from a
   // committed lay, the key of them (step 3). The record itself is what makes the element exist (audit B1: a Wall
   // the bands squeezed to zero bricks keeps its record, so the next lay brings it back).
+  const areas = wallAreaRecords(editor);
   for (const kind of (kinds || BRICK_KINDS)) {
+    if (kind === 'wall' && areas.length) { // slice 2: each area keeps its own snapshot; the edited one is updated
+      for (const a of areas) {
+        if (a.id === editor._brickWallAreaId) a.node.setAttribute(BRICK_SETTINGS_ATTR, JSON.stringify(elementSettings(settings, 'wall')));
+        if (laidKey != null) a.node.setAttribute(BRICK_LAID_ATTR, laidKey);
+      }
+      continue;
+    }
     const rec = brickRecordNode(editor, kind);
     if (!rec) continue;
     rec.setAttribute(BRICK_SETTINGS_ATTR, JSON.stringify(elementSettings(settings, kind)));
@@ -1184,6 +1298,38 @@ export const brickBrushHandler = {
     }
     commitEdit(editor);
     notifyBricksGenerated(settings);
+  },
+};
+
+/** F35 item 22 slice 2, the AREA brush (editor._currentMode === 'brickWallArea'): a drag paints a round brush of
+ *  editor._brickAreaWidthIn (a translucent preview while dragging); on release the simplified stroke goes to
+ *  editor._brickWallArea(points) (main/brick-panel.js: adds it to an area, lays, one undo step). A tap = a dab. */
+export const AREA_PREVIEW = Object.freeze({ color: '#1e88e5', opacity: 0.3 });
+export const brickWallAreaHandler = {
+  start(editor, pt) {
+    const raw = pt; // the editor's own point (snapped like a Brush stroke's)
+    editor._isDrawing = true;
+    editor._points = [[raw.x, raw.y]];
+    const host = editor._highlightLayer || editor._sketchLayer;
+    editor._currentPath = host.path(`M ${raw.x} ${raw.y} L ${raw.x} ${raw.y}`).fill('none')
+      .stroke({ color: AREA_PREVIEW.color, opacity: AREA_PREVIEW.opacity, width: editor._brickAreaWidthIn || 1, linecap: 'round', linejoin: 'round' })
+      .attr('pointer-events', 'none');
+  },
+  update(editor, pt) {
+    if (!editor._isDrawing || !editor._currentPath) return;
+    const raw = pt;
+    editor._points.push([raw.x, raw.y]);
+    editor._currentPath.attr('d', `${editor._currentPath.attr('d')} L ${raw.x} ${raw.y}`);
+  },
+  finish(editor) {
+    editor._isDrawing = false;
+    const points = editor._points || [];
+    if (editor._currentPath) editor._currentPath.remove();
+    editor._currentPath = null;
+    editor._points = [];
+    if (!points.length || typeof editor._brickWallArea !== 'function') return;
+    const simplified = points.length > 2 ? ramerDouglasPeucker(points, 0.02) : points;
+    editor._brickWallArea(simplified.map(([x, y]) => ({ x, y })));
   },
 };
 

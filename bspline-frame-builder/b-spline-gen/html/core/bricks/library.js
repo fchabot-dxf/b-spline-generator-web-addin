@@ -367,6 +367,9 @@ export const BRICK_PATTERNS = Object.freeze({
   // SAME `fieldstoneLayout` call Wall already makes, just against the band's own ribbon region
   // instead of the whole interior (see contour-bands.js's own `buildAreaBandBricks`).
   fieldstone: { kind: 'tile2d', bandCapable: true },
+  // 37 (F35, grey-sets T86 item 25): Set 5's coursed rubble as a Wall pattern -- it picks that set the way Fieldstone
+  // picks Set 3 (editor-brick-tool.js patternSetId: the set whose layout IS the pattern). Wall only: not band-capable.
+  coursed_rubble: { kind: 'tile2d', family: 'fieldstone' },
 });
 
 /**

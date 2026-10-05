@@ -151,6 +151,10 @@ export const DEFAULT = {
       // F35 item 14: the user's pick of a pattern's declared params, per pattern ({ octagon_square: { ratio: 0.58 } });
       // a pattern not listed lays with its declared defaults (library.js BRICK_PATTERNS[id].params)
       patternParams: {},
+      // F35 item 13: the Wall pattern turned by this angle (WALL_ROTATIONS chips; engine rotationDeg, T86 item 29); 0 = as laid
+      wallRotationDeg: 0,
+      // F35 item 22 slice 2: the Area brush's width, inches (WALL_AREA_WIDTHS chips)
+      wallAreaWidthIn: 1,
       // per-element accents (advisor): one per Frame band (index = the band) and the Brush element's (every stroke,
       // each on its own grid); same shape as `accent`, periodic presets + Click bricks (no custom tile)
       frameBandAccents: [],

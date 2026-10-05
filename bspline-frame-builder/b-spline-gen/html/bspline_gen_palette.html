@@ -3174,10 +3174,14 @@
               <!-- F35 item 22: this element tool's sub-tools (main/brick-panel.js BRICK_SUB_TOOLS) + what the section edits -->
               <div id="brickSubTools_wall" style="display:flex; gap:6px; margin-bottom:4px; flex-wrap:wrap;"></div>
               <div id="brickElementLabel_wall" style="font-size:10px; opacity:0.65; margin:0 0 10px;"></div>
+              <!-- F35 item 22 slice 2: the Area brush's width chips + Clear areas (main/brick-panel.js renderWallAreaRow); Area sub-tool only -->
+              <div id="brickWallAreaRow" style="display:none; gap:4px; align-items:center; flex-wrap:wrap; margin:-4px 0 10px;"></div>
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
               <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
                 <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
               </div>
+              <!-- F35 item 13: the Wall pattern's ROTATION (main/brick-panel.js WALL_ROTATIONS); hidden until the engine lists rotationDeg -->
+              <div id="brickWallRotationRow" style="display:flex; gap:4px; align-items:center; margin:0 0 10px;"></div>
               <!-- F35 item 31d (Fred: "the raised bricks should be part of the normal pattern section"): the ACCENT row,
                    right under the bond grid -- None + the presets as engine-drawn icons + Custom… (the pattern
                    builder, item 31) + Click bricks; the signed Accent level (item 32). -->

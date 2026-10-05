@@ -14426,3 +14426,114 @@ WallPattern = {
   - #4 no Select for Brush / Raised strokes in the Brick tab;
   - #5 at a size where band-fit keeps only one band, every multi-band preset looks the same (only the note says so): grey them, or say it on the preset tooltips?
 - **Sheet:** ~/.bspline-status/shots/seat37/brick_tab_audit_v3.png (numbered red boxes, before | after).
+
+## turn 261 (amendment): F35 item 13 Wall rotation chips
+- **Declared:** `WALL_ROTATIONS = [0, 45, 90]` (main/brick-panel.js). Static `#brickWallRotationRow` sits right under the Wall pattern grid; its chips `brickWallRotation_<deg>` are rendered from the declaration.
+- **State:** `P.brickSettings.wallRotationDeg` (default 0) is a plain settings key like `pattern`. It persists with the session and rides in each wall record's settings attr (elementSettings spreads settings). The matrix neutral set (controls.mjs `neutralNewFields`) gets `wallRotationDeg: 0` in the same commit.
+- **Engine input:** `_generateAndDraw` sets `input.rotationDeg` only when non-zero, so 0 leaves the input exactly as today (88's byte-identical contract).
+- **Gate:** BRICK_CONTROL_REQUIRES `{brickWallRotationRow, engineOption rotationDeg, hides}`. Hide rules are applied by the row's own sync (as for Rustic), so renderWallRotation calls `_hiddenUntilMet`. My first draft missed that and the test caught it.
+- **Tests:**
+  - wall-rotation-panel: declaration, hidden until the option is listed, chips + active state, a click persists and re-lays, an undeclared angle is ignored, neutral set.
+  - wall-rotation-input: 45/90 reach generateBricks; 0/missing add no key.
+  - Against the pre-change files: 5/6 fail. The 6th (0 = no key) pins something already true.
+- **Live** (scratch worktree = fb-app + origin/pattern-rotation 8d26056, port 8852; removed afterwards, server stopped), on the 7x9 default board:
+  - The row shows, 0 active.
+  - Running bond 0: canvas 4c894654, 3D 969be263 (59 bricks).
+  - Running bond 45: canvas 63a40d47, 3D 3cda31a8 (65).
+  - Running bond 0 again: 4c894654 / 969be263, exactly the baseline.
+  - Herringbone 0 → 45: canvas c5cbab52 → 4e8da265, 3D 2bc89c1b → 17f61c92.
+  - 0 errors.
+- **Shots** (~/.bspline-status/shots/seat37): item13_running_bond_45_editor.png, item13_herringbone_45_editor.png, item13_herringbone_45_3d.png.
+- **Noticed:** the herringbone 45 3D shows a few "thin 0.065-0.071 in" markers (the existing thin-piece check on rotated edge cuts). These are not new machinery.
+
+## turn 263: F35 item 22 SLICE 2, Wall Area brush + Select a painted wall (seat 37)
+- **First:** merged origin/wall-region 0444b91 (it lists wallRegion again) into fb-app as 527cca5. One import-line conflict in fill-shape.js; I took the union of both import lines.
+- **Blocker fix, mid-turn (advisor DM), 6b95b57:** wall-rotation-panel's mock base drops rotationDeg, because the merged engine now really lists it. Committed alone.
+- **Data model (editor-brick-tool.js):**
+  - A painted area is a `wall-area` RECORD with these attributes:
+    - `data-brick-area`: its strokes `[{points, widthIn}]`, the engine's wallRegion input as is;
+    - `data-brick-area-seq`: paint order, newest wins;
+    - `data-brick-settings`: its own snapshot.
+  - The record sits on the layer that was active when the area was painted. Its bricks are `data-brick="wall"` with owner = the area. So 3D, Send, Clear, layers and Select all work through the existing code.
+  - The first area removes the whole-board `wall-full` record; clearing every area brings it back on the next lay.
+  - `brickRecordNode(editor, 'wall')` falls back to the newest area, so wall presence, layer and laid key keep working unchanged in the panel.
+- **The lay:**
+  - The main generateBricks call keeps the frame and sets `skipWallFill` while areas exist.
+  - Then one call per area, oldest first: `wallRegion = { strokes: its own, minus: every NEWER area's strokes }`, with brush exclusions as before.
+  - Each area is laid with its own WALL_AREA_FIELDS (pattern, patternParams, wallRotationDeg, largeStones, setIds.wall, rusticByElement.wall, groutByElement.wall) over the shared settings. The SELECTED area (`editor._brickWallAreaId`) uses the section's current settings, and runBricks then writes them into its snapshot. The laid key is stamped on every area.
+  - **Shared by every wall, stated:** size, grout depth, relief, seed, suppression, Accent and Level. The height pass reads Accent/Level globally; per-wall versions would need it to read per owner. That is a follow-up if Fred wants it.
+  - **Cost:** each area call re-runs the frame bands (the engine does not return its interior outline), so N areas cost N+1 band lays.
+- **Panel (brick-panel.js):**
+  - The Area sub-tool arms the `brickWallArea` mode, which is also declared on the Brick tab in editor-tabs.js (the mode-scope guard caught that I had missed it).
+  - The `#brickWallAreaRow` holds Width chips (declared `WALL_AREA_WIDTHS` 0.5 / 1 / 2 in; `wallAreaWidthIn`, persisted + neutral set) and a Clear areas button on its own line.
+  - The row shows only with the Area sub-tool, plus the existing wallRegion rule (the row id was added to it).
+  - A stroke goes into the selected area, or with none selected starts a new area. The new area takes the section's settings, becomes the selected one, and the wall re-lays at once: one undo step per stroke.
+  - Select on an area copies its snapshot's fields into P.brickSettings and re-syncs the section. Deselecting keeps them as the "next wall" settings.
+  - The gesture: a translucent round-brush preview in the highlight layer, then RDP 0.02 on release. A tap paints a disc.
+- **Not built:** an erase gesture (design-note question 2, never answered) and per-area Delete. Clear areas, Clear > Bricks and Undo cover removal for now.
+- **Tests:**
+  - wall-areas (8): records, layer, the no-area path, the per-area calls with minus = newer areas, own snapshot vs selected, clear → full fill, withWallFields, the gesture.
+  - wall-areas-panel (6): hidden until wallRegion is listed, arming + row + width, a stroke into the selected area / a new area, Select loads an area's settings, Clear areas, the neutral set.
+  - Against the pre-slice-2 files: 12/14 fail. The 2 that pass pin things already true: no area = no wallRegion, and the Area button was already gated.
+- **Live** (fb-app tip, real CDP mouse drags on the 7x9 T1, wall + single_soldier frame; probe area_live.mjs):
+  - Baseline: wall 59, frame 88, canvas 4c894654.
+  - A (stretcher, 2 in): 25 bricks; the wall-full record is gone.
+  - B (herringbone, newer, crossing A): A drops to 14 bricks and flows around B (26).
+  - Undo: 2 areas → 1; Redo: 2.
+  - C (stack, 1 in) across the bottom band: its lowest point is y 7.5 = the top of the frame bricks there, so it stops at the band.
+  - A real click on an A brick: pattern back to stretcher, "Editing: this Wall".
+  - Apply: the saved drawing holds 3 area records; reopened: 3 areas.
+  - Clear areas: 0 areas, wall 59, canvas 4c894654 = the baseline.
+  - Clear > Bricks removes the areas.
+  - 0 console errors.
+  - Fixed while checking: "Clear areas" ran off the section's right edge; it now has its own line.
+- **Determinism:** 2 runs with the same drags gave the same strokes and canvas (6d63c8b4). The 3D hash is stable within a session but differs between sessions.
+  - **Measured, not caused by this change:** a plain full wall with no areas does the same (570ff528 vs 8dfcbc17, canvas identical). Something in the height pass (sample textures?) varies per page load. Flagged for the advisor; not chased here.
+- **Shots** (~/.bspline-status/shots/seat37): item22s2_two_overlapping_areas.png, item22s2_area_across_band.png, item22s2_reopened.png, item22s2_after_clear_areas.png.
+- **Merged origin/main 99c735f** (clean). Full suite on the merged tree: 2 failed / 4600 passed.
+  - editor-tab-mode-scope: mine, fixed (the mode declared).
+  - frame-3d-sweep: a 90 s timeout; passes alone (2 files 27/27).
+
+### turn 263 (amendment): Coursed rubble Wall pattern (Grey stone, Set 5) (seat 37)
+- **Hold on slice 2, then resolved (advisor DMs):**
+  - Fred: "Not a fan of wall brush". His answer: painting is fine, but he wants COMPLETE bricks, no cut bricks at an area edge.
+  - Slice 2 stays as pushed. 88 does T86 18b (a brick is laid when its centroid is inside the region; nothing is clipped at the region edge).
+  - When that sha lands: merge it into fb-app, re-shoot the 3 slice-2 shots, re-check Select + persistence, then pass.
+- **Merged origin/grey-sets 23a6062** (advisor OK) as 9e229bf. Two add/add conflicts, both kept as unions:
+  - core/bricks/index.js: the strokesToRegion + bricksGroutCut exports;
+  - 88's WORK-LOG.md: both log sections.
+- **The entry:**
+  - `BRICK_PATTERNS.coursed_rubble = { kind: 'tile2d', family: 'fieldstone' }` (a registration line in library.js). The family declaration places it next to Fieldstone in the Wall grid, with nothing else to list. It is not band-capable, so band rows don't list it.
+  - The engine-drawn icon (Set 1 sizes) shows uneven course lengths and reads distinct from running bond.
+  - The label is "Coursed rubble".
+- **The set, declared once:** `patternSetId(pattern)`: a Wall pattern named after a stone set's LAYOUT implies that set (fieldstone -> Set 3, coursed_rubble -> Set 5).
+  - elementSetId('wall') and selectSet's "a brick set turns a stone wall back into bricks" now read it, instead of the hard-coded fieldstone check.
+  - The Frame's rock rule (isRockFrame) is unchanged.
+- **Tests:** coursed-rubble-pattern (3). 2/3 fail against the pre-change files (git stash of the 3 files, restored, cmp clean). The engine-lay test pins 88's engine.
+- **Live** (7x9 T1, Wall only, one session):
+  - stretcher: canvas 4c894654, 59 bricks, 3D 9b806b3a;
+  - Coursed rubble: canvas ba397766, 19 stones, every one data-brick-set 5, no Set-row chip active, 3D 8e711f1c.
+  - 0 errors.
+  - The stones are big because the shared 1.25 in brick size scales Set 5 (1.1 in) by 1.14, the same rule as Fieldstone.
+- **Shots** (seat37): coursed_rubble_wall_editor.png, coursed_rubble_wall_3d.png.
+- **Full suite:** 6 failed / 4618 passed. All 6 are timeouts in heavy tests (bands-reduced-note, frame-3d-sweep, frame-radius-handles, frame-template-10, silhouette-resolve); the 5 files pass alone, 89/89.
+
+### turn 263 (close): slice 2 on 88's T86 18b + 18c, whole bricks, newest first (seat 37)
+- **Merged origin/wall-region 6d70cb4** (18b: whole bricks by centroid, no cut at a region edge; 18c: drop-don't-cut exclusions) as 69db8d6. Two add/add conflicts, kept as unions: the fill-shape import (WALL_REGION_PICK) and 88's WORK-LOG.
+- **Wiring (18c, 88's input shape):**
+  - The areas are laid NEWEST first.
+  - Each older area gets exclusions = the brush exclusions (cut, as today) + every newer area's LAID bricks as `{ polygon, drop: true }` (a brick touching one is dropped, never cut).
+  - The minus (newer areas' strokes) is unchanged.
+  - wall-areas tests updated: the call order and the drop exclusions are pinned. The mock reports exclusionsApplied, as the engine does. Against the pre-18c editor file, 2/8 fail.
+- **Live re-shoot** (area_live.mjs, real drags, 7x9 T1 + single_soldier frame):
+  - A (stretcher) + B (herringbone, newer): 0 overlapping brick pairs between A and B. A keeps 8 whole bricks around B's 26.
+  - Undo 2 → 1, Redo 2.
+  - C (stack) across the bottom band: lowest point 7.5 = the top of the band.
+  - Select A: stretcher back, "Editing: this Wall".
+  - Apply: 3 records saved; reopened: 3.
+  - Clear areas: wall 59, canvas 4c894654 = the baseline.
+  - Clear > Bricks removes the areas.
+  - 0 errors.
+  - Shots re-shot (seat37): item22s2_two_overlapping_areas.png, item22s2_area_across_band.png, item22s2_after_clear_areas.png (+ item22s2_reopened.png).
+- **Probe flake, seen twice this turn:** the first eval right after the reload sometimes gets "Failed to fetch dynamically imported module" for editor-brick-tool.js; a retry passes. A module-by-module import check passes, so this is the probe's timing, not the app.
+- **Full suite:** 3 failed / 4624 passed, all 3 heavy-test timeouts (frame-3d-sweep, frame-radius-handles, frame-template-10); those files pass alone, 68/68.
