@@ -261,6 +261,15 @@ export const SELECT_ELEMENT = {
 // brickLaidKey, no records) restores migrated in place. fixtures/pre-item22-board.splineGenLastSession.json is seat 37's
 // raw localStorage['splineGenLastSession'] saved at b75e836~1 (T1 7x9, Wall + Frame, Red Brick, Applied): 99 wall +
 // 106 frame bricks, no records.
+// ---- group setup pins (advisor, 2026-10-05): what a group's rows depend on is declared, never the new-board default.
+// The frame group's rows were measured at 1 in; the default moving to 1.25 in (37, 124b799) made T1 7x9 three soldier
+// bands fill the board (B1's empty wall) and failed "Frame Set: Red Brick, the rock wall stays" -- a default leaking
+// into a fixture, the same class as MIGRATION's neutral set. Applied when the group runs on its own (--parallel = the
+// gate); an all-groups run shares one baseline with the wall group's own size rows, so it is left as is.
+export const GROUP_SETUP = {
+  frame: { set: 'brickSize', value: 1, event: 'change', why: 'the frame rows were measured at 1 in' },
+};
+
 export const MIGRATION = {
   fixture: 'fixtures/pre-item22-board.splineGenLastSession.json', sessionKey: 'splineGenLastSession', wall: 99, frame: 106,
   setGroutWidthIn: RED_SET.grout.widthIn, // the fixture's wall/frame are Red Brick: groutByElement null = this
