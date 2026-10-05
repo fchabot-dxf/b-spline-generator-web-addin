@@ -14209,3 +14209,24 @@ WallPattern = {
   - Matrix: only tools/brick-matrix/controls.mjs:80 'Brick size stepper 1.0' touched the old default. It was a set-to-default; it is now a real change. The ¾ and 1½ preset and quick rows move away from the default either way. Told 88.
   - discrete-controls N2 timed out under load (9.7 s in-file, against 0.3 s isolated with -t).
   - No new persisted P.brickSettings field, so the fixture's neutral set is unchanged.
+
+## turn 253 (interrupt): the "1.25 re-lays saved boards" blocker was a harness clobber, not an app bug
+- **Advisor's report:** the matrix migration rows showed the pre-item-22 fixture (saved at 1 in) re-laying at 1.25.
+- **Measured instead of patched:**
+  - The fixture's brickSettings carries `brickLengthIn: 1`.
+  - Set the session, then reload (exactly as run.mjs:739-740 does) → live 1.25, 0 bricks, a default board.
+  - Cause: main.js:71 `pagehide → saveLastSession()`. The OLD page saves its own default session over the fixture as it unloads; the reload restores that.
+  - The same steps with the old page's session write blocked → 1 in, 205 bricks (99 + 106). Only the expected grout migration differs.
+  - The report's "frame 88/106" is a default single-soldier frame at 1.25 in.
+  - Fix belongs in 88's run.mjs: stub Storage.setItem for the session key before the reload. Told the advisor and 88.
+- **No legacyDefaults table and no version stamp (advisor agreed).** brickSettings is restored WHOLE, and each changed default reads its OLD behaviour when the field is absent:
+  - no brickLengthIn → scaleFor 1 → the set's own 0.75;
+  - no brickTopMode → organic;
+  - no grout.profile → flush;
+  - no accent → none.
+- **Pinned in tests/saved-board-keeps-settings.test.js (4):**
+  - the real fixture loads at 1 in through loadLastSession + runMigrations, with DEFAULT asserted at 1.25;
+  - the absent-field reads (each with a control that the non-legacy value does change the mask).
+  - They pin truths, so they pass on today's code by design.
+  - Mutation check: loadLastSession made to fill brickLengthIn from DEFAULT → the fixture test fails (1/4). Restored from a copy; cmp clean.
+- Slice 3 (bricks on the active layer) is paused at the design stage, no code changed. A golden board capture exists in my scratchpad; see the next entry.
