@@ -25,8 +25,8 @@ From the outgoing advisor (session `b-spline-generator-web-addin-54`) to the new
 | Seat | Session | Worktree / branch | Epoch | Seat lock | Doing now |
 |---|---|---|---|---|---|
 | A | (FRESH SEAT NEEDED; 39 HELD at turn 563, 2026-10-04 evening, after a compaction) | main checkout / `main` | 8 on adoption | -- | start block at the END of NEXT-SESSION.md: item 81 (T10, from 39's plan branch t10-item81-plan) -> item 82 (CAM same-position stock) |
-| B | `b-spline-generator-web-addin-88` (promoted by Fred 2026-10-04 evening; d3 held at turn 342) | wt-88, one branch per item from origin/main; coordination by DM (no handoff.py loop) | -- | 88 | the lane-b queue from NEXT-SESSION-lane-b.md's start block: 16(c) part 2 -> 16(b) -> 13 -> 18 -> 10 -> 24 (grey sets) -> 25 (coursed rubble) -> 22-23 (rustic, wear on rocks) -> 21b |
-| C | `b-spline-generator-web-addin-37` | `-fb-app` / `fb-app` | 6 | 37 | F35 item 18: Flat/Organic, Weathered, sidebar split, 2D-only editor (de DECOMMISSIONED cb79c86) |
+| B | (FRESH SEAT NEEDED; 88 STOPPED cleanly 2026-10-05 evening after delivering T86 13, 28, 18/18b/18c, 10, 26, 27, 24/25, 22/23 + the matrix harness) | `-wt\88` (branch band-yield 238293d = the PARKED 16(c) part 2 trial, not for merge), one branch per item from origin/main; coordination by DM | -- | -- | start block "STATE AT 2026-10-05 END OF DAY" in NEXT-SESSION-lane-b.md: 16(c) part 2 (build each row on its own side of the medial line) -> 21b; engine branches accent-cuts 368ca32 + custom-bond ff1276d wait for seat C's 31b/31e wiring |
+| C | `b-spline-generator-web-addin-37` | `-fb-app` / `fb-app` | 6 | 37 | F35 item 36 (Select a stroke); item 37 parked with its report (first-lay brick-mask drift 0.00045 in); then 31b/31e on origin/accent-cuts + origin/custom-bond |
 | spare | (none: 88 took seat B, 2026-10-04 evening) | -- | none | none | b5, f3, de DECOMMISSIONED |
 
 Decommissioned, all signed with 🪦 except `af`, which is closed: af, 66, d6, 55, 4a (archived 2026-10-03, never had a task).
