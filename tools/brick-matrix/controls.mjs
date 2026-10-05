@@ -89,6 +89,9 @@ export const BRICK_CONTROLS = [
   { name: 'Random seed', kind: 'editor', tool: 'wall', do: click('brickBtnRandomSeed'), expect: LAYOUT },
   { name: 'Generate re-lays now (wall)', kind: 'relay', tool: 'wall', do: click('brickGenerate'), expect: { restores: true }, introducedBy: '9eb45d2' },
   // ---- editor, Frame tool
+  // item 28: a 3-band stack is reduced to what fits the board; at the 1 in default it keeps only its outer band on
+  // T1 7x9 (= the Soldier the frame already has, nothing to see), at 3/4 in it keeps two
+  { name: 'Brick size 3/4 (frame group: 3-band fits T1 7x9 from here)', kind: 'editor', tool: 'wall', group: 'frame', do: click('brickSizePreset_quarter3'), expect: LAYOUT },
   { name: 'Frame preset: 3-band', kind: 'editor', tool: 'frame', do: click('brickFramePreset_three_band'), expect: LAYOUT },
   { name: 'Band 1 pattern: Header', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_header'), expect: LAYOUT },
   // item 23: a Fieldstone band makes the whole frame rock (every band); then the per-element rule -- the Frame
@@ -240,6 +243,10 @@ export const CLEAR_MENU = {
 // wall -- the app says so, and the wall comes back when the bands fit again (before the fix it never did).
 export const LAY_WARNING = {
   template: 'template_9',
+  // item 28: a stack too deep for the board is reduced first, so "no room for the wall" is now a board too narrow
+  // for even ONE band: T9 7x9 at 1-1/2 in (measured: no wall; at 3/4 in a 146-brick wall)
+  tooManySize: 'brickSizePreset_half1',
+  fitsSize: 'brickSizePreset_quarter3',
   tooMany: 'brickQuick_frameBands_three_band',
   fits: 'brickQuick_frameBands_single_soldier',
   notes: { sidebar: 'brickLayWarnings', editor: 'brickEditorLayWarnings' },
@@ -267,7 +274,14 @@ export const SELECT_ELEMENT = {
 // into a fixture, the same class as MIGRATION's neutral set. Applied when the group runs on its own (--parallel = the
 // gate); an all-groups run shares one baseline with the wall group's own size rows, so it is left as is.
 export const GROUP_SETUP = {
-  frame: { set: 'brickSize', value: 1, event: 'change', why: 'the frame rows were measured at 1 in' },
+  frame: [{ set: 'brickSize', value: 1, event: 'change', why: 'the frame rows were measured at 1 in' }],
+  // T86 item 28: frame-ui accents band 1 of three_band after its rock-frame row, so three ROCK rings (0.75 + 0.6 +
+  // 0.75 in, declared widths that no brick size changes). On a 7x9 the fit rule keeps one ring at a 1/3 share; on a
+  // 9x12 two fit under 1/3 and 1/2 alike (T1's narrowest gap 4.96 in). runFrameUi's own reload keeps the board.
+  'frame-ui': [
+    { set: 'widthIn', value: 9, event: 'change', why: 'band 1 of three rock rings exists on a 9x12 board' },
+    { set: 'heightIn', value: 12, event: 'change', why: 'band 1 of three rock rings exists on a 9x12 board' },
+  ],
 };
 
 export const MIGRATION = {

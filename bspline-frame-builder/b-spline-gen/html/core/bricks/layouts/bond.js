@@ -35,7 +35,7 @@
  * the logical grid position neighbours/suppression reason about.
  */
 import { rectPolygon, clipPolygonToBoard } from '../geometry.js';
-import { BRICK_PATTERNS } from '../library.js';
+import { BRICK_PATTERNS, MIN_PIECE_FRACTION } from '../library.js';
 
 function patternFor(name) {
   const p = BRICK_PATTERNS[name];
@@ -44,9 +44,7 @@ function patternFor(name) {
 
 // T86 item 15 (Fred, shots/fred/empty_course_top.png: "empty line of brick, can it be filled with
 // half bricks"): the SAME quarter-brick floor this project already uses elsewhere for "is a leftover
-// piece worth keeping" (fieldstone.js's own MIN_PIECE_FLOOR_FRACTION) -- declared locally here since
-// bond.js and fieldstone.js are independent layout files with no shared constant between them.
-const MIN_PIECE_FRACTION = 0.25;
+// piece worth keeping" -- library.js MIN_PIECE_FRACTION, the one shared declaration (T86 item 28).
 
 // Exported for band-course.js's own reuse (F35 item 8: the Frame per-band pattern picker needs the
 // SAME pitch/cross-axis convention, placed along a curved band's own (u,v) frame instead of flat x/y).

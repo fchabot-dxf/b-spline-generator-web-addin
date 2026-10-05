@@ -36,7 +36,7 @@
 import { inwardSignFor, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, boundaryAtDepth } from './primitive-ribbon.js';
-import { scaledSet, BRICK_PATTERNS } from './library.js';
+import { scaledSet, BRICK_PATTERNS, MIN_PIECE_FRACTION } from './library.js';
 import { bricksFillShape } from './fill-shape.js';
 import { axisLen, courseHeightFor } from './layouts/bond.js';
 
@@ -231,14 +231,13 @@ function buildAreaBandBricks(enriched, depthSoFar, band, patternName, set, seed,
 /** T86 (advisor, size sheet v3: T1 7x9 three_band at 1.25 in, the middle band fanned out past the board): no band
  *  piece is laid outside the board -- item 19's wall invariant, extended to bands. A piece with real area outside
  *  the outline (more than BOARD_CLIP_TOLERANCE_SQIN) is cut to it (geometry polygonIntersection); what is left under
- *  BAND_MIN_PIECE_FRACTION of a brick drops. A piece inside the board is kept exactly as built. WHY it reaches out:
+ *  library.js MIN_PIECE_FRACTION of a brick drops. A piece inside the board is kept exactly as built. WHY it reaches out:
  *  a band deeper than the board's medial line (half the waist) inverts the offset ring -- a waist arc's offset circle
  *  grows past the far side and meets its neighbours outside the board; the fit rule for that is T86 item 28. */
-const BAND_MIN_PIECE_FRACTION = 0.25; // the same quarter-brick floor as layouts/bond.js and layouts/fieldstone.js
 const BOARD_CLIP_TOLERANCE_SQIN = 1e-3; // above the fine tessellation's own chord error on a piece
 const BOARD_CLIP_ARC_STEPS = 128; // per arc: a chord sags < 1e-4 in on the templates' fillets
 function clipBandPiecesToBoard(bricks, board, set) {
-  const minArea = BAND_MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
+  const minArea = MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const p of board) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
   const out = [];
@@ -252,6 +251,68 @@ function clipBandPiecesToBoard(bricks, board, set) {
   return out;
 }
 
+/**
+ * T86 item 28 (Fred, the 3-band preset on a 7x9 at 1.25 in: "make the app do the best result"): the FIT RULE for a
+ * band stack. The stack's total depth may take at most BAND_FIT_SHARE of the board's narrowest gap between opposite
+ * sides (narrowestGap), so a wall always remains where the board allows. A deeper stack is reduced in the declared
+ * order BAND_FIT_STEPS, innermost band first, one step at a time, until it fits:
+ *   'row'    -- the innermost course band loses one of its extra rows
+ *   'course' -- the innermost area band (herringbone, ...) shrinks to one course
+ *   'drop'   -- the innermost band goes
+ * The outermost band is never reduced: a board too narrow even for it keeps it as requested (today's lay and its
+ * warning); after a reduction that still does not fit, the note says `fits: false`. A stack that fits is laid exactly as requested (no note). Ties into 16(c) part 2: a stack
+ * deeper than half the gap is what inverts the innermost ring (the band overrun, a41a0b0).
+ */
+export const BAND_FIT_SHARE = 1 / 3;
+export const BAND_FIT_STEPS = Object.freeze(['row', 'course', 'drop']);
+
+/** The board's narrowest gap between opposite sides: from the middle of every boundary edge, a ray along the inward
+ *  normal to the first boundary it meets; the shortest. */
+export function narrowestGap(board) {
+  const n = board.length;
+  // signedArea is NEGATIVE for a counter-clockwise loop (x right, y up; measured on a unit square), whose inside is
+  // on the left of each edge: (-dy, dx)
+  const inward = signedArea(board) < 0 ? 1 : -1;
+  let best = Infinity;
+  for (let i = 0; i < n; i++) {
+    const a = board[i], b = board[(i + 1) % n];
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+    if (len < 1e-9) continue;
+    const nx = (-dy / len) * inward, ny = (dx / len) * inward;
+    const ox = (a.x + b.x) / 2, oy = (a.y + b.y) / 2;
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      const c = board[j], d = board[(j + 1) % n];
+      const ex = d.x - c.x, ey = d.y - c.y;
+      const den = nx * ey - ny * ex;
+      if (Math.abs(den) < 1e-12) continue;
+      const t = ((c.x - ox) * ey - (c.y - oy) * ex) / den; // along the ray
+      const u = ((c.x - ox) * ny - (c.y - oy) * nx) / den; // along edge j
+      if (t > 1e-6 && u >= 0 && u <= 1 && t < best) best = t;
+    }
+  }
+  return best;
+}
+
+function fitBandStack(bands, planned, gap, L, H) {
+  const limit = BAND_FIT_SHARE * gap;
+  const depthOf = (plans) => plans.reduce((sum, p) => sum + p.naturalWidth * p.rows, 0);
+  const requested = depthOf(planned);
+  if (requested <= limit) return null;
+  const oneCourse = courseHeightFor(BRICK_PATTERNS.stretcher, L, H);
+  const kept = planned.map((p) => ({ ...p }));
+  const steps = [];
+  while (depthOf(kept) > limit && kept.length > 1) { // the outermost band is never reduced
+    const i = kept.length - 1, p = kept[i];
+    if (!p.isAreaBand && p.rows > 1) { p.rows--; steps.push({ band: i, step: 'row' }); }
+    else if (p.isAreaBand && p.naturalWidth > oneCourse) { p.naturalWidth = oneCourse; steps.push({ band: i, step: 'course' }); }
+    else { kept.pop(); steps.push({ band: i, step: 'drop' }); }
+  }
+  if (!steps.length) return null; // a single band: laid as requested (today's lay and its warning)
+  const fitted = kept.map((p, i) => ({ ...bands[i], widthIn: p.naturalWidth * p.rows }));
+  return { bands: fitted, note: { requested: bands.length, kept: fitted.length, steps, gapIn: gap, limitIn: limit, requestedDepthIn: requested, depthIn: depthOf(kept), fits: depthOf(kept) <= limit } };
+}
+
 export function bricksContourBands(primitives, bands, opts) {
   const { seed } = opts;
   const closed = opts.closed !== false;
@@ -262,7 +323,12 @@ export function bricksContourBands(primitives, bands, opts) {
 
   const bricks = [];
   const L = set.brickLengthIn, H = set.brickHeightIn;
-  const plannedBands = planBands(bands, L, H, set, closed);
+  let plannedBands = planBands(bands, L, H, set, closed);
+  // T86 item 28: a closed, outer stack (the frame) obeys the fit rule; centred and open ones (brush ribbons) have no board
+  const fitBoard = closed && !opts.centered ? tessellate(primitives, BOARD_CLIP_ARC_STEPS) : null;
+  // opts.bandFit === false: a schematic on a tiny board (the band-preset / corner icons), drawn as requested
+  const fit = fitBoard && opts.bandFit !== false ? fitBandStack(bands, plannedBands, narrowestGap(fitBoard), L, H) : null;
+  if (fit) { bands = fit.bands; plannedBands = planBands(bands, L, H, set, closed); }
   let depthSoFar = opts.centered
     ? -plannedBands.reduce((sum, b) => sum + b.naturalWidth * b.rows, 0) / 2
     : 0;
@@ -311,8 +377,8 @@ export function bricksContourBands(primitives, bands, opts) {
   });
 
   // centred bands straddle the path by design, and an open path has no board: only a closed outer stack is clipped
-  const laid = closed && !opts.centered ? clipBandPiecesToBoard(bricks, tessellate(primitives, BOARD_CLIP_ARC_STEPS), set) : bricks;
-  return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, depthSoFar) : [] };
+  const laid = fitBoard ? clipBandPiecesToBoard(bricks, fitBoard, set) : bricks;
+  return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, depthSoFar) : [], ...(fit ? { bandsReduced: fit.note } : {}) };
 }
 
 /**

@@ -58,6 +58,12 @@ export const PIECE_CATALOGUE = Object.freeze([
  */
 export const FILL_FRACTIONS = Object.freeze([1, 3 / 4, 1 / 2, 1 / 4]);
 
+/** The quarter-brick floor: a leftover piece smaller than this fraction of one brick (or, for fieldstone, of its
+ *  smallest tier's grout-free stone) is not laid -- it reads as a slightly wider joint. ONE declaration (T86 item
+ *  28, advisor): layouts/bond.js (a course's leftover top strip), layouts/fieldstone.js (the smallest stone),
+ *  fill-shape.js (a wall piece cut by a brush stroke) and contour-bands.js (a band piece cut to the board) read it. */
+export const MIN_PIECE_FRACTION = 0.25;
+
 /**
  * H23 item 76 (advisor's own FINAL piece set): the 4 declared CORNER-specific pieces, used only
  * where a run meets a declared corner (never mid-run) -- a mason's own real vocabulary for turning

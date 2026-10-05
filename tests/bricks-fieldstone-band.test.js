@@ -121,7 +121,8 @@ describe('fieldstone as a band pattern (T86 item 20)', () => {
   // in catches a real regression (the pre-measured value is 0.183) while not flagging this.
   it('mixes with a course band in one preset (fieldstone outer + soldier inner), no crash, overlap stays bounded (known corner-transition residual)', () => {
     const SET = { ...SET_BASE, brickLengthIn: 0.75 };
-    const { primitives } = realContour('template_1', 7, 9);
+    // 9x12: the 1.53 in stack fits T1's narrowest gap there; on a 7x9 the fit rule (T86 item 28) drops the soldier
+    const { primitives } = realContour('template_1', 9, 12);
     const { bricks: cells, innerPath } = bricksContourBands(
       primitives, [{ widthIn: 0.75, pattern: 'fieldstone' }, { widthIn: 0.75, pattern: 'soldier' }], { set: SET, seed: 1 },
     );

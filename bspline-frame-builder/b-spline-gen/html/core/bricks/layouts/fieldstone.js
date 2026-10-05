@@ -98,6 +98,7 @@ import {
   pointInPolygon, clipToHalfPlane, clipPolygonToBoard, roundPolygonCorners, signedArea,
 } from '../geometry.js';
 import { mulberry32, seedFor, hashedRandom } from '../rng.js';
+import { MIN_PIECE_FRACTION } from '../library.js';
 
 const POISSON_ATTEMPTS = 60; // raised from Bridson's own typical 30 (MEASURED): a noise-gated tier's
 // own candidates fail more often near a region boundary than an ungated pass's would, so more tries
@@ -200,7 +201,7 @@ const GROUT_CLEARANCE_FACTOR = 2; // MEASURED (T86 item 6): White rocks' own hea
 // grout itself, shrinking the stone away to nothing. Each tier's own spacing is floored at this many
 // times the FULL grout width (a no-op for Set 1, whose own grout is small enough that even the
 // smallest tier's fraction never needs it).
-const MIN_PIECE_FLOOR_FRACTION = 0.25; // "never smaller than ~1/4 of the grout-free minimum piece" --
+const MIN_PIECE_FLOOR_FRACTION = MIN_PIECE_FRACTION; // library.js's shared quarter-brick floor (T86 item 28): "never smaller than ~1/4 of the grout-free minimum piece" --
 // the SAME declared floor concept this codebase's own FILL_FRACTIONS/mergeSlivers already use for
 // rectangular pieces (library.js), applied here to the SMALLEST tier's own nominal stone area (its
 // own target spacing squared, before grout shrink -- "grout-free") since that is the smallest unit

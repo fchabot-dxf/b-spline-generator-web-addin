@@ -124,9 +124,10 @@ export function offsetPathInward(path, width, inwardSign = 1) {
   });
 }
 
-/** Signed area of a closed polygon (shoelace) -- positive = counter-clockwise in a standard
- *  Y-up frame (or clockwise in Y-down); used only to pick offsetPathInward's own inward sign
- *  consistently, not for any absolute winding claim. */
+/** Signed area of a closed polygon (shoelace) -- NEGATIVE = counter-clockwise in a standard Y-up frame (x right,
+ *  y up), i.e. clockwise on screen (Y-down); MEASURED: the unit square (0,0),(1,0),(1,1),(0,1) gives -1. (This header
+ *  said the opposite until T86 item 28, which cost a wrong inward ray.) Callers compare signs (winding vs winding) or
+ *  take Math.abs; a caller that needs the inside side of an edge reads it from this measured sign. */
 export function signedArea(path) {
   let a = 0;
   for (let i = 0, j = path.length - 1; i < path.length; j = i++) a += (path[j].x + path[i].x) * (path[j].y - path[i].y);
