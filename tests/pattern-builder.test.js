@@ -5,6 +5,7 @@
  * the Wall grid; the accent level is signed (sunk bricks).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js', async (importOriginal) => {
@@ -36,6 +37,8 @@ import { ACCENT_LEVEL_RANGE, tileOf, ACCENT_PRESETS, accentedBrickIndices } from
 import { readFileSync } from 'node:fs';
 import { VectorEditor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor.js';
 import { commitEdit } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js';
+
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the full parallel suite timed these out at 5 s (2026-10-05, seat C 02); alone they pass
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
