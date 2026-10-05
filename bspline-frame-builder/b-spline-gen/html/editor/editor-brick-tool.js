@@ -55,7 +55,8 @@ import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
 import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon } from '../core/bricks/index.js';
-import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS } from '../core/bricks/library.js';
+import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS } from '../core/bricks/library.js';
+import { rectToPrimitives } from '../core/inset-window.js';
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
 import { radialSignAt } from '../core/bricks/arc-voussoir.js';
@@ -357,6 +358,45 @@ function _iconBricks(board, patternId, brickLengthIn, groutIn) {
   };
   applyWallPattern(input, settings);
   return generateBricks(input).bricks;
+}
+/** F35 item 24: what each Brick TOOL leaves on the board, in miniature, laid by the real engine (Set 1 at its
+ *  own size) -- editor/brick-tool-icons.js draws the tool icons from it. kind: 'wall' (a stretcher wall),
+ *  'run' / 'runLong' / 'band3' (brush runs, TOOL_MINI_RUNS), 'frame' (a soldier frame band round a square
+ *  board).
+ *  Board inches; cached; [] if the engine can't lay it. */
+const TOOL_MINI_BRICK = Object.freeze({ setId: 1, brickLengthIn: 0.75, grout: { widthIn: 0.07 }, seed: 3, suppression: 0, clumping: 0 });
+// the brush runs: preset + stroke length (a long thin run reads as a dotted line at 20 px -- measured)
+const TOOL_MINI_RUNS = Object.freeze({
+  run: { preset: 'stretcher_2_running', lengthIn: 1.6 },
+  runLong: { preset: 'stretcher_2_running', lengthIn: 2.4 },
+  band3: { preset: 'flemish_soldier_flemish_3', lengthIn: 3.6 },
+});
+const _toolMinis = new Map();
+export function toolMiniBricks(kind) {
+  if (_toolMinis.has(kind)) return _toolMinis.get(kind);
+  let bricks = [];
+  try {
+    const s = TOOL_MINI_BRICK;
+    // sized for a 20 px icon: about 2 bricks across and 3 courses; runs only 2-3 bricks long (a long thin run
+    // read as a dotted line -- measured in the first sheet)
+    if (kind === 'wall') bricks = _iconBricks({ widthIn: 1.65, heightIn: 0.8 }, 'stretcher', s.brickLengthIn, s.grout.widthIn);
+    else if (TOOL_MINI_RUNS[kind]) {
+      const { preset, lengthIn } = TOOL_MINI_RUNS[kind];
+      const settings = { ...s, brushBandPreset: preset, profile: 'bricks' };
+      bricks = bricksForBrushStroke([{ x: 0, y: 1 }, { x: lengthIn, y: 1 }], settings, toBrickOpts(settings));
+    } else if (kind === 'frame') {
+      const w = 3.4;
+      bricks = generateBricks({
+        boardOutline: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: w }, { x: 0, y: w }],
+        set: resolvedSetFor(s), scale: scaleFor(s), suppression: 0, clumping: 0, seed: s.seed, skipWallFill: true,
+        frame: { primitives: buildRibbonPrimitives(rectToPrimitives({ x1: 0, y1: 0, x2: w, y2: w })), bands: FRAME_PRESETS.single_soldier },
+      }).frameBricks;
+    }
+  } catch (_) {
+    bricks = [];
+  }
+  _toolMinis.set(kind, bricks);
+  return bricks;
 }
 // one argument only: it is passed straight to .map(), whose index must never reach the markup (a second
 // `attrs` parameter once turned every pattern icon into `<polygon0 ...>` -- drawn as nothing, measured live)

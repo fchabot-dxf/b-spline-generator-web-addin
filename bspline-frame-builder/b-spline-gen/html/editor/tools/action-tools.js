@@ -1,10 +1,6 @@
 import { bindClick } from '../dom.js';
 import { endEditorSession } from '../editor-text-session.js';
 import { isUnexpandable, unexpand } from '../editor-expand-commit.js';
-import { resetArtworkToFresh } from '../editor-io.js';
-import { clearFrame } from '../editor-frame-profile.js';
-import { refreshGuides } from '../editor-guides.js';
-import { commitEdit } from '../editor-commit.js';
 import { confirmDialog } from '../../core/confirm-dialog.js';
 
 export function registerActionTools(editor) {
@@ -22,47 +18,9 @@ export function registerActionTools(editor) {
   bind('toolResetTransform',   () => editor.resetSelectionTransform());
   bind('toolFlattenTransform', () => editor.flattenSelectionTransform());
 
-  // H20 item 3 (Fred: "Clear all doesn't clear all" -- the layer list,
-  // per-layer metadata and Lattice/Shape-Lattice pattern state all survived
-  // the old Clear, which only wiped _sketchLayer): scoped to whichever tab
-  // is active (live correction, Fred: "Clear scoped to the active tab --
-  // the Artwork tab clears only the artwork, the Frame tab only the
-  // frame" -- supersedes the original dispatch's "Does NOT touch the
-  // Frame" wording, which never made it into NEXT-SESSION.md's own text;
-  // see WORK-LOG for which channel this was confirmed through).
-  bind('editorClear', async () => {
-    // Audit K5: the same in-app dialog Cancel uses, not the browser's native confirm().
-    if (!(await confirmDialog('Clear everything on this tab?', { okLabel: 'Clear', cancelLabel: 'Keep', zIndex: 10002 }))) return;
-    if (editor._editorTab === 'frame') {
-      // The Frame tab's own undo (pushFrameHistory, inside the handler)
-      // is a completely separate stack from the artwork's -- Ctrl+Z here
-      // undoes the frame, never the artwork (F8's existing split).
-      clearFrame();
-      return;
-    }
-    // Artwork tab: reset to EXACTLY a fresh session's artwork -- one
-    // default layer, no elements, no lattice/shape-lattice pattern state
-    // (resetArtworkToFresh is the SAME function open()'s own empty-session
-    // path uses, declared once in editor-io.js). editor.pushState() below
-    // is what makes this ONE undo step (resetArtworkToFresh's own internal
-    // addLayer call is skipUndo, by design).
-    //
-    // F35 (Fred: "Clear leaves a ghost of the old content"): this used to
-    // also call sync3DBackground(editor) right here, before commitEdit --
-    // that snapshots whatever #svgEditorTopView CURRENTLY shows into the
-    // background layer, but nothing has repainted that canvas yet at this
-    // point, so it always captured the STALE, pre-Clear terrain. The only
-    // thing that ever repaints #svgEditorTopView for real is the async
-    // commitEdit -> onChange('commit') -> remask -> rebuild() ->
-    // updateEditorTopView() chain below, which calls sync3DBackground
-    // itself once the terrain is actually recomputed -- the call removed
-    // here was redundant with that AND guaranteed to render stale content
-    // in the meantime. Every other edit (draw, delete, ...) already
-    // relies on that same chain alone with no ghost; Clear now does too.
-    resetArtworkToFresh(editor);
-    refreshGuides(editor);
-    commitEdit(editor); // audit batch 3: the one commit
-  });
+  // F35 item 28: the header's Clear is a MENU now (All / Frame / Artwork / Photo / Bricks) -- built and wired in
+  // main/editor-clear-menu.js from the tab registry (it needs app state for Photo, which editor/ never imports).
+  // It supersedes H20 item 3's tab-scoped Clear.
 
   bind('editorDownload', async () => {
     const svgText = await editor.saveWithTextCopies();

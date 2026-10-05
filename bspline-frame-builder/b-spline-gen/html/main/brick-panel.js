@@ -20,7 +20,6 @@
 import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
 import { withLoadingStage } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
-import { isEditorOpen } from '../core/history.js';
 import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS,
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
@@ -693,23 +692,22 @@ function _scheduleLivePreview() {
   });
 }
 
-/** Fred (2026-10-04): WHERE a brick-setting change comes from decides how it is committed --
- *  declared per control binding, never an ad-hoc if at the call site. Same P.brickSettings underneath.
- *  - 'generate': the editor's Brick tab. The change is saved and the layout is only marked PENDING;
- *    the sticky Generate button (#brickGenerate) is the one thing that re-lays it. No live preview
- *    either -- a preview would re-lay the canvas without a Generate press.
- *  - 'auto': the main sidebar's quick settings. The change re-lays straight away (brick layout +
- *    layer tooling -> height/3D, via runBricks), with the live 2D preview while a slider drags.
+/** How a brick-setting change is committed -- declared per control binding, never an ad-hoc if at the call
+ *  site. Same P.brickSettings underneath.
+ *  - 'auto' (a LAYOUT setting): the change re-lays straight away (brick layout + layer tooling -> height/3D,
+ *    via runBricks), with the live 2D preview while a slider drags.
+ *  - 'generate' = 'auto'. F35 item 27 (Fred, 2026-10-04 evening, reversing the morning's "the editor waits for
+ *    Generate"): the editor Brick tab re-lays at once exactly like the sidebar. The name stays: it is what the
+ *    editor's bindings declare (their entry point), it simply commits the same way. Nothing is ever pending;
+ *    the Generate button is "re-lay now".
  *  onDrag = a slider/field's raw 'input' tick; onRelease = a slider's 'change' or a discrete click. */
+const AUTO_COMMIT = {
+  onDrag: () => { notifyChange(); _scheduleLivePreview(); },
+  onRelease: () => { notifyChange(); generateBricks(); },
+};
 const BRICK_COMMIT = {
-  generate: {
-    onDrag: () => { notifyChange(); _noteSettingChanged(); },
-    onRelease: () => { notifyChange(); _noteSettingChanged(); },
-  },
-  auto: {
-    onDrag: () => { notifyChange(); _scheduleLivePreview(); },
-    onRelease: () => { notifyChange(); generateBricks(); },
-  },
+  generate: AUTO_COMMIT,
+  auto: AUTO_COMMIT,
   // F35 item 18: a 3D-only setting (SURFACE_ONLY_SETTING_KEYS below) -- the 2D layout is unchanged,
   // so nothing to re-lay and nothing pending: just re-mask the heights through the editor's own
   // change pipeline (main/app-init.js onChange -> refreshAllStampMasks), from either entry point.
@@ -782,13 +780,12 @@ const _settingsKey = () => JSON.stringify(P.brickSettings, function (k, v) {
   if (this === P.brickSettings.grout && SURFACE_ONLY_GROUT_KEYS.includes(k)) return undefined;
   return v;
 });
-/** F35 item 20: the Wall flows around the brush strokes, so its layout ALSO depends on them -- the
- *  brush footprints (every brush brick's points) join the laid key while a Wall is on the canvas.
- *  Adding, editing or deleting a stroke then makes the Wall pending (editor) like any layout setting. */
+/** F35 item 20: the Wall flows around the brush strokes, so its layout ALSO depends on them -- the brush
+ *  footprints (every brush brick's points) join the laid key. Item 27: adding, editing or deleting a stroke
+ *  re-lays the Wall at once (_relayIfBrushChanged, below). Always the footprints now (it used to be '' with no
+ *  Wall on the canvas -- which only mattered for the retired pending dot, and made a first lay's key omit them). */
 function _brushKey() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  const node = editor?._sketchLayer?.node;
-  if (!node?.querySelector?.('[data-brick-gen="1"][data-brick="wall"]')) return '';
   return brushExclusions(editor).map((e) => e.polygon.map((p) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ')).sort().join('|');
 }
 /** Turn 207 (Fred / 88's finding: after a template change the old Frame bricks stayed, and would still carve):
@@ -803,10 +800,9 @@ const _layoutKey = () => {
 };
 // Audit B1-B3: the settings the Wall/Frame bricks on the canvas were laid with live ON the Bricks
 // layer (`brickLaidKey`, stamped by runBricks before its undo commit, persisted with the layer
-// roster), so undo/redo, Cancel and reload all carry them -- module memory did not. No key on the
-// layer (no bricks laid, or bricks saved before this field): a change made then can't be compared,
-// so it stays pending until the next Generate.
-let _changedWhileUnknown = false;
+// roster), so undo/redo, Cancel and reload all carry them. Since item 27 nothing is ever PENDING (every
+// change re-lays at once); the key stays the record of what is on the canvas, and the frame re-lay below
+// reads its frame part.
 
 function _laidLayoutKey() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
@@ -828,37 +824,53 @@ function _bricksLaid() {
   return typeof P.editorSvg === 'string' && /data-brick="(wall|frame)"/.test(P.editorSvg);
 }
 
-function isGeneratePending() {
-  // Audit v2 N4: nothing Generate re-lays is on the canvas (no Wall/Frame bricks, e.g. a brush-only board)
-  // -> nothing is pending. The dot used to stick there: no laid key + a sticky "changed while unknown".
-  if (!_presentKinds(typeof window !== 'undefined' ? window.svgEditor : null).length) return false;
+/** F35 item 27: the frame part of the laid key (`#frame:` -- the frame record + board size the bricks on the
+ *  canvas were laid on), or null when the key has none (no bricks laid, or laid before turn 207). */
+function _laidFrameKey() {
   const laid = _laidLayoutKey();
-  return laid === null ? _changedWhileUnknown : _layoutKey() !== laid;
+  const at = laid ? laid.indexOf('#frame:') : -1;
+  if (at < 0) return null;
+  const rest = laid.slice(at + '#frame:'.length);
+  const end = rest.indexOf('#brush:');
+  return end < 0 ? rest : rest.slice(0, end);
 }
 
-function _noteSettingChanged() {
-  if (_laidLayoutKey() === null) _changedWhileUnknown = true;
-  syncGeneratePending();
+/** F35 item 27: a frame change (template, a handle drag, thickness...) re-lays the Wall/Frame bricks at once,
+ *  in the editor as in the sidebar -- after FRAME_RELAY_SETTLE_MS, and never while a frame handle is still
+ *  being dragged (Cowork's handoff: one re-lay when the drag settles, not one per drag tick). Only a REAL frame
+ *  write triggers it ('frameRecordChanged'; a tab switch never does, so an old board is never re-laid by
+ *  surprise), and only when the bricks were laid on a different frame than the current one. */
+/** F35 item 27: the brush part of the laid key (null = no key on the layer). */
+function _laidBrushKey() {
+  const laid = _laidLayoutKey();
+  if (laid == null) return null;
+  const at = laid.indexOf('#brush:');
+  return at < 0 ? '' : laid.slice(at + '#brush:'.length);
 }
 
-/** Audit C3/C11: where else the pending state shows, so it stays visible with no tool picked (the
- *  Brick panel then gives way to Layers) and at the phone drawer's peek height. Marked with the
- *  `data-brick-pending` attribute; editor.css draws the dot. */
-const PENDING_INDICATORS = [
-  { id: 'editorTabBrick', when: () => true },
-  { id: 'editorDrawerTab-layers', when: () => getEditorTab() === 'brick' }, // the drawer's label for the ACTIVE tab
-];
+/** F35 items 20 + 27: a brush stroke added / edited / deleted (an editor commit) changes what the Wall flows
+ *  around -- re-lay the Wall at once when the strokes on the canvas differ from those it was laid around. The
+ *  re-lay's own commit then finds them equal, so it stops there. */
+function _relayIfBrushChanged() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!_presentKinds(editor).includes('wall')) return;
+  const laid = _laidBrushKey();
+  if (laid === null || laid === _brushKey()) return;
+  generateBricks();
+}
 
-function syncGeneratePending() {
-  const pending = isGeneratePending();
-  for (const ind of PENDING_INDICATORS) {
-    document.getElementById(ind.id)?.toggleAttribute('data-brick-pending', pending && ind.when());
-  }
-  const btn = document.getElementById('brickGenerate');
-  if (!btn) return;
-  btn.textContent = pending ? 'Generate \u2022' : 'Generate';
-  btn.classList.toggle('pending', pending);
-  btn.title = pending ? 'Brick settings changed -- press Generate to re-lay the bricks' : 'Re-lay the Wall/Frame bricks';
+const FRAME_RELAY_SETTLE_MS = 350;
+let _frameRelayTimer = null;
+function _scheduleFrameRelay() {
+  clearTimeout(_frameRelayTimer);
+  _frameRelayTimer = setTimeout(_relayIfFrameChanged, FRAME_RELAY_SETTLE_MS);
+}
+function _relayIfFrameChanged() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!editor || !_presentKinds(editor).length) return;
+  if (editor._frameHandleDrag) { _scheduleFrameRelay(); return; } // still dragging: wait for the release
+  if (_laidFrameKey() === _frameKey()) return; // already laid on this frame
+  generateBricks();
 }
 
 /** Lay the given element kinds with the current settings, stamping their key on the Bricks layer. */
@@ -873,11 +885,8 @@ function _layBricks(editor, frameGeom, kinds) {
   if (failed) {
     console.error('Brick Generate failed:', failed);
     showToast(`Generate failed -- the previous bricks are kept (${(failed && failed.message) || failed})`, 'error');
-    syncGeneratePending();
     return false;
   }
-  _changedWhileUnknown = false;
-  syncGeneratePending();
   syncControlRequires(); // audit v2 N5: the board now has bricks -- the sidebar controls apply
   // Audit C8: the layer's visibility is the user's choice, so it is not flipped back on -- but a
   // re-lay nobody can see must not pass silently.
@@ -920,7 +929,7 @@ export function generateBricks() {
  *  typing pauses for NUMBER_BOX_SETTLE_MS (a re-mask per keystroke would be the expensive height pass).
  *  'generate' boxes already mark pending on every keystroke. */
 const NUMBER_BOX_SETTLE_MS = 400;
-const APPLIES_AT_ONCE = new Set(['surface', 'auto']);
+const APPLIES_AT_ONCE = new Set(['surface', 'auto', 'generate']); // item 27: 'generate' applies at once too
 function settleAfterTyping(commit) {
   if (!APPLIES_AT_ONCE.has(commit)) return () => {};
   let timer = null;
@@ -1544,33 +1553,24 @@ export function initBrickPanel() {
   bindSlider('brickLargeStonesSlider', 'brickLargeStones', 'largeStones', (v) => Math.max(0, Math.min(1, parseFloat(v))));
   bindSlider('brickSuppressionSlider', 'brickSuppression', 'suppression');
   bindSlider('brickClumpingSlider', 'brickClumping', 'clumping');
+  const settleSeed = settleAfterTyping('generate'); // item 27: a typed seed re-lays once the typing pauses
   document.getElementById('brickSeed')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10);
     if (!Number.isFinite(v)) return;
     P.brickSettings.seed = v;
     commitBrickSetting('generate', 'onDrag');
+    settleSeed();
   });
   document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => setSeed(Math.floor(Math.random() * 1000000)));
   document.getElementById('brickGenerate')?.addEventListener('click', () => generateBricks());
-  // Audit B1-B3: undo/redo, Cancel's restored document and a reopen all re-render the layer roster
-  // (layers.js renderLayersPanel) -- the laid key may have changed with it.
-  document.addEventListener('editorLayersChanged', () => syncGeneratePending());
-  // Audit C11: the drawer's tab label shows the pending dot only while it names the Brick tab.
-  document.addEventListener('editorTabChanged', () => syncGeneratePending());
-  // F35 item 20: a brush stroke added / edited / deleted is an editor commit -- re-derive pending, since
-  // the Wall's laid key now covers the brush footprints (_brushKey)
-  document.addEventListener('editorCommit', () => { syncGeneratePending(); syncControlRequires(); syncStartHint(); });
+  document.addEventListener('editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); });
   document.addEventListener('bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
-  // turn 207: the frame changed (template, shape) -- the usual rule: re-lay at once from the sidebar (editor
-  // closed), mark pending in the editor (Generate re-lays; a template with no contour clears the Frame)
-  // wired ONCE per page: it RE-LAYS, so a second copy (initBrickPanel run again, e.g. in tests) would re-lay twice
+  // the frame changed (template, shape): re-lay once it settles (item 27 -- the editor too; a template with no
+  // contour clears the Frame). Wired ONCE per page: it RE-LAYS, so a second copy (initBrickPanel run again,
+  // e.g. in tests) would re-lay twice
   if (!_frameListenerWired) {
     _frameListenerWired = true;
-    document.addEventListener('frameRecordChanged', () => {
-      const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-      if (!isEditorOpen() && _presentKinds(editor).length) generateBricks();
-      else syncGeneratePending();
-    });
+    document.addEventListener('frameRecordChanged', () => _scheduleFrameRelay());
   }
   // Audit B1 + v2 N2: P.brickSettings was replaced (Cancel, session restore, project load, global undo --
   // app-init.js announceBrickSettingsRestored). A load swaps in a NEW object: an armed Brush keeps
@@ -1579,11 +1579,9 @@ export function initBrickPanel() {
     const editor = typeof window !== 'undefined' ? window.svgEditor : null;
     if (editor && editor._brickSettings) editor._brickSettings = P.brickSettings;
     syncControlsFromState();
-    syncGeneratePending();
   });
 
   syncControlsFromState();
-  syncGeneratePending();
 }
 
 export function setSeed(v, commit = 'generate') {

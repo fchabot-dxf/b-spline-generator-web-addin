@@ -17,14 +17,16 @@
  * plus the real `VectorEditor.prototype.pushState/undo/_restoreState` via
  * `.call(mock)`, same convention as editor-lattice-undo.test.js.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Audit K5: Clear asks through the in-app confirmDialog (async), not window.confirm.
 const dialog = vi.hoisted(() => ({ answer: true }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/confirm-dialog.js', () => ({ confirmDialog: vi.fn(async () => dialog.answer) }));
 const flush = () => new Promise((r) => setTimeout(r, 0));
 import { VectorEditor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor.js';
 import { resetArtworkToFresh, sync3DBackground } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
-import { registerActionTools } from '../bspline-frame-builder/b-spline-gen/html/editor/tools/action-tools.js';
+vi.mock('../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js', () => ({ clearPhoto: vi.fn() }));
+import { clearPhoto } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
+import { CLEAR_KINDS, clearOptions, runClear, initClearMenu } from '../bspline-frame-builder/b-spline-gen/html/main/editor-clear-menu.js';
 import { setFrameClearHandler } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 
 /** A minimal SVG.js-like child element: enough for pushState's `.svg()`
@@ -56,6 +58,7 @@ function makeSketchLayer(initialChildren) {
     clear() { children = []; },
     children() {
       const arr = children.slice();
+      for (const c of arr) c.remove = () => { children = children.filter((x) => x !== c); }; // item 28's per-kind clears
       arr.toArray = () => arr;
       arr.forEach = (fn) => children.forEach(fn);
       return arr;
@@ -134,131 +137,124 @@ describe('H20 item 3: resetArtworkToFresh matches a brand-new session\'s artwork
   });
 });
 
-describe('H20 item 3: editorClear is scoped to the active tab', () => {
-  function setupDom() {
-    document.body.innerHTML = `
-      <button id="toolDelete"></button><button id="editorUndo"></button><button id="editorRedo"></button>
-      <button id="toolFit"></button><button id="toolResetTransform"></button><button id="toolFlattenTransform"></button>
-      <button id="editorClear"></button><button id="editorDownload"></button>
-      <button id="editorApply"></button><button id="editorCancel"></button><button id="editorUnexpand"></button>
-    `;
+// F35 item 28 (Fred): the header's Clear is a MENU -- All / Frame / Artwork / Photo / Bricks -- built from the tab
+// registry (main/editor-clear-menu.js). It supersedes H20 item 3's tab-scoped Clear (that block's tests retired).
+describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)', () => {
+  const BRICKS = { id: '7', name: 'Bricks', visible: true, brickLaidKey: 'KEY' };
+  function editorWithBricks() {
+    const editor = makeEditor();
+    editor._layers = [...editor._layers, { ...BRICKS }];
+    editor._sketchLayer = makeSketchLayer([makeChild('path-1', '1'), makeChild('brick-1', '7'), makeChild('brick-2', '7')]);
+    editor._undoStack = [];
+    editor.pushState();
+    return editor;
   }
+  const ids = (editor) => editor._sketchLayer.children().toArray().map((c) => c.node.getAttribute('id'));
+  let frameClear;
+  beforeEach(() => { frameClear = vi.fn(); setFrameClearHandler(frameClear); clearPhoto.mockClear(); dialog.answer = true; });
+  afterEach(() => setFrameClearHandler(null));
 
-  it('Artwork tab: Clear resets the artwork to a fresh session in ONE undo step, and undo brings the original back', async () => {
-    setupDom();
-    dialog.answer = true;
-    const editor = makeEditor();
-    editor._editorTab = 'artwork';
-    editor.fitView = () => {};
-    editor.resetSelectionTransform = () => {};
-    editor.flattenSelectionTransform = () => {};
-    editor.deleteSelected = () => {};
-    registerActionTools(editor);
+  it('the options come from the tab registry: All first, then one per tab that declares `clears`', () => {
+    expect(clearOptions().map((o) => [o.id, o.label])).toEqual([['all', 'All'], ['frame', 'Frame'], ['artwork', 'Artwork'], ['photo', 'Photo'], ['bricks', 'Bricks']]);
+    expect(clearOptions()[0].kinds).toEqual(['frame', 'artwork', 'photo', 'bricks']);
+    expect(Object.keys(CLEAR_KINDS)).toEqual(['frame', 'artwork', 'photo', 'bricks']);
+  });
 
-    const stackDepthBefore = editor._undoStack.length;
-    document.getElementById('editorClear').click();
-    await flush(); // Clear awaits the in-app confirmDialog
-
-    // Reset happened...
-    expect(editor._layers).toHaveLength(1);
-    expect(editor._layers[0].pattern).toBeUndefined();
-    expect(editor._sketchLayer.children().toArray()).toHaveLength(0);
-    // ...as exactly ONE undo step.
-    expect(editor._undoStack.length).toBe(stackDepthBefore + 1);
-
-    // Undo restores the ORIGINAL layer roster (with its pattern), the
-    // drawn path, and the original active layer -- not just "something".
+  it('Artwork: the art layers and their content go in ONE undo step, the Bricks layer and its bricks stay; undo brings it back', async () => {
+    const editor = editorWithBricks();
+    const depth = editor._undoStack.length;
+    expect(await runClear('artwork', editor)).toBe(true);
+    expect(ids(editor)).toEqual(['brick-1', 'brick-2']);
+    expect(editor._layers.map((l) => l.name)).toEqual(['Layer 1', 'Bricks']); // the art layer stays in front
+    expect(editor._layers.find((l) => l.name === 'Bricks').brickLaidKey).toBe('KEY');
+    expect(editor._undoStack.length).toBe(depth + 1);
+    expect(frameClear).not.toHaveBeenCalled();
+    expect(clearPhoto).not.toHaveBeenCalled();
     editor.undo();
-    expect(editor._layers).toHaveLength(2);
+    expect(ids(editor)).toEqual(['path-1', 'brick-1', 'brick-2']);
     expect(editor._layers.find((l) => l.id === '1').pattern).toEqual({ id: 'lattice-1', seed: 42, threeDOff: true });
-    expect(editor._activeLayer).toBe('1');
-    expect(editor._sketchLayer.children().toArray().map((c) => c.node.getAttribute('id'))).toEqual(['path-1']);
   });
 
-  it('Frame tab: Clear calls the registered frame-clear handler, NOT resetArtworkToFresh -- the artwork is untouched', async () => {
-    setupDom();
-    dialog.answer = true;
-    const editor = makeEditor();
-    editor._editorTab = 'frame';
-    editor.fitView = () => {};
-    editor.resetSelectionTransform = () => {};
-    editor.flattenSelectionTransform = () => {};
-    editor.deleteSelected = () => {};
-    registerActionTools(editor);
+  it('Bricks: every brick element goes, the laid key is nulled, the artwork stays; one undo step', async () => {
+    const editor = editorWithBricks();
+    const depth = editor._undoStack.length;
+    await runClear('bricks', editor);
+    expect(ids(editor)).toEqual(['path-1']);
+    expect(editor._layers.find((l) => l.name === 'Bricks').brickLaidKey).toBe(null);
+    expect(editor._layers.map((l) => l.name)).toEqual(['Layer 1', 'Rails', 'Bricks']);
+    expect(editor._undoStack.length).toBe(depth + 1);
+  });
 
-    const frameClear = vi.fn();
-    setFrameClearHandler(frameClear);
-
-    const layersBefore = editor._layers;
-    const sketchChildrenBefore = editor._sketchLayer.children().toArray().length;
-    document.getElementById('editorClear').click();
-    await flush(); // Clear awaits the in-app confirmDialog
-
+  it('Frame: the frame-clear handler only (template -> Rectangle); the drawing is untouched, no editor undo step', async () => {
+    const editor = editorWithBricks();
+    const depth = editor._undoStack.length;
+    await runClear('frame', editor);
     expect(frameClear).toHaveBeenCalledTimes(1);
-    // Artwork completely untouched -- Clear on the Frame tab never called
-    // resetArtworkToFresh (same array reference, same content).
-    expect(editor._layers).toBe(layersBefore);
-    expect(editor._sketchLayer.children().toArray()).toHaveLength(sketchChildrenBefore);
-
-    setFrameClearHandler(null);
+    expect(ids(editor)).toEqual(['path-1', 'brick-1', 'brick-2']);
+    expect(editor._undoStack.length).toBe(depth);
   });
 
-  it('F35 (Fred: "Clear leaves a ghost of the old content"): never snapshots the STALE background ' +
-    'synchronously -- #svgEditorTopView has not been repainted yet at the moment Clear runs, so a ' +
-    'synchronous sync3DBackground() call there is guaranteed to capture the pre-Clear terrain. The ' +
-    'real repaint only happens via the async commitEdit -> onChange -> remask -> rebuild chain, ' +
-    'which already calls sync3DBackground itself once the terrain is actually recomputed', async () => {
-    setupDom();
+  it('Photo: the photo clear only; the drawing is untouched', async () => {
+    const editor = editorWithBricks();
+    await runClear('photo', editor);
+    expect(clearPhoto).toHaveBeenCalledTimes(1);
+    expect(ids(editor)).toEqual(['path-1', 'brick-1', 'brick-2']);
+  });
+
+  it('All: asks first; declined = nothing; accepted = frame + photo + a fresh drawing in ONE undo step', async () => {
+    const editor = editorWithBricks();
+    dialog.answer = false;
+    expect(await runClear('all', editor)).toBe(false);
+    expect(frameClear).not.toHaveBeenCalled();
+    expect(ids(editor)).toHaveLength(3);
+    dialog.answer = true;
+    const depth = editor._undoStack.length;
+    expect(await runClear('all', editor)).toBe(true);
+    expect(frameClear).toHaveBeenCalledTimes(1);
+    expect(clearPhoto).toHaveBeenCalledTimes(1);
+    expect(ids(editor)).toEqual([]);
+    expect(editor._layers).toEqual(freshSessionLayers());
+    expect(editor._undoStack.length).toBe(depth + 1);
+  });
+
+  it('only All asks: a single kind never opens the dialog', async () => {
+    const { confirmDialog } = await import('../bspline-frame-builder/b-spline-gen/html/core/confirm-dialog.js');
+    confirmDialog.mockClear();
+    const editor = editorWithBricks();
+    for (const id of ['frame', 'artwork', 'photo', 'bricks']) await runClear(id, editor);
+    expect(confirmDialog).not.toHaveBeenCalled();
+  });
+
+  it('never snapshots the STALE background synchronously (the H20 "ghost" rule holds for All)', async () => {
     const canvas = document.createElement('canvas');
     canvas.id = 'svgEditorTopView';
     document.body.appendChild(canvas);
-    dialog.answer = true;
-    const editor = makeEditor();
-    editor._editorTab = 'artwork';
-    editor._draw = {}; // sync3DBackground's own `editor._draw` truthiness guard
-    editor._guideLayer = { clear: () => {} }; // short-circuits refreshGuides' own _draw.group() call -- unrelated to this test
+    const editor = editorWithBricks();
+    editor._draw = {};
+    editor._guideLayer = { clear: () => {} };
     const chainable = () => ({ fill: () => chainable(), stroke: () => chainable(), size: () => chainable(), attr: () => chainable() });
     editor._bgLayer = { clear: vi.fn(), image: vi.fn(() => chainable()), rect: vi.fn(() => chainable()) };
-    editor.fitView = () => {};
-    editor.resetSelectionTransform = () => {};
-    editor.flattenSelectionTransform = () => {};
-    editor.deleteSelected = () => {};
-    registerActionTools(editor);
-
-    document.getElementById('editorClear').click();
-    await flush(); // Clear awaits the in-app confirmDialog
-
-    // Nothing in editorClear's own path may paint the background -- if it did (the pre-fix bug), this
-    // would already show a call. The one tick awaited above only lets the confirm dialog's answer
-    // resolve; this fixture has no onChange -> remask chain that could repaint in between.
+    await runClear('all', editor);
     expect(editor._bgLayer.image).not.toHaveBeenCalled();
-    expect(editor._bgLayer.clear).not.toHaveBeenCalled();
-
-    // Confirms the fixture itself is wired correctly (not vacuously passing because sync3DBackground
-    // would no-op anyway): calling it FOR REAL on this same editor does reach _bgLayer.
-    sync3DBackground(editor);
+    sync3DBackground(editor); // the fixture is live: a real call does reach _bgLayer
     expect(editor._bgLayer.image).toHaveBeenCalledTimes(1);
-
     canvas.remove();
   });
 
-  it('does nothing when the confirm dialog is declined, on either tab', async () => {
-    setupDom();
-    dialog.answer = false;
-    const editor = makeEditor();
-    editor.fitView = () => {}; editor.resetSelectionTransform = () => {};
-    editor.flattenSelectionTransform = () => {}; editor.deleteSelected = () => {};
-    registerActionTools(editor);
-    const frameClear = vi.fn();
-    setFrameClearHandler(frameClear);
-
-    const layersBefore = editor._layers;
+  it('the header menu: Clear opens it (icons none, one button per option), an item runs its clear and closes it', async () => {
+    document.body.innerHTML = '<button id="editorClear">Clear</button>';
+    initClearMenu();
+    const menu = document.getElementById('editorClearMenu');
+    expect([...menu.querySelectorAll('button')].map((b) => b.id)).toEqual(['editorClear_all', 'editorClear_frame', 'editorClear_artwork', 'editorClear_photo', 'editorClear_bricks']);
+    expect(menu.style.display).toBe('none');
     document.getElementById('editorClear').click();
-    await flush(); // Clear awaits the in-app confirmDialog
-
-    expect(editor._layers).toBe(layersBefore);
-    expect(frameClear).not.toHaveBeenCalled();
-
-    setFrameClearHandler(null);
+    expect(menu.style.display).toBe('flex');
+    expect(document.getElementById('editorClear').getAttribute('aria-expanded')).toBe('true');
+    window.svgEditor = editorWithBricks();
+    document.getElementById('editorClear_frame').click();
+    await flush();
+    expect(frameClear).toHaveBeenCalledTimes(1);
+    expect(menu.style.display).toBe('none');
+    window.svgEditor = null;
   });
 });

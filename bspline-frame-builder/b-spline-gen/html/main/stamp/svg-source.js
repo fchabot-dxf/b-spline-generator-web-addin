@@ -96,7 +96,7 @@ export function initSvgSource(ctx, layerModule) {
   // this used to only null the P.stampLayers mirror, leaving the editor's
   // actual drawing (and therefore the next Apply's carve) untouched — two
   // buttons named "Clear" with two different real effects. Now mirrors the
-  // editor modal's own Clear (editorClear, editor/tools/action-tools.js):
+  // editor modal's own Clear (editorClear, now main/editor-clear-menu.js's Artwork entry):
   // deselect, mutate, pushState, onChange — just scoped to one layer's
   // children instead of the whole sketch.
   if (btnClear) {
