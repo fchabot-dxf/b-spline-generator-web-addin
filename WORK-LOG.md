@@ -22095,3 +22095,19 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
 - geometry.js signedArea header corrected to what it measures (negative = counter-clockwise, y up; -1 on a unit square).
 - FOR T86 16(c) part 2: T18 7x9 single_soldier at 1.5 in has open wedges at its top fan corners (identical before and
   after the band-overrun clip + the fit rule: a fan void, not an overrun) -- shots/seatB/item28_before_after.png, row 2.
+
+## T86 item 10 -- grout cut (seat B / 88, 2026-10-05)
+- core/bricks/grout-cut.js bricksGroutCut(bricks, polyline, { widthIn, minPieceArea }) (also from core/bricks/index.js):
+  the polyline swept by a round brush of widthIn (one convex capsule per segment, 8-step caps) is subtracted from every
+  brick it crosses (polygonDifference); a cut brick becomes its pieces with ids <id>.<k>, each keeping the brick's
+  fields (sample, flip, heightOffset ...); pieces under minPieceArea drop (the caller passes the quarter floor);
+  untouched bricks come back as the same objects; a cut wholly inside one brick (no edge reached) leaves it whole; a
+  touch-only cut is not a cut. Post-op on any brick list, so the app re-applies its list of cuts after a rebuild.
+- NOT listed in ENGINE_OPTIONS (the advisor's wallRegion ruling, applied as precedent): listing 'groutCut' shows 37's
+  Raised-brush grout mode, whose stroke is a stub until 37 wires it; that line is 37's when the mode works.
+- Tests bricks-grout-cut (7): straight + curved across running bond (nothing within 95% of the half-width, no overlap,
+  no sliver, fields kept, area removed bounded by the cut), a wide cut drops its slivers, a cut across T1's band and
+  the wall cuts both elements, a dab, no-ops, the unlisted pin. Cut made a no-op -> 4/7 fail. Domain 825 pass (N2's
+  5 s timeout under the full concurrent load only, as before).
+- Shot: shots/seatB/item10_grout_cut.png. Note: where a cut runs nearly along a course joint the dropped slivers make
+  the joint look wider -- the declared sliver rule doing its job, worth Fred's eye.
