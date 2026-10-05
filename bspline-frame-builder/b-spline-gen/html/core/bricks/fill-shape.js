@@ -19,6 +19,7 @@ import { bondLayout } from './layouts/bond.js';
 import { fieldstoneLayout } from './layouts/fieldstone.js';
 import { herringboneLayout } from './layouts/herringbone.js';
 import { basketweaveLayout } from './layouts/basketweave.js';
+import { coursedRubbleLayout } from './layouts/coursed-rubble.js';
 import { stackedHorizontalLayout, chevronLayout, stackedVariationLayout, basketweaveVariationLayout, basketweaveStackedLayout } from './layouts/sheet-patterns.js';
 import { squareGridLayout, octagonDotLayout, hexagonLayout, lozengeLayout, framedSquareLayout } from './layouts/tiles.js';
 import { assignPieces } from './pieces.js';
@@ -32,6 +33,7 @@ import { PIECE_CATALOGUE, enabledPieces, scaledSet, MIN_PIECE_FRACTION, BRICK_PA
 // patterns this round (an honest, named scope line; see library.js's own BRICK_PATTERNS header).
 const LAYOUTS = Object.freeze({
   bond: bondLayout, fieldstone: fieldstoneLayout, herringbone: herringboneLayout, basketweave: basketweaveLayout,
+  coursed_rubble: coursedRubbleLayout, // T86 item 25
   // F35 item 13: Fred's sheet (layouts/sheet-patterns.js)
   stacked_horizontal: stackedHorizontalLayout, chevron: chevronLayout, stacked_variation: stackedVariationLayout,
   basketweave_variation: basketweaveVariationLayout, basketweave_stacked: basketweaveStackedLayout,

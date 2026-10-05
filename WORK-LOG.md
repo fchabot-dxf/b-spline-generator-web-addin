@@ -22106,3 +22106,45 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
   (< 0.01 deg), pieces 0.8-1.25x the 0 count, all inside the board; herringbone at 45; exclusions turn with it; 0 =
   absent byte-identical. Rotation off -> 3/6 fail. Bricks domain + core/bricks importers 84 files / 825 pass.
 - Shot: shots/seatB/item29_rotation.png (T1 7x9 Soldier frame, 1.25 in: running bond 0 / 45 / 90, herringbone 45).
+## T86 item 10 -- grout cut (seat B / 88, 2026-10-05)
+- core/bricks/grout-cut.js bricksGroutCut(bricks, polyline, { widthIn, minPieceArea }) (also from core/bricks/index.js):
+  the polyline swept by a round brush of widthIn (one convex capsule per segment, 8-step caps) is subtracted from every
+  brick it crosses (polygonDifference); a cut brick becomes its pieces with ids <id>.<k>, each keeping the brick's
+  fields (sample, flip, heightOffset ...); pieces under minPieceArea drop (the caller passes the quarter floor);
+  untouched bricks come back as the same objects; a cut wholly inside one brick (no edge reached) leaves it whole; a
+  touch-only cut is not a cut. Post-op on any brick list, so the app re-applies its list of cuts after a rebuild.
+- NOT listed in ENGINE_OPTIONS (the advisor's wallRegion ruling, applied as precedent): listing 'groutCut' shows 37's
+  Raised-brush grout mode, whose stroke is a stub until 37 wires it; that line is 37's when the mode works.
+- Tests bricks-grout-cut (7): straight + curved across running bond (nothing within 95% of the half-width, no overlap,
+  no sliver, fields kept, area removed bounded by the cut), a wide cut drops its slivers, a cut across T1's band and
+  the wall cuts both elements, a dab, no-ops, the unlisted pin. Cut made a no-op -> 4/7 fail. Domain 825 pass (N2's
+  5 s timeout under the full concurrent load only, as before).
+- Shot: shots/seatB/item10_grout_cut.png. Note: where a cut runs nearly along a course joint the dropped slivers make
+  the joint look wider -- the declared sliver rule doing its job, worth Fred's eye.
+## T86 items 24/25 -- grey brick + grey stone sets, coursed rubble (seat B / 88, 2026-10-05)
+- Faces: ~/.bspline-status/tools/extract_grey.py (NEW, beside extract_bricks.py whose redness test has no hue to use on
+  grey): luminance split (light faces, dark joints), row runs then column runs, a margin trim, a median-size filter.
+  grey_brick_512 -> gb_01..42 (faces ~90 x 40 px); rubble_coursed_stone_600 -> gs_01..27; grey_stone_ashlar_2048 ->
+  gs_28..64 (only crops at least 0.9 as wide as tall: dark texture split some ashlar faces into strips). grey_brick_
+  tile_320 dropped (faces 14 x 6 px, too small). 106 jpgs, 276 KB, in html/data/bricks. Contact / detect images in
+  shots/seatB/grey_extract.
+- library.js: Set 4 'Grey brick' (bond, 0.75 x 0.32 in = the photo's 2.3:1, joint 0.05 in ~ the photo's ~9%), Set 5
+  'Grey stone' (layout 'coursed_rubble', 1.1 x 0.7 in, rock-like joint 0.08 in and surface).
+- layouts/coursed-rubble.js (registered in fill-shape LAYOUTS): rough courses (height +/-25%), stone lengths 0.6-1.6
+  x, a random start per course, 12% of stones span two courses (the course above leaves the stretch free), corners
+  pulled IN at random (never an overlap) then rounded, seeded, region clip + quarter floor; all in COURSED_RUBBLE.
+  TUNED on the sheet: the first corner pull / round (0.16 / 0.18) left joints several times the photo's (coverage
+  0.615); 0.06 / 0.12 gives 0.737-0.772 over seeds 1-5 (the test's floor 0.72 holds it), plus minLength 0.2 so a
+  stone shortened by a tall neighbour no longer leaves a hole.
+- Not done here (37's side, told): Grey stone is not a bond set, so like White Rocks it needs an entry point (a wall
+  pattern that picks set 5, as Fieldstone picks set 3); no BRICK_PATTERNS entry added (it would show a button).
+  Frame bands in Grey stone lay soldier courses with stone faces (coursed_rubble is not band-capable) -- for Fred.
+- Tests: bricks-grey-sets (5: rubble on a 7x9 and in T1's frame -- no overlap, inside, <= 2 courses tall with some
+  tall, lengths in range, coverage; seeded; each set only its own samples), bricks-library (ids 1..5; every declared
+  sample image on disk). 37's brick-discrete-controls-regen Set row expectation now lists Grey brick (it joins by
+  declaration). Domain green but N2 (the known timeout).
+- Sheet: shots/seatB/item24_25_grey_sets.png (Red brick, Grey brick, White rocks, Grey stone on T1 7x9 + Soldier band,
+  and Grey stone unframed).
+- Follow-up (advisor ruling by precedent: a stone set's bands are the stone ring, as White rocks): Set 5 declares
+  `bandLayout: 'fieldstone'`; contour-bands setBandPattern reads `set.bandLayout || set.layout`, so Grey stone frames
+  lay fieldstone rings with grey faces (a bond set keeps course bands -- tested). Sheet re-rendered.
