@@ -59,8 +59,8 @@ export const BRICK_CONTROLS = [
   { name: 'Large stones 0.6 (Fieldstone)', kind: 'editor', tool: 'wall', do: set('brickLargeStones', 0.6), expect: LAYOUT, introducedBy: '88c7616' },
   { name: 'Wall pattern: None', kind: 'editor', tool: 'wall', do: click('brickPattern_none'), expect: LAYOUT },
   { name: 'Wall pattern: Stretcher', kind: 'editor', tool: 'wall', do: click('brickPattern_stretcher'), expect: LAYOUT },
-  // Level (audit v2 N6, seat 37): an editor Level change now shows the Generate dot; Generate keeps the 2D
-  // layout (Level is a height), Apply builds it -- so pending + 3D, canvas not checked
+  // Level (audit v2 N6; item 27): an editor Level change re-lays at once like every editor setting (LEVEL
+  // profile: no pending dot, relief changes); the 2D canvas is not checked (a level is height only)
   { name: 'Wall Level +1/8', kind: 'editor', tool: 'wall', do: set('brickLevel_wall', 0.125), expect: LEVEL, introducedBy: '90a1483' },
   { name: 'Wall Level 0', kind: 'editor', tool: 'wall', do: set('brickLevel_wall', 0), expect: LEVEL, introducedBy: '90a1483' },
   // F35 item 15 (seat 37): raised accents on the Wall -- 3D-only (never pending); the 2D shows an outline only
@@ -210,7 +210,8 @@ export const PEEK_LAYOUT = {
 // may differ), every other kind is byte-identical; then one Ctrl+Z must bring every kind back.
 //   kinds:   how each kind is fingerprinted in the page -- see run.mjs CLEAR_PROBE (frame: P.frame; artwork: the
 //            sketch children on non-Bricks layers; photo: P.photoImageDataUrl / photoEdits / photoPatternId;
-//            bricks: [data-brick-gen="1"] + the Bricks layers' brickLaidKey)
+//            bricks: [data-brick-gen="1"] + the wall/frame records <g data-brick-record> (item 22, seat 37
+//            fb-app 8fe50e2: the old shared layer key brickLaidKey is retired; records are hidden <g>s, never art)
 export const CLEAR_MENU = {
   button: 'editorClear',
   confirmOk: '.pm-prompt-ok',
@@ -224,4 +225,25 @@ export const CLEAR_MENU = {
     { name: 'Clear Bricks', item: 'editorClear_bricks', tab: 'editorTabBrick', clears: ['bricks'], changes: [] },
   ],
   introducedBy: '678c746',
+};
+
+// ---- lay warnings (seat 37, audit B1, fb-app dd5a59c): bands that cover the whole board leave no room for the
+// wall -- the app says so, and the wall comes back when the bands fit again (before the fix it never did).
+export const LAY_WARNING = {
+  template: 'template_9',
+  tooMany: 'brickQuick_frameBands_three_band',
+  fits: 'brickQuick_frameBands_single_soldier',
+  notes: { sidebar: 'brickLayWarnings', editor: 'brickEditorLayWarnings' },
+  text: 'no room for the wall', // a stable part of "The frame bands cover the whole board -- no room for the wall: ..."
+  introducedBy: 'dd5a59c',
+};
+
+// ---- Select (item 22 slice 1, seat 37 fb-app 2482482): picking a Wall/Frame element in the Brick tab.
+export const SELECT_ELEMENT = {
+  wallTool: 'brickTool_wall',
+  selectMode: 'brickElementSelect',
+  wallSelect: 'brickSubTool_wall_select', wallArea: 'brickSubTool_wall_area', // area is hidden until 'wallRegion'
+  frameTool: 'brickTool_frame',
+  frameLabel: { id: 'brickElementLabel_frame', text: 'Editing: this Frame' },
+  introducedBy: '2482482',
 };

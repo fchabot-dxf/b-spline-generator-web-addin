@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'persistence'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'persistence'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -377,6 +377,8 @@ try {
   }
   if (!arg('group') || arg('group') === 'layout') await runLayout();
   if (!arg('group') || arg('group') === 'clear') await runClear();
+  if (!arg('group') || arg('group') === 'lay') await runLayWarnings();
+  if (!arg('group') || arg('group') === 'select') await runSelect();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') await runPersistence();
 } catch (e) {
@@ -529,13 +531,14 @@ function clearProbe() { return `(async()=>{ const { P } = await import('./core/s
   const kids = [...ed._sketchLayer.node.children]; const onBricks = (n) => ids.has(String(n.getAttribute('data-layer')));
   const h = (str) => { let x = 5381; for (let i = 0; i < str.length; i++) x = ((x * 33) ^ str.charCodeAt(i)) >>> 0; return x.toString(36); };
   const canon = (ns) => ns.map((n) => n.outerHTML.replace(/brickfill-[0-9]+/g, '').replace(/ ?svg-selected/g, '')).join('|');
-  const art = kids.filter((n) => !onBricks(n)), gen = [...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"]')];
+  const records = [...ed._sketchLayer.node.querySelectorAll('[data-brick-record]')]; // item 22: hidden <g> records, never art
+  const art = kids.filter((n) => !onBricks(n) && !n.hasAttribute('data-brick-record')), gen = [...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"]')];
   return JSON.stringify({
     frame: { empty: P.frame?.templateId == null, hash: h(JSON.stringify(P.frame || null)) },
     artwork: { empty: art.length === 0, hash: art.length + '#' + h(canon(art)) },
     photo: { empty: P.photoImageDataUrl == null && !(P.photoEdits || []).length && P.photoPatternId == null,
       hash: h(String(P.photoImageDataUrl).slice(-300) + JSON.stringify(P.photoEdits || []) + P.photoPatternId) },
-    bricks: { empty: gen.length === 0 && bricksLayers.every((l) => l.brickLaidKey == null), hash: gen.length + '#' + h(canon(gen)) } }); })()`; }
+    bricks: { empty: gen.length === 0 && records.length === 0, hash: gen.length + '/' + records.length + '#' + h(canon(gen)) } }); })()`; }
 async function clearFingerprint() { return JSON.parse(await js(clearProbe())); }
 // A board holding all four kinds, each made through the real UI: a photo through the Photo panel's file input,
 // the template_1 frame, a Pen stroke on the Artwork tab, a Wall laid with Generate.
@@ -591,6 +594,92 @@ async function runClear() {
   }
 }
 
+// ---------------------------------------------------------------- lay warnings + Select (hoisted)
+function checkRow(kind, name, ok, detail, skip) {
+  if (skip) {
+    rows.push({ name, kind, result: `skipped: not in this build (introduced by ${skip})`, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a' } });
+    console.log(`skip  ${name.padEnd(48)} not in this build (introduced by ${skip})`);
+    return;
+  }
+  rows.push({ name, kind, result: 'ok', observed: { detail }, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', check: ok ? 'PASS' : 'FAIL' } });
+  console.log(`${ok ? 'pass' : 'FAIL'}  ${name.padEnd(48)} ${detail}`);
+}
+async function plainKey(keyName) {
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: keyName, code: keyName, windowsVirtualKeyCode: keyName === 'Escape' ? 27 : 0 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: keyName, code: keyName, windowsVirtualKeyCode: keyName === 'Escape' ? 27 : 0 });
+  await sleep(700);
+}
+async function wallCount() { return js(`window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick="wall"]').length ?? -1`); }
+async function noteState(id) {
+  return JSON.parse(await js(`JSON.stringify((()=>{ const n=document.getElementById(${JSON.stringify(id)}); if(!n) return { missing: true }; return { shown: n.offsetParent !== null && getComputedStyle(n).display !== 'none', text: (n.textContent||'').trim() }; })())`));
+}
+async function openEditorTab(tabId) {
+  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
+  await click(tabId, 900);
+}
+
+async function runLayWarnings() {
+  const W = LAY_WARNING;
+  await send('Page.reload', {}); await waitApp();
+  await openEditorTab('editorTabFrame');
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(W.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  await apply(); await heightsSettled(null);
+  await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+  if (!(await exists(W.tooMany))) { checkRow('lay', `${W.template}: too many bands -> no wall + notes`, false, '', W.introducedBy); return; }
+  // 1. bands that cover the board: no wall, both notes say so
+  await click(W.tooMany, 2500);
+  const side1 = await noteState(W.notes.sidebar);
+  await openEditorTab('editorTabBrick'); await click('brickTool_wall', 900); // the Brick panel (and its note) shows once a tool is picked
+  const walls1 = await wallCount(), ed1 = await noteState(W.notes.editor);
+  const ok1 = walls1 === 0 && side1.shown && ed1.shown && side1.text.includes(W.text) && ed1.text.includes(W.text);
+  checkRow('lay', `${W.template}: too many bands -> no wall + notes`, ok1, `wall ${walls1}, sidebar note ${side1.shown ? 'shown' : 'hidden'}, editor note ${ed1.shown ? 'shown' : 'hidden'}${side1.text.includes(W.text) ? '' : ' (text differs: ' + side1.text.slice(0, 60) + ')'}`);
+  await apply(); await heightsSettled(null);
+  // 2. bands that fit again: the wall comes back, both notes go
+  await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+  await click(W.fits, 2500);
+  const side2 = await noteState(W.notes.sidebar);
+  await openEditorTab('editorTabBrick'); await click('brickTool_wall', 900);
+  const walls2 = await wallCount(), ed2 = await noteState(W.notes.editor);
+  checkRow('lay', `${W.template}: bands fit again -> wall back, notes hidden`, walls2 > 0 && !side2.shown && !ed2.shown,
+    `wall ${walls2}, sidebar note ${side2.shown ? 'shown' : 'hidden'}, editor note ${ed2.shown ? 'shown' : 'hidden'}`);
+  if (await editorOpen()) { await apply(); await heightsSettled(null); }
+}
+
+async function runSelect() {
+  const S = SELECT_ELEMENT;
+  await send('Page.reload', {}); await waitApp();
+  await openEditorTab('editorTabBrick');
+  await click('brickTool_wall', 800); await click('brickGenerate', 2000);
+  await click('brickTool_frame', 800); await click('brickGenerate', 2000);
+  if (!(await exists(S.wallSelect))) { checkRow('select', 'Wall tool -> element Select', false, '', S.introducedBy); return; }
+  // 1. the Wall tool arms element Select; the Area sub-tool stays hidden until the engine offers 'wallRegion'
+  await click(S.wallTool, 900);
+  const st = JSON.parse(await js(`JSON.stringify({ mode: window.svgEditor._currentMode, sel: !!document.getElementById(${JSON.stringify(S.wallSelect)})?.classList.contains('active'), area: (()=>{ const n=document.getElementById(${JSON.stringify(S.wallArea)}); return !!n && n.offsetParent !== null; })() })`));
+  checkRow('select', 'Wall tool -> element Select', st.mode === S.selectMode && st.sel && !st.area, `mode ${st.mode}, Select ${st.sel ? 'active' : 'not active'}, Area ${st.area ? 'SHOWN' : 'hidden'}`);
+  // 2. a real click on a frame brick selects the Frame element: its tool, its label, its outline -- drawing untouched
+  const before = await js(CANVAS);
+  const at = JSON.parse(await js(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')]; const n=ns[Math.floor(ns.length/2)]; if(!n) return null; const r=n.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height/2, frames: ns.length }; })())`));
+  if (!at) { checkRow('select', 'Click a frame brick -> the Frame element', false, 'no frame brick on the canvas'); return; }
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y, button: 'none', buttons: 0 });
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 });
+  await sleep(1000);
+  const sel = JSON.parse(await js(`JSON.stringify({ frameTool: !!document.getElementById(${JSON.stringify(S.frameTool)})?.classList.contains('active'), label: (document.getElementById(${JSON.stringify(S.frameLabel.id)})?.textContent||'').trim(), outline: (window.svgEditor._brickElementOutline||[]).length })`));
+  const after = await js(CANVAS);
+  checkRow('select', 'Click a frame brick -> the Frame element', sel.frameTool && sel.label.includes(S.frameLabel.text) && sel.outline === at.frames,
+    `frame tool ${sel.frameTool ? 'active' : 'NOT active'}, label "${sel.label}", outline ${sel.outline} of ${at.frames} frame bricks`);
+  checkRow('select', 'Selecting adds nothing to the drawing', before === after, before === after ? 'canvas hash unchanged' : `canvas changed ${before} -> ${after}`);
+  // 3. Esc once clears the selection (tool stays), Esc twice clears the tool
+  await plainKey('Escape');
+  const e1 = JSON.parse(await js(`JSON.stringify({ outline: (window.svgEditor._brickElementOutline||[]).length, frameTool: !!document.getElementById(${JSON.stringify(S.frameTool)})?.classList.contains('active') })`));
+  checkRow('select', 'Esc once -> selection cleared, tool stays', e1.outline === 0 && e1.frameTool, `outline ${e1.outline}, frame tool ${e1.frameTool ? 'active' : 'cleared'}`);
+  await plainKey('Escape');
+  const e2 = await js(`[...document.querySelectorAll('[id^="brickTool_"].active')].map((b)=>b.id).join(',')`);
+  checkRow('select', 'Esc twice -> no Brick tool active', !e2, e2 ? `still active: ${e2}` : 'no tool active');
+  if (await editorOpen()) { await apply(); await heightsSettled(null); }
+}
+
 // ---------------------------------------------------------------- report (hoisted; shared by --parallel)
 function failRows(rows) {
   return rows.filter((r) => Object.values(r.verdict).includes('FAIL') || !(['ok', 'requires unmet'].includes(r.result) || String(r.result).startsWith('skipped')));
@@ -598,8 +687,8 @@ function failRows(rows) {
 function writeReport(rows, pageErrors) {
   const fails = failRows(rows);
   writeFileSync(path.join(OUT, 'brick-matrix.json'), JSON.stringify({ requiresSource: REQUIRES_SOURCE, rows, pageErrors }, null, 1));
-  const md = ['| Control | Kind | Pending | Canvas | 3D | Greyed out (requires) | Persists | Layout | Clear |', '|---|---|---|---|---|---|---|---|---|',
-    ...rows.map((r) => `| ${r.name} | ${r.kind}${r.tool ? ' (' + r.tool + ')' : ''} | ${r.verdict.pending} | ${r.verdict.canvas} | ${r.verdict.threeD} | ${r.verdict.greyedOut || ''} | ${r.verdict.persists || ''} | ${r.verdict.layout || ''} | ${r.verdict.clear || ''} |`)];
+  const md = ['| Control | Kind | Pending | Canvas | 3D | Greyed out (requires) | Persists | Layout | Clear | Check |', '|---|---|---|---|---|---|---|---|---|---|',
+    ...rows.map((r) => `| ${r.name} | ${r.kind}${r.tool ? ' (' + r.tool + ')' : ''} | ${r.verdict.pending} | ${r.verdict.canvas} | ${r.verdict.threeD} | ${r.verdict.greyedOut || ''} | ${r.verdict.persists || ''} | ${r.verdict.layout || ''} | ${r.verdict.clear || ''} | ${r.verdict.check || ''} |`)];
   const NL = String.fromCharCode(10);
   writeFileSync(path.join(OUT, 'brick-matrix.md'), md.join(NL) + NL + NL + `${fails.length} FAIL row(s); page errors: ${pageErrors.length}` + NL);
 }
