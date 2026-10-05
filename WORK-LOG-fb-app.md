@@ -13996,3 +13996,63 @@ WallPattern = {
     saved pattern's edit action, and closes back.
 - **Item 33:** the quoin blocks' flat fill (they take their unit from BRICK_SETS[2] under Set 1) goes with the
   corner picker; each corner style's pieces must carry a resolvable fill from the element's own set.
+
+### turn 245 -- F35 item 31 STEP 2 wired (31b/31c/31d + item 32); join/split (31e) waits for 'customBond' (seat 37)
+
+- **One deviation from the approved shape, stated:** the CURRENT wall pattern is not nested as
+  `P.brickSettings.wallPattern`.
+  - It stays `pattern` (= bond) + `accent` (= the accent, now incl. a tile, + the signed `levelIn`), which are
+    the shape's fields un-nested. Nesting them would have meant a wide migration (the quick row, isRunningBond,
+    88's matrix all read `pattern`) for no behaviour change.
+  - SAVED patterns are the full approved object: `P.brickSettings.userPatterns` + the browser's
+    `bspline.brick.userPatterns`, `{ id, label, bond: { builtin }, accent: { tile }, unit, level }`.
+  - Say if you want the nesting anyway.
+- **brick-accents.js (declared):**
+  - `ACCENT_LEVEL_RANGE` -1/8..+1/8 (default +1/16) + `clampAccentLevel` (item 32);
+  - `ACCENT_TILE` (accent `{ preset: 'tile', tile: { rows, cols, cells, unit, base } }`, repeated over the WHOLE
+    wall via the tile motif);
+  - `ACCENT_TILE_LIMITS` (2-8, default 4 x 6, maxCellsAcross 16);
+  - `ACCENT_TILE_UNITS` (1 | ½ | ¼, the fractions `requires: { engineOption: 'accentCuts' }`);
+  - `PATTERN_BUILDER_SCOPE` = ['wall'];
+  - `makeTile`, `userPatternFrom`, `accentOfUserPattern`.
+- **The mask applies the SIGNED level** (clamped; core sampleHeight floors a brick top at the ground, so a sunk
+  brick never goes below the grout floor).
+- **accentIconSvg** draws on a base bond and SUNK when asked: the marked bricks darker with an inner shadow,
+  instead of the raised drop shadow.
+- **UI (31d):** the Accent block moved from below Level to right under the Wall pattern grid, label "Accent":
+  - the preset icons (redrawn sunk while the level is negative);
+  - [Custom…] [Click bricks];
+  - the builder sub-panel (closed at rest);
+  - the Accent level input with the declared range.
+- **The builder** (renderPatternBuilder, all rendered from the declarations):
+  - Base pattern: the coursed bonds as engine icons (31c); a base change re-lays the wall on it.
+  - Unit: 1 shown, ½ ¼ hidden until 'accentCuts' (31b).
+  - Courses / Bricks steppers 2-8.
+  - The tile: cells per the base's stagger, row 0 = bottom; the cell width zooms to fit the panel (cap 16
+    across), the tile scrolls beyond.
+  - Start from a preset (tileOf; the preset stays).
+  - Name + Save + Close.
+  - While open, the wall's accent IS the builder's tile (the 2D amber highlight + 3D update per tap).
+  - Save -> the pattern joins the Wall pattern grid as its own icon (`brickUserPattern_<slug>`, drawn on its bond
+    with its accents); picking it sets bond + tile + level at once; the board's copy wins over the browser's.
+- **The conflict rule (Fred):** picking another bond under a custom tile DROPS the tile (its marks belong to its
+  own bond); a periodic preset stays and is re-applied on the new bond. A preset pick closes the builder.
+- **Live** (real browser, the Wall tool):
+  - Custom… opens: 24 cells; only the whole unit visible;
+  - 4 taps -> the accent is a tile, 21 wall bricks highlighted;
+  - base header -> the wall re-laid on header, 46 highlighted;
+  - Save "My diamond" -> in the project + localStorage + the Wall grid; the builder closes.
+  - **Item 32 measured** on the brick mask: raised +1/16 -> marked bricks 1.475 vs plain 0.983; **sunk -1/16 ->
+    marked 0.475 < plain 0.983**; level -0.5 clamped to -0.125.
+  - Shots: shots/seat37/f35item31_builder_open.png, f35item31_saved_and_sunk.png.
+- **Tests:** new pattern-builder (10): the palette order; the builder defaults + units vs accentCuts; cells -> the
+  wall accent; resize + base -> re-lay; start from; save -> project + browser + grid + apply; the board copy wins;
+  the conflict rule; the signed level clamp + sunk icons; the same marks raised/sunk. 10/10 fail against the
+  pre-step files (restored, cmp clean).
+- **Whole vitest** (276 files): 4 heavy files failed in the parallel run (boundary-at-depth T10,
+  fieldstone x2, frame-3d-sweep, frame-template-10); alone they pass (19/19, 5/5, 8/8, 32/32). The boundary one
+  also passes on the committed HEAD in a scratch worktree.
+- **Not done here (stated):**
+  - the Accent rows for Frame bands and Brush (31d says same structure there, but the mask applies accents to
+    Wall bricks only today; that needs the per-element accent model -- next);
+  - join/split cells (31e), hidden until 'customBond'.

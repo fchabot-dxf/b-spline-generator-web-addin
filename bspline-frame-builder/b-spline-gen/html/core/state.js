@@ -144,6 +144,9 @@ export const DEFAULT = {
       // 'none'; `levelIn` = how far they sit proud (+) or recessed (-). 3D-only (never re-lays). A saved
       // session without it has no accents.
       accent: { preset: 'none', levelIn: 0.0625, clicks: [] },
+      // F35 item 31: the board's SAVED custom patterns ({ id, label, bond, accent, unit, level }); the browser keeps
+      // its own list too (main/brick-panel.js USER_PATTERNS_KEY) -- a board's own copy wins on load
+      userPatterns: [],
       suppression: 0,
       clumping: 0.3,
       seed: 1,

@@ -532,22 +532,28 @@ const _iconPolygon = (b) => `<polygon points="${b.polygon.map((p) => `${+p.x.toF
  *  whole icon), so the motif reads at icon size. A new ACCENT_PRESETS entry gets its icon for free. */
 export const ACCENT_ICON_BOARD = Object.freeze({ widthIn: 3, heightIn: 1.5 });
 const _accentIcons = new Map();
-export function accentIconSvg(presetId, heightPx = 26) {
-  // item 31: a preset id, or an ad-hoc preset object (a user tile) -- keyed by its content
-  const key = `${typeof presetId === 'object' ? JSON.stringify(presetId) : presetId}:${heightPx}`;
+export function accentIconSvg(presetId, heightPx = 26, { sunk = false, bond = 'stretcher' } = {}) {
+  // item 31: a preset id, or an ad-hoc preset object / an accent (a user tile) -- keyed by its content;
+  // `bond` = the base pattern it is drawn on; `sunk` (item 32: a negative level) = the marked bricks drawn LOWER
+  const key = `${typeof presetId === 'object' ? JSON.stringify(presetId) : presetId}:${heightPx}:${sunk ? 's' : 'r'}:${bond}`;
   if (_accentIcons.has(key)) return _accentIcons.get(key);
   const { widthIn: w, heightIn: h } = ACCENT_ICON_BOARD;
   const widthPx = Math.round((heightPx * w) / h);
   let svg = null;
   try {
-    const bricks = _iconBricks(ACCENT_ICON_BOARD, 'stretcher', 0.36, 0.03);
-    const raised = accentedBrickIndices(bricks, { preset: presetId }, { seed: 7, zone: [0, 1] });
+    const bricks = _iconBricks(ACCENT_ICON_BOARD, BRICK_PATTERNS[bond] ? bond : 'stretcher', 0.36, 0.03);
+    const accent = presetId && typeof presetId === 'object' && presetId.preset ? presetId : { preset: presetId };
+    const raised = accentedBrickIndices(bricks, accent, { seed: 7, zone: [0, 1] });
     const flat = bricks.filter((b, k) => !raised.has(k)).map((b) => _iconPolygon(b)).join('');
     const up = bricks.filter((b, k) => raised.has(k));
     svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${widthPx}" height="${heightPx}" viewBox="0 0 ${w} ${h}" aria-hidden="true">`
       + `<rect width="${w}" height="${h}" fill="#efe6da"/><g fill="#d07a5c">${flat}</g>`
-      + `<g fill="#2b1a14" transform="translate(0.04 0.04)">${up.map((b) => _iconPolygon(b)).join('')}</g>`
-      + `<g fill="#8e2f1c">${up.map((b) => _iconPolygon(b)).join('')}</g></svg>`;
+      + (sunk
+        // sunk: the marked bricks darker, an inner shadow on their top edge (they sit BELOW the wall)
+        ? `<g fill="#5a2416">${up.map((b) => _iconPolygon(b)).join('')}</g>`
+          + `<g fill="#1d0f0b" opacity="0.55" transform="translate(0 -0.035)">${up.map((b) => _iconPolygon(b)).join('')}</g>`
+        : `<g fill="#2b1a14" transform="translate(0.04 0.04)">${up.map((b) => _iconPolygon(b)).join('')}</g>`
+          + `<g fill="#8e2f1c">${up.map((b) => _iconPolygon(b)).join('')}</g>`) + '</svg>';
   } catch (_) {
     svg = null;
   }

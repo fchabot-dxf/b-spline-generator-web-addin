@@ -21,7 +21,7 @@
 import { buildSpatialIndex, sampleHeight, brickSetById, pointInPolygon } from '../core/bricks/index.js';
 import { preloadSetDetail, sampleDetailAtFor } from './editor-brick-surface.js';
 import { BRICK_GEN_ATTR, BRICK_ATTR } from './editor-brick-tool.js';
-import { accentedBrickIndices } from './brick-accents.js';
+import { accentedBrickIndices, clampAccentLevel } from './brick-accents.js';
 import { surfaceStyleById, styledSet, styledDetail, styleTopJitter, styleAtWear } from './brick-surface-styles.js';
 
 // F35 item 16 follow-up (Fred: "keep the UI responsive... yield between stages if they block the
@@ -110,7 +110,9 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
   const accent = opts.accent;
   if (accent && accent.preset && accent.preset !== 'none' && Number(accent.levelIn)) {
     const wall = groups.flatMap((g) => g.bricks.filter((b) => b.kind === 'wall'));
-    for (const k of accentedBrickIndices(wall, accent, { seed: opts.accentSeed || 1 })) wall[k].heightOffset += Number(accent.levelIn);
+    // item 32: the SIGNED level (raised or sunk), within its declared range; sampleHeight floors the top at the ground
+    const level = clampAccentLevel(accent.levelIn);
+    for (const k of accentedBrickIndices(wall, accent, { seed: opts.accentSeed || 1 })) wall[k].heightOffset += level;
   }
   if (!groups.length) return { body, fillet, isStamped, metrics: null, ...(flat ? { flatTop: { brickOf, count: 0 } } : {}) };
 
