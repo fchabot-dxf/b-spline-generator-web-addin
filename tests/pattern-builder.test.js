@@ -29,6 +29,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 import {
   initBrickPanel, openPatternBuilder, closePatternBuilder, builderToggleCell, builderResize, builderSetBase, builderStartFrom,
   builderSave, applyUserPattern, setWallPattern, setAccentPreset, setAccentLevel, patternBuilderState, builderSetUnit, builderSplit, builderShift,
+  BRICK_SEED_RANGE,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { ACCENT_LEVEL_RANGE, tileOf, ACCENT_PRESETS, accentedBrickIndices } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js';
@@ -338,5 +339,33 @@ describe('item 31e: the builder edits the bond (base Custom)', () => {
     expect(acc().tile).toMatchObject({ base: 'custom', unit: 0.5, userId: 'user:half-bond' });
     expect(acc().tile.bond.courses[0].pieces).toEqual([2, 1, 1, 1, 1]);
     expect(runBricks).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('item 39: Generate = re-lay now with a NEW seed, every element (a restored board refreshes too)', () => {
+  beforeEach(() => { resetAccent(); setup('wall'); P.brickSettings.seed = 1; });
+  it('a press rolls a new brick seed and re-lays once with it; two presses lay two different layouts', () => {
+    runBricks.mockClear();
+    $('brickGenerate').click();
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    const s1 = runBricks.mock.calls[0][1].seed;
+    expect(s1).not.toBe(1);
+    expect(P.brickSettings.seed).toBe(s1);
+    expect($('brickSeed').value).toBe(String(s1));
+    $('brickGenerate').click();
+    expect(runBricks).toHaveBeenCalledTimes(2);
+    expect(runBricks.mock.calls[1][1].seed).not.toBe(s1);
+  });
+  it('the lay uses the PANEL’s current settings (a restored board whose pieces disagree takes the panel’s set)', () => {
+    P.brickSettings.setIds = { ...(P.brickSettings.setIds || {}), wall: 1 };
+    runBricks.mockClear();
+    $('brickGenerate').click();
+    expect(runBricks.mock.calls[0][1].setIds.wall).toBe(1);
+  });
+  it('one seed rule: Random seed and Generate both draw from BRICK_SEED_RANGE', () => {
+    for (let i = 0; i < 20; i++) {
+      $('brickGenerate').click(); expect(P.brickSettings.seed).toBeGreaterThanOrEqual(0); expect(P.brickSettings.seed).toBeLessThan(BRICK_SEED_RANGE);
+      $('brickBtnRandomSeed').click(); expect(P.brickSettings.seed).toBeLessThan(BRICK_SEED_RANGE);
+    }
   });
 });

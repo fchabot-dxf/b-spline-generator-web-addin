@@ -9,7 +9,7 @@
 //               seat 37, fb-app 9eb45d2): change -> canvas changed at once (read right after the change, NO
 //               Generate click, so a setting that waits for Generate fails) -> Apply -> 3D changed? Nothing is
 //               ever pending any more.
-//   'relay'     Generate itself ("re-lay now"): the canvas is disturbed by hand, Generate must restore exactly
+//   'relay'     Generate itself ("re-lay now"; item 39: with a new seed, expect.newSeed): the canvas is disturbed by hand, Generate must restore exactly
 //               the layout the current settings produce
 //   'editor3d'  an editor control that is 3D-only ('surface' commit): change -> Apply -> 3D changed?
 //   'brush'     a Brush setting (frozen into each stroke at draw time): the SAME stroke drawn before and
@@ -118,7 +118,9 @@ export const BRICK_CONTROLS = [
   { name: 'Clumping 0.1 (Suppression 0)', kind: 'editor', tool: 'wall', do: set('brickClumping', 0.1), expect: LAYOUT, requires: NEEDS_SUPPRESSION },
   { name: 'Seed 77', kind: 'editor', tool: 'wall', do: set('brickSeed', 77, 'input'), expect: LAYOUT },
   { name: 'Random seed', kind: 'editor', tool: 'wall', do: click('brickBtnRandomSeed'), expect: LAYOUT },
-  { name: 'Generate re-lays now (wall)', kind: 'relay', tool: 'wall', do: click('brickGenerate'), expect: { restores: true }, introducedBy: '9eb45d2' },
+  // F35 item 39 (Fred: a restored board "isn't refreshable by a simple Generate"): Generate rolls a NEW brick seed --
+  // the removed brick comes back (same count) in a new layout; before item 39 it put back the identical layout
+  { name: 'Generate re-lays now, a new seed (wall)', kind: 'relay', tool: 'wall', do: click('brickGenerate'), expect: { restores: true, newSeed: true }, introducedBy: '9eb45d2' },
   // ---- editor, Frame tool
   // item 28: a 3-band stack is reduced to what fits the board; at the 1 in default it keeps only its outer band on
   // T1 7x9 (= the Soldier the frame already has, nothing to see), at 3/4 in it keeps two
@@ -378,4 +380,14 @@ export const EDIT_PASSWORD_TEST = {
   askTitle: 'Password to save', retryTitle: 'Wrong password -- try again',
   statusSaved: 'Saved on this device.', statusUnsetStarts: 'Not set',
   introducedBy: '68feae7',
+};
+
+// ---- Generate on a RESTORED board (F35 item 39, seat C 02; Fred on his phone: "the opened geometry isn't refreshable by
+// a simple Generate"): measured before, a restored board whose settings matched its pieces re-laid byte-identical bricks.
+// After the persistence group's own project load, and again after a reload: pick the Wall tool, Generate -> the wall's
+// pieces carry a NEW seed (data-brick-seed); Apply + reopen keeps that new lay (pieces + seed). Not the count: the
+// persistence board's wall is Fieldstone, whose stone count follows the seed.
+export const GENERATE_AFTER_RESTORE = {
+  tool: 'brickTool_wall', generate: 'brickGenerate', kind: 'wall', seedAttr: 'data-brick-seed',
+  marker: "import('./main/brick-panel.js').then((m) => !!m.generateNow)",
 };
