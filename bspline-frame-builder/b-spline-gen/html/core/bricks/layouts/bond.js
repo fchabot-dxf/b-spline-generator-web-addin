@@ -117,8 +117,8 @@ function uniformRow(courseIndex, pattern, minX, maxX, courseCy, cH, L, H, J) {
  *  (clipPolygonToBoard trims it to the real outline afterward, same as every other pattern here). */
 /**
  * T86 item 27 (Fred, for 37's pattern builder F35-31e): a CUSTOM BOND from a tile -- `customBond = { courses: [{
- * pieces, offset }] }`, repeated course by course (course c uses courses[c mod n], counted from the first course laid,
- * as the built-in bonds' own stagger is). `pieces` = lengths in brick units (1, 1/2, 1/4, 3/4 ...), repeated along the
+ * pieces, offset }] }`, repeated course by course (course c uses courses[c mod n], c = the tile row from library.js
+ * COURSE_ROW_ORIGIN: the wall's bottom course is courses[0], as accentCuts' row 0 is -- T86-27 correction). `pieces` = lengths in brick units (1, 1/2, 1/4, 3/4 ...), repeated along the
  * course; a piece of p bricks spans p pitches less one joint (L + (p - 1)(L + J): two halves + their joint = one
  * brick). `offset` = the course's shift in brick pitches. The ends are cut by the board clip like any course
  * (closers). Courses are stretcher-high. A built-in bond is a tile too: stretcher = [{pieces:[1], offset:0},
