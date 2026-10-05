@@ -14056,3 +14056,48 @@ WallPattern = {
   - the Accent rows for Frame bands and Brush (31d says same structure there, but the mask applies accents to
     Wall bricks only today; that needs the per-element accent model -- next);
   - join/split cells (31e), hidden until 'customBond'.
+
+### turn 247 -- PER-ELEMENT ACCENTS: Frame bands + Brush strokes (the Accent row, the mask applies each element's own) (seat 37)
+
+- **The grid of a RUN:** the engine already stamps `bandIndex` / `rowIndex` / `pieceIndex` on every band brick
+  (primitive-ribbon ribbonPieces, the area bands too), and brush masonry strokes go through the same contour
+  bands.
+  - drawBrick now writes them: `data-brick-band/row/piece` on Frame bricks, `row/piece` on Brush bricks (a
+    continuous stroke has none: its order along the stroke).
+  - They are editor-only, so BRICK_EDITOR_ONLY_ATTRS strips them at bake: frame + brush entries; Send/download
+    stay byte-identical; the byte-identity test is updated for them.
+- **brick-accents.js:**
+  - `accentedRunIndices(bricks, accent)`: a periodic preset on the run's OWN (row, piece) grid, over the whole
+    run; Click bricks = points; the tile builder stays Wall-only;
+  - `elementAccents(settings)`: the declared map wall / frameBands[i] / brush.
+- **State:** `frameBandAccents: []` (index = the band) + `brushAccent` (the Brush element's, on every stroke's own
+  grid), the same shape as `accent`.
+- **The mask:** each band's own accent and signed level (clamped like the Wall's) + the Brush accent per stroke
+  (grouped by data-brick-owner); stamp-mask-manager passes both.
+- **The 2D highlight:** `syncRunAccentHighlight`, the same amber outline as the Wall's; it runs after a frame lay,
+  after brush regeneration and on every accent change.
+- **The panel:**
+  - one renderer `renderAccentRowFor(container, target, iconPx)`: None + the presets as engine icons (name =
+    tooltip, drawn SUNK when the level is negative), Click, and the signed level when not None;
+  - ids `brickAccent_<band0|band1|brush>_<preset>`, `brickAccentClick_<key>`, `brickAccentLevel_<key>`;
+  - each Frame band row gets one (16 px icons); the Brush section gets one (#brickBrushAccentRow, 22 px);
+  - Click bricks is targeted: `toggleAccentClickMode(target)` + an `ELEMENT_ACCENTS` table (where each element's
+    accent lives + which bricks a click hits);
+  - `setElementAccent(target, patch)` clamps the level.
+- **Live** (T1, three_band):
+  - frame bricks carry bands 0/1/2;
+  - band 0 Checker -> 53 of its 106 bricks outlined, band 1 untouched;
+  - the mask body sum: none 11631.9 -> raised 13323.8 -> sunk 10023.1;
+  - shots/seat37/element_accents_frame_bands.png (+ _frame_canvas.png).
+- **Tests:**
+  - new element-accents (5): the run rule (checker along / across rows, clicks, no tile); the MASK (band 0 checker
+    raises only band 0's piece 0; the Brush sunk lowers only its piece 0; band 1 untouched); the panel (a row per
+    band, a pick sets that band only, the clamp; the Brush row + Click arms the mode).
+  - 5/5 fail against the pre-change files (restored, cmp clean).
+  - regen's bandIds helper is narrowed to the band-pattern buttons (the rows now hold accent buttons too).
+- Whole vitest (278 files): the parallel run failed only in heavy files (boundary-at-depth T10, fieldstone, frame
+  template 10; regen once); alone 19/19, 32/32, 98/98; fieldstone is the known 5 s load timeout on this machine.
+- **Matrix rows for 88:**
+  - Frame band 1 Accent Checker -> band-1 bricks outlined, a 3D change, band 0 unchanged;
+  - Brush Accent -> brush bricks outlined.
+- **Next:** item 33 (corner picker + the quoin texture fix).

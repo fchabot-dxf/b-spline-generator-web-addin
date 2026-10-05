@@ -3123,6 +3123,9 @@
             <!-- F35 item 10 follow-up (Fred): the Brush tool's own section, shown only while Brush
                  is the active tool (main/brick-panel.js's syncToolButtons). -->
             <div id="brickBrushSection" style="display:none;">
+              <!-- per-element accents (advisor): the Brush's Accent row -- presets + Click bricks + its signed level,
+                   on every stroke's own grid (main/brick-panel.js renderAccentRowFor) -->
+              <div id="brickBrushAccentRow"></div>
               <!-- F35 item 29 (a): RUSTIC for the strokes drawn from now on (frozen into each stroke) -->
               <div id="brickRusticRow_brush" style="display:none;">
                 <label class="cad-label">Rustic</label>

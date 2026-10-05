@@ -25,6 +25,7 @@ import {
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
   BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
+  syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT,
 } from '../editor/editor-brick-tool.js';
 import {
@@ -321,7 +322,7 @@ function renderAccentList(container) {
 function syncAccentControls() {
   const a = _accent();
   for (const choice of ACCENT_CHOICES) document.getElementById(`brickAccent_${choice.id}`)?.classList.toggle('active', a.preset === choice.id);
-  document.getElementById('brickAccentClick')?.classList.toggle('active', a.preset === ACCENT_CUSTOM.id && _accentClickArmed);
+  document.getElementById('brickAccentClick')?.classList.toggle('active', a.preset === ACCENT_CUSTOM.id && _accentClickArmed && _accentClickTarget.kind === 'wall');
   const row = document.getElementById('brickAccentLevelRow');
   if (row) row.style.display = a.preset === 'none' ? 'none' : '';
   const level = document.getElementById('brickAccentLevel');
@@ -336,7 +337,7 @@ function syncAccentControls() {
 
 function _accentChanged(commit) {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  if (editor) syncAccentHighlight(editor, P.brickSettings.accent, P.brickSettings.seed);
+  if (editor) { syncAccentHighlight(editor, P.brickSettings.accent, P.brickSettings.seed); syncRunAccentHighlight(editor, P.brickSettings); }
   syncAccentControls();
   commitBrickSetting(commit);
 }
@@ -562,24 +563,115 @@ export function renderPatternBuilder() {
 
 /** Custom: arm (or disarm) the canvas click mode. Each click toggles the brick under it -- stored as a
  *  POINT (brick-accents.js toggleAccentClick), so it follows a re-lay to whichever brick lies there. */
-export function toggleAccentClickMode() {
+export function toggleAccentClickMode(target = { kind: 'wall' }) {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (!editor) return;
-  if (_accentClickArmed) { _disarmAccentClick(); return; }
+  const same = _accentClickArmed && JSON.stringify(_accentClickTarget) === JSON.stringify(target);
+  if (_accentClickArmed) _disarmAccentClick();
+  if (same) return;
   _accentClickArmed = true;
+  _accentClickTarget = target;
+  const acc = ELEMENT_ACCENTS[target.kind];
   editor._brickAccentClick = (pt) => {
-    const a = _accent();
-    P.brickSettings.accent = { ...a, preset: ACCENT_CUSTOM.id, clicks: toggleAccentClick(a.clicks || [], pt, wallBrickPolygons(editor)) };
+    const a = acc.get(target);
+    acc.set(target, { ...a, preset: ACCENT_CUSTOM.id, clicks: toggleAccentClick(a.clicks || [], pt, acc.bricks(editor, target)) });
     _accentChanged('surface');
   };
-  P.brickSettings.accent = { ..._accent(), preset: ACCENT_CUSTOM.id };
+  acc.set(target, { ...acc.get(target), preset: ACCENT_CUSTOM.id });
   editor.setMode('brickAccentClick');
   _accentChanged('surface');
+}
+
+/* Per-element ACCENTS (advisor: Frame bands + Brush strokes, like the Wall): where each element's accent lives and
+ * which bricks Click bricks hits, declared once. The Wall's keeps its own row + the builder; a band / the Brush get
+ * the periodic presets + Click bricks (no Custom: PATTERN_BUILDER_SCOPE). */
+const _runPolys = (editor, sel) => [...(editor?._sketchLayer?.node?.querySelectorAll?.(sel) || [])].map((n) => ({
+  polygon: (n.getAttribute('points') || '').trim().split(/\s+/).filter(Boolean).map((p) => { const [x, y] = p.split(',').map(Number); return { x, y }; }) }));
+const ELEMENT_ACCENTS = {
+  wall: { get: () => _accent(), set: (t, a) => { P.brickSettings.accent = a; }, bricks: (editor) => wallBrickPolygons(editor) },
+  frameBand: {
+    get: (t) => ({ ...DEFAULT_ACCENT, ...((P.brickSettings.frameBandAccents || [])[t.band] || {}) }),
+    set: (t, a) => { const list = [...(P.brickSettings.frameBandAccents || [])]; list[t.band] = a; P.brickSettings.frameBandAccents = list; },
+    bricks: (editor, t) => _runPolys(editor, `[data-brick-gen="1"][data-brick="frame"][data-brick-band="${t.band}"]`),
+  },
+  brush: {
+    get: () => ({ ...DEFAULT_ACCENT, ...(P.brickSettings.brushAccent || {}) }),
+    set: (t, a) => { P.brickSettings.brushAccent = a; },
+    bricks: (editor) => _runPolys(editor, '[data-brick-gen="1"][data-brick="brush"]'),
+  },
+};
+let _accentClickTarget = { kind: 'wall' };
+const _targetKey = (t) => (t.kind === 'frameBand' ? `band${t.band}` : t.kind);
+
+/** An element's accent preset / level (Frame band i, the Brush): the same rules as the Wall's. */
+export function setElementAccent(target, patch, commit = 'surface') {
+  const acc = ELEMENT_ACCENTS[target.kind];
+  if (!acc) return;
+  const next = { ...acc.get(target), ...patch };
+  if ('levelIn' in patch) next.levelIn = clampAccentLevel(patch.levelIn);
+  if (patch.preset && patch.preset !== ACCENT_CUSTOM.id && _accentClickArmed && _targetKey(_accentClickTarget) === _targetKey(target)) _disarmAccentClick();
+  acc.set(target, next);
+  renderElementAccentRows();
+  _accentChanged(commit);
+}
+
+/** One Accent row (None + the presets as engine icons, the name as tooltip; Click bricks; the signed level) for a
+ *  non-Wall element, ids prefixed per element: brickAccent_<key>_<preset>, brickAccentClick_<key>, brickAccentLevel_<key>. */
+function renderAccentRowFor(container, target, iconPx) {
+  const key = _targetKey(target);
+  const a = ELEMENT_ACCENTS[target.kind].get(target);
+  const row = document.createElement('div');
+  row.className = 'brick-element-accent';
+  row.dataset.accentFor = key;
+  row.style.cssText = 'display:flex; gap:3px; flex-wrap:wrap; align-items:center; margin:2px 0 6px;';
+  const label = document.createElement('span');
+  label.textContent = 'Accent';
+  label.style.cssText = 'font-size:10px; opacity:0.65; width:44px; flex:0 0 auto;';
+  row.appendChild(label);
+  for (const choice of ACCENT_CHOICES) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cad-btn brick-accent-icon' + (a.preset === choice.id ? ' active' : '');
+    btn.id = `brickAccent_${key}_${choice.id}`;
+    btn.title = choice.label;
+    btn.setAttribute('aria-label', choice.label);
+    btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
+    btn.innerHTML = choice.id === 'none' ? '<span style="font-size:9px; line-height:16px; padding:0 3px;">None</span>' : (accentIconSvg(choice.id, iconPx, { sunk: a.levelIn < 0 }) || choice.label);
+    btn.addEventListener('click', () => setElementAccent(target, { preset: choice.id }));
+    row.appendChild(btn);
+  }
+  const click = document.createElement('button');
+  click.type = 'button';
+  click.className = 'cad-btn' + (a.preset === ACCENT_CUSTOM.id && _accentClickArmed && _targetKey(_accentClickTarget) === key ? ' active' : '');
+  click.id = `brickAccentClick_${key}`;
+  click.textContent = 'Click';
+  click.title = 'Click bricks of this element on the canvas to raise / sink them';
+  click.style.cssText = 'font-size:10px; padding:0 6px; min-width:0;';
+  click.addEventListener('click', () => toggleAccentClickMode(target));
+  row.appendChild(click);
+  if (a.preset !== 'none') {
+    const level = document.createElement('input');
+    level.type = 'number'; level.id = `brickAccentLevel_${key}`; level.value = String(a.levelIn);
+    level.min = String(ACCENT_LEVEL_RANGE.min); level.max = String(ACCENT_LEVEL_RANGE.max); level.step = String(ACCENT_LEVEL_RANGE.step);
+    level.title = 'Accent level (in): + raises, - sinks';
+    level.style.cssText = 'width:64px; font-size:10px;';
+    level.addEventListener('change', () => setElementAccent(target, { levelIn: level.value }));
+    row.appendChild(level);
+  }
+  container.appendChild(row);
+}
+/** Re-render every non-Wall element's Accent row (the Frame bands' + the Brush's). */
+function renderElementAccentRows() {
+  renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
+  syncFrameBandPatternButtons();
+  const brush = document.getElementById('brickBrushAccentRow');
+  if (brush) { brush.innerHTML = ''; renderAccentRowFor(brush, { kind: 'brush' }, 22); }
 }
 
 function _disarmAccentClick() {
   if (!_accentClickArmed) return;
   _accentClickArmed = false;
+  _accentClickTarget = { kind: 'wall' };
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (editor && editor._currentMode === 'brickAccentClick') editor.setMode('select');
   syncAccentControls();
@@ -1649,6 +1741,7 @@ function renderFrameBandPatternList(container) {
       row.appendChild(btn);
     }
     container.appendChild(row);
+    renderAccentRowFor(container, { kind: 'frameBand', band: i }, 16); // per-band accent (advisor)
   });
 }
 
@@ -1991,7 +2084,8 @@ export function initBrickPanel() {
   renderWallPatternList(document.getElementById('brickPatternList'));
   syncWallPatternButtons();
   renderAccentList(document.getElementById('brickAccentList'));
-  document.getElementById('brickAccentClick')?.addEventListener('click', () => toggleAccentClickMode());
+  renderElementAccentRows(); // the Frame bands' + the Brush's Accent rows
+  document.getElementById('brickAccentClick')?.addEventListener('click', () => toggleAccentClickMode({ kind: 'wall' }));
   document.getElementById('brickAccentCustomOpen')?.addEventListener('click', () => (_builder.open ? closePatternBuilder() : openPatternBuilder()));
   document.getElementById('brickAccentLevel')?.addEventListener('change', (e) => setAccentLevel(e.target.value));
   syncAccentControls();

@@ -60,7 +60,7 @@ import { rectToPrimitives } from '../core/inset-window.js';
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
 import { radialSignAt } from '../core/bricks/arc-voussoir.js';
-import { accentedBrickIndices } from './brick-accents.js';
+import { accentedBrickIndices, accentedRunIndices } from './brick-accents.js';
 
 export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-spine'
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
@@ -176,6 +176,13 @@ function drawBrick(editor, layer, brick, kind, setId, seed, reliefIn) {
     .attr('data-brick-id', String(brick.id))
     .attr('data-brick-height-offset', brick.heightOffset || 0);
 }
+/** Per-element run accents: a band / stroke brick's place on its run's grid (the engine's band/row/piece). */
+function stampRunPlace(el, brick, fallbackPiece) {
+  if (Number.isInteger(brick.bandIndex)) el.attr('data-brick-band', brick.bandIndex);
+  el.attr('data-brick-row', Number.isInteger(brick.rowIndex) ? brick.rowIndex : 0);
+  el.attr('data-brick-piece', Number.isInteger(brick.pieceIndex) ? brick.pieceIndex : fallbackPiece);
+  return el;
+}
 
 /** Audit v2 N1: a brick's FILL is derived from its own declared attributes (set, sample, flip -- written by
  *  drawBrick above), but the <pattern> it points at lives in the editor's outer <defs>, OUTSIDE the saved
@@ -196,8 +203,9 @@ export function repaintBricks(editor) {
 }
 
 function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn, ownerId = null) {
-  for (const b of bricks) {
+  for (const [i, b] of bricks.entries()) {
     const el = drawBrick(editor, layer, b, kind, setId, seed, reliefIn);
+    if (kind === 'frame') stampRunPlace(el, b, i); // per-band accents read it
     if (ownerId) el.attr(BRICK_OWNER_ATTR, ownerId); // item 22: which element (record) laid it
   }
 }
@@ -613,6 +621,43 @@ export const wallBrickPolygons = (editor) => wallBrickNodes(editor).map((n) => (
 /** F35 item 15: shows which Wall bricks the raised accent lifts -- a dark outline + `data-brick-accent` on
  *  each, from the SAME rule the height mask applies (brick-accents.js accentedBrickIndices). 2D only. */
 export const ACCENT_OUTLINE = Object.freeze({ color: '#ffc61a', widthIn: 0.05 }); // amber: reads against the photo's own dark joints
+function _markAccent(n, on) {
+  if (on) {
+    n.setAttribute('data-brick-accent', '1');
+    n.setAttribute('stroke', ACCENT_OUTLINE.color);
+    n.setAttribute('stroke-width', String(ACCENT_OUTLINE.widthIn));
+  } else if (n.hasAttribute('data-brick-accent')) {
+    n.removeAttribute('data-brick-accent');
+    n.setAttribute('stroke', 'none');
+    n.removeAttribute('stroke-width');
+  }
+}
+/** Per-element accents on RUNS (advisor): the same outline on the Frame bands' and the Brush strokes' accented
+ *  bricks, from the SAME rule the mask applies (brick-accents.js accentedRunIndices on each run's own grid). */
+export function syncRunAccentHighlight(editor, settings) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll || !settings) return 0;
+  const seed = settings.seed || 1;
+  const asRun = (n) => ({ polygon: _nodePolygon(n), row: Number(n.getAttribute('data-brick-row')) || 0, piece: Number(n.getAttribute('data-brick-piece')) || 0 });
+  let count = 0;
+  const apply = (nodes, acc) => {
+    const on = accentedRunIndices(nodes.map(asRun), acc, { seed });
+    nodes.forEach((n, k) => _markAccent(n, on.has(k)));
+    count += on.size;
+  };
+  const frame = [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="frame"]`)];
+  const bands = new Map();
+  for (const n of frame) { const b = Number(n.getAttribute('data-brick-band')) || 0; if (!bands.has(b)) bands.set(b, []); bands.get(b).push(n); }
+  for (const [b, nodes] of bands) apply(nodes, (settings.frameBandAccents || [])[b]);
+  const strokes = new Map();
+  for (const n of node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="brush"]`)) {
+    const k = n.getAttribute(BRICK_OWNER_ATTR) || 'stroke';
+    if (!strokes.has(k)) strokes.set(k, []);
+    strokes.get(k).push(n);
+  }
+  for (const nodes of strokes.values()) apply(nodes, settings.brushAccent);
+  return count;
+}
 export function syncAccentHighlight(editor, accent, seed) {
   const nodes = wallBrickNodes(editor);
   const raised = accentedBrickIndices(nodes.map((n) => ({ polygon: _nodePolygon(n) })), accent, { seed: seed || 1 });
@@ -759,6 +804,7 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   if (lays('frame')) drawBricks(editor, layer, frameBricks, 'frame', frameSettings.setId, settings.seed, settings.reliefIn, owner('frame'));
   if (lays('wall')) drawBricks(editor, layer, bricks, 'wall', wallSettings.setId, settings.seed, settings.reliefIn, owner('wall'));
   if (lays('wall')) syncAccentHighlight(editor, settings.accent, settings.seed);
+  if (lays('frame')) syncRunAccentHighlight(editor, settings); // per-band accents
   return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0 };
 }
 
@@ -1241,11 +1287,14 @@ export function regenerateOwnedBrickElements(editor) {
         : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
       const bricks = bricksForStroke(chain.points, settings);
       const ownerId = `${elementId}:${chainIdx}`;
-      for (const b of bricks) {
-        drawBrick(editor, layer, b, 'brush', settings.setId, settings.seed, settings.reliefIn).attr(BRICK_OWNER_ATTR, ownerId);
-      }
+      bricks.forEach((b, i) => {
+        // + its place on the stroke's own grid (the Brush accent, per stroke)
+        stampRunPlace(drawBrick(editor, layer, b, 'brush', settings.setId, settings.seed, settings.reliefIn).attr(BRICK_OWNER_ATTR, ownerId), b, i);
+      });
     });
   }
+  // the Brush accent's outline on the (re)drawn strokes (per-element accents)
+  if (editor._brickSettings) syncRunAccentHighlight(editor, editor._brickSettings);
 }
 
 if (typeof document !== 'undefined') {
