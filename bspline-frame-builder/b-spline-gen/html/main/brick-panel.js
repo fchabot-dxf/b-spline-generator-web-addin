@@ -170,7 +170,8 @@ export function selectSet(setId, commit = 'generate', kinds = [_setKind()]) {
 const BRICK_SIZE_PRESETS = [
   { id: 'eighth3', label: '⅜″', lengthIn: 0.375 },
   { id: 'quarter3', label: '¾″', lengthIn: 0.75 },
-  { id: 'one', label: '1″', lengthIn: 1 }, // Fred (turn 207): the new-board default, so it shows as picked
+  { id: 'one', label: '1″', lengthIn: 1 },
+  { id: 'one_quarter1', label: '1¼″', lengthIn: 1.25 }, // Fred (2026-10-05): the new-board default, so it shows as picked
   { id: 'half1', label: '1½″', lengthIn: 1.5 },
   { id: 'three', label: '3″', lengthIn: 3 },
   { id: 'life', label: 'Life 8″', lengthIn: 8 },

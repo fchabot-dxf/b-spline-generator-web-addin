@@ -14201,3 +14201,11 @@ WallPattern = {
   - Shots: shots/seatC/item34_password_prompt.png, item34_settings_field.png.
 - **Suite:** the full run hit 28 failures under heavy load (21 "timed out"; the rest are heavy engine tests). All 16 failing files pass alone. pytest b-spline-gen: 148 passed.
 - **Neutral-set rule (advisor, this turn):** item 34 adds NO persisted P.brickSettings field (the password lives in localStorage and the add-in config), so the fixture's neutral set is unchanged.
+- **turn 251, amendment: the new-board brick size is 1 1/4 in** (Fred, the v3 size sheet; saved boards keep theirs).
+  - One declared default: core/state.js `brickLengthIn: 1.25`.
+  - BRICK_SIZE_PRESETS gains `one_quarter1` '1¼″' (1.25) right after 1″. The active highlight follows (preset.lengthIn === brickLengthIn), and the quick-settings size row shows it too, since it reads BRICK_SIZE_PRESETS.
+  - Pinned tests updated: brick-size-log-slider (7 presets, 1¼″ beside 1″, the default picked; setup now starts at the default) and brick-default-grout (DEFAULT 1.25).
+  - The 3 changed tests fail against the pre-change copies; restored and cmp identical.
+  - Matrix: only tools/brick-matrix/controls.mjs:80 'Brick size stepper 1.0' touched the old default. It was a set-to-default; it is now a real change. The ¾ and 1½ preset and quick rows move away from the default either way. Told 88.
+  - discrete-controls N2 timed out under load (9.7 s in-file, against 0.3 s isolated with -t).
+  - No new persisted P.brickSettings field, so the fixture's neutral set is unchanged.
