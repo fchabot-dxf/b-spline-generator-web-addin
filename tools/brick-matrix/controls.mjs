@@ -191,3 +191,28 @@ export const PEEK_LAYOUT = {
   tools: ['wall', 'frame'],
   element: 'brickGenerate',
 };
+
+// ---- Clear menu (F35 item 28; seat 37 fb-app 678c746). The editor header's Clear opens a menu: All / Frame /
+// Artwork / Photo / Bricks. Answers declared by the advisor (2026-10-04): Clear Frame removes the frame SHAPE only
+// (template -> Rectangle) and the frame/wall bricks re-lay on the rectangle at once; Clear Bricks removes every
+// brick element and nulls the laid key; Clear All resets everything incl. the template and the photo; ONE undo
+// restores everything a Clear removed. Each row seeds a board holding all four kinds, uses the option from the
+// tab that owns its kind, then checks: every `clears` kind is empty, every `changes` kind is still present (it
+// may differ), every other kind is byte-identical; then one Ctrl+Z must bring every kind back.
+//   kinds:   how each kind is fingerprinted in the page -- see run.mjs CLEAR_PROBE (frame: P.frame; artwork: the
+//            sketch children on non-Bricks layers; photo: P.photoImageDataUrl / photoEdits / photoPatternId;
+//            bricks: [data-brick-gen="1"] + the Bricks layers' brickLaidKey)
+export const CLEAR_MENU = {
+  button: 'editorClear',
+  confirmOk: '.pm-prompt-ok',
+  seed: { photoFile: 'b-spline-gen/html/assets/logo-64.png', stroke: [[0.35, 0.4], [0.5, 0.55], [0.65, 0.4]] },
+  options: [
+    { name: 'Clear All', item: 'editorClear_all', tab: 'editorTabArtwork', confirm: 'ok', clears: ['frame', 'artwork', 'photo', 'bricks'], changes: [] },
+    { name: 'Clear All, then Keep', item: 'editorClear_all', tab: 'editorTabArtwork', confirm: 'keep', clears: [], changes: [], undo: false },
+    { name: 'Clear Frame', item: 'editorClear_frame', tab: 'editorTabFrame', clears: ['frame'], changes: ['bricks'] },
+    { name: 'Clear Artwork', item: 'editorClear_artwork', tab: 'editorTabArtwork', clears: ['artwork'], changes: [] },
+    { name: 'Clear Photo', item: 'editorClear_photo', tab: 'editorTabPhoto', clears: ['photo'], changes: [] },
+    { name: 'Clear Bricks', item: 'editorClear_bricks', tab: 'editorTabBrick', clears: ['bricks'], changes: [] },
+  ],
+  introducedBy: '678c746',
+};

@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'persistence'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'persistence'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -367,6 +367,7 @@ try {
     }
   }
   if (!arg('group') || arg('group') === 'layout') await runLayout();
+  if (!arg('group') || arg('group') === 'clear') await runClear();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') await runPersistence();
 } catch (e) {
@@ -501,6 +502,77 @@ async function runLayout() {
   }
 }
 
+// ---------------------------------------------------------------- clear menu (hoisted; CLEAR_MENU in controls.mjs)
+function clearKinds() { return ['frame', 'artwork', 'photo', 'bricks']; }
+// One fingerprint per kind: { empty, hash }. Bricks and art are told apart by the Bricks layers (editor/layers.js
+// isBricksLayer), the way the editor's own layer list does; brickfill-<N> pattern ids are stripped (a counter).
+function clearProbe() { return `(async()=>{ const { P } = await import('./core/state.js'); const L = await import('./editor/layers.js'); const ed = window.svgEditor;
+  const bricksLayers = (ed._layers || []).filter(L.isBricksLayer); const ids = new Set(bricksLayers.map((l) => String(l.id)));
+  const kids = [...ed._sketchLayer.node.children]; const onBricks = (n) => ids.has(String(n.getAttribute('data-layer')));
+  const h = (str) => { let x = 5381; for (let i = 0; i < str.length; i++) x = ((x * 33) ^ str.charCodeAt(i)) >>> 0; return x.toString(36); };
+  const canon = (ns) => ns.map((n) => n.outerHTML.replace(/brickfill-[0-9]+/g, '').replace(/ ?svg-selected/g, '')).join('|');
+  const art = kids.filter((n) => !onBricks(n)), gen = [...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"]')];
+  return JSON.stringify({
+    frame: { empty: P.frame?.templateId == null, hash: h(JSON.stringify(P.frame || null)) },
+    artwork: { empty: art.length === 0, hash: art.length + '#' + h(canon(art)) },
+    photo: { empty: P.photoImageDataUrl == null && !(P.photoEdits || []).length && P.photoPatternId == null,
+      hash: h(String(P.photoImageDataUrl).slice(-300) + JSON.stringify(P.photoEdits || []) + P.photoPatternId) },
+    bricks: { empty: gen.length === 0 && bricksLayers.every((l) => l.brickLaidKey == null), hash: gen.length + '#' + h(canon(gen)) } }); })()`; }
+async function clearFingerprint() { return JSON.parse(await js(clearProbe())); }
+// A board holding all four kinds, each made through the real UI: a photo through the Photo panel's file input,
+// the template_1 frame, a Pen stroke on the Artwork tab, a Wall laid with Generate.
+async function seedClearBoard() {
+  await send('Page.reload', {}); await waitApp();
+  const doc = await send('DOM.getDocument', { depth: 0 });
+  const q = await send('DOM.querySelector', { nodeId: doc.result.root.nodeId, selector: '#photoFileInput' });
+  await send('DOM.setFileInputFiles', { nodeId: q.result.nodeId, files: [path.join(ROOT, CLEAR_MENU.seed.photoFile)] });
+  for (let i = 0; i < 30 && !(await js(`(async()=>{ const { P } = await import('./core/state.js'); return P.photoImageDataUrl != null; })()`)); i++) await sleep(500);
+  if (!(await editorOpen())) await click('btnStampEdit', 2500);
+  for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
+  await click('editorTabFrame', 800);
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 'none'; s.value='template_1'; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,1500)); return s.value; })()`);
+  await click('editorTabArtwork', 800); await click('toolDraw', 400); await drag(CLEAR_MENU.seed.stroke); await click('toolSelect', 400);
+  await click('editorTabBrick', 800); await click('brickTool_wall', 800); await click('brickGenerate', 2000);
+  return clearFingerprint();
+}
+function clearRow(name, ok, detail) {
+  rows.push({ name, kind: 'clear', result: 'ok', observed: { detail }, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', clear: ok ? 'PASS' : 'FAIL' } });
+  console.log(`${ok ? 'pass' : 'FAIL'}  ${name.padEnd(48)} ${detail}`);
+}
+async function runClear() {
+  for (const o of CLEAR_MENU.options) {
+    const f0 = await seedClearBoard();
+    const unseeded = clearKinds().filter((k) => f0[k].empty);
+    if (unseeded.length) { clearRow(`${o.name}: clears only its kind`, false, `setup: the seeded board lacks ${unseeded.join(', ')}`); continue; }
+    await click(o.tab, 800);
+    await click(CLEAR_MENU.button, 600);
+    if (!(await exists(o.item))) {
+      rows.push({ name: `${o.name}: clears only its kind`, kind: 'clear', result: `skipped: not in this build (introduced by ${CLEAR_MENU.introducedBy})`, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a' } });
+      console.log(`skip  ${o.name.padEnd(48)} not in this build (introduced by ${CLEAR_MENU.introducedBy})`);
+      continue;
+    }
+    await click(o.item, 800);
+    if (o.confirm === 'ok') await js(`(()=>{ document.querySelector(${JSON.stringify(CLEAR_MENU.confirmOk)})?.click(); return 1; })()`);
+    if (o.confirm === 'keep') await js(`(()=>{ const ok=document.querySelector(${JSON.stringify(CLEAR_MENU.confirmOk)}); const keep=[...(ok?.parentElement?.querySelectorAll('button')||[])].find((b)=>b!==ok); keep?.click(); return 1; })()`);
+    await sleep(2500); // the frame clear re-lays after its 350 ms settle; bricks re-lay at once
+    const f1 = await clearFingerprint();
+    const problems = [];
+    for (const k of clearKinds()) {
+      if (o.clears.includes(k)) { if (!f1[k].empty) problems.push(`${k} not cleared`); }
+      else if (o.changes.includes(k)) { if (f1[k].empty) problems.push(`${k} gone`); }
+      else if (f1[k].hash !== f0[k].hash) problems.push(`${k} changed`);
+    }
+    clearRow(`${o.name}: clears only its kind`, !problems.length,
+      problems.length ? problems.join('; ') : `cleared [${o.clears.join(', ')}]${o.changes.length ? `, re-laid [${o.changes.join(', ')}]` : ''}, the rest identical`);
+    await shot(`clear_${o.item}_${o.confirm || 'run'}`);
+    if (o.undo === false || !o.clears.length) continue;
+    await key('z'); await sleep(2500);
+    const f2 = await clearFingerprint();
+    const notBack = clearKinds().filter((k) => f2[k].hash !== f0[k].hash);
+    clearRow(`${o.name}: one undo restores all`, !notBack.length, notBack.length ? `not restored: ${notBack.join(', ')}` : 'every kind back as seeded');
+  }
+}
+
 // ---------------------------------------------------------------- report (hoisted; shared by --parallel)
 function failRows(rows) {
   return rows.filter((r) => Object.values(r.verdict).includes('FAIL') || !(['ok', 'requires unmet'].includes(r.result) || String(r.result).startsWith('skipped')));
@@ -508,8 +580,8 @@ function failRows(rows) {
 function writeReport(rows, pageErrors) {
   const fails = failRows(rows);
   writeFileSync(path.join(OUT, 'brick-matrix.json'), JSON.stringify({ requiresSource: REQUIRES_SOURCE, rows, pageErrors }, null, 1));
-  const md = ['| Control | Kind | Pending | Canvas | 3D | Greyed out (requires) | Persists | Layout |', '|---|---|---|---|---|---|---|---|',
-    ...rows.map((r) => `| ${r.name} | ${r.kind}${r.tool ? ' (' + r.tool + ')' : ''} | ${r.verdict.pending} | ${r.verdict.canvas} | ${r.verdict.threeD} | ${r.verdict.greyedOut || ''} | ${r.verdict.persists || ''} | ${r.verdict.layout || ''} |`)];
+  const md = ['| Control | Kind | Pending | Canvas | 3D | Greyed out (requires) | Persists | Layout | Clear |', '|---|---|---|---|---|---|---|---|---|',
+    ...rows.map((r) => `| ${r.name} | ${r.kind}${r.tool ? ' (' + r.tool + ')' : ''} | ${r.verdict.pending} | ${r.verdict.canvas} | ${r.verdict.threeD} | ${r.verdict.greyedOut || ''} | ${r.verdict.persists || ''} | ${r.verdict.layout || ''} | ${r.verdict.clear || ''} |`)];
   const NL = String.fromCharCode(10);
   writeFileSync(path.join(OUT, 'brick-matrix.md'), md.join(NL) + NL + NL + `${fails.length} FAIL row(s); page errors: ${pageErrors.length}` + NL);
 }
