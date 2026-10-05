@@ -22,6 +22,7 @@ import { frameContext, drawFrameProfile } from '../editor/editor-frame-profile.j
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 import { FRAME_DEFS, frameParam, normalizeFrameRecord } from '../core/frame-record.js';
 import { syncFramePanel } from './frame-panel.js';
+import { endEditorSession } from '../editor/editor-text-session.js';
 import { brickSetById } from '../core/bricks/library.js';
 
 /** The frame a fresh start opens on (data/frame-defs: "Template 1 - Hourglass"). */
@@ -36,7 +37,26 @@ const FRESH_START_FRAME_TEMPLATE = 'template_1';
 // Audit B1: the brick settings are app state the editor's own undo stack never holds, but every
 // Brick-tab change saves them at once -- so Cancel must put them back too, or the panel shows the
 // discarded settings over the restored bricks (and the next Generate re-lays them).
-export const SvgEditorSnapshot = { active: false, editorSvg: null, brickSettings: null };
+export const SvgEditorSnapshot = { active: false, editorSvg: null, brickSettings: null, fingerprint: null };
+
+/** F35 item 25: what an editor session can change, as one comparable string -- the drawing, the frame record,
+ *  the brick settings and the photo. Taken when the editor opens (SvgEditorSnapshot.fingerprint); the viewport's
+ *  [3D] closes without the Apply rebuild when nothing in it changed. */
+export function editorSessionFingerprint() {
+  return JSON.stringify({
+    svg: P.editorSvg ?? null, frame: P.frame ?? null, bricks: P.brickSettings ?? null,
+    photo: [P.photoImageDataUrl ?? null, P.photoEdits ?? []],
+  });
+}
+
+/** F35 item 25: close the editor when nothing changed -- Cancel's close without its restore + remask + drape
+ *  (there is nothing to restore). */
+export function closeEditorUnchanged() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  SvgEditorSnapshot.active = false; // onCommit's Cancel branch restores only an active snapshot
+  if (editor) endEditorSession(editor, { commit: false });
+  else document.getElementById('svgEditorModal')?.style.setProperty('display', 'none');
+}
 
 /** Put P.brickSettings back IN PLACE (other modules hold the same object, e.g. editor._brickSettings). */
 export function restoreBrickSettings(saved) {

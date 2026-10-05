@@ -7,7 +7,8 @@
  * matches reality. Declared per tool id (main/brick-panel.js BRICK_TOOLS).
  *
  *   mini: { kind, box: [x, y, w, h] in the 24 box, cut?: a gap where the blades close, stripe?: alternate
- *           runs hollow, lifted?: a shadow line under the run (raised) }
+ *           runs hollow, lifted?: a shadow line under the run (raised), depth?: how a RAISED run shows its
+ *           height (Fred on sheet 1: "needs a bit more perspective") -- RAISED_DEPTHS below }
  */
 import { toolMiniBricks } from './editor-brick-tool.js';
 
@@ -16,9 +17,16 @@ const PAINTBRUSH = '<path d="M21.5 2.5 15 9"/><path d="M15 9 12.8 11.2" stroke-w
 const UP_TICK = '<path d="M20.5 22v-6.5M18 18l2.5-2.5L23 18"/>';
 const SCISSORS = '<circle cx="4.6" cy="4.2" r="2.3"/><circle cx="4.6" cy="11.3" r="2.3"/><path d="M6.6 5.4 20 10.4M6.6 10.1 20 5.2"/>';
 
+/** The raised run's depth treatments (sheet v2: Fred picks one). dx/dy = the oblique offset (24-box units). */
+export const RAISED_DEPTHS = Object.freeze({
+  extrude: { label: 'Extruded: each brick a block (an offset copy behind it)', dx: 1.6, dy: 2.4 },
+  shadow: { label: 'Hovering: a shadow band under the run, stems at the ends', dx: 1.4, dy: 3.4 },
+  sides: { label: 'Side faces: each brick on its own visible side', dx: 0, dy: 2.4 },
+});
+
 export const BRICK_TOOL_ICONS = Object.freeze({
   brush: { glyph: PAINTBRUSH, mini: { kind: 'run', box: [1, 14.5, 13, 7.5] } },
-  raisedBrush: { glyph: PAINTBRUSH + UP_TICK, mini: { kind: 'run', box: [1, 13, 13, 7], lifted: true } },
+  raisedBrush: { glyph: PAINTBRUSH + UP_TICK, mini: { kind: 'run', box: [0.5, 12.5, 15, 6.5], lifted: true } },
   wall: { glyph: '', mini: { kind: 'wall', box: [1.5, 4, 21, 16] } },
   frame: { glyph: '', mini: { kind: 'frame', box: [3, 3, 18, 18] } },
   scissors: { glyph: SCISSORS, mini: { kind: 'runLong', box: [1, 15.5, 22, 7], cut: [0.4, 0.6] } },
@@ -38,6 +46,8 @@ function miniMarkup(mini) {
   const ox = bx + (bw - w * k) / 2, oy = by + (bh - h * k) / 2;
   const pt = (p) => `${+(ox + (p.x - x0) * k).toFixed(2)},${+(oy + (p.y - y0) * k).toFixed(2)}`;
   const parts = [];
+  const depth = mini.depth && RAISED_DEPTHS[mini.depth];
+  if (depth) parts.push(depthMarkup(mini.depth, depth, bricks, pt, k, { ox, oy, x0, y0, w, h }));
   for (const b of bricks) {
     const u = (_centroidX(b) - x0) / w; // 0..1 along the miniature
     if (mini.cut && u > mini.cut[0] && u < mini.cut[1]) continue; // the scissors' gap
@@ -51,10 +61,32 @@ function miniMarkup(mini) {
   return parts.join('');
 }
 
-/** The tool's icon as SVG markup at `sizePx`; null for a tool without one. */
-export function brickToolIconSvg(toolId, sizePx = 20) {
-  const icon = BRICK_TOOL_ICONS[toolId];
-  if (!icon) return null;
+/** What sits UNDER a raised run, per RAISED_DEPTHS treatment (drawn before the bricks themselves). */
+function depthMarkup(id, d, bricks, pt, k, f) {
+  const shifted = (b, dx, dy) => b.polygon.map((p) => pt({ x: p.x + dx / k, y: p.y + dy / k })).join(' ');
+  if (id === 'extrude') {
+    return `<g fill="currentColor" stroke="none" opacity="0.4">${bricks.map((b) => `<polygon points="${shifted(b, d.dx, d.dy)}"/>`).join('')}</g>`;
+  }
+  if (id === 'shadow') {
+    const left = f.ox, right = f.ox + f.w * k, bottom = f.oy + f.h * k;
+    return `<rect x="${+(left + d.dx).toFixed(2)}" y="${+(bottom + d.dy - 1).toFixed(2)}" width="${+(right - left).toFixed(2)}" height="1.4" rx="0.7" fill="currentColor" stroke="none" opacity="0.4"/>`
+      + `<path d="M${+left.toFixed(2)} ${+bottom.toFixed(2)}l${d.dx} ${+(d.dy - 1).toFixed(2)}M${+right.toFixed(2)} ${+bottom.toFixed(2)}l${d.dx} ${+(d.dy - 1).toFixed(2)}" stroke-width="0.8"/>`;
+  }
+  // 'sides': each brick's side face -- the strip from its bottom edge down by dy
+  return `<g fill="currentColor" stroke="none" opacity="0.55">${bricks.map((b) => {
+    const ys = b.polygon.map((p) => p.y), xs = b.polygon.map((p) => p.x);
+    const yb = Math.max(...ys), xl = Math.min(...xs), xr = Math.max(...xs);
+    const a = pt({ x: xl, y: yb }).split(',').map(Number), c = pt({ x: xr, y: yb }).split(',').map(Number);
+    return `<rect x="${a[0]}" y="${a[1]}" width="${+(c[0] - a[0]).toFixed(2)}" height="${d.dy}"/>`;
+  }).join('')}</g>`;
+}
+
+/** The tool's icon as SVG markup at `sizePx`; null for a tool without one. `miniOverride` (the sheet's
+ *  variants only) merges into the tool's declared miniature. */
+export function brickToolIconSvg(toolId, sizePx = 20, miniOverride = null) {
+  const base = BRICK_TOOL_ICONS[toolId];
+  if (!base) return null;
+  const icon = miniOverride ? { ...base, mini: { ...base.mini, ...miniOverride } } : base;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${sizePx}" height="${sizePx}" aria-hidden="true"`
     + ' fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
     + `${icon.glyph}${miniMarkup(icon.mini)}</svg>`;

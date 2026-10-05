@@ -12907,3 +12907,61 @@ page. One row per Brick tool: today's emoji, then the new icon at 20 and 40 px, 
 - **Fast tier** (brick / icon / accent, 58 files): 614 passed (+4 todo), 0 failed.
 - Server 8851 (my own task) stopped. One slip: I first started it with a bare `&` (untracked), then found its
   PID on the port and stopped that one process, and restarted it as a tracked task.
+
+### turn 215 -- F35 item 25: the [2D | 3D] pill (seat 37)
+
+Fred: "in the viewport have a 2D 3D toggle that enters and exits editor mode".
+- **main/view-mode-toggle.js:**
+  - `VIEW_MODES` (2D, 3D) and `VIEW_TOGGLE_HOSTS` (where a pill is drawn, and which mode that place IS): the 3D
+    viewport (#previewArea, top-left; the view cube is top-right, the height inspector bottom-left) shows 3D
+    active, and the editor canvas (#editorCanvasContainer) shows 2D active. Each host is only visible in its
+    own mode, so no syncing is needed.
+  - 2D = open the editor on the LAST-USED tab, the editor tab last switched to ('editorTabChanged'): the
+    Brick section's button leaves Brick, for example.
+  - 3D = the real Apply button (the Apply way: its toast, remask, drape and loading signal), unless nothing
+    changed since the editor opened, then `closeEditorUnchanged()` (app-init.js): Cancel's close WITHOUT its
+    restore + remask + drape, by retiring the snapshot first. An open text edit counts as changed: its text is
+    not in the drawing yet.
+- **"Nothing changed" = `editorSessionFingerprint()`** (app-init.js): the drawing, the frame record, the brick
+  settings and the photo. It is recorded at open (svg-source.js, beside the existing Cancel snapshot), because
+  the editor's undo stack alone misses Frame-tab and Photo edits, which keep their own state.
+- **`openEditorOn(tab)`** exported from frame-panel.js: the sidebar's open buttons (OPEN_EDITOR_BUTTONS) and
+  the pill share it.
+- **Tests:**
+  - New view-mode-toggle (6): the declared modes and hosts, each pill's own active mode, idempotent init; 2D
+    on the last-used tab; 3D unchanged = close, no Apply; 3D changed = the Apply click; an open text edit =
+    changed; same mode = nothing.
+  - New editor-session-fingerprint (4): the drawing, a Frame-tab edit, a brick setting and a photo edit each
+    change it; unchanged = the same string.
+  - Mutation: no "unchanged" close -> the close test fails.
+- **Fast tier** (112 files): 1808 passed, 1 FAILED in the parallel run -- tests/frame-3d-sweep.test.js
+  (templates x boards x frame bottom x panels, a heavy sweep). Re-run alone: 8/8. No frame geometry touched
+  this turn.
+- **Matrix:**
+  - The 'opens' kind gains `closeWith` (a control that must close the editor), and a row 'Viewport 2D / 3D
+    pill': [2D] opens on Brick (the row above left it there), the editor's [3D] closes it.
+  - sidebar-quick group: 8 rows, 0 FAIL ("closed by viewMode_3d_editor: true").
+  - The wall/frame groups were not run on this branch: their editor rows wait for 88's item-27 pending flip,
+    which the advisor is merging now.
+- **Live** (served, headless Chrome, desktop and 390x844 phone):
+  - both pills render, and the viewport's is on top at its point;
+  - 2D opened the editor on Artwork (the first-run default);
+  - 3D with nothing changed closed it with NO Apply (an Apply-click listener counted 0, no toast);
+  - the Brick editor button opened Brick, a Wall Generate, then 3D went through Apply (counted 1, "✓ Applied");
+  - 2D then re-opened on Brick;
+  - the phone gave the same sequence; 0 page errors.
+- **Shots:** shots/seat37/f35item25_pill_{viewport, editor, viewport_phone, editor_phone}.png.
+- **Next:** Fred on the icon sheet (via the advisor): the Raised brush row needs more perspective -- a v2 of that
+  row is owed.
+- Server 8851 (my own task) stopped.
+- **turn 215 amendment -- item 24 sheet v2, the Raised brush row only** (Fred: "needs a bit more perspective"):
+  shots/seat37/f35item24_icon_sheet_v2_raised.png.
+  - Three depth treatments, declared as `RAISED_DEPTHS` in editor/brick-tool-icons.js, beside v1 (the dashed
+    line + arrow): A extruded (an oblique offset copy of every brick behind it), B hovering (a shadow band
+    under the run with stems at its ends), C side faces (each brick on its own visible side). All monochrome.
+  - The raised run's box and the depth offsets were enlarged after the first v2 render: the depth was too
+    subtle at 20 px.
+  - B reads most clearly as LIFTED at 20 px; A and C read at 40 px.
+  - Nothing wired. `brickToolIconSvg(id, size, miniOverride)` lets the sheet draw variants; the declared icon is
+    unchanged until Fred picks.
+  - Test: each treatment draws under the run, currentColor (brick-tool-icons 6/6).
