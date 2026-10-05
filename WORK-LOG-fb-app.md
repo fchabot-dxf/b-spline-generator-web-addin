@@ -12954,3 +12954,14 @@ Fred: "in the viewport have a 2D 3D toggle that enters and exits editor mode".
 - **Next:** Fred on the icon sheet (via the advisor): the Raised brush row needs more perspective -- a v2 of that
   row is owed.
 - Server 8851 (my own task) stopped.
+- **turn 215 amendment -- item 24 sheet v2, the Raised brush row only** (Fred: "needs a bit more perspective"):
+  shots/seat37/f35item24_icon_sheet_v2_raised.png.
+  - Three depth treatments, declared as `RAISED_DEPTHS` in editor/brick-tool-icons.js, beside v1 (the dashed
+    line + arrow): A extruded (an oblique offset copy of every brick behind it), B hovering (a shadow band
+    under the run with stems at its ends), C side faces (each brick on its own visible side). All monochrome.
+  - The raised run's box and the depth offsets were enlarged after the first v2 render: the depth was too
+    subtle at 20 px.
+  - B reads most clearly as LIFTED at 20 px; A and C read at 40 px.
+  - Nothing wired. `brickToolIconSvg(id, size, miniOverride)` lets the sheet draw variants; the declared icon is
+    unchanged until Fred picks.
+  - Test: each treatment draws under the run, currentColor (brick-tool-icons 6/6).
