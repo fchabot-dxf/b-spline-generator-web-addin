@@ -22175,3 +22175,51 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
 - Follow-up (advisor ruling by precedent: a stone set's bands are the stone ring, as White rocks): Set 5 declares
   `bandLayout: 'fieldstone'`; contour-bands setBandPattern reads `set.bandLayout || set.layout`, so Grey stone frames
   lay fieldstone rings with grey faces (a bond set keeps course bands -- tested). Sheet re-rendered.
+
+## T86 item 18 -- painted strokes -> the wall's region (seat B / 88, 2026-10-05)
+- Contract (agreed with 37 earlier): generateBricks `wallRegion: { strokes: [{points, widthIn}], minus: [<each NEWER
+  area's strokes>] }` or ready-made `{ polygons: [{outer, holes}] }`; missing / no strokes = the full fill as before;
+  `wallRegionApplied: true` whenever it is given; 'wallRegion' in ENGINE_OPTIONS. Exported: core/bricks/region.js
+  strokesToRegion(strokes, minus, {gapIn}) -> { polygons: [{ outer, holes }] } (also from core/bricks/index.js), so the
+  app can draw the area outline from the same math.
+- Region = the zero contour of a distance field (inside = within widthIn/2 of a stroke AND beyond widthIn/2 + gapIn of
+  every newer stroke; the engine passes the wall set's grout as gapIn, so two areas never butt), traced by marching
+  squares with linear interpolation (grid 0.04 in or a third of the thinnest brush; saddles resolved by the cell
+  centre). Unions, a stroke crossing itself, rings with their holes and the minus all come out as simple loops, no
+  polygon boolean engine needed. Outers counter-clockwise (signedArea < 0), holes clockwise, each hole given to the
+  smallest outer that contains it.
+- The wall lays as usual over its outline (frame inner path or board), then fill-shape clipCellsToRegion keeps each
+  cell's part inside the region (inside cells untouched; edge cells cut by polygonIntersection; holes cut out by
+  polygonDifference); the bond stays aligned to the board across areas. The exclusion cut and the region clip now
+  share recutCells (fresh ids, the quarter floor, neighbour links cleared). Rotation (item 29) turns the region too.
+- Tests bricks-wall-region (11): capsule / union / ring-with-hole / minus areas against closed forms (1%); through the
+  engine -- two overlapping strokes (bricks only inside, no overlap, > 97% of the inset region covered), a stroke across
+  T1's frame band (no wall brick on a band: the seam's own hairline 0.0006 sq in is the same with or without a
+  region), newest wins (older bricks clear of the newer area grown by 0.9 grout), empty = the full fill, rotation.
+  Region clip off -> 4/11 fail. tests/brick-element-select.test.js (37's): its "Area hidden until the engine lists
+  wallRegion" step now removes wallRegion in its own mock (both states still tested). Bricks domain + core/bricks
+  importers 85 files: green alone (N2 / N7 / template_19 time out only under the full parallel load, pass alone).
+- OPEN for the advisor: listing 'wallRegion' shows 37's Area sub-tool by itself; until 37's slice 2 sends strokes it
+  would be a tool that does nothing on the live site -> merge with 37's slice 2, not alone.
+- Shot: shots/seatB/item18_wall_region.png.
+
+## T86 item 18b -- painted areas lay COMPLETE bricks (seat B / 88, 2026-10-05)
+- Fred: "A brush that draws is fine but I'd prefer it drew complete bricks." region.js WALL_REGION_PICK = 'centroid'
+  (one declared constant; 'clip' = 18's first form, kept): fill-shape pickCellsInRegion lays a cell WHOLE when its
+  centroid is inside an outer and outside its holes; nothing is cut at the region edge; board / frame / exclusions
+  clip as before; engine wallRegionOf passes gapIn 0 under 'centroid', so newest-wins partitions bricks exactly (each
+  brick belongs to the newest area whose region holds its centroid). Neighbour links to dropped cells cleared.
+- Tests (bricks-wall-region, 12) against the same wall laid WITHOUT a region: every laid brick is one of its whole
+  bricks, every laid centroid in the region, every brick with its centroid in the region laid, no overlap, none on
+  the band; newest-wins: never a shared brick, older + newer = exactly the union's bricks; rotation. 'clip' -> 5/12 fail.
+- OPEN (for the advisor): two areas with DIFFERENT patterns overlap at their boundary -- whole bricks of two grids
+  poke across it (measured: older stretcher - newer herringbone, 30 pairs / 0.61 sq in on a plain 7x9; 19 pairs /
+  1.04 sq in on the T1 shot). Same-pattern areas share the board-aligned grid, so they cannot overlap.
+- Shot: shots/seatB/item18_wall_region.png (same three cells; the third shows the mixed-pattern overlap).
+- 18c (advisor ruling, option C: newest wins, whole bricks, no cuts): an exclusion `{ polygon, drop: true }` never
+  cuts -- a wall brick touching it (grown by the grout, overlap > DROP_TOUCH_SQIN) is dropped whole and the gap stays
+  grout; the app passes a newer area's laid bricks this way to the older area's lay. Plain exclusions (brush strokes)
+  still cut. Tests: older stretcher round a newer herringbone -- no overlapping pair, no cut brick, every dropped brick
+  touched a newer one, something dropped; a drop exclusion never cuts while a plain one does. Drop flag ignored ->
+  2/14 fail. Shot's third cell: 0 overlapping pairs; on that board the older strip keeps 3 of its 13 bricks (the
+  herringbone's zigzag edge touches the rest) -- the rule as ruled, for Fred's eye.

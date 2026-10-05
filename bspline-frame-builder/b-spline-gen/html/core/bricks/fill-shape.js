@@ -27,6 +27,7 @@ import { computeSuppressedCells } from './suppression.js';
 import { assignSamples } from './samples.js';
 import { pointInPolygon, polygonIntersection, polygonDifference, polygonCentroid, signedArea, offsetPathInward, inwardSignFor } from './geometry.js';
 import { PIECE_CATALOGUE, enabledPieces, scaledSet, MIN_PIECE_FRACTION, BRICK_PATTERNS } from './library.js';
+import { WALL_REGION_PICK } from './region.js';
 
 // F35 item 7: herringbone/basketweave are 'tile2d' BRICK_PATTERNS (library.js) promoted to full
 // `set.layout` choices, same tier as 'bond'/'fieldstone' -- not zone-mixable with course-kind
@@ -105,16 +106,26 @@ function recutCells(cells, set, cut) {
   return out;
 }
 
+/** T86 item 18c (advisor ruling, option C): an exclusion marked `drop: true` never CUTS a wall brick -- a brick it
+ *  touches (its footprint grown by the grout, overlap above this area) is DROPPED whole, and the gap stays grout. The
+ *  app passes a newer wall area's laid bricks this way to the older area's lay, so two areas with different patterns
+ *  never overlap and no brick is cut (Fred: newest wins, complete bricks). Brush strokes keep cutting (item 13). */
+const DROP_TOUCH_SQIN = 1e-6;
+
 function cutExclusions(cells, exclusions, set) {
   const J = set.grout.widthIn;
   const holes = exclusions.filter((e) => e && e.polygon && e.polygon.length >= 3).map((e) => {
     const grown = offsetPathInward(e.polygon, J, -inwardSignFor(e.polygon));
-    return { polygon: grown, box: bboxOf(grown) };
+    return { polygon: grown, box: bboxOf(grown), drop: e.drop === true };
   });
+  const drops = holes.filter((h) => h.drop), cuts = holes.filter((h) => !h.drop);
   return recutCells(cells, set, (polygon) => {
-    let pieces = [polygon];
     const box = bboxOf(polygon);
-    for (const h of holes) {
+    for (const h of drops) {
+      if (boxesOverlap(box, h.box) && Math.abs(signedArea(polygonIntersection(polygon, h.polygon))) > DROP_TOUCH_SQIN) return [];
+    }
+    let pieces = [polygon];
+    for (const h of cuts) {
       if (!boxesOverlap(box, h.box)) continue;
       const next = [];
       for (const piece of pieces) {
@@ -136,6 +147,22 @@ function cutExclusions(cells, exclusions, set) {
  * notch); a hole is cut out (polygonDifference; a hole wholly inside one brick drops that brick); a cell outside
  * every outer goes.
  */
+/** T86 item 18b (WALL_REGION_PICK 'centroid'): the cells whose centroid lies in the region (inside an outer, outside
+ *  its holes), each kept whole -- nothing is cut at the region's edge. */
+function pickCellsInRegion(cells, region) {
+  const parts = region.filter((r) => r && r.outer && r.outer.length >= 3);
+  const kept = new Set(cells.filter((cell) => {
+    const c = polygonCentroid(cell.polygon);
+    return parts.some((r) => pointInPolygon(c.x, c.y, r.outer) && !(r.holes || []).some((h) => h.length >= 3 && pointInPolygon(c.x, c.y, h)));
+  }));
+  // neighbour links to a dropped cell are cleared (as recutCells does), so no piece chain reaches a cell that is gone
+  for (const cell of kept) {
+    if (!cell.neighbors) continue;
+    for (const k of Object.keys(cell.neighbors)) if (cell.neighbors[k] && !kept.has(cell.neighbors[k])) cell.neighbors[k] = null;
+  }
+  return cells.filter((c) => kept.has(c));
+}
+
 function clipCellsToRegion(cells, region, set) {
   const parts = region.filter((r) => r && r.outer && r.outer.length >= 3)
     .map((r) => ({ outer: r.outer, box: bboxOf(r.outer), holes: (r.holes || []).filter((h) => h.length >= 3).map((h) => ({ polygon: h, box: bboxOf(h) })) }));
@@ -204,7 +231,7 @@ export function bricksFillShape(polygon, holes, opts) {
   let cells = (holes && holes.length)
     ? allCells.filter((c) => !holes.some((h) => pointInPolygon(c.cx, c.cy, h)))
     : allCells;
-  if (opts.region) cells = clipCellsToRegion(cells, opts.region, set);
+  if (opts.region) cells = WALL_REGION_PICK === 'clip' ? clipCellsToRegion(cells, opts.region, set) : pickCellsInRegion(cells, opts.region);
   if (opts.exclusions && opts.exclusions.length) cells = cutExclusions(cells, opts.exclusions, set);
 
   const catalogue = enabledPieces(PIECE_CATALOGUE);

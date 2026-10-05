@@ -11,8 +11,8 @@ import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { generateBricks, ENGINE_OPTIONS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/engine.js';
-import { strokesToRegion } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/region.js';
-import { pointInPolygon, polygonIntersection, signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { strokesToRegion, WALL_REGION_PICK } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/region.js';
+import { pointInPolygon, polygonIntersection, polygonCentroid, signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 
 vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // grid-sampled lays: see heavy-test-timeout.js
@@ -28,32 +28,26 @@ const P = (...xy) => xy.map(([x, y]) => ({ x, y }));
 const inRegion = (x, y, polys) => polys.some((r) => pointInPolygon(x, y, r.outer) && !r.holes.some((h) => pointInPolygon(x, y, h)));
 const lay = (extra) => generateBricks({ boardOutline: board, set: SET, seed: 3, scale: 1, suppression: 0, clumping: 0, zones: [{ pattern: 'stretcher' }], ...extra });
 
-/** every wall brick inside the region; no two wall bricks overlap; the region's inside (a grout and a quarter brick
- *  in from its edge) covered by bricks except their own joints */
-function checkLay(bricks, polys, others = []) {
+const key = (p) => JSON.stringify(p);
+const centroidIn = (b, polys) => { const c = polygonCentroid(b.polygon); return inRegion(c.x, c.y, polys); };
+/** T86 item 18b (WALL_REGION_PICK 'centroid', Fred: complete bricks): against the SAME wall laid without a region --
+ *  every laid brick is one of its whole bricks (nothing cut at the region edge), every laid brick's centroid is in the
+ *  region, every one of its bricks whose centroid is in the region is laid, no overlap, and none on a frame brick
+ *  (beyond the seam's own hairline, 0.0006 sq in measured with or without a region). */
+function checkWhole(laid, plain, polys, others = []) {
   const bad = [];
-  for (const b of bricks) {
-    const inside = polys.reduce((s, r) => s + area(polygonIntersection(b.polygon, r.outer)), 0);
-    if (area(b.polygon) - inside > 1e-4) bad.push(`brick ${b.id} outside the region by ${(area(b.polygon) - inside).toFixed(4)}`);
-    for (const r of polys) for (const h of r.holes) if (area(polygonIntersection(b.polygon, h)) > 1e-4) bad.push(`brick ${b.id} in a hole`);
-    // the wall/frame seam's own hairline residual, the same with or without a region (measured T1 7x9: worst pair
-    // 0.0006 sq in either way) -- a region must never put a brick ON the band
+  const plainKeys = new Set(plain.map((b) => key(b.polygon)));
+  const laidKeys = new Set(laid.map((b) => key(b.polygon)));
+  for (const b of laid) {
+    if (!plainKeys.has(key(b.polygon))) bad.push(`brick ${b.id} is not a whole brick of the bond (cut?)`);
+    if (!centroidIn(b, polys)) bad.push(`brick ${b.id} laid with its centroid outside the region`);
     for (const o of others) if (area(polygonIntersection(b.polygon, o.polygon)) > 1e-3) bad.push(`brick ${b.id} on a frame brick`);
   }
-  for (let i = 0; i < bricks.length; i++) for (let j = i + 1; j < bricks.length; j++) {
-    if (area(polygonIntersection(bricks[i].polygon, bricks[j].polygon)) > 1e-4) bad.push(`bricks ${bricks[i].id}/${bricks[j].id} overlap`);
+  for (const b of plain) if (centroidIn(b, polys) && !laidKeys.has(key(b.polygon))) bad.push(`brick ${b.id} has its centroid in the region but is not laid`);
+  for (let i = 0; i < laid.length; i++) for (let j = i + 1; j < laid.length; j++) {
+    if (area(polygonIntersection(laid[i].polygon, laid[j].polygon)) > 1e-4) bad.push(`bricks ${laid[i].id}/${laid[j].id} overlap`);
   }
   return bad;
-}
-function coverage(bricks, polys, inset) {
-  let want = 0, got = 0;
-  const near = (x, y) => [[0, 0], [inset, 0], [-inset, 0], [0, inset], [0, -inset]].every(([dx, dy]) => inRegion(x + dx, y + dy, polys));
-  for (let x = 0.05; x < W; x += 0.1) for (let y = 0.05; y < H; y += 0.1) {
-    if (!near(x, y)) continue;
-    want++;
-    if (bricks.some((b) => pointInPolygon(x, y, b.polygon) || pointInPolygon(x + J, y, b.polygon) || pointInPolygon(x, y + J, b.polygon))) got++;
-  }
-  return want ? got / want : 0;
 }
 
 describe('strokesToRegion (T86 item 18)', () => {
@@ -93,40 +87,73 @@ describe('generateBricks wallRegion (T86 item 18)', () => {
     expect(empty.wallRegionApplied).toBe(true);
     expect(plain.wallRegionApplied).toBeUndefined();
   });
-  it('two overlapping strokes: the wall only in their union, no overlap, the area covered', () => {
+  it('the pick rule is declared: whole bricks by centroid', () => expect(WALL_REGION_PICK).toBe('centroid'));
+  it('two overlapping strokes: whole bricks, exactly those whose centroid is in the union', () => {
     const strokes = [{ points: P([1, 6], [6, 5]), widthIn: 1.6 }, { points: P([2, 2], [4, 7.5]), widthIn: 1.2 }];
-    const polys = strokesToRegion(strokes, [], { gapIn: J }).polygons;
+    const polys = strokesToRegion(strokes).polygons;
     expect(polys.length).toBe(1);
     const r = lay({ wallRegion: { strokes } });
     expect(r.wallRegionApplied).toBe(true);
     expect(r.bricks.length).toBeGreaterThan(20);
-    expect(checkLay(r.bricks, polys).slice(0, 5)).toEqual([]);
-    expect(coverage(r.bricks, polys, 0.25 * SET.brickLengthIn)).toBeGreaterThan(0.97);
+    expect(checkWhole(r.bricks, lay({}).bricks, polys).slice(0, 5)).toEqual([]);
   });
-  it('a stroke across the frame band: wall bricks only inside both the frame and the stroke', () => {
+  it('a stroke across the frame band: whole wall bricks inside the frame, the band clip kept, the frame laid in full', () => {
     const sil = frameContourSilhouette({ defs: FRAME_DEFS, record: normalizeFrameRecord({ templateId: 'template_1' }), board: { widthIn: W, heightIn: H } }, 0, 0);
-    const prims = buildRibbonPrimitives(sil.primitives);
+    const frame = { primitives: buildRibbonPrimitives(sil.primitives), bands: FRAME_PRESETS.single_soldier };
     const strokes = [{ points: P([-0.5, 7], [3.5, 4.5], [7.5, 2]), widthIn: 1.5 }];
-    const polys = strokesToRegion(strokes, [], { gapIn: J }).polygons;
-    const r = lay({ frame: { primitives: prims, bands: FRAME_PRESETS.single_soldier }, wallRegion: { strokes } });
+    const polys = strokesToRegion(strokes).polygons;
+    const r = lay({ frame, wallRegion: { strokes } });
     expect(r.bricks.length).toBeGreaterThan(5);
-    expect(r.frameBricks.length).toBeGreaterThan(50); // the frame is laid in full, not clipped to the region
-    expect(checkLay(r.bricks, polys, r.frameBricks).slice(0, 5)).toEqual([]);
+    expect(r.frameBricks.length).toBeGreaterThan(50);
+    expect(checkWhole(r.bricks, lay({ frame }).bricks, polys, r.frameBricks).slice(0, 5)).toEqual([]);
   });
-  it('newest wins: the older area flows around the newer one, a grout joint apart', () => {
+  it('newest wins: each brick belongs to exactly one area -- the newest whose region holds its centroid', () => {
     const older = [{ points: P([1, 4.5], [6, 4.5]), widthIn: 2 }], newer = [{ points: P([3.5, 2], [3.5, 7]), widthIn: 1.2 }];
-    const r = lay({ wallRegion: { strokes: older, minus: newer } });
-    const newPolys = strokesToRegion(newer, [], {}).polygons;
-    const grown = strokesToRegion(newer.map((s) => ({ ...s, widthIn: s.widthIn + 2 * 0.9 * J })), [], {}).polygons;
-    expect(r.bricks.length).toBeGreaterThan(10);
-    for (const b of r.bricks) expect(grown.reduce((s, p) => s + area(polygonIntersection(b.polygon, p.outer)), 0)).toBeLessThan(1e-4);
-    expect(newPolys.length).toBe(1);
+    const o = lay({ wallRegion: { strokes: older, minus: newer } }).bricks, n = lay({ wallRegion: { strokes: newer } }).bricks;
+    const plain = lay({}).bricks;
+    const oPolys = strokesToRegion(older, newer).polygons, nPolys = strokesToRegion(newer).polygons;
+    expect(o.length).toBeGreaterThan(10);
+    expect(checkWhole(o, plain, oPolys).slice(0, 5)).toEqual([]);
+    expect(checkWhole(n, plain, nPolys).slice(0, 5)).toEqual([]);
+    const oKeys = new Set(o.map((b) => key(b.polygon)));
+    expect(n.filter((b) => oKeys.has(key(b.polygon))).map((b) => b.id)).toEqual([]); // never shared
+    const both = strokesToRegion([...older, ...newer]).polygons;
+    expect(o.length + n.length).toBe(plain.filter((b) => centroidIn(b, both)).length); // every brick of the union, once
   });
-  it('turns with the pattern (item 29): rotated bricks stay inside the region', () => {
+  it('18c: an older bond area around a newer herringbone area -- no overlap, no cut, only bricks touching a newer one drop', () => {
+    const older = [{ points: P([1, 4.5], [6, 4.5]), widthIn: 2 }], newer = [{ points: P([3.5, 2], [3.5, 7]), widthIn: 1.2 }];
+    const herring = { ...SET, layout: 'herringbone' };
+    const n = generateBricks({ boardOutline: board, set: herring, seed: 3, scale: 1, suppression: 0, clumping: 0, wallRegion: { strokes: newer } }).bricks;
+    const drops = n.map((b) => ({ polygon: b.polygon, drop: true }));
+    const o = lay({ wallRegion: { strokes: older, minus: newer }, exclusions: drops }).bricks;
+    const before = lay({ wallRegion: { strokes: older, minus: newer } }).bricks; // the older area without the drops
+    const plainKeys = new Set(lay({}).bricks.map((b) => key(b.polygon)));
+    const bad = [];
+    for (const b of o) if (!plainKeys.has(key(b.polygon))) bad.push(`older brick ${b.id} cut`);
+    for (const a of o) for (const b of n) if (area(polygonIntersection(a.polygon, b.polygon)) > 1e-4) bad.push(`${a.id}/${b.id} overlap`);
+    // every dropped brick touched a newer brick grown by the grout (sampled: within a grout of it)
+    const kept = new Set(o.map((b) => key(b.polygon)));
+    const dropped = before.filter((b) => !kept.has(key(b.polygon)));
+    const near = (a, b) => b.polygon.some((q) => [[0, 0], [J, 0], [-J, 0], [0, J], [0, -J], [J, J], [-J, -J], [J, -J], [-J, J]].some(([dx, dy]) => pointInPolygon(q.x + dx, q.y + dy, a.polygon)))
+      || a.polygon.some((q) => pointInPolygon(q.x, q.y, b.polygon)) || area(polygonIntersection(a.polygon, b.polygon)) > 0;
+    for (const d of dropped) if (!n.some((b) => near(d, b))) bad.push(`older brick ${d.id} dropped without touching a newer brick`);
+    expect(bad.slice(0, 5)).toEqual([]);
+    expect(dropped.length).toBeGreaterThan(0); // the grids clash here: something had to give way
+    expect(o.length).toBeGreaterThan(10);
+  });
+  it('a drop exclusion never cuts: brush strokes still cut (item 13), drop ones only remove whole bricks', () => {
+    const stroke = [{ polygon: P([2, 4.4], [5, 4.4], [5, 4.6], [2, 4.6]) }];
+    const plainKeys = new Set(lay({}).bricks.map((b) => key(b.polygon)));
+    const cut = lay({ exclusions: stroke }).bricks, dropped = lay({ exclusions: stroke.map((e) => ({ ...e, drop: true })) }).bricks;
+    expect(cut.some((b) => !plainKeys.has(key(b.polygon)))).toBe(true);
+    expect(dropped.every((b) => plainKeys.has(key(b.polygon)))).toBe(true);
+    expect(dropped.length).toBeLessThan(lay({}).bricks.length);
+  });
+  it('turns with the pattern (item 29): whole rotated bricks by centroid', () => {
     const strokes = [{ points: P([1, 6], [6, 5]), widthIn: 1.6 }];
-    const polys = strokesToRegion(strokes, [], { gapIn: J }).polygons;
+    const polys = strokesToRegion(strokes).polygons;
     const r = lay({ wallRegion: { strokes }, rotationDeg: 45 });
     expect(r.bricks.length).toBeGreaterThan(5);
-    expect(checkLay(r.bricks, polys).slice(0, 5)).toEqual([]);
+    expect(checkWhole(r.bricks, lay({ rotationDeg: 45 }).bricks, polys).slice(0, 5)).toEqual([]);
   });
 });
