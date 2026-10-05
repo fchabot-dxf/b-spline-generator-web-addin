@@ -6,6 +6,10 @@
  * Declared per binding in main/brick-panel.js (BRICK_COMMIT), not per call site.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
+// N2 ("P.brickSettings REPLACED") re-renders every panel; MEASURED timing out at 5 s under the fleet's shared CPU (8.1 s alone
+// on a loaded machine, 0.3 s on a quiet one) -- the declared heavy-test timeout, not a known failure (advisor)
+vi.setConfig({ testTimeout: HEAVY_TEST_MS });
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js', async (importOriginal) => {
