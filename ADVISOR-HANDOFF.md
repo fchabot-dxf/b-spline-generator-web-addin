@@ -18,8 +18,8 @@ From the outgoing advisor (session `b-spline-generator-web-addin-54`) to the new
 
 | Seat | Session | Worktree / branch | Epoch | Seat lock | Doing now |
 |---|---|---|---|---|---|
-| A | `b-spline-generator-web-addin-39` | main checkout / `main` | 7 | 39 | H23 item 78: Template 18 Arched Head (diagram first) -- f3 DECOMMISSIONED 17fe1c6 |
-| B | (FRESH SEAT NEEDED; d3 HELD at turn 342, 2026-10-04 evening, 3-day session) | `-lane-b` / `lane-b` | 11 on adoption | -- | start block at the END of NEXT-SESSION-lane-b.md: 16(c) plan (WORK-LOG 8326c9f) -> 16(b) -> 13 -> 18 -> 10 -> 21b |
+| A | (FRESH SEAT NEEDED; 39 HELD at turn 563, 2026-10-04 evening, after a compaction) | main checkout / `main` | 8 on adoption | -- | start block at the END of NEXT-SESSION.md: item 81 (T10, from 39's plan branch t10-item81-plan) -> item 82 (CAM same-position stock) |
+| B | `b-spline-generator-web-addin-88` (promoted by Fred 2026-10-04 evening; d3 held at turn 342) | wt-88, one branch per item from origin/main; coordination by DM (no handoff.py loop) | -- | 88 | the lane-b queue from NEXT-SESSION-lane-b.md's start block: 16(c) part 2 -> 16(b) -> 13 -> 18 -> 10 -> 24 (grey sets) -> 25 (coursed rubble) -> 22-23 (rustic, wear on rocks) -> 21b |
 | C | `b-spline-generator-web-addin-37` | `-fb-app` / `fb-app` | 6 | 37 | F35 item 18: Flat/Organic, Weathered, sidebar split, 2D-only editor (de DECOMMISSIONED cb79c86) |
 | spare | `-88` | wt-88 (ad-hoc fixes) | none | none | on-call for small fixes; b5, f3, de DECOMMISSIONED |
 
