@@ -1307,6 +1307,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 self._handle_clear_design()
                 return
 
+            # ── delete_frame — F26 item 2 (b): only the frame(s) Send built ─────
+            if action == 'delete_frame':
+                self._handle_delete_frame()
+                return
+
             # ── send_frame — FB-APP S5 (F10): the frame on its own ───────────
             if action == 'send_frame':
                 data = json.loads(htmlArgs.data) if htmlArgs.data else {}
@@ -1441,6 +1446,30 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             _log(f'UNHANDLED EXCEPTION in palette handler:\n{tb}')
             if ui:
                 ui.messageBox('Palette HTML event failed:\n{}'.format(tb))
+
+    def _handle_delete_frame(self):
+        """F26 item 2 (b), Fred ("add a delete frame button"): delete ONLY the frame(s) this add-in built -- the same
+        ones a Send replaces (_delete_frames -> fb_engine.send_frame.delete_previous_frames, found by their own
+        attribute). The B-spline, the artwork and anything Fred made stay. Reports delete_frame_result
+        {ok, frames, error}."""
+        result = {'ok': False, 'frames': [], 'error': None}
+        try:
+            des = adsk.fusion.Design.cast(app.activeProduct)
+            if not des:
+                raise RuntimeError('No active Fusion design.')
+            result['frames'] = _delete_frames(des)
+            result['ok'] = True
+        except Exception as e:
+            _log(f'DELETE FRAME failed: {e}\n{traceback.format_exc()}')
+            result['error'] = f'Delete frame failed: {e}'
+        _log(f'DELETE FRAME result: {result}')
+        try:
+            pal = app.userInterface.palettes.itemById(PALETTE_ID)
+            if pal:
+                pal.sendInfoToHTML('delete_frame_result', json.dumps(result, default=str))
+        except Exception as e:
+            _log(f'DELETE FRAME reply failed: {e}')
+        return result
 
     def _handle_clear_design(self):
         """Fred ("i think id rather have a delete everything button"): remove everything this add-in built in the

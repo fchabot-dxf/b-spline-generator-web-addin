@@ -12,7 +12,8 @@ import { regenerateOwnedBrickElements, BRICKS_LAYER_NAME, BRICK_ATTR, BRICK_ELEM
 const SETTINGS = JSON.stringify({ setId: 1, scale: 1, suppression: 0, clumping: 0, seed: 1, reliefIn: 0.125, profile: 'bricks', orientation: 'stretcher', grout: { widthIn: 0.06 } });
 
 function makeSpineLine(elementId, x1, y1, x2, y2, settingsJson = SETTINGS) {
-  const attrs = { [BRICK_ATTR]: 'brush-spine', [BRICK_ELEMENT_ATTR]: elementId, [BRICK_SETTINGS_ATTR]: settingsJson };
+  // + its layer: a stroke's bricks are drawn on its spine's layer (item 22 slice 3)
+  const attrs = { [BRICK_ATTR]: 'brush-spine', [BRICK_ELEMENT_ATTR]: elementId, [BRICK_SETTINGS_ATTR]: settingsJson, 'data-layer': 'L1' };
   const coords = { x1, y1, x2, y2 };
   return {
     type: 'line',

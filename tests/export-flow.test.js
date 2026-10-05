@@ -532,14 +532,11 @@ describe('export-flow: _fusionLayerManifest (T76 item 4 — one manifest per kin
  *  real brick pieces only (editor-io-fusion-geometry.test.js's own minimal getLayerSvg fixture
  *  shape: {_draw, _sketchLayer:{node:{innerHTML}}, _mW, _mH, _layers, _activeLayer}). */
 describe('export-flow: _bricksLayerSvg (F35 item 11 -- Send bricks with the B-spline)', () => {
-  function bricksEditor(innerHTML, layerId = 'b1') {
-    return {
-      _draw: {},
-      _sketchLayer: { node: { innerHTML } },
-      _mW: 7, _mH: 9,
-      _layers: [{ id: layerId, name: 'Bricks', holdsBricks: true }],
-      _activeLayer: null,
-    };
+  function bricksEditor(innerHTML, layers = [{ id: 'b1', name: 'Bricks', holdsBricks: true }]) {
+    // which layers hold laid pieces is read off the drawing (item 22 slice 3): querySelector over the same markup
+    const doc = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${innerHTML}</svg>`, 'image/svg+xml');
+    const node = { innerHTML, querySelector: (sel) => doc.querySelector(sel) };
+    return { _draw: {}, _sketchLayer: { node }, _mW: 7, _mH: 9, _layers: layers, _activeLayer: null };
   }
 
   it('no Bricks layer at all -> empty string', async () => {
@@ -568,5 +565,17 @@ describe('export-flow: _bricksLayerSvg (F35 item 11 -- Send bricks with the B-sp
   it('a different layer\'s own content (data-layer mismatch) never leaks in', async () => {
     const html = '<polygon points="0,0 1,0 1,1" data-layer="other" data-brick="wall" data-brick-gen="1"/>';
     expect(await _bricksLayerSvg(bricksEditor(html))).toBe('');
+  });
+
+  it('item 22 slice 3: bricks on SEVERAL layers (beside art) -> one Bricks sketch, in roster order, no art', async () => {
+    const html = [
+      '<rect x="0" y="0" width="1" height="1" data-layer="a"/>',
+      '<polygon points="5,5 6,5 6,6" data-layer="a" data-brick="brush" data-brick-gen="1"/>',
+      '<polygon points="0,0 1,0 1,0.3 0,0.3" data-layer="b1" data-brick="wall" data-brick-gen="1"/>',
+    ].join('');
+    const svg = await _bricksLayerSvg(bricksEditor(html, [{ id: 'b1', name: 'Bricks', holdsBricks: true }, { id: 'a', name: 'Layer 1' }]));
+    const pts = [...svg.matchAll(/points="([^"]+)"/g)].map((m) => m[1]);
+    expect(pts).toEqual(['0,0 1,0 1,0.3 0,0.3', '5,5 6,5 6,6']); // roster order: b1 then a
+    expect(svg).not.toContain('<rect');
   });
 });

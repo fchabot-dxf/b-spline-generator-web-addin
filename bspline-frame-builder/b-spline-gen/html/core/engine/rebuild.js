@@ -210,7 +210,8 @@ function buildHeights(nx, nz) {
  * up with the full, unfiltered _layers array once any earlier layer is
  * hidden/non-carved.
  */
-function _collectStampPasses() {
+// exported for tests (item 22 slice 3: the per-layer art + brick passes)
+export function _collectStampPasses() {
     const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
     const editorLayers = (editor && Array.isArray(editor._layers)) ? editor._layers : null;
     const passes = [];
@@ -223,7 +224,24 @@ function _collectStampPasses() {
             // regardless of its own carve flag.
             if (!isCarved(layer)) return;
             const mask = layer._mask;
-            if (!mask) return;
+            // F35 item 22 slice 3: the layer's BRICKS as their own pass, after its art: their own height
+            // (_brickDepth: relief + Raised/Carved), Flat profile, no fillet -- the layer's suppression/smoothing
+            // (layer-level), never its art depth/profile. A distinct id, so applyStampLayers' editor-layer join
+            // never lends it the art layer's tooling.
+            const brickPass = layer._brickMask ? {
+                id: `${layer.id}#bricks`,
+                name: layer.name,
+                enabled: true,
+                svg: '1',
+                mask: layer._brickMask,
+                depth: layer._brickDepth,
+                profile: 'flat',
+                suppression: layer.suppression,
+                smoothing: layer.smoothing,
+                edgeFilletRadius: 0,
+                filletPower: layer.filletPower,
+            } : null;
+            if (!mask) { if (brickPass) passes.push(brickPass); return; }
             // Build a stamp-pass-shape view of the editor layer. We keep
             // a non-empty svg marker so the applyStampLayers guard
             // `!layer.svg` doesn't reject the pass — the rasterizer has
@@ -241,6 +259,7 @@ function _collectStampPasses() {
                 edgeFilletRadius: layer.edgeFilletRadius,
                 filletPower: layer.filletPower,
             });
+            if (brickPass) passes.push(brickPass);
         });
     }
 

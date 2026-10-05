@@ -22096,6 +22096,16 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
 - FOR T86 16(c) part 2: T18 7x9 single_soldier at 1.5 in has open wedges at its top fan corners (identical before and
   after the band-overrun clip + the fit rule: a fan void, not an overrun) -- shots/seatB/item28_before_after.png, row 2.
 
+## T86 item 29 -- pattern rotation (seat B / 88, 2026-10-05)
+- generateBricks `rotationDeg` (ENGINE_OPTIONS 'rotationDeg', so 37's 0/45/90 chips gate on it) -> bricksFillShape
+  -> fill-shape.js rotatedFill: the outline (holes, exclusions, fences too) turned by -angle about the outline's bbox
+  centre, laid exactly as at 0 (same seed; every layout's own clip against the turned outline, so no new clip code),
+  each brick turned back. Absent / 0 = the plain path, byte-identical. Wall only: the brush follows its own path and
+  the frame its contour, so neither reads it (37's proposal: Wall only for now).
+- Tests bricks-pattern-rotation: running bond at 45 / 90 on a 7x9 -> every whole brick's long axis at the angle
+  (< 0.01 deg), pieces 0.8-1.25x the 0 count, all inside the board; herringbone at 45; exclusions turn with it; 0 =
+  absent byte-identical. Rotation off -> 3/6 fail. Bricks domain + core/bricks importers 84 files / 825 pass.
+- Shot: shots/seatB/item29_rotation.png (T1 7x9 Soldier frame, 1.25 in: running bond 0 / 45 / 90, herringbone 45).
 ## T86 item 10 -- grout cut (seat B / 88, 2026-10-05)
 - core/bricks/grout-cut.js bricksGroutCut(bricks, polyline, { widthIn, minPieceArea }) (also from core/bricks/index.js):
   the polyline swept by a round brush of widthIn (one convex capsule per segment, 8-step caps) is subtracted from every

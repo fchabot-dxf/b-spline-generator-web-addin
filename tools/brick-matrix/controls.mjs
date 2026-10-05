@@ -60,6 +60,16 @@ export const BRICK_CONTROLS = [
   // rocks come from the Fieldstone pattern, checked by `sets` below)
   { name: 'Wall pattern: Herringbone', kind: 'editor', tool: 'wall', do: click('brickPattern_herringbone'), expect: LAYOUT },
   { name: 'Wall pattern: Basketweave', kind: 'editor', tool: 'wall', do: click('brickPattern_basketweave'), expect: LAYOUT },
+  // T86 item 13 (37, fb-app f85c8d1): Fred's sheet patterns, layouts/sheet-patterns.js
+  ...[['stacked_horizontal', 'Stacked horizontal'], ['chevron', 'Chevron'], ['stacked_variation', 'Stacked variation'],
+    ['basketweave_variation', 'Basketweave variation'], ['basketweave_stacked', 'Basketweave + stacked']]
+    .map(([id, name]) => ({ name: `Wall pattern: ${name}`, kind: 'editor', tool: 'wall', do: click(`brickPattern_${id}`), expect: LAYOUT, introducedBy: 'f85c8d1' })),
+  // T86 item 14 (37, fb-app 59550fe): the tiles (Fred's sheet 3); octagon + square last, its ratio chips right after
+  ...[['square_grid', 'Square grid'], ['square_diamond', 'Square + diamond'], ['hexagon', 'Hexagon'], ['lozenge', 'Lozenge'],
+    ['framed_square', 'Framed square'], ['octagon_square', 'Octagon + square']]
+    .map(([id, name]) => ({ name: `Wall pattern: ${name}`, kind: 'editor', tool: 'wall', do: click(`brickPattern_${id}`), expect: LAYOUT, introducedBy: '59550fe' })),
+  { name: 'Octagon + square: ratio S', kind: 'editor', tool: 'wall', do: click('brickPatternParam_ratio_0'), expect: LAYOUT, introducedBy: '59550fe' },
+  { name: 'Octagon + square: ratio L', kind: 'editor', tool: 'wall', do: click('brickPatternParam_ratio_2'), expect: LAYOUT, introducedBy: '59550fe' },
   { name: 'Wall pattern: Fieldstone', kind: 'editor', tool: 'wall', do: click('brickPattern_fieldstone'), expect: { ...LAYOUT, sets: { wall: 3 }, reads: { brickGroutWidth: ROCK_SET.grout.widthIn } } },
   // per-element joint: the Frame tool shows the frame's own (Red Brick) joint while the wall is rock
   { name: 'Frame tool shows its own joint', kind: 'editor', tool: 'wall', do: click('brickTool_frame'), expect: { ...E(false, false, false), commit: 'at once', reads: { brickGroutWidth: RED_SET.grout.widthIn } }, introducedBy: '1404b72' },
@@ -175,6 +185,9 @@ export const REQUIRES_SOURCE = Array.isArray(appRequires) ? 'app (main/brick-con
 //   panel:  { name, active: id } -- that button is the highlighted choice; { name, value: [id, n] } -- that
 //           field reads n
 //   bricks: { name, kind } -- the canvas holds bricks of that kind and every one of them is painted
+// T86 item 14 (37, fb-app 59550fe): a pattern's parameter chip is saved with the board (P.brickSettings.patternParams)
+export const PATTERN_PARAM_PERSIST = { pattern: 'brickPattern_octagon_square', chip: 'brickPatternParam_ratio_2', introducedBy: '59550fe' };
+
 export const PERSIST_BOARD = {
   setup: [
     { tool: 'wall' }, click('brickPattern_fieldstone'), click('brickSizePreset_quarter3'),
@@ -254,6 +267,14 @@ export const LAY_WARNING = {
   introducedBy: 'dd5a59c',
 };
 
+// ---- bands reduced to fit (T86 item 28 engine `bandsReduced`; F35 item 35 note, seat 37 fb-app 21a1ffd): on T1 7x9
+// at the 1.25 in default, 3-band keeps 1 band -- the wall stays, the note says so, the dropped bands' rows are disabled.
+export const BANDS_NOTE = {
+  template: 'template_1', tooDeep: 'brickFramePreset_three_band', fits: 'brickFramePreset_single_soldier',
+  note: 'brickFrameBandsNote', text: 'Bands reduced to fit the board: 1 of 3 laid.', dropped: '[data-band-dropped="1"]',
+  emptyWarning: 'brickEditorLayWarnings', introducedBy: '21a1ffd',
+};
+
 // ---- Select (item 22 slice 1, seat 37 fb-app 2482482): picking a Wall/Frame element in the Brick tab.
 export const SELECT_ELEMENT = {
   wallTool: 'brickTool_wall',
@@ -284,6 +305,19 @@ export const GROUP_SETUP = {
   ],
 };
 
+// ---- bricks on layers (F35 item 22 slice 3, seat 37 fb-app bb9e664): Wall / Frame / Brush land on the ACTIVE layer
+// beside art (a fresh board gets no Bricks layer); a brick element moves with "Move to layer"; a layer's carve covers
+// its bricks; Clear Bricks / Clear Artwork split by node, not by layer. 37's seven rows (run.mjs runBrickLayers).
+export const BRICK_LAYERS = {
+  addLayer: 'editorAddLayer', wallTool: 'brickTool_wall', selectTool: 'toolSelect',
+  menuMove: 'Move to layer', menuNewLayer: 'New layer…', // the context menu's own labels (editor-context-menu.js)
+  carveButton: '.layer-carve', framePreset: 'brickFramePreset_none', // a frame change that always leaves a wall
+  artworkTab: 'editorTabArtwork',
+  clears: CLEAR_MENU.options.filter((o) => o.item === 'editorClear_bricks' || o.item === 'editorClear_artwork'),
+  stroke: [[0.3, 0.5], [0.5, 0.56], [0.7, 0.5]],
+  introducedBy: 'bb9e664',
+};
+
 export const MIGRATION = {
   fixture: 'fixtures/pre-item22-board.splineGenLastSession.json', sessionKey: 'splineGenLastSession', wall: 99, frame: 106,
   setGroutWidthIn: RED_SET.grout.widthIn, // the fixture's wall/frame are Red Brick: groutByElement null = this
@@ -295,6 +329,7 @@ export const MIGRATION = {
     userPatterns: 'empty', // the pattern builder (b91d0f6)
     frameBandAccents: 'empty', brushAccent: { preset: 'none', levelIn: 0.0625, clicks: [] }, // per-element accents (ed618f3)
     frameCorner: null, // the Frame's corner pick (f0e3728): null = the preset's own
+    patternParams: {}, // a pattern's declared params, per pattern (37: F35 item 14); {} = every pattern's defaults
   },
   introducedBy: 'b75e836',
 };
