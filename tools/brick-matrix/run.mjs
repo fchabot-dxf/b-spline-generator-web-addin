@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -287,6 +287,8 @@ try {
     }
     await openBrickTool('wall');
     for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
+    const pin = GROUP_SETUP[arg('group')]; // a group's declared setup (controls.mjs GROUP_SETUP), before the baseline lay
+    if (pin) { const r = await setValue(pin.set, pin.value, pin.event); console.log(`setup pin ${pin.set}=${pin.value}: ${r} (${pin.why})`); await sleep(1500); }
     await click('brickGenerate', 1800);
     await openBrickTool('frame'); await click('brickGenerate', 1800);
     baseline = await js(CANVAS);

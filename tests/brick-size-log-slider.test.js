@@ -91,7 +91,7 @@ beforeEach(() => {
   root.innerHTML = FIXTURE;
   document.body.appendChild(root);
   window.svgEditor = { setMode: () => {} };
-  P.brickSettings.brickLengthIn = 1;
+  P.brickSettings.brickLengthIn = 1.25; // the new-board default (core/state.js DEFAULT)
   initBrickPanel();
   $('brickTool_wall').click();
   vi.clearAllMocks();
@@ -122,15 +122,17 @@ describe('the real #brickSizeSlider element drives inches through the log mappin
 });
 
 describe('brick size presets (F35 item 16 follow-up: widened from 3 to 5 points)', () => {
-  it('renders exactly the 6 declared presets, one button each (turn 207: + 1in, the new default)', () => {
+  it('renders exactly the 7 declared presets, one button each (2026-10-05: + 1 1/4 in, the new default, beside 1 in)', () => {
     const buttons = document.querySelectorAll('#brickSizePresetList button');
-    expect(buttons.length).toBe(6);
+    expect(buttons.length).toBe(7);
     expect(document.getElementById('brickSizePreset_one').textContent).toBe('1″');
+    expect(document.getElementById('brickSizePreset_one_quarter1').textContent).toBe('1¼″');
+    expect(document.getElementById('brickSizePreset_one').nextElementSibling.id).toBe('brickSizePreset_one_quarter1');
   });
-  it('the 1in new-board default (core/state.js DEFAULT) shows as the picked preset', async () => {
+  it('the 1 1/4 in new-board default (core/state.js DEFAULT) shows as the picked preset', async () => {
     const { DEFAULT } = await import('../bspline-frame-builder/b-spline-gen/html/core/state.js');
-    expect(DEFAULT.brickSettings.brickLengthIn).toBe(1);
-    expect(document.getElementById('brickSizePreset_one').classList.contains('active')).toBe(true); // setup: 1in
+    expect(DEFAULT.brickSettings.brickLengthIn).toBe(1.25);
+    expect(document.getElementById('brickSizePreset_one_quarter1').classList.contains('active')).toBe(true); // setup: the default
     expect([...document.querySelectorAll('#brickSizePresetList .active')]).toHaveLength(1);
   });
 

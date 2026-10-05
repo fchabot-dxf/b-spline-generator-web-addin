@@ -137,7 +137,10 @@ are the morning's; this block supersedes them where they disagree.
 2. Resolve conflicts:
    - work logs: keep both sides, then `grep -c '^<<<<<<<'` must be 0;
    - frame-defs.js/.json: `git checkout --theirs`, then `python tools/gen_frame_defs.py`.
-3. Run the gate:
+3. Run the gate. Steps 1-4 are one script on this PC: `bash ~/.bspline-status/advisor/gate.sh <ref>...` (backgrounded,
+   10-15 min; failed vitest files and failing matrix groups re-run alone; prints PUSHED + FF_OK, NOT_PUSHED, or
+   MERGE_FAIL <ref>). The merge worktree's `node_modules` must be a Windows JUNCTION to an installed copy (a bash
+   `ln -s` link is invisible to node: vitest then runs from the npx cache and never starts, 2026-10-05). By hand:
    - `npm ci`, then `npx vitest run`;
    - the Brick matrix, from the merge worktree: `node tools/brick-matrix/run.mjs --parallel --only-if-changed origin/main --out <dir>`
      (exit 0 = pass or skipped, 1 = FAIL or setup error). It runs only when `origin/main...HEAD` (= what the merge
