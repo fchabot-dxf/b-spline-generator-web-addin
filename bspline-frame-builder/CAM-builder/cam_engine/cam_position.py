@@ -18,14 +18,27 @@ model bottom) and one declared WCS point, both read back identically, also under
               default bottom offset is verticalStockToLeave, 0.5 mm -- measured -- so it is stated here).
 """
 
+# Stock margin around a model's X/Y extent, total (0.5 in each side) -- the placeholder's '+ 1 in'. Shared by
+# every declared box below.
+MARGIN_XY_IN = 1.0
+
 CAM_POSITION = {
     'stock': {
-        'margin_xy_in': 1.0,     # total; 0.5 in each side (the placeholder's '+ 1 in')
+        'margin_xy_in': MARGIN_XY_IN,
         'z_in':         2.0,     # the placeholder's 2 in
         'xy_mode':      'center',
         # The box sits on the panel's WORLD bottom. Fusion reads job_stockFixedZMode in the setup's own
         # frame, and B-spline Back's WCS Z points DOWN (measured), so the writer maps this through the
         # resolved Z axis ('bottom' when the frame's Z points up, 'top' when it points down).
+        'z_align':      'world_bottom',
+    },
+    # H23 item 82b: the Frame setup's fixed box (the frame bars laid flat in MM-Frame). Its dims were never
+    # written, so Fusion's 13 x 10 in default stood around a 10 x 8 model (measured). Same margin; Z = the
+    # bars' own thickness (frame stock is not the panel blank).
+    'frame_stock': {
+        'margin_xy_in': MARGIN_XY_IN,
+        'z_expr':       '(surfaceZHigh - surfaceZLow)',
+        'xy_mode':      'center',
         'z_align':      'world_bottom',
     },
     # Each side's point = where today's stock box point 'top 1' lands on that side once the stock sits on

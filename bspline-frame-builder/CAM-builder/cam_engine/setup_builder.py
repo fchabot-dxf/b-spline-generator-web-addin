@@ -856,7 +856,7 @@ SETUP_SPECS = [
         # Fixed-box stock = CAM_POSITION['stock'] (the box the MM-Stock placeholder is built from),
         # dims WRITTEN (an unwritten FixedBoxStock defaults to 13 x 10 in X/Y -- measured).
         'stock_intent': 'fixed_box',
-        'stock_box':    True,
+        'stock_box':    'stock',             # a CAM_POSITION box
         'wcs_point':    'back',
         'op_heights':   True,
         'wcs_origin':   'box_point',          # corner of stock bbox
@@ -910,6 +910,7 @@ SETUP_SPECS = [
         'name':         'Frame',
         'mm_rule':      'frame',
         'stock_intent': 'fixed_box',
+        'stock_box':    'frame_stock',       # H23 item 82b: dims written (was Fusion's 13 x 10 default)
         'wcs_origin':   'box_point',
         'wcs_orient':   'select_x_y',         # axesXY -- same axes swap as Stock/Back/Top
         'box_point':    'top 1',
@@ -1139,7 +1140,7 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
 
     # 6. The shared fixed stock box, written AFTER the WCS (its dims live in the WCS frame).
     if spec.get('stock_box'):
-        _apply_stock_box(setup, spec['name'], logger)
+        _apply_stock_box(setup, spec['name'], logger, spec['stock_box'])
 
     # NOTE: the fence is bound separately via ``job_positionAttach`` in
     # :func:`_propagate_part_position_pass` after the build pass.
@@ -1462,8 +1463,8 @@ def _set_stock_mode(setup, intent, setup_name, logger):
 # H23 item 82 -- CAM_POSITION writers (one stock, one WCS, stock-relative heights)
 # ---------------------------------------------------------------------------
 
-def _apply_stock_box(setup, setup_name, logger):
-    """Write the shared fixed stock box (CAM_POSITION['stock']) on a live setup.
+def _apply_stock_box(setup, setup_name, logger, box_key='stock'):
+    """Write a declared fixed stock box (CAM_POSITION[box_key]) on a live setup.
 
     X/Y = the model's extent in the setup's own frame + the declared margin, centred; Z = the declared
     thickness from the model's WORLD bottom (Clean and Stamped share bottom + outline). Expressions are
@@ -1471,8 +1472,9 @@ def _apply_stock_box(setup, setup_name, logger):
     the Z mode does: 'bottom' means the frame's -Z side, and B-spline Back's frame Z points DOWN
     (measured: 'bottom' there put the box on the panel's world top). Call after the WCS is written.
     """
-    st = CAM_POSITION['stock']
+    st = CAM_POSITION[box_key]
     m = st['margin_xy_in']
+    z_expr = f"{st['z_in']} in" if 'z_in' in st else st['z_expr']
     z_axis = setup.workCoordinateSystem.getAsCoordinateSystem()[3]
     z_mode = 'bottom' if z_axis.z > 0 else 'top'
     _set_stock_mode(setup, 'fixed_box', setup_name, logger)
@@ -1480,7 +1482,7 @@ def _apply_stock_box(setup, setup_name, logger):
     for name, expr in (
         ('job_stockFixedX', f"(surfaceXHigh - surfaceXLow) + {m} in"),
         ('job_stockFixedY', f"(surfaceYHigh - surfaceYLow) + {m} in"),
-        ('job_stockFixedZ', f"{st['z_in']} in"),
+        ('job_stockFixedZ', z_expr),
         ('job_stockFixedXMode', f"'{st['xy_mode']}'"),
         ('job_stockFixedYMode', f"'{st['xy_mode']}'"),
         ('job_stockFixedZMode', f"'{z_mode}'"),
@@ -1490,7 +1492,7 @@ def _apply_stock_box(setup, setup_name, logger):
     ):
         if _set_expr_param(setup.parameters, name, expr, setup_name, logger):
             n_ok += 1
-    _log(logger, f"SETUP BUILD ({setup_name}): CAM_POSITION stock box written ({n_ok}/9)", "INFO")
+    _log(logger, f"SETUP BUILD ({setup_name}): CAM_POSITION[{box_key!r}] stock box written ({n_ok}/9)", "INFO")
     return n_ok
 
 
