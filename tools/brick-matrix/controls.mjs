@@ -93,6 +93,20 @@ export const BRICK_CONTROLS = [
   { name: 'Raised accents: Course bands', kind: 'editor3d', tool: 'wall', do: click('brickAccent_courseBand'), expect: SURFACE, introducedBy: '82f3755' },
   { name: 'Accent level -1/16', kind: 'editor3d', tool: 'wall', do: set('brickAccentLevel', -0.0625), expect: SURFACE, introducedBy: '82f3755' },
   { name: 'Raised accents: None', kind: 'editor3d', tool: 'wall', do: click('brickAccent_none'), expect: SURFACE, introducedBy: '82f3755' },
+  // F35 items 31b + 31e (seat C 02): the pattern builder -- open it (nothing laid yet: an empty tile), Checker's tile at
+  // unit 1 (3D only), switch to 1/2 (the engine CUTS the bricks at the tile's cells: a re-lay), base Custom (a blank
+  // custom bond: every cell its own half-brick piece), offset course 1 (the marks travel with it), then back to the
+  // plain Stretcher (it drops the custom tile and closes the builder: the size rows below start from a plain wall)
+  { name: 'Pattern builder: open (Custom...)', kind: 'editor3d', tool: 'wall', do: click('brickAccentCustomOpen'), expect: E(false, null, null), introducedBy: '3c93a36' },
+  // a preset's tile, not one tapped cell: at unit 1 a cell maps to bricks by absolute board column, and on this group's
+  // baseline (a wall inside a Soldier frame, T1's narrow waist) tile cell (0, 1) lands on no brick at all (measured)
+  { name: 'Pattern builder: start from Checker (unit 1)', kind: 'editor3d', tool: 'wall', do: set('brickBuilderStartFrom', 'checker'), expect: SURFACE, introducedBy: '3c93a36' },
+  { name: 'Pattern builder unit 1/2 (cuts at the cell)', kind: 'editor', tool: 'wall', do: click('brickBuilderUnit_half'), expect: LAYOUT, introducedBy: 'ff7d6ba' },
+  // 3D not checked, by construction: Checker at 1/2 already cut every brick into its two cells, and the blank custom
+  // bond IS those cells -- the same surface (measured); the canvas re-lays (new pieces), the offset row checks the 3D
+  { name: 'Pattern builder base Custom (blank grid)', kind: 'editor', tool: 'wall', do: click('brickBuilderBase_custom'), expect: { ...LAYOUT, threeD: null }, introducedBy: '1f7e9d3' },
+  { name: 'Pattern builder: offset course 1', kind: 'editor', tool: 'wall', do: click('brickBuilderOffset_0_right'), expect: LAYOUT, introducedBy: '1f7e9d3' },
+  { name: 'Wall pattern: Stretcher (drops the custom bond)', kind: 'editor', tool: 'wall', do: click('brickPattern_stretcher'), expect: LAYOUT, introducedBy: '1f7e9d3' },
   { name: 'Brick size preset 1-1/2', kind: 'editor', tool: 'wall', do: click('brickSizePreset_half1'), expect: LAYOUT },
   { name: 'Brick size stepper 1.0', kind: 'editor', tool: 'wall', do: set('brickSize', 1), expect: LAYOUT },
   { name: 'Brick size slider (log 500)', kind: 'editor', tool: 'wall', do: set('brickSizeSlider', 500), expect: LAYOUT },
