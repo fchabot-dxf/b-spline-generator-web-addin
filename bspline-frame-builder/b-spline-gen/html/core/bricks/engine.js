@@ -10,7 +10,7 @@
  * sampler below is a SECOND, DERIVED output built from that same brick list.
  */
 import { bricksFillShape } from './fill-shape.js';
-import { strokesToRegion } from './region.js';
+import { strokesToRegion, WALL_REGION_PICK } from './region.js';
 import { bricksContourBands } from './contour-bands.js';
 import { pointInPolygon } from './geometry.js';
 import { brickTopHeight } from './height-profile.js';
@@ -115,7 +115,9 @@ export function wallRegionOf(wallRegion, set) {
   if (!wallRegion) return undefined;
   if (Array.isArray(wallRegion.polygons)) return wallRegion.polygons;
   if (!Array.isArray(wallRegion.strokes) || !wallRegion.strokes.length) return undefined;
-  return strokesToRegion(wallRegion.strokes, wallRegion.minus || [], { gapIn: set && set.grout ? set.grout.widthIn : 0 }).polygons;
+  // 'clip' keeps two areas a grout apart; 'centroid' partitions bricks exactly (no gap: no brick is cut, none shared)
+  const gapIn = WALL_REGION_PICK === 'clip' && set && set.grout ? set.grout.widthIn : 0;
+  return strokesToRegion(wallRegion.strokes, wallRegion.minus || [], { gapIn }).polygons;
 }
 
 /** A simple grid-bucket spatial index over a brick list, so repeated point queries (a terrain

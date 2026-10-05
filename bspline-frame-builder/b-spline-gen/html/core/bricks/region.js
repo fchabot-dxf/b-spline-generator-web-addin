@@ -14,6 +14,13 @@
  */
 import { signedArea, pointInPolygon } from './geometry.js';
 
+/** T86 item 18b (Fred: "a brush that draws is fine but I'd prefer it drew complete bricks"): how the wall meets a
+ *  region. 'centroid' = a brick is laid WHOLE when its centroid lies inside the region, nothing is cut at the region's
+ *  edge (the board outline, frame bands and exclusions still clip as before), and newest-wins partitions bricks by
+ *  centroid (the minus is not grown, so every brick belongs to exactly one area). 'clip' = item 18's first form,
+ *  cells cut at the region edge and the minus grown by a grout. */
+export const WALL_REGION_PICK = 'centroid';
+
 export const REGION_GRID_IN = 0.04; // grid step; a straight edge is exact, a round cap's chords sag < 0.001 in
 const REGION_MAX_NODES = 600000; // a huge region coarsens the grid instead of stalling the lay
 const REGION_SIMPLIFY_IN = 0.002; // collinear runs merged (RDP)

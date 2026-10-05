@@ -22175,3 +22175,17 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
 - OPEN for the advisor: listing 'wallRegion' shows 37's Area sub-tool by itself; until 37's slice 2 sends strokes it
   would be a tool that does nothing on the live site -> merge with 37's slice 2, not alone.
 - Shot: shots/seatB/item18_wall_region.png.
+
+## T86 item 18b -- painted areas lay COMPLETE bricks (seat B / 88, 2026-10-05)
+- Fred: "A brush that draws is fine but I'd prefer it drew complete bricks." region.js WALL_REGION_PICK = 'centroid'
+  (one declared constant; 'clip' = 18's first form, kept): fill-shape pickCellsInRegion lays a cell WHOLE when its
+  centroid is inside an outer and outside its holes; nothing is cut at the region edge; board / frame / exclusions
+  clip as before; engine wallRegionOf passes gapIn 0 under 'centroid', so newest-wins partitions bricks exactly (each
+  brick belongs to the newest area whose region holds its centroid). Neighbour links to dropped cells cleared.
+- Tests (bricks-wall-region, 12) against the same wall laid WITHOUT a region: every laid brick is one of its whole
+  bricks, every laid centroid in the region, every brick with its centroid in the region laid, no overlap, none on
+  the band; newest-wins: never a shared brick, older + newer = exactly the union's bricks; rotation. 'clip' -> 5/12 fail.
+- OPEN (for the advisor): two areas with DIFFERENT patterns overlap at their boundary -- whole bricks of two grids
+  poke across it (measured: older stretcher - newer herringbone, 30 pairs / 0.61 sq in on a plain 7x9; 19 pairs /
+  1.04 sq in on the T1 shot). Same-pattern areas share the board-aligned grid, so they cannot overlap.
+- Shot: shots/seatB/item18_wall_region.png (same three cells; the third shows the mixed-pattern overlap).
