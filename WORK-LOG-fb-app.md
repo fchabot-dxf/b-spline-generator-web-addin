@@ -13325,3 +13325,91 @@ On load (a declared MIGRATIONS entry, after 'brick-set-per-element'), a board wi
 1. Brush sketches in Fusion: one per stroke, or one per layer?
 2. Area erase gesture: Ctrl-drag (proposed), or a separate Erase sub-tool?
 3. Can the frame move to another layer (yes by default via "move to layer"), or should it stay with the board?
+
+### turn 221 addendum -- blind-spot audit (BLIND-SPOTS-2026-10-04.md): seat C's B1, B6, B7, B8, B9 (seat 37)
+
+Checklist:
+
+- [x] **B1, a frame band set that leaves ZERO wall bricks says so.**
+  - Declared `BRICK_LAY_WARNINGS` (brick-panel.js): `wallEmpty` = the wall was asked for, its pattern is not
+    'none', the frame laid bricks, the wall laid 0. Text: "The frame bands cover the whole board -- no room for
+    the wall: fewer bands or smaller bricks."
+  - `_layBricks` now reads runBricks' counts (they were returned and never read). A toast when the warning
+    starts, and a note for as long as it lasts in EVERY element marked `data-brick-lay-warnings`: the sidebar's
+    #brickLayWarnings (under the quick settings) + the editor Brick tab's #brickEditorLayWarnings (under the
+    tool hint). The sidebar quick buttons re-lay through the same path, so they show it too.
+  - **Found while verifying, and fixed (the warning's own advice did not work):** a wall squeezed to 0 bricks has
+    nothing left on the canvas, and `_presentKinds` read the kinds from the canvas only. So the wall stopped
+    being an element: going back to one band laid the frame alone and the wall NEVER came back (live: T9,
+    3-band, then single_soldier = frame 126, wall 0).
+    - Now runBricks records `brickLaidKinds` on the Bricks layer next to brickLaidKey; it is persisted
+      (editor-io), in every undo snapshot, and set to null by Clear (editor-clear).
+    - `_presentKinds` = canvas UNION laid kinds.
+    - Side effect, stated: a wall whose bricks were ALL deleted by hand comes back on the next lay (the Clear
+      menu is the declared way to remove an element).
+  - Live (T9 7x9, sidebar quick buttons):
+    - before: wall 68 / frame 126;
+    - 3-band: wall 0, the toast + both notes;
+    - Life-size: still 0, the notes stay, no repeat toast;
+    - back to single soldier: wall 68 again, the notes gone.
+  - Shot: shots/seat37/blindspot_B1_wall_empty_note.png (the editor note).
+- [x] **B6, hidden = DISPLAY ONLY, fully.** `isCarved` no longer reads `visible`: a hidden layer keeps its own
+  carve setting, so it still carves the 3D and lands in the Carved component on Send, exactly as when shown.
+  Hiding only takes it off the canvas (isShown).
+  - **Consequence, flagged:** the 3D preview carves hidden layers too (it reads the same gate). That matches
+    what ships; say if Fred wants the 3D to drop hidden layers instead.
+  - Eye tooltip: "Hide layer (still exports)" / "Show layer (it still exports and carves)".
+  - The palette's "Eye = visible = carved" comment and the export-flow doc are rewritten.
+  - 3 tests pinned the old rule exactly; they are INVERTED to assert the new one (not deleted): the truth table
+    row, export-flow's hidden-layer test, stamp-mask-clear's hidden-empty-mask test. A new tooltip test.
+- [x] **B7, stale text.**
+  - The Wall/Frame hints say "Change a setting to lay it/them; Generate re-lays."
+  - The sidebar note drops "Applied at once.".
+  - Comments fixed: the palette item 18 split comment, brick-panel's two "Generate dot" comments, state.js's N6
+    comment.
+  - **Not here:** tools/brick-matrix/controls.mjs:59-60 is 88's file (its matrix-clear-rows branch rewrites
+    it); asked 88 to fix that comment there.
+- [x] **B8, the loading signal above a declared budget.**
+  - `LAY_STATUS_BUDGET_MS = 300`. Every lay is measured, keyed by `_laySignature` (wall layout | rock frame | brick
+    size). A slider release / discrete click whose predicted lay is at or over the budget shows "Laying bricks…"
+    FIRST, waits two frames (so it paints), lays, and clears it (`withLoadingStageShownFirst`, loading-signal.js).
+  - Why not withLoadingStage alone: the lay is synchronous, so its 250 ms timer can never fire before the lay
+    ends; the status never showed.
+  - Releases while one is queued coalesce into ONE lay with the latest settings.
+  - Generate, the frame re-lay and the Clear keep the synchronous path; the Clear's one-step undo counts its
+    re-lay's commit synchronously.
+  - A first lay of a new combination is measured, not predicted.
+  - Live (T1, 0.375 in, Fieldstone wall: 844 stones + 452 frame): measured 565-634 ms. The next release
+    returned in 7 ms with "Laying bricks…" on the status line, then laid.
+- [x] **B9, undo + Cancel keep the bricks with their frame.**
+  - (a) A Frame-tab undo now writes `setFrameRecord(prev, { restored: true })`, and the event carries
+    `restored`. The brick re-lay it triggers corrects, IN PLACE, the editor step that was on top at that moment
+    (`commitEdit(editor, { amend })`, guarded: only while that step is still on top, else a normal push). This
+    is the same rule as generatePattern's `amendUndo.restored`.
+    - Live: editor undo stack 12 -> frame edit + re-lay -> frame undo + re-lay -> still 12, the laid key on the
+      restored frame.
+  - (b) Cancel restores the frame record too: `SvgEditorSnapshot.frame`, taken at open (svg-source.js). The
+    restore steps are now one exported `restoreEditorSnapshotState()` (app-init.js), which puts the frame back
+    before the drawing reloads, so the re-lay finds the restored bricks current.
+
+**Tests:**
+- New tests/blind-spot-audit.test.js (13):
+  - B1: the declaration, toast + both notes, no repeat toast, the wall coming back, 'none' = no warning, the
+    quick buttons;
+  - B7: hints + sidebar text;
+  - B8: under budget = at once; over budget = status first, ONE coalesced lay, cleared;
+  - B9: commitEdit amend, the frame-undo re-lay amends / a plain edit pushes, Cancel restores the frame,
+    undoFrame writes a restore.
+- Plus the 4 B6 tests (3 inverted + the tooltip).
+- Non-vacuous: against the pre-change copies of all 11 touched files, all 15 new/changed tests fail (the audit
+  file's imports do not exist pre-change; the B6 ones fail on their assertions). Restored from my copies, cmp
+  clean 11/11.
+- The later wall-comes-back test was mutation-checked on its own: 1 fail with the union reverted. Restored, cmp
+  clean.
+- Whole vitest: 265 files, **4377 passed, 0 failed**.
+
+**Matrix (88):**
+- Asked for the controls.mjs comment fix and a B1 row: T9 + 3-band at 1 in -> #brickLayWarnings shown, and back to
+  one band -> wall bricks back.
+- B8 can delay a slow release's canvas change by two frames; the harness's canvasSettled already polls for up to
+  10 s.

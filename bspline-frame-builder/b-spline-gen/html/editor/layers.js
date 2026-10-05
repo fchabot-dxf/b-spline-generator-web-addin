@@ -133,15 +133,16 @@ export function applyToolingDefaults(layer) {
  *  every gate (mask generation, heightfield, Fusion sketch, SVG download,
  *  canvas coloring, seat A's drape) reads a layer through these, never a
  *  raw `layer.carve`/`layer.showColor` check of its own, so the rule
- *  can't drift between call sites. `visible` is the master: off collapses
- *  all three to false regardless of the layer's own carve/showColor
- *  values (which stay stored, unchanged, for when it's shown again). */
+ *  can't drift between call sites.
+ *  Blind-spot audit B6 (Fred turn 207, "hidden is DISPLAY-ONLY", now fully): `visible` no longer gates carving.
+ *  A hidden layer keeps its own carve setting -- it still carves the 3D and goes to the Carved component on Send,
+ *  exactly as when shown; hiding only takes it off the CANVAS (isShown, below). */
 export function isCarved(l) {
-  return !!l && l.visible !== false && l.carve !== false;
+  return !!l && l.carve !== false;
 }
 /** Fred (turn 207): hidden is DISPLAY-ONLY -- every art layer ships on Send, visible or hidden (a carved one
- *  to the Carved component, the rest to root: isCarved, above, still needs `visible`). The SVG download reads
- *  the same gate. */
+ *  to the Carved component, the rest to root, by isCarved above, which ignores `visible`). The SVG download
+ *  reads the same gate. */
 export function isExported(l) {
   return !!l;
 }
@@ -867,7 +868,7 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   vis.type = 'button';
   vis.className = 'editor-fillmode-btn layer-visibility' + (layer.visible === false ? ' is-hidden' : '');
   vis.innerHTML = layer.visible === false ? _eyeClosedSVG() : _eyeOpenSVG();
-  vis.title = layer.visible === false ? 'Show layer' : 'Hide layer';
+  vis.title = layer.visible === false ? 'Show layer (it still exports and carves)' : 'Hide layer (still exports)'; // audit B6
   vis.setAttribute('aria-pressed', String(layer.visible !== false));
   vis.addEventListener('click', (e) => {
     e.stopPropagation();

@@ -126,12 +126,12 @@ describe('export-flow: activeStampLayers / exportableStampLayers (single-store: 
     expect(exportableStampLayers()).toHaveLength(1); // still shown -> still ships as artwork
   });
 
-  it('T27 + turn 207: visible:false + carve:true (default) -> NOT carving (visible is the master), still shipped (to root)', () => {
+  it('turn 207 + audit B6: visible:false + carve:true (default) -> STILL carving (hidden is display only), shipped to the Carved component', () => {
     window.svgEditor = mockEditor([
       { id: '0', visible: false, depth: 0.2, profile: 'square', content: '<rect data-layer="0"/>', mask: { body: new Float32Array(4) } },
     ]);
 
-    expect(activeStampLayers()).toHaveLength(0);     // hidden -> isCarved false even though carve defaults true
+    expect(activeStampLayers()).toHaveLength(1);     // audit B6: hidden keeps its own carve (defaults true)
     expect(exportableStampLayers()).toHaveLength(1); // turn 207: hidden is display-only -> shipped
   });
 

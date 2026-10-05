@@ -891,8 +891,8 @@
         </div>
       </div>
 
-      <!-- F35 item 18 (3), the Brick SIDEBAR SPLIT (Fred: the editor waits for Generate, the sidebar
-           auto-rebuilds): the main sidebar holds the brick 3D settings (each lives ONLY here) plus a few
+      <!-- F35 item 18 (3), the Brick SIDEBAR SPLIT (since F35 item 27 both the editor and the sidebar apply
+           at once): the main sidebar holds the brick 3D settings (each lives ONLY here) plus a few
            QUICK settings that mirror the editor Brick tab's own (same P.brickSettings, two entry points),
            both applied at once. The 2D layout (tools, patterns, size slider, grout width, suppression,
            clumping, seed) stays in the editor's Brick tab. Rows rendered by main/brick-panel.js
@@ -904,10 +904,12 @@
                the same mechanism and look as the FRAME section's "Edit frame" -->
           <button type="button" id="btnEditBricks" class="cad-btn cad-btn-secondary" style="width:100%; height:34px; font-size:13px; margin-bottom:12px;">Brick editor 🧱</button>
           <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Quick settings</label>
-          <div style="font-size:10px; opacity:0.65; margin:0 0 8px;">Applied at once. Every other layout setting is in the editor's Brick tab.</div>
+          <div style="font-size:10px; opacity:0.65; margin:0 0 8px;">Every other layout setting is in the editor's Brick tab.</div>
           <!-- audit v2 N5: shown while the board has no Wall/Frame bricks (main/brick-panel.js syncControlRequires) -->
           <div id="brickSidebarNoBricks" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);">No bricks on this board yet. Open the editor's Brick tab, pick Wall or Frame and press Generate -- these settings then apply at once.</div>
           <div id="brickQuickSettings"></div>
+          <!-- blind-spot audit B1: what the last lay left the user must know (main/brick-panel.js BRICK_LAY_WARNINGS) -->
+          <div id="brickLayWarnings" data-brick-lay-warnings role="status" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);"></div>
 
           <label class="cad-label" style="font-weight:600; opacity:0.75; margin:6px 0 4px;">3D</label>
         <label class="cad-label">Relief</label>
@@ -967,8 +969,9 @@
                editor/layers.js's renderLayerList (compact:true), the SAME
                render + handlers the SVG editor's own Layers panel uses
                (#editorLayersList), so the two can never show different
-               layers or disagree on visibility. Eye = visible = carved
-               (SE5 made `visible` the one switch); tapping a row makes it
+               layers or disagree on visibility. Eye = shown on the canvas
+               only (audit B6: a hidden layer still carves and exports, by its
+               own carve toggle); tapping a row makes it
                active, which the Plunge Depth / Tool Profile / V-Bit Angle
                controls below keep editing (main/stamp/layer.js). T29:
                moved above those tool settings (was below SVG Blueprint's
@@ -3105,6 +3108,8 @@
             <!-- Audit K3: the active tool's hint heads the panel; under the Set picker it read as a caption
                  for Red Brick / White Rocks. -->
             <div id="brickToolHint" style="font-size:10px; opacity:0.65; margin:0 0 12px;"></div>
+            <!-- blind-spot audit B1: the same note as the sidebar's (data-brick-lay-warnings, main/brick-panel.js) -->
+            <div id="brickEditorLayWarnings" data-brick-lay-warnings role="status" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);"></div>
 
             <!-- turn 197: the panel's SHARED rows (Set here; Brick size .. Seed below) -- a tool that declares
                  sharedRows: false (main/brick-panel.js BRICK_TOOLS: Stripe) hides them -->

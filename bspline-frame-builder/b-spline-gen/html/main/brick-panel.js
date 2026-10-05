@@ -18,7 +18,7 @@
  * `window.svgEditor` fresh at the point of use instead of caching it.
  */
 import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
-import { withLoadingStage } from '../core/loading-signal.js';
+import { withLoadingStage, withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
 import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS,
@@ -63,12 +63,12 @@ const BRICK_TOOLS = [
     hint: 'Drag a stroke: bricks laid proud of the others by Level.' },
   // `generates` (audit C9): Generate re-lays this tool's output, so the pinned Generate shows for it.
   // Brush/Scissors/Stripe act on drawn strokes, whose settings freeze at draw time.
-  // `lays` (audit C1): the ONE element kind this tool lays (editor-brick-tool.js BRICK_KINDS). Picking the
-  // tool only shows its settings (audit C2); Generate lays it.
+  // `lays` (audit C1): the ONE element kind this tool lays (editor-brick-tool.js BRICK_KINDS). Since item 27 a
+  // setting change lays it at once; Generate re-lays it (audit B7: the hints say so).
   { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true, lays: 'wall', ownsSet: true,
-    hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Press Generate to lay it.' },
+    hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Change a setting to lay it; Generate re-lays.' },
   { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
-    hint: 'Bands of bricks along the frame\'s contour (or the board\'s edge with Offset from frame off). Press Generate to lay them.' },
+    hint: 'Bands of bricks along the frame\'s contour (or the board\'s edge with Offset from frame off). Change a setting to lay them; Generate re-lays.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
   // (editor-cut-tool.js) with zero changes needed there. Only applies to
@@ -273,7 +273,7 @@ function syncFrameOffsetControls() {
 
 /** F35 item 16: an element's LEVEL (height offset, inches), read by the height mask. Audit v2 N6: in the editor
  *  a Level change showed nothing at all (3D-only, and the editor never re-masks) -- it is now in the laid key
- *  and commits like the other editor settings: the Generate dot shows, Generate + Apply builds it.
+ *  and commits like the other editor settings: it re-lays at once (item 27), Apply builds the 3D.
  *  One input per kind: #brickLevel_<kind>. */
 export function setElementLevel(kind, levelIn, commit = 'generate') {
   const v = Number(levelIn);
@@ -737,8 +737,24 @@ function _scheduleLivePreview() {
  *  onDrag = a slider/field's raw 'input' tick; onRelease = a slider's 'change' or a discrete click. */
 const AUTO_COMMIT = {
   onDrag: () => { notifyChange(); _scheduleLivePreview(); },
-  onRelease: () => { notifyChange(); generateBricks(); },
+  onRelease: () => { notifyChange(); _relayOnRelease(); },
 };
+
+/** Blind-spot audit B8: a re-lay measured at or over this budget (a rock set: 276-457 ms on desktop, 1-2 s on a
+ *  phone) shows the 'bricks' loading stage FIRST and lays a moment later, so the status actually paints -- the
+ *  lay is synchronous, so withLoadingStage's own timer can never show it. Predicted from the last lay with the
+ *  same layouts + size (_laySignature); a first lay of a new combination is measured, not predicted. */
+export const LAY_STATUS_BUDGET_MS = 300;
+const _layMs = new Map();
+const _laySignature = () => `${wallLayoutFor(P.brickSettings)}|${isRockFrame(P.brickSettings) ? 'rock' : 'brick'}|${P.brickSettings.brickLengthIn}`;
+export const predictedLayMs = () => _layMs.get(_laySignature()) ?? 0;
+let _relayQueued = false;
+function _relayOnRelease() {
+  if (predictedLayMs() < LAY_STATUS_BUDGET_MS) { generateBricks(); return; }
+  if (_relayQueued) return; // one queued lay reads the LATEST settings when it runs
+  _relayQueued = true;
+  withLoadingStageShownFirst('bricks', () => { _relayQueued = false; generateBricks(); });
+}
 const BRICK_COMMIT = {
   generate: AUTO_COMMIT,
   auto: AUTO_COMMIT,
@@ -803,7 +819,7 @@ function syncControlRequires() {
 const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 'stripeStyles', 'raisedLevelIn', 'raisedMode'];
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
-// (Level, elementLevelIn, left this list for audit v2 N6: an editor Level change now shows the Generate dot)
+// (Level, elementLevelIn, left this list for audit v2 N6: an editor Level change re-lays like a layout setting)
 const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
@@ -847,7 +863,10 @@ function _laidLayoutKey() {
 /** The element kinds whose Generate-laid bricks are on the canvas now. */
 function _presentKinds(editor) {
   const node = editor?._sketchLayer?.node;
-  return BRICK_KINDS.filter((kind) => !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`));
+  // blind-spot audit B1: + the kinds the last lay was FOR (the Bricks layer's brickLaidKinds) -- a Wall the frame
+  // bands squeezed to zero bricks has nothing on the canvas, yet it is still the board's wall and must come back
+  const laid = (editor?._layers || []).find((l) => l && l.name === BRICKS_LAYER_NAME)?.brickLaidKinds || [];
+  return BRICK_KINDS.filter((kind) => laid.includes(kind) || !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`));
 }
 
 /** Audit v2 N5: does the board have Wall/Frame bricks? The live canvas, or the saved drawing while the editor
@@ -895,32 +914,65 @@ function _relayIfBrushChanged() {
 
 const FRAME_RELAY_SETTLE_MS = 350;
 let _frameRelayTimer = null;
-function _scheduleFrameRelay() {
+// audit B9: a frame UNDO (detail.restored) -> its re-lay corrects the editor step that was on top then, in place
+// (commitEdit's `amend`), instead of pushing a new one a Brick-tab Ctrl+Z would then undo
+let _frameRelayAmend = null;
+function _scheduleFrameRelay(restored = false) {
   clearTimeout(_frameRelayTimer);
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  const stack = editor && Array.isArray(editor._undoStack) ? editor._undoStack : null;
+  _frameRelayAmend = restored && stack ? stack[stack.length - 1] : null;
   _frameRelayTimer = setTimeout(_relayIfFrameChanged, FRAME_RELAY_SETTLE_MS);
 }
 function _relayIfFrameChanged() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (!editor || !_presentKinds(editor).length) return;
-  if (editor._frameHandleDrag) { _scheduleFrameRelay(); return; } // still dragging: wait for the release
+  if (editor._frameHandleDrag) { _frameRelayTimer = setTimeout(_relayIfFrameChanged, FRAME_RELAY_SETTLE_MS); return; } // still dragging: wait for the release
   if (_laidFrameKey() === _frameKey()) return; // already laid on this frame
-  generateBricks();
+  const amend = _frameRelayAmend;
+  _frameRelayAmend = null;
+  generateBricks({ amend });
 }
 
 /** Lay the given element kinds with the current settings, stamping their key on the Bricks layer. */
-function _layBricks(editor, frameGeom, kinds) {
+/** Blind-spot audit B1: what a lay can produce that the user must be TOLD, declared once -- the toast after the
+ *  lay and the sidebar note (#brickLayWarnings) read the same entry. `when(counts, kinds)`. */
+export const BRICK_LAY_WARNINGS = Object.freeze([
+  { id: 'wallEmpty', text: 'The frame bands cover the whole board -- no room for the wall: fewer bands or smaller bricks.',
+    when: (c, kinds, s) => kinds.includes('wall') && s.pattern !== 'none' && c.frameCount > 0 && c.wallCount === 0 },
+]);
+let _layWarnings = [];
+export const currentLayWarnings = () => _layWarnings.slice();
+function _syncLayWarnings() {
+  if (typeof document === 'undefined') return;
+  // every place that shows them is marked data-brick-lay-warnings: the sidebar's note + the editor Brick tab's
+  for (const el of document.querySelectorAll('[data-brick-lay-warnings]')) {
+    el.textContent = _layWarnings.map((w) => w.text).join(' ');
+    el.style.display = _layWarnings.length ? '' : 'none';
+  }
+}
+
+function _layBricks(editor, frameGeom, kinds, { amend = null } = {}) {
   // Turn 195: an engine throw keeps the previous bricks (runBricks computes before it clears) and says
   // so -- never an empty canvas with no message. The layout stays pending (nothing new was laid).
-  let failed = null;
+  let failed = null, counts = null;
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
   withLoadingStage('bricks', () => {
-    try { runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey(), kinds }); }
+    try { counts = runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey(), kinds, amend }); }
     catch (e) { failed = e; }
   });
+  if (typeof performance !== 'undefined') _layMs.set(_laySignature(), performance.now() - t0); // audit B8
   if (failed) {
     console.error('Brick Generate failed:', failed);
     showToast(`Generate failed -- the previous bricks are kept (${(failed && failed.message) || failed})`, 'error');
     return false;
   }
+  // audit B1: a lay that leaves something the user must know about says so: a toast when it starts, the sidebar
+  // note for as long as it lasts
+  const before = new Set(_layWarnings.map((w) => w.id));
+  _layWarnings = counts ? BRICK_LAY_WARNINGS.filter((w) => w.when(counts, kinds, P.brickSettings)) : [];
+  for (const w of _layWarnings) if (!before.has(w.id)) showToast(w.text, 'warn');
+  _syncLayWarnings();
   syncControlRequires(); // audit v2 N5: the board now has bricks -- the sidebar controls apply
   // Audit C8: the layer's visibility is the user's choice, so it is not flipped back on -- but a
   // re-lay nobody can see must not pass silently.
@@ -946,7 +998,7 @@ function _kindsToLay(editor, frameGeom) {
  *  console. (Offset from frame OFF lays the bands along the board's edge instead -- no frame needed.) */
 export const FRAME_NEEDS_A_FRAME = "No frame on this board -- pick a frame template, or turn Offset from frame off to lay the bands along the board's edge.";
 
-export function generateBricks() {
+export function generateBricks({ amend = null } = {}) {
   _cancelLivePreview();
   _dragSlow = false;
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
@@ -955,7 +1007,7 @@ export function generateBricks() {
   const kinds = _kindsToLay(editor, frameGeom);
   if (!frameGeom && BRICK_TOOLS.find((t) => t.id === _activeTool)?.lays === 'frame') showToast(FRAME_NEEDS_A_FRAME, 'warn');
   if (!kinds.length) return false;
-  return _layBricks(editor, frameGeom, kinds) !== false;
+  return _layBricks(editor, frameGeom, kinds, { amend }) !== false;
 }
 
 /** Turn 197 (88's matrix): a NUMBER BOX applies while typing, like a slider's release -- for a commit
@@ -1626,7 +1678,7 @@ export function initBrickPanel() {
   // e.g. in tests) would re-lay twice
   if (!_frameListenerWired) {
     _frameListenerWired = true;
-    document.addEventListener('frameRecordChanged', () => _scheduleFrameRelay());
+    document.addEventListener('frameRecordChanged', (e) => _scheduleFrameRelay(!!(e && e.detail && e.detail.restored)));
   }
   // Audit B1 + v2 N2: P.brickSettings was replaced (Cancel, session restore, project load, global undo --
   // app-init.js announceBrickSettingsRestored). A load swaps in a NEW object: an armed Brush keeps

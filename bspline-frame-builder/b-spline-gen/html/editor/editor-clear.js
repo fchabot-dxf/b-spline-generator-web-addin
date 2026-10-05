@@ -39,5 +39,5 @@ export function clearBrickElements(editor) {
   if (typeof editor._deselect === 'function') editor._deselect();
   const bricksLayers = (editor._layers || []).filter(isBricksLayer);
   _removeChildrenOf(editor, new Set(bricksLayers.map((l) => String(l.id))), false);
-  for (const l of bricksLayers) l.brickLaidKey = null;
+  for (const l of bricksLayers) { l.brickLaidKey = null; l.brickLaidKinds = null; } // audit B1: no elements left
 }

@@ -615,10 +615,16 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
 /** `laidKey` (audit B1-B3): the caller's key for the settings this run lays. It is stamped on the
  *  Bricks layer as `brickLaidKey` BEFORE the undo commit, so every undo snapshot, the saved layer
  *  roster (editor-io.js) and Cancel's restored document all carry the key of the bricks they hold. */
-export function runBricks(editor, settings, frameGeom, { laidKey, kinds } = {}) {
+export function runBricks(editor, settings, frameGeom, { laidKey, kinds, amend } = {}) {
   const counts = _generateAndDraw(editor, settings, frameGeom, kinds);
-  if (laidKey != null) ensureBricksLayer(editor).brickLaidKey = laidKey;
-  commitEdit(editor);
+  if (laidKey != null) {
+    const layer = ensureBricksLayer(editor);
+    layer.brickLaidKey = laidKey;
+    // blind-spot audit B1: the element KINDS this lay was for -- a Wall the frame bands squeezed to ZERO bricks
+    // is still the board's wall (nothing of it on the canvas to read back), so the next lay brings it back
+    layer.brickLaidKinds = [...(kinds || BRICK_KINDS)];
+  }
+  commitEdit(editor, { amend }); // audit B9: `amend` = the step a frame undo's re-lay corrects in place
   notifyBricksGenerated(settings);
   return counts;
 }

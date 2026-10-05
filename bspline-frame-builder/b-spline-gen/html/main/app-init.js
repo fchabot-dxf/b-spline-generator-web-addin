@@ -20,7 +20,7 @@ import { fusLog } from '../core/fusion-bridge.js';
 import { buildSketchManifest } from '../editor/editor-sketch-manifest.js';
 import { frameContext, drawFrameProfile } from '../editor/editor-frame-profile.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
-import { FRAME_DEFS, frameParam, normalizeFrameRecord } from '../core/frame-record.js';
+import { FRAME_DEFS, frameParam, normalizeFrameRecord, setFrameRecord } from '../core/frame-record.js';
 import { syncFramePanel } from './frame-panel.js';
 import { endEditorSession } from '../editor/editor-text-session.js';
 import { brickSetById, FRAME_PRESETS } from '../core/bricks/library.js';
@@ -38,7 +38,9 @@ const FRESH_START_FRAME_TEMPLATE = 'template_1';
 // Audit B1: the brick settings are app state the editor's own undo stack never holds, but every
 // Brick-tab change saves them at once -- so Cancel must put them back too, or the panel shows the
 // discarded settings over the restored bricks (and the next Generate re-lays them).
-export const SvgEditorSnapshot = { active: false, editorSvg: null, brickSettings: null, fingerprint: null };
+// Blind-spot audit B9: the FRAME record likewise (the Frame tab edits it live): Cancel puts it back, or the
+// restored bricks sit on the session's new frame.
+export const SvgEditorSnapshot = { active: false, editorSvg: null, brickSettings: null, frame: null, fingerprint: null };
 
 /** F35 item 25: what an editor session can change, as one comparable string -- the drawing, the frame record,
  *  the brick settings and the photo. Taken when the editor opens (SvgEditorSnapshot.fingerprint); the viewport's
@@ -48,6 +50,17 @@ export function editorSessionFingerprint() {
     svg: P.editorSvg ?? null, frame: P.frame ?? null, bricks: P.brickSettings ?? null,
     photo: [P.photoImageDataUrl ?? null, P.photoEdits ?? []],
   });
+}
+
+/** Cancel's app-state half: put back what the editor session changed outside the drawing's own undo -- the
+ *  document, the brick settings and (blind-spot audit B9) the frame record. The frame goes back FIRST: the
+ *  restored bricks' laid key names that frame, so its re-lay finds them current and lays nothing. */
+export function restoreEditorSnapshotState() {
+  P.editorSvg = SvgEditorSnapshot.editorSvg;
+  restoreBrickSettings(SvgEditorSnapshot.brickSettings);
+  if (SvgEditorSnapshot.frame && JSON.stringify(SvgEditorSnapshot.frame) !== JSON.stringify(P.frame ?? null)) {
+    setFrameRecord(SvgEditorSnapshot.frame);
+  }
 }
 
 /** F35 item 25: close the editor when nothing changed -- Cancel's close without its restore + remask + drape
@@ -782,8 +795,7 @@ export function initSvgEditor(preview) {
         // — neither depends on the modal's visibility, checked by reading
         // both, so this is safe regardless of exactly when the modal
         // hides relative to this call.
-        P.editorSvg = SvgEditorSnapshot.editorSvg;
-        restoreBrickSettings(SvgEditorSnapshot.brickSettings);
+        restoreEditorSnapshotState();
         saveLastSession();
         window.svgEditor.open(editorRestoreSvg(), P.widthIn, P.heightIn);
         const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);

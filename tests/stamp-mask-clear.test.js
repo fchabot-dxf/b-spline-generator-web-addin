@@ -11,11 +11,10 @@
  * that content mirror is retired (SE4-MIRROR-RETIREMENT-DESIGN.md slice
  * b). These assertions were simplified to the single (editor) store.
  *
- * T27 FINAL: updateStampMasks' gate reads isCarved(layer) — visible is
- * the master, so a HIDDEN layer is exempt from this loop entirely again
- * (its mask is never touched, built or cleared), same as before SE10's
- * independent-axes design. A carve:false-but-visible layer is the other
- * "exempt, gate skips it before emptiness is even checked" case.
+ * T27 FINAL: updateStampMasks' gate reads isCarved(layer). Audit B6: hidden
+ * is display only, so a HIDDEN carving layer is in this loop like a shown
+ * one; carve:false (shown or hidden) is the "exempt, gate skips it before
+ * emptiness is even checked" case.
  *
  * Two things are exercised here:
  *  1. `clearEmptyLayerMasks` directly — the invariant factored out as its
@@ -104,14 +103,14 @@ describe('updateStampMasks: the Clear -> Apply regression (all layers empty)', (
   // hidden layer regardless of its own carve flag, so the gate skips it
   // before its emptiness is ever checked. A hidden layer's mask is never
   // touched (built or cleared) by this loop, same as pre-SE10.
-  it('T27: a HIDDEN layer is exempt from this loop entirely, even with no content — its stale mask survives (visible is the master, gates before emptiness is checked)', async () => {
+  it('audit B6: a HIDDEN carving layer is NOT exempt (hidden is display only) -- empty, its stale mask is cleared like any carving layer', async () => {
     const editor = {
       _draw: {},
       _sketchLayer: { node: { innerHTML: '' } },
       _mW: 7,
       _mH: 9,
       _layers: [
-        { id: '0', visible: false, _mask: { body: new Float32Array(4) } }, // hidden AND empty — isCarved false regardless of carve
+        { id: '0', visible: false, _mask: { body: new Float32Array(4) } }, // hidden AND empty — still carving (carve defaults true)
       ],
       _activeLayer: '0',
     };
@@ -120,7 +119,7 @@ describe('updateStampMasks: the Clear -> Apply regression (all layers empty)', (
 
     await updateStampMasks(4, 4);
 
-    expect(editor._layers[0]._mask).not.toBeNull();
+    expect(editor._layers[0]._mask).toBeNull();
   });
 
   it('T27: a visible carve:false layer is exempt from this loop entirely — its mask survives even though it has no content', async () => {

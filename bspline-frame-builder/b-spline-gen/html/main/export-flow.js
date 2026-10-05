@@ -79,9 +79,9 @@ const hasShippableSvg = (l) => l.enabled && l.svg;
  * isn't loaded (nothing to build a candidate list from).
  *
  * `enabled`/`carve` are isExported(layer)/isCarved(layer) — a hidden
- * layer SHIPS (turn 207, Fred: hidden is display-only) but never carves; its mask/svg are still read here (getLayerSvg doesn't care about
- * `visible`; see its own docstring), but `carve` comes back false for it
- * regardless of its own carve flag, same as every other gate.
+ * layer SHIPS (turn 207, Fred: hidden is display-only) and keeps its own carve flag (audit B6): hidden or
+ * shown, it lands in the same component. Its mask/svg are read here as for any layer (getLayerSvg doesn't care
+ * about `visible`; see its own docstring).
  */
 function _stampExportCandidates() {
     const editor = (typeof window !== 'undefined') ? window.svgEditor : null;

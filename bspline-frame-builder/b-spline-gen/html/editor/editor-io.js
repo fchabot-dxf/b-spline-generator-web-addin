@@ -95,6 +95,8 @@ const _PERSISTED_LAYER_FIELDS = [
     // Audit B1-B3: the Bricks layer's key of the settings its Wall/Frame bricks were laid with
     // (editor-brick-tool.js runBricks), so a reload still knows whether Generate is pending.
     'brickLaidKey',
+    // Blind-spot audit B1: the element kinds that key was laid for (a Wall squeezed to zero bricks stays one).
+    'brickLaidKinds',
 ];
 
 /** Serialize the layer roster as a string attribute we can stamp onto
