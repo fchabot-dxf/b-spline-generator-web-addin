@@ -78,6 +78,21 @@ function enrichPrimitives(primitives, inwardSign) {
   });
 }
 
+/** Fred (live, 2026-10-04): "White rock frame bands are ugly ... it just uses the same logic as red brick, but
+ *  it's wrong for it" -- a White Rocks band was laid as a brick COURSE, soldier/stretcher pieces cut from rock
+ *  textures. Declared rule: a set whose OWN layout is a band-capable area pattern (library.js BRICK_SETS
+ *  `layout`, e.g. White Rocks' 'fieldstone'; BRICK_PATTERNS `bandCapable`) lays EVERY band with that pattern,
+ *  whatever pattern or preset the band names -- course patterns don't apply to rocks, exactly as the Wall
+ *  already lays such a set with its own layout. Null for a brick set: its bands keep their own patterns.
+ *  Closed contours only: the area band fills the RING between two closed boundaries (buildAreaBandBricks'
+ *  slit polygon); an open brush stroke has no ring, so its bands keep their own patterns. */
+export function setBandPattern(set, closed = true) {
+  if (!closed) return null;
+  const name = set && set.layout;
+  const def = name && BRICK_PATTERNS[name];
+  return def && def.kind === 'tile2d' && def.bandCapable ? name : null;
+}
+
 /** Every band's own row count + naturalWidth/pitch/sequence/stagger, precomputed ONCE -- shared by
  *  the `centered` total-width pre-pass (T86 item 7) and the main build loop below, so the two never
  *  compute a band's own row geometry two different ways.
@@ -88,9 +103,10 @@ function enrichPrimitives(primitives, inwardSign) {
  *  (what every other caller of this plan already uses for "how much depth did this band consume")
  *  equal the band's own DECLARED width exactly, no rounding, instead of snapping to a meaningless
  *  row count the way a course pattern does. */
-function planBands(bands, L, H) {
+function planBands(bands, L, H, set, closed) {
+  const setPattern = setBandPattern(set, closed);
   return bands.map((band) => {
-    const patternName = band.pattern || 'stretcher';
+    const patternName = setPattern || band.pattern || 'stretcher';
     const patternDef = BRICK_PATTERNS[patternName] || BRICK_PATTERNS.stretcher;
     const isAreaBand = patternDef.kind === 'tile2d' && !!patternDef.bandCapable;
     const cornerStyle = band.cornerStyle || 'mitre';
@@ -221,7 +237,7 @@ export function bricksContourBands(primitives, bands, opts) {
 
   const bricks = [];
   const L = set.brickLengthIn, H = set.brickHeightIn;
-  const plannedBands = planBands(bands, L, H);
+  const plannedBands = planBands(bands, L, H, set, closed);
   let depthSoFar = opts.centered
     ? -plannedBands.reduce((sum, b) => sum + b.naturalWidth * b.rows, 0) / 2
     : 0;

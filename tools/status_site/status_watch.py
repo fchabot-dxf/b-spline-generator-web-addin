@@ -128,6 +128,23 @@ def _roadmap():
     return items
 
 
+
+def _seat_shots(folders):
+    """Newest SHOTS_PER_SEAT images under the seat's declared folders (seats.json 'shots'), RECURSIVE, as
+    paths relative to SHOTS_DIR ('seat37/f35item28_clear_menu.png', 'seatB/rockband/after_T1.png'). Fred
+    (2026-10-04): "most of these screenshots don't make it to my progress page" -- the old listing read one
+    flat folder per seat key, so seat37/seat88/advisor/fred and every subfolder were invisible."""
+    found = []
+    for folder in folders:
+        base = os.path.join(SHOTS_DIR, folder)
+        for dirpath, _dirs, files in os.walk(base):
+            for f in files:
+                if f.lower().endswith((".png", ".jpg", ".jpeg")):
+                    full = os.path.join(dirpath, f)
+                    found.append((os.path.getmtime(full), os.path.relpath(full, SHOTS_DIR).replace(os.sep, "/")))
+    found.sort(reverse=True)
+    return [rel for _m, rel in found[:SHOTS_PER_SEAT]]
+
 def collect():
     _git(ROOT, "fetch", "-q", "origin")
     seats = []
@@ -142,9 +159,7 @@ def collect():
         d, t = _checklist(s["path"], s["task"], s["branch"])
         if who.startswith("finished") and t:
             d = t
-        sd = os.path.join(SHOTS_DIR, s["key"])
-        shots = sorted((f for f in (os.listdir(sd) if os.path.isdir(sd) else []) if f.lower().endswith((".png", ".jpg", ".jpeg"))),
-                       key=lambda f: os.path.getmtime(os.path.join(sd, f)), reverse=True)[:SHOTS_PER_SEAT]
+        shots = _seat_shots(s.get("shots") or [s["key"]])
         seats.append({**s, "url": _session_url(s), "turn": h.get("turn", "?"), "who": who, "note": h.get("note", ""),
                       "updated": h.get("updated", ""), "done": d, "total": t, "shots": shots})
     commits = {b: _git(ROOT, "log", "--format=%h|%cr|%s", "-8", "origin/" + b).strip().splitlines() for b in ("main", "lane-b", "fb-app")}
@@ -352,8 +367,8 @@ def once(last_hash=None):
     shutil.rmtree(os.path.join(OUT, "shots"), ignore_errors=True)
     for st in seats:
         for x in st["shots"]:
-            dst = os.path.join(OUT, "shots", st["key"]); os.makedirs(dst, exist_ok=True)
-            shutil.copy2(os.path.join(SHOTS_DIR, st["key"], x), os.path.join(dst, x))
+            dst = os.path.join(OUT, "shots", st["key"], x); os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(os.path.join(SHOTS_DIR, x), dst)
     open(os.path.join(OUT, "PROGRESS.md"), "w", encoding="utf-8").write(md)
     open(os.path.join(OUT, "index.html"), "w", encoding="utf-8").write(page)
     return h if deploy() else last_hash

@@ -1,5 +1,5 @@
 {
-  "_about": "Declared seats for the status page. station = the machine the seat runs on. The watcher reads seats on its OWN station from their local checkout (repo folder + 'checkout' suffix, HANDOFF.md), and seats on other stations from origin (task file + last commit matching 'commits'). Add a seat here, no code change. Card title links to the seat's Claude session: 'url' (fixed link, e.g. a remote station's Remote Control session) or 'session' (a local session NAME: the watcher looks up its current Remote Control id in ~/.claude/sessions, so a restarted session only needs its new name here).",
+  "_about": "Declared seats for the status page. station = the machine the seat runs on. The watcher reads seats on its OWN station from their local checkout (repo folder + 'checkout' suffix, HANDOFF.md), and seats on other stations from origin (task file + last commit matching 'commits'). Add a seat here, no code change. Card title links to the seat's Claude session: 'url' (fixed link, e.g. a remote station's Remote Control session) or 'session' (a local session NAME: the watcher looks up its current Remote Control id in ~/.claude/sessions, so a restarted session only needs its new name here). 'shots' = the folders under ~/.bspline-status/shots published on the seat's card (recursive; default = the seat key).",
   "stations": {
     "home-pc": "Home PC",
     "asus": "Asus"
@@ -12,7 +12,12 @@
       "branch": "main",
       "task": "NEXT-SESSION.md",
       "checkout": "",
-      "session": "b-spline-generator-web-addin-f3"
+      "session": "b-spline-generator-web-addin-39",
+      "shots": [
+        "seatA",
+        "advisor",
+        "fred"
+      ]
     },
     {
       "key": "seatB",
@@ -21,7 +26,11 @@
       "branch": "lane-b",
       "task": "NEXT-SESSION-lane-b.md",
       "checkout": "-lane-b",
-      "session": "b-spline-generator-web-addin-b5"
+      "session": "b-spline-generator-web-addin-88",
+      "shots": [
+        "seatB",
+        "seat88"
+      ]
     },
     {
       "key": "seatC",
@@ -30,7 +39,11 @@
       "branch": "fb-app",
       "task": "NEXT-SESSION-fb-app.md",
       "checkout": "-fb-app",
-      "session": "b-spline-generator-web-addin-de"
+      "session": "b-spline-generator-web-addin-37",
+      "shots": [
+        "seatC",
+        "seat37"
+      ]
     }
   ]
 }
