@@ -924,7 +924,9 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   if (lays('wall')) drawBricks(editor, layerOf.wall, bricks, 'wall', wallSettings.setId, settings.seed, settings.reliefIn, owner('wall'));
   if (lays('wall')) syncAccentHighlight(editor, settings.accent, settings.seed);
   if (lays('frame')) syncRunAccentHighlight(editor, settings); // per-band accents
-  return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0 };
+  // F35 item 35: the engine's band-fit note (T86 item 28) when the Frame's stack was reduced to fit the board
+  return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0,
+    bandsReduced: lays('frame') ? (result.bandsReduced || null) : null };
 }
 
 /** `laidKey` (audit B1-B3): the caller's key for the settings this run lays. Item 22 step 3: it is stamped on
