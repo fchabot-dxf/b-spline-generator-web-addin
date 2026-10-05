@@ -96,13 +96,28 @@ class _Op:
         self.parameters = _Params()
 
 
+class _Vec:
+    def __init__(self, z):
+        self.z = z
+
+
+class _Frame:
+    """workCoordinateSystem stand-in: only the resolved Z axis direction matters here."""
+    def __init__(self, z_up):
+        self._z = _Vec(1.0 if z_up else -1.0)
+
+    def getAsCoordinateSystem(self):
+        return (None, None, None, self._z)
+
+
 class _Setup:
-    def __init__(self, ops=()):
+    def __init__(self, ops=(), z_up=True):
         self.name = 'S'
         self.stockMode = None
         self.stockSolids = None
         self.parameters = _Params()
         self.operations = _Coll(ops)
+        self.workCoordinateSystem = _Frame(z_up)
 
 
 class _SketchPoint:
@@ -165,8 +180,11 @@ def test_stock_box_and_points_around_the_real_7x9_clean_panel(eng):
     assert [round(v / IN, 4) for v in box['y']] == [-5.0, 5.0]
     assert [round(v / IN, 4) for v in box['z']] == [0.032, 2.032]
     assert [round(v / IN, 4) for v in p.stock_dims_cm(box)] == [8.0, 10.0, 2.0]
-    assert [round(v / IN, 4) for v in p.wcs_point_cm(box, 'back')] == [-4.0, -5.0, 2.032]
-    assert [round(v / IN, 4) for v in p.wcs_point_cm(box, 'flipped')] == [-4.0, 5.0, 0.032]
+    # = where today's stock box point 'top 1' lands on each side once the stock sits on the panel bottom
+    # (measured live, real 7x9 Send: Back (x min, y min, its frame top = world bottom -- Back's WCS Z
+    # points DOWN), Top (x max, y min, world top)).
+    assert [round(v / IN, 4) for v in p.wcs_point_cm(box, 'back')] == [-4.0, -5.0, 0.032]
+    assert [round(v / IN, 4) for v in p.wcs_point_cm(box, 'flipped')] == [4.0, -5.0, 2.032]
 
 
 # ---------------------------------------------------------------------------
@@ -236,8 +254,12 @@ def test_op_heights_only_on_3d_strategies(eng):
             assert w == {}, op.strategy                # 2D: template depth untouched
 
 
-def test_stock_box_writes_fixed_box_bottom_aligned(eng):
-    s = _Setup()
+@pytest.mark.parametrize('z_up, z_mode', [(True, "'bottom'"), (False, "'top'")])
+def test_stock_box_sits_on_the_world_bottom_in_either_frame(eng, z_up, z_mode):
+    """job_stockFixedZMode is read in the SETUP's frame. Measured: B-spline Back's WCS Z points down, and
+    'bottom' there put the box on the panel's world TOP (stock world z 1.088 .. -0.912). The writer maps the
+    declared world bottom through the resolved Z axis."""
+    s = _Setup(z_up=z_up)
     eng.sb._apply_stock_box(s, 'S', None)
     st = eng.pos.CAM_POSITION['stock']
     assert s.stockMode == eng.adsk.cam.SetupStockModes.FixedBoxStock
@@ -246,7 +268,7 @@ def test_stock_box_writes_fixed_box_bottom_aligned(eng):
     assert w['job_stockFixedY'] == f"(surfaceYHigh - surfaceYLow) + {st['margin_xy_in']} in"
     assert w['job_stockFixedZ'] == f"{st['z_in']} in"
     assert (w['job_stockFixedXMode'], w['job_stockFixedYMode'], w['job_stockFixedZMode']) == \
-        ("'center'", "'center'", "'bottom'")
+        ("'center'", "'center'", z_mode)
     assert w['job_stockFixedXOffset'] == w['job_stockFixedYOffset'] == w['job_stockFixedZOffset'] == '0 in'
 
 

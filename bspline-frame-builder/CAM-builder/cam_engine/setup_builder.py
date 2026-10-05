@@ -1466,12 +1466,15 @@ def _apply_stock_box(setup, setup_name, logger):
     """Write the shared fixed stock box (CAM_POSITION['stock']) on a live setup.
 
     X/Y = the model's extent in the setup's own frame + the declared margin, centred; Z = the declared
-    thickness from the model bottom (Clean and Stamped share bottom + outline). Expressions are evaluated
-    by Fusion in the setup frame, so the axes swap of 'select_x_y' needs no handling here. Measured
-    (item 82 probe d): identical boxes on two setups in two MMs.
+    thickness from the model's WORLD bottom (Clean and Stamped share bottom + outline). Expressions are
+    evaluated by Fusion in the setup frame, so the axes swap of 'select_x_y' needs no handling here, but
+    the Z mode does: 'bottom' means the frame's -Z side, and B-spline Back's frame Z points DOWN
+    (measured: 'bottom' there put the box on the panel's world top). Call after the WCS is written.
     """
     st = CAM_POSITION['stock']
     m = st['margin_xy_in']
+    z_axis = setup.workCoordinateSystem.getAsCoordinateSystem()[3]
+    z_mode = 'bottom' if z_axis.z > 0 else 'top'
     _set_stock_mode(setup, 'fixed_box', setup_name, logger)
     n_ok = 0
     for name, expr in (
@@ -1480,7 +1483,7 @@ def _apply_stock_box(setup, setup_name, logger):
         ('job_stockFixedZ', f"{st['z_in']} in"),
         ('job_stockFixedXMode', f"'{st['xy_mode']}'"),
         ('job_stockFixedYMode', f"'{st['xy_mode']}'"),
-        ('job_stockFixedZMode', f"'{st['z_mode']}'"),
+        ('job_stockFixedZMode', f"'{z_mode}'"),
         ('job_stockFixedXOffset', '0 in'),
         ('job_stockFixedYOffset', '0 in'),
         ('job_stockFixedZOffset', '0 in'),
@@ -1579,7 +1582,7 @@ def _source_panel_bbox_cm(design):
 
 def ensure_wcs_sketches(design, logger=None):
     """Write the declared WCS points into the SOURCE design (one hidden offset plane + sketch per side),
-    replacing any from a previous BUILD. Run before the MMs are built: every MM snapshot then carries its
+    created once and moved in place on later BUILDs. Run before the MMs are built: every MM snapshot carries its
     own copy, which each setup binds (_bind_wcs_point). Measured: creating them works with the Manufacture
     workspace active, and modelToSketchSpace places the point exactly.
 
@@ -1592,27 +1595,31 @@ def ensure_wcs_sketches(design, logger=None):
         return None
     box = stock_box_cm(bbox[0], bbox[1])
     root = design.rootComponent
-    for side in CAM_POSITION['wcs_points']:
-        name = f"{WCS_SKETCH_NAME}_{side}"
-        old = root.sketches.itemByName(name)
-        if old:
-            old.deleteMe()
-        oldp = root.constructionPlanes.itemByName(name)
-        if oldp:
-            oldp.deleteMe()
     out = {}
     for side in CAM_POSITION['wcs_points']:
         name = f"{WCS_SKETCH_NAME}_{side}"
         x, y, z = wcs_point_cm(box, side)
-        pin = root.constructionPlanes.createInput()
-        pin.setByOffset(root.xYConstructionPlane, adsk.core.ValueInput.createByReal(z))
-        plane = root.constructionPlanes.add(pin)
-        plane.name = name
-        sk = root.sketches.add(plane)
-        sk.name = name
-        sk.sketchPoints.add(sk.modelToSketchSpace(adsk.core.Point3D.create(x, y, z)))
-        sk.isVisible = False
-        plane.isLightBulbOn = False
+        plane = root.constructionPlanes.itemByName(name)
+        sk = root.sketches.itemByName(name)
+        pts = [p for p in sk.sketchPoints if p != sk.originPoint] if sk else []
+        if plane and sk and pts:
+            # A later BUILD moves the existing point IN PLACE. Never delete + recreate: an MM built right after
+            # derives from the deleted plane/sketch and binds the OLD position (measured: its copy's sketch
+            # had an invalid reference plane, 'InternalValidationError : dcSketch').
+            adsk.fusion.ConstructionPlaneOffsetDefinition.cast(plane.definition).offset.value = z
+            pt = pts[-1]
+            target = sk.modelToSketchSpace(adsk.core.Point3D.create(x, y, z))
+            pt.move(pt.geometry.vectorTo(target))
+        else:
+            pin = root.constructionPlanes.createInput()
+            pin.setByOffset(root.xYConstructionPlane, adsk.core.ValueInput.createByReal(z))
+            plane = root.constructionPlanes.add(pin)
+            plane.name = name
+            sk = root.sketches.add(plane)
+            sk.name = name
+            sk.sketchPoints.add(sk.modelToSketchSpace(adsk.core.Point3D.create(x, y, z)))
+            sk.isVisible = False
+            plane.isLightBulbOn = False
         out[side] = (x, y, z)
         _log(logger, f"WCS SKETCH: {side} point at ({x / 2.54:.4f}, {y / 2.54:.4f}, {z / 2.54:.4f}) in", "INFO")
     return out

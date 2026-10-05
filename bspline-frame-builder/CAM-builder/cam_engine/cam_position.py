@@ -8,7 +8,8 @@ point 'top 1', two setups of one part landed 0.25 in apart; with one fixed box (
 model bottom) and one declared WCS point, both read back identically, also under flipY.
 
   stock       one fixed box around the panel: the panel's X/Y extent + margin_xy_in (total, split evenly),
-              z_in tall, its bottom on the model bottom (bottom + outline are the same for Clean and Carved).
+              z_in tall, its bottom on the model's world bottom (bottom + outline are the same for Clean
+              and Stamped).
               The MM-Stock placeholder is built from the same two numbers.
   wcs_points  the shared WCS origins, as corners of that box ('min'/'max' per axis; 'z' is 'top'/'bottom'),
               one per setup side; a setup names its side with spec['wcs_point'].
@@ -22,11 +23,18 @@ CAM_POSITION = {
         'margin_xy_in': 1.0,     # total; 0.5 in each side (the placeholder's '+ 1 in')
         'z_in':         2.0,     # the placeholder's 2 in
         'xy_mode':      'center',
-        'z_mode':       'bottom',
+        # The box sits on the panel's WORLD bottom. Fusion reads job_stockFixedZMode in the setup's own
+        # frame, and B-spline Back's WCS Z points DOWN (measured), so the writer maps this through the
+        # resolved Z axis ('bottom' when the frame's Z points up, 'top' when it points down).
+        'z_align':      'world_bottom',
     },
+    # Each side's point = where today's stock box point 'top 1' lands on that side once the stock sits on
+    # the panel bottom (measured live, real 7x9 Send, item 82 acceptance): Back -> x min, y min, its frame
+    # top = the world BOTTOM; Top (flipped) -> x max, y min, the world top. Same convention as before,
+    # now one declared point per side instead of a per-setup stock corner.
     'wcs_points': {
-        'back':    {'x': 'min', 'y': 'min', 'z': 'top'},
-        'flipped': {'x': 'min', 'y': 'max', 'z': 'bottom'},
+        'back':    {'x': 'min', 'y': 'min', 'z': 'bottom'},
+        'flipped': {'x': 'max', 'y': 'min', 'z': 'top'},
     },
     'op_heights': {
         'top':           "'from stock top'",
