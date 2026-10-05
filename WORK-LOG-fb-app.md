@@ -13669,3 +13669,18 @@ the lay; laid key per element after that.
   - the saved drawing contains no outline.
   - Shot: shots/seat37/f35item22_select_frame.png.
 - Whole vitest: 270 files, **4405 passed, 0 failed**.
+
+### turn 231 note -- AGREED with 88: the engine input for painted wall areas (F35 item 22 slice 2 / T86 item 18)
+
+- ENGINE_OPTIONS lists exactly `'wallRegion'` when item 18 lands; the Area sub-tool unhides by it (step 4's rule).
+- The generateBricks input, FIXED (88, by DM):
+  `wallRegion: { strokes: [{ points: [{x,y}...], widthIn }], minus: [{ points, widthIn }] }`, board inches.
+  - `strokes`: this area's painted strokes; `minus`: every NEWER area's strokes (optional).
+  - Missing or `strokes: []` = today's full fill.
+  - Otherwise: the union of the buffered strokes minus the union of the buffered `minus`, clipped to the wall's
+    usual region.
+  - Returns `wallRegionApplied: true` when honoured (the exclusionsApplied pattern).
+- One call per wall-area record, newest wins (the older wall flows around the newer one).
+- The buffer + union live ONCE in core (88). The region op is exported too, but its OUTPUT form is not promised
+  yet: disjoint pieces don't fit `{polygon, holes}`, and core has no polygon union today.
+- The app hands over raw strokes, never approximated outlines.
