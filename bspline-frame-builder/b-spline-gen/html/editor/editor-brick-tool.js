@@ -569,6 +569,48 @@ export const brickAccentClickHandler = {
   },
 };
 
+/** F35 item 22 slice 1 step 4, SELECT for brick elements (editor._currentMode === 'brickElementSelect'): a
+ *  click hands its UNSNAPPED board point to editor._brickElementSelect (main/brick-panel.js). */
+export const brickElementSelectHandler = {
+  start(editor, pt, e) {
+    const raw = e && typeof editor._getMousePoint === 'function' ? editor._getMousePoint(e) : pt;
+    if (typeof editor._brickElementSelect === 'function') editor._brickElementSelect(raw || pt);
+  },
+};
+
+/** The Wall/Frame ELEMENT whose brick lies under `pt` -- { id: its record's id, kind } -- or null. The topmost
+ *  brick wins (the last drawn). Brush bricks are their own strokes' business (not a record kind). */
+export function brickElementAt(editor, pt) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll || !pt) return null;
+  const owned = [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}]`)].reverse();
+  for (const n of owned) {
+    const kind = n.getAttribute(BRICK_ATTR);
+    if (!BRICK_RECORD_KINDS[kind]) continue;
+    if (pointInPolygon(pt.x, pt.y, _nodePolygon(n))) return { id: n.getAttribute(BRICK_OWNER_ATTR), kind };
+  }
+  return null;
+}
+
+/** The selected element's outline: each of its bricks, outlined in the editor's HIGHLIGHT layer (the same
+ *  overlay layers.js flashLayerGeometry uses) -- never in the drawing, so never saved, exported or hit. */
+export const ELEMENT_SELECT_OUTLINE = Object.freeze({ color: '#1e88e5', widthIn: 0.04 });
+export function showElementSelection(editor, elementId) {
+  if (!editor) return 0;
+  for (const h of editor._brickElementOutline || []) { try { h.remove(); } catch (_) { /* gone with a reload */ } }
+  editor._brickElementOutline = [];
+  const node = editor._sketchLayer && editor._sketchLayer.node;
+  if (!elementId || !editor._highlightLayer || !node || !node.querySelectorAll) return 0;
+  for (const n of node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}="${elementId}"]`)) {
+    const outline = editor._highlightLayer.polygon(n.getAttribute('points') || '')
+      .fill('none')
+      .stroke({ color: ELEMENT_SELECT_OUTLINE.color, width: ELEMENT_SELECT_OUTLINE.widthIn })
+      .attr('pointer-events', 'none');
+    editor._brickElementOutline.push(outline);
+  }
+  return editor._brickElementOutline.length;
+}
+
 /** F35 item 20 (brush over wall, Fred / audit C10 option B: the wall flows AROUND a brush stroke): every
  *  brush brick on the canvas is an exclusion for the Wall fill -- `input.exclusions = [{polygon}]`, board
  *  inches, the signature agreed with seat B (d3, T86 item 13: the engine DROPS any wall piece overlapping

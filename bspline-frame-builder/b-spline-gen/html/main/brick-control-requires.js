@@ -24,6 +24,8 @@ export const BRICK_CONTROL_REQUIRES = [
     why: 'Grout depth is the recess depth -- no effect while the grout is Flush' },
   { controls: ['brickLargeStonesRow'], requires: { engineOption: 'largeStones' }, hides: true,
     why: 'Large stones needs the fieldstone engine option (seat B, T86 item 17) -- hidden until the engine reads it' },
+  { controls: ['brickSubTool_wall_area'], requires: { engineOption: 'wallRegion' }, hides: true,
+    why: 'Painting wall areas needs the engine\'s strokes-to-region op (seat B, T86 item 18) -- hidden until it exists' },
   { controls: ['brickRaisedMode_grout'], requires: { engineOption: 'groutCut' }, hides: true,
     why: 'Grout mode cuts joints with the engine\'s bricksGroutCut (seat B, T86 item 10) -- hidden until it exists' },
   { controls: SIDEBAR_BRICK_CONTROLS, within: ['brickQuickSettings', 'brickSurfaceStyleToggle'], requires: { fact: 'bricksLaid' },

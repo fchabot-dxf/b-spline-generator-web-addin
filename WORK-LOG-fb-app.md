@@ -13630,3 +13630,42 @@ the lay; laid key per element after that.
   - a frame change = exactly 1 new undo step (the re-lay); the same frame again = 0;
   - every wall brick is owned by the wall record.
 - Whole vitest: 269 files, **4399 passed, 0 failed**.
+
+### turn 231 -- item 22 slice 1, STEP 4 of 5: Select for Wall and Frame (+ the Area sub-tool, hidden) (seat 37)
+
+- **Declared:**
+  - `subTools` on BRICK_TOOLS: Wall `['select', 'area']`, Frame `['select']`;
+  - `BRICK_SUB_TOOLS` in brick-panel: label, title, and the editor mode it arms;
+  - rendered into `#brickSubTools_<tool>` at the top of each section, with `#brickElementLabel_<tool>` under it:
+    "Editing: this Wall" / "Settings for the next wall".
+  - The Area button hides by a brick-control-requires rule: `requires: { engineOption: 'wallRegion' }`, until
+    88's T86 item 18 lists it. The option name is proposed to 88 by DM.
+- **The gesture:** a new editor mode `brickElementSelect` (editor-interaction's table, the Brick tab's modes),
+  modelled on the accent picker's `brickAccentClick`. The handler gives the unsnapped point to the panel, and
+  `brickElementAt(editor, pt)` returns the topmost owned Wall/Frame brick's element `{ id, kind }`.
+  - Picking Wall or Frame now opens on Select (that mode is armed); before, those tools left the mode alone.
+  - Clicking a brick selects its element: that element's tool becomes active (a frame brick clicked under the
+    Wall tool switches to Frame), its section shows, and its bricks are outlined.
+  - An empty click deselects. Esc drops the selection first (the tool stays); the next Esc leaves the tool, as
+    before (global-events' returnToSelect -> deselectTool).
+  - A re-lay keeps the outline on the new bricks.
+- **The outline is in the editor's HIGHLIGHT layer** (`showElementSelection`, the overlay layers.js
+  flashLayerGeometry already uses), so it is never in the drawing, saved, exported or hit. (The accent highlight
+  writes stroke attributes onto the bricks themselves; not reused here for that reason.)
+- **Slice-1 scope, stated:** one wall + one frame, so "the section edits only that element" = the kind's settings
+  (P.brickSettings per element, as item 23 made it). Several walls with their own settings arrive with slice 2's
+  areas (the records already carry the per-element snapshot).
+- **Tests:**
+  - New brick-element-select (6): the hit; the outline only in the overlay; Wall opens on Select with Area hidden
+    until the engine lists wallRegion (and shown when it does); Frame has no Area; a frame-brick click selects the
+    frame + switches the section + outlines it; the Esc order + empty click; a re-lay keeps the outline.
+  - All 6 fail against the pre-step-4 files (restored, cmp clean).
+  - brick-control-requires' "every id is a real control" guard learnt the sub-tool id form
+    (`brickSubTool_${tool.id}_${sid}`), like its quick-button rule.
+- **Live** (real CDP clicks):
+  - Wall picked: mode brickElementSelect, Select active, Area hidden;
+  - a click on a frame brick: Frame tool active, "Editing: this Frame", 106 outlines;
+  - a click on empty canvas: 0 outlines, the label back to "next frame";
+  - the saved drawing contains no outline.
+  - Shot: shots/seat37/f35item22_select_frame.png.
+- Whole vitest: 270 files, **4405 passed, 0 failed**.

@@ -3147,6 +3147,9 @@
                  what applies"): shown only while Wall is the active tool (main/brick-panel.js's
                  syncWallSection), same contextual-section convention brickBrushSection already set. -->
             <div id="brickWallSection">
+              <!-- F35 item 22: this element tool's sub-tools (main/brick-panel.js BRICK_SUB_TOOLS) + what the section edits -->
+              <div id="brickSubTools_wall" style="display:flex; gap:6px; margin-bottom:4px; flex-wrap:wrap;"></div>
+              <div id="brickElementLabel_wall" style="font-size:10px; opacity:0.65; margin:0 0 10px;"></div>
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
               <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
                 <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
@@ -3188,6 +3191,9 @@
             <div id="brickStripeSection" style="display:none;"></div>
 
             <div id="brickFrameSection">
+              <!-- F35 item 22: this element tool's sub-tools (main/brick-panel.js BRICK_SUB_TOOLS) + what the section edits -->
+              <div id="brickSubTools_frame" style="display:flex; gap:6px; margin-bottom:4px; flex-wrap:wrap;"></div>
+              <div id="brickElementLabel_frame" style="font-size:10px; opacity:0.65; margin:0 0 10px;"></div>
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
               <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
                 <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->

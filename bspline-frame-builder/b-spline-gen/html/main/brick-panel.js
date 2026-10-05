@@ -24,7 +24,7 @@ import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, bricksLayerOf, BRICK_KINDS,
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
-  BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR,
+  BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection,
 } from '../editor/editor-brick-tool.js';
 import { ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
@@ -65,9 +65,12 @@ const BRICK_TOOLS = [
   // Brush/Scissors/Stripe act on drawn strokes, whose settings freeze at draw time.
   // `lays` (audit C1): the ONE element kind this tool lays (editor-brick-tool.js BRICK_KINDS). Since item 27 a
   // setting change lays it at once; Generate re-lays it (audit B7: the hints say so).
+  // `subTools` (F35 item 22): the element tool's own sub-tools (BRICK_SUB_TOOLS below), shown in its section
   { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true, lays: 'wall', ownsSet: true,
+    subTools: ['select', 'area'],
     hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Change a setting to lay it; Generate re-lays.' },
   { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
+    subTools: ['select'],
     hint: 'Bands of bricks along the frame\'s contour (or the board\'s edge with Offset from frame off). Change a setting to lay them; Generate re-lays.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
@@ -978,6 +981,7 @@ function _layBricks(editor, frameGeom, kinds, { amend = null } = {}) {
   _layWarnings = counts ? BRICK_LAY_WARNINGS.filter((w) => w.when(counts, kinds, P.brickSettings)) : [];
   for (const w of _layWarnings) if (!before.has(w.id)) showToast(w.text, 'warn');
   _syncLayWarnings();
+  if (_selectedElement) showElementSelection(editor, _selectedElement.id); // item 22: the re-laid bricks keep the outline
   syncControlRequires(); // audit v2 N5: the board now has bricks -- the sidebar controls apply
   // Audit C8: the layer's visibility is the user's choice, so it is not flipped back on -- but a
   // re-lay nobody can see must not pass silently.
@@ -1094,7 +1098,8 @@ function bindGroutField(id, key, commit = 'generate') {
  *  shared editor-tool-registry.js mechanism now, the same one Photo uses --
  *  this file no longer carries its own copy of either loop. */
 function renderToolList(container) {
-  renderToolRegistry(container, BRICK_TOOLS, selectTool);
+  renderToolRegistry(container, BRICK_TOOLS, (id) => selectTool(id));
+  _renderSubTools(); // item 22: the element tools' Select (+ Area) rows
 }
 
 function syncToolButtons() {
@@ -1151,6 +1156,8 @@ function syncEmptySelectionPanel() {
  *  own to click -- clears this tab's own active-tool state and returns the editor's underlying
  *  interaction mode to plain Select, the same real effect Artwork's Escape-to-toolSelect has. */
 export function deselectTool() {
+  // item 22: Esc first drops a selected element (the tool stays); the next Esc leaves the tool as before
+  if (_selectedElement) { selectBrickElement(null); return; }
   _activeTool = null;
   syncToolButtons();
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
@@ -1383,8 +1390,87 @@ function syncFrameBandPatternButtons() {
  *  selecting them just runs the tool right away and leaves the editor's own
  *  mode untouched (whatever the user was already doing, e.g. Select, stays
  *  active -- Wall/Frame don't need to claim the pointer). */
-function selectTool(id) {
+/** F35 item 22 slice 1 step 4: an element tool's sub-tools. Select = click a brick: its element is selected (an
+ *  outline on its bricks) and the section edits only that element; nothing selected = the section shows the
+ *  settings the next element gets; Esc deselects. Area = paint a wall area (slice 2) -- hidden until the engine
+ *  lists 'wallRegion' (brick-control-requires.js). `mode` = the editor mode it arms. */
+export const BRICK_SUB_TOOLS = Object.freeze({
+  select: { label: 'Select', mode: 'brickElementSelect',
+    title: 'Click a brick: its element is selected and this section edits only it. Esc deselects.' },
+  area: { label: 'Area', mode: null, title: 'Paint an area: it fills with this wall -- once an area is painted, only painted areas get bricks.' },
+});
+const ELEMENT_LABELS = { wall: 'Wall', frame: 'Frame' };
+let _subTool = 'select';
+let _selectedElement = null; // { id, kind } -- the selected Wall/Frame element (its record), or null
+
+export const selectedBrickElement = () => (_selectedElement ? { ..._selectedElement } : null);
+
+function _renderSubTools() {
+  for (const tool of BRICK_TOOLS) {
+    if (!tool.subTools) continue;
+    const row = document.getElementById(`brickSubTools_${tool.id}`);
+    if (!row) continue;
+    row.innerHTML = '';
+    for (const sid of tool.subTools) {
+      const def = BRICK_SUB_TOOLS[sid];
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cad-btn';
+      btn.id = `brickSubTool_${tool.id}_${sid}`;
+      btn.textContent = def.label;
+      btn.title = def.title;
+      if (_hiddenUntilMet(btn.id)) btn.style.display = 'none';
+      btn.addEventListener('click', () => _armSubTool(sid));
+      row.appendChild(btn);
+    }
+  }
+  _syncSubTools();
+}
+
+function _syncSubTools() {
+  for (const tool of BRICK_TOOLS) {
+    for (const sid of tool.subTools || []) {
+      document.getElementById(`brickSubTool_${tool.id}_${sid}`)?.classList.toggle('active', tool.id === _activeTool && sid === _subTool);
+    }
+    const label = document.getElementById(`brickElementLabel_${tool.id}`);
+    if (label) {
+      label.textContent = _selectedElement && _selectedElement.kind === tool.lays
+        ? `Editing: this ${ELEMENT_LABELS[tool.lays]}` : `Settings for the next ${(ELEMENT_LABELS[tool.lays] || '').toLowerCase()}`;
+    }
+  }
+}
+
+function _armSubTool(sid) {
+  const def = BRICK_SUB_TOOLS[sid];
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  _subTool = sid;
+  if (editor && def && def.mode === 'brickElementSelect') {
+    editor._brickElementSelect = (pt) => {
+      const hit = brickElementAt(editor, pt);
+      if (!hit) { selectBrickElement(null); return; }
+      selectBrickElement(hit);
+    };
+    editor.setMode('brickElementSelect');
+  }
+  _syncSubTools();
+}
+
+/** Select an element ({ id, kind }) -- its tool becomes the active one (its section shows), its bricks are
+ *  outlined -- or clear the selection (null). */
+export function selectBrickElement(element) {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  _selectedElement = element ? { id: element.id, kind: element.kind } : null;
+  if (element) {
+    const tool = BRICK_TOOLS.find((t) => t.lays === element.kind);
+    if (tool && tool.id !== _activeTool) selectTool(tool.id, { keepSelection: true });
+  }
+  showElementSelection(editor, _selectedElement && _selectedElement.id);
+  _syncSubTools();
+}
+
+function selectTool(id, { keepSelection = false } = {}) {
   _disarmAccentClick(); // F35 item 15: a tool pick ends Click bricks
+  if (!keepSelection && _selectedElement) { _selectedElement = null; showElementSelection(typeof window !== 'undefined' ? window.svgEditor : null, null); }
   _activeTool = id;
   syncToolButtons();
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
@@ -1405,6 +1491,7 @@ function selectTool(id) {
   // interior via the composer (advisor review, turn 131).
   if (id === 'wall' || id === 'frame') {
     if (id === 'frame' && !resolveFrameGeom(editor)) console.warn('Brick Frame tool: no usable frame contour on this board.');
+    _armSubTool('select'); // item 22: an element tool opens on Select (Frame has nothing else)
     return;
   }
   if (id === 'scissors') {

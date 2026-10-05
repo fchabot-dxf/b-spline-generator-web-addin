@@ -18,7 +18,10 @@ describe('BRICK_CONTROL_REQUIRES', () => {
       const panel = readFileSync('bspline-frame-builder/b-spline-gen/html/main/brick-panel.js', 'utf8');
       // ...or a sidebar quick-settings button: quickButtonId = `brickQuick_${row.id}_${choice.id}` (BRICK_QUICK_SETTINGS)
       const quick = (id) => /^brickQuick_[a-z]+_/.test(id) && panel.includes(`id: '${id.split('_')[1]}'`) && panel.includes('`brickQuick_${row.id}_${choice.id}`');
-      const exists = (id) => html.includes(`id="${id}"`) || panel.includes(`\`${id.slice(0, id.lastIndexOf('_') + 1)}\${`) || quick(id);
+      // ...or an element tool's sub-tool button (F35 item 22): `brickSubTool_${tool.id}_${sid}` (BRICK_TOOLS subTools)
+      const subTool = (id) => /^brickSubTool_[a-z]+_[a-z]+$/.test(id) && panel.includes('`brickSubTool_${tool.id}_${sid}`')
+        && panel.includes(`subTools: [`) && panel.includes(`'${id.split('_')[2]}'`);
+      const exists = (id) => html.includes(`id="${id}"`) || panel.includes(`\`${id.slice(0, id.lastIndexOf('_') + 1)}\${`) || quick(id) || subTool(id);
       for (const id of [...r.controls, ...(r.within || []), r.requires.control].filter(Boolean)) expect(exists(id), id).toBe(true);
       if (r.requires.engineOption || r.requires.fact) continue; // an engine option / a board fact, not a control state
       expect(Object.keys(r.requires.satisfied).some((k) => ['gt', 'active', 'checked'].includes(k))).toBe(true);
