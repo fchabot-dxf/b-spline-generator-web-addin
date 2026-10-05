@@ -14445,3 +14445,51 @@ WallPattern = {
   - 0 errors.
 - **Shots** (~/.bspline-status/shots/seat37): item13_running_bond_45_editor.png, item13_herringbone_45_editor.png, item13_herringbone_45_3d.png.
 - **Noticed:** the herringbone 45 3D shows a few "thin 0.065-0.071 in" markers (the existing thin-piece check on rotated edge cuts). These are not new machinery.
+
+## turn 263: F35 item 22 SLICE 2, Wall Area brush + Select a painted wall (seat 37)
+- **First:** merged origin/wall-region 0444b91 (it lists wallRegion again) into fb-app as 527cca5. One import-line conflict in fill-shape.js; I took the union of both import lines.
+- **Blocker fix, mid-turn (advisor DM), 6b95b57:** wall-rotation-panel's mock base drops rotationDeg, because the merged engine now really lists it. Committed alone.
+- **Data model (editor-brick-tool.js):**
+  - A painted area is a `wall-area` RECORD with these attributes:
+    - `data-brick-area`: its strokes `[{points, widthIn}]`, the engine's wallRegion input as is;
+    - `data-brick-area-seq`: paint order, newest wins;
+    - `data-brick-settings`: its own snapshot.
+  - The record sits on the layer that was active when the area was painted. Its bricks are `data-brick="wall"` with owner = the area. So 3D, Send, Clear, layers and Select all work through the existing code.
+  - The first area removes the whole-board `wall-full` record; clearing every area brings it back on the next lay.
+  - `brickRecordNode(editor, 'wall')` falls back to the newest area, so wall presence, layer and laid key keep working unchanged in the panel.
+- **The lay:**
+  - The main generateBricks call keeps the frame and sets `skipWallFill` while areas exist.
+  - Then one call per area, oldest first: `wallRegion = { strokes: its own, minus: every NEWER area's strokes }`, with brush exclusions as before.
+  - Each area is laid with its own WALL_AREA_FIELDS (pattern, patternParams, wallRotationDeg, largeStones, setIds.wall, rusticByElement.wall, groutByElement.wall) over the shared settings. The SELECTED area (`editor._brickWallAreaId`) uses the section's current settings, and runBricks then writes them into its snapshot. The laid key is stamped on every area.
+  - **Shared by every wall, stated:** size, grout depth, relief, seed, suppression, Accent and Level. The height pass reads Accent/Level globally; per-wall versions would need it to read per owner. That is a follow-up if Fred wants it.
+  - **Cost:** each area call re-runs the frame bands (the engine does not return its interior outline), so N areas cost N+1 band lays.
+- **Panel (brick-panel.js):**
+  - The Area sub-tool arms the `brickWallArea` mode, which is also declared on the Brick tab in editor-tabs.js (the mode-scope guard caught that I had missed it).
+  - The `#brickWallAreaRow` holds Width chips (declared `WALL_AREA_WIDTHS` 0.5 / 1 / 2 in; `wallAreaWidthIn`, persisted + neutral set) and a Clear areas button on its own line.
+  - The row shows only with the Area sub-tool, plus the existing wallRegion rule (the row id was added to it).
+  - A stroke goes into the selected area, or with none selected starts a new area. The new area takes the section's settings, becomes the selected one, and the wall re-lays at once: one undo step per stroke.
+  - Select on an area copies its snapshot's fields into P.brickSettings and re-syncs the section. Deselecting keeps them as the "next wall" settings.
+  - The gesture: a translucent round-brush preview in the highlight layer, then RDP 0.02 on release. A tap paints a disc.
+- **Not built:** an erase gesture (design-note question 2, never answered) and per-area Delete. Clear areas, Clear > Bricks and Undo cover removal for now.
+- **Tests:**
+  - wall-areas (8): records, layer, the no-area path, the per-area calls with minus = newer areas, own snapshot vs selected, clear → full fill, withWallFields, the gesture.
+  - wall-areas-panel (6): hidden until wallRegion is listed, arming + row + width, a stroke into the selected area / a new area, Select loads an area's settings, Clear areas, the neutral set.
+  - Against the pre-slice-2 files: 12/14 fail. The 2 that pass pin things already true: no area = no wallRegion, and the Area button was already gated.
+- **Live** (fb-app tip, real CDP mouse drags on the 7x9 T1, wall + single_soldier frame; probe area_live.mjs):
+  - Baseline: wall 59, frame 88, canvas 4c894654.
+  - A (stretcher, 2 in): 25 bricks; the wall-full record is gone.
+  - B (herringbone, newer, crossing A): A drops to 14 bricks and flows around B (26).
+  - Undo: 2 areas → 1; Redo: 2.
+  - C (stack, 1 in) across the bottom band: its lowest point is y 7.5 = the top of the frame bricks there, so it stops at the band.
+  - A real click on an A brick: pattern back to stretcher, "Editing: this Wall".
+  - Apply: the saved drawing holds 3 area records; reopened: 3 areas.
+  - Clear areas: 0 areas, wall 59, canvas 4c894654 = the baseline.
+  - Clear > Bricks removes the areas.
+  - 0 console errors.
+  - Fixed while checking: "Clear areas" ran off the section's right edge; it now has its own line.
+- **Determinism:** 2 runs with the same drags gave the same strokes and canvas (6d63c8b4). The 3D hash is stable within a session but differs between sessions.
+  - **Measured, not caused by this change:** a plain full wall with no areas does the same (570ff528 vs 8dfcbc17, canvas identical). Something in the height pass (sample textures?) varies per page load. Flagged for the advisor; not chased here.
+- **Shots** (~/.bspline-status/shots/seat37): item22s2_two_overlapping_areas.png, item22s2_area_across_band.png, item22s2_reopened.png, item22s2_after_clear_areas.png.
+- **Merged origin/main 99c735f** (clean). Full suite on the merged tree: 2 failed / 4600 passed.
+  - editor-tab-mode-scope: mine, fixed (the mode declared).
+  - frame-3d-sweep: a 90 s timeout; passes alone (2 files 27/27).
