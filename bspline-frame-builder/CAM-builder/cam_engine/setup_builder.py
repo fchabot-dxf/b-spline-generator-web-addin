@@ -873,7 +873,7 @@ SETUP_SPECS = [
         # left behind after B-spline Back has cut its pocket. Combined
         # with continue_machining=True below, this gives the user
         # automatic rest machining: Top only cuts what Back didn't reach.
-        # Resolves to adsk.cam.SetupStockModes.FromPreviousSetup at build.
+        # Resolves to adsk.cam.SetupStockModes.PreviousSetupStock at build.
         'stock_intent': 'from_prev_setup',
         'wcs_origin':   'box_point',          # corner of stock bbox (flipY handles second side)
         'wcs_orient':   'select_x_y',         # axesXY -- same axes as Back, flipped Y
@@ -1322,12 +1322,19 @@ def _apply_cloud_templates(setup, template_leaf_names, setup_name, logger):
 # at write time even though they appear in older docs. Verified by the
 # `CreateSetupsFromHoleRecognition` Autodesk sample which uses this exact
 # typed-enum form.
+#
+# Every value must be a member of adsk.cam.SetupStockModes (measured live
+# 2026-10-05: FixedBoxStock, FixedCylinderStock, FixedTubeStock,
+# PreviousSetupStock, RelativeBoxStock, RelativeCylinderStock,
+# RelativeTubeStock, SolidStock). 'FromSolidStock' / 'FromPreviousSetup' do
+# not exist: those intents used to fall through to the string fallback.
+# Guarded by test_stock_mode_enum_names.py.
 _STOCK_MODE_ENUM_NAMES = {
     'auto_bbox':       'RelativeBoxStock',
     'fixed_box':       'FixedBoxStock',
     'fixed_size':      'FixedBoxStock',    # alias used by profile extractor
-    'from_solid':      'FromSolidStock',
-    'from_prev_setup': 'FromPreviousSetup',
+    'from_solid':      'SolidStock',
+    'from_prev_setup': 'PreviousSetupStock',
 }
 
 # Integer box-point (1-9) that the profile stores → Fusion expression string.
