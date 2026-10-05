@@ -478,9 +478,12 @@ async function runPersistence() {
   await js(`(async()=>{ const i=document.querySelector('.pm-prompt-input'); if(!i) return 'no prompt'; i.value='brick-matrix-persist'; document.querySelector('.pm-prompt-ok').click(); await new Promise(r=>setTimeout(r,4000)); return 'ok'; })()`);
   const saved = await js(`Object.keys(JSON.parse(localStorage.getItem('brickMatrixCloudStandIn')||'{}'))`);
   console.log('project saved to the stand-in:', JSON.stringify(saved));
-  // a fresh app: drop the app's own saved session (keep only the stand-in's store), reload -> defaults
-  await js(`(()=>{ const keep=localStorage.getItem('brickMatrixCloudStandIn'); localStorage.clear(); if (keep) localStorage.setItem('brickMatrixCloudStandIn', keep); return 1; })()`);
-  await send('Page.reload', {}); await waitApp();
+  // a fresh app: drop the app's own saved session (keep only the stand-in's store), reload -> defaults. At the next
+  // document's start (reloadWithStorage): cleared here, the old page's pagehide saved the session straight back and
+  // the load below proved nothing
+  const keep = await js(`localStorage.getItem('brickMatrixCloudStandIn')`);
+  await reloadWithStorage(keep ? { brickMatrixCloudStandIn: keep } : {});
+  console.log('fresh app state:', await js(`(async()=>{ const { P } = await import('./core/state.js'); return JSON.stringify({ setId: P.brickSettings?.setId, frameBandPreset: P.brickSettings?.frameBandPreset }); })()`));
   await click('btnOpenProjectManager', 2500);
   const picked = await js(`(async()=>{ const it=[...document.querySelectorAll('#fmProjectList [data-name]')].find(e=>e.getAttribute('data-name')==='brick-matrix-persist'); if(!it) return 'not listed'; it.click(); await new Promise(r=>setTimeout(r,500)); document.getElementById('fmBtnLoad').click(); await new Promise(r=>setTimeout(r,6000)); return 'loaded'; })()`);
   console.log('project load:', picked);
@@ -771,9 +774,10 @@ async function runMigration() {
     const bricks=[...svg.querySelectorAll('[data-brick="wall"],[data-brick="frame"]')];
     return JSON.stringify({ key, polys: bricks.map((n)=>n.getAttribute('data-brick')+':'+(n.getAttribute('points')||'').trim()).sort().join('|') }); })()`));
   if (!old.key) throw new Error('setup: the migration fixture holds no shared brickLaidKey (not a pre-item-22 board?)');
-  // the app restores its last session on load: seed it with the old board, reload -> migrated in place
-  await js(`(()=>{ localStorage.clear(); localStorage.setItem(${JSON.stringify(M.sessionKey)}, ${JSON.stringify(body)}); return 1; })()`);
-  await send('Page.reload', {}); await waitApp();
+  // the app restores its last session on load: seed it with the old board, reload -> migrated in place. Seeded at the
+  // NEXT document's start (reloadWithSession): seeding here, then reloading, let the old page's pagehide save its own
+  // default board over the fixture (37, measured: it only showed once the default brick length moved off 1 in)
+  await reloadWithSession(M.sessionKey, body);
   const z1 = await heightsSettled(null);
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
@@ -829,8 +833,10 @@ async function frameUiRead() { return jsJSON(frameUiState()); }
 // Reload with `key` = `value` in localStorage as the app starts. MEASURED: seeding storage and then reloading a
 // DIRTY page loses the seed -- the page saves its own session on the way out, over it. A one-shot script that runs
 // at the start of the next document (after that save, before the app reads storage) cannot be overwritten.
-async function reloadWithSession(key, value) {
-  const added = await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.clear(); localStorage.setItem(${JSON.stringify(key)}, ${JSON.stringify(value)}); } catch (e) {}` });
+async function reloadWithSession(key, value) { return reloadWithStorage({ [key]: value }); }
+// The same, for any set of keys: localStorage is exactly `entries` as the next document starts.
+async function reloadWithStorage(entries) {
+  const added = await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.clear(); for (const [k, v] of Object.entries(${JSON.stringify(entries)})) localStorage.setItem(k, v); } catch (e) {}` });
   try { await send('Page.reload', {}); await waitApp(); }
   finally { await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: added.result.identifier }); }
 }
