@@ -7,6 +7,7 @@
  */
 export { bricksAlongPath } from './along-path.js';
 export { bricksFillShape } from './fill-shape.js';
+export { strokesToRegion } from './region.js'; // T86 item 18: painted strokes -> the wall's region
 export { bricksContourBands, bandFrameAt } from './contour-bands.js';
 // T86 item 2: `ribbonPieces` itself -- the per-row primitive `bricksContourBands` already calls
 // internally, now exported directly too (sequence/forcedFStart params included) for a consumer that

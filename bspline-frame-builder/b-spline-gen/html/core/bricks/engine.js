@@ -10,6 +10,7 @@
  * sampler below is a SECOND, DERIVED output built from that same brick list.
  */
 import { bricksFillShape } from './fill-shape.js';
+import { strokesToRegion } from './region.js';
 import { bricksContourBands } from './contour-bands.js';
 import { pointInPolygon } from './geometry.js';
 import { brickTopHeight } from './height-profile.js';
@@ -50,6 +51,8 @@ export const ENGINE_OPTIONS = Object.freeze([
   'largeStones', // T86 item 17
   'exclusions', // T86 item 13
   'bandFit', // T86 item 28: false = draw the frame stack as requested (icons); default: the fit rule
+  'rotationDeg', // T86 item 29: the wall pattern turned by this angle (0 / 45 / 90 chips); default 0
+  'wallRegion', // T86 item 18: the wall lays only in the painted areas (wallRegionOf)
 ]);
 
 export function generateBricks(input) {
@@ -86,6 +89,7 @@ export function generateBricks(input) {
     bandsReduced = res.bandsReduced;
   }
 
+  const region = wallRegionOf(input.wallRegion, set);
   const bricks = input.skipWallFill ? [] : bricksFillShape(interiorOutline, null, {
     set, seed, scale,
     suppression: input.suppression ?? 0,
@@ -93,12 +97,25 @@ export function generateBricks(input) {
     clumping: input.clumping ?? 0.3,
     zones: input.zones,
     largeStones: input.largeStones,
+    rotationDeg: input.rotationDeg,
     exclusions: input.exclusions,
+    region,
   }).bricks;
   // T86 item 13: the app's own stub (editor-brick-tool.js dropExcludedWallBricks) stands down when this is set
-  const notes = bandsReduced ? { bandsReduced } : {};
+  const notes = { ...(bandsReduced ? { bandsReduced } : {}), ...(input.wallRegion ? { wallRegionApplied: true } : {}) };
   if (Array.isArray(input.exclusions)) return { bricks, frameBricks, seed, exclusionsApplied: true, ...notes };
   return { bricks, frameBricks, seed, ...notes };
+}
+
+/** T86 item 18: the wall's region from `input.wallRegion` -- { strokes: [{ points, widthIn }], minus: [...] } (each
+ *  NEWER area's strokes; region.js strokesToRegion, the minus grown by the wall set's grout so two areas never butt),
+ *  or ready-made { polygons: [{ outer, holes }] } (strokesToRegion's own output). Missing, or no strokes and no
+ *  polygons = undefined = the full fill as before. */
+export function wallRegionOf(wallRegion, set) {
+  if (!wallRegion) return undefined;
+  if (Array.isArray(wallRegion.polygons)) return wallRegion.polygons;
+  if (!Array.isArray(wallRegion.strokes) || !wallRegion.strokes.length) return undefined;
+  return strokesToRegion(wallRegion.strokes, wallRegion.minus || [], { gapIn: set && set.grout ? set.grout.widthIn : 0 }).polygons;
 }
 
 /** A simple grid-bucket spatial index over a brick list, so repeated point queries (a terrain

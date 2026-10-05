@@ -22095,3 +22095,41 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
 - geometry.js signedArea header corrected to what it measures (negative = counter-clockwise, y up; -1 on a unit square).
 - FOR T86 16(c) part 2: T18 7x9 single_soldier at 1.5 in has open wedges at its top fan corners (identical before and
   after the band-overrun clip + the fit rule: a fan void, not an overrun) -- shots/seatB/item28_before_after.png, row 2.
+
+## T86 item 29 -- pattern rotation (seat B / 88, 2026-10-05)
+- generateBricks `rotationDeg` (ENGINE_OPTIONS 'rotationDeg', so 37's 0/45/90 chips gate on it) -> bricksFillShape
+  -> fill-shape.js rotatedFill: the outline (holes, exclusions, fences too) turned by -angle about the outline's bbox
+  centre, laid exactly as at 0 (same seed; every layout's own clip against the turned outline, so no new clip code),
+  each brick turned back. Absent / 0 = the plain path, byte-identical. Wall only: the brush follows its own path and
+  the frame its contour, so neither reads it (37's proposal: Wall only for now).
+- Tests bricks-pattern-rotation: running bond at 45 / 90 on a 7x9 -> every whole brick's long axis at the angle
+  (< 0.01 deg), pieces 0.8-1.25x the 0 count, all inside the board; herringbone at 45; exclusions turn with it; 0 =
+  absent byte-identical. Rotation off -> 3/6 fail. Bricks domain + core/bricks importers 84 files / 825 pass.
+- Shot: shots/seatB/item29_rotation.png (T1 7x9 Soldier frame, 1.25 in: running bond 0 / 45 / 90, herringbone 45).
+
+## T86 item 18 -- painted strokes -> the wall's region (seat B / 88, 2026-10-05)
+- Contract (agreed with 37 earlier): generateBricks `wallRegion: { strokes: [{points, widthIn}], minus: [<each NEWER
+  area's strokes>] }` or ready-made `{ polygons: [{outer, holes}] }`; missing / no strokes = the full fill as before;
+  `wallRegionApplied: true` whenever it is given; 'wallRegion' in ENGINE_OPTIONS. Exported: core/bricks/region.js
+  strokesToRegion(strokes, minus, {gapIn}) -> { polygons: [{ outer, holes }] } (also from core/bricks/index.js), so the
+  app can draw the area outline from the same math.
+- Region = the zero contour of a distance field (inside = within widthIn/2 of a stroke AND beyond widthIn/2 + gapIn of
+  every newer stroke; the engine passes the wall set's grout as gapIn, so two areas never butt), traced by marching
+  squares with linear interpolation (grid 0.04 in or a third of the thinnest brush; saddles resolved by the cell
+  centre). Unions, a stroke crossing itself, rings with their holes and the minus all come out as simple loops, no
+  polygon boolean engine needed. Outers counter-clockwise (signedArea < 0), holes clockwise, each hole given to the
+  smallest outer that contains it.
+- The wall lays as usual over its outline (frame inner path or board), then fill-shape clipCellsToRegion keeps each
+  cell's part inside the region (inside cells untouched; edge cells cut by polygonIntersection; holes cut out by
+  polygonDifference); the bond stays aligned to the board across areas. The exclusion cut and the region clip now
+  share recutCells (fresh ids, the quarter floor, neighbour links cleared). Rotation (item 29) turns the region too.
+- Tests bricks-wall-region (11): capsule / union / ring-with-hole / minus areas against closed forms (1%); through the
+  engine -- two overlapping strokes (bricks only inside, no overlap, > 97% of the inset region covered), a stroke across
+  T1's frame band (no wall brick on a band: the seam's own hairline 0.0006 sq in is the same with or without a
+  region), newest wins (older bricks clear of the newer area grown by 0.9 grout), empty = the full fill, rotation.
+  Region clip off -> 4/11 fail. tests/brick-element-select.test.js (37's): its "Area hidden until the engine lists
+  wallRegion" step now removes wallRegion in its own mock (both states still tested). Bricks domain + core/bricks
+  importers 85 files: green alone (N2 / N7 / template_19 time out only under the full parallel load, pass alone).
+- OPEN for the advisor: listing 'wallRegion' shows 37's Area sub-tool by itself; until 37's slice 2 sends strokes it
+  would be a tool that does nothing on the live site -> merge with 37's slice 2, not alone.
+- Shot: shots/seatB/item18_wall_region.png.
