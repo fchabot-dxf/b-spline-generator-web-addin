@@ -24,7 +24,7 @@ import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, bricksLayerOf, BRICK_KINDS,
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
-  BRICK_SET_IDS, elementSetId, isRockFrame,
+  BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR,
 } from '../editor/editor-brick-tool.js';
 import { ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
@@ -848,24 +848,28 @@ const _layoutKey = () => {
   const base = `${_settingsKey()}#frame:${_frameKey()}`;
   return brush ? `${base}#brush:${brush}` : base;
 };
-// Audit B1-B3: the settings the Wall/Frame bricks on the canvas were laid with live ON the Bricks
-// layer (`brickLaidKey`, stamped by runBricks before its undo commit, persisted with the layer
-// roster), so undo/redo, Cancel and reload all carry them. Since item 27 nothing is ever PENDING (every
-// change re-lays at once); the key stays the record of what is on the canvas, and the frame re-lay below
-// reads its frame part.
+// Audit B1-B3 + item 22 step 3: the settings an element's bricks were laid with live ON that element's record
+// (BRICK_LAID_ATTR, stamped by runBricks before its undo commit, saved in the drawing), so undo/redo, Cancel and
+// reload all carry them. Since item 27 nothing is ever PENDING (every change re-lays at once); the key stays the
+// record of what is on the canvas, and the frame / brush re-lays below read its parts.
 
-function _laidLayoutKey() {
-  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  return bricksLayerOf(editor)?.brickLaidKey ?? null;
+const _hasRecords = (editor) => BRICK_KINDS.some((kind) => !!brickRecordNode(editor, kind));
+/** The key `kind`'s bricks were laid with: its record's. A board saved before item 22 has no records yet -- its
+ *  brick layer's one shared `brickLaidKey` stands in until the record migration (slice 1 step 5). */
+function _laidKeyOf(editor, kind) {
+  const rec = brickRecordNode(editor, kind);
+  if (rec) return rec.getAttribute(BRICK_LAID_ATTR);
+  return _hasRecords(editor) ? null : (bricksLayerOf(editor)?.brickLaidKey ?? null);
 }
 
-/** The element kinds whose Generate-laid bricks are on the canvas now. */
+/** The element kinds on the board: those with a record (item 22: an element exists by its record, even laid
+ *  to zero bricks -- audit B1), plus, on a board saved before item 22, the old shared laid kinds and the bricks
+ *  on the canvas. */
 function _presentKinds(editor) {
   const node = editor?._sketchLayer?.node;
-  // blind-spot audit B1: + the kinds the last lay was FOR (the Bricks layer's brickLaidKinds) -- a Wall the frame
-  // bands squeezed to zero bricks has nothing on the canvas, yet it is still the board's wall and must come back
-  const laid = bricksLayerOf(editor)?.brickLaidKinds || [];
-  return BRICK_KINDS.filter((kind) => laid.includes(kind) || !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`));
+  const legacy = _hasRecords(editor) ? [] : (bricksLayerOf(editor)?.brickLaidKinds || []);
+  return BRICK_KINDS.filter((kind) => !!brickRecordNode(editor, kind) || legacy.includes(kind)
+    || !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`));
 }
 
 /** Audit v2 N5: does the board have Wall/Frame bricks? The live canvas, or the saved drawing while the editor
@@ -876,10 +880,9 @@ function _bricksLaid() {
   return typeof P.editorSvg === 'string' && /data-brick="(wall|frame)"/.test(P.editorSvg);
 }
 
-/** F35 item 27: the frame part of the laid key (`#frame:` -- the frame record + board size the bricks on the
- *  canvas were laid on), or null when the key has none (no bricks laid, or laid before turn 207). */
-function _laidFrameKey() {
-  const laid = _laidLayoutKey();
+/** F35 item 27: the frame part of a laid key (`#frame:` -- the frame record + board size those bricks were laid
+ *  on), or null when the key has none (no bricks laid, or laid before turn 207). */
+function _framePartOf(laid) {
   const at = laid ? laid.indexOf('#frame:') : -1;
   if (at < 0) return null;
   const rest = laid.slice(at + '#frame:'.length);
@@ -892,9 +895,10 @@ function _laidFrameKey() {
  *  being dragged (Cowork's handoff: one re-lay when the drag settles, not one per drag tick). Only a REAL frame
  *  write triggers it ('frameRecordChanged'; a tab switch never does, so an old board is never re-laid by
  *  surprise), and only when the bricks were laid on a different frame than the current one. */
-/** F35 item 27: the brush part of the laid key (null = no key on the layer). */
+/** F35 item 27: the brush part of the WALL's laid key -- the strokes it flows around (null = no key). */
 function _laidBrushKey() {
-  const laid = _laidLayoutKey();
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  const laid = _laidKeyOf(editor, 'wall');
   if (laid == null) return null;
   const at = laid.indexOf('#brush:');
   return at < 0 ? '' : laid.slice(at + '#brush:'.length);
@@ -927,7 +931,9 @@ function _relayIfFrameChanged() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (!editor || !_presentKinds(editor).length) return;
   if (editor._frameHandleDrag) { _frameRelayTimer = setTimeout(_relayIfFrameChanged, FRAME_RELAY_SETTLE_MS); return; } // still dragging: wait for the release
-  if (_laidFrameKey() === _frameKey()) return; // already laid on this frame
+  // item 22 step 3: per element -- re-lay when ANY element on the board was laid on another frame
+  const frameKey = _frameKey();
+  if (_presentKinds(editor).every((kind) => _framePartOf(_laidKeyOf(editor, kind)) === frameKey)) return;
   const amend = _frameRelayAmend;
   _frameRelayAmend = null;
   generateBricks({ amend });

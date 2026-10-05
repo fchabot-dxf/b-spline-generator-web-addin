@@ -13599,3 +13599,34 @@ the lay; laid key per element after that.
 - Test (brick-element-records, +1): after a slice-1 lay (records + owners, plus a brush brick), the download and
   getLayerSvg equal the SAME drawing with the records and Wall/Frame owners removed. The brush owner stays.
   Mutation (the strip reverted) -> it fails. Whole vitest: 4395 passed, 0 failed.
+
+### turn 229 -- item 22 slice 1, STEP 3 of 5: the laid key PER ELEMENT (seat 37)
+
+- `BRICK_LAID_ATTR = 'data-brick-laid'` on each element's record.
+  - runBricks stamps the lay's key on every LAID element's record before its undo commit (so undo snapshots, the
+    saved drawing and Cancel carry it).
+  - A lay of one element re-keys only that element.
+  - The brick layer's shared `brickLaidKey` / `brickLaidKinds` are no longer written.
+- **brick-panel reads per element:**
+  - `_laidKeyOf(editor, kind)` = the record's key;
+  - `_presentKinds` = elements with a record (an element exists by its record, even laid to zero bricks, so B1's
+    fix is now structural) + bricks on the canvas;
+  - the frame re-lay runs when ANY present element was laid on another frame (`_framePartOf` each element's
+    key);
+  - the brush re-lay reads the WALL's key.
+- **A board saved before item 22 (no records yet):** the old shared layer key + laid kinds still stand in
+  (`_laidKeyOf` / `_presentKinds` fall back only when the board has no record at all) until step 5 migrates it.
+  The existing panel tests, whose runBricks mocks write the layer key, exercise exactly that fallback.
+- **Tests:**
+  - brick-laid-key rewritten for records (4): the key on every laid element before the commit; a one-element lay
+    re-keys only it; a preview lay leaves keys alone; the key is in the saved drawing. The legacy-roster tests
+    are kept, renamed "a board saved BEFORE item 22".
+  - New brick-element-laid-key-panel (2): records carry keys; a frame change re-lays once and the same frame
+    again lays nothing; ONE element laid on another frame is enough.
+  - Against the pre-step-3 code 5/6 fail. The last one passes there because the old code read no key on a
+    records board and re-laid every time; the first test's "same frame again lays nothing" pins that.
+- **Live:**
+  - both records carry keys and no shared layer key is written;
+  - a frame change = exactly 1 new undo step (the re-lay); the same frame again = 0;
+  - every wall brick is owned by the wall record.
+- Whole vitest: 269 files, **4399 passed, 0 failed**.

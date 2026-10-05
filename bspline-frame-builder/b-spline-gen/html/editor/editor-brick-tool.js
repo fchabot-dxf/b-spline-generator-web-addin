@@ -209,6 +209,11 @@ function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn, ownerId 
  *  BRICK_OWNER_ATTR = that id. Brush strokes already are records (their spines). Slice 2's painted areas add
  *  'wall-area' records; until then there is one 'wall-full' and one 'frame'. */
 export const BRICK_RECORD_KINDS = Object.freeze({ wall: 'wall-full', frame: 'frame' });
+/** Step 3: the key of the settings (+ frame + brush strokes) an element's bricks were laid with, on its record --
+ *  per element, so a lay of one element never makes the other's key lie. Replaces the brick layer's one shared
+ *  `brickLaidKey` (+ `brickLaidKinds`), which a board saved before item 22 still carries until its records are
+ *  migrated (slice 1 step 5). */
+export const BRICK_LAID_ATTR = 'data-brick-laid';
 export { BRICK_RECORD_ATTR };
 export function brickRecordNode(editor, kind) {
   const node = editor && editor._sketchLayer && editor._sketchLayer.node;
@@ -642,21 +647,19 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0 };
 }
 
-/** `laidKey` (audit B1-B3): the caller's key for the settings this run lays. It is stamped on the
- *  Bricks layer as `brickLaidKey` BEFORE the undo commit, so every undo snapshot, the saved layer
- *  roster (editor-io.js) and Cancel's restored document all carry the key of the bricks they hold. */
+/** `laidKey` (audit B1-B3): the caller's key for the settings this run lays. Item 22 step 3: it is stamped on
+ *  each LAID element's record (BRICK_LAID_ATTR) BEFORE the undo commit, so every undo snapshot, the saved
+ *  drawing and Cancel's restored document all carry the key of the bricks they hold. */
 export function runBricks(editor, settings, frameGeom, { laidKey, kinds, amend } = {}) {
   const counts = _generateAndDraw(editor, settings, frameGeom, kinds);
-  // item 22: each laid element's record keeps the settings it was laid with (its own, per element)
+  // item 22: each laid element's record keeps the settings it was laid with (its own, per element) and, from a
+  // committed lay, the key of them (step 3). The record itself is what makes the element exist (audit B1: a Wall
+  // the bands squeezed to zero bricks keeps its record, so the next lay brings it back).
   for (const kind of (kinds || BRICK_KINDS)) {
-    brickRecordNode(editor, kind)?.setAttribute(BRICK_SETTINGS_ATTR, JSON.stringify(elementSettings(settings, kind)));
-  }
-  if (laidKey != null) {
-    const layer = ensureBricksLayer(editor);
-    layer.brickLaidKey = laidKey;
-    // blind-spot audit B1: the element KINDS this lay was for -- a Wall the frame bands squeezed to ZERO bricks
-    // is still the board's wall (nothing of it on the canvas to read back), so the next lay brings it back
-    layer.brickLaidKinds = [...(kinds || BRICK_KINDS)];
+    const rec = brickRecordNode(editor, kind);
+    if (!rec) continue;
+    rec.setAttribute(BRICK_SETTINGS_ATTR, JSON.stringify(elementSettings(settings, kind)));
+    if (laidKey != null) rec.setAttribute(BRICK_LAID_ATTR, laidKey);
   }
   commitEdit(editor, { amend }); // audit B9: `amend` = the step a frame undo's re-lay corrects in place
   notifyBricksGenerated(settings);
