@@ -158,7 +158,7 @@ export const REQUIRES_SOURCE = Array.isArray(appRequires) ? 'app (main/brick-con
 //   bricks: { name, kind } -- the canvas holds bricks of that kind and every one of them is painted
 export const PERSIST_BOARD = {
   setup: [
-    { tool: 'wall' }, click('brickSetWhite'), click('brickPattern_herringbone'), click('brickSizePreset_half1'),
+    { tool: 'wall' }, click('brickSetWhite'), click('brickPattern_herringbone'), click('brickSizePreset_quarter3'),
     set('brickLevel_wall', 0.0625), click('brickGenerate'),
     { tool: 'frame' }, click('brickFramePreset_three_band'), click('brickGenerate'),
     { tool: 'brush' }, { stroke: [[0.3, 0.45], [0.7, 0.45]] },
@@ -168,7 +168,7 @@ export const PERSIST_BOARD = {
   panel: [
     { name: 'Set: White Rocks', active: 'brickSetWhite' },
     { name: 'Wall pattern: Herringbone', active: 'brickPattern_herringbone' },
-    { name: 'Brick size 1.5', value: ['brickSize', 1.5] },
+    { name: 'Brick size 0.75', value: ['brickSize', 0.75] },
     { name: 'Wall Level 1/16', value: ['brickLevel_wall', 0.0625] },
     { name: 'Frame preset: 3-band', active: 'brickFramePreset_three_band' },
     { name: 'Surface: Weathered', active: 'brickSurfaceStyle_weathered' },
