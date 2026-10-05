@@ -10,7 +10,7 @@ import { brickSetById } from '../bspline-frame-builder/b-spline-gen/html/core/br
 describe('the default brick grout is Set 1 (Red Brick)\'s own', () => {
   const set1 = brickSetById(1);
   it('width and depth match the set (re-picking Red Brick changes nothing)', () => {
-    expect(DEFAULT.brickSettings.setId).toBe(1);
+    expect(DEFAULT.brickSettings.setIds).toEqual({ wall: 1, frame: 1, brush: 1, raisedBrush: 1 }); // item 23: per element
     expect(DEFAULT.brickSettings.grout.widthIn).toBe(set1.grout.widthIn);
     expect(DEFAULT.brickSettings.grout.depthIn).toBe(set1.grout.depthIn);
   });

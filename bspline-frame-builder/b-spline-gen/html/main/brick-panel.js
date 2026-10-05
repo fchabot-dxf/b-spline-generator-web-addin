@@ -24,6 +24,7 @@ import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, BRICKS_LAYER_NAME, BRICK_KINDS,
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
+  BRICK_SET_IDS, elementSetId, isRockFrame,
 } from '../editor/editor-brick-tool.js';
 import { ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
@@ -51,20 +52,22 @@ import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-
  * `run` is this file's own entry point for that tool (not re-exported --
  * core/bricks/ itself stays engine-agnostic of "how a UI triggers it"). */
 const BRICK_TOOLS = [
-  { id: 'brush', buttonId: 'brickTool_brush', label: 'Brush', icon: '✏️', settingsSection: 'brickBrushSection',
+  // `ownsSet` (F35 item 23): the tool lays an ELEMENT with its own brick set (P.brickSettings.setIds[tool id]);
+  // the Set row edits the active tool's.
+  { id: 'brush', buttonId: 'brickTool_brush', label: 'Brush', icon: '✏️', settingsSection: 'brickBrushSection', ownsSet: true,
     hint: 'Click here, then drag a stroke on the canvas to lay bricks along it.' },
   // F35 item 16 (turn 201): the RAISED BRUSH -- a variant of Brush (`variantOf`: the same brickBrush mode,
   // same stroke machinery) whose strokes carry `strokeOverrides` (its Level + mode), frozen per stroke.
-  { id: 'raisedBrush', buttonId: 'brickTool_raisedBrush', label: 'Raised brush', icon: '⏫', settingsSection: 'brickRaisedSection',
+  { id: 'raisedBrush', buttonId: 'brickTool_raisedBrush', label: 'Raised brush', icon: '⏫', settingsSection: 'brickRaisedSection', ownsSet: true,
     variantOf: 'brush', strokeOverrides: () => ({ levelIn: P.brickSettings.raisedLevelIn, strokeMode: P.brickSettings.raisedMode }),
     hint: 'Drag a stroke: bricks laid proud of the others by Level.' },
   // `generates` (audit C9): Generate re-lays this tool's output, so the pinned Generate shows for it.
   // Brush/Scissors/Stripe act on drawn strokes, whose settings freeze at draw time.
   // `lays` (audit C1): the ONE element kind this tool lays (editor-brick-tool.js BRICK_KINDS). Picking the
   // tool only shows its settings (audit C2); Generate lays it.
-  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true, lays: 'wall',
+  { id: 'wall', buttonId: 'brickTool_wall', label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true, lays: 'wall', ownsSet: true,
     hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Press Generate to lay it.' },
-  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame',
+  { id: 'frame', buttonId: 'brickTool_frame', label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
     hint: 'Bands of bricks along the frame\'s contour (or the board\'s edge with Offset from frame off). Press Generate to lay them.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
@@ -86,9 +89,34 @@ let _frameListenerWired = false;
 
 function notifyChange() { saveLastSession(); }
 
+/** F35 item 23: the Set row lists the BRICK sets (editor-brick-tool.js BRICK_SET_IDS, from each set's declared
+ *  layout -- a new brick set appears by itself) and edits the ACTIVE tool's element (BRICK_TOOLS `ownsSet`;
+ *  the Wall with no element tool active). A rock element (Fieldstone) shows no brick set active. */
+const SET_LABELS = { 1: 'Red Brick' };
+const _setLabel = (id) => SET_LABELS[id] || (brickSetById(id) || {}).name || `Set ${id}`;
+const SET_KINDS = () => BRICK_TOOLS.filter((t) => t.ownsSet).map((t) => t.id);
+function _setKind() {
+  const tool = BRICK_TOOLS.find((t) => t.id === _activeTool);
+  return tool && tool.ownsSet ? tool.id : 'wall';
+}
+
+function renderSetRow(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const id of BRICK_SET_IDS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = `brickSet_${id}`;
+    btn.className = 'cad-btn brick-set-btn';
+    btn.textContent = _setLabel(id);
+    btn.addEventListener('click', () => selectSet(id));
+    container.appendChild(btn);
+  }
+}
+
 function syncSetPicker() {
-  document.getElementById('brickSetRed')?.classList.toggle('active', P.brickSettings.setId === 1);
-  document.getElementById('brickSetWhite')?.classList.toggle('active', P.brickSettings.setId === 3);
+  const current = elementSetId(P.brickSettings, _setKind());
+  for (const id of BRICK_SET_IDS) document.getElementById(`brickSet_${id}`)?.classList.toggle('active', id === current);
   syncQuickSettings();
   syncLargeStonesRow();
 }
@@ -104,10 +132,16 @@ function syncSetPicker() {
  *  user who picked "2 inch bricks" means 2 inches regardless of which photo
  *  texture is applied, the same way Wall/Brush's own old relative Scale
  *  multiplier never needed a reset either. */
-export function selectSet(setId, commit = 'generate') {
+export function selectSet(setId, commit = 'generate', kinds = [_setKind()]) {
   const set = brickSetById(setId);
-  if (!set) return;
-  P.brickSettings.setId = setId;
+  if (!set || !BRICK_SET_IDS.includes(setId)) return;
+  P.brickSettings.setIds = { ...(P.brickSettings.setIds || {}) };
+  for (const kind of kinds) {
+    P.brickSettings.setIds[kind] = setId;
+    // a brick set on a ROCK element turns it back into bricks (the Fieldstone pattern is what made it rock)
+    if (kind === 'wall' && P.brickSettings.pattern === 'fieldstone') P.brickSettings.pattern = DEFAULT_WALL_PATTERN;
+    if (kind === 'frame' && isRockFrame(P.brickSettings)) P.brickSettings.frameBandPatterns = [];
+  }
   P.brickSettings.grout.widthIn = set.grout.widthIn;
   syncSetPicker();
   syncControlsFromState();
@@ -1080,8 +1114,22 @@ function renderFramePresetList(container) {
   }
 }
 
+/** F35 item 23: the frame's rock state -- every band of the current preset fieldstone (rock), or back to the
+ *  preset's own patterns (the Set row does that, through selectSet). */
+export function setFrameRock(rock, commit = 'generate') {
+  const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || [];
+  P.brickSettings.frameBandPatterns = rock ? bands.map(() => 'fieldstone') : [];
+  renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
+  syncFrameBandPatternButtons();
+  syncSetPicker();
+  commitBrickSetting(commit);
+}
+
 export function setFrameBandPreset(presetId, commit = 'generate') {
+  const wasRock = isRockFrame(P.brickSettings);
   P.brickSettings.frameBandPreset = presetId;
+  // a rock frame stays rock with another band count: every band of the new preset fieldstone
+  if (wasRock) P.brickSettings.frameBandPatterns = (FRAME_PRESETS[presetId] || []).map(() => 'fieldstone');
   syncFramePresetButtons();
   // F35 item 8: a different preset can have a different BAND COUNT, so the per-band pattern
   // picker is fully re-rendered here (not just re-synced) every time the preset changes.
@@ -1138,6 +1186,8 @@ const WALL_PATTERN_LABELS = {
   flemish: 'Flemish', herringbone: 'Herringbone', basketweave: 'Basketweave',
   fieldstone: 'Fieldstone',
 };
+// item 23: what a ROCK wall becomes when a brick set is picked for it
+const DEFAULT_WALL_PATTERN = 'stretcher';
 const WALL_PATTERN_LIST = Object.keys(BRICK_PATTERNS).map((id) => ({ id, label: WALL_PATTERN_LABELS[id] || id }));
 
 /** F35 item 13 (Fred's sheets: "group the picker into families"): the Wall pattern picker's FAMILIES, in
@@ -1192,6 +1242,7 @@ function renderWallPatternList(container) {
 export function setWallPattern(patternId, commit = 'generate') {
   P.brickSettings.pattern = patternId;
   syncWallPatternButtons();
+  syncSetPicker(); // item 23: Fieldstone makes the wall rock (no brick set active), another pattern gives it back
   commitBrickSetting(commit);
 }
 
@@ -1215,11 +1266,13 @@ function renderFrameBandPatternList(container) {
   container.innerHTML = '';
   const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || FRAME_PRESETS.single_soldier;
   // Audit K2: a preset with no bands (None) has no band rows -- its heading goes too.
-  // Audit v2 N3: White Rocks bands are fieldstone, so the per-band patterns are hidden (declared requires).
-  const show = bands.length && !_hiddenUntilMet('brickFrameBandPatternList');
+  const show = bands.length > 0;
   const heading = document.getElementById('brickFrameBandPatternLabel');
   if (heading) heading.style.display = show ? '' : 'none';
   container.style.display = show ? '' : 'none';
+  // F35 item 23: a ROCK frame (fieldstone bands) offers only the fieldstone band (the engine lays every band of a
+  // rock frame as the fieldstone ring); a brick frame offers the brick patterns + every `bandCapable` one
+  const rock = isRockFrame(P.brickSettings);
   bands.forEach((band, i) => {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex; gap:4px; margin-bottom:4px; flex-wrap:wrap; align-items:center;';
@@ -1229,12 +1282,16 @@ function renderFrameBandPatternList(container) {
     row.appendChild(label);
     for (const pattern of WALL_PATTERN_LIST) {
       const def = BRICK_PATTERNS[pattern.id];
+      if (rock && pattern.id !== 'fieldstone') continue;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'cad-btn';
       btn.id = `brickFrameBandPattern_${i}_${pattern.id}`;
       btn.textContent = pattern.label;
-      if (def && (def.kind === 'tile2d' || def.kind === 'none')) {
+      if (def && def.bandCapable) {
+        // picking it on one band makes the whole frame rock: every band fieldstone (one set per element)
+        btn.addEventListener('click', () => setFrameRock(true));
+      } else if (def && (def.kind === 'tile2d' || def.kind === 'none')) {
         btn.disabled = true;
         btn.title = def.kind === 'none' ? 'A band needs a real pattern -- use the Frame band preset\'s own None instead' : 'Wall only for now';
         btn.style.opacity = '0.4';
@@ -1281,7 +1338,8 @@ function selectTool(id) {
   const tool = BRICK_TOOLS.find((t) => t.id === id);
   if (id === 'brush' || (tool && tool.variantOf === 'brush')) {
     editor._brickSettings = P.brickSettings; // same object, mutated in place -- see header
-    editor._brickStrokeOverrides = (tool && tool.strokeOverrides) || null; // turn 201: a variant's own stroke fields
+    // turn 201: a variant's own stroke fields; item 23: + the tool's own set, frozen into each stroke
+    editor._brickStrokeOverrides = () => ({ setId: elementSetId(P.brickSettings, tool.id), ...(tool.strokeOverrides ? tool.strokeOverrides() : {}) });
     editor.setMode('brickBrush');
     return;
   }
@@ -1333,10 +1391,11 @@ const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: F
  *  2D settings mirrored from the editor's Brick tab -- the SAME P.brickSettings and the SAME setters,
  *  committed 'auto' (re-lay at once), the sidebar's own rule. Declared here as data: each row names its
  *  choices (the editor's own declared lists), which choice is current, and how to apply one. */
-const BRICK_SET_CHOICES = [{ id: 1, label: 'Red Brick' }, { id: 3, label: 'White Rocks' }];
+// F35 item 23: the brick sets (rock is implied by the Fieldstone pattern); the sidebar's quick Set applies to ALL
+// elements at once
 const BRICK_QUICK_SETTINGS = [
-  { id: 'set', label: 'Set', choices: () => BRICK_SET_CHOICES,
-    isCurrent: (c) => c.id === P.brickSettings.setId, apply: (c) => selectSet(c.id, 'auto') },
+  { id: 'set', label: 'Set', choices: () => BRICK_SET_IDS.map((id) => ({ id, label: _setLabel(id) })),
+    isCurrent: (c) => SET_KINDS().every((k) => elementSetId(P.brickSettings, k) === c.id), apply: (c) => selectSet(c.id, 'auto', SET_KINDS()) },
   { id: 'size', label: 'Brick size', choices: () => BRICK_SIZE_PRESETS,
     isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
   { id: 'pattern', label: 'Wall pattern', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternIconSvg(c.id, 24),
@@ -1512,10 +1571,7 @@ export function initBrickPanel() {
   syncBrickSizePresetButtons();
   renderQuickSettings(document.getElementById('brickQuickSettings'));
 
-  document.getElementById('brickSetRed')?.addEventListener('click', () => selectSet(1));
-  // F35 item 4 (c): White Rocks (Set 3, f3's item 74 fieldstone layout) is
-  // now real -- un-greyed, selectable like Red Brick.
-  document.getElementById('brickSetWhite')?.addEventListener('click', () => selectSet(3));
+  renderSetRow(document.getElementById('brickSetRow')); // item 23: from the brick sets' declarations
 
   bindBrickSizeControls();
   bindGroutField('brickGroutWidth', 'widthIn');

@@ -86,7 +86,11 @@ export const DEFAULT = {
     // grout/reliefIn start at Set 1's own declared values (library.js) so the
     // panel shows real numbers on first use, not a second, independent guess.
     brickSettings: {
-      setId: 1,
+      // F35 item 23: the brick SET per element (keyed by Brick tool: wall / frame / brush / raisedBrush) -- a
+      // BRICK set (editor-brick-tool.js BRICK_SET_IDS); the ROCK set is never stored here, the Fieldstone pattern
+      // implies it. Brick size and grout stay global. A save from before item 23 carries one `setId` instead
+      // (main/app-init.js MIGRATIONS 'brick-set-per-element' converts it).
+      setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 },
       // F35 item 16 (Fred: "I'd rather they all have the same size" -- replacing the old 0.5-2x
       // Scale multiplier AND the separate frameBrickLengthIn override that used to live here):
       // ONE global brick LENGTH in real inches (0.375-8), shared by Wall, every Frame band, and

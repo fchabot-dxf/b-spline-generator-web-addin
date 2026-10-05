@@ -3167,10 +3167,9 @@
                  sharedRows: false (main/brick-panel.js BRICK_TOOLS: Stripe) hides them -->
             <div id="brickSharedSet">
             <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Set</label>
-            <div style="display:flex; gap:6px; margin-bottom:12px;">
-              <button type="button" id="brickSetRed" class="cad-btn brick-set-btn active" title="Red brick (Masonry)">Red Brick</button>
-              <button type="button" id="brickSetWhite" class="cad-btn brick-set-btn" title="White rocks (fieldstone, Masonry)">White Rocks</button>
-            </div>
+            <!-- F35 item 23: rendered from the BRICK sets' declarations (main/brick-panel.js renderSetRow); the rock
+                 set is implied by the Fieldstone pattern. Per element: it edits the active tool's set. -->
+            <div id="brickSetRow" style="display:flex; gap:6px; margin-bottom:12px;"></div>
             </div>
 
             <!-- F35 item 10 follow-up (Fred): the Brush tool's own section, shown only while Brush

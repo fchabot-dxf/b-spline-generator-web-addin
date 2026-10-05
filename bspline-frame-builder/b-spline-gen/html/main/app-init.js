@@ -23,7 +23,8 @@ import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 import { FRAME_DEFS, frameParam, normalizeFrameRecord } from '../core/frame-record.js';
 import { syncFramePanel } from './frame-panel.js';
 import { endEditorSession } from '../editor/editor-text-session.js';
-import { brickSetById } from '../core/bricks/library.js';
+import { brickSetById, FRAME_PRESETS } from '../core/bricks/library.js';
+import { ROCK_SET_ID, BRICK_SET_IDS } from '../editor/editor-brick-tool.js';
 
 /** The frame a fresh start opens on (data/frame-defs: "Template 1 - Hourglass"). */
 const FRESH_START_FRAME_TEMPLATE = 'template_1';
@@ -520,6 +521,26 @@ export const MIGRATIONS = [
       p.brickSettings.brickLengthIn = set.brickLengthIn * p.brickSettings.scale;
       delete p.brickSettings.scale;
       delete p.brickSettings.frameBrickLengthIn;
+    },
+  },
+  {
+    id: 'brick-set-per-element',
+    // F35 item 23: one board-wide `setId` -> a set per element (`setIds`). A board that was on the ROCK set
+    // (White Rocks, which leaves the Set row) becomes the Fieldstone pattern on its Wall and fieldstone bands on
+    // its Frame -- the same stones, now implied by the pattern; its elements' brick set falls back to the first
+    // brick set. Runs after the size migration above (which still reads the old `setId`).
+    when: (p) => p.brickSettings && !p.brickSettings.setIds,
+    apply: (p) => {
+      const b = p.brickSettings;
+      const old = b.setId ?? 1;
+      const rock = old === ROCK_SET_ID;
+      const base = rock || !BRICK_SET_IDS.includes(old) ? (BRICK_SET_IDS[0] ?? 1) : old;
+      b.setIds = { wall: base, frame: base, brush: base, raisedBrush: base };
+      if (rock) {
+        b.pattern = 'fieldstone';
+        b.frameBandPatterns = (FRAME_PRESETS[b.frameBandPreset] || []).map(() => 'fieldstone');
+      }
+      delete b.setId;
     },
   },
 ];

@@ -55,7 +55,7 @@ import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
 import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon } from '../core/bricks/index.js';
-import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS } from '../core/bricks/library.js';
+import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
 import { rectToPrimitives } from '../core/inset-window.js';
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
@@ -298,6 +298,29 @@ function setForId(id) {
   return brickSetById(id) || brickSetById(1);
 }
 
+/** F35 item 23 (Fred: "a frame of fieldstone and a wall of soldier"; then "so white rocks and fieldstone is
+ *  different?" -> folded). ONE source of truth, each set's declared `layout`:
+ *   - the ROCK set = the BRICK_SETS entry laid as 'fieldstone' (White Rocks today) -- never picked as a "set" any
+ *     more: the Fieldstone PATTERN implies it (a Wall whose pattern is fieldstone; a Frame whose bands are);
+ *   - the BRICK sets = the sets laid as 'bond' (Red today; a Grey one appears here by itself) -- the Set row.
+ *  The Set is PER ELEMENT (`settings.setIds`, keyed by tool: wall / frame / brush / raisedBrush); brick size and
+ *  grout stay global. A settings object from before item 23 has a single `setId`: it is the fallback. */
+export const ROCK_SET_ID = (BRICK_SETS.find((s) => s.layout === 'fieldstone') || {}).id ?? null;
+export const BRICK_SET_IDS = Object.freeze(BRICK_SETS.filter((s) => s.layout === 'bond').map((s) => s.id));
+/** A Frame is rock when every band pattern is fieldstone (picking it on one band writes it on all). */
+export function isRockFrame(settings) {
+  const p = settings && settings.frameBandPatterns;
+  return Array.isArray(p) && p.length > 0 && p.every((x) => x === 'fieldstone');
+}
+/** The set an element is laid with. */
+export function elementSetId(settings, kind) {
+  if (ROCK_SET_ID != null && ((kind === 'wall' && settings.pattern === 'fieldstone') || (kind === 'frame' && isRockFrame(settings)))) return ROCK_SET_ID;
+  const own = settings.setIds && settings.setIds[kind];
+  return own ?? settings.setId ?? BRICK_SET_IDS[0] ?? 1;
+}
+/** The settings an element is laid with: the shared ones, with that element's own set. */
+export const elementSettings = (settings, kind) => ({ ...settings, setId: elementSetId(settings, kind) });
+
 /** F35 item 7: `settings.pattern` (main/brick-panel.js's Wall pattern picker) is a single
  *  BRICK_PATTERNS key the user picked for the WHOLE Wall fill -- no per-zone mixing UI exists yet
  *  (library.js's own BRICK_PATTERNS header names that as a deliberately out-of-scope extension).
@@ -316,7 +339,7 @@ export function wallLayoutFor(settings) {
   const def = settings && settings.pattern && BRICK_PATTERNS[settings.pattern];
   if (def && def.kind === 'none') return 'none';
   if (def && def.kind === 'tile2d') return settings.pattern;
-  const set = brickSetById(settings && settings.setId) || brickSetById(1);
+  const set = brickSetById(settings && elementSetId(settings, 'wall')) || brickSetById(1); // item 23: the WALL's set
   return set.layout;
 }
 
@@ -551,16 +574,21 @@ export function dropExcludedWallBricks(bricks, exclusions) {
 function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const layer = ensureBricksLayer(editor);
 
+  // F35 item 23: each element is laid with its OWN set (elementSettings); size + grout stay global
+  const wallSettings = elementSettings(settings, 'wall');
+  const frameSettings = elementSettings(settings, 'frame');
   const input = {
     boardOutline: boardPolygon(editor),
-    set: resolvedSetFor(settings),
-    scale: scaleFor(settings),
+    set: resolvedSetFor(wallSettings),
+    scale: scaleFor(wallSettings),
     suppression: settings.suppression,
     clumping: settings.clumping,
     seed: settings.seed,
   };
-  if (frameGeom) input.frame = frameGeom;
-  applyWallPattern(input, settings);
+  // the engine applies ONE `scale` (the Wall's) to the frame's set too -- so the frame's set goes in pre-scaled
+  // by its own scale over the Wall's (the engine's own scaledSet): its bricks / stones keep the global size
+  if (frameGeom) input.frame = { ...frameGeom, set: scaledSet(resolvedSetFor(frameSettings), scaleFor(frameSettings) / input.scale) };
+  applyWallPattern(input, wallSettings);
   // F35 item 21: the fieldstone layout's share of large stones (d3's T86 item 17 reads it; inert until then)
   if (wallLayoutFor(settings) === 'fieldstone') input.largeStones = Number.isFinite(settings.largeStones) ? settings.largeStones : 0.5;
   const exclusions = kinds.includes('wall') ? brushExclusions(editor) : [];
@@ -574,8 +602,8 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   for (const kind of kinds) clearGenerated(editor, layer, kind);
   applyBrickLayerTooling(layer, settings);
   const lays = (kind) => kinds.includes(kind);
-  if (lays('frame')) drawBricks(editor, layer, frameBricks, 'frame', settings.setId, settings.seed, settings.reliefIn);
-  if (lays('wall')) drawBricks(editor, layer, bricks, 'wall', settings.setId, settings.seed, settings.reliefIn);
+  if (lays('frame')) drawBricks(editor, layer, frameBricks, 'frame', frameSettings.setId, settings.seed, settings.reliefIn);
+  if (lays('wall')) drawBricks(editor, layer, bricks, 'wall', wallSettings.setId, settings.seed, settings.reliefIn);
   if (lays('wall')) syncAccentHighlight(editor, settings.accent, settings.seed);
   return { wallCount: lays('wall') ? bricks.length : 0, frameCount: lays('frame') ? frameBricks.length : 0 };
 }
