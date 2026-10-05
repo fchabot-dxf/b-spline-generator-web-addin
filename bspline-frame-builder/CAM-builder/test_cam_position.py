@@ -1,10 +1,11 @@
-"""H23 item 82 -- one stock + one WCS for the Clean and Carved B-spline setups (CAM_POSITION).
+"""H23 item 82 -- one stock + one WCS for the two B-spline setups of the panel (CAM_POSITION).
 
 Measured live first (WORK-LOG item 82 probe, parts 1-2): per-setup stocks put two setups of one part
 0.25 in apart; one fixed box (X/Y centred, Z from the bottom) + one declared WCS point read back
-identically on setups in two MMs, also under flipY; the Carved setup's stock = From solid -> the Clean
-body works across MMs with no warning, while PreviousSetupStock across MMs warns. These tests pin the
-declaration and the builder's writes against fakes (no Fusion).
+identically on setups in two MMs, also under flipY; PreviousSetupStock across two MMs warns, so Back and
+Top stay on ONE MM (the panel to make: Stamped when it exists, else Clean -- the stamp raises material, so
+no Clean->Carved rest chain; advisor ruling). These tests pin the declaration and the builder's writes
+against fakes (no Fusion).
 
 Run with:
     cd bspline-frame-builder/CAM-builder
@@ -176,19 +177,18 @@ def _spec(sb, name):
     return next(s for s in sb.SETUP_SPECS if s['name'] == name)
 
 
-def test_clean_pair_and_carved_setup_are_declared(eng):
+def test_back_and_top_share_the_declared_position(eng):
     sb = eng.sb
-    back, top, carved = (_spec(sb, n) for n in ('B-spline Back', 'B-spline Top', 'B-spline Carved'))
-    assert back['mm_rule'] == top['mm_rule'] == 'bspline_clean'
-    assert carved['mm_rule'] == 'bspline_carved'
-    assert carved['stock_intent'] == 'from_solid' and carved['stock_solid_from'] == 'bspline_clean'
-    assert carved['continue_machining'] is True
-    assert carved['cloud_templates'] == []           # empty until Fred names his finishing templates
-    for s in (back, top, carved):
+    names = [s['name'] for s in sb.SETUP_SPECS]
+    assert 'B-spline Carved' not in names                  # ruled out: the stamp raises material
+    back, top = (_spec(sb, n) for n in ('B-spline Back', 'B-spline Top'))
+    assert back['mm_rule'] == top['mm_rule'] == 'bspline_set'
+    assert top['stock_intent'] == 'from_prev_setup' and top['continue_machining'] is True
+    assert back['stock_box'] is True
+    assert (back['wcs_point'], top['wcs_point']) == ('back', 'flipped')
+    for s in (back, top):
         assert s['wcs_point'] in eng.pos.CAM_POSITION['wcs_points']
         assert s['op_heights'] is True
-    assert back['stock_box'] is True
-    assert top['wcs_point'] == carved['wcs_point'] == 'flipped' and back['wcs_point'] == 'back'
 
 
 def test_no_previous_setup_stock_across_mms(eng):
@@ -203,24 +203,12 @@ def test_no_previous_setup_stock_across_mms(eng):
 def test_every_spec_mm_rule_is_built(eng):
     for s in eng.sb.SETUP_SPECS:
         assert s['mm_rule'] in eng.mm.MM_RULES
-        if s.get('stock_solid_from'):
-            assert s['stock_solid_from'] in eng.mm.MM_RULES
-
-
-def test_mm_rules_split_clean_and_carved(eng):
-    mm = eng.mm
-    assert 'bspline_set' not in mm.MM_RULES
-    assert mm._BSPLINE_KEEP == {'bspline_clean': 'clean', 'bspline_carved': 'stamped'}
-    names = [mm._mm_display_name(r) for r in mm.MM_RULES]
-    assert len(set(names)) == len(names)
 
 
 def test_cleanup_names_are_derived_from_the_declarations(eng):
     co, sb, mm = eng.co, eng.sb, eng.mm
     assert co._ADDIN_SETUP_NAMES == frozenset(s['name'] for s in sb.SETUP_SPECS)
-    assert co._ADDIN_MM_NAMES >= frozenset(mm._mm_display_name(r) for r in mm.MM_RULES)
-    # a re-BUILD over an older document must still clean the previous single bspline_set MM
-    assert 'MM - B-spline set' in co._ADDIN_MM_NAMES
+    assert co._ADDIN_MM_NAMES == frozenset(mm._mm_display_name(r) for r in mm.MM_RULES)
 
 
 def test_placeholder_reads_the_declared_stock(eng):
@@ -274,12 +262,3 @@ def test_wcs_point_missing_is_reported_not_faked(eng):
     s = _Setup()
     assert not eng.sb._bind_wcs_point(s, _MM('mmA', sides=('back',)), 'flipped', 'S', None)
     assert s.parameters.itemByName('wcs_origin_mode').expression is None
-
-
-def test_solid_stock_is_the_clean_mms_body(eng):
-    s = _Setup()
-    clean = _MM('clean', bodies=['clean-panel'])
-    assert eng.sb._set_solid_stock(s, clean, 'S', None)
-    assert s.stockMode == eng.adsk.cam.SetupStockModes.SolidStock
-    assert list(s.stockSolids) == ['clean-panel']
-    assert isinstance(s.stockSolids, _Coll)            # an ObjectCollection: a list raises (measured)

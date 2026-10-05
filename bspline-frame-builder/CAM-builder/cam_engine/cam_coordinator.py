@@ -24,11 +24,8 @@ from . import cam_workspace, mm_builder, setup_builder
 # Names of MMs and Setups this addin creates. Used by _cleanup_previous_build
 # to identify and delete the prior run's artifacts before a fresh build.
 # Derived from the declarations (MM_RULES / SETUP_SPECS), so a new setup is cleaned
-# up without a second list to edit. 'MM - B-spline set' is the single panel MM of
-# builds before H23 item 82: kept so a re-BUILD over an older document removes it.
-_LEGACY_MM_NAMES = ('MM - B-spline set',)
-_ADDIN_MM_NAMES = frozenset(
-    [mm_builder._mm_display_name(r) for r in mm_builder.MM_RULES] + list(_LEGACY_MM_NAMES))
+# up without a second list to edit.
+_ADDIN_MM_NAMES = frozenset(mm_builder._mm_display_name(r) for r in mm_builder.MM_RULES)
 _ADDIN_SETUP_NAMES = frozenset(spec['name'] for spec in setup_builder.SETUP_SPECS)
 
 
@@ -258,17 +255,14 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
                                                 skip_machine=skip_machine)
         built_names = {s.name for s in setups}
         for spec in setup_builder.SETUP_SPECS:
-            entry = {'name': spec['name'], 'ok': spec['name'] in built_names}
-            # An optional setup (skip_if_no_bodies: the Carved one on a Send without a
-            # Stamped panel) that was not built is skipped, not failed.
-            if not entry['ok'] and spec.get('skip_if_no_bodies'):
-                entry['skipped'] = True
-            report['setups'].append(entry)
+            report['setups'].append({
+                'name': spec['name'],
+                'ok':   spec['name'] in built_names,
+            })
 
-        required = [sp['name'] for sp in setup_builder.SETUP_SPECS if not sp.get('skip_if_no_bodies')]
         report['ok'] = (
             len(mms) == len(mm_builder.MM_RULES)
-            and all(n in built_names for n in required)
+            and len(setups) == len(setup_builder.SETUP_SPECS)
         )
 
     return report

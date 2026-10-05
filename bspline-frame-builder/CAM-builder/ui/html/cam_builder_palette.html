@@ -368,7 +368,7 @@
          PREVIEW/GENERATE on row 1 never clip or wrap at the docked width. -->
     <div class="cam-header-meta">
       <span id="build-badge" class="cad-nav-version" title=""></span>
-      <span id="status-summary-bspline" class="cam-tab-header-item" data-mode="bspline" style="font-weight:600;color:var(--cad-accent-blue);">4 MMs &middot; 5 SETUPS &middot; READY</span>
+      <span id="status-summary-bspline" class="cam-tab-header-item" data-mode="bspline" style="font-weight:600;color:var(--cad-accent-blue);">3 MMs &middot; 4 SETUPS &middot; READY</span>
       <span id="status-summary-generic" class="cam-tab-header-item hidden" data-mode="generic" style="font-weight:600;color:var(--cad-accent-blue);">…</span>
     </div>
 
@@ -410,7 +410,7 @@
       <div class="cam-card" data-setup="bspline_back" data-setup-name="B-spline Back">
         <div class="cam-card-head">
           <div class="cam-card-title">Setup 2 &mdash; B-spline Back</div>
-          <span class="cam-mm-tag cam-mm-bspline">MM: B-spline Clean</span>
+          <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
         </div>
         <details class="cam-card-details">
           <summary class="cam-card-summary">details</summary>
@@ -434,7 +434,7 @@
       <div class="cam-card" data-setup="bspline_top" data-setup-name="B-spline Top">
         <div class="cam-card-head">
           <div class="cam-card-title">Setup 3 &mdash; B-spline Top</div>
-          <span class="cam-mm-tag cam-mm-bspline">MM: B-spline Clean</span>
+          <span class="cam-mm-tag cam-mm-bspline">MM: B-spline set</span>
         </div>
         <details class="cam-card-details">
           <summary class="cam-card-summary">details</summary>
@@ -455,33 +455,9 @@
         </div>
       </div>
 
-      <div class="cam-card" data-setup="bspline_carved" data-setup-name="B-spline Carved">
-        <div class="cam-card-head">
-          <div class="cam-card-title">Setup 4 &mdash; B-spline Carved</div>
-          <span class="cam-mm-tag cam-mm-bspline">MM: B-spline Carved</span>
-        </div>
-        <details class="cam-card-details">
-          <summary class="cam-card-summary">details</summary>
-          <div class="cam-card-blurb">Carved (stamped) face &mdash; rest machining from the Clean body; skipped when the Send has no Stamped panel</div>
-          <div class="cam-row"><span class="k">Body filter</span><span class="v">remove frame, Clean</span></div>
-          <div class="cam-row"><span class="k">Stock def</span><span class="v">From solid: the Clean body</span></div>
-          <div class="cam-row"><span class="k">WCS</span><span class="v action">Shared point (flipped), axes X/Y (flip Y)</span></div>
-        </details>
-        <div class="cam-row"><span class="k">Status</span>
-          <span class="cam-status-row"><span class="cam-dot" id="dot-bspline_carved"></span><span id="state-bspline_carved">pending</span></span>
-        </div>
-        <div class="cam-tpl-section open" data-tpl-setup="B-spline Carved">
-          <div class="cam-tpl-head" onclick="toggleTpl(this)">
-            <span><span class="cam-tpl-toggle"></span>Templates</span>
-            <span class="cam-tpl-count">0</span>
-          </div>
-          <div class="cam-tpl-body"></div>
-        </div>
-      </div>
-
       <div class="cam-card" data-setup="frame" data-setup-name="Frame">
         <div class="cam-card-head">
-          <div class="cam-card-title">Setup 5 &mdash; Frame</div>
+          <div class="cam-card-title">Setup 4 &mdash; Frame</div>
           <span class="cam-mm-tag cam-mm-frame">MM: frame</span>
         </div>
         <details class="cam-card-details">
@@ -760,7 +736,7 @@
   }
 
   // ── B-SPLINE tab (from cam_builder_palette.html) ──────────────────────────
-  const SETUP_KEYS = ['stock', 'bspline_back', 'bspline_top', 'bspline_carved', 'frame'];
+  const SETUP_KEYS = ['stock', 'bspline_back', 'bspline_top', 'frame'];
 
   function send(action, payload) {
     const data = JSON.stringify(Object.assign({ action }, payload || {}));

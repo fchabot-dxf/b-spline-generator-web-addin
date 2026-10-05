@@ -6,8 +6,7 @@ Three MMs, one per body filter rule:
   | Rule name        | Bodies kept              | Bodies removed         |
   +==================+==========================+========================+
   | ``stock``        | (none -- raw blank)      | all                    |
-  | ``bspline_clean``| the Clean panel          | frame, Stamped         |
-  | ``bspline_carved``| the Stamped panel       | frame, Clean           |
+  | ``bspline_set``  | b-spline panel bodies    | frame bodies           |
   | ``frame``        | frame bodies             | b-spline bodies        |
   +------------------+--------------------------+------------------------+
 
@@ -54,15 +53,7 @@ from cam_utils import get_design
 from .cam_position import CAM_POSITION
 
 
-# H23 item 82: the Clean and the Carved (Stamped) panel each get their own MM, so the Carved setup can take
-# the Clean body as its From-solid stock (rest machining between the two; measured to work across MMs).
-MM_RULES = ('stock', 'bspline_clean', 'bspline_carved', 'frame')
-
-# Which B-Spline Set child each panel MM keeps (the other one is deleted from that MM's snapshot).
-_BSPLINE_KEEP = {
-    'bspline_clean':  'clean',
-    'bspline_carved': 'stamped',
-}
+MM_RULES = ('stock', 'bspline_set', 'frame')
 
 # Per-rule occurrence-DELETE policy. Keys are component-name classes
 # returned by ``_classify_occurrence`` ('panel', 'frame',
@@ -81,8 +72,7 @@ _BSPLINE_KEEP = {
 #   the wrapper, so 'unknown' is in its delete set.
 _DELETE_OCC_CLASSES = {
     'stock':        {'panel', 'frame', 'stock_placeholder', 'unknown'},
-    'bspline_clean':  {'frame', 'stock_placeholder'},
-    'bspline_carved': {'frame', 'stock_placeholder'},
+    'bspline_set':  {'frame', 'stock_placeholder'},
     'frame':        {'panel', 'stock_placeholder'},
 }
 
@@ -223,13 +213,13 @@ def build_mm(cam, design, rule, classifier, logger=None):
     # B-spline-specific second pass: inside the B-Spline Set, mirror
     # the design-tree visibility rules but via deleteMe() since this is
     # the CAM snapshot, not the live design:
-    #   - Keep the child this MM declares in _BSPLINE_KEEP (Clean or
-    #     Stamped) and delete the other one.
+    #   - If a Stamped panel exists, delete the Clean occurrence entirely
+    #     (Stamped wins, we don't machine the un-stamped variant).
     #   - Strip every 'surface' body from the remaining panel occurrence
     #     (CAM only needs the solid panel — surfaces are reference-only).
-    if rule in _BSPLINE_KEEP:
+    if rule == 'bspline_set':
         try:
-            _apply_bspline_panel_filter(mm, logger, keep=_BSPLINE_KEEP[rule])
+            _apply_bspline_panel_filter(mm, logger)
         except Exception as e:
             _log(logger, f"MM BUILD ({rule}): bspline panel filter raised: {e}", "WARNING")
 
@@ -410,7 +400,7 @@ def _populate_stock_placeholder(mm, source_design, logger):
 
     Geometry: a centered rectangle on the XY plane (centre-point
     rectangle), sized ``(widthIn + margin) x (heightIn + margin)``, extruded
-    ``2 in`` in +Z. Horizontal dims reference the user parameters that
+    to the declared thickness in +Z. Horizontal dims reference the user parameters that
     ``_propagate_user_parameters_to_mm`` already mirrored into MM scope,
     so the stock auto-resizes when the panel params change. The margin
     and the thickness come from CAM_POSITION['stock'] (the one shared stock).
@@ -1279,11 +1269,12 @@ def _apply_occurrence_filter(mm, rule, classifier, logger):
     return (kept, deleted, failed)
 
 
-def _apply_bspline_panel_filter(mm, logger, keep):
-    """Inside a panel MM, keep ONE B-Spline Set child (``keep`` = 'clean' or 'stamped', from _BSPLINE_KEEP):
+def _apply_bspline_panel_filter(mm, logger):
+    """Inside the bspline_set MM, enforce primary-panel rules:
 
-      1. Delete the other child occurrence (Clean in the Carved MM, Stamped in the Clean MM). A Carved MM
-         on a Send without a Stamped panel keeps nothing -- its setup is skipped (no bodies).
+      1. If a Stamped occurrence with a panel body exists, delete the
+         Clean occurrence -- Stamped is what we machine; Clean is the
+         alternative the user already decided not to use.
       2. On the surviving panel-bearing occurrence, delete the surface
          body. CAM only needs the solid panel; the surface body is
          reference geometry from the export pipeline.
@@ -1351,14 +1342,14 @@ def _apply_bspline_panel_filter(mm, logger, keep):
             _log(logger, f"BSPLINE FILTER: child walk failed: {e}", "WARNING")
             continue
 
-        # Keep the declared child, queue the other one for deletion.
-        survivor, other = (clean_occ, stamped_occ) if keep == 'clean' else (stamped_occ, clean_occ)
-        if other is not None:
+        # Stamped wins: queue Clean for deletion.
+        survivor = stamped_occ if stamped_occ is not None else clean_occ
+        if stamped_occ is not None and clean_occ is not None:
             try:
-                nm = other.component.name
+                nm = clean_occ.component.name
             except Exception:
                 nm = '<unnamed>'
-            occs_to_delete.append((other, nm))
+            occs_to_delete.append((clean_occ, nm))
 
         # On the survivor, queue surface body for deletion.
         if survivor is not None:
@@ -1399,7 +1390,7 @@ def _apply_bspline_panel_filter(mm, logger, keep):
                         continue
                     if occ.deleteMe():
                         occ_deleted += 1
-                        _log(logger, f"BSPLINE FILTER: deleted occ '{nm}' (keep={keep})", "INFO")
+                        _log(logger, f"BSPLINE FILTER: deleted Clean occ '{nm}' (Stamped wins)", "INFO")
                     else:
                         _log(logger, f"BSPLINE FILTER: occ deleteMe returned False for '{nm}'", "WARNING")
                 except Exception as e:
@@ -1425,7 +1416,7 @@ def _apply_bspline_panel_filter(mm, logger, keep):
         except Exception as e:
             _log(logger, f"BSPLINE FILTER: body deleteMe '{body_name}' raised: {e}", "WARNING")
 
-    _log(logger, f"BSPLINE FILTER: pruned {occ_deleted} occ(s) and {body_deleted} surface body/bodies (keep={keep})", "INFO")
+    _log(logger, f"BSPLINE FILTER: pruned {occ_deleted} Clean occ(s) and {body_deleted} surface body/bodies", "INFO")
 
 
 def _component_has_panel_body(comp):
@@ -1660,8 +1651,7 @@ def _apply_generic_filter(mm, target_comp_name, all_comp_names, logger):
 def _mm_display_name(rule):
     return {
         'stock':        'MM - Stock (raw blank)',
-        'bspline_clean':  'MM - B-spline Clean',
-        'bspline_carved': 'MM - B-spline Carved',
+        'bspline_set':  'MM - B-spline set',
         'frame':        'MM - Frame (lay-flat)',
     }[rule]
 

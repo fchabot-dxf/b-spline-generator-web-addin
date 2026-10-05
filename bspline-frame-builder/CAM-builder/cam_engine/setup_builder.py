@@ -8,9 +8,8 @@ the binding is implicit through the bodies/occurrences supplied).
   | Setup                  | MM rule        | Stock + WCS notes      |
   +========================+================+========================+
   | Stock                  | ``stock``      | auto bbox / model orig |
-  | B-spline Back          | bspline_clean  | CAM_POSITION box / pt  |
-  | B-spline Top           | bspline_clean  | from prev / flipped pt |
-  | B-spline Carved        | bspline_carved | solid=Clean / flipped  |
+  | B-spline Back          | ``bspline_set``| CAM_POSITION box / pt  |
+  | B-spline Top           | ``bspline_set``| from prev / flipped pt |
   | Frame                  | ``frame``      | auto bbox / reoriented |
   +------------------------+----------------+------------------------+
 
@@ -847,13 +846,13 @@ SETUP_SPECS = [
         'stock_offset_sides':  '0 in',
         'stock_offset_bottom': '0 in',
     },
-    # H23 item 82: the three B-spline panel setups machine ONE part, so they share CAM_POSITION
+    # H23 item 82: the two B-spline panel setups machine ONE part, so they share CAM_POSITION
     # (cam_position.py): one fixed stock box ('stock_box'), one declared WCS point per side
     # ('wcs_point'), and stock-relative heights on their 3D operations ('op_heights'). The legacy
     # 'wcs_origin' / 'box_point' keys stay as the fallback when the WCS sketch is missing.
     {
         'name':         'B-spline Back',
-        'mm_rule':      'bspline_clean',
+        'mm_rule':      'bspline_set',
         # Fixed-box stock = CAM_POSITION['stock'] (the box the MM-Stock placeholder is built from),
         # dims WRITTEN (an unwritten FixedBoxStock defaults to 13 x 10 in X/Y -- measured).
         'stock_intent': 'fixed_box',
@@ -876,7 +875,7 @@ SETUP_SPECS = [
     },
     {
         'name':         'B-spline Top',
-        'mm_rule':      'bspline_clean',     # same MM as Back: PreviousSetupStock stays verified
+        'mm_rule':      'bspline_set',       # same MM as Back: PreviousSetupStock carries no warning
         # 'from_prev_setup' tells Fusion to inherit the stock state from
         # the previous setup's IPV (in-process view) — i.e. the material
         # left behind after B-spline Back has cut its pocket. Combined
@@ -906,25 +905,6 @@ SETUP_SPECS = [
             'Morphed Spiral.f3dhsm-template',
             'Pocket front deloge FRED.f3dhsm-template',
         ],
-    },
-    {
-        # The Carved (Stamped) panel, same side as Top. Its stock is the CLEAN body (From solid): Fusion
-        # refuses to verify PreviousSetupStock across two non-identical models (measured warning), while
-        # From solid -> the Clean body machines exactly Carved minus Clean, no warning (measured).
-        'name':             'B-spline Carved',
-        'mm_rule':          'bspline_carved',
-        'skip_if_no_bodies': True,           # a Send without a Stamped panel: no Carved setup
-        'stock_intent':     'from_solid',
-        'stock_solid_from': 'bspline_clean',
-        'continue_machining': True,
-        'wcs_origin':       'box_point',     # fallback only (no WCS sketch)
-        'wcs_orient':       'select_x_y',
-        'box_point':        'top 1',
-        'flip_y':           True,
-        'wcs_point':        'flipped',
-        'op_heights':       True,
-        # Fred's finishing templates for the carved face -- empty until he names them.
-        'cloud_templates':  [],
     },
     {
         'name':         'Frame',
@@ -1030,7 +1010,6 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
     # was built from a stripped-empty component (Stock rule), the body
     # list is empty -- the API still accepts that and the Setup just
     # carries no model bodies, only stock.
-    bodies = []
     try:
         bodies = _collect_bodies(mm)
         if bodies:
@@ -1038,9 +1017,6 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
         _log(logger, f"SETUP BUILD ({spec['name']}): bound {len(bodies)} bodies", "DEBUG")
     except Exception as e:
         _log(logger, f"SETUP BUILD ({spec['name']}): models bind failed: {e}", "WARNING")
-    if not bodies and spec.get('skip_if_no_bodies'):
-        _log(logger, f"SETUP BUILD ({spec['name']}): MM {spec['mm_rule']!r} holds no body; setup skipped", "INFO")
-        return None
 
     # The fence-anchored WCS binding doesn't happen here — it's done
     # in a second pass after every Setup has had a machine attached,
@@ -1084,10 +1060,7 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
     # problem. We fall back to the parameter dict path only if the typed
     # enum write raises (older builds, unexpected modes).
     try:
-        if spec.get('stock_solid_from'):
-            _set_solid_stock(setup, mms.get(spec['stock_solid_from']), spec['name'], logger)
-        else:
-            _set_stock_mode(setup, spec['stock_intent'], spec['name'], logger)
+        _set_stock_mode(setup, spec['stock_intent'], spec['name'], logger)
     except Exception as e:
         _log(logger, f"SETUP BUILD ({spec['name']}): stockMode set raised: {e}", "WARNING")
 
@@ -1493,7 +1466,7 @@ def _apply_stock_box(setup, setup_name, logger):
     """Write the shared fixed stock box (CAM_POSITION['stock']) on a live setup.
 
     X/Y = the model's extent in the setup's own frame + the declared margin, centred; Z = the declared
-    thickness from the model bottom (Clean and Carved share bottom + outline). Expressions are evaluated
+    thickness from the model bottom (Clean and Stamped share bottom + outline). Expressions are evaluated
     by Fusion in the setup frame, so the axes swap of 'select_x_y' needs no handling here. Measured
     (item 82 probe d): identical boxes on two setups in two MMs.
     """
@@ -1563,28 +1536,6 @@ def _bind_wcs_point(setup, mm, side, setup_name, logger):
     return n > 0
 
 
-def _set_solid_stock(setup, src_mm, setup_name, logger):
-    """Stock = From solid -> the solid bodies of ``src_mm`` (the Clean panel for the Carved setup).
-
-    ``setup.stockSolids`` needs an ObjectCollection (a Python list raises -- measured). Returns True when
-    at least one body was set.
-    """
-    if src_mm is None:
-        _log(logger, f"SETUP BUILD ({setup_name}): stock source MM not built; stock left default", "WARNING")
-        return False
-    bodies = [b for b in _collect_bodies(src_mm) if getattr(b, 'isSolid', True)]
-    if not bodies:
-        _log(logger, f"SETUP BUILD ({setup_name}): stock source MM holds no solid body", "WARNING")
-        return False
-    _set_stock_mode(setup, 'from_solid', setup_name, logger)
-    coll = adsk.core.ObjectCollection.create()
-    for b in bodies:
-        coll.add(b)
-    setup.stockSolids = coll
-    _log(logger, f"SETUP BUILD ({setup_name}): stock = From solid ({len(bodies)} body/bodies)", "INFO")
-    return True
-
-
 def _apply_op_heights(setup, setup_name, logger):
     """Top = Stock top, Bottom = Stock bottom + the declared offset, on every 3D operation of the setup.
 
@@ -1611,9 +1562,10 @@ def _apply_op_heights(setup, setup_name, logger):
 
 
 def _source_panel_bbox_cm(design):
-    """(min, max) world bbox in cm of the source design's Clean panel (else the Stamped one), or None."""
+    """(min, max) world bbox in cm of the panel the bspline_set MM machines -- Stamped when it exists, else
+    Clean (the MM filter's own 'Stamped wins' rule) -- or None."""
     root = design.rootComponent
-    for want in ('clean', 'stamped'):
+    for want in ('stamped', 'clean'):
         for occ in root.allOccurrences:
             path = (occ.fullPathName or '').lower()
             if 'b-spline set' not in path or want not in (occ.component.name or '').lower():
