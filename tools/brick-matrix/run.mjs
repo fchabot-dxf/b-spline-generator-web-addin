@@ -713,7 +713,8 @@ function sameLay(oldKey, newKey, setGrout, neutral = MIGRATION.neutralNewFields 
   for (const x of [o, n]) { delete x.grout; delete x.groutByElement; }
   // a field the old key lacks lays as before when every leaf of it is its declared neutral value
   const leaves = (v) => (v && typeof v === 'object' ? Object.values(v).flatMap(leaves) : [v]);
-  for (const [k, value] of Object.entries(neutral)) if (!(k in o) && k in n && leaves(n[k]).every((x) => x === value)) delete n[k];
+  const isNeutral = (v, value) => (value === 'empty' ? Array.isArray(v) && v.length === 0 : leaves(v).every((x) => x === value));
+  for (const [k, value] of Object.entries(neutral)) if (!(k in o) && k in n && isNeutral(n[k], value)) delete n[k];
   return JSON.stringify(o) === JSON.stringify(n) && Math.abs((oldWidth ?? setGrout) - (newWidth ?? setGrout)) < 1e-9;
 }
 
