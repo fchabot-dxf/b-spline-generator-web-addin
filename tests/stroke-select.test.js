@@ -4,6 +4,7 @@
  * them back onto every segment of its spine (one undo step, the bricks regenerate); Draw goes back to drawing.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js', async (importOriginal) => {
@@ -31,6 +32,7 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { brickElementAt, showElementSelection, brushStrokeSettings, strokeKindOf } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { commitEdit } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js';
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>

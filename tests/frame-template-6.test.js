@@ -5,7 +5,8 @@
  * height" handles, the frame thickness rule (frame-handles.js frameParamRanges, applied to the drawn frame too), the
  * generic miters / inner edge / 3D ring at the reflex corners, and the Shape Lattice "from frame" contour.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord, framePayload } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameCutProfile, frameInnerProfile, frameMiters, frameSolidSpec } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
@@ -26,6 +27,7 @@ import { computePattern, _resolveExtent, PATTERN_DEFAULTS } from '../bspline-fra
 import { insetGeneratedPresetPathDToPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-boundary.js';
 import { sampleOutline, pointInPolygon, clipPanelToOutline } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
 import { distToPrimitive } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-primitives.js';
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const tplOf = (id) => FRAME_DEFS.templates.find((t) => t.id === id);
 const T1 = tplOf('template_1'), T6 = tplOf('template_6');

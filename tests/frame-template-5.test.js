@@ -5,7 +5,8 @@
  * (editor-shape-lattice-generator.js), their "Top dip depth" / "Top dip width" handles, the dipped outline's own
  * mirror table, and the guards that keep Templates 1-4 and the Shape Lattice exactly as they were.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord, framePayload } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameCutProfile, frameInnerProfile, frameMiters } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
@@ -27,6 +28,7 @@ import { insetGeneratedPresetPathDToPrimitives } from '../bspline-frame-builder/
 import { primitiveToPathD, joinSegmentPathsIntoClosedD } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { sampleOutline, pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
 import { distToPrimitive } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-primitives.js';
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const tplOf = (id) => FRAME_DEFS.templates.find((t) => t.id === id);
 const T1 = tplOf('template_1'), T5 = tplOf('template_5');

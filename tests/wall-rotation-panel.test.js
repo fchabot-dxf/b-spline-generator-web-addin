@@ -4,6 +4,7 @@
  * P.brickSettings.wallRotationDeg (the neutral matrix set carries it too).
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js', async (importOriginal) => {
@@ -29,6 +30,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 import { initBrickPanel, setWallRotation, WALL_ROTATIONS } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { MIGRATION } from '../tools/brick-matrix/controls.mjs';
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>

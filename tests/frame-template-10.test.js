@@ -7,7 +7,8 @@
  * variable-angle miter at the 2 top corners (a line meeting an arc, not Template 1's own fixed 45 deg), and the
  * guards that keep Templates 1-9 and the Shape Lattice exactly as they were.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { normalizeFrameRecord, framePayload } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameCutProfile, frameInnerProfile, frameMiters } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
@@ -15,6 +16,7 @@ import { frameHandles, handleDragPatch, frameSeedGeometry, generateFrameSeeds, g
 import { generateSilhouette, outlineDefects, paramsFromShapeModel, PARAM_ORDER } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import { frameLabel } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { sampleOutline } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const tplOf = (id) => FRAME_DEFS.templates.find((t) => t.id === id);
 const T1 = tplOf('template_1'), T10 = tplOf('template_10');

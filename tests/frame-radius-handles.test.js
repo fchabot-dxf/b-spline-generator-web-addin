@@ -21,6 +21,7 @@
  *     the handle's axis (Fred's rulings).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { P, setIsFusionMode } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { normalizeFrameRecord, setFrameRecord, framePayload } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
@@ -30,6 +31,7 @@ import {
   HANDLE_KINDS, HANDLE_HOVER_FILL, APP_HANDLE_STROKE, handleKindVisual, drawParamHandle, setHandleCursor, paramHandleCursorAxis,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-transform-handles.js';
 import { initFramePanel, sendFrame } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const tplOf = (id) => FRAME_DEFS.templates.find((t) => t.id === id);
 const BOARDS = [[7, 9], [12, 6], [5.51, 1.97]];

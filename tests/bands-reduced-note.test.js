@@ -4,6 +4,7 @@
  * stays only when the reduced stack still does not fit), and the bands it dropped grey out with why.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js', async (importOriginal) => {
@@ -28,6 +29,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 import { initBrickPanel, bandsReducedText } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { BRICK_CONTROL_REQUIRES } from '../bspline-frame-builder/b-spline-gen/html/main/brick-control-requires.js';
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
