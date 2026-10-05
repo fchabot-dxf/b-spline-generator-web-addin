@@ -13069,3 +13069,83 @@ Contract agreed with 88 by DM (88's engine half: rock-bands-fieldstone 39ca112, 
 - Shot: shots/seat37/f35item24_icon_sheet_v3_raised.png (20 + 40 px, idle + active).
 
 **Fast tier (whole vitest run): 262 files, 4327 passed, 0 failed.**
+
+### turn 219 -- F35 item 26: the sidebar drag-resizes; grids gain columns; two columns past 2x (seat 37)
+
+Merged main 6d277f6 first (9bec1b6, clean).
+
+**What was there:** #resizer already dragged the sidebar on desktop through a hand-rolled inline script in the
+palette (clamped 200 .. innerWidth-300, NOT persisted).
+- core/ui-utils.js `initResizer` also listens on the same handle. Its desktop branch writes `--sidebar-width` on
+  .app, which no CSS reads, but it still calls preview._resize(). **Kept, untouched** (not in scope; flagged here).
+- The phones already use the shared editor/splitter.js (main/mobile-resizer.js).
+
+**Declared:** main/sidebar-layout.js `SIDEBAR_LAYOUT` = { defaultPx 260 (= the CSS default; a test pins the two
+equal), minPx 200, maxPx 650, keepViewportPx 300, twoColumnPx 520 (2x), cellMinPx 72, storageKey }.
+- **Drag:** the desktop drag is now a third `makeSplitter` caller (enabled = not phone, not landscape phone), so
+  there is one drag mechanism instead of a fourth loop.
+  - splitter.js gains `storage: 'session' | 'local'`. Default stays 'session' (the phone splitters, "per
+    session"); the desktop sidebar uses 'local' = per viewer.
+  - Splitter behaviour inherited: release within 24 px of a snap snaps to it; a TAP on the handle cycles the
+    declared snaps, default <-> two columns; a double-tap jumps to the other one. This is new on desktop (the
+    inline drag ignored taps). Say if Fred wants taps inert (snaps -> [] keeps the drag only).
+- **Grids:** `.cad-sidebar.sidebar-desktop .cad-tool-group` = repeat(auto-fit, minmax(var(--sidebar-cell-min), 1fr)).
+  - The module sets --sidebar-cell-min from the declaration, so no number is typed in the CSS.
+  - auto-fit rather than auto-fill: auto-fill kept empty tracks (8 tracks for 4 buttons at a phone width).
+  - Scoped by .sidebar-desktop (the module toggles it), so phones keep 2 x 2.
+  - The two inline `grid-template-columns: 1fr 1fr` on the Sculpt Top/Bottom tool groups are removed.
+  - The brick panel's icon rows are flex-wrap rows of fixed-size icons, so they already gain per-row icons with
+    width; left alone.
+  - The Undo/Redo/Clear 2-col grids are a pair layout (Clear spans 2), not an icon grid; left alone.
+- **cellMinPx 72 is MEASURED:** the tool group's inner width is 132 / 192 / 322 / 214 / 240 / 279 px at sidebar
+  200 / 260 / 390 / 520 / 572 / 650.
+  - 72 gives 2 per row at the default, 4 at 1.5x, and 2 at the two-column threshold.
+  - Any single min leaves a band where a 4-button group shows **3 + 1**: here 292-365 px single-column, and >= ~560
+    two-column (the 2.2x shot shows it).
+  - There is no cell value with no 3 + 1 band across 200..650: 390 -> 4 needs <= 78, and 572 -> 2 needs > 77.3
+    with 650 -> 2 needing > 90. Flagged; one number to retune if Fred minds.
+- **Two columns:** a `.cad-sidebar-sections` wrapper now holds every section (12); the pinned Generate button stays
+  outside, full width.
+  - Past twoColumnPx it gets `column-count: 2` and each `.panel` gets `break-inside: avoid`.
+  - The wrapper's height stays auto, so the columns BALANCE. A multicol directly on the scrolling, fixed-height
+    aside would have filled column 1 and then overflowed sideways.
+  - Reading order: column 1 then column 2. Opening or closing a section rebalances, so a section can move to the
+    other column.
+
+**Removed (swept):**
+- the palette's inline "Resizer Compatibility logic" block: mousedown/touchstart on #resizer, window
+  mousemove/touchmove/mouseup/touchend, and the hand-rolled clamp;
+- the two inline grid styles.
+- Comments in mobile-resizer.js that pointed at the inline script now point at sidebar-layout.js.
+- Nothing persisted before, so there is no old key to sweep. The `.resizing` class + col-resize cursor are kept.
+
+**Live** (served, headless Chrome, real CDP mouse drags at a 1600 px viewport):
+
+| sidebar | layout | tool group |
+| --- | --- | --- |
+| 260 (load) | 1 column | 2 cols |
+| 390 | 1 column | 4 cols |
+| 572 | 2 columns, panels at x 14 and 278: stock..brick / stamp..resolution, none split | 3 cols |
+
+- Clamps: a drag to 5000 -> 650; a drag to 10 -> 200.
+- Saved 572 -> reload -> 572, two columns.
+- An 800 px viewport (phone layout): one column, no .sidebar-desktop, tool group 2 x 2. Back to 1600 -> 572 again.
+- 0 errors.
+- Shots: shots/seat37/f35item26_after_{1x,1.5x,2.2x}.png (the before set: f35item26_before_*).
+- **Pre-existing, not fixed:** the Skeleton/Stamp "Offset X | Offset Y" row overflows its panel at the DEFAULT 260
+  (symOffsetY 178 px past the edge, clipped). It is better at 390 (48 px) and in two columns no worse than the
+  default.
+
+**Matrix:** no control moves at the default width (the default layout is byte-identical apart from the wrapper div),
+so no row is needed. A width row would need a drag gesture in 88's harness; offer it if wanted.
+
+**Tests:** new tests/sidebar-layout.test.js (12):
+- the declaration;
+- the splitter's local vs session storage;
+- init: restore, default, clamp, phones untouched;
+- every panel inside the wrapper, the inline drag gone;
+- the CSS reads the declaration.
+- Non-vacuous: against the pre-change tree 12/12 fail (no module). With the module but the pre-change
+  splitter/html/css, 6/12 fail. Restored from my copies, cmp clean.
+- Fast tier (whole vitest): 264 files, 4358 passed, **2 FAILED** in the parallel run, both
+  bricks-fieldstone-large-stones (seat B's heavy engine file, the same load timeouts as turn 217); alone 5/5.

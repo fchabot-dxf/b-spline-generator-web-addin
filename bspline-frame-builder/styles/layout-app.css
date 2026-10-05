@@ -469,6 +469,23 @@ aside {
     min-height: 0;
 }
 
+/* F35 item 26 -- the numbers are main/sidebar-layout.js's SIDEBAR_LAYOUT (it sets --sidebar-cell-min and toggles
+   .sidebar-desktop / .sidebar-two-col); never typed here. Desktop only: button/icon grids gain columns with the
+   width (auto-fit: empty tracks collapse, so the cells share the row): */
+.cad-sidebar.sidebar-desktop .cad-tool-group {
+    grid-template-columns: repeat(auto-fit, minmax(var(--sidebar-cell-min), 1fr));
+}
+/* past twoColumnPx the sections flow into two columns, top-to-bottom then the next column (reading order), a
+   section never split; the pinned actions stay outside, full width. Height stays auto, so the columns balance. */
+.cad-sidebar.sidebar-two-col .cad-sidebar-sections {
+    column-count: 2;
+    column-gap: 0;
+    column-rule: 1px solid var(--cad-border-standard);
+}
+.cad-sidebar-sections > .panel {
+    break-inside: avoid;
+}
+
 .cad-resizer {
     grid-column: 2;
     grid-row: 1;

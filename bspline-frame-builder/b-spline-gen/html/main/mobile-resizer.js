@@ -1,15 +1,15 @@
 /**
  * mobile-resizer.js — MOB3 AMEND (Fred: "another option is a draggable
  * handle on the preview panel window"). Makes the SAME #resizer handle
- * that already resizes the sidebar column on desktop (the classic inline
- * script in bspline_gen_palette.html, "Resizer Compatibility logic") also
+ * that already resizes the sidebar column on desktop (main/sidebar-layout.js since F35 item 26; formerly the
+ * classic inline script in bspline_gen_palette.html, "Resizer Compatibility logic") also
  * free-drag the 3D preview row's height on phones — through the shared
  * splitter.js (editor-drawer.js's own bottom-drawer handle is its other
  * caller), not a second hand-rolled drag loop.
  *
  * The inline script's own mobile/vertical branch was removed in the same
  * change — it now cedes #resizer on phones to this module (`enabled`
- * below); its desktop/horizontal branch is untouched.
+ * below); its desktop/horizontal branch became main/sidebar-layout.js (F35 item 26).
  */
 import { makeSplitter } from '../editor/splitter.js';
 // Cross-tree import — same established precedent as main/global-events.js
@@ -91,8 +91,8 @@ export function initMobilePreviewResizer() {
   // height, and the sidebar sits on the RIGHT now (styles/layout-app.css's
   // own reversed grid-template-columns + order), so a rightward drag must
   // SHRINK it: sidebarWidth = distance from the cursor to the RIGHT edge
-  // of the viewport, the mirror image of the desktop/inline script's own
-  // `newWidth = x` (sidebar-on-the-left) formula.
+  // of the viewport, the mirror image of the desktop drag's own
+  // (main/sidebar-layout.js, sidebar-on-the-left) formula.
   const mqlLandscapePhone = window.matchMedia(LANDSCAPE_MEDIA_QUERY);
   function landscapeSnaps() {
     const vw = window.innerWidth;

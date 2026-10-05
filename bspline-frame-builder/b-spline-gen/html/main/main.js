@@ -18,6 +18,7 @@
  */
 import { initResizer, resizeApp, setupMobileViewportHandling } from '../core/ui-utils.js';
 import { initMobilePreviewResizer } from './mobile-resizer.js';
+import { initSidebarLayout } from './sidebar-layout.js';
 import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { fusLog, pollMode, stopFusionPolling, setFusionActionState, FUSION_IDLE_LABEL, requestDesignParams, setFusionStatus } from '../core/fusion-bridge.js';
@@ -85,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. Resizer + mobile viewport
     initResizer(preview);
     initMobilePreviewResizer();
+    initSidebarLayout();
     setupMobileViewportHandling();
     window.addEventListener('resize', () => resizeApp(preview));
 

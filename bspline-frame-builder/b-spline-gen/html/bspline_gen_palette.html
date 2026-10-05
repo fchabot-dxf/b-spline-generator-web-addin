@@ -550,6 +550,10 @@
           Seed</button>
       </div>
 
+      <!-- F35 item 26: the sections, in reading order -- past SIDEBAR_LAYOUT.twoColumnPx (main/sidebar-layout.js) they
+           flow into two columns here (styles/layout-app.css), the pinned actions above staying full width. -->
+      <div class="cad-sidebar-sections">
+
       <!-- 2. Stock Dimensions -->
       <div class="panel panel-stock">
         <div class="panel-header" onclick="togglePanel(this)">📐 STOCK DIMENSIONS</div>
@@ -1186,7 +1190,7 @@
       <div class="panel panel-sculpt-top">
         <div class="panel-header collapsed" onclick="togglePanel(this)">🎨 SCULPT TOP</div>
         <div class="panel-body hidden">
-          <div class="cad-tool-group" style="grid-template-columns: 1fr 1fr; display: grid;">
+          <div class="cad-tool-group">
             <button id="btnToolTopDraw" class="cad-btn cad-tool-btn">
               <span class="material-symbols-outlined">brush</span>
               <span>Draw</span>
@@ -1272,7 +1276,7 @@
       <div class="panel panel-sculpt-bot">
         <div class="panel-header collapsed" onclick="togglePanel(this)">🎨 SCULPT BOTTOM</div>
         <div class="panel-body hidden">
-          <div class="cad-tool-group" style="grid-template-columns: 1fr 1fr; display: grid;">
+          <div class="cad-tool-group">
             <button id="btnToolBotDraw" class="cad-btn cad-tool-btn">
               <span class="material-symbols-outlined">brush</span>
               <span>Draw</span>
@@ -1460,6 +1464,7 @@
           </div>
         </div>
       </div>
+      </div><!-- /.cad-sidebar-sections -->
     </aside>
 
     <div class="cad-resizer" id="resizer"></div>
@@ -1702,69 +1707,7 @@
         closeWizX.addEventListener('click', () => wizardModal.style.display = 'none');
       }
 
-      // 3. Resizer Compatibility logic (desktop only — horizontal, drag X,
-      //    resizes the sidebar column via --cad-sidebar-width).
-      //
-      // MOB3 AMEND: the mobile/vertical case (drag Y, resize the preview
-      // row) moved to main/mobile-resizer.js, which drives the SAME
-      // #resizer handle through the shared splitter.js (also used by the
-      // editor's own bottom-drawer handle) — free-drag + soft snap points
-      // + persistence, instead of this hand-rolled absolute-position
-      // branch. This code now only ever engages on desktop; `start` cedes
-      // the handle to that module below the breakpoint.
-      const resizer = document.getElementById('resizer');
-      const mainContent = document.querySelector('.cad-main-content');
-      if (resizer && mainContent) {
-        const mqlMobile = window.matchMedia('(max-width: 900px)') /* editor/breakpoints.js */;
-        // MOB4: landscape phone reverses the grid (styles/layout-app.css:
-        // viewport first/left, sidebar last/right, `order` + a reversed
-        // grid-template-columns) — this hand-rolled branch's own
-        // `newWidth = x` assumes sidebar-on-the-LEFT (width = cursor's
-        // raw X), which would drag BACKWARDS once the sidebar is on the
-        // right. Ceding this case to main/mobile-resizer.js's own THIRD
-        // splitter (reversed math, from-scratch for this orientation)
-        // rather than special-casing the formula here twice.
-        const mqlLandscapePhone = window.matchMedia('(pointer: coarse) and (max-height: 500px) and (min-width: 901px)');
-        let isResizing = false;
-
-        const getClient = (e) => {
-          if (e.touches && e.touches.length > 0) {
-            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-          }
-          return { x: e.clientX, y: e.clientY };
-        };
-
-        const start = (e) => {
-          if (mqlMobile.matches || mqlLandscapePhone.matches) return; // mobile: main/mobile-resizer.js owns this drag
-          isResizing = true;
-          resizer.classList.add('resizing');
-          document.body.style.cursor = 'col-resize';
-          if (e.cancelable) e.preventDefault();
-        };
-
-        const move = (e) => {
-          if (!isResizing) return;
-          const { x } = getClient(e);
-          const newWidth = Math.max(200, Math.min(x, window.innerWidth - 300));
-          document.documentElement.style.setProperty('--cad-sidebar-width', `${newWidth}px`);
-          if (window.dispatchEvent) window.dispatchEvent(new Event('resize'));
-          if (e.cancelable) e.preventDefault();
-        };
-
-        const stop = () => {
-          if (!isResizing) return;
-          isResizing = false;
-          resizer.classList.remove('resizing');
-          document.body.style.cursor = '';
-        };
-
-        resizer.addEventListener('mousedown', start);
-        resizer.addEventListener('touchstart', start, { passive: false });
-        window.addEventListener('mousemove', move);
-        window.addEventListener('touchmove', move, { passive: false });
-        window.addEventListener('mouseup', stop);
-        window.addEventListener('touchend', stop);
-      }
+      // 3. The #resizer drag lives in main/sidebar-layout.js (desktop, F35 item 26) and main/mobile-resizer.js (phones).
     });
   </script>
   <script>
