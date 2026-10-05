@@ -54,13 +54,13 @@ import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon } from '../core/bricks/index.js';
+import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS } from '../core/bricks/index.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
 import { rectToPrimitives } from '../core/inset-window.js';
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
 import { radialSignAt } from '../core/bricks/arc-voussoir.js';
-import { accentedBrickIndices, accentedRunIndices } from './brick-accents.js';
+import { accentedBrickIndices, accentedRunIndices, accentLayInput, ACCENT_MARK_ATTR } from './brick-accents.js';
 
 export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-spine'
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
@@ -188,7 +188,7 @@ function brickSpanIn(polygon) {
 function drawBrick(editor, layer, brick, kind, setId, seed, reliefIn) {
   const pts = brick.polygon.map((p) => `${p.x},${p.y}`).join(' ');
   const paint = brickFillPaint(editor, setId, brick.sampleId, brick.flip, brickSpanIn(brick.polygon)) || SET_COLORS[setId] || DEFAULT_BRICK_COLOR;
-  return onBricksLayer(editor, layer, editor._sketchLayer.polygon(pts))
+  const el = onBricksLayer(editor, layer, editor._sketchLayer.polygon(pts))
     .fill(paint)
     .stroke('none')
     .attr(BRICK_ATTR, kind)
@@ -200,6 +200,8 @@ function drawBrick(editor, layer, brick, kind, setId, seed, reliefIn) {
     .attr('data-brick-flip', brick.flip ? '1' : '0')
     .attr('data-brick-id', String(brick.id))
     .attr('data-brick-height-offset', brick.heightOffset || 0);
+  if (typeof brick.accentMarked === 'boolean') el.attr(ACCENT_MARK_ATTR, brick.accentMarked ? '1' : '0'); // item 31b: the engine's cut mark
+  return el;
 }
 /** Per-element run accents: a band / stroke brick's place on its run's grid (the engine's band/row/piece). */
 function stampRunPlace(el, brick, fallbackPiece) {
@@ -604,7 +606,7 @@ export function wallPatternIconSvg(patternId, heightPx = 30) {
 
 /** The bricks an icon shows: `patternId` laid by the real engine (applyWallPattern + generateBricks, as a
  *  Wall) on a `board` patch, Set 1 at `brickLengthIn`. Shared by the pattern and the accent icons. */
-function _iconBricks(board, patternId, brickLengthIn, groutIn) {
+function _iconBricks(board, patternId, brickLengthIn, groutIn, extra = {}) {
   const { widthIn: w, heightIn: h } = board;
   const settings = { setId: 1, pattern: patternId, seed: 7, suppression: 0, clumping: 0, grout: { widthIn: groutIn }, brickLengthIn };
   const input = {
@@ -612,7 +614,7 @@ function _iconBricks(board, patternId, brickLengthIn, groutIn) {
     set: resolvedSetFor(settings), scale: scaleFor(settings), suppression: 0, clumping: 0, seed: settings.seed,
   };
   applyWallPattern(input, settings);
-  return generateBricks(input).bricks;
+  return generateBricks({ ...input, ...extra }).bricks;
 }
 /** F35 item 24: what each Brick TOOL leaves on the board, in miniature, laid by the real engine (Set 1 at its
  *  own size) -- editor/brick-tool-icons.js draws the tool icons from it. kind: 'wall' (a stretcher wall),
@@ -721,8 +723,9 @@ export function accentIconSvg(presetId, heightPx = 26, { sunk = false, bond = 's
   const widthPx = Math.round((heightPx * w) / h);
   let svg = null;
   try {
-    const bricks = _iconBricks(ACCENT_ICON_BOARD, BRICK_PATTERNS[bond] ? bond : 'stretcher', 0.36, 0.03);
     const accent = presetId && typeof presetId === 'object' && presetId.preset ? presetId : { preset: presetId };
+    // item 31b / 31e: a tile at 1/2 or 1/4, or with its own custom bond, is drawn on the engine's own pieces
+    const bricks = _iconBricks(ACCENT_ICON_BOARD, BRICK_PATTERNS[bond] ? bond : 'stretcher', 0.36, 0.03, accentLayInput(accent, ENGINE_OPTIONS));
     const raised = accentedBrickIndices(bricks, accent, { seed: 7, zone: [0, 1] });
     const flat = bricks.filter((b, k) => !raised.has(k)).map((b) => _iconPolygon(b)).join('');
     const up = bricks.filter((b, k) => raised.has(k));
@@ -842,9 +845,11 @@ export function syncRunAccentHighlight(editor, settings) {
   for (const nodes of strokes.values()) apply(nodes, settings.brushAccent);
   return count;
 }
+/** item 31b: a drawn brick's engine mark ({ accentMarked } when the lay was cut, else {}) -- the height mask reads the same. */
+export const markOf = (n) => (n.hasAttribute(ACCENT_MARK_ATTR) ? { accentMarked: n.getAttribute(ACCENT_MARK_ATTR) === '1' } : {});
 export function syncAccentHighlight(editor, accent, seed) {
   const nodes = wallBrickNodes(editor);
-  const raised = accentedBrickIndices(nodes.map((n) => ({ polygon: _nodePolygon(n) })), accent, { seed: seed || 1 });
+  const raised = accentedBrickIndices(nodes.map((n) => ({ polygon: _nodePolygon(n), ...markOf(n) })), accent, { seed: seed || 1 });
   nodes.forEach((n, k) => {
     if (raised.has(k)) {
       n.setAttribute('data-brick-accent', '1');
@@ -1000,6 +1005,9 @@ function _layInput(editor, settings, frameGeom) {
   // F35 item 13: the Wall pattern's rotation (wall only; 0 = absent = today's lay, byte-identical)
   const rotationDeg = Number(settings.wallRotationDeg) || 0;
   if (rotationDeg) input.rotationDeg = rotationDeg;
+  // F35 item 31b / 31e: what the Wall accent adds -- accentCuts (a tile at 1/2 or 1/4 brick, or a custom bond: the engine
+  // cuts + marks the pieces) and customBond (the tile's own bond); a whole-brick tile on a built-in bond adds nothing
+  Object.assign(input, accentLayInput(settings.accent, ENGINE_OPTIONS));
   return input;
 }
 

@@ -59,6 +59,10 @@ const LAYOUTS = Object.freeze({
  *   layout here, same as `opts.zones` is bond-only); see its own header for the declared range.
  * @param {{outer:{x:number,y:number}[], holes?:{x:number,y:number}[][]}[]} [opts.region] -- T86 item 18: the wall lays only
  *   inside these (clipCellsToRegion); absent = the whole outline
+ * @param {{unit:number, tile:{rows:number, cols:number, cells:boolean[][]}}} [opts.accentCuts] -- T86 item 26: bond
+ *   layouts split bricks on the accent tile's sub-brick grid and mark each piece (layouts/bond.js applyAccentCuts)
+ * @param {{courses:{pieces:number[], offset:number}[]}} [opts.customBond] -- T86 item 27: a bond layout lays this tile's
+ *   courses instead of its pattern's (layouts/bond.js customRow)
  * @param {number} [opts.rotationDeg=0] -- T86 item 29: the pattern turned by this angle (rotatedFill)
  * @param {{polygon:{x:number,y:number}[]}[]} [opts.exclusions] -- T86 item 13: brush-stroke footprints the wall
  *   flows around (cutExclusions below)
@@ -228,7 +232,7 @@ export function bricksFillShape(polygon, holes, opts) {
   const layoutSet = def && (def.params || def.fixed) ? { ...set, layoutParams: {
     ...Object.fromEntries(Object.entries(def.params || {}).filter(([, p]) => p && 'default' in p).map(([k, p]) => [k, p.default])),
     ...(set.layoutParams || {}), ...(def.fixed || {}) } } : set;
-  const { cells: allCells } = layoutFn(polygon, layoutSet, opts.zones, seed, opts.largeStones, opts.fences, { rustic: opts.rustic });
+  const { cells: allCells } = layoutFn(polygon, layoutSet, opts.zones, seed, opts.largeStones, opts.fences, { rustic: opts.rustic, accentCuts: opts.accentCuts, customBond: opts.customBond });
   let cells = (holes && holes.length)
     ? allCells.filter((c) => !holes.some((h) => pointInPolygon(c.cx, c.cy, h)))
     : allCells;
@@ -253,6 +257,7 @@ export function bricksFillShape(polygon, holes, opts) {
       flip: sample ? sample.flip : false,
       heightOffset: (sample ? sample.heightOffset : 0)
         + (opts.rustic > 0 ? RUSTIC.levelIn * opts.rustic * (2 * hashedRandom(seed, 'rustic-level', cell.id) - 1) : 0), // T86 item 22
+      ...(cell.accentMarked !== undefined ? { accentMarked: cell.accentMarked } : {}), // T86 item 26
     });
   }
   return { bricks };

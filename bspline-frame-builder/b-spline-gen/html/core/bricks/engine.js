@@ -54,6 +54,8 @@ export const ENGINE_OPTIONS = Object.freeze([
   'rotationDeg', // T86 item 29: the wall pattern turned by this angle (0 / 45 / 90 chips); default 0
   'wallRegion', // T86 item 18: the wall lays only in the painted areas (wallRegionOf)
   'rustic', // T86 item 22: rustic running bond, 0..1 (library.js RUSTIC); the Brush reads it too (along-path)
+  'accentCuts', // T86 item 26: an accent tile at 1/2 or 1/4 brick splits bricks and marks the pieces (accentMarked)
+  'customBond', // T86 item 27: a declared course sequence (pieces in brick units + an offset per course)
 ]);
 
 export function generateBricks(input) {
@@ -100,6 +102,8 @@ export function generateBricks(input) {
     largeStones: input.largeStones,
     rotationDeg: input.rotationDeg,
     rustic: input.rustic,
+    accentCuts: input.accentCuts,
+    customBond: input.customBond,
     exclusions: input.exclusions,
     region,
   }).bricks;
