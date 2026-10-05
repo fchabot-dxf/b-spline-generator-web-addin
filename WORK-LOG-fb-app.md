@@ -13684,3 +13684,59 @@ the lay; laid key per element after that.
 - The buffer + union live ONCE in core (88). The region op is exported too, but its OUTPUT form is not promised
   yet: disjoint pieces don't fit `{polygon, holes}`, and core has no polygon union today.
 - The app hands over raw strokes, never approximated outlines.
+
+### turn 233 -- item 22 slice 1, STEP 5 of 5: record migration + Clear per kind; SLICE 1 COMPLETE (seat 37)
+
+- **Migration** (`migrateBrickRecords`, editor-brick-tool.js; called by editor-io open() next to repaintBricks, so
+  on every load). It is one-time and idempotent: a kind that already has a record is untouched.
+  - A board saved before item 22 gets a record per kind that has Wall/Frame bricks on the brick layer, or that is
+    listed in the layer's old `brickLaidKinds` (a wall squeezed to zero).
+  - Each record's key is the layer's old shared `brickLaidKey`, so nothing re-lays on load. Its settings snapshot
+    is that key's settings part (elementSettings, per-element set).
+  - The kind's bricks get the record's id as owner. Then `brickLaidKey` / `brickLaidKinds` are deleted from the
+    layer.
+- **The shared key is retired everywhere:**
+  - editor-io no longer persists brickLaidKey / brickLaidKinds (the roster still READS them, for the migration);
+  - brick-panel's step-3 fallback is gone (`_laidKeyOf` = the record's key; `_presentKinds` = records + canvas
+    bricks);
+  - editor-clear no longer nulls the layer fields.
+  - Sweep: no app code reads them except migrateBrickRecords.
+- **Clear per kind:** Clear Bricks removes every record with its bricks (they are the brick layer's children);
+  Clear Artwork keeps them. Tested (it already held structurally).
+- **Tests:**
+  - brick-element-records +4: the migration (records + the old key + settings part + owners + the layer fields
+    retired); idempotent (a second load and an already-recorded board are unchanged); a zero-brick wall still
+    migrates and a bare board gets nothing; Clear Bricks vs Clear Artwork.
+  - The 3 migration tests fail against the pre-step-5 code (no migrateBrickRecords). The Clear one pins existing
+    behaviour.
+  - Moved to the record contract:
+    - the panel harness mocks in brick-discrete-controls-regen + blind-spot-audit write records, not the layer
+      key;
+    - the regen "laid key through undo/reload/Cancel" tests read the wall record;
+    - brick-laid-key's roster test is INVERTED (a layer still holding the old key does not write it back);
+    - h20's Clear test drops the retired-field assertion (records are covered in brick-element-records).
+- **Live migration, REAL old code** (a scratch worktree at the commit before slice 1, b75e836~1, served on one
+  origin; the browser keeps its session while the server swaps to the current tree):
+  - OLD: wall 99 + frame 106, no records, the layer holds the shared key + kinds.
+  - Reload on the NEW code: the same 99 + 106; records wall-full[keyed] + frame[keyed]; holdsBricks true; the old
+    fields gone; **3D hash identical**.
+  - A second save + reload: records kept, 3D identical.
+  - Send's Bricks SVG and the download after the reload equal the OLD code's own after-reload output (control
+    run, old code both phases). Normalised: the fill counter and the bake-stripped owners; for the download also
+    the step-1 holdsBricks flag and the retired shared key in the roster.
+  - (Reloading itself adds `style="cursor: pointer"` / xmlns to polygons in the old code too, so the comparison
+    is after-reload vs after-reload.)
+  - The scratch worktree was removed.
+- Whole vitest: 270 files, **4409 passed, 0 failed**.
+
+**SLICE 1 SUMMARY** (b75e836 .. this commit), the advisor's option B:
+1. holdsBricks: the brick layer is declared, the name retired;
+2. element records + owners;
+   - bake strip: one declared BRICK_EDITOR_ONLY_ATTRS list, so Send/download stay byte-identical;
+3. the laid key per element;
+4. Select for Wall/Frame + the Area sub-tool declared, hidden until engine 'wallRegion' (agreed with 88, input
+   fixed);
+5. the migration + Clear.
+
+**Matrix rows for 88** (DM'd): Select wall / Select frame / empty click deselects / Esc order, and the migration
+and persistence rows below. 88 queues them on matrix-clear-rows after the ring-stone engine fix.

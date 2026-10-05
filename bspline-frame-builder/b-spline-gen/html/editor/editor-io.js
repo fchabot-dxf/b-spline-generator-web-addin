@@ -17,7 +17,7 @@ import { clearSnapCursor, clearGridHover } from './editor-grid.js';
 import { dbg } from '../core/debug.js';
 import { OUTLINE_KINDS } from './editor-outline-preview.js';
 import { drawFrameProfile } from './editor-frame-profile.js';
-import { repaintBricks } from './editor-brick-tool.js';
+import { repaintBricks, migrateBrickRecords } from './editor-brick-tool.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
  *  layer-restore regressions stay observable. Console output is quiet by
@@ -97,11 +97,9 @@ const _PERSISTED_LAYER_FIELDS = [
     // (JSON.stringify handles it directly, same as any other field this
     // list's generic `l[field] !== undefined` branch already copies).
     'pattern',
-    // Audit B1-B3: the Bricks layer's key of the settings its Wall/Frame bricks were laid with
-    // (editor-brick-tool.js runBricks), so a reload still knows whether Generate is pending.
-    'brickLaidKey',
-    // Blind-spot audit B1: the element kinds that key was laid for (a Wall squeezed to zero bricks stays one).
-    'brickLaidKinds',
+    // ('brickLaidKey' / 'brickLaidKinds' -- the old shared laid key -- retired by F35 item 22: each element's
+    // record carries its own key; a board saved with them is migrated on load, editor-brick-tool.js
+    // migrateBrickRecords, which reads them off the restored roster.)
     // F35 item 22 slice 1: the layer HOLDS the bricks (layers.js isBricksLayer) -- declared, not by its name.
     'holdsBricks',
 ];
@@ -1061,6 +1059,7 @@ export function open(editor, svgString, w, h) {
     // a document saved before the z-order rule (or by an older build) is put in order on open
     syncLayerZOrder(editor);
     // Audit v2 N1: brick fills point at <pattern>s outside the saved document -- re-derive them
+    migrateBrickRecords(editor); // F35 item 22: a board saved before item 22 gets its element records (one-time)
     repaintBricks(editor);
     // Capture the post-load state as the baseline. The first user edit
     // pushes state #2, and Ctrl+Z restores #1 (this freshly-loaded state)

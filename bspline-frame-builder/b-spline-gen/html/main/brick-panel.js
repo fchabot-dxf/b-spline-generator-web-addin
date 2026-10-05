@@ -856,22 +856,17 @@ const _layoutKey = () => {
 // reload all carry them. Since item 27 nothing is ever PENDING (every change re-lays at once); the key stays the
 // record of what is on the canvas, and the frame / brush re-lays below read its parts.
 
-const _hasRecords = (editor) => BRICK_KINDS.some((kind) => !!brickRecordNode(editor, kind));
-/** The key `kind`'s bricks were laid with: its record's. A board saved before item 22 has no records yet -- its
- *  brick layer's one shared `brickLaidKey` stands in until the record migration (slice 1 step 5). */
+/** The key `kind`'s bricks were laid with: its record's (a board saved before item 22 got its records on load,
+ *  editor-brick-tool.js migrateBrickRecords). */
 function _laidKeyOf(editor, kind) {
-  const rec = brickRecordNode(editor, kind);
-  if (rec) return rec.getAttribute(BRICK_LAID_ATTR);
-  return _hasRecords(editor) ? null : (bricksLayerOf(editor)?.brickLaidKey ?? null);
+  return brickRecordNode(editor, kind)?.getAttribute(BRICK_LAID_ATTR) ?? null;
 }
 
 /** The element kinds on the board: those with a record (item 22: an element exists by its record, even laid
- *  to zero bricks -- audit B1), plus, on a board saved before item 22, the old shared laid kinds and the bricks
- *  on the canvas. */
+ *  to zero bricks -- audit B1), plus any bricks on the canvas. */
 function _presentKinds(editor) {
   const node = editor?._sketchLayer?.node;
-  const legacy = _hasRecords(editor) ? [] : (bricksLayerOf(editor)?.brickLaidKinds || []);
-  return BRICK_KINDS.filter((kind) => !!brickRecordNode(editor, kind) || legacy.includes(kind)
+  return BRICK_KINDS.filter((kind) => !!brickRecordNode(editor, kind)
     || !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`));
 }
 

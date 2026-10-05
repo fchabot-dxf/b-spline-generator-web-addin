@@ -220,6 +220,44 @@ export function brickRecordNode(editor, kind) {
   const recordKind = BRICK_RECORD_KINDS[kind];
   return recordKind && node && node.querySelector ? node.querySelector(`[${BRICK_RECORD_ATTR}="${recordKind}"]`) : null;
 }
+/** Step 5: the settings part of a laid key (everything before `#frame:`), as that element's snapshot -- or
+ *  null when it does not parse. */
+function _settingsOfLaidKey(laid, kind) {
+  if (typeof laid !== 'string') return null;
+  const at = laid.indexOf('#frame:');
+  try { return elementSettings(JSON.parse(at < 0 ? laid : laid.slice(0, at)), kind); } catch { return null; }
+}
+
+/** F35 item 22 slice 1 step 5: a board saved BEFORE item 22 -- Wall/Frame bricks laid, no records -- gets its
+ *  records ON LOAD (editor-io.js open(); one-time, idempotent: a kind that already has a record is untouched).
+ *  Per kind with bricks on the brick layer (or in the layer's old `brickLaidKinds`, a wall squeezed to zero): a
+ *  record whose key is the layer's old shared `brickLaidKey` (so nothing re-lays) and whose settings snapshot is
+ *  that key's settings part; the kind's bricks get its owner. The layer's `brickLaidKey` / `brickLaidKinds` are
+ *  then retired. Returns the kinds migrated. */
+export function migrateBrickRecords(editor) {
+  const layer = bricksLayerOf(editor);
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!layer || !node || !node.querySelectorAll || typeof editor._sketchLayer.group !== 'function') return [];
+  const legacyKinds = Array.isArray(layer.brickLaidKinds) ? layer.brickLaidKinds : [];
+  const migrated = [];
+  for (const kind of BRICK_KINDS) {
+    if (brickRecordNode(editor, kind)) continue;
+    const bricks = node.querySelectorAll(`[data-layer="${layer.id}"][${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="${kind}"]`);
+    if (!bricks.length && !legacyKinds.includes(kind)) continue;
+    const id = ensureBrickRecord(editor, layer, kind);
+    const rec = brickRecordNode(editor, kind);
+    if (layer.brickLaidKey != null) {
+      rec.setAttribute(BRICK_LAID_ATTR, layer.brickLaidKey);
+      const snapshot = _settingsOfLaidKey(layer.brickLaidKey, kind);
+      if (snapshot) rec.setAttribute(BRICK_SETTINGS_ATTR, JSON.stringify(snapshot));
+    }
+    bricks.forEach((n) => n.setAttribute(BRICK_OWNER_ATTR, id));
+    migrated.push(kind);
+  }
+  if ('brickLaidKey' in layer || 'brickLaidKinds' in layer) { delete layer.brickLaidKey; delete layer.brickLaidKinds; }
+  return migrated;
+}
+
 /** The element's record, created on first lay (its id is stable across re-lays). */
 function ensureBrickRecord(editor, layer, kind) {
   const found = brickRecordNode(editor, kind);

@@ -15,7 +15,9 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async
 
 import {
   runBricks, brickRecordNode, BRICK_RECORD_KINDS, BRICK_RECORD_ATTR, regenerateOwnedBrickElements, elementSettings,
+  migrateBrickRecords, BRICK_LAID_ATTR,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { clearBrickElements, clearArtworkLayers } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-clear.js';
 import { saveWithTextCopies, getLayerSvg } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 import { isEditableByLayer, isOnVisibleLayer, BRICK_EDITOR_ONLY_ATTRS } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
@@ -119,5 +121,68 @@ describe('item 22 step 2: element records + brick owners', () => {
     expect(now.layer).toBe(getLayerSvg(ed, '1', 96));
     expect(now.dl).toContain('data-brick-owner="be1:0"'); // the brush brick's, as before
     expect(Object.keys(BRICK_EDITOR_ONLY_ATTRS).sort()).toEqual(['frame', 'wall']); // one declared list
+  });
+});
+
+describe('item 22 step 5: a board saved BEFORE item 22 gets its records on load (one-time, idempotent)', () => {
+  const OLD_KEY = '{"pattern":"herringbone","setIds":{"wall":1,"frame":3}}#frame:{"frame":null,"w":7,"h":9}';
+  function oldBoard({ wall = true, frame = true, laidKinds = ['wall', 'frame'] } = {}) {
+    const ed = fakeEditor();
+    for (const [kind, on, pts] of [['wall', wall, '1,0 2,0 2,0.3'], ['frame', frame, '5,0 6,0 6,0.3']]) {
+      if (!on) continue;
+      const el = ed._sketchLayer.polygon(pts).node;
+      el.setAttribute('data-brick', kind); el.setAttribute('data-brick-gen', '1'); el.setAttribute('data-layer', '1');
+    }
+    Object.assign(ed._layers[1], { brickLaidKey: OLD_KEY, brickLaidKinds: laidKinds });
+    return ed;
+  }
+
+  it('records for the laid kinds: the old shared key on each (nothing re-lays), its settings part as the snapshot, owners stamped, the old layer fields retired', () => {
+    const ed = oldBoard();
+    expect(migrateBrickRecords(ed)).toEqual(['wall', 'frame']);
+    for (const kind of ['wall', 'frame']) {
+      const rec = brickRecordNode(ed, kind);
+      expect(rec.getAttribute(BRICK_LAID_ATTR)).toBe(OLD_KEY);
+      expect(rec.getAttribute('display')).toBe('none');
+      const id = rec.getAttribute('data-brick-element');
+      expect(q(ed, `[data-brick="${kind}"]`).every((b) => b.getAttribute('data-brick-owner') === id)).toBe(true);
+    }
+    expect(JSON.parse(brickRecordNode(ed, 'wall').getAttribute('data-brick-settings'))).toMatchObject({ pattern: 'herringbone', setId: 1 });
+    expect(JSON.parse(brickRecordNode(ed, 'frame').getAttribute('data-brick-settings')).setId).toBe(3);
+    expect('brickLaidKey' in ed._layers[1]).toBe(false);
+    expect('brickLaidKinds' in ed._layers[1]).toBe(false);
+  });
+
+  it('idempotent: a second load changes nothing; a board that already has records is untouched', () => {
+    const ed = oldBoard();
+    migrateBrickRecords(ed);
+    const html = ed._sketchLayer.node.innerHTML;
+    expect(migrateBrickRecords(ed)).toEqual([]);
+    expect(ed._sketchLayer.node.innerHTML).toBe(html);
+    const fresh = fakeEditor();
+    runBricks(fresh, P.brickSettings, null, { laidKey: 'NEW' });
+    const before = fresh._sketchLayer.node.innerHTML;
+    expect(migrateBrickRecords(fresh)).toEqual([]);
+    expect(fresh._sketchLayer.node.innerHTML).toBe(before);
+  });
+
+  it('a wall the bands squeezed to ZERO bricks (only in the old laid kinds) still becomes an element; no bricks and no kinds = nothing', () => {
+    const ed = oldBoard({ wall: false });
+    expect(migrateBrickRecords(ed)).toEqual(['wall', 'frame']);
+    const bare = fakeEditor();
+    expect(migrateBrickRecords(bare)).toEqual([]);
+    expect(q(bare, `[${BRICK_RECORD_ATTR}]`)).toHaveLength(0);
+  });
+});
+
+describe('item 22 step 5: Clear per kind = its records + bricks', () => {
+  it('Clear Bricks removes every record with its bricks; Clear Artwork keeps them', () => {
+    const ed = fakeEditor();
+    runBricks(ed, P.brickSettings, null, { laidKey: 'K' });
+    clearArtworkLayers(ed);
+    expect(q(ed, `[${BRICK_RECORD_ATTR}]`)).toHaveLength(2);
+    clearBrickElements(ed);
+    expect(q(ed, `[${BRICK_RECORD_ATTR}]`)).toHaveLength(0);
+    expect(q(ed, '[data-brick-gen="1"]')).toHaveLength(0);
   });
 });

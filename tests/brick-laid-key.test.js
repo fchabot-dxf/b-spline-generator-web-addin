@@ -64,12 +64,12 @@ describe('runBricks stamps the laid key on each laid ELEMENT (item 22 step 3)', 
   });
 });
 
-describe('a board saved BEFORE item 22: its shared layer key still round-trips (read until the record migration)', () => {
-  it('is written into the persisted layer roster', () => {
+describe('the shared layer key is RETIRED (item 22 step 5): records carry the keys; old boards migrate on load', () => {
+  it('a layer still holding an old key does not write it back into the roster', () => {
     const editor = { _draw: {}, _sketchLayer: { node: { innerHTML: '' } }, _mW: 7, _mH: 9, _activeLayer: '1',
       _layers: [{ id: '1', name: 'Bricks', holdsBricks: true, visible: true, brickLaidKey: '{"pattern":"herringbone"}' }] };
     const out = save(editor);
-    expect(out).toMatch(/&quot;brickLaidKey&quot;:&quot;\{\\&quot;pattern\\&quot;:\\&quot;herringbone\\&quot;\}&quot;/);
+    expect(out).not.toMatch(/brickLaidKey/); // item 22 step 5: the shared key is retired
   });
   it('a layer that never laid bricks has no key field', () => {
     const editor = { _draw: {}, _sketchLayer: { node: { innerHTML: '' } }, _mW: 7, _mH: 9, _activeLayer: '0',

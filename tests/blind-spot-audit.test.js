@@ -92,7 +92,15 @@ function setup(tool) {
   counts = { wallCount: 40, frameCount: 30 };
   runBricks.mockImplementation((ed, _s, _fg, opts) => {
     // the real contract: the laid key AND the kinds it was laid for (audit B1) go on the Bricks layer
-    if (opts?.laidKey != null) { ed._layers[0].brickLaidKey = opts.laidKey; ed._layers[0].brickLaidKinds = [...(opts.kinds || [])]; }
+    // the real contract (item 22): each laid element's RECORD carries the key
+    for (const kind of opts?.kinds || []) {
+      const node = ed._sketchLayer?.node; // (the element exists by its record, even laid to zero: audit B1)
+      if (!node?.querySelector) continue;
+      const rk = kind === 'wall' ? 'wall-full' : kind;
+      let rec = node.querySelector(`[data-brick-record="${rk}"]`);
+      if (!rec) { rec = document.createElement('g'); rec.setAttribute('data-brick-record', rk); node.appendChild(rec); }
+      if (opts.laidKey != null) rec.setAttribute('data-brick-laid', opts.laidKey);
+    }
     const node = ed._sketchLayer?.node;
     for (const kind of opts?.kinds || []) {
       node?.querySelectorAll?.(`[data-brick="${kind}"]`).forEach((n) => n.remove());

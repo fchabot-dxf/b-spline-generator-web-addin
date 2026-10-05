@@ -100,7 +100,15 @@ function setup(tool) {
   window.svgEditor = { setMode: () => {}, _layers: [{ id: 'b', name: 'Bricks', holdsBricks: true }], _sketchLayer: { node: document.createElement('div') } };
   // ...and, like the real one, it leaves the laid kinds' bricks on the canvas (audit v2 N4/N5 read them)
   runBricks.mockImplementation((ed, _s, _fg, opts) => {
-    if (opts?.laidKey != null) ed._layers[0].brickLaidKey = opts.laidKey;
+    // the real contract (item 22): each laid element's RECORD carries the key
+    for (const kind of opts?.kinds || []) {
+      const node = ed._sketchLayer?.node;
+      if (!node?.querySelector) continue;
+      const rk = kind === 'wall' ? 'wall-full' : kind;
+      let rec = node.querySelector(`[data-brick-record="${rk}"]`);
+      if (!rec) { rec = document.createElement('g'); rec.setAttribute('data-brick-record', rk); node.appendChild(rec); }
+      if (opts.laidKey != null) rec.setAttribute('data-brick-laid', opts.laidKey);
+    }
     const node = ed._sketchLayer?.node;
     for (const kind of opts?.kinds || []) {
       if (!node?.appendChild || node.querySelector(`[data-brick="${kind}"]`)) continue;
@@ -397,26 +405,27 @@ describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + 
   });
 });
 
-// Audit B1-B3: the key stamped on the Bricks layer records what is on the canvas; undo/redo, Cancel and reload
-// all carry it. Item 27: nothing is pending, whatever the key says.
-describe('the Bricks layer key through undo, reload and Cancel (item 27: never pending)', () => {
+// Audit B1-B3 + item 22: the key stamped on each element's RECORD records what is on the canvas; undo/redo,
+// Cancel and reload all carry it. Item 27: nothing is pending, whatever the key says.
+describe('the laid key through undo, reload and Cancel (item 27: never pending)', () => {
   beforeEach(() => setup('wall'));
-  const layer = () => window.svgEditor._layers[0];
+  const wallRecord = () => window.svgEditor._sketchLayer.node.querySelector('[data-brick-record="wall-full"]');
+  const wallKey = () => wallRecord()?.getAttribute('data-brick-laid');
   const layersChanged = () => document.dispatchEvent(new CustomEvent('editorLayersChanged'));
 
-  it('Generate stamps the current settings key on the layer', () => {
-    const before = layer().brickLaidKey;
+  it('Generate stamps the current settings key on the wall element', () => {
+    const before = wallKey();
     $('brickPattern_herringbone').click();
     $('brickGenerate').click();
-    expect(layer().brickLaidKey).not.toBe(before);
-    expect(layer().brickLaidKey).toContain('herringbone');
+    expect(wallKey()).not.toBe(before);
+    expect(wallKey()).toContain('herringbone');
   });
 
   it('undo restoring an older layer key, a reloaded document with a different key, a key-less old board: never pending, never re-laid', () => {
-    const stretcherKey = layer().brickLaidKey;
-    layer().brickLaidKey = stretcherKey.replace('stretcher', 'stack'); layersChanged(); // what undo / a reopen restores
+    const stretcherKey = wallKey();
+    wallRecord().setAttribute('data-brick-laid', stretcherKey.replace('stretcher', 'stack')); layersChanged(); // what undo / a reopen restores
     expect(pending()).toBe(false);
-    delete layer().brickLaidKey; layersChanged(); // bricks saved before the key existed
+    wallRecord().removeAttribute('data-brick-laid'); layersChanged(); // bricks saved before the key existed
     expect(pending()).toBe(false);
     expect(runBricks).not.toHaveBeenCalled();
   });

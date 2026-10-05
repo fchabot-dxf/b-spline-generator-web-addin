@@ -187,12 +187,12 @@ describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)',
     expect(editor._layers.find((l) => l.id === '1').pattern).toEqual({ id: 'lattice-1', seed: 42, threeDOff: true });
   });
 
-  it('Bricks: every brick element goes, the laid key is nulled, the artwork stays; one undo step', async () => {
+  it('Bricks: every brick element goes (records too, item 22), no shared key is left, the artwork stays; one undo step', async () => {
     const editor = editorWithBricks();
     const depth = editor._undoStack.length;
     await runClear('bricks', editor);
     expect(ids(editor)).toEqual(['path-1']);
-    expect(editor._layers.find((l) => l.name === 'Bricks').brickLaidKey).toBe(null);
+    // item 22: each element's key lives on its RECORD, which goes with the layer's children (brick-element-records.test.js)
     expect(editor._layers.map((l) => l.name)).toEqual(['Layer 1', 'Rails', 'Bricks']);
     expect(editor._undoStack.length).toBe(depth + 1);
   });
