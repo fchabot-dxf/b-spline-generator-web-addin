@@ -260,9 +260,13 @@ async function record(c, obs) {
   const v = { pending: verdict(obs.pending, c.expect.pending), canvas: verdict(obs.canvas, c.expect.canvas), threeD: verdict(obs.threeD, c.expect.threeD) };
   if (c.expect.sets) v.set = obs.setsOk ? 'PASS' : 'FAIL'; // item 23: per-element brick sets
   if (c.expect.reads) v.reads = obs.readsOk ? 'PASS' : 'FAIL'; // per-element joint (fb-app 1404b72)
-  // `backTo`: the named earlier row's before-state (canvas c0 and 3D z0) is where this row must land
+  // `backTo`: the named earlier row's before-state is where this row must land -- the 3D heights hash exactly, and the
+  // canvas's brick count. Not the canvas hash itself: across an Apply the canonical canvas hash changes with nothing
+  // re-laid (MEASURED on the rotation rows: 153#p42kdo after the 45 row, 153#16yw2lg as the next row starts), the 3D
+  // does not (back to 25521#1ve26cw exactly)
   const back = c.expect.backTo ? rows.find((r) => r.name === c.expect.backTo) : null;
-  if (c.expect.backTo) v.back = back && back.hashes && obs.hashes.c1 === back.hashes.c0 && obs.hashes.z1 === back.hashes.z0 ? 'PASS' : 'FAIL';
+  const count = (h) => String(h).split('#')[0];
+  if (c.expect.backTo) v.back = back && back.hashes && count(obs.hashes.c1) === count(back.hashes.c0) && obs.hashes.z1 === back.hashes.z0 ? 'PASS' : 'FAIL';
   const row = { name: c.name, kind: c.kind, tool: c.tool || null, result: obs.result, observed: { pending: obs.pending, canvas: obs.canvas, threeD: obs.threeD, sets: obs.sets, reads: obs.reads }, expect: c.expect, verdict: v, hashes: obs.hashes };
   rows.push(row);
   const fail = Object.values(v).includes('FAIL') || obs.result !== 'ok';  // e.g. 'MISSING' / 'DISABLED' control
