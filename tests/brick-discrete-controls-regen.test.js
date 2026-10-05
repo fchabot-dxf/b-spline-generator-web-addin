@@ -465,6 +465,11 @@ describe('Generate visibility, no pending badge, and a hidden Bricks layer', () 
   it('C8: laying bricks onto a hidden Bricks layer warns, and leaves the layer hidden', () => {
     setup('wall');
     window.svgEditor._layers[0].visible = false;
+    // item 22 slice 3: the warning reads the laid ELEMENT's layer (its record's) -- the wall lives on that hidden layer
+    const node = window.svgEditor._sketchLayer.node;
+    let rec = node.querySelector('[data-brick-record="wall-full"]');
+    if (!rec) { rec = document.createElementNS('http://www.w3.org/2000/svg', 'g'); rec.setAttribute('data-brick-record', 'wall-full'); node.appendChild(rec); }
+    rec.setAttribute('data-layer', window.svgEditor._layers[0].id);
     $('brickPattern_flemish').click(); // item 27: this change re-lays (and warns) at once
     expect(showToast).toHaveBeenCalledTimes(1);
     expect(showToast.mock.calls[0][1]).toBe('warn');

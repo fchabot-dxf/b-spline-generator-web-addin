@@ -21,7 +21,7 @@ import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core
 import { withLoadingStage, withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
 import {
-  runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, bricksLayerOf, BRICK_KINDS,
+  runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, layerOfElement, BRICK_KINDS,
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
   BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
@@ -1344,8 +1344,9 @@ function _layBricks(editor, frameGeom, kinds, { amend = null } = {}) {
   syncControlRequires(); // audit v2 N5: the board now has bricks -- the sidebar controls apply
   // Audit C8: the layer's visibility is the user's choice, so it is not flipped back on -- but a
   // re-lay nobody can see must not pass silently.
-  const layer = bricksLayerOf(editor);
-  if (layer && layer.visible === false) showToast('Bricks re-laid on the hidden Bricks layer -- show it in Layers to see them', 'warn');
+  // item 22 slice 3: each laid element on its own layer -- any of those layers hidden says so
+  const hidden = [...new Set((kinds || BRICK_KINDS).map((k) => layerOfElement(editor, k)).filter(Boolean))].filter((l) => l.visible === false);
+  if (hidden.length) showToast(`Bricks re-laid on the hidden layer ${hidden.map((l) => `"${l.name}"`).join(', ')} -- show it in Layers to see them`, 'warn');
 }
 
 /** Audit C1: what Generate lays -- every element kind already on the canvas, plus the active tool's

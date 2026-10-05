@@ -14249,3 +14249,64 @@ WallPattern = {
 - **Engine finding for 88** (shots/seatC/rockwall_default.png, ~/.bspline-status/shots/seatC): at 1¼ in, the 3-band brick frame OVERRUNS the board. Bands fan out past the right and left board edges and cross themselves near the waist arcs.
   - That is the band-overrun case (88's fix) and the subject of item 35 (bands reduced to fit).
   - At 1 in the same frame stays inside (rockwall_one.png).
+
+## turn 253: F35 item 22 SLICE 3, bricks on the ACTIVE layer like art (seat 37)
+**Model (declared, one place each):**
+- **Where an element lays.** editor-brick-tool.js `elementLayer(editor, kind)`: its record's layer, else (a new element) the ACTIVE layer.
+  - A Brush stroke goes on the active layer at draw time; its bricks are re-drawn on its spine's layer.
+  - `ensureBricksLayer` is retired: no "Bricks" layer is created any more.
+  - The legacy flagged layer (`holdsBricks`, pre-slice-3 boards) is still read by the pre-item-22 record migration only.
+  - `applyBrickLayerTooling` now writes tooling only on that legacy layer. An art layer that holds bricks keeps its own depth and profile.
+- **What a brick-tool node is.** layers.js `isBrickToolNode`: `data-brick-gen="1"` or `data-brick="brush-spine"`.
+  - `getLayerSvg` (editor-io `_parseLayerContent`) leaves those nodes out of a layer's ART by default; `bricks: 'only'` keeps only them, always as centerline polygons.
+- **Bricks' height.** `brickDepth(settings)` = ±relief (Carved negative), never the layer's art depth.
+- **Per-layer height combine.**
+  - stamp-mask-manager: each carved layer gets `_mask` (its art → rasterizeSvg at the layer's depth/profile) and `_brickMask` (its pieces → rasterizeBrickHeightMask at brickDepth), plus `_brickDepth`.
+  - rebuild `_collectStampPasses` (exported for tests) emits the layer's art pass, then its brick pass. The brick pass has id `<id>#bricks` (so applyStampLayers' editor-layer join never lends it the art tooling), Flat, no fillet, and the layer's suppression/smoothing.
+  - The empty-layer invariant clears both masks.
+- **Send (advisor ruling A).**
+  - Art layers ship art only; the old duplicate "stamp layer" copy of the brick polygons is gone.
+  - `_bricksLayerSvg` merges every layer's pieces (`brickPieceLayers`, roster order) into the ONE Bricks sketch, with carve = any of those layers carves.
+  - A pure-brick layer still carves through `_brickMask` (the candidate takes its mask + depth) but doesn't count toward includeSVG.
+  - Python: b-spline-gen.py:1557/1955/2265 read `stamp.bricks` independently of `stamp.enabled` and the layer list, so the Bricks sketch is still made. Verified by reading the code; Fusion is not live this session.
+- **Move to layer** (context menu): a selected piece, spine or record moves its WHOLE element.
+  - layers.js `brickElementNodes`: a record + its pieces, or a stroke's spine segments + its `<id>:<chain>` pieces. Plain art moves alone.
+  - BRICK_ELEMENT_ATTR / BRICK_OWNER_ATTR are now declared in layers.js (re-exported by editor-brick-tool), so the context menu doesn't pull in the brick tool.
+- **Clear.**
+  - Bricks removes every brick-element node on any layer, keeping the art.
+  - Artwork removes every non-brick node, keeps the layers that still hold brick elements (and the legacy one), and adds a fresh Layer 1 in front, as before.
+- The hidden-layer toast reads the laid elements' own layers (`layerOfElement`, read-only).
+
+**Byte-identity (live, real code, golden board = art on Layer 1 + Wall + Frame + one Brush stroke, all bricks on the old layer; built and saved on the OLD code, loaded on old and new; Math.random seeded, the time-based ids normalised):**
+- art layer 1: identical;
+- the Bricks sketch: identical (79344 chars);
+- the 3D heights hash: identical (2aba8bf0) — re-checked after the last edits;
+- the brick layer's duplicate art entry: gone (the ruled output change).
+- A FRESH board on the new code (bricks on Layer 1 beside the art) gives the same heights as the old code's fresh board (2aba8bf0 on both old runs and on the new one). The Bricks sketch is the same, modulo data-layer and the editor's `inactive-layer` display class.
+  - One of two new fresh runs read mid-rebuild (a timing artefact of the probe's fixed wait).
+- Determinism of the golden itself: two old-code loads are identical. The probe blocks the old page's pagehide session save, the same clobber found in the matrix.
+
+**Live (fresh board, headless):**
+- Wall + Frame land on Layer 1 (the only layer; no Bricks layer).
+- Move to layer → "New layer…" on one wall brick moves the record + all 59 wall bricks to Layer 2; the frame stays.
+- A frame re-lay keeps the wall on Layer 2.
+- Layer 2 carve off changes the 3D; back on restores the identical hash.
+- Reload keeps both layers, the placement and carve=true.
+- Shots: ~/.bspline-status/shots/seat37/item22s3_editor_artwork_tab.png (Layers: Layer 2, Layer 1).
+- One earlier run on a REUSED profile showed Layer 2 carve=false after reload. It did not reproduce: two fresh-profile runs, plus a minimal art-only and a moved-wall reproduction, all gave true.
+
+**Tests:**
+- New tests/bricks-any-layer.test.js (10): placement + re-lay stays put, the art layer's tooling untouched, getLayerSvg art vs bricks-only, the per-layer combine (masks + pass order/fields), a bricks-only layer, Move to layer (wall, brush, plain art), Clear bricks/artwork.
+  - Fails 10/10 against the pre-change copies (with only the test-seam export added). Restored; cmp clean.
+- Adapted to the new contract (each keeps its intent):
+  - brick-element-records: the byte-identity of the brick content now uses `bricks: 'only'`, and the art export asserts no pieces;
+  - export-flow: an XML-parsed querySelector fixture, plus a NEW several-layers-in-roster-order case;
+  - brick-layer-carve: the legacy layer active;
+  - brick-hidden-layer-draw: the active layer; dimming via a record on a non-active layer; a NEW "a new element is not dimmed";
+  - bricks-regen-perf: spines carry data-layer, as real ones do;
+  - h20-clear-scoped: fixture bricks are real pieces;
+  - editor-context-menu: mock gains brickElementNodes;
+  - discrete-controls C8: the wall's record is on the hidden layer.
+- Full vitest: 1 failure, the known N2 load timeout (98/98 alone).
+
+**Neutral set:** no new persisted P.brickSettings field (masks are runtime `_` fields, not in the persisted layer list); fixture unchanged.

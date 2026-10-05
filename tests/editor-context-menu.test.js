@@ -37,7 +37,8 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-interaction.js
   copySelection, pasteClipboard, selectAllVisible,
 }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-color.js', () => ({ openColorMosaic }));
-vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/layers.js', () => ({ applyLayerState, addLayer, syncLayerZOrder: () => {} }));
+// brickElementNodes (item 22 slice 3): a node of no brick element is just itself -- these fakes are plain lines
+vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/layers.js', () => ({ applyLayerState, addLayer, syncLayerZOrder: () => {}, brickElementNodes: (editor, node) => (node ? [node] : []) }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-piece-override.js', () => ({
   pieceKindOf: (...args) => pieceKindOf(...args), applyColorOverride,
 }));
