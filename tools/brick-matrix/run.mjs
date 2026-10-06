@@ -821,7 +821,8 @@ async function runQuickFrameLays() {
   await click('brickTool_wall', 800); await click('brickGenerate', 2500);
   await apply(); const z0 = await heightsSettled(null);
   const f0 = await frames();
-  if (!(await exists(Q.row))) { checkRow('lay', 'Sidebar Frame bands lays the frame (no Frame on the board)', false, '', Q.introducedBy); return; }
+  // a bug fix: an older build has the pick (it did nothing), so it runs and FAILS there -- only a build without it skips
+  if (!(await exists(Q.pick))) { checkRow('lay', 'Sidebar Frame bands lays the frame (no Frame on the board)', false, '', Q.introducedBy); return; }
   await click(Q.pick, 2500); const z1 = await heightsSettled(z0);
   const f1 = await frames();
   checkRow('lay', 'Sidebar Frame bands lays the frame (no Frame on the board)', f0 === 0 && f1 > 0 && z1 !== z0, `frame bricks ${f0} -> ${f1}, 3D ${z1 !== z0 ? 'changed' : 'UNCHANGED'}`);

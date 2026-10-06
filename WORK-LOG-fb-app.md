@@ -14703,3 +14703,13 @@ WallPattern = {
 - **Tests** (frame-corners-panel, item 63 describe): (1) a wall but no Frame: the pick lays wall + frame, the already-chosen preset too, and a later pattern re-lay lays only the wall. (2) no frame contour: the row is greyed with the reason, and un-greyed when a contour exists. These fail 2/2 against the pre-change brick-panel.js + brick-control-requires.js.
 - **Matrix, group 'lay':** declared QUICK_FRAME_LAYS + runQuickFrameLays: "Sidebar Frame bands lays the frame (no Frame on the board)" (0 -> 81, 3D changed) and "greyed under template None" (7/7). Group: 6 rows, 0 FAIL.
 - **Shots** (seatD): f35_63_{before,after}_{1_wall_only,2_quick_soldier}_{1366,900}.png. BRICK section open; before = no band, after = the soldier ring laid.
+
+## seat D (bb) turn 7: merge origin/main 2b5695d (frame-offset + cam-inplace-86 + neck-medial)
+- **Conflicts:** 2 in tools/brick-matrix/run.mjs, both unions. The controls import now names WALL_NO_FRAME + GROUT_JOINTS + QUICK_FRAME_LAYS; group 'lay' runs runLayWarnings, runBandsNote, runWallNoFrame, then runQuickFrameLays. Commit 1d34ae6.
+- **Re-runs on the merged tree:**
+  - Unit files (frame-corners-panel, brick-accents, brick-surface-style, both brick-control-requires, brick-discrete-controls-regen, element-accents): 171/171.
+  - Matrix: grout 2/0, lay 8/0, frame-ui 16/0, wall 47/0 (Clumping passed this run).
+  - Full vitest: 318 files, 3 failed / 4736 passed. All 3 are load timeouts (bricks-no-corrupt-polygon T14, bricks-portability, frame-3d-sweep); they pass alone, 28/28.
+- **The item-63 rows, proven against the old tree** (main 52c3055, --root): both FAIL (frame 0 -> 0, 3D unchanged; 0/0 greyed).
+  - To get there, the row's presence check now keys on the PICK button (present on old builds, where it did nothing), not on my new row id. Before this change the rows SKIPPED on the old tree.
+  - This changes only the presence check: the measured path on this tree is identical. Not re-run after the one-line change.
