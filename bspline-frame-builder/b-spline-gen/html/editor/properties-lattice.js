@@ -11,8 +11,7 @@ import { el, on } from './dom.js';
 import { LATTICE_DRAW_KINDS } from './editor-lattice.js';
 import {
     PATTERN_DEFAULTS, generatePattern, unprotectRails, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
-    _findBoundaryElements, resolvePatternLayer, freshPattern,
-} from './editor-lattice-pattern.js';
+    _findBoundaryElements, resolvePatternLayer, freshPattern, labelTieSpanButtons } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer } from './layers.js';
 import { mountSelectedPiecePanel } from './lattice-piece-panel.js';
@@ -76,6 +75,7 @@ export function initLatticeProperties(editor) {
     // default per Fred's own pick / Rails, bridging, an alternative).
     const tiesSpanModeCellsEl = el('latticeTiesSpanModeCells');
     const tiesSpanModeRailsEl = el('latticeTiesSpanModeRails');
+    labelTieSpanButtons({ cells: tiesSpanModeCellsEl, rails: tiesSpanModeRailsEl }); // F35 item 54: the declared labels
     const tiesDensityEl = el('latticeTiesDensity');
     const tiesSpanMinEl = el('latticeTiesSpanMin');
     const tiesSpanMaxEl = el('latticeTiesSpanMax');

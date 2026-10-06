@@ -22,8 +22,7 @@ import { el, on } from './dom.js';
 import {
     PATTERN_DEFAULTS, generatePattern, unprotectRails, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
     stampBoundaryRef, _findBoundaryElements, hasGeneratedSilhouette, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR,
-    _ensureKindLayers, resolvePatternLayer, freshPattern, latticeColorPool, contourPiecesKey,
-} from './editor-lattice-pattern.js';
+    _ensureKindLayers, resolvePatternLayer, freshPattern, latticeColorPool, contourPiecesKey, labelTieSpanButtons } from './editor-lattice-pattern.js';
 import { primitiveFromContourD, mergeContourPrimitives, splitContourPrimitive, CONTOUR_D_DIGITS } from './editor-contour-cut.js';
 import { arcPointAtFraction } from './editor-primitives.js';
 import { STRIPE_ATTR, STRIPE_SRC_ATTR } from './editor-stripe-tool.js';
@@ -931,6 +930,7 @@ export function initShapeLatticeProperties(editor) {
     const tiesCountMaxEl = el('shapeLatticeTiesCountMax');
     const tiesSpanModeCellsEl = el('shapeLatticeTiesSpanModeCells');
     const tiesSpanModeRailsEl = el('shapeLatticeTiesSpanModeRails');
+    labelTieSpanButtons({ cells: tiesSpanModeCellsEl, rails: tiesSpanModeRailsEl }); // F35 item 54: the declared labels
     const tiesDensityEl = el('shapeLatticeTiesDensity');
     const tiesSpanMinEl = el('shapeLatticeTiesSpanMin');
     const tiesSpanMaxEl = el('shapeLatticeTiesSpanMax');
