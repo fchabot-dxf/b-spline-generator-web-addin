@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME, GROUT_JOINTS, QUICK_FRAME_LAYS, CARVE_UNDER_FLAT, UNDO_SETTINGS } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME, GROUT_JOINTS, QUICK_FRAME_LAYS, CARVE_UNDER_FLAT, HAND_EDIT, UNDO_SETTINGS } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'undo', 'persistence', 'grout'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'undo', 'persistence', 'grout', 'handedit'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -464,6 +464,7 @@ try {
   if (!arg('group') || arg('group') === 'areas') await runWallAreas();
   if (!arg('group') || arg('group') === 'undo') await runUndoSettings();
   if (!arg('group') || arg('group') === 'grout') await runGroutJoints();
+  if (!arg('group') || arg('group') === 'handedit') await runHandEdit();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') { await runPersistence(); await runPatternParamPersist(); }
 } catch (e) {
@@ -1433,6 +1434,31 @@ async function runGroutJoints() {
     const ok = m.joints > 0 && ('jointOverBrickAtLeast' in pr ? m.joint >= pr.jointOverBrickAtLeast * m.brick : m.joint < pr.jointBelow);
     checkRow('grout', `Grout: ${pr.name}`, ok, `joint median ${m.joint?.toFixed(4)} in vs brick median ${m.brick?.toFixed(4)} in over ${m.joints} joint cells`);
   }
+}
+
+// F35 item 65: a wall brick dragged by hand with the Select tool -> the 3D follows; the move survives Apply + reopen
+async function runHandEdit() {
+  const H = HAND_EDIT;
+  await openEditorTab('editorTabBrick');
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(H.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  await click('brickTool_wall', 800); await click(H.size, 2000); await click('brickGenerate', 2500);
+  await apply(); const z0 = await heightsSettled(null);
+  await openEditorTab('editorTabBrick');
+  if (!(await exists(H.selectTool))) { checkRow('handedit', 'Hand-moved brick: 3D follows, survives reopen', false, '', H.introducedBy); return; }
+  await click(H.selectTool, 800);
+  const b = await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')]; const n=ns[Math.floor(ns.length/2)];
+    const svg=window.svgEditor._sketchLayer.node.ownerSVGElement.getBoundingClientRect(), r=n.getBoundingClientRect();
+    return { id: n.getAttribute('data-brick-id'), points: n.getAttribute('points'), fx: (r.x+r.width/2-svg.left)/svg.width, fy: (r.y+r.height/2-svg.top)/svg.height, fw: r.width/svg.width }; })())`);
+  await drag([[b.fx, b.fy], [b.fx + b.fw * H.dragBrickWidths, b.fy]]);
+  const piece = () => jsJSON(`JSON.stringify((()=>{ const n=window.svgEditor._sketchLayer.node.querySelector('[data-brick-id="${b.id}"]'); return n ? { points: n.getAttribute('points'), transform: n.getAttribute('transform') } : null; })())`);
+  const after = await piece();
+  await apply(); const z1 = await heightsSettled(z0);
+  await openEditorTab('editorTabBrick');
+  const reopened = await piece();
+  const moved = !!after && after.points !== b.points && !after.transform;
+  checkRow('handedit', 'Hand-moved brick: 3D follows, survives reopen', moved && z1 !== z0 && !!reopened && reopened.points === after.points,
+    `points ${moved ? 'moved' : 'UNMOVED'}${after && after.transform ? ' (transform ' + after.transform + ')' : ''}, 3D ${z1 !== z0 ? 'changed' : 'UNCHANGED'}, reopened ${reopened && after && reopened.points === after.points ? 'kept' : 'LOST'}`);
+  if (await editorOpen()) await apply();
 }
 
 async function runWallAreas() {

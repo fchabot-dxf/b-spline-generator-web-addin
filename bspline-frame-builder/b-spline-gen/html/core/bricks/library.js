@@ -280,6 +280,9 @@ export const BRICK_SETS = Object.freeze([
   {
     id: 5,
     name: 'Grey stone',
+    // F35 item 61: its own pieces lay a FRAME's bands (measured live: grey stones in each band; coursed rubble itself is a
+    // Wall-only pattern); seat A's D4 build laid a Set 5 frame, reachable then only by code (editor-brick-tool.js frameModeOfSet)
+    frameBands: 'set',
     faceColor: '#9a958c',
     engine: 'masonry',
     shape: 'irregular',
