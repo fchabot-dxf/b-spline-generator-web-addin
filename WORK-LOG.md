@@ -23068,3 +23068,22 @@ T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given 
   case json.
 - Slip: three cases got a duplicate "sketch: false" row: a call ran while a timed-out one was still on the same case.
   The valid rows were re-measured alone and agree exactly (T19 single 103, T7 double 81, T7 single 85).
+
+## H23 item 89 re-check on ring-pinch d464848 (joint rule + items 30, 31, 32/33), with stone rings (seat A / 77, 2026-10-06)
+- Asked by seat B for the advisor. Fitted frames (the sweep's default since 5fd7468), 7x9, brick 1 in, Frame tool alone.
+  Served from a ring-pinch worktree on port 8797: confirmed free before start, and the --root guard matched 31 files
+  on every pass. Fusion through the deployed _apply_bricks_sketch: b-spline-gen.py is identical in the deployed
+  205b41b and d464848.
+- Sweep options added (declared, this branch): --frameSet=<id> picks the frame's set through the app's own
+  selectSet(id, .., ['frame']), reads back the set the frame bricks carry (frameSets) and falls back to a direct write
+  only if the picker did not take it (frameSetVia; never needed here). --presets=a,b limits the band presets. The
+  first template-list read retries (one start-up module fetch was dropped under load).
+- RESULT, 95 boards (pieces = the <polygon>s in stamp.bricks; the app's extra 'grout' element is not in the svg):
+    bricks (default set): 19 templates x single_soldier / three_band / double_course = 57 -> 57/57 profiles == pieces
+    White rocks (set 3), three_band x 19 -> 19/19; Grey stone (set 5), three_band x 19 -> 19/19 (both via selectSet,
+      every board laid the set asked for; stones ~29 vertices each, 2,272-2,800 curves per sketch)
+    0 slivers, 0 open ends, 0 multi-loop, no duplicate row disagreeing. Table + raw rows:
+    tools/repro/h23_item89_baseline/*ringpinch_d464848*.
+- Cost: under 100% CPU from other runs, 9 capture cases failed on the first pass (dropped module fetch / app not up);
+  one fill pass recovered all 9. Stone imports take ~1.5-2 min each in Fusion (profile measuring). Calls ran 3-6 cases
+  then waited for Fusion to go idle, so no two calls overlapped.

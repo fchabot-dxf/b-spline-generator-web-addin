@@ -10,7 +10,7 @@ import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const BAND_PRESETS = ['single_soldier', 'three_band', 'double_course'];
+const ALL_PRESETS = ['single_soldier', 'three_band', 'double_course'];
 const BRICK_LENGTH_IN = 1;
 const ARGS = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const opt = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3) || d;
@@ -23,6 +23,13 @@ const ONLY = opt('only', '') ? opt('only', '').split(',') : null;
 // the Frame tab's [Generate] (a random shape: nextSeed() = Math.random, and the seeded PRNG does not pin it -- the number
 // of draws before Generate depends on timing; measured, B's runs and mine drew different T9 boards).
 const FRAME_MODE = opt('frame', 'fitted');
+// --presets=a,b: only these band presets (default all three). --frameSet=<id>: the frame's brick set (core/bricks/library.js
+// BRICK_SETS id; e.g. 3 White rocks, 5 Grey stone), picked through the app's own selectSet(id, .., ['frame']); the set the
+// frame bricks really carry is read back per case (frameSets), and when the picker did not take it (a set not offered for
+// the frame) the case writes it the way item 83 did (setIds.frame, no band patterns) and says so (frameSetVia).
+const BAND_PRESETS = opt('presets', '') ? opt('presets', '').split(',') : ALL_PRESETS;
+const FRAME_SET = opt('frameSet', '') ? Number(opt('frameSet', '')) : null;
+if (BAND_PRESETS.some((p) => !ALL_PRESETS.includes(p))) { console.log(`--presets: one of ${ALL_PRESETS.join(', ')}`); process.exit(2); }
 if (!['fitted', 'generate'].includes(FRAME_MODE)) { console.log(`--frame must be fitted or generate, not ${FRAME_MODE}`); process.exit(2); }
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 // --root: the served app must BE that tree (MEASURED, item 89 after-run: two days-old servers held the port, ours never
@@ -75,10 +82,14 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: `
   { let s = ${SEED} >>> 0; Math.random = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; }
   window.adsk = { fusionSendData() { return ''; } };` });
 
-const templates = JSON.parse(await (async () => {
+// the template list, read once from the app (retried: under load the local server sometimes drops a module fetch)
+let templates = null;
+for (let attempt = 1; attempt <= 3 && !templates; attempt++) {
   await send('Page.navigate', { url: URL }); await appUp();
-  return evalJS(`(async()=>{ const FD = (await import('./data/frame-defs.js')).default; return JSON.stringify(FD.templates.map((t) => t.id)); })()`);
-})());
+  const raw = await evalJS(`(async()=>{ const FD = (await import('./data/frame-defs.js')).default; return JSON.stringify(FD.templates.map((t) => t.id)); })()`);
+  try { templates = typeof raw === 'string' ? JSON.parse(raw) : null; } catch { templates = null; }
+}
+if (!templates) { console.log('could not read the template list'); ws.close(); chrome.kill(); process.exit(2); }
 const todo = templates.filter((t) => !ONLY || ONLY.includes(t));
 for (const template of todo) {
   for (const preset of BAND_PRESETS) {
@@ -99,6 +110,16 @@ for (const template of todo) {
       document.getElementById('editorTabBrick').click(); await W(800);
       const B = await import('./main/brick-panel.js'), S = await import('./core/state.js');
       B.setBrickSize(${BRICK_LENGTH_IN}); B.setFrameBandPreset('${preset}'); await W(300);
+      let frameSetVia = null;
+      const want = ${FRAME_SET === null ? 'null' : FRAME_SET};
+      if (want !== null) {
+        const lib = await import('./core/bricks/library.js');
+        const rockPattern = (lib.BRICK_SETS.find((x) => x.id === want) || {}).layout;
+        const before = JSON.stringify([S.P.brickSettings.setIds, S.P.brickSettings.frameBandPatterns]);
+        B.selectSet(want, 'none', ['frame']); await W(300);
+        frameSetVia = JSON.stringify([S.P.brickSettings.setIds, S.P.brickSettings.frameBandPatterns]) !== before ? 'selectSet' : null;
+        if (!frameSetVia) { S.P.brickSettings.setIds = { ...S.P.brickSettings.setIds, frame: want }; S.P.brickSettings.frameBandPatterns = []; frameSetVia = 'direct (setIds.frame)'; }
+      }
       document.getElementById('brickTool_frame').click(); await W(500);
       const t = performance.now();
       document.getElementById('brickGenerate').click();
@@ -117,14 +138,15 @@ for (const template of todo) {
       const ps = JSON.stringify(prims, (k, v) => (typeof v === 'number' ? Math.round(v * 1e4) / 1e4 : v));
       let hx = 2166136261; for (let i = 0; i < ps.length; i++) { hx ^= ps.charCodeAt(i); hx = Math.imul(hx, 16777619); }
       const svgPieces = (svg.match(/<polygon/g) || []).length; // what the Bricks sketch receives (no 'grout' element)
-      return JSON.stringify({ pieces: polys.length, svgPieces, byKind, layMs, board: [S.P.widthIn, S.P.heightIn],
+      const frameSets = [...new Set(polys.filter((p) => p.getAttribute('data-brick') === 'frame').map((p) => p.getAttribute('data-brick-set')))];
+      return JSON.stringify({ pieces: polys.length, svgPieces, byKind, frameSetWanted: want, frameSetVia, frameSets, layMs, board: [S.P.widthIn, S.P.heightIn],
         frameMode: '${FRAME_MODE}', frame: rec, outlineHash: (hx >>> 0).toString(36),
         brickLengthIn: S.P.brickSettings.brickLengthIn, preset: S.P.brickSettings.frameBandPreset,
         bricks: svg ? { enabled: true, carve: true, svg } : { enabled: false } }); })()`);
     let r = null; try { r = typeof raw === 'string' ? JSON.parse(raw) : null; } catch { r = null; }
     if (!r) { console.log('FAILED', template, preset); continue; }
     writeFileSync(file, JSON.stringify({ template, ...r }));
-    console.log(template, preset, 'outline', r.outlineHash, 'svgPieces', r.svgPieces, 'pieces', r.pieces, JSON.stringify(r.byKind), 'lay ms', r.layMs, 'case s', ((Date.now() - t0) / 1000).toFixed(1));
+    console.log(template, preset, 'outline', r.outlineHash, r.frameSetWanted !== null ? `set ${r.frameSetWanted} via ${r.frameSetVia} -> laid ${r.frameSets}` : '', 'svgPieces', r.svgPieces, 'pieces', r.pieces, JSON.stringify(r.byKind), 'lay ms', r.layMs, 'case s', ((Date.now() - t0) / 1000).toFixed(1));
   }
 }
 ws.close(); chrome.kill();
