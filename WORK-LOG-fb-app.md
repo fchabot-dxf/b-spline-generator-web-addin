@@ -14654,3 +14654,23 @@ WallPattern = {
 - **Matrix, frame-ui group:** +2 rows, "a new frame preset drops the band accents" (0/123 outlined, list []) and "Wall Course bands reach the top third of the wall" (12 of 149). Result: 16 rows, 0 FAIL, 0 page errors. The new rows were NOT run against the old tree.
 - **Fast tier:** 92 brick/accent/frame/band files. 7 failed under load; all 6 files pass alone, 49/49.
 - **Shots** (shots/seatD): f35_57_{before,after}_{2d,3d}_{1366,900}.png. Before: Course bands on the bottom 3 courses only. After: bands up the whole wall.
+
+## seat D (bb) turn 4: F35 item 62, Flush grout fills the joints (branch brick-3d-bugs)
+- **Measured first** (headless, T1 7x9, default stretcher wall, final 3D heights minus the base terrain; 6785 brick cells, 838 joint cells in the wall's interior):
+  - Flush: joint cells at 0.000 / 0.000 / 0.000 in (10th / 50th / 90th percentile). Bricks at +0.047 / +0.111 / +0.159. So every brick stood 0.11 in proud as its own ridge.
+  - Recessed: joints at -0.070 / -0.053 / -0.040. The only difference between Flush and Recessed was the recess.
+  - Cause: the mask's joint pass handled Recessed only; Flush left a joint unstamped = the ground.
+- **Fix (editor-brick-height-mask.js, the ONE joint implementation):** Flush now FILLS each joint up to the bricks' FACE.
+  - `brickFaceHeight(brick, set)` (exported, declared once) = reliefIn x (1 - surfaceShare) + the brick's own offset, clamped like sampleHeight. That is the shoulder plateau, without crown, photo detail or chips.
+  - A joint touching several bricks takes the LOWEST face, so a raised accent / Level brick stands proud of the mortar.
+  - The body is normalised like the bricks' own (/ set.reliefIn), so the joint meets the brick in the final heights, Raised or Carved alike.
+  - Cells beyond one grout width of any brick are untouched, as before.
+- **After** (same probe): Flush joints at +0.077 / +0.101 / +0.121 in, bricks at +0.031 / +0.113 / +0.168 (a fresh-start seed, so brick numbers moved slightly). Recessed unchanged at -0.052 median.
+- **Cost:** the mask build on T1 wall + soldier frame (147 bricks, 141x181) takes 43-59 ms before and 53-54 ms after.
+- **Tests** (brick-surface-style):
+  - Two old tests pinned "Flush = joint at 0"; they are now inverted: Flush fills to brickFaceHeight, open board untouched; Weathered too.
+  - New: next to a raised brick the joint takes the lower face.
+  - 2/3 fail against the pre-change file (with only brickFaceHeight shimmed). The lower-face test passes before only because every old joint was 0; it pins the min rule now.
+- **Matrix:** no new row. The existing sidebar row "Grout: Flush" (3D changes) still holds. A joint-height row needs runner code; flagged to the advisor.
+- **Fast tier:** the 12 files reading the mask / grout / accents, 221/221.
+- **Shots** (shots/seatD): f35_62_{before,after}_flush_3d_{1366,900}.png (T1, 1.5 in, Flush). The terrain differs between them (a fresh-start seed).
