@@ -23660,3 +23660,32 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Not touched: the 5 '[ERROR] CONSTRAINT FAIL ... VCS_SKETCH_SOLVING_FAILED' lines every Send of this board logs
   (also in the item 70 runs on other builds). _palette_url (item 92, not on main yet) parses its declaration the same
   way as the new _read_declared_json: fold it in when both are merged.
+
+## H23 item 94: the 5 SE15 CONSTRAINT FAILs on the 7x9 T16 board -- real, three causes, fixed by declaration (seat A / 77, 2026-10-06)
+- NOT the frame (Frame_1 builds ok): the SE15 constrained sketches of the board's Shape Lattice artwork, a frame-offset
+  contour (T16 Arched Funnel) that had been CUT (its right flank is 5 arc pieces, the left one arc). Rebuilt live
+  from the Send's own manifests (last_send.json) through the add-in's build_constrained_sketch in a scratch doc:
+  the same 5 failures, and the geometry really wrong -- contour ends up to 208 in off (an arc's radius doubled),
+  rails 6.9 in, ties/nodes 4.7 in. Not harmless.
+- Cause 1: Tangent declared at the contour's MITER corners (turns 74 / 94 / 43 deg). A cut drops the frame contour's
+  `corners` list (_drawnContourSilhouette), so every arc-adjacent joint got a Tangent; on the loose chain Fusion bends
+  the shape to satisfy them. Fix: a Tangent only where the drawn joint IS tangent -- isTangentJoint, factored out of
+  outlineDefects (same test, same 1e-4 tolerance, now TANGENT_JOINT_TOL).
+- Cause 2: 17 of 18 rail-end -> contour Coincidents named the WRONG seg: computePattern attributes ends by the FRESH
+  contour's numbering (latticeExtentFor) while a cut sends the drawn pieces, renumbered. Fix: _retargetContourEnds
+  re-resolves each end against the contour that is sent with primitiveHitAt (computePattern's own attribution),
+  tolerance CONTOUR_HIT_TOL_IN = 2e-3 in, now declared once and read by both. Only for a cut (an uncut manifest is
+  byte-identical, tested).
+- Cause 3: with 1+2 fixed (variant A, live) the contour still failed Tangent seg5/seg6 -- two pieces of ONE circle,
+  the joint next to the seg4/seg5 miter corner -- and a later arc's radius doubled. Without the 4 co-circular
+  Tangents (variant B) every layer built exact. Narrowed: seg5/seg6 restored alone fails, seg7/seg8 alone builds;
+  isolated co-circular pairs (4 radii/sweeps) and 3/5-piece chains build exact with or without Tangent. So: no
+  Tangent between pieces of one circle (_sameCircle) -- nothing lost (one circle by construction, loose contour).
+  Not a general Fusion rule (needs the loop), not root-caused, so not recorded in fusion360-quirks.
+- Tests: tests/se15-tangent-only-where-tangent.test.js 7 (T16 7x9 frame-offset contour, cut once): no Tangent at a
+  non-tangent joint (failed on the old producer: seg0/seg1), none at the cut joint, uncut Tangents unchanged, every
+  fill end on the piece it names (failed on the old code: rail0:S 1.48 in off) and none lost, uncut manifest
+  byte-identical. Related suites 477/477; full vitest 5440/5440 (335 files). Known failures: none.
+- Live end-to-end (deployed d52c5da = this + main 32a9fa4, the board's real Send from the palette): Lattice
+  Boundary / L2 contour / L1 rails / L3 ties / L4 nodes all constraints_issues=0, parity_maxErr 0 / 0 / 1e-6 / 0 /
+  0, no [ERROR], no PARITY WARNING (were 5 failures, 208 / 6.9 / 4.7 in); the contour builds in 1.1 s (was 4.7 s).
