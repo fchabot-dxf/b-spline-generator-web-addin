@@ -14779,3 +14779,19 @@ WallPattern = {
   - continuousGesture(on): a range-input pointerdown..pointerup (installGestureWatch, installed in main.js), or a sculpt stroke (sculpt-interaction onStart / onStrokeEnd).
   - GESTURE_GRACE_MS 600 covers the trailing rebuild a release or stroke end schedules. The 300 ms minimum stays.
   - Tests +3 (3/3 fail against 67d5188's loading-signal.js).
+
+## F35 item 41 follow-up -- PAINT FIRST FOR EVERY GESTURE LAY (seat F, branch paint-first off load-stages)
+- **Advisor:** "one declared switch (lays defer one frame), convert the tests in the same commit".
+- **App:**
+  - _relayStaged now shows the 'bricks' stage first for EVERY gesture re-lay. Gone: the 300 ms prediction (LAY_STATUS_BUDGET_MS, predictedLayMs, the _layMs map). It missed Generate on a new Wall+Frame mix (747 ms at x10) and a rock set -> new pattern (1.6 s).
+  - The pattern builder's open button paints its new 'openBuilder' pill first.
+- **The switch:** core/loading-signal.js setPaintScheduler is THE paint step: two animation frames (default) or a given function. withLoadingStageShownFirst runs the job inside the paint step itself (no extra microtask).
+- **Tests:** vitest setupFiles tests/setup-paint.js sets an immediate paint step + resets the signal before every test.
+  - Why an immediate step instead of ~80 sync assertions turned into awaits: a panel test reads a gesture's lay synchronously; deferral is a property of the paint step, and the paint step has its own tests.
+  - The tests OF the deferral opt back into real frames (setPaintScheduler(null)): loading-signal, blind-spot B8 (rewritten: every re-lay shows first, even an instant one), open-editor, pattern-builder (+1: the builder opens after its pill).
+  - Fail-before: 3/3 behavior tests fail with the pre-change brick-panel.js.
+- **Measured** (probe, 900 px; shots/seatF/item41pf_after_cpu4.json and item41pf_after_cpu10.json):
+  - x4: Generate painted at 15 ms (was blind, 189 ms blocked); rock-set pattern release painted at 28 ms.
+  - x4: every action still without a stage blocks <= 67 ms (a single tool-click lay, builder toggle/resize).
+  - x10: Generate painted at 113 ms (was 747 ms blind). Still blind at x10: builder toggle 169 ms, lay frame tool click 152 ms (that click is not a re-lay).
+- **Shots:** item41pf_card_mid_generate_900_cpu4.png, item41pf_pill_mid_lay_900_cpu4.png.

@@ -1148,27 +1148,12 @@ const AUTO_COMMIT = {
   onRelease: () => { notifyChange(); _relayOnRelease(); },
 };
 
-/** Blind-spot audit B8 + F35 item 41: the lay is synchronous, so its 'bricks' stage must be shown FIRST and the lay
- *  run a moment later, or it can never paint. A re-lay predicted at or over this budget (a rock set: 276-457 ms on
- *  desktop, 1-2 s on a phone) does that; a quicker one lays at once (item 41 measured a single lay at 900 px / CPU x4
- *  blocking 59-68 ms: no wait to show). Predicted from the last lay with the same layouts + size + kinds laid
- *  (_laySignature; item 41: Generate lays Wall AND Frame, 747 ms at CPU x10, vs one element's 258 ms); a
- *  first lay of a new combination is predicted from the most recent lay of any (item 41 measured a rock set -> a
- *  new pattern blocking 1.6 s at CPU x10 with nothing shown when an unseen combination predicted 0). */
-export const LAY_STATUS_BUDGET_MS = 300;
-const _layMs = new Map();
-let _lastLayMs = 0;
-const _laySignature = (kinds) => `${wallLayoutFor(P.brickSettings)}|${isRockFrame(P.brickSettings) ? 'rock' : 'brick'}|${P.brickSettings.brickLengthIn}|${kinds.join('+')}`;
-// the kinds a re-lay will lay, before it runs (the frame outline is not resolved for a prediction: assume it is usable)
-const _kindsAboutToLay = () => {
-  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  return editor ? _kindsToLay(editor, true) : [];
-};
-export const predictedLayMs = () => _layMs.get(_laySignature(_kindsAboutToLay())) ?? _lastLayMs;
-let _relayQueued = null; // the queued lay's options (one queued lay reads the LATEST settings when it runs)
-/** Every re-lay a gesture causes goes through here (item 41): shown first when it will take long enough to see. */
+/** Blind-spot audit B8 + F35 item 41 (Fred: "the screen looks frozen"): the lay is synchronous, so its 'bricks' stage
+ *  can only paint if it is shown FIRST and the lay runs after it. EVERY re-lay a gesture causes does that (advisor,
+ *  after item 41 measured lays the old 300 ms prediction missed: Generate on a new Wall+Frame mix 747 ms, a rock set ->
+ *  new pattern 1.6 s, both at CPU x10, nothing shown). One queued lay reads the LATEST settings when it runs. */
+let _relayQueued = null; // the queued lay's options
 function _relayStaged(opts = {}) {
-  if (predictedLayMs() < LAY_STATUS_BUDGET_MS) { generateBricks(opts); return; }
   if (_relayQueued) { _relayQueued = { amend: _relayQueued.amend || opts.amend || null }; return; }
   _relayQueued = { amend: opts.amend || null };
   withLoadingStageShownFirst('bricks', () => { const o = _relayQueued; _relayQueued = null; generateBricks(o); });
@@ -1429,11 +1414,9 @@ function _layBricks(editor, frameGeom, kinds, { amend = null } = {}) {
   // Turn 195: an engine throw keeps the previous bricks (runBricks computes before it clears) and says
   // so -- never an empty canvas with no message. The layout stays pending (nothing new was laid).
   let failed = null, counts = null;
-  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
   // the 'bricks' stage is entered by the caller BEFORE this (_relayStaged): a synchronous lay cannot paint it
   try { counts = runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey(), kinds, amend }); }
   catch (e) { failed = e; }
-  if (typeof performance !== 'undefined') { _lastLayMs = performance.now() - t0; _layMs.set(_laySignature(kinds || BRICK_KINDS), _lastLayMs); } // audit B8
   if (failed) {
     console.error('Brick Generate failed:', failed);
     showToast(`Generate failed -- the previous bricks are kept (${(failed && failed.message) || failed})`, 'error');
@@ -1499,7 +1482,7 @@ export const BRICK_SEED_RANGE = 1000000;
 export const newBrickSeed = () => Math.floor(Math.random() * BRICK_SEED_RANGE);
 export function generateNow() {
   // item 41: Generate is a declared sequence (lay -> carve -> build). Its lay shows first like every re-lay
-  // (_relayStaged: predicted >= LAY_STATUS_BUDGET_MS); the steps after it read "step 2 of 3", "step 3 of 3".
+  // (_relayStaged); the steps after it read "step 2 of 3", "step 3 of 3".
   beginLoadingSequence('generate');
   setSeed(newBrickSeed());
 }
@@ -2548,7 +2531,9 @@ export function initBrickPanel() {
   renderAccentList(document.getElementById('brickAccentList'));
   renderElementAccentRows(); // the Frame bands' + the Brush's Accent rows
   document.getElementById('brickAccentClick')?.addEventListener('click', () => toggleAccentClickMode({ kind: 'wall' }));
-  document.getElementById('brickAccentCustomOpen')?.addEventListener('click', () => (_builder.open ? closePatternBuilder() : openPatternBuilder()));
+  // item 41: opening the builder renders its grid + previews (279 ms blocked at 900 px / CPU x4): its pill paints first
+  document.getElementById('brickAccentCustomOpen')?.addEventListener('click', () => (_builder.open ? closePatternBuilder()
+    : withLoadingStageShownFirst('openBuilder', openPatternBuilder)));
   document.getElementById('brickAccentLevel')?.addEventListener('change', (e) => setAccentLevel(e.target.value));
   syncAccentControls();
   renderBrickSizePresetList(document.getElementById('brickSizePresetList'));

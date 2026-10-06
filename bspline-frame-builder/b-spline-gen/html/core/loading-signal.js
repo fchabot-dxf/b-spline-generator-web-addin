@@ -29,6 +29,7 @@ export const LOADING_STAGES = {
   bricks: { group: 'computing', label: 'laying bricks', surface: 'pill' },
   patternEdit: { group: 'computing', label: 'updating the pattern', surface: 'pill' },
   openEditor: { group: 'refreshing', label: 'opening the editor', surface: 'pill' },
+  openBuilder: { group: 'refreshing', label: 'opening the pattern builder', surface: 'pill' },
   heightMask: { group: 'computing', label: 'carving relief', surface: 'card', gestureSurface: 'pill' },
   rebuild: { group: 'refreshing', label: (ctx) => `building surface${ctx?.spacing != null ? ` ${ctx.spacing}″` : ''}`, surface: 'card', gestureSurface: 'pill' },
   restore: { group: 'refreshing', label: 'restoring the board', surface: 'card' },
@@ -78,7 +79,14 @@ export function installGestureWatch(doc = typeof document !== 'undefined' ? docu
 }
 
 const _raf = () => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (cb) => setTimeout(cb, 16));
-const paintFrames = () => new Promise((resolve) => { const raf = _raf(); raf(() => raf(resolve)); });
+/** THE paint step: run `cb` once the stage is on screen (two animation frames: the second is the painted one). */
+const TWO_FRAMES = (cb) => { const raf = _raf(); raf(() => raf(cb)); };
+let _afterPaint = TWO_FRAMES;
+/** The one switch for the paint step. The app never calls it; the vitest setup (tests/setup-paint.js) sets an
+ *  immediate one so a panel test reads a gesture's lay synchronously, and the tests OF the deferral put the real
+ *  frames back with setPaintScheduler(null). */
+export function setPaintScheduler(fn) { _afterPaint = fn || TWO_FRAMES; }
+const paintFrames = () => new Promise((resolve) => _afterPaint(resolve));
 
 /** The overlay text for stage `id`: "Computing - laying bricks", plus ", step 2 of 4" inside a sequence. */
 export function stageText(id, ctx, sequence = _sequence) {
@@ -183,7 +191,12 @@ export async function withLoadingStage(stageId, fn, ctx) {
   }
 }
 
-/** For a SYNCHRONOUS slow job whose caller does not await it (a re-lay): show the stage, let it paint, run. */
+/** For a SYNCHRONOUS job whose caller does not await it (a re-lay): show the stage, let it paint, run `fn` in the
+ *  paint step itself (no extra microtask: with the tests' immediate paint step it runs inside this call). */
 export function withLoadingStageShownFirst(stageId, fn, ctx) {
-  return withLoadingStage(stageId, () => fn(), ctx);
+  if (!LOADING_STAGES[stageId]) return Promise.resolve(fn());
+  const entry = _enter(stageId, ctx);
+  return new Promise((resolve, reject) => _afterPaint(() => {
+    try { resolve(fn()); } catch (e) { reject(e); } finally { _leave(entry); }
+  }));
 }

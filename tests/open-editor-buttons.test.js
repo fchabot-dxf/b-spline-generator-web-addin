@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { initFramePanel, OPEN_EDITOR_BUTTONS } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { getEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
-import { currentLoadingStage, resetLoadingSignal } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
+import { currentLoadingStage, resetLoadingSignal, setPaintScheduler } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 const FIXTURE = `
   <input id="widthIn" value="7"><input id="heightIn" value="9">
@@ -48,6 +48,7 @@ describe('the sidebar open-the-editor buttons', () => {
   });
   it('item 41: opening shows its loading stage FIRST -- the open itself runs after the paint', async () => {
     resetLoadingSignal();
+    setPaintScheduler(null); // the real paint step (the suite's is immediate)
     let seen = 'not opened';
     document.getElementById('btnStampEdit').addEventListener('click', () => { seen = currentLoadingStage(); });
     document.getElementById('btnEditBricks').click();

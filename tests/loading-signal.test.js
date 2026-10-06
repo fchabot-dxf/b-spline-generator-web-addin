@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-  withLoadingStage, withLoadingStageShownFirst, beginLoadingSequence, currentLoadingStage, resetLoadingSignal, stageText,
+  withLoadingStage, withLoadingStageShownFirst, beginLoadingSequence, currentLoadingStage, resetLoadingSignal, stageText, setPaintScheduler,
   continuousGesture, installGestureWatch,
   LOADING_STAGES, LOADING_SEQUENCES, STAGE_GROUPS, MIN_VISIBLE_MS, SEQUENCE_IDLE_MS, GESTURE_GRACE_MS,
 } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
@@ -25,6 +25,7 @@ beforeEach(() => {
   vi.stubGlobal('requestAnimationFrame', (cb) => { frames.push(cb); return frames.length; });
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
   resetLoadingSignal();
+  setPaintScheduler(null); // these tests ARE the deferral: the real two frames (the stubbed rAF above)
 });
 afterEach(() => {
   resetLoadingSignal();
