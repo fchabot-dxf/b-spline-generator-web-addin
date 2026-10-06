@@ -23591,3 +23591,31 @@ changed lay 0.0308. Test: bricks-dropped-chain + T8 (mutation: the back-off on c
 - SWEEP: app-init.js _editorSvgHasContent (its only caller was the boot mask) removed; cloud-project-manager.js comment
   that cited it reworded; app-init.js lastResult import (unused after) dropped. Kept: initApp's refreshAllStampMasks
   import (initSvgEditor still uses it).
+
+## H23 item 93: the add-in log keeps its own Send; the build status never covers the header -- seat A / 77, 2026-10-06
+- Measured first (logs from the item 70 / 92 live runs): a palette load was 99.9% ONE line kind -- state.js
+  saveLastSession echoing the whole session JSON into the add-in log (~290 KB a save with a brick wall, ~2 saves a
+  load), so one load passed the 512 KB rotation twice and its own lines were gone. A Send's own ~55 KB was 2/3
+  '[DEBUG] ATTR TAG' (fb_engine build_context) + 1/6 'CONSTRAINT OK' lines.
+- Declared html/data/addin-log.js (pure JSON, read by both sides): debug false, debugPrefixes ['[DEBUG]',
+  'CONSTRAINT OK:'], rotateBytes. _log drops a line starting with a debug prefix unless debug is on (the sketch
+  builder's _Logger.records still counts them, so its summaries are unchanged); unreadable declaration -> the old
+  behaviour (everything, 512 KB). fusion-log.js gains fusDebug (sent only with debug on); the session echo uses it, so
+  by default it never crosses the bridge. [STAGE]/[MODE]/[XFER]/[PROGRESS]/warnings/errors are never demoted (test).
+  Nothing in the repo reads the session echo back out of the log (grepped).
+- Live (deployed c1667a8, 7x9 frame + brick wall, scratch doc): a palette load wrote 1,963 B (was ~600 KB); load +
+  Send incl. the frame build 21.7 KB (Send 19.5 KB: chunk transfer + XFER timing lead). rotateBytes 2 MB: a load +
+  Send fits twice even with debug on (~0.7 MB each).
+- build_info: a linked worktree's gitdir holds only HEAD; branch refs + packed-refs live in the dir its `commondir`
+  names, so a worktree deploy read 'could not resolve source HEAD'. _read_head_sha now looks there too. And the build
+  status no longer uses the fixed status line (position:fixed over the header, a never-clearing 'warn'):
+  main/build-badge.js paints the Settings > Version badge and marks the Settings button (⚠, tooltip) when stale;
+  'unknown' only mutes the badge. Live: worktree deploy -> header clear, Send to Fusion visible, no mark (HEAD
+  resolved = up to date).
+- Tests: test_addin_log_levels.py 5 (3/5 fail on the old _log), addin-log-debug.test.js 4 (2/4 fail on the old
+  code), test_build_info_worktree.py 5 (3/5 fail on the old resolver), build-badge-no-overlay.test.js 4 (the main.js
+  wiring check fails on the old main.js). Full vitest 5425/5425 (333 files); b-spline-gen pytest 160/160. Known
+  failures: none.
+- Not touched: the 5 '[ERROR] CONSTRAINT FAIL ... VCS_SKETCH_SOLVING_FAILED' lines every Send of this board logs
+  (also in the item 70 runs on other builds). _palette_url (item 92, not on main yet) parses its declaration the same
+  way as the new _read_declared_json: fold it in when both are merged.
