@@ -15146,3 +15146,74 @@ WallPattern = {
   - Frame template change: no long work (102 ms), nothing to show.
   - Sculpt: 2 appearances = 2 actions (the tool click's rebuild, then the stroke's).
 - **Full vitest:** 331/331, 5417 passed.
+
+## F35 item 70 -- loading stages in the FUSION palette during a Send (seat F, branch fusion-stages-70)
+- **Measured first** (tools/repro/f35item70_fusion_send_stages.mjs: the palette headless in Fusion mode, adsk stubbed, the add-in's real progress replies replayed after generate_finish; 900 px, CPU x4):
+  - The card read 'writing the files, step 3 of 3'.
+  - At generate_finish the card closed AND the Send button was re-enabled while Fusion was still importing.
+  - Then nothing, then the add-in's free-text phases on the 11 px status line only. Bricks had no message at all.
+- **Add-in log** (last real palette Send, 2026-10-04 16:21): the whole import (13 s, 11 of them the frame) runs inside the generate_finish HTML handler.
+  - Seat A's live probe: the palette paints nothing during a blocking call (its window is Fusion's main thread), but does paint with adsk.doEvents() in the block.
+- **Built:**
+  - html/data/fusion-send-stages.js: the Fusion steps, declared once. The palette imports it; the add-in json-loads the object after the line that starts with the export.
+  - The palette shows them as WAITING cards 'Fusion: <label>' in LOADING_SEQUENCES.send (heightMask, rebuild, stepBuild, transfer, then the 7 Fusion steps).
+  - holdLoadingStage / releaseHeldStage: a stage that lasts until the next report or the end.
+  - The transfer is held, and Fusion's first step is HELD AND PAINTED before generate_finish (sendFusionPayloadChunked's beforeFinish).
+  - main.js: import_stage {id} holds; import_success / import_failed / import_ready / the poll timeout release the stage.
+  - The Send button stays 'Sending...' until import_success, import_failed or the timeout (advisor gate (a)).
+  - Add-in: _post_to_palette (sendInfoToHTML + adsk.doEvents, declared once) used by _send_progress and the new _send_stage(id, is_preview). Undeclared ids are logged, not sent; previews send none. Bricks gets its own step.
+- **After** (replay, PROTOCOL=stage): every long task ran with a card naming the step ('Waiting - Fusion: building the frame, step 10 of 11'); the button read 'Sending...' until 'Imported into Fusion'.
+- **Tests:**
+  - tests/fusion-send-stages.test.js (5): the declaration parses the way Python reads it; Fusion stages are waiting cards; held stages; unknown ids are inert; the first Fusion stage is painted before generate_finish.
+  - b-spline-gen/test_fusion_send_stages.py (5): the same ids as the palette; declared stages sent with doEvents; never for a preview or an undeclared id; every declared stage is reported somewhere.
+  - Fail-before: all new; none of these exports or the data file existed.
+  - Full vitest 326/326; add-in pytest 159 passed.
+- **Not verified live yet:** a real Send in Fusion (seat A's holder slot).
+- **Risk for the advisor:** doEvents inside the import lets Fusion run other palette messages mid-import. check_import_status is inert while importing_done is False, but a preview_mesh (the palette's restoring rebuild right after the hand-off) could now run during the import.
+- **Not done:** CAM BUILD / APPLY held stages (advisor: after the Send works).
+- **Live Send (seat A, 07:45, T16 + red wall, 38 s import)**:
+  - The stages work, but each one painted ONE POST BEHIND. A single doEvents returned before the web view handled the message, so the bricks, cleanup and frame steps never showed; the card said 'stamping the artwork' through the 12 s frame build.
+  - The queued status poll hid the palette the moment the import ended, so 'Imported into Fusion' was never seen.
+  - Risk A: clean. doEvents painted but dispatched no palette event mid-import (all of them ran at finalize).
+- **Fix:**
+  - _pump_palette pumps doEvents for POST_PAINT_PUMP_S (0.08 s) after every post.
+  - import_success goes through _post_to_palette.
+  - check_import_status hides the palette only when _may_hide_after_import(): the success state has been up IMPORT_SUCCESS_SHOW_S (1.5 s).
+  - Python tests 7/7 (5 fail against c537833); add-in pytest 162.
+- **Palette cover, investigated with seat A (2026-10-06):**
+  - Bisect (f35item70_palette_cover_bisect.py, the bricks step's calls in isolation, palette in front): never covered.
+  - Monitor during a REAL Send (f35item70_cover_monitor.py, 50 ms Win32 sampling):
+    - The palette is OWNED by Fusion's main window, so that window cannot cover it.
+    - The foreground moved to the main window at the STEP import while the palette stayed on top, until the end-of-Send hide.
+  - The cover seen in runs 1-2 did not reproduce. Likelier the palette was hidden or moved for a while.
+  - Detection only: _post_to_palette logs '[PALETTE] hidden after posting <action>' if pal.isVisible is False. The monitor now reads the main window as the palette's owner and records IsWindowVisible.
+  - Add-in pytest 163.
+
+## F35 item 70, CAM part: BUILD SETUPS / APPLY TOOLPATHS on the shared loading card (seat F, branch cam-stages)
+- **Shared card:**
+  - The card's CSS moves to styles/loading-stage.css, linked by both palettes.
+  - The CAM palette imports the B-Spline palette's own core/loading-signal.js (both add-ins deploy side by side) through cam-loading.js.
+  - New: declareLoadingStages(stages, sequences) adds another palette's declared stages to the tables.
+- **Declared once:** CAM-builder/ui/html/cam-stages.js holds 6 steps and the camBuild / camApply sequences. The palette imports it; the add-in reads it through fb_shared.palette_stages (new: declared_stage_ids + pump, pure stdlib).
+- **Palette:**
+  - BUILD / APPLY begin their sequence and PAINT the first step before the request goes to Fusion.
+  - cam_stage holds a step; build_confirm (the Rebuild question) and report end it.
+- **Add-in:**
+  - cam_coordinator.run(on_stage=...) reports camWcs, camCleanup, camModels, camSetups. A reused build skips cleanup + models: those steps go unreported.
+  - _do_apply_toolpaths reports camTemplates, camToolpaths.
+  - _post_cam_stage validates the id, posts, then pumps 0.08 s.
+- **Found on the way:** at 420 px the centred card wrapped into a 4-line column (shrink-to-fit from left:50% has half the viewport). The card now has width: max-content (max-width keeps the gutters). This is the phone too.
+  - Shot: shots/seatF/item70_cam_card_mid_build_420px.png, headless, the real CAM palette served with the deploy's folder layout.
+- **Tests:**
+  - tests/cam-stages.test.js: 5.
+  - CAM-builder/test_cam_stages.py: 4 (declared = reported, the build order, the pump window).
+  - Full vitest 333/333 (5425); CAM pytest 40; add-in pytest 163.
+- **Not done:**
+  - Seat A's live baseline of BUILD / APPLY (queued), then a live check.
+  - b-spline-gen still has its own copy of the reader + pump; it moves to fb_shared.palette_stages once fusion-stages-70 is on main.
+- **One parser, one pump (advisor + seat A after items 92/93):**
+  - fb_shared.palette_stages.read_declared_json is the one reader of the palettes' declared data modules.
+  - b-spline-gen's _read_declared_json is now an alias of it; _palette_url (item 92) and _fusion_send_stage_ids read through it; _pump_palette calls palette_stages.pump; POST_PAINT_PUMP_S comes from there. ADDIN_LOG (item 93) reads through it at import time, with fb_shared put on sys.path at module top.
+  - CAM-builder already uses it.
+  - Left as they are: test_addin_log_levels.py / test_palette_host_url.py parse the files their own way (an independent check, not the code checking itself).
+  - Add-in pytest 170, CAM pytest 40.
