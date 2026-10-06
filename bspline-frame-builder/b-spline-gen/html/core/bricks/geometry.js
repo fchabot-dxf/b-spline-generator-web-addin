@@ -177,6 +177,61 @@ export function clipToHalfPlane(poly, line, keepRef) {
   return dedupePolygon(out);
 }
 
+/** T86 16(c) part 2: `poly` clipped to the region where the scalar field `f` is <= 0 (`< 0` with `strict`) -- the
+ *  same Sutherland-Hodgman walk as clipToHalfPlane (its special case: a linear f), for a CURVED dividing line (the
+ *  medial line between two offset sources: a hyperbola between two arcs, a parabola between a line and an arc).
+ *  An edge's crossing is found by bisection; the new edge between an exit and the next entry is not left as a
+ *  chord but refined onto f = 0 every FIELD_CUT_STEP_IN (Newton steps along the numerical gradient), so the two
+ *  polygons a curve divides get the SAME curve, not two chords with a sliver between. A polygon wholly inside is
+ *  returned as is; one with no vertex inside returns [] (a curve bulging into a convex piece between two of its
+ *  vertices is below the step at brick scale). */
+const FIELD_CUT_STEP_IN = 0.01;
+export function clipToField(poly, f, strict = false) {
+  const n = poly.length;
+  if (n < 3) return [];
+  const vals = poly.map((p) => f(p));
+  const inside = (v) => (strict ? v < 0 : v <= 0);
+  const start = vals.findIndex(inside);
+  if (start < 0) return [];
+  if (vals.every(inside)) return poly;
+  const lerp = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+  const root = (a, b) => { // a inside, b outside
+    let lo = 0, hi = 1;
+    for (let k = 0; k < 60; k++) { const mid = (lo + hi) / 2; if (inside(f(lerp(a, b, mid)))) lo = mid; else hi = mid; }
+    return lerp(a, b, lo);
+  };
+  const onZero = (p) => {
+    let q = p;
+    for (let k = 0; k < 8; k++) {
+      const v = f(q), h = 1e-6;
+      const gx = (f({ x: q.x + h, y: q.y }) - f({ x: q.x - h, y: q.y })) / (2 * h);
+      const gy = (f({ x: q.x, y: q.y + h }) - f({ x: q.x, y: q.y - h })) / (2 * h);
+      const g2 = gx * gx + gy * gy;
+      if (!(g2 > 1e-18) || Math.abs(v) < 1e-12) break;
+      q = { x: q.x - (v * gx) / g2, y: q.y - (v * gy) / g2 };
+    }
+    return q;
+  };
+  const out = [];
+  let exitPt = null;
+  for (let s = 0; s < n; s++) {
+    const i = (start + s) % n, j = (i + 1) % n;
+    const cur = poly[i], next = poly[j], curIn = inside(vals[i]), nextIn = inside(vals[j]);
+    if (curIn) out.push(cur);
+    if (curIn && !nextIn) { exitPt = root(cur, next); out.push(exitPt); }
+    if (!curIn && nextIn) {
+      const entry = root(next, cur);
+      if (exitPt) {
+        const steps = Math.ceil(Math.hypot(entry.x - exitPt.x, entry.y - exitPt.y) / FIELD_CUT_STEP_IN);
+        for (let k = 1; k < steps; k++) out.push(onZero(lerp(exitPt, entry, k / steps)));
+      }
+      out.push(entry);
+      exitPt = null;
+    }
+  }
+  return dedupePolygon(out);
+}
+
 /** Drop consecutive (including wrap-around) near-duplicate vertices from a polygon. */
 export function dedupePolygon(poly, eps = 1e-7) {
   const out = [];

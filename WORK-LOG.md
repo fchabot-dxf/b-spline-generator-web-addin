@@ -22788,3 +22788,153 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
   The stock X 7.5 of the (b') probe did NOT occur: there the MM had been deleted + recreated by hand; in P2 a missing
   or invalid MM takes the full recreate, and the in-place path re-applies axes + box every time anyway.
 - Hygiene: scratch doc closed by handle (verified), holder none; Fred's Untitled untouched.
+## T86 item 16(c) part 2 -- PLAN: band pieces split at the medial line (seat B / fc, 2026-10-05 night)
+
+**Baseline re-measured on main 7633a5e** (19 templates x single_soldier / three_band / double_course x 0.75 / 1 /
+1.25 in, 7x9, Red Brick seed 1, shapely; scratch sweep = a vitest dump of every frame piece + sweep.py):
+overlap (sum - union) **17.824 sq in** = 88's number. Split: same row, pieces >= 3 apart in the walk (a row meeting
+itself across a neck) **14.49**; everything else (corner fans, 21b's) **3.42**. Worst: T18 / T19 at 1.25 in 1.44
+each (neck 1.18 + corner fan 0.27), T14 0.82 (all neck), T11 double_course 1.25 0.76, T16 three_band 0.75 0.59.
+Shot: shots/seatB/neck16c2/before_worst_necks.png (overlap in red).
+
+**What the shot shows.** T18 / T19: the waist's two facing arcs; each row's pieces run to depth d1 past the half-gap,
+so the two sides' wedges cover one LENS. T14: the X waist; the four arms' pieces cover one DIAMOND. T16 three_band:
+the outer band of one side over the outer AND middle band of the other -- the clash crosses rows and bands, so a
+per-row fix cannot be the whole answer.
+
+**Why "split at the lobes" alone does not separate the sides.** At a neck the ring between the board and the
+untangled d1 boundary is ONE connected region (the lens is inside it); the lobes are the WALL's windows on either
+side. What the untangle does give us: the two crossing points of the dropped inverted loop are exactly where the
+two sides' offsets meet at d1 -- the two ENDS of the medial curve through the lens. The cut we want is that curve.
+
+```
+   left arc (centre cL)          right arc (centre cR)
+        \  wedge Pi  \   tip X1   /  wedge Pj  /
+         \            \    *     /            /
+          \     depth_i < depth_j | depth_j < depth_i
+           \            \   |   /            /
+            )  keeps     \  |  /   keeps    (       medial curve = { depth_i(x) = depth_j(x) }
+           /   left half  \ | /  right half  \      (two lines: the bisector; two arcs: a hyperbola;
+          /                \|/                \      a line + an arc: a parabola) -- runs X1 -> X2
+                            *  tip X2
+```
+
+**The rule (declared, one sentence):** every point of the band area belongs to the band piece whose OWN depth there
+is smallest -- depth measured from the piece's own source primitive exactly as the piece was built (line:
+n.(x - p0); arc: radialSign * (r - |x - c|)), i.e. the side of the medial line it lies on; the row inside that side
+follows from depth as today. Properties, by construction:
+- order-free: every piece is cut from the ORIGINAL pieces, not from already-cut ones (attempt A's cycle
+  A->B->C->A, where nobody kept the region, cannot happen);
+- no void: a point is removed from a piece only because a piece with a strictly smaller depth covers it, so the
+  smallest-depth piece covering it keeps it (the union is unchanged);
+- no overlap: two pieces keep the same point only where their depths tie (the curve itself);
+- byte-identical when clean: a piece is touched only if it overlaps a CONFLICTING piece (> 1e-4 sq in).
+
+**Conflicting = different source primitive AND not joint neighbours in that row's live walk** (any band / row).
+Joint neighbours already meet at their mitre (which IS their medial line); their fan residual is 21b's and stays
+untouched here, so ordinary corners stay byte-identical. Kite-fan / notch / quoin pieces have no single source
+primitive: they keep today's shape in this item (21b's territory).
+
+**The cut, exactly.** f(x) = depth_i(x) - depth_j(x) is a smooth scalar field. Clip Pi to f <= 0 with a
+Sutherland-Hodgman walk on the field's sign (geometry.js, a new `clipToField(poly, f)`; clipToHalfPlane is the
+special case of a linear f): an edge crossing gets its point by bisection to 1e-10; the new edge between two
+crossings is refined onto the zero set (points stepped along it and Newton-projected), so Pi and Pj get the SAME
+curve (not two different chords) -- no hairline sliver either way. Restricted to where Pj actually is: Pi loses
+only Pi & Pj & {f > 0} (a polygonDifference against Pj clipped to f >= 0), never ground no conflicting piece covers;
+a cut leaving a piece under library MIN_PIECE_FRACTION drops it only if the rule above gives that ground to another
+piece (it does, by definition), so no hole. Pieces get an internal source-primitive tag in ribbonPieces (stripped
+before bricksContourBands returns: no new field on the output, no app-visible contract change).
+
+**Where:** contour-bands.js after the rows are built, before the board clip -- one declared step
+(`yieldAtMedialLine`), next to the fit rule (item 28: the fit rule caps the stack at 1/3 of the narrowest gap; at a
+neck narrower than the board's narrowest probe the medial line is the local limit -- the same idea, per point).
+
+**Sweep I will run (same dump, same shapely):** per case lost ground (union_before - union_after) < 0.01 sq in AND
+neck overlap < 0.01; corner-fan overlap must not GROW (it is 21b's to remove; today 3.42 total); cases with zero
+neck overlap byte-identical (piece list equal); the bricks domain (tests/bricks-*.test.js) green; full vitest
+before the DM. New test: tests/bricks-neck-medial.test.js, T18 / T19 / T14 at 1.25 single_soldier + T16 three_band
+0.75: no neck overlap, union unchanged within 0.01, T1 byte-identical -- shown to FAIL on main first.
+Shots: shots/seatB/neck16c2/after_worst_necks.png (same five cases).
+
+**Open question for the advisor:** the bar "overlap < 0.01 per case" -- I read it as the NECK overlap (this item);
+the corner-fan residual (T18 / T19 0.27 each, 3.42 total) is 21b, task 2. Say if you want both under one bar.
+
+## T86 item 16(c) part 2 -- DONE: band pieces split at the medial line (seat B / fc, 2026-10-05 night)
+
+**Shipped** (contour-bands.js `yieldAtMedialLine`, geometry.js `clipToField`, primitive-ribbon.js returns each piece's
+source primitive + its row's live walk ALONGSIDE the pieces -- no new field on any piece, no app-visible change):
+every point of the band area goes to the piece whose own depth there (from the primitive it was offset from) is
+smallest; ties to the lower source index (no rng: seed-stable). A piece is cut only where a CONFLICTING piece covers
+the ground with a smaller depth (Pi minus (Pj clipped to dj <= di), each against the ORIGINAL Pj). Conflicting =
+different source primitives, not joint neighbours in either row's walk, overlap > 1e-4 sq in.
+
+**Sweep** (19 templates x single_soldier / three_band / double_course x 0.75 / 1 / 1.25 in, 7x9, Red seed 1, shapely;
+neck vs corner now classified by the rule's own definition via the source tags, a scratch hook not shipped):
+- neck overlap **14.102 -> 0.000** sq in (every one of 171 cases 0.0000); corner-fan residual 3.814 -> **3.814**
+  (unchanged, 21b's); total overlap 17.824 -> 3.723.
+- **142 / 171 cases byte-identical**; the 29 that change are exactly the 29 with neck overlap (set equality checked).
+- Lost ground (union before - after): total 0.874, per case max **0.0998** (T18 1.25 in) -- over the 0.01 bar in 9
+  cases (T14 1 / 1.25 0.013 / 0.051, T18 / T19 1.25 ~0.10, x3 presets). ALL of it is joint, measured three ways:
+  (a) every gap the cut opens is narrower than the SAME board's widest existing joint (T18 1.25: opened 0.0331 in
+  from a brick, the board already has 0.0396; T19 0.0310 vs 0.0436; T14 0.0154 vs 0.0166) -- area farther from a
+  brick than the board's own widest joint: **0.0000 in all 171 cases**; (b) what goes is a far piece's TONGUE left past
+  the line inside a near-side joint, cut off from its own piece (traced on T18 frame-55: its 0.016 sq in island sits
+  between near pieces frame-16 and frame-17), and on T14 a kite tip cut off by the far arm's strip; (c) the largest
+  discarded part anywhere is 40% of that size's MIN_PIECE_FRACTION piece, so the min-piece rule would drop it anyway.
+  Keeping those fragments would put a sliver of the far brick inside the near side's joint.
+- Advisor's check (1), under-size pieces after the cut: 9 drops over the sweep, one at a time, smallest first, each
+  re-cut without it so its ground goes across the line; a drop whose ground the re-cut pieces do not cover (more than
+  MEDIAL_HOLE_SQIN 0.002) is undone and the piece stays under-size (T14's X: two half-diamonds, 0.093 sq in each vs
+  the 0.104 minimum, meet at a mitre and nobody else covers either). First version dropped all four X kites in one
+  pass (0.186 sq in hole), the second compared summed areas (double-counts where pieces overlap): both measured and
+  replaced. Slivers whose drop opens < 0.002 still drop (a kept 0.001 sq in "brick" on T16 was the trigger).
+- Advisor's check (2), ties: `clipToField(..., strict)` -- the higher source index yields a tie; nothing random.
+- Fan residual at T18 / T19 / T11 / T8 shoulders (kite fans, no single source primitive) untouched: 21b.
+- NOT touched: area bands (fieldstone rings, White Rocks / Grey stone): their stones have no source primitive.
+  bricks-rock-ring-stones.test.js's it.todo for T11 T14 T15 T16 T17 T19 (ring stones at the pinch) stays open.
+
+**Rejected on the way (measured):** the field cut alone, without restricting it to where the far piece IS (overlap
+17.8 -> 3.6 but lost 4.3 sq in: T14's X and T16's neck triangle went bare -- the far primitive's field extends past
+its own pieces).
+
+**Test** tests/bricks-neck-medial.test.js (9): T18 / T19 / T14 1.25 single_soldier + T16 three_band 0.75 -- overlap
+between a left and a right piece < 0.01 and the neck strip's covered ground within 0.16 sq in of main's (grid; pinned
+from main 0443c48); T1 every preset at 1 in = main's frame digest; clipToField unit cases (linear = half-plane, a
+circle follows the arc not the chord, ties). Against main: **4/4 neck cases FAIL** (overlap 0.92 / 0.93 / 0.18 /
+0.20); with the no-hole drop guard removed: **T14 FAILS** (cover 9.2268 vs > 9.2836). The digest case passes on main
+by construction (it pins main). A first hole probe (points far from any brick) was replaced: it read main's
+OVERLAPPING kite as "near" a pre-existing bare notch and flagged the branch for it (that notch is bare on main too).
+
+Shots: shots/seatB/neck16c2/before_worst_necks.png, before_after_worst_necks.png (T18 / T19 1.25 three_band, T14,
+T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given up -- the joint tongues).
+- Gates: bricks domain (tests/bricks-*) 54 files 532 passed 8 todo; FULL vitest **315 files, 4704 passed, 8 todo, 0
+  failed** (87.7 s). Lay time (30 lays averaged, a shared machine, two alternating runs each): clean T1 three_band 1 in
+  13 / 13 ms main / branch (the conflict search runs zero polygon intersections on T1: counted); neck cases a few ms to
+  ~2x (T18 three_band 1.25 23-25 -> 28-51 ms, T16 three_band 0.75 11-18 -> 18-33 ms).
+- After merging origin/main 52c3055 into neck-medial (55dd348; a WORK-LOG append conflict, both kept): bricks domain
+  54 files green; full vitest x3 on a loaded machine (three other seats running): 13, then 1, then 1 failure. The
+  last two were the same: tests/frame-3d-sweep.test.js timed out at 90 s. It imports no bricks code, passes alone on
+  the branch (52-69 s), and on main 52c3055 it also timed out alone once (110 s) between two passes. main 52c3055 full:
+  316 files green in 80 s. Read as load, not this item -- the advisor's gate decides.
+
+## T86 item 16(c) part 2 -- the medial seam is a joint (advisor, from seat A's Fusion e2e) (seat B / fc, 2026-10-05 night)
+- Why: the first cut left the two sides ABUTTING on the medial line (0 gap); seat A measured that 0-gap seams become
+  zero-area sliver profiles in the Fusion Bricks sketch. Rule added (declared, contour-bands.js): each side stops
+  half the set's grout joint (set.grout.widthIn / 2) short of the line. The field is the depth difference divided by
+  its own gradient (medialDistance: first-order distance to the line; the raw difference changes 2x per inch at a
+  neck, which would have made the joint half as wide). The far piece is grown by a FULL joint before the cut (limited
+  to the half-joint strip): grown by half a joint only, a lens tip still touched (T18 frame-13 / frame-58 at
+  (3.5, 4.529): both pieces' own edges reach the line there) or left 0.022 in.
+- Sweep (171 cases): neck overlap 0.000 in every case; corner residual 3.814 -> 3.763 (down, not up); **every seam the
+  rule cuts is >= 0.034 in (the joint) in all 29 cases**; 142 / 171 byte-identical; 8 drops; raw union loss 2.75 sq in
+  total (the new seam joints, by design), void farther from a brick than the same board's widest existing joint
+  0.0000 in every case.
+- Pre-existing tight seams NOT from this step (same distance on main, measured pair by pair): T18 / T19 arm-to-top-bar
+  pieces at the shoulders 0.0068 / 0.0037 in, T14's two half-diamonds meeting on the X's horizontal mitre line 0 in.
+  They are corner / mitre seams: 21b (the advisor put 0-gap mitres there).
+- Test: each neck case also asserts the medial seam (a left against a right piece, closest on the centre line inside
+  the declared neck window) >= joint - 0.002. With the setback set to 0: **4/4 FAIL** (gaps 0 .. 1.3e-5 in).
+- Gates: bricks domain 54 files green; full vitest 316 / 317 files -- the one is tests/frame-3d-sweep.test.js timing
+  out at 90 s again (139.9 s run, loaded machine), as logged above: no bricks import, passes alone.
+- Shots: before_after_worst_necks.png re-rendered from this build; t18_seam_zoom.png (the seam as a joint);
+  t14_x_centre_zoom.png (main vs branch, the X centre: two 0.093 sq in half-diamonds, blue = joint given back).
