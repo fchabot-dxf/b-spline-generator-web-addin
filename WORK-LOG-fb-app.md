@@ -14800,6 +14800,32 @@ WallPattern = {
 - **Matrix 'lay':** the "greyed under template None" row is replaced by "Sidebar Frame bands under template None lays along the board edge": 0/7 greyed, 74 frame bricks, 3D changed. Group: 8 rows, 0 FAIL.
 - **Live:** None + the editor's Frame tool Generate: 0 -> 80 frame bricks.
 
+## seat D (bb) turn 9: the "Clumping race" (advisor) -- measured NOT a race; a declared seed row
+- **The advisor's reproduction** (T1 wall; Suppression then Clumping 200 ms apart; each final canvas compared with a fresh lay of the same final settings and seed):
+  - 0/20 misses on stretcher (lay 9 ms) and 0/20 on fieldstone (261 ms).
+  - The matrix's own sequence (Suppression, Apply, reopen, Clumping at once): 0/12 misses.
+  - Every final lay carried both settings.
+- **Real cause** (core/bricks/suppression.js, engine): the removal score = topBias 0.8 x course height + 0.2 x noise. Clumping sets only the noise SCALE, and the removed count is exact. So on some seeds the same top pieces go whatever the scale.
+  - Measured: one board at Suppression 0.6 laid an identical canvas for Clumping 0.2 / 0.6 / 0.9.
+  - Over 20 seeds x Suppression 0.3/0.5/0.7, Clumping 0.1 vs 0.9 was identical in 1 of 60 cases.
+- **Why the row flaked:** the matrix baseline presses Generate, which re-rolls the brick seed (F35 item 39), so each run drew a new seed.
+- **Fix (advisor OK, tools only, no engine change):** a declared row "Brick seed 7919 (Suppression/Clumping rows)" before "Suppression 0.5", set via the field's 'input' event (its binding; a 'change' set did nothing, measured: the row's first try FAILED).
+  - Wall group, 2 runs: 48 rows, 0 FAIL each, identical hashes. Suppression 293 -> 214#1yvorwz; Clumping 214#d7m8az -> 214#wct7ox.
+
+## seat D (bb) turn 9 (cont.): F35 item 65, a hand-moved brick follows in the 3D
+- **Measured first** (real mouse drag with the Select tool on a T1 1.5 in wall, then Apply, then reopen):
+  - MOVE: the piece got `transform="matrix(1,0,0,1,0.5,0)"` and its `points` stayed as laid. 3D UNCHANGED. The transform survived reopen.
+  - DELETE (click + Delete key): 3D changed, and it survived reopen.
+  - So the mask WAS rebuilt on every commit. Every brick reader (the height mask, accents, Send, the laid key: 7 `points` readers) ignores a transform. It was not a missing dirty flag.
+- **Fix, one declared hook:**
+  - layers.js `bakeBrickTransforms(editor)`, beside isBrickToolNode: a laid piece (data-brick-gen=1) carrying a transform gets it baked into its points (consolidate() in the browser; matrix()/translate() parsed otherwise), and the attribute dropped.
+  - Called from editor.js `_notifyChange('commit')` with the other commit-only hooks, so every gesture's commit runs it, before the remask.
+  - The gesture's own undo step is refreshed to match only while the top of the stack is still `_lastPushedState` (the existing fold-in convention). After an undo, the history is left alone.
+  - Texture: the fill pattern is objectBoundingBox, so it moves with the piece.
+  - Brush spines are NOT baked here (their own regenerate path); not measured.
+- **Live after:** the drag moves the points +0.5 with no transform, 3D changed, kept after reopen. Delete unchanged (works).
+- **Tests:** tests/brick-move-bake.test.js (5): baking matrix / translate / rotation; art, spines and untransformed pieces untouched; the hook folds into the gesture's step but not into an older one. The 2 hook tests fail 2/2 against the pre-change editor.js.
+- **Matrix:** a new declared group 'handedit' (HAND_EDIT + runHandEdit): a real drag, Apply, reopen. This tree: pass. Clean main 52c3055: FAIL ("points UNMOVED (transform matrix(1,0,0,1,0.5,0)), 3D UNCHANGED").
 ### seat E (61) turn 2: the advisor's answers on 55/56, folded into one commit (grout-svg)
 - **(2) Group order = the LAYERS roster** (advisor: "art over or under bricks is whatever Fred arranged"):
   - SVG_EXPORT_GROUPS now declares a `place` per kind: frame 'bottom'; art / bricks / grout 'layer'.
@@ -14819,6 +14845,37 @@ WallPattern = {
 - **Fail-before** (scratch tree at 03972e9, the pushed tip): **3/3 new tests fail** (roster stacking, roster reorder, the hover look); the other 24 in those files pass.
 - **Gate:** full vitest 1 failed / 4766 passed. The one failure is frame-3d-sweep's 90 s timeout, which passes alone. An earlier contended run (my probe was running alongside it) had also caught a REAL break: my first guard (isBrickToolNode) skipped item 49's flag strip on a node without data-brick-gen. The guard is now "any node with data-brick", as before; pattern-builder-cuts is green.
 - **Live** (download_live.mjs, real click): the top groups are frame, art 'Layer 1', 'Wall', 'Wall grout', 'Frame', 'Frame grout'. That is the panel's roster (top to bottom: Frame, Wall, Layer 1) read bottom up. 147 paths for 147 laid bricks, 0 url(#; the 900 px overflow-menu download is byte-identical. 0 page errors.
+
+## seat E (61) turn 4: Brush stroke grout -- the engine's ribbon (branch brush-grout, off grout-svg + origin/main)
+- **Engine (additive, fc cleared it by DM):**
+  - new core/bricks/ribbon-outline.js: openRibbonOutline(enriched, depthA, depthB) and ribbonEdge. Each primitive is offset to the edge depth (a line by its normal, an arc by r - radialSign x d: primitive-ribbon's convention); consecutive primitives are mitred at curveIntersection nearest the original junction (the bricks' own joint rule), with a bevel when the offsets do not meet; the ends are closed square.
+  - contour-bands.js: an import, `ribbonStartDepth`, and one spread on the return, `ribbonOutline` (open + centred only). fc's joint-rule branch will touch neighbouring lines; whoever lands second resolves (fc offered).
+- **App:**
+  - GROUT_ELEMENT_KINDS += 'brush'.
+  - bricksForBrushStroke / bricksForStroke take an optional `out` that receives ribbonOutline (the return types do not change).
+  - regenerateOwnedBrickElements: one grout node per STROKE (owner = the stroke id; its region = its chains' ribbons), drawn on the stroke's layer.
+  - Every stroke's grout node is removed first (a deleted stroke leaves none), and its PAINT is read back and handed to its redraw: grout paint is per kind, never frozen into a stroke's snapshot.
+  - _ownedBrickPolys / _groutCutouts / elementsWithoutGrout read a stroke's chain owners (`<id>:<chain>`) as the stroke.
+  - brickElementAt's grout hit reports the stroke's own kind (brush / raisedBrush).
+  - forceRegenerateOwnedBrickElements: a paint change on a board whose strokes have no grout node yet regenerates them (same settings + seed) before falling back to the Wall / Frame re-lay.
+- **Measured facts** (named, not changed):
+  1. A stroke's bricks BUTT along the run with no joint: one brick ends at x 2.25 and the next starts at 2.25 (stretcher_1, Set 1). So a stroke's grout shows only with an Edge > 0, and there is no joint point to click: Select on any stroke brick already picks the stroke.
+  2. The end bricks overhang the stroke's ends by 0.02 in (x -0.02..4.02 on a 0..4 stroke). The ribbon stops at the stroke's ends, so the faces are cut to it there, and those two slivers get no grout paint.
+  3. The sidebar's quick rows (Grout colour included) are greyed until a Wall or Frame is laid (the existing 'bricksLaid' rule). On a stroke-only board the Brick tab's swatch paints; exempting the row would change a guard, so I am asking the advisor.
+- **Tests** (grout-paint.test.js +3):
+  - the open centred ribbon outline (a straight stroke = a rectangle; a closed contour has none);
+  - an L edge mitred at the corner;
+  - a stroke's one locked grout node over its ribbon: every brick centroid inside, the paint kept across a re-draw, none left after a delete.
+  - bricks-regen-perf's mock gained path() + a node.
+  - Fail-before at 5355784 (only ribbon-outline.js copied in): **2/2 integration tests fail**; the L-edge unit test pins the new module itself.
+- **Live** (brush_grout_live.mjs, a REAL mouse drag of an L stroke, fresh 7x9): 6 stroke bricks, 1 grout node 'brush' (locked); Edge 0.03 -> inset 0.03; the Brick tab swatch -> #616161; the sidebar quick row reads DISABLED (fact 3). Shot: shots/seatE/item55_brush_stroke_grout_desktop.png (a grey rim, mitred at the corner). 0 page errors.
+- **Gate (pre-merge):** full vitest 1 failed / 4777 passed; the one is frame-3d-sweep's 90 s timeout (passes alone, as before).
+
+### seat E (61) turn 5: the quick rows' 'bricksLaid' fact counts ANY brick element (advisor ruling (3); brush-grout)
+- Measured before: a REAL brush drag on a fresh board (brush_grout_live.mjs) -> brickQuick_groutColor_charcoal reads DISABLED. The fact only knew Wall / Frame (records, pieces, or `data-brick="(wall|frame)"` in the saved drawing).
+- Now: main/brick-panel.js boardHasBricks(editor, savedSvg), exported (the one place the fact is computed): any brick element counts -- a Wall / Frame record or piece, any laid piece (data-brick-gen), a Brush stroke's spine, or a saved drawing holding wall|frame|brush|brush-spine. The rule's reason (brick-control-requires.js) now names Brush strokes; the one test matching the old text was updated.
+- Tests: brick-control-requires-v2 +3 (an empty board: false; a stroke spine / stroke piece / wall / saved drawing: true; the reason names strokes).
+- **Found, NOT mine, for the advisor:** tests/brick-discrete-controls-regen.test.js leaks heap across the file: about 165 MB -> 4,041 MB on 352603f (before any seat E work), 4,056 MB on 41fb676, crashing at 9c224c0 ("JavaScript heap out of memory", the worker exits). Whether it crashes depends only on the margin: a full or loaded run can lose the file. Measured with --logHeapUsage, every 10th test.
 ## F35 item 41 -- LOAD STAGES (seat F, session fa, 2026-10-05)
 - **Ask (Fred, phone):** "the screen looks frozen, the load screen doesn't detect all computing states"; "can there be actual load stages, like computing, waiting, refreshing?"
 - **Measured first** (tools/repro/f35item41_load_stages_measure.mjs; headless, 900x1000, CPU x4, default T1; the cloud is faked in-page with 800 ms latency and workers.dev is blocked, so nothing is written):
@@ -14957,3 +15014,34 @@ WallPattern = {
   - Fail-before at 5355784 (only ribbon-outline.js copied in): **2/2 integration tests fail**; the L-edge unit test pins the new module itself.
 - **Live** (brush_grout_live.mjs, a REAL mouse drag of an L stroke, fresh 7x9): 6 stroke bricks, 1 grout node 'brush' (locked); Edge 0.03 -> inset 0.03; the Brick tab swatch -> #616161; the sidebar quick row reads DISABLED (fact 3). Shot: shots/seatE/item55_brush_stroke_grout_desktop.png (a grey rim, mitred at the corner). 0 page errors.
 - **Gate (pre-merge):** full vitest 1 failed / 4777 passed; the one is frame-3d-sweep's 90 s timeout (passes alone, as before).
+## seat E (61) turn 5: F35 item 61, the Frame Set row lists every band-capable set (branch frame-sets-61)
+- **Measured before:** the Set row listed BRICK_SET_IDS (the bond sets 1, 4) for every element. A Set 5 (Grey stone) frame was reachable only by writing P.brickSettings.setIds.frame (seat A's D4). White rocks came only through the Fieldstone band pattern.
+- **Declared** (editor-brick-tool.js):
+  - frameModeOfSet(id) reads each set's own declaration: 'set' = the bands are laid with its own pieces (every bond set, as courses; Grey stone, which now declares `frameBands: 'set'` in library.js); 'pattern' = its layout is a band-capable pattern (White rocks: Fieldstone, BRICK_PATTERNS bandCapable); null = no frame (Brick 2, 'grid').
+  - FRAME_SET_IDS = [1, 3, 4, 5]; setsOfferedFor(kind) = the Frame: FRAME_SET_IDS, every other element: BRICK_SET_IDS.
+  - Measured live and corrected in the same turn: my first wording said Grey stone lays "course bands". The live frame shows grey STONES in each band (the engine lays a non-bond set's own layout per band), so the value is 'set', not 'course'.
+- **Panel:**
+  - The Set row renders every set some element can take and shows the active element's own (syncSetPicker hides the rest).
+  - selectTool now re-syncs the Set row. It never did, so the active button kept the previous tool's element after a tool switch.
+  - selectSet checks the set is offered to every kind it writes. On the Frame, a 'pattern' set (White rocks) writes Fieldstone on every band, the same as setFrameRock: the set implies the pattern, and the frame's own brick set stays in setIds.frame. The way back is the existing item-46 rule (a course band pattern leaves rock), so the frame returns to Grey stone, or to whatever it held.
+  - The sidebar quick Set stays the bond sets (apply to all elements).
+- **Tests:**
+  - New tests/frame-set-row.test.js (6). It is its own file, same mocks / fixture / setup as brick-discrete-controls-regen, because that file runs out of heap. Its one Set-row assertion now counts visible buttons.
+  - Against origin/main's three sources (swapped from saved copies, restored): **5/6 fail**. The Wall-refusal test pins behaviour that was already true.
+- **Matrix** (frame group): + Grey stone (sets frame 5), White rocks (frame 3, rock), Soldier back to Grey stone (frame 5), Red Brick again (frame 1). Run: 16 rows, 0 FAIL.
+- **Live** (frame_sets_live.mjs): Frame tool row = [Red Brick, White rocks, Grey brick, Grey stone]; Grey stone -> every frame piece data-brick-set 5; Wall tool row = [Red Brick, Grey brick]. 0 page errors. Shots: shots/seatE/item61_frame_set_grey_stone_desktop.png, item61_frame_set_grey_stone_900.png.
+- **Gate:** full vitest (8 GB heap, as the gate now runs) 2 failed / 4794 passed. One is frame-3d-sweep's 90 s timeout. The other was REAL: item29-grey-set counted every rendered Set button; it now counts the visible ones, since the Frame-only stone sets are hidden for the Wall. Both files pass, 9/9.
+
+## F35 item 38 onto main -- seat F (session fa), 2026-10-05
+- Merged origin/main (352603f) into seat C's parked undo-settings (26e5fec); merge ba7d765.
+- Conflicts, both sides kept:
+  - brick-panel imports (registerUndoPart + FRAME_NEEDS_A_FRAME);
+  - pattern-builder tests (item 38 undo describe + item 39 Generate describe);
+  - brick-matrix controls/run (UNDO_SETTINGS + GENERATE_AFTER_RESTORE / WALL_NO_FRAME / GROUT_JOINTS / QUICK_FRAME_LAYS; groups 'undo' + 'grout').
+  - NEXT-SESSION-fb-app took main's.
+- Re-verified live: matrix --group undo, 3 rows, 0 FAIL, 0 page errors.
+  - Stack pick 140#ydf4k0 -> Undo = the baseline 147#izl5fs canvas, and the stretcher chip is active again.
+  - Redo = the pick + its chip.
+  - Accent level -0.0625 -> Undo = 0.0625.
+- The custom join -> Undo (the tile and the open builder) is pinned by pattern-builder item 38; 30/30 pass.
+- Full vitest: 5 failed / 4739 passed. All 5 are 'Test timed out' in the parallel run (bricks-band-fit, bricks-no-corrupt-polygon, element-accents, frame-3d-sweep, silhouette-resolve), and each file passes alone (50/50).

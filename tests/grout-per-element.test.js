@@ -4,6 +4,7 @@
  * element's; a set change (incl. a Fieldstone pick making it rock) falls back to the new set's joint.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js', async (importOriginal) => {
@@ -29,6 +30,8 @@ import { initBrickPanel, setWallPattern, selectSet } from '../bspline-frame-buil
 import { runBricks, elementGroutWidth, ROCK_SET_ID } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { brickSetById as setForId } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { MIGRATIONS } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
+
+vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the full parallel suite timed these out at 5 s (2026-10-05, seat C 02); alone they pass
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>

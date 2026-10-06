@@ -16,10 +16,11 @@ import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-de
 import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
-import { pointInPolygon, polygonIntersection, signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { pointInPolygon, signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { fieldstoneLayout } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/layouts/fieldstone.js';
+import { totalOverlapArea, bboxOf, boxHas } from './helpers/polygon-overlap.js';
 
 function realContour(templateId, widthIn, heightIn) {
   const record = normalizeFrameRecord({ templateId });
@@ -28,35 +29,34 @@ function realContour(templateId, widthIn, heightIn) {
   const primitives = buildRibbonPrimitives(sil.primitives);
   return { primitives };
 }
-function totalOverlapArea(cells) {
-  let total = 0;
-  for (let i = 0; i < cells.length; i++) {
-    for (let j = i + 1; j < cells.length; j++) {
-      const inter = polygonIntersection(cells[i].polygon, cells[j].polygon);
-      if (inter.length >= 3) total += Math.abs(signedArea(inter));
-    }
-  }
-  return total;
-}
+// item 67 (test infra): the overlap check is the shared bbox-prefiltered one (tests/helpers/polygon-overlap.js) and
+// one layout per (seed, largeStones) is shared by the tests below -- the same numbers, a fraction of the time.
 function unionCoverage(innerPath, cells) {
   const xs = innerPath.map((p) => p.x), ys = innerPath.map((p) => p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
   const GRID = 60;
+  const boxes = cells.map((c) => bboxOf(c.polygon));
   let total = 0, covered = 0;
   for (let i = 0; i < GRID; i++) {
     for (let j = 0; j < GRID; j++) {
       const x = minX + ((maxX - minX) * (i + 0.5)) / GRID, y = minY + ((maxY - minY) * (j + 0.5)) / GRID;
       if (!pointInPolygon(x, y, innerPath)) continue;
       total++;
-      if (cells.some((c) => pointInPolygon(x, y, c.polygon))) covered++;
+      if (cells.some((c, k) => boxHas(boxes[k], x, y) && pointInPolygon(x, y, c.polygon))) covered++;
     }
   }
   return total > 0 ? covered / total : 1;
 }
+const _layouts = new Map();
+function layoutOf(innerPath, SET, seed, largeStones) {
+  const key = `${seed}|${largeStones}`; // one innerPath + SET in this file
+  if (!_layouts.has(key)) _layouts.set(key, fieldstoneLayout(innerPath, SET, null, seed, largeStones));
+  return _layouts.get(key);
+}
 function largeAreaShare(innerPath, SET, seeds, largeStones) {
   let largeArea = 0, totalArea = 0;
   for (const seed of seeds) {
-    const { cells } = fieldstoneLayout(innerPath, SET, null, seed, largeStones);
+    const { cells } = layoutOf(innerPath, SET, seed, largeStones);
     for (const c of cells) {
       const a = Math.abs(signedArea(c.polygon));
       totalArea += a;
@@ -73,12 +73,12 @@ describe('fieldstoneLayout (T86 item 17): largeStones moves the large-tier area 
   const { primitives } = realContour('template_1', 7, 9);
   const { innerPath } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
 
-  it('the measured large-tier area share increases monotonically across 0, 0.25, 0.5, 0.75, 1', () => {
-    const values = [0, 0.25, 0.5, 0.75, 1];
-    const shares = values.map((v) => largeAreaShare(innerPath, SET, SEEDS, v));
-    for (let i = 1; i < shares.length; i++) {
-      expect(shares[i], `shares: ${shares.map((s) => s.toFixed(3)).join(', ')}`).toBeGreaterThan(shares[i - 1]);
-    }
+  // item 67 (test infra): one test per adjacent pair (was one test: 6.7 s in a full run); together they are the same
+  // monotonic chain across 0, 0.25, 0.5, 0.75, 1, and each value's layouts are built once (layoutOf).
+  const VALUES = [0, 0.25, 0.5, 0.75, 1];
+  it.each(VALUES.slice(1).map((v, i) => [VALUES[i], v]))('the measured large-tier area share increases monotonically: %s -> %s', (lo, hi) => {
+    const a = largeAreaShare(innerPath, SET, SEEDS, lo), b = largeAreaShare(innerPath, SET, SEEDS, hi);
+    expect(b, `shares: ${lo} -> ${a.toFixed(3)}, ${hi} -> ${b.toFixed(3)}`).toBeGreaterThan(a);
   });
 
   it('largeStones=0.5 (the default) reproduces the pre-item-17 declared calibration (within the existing +/-10 point tolerance)', () => {
@@ -92,7 +92,7 @@ describe('fieldstoneLayout (T86 item 17): largeStones moves the large-tier area 
   it.each([0, 0.5, 1])('largeStones=%s: zero pairwise overlap, reasonable union coverage, no crash', (largeStones) => {
     let worstOverlapPct = 0, coverages = [];
     for (const seed of SEEDS) {
-      const { cells } = fieldstoneLayout(innerPath, SET, null, seed, largeStones);
+      const { cells } = layoutOf(innerPath, SET, seed, largeStones);
       expect(cells.length).toBeGreaterThan(0);
       const totalArea = cells.reduce((s, c) => s + Math.abs(signedArea(c.polygon)), 0);
       const overlap = totalOverlapArea(cells);

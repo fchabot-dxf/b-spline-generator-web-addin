@@ -24,7 +24,7 @@ import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, layerOfElement, BRICK_KINDS,
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
-  BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
+  BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
   FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg,
@@ -40,6 +40,7 @@ import {
   bondShift, wallPatternOfBase,
 } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
+import { registerUndoPart } from '../editor/undo-parts.js';
 import { BRICK_CONTROL_REQUIRES, requirementMet, FRAME_NEEDS_A_FRAME } from './brick-control-requires.js';
 import { ENGINE_OPTIONS } from '../core/bricks/index.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
@@ -104,7 +105,16 @@ const BRICK_TOOLS = [
 ];
 
 let _activeTool = null;
-let _frameListenerWired = false;
+/** The panel's PAGE-level event listeners (document), each wired ONCE per page however often initBrickPanel runs (the
+ *  app runs it once; a test file once per test). Their handlers call module functions only, so a second copy adds
+ *  nothing but a second run -- a re-lay twice for frameRecordChanged, and in a test file every earlier init's copy
+ *  re-syncing the panel (item 67 measured brickSettingsRestored at 3.7 s after ~80 inits vs 0.28 s alone). */
+const _pageWired = new Set();
+function onPageEvent(key, type, fn) {
+  if (_pageWired.has(key) || typeof document === 'undefined') return;
+  _pageWired.add(key);
+  document.addEventListener(type, fn);
+}
 
 function notifyChange() { saveLastSession(); _scheduleStrokeRestyle(); }
 
@@ -119,10 +129,12 @@ function _setKind() {
   return tool && tool.ownsSet ? tool.id : 'wall';
 }
 
+// F35 item 61: one button per set any element can take (the row shows the active element's own, syncSetPicker)
+const SET_ROW_IDS = () => [...new Set([...BRICK_SET_IDS, ...FRAME_SET_IDS])].sort((a, b) => a - b);
 function renderSetRow(container) {
   if (!container) return;
   container.innerHTML = '';
-  for (const id of BRICK_SET_IDS) {
+  for (const id of SET_ROW_IDS()) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.id = `brickSet_${id}`;
@@ -134,8 +146,13 @@ function renderSetRow(container) {
 }
 
 function syncSetPicker() {
-  const current = elementSetId(P.brickSettings, _setKind());
-  for (const id of BRICK_SET_IDS) document.getElementById(`brickSet_${id}`)?.classList.toggle('active', id === current);
+  const kind = _setKind(), current = elementSetId(P.brickSettings, kind), offered = setsOfferedFor(kind);
+  for (const id of SET_ROW_IDS()) {
+    const btn = document.getElementById(`brickSet_${id}`);
+    if (!btn) continue;
+    btn.classList.toggle('active', id === current);
+    btn.style.display = offered.includes(id) ? '' : 'none'; // item 61: the Frame lists every band-capable set
+  }
   syncQuickSettings();
   syncLargeStonesRow();
   syncRusticRows();
@@ -154,9 +171,16 @@ function syncSetPicker() {
  *  multiplier never needed a reset either. */
 export function selectSet(setId, commit = 'generate', kinds = [_setKind()], { strokes = false } = {}) {
   const set = brickSetById(setId);
-  if (!set || !BRICK_SET_IDS.includes(setId)) return;
+  if (!set || !kinds.every((k) => setsOfferedFor(k).includes(setId))) return;
   P.brickSettings.setIds = { ...(P.brickSettings.setIds || {}) };
   for (const kind of kinds) {
+    // item 61: a set whose layout is a band pattern (White rocks) makes the frame rock -- the pattern implies the set
+    // (setFrameRock's rule, elementSetId derives the rock set); its own brick set (setIds.frame) is left as it was
+    if (kind === 'frame' && frameModeOfSet(setId) === 'pattern') {
+      const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || [];
+      P.brickSettings.frameBandPatterns = bands.map(() => set.layout);
+      continue;
+    }
     P.brickSettings.setIds[kind] = setId;
     // a brick set on a ROCK element turns it back into bricks (the Fieldstone pattern is what made it rock)
     if (kind === 'wall' && patternSetId(P.brickSettings.pattern) != null) P.brickSettings.pattern = DEFAULT_WALL_PATTERN;
@@ -1178,8 +1202,38 @@ const BRICK_COMMIT = {
 
 function _remaskSurface() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  if (editor && typeof editor._notifyChange === 'function') editor._notifyChange('commit');
+  // F35 item 38: a 3D-only change is an undo step of its own too (its entry carries the settings; the canvas is the
+  // same) -- commitEdit = push + the same commit pipeline the bare _notifyChange ran
+  if (editor && typeof editor.pushState === 'function') commitEdit(editor);
+  else if (editor && typeof editor._notifyChange === 'function') editor._notifyChange('commit');
 }
+
+/** F35 item 38: the brick SETTINGS ride in every editor undo entry (editor/undo-parts.js), so Undo / Redo put back the
+ *  settings that laid the canvas they restore -- every brick element setting at once (pattern, set, unit, accent +
+ *  builder tile, level, rustic, rotation, area width ...), one stack. BRICK_UNDO_KEEPS = what an undo never takes back:
+ *  the saved patterns are a library the user keeps, not an edit of this canvas. Restoring replaces P.brickSettings and
+ *  announces it ('brickSettingsRestored': the panel re-syncs, no re-lay -- the canvas came back with the entry). */
+export const BRICK_UNDO_KEEPS = Object.freeze(['userPatterns']);
+const _cloneSettings = (s) => (typeof structuredClone === 'function' ? structuredClone(s) : JSON.parse(JSON.stringify(s)));
+function _takeBrickSettings() {
+  const s = _cloneSettings(P.brickSettings || {});
+  for (const k of BRICK_UNDO_KEEPS) delete s[k];
+  return s;
+}
+function _restoreBrickSettings(snap) {
+  if (!snap) return;
+  const keep = Object.fromEntries(BRICK_UNDO_KEEPS.filter((k) => P.brickSettings && k in P.brickSettings).map((k) => [k, P.brickSettings[k]]));
+  P.brickSettings = { ..._cloneSettings(snap), ...keep };
+  // the open builder follows the restored accent (its tile), or closes when the accent is no longer a tile
+  if (_builder.open) {
+    const a = P.brickSettings.accent;
+    if (a && a.preset === ACCENT_TILE.id && a.tile) _builder.tile = _tileCopy(a.tile.rows, a.tile.cols, a.tile);
+    else _builder.open = false;
+    renderPatternBuilder();
+  }
+  if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
+}
+registerUndoPart('brickSettings', { take: _takeBrickSettings, restore: _restoreBrickSettings });
 
 /** Grout per element: the Grout box shows + edits the ACTIVE element's joint (the Raised brush shares the Brush's;
  *  no element tool = the Wall's). */
@@ -1361,12 +1415,18 @@ function _presentKinds(editor) {
     || !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`));
 }
 
-/** Audit v2 N5: does the board have Wall/Frame bricks? The live canvas, or the saved drawing while the editor
- *  has not loaded it yet (after a reload, before it is opened). */
-function _bricksLaid() {
-  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+/** Audit v2 N5: does the board have bricks? The live canvas, or the saved drawing while the editor has not loaded it
+ *  yet (after a reload, before it is opened). Advisor (seat E, brush grout): ANY brick element counts -- a Wall / Frame
+ *  record or piece, a Brush / Raised stroke (its spine or pieces) -- so the sidebar's quick rows (the grout colour of a
+ *  stroke-only board) are not greyed while the board holds strokes. */
+export function boardHasBricks(editor, savedSvg) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
   if (_presentKinds(editor).length) return true;
-  return typeof P.editorSvg === 'string' && /data-brick="(wall|frame)"/.test(P.editorSvg);
+  if (node && node.querySelector && node.querySelector('[data-brick-gen="1"], [data-brick="brush-spine"]')) return true;
+  return typeof savedSvg === 'string' && /data-brick="(wall|frame|brush|brush-spine)"/.test(savedSvg);
+}
+function _bricksLaid() {
+  return boardHasBricks(typeof window !== 'undefined' ? window.svgEditor : null, P.editorSvg);
 }
 
 /** F35 item 27: the frame part of a laid key (`#frame:` -- the frame record + board size those bricks were laid
@@ -2340,6 +2400,7 @@ function selectTool(id, { keepSelection = false } = {}) {
   syncToolButtons();
   syncGroutWidthBox(); // the Grout box follows the active element's joint
   syncGroutPaintRow();
+  syncSetPicker(); // item 61: the Set row shows the active element's own sets (the Frame: every band-capable one)
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (!editor) {
     console.warn('Brick tool: open the SVG editor first (Edit Artwork) -- no editor instance yet.');
@@ -2578,7 +2639,7 @@ function updateSpacingHint(groutWidthIn) {
 
 export function initBrickPanel() {
   _jointSets = _currentJointSets(); // grout per element: the sets at init are the baseline, not a set change
-  document.addEventListener('bricksGenerated', (e) => updateSpacingHint(e.detail?.groutWidthIn));
+  onPageEvent('spacingHint', 'bricksGenerated', (e) => updateSpacingHint(e.detail?.groutWidthIn));
   // setTimeout(0): this listener's own registration order relative to the generic param-input
   // binding that actually writes P.spacing isn't declared anywhere -- deferring one tick guarantees
   // P.spacing already reflects the new value by the time the hint re-reads it, regardless of order.
@@ -2594,7 +2655,7 @@ export function initBrickPanel() {
   // shows every time the Brick tab itself becomes active -- syncToolButtons (called from
   // selectTool/deselectTool already) only runs on a TOOL change, not a bare tab switch, so entering
   // the tab with no tool yet picked needs its own trigger here.
-  document.addEventListener('editorTabChanged', (e) => { if (e.detail?.tab === 'brick') syncToolButtons(); else syncStartHint(); });
+  onPageEvent('toolButtons', 'editorTabChanged', (e) => { if (e.detail?.tab === 'brick') syncToolButtons(); else syncStartHint(); });
   renderToolList(document.getElementById('editorToolbarBrick'));
   syncToolButtons();
   renderFramePresetList(document.getElementById('brickFramePresetList'));
@@ -2648,7 +2709,7 @@ export function initBrickPanel() {
   });
   renderStripeBrickStyles(document.getElementById('stripeBrickStyles'));
   document.getElementById('stripeThree')?.addEventListener('change', () => { syncStripeBrickStyles(); });
-  document.addEventListener('editorTabChanged', () => syncStripePanelContext());
+  onPageEvent('stripeContext', 'editorTabChanged', () => syncStripePanelContext());
   bindSlider('brickSurfaceWearSlider', 'brickSurfaceWear', 'surfaceWear', (v) => Math.max(0, Math.min(1, parseFloat(v))), 'surface');
   for (const kind of BRICK_KINDS) {
     document.getElementById(`brickLevel_${kind}`)?.addEventListener('change', (e) => setElementLevel(kind, e.target.value));
@@ -2677,19 +2738,15 @@ export function initBrickPanel() {
   });
   document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => setSeed(newBrickSeed()));
   document.getElementById('brickGenerate')?.addEventListener('click', () => generateNow()); // item 39: a new seed, every element
-  document.addEventListener('editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); });
-  document.addEventListener('bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
+  onPageEvent('editorCommit', 'editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); });
+  onPageEvent('controlRequires', 'bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
   // the frame changed (template, shape): re-lay once it settles (item 27 -- the editor too; a template with no
-  // contour clears the Frame). Wired ONCE per page: it RE-LAYS, so a second copy (initBrickPanel run again,
-  // e.g. in tests) would re-lay twice
-  if (!_frameListenerWired) {
-    _frameListenerWired = true;
-    document.addEventListener('frameRecordChanged', (e) => _scheduleFrameRelay(!!(e && e.detail && e.detail.restored)));
-  }
+  // contour clears the Frame). Wired ONCE per page (onPageEvent): it RE-LAYS, so a second copy would re-lay twice
+  onPageEvent('frameRelay', 'frameRecordChanged', (e) => _scheduleFrameRelay(!!(e && e.detail && e.detail.restored)));
   // Audit B1 + v2 N2: P.brickSettings was replaced (Cancel, session restore, project load, global undo --
   // app-init.js announceBrickSettingsRestored). A load swaps in a NEW object: an armed Brush keeps
   // reading the editor's own reference, so it is re-pointed too.
-  document.addEventListener('brickSettingsRestored', () => {
+  onPageEvent('settingsRestored', 'brickSettingsRestored', () => {
     _jointSets = _currentJointSets(); // a replaced P.brickSettings: its sets are the new baseline, not a set change
     const editor = typeof window !== 'undefined' ? window.svgEditor : null;
     if (editor && editor._brickSettings) editor._brickSettings = P.brickSettings;

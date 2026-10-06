@@ -186,11 +186,13 @@ const coarse = (preset) => {
 };
 
 describe.each(['hourglass', 'bottle'])('F12 dense sweep of the NEW params: %s', (preset) => {
-  it('each new param at its range min / mid / max (given the ones before it) is clean and honoured exactly', () => {
+  // item 67 (test infra): one test per param set (was one test for all of a preset's sets: hourglass 2.6 s unloaded,
+  // 8.4 s in a full run). The same combinations and checks; the total-count floor is the last test of the preset.
+  let checked = 0;
+  it.each(NEW_PARAM_SETS[preset].map((set) => [set.join(' + '), set]))('%s, each at its range min / mid / max (given the ones before it), is clean and honoured exactly', (_name, set) => {
     const bad = [];
-    let checked = 0;
     const fracs = [0, 0.5, 1];
-    for (const set of NEW_PARAM_SETS[preset]) for (const region of REGIONS) for (const stroke of STROKES) for (const base of coarse(preset)) {
+    for (const region of REGIONS) for (const stroke of STROKES) for (const base of coarse(preset)) {
       // every combination of the set's fractions, each resolved in PARAM_ORDER on top of the previous ones
       const combos = set.reduce((acc) => acc.flatMap((c) => fracs.map((f) => [...c, f])), [[]]);
       for (const combo of combos) {
@@ -209,8 +211,8 @@ describe.each(['hourglass', 'bottle'])('F12 dense sweep of the NEW params: %s', 
       }
     }
     expect(bad).toEqual([]);
+  });
+  it('the sets together checked the declared number of combinations (runs after them)', () => {
     expect(checked).toBeGreaterThan(preset === 'hourglass' ? 10000 : 1000);
-  }, 20000); // H23 item 31: hourglass alone measured ~2.6s unloaded; timed out at the 5s default under
-  // concurrent full-suite load (H23 items 18/29) -- same fix as frame-3d-sweep.test.js's own sweep,
-  // explicit headroom, not fewer combinations checked.
+  });
 });
