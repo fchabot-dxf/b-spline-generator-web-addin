@@ -38,7 +38,7 @@ function fakeEditor() {
       node,
       polygon: (pts) => { const el = document.createElement('polygon'); el.setAttribute('points', pts); node.appendChild(el); return wrap(el); },
       group: () => { const el = document.createElement('g'); node.appendChild(el); return wrap(el); }, // item 22: element records
-      children: () => ({ toArray: () => [] }),
+      children: () => Object.assign([], { toArray: () => [] }) /* svg.js: an array (item 64: a kind layer runs addLayer) */,
     },
   };
 }

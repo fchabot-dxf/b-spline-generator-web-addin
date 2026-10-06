@@ -49,7 +49,7 @@
  * BRICK_ELEMENT_ATTR/BRICK_SETTINGS_ATTR/reconstructChains/
  * regenerateOwnedBrickElements block below for the full mechanism.
  */
-import { ensureActiveLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR, BRICK_ELEMENT_ATTR, BRICK_OWNER_ATTR, brickElementNodes } from './layers.js';
+import { ensureActiveLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR, BRICK_ELEMENT_ATTR, BRICK_OWNER_ATTR, brickElementNodes, brickKindLayer } from './layers.js';
 import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
@@ -97,10 +97,10 @@ export function layerOfElement(editor, kind) {
   const rec = brickRecordNode(editor, kind);
   return (rec && layerById(editor, rec.getAttribute('data-layer'))) || null;
 }
-/** The layer a Wall / Frame element lays on: its record's, else (a new element) the active layer. */
+/** The layer a Wall / Frame element lays on: its record's, else (a new element) its KIND's own layer (item 64). */
 export function elementLayer(editor, kind) {
   const rec = brickRecordNode(editor, kind);
-  return (rec && layerById(editor, rec.getAttribute('data-layer'))) || activeLayerOf(editor);
+  return (rec && layerById(editor, rec.getAttribute('data-layer'))) || brickKindLayer(editor, kind) || activeLayerOf(editor);
 }
 /** Does this layer hold laid brick pieces (its height mask is the brick mask)? Read off the drawing, per layer. */
 export function layerHasBrickPieces(editor, layerId) {
@@ -290,7 +290,7 @@ export function addWallAreaStroke(editor, stroke, settings, areaId = null) {
   const full = editor._sketchLayer.node.querySelector(`[${BRICK_RECORD_ATTR}="${BRICK_RECORD_KINDS.wall}"]`);
   if (full) full.remove();
   const id = newBrickElementId();
-  const rec = onBricksLayer(editor, activeLayerOf(editor), editor._sketchLayer.group()).attr('display', 'none').node;
+  const rec = onBricksLayer(editor, brickKindLayer(editor, 'wall') || activeLayerOf(editor), editor._sketchLayer.group()).attr('display', 'none').node; // item 64
   rec.setAttribute(BRICK_RECORD_ATTR, WALL_AREA_RECORD);
   rec.setAttribute(BRICK_ELEMENT_ATTR, id);
   rec.setAttribute(BRICK_AREA_SEQ_ATTR, String(Math.max(0, ...areas.map((a) => a.seq)) + 1));
@@ -1019,9 +1019,22 @@ function _layInput(editor, settings, frameGeom) {
 export const wallAreaSettings = (editor, area, settings) =>
   (editor && area.id === editor._brickWallAreaId ? settings : withWallFields(settings, area.settings));
 
+/** F35 item 42 (Fred: "I don't always use frames"): the frame's BANDS bound the wall only when there is a Frame element
+ *  (laid now, or already on the board); with none, the wall fills the frame's contour itself -- the template's outer edge,
+ *  the board rectangle for template None -- with no band reserve. Measured before: T18 7x10, 0.75 in, Wall only, no Frame
+ *  element: the wall spanned x 1.00-6.00, y 1.00-7.99 (the preset's Soldier band depth kept clear on every side). */
+export function frameGeomForLay(editor, frameGeom, kinds = BRICK_KINDS) {
+  if (!frameGeom) return frameGeom;
+  const frameElement = kinds.includes('frame') || !!brickRecordNode(editor, 'frame');
+  return frameElement ? frameGeom : { ...frameGeom, bands: [] };
+}
+
 function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
+  frameGeom = frameGeomForLay(editor, frameGeom, kinds); // item 42
   // item 22 slice 3: each element on its own layer (its record's; a new one on the active layer)
-  const layerOf = { wall: elementLayer(editor, 'wall'), frame: elementLayer(editor, 'frame') };
+  // item 64: only the kinds laid NOW resolve a layer (resolving creates a kind layer: never on a mere lookup -- measured: a
+  // Wall-only lay had created an empty "Frame" layer)
+  const layerOf = Object.fromEntries(kinds.map((k) => [k, elementLayer(editor, k)]));
   const wallSettings = elementSettings(settings, 'wall');
   const frameSettings = elementSettings(settings, 'frame');
   const input = _layInput(editor, settings, frameGeom);
@@ -1297,7 +1310,7 @@ export const brickBrushHandler = {
     const overrides = typeof editor._brickStrokeOverrides === 'function' ? editor._brickStrokeOverrides() : null;
     const settings = editor._brickSettings ? { ...editor._brickSettings, ...(overrides || {}) } : null;
     if (!settings) return;
-    const layer = activeLayerOf(editor); // item 22 slice 3: a new stroke goes on the active layer, like art
+    const layer = brickKindLayer(editor, 'brush') || activeLayerOf(editor); // item 64: a new stroke goes on the Brush layer
     applyBrickLayerTooling(layer, settings);
 
     // F35 item 3: draw the SPINE (real, persistent, plain <line> segments --

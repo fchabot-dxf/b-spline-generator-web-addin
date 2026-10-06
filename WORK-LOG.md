@@ -22669,3 +22669,272 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
   To close the gap to "~2 min": one timestamped log line per received chunk in the add-in would measure the real
   palette transfer (detection-only; your call).
 - Capture tool: the stub records performance.now() with each send; the run prints the Send timing breakdown.
+
+## H23 item 85 -- Send transfer timing (code), the D6 visibility test, and re-BUILD / re-Send measured (seat A / 77, 2026-10-05)
+- Branch send-timing-85 off origin/main e5754a7 + my unmerged brick-e2e-83 (tooling + WORK-LOG).
+- (1) b-spline-gen: _TransferTimer, detection only -- '[XFER] start epoch_ms=...', one '[XFER] chunk i: N bytes at
+  +T ms' per chunk, '[XFER] transfer N chunks, X MB in Y s', '[XFER] Send handled at +Z s (epoch_ms=...)'. Replaces
+  the old 'Received chunk i (buffer size)' line (nothing parsed it). The live palette transfer is measured on the next
+  real Send after the advisor deploys main (I cannot drive the palette's JS: no eval channel, no on-screen clicks).
+- D6 test: the Send's 'Stamped wins' block moved UNCHANGED into _apply_send_visibility(consolidated) (module level).
+  test_send_visibility.py 4/4: Stamped present -> Clean occurrence off / Stamped on, panels on + surfaces off; no
+  Stamped -> Clean on; a Stamped without a panel body does not win; the transfer timer through the real notify()
+  path with fixed clocks (exact lines). A 'Clean wins' mutant fails 2/4; restored byte-identical; b-spline-gen 155/155.
+- (2) MEASURED, e2e board, deployed afdc4c0, scratch doc:
+    BUILD #1 76 s; BUILD #2 on the UNCHANGED board ~47 s: cleanup (4 setups + 3 MMs) + WCS < 1 | MM Stock 4 |
+      MM B-spline 6 | MM Frame 5 | Stock setup 1 | B-spline Back 26 (inside cam.setups.add on the dense Stamped body,
+      again) | Top 2 | Frame 2. Nothing is reused today.
+    PROBE A, in place on the existing setups (deployed _bind_wcs_point / _apply_stock_box): Back WCS 0.31 s + box
+      0.92 s (9/9 writes), Top WCS 0.11 s = 1.3 s total; origins exact ((-3.75, -4.75, 0.0289) / (3.75, -4.75,
+      2.0289)).
+    PROBE B, a RE-SEND of the same board into the same doc with the CAM build in place: all 3 MMs and 4 setups stay
+      VALID, every setup's model is live ('panel' x2, the 4 frame bars), origins unchanged, and the B-spline MM shows
+      the NEW Stamped panel (its snapshot follows the design and still excludes Clean). So keeping MMs/setups across
+      Sends works structurally -- BUT that re-Send took 220 s instead of 32 s (b_spline_gen_log): Clean STEP 5 (4),
+      Stamped STEP 36 (7), post-import/visibility 13 (<1), art + bricks 44 (~4), FRAME 121 (17). Every design change
+      during the Send re-derives the 3 MMs and their setups. This is very likely Fred's "~2 min Send": he re-Sends
+      into a document that already holds his CAM build.
+- Proposals (numbers only, nothing changed):
+  P2 (re-BUILD): keep the MMs + setups and update stock/WCS/heights in place -> ~1.3 s instead of ~47 s; the
+     setups follow a re-Sent board by themselves (probe B). The template ops and toolpaths would also be kept, so
+     APPLY would only regenerate (Fusion marks them out of date).
+  P3 (NEW, the big one): the CAM build makes every later Send ~7x slower (32 s -> 220 s). Options to measure next:
+     (a) the Send suspends CAM re-derivation while it imports (if Fusion offers a switch -- unverified), (b) the Send
+     deletes the CAM build first and BUILD recreates it (Send 32 s + BUILD ~50 s = ~80 s < 220 s), (c) Fred Sends
+     into a design without CAM and keeps CAM in a separate document (manual workflow change).
+- Hygiene: scratch doc closed by handle; holder none after each batch.
+
+## H23 item 85 P3(a) -- what makes a Send slow in a document with CAM (seat A / 77, 2026-10-05)
+- Deployed main 0443c48 (the [XFER] timer is live; no Fred Send yet -- his next real Send carries it; my own Sends in
+  this entry are direct _handle_generate replays, NOT palette Sends, so they log no [XFER] lines). Before each Send
+  I recorded the b_spline_gen_log offset; every timing below is from the add-in's own log.
+- API: there is NO switch to suspend CAM re-derivation. Members matching defer/compute/suspend/update/regen/lock/
+  state on CAM, ManufacturingModel(s), Setup, Design, Timeline, Component, Application, Document: only isValid /
+  isActive / checkValidity, Design.computeAll, Document.updateAllReferences. The one deferral is
+  Sketch.isComputeDeferred.
+- Per-edit cost, same doc, without -> with the CAM build: sketch + 50 lines 0.74 -> 1.48 s; the same with
+  isComputeDeferred 0.28 -> 1.04 s; 20 lines + Horizontal 0.50 -> 1.13 s; construction plane 0.03 -> 0.06 s; delete
+  0.15 -> 0.23 s. A body edit (sketch rect + new-body extrude, then delete) WITH CAM: 0.31 s / 0.16 s, and Fusion idle
+  right after (no deferred work). So isolated edits only ~2x -- the cost is in what a Send does to the bodies the CAM
+  build derives from.
+- Re-Send of the e2e board (same payload), by document state (Send total; the frame part in brackets):
+    never had CAM                                       38 s  (frame 20)   control
+    an empty CAM product only                           47 s  (frame 27)
+    + the BUILD's __cam_wcs planes / sketches only      50 s  (frame 30)
+    had CAM, MMs + setups deleted before the Send      114 s  (frame 85)   one observation
+    CAM MMs kept, setups deleted                       225 s  (frame 118, art + bricks 80) -- Fusion busy ~1 more min after
+    full CAM build kept                                220 s  (frame 121, art + bricks 44)
+  The live MANUFACTURING MODELS are the cost (~+180 s per Send on this board); setups add nothing measurable. The
+  CAM-free runs drift up a few seconds per run (38 -> 47 -> 50) -- session / doc history, not CAM. The 114 s after
+  deleting MMs is one observation (it may be the same drift plus derive leftovers); not concluded.
+- P3 options, measured:
+  (a) suspend / defer: no API switch exists; sketch compute deferral cuts sketch time but the frame / art phases are
+      dominated by MM re-derivation of bodies, not by sketch solves. Not a fix.
+  (b) the Send deletes the CAM MMs (+ setups) first, BUILD recreates them: Send ~40-114 s + BUILD ~50 s, vs 220 s
+      today -- but Fred's setups / toolpaths / hand edits go each Send (BUILD's confirm already guards that case).
+  (b') variant, unmeasured: delete only the 3 MMs before the Send and recreate them after it (P2's in-place path),
+      keeping the setups -- only viable if a setup survives its MM being deleted and re-created; not tested.
+  (c) CAM in a separate document: the design doc stays at ~40 s per Send. Workflow change, Fred's call.
+- Hygiene: scratch docs closed by handle (3 this round), holder none after each batch; Fred's Untitled untouched.
+
+## H23 item 85 (b') -- delete only the MMs before a Send, recreate + re-bind after (seat A / 77, 2026-10-05)
+- Scratch doc: e2e Send -> BUILD -> templates + the add-in's own TPGEN (it generated 2/7 ops this time) -> delete
+  ONLY the 3 MMs (1.68 s) -> re-Send -> recreate MMs (deployed mm_builder.build_mm, bspline_set + frame, 11.7 s incl.
+  ensure_wcs_sketches) -> re-bind Back/Top -> add-in TPGEN. State read back at each step (camstate.jsonl).
+- SETUPS SURVIVE THEIR MMs BEING DELETED: all 4 stay valid; Fred's template ops stay; already-generated toolpaths
+  stay but go out of date (operationState 1, hasToolpath True, isToolpathValid False); stock settings stay. LOST:
+  every setup's models (empty) and the WCS point binding (Back/Top origin falls to 0,0,0) -- both lived in the MM.
+- RE-BIND WORKS: setup.models = ObjectCollection(new MM body) accepted (Back 0.52 s, Top 0.19 s, models 1), the
+  WCS point binds again (origins exact: (-3.75, -4.75, 0.0289) / (3.75, -4.75, 2.0289)); the add-in TPGEN then
+  generated Back 2/2 and Top 2/3 valid (Top's 'deloge' op stayed empty -- I had generated it alone before Back,
+  which a previous-setup chain cannot do; not re-tried). Frame was not re-bound in this probe (its ops stay stale).
+- BUT THE SEND IS STILL SLOW: re-Send with the setups kept and NO MMs = 178 s (21:28:18 -> 21:31:16: clearing the
+  old board + Clean 94 s, Stamped 16, art + bricks 8, frame 60) vs 38 s in a doc that never had CAM. Setups that hold
+  operations cost too (their ops re-evaluate when the Send deletes the bodies they referenced). So (b') does not
+  give a ~40-50 s Send; only removing the CAM build (b) or a separate CAM doc (c) does, measured so far.
+- New, unresolved: after the re-bind the Back/Top stock reads X = 7.5 (was 9.5 -- the axes-swapped frame's X); the
+  origin is right. Either the box dims re-evaluated in the other frame orientation or the stock box was not
+  re-applied after the model change. Not chased (re-run _apply_stock_box after a re-bind would be the first test).
+- Hygiene: scratch doc closed by handle, holder none; Fred's Untitled untouched.
+
+## H23 item 86 -- P2: a re-BUILD reuses the existing CAM build in place (seat A / 77, 2026-10-05)
+- Branch cam-inplace-86 off origin/main + my send-timing-85 (docs). Approved after item 85's numbers (re-BUILD on an
+  unchanged board ~47 s, in-place stock/WCS ~1.3 s, setups survive + accept setup.models re-binding).
+- MEASURED for the identity: Setup and Operation carry attributes (CAM.findAttributes exists); ManufacturingModel does
+  NOT; Setup.models is settable. Declared: setups tagged SETUP_ATTR = ('CAMBuilder', 'setup') = <SETUP_SPECS name>
+  (written by build_setup); MMs found by their declared display names (_mm_display_name).
+- Code (setup_builder / cam_coordinator):
+    build_setup split: everything after cam.setups.add -> _configure_setup(setup, mm, spec, logger) (stock mode, WCS
+      modes / axes / flipY / box point / the shared CAM_POSITION point, the declared box, offsets, readback) -- one
+      body for both paths.
+    find_reusable_build: every MM_RULES MM (by name) and every SETUP_SPECS setup (by tag) present and valid -> reuse;
+      anything missing, invalid or UNTAGGED (a build from before this change) -> None -> today's full recreate (and
+      the new setups get tagged, so the next BUILD reuses).
+    update_setups_in_place: re-bind models to the MM's current bodies, _configure_setup (the declared box and the
+      axes ALWAYS re-applied), 3D op heights when the setup has ops, then the same Part Position pass 2.
+    Coordinator: ensure_wcs_sketches, then reuse or full recreate; report['reused'].
+- Tests: test_cam_reuse.py 10/10 -- reuse on a complete build; full recreate for an MM missing / invalid, a setup
+  missing / invalid / untagged; build_setup tags; the in-place path re-binds models (ObjectCollection) and re-applies
+  box (Back 'stock', Frame 'frame_stock'), WCS point (Back 'back', Top 'flipped'), axes on all 4, heights only with
+  ops, pass 2 last, and never creates a setup; the coordinator's two paths in order. Mutants: in-place without
+  _configure_setup -> 1 fail; coordinator ignoring reuse -> 1 fail. CAM-builder 36/36.
+- LIVE (worktree engine via sys.path swap, restored -- verified after a timed-out call too; e2e board WITH frame):
+    BUILD #1 fresh doc: 'REUSE: MM ... missing -> full recreate' (correct), 3.4 min this session (session drift; 76 s
+      earlier).
+    BUILD #2 unchanged board: REUSED in 6.1 s (was ~47 s), ok: Back (-3.75, -4.75, 0.0289) / Top (3.75, -4.75, 2.0289)
+      on their points, stock X 9.5 on Back / Top / Frame, models live, all 4 setups tagged.
+    re-Send of the board (CAM kept; slow as measured in item 85), then BUILD #3: REUSED in 4.4 s, ok, the same values,
+      models live.
+  The stock X 7.5 of the (b') probe did NOT occur: there the MM had been deleted + recreated by hand; in P2 a missing
+  or invalid MM takes the full recreate, and the in-place path re-applies axes + box every time anyway.
+- Hygiene: scratch doc closed by handle (verified), holder none; Fred's Untitled untouched.
+## T86 item 16(c) part 2 -- PLAN: band pieces split at the medial line (seat B / fc, 2026-10-05 night)
+
+**Baseline re-measured on main 7633a5e** (19 templates x single_soldier / three_band / double_course x 0.75 / 1 /
+1.25 in, 7x9, Red Brick seed 1, shapely; scratch sweep = a vitest dump of every frame piece + sweep.py):
+overlap (sum - union) **17.824 sq in** = 88's number. Split: same row, pieces >= 3 apart in the walk (a row meeting
+itself across a neck) **14.49**; everything else (corner fans, 21b's) **3.42**. Worst: T18 / T19 at 1.25 in 1.44
+each (neck 1.18 + corner fan 0.27), T14 0.82 (all neck), T11 double_course 1.25 0.76, T16 three_band 0.75 0.59.
+Shot: shots/seatB/neck16c2/before_worst_necks.png (overlap in red).
+
+**What the shot shows.** T18 / T19: the waist's two facing arcs; each row's pieces run to depth d1 past the half-gap,
+so the two sides' wedges cover one LENS. T14: the X waist; the four arms' pieces cover one DIAMOND. T16 three_band:
+the outer band of one side over the outer AND middle band of the other -- the clash crosses rows and bands, so a
+per-row fix cannot be the whole answer.
+
+**Why "split at the lobes" alone does not separate the sides.** At a neck the ring between the board and the
+untangled d1 boundary is ONE connected region (the lens is inside it); the lobes are the WALL's windows on either
+side. What the untangle does give us: the two crossing points of the dropped inverted loop are exactly where the
+two sides' offsets meet at d1 -- the two ENDS of the medial curve through the lens. The cut we want is that curve.
+
+```
+   left arc (centre cL)          right arc (centre cR)
+        \  wedge Pi  \   tip X1   /  wedge Pj  /
+         \            \    *     /            /
+          \     depth_i < depth_j | depth_j < depth_i
+           \            \   |   /            /
+            )  keeps     \  |  /   keeps    (       medial curve = { depth_i(x) = depth_j(x) }
+           /   left half  \ | /  right half  \      (two lines: the bisector; two arcs: a hyperbola;
+          /                \|/                \      a line + an arc: a parabola) -- runs X1 -> X2
+                            *  tip X2
+```
+
+**The rule (declared, one sentence):** every point of the band area belongs to the band piece whose OWN depth there
+is smallest -- depth measured from the piece's own source primitive exactly as the piece was built (line:
+n.(x - p0); arc: radialSign * (r - |x - c|)), i.e. the side of the medial line it lies on; the row inside that side
+follows from depth as today. Properties, by construction:
+- order-free: every piece is cut from the ORIGINAL pieces, not from already-cut ones (attempt A's cycle
+  A->B->C->A, where nobody kept the region, cannot happen);
+- no void: a point is removed from a piece only because a piece with a strictly smaller depth covers it, so the
+  smallest-depth piece covering it keeps it (the union is unchanged);
+- no overlap: two pieces keep the same point only where their depths tie (the curve itself);
+- byte-identical when clean: a piece is touched only if it overlaps a CONFLICTING piece (> 1e-4 sq in).
+
+**Conflicting = different source primitive AND not joint neighbours in that row's live walk** (any band / row).
+Joint neighbours already meet at their mitre (which IS their medial line); their fan residual is 21b's and stays
+untouched here, so ordinary corners stay byte-identical. Kite-fan / notch / quoin pieces have no single source
+primitive: they keep today's shape in this item (21b's territory).
+
+**The cut, exactly.** f(x) = depth_i(x) - depth_j(x) is a smooth scalar field. Clip Pi to f <= 0 with a
+Sutherland-Hodgman walk on the field's sign (geometry.js, a new `clipToField(poly, f)`; clipToHalfPlane is the
+special case of a linear f): an edge crossing gets its point by bisection to 1e-10; the new edge between two
+crossings is refined onto the zero set (points stepped along it and Newton-projected), so Pi and Pj get the SAME
+curve (not two different chords) -- no hairline sliver either way. Restricted to where Pj actually is: Pi loses
+only Pi & Pj & {f > 0} (a polygonDifference against Pj clipped to f >= 0), never ground no conflicting piece covers;
+a cut leaving a piece under library MIN_PIECE_FRACTION drops it only if the rule above gives that ground to another
+piece (it does, by definition), so no hole. Pieces get an internal source-primitive tag in ribbonPieces (stripped
+before bricksContourBands returns: no new field on the output, no app-visible contract change).
+
+**Where:** contour-bands.js after the rows are built, before the board clip -- one declared step
+(`yieldAtMedialLine`), next to the fit rule (item 28: the fit rule caps the stack at 1/3 of the narrowest gap; at a
+neck narrower than the board's narrowest probe the medial line is the local limit -- the same idea, per point).
+
+**Sweep I will run (same dump, same shapely):** per case lost ground (union_before - union_after) < 0.01 sq in AND
+neck overlap < 0.01; corner-fan overlap must not GROW (it is 21b's to remove; today 3.42 total); cases with zero
+neck overlap byte-identical (piece list equal); the bricks domain (tests/bricks-*.test.js) green; full vitest
+before the DM. New test: tests/bricks-neck-medial.test.js, T18 / T19 / T14 at 1.25 single_soldier + T16 three_band
+0.75: no neck overlap, union unchanged within 0.01, T1 byte-identical -- shown to FAIL on main first.
+Shots: shots/seatB/neck16c2/after_worst_necks.png (same five cases).
+
+**Open question for the advisor:** the bar "overlap < 0.01 per case" -- I read it as the NECK overlap (this item);
+the corner-fan residual (T18 / T19 0.27 each, 3.42 total) is 21b, task 2. Say if you want both under one bar.
+
+## T86 item 16(c) part 2 -- DONE: band pieces split at the medial line (seat B / fc, 2026-10-05 night)
+
+**Shipped** (contour-bands.js `yieldAtMedialLine`, geometry.js `clipToField`, primitive-ribbon.js returns each piece's
+source primitive + its row's live walk ALONGSIDE the pieces -- no new field on any piece, no app-visible change):
+every point of the band area goes to the piece whose own depth there (from the primitive it was offset from) is
+smallest; ties to the lower source index (no rng: seed-stable). A piece is cut only where a CONFLICTING piece covers
+the ground with a smaller depth (Pi minus (Pj clipped to dj <= di), each against the ORIGINAL Pj). Conflicting =
+different source primitives, not joint neighbours in either row's walk, overlap > 1e-4 sq in.
+
+**Sweep** (19 templates x single_soldier / three_band / double_course x 0.75 / 1 / 1.25 in, 7x9, Red seed 1, shapely;
+neck vs corner now classified by the rule's own definition via the source tags, a scratch hook not shipped):
+- neck overlap **14.102 -> 0.000** sq in (every one of 171 cases 0.0000); corner-fan residual 3.814 -> **3.814**
+  (unchanged, 21b's); total overlap 17.824 -> 3.723.
+- **142 / 171 cases byte-identical**; the 29 that change are exactly the 29 with neck overlap (set equality checked).
+- Lost ground (union before - after): total 0.874, per case max **0.0998** (T18 1.25 in) -- over the 0.01 bar in 9
+  cases (T14 1 / 1.25 0.013 / 0.051, T18 / T19 1.25 ~0.10, x3 presets). ALL of it is joint, measured three ways:
+  (a) every gap the cut opens is narrower than the SAME board's widest existing joint (T18 1.25: opened 0.0331 in
+  from a brick, the board already has 0.0396; T19 0.0310 vs 0.0436; T14 0.0154 vs 0.0166) -- area farther from a
+  brick than the board's own widest joint: **0.0000 in all 171 cases**; (b) what goes is a far piece's TONGUE left past
+  the line inside a near-side joint, cut off from its own piece (traced on T18 frame-55: its 0.016 sq in island sits
+  between near pieces frame-16 and frame-17), and on T14 a kite tip cut off by the far arm's strip; (c) the largest
+  discarded part anywhere is 40% of that size's MIN_PIECE_FRACTION piece, so the min-piece rule would drop it anyway.
+  Keeping those fragments would put a sliver of the far brick inside the near side's joint.
+- Advisor's check (1), under-size pieces after the cut: 9 drops over the sweep, one at a time, smallest first, each
+  re-cut without it so its ground goes across the line; a drop whose ground the re-cut pieces do not cover (more than
+  MEDIAL_HOLE_SQIN 0.002) is undone and the piece stays under-size (T14's X: two half-diamonds, 0.093 sq in each vs
+  the 0.104 minimum, meet at a mitre and nobody else covers either). First version dropped all four X kites in one
+  pass (0.186 sq in hole), the second compared summed areas (double-counts where pieces overlap): both measured and
+  replaced. Slivers whose drop opens < 0.002 still drop (a kept 0.001 sq in "brick" on T16 was the trigger).
+- Advisor's check (2), ties: `clipToField(..., strict)` -- the higher source index yields a tie; nothing random.
+- Fan residual at T18 / T19 / T11 / T8 shoulders (kite fans, no single source primitive) untouched: 21b.
+- NOT touched: area bands (fieldstone rings, White Rocks / Grey stone): their stones have no source primitive.
+  bricks-rock-ring-stones.test.js's it.todo for T11 T14 T15 T16 T17 T19 (ring stones at the pinch) stays open.
+
+**Rejected on the way (measured):** the field cut alone, without restricting it to where the far piece IS (overlap
+17.8 -> 3.6 but lost 4.3 sq in: T14's X and T16's neck triangle went bare -- the far primitive's field extends past
+its own pieces).
+
+**Test** tests/bricks-neck-medial.test.js (9): T18 / T19 / T14 1.25 single_soldier + T16 three_band 0.75 -- overlap
+between a left and a right piece < 0.01 and the neck strip's covered ground within 0.16 sq in of main's (grid; pinned
+from main 0443c48); T1 every preset at 1 in = main's frame digest; clipToField unit cases (linear = half-plane, a
+circle follows the arc not the chord, ties). Against main: **4/4 neck cases FAIL** (overlap 0.92 / 0.93 / 0.18 /
+0.20); with the no-hole drop guard removed: **T14 FAILS** (cover 9.2268 vs > 9.2836). The digest case passes on main
+by construction (it pins main). A first hole probe (points far from any brick) was replaced: it read main's
+OVERLAPPING kite as "near" a pre-existing bare notch and flagged the branch for it (that notch is bare on main too).
+
+Shots: shots/seatB/neck16c2/before_worst_necks.png, before_after_worst_necks.png (T18 / T19 1.25 three_band, T14,
+T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given up -- the joint tongues).
+- Gates: bricks domain (tests/bricks-*) 54 files 532 passed 8 todo; FULL vitest **315 files, 4704 passed, 8 todo, 0
+  failed** (87.7 s). Lay time (30 lays averaged, a shared machine, two alternating runs each): clean T1 three_band 1 in
+  13 / 13 ms main / branch (the conflict search runs zero polygon intersections on T1: counted); neck cases a few ms to
+  ~2x (T18 three_band 1.25 23-25 -> 28-51 ms, T16 three_band 0.75 11-18 -> 18-33 ms).
+- After merging origin/main 52c3055 into neck-medial (55dd348; a WORK-LOG append conflict, both kept): bricks domain
+  54 files green; full vitest x3 on a loaded machine (three other seats running): 13, then 1, then 1 failure. The
+  last two were the same: tests/frame-3d-sweep.test.js timed out at 90 s. It imports no bricks code, passes alone on
+  the branch (52-69 s), and on main 52c3055 it also timed out alone once (110 s) between two passes. main 52c3055 full:
+  316 files green in 80 s. Read as load, not this item -- the advisor's gate decides.
+
+## T86 item 16(c) part 2 -- the medial seam is a joint (advisor, from seat A's Fusion e2e) (seat B / fc, 2026-10-05 night)
+- Why: the first cut left the two sides ABUTTING on the medial line (0 gap); seat A measured that 0-gap seams become
+  zero-area sliver profiles in the Fusion Bricks sketch. Rule added (declared, contour-bands.js): each side stops
+  half the set's grout joint (set.grout.widthIn / 2) short of the line. The field is the depth difference divided by
+  its own gradient (medialDistance: first-order distance to the line; the raw difference changes 2x per inch at a
+  neck, which would have made the joint half as wide). The far piece is grown by a FULL joint before the cut (limited
+  to the half-joint strip): grown by half a joint only, a lens tip still touched (T18 frame-13 / frame-58 at
+  (3.5, 4.529): both pieces' own edges reach the line there) or left 0.022 in.
+- Sweep (171 cases): neck overlap 0.000 in every case; corner residual 3.814 -> 3.763 (down, not up); **every seam the
+  rule cuts is >= 0.034 in (the joint) in all 29 cases**; 142 / 171 byte-identical; 8 drops; raw union loss 2.75 sq in
+  total (the new seam joints, by design), void farther from a brick than the same board's widest existing joint
+  0.0000 in every case.
+- Pre-existing tight seams NOT from this step (same distance on main, measured pair by pair): T18 / T19 arm-to-top-bar
+  pieces at the shoulders 0.0068 / 0.0037 in, T14's two half-diamonds meeting on the X's horizontal mitre line 0 in.
+  They are corner / mitre seams: 21b (the advisor put 0-gap mitres there).
+- Test: each neck case also asserts the medial seam (a left against a right piece, closest on the centre line inside
+  the declared neck window) >= joint - 0.002. With the setback set to 0: **4/4 FAIL** (gaps 0 .. 1.3e-5 in).
+- Gates: bricks domain 54 files green; full vitest 316 / 317 files -- the one is tests/frame-3d-sweep.test.js timing
+  out at 90 s again (139.9 s run, loaded machine), as logged above: no bricks import, passes alone.
+- Shots: before_after_worst_necks.png re-rendered from this build; t18_seam_zoom.png (the seam as a joint);
+  t14_x_centre_zoom.png (main vs branch, the X centre: two 0.093 sq in half-diamonds, blue = joint given back).

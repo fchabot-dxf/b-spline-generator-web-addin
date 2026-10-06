@@ -131,7 +131,6 @@ export const DEFAULT = {
       // F35 item 16 (advisor turn 189): the Frame tool's OFFSET FROM FRAME, like the Shape Lattice's --
       // ON = the bands follow the frame's outer edge offset by `distance` (+ inward, - outward), default ON
       // at 0; OFF = free placement, the bands follow the board's own outline instead of the frame.
-      frameOffset: { on: true, distance: 0 },
       // F35 item 16: LEVEL, a per-element height offset in inches (+ proud, - recessed; item 15's accent
       // level applied to a whole element), keyed by element kind (editor-brick-tool.js BRICK_KINDS). Read
       // by the height mask; in the laid key (audit v2 N6: an editor change re-lays at once, item 27). A saved
@@ -412,7 +411,10 @@ export let strokeCache = null;
 
 export function setPreDelta(val) { preDelta = val; }
 export function setPostDelta(val) { postDelta = val; }
-export function setLastResult(val) { lastResult = val; }
+/** A completed 3D rebuild's count (setLastResult): the brick matrix waits on it instead of a time window (advisor: under
+ *  a loaded --parallel gate the rebuild can start after any fixed window). Read-only for everyone else. */
+export let lastResultGeneration = 0;
+export function setLastResult(val) { lastResult = val; lastResultGeneration++; }
 export function setIsFusionMode(val) { isFusionMode = val; }
 export function setLastGridSize(nx, nz) { lastNx = nx; lastNz = nz; }
 export function setStrokeCache(val) { strokeCache = val; }

@@ -85,7 +85,7 @@ const BRICK_TOOLS = [
     hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Change a setting to lay it; Generate re-lays.' },
   { id: 'frame', buttonId: 'brickTool_frame', iconSvg: () => brickToolIconSvg('frame'), label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
     subTools: ['select'],
-    hint: 'Bands of bricks along the frame\'s contour (or the board\'s edge with Offset from frame off). Change a setting to lay them; Generate re-lays.' },
+    hint: 'Bands of bricks along the frame\'s outer edge (the board\'s edge when no frame template is picked). Change a setting to lay them; Generate re-lays.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
   // (editor-cut-tool.js) with zero changes needed there. Only applies to
@@ -270,24 +270,6 @@ function syncBrickTopToggle() {
   const flat = P.brickSettings.brickTopMode === 'flat';
   document.getElementById('brickBtnTopOrganic')?.classList.toggle('active', !flat);
   document.getElementById('brickBtnTopFlat')?.classList.toggle('active', flat);
-}
-
-/** F35 item 16: the Frame tool's offset from frame -- the band contour moves, so it is a LAYOUT setting
- *  ('generate': pending until Generate, like every other editor Brick-tab setting). */
-export function setFrameOffset({ on, distance }, commit = 'generate') {
-  const cur = P.brickSettings.frameOffset || { on: true, distance: 0 };
-  const d = Number(distance);
-  P.brickSettings.frameOffset = { on: on === undefined ? cur.on !== false : !!on, distance: Number.isFinite(d) ? d : (cur.distance || 0) };
-  syncFrameOffsetControls();
-  commitBrickSetting(commit);
-}
-
-function syncFrameOffsetControls() {
-  const off = P.brickSettings.frameOffset || { on: true, distance: 0 };
-  const box = document.getElementById('brickFrameOffsetOn');
-  const dist = document.getElementById('brickFrameOffsetDistance');
-  if (box) box.checked = off.on !== false;
-  if (dist) { dist.value = off.distance || 0; dist.disabled = off.on === false; }
 }
 
 /** F35 item 16: an element's LEVEL (height offset, inches), read by the height mask. Audit v2 N6: in the editor
@@ -1102,7 +1084,6 @@ function syncControlsFromState() {
   syncRaisedSection();
   syncBrickTopToggle();
   syncSurfaceStyleToggle();
-  syncFrameOffsetControls();
   syncElementLevels();
   syncAccentControls();
   setPair('brickReliefHeightSlider', 'brickReliefHeight', s.reliefIn);
@@ -1493,9 +1474,10 @@ function _kindsToLay(editor, frameGeom) {
  *  are already on the canvas, or the active Wall/Frame tool's own output (Frame needs a usable
  *  frame). Wall and Frame are laid together by one runBricks call (editor-brick-tool.js), so there
  *  is no per-element subset to pick. Brush strokes are untouched (frozen at draw time). */
-/** Audit v2 N9: Generate with the Frame tool on a board with no frame laid nothing and said so only in the
- *  console. (Offset from frame OFF lays the bands along the board's edge instead -- no frame needed.) */
-export const FRAME_NEEDS_A_FRAME = "No frame on this board -- pick a frame template, or turn Offset from frame off to lay the bands along the board's edge.";
+/** Audit v2 N9: Generate with the Frame tool on a board with no usable frame outline laid nothing and said so only in
+ *  the console. Since item 66 a board with NO template lays the bands along its rectangle; this is left for a template
+ *  whose outline cannot carry a contour. */
+export const FRAME_NEEDS_A_FRAME = "This frame's outline can't carry brick bands -- pick another frame template.";
 
 /** F35 item 39 (Fred, on a restored board: "the opened geometry isn't refreshable by a simple Generate; it needs a
  *  setting changed"): the Generate BUTTON = re-lay now with a NEW brick seed, like the terrain's Generate New Seed --
@@ -2447,14 +2429,19 @@ const BRUSH_PRESET_LIST = [
  *  own brick-length-only special case) -- Frame bands now resolve the SAME global brick length as
  *  Wall/Brush, via `scale` (editor-brick-tool.js's own scaleFor), which generateBricks already
  *  threads to both uniformly. */
-/** The contour the Frame bands follow (F35 item 16, P.brickSettings.frameOffset): ON = the frame's outer
- *  edge offset by `distance` (the SAME frameContourSilhouette the Shape Lattice's offset-from-frame uses);
- *  OFF = free placement, the board's own outline. null = no usable contour. */
+/** The contour the Frame bands follow -- and, with no Frame element, the wall (item 42): F35 item 66 (Fred: "the brick
+ *  frame is always offset from frame anyway, so remove that"): the frame's OUTER edge; with no frame template, the board
+ *  rectangle. LEGACY_FRAME_OFFSET: the retired Offset-from-frame control is no longer shown or written, but a board saved
+ *  with it keeps laying as before (OFF = the board rectangle, a distance = the edge offset by it). null = a template whose
+ *  outline cannot carry a contour (FRAME_NEEDS_A_FRAME). */
+const LEGACY_FRAME_OFFSET = Object.freeze({ on: true, distance: 0 });
 function frameBandContour(editor) {
-  const off = P.brickSettings.frameOffset || { on: true, distance: 0 };
-  if (off.on === false) return rectToPrimitives({ x1: 0, y1: 0, x2: editor._mW, y2: editor._mH });
+  const off = P.brickSettings.frameOffset || LEGACY_FRAME_OFFSET;
+  const rect = () => rectToPrimitives({ x1: 0, y1: 0, x2: editor._mW, y2: editor._mH });
+  if (off.on === false) return rect();
   const ctx = frameContext(editor);
-  const sil = ctx ? frameContourSilhouette(ctx, Number(off.distance) || 0, 0) : { error: 'noFrame' };
+  if (!ctx) return rect(); // item 66: no frame template = the board rectangle
+  const sil = frameContourSilhouette(ctx, Number(off.distance) || 0, 0);
   return sil.error ? null : sil.primitives;
 }
 
@@ -2581,8 +2568,6 @@ export function initBrickPanel() {
   document.getElementById('stripeThree')?.addEventListener('change', () => { syncStripeBrickStyles(); });
   document.addEventListener('editorTabChanged', () => syncStripePanelContext());
   bindSlider('brickSurfaceWearSlider', 'brickSurfaceWear', 'surfaceWear', (v) => Math.max(0, Math.min(1, parseFloat(v))), 'surface');
-  document.getElementById('brickFrameOffsetOn')?.addEventListener('change', (e) => setFrameOffset({ on: e.target.checked }));
-  document.getElementById('brickFrameOffsetDistance')?.addEventListener('change', (e) => setFrameOffset({ distance: e.target.value }));
   for (const kind of BRICK_KINDS) {
     document.getElementById(`brickLevel_${kind}`)?.addEventListener('change', (e) => setElementLevel(kind, e.target.value));
   }

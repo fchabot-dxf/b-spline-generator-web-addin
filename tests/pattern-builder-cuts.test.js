@@ -30,7 +30,7 @@ function fakeEditor() {
   const svgEl = (tag) => { const el = document.createElementNS('http://www.w3.org/2000/svg', tag); node.appendChild(el); return el; };
   return {
     _draw: {}, _mW: 7, _mH: 9, _activeLayer: '0', _layers: [{ id: '0', name: 'Layer 1', visible: true }],
-    _sketchLayer: { node, children: () => ({ toArray: () => [] }),
+    _sketchLayer: { node, children: () => Object.assign([], { toArray: () => [] }) /* svg.js: an array (item 64: a kind layer runs addLayer) */,
       group: () => wrap(svgEl('g')), polygon: (pts) => { const el = svgEl('polygon'); el.setAttribute('points', pts); return wrap(el); } },
   };
 }

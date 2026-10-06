@@ -136,9 +136,7 @@ export const BRICK_CONTROLS = [
   // band 1 brings the brick frame back (its own set) -- the Soldier button must exist on a rock frame's row
   { name: 'Band 1 pattern: Fieldstone again (rock frame)', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_fieldstone'), expect: { ...LAYOUT, sets: { frame: 3 } }, introducedBy: '40c4bdf' },
   { name: 'Band 1 pattern: Soldier, back from rock (item 46)', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_soldier'), expect: { ...LAYOUT, sets: { frame: 1 } }, introducedBy: '40c4bdf' },
-  { name: 'Frame offset distance 0.25', kind: 'editor', tool: 'frame', do: set('brickFrameOffsetDistance', 0.25), expect: LAYOUT },
-  { name: 'Frame offset off', kind: 'editor', tool: 'frame', do: click('brickFrameOffsetOn'), expect: LAYOUT },
-  { name: 'Frame offset on', kind: 'editor', tool: 'frame', do: click('brickFrameOffsetOn'), expect: LAYOUT },
+  // F35 item 66: the 'Frame offset distance / off / on' rows went with the retired Offset-from-frame control
   { name: 'Frame Level -1/8', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', -0.125), expect: LEVEL, introducedBy: '90a1483' },
   { name: 'Frame Level 0', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', 0), expect: LEVEL, introducedBy: '90a1483' },
   { name: 'Frame preset: None', kind: 'editor', tool: 'frame', do: click('brickFramePreset_none'), expect: LAYOUT },
@@ -416,4 +414,13 @@ export const EDIT_PASSWORD_TEST = {
 export const GENERATE_AFTER_RESTORE = {
   tool: 'brickTool_wall', generate: 'brickGenerate', kind: 'wall', seedAttr: 'data-brick-seed',
   marker: "import('./main/brick-panel.js').then((m) => !!m.generateNow)",
+};
+
+// ---- a wall with NO Frame element (F35 item 42, Fred: "I don't always use frames"): it fills the frame contour (the
+// template's outer edge; the board rectangle for template None), no band reserve. Measured before: T18 7x10, 0.75 in,
+// Wall only: x 1.00-6.00 (the Soldier band depth kept clear). `tol` = within a joint.
+export const WALL_NO_FRAME = {
+  cases: [{ template: 'template_18', heightIn: 10 }, { template: '', heightIn: 9 }],
+  wallTool: 'brickTool_wall', generate: 'brickGenerate', tol: 0.1,
+  marker: "import('./editor/editor-brick-tool.js').then((m) => !!m.frameGeomForLay)",
 };

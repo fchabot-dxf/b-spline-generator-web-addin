@@ -31,7 +31,7 @@ function fakeEditor() {
     _draw: {}, _mW: 7, _mH: 9,
     _activeLayer: '0',
     _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Layer 2', visible: true }],
-    _sketchLayer: { node, children: () => ({ toArray: () => [] }),
+    _sketchLayer: { node, children: () => Object.assign([], { toArray: () => [] }) /* svg.js: an array (item 64: a kind layer runs addLayer) */,
       group: () => wrap(svgEl('g')), polygon: (pts) => { const el = svgEl('polygon'); el.setAttribute('points', pts); return wrap(el); } },
   };
 }
@@ -55,13 +55,17 @@ describe('slice 2: wall-area records', () => {
     expect(areas.map((r) => [r.id, r.seq, r.strokes.length])).toEqual([[a, 1, 2], [b, 2, 1]]);
     expect(brickRecordNode(ed, 'wall')).toBe(areas[1].node); // the newest stands for the wall
   });
-  it('an area is laid on the layer active when it was painted', () => {
+  // F35 item 64 (supersedes slice 2's "the layer active when it was painted"): an area is a Wall element, so it goes on
+  // the Wall kind layer, whatever is active
+  it('item 64: an area is laid on the Wall layer, whatever layer is active', () => {
     const ed = fakeEditor();
     ed._activeLayer = '1';
     const a = addWallAreaStroke(ed, stroke(1), S());
-    expect(wallAreaRecords(ed)[0].layer.id).toBe('1');
+    const layer = wallAreaRecords(ed)[0].layer;
+    expect(layer.brickKind).toBe('wall');
+    expect(layer.id).not.toBe('1');
     runBricks(ed, S(), null);
-    expect(ed._sketchLayer.node.querySelector(`[data-brick-owner="${a}"]`).getAttribute('data-layer')).toBe('1');
+    expect(ed._sketchLayer.node.querySelector(`[data-brick-owner="${a}"]`).getAttribute('data-layer')).toBe(layer.id);
   });
 });
 
