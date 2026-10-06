@@ -23335,3 +23335,24 @@ Shot item33_ring_voids_before_after.png (T14 / T10 / T3 / T9 at 1.25 in).
   bridge on six templates at 1 in. Mutation: no A -> 5 fail, no B -> 6 fail. Full vitest 327 files / 5,376 passed.
   Changes saved stone-ring boards (Fred-yes batch). Shot for Fred: item33_fred_T11_white_rocks_1in_before_after.png
   (T11 7x9 1 in, 73 -> 77 ring stones; one small mortar patch left by the right notch).
+
+## T86 -- joint-rule gap: three touching seams on 9x12 (seat B / fc, 2026-10-06), branch seam-9x12 (off ring-pinch)
+Found by the stack sweep (shots/seatB/neck16c2/stack_summary_table.md): T8 9x12 0.75 in soldier_stretcher / three_band
+(seam 0) and T12 9x12 0.75 in double_course (0.0001). Cause: yieldAtMedialLine's cut (checkedDifference ->
+polygonDifference) left a SPIKE on the piece -- a 0.05 in excursion 0.0004 in wide along the cutter's edge, out and
+back, its tip three vertices within 0.0002 in -- reaching the neighbour across the joint; it has no area, so the
+cut's area check passed it. Fix: geometry.js dropSpikes (merge vertices under SPIKE_WIDTH_IN / 2, then drop every
+vertex where the outline reverses with an excursion thinner than SPIKE_WIDTH_IN = 0.001 in), applied to the cut's
+pieces. Seams after: 0.0322 / 0.0331 in (joint less arc sag). Sweep vs ring-pinch, 2,166 lays: 312 pieces lists change,
+3 materially (the three above; the rest is sub-0.0005 in vertex cleanup -- same piece count, overlap, bare, seam);
+stone lays 0. Seams under 0.030 in: 22 -> 19 (18 neck seams below + T17 9x12 mixed 1.25 0.0296, arc sag).
+Test: bricks-joint-rule now also 6x9 / 9x12 x 0.75-1.5 in on T1 T5 T8 T11 T12 T14 T16 T18 T19 (18 tests, ~26 s);
+KNOWN_NECK_SEAM_IN declares the two neck floors. Mutation: no dropSpikes -> T8 / T12 9x12 fail. Full vitest 327 / 5,394.
+NECK SEAMS (reported, not fixed; advisor's question "should item 30's narrowing kick in?"): T16 6x9 1.5 (0.0221),
+T19 7x9 1.5 (0.0267), T18 9x12 1.25 (0.0238), 6 presets each -- a single band deeper than half the waist (T16 6x9:
+gap 2.09, half 1.045 < 1.5) meets itself at the medial line; the fit rule says "(no fit)" (the outermost band is never
+reduced); item 30 does NOT narrow: its trigger is a LINE between two lines dropping, and these waists are reflex
+junctions (T16 line/arc, T18 / T19 arc/arc). The medial setback leaves 0.022-0.027 in, not the 0.034 joint.
+
+## T86 item 34 -- NOTED for later: T7's hook leaves bare band ground at 1.5 in (seat B, 2026-10-06)
+4.9 sq in on 7x9, 2.9 on 6x9, every preset, identical on main -- the hook (r 0.66 fillet) at big bricks.

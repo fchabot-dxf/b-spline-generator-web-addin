@@ -33,7 +33,7 @@
  * full-size bricks, never one row of stretched ones, and the next band always starts exactly where
  * the actual (snapped) rows end, with no seam gap.
  */
-import { inwardSignFor, pointInPolygon, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward } from './geometry.js';
+import { inwardSignFor, pointInPolygon, dropSpikes, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, boundaryAtDepth, lineBetweenLinesDropsAt } from './primitive-ribbon.js';
 import { openRibbonOutline } from './ribbon-outline.js'; // F35 item 55 (seat E): a Brush stroke's grout region
@@ -311,7 +311,7 @@ function polygonDistance(A, B) {
 function checkedDifference(piece, cutter) {
   const shared = Math.abs(signedArea(polygonIntersection(piece, cutter)));
   if (shared < 1e-9) return [piece]; // a sharp tip in a joint-wide strip shares ~1e-7 sq in
-  const left = polygonDifference(piece, cutter);
+  const left = polygonDifference(piece, cutter).map((q) => dropSpikes(q)).filter((q) => q.length >= 3); // a spike along the cutter reaches the next piece
   const kept = left.reduce((sum, q) => sum + Math.abs(signedArea(q)), 0);
   return Math.abs(kept - (Math.abs(signedArea(piece)) - shared)) > CUT_CHECK_SQIN ? [piece] : left;
 }

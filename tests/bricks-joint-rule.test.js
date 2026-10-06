@@ -63,6 +63,29 @@ describe('the joint rule: every seam between band pieces is the declared joint (
   }
 });
 
+// T86 (advisor, after seat B's stack sweep): the joint rule on the other boards and every size -- the test above covered
+// 7x9 at 1 / 1.25 in only, and the sweep found two pieces TOUCHING on 9x12 at 0.75 in (T8 0 in, T12 0.0001 in: a clip
+// left a spike along the cutter's edge -- geometry.js dropSpikes). The templates above plus the ones the sweep flagged.
+// KNOWN (reported, not fixed -- the narrowing question for item 30 is open): at big bricks a neck narrower than two
+// bands leaves a seam under the joint, the measured floor here.
+const KNOWN_NECK_SEAM_IN = { 'template_16 6x9 1.5': 0.022, 'template_18 9x12 1.25': 0.0235 };
+describe('the joint rule on 6x9 and 9x12 at 0.75-1.5 in (T86, after the stack sweep)', () => {
+  const TEMPLATES = ['template_1', 'template_5', 'template_8', 'template_11', 'template_12', 'template_14', 'template_16', 'template_18', 'template_19'];
+  const PRESETS = ['single_soldier', 'three_band', 'double_course', 'mixed_bands', 'quoin_corners'];
+  const CASES = TEMPLATES.flatMap((id) => [[6, 9], [9, 12]].map(([W, H]) => [`${id} ${W}x${H}`, id, W, H]));
+  it.each(CASES)('%s: every preset at 0.75 / 1 / 1.25 / 1.5 in -- no seam under the joint', (_name, id, W, H) => {
+    const sil = frameContourSilhouette({ defs: FRAME_DEFS, record: normalizeFrameRecord({ templateId: id }), board: { widthIn: W, heightIn: H } }, 0, 0);
+    const prims = buildRibbonPrimitives(sil.primitives);
+    const bad = [];
+    for (const preset of PRESETS) for (const L of [0.75, 1, 1.25, 1.5]) {
+      const { bricks } = bricksContourBands(prims, FRAME_PRESETS[preset], { set: SET, seed: 1, scale: L / SET.brickLengthIn });
+      const w = narrowestSeam(bricks), floor = KNOWN_NECK_SEAM_IN[`${id} ${W}x${H} ${L}`] ?? JOINT - ARC_SAG_IN;
+      if (w.d < floor) bad.push(`${preset} ${L}: ${w.a} / ${w.b} ${w.d.toFixed(4)} in`);
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
 describe("the joint rule on a Brush stroke (seat E's measurement: bricks butting along the run, ends overhanging 0.02 in)", () => {
   it('an open two-segment stroke: every seam a joint, no brick past either end of the stroke', () => {
     const pts = [{ x: 1, y: 1 }, { x: 5, y: 1 }, { x: 6.5, y: 3.5 }];

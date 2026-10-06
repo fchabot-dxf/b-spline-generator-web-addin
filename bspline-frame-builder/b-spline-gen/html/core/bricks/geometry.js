@@ -232,6 +232,27 @@ export function clipToField(poly, f, strict = false) {
   return dedupePolygon(out);
 }
 
+/** Drop SPIKES: a vertex where the outline runs out and straight back -- the turn reverses and the excursion is thinner
+ *  than `widthEps` (twice the triangle's area over its longer side) -- repeated until none is left. A spike has next to
+ *  no area, so an area check never sees it, but it reaches across a joint to the next piece. T86 (seat B): a clip
+ *  (polygonDifference) left a 0.05 in spike 0.0004 in wide along the cutter's edge, touching the neighbour -- MEASURED
+ *  T8 / T12 9x12 at 0.75 in, seams 0 / 0.0001 in. 0.001 in: a hair, far under any joint (0.03 in and up). */
+export const SPIKE_WIDTH_IN = 1e-3;
+export function dropSpikes(poly, widthEps = SPIKE_WIDTH_IN) {
+  // a spike's tip can be several vertices a hair apart (MEASURED T8: three within 0.0002 in): merged first
+  const merge = (q) => dedupePolygon(q, widthEps / 2);
+  let out = merge(poly);
+  for (let changed = true; changed && out.length > 3;) {
+    changed = false;
+    for (let i = 0; i < out.length && out.length > 3; i++) {
+      const a = out[(i - 1 + out.length) % out.length], v = out[i], b = out[(i + 1) % out.length];
+      const ux = v.x - a.x, uy = v.y - a.y, wx = b.x - v.x, wy = b.y - v.y, side = Math.max(Math.hypot(ux, uy), Math.hypot(wx, wy));
+      if (ux * wx + uy * wy < 0 && Math.abs(ux * wy - uy * wx) / side < widthEps) { out = merge(out.filter((_, k) => k !== i)); changed = true; break; }
+    }
+  }
+  return out;
+}
+
 /** Drop consecutive (including wrap-around) near-duplicate vertices from a polygon. */
 export function dedupePolygon(poly, eps = 1e-7) {
   const out = [];
