@@ -101,6 +101,9 @@ describe('opts.scale', () => {
     // 50+ at 2x) -- a genuinely plain, scaled whole piece, which is what this test means to check.
     const b0 = bbox(base.bricks.filter((b) => !b.id.includes('corner'))[10].polygon);
     const d0 = bbox(doubled.bricks.filter((b) => !b.id.includes('corner'))[10].polygon);
-    expect(Math.max(d0.w, d0.h)).toBeCloseTo(Math.max(b0.w, b0.h) * 2, 2);
+    // 21b joint rule: a single band's row stops half a joint short of the wall, and grout does NOT scale -- so the row's
+    // natural width doubles and the half joint stays: (cross + j/2) * 2 - j/2
+    const halfJ = SET.grout.widthIn / 2;
+    expect(Math.max(d0.w, d0.h)).toBeCloseTo((Math.max(b0.w, b0.h) + halfJ) * 2 - halfJ, 2);
   });
 });

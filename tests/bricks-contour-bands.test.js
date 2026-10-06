@@ -31,7 +31,8 @@ describe('bricksContourBands — the Frame tool', () => {
     const bandWidth = FRAME_PRESETS.single_soldier[0].widthIn;
     const outerArea = polygonArea(square);
     const innerArea = polygonArea(innerPath);
-    const expectedInnerSide = 10 - 2 * bandWidth;
+    // 21b joint rule: the wall starts half a joint inside the band (band joint / 2 + wall joint / 2 = one joint)
+    const expectedInnerSide = 10 - 2 * (bandWidth + SET.grout.widthIn / 2);
     expect(Math.sqrt(innerArea)).toBeCloseTo(expectedInnerSide, 2);
     expect(innerArea).toBeLessThan(outerArea);
   });
@@ -41,7 +42,7 @@ describe('bricksContourBands — the Frame tool', () => {
     const { bricks, innerPath } = bricksContourBands(SQUARE_PRIMITIVES, bands, { set: SET, seed: 2 });
     expect(bricks.length).toBeGreaterThan(0);
     const totalWidth = bands.reduce((s, b) => s + b.widthIn, 0);
-    const expectedInnerSide = 10 - 2 * totalWidth;
+    const expectedInnerSide = 10 - 2 * (totalWidth + SET.grout.widthIn / 2); // 21b joint rule: + half a joint to the wall
     expect(Math.sqrt(polygonArea(innerPath))).toBeCloseTo(expectedInnerSide, 2);
   });
 
@@ -88,7 +89,7 @@ describe('bricksContourBands — the Frame tool', () => {
       const q = arr[(i + 1) % arr.length];
       return a + (q.x + p.x) * (q.y - p.y);
     }, 0) / 2));
-    expect(side).toBeCloseTo(10 - 2 * expectedActualWidth, 2);
+    expect(side).toBeCloseTo(10 - 2 * (expectedActualWidth + SET.grout.widthIn / 2), 2); // 21b: + half a joint to the wall
   });
 
   it('consecutive bands leave NO gap at a sharp corner: every band\'s own bricks reach exactly to the next band\'s own outer boundary', () => {
@@ -329,8 +330,11 @@ describe('bricksContourBands — the Frame tool', () => {
       // of expected values (brickLengthIn for a soldier row, brickHeightIn for a stretcher row) --
       // collect the expected set directly from the bands under test.
       const expectedWidths = new Set();
+      // 21b joint rule: a row stops half a joint short of each neighbour (row, band, wall) but not of the board, so its
+      // cross-width is the natural width minus half a joint (the stack's outer / inner row) or minus a full joint (between)
       for (const b of bands) {
-        expectedWidths.add(+(b.pattern === 'soldier' ? SET.brickLengthIn : SET.brickHeightIn).toFixed(3));
+        const natural = b.pattern === 'soldier' ? SET.brickLengthIn : SET.brickHeightIn;
+        for (const less of [SET.grout.widthIn / 2, SET.grout.widthIn]) expectedWidths.add(+(natural - less).toFixed(3));
       }
       // "far" must clear the production code's own MITRE_REACH (halfWidth*5) for the LARGEST
       // halfWidth any band here uses, PLUS however far the innermost sub-band's own corner is
@@ -401,7 +405,9 @@ describe('bricksContourBands — the Frame tool', () => {
       // square: worst void is 0.00375in, exactly ONE grid cell (sqSize/GRID) -- this measurement's
       // own resolution floor, not a real geometric gap. 0.01 keeps a small margin above that floor
       // while still catching a real regression (the original item-74 bug measured 30-80%).
-      const maxVoidIn = 0.01;
+      // 21b joint rule: the corner is now a mitre JOINT (declared width j), which crosses these axis scans at 45 deg as a gap of
+      // j / sin 45 = 0.048 in; anything wider is still a real void (the old defect measured 0.146)
+      const maxVoidIn = SET.grout.widthIn / Math.SQRT1_2 + sqSize / GRID;
       for (const c of corners) {
         // scan along BOTH grid axes (rows and columns) for the longest CONTIGUOUS uncovered run --
         // a direct measurement of void WIDTH, not an aggregate coverage percentage.
