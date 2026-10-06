@@ -22,6 +22,8 @@
  * withLoadingStageShownFirst(id, fn) is the same for a SYNCHRONOUS `fn` whose result the caller does not await.
  */
 
+import FUSION_SEND_STAGES from '../data/fusion-send-stages.js';
+
 export const STAGE_GROUPS = { computing: 'Computing', waiting: 'Waiting', refreshing: 'Refreshing' };
 
 /** `label` is a plain string, or a function of the optional `ctx` passed to withLoadingStage. */
@@ -36,6 +38,11 @@ export const LOADING_STAGES = {
   cloudLoad: { group: 'waiting', label: 'loading from the cloud', surface: 'card' },
   cloudSave: { group: 'waiting', label: 'saving to the cloud', surface: 'card' },
   stepExport: { group: 'computing', label: 'writing the files', surface: 'card' },
+  // item 70: a Send from the Fusion palette -- the palette's own steps, then Fusion's (data/fusion-send-stages.js,
+  // the add-in reports each as 'import_stage' {id}); all cards
+  stepBuild: { group: 'computing', label: 'building the STEP files', surface: 'card' },
+  transfer: { group: 'waiting', label: 'sending to Fusion', surface: 'card' },
+  ...Object.fromEntries(FUSION_SEND_STAGES.stages.map((st) => [st.id, { group: 'waiting', label: `Fusion: ${st.label}`, surface: 'card' }])),
 };
 
 /** Multi-step actions: the stages they run, in order. A stage the action skips (no bricks = no carving) just
@@ -45,10 +52,16 @@ export const LOADING_SEQUENCES = {
   apply: { stages: ['heightMask', 'rebuild'] },
   newSeed: { stages: ['heightMask', 'rebuild'] },
   projectLoad: { stages: ['cloudLoad', 'restore', 'heightMask', 'rebuild'] },
+  sessionRestore: { stages: ['heightMask', 'rebuild'], surface: 'card' }, // item 37: a page load's restore, one build
   export: { stages: ['heightMask', 'rebuild', 'stepExport'] },
+  send: { stages: ['heightMask', 'rebuild', 'stepBuild', 'transfer', ...FUSION_SEND_STAGES.stages.map((st) => st.id)] },
 };
 
 export const MIN_VISIBLE_MS = 300;
+/** Back-to-back work is ONE appearance: the overlay hides only after this long with nothing running. MEASURED (900 px,
+ *  CPU x4, a slider drag): each rebuild left and the queued next one entered a tick later, so the overlay blinked off
+ *  for a frame between every rebuild (6 appearances in one drag, gaps of 0-5 ms). */
+export const HIDE_GRACE_MS = 150;
 /** A continuous gesture's own trailing work (the rebuild a slider release or a stroke end schedules) still counts as
  *  part of the gesture for this long after it ends. */
 export const GESTURE_GRACE_MS = 600;
@@ -59,6 +72,7 @@ const _stack = []; // active stages, innermost last: { id, ctx }
 let _sequence = null; // { id, stages, surface, timer }
 let _shownAt = 0;
 let _hideTimer = null;
+let _gestureLook = false; // this appearance began during a continuous gesture: it keeps the gesture surface to its end
 let _gestureOn = false;
 let _gestureUntil = 0;
 const _inGesture = () => _gestureOn || Date.now() < _gestureUntil;
@@ -106,7 +120,10 @@ function _render() {
   if (!el || !top) return;
   clearTimeout(_hideTimer); _hideTimer = null;
   const stage = LOADING_STAGES[top.id];
-  const surface = (_inGesture() && stage.gestureSurface)
+  if (el.hidden) _gestureLook = _inGesture(); // a new appearance: decided once, at its start
+  // a drag's trailing rebuild can start after the gesture grace (it was queued behind the last one): the appearance
+  // that began as the drag's pill stays a pill -- it never swells into the centred card at the end of the drag
+  const surface = ((_inGesture() || _gestureLook) && stage.gestureSurface)
     || (_sequence && _sequence.stages.includes(top.id) && _sequence.surface) || stage.surface;
   (el.querySelector('.loading-stage-text') || el).textContent = stageText(top.id, top.ctx);
   el.dataset.surface = surface;
@@ -123,8 +140,9 @@ function _hideSoon() {
     _hideTimer = null;
     if (_stack.length || _sequence) return;
     el.hidden = true;
+    _gestureLook = false;
     delete el.dataset.stage;
-  }, Math.max(0, MIN_VISIBLE_MS - (Date.now() - _shownAt)));
+  }, Math.max(HIDE_GRACE_MS, MIN_VISIBLE_MS - (Date.now() - _shownAt)));
 }
 
 const _endSequence = (seq) => { if (_sequence === seq && !_stack.length) { _sequence = null; _hideSoon(); } };
@@ -162,13 +180,35 @@ export function beginLoadingSequence(seqId) {
   if (_stack.length) _render();
 }
 
+/** item 70: another palette's own stages join the tables -- the CAM palette declares its BUILD / APPLY steps in
+ *  CAM-builder/ui/html/cam-stages.js and registers them through here (cam-loading.js), so both palettes share one
+ *  overlay, one paint rule and one set of surfaces. */
+export function declareLoadingStages(stages = {}, sequences = {}) {
+  Object.assign(LOADING_STAGES, stages);
+  Object.assign(LOADING_SEQUENCES, sequences);
+}
+
+/** item 70: a HELD stage -- one that is not a function's run but lasts until something else says it is over (Fusion
+ *  working on a Send: the add-in reports each step, the palette closes it on import_success / import_failed / the
+ *  poll timeout). One held slot: holding a new id replaces the previous one; null releases it. Returns a promise
+ *  that resolves once the held stage has been painted (so a caller can show it BEFORE blocking work). */
+let _held = null;
+export function holdLoadingStage(stageId, ctx) {
+  if (_held) { _leave(_held); _held = null; }
+  if (!stageId || !LOADING_STAGES[stageId]) return Promise.resolve();
+  _held = _enter(stageId, ctx);
+  return paintFrames();
+}
+export const releaseHeldStage = () => holdLoadingStage(null);
+
 /** Drop every stage and sequence and hide the overlay at once (tests: the state is module-wide). */
 export function resetLoadingSignal() {
   _stack.length = 0;
+  _held = null;
   if (_sequence) clearTimeout(_sequence.timer);
   _sequence = null;
   clearTimeout(_hideTimer); _hideTimer = null;
-  _gestureOn = false; _gestureUntil = 0;
+  _gestureOn = false; _gestureUntil = 0; _gestureLook = false;
   const el = _el();
   if (el) { el.hidden = true; delete el.dataset.stage; }
 }

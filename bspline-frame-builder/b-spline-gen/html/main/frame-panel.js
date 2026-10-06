@@ -19,6 +19,7 @@
  */
 import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange } from '../core/frame-record.js';
 import { P, isFusionMode } from '../core/state.js';
+import { takeSnapshot, ensureUndoBaseline } from '../core/history.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
 import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
@@ -30,7 +31,6 @@ import { nextSeed } from '../editor/editor-lattice-pattern.js';
 import { frameCutProfile, frameInnerProfile, frameMiters, miterStaysInsideWood, outlineHasUndercut, mitersCollide, blankWidthIn, formatBlankWidthIn } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
 import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
-import { syncDrawerForMode } from '../editor/editor-drawer.js';
 import { inputProfileFor } from '../editor/editor-input.js';
 import { FRAME_HANDLE_RADIUS } from '../editor/editor-frame-profile.js';
 import { insetWindowGeometry, insetWindowOuterRect } from '../core/inset-window.js';
@@ -250,8 +250,6 @@ document.addEventListener('editorTabChanged', (e) => {
   if ($('editorFrameShield')) $('editorFrameShield').style.display = frame ? '' : 'none';
   const ed = typeof window !== 'undefined' ? window.svgEditor : null;
   setEditorFocus(ed, e.detail.tab);
-  // Fred: "the tab should be the toggle" -- the phone drawer follows this switch (Frame: frame settings only).
-  if (ed) syncDrawerForMode(ed, ed._currentMode);
   // T81 item 1: leaving the Frame tab drops its handles entirely (below) --
   // a hover/grab cursor read from the OLD tab must not stick around either.
   if (!frame) _clearFrameHover();
@@ -295,7 +293,12 @@ export function sendFrame() {
  *  add-in to delete the frame Send built ('delete_frame': only the frames fb_engine/send_frame.py tagged, the same
  *  ones a Send replaces); no confirm dialog. */
 export function deleteFrame() {
+  const before = _clone(getFrameRecord());
+  ensureUndoBaseline('Before delete frame'); // the step undoes to exactly this board, not an older snapshot's
   editFrame({ templateId: null, params: {} });
+  // item 69 (seat E, measured: the sidebar Undo left the frame deleted): its own GLOBAL undo step, carrying the
+  // frame transition -- the sidebar's Undo restores the frame (and the 3D follows its re-lay)
+  takeSnapshot('Delete frame', { restore: { frame: { before, after: _clone(getFrameRecord()) } } });
   if (isFusionMode) {
     try {
       adsk.fusionSendData('delete_frame', '{}');

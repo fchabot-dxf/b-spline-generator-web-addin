@@ -35,7 +35,7 @@ import {
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
-  <button id="editorTabBrick">Brick</button><button id="editorDrawerTab-layers">Brick</button>
+  <button id="editorTabBrick">Brick</button>
   <div id="editorToolbarBrick"></div>
   <div id="brickToolHint"></div>
   <div id="brickBrushSection" style="display:none;">
@@ -142,7 +142,7 @@ describe('item 22 step 4: Select in the panel', () => {
     expect($('brickSubTool_wall_area').style.display).toBe('none');
     expect($('brickSubTool_frame_select')).toBeTruthy();
     expect($('brickSubTool_frame_area')).toBeNull(); // Frame = Select only
-    expect(Object.keys(BRICK_SUB_TOOLS)).toEqual(['draw', 'select', 'area']); // F35 item 36: + the brushes' Draw
+    expect(Object.keys(BRICK_SUB_TOOLS)).toEqual(['draw', 'select', 'stripe', 'area']); // F35 item 36: + the brushes' Draw; item 43: + Stripe (Brush's)
     root.remove(); engineOpts.extra = ['wallRegion'];
     setup();
     expect($('brickSubTool_wall_area').style.display).toBe('');

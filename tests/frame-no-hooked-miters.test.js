@@ -235,5 +235,5 @@ describe('H23 item 39: mutation tests -- proving the sweep above is not vacuous'
       }
       expect(sawAFailureAtOldBudget, `${W}x${H}: expected at least one external seed (of 400) to exceed a 3-attempt budget`).toBe(true);
     }
-  }, 20000);
+  }, HEAVY_TEST_MS); // item 67: the suite default (was a tighter 20 s)
 });

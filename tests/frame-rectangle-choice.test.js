@@ -19,8 +19,7 @@ const FIXTURE = `
   <button id="editorTabFrame"></button><button id="editorTabArtwork" class="active"></button>
   <div id="editorFrameShield" style="display:none"></div>
   <aside id="editorFramePanel" style="display:none"><select id="editorFrameTemplate"></select></aside>
-  <aside id="editorLayersPanel"></aside>
-  <button id="editorDrawerTab-layers">Layers</button>`;
+  <aside id="editorLayersPanel"></aside>`;
 
 let root;
 beforeEach(() => {

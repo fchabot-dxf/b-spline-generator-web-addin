@@ -60,13 +60,13 @@ export function wireGlobalEvents(preview) {
         if (e.key === 'z' && !e.shiftKey) {
             e.preventDefault();
             if (editorOpen) window.svgEditor?.undo();
-            else unifiedUndo(snap => applySnapshot(snap, preview, { source: 'undo' }));
+            else unifiedUndo((snap, restore) => applySnapshot(snap, preview, { source: 'undo', restore }));
             return;
         }
         if (e.key === 'y' || (e.key === 'Z' && e.shiftKey) || (e.key === 'z' && e.shiftKey)) {
             e.preventDefault();
             if (editorOpen) window.svgEditor?.redo();
-            else unifiedRedo(snap => applySnapshot(snap, preview, { source: 'undo' }));
+            else unifiedRedo((snap, restore) => applySnapshot(snap, preview, { source: 'undo', restore }));
             return;
         }
     });
@@ -75,7 +75,7 @@ export function wireGlobalEvents(preview) {
     // 'undo' for all of them, including the redo direction; applySnapshot's
     // own `source` only distinguishes undo/redo-family FROM a project
     // load, not undo from redo (both leave the drawing untouched).
-    const undo = (snap) => applySnapshot(snap, preview, { source: 'undo' });
+    const undo = (snap, restore) => applySnapshot(snap, preview, { source: 'undo', restore });
     const rebuildSoon = (delay) => scheduleRebuild(
         () => rebuild(preview, updateStampMasks, updatePreviewSculptMode),
         delay,

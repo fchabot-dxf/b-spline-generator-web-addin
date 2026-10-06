@@ -352,6 +352,25 @@ function applyViewModeToToggle() {
 const _savedTime = (p) => (p && p.savedAt ? new Date(p.savedAt).getTime() || 0 : 0);
 const _newestFirst = (a, b) => (_savedTime(b) - _savedTime(a)) || a.name.localeCompare(b.name);
 
+// 2026-10-06 (the live worker: 500 "KV list() limit exceeded for the day"): ONE list fetch serves the boot banner
+// (_checkContinueBanner) and the Projects panel when both come within LIST_CACHE_TTL_MS (measured before: a page load
+// that opened the panel listed twice); a fetch already in flight is shared; any write clears it (_trackMutation), so
+// the refresh after a save / delete / rename always reads the store fresh.
+export const LIST_CACHE_TTL_MS = 30000;
+let _listCache = null; // { at, promise }
+export function _fetchProjectList() {
+  if (_listCache && Date.now() - _listCache.at < LIST_CACHE_TTL_MS) return _listCache.promise;
+  // Cache-bust + no-store so the browser never serves a stale list
+  const promise = fetch(`${_API_URL}/projects?_=${Date.now()}`, { cache: 'no-store' }).then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  });
+  const entry = { at: Date.now(), promise };
+  _listCache = entry;
+  promise.catch(() => { if (_listCache === entry) _listCache = null; }); // a failed list is never reused
+  return promise;
+}
+
 async function refreshList() {
   if (!_API_URL) {
     setStatus('⚠ No API configured');
@@ -361,14 +380,9 @@ async function refreshList() {
   }
   setStatus('Loading…');
   try {
-    // Cache-bust + no-store so browser doesn't serve a stale list immediately
-    // after a write. Cloudflare KV is eventually consistent, so even with this
-    // a fresh GET right after a PUT/DELETE may still return old data — that's
-    // why mutation handlers do an optimistic local update before/instead of
-    // relying on this fetch.
-    const r = await fetch(`${_API_URL}/projects?_=${Date.now()}`, { cache: 'no-store' });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
+    // Cloudflare KV is eventually consistent, so a fresh GET right after a PUT/DELETE may still return old data --
+    // that's why mutation handlers do an optimistic local update before/instead of relying on this fetch.
+    const data = await _fetchProjectList();
     // Prefer items[] (with metadata), fall back to names[] for old Workers.
     const items = Array.isArray(data.items) && data.items.length
       ? data.items
@@ -404,6 +418,7 @@ const _recentMutations = new Map();  // name -> { kind: 'added'|'removed', ts }
 
 function _trackMutation(name, kind) {
   _recentMutations.set(name, { kind, ts: Date.now() });
+  _listCache = null; // a write: the next list reads the store
 }
 
 function _reconcileWithMutations(serverItems) {
@@ -688,8 +703,7 @@ function setupLazyMeta() {
  * into view (`setupLazyMeta` above), almost always for projects that are
  * NOT the one currently open, so there is no live `window.svgEditor` for
  * them. Instead this parses the fetched project's own `P.editorSvg` string
- * (the same lightweight, editor-independent approach `app-init.js`'s
- * `_editorSvgHasContent` already uses at boot) and cross-checks its
+ * (a lightweight, editor-independent parse) and cross-checks its
  * `data-editor-layers` roster for `visible`. This is also a real
  * correctness improvement over the old `.enabled` read, not just an
  * equivalent swap: `.enabled` defaulted `false` for layers 1/2 and was
@@ -922,9 +936,7 @@ const CONTINUE_WINDOW_MS = 24 * 3600 * 1000;
 const CONTINUE_DISMISSED_LS_KEY = 'bspline.pm.continueDismissed';
 
 async function _checkContinueBanner() {
-  const r = await fetch(`${_API_URL}/projects?_=${Date.now()}`, { cache: 'no-store' });
-  if (!r.ok) return;
-  const data = await r.json();
+  const data = await _fetchProjectList();
   const now = Date.now();
   let dismissed = '';
   try { dismissed = localStorage.getItem(CONTINUE_DISMISSED_LS_KEY) || ''; } catch { /* none */ }

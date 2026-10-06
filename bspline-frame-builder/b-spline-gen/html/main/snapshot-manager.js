@@ -1,5 +1,6 @@
 import { withLoadingStage } from '../core/loading-signal.js';
-import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache } from '../core/state.js';
+import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache, layerToolingChanged, saveLastSession } from '../core/state.js';
+import { renderLayersPanel } from '../editor/layers.js';
 import { syncUItoParam } from '../core/ui-utils.js';
 import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring } from '../core/history.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
@@ -9,6 +10,7 @@ import { resolveGrid } from '../core/terrain.js';
 import { AppState } from './app-state.js';
 import { runMigrations, editorRestoreSvg, refreshDrape, announceBrickSettingsRestored } from './app-init.js';
 import { syncFramePanel } from './frame-panel.js';
+import { setFrameRecord } from '../core/frame-record.js';
 import { updateSculptToolButtons } from './param-manager.js';
 
 /**
@@ -28,7 +30,9 @@ export function applySnapshot(snap, preview, opts = {}) {
   return withLoadingStage('restore', () => _applySnapshot(snap, preview, opts));
 }
 
-async function _applySnapshot(snap, preview, { source } = {}) {
+async function _applySnapshot(snap, preview, { source, restore } = {}) {
+  const frame = restore ? restore.frame : undefined;
+  const restoredSvg = source === 'undo' && restore && typeof restore.editorSvg === 'string' ? restore.editorSvg : null;
   if (source !== 'undo' && source !== 'load') {
     throw new Error(`applySnapshot: source must be 'undo' or 'load' (got ${JSON.stringify(source)})`);
   }
@@ -59,6 +63,9 @@ async function _applySnapshot(snap, preview, { source } = {}) {
     syncUItoParam(k, P[k]);
   });
   if (source === 'load') { P.activeSculptLayer = null; syncUItoParam('activeSculptLayer', null); if (typeof document !== 'undefined') updateSculptToolButtons(); }
+  // items 69 / 71: the undone / redone step's own declared restores (core/history.js UNDO_STEP_RESTORES) --
+  // restored the way the Frame tab's own undo does (frame-panel.js undoFrame: the bricks' re-lay amends, no new step)
+  if (source === 'undo' && frame !== undefined) setFrameRecord(frame, { restored: true });
   syncFramePanel();
   announceBrickSettingsRestored(); // audit v2 N2: a load / global undo replaced P.brickSettings
   setUndoRestoring(false);
@@ -74,7 +81,13 @@ async function _applySnapshot(snap, preview, { source } = {}) {
   // Depth field visibly snaps back on undo instead of only the model
   // reverting underneath a stale-looking number.
   const editorForTooling = (typeof window !== 'undefined') ? window.svgEditor : null;
-  if (editorForTooling) restoreLayerTooling(editorForTooling._layers, snap.layerTooling);
+  if (editorForTooling) {
+    restoreLayerTooling(editorForTooling._layers, snap.layerTooling);
+    // item 69: the layer rows (the carve / eye toggles) show the restored fields, and the restored tooling reaches
+    // the saved drawing's roster like any other layer-tooling write (core/state.js layerToolingChanged)
+    renderLayersPanel(editorForTooling);
+    layerToolingChanged();
+  }
   AppState.stampCtx?.broadcastSyncFromLayer?.();
 
   // SE4c: this is also the cloud-project-load apply step (cloud-project-
@@ -102,6 +115,14 @@ async function _applySnapshot(snap, preview, { source } = {}) {
   if (source === 'load') {
     const editorForLoad = (typeof window !== 'undefined') ? window.svgEditor : null;
     if (editorForLoad) editorForLoad.open(editorRestoreSvg(), P.widthIn, P.heightIn);
+  }
+  // item 71: a step's own drawing (a sidebar board change, core/history.js recordBoardStep) goes back into P and the
+  // live editor -- the same open() a load uses; the mask + drape refresh below then read it
+  if (restoredSvg !== null) {
+    P.editorSvg = restoredSvg;
+    const editorForStep = (typeof window !== 'undefined') ? window.svgEditor : null;
+    if (editorForStep) editorForStep.open(restoredSvg, P.widthIn, P.heightIn);
+    saveLastSession();
   }
 
   // Always (re)set preDelta and postDelta — including to null when the
@@ -147,7 +168,7 @@ async function _applySnapshot(snap, preview, { source } = {}) {
   // drape refresh; 'load' does, same as editor-io.js's open() itself
   // needing a drape refresh wherever it's called (app-init.js's own
   // Apply/Cancel/boot-restore paths already pair every open() with one).
-  if (source === 'load') {
+  if (source === 'load' || restoredSvg !== null) {
     try {
       await refreshDrape(preview);
     } catch (e) {

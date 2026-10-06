@@ -111,7 +111,11 @@ describe('buildPatch (T86 item 3): patch pieces respect the declared fill rule (
     const nominal = SET.brickHeightIn * SET.brickLengthIn;
     const floor = nominal * 0.25, ceiling = nominal * 1.2;
     // soldier band depth range is [0.4, 1.15] from each edge -- filter to pieces whose own bbox fits there
+    // 21b joint rule: the size filter alone also caught the outer HEADER band's pieces (now a joint smaller, 0.037 sq in, just
+    // under the SOLDIER floor this test applies) -- select the soldier band itself (mixed_bands: header, flemish, soldier)
+    const soldierBand = FRAME_PRESETS.mixed_bands.findIndex((band) => band.pattern === 'soldier');
     const soldierNear = bricks.filter((b) => {
+      if (b.bandIndex !== soldierBand) return false;
       const bb = bbox(b.polygon);
       const spanY = bb.maxY - bb.minY, spanX = bb.maxX - bb.minX;
       return Math.max(spanX, spanY) < 1.2 && (bb.minY < 6.1 && bb.maxY > 2.9) && (bb.minX < 2.2 || bb.maxX > 4.8);
@@ -136,7 +140,8 @@ describe('buildPatch (T86 item 3): length-based planning produces FEWER, more un
   // (0.49in and a separate 0.66in+0.75in pair) per shoulder into fewer, evenly-planned ones.
   it('single_soldier on T1 7x9: pins the exact measured counts (regression pin, not just a bound)', () => {
     const { bricks } = bricksContourBands(T1_PRIMITIVES, FRAME_PRESETS.single_soldier, { set: SET, seed: 7 });
-    expect(bricks.length).toBe(136);
+    // 21b joint rule (re-pinned): runs start whole and end on a closer, an over-long closer splits -- 136 -> 139 pieces
+    expect(bricks.length).toBe(139);
     const weird = bricks.filter((b) => b.polygon.length > 6);
     expect(weird.length).toBe(28);
   });

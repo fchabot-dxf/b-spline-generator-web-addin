@@ -34,7 +34,7 @@ vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
-  <button id="editorTabBrick">Brick</button><button id="editorDrawerTab-layers">Brick</button>
+  <button id="editorTabBrick">Brick</button>
   <div id="editorToolbarBrick"></div>
   <div id="brickToolHint"></div>
   <div id="brickBrushSection" style="display:none;">
@@ -101,6 +101,9 @@ describe('F35 item 35: the bands-reduced note', () => {
     expect(bandsReducedText(NOTE_DROP)).toBe('Bands reduced to fit the board: 2 of 3 laid.');
     expect(bandsReducedText({ ...NOTE_DROP, kept: 3, steps: [{ band: 2, step: 'row' }] })).toBe('Bands reduced to fit the board: 3 of 3 laid; band 3 narrowed.');
     expect(bandsReducedText(null)).toBe('');
+    // T86 item 30: a band narrowed to fit a feature -- its bricks are cut to the row depth
+    expect(bandsReducedText({ requested: 1, kept: 1, steps: [{ band: 0, step: 'narrow', toIn: 0.87 }], fits: true }))
+      .toBe('Bands reduced to fit the board: 1 of 1 laid; band 1 narrowed; bricks cut to the row depth.');
   });
   it('a reduced stack that FITS: the Frame note line, no empty-wall warning; band 3 greyed with why', () => {
     setup('frame');
@@ -124,6 +127,21 @@ describe('F35 item 35: the bands-reduced note', () => {
     lay({ wallCount: 0, frameCount: 300, bandsReduced: { ...NOTE_DROP, kept: 1, fits: false } });
     expect(shown('brickLayWarnings')).toBe(true);
     expect(shown('brickFrameBandsNote')).toBe(true);
+  });
+  // T86 item 30: a band NARROWED to fit a feature can leave no wall (T9 7x9 1.5 in: the band fills the web) -- that fit
+  // is not item 28's (a wall always remains), so the empty-wall warning shows beside the note (the brick-matrix lay row)
+  it('a narrowed band with an empty wall: the warning shows too, beside the note', () => {
+    setup('frame');
+    const rec = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    rec.setAttribute('data-brick-record', 'wall-full'); rec.setAttribute('data-layer', 'b');
+    window.svgEditor._sketchLayer.node.appendChild(rec);
+    const NARROWED = { requested: 3, kept: 1, steps: [{ band: 2, step: 'drop' }, { band: 1, step: 'drop' }, { band: 0, step: 'narrow', toIn: 1.46 }], gapIn: 2.94, limitIn: 0.98, requestedDepthIn: 3.2, depthIn: 1.46, fits: true };
+    lay({ wallCount: 0, frameCount: 92, bandsReduced: NARROWED });
+    expect(shown('brickLayWarnings')).toBe(true);
+    expect($('brickLayWarnings').textContent).toMatch(/no room for the wall/);
+    expect(shown('brickFrameBandsNote')).toBe(true);
+    lay({ wallCount: 40, frameCount: 92, bandsReduced: NARROWED });
+    expect(shown('brickLayWarnings')).toBe(false);
   });
   // A1 (3D-panel audit: a sidebar Frame bands pick that only partly fits said nothing there): the sidebar's note box
   // lists the Frame section's notes too -- read from the REAL page, not this fixture's copy

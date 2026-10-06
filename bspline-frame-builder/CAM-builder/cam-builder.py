@@ -1118,6 +1118,44 @@ def _build_info_payload():
         return None
 
 
+# F35 item 70: BUILD / APPLY report each declared step ('cam_stage' {id}) from ui/html/cam-stages.js -- the same file
+# the palette imports (cam-loading.js) -- and pump the palette so it paints in time (fb_shared.palette_stages).
+CAM_STAGES_FILE = os.path.join(_addin_dir, 'ui', 'html', 'cam-stages.js')
+_cam_stage_ids_cache = None
+
+
+def _palette_stages():
+    import os as _os, sys as _sys
+    _root = _addin_dir
+    for _ in range(6):  # walk up to the dir holding fb_shared (= add-in root), as _build_info_payload does
+        if _os.path.isdir(_os.path.join(_root, 'fb_shared')):
+            break
+        _root = _os.path.dirname(_root)
+    if _root not in _sys.path:
+        _sys.path.insert(0, _root)
+    from fb_shared import palette_stages
+    return palette_stages
+
+
+def _post_cam_stage(stage_id):
+    """Tell the CAM palette which declared step Fusion is on now; never an undeclared id (logged instead)."""
+    global _cam_stage_ids_cache
+    try:
+        ps = _palette_stages()
+        if _cam_stage_ids_cache is None:
+            _cam_stage_ids_cache = ps.declared_stage_ids(CAM_STAGES_FILE)
+        if stage_id not in _cam_stage_ids_cache:
+            _log(f'[CAM STAGE] undeclared stage id {stage_id!r} -- not sent (ui/html/cam-stages.js)')
+            return
+        palette = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
+        if palette:
+            palette.sendInfoToHTML('cam_stage', json.dumps({'id': stage_id}))
+            ps.pump(adsk.doEvents)
+            _log(f'[CAM STAGE] {stage_id}')
+    except Exception:
+        _log_error("post_cam_stage\n" + traceback.format_exc())
+
+
 def _send_to_html(action, payload):
     try:
         ui = adsk.core.Application.get().userInterface
@@ -1227,6 +1265,7 @@ def _do_generate(confirmed=False):
             mode='bspline',
             skip_templates=True,
             skip_machine=True,
+            on_stage=_post_cam_stage,  # F35 item 70
         )
         _log(f"CKPT DOGEN 2: _engine.run returned (report.ok={report.get('ok')})")
     except Exception:
@@ -1377,6 +1416,7 @@ def _do_apply_toolpaths():
     try:
         from cam_engine import setup_builder as _sb
         _log("APPLY TOOLPATHS: applying templates to existing setups")
+        _post_cam_stage('camTemplates')  # F35 item 70
         n = _sb.apply_templates_to_existing_setups(cam, logger=_logger)
         _log(f"APPLY TOOLPATHS: templates applied to {n} setup(s)")
     except Exception:
@@ -1387,6 +1427,7 @@ def _do_apply_toolpaths():
     # Kick off deferred toolpath generation (also handles Table Attach
     # token capture/replay + tool renumber via the existing handler).
     _log("APPLY TOOLPATHS: kicking off deferred toolpath generation")
+    _post_cam_stage('camToolpaths')  # F35 item 70
     fake_report = {
         'ok': True,
         'mode': 'bspline',
@@ -1630,27 +1671,20 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
             # batch scheduler invalidates it mid-batch. Generating ONE SETUP AT A TIME, each awaited before the
             # next, was verified to leave every op green and still honours the cross-setup stock chain (B-spline
             # Back completes before B-spline Top reads it). The collection watch block below is skipped (f = None);
-            # the PRE/POST-GEN diagnostics stay.
+            # the PRE/POST-GEN diagnostics stay. H23 item 95: the order, and a second pass for any setup the doc's
+            # first generation left with an empty op, live in cam_engine/toolpath_gen.py (declared there).
             f = None
-            per_setup_timeout = 900.0
-            for i in range(cam.setups.count):
-                setup = cam.setups.item(i)
-                if setup.operations.count == 0:
-                    continue
-                t_setup = time.time()
-                try:
-                    fs = cam.generateToolpath(setup)
-                except Exception as e:
-                    _log(f"DEFERRED TPGEN: generateToolpath('{setup.name}') raised: {type(e).__name__}: {e}", "WARNING")
-                    _log_error(traceback.format_exc())
-                    continue
+            from cam_engine import toolpath_gen as _tg
+
+            def _await(fs, timeout_s):
+                t_wait = time.time()
                 while not fs.isGenerationCompleted:
-                    if time.time() - t_setup > per_setup_timeout:
-                        _log(f"DEFERRED TPGEN: '{setup.name}' still generating after {per_setup_timeout:.0f}s -- moving on", "WARNING")
-                        break
+                    if time.time() - t_wait > timeout_s:
+                        return False
                     adsk.doEvents()
                     time.sleep(0.2)
-                _log(f"DEFERRED TPGEN: setup '{setup.name}' generated in {time.time() - t_setup:.1f}s")
+                return True
+            _tg.generate_setups(cam, wait=_await, log=_log)
 
             if f is not None:
                 bulk_timeout = 1800.0
@@ -1980,7 +2014,9 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
                             _log(f"DEFERRED TPGEN AUDIT: ✓ '{op.name}' in '{setup.name}' has toolpath", "DEBUG")
                         else:
                             errors += 1
-                            _log(f"DEFERRED TPGEN AUDIT: ✗ '{op.name}' in '{setup.name}' MISSING toolpath", "WARNING")
+                            why = _tg.why_empty(op)   # H23 item 98: Fusion's own reason, e.g. 'Out of memory.'
+                            _log(f"DEFERRED TPGEN AUDIT: ✗ '{op.name}' in '{setup.name}' MISSING toolpath"
+                                 + (f" -- {why}" if why else ""), "WARNING")
                     except Exception as e:
                         _log(f"DEFERRED TPGEN AUDIT: '{op.name}' check failed: {e}", "WARNING")
             _log(f"DEFERRED TPGEN: post-audit ok={dispatched} missing={errors}")

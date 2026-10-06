@@ -89,7 +89,8 @@ def _log(logger, msg, level="INFO"):
         pass
 
 
-def run(classifier, app=None, logger=None, mode='bspline', component_names=None, profile=None, skip_templates=False, skip_machine=False):
+def run(classifier, app=None, logger=None, mode='bspline', component_names=None, profile=None, skip_templates=False, skip_machine=False,
+        on_stage=None):
     """Run the full pipeline.
 
     Parameters
@@ -229,12 +230,15 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
 
         # H23 item 82: the shared WCS points go into the SOURCE design (moved in place on a
         # later BUILD), so every MM carries its own copy for its setups to bind.
+        # F35 item 70: on_stage(id) reports each declared step (CAM-builder/ui/html/cam-stages.js) to the palette
+        stage = on_stage or (lambda _id: None)
+        stage('camWcs')
         try:
             setup_builder.ensure_wcs_sketches(design, logger)
         except Exception as e:
             _log(logger, f"COORDINATOR: ensure_wcs_sketches raised {type(e).__name__}: {e}", "WARNING")
 
-        # H23 item 86: a re-BUILD REUSES the existing build (every declared MM + tagged setup
+        # H23 item 86: a re-BUILD REUSES the existing build (every declared MM + setup, by its declared name,
         # present and valid) and re-applies the declared configuration in place (~1 s,
         # measured); otherwise today's full recreate (cleanup, then MMs, then setups).
         reuse = setup_builder.find_reusable_build(
@@ -247,12 +251,14 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
             # Auto-cleanup: delete any prior build's Setups and MMs with our
             # known names so a re-run REPLACES instead of DOUBLING.
             _log(logger, "COORDINATOR: entering bspline branch, about to run cleanup", "INFO")
+            stage('camCleanup')
             try:
                 _cleanup_previous_build(cam, logger)
                 _log(logger, "COORDINATOR: cleanup returned normally", "DEBUG")
             except Exception as e:
                 import traceback as _tb
                 _log(logger, f"COORDINATOR: cleanup raised {type(e).__name__}: {e}\n{_tb.format_exc()}", "WARNING")
+            stage('camModels')
             mms = mm_builder.build_all_mms(cam, design, classifier, logger)
 
         for rule in mm_builder.MM_RULES:
@@ -260,6 +266,7 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
             if rule not in mms:
                 report['errors'].append(f"MM '{rule}' was not built.")
 
+        stage('camSetups')
         if reuse is not None:
             setups = setup_builder.update_setups_in_place(cam, reuse, logger)
         else:

@@ -1,0 +1,51 @@
+/* F35 item 41: the loading overlay (core/loading-signal.js) -- one stylesheet for every palette that shows it
+   (bspline_gen_palette.html; item 70: the CAM palette). The spinner keyframes are this file's own. Above the editor modal (.cad-modal-overlay 9999)
+   and the status line; never blocks input. data-surface: 'card' = centred (the declared-long steps), 'pill' =
+   a small corner chip (a single lay); data-group tints the spinner (computing | waiting | refreshing). */
+.loading-stage {
+  position: fixed;
+  z-index: 10001;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #f0f0f0; /* on its own dark card, like the splash */
+  background: rgba(22, 22, 22, 0.92);
+  border: 1px solid var(--cad-border-standard);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+.loading-stage[hidden] { display: none; }
+.loading-stage[data-surface="card"] {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  /* item 70, measured at 420 px: shrink-to-fit from left:50% only has HALF the viewport, so the card wrapped into a
+     4-line column; it takes its text's width, up to the screen minus the 16 px gutters */
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 16px 22px;
+  border-radius: 10px;
+  font-size: 15px;
+}
+.loading-stage[data-surface="pill"] {
+  top: 48px;
+  right: 16px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+.loading-stage-spinner {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--cad-accent-blue);
+  border-radius: 50%;
+  animation: loading-stage-spin 0.8s linear infinite;
+}
+.loading-stage[data-surface="pill"] .loading-stage-spinner { width: 12px; height: 12px; border-width: 2px; }
+.loading-stage[data-group="waiting"] .loading-stage-spinner { border-top-color: #ffb300; }
+.loading-stage[data-group="refreshing"] .loading-stage-spinner { border-top-color: var(--cad-accent-green); }
+@keyframes loading-stage-spin {
+  to { transform: rotate(360deg); }
+}

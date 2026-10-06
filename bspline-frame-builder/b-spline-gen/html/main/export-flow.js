@@ -19,7 +19,8 @@ import { frameSendPayload } from './frame-panel.js';
 import { confirmDialog } from '../core/confirm-dialog.js';
 import { rebuild } from '../core/engine.js';
 import { generateThickenedStep } from '../core/stepWriter.js';
-import { withLoadingStage, beginLoadingSequence } from '../core/loading-signal.js';
+import { withLoadingStage, beginLoadingSequence, holdLoadingStage } from '../core/loading-signal.js';
+import FUSION_SEND_STAGES from '../data/fusion-send-stages.js';
 import {
     fusLog,
     sendFusionPayloadChunked,
@@ -433,11 +434,10 @@ export function onFusionApply(preview) {
     if (isFusionMode) {
         (async () => {
             setFusionActionState('Baking...', true);
-            try {
-                await executeExport(preview, options, false, 'B-Spline.step');
-            } finally {
-                setFusionActionState(FUSION_IDLE_LABEL, false);
-            }
+            // item 70 (advisor): the button is released by Fusion's own answer (import_success / import_failed,
+            // main.js) or the poll timeout -- never when the payload leaves: a re-click mid-import is a real hazard.
+            // A Send that fails or sends nothing before that releases it itself (executeExport / sendToFusion).
+            await executeExport(preview, options, false, 'B-Spline.step');
         })();
     } else {
         executeExport(preview, options);
@@ -492,10 +492,10 @@ export async function executeExport(preview, options = null, isAppend = false, f
     }
 
     if (!options) options = readWizardOptions();
-    beginLoadingSequence('export'); // item 41
+    beginLoadingSequence(isFusionMode ? 'send' : 'export'); // item 41; item 70: a Fusion Send runs on into Fusion's stages
 
     try {
-        await withExportResolution(preview, () => withLoadingStage('stepExport', async () => {
+        await withExportResolution(preview, () => withLoadingStage(isFusionMode ? 'stepBuild' : 'stepExport', async () => {
             const heights   = lastResult.heights;
             const offsetPts = lastResult.thickenData?.offsetPts;
             const unstamped = lastResult.cleanHeights || heights;
@@ -684,7 +684,11 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
     if (typeof fusLog === 'function') {
         fusLog(`[EXPORT] variants=${stepVariants.length} bases=${stepVariants.map(v => v.name).join(',')} totalStepLen=${totalLen} layers=${layersToExport.length}`);
     }
-    await sendFusionPayloadChunked(payload);
+    // item 70: the transfer, then Fusion's first stage HELD and painted BEFORE generate_finish -- the add-in runs the
+    // import from that call, and the palette must already say what Fusion is doing however long it takes
+    if (btn) btn.textContent = 'Sending...';
+    await holdLoadingStage('transfer');
+    await sendFusionPayloadChunked(payload, { beforeFinish: () => holdLoadingStage(FUSION_SEND_STAGES.stages[0].id) });
     _reportDeclinedOutlines(fusionResults); // T44: user-facing notice, after the payload is safely on its way
     if (!isAppend) startFusionPolling();
 }

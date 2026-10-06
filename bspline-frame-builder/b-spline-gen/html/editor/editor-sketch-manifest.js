@@ -53,12 +53,12 @@
  * `entities[]`, so every OTHER producer above keeps working in the
  * simpler natural board-space it was already written and tested in.
  */
-import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette, usesContourCenterline, LATTICE_FUSION_BUILD_ORDER, TIE_CONTOUR_CLEARANCE_IN } from './editor-lattice-pattern.js';
+import { computePattern, PATTERN_DEFAULTS, hasGeneratedSilhouette, usesContourCenterline, LATTICE_FUSION_BUILD_ORDER, TIE_CONTOUR_CLEARANCE_IN, CONTOUR_HIT_TOL_IN } from './editor-lattice-pattern.js';
 import { toLattice, fromLattice, MIN_PIECE_LENGTH_IN } from './editor-lattice.js';
 import {
-  primitivesBBox, insetGeneratedPresetPathDToPrimitives, insetPathDToPrimitives, sizedBoardRegion, latticeBoundaryGuide, GUIDE_ROLE,
+  primitivesBBox, insetGeneratedPresetPathDToPrimitives, insetPathDToPrimitives, sizedBoardRegion, latticeBoundaryGuide, GUIDE_ROLE, primitiveHitAt,
 } from './editor-lattice-boundary.js';
-import { generateContourSilhouette, primitivesToPathD, PRESETS, FRAME_ONLY_PARAM_KEYS } from './editor-shape-lattice-generator.js';
+import { generateContourSilhouette, primitivesToPathD, PRESETS, FRAME_ONLY_PARAM_KEYS, isTangentJoint } from './editor-shape-lattice-generator.js';
 import { contourSilhouette, contourFromFrameOf, frameWindowHoleLoop } from './contour-from-frame.js';
 import { mirrorSegmentIndex, primitiveSegmentMap } from './editor-shape-lattice-interaction.js';
 
@@ -624,6 +624,36 @@ function resolveWidthExpr(preset, nameTable) {
   return `${translated} - stroke_width`;
 }
 
+/** H23 item 94: two contour arcs on the same circle (the pieces of a cut arc), within the contour's precision. */
+function _sameCircle(a, b) {
+  return a.type === 'A' && b.type === 'A' && Math.hypot(a.cx - b.cx, a.cy - b.cy) < CONTOUR_HIT_TOL_IN
+    && Math.abs(a.rx - b.rx) < CONTOUR_HIT_TOL_IN;
+}
+
+/** H23 item 94: every fill-end -> contour Coincident (`rail3:E` -> `seg5` / `seg5:S`) re-resolved against the
+ *  contour that is SENT (`primitives`, the drawn pieces after a cut): the end's own point (its entity's p1/p2,
+ *  model inches -- the same frame the contour entities are built in) finds its piece with primitiveHitAt, the
+ *  same attribution computePattern makes (a joint -> point-to-point `:S`/`:E`, else on the curve). An end on
+ *  no drawn piece keeps no contour constraint (a wrong one drags the piece onto it in Fusion). */
+function _retargetContourEnds(constraints, entities, primitives) {
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  const out = [];
+  for (const c of constraints) {
+    const ci = c.type === 'Coincident' ? c.targets.findIndex((t) => /^seg\d+/.test(t)) : -1;
+    const [pid, suf] = ci < 0 ? [] : c.targets[1 - ci].split(':');
+    const piece = ci < 0 ? null : byId.get(pid);
+    if (!piece || (suf !== 'S' && suf !== 'E')) { out.push(c); continue; }
+    const [x, y] = suf === 'S' ? piece.p1 : piece.p2;
+    const hit = primitiveHitAt({ x, y }, primitives, CONTOUR_HIT_TOL_IN);
+    if (!hit) continue;
+    const segId = toEntityId('seg', hit.index);
+    const targets = [...c.targets];
+    targets[ci] = hit.end ? `${segId}:${hit.end}` : segId;
+    out.push({ ...c, targets });
+  }
+  return out;
+}
+
 /**
  * F27 (Fred: "the scissors tool doesn't cut contour, it should"): a CUT contour's own `silhouette`, built from
  * its LIVE DRAWN primitives (`drawnPrimitives`, main/export-flow.js's own `_drawnContourPrimitives`) instead of
@@ -633,8 +663,9 @@ function resolveWidthExpr(preset, nameTable) {
  * logic assumes `segments.length` primitives sum to exactly `primitives.length` -- disclosed trade-off, not a
  * silent one: a cut never lands exactly on an EXISTING kink joint (a kink is a declared shape param, not
  * something a cut ever introduces), so the ONLY behavior change is that a formerly-kink joint (if the cut
- * contour had one) also gets the normal Tangent-if-arc-adjacent treatment post-cut, same as every other joint
- * — the SAFE direction (an extra, still-geometrically-valid constraint), not a missing one. `corners` (F21's
+ * contour had one) also gets the normal Tangent-if-arc-adjacent treatment post-cut, same as every other joint.
+ * (H23 item 94: that treatment now also requires the drawn joint to BE tangent -- a Tangent at a real corner was
+ * NOT a safe extra: Fusion bent the loose chain to satisfy it.) `corners` (F21's
  * own "a merged corner is sharp on purpose" list) is cleared: a cut never merges a corner, so there is none to
  * carry over, and a stale index into the OLD primitive list would be actively wrong against the NEW one.
  */
@@ -761,7 +792,17 @@ export function manifestFromShape(shape, region, opts = {}) {
     const isKinkJoint = segments[segMap[i]].style === 'kink' || segments[segMap[j]].style === 'kink';
     const eitherArc = primitives[i].type === 'A' || primitives[j].type === 'A';
     // F21: a merged corner of a frame-offset contour is sharp on purpose (Fred: "merge in corner not a problem")
-    if (eitherArc && !isKinkJoint && !corners.includes(i)) constraints.push({ type: 'Tangent', targets: [idA, idB] });
+    // H23 item 94: and a Tangent only where the drawn joint IS tangent -- a cut contour loses `corners`, and a
+    // Tangent declared at a real miter corner made Fusion bend the loose chain (5 SOLVING_FAILED, ends up to
+    // 208 in off, measured live on a 7x9 T16 board) -- and never between two pieces of ONE circle (a cut arc):
+    // they lie on one circle by construction, so the Tangent adds nothing to the loose contour, and on that
+    // board's loop Fusion could not solve the one next to a miter corner ('failed to create offset') and, with
+    // all four, doubled a later arc's radius; Coincident only: exact. (Isolated pairs and 3/5-piece chains
+    // build fine either way -- the failure needs the loop; not root-caused.)
+    if (eitherArc && !isKinkJoint && !corners.includes(i) && isTangentJoint(primitives[i], primitives[j])
+        && !_sameCircle(primitives[i], primitives[j])) {
+      constraints.push({ type: 'Tangent', targets: [idA, idB] });
+    }
   }
 
   // Mirror-Equal (§2's own "every right-side entity <-> its LEFT mirror"),
@@ -1277,7 +1318,7 @@ export function buildSketchManifest(pattern, region, opts = {}) {
   // would have nothing to drive, just an inert number in Fusion's
   // parameter table.
   const extent = latticeExtentFor(pattern, region, opts.frame || null);
-  const lattice = manifestFromLattice(pattern, extent, widthMode, opts.drawn || null);
+  let lattice = manifestFromLattice(pattern, extent, widthMode, opts.drawn || null);
   // T69: the contour's own slot width matches the layer's own REAL
   // rails/ties width (`pattern.widths.rails`, merged over
   // PATTERN_DEFAULTS.widths the SAME way manifestFromLattice's own
@@ -1313,6 +1354,10 @@ export function buildSketchManifest(pattern, region, opts = {}) {
     shape = manifestFromShape(pattern.shape, contourRegion, {
       widthMode: contourWidthMode, strokeWidth: contourStrokeWidth, silhouette, noMirror: cut,
     });
+    // H23 item 94: the fill's contour ends were attributed by the FRESH contour's numbering (computePattern on
+    // latticeExtentFor); a cut sends the drawn pieces, renumbered -- 17 of 18 rail ends named the wrong seg on a
+    // live 7x9 T16 board and Fusion dragged the rails onto it. Re-resolve them against the contour that is sent.
+    if (cut) lattice = { ...lattice, constraints: _retargetContourEnds(lattice.constraints, lattice.entities, silhouette.primitives) };
   }
   // BOUNDARY-GUIDE: the Size box, always sent (both tools, contour on or
   // off), as construction geometry — the SAME record the editor draws.

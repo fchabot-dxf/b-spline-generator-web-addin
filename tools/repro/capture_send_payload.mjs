@@ -28,10 +28,12 @@
 //          own piece counts by kind, areas, layers) and <out>.png (the editor view).
 // Serve with tools/serve_app.py so the CSS loads.
 import { spawn } from 'node:child_process';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { dirname } from 'node:path';
 
-const ARGS = process.argv.slice(2).filter((a) => a !== '--drag' && a !== '--cut' && a !== '--carve' && !a.startsWith('--lip=') && !a.startsWith('--template=') && !a.startsWith('--board='));
+const ARGS = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const opt = (k) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3);
 // F22: --lip=<in> sets the Frame section's "Panel lip" (the real field) before the frame payload is taken
 const LIP = (process.argv.find((a) => a.startsWith('--lip=')) || '').slice(6);
 // F30 item 3: --template=<id> picks the shape-lattice-frame scenario's own Frame tab template (default template_1).
@@ -44,6 +46,13 @@ const CUT = process.argv.includes('--cut');
 // --carve: the layer names the lattice scenarios draw into (editor layer .name), carved for a Stamped Send.
 const CARVE = process.argv.includes('--carve');
 const CARVE_LAYERS = ['Rails', 'Contour', 'Ties', 'Nodes'];
+// H23 item 90: --root=<bspline-frame-builder dir> -- the served palette + core/bricks/*.js must byte-match that tree (a stale
+// server on the port once swept another worktree, item 89); --seed=<n> -- Math.random seeded before any page script (the
+// terrain seed a fresh start rolls, so two builds lay the same terrain); --frameSet=<id> -- cam-bricks' frame set.
+const ROOT = opt('root'), SEED = opt('seed'), FRAME_SET = opt('frameSet') ? Number(opt('frameSet')) : null;
+// H23 item 90: the CAM board -- T1 7x9 with its own FITTED frame (no [Generate]: a random shape), 1 in bricks, a three_band
+// frame (optionally another set, e.g. 5 Grey stone, through the app's own selectSet) and a wall, applied (the bricks carve).
+const BRICK_CAM = { template: 'template_1', brickLengthIn: 1, framePreset: 'three_band' };
 // H23 item 83: the brick-e2e board, declared (board inches, origin top-left, y down -- the editor's own frame).
 const BRICK_E2E = {
   template: 'template_1',
@@ -64,7 +73,19 @@ const [OUT, URL, SCENARIO = 'shape-lattice', PORTARG] = ARGS;
 const PORT = Number(PORTARG || 9395);
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PROFILE = `${dirname(OUT)}/chrome-capture-${PORT}`;
+rmSync(PROFILE, { recursive: true, force: true }); // a reused profile restores the previous run's board (item 83)
 mkdirSync(PROFILE, { recursive: true });
+if (ROOT) {
+  const html = join(ROOT, 'b-spline-gen', 'html');
+  const files = ['bspline_gen_palette.html', ...readdirSync(join(html, 'core', 'bricks'), { recursive: true })
+    .filter((f) => String(f).endsWith('.js')).map((f) => 'core/bricks/' + String(f).split(String.fromCharCode(92)).join('/'))];
+  const base = URL.replace(/[^/]*$/, '');
+  for (const f of files) {
+    const served = Buffer.from(await (await fetch(base + f)).arrayBuffer());
+    if (!served.equals(readFileSync(join(html, ...f.split('/'))))) { console.log(`SERVED != --root: ${f} (another server on this port?)`); process.exit(2); }
+  }
+  console.log(`served app == --root (${files.length} files checked)`);
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${PROFILE}`,
   '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: 'ignore' });
@@ -93,6 +114,7 @@ await send('Runtime.enable'); await send('Page.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
 // The stub: the app detects Fusion mode through window.adsk; every send is recorded, nothing answers.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `
+  ${SEED ? `{ let s = ${Number(SEED)} >>> 0; Math.random = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; }` : ''}
   window.__sends = [];
   window.adsk = { fusionSendData(action, data) { window.__sends.push([action, data, performance.now()]); return ''; } };` });
 await send('Page.navigate', { url: URL }); await sleep(9000);
@@ -115,6 +137,15 @@ const steps = {
   'brick-wall-only': `(await import('./main/frame-panel.js')).editFrame({ templateId: '${BRICK_E2E.template}', params: {} }); await W(1500);
      document.getElementById('editorFrameGenerate').click(); await W(1500);
      document.getElementById('editorTabBrick').click(); await W(800);
+     document.getElementById('brickTool_wall').click(); await W(500); document.getElementById('brickGenerate').click(); await W(3500);
+     document.getElementById('editorApply').click(); await W(9000);`,
+  'cam-bricks': `const C = ${JSON.stringify(BRICK_CAM)};
+     (await import('./main/frame-panel.js')).editFrame({ templateId: C.template, params: {} }); await W(1500);
+     document.getElementById('editorTabBrick').click(); await W(800);
+     const B = await import('./main/brick-panel.js');
+     B.setBrickSize(C.brickLengthIn); B.setFrameBandPreset(C.framePreset); await W(300);
+     ${FRAME_SET !== null ? `B.selectSet(${FRAME_SET}, 'none', ['frame']); await W(300);` : ''}
+     document.getElementById('brickTool_frame').click(); await W(500); document.getElementById('brickGenerate').click(); await W(3500);
      document.getElementById('brickTool_wall').click(); await W(500); document.getElementById('brickGenerate').click(); await W(3500);
      document.getElementById('editorApply').click(); await W(9000);`,
   // H23 item 83: see BRICK_E2E. Each step is the app's own exported function (the ones its tests drive).
@@ -251,7 +282,7 @@ await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
   [...document.querySelectorAll('button')].find(b => /apply stencils/i.test(b.textContent))?.click(); await W(4000);
 })()`);
 console.log('lattice pieces drawn:', built);
-if (SCENARIO === 'brick-e2e' || SCENARIO === 'brick-wall-only') {
+if (SCENARIO === 'brick-e2e' || SCENARIO === 'brick-wall-only' || SCENARIO === 'cam-bricks') {
   const app = JSON.parse(await evalJS(`(async()=>{ const ed = window.svgEditor, S = await import('./core/state.js');
     const X = await import('./main/export-flow.js'); const T = await import('./editor/editor-brick-tool.js');
     const polys = [...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"]')];
@@ -262,9 +293,11 @@ if (SCENARIO === 'brick-e2e' || SCENARIO === 'brick-wall-only') {
       areas: (T.wallAreaRecords ? T.wallAreaRecords(ed).length : null), carving: X.activeStampLayers().length,
       layers: ed._layers.map((l) => ({ id: l.id, name: l.name, carve: l.carve, holdsBricks: !!l.holdsBricks, brickKind: l.brickKind || null,
         pieces: polys.filter((p) => p.getAttribute('data-layer') === l.id).length })),
-      brickSettings: { setIds: S.P.brickSettings.setIds, pattern: S.P.brickSettings.pattern, accent: S.P.brickSettings.accent } }); })()`));
+      brickSettings: { setIds: S.P.brickSettings.setIds, pattern: S.P.brickSettings.pattern, accent: S.P.brickSettings.accent },
+      terrainSeed: S.P.seed, frameRecord: (await import('./core/frame-record.js')).getFrameRecord(),
+      frameSets: [...new Set(polys.filter((p) => p.getAttribute('data-brick') === 'frame').map((p) => p.getAttribute('data-brick-set')))] }); })()`));
   writeFileSync(OUT.replace(/\.json$/, '') + '.app.json', JSON.stringify(app, null, 1));
-  console.log('app readback:', JSON.stringify({ pieces: app.pieces, byKind: app.byKind, accentMarked: app.accentMarked, areas: app.areas, carving: app.carving }));
+  console.log('app readback:', JSON.stringify({ terrainSeed: app.terrainSeed, frameSets: app.frameSets, pieces: app.pieces, byKind: app.byKind, accentMarked: app.accentMarked, areas: app.areas, carving: app.carving }));
   const shot = await send('Page.captureScreenshot', { format: 'png' });
   if (shot?.result?.data) writeFileSync(OUT.replace(/\.json$/, '') + '.png', Buffer.from(shot.result.data, 'base64'));
 }

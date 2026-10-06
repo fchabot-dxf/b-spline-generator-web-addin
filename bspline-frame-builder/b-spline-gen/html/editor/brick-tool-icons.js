@@ -29,12 +29,16 @@ export const BRICK_TOOL_ICONS = Object.freeze({
   frame: { glyph: '', mini: { kind: 'frame', box: [3, 3, 18, 18] } },
   scissors: { glyph: SCISSORS, mini: { kind: 'runLong', box: [1, 15.5, 22, 7], cut: [0.4, 0.6] } },
   stripe: { glyph: '', mini: { kind: 'band3', box: [1, 4, 22, 16], stripe: 3 } },
+  // F35 item 43: the General tab (the board-wide settings) -- three sliders, no miniature
+  general: { glyph: '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/>'
+    + '<circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="7" cy="18" r="2" fill="currentColor"/>' },
 });
 
 const _centroidX = (b) => b.polygon.reduce((s, p) => s + p.x, 0) / b.polygon.length;
 
 /** The miniature as SVG markup inside its box (aspect kept, centred). */
 function miniMarkup(mini) {
+  if (!mini) return ''; // a glyph-only icon (General)
   const bricks = toolMiniBricks(mini.kind);
   if (!bricks.length) return '';
   const xs = bricks.flatMap((b) => b.polygon.map((p) => p.x)), ys = bricks.flatMap((b) => b.polygon.map((p) => p.y));

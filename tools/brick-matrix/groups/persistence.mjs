@@ -55,9 +55,10 @@ export const GENERATE_AFTER_RESTORE = {
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, act, exists, CANVAS, heightsSettled, canvasSettled, editorOpen, openBrickTool, apply, rows, verdict, waitApp, openBrickTab, checkRow, openEditorTab, reloadWithStorage, drag;
 // ---- F35 item 37 (seat E): a FRESH page's first lay (Wall + Frame, Apply) and a reload restoring that board give the
-// IDENTICAL 3D heights hash. The 3D-panel audit saw a few live-vs-reload drifts (<= 0.0004 in) at 52c3055 under fleet load;
-// replayed on 52c3055 and on main, quiet and under a CPU hog (36 comparisons), never reproduced: a timing artefact of its
-// own settle test. This row keeps the property pinned (heightsSettled waits for the rebuild's completion count).
+// IDENTICAL 3D heights hash. Reopened and found (seat E, measured): the brick samples' detail grids came from the
+// browser's own image downscaler, which differs by canvas backend and page load (editor-brick-surface.js areaAverageGrey
+// now), and a reload built an unmasked surface first (app-init.js bootBuildOwner now). The reload read waits on the
+// app's declared restore end (waitApp: core/state.js bootRestore), the live read on the app's own built state.
 export const FRESH_VS_RESTORED = {
   name: 'Item 37: a fresh first lay and its reload give the same 3D heights',
   wallTool: 'brickTool_wall', frameTool: 'brickTool_frame', generate: 'brickGenerate',
@@ -102,7 +103,7 @@ async function runPersistence() {
     }
     if (step.sidebar) {
       if (await editorOpen()) await apply();
-      await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+      await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
       continue;
     }
     if (step.click === 'brickGenerate') { await click('brickGenerate', 1800); continue; }

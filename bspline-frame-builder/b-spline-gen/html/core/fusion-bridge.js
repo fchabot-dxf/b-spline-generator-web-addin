@@ -6,6 +6,8 @@
 import { P, isFusionMode, setIsFusionMode } from './state.js';
 import { COORD_SYSTEM } from './coords.js';
 import { fusLog } from './fusion-log.js';
+import { releaseHeldStage } from './loading-signal.js';
+import FUSION_HOST from '../data/fusion-host.js';
 
 export { fusLog } from './fusion-log.js';
 
@@ -75,7 +77,7 @@ export function sendFusionMeshPreview(preview) {
 /**
  * Streams large payloads in 256KB chunks to bypass Fusion-web bridge limits.
  */
-export async function sendFusionPayloadChunked(payloadString) {
+export async function sendFusionPayloadChunked(payloadString, { beforeFinish } = {}) {
     const CHUNK_SIZE = 256 * 1024;
     const totalChunks = Math.ceil(payloadString.length / CHUNK_SIZE);
 
@@ -88,6 +90,7 @@ export async function sendFusionPayloadChunked(payloadString) {
             fusLog(`[COORD_STD] Sending chunk ${i + 1}/${totalChunks} (${progress}%)...`);
             adsk.fusionSendData('generate_chunk', JSON.stringify({ index: i, data: chunk }));
         }
+        if (beforeFinish) await beforeFinish(); // item 70: e.g. paint Fusion's first stage before the import starts
         adsk.fusionSendData('generate_finish', '{}');
         fusLog('[COORD_STD] Chunked send finished. Handoff to Python for import.');
     } catch (e) {
@@ -116,6 +119,7 @@ export function startFusionPolling() {
             // Do NOT send 'ok' here — that would hide the palette unexpectedly.
             // Just re-enable the button so the user knows the wait is over.
             setFusionActionState(FUSION_IDLE_LABEL, false);
+            releaseHeldStage(); // item 70
             setFusionStatus('Fusion did not confirm the import — check the Fusion log', 'warn');
             return;
         }
@@ -135,21 +139,30 @@ export function stopFusionPolling() {
     }
 }
 
+/** H23 item 92: true when the add-in declared this page as its Fusion palette (?host=fusion, html/data/fusion-host.js). */
+export function declaredFusionHost() {
+    const search = typeof location !== 'undefined' ? location.search : '';
+    return new URLSearchParams(search).get(FUSION_HOST.param) === FUSION_HOST.value;
+}
+
 /**
  * Detects if running inside Fusion 360 or in a standard browser.
+ * H23 item 92: Fusion can inject `adsk` seconds after the page starts (measured ~3 s on a palette restoring a brick
+ * wall -- the old fixed 300 ms opened it as the website, with no Send button). A page the add-in declared as its
+ * palette waits for adsk up to FUSION_HOST.modeDetectTimeoutMs, deciding the moment it appears; any other page (the
+ * website, an older add-in) decides after webGraceMs, so a browser session never waits on Fusion.
  */
 export function pollMode(onFusionReady, onWebMode) {
-    // FIX: was 30 × 100 ms = 3 s blank delay in every browser session.
-    // Fusion injects `adsk` before the page parses, so 3 checks (300 ms) is ample.
-    let modeChecks = 0;
-    const MAX_MODE_CHECKS = 3;
+    const waitMs = declaredFusionHost() ? FUSION_HOST.modeDetectTimeoutMs : FUSION_HOST.webGraceMs;
+    const t0 = Date.now();
     const check = () => {
         if (typeof adsk !== 'undefined' && adsk.fusionSendData) {
             setIsFusionMode(true);
+            // how close a late adsk came to modeDetectTimeoutMs -- the margin the declared timeout must keep
+            fusLog(`[MODE] Fusion host: adsk after ${Date.now() - t0} ms (waits up to ${waitMs} ms)`);
             onFusionReady();
-        } else if (modeChecks < MAX_MODE_CHECKS) {
-            modeChecks++;
-            setTimeout(check, 100);
+        } else if (Date.now() - t0 < waitMs) {
+            setTimeout(check, FUSION_HOST.pollMs);
         } else {
             setIsFusionMode(false);
             onWebMode();

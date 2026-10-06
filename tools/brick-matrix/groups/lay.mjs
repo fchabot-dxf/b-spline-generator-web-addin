@@ -8,7 +8,8 @@ import { dragIn } from './areas.mjs';
 export const LAY_WARNING = {
   template: 'template_9',
   // item 28: a stack too deep for the board is reduced first, so "no room for the wall" is now a board too narrow
-  // for even ONE band: T9 7x9 at 1-1/2 in (measured: no wall; at 3/4 in a 146-brick wall)
+  // for even ONE band: T9 7x9 at 1-1/2 in (measured: no wall; at 3/4 in a 146-brick wall). T86 item 30: there the single
+  // band is now NARROWED to fill the web -- still no wall, so the warning still shows, beside the band-fit note
   tooManySize: 'brickSizePreset_half1',
   fitsSize: 'brickSizePreset_quarter3',
   tooMany: 'brickQuick_frameBands_three_band',
@@ -129,12 +130,12 @@ async function runLayWarnings() {
   await openEditorTab('editorTabFrame');
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(W.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
   await apply(); await heightsSettled(null);
-  await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+  await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
   if (!(await exists(W.tooMany))) { checkRow('lay', `${W.template}: too many bands -> no wall + notes`, false, '', W.introducedBy); return; }
   const size = async (id) => { // the Wall tool's brick size, then back to the sidebar
     await openEditorTab('editorTabBrick'); await click('brickTool_wall', 900); await click(id, 2500);
     await apply(); await heightsSettled(null);
-    await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+    await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
   };
   // 1. bands that cover the board: no wall, both notes say so
   await size(W.tooManySize);

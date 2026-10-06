@@ -3072,18 +3072,31 @@ export function generateContourSilhouette(region, shape, strokeWidth) {
  *   - the loop is SIMPLE: no two non-adjacent pieces cross.
  * Returns a list of `{ kind, index, detail }`; empty means clean.
  */
-export function outlineDefects(primitives, { samplesPerArc = 10, tangentTol = 1e-4, requireTangency = true } = {}) {
+/** The travel direction (unit) of primitive `p` at its end (`atEnd`) or start. */
+function _dirAt(p, atEnd) {
+  if (p.type === 'L') {
+    const dx = p.p1.x - p.p0.x, dy = p.p1.y - p.p0.y, len = Math.hypot(dx, dy) || 1;
+    return { x: dx / len, y: dy / len };
+  }
+  const th = atEnd ? p.theta1 + p.dTheta : p.theta1;
+  const s = p.dTheta > 0 ? 1 : -1; // travel direction along the arc (phi is always 0 here)
+  return { x: -Math.sin(th) * s, y: Math.cos(th) * s };
+}
+
+/** The tolerance a joint counts as tangent within (1 - cos of the turn; 1e-4 ~ 0.8 deg). */
+export const TANGENT_JOINT_TOL = 1e-4;
+
+/** H23 item 94: is the joint from `a`'s end to `b`'s start tangent (no turn)? The one test both the outline
+ *  guard below and the Fusion sketch manifest's Tangent constraints read (editor-sketch-manifest.js). */
+export function isTangentJoint(a, b, tol = TANGENT_JOINT_TOL) {
+  const ta = _dirAt(a, true), tb = _dirAt(b, false);
+  return ta.x * tb.x + ta.y * tb.y >= 1 - tol;
+}
+
+export function outlineDefects(primitives, { samplesPerArc = 10, tangentTol = TANGENT_JOINT_TOL, requireTangency = true } = {}) {
   const defects = [];
   const n = primitives.length;
-  const dirAt = (p, atEnd) => {
-    if (p.type === 'L') {
-      const dx = p.p1.x - p.p0.x, dy = p.p1.y - p.p0.y, len = Math.hypot(dx, dy) || 1;
-      return { x: dx / len, y: dy / len };
-    }
-    const th = atEnd ? p.theta1 + p.dTheta : p.theta1;
-    const s = p.dTheta > 0 ? 1 : -1; // travel direction along the arc (phi is always 0 here)
-    return { x: -Math.sin(th) * s, y: Math.cos(th) * s };
-  };
+  const dirAt = _dirAt;
   primitives.forEach((p, i) => {
     if (p.type !== 'A') return;
     if (!(p.rx > 0) || !(p.ry > 0)) defects.push({ kind: 'nonPositiveRadius', index: i, detail: p.rx });

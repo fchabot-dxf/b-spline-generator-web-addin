@@ -21,7 +21,7 @@ import { frameSnapGate } from './editor-frame-profile.js';
 import { commitEdit } from './editor-commit.js';
 import { snapFor, applyGrid, loadGridPrefs, saveGridPrefs } from './editor-grid.js';
 import { LATTICE_DEFAULTS } from './editor-lattice.js';
-import { initDrawer, initHeaderOverflowMenu, syncDrawerForMode } from './editor-drawer.js';
+import { initDrawer, initHeaderOverflowMenu } from './editor-drawer.js';
 import { refreshOutlinePreview } from './editor-outline-preview.js';
 import { refreshBoundaryPatterns, CONTOUR_SEG_INDEX_ATTR, resolvePatternLayer } from './editor-lattice-pattern.js';
 import { detectShapeLatticeDetach } from './properties-shape-lattice.js';
@@ -224,14 +224,8 @@ export class VectorEditor {
         setupEditorToolbar(this);
         initLayerControls(this);
         // MOB3: the one bottom drawer (mobile only — desktop is
-        // `display:contents`, styles/editor.css) hosting the Lattice
-        // panel + Layers panel as tabs. AFTER setMode's own initial call
-        // above (which already dispatched the FIRST editorModeChanged,
-        // before this listener existed) — sync once explicitly so the
-        // drawer's tabs reflect whatever mode the editor actually opened
-        // into, not just its own 'layers'-only startup default.
+        // `display:contents`, styles/editor.css). The Art tabs retired its tool | panel tab pair.
         initDrawer(this);
-        syncDrawerForMode(this, this._currentMode);
         initHeaderOverflowMenu();
 
         // MOB2: keep the floating undo/redo pill (T32, pointer:coarse,

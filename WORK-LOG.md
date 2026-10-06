@@ -23124,6 +23124,98 @@ On top of V1 / V2 / V4 (above):
 - For B's after-run: same tools, same seed, same board -> diff against tools/repro/h23_item89_baseline/.
 - Hygiene: scratch doc closed by handle (only Fred's Untitled), holder none, my server + Chrome stopped.
 
+## T86 item 21b -- the JOINT RULE (option A + the planner + constant-width joints): every seam is the declared joint (seat B / fc, 2026-10-06)
+Branch joint-rule (off corner-21b, main 845b794 merged). FOR FRED'S YES before merge: it re-lays every frame once.
+**Declared rules (all in core/bricks):**
+- planner (piece-plan planCornerRun): a joint is never flexed. A run starts with a whole brick (a staggered row: its
+  stagger fraction -- courses stay exactly half a brick apart); whole bricks follow; the END closer takes the slack,
+  within MIN_CLOSER_FRACTION 0.25 .. CLOSER_MAX_FRACTION 1.2 of a brick by the number of whole bricks; a closer still over
+  the ceiling splits into two equal closers; a run too short for a brick + a closer is one piece (or two equal halves).
+- rows / bands / wall (contour-bands rowDepths): each row stops half a joint short of the row or band beside it and of the
+  wall; only the stack's own outer edge (the board, an open stroke's two edges) has none. innerPath (where the wall
+  starts) moves in by half a joint (one global grout width: band half + wall half = one joint).
+- mitres / notches (primitive-ribbon mitreJointSide): each run clips half a joint back from the mitre line, the corner
+  points slid ALONG the run so they stay on its edges (a first version moved them straight off the line: a staggered
+  row's half brick read 0.363, caught by the pattern test). Fan corners (fanJointSide): both runs back off
+  j / (2 sin(alpha/2)) so their two corners are one joint apart.
+- voussoirs (arc-voussoir buildPiece): a joint is a constant-width strip; an interior side crosses radius R at
+  thetaM + asin(j / 2R) (exact -- a chord clip sagged inside the true arc and failed the outer-radius test).
+- fans / notch patches (primitive-ribbon jointedSlices, one helper for buildPatch, buildNotchPatch, buildNotchQuadPatch):
+  dividers are joint-wide strips, the first / last slice stands a full joint off the run it meets.
+- medial step (contour-bands): pairs closer than a joint are conflicts too (touching = a 0-gap seam); every cut is
+  checked (a difference may remove only shared ground -- MEASURED: a degenerate one cut a 0.468 sq in voussoir to 0.016
+  and its twin came out LARGER); the shared-area floor 1e-9 (a sharp tip in a joint strip shares ~1e-7).
+- arc floor (arc-voussoir MIN_RADIUS_IN 0.01 -> 0.1): an arc whose inner edge cannot hold its joints drops to a fan
+  (T18 / T19 1.25 in: the shoulder arc's voussoir tips met the top bar at its centre). Tried first and rejected: 0.05
+  (still touching), a chord fallback for self-crossing field cuts (worse: 72 tight pairs, overlap up).
+**Sweep (456 lays: 8 presets x 19 templates x 0.75 / 1 / 1.25 in) vs neck-medial:** narrowest seam per case 0 in EVERY
+case -> lowest 0.0314 in, median 0.034, 0 cases under 0.030 (79,392 seams under 0.032 -> 28, all arc chord sag);
+same-row joints exactly 0: 1,494 -> 0, under 0.029: 14,582 -> 0, over 0.09: 273 -> 0; band overlap 13.2 -> 0.000 sq in;
+voids 70.3 -> 1.35 sq in, all of it MORTAR KNOTS where constant-width fan joints converge on the apex (accepted by the
+advisor; T18 / T19 1.25 ~0.027 per shoulder, T5 0.005, T8 0.009). 0 / 456 byte-identical (the re-lay).
+**Tests:** new tests/bricks-joint-rule.test.js (6 templates x 5 presets x 1 / 1.25: no seam under joint - 0.004; with the
+row insets removed 5/6 FAIL). 14 test files updated, each with a one-line reason in the test (old contract -> which
+declared rule): planner pins rewritten to the rule; innerPath / cross-width / corner-void (a 45 deg mitre joint reads
+j / sin 45) / scale-grout arithmetic; fieldstone ring excludes the band-to-wall joint; neck covers + T1 digests
+re-pinned (cover bound 0.16 -> 0.05 since the pins are now the cut lay itself; the no-hole mutant still fails, 0.162);
+fillet coverage + board bare check count a point inside a joint as mortar (bare check: TRUE distance, original 1.5 joint
+reach -- the axis probes missed a diagonal joint); build-patch's mixed_bands check now selects the soldier band (its size
+filter caught header pieces); header ">4 vertices" now checks the oversampling it documents (redundant collinear
+vertex; a mitre strip's 0.013 in chamfer is a real 5th vertex; self-test added); stack "no stagger" checks the declared
+whole-brick start. No tolerance loosened. Real findings from the four "real look" tests: the mitre slide bug, the long
+closer (split), the header filter, a diagonal-joint probe.
+**Gates:** bricks domain 543 + joint-rule 6 green; full vitest 317 / 320 -- three 5 s / 90 s timeouts on a loaded run
+(no-corrupt-polygon T11, rock-set-bands, frame-3d-sweep); the two bricks files time the same on main and branch
+(6.5 s each, measured twice). Sheet: shots/seatB/neck16c2/joint_rule_before_after.png (T1 single 1, T18 three_band 1.25,
+T7 three_band 1, T11 dc 1.25, walls included; close-ups: a mitre, a row's joints, a labelled mortar knot).
+Fusion acceptance pending: seat A's item 89 run (profiles == pieces on all 57).
+- Brush strokes (advisor, from seat E's measurement): strokes lay through bricksContourBands (open, centred) -> the same
+  planner, so the butting (0 joint at a bend, main) is gone on this branch (narrowest seam 0.034). The 0.02 in end
+  overhang was linePieces' / voussoirPieces' float-safety extension, which exists to be clipped back to a joint: an open
+  end has none, so it is no longer extended (overhang 0.02 -> 0). Test: bricks-joint-rule's Brush case (every BRUSH_PRESET;
+  with the extension restored it FAILS: the start brick at 0.98 against the stroke end at 1.0). Sheet: a stroke row added.
+- main 33816b6 merged (70b8225, seat E's grout / SVG items): full vitest 322 / 322 files green (80.6 s) before this fix;
+  bricks domain after it green (one loaded run timed out boundary-at-depth-simple at 30 s, alone 19 / 19).
+
+## T86 item 30 -- PLAN (measured, decided; build after the joint rule merges) (seat B / fc, 2026-10-06)
+Found through seat A's item 89 harness: the frame Generate step draws a different shape per case (record frameInfo per
+case: templateId, params, silhouette). One draw of T9 had 1.82 in flanges; at a 1 in single band the flange ends lay
+NOTHING but fans stranded at the four board corners -- PRE-EXISTING (main 845b794 identical, 84 vs 82 pieces).
+Measured on that outline, one soldier band, flange ground farther than a joint from any piece: depth 1.0 -> 6.151 sq in
+bare; 0.9 -> 0.000; 0.8 / 0.7 / 0.6 / 0.5 / 0.4 -> 0.001. The cliff is half the flange (0.91): past it the 1.82 in
+flange-end line cannot hold both corners' mitres and drops, and the corners cascade into fans.
+DECIDED (advisor, Fred's item 28 "ok to all"): option (a) -- the fit rule's own BAND_FIT_SHARE (1/3 of narrowestGap,
+0.607 here) also governs a SINGLE band too deep for the board (today "the outermost band is never reduced"); one declared
+share for every reduction. Note text: "band narrowed to fit; bricks cut to the row depth" (a soldier row narrower than its
+brick cuts the bricks to the row depth -- no smaller whole-brick pattern to fall back to). Acceptance: before/after on T9
+thick flange (single, dc at 1 in) + the 456-lay sweep showing nothing else changes.
+- Item 89 Fusion acceptance on joint-rule 2db0668 (seat A, item89-baseline @ 920a63f, table_jointrule_2db0668.txt):
+  ACCEPTED -- 57 / 57 boards profiles == pieces, 0 slivers, 0 open ends, 0 multi-loop profiles (baseline on main: 14 / 57
+  mismatched, 445 extra profiles, 172 slivers; worst T14 three_band 133/289/92 -> 133/133/0, T3 three_band 145/248/48 ->
+  97/97/0). Server verified (--root guard byte-matched 30 served files). Caveat: the sweep's frame Generate is not
+  reproducible even seeded, so before / after are not the same boards case by case; the acceptance holds on every board.
+
+## T86 item 30 -- BUILT (b'): a single course band too deep for a feature narrows to fit it (seat B / fc, 2026-10-06)
+Rule (advisor (b'), replacing (a) -- (a) would have changed 201 / 456 lays and rides on narrowestGap, item 31): a SINGLE
+course band whose row drops a LINE lying between two lines (lineBetweenLinesDropsAt) is laid at the deepest depth where no
+such line drops, less a joint (bisection, 24 steps); note step {band: 0, step: 'narrow', toIn}; bandsReducedText adds
+"bricks cut to the row depth". Area bands (fieldstone) are exempt: they fill their ring, no run to drop.
+- Thick-flange T9 (fixture tests/fixtures/t9-thick-flange-silhouette.json): 1 in single / double -> narrowed to ~0.88,
+  bare flange 6.15 -> 0 sq in. Shot shots/seatB/neck16c2/item30_t9_thick_flange.png.
+- Sweep, 2,052 lays (19 templates x 9 presets x 0.75 / 1 / 1.25 / 1.5 in x 6x9 / 7x9 / 9x12): 36 narrow, all T6 / T9 / T15
+  at 1.25-1.5 in on 6x9 / 7x9; none at 0.75 / 1 in, none on 9x12, none of the 456 at 7x9 <= 1.25 except T15 6x9 1.25.
+  Those 36 before -> after: bare band ground T15 7.7-8.8 -> 0, T6 3.9 -> 0, T9 6x9 0.045 -> 0.064 (the web / flange T
+  mortar knot, same class as the accepted T18 shoulder knot); band overlap 0 -> 0; wall-over-band T6 0.278 -> 0.002.
+  Shot shots/seatB/neck16c2/item30_narrowed_36_before_after.png (T15 7x9, T6 6x9, T9 6x9 at 1.5 in).
+- Found + fixed in the build: at the band's own wall depth the consumed feature is still a SLIVER of wall (T9 a 0.018 in
+  skeleton, T15 / T6's tapering neck a spike < 0.01 in) that bondLayout laid over the band (0.03-0.99 sq in). The wall
+  boundary is taken past the cliff plus half a joint: wall ground narrower than a joint is mortar. COST: on a narrowed lay
+  the band-to-wall seam is 1.5 joints (only the 36 lays). Test: bricks-band-narrow, mutation-checked (3 fail without it).
+- Re-pinned item 28 (bricks-band-fit): "one band that cannot shrink" -> item 28 still does not reduce it, item 30 narrows
+  it (T9 7x9 1.5, only step 'narrow'); "a wall wherever it fits" exempts a narrowed lay (T9 1.5: the band fills the web).
+- Full vitest 325 files / 5,344 passed (one run had frame-gen "Generate writes the seeds" fail once; passes alone with and
+  without this change -- load flake, not bricks).
+
 ## Brick matrix split into one module per group (seat A / 77, 2026-10-06; advisor: six seats collide in controls.mjs / run.mjs)
 - Regenerated on main 205b41b (replaces cff67d8, which split 845b794). tools/brick-matrix/groups/<group>.mjs x18 (wall,
   frame, brush, sidebar-quick, sidebar-3d, layout, clear, lay, select, migration, frame-ui, password, layers, areas, undo,
@@ -23151,3 +23243,598 @@ On top of V1 / V2 / V4 (above):
   failing groups re-run alone.
 - Changed on purpose: the --parallel / all-groups report row ORDER (BRICK_CONTROLS is group by group); per-group order
   unchanged. Kept: loadFromStandIn in run.mjs, reached by no runner (pre-existing).
+
+## T86 item 31 -- PLAN (measured; awaiting GO): narrowestGap reads corners as gaps (seat B / fc, 2026-10-06)
+narrowestGap (item 28's fit rule: stack <= 1/3 of it) casts each boundary edge's inward normal to the first boundary it
+meets. MEASURED which edge pair gives the reading, 7x9: the bogus ones are all a ray whose first hit is the NEXT
+primitive -- a corner's wedge, not a gap: T7 0.007 in (the r 0.66 hook fillet into its line), T14 0.384 (an hourglass
+side arc into the bottom edge at the acute board corner), T17 0.345 (arc into arc). Everything those lays get is
+"(no fit)" drops on a board with plenty of room.
+Fix tried in a scratch copy, two declared parts:
+ (1) a ray whose FIRST hit is a neighbouring primitive is a corner's wedge: ignored (not continued past it -- my first
+     try continued the ray through the edge and read T14 top-to-bottom, 8.5 in);
+ (2) with (1), no edge normal crosses a WAIST made by two reflex primitive junctions (T14's hourglass: every side ray
+     reaches the corner first), so each reflex junction also casts its inward bisector, first hit, same filter.
+Readings old -> new: T7 0.007 / 0.012 / 0.011 -> 2.68 / 2.33 / 3.53 (7x9 / 6x9 / 9x12); T14 0.384 / 0.473 / 0.542 ->
+2.60 / 2.20 / 3.40 (the waist, which scales with the board); T17 0.345 / 0.999 / 0.648 -> 2.24 / 1.89 / 2.93; T16 (a
+waist the old rays missed) 4.45 / 3.51 / none -> 3.90 / 2.99 / 5.00. Every other template unchanged.
+Lays, 2,052 (19 templates x 9 presets x 0.75-1.5 in x 6x9 / 7x9 / 9x12): 68 change, all T7 / T14 / T16 / T17
+(16 of the 513 at 7x9 <= 1.25 in). Of the 68: 23 only lose a false "(no fit)" (same pieces), 3 T16 6x9 1 in gain a
+true one (waist 2.99 -> limit 1.00 < the 1 in band; same pieces), 42 lay more bands (e.g. T14 7x9 mixed_bands 1 in:
+106 -> 144 pieces). Band overlap 0 on all 68; smallest wall left 8.3 sq in (T16 6x9 at 1 in, unchanged).
+- BUILT (advisor GO, both parts): narrowestGap(board, source) -- source = the primitive per tessellated vertex
+  (bricksContourBands passes it; omitted, every edge is its own). Declared fallback: when no ray qualifies (a lens, a
+  triangle: every primitive the others' neighbour) the plain first-hit reading. Real code == the scratch variant on all
+  2,052 lays (0 differ). Tests (bricks-band-fit): the hourglass reads its 2.6 in waist (either winding); a triangle
+  stays finite; T7 / T14 / T17 / T16 7x9 read 2.68 / 2.60 / 2.24 / 3.90 and mixed_bands (three_band T16) at 1 in fits.
+  Mutation-checked: no corner filter -> 3 fail, no bisectors -> 3 fail. Full vitest 325 files / 5,350 passed (two
+  earlier full runs each had one non-bricks test time out under fleet load -- blind-spot-audit 12.5 s, frame-bartop-drawn
+  22.5 s; both pass alone). Shot shots/seatB/neck16c2/item31_t14_t7_mixed_bands_before_after.png: T14 7x9 mixed_bands
+  1 in gap 0.38 -> 2.60, 1/3 bands (no fit) -> 2/3, 140 -> 194 band pieces; T7 gap 0.01 -> 2.68, 1/3 -> 2/3, 117 -> 156
+  (engine lay; bricksContourBands alone counts 106 -> 144 on T14).
+- CORRECTION (found while measuring item 32, seat B, 2026-10-06): T16's waist read 3.90 in on 7x9 -- its junctions turn
+  104 deg and the bisector ray met the far side lower down, past the 2.47 in waist; a deeper stack was kept across it
+  (the Grey stone inner ring met itself there). Reflex junctions now read the NEAREST point of a non-neighbour
+  primitive, counted only where a circle fits across (WAIST_CLEARANCE_SHARE 0.9: the segment's middle at least 0.9 of
+  half its length from every boundary). MEASURED clearance share of each template's nearest junction reading (7x9):
+  real waists / necks 0.94-1.0 (T6 T9 T14-T19), a notch lip read down the board's side 0.05-0.35 (T1 T3 T4 T5 T8
+  T10-T13; without the rule T13 read 1.78, T5 2.08, T8 1.93). Shot item31b_junction_segments.png (unfiltered
+  nearest readings). Readings: only T16 changes, 6x9 / 7x9 / 9x12 2.99 / 3.90 / 5.00 -> 2.09 / 2.47 / 3.23 (T15 7x9
+  2.93 -> 2.92). Lays vs db413fb, 2,052: 25 change, all T16 -- stacks reduced to fit its waist; 14 of them now an
+  honest "(no fit)" (a 1 in band > 1/3 of 2.47). Tests: T16 reads 2.47; T1 / T5 / T13 / T10 keep their edge readings
+  (mutation: no clearance rule -> 4 fail). Full vitest 325 files / 5,354 passed.
+
+## T86 item 32 -- MEASURED, PLAN (awaiting GO): stone rings at pinches (seat B / fc, 2026-10-06)
+Branch ring-pinch (off gap-31). Probe: three_band, White rocks (set 3) + Grey stone (set 5, bandLayout fieldstone),
+0.75 / 1 / 1.25 in, 7x9, all 19 templates (+ 6x9 at 1.25 / 1.5 on the waisted ones as a stress): overlap between ring
+stones, self-crossing, stones > 10x median, stones ACROSS a pinch (two of its points whose nearest boundary points face
+each other on non-neighbour primitives), bare ring ground (> a joint from every stone, outside the wall).
+- The it.todo's own check (self-crossing or > 10x median, scale 1 and 4/3) on T11 T14 T15 T16 T17 T19: 0 bad on gap-31,
+  both sets. Item 28's fit rule keeps the stack under 1/3 of the gap, so the inner rings that used to pinch are dropped.
+- The one pinch left was T16 (Grey stone 0.75 in kept 2 rings; the inner ring's halves met in the waist, a stone across
+  it) -- the cause was item 31's T16 reading (3.90, true waist 2.47), fixed on gap-31 482df66. After: 0 across a pinch,
+  0 overlap, 0 self-crossing, 0 > 10x median over 114 lays (7x9) + 24 (6x9 stress). The 6x9 single rings at 1.25 / 1.5
+  are an honest "(no fit)" (the outermost ring is never reduced) and still cross no waist. Probe noise, not pinches:
+  stones filling T7's acute roof / hook tips, a big T18 6x9 corner stone (shots item32_*).
+- NOT pinch-specific: bare ring ground, median 0.59 sq in per lay, max 1.28 (T19 1.25); non-pinch templates the same
+  (T6 1.08, T9 0.90, T1 0.66). Voids at ring corners and along the ring where the fieldstone fill leaves gaps.
+Plan: no new pinch rule (nothing left to fix -- machinery would be speculative); flip the six it.todo to tests over
+every template x both stone sets x 0.75 / 1 / 1.25 in (+ the test's 1 and 4/3 scale). Bare ring ground: a separate item.
+- BUILT (b), advisor GO: bricks-rock-ring-stones -- the six it.todo are real tests; every template, White rocks at
+  scale 1 / 4/3, Grey stone at scale 1, the six that pinched also Grey stone at 0.75 in (its lower course height
+  changes the fit's 'course' step -- how T16 kept two rings); asserts no self-crossing, nothing > 10x median, no stone
+  over another. 11 s (the full both-sets x five-sizes grid ran 145 s). NOTE: the old T16 crossing had no overlap /
+  self-crossing / oversize, so this file alone would not catch it -- bricks-band-fit's "T16 reads 2.47" does.
+  Full vitest 326 files / 5,364 passed, 0 todo.
+
+## T86 item 33 -- MEASURED, PLAN (awaiting GO): bare stone-ring ground (seat B / fc, 2026-10-06)
+Probe: an instrumented scratch fieldstone.js records, per seed, its power cell, its clip, its rounding and whether it
+survived; every bare ring point (> a joint from every stone, outside the wall) is attributed to the first stage that
+lost it. White rocks three_band, 19 templates x 0.75 / 1 / 1.25 in, 7x9: 35.1 sq in bare over 57 lays (0.62 / lay).
+- dropped seed 11.7 + clip fragment 3.0 (corners): the ring is filled as ONE slit polygon (ribbonSlitPolygon); a stone
+  across the zero-width bridge is cut in two, keeps the seed's piece, often under the floor and dropped -- the void at
+  the bridge (bottom-right of the board) on 56 of 57 lays, the largest voids (0.4-0.6 sq in).
+- phantom-owned 6.7 (ring corners, mostly 1.25 in): a fence phantom (a seed mirrored across a ring edge) bounds EVERY
+  cell, not just its twin's -- at a concave corner it takes ground from a neighbour's stone and no stone gets it.
+- outside the ring polygon 12.0: 2,119 joint mouths along the board edge (rounded stone corners), almost all < 0.05.
+Rules tried in the scratch copy (declared, stones whole, no slivers):
+ (A) a phantom bounds only its own twin's cell (it fences that seed; real neighbours bound each other);
+ (B) a ring's stones are clipped to the ANNULUS -- the outer edge, minus the inner edge -- not to the slit polygon.
+Bare 35.1 -> A 16.6 / B 19.9 / A+B 8.0 sq in (0.14 / lay); voids >= 0.05 sq in 135 -> 14, largest 0.62 -> 0.21; dropped
+seeds and clip fragments 0; stones 5,182 -> 5,315; no overlap, no self-crossing, largest stone 7.3x -> 6.4x median;
+208-222 ms per lay vs 233-366 today. Wall fieldstone untouched (no fences: neither rule applies).
+Shot item33_ring_voids_before_after.png (T14 / T10 / T3 / T9 at 1.25 in).
+- BUILT (advisor GO, A+B) in layouts/fieldstone.js: (A) a phantom carries its twin and bounds only that seed's cell;
+  (B) fences[0] is the outer line and every further fence a hole: the stones are clipped to that annulus (the piece
+  holding the seed) -- only when every fence is a SIMPLE polygon: a band deeper than a neck pinches its inner edge to
+  zero width (T18 / T19, a 1 in ring at 0.75 in stones, bricks-fieldstone-band) and cutting that hole out ran one
+  stone through the pinch over its neighbours (0.15 sq in); such a ring keeps the slit clip. Real code, White rocks +
+  Grey stone three_band, 19 templates x 0.75 / 1 / 1.25 in, 7x9 (114 lays): bare ring ground 66.5 -> 11.7 sq in,
+  per lay median 0.59 -> 0.09, max 1.28 -> 0.47; stones 10,556 -> 10,823; overlap 0, self-crossing 0, > 10x median 0.
+  Tests bricks-stone-ring-ground: six worst lays at 1.25 in under 0.3 sq in (were 0.76-1.28); no void at the slit
+  bridge on six templates at 1 in. Mutation: no A -> 5 fail, no B -> 6 fail. Full vitest 327 files / 5,376 passed.
+  Changes saved stone-ring boards (Fred-yes batch). Shot for Fred: item33_fred_T11_white_rocks_1in_before_after.png
+  (T11 7x9 1 in, 73 -> 77 ring stones; one small mortar patch left by the right notch).
+
+## T86 -- joint-rule gap: three touching seams on 9x12 (seat B / fc, 2026-10-06), branch seam-9x12 (off ring-pinch)
+Found by the stack sweep (shots/seatB/neck16c2/stack_summary_table.md): T8 9x12 0.75 in soldier_stretcher / three_band
+(seam 0) and T12 9x12 0.75 in double_course (0.0001). Cause: yieldAtMedialLine's cut (checkedDifference ->
+polygonDifference) left a SPIKE on the piece -- a 0.05 in excursion 0.0004 in wide along the cutter's edge, out and
+back, its tip three vertices within 0.0002 in -- reaching the neighbour across the joint; it has no area, so the
+cut's area check passed it. Fix: geometry.js dropSpikes (merge vertices under SPIKE_WIDTH_IN / 2, then drop every
+vertex where the outline reverses with an excursion thinner than SPIKE_WIDTH_IN = 0.001 in), applied to the cut's
+pieces. Seams after: 0.0322 / 0.0331 in (joint less arc sag). Sweep vs ring-pinch, 2,166 lays: 312 pieces lists change,
+3 materially (the three above; the rest is sub-0.0005 in vertex cleanup -- same piece count, overlap, bare, seam);
+stone lays 0. Seams under 0.030 in: 22 -> 19 (18 neck seams below + T17 9x12 mixed 1.25 0.0296, arc sag).
+Test: bricks-joint-rule now also 6x9 / 9x12 x 0.75-1.5 in on T1 T5 T8 T11 T12 T14 T16 T18 T19 (18 tests, ~26 s);
+KNOWN_NECK_SEAM_IN declares the two neck floors. Mutation: no dropSpikes -> T8 / T12 9x12 fail. Full vitest 327 / 5,394.
+NECK SEAMS (reported, not fixed; advisor's question "should item 30's narrowing kick in?"): T16 6x9 1.5 (0.0221),
+T19 7x9 1.5 (0.0267), T18 9x12 1.25 (0.0238), 6 presets each -- a single band deeper than half the waist (T16 6x9:
+gap 2.09, half 1.045 < 1.5) meets itself at the medial line; the fit rule says "(no fit)" (the outermost band is never
+reduced); item 30 does NOT narrow: its trigger is a LINE between two lines dropping, and these waists are reflex
+junctions (T16 line/arc, T18 / T19 arc/arc). The medial setback leaves 0.022-0.027 in, not the 0.034 joint.
+
+## T86 item 34 -- NOTED for later: T7's hook leaves bare band ground at 1.5 in (seat B, 2026-10-06)
+4.9 sq in on 7x9, 2.9 on 6x9, every preset, identical on main -- the hook (r 0.66 fillet) at big bricks.
+
+## T86 -- the neck seams at big bricks (advisor GO (2), seat B / fc, 2026-10-06), on seam-9x12
+MEASURED first (scratch, instrumented): not the curved-source setback -- at every neck seam one side stood exactly half
+a joint off the medial line (first-order and true distance agree to 0.0005 in); the other side kept a TIP 0.013 x
+0.004 in inside the cutter of the piece across. Its cuts ran against two pieces of one run whose cutters meet at the
+run's joint; after the first cut the piece and the second cutter shared an EDGE exactly, and polygonIntersection /
+polygonDifference both missed the overlap (shared 0, piece back untouched). Fix (contour-bands checkedDifference): a
+cut whose result still has a vertex deeper than CUT_INSIDE_IN (1e-4 in) inside the cutter is redone with the cutter
+CUT_NUDGE_IN (1e-6 in) larger. Sweep vs the previous seam-9x12 tip, 2,166 lays: 32 change, all seams only -- the 18
+neck lays 0.022-0.027 -> 0.034, and 14 more of the same miss 0.031-0.032 -> 0.034 (T11 6x9 1.5, T19 6x9 1, T19 9x12
+1.25); pieces, overlap, bare unchanged; stone lays 0. Seams under 0.030 in: 19 -> 1 (T17 9x12 mixed_bands 1.25, 0.0296,
+arc sag). Test: KNOWN_NECK_SEAM_IN removed -- the extended joint-rule grid holds the joint everywhere; mutation (no
+nudge) -> T16 6x9 / T18 9x12 fail. Full vitest 327 / 5,394.
+
+## T86 item 34 -- MEASURED (plan below, awaiting GO): T7's roof at 1.5 in (seat B)
+Render (T7 7x9 single_soldier 1.25 vs 1.5): at 1.5 in the whole roof gable above the hooks is bare -- the gable's
+inradius is ~0.5 in, so the two roof lines' rows drop at 1.5 in, and the hooks' fans do not reach into it; at 1.25 in
+the roof lays. Item 30 does not narrow it: the roof lines lie between ARCS (the hooks), not between two lines.
+- BUILT (advisor GO (a)), primitive-ribbon.js. MEASURED first: the bare ground was never built (bare equal before and
+  after the medial yield and the board clip), from two gaps in the corner patch over dropped primitives:
+  (1) the joint path with a dropped primitive and a defined outer joint `o` patched only the FIRST dropped primitive --
+      T7 at 1.5 in drops BOTH roof lines between the hooks, the first's far tangent point does not exist, no patch:
+      it now walks the whole dropped chain (as item 21b's `!o` branch already did); one dropped primitive: as before;
+  (2) the NOTCH construction (straight-chord fans, for a dropped LINE between sides) also took a dropped ARC whose
+      neighbours' offsets never cross -- T18 / T19 6x9 1.25 in, the r 1.09 shoulders: a notch is now a dropped line
+      only; an arc goes to the chain patch, whose fans follow the arc.
+  Sweep vs the previous tip, 2,166 lays: 24 change -- T7 7x9 / 6x9 1.5 in bare 4.90 / 2.92 -> 0.03 / 0.00 (43 -> 60 /
+  45 -> 58 pieces), T18 / T19 6x9 1.25 in 0.69 / 0.74 -> 0.01 / 0.06 (+2 pieces), 6 presets each; nothing worse in
+  overlap, seam or bare anywhere; 0 stone lays, 0 lays at 7x9 1 in. Total bare band ground 76.2 -> 21.3 sq in.
+  Test bricks-dropped-chain (4 cases under 0.1 sq in; mutation: chain -> T7 fails, notch-for-arcs -> T18 / T19 fail).
+  Full vitest 328 / 5,400. Shot item34_dropped_chain_before_after.png. NOT fixed (separate, = main): T8 9x12 1.5 in,
+  0.24 sq in between arc 10's last voussoir and the corner fan.
+
+## T86 item 35 -- the T8 9x12 1.5 in voussoir-to-fan gap (advisor GO, seat B / fc, 2026-10-06), on seam-9x12
+MEASURED: not the patch (its strip starts exactly at q's angle, -106.6 deg) -- the voussoir run of arc 10 (convex,
+r 1.60, inner radius at 1.5 in 0.11) ended at -120.5 deg: the joint rule's fan-corner back-off (fanJointSide) moved
+q 0.03 in back along the run's tangent, and on a 0.11 in inner circle that is 15 deg of arc -- the radial end swung, a
+wedge 0.03 in at q and 0.42 in at the rim (0.24 sq in bare). Fix (primitive-ribbon mitreJointSide): a CONVEX arc run
+keeps the fan's own corner (its end is the radial through q) and the fan yields it a constant joint (yieldAtMedialLine:
+a fan yields a run all it covers plus a joint). Tried first on EVERY arc: 905 lays moved (116 materially, incl. T1 7x9
+at 1 in, the no-neck digest pin) -- a concave arc's inner radius is its LARGER one, the back-off narrows toward the rim,
+no wedge: left as it was. Convex only, sweep vs the item 34 tip, 2,166 lays: 62 change, 24 materially -- T8 9x12 1.5
+bare 0.235 -> 0.003; T5 6x9 1 / 7x9 1.25 / 7x9 1.5 one or two more voussoirs, bare and seams equal or better; nothing
+worse; stone 0; at 7x9 1 in only sub-tolerance vertex detail (T5). Total bare 21.3 -> 19.8 sq in; min seam of any
+changed lay 0.0308. Test: bricks-dropped-chain + T8 (mutation: the back-off on convex arcs -> T8 fails). Full vitest
+329 / 5,406.
+
+## H23 item 91 -- the first APPLY after BUILD generated 3/7 ops: item 86's setup tag (seat A / 77, 2026-10-06)
+- Symptom (item 90, main and seam-9x12 alike, 4/4 boards): the first APPLY right after BUILD generated 3/7 ops --
+  'B-spline Back' "generated in 0.4s" with both ops "Invalidated: Generation failed" (no error / warning text), Top's
+  first two missing, Frame ~130 s. Generating again produced them. In item 83 (afdc4c0) the first APPLY made 7/7.
+- Bisect, one board (T1 7x9 bricks, the item-90 "before" payload), deployed add-ins, only the CAM engine swapped
+  (sys.path, restored after each call; verified):
+    afdc4c0 engine: first APPLY 7/7 (Back 49.7 s). The only CAM change since: 4ea8973 (item 86, mine).
+    In it, on a FRESH build: the _configure_setup move is byte-identical (checked); the coordinator only reorders
+      the WCS-sketch step vs the cleanup (a no-op on a fresh doc); the one new write is _tag_setup -- an attribute
+      ('CAMBuilder', 'setup') added to every fresh setup.
+    main engine with _tag_setup patched to a no-op (setups confirmed untagged): first APPLY 7/7 (Back 49.4 s).
+  -> Writing an attribute on a fresh setup during BUILD makes the first generation fail. (One observation per board,
+  two boards; the mechanism inside Fusion is not known.)
+- FIX (cam_engine/setup_builder.py): BUILD writes no attribute on a setup; SETUP_ATTR / _tag_setup removed. A re-BUILD
+  finds its setups by their SETUP_SPECS name -- the identity _cleanup_previous_build already deletes by -- each
+  present ONCE and valid (a duplicated name -> the full recreate). Also the POS DIAG units: the WCS translation reads
+  in mm (measured, item 82), so those lines now say mm, and the derived stock 'bottom' subtracts the stock span in mm
+  (it divided by 10 and printed 'cm': mixed units).
+- Tests (test_cam_reuse.py): build_setup driven with fakes writes no attribute on the fresh setup (new); reuse by
+  name; a duplicated setup name -> full recreate (replaces the "untagged" case). 10/10; against main's setup_builder
+  3/10 fail (incl. the no-attribute test). CAM-builder 36/36.
+- LIVE (the branch engine via the swap, deployed add-ins otherwise): first APPLY after BUILD = 7/7, valid, no error /
+  warning, on two boards (bricks: Back 50.7 s; Grey stone ring: Back 44.5 s). A re-BUILD on the bricks doc REUSED by
+  name in 8.9 s (setups valid, ops kept). The POS DIAG label fix shows only once deployed (that log runs inside the
+  deferred generation, after the swap is restored).
+- Hygiene: scratch docs closed by handle (only Fred's Untitled), holder none.
+## H23 item 89 CORRECTION -- the first baseline was not fresh per case; redone (seat A / 77, 2026-10-05)
+- The advisor asked about "unseeded, 3 silhouettes in 3 loads". MEASURED (T1, 3 genuinely fresh loads, unseeded):
+    before Generate: frame seeds {} and the 12 outline primitives are IDENTICAL in all 3 loads. Only the terrain
+      seed differs (27673 / 72783 / 90091), which is by design.
+    the Frame tab's [Generate] = generateFrame(seed = nextSeed()), nextSeed() = Math.floor(Math.random()*1e6)
+      (editor/editor-lattice-pattern.js:777), documented "a new seeded random frame shape". The sweep clicked it on
+      every case: that is where the 3 silhouettes came from.
+    a saved board: after Generate, a plain reload restored the same seeds and outline, 3/3. NO outline bug.
+- THE DEFECT WAS MINE: localStorage.clear() run inside the app and then navigating does NOT give a fresh start. The
+  previous board came back (same terrain seed, previous frame record, 2 of 2 loads), so every case of the first
+  baseline started from the previous case's board. Re-running T1/T10/T12 genuinely fresh changed 7 of 9 piece counts
+  and 9 of 9 svgs (T1 single 110 -> 116). The sweep now wipes the origin from about:blank
+  (Storage.clearDataForOrigin, storageTypes 'all'); two fresh runs gave byte-identical svgs, 6 of 6 cases.
+  The first item 89 table above is INVALID. Its files were removed in 9ade383; the replacement is
+  tools/repro/h23_item89_baseline/*_fresh.*
+- Redone, same method otherwise (all 57 fresh; Fusion through the COMMITTED h23_item89_fusion_import.py, run end to
+  end, 2 per call, nothing else running). pieces / profiles / slivers < 1e-4 in2 / import s:
+    template    | single_soldier     | three_band         | double_course
+    template_1  | 116/116/ 0/1.28    | 116/116/ 0/1.28    | 112/112/ 0/1.15
+    template_2  |  87/ 87/ 0/1.33    |  87/ 87/ 0/3.96    |  79/ 79/ 0/1.16
+    template_3  |  94/ 94/ 0/5.51    | 145/248/48/3.67    |  90/ 90/ 0/2.99
+    template_4  | 100/100/ 0/3.20    | 100/100/ 0/4.72    |  96/ 96/ 0/2.83
+    template_5  | 113/121/ 2/1.58    | 113/121/ 2/5.97    | 107/115/ 2/1.74
+    template_6  |  99/ 99/ 0/2.44    |  99/ 99/ 0/3.66    |  91/ 91/ 0/3.05
+    template_7  |  86/ 86/ 0/3.19    |  86/ 86/ 0/1.80    |  80/ 80/ 0/1.97
+    template_8  | 105/136/ 7/2.55    | 105/136/ 7/1.44    |  95/ 95/ 0/2.69
+    template_9  |  84/ 84/ 0/1.20    |  84/ 84/ 0/1.15    |  84/ 84/ 0/1.20
+    template_10 | 103/109/ 0/1.53    | 103/109/ 0/1.57    |  99/ 99/ 0/1.73
+    template_11 |  84/ 84/ 0/1.15    |  84/ 84/ 0/1.52    |  72/ 72/ 0/4.52
+    template_12 | 114/114/ 0/1.52    | 114/114/ 0/1.88    | 110/114/ 0/1.58
+    template_13 |  91/ 91/ 0/1.46    |  91/ 91/ 0/1.19    |  82/ 88/ 0/1.11
+    template_14 |  90/ 90/ 0/1.10    | 133/289/92/1.44    |  85/ 85/ 0/1.02
+    template_15 |  86/ 86/ 0/1.66    |  86/ 86/ 0/1.01    |  82/ 82/ 0/3.69
+    template_16 |  86/ 86/ 0/1.04    |  86/ 86/ 0/1.23    |  86/ 86/ 0/1.05
+    template_17 |  89/ 89/ 0/1.01    |  89/ 89/ 0/1.11    |  89/ 89/ 0/1.10
+    template_18 |  94/ 94/ 0/1.34    |  94/ 94/ 0/1.23    |  90/ 90/ 0/1.23
+    template_19 | 104/130/ 4/1.31    | 104/130/ 4/1.53    | 102/128/ 4/1.29
+  TOTALS: 14/57 mismatched, 445 extra profiles, 172 slivers, 0 open ends, 0 multi-loop; import median 1.52 s,
+  max 5.97 s.
+- WORST 3:
+    T14 three_band 133/289/92: the small profiles spread ALONG the inner stretcher bands (x +-1.0..1.5, the whole
+      height). The stretcher bricks meet end to end with no joint: B's "zero-wide joints inside band rows".
+    T3 three_band 145/248/48: the same, along its inner bands (x +-1.5..2.0).
+    T8 single_soldier 105/136/7: all 19 small profiles at ONE corner (2.3..2.4, 3.2..3.4), a corner fan.
+  Note: three_band lays 3 real bands only on T3 and T14 here (145 / 133 pieces vs 94 / 90 single); elsewhere its
+  counts equal single_soldier's.
+- Shots (shots/seatA): h23_item89v2_template_14__three_band.png, h23_item89v2_template_3__three_band.png,
+  h23_item89v2_template_8__single_soldier.png. (The h23_item89_* shots of the first run are of the invalid boards.)
+- Slip: the 9ade383 commit landed without these files and this entry (a cp after git rm failed and the chain
+  stopped); added in the next commit.
+- Hygiene: scratch doc closed by handle (only Fred's Untitled), holder none, servers + Chrome stopped.
+
+## H23 item 89 AFTER-RUN on seat B's joint-rule 2db0668 (seat A / 77, 2026-10-06)
+- FIRST ATTEMPT RETRACTED: port 8794 was held by two days-old servers (pid 52764 'python -m http.server 8794', 02-Oct;
+  pid 29036 fb-app worktree serve_app.py 8794, 03-Oct). My server could not bind, and the "after" capture swept another
+  tree's app (40/57 boards point-for-point equal to the baseline, which was the tell). Not my PIDs; reported, not
+  killed. The sweep now has --root: it byte-compares the served palette + every core/bricks/*.js with the tree on
+  disk and exits 2 on a difference. Checked: pointed at the zombie on 8794 -> refused. It also polls for the app being
+  up instead of a fixed 8 s (one case died at "click of null" under 100% CPU); a page error is now a FAILED case,
+  not a crash.
+- CLEAN RUN: port 8795 confirmed free before start; guard: 30 served files == the joint-rule worktree. All 57 cases
+  (fixed tool, --seed 89, 7x9, 1 in, Frame tool alone); Fusion through the deployed _apply_bricks_sketch
+  (b-spline-gen.py identical in 2b5695d, main f3903b7 and 2db0668). Pieces = the <polygon>s in stamp.bricks (the
+  app's count also has 1 'grout' element per board, which is not in the Bricks svg).
+- RESULT: 57/57 profiles == pieces, 0 slivers, 0 open ends, 0 multi-loop; import median 1.56 s
+  (tools/repro/h23_item89_baseline/*_jointrule_2db0668.*). Worst baseline cases: T14 three_band 133/289/92 -> 133/133/0;
+  T3 three_band 145/248/48 -> 97/97/0.
+- CAVEAT (B found it, confirmed by the counts): the board SHAPE is not pinned. The sweep clicks the Frame tab's
+  [Generate], a random shape (nextSeed() = Math.random); the seeded PRNG does not make it reproducible, because the
+  number of draws before Generate depends on timing. So before/after are not the same boards case by case (e.g. T9
+  double_course 122 here vs B's 82). The acceptance claim (profiles == pieces on every board laid) does not need
+  identical boards; a per-board comparison does. Fix proposed, not built: declare the frame (no Generate, the
+  template's own fitted shape, which is identical across fresh loads, measured) and record the frame record in each
+  case json.
+- Slip: three cases got a duplicate "sketch: false" row: a call ran while a timed-out one was still on the same case.
+  The valid rows were re-measured alone and agree exactly (T19 single 103, T7 double 81, T7 single 85).
+
+## H23 item 89 re-check on ring-pinch d464848 (joint rule + items 30, 31, 32/33), with stone rings (seat A / 77, 2026-10-06)
+- Asked by seat B for the advisor. Fitted frames (the sweep's default since 5fd7468), 7x9, brick 1 in, Frame tool alone.
+  Served from a ring-pinch worktree on port 8797: confirmed free before start, and the --root guard matched 31 files
+  on every pass. Fusion through the deployed _apply_bricks_sketch: b-spline-gen.py is identical in the deployed
+  205b41b and d464848.
+- Sweep options added (declared, this branch): --frameSet=<id> picks the frame's set through the app's own
+  selectSet(id, .., ['frame']), reads back the set the frame bricks carry (frameSets) and falls back to a direct write
+  only if the picker did not take it (frameSetVia; never needed here). --presets=a,b limits the band presets. The
+  first template-list read retries (one start-up module fetch was dropped under load).
+- RESULT, 95 boards (pieces = the <polygon>s in stamp.bricks; the app's extra 'grout' element is not in the svg):
+    bricks (default set): 19 templates x single_soldier / three_band / double_course = 57 -> 57/57 profiles == pieces
+    White rocks (set 3), three_band x 19 -> 19/19; Grey stone (set 5), three_band x 19 -> 19/19 (both via selectSet,
+      every board laid the set asked for; stones ~29 vertices each, 2,272-2,800 curves per sketch)
+    0 slivers, 0 open ends, 0 multi-loop, no duplicate row disagreeing. Table + raw rows:
+    tools/repro/h23_item89_baseline/*ringpinch_d464848*.
+- Cost: under 100% CPU from other runs, 9 capture cases failed on the first pass (dropped module fetch / app not up);
+  one fill pass recovered all 9. Stone imports take ~1.5-2 min each in Fusion (profile measuring). Calls ran 3-6 cases
+  then waited for Fusion to go idle, so no two calls overlapped.
+## H23 item 90 -- CAM on the waiting engine stack: Send + BUILD + APPLY, main vs seam-9x12 8ab1729 (seat A / 77, 2026-10-06)
+- Boards: T1 7x9, the template's own FITTED frame (no Generate), brick 1 in, three_band frame + wall, applied (the brick
+  layers carve -> Stamped variant). (a) default set (106 frame + 99 wall pieces before and after); (b) Grey stone ring
+  (set 5, picked through selectSet: 100 -> 88 frame pieces after, + 124 wall). Captured from a 62c1b13 worktree (the
+  main seam-9x12 sits on) and an 8ab1729 worktree, ports verified free, --root guard 31/31, Math.random seeded
+  (terrain seed 1218 in all four payloads). The Fusion-side code (b-spline-gen.py, CAM-builder, frame-builder) is
+  identical in the deployed 205b41b and 8ab1729 -- only 7 app files differ, so any toolpath change comes from the board.
+- Capture tool (tools/repro/capture_send_payload.mjs): scenario cam-bricks + --root guard, --seed, --frameSet; a fresh
+  Chrome profile every run. Fusion driver: tools/repro/h23_item90/fusion_send_build_apply.py (the add-in's own
+  _handle_generate, the CAM engine's run, the palette's _do_apply_toolpaths, per-op state + getMachiningTime).
+- ALL FOUR BOARDS end 7/7 ops valid, hasError False, hasWarning False. Send 29-49 s, BUILD 39-56 s (noise: 100% CPU).
+- Machining time (Fusion's getMachiningTime, feed scale 1, the same settings for every board; clean pass = every
+  toolpath cleared, then all 7 generated in order in ONE pass):
+    bricks  Pocket back 502.9 -> 510.6 (+1.5%), Back spiral 87.2 -> 87.3, Pocket front 537.1 -> 542.2 (+0.9%),
+            Top spiral 89.4 -> 89.5, Pocket front deloge (rest) 238.3 -> 266.3 (+11.7%), Frame 452.4/181.4 ->
+            456.3/180.9. TOTAL 2088.7 -> 2133.1 s (+2.1%); Back+Top 1454.9 -> 1495.9 s (+2.8%, +41 s, most of it
+            the rest op).
+    stone   Pocket back 534.7 -> 541.9 (+1.3%), spirals +-0.6%, Pocket front +0.5%, deloge 269.2 -> 254.9 (-5.3%),
+            Frame pocket 477.5 -> 492.6 (+3.2%). TOTAL 2180.0 -> 2190.6 s (+0.5%); Back+Top -0.3%.
+  So the joint rule's extra joints cost ~1-1.5% on the pockets and move the rest-machining op either way (+12% bricks,
+  -5% stone). Not material on the whole job (+2.1% / +0.5%).
+  Generation seconds (clean pass, Back/Top/Frame): bricks 17.4/39.2/4.3 -> 15.7/74.1/5.6; stone 11.6/35.4/4.3 ->
+  12.5/45.2/3.3. Top varies 35-74 s between identical passes on this loaded machine, so these are not a reliable
+  measure; the machining estimate is.
+- FINDING (CAM, on main as well as the branch, 4/4 boards): the FIRST APPLY right after BUILD generates only 3/7.
+  'B-spline Back' "generated in 0.4s" with both Back ops "Invalidated: Generation failed" (no error / warning text),
+  Top's first two missing, the rest op + Frame generated, Frame taking ~130 s in that pass (4 s otherwise).
+  Generating again (the add-in's own TPGen event) produces them. Back's Morphed Spiral sometimes needs one more pass
+  (2 of 4 boards). In item 83 (deployed afdc4c0) the first APPLY generated 7/7. The WCS / stock readbacks are as
+  declared: the "POS DIAG ... cm" lines print millimetres (x -95.25 = -3.75 in), a label slip, not the cause. Not
+  investigated further (no CAM change was asked for).
+- Hygiene: scratch docs closed by handle (only Fred's Untitled), holder none, both servers stopped.
+## F35 item 37 reopened -- a reload's 3D: one boot build, a declared restore end, deterministic brick detail (seat E / 61, 2026-10-06)
+- REPRO (seat D's boards, my tree = D's code c3ca12d): D's own a68_acc.mjs reload = base 3/3; a same-page forced re-mask
+  (first mask vs _notifyChange('commit') + Apply) 0 of 25521 cells differ 4/4. D's drift came from what the reload READ:
+  a restored page built TWICE -- initApp masked P.editorSvg before window.svgEditor existed (masks nothing, still won the
+  refresh generation and scheduled a build), then initSvgEditor's restore masked for real. That first build (gen 1) is
+  an UNMASKED surface: 17164 of 25521 cells off, up to 0.37 in, on screen 1.4-5.2 s at CPU x4, once with the card DOWN
+  for its whole 2.1 s. A 3-equal-polls-700-ms settle (cdp.mjs, run.mjs heightsSettled) stops on it under fleet load.
+- FOUND WHILE FIXING (measured, not argued): with one boot build, 7 of 15 loaded reloads still landed on a different
+  final. Instrumented rebuild inputs (every P key, grid, sculpt deltas) were IDENTICAL; only the Wall brick mask sum
+  moved (15060.5173 vs 15060.5277). Root: editor-brick-surface.js computeDetailGrid let drawImage's own scaler shrink
+  each sample photo to 48x48 -- different by canvas backend (default vs --disable-accelerated-2d-canvas vs --disable-gpu:
+  47 of 47 grids differ) and from page load to page load under load (7 of 47 moved, then STAYED moved on later reloads).
+  This is the original item 37 drift (seat 37's "small multiplicative differences on raised cells").
+- FIX (declared): app-init.js bootBuildOwner() -- the boot build has ONE owner: a saved drawing -> initSvgEditor's restore
+  (mask + build), none -> initApp (plain build); a failed editor restore still builds. core/state.js bootRestore
+  {complete, generation} + markBootRestoreComplete, set when the owner's build landed (core/engine/rebuild.js
+  whenRebuildIdle: nothing running, queued or on scheduler.js's timer -- isRebuildScheduled). loading-signal.js
+  LOADING_SEQUENCES.sessionRestore keeps the card up between the mask and the build. editor-brick-surface.js
+  areaAverageGrey: the photo drawn 1:1 on a willReadFrequently (CPU) canvas, the crop averaged down in JS.
+- HARNESS: run.mjs waitApp waits on bootRestore.complete (a build without it keeps the 3 s window); heightsSettled also
+  needs the app BUILT (whenRebuildIdle + card hidden). groups/persistence.mjs FRESH_VS_RESTORED comment updated.
+  Seat D (bb) told: wait on bootRestore.complete after a reload.
+- MEASURED before (main code) / after, T1 7x9 Wall, Checker -> None, 2 probes per tree in parallel, CPU x4, 12 reloads
+  each: time to final 3D median 7.5 s / 5.9 s (max 10.8 / 8.0); wrong-frame on screen 1.5-3.6 s / 0 s every reload;
+  card off before the final up to 3.6 s / 0 s; restore-complete at the final 12/12 (after). Detail grids: identical
+  across the 3 canvas backends after (were 47/47 different). Old vs new grids: correlation median 0.938 (0.880-0.980),
+  same features, slightly smoother -- shots/seatE/item37/detail_grids_old_top_new_bottom.png. Every brick's grain
+  changes once by that much (one-time look change, deterministic after).
+- TESTS: tests/boot-restore-one-build.test.js (4) + tests/brick-detail-area-average.test.js (4): fail 8/8 on origin/main;
+  mutation (initApp's old boot mask put back into the new code) turns the 2 saved-drawing rows red. Full vitest 327 files,
+  5348 passed, 6 todo, 0 failed. Matrix live on the branch: persistence 24 rows 0 FAIL (item-37 row live = restored),
+  lay 12 rows 0 FAIL.
+- SWEEP: app-init.js _editorSvgHasContent (its only caller was the boot mask) removed; cloud-project-manager.js comment
+  that cited it reworded; app-init.js lastResult import (unused after) dropped. Kept: initApp's refreshAllStampMasks
+  import (initSvgEditor still uses it).
+
+## Projects worker: KV list() budget (advisor, urgent; seat B / fc, 2026-10-06), branch projects-list-budget
+Live GET /projects answered 500 "KV list() limit exceeded for the day" (free tier: 1,000 list() a day).
+MEASURED: the worker listed with PRESETS.list() on every GET /projects (the whole store) and GET /cam-profiles; the app
+(cloud-project-manager.js) listed at every page load (the "continue from phone" banner, 2.5 s after boot), again on
+every Projects-panel open and after every save / delete / rename; about 85 tools/repro scripts + the brick matrix
+load the app in headless Chrome over LOOPBACK http, and only the matrix installed a cloud stand-in.
+(2) Worker: presets-index.js -- one index key (__index::presets) kept in step by every PUT/DELETE (after the write: a
+gated write only once the password passed); both listings read it (1 KV read). Self-heal instead of locks (two writes
+at once can lose an entry; one user, rare): rebuilt from list() when missing / corrupt / older than 6 h; a GET of a
+key missing from the index puts it back. The rebuild pages with a cursor (the old single list() capped at 1,000 keys).
+(1) App: one list fetch shared by the boot banner and the panel within 30 s (LIST_CACHE_TTL_MS), in-flight shared, a
+failed one never reused, any write clears it. The banner stays (Fred's feature) -- now a KV read, not a list().
+(3) bspline_gen_palette.html: a loopback-served page's API URL is a dead loopback address unless ?realCloud=1 (the
+brick matrix: --real-cloud) -- one declared rule for every harness, current and future; live site / Fusion unchanged.
+NUMBERS: worker list() per GET /projects 1 -> 0 (a rebuild at most every 6 h); app list fetches per page load with
+the panel opened 2 -> 1; local probes reaching the real worker: all -> none.
+Tests: presets-index-worker (5: one list() then none, writes in step incl. /presets + /cam-profiles, refused write
+leaves it, self-heal + stale rebuild, corrupt index), project-list-budget (banner + panel share one fetch; TTL; failed
+not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Brick matrix password 4/4, persistence
+24/24, migration 5/5 through the stand-in behind the dead URL. Full vitest 333 / 5,427.
+## H23 item 92: the Fusion palette opened as the website (no Send button) -- seat A / 77, 2026-10-06
+- Found during the item 70 re-check: three fresh palette opens in a row came up in WEB mode ('STEP' / 'Add-in', no
+  Send). pollMode gave Fusion's `adsk` 3 x 100 ms; the page's JS logs reached Python seconds later, so adsk was
+  injected late. A test-only bump of MAX_MODE_CHECKS in the deployed copy gave Fusion mode at once.
+- Fix (declared, not a magic number): html/data/fusion-host.js declares the host flag (?host=fusion), the Fusion wait
+  (modeDetectTimeoutMs 10000), the poll step and the website's grace (webGraceMs 300, today's value). The add-in
+  (_palette_url) opens the palette at file:///<path>?host=fusion; pollMode waits up to the declared timeout only on a
+  page carrying the flag, and decides the moment adsk appears. The website / an older add-in keeps the 300 ms.
+- Probe before the fix (scratch palettes, deleted): palettes.add REFUSES a bare path with a query ("Invalid
+  htmlFileURL"); the file:/// form with a query loads and keeps location.search. (stamp-editor.py's comment says
+  palettes.add rejects query strings on creation -- true only for the bare-path form.)
+- [MODE] log line: how long the page waited for adsk, the margin the timeout keeps.
+- Tests: tests/fusion-mode-detect.test.js 5 (3/5 fail on the old pollMode: late adsk, decide-at-once, timeout
+  fallback); test_palette_host_url.py 2, driving the real CommandExecuteHandler (2/2 fail without the add-in change).
+  Full vitest 5420/5420 (332 files); b-spline-gen pytest 157/157. Known failures: none.
+- Live, brick-wall board, scratch palette opens by deleteMe + execute: c269381 5/5 Fusion mode; f6536fc 5/5 Fusion mode,
+  adsk after 102 / (lost to log rotation) / 549 / 864 / 0 ms. 549 and 864 are past the old 300 ms: those opens would have
+  been the website. Page load itself varied 2-50 s on this busy machine.
+- Side notes, not fixed: the log rotates at 512 KB and one palette load writes ~600 KB (the P dump), so a load's own
+  lines can be rotated out twice; the build-info status reads "could not resolve source HEAD" for a deploy from a
+  worktree (fb_shared/build_info.py:134) and covers the header buttons.
+## H23 item 93: the add-in log keeps its own Send; the build status never covers the header -- seat A / 77, 2026-10-06
+- Measured first (logs from the item 70 / 92 live runs): a palette load was 99.9% ONE line kind -- state.js
+  saveLastSession echoing the whole session JSON into the add-in log (~290 KB a save with a brick wall, ~2 saves a
+  load), so one load passed the 512 KB rotation twice and its own lines were gone. A Send's own ~55 KB was 2/3
+  '[DEBUG] ATTR TAG' (fb_engine build_context) + 1/6 'CONSTRAINT OK' lines.
+- Declared html/data/addin-log.js (pure JSON, read by both sides): debug false, debugPrefixes ['[DEBUG]',
+  'CONSTRAINT OK:'], rotateBytes. _log drops a line starting with a debug prefix unless debug is on (the sketch
+  builder's _Logger.records still counts them, so its summaries are unchanged); unreadable declaration -> the old
+  behaviour (everything, 512 KB). fusion-log.js gains fusDebug (sent only with debug on); the session echo uses it, so
+  by default it never crosses the bridge. [STAGE]/[MODE]/[XFER]/[PROGRESS]/warnings/errors are never demoted (test).
+  Nothing in the repo reads the session echo back out of the log (grepped).
+- Live (deployed c1667a8, 7x9 frame + brick wall, scratch doc): a palette load wrote 1,963 B (was ~600 KB); load +
+  Send incl. the frame build 21.7 KB (Send 19.5 KB: chunk transfer + XFER timing lead). rotateBytes 2 MB: a load +
+  Send fits twice even with debug on (~0.7 MB each).
+- build_info: a linked worktree's gitdir holds only HEAD; branch refs + packed-refs live in the dir its `commondir`
+  names, so a worktree deploy read 'could not resolve source HEAD'. _read_head_sha now looks there too. And the build
+  status no longer uses the fixed status line (position:fixed over the header, a never-clearing 'warn'):
+  main/build-badge.js paints the Settings > Version badge and marks the Settings button (⚠, tooltip) when stale;
+  'unknown' only mutes the badge. Live: worktree deploy -> header clear, Send to Fusion visible, no mark (HEAD
+  resolved = up to date).
+- Tests: test_addin_log_levels.py 5 (3/5 fail on the old _log), addin-log-debug.test.js 4 (2/4 fail on the old
+  code), test_build_info_worktree.py 5 (3/5 fail on the old resolver), build-badge-no-overlay.test.js 4 (the main.js
+  wiring check fails on the old main.js). Full vitest 5425/5425 (333 files); b-spline-gen pytest 160/160. Known
+  failures: none.
+- Not touched: the 5 '[ERROR] CONSTRAINT FAIL ... VCS_SKETCH_SOLVING_FAILED' lines every Send of this board logs
+  (also in the item 70 runs on other builds). _palette_url (item 92, not on main yet) parses its declaration the same
+  way as the new _read_declared_json: fold it in when both are merged.
+## F35 item 69 -- main sidebar audit, T1 7x9 / T18 7x10, desktop + 900 px (seat E / 61, 2026-10-06)
+- METHOD: every visible control of Stock, Frame, Skeleton, Filter, Stamp, Sculpt top/bottom, Thicken, View, Export,
+  Resolution on both boards: change at CPU x4 (settle by lastResultGeneration + loading card), reload = live (waits on
+  item 37's bootRestore), revert, two changes 100 ms apart, Undo/Redo; layout per panel at 1400 and 900 px. Flags from
+  runs under fleet load were re-run alone: filter +, decal on/off, skeleton + / smooth / clustering, the stamp layer-row
+  carve toggle all CLEARED (load artefacts); several earlier 'reload' flags were item 37's gen-1 read (fixed there).
+- FIXED HERE: truncated stepper boxes (the palette rule was [type="number"]-qualified; formula fields are type="text"):
+  15 at 1400 px / 2 at 900 px -> 0. tests/stepper-input-css.test.js fails 1/1 before.
+- LISTED FOR THE ADVISOR (not one-liners): (1) HIGH stamp settings set from the sidebar are lost on reload -- the live
+  editor layer changes but P.editorSvg's data-editor-layers is not re-serialized; measured blur 4->0, V-bit 120->90,
+  smoothing 27->15, fillet 0.4->0; the mask reads the layer (stamp-mask-manager.js:139). (2) Delete frame cannot be
+  undone (frame stays gone, 3D unchanged). (3) 30 controls rebuild the 3D without changing it, 1.1-8.2 s at x4, no card
+  (sculpt tools / brush settings, decal opacity, adaptiveDisplay, ...); detailDensity changes the 3D with no card.
+  (4) thicken slider step 0.01 cannot hold the 0.125 default. (5) sculpt tool choice not kept across reload. (6) layer-row
+  carve button keeps its look after Undo. (7) enabled controls with no effect here (stamp Transform with no stamp art).
+- Sheet: shots/seatE/item69/sheet.html (+ sheet_preview.png). Full vitest 328 files, 5349 passed, 6 todo, 0 failed.
+
+## H23 item 94: the 5 SE15 CONSTRAINT FAILs on the 7x9 T16 board -- real, three causes, fixed by declaration (seat A / 77, 2026-10-06)
+- NOT the frame (Frame_1 builds ok): the SE15 constrained sketches of the board's Shape Lattice artwork, a frame-offset
+  contour (T16 Arched Funnel) that had been CUT (its right flank is 5 arc pieces, the left one arc). Rebuilt live
+  from the Send's own manifests (last_send.json) through the add-in's build_constrained_sketch in a scratch doc:
+  the same 5 failures, and the geometry really wrong -- contour ends up to 208 in off (an arc's radius doubled),
+  rails 6.9 in, ties/nodes 4.7 in. Not harmless.
+- Cause 1: Tangent declared at the contour's MITER corners (turns 74 / 94 / 43 deg). A cut drops the frame contour's
+  `corners` list (_drawnContourSilhouette), so every arc-adjacent joint got a Tangent; on the loose chain Fusion bends
+  the shape to satisfy them. Fix: a Tangent only where the drawn joint IS tangent -- isTangentJoint, factored out of
+  outlineDefects (same test, same 1e-4 tolerance, now TANGENT_JOINT_TOL).
+- Cause 2: 17 of 18 rail-end -> contour Coincidents named the WRONG seg: computePattern attributes ends by the FRESH
+  contour's numbering (latticeExtentFor) while a cut sends the drawn pieces, renumbered. Fix: _retargetContourEnds
+  re-resolves each end against the contour that is sent with primitiveHitAt (computePattern's own attribution),
+  tolerance CONTOUR_HIT_TOL_IN = 2e-3 in, now declared once and read by both. Only for a cut (an uncut manifest is
+  byte-identical, tested).
+- Cause 3: with 1+2 fixed (variant A, live) the contour still failed Tangent seg5/seg6 -- two pieces of ONE circle,
+  the joint next to the seg4/seg5 miter corner -- and a later arc's radius doubled. Without the 4 co-circular
+  Tangents (variant B) every layer built exact. Narrowed: seg5/seg6 restored alone fails, seg7/seg8 alone builds;
+  isolated co-circular pairs (4 radii/sweeps) and 3/5-piece chains build exact with or without Tangent. So: no
+  Tangent between pieces of one circle (_sameCircle) -- nothing lost (one circle by construction, loose contour).
+  Not a general Fusion rule (needs the loop), not root-caused, so not recorded in fusion360-quirks.
+- Tests: tests/se15-tangent-only-where-tangent.test.js 7 (T16 7x9 frame-offset contour, cut once): no Tangent at a
+  non-tangent joint (failed on the old producer: seg0/seg1), none at the cut joint, uncut Tangents unchanged, every
+  fill end on the piece it names (failed on the old code: rail0:S 1.48 in off) and none lost, uncut manifest
+  byte-identical. Related suites 477/477; full vitest 5440/5440 (335 files). Known failures: none.
+- Live end-to-end (deployed d52c5da = this + main 32a9fa4, the board's real Send from the palette): Lattice
+  Boundary / L2 contour / L1 rails / L3 ties / L4 nodes all constraints_issues=0, parity_maxErr 0 / 0 / 1e-6 / 0 /
+  0, no [ERROR], no PARITY WARNING (were 5 failures, 208 / 6.9 / 4.7 in); the contour builds in 1.1 s (was 4.7 s).
+
+## H23 item 95: the first APPLY after a fresh BUILD left 3-4 of 7 toolpaths empty again -- Fusion's first generation (seat A / 77, 2026-10-06)
+- Reproduced on BOTH boards on main as deployed (CAM engine byte-identical to item 91's fix f818ae8):
+  T16 7x9 + wall + lattice board through the palette (BUILD/APPLY clicks): ok=4 missing=3; the item-90 cam-bricks
+  board through the replay tool (fusion_send_build_apply.py): ok=3 missing=4, then again ok=3 missing=4. Signature:
+  'B-spline Back' "generated in 0.3 s" (never really ran), the early ops on 'MM - B-spline set' empty. The setups
+  carry NO attribute (item 91's cause is gone), so that tag was not the whole story: the 7/7 seen after item 91's
+  fix came on a light machine (today's cam-bricks Send took 176-244 s vs 30 s then).
+- Narrowed (one live run each, cam-bricks):
+    regenerate the 4 empty ops in the same doc -> 4/4 valid;
+    delete all ops, re-apply the templates, generate (same doc, fresh ops) -> 7/7: the failure is the DOC'S FIRST
+      generation, not new ops;
+    force every Manufacturing Model's bodies to evaluate (volumes; the B-spline MM took 1.4 s, so it was lazy) before
+      APPLY -> still ok=3 missing=4: not the MM geometry;
+    a one-op warm-up first (generate Back/Pocket back1 alone, awaited: it came back EMPTY in 4 s) -> then the batch
+      ok=5 missing=2 (both Morphed Spirals): a warm-up is not enough;
+    in that doc, a second pass by hand -- Back (empty op) then Top (now stale: it reads Back's stock), Frame skipped
+      -> 7/7 valid.
+- Fix (cam_engine/toolpath_gen.py, declared): the deferred TPGen's per-setup loop moved out of cam-builder.py
+  unchanged, plus a second pass: up to MAX_GENERATION_PASSES = 2, a setup that still holds an op without a valid
+  toolpath is generated again, in setup order, checked when reached (so a setup made stale by an earlier one's
+  regeneration is redone, a complete one is not). The fixed 1.5 s warmup pump stays as it was. Not root-caused inside
+  Fusion ("Generation failed", no message) -- the second pass is the measured behaviour, bounded and logged.
+- Tests: CAM-builder/test_toolpath_gen.py 5 (fakes that behave like the live run: an op's first generation empty,
+  a regenerated setup staling the next that reads its stock); with MAX_GENERATION_PASSES = 1 (the old single pass)
+  3/5 fail. CAM-builder suite 45/45. Known failures: none.
+- CORRECTION to the entry above (it was appended from an earlier draft): its "Fix" and "Tests" lines describe the
+  FIRST attempt (2a57205: a per-setup second pass, MAX_GENERATION_PASSES = 2, 5 tests). Live (cam-bricks) that
+  attempt gave ok=6 missing=1: regenerating Back as a setup brought its Pocket back but the Morphed Spiral, started
+  while the Pocket was still empty, failed again; that Morphed Spiral generated ALONE (Pocket valid) was valid.
+  The fix on the branch (2ed3f41): pass 1 per setup as before; passes 2..MAX_GENERATION_PASSES (= 3: 2 needed live,
+  one spare) go OP BY OP, in setup and op order, every op with no valid toolpath when reached, each awaited; stops
+  when nothing is missing. Tests: test_toolpath_gen.py 6, with a fake CAM that behaves like the live runs (an op's
+  first generation empty; a REgeneration started while its upstream was empty fails; generating anything stales
+  the next setup that reads its stock); with MAX_GENERATION_PASSES = 1 3/6 fail, against 2a57205 3/6 fail.
+  CAM-builder suite 46/46. Known failures: none.
+- LIVE 7/7 on two boards, a fresh doc each, 2ed3f41 deployed:
+    cam-bricks (replay tool): pass 1 Back 0.4 s / Top 32.9 s / Frame 59.6 s; pass 2 op by op Back/Pocket 18.1 s,
+      Back/Morphed 20.2 s, Top/Pocket 8.9 s, Top/Morphed 5.5 s, Top/deloge 33.2 s -> post-audit ok=7 missing=0; all
+      7 valid, no error / warning, machining-time estimates present.
+    T16 7x9 + wall + lattice (palette Send + CAM palette BUILD / APPLY clicks): pass 1 Back 0.3 s; pass 2 op by op
+      (7.3 / 2.0 / 4.1 / 1.6 / 20.4 s) -> post-audit ok=7 missing=0, all 7 valid; the palette ends
+      '✓ TOOLPATHS complete -- 7 ops ok'.
+
+## H23 item 96: CAM end to end for the bricks board, 3 timed runs on cam-firstgen-95 (seat A / 77, 2026-10-06)
+- Board: T1 7x9, fitted frame, brick 1 in, three_band frame + wall, carving (cam-bricks), captured fresh from this
+  branch (main 1b83ace + item 95; port verified free, --root guard 31/31; 207 pieces = 106 frame + 99 wall + 2 grout,
+  as item 90; the seed now reads back terrain 18905, so the terrain differs from item 90's 1218). Fusion driver:
+  tools/repro/h23_item90/fusion_send_build_apply.py, a fresh scratch doc per run, 39b6ed6 deployed.
+    run | Send s | BUILD s | templates s | generation s | passes | result
+     1  |  40.0  |  33.7   |    1.5      |    164       |   2    | 7/7 valid
+     2  |  37.1  |  28.3   |    1.2      |    154       |   2    | 7/7 valid
+     3  |  39.2  |  54.4   |    8.0      |    173       |   3    | 7/7 valid
+  Wall time Send -> all toolpaths ~4 min (239 / 221 / 275 s). Fusion's machining-time estimate is identical in all
+  three (2327 s ~ 39 min: Back 760.7 + 89.0, Top 482.2 + 90.9 + 249.3, Frame 472.3 + 182.9).
+- Pass detail: runs 1-2 as in item 95 (pass 1 Back 0.3 s = empty; pass 2 op by op made all). Run 3 differed: pass 1
+  generated Back's Pocket (9.9 s) but both Morphed Spirals came back empty; in pass 2 both Morphed Spirals failed
+  AGAIN (0.3 s each) although generated alone with their Pockets valid; pass 3 made them (2.1 / 3.2 s) and redid the
+  stale deloge. So MAX_GENERATION_PASSES = 3 had no spare left in run 3 -- flagged to the advisor (raise to 4, or look
+  for what makes a generation 0.3 s-empty; it is not only the first one).
+- MAX_GENERATION_PASSES 3 -> 4 (advisor, after item 96 run 3 used the third pass): one spare beyond the measured 3; the declaration test now asks >= 4 (fails at 3, pycache cleared). CAM-builder 46/46.
+## F35 item 69 batch -- sidebar fixes (1) (2) (3) (4) (6) (seat E / 61, 2026-10-06)
+- (1) Stamp settings survive a reload. ROOT (measured): a sidebar write to an editor layer's tooling changed the
+  live layer but never re-serialized P.editorSvg's data-editor-layers. ONE path: core/state.js layerToolingChanged ->
+  the editor's own change pipeline, kind 'tooling' = serialize + persist (declared in BOTH tables: an unknown kind
+  falls back to 'commit', which remasks). P.stamp* KEPT as the layer's mirror -- still read as a fallback
+  (stamp-mask-manager.js 140-144, rebuild.js 200-201, stamp/_shared.js 49). Live, art on layer 0: values + 3D kept.
+- (2) Delete frame undoable from the sidebar Undo: a step's own frame transition (takeSnapshot extra.frame) restored
+  by unifiedUndo/Redo through applySnapshot (setFrameRecord restored); the global undo still never puts an OLDER
+  frame back (UNDO_KEEPS). history.js ensureUndoBaseline. Live: Undo -> same P, same 3D; Redo -> deleted.
+- (3) rebuild.js rebuildInputDigest + REBUILD_INERT_KEYS: skip a build equal to the last one. Inputs = all P (terrain
+  reads P whole -- grep cannot list them) minus the inert keys, deltas (contents: strokes edit in place), layers
+  (tooling + mask identity), grid, preview, the Photo decode state (the one async input outside P). No-op rebuilds
+  34 -> 14 (76.2 s -> 39.8 s, x4), then the Hardness keys (P name sculpt*Strength -- my first list had the UI name;
+  a test now requires every inert key to be a real P key) -> 0. The remaining ones are display inputs. detailDensity:
+  re-measured alone, the card shows -- no change made.
+- (4) Thicken slider step 0.005 (0.125 on the grid); invariant test over every SLIDER_PAIRS default.
+- (6) Carve toggle + Undo restored NOTHING (button, layer.carve, 3D) -- the global history's newest snapshot predated
+  the brick lay. Apply now sets the global baseline (ensureUndoBaseline('Apply')); an undo redraws the layer rows and
+  re-saves the restored roster. Live: all three back.
+- LEFT (advisor): (5) sculpt tool choice not kept across a reload; (7) stamp Transform enabled with no stamp art.
+  NOTED, not fixed: brick-panel changes (a lay, presets) take no global snapshot of their own; the Apply baseline
+  covers the sidebar after an Apply, not a sidebar undo while the editor session is still open (sidebar is covered).
+- Gates: full vitest 339 files, 5456 passed, 0 failed. Matrix on the branch: persistence 24, undo 3, layers 11,
+  sidebar-3d 13 rows, 0 FAIL each. New tests fail before / mutation-fail (counts in each commit).
+
+## H23 item 89 --brick re-check of seam-9x12 0f85fe3 (seat A / 77, 2026-10-06)
+- Asked by the advisor after item 91: re-check the boards seam-9x12 changed -- 9x12 at 0.75 in, 6x9 and 7x9 at 1.25 and
+  1.5 in. Bricks only (default set), fitted frames, the 3 band presets, 19 templates = 57 boards per combo.
+- Sweep option added (declared): --brick=<in> sets the brick length the app lays (default 1, a non-positive value
+  exits 2); each case records brickLengthIn. Also: the fill pass crashed with EPERM when the previous Chrome still
+  held the profile folder -- the wipe now retries 10 x 1.5 s, then uses a fresh timestamped profile folder.
+- Served from a 0f85fe3 worktree on port 8803 (confirmed free before start); the --root guard matched 31 files on every
+  pass. Fusion through the deployed _apply_bricks_sketch (main f818ae8 deployed; b-spline-gen.py brick import unchanged).
+- RESULT: 285/285 profiles == svgPieces, 0 slivers, 0 multi-loop, 0 open ends.
+    9x12 @ 0.75: 57/57 (106-216 pieces)   6x9 @ 1.25: 57/57 (62-104)   6x9 @ 1.5: 57/57 (52-92)
+    7x9 @ 1.25: 57/57 (64-104)            7x9 @ 1.5: 57/57 (54-92)
+  Table + raw rows: tools/repro/h23_item89_baseline/*seam9x12_0f85fe3*. 6x9 and 7x9 share the piece count in 53/57
+  cases at 1.25 in although every outline differs (only the two horizontal bars change, by 1 in < one brick).
+- Slip: one 9x12 row (template_5__three_band) got a duplicate "sketch: false" row from an overlapped timed-out call; the
+  first row (216 == 216) is kept. Heavy templates (16-19, ~1,100-2,300 curves) take 5-10 s each: batches of 2 there.
+
+## H23 item 98: the TPGen audit says WHY an op has no toolpath (seat A / 77, 2026-10-06)
+- Found during item 97: after a long session Fusion held 65 GB of private bytes (system commit ~6 GB free of 128);
+  the empty ops' own op.error read "Out of memory." while the audit logged only "MISSING toolpath" -- so items
+  95-97 chased a timing / first-generation hypothesis for hours. Fusion restart pending (Fred's unsaved Untitled).
+- Detection only: cam_engine/toolpath_gen.why_empty(op) -> the first line of Fusion's own op.error and op.warning
+  ('' when it says nothing; never raises); the audit's MISSING line appends it ("... MISSING toolpath -- error: Out
+  of memory."). No behaviour change.
+- Tests (test_toolpath_gen.py +4, fake ops carrying an error / a warning / a raising property; the audit wiring by
+  source): 4/4 fail on main 3a6c2a7. CAM-builder 50/50. Known failures: none. No live run: Fusion is off-limits
+  until the restart (it would also only show "Out of memory." today).
+## F35 item 71 -- a sidebar Brick pick is one global undo step (seat E / 61, 2026-10-06)
+- MEASURED on main 3a6c2a7 (T1, applied board, sidebar Quick pattern Herringbone, then the MAIN screen's Undo): the pick
+  took NO global step (history top stayed 'Apply'); Undo undid the OLDER Apply step -- brickSettings went back to a
+  pre-lay state (not the pre-pick one), the laid bricks + 3D stayed Herringbone (the drawing is in UNDO_KEEPS), the
+  quick row lit Stretcher over a Herringbone board; Redo did not bring the pick's settings back either.
+- FIX (declared, the snapshot path): core/history.js UNDO_STEP_RESTORES -- the UNDO_KEEPS keys a STEP may restore,
+  { frame, editorSvg }, each { before, after }; an `after` left out is read from the live state when the step is
+  undone (the re-lay serializes async). recordBoardStep(label, change): baseline, the drawing before, the change, one
+  step. brick-panel.js BRICK_QUICK_SETTINGS clicks go through it ('Bricks: <row label>'). snapshot-manager.js puts a
+  restored drawing back into P + the live editor (open, as a load does) + drape. Item 69's Delete frame moved onto the
+  same field (restore.frame). Inside the editor no global step (the editor's own undo).
+- LIVE after (branch): pattern / size / frame bands / grout colour: Undo -> settings, brick GEOMETRY, 3D, quick chip
+  back; Redo -> the pick (4/4). Raw-markup hash of the drawing differs after editor.open (attribute order/class);
+  geometry is the comparison. One early branch run showed the pick not re-laying; not reproduced in 6 later runs.
+- TESTS: tests/brick-quick-undo.test.js (4; the click row mutation-fails with the old unwrapped handler);
+  snapshot-manager + delete-frame rows moved to restore.*. Matrix undo group + 2 rows (SIDEBAR_UNDO): 5 rows 0 FAIL.
+  Full vitest 344 files, 5478 passed (first run lost workers to 'process out of memory' under fleet load; re-run green).
+- CLOSED (item 71 follow-up): the one early pick that did not re-lay. Re-run after Fusion's restart (Fusion 1.2 GB,
+  10 of 31.8 GB free; at the time of the miss Fusion held 65 GB): one applied T1 board, 20 x (Quick pattern Herringbone,
+  Stretcher) = 40 picks, each checked for a new laid geometry + pattern within 8 s: 40/40 re-laid (0.9 s each), 0 misses.
+  Taken as the memory starvation at the time, not a fault in the pick path.

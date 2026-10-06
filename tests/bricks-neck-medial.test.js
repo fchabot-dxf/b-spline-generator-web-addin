@@ -92,10 +92,16 @@ function neckCover(bricks) {
  *  near-side joint (the shapely sweep: at most 0.0998 sq in, T18 1.25, every opened gap narrower than the board's own
  *  widest joint; this grid reads it as 0.133). COVER_LOSS_IN2 bounds it; T14's X left bare (the no-hole drop guard
  *  removed) loses 0.217 here and fails. */
-const COVER_LOSS_IN2 = 0.16;
-const MAIN_NECK_COVER = { template_18: 9.3192, template_19: 9.2828, template_14: 9.4436, template_16: 9.1340 };
+// 21b: the pins below are the joint rule's own lay (cut included), so the bound only has to clear grid noise -- T14's X
+// left bare (the no-hole drop guard removed) loses 0.162 here and fails clearly
+const COVER_LOSS_IN2 = 0.05;
+// 21b joint rule (re-pinned): every seam is now a full joint (rows, bands, wall, mitres, fans), which every board gives up
+// as mortar -- pinned at the joint rule's own lay, the bound below still guards what the medial cut alone may lose
+const MAIN_NECK_COVER = { template_18: 9.1160, template_19: 8.9612, template_14: 9.0716, template_16: 8.3208 };
 /** frame digests of T1 7x9 at 1 in on main (0443c48, before this item) -- byte-identical means the same digest */
-const MAIN_T1_DIGESTS = { single_soldier: 2521265454, three_band: 2521265454, double_course: 807046501 };
+// 21b joint rule (re-pinned): the joint rule re-lays every frame once (Fred's call, with the before/after sheet); this pins
+// the new lay so a later change that touches a board with no neck is still caught
+const MAIN_T1_DIGESTS = { single_soldier: 2787030508, three_band: 2787030508, double_course: 1334897525 };
 
 describe('one row meeting itself across a neck: split at the medial line (T86 16(c) part 2)', () => {
   // [template, preset, size, the neck window in y (in) where the medial seam runs]

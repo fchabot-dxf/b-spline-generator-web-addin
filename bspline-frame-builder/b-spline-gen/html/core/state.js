@@ -1,7 +1,7 @@
 import { COORD_SYSTEM } from './coords.js';
 import { isDirty, markDirty } from './dirty.js';
 import { dbg } from './debug.js';
-import { fusLog } from './fusion-log.js';
+import { fusDebug } from './fusion-log.js';
 import { brickSetById } from './bricks/library.js';
 
 // Audit C4: the brick defaults' ONE source is Set 1's own declaration (library.js) -- the state
@@ -421,7 +421,21 @@ export function setPostDelta(val) { postDelta = val; }
 /** A completed 3D rebuild's count (setLastResult): the brick matrix waits on it instead of a time window (advisor: under
  *  a loaded --parallel gate the rebuild can start after any fixed window). Read-only for everyone else. */
 export let lastResultGeneration = 0;
+/** Item 69 (seat E, measured: blur 4 -> 0, V-bit 120 -> 90 after a reload): a sidebar write to an editor layer's
+ *  tooling field goes through the editor's own change pipeline ('tooling' = serialize + persist, app-init.js
+ *  CHANGE_PIPELINE) so the saved drawing's layer roster holds it -- the layer is the one store (the mask reads it);
+ *  P.stamp* stays its mirror (still read as a fallback: stamp-mask-manager.js, rebuild.js). Coalesced per frame by
+ *  the editor's _notifyChange. */
+export function layerToolingChanged() {
+    const ed = typeof window !== 'undefined' ? window.svgEditor : null;
+    if (ed && typeof ed._notifyChange === 'function') ed._notifyChange('tooling');
+}
 export function setLastResult(val) { lastResult = val; lastResultGeneration++; }
+/** Item 37: the page-load restore's declared end -- the boot build owner's (app-init.js bootBuildOwner) build has
+ *  landed. `generation` is lastResultGeneration at that moment. Probes and the brick matrix wait on `complete` after a
+ *  reload instead of a quiet window (a quiet window read the old boot build's unmasked surface as final). */
+export const bootRestore = { complete: false, generation: null };
+export function markBootRestoreComplete() { bootRestore.complete = true; bootRestore.generation = lastResultGeneration; }
 export function setIsFusionMode(val) { isFusionMode = val; }
 export function setLastGridSize(nx, nz) { lastNx = nx; lastNz = nz; }
 export function setStrokeCache(val) { strokeCache = val; }
@@ -476,8 +490,8 @@ export function saveLastSession() {
             localStorage.removeItem('splineGenLastSession');
             throw quota;
         }
-        // Automatically send session JSON to Fusion log file if running inside Fusion
-        fusLog(JSON.stringify(session));
+        // The session JSON in the Fusion log is debug-level (H23 item 93: ~290 KB a save rotated the log twice a load)
+        fusDebug(JSON.stringify(session));
     } catch (e) {
         console.warn('saveLastSession failed:', e);
     }
@@ -587,7 +601,7 @@ export function updateP(key, value) {
         try {
             const editorLayer = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers))
                 ? window.svgEditor._layers[P.activeLayerIdx] : null;
-            if (editorLayer) editorLayer[layerSpecific[key]] = P[key];
+            if (editorLayer) { editorLayer[layerSpecific[key]] = P[key]; layerToolingChanged(); }
         } catch (_) { /* defensive: state.js must not crash on editor access */ }
     }
 

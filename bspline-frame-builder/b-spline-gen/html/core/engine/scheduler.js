@@ -16,8 +16,12 @@ export function scheduleRebuild(rebuildFnOrDelay, delayMs = 50) {
   }
 
   rebuildTimer = setTimeout(() => {
+    rebuildTimer = null;
     if (typeof lastRebuildFn === 'function') {
       lastRebuildFn();
     }
   }, delay);
 }
+
+/** A rebuild is waiting on its timer (item 37: rebuild.js whenRebuildIdle reads it). */
+export function isRebuildScheduled() { return rebuildTimer !== null; }
