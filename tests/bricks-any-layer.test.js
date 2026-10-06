@@ -79,6 +79,11 @@ describe('item 64: a new element goes on its KIND\u2019s own layer and stays on 
     runBricks(ed, P.brickSettings, null);
     expect(ed._layers).toHaveLength(4); // reused, not duplicated
   });
+  it('a kind layer is created only when that kind is LAID: a Wall-only lay makes "Wall" and no "Frame"', () => {
+    const ed = fakeEditor();
+    runBricks(ed, P.brickSettings, null, { kinds: ['wall'] });
+    expect(ed._layers.map((l) => l.name)).toEqual(['Layer 1', 'Layer 2', 'Wall']);
+  });
   it('a kind layer is found by its declared brickKind, never by its name (renamed, it is still the Wall\u2019s)', () => {
     const ed = fakeEditor();
     runBricks(ed, P.brickSettings, null, { kinds: ['wall'] });

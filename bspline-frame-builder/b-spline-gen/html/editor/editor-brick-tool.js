@@ -1019,9 +1019,22 @@ function _layInput(editor, settings, frameGeom) {
 export const wallAreaSettings = (editor, area, settings) =>
   (editor && area.id === editor._brickWallAreaId ? settings : withWallFields(settings, area.settings));
 
+/** F35 item 42 (Fred: "I don't always use frames"): the frame's BANDS bound the wall only when there is a Frame element
+ *  (laid now, or already on the board); with none, the wall fills the frame's contour itself -- the template's outer edge,
+ *  the board rectangle for template None -- with no band reserve. Measured before: T18 7x10, 0.75 in, Wall only, no Frame
+ *  element: the wall spanned x 1.00-6.00, y 1.00-7.99 (the preset's Soldier band depth kept clear on every side). */
+export function frameGeomForLay(editor, frameGeom, kinds = BRICK_KINDS) {
+  if (!frameGeom) return frameGeom;
+  const frameElement = kinds.includes('frame') || !!brickRecordNode(editor, 'frame');
+  return frameElement ? frameGeom : { ...frameGeom, bands: [] };
+}
+
 function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
+  frameGeom = frameGeomForLay(editor, frameGeom, kinds); // item 42
   // item 22 slice 3: each element on its own layer (its record's; a new one on the active layer)
-  const layerOf = { wall: elementLayer(editor, 'wall'), frame: elementLayer(editor, 'frame') };
+  // item 64: only the kinds laid NOW resolve a layer (resolving creates a kind layer: never on a mere lookup -- measured: a
+  // Wall-only lay had created an empty "Frame" layer)
+  const layerOf = Object.fromEntries(kinds.map((k) => [k, elementLayer(editor, k)]));
   const wallSettings = elementSettings(settings, 'wall');
   const frameSettings = elementSettings(settings, 'frame');
   const input = _layInput(editor, settings, frameGeom);
