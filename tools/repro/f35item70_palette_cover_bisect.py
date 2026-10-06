@@ -5,7 +5,8 @@ bricks step on, the screen showed Fusion's viewport where the palette was, while
 Run INSIDE Fusion (fusion_execute: exec this file's text) with the B-Spline palette open and visible. It works in a
 NEW scratch design document it creates and closes itself (only that handle -- never by name or count), and does the
 bricks step's own calls one at a time, pumping events after each (as the Send now does), then checks:
-  covered    the window at the palette's centre on screen is NOT the palette (or one of its children)
+  covered    the top-level window at the palette's centre on screen is NOT the palette (atTitle / atIsFusion say
+             whose it is: Fusion's own main window = the bug; another app's window = not ours)
   isVisible / dockingState   what the API says about the palette
 Steps: 0 baseline; 1 sketches.add(plane); 2 sketch.name; 3 importManager.importToTarget(svg, sketch);
 4 a second sketch + profile access (the frame build sketches too); then the REMEDY: 5 palette.isVisible = True.
@@ -22,14 +23,14 @@ import adsk.core
 import adsk.fusion
 
 PALETTE_ID = 'fusionHybridPalette'      # b-spline-gen.py PALETTE_ID
-PALETTE_NAME = 'Symmetric B-Spline Gen'  # b-spline-gen.py PALETTE_NAME
 PUMP_S = 0.3
 
 user32 = ctypes.windll.user32
 user32.WindowFromPoint.argtypes = [wintypes.POINT]
 user32.WindowFromPoint.restype = wintypes.HWND
 user32.GetAncestor.restype = wintypes.HWND
-user32.IsChild.argtypes = [wintypes.HWND, wintypes.HWND]
+user32.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+user32.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
 EnumProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
 
@@ -40,24 +41,31 @@ def _title(h):
     return b.value
 
 
-def _find_palette_hwnd():
-    """The palette's own window: a top-level (floating) or child (docked) window titled with the palette's name."""
-    found = []
+def _rect(h):
+    r = wintypes.RECT()
+    user32.GetWindowRect(h, ctypes.byref(r))
+    return [r.left, r.top, r.right, r.bottom]
 
-    def visit_children(parent):
-        def cb(h, _):
-            if PALETTE_NAME in _title(h):
-                found.append(h)
-            return True
-        user32.EnumChildWindows(parent, EnumProc(cb), 0)
 
-    def top(h, _):
-        if PALETTE_NAME in _title(h):
-            found.append(h)
-        visit_children(h)
+def _find_palette_hwnd(pal):
+    """The palette's own window (seat A, measured on this PC: a top-level Win32 window of FUSION'S process titled
+    'Fusion360', sized like the palette -- NOT titled with the palette's name; a title match caught a Chrome tab of
+    the web app instead). Fusion's visible top-level windows of this pid, the one whose size is the palette's at that
+    window's own DPI. Rects are read per-monitor-DPI aware (this THREAD only, restored after: never the process)."""
+    pid = os.getpid()
+    cands = []
+
+    def cb(h, _):
+        p = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(h, ctypes.byref(p))
+        if p.value == pid and user32.IsWindowVisible(h) and _title(h) == 'Fusion360':
+            l, t, r, b = _rect(h)
+            scale = user32.GetDpiForWindow(h) / 96.0
+            cands.append((abs((r - l) - pal.width * scale) + abs((b - t) - pal.height * scale), h))
         return True
-    user32.EnumWindows(EnumProc(top), 0)
-    return found[0] if found else None
+    user32.EnumWindows(EnumProc(cb), 0)
+    cands.sort(key=lambda c: c[0])
+    return (cands[0][1], round(cands[0][0])) if cands else (None, None)
 
 
 def _pump(s=PUMP_S):
@@ -68,20 +76,28 @@ def _pump(s=PUMP_S):
 
 
 def _check(step, pal):
-    hwnd = _find_palette_hwnd()
-    row = {'step': step, 'isVisible': bool(pal.isVisible), 'dockingState': int(pal.dockingState), 'hwnd': bool(hwnd)}
-    if hwnd:
-        r = wintypes.RECT()
-        user32.GetWindowRect(hwnd, ctypes.byref(r))
-        pt = wintypes.POINT((r.left + r.right) // 2, (r.top + r.bottom) // 2)
-        at = user32.WindowFromPoint(pt)
-        mine = bool(at) and (at == hwnd or user32.IsChild(hwnd, at))
-        row.update({'rect': [r.left, r.top, r.right, r.bottom], 'covered': not mine, 'atTitle': _title(at)[:60] if at else ''})
+    prev = user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))  # per-monitor v2, this thread only
+    try:
+        hwnd, size_err = _find_palette_hwnd(pal)
+        row = {'step': step, 'isVisible': bool(pal.isVisible), 'dockingState': int(pal.dockingState), 'hwnd': bool(hwnd),
+               'sizeErrPx': size_err}
+        if hwnd:
+            l, t, r, b = _rect(hwnd)
+            at = user32.WindowFromPoint(wintypes.POINT((l + r) // 2, (t + b) // 2))
+            root = user32.GetAncestor(at, 2) if at else None  # GA_ROOT: the top-level window at that point
+            p = wintypes.DWORD()
+            if root:
+                user32.GetWindowThreadProcessId(root, ctypes.byref(p))
+            row.update({'rect': [l, t, r, b], 'covered': root != hwnd, 'atTitle': _title(root)[:60] if root else '',
+                        'atIsFusion': bool(root) and p.value == os.getpid(), 'atRect': _rect(root) if root else None})
+    finally:
+        if prev:
+            user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(prev))
     print(json.dumps(row))
     return row
 
 
-def run():
+def _run():
     app = adsk.core.Application.get()
     ui = app.userInterface
     pal = ui.palettes.itemById(PALETTE_ID)
@@ -129,4 +145,4 @@ def run():
     return rows
 
 
-result = run()
+result = _run()
