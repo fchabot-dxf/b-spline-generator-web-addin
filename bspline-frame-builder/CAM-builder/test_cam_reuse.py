@@ -3,8 +3,9 @@
 MEASURED live (item 85): a re-BUILD on an unchanged board cost ~47 s (three MM snapshots + Fusion's first setup on
 the dense panel, all redone); re-applying stock / WCS on the existing setups took ~1.3 s; setups SURVIVE and accept
 `setup.models = ObjectCollection(...)`; after a model change the orientation axes + declared box must be re-applied
-(stock X read 7.5 instead of 9.5). Setups carry attributes, ManufacturingModels do NOT (measured) -> setups are
-found by SETUP_ATTR, MMs by their declared display names.
+(stock X read 7.5 instead of 9.5). Setups are found by their SETUP_SPECS name, MMs by their declared display names.
+H23 item 91 (MEASURED, 4/4 boards): tagging each fresh setup with an attribute during BUILD made the FIRST APPLY after
+that BUILD generate 3/7 ops; the same BUILD without the tag write generated 7/7 -> BUILD writes no attribute on a setup.
 
 Run with:
     cd bspline-frame-builder/CAM-builder
@@ -58,8 +59,8 @@ class _Attr:
 
 
 class _Attrs:
-    def __init__(self, tag=None):
-        self._a = {} if tag is None else {('CAMBuilder', 'setup'): _Attr(tag)}
+    def __init__(self):
+        self._a = {}
 
     def itemByName(self, g, n):
         return self._a.get((g, n))
@@ -75,10 +76,10 @@ class _Op:
 
 
 class _Setup:
-    def __init__(self, name, tag=True, valid=True, ops=()):
+    def __init__(self, name, valid=True, ops=()):
         self.name = name
         self.isValid = valid
-        self.attributes = _Attrs(name if tag else None)
+        self.attributes = _Attrs()
         self.models = _Coll()
         self.operations = _Coll(ops)
         self.parameters = object()   # every parameter write is recorded through the patched leaves
@@ -116,22 +117,43 @@ def test_a_complete_valid_build_is_reused(eng):
     assert list(r['setups']) == [s['name'] for s in eng.sb.SETUP_SPECS]
 
 
-@pytest.mark.parametrize('case', ['mm_missing', 'mm_invalid', 'setup_missing', 'setup_invalid', 'setup_untagged'])
+@pytest.mark.parametrize('case', ['mm_missing', 'mm_invalid', 'setup_missing', 'setup_invalid', 'setup_duplicated'])
 def test_anything_missing_or_invalid_means_full_recreate(eng, case):
     def mut(mms, setups):
         if case == 'mm_missing': mms.pop(1)
         if case == 'mm_invalid': mms[1].isValid = False
         if case == 'setup_missing': setups.pop(1)
         if case == 'setup_invalid': setups[1].isValid = False
-        if case == 'setup_untagged': setups[1].attributes = _Attrs(None)   # an older build: named, not tagged
+        if case == 'setup_duplicated': setups.append(_Setup(setups[1].name))   # e.g. a user's copy with the same name
     cam, names = _full_build(eng, m=mut)
     assert eng.sb.find_reusable_build(cam, names) is None
 
 
-def test_build_setup_tags_new_setups(eng):
-    s = _Setup('B-spline Back', tag=False)
-    eng.sb._tag_setup(s, 'B-spline Back')
-    assert s.attributes.itemByName(*eng.sb.SETUP_ATTR).value == 'B-spline Back'
+class _NoWriteAttrs:
+    """A fresh setup's attributes: any write is recorded (H23 item 91: a BUILD that writes one breaks the first APPLY)."""
+    def __init__(self):
+        self.writes = []
+
+    def add(self, *a):
+        self.writes.append(a)
+
+    def itemByName(self, *a):
+        return None
+
+
+def test_build_setup_writes_no_attribute_on_the_fresh_setup(eng, monkeypatch):
+    sb = eng.sb
+    eng.adsk.cam.OperationTypes = type('OperationTypes', (), {'MillingOperation': 0})
+    fresh = _Setup('placeholder')
+    fresh.attributes = _NoWriteAttrs()
+    cam = types.SimpleNamespace(setups=types.SimpleNamespace(createInput=lambda t: types.SimpleNamespace(models=None),
+                                                             add=lambda inp: fresh))
+    monkeypatch.setattr(sb, '_collect_bodies', lambda mm: [])
+    monkeypatch.setattr(sb, '_configure_setup', lambda setup, mm, spec, logger: None)
+    spec = next(s for s in sb.SETUP_SPECS if s['name'] == 'B-spline Back')
+    out = sb.build_setup(cam, {spec['mm_rule']: types.SimpleNamespace(name='MM')}, spec, skip_templates=True, skip_machine=True)
+    assert out is fresh and fresh.name == 'B-spline Back'
+    assert fresh.attributes.writes == []
 
 
 # ---- the in-place update ----

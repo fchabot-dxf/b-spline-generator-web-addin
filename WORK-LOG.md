@@ -23151,3 +23151,30 @@ On top of V1 / V2 / V4 (above):
   failing groups re-run alone.
 - Changed on purpose: the --parallel / all-groups report row ORDER (BRICK_CONTROLS is group by group); per-group order
   unchanged. Kept: loadFromStandIn in run.mjs, reached by no runner (pre-existing).
+
+## H23 item 91 -- the first APPLY after BUILD generated 3/7 ops: item 86's setup tag (seat A / 77, 2026-10-06)
+- Symptom (item 90, main and seam-9x12 alike, 4/4 boards): the first APPLY right after BUILD generated 3/7 ops --
+  'B-spline Back' "generated in 0.4s" with both ops "Invalidated: Generation failed" (no error / warning text), Top's
+  first two missing, Frame ~130 s. Generating again produced them. In item 83 (afdc4c0) the first APPLY made 7/7.
+- Bisect, one board (T1 7x9 bricks, the item-90 "before" payload), deployed add-ins, only the CAM engine swapped
+  (sys.path, restored after each call; verified):
+    afdc4c0 engine: first APPLY 7/7 (Back 49.7 s). The only CAM change since: 4ea8973 (item 86, mine).
+    In it, on a FRESH build: the _configure_setup move is byte-identical (checked); the coordinator only reorders
+      the WCS-sketch step vs the cleanup (a no-op on a fresh doc); the one new write is _tag_setup -- an attribute
+      ('CAMBuilder', 'setup') added to every fresh setup.
+    main engine with _tag_setup patched to a no-op (setups confirmed untagged): first APPLY 7/7 (Back 49.4 s).
+  -> Writing an attribute on a fresh setup during BUILD makes the first generation fail. (One observation per board,
+  two boards; the mechanism inside Fusion is not known.)
+- FIX (cam_engine/setup_builder.py): BUILD writes no attribute on a setup; SETUP_ATTR / _tag_setup removed. A re-BUILD
+  finds its setups by their SETUP_SPECS name -- the identity _cleanup_previous_build already deletes by -- each
+  present ONCE and valid (a duplicated name -> the full recreate). Also the POS DIAG units: the WCS translation reads
+  in mm (measured, item 82), so those lines now say mm, and the derived stock 'bottom' subtracts the stock span in mm
+  (it divided by 10 and printed 'cm': mixed units).
+- Tests (test_cam_reuse.py): build_setup driven with fakes writes no attribute on the fresh setup (new); reuse by
+  name; a duplicated setup name -> full recreate (replaces the "untagged" case). 10/10; against main's setup_builder
+  3/10 fail (incl. the no-attribute test). CAM-builder 36/36.
+- LIVE (the branch engine via the swap, deployed add-ins otherwise): first APPLY after BUILD = 7/7, valid, no error /
+  warning, on two boards (bricks: Back 50.7 s; Grey stone ring: Back 44.5 s). A re-BUILD on the bricks doc REUSED by
+  name in 8.9 s (setups valid, ops kept). The POS DIAG label fix shows only once deployed (that log runs inside the
+  deferred generation, after the swap is restored).
+- Hygiene: scratch docs closed by handle (only Fred's Untitled), holder none.
