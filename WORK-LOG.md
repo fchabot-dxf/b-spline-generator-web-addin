@@ -23194,3 +23194,24 @@ thick flange (single, dc at 1 in) + the 456-lay sweep showing nothing else chang
   mismatched, 445 extra profiles, 172 slivers; worst T14 three_band 133/289/92 -> 133/133/0, T3 three_band 145/248/48 ->
   97/97/0). Server verified (--root guard byte-matched 30 served files). Caveat: the sweep's frame Generate is not
   reproducible even seeded, so before / after are not the same boards case by case; the acceptance holds on every board.
+
+## T86 item 30 -- BUILT (b'): a single course band too deep for a feature narrows to fit it (seat B / fc, 2026-10-06)
+Rule (advisor (b'), replacing (a) -- (a) would have changed 201 / 456 lays and rides on narrowestGap, item 31): a SINGLE
+course band whose row drops a LINE lying between two lines (lineBetweenLinesDropsAt) is laid at the deepest depth where no
+such line drops, less a joint (bisection, 24 steps); note step {band: 0, step: 'narrow', toIn}; bandsReducedText adds
+"bricks cut to the row depth". Area bands (fieldstone) are exempt: they fill their ring, no run to drop.
+- Thick-flange T9 (fixture tests/fixtures/t9-thick-flange-silhouette.json): 1 in single / double -> narrowed to ~0.88,
+  bare flange 6.15 -> 0 sq in. Shot shots/seatB/neck16c2/item30_t9_thick_flange.png.
+- Sweep, 2,052 lays (19 templates x 9 presets x 0.75 / 1 / 1.25 / 1.5 in x 6x9 / 7x9 / 9x12): 36 narrow, all T6 / T9 / T15
+  at 1.25-1.5 in on 6x9 / 7x9; none at 0.75 / 1 in, none on 9x12, none of the 456 at 7x9 <= 1.25 except T15 6x9 1.25.
+  Those 36 before -> after: bare band ground T15 7.7-8.8 -> 0, T6 3.9 -> 0, T9 6x9 0.045 -> 0.064 (the web / flange T
+  mortar knot, same class as the accepted T18 shoulder knot); band overlap 0 -> 0; wall-over-band T6 0.278 -> 0.002.
+  Shot shots/seatB/neck16c2/item30_narrowed_36_before_after.png (T15 7x9, T6 6x9, T9 6x9 at 1.5 in).
+- Found + fixed in the build: at the band's own wall depth the consumed feature is still a SLIVER of wall (T9 a 0.018 in
+  skeleton, T15 / T6's tapering neck a spike < 0.01 in) that bondLayout laid over the band (0.03-0.99 sq in). The wall
+  boundary is taken past the cliff plus half a joint: wall ground narrower than a joint is mortar. COST: on a narrowed lay
+  the band-to-wall seam is 1.5 joints (only the 36 lays). Test: bricks-band-narrow, mutation-checked (3 fail without it).
+- Re-pinned item 28 (bricks-band-fit): "one band that cannot shrink" -> item 28 still does not reduce it, item 30 narrows
+  it (T9 7x9 1.5, only step 'narrow'); "a wall wherever it fits" exempts a narrowed lay (T9 1.5: the band fills the web).
+- Full vitest 325 files / 5,344 passed (one run had frame-gen "Generate writes the seeds" fail once; passes alone with and
+  without this change -- load flake, not bricks).

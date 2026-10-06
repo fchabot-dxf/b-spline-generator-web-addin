@@ -475,8 +475,9 @@ function fitBandStack(bands, planned, gap, L, H) {
 /** T86 item 30 (Fred's item 28 ruling, "make the app do the best result"; advisor (b')): a SINGLE band too deep for a
  *  feature of the board -- its row would drop a line lying between two lines (lineBetweenLinesDropsAt) -- is laid at the
  *  deepest depth where no such line drops, less a joint, instead of stranding fans and leaving the feature bare. Narrowing
- *  is LOCAL: MEASURED over 456 lays (8 presets x 19 templates x 0.75 / 1 / 1.25 in) it changes none; a BAND_FIT_SHARE of
- *  narrowestGap would have narrowed 201 of them (and narrowestGap reads T7 as 0.007 in -- item 31). Returns the narrowed
+ *  is LOCAL: MEASURED over 456 lays (8 presets x 19 templates x 0.75 / 1 / 1.25 in, 7x9) it changes none, and over 2,052
+ *  (+ 1.5 in, 6x9 / 9x12) 36 -- T6 / T9 / T15 at 1.25-1.5 in, bare band ground up to 8.8 sq in -> 0; a BAND_FIT_SHARE of
+ *  narrowestGap would have narrowed 201 of the 456 (and narrowestGap reads T7 as 0.007 in -- item 31). Returns the narrowed
  *  band + its note step, or null when the band lays as requested. */
 const NARROW_BISECT_STEPS = 24;
 function narrowSingleBand(enriched, band, planned, halfJoint, joint) {
@@ -487,7 +488,11 @@ function narrowSingleBand(enriched, band, planned, halfJoint, joint) {
   for (let k = 0; k < NARROW_BISECT_STEPS; k++) { const mid = (lo + hi) / 2; if (lineBetweenLinesDropsAt(enriched, rowEdge(mid))) hi = mid; else lo = mid; }
   const toIn = lo - joint;
   if (!(toIn > joint)) return null; // nothing sensible left to lay: as requested, with today's warning
-  return { band: { ...band, widthIn: toIn, narrowedTo: toIn }, step: { band: 0, step: 'narrow', toIn }, requestedDepthIn: depth };
+  // the wall's boundary is taken PAST the cliff (hi: the line has dropped) and half a joint further: at the band's own
+  // wall depth (lo) the consumed feature is still a sliver of wall -- T9 7x9 1.5 in a 0.018 in skeleton, a tapering neck
+  // (T15 / T6 1.5 in) a spike under 0.01 in -- which bondLayout fills with cells over the band (MEASURED: 0.03-0.99 sq in).
+  // Wall ground narrower than a joint is mortar. Cost: on a narrowed lay the band-to-wall seam is 1.5 joints.
+  return { band: { ...band, widthIn: toIn, narrowedTo: toIn }, step: { band: 0, step: 'narrow', toIn }, requestedDepthIn: depth, wallDepthIn: rowEdge(hi) + halfJoint };
 }
 
 export function bricksContourBands(primitives, bands, opts) {
@@ -508,12 +513,12 @@ export function bricksContourBands(primitives, bands, opts) {
   const fit = fitBoard && opts.bandFit !== false ? fitBandStack(bands, plannedBands, narrowestGap(fitBoard), L, H) : null;
   if (fit) { bands = fit.bands; plannedBands = planBands(bands, L, H, set, closed); }
   // T86 item 30: a single band (as requested, or what item 28 left) too deep for a feature narrows to fit it
-  let narrowNote = null;
+  let narrowNote = null, narrowWallDepth = 0;
   // course bands only: an AREA band (fieldstone) fills its ring polygon, it has no run to drop and strand
   if (closed && !opts.centered && opts.bandFit !== false && bands.length === 1 && !plannedBands[0].isAreaBand) {
     const narrowed = narrowSingleBand(enriched, bands[0], plannedBands[0], set.grout.widthIn / 2, set.grout.widthIn);
     if (narrowed) {
-      bands = [narrowed.band]; plannedBands = planBands(bands, L, H, set, closed);
+      bands = [narrowed.band]; plannedBands = planBands(bands, L, H, set, closed); narrowWallDepth = narrowed.wallDepthIn;
       narrowNote = fit
         ? { ...fit.note, steps: [...fit.note.steps, narrowed.step], depthIn: narrowed.step.toIn, fits: true }
         : { requested: 1, kept: 1, steps: [narrowed.step], requestedDepthIn: narrowed.requestedDepthIn, depthIn: narrowed.step.toIn, fits: true };
@@ -589,7 +594,7 @@ export function bricksContourBands(primitives, bands, opts) {
   const split = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set) : bricks;
   const laid = fitBoard ? clipBandPiecesToBoard(split, fitBoard, set) : bricks;
   // the wall keeps half its own joint from the band (grout is one global width, so band + wall = one joint)
-  const wallDepth = bands.length ? depthSoFar + halfJoint : depthSoFar;
+  const wallDepth = Math.max(bands.length ? depthSoFar + halfJoint : depthSoFar, narrowWallDepth);
   return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, wallDepth) : [], ...(narrowNote ? { bandsReduced: narrowNote } : fit ? { bandsReduced: fit.note } : {}),
     // F35 item 55 (seat E): an open centred ribbon's outline (a Brush stroke's grout region), additive
     ...(!closed && opts.centered ? { ribbonOutline: openRibbonOutline(enriched, ribbonStartDepth, depthSoFar) } : {}) };
