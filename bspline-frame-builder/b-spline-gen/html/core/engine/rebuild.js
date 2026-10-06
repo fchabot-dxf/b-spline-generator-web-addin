@@ -25,7 +25,7 @@ import { sendFusionMeshPreview } from '../fusion-bridge.js';
 import { updateEditorTopView } from '../render-topview.js';
 import { withLoadingStage } from '../loading-signal.js';
 
-import { applyStampLayers } from './apply-stamp-layers.js';
+import { applyStampLayers, STAMP_PASS_KIND } from './apply-stamp-layers.js';
 import { buildThickenData } from './build-thicken-data.js';
 import { scheduleRebuild } from './scheduler.js';
 import { isCarved } from '../../editor/layers.js';
@@ -230,6 +230,7 @@ export function _collectStampPasses() {
             // never lends it the art layer's tooling.
             const brickPass = layer._brickMask ? {
                 id: `${layer.id}#bricks`,
+                kind: STAMP_PASS_KIND.bricks, // item 44: a Flat brick fits its plane under the art passes' delta
                 name: layer.name,
                 enabled: true,
                 svg: '1',
@@ -248,6 +249,7 @@ export function _collectStampPasses() {
             // already consumed the real svg into `mask` by this point.
             passes.push({
                 id: layer.id,
+                kind: STAMP_PASS_KIND.art,
                 name: layer.name,
                 enabled: true,
                 svg: '1',

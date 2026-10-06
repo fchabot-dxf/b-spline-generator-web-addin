@@ -14727,3 +14727,30 @@ WallPattern = {
   - Result: 5 files, 123/123.
 - **Matrix 'lay':** the "greyed under template None" row is replaced by "Sidebar Frame bands under template None lays along the board edge": 0/7 greyed, 74 frame bricks, 3D changed. Group: 8 rows, 0 FAIL.
 - **Live:** None + the editor's Frame tool Generate: 0 -> 80 frame bricks.
+
+## seat E (61) turn 3: F35 item 44, bricks vs a carving Artwork layer -- MEASURED, then fixed at the cause (branch carve-44)
+- **Measure** (probes item44_one_load.mjs / item44_topmode.mjs, ONE page load each: a fresh load rolls a new terrain seed, so cross-load heights are not comparable):
+  - Setup: 7x9 T1, a Wall (140 bricks), a 0.35 in carving stroke drawn diagonally across it on Layer 1 (carve on, depth 0.25, vbit). The 3D heights (141x181) are diffed per cell: NEAR = within 0.175 in of the stroke, FAR = more than 0.325 in from it.
+  - The grid's orientation was MEASURED both ways (feedback: measure, don't re-reason): heights row 0 = the board's BOTTOM edge. My first pass had it flipped, and its numbers were void.
+  - Piece counts never change: 140 wall, 140 Send polygons, brick mask present, whether the art is drawn before or after the lay, on another layer or the Wall's own, or with carve toggled.
+  - Organic tops: near 849/873 cells changed, far 0. Correct.
+  - FLAT tops (the new-board default): near 865/873, but 1,793 FAR cells changed (max 0.104 in), 1,752 of them on the 20 bricks the stroke crosses. Every crossed brick tilts or shifts, and its groove is replaced by its plane. This is Fred's "the bricks don't work".
+  - Art on the Wall's own layer = art on another layer, cell for cell. The advisor dropped "bricks lay where the stroke is not" (their expectation, not Fred's; since item 64 art and bricks rarely share a layer).
+- **Cause:** core/engine/apply-stamp-layers.js. A Flat brick's plane (flatBrickPlaneHeights) was fitted to stampedHeights, which already held the earlier ART passes, and the plane then REPLACED the heights under the brick.
+- **Fix (advisor-approved as proposed):**
+  - Declared STAMP_PASS_KIND { art, bricks }; rebuild.js _collectStampPasses tags each pass (an untagged pass is art, as every old caller expects).
+  - applyStampLayers accumulates the art passes' delta per point.
+  - A Flat brick fits its plane to the heights minus that delta (the terrain + the brick passes below), then adds it back: z = plane + artDelta + body x depth.
+  - Art on a layer ABOVE the bricks is unchanged (applied after, it just adds).
+- **Tests:** brick-top-flat.test.js + 3:
+  - a crossed brick's off-groove points equal the no-carve run, and so does the other brick;
+  - the groove under a Flat brick = the carve = the Organic groove;
+  - art above still just adds, and an untagged pass is art.
+  - Against origin/main's apply-stamp-layers.js (swapped from a saved copy, restored, cmp clean): **3/3 fail**. The third mostly pins existing behaviour and fails there on the missing declaration.
+- **Matrix:** controls.mjs CARVE_UNDER_FLAT + run.mjs runCarveUnderFlat (lay group); it FAILS, not skips, on a build without the fix. Lay group: 9 rows, 0 FAIL. The new row: 16 bricks crossed; off-stroke points on them changed 0/1326; under the stroke 848/873 cut.
+- **Before / after, the same carve on Flat** (carve_shots.mjs, the art layer's colour off so the surface shows):
+  - main 352603f: 1,822 off-stroke cells changed, max 0.098 in; the groove is invisible across the bricks;
+  - carve-44: 0 changed, and the groove cuts visibly across them.
+  - Shots: shots/seatE/item44_carve_on_flat_main.png / item44_carve_on_flat_branch.png (+ item44_flat_top_with_carve_branch.png, item44_organic_top_with_carve_branch.png, item44_one_load_*.png from the measure).
+- **Probe harness note:** ports 9861/9862 showed LISTEN entries whose PIDs no longer exist (stale sockets after my timed-out runs); nothing to kill. I moved to 9961. Ports 9871/9881 belonged to another seat's matrix run: left alone.
+- **Gate:** full vitest 5 failed / 4738 passed under load. All 4 files pass alone, 56/56: no-corrupt-polygon x2, fieldstone and frame-3d-sweep are timeouts; frame-gen was a deep-equal failure under load, and it is not in files I touched.

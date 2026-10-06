@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME, GROUT_JOINTS, QUICK_FRAME_LAYS } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME, GROUT_JOINTS, QUICK_FRAME_LAYS, CARVE_UNDER_FLAT } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -455,7 +455,7 @@ try {
   }
   if (!arg('group') || arg('group') === 'layout') await runLayout();
   if (!arg('group') || arg('group') === 'clear') await runClear();
-  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); await runQuickFrameLays(); }
+  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); await runQuickFrameLays(); await runCarveUnderFlat(); }
   if (!arg('group') || arg('group') === 'select') await runSelect();
   if (!arg('group') || arg('group') === 'migration') await runMigration();
   if (!arg('group') || arg('group') === 'frame-ui') await runFrameUi();
@@ -775,6 +775,33 @@ async function runWallNoFrame() {
     const ok = !!m.wall && m.frame === 0 && m.wall.every((v, i) => Math.abs(v - m.contour[i]) <= N.tol);
     checkRow('lay', name, ok, `wall x ${m.wall ? m.wall[0].toFixed(2) + '-' + m.wall[1].toFixed(2) + ' bottom ' + m.wall[2].toFixed(2) : 'none'} vs contour x ${m.contour[0].toFixed(2)}-${m.contour[1].toFixed(2)} bottom ${m.contour[2].toFixed(2)}; frame bricks ${m.frame}`);
   }
+  if (await editorOpen()) await apply();
+}
+
+// F35 item 44 (controls.mjs CARVE_UNDER_FLAT): a carving art stroke under Flat bricks moves no brick point off the stroke
+async function runCarveUnderFlat() {
+  const C = CARVE_UNDER_FLAT, name = 'Carving art under Flat bricks: crossed bricks keep their tops, the stroke cuts';
+  await reloadWithStorage({});
+  await openEditorTab('editorTabBrick'); await click(C.wallTool, 900); await click(C.generate, 2500);
+  await apply(); await heightsSettled(null);
+  await js(`import('./core/state.js').then((m)=>{ window.__carveH0=Float32Array.from(m.lastResult.heights); return 1; })`);
+  await openEditorTab('editorTabArtwork');
+  await js(`(()=>{ const ed=window.svgEditor; const lid=ed._layers.find((l)=>!l.brickKind && !l.holdsBricks).id; const s=${JSON.stringify(C.stroke)};
+    ed._sketchLayer.path('M'+s.a.x+','+s.a.y+' L'+s.b.x+','+s.b.y).fill('none').stroke({ color:'#000000', width:s.widthIn }).attr('data-layer', String(lid)); return 1; })()`);
+  await apply(); await heightsSettled(null);
+  const m = await jsJSON(`(async()=>{ const st=await import('./core/state.js'); const A=window.__carveH0, B=st.lastResult.heights; const W=st.P.widthIn, H=st.P.heightIn;
+    const nx=Math.round(Math.sqrt(A.length*W/H)), nz=A.length/nx; const s=${JSON.stringify(C.stroke)}, far=s.widthIn/2+${C.farMarginIn};
+    const segD=(x,y)=>{ const dx=s.b.x-s.a.x, dy=s.b.y-s.a.y; let t=((x-s.a.x)*dx+(y-s.a.y)*dy)/(dx*dx+dy*dy); t=Math.max(0,Math.min(1,t)); return Math.hypot(x-(s.a.x+t*dx), y-(s.a.y+t*dy)); };
+    const polys=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].map((n)=>{ const v=n.getAttribute('points').trim().split(/[ ,]+/).map(Number); const o=[]; for(let i=0;i+1<v.length;i+=2) o.push({x:v[i],y:v[i+1]}); return o; });
+    const pip=(x,y,p)=>{ let c=false; for(let i=0,j=p.length-1;i<p.length;j=i++){ if(((p[i].y>y)!==(p[j].y>y)) && x<(p[j].x-p[i].x)*(y-p[i].y)/(p[j].y-p[i].y)+p[i].x) c=!c; } return c; };
+    const crossed=polys.filter((p)=>{ for(let t=0;t<=1;t+=0.01){ if (pip(s.a.x+t*(s.b.x-s.a.x), s.a.y+t*(s.b.y-s.a.y), p)) return true; } return false; });
+    let near=0, nearChanged=0, farOnCrossed=0, farOnCrossedChanged=0, maxFar=0;
+    for (let j=0;j<nz;j++) for (let i=0;i<nx;i++) { const k=j*nx+i; const x=i/(nx-1)*W, y=(1-j/(nz-1))*H; const d=Math.abs(B[k]-A[k]); const sd=segD(x,y); // heights row 0 = the board's bottom edge (measured)
+      if (sd < s.widthIn/2) { near++; if (d>1e-4) nearChanged++; continue; }
+      if (sd > far && crossed.some((p)=>pip(x,y,p))) { farOnCrossed++; if (d>1e-4) { farOnCrossedChanged++; maxFar=Math.max(maxFar,d); } } }
+    return JSON.stringify({ crossed: crossed.length, near, nearChanged, farOnCrossed, farOnCrossedChanged, maxFar:+maxFar.toFixed(4) }); })()`);
+  const ok = m.crossed > 0 && m.farOnCrossed > 0 && m.farOnCrossedChanged === 0 && m.nearChanged >= C.minNearChangedShare * m.near;
+  checkRow('lay', name, ok, `${m.crossed} bricks crossed; off-stroke points on them changed ${m.farOnCrossedChanged}/${m.farOnCrossed} (max ${m.maxFar} in); under the stroke ${m.nearChanged}/${m.near} cut`);
   if (await editorOpen()) await apply();
 }
 
