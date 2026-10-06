@@ -22793,3 +22793,8 @@ T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given 
   failed** (87.7 s). Lay time (30 lays averaged, a shared machine, two alternating runs each): clean T1 three_band 1 in
   13 / 13 ms main / branch (the conflict search runs zero polygon intersections on T1: counted); neck cases a few ms to
   ~2x (T18 three_band 1.25 23-25 -> 28-51 ms, T16 three_band 0.75 11-18 -> 18-33 ms).
+- After merging origin/main 52c3055 into neck-medial (55dd348; a WORK-LOG append conflict, both kept): bricks domain
+  54 files green; full vitest x3 on a loaded machine (three other seats running): 13, then 1, then 1 failure. The
+  last two were the same: tests/frame-3d-sweep.test.js timed out at 90 s. It imports no bricks code, passes alone on
+  the branch (52-69 s), and on main 52c3055 it also timed out alone once (110 s) between two passes. main 52c3055 full:
+  316 files green in 80 s. Read as load, not this item -- the advisor's gate decides.
