@@ -23008,3 +23008,35 @@ Base = neck-medial 44f375e: overlap 13.22 sq in, voids 70.33 (70 cases >= 0.01).
 (piece-plan.js planCornerRun: jointWidth = max(0, nominal + slack / nJoints)). Over the 456 cases, joints between
 consecutive pieces of one row: straight runs 960 exactly 0 wide, 5,066 under 0.029 in, 264 over 0.09 in (nominal 0.034);
 arcs 534 exactly 0. A 0-wide joint is the same Fusion sliver defect as the 0-gap seams. Raised with the advisor.
+
+## T86 item 21b -- mergeable tip 91ea37e: voids and overlaps at corners (seat B / fc, 2026-10-06)
+On top of V1 / V2 / V4 (above):
+- Step 2 (5c78998): yieldAtMedialLine also takes two runs that are JOINT NEIGHBOURS (their medial line is the mitre)
+  and a corner's FAN slice against a run or a quoin -- the fan is the filler and yields everything the other covers
+  plus a joint (declared priority, not depth: a dropped fillet's full-circle depth turns back past the fillet's centre
+  and would hand the inner corner to the fan). Fan / quoin / area-band pieces are tagged -1 / -2 / -3. A quoin block
+  needs each run longer than the block plus a joint (T5 quoin 0.75: the bottom line was shorter than the 1.1 in block
+  and its pieces lay under it, 0.139 sq in each side). Removed the row-walk plumbing 16(c) added (`live`,
+  jointNeighbours): neighbours are now conflicts like any other pair.
+- Performance (measured, then fixed): bricks-no-corrupt-polygon lays LIFE-SIZE bricks (3 / 8 in) on a 7 x 9; at 8 in the
+  soldier band crosses the whole board, ~3000 conflicting pairs, the drop loop re-cut everything 16 times: 14 s -> 247 s
+  for that file. (1) a drop trial re-cuts only the dropped piece's partners -- identical output (0 of 456 cases differ);
+  (2) a band at least as deep as the board's bounding-box shorter side is laid as requested (no medial line exists),
+  like item 28's "too narrow for even one band": 8 in 2 s -> 20 ms per lay. NOT narrowestGap for that test: its normal
+  rays read T14's X corners as a gap narrower than a 1.25 in band and skipped a real neck (measured, rejected). A cap on
+  the curve refinement points was tried first and measured to change nothing (reverted).
+- Step 4: the three_band row-transition it.todo in bricks-primitive-ribbon.test.js was ALREADY FIXED before 21b (worst
+  pair 0.0005 of a piece on T1 / T12, base and branch); un-todo'd as a real test that FAILS at 5a4ddd9 (where the todo
+  was written: worst fraction 1.0 on both templates).
+- Sweep (456 cases) vs neck-medial: corner overlap 13.22 -> 0.22 sq in, **0 cases >= 0.01**; band voids 70.33 -> 2.04
+  (the rest = tapered joints, below); 388 / 456 byte-identical (the 68 that change all had an overlap or a void).
+- Test tests/bricks-corners.test.js: one case per mechanism (T11 dc 1.25, T9 quoin 1.25, T8 1.25, T12 dc 1.25, T5 quoin
+  0.75, T18 three_band 1.25): overlap < 0.01 and band void < 0.01 (grid probe). **Fails 6/6 on neck-medial**; with the fan
+  rule removed, 3 fail. T8 / T18 assert overlap only for now: each keeps one TAPERED JOINT (a fan slice against a
+  voussoir, T8 0.051; a tight shoulder arc's radial joints opening toward the rim, T18 0.093) -- closed by the
+  constant-width joint rule in the last commit (option A).
+- Gates: bricks domain green when not starved (one loaded run timed out 19 tests; the same files alone 77 / 77, and
+  base vs branch time the same on them); full vitest 318 / 319 -- frame-3d-sweep's 90 s timeout as before.
+- Next, its own last commit for Fred's yes (advisor ruling): ONE joint rule -- every joint is the declared grout width:
+  mitre seams get it (option A), the row planner puts the slack into the end closers not the joints (>= MIN_PIECE_FRACTION
+  or merged), voussoir / fan joints are constant-width strips instead of tapering wedges.
