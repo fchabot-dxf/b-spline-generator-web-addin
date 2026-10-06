@@ -23272,3 +23272,14 @@ true one (waist 2.99 -> limit 1.00 < the 1 in band; same pieces), 42 lay more ba
   22.5 s; both pass alone). Shot shots/seatB/neck16c2/item31_t14_t7_mixed_bands_before_after.png: T14 7x9 mixed_bands
   1 in gap 0.38 -> 2.60, 1/3 bands (no fit) -> 2/3, 140 -> 194 band pieces; T7 gap 0.01 -> 2.68, 1/3 -> 2/3, 117 -> 156
   (engine lay; bricksContourBands alone counts 106 -> 144 on T14).
+- CORRECTION (found while measuring item 32, seat B, 2026-10-06): T16's waist read 3.90 in on 7x9 -- its junctions turn
+  104 deg and the bisector ray met the far side lower down, past the 2.47 in waist; a deeper stack was kept across it
+  (the Grey stone inner ring met itself there). Reflex junctions now read the NEAREST point of a non-neighbour
+  primitive, counted only where a circle fits across (WAIST_CLEARANCE_SHARE 0.9: the segment's middle at least 0.9 of
+  half its length from every boundary). MEASURED clearance share of each template's nearest junction reading (7x9):
+  real waists / necks 0.94-1.0 (T6 T9 T14-T19), a notch lip read down the board's side 0.05-0.35 (T1 T3 T4 T5 T8
+  T10-T13; without the rule T13 read 1.78, T5 2.08, T8 1.93). Shot item31b_junction_segments.png (unfiltered
+  nearest readings). Readings: only T16 changes, 6x9 / 7x9 / 9x12 2.99 / 3.90 / 5.00 -> 2.09 / 2.47 / 3.23 (T15 7x9
+  2.93 -> 2.92). Lays vs db413fb, 2,052: 25 change, all T16 -- stacks reduced to fit its waist; 14 of them now an
+  honest "(no fit)" (a 1 in band > 1/3 of 2.47). Tests: T16 reads 2.47; T1 / T5 / T13 / T10 keep their edge readings
+  (mutation: no clearance rule -> 4 fail). Full vitest 325 files / 5,354 passed.

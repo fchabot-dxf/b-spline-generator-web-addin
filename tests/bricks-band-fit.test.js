@@ -70,8 +70,8 @@ describe('band stacks that do not fit (T86 item 28)', () => {
     expect(narrowestGap([{ x: 0, y: 0 }, { x: 0, y: 9 }, { x: 7, y: 9 }, { x: 7, y: 0 }])).toBeCloseTo(7, 9); // either winding
   });
   // T86 item 31: a ray whose first hit is the neighbouring primitive is a corner's wedge (T7 read 0.007 in, T14 0.384,
-  // T17 0.345 -- every three_band lay on them a "(no fit)" drop); a waist between two reflex junctions is read along
-  // their bisectors (no edge normal crosses T14's hourglass waist: every side ray meets its corner first)
+  // T17 0.345 -- every three_band lay on them a "(no fit)" drop); a waist between two reflex junctions is read from each
+  // junction to the nearest far point where a circle fits across (no edge normal crosses T14's hourglass waist)
   it('an hourglass reads its waist, not its acute corners', () => {
     const hourglass = [{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 4.8, y: 4.5 }, { x: 7, y: 9 }, { x: 0, y: 9 }, { x: 2.2, y: 4.5 }];
     expect(narrowestGap(hourglass)).toBeCloseTo(2.6, 9);
@@ -81,11 +81,22 @@ describe('band stacks that do not fit (T86 item 28)', () => {
     expect(Number.isFinite(narrowestGap([{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 3.5, y: 9 }]))).toBe(true);
   });
   // mixed_bands at 1 in was a "(no fit)" drop to one band on T7 / T14 / T17 (T14: 106 pieces; now 144, a wall kept)
-  it.each([['template_7', 2.68, 'mixed_bands'], ['template_14', 2.6, 'mixed_bands'], ['template_17', 2.24, 'mixed_bands'], ['template_16', 3.9, 'three_band']])(
+  it.each([['template_7', 2.68, 'mixed_bands'], ['template_14', 2.6, 'mixed_bands'], ['template_17', 2.24, 'mixed_bands']])(
     '%s 7x9: the gap the fit rule reads is the board\'s own (%s in); %s at 1 in fits', (id, gap, preset) => {
       const r = lay(primsOf(id, 7, 9), 7, 9, preset, 1);
       expect(r.bandsReduced.gapIn).toBeCloseTo(gap, 2);
       expect(r.bandsReduced.fits).toBe(true);
+    });
+  // T16's waist turns 104 deg at each junction: a bisector ray met the far side 3.90 in away, past the 2.47 in waist,
+  // and a deeper stack was kept across it (seat B's item 32 measure: the inner stone ring met itself there)
+  it('template_16 7x9 reads its 2.47 in waist', () => {
+    expect(lay(primsOf('template_16', 7, 9), 7, 9, 'three_band', 1).bandsReduced.gapIn).toBeCloseTo(2.47, 2);
+  });
+  // a notch lip's nearest far point is down the board's own side to the next edge -- no circle fits across that
+  // (clearance share 0.05-0.35, WAIST_CLEARANCE_SHARE): these keep their edge-ray readings
+  it.each([['template_1', 3.67], ['template_5', 3.57], ['template_13', 3.9], ['template_10', 3.02]])(
+    '%s 7x9: a notch lip is no waist (gap %s in)', (id, gap) => {
+      expect(lay(primsOf(id, 7, 9), 7, 9, 'three_band', 1).bandsReduced.gapIn).toBeCloseTo(gap, 2);
     });
   // item 67 (test infra): one test per template x board (was one test over all of them: 11.7 s in a full run, a
   // timeout under the fleet's load). The same cases, the same checks.

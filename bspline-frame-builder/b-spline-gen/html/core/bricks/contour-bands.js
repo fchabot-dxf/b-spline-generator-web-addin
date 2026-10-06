@@ -33,7 +33,7 @@
  * full-size bricks, never one row of stretched ones, and the next band always starts exactly where
  * the actual (snapped) rows end, with no seam gap.
  */
-import { inwardSignFor, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward } from './geometry.js';
+import { inwardSignFor, pointInPolygon, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, boundaryAtDepth, lineBetweenLinesDropsAt } from './primitive-ribbon.js';
 import { openRibbonOutline } from './ribbon-outline.js'; // F35 item 55 (seat E): a Brush stroke's grout region
@@ -429,8 +429,14 @@ export const BAND_FIT_STEPS = Object.freeze(['row', 'course', 'drop']);
  *  normal to the FIRST boundary it meets; the shortest. T86 item 31 (MEASURED: T7 read 0.007 in, T14 0.384, T17 0.345):
  *   - a ray whose first hit is a NEIGHBOURING primitive is a corner's wedge, not a gap: ignored (not continued past it);
  *   - a waist between two REFLEX primitive junctions is crossed by no edge normal (T14's hourglass: every side ray meets
- *     its corner first), so each reflex junction also casts its inward bisector, under the same filter.
+ *     its corner first), so each reflex junction also reads its distance to the NEAREST point of a primitive that is
+ *     neither its own nor a neighbour -- counted only where a circle fits across (WAIST_CLEARANCE_SHARE): the segment's
+ *     middle at least that share of half its length from every boundary. Nearest, not a bisector ray: T16's junctions
+ *     turn 104 deg and their bisectors met the far side 3.90 in away, past the 2.47 in waist. MEASURED (7x9), the
+ *     clearance share of each template's nearest junction reading: real waists / necks 0.94-1.0 (T6 T9 T14-T19), a
+ *     notch lip read down the board's side to the next edge 0.05-0.35 (T1 T3 T4 T5 T8 T10-T13).
  *  `source[k]` = the primitive that boundary vertex k (and edge k -> k+1) belongs to; omitted, every edge is its own. */
+export const WAIST_CLEARANCE_SHARE = 0.9;
 export function narrowestGap(board, source = board.map((_, k) => k)) {
   const n = board.length, m = Math.max(...source) + 1;
   // signedArea is NEGATIVE for a counter-clockwise loop (x right, y up; measured on a unit square), whose inside is
@@ -458,6 +464,15 @@ export function narrowestGap(board, source = board.map((_, k) => k)) {
     const a = board[k], b = board[(k + 1) % n], dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
     return len < 1e-9 ? null : { x: (-dy / len) * inward, y: (dx / len) * inward, dx, dy };
   };
+  const clearance = (x, y) => {
+    let c = Infinity;
+    for (let k = 0; k < n; k++) {
+      const a = board[k], b = board[(k + 1) % n], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+      const w = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2));
+      c = Math.min(c, Math.hypot(x - a.x - w * dx, y - a.y - w * dy));
+    }
+    return c;
+  };
   let best = Infinity;
   for (let i = 0; i < n; i++) {
     const nrm = edgeNormal(i);
@@ -470,9 +485,18 @@ export function narrowestGap(board, source = board.map((_, k) => k)) {
     if (source[pv] === source[v]) continue; // a primitive junction only
     const n1 = edgeNormal(pv), n2 = edgeNormal(v);
     if (!n1 || !n2 || (n1.dx * n2.dy - n1.dy * n2.dx) * inward >= 0) continue; // reflex: turns away from the inside
-    const mx = n1.x + n2.x, my = n1.y + n2.y, ml = Math.hypot(mx, my);
-    if (ml < 1e-9) continue;
-    best = Math.min(best, firstHit(board[v].x, board[v].y, mx / ml, my / ml, [source[pv], source[v]], [pv, v]));
+    const V = board[v], own = [source[pv], source[v]];
+    for (let j = 0; j < n; j++) {
+      if (own.some((p) => p === source[j] || neighbours(p, source[j]))) continue;
+      const c = board[j], d = board[(j + 1) % n], ex = d.x - c.x, ey = d.y - c.y, l2 = ex * ex + ey * ey;
+      if (l2 < 1e-18) continue;
+      const u = Math.max(0, Math.min(1, ((V.x - c.x) * ex + (V.y - c.y) * ey) / l2));
+      const qx = c.x + u * ex, qy = c.y + u * ey, t = Math.hypot(qx - V.x, qy - V.y);
+      if (!(t < best && t > 1e-6)) continue;
+      const mx = (V.x + qx) / 2, my = (V.y + qy) / 2;
+      if (!pointInPolygon(mx, my, board)) continue; // across the board, not the outside (a notch's mouth)
+      if (clearance(mx, my) >= WAIST_CLEARANCE_SHARE * (t / 2)) best = t;
+    }
   }
   return Number.isFinite(best) ? best : plain;
 }
