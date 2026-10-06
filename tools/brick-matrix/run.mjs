@@ -1231,6 +1231,28 @@ async function runBrickLayers() {
     !!layer1 && s7b.brushN === s7.brushN && s7b.brush.join() === layer1.id && s7b.spine.join() === layer1.id,
     `${m7}; bricks (${s7b.brushN}) on ${s7b.brush}, spine on ${s7b.spine} (Layer 1 = ${layer1 ? layer1.id : 'none'})`);
   if (await editorOpen()) await apply();
+  // 8. F35 item 40: the Brick tab shows the layers (hosted in its panel) with the Wall tool picked; a row picked there
+  // is where the lay goes; Artwork gets the ONE list back
+  const T = B.brickTab;
+  if (!(await exists(T.slot)) && !(await js(`fetch('./bspline_gen_palette.html').then(r=>r.text()).then(t=>t.includes('id="${T.slot}"'))`))) {
+    checkRow('layers', 'Brick tab: the layers show with a tool, a picked row takes the lay', false, '', 'F35 item 40'); return;
+  }
+  await reloadWithStorage({});
+  await openEditorTab(B.artworkTab); await click(B.addLayer, 900);
+  await openEditorTab('editorTabBrick'); await click(T.wallTool, 900);
+  const vis = await jsJSON(`JSON.stringify((()=>{ const l=document.getElementById(${JSON.stringify(T.list)}); const slot=document.getElementById(${JSON.stringify(T.slot)});
+    const rows=[...l.querySelectorAll('[data-layer-id]')]; const r=l.getBoundingClientRect();
+    return { hosted: !!slot && slot.contains(l), shown: l.offsetParent !== null && r.height > 0, rows: rows.map((e)=>e.getAttribute('data-layer-id')), active: String(window.svgEditor._activeLayer) }; })())`);
+  const pick = vis.rows.find((id) => id !== vis.active);
+  if (pick) { await js(`document.querySelector('#${T.list} [data-layer-id="${pick}"]').click()`); await sleep(600); }
+  await click(T.generate, 2000);
+  const on = await jsJSON(`JSON.stringify([...new Set([...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].map((n)=>n.getAttribute('data-layer')))])`);
+  await openEditorTab(B.artworkTab);
+  const home = await js(`!document.getElementById(${JSON.stringify(T.slot)}).contains(document.getElementById(${JSON.stringify(T.list)})) && !!document.getElementById(${JSON.stringify(T.list)}).offsetParent`);
+  checkRow('layers', 'Brick tab: the layers show with a tool, a picked row takes the lay',
+    vis.hosted && vis.shown && vis.rows.length >= 2 && !!pick && on.length === 1 && on[0] === pick && home,
+    `hosted ${vis.hosted}, shown ${vis.shown}, rows ${vis.rows.length}; picked ${pick}: wall on ${on}; Artwork has the list back ${home}`);
+  if (await editorOpen()) await apply();
 }
 
 // ---------------------------------------------------------------- wall areas (hoisted; WALL_AREAS in controls.mjs)

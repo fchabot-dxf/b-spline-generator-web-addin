@@ -22525,3 +22525,41 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
      is cm. Possibly the document's display units; not tested in an inch document.
 - Hygiene: scratch doc closed by handle; probe MMs ('claude q MM1-3') and the probe sketch deleted first; Fred's
   'Untitled' re-activated; holder none.
+
+## H23 item 81 -- T10 archRise_min + "apex drift": measured, NOT reproducible on current code (seat A / 77, 2026-10-05)
+- Branch t10-81 off cam-82 e8ae2ba. Started from 39's written plan (a307ffb). Measured the premise before any
+  per-phase drift hunt, because the plan's fix direction (adopt T18's short-arc-mid in T10's p02_12 rebuild) rests on
+  turn 550's claim that p02_12's fixed apex literal LY "built the WRONG circle for every other archRise".
+- MEASURED 1 (the app, no Fusion): the app's own frameCutProfile for T10 at archRise {0.0294/0.0217 (= the 1/8 in
+  MIN_ARCH_RISE_IN floor), 0.1, 0.2, 0.35, 0.5, 0.6} at 7x9 and 9x12: the arch apex sits EXACTLY on the safe-zone top
+  line every time (apex - top = 0.0000); only the chord ends move down. At archRise 0 the app's top piece becomes a
+  straight LINE. The matrix payloads' seedGeometry agree: top_edge's middle seed point is always y = LY (4.25 at 7x9,
+  5.75 at 9x12). So for T10 the LY literal in p02_12 IS the design (apex on the top line), not a stray constant; the
+  turn-550 "wrong circle" claim holds for T18 (its apex moves), not for T10.
+- MEASURED 2 (live, current code = main's T10, no phase change): the permanent every-handle matrix
+  (h23_item61_make_full_matrix_payloads.mjs at 7x9 and 9x12 -> item61_full_matrix_sweep.py, reachable range ends),
+  with a new optional READBACK hook reading the built top_edge in T10_2_shape_outline:
+    18/18 BUILT (4 bars, timeline healthy, 0 NOT BUILT / MITER MISS / REFLEX lines).
+    apex - LY = 0.0000 in in all 18; every arch the short up-bulging branch (sweep 7.7 .. 153.2 deg); the built
+    chord ends = the app's sent seed ends (e.g. archRise min 7x9: +-2.8566 at 4.125; 9x12: +-3.7096 at 5.625).
+  Includes archRise min at both sizes (rise = 1/8 in: r 32.70 / 55.11 in, sweep 10.0 / 7.7 deg) -- it builds.
+- So, the two halves of the item:
+  * "archRise_min fails": only at archRise = 0 exactly (three collinear points -- item 65's case, measured then with
+    archRise 0). The handle cannot reach 0: MIN_ARCH_RISE_IN (0.125 in) is the floor, and at the floor T10 builds
+    (above). Nothing to fix at any reachable value. A flat top (archRise 0) would need p02_03/p02_12 to switch
+    top_edge to a Line, as the app already does -- a feature, only if Fred wants 0 reachable (it is T1's shape).
+  * "apex drift": top_edge has its two ends pinned and NO constraint on its bulge between p02_03 and p02_12 (grep:
+    no step in p02_04..p02_11 targets top_edge) -- an arc with fixed ends keeps one free DOF, so the solver may move
+    its curvature freely while the chain resolves. That is expected, and harmless today because p02_12 rebuilds the
+    arch from the pinned ends + the LY apex. It only became visible when short-arc-mid made the FINAL apex read that
+    free DOF. Not a bug in the shoulder/waist/hip chain; short-arc-mid is the wrong tool for T10.
+- Recommendation (for the advisor; nothing in a T10 phase file was changed): close item 81 as measured-OK; optionally
+  (needs your go, phase-file docstring only) correct p02_12's docstring to say the LY apex is T10's design rule
+  (apex on the top line for every archRise, app + live measured) and that short-arc-mid must not be used for T10
+  (top_edge's bulge is a free DOF until the rebuild). The 1/8 in floor stays (it is the guard; not touched).
+- Shots (shots/seatA): h23_item81_t10_arch_app_vs_fusion.png (app seed arc vs Fusion-built arc, archRise min /
+  default / max, 7x9 + 9x12; the dashed builds lie on the seeds, every apex on the top line);
+  h23_item81_t10_matrix_7x9.json / _9x12.json (the 18 raw results with readbacks).
+- Harness: item61_full_matrix_sweep.py gains an optional READBACK(des, case) hook (committed); the driver with the
+  T10 apex readback (run.py) stays in the scratchpad. Timed-out calls were waited out via the sweep's own re-entry
+  lock + polling the results file; no case ran twice. Fusion: one doc per case, closed by the sweep; holder none.
