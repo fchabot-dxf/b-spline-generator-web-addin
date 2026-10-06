@@ -115,7 +115,10 @@ export function restoreLayerTooling(layers, layerTooling) {
 /**
  * Captures a complete system snapshot.
  */
-export function takeSnapshot(label = "Action") {
+/** `extra.frame` (item 69): a FRAME transition this step made, { before, after } records. A global undo never puts an
+ *  older snapshot's frame back (snapshot-manager.js UNDO_KEEPS: the frame has its own undo) -- only the step that
+ *  declares the transition restores it (Delete frame, frame-panel.js deleteFrame). */
+export function takeSnapshot(label = "Action", extra = {}) {
     // Capture state into a single object
     const snapshot = {
         label: label,
@@ -126,6 +129,7 @@ export function takeSnapshot(label = "Action") {
         layerConfigs: JSON.parse(JSON.stringify(persistableP().stampLayers)),
         activeLayerIdx: P.activeLayerIdx,
         layerTooling: captureLayerTooling(), // SE5c
+        ...(extra.frame ? { frame: JSON.parse(JSON.stringify(extra.frame)) } : {}),
     };
 
     globalHistoryLog.push(snapshot);
@@ -133,6 +137,16 @@ export function takeSnapshot(label = "Action") {
     if (globalHistoryLog.length > GLOBAL_MAX_HISTORY) globalHistoryLog.shift();
     if (label !== "Initial") markDirty();
     updateGlobalButtons();
+}
+
+/** Item 69 (seat E, measured: the history held only Initial / widthIn / heightIn after a brick lay, so undoing the
+ *  next step also reverted brickSettings): before a step that must undo to EXACTLY the current board, record the
+ *  current board first when the newest snapshot no longer matches it. */
+export function ensureUndoBaseline(label = 'Before change') {
+    const top = globalHistoryLog[globalHistoryLog.length - 1];
+    if (top && JSON.stringify(top.P) === JSON.stringify(persistableP())) return false;
+    takeSnapshot(label);
+    return true;
 }
 
 /**
@@ -171,7 +185,7 @@ export function unifiedUndo(applySnapshot) {
     const current = globalHistoryLog.pop();
     globalRedoLog.push(current);
     const previous = globalHistoryLog[globalHistoryLog.length - 1];
-    applySnapshot(previous);
+    applySnapshot(previous, current.frame ? current.frame.before : undefined); // item 69: the undone step's own frame
     updateGlobalButtons();
 }
 
@@ -184,7 +198,7 @@ export function unifiedRedo(applySnapshot) {
 
     const snap = globalRedoLog.pop();
     globalHistoryLog.push(snap);
-    applySnapshot(snap);
+    applySnapshot(snap, snap.frame ? snap.frame.after : undefined); // item 69: the redone step's own frame
     updateGlobalButtons();
 }
 

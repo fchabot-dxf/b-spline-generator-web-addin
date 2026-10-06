@@ -19,6 +19,7 @@
  */
 import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange } from '../core/frame-record.js';
 import { P, isFusionMode } from '../core/state.js';
+import { takeSnapshot, ensureUndoBaseline } from '../core/history.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
 import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
@@ -295,7 +296,12 @@ export function sendFrame() {
  *  add-in to delete the frame Send built ('delete_frame': only the frames fb_engine/send_frame.py tagged, the same
  *  ones a Send replaces); no confirm dialog. */
 export function deleteFrame() {
+  const before = _clone(getFrameRecord());
+  ensureUndoBaseline('Before delete frame'); // the step undoes to exactly this board, not an older snapshot's
   editFrame({ templateId: null, params: {} });
+  // item 69 (seat E, measured: the sidebar Undo left the frame deleted): its own GLOBAL undo step, carrying the
+  // frame transition -- the sidebar's Undo restores the frame (and the 3D follows its re-lay)
+  takeSnapshot('Delete frame', { frame: { before, after: _clone(getFrameRecord()) } });
   if (isFusionMode) {
     try {
       adsk.fusionSendData('delete_frame', '{}');
