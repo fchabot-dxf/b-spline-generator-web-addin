@@ -22820,3 +22820,54 @@ T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given 
   out at 90 s again (139.9 s run, loaded machine), as logged above: no bricks import, passes alone.
 - Shots: before_after_worst_necks.png re-rendered from this build; t18_seam_zoom.png (the seam as a joint);
   t14_x_centre_zoom.png (main vs branch, the X centre: two 0.093 sq in half-diamonds, blue = joint given back).
+
+## T86 item 21b -- PLAN: corners (seat B / fc, 2026-10-05 night), T11 double_course 1.25 the primary case
+
+**Fred's T11 question, answered from the outline** (shots/seatB/neck16c2/t11_outline_under_bands.png: magenta = T11's
+true outline, numbered primitives, under the bands at 0.75 / 1 / 1.25 double_course + 1.25 single_soldier): T11 is ONE
+closed outline -- top bar, shoulder fillets, concave notches, two short verticals (x 1.485 / 5.515, y 2.27 - 4.22),
+then the V point. The detached V is the BANDS failing to follow it: in double_course the verticals get few pieces at
+0.75, fewer at 1, NONE at 1.25 (the whole vertical run is bare). single_soldier at 1.25 (the same depth: item 28 cuts
+double_course to one band there) follows the outline end to end. The difference is the corner style: double_course
+declares 'lapped' (= the butt construction at line-line corners); the vertical-to-diagonal corner is a 45 deg turn.
+
+**Inventory on neck-medial 44f375e** (171 cases; shapely; source tags via a scratch hook, not shipped):
+- corner OVERLAP 3.763 sq in: 3.501 involves a fan / notch / quoin piece (no single source primitive today), 0.222 joint
+  neighbours in one row, 0.039 one primitive across rows. Worst T11 double_course 1.25 0.551, T18 / T19 0.343.
+- band-ring VOIDS (ring = board minus the band's inner path; void = farther than 0.045 in, the widest ordinary joint,
+  from every piece): 8.264 sq in, 27 cases >= 0.01. T11 double_course 2.78 / 1.85 / 1.01 (1.25 / 1 / 0.75); T8 every
+  preset 1.25 0.34; T12 / T13 double_course 0.22; T18 / T19 shoulders 0.09.
+- 0-gap seams: every mitre corner abuts (no joint) -- the advisor puts them here with the medial seam's rule.
+Shot shots/seatB/neck16c2/corner_voids_21b.png (blue = void): four distinct mechanisms --
+  (V1) butt / lapped at a non-square corner: T11 the vertical gets nothing; T12 / T13 wedges at an obtuse corner;
+  (V2) an arc meeting a line at a mitre: T8, the arc's last voussoir crosses into the line's last piece (overlap above)
+       and leaves a triangle below (o / q reach);
+  (V3) shoulder fans: spokes overlap the bar they meet and leave thin wedges between spokes (T18 / T19);
+  (O) the overlaps all sit in V2 / V3 / three_band's cross-row corners (21b's original it.todo, 12 pairs ~1.0 on T1 at
+      deep rows, bricks-primitive-ribbon.test.js).
+
+**Approach (declare, then build; one mechanism at a time, each measured on the same sweep):**
+1. Give every piece a declared SOURCE (fan / notch pieces: the dropped primitive they stand in for; a quoin: its corner,
+   owner by declaration) -- the same tag 16(c) added, extended; still never on the output pieces.
+2. OVERLAPS and 0-gap seams at corners: the 16(c) rule with neighbours included -- each point to the piece with the
+   smallest own depth, half a grout back from the line. At a line-line corner that line IS today's mitre, so a clean
+   mitre stays where it is and only gains its joint; a butt / lapped corner keeps its DECLARED owner (the through
+   piece), not depth.
+3. VOIDS are construction faults, not cuts; fixed at the source:
+   V1: declare the corner-angle window the butt construction serves (a near-square corner) and fall back to the mitre
+       outside it -- the same rule arcs already follow ("arc-involved corners fall back to mitre"); then check what is
+       left on T11 at 1.25 (the vertical's run must have pieces) and T12 / T13.
+   V2: trace the arc-to-line joint's o / q reach on T8 and fix the reach (both runs end ON the mitre line).
+   V3: fan spoke sizing at the shoulders (after 2, which removes the fan-over-bar overlap).
+4. three_band cross-row corners: un-todo 21b's it.todo and make it pass.
+
+**Bar** (same sweep + the voids): per case corner overlap < 0.01, void < 0.01 (beyond the board's own widest joint),
+every seam >= joint - 0.002; T11 double_course 0.75 / 1 / 1.25: the verticals carry pieces, no void.
+Tests: a corner test mirroring bricks-neck-medial (T11 dc 1.25, T8 1.25, T12 dc 1.25, T18 shoulders, T1 three_band
+deep rows), each shown failing on neck-medial first.
+
+**DECISION NEEDED before step 2 (contract):** giving every mitre a joint changes EVERY saved frame (today they all abut),
+so "clean boards stay byte-identical" cannot hold for step 2. Options: (A) every mitre gets its joint (all frames
+re-lay once, corners look like every other joint, Fusion gets no 0-gap seams); (B) only corners that overlap or touch
+get it (clean saved boards identical, but two kinds of corner on one board). Recommendation: A, in one commit after
+1 / 3 / 4, with before/after full-board shots for Fred.
