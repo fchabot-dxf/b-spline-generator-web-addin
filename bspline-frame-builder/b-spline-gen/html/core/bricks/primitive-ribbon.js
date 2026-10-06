@@ -336,6 +336,11 @@ function buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1) {
   if (dot > BUTT_SQUARE_MAX_DOT || !convex) return null; // the mitre
   const blockSize = QUOIN_SET.brickLengthIn;
   const prevPrim = primitives[prevIdx], curPrim = primitives[curIdx];
+  // 21b: each run must be longer than the block plus a joint, or its cut lands past its own end and its pieces
+  // lie under the block (T5 quoin 0.75 in: a 0.139 sq in overlap at each bottom corner, the bottom line shorter
+  // than the 1.1 in block) -- such a corner takes the mitre
+  const lenOf = (p) => Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y);
+  if (Math.min(lenOf(prevPrim), lenOf(curPrim)) < blockSize + nominalJoint + MIN_LINE_RUN_IN) return null;
   // The block's OWN face sits exactly `blockSize` from the corner (a quoin unit's own declared size,
   // unaffected by grout). The SURROUNDING band's own cut stops `nominalJoint` further out still,
   // leaving a real mortar-width gap between the block's own face and the band's own first piece --
@@ -992,7 +997,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
   });
 
   const pieces = [];
-  const sources = []; // T86 16(c) part 2: per piece, the primitive it was offset from (-1: a joint's own fan/quoin)
+  const sources = []; // T86 16(c) part 2: per piece, the primitive it was offset from (-1: a joint's fan, -2: a quoin)
   let nextId = startId;
   for (let k = 0; k < m; k++) {
     const idx = liveIndices[k];
@@ -1049,7 +1054,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
       const { sampleId, flip } = pickSample(set, seed, 'bricks-block', nextId);
       const heightOffset = (mulberry32(seedFor(seed, 'bricks-block-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
       pieces.push({ id: `${pieceId}-${nextId}`, polygon: rawJointEnd.blockPolygon, pieceId, sampleId, flip, heightOffset });
-      sources.push(-1);
+      sources.push(-2);
       nextId++;
     }
   }
@@ -1058,9 +1063,9 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
   // for free rather than needing a second pass later. `pieceIndex` is this row's own build-order
   // index (0-based, the SAME order `pieces` is already in -- stable for a given seed, since every
   // upstream choice that could reorder this array is itself seed-deterministic).
-  // `sources` + `liveIndices` ride alongside (never on the pieces: the output shape is unchanged) for
-  // contour-bands.js yieldAtMedialLine, which needs each piece's own depth field and its row's joint neighbours
-  return { pieces: pieces.map((p, pieceIndex) => ({ ...p, bandIndex, rowIndex, pieceIndex })), nextId, sources, liveIndices };
+  // `sources` rides alongside (never on the pieces: the output shape is unchanged) for contour-bands.js
+  // yieldAtMedialLine, which needs each piece's own depth field (or its kind: a fan, a quoin)
+  return { pieces: pieces.map((p, pieceIndex) => ({ ...p, bandIndex, rowIndex, pieceIndex })), nextId, sources };
 }
 
 const BOUNDARY_ARC_STEPS = 16; // a smoothness floor for the TESSELLATED polyline this returns, same
