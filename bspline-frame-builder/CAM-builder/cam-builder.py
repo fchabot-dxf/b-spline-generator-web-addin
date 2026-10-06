@@ -1118,6 +1118,44 @@ def _build_info_payload():
         return None
 
 
+# F35 item 70: BUILD / APPLY report each declared step ('cam_stage' {id}) from ui/html/cam-stages.js -- the same file
+# the palette imports (cam-loading.js) -- and pump the palette so it paints in time (fb_shared.palette_stages).
+CAM_STAGES_FILE = os.path.join(_addin_dir, 'ui', 'html', 'cam-stages.js')
+_cam_stage_ids_cache = None
+
+
+def _palette_stages():
+    import os as _os, sys as _sys
+    _root = _addin_dir
+    for _ in range(6):  # walk up to the dir holding fb_shared (= add-in root), as _build_info_payload does
+        if _os.path.isdir(_os.path.join(_root, 'fb_shared')):
+            break
+        _root = _os.path.dirname(_root)
+    if _root not in _sys.path:
+        _sys.path.insert(0, _root)
+    from fb_shared import palette_stages
+    return palette_stages
+
+
+def _post_cam_stage(stage_id):
+    """Tell the CAM palette which declared step Fusion is on now; never an undeclared id (logged instead)."""
+    global _cam_stage_ids_cache
+    try:
+        ps = _palette_stages()
+        if _cam_stage_ids_cache is None:
+            _cam_stage_ids_cache = ps.declared_stage_ids(CAM_STAGES_FILE)
+        if stage_id not in _cam_stage_ids_cache:
+            _log(f'[CAM STAGE] undeclared stage id {stage_id!r} -- not sent (ui/html/cam-stages.js)')
+            return
+        palette = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
+        if palette:
+            palette.sendInfoToHTML('cam_stage', json.dumps({'id': stage_id}))
+            ps.pump(adsk.doEvents)
+            _log(f'[CAM STAGE] {stage_id}')
+    except Exception:
+        _log_error("post_cam_stage\n" + traceback.format_exc())
+
+
 def _send_to_html(action, payload):
     try:
         ui = adsk.core.Application.get().userInterface
@@ -1227,6 +1265,7 @@ def _do_generate(confirmed=False):
             mode='bspline',
             skip_templates=True,
             skip_machine=True,
+            on_stage=_post_cam_stage,  # F35 item 70
         )
         _log(f"CKPT DOGEN 2: _engine.run returned (report.ok={report.get('ok')})")
     except Exception:
@@ -1377,6 +1416,7 @@ def _do_apply_toolpaths():
     try:
         from cam_engine import setup_builder as _sb
         _log("APPLY TOOLPATHS: applying templates to existing setups")
+        _post_cam_stage('camTemplates')  # F35 item 70
         n = _sb.apply_templates_to_existing_setups(cam, logger=_logger)
         _log(f"APPLY TOOLPATHS: templates applied to {n} setup(s)")
     except Exception:
@@ -1387,6 +1427,7 @@ def _do_apply_toolpaths():
     # Kick off deferred toolpath generation (also handles Table Attach
     # token capture/replay + tool renumber via the existing handler).
     _log("APPLY TOOLPATHS: kicking off deferred toolpath generation")
+    _post_cam_stage('camToolpaths')  # F35 item 70
     fake_report = {
         'ok': True,
         'mode': 'bspline',

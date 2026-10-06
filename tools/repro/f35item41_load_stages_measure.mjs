@@ -54,6 +54,7 @@ const shot = async (name) => {
 };
 
 await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
+await send('Network.setCacheDisabled', { cacheDisabled: true }); // the profile is reused: never a cached module
 await send('Network.setBlockedURLs', { urls: ['*workers.dev*'] });
 await send('Browser.setDownloadBehavior', { behavior: 'deny' });
 // fake cloud: a project is "open" so Save goes straight to the PUT; every projects call answers after WAIT_MS

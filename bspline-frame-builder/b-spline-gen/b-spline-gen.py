@@ -8,7 +8,7 @@ import adsk.core, adsk.fusion, adsk.cam, traceback
 
 # adsk check: removed diagnostic
 
-import os, tempfile, json, re, base64
+import os, sys, tempfile, json, re, base64, time
 from datetime import datetime
 
 # T63 (SE15): the constrained-sketch builder — a sibling module in this
@@ -195,17 +195,39 @@ LOG_FILE = get_log_path()
 
 # ── Module-level import probe (removed) ──────────────────────────────────
 
+# fb_shared (the add-in root, one level up) holds the palettes' declared-data reader and paint pump, shared with the
+# CAM builder (F35 item 70). Needed at import time: ADDIN_LOG below is read through it.
+_ADDIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ADDIN_ROOT not in sys.path:
+    sys.path.insert(0, _ADDIN_ROOT)
+from fb_shared import palette_stages  # noqa: E402
+
+# A declared data module shared with the palette (html/data/*.js): the ONE parser, fb_shared.palette_stages.
+_read_declared_json = palette_stages.read_declared_json
+
+
+# H23 item 93: what this log keeps -- the debug level (off), the demoted prefixes and the rotation size -- DECLARED
+# once in html/data/addin-log.js (the palette's fusDebug reads the same file). Unreadable -> the old behaviour
+# (everything written, 512 KB), so a bad declaration can never silence the log.
+try:
+    ADDIN_LOG = _read_declared_json(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'html', 'data', 'addin-log.js'))
+except Exception:
+    ADDIN_LOG = {'debug': True, 'debugPrefixes': [], 'rotateBytes': 1024 * 512}
+
 import datetime
 def _log(msg):
-    """Writes a timestamped message to the log file with auto-rotation."""
+    """Writes a timestamped message to the log file with auto-rotation. A line starting with a declared debug prefix
+    is written only when the declared debug level is on (H23 item 93)."""
     try:
+        if not ADDIN_LOG['debug'] and str(msg).lstrip().startswith(tuple(ADDIN_LOG['debugPrefixes'])):
+            return
         timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         log_entry = f"[{timestamp}] {msg}\n"
         # Open in append mode
         with open(LOG_FILE, 'a', encoding='utf-8') as f:
             f.write(log_entry)
-        # Optional: Rotation logic to keep the file small
-        if os.path.getsize(LOG_FILE) > 1024 * 512: # 512KB limit
+        # Rotation: past the declared size the live file becomes .old
+        if os.path.getsize(LOG_FILE) > ADDIN_LOG['rotateBytes']:
             os.replace(LOG_FILE, LOG_FILE + ".old")
     except Exception:
         # Fail silently if the OS prevents file access
@@ -255,6 +277,18 @@ def _merge_last_send_key(key, value):
 PALETTE_ID   = 'fusionHybridPalette'
 PALETTE_NAME = 'Symmetric B-Spline Gen'
 PALETTE_HTML = 'html/bspline_gen_palette.html'
+# H23 item 92: the palette page learns it runs in Fusion from a flag in its URL, DECLARED ONCE in this file (the
+# page's pollMode reads the same one): the pure-JSON object after the line that starts with the export.
+FUSION_HOST_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'html', 'data', 'fusion-host.js')
+
+
+def _palette_url(html_path, host_file=None):
+    """The palette's file URL with the declared Fusion-host flag (?host=fusion). Fusion can inject `adsk` seconds
+    after the page starts (seat A, 2026-10-06: ~3 s, and the page opened as the website with no Send button); the flag
+    tells the page to wait for it. A bare path with a query is refused by palettes.add ("Invalid htmlFileURL"); the
+    file:/// form with a query loads and keeps location.search (measured live, same day)."""
+    host = _read_declared_json(host_file or FUSION_HOST_FILE)
+    return 'file:///' + html_path.replace('\\', '/').lstrip('/') + f"?{host['param']}={host['value']}"
 
 # Track occurrences and graphics added during the session
 last_imported_occurrences = []
@@ -386,14 +420,88 @@ def _is_surface_body_name(bn):
     return False
 
 
+def _post_to_palette(action, payload):
+    """Send `action` to the palette AND let it paint now. F35 item 70, MEASURED live (seat A, 2026-10-06): the palette's
+    window runs on Fusion's main thread, so a message sent from inside a long handler (_handle_generate: the whole
+    import) is not painted until the handler returns -- a 10 s block showed the earlier text the whole time.
+    adsk.doEvents() right after the send painted it 3.5 s into the same block (the CAM builder and the exporter pump
+    the same way). ONE doEvents was not enough (seat A's live Send, 2026-10-06): it returned before the web view had
+    handled the message, so every post painted the PREVIOUS one -- the bricks, cleanup and frame steps never showed.
+    So the add-in pumps for POST_PAINT_PUMP_S after each post. Returns True if the palette was there."""
+    pal = app.userInterface.palettes.itemById(PALETTE_ID)
+    if not pal:
+        return False
+    pal.sendInfoToHTML(action, json.dumps(payload))
+    _pump_palette()
+    # detection only (seat A's live Sends: the cards vanished mid-Send twice, never reproduced with a z-order monitor --
+    # the palette is OWNED by Fusion's main window, so it cannot be covered by it): say so in the log if it is hidden
+    if not pal.isVisible:
+        _log(f'[PALETTE] hidden after posting {action}')
+    return True
+
+
+# F35 item 70: how long the add-in keeps pumping Fusion's events after a post, so the web view runs the message and
+# paints it before the add-in goes on (~10 posts a Send: under a second in all, on a 13-38 s import).
+POST_PAINT_PUMP_S = palette_stages.POST_PAINT_PUMP_S
+
+
+def _pump_palette(window_s=None):
+    palette_stages.pump(adsk.doEvents, POST_PAINT_PUMP_S if window_s is None else window_s)
+
+
+# F35 item 70: 'Imported into Fusion' stays on screen at least this long before the add-in hides the palette. The
+# palette's import-status poll queued during the import (its events only run after the handler returns) used to hide it
+# the moment the import ended, so the success state was never seen.
+IMPORT_SUCCESS_SHOW_S = 1.5
+_import_success_at = None
+
+
+def _may_hide_after_import(now=None):
+    """True once the success state has been on screen for IMPORT_SUCCESS_SHOW_S (or no success was posted)."""
+    if _import_success_at is None:
+        return True
+    return (time.monotonic() if now is None else now) - _import_success_at >= IMPORT_SUCCESS_SHOW_S
+
+
 def _send_progress(msg):
     """Sends a progress message to the JS UI."""
     try:
-        pal = app.userInterface.palettes.itemById(PALETTE_ID)
-        if pal:
-            pal.sendInfoToHTML('import_progress', json.dumps({'msg': msg}))
+        if _post_to_palette('import_progress', {'msg': msg}):
             _log(f'[PROGRESS] {msg}')
     except Exception: pass
+
+
+# F35 item 70: the steps of a Send, DECLARED ONCE in html/data/fusion-send-stages.js -- the palette imports that module;
+# this reads the same file (the pure-JSON object after the line that starts with the export). The palette holds each
+# step on its loading card ("Waiting - Fusion: building the frame, step 10 of 11") until the next one or the end.
+FUSION_SEND_STAGES_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'html', 'data', 'fusion-send-stages.js')
+_fusion_send_stage_id_cache = None
+
+
+def _fusion_send_stage_ids(path=None):
+    """The declared step ids, in order (read once per session unless a path is given)."""
+    global _fusion_send_stage_id_cache
+    if path is None and _fusion_send_stage_id_cache is not None:
+        return _fusion_send_stage_id_cache
+    ids = palette_stages.declared_stage_ids(path or FUSION_SEND_STAGES_FILE)
+    if path is None:
+        _fusion_send_stage_id_cache = ids
+    return ids
+
+
+def _send_stage(stage_id, is_preview=False):
+    """Tell the palette which declared step of a Send Fusion is on now ('import_stage' {id}). Never for a preview
+    (nothing waits on it), never an undeclared id (logged instead: the palette would not know it)."""
+    if is_preview:
+        return
+    try:
+        if stage_id not in _fusion_send_stage_ids():
+            _log(f'[STAGE] undeclared stage id {stage_id!r} -- not sent (html/data/fusion-send-stages.js)')
+            return
+        if _post_to_palette('import_stage', {'id': stage_id}):
+            _log(f'[STAGE] {stage_id}')
+    except Exception:
+        pass
 
 
 def _send_import_failed(msg):
@@ -1325,7 +1433,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             # ── Polling: JS asks whether the import finished ──────────────────
             if action == 'check_import_status':
-                if importing_done:
+                if importing_done and _may_hide_after_import():
                     pal = None
                     if app.userInterface:
                         pal = app.userInterface.palettes.itemById(PALETTE_ID)
@@ -1644,11 +1752,12 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         and SVG stamp layers are applied to that primary body afterwards.
         Log tags: [MULTI-VARIANT] and [SINGLE-STEP] for easy grep.
         """
-        global importing_done, last_imported_occurrences
+        global importing_done, last_imported_occurrences, _import_success_at
         try:
             is_preview = data.get('isPreview', False)
             if not is_preview:
                 importing_done = False
+                _send_stage('fusionPrepare')
                 _send_progress("Preparing Geometry...")
 
             _log(f'_handle_generate: isPreview={is_preview}, payload keys={list(data.keys())}')
@@ -1739,6 +1848,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     step_options           = import_mgr.createSTEPImportOptions(tmp_path)
                     step_options.isViewFit = False
                     initial_count          = import_target_comp.occurrences.count
+                    _send_stage('fusionImportStep', is_preview)
                     _send_progress(f"Importing {v_name}...")
                     try:
                         ok = import_mgr.importToTarget(step_options, import_target_comp)
@@ -1826,6 +1936,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 
                 import_target_comp = current_import_group.component if (not is_preview and _in_active_design(des, current_import_group)) else root_comp
                 initial_count          = import_target_comp.occurrences.count
+                _send_stage('fusionImportStep', is_preview)
                 _send_progress("Importing to Fusion...")
                 try:
                     ok = import_mgr.importToTarget(step_options, import_target_comp)
@@ -1970,6 +2081,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     _log(f'[CONSOLIDATE] post-import failed: {e}')
 
             # ── SVG Stamping (applied to primary body) ───────────────────────────
+            _send_stage('fusionStamp', is_preview)
             _send_progress('Analyzing Stamping Surface...')
             _log(f'SVG Stamping Check: active_layers={len(stamp_data.get("layers", [])) if stamp_data else "NoData"}, orientation={orientation}')
             if stamp_data and stamp_data.get('enabled'):
@@ -2008,9 +2120,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             # includeSVG = exportableStampLayers().length > 0 would then be False), and bricks are
             # a completely separate concern from "does this Send carry exportable art-layer SVG".
             if not is_preview:
+                _send_stage('fusionBricks')
                 self._apply_bricks_sketch(current_import_group, stamp_data, params, orientation)
 
             # ── Finalise ─────────────────────────────────────────────────────────
+            _send_stage('fusionCleanup', is_preview)
             _send_progress('Cleaning up graphics...')
             _clear_custom_graphics()
             if not is_preview:
@@ -2043,15 +2157,16 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 # not hide until both are done. Its result reaches the palette as frame_result, as before.
                 frame_payload = data.get('frame')
                 if frame_payload:
+                    _send_stage('fusionFrame')
                     _send_progress('Building the frame...')
                     self._handle_send_frame(frame_payload)
                 importing_done = True
+                _send_stage('fusionFinalize', is_preview)
                 _send_progress('Finalizing Import...')
                 _log('Import session finalized.')
 
-            pal = app.userInterface.palettes.itemById(PALETTE_ID)
-            if pal:
-                pal.sendInfoToHTML('import_success', '{}')
+            if _post_to_palette('import_success', {}):  # painted at once; hidden no sooner than IMPORT_SUCCESS_SHOW_S
+                _import_success_at = time.monotonic()
 
         except Exception:
             tb = traceback.format_exc()
@@ -2378,9 +2493,10 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
             if not palette:
                 current_dir = os.path.dirname(os.path.realpath(__file__))
                 html_path   = os.path.join(current_dir, PALETTE_HTML).replace('\\', '/')
-                _log(f'Creating palette, html_path={html_path}')
+                html_url    = _palette_url(html_path)
+                _log(f'Creating palette, html_path={html_path}, url={html_url}')
                 palette = palettes.add(
-                    PALETTE_ID, PALETTE_NAME, html_path,
+                    PALETTE_ID, PALETTE_NAME, html_url,
                     True, True, True, 1000, 850
                 )
                 palette.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight

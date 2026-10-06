@@ -23591,3 +23591,117 @@ changed lay 0.0308. Test: bricks-dropped-chain + T8 (mutation: the back-off on c
 - SWEEP: app-init.js _editorSvgHasContent (its only caller was the boot mask) removed; cloud-project-manager.js comment
   that cited it reworded; app-init.js lastResult import (unused after) dropped. Kept: initApp's refreshAllStampMasks
   import (initSvgEditor still uses it).
+
+## Projects worker: KV list() budget (advisor, urgent; seat B / fc, 2026-10-06), branch projects-list-budget
+Live GET /projects answered 500 "KV list() limit exceeded for the day" (free tier: 1,000 list() a day).
+MEASURED: the worker listed with PRESETS.list() on every GET /projects (the whole store) and GET /cam-profiles; the app
+(cloud-project-manager.js) listed at every page load (the "continue from phone" banner, 2.5 s after boot), again on
+every Projects-panel open and after every save / delete / rename; about 85 tools/repro scripts + the brick matrix
+load the app in headless Chrome over LOOPBACK http, and only the matrix installed a cloud stand-in.
+(2) Worker: presets-index.js -- one index key (__index::presets) kept in step by every PUT/DELETE (after the write: a
+gated write only once the password passed); both listings read it (1 KV read). Self-heal instead of locks (two writes
+at once can lose an entry; one user, rare): rebuilt from list() when missing / corrupt / older than 6 h; a GET of a
+key missing from the index puts it back. The rebuild pages with a cursor (the old single list() capped at 1,000 keys).
+(1) App: one list fetch shared by the boot banner and the panel within 30 s (LIST_CACHE_TTL_MS), in-flight shared, a
+failed one never reused, any write clears it. The banner stays (Fred's feature) -- now a KV read, not a list().
+(3) bspline_gen_palette.html: a loopback-served page's API URL is a dead loopback address unless ?realCloud=1 (the
+brick matrix: --real-cloud) -- one declared rule for every harness, current and future; live site / Fusion unchanged.
+NUMBERS: worker list() per GET /projects 1 -> 0 (a rebuild at most every 6 h); app list fetches per page load with
+the panel opened 2 -> 1; local probes reaching the real worker: all -> none.
+Tests: presets-index-worker (5: one list() then none, writes in step incl. /presets + /cam-profiles, refused write
+leaves it, self-heal + stale rebuild, corrupt index), project-list-budget (banner + panel share one fetch; TTL; failed
+not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Brick matrix password 4/4, persistence
+24/24, migration 5/5 through the stand-in behind the dead URL. Full vitest 333 / 5,427.
+## H23 item 92: the Fusion palette opened as the website (no Send button) -- seat A / 77, 2026-10-06
+- Found during the item 70 re-check: three fresh palette opens in a row came up in WEB mode ('STEP' / 'Add-in', no
+  Send). pollMode gave Fusion's `adsk` 3 x 100 ms; the page's JS logs reached Python seconds later, so adsk was
+  injected late. A test-only bump of MAX_MODE_CHECKS in the deployed copy gave Fusion mode at once.
+- Fix (declared, not a magic number): html/data/fusion-host.js declares the host flag (?host=fusion), the Fusion wait
+  (modeDetectTimeoutMs 10000), the poll step and the website's grace (webGraceMs 300, today's value). The add-in
+  (_palette_url) opens the palette at file:///<path>?host=fusion; pollMode waits up to the declared timeout only on a
+  page carrying the flag, and decides the moment adsk appears. The website / an older add-in keeps the 300 ms.
+- Probe before the fix (scratch palettes, deleted): palettes.add REFUSES a bare path with a query ("Invalid
+  htmlFileURL"); the file:/// form with a query loads and keeps location.search. (stamp-editor.py's comment says
+  palettes.add rejects query strings on creation -- true only for the bare-path form.)
+- [MODE] log line: how long the page waited for adsk, the margin the timeout keeps.
+- Tests: tests/fusion-mode-detect.test.js 5 (3/5 fail on the old pollMode: late adsk, decide-at-once, timeout
+  fallback); test_palette_host_url.py 2, driving the real CommandExecuteHandler (2/2 fail without the add-in change).
+  Full vitest 5420/5420 (332 files); b-spline-gen pytest 157/157. Known failures: none.
+- Live, brick-wall board, scratch palette opens by deleteMe + execute: c269381 5/5 Fusion mode; f6536fc 5/5 Fusion mode,
+  adsk after 102 / (lost to log rotation) / 549 / 864 / 0 ms. 549 and 864 are past the old 300 ms: those opens would have
+  been the website. Page load itself varied 2-50 s on this busy machine.
+- Side notes, not fixed: the log rotates at 512 KB and one palette load writes ~600 KB (the P dump), so a load's own
+  lines can be rotated out twice; the build-info status reads "could not resolve source HEAD" for a deploy from a
+  worktree (fb_shared/build_info.py:134) and covers the header buttons.
+## H23 item 93: the add-in log keeps its own Send; the build status never covers the header -- seat A / 77, 2026-10-06
+- Measured first (logs from the item 70 / 92 live runs): a palette load was 99.9% ONE line kind -- state.js
+  saveLastSession echoing the whole session JSON into the add-in log (~290 KB a save with a brick wall, ~2 saves a
+  load), so one load passed the 512 KB rotation twice and its own lines were gone. A Send's own ~55 KB was 2/3
+  '[DEBUG] ATTR TAG' (fb_engine build_context) + 1/6 'CONSTRAINT OK' lines.
+- Declared html/data/addin-log.js (pure JSON, read by both sides): debug false, debugPrefixes ['[DEBUG]',
+  'CONSTRAINT OK:'], rotateBytes. _log drops a line starting with a debug prefix unless debug is on (the sketch
+  builder's _Logger.records still counts them, so its summaries are unchanged); unreadable declaration -> the old
+  behaviour (everything, 512 KB). fusion-log.js gains fusDebug (sent only with debug on); the session echo uses it, so
+  by default it never crosses the bridge. [STAGE]/[MODE]/[XFER]/[PROGRESS]/warnings/errors are never demoted (test).
+  Nothing in the repo reads the session echo back out of the log (grepped).
+- Live (deployed c1667a8, 7x9 frame + brick wall, scratch doc): a palette load wrote 1,963 B (was ~600 KB); load +
+  Send incl. the frame build 21.7 KB (Send 19.5 KB: chunk transfer + XFER timing lead). rotateBytes 2 MB: a load +
+  Send fits twice even with debug on (~0.7 MB each).
+- build_info: a linked worktree's gitdir holds only HEAD; branch refs + packed-refs live in the dir its `commondir`
+  names, so a worktree deploy read 'could not resolve source HEAD'. _read_head_sha now looks there too. And the build
+  status no longer uses the fixed status line (position:fixed over the header, a never-clearing 'warn'):
+  main/build-badge.js paints the Settings > Version badge and marks the Settings button (⚠, tooltip) when stale;
+  'unknown' only mutes the badge. Live: worktree deploy -> header clear, Send to Fusion visible, no mark (HEAD
+  resolved = up to date).
+- Tests: test_addin_log_levels.py 5 (3/5 fail on the old _log), addin-log-debug.test.js 4 (2/4 fail on the old
+  code), test_build_info_worktree.py 5 (3/5 fail on the old resolver), build-badge-no-overlay.test.js 4 (the main.js
+  wiring check fails on the old main.js). Full vitest 5425/5425 (333 files); b-spline-gen pytest 160/160. Known
+  failures: none.
+- Not touched: the 5 '[ERROR] CONSTRAINT FAIL ... VCS_SKETCH_SOLVING_FAILED' lines every Send of this board logs
+  (also in the item 70 runs on other builds). _palette_url (item 92, not on main yet) parses its declaration the same
+  way as the new _read_declared_json: fold it in when both are merged.
+## F35 item 69 -- main sidebar audit, T1 7x9 / T18 7x10, desktop + 900 px (seat E / 61, 2026-10-06)
+- METHOD: every visible control of Stock, Frame, Skeleton, Filter, Stamp, Sculpt top/bottom, Thicken, View, Export,
+  Resolution on both boards: change at CPU x4 (settle by lastResultGeneration + loading card), reload = live (waits on
+  item 37's bootRestore), revert, two changes 100 ms apart, Undo/Redo; layout per panel at 1400 and 900 px. Flags from
+  runs under fleet load were re-run alone: filter +, decal on/off, skeleton + / smooth / clustering, the stamp layer-row
+  carve toggle all CLEARED (load artefacts); several earlier 'reload' flags were item 37's gen-1 read (fixed there).
+- FIXED HERE: truncated stepper boxes (the palette rule was [type="number"]-qualified; formula fields are type="text"):
+  15 at 1400 px / 2 at 900 px -> 0. tests/stepper-input-css.test.js fails 1/1 before.
+- LISTED FOR THE ADVISOR (not one-liners): (1) HIGH stamp settings set from the sidebar are lost on reload -- the live
+  editor layer changes but P.editorSvg's data-editor-layers is not re-serialized; measured blur 4->0, V-bit 120->90,
+  smoothing 27->15, fillet 0.4->0; the mask reads the layer (stamp-mask-manager.js:139). (2) Delete frame cannot be
+  undone (frame stays gone, 3D unchanged). (3) 30 controls rebuild the 3D without changing it, 1.1-8.2 s at x4, no card
+  (sculpt tools / brush settings, decal opacity, adaptiveDisplay, ...); detailDensity changes the 3D with no card.
+  (4) thicken slider step 0.01 cannot hold the 0.125 default. (5) sculpt tool choice not kept across reload. (6) layer-row
+  carve button keeps its look after Undo. (7) enabled controls with no effect here (stamp Transform with no stamp art).
+- Sheet: shots/seatE/item69/sheet.html (+ sheet_preview.png). Full vitest 328 files, 5349 passed, 6 todo, 0 failed.
+
+## H23 item 94: the 5 SE15 CONSTRAINT FAILs on the 7x9 T16 board -- real, three causes, fixed by declaration (seat A / 77, 2026-10-06)
+- NOT the frame (Frame_1 builds ok): the SE15 constrained sketches of the board's Shape Lattice artwork, a frame-offset
+  contour (T16 Arched Funnel) that had been CUT (its right flank is 5 arc pieces, the left one arc). Rebuilt live
+  from the Send's own manifests (last_send.json) through the add-in's build_constrained_sketch in a scratch doc:
+  the same 5 failures, and the geometry really wrong -- contour ends up to 208 in off (an arc's radius doubled),
+  rails 6.9 in, ties/nodes 4.7 in. Not harmless.
+- Cause 1: Tangent declared at the contour's MITER corners (turns 74 / 94 / 43 deg). A cut drops the frame contour's
+  `corners` list (_drawnContourSilhouette), so every arc-adjacent joint got a Tangent; on the loose chain Fusion bends
+  the shape to satisfy them. Fix: a Tangent only where the drawn joint IS tangent -- isTangentJoint, factored out of
+  outlineDefects (same test, same 1e-4 tolerance, now TANGENT_JOINT_TOL).
+- Cause 2: 17 of 18 rail-end -> contour Coincidents named the WRONG seg: computePattern attributes ends by the FRESH
+  contour's numbering (latticeExtentFor) while a cut sends the drawn pieces, renumbered. Fix: _retargetContourEnds
+  re-resolves each end against the contour that is sent with primitiveHitAt (computePattern's own attribution),
+  tolerance CONTOUR_HIT_TOL_IN = 2e-3 in, now declared once and read by both. Only for a cut (an uncut manifest is
+  byte-identical, tested).
+- Cause 3: with 1+2 fixed (variant A, live) the contour still failed Tangent seg5/seg6 -- two pieces of ONE circle,
+  the joint next to the seg4/seg5 miter corner -- and a later arc's radius doubled. Without the 4 co-circular
+  Tangents (variant B) every layer built exact. Narrowed: seg5/seg6 restored alone fails, seg7/seg8 alone builds;
+  isolated co-circular pairs (4 radii/sweeps) and 3/5-piece chains build exact with or without Tangent. So: no
+  Tangent between pieces of one circle (_sameCircle) -- nothing lost (one circle by construction, loose contour).
+  Not a general Fusion rule (needs the loop), not root-caused, so not recorded in fusion360-quirks.
+- Tests: tests/se15-tangent-only-where-tangent.test.js 7 (T16 7x9 frame-offset contour, cut once): no Tangent at a
+  non-tangent joint (failed on the old producer: seg0/seg1), none at the cut joint, uncut Tangents unchanged, every
+  fill end on the piece it names (failed on the old code: rail0:S 1.48 in off) and none lost, uncut manifest
+  byte-identical. Related suites 477/477; full vitest 5440/5440 (335 files). Known failures: none.
+- Live end-to-end (deployed d52c5da = this + main 32a9fa4, the board's real Send from the palette): Lattice
+  Boundary / L2 contour / L1 rails / L3 ties / L4 nodes all constraints_issues=0, parity_maxErr 0 / 0 / 1e-6 / 0 /
+  0, no [ERROR], no PARITY WARNING (were 5 failures, 208 / 6.9 / 4.7 in); the contour builds in 1.1 s (was 4.7 s).

@@ -12,6 +12,8 @@
 //   --parallel               one Chrome per row GROUP (Wall / Frame / Brush+Stripe / Sidebar), each with its
 //                            own fresh baseline, run side by side; reports merged into <out>
 //   --group <name>           run one group only (what --parallel spawns)
+//   --real-cloud             talk to Fred's REAL projects worker (?realCloud=1, no stand-in) -- never by default: a
+//                            loopback-served page points at a dead address otherwise (bspline_gen_palette.html)
 import { spawn, execFileSync } from 'node:child_process';
 import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import os from 'node:os';
@@ -26,6 +28,7 @@ const flag = (name) => process.argv.includes(`--${name}`);
 const ROOT = arg('root', path.resolve(HERE, '../../bspline-frame-builder'));
 const OUT = path.resolve(arg('out', 'brick-matrix-report'));
 let PORT = Number(arg('port', 9701)), HTTP = PORT + 1;
+const REAL_CLOUD = flag('real-cloud'); // see the header: the real worker only on request
 const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -88,7 +91,7 @@ if (flag('parallel')) {
   const kids = GROUPS.map((g, i) => new Promise(async (resolve) => {
     await sleep(10000 * i); // staggered: N apps booting at once starve each other (measured: 2 of 4 never came up)
     const out = path.join(OUT, g);
-    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--group', g, '--port', String(base + 10 * (i + 1)), '--out', out, '--root', ROOT], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--group', g, '--port', String(base + 10 * (i + 1)), '--out', out, '--root', ROOT, ...(REAL_CLOUD ? ['--real-cloud'] : [])], { stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', (d) => process.stdout.write(String(d).split('\n').filter(Boolean).map((l) => `[${g}] ${l}`).join('\n') + '\n'));
     child.stderr.on('data', (d) => process.stderr.write(`[${g}] ${d}`));
     child.on('exit', (code) => resolve({ g, code, out }));
@@ -314,9 +317,9 @@ async function record(c, obs) {
 
 try {
   await send('Runtime.enable'); await send('Page.enable');
-  await send('Page.addScriptToEvaluateOnNewDocument', { source: CLOUD_STAND_IN.replace('__EDIT_PASSWORD__', EDIT_PASSWORD_TEST.password) });
+  if (!REAL_CLOUD) await send('Page.addScriptToEvaluateOnNewDocument', { source: CLOUD_STAND_IN.replace('__EDIT_PASSWORD__', EDIT_PASSWORD_TEST.password) });
   await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
-  await send('Page.navigate', { url: `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html` });
+  await send('Page.navigate', { url: `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html${REAL_CLOUD ? '?realCloud=1' : ''}` });
   for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; }
   await sleep(3000);
   // baseline: a wall and a frame laid, applied. Under load (--parallel) the app can still be starting, so

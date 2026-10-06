@@ -90,6 +90,11 @@ export const OWNERSHIP_ATTR = 'data-lattice-gen';
  *  tightly-packed pattern. RAILS are unaffected — only ties were ever reported touching. */
 export const TIE_CONTOUR_CLEARANCE_IN = 0.05;
 
+/** How far (model in) a rail/tie end may sit from a contour piece and still be ON it: the contour's own known
+ *  precision ceiling (T73 AMEND 3: it round-trips through a 3-decimal-rounded `d` string). computePattern's
+ *  contour attribution and the Fusion manifest's re-attribution after a cut (H23 item 94) both read it. */
+export const CONTOUR_HIT_TOL_IN = 2e-3;
+
 /**
  * T76 (SE17, Fred: "I want ties on a layer and rails on another and nodes
  * another"): a generated lattice pattern's own FOUR kinds of drawn content
@@ -1722,7 +1727,7 @@ export function computePattern(PATTERN, opts = {}) {
   // rounded `d` string), not the amend's aspirational "1e-6" — a tighter
   // tolerance would silently miss genuine joints the string-rounding
   // nudged by a thousandth of an inch.
-  const contourHitTol = 2e-3 / P.spacing;
+  const contourHitTol = CONTOUR_HIT_TOL_IN / P.spacing;
   // T73 AMEND 3b (Fred: "maybe you'll need to do something special for
   // the waist section?"): a near-tangent graze (a rail/tie's own
   // direction nearly PARALLEL to the contour's own tangent right where

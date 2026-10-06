@@ -43,8 +43,9 @@ import { initFramePanel, onFrameResult, onDeleteFrameResult, syncFramePanel } fr
 import { initClearMenu } from './editor-clear-menu.js';
 import { initViewModeToggle } from './view-mode-toggle.js';
 import { bindHeaderAndSettings } from './header-controls.js';
+import { paintBuildInfo } from './build-badge.js';
 import { wireGlobalEvents } from './global-events.js';
-import { installGestureWatch } from '../core/loading-signal.js';
+import { installGestureWatch, holdLoadingStage, releaseHeldStage } from '../core/loading-signal.js';
 import {
     onGenerate, onFusionApply, executeExport, closeWizard,
 } from './export-flow.js';
@@ -213,6 +214,14 @@ function handleFusionHandshake(ev) {
     if (action === 'import_ready' || action === 'reset_ui') {
         stopFusionPolling();
         setFusionActionState(FUSION_IDLE_LABEL, false);
+        releaseHeldStage(); // item 70
+        return;
+    }
+    // item 70: the add-in reports each step of a Send by its declared id (data/fusion-send-stages.js) -- held on the
+    // card ("Waiting - Fusion: building the frame, step 9 of 11") until the next step or the end
+    if (action === 'import_stage') {
+        let id = ''; try { id = JSON.parse(ev.detail.data || '{}').id || ''; } catch (e) {}
+        if (id) holdLoadingStage(id);
         return;
     }
 
@@ -221,12 +230,18 @@ function handleFusionHandshake(ev) {
         if (msg) setFusionStatus(msg, 'busy');
         return;
     }
-    if (action === 'import_success') { setFusionStatus('Imported into Fusion ✓', 'ok'); return; }
+    if (action === 'import_success') {
+        releaseHeldStage(); // item 70: Fusion's stages end; the button was held until now
+        setFusionActionState(FUSION_IDLE_LABEL, false);
+        setFusionStatus('Imported into Fusion ✓', 'ok');
+        return;
+    }
     // workflow audit #15: a failed Send reports at once (the palette used to wait out its whole poll)
     if (action === 'import_failed') {
         let msg = ''; try { msg = JSON.parse(ev.detail.data || '{}').msg || ''; } catch (e) {}
         stopFusionPolling();
         setFusionActionState(FUSION_IDLE_LABEL, false);
+        releaseHeldStage(); // item 70
         setFusionStatus(msg || 'The Send failed in Fusion', 'warn');
         return;
     }
@@ -251,28 +266,10 @@ function handleFusionHandshake(ev) {
 
     if (action === 'build_info') {
         // Python pushed the deployed build stamp {sha, built_at, dirty, status,
-        // message}. Paint the header badge: ✓ up-to-date / ⚠ stale-or-dirty, with
-        // the full detail in the tooltip. Unknown (no build-info.json / dev run)
-        // keeps the fallback literal, just muted + explained via title.
+        // message}: the Settings > Version badge, and a stale mark on the Settings
+        // button -- never the status line over the header (H23 item 93, build-badge.js).
         try {
-            const badge = document.getElementById('build-badge');
-            if (!badge) return;
-            const info   = JSON.parse(ev.detail.data || '{}');
-            const status = info.status || 'unknown';
-            const sha    = info.sha || 'unknown';
-            badge.title  = info.message || '';
-            if (status !== 'ok') setFusionStatus(info.message || 'Deployed add-in is stale', 'warn');
-            if (status === 'unknown' || sha === 'unknown') {
-                badge.className = 'cad-nav-version build-unknown';
-            } else {
-                // Fred (2026-10-03): the date-based version (YYYY.MM.DD-N) leads; older
-                // deploys without one fall back to the build date.
-                const label = info.version || String(info.built_at || '').slice(0, 10);
-                const glyph = status === 'ok' ? '✓' : '⚠';
-                const edits = info.dirty ? ' +edits' : '';
-                badge.textContent = `${glyph} ${label} · ${sha}${edits}`;
-                badge.className   = `cad-nav-version build-${status}`;
-            }
+            paintBuildInfo(JSON.parse(ev.detail.data || '{}'));
         } catch (e) {
             fusLog(`build_info parse failed: ${e.message}`);
         }

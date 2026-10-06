@@ -6,6 +6,7 @@
   <title>CAM &middot; Native CAD</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="../../../styles/base.css">
+  <link rel="stylesheet" href="../../../styles/loading-stage.css"> <!-- item 70: the shared loading card -->
   <style>
     body { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #fff; }
     .hidden { display: none !important; }
@@ -701,6 +702,8 @@
 
   </div><!-- .cam-shell -->
 
+<div id="loading-stage" class="loading-stage" hidden role="status" aria-live="polite"><span class="loading-stage-spinner"></span><span class="loading-stage-text"></span></div>
+<script type="module" src="./cam-loading.js"></script>
 <script>
   /* ── Mode tabs (CAM1a) ──────────────────────────────────────────────────
      One shared shell, one dispatcher on the Python side. Each tab keeps its
@@ -778,10 +781,15 @@
     send('preview_bodies');
   }
 
+  // item 70: the declared BUILD / APPLY steps on the loading card, painted BEFORE the request leaves (cam-loading.js)
+  function withCamStages(sequenceId, go) {
+    if (window.camLoading) window.camLoading.begin(sequenceId).then(go, go);
+    else go();
+  }
   function runBuild(confirmed) {
     SETUP_KEYS.forEach(k => setSetupState(k, 'pending'));
     setStatus('building setups...');
-    send('build', { mode: 'bspline', confirmed: confirmed === true });
+    withCamStages('camBuild', () => send('build', { mode: 'bspline', confirmed: confirmed === true }));
   }
 
   // Fred ("5 ok"): BUILD rebuilds its setups by name, deleting the operations inside them -- the add-in asks
@@ -818,7 +826,7 @@
 
   function runApplyToolpaths() {
     setStatus('applying templates + generating toolpaths...');
-    send('apply_toolpaths', { mode: 'bspline' });
+    withCamStages('camApply', () => send('apply_toolpaths', { mode: 'bspline' }));
   }
 
   /* ───────────────────────── Template browser ─────────────────────────
@@ -1487,12 +1495,15 @@
           return;
         }
 
-        if (action === 'build_confirm') { confirmBuild(payload.setups || []); return; }
+        if (action === 'build_confirm') { if (window.camLoading) window.camLoading.end(); confirmBuild(payload.setups || []); return; }
+        // item 70: the add-in's step reports (cam-stages.js ids), held on the card until the next one or the report
+        if (action === 'cam_stage') { if (window.camLoading && payload.id) window.camLoading.stage(payload.id); return; }
 
         // ── report: BOTH tabs' operations complete via this one event
         // name — gated on which tab actually triggered it, since the two
         // payload shapes are genuinely different (Builder: fixed SETUP_KEYS
         // dots; Studio: per-component state + setups_built count). ──────
+        if (action === 'report' && window.camLoading) window.camLoading.end(); // item 70: the work is over
         if (action === 'report' && currentMode === 'bspline') {
           if (payload.msg) {
             const ok = payload.ok !== false;
@@ -1502,12 +1513,18 @@
             const key = setupKeyFor(s.name);
             if (key) setSetupState(key, s.ok ? 'ok' : 'fail');
           });
+          // item 70 (seat A, measured live): APPLY's own report carries no MM / setup counts -- the build summary then
+          // read 'done · 0 MMs · 0 setups' over its message for the whole toolpath generation; and a failure with no
+          // errors list read 'failed —' and nothing. The summary is a BUILD report's (it carries mms); the rest keep
+          // their own message.
           if (payload.ok) {
-            const nMms = Object.values(payload.mms || {}).filter(Boolean).length;
-            const nSetups = (payload.setups || []).filter(s => s.ok).length;
-            setStatus('done · ' + nMms + ' MMs · ' + nSetups + ' setups', 'ok');
+            if (payload.mms) {
+              const nMms = Object.values(payload.mms).filter(Boolean).length;
+              const nSetups = (payload.setups || []).filter(s => s.ok).length;
+              setStatus('done · ' + nMms + ' MMs · ' + nSetups + ' setups', 'ok');
+            }
           } else {
-            setStatus('failed — ' + (payload.errors || []).join('; '), 'fail');
+            setStatus('failed — ' + ((payload.errors || []).join('; ') || payload.msg || 'see the CAM log'), 'fail');
           }
 
         } else if (action === 'report' && currentMode === 'generic') {
