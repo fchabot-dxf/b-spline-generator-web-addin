@@ -91,7 +91,27 @@ def _log(logger, msg, level="INFO"):
 
 def run(classifier, app=None, logger=None, mode='bspline', component_names=None, profile=None, skip_templates=False, skip_machine=False,
         on_stage=None):
-    """Run the full pipeline.
+    """Run the full pipeline in one call: run_steps() drained, on_stage(id) called at each declared step. Returns the
+    report (see run_steps)."""
+    steps = run_steps(classifier, app=app, logger=logger, mode=mode, component_names=component_names, profile=profile,
+                      skip_templates=skip_templates, skip_machine=skip_machine)
+    while True:
+        try:
+            stage_id = next(steps)
+        except StopIteration as done:
+            return done.value
+        if on_stage:
+            on_stage(stage_id)
+
+
+def run_steps(classifier, app=None, logger=None, mode='bspline', component_names=None, profile=None, skip_templates=False,
+              skip_machine=False):
+    """The pipeline as a GENERATOR: it yields each declared step id (CAM-builder/ui/html/cam-stages.js) where the work
+    may pause, and returns the report (StopIteration.value). F35 item 70, measured live (seat A, 2026-10-06): run from
+    the palette's HTML handler in one go, the CAM palette never got the step messages posted after the Manufacture
+    workspace switch, nor the one after the Manufacturing Models were built -- Fusion held them until the handler
+    returned. The add-in (cam-builder.py) therefore advances this one step per deferred CustomEvent, so every handler
+    has returned before the next step starts and the palette takes each message live.
 
     Parameters
     ----------
@@ -157,6 +177,8 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
         )
         return report
     report['cam_acquired'] = True
+    if mode != 'generic':
+        yield 'camWcs'  # a pause right after a possible workspace switch (it holds the palette's messages)
 
     # When the user is in the Manufacture workspace, ``app.activeProduct``
     # returns the CAMProduct -- NOT the Design. We need the Design product
@@ -230,9 +252,6 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
 
         # H23 item 82: the shared WCS points go into the SOURCE design (moved in place on a
         # later BUILD), so every MM carries its own copy for its setups to bind.
-        # F35 item 70: on_stage(id) reports each declared step (CAM-builder/ui/html/cam-stages.js) to the palette
-        stage = on_stage or (lambda _id: None)
-        stage('camWcs')
         try:
             setup_builder.ensure_wcs_sketches(design, logger)
         except Exception as e:
@@ -251,14 +270,14 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
             # Auto-cleanup: delete any prior build's Setups and MMs with our
             # known names so a re-run REPLACES instead of DOUBLING.
             _log(logger, "COORDINATOR: entering bspline branch, about to run cleanup", "INFO")
-            stage('camCleanup')
+            yield 'camCleanup'
             try:
                 _cleanup_previous_build(cam, logger)
                 _log(logger, "COORDINATOR: cleanup returned normally", "DEBUG")
             except Exception as e:
                 import traceback as _tb
                 _log(logger, f"COORDINATOR: cleanup raised {type(e).__name__}: {e}\n{_tb.format_exc()}", "WARNING")
-            stage('camModels')
+            yield 'camModels'
             mms = mm_builder.build_all_mms(cam, design, classifier, logger)
 
         for rule in mm_builder.MM_RULES:
@@ -266,7 +285,7 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
             if rule not in mms:
                 report['errors'].append(f"MM '{rule}' was not built.")
 
-        stage('camSetups')
+        yield 'camSetups'  # a pause after the MMs are built (building them held the palette's messages too)
         if reuse is not None:
             setups = setup_builder.update_setups_in_place(cam, reuse, logger)
         else:

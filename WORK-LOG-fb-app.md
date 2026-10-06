@@ -15217,3 +15217,24 @@ WallPattern = {
   - CAM-builder already uses it.
   - Left as they are: test_addin_log_levels.py / test_palette_host_url.py parse the files their own way (an independent check, not the code checking itself).
   - Add-in pytest 170, CAM pytest 40.
+
+## F35 item 70, CAM BUILD as deferred steps (seat F, branch cam-build-deferred; advisor-approved after seat A's check)
+- **Measured (seat A, 2026-10-06):**
+  - With the Manufacture switch inside BUILD's HTML handler, no step message after it reached the palette.
+  - With Manufacture already active, steps 1-3 landed live, but step 4 (posted after the MMs were built) painted 8.4 s late, right after the report.
+  - So both the switch and the MM build hold palette messages until the handler returns.
+- **Built:**
+  - cam_coordinator.run_steps() is the pipeline as a GENERATOR. It yields each declared step id where the work may pause: camWcs right after the CAM product is acquired (after a possible workspace switch), camCleanup, camModels, camSetups (after the MMs). It returns the report.
+  - run() drains it (on_stage per step), so every other caller is unchanged.
+  - cam-builder: _do_generate starts the generator and fires BUILD_STEP_EVENT_ID; the HTML handler returns before any build work.
+  - _advance_build (a CustomEvent handler, registered and unregistered like TPGen) runs one step, posts it, fires the next tick; at the end _finish_build sends the report.
+  - Palette actions arriving during a build queue (_actions_waiting) and are replayed in order after the report. That is the order the blocked main thread used to give; never an APPLY interleaved with a BUILD.
+  - Dispatch is extracted as _dispatch_palette_action.
+- **Tests:** test_cam_stages.py +6.
+  - Pause order fresh: step, wcs, step, cleanup, step, mms, step, setups. Reused: step, wcs, step, in_place.
+  - run() unchanged.
+  - The handler returns before the build starts (fake event).
+  - One step per tick, then the report.
+  - An APPLY during a build runs after the report.
+  - 7/10 fail against main (the 3 that pass pin the file parse, the pump, run()). CAM pytest 46.
+- **Next:** seat A's live readback of the four BUILD cards painting live.
