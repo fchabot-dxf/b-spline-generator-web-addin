@@ -223,7 +223,21 @@ describe('ribbonPieces on REAL template geometry (H23 item 76, advisor-dispatche
     // instead of silently deleting coverage or picking a meaningless threshold (the true worst case
     // is ~1.0, so nothing short of "always pass" would NOT also flag this real defect). Flagged for
     // its own dispatch; out of scope for T86 item 19 (Wall-only, no Frame bands).
-    it.todo(`${name}, three_band (deep multi-row stress case): overlap stays bounded -- PRE-EXISTING row-transition duplication, needs its own fix (12 pairs ~1.0 on template_1)`);
+    // T86 item 21b (seat B / fc, 2026-10-06): un-todo'd -- MEASURED already fixed before 21b (neck-medial 44f375e:
+    // worst pair 0.0005 of a piece on T1 and T12, nothing over 0.03); this test FAILS at 5a4ddd9, where the todo was
+    // written, and now guards it.
+    it(`${name}, three_band (deep multi-row stress case): no two pieces overlap (exact polygon-intersection area)`, () => {
+      const pieces = allRibbonPieces(realPrimitives(templateId, W, H), FRAME_PRESETS.three_band);
+      let worst = 0;
+      for (let i = 0; i < pieces.length; i++) {
+        for (let j = i + 1; j < pieces.length; j++) {
+          const A = bbox(pieces[i].polygon), B = bbox(pieces[j].polygon);
+          if (A.maxX < B.minX - 1e-6 || B.maxX < A.minX - 1e-6 || A.maxY < B.minY - 1e-6 || B.maxY < A.minY - 1e-6) continue;
+          worst = Math.max(worst, overlapFraction(pieces[i].polygon, pieces[j].polygon));
+        }
+      }
+      expect(worst, 'worst pairwise overlap fraction').toBeLessThan(0.03);
+    });
   }
 });
 

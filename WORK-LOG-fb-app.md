@@ -14632,6 +14632,78 @@ WallPattern = {
   - Measured first: a tapped cell (0,1) hits no brick on the matrix baseline (a wall inside a Soldier frame, T1's waist), because unit-1 columns are absolute. That is why the row starts from Checker instead.
 - **Not done / for later:** join and split on a BUILT-IN base (they act on Custom only; a built-in -> tile conversion is ambiguous because built-in stagger counts from the top); a unit change on Custom keeps the CELL counts (the bricks rescale with the unit).
 
+## seat E (61) turn 1: F35 item 55, GROUT COLOUR + EDGE + the LOCKED GROUT SHAPE (branch grout-svg)
+- **Setup:** worktree -wt\61, branch grout-svg off origin/main 3eb2d30, node_modules = a junction; export-flow 33/33.
+- **Two forks, advisor-ruled before code (DM):**
+  - The grout shape is ONE even-odd path: the region loops + every painted face. polygonDifference cannot hold holes (a clip wholly inside comes back whole, `holeIgnored`), and a wall region minus its bricks is all holes. A face crossing the region edge is cut to it first (polygonIntersection, the exclusions math).
+  - The grout node is drawn ABOVE its element's bricks, so a coloured grout also covers each face's inset rim. With colour None the inset does not show on canvas/3D (accepted; the Edge tooltip says so). The SVG download (item 56) will paint the inset faces exactly.
+- **Declared:**
+  - core/bricks/grout-shape.js: groutShapeOf({ id, region, faces, cutouts, insetIn }) -> { id '<element>:grout', loops, d, fillRule 'evenodd' }; insetFace; pointOnGrout; primitivesOutline (the frame contour, arcs cut to < 0.002 in sag).
+    - insetFace's "swallowed" test is the edge DIRECTIONS, not the area sign: an inset past a brick's middle reflects it through its centre and keeps the sign (a 0.1 in square at 0.06 came back as a face; the test caught it).
+  - engine.js: generateBricks also returns `interiorOutline` (the variable it already had) -- additive, both return statements; seat B (fc) cleared it first (their corner-21b branch is contour-bands / primitive-ribbon / geometry / piece-plan only).
+  - state.js: brickSettings.groutPaint { color: null, paintInsetIn: 0 } (board-wide) + groutPaintByElement { wall, frame, brush: null } (null = inherit, groutByElement's rule). A saved board without them reads the defaults: no load change.
+  - editor-brick-tool.js: GROUT_KIND 'grout', GROUT_OF_ATTR, GROUT_REGION_ATTR, GROUT_ELEMENT_KINDS ['wall','frame'], GROUT_PAINT_DEFAULT, groutPaintOf, drawElementGrout, repaintGrout, elementsWithoutGrout, groutNodes.
+  - layers.js: LOCKED_ATTR 'data-locked' + isLockedNode; BRICK_SEND_SKIP ['grout'].
+- **Region per element** (stored on the node as JSON, so a paint change repaints without the engine):
+  - Wall = interiorOutline;
+  - Frame = the contour (primitivesOutline) with interiorOutline as its hole;
+  - a painted wall AREA = wallRegionOf(its strokes minus the newer areas') cut to interiorOutline.
+  - Cutouts = every Brush brick, plus (for a wall area) the other areas' bricks. Whole bricks laid by centroid can cross into a neighbour's region; that region's grout must not paint over them.
+  - Brush strokes get NO grout yet: their ribbon region is not declared anywhere. Named, not done.
+- **Lock:** isEditableByLayer and isOnVisibleLayer refuse a locked node, which covers hit, marquee, snap, scissors and stripe. select / selectAdd / selectMany refuse it, so Delete, move, transform, restyle and Move-to-layer by selection all go through that gate. The eraser skips it. Clear > Bricks removes it with its element (it is a brick-tool node). brickElementAt: no brick under the point but inside a grout region -> { id, kind, part: 'grout' }; the panel then edits that element's paint and scrolls the Grout row into view.
+- **Paint only:**
+  - groutPaint keys are PAINT_ONLY_SETTING_KEYS (out of the layout key: a paint change never re-lays).
+  - setGroutPaint repaints + one commitEdit.
+  - A board laid before this has bricks but no grout node; its first paint change re-lays once (same settings + seed = the same bricks) to draw it.
+  - Height mask: the node has no data-brick-set, so it is skipped.
+  - Send: _bricksLayerSvg drops BRICK_SEND_SKIP kinds.
+- **UI:**
+  - Grout block: a colour swatch (the app's openColorMosaic), None, and an "Edge (in)" box (min 0). A scope label reads "every element" or "this Wall / this Frame" when Select picked one.
+  - Sidebar quick row 'Grout colour' (GROUT_COLOR_CHOICES: None, Mortar, White, Grey, Charcoal) = the board-wide value.
+- **Neutral set:** tools/brick-matrix/controls.mjs MIGRATION.neutralNewFields += groutPaint { color: null, paintInsetIn: 0 }, groutPaintByElement null.
+- **Tests:**
+  - New tests/grout-paint.test.js, 17 tests. Against the pre-change tree (scratch worktree at 3eb2d30, the new grout-shape.js copied in so the file imports): **9/9 integration tests fail**. The 8 that pass are groutShapeOf's own unit tests (a new module pinned against itself).
+  - Six existing test fakes gained `path()` (the real svg.js layer has it); 52 failures were that one missing method.
+- **Live** (headless Chrome, fresh 7x9 T1, Wall + Frame via Generate; probe scratchpad grout_live.mjs). Across laid -> sidebar Mortar -> Edge 0.03 -> Select a JOINT (real click) -> the Wall's own colour via the mosaic (real swatch click):
+  - bricks hash identical (147 pieces), Send's Bricks sketch identical (no 'grout' in it), 3D heights identical (25521#ak5exj at all three reads).
+  - grout: 2 nodes, locked; wall d 4133 -> 2890 chars at Edge 0.03 (faces inset); the wall alone -> #616161, the frame stays #cfc6b4.
+  - Select on the joint: "Editing: this Wall", scope "this Wall". Art Select on the same joint picks the wall BRICK, never the grout; Select all = 149 elements, 0 grout. Clear > Bricks: 0 grout left. 0 page errors.
+  - 3D: the drape SVG holds the grout path (fill #3b3b3b). At a 0.034 in joint it is subtle in 3D: face view, mean RGB 158,141,111 -> 149,133,105, 126,691 px changed.
+- **Found, NOT mine (pre-existing):** Send's Bricks sketch carries `style="cursor: pointer;"` on a brick the editor's hover touched, so the sketch string changes after a mere hover. Its fills also carry the brickfill-N counter. Both are noise in any byte-compare of stamp.bricks.svg.
+- **Shots** (shots/seatE): item55_grout_mortar_edge003_2d_desktop.png, item55_grout_select_joint_wall_own_colour_desktop.png, item55_grout_brick_tab_900.png, item55_grout_3d_desktop.png, item55_grout_3d_900.png, item55_3d_face_none_branch.png, item55_3d_face_charcoal_branch.png.
+
+## seat E (61) turn 1 (cont.): F35 item 56, SVG DOWNLOAD -- flat, one file, named groups (branch grout-svg)
+- **Measured before** (seat C, confirmed by the fail-before run below): the download held every brick polygon, but each fill was `url(#brickfill-...)` and the file had 0 `<pattern>` defs (the patterns live in the editor's outer defs). Elsewhere every brick rendered black or empty.
+- **Declared** (editor/svg-export.js):
+  - SVG_BRICK_EXPORT: styles outline | flat | textured. Default 'flat', `exposed: ['flat']`; textured is `available: false` (declared, not built: each photo pattern would have to travel in the file).
+  - SVG_EXPORT_GROUPS, bottom to top: frame / art (per layer) / bricks (per element) / grout (per element). Each one is `<g id inkscape:groupmode="layer" inkscape:label>` (layerGroup), and the root declares xmlns:inkscape.
+  - library.js: a `faceColor` per BRICK_SET (Red #aa4433, Brick 2 #b0603f, White rocks #c9c3b2, Grey brick #8d8a86, Grey stone #9a958c). The canvas's own fallback table SET_COLORS now reads it too (it had 2 entries: sets 4 and 5 fell back to red).
+  - editor-frame-profile.js frameVectorParts: the SAME profile, inner edge, wood colour and miters the canvas draws, as data.
+  - editor-io.js saveSvgDownload (+ editor.saveSvgDownload); the Download button (action-tools.js) calls it. Fonts and text copies travel as before.
+- **The file:**
+  - frame = band (wood, even-odd) + inner edge + miters + cut profile;
+  - art = one sub-group per layer that holds art, in roster order. Hidden layers are included (turn-207 AMEND-3: isExported = every layer); no brick node and no record in it.
+  - bricks = one sub-group per element ('Wall', 'Frame', 'Wall area N', 'Brush stroke N'). Each brick is ONE `<path id="<owner>:<data-brick-id>" data-brick-id data-brick-set fill=faceColor>`. Its face is the brick inset by its element's Edge (GROUT_INSET_ATTR, written on the grout node when it paints), so the file reads only the drawing, no app state.
+  - grout = one sub-group per element with a grout shape: `<path id="<element>:grout" fill-rule="evenodd">`, filled with its colour, or fill="none" for None.
+- **insetFace fixed on the way (measured live):** at Edge 0.02, 17 of 147 faces DROPPED. Cut pieces carry edges as short as 0.006 in; a vertex offset reverses them, and item 55's reversal test then called the whole face swallowed.
+  - Now a convex piece = the intersection of each edge's inward half-plane: exact, and a short edge just vanishes.
+  - A non-convex piece keeps the vertex offset while no edge reverses, else falls back to the half-planes.
+  - Re-measured (a face is only counted as dropped if its bbox is wider than 2 x Edge): stretcher 0/147 at 0.01 and 0.02, 3 at 0.05; herringbone 0 / 2 / 1; fieldstone 0 / 0 / 0.
+  - Every dropped piece but one has 2A/P <= Edge (it really is all joint). The exception: one non-convex herringbone piece at Edge 0.05 (2A/P 0.137) that the half-plane fallback over-shrinks to nothing. Known, named, not fixed.
+  - Unit test added (the live piece with the 0.006 in edge).
+- **Tests:** tests/svg-download.test.js (7). Fail-before: a scratch tree at 3a10b65 (item 55, before 56), with the new svg-export.js copied in and `saveSvgDownload = saveWithTextCopies` (the old download) shimmed: **6/7 fail**, including "no url(#...)", which is seat C's measurement. The 1 that passes is the declarations test (the new module pinned against itself).
+  - jsdom's XML parser does not bind attribute namespaces (measured: `inkscape:label` comes back with namespaceURI null), so the unit tests read the qualified name. The live probe reads getAttributeNS(INKSCAPE_NS) in Chrome.
+- **Live** (scratchpad download_live.mjs: a REAL Download click with Chrome's download behaviour set, the saved file read back):
+  - fresh 7x9 T1, Wall + Frame, sidebar Mortar, Edge 0.02, a rect on Layer 1;
+  - the file is 36,702 bytes with 0 `url(#` and 0 `<pattern>`. Chrome's parser: no error; top groups [frame Frame layer] [art Art layer] [bricks Bricks layer] [grout Grout layer] (via getAttributeNS); art ['Layer 1']; bricks ['Wall','Frame'], 147 paths = 147 laid, fill #aa4433 only; grout ['Wall grout','Frame grout'] #cfc6b4 each; frame 7 parts. 0 page errors.
+  - 900 px: real mouse clicks on the header's overflow menu, then Download SVG, give a byte-identical file.
+  - The file opened ON ITS OWN in a blank page renders as flat red bricks on mortar joints with the frame outline (shot).
+- **For the advisor (not changed):**
+  - Z-order inside the file follows the declared list, so art sits UNDER the bricks. The live board's own roster does the same (Layer 1 under the Wall / Frame kind layers), and the shot of the file shows the art rect covered. If Fred wants art on top, it is one reorder of SVG_EXPORT_GROUPS.
+  - saveWithTextCopies has no app caller any more (the editor method and tests/brick-element-records.test.js still use it). Kept as a NAMED keep, to retire with those tests if you agree.
+  - The palette comment that named saveWithTextCopies as the download is updated.
+- **Fusion, unchanged:** the bricks still reach Fusion from Send's _bricksLayerSvg string (stamp.bricks.svg), not from this download, and the grout stays out of it (BRICK_SEND_SKIP, item 55's test).
+- **Shots** (shots/seatE): item56_download_file_alone_branch.png (the file alone), item56_editor_before_download_branch.png, item56_download_menu_900_branch.png. The file itself: item56_download_branch.svg.
 ## seat D (bb) turn 1-3: F35 items 57 + 58 (branch brick-3d-bugs)
 - **Setup:** worktree -wt\bb, branch brick-3d-bugs off origin/main 7633a5e, merged origin/main 0443c48; node_modules = a junction.
 - **57, measured first** (headless, T18 7x9, 0.75 in stretcher, soldier frame):
@@ -14754,6 +14826,25 @@ WallPattern = {
 - **Live after:** the drag moves the points +0.5 with no transform, 3D changed, kept after reopen. Delete unchanged (works).
 - **Tests:** tests/brick-move-bake.test.js (5): baking matrix / translate / rotation; art, spines and untransformed pieces untouched; the hook folds into the gesture's step but not into an older one. The 2 hook tests fail 2/2 against the pre-change editor.js.
 - **Matrix:** a new declared group 'handedit' (HAND_EDIT + runHandEdit): a real drag, Apply, reopen. This tree: pass. Clean main 52c3055: FAIL ("points UNMOVED (transform matrix(1,0,0,1,0.5,0)), 3D UNCHANGED").
+### seat E (61) turn 2: the advisor's answers on 55/56, folded into one commit (grout-svg)
+- **(2) Group order = the LAYERS roster** (advisor: "art over or under bricks is whatever Fred arranged"):
+  - SVG_EXPORT_GROUPS now declares a `place` per kind: frame 'bottom'; art / bricks / grout 'layer'.
+  - svgDownloadGroups stacks the frame first, then each layer of editor._layers bottom to top (syncLayerZOrder's own order): that layer's art group, then each brick element on it (its bricks group, its grout group).
+  - Top-level ids are now `art:<layer>`, `bricks:<element>`, `grout:<element>` (labels: the layer name, 'Wall', 'Wall grout', ...). An element on a layer the roster lacks goes on top, never dropped.
+  - Tests: the stacking on the test board; a roster reorder (the Wall layer to the bottom) puts its bricks under the art.
+- **(3) saveWithTextCopies retired** (removal sweep):
+  - editor-io.js: the function, its only helper _serializeVisibleLayers (and its T27 doc block), and the imports only they used (isExported, BRICK_RECORD_ATTR) are gone.
+  - editor.js: the method and its import are gone.
+  - tests/brick-element-records.test.js: "records are never downloaded" now reads saveSvgDownload. The item-22 byte-identity pin keeps the BAKED layer SVG (Send's sketch). The download is no longer a copy of the drawing (its own pins are in svg-download.test.js), and the brush-owner check reads the baked layer.
+  - SE7B design doc: a retirement note.
+  - Grep (js/html/py, NUL-safe tree, no scratch): only the two retirement notes remain. The WORK-LOG history is left as written.
+- **(4) Editor-only look stripped from Send** (layers.js EDITOR_ONLY_STYLE { props ['cursor'], classes ['svg-hover','svg-selected'] }):
+  - Source: editor-io.js open() puts style cursor on every child at each reopen; editor-ui.js adds svg-hover / svg-selected.
+  - stripEditorOnlyBrickAttrs now strips these from EVERY brick-tool node, along with the per-kind attributes. Layer-state classes (inactive-layer) stay: today's sketches carry them.
+  - Test: the same brick with and without the look gives a byte-identical _bricksLayerSvg.
+- **Fail-before** (scratch tree at 03972e9, the pushed tip): **3/3 new tests fail** (roster stacking, roster reorder, the hover look); the other 24 in those files pass.
+- **Gate:** full vitest 1 failed / 4766 passed. The one failure is frame-3d-sweep's 90 s timeout, which passes alone. An earlier contended run (my probe was running alongside it) had also caught a REAL break: my first guard (isBrickToolNode) skipped item 49's flag strip on a node without data-brick-gen. The guard is now "any node with data-brick", as before; pattern-builder-cuts is green.
+- **Live** (download_live.mjs, real click): the top groups are frame, art 'Layer 1', 'Wall', 'Wall grout', 'Frame', 'Frame grout'. That is the panel's roster (top to bottom: Frame, Wall, Layer 1) read bottom up. 147 paths for 147 laid bricks, 0 url(#; the 900 px overflow-menu download is byte-identical. 0 page errors.
 
 ## seat D (bb) turn 10: A2 (3D-panel audit), a greyed number field greys its -/+ stepper (branch brick-sidebar-fixes)
 - **Measured** (headless, T1): Grout Flush leaves the Grout depth field disabled but both stepper buttons enabled; "+" moved 0.05 -> 0.055 with no effect. It is generic: Clumping's stepper at Suppression 0 is the same.
