@@ -22798,3 +22798,25 @@ T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given 
   last two were the same: tests/frame-3d-sweep.test.js timed out at 90 s. It imports no bricks code, passes alone on
   the branch (52-69 s), and on main 52c3055 it also timed out alone once (110 s) between two passes. main 52c3055 full:
   316 files green in 80 s. Read as load, not this item -- the advisor's gate decides.
+
+## T86 item 16(c) part 2 -- the medial seam is a joint (advisor, from seat A's Fusion e2e) (seat B / fc, 2026-10-05 night)
+- Why: the first cut left the two sides ABUTTING on the medial line (0 gap); seat A measured that 0-gap seams become
+  zero-area sliver profiles in the Fusion Bricks sketch. Rule added (declared, contour-bands.js): each side stops
+  half the set's grout joint (set.grout.widthIn / 2) short of the line. The field is the depth difference divided by
+  its own gradient (medialDistance: first-order distance to the line; the raw difference changes 2x per inch at a
+  neck, which would have made the joint half as wide). The far piece is grown by a FULL joint before the cut (limited
+  to the half-joint strip): grown by half a joint only, a lens tip still touched (T18 frame-13 / frame-58 at
+  (3.5, 4.529): both pieces' own edges reach the line there) or left 0.022 in.
+- Sweep (171 cases): neck overlap 0.000 in every case; corner residual 3.814 -> 3.763 (down, not up); **every seam the
+  rule cuts is >= 0.034 in (the joint) in all 29 cases**; 142 / 171 byte-identical; 8 drops; raw union loss 2.75 sq in
+  total (the new seam joints, by design), void farther from a brick than the same board's widest existing joint
+  0.0000 in every case.
+- Pre-existing tight seams NOT from this step (same distance on main, measured pair by pair): T18 / T19 arm-to-top-bar
+  pieces at the shoulders 0.0068 / 0.0037 in, T14's two half-diamonds meeting on the X's horizontal mitre line 0 in.
+  They are corner / mitre seams: 21b (the advisor put 0-gap mitres there).
+- Test: each neck case also asserts the medial seam (a left against a right piece, closest on the centre line inside
+  the declared neck window) >= joint - 0.002. With the setback set to 0: **4/4 FAIL** (gaps 0 .. 1.3e-5 in).
+- Gates: bricks domain 54 files green; full vitest 316 / 317 files -- the one is tests/frame-3d-sweep.test.js timing
+  out at 90 s again (139.9 s run, loaded machine), as logged above: no bricks import, passes alone.
+- Shots: before_after_worst_necks.png re-rendered from this build; t18_seam_zoom.png (the seam as a joint);
+  t14_x_centre_zoom.png (main vs branch, the X centre: two 0.093 sq in half-diamonds, blue = joint given back).
