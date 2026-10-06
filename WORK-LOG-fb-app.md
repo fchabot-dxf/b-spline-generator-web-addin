@@ -15114,3 +15114,18 @@ WallPattern = {
   - Engine / wall / stroke files: 63 files, 698 passed.
 - **Matrix:** brush 10/0 (Continuous now 3#1wpuvju -> 7#s250qh); strokes 1/0.
 - **"strokes did not report" under --parallel (advisor):** a group child exits without a report only on a port / Chrome-start failure (exit 2 before `finally`). With base 9701 and 22 groups, strokes (last) gets port 9921/9922. My own probes ran on 9921-9941 tonight, so the likeliest cause is a collision with my probe, not the group. My probes now use 11xxx.
+
+## seat D (bb) turn 24: item 68 fixes from the Brick editor audit (branch brick-editor-fixes)
+- **One gesture = one undo step (advisor OK, measured first):**
+  - On the audit board (T1 + frame + painted area + raised stroke), ONE Brick size change pushed TWO undo entries (stack 1 -> 3, both at size 1.325). The first Undo visibly did nothing; a second was needed (-> 1.25 / 116 pieces). A plain wall: one entry.
+  - Traced: a pushState wrapper recorded both pushes from the staged re-lay (brick-panel _relayStaged -> generateBricks -> runBricks -> commitEdit).
+  - Cause: since A6 the strokes follow the size, so their footprints change, and _relayIfBrushChanged (on the editorCommit a commit dispatches BEFORE its push) queued a second wall lay that pushed its own entry.
+  - Fix: that re-lay is queued one microtask later (once the gesture's step is on top) with `amend: editor._lastPushedState`, so it corrects the step in place (commitEdit amend, the _frameRelayAmend precedent). Drawing a stroke now also folds its wall re-lay into the stroke's own step (the board build took one step fewer).
+  - Live after: one change = one entry (1 -> 2); one Undo -> 1.25 / 111 pieces.
+  - Test (frame-corners-panel): the brush re-lay carries amend = the gesture's step, and not from inside the commit. Fails 1/1 before. brick-discrete-controls-regen's "a brush stroke change re-lays the Wall once" now awaits the microtask (same assertions).
+- **Set row overflow:** at 1366 px the Frame tool's Set row (4 sets) ran off the panel (Set 4 / 5 at x 1317-1473 vs a panel ending at 1366, T1 and T18; 900 px OK). `#brickSetRow` gets `flex-wrap: wrap`, like the other button rows.
+- **Area board hint (advisor):** with painted areas and none selected, a Wall pattern / rotation pick changes no area (each keeps its own settings).
+  - Declared WALL_AREA_HINT "Select an area to change its pattern; new areas use this pattern.", in #brickWallAreaHint under the Area row. syncWallAreaHint runs on every editor commit, on the area row's sync and on selection.
+  - Live: hidden with no areas, SHOWN with 1 area and none picked, still shown after a herringbone pick. The 2nd area painted gets herringbone (the 1st stays stretcher, so "new areas use this pattern" holds). Hidden once an area is selected.
+  - Test (frame-corners-panel): shown / hidden by areas + selection. Fails 1/1 before.
+- **Tests:** 24 panel / undo / area / stroke files, 336 passed (regen needs the 8 GB heap: pre-existing, seat F).

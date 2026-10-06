@@ -671,22 +671,23 @@ describe('turn 195: Generate failure, and items 20 + 27 (a brush stroke change r
     expect(showToast.mock.calls[0][0]).toMatch(/previous bricks are kept/);
     expect(pending()).toBe(false);
   });
-  it('with a Wall laid, adding or deleting a brush stroke (an editor commit) re-lays the Wall once; an unrelated commit does not', () => {
+  it('with a Wall laid, adding or deleting a brush stroke (an editor commit) re-lays the Wall once; an unrelated commit does not', async () => {
     const node = window.svgEditor._sketchLayer.node; // setup laid the wall onto it
     window.svgEditor._sketchLayer.children = () => ({ toArray: () => [] });
-    const commit = () => document.dispatchEvent(new CustomEvent('editorCommit', { detail: { editor: window.svgEditor } }));
-    commit(); // nothing changed: no re-lay
+    // item 68: the brush re-lay runs a microtask after the commit (it amends the gesture's own undo step)
+    const commit = async () => { document.dispatchEvent(new CustomEvent('editorCommit', { detail: { editor: window.svgEditor } })); await Promise.resolve(); await Promise.resolve(); };
+    await commit(); // nothing changed: no re-lay
     expect(runBricks).not.toHaveBeenCalled();
     const stroke = document.createElement('polygon');
     stroke.setAttribute('data-brick-gen', '1'); stroke.setAttribute('data-brick', 'brush'); stroke.setAttribute('points', '1,1 2,1 2,1.3 1,1.3');
     node.appendChild(stroke);
-    commit();
+    await commit();
     expect(runBricks).toHaveBeenCalledTimes(1);
     expect(runBricks.mock.calls[0][3].kinds).toContain('wall');
-    commit(); // laid around it now: no second re-lay
+    await commit(); // laid around it now: no second re-lay
     expect(runBricks).toHaveBeenCalledTimes(1);
     stroke.remove();
-    commit();
+    await commit();
     expect(runBricks).toHaveBeenCalledTimes(2);
     expect(pending()).toBe(false);
   });

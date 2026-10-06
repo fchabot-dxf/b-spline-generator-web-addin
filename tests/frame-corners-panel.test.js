@@ -25,6 +25,8 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
   return { ...actual, frameContourSilhouette: vi.fn(() => ({ primitives: [] })) };
 });
 
+import { setPaintScheduler } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
+import { WALL_AREA_HINT } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { initBrickPanel, setFrameRock } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, FRAME_CORNERS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
@@ -209,3 +211,48 @@ describe('item 63: the sidebar Frame bands pick lays the frame', () => {
     frameContext.mockReturnValue({});
   });
 });
+
+// item 68 (measured: one Brick size change on a board with a brush stroke pushed TWO undo entries -- the strokes' new
+// footprints re-lay the wall from inside the first lay's commit): the brush-change re-lay corrects the step its
+// gesture pushed (commitEdit `amend`) instead of pushing a second one
+describe('item 68: a wall re-lay caused by the brush strokes folds into the gesture’s undo step', () => {
+  it('the re-lay carries `amend` = the step the triggering commit pushed', async () => {
+    setPaintScheduler((cb) => cb());
+    setup('wall');
+    const node = window.svgEditor._sketchLayer.node;
+    const rec = document.createElement('g'); rec.setAttribute('data-brick-record', 'wall-full'); rec.setAttribute('data-brick-laid', 'k#frame:x'); // laid with no strokes
+    const stroke = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    stroke.setAttribute('data-brick-gen', '1'); stroke.setAttribute('data-brick', 'brush'); stroke.setAttribute('points', '1,1 2,1 2,1.3 1,1.3');
+    node.append(rec, stroke);
+    const gestureStep = { svg: 'the gesture' };
+    window.svgEditor._lastPushedState = gestureStep;
+    runBricks.mockClear();
+    document.dispatchEvent(new Event('editorCommit'));
+    expect(runBricks).not.toHaveBeenCalled(); // not from inside the commit: the gesture's step is not on top yet
+    await Promise.resolve(); await Promise.resolve();
+    expect(runBricks).toHaveBeenCalled();
+    expect(runBricks.mock.calls.at(-1)[3].amend).toBe(gestureStep);
+    setPaintScheduler(null);
+  });
+});
+
+// item 68 (the editor audit): with painted areas and none selected, a Wall pick changes no area -- said in the section
+describe('item 68: the Wall section says when a pick changes no painted area', () => {
+  it('shown while areas exist and none is selected; hidden with no areas or with one selected', () => {
+    setup('wall');
+    const hint = document.createElement('div'); hint.id = 'brickWallAreaHint'; hint.style.display = 'none'; root.appendChild(hint);
+    const shown = () => hint.style.display !== 'none';
+    document.dispatchEvent(new Event('editorCommit'));
+    expect(shown()).toBe(false); // no areas
+    const area = document.createElement('g');
+    area.setAttribute('data-brick-record', 'wall-area'); area.setAttribute('data-brick-element', 'area-1');
+    window.svgEditor._sketchLayer.node.appendChild(area);
+    document.dispatchEvent(new Event('editorCommit'));
+    expect(shown()).toBe(true);
+    expect(hint.textContent).toBe(WALL_AREA_HINT);
+    window.svgEditor._brickWallAreaId = 'area-1'; // an area selected: the section edits it
+    document.dispatchEvent(new Event('editorCommit'));
+    expect(shown()).toBe(false);
+  });
+});
+

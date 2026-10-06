@@ -1464,7 +1464,11 @@ function _relayIfBrushChanged() {
   if (!_presentKinds(editor).includes('wall')) return;
   const laid = _laidBrushKey();
   if (laid === null || laid === _brushKey()) return;
-  _relayStaged();
+  // item 68 (measured: one Brick size change on a board with a stroke = TWO undo steps -- the strokes follow the size,
+  // their new footprints re-lay the wall from inside the first lay's commit): one gesture = one undo step. This runs on
+  // the editorCommit a commit dispatches BEFORE its push, so the re-lay is queued a microtask later, once the gesture's
+  // step is on top, and corrects that step in place (commitEdit `amend`), as a frame re-lay does (_frameRelayAmend).
+  queueMicrotask(() => _relayStaged({ amend: editor._lastPushedState || null }));
 }
 
 const FRAME_RELAY_SETTLE_MS = 350;
@@ -2204,7 +2208,21 @@ export const WALL_AREA_WIDTHS = Object.freeze([0.5, 1, 2]);
 const _isArea = (editor, id) => !!id && wallAreaRecords(editor).some((a) => a.id === id);
 /** The Area row (width chips + Clear areas): shown with the Area sub-tool only (and while the engine reads
  *  wallRegion). */
+/** Item 68 (the editor audit, advisor): with painted areas and none selected, a Wall pattern / rotation pick changes no
+ *  area (each keeps its own settings, slice 2) -- it applies to the next area painted. Said, never silent: this line in
+ *  the Wall section while areas exist and none is selected. */
+export const WALL_AREA_HINT = 'Select an area to change its pattern; new areas use this pattern.';
+function syncWallAreaHint() {
+  const el = typeof document !== 'undefined' ? document.getElementById('brickWallAreaHint') : null;
+  if (!el) return;
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  const on = !!editor && wallAreaRecords(editor).length > 0 && !editor._brickWallAreaId;
+  el.textContent = on ? WALL_AREA_HINT : '';
+  el.style.display = on ? '' : 'none';
+}
+
 function renderWallAreaRow() {
+  syncWallAreaHint();
   const row = typeof document !== 'undefined' ? document.getElementById('brickWallAreaRow') : null;
   if (!row) return;
   const on = _activeTool === 'wall' && _subTool === 'area' && !_hiddenUntilMet('brickWallAreaRow');
@@ -2390,6 +2408,7 @@ export function selectBrickElement(element) {
   }
   showElementSelection(editor, _selectedElement && _selectedElement.id);
   _syncSubTools();
+  syncWallAreaHint(); // item 68: the hint follows the area selection
   syncGroutPaintRow(); // item 55: the Grout block edits the picked element's paint
   if (_selectedElement && _selectedElement.part === 'grout') document.getElementById('brickGroutPaintRow')?.scrollIntoView?.({ block: 'nearest' });
 }
@@ -2745,7 +2764,7 @@ export function initBrickPanel() {
   });
   document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => setSeed(newBrickSeed()));
   document.getElementById('brickGenerate')?.addEventListener('click', () => generateNow()); // item 39: a new seed, every element
-  onPageEvent('editorCommit', 'editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); });
+  onPageEvent('editorCommit', 'editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); syncWallAreaHint(); });
   onPageEvent('controlRequires', 'bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
   // the frame changed (template, shape): re-lay once it settles (item 27 -- the editor too; a template with no
   // contour clears the Frame). Wired ONCE per page (onPageEvent): it RE-LAYS, so a second copy would re-lay twice
