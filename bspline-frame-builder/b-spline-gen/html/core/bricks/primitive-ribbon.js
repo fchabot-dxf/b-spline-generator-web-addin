@@ -940,45 +940,17 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
   return { pieces, nextId };
 }
 
-/**
- * @param {Array} primitives — the CLOSED contour's own ordered lines+arcs (depth-0), see this file's
- *   own header for the two shapes.
- * @param {number} d0 @param {number} d1 — this ROW's own outer/inner depth from the original contour
- * @param {object} set @param {'soldier'|'stretcher'} orientation
- * @param {number} pitch — one whole piece's own along-run length
- * @param {number} nominalJoint — the set's own declared grout.widthIn
- * @param {number} seed @param {string} pieceId @param {number} startId
- * @param {'mitre'|'butt'|'lapped'|'block'} [cornerStyle='mitre'] — T86 item 1: 'butt'/'lapped' try
- *   the asymmetric through/butt square-cut joint (see `buildButtJoint`'s own header) at every
- *   genuine line-line corner with no dropped primitive between its two neighbours; every other
- *   corner (arc-involved, a dropped primitive, or a near-parallel non-corner) still gets the
- *   ordinary mitre, same as today. 'lapped' is the exact same construction with the through side
- *   flipped on every other `bandIndex` (the advisor's own decision, turn 291: "band 0 horizontal-
- *   through, band 1 vertical-through, ..." -- a single-band lapped frame is identical to 'butt' by
- *   construction). 'block' inserts a solid White-rocks quoin unit at the same corners instead (see
- *   `buildBlockJoint`'s own header) -- both bands square-cut into ITS faces, neither is "through".
- * @param {number} [bandIndex=0] — only read when `cornerStyle==='lapped'`; the caller's own band
- *   index (`contour-bands.js`'s own `bandIndex`, NOT `row` -- the alternation is band-to-band, per
- *   the advisor's own decision, not row-to-row within one band).
- * @param {number[]} [sequence] — T86 item 2: passed straight through to `planCornerRun` on every
- *   primitive's own run (see its own header) -- the caller (`contour-bands.js`) already applies any
- *   per-ROW rotation (flemish's own alternate-course swap) before calling, so `ribbonPieces` itself
- *   never needs to know about row index for this.
- * @param {number} [forcedFStart] — T86 item 2: ditto, passed straight through to `planCornerRun` --
- *   the caller already resolved whether THIS row is staggered (odd row, `staggerFrac>0`) into a
- *   concrete fraction (or `undefined` for an unstaggered row) before calling.
- * @returns {{ pieces: Array, nextId: number }}
- */
-export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true, rowIndex = 0) {
+/** Item 74b: one row's JOINTS alone -- the first, cheap half of `ribbonPieces` (moved here unchanged, so a lay is
+ *  byte-identical), exported so a caller can ask which corner cuts a style takes without laying the row's pieces
+ *  (contour-bands.js frameCornerEffect). `joints[k]` is the joint before `liveIndices[k]`: a butt/lapped corner's
+ *  carries `isButt`, a block's `isBlock`; a mitre, a fan or no joint at all carries neither. */
+export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true) {
   const n = primitives.length;
   const liveIndices = [];
   for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives, i, d1, closed)) liveIndices.push(i);
-  if (liveIndices.length === 0) return { pieces: [], nextId: startId };
   const m = liveIndices.length;
 
-  const halfWidth = (d1 - d0) / 2;
-
-  const jointBefore = liveIndices.map((curIdx, k) => {
+  const joints = liveIndices.map((curIdx, k) => {
     // T86 item 7 (brush -- an OPEN primitive list): the FIRST live primitive's own true start has
     // no wraparound joint to compute at all -- forcing this one slot `null` also, for free, makes
     // the LAST live primitive's own `jointEnd` (which reads this SAME slot via the `(k+1)%m` wrap
@@ -1082,6 +1054,44 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], chain, d0, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
     return { ...joint, trustO, kiteFan, tPrev: tangentAt(primitives[prevIdx], q), tCur: tangentAt(primitives[curIdx], q) };
   });
+  return { liveIndices, joints };
+}
+
+/**
+ * @param {Array} primitives — the CLOSED contour's own ordered lines+arcs (depth-0), see this file's
+ *   own header for the two shapes.
+ * @param {number} d0 @param {number} d1 — this ROW's own outer/inner depth from the original contour
+ * @param {object} set @param {'soldier'|'stretcher'} orientation
+ * @param {number} pitch — one whole piece's own along-run length
+ * @param {number} nominalJoint — the set's own declared grout.widthIn
+ * @param {number} seed @param {string} pieceId @param {number} startId
+ * @param {'mitre'|'butt'|'lapped'|'block'} [cornerStyle='mitre'] — T86 item 1: 'butt'/'lapped' try
+ *   the asymmetric through/butt square-cut joint (see `buildButtJoint`'s own header) at every
+ *   genuine line-line corner with no dropped primitive between its two neighbours; every other
+ *   corner (arc-involved, a dropped primitive, or a near-parallel non-corner) still gets the
+ *   ordinary mitre, same as today. 'lapped' is the exact same construction with the through side
+ *   flipped on every other `bandIndex` (the advisor's own decision, turn 291: "band 0 horizontal-
+ *   through, band 1 vertical-through, ..." -- a single-band lapped frame is identical to 'butt' by
+ *   construction). 'block' inserts a solid White-rocks quoin unit at the same corners instead (see
+ *   `buildBlockJoint`'s own header) -- both bands square-cut into ITS faces, neither is "through".
+ * @param {number} [bandIndex=0] — only read when `cornerStyle==='lapped'`; the caller's own band
+ *   index (`contour-bands.js`'s own `bandIndex`, NOT `row` -- the alternation is band-to-band, per
+ *   the advisor's own decision, not row-to-row within one band).
+ * @param {number[]} [sequence] — T86 item 2: passed straight through to `planCornerRun` on every
+ *   primitive's own run (see its own header) -- the caller (`contour-bands.js`) already applies any
+ *   per-ROW rotation (flemish's own alternate-course swap) before calling, so `ribbonPieces` itself
+ *   never needs to know about row index for this.
+ * @param {number} [forcedFStart] — T86 item 2: ditto, passed straight through to `planCornerRun` --
+ *   the caller already resolved whether THIS row is staggered (odd row, `staggerFrac>0`) into a
+ *   concrete fraction (or `undefined` for an unstaggered row) before calling.
+ * @returns {{ pieces: Array, nextId: number }}
+ */
+export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true, rowIndex = 0) {
+  const { liveIndices, joints: jointBefore } = ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyle, bandIndex, sequence, forcedFStart, closed);
+  if (liveIndices.length === 0) return { pieces: [], nextId: startId };
+  const m = liveIndices.length;
+
+  const halfWidth = (d1 - d0) / 2;
 
   const pieces = [];
   const sources = []; // T86 16(c) part 2: per piece, the primitive it was offset from (-1: a joint's fan, -2: a quoin)

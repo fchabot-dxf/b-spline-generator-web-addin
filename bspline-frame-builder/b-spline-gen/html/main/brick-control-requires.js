@@ -16,6 +16,12 @@
  *  sidebar Frame bands row's reason while it is greyed (item 63). No template is the board rectangle (item 66). */
 export const FRAME_NEEDS_A_FRAME = "This frame's outline can't carry brick bands -- pick another frame template.";
 
+/** Item 74b (Fred: grey + explain): a corner choice that would re-lay the identical frame -- no square corner on this
+ *  outline is long enough for its cut at this brick size (measured: T18 at 1.25 in, Butt / Block / Lapped). Live again
+ *  when the size allows; the mitre is never greyed. The fact is the engine's (frameCornerEffect), not a clamp. */
+export const CORNER_NOT_LONG_ENOUGH = 'No square corner here is long enough at this brick size';
+export const cornerFact = (style) => `cornerTakes_${style}`;
+
 // Audit v2 N5: the main sidebar's BRICK controls (quick settings + 3D) -- they act on laid Wall/Frame bricks
 const SIDEBAR_BRICK_CONTROLS = ['brickBtnReliefRaised', 'brickBtnReliefCarved', 'brickBtnTopOrganic', 'brickBtnTopFlat',
   'brickSurfaceWear', 'brickSurfaceWearSlider', 'brickReliefHeight', 'brickReliefHeightSlider', 'brickGroutDepth',
@@ -42,6 +48,8 @@ export const BRICK_CONTROL_REQUIRES = [
     why: 'No bricks on this board yet -- lay a Wall, a Frame or a Brush stroke in the editor\'s Brick tab first' },
   // F35 item 63: the sidebar's Frame bands pick lays the frame along its contour -- none for an outline that can't carry one
   { controls: [], within: ['brickQuickRow_frameBands'], requires: { fact: 'frameContour' }, why: FRAME_NEEDS_A_FRAME },
+  // item 74b: one rule per cutting corner style (core/bricks CORNER_CUT_STYLES)
+  ...['butt', 'block', 'lapped'].map((style) => ({ controls: [`brickFrameCorner_${style}`], requires: { fact: cornerFact(style) }, why: CORNER_NOT_LONG_ENOUGH })),
 ];
 
 /** Is `requires` met, given the DOM node of its control? (null control = met: never grey on a missing node) */
