@@ -24,6 +24,8 @@ export const LAY_WARNING = {
 export const QUICK_FRAME_LAYS = {
   template: 'template_18', pick: 'brickQuick_frameBands_single_soldier', row: 'brickQuickRow_frameBands',
   noTemplatePick: 'brickQuick_frameBands_double_course', introducedBy: 'item 63',
+  // A1 (3D-panel audit): a stack that only partly fits says so in the SIDEBAR too (T18 7x9: 1 of 3 laid, measured)
+  reducedPick: 'brickQuick_frameBands_three_band', sidebarNote: 'brickLayWarnings', reducedText: 'Bands reduced to fit the board:',
 };
 
 // ---- bands reduced to fit (T86 item 28 engine `bandsReduced`; F35 item 35 note, seat 37 fb-app 21a1ffd): on T1 7x9
@@ -169,6 +171,9 @@ async function runQuickFrameLays() {
   await click(Q.pick, 2500); const z1 = await heightsSettled(z0);
   const f1 = await frames();
   checkRow('lay', 'Sidebar Frame bands lays the frame (no Frame on the board)', f0 === 0 && f1 > 0 && z1 !== z0, `frame bricks ${f0} -> ${f1}, 3D ${z1 !== z0 ? 'changed' : 'UNCHANGED'}`);
+  await click(Q.reducedPick, 2500);
+  const note = await jsJSON(`JSON.stringify((()=>{ const e=document.getElementById(${JSON.stringify(Q.sidebarNote)}); return { shown: !!e && getComputedStyle(e).display !== 'none', text: e ? e.textContent.trim() : '' }; })())`);
+  checkRow('lay', 'Sidebar shows the band-fit note (a stack that only partly fits)', note.shown && note.text.startsWith(Q.reducedText), `sidebar note ${note.shown ? `"${note.text}"` : 'HIDDEN'}`);
   // template None = the board rectangle (item 66): the row stays live, a pick lays the bands along the board edge
   await openEditorTab('editorTabBrick'); await setTemplate(''); await apply(); const z2 = await heightsSettled(z1);
   const g = await jsJSON(`JSON.stringify((()=>{ const b=[...document.querySelectorAll('#${Q.row} button')]; return { n: b.length, off: b.filter((x)=>x.disabled).length }; })())`);
