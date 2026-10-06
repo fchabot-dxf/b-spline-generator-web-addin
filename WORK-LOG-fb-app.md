@@ -15129,3 +15129,10 @@ WallPattern = {
   - Live: hidden with no areas, SHOWN with 1 area and none picked, still shown after a herringbone pick. The 2nd area painted gets herringbone (the 1st stays stretcher, so "new areas use this pattern" holds). Hidden once an area is selected.
   - Test (frame-corners-panel): shown / hidden by areas + selection. Fails 1/1 before.
 - **Tests:** 24 panel / undo / area / stroke files, 336 passed (regen needs the 8 GB heap: pre-existing, seat F).
+- **Typing settle + release = two undo steps (found by the audit, then measured):** a Grout width change by its stepper (the stepper fires 'input' + 'change') pushed TWO entries (5 -> 7). Undo left 0.049 in the box and in groutByElement.wall.
+  - Cause: the box's 'input' schedules settleAfterTyping's commit 400 ms later, and 'change' commits at once, so two re-lays.
+  - Applies to every number box with a settle: the grout fields, bindSlider boxes (Suppression's audit undo failure), the seed.
+  - Fix: a declared set of pending settles; commitBrickSetting 'onRelease' cancels them (the release commits the latest values).
+  - Live after: 5 -> 6, Undo -> 0.034 / no wall joint, on T1 and T18.
+  - Test: input + change, then 1 s: ONE re-lay. Fails before (2 re-lays).
+  - 32 panel / grout / slider / undo files: 406 passed.

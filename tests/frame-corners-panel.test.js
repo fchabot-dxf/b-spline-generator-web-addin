@@ -256,3 +256,21 @@ describe('item 68: the Wall section says when a pick changes no painted area', (
   });
 });
 
+// item 68 (measured: a Grout width stepper click = 'input' + 'change' pushed TWO undo entries; Undo kept the new
+// value): the release commits, and the typing settle still pending is dropped -- one re-lay
+describe('item 68: a number box edited by its stepper re-lays once', () => {
+  it('input + change, then the settle window passes: ONE re-lay', () => {
+    setPaintScheduler((cb) => cb());
+    setup('wall');
+    vi.useFakeTimers();
+    runBricks.mockClear();
+    const box = $('brickGroutWidth');
+    box.value = '0.049';
+    box.dispatchEvent(new Event('input')); box.dispatchEvent(new Event('change'));
+    vi.advanceTimersByTime(1000);
+    expect(runBricks).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+    setPaintScheduler(null);
+  });
+});
+

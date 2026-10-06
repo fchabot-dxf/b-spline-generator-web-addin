@@ -1310,6 +1310,7 @@ function _resetJointsOnSetChange() {
 
 /** The one entry point every brick-setting control calls after writing P.brickSettings. */
 export function commitBrickSetting(commit = 'generate', phase = 'onRelease', strokeValues = null) {
+  if (phase === 'onRelease') for (const cancel of [..._pendingSettles]) cancel(); // item 68: this release is the commit
   _resetJointsOnSetChange();
   // A6: the drawn strokes follow the global settings (STROKE_FOLLOWS_GLOBAL, the brick size) -- plus, from the one control
   // that applies to ALL elements (the quick Set), `strokeValues`; they regenerate with the re-lay's own commit -- or,
@@ -1634,12 +1635,18 @@ export function generateBricks({ amend = null } = {}) {
  *  'generate' boxes already mark pending on every keystroke. */
 const NUMBER_BOX_SETTLE_MS = 400;
 const APPLIES_AT_ONCE = new Set(['surface', 'auto', 'generate']); // item 27: 'generate' applies at once too
+// item 68 (the editor audit, measured: a Grout width change by its stepper -- 'input' + 'change' -- pushed TWO undo
+// entries, Undo kept the new value): a release commits the latest values, so a typing settle still pending is dropped
+// then (commitBrickSetting 'onRelease'). One edit = one re-lay = one undo step.
+const _pendingSettles = new Set();
 function settleAfterTyping(commit) {
   if (!APPLIES_AT_ONCE.has(commit)) return () => {};
   let timer = null;
+  const cancel = () => { clearTimeout(timer); timer = null; _pendingSettles.delete(cancel); };
   return () => {
     clearTimeout(timer);
-    timer = setTimeout(() => commitBrickSetting(commit, 'onRelease'), NUMBER_BOX_SETTLE_MS);
+    timer = setTimeout(() => { _pendingSettles.delete(cancel); timer = null; commitBrickSetting(commit, 'onRelease'); }, NUMBER_BOX_SETTLE_MS);
+    _pendingSettles.add(cancel);
   };
 }
 
