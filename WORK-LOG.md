@@ -22703,3 +22703,36 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
      deletes the CAM build first and BUILD recreates it (Send 32 s + BUILD ~50 s = ~80 s < 220 s), (c) Fred Sends
      into a design without CAM and keeps CAM in a separate document (manual workflow change).
 - Hygiene: scratch doc closed by handle; holder none after each batch.
+
+## H23 item 85 P3(a) -- what makes a Send slow in a document with CAM (seat A / 77, 2026-10-05)
+- Deployed main 0443c48 (the [XFER] timer is live; no Fred Send yet -- his next real Send carries it; my own Sends in
+  this entry are direct _handle_generate replays, NOT palette Sends, so they log no [XFER] lines). Before each Send
+  I recorded the b_spline_gen_log offset; every timing below is from the add-in's own log.
+- API: there is NO switch to suspend CAM re-derivation. Members matching defer/compute/suspend/update/regen/lock/
+  state on CAM, ManufacturingModel(s), Setup, Design, Timeline, Component, Application, Document: only isValid /
+  isActive / checkValidity, Design.computeAll, Document.updateAllReferences. The one deferral is
+  Sketch.isComputeDeferred.
+- Per-edit cost, same doc, without -> with the CAM build: sketch + 50 lines 0.74 -> 1.48 s; the same with
+  isComputeDeferred 0.28 -> 1.04 s; 20 lines + Horizontal 0.50 -> 1.13 s; construction plane 0.03 -> 0.06 s; delete
+  0.15 -> 0.23 s. A body edit (sketch rect + new-body extrude, then delete) WITH CAM: 0.31 s / 0.16 s, and Fusion idle
+  right after (no deferred work). So isolated edits only ~2x -- the cost is in what a Send does to the bodies the CAM
+  build derives from.
+- Re-Send of the e2e board (same payload), by document state (Send total; the frame part in brackets):
+    never had CAM                                       38 s  (frame 20)   control
+    an empty CAM product only                           47 s  (frame 27)
+    + the BUILD's __cam_wcs planes / sketches only      50 s  (frame 30)
+    had CAM, MMs + setups deleted before the Send      114 s  (frame 85)   one observation
+    CAM MMs kept, setups deleted                       225 s  (frame 118, art + bricks 80) -- Fusion busy ~1 more min after
+    full CAM build kept                                220 s  (frame 121, art + bricks 44)
+  The live MANUFACTURING MODELS are the cost (~+180 s per Send on this board); setups add nothing measurable. The
+  CAM-free runs drift up a few seconds per run (38 -> 47 -> 50) -- session / doc history, not CAM. The 114 s after
+  deleting MMs is one observation (it may be the same drift plus derive leftovers); not concluded.
+- P3 options, measured:
+  (a) suspend / defer: no API switch exists; sketch compute deferral cuts sketch time but the frame / art phases are
+      dominated by MM re-derivation of bodies, not by sketch solves. Not a fix.
+  (b) the Send deletes the CAM MMs (+ setups) first, BUILD recreates them: Send ~40-114 s + BUILD ~50 s, vs 220 s
+      today -- but Fred's setups / toolpaths / hand edits go each Send (BUILD's confirm already guards that case).
+  (b') variant, unmeasured: delete only the 3 MMs before the Send and recreate them after it (P2's in-place path),
+      keeping the setups -- only viable if a setup survives its MM being deleted and re-created; not tested.
+  (c) CAM in a separate document: the design doc stays at ~40 s per Send. Workflow change, Fred's call.
+- Hygiene: scratch docs closed by handle (3 this round), holder none after each batch; Fred's Untitled untouched.
