@@ -171,6 +171,14 @@ export function beginLoadingSequence(seqId) {
   if (_stack.length) _render();
 }
 
+/** item 70: another palette's own stages join the tables -- the CAM palette declares its BUILD / APPLY steps in
+ *  CAM-builder/ui/html/cam-stages.js and registers them through here (cam-loading.js), so both palettes share one
+ *  overlay, one paint rule and one set of surfaces. */
+export function declareLoadingStages(stages = {}, sequences = {}) {
+  Object.assign(LOADING_STAGES, stages);
+  Object.assign(LOADING_SEQUENCES, sequences);
+}
+
 /** item 70: a HELD stage -- one that is not a function's run but lasts until something else says it is over (Fusion
  *  working on a Send: the add-in reports each step, the palette closes it on import_success / import_failed / the
  *  poll timeout). One held slot: holding a new id replaces the previous one; null releases it. Returns a promise

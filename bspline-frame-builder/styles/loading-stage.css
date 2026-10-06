@@ -19,6 +19,9 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  /* item 70, measured at 420 px: shrink-to-fit from left:50% only has HALF the viewport, so the card wrapped into a
+     4-line column; it takes its text's width, up to the screen minus the 16 px gutters */
+  width: max-content;
   max-width: calc(100vw - 32px);
   padding: 16px 22px;
   border-radius: 10px;

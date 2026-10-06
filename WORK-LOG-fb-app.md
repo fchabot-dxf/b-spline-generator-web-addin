@@ -15173,3 +15173,26 @@ WallPattern = {
   - The cover seen in runs 1-2 did not reproduce. Likelier the palette was hidden or moved for a while.
   - Detection only: _post_to_palette logs '[PALETTE] hidden after posting <action>' if pal.isVisible is False. The monitor now reads the main window as the palette's owner and records IsWindowVisible.
   - Add-in pytest 163.
+
+## F35 item 70, CAM part: BUILD SETUPS / APPLY TOOLPATHS on the shared loading card (seat F, branch cam-stages)
+- **Shared card:**
+  - The card's CSS moves to styles/loading-stage.css, linked by both palettes.
+  - The CAM palette imports the B-Spline palette's own core/loading-signal.js (both add-ins deploy side by side) through cam-loading.js.
+  - New: declareLoadingStages(stages, sequences) adds another palette's declared stages to the tables.
+- **Declared once:** CAM-builder/ui/html/cam-stages.js holds 6 steps and the camBuild / camApply sequences. The palette imports it; the add-in reads it through fb_shared.palette_stages (new: declared_stage_ids + pump, pure stdlib).
+- **Palette:**
+  - BUILD / APPLY begin their sequence and PAINT the first step before the request goes to Fusion.
+  - cam_stage holds a step; build_confirm (the Rebuild question) and report end it.
+- **Add-in:**
+  - cam_coordinator.run(on_stage=...) reports camWcs, camCleanup, camModels, camSetups. A reused build skips cleanup + models: those steps go unreported.
+  - _do_apply_toolpaths reports camTemplates, camToolpaths.
+  - _post_cam_stage validates the id, posts, then pumps 0.08 s.
+- **Found on the way:** at 420 px the centred card wrapped into a 4-line column (shrink-to-fit from left:50% has half the viewport). The card now has width: max-content (max-width keeps the gutters). This is the phone too.
+  - Shot: shots/seatF/item70_cam_card_mid_build_420px.png, headless, the real CAM palette served with the deploy's folder layout.
+- **Tests:**
+  - tests/cam-stages.test.js: 5.
+  - CAM-builder/test_cam_stages.py: 4 (declared = reported, the build order, the pump window).
+  - Full vitest 333/333 (5425); CAM pytest 40; add-in pytest 163.
+- **Not done:**
+  - Seat A's live baseline of BUILD / APPLY (queued), then a live check.
+  - b-spline-gen still has its own copy of the reader + pump; it moves to fb_shared.palette_stages once fusion-stages-70 is on main.
