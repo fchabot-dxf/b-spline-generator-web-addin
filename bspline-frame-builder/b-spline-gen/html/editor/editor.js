@@ -14,7 +14,7 @@ import { initInteraction, updateHandles } from './editor-interaction.js';
 import { resetTransform, flattenTransform } from './editor-transform-handles.js';
 import { setMode, updateToolbarVisibility, updateSelectionHighlight, setHover, select, selectAdd, selectMany, updateHistoryButtons } from './editor-ui.js';
 import { setupEditorToolbar } from './editor-controls.js';
-import { initLayerControls, setActiveLayer, applyLayerState, renderLayersPanel } from './layers.js';
+import { initLayerControls, setActiveLayer, applyLayerState, renderLayersPanel, bakeBrickTransforms } from './layers.js';
 import { createEditorCanvas } from './init.js';
 import { fitView as _fitView } from './editor-view.js';
 import { frameSnapGate } from './editor-frame-profile.js';
@@ -28,6 +28,7 @@ import { detectShapeLatticeDetach } from './properties-shape-lattice.js';
 import { refreshGuides, installGuides } from './editor-guides.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
+import { takeUndoParts, restoreUndoParts } from './undo-parts.js';
 
 /** UNDO diagnostic helper. After fixing the spurious handleEnd pushes
  *  (task 16), kept fusLog-only so the Fusion log file still carries the
@@ -393,6 +394,15 @@ export class VectorEditor {
         if (kind === 'commit') detectShapeLatticeDetach(this);
         if (kind === 'commit') refreshBoundaryPatterns(this); // T49 (SE13 §9): commit-only boundary-link refill, same hook
         if (kind === 'commit') refreshGuides(this); // BOUNDARY-GUIDE: Generate / Size edit / undo can move or add a box
+        // F35 item 65: a brick piece moved / transformed by hand keeps its new place in its points (every brick reader,
+        // the height mask first, reads points). The gesture's own undo step (just pushed: still the top) is refreshed
+        // to match -- the same fold-in rule as a commit-triggered refill; any other top (after an undo) is left alone
+        if (kind === 'commit' && bakeBrickTransforms(this)) {
+            const stack = this._undoStack;
+            if (Array.isArray(stack) && stack.length && stack[stack.length - 1] === this._lastPushedState) {
+                stack[stack.length - 1] = this._lastPushedState = this._snapshotState();
+            }
+        }
         if (!this._onChange) return;
         if (kind === 'commit') {
             if (this._pendingChangeFrame != null) {
@@ -512,6 +522,8 @@ export class VectorEditor {
             // instead since Section 1 moved settings onto the layer).
             layers: _cloneLayers(this._layers),
             activeLayer: this._activeLayer,
+            // F35 item 38: the declared parts beyond the drawing (undo-parts.js) -- e.g. the brick settings that laid it
+            parts: takeUndoParts(),
         };
     }
 
@@ -607,6 +619,9 @@ export class VectorEditor {
         // the preview.
         // Audit (batch 3): follow-ups of a RESTORE (the boundary refill) correct the restored step in place and
         // never push -- a push here cleared redo and made Undo land on the same state again
+        // F35 item 38: the entry's declared parts (the brick settings that laid this canvas) come back with it, BEFORE
+        // the commit pipeline below persists / re-masks
+        if (isObj) restoreUndoParts(state.parts);
         this._restoring = true;
         try { this._notifyChange('commit'); } finally { this._restoring = false; }
     }

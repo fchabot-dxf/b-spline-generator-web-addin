@@ -114,6 +114,11 @@ export const BRICK_CONTROLS = [
   { name: 'Grout width 0.08', kind: 'editor', tool: 'wall', do: set('brickGroutWidth', 0.08, 'input'), expect: LAYOUT },
   // F35 item 55 (seat E): the grout PAINT -- the canvas changes (the grout node's d / fill), the 3D heights must NOT (paint only)
   { name: 'Grout edge 0.03 (paint only)', kind: 'editor', tool: 'wall', do: set('brickGroutEdge', 0.03), expect: { ...E(false, true, false), ...AT_ONCE }, introducedBy: '3a10b65' },
+  // seat D (measured): the baseline's Generate re-rolls the brick seed (F35 item 39), and on some seeds the top bias
+  // (0.8 x course height vs 0.2 x noise, core/bricks/suppression.js) removes the same top pieces whatever the noise
+  // scale -- Clumping is then a genuine no-op and its row failed at random (same canvas as the row before). A declared
+  // seed makes Suppression + Clumping test the controls, not the dice.
+  { name: 'Brick seed 7919 (Suppression/Clumping rows)', kind: 'editor', tool: 'wall', do: set('brickSeed', 7919, 'input'), expect: LAYOUT },
   { name: 'Suppression 0.5', kind: 'editor', tool: 'wall', do: set('brickSuppression', 0.5), expect: LAYOUT },
   { name: 'Clumping 0.9 (Suppression 0.5)', kind: 'editor', tool: 'wall', do: set('brickClumping', 0.9), expect: LAYOUT, requires: NEEDS_SUPPRESSION },
   { name: 'Suppression 0', kind: 'editor', tool: 'wall', do: set('brickSuppression', 0), expect: LAYOUT },
@@ -138,6 +143,12 @@ export const BRICK_CONTROLS = [
   // band 1 brings the brick frame back (its own set) -- the Soldier button must exist on a rock frame's row
   { name: 'Band 1 pattern: Fieldstone again (rock frame)', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_fieldstone'), expect: { ...LAYOUT, sets: { frame: 3 } }, introducedBy: '40c4bdf' },
   { name: 'Band 1 pattern: Soldier, back from rock (item 46)', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_soldier'), expect: { ...LAYOUT, sets: { frame: 1 } }, introducedBy: '40c4bdf' },
+  // F35 item 61 (seat E): the Frame Set row lists every band-capable set -- Grey stone lays its own stones, White rocks makes
+  // the frame rock (the set implies the pattern) and a course band pattern brings Grey stone back (the pattern implies the set)
+  { name: 'Frame Set: Grey stone (its own stones)', kind: 'editor', tool: 'frame', do: click('brickSet_5'), expect: { ...LAYOUT, sets: { frame: 5 } }, introducedBy: '0922034' },
+  { name: 'Frame Set: White rocks (the frame turns rock)', kind: 'editor', tool: 'frame', do: click('brickSet_3'), expect: { ...LAYOUT, sets: { frame: 3 } }, introducedBy: '0922034' },
+  { name: 'Band 1 pattern: Soldier, back to Grey stone', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_soldier'), expect: { ...LAYOUT, sets: { frame: 5 } }, introducedBy: '0922034' },
+  { name: 'Frame Set: Red Brick again', kind: 'editor', tool: 'frame', do: click('brickSet_1'), expect: { ...LAYOUT, sets: { frame: 1 } }, introducedBy: '0922034' },
   // F35 item 66: the 'Frame offset distance / off / on' rows went with the retired Offset-from-frame control
   { name: 'Frame Level -1/8', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', -0.125), expect: LEVEL, introducedBy: '90a1483' },
   { name: 'Frame Level 0', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', 0), expect: LEVEL, introducedBy: '90a1483' },
@@ -317,6 +328,14 @@ export const QUICK_FRAME_LAYS = {
   noTemplatePick: 'brickQuick_frameBands_double_course', introducedBy: 'item 63',
 };
 
+// ---- F35 item 65 (seat D): a brick moved BY HAND (Select tool, a real drag) follows in the 3D and survives Apply +
+// reopen. Measured before the fix: the move was stored as a transform the height mask never read -- 3D unchanged.
+export const HAND_EDIT = {
+  template: 'template_1', size: 'brickSizePreset_half1', selectTool: 'toolSelect',
+  dragBrickWidths: 0.6, // drag the middle wall brick right by this share of its own width
+  introducedBy: 'item 65',
+};
+
 export const BANDS_NOTE = {
   template: 'template_1', tooDeep: 'brickFramePreset_three_band', fits: 'brickFramePreset_single_soldier',
   note: 'brickFrameBandsNote', text: 'Bands reduced to fit the board: 1 of 3 laid.', dropped: '[data-band-dropped="1"]',
@@ -411,6 +430,16 @@ export const EDIT_PASSWORD_TEST = {
   introducedBy: '68feae7',
 };
 
+// ---- editor Undo / Redo restore the brick SETTINGS (F35 item 38, seat C 02): measured before, Undo put the canvas back
+// while the panel kept the new setting (stretcher -> stack -> Undo: canvas back, pattern still 'stack'). A pattern pick,
+// Undo -> the canvas hash back to the baseline AND the baseline's chip active; Redo -> forward again; a 3D-only change
+// (the accent level) is its own step and comes back too. `marker` = this build's own module (absent = skipped).
+export const UNDO_SETTINGS = {
+  from: 'brickPattern_stretcher', to: 'brickPattern_stack', undo: 'editorUndo', redo: 'editorRedo',
+  accent: 'brickAccent_checker', level: { id: 'brickAccentLevel', value: -0.0625 },
+  marker: './editor/undo-parts.js',
+};
+
 // ---- Generate on a RESTORED board (F35 item 39, seat C 02; Fred on his phone: "the opened geometry isn't refreshable by
 // a simple Generate"): measured before, a restored board whose settings matched its pieces re-laid byte-identical bricks.
 // After the persistence group's own project load, and again after a reload: pick the Wall tool, Generate -> the wall's
@@ -428,4 +457,14 @@ export const WALL_NO_FRAME = {
   cases: [{ template: 'template_18', heightIn: 10 }, { template: '', heightIn: 9 }],
   wallTool: 'brickTool_wall', generate: 'brickGenerate', tol: 0.1,
   marker: "import('./editor/editor-brick-tool.js').then((m) => !!m.frameGeomForLay)",
+};
+
+// ---- a carving ART stroke under FLAT bricks (F35 item 44, seat E; Fred: "if there's a carving in art, the bricks don't work").
+// Measured before (7x9 T1): every Flat brick the carve crosses moved off the stroke (1,752 points, max 0.10 in). The row lays a
+// Wall (Flat tops, the new-board default), draws this stroke on the art layer (carving), and checks in 3D: the crossed bricks'
+// points away from the stroke are unchanged, and the stroke itself cuts. It FAILS (not skips) on a build without the fix.
+export const CARVE_UNDER_FLAT = {
+  stroke: { a: { x: 1.6, y: 2.2 }, b: { x: 5.4, y: 6.8 }, widthIn: 0.35 }, farMarginIn: 0.15,
+  wallTool: 'brickTool_wall', generate: 'brickGenerate', minNearChangedShare: 0.9,
+  introducedBy: 'F35 item 44',
 };

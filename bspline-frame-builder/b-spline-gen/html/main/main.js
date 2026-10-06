@@ -42,6 +42,7 @@ import { initClearMenu } from './editor-clear-menu.js';
 import { initViewModeToggle } from './view-mode-toggle.js';
 import { bindHeaderAndSettings } from './header-controls.js';
 import { wireGlobalEvents } from './global-events.js';
+import { installGestureWatch } from '../core/loading-signal.js';
 import {
     onGenerate, onFusionApply, executeExport, closeWizard,
 } from './export-flow.js';
@@ -84,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // export, not a window global, so a CDP script can't reach
     // preview._drapeTexture any other way.
     window.__preview = preview;
+    installGestureWatch(); // item 41: a slider drag's rebuilds show the loading pill, not the card
 
     // 2. Resizer + mobile viewport
     initResizer(preview);

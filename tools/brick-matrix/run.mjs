@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME, GROUT_JOINTS, QUICK_FRAME_LAYS } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME, GROUT_JOINTS, QUICK_FRAME_LAYS, CARVE_UNDER_FLAT, HAND_EDIT, UNDO_SETTINGS } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'persistence', 'grout'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'undo', 'persistence', 'grout', 'handedit'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -455,14 +455,16 @@ try {
   }
   if (!arg('group') || arg('group') === 'layout') await runLayout();
   if (!arg('group') || arg('group') === 'clear') await runClear();
-  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); await runQuickFrameLays(); }
+  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); await runQuickFrameLays(); await runCarveUnderFlat(); }
   if (!arg('group') || arg('group') === 'select') await runSelect();
   if (!arg('group') || arg('group') === 'migration') await runMigration();
   if (!arg('group') || arg('group') === 'frame-ui') await runFrameUi();
   if (!arg('group') || arg('group') === 'password') await runPassword();
   if (!arg('group') || arg('group') === 'layers') await runBrickLayers();
   if (!arg('group') || arg('group') === 'areas') await runWallAreas();
+  if (!arg('group') || arg('group') === 'undo') await runUndoSettings();
   if (!arg('group') || arg('group') === 'grout') await runGroutJoints();
+  if (!arg('group') || arg('group') === 'handedit') await runHandEdit();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') { await runPersistence(); await runPatternParamPersist(); }
 } catch (e) {
@@ -775,6 +777,33 @@ async function runWallNoFrame() {
     const ok = !!m.wall && m.frame === 0 && m.wall.every((v, i) => Math.abs(v - m.contour[i]) <= N.tol);
     checkRow('lay', name, ok, `wall x ${m.wall ? m.wall[0].toFixed(2) + '-' + m.wall[1].toFixed(2) + ' bottom ' + m.wall[2].toFixed(2) : 'none'} vs contour x ${m.contour[0].toFixed(2)}-${m.contour[1].toFixed(2)} bottom ${m.contour[2].toFixed(2)}; frame bricks ${m.frame}`);
   }
+  if (await editorOpen()) await apply();
+}
+
+// F35 item 44 (controls.mjs CARVE_UNDER_FLAT): a carving art stroke under Flat bricks moves no brick point off the stroke
+async function runCarveUnderFlat() {
+  const C = CARVE_UNDER_FLAT, name = 'Carving art under Flat bricks: crossed bricks keep their tops, the stroke cuts';
+  await reloadWithStorage({});
+  await openEditorTab('editorTabBrick'); await click(C.wallTool, 900); await click(C.generate, 2500);
+  await apply(); await heightsSettled(null);
+  await js(`import('./core/state.js').then((m)=>{ window.__carveH0=Float32Array.from(m.lastResult.heights); return 1; })`);
+  await openEditorTab('editorTabArtwork');
+  await js(`(()=>{ const ed=window.svgEditor; const lid=ed._layers.find((l)=>!l.brickKind && !l.holdsBricks).id; const s=${JSON.stringify(C.stroke)};
+    ed._sketchLayer.path('M'+s.a.x+','+s.a.y+' L'+s.b.x+','+s.b.y).fill('none').stroke({ color:'#000000', width:s.widthIn }).attr('data-layer', String(lid)); return 1; })()`);
+  await apply(); await heightsSettled(null);
+  const m = await jsJSON(`(async()=>{ const st=await import('./core/state.js'); const A=window.__carveH0, B=st.lastResult.heights; const W=st.P.widthIn, H=st.P.heightIn;
+    const nx=Math.round(Math.sqrt(A.length*W/H)), nz=A.length/nx; const s=${JSON.stringify(C.stroke)}, far=s.widthIn/2+${C.farMarginIn};
+    const segD=(x,y)=>{ const dx=s.b.x-s.a.x, dy=s.b.y-s.a.y; let t=((x-s.a.x)*dx+(y-s.a.y)*dy)/(dx*dx+dy*dy); t=Math.max(0,Math.min(1,t)); return Math.hypot(x-(s.a.x+t*dx), y-(s.a.y+t*dy)); };
+    const polys=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].map((n)=>{ const v=n.getAttribute('points').trim().split(/[ ,]+/).map(Number); const o=[]; for(let i=0;i+1<v.length;i+=2) o.push({x:v[i],y:v[i+1]}); return o; });
+    const pip=(x,y,p)=>{ let c=false; for(let i=0,j=p.length-1;i<p.length;j=i++){ if(((p[i].y>y)!==(p[j].y>y)) && x<(p[j].x-p[i].x)*(y-p[i].y)/(p[j].y-p[i].y)+p[i].x) c=!c; } return c; };
+    const crossed=polys.filter((p)=>{ for(let t=0;t<=1;t+=0.01){ if (pip(s.a.x+t*(s.b.x-s.a.x), s.a.y+t*(s.b.y-s.a.y), p)) return true; } return false; });
+    let near=0, nearChanged=0, farOnCrossed=0, farOnCrossedChanged=0, maxFar=0;
+    for (let j=0;j<nz;j++) for (let i=0;i<nx;i++) { const k=j*nx+i; const x=i/(nx-1)*W, y=(1-j/(nz-1))*H; const d=Math.abs(B[k]-A[k]); const sd=segD(x,y); // heights row 0 = the board's bottom edge (measured)
+      if (sd < s.widthIn/2) { near++; if (d>1e-4) nearChanged++; continue; }
+      if (sd > far && crossed.some((p)=>pip(x,y,p))) { farOnCrossed++; if (d>1e-4) { farOnCrossedChanged++; maxFar=Math.max(maxFar,d); } } }
+    return JSON.stringify({ crossed: crossed.length, near, nearChanged, farOnCrossed, farOnCrossedChanged, maxFar:+maxFar.toFixed(4) }); })()`);
+  const ok = m.crossed > 0 && m.farOnCrossed > 0 && m.farOnCrossedChanged === 0 && m.nearChanged >= C.minNearChangedShare * m.near;
+  checkRow('lay', name, ok, `${m.crossed} bricks crossed; off-stroke points on them changed ${m.farOnCrossedChanged}/${m.farOnCrossed} (max ${m.maxFar} in); under the stroke ${m.nearChanged}/${m.near} cut`);
   if (await editorOpen()) await apply();
 }
 
@@ -1407,6 +1436,31 @@ async function runGroutJoints() {
   }
 }
 
+// F35 item 65: a wall brick dragged by hand with the Select tool -> the 3D follows; the move survives Apply + reopen
+async function runHandEdit() {
+  const H = HAND_EDIT;
+  await openEditorTab('editorTabBrick');
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(H.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  await click('brickTool_wall', 800); await click(H.size, 2000); await click('brickGenerate', 2500);
+  await apply(); const z0 = await heightsSettled(null);
+  await openEditorTab('editorTabBrick');
+  if (!(await exists(H.selectTool))) { checkRow('handedit', 'Hand-moved brick: 3D follows, survives reopen', false, '', H.introducedBy); return; }
+  await click(H.selectTool, 800);
+  const b = await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')]; const n=ns[Math.floor(ns.length/2)];
+    const svg=window.svgEditor._sketchLayer.node.ownerSVGElement.getBoundingClientRect(), r=n.getBoundingClientRect();
+    return { id: n.getAttribute('data-brick-id'), points: n.getAttribute('points'), fx: (r.x+r.width/2-svg.left)/svg.width, fy: (r.y+r.height/2-svg.top)/svg.height, fw: r.width/svg.width }; })())`);
+  await drag([[b.fx, b.fy], [b.fx + b.fw * H.dragBrickWidths, b.fy]]);
+  const piece = () => jsJSON(`JSON.stringify((()=>{ const n=window.svgEditor._sketchLayer.node.querySelector('[data-brick-id="${b.id}"]'); return n ? { points: n.getAttribute('points'), transform: n.getAttribute('transform') } : null; })())`);
+  const after = await piece();
+  await apply(); const z1 = await heightsSettled(z0);
+  await openEditorTab('editorTabBrick');
+  const reopened = await piece();
+  const moved = !!after && after.points !== b.points && !after.transform;
+  checkRow('handedit', 'Hand-moved brick: 3D follows, survives reopen', moved && z1 !== z0 && !!reopened && reopened.points === after.points,
+    `points ${moved ? 'moved' : 'UNMOVED'}${after && after.transform ? ' (transform ' + after.transform + ')' : ''}, 3D ${z1 !== z0 ? 'changed' : 'UNCHANGED'}, reopened ${reopened && after && reopened.points === after.points ? 'kept' : 'LOST'}`);
+  if (await editorOpen()) await apply();
+}
+
 async function runWallAreas() {
   const A = WALL_AREAS;
   await reloadWithStorage({});
@@ -1480,6 +1534,34 @@ async function runWallAreas() {
   await click('editorTabBrick', 600); await click(CLEAR_MENU.button, 600); await click('editorClear_bricks', 2000);
   const after = await jsJSON(areasState());
   checkRow('areas', 'Clear > Bricks removes the areas', before.areas.length === 1 && after.areas.length === 0, `areas ${before.areas.length} -> ${after.areas.length}`);
+  if (await editorOpen()) await apply();
+}
+
+// F35 item 38 (controls.mjs UNDO_SETTINGS): editor Undo / Redo bring back the brick settings with the canvas
+async function runUndoSettings() {
+  const U = UNDO_SETTINGS;
+  await reloadWithStorage({});
+  await openEditorTab('editorTabBrick');
+  if (!(await js(`import(${JSON.stringify(U.marker)}).then(() => true, () => false)`))) { checkRow('undo', 'Undo restores the pattern AND its chip', false, '', U.marker); return; }
+  await click('brickTool_wall', 800); await click(U.from, 1500); await click('brickGenerate', 2000);
+  const chips = () => jsJSON(`JSON.stringify({ from: !!document.getElementById(${JSON.stringify(U.from)})?.classList.contains('active'), to: !!document.getElementById(${JSON.stringify(U.to)})?.classList.contains('active') })`);
+  const c0 = await canvasSettled(null);
+  await click(U.to, 1500);
+  const c1 = await canvasSettled(c0);
+  await click(U.undo, 1500);
+  const c2 = await canvasSettled(c1), k2 = await chips();
+  checkRow('undo', 'Undo restores the pattern AND its chip', c1 !== c0 && c2 === c0 && k2.from && !k2.to,
+    `pick ${c0} -> ${c1}; undo -> ${c2 === c0 ? 'the baseline' : c2}; chips from ${k2.from} to ${k2.to}`);
+  await click(U.redo, 1500);
+  const c3 = await canvasSettled(c2), k3 = await chips();
+  checkRow('undo', 'Redo brings the pick back, chip too', c3 === c1 && k3.to && !k3.from, `redo -> ${c3 === c1 ? 'the pick' : c3}; chips from ${k3.from} to ${k3.to}`);
+  // a 3D-only change is its own step: Undo puts the level back (the canvas is not re-laid)
+  await click(U.accent, 1200);
+  const lv0 = Number(await js(`document.getElementById(${JSON.stringify(U.level.id)})?.value`));
+  await setValue(U.level.id, U.level.value, 'change'); await sleep(1200);
+  await click(U.undo, 1500);
+  const lv1 = Number(await js(`document.getElementById(${JSON.stringify(U.level.id)})?.value`));
+  checkRow('undo', 'Undo puts a 3D-only setting back (accent level)', lv1 === lv0 && lv0 !== U.level.value, `level ${lv0} -> ${U.level.value} -> undo -> ${lv1}`);
   if (await editorOpen()) await apply();
 }
 

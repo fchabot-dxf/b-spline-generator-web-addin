@@ -36,6 +36,7 @@
 import { inwardSignFor, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, boundaryAtDepth } from './primitive-ribbon.js';
+import { openRibbonOutline } from './ribbon-outline.js'; // F35 item 55 (seat E): a Brush stroke's grout region
 import { scaledSet, BRICK_PATTERNS, MIN_PIECE_FRACTION } from './library.js';
 import { bricksFillShape } from './fill-shape.js';
 import { axisLen, courseHeightFor } from './layouts/bond.js';
@@ -489,6 +490,7 @@ export function bricksContourBands(primitives, bands, opts) {
   let depthSoFar = opts.centered
     ? -plannedBands.reduce((sum, b) => sum + b.naturalWidth * b.rows, 0) / 2
     : 0;
+  const ribbonStartDepth = depthSoFar; // F35 item 55: an open centred ribbon's first edge
   let nextId = 0;
   // T86 item 21b, the JOINT RULE: every seam is the declared joint, rows and bands included (advisor; seat A's Fusion
   // e2e counted 147 profiles for 126 pieces, the extras from 0-gap wall-vs-band contacts, and two abutting courses
@@ -556,7 +558,9 @@ export function bricksContourBands(primitives, bands, opts) {
   const laid = fitBoard ? clipBandPiecesToBoard(split, fitBoard, set) : bricks;
   // the wall keeps half its own joint from the band (grout is one global width, so band + wall = one joint)
   const wallDepth = bands.length ? depthSoFar + halfJoint : depthSoFar;
-  return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, wallDepth) : [], ...(fit ? { bandsReduced: fit.note } : {}) };
+  return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, wallDepth) : [], ...(fit ? { bandsReduced: fit.note } : {}),
+    // F35 item 55 (seat E): an open centred ribbon's outline (a Brush stroke's grout region), additive
+    ...(!closed && opts.centered ? { ribbonOutline: openRibbonOutline(enriched, ribbonStartDepth, depthSoFar) } : {}) };
 }
 
 /**

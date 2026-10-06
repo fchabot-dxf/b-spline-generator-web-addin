@@ -20,6 +20,7 @@
 import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange } from '../core/frame-record.js';
 import { P, isFusionMode } from '../core/state.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
+import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
 import { setEditorTab as switchEditorTab, getEditorTab } from './editor-tabs.js';
 import { AppState } from './app-state.js';
@@ -219,7 +220,8 @@ let _openEditorOn = null;
  *  (main/view-mode-toggle.js) all go through here. */
 export function openEditorOn(tab) {
   _openEditorOn = tab;
-  $('btnStampEdit')?.click();
+  // item 41: opening rebuilds the editor document (~1 s blocked at 900 px / CPU x4): its stage paints first
+  return withLoadingStageShownFirst('openEditor', () => $('btnStampEdit')?.click());
 }
 export const OPEN_EDITOR_BUTTONS = Object.freeze([
   { id: 'btnEditFrameShape', tab: 'frame' },
