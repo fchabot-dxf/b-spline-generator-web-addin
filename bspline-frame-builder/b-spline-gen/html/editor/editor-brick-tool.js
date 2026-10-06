@@ -54,7 +54,7 @@ import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, dropTouching } from '../core/bricks/index.js';
+import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf } from '../core/bricks/index.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
 import { rectToPrimitives } from '../core/inset-window.js';
 import { brickFillPaint } from './editor-brick-surface.js';
@@ -1757,10 +1757,11 @@ export function regenerateOwnedBrickElements(editor) {
     g.remove();
   }
 
-  // F35 item 60 (seat A's e2e: a raised stroke over the frame's stones, the raise added onto the stone): a stroke
-  // brick touching a laid FRAME piece is dropped whole (the engine's 18c rule, dropTouching), never cut
-  const frameDrops = [...editor._sketchLayer.node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="frame"]`)]
-    .map((n) => ({ polygon: _nodePolygon(n), drop: true }));
+  // F35 item 60 (seat A's e2e: a raised stroke over the frame's stones, the raise added onto the stone): a stroke keeps
+  // clear of the laid FRAME pieces (the engine's bricksClearOf) -- a brick touching one is dropped whole (18c); a
+  // Continuous run, one unbroken piece, is CUT there instead (dropping it would take the whole stroke away)
+  const framePieces = [...editor._sketchLayer.node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="frame"]`)].map(_nodePolygon);
+  const frameExclusions = (settings) => framePieces.map((polygon) => ({ polygon, drop: settings.profile !== 'continuous' }));
   for (const [elementId, segs] of byElement) {
     const chains = reconstructChains(segs);
     const region = []; // F35 item 55: the stroke's ribbons, one per chain
@@ -1770,7 +1771,7 @@ export function regenerateOwnedBrickElements(editor) {
         ? chain.settings
         : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
       const out = {};
-      const bricks = dropTouching(bricksForStroke(chain.points, settings, out), frameDrops, resolvedSetFor(settings));
+      const bricks = bricksClearOf(bricksForStroke(chain.points, settings, out), frameExclusions(settings), resolvedSetFor(settings));
       if (bricks.length && out.ribbonOutline && out.ribbonOutline.length >= 3) region.push({ outer: out.ribbonOutline, holes: [] });
       const ownerId = `${elementId}:${chainIdx}`;
       const layer = strokeLayer.get(elementId);

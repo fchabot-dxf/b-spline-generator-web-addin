@@ -15048,3 +15048,18 @@ WallPattern = {
 - **Shots** (seatD): f35_60_{before,after}_stroke_over_frame_{1366,900}.png. Before: the raised stroke runs over the stones on both sides of the waist. After: only its 3 bricks clear of the stones.
 - **Full vitest** (8 GB heap): 324 files, 5305 passed, 0 failed.
 - **Seen once, for seat A's E3:** one run of the census had a wall sliver of 0.00007 in2 (app-side); two earlier runs had none.
+
+## seat D (bb) turn 20: item 60 follow-up, a Continuous stroke across the frame is CUT, not removed
+- **Advisor's bisect:** main + stroke-drop failed the brush row "Brush profile: Continuous" (canvas unchanged); main alone passed.
+- **Measured:** before = after = 3#y0hqhc. The row's stroke crosses T1's frame band at the waist. A Continuous run is laid as long unbroken pieces, and the drop rule took every one touching the frame away, so both strokes reduced to the same few nodes (their grout ribbon) and the change was invisible.
+  - Unit numbers on a 0.2..5.8 in stroke across a 0.8 in frame piece: cut covers 4.70 in (= 5.6 - 0.8 - two 0.05 joints); drop covers 4.10.
+- **Fix (declared, engine + app):**
+  - fill-shape.js: the cut loop of cutExclusions is extracted verbatim as `cutPieces`; cutExclusions calls it.
+  - The export is now ONE op, `bricksClearOf(bricks, exclusions, set)`: a `drop: true` exclusion drops a touching brick whole (18c); any other exclusion CUTS it, each piece keeping the brick's fields (id `<id>~k`). It replaces my unmerged dropTouching.
+  - App: a stroke's frame exclusions are `drop: settings.profile !== 'continuous'`, so brick profiles drop whole bricks and a Continuous run is cut at the frame.
+- **Tests** (stroke-drop-frame, 5):
+  - The cut exclusion case now asserts the cut: 2 parts, fields kept, a joint off each side.
+  - New: a Continuous stroke across the frame is cut, never removed (covered length > 4.6). It fails 1/1 against drop-everything wiring.
+  - Engine / wall / stroke files: 63 files, 698 passed.
+- **Matrix:** brush 10/0 (Continuous now 3#1wpuvju -> 7#s250qh); strokes 1/0.
+- **"strokes did not report" under --parallel (advisor):** a group child exits without a report only on a port / Chrome-start failure (exit 2 before `finally`). With base 9701 and 22 groups, strokes (last) gets port 9921/9922. My own probes ran on 9921-9941 tonight, so the likeliest cause is a collision with my probe, not the group. My probes now use 11xxx.

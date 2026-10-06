@@ -129,33 +129,47 @@ function exclusionHoles(exclusions, set) {
 const touchesDrop = (polygon, box, drops) =>
   drops.some((h) => boxesOverlap(box, h.box) && Math.abs(signedArea(polygonIntersection(polygon, h.polygon))) > DROP_TOUCH_SQIN);
 
+/** The cut holes taken out of one polygon: its pieces, [] when a hole lies wholly inside it, [polygon] untouched. */
+function cutPieces(polygon, box, cuts) {
+  let pieces = [polygon];
+  for (const h of cuts) {
+    if (!boxesOverlap(box, h.box)) continue;
+    const next = [];
+    for (const piece of pieces) {
+      const cut = polygonDifference(piece, h.polygon);
+      if (cut.holeIgnored) return []; // a stroke wholly inside the brick: the stroke covers it
+      next.push(...cut);
+    }
+    pieces = next;
+  }
+  return pieces;
+}
+
 function cutExclusions(cells, exclusions, set) {
   const holes = exclusionHoles(exclusions, set);
   const drops = holes.filter((h) => h.drop), cuts = holes.filter((h) => !h.drop);
   return recutCells(cells, set, (polygon) => {
     const box = bboxOf(polygon);
     if (touchesDrop(polygon, box, drops)) return [];
-    let pieces = [polygon];
-    for (const h of cuts) {
-      if (!boxesOverlap(box, h.box)) continue;
-      const next = [];
-      for (const piece of pieces) {
-        const cut = polygonDifference(piece, h.polygon);
-        if (cut.holeIgnored) return []; // a stroke wholly inside the brick: the stroke covers it
-        next.push(...cut);
-      }
-      pieces = next;
-    }
+    const pieces = cutPieces(polygon, box, cuts);
     return pieces.length === 1 && pieces[0] === polygon ? null : pieces;
   });
 }
 
-/** F35 item 60 (seat A's e2e: a raised brush stroke over the frame's stones, the raise added onto the stone): the 18c
- *  drop rule for bricks laid OUTSIDE the wall fill (a Brush / Raised stroke). A brick touching a `drop: true` exclusion
- *  (grown by the joint) is dropped whole -- the same test cutExclusions applies to the wall. */
-export function dropTouching(bricks, exclusions, set) {
-  const drops = exclusionHoles(exclusions, set).filter((h) => h.drop);
-  return drops.length ? bricks.filter((b) => !touchesDrop(b.polygon, bboxOf(b.polygon), drops)) : bricks;
+/** F35 item 60 (seat A's e2e: a raised brush stroke over the frame's stones, the raise added onto the stone): the wall's
+ *  exclusion rules for bricks laid OUTSIDE the wall fill (a Brush / Raised stroke) -- the same tests cutExclusions
+ *  applies. An exclusion (grown by the joint) marked `drop: true` drops a brick touching it whole (18c); any other one
+ *  CUTS it, each piece keeping the brick's other fields (a Continuous run is one long piece, not a brick). */
+export function bricksClearOf(bricks, exclusions, set) {
+  const holes = exclusionHoles(exclusions, set);
+  if (!holes.length) return bricks;
+  const drops = holes.filter((h) => h.drop), cuts = holes.filter((h) => !h.drop);
+  return bricks.flatMap((b) => {
+    const box = bboxOf(b.polygon);
+    if (touchesDrop(b.polygon, box, drops)) return [];
+    const pieces = cutPieces(b.polygon, box, cuts);
+    return pieces.length === 1 && pieces[0] === b.polygon ? [b] : pieces.map((polygon, k) => ({ ...b, id: `${b.id}~${k}`, polygon }));
+  });
 }
 
 /**

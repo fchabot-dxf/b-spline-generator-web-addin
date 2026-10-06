@@ -6,7 +6,7 @@
  * use.
  */
 export { bricksAlongPath } from './along-path.js';
-export { bricksFillShape, dropTouching } from './fill-shape.js';
+export { bricksFillShape, bricksClearOf } from './fill-shape.js';
 export { strokesToRegion } from './region.js'; // T86 item 18: painted strokes -> the wall's region
 export { bricksGroutCut } from './grout-cut.js'; // T86 item 10: the Raised brush's grout mode
 export { groutShapeOf, groutIdOf, insetFace, pointOnGrout, primitivesOutline, GROUT_ID_SUFFIX } from './grout-shape.js'; // F35 item 55
