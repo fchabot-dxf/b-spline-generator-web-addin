@@ -168,6 +168,16 @@ const BUTT_PARALLEL_DOT = 0.999; // H23 item 76 cont. (butt corner): tangents th
 // smooth continuation -- so there's no "through" vs "butt" side to pick; falls back to the ordinary
 // mitre, which degenerates harmlessly to a near-straight seam on its own at this angle anyway.
 
+/** T86 item 21b (Fred's T11 double_course: "is this one getting fixed?"): the butt construction below is exact
+ *  only for a SQUARE corner -- the through band's last piece ends square at the outer corner and the butt band is
+ *  cut where the through band's inner edge crosses it, which together tile a right angle and nothing else. MEASURED
+ *  on T11 (a 45 deg turn, vertical into the V): the cut landed 1.77 in up a 1.95 in vertical (d1 / sin 45), the
+ *  vertical got no piece at all and a triangle beside the diagonal's square end went bare (1.39 sq in per side at
+ *  1.25 in). Declared: butt / lapped / block serve corners within BUTT_SQUARE_WINDOW_DEG of square (block: convex ones
+ *  too, see buildBlockJoint); any other corner falls back to the mitre, as arc-involved corners already do. */
+const BUTT_SQUARE_WINDOW_DEG = 15;
+const BUTT_SQUARE_MAX_DOT = Math.sin((BUTT_SQUARE_WINDOW_DEG * Math.PI) / 180);
+
 /**
  * T86 item 1 (Fred's sketch, shots/fred/fred_sketch_butt_corner.jpg): the BUTT corner style, built
  * per the architecture plan this item inherited (WORK-LOG's own "H23 item 76 cont. -- butt corner"
@@ -195,7 +205,9 @@ const BUTT_PARALLEL_DOT = 0.999; // H23 item 76 cont. (butt corner): tangents th
 function buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipThrough) {
   const tPrev = tangentAt(primitives[prevIdx], o);
   const tCur = tangentAt(primitives[curIdx], o);
-  if (Math.abs(tPrev.x * tCur.x + tPrev.y * tCur.y) >= BUTT_PARALLEL_DOT) return null; // not a genuine corner
+  const dot = Math.abs(tPrev.x * tCur.x + tPrev.y * tCur.y);
+  if (dot >= BUTT_PARALLEL_DOT) return null; // not a genuine corner
+  if (dot > BUTT_SQUARE_MAX_DOT) return null; // not near square: the mitre (21b)
   const prevMoreHorizontal = Math.abs(tPrev.x) >= Math.abs(tCur.x);
   const throughIdx = (prevMoreHorizontal !== !!flipThrough) ? prevIdx : curIdx;
   const buttIdx = throughIdx === prevIdx ? curIdx : prevIdx;
@@ -292,7 +304,14 @@ const QUOIN_SET = brickSetById(3); // "White rocks" (library.js:181) -- already 
 function buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint) {
   const tPrev = tangentAt(primitives[prevIdx], o);
   const tCur = tangentAt(primitives[curIdx], o);
-  if (Math.abs(tPrev.x * tCur.x + tPrev.y * tCur.y) >= BUTT_PARALLEL_DOT) return null;
+  const dot = Math.abs(tPrev.x * tCur.x + tPrev.y * tCur.y);
+  if (dot >= BUTT_PARALLEL_DOT) return null;
+  // 21b: the block square is stepped along both tangents from the OUTER corner, so it fits only a convex, near-square
+  // corner. MEASURED: at T9's / T6's reflex corners it lands outside the board and the two runs still give up a block
+  // length each (T9 1.25 in: the I-beam web bare, 3.69 sq in per side); at T11's 45 deg turn the vertical goes bare.
+  // Convex = the next run turns toward the inside: tCur along the previous line's inward normal.
+  const convex = tCur.x * primitives[prevIdx].nx + tCur.y * primitives[prevIdx].ny > 0;
+  if (dot > BUTT_SQUARE_MAX_DOT || !convex) return null; // the mitre
   const blockSize = QUOIN_SET.brickLengthIn;
   const prevPrim = primitives[prevIdx], curPrim = primitives[curIdx];
   // The block's OWN face sits exactly `blockSize` from the corner (a quoin unit's own declared size,
