@@ -5,9 +5,10 @@
  * Minimal hand-written fixture matching the real panel's own IDs (same convention as
  * tests/properties-shape-lattice.test.js's own fixtureHTML).
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { initStripeProperties } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-stripe.js';
 import { STRIPE_COLOR_PRESETS, STRIPE_PATTERNS, stripeSettings } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-stripe-tool.js';
+import { UNDO_PARTS } from '../bspline-frame-builder/b-spline-gen/html/editor/undo-parts.js';
 import { PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 
 function fixtureHTML() {
@@ -119,3 +120,32 @@ describe('F32 item 2: dash-ratio pattern chips, ratio field, clamp note', () => 
     expect(note.style.display).toBe('none'); // a different editor's event is ignored
   });
 });
+
+// item 73 (seat D's editor audit: Stripe count / by-length / by-count took no undo step -- Undo took back the previous
+// canvas edit and left them): each panel change is ONE settings-only step, and the settings ride in the undo entry
+describe('item 73: the Stripe tool settings are undoable', () => {
+  const editorWithStack = () => { const ed = { pushState: vi.fn(), _notifyChange: vi.fn() }; return ed; };
+  it('by length / a typed count / a count stepper (input + change) = one push each; typing alone pushes none', () => {
+    const ed = editorWithStack();
+    initStripeProperties(ed);
+    document.getElementById('stripeByLength').click();
+    expect(ed.pushState).toHaveBeenCalledTimes(1);
+    const count = document.getElementById('stripeCount');
+    count.value = '7'; count.dispatchEvent(new Event('input'));
+    expect(ed.pushState).toHaveBeenCalledTimes(1); // a keystroke is not a step
+    count.dispatchEvent(new Event('change'));
+    expect(ed.pushState).toHaveBeenCalledTimes(2);
+  });
+  it('the undo part takes the settings and puts them back, with the panel', () => {
+    const ed = editorWithStack();
+    initStripeProperties(ed);
+    const part = UNDO_PARTS.get('stripeSettings');
+    const before = part.take();
+    document.getElementById('stripeByLength').click();
+    expect(stripeSettings(ed).drive).toBe('length');
+    part.restore(before);
+    expect(stripeSettings(ed).drive).toBe(before.drive);
+    expect(document.getElementById('stripeByCount').classList.contains('active')).toBe(before.drive !== 'length');
+  });
+});
+

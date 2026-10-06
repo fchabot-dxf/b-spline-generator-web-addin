@@ -15,6 +15,8 @@ export const UNDO_SETTINGS = {
   // item 68 (advisor): a setting for the NEXT stroke is its own undo step (before: no step -- Undo took back the
   // previous canvas edit and left the setting)
   nextStroke: { tool: 'brickTool_brush', from: 'brickBtnProfileStripped', to: 'brickBtnProfileContinuous' },
+  // item 73: the Stripe tool's settings (the same panel in both tabs) -- a count stepper click = one step, Undo puts it back
+  stripe: { box: 'stripeCount', tabs: [['editorTabBrick', 'brickTool_stripe'], ['editorTabArtwork', 'toolStripe']] },
 };
 
 // ---- F35 item 71 (seat E): the MAIN screen's Undo / Redo after a sidebar Brick quick pick on an applied board.
@@ -72,6 +74,15 @@ async function runUndoSettings() {
     return JSON.stringify({ steps: n1 - n0, picked, back: act(${JSON.stringify(N.from)}) && !act(${JSON.stringify(N.to)}) }); })()`);
   checkRow('undo', 'A next-stroke setting is ONE undo step, Undo puts it back', ns.steps === 1 && ns.picked && ns.back,
     `${N.to}: ${ns.steps} undo steps; undo -> ${ns.back ? N.from + ' active again' : 'NOT back'}`);
+  for (const [tab, tool] of U.stripe.tabs) {
+    await click(tab, 900); await click(tool, 800);
+    const sr = await jsJSON(`(async()=>{ const W=(ms)=>new Promise((r)=>setTimeout(r,ms)); const ed=window.svgEditor; const box=document.getElementById(${JSON.stringify(U.stripe.box)});
+      const v0=box.value, n0=ed._undoStack.length; [...box.closest('.cad-stepper').querySelectorAll('button')][1].click(); await W(1200);
+      const v1=box.value, n1=ed._undoStack.length; document.getElementById(${JSON.stringify(U.undo)}).click(); await W(1200);
+      return JSON.stringify({ v0, v1, v2: box.value, steps: n1 - n0 }); })()`);
+    checkRow('undo', `Stripe count (${tab.replace('editorTab', '')} tab) is ONE undo step, Undo puts it back`, sr.steps === 1 && sr.v1 !== sr.v0 && sr.v2 === sr.v0,
+      `${sr.v0} -> ${sr.v1} (${sr.steps} undo steps) -> undo -> ${sr.v2}`);
+  }
   if (await editorOpen()) await apply();
 }
 

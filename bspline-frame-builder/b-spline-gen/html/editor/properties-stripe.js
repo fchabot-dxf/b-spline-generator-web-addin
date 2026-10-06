@@ -18,6 +18,8 @@ import {
   stripeSettings, defaultStripeColors, STRIPE_COLOR_PRESETS, applyStripeColorPreset,
   STRIPE_PATTERNS, applyStripePattern, parseStripeRatio,
 } from './editor-stripe-tool.js';
+import { registerUndoPart } from './undo-parts.js';
+import { commitEdit } from './editor-commit.js';
 
 const fmtLen = (v) => (Math.round(v * 1000) / 1000).toString();
 
@@ -37,6 +39,16 @@ export function initStripeProperties(editor) {
   const clampNoteEl = el('stripePatternClampNote');
 
   const settings = () => stripeSettings(editor);
+  // item 73 (advisor; seat D's editor audit: Stripe count / by-length / by-count took no undo step, so Undo took back
+  // the previous canvas edit and left them): the Stripe tool's settings ride in every undo entry (item 38's parts),
+  // and each panel change is ONE settings-only step -- both tabs, the panel is shared. A count / length is committed on
+  // 'change' (one step per stepper click or typed value), never per keystroke.
+  const cloneStripe = (s) => JSON.parse(JSON.stringify(s));
+  registerUndoPart('stripeSettings', {
+    take: () => cloneStripe(settings()),
+    restore: (snap) => { if (!snap) return; editor._stripe = cloneStripe(snap); refreshFields(); paintSwatches(); },
+  });
+  const step = () => commitEdit(editor);
 
   function refreshFields() {
     const s = settings();
@@ -52,8 +64,8 @@ export function initStripeProperties(editor) {
       [...patternPresetsEl.children].forEach((btn, i) => btn.classList.toggle('active', JSON.stringify(STRIPE_PATTERNS[i].ratio) === JSON.stringify(s.ratio)));
     }
   }
-  if (byCountEl) on(byCountEl, 'click', () => { settings().drive = 'count'; refreshFields(); });
-  if (byLengthEl) on(byLengthEl, 'click', () => { settings().drive = 'length'; refreshFields(); });
+  if (byCountEl) on(byCountEl, 'click', () => { settings().drive = 'count'; refreshFields(); step(); });
+  if (byLengthEl) on(byLengthEl, 'click', () => { settings().drive = 'length'; refreshFields(); step(); });
 
   // F32 item 2 (Fred: "dashed ratio"): one chip per STRIPE_PATTERNS entry, rendered from the declared list.
   if (patternPresetsEl) {
@@ -65,7 +77,7 @@ export function initStripeProperties(editor) {
       chip.style.flex = '1';
       chip.title = pattern.ratio.join(':');
       chip.textContent = pattern.name;
-      on(chip, 'click', (e) => { e.stopPropagation(); applyStripePattern(editor, pattern); refreshFields(); });
+      on(chip, 'click', (e) => { e.stopPropagation(); applyStripePattern(editor, pattern); refreshFields(); step(); });
       patternPresetsEl.appendChild(chip);
     }
   }
@@ -74,6 +86,7 @@ export function initStripeProperties(editor) {
       const parsed = parseStripeRatio(ratioEl.value);
       if (parsed) settings().ratio = parsed; // invalid/empty text leaves the current ratio alone
       refreshFields();
+      if (parsed) step();
     });
   }
   if (clampNoteEl && typeof document !== 'undefined') {
@@ -113,17 +126,17 @@ export function initStripeProperties(editor) {
     refreshFields();
   });
   // on commit (blur/Enter) the follower settles and the driver shows its own clean value
-  on(countEl, 'change', refreshFields);
-  on(lengthEl, 'change', refreshFields);
-  if (threeEl) on(threeEl, 'change', () => { settings().three = threeEl.checked; paintSwatches(); });
+  on(countEl, 'change', () => { refreshFields(); step(); });
+  on(lengthEl, 'change', () => { refreshFields(); step(); });
+  if (threeEl) on(threeEl, 'change', () => { settings().three = threeEl.checked; paintSwatches(); step(); });
   swatches.forEach((btn, i) => {
     if (!btn) return;
     on(btn, 'click', (e) => {
       e.stopPropagation();
-      openColorMosaic(btn, (hex) => { settings().colors[i] = hex; paintSwatches(); });
+      openColorMosaic(btn, (hex) => { settings().colors[i] = hex; paintSwatches(); step(); });
     });
   });
-  if (resetEl) on(resetEl, 'click', () => { settings().colors = [null, null, null]; paintSwatches(); });
+  if (resetEl) on(resetEl, 'click', () => { settings().colors = [null, null, null]; paintSwatches(); step(); });
 
   // F32 item 1 (Fred: "a few template colour combos"): one chip per STRIPE_COLOR_PRESETS entry, rendered from
   // the declared list (never hand-typed per chip); a tap applies the whole preset in one call.
@@ -143,6 +156,7 @@ export function initStripeProperties(editor) {
         e.stopPropagation();
         applyStripeColorPreset(editor, preset);
         paintSwatches();
+        step();
       });
       presetsEl.appendChild(chip);
     }

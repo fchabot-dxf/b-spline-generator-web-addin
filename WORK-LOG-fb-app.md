@@ -15252,3 +15252,13 @@ WallPattern = {
 - **Also fixes the gate's "Brush orientation: Soldier" DISABLED on 0e60ed0** (advisor's re-gate). The brush rows draw a stroke and Ctrl+Z it. With 0e60ed0's fold, that undo takes back the whole stroke step, and item 38 restores ITS settings snapshot. The profile change before it had pushed no step, so the snapshot had Stripped, which greys Orientation. With (a) the profile change is its own step: brush group 10/0.
 - **Tests** (frame-corners-panel): next-stroke settings = one push each, nothing re-laid; a restore re-syncs the brush preset buttons. Both fail against the pre-change panel.
 - **Matrix 'undo':** + "A next-stroke setting is ONE undo step, Undo puts it back". This tree: 7/0. Old main: FAIL (0 steps).
+
+## seat D (bb) turn 28: item 73, the Stripe tool's settings are undoable (branch stripe-undo-73, off main 30eff1a)
+- **Measured on main** (headless, T1, real clicks; Brick tab and Artwork tab): Stripe "by length", a count stepper click and a typed count each took 0 undo steps. Undo then restored nothing of them (it took back the previous canvas edit), in both tabs.
+- **Fix** (editor/properties-stripe.js, the panel both tabs share):
+  - The Stripe tool's settings (editor._stripe) are an undo part, 'stripeSettings' (item 38's registry: take = a copy; restore = put back + refresh the fields and swatches).
+  - Every panel change commits ONE settings-only step (commitEdit): drive switch, count / length on 'change' (a stepper click or a typed value = one step, never per keystroke), ratio, pattern chips, three, colours, colour reset, colour presets.
+  - The colour / ratio params are included on purpose: the part carries the whole settings object, and a change with no step would be silently reverted by an older step's undo.
+- **Live after** (both tabs): by length / stepper / typed count each +1 step, and Undo restores drive and count.
+- **Tests** (properties-stripe): one push per change and none per keystroke; the part takes and restores, panel included. Both fail before.
+- **Matrix 'undo':** "Stripe count (Brick tab / Artwork tab) is ONE undo step, Undo puts it back". This tree 9/0. The older tree: FAIL (0 steps, undo leaves 6 / 7).
