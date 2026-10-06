@@ -9,7 +9,7 @@
 //               seat 37, fb-app 9eb45d2): change -> canvas changed at once (read right after the change, NO
 //               Generate click, so a setting that waits for Generate fails) -> Apply -> 3D changed? Nothing is
 //               ever pending any more.
-//   'relay'     Generate itself ("re-lay now"): the canvas is disturbed by hand, Generate must restore exactly
+//   'relay'     Generate itself ("re-lay now"; item 39: with a new seed, expect.newSeed): the canvas is disturbed by hand, Generate must restore exactly
 //               the layout the current settings produce
 //   'editor3d'  an editor control that is 3D-only ('surface' commit): change -> Apply -> 3D changed?
 //   'brush'     a Brush setting (frozen into each stroke at draw time): the SAME stroke drawn before and
@@ -118,7 +118,9 @@ export const BRICK_CONTROLS = [
   { name: 'Clumping 0.1 (Suppression 0)', kind: 'editor', tool: 'wall', do: set('brickClumping', 0.1), expect: LAYOUT, requires: NEEDS_SUPPRESSION },
   { name: 'Seed 77', kind: 'editor', tool: 'wall', do: set('brickSeed', 77, 'input'), expect: LAYOUT },
   { name: 'Random seed', kind: 'editor', tool: 'wall', do: click('brickBtnRandomSeed'), expect: LAYOUT },
-  { name: 'Generate re-lays now (wall)', kind: 'relay', tool: 'wall', do: click('brickGenerate'), expect: { restores: true }, introducedBy: '9eb45d2' },
+  // F35 item 39 (Fred: a restored board "isn't refreshable by a simple Generate"): Generate rolls a NEW brick seed --
+  // the removed brick comes back (same count) in a new layout; before item 39 it put back the identical layout
+  { name: 'Generate re-lays now, a new seed (wall)', kind: 'relay', tool: 'wall', do: click('brickGenerate'), expect: { restores: true, newSeed: true }, introducedBy: '9eb45d2' },
   // ---- editor, Frame tool
   // item 28: a 3-band stack is reduced to what fits the board; at the 1 in default it keeps only its outer band on
   // T1 7x9 (= the Soldier the frame already has, nothing to see), at 3/4 in it keeps two
@@ -130,9 +132,11 @@ export const BRICK_CONTROLS = [
   { name: 'Band 1 pattern: Fieldstone', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_fieldstone'), expect: { ...LAYOUT, sets: { frame: 3 } }, introducedBy: '40c4bdf' },
   { name: 'Wall pattern: Fieldstone (frame group)', kind: 'editor', tool: 'wall', group: 'frame', do: click('brickPattern_fieldstone'), expect: { ...LAYOUT, sets: { wall: 3 } }, introducedBy: '40c4bdf' },
   { name: 'Frame Set: Red Brick, the rock wall stays', kind: 'editor', tool: 'frame', do: click('brickSet_1'), expect: { ...LAYOUT, sets: { frame: 1, wall: 3 } }, introducedBy: '40c4bdf' },
-  { name: 'Frame offset distance 0.25', kind: 'editor', tool: 'frame', do: set('brickFrameOffsetDistance', 0.25), expect: LAYOUT },
-  { name: 'Frame offset off', kind: 'editor', tool: 'frame', do: click('brickFrameOffsetOn'), expect: LAYOUT },
-  { name: 'Frame offset on', kind: 'editor', tool: 'frame', do: click('brickFrameOffsetOn'), expect: LAYOUT },
+  // F35 item 46 (Fred: band rows "can't be changed back after clicking" Fieldstone): rock again, then a course pattern on
+  // band 1 brings the brick frame back (its own set) -- the Soldier button must exist on a rock frame's row
+  { name: 'Band 1 pattern: Fieldstone again (rock frame)', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_fieldstone'), expect: { ...LAYOUT, sets: { frame: 3 } }, introducedBy: '40c4bdf' },
+  { name: 'Band 1 pattern: Soldier, back from rock (item 46)', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_soldier'), expect: { ...LAYOUT, sets: { frame: 1 } }, introducedBy: '40c4bdf' },
+  // F35 item 66: the 'Frame offset distance / off / on' rows went with the retired Offset-from-frame control
   { name: 'Frame Level -1/8', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', -0.125), expect: LEVEL, introducedBy: '90a1483' },
   { name: 'Frame Level 0', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', 0), expect: LEVEL, introducedBy: '90a1483' },
   { name: 'Frame preset: None', kind: 'editor', tool: 'frame', do: click('brickFramePreset_none'), expect: LAYOUT },
@@ -290,6 +294,26 @@ export const LAY_WARNING = {
 
 // ---- bands reduced to fit (T86 item 28 engine `bandsReduced`; F35 item 35 note, seat 37 fb-app 21a1ffd): on T1 7x9
 // at the 1.25 in default, 3-band keeps 1 band -- the wall stays, the note says so, the dropped bands' rows are disabled.
+// ---- F35 item 62 (seat D): the JOINT HEIGHT under each grout profile, from the 3D heights the page exposes (final heights
+// minus the base terrain), wall interior only. Flush fills a joint to the bricks' face; Recessed sinks it below the ground.
+// Measured on T1 7x9 at the fix (a972287): Flush joint median 0.101 vs brick median 0.113 in; before it, 0.000.
+export const GROUT_JOINTS = {
+  template: 'template_1', wallTool: 'brickTool_wall',
+  profiles: [
+    { button: 'brickBtnGroutFlush', name: 'Flush fills the joints to the brick face', jointOverBrickAtLeast: 0.75 },
+    { button: 'brickBtnGroutRecessed', name: 'Recessed sinks the joints below the ground', jointBelow: 0 },
+  ],
+  introducedBy: 'a972287',
+};
+
+// ---- F35 item 63 (seat D): the MAIN sidebar's Frame bands pick lays the frame when none is on the board (measured on
+// T18 before the fix: wall laid, quick Soldier -> 0 frame bricks, 3D unchanged); under template None (item 66: the board
+// rectangle) the row stays live and the pick lays the bands along the board edge.
+export const QUICK_FRAME_LAYS = {
+  template: 'template_18', pick: 'brickQuick_frameBands_single_soldier', row: 'brickQuickRow_frameBands',
+  noTemplatePick: 'brickQuick_frameBands_double_course', introducedBy: 'item 63',
+};
+
 export const BANDS_NOTE = {
   template: 'template_1', tooDeep: 'brickFramePreset_three_band', fits: 'brickFramePreset_single_soldier',
   note: 'brickFrameBandsNote', text: 'Bands reduced to fit the board: 1 of 3 laid.', dropped: '[data-band-dropped="1"]',
@@ -337,6 +361,9 @@ export const BRICK_LAYERS = {
   clears: CLEAR_MENU.options.filter((o) => o.item === 'editorClear_bricks' || o.item === 'editorClear_artwork'),
   stroke: [[0.3, 0.5], [0.5, 0.56], [0.7, 0.5]],
   introducedBy: 'bb9e664',
+  // F35 item 40 (Fred: "We don't see layers still"): the Brick tab hosts the ONE Layers list in its own panel
+  // (slot), with a tool picked too; a row picked there is where the next lay goes; Artwork gets the list back
+  brickTab: { slot: 'brickLayersSlot', list: 'editorLayersList', wallTool: 'brickTool_wall', generate: 'brickGenerate', artworkTab: 'editorTabArtwork' },
 };
 
 // ---- wall areas (F35 item 22 slice 2, seat 37 fb-app 58be3ed, on T86 18b/18c): the Area brush paints walls of whole
@@ -388,4 +415,23 @@ export const UNDO_SETTINGS = {
   from: 'brickPattern_stretcher', to: 'brickPattern_stack', undo: 'editorUndo', redo: 'editorRedo',
   accent: 'brickAccent_checker', level: { id: 'brickAccentLevel', value: -0.0625 },
   marker: './editor/undo-parts.js',
+};
+
+// ---- Generate on a RESTORED board (F35 item 39, seat C 02; Fred on his phone: "the opened geometry isn't refreshable by
+// a simple Generate"): measured before, a restored board whose settings matched its pieces re-laid byte-identical bricks.
+// After the persistence group's own project load, and again after a reload: pick the Wall tool, Generate -> the wall's
+// pieces carry a NEW seed (data-brick-seed); Apply + reopen keeps that new lay (pieces + seed). Not the count: the
+// persistence board's wall is Fieldstone, whose stone count follows the seed.
+export const GENERATE_AFTER_RESTORE = {
+  tool: 'brickTool_wall', generate: 'brickGenerate', kind: 'wall', seedAttr: 'data-brick-seed',
+  marker: "import('./main/brick-panel.js').then((m) => !!m.generateNow)",
+};
+
+// ---- a wall with NO Frame element (F35 item 42, Fred: "I don't always use frames"): it fills the frame contour (the
+// template's outer edge; the board rectangle for template None), no band reserve. Measured before: T18 7x10, 0.75 in,
+// Wall only: x 1.00-6.00 (the Soldier band depth kept clear). `tol` = within a joint.
+export const WALL_NO_FRAME = {
+  cases: [{ template: 'template_18', heightIn: 10 }, { template: '', heightIn: 9 }],
+  wallTool: 'brickTool_wall', generate: 'brickGenerate', tol: 0.1,
+  marker: "import('./editor/editor-brick-tool.js').then((m) => !!m.frameGeomForLay)",
 };

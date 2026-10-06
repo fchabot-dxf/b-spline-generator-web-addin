@@ -22252,6 +22252,152 @@ at 276 ms (0.75 in) / 457 ms (0.375 in) vs red 4-9 ms -- a profile pass later.
   only under the full concurrent load; 16/16 alone).
 - Shot: shots/seatB/item23_wear_rocks.png (White rocks height map, Wear 0 / 0.5 / 1, before vs after).
 
+## H23 item 82 -- CAM same-position stock: probe part 1 (seat A / 77, 2026-10-05)
+- Scope agreed with the advisor: option A (B-spline mode gets a Clean pair; Carved setup stock = From solid -> the
+  Clean body; one shared stock + WCS; heights as data). Probe first, numbers before any builder edit.
+- Probe: scratch doc tagged claude/scratch=item82-probe (components claude-clean / claude-carved / claude-tallstock),
+  synthetic: Clean = 7x9x1 in box, Carved = the same box + a 1x1x0.2 and a 2.5x2x0.3 in pocket; two MMs built the
+  builder's way (manufacturingModels.add + occ.deleteMe of the other component); one 1/4 in flat (Samples / Milling
+  Tools (Inch)), one 3D adaptive per setup, generated per setup.
+- MEASURED:
+  1. Cross-MM From-solid stock is ACCEPTED. Carved setup (MM Carved): stockMode = SolidStock, stockSolids = the body
+     from MM Clean -> job_stockSolid holds 1 entity, stock bounds X 0-7 / Y 0-9 / Z -1..0 in = the model's. Rest-only
+     toolpath: 206.3 s / 89.8 in feed (the pockets only) vs 1002.6 s / 619.5 in with a fresh relative-box stock.
+     Same numbers with the stock body in the SAME MM (206.3 / 89.8), so no cross-MM effect on from-solid stock.
+     (Stock body for these two runs: an independent 7x9x1.00 in box, same geometry as Clean; see the artefact below.)
+  2. adsk.cam.SetupStockModes = FixedBoxStock, FixedCylinderStock, FixedTubeStock, PreviousSetupStock,
+     RelativeBoxStock, RelativeCylinderStock, RelativeTubeStock, SolidStock. setup.stockSolids takes an
+     ObjectCollection (a Python list raises a SWIG type error); the parameter is job_stockSolid (singular).
+  3. WCS drift: both setups at the builder's box point 'top 1': Clean (relative box, +0.25 in top) WCS z = 1.25 in,
+     Carved (Clean-body stock) z = 1.00 in -> 0.25 in apart for the same part (item point 2, measured).
+     setup.workCoordinateSystem.translation read back in mm in this doc (31.75 for 1.25 in) -- UNVERIFIED as a rule,
+     one reading; re-check before relying on it.
+  4. Op height defaults (3D adaptive, read back): topHeight_mode 'from stock top', bottomHeight_mode 'from surface
+     bottom', retract 'from stock top' +5 mm, clearance 'from retract height' +10 mm, stockToLeave 0.5 mm.
+  5. A from-solid stock whose top face coincides with the model's top is fine: the 7x9x1.00 in box gave 206.3 s
+     (pockets only); at 1.05 in it gave 1107.8 s (plus the 0.05 in skim over the whole top).
+- PROBE ARTEFACT caught (not a finding): the first Carved runs with the "Clean" body as stock gave "Toolpath is empty"
+  (also 3D offset roughing; one same-MM run died with "An unhandled exception occured 0xffffffff" and the bridge timed
+  out once, Fusion recovered by itself). Cause: my Cut features in the Carved component had default participants and
+  also cut the Clean body -> Clean = Carved = 61.3 in3, nothing to remove, so empty was correct. Found by reading
+  volumes after a same-geometry independent box gave 206.3 s while the "Clean" body gave nothing. Cut participants are
+  still to be fixed in the scratch doc (the fix call failed reading participantBodies before the roll-back: "Didn't
+  roll editing feature back"; nothing changed).
+- PAUSED for Fred (he is working in Fusion): holder written back to none, his 'Untitled' re-activated; my scratch doc
+  stays open, held by handle in sys.modules['claude77_probe'].
+- Builder fix (measured, committed): _STOCK_MODE_ENUM_NAMES 'from_solid' -> SolidStock, 'from_prev_setup' ->
+  PreviousSetupStock (were FromSolidStock / FromPreviousSetup, which do not exist: B-spline Top has always used the
+  job_stockMode string fallback). test_stock_mode_enum_names.py pins the table against the recorded enum list: fails
+  3/5 before, 5/5 after; CAM-builder tests 13/13. CAM_API_NOTES corrected (names, ObjectCollection, job_stockSolid).
+  Behaviour change to watch: B-spline Top now sets PreviousSetupStock through the typed path.
+- STILL TO MEASURE (next Fusion window): (a) fixed cut participants -> Carved != Clean, re-run 1 with the real Clean
+  body; (b) PreviousSetupStock across two MMs (Fred's "refused" case) -- accepted / refused / empty, with numbers;
+  (c) a declared shared WCS point (wcs_origin_mode point + a design construction point) read back identically on
+  setups in two MMs incl. flipY; (d) fixed-box stock bottom-aligned (job_stockFixedZMode / job_stockFixedZOffset)
+  identical on Clean and Carved; (e) the bottomHeight_mode string for stock bottom; (f) the real Send geometry
+  (Clean + Stamped) instead of boxes.
+- DRAFT declaration (not wired; shape to confirm after the probe). One shared positioning record, setups refer to it:
+    CAM_POSITION = {                        # one stock + one WCS for every B-spline setup
+      'stock':  {'mode': 'fixed_box', 'z_align': 'bottom', 'z_offset': '0 in',   # bottom + outline are shared
+                 'top_allowance': '0.25 in'},
+      'wcs':    {'origin': 'shared_point',  # a construction point the builder declares in the design,
+                 'point': 'stock top, corner 1'},  # never a per-setup stock/model bbox corner
+      'heights': {'top': 'from stock top', 'bottom': 'from stock bottom'},       # written on every op
+    }
+    SETUP_SPECS rows (B-spline mode):
+      Stock        | stock          | CAM_POSITION.stock
+      Clean Back   | bspline_clean  | CAM_POSITION.stock                         | flipY False
+      Clean Top    | bspline_clean  | from_prev_setup + rest                     | flipY True
+      Carved Top   | bspline_carved | from_solid -> 'bspline_clean' body + rest  | flipY True
+      Frame        | frame          | as today
+  'top 1' cannot serve as the shared point for Carved Top: its stock is the Clean solid, whose bbox top differs from
+  the fixed box top (the 0.25 in above) -- hence a declared point.
+
+## H23 item 82 -- probe part 2: items (a)-(e) measured, (f) partial (seat A / 77, 2026-10-05)
+- Fusion window from the advisor (Fred free); add-in = main 0c81ed3 (the enum fix) deployed by the advisor. Same
+  scratch doc as part 1, held by handle; closed by that handle at the end, Fred's 'Untitled' re-activated, holder none.
+- (a) Cut participants fixed (each Carved cut rolled back, participantBodies = the Carved body only; both cuts HAD
+  listed claude-clean + claude-carved, confirming the part-1 artefact). Now Clean 63.0 in3, Carved 61.3 in3.
+  Carved setup (MM Carved), stock SolidStock = the REAL Clean body from MM Clean: rest-only toolpath 206.3 s /
+  89.8 in feed, no warning -- identical to the stand-in box. FROM-SOLID ACROSS MMs WORKS.
+- (b) Fred's case: Carved setup (MM Carved) right after the Clean setup (MM Clean), PreviousSetupStock (typed enum
+  -> job_stockMode 'previoussetup', i.e. the fix works live) + job_continueMachining true: NOT a hard refusal --
+  it generates (177.7 s / 76.2 in) but carries the warning "Continue Rest Machining: Cannot verify that the stock is
+  transferred from the previous setup for rest machining. Verify that the model selections in both setups are the
+  same." So "from previous setup" across non-identical models is the unverified path; (a) is the clean one.
+- (c) Shared WCS point: a design ConstructionPoint by coordinates is refused in a parametric design ("Environment is
+  not supported"); a root sketch point on an offset plane works and is declared once. Every MM carries its own copy
+  (inside the MM's root wrapper occurrence); binding each setup to ITS MM's copy (createForAssemblyContext of the
+  wrapper occurrence): wcs_origin_mode "'point'", wcs_origin_point size 1, both setups' WCS origin identical
+  (0, 0, 31.75) = 1.25 in. Under flipY (Carved, as B-spline Top) the origin stays on the point, only the axes flip
+  (z (0,0,1) -> (0,0,-1), y (0,1,0) -> (0,-1,0)). workCoordinateSystem translation reads in mm here (31.75 for
+  1.25 in, 25.4 for 1.0 in in part 1): two readings, same doc -- most likely the doc's units, UNVERIFIED as a rule.
+- (d) Fixed box bottom-aligned: job_stockFixedZMode choices = 'top' | 'center' | 'bottom' | 'model' (labels "Offset
+  from top (+Z)", "Center", "Offset from bottom (-Z)", "Offset from model origin"). X/Y 'center' offset 0, Z
+  'bottom' offset 0, 7 x 9 x 1.25 in on both setups -> identical stock X 0-7 / Y 0-9 / Z -1.25..0 in the shared WCS,
+  each model's bottom on the stock bottom. SIDE FINDING: a fresh FixedBoxStock defaults to 13 in x 10 in X/Y
+  (Z = model height rounded) -- B-spline mode's 'fixed_box' setups (Back, Frame) never write the dims (only the
+  generic path calls _set_fixed_stock_dims), so they likely inherit that default. To confirm on a real BUILD.
+- (e) Height modes (op topHeight_mode / bottomHeight_mode choices): 'from stock top', 'from stock bottom', 'from
+  surface top' (Model top), 'from surface bottom', 'from point' (Selection), 'from wcs', 'from top' / 'from bottom',
+  clearance/retract, fixture, highest/lowest. Written 'from stock top' / 'from stock bottom' on a live op and read
+  back; evaluated bottom = -1.2303 in = stock bottom + the default offset expression verticalStockToLeave (0.5 mm),
+  so the declaration must state the bottom offset explicitly.
+- (f) PARTIAL: the real 7x9 T7 capture (scratch/real_send_t7_7x9_full.json, frame dropped) replayed through the
+  deployed bspline_ui._handle_generate in a second tagged scratch doc: 3.0 s, Clean only -- panel 12.39 in3, bbox
+  z 0.032..1.044 in (the real bottom is NOT at z 0: bottom-aligned stock must use the body's bbox bottom). No Stamped
+  body: the app sends Stamped as its OWN STEP variant (export-flow.js sendToFusion: options.stamped -> base
+  'Stamped', heights = the stamped height map; Clean = unstampedHeights); this capture was made with Clean only. A
+  real Clean + Stamped pair needs a new capture with the Stamped export on -- not done, asked the advisor.
+- Shape for the declaration (confirmed by (a)-(e)): CAM_POSITION = one fixed box (X/Y center 0, Z 'bottom' 0,
+  dims declared), one WCS = a builder-declared sketch point (bound per setup to its own MM's copy), op heights
+  'from stock top' / 'from stock bottom' + an explicit bottom offset; Carved Top stock = SolidStock -> the Clean
+  body (NOT PreviousSetupStock, which warns across MMs).
+
+## H23 item 82 -- wiring, the real Clean+Stamped Send, and the ruling (seat A / 77, 2026-10-05)
+- Wired first as approved (option 2): CAM_POSITION + a Clean/Carved MM split + a 'B-spline Carved' setup (From solid
+  -> the Clean body). Then the acceptance Send showed the premise is wrong, and the advisor ruled; the branch now holds
+  the ruled shape (commits below), the Carved machinery is removed, not parked.
+- Capture tool (tools/repro/capture_send_payload.mjs): new declared option --carve. The app ships the Stamped STEP
+  variant only when a carving layer has a baked mask (export-flow.js isCarvingLayer = carve && mask && depth); the
+  tool's old 'apply stencils' click finds nothing any more (readback stencilBtn:false), so every earlier capture was
+  Clean only. --carve sets 3D carve on CARVE_LAYERS (Rails, Contour, Ties, Nodes) and clicks the editor's own
+  #editorApply (-> refreshAllStampMasks), then waits 8 s. Measured: carving layers 0 -> 4; payload Clean + Stamped,
+  7x9, 10.1 MB (scratchpad, not committed). Served from this worktree on 8877 (curl md5 = disk); the server task was
+  stopped and its PID was gone; no leftover headless Chrome (profile chrome-capture-9477).
+- REAL GEOMETRY (that payload through the deployed bspline_ui._handle_generate, frame dropped, tagged scratch doc):
+    Clean   panel 13.771 in3, z 0.018 .. 0.980 in, x -3.5..3.5, y -4.5..4.5
+    Stamped panel 15.916 in3, z 0.018 .. 1.088 in, same outline
+  Same bottom + outline, but Stamped is 2.145 in3 bigger and 0.108 in taller: the stamp RAISES material by design
+  (advisor: bricks / raised strokes stand proud of the clean surface, relief 0.125 in). The Clean body cannot be the
+  Carved setup's stock. (An exact Stamped-minus-Clean boolean on these two bodies was started and ran > 20 min at one
+  core with Fusion not responding; not needed for the ruling -- the volumes and bboxes above decide it.)
+- RULING (advisor, Fred may overrule): no Clean -> Carved rest chain. ONE panel MM = the body to make (Stamped when it
+  exists, else Clean: the original 'Stamped wins' filter). B-spline Back (shared fixed box, bottom-aligned, centred,
+  dims written; WCS = declared 'back' point) -> B-spline Top (PreviousSetupStock in the SAME MM, rest machining from
+  Back's IPV, no cross-MM warning; WCS = declared 'flipped' point) -> Frame as today. Names Back/Top kept (Fred's
+  template overrides).
+- Rework (dead declarations removed, each link accounted for):
+    MM rules bspline_clean/bspline_carved + _BSPLINE_KEEP + the keep= filter      -> removed (mm_builder = main's
+                                                                                       + the placeholder change)
+    'B-spline Carved' spec, skip_if_no_bodies, stock_solid_from, _set_solid_stock  -> removed
+    coordinator legacy MM name + the 'skipped' report entry                        -> removed
+    palette Carved card, 'MM: B-spline Clean' tags, 4 MMs / 5 SETUPS header         -> removed (back to main's)
+    Carved busy-check test, solid-stock test, MM-split test                         -> removed with the code
+  Kept: cam_position.py (CAM_POSITION + box/point math), ensure_wcs_sketches (panel bbox now Stamped-first, matching
+  the MM), _apply_stock_box, _bind_wcs_point, 3D-only _apply_op_heights, SETUP_SPECS-derived name lists (coordinator
+  cleanup + cam-builder's BUILD busy check), the placeholder reading CAM_POSITION['stock'], palette Back/Top card text
+  (shared box / shared point) and the derived 'done' counts, the enum fix (3e5c5bb).
+- Tests: test_cam_position.py 10 (Back/Top share the declared position on one MM, no from_prev_setup across MMs, the
+  box/point math on the real 7x9 bbox, 3D-only heights, the box writes, the WCS bind to the MM's own copy, a missing
+  point reported not faked, derived names, placeholder numbers). CAM-builder 23/23.
+- PARKED (option B, only if Fred asks): a Clean roughing pass before the Carved finish, with a declared
+  stock-to-leave >= the maximum raise (0.108 in measured on this board; relief up to 0.125 in) so the roughing never
+  removes the raised material. Not built.
+- NOTE for the advisor: the CAM palette's B-spline status dots never update (pre-existing, not touched): the report
+  name 'B-spline Back' -> key 'b_spline_back' never matches SETUP_KEYS 'bspline_back' (the match strips only ONE
+  underscore from the key). Only 'stock' and 'frame' light up.
+- Acceptance on the ruled shape: pending (Fusion still busy with the abandoned boolean when this was written).
 ## T86 item 26 -- accent cuts at 1/2 and 1/4 brick (seat B / 88, 2026-10-05)
 - generateBricks `accentCuts: { unit, tile: { rows, cols, cells } }` (ENGINE_OPTIONS 'accentCuts') -> fill-shape ->
   bondLayout's 7th arg -> applyAccentCuts, after the courses are planned and before the board clip: cells are unit x
@@ -22299,3 +22445,528 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
   - Before: applyAccentCuts sized each cell from the piece's own length, which is right only for one-brick pieces. On a custom [2, 1/2, 1/2] course it cut the 2-brick piece in two and put a mark on a half.
   - Now pitch = L + J, and a piece spans (its length + J) / (unit x pitch) cells.
 - Tests: bricks-course-row-origin (8): 4/7 fail before the origin fix, and 1/1 before the cell fix. All 53 bricks-* files are green after.
+
+## H23 item 82 -- acceptance on the ruled shape (seat A / 77, 2026-10-05)
+- Fusion restarted by Fred after the boolean hang (fusion360-quirks 14e93c0); advisor deployed main 2b8a3c0 and gave
+  the GO. Fresh tagged scratch doc ('item82-acceptance', held by handle), the --carve capture replayed through the
+  deployed _handle_generate (frame dropped): Clean 13.771 in3 z 0.018..0.980, Stamped 15.916 in3 z 0.018..1.088 (same
+  as before). The WORKTREE engine ran through a sys.path swap + cam_engine/cam_utils purge restored in a finally
+  (verified afterwards: worktree not on sys.path), B-spline mode, skip_machine, templates applied separately.
+  Scratch-pad script: acc82.py (phases send / bodies / build / readback / legacy_corner / templates / gen / ops /
+  heights / close). No booleans.
+- FIRST BUILD found two real bugs (fixed in data / one writer, commit "acceptance fixes"):
+  1. Back's WCS Z axis points DOWN (0,0,-1) (the builder's existing axes swap); job_stockFixedZMode is read in the
+     setup frame, so 'bottom' put the box on the panel's world TOP: stock world z 1.088 .. -0.912, inherited by Top.
+     Now CAM_POSITION stock z_align = 'world_bottom', mapped through the resolved Z axis ('top' on Back).
+  2. Flag 1 measured: today's 'top 1' lands at Back (x min, y min, its frame top = world bottom) and Top (x MAX,
+     y min, world top). My declared points had Back z top and Top (x min, y max, z bottom). Corrected in DATA.
+- SECOND BUILD found a third: ensure_wcs_sketches deleted + recreated the plane/sketch under the same names, and the
+  MM built right after bound the OLD point (its copy's sketch: 2 points, the old position, referencePlane ->
+  'InternalValidationError : dcSketch'). Now the point is created once and moved IN PLACE on later BUILDs (plane
+  offset parameter + point.move). Live-measured only (no fake models the derive).
+- FINAL (fresh doc, create path; then both points knocked +1 in X / +0.5 in Z and re-BUILT -> moved back, readback
+  identical to the fresh build). Origins read in mm (workCoordinateSystem), shown here in inches:
+    B-spline Back : WCS = declared 'back' point (-4, -5, 0.0175), Z down; stock (own frame) X 0-10, Y 0-8, Z -2..0
+                    = the 'top 1' corner exactly; model Z -1.0706..0 (the back face flush with the stock face);
+                    fixed box exprs '(surfaceXHigh - surfaceXLow) + 1.0 in' / Y / '2.0 in', Z mode 'top'.
+    B-spline Top  : WCS = declared 'flipped' point (4, -5, 2.0175), Z up; stock (PreviousSetupStock, same MM)
+                    X 0-10, Y 0-8, Z -2..0 = the same physical box (world z 0.0175..2.0175); model Z -2..-0.9294;
+                    continueMachining true.
+  So: one stock (10 x 8 x 2 in = (7 + 1) x (9 + 1) x 2, on the panel bottom), each side's WCS on its declared point,
+  independent of the model bbox; build 8-12 s, report ok, errors [].
+- Templates (Fred's cloud ones) and heights, per op: strategy, then time / feed before -> after the 3D-only heights:
+    Back  Pocket back            pocket_clearing  'from highest of'/'from lowest of'      685.6 s / 1633.3 in -> 685.6 / 1633.3
+    Back  Morphed Spiral         morphed_spiral   'from stock top'/'from surface bottom'  101.8 s / 1013.8 in -> 101.8 / 1013.8
+    Top   Pocket front FRED      pocket_clearing  highest of / lowest of                  714.3 s / 5848.1 in -> 714.3 / 5848.1
+    Top   Morphed Spiral         morphed_spiral   stock top / surface bottom              107.4 s / 1067.1 in -> 107.4 / 1067.1
+    Top   Pocket front deloge    pocket_clearing  highest of / lowest of                  263.8 s / 1449.0 in -> 263.8 / 1449.0
+  All five templates are 3D strategies (no 2D op exists in them today); after the write every op reads 'from stock
+  top' / 'from stock bottom' / offset '0 in', evaluated top 0 / bottom -2.0 in, isToolpathValid True, no warning,
+  and the toolpaths are unchanged to the 0.1 s: the bottom is only a limit there. Top generated with no warning
+  (PreviousSetupStock inside one MM: no "Cannot verify that the stock is transferred").
+- 13 x 10 finding CONFIRMED on a real build: the Frame setup (fixed_box, dims never written) has stock X 0-13,
+  Y 0-10 (exprs '13in' / '10in', Fusion's defaults) around a 10 x 8 model. Frame untouched in this item.
+- Shots (shots/seatA): h23_item82_acceptance_bspline_mm_stamped_panel_iso.png (the real Stamped panel in the
+  B-spline MM with its stamp artwork sketches; the stock box / WCS triad do not render outside the setup editor, so
+  the readback above is the evidence for them); h23_item82_acceptance_mm_stock_placeholder_iso.png (the MM-Stock
+  placeholder, 8 x 10 x 2 in from CAM_POSITION). fusion_screenshot returned the stale active-MM view twice; the
+  second shot is viewport.saveAsImageFile after mm.activate().
+- Hygiene: two scratch docs created and closed by handle; Fred's 'Untitled' untouched and re-activated; holder none.
+- Candidate quirks, ONE observation each (not recorded in the skill yet): job_stockFixedZMode is read in the setup's
+  frame; an MM built after a same-name delete + recreate binds the deleted geometry; workCoordinateSystem reads mm.
+
+## H23 item 82b -- the Frame setup's fixed box gets its dims written (seat A / 77, 2026-10-05)
+- Same bug class as the panel box: the Frame spec is fixed_box but nothing wrote its dims, so Fusion's 13 x 10 in
+  default stood around a 10 x 8 model (measured on the item-82 acceptance build).
+- Declared: cam_position.py MARGIN_XY_IN (one margin, 1.0 in total) used by both boxes; new CAM_POSITION['frame_stock']
+  = margin + Z '(surfaceZHigh - surfaceZLow)' (the bars' own thickness: frame stock is not the 2 in panel blank),
+  xy centre, world-bottom. SETUP_SPECS: Back 'stock_box': 'stock', Frame 'stock_box': 'frame_stock';
+  _apply_stock_box(setup, name, logger, box_key). Frame's WCS untouched ('top 1', as before).
+- Tests: every fixed_box spec names a declared box; the Frame box writes margin X/Y + model Z; Back names 'stock'.
+  3/13 fail before, 13/13 after; CAM-builder 26/26.
+- LIVE (real Send WITH its frame this time, T1 7x9, frame bars frame_top/bottom/left/right): build 21 s, ok, errors [].
+    Frame : stock X 0-9.5, Y 0-7.6917, Z -1.6904..0 around the laid-flat model X 0.5-9.0, Y 0.5-7.1917, Z -1.69..0
+            = model + 1 in, Z = the bars' height (was 13 x 10).
+    Back / Top: unchanged behaviour -- with a frame the panel is inset (bbox +-3.25 x +-4.25), box 9.5 x 7.5 x 2,
+            points (-3.75, -4.75, 0.0175) / (3.75, -4.75, 2.0175), both origins on their points.
+- Candidate quirks (advisor: WORK-LOG only until a second, DIFFERENT case confirms; NOT in the skill):
+  1. ONE OBSERVATION, NOT YET CONFIRMED -- job_stockFixedZMode is read in the setup's own frame. Case: B-spline Back
+     (wcs_orientation axesXY with the builder's swapped axes, flipY false -> WCS Z (0,0,-1)), FixedBoxStock, Z mode
+     'bottom' offset 0 -> stock world z 1.088 .. -0.912 (on the panel's world TOP); 'top' -> world 0.0175 .. 2.0175.
+  2. ONE OBSERVATION, NOT YET CONFIRMED -- an MM created right after a same-name delete + recreate of a design
+     construction plane + sketch (__cam_wcs_*, offset plane, one sketch point, all in one fusion_execute call,
+     Manufacture workspace) bound the DELETED point: its copy's sketch listed the old position and referencePlane
+     raised 'InternalValidationError : dcSketch'. Second case attempted (82b): a plain sketch on the root XY plane
+     ('claude_q_recreate', one point) -- INCONCLUSIVE: that sketch was not carried into ANY new MM at all (0/3 MMs,
+     incl. one after design.computeAll(), sketch = last timeline item, marker at end), while the __cam_wcs_* sketches
+     on offset planes were. So what an MM snapshot includes is itself unexplained; not recorded.
+  3. ONE OBSERVATION, NOT YET CONFIRMED -- setup.workCoordinateSystem translation reads in MILLIMETRES (31.75 for a
+     1.25 in point, 25.4 for 1.0 in, 51.2456 for 2.0175 in) in new untitled documents, while every other API length
+     is cm. Possibly the document's display units; not tested in an inch document.
+- Hygiene: scratch doc closed by handle; probe MMs ('claude q MM1-3') and the probe sketch deleted first; Fred's
+  'Untitled' re-activated; holder none.
+
+## H23 item 81 -- T10 archRise_min + "apex drift": measured, NOT reproducible on current code (seat A / 77, 2026-10-05)
+- Branch t10-81 off cam-82 e8ae2ba. Started from 39's written plan (a307ffb). Measured the premise before any
+  per-phase drift hunt, because the plan's fix direction (adopt T18's short-arc-mid in T10's p02_12 rebuild) rests on
+  turn 550's claim that p02_12's fixed apex literal LY "built the WRONG circle for every other archRise".
+- MEASURED 1 (the app, no Fusion): the app's own frameCutProfile for T10 at archRise {0.0294/0.0217 (= the 1/8 in
+  MIN_ARCH_RISE_IN floor), 0.1, 0.2, 0.35, 0.5, 0.6} at 7x9 and 9x12: the arch apex sits EXACTLY on the safe-zone top
+  line every time (apex - top = 0.0000); only the chord ends move down. At archRise 0 the app's top piece becomes a
+  straight LINE. The matrix payloads' seedGeometry agree: top_edge's middle seed point is always y = LY (4.25 at 7x9,
+  5.75 at 9x12). So for T10 the LY literal in p02_12 IS the design (apex on the top line), not a stray constant; the
+  turn-550 "wrong circle" claim holds for T18 (its apex moves), not for T10.
+- MEASURED 2 (live, current code = main's T10, no phase change): the permanent every-handle matrix
+  (h23_item61_make_full_matrix_payloads.mjs at 7x9 and 9x12 -> item61_full_matrix_sweep.py, reachable range ends),
+  with a new optional READBACK hook reading the built top_edge in T10_2_shape_outline:
+    18/18 BUILT (4 bars, timeline healthy, 0 NOT BUILT / MITER MISS / REFLEX lines).
+    apex - LY = 0.0000 in in all 18; every arch the short up-bulging branch (sweep 7.7 .. 153.2 deg); the built
+    chord ends = the app's sent seed ends (e.g. archRise min 7x9: +-2.8566 at 4.125; 9x12: +-3.7096 at 5.625).
+  Includes archRise min at both sizes (rise = 1/8 in: r 32.70 / 55.11 in, sweep 10.0 / 7.7 deg) -- it builds.
+- So, the two halves of the item:
+  * "archRise_min fails": only at archRise = 0 exactly (three collinear points -- item 65's case, measured then with
+    archRise 0). The handle cannot reach 0: MIN_ARCH_RISE_IN (0.125 in) is the floor, and at the floor T10 builds
+    (above). Nothing to fix at any reachable value. A flat top (archRise 0) would need p02_03/p02_12 to switch
+    top_edge to a Line, as the app already does -- a feature, only if Fred wants 0 reachable (it is T1's shape).
+  * "apex drift": top_edge has its two ends pinned and NO constraint on its bulge between p02_03 and p02_12 (grep:
+    no step in p02_04..p02_11 targets top_edge) -- an arc with fixed ends keeps one free DOF, so the solver may move
+    its curvature freely while the chain resolves. That is expected, and harmless today because p02_12 rebuilds the
+    arch from the pinned ends + the LY apex. It only became visible when short-arc-mid made the FINAL apex read that
+    free DOF. Not a bug in the shoulder/waist/hip chain; short-arc-mid is the wrong tool for T10.
+- Recommendation (for the advisor; nothing in a T10 phase file was changed): close item 81 as measured-OK; optionally
+  (needs your go, phase-file docstring only) correct p02_12's docstring to say the LY apex is T10's design rule
+  (apex on the top line for every archRise, app + live measured) and that short-arc-mid must not be used for T10
+  (top_edge's bulge is a free DOF until the rebuild). The 1/8 in floor stays (it is the guard; not touched).
+- Shots (shots/seatA): h23_item81_t10_arch_app_vs_fusion.png (app seed arc vs Fusion-built arc, archRise min /
+  default / max, 7x9 + 9x12; the dashed builds lie on the seeds, every apex on the top line);
+  h23_item81_t10_matrix_7x9.json / _9x12.json (the 18 raw results with readbacks).
+- Harness: item61_full_matrix_sweep.py gains an optional READBACK(des, case) hook (committed); the driver with the
+  T10 apex readback (run.py) stays in the scratchpad. Timed-out calls were waited out via the sweep's own re-entry
+  lock + polling the results file; no case ran twice. Fusion: one doc per case, closed by the sweep; holder none.
+
+## H23 item 83 -- end-to-end acceptance of the brick system in Fusion (seat A / 77, 2026-10-05)
+- Branch brick-e2e-83 off origin/main (091ce27, then merged afdc4c0 = the deployed add-in). Fred's workflow on the
+  DEPLOYED code: the app captured headless, the real Send through the deployed bspline_ui._handle_generate (frame
+  INCLUDED), CAM BUILD through the deployed CAM builder's own engine, APPLY TOOLPATHS through the add-in's own
+  CamBuilder_DeferredTPGen handler. One tagged scratch doc ('item83-e2e'), closed by handle; holder none after.
+- Capture tool: new declared scenario brick-e2e (BRICK_E2E): 7x9, T1 frame; frame band in Set 5 Grey stone; two
+  painted wall areas (herringbone, then the pattern builder's custom bond at unit 1/2, one join, two raised pieces,
+  level 1/16 in); one raised brush stroke; one 'Art' layer with a carving stroke (carve on, the editor's Apply bakes
+  the masks). Sidecar <out>.app.json = the app's own counts. Fresh Chrome profile per capture (a reused profile
+  restored the previous run's areas: 4 areas instead of 2 -- measured, then avoided).
+- THE APP (the reference): 122 pieces = 58 frame + 58 wall (2 areas) + 6 brush; 4 accent-marked (raised) pieces;
+  2 carving layers; payload Clean + Stamped STEP, stamp.bricks.svg = 122 polygons / 2299 edges (same split by kind),
+  Art layer carve on depth 0.25. Shot: h23_item83_brick_e2e_app_view.png; readback: ..._app_readback.json.
+- FUSION, the Send (16 timeline items, ALL healthy):
+    Bricks sketch: in the Stamped component, 2299 SketchLines (= the payload's 2299 edges, exact), 0 open ends,
+      extent +-3.25 x +-4.25 in (= the payload polygons' extent, exact -> units / scale / flipY right), on the
+      artwork plane z 3.2165 in (the SAME plane as the Art layer's sketch: the artwork-plane convention, not a bug).
+      It is an SVG IMPORT, not a native build: _import_single_layer_svg -> importManager.createSVGImportOptions +
+      importToTarget (Insert SVG), the art layers' own path.
+    Profiles 157 for 122 polygons (+35): 32 ZERO-AREA slivers mirrored at x +-1.54..2.12, y 1.34..3.09 (where
+      painted area 1 meets the frame band) + 3 small ones 0.0027-0.0091 in2 at y ~0 (the brush stroke at the band).
+      Root cause is in the APP data, measured on the payload: 24 wall/frame neighbour pairs have a gap of EXACTLY 0
+      (every other neighbour keeps its joint: wall/wall 0.034, frame/frame >= 0.02 in) -> touching-but-not-
+      identical edges -> degenerate regions; and the raised brush overlaps 3 frame stones (0.0167 in2 total).
+      Payload polygons themselves are clean: 0 self-intersecting, 0 repeated vertices, none under 0.001 in2.
+    Bodies: Clean panel 13.752 in3 (+-3.5 x +-4.5, z 0.025..1.175, NOT trimmed by the frame), Stamped panel
+      14.285 in3 (+-3.25 x +-4.25, z 0.029..1.2395, trimmed), frame bars top/left/bottom/right 7.03 / 9.96 / 5.92 /
+      9.88 in3 (z -1.0 .. 0.80-0.94). Both panels are VISIBLE after the Send.
+    Carved surface (ray-cast down, Stamped top - Clean top, 50 probes): wall bricks median +0.128 in (0.095..0.159,
+      ~ the 0.125 relief), frame stones +0.091 (0.047..0.127), raised-brush bricks +0.199 (0.145..0.224, = wall +
+      ~0.07, the 1/16 in raised level), the brush stroke's grout ring 0.02 in outside each brick: about half at ~0
+      (-0.039..+0.045 = grout), the high ones (up to +0.169) sit along the stroke where brush bricks abut each other.
+- FUSION, CAM (item 82 shape, deployed): BUILD ok -- B-spline Back fixed box 9.5 x 7.5 x 2 in (dims written), WCS =
+  the declared 'back' point (-3.75, -4.75, 0.0289) on this panel's real bottom; B-spline Top PreviousSetupStock (same
+  box), WCS (3.75, -4.75, 2.0289); Frame box 9.5 x 7.5626 x 1.9447 around its model (82b). APPLY: templates through
+  the deployed apply_templates_to_existing_setups (3D-only heights on Back/Top; Frame's 'cadre' ops keep their
+  template heights -- Frame does not declare op_heights); then the add-in's own TPGEN handler (log: Back 12.5 s,
+  Top 56.4 s, Frame 3.7 s, post-audit ok=7 missing=0): all 7 ops valid, no warning:
+    Back: Pocket back 693.3 s / 1678.9 in, Morphed Spiral 97.3 / 968.1
+    Top:  Pocket front FRED 507.5 / 4425.2, Morphed Spiral 99.4 / 987.2, Pocket front deloge 241.6 / 1355.5
+    Frame: cadre Pocket 4 484.5 / 4028.7, cadre Morphed Spiral 3 178.0 / 1746.9
+- DEFECTS / FINDINGS (numbered; app/engine ones route to seat C, nothing fixed here):
+  D1 (app/engine) wall bricks BUTT the frame band with 0 grout: 24 wall/frame pairs at gap 0.0000 in (joints
+     elsewhere 0.034 / >= 0.02) -> 32 zero-area sliver profiles in the Bricks sketch.
+  D2 (app/engine) the raised brush stroke OVERLAPS the frame band: 3 brush/frame pairs, 0.0167 in2 total -> 3 small
+     extra profiles; brush bricks not clipped at the band.
+  D3 (app, observation) brush pieces abut each other with 0 gap (4 pairs) -- maybe intended for a stroke; grout
+     ring present on the sides only.
+  D4 (app, UI gap) the frame band's set can't be Set 5 (Grey stone) from the UI: selectSet only offers the bond sets
+     (1, 4) and setFrameRock gives Set 3 White rocks; reached here by writing P.brickSettings.setIds.frame = 5.
+  D5 (app rule, for Fred) a full wall and painted areas can't coexist (the first area replaces the wall fill), and
+     the pattern builder's accent is SHARED by every area while any later bond pick drops a custom tile's marks
+     (item 31) -- the builder area has to be painted last. Board built that way: 4 raised pieces arrived.
+  D6 (Fusion-side, for the advisor) both the Clean and the Stamped panel are visible after a Send that has a Stamped
+     variant, and the Clean panel is not trimmed by the frame (+-3.5 x +-4.5 vs +-3.25 x +-4.25): the view shows the
+     untrimmed Clean poking out under the frame. Not changed (Send visibility is the b-spline add-in's Smart
+     Visibility; ask first).
+  No CAM defect: positions, stock, heights and all 7 toolpaths as designed.
+- One observation, not a defect: calling cam.generateToolpath(setup) / (collection) directly from fusion_execute right
+  after the templates were applied reported completion early and left ops empty; the add-in's own handler, fired as
+  Fred's button does, generated all 7. Not recorded as a quirk.
+- Item 84 answer (advisor's question): YES, the bricks already reach Fusion as an imported SVG (importToTarget, see
+  above); this run: 2299 curves, all SketchLines, closed; import time not isolated (the whole Send ran ~2 min incl.
+  two 5 MB STEP imports and the frame).
+- Shots (shots/seatA): h23_item83_brick_e2e_app_view.png (the app), h23_item83_brick_e2e_stamped_iso.png and
+  _top.png (Fusion: the carved Stamped panel + frame + the Bricks sketch on its artwork plane; the Clean panel hidden
+  for the shot, restored).
+
+## H23 item 83 follow-ups -- D6 retracted (measured), Send timing breakdown (seat A / 77, 2026-10-05)
+- D6 RETRACTED. Measured on a fresh replay of the same e2e Send (deployed afdc4c0): Smart Visibility already does
+  the ruled thing -- the Clean OCCURRENCE is off (isLightBulbOn False, isVisible False) whenever a Stamped variant
+  exists, the Clean panel BODY keeps its own bulb on (effective isVisible False), surfaces off, Stamped + frame on.
+  Log: "[VISIBILITY] Stamped panel is primary; Clean occurrence hidden. Surfaces hidden." (b-spline-gen.py, the
+  unified post-import block ~1889-1942, the documented "sole visibility authority" on both the multi-variant and
+  single-step paths). My item-83 D6 read only BODY bulbs, not the occurrence / effective visibility -- wrong read,
+  nothing to change. The untrimmed Clean under the frame is invisible in practice.
+- SEND TIMING, the e2e board (7x9 T1 frame, 2 STEP variants, 1 art layer, 122-piece bricks), from the add-ins' own logs:
+    app (headless capture, timestamped stub): both STEP variants built + 40 chunks queued 0.48 s after the click
+      (10.35 MB). The REAL palette -> Python transfer of the 40 chunks is NOT measured (the stub answers at once;
+      the add-in logs nothing per chunk).
+    add-in Send (b_spline_gen_log.txt, 1 s resolution), total 32 s:
+      clear < 1 | Clean STEP import 4 | Stamped STEP import 7 | post-import + visibility < 1 | art sketch < 1 |
+      Bricks SVG import ~4 | FRAME 17 (frame-builder log: sketches 7.72 s = BB 1 + Shape Outline 3 + Enclosure 3;
+      solid synthesis 7.63 s; ~1.5 s overhead)
+    CAM BUILD (separate button, cam log): 54 s -- WCS sketches 1 | MM Stock ~9 | MM B-spline 6 | MM Frame 5 |
+      Stock setup 3 | B-spline Back setup 27 (26 s INSIDE cam.setups.add(): Fusion's first setup on the dense
+      Stamped body; Top on the same body then 2 s) | Top 2 | Frame 1.
+    APPLY TOOLPATHS (cam log): templates ~17 s, then generation Back 12.5 + Top 56.4 + Frame 3.7 = 72.6 s.
+  So the add-in's Send is ~32 s; Fred's "~2 min" is not in the Send's add-in part on this board -- either the
+  palette transfer (unmeasured) or BUILD/APPLY counted in.
+- Two biggest items, a proposal each (numbers only, nothing changed):
+  1. FRAME BUILD 17 s of the 32 s Send (53%). Proposal: the frame does not depend on the panel's STEP, so it could be
+     built ONCE per frame change and not re-built on every Send when only the panel/bricks changed (the frame record
+     is the same: a declared "frame unchanged since last Send" hash check, ~17 s saved per such Send). Needs the
+     advisor's yes (it changes when the frame is rebuilt).
+  2. CAM BUILD 54 s: 26 s is Fusion's first cam.setups.add on the dense Stamped body and ~20 s is three MM
+     snapshots, all redone on every BUILD (cleanup deletes and recreates). Proposal: keep the MMs + setups across
+     BUILDs when the Send's bodies are the same (update stock/WCS/heights in place instead of delete + recreate);
+     a re-BUILD would then cost seconds. Bigger change; measure first.
+  Smaller, for seat C: the Clean variant is hidden and unused by CAM whenever Stamped exists ("Stamped wins") --
+  not sending it would save its 4 s import + a 4.9 MB STEP per Send (a declared export option), if Fred never looks
+  at Clean.
+  To close the gap to "~2 min": one timestamped log line per received chunk in the add-in would measure the real
+  palette transfer (detection-only; your call).
+- Capture tool: the stub records performance.now() with each send; the run prints the Send timing breakdown.
+
+## H23 item 85 -- Send transfer timing (code), the D6 visibility test, and re-BUILD / re-Send measured (seat A / 77, 2026-10-05)
+- Branch send-timing-85 off origin/main e5754a7 + my unmerged brick-e2e-83 (tooling + WORK-LOG).
+- (1) b-spline-gen: _TransferTimer, detection only -- '[XFER] start epoch_ms=...', one '[XFER] chunk i: N bytes at
+  +T ms' per chunk, '[XFER] transfer N chunks, X MB in Y s', '[XFER] Send handled at +Z s (epoch_ms=...)'. Replaces
+  the old 'Received chunk i (buffer size)' line (nothing parsed it). The live palette transfer is measured on the next
+  real Send after the advisor deploys main (I cannot drive the palette's JS: no eval channel, no on-screen clicks).
+- D6 test: the Send's 'Stamped wins' block moved UNCHANGED into _apply_send_visibility(consolidated) (module level).
+  test_send_visibility.py 4/4: Stamped present -> Clean occurrence off / Stamped on, panels on + surfaces off; no
+  Stamped -> Clean on; a Stamped without a panel body does not win; the transfer timer through the real notify()
+  path with fixed clocks (exact lines). A 'Clean wins' mutant fails 2/4; restored byte-identical; b-spline-gen 155/155.
+- (2) MEASURED, e2e board, deployed afdc4c0, scratch doc:
+    BUILD #1 76 s; BUILD #2 on the UNCHANGED board ~47 s: cleanup (4 setups + 3 MMs) + WCS < 1 | MM Stock 4 |
+      MM B-spline 6 | MM Frame 5 | Stock setup 1 | B-spline Back 26 (inside cam.setups.add on the dense Stamped body,
+      again) | Top 2 | Frame 2. Nothing is reused today.
+    PROBE A, in place on the existing setups (deployed _bind_wcs_point / _apply_stock_box): Back WCS 0.31 s + box
+      0.92 s (9/9 writes), Top WCS 0.11 s = 1.3 s total; origins exact ((-3.75, -4.75, 0.0289) / (3.75, -4.75,
+      2.0289)).
+    PROBE B, a RE-SEND of the same board into the same doc with the CAM build in place: all 3 MMs and 4 setups stay
+      VALID, every setup's model is live ('panel' x2, the 4 frame bars), origins unchanged, and the B-spline MM shows
+      the NEW Stamped panel (its snapshot follows the design and still excludes Clean). So keeping MMs/setups across
+      Sends works structurally -- BUT that re-Send took 220 s instead of 32 s (b_spline_gen_log): Clean STEP 5 (4),
+      Stamped STEP 36 (7), post-import/visibility 13 (<1), art + bricks 44 (~4), FRAME 121 (17). Every design change
+      during the Send re-derives the 3 MMs and their setups. This is very likely Fred's "~2 min Send": he re-Sends
+      into a document that already holds his CAM build.
+- Proposals (numbers only, nothing changed):
+  P2 (re-BUILD): keep the MMs + setups and update stock/WCS/heights in place -> ~1.3 s instead of ~47 s; the
+     setups follow a re-Sent board by themselves (probe B). The template ops and toolpaths would also be kept, so
+     APPLY would only regenerate (Fusion marks them out of date).
+  P3 (NEW, the big one): the CAM build makes every later Send ~7x slower (32 s -> 220 s). Options to measure next:
+     (a) the Send suspends CAM re-derivation while it imports (if Fusion offers a switch -- unverified), (b) the Send
+     deletes the CAM build first and BUILD recreates it (Send 32 s + BUILD ~50 s = ~80 s < 220 s), (c) Fred Sends
+     into a design without CAM and keeps CAM in a separate document (manual workflow change).
+- Hygiene: scratch doc closed by handle; holder none after each batch.
+
+## H23 item 85 P3(a) -- what makes a Send slow in a document with CAM (seat A / 77, 2026-10-05)
+- Deployed main 0443c48 (the [XFER] timer is live; no Fred Send yet -- his next real Send carries it; my own Sends in
+  this entry are direct _handle_generate replays, NOT palette Sends, so they log no [XFER] lines). Before each Send
+  I recorded the b_spline_gen_log offset; every timing below is from the add-in's own log.
+- API: there is NO switch to suspend CAM re-derivation. Members matching defer/compute/suspend/update/regen/lock/
+  state on CAM, ManufacturingModel(s), Setup, Design, Timeline, Component, Application, Document: only isValid /
+  isActive / checkValidity, Design.computeAll, Document.updateAllReferences. The one deferral is
+  Sketch.isComputeDeferred.
+- Per-edit cost, same doc, without -> with the CAM build: sketch + 50 lines 0.74 -> 1.48 s; the same with
+  isComputeDeferred 0.28 -> 1.04 s; 20 lines + Horizontal 0.50 -> 1.13 s; construction plane 0.03 -> 0.06 s; delete
+  0.15 -> 0.23 s. A body edit (sketch rect + new-body extrude, then delete) WITH CAM: 0.31 s / 0.16 s, and Fusion idle
+  right after (no deferred work). So isolated edits only ~2x -- the cost is in what a Send does to the bodies the CAM
+  build derives from.
+- Re-Send of the e2e board (same payload), by document state (Send total; the frame part in brackets):
+    never had CAM                                       38 s  (frame 20)   control
+    an empty CAM product only                           47 s  (frame 27)
+    + the BUILD's __cam_wcs planes / sketches only      50 s  (frame 30)
+    had CAM, MMs + setups deleted before the Send      114 s  (frame 85)   one observation
+    CAM MMs kept, setups deleted                       225 s  (frame 118, art + bricks 80) -- Fusion busy ~1 more min after
+    full CAM build kept                                220 s  (frame 121, art + bricks 44)
+  The live MANUFACTURING MODELS are the cost (~+180 s per Send on this board); setups add nothing measurable. The
+  CAM-free runs drift up a few seconds per run (38 -> 47 -> 50) -- session / doc history, not CAM. The 114 s after
+  deleting MMs is one observation (it may be the same drift plus derive leftovers); not concluded.
+- P3 options, measured:
+  (a) suspend / defer: no API switch exists; sketch compute deferral cuts sketch time but the frame / art phases are
+      dominated by MM re-derivation of bodies, not by sketch solves. Not a fix.
+  (b) the Send deletes the CAM MMs (+ setups) first, BUILD recreates them: Send ~40-114 s + BUILD ~50 s, vs 220 s
+      today -- but Fred's setups / toolpaths / hand edits go each Send (BUILD's confirm already guards that case).
+  (b') variant, unmeasured: delete only the 3 MMs before the Send and recreate them after it (P2's in-place path),
+      keeping the setups -- only viable if a setup survives its MM being deleted and re-created; not tested.
+  (c) CAM in a separate document: the design doc stays at ~40 s per Send. Workflow change, Fred's call.
+- Hygiene: scratch docs closed by handle (3 this round), holder none after each batch; Fred's Untitled untouched.
+
+## H23 item 85 (b') -- delete only the MMs before a Send, recreate + re-bind after (seat A / 77, 2026-10-05)
+- Scratch doc: e2e Send -> BUILD -> templates + the add-in's own TPGEN (it generated 2/7 ops this time) -> delete
+  ONLY the 3 MMs (1.68 s) -> re-Send -> recreate MMs (deployed mm_builder.build_mm, bspline_set + frame, 11.7 s incl.
+  ensure_wcs_sketches) -> re-bind Back/Top -> add-in TPGEN. State read back at each step (camstate.jsonl).
+- SETUPS SURVIVE THEIR MMs BEING DELETED: all 4 stay valid; Fred's template ops stay; already-generated toolpaths
+  stay but go out of date (operationState 1, hasToolpath True, isToolpathValid False); stock settings stay. LOST:
+  every setup's models (empty) and the WCS point binding (Back/Top origin falls to 0,0,0) -- both lived in the MM.
+- RE-BIND WORKS: setup.models = ObjectCollection(new MM body) accepted (Back 0.52 s, Top 0.19 s, models 1), the
+  WCS point binds again (origins exact: (-3.75, -4.75, 0.0289) / (3.75, -4.75, 2.0289)); the add-in TPGEN then
+  generated Back 2/2 and Top 2/3 valid (Top's 'deloge' op stayed empty -- I had generated it alone before Back,
+  which a previous-setup chain cannot do; not re-tried). Frame was not re-bound in this probe (its ops stay stale).
+- BUT THE SEND IS STILL SLOW: re-Send with the setups kept and NO MMs = 178 s (21:28:18 -> 21:31:16: clearing the
+  old board + Clean 94 s, Stamped 16, art + bricks 8, frame 60) vs 38 s in a doc that never had CAM. Setups that hold
+  operations cost too (their ops re-evaluate when the Send deletes the bodies they referenced). So (b') does not
+  give a ~40-50 s Send; only removing the CAM build (b) or a separate CAM doc (c) does, measured so far.
+- New, unresolved: after the re-bind the Back/Top stock reads X = 7.5 (was 9.5 -- the axes-swapped frame's X); the
+  origin is right. Either the box dims re-evaluated in the other frame orientation or the stock box was not
+  re-applied after the model change. Not chased (re-run _apply_stock_box after a re-bind would be the first test).
+- Hygiene: scratch doc closed by handle, holder none; Fred's Untitled untouched.
+
+## H23 item 86 -- P2: a re-BUILD reuses the existing CAM build in place (seat A / 77, 2026-10-05)
+- Branch cam-inplace-86 off origin/main + my send-timing-85 (docs). Approved after item 85's numbers (re-BUILD on an
+  unchanged board ~47 s, in-place stock/WCS ~1.3 s, setups survive + accept setup.models re-binding).
+- MEASURED for the identity: Setup and Operation carry attributes (CAM.findAttributes exists); ManufacturingModel does
+  NOT; Setup.models is settable. Declared: setups tagged SETUP_ATTR = ('CAMBuilder', 'setup') = <SETUP_SPECS name>
+  (written by build_setup); MMs found by their declared display names (_mm_display_name).
+- Code (setup_builder / cam_coordinator):
+    build_setup split: everything after cam.setups.add -> _configure_setup(setup, mm, spec, logger) (stock mode, WCS
+      modes / axes / flipY / box point / the shared CAM_POSITION point, the declared box, offsets, readback) -- one
+      body for both paths.
+    find_reusable_build: every MM_RULES MM (by name) and every SETUP_SPECS setup (by tag) present and valid -> reuse;
+      anything missing, invalid or UNTAGGED (a build from before this change) -> None -> today's full recreate (and
+      the new setups get tagged, so the next BUILD reuses).
+    update_setups_in_place: re-bind models to the MM's current bodies, _configure_setup (the declared box and the
+      axes ALWAYS re-applied), 3D op heights when the setup has ops, then the same Part Position pass 2.
+    Coordinator: ensure_wcs_sketches, then reuse or full recreate; report['reused'].
+- Tests: test_cam_reuse.py 10/10 -- reuse on a complete build; full recreate for an MM missing / invalid, a setup
+  missing / invalid / untagged; build_setup tags; the in-place path re-binds models (ObjectCollection) and re-applies
+  box (Back 'stock', Frame 'frame_stock'), WCS point (Back 'back', Top 'flipped'), axes on all 4, heights only with
+  ops, pass 2 last, and never creates a setup; the coordinator's two paths in order. Mutants: in-place without
+  _configure_setup -> 1 fail; coordinator ignoring reuse -> 1 fail. CAM-builder 36/36.
+- LIVE (worktree engine via sys.path swap, restored -- verified after a timed-out call too; e2e board WITH frame):
+    BUILD #1 fresh doc: 'REUSE: MM ... missing -> full recreate' (correct), 3.4 min this session (session drift; 76 s
+      earlier).
+    BUILD #2 unchanged board: REUSED in 6.1 s (was ~47 s), ok: Back (-3.75, -4.75, 0.0289) / Top (3.75, -4.75, 2.0289)
+      on their points, stock X 9.5 on Back / Top / Frame, models live, all 4 setups tagged.
+    re-Send of the board (CAM kept; slow as measured in item 85), then BUILD #3: REUSED in 4.4 s, ok, the same values,
+      models live.
+  The stock X 7.5 of the (b') probe did NOT occur: there the MM had been deleted + recreated by hand; in P2 a missing
+  or invalid MM takes the full recreate, and the in-place path re-applies axes + box every time anyway.
+- Hygiene: scratch doc closed by handle (verified), holder none; Fred's Untitled untouched.
+## T86 item 16(c) part 2 -- PLAN: band pieces split at the medial line (seat B / fc, 2026-10-05 night)
+
+**Baseline re-measured on main 7633a5e** (19 templates x single_soldier / three_band / double_course x 0.75 / 1 /
+1.25 in, 7x9, Red Brick seed 1, shapely; scratch sweep = a vitest dump of every frame piece + sweep.py):
+overlap (sum - union) **17.824 sq in** = 88's number. Split: same row, pieces >= 3 apart in the walk (a row meeting
+itself across a neck) **14.49**; everything else (corner fans, 21b's) **3.42**. Worst: T18 / T19 at 1.25 in 1.44
+each (neck 1.18 + corner fan 0.27), T14 0.82 (all neck), T11 double_course 1.25 0.76, T16 three_band 0.75 0.59.
+Shot: shots/seatB/neck16c2/before_worst_necks.png (overlap in red).
+
+**What the shot shows.** T18 / T19: the waist's two facing arcs; each row's pieces run to depth d1 past the half-gap,
+so the two sides' wedges cover one LENS. T14: the X waist; the four arms' pieces cover one DIAMOND. T16 three_band:
+the outer band of one side over the outer AND middle band of the other -- the clash crosses rows and bands, so a
+per-row fix cannot be the whole answer.
+
+**Why "split at the lobes" alone does not separate the sides.** At a neck the ring between the board and the
+untangled d1 boundary is ONE connected region (the lens is inside it); the lobes are the WALL's windows on either
+side. What the untangle does give us: the two crossing points of the dropped inverted loop are exactly where the
+two sides' offsets meet at d1 -- the two ENDS of the medial curve through the lens. The cut we want is that curve.
+
+```
+   left arc (centre cL)          right arc (centre cR)
+        \  wedge Pi  \   tip X1   /  wedge Pj  /
+         \            \    *     /            /
+          \     depth_i < depth_j | depth_j < depth_i
+           \            \   |   /            /
+            )  keeps     \  |  /   keeps    (       medial curve = { depth_i(x) = depth_j(x) }
+           /   left half  \ | /  right half  \      (two lines: the bisector; two arcs: a hyperbola;
+          /                \|/                \      a line + an arc: a parabola) -- runs X1 -> X2
+                            *  tip X2
+```
+
+**The rule (declared, one sentence):** every point of the band area belongs to the band piece whose OWN depth there
+is smallest -- depth measured from the piece's own source primitive exactly as the piece was built (line:
+n.(x - p0); arc: radialSign * (r - |x - c|)), i.e. the side of the medial line it lies on; the row inside that side
+follows from depth as today. Properties, by construction:
+- order-free: every piece is cut from the ORIGINAL pieces, not from already-cut ones (attempt A's cycle
+  A->B->C->A, where nobody kept the region, cannot happen);
+- no void: a point is removed from a piece only because a piece with a strictly smaller depth covers it, so the
+  smallest-depth piece covering it keeps it (the union is unchanged);
+- no overlap: two pieces keep the same point only where their depths tie (the curve itself);
+- byte-identical when clean: a piece is touched only if it overlaps a CONFLICTING piece (> 1e-4 sq in).
+
+**Conflicting = different source primitive AND not joint neighbours in that row's live walk** (any band / row).
+Joint neighbours already meet at their mitre (which IS their medial line); their fan residual is 21b's and stays
+untouched here, so ordinary corners stay byte-identical. Kite-fan / notch / quoin pieces have no single source
+primitive: they keep today's shape in this item (21b's territory).
+
+**The cut, exactly.** f(x) = depth_i(x) - depth_j(x) is a smooth scalar field. Clip Pi to f <= 0 with a
+Sutherland-Hodgman walk on the field's sign (geometry.js, a new `clipToField(poly, f)`; clipToHalfPlane is the
+special case of a linear f): an edge crossing gets its point by bisection to 1e-10; the new edge between two
+crossings is refined onto the zero set (points stepped along it and Newton-projected), so Pi and Pj get the SAME
+curve (not two different chords) -- no hairline sliver either way. Restricted to where Pj actually is: Pi loses
+only Pi & Pj & {f > 0} (a polygonDifference against Pj clipped to f >= 0), never ground no conflicting piece covers;
+a cut leaving a piece under library MIN_PIECE_FRACTION drops it only if the rule above gives that ground to another
+piece (it does, by definition), so no hole. Pieces get an internal source-primitive tag in ribbonPieces (stripped
+before bricksContourBands returns: no new field on the output, no app-visible contract change).
+
+**Where:** contour-bands.js after the rows are built, before the board clip -- one declared step
+(`yieldAtMedialLine`), next to the fit rule (item 28: the fit rule caps the stack at 1/3 of the narrowest gap; at a
+neck narrower than the board's narrowest probe the medial line is the local limit -- the same idea, per point).
+
+**Sweep I will run (same dump, same shapely):** per case lost ground (union_before - union_after) < 0.01 sq in AND
+neck overlap < 0.01; corner-fan overlap must not GROW (it is 21b's to remove; today 3.42 total); cases with zero
+neck overlap byte-identical (piece list equal); the bricks domain (tests/bricks-*.test.js) green; full vitest
+before the DM. New test: tests/bricks-neck-medial.test.js, T18 / T19 / T14 at 1.25 single_soldier + T16 three_band
+0.75: no neck overlap, union unchanged within 0.01, T1 byte-identical -- shown to FAIL on main first.
+Shots: shots/seatB/neck16c2/after_worst_necks.png (same five cases).
+
+**Open question for the advisor:** the bar "overlap < 0.01 per case" -- I read it as the NECK overlap (this item);
+the corner-fan residual (T18 / T19 0.27 each, 3.42 total) is 21b, task 2. Say if you want both under one bar.
+
+## T86 item 16(c) part 2 -- DONE: band pieces split at the medial line (seat B / fc, 2026-10-05 night)
+
+**Shipped** (contour-bands.js `yieldAtMedialLine`, geometry.js `clipToField`, primitive-ribbon.js returns each piece's
+source primitive + its row's live walk ALONGSIDE the pieces -- no new field on any piece, no app-visible change):
+every point of the band area goes to the piece whose own depth there (from the primitive it was offset from) is
+smallest; ties to the lower source index (no rng: seed-stable). A piece is cut only where a CONFLICTING piece covers
+the ground with a smaller depth (Pi minus (Pj clipped to dj <= di), each against the ORIGINAL Pj). Conflicting =
+different source primitives, not joint neighbours in either row's walk, overlap > 1e-4 sq in.
+
+**Sweep** (19 templates x single_soldier / three_band / double_course x 0.75 / 1 / 1.25 in, 7x9, Red seed 1, shapely;
+neck vs corner now classified by the rule's own definition via the source tags, a scratch hook not shipped):
+- neck overlap **14.102 -> 0.000** sq in (every one of 171 cases 0.0000); corner-fan residual 3.814 -> **3.814**
+  (unchanged, 21b's); total overlap 17.824 -> 3.723.
+- **142 / 171 cases byte-identical**; the 29 that change are exactly the 29 with neck overlap (set equality checked).
+- Lost ground (union before - after): total 0.874, per case max **0.0998** (T18 1.25 in) -- over the 0.01 bar in 9
+  cases (T14 1 / 1.25 0.013 / 0.051, T18 / T19 1.25 ~0.10, x3 presets). ALL of it is joint, measured three ways:
+  (a) every gap the cut opens is narrower than the SAME board's widest existing joint (T18 1.25: opened 0.0331 in
+  from a brick, the board already has 0.0396; T19 0.0310 vs 0.0436; T14 0.0154 vs 0.0166) -- area farther from a
+  brick than the board's own widest joint: **0.0000 in all 171 cases**; (b) what goes is a far piece's TONGUE left past
+  the line inside a near-side joint, cut off from its own piece (traced on T18 frame-55: its 0.016 sq in island sits
+  between near pieces frame-16 and frame-17), and on T14 a kite tip cut off by the far arm's strip; (c) the largest
+  discarded part anywhere is 40% of that size's MIN_PIECE_FRACTION piece, so the min-piece rule would drop it anyway.
+  Keeping those fragments would put a sliver of the far brick inside the near side's joint.
+- Advisor's check (1), under-size pieces after the cut: 9 drops over the sweep, one at a time, smallest first, each
+  re-cut without it so its ground goes across the line; a drop whose ground the re-cut pieces do not cover (more than
+  MEDIAL_HOLE_SQIN 0.002) is undone and the piece stays under-size (T14's X: two half-diamonds, 0.093 sq in each vs
+  the 0.104 minimum, meet at a mitre and nobody else covers either). First version dropped all four X kites in one
+  pass (0.186 sq in hole), the second compared summed areas (double-counts where pieces overlap): both measured and
+  replaced. Slivers whose drop opens < 0.002 still drop (a kept 0.001 sq in "brick" on T16 was the trigger).
+- Advisor's check (2), ties: `clipToField(..., strict)` -- the higher source index yields a tie; nothing random.
+- Fan residual at T18 / T19 / T11 / T8 shoulders (kite fans, no single source primitive) untouched: 21b.
+- NOT touched: area bands (fieldstone rings, White Rocks / Grey stone): their stones have no source primitive.
+  bricks-rock-ring-stones.test.js's it.todo for T11 T14 T15 T16 T17 T19 (ring stones at the pinch) stays open.
+
+**Rejected on the way (measured):** the field cut alone, without restricting it to where the far piece IS (overlap
+17.8 -> 3.6 but lost 4.3 sq in: T14's X and T16's neck triangle went bare -- the far primitive's field extends past
+its own pieces).
+
+**Test** tests/bricks-neck-medial.test.js (9): T18 / T19 / T14 1.25 single_soldier + T16 three_band 0.75 -- overlap
+between a left and a right piece < 0.01 and the neck strip's covered ground within 0.16 sq in of main's (grid; pinned
+from main 0443c48); T1 every preset at 1 in = main's frame digest; clipToField unit cases (linear = half-plane, a
+circle follows the arc not the chord, ties). Against main: **4/4 neck cases FAIL** (overlap 0.92 / 0.93 / 0.18 /
+0.20); with the no-hole drop guard removed: **T14 FAILS** (cover 9.2268 vs > 9.2836). The digest case passes on main
+by construction (it pins main). A first hole probe (points far from any brick) was replaced: it read main's
+OVERLAPPING kite as "near" a pre-existing bare notch and flagged the branch for it (that notch is bare on main too).
+
+Shots: shots/seatB/neck16c2/before_worst_necks.png, before_after_worst_necks.png (T18 / T19 1.25 three_band, T14,
+T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given up -- the joint tongues).
+- Gates: bricks domain (tests/bricks-*) 54 files 532 passed 8 todo; FULL vitest **315 files, 4704 passed, 8 todo, 0
+  failed** (87.7 s). Lay time (30 lays averaged, a shared machine, two alternating runs each): clean T1 three_band 1 in
+  13 / 13 ms main / branch (the conflict search runs zero polygon intersections on T1: counted); neck cases a few ms to
+  ~2x (T18 three_band 1.25 23-25 -> 28-51 ms, T16 three_band 0.75 11-18 -> 18-33 ms).
+- After merging origin/main 52c3055 into neck-medial (55dd348; a WORK-LOG append conflict, both kept): bricks domain
+  54 files green; full vitest x3 on a loaded machine (three other seats running): 13, then 1, then 1 failure. The
+  last two were the same: tests/frame-3d-sweep.test.js timed out at 90 s. It imports no bricks code, passes alone on
+  the branch (52-69 s), and on main 52c3055 it also timed out alone once (110 s) between two passes. main 52c3055 full:
+  316 files green in 80 s. Read as load, not this item -- the advisor's gate decides.
+
+## T86 item 16(c) part 2 -- the medial seam is a joint (advisor, from seat A's Fusion e2e) (seat B / fc, 2026-10-05 night)
+- Why: the first cut left the two sides ABUTTING on the medial line (0 gap); seat A measured that 0-gap seams become
+  zero-area sliver profiles in the Fusion Bricks sketch. Rule added (declared, contour-bands.js): each side stops
+  half the set's grout joint (set.grout.widthIn / 2) short of the line. The field is the depth difference divided by
+  its own gradient (medialDistance: first-order distance to the line; the raw difference changes 2x per inch at a
+  neck, which would have made the joint half as wide). The far piece is grown by a FULL joint before the cut (limited
+  to the half-joint strip): grown by half a joint only, a lens tip still touched (T18 frame-13 / frame-58 at
+  (3.5, 4.529): both pieces' own edges reach the line there) or left 0.022 in.
+- Sweep (171 cases): neck overlap 0.000 in every case; corner residual 3.814 -> 3.763 (down, not up); **every seam the
+  rule cuts is >= 0.034 in (the joint) in all 29 cases**; 142 / 171 byte-identical; 8 drops; raw union loss 2.75 sq in
+  total (the new seam joints, by design), void farther from a brick than the same board's widest existing joint
+  0.0000 in every case.
+- Pre-existing tight seams NOT from this step (same distance on main, measured pair by pair): T18 / T19 arm-to-top-bar
+  pieces at the shoulders 0.0068 / 0.0037 in, T14's two half-diamonds meeting on the X's horizontal mitre line 0 in.
+  They are corner / mitre seams: 21b (the advisor put 0-gap mitres there).
+- Test: each neck case also asserts the medial seam (a left against a right piece, closest on the centre line inside
+  the declared neck window) >= joint - 0.002. With the setback set to 0: **4/4 FAIL** (gaps 0 .. 1.3e-5 in).
+- Gates: bricks domain 54 files green; full vitest 316 / 317 files -- the one is tests/frame-3d-sweep.test.js timing
+  out at 90 s again (139.9 s run, loaded machine), as logged above: no bricks import, passes alone.
+- Shots: before_after_worst_necks.png re-rendered from this build; t18_seam_zoom.png (the seam as a joint);
+  t14_x_centre_zoom.png (main vs branch, the X centre: two 0.093 sq in half-diamonds, blue = joint given back).
+
+## H23 item 88 -- BRICK_E2E acceptance re-run on deployed main 2b5695d (seat A / 77, 2026-10-05)
+- Same method as item 83 (headless capture, the deployed add-in's _handle_generate, the deployed CAM engine), one
+  tagged scratch doc per board, closed by handle; holder none after. Capture tool: the app readback now lists each
+  layer's brickKind + piece count; new scenario brick-wall-only (T1 + a Wall lay alone: F35 items 42 + 66).
+- BOARD 1, brick-e2e (7x9, T1, Set 5 band, 2 painted areas, raised brush, Art carve):
+    APP: 126 pieces = 58 frame + 62 wall + 6 brush, 4 raised; per-kind layers Frame 58 / Wall 62 / Brush 6 (item 64:
+      each kind on its own layer), all carving; Layer 1 and Art hold 0 pieces.
+    PAYLOAD stamp.bricks: ONE svg, 126 polygons (= app, by kind), 2420 edges, 0 invalid, carve true.
+    FUSION Send: Bricks sketch in Stamped, 2420 SketchLines (= payload, exact), 0 open ends, extent +-3.25 x +-4.25
+      (exact); timeline 16 items, all healthy. PROFILES 147 for 126 pieces (+21; 1 profile with 2 loops).
+    Carve per kind (ray-cast Stamped top - Clean top at each brick's interior point, 126/126 hit): wall median
+      +0.117 in, frame +0.096, raised brush +0.192 (item 83: 0.128 / 0.091 / 0.199). The three kind layers combine
+      into the one Stamped body as before.
+    CAM: BUILD #1 full recreate 67 s, ok (4 setups, 3 MMs); Back WCS (-3.75, -4.75, -0.0342) on this panel's bottom,
+      Top (3.75, -4.75, 1.9658), stock 9.5 x 7.5 x 2. Re-Send in the same doc (CAM kept): 89 s, timeline 20 items
+      healthy, the Bricks sketch identical (2420 / 147 / 0 open). BUILD #2: REUSED in 7.0 s, every readback value
+      identical to BUILD #1, setups valid, models live (panel x2, the 4 frame bars).
+- BOARD 2, brick-wall-only (7x9, T1, Wall alone): APP 138 wall pieces on layer Wall; payload 138 polygons / 640 edges,
+  every neighbour gap = the 0.034 joint, 0 touching, 0 overlap, 0 slivers, extent +-3.25 x +-4.25 (the wall fills
+  the contour). FUSION: 640 SketchLines, 138 profiles = 138 pieces, all single-loop, 0 open ends, timeline 14 healthy.
+- DEFECTS (app/engine, nothing fixed here):
+  E1 (= item 83 D1, still open) wall bricks butt the frame band: 23 wall/frame pairs at gap 0 + 2 overlapping
+     (area ~0); joints elsewhere 0.034 (wall) / >= 0.02 (frame).
+  E2 (= D2, WORSE) the raised brush overlaps frame stones: 3 pairs, 0.272 in2 (was 0.017). One brush brick (0.111 in2,
+     at 1.96, -0.04) lies ENTIRELY inside a frame stone; the frame stone under the brush at (-1.73, 0.23) reads
+     +0.264 in (the brush raise lands on it).
+  E3 two wall SLIVERS: 0.00044 in2 at (1.73, -0.94) and 0.00063 in2 at (-1.90, 1.65), both at an area edge by the
+     band; they carve to ~0.
+  E4 (= D3) brush bricks abut each other with 0 gap (4 pairs).
+  The +21 extra profiles of board 1 come from E1/E2/E3 only: board 2 (no band, no brush) maps 1:1.
+- No Fusion-side defect. Shots: shots/seatA/h23_item88_brick_e2e_top.png, _iso.png, h23_item88_wall_only_top.png.

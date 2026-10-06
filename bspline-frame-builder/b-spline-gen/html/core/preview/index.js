@@ -40,7 +40,7 @@ import { GroundGrid } from './ground-grid.js';
 import { LeaderLineOverlay } from './leader-lines.js';
 import { applyFrameToPanel, frameLoopsWorld, pointInPolygon } from './frame-mesh.js';
 import { ADAPTIVE_DISPLAY, adaptiveGridIndices } from './adaptive-mesh.js';
-import { OrbitController } from './orbit-controller.js';
+import { OrbitController, HOME_BUTTON_TITLE } from './orbit-controller.js';
 import { SculptController } from './sculpt-controller.js';
 import { renderTopView } from './top-view.js';
 import {
@@ -697,6 +697,7 @@ export class TerrainPreview {
 
     const btn = document.createElement('button');
     this._homeBtn = btn;
+    btn.title = HOME_BUTTON_TITLE; // item 51: each press goes to the next declared home view
     btn.innerHTML = `
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>

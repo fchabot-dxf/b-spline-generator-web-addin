@@ -50,6 +50,7 @@ import adsk.cam
 import adsk.fusion
 
 from cam_utils import get_design
+from .cam_position import CAM_POSITION
 
 
 MM_RULES = ('stock', 'bspline_set', 'frame')
@@ -398,11 +399,11 @@ def _populate_stock_placeholder(mm, source_design, logger):
     """Create a parametric rectangular stock body INSIDE MM-Stock.
 
     Geometry: a centered rectangle on the XY plane (centre-point
-    rectangle), sized ``(widthIn + 1in) x (heightIn + 1in)``, extruded
-    ``2 in`` in +Z. Horizontal dims reference the user parameters that
+    rectangle), sized ``(widthIn + margin) x (heightIn + margin)``, extruded
+    to the declared thickness in +Z. Horizontal dims reference the user parameters that
     ``_propagate_user_parameters_to_mm`` already mirrored into MM scope,
-    so the stock auto-resizes when the panel params change. Z is a
-    literal — 2in is a sensible rough-stock default.
+    so the stock auto-resizes when the panel params change. The margin
+    and the thickness come from CAM_POSITION['stock'] (the one shared stock).
 
     Scope guarantee
     ---------------
@@ -644,14 +645,15 @@ def _populate_stock_placeholder(mm, source_design, logger):
             H_DIM_ORIENT,
             adsk.core.Point3D.create(0, -7, 0),
         )
-        width_dim.parameter.expression = 'widthIn + 1 in'
+        width_expr, height_expr, z_expr = _placeholder_exprs()
+        width_dim.parameter.expression = width_expr
 
         height_dim = sketch_dims.addDistanceDimension(
             vertical_line.startSketchPoint, vertical_line.endSketchPoint,
             V_DIM_ORIENT,
             adsk.core.Point3D.create(-7, 0, 0),
         )
-        height_dim.parameter.expression = 'heightIn + 1 in'
+        height_dim.parameter.expression = height_expr
     except Exception as e:
         _log(logger, f"STOCK PLACEHOLDER ({mm.name}): dimensioning failed: {e}", "WARNING")
         return False
@@ -671,8 +673,8 @@ def _populate_stock_placeholder(mm, source_design, logger):
         ext_input = extrudes.createInput(
             profile, adsk.fusion.FeatureOperations.NewBodyFeatureOperation,
         )
-        # Fixed 2in thickness as specified -- not parametric.
-        distance = adsk.core.ValueInput.createByString('2 in')
+        # Thickness from CAM_POSITION (the shared stock) -- not parametric.
+        distance = adsk.core.ValueInput.createByString(z_expr)
         ext_input.setDistanceExtent(False, distance)
         extrude = extrudes.add(ext_input)
     except Exception as e:
@@ -686,8 +688,16 @@ def _populate_stock_placeholder(mm, source_design, logger):
     except Exception as e:
         _log(logger, f"STOCK PLACEHOLDER ({mm.name}): body rename failed: {e}", "DEBUG")
 
-    _log(logger, f"STOCK PLACEHOLDER ({mm.name}): created '(widthIn+1in) x (heightIn+1in) x 2in' body 'Stock'")
+    _log(logger, f"STOCK PLACEHOLDER ({mm.name}): created '{width_expr} x {height_expr} x {z_expr}' body 'Stock'")
     return True
+
+
+def _placeholder_exprs():
+    """The placeholder's (width, height, thickness) expressions, from the one declared stock (CAM_POSITION)."""
+    st = CAM_POSITION['stock']
+    return (f"widthIn + {st['margin_xy_in']} in",
+            f"heightIn + {st['margin_xy_in']} in",
+            f"{st['z_in']} in")
 
 
 def _populate_frame_geometry(mm, source_design, logger):

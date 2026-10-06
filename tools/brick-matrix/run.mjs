@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, UNDO_SETTINGS } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME, GROUT_JOINTS, QUICK_FRAME_LAYS, UNDO_SETTINGS } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -25,13 +25,13 @@ const arg = (name, dflt) => { const i = process.argv.indexOf(`--${name}`); retur
 const flag = (name) => process.argv.includes(`--${name}`);
 const ROOT = arg('root', path.resolve(HERE, '../../bspline-frame-builder'));
 const OUT = path.resolve(arg('out', 'brick-matrix-report'));
-const PORT = Number(arg('port', 9701)), HTTP = PORT + 1;
+let PORT = Number(arg('port', 9701)), HTTP = PORT + 1;
 const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'undo', 'persistence'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'undo', 'persistence', 'grout'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -123,6 +123,13 @@ const CONTROLS = arg('group') ? BRICK_CONTROLS.filter((c) => groupOf(c) === arg(
 // A BRAND-NEW profile every run: the app restores its last saved session from localStorage, so a reused
 // profile starts the matrix from the previous run's end state (a row that re-picks the current value then
 // "does nothing"). Removed again in stop().
+// advisor: a busy DEFAULT port (another seat's run) is skipped for the next free pair, not fatal; an explicit --port is
+// held to (the check below still refuses it when taken)
+const portAnswers = (port) => fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(400) }).then(() => true, () => false);
+if (!arg('port')) {
+  for (let i = 0; i < 40 && ((await portAnswers(PORT)) || (await portAnswers(HTTP))); i++) { PORT += 10; HTTP = PORT + 1; }
+  if (PORT !== 9701) console.log(`brick-matrix: the default port was busy; using ${PORT}/${HTTP}`);
+}
 const profile = mkdtempSync(path.join(os.tmpdir(), `brick-matrix-chrome-${PORT}-`));
 // ... and nothing may already answer on that port: two trees often serve an identical palette page, so the
 // byte check below alone cannot tell another seat's server from ours.
@@ -230,12 +237,21 @@ const BRUSH = CANVAS.replace("'[data-brick]'", `'[data-brick="brush"]'`).replace
 const HEIGHTS = `(async()=>{ const m=await import('./core/state.js'); const h=m.lastResult?.heights; if(!h) return 'none';
   let x=2166136261; for (let i=0;i<h.length;i++){ x^=Math.round(h[i]*1e5); x=Math.imul(x,16777619);} return h.length+'#'+(x>>>0).toString(36); })()`;
 const isPending = () => js(`!!document.getElementById('brickGenerate')?.classList.contains('pending')`);
-// a rebuild is async: wait until the heightmap hash is stable for 3 polls (and give a change 6s to appear)
-async function heightsSettled(prev, maxMs = 30000) {
+// a rebuild is async: wait until the heightmap hash is stable for 3 polls (and give a change 6s to appear).
+// MEASURED (advisor's band-rows gate, 182 rows): "Clumping 0.9 (Suppression 0.5)" read "3D unchanged" under the
+// --parallel load while it passed alone on main afdc4c0 AND on the branch (47/47 each): the rebuild started after
+// the 6 s window. A row that EXPECTS the 3D to change gives it THREE_D_EXPECTED_CHANGE_MS before calling it unchanged.
+const THREE_D_CHANGE_MS = 6000, THREE_D_EXPECTED_CHANGE_MS = 20000;
+// advisor follow-up: the rebuild's OWN completion count (core/state.js lastResultGeneration) -- `sinceGen` = the count
+// before the action: "unchanged" is only concluded after a rebuild has COMPLETED since then (a build without the
+// counter falls back to the time window alone)
+const GEN = `import('./core/state.js').then((m) => (typeof m.lastResultGeneration === 'number' ? m.lastResultGeneration : null))`;
+async function heightsSettled(prev, maxMs = 30000, changeMs = THREE_D_CHANGE_MS, sinceGen = null) {
   let last = await js(HEIGHTS), same = 0; const t0 = Date.now();
   while (Date.now() - t0 < maxMs) {
     await sleep(700); const h = await js(HEIGHTS);
-    if (h === last) { if (++same >= 3 && (h !== prev || Date.now() - t0 > 6000)) return h; } else { same = 0; last = h; }
+    const rebuilt = sinceGen == null || ((await js(GEN)) ?? Infinity) > sinceGen;
+    if (h === last) { if (++same >= 3 && (h !== prev || (rebuilt && Date.now() - t0 > changeMs))) return h; } else { same = 0; last = h; }
   }
   return last;
 }
@@ -359,13 +375,16 @@ try {
       const reads = c.expect.reads ? (await jsJSON(`JSON.stringify(Object.fromEntries(${JSON.stringify(Object.keys(c.expect.reads))}.map((id) => [id, Number(document.getElementById(id)?.value)])))`)) : null;
       const readsOk = !!reads && Object.entries(c.expect.reads).every(([id, v]) => Math.abs(reads[id] - v) < 1e-6);
       const setsOk = !!sets && Object.entries(c.expect.sets).every(([k, id]) => sets[k] && sets[k].length === 1 && sets[k][0] === String(id));
+      const g0 = await js(GEN);
       await apply();
-      const z1 = await heightsSettled(Z);
+      const z1 = await heightsSettled(Z, 30000, c.expect.threeD === true ? THREE_D_EXPECTED_CHANGE_MS : THREE_D_CHANGE_MS, g0);
       await record(c, { result, pending: p, canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 }, sets, setsOk, reads, readsOk });
       Z = z1;
     } else if (c.kind === 'relay') {
       // Generate = "re-lay now": take one brick of the tool's kind off the canvas by hand, then Generate must
-      // put back exactly the layout the current settings make (canonical canvas hash equal to before).
+      // put back exactly the layout the current settings make (canonical canvas hash equal to before) -- or, with
+      // expect.newSeed (F35 item 39: Generate rolls a new brick seed), a NEW layout with the removed brick back
+      // (the same piece count, a different canvas).
       await openBrickTool(c.tool);
       // the baseline is what the current settings lay (one Generate first): a reopened editor shows the
       // saved board, whose canonical hash can differ after the save/load round trip (MEASURED on fb-app
@@ -377,10 +396,12 @@ try {
       const cGap = await js(CANVAS);
       const result = await act(c.do);
       const c1 = await canvasSettled(cGap);
-      const ok = removed && cGap !== c0 && c1 === c0;
-      rows.push({ name: c.name, kind: c.kind, tool: c.tool, result, observed: { removed, disturbed: cGap !== c0, restored: c1 === c0 }, expect: c.expect,
+      const count = (h) => String(h).split('#')[0];
+      const restored = c.expect.newSeed ? count(c1) === count(c0) && c1 !== c0 : c1 === c0;
+      const ok = removed && cGap !== c0 && restored;
+      rows.push({ name: c.name, kind: c.kind, tool: c.tool, result, observed: { removed, disturbed: cGap !== c0, restored }, expect: c.expect,
         verdict: { pending: 'n/a', canvas: ok ? 'PASS' : 'FAIL', threeD: 'n/a' }, hashes: { c0, cGap, c1 } });
-      console.log(`${ok ? 'pass' : 'FAIL'}  ${c.name.padEnd(34)} brick removed ${removed}, canvas restored ${c1 === c0}`);
+      console.log(`${ok ? 'pass' : 'FAIL'}  ${c.name.padEnd(34)} brick removed ${removed}, ${c.expect.newSeed ? `the count back ${count(c1) === count(c0)}, a new layout ${c1 !== c0}` : `canvas restored ${c1 === c0}`}`);
       if (!ok) await shot(`FAIL_${c.name.replace(/[^a-z0-9]+/gi, '_')}`);
     } else if (c.kind === 'brush') {
       const brushTool = c.tool || 'brush'; // e.g. 'raisedBrush' -- any stroke-drawing Brick tool
@@ -427,14 +448,14 @@ try {
       const result = await act(c.do);
       await sleep(1500);
       const c1 = await js(CANVAS);
-      const z1 = await heightsSettled(Z);
+      const z1 = await heightsSettled(Z, 30000, c.expect.threeD === true ? THREE_D_EXPECTED_CHANGE_MS : THREE_D_CHANGE_MS);
       await record(c, { result, pending: await isPending(), canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 } });
       Z = z1;
     }
   }
   if (!arg('group') || arg('group') === 'layout') await runLayout();
   if (!arg('group') || arg('group') === 'clear') await runClear();
-  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); }
+  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); await runQuickFrameLays(); }
   if (!arg('group') || arg('group') === 'select') await runSelect();
   if (!arg('group') || arg('group') === 'migration') await runMigration();
   if (!arg('group') || arg('group') === 'frame-ui') await runFrameUi();
@@ -442,6 +463,7 @@ try {
   if (!arg('group') || arg('group') === 'layers') await runBrickLayers();
   if (!arg('group') || arg('group') === 'areas') await runWallAreas();
   if (!arg('group') || arg('group') === 'undo') await runUndoSettings();
+  if (!arg('group') || arg('group') === 'grout') await runGroutJoints();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') { await runPersistence(); await runPatternParamPersist(); }
 } catch (e) {
@@ -528,6 +550,32 @@ async function runPersistence() {
   const picked = await js(`(async()=>{ const it=[...document.querySelectorAll('#fmProjectList [data-name]')].find(e=>e.getAttribute('data-name')==='brick-matrix-persist'); if(!it) return 'not listed'; it.click(); await new Promise(r=>setTimeout(r,500)); document.getElementById('fmBtnLoad').click(); await new Promise(r=>setTimeout(r,6000)); return 'loaded'; })()`);
   console.log('project load:', picked);
   await checkPersisted('project load');
+  // F35 item 39: Generate refreshes the LOADED project, then a RELOADED session; Apply + reopen keeps the new lay
+  await checkGenerateAfterRestore('project load');
+  await send('Page.reload', {}); await waitApp();
+  await checkGenerateAfterRestore('reload');
+}
+
+async function checkGenerateAfterRestore(when) {
+  const G = GENERATE_AFTER_RESTORE;
+  const name = `Generate refreshes the board after ${when}`;
+  if (!(await js(G.marker))) { checkRow('persistence', name, false, '', 'F35 item 39'); return; }
+  const wallState = () => jsJSON(`JSON.stringify((()=>{ const ns=[...(window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick=${JSON.stringify(G.kind)}]')||[])];
+    return { n: ns.length, seeds: [...new Set(ns.map((e)=>e.getAttribute(${JSON.stringify(G.seedAttr)})))] }; })())`);
+  await openEditorTab('editorTabBrick'); await click(G.tool, 900);
+  const before = await wallState();
+  const c0 = await js(CANVAS);
+  await click(G.generate, 1800);
+  await canvasSettled(c0);
+  const after = await wallState();
+  await apply(); await heightsSettled(null);
+  await openEditorTab('editorTabBrick');
+  const kept = await wallState();
+  const fresh = after.seeds.length === 1 && before.seeds.length === 1 && after.seeds[0] !== before.seeds[0];
+  // not the piece count: this board's wall is Fieldstone, whose stone count follows the seed (measured 152 -> 142)
+  checkRow('persistence', name, before.n > 0 && after.n > 0 && fresh && kept.n === after.n && kept.seeds.join() === after.seeds.join(),
+    `wall ${before.n} pieces seed ${before.seeds} -> Generate ${after.n} seed ${after.seeds} -> Apply + reopen ${kept.n} seed ${kept.seeds}`);
+  await apply(); await heightsSettled(null);
 }
 async function checkPersisted(phase) {
   await openBrickTab();
@@ -707,6 +755,30 @@ async function openEditorTab(tabId) {
   await click(tabId, 900);
 }
 
+// F35 item 42 (controls.mjs WALL_NO_FRAME): Wall only, no Frame element -> the wall's box = the frame contour's box
+async function runWallNoFrame() {
+  const N = WALL_NO_FRAME;
+  for (const c of N.cases) {
+    const name = `No Frame element (${c.template || 'template None'}): the wall fills the frame contour`;
+    await reloadWithStorage({});
+    if (!(await js(N.marker))) { checkRow('lay', name, false, '', 'F35 item 42'); continue; }
+    await js(`(()=>{ const h=document.getElementById('heightIn'); h.value=${JSON.stringify(String(c.heightIn))}; h.dispatchEvent(new Event('change')); return 1; })()`); await sleep(2000);
+    await openEditorTab('editorTabFrame');
+    await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value=${JSON.stringify(c.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2500)); return 1; })()`);
+    await openEditorTab('editorTabBrick'); await click(N.wallTool, 900); await click(N.generate, 2500);
+    const m = await jsJSON(`(async()=>{ const ed=window.svgEditor; const fp=await import('./editor/editor-frame-profile.js'); const cf=await import('./editor/contour-from-frame.js');
+      const ctx=fp.frameContext(ed); const sil=ctx?cf.frameContourSilhouette(ctx,0,0):null;
+      const cpts = sil && sil.primitives ? sil.primitives.flatMap((p)=>Object.values(p).filter((v)=>v&&typeof v==='object'&&'x' in v).map((v)=>[v.x,v.y])) : [[0,0],[ed._mW,ed._mH]];
+      const wpts=[...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick="wall"]')].flatMap((n)=>n.getAttribute('points').trim().split(/[ ]+/).map((q)=>q.split(',').map(Number)));
+      const bb=(p)=>[Math.min(...p.map((q)=>q[0])),Math.max(...p.map((q)=>q[0])),Math.max(...p.map((q)=>q[1]))];
+      return JSON.stringify({ wall: wpts.length ? bb(wpts) : null, contour: bb(cpts), frame: ed._sketchLayer.node.querySelectorAll('[data-brick="frame"]').length }); })()`);
+    // x left / x right / the bottom (a template's top is often an arch: its apex is not in the primitives' points)
+    const ok = !!m.wall && m.frame === 0 && m.wall.every((v, i) => Math.abs(v - m.contour[i]) <= N.tol);
+    checkRow('lay', name, ok, `wall x ${m.wall ? m.wall[0].toFixed(2) + '-' + m.wall[1].toFixed(2) + ' bottom ' + m.wall[2].toFixed(2) : 'none'} vs contour x ${m.contour[0].toFixed(2)}-${m.contour[1].toFixed(2)} bottom ${m.contour[2].toFixed(2)}; frame bricks ${m.frame}`);
+  }
+  if (await editorOpen()) await apply();
+}
+
 async function runLayWarnings() {
   const W = LAY_WARNING;
   await send('Page.reload', {}); await waitApp();
@@ -738,6 +810,29 @@ async function runLayWarnings() {
   checkRow('lay', `${W.template}: bands fit again -> wall back, notes hidden`, walls2 > 0 && !side2.shown && !ed2.shown,
     `wall ${walls2}, sidebar note ${side2.shown ? 'shown' : 'hidden'}, editor note ${ed2.shown ? 'shown' : 'hidden'}`);
   if (await editorOpen()) { await apply(); await heightsSettled(null); }
+}
+
+// F35 item 63: the sidebar Frame bands pick lays a frame that is not on the board yet (QUICK_FRAME_LAYS)
+async function runQuickFrameLays() {
+  const Q = QUICK_FRAME_LAYS;
+  const setTemplate = (t) => js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(t)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  const frames = () => js(`window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]').length`);
+  await reloadWithStorage({}); // the defaults: a Soldier preset that is not laid until the Frame tool lays it
+  await openEditorTab('editorTabBrick'); await setTemplate(Q.template);
+  await click('brickTool_wall', 800); await click('brickGenerate', 2500);
+  await apply(); const z0 = await heightsSettled(null);
+  const f0 = await frames();
+  // a bug fix: an older build has the pick (it did nothing), so it runs and FAILS there -- only a build without it skips
+  if (!(await exists(Q.pick))) { checkRow('lay', 'Sidebar Frame bands lays the frame (no Frame on the board)', false, '', Q.introducedBy); return; }
+  await click(Q.pick, 2500); const z1 = await heightsSettled(z0);
+  const f1 = await frames();
+  checkRow('lay', 'Sidebar Frame bands lays the frame (no Frame on the board)', f0 === 0 && f1 > 0 && z1 !== z0, `frame bricks ${f0} -> ${f1}, 3D ${z1 !== z0 ? 'changed' : 'UNCHANGED'}`);
+  // template None = the board rectangle (item 66): the row stays live, a pick lays the bands along the board edge
+  await openEditorTab('editorTabBrick'); await setTemplate(''); await apply(); const z2 = await heightsSettled(z1);
+  const g = await jsJSON(`JSON.stringify((()=>{ const b=[...document.querySelectorAll('#${Q.row} button')]; return { n: b.length, off: b.filter((x)=>x.disabled).length }; })())`);
+  await click(Q.noTemplatePick, 2500); const z3 = await heightsSettled(z2);
+  const f3 = await frames();
+  checkRow('lay', 'Sidebar Frame bands under template None lays along the board edge', g.n > 0 && g.off === 0 && f3 > 0 && z3 !== z2, `${g.off}/${g.n} greyed, frame bricks ${f3}, 3D ${z3 !== z2 ? 'changed' : 'UNCHANGED'}`);
 }
 
 async function runBandsNote() {
@@ -974,6 +1069,21 @@ async function runFrameUi() {
   await setValue('brickAccentLevel_band1', -0.0625, 'change'); await sleep(1500);
   await apply(); const Z2 = await heightsSettled(Z1);
   checkRow('frame-ui', 'Accents: band 1 level -1/16 moves the relief', Z2 !== Z1, `3D ${Z2 !== Z1 ? 'changed' : 'UNCHANGED'}`);
+  // F35 item 58 follow-up: a new preset drops the band accents (stored by band number; item 33's corner precedent)
+  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await click('brickFramePreset_soldier_stretcher', 2000);
+  const dropped = await jsJSON(`(async()=>{ const { P } = await import('./core/state.js'); const n=window.svgEditor._sketchLayer.node;
+    return JSON.stringify({ list: P.brickSettings.frameBandAccents, outlined: n.querySelectorAll('[data-brick="frame"][data-brick-accent="1"]').length, frames: n.querySelectorAll('[data-brick="frame"]').length }); })()`);
+  checkRow('frame-ui', 'Accents: a new frame preset drops the band accents', Array.isArray(dropped.list) && dropped.list.length === 0 && dropped.outlined === 0 && dropped.frames > 0,
+    `band accents ${JSON.stringify(dropped.list)}, ${dropped.outlined}/${dropped.frames} frame bricks outlined`);
+  // F35 item 57 (Fred: "always puts them at the bottom, never higher"): a Wall preset reaches the wall's top third
+  await click('brickTool_wall', 900); await click('brickAccent_courseBand', 1500);
+  const reach = await jsJSON(`JSON.stringify((()=>{ const w=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')];
+    const cy=(n)=>{ const q=n.getAttribute('points').trim().split(/\\s+/).map((s)=>Number(s.split(',')[1])); return q.reduce((a,b)=>a+b,0)/q.length; };
+    const ys=w.map(cy), top=Math.min(...ys), btm=Math.max(...ys); const hi=w.filter((n)=>n.getAttribute('data-brick-accent')==='1' && (btm-cy(n))/(btm-top) > 2/3);
+    return { wall: w.length, high: hi.length }; })())`);
+  checkRow('frame-ui', 'Accents: Wall Course bands reach the top third of the wall', reach.wall > 0 && reach.high > 0, `${reach.high} outlined wall bricks in the top third (of ${reach.wall})`);
+  await click('brickAccent_none', 1000);
   // 6. the brush's own accent outlines its bricks
   await openEditorTab('editorTabBrick'); await click('brickTool_brush', 900);
   if (await exists('brickAccent_brush_checker')) {
@@ -1058,7 +1168,7 @@ function layersState() {
     const h = (str) => { let x = 5381; for (let i = 0; i < str.length; i++) x = ((x * 33) ^ str.charCodeAt(i)) >>> 0; return x.toString(36); };
     const polys = (sel) => h(all(sel).map((e) => e.getAttribute('points') || e.getAttribute('d') || '').sort().join('|'));
     const art = [...n.children].filter((e) => !L.isBrickToolNode(e) && !e.hasAttribute('data-brick-record'));
-    return JSON.stringify({ active: String(ed._activeLayer), layers: (ed._layers || []).map((l) => ({ id: String(l.id), name: l.name, carve: l.carve !== false, holdsBricks: !!l.holdsBricks })),
+    return JSON.stringify({ active: String(ed._activeLayer), layers: (ed._layers || []).map((l) => ({ id: String(l.id), name: l.name, carve: l.carve !== false, holdsBricks: !!l.holdsBricks, brickKind: l.brickKind || null })),
       wall: ids('[data-brick="wall"]'), wallN: all('[data-brick="wall"]').length, wallPolys: polys('[data-brick="wall"]'),
       frame: ids('[data-brick="frame"]'), frameN: all('[data-brick="frame"]').length,
       record: ids('[data-brick-record="wall-full"]'),
@@ -1076,6 +1186,10 @@ async function layersRead() {
 // Select tool, then right-click it.
 async function rightClickBrick(kind) {
   await click(BRICK_LAYERS.artworkTab, 800); await click(BRICK_LAYERS.selectTool, 500);
+  // F35 item 64: bricks sit on their kind's own layer, usually NOT the active one, and an inactive layer takes no art-tool
+  // pointer events (.inactive-layer) -- so, like a user, activate the brick's layer first (its row in the Layers list)
+  await js(`(()=>{ const n=window.svgEditor._sketchLayer.node.querySelector('[data-brick="${kind}"]'); const id=n&&n.getAttribute('data-layer'); const row=id&&document.querySelector('#editorLayersList [data-layer-id="'+id+'"]'); if(row) row.click(); return !!row; })()`);
+  await sleep(400);
   const at = await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="${kind}"]')];
     for (const n of ns) { const r=n.getBoundingClientRect(); const x=r.left+r.width/2, y=r.top+r.height/2; if (document.elementFromPoint(x,y)===n) return {x,y}; } return null; })())`);
   if (!at) return false;
@@ -1106,11 +1220,14 @@ async function runBrickLayers() {
   const s0 = await layersRead();
   await click('brickTool_wall', 800); await click('brickGenerate', 2000);
   await click('brickTool_frame', 800); await click('brickGenerate', 2000);
-  // 1. a fresh board: Wall + Frame land on the active layer, no layer is added
+  // 1. F35 item 64 (supersedes slice 3's "on the active layer"): a fresh board: Wall + Frame each land on their KIND's
+  // own layer, created on first use ("Wall", "Frame"); the active layer is untouched; no legacy holdsBricks layer
   const s1 = await layersRead();
-  checkRow('layers', 'Fresh board: Wall + Frame on the active layer, no new layer',
-    s1.wallN > 0 && s1.frameN > 0 && s1.wall.length === 1 && s1.wall[0] === s1.active && s1.frame.length === 1 && s1.frame[0] === s1.active && s1.layers.length === s0.layers.length && !s1.layers.some((l) => l.holdsBricks),
-    `active ${s1.active}; wall on ${s1.wall}, frame on ${s1.frame}; layers ${s0.layers.length} -> ${s1.layers.length}${s1.layers.some((l) => l.holdsBricks) ? ', a holdsBricks layer' : ''}`);
+  const kindId = (st, kind) => (st.layers.find((l) => l.brickKind === kind) || {}).id;
+  checkRow('layers', 'Fresh board: Wall + Frame each on their own kind layer (item 64)',
+    s1.wallN > 0 && s1.frameN > 0 && s1.wall.length === 1 && s1.wall[0] === kindId(s1, 'wall') && s1.frame.length === 1 && s1.frame[0] === kindId(s1, 'frame')
+      && s1.layers.length === s0.layers.length + 2 && s1.active === s0.active && !s1.layers.some((l) => l.holdsBricks),
+    `active ${s0.active} -> ${s1.active}; wall on ${s1.wall} (Wall = ${kindId(s1, 'wall')}), frame on ${s1.frame} (Frame = ${kindId(s1, 'frame')}); layers ${s0.layers.length} -> ${s1.layers.length}`);
   // 2. Move to layer -> New layer...: the whole wall + its record move, the frame stays; one undo step brings it back
   let moved = false, detail = '';
   if (await rightClickBrick('wall')) {
@@ -1173,7 +1290,8 @@ async function runBrickLayers() {
     const sb = await layersRead();
     if (o.item === 'editorClear_bricks') {
       const shared = sa.artLayers.some((id) => sa.wall.includes(id));
-      checkRow('layers', 'Clear Bricks: every brick goes, the art on its layer stays', shared && sa.wallN > 0 && sb.wallN === 0 && sb.frameN === 0 && sb.brushN === 0 && sb.artN === sa.artN,
+      // item 64: the wall sits on its own kind layer, so art and bricks no longer share a layer by default (shared is reported)
+      checkRow('layers', 'Clear Bricks: every brick goes, the art on its layer stays', sa.wallN > 0 && sb.wallN === 0 && sb.frameN === 0 && sb.brushN === 0 && sb.artN === sa.artN,
         `art on ${sa.artLayers}, wall on ${sa.wall} (shared ${shared}); bricks ${sa.wallN + sa.frameN} -> ${sb.wallN + sb.frameN + sb.brushN}; art ${sa.artN} -> ${sb.artN}`);
     } else {
       const kept = sa.wall.every((id) => sb.layers.some((l) => l.id === id));
@@ -1182,7 +1300,8 @@ async function runBrickLayers() {
     }
     void f0;
   }
-  // 7. a Brush stroke with Layer 2 active: spine + bricks on Layer 2; moving one brick moves the spine and every piece
+  // 7. F35 item 64: a Brush stroke with Layer 2 active goes on the "Brush" kind layer (was: the active Layer 2), spine and
+  // bricks; moving one brick moves the spine and every piece
   await reloadWithStorage({});
   await openEditorTab('editorTabBrick');
   await click(B.addLayer, 900);
@@ -1191,9 +1310,10 @@ async function runBrickLayers() {
   await click('brickTool_brush', 900);
   await drag(B.stroke); await sleep(1500);
   const s7 = await layersRead();
-  checkRow('layers', 'A Brush stroke goes on the active layer (Layer 2), spine and bricks',
-    s7.brushN > 0 && s7.brush.length === 1 && s7.brush[0] === layer2 && s7.spine.length === 1 && s7.spine[0] === layer2 && s7a.layers.length >= 2,
-    `active ${layer2} of ${s7a.layers.length} layers; bricks (${s7.brushN}) on ${s7.brush}, spine on ${s7.spine}`);
+  const brushId = (s7.layers.find((l) => l.brickKind === 'brush') || {}).id;
+  checkRow('layers', 'A Brush stroke goes on the Brush kind layer (item 64), spine and bricks',
+    s7.brushN > 0 && !!brushId && brushId !== layer2 && s7.brush.length === 1 && s7.brush[0] === brushId && s7.spine.length === 1 && s7.spine[0] === brushId && s7a.layers.length >= 2,
+    `active ${layer2} of ${s7a.layers.length} layers; Brush layer ${brushId}; bricks (${s7.brushN}) on ${s7.brush}, spine on ${s7.spine}`);
   const layer1 = s7a.layers.find((l) => l.id !== layer2);
   let m7 = 'no brush piece under the pointer';
   if (layer1 && await rightClickBrick('brush')) { const a = await menuRow(B.menuMove); await sleep(400); const b = await menuRow(layer1.name); await sleep(1500); m7 = `menu ${a}/${b}`; }
@@ -1201,6 +1321,30 @@ async function runBrickLayers() {
   checkRow('layers', 'Move one brush piece to Layer 1: its spine and every piece follow',
     !!layer1 && s7b.brushN === s7.brushN && s7b.brush.join() === layer1.id && s7b.spine.join() === layer1.id,
     `${m7}; bricks (${s7b.brushN}) on ${s7b.brush}, spine on ${s7b.spine} (Layer 1 = ${layer1 ? layer1.id : 'none'})`);
+  if (await editorOpen()) await apply();
+  // 8. F35 item 40: the Brick tab shows the layers (hosted in its panel) with the Wall tool picked; a row picked there
+  // is where the lay goes; Artwork gets the ONE list back
+  const T = B.brickTab;
+  if (!(await exists(T.slot)) && !(await js(`fetch('./bspline_gen_palette.html').then(r=>r.text()).then(t=>t.includes('id="${T.slot}"'))`))) {
+    checkRow('layers', 'Brick tab: the layers show with a tool, a picked row takes the lay', false, '', 'F35 item 40'); return;
+  }
+  await reloadWithStorage({});
+  await openEditorTab(B.artworkTab); await click(B.addLayer, 900);
+  await openEditorTab('editorTabBrick'); await click(T.wallTool, 900);
+  const vis = await jsJSON(`JSON.stringify((()=>{ const l=document.getElementById(${JSON.stringify(T.list)}); const slot=document.getElementById(${JSON.stringify(T.slot)});
+    const rows=[...l.querySelectorAll('[data-layer-id]')]; const r=l.getBoundingClientRect();
+    return { hosted: !!slot && slot.contains(l), shown: l.offsetParent !== null && r.height > 0, rows: rows.map((e)=>e.getAttribute('data-layer-id')), active: String(window.svgEditor._activeLayer) }; })())`);
+  const pick = vis.rows.find((id) => id !== vis.active);
+  if (pick) { await js(`document.querySelector('#${T.list} [data-layer-id="${pick}"]').click()`); await sleep(600); }
+  await click(T.generate, 2000);
+  const on = await jsJSON(`JSON.stringify([...new Set([...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].map((n)=>n.getAttribute('data-layer')))])`);
+  await openEditorTab(B.artworkTab);
+  const home = await js(`!document.getElementById(${JSON.stringify(T.slot)}).contains(document.getElementById(${JSON.stringify(T.list)})) && !!document.getElementById(${JSON.stringify(T.list)}).offsetParent`);
+  // item 64: a picked row is the ACTIVE layer, but a NEW wall goes on its own "Wall" kind layer, not the picked one
+  const wallKind = (await layersRead()).layers.find((l) => l.brickKind === 'wall');
+  checkRow('layers', 'Brick tab: the layers show with a tool; a new wall goes on the Wall layer, not the picked row',
+    vis.hosted && vis.shown && vis.rows.length >= 2 && !!pick && !!wallKind && on.length === 1 && on[0] === wallKind.id && wallKind.id !== pick && home,
+    `hosted ${vis.hosted}, shown ${vis.shown}, rows ${vis.rows.length}; picked ${pick}: wall on ${on} (Wall = ${wallKind ? wallKind.id : 'none'}); Artwork has the list back ${home}`);
   if (await editorOpen()) await apply();
 }
 
@@ -1234,6 +1378,34 @@ async function overlapPairs(a, b, tol) {
   let pairs = 0;
   for (const p of a) for (const q of b) if (Math.abs(G.signedArea(G.polygonIntersection(p, q))) > tol) pairs++;
   return pairs;
+}
+
+// F35 item 62: joint height vs brick height per grout profile (GROUT_JOINTS), median over the wall's interior
+function jointProbe() { return `(async()=>{ const m=await import('./core/state.js'); const { pointInPolygon } = await import('./core/bricks/index.js');
+  const r=m.lastResult, h=r.heights, base=r.baseHeights, nx=r.nx, nz=r.nz, W=m.P.widthIn, H=m.P.heightIn;
+  const bb=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick="wall"]')].map((n)=>{
+    const p=n.getAttribute('points').trim().split(/\\s+/).map((s)=>{ const [x,y]=s.split(',').map(Number); return {x,y}; });
+    return { p, x0:Math.min(...p.map((q)=>q.x)), x1:Math.max(...p.map((q)=>q.x)), y0:Math.min(...p.map((q)=>q.y)), y1:Math.max(...p.map((q)=>q.y)) }; });
+  const inB=(x,y)=>bb.some((b)=>x>=b.x0&&x<=b.x1&&y>=b.y0&&y<=b.y1&&pointInPolygon(x,y,b.p)); const R=0.04;
+  const brick=[], joint=[];
+  for (let j=0;j<nz;j++) for (let i=0;i<nx;i++){ const k=j*nx+i, x=i/(nx-1)*W, y=H*(1-j/(nz-1)), d=h[k]-(base?base[k]:0);
+    if (inB(x,y)) brick.push(d); else if ((inB(x+R,y)&&inB(x-R,y))||(inB(x,y+R)&&inB(x,y-R))) joint.push(d); }
+  const med=(a)=>{ const s=[...a].sort((u,v)=>u-v); return s.length ? s[Math.floor((s.length-1)/2)] : null; };
+  return JSON.stringify({ brick: med(brick), joint: med(joint), joints: joint.length }); })()`; }
+async function runGroutJoints() {
+  const G = GROUT_JOINTS;
+  await openEditorTab('editorTabBrick');
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(G.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  await click(G.wallTool, 800); await click('brickGenerate', 3000);
+  let Z = null;
+  for (const pr of G.profiles) {
+    if (!(await exists(pr.button))) { checkRow('grout', `Grout: ${pr.name}`, false, 'control missing', G.introducedBy); continue; }
+    if (!(await editorOpen())) await openEditorTab('editorTabBrick');
+    await click(pr.button, 1200); await apply(); Z = await heightsSettled(Z);
+    const m = await jsJSON(jointProbe());
+    const ok = m.joints > 0 && ('jointOverBrickAtLeast' in pr ? m.joint >= pr.jointOverBrickAtLeast * m.brick : m.joint < pr.jointBelow);
+    checkRow('grout', `Grout: ${pr.name}`, ok, `joint median ${m.joint?.toFixed(4)} in vs brick median ${m.brick?.toFixed(4)} in over ${m.joints} joint cells`);
+  }
 }
 
 async function runWallAreas() {
@@ -1280,7 +1452,9 @@ async function runWallAreas() {
   // 5. Select on an area brings its own settings back
   await click('brickTool_wall', 700); await click(A.selectTool, 700);
   const at = await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].filter((e)=>e.getAttribute('data-brick-owner')===${JSON.stringify(a)});
-    for (const n of ns) { const q=n.getBoundingClientRect(); const x=q.left+q.width/2, y=q.top+q.height/2; if (document.elementFromPoint(x,y)===n) return {x,y}; } return null; })())`);
+    // item 64: the area's bricks sit on the Wall layer, usually not the active one, so they take no pointer events
+    // (.inactive-layer): the Brick tab's Select hit-tests the board point by geometry, so the brick need not be the target
+    for (const n of ns) { const q=n.getBoundingClientRect(); const x=q.left+q.width/2, y=q.top+q.height/2; const top=document.elementFromPoint(x,y); if (top && (top===n || top.closest('svg'))) return {x,y}; } return null; })())`);
   if (at) {
     await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
     await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 });

@@ -61,7 +61,6 @@ const FIXTURE = `
   <span id="stripeColoursLabel">Colours</span><input type="checkbox" id="stripeThree"><button id="stripeColorsReset"></button>
   <div id="stripeColorPresets"></div><div id="stripeColorSwatches"></div><div id="stripeBrickStyles" style="display:none;"></div>
   <div id="stripeTargetHint">Tap a rail, a contour segment or a line.</div>
-  <input type="checkbox" id="brickFrameOffsetOn" checked><input id="brickFrameOffsetDistance" value="0">
   <input id="brickLevel_wall" value="0"><input id="brickLevel_frame" value="0">
   <div id="brickSidebarNoBricks" style="display:none;"></div><div id="brickStartHint" style="display:none;"></div>
   <div id="brickAccentList"></div><button id="brickAccentClick">Click bricks</button>
@@ -81,7 +80,7 @@ function setup(tool = 'wall') {
   const wrap = (el) => { const api = { node: el, attr: (k, v) => { if (v === undefined) return el.getAttribute(k); el.setAttribute(k, String(v)); return api; },
     addClass: (c) => { el.classList.add(c); return api; }, removeClass: (c) => { el.classList.remove(c); return api; }, hasClass: (c) => el.classList.contains(c) }; return api; };
   window.svgEditor = { setMode: vi.fn(), _activeLayer: 'b', _layers: [{ id: 'b', name: 'Layer 1', visible: true }], _undoStack: [],
-    _sketchLayer: { node, group: () => { const el = document.createElementNS('http://www.w3.org/2000/svg', 'g'); node.appendChild(el); return wrap(el); } } };
+    _sketchLayer: { node, children: () => Object.assign([], { toArray: () => [] }) /* svg.js: an array (item 64: a kind layer runs addLayer) */, group: () => { const el = document.createElementNS('http://www.w3.org/2000/svg', 'g'); node.appendChild(el); return wrap(el); } } };
   vi.stubGlobal('requestAnimationFrame', () => 1);
   vi.stubGlobal('cancelAnimationFrame', () => {});
   P.brickSettings.pattern = 'stretcher';

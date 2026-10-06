@@ -260,6 +260,7 @@ export function addLayer(editor, opts = {}) {
   // depth/profile/etc. via opts without us having to enumerate them.
   const layer = { id, name, visible };
   if (opts.holdsBricks) layer.holdsBricks = true; // item 22 slice 1: a brick layer is DECLARED as one
+  if (opts.brickKind) layer.brickKind = opts.brickKind; // item 64: a brick KIND's own layer (BRICK_KIND_LAYERS)
   for (const key in TOOLING_DEFAULTS) {
     if (Object.prototype.hasOwnProperty.call(opts, key)) layer[key] = opts[key];
   }
@@ -764,10 +765,10 @@ export function brickElementNodes(editor, node) {
  *  22. Keyed by the brick's `data-brick` kind: Wall/Frame bricks gained an owner in item 22 slice 1; Brush bricks
  *  have always shipped theirs, so they keep it (byte-identical either way). One declared list. */
 export const BRICK_EDITOR_ONLY_ATTRS = Object.freeze({
-  wall: ['data-brick-owner', 'data-brick-accent-marked'], // + item 31b: the engine's cut mark (brick-accents.js ACCENT_MARK_ATTR)
+  wall: ['data-brick-owner', 'data-brick-accent-marked', 'data-brick-accent'], // + item 31b: the engine's cut mark (brick-accents.js ACCENT_MARK_ATTR); item 49: the accent flag (editor-brick-tool.js ACCENT_FLAG_ATTR)
   // per-element run accents: each band / stroke brick's place on its run's grid (editor-only, like the owner)
-  frame: ['data-brick-owner', 'data-brick-band', 'data-brick-row', 'data-brick-piece'],
-  brush: ['data-brick-band', 'data-brick-row', 'data-brick-piece'],
+  frame: ['data-brick-owner', 'data-brick-band', 'data-brick-row', 'data-brick-piece', 'data-brick-accent'],
+  brush: ['data-brick-band', 'data-brick-row', 'data-brick-piece', 'data-brick-accent'],
 });
 /** Strip BRICK_EDITOR_ONLY_ATTRS from one (plain DOM) element; true when it changed anything. */
 export function stripEditorOnlyBrickAttrs(el) {
@@ -783,6 +784,28 @@ export function stripEditorOnlyBrickAttrs(el) {
  *  mask's rasterizeSvg, Send's art sketches), the brick height mask and Send's Bricks sketch read them instead. */
 export function isBrickToolNode(el) {
   return !!(el && el.getAttribute) && (el.getAttribute('data-brick-gen') === '1' || el.getAttribute('data-brick') === 'brush-spine');
+}
+/** F35 item 64 (Fred: "make wall and frame use their own layers, as brick brush drawing too; they still interact with
+ *  each other"): each brick element KIND lays a NEW element on its OWN layer -- created on first use, reused after,
+ *  found by the layer's declared `brickKind` (persisted; never by its name, which the user may rename) -- instead of
+ *  the active layer (slice 3). An element already laid stays on its record's / spine's layer (saved boards keep their
+ *  bricks where they are; Move to layer still works by hand). The kinds still interact across layers (exclusions,
+ *  drop-don't-cut, the band inset read the elements, not the layers). `tint` = the layer row's mark. The Raised brush's
+ *  strokes share Brush (BRICK_KIND_LAYER_OF). */
+export const BRICK_KIND_LAYERS = Object.freeze({
+  wall: Object.freeze({ name: 'Wall', tint: '#c0503a' }),
+  frame: Object.freeze({ name: 'Frame', tint: '#8a6a44' }),
+  brush: Object.freeze({ name: 'Brush', tint: '#d9963a' }),
+});
+export const BRICK_KIND_LAYER_OF = Object.freeze({ wall: 'wall', frame: 'frame', brush: 'brush', raisedBrush: 'brush' });
+/** The kind's own layer (created, unselected, inside the caller's one undo step, when it does not exist yet), or null
+ *  for a kind with none. */
+export function brickKindLayer(editor, kind) {
+  const key = BRICK_KIND_LAYER_OF[kind];
+  const decl = key && BRICK_KIND_LAYERS[key];
+  if (!editor || !decl) return null;
+  const found = (editor._layers || []).find((l) => l.brickKind === key);
+  return found || addLayer(editor, { name: decl.name, brickKind: key, skipUndo: true });
 }
 /** The LEGACY brick layer (a board from before slice 3 has one, flagged `holdsBricks`), or null. Since slice 3 new
  *  elements go on the active layer; this is read only by the pre-item-22 record migration. */
@@ -835,6 +858,8 @@ function _makeLayerRow(editor, layer, isActive, { compact = false } = {}) {
   const row = document.createElement('div');
   row.className = 'layer-row' + (compact ? ' compact' : '') + (isActive ? ' active' : '');
   row.dataset.layerId = layer.id;
+  const kindDecl = layer.brickKind && BRICK_KIND_LAYERS[layer.brickKind]; // item 64: a brick kind's own layer is marked
+  if (kindDecl) { row.dataset.brickKind = layer.brickKind; row.style.borderLeft = `3px solid ${kindDecl.tint}`; }
 
   const handle = document.createElement('span');
   handle.className = 'layer-handle';

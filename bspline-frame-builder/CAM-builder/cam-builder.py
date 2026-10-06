@@ -1164,13 +1164,18 @@ def _do_preview():
 
 # Fred ("5 ok"): BUILD rebuilds these setups by name (cam_coordinator._cleanup_previous_build deletes them first),
 # taking any operations added by hand -- and NC programs pointing at them -- with them. BUILD now asks first.
-_BUILD_SETUP_NAMES = ('Stock', 'B-spline Back', 'B-spline Top', 'Frame')
+# The names are the coordinator's own cleanup set (derived from SETUP_SPECS), never a second hand-kept list.
+def _build_setup_names():
+    _ensure_engine_path()
+    from cam_engine import cam_coordinator as _co
+    return _co._ADDIN_SETUP_NAMES
 
 
 def _setups_with_operations():
     """[{name, ops}] for each existing build setup that holds operations, in the active document's CAM."""
     out = []
     try:
+        build_names = _build_setup_names()
         doc = adsk.core.Application.get().activeDocument
         for i in range(doc.products.count):
             p = doc.products.item(i)
@@ -1178,7 +1183,7 @@ def _setups_with_operations():
                 cam = adsk.cam.CAM.cast(p)
                 for j in range(cam.setups.count):
                     st = cam.setups.item(j)
-                    if st.name in _BUILD_SETUP_NAMES and st.operations.count > 0:
+                    if st.name in build_names and st.operations.count > 0:
                         out.append({'name': st.name, 'ops': st.operations.count})
                 break
     except Exception:
@@ -1187,7 +1192,7 @@ def _setups_with_operations():
 
 
 def _do_generate(confirmed=False):
-    """B-spline CAM: build the 3 MMs + 4 Setups for the active design.
+    """B-spline CAM: build the declared MMs + Setups (MM_RULES / SETUP_SPECS) for the active design.
 
     Always runs in 'bspline' mode (hardcoded pipeline). The GENERIC tab
     handles generic mode through _do_studio_generate().

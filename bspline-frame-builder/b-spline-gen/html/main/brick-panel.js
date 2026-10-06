@@ -39,10 +39,10 @@ import {
 } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
-import { BRICK_CONTROL_REQUIRES, requirementMet } from './brick-control-requires.js';
+import { BRICK_CONTROL_REQUIRES, requirementMet, FRAME_NEEDS_A_FRAME } from './brick-control-requires.js';
 import { ENGINE_OPTIONS } from '../core/bricks/index.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
-import { frameContourSilhouette } from '../editor/contour-from-frame.js';
+import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.js';
 import { rectToPrimitives } from '../core/inset-window.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
@@ -86,7 +86,7 @@ const BRICK_TOOLS = [
     hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Change a setting to lay it; Generate re-lays.' },
   { id: 'frame', buttonId: 'brickTool_frame', iconSvg: () => brickToolIconSvg('frame'), label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
     subTools: ['select'],
-    hint: 'Bands of bricks along the frame\'s contour (or the board\'s edge with Offset from frame off). Change a setting to lay them; Generate re-lays.' },
+    hint: 'Bands of bricks along the frame\'s outer edge (the board\'s edge when no frame template is picked). Change a setting to lay them; Generate re-lays.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
   // a Brush stroke's own spine is a plain <line> chain, already isCuttable
   // (editor-cut-tool.js) with zero changes needed there. Only applies to
@@ -271,24 +271,6 @@ function syncBrickTopToggle() {
   const flat = P.brickSettings.brickTopMode === 'flat';
   document.getElementById('brickBtnTopOrganic')?.classList.toggle('active', !flat);
   document.getElementById('brickBtnTopFlat')?.classList.toggle('active', flat);
-}
-
-/** F35 item 16: the Frame tool's offset from frame -- the band contour moves, so it is a LAYOUT setting
- *  ('generate': pending until Generate, like every other editor Brick-tab setting). */
-export function setFrameOffset({ on, distance }, commit = 'generate') {
-  const cur = P.brickSettings.frameOffset || { on: true, distance: 0 };
-  const d = Number(distance);
-  P.brickSettings.frameOffset = { on: on === undefined ? cur.on !== false : !!on, distance: Number.isFinite(d) ? d : (cur.distance || 0) };
-  syncFrameOffsetControls();
-  commitBrickSetting(commit);
-}
-
-function syncFrameOffsetControls() {
-  const off = P.brickSettings.frameOffset || { on: true, distance: 0 };
-  const box = document.getElementById('brickFrameOffsetOn');
-  const dist = document.getElementById('brickFrameOffsetDistance');
-  if (box) box.checked = off.on !== false;
-  if (dist) { dist.value = off.distance || 0; dist.disabled = off.on === false; }
 }
 
 /** F35 item 16: an element's LEVEL (height offset, inches), read by the height mask. Audit v2 N6: in the editor
@@ -1103,7 +1085,6 @@ function syncControlsFromState() {
   syncRaisedSection();
   syncBrickTopToggle();
   syncSurfaceStyleToggle();
-  syncFrameOffsetControls();
   syncElementLevels();
   syncAccentControls();
   setPair('brickReliefHeightSlider', 'brickReliefHeight', s.reliefIn);
@@ -1271,7 +1252,9 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
 /** Audit (88's matrix): grey out every control whose declared requirement is unmet
  *  (main/brick-control-requires.js) -- disabled, with the reason as its tooltip. */
 function syncControlRequires() {
-  const ctx = { engineOptions: ENGINE_OPTIONS, facts: { bricksLaid: _bricksLaid() } };
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  // item 63: a frame contour to lay bands along (none only for an outline that can't carry one); unknown without an editor
+  const ctx = { engineOptions: ENGINE_OPTIONS, facts: { bricksLaid: _bricksLaid(), ...(editor ? { frameContour: !!frameBandContour(editor) } : {}) } };
   // a control under several rules is greyed while ANY is unmet (the first unmet rule's reason shows)
   const unmet = new Map(), ruled = new Set(), whys = new Set();
   for (const rule of BRICK_CONTROL_REQUIRES) {
@@ -1504,8 +1487,14 @@ function _layBricks(editor, frameGeom, kinds, { amend = null } = {}) {
 
 /** Audit C1: what Generate lays -- every element kind already on the canvas, plus the active tool's
  *  own kind (BRICK_TOOLS `lays`). Frame needs a usable frame. A Wall alone never brings Frame bands. */
+/** F35 item 63: an element a control asks to LAY even though it is not on the canvas yet (the sidebar's Frame bands
+ *  pick, BRICK_QUICK_SETTINGS `lays`). Kept until the next lay runs -- a deferred lay (_relayOnRelease) still sees
+ *  it -- and dropped by that lay. */
+const _requestedKinds = new Set();
+export function requestLay(kind) { if (BRICK_KINDS.includes(kind)) _requestedKinds.add(kind); }
+
 function _kindsToLay(editor, frameGeom) {
-  const present = _presentKinds(editor);
+  const present = [..._presentKinds(editor), ..._requestedKinds];
   const active = BRICK_TOOLS.find((t) => t.id === _activeTool);
   // a Frame element ON the canvas is always re-laid: with no frame contour left (template Rectangle, Offset on)
   // that lays nothing, i.e. clears it -- stale bands must not stay and carve (turn 207)
@@ -1516,9 +1505,22 @@ function _kindsToLay(editor, frameGeom) {
  *  are already on the canvas, or the active Wall/Frame tool's own output (Frame needs a usable
  *  frame). Wall and Frame are laid together by one runBricks call (editor-brick-tool.js), so there
  *  is no per-element subset to pick. Brush strokes are untouched (frozen at draw time). */
-/** Audit v2 N9: Generate with the Frame tool on a board with no frame laid nothing and said so only in the
- *  console. (Offset from frame OFF lays the bands along the board's edge instead -- no frame needed.) */
-export const FRAME_NEEDS_A_FRAME = "No frame on this board -- pick a frame template, or turn Offset from frame off to lay the bands along the board's edge.";
+/** Audit v2 N9: Generate with the Frame tool on a board with no usable frame outline laid nothing and said so only in
+ *  the console. Since item 66 a board with NO template lays the bands along its rectangle; this is left for a template
+ *  whose outline cannot carry a contour. */
+export { FRAME_NEEDS_A_FRAME }; // declared once in brick-control-requires.js (the toast and the greyed row's reason)
+
+/** F35 item 39 (Fred, on a restored board: "the opened geometry isn't refreshable by a simple Generate; it needs a
+ *  setting changed"): the Generate BUTTON = re-lay now with a NEW brick seed, like the terrain's Generate New Seed --
+ *  unconditionally, every brick element on the board, one undo step (setSeed's re-lay). Measured before: a restored
+ *  board whose settings already matched its pieces re-laid byte-identical bricks (205#yd55hp -> 205#yd55hp), so the
+ *  press showed nothing. The re-lays the app runs by itself (a setting change, a frame or brush change) keep calling
+ *  generateBricks() and keep the seed. BRICK_SEED_RANGE / newBrickSeed: the one seed rule (Random seed reads it too). */
+export const BRICK_SEED_RANGE = 1000000;
+export const newBrickSeed = () => Math.floor(Math.random() * BRICK_SEED_RANGE);
+export function generateNow() {
+  setSeed(newBrickSeed());
+}
 
 export function generateBricks({ amend = null } = {}) {
   _cancelLivePreview();
@@ -1527,6 +1529,7 @@ export function generateBricks({ amend = null } = {}) {
   if (!editor) return false;
   const frameGeom = resolveFrameGeom(editor);
   const kinds = _kindsToLay(editor, frameGeom);
+  _requestedKinds.clear(); // item 63: a request is for the next lay only
   if (!frameGeom && BRICK_TOOLS.find((t) => t.id === _activeTool)?.lays === 'frame') showToast(FRAME_NEEDS_A_FRAME, 'warn');
   if (!kinds.length) return false;
   return _layBricks(editor, frameGeom, kinds, { amend }) !== false;
@@ -1655,14 +1658,12 @@ function syncStartHint() {
   hint.style.display = getEditorTab() === 'brick' && _activeTool === null && !anyBricks ? '' : 'none';
 }
 
+/** F35 item 40 (supersedes item 16's swap): the Brick tab shows its OWN panel always -- the pinned Generate and the
+ *  shared Layers component it hosts (editor-tabs.js EDITOR_TABS brick.panelHosts) -- with or without a tool. Measured
+ *  before: with a tool picked the layers were hidden (desktop + 900 px), and with none the panel swapped to Layers,
+ *  which hid Generate on a restored board (item 39 (c)). Only the start hint still depends on "no tool". */
 function syncEmptySelectionPanel() {
   syncStartHint();
-  if (getEditorTab() !== 'brick') return;
-  const brickPanel = document.getElementById('editorBrickPanel');
-  const layersPanel = document.getElementById('editorLayersPanel');
-  const showLayers = _activeTool === null;
-  if (brickPanel) brickPanel.style.display = showLayers ? 'none' : '';
-  if (layersPanel) layersPanel.style.display = showLayers ? '' : 'none';
 }
 
 /** F35 (advisor: "Esc = back to the select tool in every tab"): Brick has no Select tool of its
@@ -1706,10 +1707,31 @@ export function setFrameRock(rock, commit = 'generate') {
   commitBrickSetting(commit);
 }
 
+/** F35 item 46: a course pattern picked on band `i`. The pattern implies the set, both ways, in one place: Fieldstone
+ *  makes the whole frame rock (setFrameRock; its set is DERIVED, editor-brick-tool.js elementSetId -> the rock set),
+ *  and a course pattern on a rock frame leaves rock first -- every band back to the preset's own, then band `i` --
+ *  so the frame's own brick set (setIds.frame, never overwritten while rock; else the default Red Brick) is back. */
+export function setFrameBandPattern(i, patternId, commit = 'generate') {
+  if (isRockFrame(P.brickSettings)) P.brickSettings.frameBandPatterns = [];
+  if (!P.brickSettings.frameBandPatterns) P.brickSettings.frameBandPatterns = [];
+  P.brickSettings.frameBandPatterns[i] = patternId;
+  syncFrameBandPatternButtons();
+  syncFrameCornerButtons();
+  syncSetPicker();
+  commitBrickSetting(commit);
+}
+
+/** What a new Frame band PRESET drops, declared once (Fred, item 33: "a pick is dropped on a preset change"):
+ *  the corner pick (the preset starts on its OWN corner) and, F35 item 58 follow-up, the per-band accents (and
+ *  with them their levels) -- they are stored by band NUMBER, so an old pick would land on the new preset's band.
+ *  A pattern change on one band keeps that band's accent (setFrameBandPattern does not read this). */
+export const FRAME_PRESET_DROPS = Object.freeze({ frameCorner: () => null, frameBandAccents: () => [] });
+
 export function setFrameBandPreset(presetId, commit = 'generate') {
   const wasRock = isRockFrame(P.brickSettings);
   P.brickSettings.frameBandPreset = presetId;
-  P.brickSettings.frameCorner = null; // item 33: a new preset starts on its OWN corner (the picker overrides)
+  for (const [key, fresh] of Object.entries(FRAME_PRESET_DROPS)) P.brickSettings[key] = fresh();
+  if (_accentClickArmed && _accentClickTarget.kind === 'frameBand') _disarmAccentClick(); // its band's pick is gone
   // a rock frame stays rock with another band count: every band of the new preset fieldstone
   if (wasRock) P.brickSettings.frameBandPatterns = (FRAME_PRESETS[presetId] || []).map(() => 'fieldstone');
   syncFramePresetButtons();
@@ -2007,9 +2029,9 @@ function renderFrameBandPatternList(container) {
   const heading = document.getElementById('brickFrameBandPatternLabel');
   if (heading) heading.style.display = show ? '' : 'none';
   container.style.display = show ? '' : 'none';
-  // F35 item 23: a ROCK frame (fieldstone bands) offers only the fieldstone band (the engine lays every band of a
-  // rock frame as the fieldstone ring); a brick frame offers the brick patterns + every `bandCapable` one
-  const rock = isRockFrame(P.brickSettings);
+  // F35 item 46 (Fred: "these can't be changed back after clicking"): a band row ALWAYS lists every pattern a band can
+  // lay, whatever the frame's set -- item 23 listed only Fieldstone on a rock frame, and the user was trapped there.
+  // What a pick does to the set is setFrameBandPattern's rule below.
   // F35 item 35: a band the last lay dropped to fit the board (bandsReduced.kept) greys out, with why
   const keptBands = _bandsReduced ? _bandsReduced.kept : bands.length;
   bands.forEach((band, i) => {
@@ -2027,7 +2049,6 @@ function renderFrameBandPatternList(container) {
     row.appendChild(label);
     for (const pattern of WALL_PATTERN_LIST) {
       const def = BRICK_PATTERNS[pattern.id];
-      if (rock && pattern.id !== 'fieldstone') continue;
       if (!bandCanLay(def)) continue; // advisor (turn 261): a band lists only what a band can lay; the rest is absent
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -2042,12 +2063,7 @@ function renderFrameBandPatternList(container) {
         // picking it on one band makes the whole frame rock: every band fieldstone (one set per element)
         btn.addEventListener('click', () => setFrameRock(true));
       } else {
-        btn.addEventListener('click', () => {
-          if (!P.brickSettings.frameBandPatterns) P.brickSettings.frameBandPatterns = [];
-          P.brickSettings.frameBandPatterns[i] = pattern.id;
-          syncFrameBandPatternButtons();
-          commitBrickSetting();
-        });
+        btn.addEventListener('click', () => setFrameBandPattern(i, pattern.id));
       }
       row.appendChild(btn);
     }
@@ -2373,10 +2389,13 @@ const BRICK_QUICK_SETTINGS = [
     isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
   { id: 'pattern', label: 'Wall pattern', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternIconSvg(c.id, 24),
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
+  // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
+  // (`lays`), or re-lays it; greyed while the board has no frame contour (BRICK_CONTROL_REQUIRES 'frameContour')
   { id: 'frameBands', label: 'Frame bands', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetIconSvg(c.id, 24),
-    isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
+    lays: 'frame', isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
 ];
 const quickButtonId = (row, choice) => `brickQuick_${row.id}_${choice.id}`;
+const quickRowId = (row) => `brickQuickRow_${row.id}`;
 
 function renderQuickSettings(container) {
   if (!container) return;
@@ -2387,6 +2406,7 @@ function renderQuickSettings(container) {
     label.textContent = row.label;
     container.appendChild(label);
     const list = document.createElement('div');
+    list.id = quickRowId(row);
     list.style.cssText = 'display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;';
     for (const choice of row.choices()) {
       const btn = document.createElement('button');
@@ -2397,7 +2417,7 @@ function renderQuickSettings(container) {
       const icon = row.iconFor && row.iconFor(choice);
       if (icon) { btn.innerHTML = icon; btn.title = choice.label; btn.setAttribute('aria-label', choice.label); btn.style.padding = '2px'; }
       else btn.textContent = choice.label;
-      btn.addEventListener('click', () => row.apply(choice));
+      btn.addEventListener('click', () => { if (row.lays) requestLay(row.lays); row.apply(choice); });
       list.appendChild(btn);
     }
     container.appendChild(list);
@@ -2440,14 +2460,21 @@ const BRUSH_PRESET_LIST = [
  *  own brick-length-only special case) -- Frame bands now resolve the SAME global brick length as
  *  Wall/Brush, via `scale` (editor-brick-tool.js's own scaleFor), which generateBricks already
  *  threads to both uniformly. */
-/** The contour the Frame bands follow (F35 item 16, P.brickSettings.frameOffset): ON = the frame's outer
- *  edge offset by `distance` (the SAME frameContourSilhouette the Shape Lattice's offset-from-frame uses);
- *  OFF = free placement, the board's own outline. null = no usable contour. */
+/** The contour the Frame bands follow -- and, with no Frame element, the wall (item 42): F35 item 66 (Fred: "the brick
+ *  frame is always offset from frame anyway, so remove that"): the frame's OUTER edge; with no frame template, the board
+ *  rectangle. LEGACY_FRAME_OFFSET: the retired Offset-from-frame control is no longer shown or written, but a board saved
+ *  with it keeps laying as before (OFF = the board rectangle, a distance = the edge offset by it). null = a template whose
+ *  outline cannot carry a contour (FRAME_NEEDS_A_FRAME). */
+const LEGACY_FRAME_OFFSET = Object.freeze({ on: true, distance: 0 });
 function frameBandContour(editor) {
-  const off = P.brickSettings.frameOffset || { on: true, distance: 0 };
-  if (off.on === false) return rectToPrimitives({ x1: 0, y1: 0, x2: editor._mW, y2: editor._mH });
+  const off = P.brickSettings.frameOffset || LEGACY_FRAME_OFFSET;
+  const rect = () => rectToPrimitives({ x1: 0, y1: 0, x2: editor._mW, y2: editor._mH });
+  if (off.on === false) return rect();
   const ctx = frameContext(editor);
-  const sil = ctx ? frameContourSilhouette(ctx, Number(off.distance) || 0, 0) : { error: 'noFrame' };
+  // item 66: no frame template = the board rectangle. MEASURED live (seat D, item 63): under template None the
+  // provider still returns a context ({defs, record} with no templateId), so `!ctx` alone never fired there
+  if (!ctx || !hasFrame(ctx)) return rect();
+  const sil = frameContourSilhouette(ctx, Number(off.distance) || 0, 0);
   return sil.error ? null : sil.primitives;
 }
 
@@ -2574,8 +2601,6 @@ export function initBrickPanel() {
   document.getElementById('stripeThree')?.addEventListener('change', () => { syncStripeBrickStyles(); });
   document.addEventListener('editorTabChanged', () => syncStripePanelContext());
   bindSlider('brickSurfaceWearSlider', 'brickSurfaceWear', 'surfaceWear', (v) => Math.max(0, Math.min(1, parseFloat(v))), 'surface');
-  document.getElementById('brickFrameOffsetOn')?.addEventListener('change', (e) => setFrameOffset({ on: e.target.checked }));
-  document.getElementById('brickFrameOffsetDistance')?.addEventListener('change', (e) => setFrameOffset({ distance: e.target.value }));
   for (const kind of BRICK_KINDS) {
     document.getElementById(`brickLevel_${kind}`)?.addEventListener('change', (e) => setElementLevel(kind, e.target.value));
   }
@@ -2601,8 +2626,8 @@ export function initBrickPanel() {
     commitBrickSetting('generate', 'onDrag');
     settleSeed();
   });
-  document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => setSeed(Math.floor(Math.random() * 1000000)));
-  document.getElementById('brickGenerate')?.addEventListener('click', () => generateBricks());
+  document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => setSeed(newBrickSeed()));
+  document.getElementById('brickGenerate')?.addEventListener('click', () => generateNow()); // item 39: a new seed, every element
   document.addEventListener('editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); });
   document.addEventListener('bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
   // the frame changed (template, shape): re-lay once it settles (item 27 -- the editor too; a template with no

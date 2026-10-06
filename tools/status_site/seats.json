@@ -9,10 +9,10 @@
       "key": "seatA",
       "name": "Seat A",
       "station": "home-pc",
-      "branch": "main",
+      "branch": "cam-82",
       "task": "NEXT-SESSION.md",
-      "checkout": "",
-      "session": "",
+      "checkout": "-wt?",
+      "session": "b-spline-generator-web-addin-77",
       "shots": [
         "seatA",
         "advisor",
@@ -23,26 +23,65 @@
       "key": "seatB",
       "name": "Seat B",
       "station": "home-pc",
-      "branch": "lane-b",
+      "branch": "neck-medial",
       "task": "NEXT-SESSION-lane-b.md",
-      "checkout": "-lane-b",
-      "session": "b-spline-generator-web-addin-88",
+      "checkout": "-wt\fc",
+      "session": "b-spline-generator-web-addin-fc",
       "shots": [
         "seatB",
-        "seat88"
+        "seat88",
+        "seatfc"
       ]
     },
     {
       "key": "seatC",
       "name": "Seat C",
       "station": "home-pc",
-      "branch": "fb-app",
+      "branch": "pattern-builder",
       "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "-fb-app",
-      "session": "b-spline-generator-web-addin-37",
+      "checkout": "-wt\u0002",
+      "session": "b-spline-generator-web-addin-02",
       "shots": [
         "seatC",
-        "seat37"
+        "seat37",
+        "seat02"
+      ]
+    },
+    {
+      "key": "seatD",
+      "name": "Seat D",
+      "station": "home-pc",
+      "branch": "brick-3d-bugs",
+      "task": "NEXT-SESSION-fb-app.md",
+      "checkout": "-wt\bb",
+      "session": "b-spline-generator-web-addin-bb",
+      "shots": [
+        "seatD",
+        "seatbb"
+      ]
+    },
+    {
+      "key": "seatE",
+      "name": "Seat E",
+      "station": "home-pc",
+      "branch": "grout-svg",
+      "task": "NEXT-SESSION-fb-app.md",
+      "checkout": "-wt\\61",
+      "session": "b-spline-generator-web-addin-61",
+      "shots": [
+        "seatE"
+      ]
+    },
+    {
+      "key": "seatF",
+      "name": "Seat F",
+      "station": "home-pc",
+      "branch": "load-stages",
+      "task": "NEXT-SESSION-fb-app.md",
+      "checkout": "-wt\\fa",
+      "session": "b-spline-generator-web-addin-fa",
+      "shots": [
+        "seatF"
       ]
     }
   ]

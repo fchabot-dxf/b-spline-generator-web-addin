@@ -49,7 +49,7 @@
  * BRICK_ELEMENT_ATTR/BRICK_SETTINGS_ATTR/reconstructChains/
  * regenerateOwnedBrickElements block below for the full mechanism.
  */
-import { ensureActiveLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR, BRICK_ELEMENT_ATTR, BRICK_OWNER_ATTR, brickElementNodes } from './layers.js';
+import { ensureActiveLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR, BRICK_ELEMENT_ATTR, BRICK_OWNER_ATTR, brickElementNodes, brickKindLayer } from './layers.js';
 import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
@@ -97,10 +97,10 @@ export function layerOfElement(editor, kind) {
   const rec = brickRecordNode(editor, kind);
   return (rec && layerById(editor, rec.getAttribute('data-layer'))) || null;
 }
-/** The layer a Wall / Frame element lays on: its record's, else (a new element) the active layer. */
+/** The layer a Wall / Frame element lays on: its record's, else (a new element) its KIND's own layer (item 64). */
 export function elementLayer(editor, kind) {
   const rec = brickRecordNode(editor, kind);
-  return (rec && layerById(editor, rec.getAttribute('data-layer'))) || activeLayerOf(editor);
+  return (rec && layerById(editor, rec.getAttribute('data-layer'))) || brickKindLayer(editor, kind) || activeLayerOf(editor);
 }
 /** Does this layer hold laid brick pieces (its height mask is the brick mask)? Read off the drawing, per layer. */
 export function layerHasBrickPieces(editor, layerId) {
@@ -290,7 +290,7 @@ export function addWallAreaStroke(editor, stroke, settings, areaId = null) {
   const full = editor._sketchLayer.node.querySelector(`[${BRICK_RECORD_ATTR}="${BRICK_RECORD_KINDS.wall}"]`);
   if (full) full.remove();
   const id = newBrickElementId();
-  const rec = onBricksLayer(editor, activeLayerOf(editor), editor._sketchLayer.group()).attr('display', 'none').node;
+  const rec = onBricksLayer(editor, brickKindLayer(editor, 'wall') || activeLayerOf(editor), editor._sketchLayer.group()).attr('display', 'none').node; // item 64
   rec.setAttribute(BRICK_RECORD_ATTR, WALL_AREA_RECORD);
   rec.setAttribute(BRICK_ELEMENT_ATTR, id);
   rec.setAttribute(BRICK_AREA_SEQ_ATTR, String(Math.max(0, ...areas.map((a) => a.seq)) + 1));
@@ -805,19 +805,29 @@ const _nodePolygon = (n) => (n.getAttribute('points') || '').trim().split(/\s+/)
 });
 export const wallBrickPolygons = (editor) => wallBrickNodes(editor).map((n) => ({ polygon: _nodePolygon(n) }));
 
-/** F35 item 15: shows which Wall bricks the raised accent lifts -- a dark outline + `data-brick-accent` on
- *  each, from the SAME rule the height mask applies (brick-accents.js accentedBrickIndices). 2D only. */
+/** F35 item 15: shows which Wall bricks the raised accent lifts -- an amber outline on each, from the SAME rule the
+ *  height mask applies (brick-accents.js accentedBrickIndices). 2D only.
+ *  F35 item 49 (Fred: "raised bricks get a yellow edge... in the 3D view"): the outline was a stroke ATTRIBUTE on the
+ *  brick node, so it travelled with the drawing -- measured: 12 marked bricks = 12 "#ffc61a" in editor.save(), in the
+ *  3D drape (core/preview/drape-svg.js colours an element stroke-first) and in the saved board. Now the node carries
+ *  only the inert flag (ACCENT_FLAG_ATTR, stripped from Send / the download: layers.js BRICK_EDITOR_ONLY_ATTRS) and the
+ *  outline is ONE CSS rule of the live page (ensureAccentOutlineStyle), which no serialized SVG carries. */
 export const ACCENT_OUTLINE = Object.freeze({ color: '#ffc61a', widthIn: 0.05 }); // amber: reads against the photo's own dark joints
+export const ACCENT_FLAG_ATTR = 'data-brick-accent';
+const ACCENT_STYLE_ID = 'brickAccentOutlineStyle';
+/** The live editor's outline rule (CSS px = SVG user units = inches here), injected once from ACCENT_OUTLINE. */
+export function ensureAccentOutlineStyle(doc = typeof document !== 'undefined' ? document : null) {
+  if (!doc || !doc.head || doc.getElementById(ACCENT_STYLE_ID)) return;
+  const style = doc.createElement('style');
+  style.id = ACCENT_STYLE_ID;
+  style.textContent = `[${ACCENT_FLAG_ATTR}="1"] { stroke: ${ACCENT_OUTLINE.color}; stroke-width: ${ACCENT_OUTLINE.widthIn}px; }`;
+  doc.head.appendChild(style);
+}
 function _markAccent(n, on) {
-  if (on) {
-    n.setAttribute('data-brick-accent', '1');
-    n.setAttribute('stroke', ACCENT_OUTLINE.color);
-    n.setAttribute('stroke-width', String(ACCENT_OUTLINE.widthIn));
-  } else if (n.hasAttribute('data-brick-accent')) {
-    n.removeAttribute('data-brick-accent');
-    n.setAttribute('stroke', 'none');
-    n.removeAttribute('stroke-width');
-  }
+  // a board saved before item 49 carries the old stroke attribute: it goes, whatever the mark
+  if (n.getAttribute('stroke') === ACCENT_OUTLINE.color) { n.setAttribute('stroke', 'none'); n.removeAttribute('stroke-width'); }
+  if (on) n.setAttribute(ACCENT_FLAG_ATTR, '1');
+  else if (n.hasAttribute(ACCENT_FLAG_ATTR)) n.removeAttribute(ACCENT_FLAG_ATTR);
 }
 /** Per-element accents on RUNS (advisor): the same outline on the Frame bands' and the Brush strokes' accented
  *  bricks, from the SAME rule the mask applies (brick-accents.js accentedRunIndices on each run's own grid). */
@@ -825,6 +835,7 @@ export function syncRunAccentHighlight(editor, settings) {
   const node = editor && editor._sketchLayer && editor._sketchLayer.node;
   if (!node || !node.querySelectorAll || !settings) return 0;
   const seed = settings.seed || 1;
+  ensureAccentOutlineStyle();
   const asRun = (n) => ({ polygon: _nodePolygon(n), row: Number(n.getAttribute('data-brick-row')) || 0, piece: Number(n.getAttribute('data-brick-piece')) || 0 });
   let count = 0;
   const apply = (nodes, acc) => {
@@ -850,17 +861,8 @@ export const markOf = (n) => (n.hasAttribute(ACCENT_MARK_ATTR) ? { accentMarked:
 export function syncAccentHighlight(editor, accent, seed) {
   const nodes = wallBrickNodes(editor);
   const raised = accentedBrickIndices(nodes.map((n) => ({ polygon: _nodePolygon(n), ...markOf(n) })), accent, { seed: seed || 1 });
-  nodes.forEach((n, k) => {
-    if (raised.has(k)) {
-      n.setAttribute('data-brick-accent', '1');
-      n.setAttribute('stroke', ACCENT_OUTLINE.color);
-      n.setAttribute('stroke-width', String(ACCENT_OUTLINE.widthIn));
-    } else if (n.hasAttribute('data-brick-accent')) {
-      n.removeAttribute('data-brick-accent');
-      n.setAttribute('stroke', 'none');
-      n.removeAttribute('stroke-width');
-    }
-  });
+  ensureAccentOutlineStyle();
+  nodes.forEach((n, k) => _markAccent(n, raised.has(k)));
   return raised.size;
 }
 
@@ -1017,9 +1019,22 @@ function _layInput(editor, settings, frameGeom) {
 export const wallAreaSettings = (editor, area, settings) =>
   (editor && area.id === editor._brickWallAreaId ? settings : withWallFields(settings, area.settings));
 
+/** F35 item 42 (Fred: "I don't always use frames"): the frame's BANDS bound the wall only when there is a Frame element
+ *  (laid now, or already on the board); with none, the wall fills the frame's contour itself -- the template's outer edge,
+ *  the board rectangle for template None -- with no band reserve. Measured before: T18 7x10, 0.75 in, Wall only, no Frame
+ *  element: the wall spanned x 1.00-6.00, y 1.00-7.99 (the preset's Soldier band depth kept clear on every side). */
+export function frameGeomForLay(editor, frameGeom, kinds = BRICK_KINDS) {
+  if (!frameGeom) return frameGeom;
+  const frameElement = kinds.includes('frame') || !!brickRecordNode(editor, 'frame');
+  return frameElement ? frameGeom : { ...frameGeom, bands: [] };
+}
+
 function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
+  frameGeom = frameGeomForLay(editor, frameGeom, kinds); // item 42
   // item 22 slice 3: each element on its own layer (its record's; a new one on the active layer)
-  const layerOf = { wall: elementLayer(editor, 'wall'), frame: elementLayer(editor, 'frame') };
+  // item 64: only the kinds laid NOW resolve a layer (resolving creates a kind layer: never on a mere lookup -- measured: a
+  // Wall-only lay had created an empty "Frame" layer)
+  const layerOf = Object.fromEntries(kinds.map((k) => [k, elementLayer(editor, k)]));
   const wallSettings = elementSettings(settings, 'wall');
   const frameSettings = elementSettings(settings, 'frame');
   const input = _layInput(editor, settings, frameGeom);
@@ -1295,7 +1310,7 @@ export const brickBrushHandler = {
     const overrides = typeof editor._brickStrokeOverrides === 'function' ? editor._brickStrokeOverrides() : null;
     const settings = editor._brickSettings ? { ...editor._brickSettings, ...(overrides || {}) } : null;
     if (!settings) return;
-    const layer = activeLayerOf(editor); // item 22 slice 3: a new stroke goes on the active layer, like art
+    const layer = brickKindLayer(editor, 'brush') || activeLayerOf(editor); // item 64: a new stroke goes on the Brush layer
     applyBrickLayerTooling(layer, settings);
 
     // F35 item 3: draw the SPINE (real, persistent, plain <line> segments --

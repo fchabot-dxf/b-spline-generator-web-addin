@@ -919,6 +919,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
   });
 
   const pieces = [];
+  const sources = []; // T86 16(c) part 2: per piece, the primitive it was offset from (-1: a joint's own fan/quoin)
   let nextId = startId;
   for (let k = 0; k < m; k++) {
     const idx = liveIndices[k];
@@ -943,6 +944,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
         );
       })();
     pieces.push(...built.pieces);
+    for (let s = 0; s < built.pieces.length; s++) sources.push(idx);
     nextId = built.nextId;
 
     // kite-fan pieces (see the jointBefore map's own header above) belong HERE in build order --
@@ -961,6 +963,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
         const { sampleId, flip } = pickSample(set, seed, 'bricks', nextId);
         const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
         pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset });
+        sources.push(-1);
         nextId++;
       }
     }
@@ -973,6 +976,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
       const { sampleId, flip } = pickSample(set, seed, 'bricks-block', nextId);
       const heightOffset = (mulberry32(seedFor(seed, 'bricks-block-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
       pieces.push({ id: `${pieceId}-${nextId}`, polygon: rawJointEnd.blockPolygon, pieceId, sampleId, flip, heightOffset });
+      sources.push(-1);
       nextId++;
     }
   }
@@ -981,7 +985,9 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
   // for free rather than needing a second pass later. `pieceIndex` is this row's own build-order
   // index (0-based, the SAME order `pieces` is already in -- stable for a given seed, since every
   // upstream choice that could reorder this array is itself seed-deterministic).
-  return { pieces: pieces.map((p, pieceIndex) => ({ ...p, bandIndex, rowIndex, pieceIndex })), nextId };
+  // `sources` + `liveIndices` ride alongside (never on the pieces: the output shape is unchanged) for
+  // contour-bands.js yieldAtMedialLine, which needs each piece's own depth field and its row's joint neighbours
+  return { pieces: pieces.map((p, pieceIndex) => ({ ...p, bandIndex, rowIndex, pieceIndex })), nextId, sources, liveIndices };
 }
 
 const BOUNDARY_ARC_STEPS = 16; // a smoothness floor for the TESSELLATED polyline this returns, same

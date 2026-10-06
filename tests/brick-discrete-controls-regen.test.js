@@ -5,6 +5,7 @@
  * In the MAIN SIDEBAR the same setters run with commit 'auto' and re-lay straight away.
  * Declared per binding in main/brick-panel.js (BRICK_COMMIT), not per call site.
  */
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 // N2 ("P.brickSettings REPLACED") re-renders every panel; MEASURED timing out at 5 s under the fleet's shared CPU (8.1 s alone
@@ -29,7 +30,8 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async
 });
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, frameContext: vi.fn(() => ({})) };
+  // a FRAMED context, as the app's provider gives with a template picked (item 66: no templateId = the board rectangle)
+  return { ...actual, frameContext: vi.fn(() => ({ defs: { templates: [] }, record: { templateId: 'template_1' } })) };
 });
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -40,7 +42,7 @@ import {
   initBrickPanel, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
   setBrickTopMode, setSurfaceStyle, setStripeStyle, setRaisedMode,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
-import { runBricks, runBricksPreview, buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { runBricks, runBricksPreview, buildRibbonPrimitives, elementSetId } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { frameContext } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
@@ -79,7 +81,6 @@ const FIXTURE = `
   <span id="stripeColoursLabel">Colours</span><input type="checkbox" id="stripeThree"><button id="stripeColorsReset"></button>
   <div id="stripeColorPresets"></div><div id="stripeColorSwatches"></div><div id="stripeBrickStyles" style="display:none;"></div>
   <div id="stripeTargetHint">Tap a rail, a contour segment or a line.</div>
-  <input type="checkbox" id="brickFrameOffsetOn" checked><input id="brickFrameOffsetDistance" value="0">
   <input id="brickLevel_wall" value="0"><input id="brickLevel_frame" value="0">
   <div id="brickSidebarNoBricks" style="display:none;"></div><div id="brickStartHint" style="display:none;"></div>
   <div id="brickAccentList"></div><button id="brickAccentClick">Click bricks</button>
@@ -539,32 +540,32 @@ describe('audit C1/C2 (F35 item 16): Wall and Frame are their own tools', () => 
   });
 });
 
-describe('F35 item 16: the Frame tool\'s offset from frame, and per-element Level', () => {
+describe('F35 item 16 + 66: the band contour (the retired Offset-from-frame is a LEGACY read), and per-element Level', () => {
   let notify;
   beforeEach(() => {
-    P.brickSettings.frameOffset = { on: true, distance: 0 };
+    delete P.brickSettings.frameOffset; // item 66: a new board never writes it
     P.brickSettings.elementLevelIn = { wall: 0, frame: 0 };
     setup('frame');
     notify = vi.fn();
     window.svgEditor._notifyChange = notify;
     window.svgEditor._mW = 7; window.svgEditor._mH = 9;
   });
-  it('defaults: ON at distance 0, the frame contour at 0 is what the bands follow', () => {
-    expect($('brickFrameOffsetOn').checked).toBe(true);
+  it('item 66: no Offset-from-frame control; the bands follow the frame\'s OUTER edge (distance 0); nothing is written', () => {
+    expect(document.getElementById('brickFrameOffsetOn')).toBeNull();
+    expect(document.getElementById('brickFrameOffsetDistance')).toBeNull();
     $('brickGenerate').click();
     expect(frameContourSilhouette.mock.calls.at(-1)[1]).toBe(0);
+    expect(P.brickSettings).not.toHaveProperty('frameOffset');
+    const html = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf-8');
+    expect(html).not.toMatch(/id="brickFrameOffset(On|Distance)"/);
   });
-  it('a distance is a LAYOUT change: the bands are re-laid at once at that distance', () => {
-    fire('brickFrameOffsetDistance', 0.3, 'change');
-    expect(P.brickSettings.frameOffset).toEqual({ on: true, distance: 0.3 });
-    expectReLaidAtOnce();
+  it('legacy read: a board saved with a distance keeps laying at it (byte-identical to before item 66)', () => {
+    P.brickSettings.frameOffset = { on: true, distance: 0.3 };
+    $('brickGenerate').click();
     expect(frameContourSilhouette.mock.calls.at(-1)[1]).toBe(0.3);
   });
-  it('OFF = free placement: the bands follow the board outline, the distance field is disabled', () => {
-    $('brickFrameOffsetOn').checked = false;
-    $('brickFrameOffsetOn').dispatchEvent(new Event('change'));
-    expect(P.brickSettings.frameOffset.on).toBe(false);
-    expect($('brickFrameOffsetDistance').disabled).toBe(true);
+  it('legacy read: a board saved with OFF keeps following the board outline', () => {
+    P.brickSettings.frameOffset = { on: false, distance: 0 };
     buildRibbonPrimitives.mockClear();
     $('brickGenerate').click();
     const contour = buildRibbonPrimitives.mock.calls.at(-1)[0];
@@ -932,15 +933,26 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
     expect(shown('brickSharedLayout')).toBe(false);
   });
 
-  it('N9: Generate with the Frame tool and no frame says so in a toast (not only the console)', () => {
+  // item 66 inverts N9's "no template -> a toast": no template = the bands follow the board rectangle; the toast stays
+  // for a template whose outline cannot carry a contour
+  it('item 66: the Frame tool with NO template lays its bands along the board rectangle (no toast)', () => {
     setup('frame');
+    window.svgEditor._mW = 7; window.svgEditor._mH = 9;
     frameContext.mockImplementation(() => null);
     try {
+      buildRibbonPrimitives.mockClear();
       $('brickGenerate').click();
-      expect(showToast).toHaveBeenCalledWith(FRAME_NEEDS_A_FRAME, 'warn');
+      expect(showToast).not.toHaveBeenCalledWith(FRAME_NEEDS_A_FRAME, 'warn');
+      expect(buildRibbonPrimitives.mock.calls.at(-1)[0].map((p) => [p.p0.x, p.p0.y])).toEqual([[0, 0], [7, 0], [7, 9], [0, 9]]);
     } finally {
-      frameContext.mockImplementation(() => ({}));
+      frameContext.mockImplementation(() => ({ defs: { templates: [] }, record: { templateId: 'template_1' } }));
     }
+  });
+  it('N9: a template whose outline cannot carry a contour says so in a toast (not only the console)', () => {
+    setup('frame');
+    frameContourSilhouette.mockImplementationOnce(() => ({ error: 'degenerate' }));
+    $('brickGenerate').click();
+    expect(showToast).toHaveBeenCalledWith(FRAME_NEEDS_A_FRAME, 'warn');
   });
 
   it('N11: the Brick tab with no tool on a board with no bricks shows the start hint, naming the tools', () => {
@@ -1012,16 +1024,30 @@ describe('turn 207 (Fred / 88): the Frame element (and the Wall in it) follows t
     expect(runBricks).not.toHaveBeenCalled();
   });
 
-  it('Frame bricks on the canvas with NO frame contour left (template Rectangle, Offset on): Generate re-lays the Frame kind with no frame = clears it', () => {
+  // item 66 changes turn 207's "template None clears the Frame": with no template the bands follow the board rectangle,
+  // so the Frame element re-lays there; a template whose outline cannot carry a contour still clears it (no geometry)
+  it('Frame bricks on the canvas, template switched to None: Generate re-lays the Frame along the board rectangle', () => {
     setup('frame');
     frameContext.mockImplementation(() => null);
     try {
       $('brickGenerate').click();
       const call = runBricks.mock.calls.at(-1);
       expect(call[3].kinds).toContain('frame');
-      expect(call[2]).toBeFalsy(); // no frame geometry -> the engine lays no frame bricks
+      expect(call[2]).toBeTruthy();
     } finally {
-      frameContext.mockImplementation(() => ({}));
+      frameContext.mockImplementation(() => ({ defs: { templates: [] }, record: { templateId: 'template_1' } }));
+    }
+  });
+  it('Frame bricks on the canvas, a template whose outline cannot carry a contour: the Frame kind re-lays with no frame = clears it', () => {
+    setup('frame');
+    frameContourSilhouette.mockImplementation(() => ({ error: 'degenerate' }));
+    try {
+      $('brickGenerate').click();
+      const call = runBricks.mock.calls.at(-1);
+      expect(call[3].kinds).toContain('frame');
+      expect(call[2]).toBeFalsy();
+    } finally {
+      frameContourSilhouette.mockImplementation(() => ({ primitives: [] }));
     }
   });
 });
@@ -1048,16 +1074,34 @@ describe('F35 item 23: per-element Set, Fieldstone = the rock set', () => {
     expect($('brickSet_1').classList.contains('active')).toBe(true);
   });
 
-  it('Frame: Fieldstone is offered (bandCapable); picking it on one band makes EVERY band fieldstone, and then only Fieldstone is offered', () => {
+  // F35 item 46 (Fred: "these can't be changed back after clicking") inverts item 23's "then only Fieldstone is offered":
+  // a band row always lists every band pattern, so a rock frame can go back to bricks
+  it('Frame: Fieldstone is offered (bandCapable); picking it on one band makes EVERY band fieldstone, and every row STILL lists every band pattern', () => {
     setup('frame');
     $('brickFramePreset_three_band').click(); // setup() resets to the 1-band preset
     expect($('brickFrameBandPattern_0_fieldstone').disabled).toBe(false);
     expect(bandIds()).toContain('brickFrameBandPattern_0_soldier');
+    const full = bandIds().length;
     $('brickFrameBandPattern_1_fieldstone').click();
     expect(P.brickSettings.frameBandPatterns).toEqual(FRAME_PRESETS.three_band.map(() => 'fieldstone'));
-    expect(bandIds().every((id) => id.endsWith('_fieldstone'))).toBe(true);
-    expect(bandIds()).toHaveLength(FRAME_PRESETS.three_band.length);
+    expect(bandIds()).toHaveLength(full);
+    for (let i = 0; i < FRAME_PRESETS.three_band.length; i++) expect(bandIds()).toContain(`brickFrameBandPattern_${i}_soldier`);
     expect(runBricks).toHaveBeenCalled();
+  });
+
+  it('item 46: Fieldstone, then Soldier on band 1 -> band 1 soldier, the frame is bricks again (its own set), rows still full', () => {
+    setup('frame');
+    $('brickFramePreset_three_band').click();
+    const full = bandIds().length;
+    $('brickFrameBandPattern_0_fieldstone').click();
+    expect(elementSetId(P.brickSettings, 'frame')).not.toBe(elementSetId({ ...P.brickSettings, frameBandPatterns: [] }, 'frame')); // rock: the derived rock set
+    runBricks.mockClear();
+    $('brickFrameBandPattern_0_soldier').click();
+    expect(P.brickSettings.frameBandPatterns[0]).toBe('soldier');
+    expect(P.brickSettings.frameBandPatterns.slice(1).every((p) => p !== 'fieldstone')).toBe(true);
+    expect(elementSetId(P.brickSettings, 'frame')).toBe(1); // Red Brick, the frame's own brick set
+    expect(bandIds()).toHaveLength(full);
+    expect(runBricks).toHaveBeenCalledTimes(1);
   });
 
   it('a rock frame stays rock across a preset change (every band of the new preset fieldstone)', () => {

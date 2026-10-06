@@ -61,7 +61,8 @@ describe('item 22 step 2: element records + brick owners', () => {
       expect(rec, kind).toBeTruthy();
       expect(rec.getAttribute(BRICK_RECORD_ATTR)).toBe(BRICK_RECORD_KINDS[kind]);
       expect(rec.getAttribute('display')).toBe('none');
-      expect(rec.getAttribute('data-layer')).toBe('1');
+      // item 64: each kind on its OWN layer (was: the active layer '1')
+      expect(ed._layers.find((l) => l.id === rec.getAttribute('data-layer')).brickKind).toBe(kind);
       const id = rec.getAttribute('data-brick-element');
       expect(id).toMatch(/^be/);
       const bricks = q(ed, `[data-brick="${kind}"]`);
@@ -115,14 +116,15 @@ describe('item 22 step 2: element records + brick owners', () => {
     const brush = ed._sketchLayer.polygon('0,0 1,0 1,1'); brush.attr('data-brick', 'brush').attr('data-brick-gen', '1').attr('data-layer', '1').attr('data-brick-owner', 'be1:0');
     // item 22 slice 3 (advisor ruling A): a layer's ART export never carries brick pieces (they ship in the Bricks
     // sketch alone) -- the bricks' own export (bricks: 'only') is what must stay byte-identical
-    const now = { dl: await saveWithTextCopies(ed), layer: getLayerSvg(ed, '1', 96, { bricks: 'only' }) };
+    const wl = q(ed, '[data-brick="wall"]')[0].getAttribute('data-layer'); // item 64: the Wall's own layer (was '1')
+    const now = { dl: await saveWithTextCopies(ed), layer: getLayerSvg(ed, wl, 96, { bricks: 'only' }) };
     expect(now.layer).toContain('data-brick="wall"');
-    expect(getLayerSvg(ed, '1', 96)).not.toContain('data-brick-gen');
+    expect(getLayerSvg(ed, wl, 96)).not.toContain('data-brick-gen');
     // "before item 22": the same drawing with no records and no Wall/Frame owners
     q(ed, `[${BRICK_RECORD_ATTR}]`).forEach((n) => n.remove());
     q(ed, '[data-brick="wall"],[data-brick="frame"]').forEach((n) => ['data-brick-owner', 'data-brick-band', 'data-brick-row', 'data-brick-piece'].forEach((a) => n.removeAttribute(a)));
     expect(now.dl).toBe(await saveWithTextCopies(ed));
-    expect(now.layer).toBe(getLayerSvg(ed, '1', 96, { bricks: 'only' }));
+    expect(now.layer).toBe(getLayerSvg(ed, wl, 96, { bricks: 'only' }));
     expect(now.dl).toContain('data-brick-owner="be1:0"'); // the brush brick's, as before
     expect(Object.keys(BRICK_EDITOR_ONLY_ATTRS).sort()).toEqual(['brush', 'frame', 'wall']); // one declared list
   });

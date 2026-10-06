@@ -23,17 +23,10 @@ from . import cam_workspace, mm_builder, setup_builder
 
 # Names of MMs and Setups this addin creates. Used by _cleanup_previous_build
 # to identify and delete the prior run's artifacts before a fresh build.
-_ADDIN_MM_NAMES = frozenset([
-    'MM - Stock (raw blank)',
-    'MM - B-spline set',
-    'MM - Frame (lay-flat)',
-])
-_ADDIN_SETUP_NAMES = frozenset([
-    'Stock',
-    'B-spline Back',
-    'B-spline Top',
-    'Frame',
-])
+# Derived from the declarations (MM_RULES / SETUP_SPECS), so a new setup is cleaned
+# up without a second list to edit.
+_ADDIN_MM_NAMES = frozenset(mm_builder._mm_display_name(r) for r in mm_builder.MM_RULES)
+_ADDIN_SETUP_NAMES = frozenset(spec['name'] for spec in setup_builder.SETUP_SPECS)
 
 
 def _cleanup_previous_build(cam, logger):
@@ -105,7 +98,7 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
         Body-classifier function ``(BRepBody) -> str``. Used only in
         B-spline mode; ignored in generic mode.
     mode : str
-        ``'bspline'`` (default) — hardcoded 3-MM / 4-setup B-spline
+        ``'bspline'`` (default) — declared (MM_RULES / SETUP_SPECS) B-spline
         pipeline. ``'generic'`` — one MM + Setup per component name in
         ``component_names``.
     component_names : list[str] or None
@@ -232,27 +225,47 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
         )
 
     else:
-        # ── B-spline: hardcoded 3-MM / 4-setup pipeline ──────────────────────
+        # ── B-spline: the declared MM_RULES / SETUP_SPECS pipeline ─────────────
 
-        # Auto-cleanup: delete any prior build's Setups and MMs with our
-        # known names so a re-run REPLACES instead of DOUBLING.
-        _log(logger, "COORDINATOR: entering bspline branch, about to run cleanup", "INFO")
+        # H23 item 82: the shared WCS points go into the SOURCE design (moved in place on a
+        # later BUILD), so every MM carries its own copy for its setups to bind.
         try:
-            _cleanup_previous_build(cam, logger)
-            _log(logger, "COORDINATOR: cleanup returned normally", "DEBUG")
+            setup_builder.ensure_wcs_sketches(design, logger)
         except Exception as e:
-            import traceback as _tb
-            _log(logger, f"COORDINATOR: cleanup raised {type(e).__name__}: {e}\n{_tb.format_exc()}", "WARNING")
+            _log(logger, f"COORDINATOR: ensure_wcs_sketches raised {type(e).__name__}: {e}", "WARNING")
 
-        mms = mm_builder.build_all_mms(cam, design, classifier, logger)
+        # H23 item 86: a re-BUILD REUSES the existing build (every declared MM + tagged setup
+        # present and valid) and re-applies the declared configuration in place (~1 s,
+        # measured); otherwise today's full recreate (cleanup, then MMs, then setups).
+        reuse = setup_builder.find_reusable_build(
+            cam, {r: mm_builder._mm_display_name(r) for r in mm_builder.MM_RULES}, logger)
+        report['reused'] = reuse is not None
+        if reuse is not None:
+            _log(logger, "COORDINATOR: reusing the existing build in place", "INFO")
+            mms = reuse['mms']
+        else:
+            # Auto-cleanup: delete any prior build's Setups and MMs with our
+            # known names so a re-run REPLACES instead of DOUBLING.
+            _log(logger, "COORDINATOR: entering bspline branch, about to run cleanup", "INFO")
+            try:
+                _cleanup_previous_build(cam, logger)
+                _log(logger, "COORDINATOR: cleanup returned normally", "DEBUG")
+            except Exception as e:
+                import traceback as _tb
+                _log(logger, f"COORDINATOR: cleanup raised {type(e).__name__}: {e}\n{_tb.format_exc()}", "WARNING")
+            mms = mm_builder.build_all_mms(cam, design, classifier, logger)
+
         for rule in mm_builder.MM_RULES:
             report['mms'][rule] = (rule in mms)
             if rule not in mms:
                 report['errors'].append(f"MM '{rule}' was not built.")
 
-        setups = setup_builder.build_all_setups(cam, mms, logger,
-                                                skip_templates=skip_templates,
-                                                skip_machine=skip_machine)
+        if reuse is not None:
+            setups = setup_builder.update_setups_in_place(cam, reuse, logger)
+        else:
+            setups = setup_builder.build_all_setups(cam, mms, logger,
+                                                    skip_templates=skip_templates,
+                                                    skip_machine=skip_machine)
         built_names = {s.name for s in setups}
         for spec in setup_builder.SETUP_SPECS:
             report['setups'].append({
