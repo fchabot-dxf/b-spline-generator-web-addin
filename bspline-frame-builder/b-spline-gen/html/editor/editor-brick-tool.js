@@ -805,19 +805,29 @@ const _nodePolygon = (n) => (n.getAttribute('points') || '').trim().split(/\s+/)
 });
 export const wallBrickPolygons = (editor) => wallBrickNodes(editor).map((n) => ({ polygon: _nodePolygon(n) }));
 
-/** F35 item 15: shows which Wall bricks the raised accent lifts -- a dark outline + `data-brick-accent` on
- *  each, from the SAME rule the height mask applies (brick-accents.js accentedBrickIndices). 2D only. */
+/** F35 item 15: shows which Wall bricks the raised accent lifts -- an amber outline on each, from the SAME rule the
+ *  height mask applies (brick-accents.js accentedBrickIndices). 2D only.
+ *  F35 item 49 (Fred: "raised bricks get a yellow edge... in the 3D view"): the outline was a stroke ATTRIBUTE on the
+ *  brick node, so it travelled with the drawing -- measured: 12 marked bricks = 12 "#ffc61a" in editor.save(), in the
+ *  3D drape (core/preview/drape-svg.js colours an element stroke-first) and in the saved board. Now the node carries
+ *  only the inert flag (ACCENT_FLAG_ATTR, stripped from Send / the download: layers.js BRICK_EDITOR_ONLY_ATTRS) and the
+ *  outline is ONE CSS rule of the live page (ensureAccentOutlineStyle), which no serialized SVG carries. */
 export const ACCENT_OUTLINE = Object.freeze({ color: '#ffc61a', widthIn: 0.05 }); // amber: reads against the photo's own dark joints
+export const ACCENT_FLAG_ATTR = 'data-brick-accent';
+const ACCENT_STYLE_ID = 'brickAccentOutlineStyle';
+/** The live editor's outline rule (CSS px = SVG user units = inches here), injected once from ACCENT_OUTLINE. */
+export function ensureAccentOutlineStyle(doc = typeof document !== 'undefined' ? document : null) {
+  if (!doc || !doc.head || doc.getElementById(ACCENT_STYLE_ID)) return;
+  const style = doc.createElement('style');
+  style.id = ACCENT_STYLE_ID;
+  style.textContent = `[${ACCENT_FLAG_ATTR}="1"] { stroke: ${ACCENT_OUTLINE.color}; stroke-width: ${ACCENT_OUTLINE.widthIn}px; }`;
+  doc.head.appendChild(style);
+}
 function _markAccent(n, on) {
-  if (on) {
-    n.setAttribute('data-brick-accent', '1');
-    n.setAttribute('stroke', ACCENT_OUTLINE.color);
-    n.setAttribute('stroke-width', String(ACCENT_OUTLINE.widthIn));
-  } else if (n.hasAttribute('data-brick-accent')) {
-    n.removeAttribute('data-brick-accent');
-    n.setAttribute('stroke', 'none');
-    n.removeAttribute('stroke-width');
-  }
+  // a board saved before item 49 carries the old stroke attribute: it goes, whatever the mark
+  if (n.getAttribute('stroke') === ACCENT_OUTLINE.color) { n.setAttribute('stroke', 'none'); n.removeAttribute('stroke-width'); }
+  if (on) n.setAttribute(ACCENT_FLAG_ATTR, '1');
+  else if (n.hasAttribute(ACCENT_FLAG_ATTR)) n.removeAttribute(ACCENT_FLAG_ATTR);
 }
 /** Per-element accents on RUNS (advisor): the same outline on the Frame bands' and the Brush strokes' accented
  *  bricks, from the SAME rule the mask applies (brick-accents.js accentedRunIndices on each run's own grid). */
@@ -825,6 +835,7 @@ export function syncRunAccentHighlight(editor, settings) {
   const node = editor && editor._sketchLayer && editor._sketchLayer.node;
   if (!node || !node.querySelectorAll || !settings) return 0;
   const seed = settings.seed || 1;
+  ensureAccentOutlineStyle();
   const asRun = (n) => ({ polygon: _nodePolygon(n), row: Number(n.getAttribute('data-brick-row')) || 0, piece: Number(n.getAttribute('data-brick-piece')) || 0 });
   let count = 0;
   const apply = (nodes, acc) => {
@@ -850,17 +861,8 @@ export const markOf = (n) => (n.hasAttribute(ACCENT_MARK_ATTR) ? { accentMarked:
 export function syncAccentHighlight(editor, accent, seed) {
   const nodes = wallBrickNodes(editor);
   const raised = accentedBrickIndices(nodes.map((n) => ({ polygon: _nodePolygon(n), ...markOf(n) })), accent, { seed: seed || 1 });
-  nodes.forEach((n, k) => {
-    if (raised.has(k)) {
-      n.setAttribute('data-brick-accent', '1');
-      n.setAttribute('stroke', ACCENT_OUTLINE.color);
-      n.setAttribute('stroke-width', String(ACCENT_OUTLINE.widthIn));
-    } else if (n.hasAttribute('data-brick-accent')) {
-      n.removeAttribute('data-brick-accent');
-      n.setAttribute('stroke', 'none');
-      n.removeAttribute('stroke-width');
-    }
-  });
+  ensureAccentOutlineStyle();
+  nodes.forEach((n, k) => _markAccent(n, raised.has(k)));
   return raised.size;
 }
 
