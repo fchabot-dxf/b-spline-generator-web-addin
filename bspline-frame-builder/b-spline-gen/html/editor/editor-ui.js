@@ -6,7 +6,7 @@ import { clearTouchConfirm } from './editor-touch-confirm.js';
 import { el as getEl, queryAll, query } from './dom.js';
 import { worldBbox } from './editor-coords.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { getElementLayer, setActiveLayer as _setActiveLayer } from './layers.js';
+import { getElementLayer, setActiveLayer as _setActiveLayer, isLockedNode } from './layers.js';
 import { SNAP_POLICY, clearSnapCursor, clearGridHover } from './editor-grid.js';
 import { syncColorToggleSwatch } from './properties-shape.js';
 import { setHandleCursor } from './editor-transform-handles.js';
@@ -457,7 +457,7 @@ export function updateSelectionHighlight(editor) {
 }
 
 export function select(editor, selectedEl) {
-    if (!selectedEl) return;
+    if (!selectedEl || isLockedNode(selectedEl)) return; // item 55: a locked node (the grout) is never selected
     const cur = editor._selectedElements || [];
     if (cur.length === 1 && cur[0] === selectedEl) return;  // idempotent
     editor._deselect();
@@ -470,7 +470,7 @@ export function select(editor, selectedEl) {
  *  treated as the primary — toolbar inputs read from it per the
  *  user's "last clicked wins" preference. */
 export function selectAdd(editor, el) {
-    if (!el) return;
+    if (!el || isLockedNode(el)) return;
     const cur = (editor._selectedElements || []).slice();
     const idx = cur.indexOf(el);
     if (idx >= 0) {
@@ -488,7 +488,7 @@ export function selectAdd(editor, el) {
 /** Replace the selection with a fresh set (marquee finalize). */
 export function selectMany(editor, els) {
     editor._deselect();
-    const arr = (els || []).filter(Boolean);
+    const arr = (els || []).filter((el) => el && !isLockedNode(el));
     editor._selectedElements = arr;
     _afterSelectionChange(editor, arr[arr.length - 1] || null);
 }

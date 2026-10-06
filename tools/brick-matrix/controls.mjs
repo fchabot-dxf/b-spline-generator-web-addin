@@ -373,6 +373,7 @@ export const MIGRATION = {
     patternParams: {}, // a pattern's declared params, per pattern (37: F35 item 14); {} = every pattern's defaults
     wallRotationDeg: 0, // the Wall pattern's rotation (37: F35 item 13); 0 = as laid
     wallAreaWidthIn: 1, // the Area brush's width (37: F35 item 22 slice 2); strokes only, never a lay
+    groutPaint: { color: null, paintInsetIn: 0 }, groutPaintByElement: null, // the grout paint (seat E: F35 item 55); paint only, never a lay
   },
   introducedBy: 'b75e836',
 };

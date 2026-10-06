@@ -14631,3 +14631,43 @@ WallPattern = {
 - **Matrix (60ffb6a):** 6 wall rows: open; start from Checker; unit 1/2; base Custom (3D unchecked by construction); offset; back to Stretcher. `run.mjs --group wall`: 47 rows, 0 FAIL, 0 page errors.
   - Measured first: a tapped cell (0,1) hits no brick on the matrix baseline (a wall inside a Soldier frame, T1's waist), because unit-1 columns are absolute. That is why the row starts from Checker instead.
 - **Not done / for later:** join and split on a BUILT-IN base (they act on Custom only; a built-in -> tile conversion is ambiguous because built-in stagger counts from the top); a unit change on Custom keeps the CELL counts (the bricks rescale with the unit).
+
+## seat E (61) turn 1: F35 item 55, GROUT COLOUR + EDGE + the LOCKED GROUT SHAPE (branch grout-svg)
+- **Setup:** worktree -wt\61, branch grout-svg off origin/main 3eb2d30, node_modules = a junction; export-flow 33/33.
+- **Two forks, advisor-ruled before code (DM):**
+  - The grout shape is ONE even-odd path: the region loops + every painted face. polygonDifference cannot hold holes (a clip wholly inside comes back whole, `holeIgnored`), and a wall region minus its bricks is all holes. A face crossing the region edge is cut to it first (polygonIntersection, the exclusions math).
+  - The grout node is drawn ABOVE its element's bricks, so a coloured grout also covers each face's inset rim. With colour None the inset does not show on canvas/3D (accepted; the Edge tooltip says so). The SVG download (item 56) will paint the inset faces exactly.
+- **Declared:**
+  - core/bricks/grout-shape.js: groutShapeOf({ id, region, faces, cutouts, insetIn }) -> { id '<element>:grout', loops, d, fillRule 'evenodd' }; insetFace; pointOnGrout; primitivesOutline (the frame contour, arcs cut to < 0.002 in sag).
+    - insetFace's "swallowed" test is the edge DIRECTIONS, not the area sign: an inset past a brick's middle reflects it through its centre and keeps the sign (a 0.1 in square at 0.06 came back as a face; the test caught it).
+  - engine.js: generateBricks also returns `interiorOutline` (the variable it already had) -- additive, both return statements; seat B (fc) cleared it first (their corner-21b branch is contour-bands / primitive-ribbon / geometry / piece-plan only).
+  - state.js: brickSettings.groutPaint { color: null, paintInsetIn: 0 } (board-wide) + groutPaintByElement { wall, frame, brush: null } (null = inherit, groutByElement's rule). A saved board without them reads the defaults: no load change.
+  - editor-brick-tool.js: GROUT_KIND 'grout', GROUT_OF_ATTR, GROUT_REGION_ATTR, GROUT_ELEMENT_KINDS ['wall','frame'], GROUT_PAINT_DEFAULT, groutPaintOf, drawElementGrout, repaintGrout, elementsWithoutGrout, groutNodes.
+  - layers.js: LOCKED_ATTR 'data-locked' + isLockedNode; BRICK_SEND_SKIP ['grout'].
+- **Region per element** (stored on the node as JSON, so a paint change repaints without the engine):
+  - Wall = interiorOutline;
+  - Frame = the contour (primitivesOutline) with interiorOutline as its hole;
+  - a painted wall AREA = wallRegionOf(its strokes minus the newer areas') cut to interiorOutline.
+  - Cutouts = every Brush brick, plus (for a wall area) the other areas' bricks. Whole bricks laid by centroid can cross into a neighbour's region; that region's grout must not paint over them.
+  - Brush strokes get NO grout yet: their ribbon region is not declared anywhere. Named, not done.
+- **Lock:** isEditableByLayer and isOnVisibleLayer refuse a locked node, which covers hit, marquee, snap, scissors and stripe. select / selectAdd / selectMany refuse it, so Delete, move, transform, restyle and Move-to-layer by selection all go through that gate. The eraser skips it. Clear > Bricks removes it with its element (it is a brick-tool node). brickElementAt: no brick under the point but inside a grout region -> { id, kind, part: 'grout' }; the panel then edits that element's paint and scrolls the Grout row into view.
+- **Paint only:**
+  - groutPaint keys are PAINT_ONLY_SETTING_KEYS (out of the layout key: a paint change never re-lays).
+  - setGroutPaint repaints + one commitEdit.
+  - A board laid before this has bricks but no grout node; its first paint change re-lays once (same settings + seed = the same bricks) to draw it.
+  - Height mask: the node has no data-brick-set, so it is skipped.
+  - Send: _bricksLayerSvg drops BRICK_SEND_SKIP kinds.
+- **UI:**
+  - Grout block: a colour swatch (the app's openColorMosaic), None, and an "Edge (in)" box (min 0). A scope label reads "every element" or "this Wall / this Frame" when Select picked one.
+  - Sidebar quick row 'Grout colour' (GROUT_COLOR_CHOICES: None, Mortar, White, Grey, Charcoal) = the board-wide value.
+- **Neutral set:** tools/brick-matrix/controls.mjs MIGRATION.neutralNewFields += groutPaint { color: null, paintInsetIn: 0 }, groutPaintByElement null.
+- **Tests:**
+  - New tests/grout-paint.test.js, 17 tests. Against the pre-change tree (scratch worktree at 3eb2d30, the new grout-shape.js copied in so the file imports): **9/9 integration tests fail**. The 8 that pass are groutShapeOf's own unit tests (a new module pinned against itself).
+  - Six existing test fakes gained `path()` (the real svg.js layer has it); 52 failures were that one missing method.
+- **Live** (headless Chrome, fresh 7x9 T1, Wall + Frame via Generate; probe scratchpad grout_live.mjs). Across laid -> sidebar Mortar -> Edge 0.03 -> Select a JOINT (real click) -> the Wall's own colour via the mosaic (real swatch click):
+  - bricks hash identical (147 pieces), Send's Bricks sketch identical (no 'grout' in it), 3D heights identical (25521#ak5exj at all three reads).
+  - grout: 2 nodes, locked; wall d 4133 -> 2890 chars at Edge 0.03 (faces inset); the wall alone -> #616161, the frame stays #cfc6b4.
+  - Select on the joint: "Editing: this Wall", scope "this Wall". Art Select on the same joint picks the wall BRICK, never the grout; Select all = 149 elements, 0 grout. Clear > Bricks: 0 grout left. 0 page errors.
+  - 3D: the drape SVG holds the grout path (fill #3b3b3b). At a 0.034 in joint it is subtle in 3D: face view, mean RGB 158,141,111 -> 149,133,105, 126,691 px changed.
+- **Found, NOT mine (pre-existing):** Send's Bricks sketch carries `style="cursor: pointer;"` on a brick the editor's hover touched, so the sketch string changes after a mere hover. Its fills also carry the brickfill-N counter. Both are noise in any byte-compare of stamp.bricks.svg.
+- **Shots** (shots/seatE): item55_grout_mortar_edge003_2d_desktop.png, item55_grout_select_joint_wall_own_colour_desktop.png, item55_grout_brick_tab_900.png, item55_grout_3d_desktop.png, item55_grout_3d_900.png, item55_3d_face_none_branch.png, item55_3d_face_charcoal_branch.png.

@@ -206,13 +206,21 @@ export function ensureActiveLayer(editor) {
 /** Audit (batch 2): an element hidden on its own (display:none -- a Shape Lattice contour with Show contour off)
  *  is not there for picking or snapping, same as one on a hidden layer. The scissors, the Stripe tool and Select
  *  used to cut / stripe / select an invisible contour piece. */
+/** F35 item 55: a LOCKED node (the grout shape) -- the Brick tab owns it: art tools never pick, select, snap to, cut,
+ *  erase, move, restyle or delete it (only its element's re-lay or Clear > Bricks removes it). One attribute, read
+ *  by every picker gate below and by editor-ui.js's selection. */
+export const LOCKED_ATTR = 'data-locked';
+export function isLockedNode(node) {
+  const n = node && (node.node || node);
+  return !!(n && typeof n.getAttribute === 'function' && n.getAttribute(LOCKED_ATTR) === '1');
+}
 function _hiddenItself(node) {
   const n = node && (node.node || node);
   return !!(n && typeof n.getAttribute === 'function' && n.getAttribute('display') === 'none');
 }
 
 export function isEditableByLayer(editor, node) {
-  return getElementLayer(node) === getActiveLayer(editor) && !_hiddenItself(node);
+  return getElementLayer(node) === getActiveLayer(editor) && !_hiddenItself(node) && !isLockedNode(node);
 }
 
 /** SE7h add-on (Fred: generated Rails/Ties/Nodes pieces were unclickable
@@ -233,7 +241,7 @@ export function isOnVisibleLayer(editor, node) {
   const layerId = getElementLayer(node);
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
   const layer = layers.find((l) => String(l.id) === layerId);
-  return (!layer || layer.visible !== false) && !_hiddenItself(node);
+  return (!layer || layer.visible !== false) && !_hiddenItself(node) && !isLockedNode(node);
 }
 
 // ----------- Data ops -----------
@@ -770,6 +778,10 @@ export const BRICK_EDITOR_ONLY_ATTRS = Object.freeze({
   frame: ['data-brick-owner', 'data-brick-band', 'data-brick-row', 'data-brick-piece', 'data-brick-accent'],
   brush: ['data-brick-band', 'data-brick-row', 'data-brick-piece', 'data-brick-accent'],
 });
+/** F35 item 55: brick-tool node KINDS (`data-brick`) that never go into Send's Bricks sketch (stamp.bricks.svg): the
+ *  grout shape is paint, not geometry (Fred: it reaches Fusion only by the SVG import, and only when the advisor
+ *  says). main/export-flow.js _bricksLayerSvg reads this list. */
+export const BRICK_SEND_SKIP = Object.freeze(['grout']);
 /** Strip BRICK_EDITOR_ONLY_ATTRS from one (plain DOM) element; true when it changed anything. */
 export function stripEditorOnlyBrickAttrs(el) {
   const attrs = el && el.getAttribute ? BRICK_EDITOR_ONLY_ATTRS[el.getAttribute('data-brick')] : null;
