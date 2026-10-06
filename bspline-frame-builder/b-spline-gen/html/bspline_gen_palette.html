@@ -136,7 +136,11 @@
       color: #333;
     }
 
-    .cad-stepper input[type="number"] {
+    /* item 69 (seat E, measured): no type qualifier -- a formula field (core/formula-field.js) flips its input to
+       type="text", which dropped out of `input[type="number"]` and took base.css's plain text-input rule instead
+       (16 px font, 8 px side padding): 12 px left for the value at desktop, "1.5" read "1.". */
+    .cad-stepper input {
+      padding: 0 2px;
       flex: 1;
       width: 100%;
       min-width: 38px;
