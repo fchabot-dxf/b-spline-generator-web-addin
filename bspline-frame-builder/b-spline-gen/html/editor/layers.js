@@ -785,6 +785,41 @@ export function stripEditorOnlyBrickAttrs(el) {
 export function isBrickToolNode(el) {
   return !!(el && el.getAttribute) && (el.getAttribute('data-brick-gen') === '1' || el.getAttribute('data-brick') === 'brush-spine');
 }
+/** F35 item 65 (Fred: moving / transforming bricks by hand in the editor did not update the 3D). MEASURED: a Select-tool
+ *  move stores `transform="matrix(1,0,0,1,dx,dy)"` on the piece and leaves `points` as laid, while every brick reader
+ *  (the height mask, accents, Send's Bricks sketch, the laid key...) reads `points` -- so the 3D kept the brick where it
+ *  was laid (a Delete, which removes the node, already updated it). The ONE declared hook: the editor's commit
+ *  (editor.js _notifyChange('commit'), which every gesture ends in) bakes a laid piece's transform into its points
+ *  and drops the attribute, before the remask; the step's undo snapshot is refreshed to match. Its texture follows
+ *  (the fill pattern is objectBoundingBox). Brush spines are not baked here (their own regenerate path). */
+const _MATRIX_RE = /^\s*matrix\(\s*([^)]*)\)\s*$/;
+const _TRANSLATE_RE = /^\s*translate\(\s*([-\d.eE+]+)(?:[\s,]+([-\d.eE+]+))?\s*\)\s*$/;
+function _pieceMatrix(n) {
+  const base = n.transform && n.transform.baseVal;
+  const m = base && typeof base.consolidate === 'function' ? base.consolidate() : null;
+  if (m && m.matrix) return [m.matrix.a, m.matrix.b, m.matrix.c, m.matrix.d, m.matrix.e, m.matrix.f];
+  const t = n.getAttribute('transform') || '';
+  const mm = t.match(_MATRIX_RE);
+  if (mm) { const v = mm[1].split(/[\s,]+/).map(Number); return v.length === 6 && v.every(Number.isFinite) ? v : null; }
+  const tt = t.match(_TRANSLATE_RE);
+  return tt ? [1, 0, 0, 1, Number(tt[1]), Number(tt[2] || 0)] : null;
+}
+export function bakeBrickTransforms(editor) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll) return 0;
+  let baked = 0;
+  for (const n of node.querySelectorAll(`[data-brick-gen="1"][transform]`)) {
+    const m = _pieceMatrix(n);
+    if (!m || !n.hasAttribute('points')) continue;
+    const [a, b, c, d, e, f] = m;
+    const pts = n.getAttribute('points').trim().split(/\s+/).filter(Boolean).map((pair) => pair.split(',').map(Number));
+    n.setAttribute('points', pts.map(([x, y]) => `${a * x + c * y + e},${b * x + d * y + f}`).join(' '));
+    n.removeAttribute('transform');
+    baked++;
+  }
+  return baked;
+}
+
 /** F35 item 64 (Fred: "make wall and frame use their own layers, as brick brush drawing too; they still interact with
  *  each other"): each brick element KIND lays a NEW element on its OWN layer -- created on first use, reused after,
  *  found by the layer's declared `brickKind` (persisted; never by its name, which the user may rename) -- instead of

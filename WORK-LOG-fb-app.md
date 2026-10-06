@@ -14727,3 +14727,30 @@ WallPattern = {
   - Result: 5 files, 123/123.
 - **Matrix 'lay':** the "greyed under template None" row is replaced by "Sidebar Frame bands under template None lays along the board edge": 0/7 greyed, 74 frame bricks, 3D changed. Group: 8 rows, 0 FAIL.
 - **Live:** None + the editor's Frame tool Generate: 0 -> 80 frame bricks.
+
+## seat D (bb) turn 9: the "Clumping race" (advisor) -- measured NOT a race; a declared seed row
+- **The advisor's reproduction** (T1 wall; Suppression then Clumping 200 ms apart; each final canvas compared with a fresh lay of the same final settings and seed):
+  - 0/20 misses on stretcher (lay 9 ms) and 0/20 on fieldstone (261 ms).
+  - The matrix's own sequence (Suppression, Apply, reopen, Clumping at once): 0/12 misses.
+  - Every final lay carried both settings.
+- **Real cause** (core/bricks/suppression.js, engine): the removal score = topBias 0.8 x course height + 0.2 x noise. Clumping sets only the noise SCALE, and the removed count is exact. So on some seeds the same top pieces go whatever the scale.
+  - Measured: one board at Suppression 0.6 laid an identical canvas for Clumping 0.2 / 0.6 / 0.9.
+  - Over 20 seeds x Suppression 0.3/0.5/0.7, Clumping 0.1 vs 0.9 was identical in 1 of 60 cases.
+- **Why the row flaked:** the matrix baseline presses Generate, which re-rolls the brick seed (F35 item 39), so each run drew a new seed.
+- **Fix (advisor OK, tools only, no engine change):** a declared row "Brick seed 7919 (Suppression/Clumping rows)" before "Suppression 0.5", set via the field's 'input' event (its binding; a 'change' set did nothing, measured: the row's first try FAILED).
+  - Wall group, 2 runs: 48 rows, 0 FAIL each, identical hashes. Suppression 293 -> 214#1yvorwz; Clumping 214#d7m8az -> 214#wct7ox.
+
+## seat D (bb) turn 9 (cont.): F35 item 65, a hand-moved brick follows in the 3D
+- **Measured first** (real mouse drag with the Select tool on a T1 1.5 in wall, then Apply, then reopen):
+  - MOVE: the piece got `transform="matrix(1,0,0,1,0.5,0)"` and its `points` stayed as laid. 3D UNCHANGED. The transform survived reopen.
+  - DELETE (click + Delete key): 3D changed, and it survived reopen.
+  - So the mask WAS rebuilt on every commit. Every brick reader (the height mask, accents, Send, the laid key: 7 `points` readers) ignores a transform. It was not a missing dirty flag.
+- **Fix, one declared hook:**
+  - layers.js `bakeBrickTransforms(editor)`, beside isBrickToolNode: a laid piece (data-brick-gen=1) carrying a transform gets it baked into its points (consolidate() in the browser; matrix()/translate() parsed otherwise), and the attribute dropped.
+  - Called from editor.js `_notifyChange('commit')` with the other commit-only hooks, so every gesture's commit runs it, before the remask.
+  - The gesture's own undo step is refreshed to match only while the top of the stack is still `_lastPushedState` (the existing fold-in convention). After an undo, the history is left alone.
+  - Texture: the fill pattern is objectBoundingBox, so it moves with the piece.
+  - Brush spines are NOT baked here (their own regenerate path); not measured.
+- **Live after:** the drag moves the points +0.5 with no transform, 3D changed, kept after reopen. Delete unchanged (works).
+- **Tests:** tests/brick-move-bake.test.js (5): baking matrix / translate / rotation; art, spines and untransformed pieces untouched; the hook folds into the gesture's step but not into an older one. The 2 hook tests fail 2/2 against the pre-change editor.js.
+- **Matrix:** a new declared group 'handedit' (HAND_EDIT + runHandEdit): a real drag, Apply, reopen. This tree: pass. Clean main 52c3055: FAIL ("points UNMOVED (transform matrix(1,0,0,1,0.5,0)), 3D UNCHANGED").
