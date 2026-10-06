@@ -23169,3 +23169,10 @@ closer (split), the header filter, a diagonal-joint probe.
 (6.5 s each, measured twice). Sheet: shots/seatB/neck16c2/joint_rule_before_after.png (T1 single 1, T18 three_band 1.25,
 T7 three_band 1, T11 dc 1.25, walls included; close-ups: a mitre, a row's joints, a labelled mortar knot).
 Fusion acceptance pending: seat A's item 89 run (profiles == pieces on all 57).
+- Brush strokes (advisor, from seat E's measurement): strokes lay through bricksContourBands (open, centred) -> the same
+  planner, so the butting (0 joint at a bend, main) is gone on this branch (narrowest seam 0.034). The 0.02 in end
+  overhang was linePieces' / voussoirPieces' float-safety extension, which exists to be clipped back to a joint: an open
+  end has none, so it is no longer extended (overhang 0.02 -> 0). Test: bricks-joint-rule's Brush case (every BRUSH_PRESET;
+  with the extension restored it FAILS: the start brick at 0.98 against the stroke end at 1.0). Sheet: a stroke row added.
+- main 33816b6 merged (70b8225, seat E's grout / SVG items): full vitest 322 / 322 files green (80.6 s) before this fix;
+  bricks domain after it green (one loaded run timed out boundary-at-depth-simple at 30 s, alone 19 / 19).
