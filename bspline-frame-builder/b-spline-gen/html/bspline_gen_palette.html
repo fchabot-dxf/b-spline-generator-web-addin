@@ -303,6 +303,13 @@
     .cad-nav-version.build-ok      { color: #4caf50; }
     .cad-nav-version.build-stale   { color: #ffb300; }
     .cad-nav-version.build-unknown { color: var(--cad-text-muted); }
+    /* H23 item 93: a stale deploy marks the Settings button (where the badge lives) -- the
+       status line sits over the header buttons, so the build status never goes there. */
+    #settings-btn { position: relative; }
+    #settings-btn.build-warn::after {
+      content: '⚠'; position: absolute; top: -2px; right: -2px;
+      font-size: 10px; line-height: 1; color: #ffb300; pointer-events: none;
+    }
 
     /* Mobile: bump nav buttons to a touch target and keep the WHOLE header
        (back + unsaved dot + all 7 action buttons) on ONE row at 390px.

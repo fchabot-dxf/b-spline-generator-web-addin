@@ -41,6 +41,7 @@ import { initFramePanel, onFrameResult, onDeleteFrameResult, syncFramePanel } fr
 import { initClearMenu } from './editor-clear-menu.js';
 import { initViewModeToggle } from './view-mode-toggle.js';
 import { bindHeaderAndSettings } from './header-controls.js';
+import { paintBuildInfo } from './build-badge.js';
 import { wireGlobalEvents } from './global-events.js';
 import { installGestureWatch } from '../core/loading-signal.js';
 import {
@@ -247,28 +248,10 @@ function handleFusionHandshake(ev) {
 
     if (action === 'build_info') {
         // Python pushed the deployed build stamp {sha, built_at, dirty, status,
-        // message}. Paint the header badge: ✓ up-to-date / ⚠ stale-or-dirty, with
-        // the full detail in the tooltip. Unknown (no build-info.json / dev run)
-        // keeps the fallback literal, just muted + explained via title.
+        // message}: the Settings > Version badge, and a stale mark on the Settings
+        // button -- never the status line over the header (H23 item 93, build-badge.js).
         try {
-            const badge = document.getElementById('build-badge');
-            if (!badge) return;
-            const info   = JSON.parse(ev.detail.data || '{}');
-            const status = info.status || 'unknown';
-            const sha    = info.sha || 'unknown';
-            badge.title  = info.message || '';
-            if (status !== 'ok') setFusionStatus(info.message || 'Deployed add-in is stale', 'warn');
-            if (status === 'unknown' || sha === 'unknown') {
-                badge.className = 'cad-nav-version build-unknown';
-            } else {
-                // Fred (2026-10-03): the date-based version (YYYY.MM.DD-N) leads; older
-                // deploys without one fall back to the build date.
-                const label = info.version || String(info.built_at || '').slice(0, 10);
-                const glyph = status === 'ok' ? '✓' : '⚠';
-                const edits = info.dirty ? ' +edits' : '';
-                badge.textContent = `${glyph} ${label} · ${sha}${edits}`;
-                badge.className   = `cad-nav-version build-${status}`;
-            }
+            paintBuildInfo(JSON.parse(ev.detail.data || '{}'));
         } catch (e) {
             fusLog(`build_info parse failed: ${e.message}`);
         }
