@@ -48,8 +48,12 @@ export function initNextSettingsUndo(editor) {
       for (const id of p.checks) { const n = el(id); if (n) panel[id] = !!n.checked; }
       for (const g of p.groups) panel[g[0]] = g.find((id) => el(id)?.classList.contains('active')) || null;
     }
-    return { editor: editorPart, panel };
+    // each editor field's box text as shown ("1.0", not 1): put back exactly, so an Undo looks as it did (advisor gate:
+    // Expand detail "1.0" came back as "1", font size "3.0" as "3")
+    const boxes = Object.fromEntries(EDITOR_NEXT_SETTINGS.filter((f) => f.box && el(f.box)).map((f) => [f.box, el(f.box).value]));
+    return { editor: editorPart, panel, boxes };
   };
+  const settingsOf = (snap) => (snap ? { editor: snap.editor, panel: snap.panel } : snap); // a change = a value, not its text
   const restore = (snap) => {
     if (!snap) return;
     suppress = true;
@@ -59,8 +63,7 @@ export function initNextSettingsUndo(editor) {
         const v = snap.editor[f.prop];
         editor[f.prop] = v;
         const box = f.box && el(f.box);
-        // loose != on purpose: the box's "1.0" IS the value 1 -- rewritten only when it differs, so it keeps its format
-        if (box && v != null && box.value != v) box.value = v; // eslint-disable-line eqeqeq
+        if (box) { const shown = snap.boxes && snap.boxes[f.box]; if (shown != null) box.value = shown; else if (v != null) box.value = v; }
         if (f.buttons) for (const [mode, id] of Object.entries(f.buttons)) el(id)?.classList.toggle('active', mode === v);
       }
       const panel = snap.panel || {};
@@ -79,7 +82,7 @@ export function initNextSettingsUndo(editor) {
     queueMicrotask(() => {
       const top = Array.isArray(editor._undoStack) ? editor._undoStack[editor._undoStack.length - 1] : null;
       const held = top && top.parts ? top.parts[NEXT_SETTINGS_PART] : undefined;
-      if (JSON.stringify(held) !== JSON.stringify(take())) commitEdit(editor);
+      if (JSON.stringify(settingsOf(held)) !== JSON.stringify(settingsOf(take()))) commitEdit(editor);
     });
   };
   const watch = (id) => { const n = el(id); if (n) n.addEventListener(isButton(n) ? 'click' : 'change', step); };

@@ -87,6 +87,17 @@ describe('item 74d: one change = one undo step, Undo puts it back', () => {
     expect(sp.value).toBe(v0);
   });
 
+  it.each([['editorExpandDetail', '_expandDetail', '1.2'], ['editorFontSize', '_fontSize', '3.2']])(
+    '%s: Undo puts the box back exactly as it was shown (the advisor gate: "1.0" came back as "1")', async (id, prop, next) => {
+      const box = document.getElementById(id); const shown = box.value;
+      expect(shown).toMatch(/\.0$/); // the markup's own "1.0" / "3.0"
+      box.addEventListener('change', () => { ed[prop] = parseFloat(box.value); });
+      box.value = next; box.dispatchEvent(new Event('change')); await flush();
+      expect(ed._undoStack.length).toBe(2);
+      undo(ed);
+      expect(box.value).toBe(shown);
+    });
+
   it('a setter that already committed (a selected shape restyled) is not stepped twice', async () => {
     const box = document.getElementById('editorStrokeWidth');
     box.addEventListener('change', () => ed.pushState()); // what setStrokeWidth's own commit does with a selection
