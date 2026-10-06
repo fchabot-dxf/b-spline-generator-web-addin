@@ -30,7 +30,7 @@ import {
   FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
   brushStrokeSettings, restyleBrushStroke,
-  groutPaintOf, repaintGrout, GROUT_ELEMENT_KINDS, GROUT_PAINT_DEFAULT, elementsWithoutGrout,
+  groutPaintOf, repaintGrout, GROUT_ELEMENT_KINDS, GROUT_PAINT_DEFAULT, elementsWithoutGrout, forceRegenerateOwnedBrickElements,
 } from '../editor/editor-brick-tool.js';
 import { openColorMosaic } from '../editor/editor-color.js';
 import {
@@ -1210,8 +1210,12 @@ export function setGroutPaint(patch, target = _groutPaintTarget()) {
   else s.groutPaint = { ...GROUT_PAINT_DEFAULT, ...(s.groutPaint || {}), ...p };
   syncGroutPaintRow();
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  // a board laid before item 55 has no grout node yet: one re-lay draws it (the same bricks: same settings + seed)
-  if (editor && elementsWithoutGrout(editor).length) { commitBrickSetting('generate'); syncQuickSettings(); return true; }
+  // a board laid before item 55 has no grout node yet: its strokes regenerate, its Wall / Frame re-lay (the same bricks:
+  // same settings + seed), which draws them
+  if (editor && elementsWithoutGrout(editor).length) {
+    forceRegenerateOwnedBrickElements(editor);
+    if (elementsWithoutGrout(editor).length) { commitBrickSetting('generate'); syncQuickSettings(); return true; }
+  }
   if (editor && repaintGrout(editor, s)) commitEdit(editor);
   notifyChange();
   syncQuickSettings();
