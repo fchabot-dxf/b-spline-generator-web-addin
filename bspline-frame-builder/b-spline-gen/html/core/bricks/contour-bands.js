@@ -262,12 +262,16 @@ function clipBandPiecesToBoard(bricks, board, set) {
  *  conflicts with, never against already-cut ones, so no region is handed round a cycle (attempt A, WORK-LOG) and
  *  the smallest-depth piece always keeps its ground. The one ground that goes: a far piece's tongue left past the
  *  line inside a near-side joint, cut off from its own piece (MEASURED on the 171-case sweep: every gap that opens
- *  is narrower than the same board's widest existing joint -- it is joint, not a hole). Conflicting = two pieces of different
- *  source primitives that are not joint neighbours in either piece's row walk (neighbours already meet at their
- *  mitre, their own medial line; a corner's fan residual is 21b's) and overlap by more than MEDIAL_OVERLAP_SQIN.
+ *  is narrower than the same board's widest existing joint -- it is joint, not a hole). Conflicting = two pieces that overlap by more than
+ *  MEDIAL_OVERLAP_SQIN and are either two runs of different source primitives -- across a neck, or (T86 item 21b)
+ *  joint neighbours whose corner pieces reach past their mitre, which IS their medial line -- or a corner's fan slice
+ *  against a run or a quoin: the fan is the filler and yields, by declaration, everything the other covers plus a
+ *  joint (a fan's own dropped fillet gives no usable depth past the fillet's centre).
  *  A piece no conflict touches is returned as the same object (clean boards are byte-identical). Under-size pieces
  *  after the cut: see the drop loop below. */
 const MEDIAL_OVERLAP_SQIN = 1e-4;
+const FAN = -1; // origins src of a joint's fan slice (primitive-ribbon kiteFan)
+const QUOIN = -2; // a block corner's quoin (a declared corner owner); -3 is an area band's stone, never cut here
 const MEDIAL_HOLE_SQIN = 0.002; // a drop opening less than this (a grout-wide fleck, 0.034 x 0.06 in) is not a hole
 const MEDIAL_DROP_PASSES = 16; // a bound on the one-at-a-time drop trials below (T14's X takes 4)
 function sourceDepth(prim) {
@@ -284,23 +288,19 @@ function medialDistance(da, db, p) {
   const gy = (f({ x: p.x, y: p.y + h }) - f({ x: p.x, y: p.y - h })) / (2 * h);
   return f(p) / Math.max(Math.hypot(gx, gy), 1e-6);
 }
-function jointNeighbours(live, a, b) {
-  if (!live) return false;
-  const i = live.indexOf(a), j = live.indexOf(b), m = live.length;
-  return i >= 0 && j >= 0 && ((i + 1) % m === j || (j + 1) % m === i);
-}
 function yieldAtMedialLine(bricks, origins, primitives, set) {
   const box = (p) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const q of p) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); } return [x0, y0, x1, y1]; };
   const boxes = bricks.map((b) => box(b.polygon));
   const conflicts = bricks.map(() => []);
   for (let i = 0; i < bricks.length; i++) {
     const oi = origins[i];
-    if (oi.src < 0) continue;
+    if (oi.src < QUOIN) continue;
     for (let j = i + 1; j < bricks.length; j++) {
       const oj = origins[j], a = boxes[i], b = boxes[j];
-      if (oj.src < 0 || oj.src === oi.src) continue;
+      if (oj.src < QUOIN || oj.src === oi.src) continue;
+      if (Math.min(oi.src, oj.src) === QUOIN && Math.max(oi.src, oj.src) !== FAN) continue; // a run meets a quoin on its cut
+      if (oi.src === FAN && oj.src === FAN) continue; // two fan slices meet on their planned joint
       if (a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]) continue;
-      if (jointNeighbours(oi.live, oi.src, oj.src) || jointNeighbours(oj.live, oi.src, oj.src)) continue;
       const lens = polygonIntersection(bricks[i].polygon, bricks[j].polygon);
       if (lens.length < 3 || Math.abs(signedArea(lens)) <= MEDIAL_OVERLAP_SQIN) continue;
       conflicts[i].push(j); conflicts[j].push(i);
@@ -311,12 +311,18 @@ function yieldAtMedialLine(bricks, origins, primitives, set) {
   const minArea = MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
   const setback = set.grout.widthIn / 2; // each side stops half the band's joint short of the medial line
   const grown = bricks.map((b, i) => (conflicts[i].length ? offsetPathInward(b.polygon, 2 * setback, -inwardSignFor(b.polygon)) : b.polygon));
-  const cutAll = (dropped) => bricks.map((b, i) => {
+  const cutOne = (i, dropped) => {
+    const b = bricks[i];
     if (dropped.has(i)) return [];
     let pieces = [b.polygon];
-    const di = depth[origins[i].src];
+    const di = origins[i].src >= 0 ? depth[origins[i].src] : null;
     for (const j of conflicts[i]) {
       if (dropped.has(j)) continue;
+      if (origins[j].src === FAN || origins[i].src === QUOIN) continue; // a run or a quoin keeps its ground against a fan
+      if (origins[i].src === FAN) { // a fan yields to a run (or a quoin) all it covers, plus a joint
+        pieces = pieces.flatMap((q) => polygonDifference(q, grown[j]));
+        continue;
+      }
       // the ground piece j takes from piece i: where j covers it AND j's own depth is smaller (ties: lower source),
       // plus a strip half a joint wide on i's side of the line wherever j comes within half a joint of it (j grown
       // by the setback: at the lens tips j's own edge reaches the line and would otherwise touch i there), so the seam
@@ -329,7 +335,7 @@ function yieldAtMedialLine(bricks, origins, primitives, set) {
     if (pieces.length === 1) return pieces[0];
     // a cut can split a piece; the largest part stays the brick (the rest is a fragment in the other side's joint)
     return pieces.reduce((best, q) => (Math.abs(signedArea(q)) > Math.abs(signedArea(best)) ? q : best), []);
-  });
+  };
   const areaOf = (poly) => (poly.length < 3 ? 0 : Math.abs(signedArea(poly)));
   // the ground of piece i (its cut) that no other piece covers once the others are re-cut without it
   const orphaned = (i, poly, others) => {
@@ -350,7 +356,7 @@ function yieldAtMedialLine(bricks, origins, primitives, set) {
   // less than MEDIAL_HOLE_SQIN still drops: a fleck that size reads as joint, a brick that size does not.
   let dropped = new Set();
   const kept = new Set();
-  let cut = cutAll(dropped);
+  let cut = bricks.map((b, i) => cutOne(i, dropped));
   for (let pass = 0; pass < MEDIAL_DROP_PASSES; pass++) {
     let smallest = -1, smallestArea = minArea;
     cut.forEach((poly, i) => {
@@ -359,7 +365,10 @@ function yieldAtMedialLine(bricks, origins, primitives, set) {
     });
     if (smallest < 0) break;
     const trial = new Set([...dropped, smallest]);
-    const trialCut = cutAll(trial);
+    // a piece's cut depends only on its own conflicts, so only the dropped piece's partners change
+    const trialCut = cut.slice();
+    trialCut[smallest] = [];
+    for (const j of conflicts[smallest]) trialCut[j] = cutOne(j, trial);
     if (orphaned(smallest, cut[smallest], trialCut) > MEDIAL_HOLE_SQIN) { kept.add(smallest); continue; }
     dropped = trial; cut = trialCut;
   }
@@ -442,7 +451,7 @@ export function bricksContourBands(primitives, bands, opts) {
   const enriched = enrichPrimitives(primitives, inwardSign);
 
   const bricks = [];
-  const origins = []; // per brick, for yieldAtMedialLine: { src, live } (src -1 = no single source primitive)
+  const origins = []; // per brick, for yieldAtMedialLine: { src } (-1 a fan, -2 a quoin, -3 an area band's stone)
   const L = set.brickLengthIn, H = set.brickHeightIn;
   let plannedBands = planBands(bands, L, H, set, closed);
   // T86 item 28: a closed, outer stack (the frame) obeys the fit rule; centred and open ones (brush ribbons) have no board
@@ -469,7 +478,7 @@ export function bricksContourBands(primitives, bands, opts) {
     if (isAreaBand) {
       const { pieces, nextId: afterId } = buildAreaBandBricks(enriched, depthSoFar, band, patternName, set, seed, bandIndex, nextId);
       bricks.push(...pieces);
-      for (let i = 0; i < pieces.length; i++) origins.push({ src: -1, live: null });
+      for (let i = 0; i < pieces.length; i++) origins.push({ src: -3 }); // an area band's stones
       nextId = afterId;
       depthSoFar += naturalWidth * rows;
       return; // forEach callback -- next band
@@ -487,20 +496,26 @@ export function bricksContourBands(primitives, bands, opts) {
       // `planCornerRun`'s own header).
       const rowSequence = sequence && odd ? [sequence[1], sequence[0]] : sequence;
       const forcedFStart = !sequence && staggerFrac > 0 && odd ? staggerFrac : undefined;
-      const { pieces, nextId: afterId, sources, liveIndices } = ribbonPieces(
+      const { pieces, nextId: afterId, sources } = ribbonPieces(
         enriched, d0, d1, set, patternName, pitch, set.grout.widthIn,
         seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
         rowSequence, forcedFStart, closed, row,
       );
       bricks.push(...pieces);
-      for (const src of sources) origins.push({ src, live: liveIndices });
+      for (const src of sources) origins.push({ src });
       nextId = afterId;
     }
     depthSoFar += naturalWidth * rows;
   });
 
   // centred bands straddle the path by design, and an open path has no board: only a closed outer stack is clipped
-  const laid = fitBoard ? clipBandPiecesToBoard(yieldAtMedialLine(bricks, origins, enriched, set), fitBoard, set) : bricks;
+  // a band at least as deep as the board is wide (its bounding box's shorter side) has no medial line to split at --
+  // every piece crosses the board: laid as requested, like item 28's "too narrow for even one band" (MEASURED: a
+  // life-size 8 in soldier band on a 7 x 9 board, tests/bricks-no-corrupt-polygon.test.js, ~3000 conflicting pairs,
+  // 2 s per lay). Not narrowestGap: its normal rays read T14's X corners as a gap narrower than a 1.25 in band.
+  const boardWidth = fitBoard ? Math.min(...['x', 'y'].map((k) => Math.max(...fitBoard.map((p) => p[k])) - Math.min(...fitBoard.map((p) => p[k])))) : 0;
+  const split = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set) : bricks;
+  const laid = fitBoard ? clipBandPiecesToBoard(split, fitBoard, set) : bricks;
   return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, depthSoFar) : [], ...(fit ? { bandsReduced: fit.note } : {}) };
 }
 
