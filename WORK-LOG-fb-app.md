@@ -14912,3 +14912,24 @@ WallPattern = {
   - Shots: shots/seatE/item44_carve_on_flat_main.png / item44_carve_on_flat_branch.png (+ item44_flat_top_with_carve_branch.png, item44_organic_top_with_carve_branch.png, item44_one_load_*.png from the measure).
 - **Probe harness note:** ports 9861/9862 showed LISTEN entries whose PIDs no longer exist (stale sockets after my timed-out runs); nothing to kill. I moved to 9961. Ports 9871/9881 belonged to another seat's matrix run: left alone.
 - **Gate:** full vitest 5 failed / 4738 passed under load. All 4 files pass alone, 56/56: no-corrupt-polygon x2, fieldstone and frame-3d-sweep are timeouts; frame-gen was a deep-equal failure under load, and it is not in files I touched.
+
+## seat E (61) turn 5: audit A6, strokes follow the global Brick size (+ the quick Set) (branch strokes-size-a6)
+- **Base:** seat D's (bb) draft A6_tool.diff + A6_panel.diff, applied with git apply --3way. Only the import list conflicted (main's grout imports): a union. Credit: seat D drafted and measured it (quick size re-laid a stroke 9 -> 11 pieces).
+- **Measured before** (seat D, live): a drawn stroke kept its snapshot (setId 1, brickLengthIn 1.25) through BOTH the quick Set and the quick size 3/4. A stroke regenerates only from its own spine snapshot.
+- **Ruling (advisor, the per-element model):**
+  - SIZE is global (Fred: single size): STROKE_FOLLOWS_GLOBAL = ['brickLengthIn'], written into every stroke on any setting's release.
+  - SET is per element: a stroke keeps its own, except through the sidebar's quick Set, which applies to ALL elements: STROKE_FOLLOWS_QUICK_SET = ['setId'], passed by that one control (selectSet(..., { strokes: true }) -> commitBrickSetting(commit, phase, strokeValues)). The Brush tool's own Set row sets only the next strokes, as before.
+  - strokesFollowGlobals(editor, settings, keys) writes only `keys`.
+  - commitBrickSetting commits the strokes itself only when no Wall / Frame re-lay will (seat D's rule; with the Wall tool active and no Wall, the re-lay commits).
+- **Tests:** new tests/strokes-follow-global.test.js (4; its own file, for the regen file's heap leak):
+  - the declarations;
+  - strokesFollowGlobals writes only its keys, once;
+  - a size change re-lays a stroke-only board's strokes with one commit;
+  - the Brush tool's own Set row leaves a stroke's set, the quick Set changes it.
+  - Against origin/main's two sources (saved copies, restored): **4/4 fail**.
+  - On main, the quick rows are greyed on a stroke-only board (brush-grout's bricksLaid fix is not merged yet), so the quick-Set test lays a Wall first.
+- **Matrix** (lay group, controls.mjs STROKES_FOLLOW + run.mjs runStrokesFollow; FAILS, not skips, without the fix): 11 rows, 0 FAIL. "A6: a stroke follows the global Brick size": pieces 4 -> 6, snapshot 1.25 -> 0.75. "A6: the quick Set reaches a stroke": set 1 -> 4, pieces' sets ["4"].
+- **Live** (a6_live.mjs, a REAL drag on a board with no Wall / Frame):
+  - the stroke laid 4 pieces at 1.25; the 3/4 preset -> 6 pieces at 0.75;
+  - a Wall + the quick Set Grey brick -> the stroke's pieces all set 4. 0 page errors.
+  - Shots: shots/seatE/a6_stroke_before_size.png, a6_stroke_after_size_3_4.png.

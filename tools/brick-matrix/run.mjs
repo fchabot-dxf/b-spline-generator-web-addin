@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME, GROUT_JOINTS, QUICK_FRAME_LAYS, CARVE_UNDER_FLAT } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME, GROUT_JOINTS, QUICK_FRAME_LAYS, CARVE_UNDER_FLAT, STROKES_FOLLOW } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -455,7 +455,7 @@ try {
   }
   if (!arg('group') || arg('group') === 'layout') await runLayout();
   if (!arg('group') || arg('group') === 'clear') await runClear();
-  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); await runQuickFrameLays(); await runCarveUnderFlat(); }
+  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); await runQuickFrameLays(); await runCarveUnderFlat(); await runStrokesFollow(); }
   if (!arg('group') || arg('group') === 'select') await runSelect();
   if (!arg('group') || arg('group') === 'migration') await runMigration();
   if (!arg('group') || arg('group') === 'frame-ui') await runFrameUi();
@@ -802,6 +802,27 @@ async function runCarveUnderFlat() {
     return JSON.stringify({ crossed: crossed.length, near, nearChanged, farOnCrossed, farOnCrossedChanged, maxFar:+maxFar.toFixed(4) }); })()`);
   const ok = m.crossed > 0 && m.farOnCrossed > 0 && m.farOnCrossedChanged === 0 && m.nearChanged >= C.minNearChangedShare * m.near;
   checkRow('lay', name, ok, `${m.crossed} bricks crossed; off-stroke points on them changed ${m.farOnCrossedChanged}/${m.farOnCrossed} (max ${m.maxFar} in); under the stroke ${m.nearChanged}/${m.near} cut`);
+  if (await editorOpen()) await apply();
+}
+
+// audit A6 (controls.mjs STROKES_FOLLOW): a drawn stroke follows the global size and the quick Set
+async function runStrokesFollow() {
+  const F = STROKES_FOLLOW;
+  const read = () => jsJSON(`(()=>{ const n=window.svgEditor._sketchLayer.node; const sp=n.querySelector('[data-brick="brush-spine"]'); const s=sp?JSON.parse(sp.getAttribute('data-brick-settings')):{};
+    return JSON.stringify({ pieces: n.querySelectorAll('[data-brick="brush"]').length, size: s.brickLengthIn, setId: s.setId, sets: [...new Set([...n.querySelectorAll('[data-brick="brush"]')].map((b)=>b.getAttribute('data-brick-set')))] }); })()`);
+  await reloadWithStorage({});
+  await openEditorTab('editorTabBrick'); await click('brickTool_brush', 800);
+  await dragIn(F.stroke); await sleep(1500);
+  const a = await read();
+  await click(F.sizePreset, 2500);
+  const b = await read();
+  checkRow('lay', 'A6: a stroke follows the global Brick size (no Wall / Frame on the board)', a.pieces > 0 && b.size === F.sizeIn && b.pieces !== a.pieces,
+    `pieces ${a.pieces} -> ${b.pieces}, snapshot size ${a.size} -> ${b.size}`);
+  await click(F.wallTool, 800); await click(F.generate, 2500);
+  await click(F.quickSet, 2500);
+  const c = await read();
+  checkRow('lay', 'A6: the quick Set (apply to all) reaches a stroke', c.setId === F.setId && c.sets.length === 1 && c.sets[0] === String(F.setId),
+    `stroke set ${b.setId} -> ${c.setId}, pieces' sets ${JSON.stringify(c.sets)}`);
   if (await editorOpen()) await apply();
 }
 

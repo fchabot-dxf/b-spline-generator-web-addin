@@ -439,3 +439,11 @@ export const CARVE_UNDER_FLAT = {
   wallTool: 'brickTool_wall', generate: 'brickGenerate', minNearChangedShare: 0.9,
   introducedBy: 'F35 item 44',
 };
+
+// ---- audit A6 (seat E, on seat D's draft): a drawn Brush stroke follows the GLOBAL brick size (Fred: single size), and the
+// sidebar's quick Set (apply to all). A real drag on a board with no Wall / Frame, then the size preset: the stroke re-lays at
+// the new size; then a Wall and the quick Set: the stroke takes the set. FAILS (not skips) without the fix.
+export const STROKES_FOLLOW = {
+  stroke: [[1.2, 4.5], [5.8, 4.5]], sizePreset: 'brickSizePreset_quarter3', sizeIn: 0.75,
+  quickSet: 'brickQuick_set_4', setId: 4, wallTool: 'brickTool_wall', generate: 'brickGenerate',
+};
