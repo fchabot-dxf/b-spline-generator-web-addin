@@ -93,7 +93,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, dev
 // The stub: the app detects Fusion mode through window.adsk; every send is recorded, nothing answers.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `
   window.__sends = [];
-  window.adsk = { fusionSendData(action, data) { window.__sends.push([action, data]); return ''; } };` });
+  window.adsk = { fusionSendData(action, data) { window.__sends.push([action, data, performance.now()]); return ''; } };` });
 await send('Page.navigate', { url: URL }); await sleep(9000);
 
 const steps = {
@@ -265,8 +265,14 @@ if (CARVE) {
       stencilBtn: !![...document.querySelectorAll('button')].find(b => /apply stencils/i.test(b.textContent)) }); })()`);
   console.log('after stencils:', st);
 }
+const tClick = await evalJS('performance.now()');
 await evalJS(`(async()=>{ document.getElementById('btnDownload').click(); await new Promise(r=>setTimeout(r,30000)); })()`);
 const sends = await evalJS('window.__sends');
+// H23 item 83 timing: the app side of a Send, from the click (ms after it) -- send[2] = performance.now() at the call
+{ const at = (a) => (sends || []).filter((q) => q[0] === a).map((q) => Math.round(q[2] - tClick));
+  const ch = at('generate_chunk');
+  console.log('send timing ms after click:', JSON.stringify({ generate_start: at('generate_start'), first_chunk: ch[0], last_chunk: ch[ch.length - 1],
+    chunks: ch.length, generate_finish: at('generate_finish') })); }
 const actions = (sends || []).map((s) => s[0]);
 console.log('sends:', [...new Set(actions)].join(', '), '| total', actions.length);
 const chunks = (sends || []).filter((s) => s[0] === 'generate_chunk').map((s) => JSON.parse(s[1]))
