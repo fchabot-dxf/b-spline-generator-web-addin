@@ -60,7 +60,10 @@ for (const template of todo) {
   for (const preset of BAND_PRESETS) {
     const file = `${OUT}/${template}__${preset}.json`;
     if (existsSync(file)) { console.log('skip (done)', template, preset); continue; }
-    await evalJS('localStorage.clear(); sessionStorage.clear(); true');
+    // A FRESH start: wipe the origin's storage from about:blank. MEASURED (item 89 follow-up): localStorage.clear() from
+    // inside the app and then navigating does NOT give one -- the previous board (frame record, terrain seed) came back.
+    await send('Page.navigate', { url: 'about:blank' }); await sleep(800);
+    await send('Storage.clearDataForOrigin', { origin: new globalThis.URL(URL).origin, storageTypes: 'all' });
     await send('Page.navigate', { url: URL }); await sleep(8000);
     const t0 = Date.now();
     const r = JSON.parse(await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
