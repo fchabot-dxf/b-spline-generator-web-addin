@@ -255,6 +255,21 @@ def _merge_last_send_key(key, value):
 PALETTE_ID   = 'fusionHybridPalette'
 PALETTE_NAME = 'Symmetric B-Spline Gen'
 PALETTE_HTML = 'html/bspline_gen_palette.html'
+# H23 item 92: the palette page learns it runs in Fusion from a flag in its URL, DECLARED ONCE in this file (the
+# page's pollMode reads the same one): the pure-JSON object after the line that starts with the export.
+FUSION_HOST_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'html', 'data', 'fusion-host.js')
+
+
+def _palette_url(html_path, host_file=None):
+    """The palette's file URL with the declared Fusion-host flag (?host=fusion). Fusion can inject `adsk` seconds
+    after the page starts (seat A, 2026-10-06: ~3 s, and the page opened as the website with no Send button); the flag
+    tells the page to wait for it. A bare path with a query is refused by palettes.add ("Invalid htmlFileURL"); the
+    file:/// form with a query loads and keeps location.search (measured live, same day)."""
+    with open(host_file or FUSION_HOST_FILE, 'r', encoding='utf-8') as f:
+        src = f.read()
+    m = re.search(r'^export default', src, re.M)
+    host = json.loads(src[m.end():].strip().rstrip(';'))
+    return 'file:///' + html_path.replace('\\', '/').lstrip('/') + f"?{host['param']}={host['value']}"
 
 # Track occurrences and graphics added during the session
 last_imported_occurrences = []
@@ -2378,9 +2393,10 @@ class CommandExecuteHandler(adsk.core.CommandEventHandler):
             if not palette:
                 current_dir = os.path.dirname(os.path.realpath(__file__))
                 html_path   = os.path.join(current_dir, PALETTE_HTML).replace('\\', '/')
-                _log(f'Creating palette, html_path={html_path}')
+                html_url    = _palette_url(html_path)
+                _log(f'Creating palette, html_path={html_path}, url={html_url}')
                 palette = palettes.add(
-                    PALETTE_ID, PALETTE_NAME, html_path,
+                    PALETTE_ID, PALETTE_NAME, html_url,
                     True, True, True, 1000, 850
                 )
                 palette.dockingState = adsk.core.PaletteDockingStates.PaletteDockStateRight
