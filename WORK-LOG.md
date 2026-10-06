@@ -22756,3 +22756,35 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
   origin is right. Either the box dims re-evaluated in the other frame orientation or the stock box was not
   re-applied after the model change. Not chased (re-run _apply_stock_box after a re-bind would be the first test).
 - Hygiene: scratch doc closed by handle, holder none; Fred's Untitled untouched.
+
+## H23 item 86 -- P2: a re-BUILD reuses the existing CAM build in place (seat A / 77, 2026-10-05)
+- Branch cam-inplace-86 off origin/main + my send-timing-85 (docs). Approved after item 85's numbers (re-BUILD on an
+  unchanged board ~47 s, in-place stock/WCS ~1.3 s, setups survive + accept setup.models re-binding).
+- MEASURED for the identity: Setup and Operation carry attributes (CAM.findAttributes exists); ManufacturingModel does
+  NOT; Setup.models is settable. Declared: setups tagged SETUP_ATTR = ('CAMBuilder', 'setup') = <SETUP_SPECS name>
+  (written by build_setup); MMs found by their declared display names (_mm_display_name).
+- Code (setup_builder / cam_coordinator):
+    build_setup split: everything after cam.setups.add -> _configure_setup(setup, mm, spec, logger) (stock mode, WCS
+      modes / axes / flipY / box point / the shared CAM_POSITION point, the declared box, offsets, readback) -- one
+      body for both paths.
+    find_reusable_build: every MM_RULES MM (by name) and every SETUP_SPECS setup (by tag) present and valid -> reuse;
+      anything missing, invalid or UNTAGGED (a build from before this change) -> None -> today's full recreate (and
+      the new setups get tagged, so the next BUILD reuses).
+    update_setups_in_place: re-bind models to the MM's current bodies, _configure_setup (the declared box and the
+      axes ALWAYS re-applied), 3D op heights when the setup has ops, then the same Part Position pass 2.
+    Coordinator: ensure_wcs_sketches, then reuse or full recreate; report['reused'].
+- Tests: test_cam_reuse.py 10/10 -- reuse on a complete build; full recreate for an MM missing / invalid, a setup
+  missing / invalid / untagged; build_setup tags; the in-place path re-binds models (ObjectCollection) and re-applies
+  box (Back 'stock', Frame 'frame_stock'), WCS point (Back 'back', Top 'flipped'), axes on all 4, heights only with
+  ops, pass 2 last, and never creates a setup; the coordinator's two paths in order. Mutants: in-place without
+  _configure_setup -> 1 fail; coordinator ignoring reuse -> 1 fail. CAM-builder 36/36.
+- LIVE (worktree engine via sys.path swap, restored -- verified after a timed-out call too; e2e board WITH frame):
+    BUILD #1 fresh doc: 'REUSE: MM ... missing -> full recreate' (correct), 3.4 min this session (session drift; 76 s
+      earlier).
+    BUILD #2 unchanged board: REUSED in 6.1 s (was ~47 s), ok: Back (-3.75, -4.75, 0.0289) / Top (3.75, -4.75, 2.0289)
+      on their points, stock X 9.5 on Back / Top / Frame, models live, all 4 setups tagged.
+    re-Send of the board (CAM kept; slow as measured in item 85), then BUILD #3: REUSED in 4.4 s, ok, the same values,
+      models live.
+  The stock X 7.5 of the (b') probe did NOT occur: there the MM had been deleted + recreated by hand; in P2 a missing
+  or invalid MM takes the full recreate, and the in-place path re-applies axes + box every time anyway.
+- Hygiene: scratch doc closed by handle (verified), holder none; Fred's Untitled untouched.
