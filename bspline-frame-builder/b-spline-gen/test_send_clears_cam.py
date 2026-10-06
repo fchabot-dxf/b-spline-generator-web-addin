@@ -94,6 +94,16 @@ def test_a_document_without_cam_is_left_alone(monkeypatch):
     assert any('nothing to clear' in m for m in logged)
 
 
+def test_a_document_that_never_had_cam_raises_and_is_left_alone(monkeypatch):
+    # live: itemByProductType('CAMProductType') raised '3 : failed to find product' on a fresh document
+    def _raise(t):
+        raise RuntimeError('3 : failed to find product')
+    doc = types.SimpleNamespace(parentDocument=types.SimpleNamespace(products=types.SimpleNamespace(itemByProductType=_raise)))
+    logged = _patch(monkeypatch, _FakeCoordinator(set(), set()))
+    assert bsg._clear_cam_build(doc) is None
+    assert any('nothing to clear (3 : failed to find product)' in m for m in logged)
+
+
 def test_a_failing_clear_is_logged_and_the_send_goes_on(monkeypatch):
     class _Boom:
         def clear_addin_build(self, cam, logger=None):

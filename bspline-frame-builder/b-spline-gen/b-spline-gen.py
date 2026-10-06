@@ -523,12 +523,14 @@ def _clear_cam_build(des):
     names) or None when the document has no CAM. Best-effort: a failure is logged and the Send goes on."""
     t0 = time.time()
     try:
+        # live (item 99): on a document that never had CAM this RAISES '3 : failed to find product' (not None)
         product = des.parentDocument.products.itemByProductType('CAMProductType')
     except Exception as e:
-        _log(f'[CAM CLEAR] CAM product lookup failed: {e}')
-        return None
+        product, why = None, f' ({e})'
+    else:
+        why = ''
     if not product:
-        _log('[CAM CLEAR] no CAM in this document -- nothing to clear')
+        _log(f'[CAM CLEAR] no CAM in this document -- nothing to clear{why}')
         return None
     try:
         cam = adsk.cam.CAM.cast(product)
