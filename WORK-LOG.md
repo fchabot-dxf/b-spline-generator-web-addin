@@ -23283,3 +23283,20 @@ true one (waist 2.99 -> limit 1.00 < the 1 in band; same pieces), 42 lay more ba
   2.93 -> 2.92). Lays vs db413fb, 2,052: 25 change, all T16 -- stacks reduced to fit its waist; 14 of them now an
   honest "(no fit)" (a 1 in band > 1/3 of 2.47). Tests: T16 reads 2.47; T1 / T5 / T13 / T10 keep their edge readings
   (mutation: no clearance rule -> 4 fail). Full vitest 325 files / 5,354 passed.
+
+## T86 item 32 -- MEASURED, PLAN (awaiting GO): stone rings at pinches (seat B / fc, 2026-10-06)
+Branch ring-pinch (off gap-31). Probe: three_band, White rocks (set 3) + Grey stone (set 5, bandLayout fieldstone),
+0.75 / 1 / 1.25 in, 7x9, all 19 templates (+ 6x9 at 1.25 / 1.5 on the waisted ones as a stress): overlap between ring
+stones, self-crossing, stones > 10x median, stones ACROSS a pinch (two of its points whose nearest boundary points face
+each other on non-neighbour primitives), bare ring ground (> a joint from every stone, outside the wall).
+- The it.todo's own check (self-crossing or > 10x median, scale 1 and 4/3) on T11 T14 T15 T16 T17 T19: 0 bad on gap-31,
+  both sets. Item 28's fit rule keeps the stack under 1/3 of the gap, so the inner rings that used to pinch are dropped.
+- The one pinch left was T16 (Grey stone 0.75 in kept 2 rings; the inner ring's halves met in the waist, a stone across
+  it) -- the cause was item 31's T16 reading (3.90, true waist 2.47), fixed on gap-31 482df66. After: 0 across a pinch,
+  0 overlap, 0 self-crossing, 0 > 10x median over 114 lays (7x9) + 24 (6x9 stress). The 6x9 single rings at 1.25 / 1.5
+  are an honest "(no fit)" (the outermost ring is never reduced) and still cross no waist. Probe noise, not pinches:
+  stones filling T7's acute roof / hook tips, a big T18 6x9 corner stone (shots item32_*).
+- NOT pinch-specific: bare ring ground, median 0.59 sq in per lay, max 1.28 (T19 1.25); non-pinch templates the same
+  (T6 1.08, T9 0.90, T1 0.66). Voids at ring corners and along the ring where the fieldstone fill leaves gaps.
+Plan: no new pinch rule (nothing left to fix -- machinery would be speculative); flip the six it.todo to tests over
+every template x both stone sets x 0.75 / 1 / 1.25 in (+ the test's 1 and 4/3 scale). Bare ring ground: a separate item.
