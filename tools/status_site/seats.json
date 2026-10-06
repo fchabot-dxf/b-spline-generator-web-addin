@@ -23,13 +23,14 @@
       "key": "seatB",
       "name": "Seat B",
       "station": "home-pc",
-      "branch": "lane-b",
+      "branch": "neck-medial",
       "task": "NEXT-SESSION-lane-b.md",
-      "checkout": "-lane-b",
-      "session": "b-spline-generator-web-addin-88",
+      "checkout": "-wt\fc",
+      "session": "b-spline-generator-web-addin-fc",
       "shots": [
         "seatB",
-        "seat88"
+        "seat88",
+        "seatfc"
       ]
     },
     {
@@ -44,6 +45,19 @@
         "seatC",
         "seat37",
         "seat02"
+      ]
+    },
+    {
+      "key": "seatD",
+      "name": "Seat D",
+      "station": "home-pc",
+      "branch": "brick-3d-bugs",
+      "task": "NEXT-SESSION-fb-app.md",
+      "checkout": "-wt\bb",
+      "session": "b-spline-generator-web-addin-bb",
+      "shots": [
+        "seatD",
+        "seatbb"
       ]
     }
   ]
