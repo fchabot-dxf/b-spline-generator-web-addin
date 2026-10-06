@@ -23705,3 +23705,29 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Live end-to-end (deployed d52c5da = this + main 32a9fa4, the board's real Send from the palette): Lattice
   Boundary / L2 contour / L1 rails / L3 ties / L4 nodes all constraints_issues=0, parity_maxErr 0 / 0 / 1e-6 / 0 /
   0, no [ERROR], no PARITY WARNING (were 5 failures, 208 / 6.9 / 4.7 in); the contour builds in 1.1 s (was 4.7 s).
+
+## H23 item 95: the first APPLY after a fresh BUILD left 3-4 of 7 toolpaths empty again -- Fusion's first generation (seat A / 77, 2026-10-06)
+- Reproduced on BOTH boards on main as deployed (CAM engine byte-identical to item 91's fix f818ae8):
+  T16 7x9 + wall + lattice board through the palette (BUILD/APPLY clicks): ok=4 missing=3; the item-90 cam-bricks
+  board through the replay tool (fusion_send_build_apply.py): ok=3 missing=4, then again ok=3 missing=4. Signature:
+  'B-spline Back' "generated in 0.3 s" (never really ran), the early ops on 'MM - B-spline set' empty. The setups
+  carry NO attribute (item 91's cause is gone), so that tag was not the whole story: the 7/7 seen after item 91's
+  fix came on a light machine (today's cam-bricks Send took 176-244 s vs 30 s then).
+- Narrowed (one live run each, cam-bricks):
+    regenerate the 4 empty ops in the same doc -> 4/4 valid;
+    delete all ops, re-apply the templates, generate (same doc, fresh ops) -> 7/7: the failure is the DOC'S FIRST
+      generation, not new ops;
+    force every Manufacturing Model's bodies to evaluate (volumes; the B-spline MM took 1.4 s, so it was lazy) before
+      APPLY -> still ok=3 missing=4: not the MM geometry;
+    a one-op warm-up first (generate Back/Pocket back1 alone, awaited: it came back EMPTY in 4 s) -> then the batch
+      ok=5 missing=2 (both Morphed Spirals): a warm-up is not enough;
+    in that doc, a second pass by hand -- Back (empty op) then Top (now stale: it reads Back's stock), Frame skipped
+      -> 7/7 valid.
+- Fix (cam_engine/toolpath_gen.py, declared): the deferred TPGen's per-setup loop moved out of cam-builder.py
+  unchanged, plus a second pass: up to MAX_GENERATION_PASSES = 2, a setup that still holds an op without a valid
+  toolpath is generated again, in setup order, checked when reached (so a setup made stale by an earlier one's
+  regeneration is redone, a complete one is not). The fixed 1.5 s warmup pump stays as it was. Not root-caused inside
+  Fusion ("Generation failed", no message) -- the second pass is the measured behaviour, bounded and logged.
+- Tests: CAM-builder/test_toolpath_gen.py 5 (fakes that behave like the live run: an op's first generation empty,
+  a regenerated setup staling the next that reads its stock); with MAX_GENERATION_PASSES = 1 (the old single pass)
+  3/5 fail. CAM-builder suite 45/45. Known failures: none.
