@@ -22991,3 +22991,55 @@ T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given 
   h23_item89_template_12__single_soldier.png.
 - For B's after-run: same tools, same seed, same board -> diff against tools/repro/h23_item89_baseline/.
 - Hygiene: scratch doc closed by handle (only Fred's Untitled), holder none, my server + Chrome stopped.
+
+## H23 item 89 CORRECTION -- the first baseline was not fresh per case; redone (seat A / 77, 2026-10-05)
+- The advisor asked about "unseeded, 3 silhouettes in 3 loads". MEASURED (T1, 3 genuinely fresh loads, unseeded):
+    before Generate: frame seeds {} and the 12 outline primitives are IDENTICAL in all 3 loads. Only the terrain
+      seed differs (27673 / 72783 / 90091), which is by design.
+    the Frame tab's [Generate] = generateFrame(seed = nextSeed()), nextSeed() = Math.floor(Math.random()*1e6)
+      (editor/editor-lattice-pattern.js:777), documented "a new seeded random frame shape". The sweep clicked it on
+      every case: that is where the 3 silhouettes came from.
+    a saved board: after Generate, a plain reload restored the same seeds and outline, 3/3. NO outline bug.
+- THE DEFECT WAS MINE: localStorage.clear() run inside the app and then navigating does NOT give a fresh start. The
+  previous board came back (same terrain seed, previous frame record, 2 of 2 loads), so every case of the first
+  baseline started from the previous case's board. Re-running T1/T10/T12 genuinely fresh changed 7 of 9 piece counts
+  and 9 of 9 svgs (T1 single 110 -> 116). The sweep now wipes the origin from about:blank
+  (Storage.clearDataForOrigin, storageTypes 'all'); two fresh runs gave byte-identical svgs, 6 of 6 cases.
+  The first item 89 table above is INVALID. Its files were removed in 9ade383; the replacement is
+  tools/repro/h23_item89_baseline/*_fresh.*
+- Redone, same method otherwise (all 57 fresh; Fusion through the COMMITTED h23_item89_fusion_import.py, run end to
+  end, 2 per call, nothing else running). pieces / profiles / slivers < 1e-4 in2 / import s:
+    template    | single_soldier     | three_band         | double_course
+    template_1  | 116/116/ 0/1.28    | 116/116/ 0/1.28    | 112/112/ 0/1.15
+    template_2  |  87/ 87/ 0/1.33    |  87/ 87/ 0/3.96    |  79/ 79/ 0/1.16
+    template_3  |  94/ 94/ 0/5.51    | 145/248/48/3.67    |  90/ 90/ 0/2.99
+    template_4  | 100/100/ 0/3.20    | 100/100/ 0/4.72    |  96/ 96/ 0/2.83
+    template_5  | 113/121/ 2/1.58    | 113/121/ 2/5.97    | 107/115/ 2/1.74
+    template_6  |  99/ 99/ 0/2.44    |  99/ 99/ 0/3.66    |  91/ 91/ 0/3.05
+    template_7  |  86/ 86/ 0/3.19    |  86/ 86/ 0/1.80    |  80/ 80/ 0/1.97
+    template_8  | 105/136/ 7/2.55    | 105/136/ 7/1.44    |  95/ 95/ 0/2.69
+    template_9  |  84/ 84/ 0/1.20    |  84/ 84/ 0/1.15    |  84/ 84/ 0/1.20
+    template_10 | 103/109/ 0/1.53    | 103/109/ 0/1.57    |  99/ 99/ 0/1.73
+    template_11 |  84/ 84/ 0/1.15    |  84/ 84/ 0/1.52    |  72/ 72/ 0/4.52
+    template_12 | 114/114/ 0/1.52    | 114/114/ 0/1.88    | 110/114/ 0/1.58
+    template_13 |  91/ 91/ 0/1.46    |  91/ 91/ 0/1.19    |  82/ 88/ 0/1.11
+    template_14 |  90/ 90/ 0/1.10    | 133/289/92/1.44    |  85/ 85/ 0/1.02
+    template_15 |  86/ 86/ 0/1.66    |  86/ 86/ 0/1.01    |  82/ 82/ 0/3.69
+    template_16 |  86/ 86/ 0/1.04    |  86/ 86/ 0/1.23    |  86/ 86/ 0/1.05
+    template_17 |  89/ 89/ 0/1.01    |  89/ 89/ 0/1.11    |  89/ 89/ 0/1.10
+    template_18 |  94/ 94/ 0/1.34    |  94/ 94/ 0/1.23    |  90/ 90/ 0/1.23
+    template_19 | 104/130/ 4/1.31    | 104/130/ 4/1.53    | 102/128/ 4/1.29
+  TOTALS: 14/57 mismatched, 445 extra profiles, 172 slivers, 0 open ends, 0 multi-loop; import median 1.52 s,
+  max 5.97 s.
+- WORST 3:
+    T14 three_band 133/289/92: the small profiles spread ALONG the inner stretcher bands (x +-1.0..1.5, the whole
+      height). The stretcher bricks meet end to end with no joint: B's "zero-wide joints inside band rows".
+    T3 three_band 145/248/48: the same, along its inner bands (x +-1.5..2.0).
+    T8 single_soldier 105/136/7: all 19 small profiles at ONE corner (2.3..2.4, 3.2..3.4), a corner fan.
+  Note: three_band lays 3 real bands only on T3 and T14 here (145 / 133 pieces vs 94 / 90 single); elsewhere its
+  counts equal single_soldier's.
+- Shots (shots/seatA): h23_item89v2_template_14__three_band.png, h23_item89v2_template_3__three_band.png,
+  h23_item89v2_template_8__single_soldier.png. (The h23_item89_* shots of the first run are of the invalid boards.)
+- Slip: the 9ade383 commit landed without these files and this entry (a cp after git rm failed and the chain
+  stopped); added in the next commit.
+- Hygiene: scratch doc closed by handle (only Fred's Untitled), holder none, servers + Chrome stopped.
