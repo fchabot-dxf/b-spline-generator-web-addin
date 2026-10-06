@@ -124,4 +124,17 @@ export function toggleSidebarPin(key) {
   apply();
 }
 
+/** Sends the user (or a test) to a section: its tab becomes the active one (a pinned section shows on every tab) and,
+ *  if folded, it unfolds (its header's own togglePanel). */
+export function revealSidebarSection(key, doc = document) {
+  if (!_state) return false;
+  if (!_state.pinned.includes(key)) setSidebarTab(tabOfSection(key));
+  const header = doc.querySelector(`.cad-sidebar .panel.${key} > .panel-header`);
+  if (header && header.classList.contains('collapsed')) {
+    // the palette's own global (the header's inline onclick); a click where it is absent
+    if (typeof window !== 'undefined' && typeof window.togglePanel === 'function') window.togglePanel(header); else header.click();
+  }
+  return true;
+}
+
 export const sidebarTabState = () => (_state ? { active: _state.active, pinned: [..._state.pinned] } : null);

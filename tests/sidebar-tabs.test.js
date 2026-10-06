@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   SIDEBAR_TABS, SIDEBAR_DEFAULT_TAB, SIDEBAR_TAB_STORAGE_KEY, SIDEBAR_PINNED_STORAGE_KEY,
-  initSidebarTabs, setSidebarTab, toggleSidebarPin, sectionKey, tabOfSection,
+  initSidebarTabs, setSidebarTab, toggleSidebarPin, sectionKey, tabOfSection, revealSidebarSection,
 } from '../bspline-frame-builder/b-spline-gen/html/main/sidebar-tabs.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
@@ -74,6 +74,20 @@ describe('items 48 + 47: the main sidebar tabs and pins', () => {
     const box = document.getElementById('sidebarPinned');
     expect(box.parentElement.firstElementChild).toBe(box);
     expect([...box.children].map((p) => sectionKey(p.classList))).toEqual(['panel-stock', 'panel-view']);
+  });
+
+  it('revealSidebarSection: its tab comes up and the section unfolds (the brick matrix uses it); a pinned one keeps the tab', () => {
+    window.togglePanel = (h) => h.classList.toggle('collapsed');
+    initSidebarTabs();
+    const header = document.querySelector('.panel.panel-brick > .panel-header');
+    expect(header.classList.contains('collapsed')).toBe(true);
+    revealSidebarSection('panel-brick');
+    expect(shown()).toContain('panel-brick');
+    expect(document.getElementById('sidebarTab_decor').classList.contains('active')).toBe(true);
+    expect(header.classList.contains('collapsed')).toBe(false);
+    setSidebarTab('board'); toggleSidebarPin('panel-filter');
+    revealSidebarSection('panel-filter');
+    expect(document.getElementById('sidebarTab_board').classList.contains('active')).toBe(true);
   });
 
   it('a section no tab declares falls into the declared default (never vanishes)', () => {

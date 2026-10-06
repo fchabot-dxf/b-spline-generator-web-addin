@@ -2537,13 +2537,18 @@ const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).filter((id) => !FOLDED_FRAM
  *  committed 'auto' (re-lay at once), the sidebar's own rule. Declared here as data: each row names its
  *  choices (the editor's own declared lists), which choice is current, and how to apply one. */
 // F35 item 23: the brick sets (rock is implied by the Fieldstone pattern); the sidebar's quick Set applies to ALL
-// elements at once
+// elements at once. `mixed` (BRICK audit A5): the text shown when NO choice is current (the elements differ, after a
+// per-element pick in the editor) -- the row says so instead of showing nothing active; `when` = it applies (the
+// elements' sets really differ: an all-rock board shows no brick set active without being mixed). `columns` (A9): an icon grid of
+// that many columns (the Wall pattern's 21 icons took 11 rows).
 const BRICK_QUICK_SETTINGS = [
   { id: 'set', label: 'Set', choices: () => BRICK_SET_IDS.map((id) => ({ id, label: _setLabel(id) })),
+    mixed: { label: 'Mixed', title: 'The elements use different sets (picked per element in the Brick tab); a pick here applies to every element',
+      when: () => new Set(SET_KINDS().map((k) => elementSetId(P.brickSettings, k))).size > 1 },
     isCurrent: (c) => SET_KINDS().every((k) => elementSetId(P.brickSettings, k) === c.id), apply: (c) => selectSet(c.id, 'auto', SET_KINDS(), { strokes: true }) }, // A6: applies to every element, strokes too
   { id: 'size', label: 'Brick size', choices: () => BRICK_SIZE_PRESETS,
     isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
-  { id: 'pattern', label: 'Wall pattern', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternIconSvg(c.id, 24),
+  { id: 'pattern', label: 'Wall pattern', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternIconSvg(c.id, 24), columns: 4,
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
   // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
   // (`lays`), or re-lays it; greyed while the board has no frame contour (BRICK_CONTROL_REQUIRES 'frameContour')
@@ -2555,6 +2560,7 @@ const BRICK_QUICK_SETTINGS = [
 ];
 const quickButtonId = (row, choice) => `brickQuick_${row.id}_${choice.id}`;
 const quickRowId = (row) => `brickQuickRow_${row.id}`;
+const quickMixedId = (row) => `brickQuick_${row.id}_mixed`;
 /** F35 item 55: the sidebar's grout colours, declared -- None (the board shows through) + a few mortar shades. */
 export const GROUT_COLOR_CHOICES = Object.freeze([
   { id: 'none', label: 'None (the board shows through)', color: null },
@@ -2579,7 +2585,9 @@ function renderQuickSettings(container) {
     container.appendChild(label);
     const list = document.createElement('div');
     list.id = quickRowId(row);
-    list.style.cssText = 'display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;';
+    list.style.cssText = row.columns
+      ? `display:grid; grid-template-columns:repeat(${row.columns}, minmax(0, 1fr)); gap:4px; margin-bottom:10px;`
+      : 'display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;';
     for (const choice of row.choices()) {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -2589,8 +2597,18 @@ function renderQuickSettings(container) {
       const icon = row.iconFor && row.iconFor(choice);
       if (icon) { btn.innerHTML = icon; btn.title = choice.label; btn.setAttribute('aria-label', choice.label); btn.style.padding = '2px'; }
       else btn.textContent = choice.label;
+      if (row.columns) btn.style.minWidth = '0'; // A9: a grid cell, not .cad-btn's 75 px floor (4 x 75 overflowed the sidebar)
       btn.addEventListener('click', () => { if (row.lays) requestLay(row.lays); row.apply(choice); });
       list.appendChild(btn);
+    }
+    if (row.mixed) { // A5: shown by syncQuickSettings while no choice is current and the row's `when` holds
+      const chip = document.createElement('span');
+      chip.id = quickMixedId(row);
+      chip.className = 'brick-quick-mixed';
+      chip.textContent = row.mixed.label;
+      chip.title = row.mixed.title;
+      chip.style.cssText = 'display:none; align-self:center; font-size:10px; font-style:italic; opacity:0.75; padding:2px 6px; border:1px dashed currentColor; border-radius:4px;';
+      list.appendChild(chip);
     }
     container.appendChild(list);
   }
@@ -2599,9 +2617,14 @@ function renderQuickSettings(container) {
 
 function syncQuickSettings() {
   for (const row of BRICK_QUICK_SETTINGS) {
+    let any = false;
     for (const choice of row.choices()) {
-      document.getElementById(quickButtonId(row, choice))?.classList.toggle('active', row.isCurrent(choice));
+      const on = row.isCurrent(choice);
+      any = any || on;
+      document.getElementById(quickButtonId(row, choice))?.classList.toggle('active', on);
     }
+    const mixed = row.mixed ? document.getElementById(quickMixedId(row)) : null;
+    if (mixed) mixed.style.display = !any && row.mixed.when() ? '' : 'none';
   }
 }
 

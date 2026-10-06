@@ -351,7 +351,7 @@ try {
       if (c.kind === 'editor' || c.kind === 'editor3d') await openBrickTool(c.tool);
       else if (c.kind === 'brush' || c.kind === 'stripe') await openBrickTool('brush');
       else if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
-      if (c.kind === 'sidebar') await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+      if (c.kind === 'sidebar') await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
       // the dependency is unmet: the control must be greyed out or hidden -- that is the whole check for this row
       const disabled = await isDisabled(targetId(c.do));
       const row = { name: c.name, kind: c.kind, tool: c.tool || null, result: 'requires unmet', requires: rule.requires, requiresSource: rule.source,
@@ -429,7 +429,7 @@ try {
     } else if (c.kind === 'opens') {
       // a sidebar button that opens the editor on a declared tab: open?, on that tab? -- then close it again
       if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
-      await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+      await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
       const result = await act(c.do);
       await sleep(2500);
       const opened = await editorOpen();
@@ -444,7 +444,7 @@ try {
       if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
     } else if (c.kind === 'sidebar') {
       if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
-      await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+      await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
       const c0 = await js(CANVAS);
       const result = await act(c.do);
       await sleep(1500);

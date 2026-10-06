@@ -775,3 +775,10 @@ aside {
 #brickGroutPaintRow {
     flex-wrap: wrap;
 }
+/* the Photo tabs: the strip heads the Photo panel (pinned) */
+#photoTabsHead {
+    padding-bottom: 0;
+}
+#photoTabsHead > #photoTabStrip {
+    margin: -12px -14px 0;
+}
