@@ -329,30 +329,33 @@ describe('Template 10: the Arch rise / Waist reach / Waist position handles', ()
     'hourglassConstruction\'s own declared F8 rule (editor-shape-lattice-generator.js) says makes the waist ' +
     'arc major (>= 180 deg) -- legitimate by that rule, but fatal to Fusion\'s own unconditional gate. This ' +
     'reproduces frame-panel.js\'s own generateFrame() isValid exactly (same reflex check added there) at the ' +
-    'captured bad seed directly, then across a real sweep.', () => {
+    'captured bad seed directly; the sweep is the H23 item 23 tests just below.', () => {
     const CAPTURED_BAD_SEEDS = { waistCenterY: -0.07328968798585467, waistReach: 0.5678267693028763, archRise: 0.11816840560200628 };
     const bad = profile(CAPTURED_BAD_SEEDS, 6, 9);
     const waistR = bad.primitives[2]; // arc_waist_R, per _solveHourglass's own documented keypoint order
     expect(Math.abs(waistR.dTheta), 'captured bad seed (explicit, not clamped): arc_waist_R sweep').toBeGreaterThanOrEqual(Math.PI);
-    const isValid = (seeds, W, H) => {
-      const inn = inner(seeds, W, H);
-      if (inn && inn.defects.length > 0) return false;
-      const realArchRise = paramsFromShapeModel('hourglass', T10.shapeModel, profile({}, W, H).region).archRise;
-      const outer = profile({ ...seeds, archRise: realArchRise }, W, H);
-      if (!outer.primitives.every((p) => primLength(p) >= T)) return false;
-      return outer.primitives.every((p) => p.type !== 'A' || Math.abs(p.dTheta) < Math.PI);
-    };
-    for (const [W, H] of [[7, 9], [6, 9], [9, 12]]) {
-      const region = profile({}, W, H).region;
-      for (let seed = 1; seed <= 500; seed++) {
-        const seeds = generateValidFrameSeeds(T10, region, seed, T, (s) => isValid(s, W, H));
-        expect(isValid(seeds, W, H), `${W}x${H} seed ${seed}`).toBe(true);
-        const prof = profile(seeds, W, H);
-        for (const p of prof.primitives) if (p.type === 'A') expect(Math.abs(p.dTheta), `${W}x${H} seed ${seed}`).toBeLessThan(Math.PI);
-      }
+  });
+
+  // item 67 (test infra): the real sweep, one test per board x 100 seeds (was one test with the captured seed: 3.2 s
+  // unloaded, 8.5 s in a full run, 42 s under the fleet's load). The same 3 boards x 500 seeds, the same checks.
+  const item23IsValid = (seeds, W, H) => {
+    const inn = inner(seeds, W, H);
+    if (inn && inn.defects.length > 0) return false;
+    const realArchRise = paramsFromShapeModel('hourglass', T10.shapeModel, profile({}, W, H).region).archRise;
+    const outer = profile({ ...seeds, archRise: realArchRise }, W, H);
+    if (!outer.primitives.every((p) => primLength(p) >= T)) return false;
+    return outer.primitives.every((p) => p.type !== 'A' || Math.abs(p.dTheta) < Math.PI);
+  };
+  const ITEM23_CASES = [[7, 9], [6, 9], [9, 12]].flatMap(([W, H]) => [1, 101, 201, 301, 401].map((first) => [`${W}x${H}`, first, W, H]));
+  it.each(ITEM23_CASES)('H23 item 23 sweep: [Generate] at %s, seeds %s..+99: every seed valid, no waist arc >= 180 deg', (_b, first, W, H) => {
+    const region = profile({}, W, H).region;
+    for (let seed = first; seed < first + 100; seed++) {
+      const seeds = generateValidFrameSeeds(T10, region, seed, T, (s) => item23IsValid(s, W, H));
+      expect(item23IsValid(seeds, W, H), `${W}x${H} seed ${seed}`).toBe(true);
+      const prof = profile(seeds, W, H);
+      for (const p of prof.primitives) if (p.type === 'A') expect(Math.abs(p.dTheta), `${W}x${H} seed ${seed}`).toBeLessThan(Math.PI);
     }
-  }, 30000); // H23 item 31: measured ~3.2s unloaded (3 boards x 500 seeds); timed out at the 5s default
-  // under concurrent full-suite load (H23 items 18/29) -- explicit headroom, not fewer seeds checked.
+  });
 
   it('the Fusion seeds: the arch seeded as an arc (S, apex, E), the sides as Template 1\'s own', () => {
     const prof = profile({ archRise: 0.2 });
