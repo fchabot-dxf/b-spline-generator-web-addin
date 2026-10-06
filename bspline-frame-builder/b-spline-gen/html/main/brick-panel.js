@@ -29,7 +29,7 @@ import {
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
   FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
-  brushStrokeSettings, restyleBrushStroke,
+  brushStrokeSettings, restyleBrushStroke, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
   groutPaintOf, repaintGrout, GROUT_ELEMENT_KINDS, GROUT_PAINT_DEFAULT, elementsWithoutGrout, forceRegenerateOwnedBrickElements,
 } from '../editor/editor-brick-tool.js';
 import { openColorMosaic } from '../editor/editor-color.js';
@@ -169,7 +169,7 @@ function syncSetPicker() {
  *  user who picked "2 inch bricks" means 2 inches regardless of which photo
  *  texture is applied, the same way Wall/Brush's own old relative Scale
  *  multiplier never needed a reset either. */
-export function selectSet(setId, commit = 'generate', kinds = [_setKind()]) {
+export function selectSet(setId, commit = 'generate', kinds = [_setKind()], { strokes = false } = {}) {
   const set = brickSetById(setId);
   if (!set || !kinds.every((k) => setsOfferedFor(k).includes(setId))) return;
   P.brickSettings.setIds = { ...(P.brickSettings.setIds || {}) };
@@ -189,7 +189,8 @@ export function selectSet(setId, commit = 'generate', kinds = [_setKind()]) {
   // (the elements' joints fall back to the new set's own: _resetJointsOnSetChange, in commitBrickSetting)
   syncSetPicker();
   syncControlsFromState();
-  commitBrickSetting(commit);
+  // A6 (advisor): only the quick Set ("apply to all") reaches the drawn strokes; an element's own Set row never does
+  commitBrickSetting(commit, 'onRelease', strokes ? Object.fromEntries(STROKE_FOLLOWS_QUICK_SET.map((k) => [k, setId])) : null);
 }
 
 /** F35 item 16 (Fred, "replacing the 0.5-2x multiplier with a BRICK SIZE control in inches"):
@@ -1308,9 +1309,17 @@ function _resetJointsOnSetChange() {
 }
 
 /** The one entry point every brick-setting control calls after writing P.brickSettings. */
-export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
+export function commitBrickSetting(commit = 'generate', phase = 'onRelease', strokeValues = null) {
   _resetJointsOnSetChange();
+  // A6: the drawn strokes follow the global settings (STROKE_FOLLOWS_GLOBAL, the brick size) -- plus, from the one control
+  // that applies to ALL elements (the quick Set), `strokeValues`; they regenerate with the re-lay's own commit -- or,
+  // with no Wall / Frame on the board to re-lay, their own one
+  const editor = phase === 'onRelease' && typeof window !== 'undefined' ? window.svgEditor : null;
+  const strokeKeys = [...STROKE_FOLLOWS_GLOBAL, ...Object.keys(strokeValues || {})];
+  const strokesMoved = editor ? strokesFollowGlobals(editor, { ...P.brickSettings, ...(strokeValues || {}) }, strokeKeys) : 0;
+  const relayCommits = strokesMoved > 0 && _kindsToLay(editor, resolveFrameGeom(editor)).length > 0;
   (BRICK_COMMIT[commit] || BRICK_COMMIT.generate)[phase]();
+  if (strokesMoved && !relayCommits) commitEdit(editor);
   syncControlRequires();
 }
 
@@ -2461,7 +2470,7 @@ const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).filter((id) => !FOLDED_FRAM
 // elements at once
 const BRICK_QUICK_SETTINGS = [
   { id: 'set', label: 'Set', choices: () => BRICK_SET_IDS.map((id) => ({ id, label: _setLabel(id) })),
-    isCurrent: (c) => SET_KINDS().every((k) => elementSetId(P.brickSettings, k) === c.id), apply: (c) => selectSet(c.id, 'auto', SET_KINDS()) },
+    isCurrent: (c) => SET_KINDS().every((k) => elementSetId(P.brickSettings, k) === c.id), apply: (c) => selectSet(c.id, 'auto', SET_KINDS(), { strokes: true }) }, // A6: applies to every element, strokes too
   { id: 'size', label: 'Brick size', choices: () => BRICK_SIZE_PRESETS,
     isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
   { id: 'pattern', label: 'Wall pattern', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternIconSvg(c.id, 24),

@@ -1060,6 +1060,28 @@ export function restyleBrushStroke(editor, id, settings) {
   return true;
 }
 
+/** A6 (3D-panel audit; Fred: "single size"): the GLOBAL settings every drawn Brush / Raised stroke follows -- written
+ *  into each stroke's snapshot when they change; its other settings stay its own. Its bricks regenerate on the next
+ *  commit (the snapshot is in regenerateOwnedBrickElements' fingerprint). Returns how many spines changed (no commit).
+ *  Seat E (advisor ruling, the per-element model): the SIZE is global (Fred: single size), so every stroke follows it; the
+ *  SET is per element, so a stroke keeps its own -- except through the sidebar's quick Set, which applies to ALL elements
+ *  (STROKE_FOLLOWS_QUICK_SET, passed as `keys` by that one control). Drafted by seat D (bb), A6_tool.diff. */
+export const STROKE_FOLLOWS_GLOBAL = Object.freeze(['brickLengthIn']);
+export const STROKE_FOLLOWS_QUICK_SET = Object.freeze(['setId']);
+export function strokesFollowGlobals(editor, settings, keys = STROKE_FOLLOWS_GLOBAL) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll || !settings) return 0;
+  let changed = 0;
+  for (const s of node.querySelectorAll(`[${BRICK_ATTR}="${SPINE_KIND}"]`)) {
+    const snap = decodeBrickSettings(s.getAttribute(BRICK_SETTINGS_ATTR));
+    if (!snap || keys.every((k) => snap[k] === settings[k])) continue;
+    for (const k of keys) snap[k] = settings[k];
+    s.setAttribute(BRICK_SETTINGS_ATTR, JSON.stringify(snap));
+    changed++;
+  }
+  return changed;
+}
+
 /** The selected element's outline: each of its bricks, outlined in the editor's HIGHLIGHT layer (the same
  *  overlay layers.js flashLayerGeometry uses) -- never in the drawing, so never saved, exported or hit. */
 export const ELEMENT_SELECT_OUTLINE = Object.freeze({ color: '#1e88e5', widthIn: 0.04 });
