@@ -535,9 +535,10 @@ def _clear_cam_build(des):
         logger = types.SimpleNamespace(log=lambda msg, level='INFO': _log(f'[CAM CLEAR] {level}: {msg}'))
         removed = _cam_coordinator().clear_addin_build(cam, logger)
     except Exception as e:
-        _log(f'[CAM CLEAR] failed: {type(e).__name__}: {e}')
+        _log(f'[CAM CLEAR] failed: {type(e).__name__}: {e} (engine {CAM_BUILDER_DIR})')
         return None
-    _log(f"[CAM CLEAR] removed setups={removed['setups']} mms={removed['mms']} in {time.time() - t0:.1f}s")
+    _log(f"[CAM CLEAR] removed setups={removed['setups']} mms={removed['mms']} in {time.time() - t0:.1f}s "
+         f"(engine {CAM_BUILDER_DIR})")
     return removed
 
 
