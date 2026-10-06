@@ -76,21 +76,34 @@ def _resolve_git_dir(source_root: str):
 def _read_head_sha(git_dir: Path):
     """Resolve ``<git_dir>/HEAD`` to a full SHA via pure file reads (no git
     binary). Handles symbolic HEAD (loose ref, then packed-refs) and a detached
-    HEAD (a raw SHA in the HEAD file). Returns the SHA string or ``None``."""
+    HEAD (a raw SHA in the HEAD file). Returns the SHA string or ``None``.
+
+    H23 item 93: a linked worktree's gitdir (``<repo>/.git/worktrees/<name>``)
+    holds only its own HEAD; the branch refs and packed-refs live in the COMMON
+    dir its ``commondir`` file names -- a deploy from a worktree read "could not
+    resolve source HEAD" until the refs were looked up there too."""
     try:
         head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
     except Exception:
         return None
+    common = git_dir
+    try:
+        rel = (git_dir / "commondir").read_text(encoding="utf-8").strip()
+        if rel:
+            common = (git_dir / rel).resolve()
+    except Exception:
+        pass
     if head.startswith("ref:"):
         ref = head[4:].strip()                    # e.g. "refs/heads/main"
-        try:                                       # loose ref wins if present
-            loose = (git_dir / ref).read_text(encoding="utf-8").strip()
-            if loose:
-                return loose
-        except Exception:
-            pass
+        for d in dict.fromkeys((git_dir, common)):  # loose ref wins if present
+            try:
+                loose = (d / ref).read_text(encoding="utf-8").strip()
+                if loose:
+                    return loose
+            except Exception:
+                pass
         try:                                       # packed-refs fallback
-            for line in (git_dir / "packed-refs").read_text(encoding="utf-8").splitlines():
+            for line in (common / "packed-refs").read_text(encoding="utf-8").splitlines():
                 line = line.strip()
                 if not line or line.startswith(("#", "^")):
                     continue
