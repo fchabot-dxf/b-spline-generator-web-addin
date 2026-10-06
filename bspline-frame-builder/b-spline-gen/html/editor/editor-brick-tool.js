@@ -49,7 +49,7 @@
  * BRICK_ELEMENT_ATTR/BRICK_SETTINGS_ATTR/reconstructChains/
  * regenerateOwnedBrickElements block below for the full mechanism.
  */
-import { ensureActiveLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR, BRICK_ELEMENT_ATTR, BRICK_OWNER_ATTR, brickElementNodes, brickKindLayer } from './layers.js';
+import { ensureActiveLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR, BRICK_ELEMENT_ATTR, BRICK_OWNER_ATTR, brickElementNodes, brickKindLayer, LOCKED_ATTR } from './layers.js';
 import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
@@ -61,6 +61,9 @@ import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
 import { radialSignAt } from '../core/bricks/arc-voussoir.js';
 import { accentedBrickIndices, accentedRunIndices, accentLayInput, ACCENT_MARK_ATTR } from './brick-accents.js';
+import { groutShapeOf, groutIdOf, pointOnGrout, primitivesOutline } from '../core/bricks/grout-shape.js';
+import { wallRegionOf } from '../core/bricks/engine.js';
+import { polygonIntersection } from '../core/bricks/geometry.js';
 
 export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-spine'
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
@@ -149,7 +152,7 @@ function applyBrickLayerTooling(layer, settings) {
  *  representative colour per set is the honest, achievable stand-in: Set
  *  1's own red-brick photos read red-brown; Set 3's own fieldstone photos
  *  read pale warm grey. */
-const SET_COLORS = Object.freeze({ 1: '#aa4433', 3: '#c9c3b2' });
+const SET_COLORS = Object.freeze(Object.fromEntries(BRICK_SETS.map((s) => [s.id, s.faceColor]))); // F35 item 56: each set's declared faceColor (library.js)
 const DEFAULT_BRICK_COLOR = SET_COLORS[1];
 
 /** Draws one `{id, polygon:{x,y}[], sampleId, flip, heightOffset}` brick as a
@@ -237,6 +240,117 @@ function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn, ownerId 
     if (kind === 'frame') stampRunPlace(el, b, i); // per-band accents read it
     if (ownerId) el.attr(BRICK_OWNER_ATTR, ownerId); // item 22: which element (record) laid it
   }
+}
+
+/** F35 item 55: the GROUT as a real shape -- one node per Wall / Frame element (a wall area is its own element): the
+ *  element's region minus its painted brick faces (core/bricks/grout-shape.js groutShapeOf, even-odd), drawn ABOVE its
+ *  bricks so a coloured grout also covers each face's inset rim. PAINT only: it has no data-brick-set (the height mask
+ *  skips it), Send's Bricks sketch skips its kind (layers.js BRICK_SEND_SKIP), and it is LOCKED (layers.js LOCKED_ATTR:
+ *  no art tool picks, moves, restyles or deletes it). Its region is kept on the node, so a paint change (colour, edge)
+ *  repaints it without a re-lay (repaintGrout). Brush strokes get none yet (their ribbon region is not declared). */
+export const GROUT_KIND = 'grout';
+export const GROUT_OF_ATTR = 'data-brick-grout-of'; // the element KIND it belongs to: wall | frame
+export const GROUT_REGION_ATTR = 'data-grout-region'; // its region [{ outer, holes }], JSON, board inches
+export const GROUT_INSET_ATTR = 'data-grout-inset'; // item 56: its element's Edge when painted (the SVG download insets the faces by it)
+export const GROUT_ELEMENT_KINDS = Object.freeze(['wall', 'frame']);
+/** The paint a NEW board starts with, and what a saved board without the keys reads: no colour, no inset. */
+export const GROUT_PAINT_DEFAULT = Object.freeze({ color: null, paintInsetIn: 0 });
+/** An element's grout paint: its own (`groutPaintByElement[kind]`, the Raised brush shares the Brush's) field by
+ *  field over the board-wide `groutPaint`, over GROUT_PAINT_DEFAULT. null / missing = inherit (groutByElement's rule). */
+export function groutPaintOf(settings, kind) {
+  const base = (settings && settings.groutPaint) || {};
+  const own = (settings && settings.groutPaintByElement && settings.groutPaintByElement[JOINT_ELEMENT[kind] || kind]) || {};
+  const pick = (k) => (k in own ? own[k] : k in base ? base[k] : GROUT_PAINT_DEFAULT[k]);
+  const color = pick('color'), inset = Number(pick('paintInsetIn'));
+  return { color: typeof color === 'string' && color ? color : null, paintInsetIn: Number.isFinite(inset) && inset > 0 ? inset : 0 };
+}
+const _isGrout = (n) => n.getAttribute(BRICK_ATTR) === GROUT_KIND;
+/** An element's laid brick polygons (its faces before the inset). */
+function _ownedBrickPolys(editor, elementId) {
+  const node = editor._sketchLayer.node;
+  return [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}="${elementId}"]`)]
+    .filter((n) => !_isGrout(n)).map(_nodePolygon).filter((p) => p.length >= 3);
+}
+/** Other elements' bricks that may lie in this element's region (never painted over): every Brush brick, and for a
+ *  wall area the other areas' bricks (a whole brick laid by centroid can cross into its neighbour's region). */
+function _groutCutouts(editor, kind, elementId) {
+  const node = editor._sketchLayer.node;
+  const sel = [`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="brush"]`];
+  if (kind === 'wall') sel.push(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="wall"]`);
+  return [...node.querySelectorAll(sel.join(', '))]
+    .filter((n) => n.getAttribute(BRICK_OWNER_ATTR) !== elementId).map(_nodePolygon).filter((p) => p.length >= 3);
+}
+/** (Re)computes one grout node's shape + paint from its region, its element's bricks and `settings`. */
+function _paintGroutNode(editor, n, settings) {
+  const kind = n.getAttribute(GROUT_OF_ATTR), id = n.getAttribute(BRICK_OWNER_ATTR);
+  let region = [];
+  try { region = JSON.parse(n.getAttribute(GROUT_REGION_ATTR) || '[]'); } catch { region = []; }
+  const paint = groutPaintOf(settings, kind);
+  const shape = groutShapeOf({ id, region, faces: _ownedBrickPolys(editor, id), cutouts: _groutCutouts(editor, kind, id), insetIn: paint.paintInsetIn });
+  n.setAttribute('d', shape ? shape.d : '');
+  n.setAttribute('id', groutIdOf(id));
+  n.setAttribute('fill', paint.color || 'none');
+  n.setAttribute('fill-rule', 'evenodd');
+  n.setAttribute(GROUT_INSET_ATTR, String(paint.paintInsetIn));
+  return shape;
+}
+const _roundRegion = (region) => region.map((r) => ({
+  outer: r.outer.map((p) => ({ x: +p.x.toFixed(4), y: +p.y.toFixed(4) })),
+  holes: (r.holes || []).map((h) => h.map((p) => ({ x: +p.x.toFixed(4), y: +p.y.toFixed(4) }))),
+}));
+/** Draws (or re-draws) the grout of element `elementId` (kind wall | frame) over `region`, on `layer`. */
+export function drawElementGrout(editor, layer, kind, elementId, region, settings) {
+  const node = editor._sketchLayer.node;
+  node.querySelectorAll(`[${BRICK_ATTR}="${GROUT_KIND}"][${BRICK_OWNER_ATTR}="${elementId}"]`).forEach((n) => n.remove());
+  const reg = (region || []).filter((r) => r && r.outer && r.outer.length >= 3);
+  if (!reg.length) return null;
+  const el = onBricksLayer(editor, layer, editor._sketchLayer.path('M0,0'))
+    .stroke('none')
+    .attr(BRICK_ATTR, GROUT_KIND)
+    .attr(BRICK_GEN_ATTR, '1')
+    .attr(GROUT_OF_ATTR, kind)
+    .attr(BRICK_OWNER_ATTR, elementId)
+    .attr(LOCKED_ATTR, '1')
+    .attr('pointer-events', 'none')
+    .attr(GROUT_REGION_ATTR, JSON.stringify(_roundRegion(reg)));
+  _paintGroutNode(editor, el.node, settings);
+  return el;
+}
+/** Every grout node repainted from `settings` (a colour / edge change: paint only, nothing re-lays). Returns how many. */
+export function repaintGrout(editor, settings) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll) return 0;
+  const nodes = [...node.querySelectorAll(`[${BRICK_ATTR}="${GROUT_KIND}"]`)];
+  for (const n of nodes) _paintGroutNode(editor, n, settings);
+  return nodes.length;
+}
+/** The Wall / Frame elements that have bricks but no grout node yet (a board laid before item 55): its region comes
+ *  from the engine, so the panel re-lays them (same settings + seed = the same bricks) instead of only repainting. */
+export function elementsWithoutGrout(editor) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll) return [];
+  const sel = GROUT_ELEMENT_KINDS.map((k) => `[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="${k}"][${BRICK_OWNER_ATTR}]`).join(', ');
+  const owners = new Set([...node.querySelectorAll(sel)].map((n) => n.getAttribute(BRICK_OWNER_ATTR)));
+  for (const g of node.querySelectorAll(`[${BRICK_ATTR}="${GROUT_KIND}"]`)) owners.delete(g.getAttribute(BRICK_OWNER_ATTR));
+  return [...owners];
+}
+/** The grout nodes on the board, as { node, id (its element), kind } -- the SVG download reads these. */
+export function groutNodes(editor) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll) return [];
+  return [...node.querySelectorAll(`[${BRICK_ATTR}="${GROUT_KIND}"]`)].map((n) => ({
+    node: n, id: n.getAttribute(BRICK_OWNER_ATTR), kind: n.getAttribute(GROUT_OF_ATTR),
+  }));
+}
+/** The grout region of each laid element, from one lay: the wall's fill outline (a painted area: its region cut to that
+ *  outline), the frame's band ring (the contour the bands follow, its inner path the hole). */
+function _wallAreaRegion(area, settings, interior) {
+  const set = resolvedSetFor(elementSettings(settings, 'wall'));
+  const polys = wallRegionOf({ strokes: area.strokes, minus: area.minus || [] }, set) || [];
+  return polys.map((p) => {
+    const outer = interior && interior.length >= 3 ? polygonIntersection(p.outer, interior) : p.outer;
+    return { outer, holes: p.holes || [] };
+  }).filter((r) => r.outer && r.outer.length >= 3);
 }
 
 /** F35 item 22 slice 1: each Wall / Frame ELEMENT has a RECORD -- one invisible node on the brick layer
@@ -377,7 +491,7 @@ function ensureBrickRecord(editor, layer, kind) {
  *  piling up duplicates underneath it. */
 function clearGenerated(editor, kind) {
   // Wall / Frame are one element each: their pieces go wherever they are (item 22 slice 3: on any layer)
-  const nodes = editor._sketchLayer.node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="${kind}"]`);
+  const nodes = editor._sketchLayer.node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="${kind}"], [${BRICK_ATTR}="${GROUT_KIND}"][${GROUT_OF_ATTR}="${kind}"]`);
   nodes.forEach((n) => n.remove());
 }
 
@@ -899,6 +1013,13 @@ export function brickElementAt(editor, pt) {
     const id = n.getAttribute(BRICK_OWNER_ATTR).split(':')[0];
     return { id, kind: strokeKindOf(brushStrokeSettings(editor, id)) };
   }
+  // F35 item 55: no brick under the point -- a joint: the element whose grout region holds it (its Grout block)
+  for (const g of groutNodes(editor).reverse()) {
+    let region = [];
+    try { region = JSON.parse(g.node.getAttribute(GROUT_REGION_ATTR) || '[]'); } catch { region = []; }
+    const loops = region.flatMap((r) => [r.outer, ...(r.holes || [])]);
+    if (pointOnGrout({ loops }, pt.x, pt.y)) return { id: g.id, kind: g.kind, part: GROUT_KIND };
+  }
   return null;
 }
 
@@ -932,6 +1053,7 @@ export function showElementSelection(editor, elementId) {
   if (!elementId || !editor._highlightLayer || !node || !node.querySelectorAll) return 0;
   // a stroke's bricks are owned per chain (`<id>:<chain>`, F35 item 36)
   for (const n of node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}="${elementId}"], [${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}^="${elementId}:"]`)) {
+    if (_isGrout(n)) continue; // item 55: the grout is not a brick to outline
     const outline = editor._highlightLayer.polygon(n.getAttribute('points') || '')
       .fill('none')
       .stroke({ color: ELEMENT_SELECT_OUTLINE.color, width: ELEMENT_SELECT_OUTLINE.widthIn })
@@ -1074,6 +1196,19 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
     applyBrickLayerTooling(layer, s);
     drawBricks(editor, layer, ab, 'wall', elementSettings(s, 'wall').setId, settings.seed, settings.reliefIn, area.id);
   }
+  // F35 item 55: each laid element's grout, once every brick is drawn (an area's cutouts are its neighbours' bricks)
+  const interior = result.interiorOutline && result.interiorOutline.length >= 3 ? result.interiorOutline : boardPolygon(editor);
+  if (lays('frame') && frameBricks.length && frameGeom && frameGeom.primitives && frameGeom.primitives.length) {
+    const outer = primitivesOutline(frameGeom.primitives);
+    drawElementGrout(editor, layerOf.frame, 'frame', owner('frame'), [{ outer, holes: [interior] }], settings);
+  }
+  if (lays('wall') && !areas.length && bricks.length) drawElementGrout(editor, layerOf.wall, 'wall', owner('wall'), [{ outer: interior, holes: [] }], settings);
+  areas.forEach((area, i) => {
+    const lay = areaLays.find((l) => l.area === area);
+    if (!lay || !lay.bricks.length) return;
+    const region = _wallAreaRegion({ ...area, minus: areas.slice(i + 1).flatMap((a) => a.strokes) }, lay.settings, interior);
+    drawElementGrout(editor, area.layer || layerOf.wall, 'wall', area.id, region, settings);
+  });
   if (lays('wall')) syncAccentHighlight(editor, settings.accent, settings.seed);
   if (lays('frame')) syncRunAccentHighlight(editor, settings); // per-band accents
   // F35 item 35: the engine's band-fit note (T86 item 28) when the Frame's stack was reduced to fit the board
