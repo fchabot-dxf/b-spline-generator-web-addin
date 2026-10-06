@@ -28,7 +28,7 @@ import {
   BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
-  FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg,
+  FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
   brushStrokeSettings, restyleBrushStroke, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
   groutPaintOf, repaintGrout, GROUT_ELEMENT_KINDS, GROUT_PAINT_DEFAULT, elementsWithoutGrout, forceRegenerateOwnedBrickElements,
@@ -42,7 +42,7 @@ import {
 } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
-import { BRICK_CONTROL_REQUIRES, requirementMet, FRAME_NEEDS_A_FRAME } from './brick-control-requires.js';
+import { BRICK_CONTROL_REQUIRES, requirementMet, FRAME_NEEDS_A_FRAME, cornerFact } from './brick-control-requires.js';
 import { ENGINE_OPTIONS } from '../core/bricks/index.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.js';
@@ -1393,12 +1393,18 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease', str
   syncControlRequires();
 }
 
+/** Item 74b: per cutting corner style, whether it changes the frame these settings lay (no facts = met: never greyed) */
+function cornerFacts(editor) {
+  const effect = frameCornerEffectFor(editor, P.brickSettings, resolveFrameGeom(editor));
+  return effect ? Object.fromEntries(Object.keys(effect).map((style) => [cornerFact(style), effect[style]])) : {};
+}
+
 /** Audit (88's matrix): grey out every control whose declared requirement is unmet
  *  (main/brick-control-requires.js) -- disabled, with the reason as its tooltip. */
 function syncControlRequires() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   // item 63: a frame contour to lay bands along (none only for an outline that can't carry one); unknown without an editor
-  const ctx = { engineOptions: ENGINE_OPTIONS, facts: { bricksLaid: _bricksLaid(), ...(editor ? { frameContour: !!frameBandContour(editor) } : {}) } };
+  const ctx = { engineOptions: ENGINE_OPTIONS, facts: { bricksLaid: _bricksLaid(), ...(editor ? { frameContour: !!frameBandContour(editor), ...cornerFacts(editor) } : {}) } };
   // a control under several rules is greyed while ANY is unmet (the first unmet rule's reason shows)
   const unmet = new Map(), ruled = new Set(), whys = new Set();
   for (const rule of BRICK_CONTROL_REQUIRES) {
@@ -2895,6 +2901,7 @@ export function initBrickPanel() {
   document.getElementById('brickGenerate')?.addEventListener('click', () => generateNow()); // item 39: a new seed, every element
   onPageEvent('editorCommit', 'editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); syncWallAreaHint(); });
   onPageEvent('controlRequires', 'bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
+  onPageEvent('controlRequiresFrame', 'frameRecordChanged', () => syncControlRequires()); // item 74b: a new outline, new corner facts
   // the frame changed (template, shape): re-lay once it settles (item 27 -- the editor too; a template with no
   // contour clears the Frame). Wired ONCE per page (onPageEvent): it RE-LAYS, so a second copy would re-lay twice
   onPageEvent('frameRelay', 'frameRecordChanged', (e) => _scheduleFrameRelay(!!(e && e.detail && e.detail.restored)));
