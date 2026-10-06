@@ -399,6 +399,10 @@ def _post_to_palette(action, payload):
         return False
     pal.sendInfoToHTML(action, json.dumps(payload))
     _pump_palette()
+    # detection only (seat A's live Sends: the cards vanished mid-Send twice, never reproduced with a z-order monitor --
+    # the palette is OWNED by Fusion's main window, so it cannot be covered by it): say so in the log if it is hidden
+    if not pal.isVisible:
+        _log(f'[PALETTE] hidden after posting {action}')
     return True
 
 

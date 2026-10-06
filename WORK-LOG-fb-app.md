@@ -15165,3 +15165,11 @@ WallPattern = {
   - import_success goes through _post_to_palette.
   - check_import_status hides the palette only when _may_hide_after_import(): the success state has been up IMPORT_SUCCESS_SHOW_S (1.5 s).
   - Python tests 7/7 (5 fail against c537833); add-in pytest 162.
+- **Palette cover, investigated with seat A (2026-10-06):**
+  - Bisect (f35item70_palette_cover_bisect.py, the bricks step's calls in isolation, palette in front): never covered.
+  - Monitor during a REAL Send (f35item70_cover_monitor.py, 50 ms Win32 sampling):
+    - The palette is OWNED by Fusion's main window, so that window cannot cover it.
+    - The foreground moved to the main window at the STEP import while the palette stayed on top, until the end-of-Send hide.
+  - The cover seen in runs 1-2 did not reproduce. Likelier the palette was hidden or moved for a while.
+  - Detection only: _post_to_palette logs '[PALETTE] hidden after posting <action>' if pal.isVisible is False. The monitor now reads the main window as the palette's owner and records IsWindowVisible.
+  - Add-in pytest 163.

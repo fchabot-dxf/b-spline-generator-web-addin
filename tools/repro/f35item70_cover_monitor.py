@@ -75,7 +75,8 @@ class CoverMonitor:
         self._palette = self._main = None
 
     def _find(self):
-        """The palette: Fusion's visible top-level 'Fusion360' window sized like it; the main window: the largest one."""
+        """The palette: Fusion's visible top-level 'Fusion360' window sized like it. The main window: the palette's OWNER
+        (seat A, 2026-10-06: the main window is titled with the document name, so 'the largest Fusion360' missed it)."""
         cands = []
 
         def cb(h, _):
@@ -88,8 +89,7 @@ class CoverMonitor:
         if not cands:
             return None, None
         palette = min(cands, key=lambda c: c[0])[2]
-        main = max(cands, key=lambda c: c[1])[2]
-        return palette, (main if main != palette else None)
+        return palette, user32.GetWindow(palette, GW_OWNER) or None
 
     def _kind(self, h):
         if not h:
@@ -108,10 +108,11 @@ class CoverMonitor:
             while not self._stop.is_set():
                 if not self._palette:
                     self._palette, self._main = self._find()
-                row = {'fg': None, 'covered': None, 'at': None, 'owner': None}
+                row = {'fg': None, 'visible': None, 'covered': None, 'at': None, 'owner': None}
                 fg = user32.GetForegroundWindow()
                 row['fg'] = f'{self._kind(fg)}: {_title(fg)[:40]}'
                 if self._palette:
+                    row['visible'] = bool(user32.IsWindowVisible(self._palette))  # hidden reads as 'covered' on a screen copy
                     l, t, r, b = _rect(self._palette)
                     at = user32.WindowFromPoint(wintypes.POINT((l + r) // 2, (t + b) // 2))
                     root = user32.GetAncestor(at, GA_ROOT) if at else None

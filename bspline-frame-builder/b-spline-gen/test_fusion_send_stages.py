@@ -15,9 +15,9 @@ sys.path.insert(0, _HERE)
 from test_svg_layer_import_plan import _bspline_gen as bsg  # noqa: E402  (same adsk stubs + loader)
 
 
-def _fake_palette(monkeypatch):
+def _fake_palette(monkeypatch, visible=True):
     sent, logged = [], []
-    pal = types.SimpleNamespace(sendInfoToHTML=lambda action, data: sent.append((action, json.loads(data))))
+    pal = types.SimpleNamespace(sendInfoToHTML=lambda action, data: sent.append((action, json.loads(data))), isVisible=visible)
     ui = types.SimpleNamespace(palettes=types.SimpleNamespace(itemById=lambda _id: pal))
     monkeypatch.setattr(bsg, 'app', types.SimpleNamespace(userInterface=ui))
     monkeypatch.setattr(bsg, '_log', lambda msg: logged.append(msg))
@@ -80,3 +80,14 @@ def test_every_stage_the_send_reports_is_declared():
     assert used, 'no _send_stage call found'
     assert used <= set(bsg._fusion_send_stage_ids())
     assert used == set(bsg._fusion_send_stage_ids()), 'a declared stage the Send never reports'
+
+
+def test_a_hidden_palette_is_reported_in_the_log_detection_only(monkeypatch):
+    sent, logged = _fake_palette(monkeypatch, visible=False)
+    bsg._send_stage('fusionBricks')
+    assert sent == [('import_stage', {'id': 'fusionBricks'}), ('pump', None)]  # still sent: nothing changes in behaviour
+    assert any(m == '[PALETTE] hidden after posting import_stage' for m in logged)
+    sent2, logged2 = _fake_palette(monkeypatch, visible=True)
+    bsg._send_stage('fusionBricks')
+    assert not any('[PALETTE]' in m for m in logged2)
+    assert any(m == '[STAGE] fusionBricks' for m in logged2)
