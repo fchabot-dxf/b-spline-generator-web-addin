@@ -439,6 +439,23 @@ async function _resolveBoundaryPrimitives(editor, PATTERN, boundary, widths, hal
   return { boundaryEl, boundaryEls, primitives: hole ? [...primitives, ...hole] : primitives };
 }
 
+/** F35 item 54 (Fred: "I don't know what Cells is for"): the tie SPAN modes as the user reads them -- the labels and
+ *  tooltips of the Lattice and Shape Lattice "Span" toggles (labelTieSpanButtons). Read from the code that lays them
+ *  (ties.span.mode below): 'cells' = a short stub, spanMin-spanMax grid cells long, snapped toward a nearby rail (it
+ *  need not reach the next rail); 'rails' = every tie bridges two neighbouring rails exactly (its ends land on them;
+ *  the one-ended-ties count applies here only). Labels only: the ids and the behaviour are unchanged. */
+export const TIE_SPAN_MODES = Object.freeze([
+  Object.freeze({ id: 'cells', label: 'Short stub', title: 'A short tie, span min-max grid cells long, snapped toward a nearby rail (it need not reach the next rail)' }),
+  Object.freeze({ id: 'rails', label: 'Rail to rail', title: 'Every tie bridges two neighbouring rails exactly: its ends land on the rails' }),
+]);
+/** Give a panel's span buttons ({ cells, rails } elements) their declared label + tooltip. */
+export function labelTieSpanButtons(buttons) {
+  for (const m of TIE_SPAN_MODES) {
+    const b = buttons && buttons[m.id];
+    if (b) { b.textContent = m.label; b.title = m.title; }
+  }
+}
+
 export const PATTERN_DEFAULTS = {
   spacing: 0.25,
   // SE7h (Fred: "invert rails and ties so rails are vertical"): default
