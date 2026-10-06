@@ -307,10 +307,11 @@ export const GROUT_JOINTS = {
 };
 
 // ---- F35 item 63 (seat D): the MAIN sidebar's Frame bands pick lays the frame when none is on the board (measured on
-// T18 before the fix: wall laid, quick Soldier -> 0 frame bricks, 3D unchanged), and is greyed under template None.
+// T18 before the fix: wall laid, quick Soldier -> 0 frame bricks, 3D unchanged); under template None (item 66: the board
+// rectangle) the row stays live and the pick lays the bands along the board edge.
 export const QUICK_FRAME_LAYS = {
   template: 'template_18', pick: 'brickQuick_frameBands_single_soldier', row: 'brickQuickRow_frameBands',
-  noTemplateWhy: 'No frame on this board', introducedBy: 'item 63',
+  noTemplatePick: 'brickQuick_frameBands_double_course', introducedBy: 'item 63',
 };
 
 export const BANDS_NOTE = {

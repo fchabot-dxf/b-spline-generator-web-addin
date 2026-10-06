@@ -12,6 +12,10 @@
  * input INSIDE those containers too (their buttons are rendered from data, ids not listed here).
  * A control under several rules is greyed while ANY of them is unmet.
  */
+/** A frame lay with no contour to follow (the frame's outline can't carry bands): the toast's words, and the
+ *  sidebar Frame bands row's reason while it is greyed (item 63). No template is the board rectangle (item 66). */
+export const FRAME_NEEDS_A_FRAME = "This frame's outline can't carry brick bands -- pick another frame template.";
+
 // Audit v2 N5: the main sidebar's BRICK controls (quick settings + 3D) -- they act on laid Wall/Frame bricks
 const SIDEBAR_BRICK_CONTROLS = ['brickBtnReliefRaised', 'brickBtnReliefCarved', 'brickBtnTopOrganic', 'brickBtnTopFlat',
   'brickSurfaceWear', 'brickSurfaceWearSlider', 'brickReliefHeight', 'brickReliefHeightSlider', 'brickGroutDepth',
@@ -36,9 +40,8 @@ export const BRICK_CONTROL_REQUIRES = [
     why: 'Grout mode cuts joints with the engine\'s bricksGroutCut (seat B, T86 item 10) -- hidden until it exists' },
   { controls: SIDEBAR_BRICK_CONTROLS, within: ['brickQuickSettings', 'brickSurfaceStyleToggle'], requires: { fact: 'bricksLaid' },
     why: 'No Wall or Frame bricks on this board yet -- lay them in the editor\'s Brick tab first' },
-  // F35 item 63: the sidebar's Frame bands pick lays the frame along the frame's contour -- none without a template
-  { controls: [], within: ['brickQuickRow_frameBands'], requires: { fact: 'frameContour' },
-    why: 'No frame on this board -- pick a frame template (or turn Offset from frame off) to lay frame bands' },
+  // F35 item 63: the sidebar's Frame bands pick lays the frame along its contour -- none for an outline that can't carry one
+  { controls: [], within: ['brickQuickRow_frameBands'], requires: { fact: 'frameContour' }, why: FRAME_NEEDS_A_FRAME },
 ];
 
 /** Is `requires` met, given the DOM node of its control? (null control = met: never grey on a missing node) */

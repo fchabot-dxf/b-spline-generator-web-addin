@@ -826,9 +826,12 @@ async function runQuickFrameLays() {
   await click(Q.pick, 2500); const z1 = await heightsSettled(z0);
   const f1 = await frames();
   checkRow('lay', 'Sidebar Frame bands lays the frame (no Frame on the board)', f0 === 0 && f1 > 0 && z1 !== z0, `frame bricks ${f0} -> ${f1}, 3D ${z1 !== z0 ? 'changed' : 'UNCHANGED'}`);
-  await openEditorTab('editorTabBrick'); await setTemplate(''); await apply();
-  const g = await jsJSON(`JSON.stringify((()=>{ const b=[...document.querySelectorAll('#${Q.row} button')]; return { n: b.length, off: b.filter((x)=>x.disabled).length, why: (b[0]&&b[0].title)||'' }; })())`);
-  checkRow('lay', 'Sidebar Frame bands greyed under template None', g.n > 0 && g.off === g.n && g.why.includes(Q.noTemplateWhy), `${g.off}/${g.n} greyed, tooltip "${g.why.slice(0, 50)}"`);
+  // template None = the board rectangle (item 66): the row stays live, a pick lays the bands along the board edge
+  await openEditorTab('editorTabBrick'); await setTemplate(''); await apply(); const z2 = await heightsSettled(z1);
+  const g = await jsJSON(`JSON.stringify((()=>{ const b=[...document.querySelectorAll('#${Q.row} button')]; return { n: b.length, off: b.filter((x)=>x.disabled).length }; })())`);
+  await click(Q.noTemplatePick, 2500); const z3 = await heightsSettled(z2);
+  const f3 = await frames();
+  checkRow('lay', 'Sidebar Frame bands under template None lays along the board edge', g.n > 0 && g.off === 0 && f3 > 0 && z3 !== z2, `${g.off}/${g.n} greyed, frame bricks ${f3}, 3D ${z3 !== z2 ? 'changed' : 'UNCHANGED'}`);
 }
 
 async function runBandsNote() {

@@ -28,6 +28,8 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 import { initBrickPanel, setFrameRock } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, FRAME_CORNERS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
+import { frameContext } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/main/brick-control-requires.js';
 vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const FIXTURE = `
@@ -179,16 +181,31 @@ describe('item 63: the sidebar Frame bands pick lays the frame', () => {
     $('brickQuick_pattern_herringbone').click(); // any other re-lay: only what is on the canvas (the mock lays nothing)
     expect(kindsOfLastLay()).toEqual(['wall']);
   });
-  it('no frame contour (template None): the row is greyed with the reason', () => {
+  // item 66: no template = the board rectangle -- MEASURED live, the frame provider still returns a context there
+  // ({defs, record} with no templateId), so the bands follow the board edge and the row stays live
+  it('template None (a context with no template): the row stays live and the pick lays the bands', () => {
+    frameContext.mockReturnValue({ defs: { templates: [] }, record: { templateId: null } });
+    frameContourSilhouette.mockReturnValue({ error: 'noFrame' });
     setup('wall');
     addWall();
-    frameContourSilhouette.mockReturnValue({ error: 'noFrame' });
-    document.dispatchEvent(new Event('editorCommit'));
+    expect($('brickQuick_frameBands_single_soldier').disabled).toBe(false);
+    runBricks.mockClear();
+    $('brickQuick_frameBands_single_soldier').click();
+    expect(kindsOfLastLay()).toEqual(expect.arrayContaining(['wall', 'frame']));
+    frameContext.mockReturnValue({});
+    frameContourSilhouette.mockReturnValue({ primitives: [] });
+  });
+  it('a frame whose outline can’t carry bands: the row is greyed with FRAME_NEEDS_A_FRAME', () => {
+    frameContext.mockReturnValue({ defs: { templates: [] }, record: { templateId: 'template_x' } });
+    frameContourSilhouette.mockReturnValue({ error: 'frameInvalid' });
+    setup('wall');
+    addWall();
     const btn = $('brickQuick_frameBands_single_soldier');
     expect(btn.disabled).toBe(true);
-    expect(btn.title).toMatch(/No frame on this board/);
+    expect(btn.title).toBe(FRAME_NEEDS_A_FRAME);
     frameContourSilhouette.mockReturnValue({ primitives: [] });
     document.dispatchEvent(new Event('editorCommit'));
     expect($('brickQuick_frameBands_single_soldier').disabled).toBe(false);
+    frameContext.mockReturnValue({});
   });
 });

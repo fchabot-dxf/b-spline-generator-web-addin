@@ -14713,3 +14713,17 @@ WallPattern = {
 - **The item-63 rows, proven against the old tree** (main 52c3055, --root): both FAIL (frame 0 -> 0, 3D unchanged; 0/0 greyed).
   - To get there, the row's presence check now keys on the PICK button (present on old builds, where it did nothing), not on my new row id. Before this change the rows SKIPPED on the old tree.
   - This changes only the presence check: the measured path on this tree is identical. Not re-run after the one-line change.
+
+## seat D (bb) turn 8: item 63 vs seat C's item 66 (template None = the board rectangle)
+- **Advisor:** on main 2b5695d, template None means the board rectangle (item 66). So the quick row must not grey under None, and the tooltip must not name the removed Offset-from-frame.
+- **Measured** on the merged tree, T18 -> None in the editor: `frameContext(editor)` still returns a context there ({defs, record, board}, record with no templateId). So item 66's `if (!ctx) return rect()` never fired; the silhouette answered `noFrame` and the contour was null.
+  - Live consequence, before this fix: under None even the editor's Frame tool Generate laid 0 frame bricks. Item 66 held only in its unit test, which mocks frameContext to null.
+- **Fix:** frameBandContour: `if (!ctx || !hasFrame(ctx)) return rect()` (hasFrame = the frame's own "a template is chosen" predicate, contour-from-frame.js).
+  - The quick row's grey rule stays, with fact frameContour. Its contour is now null only for an outline that can't carry bands (frameInvalid).
+  - Its reason = FRAME_NEEDS_A_FRAME, now declared ONCE in brick-control-requires.js (pure data, still no imports). brick-panel.js imports and re-exports it, so the toast and the greyed row read the same words.
+- **Tests:**
+  - frame-corners-panel: "template None (a context with no template): row live, the pick lays the bands" and "an outline that can't carry bands: greyed with FRAME_NEEDS_A_FRAME". Both fail 2/2 against c57379e's two files.
+  - brick-discrete-controls-regen's frameContext mock `({})` stood for "a frame exists". It is now an actual framed context (record.templateId set), at its 3 spots, because a real framed context always carries one.
+  - Result: 5 files, 123/123.
+- **Matrix 'lay':** the "greyed under template None" row is replaced by "Sidebar Frame bands under template None lays along the board edge": 0/7 greyed, 74 frame bricks, 3D changed. Group: 8 rows, 0 FAIL.
+- **Live:** None + the editor's Frame tool Generate: 0 -> 80 frame bricks.

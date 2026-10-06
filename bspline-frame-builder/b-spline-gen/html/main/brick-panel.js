@@ -38,10 +38,10 @@ import {
   bondShift, wallPatternOfBase,
 } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
-import { BRICK_CONTROL_REQUIRES, requirementMet } from './brick-control-requires.js';
+import { BRICK_CONTROL_REQUIRES, requirementMet, FRAME_NEEDS_A_FRAME } from './brick-control-requires.js';
 import { ENGINE_OPTIONS } from '../core/bricks/index.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
-import { frameContourSilhouette } from '../editor/contour-from-frame.js';
+import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.js';
 import { rectToPrimitives } from '../core/inset-window.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
@@ -1222,7 +1222,7 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
  *  (main/brick-control-requires.js) -- disabled, with the reason as its tooltip. */
 function syncControlRequires() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  // item 63: a frame contour to lay bands along (none under template None with Offset on); unknown without an editor
+  // item 63: a frame contour to lay bands along (none only for an outline that can't carry one); unknown without an editor
   const ctx = { engineOptions: ENGINE_OPTIONS, facts: { bricksLaid: _bricksLaid(), ...(editor ? { frameContour: !!frameBandContour(editor) } : {}) } };
   // a control under several rules is greyed while ANY is unmet (the first unmet rule's reason shows)
   const unmet = new Map(), ruled = new Set(), whys = new Set();
@@ -1477,7 +1477,7 @@ function _kindsToLay(editor, frameGeom) {
 /** Audit v2 N9: Generate with the Frame tool on a board with no usable frame outline laid nothing and said so only in
  *  the console. Since item 66 a board with NO template lays the bands along its rectangle; this is left for a template
  *  whose outline cannot carry a contour. */
-export const FRAME_NEEDS_A_FRAME = "This frame's outline can't carry brick bands -- pick another frame template.";
+export { FRAME_NEEDS_A_FRAME }; // declared once in brick-control-requires.js (the toast and the greyed row's reason)
 
 /** F35 item 39 (Fred, on a restored board: "the opened geometry isn't refreshable by a simple Generate; it needs a
  *  setting changed"): the Generate BUTTON = re-lay now with a NEW brick seed, like the terrain's Generate New Seed --
@@ -2440,7 +2440,9 @@ function frameBandContour(editor) {
   const rect = () => rectToPrimitives({ x1: 0, y1: 0, x2: editor._mW, y2: editor._mH });
   if (off.on === false) return rect();
   const ctx = frameContext(editor);
-  if (!ctx) return rect(); // item 66: no frame template = the board rectangle
+  // item 66: no frame template = the board rectangle. MEASURED live (seat D, item 63): under template None the
+  // provider still returns a context ({defs, record} with no templateId), so `!ctx` alone never fired there
+  if (!ctx || !hasFrame(ctx)) return rect();
   const sil = frameContourSilhouette(ctx, Number(off.distance) || 0, 0);
   return sil.error ? null : sil.primitives;
 }
