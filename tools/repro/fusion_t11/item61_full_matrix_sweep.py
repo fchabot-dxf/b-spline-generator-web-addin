@@ -181,6 +181,13 @@ else:
                     r['not_built_lines'] = not_built_lines
                     r['miter_miss_lines'] = miter_miss_lines
                     r['reflex_arc_lines'] = reflex_arc_lines
+                    # H23 item 81: an optional caller-declared READBACK(des, case) -> dict, stored per case
+                    # before the doc closes (e.g. T10's arch apex vs the safe-zone top line).
+                    if 'READBACK' in globals() and callable(READBACK):
+                        try:
+                            r['readback'] = READBACK(des, case)
+                        except Exception as _e:
+                            r['readback'] = {'error': str(_e)[:200]}
                     r['built'] = (r['count'] == r['expected_count'] and not r['overlaps'] and not r['slivers_under_0.5cm3']
                                   and not r['dup_named_bodies'] and not r['missing_declared_names'] and r['timeline_healthy']
                                   and not not_built_lines and not miter_miss_lines and not reflex_arc_lines)
