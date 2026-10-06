@@ -247,12 +247,18 @@ const THREE_D_CHANGE_MS = 6000, THREE_D_EXPECTED_CHANGE_MS = 20000;
 // before the action: "unchanged" is only concluded after a rebuild has COMPLETED since then (a build without the
 // counter falls back to the time window alone)
 const GEN = `import('./core/state.js').then((m) => (typeof m.lastResultGeneration === 'number' ? m.lastResultGeneration : null))`;
+// item 37 (seat E): settled also means the app says it is BUILT -- no rebuild running, queued or scheduled
+// (core/engine/rebuild.js whenRebuildIdle) and no loading card; equal polls alone read a between-stages surface as final
+// (a build without whenRebuildIdle reads as built: the old 3-poll rule)
+const BUILT = `import('./core/engine/rebuild.js').then((m) => (typeof m.whenRebuildIdle !== 'function' ? true
+  : Promise.race([m.whenRebuildIdle().then(() => true), new Promise((r) => setTimeout(() => r(false), 0))]))
+  .then((idle) => idle && (document.getElementById('loading-stage')?.hidden ?? true)))`;
 async function heightsSettled(prev, maxMs = 30000, changeMs = THREE_D_CHANGE_MS, sinceGen = null) {
   let last = await js(HEIGHTS), same = 0; const t0 = Date.now();
   while (Date.now() - t0 < maxMs) {
     await sleep(700); const h = await js(HEIGHTS);
     const rebuilt = sinceGen == null || ((await js(GEN)) ?? Infinity) > sinceGen;
-    if (h === last) { if (++same >= 3 && (h !== prev || (rebuilt && Date.now() - t0 > changeMs))) return h; } else { same = 0; last = h; }
+    if (h === last) { if (++same >= 3 && (h !== prev || (rebuilt && Date.now() - t0 > changeMs)) && (await js(BUILT))) return h; } else { same = 0; last = h; }
   }
   return last;
 }
@@ -474,7 +480,14 @@ try {
 // ---------------------------------------------------------------- page helpers shared by several groups (hoisted)
 async function waitApp() {
   for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; }
-  await sleep(3000);
+  // item 37 (seat E): the page load's declared end -- core/state.js bootRestore.complete (the boot build landed); a
+  // build without it keeps the old 3 s window
+  for (let i = 0; i < 180; i++) {
+    const done = await js(`import('./core/state.js').then((m) => (m.bootRestore ? m.bootRestore.complete : null))`).catch(() => false);
+    if (done === null) { await sleep(3000); return; }
+    if (done) return;
+    await sleep(500);
+  }
 }
 async function openBrickTab() {
   if (!(await editorOpen())) await click('btnStampEdit', 2500);

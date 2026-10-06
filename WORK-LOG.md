@@ -23556,3 +23556,38 @@ changed lay 0.0308. Test: bricks-dropped-chain + T8 (mutation: the back-off on c
   declared: the "POS DIAG ... cm" lines print millimetres (x -95.25 = -3.75 in), a label slip, not the cause. Not
   investigated further (no CAM change was asked for).
 - Hygiene: scratch docs closed by handle (only Fred's Untitled), holder none, both servers stopped.
+## F35 item 37 reopened -- a reload's 3D: one boot build, a declared restore end, deterministic brick detail (seat E / 61, 2026-10-06)
+- REPRO (seat D's boards, my tree = D's code c3ca12d): D's own a68_acc.mjs reload = base 3/3; a same-page forced re-mask
+  (first mask vs _notifyChange('commit') + Apply) 0 of 25521 cells differ 4/4. D's drift came from what the reload READ:
+  a restored page built TWICE -- initApp masked P.editorSvg before window.svgEditor existed (masks nothing, still won the
+  refresh generation and scheduled a build), then initSvgEditor's restore masked for real. That first build (gen 1) is
+  an UNMASKED surface: 17164 of 25521 cells off, up to 0.37 in, on screen 1.4-5.2 s at CPU x4, once with the card DOWN
+  for its whole 2.1 s. A 3-equal-polls-700-ms settle (cdp.mjs, run.mjs heightsSettled) stops on it under fleet load.
+- FOUND WHILE FIXING (measured, not argued): with one boot build, 7 of 15 loaded reloads still landed on a different
+  final. Instrumented rebuild inputs (every P key, grid, sculpt deltas) were IDENTICAL; only the Wall brick mask sum
+  moved (15060.5173 vs 15060.5277). Root: editor-brick-surface.js computeDetailGrid let drawImage's own scaler shrink
+  each sample photo to 48x48 -- different by canvas backend (default vs --disable-accelerated-2d-canvas vs --disable-gpu:
+  47 of 47 grids differ) and from page load to page load under load (7 of 47 moved, then STAYED moved on later reloads).
+  This is the original item 37 drift (seat 37's "small multiplicative differences on raised cells").
+- FIX (declared): app-init.js bootBuildOwner() -- the boot build has ONE owner: a saved drawing -> initSvgEditor's restore
+  (mask + build), none -> initApp (plain build); a failed editor restore still builds. core/state.js bootRestore
+  {complete, generation} + markBootRestoreComplete, set when the owner's build landed (core/engine/rebuild.js
+  whenRebuildIdle: nothing running, queued or on scheduler.js's timer -- isRebuildScheduled). loading-signal.js
+  LOADING_SEQUENCES.sessionRestore keeps the card up between the mask and the build. editor-brick-surface.js
+  areaAverageGrey: the photo drawn 1:1 on a willReadFrequently (CPU) canvas, the crop averaged down in JS.
+- HARNESS: run.mjs waitApp waits on bootRestore.complete (a build without it keeps the 3 s window); heightsSettled also
+  needs the app BUILT (whenRebuildIdle + card hidden). groups/persistence.mjs FRESH_VS_RESTORED comment updated.
+  Seat D (bb) told: wait on bootRestore.complete after a reload.
+- MEASURED before (main code) / after, T1 7x9 Wall, Checker -> None, 2 probes per tree in parallel, CPU x4, 12 reloads
+  each: time to final 3D median 7.5 s / 5.9 s (max 10.8 / 8.0); wrong-frame on screen 1.5-3.6 s / 0 s every reload;
+  card off before the final up to 3.6 s / 0 s; restore-complete at the final 12/12 (after). Detail grids: identical
+  across the 3 canvas backends after (were 47/47 different). Old vs new grids: correlation median 0.938 (0.880-0.980),
+  same features, slightly smoother -- shots/seatE/item37/detail_grids_old_top_new_bottom.png. Every brick's grain
+  changes once by that much (one-time look change, deterministic after).
+- TESTS: tests/boot-restore-one-build.test.js (4) + tests/brick-detail-area-average.test.js (4): fail 8/8 on origin/main;
+  mutation (initApp's old boot mask put back into the new code) turns the 2 saved-drawing rows red. Full vitest 327 files,
+  5348 passed, 6 todo, 0 failed. Matrix live on the branch: persistence 24 rows 0 FAIL (item-37 row live = restored),
+  lay 12 rows 0 FAIL.
+- SWEEP: app-init.js _editorSvgHasContent (its only caller was the boot mask) removed; cloud-project-manager.js comment
+  that cited it reworded; app-init.js lastResult import (unused after) dropped. Kept: initApp's refreshAllStampMasks
+  import (initSvgEditor still uses it).

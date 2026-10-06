@@ -69,6 +69,36 @@ function boxBlur(src, w, h, radius) {
   return out;
 }
 
+/** The grey (Rec. 601 luma, 0..1) of an RGBA image's crop (sx, sy, sw, sh) averaged down to a `grid` x `grid` field:
+ *  each cell is the plain mean of the source pixels whose CENTRES fall inside it (at least the nearest one). Pure
+ *  arithmetic on the decoded pixels -- the same field on every browser, backend and page load (item 37). */
+export function areaAverageGrey(rgba, iw, sx, sy, sw, sh, grid) {
+  const out = new Float32Array(grid * grid);
+  const span = (lo, len, i, max) => {
+    const a = lo + (i * len) / grid, b = lo + ((i + 1) * len) / grid;
+    const p0 = Math.max(0, Math.ceil(a - 0.5)), p1 = Math.min(max - 1, Math.ceil(b - 0.5) - 1);
+    if (p1 >= p0) return [p0, p1];
+    const c = Math.max(0, Math.min(max - 1, Math.floor((a + b) / 2)));
+    return [c, c];
+  };
+  const ih = Math.floor(rgba.length / 4 / iw);
+  for (let gy = 0; gy < grid; gy++) {
+    const [y0, y1] = span(sy, sh, gy, ih);
+    for (let gx = 0; gx < grid; gx++) {
+      const [x0, x1] = span(sx, sw, gx, iw);
+      let acc = 0;
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const o = (y * iw + x) * 4;
+          acc += 0.299 * rgba[o] + 0.587 * rgba[o + 1] + 0.114 * rgba[o + 2];
+        }
+      }
+      out[gy * grid + gx] = acc / ((y1 - y0 + 1) * (x1 - x0 + 1)) / 255;
+    }
+  }
+  return out;
+}
+
 /** Decodes `url` onto a canvas CENTRE-CROPPED to `targetAspect` (w/h), then
  *  returns a de-lit (high-pass: grey minus a heavy blur of itself), [-1,1]-
  *  normalised detail field at DETAIL_GRID x DETAIL_GRID. */
@@ -80,17 +110,15 @@ async function computeDetailGrid(url, targetAspect) {
   if (imgAspect > targetAspect) { sw = ih * targetAspect; sx = (iw - sw) / 2; }
   else if (imgAspect < targetAspect) { sh = iw / targetAspect; sy = (ih - sh) / 2; }
 
+  // Item 37 (seat E, measured): the photo is drawn 1:1 on a CPU canvas and downsampled HERE (areaAverageGrey), never
+  // by drawImage's own scaler -- that one differs by canvas backend (GPU vs software: all 47 grids moved) and even from
+  // page load to page load (7 of 47 moved under load, and stayed moved), so a reload carved a different 3D.
   const canvas = document.createElement('canvas');
-  canvas.width = DETAIL_GRID; canvas.height = DETAIL_GRID;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, DETAIL_GRID, DETAIL_GRID);
-  const { data: rgba } = ctx.getImageData(0, 0, DETAIL_GRID, DETAIL_GRID);
-
-  const grey = new Float32Array(DETAIL_GRID * DETAIL_GRID);
-  for (let k = 0; k < grey.length; k++) {
-    const o = k * 4;
-    grey[k] = (0.299 * rgba[o] + 0.587 * rgba[o + 1] + 0.114 * rgba[o + 2]) / 255;
-  }
+  canvas.width = iw; canvas.height = ih;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  const { data: rgba } = ctx.getImageData(0, 0, iw, ih);
+  const grey = areaAverageGrey(rgba, iw, sx, sy, sw, sh, DETAIL_GRID);
   const heavyBlur = boxBlur(grey, DETAIL_GRID, DETAIL_GRID, Math.round(DETAIL_GRID / 4));
   let highPass = new Float32Array(grey.length);
   for (let k = 0; k < grey.length; k++) highPass[k] = grey[k] - heavyBlur[k];

@@ -422,6 +422,11 @@ export function setPostDelta(val) { postDelta = val; }
  *  a loaded --parallel gate the rebuild can start after any fixed window). Read-only for everyone else. */
 export let lastResultGeneration = 0;
 export function setLastResult(val) { lastResult = val; lastResultGeneration++; }
+/** Item 37: the page-load restore's declared end -- the boot build owner's (app-init.js bootBuildOwner) build has
+ *  landed. `generation` is lastResultGeneration at that moment. Probes and the brick matrix wait on `complete` after a
+ *  reload instead of a quiet window (a quiet window read the old boot build's unmasked surface as final). */
+export const bootRestore = { complete: false, generation: null };
+export function markBootRestoreComplete() { bootRestore.complete = true; bootRestore.generation = lastResultGeneration; }
 export function setIsFusionMode(val) { isFusionMode = val; }
 export function setLastGridSize(nx, nz) { lastNx = nx; lastNz = nz; }
 export function setStrokeCache(val) { strokeCache = val; }
