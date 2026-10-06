@@ -112,6 +112,8 @@ export const BRICK_CONTROLS = [
   { name: 'Brick size slider (log 500)', kind: 'editor', tool: 'wall', do: set('brickSizeSlider', 500), expect: LAYOUT },
   { name: 'Brick size preset 3/4', kind: 'editor', tool: 'wall', do: click('brickSizePreset_quarter3'), expect: LAYOUT },
   { name: 'Grout width 0.08', kind: 'editor', tool: 'wall', do: set('brickGroutWidth', 0.08, 'input'), expect: LAYOUT },
+  // F35 item 55 (seat E): the grout PAINT -- the canvas changes (the grout node's d / fill), the 3D heights must NOT (paint only)
+  { name: 'Grout edge 0.03 (paint only)', kind: 'editor', tool: 'wall', do: set('brickGroutEdge', 0.03), expect: { ...E(false, true, false), ...AT_ONCE }, introducedBy: '3a10b65' },
   // seat D (measured): the baseline's Generate re-rolls the brick seed (F35 item 39), and on some seeds the top bias
   // (0.8 x course height vs 0.2 x noise, core/bricks/suppression.js) removes the same top pieces whatever the noise
   // scale -- Clumping is then a genuine no-op and its row failed at random (same canvas as the row before). A declared
@@ -166,6 +168,7 @@ export const BRICK_CONTROLS = [
   { name: 'Quick size: 3/4', kind: 'sidebar', do: click('brickQuick_size_quarter3'), expect: AUTO },
   { name: 'Quick pattern: Herringbone', kind: 'sidebar', do: click('brickQuick_pattern_herringbone'), expect: AUTO },
   { name: 'Quick frame bands: 3-band', kind: 'sidebar', do: click('brickQuick_frameBands_three_band'), expect: AUTO },
+  { name: 'Quick grout colour: Charcoal (paint only)', kind: 'sidebar', do: click('brickQuick_groutColor_charcoal'), expect: E(false, true, false), introducedBy: '3a10b65' }, // F35 item 55
   { name: 'Relief: Carved', kind: 'sidebar', do: click('brickBtnReliefCarved'), expect: SURFACE },
   { name: 'Relief: Raised', kind: 'sidebar', do: click('brickBtnReliefRaised'), expect: SURFACE },
   // turn 207: a new board starts Flat + Recessed (core/state.js), so each pair first moves AWAY from the default
@@ -406,6 +409,7 @@ export const MIGRATION = {
     patternParams: {}, // a pattern's declared params, per pattern (37: F35 item 14); {} = every pattern's defaults
     wallRotationDeg: 0, // the Wall pattern's rotation (37: F35 item 13); 0 = as laid
     wallAreaWidthIn: 1, // the Area brush's width (37: F35 item 22 slice 2); strokes only, never a lay
+    groutPaint: { color: null, paintInsetIn: 0 }, groutPaintByElement: null, // the grout paint (seat E: F35 item 55); paint only, never a lay
   },
   introducedBy: 'b75e836',
 };

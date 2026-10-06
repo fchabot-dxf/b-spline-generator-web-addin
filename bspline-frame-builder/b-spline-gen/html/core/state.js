@@ -107,6 +107,13 @@ export const DEFAULT = {
       grout: { depthIn: DEFAULT_BRICK_SET.grout.depthIn, profile: 'recessed' },
       // advisor (Fred: rubble gets wider joints): a joint width per element; null = that element's set's own
       groutByElement: { wall: null, frame: null, brush: null },
+      // F35 item 55: the grout's PAINT (2D + the 3D drape only; geometry, the height mask, Send and CAM never read it):
+      // `color` null = none (the board shows through) or a hex; `paintInsetIn` >= 0 = each brick's painted face inset
+      // from its polygon (the visible joint = joint + 2 x inset). Board-wide here; groutPaintByElement[kind] = that
+      // element's own { color, paintInsetIn }, null = this one (editor-brick-tool.js groutPaintOf). A saved board
+      // without the keys reads the defaults (no colour, no inset): nothing changes on load.
+      groutPaint: { color: null, paintInsetIn: 0 },
+      groutPaintByElement: { wall: null, frame: null, brush: null },
       reliefIn: 0.125,
       invert: false,
       // F35 item 18 (1): 'organic' = each brick's top drapes over the terrain under it (the original
