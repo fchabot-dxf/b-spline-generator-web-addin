@@ -116,6 +116,17 @@ class TestTheDeferredBuild:
         monkeypatch.setattr(cb, '_setups_with_operations', lambda: [])
         monkeypatch.setattr(cb, '_post_cam_stage', lambda sid: events.append(('stage', sid)))
         monkeypatch.setattr(cb, '_send_to_html', lambda action, payload: events.append((action, payload.get('msg'))))
+        self.delays = []
+        test = self
+
+        class _Timer:  # the next step's tick, after PALETTE_SETTLE_S: recorded, then fired at once
+            def __init__(self, delay, fn):
+                test.delays.append(delay)
+                self.fn = fn
+
+            def start(self):
+                self.fn()
+        monkeypatch.setattr(cb.threading, 'Timer', _Timer)
 
         def run_steps(**k):
             events.append('build started')
@@ -141,6 +152,9 @@ class TestTheDeferredBuild:
                           'work after camCleanup', ('stage', 'camModels'), 'work after camModels', ('stage', 'camSetups'),
                           'work after camSetups', ('report', 'BUILD complete — 1 MM(s), 1 setup(s) created.')]
         assert fired == [cb.BUILD_STEP_EVENT_ID] * 5  # one per step; none after the report
+        # seat A, live: a tick fired at once ran the setup build before the palette took the step -- each later tick
+        # waits PALETTE_SETTLE_S after its post
+        assert self.delays == [cb.PALETTE_SETTLE_S] * 4 and cb.PALETTE_SETTLE_S >= 0.2
         assert cb._build_steps is None
 
     def test_a_palette_action_during_the_build_waits_and_runs_after_the_report(self, monkeypatch):

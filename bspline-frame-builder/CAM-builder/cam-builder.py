@@ -23,7 +23,7 @@ streams the report back to the palette so the user can sanity-check
 classification before writing anything.
 """
 
-import os, sys, json, traceback, importlib.util
+import os, sys, json, threading, traceback, importlib.util
 
 import adsk.core
 import adsk.fusion
@@ -1311,7 +1311,17 @@ def _advance_build():
         _finish_build({'ok': False, 'mode': 'bspline', 'errors': ['Engine.run raised — see log.']}, failed=True)
         return
     _post_cam_stage(stage_id)
-    adsk.core.Application.get().fireCustomEvent(BUILD_STEP_EVENT_ID, '{}')
+    _schedule_next_build_step()
+
+
+# F35 item 70, MEASURED live (seat A, 2026-10-06): the next tick fired at once ran the setup build (~7 s, no pump)
+# before the palette had taken the 'building the Setups' message -- the card never showed. Fusion is left idle this
+# long after each post, then the next step's tick is fired (fireCustomEvent is the thread-safe way in).
+PALETTE_SETTLE_S = 0.25
+
+
+def _schedule_next_build_step():
+    threading.Timer(PALETTE_SETTLE_S, lambda: adsk.core.Application.get().fireCustomEvent(BUILD_STEP_EVENT_ID, '{}')).start()
 
 
 def _finish_build(report, failed=False):

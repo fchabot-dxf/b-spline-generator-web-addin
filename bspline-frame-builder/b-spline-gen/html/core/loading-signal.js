@@ -94,7 +94,17 @@ export function installGestureWatch(doc = typeof document !== 'undefined' ? docu
 
 const _raf = () => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (cb) => setTimeout(cb, 16));
 /** THE paint step: run `cb` once the stage is on screen (two animation frames: the second is the painted one). */
-const TWO_FRAMES = (cb) => { const raf = _raf(); raf(() => raf(cb)); };
+/** A frame that never comes must not hold the work forever: animation frames stall while the host does not paint
+ *  the page (MEASURED live in the Fusion CAM palette, seat A 2026-10-06: an APPLY clicked during a BUILD waited on its
+ *  first card's paint and never sent at all). The work goes ahead after PAINT_FALLBACK_MS, frames or not. */
+export const PAINT_FALLBACK_MS = 250;
+const TWO_FRAMES = (cb) => {
+  let done = false;
+  const go = () => { if (!done) { done = true; cb(); } };
+  const raf = _raf();
+  raf(() => raf(go));
+  setTimeout(go, PAINT_FALLBACK_MS);
+};
 let _afterPaint = TWO_FRAMES;
 /** The one switch for the paint step. The app never calls it; the vitest setup (tests/setup-paint.js) sets an
  *  immediate one so a panel test reads a gesture's lay synchronously, and the tests OF the deferral put the real

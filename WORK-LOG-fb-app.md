@@ -15238,3 +15238,16 @@ WallPattern = {
   - An APPLY during a build runs after the report.
   - 7/10 fail against main (the 3 that pass pin the file parse, the pump, run()). CAM pytest 46.
 - **Next:** seat A's live readback of the four BUILD cards painting live.
+- **Readback 1 of cee7103 (seat A, 10:50):**
+  - Result parity OK. Steps 1-3 painted live even with the Manufacture switch inside BUILD (before: nothing after step 1).
+  - Step 4 never showed: the next tick, fired at once, ran the ~7 s setup build before the palette took the message.
+  - An APPLY clicked mid-build was LOST: its card's paint waited on animation frames that never came, so send() never fired.
+  - Fusion's viewport also covered the palette exactly during the setup build (10:51:02-:09), lifting by itself with the report.
+- **Fixes:**
+  - _advance_build posts the step, then fires the next tick from a timer PALETTE_SETTLE_S (0.25 s) later (fireCustomEvent is thread-safe), so Fusion is idle while the palette takes the message.
+  - core/loading-signal.js: the paint step resolves after PAINT_FALLBACK_MS (250 ms) if no frame comes. This applies to every paint-first user, the Send's hand-off too.
+  - The cover is not re-raised: it lasts the setup build only, and a re-raise from the add-in cannot run while that build blocks Fusion.
+- **Tests:**
+  - test_cam_stages: the tick timer at PALETTE_SETTLE_S.
+  - loading-signal +2: the no-frames test fails before (hangs); the frames-come test pins that the work runs once.
+  - Full vitest 340/340 (5461); CAM pytest 46; add-in pytest 170.
