@@ -23731,3 +23731,20 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Tests: CAM-builder/test_toolpath_gen.py 5 (fakes that behave like the live run: an op's first generation empty,
   a regenerated setup staling the next that reads its stock); with MAX_GENERATION_PASSES = 1 (the old single pass)
   3/5 fail. CAM-builder suite 45/45. Known failures: none.
+- CORRECTION to the entry above (it was appended from an earlier draft): its "Fix" and "Tests" lines describe the
+  FIRST attempt (2a57205: a per-setup second pass, MAX_GENERATION_PASSES = 2, 5 tests). Live (cam-bricks) that
+  attempt gave ok=6 missing=1: regenerating Back as a setup brought its Pocket back but the Morphed Spiral, started
+  while the Pocket was still empty, failed again; that Morphed Spiral generated ALONE (Pocket valid) was valid.
+  The fix on the branch (2ed3f41): pass 1 per setup as before; passes 2..MAX_GENERATION_PASSES (= 3: 2 needed live,
+  one spare) go OP BY OP, in setup and op order, every op with no valid toolpath when reached, each awaited; stops
+  when nothing is missing. Tests: test_toolpath_gen.py 6, with a fake CAM that behaves like the live runs (an op's
+  first generation empty; a REgeneration started while its upstream was empty fails; generating anything stales
+  the next setup that reads its stock); with MAX_GENERATION_PASSES = 1 3/6 fail, against 2a57205 3/6 fail.
+  CAM-builder suite 46/46. Known failures: none.
+- LIVE 7/7 on two boards, a fresh doc each, 2ed3f41 deployed:
+    cam-bricks (replay tool): pass 1 Back 0.4 s / Top 32.9 s / Frame 59.6 s; pass 2 op by op Back/Pocket 18.1 s,
+      Back/Morphed 20.2 s, Top/Pocket 8.9 s, Top/Morphed 5.5 s, Top/deloge 33.2 s -> post-audit ok=7 missing=0; all
+      7 valid, no error / warning, machining-time estimates present.
+    T16 7x9 + wall + lattice (palette Send + CAM palette BUILD / APPLY clicks): pass 1 Back 0.3 s; pass 2 op by op
+      (7.3 / 2.0 / 4.1 / 1.6 / 20.4 s) -> post-audit ok=7 missing=0, all 7 valid; the palette ends
+      '✓ TOOLPATHS complete -- 7 ops ok'.
