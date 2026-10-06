@@ -23178,3 +23178,98 @@ On top of V1 / V2 / V4 (above):
   name in 8.9 s (setups valid, ops kept). The POS DIAG label fix shows only once deployed (that log runs inside the
   deferred generation, after the swap is restored).
 - Hygiene: scratch docs closed by handle (only Fred's Untitled), holder none.
+## H23 item 89 CORRECTION -- the first baseline was not fresh per case; redone (seat A / 77, 2026-10-05)
+- The advisor asked about "unseeded, 3 silhouettes in 3 loads". MEASURED (T1, 3 genuinely fresh loads, unseeded):
+    before Generate: frame seeds {} and the 12 outline primitives are IDENTICAL in all 3 loads. Only the terrain
+      seed differs (27673 / 72783 / 90091), which is by design.
+    the Frame tab's [Generate] = generateFrame(seed = nextSeed()), nextSeed() = Math.floor(Math.random()*1e6)
+      (editor/editor-lattice-pattern.js:777), documented "a new seeded random frame shape". The sweep clicked it on
+      every case: that is where the 3 silhouettes came from.
+    a saved board: after Generate, a plain reload restored the same seeds and outline, 3/3. NO outline bug.
+- THE DEFECT WAS MINE: localStorage.clear() run inside the app and then navigating does NOT give a fresh start. The
+  previous board came back (same terrain seed, previous frame record, 2 of 2 loads), so every case of the first
+  baseline started from the previous case's board. Re-running T1/T10/T12 genuinely fresh changed 7 of 9 piece counts
+  and 9 of 9 svgs (T1 single 110 -> 116). The sweep now wipes the origin from about:blank
+  (Storage.clearDataForOrigin, storageTypes 'all'); two fresh runs gave byte-identical svgs, 6 of 6 cases.
+  The first item 89 table above is INVALID. Its files were removed in 9ade383; the replacement is
+  tools/repro/h23_item89_baseline/*_fresh.*
+- Redone, same method otherwise (all 57 fresh; Fusion through the COMMITTED h23_item89_fusion_import.py, run end to
+  end, 2 per call, nothing else running). pieces / profiles / slivers < 1e-4 in2 / import s:
+    template    | single_soldier     | three_band         | double_course
+    template_1  | 116/116/ 0/1.28    | 116/116/ 0/1.28    | 112/112/ 0/1.15
+    template_2  |  87/ 87/ 0/1.33    |  87/ 87/ 0/3.96    |  79/ 79/ 0/1.16
+    template_3  |  94/ 94/ 0/5.51    | 145/248/48/3.67    |  90/ 90/ 0/2.99
+    template_4  | 100/100/ 0/3.20    | 100/100/ 0/4.72    |  96/ 96/ 0/2.83
+    template_5  | 113/121/ 2/1.58    | 113/121/ 2/5.97    | 107/115/ 2/1.74
+    template_6  |  99/ 99/ 0/2.44    |  99/ 99/ 0/3.66    |  91/ 91/ 0/3.05
+    template_7  |  86/ 86/ 0/3.19    |  86/ 86/ 0/1.80    |  80/ 80/ 0/1.97
+    template_8  | 105/136/ 7/2.55    | 105/136/ 7/1.44    |  95/ 95/ 0/2.69
+    template_9  |  84/ 84/ 0/1.20    |  84/ 84/ 0/1.15    |  84/ 84/ 0/1.20
+    template_10 | 103/109/ 0/1.53    | 103/109/ 0/1.57    |  99/ 99/ 0/1.73
+    template_11 |  84/ 84/ 0/1.15    |  84/ 84/ 0/1.52    |  72/ 72/ 0/4.52
+    template_12 | 114/114/ 0/1.52    | 114/114/ 0/1.88    | 110/114/ 0/1.58
+    template_13 |  91/ 91/ 0/1.46    |  91/ 91/ 0/1.19    |  82/ 88/ 0/1.11
+    template_14 |  90/ 90/ 0/1.10    | 133/289/92/1.44    |  85/ 85/ 0/1.02
+    template_15 |  86/ 86/ 0/1.66    |  86/ 86/ 0/1.01    |  82/ 82/ 0/3.69
+    template_16 |  86/ 86/ 0/1.04    |  86/ 86/ 0/1.23    |  86/ 86/ 0/1.05
+    template_17 |  89/ 89/ 0/1.01    |  89/ 89/ 0/1.11    |  89/ 89/ 0/1.10
+    template_18 |  94/ 94/ 0/1.34    |  94/ 94/ 0/1.23    |  90/ 90/ 0/1.23
+    template_19 | 104/130/ 4/1.31    | 104/130/ 4/1.53    | 102/128/ 4/1.29
+  TOTALS: 14/57 mismatched, 445 extra profiles, 172 slivers, 0 open ends, 0 multi-loop; import median 1.52 s,
+  max 5.97 s.
+- WORST 3:
+    T14 three_band 133/289/92: the small profiles spread ALONG the inner stretcher bands (x +-1.0..1.5, the whole
+      height). The stretcher bricks meet end to end with no joint: B's "zero-wide joints inside band rows".
+    T3 three_band 145/248/48: the same, along its inner bands (x +-1.5..2.0).
+    T8 single_soldier 105/136/7: all 19 small profiles at ONE corner (2.3..2.4, 3.2..3.4), a corner fan.
+  Note: three_band lays 3 real bands only on T3 and T14 here (145 / 133 pieces vs 94 / 90 single); elsewhere its
+  counts equal single_soldier's.
+- Shots (shots/seatA): h23_item89v2_template_14__three_band.png, h23_item89v2_template_3__three_band.png,
+  h23_item89v2_template_8__single_soldier.png. (The h23_item89_* shots of the first run are of the invalid boards.)
+- Slip: the 9ade383 commit landed without these files and this entry (a cp after git rm failed and the chain
+  stopped); added in the next commit.
+- Hygiene: scratch doc closed by handle (only Fred's Untitled), holder none, servers + Chrome stopped.
+
+## H23 item 89 AFTER-RUN on seat B's joint-rule 2db0668 (seat A / 77, 2026-10-06)
+- FIRST ATTEMPT RETRACTED: port 8794 was held by two days-old servers (pid 52764 'python -m http.server 8794', 02-Oct;
+  pid 29036 fb-app worktree serve_app.py 8794, 03-Oct). My server could not bind, and the "after" capture swept another
+  tree's app (40/57 boards point-for-point equal to the baseline, which was the tell). Not my PIDs; reported, not
+  killed. The sweep now has --root: it byte-compares the served palette + every core/bricks/*.js with the tree on
+  disk and exits 2 on a difference. Checked: pointed at the zombie on 8794 -> refused. It also polls for the app being
+  up instead of a fixed 8 s (one case died at "click of null" under 100% CPU); a page error is now a FAILED case,
+  not a crash.
+- CLEAN RUN: port 8795 confirmed free before start; guard: 30 served files == the joint-rule worktree. All 57 cases
+  (fixed tool, --seed 89, 7x9, 1 in, Frame tool alone); Fusion through the deployed _apply_bricks_sketch
+  (b-spline-gen.py identical in 2b5695d, main f3903b7 and 2db0668). Pieces = the <polygon>s in stamp.bricks (the
+  app's count also has 1 'grout' element per board, which is not in the Bricks svg).
+- RESULT: 57/57 profiles == pieces, 0 slivers, 0 open ends, 0 multi-loop; import median 1.56 s
+  (tools/repro/h23_item89_baseline/*_jointrule_2db0668.*). Worst baseline cases: T14 three_band 133/289/92 -> 133/133/0;
+  T3 three_band 145/248/48 -> 97/97/0.
+- CAVEAT (B found it, confirmed by the counts): the board SHAPE is not pinned. The sweep clicks the Frame tab's
+  [Generate], a random shape (nextSeed() = Math.random); the seeded PRNG does not make it reproducible, because the
+  number of draws before Generate depends on timing. So before/after are not the same boards case by case (e.g. T9
+  double_course 122 here vs B's 82). The acceptance claim (profiles == pieces on every board laid) does not need
+  identical boards; a per-board comparison does. Fix proposed, not built: declare the frame (no Generate, the
+  template's own fitted shape, which is identical across fresh loads, measured) and record the frame record in each
+  case json.
+- Slip: three cases got a duplicate "sketch: false" row: a call ran while a timed-out one was still on the same case.
+  The valid rows were re-measured alone and agree exactly (T19 single 103, T7 double 81, T7 single 85).
+
+## H23 item 89 re-check on ring-pinch d464848 (joint rule + items 30, 31, 32/33), with stone rings (seat A / 77, 2026-10-06)
+- Asked by seat B for the advisor. Fitted frames (the sweep's default since 5fd7468), 7x9, brick 1 in, Frame tool alone.
+  Served from a ring-pinch worktree on port 8797: confirmed free before start, and the --root guard matched 31 files
+  on every pass. Fusion through the deployed _apply_bricks_sketch: b-spline-gen.py is identical in the deployed
+  205b41b and d464848.
+- Sweep options added (declared, this branch): --frameSet=<id> picks the frame's set through the app's own
+  selectSet(id, .., ['frame']), reads back the set the frame bricks carry (frameSets) and falls back to a direct write
+  only if the picker did not take it (frameSetVia; never needed here). --presets=a,b limits the band presets. The
+  first template-list read retries (one start-up module fetch was dropped under load).
+- RESULT, 95 boards (pieces = the <polygon>s in stamp.bricks; the app's extra 'grout' element is not in the svg):
+    bricks (default set): 19 templates x single_soldier / three_band / double_course = 57 -> 57/57 profiles == pieces
+    White rocks (set 3), three_band x 19 -> 19/19; Grey stone (set 5), three_band x 19 -> 19/19 (both via selectSet,
+      every board laid the set asked for; stones ~29 vertices each, 2,272-2,800 curves per sketch)
+    0 slivers, 0 open ends, 0 multi-loop, no duplicate row disagreeing. Table + raw rows:
+    tools/repro/h23_item89_baseline/*ringpinch_d464848*.
+- Cost: under 100% CPU from other runs, 9 capture cases failed on the first pass (dropped module fetch / app not up);
+  one fill pass recovered all 9. Stone imports take ~1.5-2 min each in Fusion (profile measuring). Calls ran 3-6 cases
+  then waited for Fusion to go idle, so no two calls overlapped.
