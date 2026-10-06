@@ -20,6 +20,7 @@ import * as undo from './undo.mjs';
 import * as persistence from './persistence.mjs';
 import * as grout from './grout.mjs';
 import * as handedit from './handedit.mjs';
+import * as strokes from './strokes.mjs';
 
 const MODULES = {
   wall: wall,
@@ -40,6 +41,7 @@ const MODULES = {
   persistence: persistence,
   grout: grout,
   handedit: handedit,
+  strokes: strokes,
 };
 
 export const GROUPS = Object.keys(MODULES);
@@ -90,3 +92,4 @@ export { UNDO_SETTINGS } from './undo.mjs';
 export { PATTERN_PARAM_PERSIST, PERSIST_BOARD, GENERATE_AFTER_RESTORE } from './persistence.mjs';
 export { GROUT_JOINTS } from './grout.mjs';
 export { HAND_EDIT } from './handedit.mjs';
+export { STROKE_CLEAR } from './strokes.mjs';
