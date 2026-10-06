@@ -195,17 +195,37 @@ LOG_FILE = get_log_path()
 
 # ── Module-level import probe (removed) ──────────────────────────────────
 
+def _read_declared_json(path):
+    """A declared data module shared with the palette (html/data/*.js): the pure-JSON object after the line that
+    starts with the export."""
+    with open(path, 'r', encoding='utf-8') as f:
+        src = f.read()
+    m = re.search(r'^export default', src, re.M)
+    return json.loads(src[m.end():].strip().rstrip(';'))
+
+
+# H23 item 93: what this log keeps -- the debug level (off), the demoted prefixes and the rotation size -- DECLARED
+# once in html/data/addin-log.js (the palette's fusDebug reads the same file). Unreadable -> the old behaviour
+# (everything written, 512 KB), so a bad declaration can never silence the log.
+try:
+    ADDIN_LOG = _read_declared_json(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'html', 'data', 'addin-log.js'))
+except Exception:
+    ADDIN_LOG = {'debug': True, 'debugPrefixes': [], 'rotateBytes': 1024 * 512}
+
 import datetime
 def _log(msg):
-    """Writes a timestamped message to the log file with auto-rotation."""
+    """Writes a timestamped message to the log file with auto-rotation. A line starting with a declared debug prefix
+    is written only when the declared debug level is on (H23 item 93)."""
     try:
+        if not ADDIN_LOG['debug'] and str(msg).lstrip().startswith(tuple(ADDIN_LOG['debugPrefixes'])):
+            return
         timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         log_entry = f"[{timestamp}] {msg}\n"
         # Open in append mode
         with open(LOG_FILE, 'a', encoding='utf-8') as f:
             f.write(log_entry)
-        # Optional: Rotation logic to keep the file small
-        if os.path.getsize(LOG_FILE) > 1024 * 512: # 512KB limit
+        # Rotation: past the declared size the live file becomes .old
+        if os.path.getsize(LOG_FILE) > ADDIN_LOG['rotateBytes']:
             os.replace(LOG_FILE, LOG_FILE + ".old")
     except Exception:
         # Fail silently if the OS prevents file access
