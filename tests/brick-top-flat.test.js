@@ -15,7 +15,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-surface.
 
 import { rasterizeBrickHeightMask } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-height-mask.js';
 import { BRICK_GEN_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
-import { applyStampLayers, flatBrickPlaneHeights } from '../bspline-frame-builder/b-spline-gen/html/core/engine/apply-stamp-layers.js';
+import { applyStampLayers, flatBrickPlaneHeights, STAMP_PASS_KIND } from '../bspline-frame-builder/b-spline-gen/html/core/engine/apply-stamp-layers.js';
 import { clearStampMaskInWindow } from '../bspline-frame-builder/b-spline-gen/html/main/stamp-mask-manager.js';
 import { fitPlane } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/plane-fit.js';
 
@@ -142,5 +142,60 @@ describe('applyStampLayers: Flat vs Organic on hilly terrain', () => {
   it('Carved (negative depth): same plane, profile subtracted', () => {
     const out = applyStampLayers(hills(), [layerOf(flatMask, -depth)], NX, NZ);
     expect(planeResidual(brickPoints(brickOf, 0), base(out, -1))).toBeLessThan(1e-5);
+  });
+});
+
+// F35 item 44 (Fred: "if there's a carving in art, the bricks don't work"): a carving art pass below a Flat brick pass.
+// Measured live before (7x9 T1, a 0.35 in carve across 20 of 140 Flat bricks): 1,752 points of the crossed bricks off the
+// stroke moved (max 0.10 in) and the groove was replaced by each brick's plane. Now: the plane is fitted under the art.
+describe('item 44: a carving art pass under Flat bricks (STAMP_PASS_KIND)', () => {
+  const depth = 0.125, carve = -0.2;
+  let flatMask, organicMask, brickOf;
+  beforeAll(async () => {
+    ({ flat: flatMask, organic: organicMask } = await masks());
+    brickOf = flatMask.flatTop.brickOf;
+  });
+  // a vertical carving stripe across the LEFT brick only (columns 7-8 = x 1.75-2.0 in)
+  const stripe = (k) => { const i = k % NX; return i >= 7 && i <= 8; };
+  const artMask = () => {
+    const body = new Float32Array(NX * NZ), isStamped = new Uint8Array(NX * NZ);
+    for (let k = 0; k < NX * NZ; k++) if (stripe(k)) { body[k] = 1; isStamped[k] = 1; }
+    return { body, fillet: new Float32Array(NX * NZ), isStamped };
+  };
+  const art = () => ({ enabled: true, svg: '<svg/>', mask: artMask(), depth: carve, kind: STAMP_PASS_KIND.art });
+  const bricks = (mask) => ({ ...layerOf(mask, depth), kind: STAMP_PASS_KIND.bricks });
+
+  it('the crossed brick keeps its plane off the groove: those points are exactly the no-carve ones', () => {
+    const t = hills();
+    const without = applyStampLayers(t, [bricks(flatMask)], NX, NZ);
+    const withArt = applyStampLayers(t, [art(), bricks(flatMask)], NX, NZ);
+    const off = brickPoints(brickOf, 0).filter((k) => !stripe(k));
+    expect(off.length).toBeGreaterThan(20);
+    for (const k of off) expect(withArt[k]).toBeCloseTo(without[k], 6);
+    for (const k of brickPoints(brickOf, 1)) expect(withArt[k]).toBeCloseTo(without[k], 6); // the other brick too
+  });
+
+  it('the groove under a Flat brick is the carve itself, the same as under an Organic one', () => {
+    const t = hills();
+    const fw = applyStampLayers(t, [art(), bricks(flatMask)], NX, NZ), fo = applyStampLayers(t, [bricks(flatMask)], NX, NZ);
+    const ow = applyStampLayers(t, [art(), bricks(organicMask)], NX, NZ), oo = applyStampLayers(t, [bricks(organicMask)], NX, NZ);
+    const under = brickPoints(brickOf, 0).filter(stripe);
+    expect(under.length).toBeGreaterThan(5);
+    for (const k of under) {
+      expect(fw[k] - fo[k]).toBeCloseTo(carve, 6);
+      expect(ow[k] - oo[k]).toBeCloseTo(carve, 6);
+    }
+  });
+
+  it('art ABOVE the bricks (applied after) still just adds, and a pass with no kind is art', () => {
+    const t = hills();
+    const after = applyStampLayers(t, [bricks(flatMask), art()], NX, NZ);
+    const without = applyStampLayers(t, [bricks(flatMask)], NX, NZ);
+    for (const k of brickPoints(brickOf, 0)) expect(after[k] - without[k]).toBeCloseTo(stripe(k) ? carve : 0, 6);
+    const { kind, ...untagged } = art();
+    expect(kind).toBe('art');
+    const legacy = applyStampLayers(t, [untagged, bricks(flatMask)], NX, NZ);
+    const tagged = applyStampLayers(t, [art(), bricks(flatMask)], NX, NZ);
+    expect([...legacy]).toEqual([...tagged]);
   });
 });
