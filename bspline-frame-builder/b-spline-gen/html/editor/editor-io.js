@@ -7,7 +7,7 @@ import { encodeLayersAttr, repairLayersAttr } from './layers-attr.js';
 import { stripSvgjsAttributes, stripOriginalAttrs, decodeSnapshot } from '../core/svg-utils.js';
 import { migrateTextElement } from './editor-text-baseline.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { applyToolingDefaults, migrateLegacyBricksLayer, BRICK_RECORD_ATTR, stripEditorOnlyBrickAttrs, isBrickToolNode, addLayer, setActiveLayer, isExported, syncLayerZOrder } from './layers.js';
+import { applyToolingDefaults, migrateLegacyBricksLayer, stripEditorOnlyBrickAttrs, isBrickToolNode, addLayer, setActiveLayer, syncLayerZOrder } from './layers.js';
 import { OWNERSHIP_ATTR, BOUNDARY_REF_ATTR, hasGeneratedSilhouette } from './editor-lattice-pattern.js';
 import { carveMatrix, transformPoint } from './editor-coords.js';
 import { bakeMatrixIntoElement } from './editor-transform-handles.js';
@@ -18,6 +18,7 @@ import { dbg } from '../core/debug.js';
 import { OUTLINE_KINDS } from './editor-outline-preview.js';
 import { drawFrameProfile } from './editor-frame-profile.js';
 import { repaintBricks, migrateBrickRecords } from './editor-brick-tool.js';
+import { svgDownloadGroups, SVG_BRICK_EXPORT, INKSCAPE_NS } from './svg-export.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
  *  layer-restore regressions stay observable. Console output is quiet by
@@ -45,32 +46,6 @@ function _ioLog(msg) {
 function serializeEditor(editor, { forRaster = false } = {}) {
     let raw = editor._sketchLayer.node.innerHTML;
     if (forRaster) raw = stripOriginalAttrs(raw);
-    return stripSvgjsAttributes(raw);
-}
-
-/** T27: the SVG DOWNLOAD (saveWithTextCopies, below) exports isExported()
- *  layers only (turn 207: every layer -- Fred, hidden is display-only). This does NOT touch serializeEditor itself, which every
- *  OTHER caller (the regular save/persist path, saveForRasterization,
- *  getLayerSvg) needs to keep including hidden layers for — per that
- *  function's own docstring, hidden-layer content must survive
- *  save/reopen, and a hidden-but-carving layer still needs its real SVG
- *  for masking. Filters the live sketch-layer children by their layer's
- *  isExported() result BEFORE the same svg.js-attr-stripping pass
- *  serializeEditor itself runs — same output shape, smaller input. */
-function _serializeVisibleLayers(editor) {
-    const layers = Array.isArray(editor._layers) ? editor._layers : [];
-    const exportedIds = new Set(
-        layers.filter(l => isExported(l)).map(l => String(l.id))
-    );
-    const raw = editor._sketchLayer.children().toArray()
-        .filter(ch => exportedIds.has(String(ch.attr('data-layer'))))
-        .filter(ch => !ch.attr(BRICK_RECORD_ATTR)) // item 22: an element record is bookkeeping, never downloaded
-        .map(ch => {
-            // item 22: editor-only brick attributes never leave the editor (layers.js BRICK_EDITOR_ONLY_ATTRS)
-            const copy = ch.node.cloneNode(true);
-            return stripEditorOnlyBrickAttrs(copy) ? copy.outerHTML : ch.node.outerHTML;
-        })
-        .join('');
     return stripSvgjsAttributes(raw);
 }
 
@@ -695,44 +670,32 @@ export async function saveForRasterization(editor, dpi = 96) {
     return svgString;
 }
 
-export async function saveWithTextCopies(editor, dpi = 96) {
-    if (!editor._draw) return "";
-    // SE10 AMEND: SHOWN layers only (_serializeVisibleLayers) — this is
-    // the Download SVG export path specifically, not the regular save.
-    const content = _serializeVisibleLayers(editor);
+/** F35 item 56: the SVG DOWNLOAD -- ONE file whose top-level groups are svg-export.js's SVG_EXPORT_GROUPS (frame / art per
+ *  layer / bricks per element / grout per element), named for Illustrator / Inkscape, bricks as flat vector colours
+ *  (SVG_BRICK_EXPORT). The fonts and the text copies (each <text>'s data-original-text-svg) travel in <defs>. Replaces
+ *  saveWithTextCopies (retired with item 56: art + bricks as drawn, every brick fill a pattern the file lacked). */
+export async function saveSvgDownload(editor, { style = SVG_BRICK_EXPORT.default, dpi = 96 } = {}) {
+    if (!editor._draw || !editor._sketchLayer) return "";
     const textCopies = [];
     const fontFamilies = new Set();
-    editor._sketchLayer.children().forEach(ch => {
-        const originalTextSvg = decodeSnapshot(ch.attr('data-original-text-svg'));
-        if (originalTextSvg) {
-            textCopies.push(originalTextSvg);
-            const tempEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            tempEl.innerHTML = originalTextSvg;
-            const textEl = tempEl.querySelector('text');
-            if (textEl) {
-                const family = textEl.getAttribute('font-family');
-                if (family) fontFamilies.add(family.replace(/['"]/g, '').trim());
-            }
-        }
-    });
+    for (const ch of editor._sketchLayer.node.children) {
+        const originalTextSvg = decodeSnapshot(ch.getAttribute('data-original-text-svg'));
+        if (!originalTextSvg) continue;
+        textCopies.push(originalTextSvg);
+        const tempEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        tempEl.innerHTML = originalTextSvg;
+        const family = tempEl.querySelector('text')?.getAttribute('font-family');
+        if (family) fontFamilies.add(family.replace(/['"]/g, '').trim());
+    }
     const fontCss = [];
     for (const family of fontFamilies) {
         const css = await getEmbeddedFontCss(family);
         if (css) fontCss.push(css);
     }
-    const wPx = editor._mW * dpi;
-    const hPx = editor._mH * dpi;
-    
-    // v49: Seal text copies in a proper <defs> block to ensure they never render.
-    const textContent = textCopies.length ? `<defs class="editor-metadata">${textCopies.join('')}</defs>` : '';
-
-
     const styleBlock = fontCss.length ? `<defs><style type="text/css">${fontCss.join('\n')}</style></defs>` : '';
-    const layersAttr = _serializeLayersAttr(editor);
-    const layersAttrStr = layersAttr ? ` data-editor-layers="${layersAttr}"` : '';
-    const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
-    const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${styleBlock}${content}${textContent}</svg>`;
-    return svgString;
+    const textContent = textCopies.length ? `<defs class="editor-metadata">${textCopies.join('')}</defs>` : '';
+    const wPx = editor._mW * dpi, hPx = editor._mH * dpi;
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="${INKSCAPE_NS}" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${styleBlock}${svgDownloadGroups(editor, style)}${textContent}</svg>`;
 }
 
 /**

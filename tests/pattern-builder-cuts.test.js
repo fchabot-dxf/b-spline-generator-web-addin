@@ -31,7 +31,7 @@ function fakeEditor() {
   return {
     _draw: {}, _mW: 7, _mH: 9, _activeLayer: '0', _layers: [{ id: '0', name: 'Layer 1', visible: true }],
     _sketchLayer: { node, children: () => Object.assign([], { toArray: () => [] }) /* svg.js: an array (item 64: a kind layer runs addLayer) */,
-      group: () => wrap(svgEl('g')), polygon: (pts) => { const el = svgEl('polygon'); el.setAttribute('points', pts); return wrap(el); } },
+      group: () => wrap(svgEl('g')), polygon: (pts) => { const el = svgEl('polygon'); el.setAttribute('points', pts); return wrap(el); }, path: (d) => { const el = svgEl('path'); el.setAttribute('d', d); return wrap(el); } },
   };
 }
 // a 2 x 4 tile at 1/2 brick: row 0 (the bottom course) marks cells 0-1 (one brick-length), row 1 marks cell 1 only (a half)

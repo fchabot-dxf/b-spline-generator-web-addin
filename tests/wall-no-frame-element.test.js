@@ -20,7 +20,7 @@ function fakeEditor(w = 7, h = 9) {
     fill: () => api, stroke: () => api }; return api; };
   const svgEl = (tag) => { const el = document.createElementNS('http://www.w3.org/2000/svg', tag); node.appendChild(el); return el; };
   return { _draw: {}, _mW: w, _mH: h, _activeLayer: '0', _layers: [{ id: '0', name: 'Layer 1', visible: true }],
-    _sketchLayer: { node, children: () => Object.assign([], { toArray: () => [] }), group: () => wrap(svgEl('g')), polygon: (pts) => { const el = svgEl('polygon'); el.setAttribute('points', pts); return wrap(el); } } };
+    _sketchLayer: { node, children: () => Object.assign([], { toArray: () => [] }), group: () => wrap(svgEl('g')), polygon: (pts) => { const el = svgEl('polygon'); el.setAttribute('points', pts); return wrap(el); }, path: (d) => { const el = svgEl('path'); el.setAttribute('d', d); return wrap(el); } } };
 }
 const S = () => ({ ...P.brickSettings, pattern: 'stretcher', wallRotationDeg: 0, accent: { preset: 'none', levelIn: 0.0625, clicks: [] } });
 const geom = (x1, y1, x2, y2) => ({ primitives: buildRibbonPrimitives(rectToPrimitives({ x1, y1, x2, y2 })), bands: FRAME_PRESETS.single_soldier });

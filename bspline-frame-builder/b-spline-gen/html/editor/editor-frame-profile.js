@@ -461,6 +461,24 @@ export function drawFrameProfile(editor) {
   return out;
 }
 
+/** F35 item 56: the frame as flat vector parts for the SVG download -- the SAME profile, inner edge, wood colour and
+ *  miters the canvas draws (_drawFrameProfile below), at full strength: { outlineD, innerD, wood, miters: [d], stroke }.
+ *  null with no frame (template None) or a profile with defects. */
+export function frameVectorParts(editor) {
+  const spec = _provider ? _provider() : null;
+  if (!spec || !editor) return null;
+  const board = { widthIn: editor._mW, heightIn: editor._mH };
+  const prof = frameCutProfile(spec.defs, spec.record, board);
+  if (!prof || prof.defects.length) return null;
+  const inner = prof.fit.ok ? frameInnerProfile(spec.defs, spec.record, board) : null;
+  const ok = !!inner && !inner.defects.length && inner.primitives.length === prof.primitives.length;
+  const wood = frameColorFor(spec.record.appearance, spec.defs.appearance?.previewColors?.[spec.record.appearance] || '#d9c9a3');
+  return {
+    outlineD: prof.pathD, innerD: ok ? primitivesToPathD(inner.primitives) : null, wood, stroke: FRAME_OUTLINE_COLOR,
+    miters: ok ? frameMiters(prof.primitives, inner.primitives).map((m) => `M${m.outer.x} ${m.outer.y} L${m.inner.x} ${m.inner.y}`) : [],
+  };
+}
+
 function _drawFrameProfile(editor) {
   if (!editor || !editor._bgLayer) return null;
   for (const id of [FRAME_PROFILE_GROUP_ID, FRAME_CUTAWAY_GROUP_ID]) {

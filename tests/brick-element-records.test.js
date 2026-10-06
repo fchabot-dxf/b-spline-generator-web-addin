@@ -18,7 +18,7 @@ import {
   migrateBrickRecords, BRICK_LAID_ATTR,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { clearBrickElements, clearArtworkLayers } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-clear.js';
-import { saveWithTextCopies, getLayerSvg } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
+import { saveSvgDownload, getLayerSvg } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 import { isEditableByLayer, isOnVisibleLayer, BRICK_EDITOR_ONLY_ATTRS } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { generateBricks as engineGenerate } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js';
@@ -45,6 +45,7 @@ function fakeEditor() {
     _sketchLayer: {
       node,
       polygon: (pts) => { const w = make('polygon')(); w.node.setAttribute('points', pts); return w; },
+      path: (d) => { const w = make('path')(); w.node.setAttribute('d', d); return w; }, // item 55: the grout node
       group: make('g'),
       children: () => { const arr = [...node.children].map(wrap); return { toArray: () => arr, forEach: (f) => arr.forEach(f), map: (f) => arr.map(f) }; },
     },
@@ -104,12 +105,14 @@ describe('item 22 step 2: element records + brick owners', () => {
     const rec = ed._sketchLayer.children().toArray().find((c) => c.attr(BRICK_RECORD_ATTR) === 'wall-full');
     expect(isEditableByLayer(ed, rec)).toBe(false);
     expect(isOnVisibleLayer(ed, rec)).toBe(false);
-    const svg = await saveWithTextCopies(ed);
-    expect(svg).toContain('data-brick="wall"');
+    const svg = await saveSvgDownload(ed); // item 56: the download (was saveWithTextCopies)
+    expect(svg).toContain('data-brick-id=');
     expect(svg).not.toContain(BRICK_RECORD_ATTR);
   });
 
-  it('BYTE-IDENTICAL to before item 22 (advisor): the download and the baked layer SVG equal the same board WITHOUT records or Wall/Frame owners', async () => {
+  // item 56: the download is no longer a copy of the drawing (svg-export.js builds it: flat paths, ids from the owners), so
+  // only the BAKED layer SVG (Send's Bricks sketch) is pinned byte-identical here; the download's own pins: svg-download.test.js
+  it('BYTE-IDENTICAL to before item 22 (advisor): the baked layer SVG equals the same board WITHOUT records or Wall/Frame owners', async () => {
     const ed = fakeEditor();
     runBricks(ed, P.brickSettings, null);
     // a brush brick keeps its owner (it always shipped it)
@@ -117,15 +120,14 @@ describe('item 22 step 2: element records + brick owners', () => {
     // item 22 slice 3 (advisor ruling A): a layer's ART export never carries brick pieces (they ship in the Bricks
     // sketch alone) -- the bricks' own export (bricks: 'only') is what must stay byte-identical
     const wl = q(ed, '[data-brick="wall"]')[0].getAttribute('data-layer'); // item 64: the Wall's own layer (was '1')
-    const now = { dl: await saveWithTextCopies(ed), layer: getLayerSvg(ed, wl, 96, { bricks: 'only' }) };
+    const now = { layer: getLayerSvg(ed, wl, 96, { bricks: 'only' }) };
     expect(now.layer).toContain('data-brick="wall"');
     expect(getLayerSvg(ed, wl, 96)).not.toContain('data-brick-gen');
     // "before item 22": the same drawing with no records and no Wall/Frame owners
     q(ed, `[${BRICK_RECORD_ATTR}]`).forEach((n) => n.remove());
     q(ed, '[data-brick="wall"],[data-brick="frame"]').forEach((n) => ['data-brick-owner', 'data-brick-band', 'data-brick-row', 'data-brick-piece'].forEach((a) => n.removeAttribute(a)));
-    expect(now.dl).toBe(await saveWithTextCopies(ed));
     expect(now.layer).toBe(getLayerSvg(ed, wl, 96, { bricks: 'only' }));
-    expect(now.dl).toContain('data-brick-owner="be1:0"'); // the brush brick's, as before
+    expect(getLayerSvg(ed, '1', 96, { bricks: 'only' })).toContain('data-brick-owner="be1:0"'); // the brush brick's, as before
     expect(Object.keys(BRICK_EDITOR_ONLY_ATTRS).sort()).toEqual(['brush', 'frame', 'wall']); // one declared list
   });
 });
