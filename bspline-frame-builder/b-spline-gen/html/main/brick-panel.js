@@ -1685,6 +1685,20 @@ export function setFrameRock(rock, commit = 'generate') {
   commitBrickSetting(commit);
 }
 
+/** F35 item 46: a course pattern picked on band `i`. The pattern implies the set, both ways, in one place: Fieldstone
+ *  makes the whole frame rock (setFrameRock; its set is DERIVED, editor-brick-tool.js elementSetId -> the rock set),
+ *  and a course pattern on a rock frame leaves rock first -- every band back to the preset's own, then band `i` --
+ *  so the frame's own brick set (setIds.frame, never overwritten while rock; else the default Red Brick) is back. */
+export function setFrameBandPattern(i, patternId, commit = 'generate') {
+  if (isRockFrame(P.brickSettings)) P.brickSettings.frameBandPatterns = [];
+  if (!P.brickSettings.frameBandPatterns) P.brickSettings.frameBandPatterns = [];
+  P.brickSettings.frameBandPatterns[i] = patternId;
+  syncFrameBandPatternButtons();
+  syncFrameCornerButtons();
+  syncSetPicker();
+  commitBrickSetting(commit);
+}
+
 export function setFrameBandPreset(presetId, commit = 'generate') {
   const wasRock = isRockFrame(P.brickSettings);
   P.brickSettings.frameBandPreset = presetId;
@@ -1986,9 +2000,9 @@ function renderFrameBandPatternList(container) {
   const heading = document.getElementById('brickFrameBandPatternLabel');
   if (heading) heading.style.display = show ? '' : 'none';
   container.style.display = show ? '' : 'none';
-  // F35 item 23: a ROCK frame (fieldstone bands) offers only the fieldstone band (the engine lays every band of a
-  // rock frame as the fieldstone ring); a brick frame offers the brick patterns + every `bandCapable` one
-  const rock = isRockFrame(P.brickSettings);
+  // F35 item 46 (Fred: "these can't be changed back after clicking"): a band row ALWAYS lists every pattern a band can
+  // lay, whatever the frame's set -- item 23 listed only Fieldstone on a rock frame, and the user was trapped there.
+  // What a pick does to the set is setFrameBandPattern's rule below.
   // F35 item 35: a band the last lay dropped to fit the board (bandsReduced.kept) greys out, with why
   const keptBands = _bandsReduced ? _bandsReduced.kept : bands.length;
   bands.forEach((band, i) => {
@@ -2006,7 +2020,6 @@ function renderFrameBandPatternList(container) {
     row.appendChild(label);
     for (const pattern of WALL_PATTERN_LIST) {
       const def = BRICK_PATTERNS[pattern.id];
-      if (rock && pattern.id !== 'fieldstone') continue;
       if (!bandCanLay(def)) continue; // advisor (turn 261): a band lists only what a band can lay; the rest is absent
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -2021,12 +2034,7 @@ function renderFrameBandPatternList(container) {
         // picking it on one band makes the whole frame rock: every band fieldstone (one set per element)
         btn.addEventListener('click', () => setFrameRock(true));
       } else {
-        btn.addEventListener('click', () => {
-          if (!P.brickSettings.frameBandPatterns) P.brickSettings.frameBandPatterns = [];
-          P.brickSettings.frameBandPatterns[i] = pattern.id;
-          syncFrameBandPatternButtons();
-          commitBrickSetting();
-        });
+        btn.addEventListener('click', () => setFrameBandPattern(i, pattern.id));
       }
       row.appendChild(btn);
     }

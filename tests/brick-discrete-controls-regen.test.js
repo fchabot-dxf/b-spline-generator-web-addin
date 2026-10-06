@@ -40,7 +40,7 @@ import {
   initBrickPanel, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
   setBrickTopMode, setSurfaceStyle, setStripeStyle, setRaisedMode,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
-import { runBricks, runBricksPreview, buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { runBricks, runBricksPreview, buildRibbonPrimitives, elementSetId } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { frameContext } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
@@ -1048,16 +1048,34 @@ describe('F35 item 23: per-element Set, Fieldstone = the rock set', () => {
     expect($('brickSet_1').classList.contains('active')).toBe(true);
   });
 
-  it('Frame: Fieldstone is offered (bandCapable); picking it on one band makes EVERY band fieldstone, and then only Fieldstone is offered', () => {
+  // F35 item 46 (Fred: "these can't be changed back after clicking") inverts item 23's "then only Fieldstone is offered":
+  // a band row always lists every band pattern, so a rock frame can go back to bricks
+  it('Frame: Fieldstone is offered (bandCapable); picking it on one band makes EVERY band fieldstone, and every row STILL lists every band pattern', () => {
     setup('frame');
     $('brickFramePreset_three_band').click(); // setup() resets to the 1-band preset
     expect($('brickFrameBandPattern_0_fieldstone').disabled).toBe(false);
     expect(bandIds()).toContain('brickFrameBandPattern_0_soldier');
+    const full = bandIds().length;
     $('brickFrameBandPattern_1_fieldstone').click();
     expect(P.brickSettings.frameBandPatterns).toEqual(FRAME_PRESETS.three_band.map(() => 'fieldstone'));
-    expect(bandIds().every((id) => id.endsWith('_fieldstone'))).toBe(true);
-    expect(bandIds()).toHaveLength(FRAME_PRESETS.three_band.length);
+    expect(bandIds()).toHaveLength(full);
+    for (let i = 0; i < FRAME_PRESETS.three_band.length; i++) expect(bandIds()).toContain(`brickFrameBandPattern_${i}_soldier`);
     expect(runBricks).toHaveBeenCalled();
+  });
+
+  it('item 46: Fieldstone, then Soldier on band 1 -> band 1 soldier, the frame is bricks again (its own set), rows still full', () => {
+    setup('frame');
+    $('brickFramePreset_three_band').click();
+    const full = bandIds().length;
+    $('brickFrameBandPattern_0_fieldstone').click();
+    expect(elementSetId(P.brickSettings, 'frame')).not.toBe(elementSetId({ ...P.brickSettings, frameBandPatterns: [] }, 'frame')); // rock: the derived rock set
+    runBricks.mockClear();
+    $('brickFrameBandPattern_0_soldier').click();
+    expect(P.brickSettings.frameBandPatterns[0]).toBe('soldier');
+    expect(P.brickSettings.frameBandPatterns.slice(1).every((p) => p !== 'fieldstone')).toBe(true);
+    expect(elementSetId(P.brickSettings, 'frame')).toBe(1); // Red Brick, the frame's own brick set
+    expect(bandIds()).toHaveLength(full);
+    expect(runBricks).toHaveBeenCalledTimes(1);
   });
 
   it('a rock frame stays rock across a preset change (every band of the new preset fieldstone)', () => {
