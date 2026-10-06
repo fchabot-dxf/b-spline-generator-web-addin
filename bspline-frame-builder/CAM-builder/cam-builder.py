@@ -1671,27 +1671,20 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
             # batch scheduler invalidates it mid-batch. Generating ONE SETUP AT A TIME, each awaited before the
             # next, was verified to leave every op green and still honours the cross-setup stock chain (B-spline
             # Back completes before B-spline Top reads it). The collection watch block below is skipped (f = None);
-            # the PRE/POST-GEN diagnostics stay.
+            # the PRE/POST-GEN diagnostics stay. H23 item 95: the order, and a second pass for any setup the doc's
+            # first generation left with an empty op, live in cam_engine/toolpath_gen.py (declared there).
             f = None
-            per_setup_timeout = 900.0
-            for i in range(cam.setups.count):
-                setup = cam.setups.item(i)
-                if setup.operations.count == 0:
-                    continue
-                t_setup = time.time()
-                try:
-                    fs = cam.generateToolpath(setup)
-                except Exception as e:
-                    _log(f"DEFERRED TPGEN: generateToolpath('{setup.name}') raised: {type(e).__name__}: {e}", "WARNING")
-                    _log_error(traceback.format_exc())
-                    continue
+            from cam_engine import toolpath_gen as _tg
+
+            def _await(fs, timeout_s):
+                t_wait = time.time()
                 while not fs.isGenerationCompleted:
-                    if time.time() - t_setup > per_setup_timeout:
-                        _log(f"DEFERRED TPGEN: '{setup.name}' still generating after {per_setup_timeout:.0f}s -- moving on", "WARNING")
-                        break
+                    if time.time() - t_wait > timeout_s:
+                        return False
                     adsk.doEvents()
                     time.sleep(0.2)
-                _log(f"DEFERRED TPGEN: setup '{setup.name}' generated in {time.time() - t_setup:.1f}s")
+                return True
+            _tg.generate_setups(cam, wait=_await, log=_log)
 
             if f is not None:
                 bulk_timeout = 1800.0
