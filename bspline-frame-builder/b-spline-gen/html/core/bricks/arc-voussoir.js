@@ -186,8 +186,8 @@ export function voussoirPieces(
     const halfGap = ((jointWidth / 2) / r) * direction;
     const sideAt = (thetaM, R, into) => thetaM + into * direction * Math.asin(Math.min(1, jointWidth / 2 / Math.max(R, 1e-9)));
     const edgeTheta = (R, start) => (start
-      ? (isVeryFirst ? (skipStartExt ? thetaA : thetaA - CLIP_EPS_ANGLE * direction) : sideAt(thetaA - halfGap, R, 1))
-      : (isVeryLast ? (skipEndExt ? thetaB : thetaB + CLIP_EPS_ANGLE * direction) : sideAt(thetaB + halfGap, R, -1)));
+      ? (isVeryFirst ? (skipStartExt || !jointStart ? thetaA : thetaA - CLIP_EPS_ANGLE * direction) : sideAt(thetaA - halfGap, R, 1))
+      : (isVeryLast ? (skipEndExt || !jointEnd ? thetaB : thetaB + CLIP_EPS_ANGLE * direction) : sideAt(thetaB + halfGap, R, -1)));
     const oS = edgeTheta(rOuter, true), oE = edgeTheta(rOuter, false), iS = edgeTheta(rInner, true), iE = edgeTheta(rInner, false);
     if ((oE - oS) * direction <= 0 || (iE - iS) * direction <= 0) return []; // the joints meet inside the piece: no material
     const arc = (R, t0, t1) => {

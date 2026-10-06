@@ -16,7 +16,7 @@ import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/ht
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
 import { polygonIntersection, signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
-import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { BRICK_SETS, BRUSH_PRESETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 
 vi.setConfig({ testTimeout: HEAVY_TEST_MS });
 
@@ -61,4 +61,17 @@ describe('the joint rule: every seam between band pieces is the declared joint (
       expect(bad).toEqual([]);
     });
   }
+});
+
+describe("the joint rule on a Brush stroke (seat E's measurement: bricks butting along the run, ends overhanging 0.02 in)", () => {
+  it('an open two-segment stroke: every seam a joint, no brick past either end of the stroke', () => {
+    const pts = [{ x: 1, y: 1 }, { x: 5, y: 1 }, { x: 6.5, y: 3.5 }];
+    const prims = pts.slice(0, -1).map((p, i) => ({ type: 'line', p0: p, p1: pts[i + 1] }));
+    for (const preset of ['stretcher_1', ...Object.keys(BRUSH_PRESETS).filter((k) => k !== 'stretcher_1')]) {
+      const { bricks } = bricksContourBands(prims, BRUSH_PRESETS[preset], { set: SET, seed: 1, closed: false, centered: true });
+      expect(narrowestSeam(bricks).d, preset).toBeGreaterThanOrEqual(JOINT - ARC_SAG_IN);
+      // the start end is the line x = 1 (the first segment runs along +x): nothing past it
+      expect(Math.min(...bricks.flatMap((b) => b.polygon.map((p) => p.x))), preset).toBeGreaterThanOrEqual(1 - 1e-9);
+    }
+  });
 });

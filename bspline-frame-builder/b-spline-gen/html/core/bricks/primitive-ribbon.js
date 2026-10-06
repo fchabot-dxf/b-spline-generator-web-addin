@@ -883,8 +883,10 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
   const buildPiece = (sA, sB, isVeryFirst, isVeryLast) => {
     const skipStartExt = isVeryFirst && jointStart && !jointStart.trustO;
     const skipEndExt = isVeryLast && jointEnd && !jointEnd.trustO;
-    const sStartPiece = isVeryFirst && !skipStartExt ? sA - CLIP_EPS_IN : sA;
-    const sFinishPiece = isVeryLast && !skipEndExt ? sB + CLIP_EPS_IN : sB;
+    // 21b: the float-safety extension exists to be clipped back to a joint; an open stroke end has none, so it is not
+    // extended (seat E measured the Brush's end bricks overhanging the stroke by exactly CLIP_EPS_IN, 0.02 in)
+    const sStartPiece = isVeryFirst && !skipStartExt && jointStart ? sA - CLIP_EPS_IN : sA;
+    const sFinishPiece = isVeryLast && !skipEndExt && jointEnd ? sB + CLIP_EPS_IN : sB;
     let polygon = [worldAt(sStartPiece, d0), worldAt(sFinishPiece, d0), worldAt(sFinishPiece, d1), worldAt(sStartPiece, d1)];
     if (jointStart && !skipStartExt && sA < hiStart + 1e-9) polygon = clipToHalfPlane(polygon, jointStart, jointStart.keepRefAsStart);
     if (jointEnd && !skipEndExt && sB > loEnd - 1e-9) polygon = clipToHalfPlane(polygon, jointEnd, jointEnd.keepRefAsEnd);
