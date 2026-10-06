@@ -22736,3 +22736,23 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
       keeping the setups -- only viable if a setup survives its MM being deleted and re-created; not tested.
   (c) CAM in a separate document: the design doc stays at ~40 s per Send. Workflow change, Fred's call.
 - Hygiene: scratch docs closed by handle (3 this round), holder none after each batch; Fred's Untitled untouched.
+
+## H23 item 85 (b') -- delete only the MMs before a Send, recreate + re-bind after (seat A / 77, 2026-10-05)
+- Scratch doc: e2e Send -> BUILD -> templates + the add-in's own TPGEN (it generated 2/7 ops this time) -> delete
+  ONLY the 3 MMs (1.68 s) -> re-Send -> recreate MMs (deployed mm_builder.build_mm, bspline_set + frame, 11.7 s incl.
+  ensure_wcs_sketches) -> re-bind Back/Top -> add-in TPGEN. State read back at each step (camstate.jsonl).
+- SETUPS SURVIVE THEIR MMs BEING DELETED: all 4 stay valid; Fred's template ops stay; already-generated toolpaths
+  stay but go out of date (operationState 1, hasToolpath True, isToolpathValid False); stock settings stay. LOST:
+  every setup's models (empty) and the WCS point binding (Back/Top origin falls to 0,0,0) -- both lived in the MM.
+- RE-BIND WORKS: setup.models = ObjectCollection(new MM body) accepted (Back 0.52 s, Top 0.19 s, models 1), the
+  WCS point binds again (origins exact: (-3.75, -4.75, 0.0289) / (3.75, -4.75, 2.0289)); the add-in TPGEN then
+  generated Back 2/2 and Top 2/3 valid (Top's 'deloge' op stayed empty -- I had generated it alone before Back,
+  which a previous-setup chain cannot do; not re-tried). Frame was not re-bound in this probe (its ops stay stale).
+- BUT THE SEND IS STILL SLOW: re-Send with the setups kept and NO MMs = 178 s (21:28:18 -> 21:31:16: clearing the
+  old board + Clean 94 s, Stamped 16, art + bricks 8, frame 60) vs 38 s in a doc that never had CAM. Setups that hold
+  operations cost too (their ops re-evaluate when the Send deletes the bodies they referenced). So (b') does not
+  give a ~40-50 s Send; only removing the CAM build (b) or a separate CAM doc (c) does, measured so far.
+- New, unresolved: after the re-bind the Back/Top stock reads X = 7.5 (was 9.5 -- the axes-swapped frame's X); the
+  origin is right. Either the box dims re-evaluated in the other frame orientation or the stock box was not
+  re-applied after the model change. Not chased (re-run _apply_stock_box after a re-bind would be the first test).
+- Hygiene: scratch doc closed by handle, holder none; Fred's Untitled untouched.
