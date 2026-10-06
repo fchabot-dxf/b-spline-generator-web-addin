@@ -274,3 +274,29 @@ describe('item 68: a number box edited by its stepper re-lays once', () => {
   });
 });
 
+// item 68 (advisor, item 38's precedent; audit: Undo right after a next-stroke setting took back the last stroke and
+// left the setting): a setting for the next stroke is ONE settings-only undo step, and a restore re-syncs its buttons
+describe('item 68: a next-stroke setting is its own undo step', () => {
+  it('Brush profile / preset: one push each, nothing re-laid', () => {
+    setup('brush');
+    const pushState = vi.fn(); window.svgEditor.pushState = pushState; window.svgEditor._notifyChange = vi.fn();
+    window.svgEditor._sketchLayer.children = () => { const a = []; a.toArray = () => a; return a; }; // the commit's stroke regen
+    runBricks.mockClear();
+    $('brickBtnProfileContinuous').click();
+    expect(P.brickSettings.profile).toBe('continuous');
+    expect(pushState).toHaveBeenCalledTimes(1);
+    $('brickBrushPreset_stretcher_2_running').click();
+    expect(pushState).toHaveBeenCalledTimes(2);
+    expect(runBricks).not.toHaveBeenCalled();
+    $('brickBtnProfileStripped').click();
+  });
+  it('a settings restore (Undo) re-syncs the brush preset buttons', () => {
+    setup('brush');
+    $('brickBrushPreset_stretcher_2_running').click();
+    P.brickSettings = { ...P.brickSettings, brushBandPreset: 'stretcher_1' }; // what Undo puts back
+    document.dispatchEvent(new CustomEvent('brickSettingsRestored'));
+    expect($('brickBrushPreset_stretcher_1').classList.contains('active')).toBe(true);
+    expect($('brickBrushPreset_stretcher_2_running').classList.contains('active')).toBe(false);
+  });
+});
+

@@ -15238,3 +15238,17 @@ WallPattern = {
   - Live after: 5 -> 6, Undo -> 0.034 / no wall joint, on T1 and T18.
   - Test: input + change, then 1 s: ONE re-lay. Fails before (2 re-lays).
   - 32 panel / grout / slider / undo files: 406 passed.
+
+## seat D (bb) turn 27: item 68 (3a), a next-stroke setting is its own undo step (branch brick-stroke-undo, off brick-editor-fixes 0e60ed0)
+- **Advisor ruling (a), item 38's precedent.** Measured with a stroke on the board (undo stack delta per click):
+  - NO step: Brush profile / preset / rustic, Raised level, Stripe by-length / by-count / count.
+  - One step already: Brush accent, the Set buttons, Stripe styles. But Undo left their PANEL showing the undone pick, while P.brickSettings was back (brushAccent none, stripeStyles back).
+- **Fix:**
+  - A declared commit kind `settings` (BRICK_COMMIT): save, then one settings-only step via commitEdit (the entry carries the settings, item 38). Nothing is re-laid.
+  - setProfile, setOrientation, the brush preset click, setRustic (non-wall), setRaisedMode and the Raised level's 'change' (not per keystroke) go through it.
+  - syncControlsFromState (the panel-from-state function a restore runs) now also renders the per-element accent rows and syncs the Stripe styles, brush presets and rustic boxes.
+- **Not covered (scoped out):** Stripe by-length / by-count / count are the shared Stripe TOOL's params (editor._stripe, also the Artwork tab), not brick settings. Item 38's undo part doesn't carry them; listed.
+- **Live after:** every brick next-stroke control = +1 step. The audit protocol on profile, preset, rustic, brush accent, raised level and Stripe style: undoCanvas / undoValue / back / double / reload all ok.
+- **Also fixes the gate's "Brush orientation: Soldier" DISABLED on 0e60ed0** (advisor's re-gate). The brush rows draw a stroke and Ctrl+Z it. With 0e60ed0's fold, that undo takes back the whole stroke step, and item 38 restores ITS settings snapshot. The profile change before it had pushed no step, so the snapshot had Stripped, which greys Orientation. With (a) the profile change is its own step: brush group 10/0.
+- **Tests** (frame-corners-panel): next-stroke settings = one push each, nothing re-laid; a restore re-syncs the brush preset buttons. Both fail against the pre-change panel.
+- **Matrix 'undo':** + "A next-stroke setting is ONE undo step, Undo puts it back". This tree: 7/0. Old main: FAIL (0 steps).

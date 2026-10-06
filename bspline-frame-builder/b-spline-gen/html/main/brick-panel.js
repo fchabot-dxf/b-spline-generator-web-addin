@@ -967,7 +967,7 @@ export function setRaisedMode(modeId) {
   if (!RAISED_BRUSH_MODES.some((m) => m.id === modeId) || _hiddenUntilMet(`brickRaisedMode_${modeId}`)) return;
   P.brickSettings.raisedMode = modeId;
   syncRaisedSection();
-  notifyChange();
+  commitBrickSetting('settings');
 }
 
 export function setBrickTopMode(mode, commit = 'surface') {
@@ -1046,7 +1046,7 @@ function syncProfileToggle() {
 function setProfile(v) {
   P.brickSettings.profile = v;
   syncProfileToggle();
-  notifyChange();
+  commitBrickSetting('settings');
 }
 
 /** T86 item 7 merge note (advisor asked: "decide which wins, or disable orientation when a
@@ -1079,7 +1079,7 @@ function syncOrientationToggle() {
 function setOrientation(v) {
   P.brickSettings.orientation = v;
   syncOrientationToggle();
-  notifyChange();
+  commitBrickSetting('settings');
 }
 
 /** Shows ONLY the active tool's own settings section (BRICK_TOOLS' own declared
@@ -1129,7 +1129,7 @@ export function setRustic(kind, value, phase = 'onRelease') {
   P.brickSettings.rusticByElement = { ...(P.brickSettings.rusticByElement || {}), [kind]: v };
   setPair(`brickRusticSlider_${kind}`, `brickRustic_${kind}`, v);
   // the Wall re-lays; a Brush value only applies to strokes drawn from now on (each freezes its own)
-  if (kind === 'wall') commitBrickSetting('generate', phase); else notifyChange();
+  if (kind === 'wall') commitBrickSetting('generate', phase); else commitBrickSetting('settings', phase);
 }
 
 function syncLargeStonesRow() {
@@ -1150,6 +1150,8 @@ function setPair(sliderId, numberId, v) {
  *  init and whenever a saved session restores different values. */
 function syncControlsFromState() {
   const s = P.brickSettings;
+  // item 68 (audit: after Undo the brush accent row / Stripe styles kept showing the undone pick, the settings were back)
+  renderElementAccentRows(); syncStripeBrickStyles(); syncBrushPresetButtons(); syncRusticRows();
   syncSetPicker();
   syncFramePresetButtons();
   syncWallPatternButtons();
@@ -1253,7 +1255,19 @@ const BRICK_COMMIT = {
     onDrag: () => { notifyChange(); },
     onRelease: () => { notifyChange(); _remaskSurface(); },
   },
+  // item 68 (advisor, item 38's precedent): a setting for the NEXT stroke (Brush profile / orientation / preset /
+  // rustic, Raised level / mode) changes no canvas, but it is still an undo step of its own -- before, Undo right after
+  // one took back the previous canvas edit (the last stroke) and left the setting. One push, nothing re-laid.
+  settings: {
+    onDrag: () => { notifyChange(); },
+    onRelease: () => { notifyChange(); _settingsStep(); },
+  },
 };
+
+function _settingsStep() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (editor && typeof editor.pushState === 'function') commitEdit(editor); // the entry carries the settings (item 38)
+}
 
 function _remaskSurface() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
@@ -1970,7 +1984,7 @@ function renderBrushPresetList(container) {
     btn.addEventListener('click', () => {
       P.brickSettings.brushBandPreset = preset.id;
       syncBrushPresetButtons();
-      notifyChange();
+      commitBrickSetting('settings');
     });
     container.appendChild(btn);
   }
@@ -2846,6 +2860,8 @@ export function initBrickPanel() {
     P.brickSettings.raisedLevelIn = v;
     notifyChange();
   });
+  // item 68: the typed / stepped level is one settings step once it is committed ('change'), not one per keystroke
+  document.getElementById('brickRaisedLevel')?.addEventListener('change', () => commitBrickSetting('settings'));
   renderStripeBrickStyles(document.getElementById('stripeBrickStyles'));
   document.getElementById('stripeThree')?.addEventListener('change', () => { syncStripeBrickStyles(); });
   onPageEvent('stripeContext', 'editorTabChanged', () => syncStripePanelContext());

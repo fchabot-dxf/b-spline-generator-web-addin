@@ -12,6 +12,9 @@ export const UNDO_SETTINGS = {
   // item 68 (seat D's editor audit, measured: a stepper click = 'input' + 'change' re-laid twice and pushed TWO entries,
   // so one Undo kept the new value): one stepper click = ONE undo step, and Undo puts the value back
   stepperBox: 'brickGroutWidth',
+  // item 68 (advisor): a setting for the NEXT stroke is its own undo step (before: no step -- Undo took back the
+  // previous canvas edit and left the setting)
+  nextStroke: { tool: 'brickTool_brush', from: 'brickBtnProfileStripped', to: 'brickBtnProfileContinuous' },
 };
 
 // ---- F35 item 71 (seat E): the MAIN screen's Undo / Redo after a sidebar Brick quick pick on an applied board.
@@ -61,6 +64,14 @@ async function runUndoSettings() {
     return JSON.stringify({ v0, v1, v2: box.value, steps: n1 - n0 }); })()`);
   checkRow('undo', 'A stepper click is ONE undo step, Undo puts the value back', step.steps === 1 && step.v1 !== step.v0 && step.v2 === step.v0,
     `${U.stepperBox} ${step.v0} -> ${step.v1} (${step.steps} undo steps) -> undo -> ${step.v2}`);
+  const N = U.nextStroke;
+  await click(N.tool, 800);
+  const ns = await jsJSON(`(async()=>{ const W=(ms)=>new Promise((r)=>setTimeout(r,ms)); const ed=window.svgEditor; const act=(id)=>document.getElementById(id)?.classList.contains('active');
+    const n0=ed._undoStack.length; document.getElementById(${JSON.stringify(N.to)}).click(); await W(1200); const n1=ed._undoStack.length, picked=act(${JSON.stringify(N.to)});
+    document.getElementById(${JSON.stringify(U.undo)}).click(); await W(1200);
+    return JSON.stringify({ steps: n1 - n0, picked, back: act(${JSON.stringify(N.from)}) && !act(${JSON.stringify(N.to)}) }); })()`);
+  checkRow('undo', 'A next-stroke setting is ONE undo step, Undo puts it back', ns.steps === 1 && ns.picked && ns.back,
+    `${N.to}: ${ns.steps} undo steps; undo -> ${ns.back ? N.from + ' active again' : 'NOT back'}`);
   if (await editorOpen()) await apply();
 }
 
