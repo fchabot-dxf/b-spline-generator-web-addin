@@ -750,6 +750,22 @@ describe("audit (88's matrix): controls grey out while their declared requiremen
     $('brickBtnGroutFlush').click();
     expect($('brickGroutDepth').disabled).toBe(true);
   });
+  // A2 (3D-panel audit, measured: under Flush the field was greyed but its + still moved 0.05 -> 0.055): a number
+  // field's -/+ stepper (ui-bindings.js attachNumberSteppers' wrapper, buttons without ids) follows the field's rule
+  it('a greyed number field greys its -/+ stepper too, with the same reason', () => {
+    window.svgEditor._notifyChange = vi.fn();
+    const input = $('brickGroutDepth');
+    const wrap = document.createElement('div'); wrap.className = 'cad-stepper';
+    input.parentNode.insertBefore(wrap, input);
+    const minus = document.createElement('button'), plus = document.createElement('button');
+    wrap.append(minus, input, plus);
+    $('brickBtnGroutRecessed').click();
+    $('brickBtnGroutFlush').click();
+    expect([minus.disabled, plus.disabled]).toEqual([true, true]);
+    expect(plus.title).toMatch(/Flush/);
+    $('brickBtnGroutRecessed').click();
+    expect([minus.disabled, plus.disabled]).toEqual([false, false]);
+  });
 });
 
 describe('turn 197 (88): a number box applies while typing, once the typing pauses', () => {
