@@ -1,7 +1,10 @@
 """
 F35 item 70: the add-in half of the palettes' declared loading stages, shared by every add-in that reports them
-(CAM-builder now; b-spline-gen's own copy of the same two helpers moves here once fusion-stages-70 is on main).
+(b-spline-gen and CAM-builder).
 
+  read_declared_json(path)        a declared data module shared with a palette (html/data/*.js, ui/html/cam-stages.js):
+                                  the pure-JSON object after the line that starts with the export -- the ONE parser
+                                  (the add-in log settings, the Fusion host flag, the stage lists all read through it).
   declared_stage_ids(path)        the ids of a stage declaration module (e.g. CAM-builder/ui/html/cam-stages.js): the
                                   pure-JSON object after the line that starts with the export -- the SAME file the
                                   palette imports, so the two sides cannot disagree.
@@ -19,11 +22,15 @@ import time
 POST_PAINT_PUMP_S = 0.08
 
 
-def declared_stage_ids(path):
+def read_declared_json(path):
     with open(path, 'r', encoding='utf-8') as f:
         src = f.read()
     m = re.search(r'^export default', src, re.M)
-    return [s['id'] for s in json.loads(src[m.end():].strip().rstrip(';'))['stages']]
+    return json.loads(src[m.end():].strip().rstrip(';'))
+
+
+def declared_stage_ids(path):
+    return [s['id'] for s in read_declared_json(path)['stages']]
 
 
 def pump(do_events, window_s=None):

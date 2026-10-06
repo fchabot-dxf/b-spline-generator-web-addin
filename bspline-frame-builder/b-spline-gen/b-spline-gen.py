@@ -8,7 +8,7 @@ import adsk.core, adsk.fusion, adsk.cam, traceback
 
 # adsk check: removed diagnostic
 
-import os, tempfile, json, re, base64, time
+import os, sys, tempfile, json, re, base64, time
 from datetime import datetime
 
 # T63 (SE15): the constrained-sketch builder — a sibling module in this
@@ -195,13 +195,15 @@ LOG_FILE = get_log_path()
 
 # ── Module-level import probe (removed) ──────────────────────────────────
 
-def _read_declared_json(path):
-    """A declared data module shared with the palette (html/data/*.js): the pure-JSON object after the line that
-    starts with the export."""
-    with open(path, 'r', encoding='utf-8') as f:
-        src = f.read()
-    m = re.search(r'^export default', src, re.M)
-    return json.loads(src[m.end():].strip().rstrip(';'))
+# fb_shared (the add-in root, one level up) holds the palettes' declared-data reader and paint pump, shared with the
+# CAM builder (F35 item 70). Needed at import time: ADDIN_LOG below is read through it.
+_ADDIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ADDIN_ROOT not in sys.path:
+    sys.path.insert(0, _ADDIN_ROOT)
+from fb_shared import palette_stages  # noqa: E402
+
+# A declared data module shared with the palette (html/data/*.js): the ONE parser, fb_shared.palette_stages.
+_read_declared_json = palette_stages.read_declared_json
 
 
 # H23 item 93: what this log keeps -- the debug level (off), the demoted prefixes and the rotation size -- DECLARED
@@ -285,10 +287,7 @@ def _palette_url(html_path, host_file=None):
     after the page starts (seat A, 2026-10-06: ~3 s, and the page opened as the website with no Send button); the flag
     tells the page to wait for it. A bare path with a query is refused by palettes.add ("Invalid htmlFileURL"); the
     file:/// form with a query loads and keeps location.search (measured live, same day)."""
-    with open(host_file or FUSION_HOST_FILE, 'r', encoding='utf-8') as f:
-        src = f.read()
-    m = re.search(r'^export default', src, re.M)
-    host = json.loads(src[m.end():].strip().rstrip(';'))
+    host = _read_declared_json(host_file or FUSION_HOST_FILE)
     return 'file:///' + html_path.replace('\\', '/').lstrip('/') + f"?{host['param']}={host['value']}"
 
 # Track occurrences and graphics added during the session
@@ -443,16 +442,11 @@ def _post_to_palette(action, payload):
 
 # F35 item 70: how long the add-in keeps pumping Fusion's events after a post, so the web view runs the message and
 # paints it before the add-in goes on (~10 posts a Send: under a second in all, on a 13-38 s import).
-POST_PAINT_PUMP_S = 0.08
+POST_PAINT_PUMP_S = palette_stages.POST_PAINT_PUMP_S
 
 
 def _pump_palette(window_s=None):
-    end = time.monotonic() + (POST_PAINT_PUMP_S if window_s is None else window_s)
-    while True:
-        adsk.doEvents()
-        if time.monotonic() >= end:
-            return
-        time.sleep(0.01)
+    palette_stages.pump(adsk.doEvents, POST_PAINT_PUMP_S if window_s is None else window_s)
 
 
 # F35 item 70: 'Imported into Fusion' stays on screen at least this long before the add-in hides the palette. The
@@ -489,10 +483,7 @@ def _fusion_send_stage_ids(path=None):
     global _fusion_send_stage_id_cache
     if path is None and _fusion_send_stage_id_cache is not None:
         return _fusion_send_stage_id_cache
-    with open(path or FUSION_SEND_STAGES_FILE, 'r', encoding='utf-8') as f:
-        src = f.read()
-    m = re.search(r'^export default', src, re.M)
-    ids = [s['id'] for s in json.loads(src[m.end():].strip().rstrip(';'))['stages']]
+    ids = palette_stages.declared_stage_ids(path or FUSION_SEND_STAGES_FILE)
     if path is None:
         _fusion_send_stage_id_cache = ids
     return ids

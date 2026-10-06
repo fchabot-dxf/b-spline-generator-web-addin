@@ -15211,3 +15211,9 @@ WallPattern = {
 - **Not done:**
   - Seat A's live baseline of BUILD / APPLY (queued), then a live check.
   - b-spline-gen still has its own copy of the reader + pump; it moves to fb_shared.palette_stages once fusion-stages-70 is on main.
+- **One parser, one pump (advisor + seat A after items 92/93):**
+  - fb_shared.palette_stages.read_declared_json is the one reader of the palettes' declared data modules.
+  - b-spline-gen's _read_declared_json is now an alias of it; _palette_url (item 92) and _fusion_send_stage_ids read through it; _pump_palette calls palette_stages.pump; POST_PAINT_PUMP_S comes from there. ADDIN_LOG (item 93) reads through it at import time, with fb_shared put on sys.path at module top.
+  - CAM-builder already uses it.
+  - Left as they are: test_addin_log_levels.py / test_palette_host_url.py parse the files their own way (an independent check, not the code checking itself).
+  - Add-in pytest 170, CAM pytest 40.
