@@ -18,19 +18,19 @@
  * `window.svgEditor` fresh at the point of use instead of caching it.
  */
 import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
-import { withLoadingStage, withLoadingStageShownFirst } from '../core/loading-signal.js';
+import { withLoadingStageShownFirst, beginLoadingSequence } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
 import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, layerOfElement, BRICK_KINDS,
   BRICK_STRIPE_STYLES, DEFAULT_STRIPE_STYLE_PICKS, brushExclusions, wallLayoutFor, wallPatternIconSvg,
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
-  BRICK_SET_IDS, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
+  BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
   FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
   brushStrokeSettings, restyleBrushStroke,
-  groutPaintOf, repaintGrout, GROUT_ELEMENT_KINDS, GROUT_PAINT_DEFAULT, elementsWithoutGrout,
+  groutPaintOf, repaintGrout, GROUT_ELEMENT_KINDS, GROUT_PAINT_DEFAULT, elementsWithoutGrout, forceRegenerateOwnedBrickElements,
 } from '../editor/editor-brick-tool.js';
 import { openColorMosaic } from '../editor/editor-color.js';
 import {
@@ -119,10 +119,12 @@ function _setKind() {
   return tool && tool.ownsSet ? tool.id : 'wall';
 }
 
+// F35 item 61: one button per set any element can take (the row shows the active element's own, syncSetPicker)
+const SET_ROW_IDS = () => [...new Set([...BRICK_SET_IDS, ...FRAME_SET_IDS])].sort((a, b) => a - b);
 function renderSetRow(container) {
   if (!container) return;
   container.innerHTML = '';
-  for (const id of BRICK_SET_IDS) {
+  for (const id of SET_ROW_IDS()) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.id = `brickSet_${id}`;
@@ -134,8 +136,13 @@ function renderSetRow(container) {
 }
 
 function syncSetPicker() {
-  const current = elementSetId(P.brickSettings, _setKind());
-  for (const id of BRICK_SET_IDS) document.getElementById(`brickSet_${id}`)?.classList.toggle('active', id === current);
+  const kind = _setKind(), current = elementSetId(P.brickSettings, kind), offered = setsOfferedFor(kind);
+  for (const id of SET_ROW_IDS()) {
+    const btn = document.getElementById(`brickSet_${id}`);
+    if (!btn) continue;
+    btn.classList.toggle('active', id === current);
+    btn.style.display = offered.includes(id) ? '' : 'none'; // item 61: the Frame lists every band-capable set
+  }
   syncQuickSettings();
   syncLargeStonesRow();
   syncRusticRows();
@@ -154,9 +161,16 @@ function syncSetPicker() {
  *  multiplier never needed a reset either. */
 export function selectSet(setId, commit = 'generate', kinds = [_setKind()]) {
   const set = brickSetById(setId);
-  if (!set || !BRICK_SET_IDS.includes(setId)) return;
+  if (!set || !kinds.every((k) => setsOfferedFor(k).includes(setId))) return;
   P.brickSettings.setIds = { ...(P.brickSettings.setIds || {}) };
   for (const kind of kinds) {
+    // item 61: a set whose layout is a band pattern (White rocks) makes the frame rock -- the pattern implies the set
+    // (setFrameRock's rule, elementSetId derives the rock set); its own brick set (setIds.frame) is left as it was
+    if (kind === 'frame' && frameModeOfSet(setId) === 'pattern') {
+      const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || [];
+      P.brickSettings.frameBandPatterns = bands.map(() => set.layout);
+      continue;
+    }
     P.brickSettings.setIds[kind] = setId;
     // a brick set on a ROCK element turns it back into bricks (the Fieldstone pattern is what made it rock)
     if (kind === 'wall' && patternSetId(P.brickSettings.pattern) != null) P.brickSettings.pattern = DEFAULT_WALL_PATTERN;
@@ -1151,21 +1165,17 @@ const AUTO_COMMIT = {
   onRelease: () => { notifyChange(); _relayOnRelease(); },
 };
 
-/** Blind-spot audit B8: a re-lay measured at or over this budget (a rock set: 276-457 ms on desktop, 1-2 s on a
- *  phone) shows the 'bricks' loading stage FIRST and lays a moment later, so the status actually paints -- the
- *  lay is synchronous, so withLoadingStage's own timer can never show it. Predicted from the last lay with the
- *  same layouts + size (_laySignature); a first lay of a new combination is measured, not predicted. */
-export const LAY_STATUS_BUDGET_MS = 300;
-const _layMs = new Map();
-const _laySignature = () => `${wallLayoutFor(P.brickSettings)}|${isRockFrame(P.brickSettings) ? 'rock' : 'brick'}|${P.brickSettings.brickLengthIn}`;
-export const predictedLayMs = () => _layMs.get(_laySignature()) ?? 0;
-let _relayQueued = false;
-function _relayOnRelease() {
-  if (predictedLayMs() < LAY_STATUS_BUDGET_MS) { generateBricks(); return; }
-  if (_relayQueued) return; // one queued lay reads the LATEST settings when it runs
-  _relayQueued = true;
-  withLoadingStageShownFirst('bricks', () => { _relayQueued = false; generateBricks(); });
+/** Blind-spot audit B8 + F35 item 41 (Fred: "the screen looks frozen"): the lay is synchronous, so its 'bricks' stage
+ *  can only paint if it is shown FIRST and the lay runs after it. EVERY re-lay a gesture causes does that (advisor,
+ *  after item 41 measured lays the old 300 ms prediction missed: Generate on a new Wall+Frame mix 747 ms, a rock set ->
+ *  new pattern 1.6 s, both at CPU x10, nothing shown). One queued lay reads the LATEST settings when it runs. */
+let _relayQueued = null; // the queued lay's options
+function _relayStaged(opts = {}) {
+  if (_relayQueued) { _relayQueued = { amend: _relayQueued.amend || opts.amend || null }; return; }
+  _relayQueued = { amend: opts.amend || null };
+  withLoadingStageShownFirst('bricks', () => { const o = _relayQueued; _relayQueued = null; generateBricks(o); });
 }
+function _relayOnRelease() { _relayStaged(); }
 const BRICK_COMMIT = {
   generate: AUTO_COMMIT,
   auto: AUTO_COMMIT,
@@ -1214,8 +1224,12 @@ export function setGroutPaint(patch, target = _groutPaintTarget()) {
   else s.groutPaint = { ...GROUT_PAINT_DEFAULT, ...(s.groutPaint || {}), ...p };
   syncGroutPaintRow();
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  // a board laid before item 55 has no grout node yet: one re-lay draws it (the same bricks: same settings + seed)
-  if (editor && elementsWithoutGrout(editor).length) { commitBrickSetting('generate'); syncQuickSettings(); return true; }
+  // a board laid before item 55 has no grout node yet: its strokes regenerate, its Wall / Frame re-lay (the same bricks:
+  // same settings + seed), which draws them
+  if (editor && elementsWithoutGrout(editor).length) {
+    forceRegenerateOwnedBrickElements(editor);
+    if (elementsWithoutGrout(editor).length) { commitBrickSetting('generate'); syncQuickSettings(); return true; }
+  }
   if (editor && repaintGrout(editor, s)) commitEdit(editor);
   notifyChange();
   syncQuickSettings();
@@ -1355,12 +1369,18 @@ function _presentKinds(editor) {
     || !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`));
 }
 
-/** Audit v2 N5: does the board have Wall/Frame bricks? The live canvas, or the saved drawing while the editor
- *  has not loaded it yet (after a reload, before it is opened). */
-function _bricksLaid() {
-  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+/** Audit v2 N5: does the board have bricks? The live canvas, or the saved drawing while the editor has not loaded it
+ *  yet (after a reload, before it is opened). Advisor (seat E, brush grout): ANY brick element counts -- a Wall / Frame
+ *  record or piece, a Brush / Raised stroke (its spine or pieces) -- so the sidebar's quick rows (the grout colour of a
+ *  stroke-only board) are not greyed while the board holds strokes. */
+export function boardHasBricks(editor, savedSvg) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
   if (_presentKinds(editor).length) return true;
-  return typeof P.editorSvg === 'string' && /data-brick="(wall|frame)"/.test(P.editorSvg);
+  if (node && node.querySelector && node.querySelector('[data-brick-gen="1"], [data-brick="brush-spine"]')) return true;
+  return typeof savedSvg === 'string' && /data-brick="(wall|frame|brush|brush-spine)"/.test(savedSvg);
+}
+function _bricksLaid() {
+  return boardHasBricks(typeof window !== 'undefined' ? window.svgEditor : null, P.editorSvg);
 }
 
 /** F35 item 27: the frame part of a laid key (`#frame:` -- the frame record + board size those bricks were laid
@@ -1395,7 +1415,7 @@ function _relayIfBrushChanged() {
   if (!_presentKinds(editor).includes('wall')) return;
   const laid = _laidBrushKey();
   if (laid === null || laid === _brushKey()) return;
-  generateBricks();
+  _relayStaged();
 }
 
 const FRAME_RELAY_SETTLE_MS = 350;
@@ -1419,7 +1439,7 @@ function _relayIfFrameChanged() {
   if (_presentKinds(editor).every((kind) => _framePartOf(_laidKeyOf(editor, kind)) === frameKey)) return;
   const amend = _frameRelayAmend;
   _frameRelayAmend = null;
-  generateBricks({ amend });
+  _relayStaged({ amend });
 }
 
 /** Lay the given element kinds with the current settings, stamping their key on the Bricks layer. */
@@ -1469,12 +1489,9 @@ function _layBricks(editor, frameGeom, kinds, { amend = null } = {}) {
   // Turn 195: an engine throw keeps the previous bricks (runBricks computes before it clears) and says
   // so -- never an empty canvas with no message. The layout stays pending (nothing new was laid).
   let failed = null, counts = null;
-  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-  withLoadingStage('bricks', () => {
-    try { counts = runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey(), kinds, amend }); }
-    catch (e) { failed = e; }
-  });
-  if (typeof performance !== 'undefined') _layMs.set(_laySignature(), performance.now() - t0); // audit B8
+  // the 'bricks' stage is entered by the caller BEFORE this (_relayStaged): a synchronous lay cannot paint it
+  try { counts = runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey(), kinds, amend }); }
+  catch (e) { failed = e; }
   if (failed) {
     console.error('Brick Generate failed:', failed);
     showToast(`Generate failed -- the previous bricks are kept (${(failed && failed.message) || failed})`, 'error');
@@ -1539,6 +1556,9 @@ export { FRAME_NEEDS_A_FRAME }; // declared once in brick-control-requires.js (t
 export const BRICK_SEED_RANGE = 1000000;
 export const newBrickSeed = () => Math.floor(Math.random() * BRICK_SEED_RANGE);
 export function generateNow() {
+  // item 41: Generate is a declared sequence (lay -> carve -> build). Its lay shows first like every re-lay
+  // (_relayStaged); the steps after it read "step 2 of 3", "step 3 of 3".
+  beginLoadingSequence('generate');
   setSeed(newBrickSeed());
 }
 
@@ -2185,7 +2205,7 @@ export function paintWallArea(points) {
   const id = addWallAreaStroke(editor, { points, widthIn: Number(P.brickSettings.wallAreaWidthIn) || 1 }, P.brickSettings, into);
   _selectedElement = { id, kind: 'wall' };
   editor._brickWallAreaId = id;
-  generateBricks();
+  _relayStaged();
   _syncSubTools();
   return id;
 }
@@ -2194,7 +2214,7 @@ export function clearAllWallAreas() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (!editor || !clearWallAreas(editor)) return false;
   selectBrickElement(null);
-  generateBricks();
+  _relayStaged();
   return true;
 }
 const ELEMENT_LABELS = { wall: 'Wall', frame: 'Frame', brush: 'stroke', raisedBrush: 'raised stroke' };
@@ -2338,6 +2358,7 @@ function selectTool(id, { keepSelection = false } = {}) {
   syncToolButtons();
   syncGroutWidthBox(); // the Grout box follows the active element's joint
   syncGroutPaintRow();
+  syncSetPicker(); // item 61: the Set row shows the active element's own sets (the Frame: every band-capable one)
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (!editor) {
     console.warn('Brick tool: open the SVG editor first (Edit Artwork) -- no editor instance yet.');
@@ -2605,7 +2626,9 @@ export function initBrickPanel() {
   renderAccentList(document.getElementById('brickAccentList'));
   renderElementAccentRows(); // the Frame bands' + the Brush's Accent rows
   document.getElementById('brickAccentClick')?.addEventListener('click', () => toggleAccentClickMode({ kind: 'wall' }));
-  document.getElementById('brickAccentCustomOpen')?.addEventListener('click', () => (_builder.open ? closePatternBuilder() : openPatternBuilder()));
+  // item 41: opening the builder renders its grid + previews (279 ms blocked at 900 px / CPU x4): its pill paints first
+  document.getElementById('brickAccentCustomOpen')?.addEventListener('click', () => (_builder.open ? closePatternBuilder()
+    : withLoadingStageShownFirst('openBuilder', openPatternBuilder)));
   document.getElementById('brickAccentLevel')?.addEventListener('change', (e) => setAccentLevel(e.target.value));
   syncAccentControls();
   renderBrickSizePresetList(document.getElementById('brickSizePresetList'));

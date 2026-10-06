@@ -17,6 +17,7 @@ import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html
 import { frameSolidSpec } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { applyFrameToPanel, samplePairedOutlines, toWorld } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
 import { FakeTHREE, carvedPanel, drawnFaces } from './helpers/drawn-panel.js';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 
 /** A sculpted panel as the app builds it: top z = f(x,y) + 0.6, the underside
  *  0.6 in below it along the surface normal (so near f, but off the x,y grid,
@@ -31,39 +32,51 @@ const SCULPTS = {
 const BOARDS = [[7, 9], [9, 7], [12, 6], [5, 5], [4, 3.5]];
 const BOTTOMS = [-2, -1, -0.25];
 
+// item 67 (test infra): ONE test per template x board (was one 90 s test, 855 cases -- a timeout under the fleet's
+// load; per template it was still 3-13 s, MEASURED: applyFrameToPanel, the code under test, is ~130 ms a case). The
+// sculpted panels depend only on board x sculpt, so the 15 are built once and shared (they were rebuilt per template
+// x frame bottom; applyFrameToPanel re-indexes the panel from its own cached full index each call, the app's re-apply
+// path, and the drawn-underside lookup reads a separate copy). Every case and every assertion is unchanged.
+const _panels = new Map();
+function panelFor(W, H, sname) {
+  const key = `${W}x${H}:${sname}`;
+  if (!_panels.has(key)) {
+    const nx = Math.round(W / 0.1) + 1, nz = Math.round(H / 0.1) + 1;
+    const panel = sculptedPanel(W, H, nx, nz, SCULPTS[sname]);
+    _panels.set(key, { ...panel, solidZ: drawnFaces([panel.solid]) });
+  }
+  return _panels.get(key);
+}
+let checkedAll = 0;
+
 describe('sweep: every bar is valid', () => {
-  it('templates x boards x frame bottom x sculpted panels', () => {
-    let checked = 0;
+  const CASES = FRAME_DEFS.templates.flatMap((t) => BOARDS.map(([W, H]) => [`${t.id} ${W}x${H}`, t, W, H]));
+  it.each(CASES)('%s x frame bottom x sculpted panels', (_name, tpl, W, H) => {
     const bad = [];
-    for (const tpl of FRAME_DEFS.templates) {
-      for (const [W, H] of BOARDS) {
-        for (const z0 of BOTTOMS) {
-          for (const [sname, f] of Object.entries(SCULPTS)) {
-            const nx = Math.round(W / 0.1) + 1, nz = Math.round(H / 0.1) + 1;
-            const { mesh, solid, grid } = sculptedPanel(W, H, nx, nz, f);
-            const solidZ = drawnFaces([solid]);
-            const spec = frameSolidSpec(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id, frameBottomZ: z0 }), { widthIn: W, heightIn: H });
-            if (!spec || !spec.innerPrimitives) continue; // board too small for this frame: no bars, by the declared fit rule
-            const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-bars');
-            const p = bars.geometry.attributes.position.array;
-            const tag = `${tpl.id} ${W}x${H} z0=${z0} ${sname}`;
-            for (let i = 0; i < p.length; i += 3) {
-              const [x, y, z] = [p[i], p[i + 1], p[i + 2]];
-              if (![x, y, z].every(Number.isFinite)) { bad.push(`${tag}: non-finite vertex`); break; }
-              if (Math.abs(x) > W / 2 + 1e-6 || Math.abs(y) > H / 2 + 1e-6) { bad.push(`${tag}: outside the board`); break; }
-              if (Math.abs(z - z0) < 1e-9) continue; // a bottom vertex
-              if (z <= z0) { bad.push(`${tag}: top not above bottom`); break; }
-              if (Math.abs(z - Math.min(...solidZ(x, y))) > 1e-4) { bad.push(`${tag}: top off the DRAWN underside`); break; }
-            }
-            checked++;
-          }
+    for (const z0 of BOTTOMS) {
+      for (const sname of Object.keys(SCULPTS)) {
+        const { mesh, grid, solidZ } = panelFor(W, H, sname);
+        const spec = frameSolidSpec(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id, frameBottomZ: z0 }), { widthIn: W, heightIn: H });
+        if (!spec || !spec.innerPrimitives) continue; // board too small for this frame: no bars, by the declared fit rule
+        const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-bars');
+        const p = bars.geometry.attributes.position.array;
+        const tag = `${tpl.id} ${W}x${H} z0=${z0} ${sname}`;
+        for (let i = 0; i < p.length; i += 3) {
+          const [x, y, z] = [p[i], p[i + 1], p[i + 2]];
+          if (![x, y, z].every(Number.isFinite)) { bad.push(`${tag}: non-finite vertex`); break; }
+          if (Math.abs(x) > W / 2 + 1e-6 || Math.abs(y) > H / 2 + 1e-6) { bad.push(`${tag}: outside the board`); break; }
+          if (Math.abs(z - z0) < 1e-9) continue; // a bottom vertex
+          if (z <= z0) { bad.push(`${tag}: top not above bottom`); break; }
+          if (Math.abs(z - Math.min(...solidZ(x, y))) > 1e-4) { bad.push(`${tag}: top off the DRAWN underside`); break; }
         }
+        checkedAll++;
       }
     }
     expect(bad).toEqual([]);
-    expect(checked).toBeGreaterThan(40);
-  }, 90000); // ~110 real solids + a drawn-face lookup each: ~2.5 s alone on a fast machine; T6 (a 6th template)
-  // took it past 30 s on a slow container (~30 s alone), so the limit has headroom now
+  }, HEAVY_TEST_MS);
+  it('the sweep covered more than 40 cases in all (runs after the per-case sweeps above)', () => {
+    expect(checkedAll).toBeGreaterThan(40);
+  });
 
   it('the bar top has rows ACROSS the ring width too, one per terrain cell', () => {
     const W = 7, H = 9, nx = 71, nz = 91; // 0.1 in cells

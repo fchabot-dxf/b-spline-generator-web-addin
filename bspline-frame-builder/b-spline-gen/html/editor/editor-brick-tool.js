@@ -247,12 +247,13 @@ function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn, ownerId 
  *  bricks so a coloured grout also covers each face's inset rim. PAINT only: it has no data-brick-set (the height mask
  *  skips it), Send's Bricks sketch skips its kind (layers.js BRICK_SEND_SKIP), and it is LOCKED (layers.js LOCKED_ATTR:
  *  no art tool picks, moves, restyles or deletes it). Its region is kept on the node, so a paint change (colour, edge)
- *  repaints it without a re-lay (repaintGrout). Brush strokes get none yet (their ribbon region is not declared). */
+ *  repaints it without a re-lay (repaintGrout). A Brush stroke's region is its ribbon (the engine's ribbonOutline, one
+ *  per chain), its node redrawn with the stroke (regenerateOwnedBrickElements). */
 export const GROUT_KIND = 'grout';
 export const GROUT_OF_ATTR = 'data-brick-grout-of'; // the element KIND it belongs to: wall | frame
 export const GROUT_REGION_ATTR = 'data-grout-region'; // its region [{ outer, holes }], JSON, board inches
 export const GROUT_INSET_ATTR = 'data-grout-inset'; // item 56: its element's Edge when painted (the SVG download insets the faces by it)
-export const GROUT_ELEMENT_KINDS = Object.freeze(['wall', 'frame']);
+export const GROUT_ELEMENT_KINDS = Object.freeze(['wall', 'frame', 'brush']);
 /** The paint a NEW board starts with, and what a saved board without the keys reads: no colour, no inset. */
 export const GROUT_PAINT_DEFAULT = Object.freeze({ color: null, paintInsetIn: 0 });
 /** An element's grout paint: its own (`groutPaintByElement[kind]`, the Raised brush shares the Brush's) field by
@@ -266,9 +267,10 @@ export function groutPaintOf(settings, kind) {
 }
 const _isGrout = (n) => n.getAttribute(BRICK_ATTR) === GROUT_KIND;
 /** An element's laid brick polygons (its faces before the inset). */
+const _ownedBy = (n, elementId) => { const o = n.getAttribute(BRICK_OWNER_ATTR); return o === elementId || (!!o && o.startsWith(`${elementId}:`)); }; // a stroke's bricks: `<id>:<chain>`
 function _ownedBrickPolys(editor, elementId) {
   const node = editor._sketchLayer.node;
-  return [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}="${elementId}"]`)]
+  return [...node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}="${elementId}"], [${BRICK_GEN_ATTR}="1"][${BRICK_OWNER_ATTR}^="${elementId}:"]`)]
     .filter((n) => !_isGrout(n)).map(_nodePolygon).filter((p) => p.length >= 3);
 }
 /** Other elements' bricks that may lie in this element's region (never painted over): every Brush brick, and for a
@@ -278,7 +280,7 @@ function _groutCutouts(editor, kind, elementId) {
   const sel = [`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="brush"]`];
   if (kind === 'wall') sel.push(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="wall"]`);
   return [...node.querySelectorAll(sel.join(', '))]
-    .filter((n) => n.getAttribute(BRICK_OWNER_ATTR) !== elementId).map(_nodePolygon).filter((p) => p.length >= 3);
+    .filter((n) => !_ownedBy(n, elementId)).map(_nodePolygon).filter((p) => p.length >= 3);
 }
 /** (Re)computes one grout node's shape + paint from its region, its element's bricks and `settings`. */
 function _paintGroutNode(editor, n, settings) {
@@ -330,7 +332,7 @@ export function elementsWithoutGrout(editor) {
   const node = editor && editor._sketchLayer && editor._sketchLayer.node;
   if (!node || !node.querySelectorAll) return [];
   const sel = GROUT_ELEMENT_KINDS.map((k) => `[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="${k}"][${BRICK_OWNER_ATTR}]`).join(', ');
-  const owners = new Set([...node.querySelectorAll(sel)].map((n) => n.getAttribute(BRICK_OWNER_ATTR)));
+  const owners = new Set([...node.querySelectorAll(sel)].map((n) => n.getAttribute(BRICK_OWNER_ATTR).split(':')[0])); // a stroke's chains = its id
   for (const g of node.querySelectorAll(`[${BRICK_ATTR}="${GROUT_KIND}"]`)) owners.delete(g.getAttribute(BRICK_OWNER_ATTR));
   return [...owners];
 }
@@ -576,10 +578,12 @@ export function strokePrimitives(points) {
  *  at all, so that profile keeps its own existing, unmodified engine. Every OTHER brush stroke
  *  (today's only other case: `profile:'bricks'`, the masonry look) now bands the SAME way a Frame
  *  does, just along an OPEN, centred primitive list instead of a closed, inward one. */
-export function bricksForBrushStroke(points, settings, opts) {
+export function bricksForBrushStroke(points, settings, opts, out = null) {
   if (opts.profile === 'continuous') return bricksAlongPath(points, { ...opts, closed: false }).bricks;
   const bands = BRUSH_PRESETS[settings.brushBandPreset] || BRUSH_PRESETS.stretcher_1;
-  return bricksContourBands(strokePrimitives(points), bands, { ...opts, closed: false, centered: true }).bricks;
+  const res = bricksContourBands(strokePrimitives(points), bands, { ...opts, closed: false, centered: true });
+  if (out) out.ribbonOutline = res.ribbonOutline || null; // F35 item 55: the stroke's grout region
+  return res.bricks;
 }
 
 function setForId(id) {
@@ -598,6 +602,20 @@ export const ROCK_SET_ID = (BRICK_SETS.find((s) => s.layout === 'fieldstone') ||
  *  stone): the set is implied by the pattern, never picked in the Set row. null for every other pattern. */
 export const patternSetId = (pattern) => (pattern && pattern !== 'bond' ? (BRICK_SETS.find((s) => s.layout === pattern) || {}).id ?? null : null);
 export const BRICK_SET_IDS = Object.freeze(BRICK_SETS.filter((s) => s.layout === 'bond').map((s) => s.id));
+/** F35 item 61: how a set lays a FRAME, read from its declaration -- 'set': the bands are laid with its own pieces (every
+ *  bond set, as courses; a stone set that declares `frameBands: 'set'`, Grey stone, as stones); 'pattern': its layout is a band-capable pattern
+ *  (BRICK_PATTERNS bandCapable: Fieldstone -> picking White rocks makes the frame rock, the pattern-implies-set rule);
+ *  null: it cannot lay a frame. */
+export function frameModeOfSet(id) {
+  const s = BRICK_SETS.find((x) => x.id === id);
+  if (!s) return null;
+  if (s.layout === 'bond' || s.frameBands === 'set') return 'set';
+  return BRICK_PATTERNS[s.layout] && BRICK_PATTERNS[s.layout].bandCapable ? 'pattern' : null;
+}
+/** The sets the Frame's Set row offers (every band-capable set), in declaration order. */
+export const FRAME_SET_IDS = Object.freeze(BRICK_SETS.filter((s) => frameModeOfSet(s.id)).map((s) => s.id));
+/** The sets an element's Set row offers: the Frame every band-capable set, every other element the brick sets. */
+export const setsOfferedFor = (kind) => (kind === 'frame' ? FRAME_SET_IDS : BRICK_SET_IDS);
 /** A Frame is rock when every band pattern is fieldstone (picking it on one band writes it on all). */
 export function isRockFrame(settings) {
   const p = settings && settings.frameBandPatterns;
@@ -1018,7 +1036,7 @@ export function brickElementAt(editor, pt) {
     let region = [];
     try { region = JSON.parse(g.node.getAttribute(GROUT_REGION_ATTR) || '[]'); } catch { region = []; }
     const loops = region.flatMap((r) => [r.outer, ...(r.holes || [])]);
-    if (pointOnGrout({ loops }, pt.x, pt.y)) return { id: g.id, kind: g.kind, part: GROUT_KIND };
+    if (pointOnGrout({ loops }, pt.x, pt.y)) return { id: g.id, kind: g.kind === 'brush' ? strokeKindOf(brushStrokeSettings(editor, g.id)) : g.kind, part: GROUT_KIND };
   }
   return null;
 }
@@ -1687,10 +1705,10 @@ let _lastSpineFingerprint = null;
  *  item 10); STUB until the engine has it (the mode is hidden until ENGINE_OPTIONS lists 'groutCut'), so
  *  the stroke keeps its spine and draws nothing. `levelIn` (the Raised brush's Level) lifts every brick of
  *  the stroke by that much (its heightOffset, read by the height mask). Exported for tests. */
-export function bricksForStroke(points, settings) {
+export function bricksForStroke(points, settings, out = null) {
   if (settings.strokeMode === 'grout') return [];
   const level = Number(settings.levelIn) || 0;
-  const bricks = bricksForBrushStroke(points, settings, toBrickOpts(settings));
+  const bricks = bricksForBrushStroke(points, settings, toBrickOpts(settings), out);
   return level ? bricks.map((b) => ({ ...b, heightOffset: (b.heightOffset || 0) + level })) : bricks;
 }
 
@@ -1728,15 +1746,26 @@ export function regenerateOwnedBrickElements(editor) {
 
   // only the BRUSH strokes' own bricks -- Wall/Frame bricks carry an owner too since item 22 (their record)
   children.filter((el) => el.attr(BRICK_OWNER_ATTR) && el.attr(BRICK_ATTR) === 'brush').forEach((el) => el.remove());
+  // F35 item 55: every stroke's grout node goes too (a deleted stroke must not leave one); each keeps its PAINT -- the
+  // grout paint is per kind, never frozen into a stroke -- read back here and handed to its redraw
+  const groutPaint = new Map();
+  for (const g of editor._sketchLayer.node.querySelectorAll(`[${BRICK_ATTR}="${GROUT_KIND}"][${GROUT_OF_ATTR}="brush"]`)) {
+    const fill = g.getAttribute('fill');
+    groutPaint.set(g.getAttribute(BRICK_OWNER_ATTR), { color: fill && fill !== 'none' ? fill : null, paintInsetIn: Number(g.getAttribute(GROUT_INSET_ATTR)) || 0 });
+    g.remove();
+  }
 
   for (const [elementId, segs] of byElement) {
     const chains = reconstructChains(segs);
+    const region = []; // F35 item 55: the stroke's ribbons, one per chain
     chains.forEach((chain, chainIdx) => {
       if (chain.points.length < 2) return;
       const settings = chain.cycleIndex == null
         ? chain.settings
         : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
-      const bricks = bricksForStroke(chain.points, settings);
+      const out = {};
+      const bricks = bricksForStroke(chain.points, settings, out);
+      if (bricks.length && out.ribbonOutline && out.ribbonOutline.length >= 3) region.push({ outer: out.ribbonOutline, holes: [] });
       const ownerId = `${elementId}:${chainIdx}`;
       const layer = strokeLayer.get(elementId);
       if (!layer) return;
@@ -1745,9 +1774,22 @@ export function regenerateOwnedBrickElements(editor) {
         stampRunPlace(drawBrick(editor, layer, b, 'brush', settings.setId, settings.seed, settings.reliefIn).attr(BRICK_OWNER_ATTR, ownerId), b, i);
       });
     });
+    const layer = strokeLayer.get(elementId);
+    if (layer && region.length) {
+      const kept = groutPaint.get(elementId);
+      const paint = kept ? { groutPaintByElement: { brush: kept } } : (editor._brickSettings || segs[0].settings);
+      drawElementGrout(editor, layer, 'brush', elementId, region, paint);
+    }
   }
   // the Brush accent's outline on the (re)drawn strokes (per-element accents)
   if (editor._brickSettings) syncRunAccentHighlight(editor, editor._brickSettings);
+}
+
+/** F35 item 55: regenerate every stroke even when nothing changed (a board drawn before strokes had grout: its strokes
+ *  get their grout nodes; the same settings + seed lay the same bricks). */
+export function forceRegenerateOwnedBrickElements(editor) {
+  _lastSpineFingerprint = null;
+  regenerateOwnedBrickElements(editor);
 }
 
 if (typeof document !== 'undefined') {

@@ -143,6 +143,12 @@ export const BRICK_CONTROLS = [
   // band 1 brings the brick frame back (its own set) -- the Soldier button must exist on a rock frame's row
   { name: 'Band 1 pattern: Fieldstone again (rock frame)', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_fieldstone'), expect: { ...LAYOUT, sets: { frame: 3 } }, introducedBy: '40c4bdf' },
   { name: 'Band 1 pattern: Soldier, back from rock (item 46)', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_soldier'), expect: { ...LAYOUT, sets: { frame: 1 } }, introducedBy: '40c4bdf' },
+  // F35 item 61 (seat E): the Frame Set row lists every band-capable set -- Grey stone lays its own stones, White rocks makes
+  // the frame rock (the set implies the pattern) and a course band pattern brings Grey stone back (the pattern implies the set)
+  { name: 'Frame Set: Grey stone (its own stones)', kind: 'editor', tool: 'frame', do: click('brickSet_5'), expect: { ...LAYOUT, sets: { frame: 5 } }, introducedBy: '0922034' },
+  { name: 'Frame Set: White rocks (the frame turns rock)', kind: 'editor', tool: 'frame', do: click('brickSet_3'), expect: { ...LAYOUT, sets: { frame: 3 } }, introducedBy: '0922034' },
+  { name: 'Band 1 pattern: Soldier, back to Grey stone', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_soldier'), expect: { ...LAYOUT, sets: { frame: 5 } }, introducedBy: '0922034' },
+  { name: 'Frame Set: Red Brick again', kind: 'editor', tool: 'frame', do: click('brickSet_1'), expect: { ...LAYOUT, sets: { frame: 1 } }, introducedBy: '0922034' },
   // F35 item 66: the 'Frame offset distance / off / on' rows went with the retired Offset-from-frame control
   { name: 'Frame Level -1/8', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', -0.125), expect: LEVEL, introducedBy: '90a1483' },
   { name: 'Frame Level 0', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', 0), expect: LEVEL, introducedBy: '90a1483' },
@@ -443,4 +449,14 @@ export const WALL_NO_FRAME = {
   cases: [{ template: 'template_18', heightIn: 10 }, { template: '', heightIn: 9 }],
   wallTool: 'brickTool_wall', generate: 'brickGenerate', tol: 0.1,
   marker: "import('./editor/editor-brick-tool.js').then((m) => !!m.frameGeomForLay)",
+};
+
+// ---- a carving ART stroke under FLAT bricks (F35 item 44, seat E; Fred: "if there's a carving in art, the bricks don't work").
+// Measured before (7x9 T1): every Flat brick the carve crosses moved off the stroke (1,752 points, max 0.10 in). The row lays a
+// Wall (Flat tops, the new-board default), draws this stroke on the art layer (carving), and checks in 3D: the crossed bricks'
+// points away from the stroke are unchanged, and the stroke itself cuts. It FAILS (not skips) on a build without the fix.
+export const CARVE_UNDER_FLAT = {
+  stroke: { a: { x: 1.6, y: 2.2 }, b: { x: 5.4, y: 6.8 }, widthIn: 0.35 }, farMarginIn: 0.15,
+  wallTool: 'brickTool_wall', generate: 'brickGenerate', minNearChangedShare: 0.9,
+  introducedBy: 'F35 item 44',
 };

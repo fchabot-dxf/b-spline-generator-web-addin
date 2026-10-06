@@ -25,7 +25,7 @@ import { sendFusionMeshPreview } from '../fusion-bridge.js';
 import { updateEditorTopView } from '../render-topview.js';
 import { withLoadingStage } from '../loading-signal.js';
 
-import { applyStampLayers } from './apply-stamp-layers.js';
+import { applyStampLayers, STAMP_PASS_KIND } from './apply-stamp-layers.js';
 import { buildThickenData } from './build-thicken-data.js';
 import { scheduleRebuild } from './scheduler.js';
 import { isCarved } from '../../editor/layers.js';
@@ -40,24 +40,25 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
     rebuild.isRebuilding = true;
 
     try {
-        await withLoadingStage('rebuild', async () => {
-            const statusBar = document.getElementById('bottomStatusBar');
-            const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
+        const statusBar = document.getElementById('bottomStatusBar');
+        const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
 
+        await yieldToMain();
+        reconcileSculptDeltas(nx, nz);
+
+        // ── Stroke fast-path ─────────────────────────────────────────────
+        // If a sculpt drag is active and the cached baseline matches the
+        // current grid size, skip the heavy work and just push the new top
+        // heights to the preview. The full rebuild re-runs at
+        // onSculptStrokeEnd, which clears strokeCache. Outside the loading
+        // stage (item 41): a stroke tick is live feedback, not a wait.
+        if (canTakeStrokeFastPath(nx, nz)) {
+            handleStrokeFastPath(preview, nx, nz);
             await yieldToMain();
-            reconcileSculptDeltas(nx, nz);
+            return;
+        }
 
-            // ── Stroke fast-path ─────────────────────────────────────────────
-            // If a sculpt drag is active and the cached baseline matches the
-            // current grid size, skip the heavy work and just push the new top
-            // heights to the preview. The full rebuild re-runs at
-            // onSculptStrokeEnd, which clears strokeCache.
-            if (canTakeStrokeFastPath(nx, nz)) {
-                handleStrokeFastPath(preview, nx, nz);
-                await yieldToMain();
-                return;
-            }
-
+        await withLoadingStage('rebuild', async () => {
             await yieldToMain();
             const { heights, cleanHeights, baseHeights, generated } = buildHeights(nx, nz);
             setLastResult({ ...generated, heights, cleanHeights, baseHeights, nx, nz });
@@ -230,6 +231,7 @@ export function _collectStampPasses() {
             // never lends it the art layer's tooling.
             const brickPass = layer._brickMask ? {
                 id: `${layer.id}#bricks`,
+                kind: STAMP_PASS_KIND.bricks, // item 44: a Flat brick fits its plane under the art passes' delta
                 name: layer.name,
                 enabled: true,
                 svg: '1',
@@ -248,6 +250,7 @@ export function _collectStampPasses() {
             // already consumed the real svg into `mask` by this point.
             passes.push({
                 id: layer.id,
+                kind: STAMP_PASS_KIND.art,
                 name: layer.name,
                 enabled: true,
                 svg: '1',
