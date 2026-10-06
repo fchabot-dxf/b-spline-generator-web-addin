@@ -22563,3 +22563,71 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
 - Harness: item61_full_matrix_sweep.py gains an optional READBACK(des, case) hook (committed); the driver with the
   T10 apex readback (run.py) stays in the scratchpad. Timed-out calls were waited out via the sweep's own re-entry
   lock + polling the results file; no case ran twice. Fusion: one doc per case, closed by the sweep; holder none.
+
+## H23 item 83 -- end-to-end acceptance of the brick system in Fusion (seat A / 77, 2026-10-05)
+- Branch brick-e2e-83 off origin/main (091ce27, then merged afdc4c0 = the deployed add-in). Fred's workflow on the
+  DEPLOYED code: the app captured headless, the real Send through the deployed bspline_ui._handle_generate (frame
+  INCLUDED), CAM BUILD through the deployed CAM builder's own engine, APPLY TOOLPATHS through the add-in's own
+  CamBuilder_DeferredTPGen handler. One tagged scratch doc ('item83-e2e'), closed by handle; holder none after.
+- Capture tool: new declared scenario brick-e2e (BRICK_E2E): 7x9, T1 frame; frame band in Set 5 Grey stone; two
+  painted wall areas (herringbone, then the pattern builder's custom bond at unit 1/2, one join, two raised pieces,
+  level 1/16 in); one raised brush stroke; one 'Art' layer with a carving stroke (carve on, the editor's Apply bakes
+  the masks). Sidecar <out>.app.json = the app's own counts. Fresh Chrome profile per capture (a reused profile
+  restored the previous run's areas: 4 areas instead of 2 -- measured, then avoided).
+- THE APP (the reference): 122 pieces = 58 frame + 58 wall (2 areas) + 6 brush; 4 accent-marked (raised) pieces;
+  2 carving layers; payload Clean + Stamped STEP, stamp.bricks.svg = 122 polygons / 2299 edges (same split by kind),
+  Art layer carve on depth 0.25. Shot: h23_item83_brick_e2e_app_view.png; readback: ..._app_readback.json.
+- FUSION, the Send (16 timeline items, ALL healthy):
+    Bricks sketch: in the Stamped component, 2299 SketchLines (= the payload's 2299 edges, exact), 0 open ends,
+      extent +-3.25 x +-4.25 in (= the payload polygons' extent, exact -> units / scale / flipY right), on the
+      artwork plane z 3.2165 in (the SAME plane as the Art layer's sketch: the artwork-plane convention, not a bug).
+      It is an SVG IMPORT, not a native build: _import_single_layer_svg -> importManager.createSVGImportOptions +
+      importToTarget (Insert SVG), the art layers' own path.
+    Profiles 157 for 122 polygons (+35): 32 ZERO-AREA slivers mirrored at x +-1.54..2.12, y 1.34..3.09 (where
+      painted area 1 meets the frame band) + 3 small ones 0.0027-0.0091 in2 at y ~0 (the brush stroke at the band).
+      Root cause is in the APP data, measured on the payload: 24 wall/frame neighbour pairs have a gap of EXACTLY 0
+      (every other neighbour keeps its joint: wall/wall 0.034, frame/frame >= 0.02 in) -> touching-but-not-
+      identical edges -> degenerate regions; and the raised brush overlaps 3 frame stones (0.0167 in2 total).
+      Payload polygons themselves are clean: 0 self-intersecting, 0 repeated vertices, none under 0.001 in2.
+    Bodies: Clean panel 13.752 in3 (+-3.5 x +-4.5, z 0.025..1.175, NOT trimmed by the frame), Stamped panel
+      14.285 in3 (+-3.25 x +-4.25, z 0.029..1.2395, trimmed), frame bars top/left/bottom/right 7.03 / 9.96 / 5.92 /
+      9.88 in3 (z -1.0 .. 0.80-0.94). Both panels are VISIBLE after the Send.
+    Carved surface (ray-cast down, Stamped top - Clean top, 50 probes): wall bricks median +0.128 in (0.095..0.159,
+      ~ the 0.125 relief), frame stones +0.091 (0.047..0.127), raised-brush bricks +0.199 (0.145..0.224, = wall +
+      ~0.07, the 1/16 in raised level), the brush stroke's grout ring 0.02 in outside each brick: about half at ~0
+      (-0.039..+0.045 = grout), the high ones (up to +0.169) sit along the stroke where brush bricks abut each other.
+- FUSION, CAM (item 82 shape, deployed): BUILD ok -- B-spline Back fixed box 9.5 x 7.5 x 2 in (dims written), WCS =
+  the declared 'back' point (-3.75, -4.75, 0.0289) on this panel's real bottom; B-spline Top PreviousSetupStock (same
+  box), WCS (3.75, -4.75, 2.0289); Frame box 9.5 x 7.5626 x 1.9447 around its model (82b). APPLY: templates through
+  the deployed apply_templates_to_existing_setups (3D-only heights on Back/Top; Frame's 'cadre' ops keep their
+  template heights -- Frame does not declare op_heights); then the add-in's own TPGEN handler (log: Back 12.5 s,
+  Top 56.4 s, Frame 3.7 s, post-audit ok=7 missing=0): all 7 ops valid, no warning:
+    Back: Pocket back 693.3 s / 1678.9 in, Morphed Spiral 97.3 / 968.1
+    Top:  Pocket front FRED 507.5 / 4425.2, Morphed Spiral 99.4 / 987.2, Pocket front deloge 241.6 / 1355.5
+    Frame: cadre Pocket 4 484.5 / 4028.7, cadre Morphed Spiral 3 178.0 / 1746.9
+- DEFECTS / FINDINGS (numbered; app/engine ones route to seat C, nothing fixed here):
+  D1 (app/engine) wall bricks BUTT the frame band with 0 grout: 24 wall/frame pairs at gap 0.0000 in (joints
+     elsewhere 0.034 / >= 0.02) -> 32 zero-area sliver profiles in the Bricks sketch.
+  D2 (app/engine) the raised brush stroke OVERLAPS the frame band: 3 brush/frame pairs, 0.0167 in2 total -> 3 small
+     extra profiles; brush bricks not clipped at the band.
+  D3 (app, observation) brush pieces abut each other with 0 gap (4 pairs) -- maybe intended for a stroke; grout
+     ring present on the sides only.
+  D4 (app, UI gap) the frame band's set can't be Set 5 (Grey stone) from the UI: selectSet only offers the bond sets
+     (1, 4) and setFrameRock gives Set 3 White rocks; reached here by writing P.brickSettings.setIds.frame = 5.
+  D5 (app rule, for Fred) a full wall and painted areas can't coexist (the first area replaces the wall fill), and
+     the pattern builder's accent is SHARED by every area while any later bond pick drops a custom tile's marks
+     (item 31) -- the builder area has to be painted last. Board built that way: 4 raised pieces arrived.
+  D6 (Fusion-side, for the advisor) both the Clean and the Stamped panel are visible after a Send that has a Stamped
+     variant, and the Clean panel is not trimmed by the frame (+-3.5 x +-4.5 vs +-3.25 x +-4.25): the view shows the
+     untrimmed Clean poking out under the frame. Not changed (Send visibility is the b-spline add-in's Smart
+     Visibility; ask first).
+  No CAM defect: positions, stock, heights and all 7 toolpaths as designed.
+- One observation, not a defect: calling cam.generateToolpath(setup) / (collection) directly from fusion_execute right
+  after the templates were applied reported completion early and left ops empty; the add-in's own handler, fired as
+  Fred's button does, generated all 7. Not recorded as a quirk.
+- Item 84 answer (advisor's question): YES, the bricks already reach Fusion as an imported SVG (importToTarget, see
+  above); this run: 2299 curves, all SketchLines, closed; import time not isolated (the whole Send ran ~2 min incl.
+  two 5 MB STEP imports and the frame).
+- Shots (shots/seatA): h23_item83_brick_e2e_app_view.png (the app), h23_item83_brick_e2e_stamped_iso.png and
+  _top.png (Fusion: the carved Stamped panel + frame + the Bricks sketch on its artwork plane; the Clean panel hidden
+  for the shot, restored).
