@@ -22,6 +22,8 @@
  * withLoadingStageShownFirst(id, fn) is the same for a SYNCHRONOUS `fn` whose result the caller does not await.
  */
 
+import FUSION_SEND_STAGES from '../data/fusion-send-stages.js';
+
 export const STAGE_GROUPS = { computing: 'Computing', waiting: 'Waiting', refreshing: 'Refreshing' };
 
 /** `label` is a plain string, or a function of the optional `ctx` passed to withLoadingStage. */
@@ -36,6 +38,11 @@ export const LOADING_STAGES = {
   cloudLoad: { group: 'waiting', label: 'loading from the cloud', surface: 'card' },
   cloudSave: { group: 'waiting', label: 'saving to the cloud', surface: 'card' },
   stepExport: { group: 'computing', label: 'writing the files', surface: 'card' },
+  // item 70: a Send from the Fusion palette -- the palette's own steps, then Fusion's (data/fusion-send-stages.js,
+  // the add-in reports each as 'import_stage' {id}); all cards
+  stepBuild: { group: 'computing', label: 'building the STEP files', surface: 'card' },
+  transfer: { group: 'waiting', label: 'sending to Fusion', surface: 'card' },
+  ...Object.fromEntries(FUSION_SEND_STAGES.stages.map((st) => [st.id, { group: 'waiting', label: `Fusion: ${st.label}`, surface: 'card' }])),
 };
 
 /** Multi-step actions: the stages they run, in order. A stage the action skips (no bricks = no carving) just
@@ -46,6 +53,7 @@ export const LOADING_SEQUENCES = {
   newSeed: { stages: ['heightMask', 'rebuild'] },
   projectLoad: { stages: ['cloudLoad', 'restore', 'heightMask', 'rebuild'] },
   export: { stages: ['heightMask', 'rebuild', 'stepExport'] },
+  send: { stages: ['heightMask', 'rebuild', 'stepBuild', 'transfer', ...FUSION_SEND_STAGES.stages.map((st) => st.id)] },
 };
 
 export const MIN_VISIBLE_MS = 300;
@@ -162,9 +170,23 @@ export function beginLoadingSequence(seqId) {
   if (_stack.length) _render();
 }
 
+/** item 70: a HELD stage -- one that is not a function's run but lasts until something else says it is over (Fusion
+ *  working on a Send: the add-in reports each step, the palette closes it on import_success / import_failed / the
+ *  poll timeout). One held slot: holding a new id replaces the previous one; null releases it. Returns a promise
+ *  that resolves once the held stage has been painted (so a caller can show it BEFORE blocking work). */
+let _held = null;
+export function holdLoadingStage(stageId, ctx) {
+  if (_held) { _leave(_held); _held = null; }
+  if (!stageId || !LOADING_STAGES[stageId]) return Promise.resolve();
+  _held = _enter(stageId, ctx);
+  return paintFrames();
+}
+export const releaseHeldStage = () => holdLoadingStage(null);
+
 /** Drop every stage and sequence and hide the overlay at once (tests: the state is module-wide). */
 export function resetLoadingSignal() {
   _stack.length = 0;
+  _held = null;
   if (_sequence) clearTimeout(_sequence.timer);
   _sequence = null;
   clearTimeout(_hideTimer); _hideTimer = null;

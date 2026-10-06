@@ -6,6 +6,7 @@
 import { P, isFusionMode, setIsFusionMode } from './state.js';
 import { COORD_SYSTEM } from './coords.js';
 import { fusLog } from './fusion-log.js';
+import { releaseHeldStage } from './loading-signal.js';
 
 export { fusLog } from './fusion-log.js';
 
@@ -75,7 +76,7 @@ export function sendFusionMeshPreview(preview) {
 /**
  * Streams large payloads in 256KB chunks to bypass Fusion-web bridge limits.
  */
-export async function sendFusionPayloadChunked(payloadString) {
+export async function sendFusionPayloadChunked(payloadString, { beforeFinish } = {}) {
     const CHUNK_SIZE = 256 * 1024;
     const totalChunks = Math.ceil(payloadString.length / CHUNK_SIZE);
 
@@ -88,6 +89,7 @@ export async function sendFusionPayloadChunked(payloadString) {
             fusLog(`[COORD_STD] Sending chunk ${i + 1}/${totalChunks} (${progress}%)...`);
             adsk.fusionSendData('generate_chunk', JSON.stringify({ index: i, data: chunk }));
         }
+        if (beforeFinish) await beforeFinish(); // item 70: e.g. paint Fusion's first stage before the import starts
         adsk.fusionSendData('generate_finish', '{}');
         fusLog('[COORD_STD] Chunked send finished. Handoff to Python for import.');
     } catch (e) {
@@ -116,6 +118,7 @@ export function startFusionPolling() {
             // Do NOT send 'ok' here — that would hide the palette unexpectedly.
             // Just re-enable the button so the user knows the wait is over.
             setFusionActionState(FUSION_IDLE_LABEL, false);
+            releaseHeldStage(); // item 70
             setFusionStatus('Fusion did not confirm the import — check the Fusion log', 'warn');
             return;
         }

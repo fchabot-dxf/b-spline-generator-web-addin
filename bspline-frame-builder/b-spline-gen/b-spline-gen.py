@@ -386,14 +386,62 @@ def _is_surface_body_name(bn):
     return False
 
 
+def _post_to_palette(action, payload):
+    """Send `action` to the palette AND let it paint now. F35 item 70, MEASURED live (seat A, 2026-10-06): the palette's
+    window runs on Fusion's main thread, so a message sent from inside a long handler (_handle_generate: the whole
+    import) is not painted until the handler returns -- a 10 s block showed the earlier text the whole time.
+    adsk.doEvents() right after the send painted it 3.5 s into the same block (the CAM builder and the exporter pump
+    the same way). Returns True if the palette was there."""
+    pal = app.userInterface.palettes.itemById(PALETTE_ID)
+    if not pal:
+        return False
+    pal.sendInfoToHTML(action, json.dumps(payload))
+    adsk.doEvents()
+    return True
+
+
 def _send_progress(msg):
     """Sends a progress message to the JS UI."""
     try:
-        pal = app.userInterface.palettes.itemById(PALETTE_ID)
-        if pal:
-            pal.sendInfoToHTML('import_progress', json.dumps({'msg': msg}))
+        if _post_to_palette('import_progress', {'msg': msg}):
             _log(f'[PROGRESS] {msg}')
     except Exception: pass
+
+
+# F35 item 70: the steps of a Send, DECLARED ONCE in html/data/fusion-send-stages.js -- the palette imports that module;
+# this reads the same file (the pure-JSON object after the line that starts with the export). The palette holds each
+# step on its loading card ("Waiting - Fusion: building the frame, step 10 of 11") until the next one or the end.
+FUSION_SEND_STAGES_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'html', 'data', 'fusion-send-stages.js')
+_fusion_send_stage_id_cache = None
+
+
+def _fusion_send_stage_ids(path=None):
+    """The declared step ids, in order (read once per session unless a path is given)."""
+    global _fusion_send_stage_id_cache
+    if path is None and _fusion_send_stage_id_cache is not None:
+        return _fusion_send_stage_id_cache
+    with open(path or FUSION_SEND_STAGES_FILE, 'r', encoding='utf-8') as f:
+        src = f.read()
+    m = re.search(r'^export default', src, re.M)
+    ids = [s['id'] for s in json.loads(src[m.end():].strip().rstrip(';'))['stages']]
+    if path is None:
+        _fusion_send_stage_id_cache = ids
+    return ids
+
+
+def _send_stage(stage_id, is_preview=False):
+    """Tell the palette which declared step of a Send Fusion is on now ('import_stage' {id}). Never for a preview
+    (nothing waits on it), never an undeclared id (logged instead: the palette would not know it)."""
+    if is_preview:
+        return
+    try:
+        if stage_id not in _fusion_send_stage_ids():
+            _log(f'[STAGE] undeclared stage id {stage_id!r} -- not sent (html/data/fusion-send-stages.js)')
+            return
+        if _post_to_palette('import_stage', {'id': stage_id}):
+            _log(f'[STAGE] {stage_id}')
+    except Exception:
+        pass
 
 
 def _send_import_failed(msg):
@@ -1649,6 +1697,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             is_preview = data.get('isPreview', False)
             if not is_preview:
                 importing_done = False
+                _send_stage('fusionPrepare')
                 _send_progress("Preparing Geometry...")
 
             _log(f'_handle_generate: isPreview={is_preview}, payload keys={list(data.keys())}')
@@ -1739,6 +1788,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     step_options           = import_mgr.createSTEPImportOptions(tmp_path)
                     step_options.isViewFit = False
                     initial_count          = import_target_comp.occurrences.count
+                    _send_stage('fusionImportStep', is_preview)
                     _send_progress(f"Importing {v_name}...")
                     try:
                         ok = import_mgr.importToTarget(step_options, import_target_comp)
@@ -1826,6 +1876,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 
                 import_target_comp = current_import_group.component if (not is_preview and _in_active_design(des, current_import_group)) else root_comp
                 initial_count          = import_target_comp.occurrences.count
+                _send_stage('fusionImportStep', is_preview)
                 _send_progress("Importing to Fusion...")
                 try:
                     ok = import_mgr.importToTarget(step_options, import_target_comp)
@@ -1970,6 +2021,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     _log(f'[CONSOLIDATE] post-import failed: {e}')
 
             # ── SVG Stamping (applied to primary body) ───────────────────────────
+            _send_stage('fusionStamp', is_preview)
             _send_progress('Analyzing Stamping Surface...')
             _log(f'SVG Stamping Check: active_layers={len(stamp_data.get("layers", [])) if stamp_data else "NoData"}, orientation={orientation}')
             if stamp_data and stamp_data.get('enabled'):
@@ -2008,9 +2060,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             # includeSVG = exportableStampLayers().length > 0 would then be False), and bricks are
             # a completely separate concern from "does this Send carry exportable art-layer SVG".
             if not is_preview:
+                _send_stage('fusionBricks')
                 self._apply_bricks_sketch(current_import_group, stamp_data, params, orientation)
 
             # ── Finalise ─────────────────────────────────────────────────────────
+            _send_stage('fusionCleanup', is_preview)
             _send_progress('Cleaning up graphics...')
             _clear_custom_graphics()
             if not is_preview:
@@ -2043,9 +2097,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 # not hide until both are done. Its result reaches the palette as frame_result, as before.
                 frame_payload = data.get('frame')
                 if frame_payload:
+                    _send_stage('fusionFrame')
                     _send_progress('Building the frame...')
                     self._handle_send_frame(frame_payload)
                 importing_done = True
+                _send_stage('fusionFinalize', is_preview)
                 _send_progress('Finalizing Import...')
                 _log('Import session finalized.')
 

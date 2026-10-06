@@ -15114,3 +15114,28 @@ WallPattern = {
   - Engine / wall / stroke files: 63 files, 698 passed.
 - **Matrix:** brush 10/0 (Continuous now 3#1wpuvju -> 7#s250qh); strokes 1/0.
 - **"strokes did not report" under --parallel (advisor):** a group child exits without a report only on a port / Chrome-start failure (exit 2 before `finally`). With base 9701 and 22 groups, strokes (last) gets port 9921/9922. My own probes ran on 9921-9941 tonight, so the likeliest cause is a collision with my probe, not the group. My probes now use 11xxx.
+
+## F35 item 70 -- loading stages in the FUSION palette during a Send (seat F, branch fusion-stages-70)
+- **Measured first** (tools/repro/f35item70_fusion_send_stages.mjs: the palette headless in Fusion mode, adsk stubbed, the add-in's real progress replies replayed after generate_finish; 900 px, CPU x4):
+  - The card read 'writing the files, step 3 of 3'.
+  - At generate_finish the card closed AND the Send button was re-enabled while Fusion was still importing.
+  - Then nothing, then the add-in's free-text phases on the 11 px status line only. Bricks had no message at all.
+- **Add-in log** (last real palette Send, 2026-10-04 16:21): the whole import (13 s, 11 of them the frame) runs inside the generate_finish HTML handler.
+  - Seat A's live probe: the palette paints nothing during a blocking call (its window is Fusion's main thread), but does paint with adsk.doEvents() in the block.
+- **Built:**
+  - html/data/fusion-send-stages.js: the Fusion steps, declared once. The palette imports it; the add-in json-loads the object after the line that starts with the export.
+  - The palette shows them as WAITING cards 'Fusion: <label>' in LOADING_SEQUENCES.send (heightMask, rebuild, stepBuild, transfer, then the 7 Fusion steps).
+  - holdLoadingStage / releaseHeldStage: a stage that lasts until the next report or the end.
+  - The transfer is held, and Fusion's first step is HELD AND PAINTED before generate_finish (sendFusionPayloadChunked's beforeFinish).
+  - main.js: import_stage {id} holds; import_success / import_failed / import_ready / the poll timeout release the stage.
+  - The Send button stays 'Sending...' until import_success, import_failed or the timeout (advisor gate (a)).
+  - Add-in: _post_to_palette (sendInfoToHTML + adsk.doEvents, declared once) used by _send_progress and the new _send_stage(id, is_preview). Undeclared ids are logged, not sent; previews send none. Bricks gets its own step.
+- **After** (replay, PROTOCOL=stage): every long task ran with a card naming the step ('Waiting - Fusion: building the frame, step 10 of 11'); the button read 'Sending...' until 'Imported into Fusion'.
+- **Tests:**
+  - tests/fusion-send-stages.test.js (5): the declaration parses the way Python reads it; Fusion stages are waiting cards; held stages; unknown ids are inert; the first Fusion stage is painted before generate_finish.
+  - b-spline-gen/test_fusion_send_stages.py (5): the same ids as the palette; declared stages sent with doEvents; never for a preview or an undeclared id; every declared stage is reported somewhere.
+  - Fail-before: all new; none of these exports or the data file existed.
+  - Full vitest 326/326; add-in pytest 159 passed.
+- **Not verified live yet:** a real Send in Fusion (seat A's holder slot).
+- **Risk for the advisor:** doEvents inside the import lets Fusion run other palette messages mid-import. check_import_status is inert while importing_done is False, but a preview_mesh (the palette's restoring rebuild right after the hand-off) could now run during the import.
+- **Not done:** CAM BUILD / APPLY held stages (advisor: after the Send works).
