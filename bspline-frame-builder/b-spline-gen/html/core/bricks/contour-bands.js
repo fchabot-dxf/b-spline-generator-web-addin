@@ -33,7 +33,7 @@
  * full-size bricks, never one row of stretched ones, and the next band always starts exactly where
  * the actual (snapped) rows end, with no seam gap.
  */
-import { inwardSignFor, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference } from './geometry.js';
+import { inwardSignFor, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, boundaryAtDepth } from './primitive-ribbon.js';
 import { scaledSet, BRICK_PATTERNS, MIN_PIECE_FRACTION } from './library.js';
@@ -256,7 +256,9 @@ function clipBandPiecesToBoard(bricks, board, set) {
  *  OPPOSITE sides lay over the same ground (each is built from its own primitive with no knowledge of the other).
  *  Declared rule: every point of the band area belongs to the piece whose OWN depth there is smallest -- depth from
  *  the primitive the piece was offset from, exactly as it was built (sourceDepth) -- i.e. the side of the medial line
- *  it lies on; ties go to the lower source index (seed-stable). Each piece is cut against the ORIGINAL pieces it
+ *  it lies on; ties go to the lower source index (seed-stable). Each side stops half the set's grout joint short of
+ *  the line (advisor, from seat A's Fusion e2e: a 0-gap seam becomes zero-area sliver profiles in the Bricks sketch),
+ *  so the seam is a joint like any other. Each piece is cut against the ORIGINAL pieces it
  *  conflicts with, never against already-cut ones, so no region is handed round a cycle (attempt A, WORK-LOG) and
  *  the smallest-depth piece always keeps its ground. The one ground that goes: a far piece's tongue left past the
  *  line inside a near-side joint, cut off from its own piece (MEASURED on the 171-case sweep: every gap that opens
@@ -271,6 +273,16 @@ const MEDIAL_DROP_PASSES = 16; // a bound on the one-at-a-time drop trials below
 function sourceDepth(prim) {
   if (prim.type === 'line') return (p) => (p.x - prim.p0.x) * prim.nx + (p.y - prim.p0.y) * prim.ny;
   return (p) => prim.radialSign * (prim.r - Math.hypot(p.x - prim.cx, p.y - prim.cy));
+}
+/** (da - db) scaled by its own gradient: the signed distance (to first order) from p to the medial line da = db,
+ *  negative on a's side. Depth differences change at |n_a - n_b| per inch (2 for two facing sides), so the raw
+ *  difference would make a half-joint setback a quarter joint wide at a neck. */
+const MEDIAL_GRAD_STEP_IN = 1e-5;
+function medialDistance(da, db, p) {
+  const f = (q) => da(q) - db(q), h = MEDIAL_GRAD_STEP_IN;
+  const gx = (f({ x: p.x + h, y: p.y }) - f({ x: p.x - h, y: p.y })) / (2 * h);
+  const gy = (f({ x: p.x, y: p.y + h }) - f({ x: p.x, y: p.y - h })) / (2 * h);
+  return f(p) / Math.max(Math.hypot(gx, gy), 1e-6);
 }
 function jointNeighbours(live, a, b) {
   if (!live) return false;
@@ -297,15 +309,20 @@ function yieldAtMedialLine(bricks, origins, primitives, set) {
   if (!conflicts.some((c) => c.length)) return bricks;
   const depth = primitives.map(sourceDepth);
   const minArea = MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
+  const setback = set.grout.widthIn / 2; // each side stops half the band's joint short of the medial line
+  const grown = bricks.map((b, i) => (conflicts[i].length ? offsetPathInward(b.polygon, 2 * setback, -inwardSignFor(b.polygon)) : b.polygon));
   const cutAll = (dropped) => bricks.map((b, i) => {
     if (dropped.has(i)) return [];
     let pieces = [b.polygon];
     const di = depth[origins[i].src];
     for (const j of conflicts[i]) {
       if (dropped.has(j)) continue;
-      // the ground piece j takes from piece i: where j covers it AND j's own depth is smaller (ties: lower source)
+      // the ground piece j takes from piece i: where j covers it AND j's own depth is smaller (ties: lower source),
+      // plus a strip half a joint wide on i's side of the line wherever j comes within half a joint of it (j grown
+      // by the setback: at the lens tips j's own edge reaches the line and would otherwise touch i there), so the seam
+      // is a joint like any other
       const dj = depth[origins[j].src];
-      const taken = clipToField(bricks[j].polygon, (p) => dj(p) - di(p), origins[j].src > origins[i].src);
+      const taken = clipToField(grown[j], (p) => medialDistance(dj, di, p) - setback, origins[j].src > origins[i].src);
       if (taken.length < 3) continue;
       pieces = pieces.flatMap((q) => polygonDifference(q, taken));
     }
