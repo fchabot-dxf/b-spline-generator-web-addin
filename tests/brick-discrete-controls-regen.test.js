@@ -1142,3 +1142,13 @@ describe('F35 item 23: per-element Set, Fieldstone = the rock set', () => {
     expect(runBricks.mock.calls.every((c) => !c[3].kinds.includes('frame') || c[3].kinds.includes('wall'))).toBe(true);
   });
 });
+
+describe('item 67: the panel wires its page (document) listeners once per page', () => {
+  it('a second initBrickPanel adds no document listener (a copy per init re-ran every handler: N2 3.7 s after ~80 inits)', () => {
+    setup('wall'); // an init has run (here or in an earlier test)
+    const add = vi.spyOn(document, 'addEventListener');
+    initBrickPanel();
+    expect(add).not.toHaveBeenCalled();
+    add.mockRestore();
+  });
+});

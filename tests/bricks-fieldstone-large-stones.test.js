@@ -73,12 +73,12 @@ describe('fieldstoneLayout (T86 item 17): largeStones moves the large-tier area 
   const { primitives } = realContour('template_1', 7, 9);
   const { innerPath } = bricksContourBands(primitives, FRAME_PRESETS.single_soldier, { set: SET, seed: 1 });
 
-  it('the measured large-tier area share increases monotonically across 0, 0.25, 0.5, 0.75, 1', () => {
-    const values = [0, 0.25, 0.5, 0.75, 1];
-    const shares = values.map((v) => largeAreaShare(innerPath, SET, SEEDS, v));
-    for (let i = 1; i < shares.length; i++) {
-      expect(shares[i], `shares: ${shares.map((s) => s.toFixed(3)).join(', ')}`).toBeGreaterThan(shares[i - 1]);
-    }
+  // item 67 (test infra): one test per adjacent pair (was one test: 6.7 s in a full run); together they are the same
+  // monotonic chain across 0, 0.25, 0.5, 0.75, 1, and each value's layouts are built once (layoutOf).
+  const VALUES = [0, 0.25, 0.5, 0.75, 1];
+  it.each(VALUES.slice(1).map((v, i) => [VALUES[i], v]))('the measured large-tier area share increases monotonically: %s -> %s', (lo, hi) => {
+    const a = largeAreaShare(innerPath, SET, SEEDS, lo), b = largeAreaShare(innerPath, SET, SEEDS, hi);
+    expect(b, `shares: ${lo} -> ${a.toFixed(3)}, ${hi} -> ${b.toFixed(3)}`).toBeGreaterThan(a);
   });
 
   it('largeStones=0.5 (the default) reproduces the pre-item-17 declared calibration (within the existing +/-10 point tolerance)', () => {
