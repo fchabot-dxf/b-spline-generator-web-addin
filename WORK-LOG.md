@@ -22938,3 +22938,56 @@ T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given 
   out at 90 s again (139.9 s run, loaded machine), as logged above: no bricks import, passes alone.
 - Shots: before_after_worst_necks.png re-rendered from this build; t18_seam_zoom.png (the seam as a joint);
   t14_x_centre_zoom.png (main vs branch, the X centre: two 0.093 sq in half-diamonds, blue = joint given back).
+
+## H23 item 89 -- Fusion-side BASELINE for seat B's joint-planner fix: frame bands only, 19 templates x 3 presets (seat A / 77, 2026-10-05)
+- Code under test: main 2b5695d (the app served from this worktree at origin/main 338d86c = 2b5695d + seat-page
+  commits; the add-in deployed 2b5695d). Board 7x9, brick length 1 in, Frame tool alone (no wall), Set 1.
+- App half, tools/repro/h23_item89_band_sweep.mjs: headless Chrome, a fresh page + cleared storage per case;
+  Math.random SEEDED before any page script (--seed, default 89). MEASURED: unseeded, one template drew three
+  different frame silhouettes in three loads, which would make before/after incomparable. Seeded, two separate runs
+  gave byte-identical brick svgs. Per case: pieces (the app's laid polygons) + stamp.bricks exactly as sendToFusion
+  builds it (_bricksLayerSvg + bakeSvgForCarving). 57/57 laid, 0 failures, ~11 s/case.
+- Fusion half, tools/repro/h23_item89_fusion_import.py: each svg through the deployed add-in's OWN
+  _apply_bricks_sketch (the Send's Bricks import) into one tagged scratch doc (B-Spline Set > Stamped + the
+  widthIn/heightIn user params the import reads; without them it fails silently: "[STAMP] Error in layer Bricks:
+  'widthIn'"). Measured, then the sketch + its plane removed. No STEP bodies, so the plane sits at the default
+  height: it moves the sketch, not its profiles. 2 cases per call, resume-able. (The committed file is the run
+  script made path-configurable; this run added the board params with a separate call.)
+- TABLE (pieces app / Bricks-sketch profiles / sliver profiles < 1e-4 in2 / import s), also in
+  tools/repro/h23_item89_baseline/ (table + raw jsonl):
+    template    | single_soldier     | three_band         | double_course
+    template_1  | 110/149/ 4/1.58    | 112/140/24/1.39*   | 108/158/20/1.58*
+    template_2  |  84/ 84/ 0/1.45    |  84/ 84/ 0/1.14    |  80/ 80/ 0/1.11
+    template_3  |  97/ 97/ 0/1.19    |  97/ 97/ 0/1.30    |  93/ 93/ 0/1.20
+    template_4  |  96/ 96/ 0/1.63    |  96/ 96/ 0/2.42    |  91/ 91/ 0/1.37
+    template_5  | 112/127/ 4/1.91    | 112/127/ 4/1.37    | 110/125/ 4/2.10
+    template_6  |  99/ 99/ 0/1.08    |  99/ 99/ 0/1.08    |  89/ 89/ 0/1.17
+    template_7  |  86/ 86/ 0/1.17    |  86/ 86/ 0/1.33    |  82/ 82/ 0/1.10
+    template_8  | 100/100/ 0/3.12*   | 100/100/ 0/2.98    |  95/ 95/ 0/1.17
+    template_9  | 130/130/ 0/1.42    | 130/130/ 0/1.25    | 122/122/ 0/1.43
+    template_10 | 107/107/ 0/1.96    |  99/ 99/ 0/1.17*   |  97/ 97/ 0/3.47
+    template_11 |  96/104/ 7/2.21    |  96/104/ 7/1.43    |  92/100/ 7/3.28
+    template_12 | 114/155/30/1.50    | 114/155/30/1.95    | 108/154/28/1.66
+    template_13 |  86/ 86/ 0/1.05    |  86/ 86/ 0/1.87*   |  82/ 88/ 0/1.02*
+    template_14 |  90/ 90/ 0/2.59    |  90/ 90/ 0/1.43    |  90/ 90/ 0/4.56
+    template_15 |  86/ 86/ 0/1.13    |  86/ 86/ 0/1.10*   |  82/ 82/ 0/3.28
+    template_16 |  88/ 88/ 0/1.40    |  88/ 88/ 0/1.21    |  88/ 88/ 0/1.29
+    template_17 |  87/ 87/ 0/1.10    |  87/ 87/ 0/1.06    |  87/ 87/ 0/2.20
+    template_18 |  92/ 92/ 0/2.01    |  92/ 92/ 0/1.41    |  88/ 88/ 0/1.40
+    template_19 |  91/ 91/ 0/2.01    |  91/ 91/ 0/1.71    |  87/ 87/ 0/2.94
+  * = re-timed with Fusion alone. The first pass ran beside the Chrome sweep: 7.9-34.3 s for these. Same profile
+  counts both times.
+- TOTALS: 13/57 cases have profiles != pieces (templates 1, 5, 11, 12 x all 3 presets + 13 double_course); 320
+  extra profiles; 169 slivers < 1e-4 in2 (smallest 1.8e-11 in2); 0 open ends; 0 multi-loop profiles. Import
+  median 1.45 s.
+- WORST 3 (extra profiles): T1 double_course +50 (20 slivers), T12 double_course +46 (28), T12 single_soldier +41
+  (30). Sliver centroids cluster at the top inner corners: T1 at (+-2.3, 3.3), T12 at (+-2.2, 3.3).
+  The zoom shot shows two faults there. (a) A fan of wedge pieces all meet at ONE point: zero-wide joints at the
+  apex. (b) The second band's row runs across the first band's soldier ends: an overlap, not a joint.
+  T13 double_course +6 profiles with 0 slivers (larger enclosed regions, not measured further).
+- Also noted (app behaviour, not judged): on most templates three_band lays the same count as single_soldier. At
+  brick length 1 in, the bands look snapped to one row inside the frame region.
+- Shots (shots/seatA): h23_item89_template_1__double_course.png + _zoom.png, h23_item89_template_12__double_course.png,
+  h23_item89_template_12__single_soldier.png.
+- For B's after-run: same tools, same seed, same board -> diff against tools/repro/h23_item89_baseline/.
+- Hygiene: scratch doc closed by handle (only Fred's Untitled), holder none, my server + Chrome stopped.
