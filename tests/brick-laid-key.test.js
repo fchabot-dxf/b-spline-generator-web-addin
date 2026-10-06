@@ -30,7 +30,7 @@ function fakeEditor() {
     _draw: {}, _mW: 7, _mH: 9,
     _activeLayer: '0',
     _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', holdsBricks: true, visible: true }],
-    _sketchLayer: { node, children: () => ({ toArray: () => [] }),
+    _sketchLayer: { node, children: () => Object.assign([], { toArray: () => [] }) /* svg.js: an array (item 64: a kind layer runs addLayer) */,
       group: () => { const el = document.createElementNS('http://www.w3.org/2000/svg', 'g'); node.appendChild(el); return wrap(el); } },
   };
 }

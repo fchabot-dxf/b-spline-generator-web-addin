@@ -18,7 +18,7 @@ import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 const fakeEditor = (bricksLayer) => ({
   _mW: 7, _mH: 9, _activeLayer: '0',
   _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', holdsBricks: true, visible: true, ...bricksLayer }],
-  _sketchLayer: { node: { querySelectorAll: () => [] }, children: () => ({ toArray: () => [] }),
+  _sketchLayer: { node: { querySelectorAll: () => [] }, children: () => Object.assign([], { toArray: () => [] }) /* svg.js: an array (item 64: a kind layer runs addLayer) */,
     group: () => { const api = { node: {}, attr: () => api, addClass: () => api, removeClass: () => api, hasClass: () => false }; return api; }, // item 22: element records
   },
 });
@@ -36,7 +36,8 @@ describe('Generate keeps the Bricks layer carve toggle', () => {
   });
   it('the brick-owned depth is still written from the settings (Carved = negative) -- on the LEGACY Bricks layer', () => {
     const editor = fakeEditor({ carve: true, depth: 9 });
-    editor._activeLayer = '1'; // item 22 slice 3: a new element lays on the active layer -- here the legacy Bricks layer
+    // item 64: a NEW element goes on its kind's own layer, so the legacy layer is reached by an element ALREADY on it
+    editor._sketchLayer.node.querySelector = (sel) => (sel.includes('data-brick-record') ? { getAttribute: (k) => (k === 'data-layer' ? '1' : 'be1'), setAttribute: () => {} } : null);
     runBricks(editor, { ...P.brickSettings, invert: true, reliefIn: 0.2 }, null);
     expect(editor._layers[1].depth).toBe(-0.2);
     expect(editor._layers[1].profile).toBe('flat');

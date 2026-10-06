@@ -49,7 +49,7 @@
  * BRICK_ELEMENT_ATTR/BRICK_SETTINGS_ATTR/reconstructChains/
  * regenerateOwnedBrickElements block below for the full mechanism.
  */
-import { ensureActiveLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR, BRICK_ELEMENT_ATTR, BRICK_OWNER_ATTR, brickElementNodes } from './layers.js';
+import { ensureActiveLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR, BRICK_ELEMENT_ATTR, BRICK_OWNER_ATTR, brickElementNodes, brickKindLayer } from './layers.js';
 import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
@@ -97,10 +97,10 @@ export function layerOfElement(editor, kind) {
   const rec = brickRecordNode(editor, kind);
   return (rec && layerById(editor, rec.getAttribute('data-layer'))) || null;
 }
-/** The layer a Wall / Frame element lays on: its record's, else (a new element) the active layer. */
+/** The layer a Wall / Frame element lays on: its record's, else (a new element) its KIND's own layer (item 64). */
 export function elementLayer(editor, kind) {
   const rec = brickRecordNode(editor, kind);
-  return (rec && layerById(editor, rec.getAttribute('data-layer'))) || activeLayerOf(editor);
+  return (rec && layerById(editor, rec.getAttribute('data-layer'))) || brickKindLayer(editor, kind) || activeLayerOf(editor);
 }
 /** Does this layer hold laid brick pieces (its height mask is the brick mask)? Read off the drawing, per layer. */
 export function layerHasBrickPieces(editor, layerId) {
@@ -290,7 +290,7 @@ export function addWallAreaStroke(editor, stroke, settings, areaId = null) {
   const full = editor._sketchLayer.node.querySelector(`[${BRICK_RECORD_ATTR}="${BRICK_RECORD_KINDS.wall}"]`);
   if (full) full.remove();
   const id = newBrickElementId();
-  const rec = onBricksLayer(editor, activeLayerOf(editor), editor._sketchLayer.group()).attr('display', 'none').node;
+  const rec = onBricksLayer(editor, brickKindLayer(editor, 'wall') || activeLayerOf(editor), editor._sketchLayer.group()).attr('display', 'none').node; // item 64
   rec.setAttribute(BRICK_RECORD_ATTR, WALL_AREA_RECORD);
   rec.setAttribute(BRICK_ELEMENT_ATTR, id);
   rec.setAttribute(BRICK_AREA_SEQ_ATTR, String(Math.max(0, ...areas.map((a) => a.seq)) + 1));
@@ -1297,7 +1297,7 @@ export const brickBrushHandler = {
     const overrides = typeof editor._brickStrokeOverrides === 'function' ? editor._brickStrokeOverrides() : null;
     const settings = editor._brickSettings ? { ...editor._brickSettings, ...(overrides || {}) } : null;
     if (!settings) return;
-    const layer = activeLayerOf(editor); // item 22 slice 3: a new stroke goes on the active layer, like art
+    const layer = brickKindLayer(editor, 'brush') || activeLayerOf(editor); // item 64: a new stroke goes on the Brush layer
     applyBrickLayerTooling(layer, settings);
 
     // F35 item 3: draw the SPINE (real, persistent, plain <line> segments --

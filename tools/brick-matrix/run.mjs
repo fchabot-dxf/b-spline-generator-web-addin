@@ -1091,7 +1091,7 @@ function layersState() {
     const h = (str) => { let x = 5381; for (let i = 0; i < str.length; i++) x = ((x * 33) ^ str.charCodeAt(i)) >>> 0; return x.toString(36); };
     const polys = (sel) => h(all(sel).map((e) => e.getAttribute('points') || e.getAttribute('d') || '').sort().join('|'));
     const art = [...n.children].filter((e) => !L.isBrickToolNode(e) && !e.hasAttribute('data-brick-record'));
-    return JSON.stringify({ active: String(ed._activeLayer), layers: (ed._layers || []).map((l) => ({ id: String(l.id), name: l.name, carve: l.carve !== false, holdsBricks: !!l.holdsBricks })),
+    return JSON.stringify({ active: String(ed._activeLayer), layers: (ed._layers || []).map((l) => ({ id: String(l.id), name: l.name, carve: l.carve !== false, holdsBricks: !!l.holdsBricks, brickKind: l.brickKind || null })),
       wall: ids('[data-brick="wall"]'), wallN: all('[data-brick="wall"]').length, wallPolys: polys('[data-brick="wall"]'),
       frame: ids('[data-brick="frame"]'), frameN: all('[data-brick="frame"]').length,
       record: ids('[data-brick-record="wall-full"]'),
@@ -1109,6 +1109,10 @@ async function layersRead() {
 // Select tool, then right-click it.
 async function rightClickBrick(kind) {
   await click(BRICK_LAYERS.artworkTab, 800); await click(BRICK_LAYERS.selectTool, 500);
+  // F35 item 64: bricks sit on their kind's own layer, usually NOT the active one, and an inactive layer takes no art-tool
+  // pointer events (.inactive-layer) -- so, like a user, activate the brick's layer first (its row in the Layers list)
+  await js(`(()=>{ const n=window.svgEditor._sketchLayer.node.querySelector('[data-brick="${kind}"]'); const id=n&&n.getAttribute('data-layer'); const row=id&&document.querySelector('#editorLayersList [data-layer-id="'+id+'"]'); if(row) row.click(); return !!row; })()`);
+  await sleep(400);
   const at = await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="${kind}"]')];
     for (const n of ns) { const r=n.getBoundingClientRect(); const x=r.left+r.width/2, y=r.top+r.height/2; if (document.elementFromPoint(x,y)===n) return {x,y}; } return null; })())`);
   if (!at) return false;
@@ -1139,11 +1143,14 @@ async function runBrickLayers() {
   const s0 = await layersRead();
   await click('brickTool_wall', 800); await click('brickGenerate', 2000);
   await click('brickTool_frame', 800); await click('brickGenerate', 2000);
-  // 1. a fresh board: Wall + Frame land on the active layer, no layer is added
+  // 1. F35 item 64 (supersedes slice 3's "on the active layer"): a fresh board: Wall + Frame each land on their KIND's
+  // own layer, created on first use ("Wall", "Frame"); the active layer is untouched; no legacy holdsBricks layer
   const s1 = await layersRead();
-  checkRow('layers', 'Fresh board: Wall + Frame on the active layer, no new layer',
-    s1.wallN > 0 && s1.frameN > 0 && s1.wall.length === 1 && s1.wall[0] === s1.active && s1.frame.length === 1 && s1.frame[0] === s1.active && s1.layers.length === s0.layers.length && !s1.layers.some((l) => l.holdsBricks),
-    `active ${s1.active}; wall on ${s1.wall}, frame on ${s1.frame}; layers ${s0.layers.length} -> ${s1.layers.length}${s1.layers.some((l) => l.holdsBricks) ? ', a holdsBricks layer' : ''}`);
+  const kindId = (st, kind) => (st.layers.find((l) => l.brickKind === kind) || {}).id;
+  checkRow('layers', 'Fresh board: Wall + Frame each on their own kind layer (item 64)',
+    s1.wallN > 0 && s1.frameN > 0 && s1.wall.length === 1 && s1.wall[0] === kindId(s1, 'wall') && s1.frame.length === 1 && s1.frame[0] === kindId(s1, 'frame')
+      && s1.layers.length === s0.layers.length + 2 && s1.active === s0.active && !s1.layers.some((l) => l.holdsBricks),
+    `active ${s0.active} -> ${s1.active}; wall on ${s1.wall} (Wall = ${kindId(s1, 'wall')}), frame on ${s1.frame} (Frame = ${kindId(s1, 'frame')}); layers ${s0.layers.length} -> ${s1.layers.length}`);
   // 2. Move to layer -> New layer...: the whole wall + its record move, the frame stays; one undo step brings it back
   let moved = false, detail = '';
   if (await rightClickBrick('wall')) {
@@ -1206,7 +1213,8 @@ async function runBrickLayers() {
     const sb = await layersRead();
     if (o.item === 'editorClear_bricks') {
       const shared = sa.artLayers.some((id) => sa.wall.includes(id));
-      checkRow('layers', 'Clear Bricks: every brick goes, the art on its layer stays', shared && sa.wallN > 0 && sb.wallN === 0 && sb.frameN === 0 && sb.brushN === 0 && sb.artN === sa.artN,
+      // item 64: the wall sits on its own kind layer, so art and bricks no longer share a layer by default (shared is reported)
+      checkRow('layers', 'Clear Bricks: every brick goes, the art on its layer stays', sa.wallN > 0 && sb.wallN === 0 && sb.frameN === 0 && sb.brushN === 0 && sb.artN === sa.artN,
         `art on ${sa.artLayers}, wall on ${sa.wall} (shared ${shared}); bricks ${sa.wallN + sa.frameN} -> ${sb.wallN + sb.frameN + sb.brushN}; art ${sa.artN} -> ${sb.artN}`);
     } else {
       const kept = sa.wall.every((id) => sb.layers.some((l) => l.id === id));
@@ -1215,7 +1223,8 @@ async function runBrickLayers() {
     }
     void f0;
   }
-  // 7. a Brush stroke with Layer 2 active: spine + bricks on Layer 2; moving one brick moves the spine and every piece
+  // 7. F35 item 64: a Brush stroke with Layer 2 active goes on the "Brush" kind layer (was: the active Layer 2), spine and
+  // bricks; moving one brick moves the spine and every piece
   await reloadWithStorage({});
   await openEditorTab('editorTabBrick');
   await click(B.addLayer, 900);
@@ -1224,9 +1233,10 @@ async function runBrickLayers() {
   await click('brickTool_brush', 900);
   await drag(B.stroke); await sleep(1500);
   const s7 = await layersRead();
-  checkRow('layers', 'A Brush stroke goes on the active layer (Layer 2), spine and bricks',
-    s7.brushN > 0 && s7.brush.length === 1 && s7.brush[0] === layer2 && s7.spine.length === 1 && s7.spine[0] === layer2 && s7a.layers.length >= 2,
-    `active ${layer2} of ${s7a.layers.length} layers; bricks (${s7.brushN}) on ${s7.brush}, spine on ${s7.spine}`);
+  const brushId = (s7.layers.find((l) => l.brickKind === 'brush') || {}).id;
+  checkRow('layers', 'A Brush stroke goes on the Brush kind layer (item 64), spine and bricks',
+    s7.brushN > 0 && !!brushId && brushId !== layer2 && s7.brush.length === 1 && s7.brush[0] === brushId && s7.spine.length === 1 && s7.spine[0] === brushId && s7a.layers.length >= 2,
+    `active ${layer2} of ${s7a.layers.length} layers; Brush layer ${brushId}; bricks (${s7.brushN}) on ${s7.brush}, spine on ${s7.spine}`);
   const layer1 = s7a.layers.find((l) => l.id !== layer2);
   let m7 = 'no brush piece under the pointer';
   if (layer1 && await rightClickBrick('brush')) { const a = await menuRow(B.menuMove); await sleep(400); const b = await menuRow(layer1.name); await sleep(1500); m7 = `menu ${a}/${b}`; }
@@ -1253,9 +1263,11 @@ async function runBrickLayers() {
   const on = await jsJSON(`JSON.stringify([...new Set([...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].map((n)=>n.getAttribute('data-layer')))])`);
   await openEditorTab(B.artworkTab);
   const home = await js(`!document.getElementById(${JSON.stringify(T.slot)}).contains(document.getElementById(${JSON.stringify(T.list)})) && !!document.getElementById(${JSON.stringify(T.list)}).offsetParent`);
-  checkRow('layers', 'Brick tab: the layers show with a tool, a picked row takes the lay',
-    vis.hosted && vis.shown && vis.rows.length >= 2 && !!pick && on.length === 1 && on[0] === pick && home,
-    `hosted ${vis.hosted}, shown ${vis.shown}, rows ${vis.rows.length}; picked ${pick}: wall on ${on}; Artwork has the list back ${home}`);
+  // item 64: a picked row is the ACTIVE layer, but a NEW wall goes on its own "Wall" kind layer, not the picked one
+  const wallKind = (await layersRead()).layers.find((l) => l.brickKind === 'wall');
+  checkRow('layers', 'Brick tab: the layers show with a tool; a new wall goes on the Wall layer, not the picked row',
+    vis.hosted && vis.shown && vis.rows.length >= 2 && !!pick && !!wallKind && on.length === 1 && on[0] === wallKind.id && wallKind.id !== pick && home,
+    `hosted ${vis.hosted}, shown ${vis.shown}, rows ${vis.rows.length}; picked ${pick}: wall on ${on} (Wall = ${wallKind ? wallKind.id : 'none'}); Artwork has the list back ${home}`);
   if (await editorOpen()) await apply();
 }
 
@@ -1335,7 +1347,9 @@ async function runWallAreas() {
   // 5. Select on an area brings its own settings back
   await click('brickTool_wall', 700); await click(A.selectTool, 700);
   const at = await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].filter((e)=>e.getAttribute('data-brick-owner')===${JSON.stringify(a)});
-    for (const n of ns) { const q=n.getBoundingClientRect(); const x=q.left+q.width/2, y=q.top+q.height/2; if (document.elementFromPoint(x,y)===n) return {x,y}; } return null; })())`);
+    // item 64: the area's bricks sit on the Wall layer, usually not the active one, so they take no pointer events
+    // (.inactive-layer): the Brick tab's Select hit-tests the board point by geometry, so the brick need not be the target
+    for (const n of ns) { const q=n.getBoundingClientRect(); const x=q.left+q.width/2, y=q.top+q.height/2; const top=document.elementFromPoint(x,y); if (top && (top===n || top.closest('svg'))) return {x,y}; } return null; })())`);
   if (at) {
     await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
     await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 });
