@@ -23765,3 +23765,4 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   AGAIN (0.3 s each) although generated alone with their Pockets valid; pass 3 made them (2.1 / 3.2 s) and redid the
   stale deloge. So MAX_GENERATION_PASSES = 3 had no spare left in run 3 -- flagged to the advisor (raise to 4, or look
   for what makes a generation 0.3 s-empty; it is not only the first one).
+- MAX_GENERATION_PASSES 3 -> 4 (advisor, after item 96 run 3 used the third pass): one spare beyond the measured 3; the declaration test now asks >= 4 (fails at 3, pycache cleared). CAM-builder 46/46.

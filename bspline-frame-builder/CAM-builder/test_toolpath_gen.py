@@ -146,5 +146,6 @@ def test_passes_are_bounded_by_the_declaration():
     assert cam.calls.count('B-spline Top/Morphed Spiral1') == tg.MAX_GENERATION_PASSES - 1
 
 
-def test_the_declaration_allows_a_later_pass():
-    assert tg.MAX_GENERATION_PASSES >= 2
+def test_the_declaration_keeps_a_spare_pass_beyond_the_measured_three():
+    # item 96 run 3 needed pass 3 (both Morphed Spirals came back empty again in pass 2); keep one spare
+    assert tg.MAX_GENERATION_PASSES >= 4

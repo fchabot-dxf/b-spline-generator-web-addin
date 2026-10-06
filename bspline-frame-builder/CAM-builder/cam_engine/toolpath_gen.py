@@ -17,9 +17,9 @@ in setup and op order, each op that has no valid toolpath when it is reached (so
 regeneration -- the stock chain -- is redone, and a valid one is not), each awaited before the next.
 """
 
-# Declared: how many passes, at most, one TPGen run makes (1 = the old single per-setup pass; 2 is what the live
-# runs needed; one spare).
-MAX_GENERATION_PASSES = 3
+# Declared: how many passes, at most, one TPGen run makes (1 = the old single per-setup pass). Live: 2 in item 95's
+# runs, 3 in one of item 96's three (both Morphed Spirals empty again in pass 2); one spare beyond that.
+MAX_GENERATION_PASSES = 4
 # Declared: how long one setup (or one op, in a later pass) may generate before the pass moves on.
 PER_SETUP_TIMEOUT_S = 900.0
 
