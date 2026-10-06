@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME, GROUT_JOINTS, QUICK_FRAME_LAYS } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'persistence'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'persistence', 'grout'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -455,13 +455,14 @@ try {
   }
   if (!arg('group') || arg('group') === 'layout') await runLayout();
   if (!arg('group') || arg('group') === 'clear') await runClear();
-  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); }
+  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); await runQuickFrameLays(); }
   if (!arg('group') || arg('group') === 'select') await runSelect();
   if (!arg('group') || arg('group') === 'migration') await runMigration();
   if (!arg('group') || arg('group') === 'frame-ui') await runFrameUi();
   if (!arg('group') || arg('group') === 'password') await runPassword();
   if (!arg('group') || arg('group') === 'layers') await runBrickLayers();
   if (!arg('group') || arg('group') === 'areas') await runWallAreas();
+  if (!arg('group') || arg('group') === 'grout') await runGroutJoints();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') { await runPersistence(); await runPatternParamPersist(); }
 } catch (e) {
@@ -810,6 +811,29 @@ async function runLayWarnings() {
   if (await editorOpen()) { await apply(); await heightsSettled(null); }
 }
 
+// F35 item 63: the sidebar Frame bands pick lays a frame that is not on the board yet (QUICK_FRAME_LAYS)
+async function runQuickFrameLays() {
+  const Q = QUICK_FRAME_LAYS;
+  const setTemplate = (t) => js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(t)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  const frames = () => js(`window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]').length`);
+  await reloadWithStorage({}); // the defaults: a Soldier preset that is not laid until the Frame tool lays it
+  await openEditorTab('editorTabBrick'); await setTemplate(Q.template);
+  await click('brickTool_wall', 800); await click('brickGenerate', 2500);
+  await apply(); const z0 = await heightsSettled(null);
+  const f0 = await frames();
+  // a bug fix: an older build has the pick (it did nothing), so it runs and FAILS there -- only a build without it skips
+  if (!(await exists(Q.pick))) { checkRow('lay', 'Sidebar Frame bands lays the frame (no Frame on the board)', false, '', Q.introducedBy); return; }
+  await click(Q.pick, 2500); const z1 = await heightsSettled(z0);
+  const f1 = await frames();
+  checkRow('lay', 'Sidebar Frame bands lays the frame (no Frame on the board)', f0 === 0 && f1 > 0 && z1 !== z0, `frame bricks ${f0} -> ${f1}, 3D ${z1 !== z0 ? 'changed' : 'UNCHANGED'}`);
+  // template None = the board rectangle (item 66): the row stays live, a pick lays the bands along the board edge
+  await openEditorTab('editorTabBrick'); await setTemplate(''); await apply(); const z2 = await heightsSettled(z1);
+  const g = await jsJSON(`JSON.stringify((()=>{ const b=[...document.querySelectorAll('#${Q.row} button')]; return { n: b.length, off: b.filter((x)=>x.disabled).length }; })())`);
+  await click(Q.noTemplatePick, 2500); const z3 = await heightsSettled(z2);
+  const f3 = await frames();
+  checkRow('lay', 'Sidebar Frame bands under template None lays along the board edge', g.n > 0 && g.off === 0 && f3 > 0 && z3 !== z2, `${g.off}/${g.n} greyed, frame bricks ${f3}, 3D ${z3 !== z2 ? 'changed' : 'UNCHANGED'}`);
+}
+
 async function runBandsNote() {
   const W = BANDS_NOTE;
   await reloadWithStorage({}); // the defaults (1.25 in)
@@ -1044,6 +1068,21 @@ async function runFrameUi() {
   await setValue('brickAccentLevel_band1', -0.0625, 'change'); await sleep(1500);
   await apply(); const Z2 = await heightsSettled(Z1);
   checkRow('frame-ui', 'Accents: band 1 level -1/16 moves the relief', Z2 !== Z1, `3D ${Z2 !== Z1 ? 'changed' : 'UNCHANGED'}`);
+  // F35 item 58 follow-up: a new preset drops the band accents (stored by band number; item 33's corner precedent)
+  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await click('brickFramePreset_soldier_stretcher', 2000);
+  const dropped = await jsJSON(`(async()=>{ const { P } = await import('./core/state.js'); const n=window.svgEditor._sketchLayer.node;
+    return JSON.stringify({ list: P.brickSettings.frameBandAccents, outlined: n.querySelectorAll('[data-brick="frame"][data-brick-accent="1"]').length, frames: n.querySelectorAll('[data-brick="frame"]').length }); })()`);
+  checkRow('frame-ui', 'Accents: a new frame preset drops the band accents', Array.isArray(dropped.list) && dropped.list.length === 0 && dropped.outlined === 0 && dropped.frames > 0,
+    `band accents ${JSON.stringify(dropped.list)}, ${dropped.outlined}/${dropped.frames} frame bricks outlined`);
+  // F35 item 57 (Fred: "always puts them at the bottom, never higher"): a Wall preset reaches the wall's top third
+  await click('brickTool_wall', 900); await click('brickAccent_courseBand', 1500);
+  const reach = await jsJSON(`JSON.stringify((()=>{ const w=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')];
+    const cy=(n)=>{ const q=n.getAttribute('points').trim().split(/\\s+/).map((s)=>Number(s.split(',')[1])); return q.reduce((a,b)=>a+b,0)/q.length; };
+    const ys=w.map(cy), top=Math.min(...ys), btm=Math.max(...ys); const hi=w.filter((n)=>n.getAttribute('data-brick-accent')==='1' && (btm-cy(n))/(btm-top) > 2/3);
+    return { wall: w.length, high: hi.length }; })())`);
+  checkRow('frame-ui', 'Accents: Wall Course bands reach the top third of the wall', reach.wall > 0 && reach.high > 0, `${reach.high} outlined wall bricks in the top third (of ${reach.wall})`);
+  await click('brickAccent_none', 1000);
   // 6. the brush's own accent outlines its bricks
   await openEditorTab('editorTabBrick'); await click('brickTool_brush', 900);
   if (await exists('brickAccent_brush_checker')) {
@@ -1338,6 +1377,34 @@ async function overlapPairs(a, b, tol) {
   let pairs = 0;
   for (const p of a) for (const q of b) if (Math.abs(G.signedArea(G.polygonIntersection(p, q))) > tol) pairs++;
   return pairs;
+}
+
+// F35 item 62: joint height vs brick height per grout profile (GROUT_JOINTS), median over the wall's interior
+function jointProbe() { return `(async()=>{ const m=await import('./core/state.js'); const { pointInPolygon } = await import('./core/bricks/index.js');
+  const r=m.lastResult, h=r.heights, base=r.baseHeights, nx=r.nx, nz=r.nz, W=m.P.widthIn, H=m.P.heightIn;
+  const bb=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick="wall"]')].map((n)=>{
+    const p=n.getAttribute('points').trim().split(/\\s+/).map((s)=>{ const [x,y]=s.split(',').map(Number); return {x,y}; });
+    return { p, x0:Math.min(...p.map((q)=>q.x)), x1:Math.max(...p.map((q)=>q.x)), y0:Math.min(...p.map((q)=>q.y)), y1:Math.max(...p.map((q)=>q.y)) }; });
+  const inB=(x,y)=>bb.some((b)=>x>=b.x0&&x<=b.x1&&y>=b.y0&&y<=b.y1&&pointInPolygon(x,y,b.p)); const R=0.04;
+  const brick=[], joint=[];
+  for (let j=0;j<nz;j++) for (let i=0;i<nx;i++){ const k=j*nx+i, x=i/(nx-1)*W, y=H*(1-j/(nz-1)), d=h[k]-(base?base[k]:0);
+    if (inB(x,y)) brick.push(d); else if ((inB(x+R,y)&&inB(x-R,y))||(inB(x,y+R)&&inB(x,y-R))) joint.push(d); }
+  const med=(a)=>{ const s=[...a].sort((u,v)=>u-v); return s.length ? s[Math.floor((s.length-1)/2)] : null; };
+  return JSON.stringify({ brick: med(brick), joint: med(joint), joints: joint.length }); })()`; }
+async function runGroutJoints() {
+  const G = GROUT_JOINTS;
+  await openEditorTab('editorTabBrick');
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(G.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  await click(G.wallTool, 800); await click('brickGenerate', 3000);
+  let Z = null;
+  for (const pr of G.profiles) {
+    if (!(await exists(pr.button))) { checkRow('grout', `Grout: ${pr.name}`, false, 'control missing', G.introducedBy); continue; }
+    if (!(await editorOpen())) await openEditorTab('editorTabBrick');
+    await click(pr.button, 1200); await apply(); Z = await heightsSettled(Z);
+    const m = await jsJSON(jointProbe());
+    const ok = m.joints > 0 && ('jointOverBrickAtLeast' in pr ? m.joint >= pr.jointOverBrickAtLeast * m.brick : m.joint < pr.jointBelow);
+    checkRow('grout', `Grout: ${pr.name}`, ok, `joint median ${m.joint?.toFixed(4)} in vs brick median ${m.brick?.toFixed(4)} in over ${m.joints} joint cells`);
+  }
 }
 
 async function runWallAreas() {

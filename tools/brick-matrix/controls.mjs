@@ -294,6 +294,26 @@ export const LAY_WARNING = {
 
 // ---- bands reduced to fit (T86 item 28 engine `bandsReduced`; F35 item 35 note, seat 37 fb-app 21a1ffd): on T1 7x9
 // at the 1.25 in default, 3-band keeps 1 band -- the wall stays, the note says so, the dropped bands' rows are disabled.
+// ---- F35 item 62 (seat D): the JOINT HEIGHT under each grout profile, from the 3D heights the page exposes (final heights
+// minus the base terrain), wall interior only. Flush fills a joint to the bricks' face; Recessed sinks it below the ground.
+// Measured on T1 7x9 at the fix (a972287): Flush joint median 0.101 vs brick median 0.113 in; before it, 0.000.
+export const GROUT_JOINTS = {
+  template: 'template_1', wallTool: 'brickTool_wall',
+  profiles: [
+    { button: 'brickBtnGroutFlush', name: 'Flush fills the joints to the brick face', jointOverBrickAtLeast: 0.75 },
+    { button: 'brickBtnGroutRecessed', name: 'Recessed sinks the joints below the ground', jointBelow: 0 },
+  ],
+  introducedBy: 'a972287',
+};
+
+// ---- F35 item 63 (seat D): the MAIN sidebar's Frame bands pick lays the frame when none is on the board (measured on
+// T18 before the fix: wall laid, quick Soldier -> 0 frame bricks, 3D unchanged); under template None (item 66: the board
+// rectangle) the row stays live and the pick lays the bands along the board edge.
+export const QUICK_FRAME_LAYS = {
+  template: 'template_18', pick: 'brickQuick_frameBands_single_soldier', row: 'brickQuickRow_frameBands',
+  noTemplatePick: 'brickQuick_frameBands_double_course', introducedBy: 'item 63',
+};
+
 export const BANDS_NOTE = {
   template: 'template_1', tooDeep: 'brickFramePreset_three_band', fits: 'brickFramePreset_single_soldier',
   note: 'brickFrameBandsNote', text: 'Bands reduced to fit the board: 1 of 3 laid.', dropped: '[data-band-dropped="1"]',

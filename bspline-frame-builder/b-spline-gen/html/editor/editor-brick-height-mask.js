@@ -35,6 +35,15 @@ import { surfaceStyleById, styledSet, styledDetail, styleTopJitter, styleAtWear 
 const yieldToMain = () => new Promise((resolve) => setTimeout(resolve, 0));
 const YIELD_EVERY_N_ROWS = 32;
 
+/** A brick's FACE: the plateau its shoulder rises to (heightProfile: reliefIn x (1 - surfaceShare)) + its own
+ *  offset (Level, accent, style jitter) -- no crown dome, photo detail or chip, which ride on the face. Clamped
+ *  like sampleHeight. Flush grout fills a joint up to here (item 62). */
+export function brickFaceHeight(brick, set) {
+  const share = Math.max(0, Math.min(1, (set.heightProfile && set.heightProfile.surfaceShare) || 0));
+  const face = (set.reliefIn ?? 0.125) * (1 - share) + (brick.heightOffset || 0);
+  return Math.max(0, Math.min(set.reliefMaxIn ?? 0.25, face));
+}
+
 function parsePoints(pointsAttr) {
   return (pointsAttr || '').trim().split(/\s+/).filter(Boolean).map((pair) => {
     const [x, y] = pair.split(',').map(Number);
@@ -100,11 +109,14 @@ function collectLiveBrickGroups(editor, layer, levels = {}) {
  *  the set's own look) restyles every brick: heightProfile overrides on the set, pit contrast on the
  *  photo detail, an extra seeded per-brick top offset, and a deeper joint recess (jointDepthScale).
  *
- *  JOINT RECESS, the ONE implementation (turn 181): `opts.groutProfile === 'recessed'` recesses joints
- *  `opts.groutDepthIn` (x the style's jointDepthScale) below the ground; 'flush' (or absent) = none.
+ *  JOINTS, the ONE implementation (turn 181): `opts.groutProfile === 'recessed'` recesses joints
+ *  `opts.groutDepthIn` (x the style's jointDepthScale) below the ground. F35 item 57's sibling, item 62
+ *  (Fred: Flush still showed every brick as a separate ridge, measured joints at the ground 0.11 in below the
+ *  median brick top): 'flush' (or absent) FILLS each joint up to the bricks' FACE (brickFaceHeight), the
+ *  LOWEST face among the bricks it touches, so a raised accent brick still stands proud of the mortar.
  *  A joint = a non-brick point within one grout width (`opts.groutWidthIn`) of a brick, probed at
  *  the 4 axis offsets (any joint angle has one axis reaching across it). Elsewhere (no brick nearby)
- *  stays untouched, so the board outside the brickwork never sinks. */
+ *  stays untouched, so the board outside the brickwork never sinks or rises. */
 export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, heightIn, opts = {}) {
   const body = new Float32Array(nx * nz);
   const fillet = new Float32Array(nx * nz);
@@ -160,9 +172,21 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
 
   const jointDepthIn = opts.groutProfile === 'recessed' && opts.groutDepthIn > 0
     ? opts.groutDepthIn * (style.jointDepthScale || 1) : 0;
+  const flush = opts.groutProfile !== 'recessed';
   const reach = opts.groutWidthIn > 0 ? opts.groutWidthIn : ((built[0].set.grout && built[0].set.grout.widthIn) || 0.034);
   const inAnyBrick = (px, py) => built.some((g) => g.index.query(px, py).some((c) => pointInPolygon(px, py, c.polygon)));
   const isJoint = (x, y) => inAnyBrick(x + reach, y) || inAnyBrick(x - reach, y) || inAnyBrick(x, y + reach) || inAnyBrick(x, y - reach);
+  // Flush: the lowest face (as a body value, normalised like the bricks' own) among the bricks the 4 probes reach
+  const flushBody = (x, y) => {
+    let low = Infinity;
+    for (const [px, py] of [[x + reach, y], [x - reach, y], [x, y + reach], [x, y - reach]]) {
+      for (const g of built) {
+        const b = g.index.query(px, py).find((c) => pointInPolygon(px, py, c.polygon));
+        if (b) low = Math.min(low, brickFaceHeight(b, g.set) / (g.set.reliefIn || 1));
+      }
+    }
+    return low;
+  };
   // body is normalised by the depth the compositor multiplies it by (layer.depth), so the recess is
   // jointDepthIn DOWN for Raised and Carved alike
   const depthNorm = Number.isFinite(layer.depth) && Math.abs(layer.depth) > 1e-6 ? layer.depth : (built[0].set.reliefIn || 0.125);
@@ -195,6 +219,9 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
       if (jointDepthIn > 0 && !isStamped[k] && isJoint(x, y)) {
         body[k] = -jointDepthIn / depthNorm;
         isStamped[k] = 1;
+      } else if (flush && !isStamped[k]) {
+        const face = flushBody(x, y);
+        if (face > 0 && face < Infinity) { body[k] = face; isStamped[k] = 1; }
       }
     }
   }
