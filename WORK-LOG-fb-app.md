@@ -14631,3 +14631,26 @@ WallPattern = {
 - **Matrix (60ffb6a):** 6 wall rows: open; start from Checker; unit 1/2; base Custom (3D unchecked by construction); offset; back to Stretcher. `run.mjs --group wall`: 47 rows, 0 FAIL, 0 page errors.
   - Measured first: a tapped cell (0,1) hits no brick on the matrix baseline (a wall inside a Soldier frame, T1's waist), because unit-1 columns are absolute. That is why the row starts from Checker instead.
 - **Not done / for later:** join and split on a BUILT-IN base (they act on Custom only; a built-in -> tile conversion is ambiguous because built-in stagger counts from the top); a unit change on Custom keeps the CELL counts (the bricks rescale with the unit).
+
+## seat D (bb) turn 1-3: F35 items 57 + 58 (branch brick-3d-bugs)
+- **Setup:** worktree -wt\bb, branch brick-3d-bugs off origin/main 7633a5e, merged origin/main 0443c48; node_modules = a junction.
+- **57, measured first** (headless, T18 7x9, 0.75 in stretcher, soldier frame):
+  - The wall spans y 1.07-7.89 in. Every one of the 10 presets raised bricks only in y 5.79-7.89, i.e. the wall's bottom third.
+  - Cause: every preset DECLARED `zone: LOWER_THIRD` (the item-15 spec). It was not the tile repeat or COURSE_ROW_ORIGIN.
+  - The picker icons are drawn at zone [0,1], so the icon promised the motif over the whole wall.
+  - On T18's narrow lower part the third holds 3-8 rows, and zigzag / pyramid light only 1-3 of them.
+- **57, fix (advisor Q1: whole wall, no Zone control):** `ACCENT_ZONES = { WHOLE, LOWER_THIRD }` declared and exported. The 10 presets declare WHOLE; LOWER_THIRD stays named.
+  - Pyramid is still bottom-anchored by its own motif rule (`c < height`), as its icon shows.
+- **58, measured: NOT A BUG.** Fred's 19.png shows Band 1's own Accent row at Checker, level 0.015625 (the default stepped down 3 times).
+  - Live, T18: a wall Checker changed 1010 height cells, all of them wall cells, 0 frame cells. 0 frame bricks were outlined (soldier and 3-band).
+  - Only user clicks write frameBandAccents. Probed: wall accent, frame presets, the Fieldstone round trip, Apply, sidebar quick picks, reopen. It stayed [] throughout.
+- **58 follow-up (advisor, item 33's precedent):** a Frame band PRESET change drops the band accents, which are stored by band number.
+  - `FRAME_PRESET_DROPS = { frameCorner, frameBandAccents }` is declared next to setFrameBandPreset, and the corner reset now reads it too. A band's own pattern change keeps its accent.
+  - An armed band Click is disarmed by a preset change.
+- **Tests:**
+  - brick-accents: each preset lies inside its declared zone; 9 new "also raises bricks in the TOP third" tests. These fail 9/9 against the pre-change brick-accents.js (with only the ACCENT_ZONES export shimmed so the import resolves).
+  - The old "all inside the lower third" guard now reads the preset's zone. The wall-follows-the-wall test passes LOWER_THIRD via ctx.zone.
+  - frame-corners-panel: a band accent survives a pattern change and is dropped by a new preset. Fails 1/1 against the pre-change brick-panel.js.
+- **Matrix, frame-ui group:** +2 rows, "a new frame preset drops the band accents" (0/123 outlined, list []) and "Wall Course bands reach the top third of the wall" (12 of 149). Result: 16 rows, 0 FAIL, 0 page errors. The new rows were NOT run against the old tree.
+- **Fast tier:** 92 brick/accent/frame/band files. 7 failed under load; all 6 files pass alone, 49/49.
+- **Shots** (shots/seatD): f35_57_{before,after}_{2d,3d}_{1366,900}.png. Before: Course bands on the bottom 3 courses only. After: bands up the whole wall.

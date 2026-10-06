@@ -1003,6 +1003,21 @@ async function runFrameUi() {
   await setValue('brickAccentLevel_band1', -0.0625, 'change'); await sleep(1500);
   await apply(); const Z2 = await heightsSettled(Z1);
   checkRow('frame-ui', 'Accents: band 1 level -1/16 moves the relief', Z2 !== Z1, `3D ${Z2 !== Z1 ? 'changed' : 'UNCHANGED'}`);
+  // F35 item 58 follow-up: a new preset drops the band accents (stored by band number; item 33's corner precedent)
+  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await click('brickFramePreset_soldier_stretcher', 2000);
+  const dropped = await jsJSON(`(async()=>{ const { P } = await import('./core/state.js'); const n=window.svgEditor._sketchLayer.node;
+    return JSON.stringify({ list: P.brickSettings.frameBandAccents, outlined: n.querySelectorAll('[data-brick="frame"][data-brick-accent="1"]').length, frames: n.querySelectorAll('[data-brick="frame"]').length }); })()`);
+  checkRow('frame-ui', 'Accents: a new frame preset drops the band accents', Array.isArray(dropped.list) && dropped.list.length === 0 && dropped.outlined === 0 && dropped.frames > 0,
+    `band accents ${JSON.stringify(dropped.list)}, ${dropped.outlined}/${dropped.frames} frame bricks outlined`);
+  // F35 item 57 (Fred: "always puts them at the bottom, never higher"): a Wall preset reaches the wall's top third
+  await click('brickTool_wall', 900); await click('brickAccent_courseBand', 1500);
+  const reach = await jsJSON(`JSON.stringify((()=>{ const w=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')];
+    const cy=(n)=>{ const q=n.getAttribute('points').trim().split(/\\s+/).map((s)=>Number(s.split(',')[1])); return q.reduce((a,b)=>a+b,0)/q.length; };
+    const ys=w.map(cy), top=Math.min(...ys), btm=Math.max(...ys); const hi=w.filter((n)=>n.getAttribute('data-brick-accent')==='1' && (btm-cy(n))/(btm-top) > 2/3);
+    return { wall: w.length, high: hi.length }; })())`);
+  checkRow('frame-ui', 'Accents: Wall Course bands reach the top third of the wall', reach.wall > 0 && reach.high > 0, `${reach.high} outlined wall bricks in the top third (of ${reach.wall})`);
+  await click('brickAccent_none', 1000);
   // 6. the brush's own accent outlines its bricks
   await openEditorTab('editorTabBrick'); await click('brickTool_brush', 900);
   if (await exists('brickAccent_brush_checker')) {

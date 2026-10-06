@@ -1685,10 +1685,17 @@ export function setFrameRock(rock, commit = 'generate') {
   commitBrickSetting(commit);
 }
 
+/** What a new Frame band PRESET drops, declared once (Fred, item 33: "a pick is dropped on a preset change"):
+ *  the corner pick (the preset starts on its OWN corner) and, F35 item 58 follow-up, the per-band accents (and
+ *  with them their levels) -- they are stored by band NUMBER, so an old pick would land on the new preset's band.
+ *  A pattern change on one band keeps that band's accent (setFrameBandPattern does not read this). */
+export const FRAME_PRESET_DROPS = Object.freeze({ frameCorner: () => null, frameBandAccents: () => [] });
+
 export function setFrameBandPreset(presetId, commit = 'generate') {
   const wasRock = isRockFrame(P.brickSettings);
   P.brickSettings.frameBandPreset = presetId;
-  P.brickSettings.frameCorner = null; // item 33: a new preset starts on its OWN corner (the picker overrides)
+  for (const [key, fresh] of Object.entries(FRAME_PRESET_DROPS)) P.brickSettings[key] = fresh();
+  if (_accentClickArmed && _accentClickTarget.kind === 'frameBand') _disarmAccentClick(); // its band's pick is gone
   // a rock frame stays rock with another band count: every band of the new preset fieldstone
   if (wasRock) P.brickSettings.frameBandPatterns = (FRAME_PRESETS[presetId] || []).map(() => 'fieldstone');
   syncFramePresetButtons();

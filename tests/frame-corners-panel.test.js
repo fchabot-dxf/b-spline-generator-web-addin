@@ -119,6 +119,22 @@ describe('item 33: the Corners row in the Frame section', () => {
     expect(P.brickSettings.frameCorner).toBeNull();
     expect(activeCorner()).toEqual(['brickFrameCorner_mitre']);
   });
+  // F35 item 58 follow-up (advisor, item 33's precedent): band accents are stored by band NUMBER, so a new preset
+  // drops them (levels included); a pattern change on one band keeps that band's accent
+  it('a band accent survives its band’s pattern change and is dropped by a new preset', () => {
+    P.brickSettings.frameBandAccents = [];
+    setup('frame');
+    $('brickAccent_band0_checker').click();
+    $('brickAccentLevel_band0').value = '0.015625';
+    $('brickAccentLevel_band0').dispatchEvent(new Event('change'));
+    expect(P.brickSettings.frameBandAccents[0]).toMatchObject({ preset: 'checker', levelIn: 0.015625 });
+    $('brickFrameBandPattern_0_header').click();
+    expect(P.brickSettings.frameBandAccents[0]).toMatchObject({ preset: 'checker', levelIn: 0.015625 });
+    $('brickFramePreset_three_band').click();
+    expect(P.brickSettings.frameBandAccents).toEqual([]);
+    expect($('brickAccent_band0_none').classList.contains('active')).toBe(true);
+    expect($('brickAccentLevel_band0')).toBeNull();
+  });
   it('hidden for no bands (None) and for a rock frame', () => {
     setup('frame');
     $('brickFramePreset_none').click();
