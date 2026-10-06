@@ -22669,3 +22669,90 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
   To close the gap to "~2 min": one timestamped log line per received chunk in the add-in would measure the real
   palette transfer (detection-only; your call).
 - Capture tool: the stub records performance.now() with each send; the run prints the Send timing breakdown.
+
+## H23 item 85 -- Send transfer timing (code), the D6 visibility test, and re-BUILD / re-Send measured (seat A / 77, 2026-10-05)
+- Branch send-timing-85 off origin/main e5754a7 + my unmerged brick-e2e-83 (tooling + WORK-LOG).
+- (1) b-spline-gen: _TransferTimer, detection only -- '[XFER] start epoch_ms=...', one '[XFER] chunk i: N bytes at
+  +T ms' per chunk, '[XFER] transfer N chunks, X MB in Y s', '[XFER] Send handled at +Z s (epoch_ms=...)'. Replaces
+  the old 'Received chunk i (buffer size)' line (nothing parsed it). The live palette transfer is measured on the next
+  real Send after the advisor deploys main (I cannot drive the palette's JS: no eval channel, no on-screen clicks).
+- D6 test: the Send's 'Stamped wins' block moved UNCHANGED into _apply_send_visibility(consolidated) (module level).
+  test_send_visibility.py 4/4: Stamped present -> Clean occurrence off / Stamped on, panels on + surfaces off; no
+  Stamped -> Clean on; a Stamped without a panel body does not win; the transfer timer through the real notify()
+  path with fixed clocks (exact lines). A 'Clean wins' mutant fails 2/4; restored byte-identical; b-spline-gen 155/155.
+- (2) MEASURED, e2e board, deployed afdc4c0, scratch doc:
+    BUILD #1 76 s; BUILD #2 on the UNCHANGED board ~47 s: cleanup (4 setups + 3 MMs) + WCS < 1 | MM Stock 4 |
+      MM B-spline 6 | MM Frame 5 | Stock setup 1 | B-spline Back 26 (inside cam.setups.add on the dense Stamped body,
+      again) | Top 2 | Frame 2. Nothing is reused today.
+    PROBE A, in place on the existing setups (deployed _bind_wcs_point / _apply_stock_box): Back WCS 0.31 s + box
+      0.92 s (9/9 writes), Top WCS 0.11 s = 1.3 s total; origins exact ((-3.75, -4.75, 0.0289) / (3.75, -4.75,
+      2.0289)).
+    PROBE B, a RE-SEND of the same board into the same doc with the CAM build in place: all 3 MMs and 4 setups stay
+      VALID, every setup's model is live ('panel' x2, the 4 frame bars), origins unchanged, and the B-spline MM shows
+      the NEW Stamped panel (its snapshot follows the design and still excludes Clean). So keeping MMs/setups across
+      Sends works structurally -- BUT that re-Send took 220 s instead of 32 s (b_spline_gen_log): Clean STEP 5 (4),
+      Stamped STEP 36 (7), post-import/visibility 13 (<1), art + bricks 44 (~4), FRAME 121 (17). Every design change
+      during the Send re-derives the 3 MMs and their setups. This is very likely Fred's "~2 min Send": he re-Sends
+      into a document that already holds his CAM build.
+- Proposals (numbers only, nothing changed):
+  P2 (re-BUILD): keep the MMs + setups and update stock/WCS/heights in place -> ~1.3 s instead of ~47 s; the
+     setups follow a re-Sent board by themselves (probe B). The template ops and toolpaths would also be kept, so
+     APPLY would only regenerate (Fusion marks them out of date).
+  P3 (NEW, the big one): the CAM build makes every later Send ~7x slower (32 s -> 220 s). Options to measure next:
+     (a) the Send suspends CAM re-derivation while it imports (if Fusion offers a switch -- unverified), (b) the Send
+     deletes the CAM build first and BUILD recreates it (Send 32 s + BUILD ~50 s = ~80 s < 220 s), (c) Fred Sends
+     into a design without CAM and keeps CAM in a separate document (manual workflow change).
+- Hygiene: scratch doc closed by handle; holder none after each batch.
+
+## H23 item 85 P3(a) -- what makes a Send slow in a document with CAM (seat A / 77, 2026-10-05)
+- Deployed main 0443c48 (the [XFER] timer is live; no Fred Send yet -- his next real Send carries it; my own Sends in
+  this entry are direct _handle_generate replays, NOT palette Sends, so they log no [XFER] lines). Before each Send
+  I recorded the b_spline_gen_log offset; every timing below is from the add-in's own log.
+- API: there is NO switch to suspend CAM re-derivation. Members matching defer/compute/suspend/update/regen/lock/
+  state on CAM, ManufacturingModel(s), Setup, Design, Timeline, Component, Application, Document: only isValid /
+  isActive / checkValidity, Design.computeAll, Document.updateAllReferences. The one deferral is
+  Sketch.isComputeDeferred.
+- Per-edit cost, same doc, without -> with the CAM build: sketch + 50 lines 0.74 -> 1.48 s; the same with
+  isComputeDeferred 0.28 -> 1.04 s; 20 lines + Horizontal 0.50 -> 1.13 s; construction plane 0.03 -> 0.06 s; delete
+  0.15 -> 0.23 s. A body edit (sketch rect + new-body extrude, then delete) WITH CAM: 0.31 s / 0.16 s, and Fusion idle
+  right after (no deferred work). So isolated edits only ~2x -- the cost is in what a Send does to the bodies the CAM
+  build derives from.
+- Re-Send of the e2e board (same payload), by document state (Send total; the frame part in brackets):
+    never had CAM                                       38 s  (frame 20)   control
+    an empty CAM product only                           47 s  (frame 27)
+    + the BUILD's __cam_wcs planes / sketches only      50 s  (frame 30)
+    had CAM, MMs + setups deleted before the Send      114 s  (frame 85)   one observation
+    CAM MMs kept, setups deleted                       225 s  (frame 118, art + bricks 80) -- Fusion busy ~1 more min after
+    full CAM build kept                                220 s  (frame 121, art + bricks 44)
+  The live MANUFACTURING MODELS are the cost (~+180 s per Send on this board); setups add nothing measurable. The
+  CAM-free runs drift up a few seconds per run (38 -> 47 -> 50) -- session / doc history, not CAM. The 114 s after
+  deleting MMs is one observation (it may be the same drift plus derive leftovers); not concluded.
+- P3 options, measured:
+  (a) suspend / defer: no API switch exists; sketch compute deferral cuts sketch time but the frame / art phases are
+      dominated by MM re-derivation of bodies, not by sketch solves. Not a fix.
+  (b) the Send deletes the CAM MMs (+ setups) first, BUILD recreates them: Send ~40-114 s + BUILD ~50 s, vs 220 s
+      today -- but Fred's setups / toolpaths / hand edits go each Send (BUILD's confirm already guards that case).
+  (b') variant, unmeasured: delete only the 3 MMs before the Send and recreate them after it (P2's in-place path),
+      keeping the setups -- only viable if a setup survives its MM being deleted and re-created; not tested.
+  (c) CAM in a separate document: the design doc stays at ~40 s per Send. Workflow change, Fred's call.
+- Hygiene: scratch docs closed by handle (3 this round), holder none after each batch; Fred's Untitled untouched.
+
+## H23 item 85 (b') -- delete only the MMs before a Send, recreate + re-bind after (seat A / 77, 2026-10-05)
+- Scratch doc: e2e Send -> BUILD -> templates + the add-in's own TPGEN (it generated 2/7 ops this time) -> delete
+  ONLY the 3 MMs (1.68 s) -> re-Send -> recreate MMs (deployed mm_builder.build_mm, bspline_set + frame, 11.7 s incl.
+  ensure_wcs_sketches) -> re-bind Back/Top -> add-in TPGEN. State read back at each step (camstate.jsonl).
+- SETUPS SURVIVE THEIR MMs BEING DELETED: all 4 stay valid; Fred's template ops stay; already-generated toolpaths
+  stay but go out of date (operationState 1, hasToolpath True, isToolpathValid False); stock settings stay. LOST:
+  every setup's models (empty) and the WCS point binding (Back/Top origin falls to 0,0,0) -- both lived in the MM.
+- RE-BIND WORKS: setup.models = ObjectCollection(new MM body) accepted (Back 0.52 s, Top 0.19 s, models 1), the
+  WCS point binds again (origins exact: (-3.75, -4.75, 0.0289) / (3.75, -4.75, 2.0289)); the add-in TPGEN then
+  generated Back 2/2 and Top 2/3 valid (Top's 'deloge' op stayed empty -- I had generated it alone before Back,
+  which a previous-setup chain cannot do; not re-tried). Frame was not re-bound in this probe (its ops stay stale).
+- BUT THE SEND IS STILL SLOW: re-Send with the setups kept and NO MMs = 178 s (21:28:18 -> 21:31:16: clearing the
+  old board + Clean 94 s, Stamped 16, art + bricks 8, frame 60) vs 38 s in a doc that never had CAM. Setups that hold
+  operations cost too (their ops re-evaluate when the Send deletes the bodies they referenced). So (b') does not
+  give a ~40-50 s Send; only removing the CAM build (b) or a separate CAM doc (c) does, measured so far.
+- New, unresolved: after the re-bind the Back/Top stock reads X = 7.5 (was 9.5 -- the axes-swapped frame's X); the
+  origin is right. Either the box dims re-evaluated in the other frame orientation or the stock box was not
+  re-applied after the model change. Not chased (re-run _apply_stock_box after a re-bind would be the first test).
+- Hygiene: scratch doc closed by handle, holder none; Fred's Untitled untouched.
