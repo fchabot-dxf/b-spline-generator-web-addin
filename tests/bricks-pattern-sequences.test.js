@@ -19,6 +19,15 @@ import { pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/
 
 const SET = BRICK_SETS[0]; // brickLengthIn 0.75, brickHeightIn 0.2, grout.widthIn 0.034
 
+function hasCollinearVertex(poly) {
+  const pts = poly.filter((p, i) => { const q = poly[(i + 1) % poly.length]; return Math.hypot(p.x - q.x, p.y - q.y) > 1e-7; });
+  return pts.some((b, i) => {
+    const a = pts[(i - 1 + pts.length) % pts.length], c = pts[(i + 1) % pts.length];
+    const cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+    return Math.abs(cross) < 1e-9 * Math.hypot(b.x - a.x, b.y - a.y) * Math.hypot(c.x - b.x, c.y - b.y) + 1e-12;
+  });
+}
+
 function linesFromPolygon(pts) {
   return pts.map((p, i) => ({ type: 'line', p0: p, p1: pts[(i + 1) % pts.length] }));
 }
@@ -113,8 +122,10 @@ for (const [fixtureLabel, primitives, boardW, boardH, overlapBound, checkVertexC
           // EXPECTED shape at a genuine mitre corner (an end piece clipped to a point); anything
           // with 5+ unique vertices on this arc-free fixture would mean real oversampling crept in.
           const { bricks } = bricksContourBands(primitives, [{ widthIn: 0.4, pattern }], { set: SET, seed: 3 });
-          const bad = bricks.filter((b) => uniqueVertexCount(b.polygon) > 4);
-          expect(bad.length, `${bad.length} pieces with >4 unique vertices`).toBe(0);
+          // 21b joint rule: a corner's half-joint mitre strip can chamfer the next piece's tip (a real 5th vertex, MEASURED
+          // 0.013 in on header), so the oversampling this test exists for is checked directly: no redundant collinear vertex
+          const bad = bricks.filter((b) => hasCollinearVertex(b.polygon));
+          expect(bad.length, `${bad.length} pieces with a redundant collinear vertex`).toBe(0);
         });
       }
     }
@@ -147,18 +158,22 @@ for (const [fixtureLabel, primitives, boardW, boardH, overlapBound, checkVertexC
       const { bricks } = bricksContourBands(primitives, [{ widthIn: SET.brickHeightIn * 2, pattern: 'stack' }], { set: SET, seed: 5 });
       expect(bricks.length).toBeGreaterThan(5);
       function bbox(poly) { const xs = poly.map((p) => p.x), ys = poly.map((p) => p.y); return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }; }
-      const halfBrick = SET.brickLengthIn * 0.5;
-      const forcedHalfCount = bricks.filter((b) => {
-        const bb = bbox(b.polygon);
-        const along = Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY);
-        return Math.abs(along - halfBrick) < 0.01;
-      }).length;
-      // a half-brick-sized piece CAN still appear from the free fraction search (coincidence), but
-      // should be rare/absent across a whole 2-row band, unlike stretcher's own forced, guaranteed one.
-      expect(forcedHalfCount).toBeLessThanOrEqual(1);
+      // 21b joint rule: a run's END closer now takes any length (the slack), so "a piece near half a brick" no longer
+      // signals a stagger (T1: a closer of 0.375 in repeats on every matching run). The declared rule is checked instead:
+      // a row with no stagger STARTS with a whole brick -- the odd row's first piece is not the half-brick stretcher forces.
+      const firstOfRow1 = bricks.find((b) => b.rowIndex === 1 && b.pieceIndex === 0);
+      const bb = bbox(firstOfRow1.polygon);
+      expect(Math.abs(Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY) - SET.brickLengthIn * 0.5)).toBeGreaterThan(0.05);
     });
   });
 }
+
+describe('hasCollinearVertex (the oversampling check above)', () => {
+  it('flags a redundant mid-edge vertex, passes a chamfered corner', () => {
+    expect(hasCollinearVertex([{ x: 0, y: 0 }, { x: 0.5, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }])).toBe(true);
+    expect(hasCollinearVertex([{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 0.9 }, { x: 0.9, y: 1 }, { x: 0, y: 1 }])).toBe(false);
+  });
+});
 
 describe('header/flemish/soldier: a real 3-band frame (T86 item 2\'s own preview combination)', () => {
   it('builds cleanly end to end on the square, no overlap, every piece a clean quad/triangle', () => {

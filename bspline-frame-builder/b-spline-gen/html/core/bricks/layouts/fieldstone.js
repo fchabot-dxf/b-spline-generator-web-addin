@@ -95,7 +95,7 @@
  * anywhere real geometric room exists, with only a gentle large-scale tendency left over.
  */
 import {
-  pointInPolygon, clipToHalfPlane, clipPolygonToBoard, roundPolygonCorners, signedArea,
+  pointInPolygon, clipToHalfPlane, clipPolygonToBoard, roundPolygonCorners, signedArea, polygonDifference, isSimplePolygon,
 } from '../geometry.js';
 import { mulberry32, seedFor, hashedRandom } from '../rng.js';
 import { MIN_PIECE_FRACTION } from '../library.js';
@@ -436,7 +436,10 @@ function poissonDiscSample(polygon, spacing, seed, existingPoints, gate) {
  *  point on that fence (same radius), kept only where the twin lands OUTSIDE the region being filled. A seed and its mirror are equidistant from the edge, so their bisector IS the edge
  *  there (stretched past it, see FENCE_STRETCH): no stone can reach across a hole or past the outer edge. Phantoms
  *  bound the cells and never become stones. (A first try, phantoms at a FIXED depth inside the hole, MEASURED
- *  no effect: in a narrow hole most of them fell outside it and were skipped -- 2 phantoms for a whole ring.) */
+ *  no effect: in a narrow hole most of them fell outside it and were skipped -- 2 phantoms for a whole ring.)
+ *  T86 item 33: a phantom bounds ONLY its own twin's cell (buildCells) -- it fences that seed; real neighbours bound each
+ *  other. MEASURED, bounding every cell: at a concave ring corner a phantom took ground from a neighbour's stone and no
+ *  stone got it (6.7 sq in bare over 57 White rocks rings, mostly at 1.25 in). */
 const FENCE_REACH_FACTOR = 2;
 // The twin sits FENCE_STRETCH x the seed's distance beyond the edge (5 = the bisector two seed-distances OUTSIDE
 // the edge), not at the exact mirror image: an exact mirror makes the cell's edge the boundary's TANGENT, which
@@ -463,7 +466,7 @@ function fencePoints(fences, points, reach, region) {
         const qx = a.x + t * dx, qy = a.y + t * dy, d = Math.hypot(p.x - qx, p.y - qy);
         if (d > reach || d < 1e-9) continue;
         const m = { x: qx + FENCE_STRETCH * (qx - p.x), y: qy + FENCE_STRETCH * (qy - p.y) };
-        if (!pointInPolygon(m.x, m.y, region)) out.push({ ...m, radius: p.radius, tierIndex: p.tierIndex, phantom: true });
+        if (!pointInPolygon(m.x, m.y, region)) out.push({ ...m, radius: p.radius, tierIndex: p.tierIndex, phantom: true, twin: p });
       }
     }
   }
@@ -496,7 +499,11 @@ function powerCell(point, allPoints, boxPoly, pointShrink) {
  * @param {number} [largeStones=0.5] — T86 item 17: 0..1, moves the large tier's own target area
  *   share along `LARGE_SHARE_RANGE` (~0.2 at 0, ~0.8 at 1); 0.5 reproduces today's declared 50/35/15
  *   split exactly. Omitted/non-finite falls back to 0.5, same as every pre-item-17 caller.
- * @param {{x:number,y:number}[][]} [fences] -- closed lines that must bound the stones exactly (a band ring passes
+ * @param {{x:number,y:number}[][]} [fences] -- closed lines that must bound the stones exactly; fences[0] is the outer
+ *   line and every further fence a hole in it, and the stones are clipped to that ANNULUS (when every fence is a simple
+ *   polygon), not to `boardOutline` (T86
+ *   item 33: a ring's slit polygon cut the stone across its zero-width bridge in two -- the seed kept its piece, often
+ *   under the floor and dropped; MEASURED the bridge void on 56 of 57 White rocks rings, 0.4-0.6 sq in) (a band ring passes
  *   its outer and inner edges). See fencePoints: mirrored phantom seeds.
  * @returns {{cells: Array}} cells[i] = { id, polygon, courseIndex, cx, cy, neighbors:{} }
  */
@@ -546,6 +553,18 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones, f
   ];
   const minPieceArea = MIN_PIECE_FLOOR_FRACTION * minSpacing ** 2;
   const phantoms = fencePoints(fences, points, maxSpacing * FENCE_REACH_FACTOR, boardOutline);
+  // only over SIMPLE fences: a band deeper than a neck pinches its inner edge to zero width (MEASURED T18 / T19, a 1 in
+  // ring at 0.75 in stones), and cutting that hole out made one stone run through the pinch over its neighbours
+  // (0.15 sq in) -- such a ring keeps the slit-polygon clip
+  const ringFences = fences && fences.length && fences[0] && fences[0].length >= 3 ? [fences[0], ...fences.slice(1).filter((f) => f && f.length >= 3)] : null;
+  const annulus = ringFences && ringFences.every(isSimplePolygon) ? { outer: ringFences[0], holes: ringFences.slice(1) } : null;
+  // the cell inside the outer line, each hole cut out: the piece holding the seed (else the largest)
+  const clipToAnnulus = (poly, point) => {
+    let pieces = [clipPolygonToBoard(poly, annulus.outer, point)];
+    for (const hole of annulus.holes) pieces = pieces.flatMap((q) => (q.length >= 3 ? polygonDifference(q, hole) : []));
+    pieces = pieces.filter((q) => q.length >= 3);
+    return pieces.find((q) => pointInPolygon(point.x, point.y, q)) || pieces.sort((a, b) => Math.abs(signedArea(b)) - Math.abs(signedArea(a)))[0] || [];
+  };
 
   // T86 item 6 (MEASURED): a fixed `neighborRadius` cutoff is NOT a safe bound here the way it was
   // for the single-density original -- a tier-gated region can legitimately go sparse (few/no seeds
@@ -569,11 +588,11 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones, f
   // each claim a little more, never a gap) -- "merge an undersized cell into its neighbour" without
   // an actual polygon-union operation this codebase doesn't have.
   const buildCells = (pts) => pts.map((point) => {
-    const others = phantoms.length ? pts.filter((q) => q !== point).concat(phantoms) : pts.filter((q) => q !== point);
+    const others = phantoms.length ? pts.filter((q) => q !== point).concat(phantoms.filter((ph) => ph.twin === point)) : pts.filter((q) => q !== point);
     const pointShrink = tierShrinks[point.tierIndex];
     let poly = powerCell(point, others, box, pointShrink);
     if (poly.length < 3) return null;
-    poly = clipPolygonToBoard(poly, boardOutline, point);
+    poly = annulus ? clipToAnnulus(poly, point) : clipPolygonToBoard(poly, boardOutline, point);
     if (poly.length < 3) return null;
     poly = roundPolygonCorners(poly, point.radius * 2 * CORNER_RADIUS_FACTOR);
     if (poly.length < 3) return null;

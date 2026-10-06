@@ -33,9 +33,9 @@
  * full-size bricks, never one row of stretched ones, and the next band always starts exactly where
  * the actual (snapped) rows end, with no seam gap.
  */
-import { inwardSignFor, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward } from './geometry.js';
+import { inwardSignFor, pointInPolygon, dropSpikes, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
-import { ribbonPieces, boundaryAtDepth } from './primitive-ribbon.js';
+import { ribbonPieces, boundaryAtDepth, lineBetweenLinesDropsAt } from './primitive-ribbon.js';
 import { openRibbonOutline } from './ribbon-outline.js'; // F35 item 55 (seat E): a Brush stroke's grout region
 import { scaledSet, BRICK_PATTERNS, MIN_PIECE_FRACTION } from './library.js';
 import { bricksFillShape } from './fill-shape.js';
@@ -117,6 +117,8 @@ function planBands(bands, L, H, set, closed) {
     const sequence = patternDef.kind === 'course-alternating' ? [L, H] : undefined;
     const staggerFrac = patternDef.staggerFrac || 0;
     const rows = isAreaBand ? 1 : Math.max(1, Math.round(band.widthIn / naturalWidth));
+    // T86 item 30: a band narrowed to fit (narrowSingleBand) is ONE row of the declared depth; its bricks are cut to it
+    if (band.narrowedTo > 0) return { patternName, cornerStyle, naturalWidth: band.narrowedTo, pitch, sequence, staggerFrac, rows: 1, isAreaBand };
     return { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows, isAreaBand };
   });
 }
@@ -192,9 +194,9 @@ function ribbonSlitPolygon(outerIn, innerIn) {
  *  need. `set.layout` is forced to `patternName` (not read from the real set) so the BAND's own
  *  pattern choice decides which `fill-shape.js` LAYOUTS entry runs, independent of whatever the
  *  Wall's own current set defaults to. */
-function buildAreaBandBricks(enriched, depthSoFar, band, patternName, set, seed, bandIndex, nextId) {
-  const outer = boundaryAtDepth(enriched, depthSoFar).filter((p) => p != null);
-  const inner = boundaryAtDepth(enriched, depthSoFar + band.widthIn).filter((p) => p != null);
+function buildAreaBandBricks(enriched, d0, d1, band, patternName, set, seed, bandIndex, nextId) {
+  const outer = boundaryAtDepth(enriched, d0).filter((p) => p != null);
+  const inner = boundaryAtDepth(enriched, d1).filter((p) => p != null);
   if (outer.length < 3 || inner.length < 3) return { pieces: [], nextId };
   const ribbon = ribbonSlitPolygon(outer, inner);
   const { bricks } = bricksFillShape(ribbon, null, {
@@ -289,6 +291,44 @@ function medialDistance(da, db, p) {
   const gy = (f({ x: p.x, y: p.y + h }) - f({ x: p.x, y: p.y - h })) / (2 * h);
   return f(p) / Math.max(Math.hypot(gx, gy), 1e-6);
 }
+/** `piece` minus `cutter`, checked: a cut may remove only the ground the two share. MEASURED (T18 1.25 in, the joint
+ *  rule's shoulder): a cutter that only TOUCHED a piece (shared area 0) came back from polygonDifference as a 0.016 sq in
+ *  remnant of a 0.468 sq in voussoir, and its mirror twin came back LARGER than it went in. No shared ground: the
+ *  piece is kept whole; a result that disagrees with area(piece) - area(shared) by more than CUT_CHECK_SQIN: the cut is
+ *  refused and the piece kept whole (an overlap the sweep sees, never a brick silently lost). */
+const CUT_CHECK_SQIN = 1e-3;
+const SEAM_TOLERANCE_IN = 0.002; // a seam this much under the joint is a joint (arc chords sag ~0.004 in at 1.25 in)
+/** The shortest distance between two polygons' outlines (vertex to edge, both ways); 0 when they cross. */
+function polygonDistance(A, B) {
+  let best = Infinity;
+  for (const [P, Q] of [[A, B], [B, A]]) for (const p of P) for (let k = 0; k < Q.length; k++) {
+    const u = Q[k], v = Q[(k + 1) % Q.length], dx = v.x - u.x, dy = v.y - u.y, l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((p.x - u.x) * dx + (p.y - u.y) * dy) / l2));
+    best = Math.min(best, Math.hypot(p.x - u.x - t * dx, p.y - u.y - t * dy));
+  }
+  return best;
+}
+/** T86 (seat B, the neck seams at big bricks): where piece and cutter share an EDGE exactly (two cutters from the
+ *  same run meet at the run's joint, and the piece was already cut along one of them), polygonIntersection and
+ *  polygonDifference both miss the overlap -- MEASURED T16 6x9 1.5 in: a 0.013 x 0.004 in tip of the piece inside
+ *  the cutter came back untouched (shared 0), and the seam there read 0.022 in. A cut whose result still has a vertex
+ *  clearly inside the cutter (deeper than CUT_INSIDE_IN) is redone with the cutter a hair larger (CUT_NUDGE_IN), which
+ *  breaks the shared edge; after it the seam is the joint (0.0341 in). */
+const CUT_NUDGE_IN = 1e-6;
+const CUT_INSIDE_IN = 1e-4;
+function checkedDifferenceOnce(piece, cutter) {
+  const shared = Math.abs(signedArea(polygonIntersection(piece, cutter)));
+  if (shared < 1e-9) return [piece]; // a sharp tip in a joint-wide strip shares ~1e-7 sq in
+  const left = polygonDifference(piece, cutter).map((q) => dropSpikes(q)).filter((q) => q.length >= 3); // a spike along the cutter reaches the next piece
+  const kept = left.reduce((sum, q) => sum + Math.abs(signedArea(q)), 0);
+  return Math.abs(kept - (Math.abs(signedArea(piece)) - shared)) > CUT_CHECK_SQIN ? [piece] : left;
+}
+function checkedDifference(piece, cutter) {
+  const left = checkedDifferenceOnce(piece, cutter);
+  const missed = left.some((q) => q.some((p) => pointInPolygon(p.x, p.y, cutter) && polygonDistance([p], cutter) > CUT_INSIDE_IN));
+  return missed ? checkedDifferenceOnce(piece, offsetPathInward(cutter, CUT_NUDGE_IN, -inwardSignFor(cutter))) : left;
+}
+
 function yieldAtMedialLine(bricks, origins, primitives, set) {
   const box = (p) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const q of p) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); } return [x0, y0, x1, y1]; };
   const boxes = bricks.map((b) => box(b.polygon));
@@ -301,9 +341,11 @@ function yieldAtMedialLine(bricks, origins, primitives, set) {
       if (oj.src < QUOIN || oj.src === oi.src) continue;
       if (Math.min(oi.src, oj.src) === QUOIN && Math.max(oi.src, oj.src) !== FAN) continue; // a run meets a quoin on its cut
       if (oi.src === FAN && oj.src === FAN) continue; // two fan slices meet on their planned joint
-      if (a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]) continue;
+      const reach = set.grout.widthIn; // T86 21b: a pair closer than a joint is a conflict too (touching = a 0-gap seam)
+      if (a[2] + reach < b[0] || b[2] + reach < a[0] || a[3] + reach < b[1] || b[3] + reach < a[1]) continue;
       const lens = polygonIntersection(bricks[i].polygon, bricks[j].polygon);
-      if (lens.length < 3 || Math.abs(signedArea(lens)) <= MEDIAL_OVERLAP_SQIN) continue;
+      const overlapping = lens.length >= 3 && Math.abs(signedArea(lens)) > MEDIAL_OVERLAP_SQIN;
+      if (!overlapping && polygonDistance(bricks[i].polygon, bricks[j].polygon) >= set.grout.widthIn - SEAM_TOLERANCE_IN) continue;
       conflicts[i].push(j); conflicts[j].push(i);
     }
   }
@@ -321,7 +363,7 @@ function yieldAtMedialLine(bricks, origins, primitives, set) {
       if (dropped.has(j)) continue;
       if (origins[j].src === FAN || origins[i].src === QUOIN) continue; // a run or a quoin keeps its ground against a fan
       if (origins[i].src === FAN) { // a fan yields to a run (or a quoin) all it covers, plus a joint
-        pieces = pieces.flatMap((q) => polygonDifference(q, grown[j]));
+        pieces = pieces.flatMap((q) => checkedDifference(q, grown[j]));
         continue;
       }
       // the ground piece j takes from piece i: where j covers it AND j's own depth is smaller (ties: lower source),
@@ -331,7 +373,7 @@ function yieldAtMedialLine(bricks, origins, primitives, set) {
       const dj = depth[origins[j].src];
       const taken = clipToField(grown[j], (p) => medialDistance(dj, di, p) - setback, origins[j].src > origins[i].src);
       if (taken.length < 3) continue;
-      pieces = pieces.flatMap((q) => polygonDifference(q, taken));
+      pieces = pieces.flatMap((q) => checkedDifference(q, taken));
     }
     if (pieces.length === 1) return pieces[0];
     // a cut can split a piece; the largest part stays the brick (the rest is a fragment in the other side's joint)
@@ -397,31 +439,79 @@ export const BAND_FIT_SHARE = 1 / 3;
 export const BAND_FIT_STEPS = Object.freeze(['row', 'course', 'drop']);
 
 /** The board's narrowest gap between opposite sides: from the middle of every boundary edge, a ray along the inward
- *  normal to the first boundary it meets; the shortest. */
-export function narrowestGap(board) {
-  const n = board.length;
+ *  normal to the FIRST boundary it meets; the shortest. T86 item 31 (MEASURED: T7 read 0.007 in, T14 0.384, T17 0.345):
+ *   - a ray whose first hit is a NEIGHBOURING primitive is a corner's wedge, not a gap: ignored (not continued past it);
+ *   - a waist between two REFLEX primitive junctions is crossed by no edge normal (T14's hourglass: every side ray meets
+ *     its corner first), so each reflex junction also reads its distance to the NEAREST point of a primitive that is
+ *     neither its own nor a neighbour -- counted only where a circle fits across (WAIST_CLEARANCE_SHARE): the segment's
+ *     middle at least that share of half its length from every boundary. Nearest, not a bisector ray: T16's junctions
+ *     turn 104 deg and their bisectors met the far side 3.90 in away, past the 2.47 in waist. MEASURED (7x9), the
+ *     clearance share of each template's nearest junction reading: real waists / necks 0.94-1.0 (T6 T9 T14-T19), a
+ *     notch lip read down the board's side to the next edge 0.05-0.35 (T1 T3 T4 T5 T8 T10-T13).
+ *  `source[k]` = the primitive that boundary vertex k (and edge k -> k+1) belongs to; omitted, every edge is its own. */
+export const WAIST_CLEARANCE_SHARE = 0.9;
+export function narrowestGap(board, source = board.map((_, k) => k)) {
+  const n = board.length, m = Math.max(...source) + 1;
   // signedArea is NEGATIVE for a counter-clockwise loop (x right, y up; measured on a unit square), whose inside is
   // on the left of each edge: (-dy, dx)
   const inward = signedArea(board) < 0 ? 1 : -1;
-  let best = Infinity;
-  for (let i = 0; i < n; i++) {
-    const a = board[i], b = board[(i + 1) % n];
-    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
-    if (len < 1e-9) continue;
-    const nx = (-dy / len) * inward, ny = (dx / len) * inward;
-    const ox = (a.x + b.x) / 2, oy = (a.y + b.y) / 2;
+  const neighbours = (p, q) => p !== q && ((p + 1) % m === q || (q + 1) % m === p);
+  const firstHit = (ox, oy, nx, ny, from, skip) => {
+    let t0 = Infinity, hit = -1;
     for (let j = 0; j < n; j++) {
-      if (j === i) continue;
+      if (skip.includes(j)) continue;
       const c = board[j], d = board[(j + 1) % n];
       const ex = d.x - c.x, ey = d.y - c.y;
       const den = nx * ey - ny * ex;
       if (Math.abs(den) < 1e-12) continue;
       const t = ((c.x - ox) * ey - (c.y - oy) * ex) / den; // along the ray
       const u = ((c.x - ox) * ny - (c.y - oy) * nx) / den; // along edge j
-      if (t > 1e-6 && u >= 0 && u <= 1 && t < best) best = t;
+      if (t > 1e-6 && u >= 0 && u <= 1 && t < t0) { t0 = t; hit = j; }
+    }
+    if (hit >= 0) plain = Math.min(plain, t0);
+    return hit >= 0 && !from.some((p) => neighbours(p, source[hit])) ? t0 : Infinity;
+  };
+  let plain = Infinity; // every first hit, filter or not: the reading when no ray qualifies (a lens, a triangle -- every
+  // primitive the others' neighbour)
+  const edgeNormal = (k) => {
+    const a = board[k], b = board[(k + 1) % n], dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+    return len < 1e-9 ? null : { x: (-dy / len) * inward, y: (dx / len) * inward, dx, dy };
+  };
+  const clearance = (x, y) => {
+    let c = Infinity;
+    for (let k = 0; k < n; k++) {
+      const a = board[k], b = board[(k + 1) % n], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+      const w = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2));
+      c = Math.min(c, Math.hypot(x - a.x - w * dx, y - a.y - w * dy));
+    }
+    return c;
+  };
+  let best = Infinity;
+  for (let i = 0; i < n; i++) {
+    const nrm = edgeNormal(i);
+    if (!nrm) continue;
+    const a = board[i], b = board[(i + 1) % n];
+    best = Math.min(best, firstHit((a.x + b.x) / 2, (a.y + b.y) / 2, nrm.x, nrm.y, [source[i]], [i]));
+  }
+  for (let v = 0; v < n; v++) {
+    const pv = (v - 1 + n) % n;
+    if (source[pv] === source[v]) continue; // a primitive junction only
+    const n1 = edgeNormal(pv), n2 = edgeNormal(v);
+    if (!n1 || !n2 || (n1.dx * n2.dy - n1.dy * n2.dx) * inward >= 0) continue; // reflex: turns away from the inside
+    const V = board[v], own = [source[pv], source[v]];
+    for (let j = 0; j < n; j++) {
+      if (own.some((p) => p === source[j] || neighbours(p, source[j]))) continue;
+      const c = board[j], d = board[(j + 1) % n], ex = d.x - c.x, ey = d.y - c.y, l2 = ex * ex + ey * ey;
+      if (l2 < 1e-18) continue;
+      const u = Math.max(0, Math.min(1, ((V.x - c.x) * ex + (V.y - c.y) * ey) / l2));
+      const qx = c.x + u * ex, qy = c.y + u * ey, t = Math.hypot(qx - V.x, qy - V.y);
+      if (!(t < best && t > 1e-6)) continue;
+      const mx = (V.x + qx) / 2, my = (V.y + qy) / 2;
+      if (!pointInPolygon(mx, my, board)) continue; // across the board, not the outside (a notch's mouth)
+      if (clearance(mx, my) >= WAIST_CLEARANCE_SHARE * (t / 2)) best = t;
     }
   }
-  return best;
+  return Number.isFinite(best) ? best : plain;
 }
 
 function fitBandStack(bands, planned, gap, L, H) {
@@ -443,6 +533,29 @@ function fitBandStack(bands, planned, gap, L, H) {
   return { bands: fitted, note: { requested: bands.length, kept: fitted.length, steps, gapIn: gap, limitIn: limit, requestedDepthIn: requested, depthIn: depthOf(kept), fits: depthOf(kept) <= limit } };
 }
 
+/** T86 item 30 (Fred's item 28 ruling, "make the app do the best result"; advisor (b')): a SINGLE band too deep for a
+ *  feature of the board -- its row would drop a line lying between two lines (lineBetweenLinesDropsAt) -- is laid at the
+ *  deepest depth where no such line drops, less a joint, instead of stranding fans and leaving the feature bare. Narrowing
+ *  is LOCAL: MEASURED over 456 lays (8 presets x 19 templates x 0.75 / 1 / 1.25 in, 7x9) it changes none, and over 2,052
+ *  (+ 1.5 in, 6x9 / 9x12) 36 -- T6 / T9 / T15 at 1.25-1.5 in, bare band ground up to 8.8 sq in -> 0; a BAND_FIT_SHARE of
+ *  narrowestGap would have narrowed 201 of the 456 (when it still read T7 as 0.007 in -- item 31). Returns the narrowed
+ *  band + its note step, or null when the band lays as requested. */
+const NARROW_BISECT_STEPS = 24;
+function narrowSingleBand(enriched, band, planned, halfJoint, joint) {
+  const depth = planned.naturalWidth * planned.rows;
+  const rowEdge = (d) => d - halfJoint; // the row's inner edge under the joint rule (it stops half a joint short of the wall)
+  if (!lineBetweenLinesDropsAt(enriched, rowEdge(depth))) return null;
+  let lo = 0, hi = depth;
+  for (let k = 0; k < NARROW_BISECT_STEPS; k++) { const mid = (lo + hi) / 2; if (lineBetweenLinesDropsAt(enriched, rowEdge(mid))) hi = mid; else lo = mid; }
+  const toIn = lo - joint;
+  if (!(toIn > joint)) return null; // nothing sensible left to lay: as requested, with today's warning
+  // the wall's boundary is taken PAST the cliff (hi: the line has dropped) and half a joint further: at the band's own
+  // wall depth (lo) the consumed feature is still a sliver of wall -- T9 7x9 1.5 in a 0.018 in skeleton, a tapering neck
+  // (T15 / T6 1.5 in) a spike under 0.01 in -- which bondLayout fills with cells over the band (MEASURED: 0.03-0.99 sq in).
+  // Wall ground narrower than a joint is mortar. Cost: on a narrowed lay the band-to-wall seam is 1.5 joints.
+  return { band: { ...band, widthIn: toIn, narrowedTo: toIn }, step: { band: 0, step: 'narrow', toIn }, requestedDepthIn: depth, wallDepthIn: rowEdge(hi) + halfJoint };
+}
+
 export function bricksContourBands(primitives, bands, opts) {
   const { seed } = opts;
   const closed = opts.closed !== false;
@@ -457,14 +570,37 @@ export function bricksContourBands(primitives, bands, opts) {
   let plannedBands = planBands(bands, L, H, set, closed);
   // T86 item 28: a closed, outer stack (the frame) obeys the fit rule; centred and open ones (brush ribbons) have no board
   const fitBoard = closed && !opts.centered ? tessellate(primitives, BOARD_CLIP_ARC_STEPS) : null;
+  const fitBoardSource = fitBoard ? primitives.flatMap((prim, k) => (prim.type === 'arc' ? Array(BOARD_CLIP_ARC_STEPS).fill(k) : [k])) : null;
   // opts.bandFit === false: a schematic on a tiny board (the band-preset / corner icons), drawn as requested
-  const fit = fitBoard && opts.bandFit !== false ? fitBandStack(bands, plannedBands, narrowestGap(fitBoard), L, H) : null;
+  const fit = fitBoard && opts.bandFit !== false ? fitBandStack(bands, plannedBands, narrowestGap(fitBoard, fitBoardSource), L, H) : null;
   if (fit) { bands = fit.bands; plannedBands = planBands(bands, L, H, set, closed); }
+  // T86 item 30: a single band (as requested, or what item 28 left) too deep for a feature narrows to fit it
+  let narrowNote = null, narrowWallDepth = 0;
+  // course bands only: an AREA band (fieldstone) fills its ring polygon, it has no run to drop and strand
+  if (closed && !opts.centered && opts.bandFit !== false && bands.length === 1 && !plannedBands[0].isAreaBand) {
+    const narrowed = narrowSingleBand(enriched, bands[0], plannedBands[0], set.grout.widthIn / 2, set.grout.widthIn);
+    if (narrowed) {
+      bands = [narrowed.band]; plannedBands = planBands(bands, L, H, set, closed); narrowWallDepth = narrowed.wallDepthIn;
+      narrowNote = fit
+        ? { ...fit.note, steps: [...fit.note.steps, narrowed.step], depthIn: narrowed.step.toIn, fits: true }
+        : { requested: 1, kept: 1, steps: [narrowed.step], requestedDepthIn: narrowed.requestedDepthIn, depthIn: narrowed.step.toIn, fits: true };
+    }
+  }
   let depthSoFar = opts.centered
     ? -plannedBands.reduce((sum, b) => sum + b.naturalWidth * b.rows, 0) / 2
     : 0;
   const ribbonStartDepth = depthSoFar; // F35 item 55: an open centred ribbon's first edge
   let nextId = 0;
+  // T86 item 21b, the JOINT RULE: every seam is the declared joint, rows and bands included (advisor; seat A's Fusion
+  // e2e counted 147 profiles for 126 pieces, the extras from 0-gap wall-vs-band contacts, and two abutting courses
+  // read as one slab in 3D). Each row stops half a joint short of the row (or band) beside it and of the wall; only
+  // the stack's own outer edge (the board, or an open stroke's two edges) has no joint.
+  const halfJoint = set.grout.widthIn / 2;
+  const stackStart = depthSoFar, stackEnd = depthSoFar + plannedBands.reduce((sum, b) => sum + b.naturalWidth * b.rows, 0);
+  const rowDepths = (d0, d1) => [
+    d0 > stackStart + 1e-9 ? d0 + halfJoint : d0,
+    d1 < stackEnd - 1e-9 || closed ? d1 - halfJoint : d1,
+  ];
 
   bands.forEach((band, bandIndex) => {
     // T86 item 2: read the SAME declared pitch/cross axes + stagger `layouts/bond.js`'s own
@@ -478,7 +614,8 @@ export function bricksContourBands(primitives, bands, opts) {
     // pieces (same role every other pattern already gives it), not a per-piece length.
     const { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows, isAreaBand } = plannedBands[bandIndex];
     if (isAreaBand) {
-      const { pieces, nextId: afterId } = buildAreaBandBricks(enriched, depthSoFar, band, patternName, set, seed, bandIndex, nextId);
+      const [a0, a1] = rowDepths(depthSoFar, depthSoFar + band.widthIn);
+      const { pieces, nextId: afterId } = buildAreaBandBricks(enriched, a0, a1, band, patternName, set, seed, bandIndex, nextId);
       bricks.push(...pieces);
       for (let i = 0; i < pieces.length; i++) origins.push({ src: -3 }); // an area band's stones
       nextId = afterId;
@@ -486,7 +623,7 @@ export function bricksContourBands(primitives, bands, opts) {
       return; // forEach callback -- next band
     }
     for (let row = 0; row < rows; row++) {
-      const d0 = depthSoFar + naturalWidth * row, d1 = depthSoFar + naturalWidth * (row + 1);
+      const [d0, d1] = rowDepths(depthSoFar + naturalWidth * row, depthSoFar + naturalWidth * (row + 1));
       const odd = row % 2 === 1;
       // flemish: ALWAYS rotate its own 2-element sequence by one position on odd rows -- the
       // discrete equivalent of bond.js's own hardcoded "offset by half the period" for a 2-element
@@ -518,7 +655,9 @@ export function bricksContourBands(primitives, bands, opts) {
   const boardWidth = fitBoard ? Math.min(...['x', 'y'].map((k) => Math.max(...fitBoard.map((p) => p[k])) - Math.min(...fitBoard.map((p) => p[k])))) : 0;
   const split = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set) : bricks;
   const laid = fitBoard ? clipBandPiecesToBoard(split, fitBoard, set) : bricks;
-  return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, depthSoFar) : [], ...(fit ? { bandsReduced: fit.note } : {}),
+  // the wall keeps half its own joint from the band (grout is one global width, so band + wall = one joint)
+  const wallDepth = Math.max(bands.length ? depthSoFar + halfJoint : depthSoFar, narrowWallDepth);
+  return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, wallDepth) : [], ...(narrowNote ? { bandsReduced: narrowNote } : fit ? { bandsReduced: fit.note } : {}),
     // F35 item 55 (seat E): an open centred ribbon's outline (a Brush stroke's grout region), additive
     ...(!closed && opts.centered ? { ribbonOutline: openRibbonOutline(enriched, ribbonStartDepth, depthSoFar) } : {}) };
 }

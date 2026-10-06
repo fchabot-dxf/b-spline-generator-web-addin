@@ -8,7 +8,8 @@ import { dragIn } from './areas.mjs';
 export const LAY_WARNING = {
   template: 'template_9',
   // item 28: a stack too deep for the board is reduced first, so "no room for the wall" is now a board too narrow
-  // for even ONE band: T9 7x9 at 1-1/2 in (measured: no wall; at 3/4 in a 146-brick wall)
+  // for even ONE band: T9 7x9 at 1-1/2 in (measured: no wall; at 3/4 in a 146-brick wall). T86 item 30: there the single
+  // band is now NARROWED to fill the web -- still no wall, so the warning still shows, beside the band-fit note
   tooManySize: 'brickSizePreset_half1',
   fitsSize: 'brickSizePreset_quarter3',
   tooMany: 'brickQuick_frameBands_three_band',

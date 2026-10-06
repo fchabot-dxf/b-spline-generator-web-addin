@@ -235,6 +235,16 @@ describe('H23 item 76 (advisor review): every brick centroid stays INSIDE the bo
  * a wide margin (a genuine missing-coverage bug, like the one this test was written to catch, reads
  * far below this).
  */
+function distToPoly(x, y, poly) {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2));
+    best = Math.min(best, Math.hypot(x - a.x - t * dx, y - a.y - t * dy));
+  }
+  return best;
+}
+
 describe('H23 item 76 cont. (advisor review): fillet-zone coverage', () => {
   const CASES = [
     ['template_1 (hourglass -- concave waist)', 'template_1', 7, 9],
@@ -270,8 +280,12 @@ describe('H23 item 76 cont. (advisor review): fillet-zone coverage', () => {
               const x = minX + ((maxX - minX) * (i + 0.5)) / GRID, y = minY + ((maxY - minY) * (j + 0.5)) / GRID;
               if (!pointInPolygon(x, y, outerPoints) || pointInPolygon(x, y, innerPath)) continue;
               bandCount++;
+              // 21b joint rule: every seam is a full-width joint now (rows, bands, mitres, fan dividers), so a point inside a
+              // joint -- within half a joint of a brick -- is mortar, not bare ground
+              const halfJ = SET.grout.widthIn / 2 + 1e-4;
               const covered = brickBoxes.some(
-                ({ b, bb }) => x >= bb.minX && x <= bb.maxX && y >= bb.minY && y <= bb.maxY && pointInPolygon(x, y, b.polygon),
+                ({ b, bb }) => x >= bb.minX - halfJ && x <= bb.maxX + halfJ && y >= bb.minY - halfJ && y <= bb.maxY + halfJ
+                  && (pointInPolygon(x, y, b.polygon) || distToPoly(x, y, b.polygon) <= halfJ),
               );
               if (covered) coveredCount++;
             }

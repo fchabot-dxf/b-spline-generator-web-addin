@@ -52,6 +52,7 @@ export const LOADING_SEQUENCES = {
   apply: { stages: ['heightMask', 'rebuild'] },
   newSeed: { stages: ['heightMask', 'rebuild'] },
   projectLoad: { stages: ['cloudLoad', 'restore', 'heightMask', 'rebuild'] },
+  sessionRestore: { stages: ['heightMask', 'rebuild'], surface: 'card' }, // item 37: a page load's restore, one build
   export: { stages: ['heightMask', 'rebuild', 'stepExport'] },
   send: { stages: ['heightMask', 'rebuild', 'stepBuild', 'transfer', ...FUSION_SEND_STAGES.stages.map((st) => st.id)] },
 };

@@ -75,9 +75,10 @@ function bandVoid({ prims, bricks, innerPath }) {
 }
 
 describe('frame band corners: no piece over another, no bare ground (T86 item 21b)', () => {
-  // [template, preset, size, the void is asserted here]. T8 and T18 keep one void each that is a TAPERED JOINT, not a
-  // corner: the joint between a fan slice and a voussoir (T8, 0.051) and a tight shoulder arc's radial joints (T18,
-  // 0.093) open toward the rim. The constant-width joint rule (21b's last commit, option A) closes them.
+  // [template, preset, size, the void is asserted here]. T8 and T18: under the joint rule (every joint its declared width)
+  // the tapered joints these used to show are gone, but each fan's constant-width joints converge on its apex in a small
+  // MORTAR KNOT (declared, accepted by the advisor: T18 1.25 in ~0.027 sq in per shoulder, T8 ~0.009) that this probe's
+  // 0.045 in reach reads as bare -- so these two assert overlap only.
   const CASES = [['template_11', 'double_course', 1.25, true], ['template_9', 'quoin_corners', 1.25, true], ['template_8', 'single_soldier', 1.25, false],
     ['template_12', 'double_course', 1.25, true], ['template_5', 'quoin_corners', 0.75, true], ['template_18', 'three_band', 1.25, false]];
   for (const [id, preset, L, voidAsserted] of CASES) {

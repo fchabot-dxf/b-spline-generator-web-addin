@@ -15115,6 +15115,23 @@ WallPattern = {
 - **Matrix:** brush 10/0 (Continuous now 3#1wpuvju -> 7#s250qh); strokes 1/0.
 - **"strokes did not report" under --parallel (advisor):** a group child exits without a report only on a port / Chrome-start failure (exit 2 before `finally`). With base 9701 and 22 groups, strokes (last) gets port 9921/9922. My own probes ran on 9921-9941 tonight, so the likeliest cause is a collision with my probe, not the group. My probes now use 11xxx.
 
+## F35 item 67 -- the 3 measured full runs (seat F, 2026-10-06, after Fred freed the hung PID 13492)
+- **Tree:** origin/main f818ae8. The 2-day hung vitest and its 3 workers are gone; CPU load before the runs was 42 / 47 / 18 %.
+
+| run | wall | files | tests | failures | timeouts | tests over 5 s (slowest) |
+|---|---|---|---|---|---|---|
+| 1 | 141 s | 325/325 | 5340 | 0 | 0 | 17 (bartop T5 0.05: 11.0 s) |
+| 2 | 69 s | 325/325 | 5340 | 0 | 0 | 1 (silhouette all-three set: 5.6 s) |
+| 3 | 70 s | 325/325 | 5340 | 0 | 0 | 3 (silhouette: 8.9 s) |
+
+- **The goal is met:** 0 timeouts over 3 runs, no assertion weakened. The worst test (11 s) is at 37% of the 30 s suite default, under a 2x load swing between runs 1 and 2.
+- **Budget finalisation:** the 3 per-test overrides tighter than the suite default now read HEAVY_TEST_MS.
+  - frame-bartop-drawn: was 20 s, and its 0.05 cases reached 11 s in run 1.
+  - frame-no-hooked-miters MUTATION 2: was 20 s.
+  - frame-template-7 item 40: was 10 s.
+  - No other override in tests/ is below 30 s.
+- **The slow report** (tests/slow-test-reporter.js) is the watch list. Run 1's 17 entries were the frame-geometry sweeps (bartop 0.05, no-hooked-miters template_8 6x9 chunks, silhouette); all were under 5 s in runs 2 and 3, apart from silhouette and bartop.
+
 ## F35 item 70 -- loading stages in the FUSION palette during a Send (seat F, branch fusion-stages-70)
 - **Measured first** (tools/repro/f35item70_fusion_send_stages.mjs: the palette headless in Fusion mode, adsk stubbed, the add-in's real progress replies replayed after generate_finish; 900 px, CPU x4):
   - The card read 'writing the files, step 3 of 3'.
