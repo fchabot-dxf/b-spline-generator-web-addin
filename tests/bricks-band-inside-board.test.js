@@ -63,8 +63,11 @@ describe('band pieces stay inside the board', () => {
         if (r.frameBricks[i].bandIndex === r.frameBricks[j].bandIndex) continue;
         expect(Math.abs(signedArea(polygonIntersection(r.frameBricks[i].polygon, r.frameBricks[j].polygon)))).toBeLessThan(TOL);
       }
+      // 21b joint rule: every seam is now a full joint, many of them diagonal; the four axis probes missed a point 0.016 in
+      // from a brick inside a diagonal joint, so "near" is the TRUE distance to the nearest piece (exact, not looser)
       const reach = 1.5 * SET.grout.widthIn;
-      const near = (x, y) => pieces.some((q) => pointInPolygon(x, y, q) || [[reach, 0], [-reach, 0], [0, reach], [0, -reach]].some(([dx, dy]) => pointInPolygon(x + dx, y + dy, q)));
+      const distTo = (x, y, q) => { let best = Infinity; for (let i = 0; i < q.length; i++) { const a = q[i], b = q[(i + 1) % q.length], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2)); best = Math.min(best, Math.hypot(x - a.x - t * dx, y - a.y - t * dy)); } return best; };
+      const near = (x, y) => pieces.some((q) => pointInPolygon(x, y, q) || distTo(x, y, q) <= reach);
       const bare = [];
       for (let x = 0.3; x < 6.75; x += 0.1) for (let y = 0.3; y < 8.75; y += 0.1) if (pointInPolygon(x, y, board) && !near(x, y)) bare.push(`(${x.toFixed(1)},${y.toFixed(1)})`);
       expect(bare.slice(0, 5), `${bare.length} bare sample points`).toEqual([]);

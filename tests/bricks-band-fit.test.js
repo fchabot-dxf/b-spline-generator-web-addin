@@ -58,15 +58,46 @@ describe('band stacks that do not fit (T86 item 28)', () => {
     expect(new Set(r.frameBricks.map((b) => b.bandIndex))).toEqual(new Set([0]));
     expect(bandOverlap(r.frameBricks)).toBeLessThan(OVERLAP_TOL_SQIN);
   });
-  it('one band that cannot shrink is laid as requested, with no note (today\'s warning covers it)', () => {
+  // item 28 never reduces the one band it has left; since T86 item 30 a single band too deep for a feature NARROWS to fit
+  // it (T9 7x9 1.5 in: the I-beam web drops its line at the requested depth), so the note's only step is item 30's
+  it('one band that cannot shrink is not reduced by the fit rule; item 30 narrows it to the web (its only step)', () => {
     const r = lay(primsOf('template_9', 7, 9), 7, 9, 'single_soldier', 1.5);
-    expect(r.bandsReduced).toBeUndefined();
+    expect(r.bandsReduced.steps.map((s) => s.step)).toEqual(['narrow']);
     expect(r.frameBricks.length).toBeGreaterThan(0);
   });
   it('the narrowest gap is the board\'s own: a 7x9 rectangle -> 7', () => {
     expect(narrowestGap([{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 7, y: 9 }, { x: 0, y: 9 }])).toBeCloseTo(7, 9);
     expect(narrowestGap([{ x: 0, y: 0 }, { x: 0, y: 9 }, { x: 7, y: 9 }, { x: 7, y: 0 }])).toBeCloseTo(7, 9); // either winding
   });
+  // T86 item 31: a ray whose first hit is the neighbouring primitive is a corner's wedge (T7 read 0.007 in, T14 0.384,
+  // T17 0.345 -- every three_band lay on them a "(no fit)" drop); a waist between two reflex junctions is read from each
+  // junction to the nearest far point where a circle fits across (no edge normal crosses T14's hourglass waist)
+  it('an hourglass reads its waist, not its acute corners', () => {
+    const hourglass = [{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 4.8, y: 4.5 }, { x: 7, y: 9 }, { x: 0, y: 9 }, { x: 2.2, y: 4.5 }];
+    expect(narrowestGap(hourglass)).toBeCloseTo(2.6, 9);
+    expect(narrowestGap([...hourglass].reverse())).toBeCloseTo(2.6, 9);
+  });
+  it('a board whose primitives are all neighbours (a triangle) keeps the plain first-hit reading', () => {
+    expect(Number.isFinite(narrowestGap([{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 3.5, y: 9 }]))).toBe(true);
+  });
+  // mixed_bands at 1 in was a "(no fit)" drop to one band on T7 / T14 / T17 (T14: 106 pieces; now 144, a wall kept)
+  it.each([['template_7', 2.68, 'mixed_bands'], ['template_14', 2.6, 'mixed_bands'], ['template_17', 2.24, 'mixed_bands']])(
+    '%s 7x9: the gap the fit rule reads is the board\'s own (%s in); %s at 1 in fits', (id, gap, preset) => {
+      const r = lay(primsOf(id, 7, 9), 7, 9, preset, 1);
+      expect(r.bandsReduced.gapIn).toBeCloseTo(gap, 2);
+      expect(r.bandsReduced.fits).toBe(true);
+    });
+  // T16's waist turns 104 deg at each junction: a bisector ray met the far side 3.90 in away, past the 2.47 in waist,
+  // and a deeper stack was kept across it (seat B's item 32 measure: the inner stone ring met itself there)
+  it('template_16 7x9 reads its 2.47 in waist', () => {
+    expect(lay(primsOf('template_16', 7, 9), 7, 9, 'three_band', 1).bandsReduced.gapIn).toBeCloseTo(2.47, 2);
+  });
+  // a notch lip's nearest far point is down the board's own side to the next edge -- no circle fits across that
+  // (clearance share 0.05-0.35, WAIST_CLEARANCE_SHARE): these keep their edge-ray readings
+  it.each([['template_1', 3.67], ['template_5', 3.57], ['template_13', 3.9], ['template_10', 3.02]])(
+    '%s 7x9: a notch lip is no waist (gap %s in)', (id, gap) => {
+      expect(lay(primsOf(id, 7, 9), 7, 9, 'three_band', 1).bandsReduced.gapIn).toBeCloseTo(gap, 2);
+    });
   // item 67 (test infra): one test per template x board (was one test over all of them: 11.7 s in a full run, a
   // timeout under the fleet's load). The same cases, the same checks.
   const CASES = FRAME_DEFS.templates.flatMap(({ id }) => [[6, 9], [7, 9], [9, 12]].map(([W, H]) => [`${id} ${W}x${H}`, id, W, H]));
@@ -81,7 +112,10 @@ describe('band stacks that do not fit (T86 item 28)', () => {
       if (!n && bandsLaid !== FRAME_PRESETS.three_band.length) bad.push(`${tag}: no note but ${bandsLaid} bands laid`);
       if (n && !n.fits && n.kept !== 1) bad.push(`${tag}: still too deep with ${n.kept} bands`);
       if (n && Math.abs(n.limitIn - BAND_FIT_SHARE * n.gapIn) > 1e-9) bad.push(`${tag}: limit is not the declared share`);
-      if ((!n || n.fits) && r.bricks.length === 0) bad.push(`${tag}: the stack fits but no wall`);
+      // a band item 30 narrowed stops at the feature's own cliff: where that feature is the board's whole middle (T9 1.5 in:
+      // the web's two rows meet across a joint) no wall is left, by design
+      const narrowed = n && n.steps.some((s) => s.step === 'narrow');
+      if ((!n || n.fits) && !narrowed && r.bricks.length === 0) bad.push(`${tag}: the stack fits but no wall`);
       const ov = bandOverlap(r.frameBricks);
       if (ov > (KNOWN_BAND_OVERLAP_SQIN[tag] ?? OVERLAP_TOL_SQIN)) bad.push(`${tag}: band overlap ${ov.toFixed(2)} sq in`);
     }

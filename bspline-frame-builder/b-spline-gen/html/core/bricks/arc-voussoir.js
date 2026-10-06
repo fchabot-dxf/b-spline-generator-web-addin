@@ -39,7 +39,10 @@ const MAX_SEGMENT_ANGLE = (5 * Math.PI) / 180; // H23 item 76: an outer/inner ar
 // floor (not a correctness requirement: EVERY piece boundary here is already geometrically exact
 // at its own two radial joints and its own outer/inner radius; this constant only controls how
 // closely the drawn polygon's own straight edges hug the true circular arc between those joints).
-const MIN_RADIUS_IN = 0.01; // a declared floor (same "don't blow up" pattern as along-path.js's own
+// T86 item 21b (the JOINT RULE): raised from 0.01 -- an arc whose inner edge is under ~1.5 joints from its centre cannot
+// host its own joints (its voussoirs' inner tips meet at the centre: T18 / T19 1.25 in, the shoulder arc r 1.29 at depth
+// 1.25, tips touching the top bar there); it drops and its corner becomes a fan, as a tighter arc already does
+const MIN_RADIUS_IN = 0.1; // a declared floor (same "don't blow up" pattern as along-path.js's own
 // cos floor): a brick's own cross-width can genuinely exceed the available radius at an extremely
 // tight bend (a real physical constraint -- a wide brick doesn't fit around a narrow enough curve),
 // clamped here to a tiny positive sliver rather than letting the inner radius go to zero or negative.
@@ -174,20 +177,26 @@ export function voussoirPieces(
   const buildPiece = (thetaA, thetaB, isVeryFirst, isVeryLast) => {
     const skipStartExt = isVeryFirst && jointStart && !jointStart.trustO;
     const skipEndExt = isVeryLast && jointEnd && !jointEnd.trustO;
-    const sampleThetaStart = isVeryFirst && !skipStartExt ? thetaA - CLIP_EPS_ANGLE * direction : thetaA;
-    const sampleThetaEnd = isVeryLast && !skipEndExt ? thetaB + CLIP_EPS_ANGLE * direction : thetaB;
-    const nSeg = Math.max(1, Math.ceil(Math.abs(sampleThetaEnd - sampleThetaStart) / MAX_SEGMENT_ANGLE));
-    const outerPts = [];
-    for (let k = 0; k <= nSeg; k++) {
-      const t = sampleThetaStart + ((sampleThetaEnd - sampleThetaStart) * k) / nSeg;
-      outerPts.push({ x: cx + rOuter * Math.cos(t), y: cy + rOuter * Math.sin(t) });
-    }
-    const innerPts = [];
-    for (let k = nSeg; k >= 0; k--) {
-      const t = sampleThetaStart + ((sampleThetaEnd - sampleThetaStart) * k) / nSeg;
-      innerPts.push({ x: cx + rInner * Math.cos(t), y: cy + rInner * Math.sin(t) });
-    }
-    let polygon = [...outerPts, ...innerPts];
+    // T86 item 21b, the JOINT RULE: a joint between two voussoirs is a strip of constant width, not a wedge. MEASURED
+    // before: the angular gap planned at the centre line narrowed toward the inner radius (8,022 arc joints under
+    // 0.029 in, 534 exactly 0) and opened toward the rim of a tight convex arc (T18's shoulder: 0.09 in wedges). An
+    // interior side is the radial at the joint's centre angle thetaM shifted half a joint into the piece: it crosses a
+    // circle of radius R at thetaM + asin(j / 2R) (exact, no chord clip -- a clipped chord sagged inside the true arc).
+    // A run's own two ends keep their joint / fan handling.
+    const halfGap = ((jointWidth / 2) / r) * direction;
+    const sideAt = (thetaM, R, into) => thetaM + into * direction * Math.asin(Math.min(1, jointWidth / 2 / Math.max(R, 1e-9)));
+    const edgeTheta = (R, start) => (start
+      ? (isVeryFirst ? (skipStartExt || !jointStart ? thetaA : thetaA - CLIP_EPS_ANGLE * direction) : sideAt(thetaA - halfGap, R, 1))
+      : (isVeryLast ? (skipEndExt || !jointEnd ? thetaB : thetaB + CLIP_EPS_ANGLE * direction) : sideAt(thetaB + halfGap, R, -1)));
+    const oS = edgeTheta(rOuter, true), oE = edgeTheta(rOuter, false), iS = edgeTheta(rInner, true), iE = edgeTheta(rInner, false);
+    if ((oE - oS) * direction <= 0 || (iE - iS) * direction <= 0) return []; // the joints meet inside the piece: no material
+    const arc = (R, t0, t1) => {
+      const nSeg = Math.max(3, Math.ceil(Math.abs(t1 - t0) / MAX_SEGMENT_ANGLE));
+      const pts = [];
+      for (let k = 0; k <= nSeg; k++) { const t = t0 + ((t1 - t0) * k) / nSeg; pts.push({ x: cx + R * Math.cos(t), y: cy + R * Math.sin(t) }); }
+      return pts;
+    };
+    let polygon = [...arc(rOuter, oS, oE), ...arc(rInner, iE, iS)];
     // keepRefAsStart/keepRefAsEnd (computed by the caller, primitive-ribbon.js, from the joint's own
     // point `o` plus a tangent step AT this arc's own radius there) -- not derived locally, since a
     // fixed step from theta1/theta2 only matches `o` when d0=0 (see primitive-ribbon.js's own

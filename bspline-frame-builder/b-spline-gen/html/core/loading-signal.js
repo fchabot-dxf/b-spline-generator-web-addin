@@ -45,6 +45,7 @@ export const LOADING_SEQUENCES = {
   apply: { stages: ['heightMask', 'rebuild'] },
   newSeed: { stages: ['heightMask', 'rebuild'] },
   projectLoad: { stages: ['cloudLoad', 'restore', 'heightMask', 'rebuild'] },
+  sessionRestore: { stages: ['heightMask', 'rebuild'], surface: 'card' }, // item 37: a page load's restore, one build
   export: { stages: ['heightMask', 'rebuild', 'stepExport'] },
 };
 

@@ -121,91 +121,45 @@ export function planPieceLengths(runLength, pitch, nominalJoint, fractions) {
  *   `fractions`*pitch (the SAME piece when lengths.length===1); every length between cycles `sequence`.
  */
 export function planCornerRun(runLength, pitch, nominalJoint, fractions, sequence, forcedFStart) {
+  // T86 item 21b, the JOINT RULE (advisor + Fred, 2026-10-06): every joint is the declared grout width; the run's
+  // length error goes into its two END pieces (closers), never into its joints. MEASURED before: the old search kept
+  // the ends on FILL_FRACTIONS and flexed every joint to absorb the error (jointWidth = nominal + slack / joints) --
+  // over 456 band lays, 960 straight-run joints came out exactly 0 wide (a 0-gap seam: a zero-area sliver profile in
+  // Fusion, seat A's e2e), 5,066 under 0.029 in and 264 over 0.09 in (nominal 0.034).
+  // Declared: the run STARTS with a whole brick (a staggered row: its declared stagger fraction -- so courses stay
+  // exactly half a brick apart, the running-bond rule); the middle pieces cycle `sequence`; the END closer takes all the
+  // slack, kept within [MIN_CLOSER_FRACTION, CLOSER_MAX_FRACTION] of a brick by the number of whole pieces. A run too
+  // short for that splits into two equal closers, or is one piece when no longer than CLOSER_MAX_FRACTION.
   const seq = sequence && sequence.length ? sequence : [pitch];
-  const avgSeq = seq.reduce((a, b) => a + b, 0) / seq.length;
-  const startFractions = forcedFStart != null ? [forcedFStart] : fractions;
-  const minFraction = Math.min(...fractions);
-  if (runLength < pitch * minFraction * 2 - 1e-9) {
-    // too short for two independent end pieces (even the smallest declared fraction each) -- a
-    // single piece spans the whole run, same honest fallback `planPieceLengths` uses.
-    return { lengths: [runLength], jointWidth: nominalJoint };
+  const minClose = MIN_CLOSER_FRACTION * pitch, maxClose = CLOSER_MAX_FRACTION * pitch;
+  if (runLength < 2 * minClose + nominalJoint - 1e-9) return { lengths: [runLength], jointWidth: nominalJoint };
+  const wholeTotal = (w) => { let t = 0; for (let k = 0; k < w; k++) t += seq[k % seq.length]; return t; };
+  const startLen = (forcedFStart != null ? forcedFStart : 1) * pitch;
+  const closers = (w) => {
+    const left = runLength - wholeTotal(w) - (w + 1) * nominalJoint; // what the start piece and the end closer share
+    return [startLen, left - startLen];
+  };
+  let w = 0;
+  while (Math.max(...closers(w)) > maxClose && closers(w + 1).every((c) => c >= minClose)) w++;
+  while (w > 0 && Math.min(...closers(w)) < minClose) w--;
+  const [a, b] = closers(w);
+  if (Math.min(a, b) < minClose) {
+    // even no whole piece leaves a closer under the floor (a short run, or a stagger that does not fit): one piece
+    // when it is no longer than a brick and a bit, else two equal closers
+    if (runLength <= maxClose) return { lengths: [runLength], jointWidth: nominalJoint };
+    const half = (runLength - nominalJoint) / 2;
+    return { lengths: [half, half], jointWidth: nominalJoint };
   }
-  const candidates = [];
-  for (const fStart of startFractions) {
-    for (const fEnd of fractions) {
-      const endsLen = (fStart + fEnd) * pitch;
-      if (endsLen > runLength + 1e-9) continue; // even 0 whole pieces would overshoot -- not viable
-      let wholeCount = Math.max(0, Math.round((runLength - endsLen - nominalJoint) / (avgSeq + nominalJoint)));
-      // back off until the (wholeCount+1) joints between pieces don't need to go unreasonably
-      // negative to absorb the mismatch -- mirrors `planPieceLengths`' own back-off loop.
-      while (wholeCount > 0 && endsLen + wholeCount * avgSeq - avgSeq * 0.5 > runLength) wholeCount--;
-      const nJoints = wholeCount + 1;
-      // the actual cycled total (not wholeCount*avgSeq) -- exact when sequence has 1 element
-      // (today's behaviour, byte for byte), an honest sum of the real cycled lengths otherwise.
-      let wholeTotal = 0;
-      for (let k = 0; k < wholeCount; k++) wholeTotal += seq[k % seq.length];
-      const idealTotal = endsLen + wholeTotal + nJoints * nominalJoint;
-      const err = Math.abs(runLength - idealTotal);
-      const jointWidth = Math.max(0, nominalJoint + (runLength - idealTotal) / nJoints);
-      candidates.push({ fStart, fEnd, wholeCount, nJoints, idealTotal, err, jointWidth });
-    }
-  }
-  // `forcedFStart` narrows the search to ONE start fraction -- on a short enough run, that one
-  // fraction (plus every declared fEnd) can genuinely overshoot everywhere, leaving `candidates`
-  // empty. Retry the free search rather than crash or silently return nothing: an un-staggered end
-  // on an otherwise-too-tight run is a better honest fallback than no plan at all.
-  if (candidates.length === 0 && forcedFStart != null) {
-    return planCornerRun(runLength, pitch, nominalJoint, fractions, sequence);
-  }
-  // T86 item 1 follow-up (advisor review, "the top band's first and last pieces are thin strips"):
-  // MEASURED the raw err-minimum alone can pick a razor-thin END FRACTION (e.g. 1/4) over a FULL
-  // brick at both ends for a saving of a tiny fraction of ONE joint's own width. Against this file's
-  // own declared design intent (FILL_FRACTIONS' own header: "mostly whole bricks, minimal small
-  // cuts"), minimizing err ALONE is the wrong objective.
-  //
-  // T86 item 1 follow-up #2 (advisor review again, SAME complaint resurfacing at a BLOCK/LAPPED
-  // corner): the first fix above gated the fullest-pair preference on total POSITION error staying
-  // within a tolerance of the true minimum -- too narrow a gate. MEASURED directly (a block-bounded
-  // run, length 7.732, this item's own square fixture): both-whole-ends' own err (0.044) was well
-  // OUTSIDE that tolerance window (0.017), so the old fix fell back to a half-fraction (0.1in) pair
-  // instead -- a real, visible sliver next to the grey quoin block, exactly what the advisor flagged
-  // (their own guess at the MECHANISM -- "run length counted to the corner, not the block face" --
-  // did not hold up: `effectiveLen` was already confirmed correct by re-summing the actual engine
-  // output, 7.732 exactly; the TRUE bug was in this tie-break, not in how the run length is measured).
-  // Position error is the WRONG lens for "is this combo visually fine": the quantity that actually
-  // reads as a defect is JOINT WIDTH deviating far from nominal, and MEASURED across every case this
-  // file now has (10in through run, 8.432in butt-clipped run, 7.732in block-bounded run), forcing
-  // BOTH ends whole changes the resulting joint width by at most ~0.001in versus the strict error-
-  // minimum's own choice -- utterly imperceptible, every time, not a rare coincidence. So: prefer the
-  // FULLEST end-fraction pair whose own `jointWidth` stays within a generous, declared ceiling of
-  // nominal (3x -- comfortably past ordinary joint variation, but still catching a genuinely
-  // degenerate run where even the fullest viable pair would leave a joint wide enough to read as a
-  // void rather than mortar); only fall back to the full candidate pool when NOTHING clears that
-  // ceiling. Err is now a pure last-resort tiebreaker, not the primary objective.
-  const REASONABLE_JOINT_MULT = 3;
-  const reasonable = candidates.filter((c) => c.jointWidth <= nominalJoint * REASONABLE_JOINT_MULT);
-  const pool = reasonable.length ? reasonable : candidates;
-  // Two tiebreakers ahead of err, both the same "avoid a thin end piece" intent: first the FULLEST
-  // pair by total (preferring e.g. two whole bricks over one 3/4 + one 1/4), then -- among same-total
-  // pairs, which `fStart+fEnd` alone can't distinguish -- the MOST BALANCED one (maximize the smaller
-  // of the two): (0.5,0.5) over (0.75,0.25)/(0.25,0.75) if ever tied on both sum AND a reasonable
-  // joint width (MEASURED this exact tie once, before fix #2 above made (1,1) itself reachable in
-  // every case tried so far -- kept as a tiebreaker since a tie among non-maximal sums remains
-  // possible for other inputs).
-  const best = pool.reduce((a, b) => {
-    const sumA = a.fStart + a.fEnd, sumB = b.fStart + b.fEnd;
-    if (sumB !== sumA) return sumB > sumA ? b : a;
-    const minA = Math.min(a.fStart, a.fEnd), minB = Math.min(b.fStart, b.fEnd);
-    if (minB !== minA) return minB > minA ? b : a;
-    return b.err < a.err ? b : a;
-  });
-  const { fStart, fEnd, wholeCount, nJoints, idealTotal } = best;
-  const wholeLengths = [];
-  for (let k = 0; k < wholeCount; k++) wholeLengths.push(seq[k % seq.length]);
-  const lengths = [fStart * pitch, ...wholeLengths, fEnd * pitch];
-  const jointWidth = Math.max(0, nominalJoint + (runLength - idealTotal) / nJoints);
-  return { lengths, jointWidth };
+  const middle = [];
+  for (let k = 0; k < w; k++) middle.push(seq[k % seq.length]);
+  // a closer still over the ceiling (one more whole brick would leave it under the floor) splits into two equal closers
+  const ends = b > maxClose ? [(b - nominalJoint) / 2, (b - nominalJoint) / 2] : [b];
+  return { lengths: [a, ...middle, ...ends], jointWidth: nominalJoint };
 }
+// T86 item 21b: a closer (a run's end piece, which takes the run's slack) is at least this much of a brick, at most
+// CLOSER_MAX_FRACTION (the 1.2x piece ceiling mergeSlivers already declares)
+export const MIN_CLOSER_FRACTION = 0.25;
+export const CLOSER_MAX_FRACTION = 1.2;
 
 /**
  * H23 item 76 (advisor review, "nothing below 1/4"... "no piece larger than a whole brick, cap the

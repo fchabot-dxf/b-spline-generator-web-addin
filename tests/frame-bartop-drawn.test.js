@@ -25,15 +25,14 @@ import { frameSolidSpec } from '../bspline-frame-builder/b-spline-gen/html/edito
 import { applyFrameToPanel, frameLoopsWorld, pointInPolygon, clipPanelToOutline } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
 import { buildHeightField } from '../bspline-frame-builder/b-spline-gen/html/core/preview/terrain-mesh.js';
 import { FakeTHREE, carvedPanel, drawnFaces, PANEL_COLOUR } from './helpers/drawn-panel.js';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 
 const TERRAIN = (x, y) => 1.2 + 0.5 * Math.sin(1.9 * x) * Math.cos(1.4 * y) + 0.25 * Math.sin(3.1 * y + 0.4 * x);
 const W = 7, H = 9;
 const build = (spacing, thick) => carvedPanel(W, H, Math.round(W / spacing) + 1, Math.round(H / spacing) + 1, TERRAIN, thick);
 
-// Declared per-file timeout: the 0.05-spacing cases build ~140x180 carved meshes and take up to ~1.9s
-// alone (measured 2026-10-04), but crossed vitest's 5s default under full-suite load (twice that day,
-// green alone). ~10x the solo time keeps the gate from flaking without hiding a real hang.
-const HEAVY_MESH_TIMEOUT_MS = 20_000;
+// The 0.05-spacing cases build ~140x180 carved meshes: ~1.9 s alone (2026-10-04), up to 11 s in a loaded full run
+// (item 67's measured runs, 2026-10-06) -- so they take the suite default, HEAVY_TEST_MS (was a tighter 20 s here).
 
 const CASES = [];
 for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_6']) for (const [spacing, thick] of [[0.4, 0.2], [0.15, 1.0], [0.05, 0.2]]) CASES.push([id, spacing, thick]);
@@ -79,7 +78,7 @@ describe('bar tops vs the DRAWN panel faces (normal-offset underside)', () => {
     }
     expect({ worstBottom: +worstBottom.toFixed(4), barShows, panelOutside }).toEqual({ worstBottom: expect.any(Number), barShows: 0, panelOutside: 0 });
     expect(worstBottom).toBeLessThan(1e-4);
-  }, HEAVY_MESH_TIMEOUT_MS);
+  }, HEAVY_TEST_MS);
 
   it('the outline wall carries the panel colours (no white ledge) and spans the drawn faces', () => {
     const { mesh, solid, grid } = build(0.4, 0.5);

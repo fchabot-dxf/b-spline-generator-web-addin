@@ -23124,6 +23124,98 @@ On top of V1 / V2 / V4 (above):
 - For B's after-run: same tools, same seed, same board -> diff against tools/repro/h23_item89_baseline/.
 - Hygiene: scratch doc closed by handle (only Fred's Untitled), holder none, my server + Chrome stopped.
 
+## T86 item 21b -- the JOINT RULE (option A + the planner + constant-width joints): every seam is the declared joint (seat B / fc, 2026-10-06)
+Branch joint-rule (off corner-21b, main 845b794 merged). FOR FRED'S YES before merge: it re-lays every frame once.
+**Declared rules (all in core/bricks):**
+- planner (piece-plan planCornerRun): a joint is never flexed. A run starts with a whole brick (a staggered row: its
+  stagger fraction -- courses stay exactly half a brick apart); whole bricks follow; the END closer takes the slack,
+  within MIN_CLOSER_FRACTION 0.25 .. CLOSER_MAX_FRACTION 1.2 of a brick by the number of whole bricks; a closer still over
+  the ceiling splits into two equal closers; a run too short for a brick + a closer is one piece (or two equal halves).
+- rows / bands / wall (contour-bands rowDepths): each row stops half a joint short of the row or band beside it and of the
+  wall; only the stack's own outer edge (the board, an open stroke's two edges) has none. innerPath (where the wall
+  starts) moves in by half a joint (one global grout width: band half + wall half = one joint).
+- mitres / notches (primitive-ribbon mitreJointSide): each run clips half a joint back from the mitre line, the corner
+  points slid ALONG the run so they stay on its edges (a first version moved them straight off the line: a staggered
+  row's half brick read 0.363, caught by the pattern test). Fan corners (fanJointSide): both runs back off
+  j / (2 sin(alpha/2)) so their two corners are one joint apart.
+- voussoirs (arc-voussoir buildPiece): a joint is a constant-width strip; an interior side crosses radius R at
+  thetaM + asin(j / 2R) (exact -- a chord clip sagged inside the true arc and failed the outer-radius test).
+- fans / notch patches (primitive-ribbon jointedSlices, one helper for buildPatch, buildNotchPatch, buildNotchQuadPatch):
+  dividers are joint-wide strips, the first / last slice stands a full joint off the run it meets.
+- medial step (contour-bands): pairs closer than a joint are conflicts too (touching = a 0-gap seam); every cut is
+  checked (a difference may remove only shared ground -- MEASURED: a degenerate one cut a 0.468 sq in voussoir to 0.016
+  and its twin came out LARGER); the shared-area floor 1e-9 (a sharp tip in a joint strip shares ~1e-7).
+- arc floor (arc-voussoir MIN_RADIUS_IN 0.01 -> 0.1): an arc whose inner edge cannot hold its joints drops to a fan
+  (T18 / T19 1.25 in: the shoulder arc's voussoir tips met the top bar at its centre). Tried first and rejected: 0.05
+  (still touching), a chord fallback for self-crossing field cuts (worse: 72 tight pairs, overlap up).
+**Sweep (456 lays: 8 presets x 19 templates x 0.75 / 1 / 1.25 in) vs neck-medial:** narrowest seam per case 0 in EVERY
+case -> lowest 0.0314 in, median 0.034, 0 cases under 0.030 (79,392 seams under 0.032 -> 28, all arc chord sag);
+same-row joints exactly 0: 1,494 -> 0, under 0.029: 14,582 -> 0, over 0.09: 273 -> 0; band overlap 13.2 -> 0.000 sq in;
+voids 70.3 -> 1.35 sq in, all of it MORTAR KNOTS where constant-width fan joints converge on the apex (accepted by the
+advisor; T18 / T19 1.25 ~0.027 per shoulder, T5 0.005, T8 0.009). 0 / 456 byte-identical (the re-lay).
+**Tests:** new tests/bricks-joint-rule.test.js (6 templates x 5 presets x 1 / 1.25: no seam under joint - 0.004; with the
+row insets removed 5/6 FAIL). 14 test files updated, each with a one-line reason in the test (old contract -> which
+declared rule): planner pins rewritten to the rule; innerPath / cross-width / corner-void (a 45 deg mitre joint reads
+j / sin 45) / scale-grout arithmetic; fieldstone ring excludes the band-to-wall joint; neck covers + T1 digests
+re-pinned (cover bound 0.16 -> 0.05 since the pins are now the cut lay itself; the no-hole mutant still fails, 0.162);
+fillet coverage + board bare check count a point inside a joint as mortar (bare check: TRUE distance, original 1.5 joint
+reach -- the axis probes missed a diagonal joint); build-patch's mixed_bands check now selects the soldier band (its size
+filter caught header pieces); header ">4 vertices" now checks the oversampling it documents (redundant collinear
+vertex; a mitre strip's 0.013 in chamfer is a real 5th vertex; self-test added); stack "no stagger" checks the declared
+whole-brick start. No tolerance loosened. Real findings from the four "real look" tests: the mitre slide bug, the long
+closer (split), the header filter, a diagonal-joint probe.
+**Gates:** bricks domain 543 + joint-rule 6 green; full vitest 317 / 320 -- three 5 s / 90 s timeouts on a loaded run
+(no-corrupt-polygon T11, rock-set-bands, frame-3d-sweep); the two bricks files time the same on main and branch
+(6.5 s each, measured twice). Sheet: shots/seatB/neck16c2/joint_rule_before_after.png (T1 single 1, T18 three_band 1.25,
+T7 three_band 1, T11 dc 1.25, walls included; close-ups: a mitre, a row's joints, a labelled mortar knot).
+Fusion acceptance pending: seat A's item 89 run (profiles == pieces on all 57).
+- Brush strokes (advisor, from seat E's measurement): strokes lay through bricksContourBands (open, centred) -> the same
+  planner, so the butting (0 joint at a bend, main) is gone on this branch (narrowest seam 0.034). The 0.02 in end
+  overhang was linePieces' / voussoirPieces' float-safety extension, which exists to be clipped back to a joint: an open
+  end has none, so it is no longer extended (overhang 0.02 -> 0). Test: bricks-joint-rule's Brush case (every BRUSH_PRESET;
+  with the extension restored it FAILS: the start brick at 0.98 against the stroke end at 1.0). Sheet: a stroke row added.
+- main 33816b6 merged (70b8225, seat E's grout / SVG items): full vitest 322 / 322 files green (80.6 s) before this fix;
+  bricks domain after it green (one loaded run timed out boundary-at-depth-simple at 30 s, alone 19 / 19).
+
+## T86 item 30 -- PLAN (measured, decided; build after the joint rule merges) (seat B / fc, 2026-10-06)
+Found through seat A's item 89 harness: the frame Generate step draws a different shape per case (record frameInfo per
+case: templateId, params, silhouette). One draw of T9 had 1.82 in flanges; at a 1 in single band the flange ends lay
+NOTHING but fans stranded at the four board corners -- PRE-EXISTING (main 845b794 identical, 84 vs 82 pieces).
+Measured on that outline, one soldier band, flange ground farther than a joint from any piece: depth 1.0 -> 6.151 sq in
+bare; 0.9 -> 0.000; 0.8 / 0.7 / 0.6 / 0.5 / 0.4 -> 0.001. The cliff is half the flange (0.91): past it the 1.82 in
+flange-end line cannot hold both corners' mitres and drops, and the corners cascade into fans.
+DECIDED (advisor, Fred's item 28 "ok to all"): option (a) -- the fit rule's own BAND_FIT_SHARE (1/3 of narrowestGap,
+0.607 here) also governs a SINGLE band too deep for the board (today "the outermost band is never reduced"); one declared
+share for every reduction. Note text: "band narrowed to fit; bricks cut to the row depth" (a soldier row narrower than its
+brick cuts the bricks to the row depth -- no smaller whole-brick pattern to fall back to). Acceptance: before/after on T9
+thick flange (single, dc at 1 in) + the 456-lay sweep showing nothing else changes.
+- Item 89 Fusion acceptance on joint-rule 2db0668 (seat A, item89-baseline @ 920a63f, table_jointrule_2db0668.txt):
+  ACCEPTED -- 57 / 57 boards profiles == pieces, 0 slivers, 0 open ends, 0 multi-loop profiles (baseline on main: 14 / 57
+  mismatched, 445 extra profiles, 172 slivers; worst T14 three_band 133/289/92 -> 133/133/0, T3 three_band 145/248/48 ->
+  97/97/0). Server verified (--root guard byte-matched 30 served files). Caveat: the sweep's frame Generate is not
+  reproducible even seeded, so before / after are not the same boards case by case; the acceptance holds on every board.
+
+## T86 item 30 -- BUILT (b'): a single course band too deep for a feature narrows to fit it (seat B / fc, 2026-10-06)
+Rule (advisor (b'), replacing (a) -- (a) would have changed 201 / 456 lays and rides on narrowestGap, item 31): a SINGLE
+course band whose row drops a LINE lying between two lines (lineBetweenLinesDropsAt) is laid at the deepest depth where no
+such line drops, less a joint (bisection, 24 steps); note step {band: 0, step: 'narrow', toIn}; bandsReducedText adds
+"bricks cut to the row depth". Area bands (fieldstone) are exempt: they fill their ring, no run to drop.
+- Thick-flange T9 (fixture tests/fixtures/t9-thick-flange-silhouette.json): 1 in single / double -> narrowed to ~0.88,
+  bare flange 6.15 -> 0 sq in. Shot shots/seatB/neck16c2/item30_t9_thick_flange.png.
+- Sweep, 2,052 lays (19 templates x 9 presets x 0.75 / 1 / 1.25 / 1.5 in x 6x9 / 7x9 / 9x12): 36 narrow, all T6 / T9 / T15
+  at 1.25-1.5 in on 6x9 / 7x9; none at 0.75 / 1 in, none on 9x12, none of the 456 at 7x9 <= 1.25 except T15 6x9 1.25.
+  Those 36 before -> after: bare band ground T15 7.7-8.8 -> 0, T6 3.9 -> 0, T9 6x9 0.045 -> 0.064 (the web / flange T
+  mortar knot, same class as the accepted T18 shoulder knot); band overlap 0 -> 0; wall-over-band T6 0.278 -> 0.002.
+  Shot shots/seatB/neck16c2/item30_narrowed_36_before_after.png (T15 7x9, T6 6x9, T9 6x9 at 1.5 in).
+- Found + fixed in the build: at the band's own wall depth the consumed feature is still a SLIVER of wall (T9 a 0.018 in
+  skeleton, T15 / T6's tapering neck a spike < 0.01 in) that bondLayout laid over the band (0.03-0.99 sq in). The wall
+  boundary is taken past the cliff plus half a joint: wall ground narrower than a joint is mortar. COST: on a narrowed lay
+  the band-to-wall seam is 1.5 joints (only the 36 lays). Test: bricks-band-narrow, mutation-checked (3 fail without it).
+- Re-pinned item 28 (bricks-band-fit): "one band that cannot shrink" -> item 28 still does not reduce it, item 30 narrows
+  it (T9 7x9 1.5, only step 'narrow'); "a wall wherever it fits" exempts a narrowed lay (T9 1.5: the band fills the web).
+- Full vitest 325 files / 5,344 passed (one run had frame-gen "Generate writes the seeds" fail once; passes alone with and
+  without this change -- load flake, not bricks).
+
 ## Brick matrix split into one module per group (seat A / 77, 2026-10-06; advisor: six seats collide in controls.mjs / run.mjs)
 - Regenerated on main 205b41b (replaces cff67d8, which split 845b794). tools/brick-matrix/groups/<group>.mjs x18 (wall,
   frame, brush, sidebar-quick, sidebar-3d, layout, clear, lay, select, migration, frame-ui, password, layers, areas, undo,
@@ -23151,6 +23243,165 @@ On top of V1 / V2 / V4 (above):
   failing groups re-run alone.
 - Changed on purpose: the --parallel / all-groups report row ORDER (BRICK_CONTROLS is group by group); per-group order
   unchanged. Kept: loadFromStandIn in run.mjs, reached by no runner (pre-existing).
+
+## T86 item 31 -- PLAN (measured; awaiting GO): narrowestGap reads corners as gaps (seat B / fc, 2026-10-06)
+narrowestGap (item 28's fit rule: stack <= 1/3 of it) casts each boundary edge's inward normal to the first boundary it
+meets. MEASURED which edge pair gives the reading, 7x9: the bogus ones are all a ray whose first hit is the NEXT
+primitive -- a corner's wedge, not a gap: T7 0.007 in (the r 0.66 hook fillet into its line), T14 0.384 (an hourglass
+side arc into the bottom edge at the acute board corner), T17 0.345 (arc into arc). Everything those lays get is
+"(no fit)" drops on a board with plenty of room.
+Fix tried in a scratch copy, two declared parts:
+ (1) a ray whose FIRST hit is a neighbouring primitive is a corner's wedge: ignored (not continued past it -- my first
+     try continued the ray through the edge and read T14 top-to-bottom, 8.5 in);
+ (2) with (1), no edge normal crosses a WAIST made by two reflex primitive junctions (T14's hourglass: every side ray
+     reaches the corner first), so each reflex junction also casts its inward bisector, first hit, same filter.
+Readings old -> new: T7 0.007 / 0.012 / 0.011 -> 2.68 / 2.33 / 3.53 (7x9 / 6x9 / 9x12); T14 0.384 / 0.473 / 0.542 ->
+2.60 / 2.20 / 3.40 (the waist, which scales with the board); T17 0.345 / 0.999 / 0.648 -> 2.24 / 1.89 / 2.93; T16 (a
+waist the old rays missed) 4.45 / 3.51 / none -> 3.90 / 2.99 / 5.00. Every other template unchanged.
+Lays, 2,052 (19 templates x 9 presets x 0.75-1.5 in x 6x9 / 7x9 / 9x12): 68 change, all T7 / T14 / T16 / T17
+(16 of the 513 at 7x9 <= 1.25 in). Of the 68: 23 only lose a false "(no fit)" (same pieces), 3 T16 6x9 1 in gain a
+true one (waist 2.99 -> limit 1.00 < the 1 in band; same pieces), 42 lay more bands (e.g. T14 7x9 mixed_bands 1 in:
+106 -> 144 pieces). Band overlap 0 on all 68; smallest wall left 8.3 sq in (T16 6x9 at 1 in, unchanged).
+- BUILT (advisor GO, both parts): narrowestGap(board, source) -- source = the primitive per tessellated vertex
+  (bricksContourBands passes it; omitted, every edge is its own). Declared fallback: when no ray qualifies (a lens, a
+  triangle: every primitive the others' neighbour) the plain first-hit reading. Real code == the scratch variant on all
+  2,052 lays (0 differ). Tests (bricks-band-fit): the hourglass reads its 2.6 in waist (either winding); a triangle
+  stays finite; T7 / T14 / T17 / T16 7x9 read 2.68 / 2.60 / 2.24 / 3.90 and mixed_bands (three_band T16) at 1 in fits.
+  Mutation-checked: no corner filter -> 3 fail, no bisectors -> 3 fail. Full vitest 325 files / 5,350 passed (two
+  earlier full runs each had one non-bricks test time out under fleet load -- blind-spot-audit 12.5 s, frame-bartop-drawn
+  22.5 s; both pass alone). Shot shots/seatB/neck16c2/item31_t14_t7_mixed_bands_before_after.png: T14 7x9 mixed_bands
+  1 in gap 0.38 -> 2.60, 1/3 bands (no fit) -> 2/3, 140 -> 194 band pieces; T7 gap 0.01 -> 2.68, 1/3 -> 2/3, 117 -> 156
+  (engine lay; bricksContourBands alone counts 106 -> 144 on T14).
+- CORRECTION (found while measuring item 32, seat B, 2026-10-06): T16's waist read 3.90 in on 7x9 -- its junctions turn
+  104 deg and the bisector ray met the far side lower down, past the 2.47 in waist; a deeper stack was kept across it
+  (the Grey stone inner ring met itself there). Reflex junctions now read the NEAREST point of a non-neighbour
+  primitive, counted only where a circle fits across (WAIST_CLEARANCE_SHARE 0.9: the segment's middle at least 0.9 of
+  half its length from every boundary). MEASURED clearance share of each template's nearest junction reading (7x9):
+  real waists / necks 0.94-1.0 (T6 T9 T14-T19), a notch lip read down the board's side 0.05-0.35 (T1 T3 T4 T5 T8
+  T10-T13; without the rule T13 read 1.78, T5 2.08, T8 1.93). Shot item31b_junction_segments.png (unfiltered
+  nearest readings). Readings: only T16 changes, 6x9 / 7x9 / 9x12 2.99 / 3.90 / 5.00 -> 2.09 / 2.47 / 3.23 (T15 7x9
+  2.93 -> 2.92). Lays vs db413fb, 2,052: 25 change, all T16 -- stacks reduced to fit its waist; 14 of them now an
+  honest "(no fit)" (a 1 in band > 1/3 of 2.47). Tests: T16 reads 2.47; T1 / T5 / T13 / T10 keep their edge readings
+  (mutation: no clearance rule -> 4 fail). Full vitest 325 files / 5,354 passed.
+
+## T86 item 32 -- MEASURED, PLAN (awaiting GO): stone rings at pinches (seat B / fc, 2026-10-06)
+Branch ring-pinch (off gap-31). Probe: three_band, White rocks (set 3) + Grey stone (set 5, bandLayout fieldstone),
+0.75 / 1 / 1.25 in, 7x9, all 19 templates (+ 6x9 at 1.25 / 1.5 on the waisted ones as a stress): overlap between ring
+stones, self-crossing, stones > 10x median, stones ACROSS a pinch (two of its points whose nearest boundary points face
+each other on non-neighbour primitives), bare ring ground (> a joint from every stone, outside the wall).
+- The it.todo's own check (self-crossing or > 10x median, scale 1 and 4/3) on T11 T14 T15 T16 T17 T19: 0 bad on gap-31,
+  both sets. Item 28's fit rule keeps the stack under 1/3 of the gap, so the inner rings that used to pinch are dropped.
+- The one pinch left was T16 (Grey stone 0.75 in kept 2 rings; the inner ring's halves met in the waist, a stone across
+  it) -- the cause was item 31's T16 reading (3.90, true waist 2.47), fixed on gap-31 482df66. After: 0 across a pinch,
+  0 overlap, 0 self-crossing, 0 > 10x median over 114 lays (7x9) + 24 (6x9 stress). The 6x9 single rings at 1.25 / 1.5
+  are an honest "(no fit)" (the outermost ring is never reduced) and still cross no waist. Probe noise, not pinches:
+  stones filling T7's acute roof / hook tips, a big T18 6x9 corner stone (shots item32_*).
+- NOT pinch-specific: bare ring ground, median 0.59 sq in per lay, max 1.28 (T19 1.25); non-pinch templates the same
+  (T6 1.08, T9 0.90, T1 0.66). Voids at ring corners and along the ring where the fieldstone fill leaves gaps.
+Plan: no new pinch rule (nothing left to fix -- machinery would be speculative); flip the six it.todo to tests over
+every template x both stone sets x 0.75 / 1 / 1.25 in (+ the test's 1 and 4/3 scale). Bare ring ground: a separate item.
+- BUILT (b), advisor GO: bricks-rock-ring-stones -- the six it.todo are real tests; every template, White rocks at
+  scale 1 / 4/3, Grey stone at scale 1, the six that pinched also Grey stone at 0.75 in (its lower course height
+  changes the fit's 'course' step -- how T16 kept two rings); asserts no self-crossing, nothing > 10x median, no stone
+  over another. 11 s (the full both-sets x five-sizes grid ran 145 s). NOTE: the old T16 crossing had no overlap /
+  self-crossing / oversize, so this file alone would not catch it -- bricks-band-fit's "T16 reads 2.47" does.
+  Full vitest 326 files / 5,364 passed, 0 todo.
+
+## T86 item 33 -- MEASURED, PLAN (awaiting GO): bare stone-ring ground (seat B / fc, 2026-10-06)
+Probe: an instrumented scratch fieldstone.js records, per seed, its power cell, its clip, its rounding and whether it
+survived; every bare ring point (> a joint from every stone, outside the wall) is attributed to the first stage that
+lost it. White rocks three_band, 19 templates x 0.75 / 1 / 1.25 in, 7x9: 35.1 sq in bare over 57 lays (0.62 / lay).
+- dropped seed 11.7 + clip fragment 3.0 (corners): the ring is filled as ONE slit polygon (ribbonSlitPolygon); a stone
+  across the zero-width bridge is cut in two, keeps the seed's piece, often under the floor and dropped -- the void at
+  the bridge (bottom-right of the board) on 56 of 57 lays, the largest voids (0.4-0.6 sq in).
+- phantom-owned 6.7 (ring corners, mostly 1.25 in): a fence phantom (a seed mirrored across a ring edge) bounds EVERY
+  cell, not just its twin's -- at a concave corner it takes ground from a neighbour's stone and no stone gets it.
+- outside the ring polygon 12.0: 2,119 joint mouths along the board edge (rounded stone corners), almost all < 0.05.
+Rules tried in the scratch copy (declared, stones whole, no slivers):
+ (A) a phantom bounds only its own twin's cell (it fences that seed; real neighbours bound each other);
+ (B) a ring's stones are clipped to the ANNULUS -- the outer edge, minus the inner edge -- not to the slit polygon.
+Bare 35.1 -> A 16.6 / B 19.9 / A+B 8.0 sq in (0.14 / lay); voids >= 0.05 sq in 135 -> 14, largest 0.62 -> 0.21; dropped
+seeds and clip fragments 0; stones 5,182 -> 5,315; no overlap, no self-crossing, largest stone 7.3x -> 6.4x median;
+208-222 ms per lay vs 233-366 today. Wall fieldstone untouched (no fences: neither rule applies).
+Shot item33_ring_voids_before_after.png (T14 / T10 / T3 / T9 at 1.25 in).
+- BUILT (advisor GO, A+B) in layouts/fieldstone.js: (A) a phantom carries its twin and bounds only that seed's cell;
+  (B) fences[0] is the outer line and every further fence a hole: the stones are clipped to that annulus (the piece
+  holding the seed) -- only when every fence is a SIMPLE polygon: a band deeper than a neck pinches its inner edge to
+  zero width (T18 / T19, a 1 in ring at 0.75 in stones, bricks-fieldstone-band) and cutting that hole out ran one
+  stone through the pinch over its neighbours (0.15 sq in); such a ring keeps the slit clip. Real code, White rocks +
+  Grey stone three_band, 19 templates x 0.75 / 1 / 1.25 in, 7x9 (114 lays): bare ring ground 66.5 -> 11.7 sq in,
+  per lay median 0.59 -> 0.09, max 1.28 -> 0.47; stones 10,556 -> 10,823; overlap 0, self-crossing 0, > 10x median 0.
+  Tests bricks-stone-ring-ground: six worst lays at 1.25 in under 0.3 sq in (were 0.76-1.28); no void at the slit
+  bridge on six templates at 1 in. Mutation: no A -> 5 fail, no B -> 6 fail. Full vitest 327 files / 5,376 passed.
+  Changes saved stone-ring boards (Fred-yes batch). Shot for Fred: item33_fred_T11_white_rocks_1in_before_after.png
+  (T11 7x9 1 in, 73 -> 77 ring stones; one small mortar patch left by the right notch).
+
+## T86 -- joint-rule gap: three touching seams on 9x12 (seat B / fc, 2026-10-06), branch seam-9x12 (off ring-pinch)
+Found by the stack sweep (shots/seatB/neck16c2/stack_summary_table.md): T8 9x12 0.75 in soldier_stretcher / three_band
+(seam 0) and T12 9x12 0.75 in double_course (0.0001). Cause: yieldAtMedialLine's cut (checkedDifference ->
+polygonDifference) left a SPIKE on the piece -- a 0.05 in excursion 0.0004 in wide along the cutter's edge, out and
+back, its tip three vertices within 0.0002 in -- reaching the neighbour across the joint; it has no area, so the
+cut's area check passed it. Fix: geometry.js dropSpikes (merge vertices under SPIKE_WIDTH_IN / 2, then drop every
+vertex where the outline reverses with an excursion thinner than SPIKE_WIDTH_IN = 0.001 in), applied to the cut's
+pieces. Seams after: 0.0322 / 0.0331 in (joint less arc sag). Sweep vs ring-pinch, 2,166 lays: 312 pieces lists change,
+3 materially (the three above; the rest is sub-0.0005 in vertex cleanup -- same piece count, overlap, bare, seam);
+stone lays 0. Seams under 0.030 in: 22 -> 19 (18 neck seams below + T17 9x12 mixed 1.25 0.0296, arc sag).
+Test: bricks-joint-rule now also 6x9 / 9x12 x 0.75-1.5 in on T1 T5 T8 T11 T12 T14 T16 T18 T19 (18 tests, ~26 s);
+KNOWN_NECK_SEAM_IN declares the two neck floors. Mutation: no dropSpikes -> T8 / T12 9x12 fail. Full vitest 327 / 5,394.
+NECK SEAMS (reported, not fixed; advisor's question "should item 30's narrowing kick in?"): T16 6x9 1.5 (0.0221),
+T19 7x9 1.5 (0.0267), T18 9x12 1.25 (0.0238), 6 presets each -- a single band deeper than half the waist (T16 6x9:
+gap 2.09, half 1.045 < 1.5) meets itself at the medial line; the fit rule says "(no fit)" (the outermost band is never
+reduced); item 30 does NOT narrow: its trigger is a LINE between two lines dropping, and these waists are reflex
+junctions (T16 line/arc, T18 / T19 arc/arc). The medial setback leaves 0.022-0.027 in, not the 0.034 joint.
+
+## T86 item 34 -- NOTED for later: T7's hook leaves bare band ground at 1.5 in (seat B, 2026-10-06)
+4.9 sq in on 7x9, 2.9 on 6x9, every preset, identical on main -- the hook (r 0.66 fillet) at big bricks.
+
+## T86 -- the neck seams at big bricks (advisor GO (2), seat B / fc, 2026-10-06), on seam-9x12
+MEASURED first (scratch, instrumented): not the curved-source setback -- at every neck seam one side stood exactly half
+a joint off the medial line (first-order and true distance agree to 0.0005 in); the other side kept a TIP 0.013 x
+0.004 in inside the cutter of the piece across. Its cuts ran against two pieces of one run whose cutters meet at the
+run's joint; after the first cut the piece and the second cutter shared an EDGE exactly, and polygonIntersection /
+polygonDifference both missed the overlap (shared 0, piece back untouched). Fix (contour-bands checkedDifference): a
+cut whose result still has a vertex deeper than CUT_INSIDE_IN (1e-4 in) inside the cutter is redone with the cutter
+CUT_NUDGE_IN (1e-6 in) larger. Sweep vs the previous seam-9x12 tip, 2,166 lays: 32 change, all seams only -- the 18
+neck lays 0.022-0.027 -> 0.034, and 14 more of the same miss 0.031-0.032 -> 0.034 (T11 6x9 1.5, T19 6x9 1, T19 9x12
+1.25); pieces, overlap, bare unchanged; stone lays 0. Seams under 0.030 in: 19 -> 1 (T17 9x12 mixed_bands 1.25, 0.0296,
+arc sag). Test: KNOWN_NECK_SEAM_IN removed -- the extended joint-rule grid holds the joint everywhere; mutation (no
+nudge) -> T16 6x9 / T18 9x12 fail. Full vitest 327 / 5,394.
+
+## T86 item 34 -- MEASURED (plan below, awaiting GO): T7's roof at 1.5 in (seat B)
+Render (T7 7x9 single_soldier 1.25 vs 1.5): at 1.5 in the whole roof gable above the hooks is bare -- the gable's
+inradius is ~0.5 in, so the two roof lines' rows drop at 1.5 in, and the hooks' fans do not reach into it; at 1.25 in
+the roof lays. Item 30 does not narrow it: the roof lines lie between ARCS (the hooks), not between two lines.
+- BUILT (advisor GO (a)), primitive-ribbon.js. MEASURED first: the bare ground was never built (bare equal before and
+  after the medial yield and the board clip), from two gaps in the corner patch over dropped primitives:
+  (1) the joint path with a dropped primitive and a defined outer joint `o` patched only the FIRST dropped primitive --
+      T7 at 1.5 in drops BOTH roof lines between the hooks, the first's far tangent point does not exist, no patch:
+      it now walks the whole dropped chain (as item 21b's `!o` branch already did); one dropped primitive: as before;
+  (2) the NOTCH construction (straight-chord fans, for a dropped LINE between sides) also took a dropped ARC whose
+      neighbours' offsets never cross -- T18 / T19 6x9 1.25 in, the r 1.09 shoulders: a notch is now a dropped line
+      only; an arc goes to the chain patch, whose fans follow the arc.
+  Sweep vs the previous tip, 2,166 lays: 24 change -- T7 7x9 / 6x9 1.5 in bare 4.90 / 2.92 -> 0.03 / 0.00 (43 -> 60 /
+  45 -> 58 pieces), T18 / T19 6x9 1.25 in 0.69 / 0.74 -> 0.01 / 0.06 (+2 pieces), 6 presets each; nothing worse in
+  overlap, seam or bare anywhere; 0 stone lays, 0 lays at 7x9 1 in. Total bare band ground 76.2 -> 21.3 sq in.
+  Test bricks-dropped-chain (4 cases under 0.1 sq in; mutation: chain -> T7 fails, notch-for-arcs -> T18 / T19 fail).
+  Full vitest 328 / 5,400. Shot item34_dropped_chain_before_after.png. NOT fixed (separate, = main): T8 9x12 1.5 in,
+  0.24 sq in between arc 10's last voussoir and the corner fan.
+
+## T86 item 35 -- the T8 9x12 1.5 in voussoir-to-fan gap (advisor GO, seat B / fc, 2026-10-06), on seam-9x12
+MEASURED: not the patch (its strip starts exactly at q's angle, -106.6 deg) -- the voussoir run of arc 10 (convex,
+r 1.60, inner radius at 1.5 in 0.11) ended at -120.5 deg: the joint rule's fan-corner back-off (fanJointSide) moved
+q 0.03 in back along the run's tangent, and on a 0.11 in inner circle that is 15 deg of arc -- the radial end swung, a
+wedge 0.03 in at q and 0.42 in at the rim (0.24 sq in bare). Fix (primitive-ribbon mitreJointSide): a CONVEX arc run
+keeps the fan's own corner (its end is the radial through q) and the fan yields it a constant joint (yieldAtMedialLine:
+a fan yields a run all it covers plus a joint). Tried first on EVERY arc: 905 lays moved (116 materially, incl. T1 7x9
+at 1 in, the no-neck digest pin) -- a concave arc's inner radius is its LARGER one, the back-off narrows toward the rim,
+no wedge: left as it was. Convex only, sweep vs the item 34 tip, 2,166 lays: 62 change, 24 materially -- T8 9x12 1.5
+bare 0.235 -> 0.003; T5 6x9 1 / 7x9 1.25 / 7x9 1.5 one or two more voussoirs, bare and seams equal or better; nothing
+worse; stone 0; at 7x9 1 in only sub-tolerance vertex detail (T5). Total bare 21.3 -> 19.8 sq in; min seam of any
+changed lay 0.0308. Test: bricks-dropped-chain + T8 (mutation: the back-off on convex arcs -> T8 fails). Full vitest
+329 / 5,406.
 
 ## H23 item 91 -- the first APPLY after BUILD generated 3/7 ops: item 86's setup tag (seat A / 77, 2026-10-06)
 - Symptom (item 90, main and seam-9x12 alike, 4/4 boards): the first APPLY right after BUILD generated 3/7 ops --
@@ -23305,3 +23556,38 @@ On top of V1 / V2 / V4 (above):
   declared: the "POS DIAG ... cm" lines print millimetres (x -95.25 = -3.75 in), a label slip, not the cause. Not
   investigated further (no CAM change was asked for).
 - Hygiene: scratch docs closed by handle (only Fred's Untitled), holder none, both servers stopped.
+## F35 item 37 reopened -- a reload's 3D: one boot build, a declared restore end, deterministic brick detail (seat E / 61, 2026-10-06)
+- REPRO (seat D's boards, my tree = D's code c3ca12d): D's own a68_acc.mjs reload = base 3/3; a same-page forced re-mask
+  (first mask vs _notifyChange('commit') + Apply) 0 of 25521 cells differ 4/4. D's drift came from what the reload READ:
+  a restored page built TWICE -- initApp masked P.editorSvg before window.svgEditor existed (masks nothing, still won the
+  refresh generation and scheduled a build), then initSvgEditor's restore masked for real. That first build (gen 1) is
+  an UNMASKED surface: 17164 of 25521 cells off, up to 0.37 in, on screen 1.4-5.2 s at CPU x4, once with the card DOWN
+  for its whole 2.1 s. A 3-equal-polls-700-ms settle (cdp.mjs, run.mjs heightsSettled) stops on it under fleet load.
+- FOUND WHILE FIXING (measured, not argued): with one boot build, 7 of 15 loaded reloads still landed on a different
+  final. Instrumented rebuild inputs (every P key, grid, sculpt deltas) were IDENTICAL; only the Wall brick mask sum
+  moved (15060.5173 vs 15060.5277). Root: editor-brick-surface.js computeDetailGrid let drawImage's own scaler shrink
+  each sample photo to 48x48 -- different by canvas backend (default vs --disable-accelerated-2d-canvas vs --disable-gpu:
+  47 of 47 grids differ) and from page load to page load under load (7 of 47 moved, then STAYED moved on later reloads).
+  This is the original item 37 drift (seat 37's "small multiplicative differences on raised cells").
+- FIX (declared): app-init.js bootBuildOwner() -- the boot build has ONE owner: a saved drawing -> initSvgEditor's restore
+  (mask + build), none -> initApp (plain build); a failed editor restore still builds. core/state.js bootRestore
+  {complete, generation} + markBootRestoreComplete, set when the owner's build landed (core/engine/rebuild.js
+  whenRebuildIdle: nothing running, queued or on scheduler.js's timer -- isRebuildScheduled). loading-signal.js
+  LOADING_SEQUENCES.sessionRestore keeps the card up between the mask and the build. editor-brick-surface.js
+  areaAverageGrey: the photo drawn 1:1 on a willReadFrequently (CPU) canvas, the crop averaged down in JS.
+- HARNESS: run.mjs waitApp waits on bootRestore.complete (a build without it keeps the 3 s window); heightsSettled also
+  needs the app BUILT (whenRebuildIdle + card hidden). groups/persistence.mjs FRESH_VS_RESTORED comment updated.
+  Seat D (bb) told: wait on bootRestore.complete after a reload.
+- MEASURED before (main code) / after, T1 7x9 Wall, Checker -> None, 2 probes per tree in parallel, CPU x4, 12 reloads
+  each: time to final 3D median 7.5 s / 5.9 s (max 10.8 / 8.0); wrong-frame on screen 1.5-3.6 s / 0 s every reload;
+  card off before the final up to 3.6 s / 0 s; restore-complete at the final 12/12 (after). Detail grids: identical
+  across the 3 canvas backends after (were 47/47 different). Old vs new grids: correlation median 0.938 (0.880-0.980),
+  same features, slightly smoother -- shots/seatE/item37/detail_grids_old_top_new_bottom.png. Every brick's grain
+  changes once by that much (one-time look change, deterministic after).
+- TESTS: tests/boot-restore-one-build.test.js (4) + tests/brick-detail-area-average.test.js (4): fail 8/8 on origin/main;
+  mutation (initApp's old boot mask put back into the new code) turns the 2 saved-drawing rows red. Full vitest 327 files,
+  5348 passed, 6 todo, 0 failed. Matrix live on the branch: persistence 24 rows 0 FAIL (item-37 row live = restored),
+  lay 12 rows 0 FAIL.
+- SWEEP: app-init.js _editorSvgHasContent (its only caller was the boot mask) removed; cloud-project-manager.js comment
+  that cited it reworded; app-init.js lastResult import (unused after) dropped. Kept: initApp's refreshAllStampMasks
+  import (initSvgEditor still uses it).

@@ -34,6 +34,15 @@ function areaOutside(poly, boundary) {
   const interArea = inter.length >= 3 ? Math.abs(signedArea(inter)) : 0;
   return Math.max(0, polyArea - interArea);
 }
+function distToPolyline(x, y, poly) {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / l2));
+    best = Math.min(best, Math.hypot(x - a.x - t * dx, y - a.y - t * dy));
+  }
+  return best;
+}
 function areaInside(poly, hole) {
   const inter = polygonIntersection(poly, hole);
   return inter.length >= 3 ? Math.abs(signedArea(inter)) : 0;
@@ -59,6 +68,9 @@ function ringContainmentCheck(templateId, widthIn) {
     for (let i = 0; i < GRID; i++) for (let j = 0; j < GRID; j++) {
       const x = minX + ((maxX - minX) * (i + 0.5)) / GRID, y = minY + ((maxY - minY) * (j + 0.5)) / GRID;
       if (!pointInPolygon(x, y, outer) || pointInPolygon(x, y, inner)) continue;
+      // 21b joint rule: innerPath is where the WALL starts, one joint inside the band's own edge -- that strip is the
+      // band-to-wall joint, not ring for stones to cover
+      if (distToPolyline(x, y, inner) < SET.grout.widthIn) continue;
       total++;
       if (cells.some((c) => pointInPolygon(x, y, c.polygon))) covered++;
     }

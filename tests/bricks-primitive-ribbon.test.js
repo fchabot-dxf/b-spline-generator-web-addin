@@ -397,9 +397,11 @@ describe('ribbonPieces with cornerStyle="lapped" (T86 item 1, advisor decision t
       }
     }
     // band 0 (depth [0,0.75]): bottom pieces reach the full [0,10] span (through).
+    // 21b joint rule: each band stops half a joint short of its neighbour band / the wall (band 0: [0, D1 - j/2])
+    const halfJ = SET.grout.widthIn / 2;
     const band0Bottom = bricks.filter((p) => {
       const ys = p.polygon.map((pt) => pt.y);
-      return Math.min(...ys) <= 1e-6 && Math.max(...ys) >= D1 - 1e-6;
+      return Math.min(...ys) <= 1e-6 && Math.max(...ys) >= D1 - halfJ - 1e-6;
     });
     const xs0 = band0Bottom.flatMap((p) => p.polygon.map((pt) => pt.x));
     expect(Math.min(...xs0)).toBeCloseTo(0, 6);
@@ -407,7 +409,7 @@ describe('ribbonPieces with cornerStyle="lapped" (T86 item 1, advisor decision t
     // band 1 (depth [0.75,1.5]): bottom pieces are now the lapped/clipped side, NOT the full span.
     const band1Bottom = bricks.filter((p) => {
       const ys = p.polygon.map((pt) => pt.y);
-      return Math.min(...ys) <= D1 + 1e-6 && Math.max(...ys) >= 2 * D1 - 1e-6;
+      return Math.min(...ys) <= D1 + halfJ + 1e-6 && Math.max(...ys) >= 2 * D1 - halfJ - 1e-6; // band 1: [D1 + j/2, 2 D1 - j/2]
     });
     const xs1 = band1Bottom.flatMap((p) => p.polygon.map((pt) => pt.x));
     expect(Math.min(...xs1)).toBeGreaterThan(0.01); // clipped short of the board edge, unlike band 0

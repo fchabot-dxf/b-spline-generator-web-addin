@@ -24,6 +24,7 @@ import { HANDLE_SEGMENT_INDEX, controlledSegments } from '../bspline-frame-build
 import { manifestFromShape } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-sketch-manifest.js';
 import { frameLabel } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { sampleOutline } from '../bspline-frame-builder/b-spline-gen/html/core/preview/frame-mesh.js';
+import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 
 const tplOf = (id) => FRAME_DEFS.templates.find((t) => t.id === id);
 const T7 = tplOf('template_7');
@@ -269,7 +270,7 @@ describe('Template 7: the neck/body handles', () => {
       if (miterStaysInsideWood(outer.primitives, frameMiters(outer.primitives, inn.primitives), t)) pass++;
     }
     expect(pass / N, '7x9 raw pass rate with generateRange stripped').toBeLessThanOrEqual(0.1);
-  }, 10000);
+  }, HEAVY_TEST_MS); // item 67: the suite default (was a tighter 10 s)
 });
 
 describe('the Shape Lattice and every other template never get the neck/body params', () => {

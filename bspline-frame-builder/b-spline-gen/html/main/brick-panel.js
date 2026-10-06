@@ -1542,15 +1542,19 @@ export function bandsReducedText(note) {
     .filter((b) => b <= note.kept);
   const parts = [`Bands reduced to fit the board: ${note.kept} of ${note.requested} laid`];
   if (narrowed.length) parts.push(`band ${narrowed.join(', ')} narrowed`);
+  // T86 item 30: a band narrowed to fit a feature is one row shallower than its bricks -- they are cut to the row depth
+  if ((note.steps || []).some((s) => s.step === 'narrow')) parts.push('bricks cut to the row depth');
   return parts.join('; ') + '.';
 }
 /** `where` = which note line shows it: none = the lay warnings (sidebar + editor Brick tab), 'frame' = the Frame
  *  section's own note line. `text` may read the counts. */
 export const BRICK_LAY_WARNINGS = Object.freeze([
-  // F35 item 35: no longer when the frame stack was reduced and now FITS (the note below says it instead)
+  // F35 item 35: no longer when the frame stack was reduced and now FITS (the note below says it instead) -- unless a
+  // band was NARROWED (T86 item 30): that fit is to a feature, not the board, and can leave no wall (T9 7x9 1.5 in: the
+  // band fills the web) -- the Brick tab said nothing about the empty wall (brick-matrix lay row, the stack gate)
   { id: 'wallEmpty', text: 'The frame bands cover the whole board -- no room for the wall: fewer bands or smaller bricks.',
     when: (c, kinds, s) => kinds.includes('wall') && s.pattern !== 'none' && c.frameCount > 0 && c.wallCount === 0
-      && !(c.bandsReduced && c.bandsReduced.fits) },
+      && !(c.bandsReduced && c.bandsReduced.fits && !(c.bandsReduced.steps || []).some((st) => st.step === 'narrow')) },
   { id: 'bandsReduced', where: 'frame', text: (c) => bandsReducedText(c.bandsReduced),
     when: (c) => !!c.bandsReduced },
 ]);
