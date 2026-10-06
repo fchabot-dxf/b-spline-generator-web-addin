@@ -53,11 +53,11 @@ import { deselectTool } from '../bspline-frame-builder/b-spline-gen/html/main/br
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
 
 const FIXTURE = `
-  <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
+  <div class="sticky-actions"><div id="editorToolbarBrick"></div><button id="brickGenerate">Generate</button></div>
   <button id="editorTabBrick">Brick</button><button id="editorDrawerTab-layers">Brick</button>
-  <div id="editorToolbarBrick"></div>
   <div id="brickToolHint"></div>
   <div id="brickBrushSection" style="display:none;">
+    <div id="brickSubTools_brush"></div>
     <div id="brickBrushProfileToggle"><button id="brickBtnProfileStripped" class="active"></button><button id="brickBtnProfileContinuous"></button></div>
     <div id="brickBrushOrientationToggle"><button id="brickBtnOrientationStretcher" class="active"></button><button id="brickBtnOrientationSoldier"></button></div>
   </div>
@@ -76,7 +76,7 @@ const FIXTURE = `
   <div id="brickSurfaceWearRow" style="display:none;"><input type="range" id="brickSurfaceWearSlider" min="0" max="1" step="0.05"><input id="brickSurfaceWear"></div>
   <div id="brickQuickSettings"></div>
   <div id="brickRaisedSection"><div id="brickRaisedModeToggle"></div><input id="brickRaisedLevel"></div>
-  <div id="brickSharedSet"></div><div id="brickSharedLayout"></div>
+  <div id="brickWallSection"></div><div id="brickSharedSet"></div><div id="brickSharedLayout"><div id="brickSizeBlock"></div><div id="brickGroutBlock"><div id="brickGroutWidthRow"></div></div><div id="brickScatterBlock"></div></div>
   <div id="brickLargeStonesRow" style="display:none;"><input type="range" id="brickLargeStonesSlider" min="0" max="1" step="0.05"><input id="brickLargeStones"></div>
   <span id="stripeColoursLabel">Colours</span><input type="checkbox" id="stripeThree"><button id="stripeColorsReset"></button>
   <div id="stripeColorPresets"></div><div id="stripeColorSwatches"></div><div id="stripeBrickStyles" style="display:none;"></div>
@@ -448,13 +448,19 @@ describe('the laid key through undo, reload and Cancel (item 27: never pending)'
 
 // Audit C9/C8 (C3/C11's pending badge retired by item 27).
 describe('Generate visibility, no pending badge, and a hidden Bricks layer', () => {
-  const slotShown = () => $('brickGenerate').closest('.sticky-actions').style.display !== 'none';
+  // item 43: the strip shares Generate's pinned block, so only the BUTTON hides
+  const slotShown = () => $('brickGenerate').style.display !== 'none';
   const badged = (id) => $(id).hasAttribute('data-brick-pending');
 
-  it('C9: Generate shows for Wall and Frame, hides for Brush, Scissors and Stripe', () => {
+  it('C9: Generate shows for Wall and Frame (and General: it re-lays every element), hides for Brush, Scissors and Stripe; the strip stays', () => {
     setup('wall');
     expect(slotShown()).toBe(true);
-    for (const t of ['brush', 'scissors', 'stripe']) { $(`brickTool_${t}`).click(); expect(slotShown(), t).toBe(false); }
+    for (const t of ['brush', 'scissors']) { $(`brickTool_${t}`).click(); expect(slotShown(), t).toBe(false); }
+    $('brickTool_brush').click(); $('brickSubTool_brush_stripe').click(); // item 43: Stripe = Brush > Stripe
+    expect(slotShown(), 'stripe').toBe(false);
+    expect($('editorToolbarBrick').closest('.sticky-actions').style.display).not.toBe('none');
+    $('brickTab_general').click();
+    expect(slotShown(), 'general').toBe(true);
     $('brickTool_frame').click();
     expect(slotShown()).toBe(true);
   });
@@ -625,7 +631,7 @@ describe('audit C6: the Brick tab Stripe picks a brick STYLE per run (A/B/C thum
   it('in the Brick tab, Stripe shows brick-style slots (A, B; C with Use C) instead of colour swatches', async () => {
     const { setEditorTab } = await import('../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js');
     setEditorTab('brick');
-    $('brickTool_stripe').click();
+    $('brickTool_brush').click(); $('brickSubTool_brush_stripe').click(); // item 43: Brush > Stripe
     expect(visible('stripeBrickStyles')).toBe(true);
     expect(visible('stripeColorSwatches')).toBe(false);
     expect(visible('stripeColorPresets')).toBe(false);
@@ -642,7 +648,7 @@ describe('audit C6: the Brick tab Stripe picks a brick STYLE per run (A/B/C thum
   it('back in Artwork, the panel is the colour panel again (its own hint restored)', async () => {
     const { setEditorTab } = await import('../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js');
     setEditorTab('brick');
-    $('brickTool_stripe').click();
+    $('brickTool_brush').click(); $('brickSubTool_brush_stripe').click(); // item 43: Brush > Stripe
     setEditorTab('artwork');
     expect(visible('stripeBrickStyles')).toBe(false);
     expect(visible('stripeColorSwatches')).toBe(true);
@@ -698,14 +704,27 @@ describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fiel
     P.brickSettings.largeStones = 0.5;
     setup('wall');
   });
-  it('Stripe declares sharedRows: false -> Set and Brick size..Seed hide; back on Wall they show', () => {
+  // item 43 changes turn 197's "Set and Brick size..Seed show for a tool": each block shows by its declared SCOPE --
+  // global (size, suppression..seed) only in General, element (Set, grout width) in a tool's tab, the Grout block in both
+  it('Stripe declares sharedRows: false -> its tab shows no shared row; the Wall tab shows its element rows only', () => {
     expect(shown('brickSharedSet')).toBe(true);
-    $('brickTool_stripe').click();
-    expect(shown('brickSharedSet')).toBe(false);
-    expect(shown('brickSharedLayout')).toBe(false);
+    expect(shown('brickGroutBlock') && shown('brickGroutWidthRow')).toBe(true);
+    expect(shown('brickSizeBlock') || shown('brickScatterBlock')).toBe(false);
+    $('brickTool_brush').click(); $('brickSubTool_brush_stripe').click();
+    for (const id of ['brickSharedSet', 'brickGroutBlock', 'brickSizeBlock', 'brickScatterBlock']) expect(shown(id), id).toBe(false);
     $('brickTool_wall').click();
     expect(shown('brickSharedSet')).toBe(true);
-    expect(shown('brickSharedLayout')).toBe(true);
+    expect(shown('brickGroutBlock')).toBe(true);
+  });
+  it('item 43: General shows the global blocks + the Grout block (not its Width row) and no tool section; the tool stays', () => {
+    $('brickTab_general').click();
+    for (const id of ['brickSizeBlock', 'brickScatterBlock', 'brickGroutBlock']) expect(shown(id), id).toBe(true);
+    for (const id of ['brickSharedSet', 'brickGroutWidthRow', 'brickWallSection', 'brickToolHint']) expect(shown(id), id).toBe(false);
+    expect($('brickTab_general').classList.contains('active')).toBe(true);
+    expect($('brickTool_wall').classList.contains('active')).toBe(false);
+    $('brickTool_wall').click();
+    expect(shown('brickWallSection')).toBe(true);
+    expect(shown('brickSizeBlock')).toBe(false);
   });
   it('the Large stones row shows only for a fieldstone wall (item 23: the Fieldstone pattern = the rock set)', () => {
     expect(shown('brickLargeStonesRow')).toBe(false); // red brick, stretcher
@@ -945,8 +964,7 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
   it("N7: Scissors hides the shared rows too (a cut keeps each piece's draw-time settings)", () => {
     setup('wall');
     $('brickTool_scissors').click();
-    expect(shown('brickSharedSet')).toBe(false);
-    expect(shown('brickSharedLayout')).toBe(false);
+    for (const id of ['brickSharedSet', 'brickGroutBlock', 'brickSizeBlock', 'brickScatterBlock']) expect(shown(id), id).toBe(false); // item 43: by scope
   });
 
   // item 66 inverts N9's "no template -> a toast": no template = the bands follow the board rectangle; the toast stays

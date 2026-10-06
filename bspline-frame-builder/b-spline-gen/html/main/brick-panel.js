@@ -48,7 +48,7 @@ import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.j
 import { rectToPrimitives } from '../core/inset-window.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
-import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
+import { renderTabStrip } from '../editor/tab-strip.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
 import { brickToolIconSvg } from '../editor/brick-tool-icons.js';
 
@@ -66,16 +66,21 @@ import { brickToolIconSvg } from '../editor/brick-tool-icons.js';
  * `run` is this file's own entry point for that tool (not re-exported --
  * core/bricks/ itself stays engine-agnostic of "how a UI triggers it"). */
 // `iconSvg` (F35 item 24 step 2): the tool's line icon (editor/brick-tool-icons.js); `icon` = the text fallback
+// `tab` (F35 item 43, Fred: "a tab system instead of a left toolbar"): the tool's tab in the Brick panel's strip --
+// `order` after General, `label` the short name under the icon. `tabOf` (advisor, v2 review): a tool with no tab of
+// its own, reached as a sub-tool of that tool's tab (Stripe acts on brush strokes: Brush > Stripe).
 const BRICK_TOOLS = [
   // `ownsSet` (F35 item 23): the tool lays an ELEMENT with its own brick set (P.brickSettings.setIds[tool id]);
   // the Set row edits the active tool's.
   { id: 'brush', buttonId: 'brickTool_brush', iconSvg: () => brickToolIconSvg('brush'), label: 'Brush', icon: '✏️', settingsSection: 'brickBrushSection', ownsSet: true,
-    subTools: ['draw', 'select'], // F35 item 36
+    tab: { order: 3, label: 'Brush' },
+    subTools: ['draw', 'select', 'stripe'], // F35 item 36; item 43: + Stripe (its tab is Brush's)
     hint: 'Click here, then drag a stroke on the canvas to lay bricks along it.' },
   // F35 item 16 (turn 201): the RAISED BRUSH -- a variant of Brush (`variantOf`: the same brickBrush mode,
   // same stroke machinery) whose strokes carry `strokeOverrides` (its Level + mode), frozen per stroke.
   { id: 'raisedBrush', buttonId: 'brickTool_raisedBrush', iconSvg: () => brickToolIconSvg('raisedBrush'), label: 'Raised brush', icon: '⏫', settingsSection: 'brickRaisedSection', ownsSet: true,
     variantOf: 'brush', strokeOverrides: () => ({ levelIn: P.brickSettings.raisedLevelIn, strokeMode: P.brickSettings.raisedMode }),
+    tab: { order: 4, label: 'Raised' },
     subTools: ['draw', 'select'], // F35 item 36
     hint: 'Drag a stroke: bricks laid proud of the others by Level.' },
   // `generates` (audit C9): Generate re-lays this tool's output, so the pinned Generate shows for it.
@@ -84,9 +89,11 @@ const BRICK_TOOLS = [
   // setting change lays it at once; Generate re-lays it (audit B7: the hints say so).
   // `subTools` (F35 item 22): the element tool's own sub-tools (BRICK_SUB_TOOLS below), shown in its section
   { id: 'wall', buttonId: 'brickTool_wall', iconSvg: () => brickToolIconSvg('wall'), label: 'Wall', icon: '🧱', settingsSection: 'brickWallSection', generates: true, lays: 'wall', ownsSet: true,
+    tab: { order: 1, label: 'Wall' },
     subTools: ['select', 'area'],
     hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Change a setting to lay it; Generate re-lays.' },
   { id: 'frame', buttonId: 'brickTool_frame', iconSvg: () => brickToolIconSvg('frame'), label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
+    tab: { order: 2, label: 'Frame' },
     subTools: ['select'],
     hint: 'Bands of bricks along the frame\'s outer edge (the board\'s edge when no frame template is picked). Change a setting to lay them; Generate re-lays.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
@@ -97,14 +104,44 @@ const BRICK_TOOLS = [
   // not an oversight).
   // sharedRows: false (audit v2 N7) -- a cut keeps each piece's draw-time settings, so the shared rows do nothing
   { id: 'scissors', buttonId: 'brickTool_scissors', iconSvg: () => brickToolIconSvg('scissors'), label: 'Scissors', icon: '✂️', settingsSection: null, sharedRows: false,
+    tab: { order: 5, label: 'Scissors' },
     hint: 'Tap a brush stroke to split it -- each piece regenerates its own bricks independently once moved apart.' },
   // sharedRows: false (turn 197) -- a stripe pick restyles EXISTING strokes, so the panel's shared rows
   // (BRICK_SHARED_SECTIONS: Set, Brick size .. Seed) don't apply and are hidden
   { id: 'stripe', buttonId: 'brickTool_stripe', iconSvg: () => brickToolIconSvg('stripe'), label: 'Stripe', icon: '📏', settingsSection: 'brickStripeSection', sharedRows: false,
+    tabOf: 'brush', subTools: ['draw', 'select', 'stripe'], // item 43: Brush's sub-tool row stays in view while striping
     hint: 'Tap a brush stroke to split it into alternating brick-style runs.' },
 ];
 
+/** F35 item 43: the Brick panel's TAB STRIP = General (not a tool: the board-wide settings; picking it leaves the
+ *  active tool as it is) + one tab per BRICK_TOOLS entry that declares `tab`, in its declared order. A tab's button
+ *  keeps the tool's `buttonId`, so a click on it is a click on the tool. */
+export const BRICK_GENERAL_TAB = Object.freeze({ id: 'general', buttonId: 'brickTab_general', label: 'General',
+  iconSvg: () => brickToolIconSvg('general'), title: 'General -- the board-wide brick settings (every element)' });
+export const brickTabs = () => [BRICK_GENERAL_TAB, ...BRICK_TOOLS.filter((t) => t.tab).sort((a, b) => a.tab.order - b.tab.order)
+  .map((t) => ({ id: t.id, buttonId: t.buttonId, label: t.tab.label, iconSvg: t.iconSvg, title: `${t.label} -- ${t.hint}` }))];
+/** F35 item 43 (each setting's scope declared once): the panel's shared rows. 'global' = board-wide, shown ONLY in the
+ *  General tab; 'element' = edits the active tool's element, shown in its tab (not for a tool with sharedRows: false);
+ *  'both' = General AND the element tabs (the Grout block: its paint edits the picked element, else every element --
+ *  item 55 -- while its Width row edits the active element's joint, so that row alone is 'element'). */
+export const BRICK_ROW_SCOPES = Object.freeze({
+  brickSharedSet: 'element', brickSizeBlock: 'global', brickGroutBlock: 'both', brickGroutWidthRow: 'element',
+  brickScatterBlock: 'global',
+});
+
 let _activeTool = null;
+let _generalTab = false; // item 43: the General tab is open (the tool stays as it is underneath)
+/** The tab the strip shows active: General when picked or with no tool, else the active tool's (its `tabOf`'s). */
+export function activeBrickTab() {
+  const tool = BRICK_TOOLS.find((t) => t.id === _activeTool);
+  if (_generalTab || !tool) return BRICK_GENERAL_TAB.id;
+  return tool.tabOf || tool.id;
+}
+let _syncTabs = null;
+function pickBrickTab(id) {
+  if (id === BRICK_GENERAL_TAB.id) { _generalTab = true; syncToolButtons(); return; }
+  selectTool(id);
+}
 /** The panel's PAGE-level event listeners (document), each wired ONCE per page however often initBrickPanel runs (the
  *  app runs it once; a test file once per test). Their handlers call module functions only, so a second copy adds
  *  nothing but a second run -- a re-lay twice for frameRecordChanged, and in a test file every earlier init's copy
@@ -1033,21 +1070,24 @@ function setOrientation(v) {
 /** Shows ONLY the active tool's own settings section (BRICK_TOOLS' own declared
  *  `settingsSection`), hides every other tool's -- Scissors/Stripe have none (null), so
  *  selecting either hides Brush/Wall/Frame's sections with nothing of their own to show. */
-/** Turn 197: the panel's shared rows -- shown for every tool unless it declares `sharedRows: false`. */
-const BRICK_SHARED_SECTIONS = ['brickSharedSet', 'brickSharedLayout'];
-
+/** Turn 197 + F35 item 43: the shared rows by their declared scope (BRICK_ROW_SCOPES): global rows in the General
+ *  tab only; element rows in a tool's tab unless the tool declares `sharedRows: false`. */
 function syncToolSections() {
+  const general = activeBrickTab() === BRICK_GENERAL_TAB.id;
   for (const tool of BRICK_TOOLS) {
     if (!tool.settingsSection) continue;
     const el = document.getElementById(tool.settingsSection);
-    if (el) el.style.display = tool.id === _activeTool ? '' : 'none';
+    if (el) el.style.display = !general && tool.id === _activeTool ? '' : 'none';
   }
   const active = BRICK_TOOLS.find((t) => t.id === _activeTool);
-  const shared = !active || active.sharedRows !== false;
-  for (const id of BRICK_SHARED_SECTIONS) {
+  const elementRows = !general && !!active && active.sharedRows !== false;
+  for (const [id, scope] of Object.entries(BRICK_ROW_SCOPES)) {
     const el = document.getElementById(id);
-    if (el) el.style.display = shared ? '' : 'none';
+    const on = scope === 'global' ? general : scope === 'element' ? elementRows : general || elementRows;
+    if (el) el.style.display = on ? '' : 'none';
   }
+  const hint = document.getElementById('brickToolHint');
+  if (hint) hint.style.display = general ? 'none' : '';
 }
 
 /** F35 item 21: the Large stones row shows only while the Wall's layout is fieldstone. */
@@ -1703,12 +1743,14 @@ function bindGroutField(id, key, commit = 'generate') {
  *  shared editor-tool-registry.js mechanism now, the same one Photo uses --
  *  this file no longer carries its own copy of either loop. */
 function renderToolList(container) {
-  renderToolRegistry(container, BRICK_TOOLS, (id) => selectTool(id));
+  // F35 item 43: the tools are TABS at the top of the Brick panel (#editorToolbarBrick moved there; the left rail no
+  // longer shows for Brick, main/editor-tabs.js), General first
+  _syncTabs = renderTabStrip(container, brickTabs(), pickBrickTab, { variant: 'icons' });
   _renderSubTools(); // item 22: the element tools' Select (+ Area) rows
 }
 
 function syncToolButtons() {
-  syncToolRegistryButtons(BRICK_TOOLS, _activeTool);
+  if (_syncTabs) _syncTabs(activeBrickTab());
   const hint = BRICK_TOOLS.find((t) => t.id === _activeTool);
   const hintEl = document.getElementById('brickToolHint');
   if (hintEl) hintEl.textContent = hint ? hint.hint : '';
@@ -1719,10 +1761,11 @@ function syncToolButtons() {
 
 /** Audit C9: the pinned Generate shows only for a tool it applies to (BRICK_TOOLS' `generates`). */
 function syncGenerateVisibility() {
-  const slot = document.getElementById('brickGenerate')?.closest('.sticky-actions');
-  if (!slot) return;
+  // item 43: the button only -- the tab strip shares its pinned block; General's Generate re-lays every element
+  const button = document.getElementById('brickGenerate');
+  if (!button) return;
   const tool = BRICK_TOOLS.find((t) => t.id === _activeTool);
-  slot.style.display = !tool || tool.generates ? '' : 'none';
+  button.style.display = !tool || tool.generates || activeBrickTab() === BRICK_GENERAL_TAB.id ? '' : 'none';
 }
 
 /** F35 item 16 follow-up (Fred, live use: "don't see the layers"): with no Brick tool picked yet,
@@ -1742,7 +1785,7 @@ function syncStartHint() {
     || (typeof P.editorSvg === 'string' && P.editorSvg.includes('data-brick-gen="1"'));
   if (!hint.textContent) {
     const starters = BRICK_TOOLS.filter((t) => t.lays || t.id === 'brush').map((t) => `${t.icon} ${t.label}`);
-    hint.textContent = `Pick ${starters.slice(0, -1).join(', ')} or ${starters.at(-1)} in the toolbar to start laying bricks.`;
+    hint.textContent = `Pick ${starters.slice(0, -1).join(', ')} or ${starters.at(-1)} in the tabs above to start laying bricks.`;
   }
   hint.style.display = getEditorTab() === 'brick' && _activeTool === null && !anyBricks ? '' : 'none';
 }
@@ -2196,6 +2239,8 @@ export const BRICK_SUB_TOOLS = Object.freeze({
   draw: { label: 'Draw', mode: 'brickBrush', title: 'Drag a stroke on the canvas to lay bricks along it.' },
   select: { label: 'Select', mode: 'brickElementSelect',
     title: 'Click a brick: its element is selected and this section edits only it. Esc deselects.' },
+  // F35 item 43: Stripe has no tab of its own -- a sub-tool of the Brush tab that picks the Stripe TOOL (`tool`)
+  stripe: { label: 'Stripe', tool: 'stripe', title: 'Tap a brush stroke to split it into alternating brick-style runs.' },
   area: { label: 'Area', mode: 'brickWallArea',
     title: 'Paint an area: it fills with this wall -- once an area is painted, only painted areas get bricks. A stroke adds to the selected area; with none selected it starts a new one.' },
 });
@@ -2323,7 +2368,7 @@ function _renderSubTools() {
       btn.textContent = def.label;
       btn.title = def.title;
       if (_hiddenUntilMet(btn.id)) btn.style.display = 'none';
-      btn.addEventListener('click', () => _armSubTool(sid));
+      btn.addEventListener('click', () => _pickSubTool(tool.id, sid));
       row.appendChild(btn);
     }
   }
@@ -2342,6 +2387,22 @@ function _syncSubTools() {
         ? `Editing: this ${ELEMENT_LABELS[own]}` : `Settings for the next ${(ELEMENT_LABELS[own] || '').toLowerCase()}`;
     }
   }
+}
+
+/** A sub-tool button of `rowTool`'s row: one that names a `tool` picks that tool (Brush > Stripe); any other arms
+ *  on the row's home tool (from the Stripe tool's row, Draw / Select go back to the Brush). */
+function _pickSubTool(rowTool, sid) {
+  const def = BRICK_SUB_TOOLS[sid];
+  if (def && def.tool) {
+    if (_activeTool !== def.tool) selectTool(def.tool);
+    _subTool = sid;
+    _syncSubTools();
+    return;
+  }
+  const row = BRICK_TOOLS.find((t) => t.id === rowTool);
+  const home = (row && row.tabOf) || rowTool;
+  if (_activeTool !== home) selectTool(home);
+  _armSubTool(sid);
 }
 
 function _armSubTool(sid) {
@@ -2404,6 +2465,8 @@ function selectTool(id, { keepSelection = false } = {}) {
     showElementSelection(ed, null);
   }
   _activeTool = id;
+  _generalTab = false; // item 43: a tool pick (a tab, a sub-tool or Select on the canvas) shows that tool's tab
+  if (id === 'stripe') _subTool = 'stripe';
   syncToolButtons();
   syncGroutWidthBox(); // the Grout box follows the active element's joint
   syncGroutPaintRow();

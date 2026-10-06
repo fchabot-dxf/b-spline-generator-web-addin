@@ -19,6 +19,7 @@
 import { initResizer, resizeApp, setupMobileViewportHandling } from '../core/ui-utils.js';
 import { initMobilePreviewResizer } from './mobile-resizer.js';
 import { initSidebarLayout } from './sidebar-layout.js';
+import { initSidebarTabs } from './sidebar-tabs.js';
 import { applySectionThemes } from './section-themes.js';
 import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
@@ -91,6 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initResizer(preview);
     initMobilePreviewResizer();
     initSidebarLayout();
+    initSidebarTabs(); // F35 items 48 + 47: the sidebar's tabs + pinned sections
     applySectionThemes(); // F35 item 30: the declared section tints (sidebar + editor panels)
     setupMobileViewportHandling();
     window.addEventListener('resize', () => resizeApp(preview));

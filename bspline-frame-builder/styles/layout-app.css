@@ -671,3 +671,89 @@ aside {
     #btnNewProject { display: none !important; } /* phone: New is in the Projects window (no room in the header) */
     #fmCurrentFileLabel { max-width: 22vw !important; }
 }
+
+/* =========================================================================
+   F35 items 43 / 48 + Art / Photo tabs: the ONE tab strip (editor/tab-strip.js renderTabStrip). Mockup v2 (Fred:
+   "the tabs over the controls"): the strip is the first thing in its panel. Text tabs read as tabs, larger and
+   heavier than a section header (11px/700); the icon variant (the narrow Brick panel) puts a small name under the
+   icon and fits three per row at the default panel width, so its tabs take at most two rows.
+   ========================================================================= */
+.ui-tab-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    padding: 6px 6px 0;
+    border-bottom: 2px solid var(--cad-accent-blue, #1e88e5);
+    background: #f3f6fa;
+}
+.ui-tab-strip .ui-tab {
+    /* text tabs share the row (Board | Surface | Decor | Output fit one row at the sidebar's default 260px) */
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: center;
+    font: 700 12px system-ui, sans-serif;
+    letter-spacing: 0.01em;
+    padding: 7px 4px 6px;
+    border: 1px solid #c9d3df;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    background: #e8edf3;
+    color: #445;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.ui-tab-strip .ui-tab.active {
+    background: #fff;
+    color: #0b5cad;
+    box-shadow: 0 2px 0 #fff;
+}
+.ui-tab-strip--icons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+}
+.ui-tab-strip--icons .ui-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    padding: 5px 2px 3px;
+    font: 600 9px system-ui, sans-serif;
+    letter-spacing: 0;
+}
+.ui-tab-strip--icons .ui-tab-icon,
+.ui-tab-strip--icons .ui-tab-icon svg {
+    display: block;
+    width: 18px;
+    height: 18px;
+}
+/* item 47: a section's pin (main/sidebar-tabs.js); pinned sections sit in #sidebarPinned above the tab's sections */
+.cad-sidebar .panel-header .panel-pin {
+    margin-left: auto;
+    border: none;
+    background: none;
+    padding: 0 2px;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.3;
+    filter: grayscale(1);
+}
+.cad-sidebar .panel-header .panel-pin.pinned {
+    opacity: 1;
+    filter: none;
+}
+#sidebarPinned {
+    border-bottom: 3px double #b0bccb;
+    margin-bottom: 2px;
+}
+#sidebarPinned:empty {
+    display: none;
+}
+/* item 48: the sidebar's strip heads the pinned actions block (.sticky-actions), edge to edge, Generate New Seed under it */
+.cad-sidebar > .sticky-actions > #sidebarTabs {
+    margin: -12px -14px 10px;
+}
+/* item 43: the Brick panel's strip heads its pinned block, edge to edge, Generate under it */
+#editorBrickPanel > .sticky-actions > #editorToolbarBrick {
+    margin: -12px -14px 10px;
+}

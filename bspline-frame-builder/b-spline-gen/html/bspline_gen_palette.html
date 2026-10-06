@@ -2046,7 +2046,6 @@
           <!-- F35 item 10: Brick's own toolbar -- main/brick-panel.js's existing declared BRICK_TOOLS
                list, moved here from the old sidebar's horizontal row (renderToolList's own target
                container, same function, same click behaviour -- only the container moved). -->
-          <div id="editorToolbarBrick" style="display:none; flex-direction:column; align-items:center; gap:8px;"></div>
           <div id="editorToolbarArtwork" style="display:flex; flex-direction:column; align-items:center; gap:8px;">
           <button id="toolSelect" class="tool-btn active" title="Select (V)" data-key="v"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:black; stroke:white; stroke-width:0.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
           <button id="toolNode" class="tool-btn" title="Nodes (A)" data-key="a"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:white; stroke:black; stroke-width:1.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
@@ -3165,7 +3164,9 @@
           <!-- F35 item 27 (Fred): every Brick-tab setting re-lays at once (main/brick-panel.js BRICK_COMMIT);
                this pinned Generate is "re-lay now" with a new brick seed (item 39: a restored board refreshes too). Same shared sticky-actions slot +
                cad-btn-primary as the Lattice panels' own Generate. -->
-          <div class="sticky-actions"><button type="button" id="brickGenerate" class="cad-btn cad-btn-primary" title="Re-lay the bricks now, with a new seed" style="width:100%; height:32px; border-radius:3px; font-weight:700;">Generate</button></div>
+          <!-- F35 item 43 (Fred's OK on mockup v2): the Brick TOOLS are the tab strip at the top of this panel
+               (main/brick-panel.js renderToolList: General + one tab per BRICK_TOOLS `tab`), pinned with Generate -->
+          <div class="sticky-actions"><div id="editorToolbarBrick"></div><button type="button" id="brickGenerate" class="cad-btn cad-btn-primary" title="Re-lay the bricks now, with a new seed" style="width:100%; height:32px; border-radius:3px; font-weight:700;">Generate</button></div>
           <!-- F35 item 40 (Fred: "We don't see layers still"): the shared Layers component, hosted here while the Brick
                tab is active (bricks land on the ACTIVE layer since item 22 slice 3) -->
           <div id="brickLayersSlot"></div>
@@ -3294,7 +3295,7 @@
 
             <!-- turn 195: the Stripe tool's own section -- main/editor-tabs.js (modeHosts) moves the stripe
                  settings (#editorStripePanelBody) in here while the Brick tab is active: one panel, not two -->
-            <div id="brickStripeSection" style="display:none;"></div>
+            <div id="brickStripeSection" style="display:none;"><div id="brickSubTools_stripe" style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;"></div></div>
 
             <div id="brickFrameSection">
               <!-- F35 item 22: this element tool's sub-tools (main/brick-panel.js BRICK_SUB_TOOLS) + what the section edits -->
@@ -3334,6 +3335,8 @@
                  every everyday size in the first ~15% of the handle's travel. #brickSize (the
                  number box) stays real inches, exact, unchanged. -->
             <div id="brickSharedLayout">
+            <!-- F35 item 43: each block's scope is declared in main/brick-panel.js BRICK_ROW_SCOPES (global = General tab) -->
+            <div id="brickSizeBlock">
             <label class="cad-label">Brick size (in)</label>
             <div class="cad-slider-row" style="margin-bottom:6px;">
               <input type="range" id="brickSizeSlider" class="cad-slider" min="0" max="1000" step="1" value="226">
@@ -3342,9 +3345,11 @@
             <div id="brickSizePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
               <!-- Populated at runtime by main/brick-panel.js's declared BRICK_SIZE_PRESETS. -->
             </div>
+            </div>
 
+            <div id="brickGroutBlock">
             <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Grout</label>
-            <div style="display:flex; gap:4px; margin-bottom:6px;">
+            <div id="brickGroutWidthRow" style="display:flex; gap:4px; margin-bottom:6px;">
               <div style="flex:1;">
                 <label class="cad-label" style="font-size:10px;">Width (in)</label>
                 <input type="number" id="brickGroutWidth" value="0.06" min="0" max="0.5" step="0.005" style="width:100%;">
@@ -3369,7 +3374,9 @@
                  Resolution panel's own #spacingGroutHint, shown here too since this is where a
                  user is most likely to be looking when grout width changes. -->
             <div id="brickGroutSpacingHint" style="display:none; font-size:10px; color:#b8860b; margin:0 0 12px;"></div>
+            </div>
 
+            <div id="brickScatterBlock">
             <label class="cad-label">Suppression</label>
             <div class="cad-slider-row" style="margin-bottom:10px;">
               <input type="range" id="brickSuppressionSlider" class="cad-slider" min="0" max="0.9" step="0.01" value="0">
@@ -3386,6 +3393,7 @@
             <div class="brick-seed-row" style="display:flex; gap:6px; margin-bottom:4px;">
               <input type="number" id="brickSeed" value="1" style="flex:1;">
               <button type="button" id="brickBtnRandomSeed" class="cad-btn" title="Random seed">🎲</button>
+            </div>
             </div>
             </div>
           </div>

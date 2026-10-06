@@ -32,7 +32,8 @@ export const EDITOR_TABS = [
     modes: ['select', 'node', 'text', 'draw', 'line', 'rect', 'circle', 'erase', 'lattice', 'shapeLattice', 'cut', 'stripe'] },
   { id: 'photo', clears: 'photo', label: 'Photo', drawerLabel: 'Photo', buttonId: 'editorTabPhoto', panelId: 'editorPhotoPanel', toolbarId: 'editorToolbarPhoto',
     modes: ['select'] },
-  { id: 'brick', clears: 'bricks', label: 'Brick', drawerLabel: 'Brick', buttonId: 'editorTabBrick', panelId: 'editorBrickPanel', toolbarId: 'editorToolbarBrick',
+  // F35 item 43: no left rail -- the Brick tools are the tab strip at the top of its own panel (#editorToolbarBrick)
+  { id: 'brick', clears: 'bricks', label: 'Brick', drawerLabel: 'Brick', buttonId: 'editorTabBrick', panelId: 'editorBrickPanel', toolbarId: null,
     modes: ['select', 'brickBrush', 'cut', 'stripe', 'brickAccentClick', 'brickElementSelect', 'brickWallArea'],
     // `peekEssentials` (Fred, live: "Wall is missing the generate button"): what must show IN FULL when the
     // phone / narrow-palette drawer sits at peek height (editor/editor-drawer.js measures them into its peek
