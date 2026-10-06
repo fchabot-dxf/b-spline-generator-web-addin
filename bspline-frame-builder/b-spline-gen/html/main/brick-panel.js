@@ -1230,8 +1230,11 @@ function syncControlRequires() {
     if (rule.hides) continue; // hidden-while-unmet rules are applied by the control's own row sync
     whys.add(rule.why);
     const met = requirementMet(rule.requires, document.getElementById(rule.requires.control), ctx);
-    const els = [...rule.controls.map((id) => document.getElementById(id)),
+    const own = [...rule.controls.map((id) => document.getElementById(id)),
       ...(rule.within || []).flatMap((id) => [...(document.getElementById(id)?.querySelectorAll('button, input') || [])])];
+    // A2 (3D-panel audit): a number field's -/+ stepper (ui-bindings.js attachNumberSteppers, buttons with no ids) is
+    // part of that control -- greyed with it, or + still changed a greyed Grout depth (0.05 -> 0.055, no effect)
+    const els = own.flatMap((el) => [el, ...(el && el.closest ? el.closest('.cad-stepper')?.querySelectorAll('button') || [] : [])]);
     for (const el of els) {
       if (!el) continue;
       ruled.add(el);

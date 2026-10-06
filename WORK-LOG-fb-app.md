@@ -14754,3 +14754,12 @@ WallPattern = {
 - **Live after:** the drag moves the points +0.5 with no transform, 3D changed, kept after reopen. Delete unchanged (works).
 - **Tests:** tests/brick-move-bake.test.js (5): baking matrix / translate / rotation; art, spines and untransformed pieces untouched; the hook folds into the gesture's step but not into an older one. The 2 hook tests fail 2/2 against the pre-change editor.js.
 - **Matrix:** a new declared group 'handedit' (HAND_EDIT + runHandEdit): a real drag, Apply, reopen. This tree: pass. Clean main 52c3055: FAIL ("points UNMOVED (transform matrix(1,0,0,1,0.5,0)), 3D UNCHANGED").
+
+## seat D (bb) turn 10: A2 (3D-panel audit), a greyed number field greys its -/+ stepper (branch brick-sidebar-fixes)
+- **Measured** (headless, T1): Grout Flush leaves the Grout depth field disabled but both stepper buttons enabled; "+" moved 0.05 -> 0.055 with no effect. It is generic: Clumping's stepper at Suppression 0 is the same.
+  - Cause: the stepper buttons are generic wrappers (ui-bindings.js attachNumberSteppers, `.cad-stepper`, no ids), so no requires rule can name them.
+- **Fix, in the one place that applies the requires rules** (brick-panel.js syncControlRequires): each ruled control's own `.cad-stepper` buttons are greyed with it, with the same reason as their tooltip.
+- **Live after:** under Flush both buttons are off with the rule's tooltip, and "+" leaves 0.05. Clumping's steppers at Suppression 0 are off too.
+- **Test** (brick-discrete-controls-regen): "a greyed number field greys its -/+ stepper too, with the same reason". Fails 1/1 against the pre-change brick-panel.js.
+- **Matrix:** the runner's `isDisabled` (every requires row's "greyed" check) now counts a number field as greyed only if its stepper is greyed too.
+  - sidebar-3d: this tree 13/0. Clean main 52c3055: "Grout depth 0.05 (Flush) ... NOT greyed or hidden" = FAIL.
