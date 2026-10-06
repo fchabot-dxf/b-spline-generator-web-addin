@@ -23306,3 +23306,21 @@ every template x both stone sets x 0.75 / 1 / 1.25 in (+ the test's 1 and 4/3 sc
   over another. 11 s (the full both-sets x five-sizes grid ran 145 s). NOTE: the old T16 crossing had no overlap /
   self-crossing / oversize, so this file alone would not catch it -- bricks-band-fit's "T16 reads 2.47" does.
   Full vitest 326 files / 5,364 passed, 0 todo.
+
+## T86 item 33 -- MEASURED, PLAN (awaiting GO): bare stone-ring ground (seat B / fc, 2026-10-06)
+Probe: an instrumented scratch fieldstone.js records, per seed, its power cell, its clip, its rounding and whether it
+survived; every bare ring point (> a joint from every stone, outside the wall) is attributed to the first stage that
+lost it. White rocks three_band, 19 templates x 0.75 / 1 / 1.25 in, 7x9: 35.1 sq in bare over 57 lays (0.62 / lay).
+- dropped seed 11.7 + clip fragment 3.0 (corners): the ring is filled as ONE slit polygon (ribbonSlitPolygon); a stone
+  across the zero-width bridge is cut in two, keeps the seed's piece, often under the floor and dropped -- the void at
+  the bridge (bottom-right of the board) on 56 of 57 lays, the largest voids (0.4-0.6 sq in).
+- phantom-owned 6.7 (ring corners, mostly 1.25 in): a fence phantom (a seed mirrored across a ring edge) bounds EVERY
+  cell, not just its twin's -- at a concave corner it takes ground from a neighbour's stone and no stone gets it.
+- outside the ring polygon 12.0: 2,119 joint mouths along the board edge (rounded stone corners), almost all < 0.05.
+Rules tried in the scratch copy (declared, stones whole, no slivers):
+ (A) a phantom bounds only its own twin's cell (it fences that seed; real neighbours bound each other);
+ (B) a ring's stones are clipped to the ANNULUS -- the outer edge, minus the inner edge -- not to the slit polygon.
+Bare 35.1 -> A 16.6 / B 19.9 / A+B 8.0 sq in (0.14 / lay); voids >= 0.05 sq in 135 -> 14, largest 0.62 -> 0.21; dropped
+seeds and clip fragments 0; stones 5,182 -> 5,315; no overlap, no self-crossing, largest stone 7.3x -> 6.4x median;
+208-222 ms per lay vs 233-366 today. Wall fieldstone untouched (no fences: neither rule applies).
+Shot item33_ring_voids_before_after.png (T14 / T10 / T3 / T9 at 1.25 in).
