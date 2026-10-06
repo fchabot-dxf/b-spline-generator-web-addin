@@ -134,6 +134,9 @@ are the morning's; this block supersedes them where they disagree.
   normal testing. Deploy only from a clean scratch worktree at origin/main.
 - **Push to both `main` and `claude/lucid-ride-jycpox`** after tests pass, and log in `WORK-LOG-fb-app.md`.
 
+- **Shared node_modules (2026-10-06):** every worktree's `node_modules` is a Windows JUNCTION to `APPS-spline-generator-web-addin-wt\_deps
+ode_modules` (npm ci from main's lockfile; re-run it there when the lockfile changes). BEFORE `git worktree remove`, delete the junction link first (`(Get-Item node_modules -Force).Delete()`): git recurses THROUGH a junction and wiped the shared install once. Matrix rows live in `tools/brick-matrix/groups/<group>.mjs` (one file per group).
+
 ## 5. Merge procedure (advisor)
 
 1. Use a scratch worktree at origin/main (`git -C <main> worktree prune` first) and `git merge --no-ff origin/<branch>`.
