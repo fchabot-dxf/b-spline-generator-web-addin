@@ -23806,3 +23806,14 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   cases at 1.25 in although every outline differs (only the two horizontal bars change, by 1 in < one brick).
 - Slip: one 9x12 row (template_5__three_band) got a duplicate "sketch: false" row from an overlapped timed-out call; the
   first row (216 == 216) is kept. Heavy templates (16-19, ~1,100-2,300 curves) take 5-10 s each: batches of 2 there.
+
+## H23 item 98: the TPGen audit says WHY an op has no toolpath (seat A / 77, 2026-10-06)
+- Found during item 97: after a long session Fusion held 65 GB of private bytes (system commit ~6 GB free of 128);
+  the empty ops' own op.error read "Out of memory." while the audit logged only "MISSING toolpath" -- so items
+  95-97 chased a timing / first-generation hypothesis for hours. Fusion restart pending (Fred's unsaved Untitled).
+- Detection only: cam_engine/toolpath_gen.why_empty(op) -> the first line of Fusion's own op.error and op.warning
+  ('' when it says nothing; never raises); the audit's MISSING line appends it ("... MISSING toolpath -- error: Out
+  of memory."). No behaviour change.
+- Tests (test_toolpath_gen.py +4, fake ops carrying an error / a warning / a raising property; the audit wiring by
+  source): 4/4 fail on main 3a6c2a7. CAM-builder 50/50. Known failures: none. No live run: Fusion is off-limits
+  until the restart (it would also only show "Out of memory." today).
