@@ -23300,3 +23300,9 @@ each other on non-neighbour primitives), bare ring ground (> a joint from every 
   (T6 1.08, T9 0.90, T1 0.66). Voids at ring corners and along the ring where the fieldstone fill leaves gaps.
 Plan: no new pinch rule (nothing left to fix -- machinery would be speculative); flip the six it.todo to tests over
 every template x both stone sets x 0.75 / 1 / 1.25 in (+ the test's 1 and 4/3 scale). Bare ring ground: a separate item.
+- BUILT (b), advisor GO: bricks-rock-ring-stones -- the six it.todo are real tests; every template, White rocks at
+  scale 1 / 4/3, Grey stone at scale 1, the six that pinched also Grey stone at 0.75 in (its lower course height
+  changes the fit's 'course' step -- how T16 kept two rings); asserts no self-crossing, nothing > 10x median, no stone
+  over another. 11 s (the full both-sets x five-sizes grid ran 145 s). NOTE: the old T16 crossing had no overlap /
+  self-crossing / oversize, so this file alone would not catch it -- bricks-band-fit's "T16 reads 2.47" does.
+  Full vitest 326 files / 5,364 passed, 0 todo.

@@ -5,9 +5,15 @@
  * T1's whole wall so a wall change never reached the 3D. Fixed by fencing each ring's hole with phantom seeds
  * (fieldstone.js fencePoints). Invariant: no ring stone crosses itself, none is larger than 10x the median.
  *
- * FENCED (must hold): the 13 templates the fence fixes completely, T1 included (seat 37's case); all FAIL on
- * main. OPEN (it.todo, measured 2026-10-05): T11 T14 T15 T16 T17 T19, the necked / notched templates whose
- * inner rings pinch (T86 item 16(c) part 2, the advisor's B1).
+ * FENCED: the 13 templates the fence fixes completely, T1 included (seat 37's case). T11 T14 T15 T16 T17 T19, the
+ * necked / notched templates whose inner rings pinched (it.todo until T86 item 32): item 28's fit rule keeps the
+ * stack under 1/3 of the board's narrowest gap, so those inner rings are dropped -- once item 31 read T16's waist
+ * right (3.90 -> 2.47 in; at 3.90 Grey stone at 0.75 in kept two rings and the inner one met itself across the
+ * waist). MEASURED (seat B, 2026-10-06): 0 bad on every template, both stone sets, every size below.
+ * Every template: White rocks at the test's own 1 and 4/3 scale (1 / 1.25 in sit between them) and Grey stone (its
+ * bandLayout) at scale 1; the six that pinched also Grey stone at 0.75 in -- its lower course height changes the fit
+ * rule's 'course' step, which is how T16 kept two rings there (0.75 in over all 19 cost 31 s, so only where it bit).
+ * No stone over another either.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
@@ -19,7 +25,7 @@ import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/ht
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
 import { FRAME_PRESETS, BRICK_SETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
-import { signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { polygonIntersection, signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 
 // simple except where two edges only TOUCH: a shared vertex, or coincident edges (a stone straddling the ring's
 // zero-width slit bridge runs in and back along it -- that is not a crossing)
@@ -38,31 +44,43 @@ function weaklySimple(p) {
   return true;
 }
 
-const ROCKS = BRICK_SETS.find((s) => s.layout === 'fieldstone');
+const ROCKS = BRICK_SETS.find((s) => s.layout === 'fieldstone'), GREY = BRICK_SETS.find((s) => s.bandLayout === 'fieldstone');
+const CASES = [[ROCKS, 1], [ROCKS, 4 / 3], [GREY, 1]];
+const PINCHED = ['template_11', 'template_14', 'template_15', 'template_16', 'template_17', 'template_19'];
+const SMALL = [GREY, 0.75 / GREY.brickLengthIn];
 // MEASURED (2026-10-05): a real large-tier stone reaches 6.1x the ring's median (fieldstone mixes size tiers,
 // most stones are small); every wrap-around stone was 17x or more. 10x separates them.
 const MAX_OVER_MEDIAN = 10;
+const OVERLAP_TOL_SQIN = 1e-3;
+const box = (p) => { const xs = p.map((q) => q.x), ys = p.map((q) => q.y); return [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]; };
+function overlap(bricks) {
+  const bx = bricks.map((b) => box(b.polygon));
+  let sum = 0;
+  for (let i = 0; i < bricks.length; i++) for (let j = i + 1; j < bricks.length; j++) {
+    const a = bx[i], b = bx[j];
+    if (a[1] < b[0] || b[1] < a[0] || a[3] < b[2] || b[3] < a[2]) continue;
+    const x = polygonIntersection(bricks[i].polygon, bricks[j].polygon);
+    if (x.length >= 3) sum += Math.abs(signedArea(x));
+  }
+  return sum;
+}
 
-const FENCED = ['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_6', 'template_7', 'template_8', 'template_9', 'template_10', 'template_12', 'template_13', 'template_18'];
-
-describe('rock frame rings: every stone is a stone (no wrap-around, no self-crossing)', () => {
+describe('rock frame rings: every stone is a stone (no wrap-around, no self-crossing, none over another)', () => {
   for (const t of FRAME_DEFS.templates.filter((tp) => !tp.hidden)) {
-    if (!FENCED.includes(t.id)) {
-      it.todo(`${t.id}, three_band: oversized / crossing ring stones remain (16(c) part 2 pinch, or the corner-cell bound awaiting Fred)`);
-      continue;
-    }
-    it(`${t.id}, three_band, 1 in and 4/3 scale`, () => {
+    it(`${t.id}, three_band, White rocks scale 1 / 4/3${PINCHED.includes(t.id) ? ', Grey stone 0.75 in' : ''}, Grey stone scale 1`, () => {
       const record = normalizeFrameRecord({ templateId: t.id });
       const sil = frameContourSilhouette({ defs: FRAME_DEFS, record, board: { widthIn: 7, heightIn: 9 } }, 0, 0);
       const prims = buildRibbonPrimitives(sil.primitives);
       const bad = [];
-      for (const scale of [1, 4 / 3]) {
-        const { bricks } = bricksContourBands(prims, FRAME_PRESETS.three_band, { set: ROCKS, seed: 1, scale });
+      for (const [set, scale] of PINCHED.includes(t.id) ? [...CASES, SMALL] : CASES) {
+        const { bricks } = bricksContourBands(prims, FRAME_PRESETS.three_band, { set, seed: 1, scale });
         const areas = bricks.map((b) => Math.abs(signedArea(b.polygon)));
         const median = [...areas].sort((a, b) => a - b)[Math.floor(areas.length / 2)] || 0;
         bricks.forEach((b, i) => {
-          if (!weaklySimple(b.polygon) || areas[i] > MAX_OVER_MEDIAN * median) bad.push(`${scale.toFixed(2)} ${b.id} band ${b.bandIndex}: ${areas[i].toFixed(3)} sq in, crossing ${!weaklySimple(b.polygon)}`);
+          if (!weaklySimple(b.polygon) || areas[i] > MAX_OVER_MEDIAN * median) bad.push(`set ${set.id} ${scale.toFixed(2)} ${b.id} band ${b.bandIndex}: ${areas[i].toFixed(3)} sq in, crossing ${!weaklySimple(b.polygon)}`);
         });
+        const ov = overlap(bricks);
+        if (ov > OVERLAP_TOL_SQIN) bad.push(`set ${set.id} ${scale.toFixed(2)}: stones overlap ${ov.toFixed(3)} sq in`);
       }
       expect(bad).toEqual([]);
     });
