@@ -80,7 +80,7 @@ export const bindGroups = (ctx) => { for (const g of RUNNER_ORDER) MODULES[g].bi
 export const runGroup = (g) => MODULES[g].run();
 
 // each group's named declarations, for run.mjs and older importers (controls.mjs re-exports this file)
-export { PEEK_LAYOUT } from './layout.mjs';
+export { PEEK_LAYOUT, PANEL_FIT } from './layout.mjs';
 export { CLEAR_MENU } from './clear.mjs';
 export { LAY_WARNING, QUICK_FRAME_LAYS, BANDS_NOTE, WALL_NO_FRAME, CARVE_UNDER_FLAT } from './lay.mjs';
 export { SELECT_ELEMENT } from './select.mjs';

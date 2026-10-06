@@ -54,7 +54,7 @@ import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf } from '../core/bricks/index.js';
+import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect } from '../core/bricks/index.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
 import { rectToPrimitives } from '../core/inset-window.js';
 import { brickFillPaint } from './editor-brick-surface.js';
@@ -1173,6 +1173,14 @@ function _layInput(editor, settings, frameGeom) {
   // cuts + marks the pieces) and customBond (the tile's own bond); a whole-brick tile on a built-in bond adds nothing
   Object.assign(input, accentLayInput(settings.accent, ENGINE_OPTIONS));
   return input;
+}
+
+/** Item 74b: which corner choices change the frame these settings lay -- core/bricks frameCornerEffect on the SAME
+ *  input a lay builds (the frame's own set and scale, the fit rule); null with no frame contour to lay along. */
+export function frameCornerEffectFor(editor, settings, frameGeom) {
+  if (!frameGeom || !frameGeom.primitives || !frameGeom.primitives.length) return null;
+  const { frame, seed, scale, bandFit } = _layInput(editor, settings, frameGeom);
+  return frameCornerEffect(frame.primitives, frame.bands || [], { set: frame.set, seed, scale, bandFit });
 }
 
 /** F35 item 22 slice 2: the settings a painted area is laid with -- the SELECTED area (editor._brickWallAreaId,

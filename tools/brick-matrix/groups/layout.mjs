@@ -14,11 +14,21 @@ export const PEEK_LAYOUT = {
   element: 'brickGenerate',
 };
 
+// ---- panel fit (item 74, seat D, measured: at 1366 the Photo crop row's W/H sat off its 220 px panel, x 1368-1508): each
+// declared control (its JS-wrapped stepper when it has one) lies fully inside its nearest scrolling ancestor. One row per
+// viewport x section; `open` = the clicks that show the section.
+export const PANEL_FIT = {
+  viewports: [{ name: 'desktop 1366x900', width: 1366, height: 900 }, { name: 'narrow 900x900', width: 900, height: 900 }],
+  sections: [
+    { name: 'Photo crop', open: ['editorTabPhoto', 'photoTab_source'], ids: ['photoCropX', 'photoCropY', 'photoCropW', 'photoCropH', 'photoBtnApplyCrop'] },
+  ],
+};
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key } = ctx); }
-export async function run() { await runLayout(); }
+export async function run() { await runLayout(); await runPanelFit(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -66,6 +76,29 @@ async function runLayout() {
       console.log(`${ok ? 'pass' : 'FAIL'}  Peek ${vp.name}: ${tool} Generate`.padEnd(54) + (settled ? ` ${r.shownPx}/${r.h} px shown, bottom ${r.bottom} of ${r.innerH}${r.peek ? ' (drawer at peek)' : ''}`
         : ` NOT SETTLED ${JSON.stringify(r)}`));
       if (!ok) await shot(`FAIL_peek_${vp.width}_${tool}`);
+    }
+  }
+}
+
+function PANEL_FIT_PROBE(ids) { return `JSON.stringify(${JSON.stringify(ids)}.map((id)=>{ const e=document.getElementById(id); if(!e) return { id, missing: true };
+  const box=e.closest('.cad-stepper') || e; let a=box.parentElement; while (a && a!==document.body && getComputedStyle(a).overflowX==='visible') a=a.parentElement;
+  const b=box.getBoundingClientRect(), r=(a||document.body).getBoundingClientRect();
+  return { id, shown: b.width>0 && b.height>0, left: Math.round(b.left), right: Math.round(b.right), panel: (a&&a.id)||'body', pLeft: Math.round(r.left), pRight: Math.round(r.right),
+    inside: b.left >= r.left - 0.5 && b.right <= r.right + 0.5 }; }))`; }
+async function runPanelFit() {
+  for (const vp of PANEL_FIT.viewports) {
+    await send('Emulation.setDeviceMetricsOverride', { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: false });
+    await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
+    await send('Page.reload', {}); await waitApp(); await openBrickTab();
+    for (const sec of PANEL_FIT.sections) {
+      for (const id of sec.open) await click(id, 900);
+      const r = await jsJSON(PANEL_FIT_PROBE(sec.ids));
+      const ok = r.every((c) => !c.missing && c.shown && c.inside);
+      const name = `Panel fit ${vp.name}: ${sec.name} fields inside the panel`;
+      rows.push({ name, kind: 'layout', result: 'ok', observed: r, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', layout: ok ? 'PASS' : 'FAIL' } });
+      const bad = r.filter((c) => c.missing || !c.shown || !c.inside);
+      console.log(`${ok ? 'pass' : 'FAIL'}  ${name}`.padEnd(70) + (ok ? '' : ` ${JSON.stringify(bad)}`));
+      if (!ok) await shot(`FAIL_panelfit_${vp.width}_${sec.name.replace(/\W+/g, '_')}`);
     }
   }
 }

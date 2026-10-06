@@ -138,4 +138,32 @@ async function runFrameUi() {
       `preset ${st.preset}, corner ${st.ownCorner}, active ${st.active.join(',')}`);
     if (await editorOpen()) await apply();
   }
+  await runCornerEffect();
+}
+
+// ---- item 74b (Fred: grey + explain): a corner choice is greyed exactly where it would re-lay the identical frame. On the
+// declared board some are greyed (measured: T18 7x9 at 1.25 in, square corners only on 1.11 in stubs); each corner is laid
+// through the app's own generateBricks with P.brickSettings.frameCorner set directly (a greyed button can't be clicked),
+// and its frame compared with the mitre's: greyed <=> identical. The mitre is never greyed.
+export const CORNER_EFFECT_BOARD = { templateId: 'template_18', widthIn: 7, heightIn: 9, brickLengthIn: 1.25 };
+async function runCornerEffect() {
+  const B = CORNER_EFFECT_BOARD;
+  await setValue('widthIn', B.widthIn, 'change'); await setValue('heightIn', B.heightIn, 'change'); await sleep(1500);
+  await openEditorTab('editorTabBrick');
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value=${JSON.stringify(B.templateId)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2500)); return 1; })()`);
+  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
+  await setValue('brickSize', B.brickLengthIn, 'change'); await sleep(2000);
+  await click('brickFramePreset_single_soldier', 2000);
+  const r = await jsJSON(`(async()=>{ const { P }=await import('./core/state.js'); const BP=await import('./main/brick-panel.js'); const W=(ms)=>new Promise((r)=>setTimeout(r,ms));
+    const hash=()=>{ const s=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')].map((n)=>n.getAttribute('points')).sort().join('|'); let x=2166136261; for (let i=0;i<s.length;i++){ x^=s.charCodeAt(i); x=Math.imul(x,16777619);} return (x>>>0).toString(36)+'/'+s.split('|').length; };
+    const grey=Object.fromEntries(['mitre','butt','block','lapped'].map((c)=>[c, !!document.getElementById('brickFrameCorner_'+c)?.disabled]));
+    const lay=async(c)=>{ P.brickSettings.frameCorner=c; BP.generateBricks(); await W(2500); return hash(); };
+    const laid={}; for (const c of ['mitre','butt','block','lapped']) laid[c]=await lay(c);
+    P.brickSettings.frameCorner=null; BP.generateBricks(); await W(2000);
+    return JSON.stringify({ grey, laid, title: document.getElementById('brickFrameCorner_butt')?.title || '' }); })()`);
+  const cut = ['butt', 'block', 'lapped'];
+  const agree = cut.every((c) => r.grey[c] === (r.laid[c] === r.laid.mitre));
+  checkRow('frame-ui', 'Corners: greyed exactly where the corner re-lays the identical frame (T18 7x9, 1.25 in)',
+    agree && !r.grey.mitre && cut.some((c) => r.grey[c]),
+    cut.map((c) => `${c} ${r.grey[c] ? 'greyed' : 'live'}, lay ${r.laid[c] === r.laid.mitre ? 'identical' : 'differs'}`).join('; ') + ` (mitre ${r.grey.mitre ? 'GREYED' : 'live'}; tooltip "${r.title}")`);
 }

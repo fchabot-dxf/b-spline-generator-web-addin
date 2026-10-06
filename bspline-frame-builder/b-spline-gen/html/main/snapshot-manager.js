@@ -10,6 +10,7 @@ import { resolveGrid } from '../core/terrain.js';
 import { AppState } from './app-state.js';
 import { runMigrations, editorRestoreSvg, refreshDrape, announceBrickSettingsRestored } from './app-init.js';
 import { syncFramePanel } from './frame-panel.js';
+import { adoptStoredPhoto } from './photo-panel.js';
 import { setFrameRecord } from '../core/frame-record.js';
 import { updateSculptToolButtons } from './param-manager.js';
 
@@ -67,6 +68,7 @@ async function _applySnapshot(snap, preview, { source, restore } = {}) {
   // restored the way the Frame tab's own undo does (frame-panel.js undoFrame: the bricks' re-lay amends, no new step)
   if (source === 'undo' && frame !== undefined) setFrameRecord(frame, { restored: true });
   syncFramePanel();
+  adoptStoredPhoto(); // item 74a: a loaded / undone photo is decoded (and a full-size one downscaled)
   announceBrickSettingsRestored(); // audit v2 N2: a load / global undo replaced P.brickSettings
   setUndoRestoring(false);
   // a global undo/redo of the stock size: the drawing follows the board (app-init _resyncEditorToStock -- a no-op

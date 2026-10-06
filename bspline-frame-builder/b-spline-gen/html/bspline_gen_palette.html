@@ -188,6 +188,10 @@
        panel scrolled sideways. The stepper fills what the dice button leaves. */
     .brick-seed-row > .cad-stepper { flex: 1 1 0; min-width: 0; }
     .brick-seed-row > .cad-btn { flex: 0 0 auto; min-width: 0; padding: 0 8px; }
+    /* item 74 (seat D, measured): the Photo crop row put four 75 px-minimum steppers in one flex row -- at 1366 its
+       W/H fields sat off the 220 px panel (x 1368-1508). Two columns, Left/Top over Width/Height. */
+    .photo-crop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; }
+    .photo-crop-grid > .cad-stepper { min-width: 0; }
     .cad-nested-input:has(> .cad-stepper) {
       padding: 0;
     }
@@ -2969,11 +2973,11 @@
 
             <div id="photoToolSection_crop" style="display:none;">
               <label class="cad-label">Crop (%)</label>
-              <div style="display:flex; gap:4px; margin-bottom:6px;">
-                <input type="number" id="photoCropX" value="0" min="0" max="100" step="1" style="width:25%;" title="Left">
-                <input type="number" id="photoCropY" value="0" min="0" max="100" step="1" style="width:25%;" title="Top">
-                <input type="number" id="photoCropW" value="100" min="1" max="100" step="1" style="width:25%;" title="Width">
-                <input type="number" id="photoCropH" value="100" min="1" max="100" step="1" style="width:25%;" title="Height">
+              <div class="photo-crop-grid">
+                <input type="number" id="photoCropX" value="0" min="0" max="100" step="1" title="Left">
+                <input type="number" id="photoCropY" value="0" min="0" max="100" step="1" title="Top">
+                <input type="number" id="photoCropW" value="100" min="1" max="100" step="1" title="Width">
+                <input type="number" id="photoCropH" value="100" min="1" max="100" step="1" title="Height">
               </div>
               <button type="button" id="photoBtnApplyCrop" class="cad-btn" style="width:100%; margin-bottom:14px;">Apply Crop</button>
             </div>

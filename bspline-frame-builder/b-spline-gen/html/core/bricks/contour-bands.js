@@ -35,7 +35,7 @@
  */
 import { inwardSignFor, pointInPolygon, dropSpikes, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
-import { ribbonPieces, boundaryAtDepth, lineBetweenLinesDropsAt } from './primitive-ribbon.js';
+import { ribbonPieces, ribbonJoints, boundaryAtDepth, lineBetweenLinesDropsAt } from './primitive-ribbon.js';
 import { openRibbonOutline } from './ribbon-outline.js'; // F35 item 55 (seat E): a Brush stroke's grout region
 import { scaledSet, BRICK_PATTERNS, MIN_PIECE_FRACTION } from './library.js';
 import { bricksFillShape } from './fill-shape.js';
@@ -556,6 +556,19 @@ function narrowSingleBand(enriched, band, planned, halfJoint, joint) {
   return { band: { ...band, widthIn: toIn, narrowedTo: toIn }, step: { band: 0, step: 'narrow', toIn }, requestedDepthIn: depth, wallDepthIn: rowEdge(hi) + halfJoint };
 }
 
+/** Item 74b (Fred: grey + explain, measured: on T18 at 1.25 in Butt / Block / Lapped re-laid the identical frame): which
+ *  corner styles change this frame. A style other than the mitre is effective when at least one joint of the planned
+ *  rows takes its cut -- the same plan bricksContourBands lays (the fit rule, the narrowing, every row's depths), read
+ *  from the joints alone (opts.cornerCutsOnly), no pieces laid. The mitre always is. */
+export const CORNER_CUT_STYLES = Object.freeze(['butt', 'block', 'lapped']);
+export function frameCornerEffect(primitives, bands, opts) {
+  const out = { mitre: true };
+  for (const style of CORNER_CUT_STYLES) {
+    out[style] = bricksContourBands(primitives, bands.map((b) => ({ ...b, cornerStyle: style })), { ...opts, cornerCutsOnly: true }).cornerCuts > 0;
+  }
+  return out;
+}
+
 export function bricksContourBands(primitives, bands, opts) {
   const { seed } = opts;
   const closed = opts.closed !== false;
@@ -591,6 +604,7 @@ export function bricksContourBands(primitives, bands, opts) {
     : 0;
   const ribbonStartDepth = depthSoFar; // F35 item 55: an open centred ribbon's first edge
   let nextId = 0;
+  let cornerCuts = 0; // opts.cornerCutsOnly: the butt / block cuts the planned rows' joints take
   // T86 item 21b, the JOINT RULE: every seam is the declared joint, rows and bands included (advisor; seat A's Fusion
   // e2e counted 147 profiles for 126 pieces, the extras from 0-gap wall-vs-band contacts, and two abutting courses
   // read as one slab in 3D). Each row stops half a joint short of the row (or band) beside it and of the wall; only
@@ -635,6 +649,11 @@ export function bricksContourBands(primitives, bands, opts) {
       // `planCornerRun`'s own header).
       const rowSequence = sequence && odd ? [sequence[1], sequence[0]] : sequence;
       const forcedFStart = !sequence && staggerFrac > 0 && odd ? staggerFrac : undefined;
+      if (opts.cornerCutsOnly) { // item 74b (frameCornerEffect): this row's joints only, no pieces
+        const { joints } = ribbonJoints(enriched, d0, d1, pitch, set.grout.widthIn, cornerStyle, bandIndex, rowSequence, forcedFStart, closed);
+        cornerCuts += joints.filter((j) => j && (j.isButt || j.isBlock)).length;
+        continue;
+      }
       const { pieces, nextId: afterId, sources } = ribbonPieces(
         enriched, d0, d1, set, patternName, pitch, set.grout.widthIn,
         seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
@@ -646,6 +665,7 @@ export function bricksContourBands(primitives, bands, opts) {
     }
     depthSoFar += naturalWidth * rows;
   });
+  if (opts.cornerCutsOnly) return { cornerCuts };
 
   // centred bands straddle the path by design, and an open path has no board: only a closed outer stack is clipped
   // a band at least as deep as the board is wide (its bounding box's shorter side) has no medial line to split at --

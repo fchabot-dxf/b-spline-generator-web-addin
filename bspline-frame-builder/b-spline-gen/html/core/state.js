@@ -483,13 +483,9 @@ export function saveLastSession() {
         };
         // Save audit #4: whether the session had unsaved changes survives a reload with it
         session.dirty = isDirty();
-        try {
-            localStorage.setItem('splineGenLastSession', JSON.stringify(session));
-        } catch (quota) {
-            // too big for the browser's storage: drop the OLD copy rather than restore a stale drawing on reload
-            localStorage.removeItem('splineGenLastSession');
-            throw quota;
-        }
+        // too big for the browser's storage: setItem throws and the PREVIOUS copy stays (item 74a, advisor: removing
+        // it turned one failed save into a reload that lost the whole board) -- a reload restores the last one that fit
+        localStorage.setItem('splineGenLastSession', JSON.stringify(session));
         // The session JSON in the Fusion log is debug-level (H23 item 93: ~290 KB a save rotated the log twice a load)
         fusDebug(JSON.stringify(session));
     } catch (e) {
