@@ -15062,3 +15062,17 @@ WallPattern = {
 - **Test** (bands-reduced-note): the sidebar box is read from the REAL page (its own fixture copies the old markup), and it shows the note and hides it when the stack fits. Fails 1/1 against the pre-change panel + page.
 - **Matrix 'lay':** + "Sidebar shows the band-fit note (a stack that only partly fits)" (QUICK_FRAME_LAYS.reducedPick, T18). Group: 9 rows, 0 FAIL.
 - **Shots:** seatD/a1_{before,after}_sidebar_three_band_{1366,900}.png.
+
+## seat E (61) turn 6: F35 item 37 / audit A4, the 3D live-vs-reload drift -- NOT REPRODUCED, closed as a load-timing artefact (branch height-drift-37)
+- **The report:** the 3D-panel audit (advisor's agent, main 52c3055) saw a few Applies whose live heights differed from a reload of the same board: p1 probe 2, 13.7% of cells; p18 probe 0, 4.5%, max 0.0004 in; T18 baseline. 2D identical every time. Seat 37's earlier finding was the fresh-start first lay's brick mask.
+- **Replayed, 36 comparisons, 0 differences** (live = lastResult.heights; hashes at 1e-5 / 1e-6):
+  - main 9180c67, seat 37's case (fresh start, first lay vs a reload restoring it): 6/6 runs identical brick masks, 8/8 identical masks + 3D heights.
+  - main, a 12-step sequence in one profile, each step Applied and compared with a reload (wall, frame, herringbone, size, a real brush stroke, Weathered, Organic, Recessed, Carved, Raised, stack, size): 10/10 measurable steps identical.
+  - 52c3055 (the audit's own commit), the T18 baseline replayed exactly from audit3d/audit.mjs (7x10, T18, Wall, Soldier frame, a brush drag, Apply; live vs 2 reloads): 4/4 identical.
+  - 52c3055, the audit's probe loop (re-lay Wall + Frame, Apply, compare with a reload) x6, 2 runs: 12/12 identical.
+  - 52c3055, the same loop under a CPU hog (the full vitest suite running alongside): 6/6 identical.
+  - A temporary hook dumping every input of the mask build (styled set, style, each brick's id / sample / flip / height offset / photo detail) was used and removed (restored from a saved copy; never committed). It had nothing to diff: the fresh and reload builds agreed every time.
+- **Reading:** the mask refresh's generation guard is sound (a superseded refresh drops its result and does not rebuild). The audit's "settled" test was three equal heights polls about 2 s apart; under fleet load a T18 rebuild can outlast that window, so it read an intermediate state. The matrix harness waits for the rebuild's completion count (lastResultGeneration) instead.
+- **Regression row** (advisor ruling): groups/persistence.mjs FRESH_VS_RESTORED. A fresh page lays a Wall + Frame and Applies, then a reload of that board must give the identical heights hash.
+  - Persistence group: 24 rows, 0 FAIL ("live 25521#21egbd vs restored 25521#21egbd").
+  - It pins a property that already holds, so it cannot be shown failing first on today's code. Said plainly: it guards against a return, it is not a reproduction.
