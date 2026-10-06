@@ -22631,3 +22631,41 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
 - Shots (shots/seatA): h23_item83_brick_e2e_app_view.png (the app), h23_item83_brick_e2e_stamped_iso.png and
   _top.png (Fusion: the carved Stamped panel + frame + the Bricks sketch on its artwork plane; the Clean panel hidden
   for the shot, restored).
+
+## H23 item 83 follow-ups -- D6 retracted (measured), Send timing breakdown (seat A / 77, 2026-10-05)
+- D6 RETRACTED. Measured on a fresh replay of the same e2e Send (deployed afdc4c0): Smart Visibility already does
+  the ruled thing -- the Clean OCCURRENCE is off (isLightBulbOn False, isVisible False) whenever a Stamped variant
+  exists, the Clean panel BODY keeps its own bulb on (effective isVisible False), surfaces off, Stamped + frame on.
+  Log: "[VISIBILITY] Stamped panel is primary; Clean occurrence hidden. Surfaces hidden." (b-spline-gen.py, the
+  unified post-import block ~1889-1942, the documented "sole visibility authority" on both the multi-variant and
+  single-step paths). My item-83 D6 read only BODY bulbs, not the occurrence / effective visibility -- wrong read,
+  nothing to change. The untrimmed Clean under the frame is invisible in practice.
+- SEND TIMING, the e2e board (7x9 T1 frame, 2 STEP variants, 1 art layer, 122-piece bricks), from the add-ins' own logs:
+    app (headless capture, timestamped stub): both STEP variants built + 40 chunks queued 0.48 s after the click
+      (10.35 MB). The REAL palette -> Python transfer of the 40 chunks is NOT measured (the stub answers at once;
+      the add-in logs nothing per chunk).
+    add-in Send (b_spline_gen_log.txt, 1 s resolution), total 32 s:
+      clear < 1 | Clean STEP import 4 | Stamped STEP import 7 | post-import + visibility < 1 | art sketch < 1 |
+      Bricks SVG import ~4 | FRAME 17 (frame-builder log: sketches 7.72 s = BB 1 + Shape Outline 3 + Enclosure 3;
+      solid synthesis 7.63 s; ~1.5 s overhead)
+    CAM BUILD (separate button, cam log): 54 s -- WCS sketches 1 | MM Stock ~9 | MM B-spline 6 | MM Frame 5 |
+      Stock setup 3 | B-spline Back setup 27 (26 s INSIDE cam.setups.add(): Fusion's first setup on the dense
+      Stamped body; Top on the same body then 2 s) | Top 2 | Frame 1.
+    APPLY TOOLPATHS (cam log): templates ~17 s, then generation Back 12.5 + Top 56.4 + Frame 3.7 = 72.6 s.
+  So the add-in's Send is ~32 s; Fred's "~2 min" is not in the Send's add-in part on this board -- either the
+  palette transfer (unmeasured) or BUILD/APPLY counted in.
+- Two biggest items, a proposal each (numbers only, nothing changed):
+  1. FRAME BUILD 17 s of the 32 s Send (53%). Proposal: the frame does not depend on the panel's STEP, so it could be
+     built ONCE per frame change and not re-built on every Send when only the panel/bricks changed (the frame record
+     is the same: a declared "frame unchanged since last Send" hash check, ~17 s saved per such Send). Needs the
+     advisor's yes (it changes when the frame is rebuilt).
+  2. CAM BUILD 54 s: 26 s is Fusion's first cam.setups.add on the dense Stamped body and ~20 s is three MM
+     snapshots, all redone on every BUILD (cleanup deletes and recreates). Proposal: keep the MMs + setups across
+     BUILDs when the Send's bodies are the same (update stock/WCS/heights in place instead of delete + recreate);
+     a re-BUILD would then cost seconds. Bigger change; measure first.
+  Smaller, for seat C: the Clean variant is hidden and unused by CAM whenever Stamped exists ("Stamped wins") --
+  not sending it would save its 4 s import + a 4.9 MB STEP per Send (a declared export option), if Fred never looks
+  at Clean.
+  To close the gap to "~2 min": one timestamped log line per received chunk in the add-in would measure the real
+  palette transfer (detection-only; your call).
+- Capture tool: the stub records performance.now() with each send; the run prints the Send timing breakdown.
