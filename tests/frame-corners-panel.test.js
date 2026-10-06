@@ -27,6 +27,9 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 
 import { initBrickPanel, setFrameRock } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, FRAME_CORNERS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
+import { frameContext } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/main/brick-control-requires.js';
 vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const FIXTURE = `
@@ -118,6 +121,22 @@ describe('item 33: the Corners row in the Frame section', () => {
     expect(P.brickSettings.frameCorner).toBeNull();
     expect(activeCorner()).toEqual(['brickFrameCorner_mitre']);
   });
+  // F35 item 58 follow-up (advisor, item 33's precedent): band accents are stored by band NUMBER, so a new preset
+  // drops them (levels included); a pattern change on one band keeps that band's accent
+  it('a band accent survives its band’s pattern change and is dropped by a new preset', () => {
+    P.brickSettings.frameBandAccents = [];
+    setup('frame');
+    $('brickAccent_band0_checker').click();
+    $('brickAccentLevel_band0').value = '0.015625';
+    $('brickAccentLevel_band0').dispatchEvent(new Event('change'));
+    expect(P.brickSettings.frameBandAccents[0]).toMatchObject({ preset: 'checker', levelIn: 0.015625 });
+    $('brickFrameBandPattern_0_header').click();
+    expect(P.brickSettings.frameBandAccents[0]).toMatchObject({ preset: 'checker', levelIn: 0.015625 });
+    $('brickFramePreset_three_band').click();
+    expect(P.brickSettings.frameBandAccents).toEqual([]);
+    expect($('brickAccent_band0_none').classList.contains('active')).toBe(true);
+    expect($('brickAccentLevel_band0')).toBeNull();
+  });
   it('hidden for no bands (None) and for a rock frame', () => {
     setup('frame');
     $('brickFramePreset_none').click();
@@ -136,5 +155,57 @@ describe('item 33: the Corners row in the Frame section', () => {
     // turn 261: a band row lists only what a band can lay -- the Wall-only patterns are absent, not greyed
     for (const id of ['herringbone', 'basketweave', 'chevron', 'square_grid', 'none']) expect($(`brickFrameBandPattern_0_${id}`), id).toBeNull();
     expect($('brickFrameBandPattern_0_fieldstone')).toBeTruthy(); // band-capable
+  });
+});
+
+// F35 item 63 (Fred: the main sidebar's Frame bands pick did nothing on T18 with a wall laid and no Frame element --
+// measured: frame 0 bricks, 3D unchanged): the pick LAYS the frame (or re-lays it); greyed with no frame contour
+describe('item 63: the sidebar Frame bands pick lays the frame', () => {
+  const addWall = () => {
+    const n = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    n.setAttribute('data-brick-gen', '1'); n.setAttribute('data-brick', 'wall'); n.setAttribute('points', '1,1 2,1 2,2 1,2');
+    window.svgEditor._sketchLayer.node.appendChild(n);
+    document.dispatchEvent(new Event('editorCommit')); // the lay's own commit: the sidebar controls apply now
+  };
+  const kindsOfLastLay = () => runBricks.mock.calls.at(-1)?.[3]?.kinds;
+  beforeEach(() => { P.brickSettings.frameBandPreset = 'single_soldier'; P.brickSettings.frameCorner = null; P.brickSettings.frameBandPatterns = []; });
+  it('a wall but no Frame element: the pick lays the frame too; the next re-lay does not add it by itself', () => {
+    setup('wall');
+    addWall();
+    runBricks.mockClear();
+    $('brickQuick_frameBands_three_band').click();
+    expect(P.brickSettings.frameBandPreset).toBe('three_band');
+    expect(kindsOfLastLay()).toEqual(expect.arrayContaining(['wall', 'frame']));
+    $('brickQuick_frameBands_single_soldier').click(); // the already-chosen preset lays it too
+    expect(kindsOfLastLay()).toEqual(expect.arrayContaining(['wall', 'frame']));
+    $('brickQuick_pattern_herringbone').click(); // any other re-lay: only what is on the canvas (the mock lays nothing)
+    expect(kindsOfLastLay()).toEqual(['wall']);
+  });
+  // item 66: no template = the board rectangle -- MEASURED live, the frame provider still returns a context there
+  // ({defs, record} with no templateId), so the bands follow the board edge and the row stays live
+  it('template None (a context with no template): the row stays live and the pick lays the bands', () => {
+    frameContext.mockReturnValue({ defs: { templates: [] }, record: { templateId: null } });
+    frameContourSilhouette.mockReturnValue({ error: 'noFrame' });
+    setup('wall');
+    addWall();
+    expect($('brickQuick_frameBands_single_soldier').disabled).toBe(false);
+    runBricks.mockClear();
+    $('brickQuick_frameBands_single_soldier').click();
+    expect(kindsOfLastLay()).toEqual(expect.arrayContaining(['wall', 'frame']));
+    frameContext.mockReturnValue({});
+    frameContourSilhouette.mockReturnValue({ primitives: [] });
+  });
+  it('a frame whose outline can’t carry bands: the row is greyed with FRAME_NEEDS_A_FRAME', () => {
+    frameContext.mockReturnValue({ defs: { templates: [] }, record: { templateId: 'template_x' } });
+    frameContourSilhouette.mockReturnValue({ error: 'frameInvalid' });
+    setup('wall');
+    addWall();
+    const btn = $('brickQuick_frameBands_single_soldier');
+    expect(btn.disabled).toBe(true);
+    expect(btn.title).toBe(FRAME_NEEDS_A_FRAME);
+    frameContourSilhouette.mockReturnValue({ primitives: [] });
+    document.dispatchEvent(new Event('editorCommit'));
+    expect($('brickQuick_frameBands_single_soldier').disabled).toBe(false);
+    frameContext.mockReturnValue({});
   });
 });

@@ -19,6 +19,7 @@
 //   --carve (H23 item 82, CAM same-position stock): after the scenario, turn 3D carve ON for the layers it drew
 //          (CARVE_LAYERS below) so the stamp bakes and the Send carries the STAMPED STEP variant next to Clean
 //          (export-flow.js ships 'Stamped' only when a carving layer exists). Without it: Clean only, as before.
+//   scenario brick-wall-only (H23 item 88): T1 + a Wall lay alone (no Frame element: the wall fills the contour).
 //   scenario brick-e2e (H23 item 83, end-to-end brick acceptance): T1 frame + bricks per BRICK_E2E below -- the
 //          frame band in Set 5 (Grey stone; written into P.brickSettings: the app's set picker only offers the bond
 //          sets), a pattern-builder custom bond at unit 1/2 with raised cells, two painted wall areas with different
@@ -109,6 +110,13 @@ const steps = {
      document.getElementById('toolShapeLattice').click(); await W(900);
      document.getElementById('shapeLatticeGenerate').click(); await W(3000);
      const f = document.getElementById('shapeLatticeContourFromFrame'); f.checked = true; f.dispatchEvent(new Event('change')); await W(3000);`,
+  // H23 item 88 (F35 items 42 + 66): a Wall with NO Frame element fills the frame contour -- T1 chosen + Generate,
+  // then only the Wall tool's Generate (no band, no areas, no brush, no art).
+  'brick-wall-only': `(await import('./main/frame-panel.js')).editFrame({ templateId: '${BRICK_E2E.template}', params: {} }); await W(1500);
+     document.getElementById('editorFrameGenerate').click(); await W(1500);
+     document.getElementById('editorTabBrick').click(); await W(800);
+     document.getElementById('brickTool_wall').click(); await W(500); document.getElementById('brickGenerate').click(); await W(3500);
+     document.getElementById('editorApply').click(); await W(9000);`,
   // H23 item 83: see BRICK_E2E. Each step is the app's own exported function (the ones its tests drive).
   'brick-e2e': `const E = ${JSON.stringify(BRICK_E2E)};
      (await import('./main/frame-panel.js')).editFrame({ templateId: E.template, params: {} }); await W(1500);
@@ -243,7 +251,7 @@ await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
   [...document.querySelectorAll('button')].find(b => /apply stencils/i.test(b.textContent))?.click(); await W(4000);
 })()`);
 console.log('lattice pieces drawn:', built);
-if (SCENARIO === 'brick-e2e') {
+if (SCENARIO === 'brick-e2e' || SCENARIO === 'brick-wall-only') {
   const app = JSON.parse(await evalJS(`(async()=>{ const ed = window.svgEditor, S = await import('./core/state.js');
     const X = await import('./main/export-flow.js'); const T = await import('./editor/editor-brick-tool.js');
     const polys = [...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"]')];
@@ -252,7 +260,8 @@ if (SCENARIO === 'brick-e2e') {
     const offs = polys.map((p) => +p.getAttribute('data-brick-height-offset') || 0).filter((v) => v !== 0);
     return JSON.stringify({ pieces: polys.length, byKind, accentMarked: raised, heightOffsets: [...new Set(offs)],
       areas: (T.wallAreaRecords ? T.wallAreaRecords(ed).length : null), carving: X.activeStampLayers().length,
-      layers: ed._layers.map((l) => ({ id: l.id, name: l.name, carve: l.carve, holdsBricks: !!l.holdsBricks })),
+      layers: ed._layers.map((l) => ({ id: l.id, name: l.name, carve: l.carve, holdsBricks: !!l.holdsBricks, brickKind: l.brickKind || null,
+        pieces: polys.filter((p) => p.getAttribute('data-layer') === l.id).length })),
       brickSettings: { setIds: S.P.brickSettings.setIds, pattern: S.P.brickSettings.pattern, accent: S.P.brickSettings.accent } }); })()`));
   writeFileSync(OUT.replace(/\.json$/, '') + '.app.json', JSON.stringify(app, null, 1));
   console.log('app readback:', JSON.stringify({ pieces: app.pieces, byKind: app.byKind, accentMarked: app.accentMarked, areas: app.areas, carving: app.carving }));

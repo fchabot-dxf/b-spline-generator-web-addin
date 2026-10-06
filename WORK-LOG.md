@@ -22939,6 +22939,37 @@ T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given 
 - Shots: before_after_worst_necks.png re-rendered from this build; t18_seam_zoom.png (the seam as a joint);
   t14_x_centre_zoom.png (main vs branch, the X centre: two 0.093 sq in half-diamonds, blue = joint given back).
 
+## H23 item 88 -- BRICK_E2E acceptance re-run on deployed main 2b5695d (seat A / 77, 2026-10-05)
+- Same method as item 83 (headless capture, the deployed add-in's _handle_generate, the deployed CAM engine), one
+  tagged scratch doc per board, closed by handle; holder none after. Capture tool: the app readback now lists each
+  layer's brickKind + piece count; new scenario brick-wall-only (T1 + a Wall lay alone: F35 items 42 + 66).
+- BOARD 1, brick-e2e (7x9, T1, Set 5 band, 2 painted areas, raised brush, Art carve):
+    APP: 126 pieces = 58 frame + 62 wall + 6 brush, 4 raised; per-kind layers Frame 58 / Wall 62 / Brush 6 (item 64:
+      each kind on its own layer), all carving; Layer 1 and Art hold 0 pieces.
+    PAYLOAD stamp.bricks: ONE svg, 126 polygons (= app, by kind), 2420 edges, 0 invalid, carve true.
+    FUSION Send: Bricks sketch in Stamped, 2420 SketchLines (= payload, exact), 0 open ends, extent +-3.25 x +-4.25
+      (exact); timeline 16 items, all healthy. PROFILES 147 for 126 pieces (+21; 1 profile with 2 loops).
+    Carve per kind (ray-cast Stamped top - Clean top at each brick's interior point, 126/126 hit): wall median
+      +0.117 in, frame +0.096, raised brush +0.192 (item 83: 0.128 / 0.091 / 0.199). The three kind layers combine
+      into the one Stamped body as before.
+    CAM: BUILD #1 full recreate 67 s, ok (4 setups, 3 MMs); Back WCS (-3.75, -4.75, -0.0342) on this panel's bottom,
+      Top (3.75, -4.75, 1.9658), stock 9.5 x 7.5 x 2. Re-Send in the same doc (CAM kept): 89 s, timeline 20 items
+      healthy, the Bricks sketch identical (2420 / 147 / 0 open). BUILD #2: REUSED in 7.0 s, every readback value
+      identical to BUILD #1, setups valid, models live (panel x2, the 4 frame bars).
+- BOARD 2, brick-wall-only (7x9, T1, Wall alone): APP 138 wall pieces on layer Wall; payload 138 polygons / 640 edges,
+  every neighbour gap = the 0.034 joint, 0 touching, 0 overlap, 0 slivers, extent +-3.25 x +-4.25 (the wall fills
+  the contour). FUSION: 640 SketchLines, 138 profiles = 138 pieces, all single-loop, 0 open ends, timeline 14 healthy.
+- DEFECTS (app/engine, nothing fixed here):
+  E1 (= item 83 D1, still open) wall bricks butt the frame band: 23 wall/frame pairs at gap 0 + 2 overlapping
+     (area ~0); joints elsewhere 0.034 (wall) / >= 0.02 (frame).
+  E2 (= D2, WORSE) the raised brush overlaps frame stones: 3 pairs, 0.272 in2 (was 0.017). One brush brick (0.111 in2,
+     at 1.96, -0.04) lies ENTIRELY inside a frame stone; the frame stone under the brush at (-1.73, 0.23) reads
+     +0.264 in (the brush raise lands on it).
+  E3 two wall SLIVERS: 0.00044 in2 at (1.73, -0.94) and 0.00063 in2 at (-1.90, 1.65), both at an area edge by the
+     band; they carve to ~0.
+  E4 (= D3) brush bricks abut each other with 0 gap (4 pairs).
+  The +21 extra profiles of board 1 come from E1/E2/E3 only: board 2 (no band, no brush) maps 1:1.
+- No Fusion-side defect. Shots: shots/seatA/h23_item88_brick_e2e_top.png, _iso.png, h23_item88_wall_only_top.png.
 ## T86 item 21b -- PLAN: corners (seat B / fc, 2026-10-05 night), T11 double_course 1.25 the primary case
 
 **Fred's T11 question, answered from the outline** (shots/seatB/neck16c2/t11_outline_under_bands.png: magenta = T11's
@@ -23040,3 +23071,55 @@ On top of V1 / V2 / V4 (above):
 - Next, its own last commit for Fred's yes (advisor ruling): ONE joint rule -- every joint is the declared grout width:
   mitre seams get it (option A), the row planner puts the slack into the end closers not the joints (>= MIN_PIECE_FRACTION
   or merged), voussoir / fan joints are constant-width strips instead of tapering wedges.
+## H23 item 89 -- Fusion-side BASELINE for seat B's joint-planner fix: frame bands only, 19 templates x 3 presets (seat A / 77, 2026-10-05)
+- Code under test: main 2b5695d (the app served from this worktree at origin/main 338d86c = 2b5695d + seat-page
+  commits; the add-in deployed 2b5695d). Board 7x9, brick length 1 in, Frame tool alone (no wall), Set 1.
+- App half, tools/repro/h23_item89_band_sweep.mjs: headless Chrome, a fresh page + cleared storage per case;
+  Math.random SEEDED before any page script (--seed, default 89). MEASURED: unseeded, one template drew three
+  different frame silhouettes in three loads, which would make before/after incomparable. Seeded, two separate runs
+  gave byte-identical brick svgs. Per case: pieces (the app's laid polygons) + stamp.bricks exactly as sendToFusion
+  builds it (_bricksLayerSvg + bakeSvgForCarving). 57/57 laid, 0 failures, ~11 s/case.
+- Fusion half, tools/repro/h23_item89_fusion_import.py: each svg through the deployed add-in's OWN
+  _apply_bricks_sketch (the Send's Bricks import) into one tagged scratch doc (B-Spline Set > Stamped + the
+  widthIn/heightIn user params the import reads; without them it fails silently: "[STAMP] Error in layer Bricks:
+  'widthIn'"). Measured, then the sketch + its plane removed. No STEP bodies, so the plane sits at the default
+  height: it moves the sketch, not its profiles. 2 cases per call, resume-able. (The committed file is the run
+  script made path-configurable; this run added the board params with a separate call.)
+- TABLE (pieces app / Bricks-sketch profiles / sliver profiles < 1e-4 in2 / import s), also in
+  tools/repro/h23_item89_baseline/ (table + raw jsonl):
+    template    | single_soldier     | three_band         | double_course
+    template_1  | 110/149/ 4/1.58    | 112/140/24/1.39*   | 108/158/20/1.58*
+    template_2  |  84/ 84/ 0/1.45    |  84/ 84/ 0/1.14    |  80/ 80/ 0/1.11
+    template_3  |  97/ 97/ 0/1.19    |  97/ 97/ 0/1.30    |  93/ 93/ 0/1.20
+    template_4  |  96/ 96/ 0/1.63    |  96/ 96/ 0/2.42    |  91/ 91/ 0/1.37
+    template_5  | 112/127/ 4/1.91    | 112/127/ 4/1.37    | 110/125/ 4/2.10
+    template_6  |  99/ 99/ 0/1.08    |  99/ 99/ 0/1.08    |  89/ 89/ 0/1.17
+    template_7  |  86/ 86/ 0/1.17    |  86/ 86/ 0/1.33    |  82/ 82/ 0/1.10
+    template_8  | 100/100/ 0/3.12*   | 100/100/ 0/2.98    |  95/ 95/ 0/1.17
+    template_9  | 130/130/ 0/1.42    | 130/130/ 0/1.25    | 122/122/ 0/1.43
+    template_10 | 107/107/ 0/1.96    |  99/ 99/ 0/1.17*   |  97/ 97/ 0/3.47
+    template_11 |  96/104/ 7/2.21    |  96/104/ 7/1.43    |  92/100/ 7/3.28
+    template_12 | 114/155/30/1.50    | 114/155/30/1.95    | 108/154/28/1.66
+    template_13 |  86/ 86/ 0/1.05    |  86/ 86/ 0/1.87*   |  82/ 88/ 0/1.02*
+    template_14 |  90/ 90/ 0/2.59    |  90/ 90/ 0/1.43    |  90/ 90/ 0/4.56
+    template_15 |  86/ 86/ 0/1.13    |  86/ 86/ 0/1.10*   |  82/ 82/ 0/3.28
+    template_16 |  88/ 88/ 0/1.40    |  88/ 88/ 0/1.21    |  88/ 88/ 0/1.29
+    template_17 |  87/ 87/ 0/1.10    |  87/ 87/ 0/1.06    |  87/ 87/ 0/2.20
+    template_18 |  92/ 92/ 0/2.01    |  92/ 92/ 0/1.41    |  88/ 88/ 0/1.40
+    template_19 |  91/ 91/ 0/2.01    |  91/ 91/ 0/1.71    |  87/ 87/ 0/2.94
+  * = re-timed with Fusion alone. The first pass ran beside the Chrome sweep: 7.9-34.3 s for these. Same profile
+  counts both times.
+- TOTALS: 13/57 cases have profiles != pieces (templates 1, 5, 11, 12 x all 3 presets + 13 double_course); 320
+  extra profiles; 169 slivers < 1e-4 in2 (smallest 1.8e-11 in2); 0 open ends; 0 multi-loop profiles. Import
+  median 1.45 s.
+- WORST 3 (extra profiles): T1 double_course +50 (20 slivers), T12 double_course +46 (28), T12 single_soldier +41
+  (30). Sliver centroids cluster at the top inner corners: T1 at (+-2.3, 3.3), T12 at (+-2.2, 3.3).
+  The zoom shot shows two faults there. (a) A fan of wedge pieces all meet at ONE point: zero-wide joints at the
+  apex. (b) The second band's row runs across the first band's soldier ends: an overlap, not a joint.
+  T13 double_course +6 profiles with 0 slivers (larger enclosed regions, not measured further).
+- Also noted (app behaviour, not judged): on most templates three_band lays the same count as single_soldier. At
+  brick length 1 in, the bands look snapped to one row inside the frame region.
+- Shots (shots/seatA): h23_item89_template_1__double_course.png + _zoom.png, h23_item89_template_12__double_course.png,
+  h23_item89_template_12__single_soldier.png.
+- For B's after-run: same tools, same seed, same board -> diff against tools/repro/h23_item89_baseline/.
+- Hygiene: scratch doc closed by handle (only Fred's Untitled), holder none, my server + Chrome stopped.
