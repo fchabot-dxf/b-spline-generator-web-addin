@@ -19,11 +19,11 @@
  * nodes that already exist in the page, at runtime, never a template
  * change.
  *
- * Mobile is UNCHANGED: the drawer's own tab mechanism (editor-drawer.js)
- * already gives Layers and the active tool their own tabs there, so
- * `_isDesktop()` below gates every mount/unmount off entirely on a
- * narrow or coarse-pointer viewport — this module never touches the
- * drawer's own DOM at all.
+ * The Art tabs (Fred's OK on mockup v2, "what's stripe and brick?"): the phone drawer's own tool | panel tab pair is
+ * retired, so the mount applies on EVERY viewport -- a phone gets the same one column as desktop: [the panel's pinned
+ * head: tab strip, tools, Generate] -> [Layers] -> [the tool's settings]. Artwork's Stripe panel mounts the same way.
+ * A body another tab hosts (EDITOR_TABS `modeHosts`: the Brick tab's Stripe) is only ever moved back from THIS column,
+ * never pulled out of that host.
  */
 import { el, on } from './dom.js';
 import { GUIDE_STROKE } from './editor-guides.js';
@@ -199,6 +199,15 @@ const TOOL_PANEL_MOUNTS = {
     generateId: 'shapeLatticeGenerate',
     unprotectAllId: 'shapeLatticeUnprotectAll',
   },
+  // the Art tabs: Artwork's Stripe settings join the column too (no Generate, no footer)
+  stripe: {
+    tab: 'artwork',
+    panelId: 'editorStripePanel',
+    bodyId: 'editorStripePanelBody',
+    footerId: null,
+    generateId: null,
+    unprotectAllId: null,
+  },
 };
 
 // Same shared breakpoint bucket editor-drawer.js's own landscape query
@@ -245,7 +254,9 @@ function _unmount(mode) {
   // wraps it — closest() unwraps it from the pinned slot before that
   // slot (created fresh on every _mount) is discarded below.
   const pinnedSlot = generateEl ? generateEl.closest('.' + PINNED_SLOT_CLASS) : null;
-  if (panelEl && bodyEl) panelEl.insertBefore(bodyEl, footerEl || null);
+  // only from this column: a body another tab's modeHosts already took (Brick's Stripe section) stays there
+  const column = el('editorLayersPanel');
+  if (panelEl && bodyEl && column && column.contains(bodyEl)) panelEl.insertBefore(bodyEl, footerEl || null);
   if (footerEl && generateEl) footerEl.insertBefore(generateEl, footerEl.firstChild);
   if (footerEl && unprotectAllEl) footerEl.appendChild(unprotectAllEl);
   if (pinnedSlot) pinnedSlot.remove();
@@ -265,9 +276,13 @@ function _mount(mode, layersPanelEl) {
   const unprotectAllEl = el(cfg.unprotectAllId);
   if (!panelEl || !bodyEl) return;
   const layersList = layersPanelEl.querySelector('.layers-list');
-  // Order: [pinned Generate, in its own opaque slot] -> [layers-header +
+  // Order: [pinned Generate, in its own opaque slot or the panel's pinned head] -> [layers-header +
   // layers-list, untouched] -> [this tool's own settings body] -> [Unprotect all].
-  if (generateEl) {
+  // The Art tabs (mockup v2): a panel that declares a pinned head ([data-panel-head]: its tab strip + tools) takes
+  // Generate into that head -- one pinned block, never two stacked sticky ones; _unmount's footer move takes it back.
+  const head = layersPanelEl.querySelector(':scope > [data-panel-head]');
+  if (generateEl && head) head.appendChild(generateEl);
+  else if (generateEl) {
     const pinnedSlot = document.createElement('div');
     pinnedSlot.className = PINNED_SLOT_CLASS + ' sticky-actions';
     pinnedSlot.appendChild(generateEl);
@@ -291,8 +306,10 @@ function _syncMount(mode) {
   const layersPanelEl = el('editorLayersPanel');
   if (!layersPanelEl) return;
   const cfg = TOOL_PANEL_MOUNTS[mode];
-  const wanted = _isDesktop() && !!cfg && cfg.tab === _activeTab;
-  if (_mountedMode && (_mountedMode !== mode || !wanted)) {
+  const wanted = !!cfg && cfg.tab === _activeTab; // every viewport (the drawer's tab pair is retired)
+  // mounted but its body is elsewhere (a tab switch's modeHosts moved it home): mount it again
+  const intact = !!cfg && _mountedMode === mode && layersPanelEl.contains(el(cfg.bodyId));
+  if (_mountedMode && (_mountedMode !== mode || !wanted || !intact)) {
     _unmount(_mountedMode);
   }
   if (wanted && _mountedMode !== mode) {
@@ -497,9 +514,7 @@ function _buildLatticeIconSVG(kind) {
  *  new icon tool row for the given `kinds` (declared order: select first,
  *  then whichever of rail/tie/node the panel supports). `data-no-collapse`
  *  on the new row too — same "always visible, never a collapsible
- *  section" exemption Add always had (and keeps editor-drawer.js's own
- *  measuredPeekFloorPx mobile-peek measurement working unchanged, since
- *  it queries generically for `[data-no-collapse]`, not Add's own id). */
+ *  section" exemption Add always had). */
 const _iconRowSetters = [];
 
 function _buildLatticeIconRow(editor, bodyEl, kinds) {

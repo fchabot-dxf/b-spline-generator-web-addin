@@ -271,26 +271,42 @@ describe('initLatticeSideColumn', () => {
     expect(document.getElementById('editorShapeLatticePanel').style.display).toBe('none');
   });
 
-  it('MOBILE: a mode change never mounts anything — the drawer\'s own tab mechanism stays in sole control', () => {
-    setDesktop(false);
+  // the Art tabs (Fred: "what's stripe and brick?"): the drawer's tool | panel tab pair is retired, so a phone mounts the
+  // tool's settings under Layers exactly as desktop does (inverts the former "MOBILE: never mounts")
+  it('MOBILE too: a mode change mounts exactly as on desktop (the drawer\'s tab pair is retired)', () => {
     initLatticeSideColumn(editor);
     fireModeChanged(editor, 'lattice');
-
     const layersPanel = document.getElementById('editorLayersPanel');
-    const ids = Array.from(layersPanel.children).map((c) => c.id || c.className);
-    expect(ids).toEqual(['layers-header', 'editorLayersList']);
-    expect(document.getElementById('editorLatticePanel').style.display).toBe('');
+    const desktopIds = Array.from(layersPanel.children).map((c) => c.id || c.className);
+    fireModeChanged(editor, 'select');
+    setDesktop(false);
+    fireModeChanged(editor, 'lattice');
+    expect(Array.from(layersPanel.children).map((c) => c.id || c.className)).toEqual(desktopIds);
+    expect(layersPanel.contains(document.getElementById('editorLatticePanelBody'))).toBe(true);
+    expect(document.getElementById('editorLatticePanel').style.display).toBe('none');
   });
 
-  it('a resize crossing INTO mobile while a tool is mounted unmounts it back', () => {
+  it('a resize crossing INTO mobile while a tool is mounted keeps it mounted (inverted: was "unmounts it back")', () => {
     initLatticeSideColumn(editor);
     fireModeChanged(editor, 'lattice');
     setDesktop(false);
     window.dispatchEvent(new Event('resize'));
+    expect(document.getElementById('editorLayersPanel').contains(document.getElementById('editorLatticePanelBody'))).toBe(true);
+  });
 
+  it('a panel with a pinned head ([data-panel-head], the Art tabs) takes Generate into it -- one pinned block -- and gives it back', () => {
     const layersPanel = document.getElementById('editorLayersPanel');
-    const ids = Array.from(layersPanel.children).map((c) => c.id || c.className);
-    expect(ids).toEqual(['layers-header', 'editorLayersList']);
+    const head = document.createElement('div');
+    head.setAttribute('data-panel-head', '');
+    head.className = 'sticky-actions';
+    layersPanel.insertBefore(head, layersPanel.firstChild);
+    initLatticeSideColumn(editor);
+    fireModeChanged(editor, 'lattice');
+    expect(document.getElementById('latticeGenerate').parentElement).toBe(head);
+    expect(layersPanel.querySelectorAll('.sticky-actions').length).toBe(1);
+    fireModeChanged(editor, 'select');
+    expect(document.getElementById('latticeGenerate').parentElement.id).toBe('editorLatticePanelFooter');
+    expect(layersPanel.firstElementChild).toBe(head);
   });
 
   it('an editorModeChanged event for a DIFFERENT editor instance is ignored', () => {
@@ -351,6 +367,19 @@ describe('lattice mounts are scoped to the Artwork tab', () => {
     expect(document.getElementById('editorLayersPanel').contains(gen)).toBe(true);
     expect(gen.parentElement.className).toBe('lattice-side-column-pinned-slot sticky-actions');
     expect(document.getElementById('editorShapeLatticePanel').style.display).toBe('none');
+  });
+
+  // Fred (phone, Frame tab): "if I'm in frame the panel should show the frame settings not the vectors" -- carried by the
+  // drawer's tab pair until the Art tabs retired it; the mount keeps it on every viewport (was editor-drawer.test.js)
+  it.each([true, false])('Frame tab (desktop %s): the tool panel is hidden and nothing is mounted; back in Artwork it returns', (desk) => {
+    setDesktop(desk);
+    fireModeChanged(editor, 'shapeLattice');
+    fireTab('frame');
+    const layersPanel = document.getElementById('editorLayersPanel');
+    expect(layersPanel.contains(document.getElementById('editorShapeLatticePanelBody'))).toBe(false);
+    expect(document.getElementById('editorShapeLatticePanel').style.display).toBe('none');
+    fireTab('artwork');
+    expect(layersPanel.contains(document.getElementById('editorShapeLatticePanelBody'))).toBe(true);
   });
 
   it('back in Artwork in a non-lattice mode, the lattice panels get no inline override (editor-ui.js decides)', () => {
@@ -627,5 +656,47 @@ describe('UI3 AMEND 1/2 — icon tool row replacing Add', () => {
     expect(nodeBtn.innerHTML).toContain('<circle');
     expect(nodeBtn.innerHTML).not.toContain('<line');
     expect(nodeBtn.innerHTML).toContain('var(--kind-nodes');
+  });
+});
+
+// The Art tabs: Artwork's Stripe settings mount under Layers like the lattice tools; the Brick tab hosts the SAME body in
+// its Stripe section (main/editor-tabs.js modeHosts) -- the mount must never pull it out of that host.
+describe('Artwork Stripe mounts under Layers; the Brick tab keeps its hosted body', () => {
+  let editor;
+  const fireTab = (tab) => document.dispatchEvent(new CustomEvent('editorTabChanged', { detail: { tab } }));
+  beforeEach(() => {
+    buildFixture();
+    document.body.insertAdjacentHTML('beforeend', `<aside id="editorStripePanel"><div id="editorStripePanelBody"><span>Stripe</span></div></aside>
+      <div id="brickStripeSection"></div>`);
+    setDesktop(true);
+    editor = { _lattice: { drawKind: 'select' } };
+    initLatticeSideColumn(editor);
+  });
+  afterEach(() => { fireTab('artwork'); fireModeChanged(editor, 'select'); document.body.innerHTML = ''; });
+
+  // advisor: a phone reaches EVERY Artwork tool's settings after the tab pair's removal (900 px = the mobile bucket)
+  it.each([['lattice', 'editorLatticePanelBody'], ['shapeLattice', 'editorShapeLatticePanelBody'], ['stripe', 'editorStripePanelBody']])(
+    'PHONE: %s opens its settings under Layers (the only place the drawer shows)', (mode, body) => {
+      setDesktop(false);
+      fireModeChanged(editor, mode);
+      expect(document.getElementById('editorLayersPanel').contains(document.getElementById(body))).toBe(true);
+    });
+  it('Artwork + stripe: the body sits under Layers, the panel is hidden', () => {
+    fireModeChanged(editor, 'stripe');
+    expect(document.getElementById('editorLayersPanel').contains(document.getElementById('editorStripePanelBody'))).toBe(true);
+    expect(document.getElementById('editorStripePanel').style.display).toBe('none');
+  });
+  it('switching to Brick: its host took the body (modeHosts runs first) -- the unmount leaves it there', () => {
+    fireModeChanged(editor, 'stripe');
+    document.getElementById('brickStripeSection').appendChild(document.getElementById('editorStripePanelBody')); // modeHosts
+    fireTab('brick');
+    expect(document.getElementById('editorStripePanelBody').parentElement.id).toBe('brickStripeSection');
+  });
+  it('back to Artwork (modeHosts sent the body home first): it mounts under Layers again', () => {
+    fireModeChanged(editor, 'stripe');
+    fireTab('brick');
+    document.getElementById('editorStripePanel').appendChild(document.getElementById('editorStripePanelBody')); // modeHosts: home
+    fireTab('artwork');
+    expect(document.getElementById('editorLayersPanel').contains(document.getElementById('editorStripePanelBody'))).toBe(true);
   });
 });

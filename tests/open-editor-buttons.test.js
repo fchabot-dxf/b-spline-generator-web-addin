@@ -21,7 +21,6 @@ const FIXTURE = `
   <div id="editorFrameShield" style="display:none"></div>
   <aside id="editorFramePanel" style="display:none"><select id="editorFrameTemplate"></select></aside>
   <aside id="editorLayersPanel"></aside><aside id="editorBrickPanel" style="display:none"></aside>
-  <button id="editorDrawerTab-layers">Layers</button>
   <div id="loading-stage" hidden><span class="loading-stage-text"></span></div>`;
 
 let root;

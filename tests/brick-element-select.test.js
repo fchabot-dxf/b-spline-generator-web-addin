@@ -35,7 +35,7 @@ import {
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
-  <button id="editorTabBrick">Brick</button><button id="editorDrawerTab-layers">Brick</button>
+  <button id="editorTabBrick">Brick</button>
   <div id="editorToolbarBrick"></div>
   <div id="brickToolHint"></div>
   <div id="brickBrushSection" style="display:none;">

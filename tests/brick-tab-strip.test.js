@@ -10,7 +10,9 @@ import { brickTabs, BRICK_GENERAL_TAB, BRICK_ROW_SCOPES, BRICK_SUB_TOOLS } from 
 import { EDITOR_TABS } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
-const doc = new DOMParser().parseFromString(HTML, 'text/html');
+// the <body> only, without its scripts (markup checks; the head's web fonts would be fetched)
+const BODY = HTML.slice(HTML.indexOf('<body'), HTML.indexOf('</body>') + 7).replace(/<script[\s\S]*?<\/script>/g, '');
+const doc = new DOMParser().parseFromString(`<!doctype html><html>${BODY}</html>`, 'text/html');
 const $ = (id) => doc.getElementById(id);
 
 describe('item 43: the Brick tab strip', () => {
@@ -38,12 +40,12 @@ describe('item 43: the Brick tab strip', () => {
     expect(strip.nextElementSibling.id).toBe('brickGenerate');
   });
 
-  it('the left rail no longer holds a Brick toolbar (Artwork keeps its own)', () => {
+  it('the left rail no longer holds a Brick toolbar (Photo keeps its own rail)', () => {
     const rail = doc.querySelector('aside.editor-sidebar');
     expect(rail.querySelector('#editorToolbarBrick')).toBeNull();
-    expect(rail.querySelector('#editorToolbarArtwork')).not.toBeNull();
+    expect(rail.querySelector('#editorToolbarPhoto')).not.toBeNull();
     expect(EDITOR_TABS.find((t) => t.id === 'brick').toolbarId).toBeNull();
-    expect(EDITOR_TABS.find((t) => t.id === 'artwork').toolbarId).toBe('editorToolbarArtwork');
+    expect(EDITOR_TABS.find((t) => t.id === 'photo').toolbarId).toBe('editorToolbarPhoto');
   });
 
   it('every block of the shared rows has a declared scope, and every declared one exists', () => {

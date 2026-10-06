@@ -20,6 +20,7 @@ import { initResizer, resizeApp, setupMobileViewportHandling } from '../core/ui-
 import { initMobilePreviewResizer } from './mobile-resizer.js';
 import { initSidebarLayout } from './sidebar-layout.js';
 import { initSidebarTabs } from './sidebar-tabs.js';
+import { initArtTabs } from './art-tabs.js';
 import { applySectionThemes } from './section-themes.js';
 import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
@@ -138,6 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // path every other carved layer already triggers, so this needs no
     // onChange callback of its own.
     initBrickPanel();
+    initArtTabs(); // the Artwork editor's tabs (mockup v2)
 
     // 5. Sidebar / header / theme / project manager.
     bindControls(preview);

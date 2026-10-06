@@ -2046,65 +2046,7 @@
           <!-- F35 item 10: Brick's own toolbar -- main/brick-panel.js's existing declared BRICK_TOOLS
                list, moved here from the old sidebar's horizontal row (renderToolList's own target
                container, same function, same click behaviour -- only the container moved). -->
-          <div id="editorToolbarArtwork" style="display:flex; flex-direction:column; align-items:center; gap:8px;">
-          <button id="toolSelect" class="tool-btn active" title="Select (V)" data-key="v"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:black; stroke:white; stroke-width:0.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
-          <button id="toolNode" class="tool-btn" title="Nodes (A)" data-key="a"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:white; stroke:black; stroke-width:1.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
-          <!-- workflow audit #2 (phone): the lattice tools, scissors and stripe come first -- on a phone the row scrolls
-               and these were off-screen; the drawing tools follow. -->
-          <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
-          <!-- SE7a: drag along a row for a rail, along a column for a tie;
-               auto-nodes mark the ends and crossings. A bare click does
-               nothing — Circle (below) is the node tool. -->
-          <button id="toolLattice" class="tool-btn" title="Lattice (K) — drag along a row = rail, along a column = tie. A bare click does nothing — use Circle for a manual node." data-key="k"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M4 8h16M4 16h16M9 4v16M15 4v16"/></svg></button>
-          <button id="toolShapeLattice" class="tool-btn" title="Shape Lattice (H) — generate or pick a silhouette, edit its per-segment style, then fill it like the Lattice tool." data-key="h"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M7 4h10M7 20h10M7 4c0 5.5 5 6 5 8s-5 2.5-5 8M17 4c0 5.5-5 6-5 8s5 2.5 5 8"/></svg></button>
-          <!-- SE16 ✂: tap a line to cut it (snaps by GRID / GEOMETRY, Alt = exact); tap the cut again to join. -->
-          <button id="toolCut" class="tool-btn" title="Cut — tap a line to split it; tap the cut again to join." data-key="x"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></svg></button>
-          <!-- F27 item 3: tap a line to split it into equal stripes cycling Colours A/B(/C); tap again to re-stripe. -->
-          <button id="toolStripe" class="tool-btn" title="Stripe (S) — tap a line to split it into equal stripes of alternating colours; tap it again to re-stripe." data-key="s"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M3 12h18" stroke-opacity="0.35"/><path d="M3 12h4M10 12h4M17 12h4" stroke-width="6"/></svg></button>
-          <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
-          <button id="toolDraw" class="tool-btn" title="Pen (P) — Click to place anchors, double-click or Enter to commit. Drag for freehand stroke. Esc cancels." data-key="p"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="m12 3 7 7L7 22H3v-4L12 3z"/><path d="m19 10-6-6"/></svg></button>
-          <button id="toolText" class="tool-btn" title="Text (T)" data-key="t"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><polyline points="4 7 4 4 20 4 20 7" /><line x1="12" x2="12" y1="4" y2="20" /></svg></button>
-          <button id="toolLine" class="tool-btn" title="Line (L)" data-key="l"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><line x1="5" y1="12" x2="19" y2="12" /></svg></button>
-          <button id="toolRect" class="tool-btn" title="Rectangle (R)" data-key="r"><svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg></button>
-          <button id="toolCircle" class="tool-btn" title="Circle (C)" data-key="c"><svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2;"><circle cx="12" cy="12" r="8"/></svg></button>
-          <button id="toolExpand" class="tool-btn" title="Expand — offset and outline paths for CNC carving (opens Detail + EXPAND controls in the top bar)" style="color:var(--cad-accent);"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2.5px;"><path d="M7 2h10M7 22h10M22 7v10M2 7v10m13 15 5 5" /></svg></button>
-          <!-- Vector eraser: drag a stroke to clip filled shapes and
-               split open strokes. Width follows the sidebar stroke
-               width; original endcaps (round/square/butt) are preserved
-               on the surviving sub-strokes. -->
-          <button id="toolErase" class="tool-btn" title="Eraser (E) — drag to subtract from filled shapes and split open strokes. Width = stroke width." data-key="e">
-            <svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;">
-              <path d="M16 3 3 16l5 5h7l8-8z"/>
-              <path d="m9 9 11 11"/>
-              <path d="M3 21h18"/>
-            </svg>
-          </button>
-          <!-- SE2: reset zoom/pan to show the whole board. -->
-          <button id="toolFit" class="tool-btn" title="Fit (0)" data-key="0">
-            <svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;">
-              <path d="M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5"/>
-            </svg>
-          </button>
-          <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
-          <button id="toolDelete" class="tool-btn" title="Delete" style="color:#d32f2f;"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/></svg></button>
-          <!-- Reset / Flatten transform — operate on the selection's
-               transform attribute set by the rotate/scale handles.
-               Reset clears it (snaps back to identity); Flatten bakes
-               it into the geometry (d, points, x/y) and then clears
-               the attribute. -->
-          <button id="toolResetTransform" class="tool-btn" title="Reset transform — clear rotation/scale on the selection (back to identity)">
-            <svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;">
-              <path d="M3 12a9 9 0 1 0 3-6.7"/>
-              <polyline points="3 4 3 9 8 9"/>
-            </svg>
-          </button>
-          <button id="toolFlattenTransform" class="tool-btn" title="Flatten transform — bake rotation/scale into the geometry and clear the transform attribute">
-            <svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;">
-              <rect x="4" y="4" width="16" height="16" rx="1"/>
-              <path d="M4 12h16M12 4v16"/>
-            </svg>
-          </button>
-          </div>
+
         </aside>
 
         <!-- Canvas -->
@@ -2191,16 +2133,9 @@
           <div id="editorDrawerHandleV" class="editor-drawer-handle-v" role="button" tabindex="0" aria-label="Resize panel — drag or tap to cycle canvas/half/settings, double-tap to jump canvas/settings">
             <div class="editor-drawer-grip" aria-hidden="true"></div>
           </div>
-          <!-- Wraps tabs+body so BOTH orientations can share one always-
-               column-internally content block — the drawer itself flips
-               row/column (styles/editor.css) but this wrapper never needs
-               to, so the tabs-bar-above-scrollable-body arrangement stays
-               identical either way. -->
+          <!-- Wraps the body so BOTH orientations share one always-column-internally content block -- the drawer
+               itself flips row/column (styles/editor.css), this wrapper never needs to. -->
           <div id="editorDrawerContent">
-          <div id="editorDrawerTabs" class="editor-drawer-tabs" role="tablist">
-            <button type="button" id="editorDrawerTab-tool" class="editor-drawer-tab hidden" role="tab"></button>
-            <button type="button" id="editorDrawerTab-layers" class="editor-drawer-tab" role="tab">Layers</button>
-          </div>
           <div id="editorDrawerBody" class="editor-drawer-body">
         <!-- Lattice Pattern Panel (SE7b) — lives inside the modal, above
              Layers, so it sits next to the canvas it acts on. Shown only
@@ -2209,12 +2144,7 @@
              390px-first: every control below is a real tap target, no
              hover-only affordance (T16 precedent). -->
         <aside class="editor-lattice-panel hidden" id="editorLatticePanel" style="width:236px; flex-shrink:0; background:#fdfdfd; border-left:1px solid var(--cad-border-standard); display:flex; flex-direction:column; overflow-y:auto; padding:10px; gap:10px; font-size:11px;">
-          <!-- MOB3: this label is now DESKTOP-only (styles/editor.css
-               hides it under the drawer breakpoint) — the drawer's own
-               tab (#editorDrawerTab-tool) carries the SAME "Lattice
-               Pattern" name there, so a phone user would otherwise see it
-               twice. No longer a <button> (the old collapse-toggle click
-               handler is retired with it, properties-lattice.js). -->
+          <!-- the panel's own title (its body mounts under Layers, lattice-side-column.js) -->
           <div id="editorLatticePanelHeader" class="editor-lattice-panel-header" style="display:flex; align-items:center; width:100%; font-weight:700; text-transform:uppercase; font-size:9px; letter-spacing:0.08em; color:#666;">
             <span>Lattice Pattern</span>
           </div>
@@ -2572,7 +2502,7 @@
                  matching the box Lattice's own minimal "Add" row) — but
                  unlike Add's 3 buttons, Shape's own preset+seed+ALL preset
                  sliders is enough content that the drawer's own measured
-                 peek floor (editor-drawer.js's measuredPeekFloorPx) grew to
+                 peek floor (editor-drawer.js's measuredPeekFloorPx, since retired) grew to
                  ~400px on a real phone-sized viewport, covering the SAME
                  canvas area a param handle (this turn's own new feature)
                  needs to be reachable in — confirmed live via CDP: a
@@ -3401,6 +3331,73 @@
 
         <!-- Layers Panel (Right Sidebar) -->
         <aside class="editor-layers-panel" id="editorLayersPanel">
+          <!-- F35 Art tabs (Fred's OK on mockup v2): the head of this panel, pinned -- the tab strip (main/art-tabs.js
+               ART_TABS), the active tab's tool buttons (#editorToolbarArtwork, moved here from the left rail: the buttons,
+               their ids, shortcuts and active highlight are unchanged) and General's shared groups (EDITOR_TABS artwork
+               panelHosts). data-panel-head: a lattice tool's pinned Generate joins this block (lattice-side-column.js). -->
+          <div id="artTabsHead" class="sticky-actions" data-panel-head>
+            <div id="artTabStrip"></div>
+          <div id="editorToolbarArtwork" class="art-tab-tools" style="display:flex;">
+            <button id="toolSelect" class="tool-btn active" title="Select (V)" data-key="v"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:black; stroke:white; stroke-width:0.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
+            <button id="toolNode" class="tool-btn" title="Nodes (A)" data-key="a"><svg viewBox="0 0 24 24" style="width:20px; height:20px; fill:white; stroke:black; stroke-width:1.5px;"><path d="M7 2l12 11.2-5.8.1 3.3 6.7-2.5 1.2-3.3-6.8-3.7 3.6V2z" /></svg></button>
+            <!-- workflow audit #2 (phone): the lattice tools, scissors and stripe come first -- on a phone the row scrolls
+                 and these were off-screen; the drawing tools follow. -->
+            <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
+            <!-- SE7a: drag along a row for a rail, along a column for a tie;
+                 auto-nodes mark the ends and crossings. A bare click does
+                 nothing — Circle (below) is the node tool. -->
+            <button id="toolLattice" class="tool-btn" title="Lattice (K) — drag along a row = rail, along a column = tie. A bare click does nothing — use Circle for a manual node." data-key="k"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M4 8h16M4 16h16M9 4v16M15 4v16"/></svg></button>
+            <button id="toolShapeLattice" class="tool-btn" title="Shape Lattice (H) — generate or pick a silhouette, edit its per-segment style, then fill it like the Lattice tool." data-key="h"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M7 4h10M7 20h10M7 4c0 5.5 5 6 5 8s-5 2.5-5 8M17 4c0 5.5-5 6-5 8s5 2.5 5 8"/></svg></button>
+            <!-- SE16 ✂: tap a line to cut it (snaps by GRID / GEOMETRY, Alt = exact); tap the cut again to join. -->
+            <button id="toolCut" class="tool-btn" title="Cut — tap a line to split it; tap the cut again to join." data-key="x"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.12 15.88M14.47 14.48 20 20M8.12 8.12 12 12"/></svg></button>
+            <!-- F27 item 3: tap a line to split it into equal stripes cycling Colours A/B(/C); tap again to re-stripe. -->
+            <button id="toolStripe" class="tool-btn" title="Stripe (S) — tap a line to split it into equal stripes of alternating colours; tap it again to re-stripe." data-key="s"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M3 12h18" stroke-opacity="0.35"/><path d="M3 12h4M10 12h4M17 12h4" stroke-width="6"/></svg></button>
+            <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
+            <button id="toolDraw" class="tool-btn" title="Pen (P) — Click to place anchors, double-click or Enter to commit. Drag for freehand stroke. Esc cancels." data-key="p"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="m12 3 7 7L7 22H3v-4L12 3z"/><path d="m19 10-6-6"/></svg></button>
+            <button id="toolText" class="tool-btn" title="Text (T)" data-key="t"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><polyline points="4 7 4 4 20 4 20 7" /><line x1="12" x2="12" y1="4" y2="20" /></svg></button>
+            <button id="toolLine" class="tool-btn" title="Line (L)" data-key="l"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><line x1="5" y1="12" x2="19" y2="12" /></svg></button>
+            <button id="toolRect" class="tool-btn" title="Rectangle (R)" data-key="r"><svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg></button>
+            <button id="toolCircle" class="tool-btn" title="Circle (C)" data-key="c"><svg viewBox="0 0 24 24" style="width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2;"><circle cx="12" cy="12" r="8"/></svg></button>
+            <button id="toolExpand" class="tool-btn" title="Expand — offset and outline paths for CNC carving (opens Detail + EXPAND controls in the top bar)" style="color:var(--cad-accent);"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2.5px;"><path d="M7 2h10M7 22h10M22 7v10M2 7v10m13 15 5 5" /></svg></button>
+            <!-- Vector eraser: drag a stroke to clip filled shapes and
+                 split open strokes. Width follows the sidebar stroke
+                 width; original endcaps (round/square/butt) are preserved
+                 on the surviving sub-strokes. -->
+            <button id="toolErase" class="tool-btn" title="Eraser (E) — drag to subtract from filled shapes and split open strokes. Width = stroke width." data-key="e">
+              <svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;">
+                <path d="M16 3 3 16l5 5h7l8-8z"/>
+                <path d="m9 9 11 11"/>
+                <path d="M3 21h18"/>
+              </svg>
+            </button>
+            <!-- SE2: reset zoom/pan to show the whole board. -->
+            <button id="toolFit" class="tool-btn" title="Fit (0)" data-key="0">
+              <svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;">
+                <path d="M3 8V3h5M16 3h5v5M21 16v5h-5M8 21H3v-5"/>
+              </svg>
+            </button>
+            <div class="tool-divider" style="width:24px; height:1px; background:#ddd; margin:4px 0;"></div>
+            <button id="toolDelete" class="tool-btn" title="Delete" style="color:#d32f2f;"><svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/></svg></button>
+            <!-- Reset / Flatten transform — operate on the selection's
+                 transform attribute set by the rotate/scale handles.
+                 Reset clears it (snaps back to identity); Flatten bakes
+                 it into the geometry (d, points, x/y) and then clears
+                 the attribute. -->
+            <button id="toolResetTransform" class="tool-btn" title="Reset transform — clear rotation/scale on the selection (back to identity)">
+              <svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;">
+                <path d="M3 12a9 9 0 1 0 3-6.7"/>
+                <polyline points="3 4 3 9 8 9"/>
+              </svg>
+            </button>
+            <button id="toolFlattenTransform" class="tool-btn" title="Flatten transform — bake rotation/scale into the geometry and clear the transform attribute">
+              <svg viewBox="0 0 24 24" style="width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2;">
+                <rect x="4" y="4" width="16" height="16" rx="1"/>
+                <path d="M4 12h16M12 4v16"/>
+              </svg>
+            </button>
+            </div>
+            <div id="artGeneralBody" style="display:none;"></div>
+          </div>
           <!-- F35 item 40: the header, the Brick start hint and the list are the ONE Layers component; the Brick tab
                hosts them in its own panel (main/editor-tabs.js EDITOR_TABS brick.panelHosts) and they come back here -->
           <div class="layers-header" id="editorLayersHeader">

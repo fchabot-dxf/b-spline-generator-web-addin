@@ -54,7 +54,7 @@ import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/ed
 
 const FIXTURE = `
   <div class="sticky-actions"><div id="editorToolbarBrick"></div><button id="brickGenerate">Generate</button></div>
-  <button id="editorTabBrick">Brick</button><button id="editorDrawerTab-layers">Brick</button>
+  <button id="editorTabBrick">Brick</button>
   <div id="brickToolHint"></div>
   <div id="brickBrushSection" style="display:none;">
     <div id="brickSubTools_brush"></div>
@@ -465,12 +465,12 @@ describe('Generate visibility, no pending badge, and a hidden Bricks layer', () 
     expect(slotShown()).toBe(true);
   });
 
-  it('item 27: no pending badge anywhere -- the Brick tab button, the drawer label -- after a change, with or without a tool', () => {
+  it('item 27: no pending badge anywhere -- the Brick tab button -- after a change, with or without a tool', () => {
     setup('wall');
     setEditorTab('brick');
     $('brickPattern_herringbone').click();
     deselectTool();
-    for (const id of ['editorTabBrick', 'editorDrawerTab-layers']) expect(badged(id), id).toBe(false);
+    for (const id of ['editorTabBrick']) expect(badged(id), id).toBe(false); // the drawer's label went with its tab pair (the Art tabs)
   });
 
   it('C8: laying bricks onto a hidden Bricks layer warns, and leaves the layer hidden', () => {

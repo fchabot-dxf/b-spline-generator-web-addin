@@ -757,3 +757,21 @@ aside {
 #editorBrickPanel > .sticky-actions > #editorToolbarBrick {
     margin: -12px -14px 10px;
 }
+/* the Art tabs: the strip heads the Artwork panel's pinned block, the active tab's tools under it (a wrapping row) */
+#artTabsHead > #artTabStrip {
+    margin: -12px -14px 8px;
+}
+#artTabsHead > .art-tab-tools {
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+#artTabsHead > #artGeneralBody > div {
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+/* item 55's grout paint row (Colour + Edge) wraps in the narrow Brick panel: it measured 201 px in a 172 px box, a
+   5 px horizontal scrollbar on the whole panel (advisor: wrap it, seat C, with the tab strips) */
+#brickGroutPaintRow {
+    flex-wrap: wrap;
+}

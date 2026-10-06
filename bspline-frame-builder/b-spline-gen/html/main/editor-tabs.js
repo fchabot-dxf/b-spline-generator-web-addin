@@ -12,10 +12,6 @@
  * 'bricksGenerated'), so this module never needs to import frame-panel.js/photo-panel.js/
  * brick-panel.js directly (no import cycle, no ownership creep onto their own tabs' behaviour).
  */
-// `drawerLabel` is the mobile bottom-drawer's OWN side-panel label -- kept distinct from `label`
-// (the tab button's own text) because Artwork's panel is actually titled "Layers" (pre-existing,
-// tests/frame-tabs.test.js's own expectation), not "Artwork"; Photo/Brick have no such distinction
-// (their own panel IS titled Photo/Brick), so `drawerLabel` just repeats `label` there.
 // `modes`: the editor gesture modes (editor-interaction.js modeHandlers keys) this tab's own tools
 // arm. Fred (2026-10-04): a tool mode never outlives a switch to a tab that doesn't own it -- a
 // Shape Lattice mode carried into the Brick tab ran lattice gestures there. main/global-events.js
@@ -26,14 +22,21 @@ import { TOOLBAR_GROUPS } from '../editor/editor-ui.js';
 // `clears` (F35 item 28): what the editor header's Clear menu clears for this tab -- a main/editor-clear-menu.js
 // CLEAR_KINDS key. A new tab that declares one gets its own Clear entry.
 export const EDITOR_TABS = [
-  { id: 'frame', clears: 'frame', label: 'Frame', drawerLabel: 'Frame', buttonId: 'editorTabFrame', panelId: 'editorFramePanel', toolbarId: 'editorToolbarFrame',
+  { id: 'frame', clears: 'frame', label: 'Frame', buttonId: 'editorTabFrame', panelId: 'editorFramePanel', toolbarId: 'editorToolbarFrame',
     modes: ['select'] },
-  { id: 'artwork', clears: 'artwork', label: 'Artwork', drawerLabel: 'Layers', buttonId: 'editorTabArtwork', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
-    modes: ['select', 'node', 'text', 'draw', 'line', 'rect', 'circle', 'erase', 'lattice', 'shapeLattice', 'cut', 'stripe'] },
-  { id: 'photo', clears: 'photo', label: 'Photo', drawerLabel: 'Photo', buttonId: 'editorTabPhoto', panelId: 'editorPhotoPanel', toolbarId: 'editorToolbarPhoto',
+  { id: 'artwork', clears: 'artwork', label: 'Artwork', buttonId: 'editorTabArtwork', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
+    modes: ['select', 'node', 'text', 'draw', 'line', 'rect', 'circle', 'erase', 'lattice', 'shapeLattice', 'cut', 'stripe'],
+    // the Art tabs (mockup v2): General holds the shared stroke / colour / style groups (main/art-tabs.js
+    // ART_GENERAL_GROUPS); on any other editor tab they are back in the top bar (hidden there by TOOLBAR_TOP_GROUPS_BY_TAB)
+    panelHosts: [
+      { content: 'editorStrokeGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
+      { content: 'editorColorGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
+      { content: 'editorFillModeGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
+    ] },
+  { id: 'photo', clears: 'photo', label: 'Photo', buttonId: 'editorTabPhoto', panelId: 'editorPhotoPanel', toolbarId: 'editorToolbarPhoto',
     modes: ['select'] },
   // F35 item 43: no left rail -- the Brick tools are the tab strip at the top of its own panel (#editorToolbarBrick)
-  { id: 'brick', clears: 'bricks', label: 'Brick', drawerLabel: 'Brick', buttonId: 'editorTabBrick', panelId: 'editorBrickPanel', toolbarId: null,
+  { id: 'brick', clears: 'bricks', label: 'Brick', buttonId: 'editorTabBrick', panelId: 'editorBrickPanel', toolbarId: null,
     modes: ['select', 'brickBrush', 'cut', 'stripe', 'brickAccentClick', 'brickElementSelect', 'brickWallArea'],
     // `peekEssentials` (Fred, live: "Wall is missing the generate button"): what must show IN FULL when the
     // phone / narrow-palette drawer sits at peek height (editor/editor-drawer.js measures them into its peek
@@ -114,10 +117,7 @@ export function setEditorTab(tab) {
     const toolbar = document.getElementById(t.toolbarId);
     if (toolbar) toolbar.style.display = active ? 'flex' : 'none';
   }
-  // Mobile: the editor's bottom drawer labels its side panel; name it for the active tab.
-  const drawerTab = document.getElementById('editorDrawerTab-layers');
-  if (drawerTab) drawerTab.textContent = EDITOR_TABS.find((t) => t.id === _editorTab)?.drawerLabel || 'Layers';
-  // ... and hands it the active tab's declared peek essentials (editor/ never imports main/, so as data on
+  // Mobile: the editor's bottom drawer gets the active tab's declared peek essentials (editor/ never imports main/, so as data on
   // the drawer element; editor-drawer.js re-measures its peek floor on 'editorTabChanged' below).
   const drawer = document.getElementById('editorMobileDrawer');
   if (drawer) drawer.dataset.peekEssentials = JSON.stringify(EDITOR_TABS.find((t) => t.id === _editorTab)?.peekEssentials || []);
