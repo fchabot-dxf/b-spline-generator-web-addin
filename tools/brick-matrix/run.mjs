@@ -25,7 +25,7 @@ const arg = (name, dflt) => { const i = process.argv.indexOf(`--${name}`); retur
 const flag = (name) => process.argv.includes(`--${name}`);
 const ROOT = arg('root', path.resolve(HERE, '../../bspline-frame-builder'));
 const OUT = path.resolve(arg('out', 'brick-matrix-report'));
-const PORT = Number(arg('port', 9701)), HTTP = PORT + 1;
+let PORT = Number(arg('port', 9701)), HTTP = PORT + 1;
 const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -123,6 +123,13 @@ const CONTROLS = arg('group') ? BRICK_CONTROLS.filter((c) => groupOf(c) === arg(
 // A BRAND-NEW profile every run: the app restores its last saved session from localStorage, so a reused
 // profile starts the matrix from the previous run's end state (a row that re-picks the current value then
 // "does nothing"). Removed again in stop().
+// advisor: a busy DEFAULT port (another seat's run) is skipped for the next free pair, not fatal; an explicit --port is
+// held to (the check below still refuses it when taken)
+const portAnswers = (port) => fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(400) }).then(() => true, () => false);
+if (!arg('port')) {
+  for (let i = 0; i < 40 && ((await portAnswers(PORT)) || (await portAnswers(HTTP))); i++) { PORT += 10; HTTP = PORT + 1; }
+  if (PORT !== 9701) console.log(`brick-matrix: the default port was busy; using ${PORT}/${HTTP}`);
+}
 const profile = mkdtempSync(path.join(os.tmpdir(), `brick-matrix-chrome-${PORT}-`));
 // ... and nothing may already answer on that port: two trees often serve an identical palette page, so the
 // byte check below alone cannot tell another seat's server from ours.
@@ -235,11 +242,16 @@ const isPending = () => js(`!!document.getElementById('brickGenerate')?.classLis
 // --parallel load while it passed alone on main afdc4c0 AND on the branch (47/47 each): the rebuild started after
 // the 6 s window. A row that EXPECTS the 3D to change gives it THREE_D_EXPECTED_CHANGE_MS before calling it unchanged.
 const THREE_D_CHANGE_MS = 6000, THREE_D_EXPECTED_CHANGE_MS = 20000;
-async function heightsSettled(prev, maxMs = 30000, changeMs = THREE_D_CHANGE_MS) {
+// advisor follow-up: the rebuild's OWN completion count (core/state.js lastResultGeneration) -- `sinceGen` = the count
+// before the action: "unchanged" is only concluded after a rebuild has COMPLETED since then (a build without the
+// counter falls back to the time window alone)
+const GEN = `import('./core/state.js').then((m) => (typeof m.lastResultGeneration === 'number' ? m.lastResultGeneration : null))`;
+async function heightsSettled(prev, maxMs = 30000, changeMs = THREE_D_CHANGE_MS, sinceGen = null) {
   let last = await js(HEIGHTS), same = 0; const t0 = Date.now();
   while (Date.now() - t0 < maxMs) {
     await sleep(700); const h = await js(HEIGHTS);
-    if (h === last) { if (++same >= 3 && (h !== prev || Date.now() - t0 > changeMs)) return h; } else { same = 0; last = h; }
+    const rebuilt = sinceGen == null || ((await js(GEN)) ?? Infinity) > sinceGen;
+    if (h === last) { if (++same >= 3 && (h !== prev || (rebuilt && Date.now() - t0 > changeMs))) return h; } else { same = 0; last = h; }
   }
   return last;
 }
@@ -363,8 +375,9 @@ try {
       const reads = c.expect.reads ? (await jsJSON(`JSON.stringify(Object.fromEntries(${JSON.stringify(Object.keys(c.expect.reads))}.map((id) => [id, Number(document.getElementById(id)?.value)])))`)) : null;
       const readsOk = !!reads && Object.entries(c.expect.reads).every(([id, v]) => Math.abs(reads[id] - v) < 1e-6);
       const setsOk = !!sets && Object.entries(c.expect.sets).every(([k, id]) => sets[k] && sets[k].length === 1 && sets[k][0] === String(id));
+      const g0 = await js(GEN);
       await apply();
-      const z1 = await heightsSettled(Z, 30000, c.expect.threeD === true ? THREE_D_EXPECTED_CHANGE_MS : THREE_D_CHANGE_MS);
+      const z1 = await heightsSettled(Z, 30000, c.expect.threeD === true ? THREE_D_EXPECTED_CHANGE_MS : THREE_D_CHANGE_MS, g0);
       await record(c, { result, pending: p, canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 }, sets, setsOk, reads, readsOk });
       Z = z1;
     } else if (c.kind === 'relay') {

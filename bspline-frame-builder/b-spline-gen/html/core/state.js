@@ -412,7 +412,10 @@ export let strokeCache = null;
 
 export function setPreDelta(val) { preDelta = val; }
 export function setPostDelta(val) { postDelta = val; }
-export function setLastResult(val) { lastResult = val; }
+/** A completed 3D rebuild's count (setLastResult): the brick matrix waits on it instead of a time window (advisor: under
+ *  a loaded --parallel gate the rebuild can start after any fixed window). Read-only for everyone else. */
+export let lastResultGeneration = 0;
+export function setLastResult(val) { lastResult = val; lastResultGeneration++; }
 export function setIsFusionMode(val) { isFusionMode = val; }
 export function setLastGridSize(nx, nz) { lastNx = nx; lastNz = nz; }
 export function setStrokeCache(val) { strokeCache = val; }
