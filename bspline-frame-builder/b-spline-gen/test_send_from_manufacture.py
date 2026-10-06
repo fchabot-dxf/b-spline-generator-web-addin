@@ -57,6 +57,8 @@ def test_a_send_from_manufacture_finds_the_design_and_switches_to_design(monkeyp
     monkeypatch.setattr(bsg, 'app', fake)
     monkeypatch.setattr(bsg, 'ui', _SpyUI())
     monkeypatch.setattr(_adsk.fusion, 'Design', types.SimpleNamespace(cast=staticmethod(_design_cast)), raising=False)
+    logged = []
+    monkeypatch.setattr(bsg, '_log', lambda m: logged.append(m))
     seen = {}
 
     def _sync(des, params):  # the first thing the Send does with the design: record it, stop there
@@ -69,6 +71,8 @@ def test_a_send_from_manufacture_finds_the_design_and_switches_to_design(monkeyp
 
     assert seen.get('des') is design
     assert fake.switched == ['FusionSolidEnvironment']
+    # live: the first version read the product AFTER the switch and logged 'was DesignProductType'
+    assert any(m == '[SEND] switched to the Design workspace (active product was CAMProductType)' for m in logged)
     assert seen['active_product_then'] is design  # switched BEFORE the Send works on the design
     assert not [x for a, x in palette.sent if a == 'import_failed' and 'No active Fusion design' in x]
 

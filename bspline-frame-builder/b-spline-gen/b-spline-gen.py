@@ -532,8 +532,9 @@ def _ensure_design_workspace():
             return False
         ws = app.userInterface.workspaces.itemById(DESIGN_WORKSPACE_ID)
         if ws and _active_design():
+            was = app.activeProduct.productType if app.activeProduct else None
             ws.activate()
-            _log(f'[SEND] switched to the Design workspace (was {app.activeProduct.productType if app.activeProduct else None})')
+            _log(f'[SEND] switched to the Design workspace (active product was {was})')
             return True
     except Exception as e:
         _log(f'[SEND] Design workspace switch failed: {e}')
