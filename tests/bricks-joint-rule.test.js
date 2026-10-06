@@ -66,9 +66,8 @@ describe('the joint rule: every seam between band pieces is the declared joint (
 // T86 (advisor, after seat B's stack sweep): the joint rule on the other boards and every size -- the test above covered
 // 7x9 at 1 / 1.25 in only, and the sweep found two pieces TOUCHING on 9x12 at 0.75 in (T8 0 in, T12 0.0001 in: a clip
 // left a spike along the cutter's edge -- geometry.js dropSpikes). The templates above plus the ones the sweep flagged.
-// KNOWN (reported, not fixed -- the narrowing question for item 30 is open): at big bricks a neck narrower than two
-// bands leaves a seam under the joint, the measured floor here.
-const KNOWN_NECK_SEAM_IN = { 'template_16 6x9 1.5': 0.022, 'template_18 9x12 1.25': 0.0235 };
+// And the neck seams at big bricks (T16 6x9 1.5, T18 9x12 1.25: 0.022 / 0.024 in): a cut whose cutter shared an edge
+// with the piece missed a tip of it (contour-bands checkedDifference, CUT_NUDGE_IN).
 describe('the joint rule on 6x9 and 9x12 at 0.75-1.5 in (T86, after the stack sweep)', () => {
   const TEMPLATES = ['template_1', 'template_5', 'template_8', 'template_11', 'template_12', 'template_14', 'template_16', 'template_18', 'template_19'];
   const PRESETS = ['single_soldier', 'three_band', 'double_course', 'mixed_bands', 'quoin_corners'];
@@ -79,8 +78,8 @@ describe('the joint rule on 6x9 and 9x12 at 0.75-1.5 in (T86, after the stack sw
     const bad = [];
     for (const preset of PRESETS) for (const L of [0.75, 1, 1.25, 1.5]) {
       const { bricks } = bricksContourBands(prims, FRAME_PRESETS[preset], { set: SET, seed: 1, scale: L / SET.brickLengthIn });
-      const w = narrowestSeam(bricks), floor = KNOWN_NECK_SEAM_IN[`${id} ${W}x${H} ${L}`] ?? JOINT - ARC_SAG_IN;
-      if (w.d < floor) bad.push(`${preset} ${L}: ${w.a} / ${w.b} ${w.d.toFixed(4)} in`);
+      const w = narrowestSeam(bricks);
+      if (w.d < JOINT - ARC_SAG_IN) bad.push(`${preset} ${L}: ${w.a} / ${w.b} ${w.d.toFixed(4)} in`);
     }
     expect(bad).toEqual([]);
   });

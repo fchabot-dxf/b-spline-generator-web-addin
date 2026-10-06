@@ -23356,3 +23356,21 @@ junctions (T16 line/arc, T18 / T19 arc/arc). The medial setback leaves 0.022-0.0
 
 ## T86 item 34 -- NOTED for later: T7's hook leaves bare band ground at 1.5 in (seat B, 2026-10-06)
 4.9 sq in on 7x9, 2.9 on 6x9, every preset, identical on main -- the hook (r 0.66 fillet) at big bricks.
+
+## T86 -- the neck seams at big bricks (advisor GO (2), seat B / fc, 2026-10-06), on seam-9x12
+MEASURED first (scratch, instrumented): not the curved-source setback -- at every neck seam one side stood exactly half
+a joint off the medial line (first-order and true distance agree to 0.0005 in); the other side kept a TIP 0.013 x
+0.004 in inside the cutter of the piece across. Its cuts ran against two pieces of one run whose cutters meet at the
+run's joint; after the first cut the piece and the second cutter shared an EDGE exactly, and polygonIntersection /
+polygonDifference both missed the overlap (shared 0, piece back untouched). Fix (contour-bands checkedDifference): a
+cut whose result still has a vertex deeper than CUT_INSIDE_IN (1e-4 in) inside the cutter is redone with the cutter
+CUT_NUDGE_IN (1e-6 in) larger. Sweep vs the previous seam-9x12 tip, 2,166 lays: 32 change, all seams only -- the 18
+neck lays 0.022-0.027 -> 0.034, and 14 more of the same miss 0.031-0.032 -> 0.034 (T11 6x9 1.5, T19 6x9 1, T19 9x12
+1.25); pieces, overlap, bare unchanged; stone lays 0. Seams under 0.030 in: 19 -> 1 (T17 9x12 mixed_bands 1.25, 0.0296,
+arc sag). Test: KNOWN_NECK_SEAM_IN removed -- the extended joint-rule grid holds the joint everywhere; mutation (no
+nudge) -> T16 6x9 / T18 9x12 fail. Full vitest 327 / 5,394.
+
+## T86 item 34 -- MEASURED (plan below, awaiting GO): T7's roof at 1.5 in (seat B)
+Render (T7 7x9 single_soldier 1.25 vs 1.5): at 1.5 in the whole roof gable above the hooks is bare -- the gable's
+inradius is ~0.5 in, so the two roof lines' rows drop at 1.5 in, and the hooks' fans do not reach into it; at 1.25 in
+the roof lays. Item 30 does not narrow it: the roof lines lie between ARCS (the hooks), not between two lines.

@@ -308,12 +308,25 @@ function polygonDistance(A, B) {
   }
   return best;
 }
-function checkedDifference(piece, cutter) {
+/** T86 (seat B, the neck seams at big bricks): where piece and cutter share an EDGE exactly (two cutters from the
+ *  same run meet at the run's joint, and the piece was already cut along one of them), polygonIntersection and
+ *  polygonDifference both miss the overlap -- MEASURED T16 6x9 1.5 in: a 0.013 x 0.004 in tip of the piece inside
+ *  the cutter came back untouched (shared 0), and the seam there read 0.022 in. A cut whose result still has a vertex
+ *  clearly inside the cutter (deeper than CUT_INSIDE_IN) is redone with the cutter a hair larger (CUT_NUDGE_IN), which
+ *  breaks the shared edge; after it the seam is the joint (0.0341 in). */
+const CUT_NUDGE_IN = 1e-6;
+const CUT_INSIDE_IN = 1e-4;
+function checkedDifferenceOnce(piece, cutter) {
   const shared = Math.abs(signedArea(polygonIntersection(piece, cutter)));
   if (shared < 1e-9) return [piece]; // a sharp tip in a joint-wide strip shares ~1e-7 sq in
   const left = polygonDifference(piece, cutter).map((q) => dropSpikes(q)).filter((q) => q.length >= 3); // a spike along the cutter reaches the next piece
   const kept = left.reduce((sum, q) => sum + Math.abs(signedArea(q)), 0);
   return Math.abs(kept - (Math.abs(signedArea(piece)) - shared)) > CUT_CHECK_SQIN ? [piece] : left;
+}
+function checkedDifference(piece, cutter) {
+  const left = checkedDifferenceOnce(piece, cutter);
+  const missed = left.some((q) => q.some((p) => pointInPolygon(p.x, p.y, cutter) && polygonDistance([p], cutter) > CUT_INSIDE_IN));
+  return missed ? checkedDifferenceOnce(piece, offsetPathInward(cutter, CUT_NUDGE_IN, -inwardSignFor(cutter))) : left;
 }
 
 function yieldAtMedialLine(bricks, origins, primitives, set) {
