@@ -23324,3 +23324,14 @@ Bare 35.1 -> A 16.6 / B 19.9 / A+B 8.0 sq in (0.14 / lay); voids >= 0.05 sq in 1
 seeds and clip fragments 0; stones 5,182 -> 5,315; no overlap, no self-crossing, largest stone 7.3x -> 6.4x median;
 208-222 ms per lay vs 233-366 today. Wall fieldstone untouched (no fences: neither rule applies).
 Shot item33_ring_voids_before_after.png (T14 / T10 / T3 / T9 at 1.25 in).
+- BUILT (advisor GO, A+B) in layouts/fieldstone.js: (A) a phantom carries its twin and bounds only that seed's cell;
+  (B) fences[0] is the outer line and every further fence a hole: the stones are clipped to that annulus (the piece
+  holding the seed) -- only when every fence is a SIMPLE polygon: a band deeper than a neck pinches its inner edge to
+  zero width (T18 / T19, a 1 in ring at 0.75 in stones, bricks-fieldstone-band) and cutting that hole out ran one
+  stone through the pinch over its neighbours (0.15 sq in); such a ring keeps the slit clip. Real code, White rocks +
+  Grey stone three_band, 19 templates x 0.75 / 1 / 1.25 in, 7x9 (114 lays): bare ring ground 66.5 -> 11.7 sq in,
+  per lay median 0.59 -> 0.09, max 1.28 -> 0.47; stones 10,556 -> 10,823; overlap 0, self-crossing 0, > 10x median 0.
+  Tests bricks-stone-ring-ground: six worst lays at 1.25 in under 0.3 sq in (were 0.76-1.28); no void at the slit
+  bridge on six templates at 1 in. Mutation: no A -> 5 fail, no B -> 6 fail. Full vitest 327 files / 5,376 passed.
+  Changes saved stone-ring boards (Fred-yes batch). Shot for Fred: item33_fred_T11_white_rocks_1in_before_after.png
+  (T11 7x9 1 in, 73 -> 77 ring stones; one small mortar patch left by the right notch).
