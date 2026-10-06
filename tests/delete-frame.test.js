@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { P, setIsFusionMode } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { getFrameRecord, setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { deleteFrame, onDeleteFrameResult, undoFrame, frameHistoryDepth } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+import { globalHistoryLog, globalRedoLog, unifiedUndo, unifiedRedo, ensureUndoBaseline, takeSnapshot } from '../bspline-frame-builder/b-spline-gen/html/core/history.js';
 
 const sent = [];
 beforeEach(() => {
@@ -50,5 +51,32 @@ describe('F26 item 2 (b): Delete frame', () => {
     expect(document.getElementById('fusion-status').textContent).toBe('No frame to delete in Fusion');
     onDeleteFrameResult({ ok: false, error: 'Delete frame failed: x' });
     expect(document.getElementById('fusion-status').dataset.kind).toBe('warn');
+  });
+
+  // item 69 (seat E, measured live: the SIDEBAR Undo left the frame deleted -- the global undo never restores a frame,
+  // and its newest snapshot predated the brick lay, so it also reverted brickSettings)
+  it('the sidebar (global) Undo restores the frame from the declared transition; Redo deletes it again', () => {
+    globalHistoryLog.length = 0; globalRedoLog.length = 0;
+    takeSnapshot('Initial');
+    P.brickSettings = { ...(P.brickSettings || {}), seed: 777 }; // a change that took no snapshot (a brick lay)
+    deleteFrame();
+    const labels = globalHistoryLog.map((x) => x.label);
+    expect(labels).toEqual(['Initial', 'Before delete frame', 'Delete frame']);
+    const step = globalHistoryLog[globalHistoryLog.length - 1];
+    expect(step.frame.before.templateId).toBe('template_1');
+    expect(step.frame.after.templateId).toBeNull();
+    const applied = [];
+    unifiedUndo((snap, frame) => applied.push(['undo', snap.label, frame && frame.templateId]));
+    unifiedRedo((snap, frame) => applied.push(['redo', snap.label, frame && frame.templateId]));
+    expect(applied).toEqual([['undo', 'Before delete frame', 'template_1'], ['redo', 'Delete frame', null]]);
+  });
+
+  it('ensureUndoBaseline records the board only when the newest snapshot no longer matches it', () => {
+    globalHistoryLog.length = 0;
+    takeSnapshot('Initial');
+    expect(ensureUndoBaseline()).toBe(false);
+    P.seed = (P.seed || 0) + 1;
+    expect(ensureUndoBaseline()).toBe(true);
+    expect(globalHistoryLog.length).toBe(2);
   });
 });

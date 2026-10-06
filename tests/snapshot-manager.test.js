@@ -43,7 +43,14 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/main/app-init.js', () => ({
   announceBrickSettingsRestored: vi.fn(),
 }));
 
+vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/layers.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  renderLayersPanel: vi.fn(),
+}));
+
 import { applySnapshot } from '../bspline-frame-builder/b-spline-gen/html/main/snapshot-manager.js';
+import { renderLayersPanel } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
+import { getFrameRecord, setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import * as appInit from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 import { updateStampMasks } from '../bspline-frame-builder/b-spline-gen/html/main/stamp-mask-manager.js';
@@ -208,5 +215,30 @@ describe('F35 item 41: a restore (load or global undo) is a declared loading sta
     expect(appInit.runMigrations).toHaveBeenCalled();
     resetLoadingSignal();
     root.remove();
+  });
+});
+
+// item 69 (seat E, measured live: after Undo of a layer's carve toggle the row button kept its toggled look; Delete frame
+// could not be undone from the sidebar)
+describe("applySnapshot (undo): item 69 -- the layer rows follow the restored tooling; a step's own frame comes back", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('restores the layer tooling, redraws the layer rows and re-saves the roster', async () => {
+    const layer = { id: '2', name: 'Wall', carve: false, visible: true };
+    const editor = { ...mockEditor(), _layers: [layer], _notifyChange: vi.fn() };
+    window.svgEditor = editor;
+    await applySnapshot({ P: {}, layerTooling: [{ id: '2', carve: true, visible: true }] }, null, { source: 'undo' });
+    expect(layer.carve).toBe(true);
+    expect(renderLayersPanel).toHaveBeenCalledWith(editor);
+    expect(editor._notifyChange).toHaveBeenCalledWith('tooling');
+  });
+
+  it("restores the frame the undone step declared, and only then", async () => {
+    window.svgEditor = null;
+    setFrameRecord({ templateId: null, params: {} });
+    await applySnapshot({ P: {} }, null, { source: 'undo' });
+    expect(getFrameRecord().templateId).toBeNull(); // no declared transition: the frame is left alone
+    await applySnapshot({ P: {} }, null, { source: 'undo', frame: { templateId: 'template_1', params: {} } });
+    expect(getFrameRecord().templateId).toBe('template_1');
   });
 });

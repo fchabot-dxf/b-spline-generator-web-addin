@@ -23766,3 +23766,27 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   stale deloge. So MAX_GENERATION_PASSES = 3 had no spare left in run 3 -- flagged to the advisor (raise to 4, or look
   for what makes a generation 0.3 s-empty; it is not only the first one).
 - MAX_GENERATION_PASSES 3 -> 4 (advisor, after item 96 run 3 used the third pass): one spare beyond the measured 3; the declaration test now asks >= 4 (fails at 3, pycache cleared). CAM-builder 46/46.
+## F35 item 69 batch -- sidebar fixes (1) (2) (3) (4) (6) (seat E / 61, 2026-10-06)
+- (1) Stamp settings survive a reload. ROOT (measured): a sidebar write to an editor layer's tooling changed the
+  live layer but never re-serialized P.editorSvg's data-editor-layers. ONE path: core/state.js layerToolingChanged ->
+  the editor's own change pipeline, kind 'tooling' = serialize + persist (declared in BOTH tables: an unknown kind
+  falls back to 'commit', which remasks). P.stamp* KEPT as the layer's mirror -- still read as a fallback
+  (stamp-mask-manager.js 140-144, rebuild.js 200-201, stamp/_shared.js 49). Live, art on layer 0: values + 3D kept.
+- (2) Delete frame undoable from the sidebar Undo: a step's own frame transition (takeSnapshot extra.frame) restored
+  by unifiedUndo/Redo through applySnapshot (setFrameRecord restored); the global undo still never puts an OLDER
+  frame back (UNDO_KEEPS). history.js ensureUndoBaseline. Live: Undo -> same P, same 3D; Redo -> deleted.
+- (3) rebuild.js rebuildInputDigest + REBUILD_INERT_KEYS: skip a build equal to the last one. Inputs = all P (terrain
+  reads P whole -- grep cannot list them) minus the inert keys, deltas (contents: strokes edit in place), layers
+  (tooling + mask identity), grid, preview, the Photo decode state (the one async input outside P). No-op rebuilds
+  34 -> 14 (76.2 s -> 39.8 s, x4), then the Hardness keys (P name sculpt*Strength -- my first list had the UI name;
+  a test now requires every inert key to be a real P key) -> 0. The remaining ones are display inputs. detailDensity:
+  re-measured alone, the card shows -- no change made.
+- (4) Thicken slider step 0.005 (0.125 on the grid); invariant test over every SLIDER_PAIRS default.
+- (6) Carve toggle + Undo restored NOTHING (button, layer.carve, 3D) -- the global history's newest snapshot predated
+  the brick lay. Apply now sets the global baseline (ensureUndoBaseline('Apply')); an undo redraws the layer rows and
+  re-saves the restored roster. Live: all three back.
+- LEFT (advisor): (5) sculpt tool choice not kept across a reload; (7) stamp Transform enabled with no stamp art.
+  NOTED, not fixed: brick-panel changes (a lay, presets) take no global snapshot of their own; the Apply baseline
+  covers the sidebar after an Apply, not a sidebar undo while the editor session is still open (sidebar is covered).
+- Gates: full vitest 339 files, 5456 passed, 0 failed. Matrix on the branch: persistence 24, undo 3, layers 11,
+  sidebar-3d 13 rows, 0 FAIL each. New tests fail before / mutation-fail (counts in each commit).
