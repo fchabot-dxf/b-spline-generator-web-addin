@@ -4,9 +4,11 @@
 // exactly what sendToFusion puts in stamp.bricks). One JSON per case in <outDir>; existing cases are skipped (resume).
 //   python tools/serve_app.py <port>   then
 //   node tools/repro/h23_item89_band_sweep.mjs <outDir> <paletteUrl> [cdpPort] [--board=WxH] [--only=template_1,...] [--seed=89]
+//        [--root=<the bspline-frame-builder dir the server should be serving>]
 // The Fusion half (import the svg through the add-in's own _apply_bricks_sketch) reads these files.
 import { spawn } from 'node:child_process';
-import { writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 const BAND_PRESETS = ['single_soldier', 'three_band', 'double_course'];
 const BRICK_LENGTH_IN = 1;
@@ -17,6 +19,21 @@ const PORT = Number(PORTARG || 9396);
 const [BW, BH] = opt('board', '7x9').split('x').map(Number);
 const ONLY = opt('only', '') ? opt('only', '').split(',') : null;
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+// --root: the served app must BE that tree (MEASURED, item 89 after-run: two days-old servers held the port, ours never
+// bound, and the capture silently swept another worktree's engine). The palette page and every core/bricks/*.js are
+// fetched from the server and byte-compared with the same files under --root; any difference stops the sweep.
+const ROOT = opt('root', '');
+if (ROOT) {
+  const html = join(ROOT, 'b-spline-gen', 'html');
+  const files = ['bspline_gen_palette.html', ...readdirSync(join(html, 'core', 'bricks'), { recursive: true })
+    .filter((f) => String(f).endsWith('.js')).map((f) => 'core/bricks/' + String(f).split(String.fromCharCode(92)).join('/'))];
+  const base = URL.replace(/[^/]*$/, '');
+  for (const f of files) {
+    const served = Buffer.from(await (await fetch(base + f)).arrayBuffer());
+    if (!served.equals(readFileSync(join(html, ...f.split('/'))))) { console.log(`SERVED != --root: ${f} (another server on this port?)`); process.exit(2); }
+  }
+  console.log(`served app == --root (${files.length} files checked)`);
+}
 const PROFILE = `${OUT}/chrome-sweep-${PORT}`;
 mkdirSync(OUT, { recursive: true });
 rmSync(PROFILE, { recursive: true, force: true }); // a reused profile restores the previous board (item 83)
