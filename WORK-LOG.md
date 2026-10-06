@@ -22634,3 +22634,56 @@ Shots: shots/seatB/neck16c2/after_worst_necks.png (same five cases).
 
 **Open question for the advisor:** the bar "overlap < 0.01 per case" -- I read it as the NECK overlap (this item);
 the corner-fan residual (T18 / T19 0.27 each, 3.42 total) is 21b, task 2. Say if you want both under one bar.
+
+## T86 item 16(c) part 2 -- DONE: band pieces split at the medial line (seat B / fc, 2026-10-05 night)
+
+**Shipped** (contour-bands.js `yieldAtMedialLine`, geometry.js `clipToField`, primitive-ribbon.js returns each piece's
+source primitive + its row's live walk ALONGSIDE the pieces -- no new field on any piece, no app-visible change):
+every point of the band area goes to the piece whose own depth there (from the primitive it was offset from) is
+smallest; ties to the lower source index (no rng: seed-stable). A piece is cut only where a CONFLICTING piece covers
+the ground with a smaller depth (Pi minus (Pj clipped to dj <= di), each against the ORIGINAL Pj). Conflicting =
+different source primitives, not joint neighbours in either row's walk, overlap > 1e-4 sq in.
+
+**Sweep** (19 templates x single_soldier / three_band / double_course x 0.75 / 1 / 1.25 in, 7x9, Red seed 1, shapely;
+neck vs corner now classified by the rule's own definition via the source tags, a scratch hook not shipped):
+- neck overlap **14.102 -> 0.000** sq in (every one of 171 cases 0.0000); corner-fan residual 3.814 -> **3.814**
+  (unchanged, 21b's); total overlap 17.824 -> 3.723.
+- **142 / 171 cases byte-identical**; the 29 that change are exactly the 29 with neck overlap (set equality checked).
+- Lost ground (union before - after): total 0.874, per case max **0.0998** (T18 1.25 in) -- over the 0.01 bar in 9
+  cases (T14 1 / 1.25 0.013 / 0.051, T18 / T19 1.25 ~0.10, x3 presets). ALL of it is joint, measured three ways:
+  (a) every gap the cut opens is narrower than the SAME board's widest existing joint (T18 1.25: opened 0.0331 in
+  from a brick, the board already has 0.0396; T19 0.0310 vs 0.0436; T14 0.0154 vs 0.0166) -- area farther from a
+  brick than the board's own widest joint: **0.0000 in all 171 cases**; (b) what goes is a far piece's TONGUE left past
+  the line inside a near-side joint, cut off from its own piece (traced on T18 frame-55: its 0.016 sq in island sits
+  between near pieces frame-16 and frame-17), and on T14 a kite tip cut off by the far arm's strip; (c) the largest
+  discarded part anywhere is 40% of that size's MIN_PIECE_FRACTION piece, so the min-piece rule would drop it anyway.
+  Keeping those fragments would put a sliver of the far brick inside the near side's joint.
+- Advisor's check (1), under-size pieces after the cut: 9 drops over the sweep, one at a time, smallest first, each
+  re-cut without it so its ground goes across the line; a drop whose ground the re-cut pieces do not cover (more than
+  MEDIAL_HOLE_SQIN 0.002) is undone and the piece stays under-size (T14's X: two half-diamonds, 0.093 sq in each vs
+  the 0.104 minimum, meet at a mitre and nobody else covers either). First version dropped all four X kites in one
+  pass (0.186 sq in hole), the second compared summed areas (double-counts where pieces overlap): both measured and
+  replaced. Slivers whose drop opens < 0.002 still drop (a kept 0.001 sq in "brick" on T16 was the trigger).
+- Advisor's check (2), ties: `clipToField(..., strict)` -- the higher source index yields a tie; nothing random.
+- Fan residual at T18 / T19 / T11 / T8 shoulders (kite fans, no single source primitive) untouched: 21b.
+- NOT touched: area bands (fieldstone rings, White Rocks / Grey stone): their stones have no source primitive.
+  bricks-rock-ring-stones.test.js's it.todo for T11 T14 T15 T16 T17 T19 (ring stones at the pinch) stays open.
+
+**Rejected on the way (measured):** the field cut alone, without restricting it to where the far piece IS (overlap
+17.8 -> 3.6 but lost 4.3 sq in: T14's X and T16's neck triangle went bare -- the far primitive's field extends past
+its own pieces).
+
+**Test** tests/bricks-neck-medial.test.js (9): T18 / T19 / T14 1.25 single_soldier + T16 three_band 0.75 -- overlap
+between a left and a right piece < 0.01 and the neck strip's covered ground within 0.16 sq in of main's (grid; pinned
+from main 0443c48); T1 every preset at 1 in = main's frame digest; clipToField unit cases (linear = half-plane, a
+circle follows the arc not the chord, ties). Against main: **4/4 neck cases FAIL** (overlap 0.92 / 0.93 / 0.18 /
+0.20); with the no-hole drop guard removed: **T14 FAILS** (cover 9.2268 vs > 9.2836). The digest case passes on main
+by construction (it pins main). A first hole probe (points far from any brick) was replaced: it read main's
+OVERLAPPING kite as "near" a pre-existing bare notch and flagged the branch for it (that notch is bare on main too).
+
+Shots: shots/seatB/neck16c2/before_worst_necks.png, before_after_worst_necks.png (T18 / T19 1.25 three_band, T14,
+T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given up -- the joint tongues).
+- Gates: bricks domain (tests/bricks-*) 54 files 532 passed 8 todo; FULL vitest **315 files, 4704 passed, 8 todo, 0
+  failed** (87.7 s). Lay time (30 lays averaged, a shared machine, two alternating runs each): clean T1 three_band 1 in
+  13 / 13 ms main / branch (the conflict search runs zero polygon intersections on T1: counted); neck cases a few ms to
+  ~2x (T18 three_band 1.25 23-25 -> 28-51 ms, T16 three_band 0.75 11-18 -> 18-33 ms).
