@@ -54,7 +54,7 @@ import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS } from '../core/bricks/index.js';
+import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, dropTouching } from '../core/bricks/index.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
 import { rectToPrimitives } from '../core/inset-window.js';
 import { brickFillPaint } from './editor-brick-surface.js';
@@ -1712,7 +1712,9 @@ export function regenerateOwnedBrickElements(editor) {
     const [a, b] = pieceEnds(el);
     // + its layer (item 22 slice 3: a stroke's bricks are drawn on its spine's layer)
     return `${el.attr(BRICK_ELEMENT_ATTR)}|${a.x},${a.y},${b.x},${b.y}|${el.attr(STRIPE_ATTR) || ''}|${el.attr(BRICK_SETTINGS_ATTR) || ''}|${el.attr('data-layer')}`;
-  }).join(';') + `#${stripeCycle.map((v) => v.id).join(',')}`;
+  }).join(';') + `#${stripeCycle.map((v) => v.id).join(',')}`
+    // F35 item 60: the frame the strokes keep clear of -- a frame re-lay re-lays the strokes too (its record's laid key)
+    + `#frame:${brickRecordNode(editor, 'frame')?.getAttribute(BRICK_LAID_ATTR) ?? ''}`;
   if (fingerprint === _lastSpineFingerprint) return;
   _lastSpineFingerprint = fingerprint;
 
@@ -1741,6 +1743,10 @@ export function regenerateOwnedBrickElements(editor) {
     g.remove();
   }
 
+  // F35 item 60 (seat A's e2e: a raised stroke over the frame's stones, the raise added onto the stone): a stroke
+  // brick touching a laid FRAME piece is dropped whole (the engine's 18c rule, dropTouching), never cut
+  const frameDrops = [...editor._sketchLayer.node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="frame"]`)]
+    .map((n) => ({ polygon: _nodePolygon(n), drop: true }));
   for (const [elementId, segs] of byElement) {
     const chains = reconstructChains(segs);
     const region = []; // F35 item 55: the stroke's ribbons, one per chain
@@ -1750,7 +1756,7 @@ export function regenerateOwnedBrickElements(editor) {
         ? chain.settings
         : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
       const out = {};
-      const bricks = bricksForStroke(chain.points, settings, out);
+      const bricks = dropTouching(bricksForStroke(chain.points, settings, out), frameDrops, resolvedSetFor(settings));
       if (bricks.length && out.ribbonOutline && out.ribbonOutline.length >= 3) region.push({ outer: out.ribbonOutline, holes: [] });
       const ownerId = `${elementId}:${chainIdx}`;
       const layer = strokeLayer.get(elementId);

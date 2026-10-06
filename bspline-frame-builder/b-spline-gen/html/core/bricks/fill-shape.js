@@ -117,18 +117,24 @@ function recutCells(cells, set, cut) {
  *  never overlap and no brick is cut (Fred: newest wins, complete bricks). Brush strokes keep cutting (item 13). */
 const DROP_TOUCH_SQIN = 1e-6;
 
-function cutExclusions(cells, exclusions, set) {
+/** The exclusions as holes, each grown by the set's joint (so a brick keeps one joint off it). */
+function exclusionHoles(exclusions, set) {
   const J = set.grout.widthIn;
-  const holes = exclusions.filter((e) => e && e.polygon && e.polygon.length >= 3).map((e) => {
+  return exclusions.filter((e) => e && e.polygon && e.polygon.length >= 3).map((e) => {
     const grown = offsetPathInward(e.polygon, J, -inwardSignFor(e.polygon));
     return { polygon: grown, box: bboxOf(grown), drop: e.drop === true };
   });
+}
+/** The 18c test: does this brick touch one of the drop holes (overlap above DROP_TOUCH_SQIN)? */
+const touchesDrop = (polygon, box, drops) =>
+  drops.some((h) => boxesOverlap(box, h.box) && Math.abs(signedArea(polygonIntersection(polygon, h.polygon))) > DROP_TOUCH_SQIN);
+
+function cutExclusions(cells, exclusions, set) {
+  const holes = exclusionHoles(exclusions, set);
   const drops = holes.filter((h) => h.drop), cuts = holes.filter((h) => !h.drop);
   return recutCells(cells, set, (polygon) => {
     const box = bboxOf(polygon);
-    for (const h of drops) {
-      if (boxesOverlap(box, h.box) && Math.abs(signedArea(polygonIntersection(polygon, h.polygon))) > DROP_TOUCH_SQIN) return [];
-    }
+    if (touchesDrop(polygon, box, drops)) return [];
     let pieces = [polygon];
     for (const h of cuts) {
       if (!boxesOverlap(box, h.box)) continue;
@@ -142,6 +148,14 @@ function cutExclusions(cells, exclusions, set) {
     }
     return pieces.length === 1 && pieces[0] === polygon ? null : pieces;
   });
+}
+
+/** F35 item 60 (seat A's e2e: a raised brush stroke over the frame's stones, the raise added onto the stone): the 18c
+ *  drop rule for bricks laid OUTSIDE the wall fill (a Brush / Raised stroke). A brick touching a `drop: true` exclusion
+ *  (grown by the joint) is dropped whole -- the same test cutExclusions applies to the wall. */
+export function dropTouching(bricks, exclusions, set) {
+  const drops = exclusionHoles(exclusions, set).filter((h) => h.drop);
+  return drops.length ? bricks.filter((b) => !touchesDrop(b.polygon, bboxOf(b.polygon), drops)) : bricks;
 }
 
 /**

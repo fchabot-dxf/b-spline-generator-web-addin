@@ -14937,3 +14937,21 @@ WallPattern = {
   - Fail-before at 5355784 (only ribbon-outline.js copied in): **2/2 integration tests fail**; the L-edge unit test pins the new module itself.
 - **Live** (brush_grout_live.mjs, a REAL mouse drag of an L stroke, fresh 7x9): 6 stroke bricks, 1 grout node 'brush' (locked); Edge 0.03 -> inset 0.03; the Brick tab swatch -> #616161; the sidebar quick row reads DISABLED (fact 3). Shot: shots/seatE/item55_brush_stroke_grout_desktop.png (a grey rim, mitred at the corner). 0 page errors.
 - **Gate (pre-merge):** full vitest 1 failed / 4777 passed; the one is frame-3d-sweep's 90 s timeout (passes alone, as before).
+
+## seat D (bb) turn 15: F35 item 60, a Brush / Raised stroke keeps clear of the frame (branch brick-stroke-drop)
+- **Measured first, app-side** (seat A's brick-e2e board minus the Art layer; tools/repro BRICK_E2E steps; sampled overlap areas from the DOM; scratchpad p60/p60b.mjs):
+  - The raised stroke overlapped 3-5 frame stones, 0.10-0.37 in2 (the stone ring is seeded per run). Seat A's Fusion run saw 3 pairs, 0.272.
+  - Brush x brush: 4 pairs at 0 gap (E4).
+  - Wall slivers < 0.001 in2: 0 in 2 runs (E3 not reproduced app-side; advisor: seat A checks it in its Fusion after-run).
+- **E4 is fixed by fc's joint-rule (2db0668):** census on that branch: brush seams 0.034, 0 zero-gap pairs. The stroke x frame overlap was still there (1-3 pairs, up to 0.48 in2).
+- **Cause of the overlap:** a stroke lays through bricksForStroke -> bricksContourBands / bricksAlongPath, which take no exclusions. The 18c drop rule was private to core/bricks/fill-shape.js cutExclusions.
+- **Fix (advisor OK; fc OK, no collision with joint-rule):**
+  - fill-shape.js: `exclusionHoles` (grow by the joint) and `touchesDrop` (the 18c test) are extracted VERBATIM from cutExclusions, which now calls them. New export `dropTouching(bricks, exclusions, set)` applies the same test. index.js exports it. Not a generateBricks input, so no ENGINE_OPTIONS entry.
+  - editor-brick-tool.js regenerateOwnedBrickElements: the laid FRAME pieces go to dropTouching as {polygon, drop:true} for every stroke, with the stroke's own joint (resolvedSetFor).
+  - The stroke fingerprint gains the frame record's laid key, so a frame re-lay re-lays the strokes too.
+- **Live after** (3 runs on main + this): brush x frame overlaps 0 / 0 / 0; brush x wall 0. The remaining zero-gap pairs are E4, which joint-rule fixes.
+- **Not changed (flagged):** the stroke's grout ribbon (item 55, a 2D paint) still spans the spot a dropped brick leaves.
+- **Tests** (tests/stroke-drop-frame.test.js, 4):
+  - dropTouching: over -> dropped; within one joint -> dropped, past it -> kept; a cut exclusion / none -> untouched.
+  - regenerate: no stroke brick over a frame piece, and the stroke runs through without the frame. This one fails 1/1 against the pre-change editor-brick-tool.js (with the new engine kept).
+  - Wall behaviour unchanged: 63 brick / wall-area / stroke files, 581 passed.
