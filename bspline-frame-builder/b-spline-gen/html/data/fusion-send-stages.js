@@ -5,6 +5,7 @@
 export default {
   "stages": [
     { "id": "fusionPrepare", "label": "preparing the design" },
+    { "id": "fusionClearCam", "label": "clearing the old CAM build" },
     { "id": "fusionImportStep", "label": "importing the STEP" },
     { "id": "fusionStamp", "label": "stamping the artwork" },
     { "id": "fusionBricks", "label": "importing the bricks" },
