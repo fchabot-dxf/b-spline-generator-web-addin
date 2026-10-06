@@ -5,9 +5,11 @@
 // the log, state.js saveLastSession) and a Send's own lines were 2/3 '[DEBUG] ATTR TAG' + 1/6 'CONSTRAINT OK', so a
 // load rotated the 512 KB log twice and its own lines were gone. With debug off those lines are not written (the
 // sketch builder still counts them); [STAGE] / [MODE] / [XFER] / [PROGRESS] / warnings / errors always are.
-// rotateBytes: the live file rotates to .old past this size; sized so one Send (its frame build included) fits twice.
+// rotateBytes: the live file rotates to .old past this size; sized so one palette load + Send (its frame build
+// included) fits twice EVEN WITH debug on. Measured live 2026-10-06, 7x9 frame + brick wall: debug off, load 2 KB +
+// Send 19.5 KB; debug on, a load ~600 KB (two session echoes) + a Send ~75 KB -> 2 x ~0.7 MB < 2 MB.
 export default {
   "debug": false,
   "debugPrefixes": ["[DEBUG]", "CONSTRAINT OK:"],
-  "rotateBytes": 524288
+  "rotateBytes": 2097152
 }
