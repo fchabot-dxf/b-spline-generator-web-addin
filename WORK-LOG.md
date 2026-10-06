@@ -22938,3 +22938,35 @@ T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given 
   out at 90 s again (139.9 s run, loaded machine), as logged above: no bricks import, passes alone.
 - Shots: before_after_worst_necks.png re-rendered from this build; t18_seam_zoom.png (the seam as a joint);
   t14_x_centre_zoom.png (main vs branch, the X centre: two 0.093 sq in half-diamonds, blue = joint given back).
+
+## H23 item 88 -- BRICK_E2E acceptance re-run on deployed main 2b5695d (seat A / 77, 2026-10-05)
+- Same method as item 83 (headless capture, the deployed add-in's _handle_generate, the deployed CAM engine), one
+  tagged scratch doc per board, closed by handle; holder none after. Capture tool: the app readback now lists each
+  layer's brickKind + piece count; new scenario brick-wall-only (T1 + a Wall lay alone: F35 items 42 + 66).
+- BOARD 1, brick-e2e (7x9, T1, Set 5 band, 2 painted areas, raised brush, Art carve):
+    APP: 126 pieces = 58 frame + 62 wall + 6 brush, 4 raised; per-kind layers Frame 58 / Wall 62 / Brush 6 (item 64:
+      each kind on its own layer), all carving; Layer 1 and Art hold 0 pieces.
+    PAYLOAD stamp.bricks: ONE svg, 126 polygons (= app, by kind), 2420 edges, 0 invalid, carve true.
+    FUSION Send: Bricks sketch in Stamped, 2420 SketchLines (= payload, exact), 0 open ends, extent +-3.25 x +-4.25
+      (exact); timeline 16 items, all healthy. PROFILES 147 for 126 pieces (+21; 1 profile with 2 loops).
+    Carve per kind (ray-cast Stamped top - Clean top at each brick's interior point, 126/126 hit): wall median
+      +0.117 in, frame +0.096, raised brush +0.192 (item 83: 0.128 / 0.091 / 0.199). The three kind layers combine
+      into the one Stamped body as before.
+    CAM: BUILD #1 full recreate 67 s, ok (4 setups, 3 MMs); Back WCS (-3.75, -4.75, -0.0342) on this panel's bottom,
+      Top (3.75, -4.75, 1.9658), stock 9.5 x 7.5 x 2. Re-Send in the same doc (CAM kept): 89 s, timeline 20 items
+      healthy, the Bricks sketch identical (2420 / 147 / 0 open). BUILD #2: REUSED in 7.0 s, every readback value
+      identical to BUILD #1, setups valid, models live (panel x2, the 4 frame bars).
+- BOARD 2, brick-wall-only (7x9, T1, Wall alone): APP 138 wall pieces on layer Wall; payload 138 polygons / 640 edges,
+  every neighbour gap = the 0.034 joint, 0 touching, 0 overlap, 0 slivers, extent +-3.25 x +-4.25 (the wall fills
+  the contour). FUSION: 640 SketchLines, 138 profiles = 138 pieces, all single-loop, 0 open ends, timeline 14 healthy.
+- DEFECTS (app/engine, nothing fixed here):
+  E1 (= item 83 D1, still open) wall bricks butt the frame band: 23 wall/frame pairs at gap 0 + 2 overlapping
+     (area ~0); joints elsewhere 0.034 (wall) / >= 0.02 (frame).
+  E2 (= D2, WORSE) the raised brush overlaps frame stones: 3 pairs, 0.272 in2 (was 0.017). One brush brick (0.111 in2,
+     at 1.96, -0.04) lies ENTIRELY inside a frame stone; the frame stone under the brush at (-1.73, 0.23) reads
+     +0.264 in (the brush raise lands on it).
+  E3 two wall SLIVERS: 0.00044 in2 at (1.73, -0.94) and 0.00063 in2 at (-1.90, 1.65), both at an area edge by the
+     band; they carve to ~0.
+  E4 (= D3) brush bricks abut each other with 0 gap (4 pairs).
+  The +21 extra profiles of board 1 come from E1/E2/E3 only: board 2 (no band, no brush) maps 1:1.
+- No Fusion-side defect. Shots: shots/seatA/h23_item88_brick_e2e_top.png, _iso.png, h23_item88_wall_only_top.png.

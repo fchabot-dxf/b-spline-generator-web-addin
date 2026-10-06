@@ -14632,6 +14632,102 @@ WallPattern = {
   - Measured first: a tapped cell (0,1) hits no brick on the matrix baseline (a wall inside a Soldier frame, T1's waist), because unit-1 columns are absolute. That is why the row starts from Checker instead.
 - **Not done / for later:** join and split on a BUILT-IN base (they act on Custom only; a built-in -> tile conversion is ambiguous because built-in stagger counts from the top); a unit change on Custom keeps the CELL counts (the bricks rescale with the unit).
 
+## seat D (bb) turn 1-3: F35 items 57 + 58 (branch brick-3d-bugs)
+- **Setup:** worktree -wt\bb, branch brick-3d-bugs off origin/main 7633a5e, merged origin/main 0443c48; node_modules = a junction.
+- **57, measured first** (headless, T18 7x9, 0.75 in stretcher, soldier frame):
+  - The wall spans y 1.07-7.89 in. Every one of the 10 presets raised bricks only in y 5.79-7.89, i.e. the wall's bottom third.
+  - Cause: every preset DECLARED `zone: LOWER_THIRD` (the item-15 spec). It was not the tile repeat or COURSE_ROW_ORIGIN.
+  - The picker icons are drawn at zone [0,1], so the icon promised the motif over the whole wall.
+  - On T18's narrow lower part the third holds 3-8 rows, and zigzag / pyramid light only 1-3 of them.
+- **57, fix (advisor Q1: whole wall, no Zone control):** `ACCENT_ZONES = { WHOLE, LOWER_THIRD }` declared and exported. The 10 presets declare WHOLE; LOWER_THIRD stays named.
+  - Pyramid is still bottom-anchored by its own motif rule (`c < height`), as its icon shows.
+- **58, measured: NOT A BUG.** Fred's 19.png shows Band 1's own Accent row at Checker, level 0.015625 (the default stepped down 3 times).
+  - Live, T18: a wall Checker changed 1010 height cells, all of them wall cells, 0 frame cells. 0 frame bricks were outlined (soldier and 3-band).
+  - Only user clicks write frameBandAccents. Probed: wall accent, frame presets, the Fieldstone round trip, Apply, sidebar quick picks, reopen. It stayed [] throughout.
+- **58 follow-up (advisor, item 33's precedent):** a Frame band PRESET change drops the band accents, which are stored by band number.
+  - `FRAME_PRESET_DROPS = { frameCorner, frameBandAccents }` is declared next to setFrameBandPreset, and the corner reset now reads it too. A band's own pattern change keeps its accent.
+  - An armed band Click is disarmed by a preset change.
+- **Tests:**
+  - brick-accents: each preset lies inside its declared zone; 9 new "also raises bricks in the TOP third" tests. These fail 9/9 against the pre-change brick-accents.js (with only the ACCENT_ZONES export shimmed so the import resolves).
+  - The old "all inside the lower third" guard now reads the preset's zone. The wall-follows-the-wall test passes LOWER_THIRD via ctx.zone.
+  - frame-corners-panel: a band accent survives a pattern change and is dropped by a new preset. Fails 1/1 against the pre-change brick-panel.js.
+- **Matrix, frame-ui group:** +2 rows, "a new frame preset drops the band accents" (0/123 outlined, list []) and "Wall Course bands reach the top third of the wall" (12 of 149). Result: 16 rows, 0 FAIL, 0 page errors. The new rows were NOT run against the old tree.
+- **Fast tier:** 92 brick/accent/frame/band files. 7 failed under load; all 6 files pass alone, 49/49.
+- **Shots** (shots/seatD): f35_57_{before,after}_{2d,3d}_{1366,900}.png. Before: Course bands on the bottom 3 courses only. After: bands up the whole wall.
+
+## seat D (bb) turn 4: F35 item 62, Flush grout fills the joints (branch brick-3d-bugs)
+- **Measured first** (headless, T1 7x9, default stretcher wall, final 3D heights minus the base terrain; 6785 brick cells, 838 joint cells in the wall's interior):
+  - Flush: joint cells at 0.000 / 0.000 / 0.000 in (10th / 50th / 90th percentile). Bricks at +0.047 / +0.111 / +0.159. So every brick stood 0.11 in proud as its own ridge.
+  - Recessed: joints at -0.070 / -0.053 / -0.040. The only difference between Flush and Recessed was the recess.
+  - Cause: the mask's joint pass handled Recessed only; Flush left a joint unstamped = the ground.
+- **Fix (editor-brick-height-mask.js, the ONE joint implementation):** Flush now FILLS each joint up to the bricks' FACE.
+  - `brickFaceHeight(brick, set)` (exported, declared once) = reliefIn x (1 - surfaceShare) + the brick's own offset, clamped like sampleHeight. That is the shoulder plateau, without crown, photo detail or chips.
+  - A joint touching several bricks takes the LOWEST face, so a raised accent / Level brick stands proud of the mortar.
+  - The body is normalised like the bricks' own (/ set.reliefIn), so the joint meets the brick in the final heights, Raised or Carved alike.
+  - Cells beyond one grout width of any brick are untouched, as before.
+- **After** (same probe): Flush joints at +0.077 / +0.101 / +0.121 in, bricks at +0.031 / +0.113 / +0.168 (a fresh-start seed, so brick numbers moved slightly). Recessed unchanged at -0.052 median.
+- **Cost:** the mask build on T1 wall + soldier frame (147 bricks, 141x181) takes 43-59 ms before and 53-54 ms after.
+- **Tests** (brick-surface-style):
+  - Two old tests pinned "Flush = joint at 0"; they are now inverted: Flush fills to brickFaceHeight, open board untouched; Weathered too.
+  - New: next to a raised brick the joint takes the lower face.
+  - 2/3 fail against the pre-change file (with only brickFaceHeight shimmed). The lower-face test passes before only because every old joint was 0; it pins the min rule now.
+- **Matrix:** no new row. The existing sidebar row "Grout: Flush" (3D changes) still holds. A joint-height row needs runner code; flagged to the advisor.
+- **Fast tier:** the 12 files reading the mask / grout / accents, 221/221.
+- **Shots** (shots/seatD): f35_62_{before,after}_flush_3d_{1366,900}.png (T1, 1.5 in, Flush). The terrain differs between them (a fresh-start seed).
+
+## seat D (bb) turn 5: merge origin/main 52c3055 + the item-62 joint-height matrix row
+- **Merge:** one conflict in main/brick-panel.js. Seat C's item-46 setFrameBandPattern and my FRAME_PRESET_DROPS were added at the same spot; both kept, each in its one declared place. Commit 9c1810a.
+  - Re-run on the merged tree: brick-discrete-controls-regen + frame-corners-panel + brick-accents + element-accents + brick-surface-style = 162/162. Matrix frame-ui 16/0, frame 15/0, wall 47 with 1 FAIL (below).
+- **Wall "Clumping 0.9 (Suppression 0.5)" 3D FAIL: intermittent.** 1 of 2 runs on this tree, 0 of 1 on clean main 52c3055; the re-run on this tree is 47/0.
+  - In the failing run, the row's "after" canvas (211#bc0cji) was byte-identical to the Suppression 0.5 row's "after" canvas. So the re-lay it measured did not carry Clumping 0.9 (or carried it with no effect), and "3D unchanged" was the right verdict for that canvas.
+  - In the passing runs Clumping lays a different canvas (218#1dpo61d -> 218#1q7uz5b; on main 214 -> 213 bricks).
+  - Likely a race between the matrix's canvas settle and the clumping re-lay. Seat C's row; not chased here.
+- **The joint-height row (advisor: yes):** a new declared group `grout`: GROUT_JOINTS in controls.mjs, runGroutJoints in run.mjs. It compares the median joint height with the median brick height under each profile, from lastResult heights minus baseHeights over the wall's interior.
+  - Thresholds: Flush, joint >= 0.75 x the brick median; Recessed, joint < 0.
+  - This tree: Flush 0.0979 vs 0.1130 (pass); Recessed -0.0550 (pass).
+  - Clean main: Flush 0.0000 vs 0.1149 = FAIL; Recessed pass. So the row is not vacuous.
+
+## seat D (bb) turn 6: F35 item 63, the sidebar Frame bands pick lays the frame
+- **Measured first** (headless, T18 7x9, Fred's state: wall laid with the Wall tool, the default Soldier preset never laid, editor applied and closed):
+  - Main sidebar quick Soldier: 0 frame bricks, 3D unchanged. 3-band: the same. None: the wall regrows 21 -> 104. Soldier again: the wall shrinks back to 21, still 0 frame bricks, so a bare ring where the frame would go.
+  - Cause: a re-lay lays only the kinds ON the canvas plus the active tool's kind (`_kindsToLay`). From the sidebar a frame that is not there is never added.
+- **Fix (declared):**
+  - The quick row declares `lays: 'frame'` (BRICK_QUICK_SETTINGS). Its pick calls `requestLay('frame')`.
+  - `_requestedKinds` joins `_kindsToLay`'s present kinds until the next lay runs. So a deferred lay (`_relayOnRelease`'s queued one) still sees it. The next generateBricks clears it (one-shot).
+  - Greyed: each quick row's list now has an id (`brickQuickRow_<id>`). One BRICK_CONTROL_REQUIRES rule greys `within: ['brickQuickRow_frameBands']` on the new fact `frameContour` (= frameBandContour(editor), unknown without an editor = met). Tooltip: "No frame on this board -- pick a frame template (or turn Offset from frame off) to lay frame bands".
+- **After, live** (same probe):
+  - quick Soldier: frame 0 -> 81, 3D changed.
+  - 3-band: frame 81, 3D unchanged. Measured why: the fit rule lays 1 of 3 bands ("Bands reduced to fit the board: 1 of 3 laid."), the same single band.
+  - None: frame cleared. Soldier: laid again.
+  - Template None: 7/7 buttons greyed with the tooltip.
+- **Tests** (frame-corners-panel, item 63 describe): (1) a wall but no Frame: the pick lays wall + frame, the already-chosen preset too, and a later pattern re-lay lays only the wall. (2) no frame contour: the row is greyed with the reason, and un-greyed when a contour exists. These fail 2/2 against the pre-change brick-panel.js + brick-control-requires.js.
+- **Matrix, group 'lay':** declared QUICK_FRAME_LAYS + runQuickFrameLays: "Sidebar Frame bands lays the frame (no Frame on the board)" (0 -> 81, 3D changed) and "greyed under template None" (7/7). Group: 6 rows, 0 FAIL.
+- **Shots** (seatD): f35_63_{before,after}_{1_wall_only,2_quick_soldier}_{1366,900}.png. BRICK section open; before = no band, after = the soldier ring laid.
+
+## seat D (bb) turn 7: merge origin/main 2b5695d (frame-offset + cam-inplace-86 + neck-medial)
+- **Conflicts:** 2 in tools/brick-matrix/run.mjs, both unions. The controls import now names WALL_NO_FRAME + GROUT_JOINTS + QUICK_FRAME_LAYS; group 'lay' runs runLayWarnings, runBandsNote, runWallNoFrame, then runQuickFrameLays. Commit 1d34ae6.
+- **Re-runs on the merged tree:**
+  - Unit files (frame-corners-panel, brick-accents, brick-surface-style, both brick-control-requires, brick-discrete-controls-regen, element-accents): 171/171.
+  - Matrix: grout 2/0, lay 8/0, frame-ui 16/0, wall 47/0 (Clumping passed this run).
+  - Full vitest: 318 files, 3 failed / 4736 passed. All 3 are load timeouts (bricks-no-corrupt-polygon T14, bricks-portability, frame-3d-sweep); they pass alone, 28/28.
+- **The item-63 rows, proven against the old tree** (main 52c3055, --root): both FAIL (frame 0 -> 0, 3D unchanged; 0/0 greyed).
+  - To get there, the row's presence check now keys on the PICK button (present on old builds, where it did nothing), not on my new row id. Before this change the rows SKIPPED on the old tree.
+  - This changes only the presence check: the measured path on this tree is identical. Not re-run after the one-line change.
+
+## seat D (bb) turn 8: item 63 vs seat C's item 66 (template None = the board rectangle)
+- **Advisor:** on main 2b5695d, template None means the board rectangle (item 66). So the quick row must not grey under None, and the tooltip must not name the removed Offset-from-frame.
+- **Measured** on the merged tree, T18 -> None in the editor: `frameContext(editor)` still returns a context there ({defs, record, board}, record with no templateId). So item 66's `if (!ctx) return rect()` never fired; the silhouette answered `noFrame` and the contour was null.
+  - Live consequence, before this fix: under None even the editor's Frame tool Generate laid 0 frame bricks. Item 66 held only in its unit test, which mocks frameContext to null.
+- **Fix:** frameBandContour: `if (!ctx || !hasFrame(ctx)) return rect()` (hasFrame = the frame's own "a template is chosen" predicate, contour-from-frame.js).
+  - The quick row's grey rule stays, with fact frameContour. Its contour is now null only for an outline that can't carry bands (frameInvalid).
+  - Its reason = FRAME_NEEDS_A_FRAME, now declared ONCE in brick-control-requires.js (pure data, still no imports). brick-panel.js imports and re-exports it, so the toast and the greyed row read the same words.
+- **Tests:**
+  - frame-corners-panel: "template None (a context with no template): row live, the pick lays the bands" and "an outline that can't carry bands: greyed with FRAME_NEEDS_A_FRAME". Both fail 2/2 against c57379e's two files.
+  - brick-discrete-controls-regen's frameContext mock `({})` stood for "a frame exists". It is now an actual framed context (record.templateId set), at its 3 spots, because a real framed context always carries one.
+  - Result: 5 files, 123/123.
+- **Matrix 'lay':** the "greyed under template None" row is replaced by "Sidebar Frame bands under template None lays along the board edge": 0/7 greyed, 74 frame bricks, 3D changed. Group: 8 rows, 0 FAIL.
+- **Live:** None + the editor's Frame tool Generate: 0 -> 80 frame bricks.
+
 ## F35 item 41 -- LOAD STAGES (seat F, session fa, 2026-10-05)
 - **Ask (Fred, phone):** "the screen looks frozen, the load screen doesn't detect all computing states"; "can there be actual load stages, like computing, waiting, refreshing?"
 - **Measured first** (tools/repro/f35item41_load_stages_measure.mjs; headless, 900x1000, CPU x4, default T1; the cloud is faked in-page with 800 ms latency and workers.dev is blocked, so nothing is written):
