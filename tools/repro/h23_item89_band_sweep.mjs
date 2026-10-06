@@ -3,7 +3,7 @@
 // payload taken through the Send's own functions (export-flow.js _bricksLayerSvg + editor-io.js bakeSvgForCarving,
 // exactly what sendToFusion puts in stamp.bricks). One JSON per case in <outDir>; existing cases are skipped (resume).
 //   python tools/serve_app.py <port>   then
-//   node tools/repro/h23_item89_band_sweep.mjs <outDir> <paletteUrl> [cdpPort] [--board=WxH] [--only=template_1,...] [--seed=89]
+//   node tools/repro/h23_item89_band_sweep.mjs <outDir> <paletteUrl> [cdpPort] [--board=WxH] [--only=template_1,...] [--seed=89] [--frame=fitted|generate]
 //        [--root=<the bspline-frame-builder dir the server should be serving>]
 // The Fusion half (import the svg through the add-in's own _apply_bricks_sketch) reads these files.
 import { spawn } from 'node:child_process';
@@ -18,6 +18,12 @@ const [OUT, URL, PORTARG] = ARGS;
 const PORT = Number(PORTARG || 9396);
 const [BW, BH] = opt('board', '7x9').split('x').map(Number);
 const ONLY = opt('only', '') ? opt('only', '').split(',') : null;
+// --frame: which board shape the frame takes. 'fitted' (default) = the template's own fitted shape, no [Generate]: the
+// outline is identical across fresh loads (measured, T1 3/3), so a before/after sweep lays the SAME boards. 'generate' =
+// the Frame tab's [Generate] (a random shape: nextSeed() = Math.random, and the seeded PRNG does not pin it -- the number
+// of draws before Generate depends on timing; measured, B's runs and mine drew different T9 boards).
+const FRAME_MODE = opt('frame', 'fitted');
+if (!['fitted', 'generate'].includes(FRAME_MODE)) { console.log(`--frame must be fitted or generate, not ${FRAME_MODE}`); process.exit(2); }
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 // --root: the served app must BE that tree (MEASURED, item 89 after-run: two days-old servers held the port, ours never
 // bound, and the capture silently swept another worktree's engine). The palette page and every core/bricks/*.js are
@@ -89,7 +95,7 @@ for (const template of todo) {
       { const w = document.getElementById('widthIn'), h = document.getElementById('heightIn');
         w.value = '${BW}'; w.dispatchEvent(new Event('change')); h.value = '${BH}'; h.dispatchEvent(new Event('change')); await W(500); }
       (await import('./main/frame-panel.js')).editFrame({ templateId: '${template}', params: {} }); await W(1500);
-      document.getElementById('editorFrameGenerate').click(); await W(1500);
+      ${FRAME_MODE === 'generate' ? "document.getElementById('editorFrameGenerate').click(); await W(1500);" : ''}
       document.getElementById('editorTabBrick').click(); await W(800);
       const B = await import('./main/brick-panel.js'), S = await import('./core/state.js');
       B.setBrickSize(${BRICK_LENGTH_IN}); B.setFrameBandPreset('${preset}'); await W(300);
@@ -105,13 +111,20 @@ for (const template of todo) {
       const byKind = {}; for (const p of polys) { const k = p.getAttribute('data-brick') || '?'; byKind[k] = (byKind[k] || 0) + 1; }
       const raw = await X._bricksLayerSvg(ed);
       const svg = raw ? await IO.bakeSvgForCarving(raw, S.P.widthIn, S.P.heightIn, 96) : '';
-      return JSON.stringify({ pieces: polys.length, byKind, layMs, board: [S.P.widthIn, S.P.heightIn],
+      // the board this case laid: the frame record + a hash of its outline primitives (before/after must match it)
+      const FR = await import('./core/frame-record.js'), FP = await import('./editor/editor-frame-profile.js'), FD = (await import('./data/frame-defs.js')).default;
+      const rec = FR.getFrameRecord(), prims = FP.frameCutProfile(FD, rec, { widthIn: S.P.widthIn, heightIn: S.P.heightIn }).primitives;
+      const ps = JSON.stringify(prims, (k, v) => (typeof v === 'number' ? Math.round(v * 1e4) / 1e4 : v));
+      let hx = 2166136261; for (let i = 0; i < ps.length; i++) { hx ^= ps.charCodeAt(i); hx = Math.imul(hx, 16777619); }
+      const svgPieces = (svg.match(/<polygon/g) || []).length; // what the Bricks sketch receives (no 'grout' element)
+      return JSON.stringify({ pieces: polys.length, svgPieces, byKind, layMs, board: [S.P.widthIn, S.P.heightIn],
+        frameMode: '${FRAME_MODE}', frame: rec, outlineHash: (hx >>> 0).toString(36),
         brickLengthIn: S.P.brickSettings.brickLengthIn, preset: S.P.brickSettings.frameBandPreset,
         bricks: svg ? { enabled: true, carve: true, svg } : { enabled: false } }); })()`);
     let r = null; try { r = typeof raw === 'string' ? JSON.parse(raw) : null; } catch { r = null; }
     if (!r) { console.log('FAILED', template, preset); continue; }
     writeFileSync(file, JSON.stringify({ template, ...r }));
-    console.log(template, preset, 'pieces', r.pieces, JSON.stringify(r.byKind), 'lay ms', r.layMs, 'case s', ((Date.now() - t0) / 1000).toFixed(1));
+    console.log(template, preset, 'outline', r.outlineHash, 'svgPieces', r.svgPieces, 'pieces', r.pieces, JSON.stringify(r.byKind), 'lay ms', r.layMs, 'case s', ((Date.now() - t0) / 1000).toFixed(1));
   }
 }
 ws.close(); chrome.kill();
