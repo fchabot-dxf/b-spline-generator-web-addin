@@ -17,7 +17,6 @@ import {
   drawerHeightPx,
   LANDSCAPE_SNAP_STATES,
   landscapeWidthPx,
-  syncDrawerForMode,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-drawer.js';
 
 describe('DRAWER_SNAP_STATES / TOOL_PANELS (declared tables)', () => {
@@ -25,9 +24,10 @@ describe('DRAWER_SNAP_STATES / TOOL_PANELS (declared tables)', () => {
     expect(DRAWER_SNAP_STATES).toEqual(['peek', 'half', 'full']);
   });
 
-  it('declares a Lattice tab, a Shape Lattice tab (T58), and nothing for a mode with no options panel', () => {
-    expect(TOOL_PANELS.lattice).toEqual({ panelId: 'editorLatticePanel', label: 'Lattice Pattern' });
-    expect(TOOL_PANELS.shapeLattice).toEqual({ panelId: 'editorShapeLatticePanel', label: 'Shape Lattice' });
+  it('declares the Lattice and Shape Lattice (T58) tool panels, and nothing for a mode with no options panel', () => {
+    // the Art tabs: no tab labels -- the drawer's tool | panel tab pair is retired (the settings mount under Layers)
+    expect(TOOL_PANELS.lattice).toEqual({ panelId: 'editorLatticePanel' });
+    expect(TOOL_PANELS.shapeLattice).toEqual({ panelId: 'editorShapeLatticePanel' });
     expect(TOOL_PANELS.select).toBeUndefined();
     expect(TOOL_PANELS.draw).toBeUndefined();
   });
@@ -76,31 +76,15 @@ describe('MOB4: LANDSCAPE_SNAP_STATES / landscapeWidthPx (the side-column splitt
   });
 });
 
-describe('the Frame / Artwork switch decides the drawer (Fred: "if I\'m in frame the panel should show the frame settings not the vectors, the tab should be the toggle")', () => {
-  const setup = () => {
-    document.body.innerHTML = `<div id="editorDrawerTabs"><button id="editorDrawerTab-tool" class="hidden"></button><button id="editorDrawerTab-layers">Layers</button></div>
-      <aside id="editorShapeLatticePanel"></aside><aside id="editorLayersPanel"></aside>`;
-    return { tabs: document.getElementById('editorDrawerTabs'), tool: document.getElementById('editorDrawerTab-tool'),
-      panel: document.getElementById('editorShapeLatticePanel'), layers: document.getElementById('editorLayersPanel') };
-  };
-  it('Artwork + Shape Lattice: the tool tab shows and is active, the tab strip is visible', () => {
-    const d = setup();
-    syncDrawerForMode({ _editorTab: 'artwork' }, 'shapeLattice');
-    expect(d.tabs.style.display).toBe('');
-    expect(d.tool.classList.contains('hidden')).toBe(false);
-    expect(d.tool.classList.contains('active')).toBe(true);
-    expect(d.panel.classList.contains('editor-drawer-tab-hidden')).toBe(false);
-  });
-  it('Frame (same tool): no tool tab, no tab strip, the tool panel hidden -- only the second slot (the frame settings)', () => {
-    const d = setup();
-    syncDrawerForMode({ _editorTab: 'artwork' }, 'shapeLattice');
-    syncDrawerForMode({ _editorTab: 'frame' }, 'shapeLattice');
-    expect(d.tabs.style.display).toBe('none');
-    expect(d.tool.classList.contains('hidden')).toBe(true);
-    expect(d.panel.classList.contains('editor-drawer-tab-hidden')).toBe(true);
-    expect(d.layers.classList.contains('editor-drawer-tab-hidden')).toBe(false);
-    syncDrawerForMode({ _editorTab: 'artwork' }, 'shapeLattice'); // back to Artwork: the tool panel returns
-    expect(d.tabs.style.display).toBe('');
-    expect(d.panel.classList.contains('editor-drawer-tab-hidden')).toBe(false);
+// The Art tabs (Fred, 900 px: "what's stripe and brick?") retired the drawer's tool | panel tab pair; Fred's rule that it
+// carried ("if I'm in frame the panel should show the frame settings not the vectors") is now the mount's: a tool panel
+// never shows outside its own tab (tests/lattice-side-column.test.js, 'Frame tab' below the Artwork-tab block).
+describe('the drawer tab pair is retired', () => {
+  it('no syncDrawerForMode, no #editorDrawerTabs in the palette', async () => {
+    const mod = await import('../bspline-frame-builder/b-spline-gen/html/editor/editor-drawer.js');
+    expect(mod.syncDrawerForMode).toBeUndefined();
+    const { readFileSync } = await import('node:fs');
+    const html = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
+    expect(html).not.toMatch(/id="editorDrawerTabs"|id="editorDrawerTab-(tool|layers)"/);
   });
 });

@@ -17,5 +17,6 @@ export const rows = [
   { name: 'Grout depth 0.05 (Flush)', kind: 'sidebar', do: set('brickGroutDepth', 0.05), expect: SURFACE, requires: NEEDS_RECESSED },
   { name: 'Grout: Recessed', kind: 'sidebar', do: click('brickBtnGroutRecessed'), expect: SURFACE },
   { name: 'Grout depth 0.1 (Recessed)', kind: 'sidebar', do: set('brickGroutDepth', 0.1), expect: SURFACE, requires: NEEDS_RECESSED },
+  // BRICK audit A8: the checkbox lives in the FILTER section now (a surface setting); still a 3D-only sidebar control
   { name: 'Hide filter texture', kind: 'sidebar', do: click('isolateSkeleton'), expect: SURFACE },
 ];

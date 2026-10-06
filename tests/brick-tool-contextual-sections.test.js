@@ -20,6 +20,7 @@ const FIXTURE = `
   <div id="editorToolbarBrick"></div>
   <div id="brickToolHint"></div>
   <div id="brickBrushSection" style="display:none;">
+    <div id="brickSubTools_brush"></div>
     <div id="brickBrushProfileToggle"><button id="brickBtnProfileStripped" class="active"></button><button id="brickBtnProfileContinuous"></button></div>
     <div id="brickBrushOrientationToggle"><button id="brickBtnOrientationStretcher" class="active"></button><button id="brickBtnOrientationSoldier"></button></div>
   </div>
@@ -77,9 +78,11 @@ describe('Brick tab: tool sections are contextual, one visible at a time', () =>
   });
 
   it('Scissors/Stripe: hide ALL three sections -- neither tool has settings of its own', () => {
-    for (const id of ['brickTool_scissors', 'brickTool_stripe']) {
+    const pick = { scissors: () => $('brickTool_scissors').click(), // item 43: Stripe = Brush > Stripe (no tab of its own)
+      stripe: () => { $('brickTool_brush').click(); $('brickSubTool_brush_stripe').click(); } };
+    for (const id of ['scissors', 'stripe']) {
       $('brickTool_wall').click(); // start from a section showing, to prove this ACTUALLY hides it
-      $(id).click();
+      pick[id]();
       expect(shown('brickWallSection')).toBe(false);
       expect(shown('brickFrameSection')).toBe(false);
       expect(shown('brickBrushSection')).toBe(false);

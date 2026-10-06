@@ -28,8 +28,7 @@ const FIXTURE = `
   <aside id="editorFramePanel" style="display:none">
     <select id="editorFrameTemplate"></select>
   </aside>
-  <aside id="editorLayersPanel"></aside>
-  <button id="editorDrawerTab-layers">Layers</button>`;
+  <aside id="editorLayersPanel"></aside>`;
 
 const $ = (id) => document.getElementById(id);
 const change = (id, value) => { $(id).value = value; $(id).dispatchEvent(new Event('change')); };

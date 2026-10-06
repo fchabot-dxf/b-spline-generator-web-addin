@@ -25,8 +25,7 @@ const FIXTURE = `
   <aside id="editorFramePanel" style="display:none">
     <select id="editorFrameTemplate"></select>
   </aside>
-  <aside id="editorLayersPanel"></aside>
-  <button id="editorDrawerTab-layers">Layers</button>`;
+  <aside id="editorLayersPanel"></aside>`; // the Art tabs: no drawer tab pair (the real palette has none)
 
 /** An artwork layer that records every write, so "untouched" is checked, not assumed. */
 function mockEditor() {
@@ -62,11 +61,10 @@ describe('editor [Frame | Artwork] tabs', () => {
     $('btnEditFrameShape').click();
     await vi.waitFor(() => expect(getEditorTab()).toBe('frame')); // item 41: its loading stage paints first
     expect([shown('editorFramePanel'), shown('editorLayersPanel'), shown('editorFrameShield')]).toEqual([true, false, true]);
-    expect($('editorDrawerTab-layers').textContent).toBe('Frame'); // mobile drawer label
+    expect($('editorDrawerTab-layers')).toBeNull(); // the Art tabs retired the drawer's tool | panel tab pair (and its label)
     $('btnStampEdit').click();
     expect(getEditorTab()).toBe('artwork');
     expect([shown('editorFramePanel'), shown('editorLayersPanel'), shown('editorFrameShield')]).toEqual([false, true, false]);
-    expect($('editorDrawerTab-layers').textContent).toBe('Layers');
   });
 
   it('the Frame tab and the sidebar edit the SAME record; thickness and wood are sidebar-only', () => {

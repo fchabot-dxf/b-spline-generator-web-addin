@@ -460,10 +460,10 @@ describe('F27 item 3: the tool is registered like the scissors (button + shortcu
     expect(html.match(/data-key="s"/g)).toHaveLength(1);
     expect(html).toMatch(/id="toolStripe"[^>]*data-key="s"/);
   });
-  it('panel shown only in stripe mode; a drawer tab; the tool places its own cuts (no pointer snap)', () => {
+  it('panel shown only in stripe mode; a declared tool panel (the Art tabs: mounted under Layers, no drawer tab); the tool places its own cuts (no pointer snap)', () => {
     expect(TOOLBAR_GROUPS.editorStripePanel(undefined, null, 'stripe')).toBe(true);
     expect(TOOLBAR_GROUPS.editorStripePanel('stripe', null, 'cut')).toBe(false);
-    expect(TOOL_PANELS.stripe).toEqual({ panelId: 'editorStripePanel', label: 'Stripe' });
+    expect(TOOL_PANELS.stripe).toEqual({ panelId: 'editorStripePanel' });
     expect(SNAP_POLICY.stripe).toBe('none');
     for (const id of ['editorStripePanel', 'stripeCount', 'stripeLength', 'stripeThree', 'stripeColorA', 'stripeColorB', 'stripeColorC', 'stripeColorsReset']) {
       expect(html).toContain(`id="${id}"`);

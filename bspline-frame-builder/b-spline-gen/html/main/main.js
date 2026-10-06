@@ -19,6 +19,8 @@
 import { initResizer, resizeApp, setupMobileViewportHandling } from '../core/ui-utils.js';
 import { initMobilePreviewResizer } from './mobile-resizer.js';
 import { initSidebarLayout } from './sidebar-layout.js';
+import { initSidebarTabs } from './sidebar-tabs.js';
+import { initArtTabs } from './art-tabs.js';
 import { applySectionThemes } from './section-themes.js';
 import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
@@ -92,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initResizer(preview);
     initMobilePreviewResizer();
     initSidebarLayout();
+    initSidebarTabs(); // F35 items 48 + 47: the sidebar's tabs + pinned sections
     applySectionThemes(); // F35 item 30: the declared section tints (sidebar + editor panels)
     setupMobileViewportHandling();
     window.addEventListener('resize', () => resizeApp(preview));
@@ -137,6 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // path every other carved layer already triggers, so this needs no
     // onChange callback of its own.
     initBrickPanel();
+    initArtTabs(); // the Artwork editor's tabs (mockup v2)
 
     // 5. Sidebar / header / theme / project manager.
     bindControls(preview);
