@@ -138,6 +138,20 @@ export function activeBrickTab() {
   return tool.tabOf || tool.id;
 }
 let _syncTabs = null;
+/** Brings up the tab that shows control `id` (BRICK_ROW_SCOPES): General for a global block, the active tool's tab for an
+ *  element block ('both' and a tool section show where they are). For code that sends the user (or the brick matrix) to
+ *  a setting -- a control hidden by the other tab is never mistaken for a greyed-out one. */
+export function revealBrickControl(id) {
+  const el = typeof document !== 'undefined' ? document.getElementById(id) : null;
+  if (!el) return false;
+  const block = Object.keys(BRICK_ROW_SCOPES).filter((b) => document.getElementById(b)?.contains(el))
+    .sort((a, b) => (document.getElementById(a).contains(document.getElementById(b)) ? 1 : -1))[0]; // the innermost
+  const scope = block ? BRICK_ROW_SCOPES[block] : null;
+  const general = activeBrickTab() === BRICK_GENERAL_TAB.id;
+  if (scope === 'global' && !general) pickBrickTab(BRICK_GENERAL_TAB.id);
+  else if (scope === 'element' && general && _activeTool) { _generalTab = false; syncToolButtons(); }
+  return true;
+}
 function pickBrickTab(id) {
   if (id === BRICK_GENERAL_TAB.id) { _generalTab = true; syncToolButtons(); return; }
   selectTool(id);

@@ -17,7 +17,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js'
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/toast.js', () => ({ showToast: vi.fn() }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js', () => ({ commitEdit: vi.fn() }));
 
-import { initBrickPanel, selectSet } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
+import { initBrickPanel, selectSet, revealBrickControl, activeBrickTab } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { BRICK_SET_IDS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
@@ -69,5 +69,21 @@ describe('BRICK audit layout items', () => {
   });
   it('A12: Wear says what its ends mean', () => {
     expect($('brickSurfaceWearRow').querySelector('label').textContent.replace(/\s+/g, ' ')).toBe('Wear (0 = crisp, 1 = worn)');
+  });
+});
+
+describe('item 43: revealBrickControl (the brick matrix acts with the tab of the control up)', () => {
+  it('a global control brings General up (the tool stays); an element control the tab of the tool; others change nothing', () => {
+    window.svgEditor = { setMode: () => {} };
+    $('brickTool_wall').click();
+    expect(activeBrickTab()).toBe('wall');
+    revealBrickControl('brickSuppression');
+    expect(activeBrickTab()).toBe('general');
+    expect($('brickScatterBlock').style.display).toBe('');
+    revealBrickControl('brickGroutWidth'); // the Grout block is 'both', its Width row 'element'
+    expect(activeBrickTab()).toBe('wall');
+    revealBrickControl('isolateSkeleton'); // not a Brick-panel control
+    expect(activeBrickTab()).toBe('wall');
+    window.svgEditor = null;
   });
 });
