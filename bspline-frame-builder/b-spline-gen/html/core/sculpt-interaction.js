@@ -2,6 +2,7 @@
  * sculpt-interaction.js — High-level sculpting event handlers and interaction state.
  */
 
+import { continuousGesture } from './loading-signal.js';
 import {
     P, lastResult, preDelta, postDelta, updateP,
     setPreDelta, setPostDelta, setStrokeCache
@@ -190,10 +191,10 @@ export function updatePreviewSculptMode(preview, scheduleRebuild) {
         symmetry: respectSym ? P.symmetry : 'none',
         symOffsetX: respectSym ? (P.symOffsetX || 0) : 0,
         symOffsetY: respectSym ? (P.symOffsetY || 0) : 0,
-        onStart: onSculptStart,
+        onStart: (...a) => { continuousGesture(true); return onSculptStart(...a); }, // item 41: a stroke = a continuous gesture
         // FIX 2: Wrap callbacks so scheduleRebuild is safely injected
         onStroke: (layer, ci, cj, dy) => onSculptStroke(layer, ci, cj, dy, scheduleRebuild),
-        onStrokeEnd: (layer) => onSculptStrokeEnd(layer, scheduleRebuild),
+        onStrokeEnd: (layer) => { onSculptStrokeEnd(layer, scheduleRebuild); continuousGesture(false); },
         // FIX 3: Add missing onDelta and getDelta to power the floating Value Box!
         onDelta: (layer, ci, cj, dZ) => onSculptDelta(layer, ci, cj, dZ, scheduleRebuild),
         getDelta: (ci, cj) => {

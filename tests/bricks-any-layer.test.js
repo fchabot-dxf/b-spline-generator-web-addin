@@ -54,6 +54,7 @@ function fakeEditor({ kindOn0 = null } = {}) {
     _sketchLayer: {
       node,
       polygon: (pts) => { const w = make('polygon')(); w.node.setAttribute('points', pts); return w; },
+      path: (d) => { const w = make('path')(); w.node.setAttribute('d', d); return w; }, // item 55: the grout node
       rect: () => make('rect')(),
       line: () => make('line')(),
       group: make('g'),

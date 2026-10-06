@@ -36,6 +36,7 @@ import {
 import { runBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { ACCENT_LEVEL_RANGE, tileOf, ACCENT_PRESETS, accentedBrickIndices } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js';
 import { readFileSync } from 'node:fs';
+import { currentLoadingStage, setPaintScheduler } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 import { VectorEditor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor.js';
 import { commitEdit } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js';
 
@@ -52,7 +53,7 @@ const FIXTURE = `
   </div>
   <div id="brickFramePresetList"></div>
   <div id="brickBrushPresetList"></div>
-  <div id="brickPatternList"></div><div id="brickAccentList"></div><button id="brickAccentCustomOpen"></button><div id="brickPatternBuilder" style="display:none;"></div><div id="brickRusticRow_wall" style="display:none;"><input type="range" id="brickRusticSlider_wall"><input id="brickRustic_wall"></div><div id="brickRusticRow_brush" style="display:none;"><input type="range" id="brickRusticSlider_brush"><input id="brickRustic_brush"></div>
+  <div id="brickPatternList"></div><div id="brickAccentList"></div><button id="brickAccentCustomOpen"></button><div id="loading-stage" hidden><span class="loading-stage-text"></span></div><div id="brickPatternBuilder" style="display:none;"></div><div id="brickRusticRow_wall" style="display:none;"><input type="range" id="brickRusticSlider_wall"><input id="brickRustic_wall"></div><div id="brickRusticRow_brush" style="display:none;"><input type="range" id="brickRusticSlider_brush"><input id="brickRustic_brush"></div>
   <label id="brickFrameBandPatternLabel">Band patterns</label><div id="brickFrameBandPatternList"></div>
   <div id="brickSetRow"></div>
   <div id="brickSizePresetList"></div>
@@ -450,5 +451,21 @@ describe('item 39: Generate = re-lay now with a NEW seed, every element (a resto
       $('brickGenerate').click(); expect(P.brickSettings.seed).toBeGreaterThanOrEqual(0); expect(P.brickSettings.seed).toBeLessThan(BRICK_SEED_RANGE);
       $('brickBtnRandomSeed').click(); expect(P.brickSettings.seed).toBeLessThan(BRICK_SEED_RANGE);
     }
+  });
+});
+
+describe('item 41: opening the pattern builder paints its pill first', () => {
+  beforeEach(() => { resetAccent(); setup('wall'); });
+  afterEach(() => setPaintScheduler((cb) => cb()));
+  it('the button shows "Refreshing - opening the pattern builder", the builder opens after the paint', () => {
+    const frames = [];
+    vi.stubGlobal('requestAnimationFrame', (cb) => { frames.push(cb); return frames.length; });
+    setPaintScheduler(null);
+    $('brickAccentCustomOpen').click();
+    expect(currentLoadingStage()).toEqual({ id: 'openBuilder', text: 'Refreshing - opening the pattern builder', surface: 'pill' });
+    expect(patternBuilderState()).toBe(null); // not yet
+    frames.shift()(); frames.shift()();
+    expect(patternBuilderState()).not.toBe(null);
+    vi.unstubAllGlobals();
   });
 });

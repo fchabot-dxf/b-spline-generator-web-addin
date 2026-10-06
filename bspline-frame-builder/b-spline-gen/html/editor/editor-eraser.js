@@ -33,7 +33,7 @@ import {
     loadClipper,
     multiPolygonToPathData,
 } from './editor-expand-union.js';
-import { applyLayerState } from './layers.js';
+import { applyLayerState, isLockedNode } from './layers.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { transformPoint } from './editor-coords.js';
 import { dbg } from '../core/debug.js';
@@ -125,6 +125,7 @@ export async function finishEraserStroke(editor) {
 
         const cls = el.node.getAttribute('class') || '';
         if (cls.includes('layer-hidden')) continue;
+        if (isLockedNode(el)) continue; // item 55: the grout shape is the Brick tab's
 
         try {
             const changed = await _eraseElement(editor, el, eraserRing, eraserMulti, clipper);

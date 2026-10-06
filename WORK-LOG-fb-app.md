@@ -14632,6 +14632,78 @@ WallPattern = {
   - Measured first: a tapped cell (0,1) hits no brick on the matrix baseline (a wall inside a Soldier frame, T1's waist), because unit-1 columns are absolute. That is why the row starts from Checker instead.
 - **Not done / for later:** join and split on a BUILT-IN base (they act on Custom only; a built-in -> tile conversion is ambiguous because built-in stagger counts from the top); a unit change on Custom keeps the CELL counts (the bricks rescale with the unit).
 
+## seat E (61) turn 1: F35 item 55, GROUT COLOUR + EDGE + the LOCKED GROUT SHAPE (branch grout-svg)
+- **Setup:** worktree -wt\61, branch grout-svg off origin/main 3eb2d30, node_modules = a junction; export-flow 33/33.
+- **Two forks, advisor-ruled before code (DM):**
+  - The grout shape is ONE even-odd path: the region loops + every painted face. polygonDifference cannot hold holes (a clip wholly inside comes back whole, `holeIgnored`), and a wall region minus its bricks is all holes. A face crossing the region edge is cut to it first (polygonIntersection, the exclusions math).
+  - The grout node is drawn ABOVE its element's bricks, so a coloured grout also covers each face's inset rim. With colour None the inset does not show on canvas/3D (accepted; the Edge tooltip says so). The SVG download (item 56) will paint the inset faces exactly.
+- **Declared:**
+  - core/bricks/grout-shape.js: groutShapeOf({ id, region, faces, cutouts, insetIn }) -> { id '<element>:grout', loops, d, fillRule 'evenodd' }; insetFace; pointOnGrout; primitivesOutline (the frame contour, arcs cut to < 0.002 in sag).
+    - insetFace's "swallowed" test is the edge DIRECTIONS, not the area sign: an inset past a brick's middle reflects it through its centre and keeps the sign (a 0.1 in square at 0.06 came back as a face; the test caught it).
+  - engine.js: generateBricks also returns `interiorOutline` (the variable it already had) -- additive, both return statements; seat B (fc) cleared it first (their corner-21b branch is contour-bands / primitive-ribbon / geometry / piece-plan only).
+  - state.js: brickSettings.groutPaint { color: null, paintInsetIn: 0 } (board-wide) + groutPaintByElement { wall, frame, brush: null } (null = inherit, groutByElement's rule). A saved board without them reads the defaults: no load change.
+  - editor-brick-tool.js: GROUT_KIND 'grout', GROUT_OF_ATTR, GROUT_REGION_ATTR, GROUT_ELEMENT_KINDS ['wall','frame'], GROUT_PAINT_DEFAULT, groutPaintOf, drawElementGrout, repaintGrout, elementsWithoutGrout, groutNodes.
+  - layers.js: LOCKED_ATTR 'data-locked' + isLockedNode; BRICK_SEND_SKIP ['grout'].
+- **Region per element** (stored on the node as JSON, so a paint change repaints without the engine):
+  - Wall = interiorOutline;
+  - Frame = the contour (primitivesOutline) with interiorOutline as its hole;
+  - a painted wall AREA = wallRegionOf(its strokes minus the newer areas') cut to interiorOutline.
+  - Cutouts = every Brush brick, plus (for a wall area) the other areas' bricks. Whole bricks laid by centroid can cross into a neighbour's region; that region's grout must not paint over them.
+  - Brush strokes get NO grout yet: their ribbon region is not declared anywhere. Named, not done.
+- **Lock:** isEditableByLayer and isOnVisibleLayer refuse a locked node, which covers hit, marquee, snap, scissors and stripe. select / selectAdd / selectMany refuse it, so Delete, move, transform, restyle and Move-to-layer by selection all go through that gate. The eraser skips it. Clear > Bricks removes it with its element (it is a brick-tool node). brickElementAt: no brick under the point but inside a grout region -> { id, kind, part: 'grout' }; the panel then edits that element's paint and scrolls the Grout row into view.
+- **Paint only:**
+  - groutPaint keys are PAINT_ONLY_SETTING_KEYS (out of the layout key: a paint change never re-lays).
+  - setGroutPaint repaints + one commitEdit.
+  - A board laid before this has bricks but no grout node; its first paint change re-lays once (same settings + seed = the same bricks) to draw it.
+  - Height mask: the node has no data-brick-set, so it is skipped.
+  - Send: _bricksLayerSvg drops BRICK_SEND_SKIP kinds.
+- **UI:**
+  - Grout block: a colour swatch (the app's openColorMosaic), None, and an "Edge (in)" box (min 0). A scope label reads "every element" or "this Wall / this Frame" when Select picked one.
+  - Sidebar quick row 'Grout colour' (GROUT_COLOR_CHOICES: None, Mortar, White, Grey, Charcoal) = the board-wide value.
+- **Neutral set:** tools/brick-matrix/controls.mjs MIGRATION.neutralNewFields += groutPaint { color: null, paintInsetIn: 0 }, groutPaintByElement null.
+- **Tests:**
+  - New tests/grout-paint.test.js, 17 tests. Against the pre-change tree (scratch worktree at 3eb2d30, the new grout-shape.js copied in so the file imports): **9/9 integration tests fail**. The 8 that pass are groutShapeOf's own unit tests (a new module pinned against itself).
+  - Six existing test fakes gained `path()` (the real svg.js layer has it); 52 failures were that one missing method.
+- **Live** (headless Chrome, fresh 7x9 T1, Wall + Frame via Generate; probe scratchpad grout_live.mjs). Across laid -> sidebar Mortar -> Edge 0.03 -> Select a JOINT (real click) -> the Wall's own colour via the mosaic (real swatch click):
+  - bricks hash identical (147 pieces), Send's Bricks sketch identical (no 'grout' in it), 3D heights identical (25521#ak5exj at all three reads).
+  - grout: 2 nodes, locked; wall d 4133 -> 2890 chars at Edge 0.03 (faces inset); the wall alone -> #616161, the frame stays #cfc6b4.
+  - Select on the joint: "Editing: this Wall", scope "this Wall". Art Select on the same joint picks the wall BRICK, never the grout; Select all = 149 elements, 0 grout. Clear > Bricks: 0 grout left. 0 page errors.
+  - 3D: the drape SVG holds the grout path (fill #3b3b3b). At a 0.034 in joint it is subtle in 3D: face view, mean RGB 158,141,111 -> 149,133,105, 126,691 px changed.
+- **Found, NOT mine (pre-existing):** Send's Bricks sketch carries `style="cursor: pointer;"` on a brick the editor's hover touched, so the sketch string changes after a mere hover. Its fills also carry the brickfill-N counter. Both are noise in any byte-compare of stamp.bricks.svg.
+- **Shots** (shots/seatE): item55_grout_mortar_edge003_2d_desktop.png, item55_grout_select_joint_wall_own_colour_desktop.png, item55_grout_brick_tab_900.png, item55_grout_3d_desktop.png, item55_grout_3d_900.png, item55_3d_face_none_branch.png, item55_3d_face_charcoal_branch.png.
+
+## seat E (61) turn 1 (cont.): F35 item 56, SVG DOWNLOAD -- flat, one file, named groups (branch grout-svg)
+- **Measured before** (seat C, confirmed by the fail-before run below): the download held every brick polygon, but each fill was `url(#brickfill-...)` and the file had 0 `<pattern>` defs (the patterns live in the editor's outer defs). Elsewhere every brick rendered black or empty.
+- **Declared** (editor/svg-export.js):
+  - SVG_BRICK_EXPORT: styles outline | flat | textured. Default 'flat', `exposed: ['flat']`; textured is `available: false` (declared, not built: each photo pattern would have to travel in the file).
+  - SVG_EXPORT_GROUPS, bottom to top: frame / art (per layer) / bricks (per element) / grout (per element). Each one is `<g id inkscape:groupmode="layer" inkscape:label>` (layerGroup), and the root declares xmlns:inkscape.
+  - library.js: a `faceColor` per BRICK_SET (Red #aa4433, Brick 2 #b0603f, White rocks #c9c3b2, Grey brick #8d8a86, Grey stone #9a958c). The canvas's own fallback table SET_COLORS now reads it too (it had 2 entries: sets 4 and 5 fell back to red).
+  - editor-frame-profile.js frameVectorParts: the SAME profile, inner edge, wood colour and miters the canvas draws, as data.
+  - editor-io.js saveSvgDownload (+ editor.saveSvgDownload); the Download button (action-tools.js) calls it. Fonts and text copies travel as before.
+- **The file:**
+  - frame = band (wood, even-odd) + inner edge + miters + cut profile;
+  - art = one sub-group per layer that holds art, in roster order. Hidden layers are included (turn-207 AMEND-3: isExported = every layer); no brick node and no record in it.
+  - bricks = one sub-group per element ('Wall', 'Frame', 'Wall area N', 'Brush stroke N'). Each brick is ONE `<path id="<owner>:<data-brick-id>" data-brick-id data-brick-set fill=faceColor>`. Its face is the brick inset by its element's Edge (GROUT_INSET_ATTR, written on the grout node when it paints), so the file reads only the drawing, no app state.
+  - grout = one sub-group per element with a grout shape: `<path id="<element>:grout" fill-rule="evenodd">`, filled with its colour, or fill="none" for None.
+- **insetFace fixed on the way (measured live):** at Edge 0.02, 17 of 147 faces DROPPED. Cut pieces carry edges as short as 0.006 in; a vertex offset reverses them, and item 55's reversal test then called the whole face swallowed.
+  - Now a convex piece = the intersection of each edge's inward half-plane: exact, and a short edge just vanishes.
+  - A non-convex piece keeps the vertex offset while no edge reverses, else falls back to the half-planes.
+  - Re-measured (a face is only counted as dropped if its bbox is wider than 2 x Edge): stretcher 0/147 at 0.01 and 0.02, 3 at 0.05; herringbone 0 / 2 / 1; fieldstone 0 / 0 / 0.
+  - Every dropped piece but one has 2A/P <= Edge (it really is all joint). The exception: one non-convex herringbone piece at Edge 0.05 (2A/P 0.137) that the half-plane fallback over-shrinks to nothing. Known, named, not fixed.
+  - Unit test added (the live piece with the 0.006 in edge).
+- **Tests:** tests/svg-download.test.js (7). Fail-before: a scratch tree at 3a10b65 (item 55, before 56), with the new svg-export.js copied in and `saveSvgDownload = saveWithTextCopies` (the old download) shimmed: **6/7 fail**, including "no url(#...)", which is seat C's measurement. The 1 that passes is the declarations test (the new module pinned against itself).
+  - jsdom's XML parser does not bind attribute namespaces (measured: `inkscape:label` comes back with namespaceURI null), so the unit tests read the qualified name. The live probe reads getAttributeNS(INKSCAPE_NS) in Chrome.
+- **Live** (scratchpad download_live.mjs: a REAL Download click with Chrome's download behaviour set, the saved file read back):
+  - fresh 7x9 T1, Wall + Frame, sidebar Mortar, Edge 0.02, a rect on Layer 1;
+  - the file is 36,702 bytes with 0 `url(#` and 0 `<pattern>`. Chrome's parser: no error; top groups [frame Frame layer] [art Art layer] [bricks Bricks layer] [grout Grout layer] (via getAttributeNS); art ['Layer 1']; bricks ['Wall','Frame'], 147 paths = 147 laid, fill #aa4433 only; grout ['Wall grout','Frame grout'] #cfc6b4 each; frame 7 parts. 0 page errors.
+  - 900 px: real mouse clicks on the header's overflow menu, then Download SVG, give a byte-identical file.
+  - The file opened ON ITS OWN in a blank page renders as flat red bricks on mortar joints with the frame outline (shot).
+- **For the advisor (not changed):**
+  - Z-order inside the file follows the declared list, so art sits UNDER the bricks. The live board's own roster does the same (Layer 1 under the Wall / Frame kind layers), and the shot of the file shows the art rect covered. If Fred wants art on top, it is one reorder of SVG_EXPORT_GROUPS.
+  - saveWithTextCopies has no app caller any more (the editor method and tests/brick-element-records.test.js still use it). Kept as a NAMED keep, to retire with those tests if you agree.
+  - The palette comment that named saveWithTextCopies as the download is updated.
+- **Fusion, unchanged:** the bricks still reach Fusion from Send's _bricksLayerSvg string (stamp.bricks.svg), not from this download, and the grout stays out of it (BRICK_SEND_SKIP, item 55's test).
+- **Shots** (shots/seatE): item56_download_file_alone_branch.png (the file alone), item56_editor_before_download_branch.png, item56_download_menu_900_branch.png. The file itself: item56_download_branch.svg.
 ## seat D (bb) turn 1-3: F35 items 57 + 58 (branch brick-3d-bugs)
 - **Setup:** worktree -wt\bb, branch brick-3d-bugs off origin/main 7633a5e, merged origin/main 0443c48; node_modules = a junction.
 - **57, measured first** (headless, T18 7x9, 0.75 in stretcher, soldier frame):
@@ -14727,6 +14799,119 @@ WallPattern = {
   - Result: 5 files, 123/123.
 - **Matrix 'lay':** the "greyed under template None" row is replaced by "Sidebar Frame bands under template None lays along the board edge": 0/7 greyed, 74 frame bricks, 3D changed. Group: 8 rows, 0 FAIL.
 - **Live:** None + the editor's Frame tool Generate: 0 -> 80 frame bricks.
+
+### seat E (61) turn 2: the advisor's answers on 55/56, folded into one commit (grout-svg)
+- **(2) Group order = the LAYERS roster** (advisor: "art over or under bricks is whatever Fred arranged"):
+  - SVG_EXPORT_GROUPS now declares a `place` per kind: frame 'bottom'; art / bricks / grout 'layer'.
+  - svgDownloadGroups stacks the frame first, then each layer of editor._layers bottom to top (syncLayerZOrder's own order): that layer's art group, then each brick element on it (its bricks group, its grout group).
+  - Top-level ids are now `art:<layer>`, `bricks:<element>`, `grout:<element>` (labels: the layer name, 'Wall', 'Wall grout', ...). An element on a layer the roster lacks goes on top, never dropped.
+  - Tests: the stacking on the test board; a roster reorder (the Wall layer to the bottom) puts its bricks under the art.
+- **(3) saveWithTextCopies retired** (removal sweep):
+  - editor-io.js: the function, its only helper _serializeVisibleLayers (and its T27 doc block), and the imports only they used (isExported, BRICK_RECORD_ATTR) are gone.
+  - editor.js: the method and its import are gone.
+  - tests/brick-element-records.test.js: "records are never downloaded" now reads saveSvgDownload. The item-22 byte-identity pin keeps the BAKED layer SVG (Send's sketch). The download is no longer a copy of the drawing (its own pins are in svg-download.test.js), and the brush-owner check reads the baked layer.
+  - SE7B design doc: a retirement note.
+  - Grep (js/html/py, NUL-safe tree, no scratch): only the two retirement notes remain. The WORK-LOG history is left as written.
+- **(4) Editor-only look stripped from Send** (layers.js EDITOR_ONLY_STYLE { props ['cursor'], classes ['svg-hover','svg-selected'] }):
+  - Source: editor-io.js open() puts style cursor on every child at each reopen; editor-ui.js adds svg-hover / svg-selected.
+  - stripEditorOnlyBrickAttrs now strips these from EVERY brick-tool node, along with the per-kind attributes. Layer-state classes (inactive-layer) stay: today's sketches carry them.
+  - Test: the same brick with and without the look gives a byte-identical _bricksLayerSvg.
+- **Fail-before** (scratch tree at 03972e9, the pushed tip): **3/3 new tests fail** (roster stacking, roster reorder, the hover look); the other 24 in those files pass.
+- **Gate:** full vitest 1 failed / 4766 passed. The one failure is frame-3d-sweep's 90 s timeout, which passes alone. An earlier contended run (my probe was running alongside it) had also caught a REAL break: my first guard (isBrickToolNode) skipped item 49's flag strip on a node without data-brick-gen. The guard is now "any node with data-brick", as before; pattern-builder-cuts is green.
+- **Live** (download_live.mjs, real click): the top groups are frame, art 'Layer 1', 'Wall', 'Wall grout', 'Frame', 'Frame grout'. That is the panel's roster (top to bottom: Frame, Wall, Layer 1) read bottom up. 147 paths for 147 laid bricks, 0 url(#; the 900 px overflow-menu download is byte-identical. 0 page errors.
+## F35 item 41 -- LOAD STAGES (seat F, session fa, 2026-10-05)
+- **Ask (Fred, phone):** "the screen looks frozen, the load screen doesn't detect all computing states"; "can there be actual load stages, like computing, waiting, refreshing?"
+- **Measured first** (tools/repro/f35item41_load_stages_measure.mjs; headless, 900x1000, CPU x4, default T1; the cloud is faked in-page with 800 ms latency and workers.dev is blocked, so nothing is written):
+  - Before: 9 of 12 long actions showed nothing (open editor, every lay, Generate, the pattern builder, cloud save, STEP export).
+  - Apply / new seed / project load showed their stage 340-2263 ms late, on the 11 px #fusion-status line.
+  - Project load was the worst: 2.2 s blocked before anything showed.
+- **Root causes:**
+  - _layBricks wrapped a SYNCHRONOUS runBricks in withLoadingStage, so its 250 ms timer could never fire.
+  - Nothing on the load, save or export paths entered a stage.
+  - The surface (the 11 px top line) does not read as a load screen on a phone.
+- **Built (advisor-approved surface: centred card + corner pill):**
+  - core/loading-signal.js declares LOADING_STAGES {group: computing | waiting | refreshing, label, surface: card | pill} and LOADING_SEQUENCES (generate, apply, newSeed, projectLoad, export).
+  - The overlay text is "<Group> - <label>[, step i of n]".
+  - withLoadingStage enters the stage, waits two animation frames (painted), then runs the work. Before, it showed only after a 250 ms timer.
+  - A shown stage stays up at least 300 ms. Stages nest. A sequence keeps the card up between its steps and closes after its last step, or after 1 s of nothing.
+  - #loading-stage (palette): z 10001 (above the editor modal), pointer-events none. Fusion messages keep #fusion-status.
+- **Wired:**
+  - Every gesture re-lay goes through _relayStaged: the release path, frame re-lay, brush change, area paint and area clear.
+  - openEditorOn paints its pill first.
+  - applySnapshot (load + global undo) runs under 'restore'.
+  - Cloud: load = cloudLoad, save = cloudSave (including the pre-save cloud check).
+  - Export: stepExport.
+  - Sequences start from Generate, Apply, the new-seed button, cloud load and export.
+  - The rebuild's sculpt-stroke fast path stays OUTSIDE the stage, so a stroke tick never flashes the card.
+- **The lay budget stays 300 ms (B8, Fred's number). I tried 100 ms + always-stage-Generate and backed both out:**
+  - Single lays measured 59-68 ms blocked at CPU x4, so there is nothing to show.
+  - Making Generate always defer breaks the synchronous "Generate re-lays now" contract in ~30 tests across 5 files: their rAF stub is a no-op, so the lay never runs.
+  - Two fixes to the prediction instead:
+    - It is keyed on the laid KINDS too: Generate lays Wall+Frame, 747 ms at x10, vs one element's 258.
+    - An unseen combination predicts from the most recent lay, not 0 (a rock set -> new pattern blocked 1.6 s at x10 with nothing shown).
+- **After** (x4, shots/seatF/item41_after_cpu4.json): stage painted at:
+  - Apply 21 ms, project load 17 ms, open editor 15 ms, cloud save at once, new seed 240 ms.
+  - Export ~110 ms (the probe itself waits 400 ms between Send and the wizard button).
+  - Still blind at x4: Generate on a fresh element combination (189 ms blocked) and pattern builder open (279 ms).
+  - At x10 (item41_after_cpu10.json): the rock-set Generate shows "Computing - laying bricks, step 1 of 3" at 44 ms (before: 1.3 s blocked, nothing). Still blind: first lays of an unseen combination, pattern builder open/edits 150-400 ms.
+- **Tests:**
+  - loading-signal (14, rewritten for the new contract): the table, paint-first, min-visible, nesting, reject, steps, sequence close.
+  - B8 rewritten (overlay, not setFusionStatus; afterEach leaves a fast prediction so the module-wide map does not leak into B9).
+  - open-editor-buttons +1 (paint-first open), snapshot-manager +1 (restore paints first).
+  - frame-tabs / open-editor wait for the deferred open.
+  - Fail-before: 18/18 new or changed tests fail against 338d86c (a scratch worktree).
+- **Shots:** shots/seatF/item41_card_mid_apply_900_cpu4.png, item41_pill_mid_open_editor_900_cpu4.png, item41_card_mid_apply_900_cpu10.png.
+- **Known / for the advisor:**
+  - Every rebuild now shows the card (no 250 ms threshold): during a terrain slider drag it reappears per rebuild.
+  - The export sequence reads "step 3 of 3" when the export resolution equals the display one (steps 1-2 are skipped).
+  - Pattern-builder edits get no pill yet (the edit is synchronous inside builderToggleCell, and its tests are synchronous).
+- **Gate fix (advisor):** a rebuild during a CONTINUOUS gesture shows the pill, not the card.
+  - Declared per stage: gestureSurface 'pill' on rebuild + heightMask.
+  - continuousGesture(on): a range-input pointerdown..pointerup (installGestureWatch, installed in main.js), or a sculpt stroke (sculpt-interaction onStart / onStrokeEnd).
+  - GESTURE_GRACE_MS 600 covers the trailing rebuild a release or stroke end schedules. The 300 ms minimum stays.
+  - Tests +3 (3/3 fail against 67d5188's loading-signal.js).
+
+## F35 item 41 follow-up -- PAINT FIRST FOR EVERY GESTURE LAY (seat F, branch paint-first off load-stages)
+- **Advisor:** "one declared switch (lays defer one frame), convert the tests in the same commit".
+- **App:**
+  - _relayStaged now shows the 'bricks' stage first for EVERY gesture re-lay. Gone: the 300 ms prediction (LAY_STATUS_BUDGET_MS, predictedLayMs, the _layMs map). It missed Generate on a new Wall+Frame mix (747 ms at x10) and a rock set -> new pattern (1.6 s).
+  - The pattern builder's open button paints its new 'openBuilder' pill first.
+- **The switch:** core/loading-signal.js setPaintScheduler is THE paint step: two animation frames (default) or a given function. withLoadingStageShownFirst runs the job inside the paint step itself (no extra microtask).
+- **Tests:** vitest setupFiles tests/setup-paint.js sets an immediate paint step + resets the signal before every test.
+  - Why an immediate step instead of ~80 sync assertions turned into awaits: a panel test reads a gesture's lay synchronously; deferral is a property of the paint step, and the paint step has its own tests.
+  - The tests OF the deferral opt back into real frames (setPaintScheduler(null)): loading-signal, blind-spot B8 (rewritten: every re-lay shows first, even an instant one), open-editor, pattern-builder (+1: the builder opens after its pill).
+  - Fail-before: 3/3 behavior tests fail with the pre-change brick-panel.js.
+- **Measured** (probe, 900 px; shots/seatF/item41pf_after_cpu4.json and item41pf_after_cpu10.json):
+  - x4: Generate painted at 15 ms (was blind, 189 ms blocked); rock-set pattern release painted at 28 ms.
+  - x4: every action still without a stage blocks <= 67 ms (a single tool-click lay, builder toggle/resize).
+  - x10: Generate painted at 113 ms (was 747 ms blind). Still blind at x10: builder toggle 169 ms, lay frame tool click 152 ms (that click is not a re-lay).
+- **Shots:** item41pf_card_mid_generate_900_cpu4.png, item41pf_pill_mid_lay_900_cpu4.png.
+## seat E (61) turn 3: F35 item 44, bricks vs a carving Artwork layer -- MEASURED, then fixed at the cause (branch carve-44)
+- **Measure** (probes item44_one_load.mjs / item44_topmode.mjs, ONE page load each: a fresh load rolls a new terrain seed, so cross-load heights are not comparable):
+  - Setup: 7x9 T1, a Wall (140 bricks), a 0.35 in carving stroke drawn diagonally across it on Layer 1 (carve on, depth 0.25, vbit). The 3D heights (141x181) are diffed per cell: NEAR = within 0.175 in of the stroke, FAR = more than 0.325 in from it.
+  - The grid's orientation was MEASURED both ways (feedback: measure, don't re-reason): heights row 0 = the board's BOTTOM edge. My first pass had it flipped, and its numbers were void.
+  - Piece counts never change: 140 wall, 140 Send polygons, brick mask present, whether the art is drawn before or after the lay, on another layer or the Wall's own, or with carve toggled.
+  - Organic tops: near 849/873 cells changed, far 0. Correct.
+  - FLAT tops (the new-board default): near 865/873, but 1,793 FAR cells changed (max 0.104 in), 1,752 of them on the 20 bricks the stroke crosses. Every crossed brick tilts or shifts, and its groove is replaced by its plane. This is Fred's "the bricks don't work".
+  - Art on the Wall's own layer = art on another layer, cell for cell. The advisor dropped "bricks lay where the stroke is not" (their expectation, not Fred's; since item 64 art and bricks rarely share a layer).
+- **Cause:** core/engine/apply-stamp-layers.js. A Flat brick's plane (flatBrickPlaneHeights) was fitted to stampedHeights, which already held the earlier ART passes, and the plane then REPLACED the heights under the brick.
+- **Fix (advisor-approved as proposed):**
+  - Declared STAMP_PASS_KIND { art, bricks }; rebuild.js _collectStampPasses tags each pass (an untagged pass is art, as every old caller expects).
+  - applyStampLayers accumulates the art passes' delta per point.
+  - A Flat brick fits its plane to the heights minus that delta (the terrain + the brick passes below), then adds it back: z = plane + artDelta + body x depth.
+  - Art on a layer ABOVE the bricks is unchanged (applied after, it just adds).
+- **Tests:** brick-top-flat.test.js + 3:
+  - a crossed brick's off-groove points equal the no-carve run, and so does the other brick;
+  - the groove under a Flat brick = the carve = the Organic groove;
+  - art above still just adds, and an untagged pass is art.
+  - Against origin/main's apply-stamp-layers.js (swapped from a saved copy, restored, cmp clean): **3/3 fail**. The third mostly pins existing behaviour and fails there on the missing declaration.
+- **Matrix:** controls.mjs CARVE_UNDER_FLAT + run.mjs runCarveUnderFlat (lay group); it FAILS, not skips, on a build without the fix. Lay group: 9 rows, 0 FAIL. The new row: 16 bricks crossed; off-stroke points on them changed 0/1326; under the stroke 848/873 cut.
+- **Before / after, the same carve on Flat** (carve_shots.mjs, the art layer's colour off so the surface shows):
+  - main 352603f: 1,822 off-stroke cells changed, max 0.098 in; the groove is invisible across the bricks;
+  - carve-44: 0 changed, and the groove cuts visibly across them.
+  - Shots: shots/seatE/item44_carve_on_flat_main.png / item44_carve_on_flat_branch.png (+ item44_flat_top_with_carve_branch.png, item44_organic_top_with_carve_branch.png, item44_one_load_*.png from the measure).
+- **Probe harness note:** ports 9861/9862 showed LISTEN entries whose PIDs no longer exist (stale sockets after my timed-out runs); nothing to kill. I moved to 9961. Ports 9871/9881 belonged to another seat's matrix run: left alone.
+- **Gate:** full vitest 5 failed / 4738 passed under load. All 4 files pass alone, 56/56: no-corrupt-polygon x2, fieldstone and frame-3d-sweep are timeouts; frame-gen was a deep-equal failure under load, and it is not in files I touched.
 
 ## F35 item 38 onto main -- seat F (session fa), 2026-10-05
 - Merged origin/main (352603f) into seat C's parked undo-settings (26e5fec); merge ba7d765.
