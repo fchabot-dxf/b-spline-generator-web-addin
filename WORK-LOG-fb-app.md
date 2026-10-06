@@ -14844,3 +14844,9 @@ WallPattern = {
   - Fail-before at 5355784 (only ribbon-outline.js copied in): **2/2 integration tests fail**; the L-edge unit test pins the new module itself.
 - **Live** (brush_grout_live.mjs, a REAL mouse drag of an L stroke, fresh 7x9): 6 stroke bricks, 1 grout node 'brush' (locked); Edge 0.03 -> inset 0.03; the Brick tab swatch -> #616161; the sidebar quick row reads DISABLED (fact 3). Shot: shots/seatE/item55_brush_stroke_grout_desktop.png (a grey rim, mitred at the corner). 0 page errors.
 - **Gate (pre-merge):** full vitest 1 failed / 4777 passed; the one is frame-3d-sweep's 90 s timeout (passes alone, as before).
+
+### seat E (61) turn 5: the quick rows' 'bricksLaid' fact counts ANY brick element (advisor ruling (3); brush-grout)
+- Measured before: a REAL brush drag on a fresh board (brush_grout_live.mjs) -> brickQuick_groutColor_charcoal reads DISABLED. The fact only knew Wall / Frame (records, pieces, or `data-brick="(wall|frame)"` in the saved drawing).
+- Now: main/brick-panel.js boardHasBricks(editor, savedSvg), exported (the one place the fact is computed): any brick element counts -- a Wall / Frame record or piece, any laid piece (data-brick-gen), a Brush stroke's spine, or a saved drawing holding wall|frame|brush|brush-spine. The rule's reason (brick-control-requires.js) now names Brush strokes; the one test matching the old text was updated.
+- Tests: brick-control-requires-v2 +3 (an empty board: false; a stroke spine / stroke piece / wall / saved drawing: true; the reason names strokes).
+- **Found, NOT mine, for the advisor:** tests/brick-discrete-controls-regen.test.js leaks heap across the file: about 165 MB -> 4,041 MB on 352603f (before any seat E work), 4,056 MB on 41fb676, crashing at 9c224c0 ("JavaScript heap out of memory", the worker exits). Whether it crashes depends only on the margin: a full or loaded run can lose the file. Measured with --logHeapUsage, every 10th test.
