@@ -10,6 +10,8 @@
  * Everything is DECLARED here, never a free-text spinner at a call site:
  *  - LOADING_STAGES: {group, label, surface} per step. group = computing | waiting | refreshing (STAGE_GROUPS).
  *    surface = 'card' (a centred card, the declared-long steps) or 'pill' (a small corner chip, the short ones).
+ *    A stage may declare `gestureSurface`: its surface while a CONTINUOUS gesture runs (a slider drag, a sculpt stroke),
+ *    so a rebuild per drag tick shows the small pill instead of flashing the centred card (advisor, item 41 gate).
  *  - LOADING_SEQUENCES: a multi-step action declares its stage list up front, so the overlay reads
  *    "Computing - laying bricks, step 2 of 4". A sequence may declare its own surface (Generate = card even though
  *    one lay alone is a pill).
@@ -27,8 +29,8 @@ export const LOADING_STAGES = {
   bricks: { group: 'computing', label: 'laying bricks', surface: 'pill' },
   patternEdit: { group: 'computing', label: 'updating the pattern', surface: 'pill' },
   openEditor: { group: 'refreshing', label: 'opening the editor', surface: 'pill' },
-  heightMask: { group: 'computing', label: 'carving relief', surface: 'card' },
-  rebuild: { group: 'refreshing', label: (ctx) => `building surface${ctx?.spacing != null ? ` ${ctx.spacing}″` : ''}`, surface: 'card' },
+  heightMask: { group: 'computing', label: 'carving relief', surface: 'card', gestureSurface: 'pill' },
+  rebuild: { group: 'refreshing', label: (ctx) => `building surface${ctx?.spacing != null ? ` ${ctx.spacing}″` : ''}`, surface: 'card', gestureSurface: 'pill' },
   restore: { group: 'refreshing', label: 'restoring the board', surface: 'card' },
   cloudLoad: { group: 'waiting', label: 'loading from the cloud', surface: 'card' },
   cloudSave: { group: 'waiting', label: 'saving to the cloud', surface: 'card' },
@@ -46,6 +48,9 @@ export const LOADING_SEQUENCES = {
 };
 
 export const MIN_VISIBLE_MS = 300;
+/** A continuous gesture's own trailing work (the rebuild a slider release or a stroke end schedules) still counts as
+ *  part of the gesture for this long after it ends. */
+export const GESTURE_GRACE_MS = 600;
 /** A sequence whose stages all finished (or never came) closes after this quiet gap. */
 export const SEQUENCE_IDLE_MS = 1000;
 
@@ -53,6 +58,24 @@ const _stack = []; // active stages, innermost last: { id, ctx }
 let _sequence = null; // { id, stages, surface, timer }
 let _shownAt = 0;
 let _hideTimer = null;
+let _gestureOn = false;
+let _gestureUntil = 0;
+const _inGesture = () => _gestureOn || Date.now() < _gestureUntil;
+
+/** A continuous gesture (a slider drag, a sculpt stroke) starts (true) or ends (false). */
+export function continuousGesture(on) {
+  _gestureOn = !!on;
+  if (!on) _gestureUntil = Date.now() + GESTURE_GRACE_MS;
+}
+
+/** Slider drags anywhere in the app are continuous gestures: pointer down on a range input .. pointer up. */
+export function installGestureWatch(doc = typeof document !== 'undefined' ? document : null) {
+  if (!doc) return;
+  doc.addEventListener('pointerdown', (e) => { if (e.target && e.target.matches && e.target.matches('input[type="range"]')) continuousGesture(true); }, true);
+  const end = () => { if (_gestureOn) continuousGesture(false); };
+  doc.addEventListener('pointerup', end, true);
+  doc.addEventListener('pointercancel', end, true);
+}
 
 const _raf = () => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (cb) => setTimeout(cb, 16));
 const paintFrames = () => new Promise((resolve) => { const raf = _raf(); raf(() => raf(resolve)); });
@@ -75,7 +98,8 @@ function _render() {
   if (!el || !top) return;
   clearTimeout(_hideTimer); _hideTimer = null;
   const stage = LOADING_STAGES[top.id];
-  const surface = (_sequence && _sequence.stages.includes(top.id) && _sequence.surface) || stage.surface;
+  const surface = (_inGesture() && stage.gestureSurface)
+    || (_sequence && _sequence.stages.includes(top.id) && _sequence.surface) || stage.surface;
   (el.querySelector('.loading-stage-text') || el).textContent = stageText(top.id, top.ctx);
   el.dataset.surface = surface;
   el.dataset.group = stage.group;
@@ -136,6 +160,7 @@ export function resetLoadingSignal() {
   if (_sequence) clearTimeout(_sequence.timer);
   _sequence = null;
   clearTimeout(_hideTimer); _hideTimer = null;
+  _gestureOn = false; _gestureUntil = 0;
   const el = _el();
   if (el) { el.hidden = true; delete el.dataset.stage; }
 }

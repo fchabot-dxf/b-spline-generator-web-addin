@@ -8,7 +8,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   withLoadingStage, withLoadingStageShownFirst, beginLoadingSequence, currentLoadingStage, resetLoadingSignal, stageText,
-  LOADING_STAGES, LOADING_SEQUENCES, STAGE_GROUPS, MIN_VISIBLE_MS, SEQUENCE_IDLE_MS,
+  continuousGesture, installGestureWatch,
+  LOADING_STAGES, LOADING_SEQUENCES, STAGE_GROUPS, MIN_VISIBLE_MS, SEQUENCE_IDLE_MS, GESTURE_GRACE_MS,
 } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 const FIXTURE = `<div id="loading-stage" class="loading-stage" hidden role="status" aria-live="polite"><span class="loading-stage-spinner"></span><span class="loading-stage-text"></span></div>`;
@@ -172,5 +173,41 @@ describe('sequences: declared up front, each stage reads its step', () => {
     const q = withLoadingStage('bricks', () => currentLoadingStage());
     runFrames();
     expect((await q).text).toBe('Computing - laying bricks'); // a later lay is a plain one again
+  });
+});
+
+describe('a continuous gesture (slider drag, sculpt stroke): its rebuilds show the pill, never flash the card', () => {
+  const surfaceOf = async (id) => { const p = withLoadingStage(id, () => currentLoadingStage().surface); runFrames(); return p; };
+
+  it('declared per stage: rebuild + heightMask switch to the pill during a gesture; a restore stays a card', async () => {
+    expect(LOADING_STAGES.rebuild.gestureSurface).toBe('pill');
+    expect(LOADING_STAGES.heightMask.gestureSurface).toBe('pill');
+    continuousGesture(true);
+    expect(await surfaceOf('rebuild')).toBe('pill');
+    expect(await surfaceOf('heightMask')).toBe('pill');
+    expect(await surfaceOf('restore')).toBe('card'); // no gestureSurface declared: unchanged
+  });
+
+  it('the trailing rebuild a release schedules is still the gesture (GESTURE_GRACE_MS), a later one is a card again', async () => {
+    continuousGesture(true);
+    continuousGesture(false);
+    expect(await surfaceOf('rebuild')).toBe('pill');
+    await vi.advanceTimersByTimeAsync(GESTURE_GRACE_MS + MIN_VISIBLE_MS);
+    expect(await surfaceOf('rebuild')).toBe('card');
+  });
+
+  it('installGestureWatch: pointer down on a range input .. pointer up = the gesture', async () => {
+    const doc = document.createElement('div');
+    document.body.appendChild(doc);
+    doc.innerHTML = '<input type="range" id="r"><button id="b"></button>';
+    installGestureWatch(document);
+    doc.querySelector('#b').dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(await surfaceOf('rebuild')).toBe('card'); // a button press is not a drag
+    doc.querySelector('#r').dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(await surfaceOf('rebuild')).toBe('pill');
+    document.dispatchEvent(new Event('pointerup', { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(GESTURE_GRACE_MS + MIN_VISIBLE_MS);
+    expect(await surfaceOf('rebuild')).toBe('card');
+    doc.remove();
   });
 });

@@ -14678,3 +14678,8 @@ WallPattern = {
   - Every rebuild now shows the card (no 250 ms threshold): during a terrain slider drag it reappears per rebuild.
   - The export sequence reads "step 3 of 3" when the export resolution equals the display one (steps 1-2 are skipped).
   - Pattern-builder edits get no pill yet (the edit is synchronous inside builderToggleCell, and its tests are synchronous).
+- **Gate fix (advisor):** a rebuild during a CONTINUOUS gesture shows the pill, not the card.
+  - Declared per stage: gestureSurface 'pill' on rebuild + heightMask.
+  - continuousGesture(on): a range-input pointerdown..pointerup (installGestureWatch, installed in main.js), or a sculpt stroke (sculpt-interaction onStart / onStrokeEnd).
+  - GESTURE_GRACE_MS 600 covers the trailing rebuild a release or stroke end schedules. The 300 ms minimum stays.
+  - Tests +3 (3/3 fail against 67d5188's loading-signal.js).
