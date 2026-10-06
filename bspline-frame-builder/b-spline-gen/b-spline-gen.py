@@ -8,7 +8,7 @@ import adsk.core, adsk.fusion, adsk.cam, traceback
 
 # adsk check: removed diagnostic
 
-import os, sys, tempfile, json, re, base64, time
+import os, sys, tempfile, json, re, base64, time, types
 from datetime import datetime
 
 # T63 (SE15): the constrained-sketch builder — a sibling module in this
@@ -502,6 +502,43 @@ def _send_stage(stage_id, is_preview=False):
             _log(f'[STAGE] {stage_id}')
     except Exception:
         pass
+
+
+# H23 item 99 (Fred, CAM option (b)): a Send clears the CAM our BUILD made (its setups AND its Manufacturing Models,
+# found by the names CAM-builder declares -- SETUP_SPECS / MM_RULES -- via cam_coordinator.clear_addin_build); the
+# user presses BUILD + APPLY again afterwards (a full recreate, ~50 s). Anything else in the CAM workspace stays.
+CAM_BUILDER_DIR = os.path.join(_ADDIN_ROOT, 'CAM-builder')
+
+
+def _cam_coordinator():
+    """CAM-builder's cam_coordinator (the module the CAM add-in has loaded, if it has)."""
+    if CAM_BUILDER_DIR not in sys.path:
+        sys.path.insert(0, CAM_BUILDER_DIR)
+    from cam_engine import cam_coordinator
+    return cam_coordinator
+
+
+def _clear_cam_build(des):
+    """Remove what our BUILD made from the Send's document; log what went. Returns {'setups', 'mms'} (the removed
+    names) or None when the document has no CAM. Best-effort: a failure is logged and the Send goes on."""
+    t0 = time.time()
+    try:
+        product = des.parentDocument.products.itemByProductType('CAMProductType')
+    except Exception as e:
+        _log(f'[CAM CLEAR] CAM product lookup failed: {e}')
+        return None
+    if not product:
+        _log('[CAM CLEAR] no CAM in this document -- nothing to clear')
+        return None
+    try:
+        cam = adsk.cam.CAM.cast(product)
+        logger = types.SimpleNamespace(log=lambda msg, level='INFO': _log(f'[CAM CLEAR] {level}: {msg}'))
+        removed = _cam_coordinator().clear_addin_build(cam, logger)
+    except Exception as e:
+        _log(f'[CAM CLEAR] failed: {type(e).__name__}: {e}')
+        return None
+    _log(f"[CAM CLEAR] removed setups={removed['setups']} mms={removed['mms']} in {time.time() - t0:.1f}s")
+    return removed
 
 
 def _send_import_failed(msg):
@@ -1802,6 +1839,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 # One Send = the whole design: the previous frame goes first (it is extruded to the B-spline body,
                 # so it would break), then every B-Spline Set -- tagged, so a set from before a Fusion restart
                 # goes too -- and the fresh set is tagged. The frame is rebuilt at the end when one is chosen.
+                _send_stage('fusionClearCam')
+                _clear_cam_build(des)
                 deleted_frames = _delete_frames(des)
                 _remove_last_import()
                 n_sets = _delete_bspline_sets(des)

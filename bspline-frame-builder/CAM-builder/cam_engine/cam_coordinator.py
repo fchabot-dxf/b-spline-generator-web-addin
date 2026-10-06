@@ -29,20 +29,22 @@ _ADDIN_MM_NAMES = frozenset(mm_builder._mm_display_name(r) for r in mm_builder.M
 _ADDIN_SETUP_NAMES = frozenset(spec['name'] for spec in setup_builder.SETUP_SPECS)
 
 
-def _cleanup_previous_build(cam, logger):
-    """Delete any prior build's Setups and MMs that match our known names.
+def clear_addin_build(cam, logger=None):
+    """Delete the Setups and MMs this addin's BUILD made -- found by the declared names (_ADDIN_SETUP_NAMES /
+    _ADDIN_MM_NAMES, from SETUP_SPECS / MM_RULES); any other setup or MM stays. Returns {'setups': [names],
+    'mms': [names]} of what was removed. Used by BUILD before a fresh build and, H23 item 99 (Fred, CAM option (b)),
+    by the B-Spline Send before it imports (so a Send never drags a stale CAM build along).
 
     Setups must be deleted before MMs because Setups reference bodies
     inside MMs (an MM with a dangling Setup reference can leave Fusion's
     CAM tree in an inconsistent state on the next build attempt).
 
-    Best-effort: failures log WARNING but don't abort the build. The
-    subsequent ``build_all_mms`` / ``build_all_setups`` will produce
-    NEW items even if some old ones survive (you'll just end up with
-    duplicates, same as before this cleanup existed).
+    Best-effort: failures log WARNING but don't abort. A later
+    ``build_all_mms`` / ``build_all_setups`` will produce NEW items
+    even if some old ones survive (you'll just end up with duplicates,
+    same as before this cleanup existed).
     """
-    n_setups_deleted = 0
-    n_mms_deleted = 0
+    removed = {'setups': [], 'mms': []}
 
     # Pass 1: delete Setups with matching names. Iterate backward because
     # cam.setups is a live collection and deleteMe() mutates it.
@@ -53,9 +55,10 @@ def _cleanup_previous_build(cam, logger):
             s = cam.setups.item(i)
             try:
                 if s.name in _ADDIN_SETUP_NAMES:
-                    _log(logger, f"CLEANUP: deleting Setup '{s.name}'", "DEBUG")
+                    name = s.name
+                    _log(logger, f"CLEANUP: deleting Setup '{name}'", "DEBUG")
                     s.deleteMe()
-                    n_setups_deleted += 1
+                    removed['setups'].append(name)
             except Exception as e:
                 _log(logger, f"CLEANUP: deleteMe Setup at [{i}] raised: {type(e).__name__}: {e}", "WARNING")
     except Exception as e:
@@ -69,15 +72,23 @@ def _cleanup_previous_build(cam, logger):
             mm = cam.manufacturingModels.item(i)
             try:
                 if mm.name in _ADDIN_MM_NAMES:
-                    _log(logger, f"CLEANUP: deleting MM '{mm.name}'", "DEBUG")
+                    name = mm.name
+                    _log(logger, f"CLEANUP: deleting MM '{name}'", "DEBUG")
                     mm.deleteMe()
-                    n_mms_deleted += 1
+                    removed['mms'].append(name)
             except Exception as e:
                 _log(logger, f"CLEANUP: deleteMe MM at [{i}] raised: {type(e).__name__}: {e}", "WARNING")
     except Exception as e:
         _log(logger, f"CLEANUP: MM scan raised: {type(e).__name__}: {e}", "WARNING")
 
-    _log(logger, f"CLEANUP: deleted {n_setups_deleted} setup(s) and {n_mms_deleted} MM(s) from prior build", "INFO")
+    _log(logger, f"CLEANUP: deleted {len(removed['setups'])} setup(s) and {len(removed['mms'])} MM(s) from prior build"
+         + (f": setups {removed['setups']}, MMs {removed['mms']}" if removed['setups'] or removed['mms'] else ""), "INFO")
+    return removed
+
+
+def _cleanup_previous_build(cam, logger):
+    """BUILD's own call: clear_addin_build (kept under this name for the build path and its tests)."""
+    return clear_addin_build(cam, logger)
 
 
 def _log(logger, msg, level="INFO"):

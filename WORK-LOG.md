@@ -23838,3 +23838,22 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   10 of 31.8 GB free; at the time of the miss Fusion held 65 GB): one applied T1 board, 20 x (Quick pattern Herringbone,
   Stretcher) = 40 picks, each checked for a new laid geometry + pattern within 8 s: 40/40 re-laid (0.9 s each), 0 misses.
   Taken as the memory starvation at the time, not a fault in the pick path.
+## H23 item 99 -- a Send clears the CAM our BUILD made (seat A / 77, 2026-10-06)
+- Fred's CAM option (b), advisor (A): the Send removes our setups AND our MMs by the declared names; BUILD + APPLY
+  afterwards is the full recreate (~50 s; no reuse path claimed).
+- ONE source of the names: cam_coordinator.clear_addin_build(cam, logger) -- the old _cleanup_previous_build body,
+  now public and returning {'setups': [...], 'mms': [...]}, its INFO summary naming each removed item.
+  _cleanup_previous_build stays as BUILD's call (test_cam_reuse patches that name).
+- Send: b-spline-gen._clear_cam_build(des) runs in the non-preview, non-append "remove previous import" block, before
+  the frames and B-Spline Sets go, under the new declared stage 'fusionClearCam' (after fusionPrepare). The CAM
+  product comes from the Send's own document (itemByProductType -> None = no CAM, nothing to do, no workspace
+  switch). The engine is imported from CAM-builder next to b-spline-gen (same add-in bundle), so it is the module the
+  CAM add-in loaded when there is one. Best-effort: a failed lookup/clear is logged ([CAM CLEAR]) and the Send goes
+  on -- tolerance, not a new guard.
+- Tests: CAM-builder test_cam_clear.py (5, the REAL clear on fake collections: every declared setup+MM gone, setups
+  first, a user 'My setup' / 'My MM' survive, the INFO line names each) -- 5/5 fail on main a702495; b-spline-gen
+  test_send_clears_cam.py (5: removal + logging through the Send helper, no-CAM doc, failure logged, step order in
+  _handle_generate + the declaration) -- 5/5 fail on main. CAM-builder 55/55, b-spline-gen 175/175, vitest
+  fusion-send-stages + loading-signal 24/24. Known failures: none.
+- NOT YET LIVE: the Fusion run (fast Send, no setups, BUILD + APPLY -> same toolpaths, user setup survives) waits
+  for the advisor's holder release.
