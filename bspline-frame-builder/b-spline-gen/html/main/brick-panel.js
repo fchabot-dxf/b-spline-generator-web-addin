@@ -104,7 +104,16 @@ const BRICK_TOOLS = [
 ];
 
 let _activeTool = null;
-let _frameListenerWired = false;
+/** The panel's PAGE-level event listeners (document), each wired ONCE per page however often initBrickPanel runs (the
+ *  app runs it once; a test file once per test). Their handlers call module functions only, so a second copy adds
+ *  nothing but a second run -- a re-lay twice for frameRecordChanged, and in a test file every earlier init's copy
+ *  re-syncing the panel (item 67 measured brickSettingsRestored at 3.7 s after ~80 inits vs 0.28 s alone). */
+const _pageWired = new Set();
+function onPageEvent(key, type, fn) {
+  if (_pageWired.has(key) || typeof document === 'undefined') return;
+  _pageWired.add(key);
+  document.addEventListener(type, fn);
+}
 
 function notifyChange() { saveLastSession(); _scheduleStrokeRestyle(); }
 
@@ -2565,7 +2574,7 @@ function updateSpacingHint(groutWidthIn) {
 
 export function initBrickPanel() {
   _jointSets = _currentJointSets(); // grout per element: the sets at init are the baseline, not a set change
-  document.addEventListener('bricksGenerated', (e) => updateSpacingHint(e.detail?.groutWidthIn));
+  onPageEvent('spacingHint', 'bricksGenerated', (e) => updateSpacingHint(e.detail?.groutWidthIn));
   // setTimeout(0): this listener's own registration order relative to the generic param-input
   // binding that actually writes P.spacing isn't declared anywhere -- deferring one tick guarantees
   // P.spacing already reflects the new value by the time the hint re-reads it, regardless of order.
@@ -2581,7 +2590,7 @@ export function initBrickPanel() {
   // shows every time the Brick tab itself becomes active -- syncToolButtons (called from
   // selectTool/deselectTool already) only runs on a TOOL change, not a bare tab switch, so entering
   // the tab with no tool yet picked needs its own trigger here.
-  document.addEventListener('editorTabChanged', (e) => { if (e.detail?.tab === 'brick') syncToolButtons(); else syncStartHint(); });
+  onPageEvent('toolButtons', 'editorTabChanged', (e) => { if (e.detail?.tab === 'brick') syncToolButtons(); else syncStartHint(); });
   renderToolList(document.getElementById('editorToolbarBrick'));
   syncToolButtons();
   renderFramePresetList(document.getElementById('brickFramePresetList'));
@@ -2635,7 +2644,7 @@ export function initBrickPanel() {
   });
   renderStripeBrickStyles(document.getElementById('stripeBrickStyles'));
   document.getElementById('stripeThree')?.addEventListener('change', () => { syncStripeBrickStyles(); });
-  document.addEventListener('editorTabChanged', () => syncStripePanelContext());
+  onPageEvent('stripeContext', 'editorTabChanged', () => syncStripePanelContext());
   bindSlider('brickSurfaceWearSlider', 'brickSurfaceWear', 'surfaceWear', (v) => Math.max(0, Math.min(1, parseFloat(v))), 'surface');
   for (const kind of BRICK_KINDS) {
     document.getElementById(`brickLevel_${kind}`)?.addEventListener('change', (e) => setElementLevel(kind, e.target.value));
@@ -2664,19 +2673,15 @@ export function initBrickPanel() {
   });
   document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => setSeed(newBrickSeed()));
   document.getElementById('brickGenerate')?.addEventListener('click', () => generateNow()); // item 39: a new seed, every element
-  document.addEventListener('editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); });
-  document.addEventListener('bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
+  onPageEvent('editorCommit', 'editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); });
+  onPageEvent('controlRequires', 'bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
   // the frame changed (template, shape): re-lay once it settles (item 27 -- the editor too; a template with no
-  // contour clears the Frame). Wired ONCE per page: it RE-LAYS, so a second copy (initBrickPanel run again,
-  // e.g. in tests) would re-lay twice
-  if (!_frameListenerWired) {
-    _frameListenerWired = true;
-    document.addEventListener('frameRecordChanged', (e) => _scheduleFrameRelay(!!(e && e.detail && e.detail.restored)));
-  }
+  // contour clears the Frame). Wired ONCE per page (onPageEvent): it RE-LAYS, so a second copy would re-lay twice
+  onPageEvent('frameRelay', 'frameRecordChanged', (e) => _scheduleFrameRelay(!!(e && e.detail && e.detail.restored)));
   // Audit B1 + v2 N2: P.brickSettings was replaced (Cancel, session restore, project load, global undo --
   // app-init.js announceBrickSettingsRestored). A load swaps in a NEW object: an armed Brush keeps
   // reading the editor's own reference, so it is re-pointed too.
-  document.addEventListener('brickSettingsRestored', () => {
+  onPageEvent('settingsRestored', 'brickSettingsRestored', () => {
     _jointSets = _currentJointSets(); // a replaced P.brickSettings: its sets are the new baseline, not a set change
     const editor = typeof window !== 'undefined' ? window.svgEditor : null;
     if (editor && editor._brickSettings) editor._brickSettings = P.brickSettings;
