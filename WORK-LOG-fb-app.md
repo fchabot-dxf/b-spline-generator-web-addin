@@ -15132,6 +15132,21 @@ WallPattern = {
   - No other override in tests/ is below 30 s.
 - **The slow report** (tests/slow-test-reporter.js) is the watch list. Run 1's 17 entries were the frame-geometry sweeps (bartop 0.05, no-hooked-miters template_8 6x9 chunks, silhouette); all were under 5 s in runs 2 and 3, apart from silhouette and bartop.
 
+## Geometry-refresh load stages, re-measured (seat F, 2026-10-06; Fred: "load screens were for during refresh of geometry")
+- **Probe:** tools/repro/geometry_refresh_stages_measure.mjs (900 px, CPU x4, main 467ff37). Paths: Generate New Seed, filter / carve / thicken drags + release, noise type, resolution, stock W/H, frame template, sculpt stroke, editor Apply, project load. Per path: first paint, appearances, blind long-task ms, surfaces, stage names.
+- **Before** (shots/seatF/geometry_refresh_before_cpu4.json): no path was blind for long (worst: 68 ms with nothing on screen), but drags FLASHED.
+  - Filter drag: 6 appearances, gaps 0-5 ms. Carve: 4. Thicken: 5.
+  - Each rebuild left its stage, and the hide fired before the queued next rebuild entered a tick later.
+  - The drag's last rebuild, queued past the gesture grace, swelled the pill into the centred card at the end of every drag.
+- **Fix (core/loading-signal.js):**
+  - HIDE_GRACE_MS 150: back-to-back work is one appearance.
+  - _gestureLook: an appearance that began in a gesture keeps the gesture surface (the pill) to its end.
+  - Tests +2, 2/2 fail against the previous module.
+- **After** (geometry_refresh_after_cpu4.json): every path is ONE appearance with 0 blind ms; drags are the pill throughout; discrete actions are the card.
+  - Frame template change: no long work (102 ms), nothing to show.
+  - Sculpt: 2 appearances = 2 actions (the tool click's rebuild, then the stroke's).
+- **Full vitest:** 331/331, 5417 passed.
+
 ## F35 item 70 -- loading stages in the FUSION palette during a Send (seat F, branch fusion-stages-70)
 - **Measured first** (tools/repro/f35item70_fusion_send_stages.mjs: the palette headless in Fusion mode, adsk stubbed, the add-in's real progress replies replayed after generate_finish; 900 px, CPU x4):
   - The card read 'writing the files, step 3 of 3'.

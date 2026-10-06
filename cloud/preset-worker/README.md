@@ -160,6 +160,14 @@ For a single-user workflow this fits the Cloudflare Workers free tier:
 A typical session does maybe 10–50 KV ops; you'd need to be saving presets
 constantly to exceed the free tier.
 
+**KV `list()` is the tight one: 1,000 a day.** On 2026-10-06 the live `GET /projects` answered 500 "KV list() limit
+exceeded for the day" (every app page load listed; a day of headless probes spent the budget). Since then the
+listing is ONE index key (`__index::presets`, `src/presets-index.js`): `GET /projects` and `GET /cam-profiles` cost
+one KV read; every PUT/DELETE through the worker updates it (one extra write). The only `list()` left rebuilds the
+index when it is missing or older than `INDEX_MAX_AGE_HOURS` (6). A key written outside the worker (wrangler) shows
+on the next rebuild -- or delete `__index::presets` to rebuild at once. Local probes never reach this worker
+(`bspline_gen_palette.html`: a loopback-served page points at a dead address unless `?realCloud=1`).
+
 ## What's NOT implemented yet
 
 Listed roughly in order of when you'd add them:

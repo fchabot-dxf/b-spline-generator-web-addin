@@ -58,6 +58,10 @@ export const LOADING_SEQUENCES = {
 };
 
 export const MIN_VISIBLE_MS = 300;
+/** Back-to-back work is ONE appearance: the overlay hides only after this long with nothing running. MEASURED (900 px,
+ *  CPU x4, a slider drag): each rebuild left and the queued next one entered a tick later, so the overlay blinked off
+ *  for a frame between every rebuild (6 appearances in one drag, gaps of 0-5 ms). */
+export const HIDE_GRACE_MS = 150;
 /** A continuous gesture's own trailing work (the rebuild a slider release or a stroke end schedules) still counts as
  *  part of the gesture for this long after it ends. */
 export const GESTURE_GRACE_MS = 600;
@@ -68,6 +72,7 @@ const _stack = []; // active stages, innermost last: { id, ctx }
 let _sequence = null; // { id, stages, surface, timer }
 let _shownAt = 0;
 let _hideTimer = null;
+let _gestureLook = false; // this appearance began during a continuous gesture: it keeps the gesture surface to its end
 let _gestureOn = false;
 let _gestureUntil = 0;
 const _inGesture = () => _gestureOn || Date.now() < _gestureUntil;
@@ -115,7 +120,10 @@ function _render() {
   if (!el || !top) return;
   clearTimeout(_hideTimer); _hideTimer = null;
   const stage = LOADING_STAGES[top.id];
-  const surface = (_inGesture() && stage.gestureSurface)
+  if (el.hidden) _gestureLook = _inGesture(); // a new appearance: decided once, at its start
+  // a drag's trailing rebuild can start after the gesture grace (it was queued behind the last one): the appearance
+  // that began as the drag's pill stays a pill -- it never swells into the centred card at the end of the drag
+  const surface = ((_inGesture() || _gestureLook) && stage.gestureSurface)
     || (_sequence && _sequence.stages.includes(top.id) && _sequence.surface) || stage.surface;
   (el.querySelector('.loading-stage-text') || el).textContent = stageText(top.id, top.ctx);
   el.dataset.surface = surface;
@@ -132,8 +140,9 @@ function _hideSoon() {
     _hideTimer = null;
     if (_stack.length || _sequence) return;
     el.hidden = true;
+    _gestureLook = false;
     delete el.dataset.stage;
-  }, Math.max(0, MIN_VISIBLE_MS - (Date.now() - _shownAt)));
+  }, Math.max(HIDE_GRACE_MS, MIN_VISIBLE_MS - (Date.now() - _shownAt)));
 }
 
 const _endSequence = (seq) => { if (_sequence === seq && !_stack.length) { _sequence = null; _hideSoon(); } };
@@ -191,7 +200,7 @@ export function resetLoadingSignal() {
   if (_sequence) clearTimeout(_sequence.timer);
   _sequence = null;
   clearTimeout(_hideTimer); _hideTimer = null;
-  _gestureOn = false; _gestureUntil = 0;
+  _gestureOn = false; _gestureUntil = 0; _gestureLook = false;
   const el = _el();
   if (el) { el.hidden = true; delete el.dataset.stage; }
 }
