@@ -22669,3 +22669,30 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
   To close the gap to "~2 min": one timestamped log line per received chunk in the add-in would measure the real
   palette transfer (detection-only; your call).
 - Capture tool: the stub records performance.now() with each send; the run prints the Send timing breakdown.
+
+## H23 item 87 -- probe (c): CAM in a SEPARATE document that references the design (seat A / 77, 2026-10-05, no build)
+- Setup: scratch folder claude-item87-scratch in project "test files". D = claude-item87-design (the e2e board WITH
+  frame, saved), C = claude-item87-camdoc (new design; D inserted with occurrences.addByInsert = an external,
+  referenced component), then the worktree CAM BUILD run in C. All deleted afterwards (files + folder), docs closed
+  by handle, Fred's Untitled untouched and active.
+- Numbers (one observation each, not yet confirmed):
+    D first saveAs: the call returns fast but the cloud upload (v1) took ~6-7 min; addByInsert of D into C FAILED
+      ("InternalValidationError: group") until that upload finished.
+    insert D into C: 5.2 s.
+    BUILD in C: Back / Top / Frame OK with the CAM_POSITION values; the 'Stock' setup FAILED ("Setup creation
+      failed") -- its placeholder needs the widthIn / heightIn user parameters, which live in D, not C. (A real
+      option (c) needs those declared in C, or Stock built from the referenced bodies.)
+    (i) re-Send in D (no CAM in D): 66 s, against ~220 s for the same Send with live MMs / setups in the same doc.
+    D save -> v2: the call 4.7 s; upload complete within 183 s.
+    (ii) C after D v2: isOutOfDate True. updateAllReferences is REFUSED in the Manufacture workspace and while C has
+      unsaved changes; after saving C and switching to the Design workspace it returned True in 3.5 s, refs -> v2,
+      isOutOfDate False.
+    (iii) after the update: all 3 setups valid, models live ('panel' x2, frame_top/left/bottom/right), Back WCS
+      (-3.75, -4.75, 0.0289) and Top (3.75, -4.75, 2.0289) on their points, stock X 9.5 on all three, 3 MMs valid.
+      No toolpaths had been generated in C, so toolpath survival is NOT measured.
+    A re-BUILD in C afterwards took the full-recreate path (Stock missing -> not reusable), ~95 s, Stock failed again.
+- So, per design change: Send in D ~66 s + save D (~5 s call, up to ~3 min upload before C can see v2) + in C: save,
+  Design workspace, update references ~3.5 s (+ re-BUILD or regenerate). The cloud upload is the dominant cost and
+  is not under our control.
+- Slip: I sent two fusion_execute calls in parallel once (readback + re-BUILD); the second timed out but completed;
+  sys.path / cam_engine verified restored afterwards.
