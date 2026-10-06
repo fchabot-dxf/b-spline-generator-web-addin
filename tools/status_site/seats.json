@@ -59,6 +59,18 @@
         "seatD",
         "seatbb"
       ]
+    },
+    {
+      "key": "seatE",
+      "name": "Seat E",
+      "station": "home-pc",
+      "branch": "grout-svg",
+      "task": "NEXT-SESSION-fb-app.md",
+      "checkout": "-wt\\61",
+      "session": "b-spline-generator-web-addin-61",
+      "shots": [
+        "seatE"
+      ]
     }
   ]
 }
