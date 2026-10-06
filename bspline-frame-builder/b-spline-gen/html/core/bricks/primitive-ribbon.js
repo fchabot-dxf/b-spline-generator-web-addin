@@ -168,6 +168,22 @@ const BUTT_PARALLEL_DOT = 0.999; // H23 item 76 cont. (butt corner): tangents th
 // smooth continuation -- so there's no "through" vs "butt" side to pick; falls back to the ordinary
 // mitre, which degenerates harmlessly to a near-straight seam on its own at this angle anyway.
 
+/** T86 item 21b (Fred's T11 double_course: "is this one getting fixed?"): the butt construction below is exact
+ *  only for a SQUARE corner -- the through band's last piece ends square at the outer corner and the butt band is
+ *  cut where the through band's inner edge crosses it, which together tile a right angle and nothing else. MEASURED
+ *  on T11 (a 45 deg turn, vertical into the V): the cut landed 1.77 in up a 1.95 in vertical (d1 / sin 45), the
+ *  vertical got no piece at all and a triangle beside the diagonal's square end went bare (1.39 sq in per side at
+ *  1.25 in). Declared: butt / lapped / block serve corners within BUTT_SQUARE_WINDOW_DEG of square (block: convex ones
+ *  too, see buildBlockJoint); any other corner falls back to the mitre, as arc-involved corners already do. */
+const BUTT_SQUARE_WINDOW_DEG = 15;
+const SQUARE_CORNER_DOT = 1e-9; // |cos| below this: a true right angle, built exactly as before 21b (byte-identical)
+/** Where the line through `point` along `dir` crosses `prim`'s own offset line at depth `d` (a line primitive). */
+function crossAtDepth(prim, d, point, dir) {
+  const off = offsetPrimitive(prim, d);
+  return lineLineIntersection({ x: off.p0.x, y: off.p0.y }, { x: off.p1.x - off.p0.x, y: off.p1.y - off.p0.y }, point, dir);
+}
+const BUTT_SQUARE_MAX_DOT = Math.sin((BUTT_SQUARE_WINDOW_DEG * Math.PI) / 180);
+
 /**
  * T86 item 1 (Fred's sketch, shots/fred/fred_sketch_butt_corner.jpg): the BUTT corner style, built
  * per the architecture plan this item inherited (WORK-LOG's own "H23 item 76 cont. -- butt corner"
@@ -195,7 +211,9 @@ const BUTT_PARALLEL_DOT = 0.999; // H23 item 76 cont. (butt corner): tangents th
 function buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipThrough) {
   const tPrev = tangentAt(primitives[prevIdx], o);
   const tCur = tangentAt(primitives[curIdx], o);
-  if (Math.abs(tPrev.x * tCur.x + tPrev.y * tCur.y) >= BUTT_PARALLEL_DOT) return null; // not a genuine corner
+  const dot = Math.abs(tPrev.x * tCur.x + tPrev.y * tCur.y);
+  if (dot >= BUTT_PARALLEL_DOT) return null; // not a genuine corner
+  if (dot > BUTT_SQUARE_MAX_DOT) return null; // not near square: the mitre (21b)
   const prevMoreHorizontal = Math.abs(tPrev.x) >= Math.abs(tCur.x);
   const throughIdx = (prevMoreHorizontal !== !!flipThrough) ? prevIdx : curIdx;
   const buttIdx = throughIdx === prevIdx ? curIdx : prevIdx;
@@ -242,7 +260,23 @@ function buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipTh
   // changes a point's own tangential projection), so `sStart`/`sEnd` land exactly on the primitive's
   // own true endpoint, not past it.
   const throughSentinel = { point: o, q: o, dirX: 0, dirY: 0, keepRefAsStart: o, keepRefAsEnd: o, trustO: false };
-  return { throughIdx, forThrough: throughSentinel, forButt: square, isButt: true };
+  if (dot < SQUARE_CORNER_DOT) return { throughIdx, forThrough: throughSentinel, forButt: square, isButt: true };
+  // 21b, a corner inside the window but not square (T12's ~81 deg bottom corners: two wedge voids, 0.061 sq in each):
+  // the faces must meet the faces they butt, not the runs' own normals. The butt run is cut PARALLEL to the through
+  // band's inner edge, one joint inside it; the through run reaches the outline (the butt primitive's own line) and is
+  // cut along it -- at a square corner both reduce to the construction above.
+  const tThrough = tangentAt(through, o);
+  // one joint square to the through band's inner edge, i.e. joint / sin(corner) along the butt run's own outer line;
+  // the cut's two ends on the butt run's outer and inner lines bound the run's last piece (a clip only trims)
+  const sinCorner = Math.sqrt(Math.max(1 - dot * dot, 1e-12));
+  const buttCut = stepFrom(cut0, buttTangent, (nominalJoint / sinCorner) * awaySign);
+  const buttCutInner = crossAtDepth(butt, d1, buttCut, tThrough) || buttCut;
+  const buttKeep = stepFrom(buttCut, buttTangent, awaySign);
+  const forButt = { point: buttCut, q: buttCutInner, dirX: tThrough.x, dirY: tThrough.y, keepRefAsStart: buttKeep, keepRefAsEnd: buttKeep, trustO: true };
+  const reach = lineLineIntersection({ x: throughD1.p0.x, y: throughD1.p0.y }, { x: throughD1.p1.x - throughD1.p0.x, y: throughD1.p1.y - throughD1.p0.y }, o, buttTangent);
+  const intoThrough = stepFrom(o, tThrough, throughIdx === prevIdx ? -1 : 1);
+  const forThrough = { point: o, q: reach || o, dirX: buttTangent.x, dirY: buttTangent.y, keepRefAsStart: intoThrough, keepRefAsEnd: intoThrough, trustO: true };
+  return { throughIdx, forThrough, forButt, isButt: true };
 }
 
 /** Resolve a `jointBefore` entry to the object a specific primitive (`idx`) should actually clip
@@ -289,24 +323,45 @@ const QUOIN_SET = brickSetById(3); // "White rocks" (library.js:181) -- already 
  * uses, for the exact same reason: an id assigned here could collide with one the main loop hands
  * out later).
  */
-function buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint) {
+function buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1) {
   const tPrev = tangentAt(primitives[prevIdx], o);
   const tCur = tangentAt(primitives[curIdx], o);
-  if (Math.abs(tPrev.x * tCur.x + tPrev.y * tCur.y) >= BUTT_PARALLEL_DOT) return null;
+  const dot = Math.abs(tPrev.x * tCur.x + tPrev.y * tCur.y);
+  if (dot >= BUTT_PARALLEL_DOT) return null;
+  // 21b: the block square is stepped along both tangents from the OUTER corner, so it fits only a convex, near-square
+  // corner. MEASURED: at T9's / T6's reflex corners it lands outside the board and the two runs still give up a block
+  // length each (T9 1.25 in: the I-beam web bare, 3.69 sq in per side); at T11's 45 deg turn the vertical goes bare.
+  // Convex = the next run turns toward the inside: tCur along the previous line's inward normal.
+  const convex = tCur.x * primitives[prevIdx].nx + tCur.y * primitives[prevIdx].ny > 0;
+  if (dot > BUTT_SQUARE_MAX_DOT || !convex) return null; // the mitre
   const blockSize = QUOIN_SET.brickLengthIn;
   const prevPrim = primitives[prevIdx], curPrim = primitives[curIdx];
+  // 21b: each run must be longer than the block plus a joint, or its cut lands past its own end and its pieces
+  // lie under the block (T5 quoin 0.75 in: a 0.139 sq in overlap at each bottom corner, the bottom line shorter
+  // than the 1.1 in block) -- such a corner takes the mitre
+  const lenOf = (p) => Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y);
+  if (Math.min(lenOf(prevPrim), lenOf(curPrim)) < blockSize + nominalJoint + MIN_LINE_RUN_IN) return null;
   // The block's OWN face sits exactly `blockSize` from the corner (a quoin unit's own declared size,
   // unaffected by grout). The SURROUNDING band's own cut stops `nominalJoint` further out still,
   // leaving a real mortar-width gap between the block's own face and the band's own first piece --
   // same convention `buildButtJoint`'s own grout gap already established.
   const blockPrevPoint = stepFrom(o, tPrev, -blockSize); // prevIdx ENDS at o -- step backward, away from it
   const blockCurPoint = stepFrom(o, tCur, blockSize); // curIdx STARTS at o -- step forward, away from it
-  const cutPrevPoint = stepFrom(blockPrevPoint, tPrev, -nominalJoint);
-  const cutCurPoint = stepFrom(blockCurPoint, tCur, nominalJoint);
+  // 21b: each run is cut parallel to the block face it meets (prev meets the face along tCur, cur the face along
+  // tPrev), one joint off it measured square to that face; at a right angle that is the run's own normal, as before
+  const sinCorner = Math.sqrt(Math.max(1 - dot * dot, 1e-12));
+  const gapAlong = dot < SQUARE_CORNER_DOT ? nominalJoint : nominalJoint / sinCorner;
+  const cutPrevPoint = stepFrom(blockPrevPoint, tPrev, -gapAlong);
+  const cutCurPoint = stepFrom(blockCurPoint, tCur, gapAlong);
   const keepRefPrev = stepFrom(cutPrevPoint, tPrev, -1); // further into prevIdx's own run
   const keepRefCur = stepFrom(cutCurPoint, tCur, 1); // further into curIdx's own run
-  const forPrev = { point: cutPrevPoint, q: cutPrevPoint, dirX: prevPrim.nx, dirY: prevPrim.ny, keepRefAsStart: keepRefPrev, keepRefAsEnd: keepRefPrev, trustO: true };
-  const forCur = { point: cutCurPoint, q: cutCurPoint, dirX: curPrim.nx, dirY: curPrim.ny, keepRefAsStart: keepRefCur, keepRefAsEnd: keepRefCur, trustO: true };
+  const square = dot < SQUARE_CORNER_DOT;
+  const forPrev = square
+    ? { point: cutPrevPoint, q: cutPrevPoint, dirX: prevPrim.nx, dirY: prevPrim.ny, keepRefAsStart: keepRefPrev, keepRefAsEnd: keepRefPrev, trustO: true }
+    : { point: cutPrevPoint, q: crossAtDepth(prevPrim, d1, cutPrevPoint, tCur) || cutPrevPoint, dirX: tCur.x, dirY: tCur.y, keepRefAsStart: keepRefPrev, keepRefAsEnd: keepRefPrev, trustO: true };
+  const forCur = square
+    ? { point: cutCurPoint, q: cutCurPoint, dirX: curPrim.nx, dirY: curPrim.ny, keepRefAsStart: keepRefCur, keepRefAsEnd: keepRefCur, trustO: true }
+    : { point: cutCurPoint, q: crossAtDepth(curPrim, d1, cutCurPoint, tPrev) || cutCurPoint, dirX: tPrev.x, dirY: tPrev.y, keepRefAsStart: keepRefCur, keepRefAsEnd: keepRefCur, trustO: true };
 
   // The block's own square: o (the true corner) -> blockPrevPoint -> inner -> blockCurPoint -> back
   // to o. `inner` is `blockPrevPoint` stepped along curIdx's own tangent by `blockSize` -- exact at a
@@ -639,7 +694,7 @@ function patchSlicePolygon(boundary, cum, sA, sB, q) {
  *  floor, 1.2x ceiling as everywhere else) -- a piece near the shared apex `q` is a genuine wedge, and
  *  a short one can still clip to a real sliver regardless of how evenly its own along-boundary length
  *  was planned; this is what "apex fan slivers merged" means, not a second, different defect. */
-function buildPatch(prevPrim, curPrim, dropped, d0, A, B, q, pitch, nominalJoint, width, sequence, forcedFStart) {
+function buildPatch(prevPrim, curPrim, chain, d0, q, pitch, nominalJoint, width, sequence, forcedFStart) {
   // T86 item 9 (the BEVEL sub-case: a dropped LINE between two NON-parallel sides, where the
   // direct skip-intersection IS defined -- unlike a NOTCH, see `buildNotchJoint`'s own header):
   // the simpler of the two dropped-primitive shapes -- no curve to tessellate, since a straight
@@ -647,15 +702,23 @@ function buildPatch(prevPrim, curPrim, dropped, d0, A, B, q, pitch, nominalJoint
   // segment from A to B directly, with the two flat strips already contributing A/B themselves as
   // their own endpoints (same as the arc case's `tessellateArcSpan(...).slice(1,-1)` dropping its
   // own first/last point for the identical reason -- here there is simply nothing left to drop).
-  const middle = dropped.type === 'line' ? [] : (() => {
-    const off = offsetPrimitive(dropped, d0);
-    const direction = Math.sign(dropped.theta2 - dropped.theta1) || 1;
-    const thetaA = Math.atan2(A.y - off.cy, A.x - off.cx);
-    let thetaB = Math.atan2(B.y - off.cy, B.x - off.cx);
+  // T86 item 21b: `chain` = the dropped primitives in walk order, each with its own d0 span
+  // `{ prim, from, to }` -- usually ONE (a fillet), and then the middle is exactly the one span above. T8's
+  // right-bottom corner at 1.25 in drops TWO (a fillet whose radius 1.253 is the band depth, plus the 1.11 in
+  // line after it); the middle then walks every span, joined at their own d0 joints.
+  const A = chain[0].from, B = chain[chain.length - 1].to;
+  const middle = [];
+  chain.forEach(({ prim, from, to }, i) => {
+    if (i > 0) middle.push(from); // the joint between this dropped primitive and the one before it
+    if (prim.type === 'line') return;
+    const off = offsetPrimitive(prim, d0);
+    const direction = Math.sign(prim.theta2 - prim.theta1) || 1;
+    const thetaA = Math.atan2(from.y - off.cy, from.x - off.cx);
+    let thetaB = Math.atan2(to.y - off.cy, to.x - off.cx);
     while ((thetaB - thetaA) * direction < 0) thetaB += direction * 2 * Math.PI;
     while ((thetaB - thetaA) * direction > 2 * Math.PI) thetaB -= direction * 2 * Math.PI;
-    return tessellateArcSpan(dropped, d0, thetaA, thetaB).slice(1, -1);
-  })();
+    middle.push(...tessellateArcSpan(prim, d0, thetaA, thetaB).slice(1, -1));
+  });
 
   const boundary = [
     ...flatStripToTangent(prevPrim, d0, q, A),
@@ -873,6 +936,21 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
       const notch = buildNotchJoint(primitives, prevIdx, droppedIdx, curIdx, d0, d1, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
       if (notch) return notch;
     }
+    // T86 item 21b: two or more primitives dropped between the neighbours (T8 1.25 in: a fillet + the line after it)
+    // can leave the neighbours' own d0 offsets with no crossing at all (`o` null), and returning null here left the
+    // corner with no joint and no patch (the neighbour's last piece ran on, the fillet's sector went bare: 0.29 sq in).
+    // The patch over the whole dropped chain fills it; the neighbours stay `q`-based, exactly as for one fillet.
+    if (droppedIdx !== null && !o && q) {
+      const chainIdx = [];
+      for (let idx = (prevIdx + 1) % n; idx !== curIdx; idx = (idx + 1) % n) if (primitiveLiveAtDepth(primitives, idx, d0, closed)) chainIdx.push(idx);
+      const ends = [prevIdx, ...chainIdx, curIdx];
+      const at = ends.slice(1).map((idx, i) => jointPointAt(primitives, ends[i], idx, d0));
+      if (at.every(Boolean)) {
+        const chain = chainIdx.map((idx, i) => ({ prim: primitives[idx], from: at[i], to: at[i + 1] }));
+        const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], chain, d0, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
+        return { point: q, q, dirX: 0, dirY: 0, keepRefAsStart: q, keepRefAsEnd: q, trustO: false, kiteFan };
+      }
+    }
     if (!o || !q) return null;
     // T86 item 1: a butt/lapped/block corner only ever applies at a genuine, undropped, line-line
     // joint -- a dropped primitive between the neighbours (almost always a fillet/arc) and any
@@ -887,7 +965,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     }
     if (cornerStyle === 'block' && droppedIdx === null
         && primitives[prevIdx].type === 'line' && primitives[curIdx].type === 'line') {
-      const block = buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint);
+      const block = buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1);
       if (block) return block;
     }
     // the SAME joint, approached by its own two DIFFERENT primitives, must keep OPPOSITE sides of
@@ -914,12 +992,12 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     const A = jointPointAt(primitives, prevIdx, droppedIdx, d0);
     const B = jointPointAt(primitives, droppedIdx, curIdx, d0);
     if (!A || !B) return { ...joint, trustO }; // defensive: no patch rather than a bad one
-    const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], dropped, d0, A, B, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
+    const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], [{ prim: dropped, from: A, to: B }], d0, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
     return { ...joint, trustO, kiteFan };
   });
 
   const pieces = [];
-  const sources = []; // T86 16(c) part 2: per piece, the primitive it was offset from (-1: a joint's own fan/quoin)
+  const sources = []; // T86 16(c) part 2: per piece, the primitive it was offset from (-1: a joint's fan, -2: a quoin)
   let nextId = startId;
   for (let k = 0; k < m; k++) {
     const idx = liveIndices[k];
@@ -976,7 +1054,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
       const { sampleId, flip } = pickSample(set, seed, 'bricks-block', nextId);
       const heightOffset = (mulberry32(seedFor(seed, 'bricks-block-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
       pieces.push({ id: `${pieceId}-${nextId}`, polygon: rawJointEnd.blockPolygon, pieceId, sampleId, flip, heightOffset });
-      sources.push(-1);
+      sources.push(-2);
       nextId++;
     }
   }
@@ -985,9 +1063,9 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
   // for free rather than needing a second pass later. `pieceIndex` is this row's own build-order
   // index (0-based, the SAME order `pieces` is already in -- stable for a given seed, since every
   // upstream choice that could reorder this array is itself seed-deterministic).
-  // `sources` + `liveIndices` ride alongside (never on the pieces: the output shape is unchanged) for
-  // contour-bands.js yieldAtMedialLine, which needs each piece's own depth field and its row's joint neighbours
-  return { pieces: pieces.map((p, pieceIndex) => ({ ...p, bandIndex, rowIndex, pieceIndex })), nextId, sources, liveIndices };
+  // `sources` rides alongside (never on the pieces: the output shape is unchanged) for contour-bands.js
+  // yieldAtMedialLine, which needs each piece's own depth field (or its kind: a fan, a quoin)
+  return { pieces: pieces.map((p, pieceIndex) => ({ ...p, bandIndex, rowIndex, pieceIndex })), nextId, sources };
 }
 
 const BOUNDARY_ARC_STEPS = 16; // a smoothness floor for the TESSELLATED polyline this returns, same
