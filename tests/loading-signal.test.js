@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   withLoadingStage, withLoadingStageShownFirst, beginLoadingSequence, currentLoadingStage, resetLoadingSignal, stageText, setPaintScheduler,
   continuousGesture, installGestureWatch,
-  LOADING_STAGES, LOADING_SEQUENCES, STAGE_GROUPS, MIN_VISIBLE_MS, SEQUENCE_IDLE_MS, GESTURE_GRACE_MS,
+  LOADING_STAGES, LOADING_SEQUENCES, STAGE_GROUPS, MIN_VISIBLE_MS, SEQUENCE_IDLE_MS, GESTURE_GRACE_MS, HIDE_GRACE_MS,
 } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 const FIXTURE = `<div id="loading-stage" class="loading-stage" hidden role="status" aria-live="polite"><span class="loading-stage-spinner"></span><span class="loading-stage-text"></span></div>`;
@@ -210,5 +210,45 @@ describe('a continuous gesture (slider drag, sculpt stroke): its rebuilds show t
     await vi.advanceTimersByTimeAsync(GESTURE_GRACE_MS + MIN_VISIBLE_MS);
     expect(await surfaceOf('rebuild')).toBe('card');
     doc.remove();
+  });
+});
+
+describe('geometry refresh (Fred: "load screens were for during refresh of geometry"): one steady appearance', () => {
+  const run = async (id) => { const p = withLoadingStage(id, () => {}); runFrames(); await p; };
+
+  it('back-to-back rebuilds are ONE appearance: no blink between them (measured: 6 appearances in one drag)', async () => {
+    expect(HIDE_GRACE_MS).toBe(150);
+    const el = document.getElementById('loading-stage');
+    let hides = 0;
+    new MutationObserver(() => { if (el.hidden) hides++; }).observe(el, { attributes: true, attributeFilter: ['hidden'] });
+    // the first rebuild runs longer than the minimum (so on leaving it may hide at once)...
+    const first = withLoadingStage('rebuild', () => vi.advanceTimersByTimeAsync(MIN_VISIBLE_MS + 20));
+    runFrames(); await first;
+    await vi.advanceTimersByTimeAsync(1); // ...and the queued next one enters a tick later (rebuild's yieldToMain)
+    await run('rebuild');
+    await vi.advanceTimersByTimeAsync(5);
+    await run('rebuild');
+    await Promise.resolve();
+    expect(hides).toBe(0);
+    await vi.advanceTimersByTimeAsync(HIDE_GRACE_MS + 10);
+    expect(hides).toBe(1);
+    expect(currentLoadingStage()).toBe(null);
+  });
+
+  it("a drag's appearance stays the pill to its end, even for a rebuild that starts after the gesture grace", async () => {
+    continuousGesture(true);
+    const p = withLoadingStage('rebuild', async () => {
+      continuousGesture(false);
+      await vi.advanceTimersByTimeAsync(GESTURE_GRACE_MS + 50); // the drag's last rebuild outlives the grace
+    });
+    runFrames(); await p;
+    const q = withLoadingStage('rebuild', () => currentLoadingStage().surface); // queued behind it, no gap
+    runFrames();
+    expect(await q).toBe('pill');
+    await vi.advanceTimersByTimeAsync(MIN_VISIBLE_MS + HIDE_GRACE_MS);
+    expect(currentLoadingStage()).toBe(null);
+    const r = withLoadingStage('rebuild', () => currentLoadingStage().surface); // a new appearance, no gesture: the card
+    runFrames();
+    expect(await r).toBe('card');
   });
 });
