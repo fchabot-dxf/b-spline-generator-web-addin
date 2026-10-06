@@ -279,6 +279,33 @@ function buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipTh
   return { throughIdx, forThrough, forButt, isButt: true };
 }
 
+/** T86 item 21b: an ordinary mitre joint (both runs clip to ONE line) resolved for one run -- the line shifted `half` a
+ *  joint toward that run's own side, so the two runs meet with a full joint between them instead of abutting (a
+ *  0-gap seam: a zero-area sliver profile in Fusion, seat A's e2e). Butt / block / notch joints carry their own gaps,
+ *  and a `trustO:false` joint (a fan's corner) is the fan's to keep clear of; those come back unchanged. */
+function mitreJointSide(raw, joint, keepKey, half) {
+  if (!raw || !joint || raw.isButt || raw.isBlock || !(half > 0)) return joint;
+  if (joint.trustO === false) return fanJointSide(raw, joint, keepKey, half);
+  const nx = -joint.dirY, ny = joint.dirX, ref = joint[keepKey];
+  const side = Math.sign((ref.x - joint.point.x) * nx + (ref.y - joint.point.y) * ny) || 1;
+  const shift = (p) => ({ x: p.x + nx * side * half, y: p.y + ny * side * half });
+  // the reference point moves WITH the line (it sits only KEEP_REF_STEP_IN from the corner, less than half a joint)
+  return { ...joint, point: shift(joint.point), q: shift(joint.q), [keepKey]: shift(ref) };
+}
+
+/** T86 item 21b: at a fan's corner (`trustO:false`) both runs stop at the same inner corner `q` and touched there at
+ *  one point. Each run's end moves back along its own line by j / (2 sin(alpha / 2)) -- alpha the angle the two runs make
+ *  at `q` -- so their two corners are exactly one joint apart (0.71 of a joint each at a square corner). The fan already
+ *  stands a joint off each run (buildPatch). Needs the joint's own two tangents at `q` (`tPrev`, `tCur`). */
+function fanJointSide(raw, joint, keepKey, half) {
+  if (!raw.tPrev || !raw.tCur) return joint;
+  const cosAlpha = -(raw.tPrev.x * raw.tCur.x + raw.tPrev.y * raw.tCur.y);
+  const sinHalf = Math.sqrt(Math.max((1 - cosAlpha) / 2, 1e-6));
+  const back = Math.min(half / sinHalf, 4 * half);
+  const t = keepKey === 'keepRefAsEnd' ? { x: -raw.tPrev.x, y: -raw.tPrev.y } : raw.tCur; // away from q, into the run
+  return { ...joint, q: { x: joint.q.x + t.x * back, y: joint.q.y + t.y * back } };
+}
+
 /** Resolve a `jointBefore` entry to the object a specific primitive (`idx`) should actually clip
  *  against. An ordinary (mitre) joint is returned as-is, read identically by both its neighbours
  *  (today's established symmetric convention). A butt joint (`.isButt`) is asymmetric: the through
@@ -436,6 +463,34 @@ function tangentialProjection(prim, pt) {
  *  boundary's own true length with the band's own declared sequence/fill rule, slice via
  *  `patchSlicePolygon`, merge slivers) over a trivial 2-point boundary (a straight line needs no
  *  flat-strip/tessellated-arc construction at all -- the kite's own outer edge already IS straight). */
+/** T86 item 21b, the JOINT RULE for a run cut into slices that share no single axis (a corner's fan, a notch's patch):
+ *  every divider is a strip one joint wide centred on its line (not a wedge meeting at the apex -- seat A's Fusion
+ *  baseline found the sliver profiles clustered at zero-wide apex joints), and the first / last slice stands a FULL
+ *  joint off the run it meets (the patch is the filler and yields, the rule contour-bands.js yieldAtMedialLine
+ *  declares). `raw(sA, sB)` builds a slice's polygon over [sA, sB] with no joint; `divider(s)` gives the two points of
+ *  the dividing line at s (for a fan: the boundary point and the apex). */
+function jointedSlices(spans, totalLen, jointWidth, nominalJoint, nominalArea, raw, divider) {
+  const half = jointWidth / 2;
+  const slice = (sA, sB, first, last) => {
+    let poly = raw(first ? sA : sA - half, last ? sB : sB + half);
+    if (poly.length < 3) return poly;
+    const [m0, m1] = divider((sA + sB) / 2);
+    const keep = { x: m0.x + (m1.x - m0.x) * 0.25, y: m0.y + (m1.y - m0.y) * 0.25 };
+    const side = (sv, offset) => {
+      const [p, t] = divider(sv), dx = t.x - p.x, dy = t.y - p.y, len = Math.hypot(dx, dy);
+      if (len < 1e-9) return null;
+      const nx = -dy / len, ny = dx / len, sgn = Math.sign((keep.x - p.x) * nx + (keep.y - p.y) * ny) || 1;
+      return { point: { x: p.x + nx * sgn * offset, y: p.y + ny * sgn * offset }, dirX: dx / len, dirY: dy / len };
+    };
+    for (const line of [side(first ? 0 : sA - half, first ? nominalJoint : half), side(last ? totalLen : sB + half, last ? nominalJoint : half)]) {
+      if (line && poly.length >= 3) poly = clipToHalfPlane(poly, line, keep);
+    }
+    return poly;
+  };
+  mergeSlivers(spans, (sA, sB) => Math.abs(signedArea(slice(sA, sB, sA <= 1e-9, sB >= totalLen - 1e-9))), nominalArea);
+  return spans.map(({ sA, sB }, i) => slice(sA, sB, i === 0, i === spans.length - 1));
+}
+
 function buildNotchPatch(d0Near, d0Far, apex, pitch, nominalJoint, width, sequence, forcedFStart) {
   const boundary = [d0Near, d0Far];
   const cum = cumulativeLengths(boundary);
@@ -446,8 +501,8 @@ function buildNotchPatch(d0Near, d0Far, apex, pitch, nominalJoint, width, sequen
   const spans = [];
   let s = 0;
   for (let i = 0; i < lengths.length; i++) { spans.push({ sA: s, sB: s + lengths[i] }); s += lengths[i] + jointWidth; }
-  mergeSlivers(spans, (sA, sB) => Math.abs(signedArea(patchSlicePolygon(boundary, cum, sA, sB, apex))), nominalArea);
-  return spans.map(({ sA, sB }) => patchSlicePolygon(boundary, cum, sA, sB, apex));
+  return jointedSlices(spans, totalLen, jointWidth, nominalJoint, nominalArea,
+    (sA, sB) => patchSlicePolygon(boundary, cum, sA, sB, apex), (sv) => [pointAtLength(boundary, cum, sv), apex]);
 }
 
 /** T86 item 9: `buildNotchJoint`'s own NO-PINCH quad (`[d0Near,d0Far,d1Far,d1Near]`, the case this
@@ -475,8 +530,9 @@ function buildNotchQuadPatch(d0Near, d0Far, d1Near, d1Far, pitch, nominalJoint, 
   const spans = [];
   let s = 0;
   for (let i = 0; i < lengths.length; i++) { spans.push({ sA: s, sB: s + lengths[i] }); s += lengths[i] + jointWidth; }
-  mergeSlivers(spans, (sA, sB) => Math.abs(signedArea(sliceAt(sA, sB))), pitch * width);
-  return spans.map(({ sA, sB }) => sliceAt(sA, sB));
+  const clampS = (sv) => Math.max(0, Math.min(totalLen, sv));
+  return jointedSlices(spans, totalLen, jointWidth, nominalJoint, pitch * width,
+    (sA, sB) => sliceAt(clampS(sA), clampS(sB)), (sv) => [pointAtFrac(d0Near, d0Far, clampS(sv) / totalLen), pointAtFrac(d1Near, d1Far, clampS(sv) / totalLen)]);
 }
 
 function buildNotchJoint(primitives, prevIdx, droppedIdx, curIdx, d0, d1, pitch, nominalJoint, width, sequence, forcedFStart) {
@@ -741,8 +797,8 @@ function buildPatch(prevPrim, curPrim, chain, d0, q, pitch, nominalJoint, width,
   // SAME apex `q` can still clip to a real sliver even with an evenly-planned along-boundary length
   // (the apex end of a wedge is inherently narrow) -- the SAME `mergeSlivers` `linePieces`/
   // `voussoirPieces` already use, now over LENGTH-based spans instead of boundary-INDEX ones.
-  mergeSlivers(spans, (sA, sB) => Math.abs(signedArea(patchSlicePolygon(boundary, cum, sA, sB, q))), nominalArea);
-  return spans.map(({ sA, sB }) => patchSlicePolygon(boundary, cum, sA, sB, q));
+  return jointedSlices(spans, totalLen, jointWidth, nominalJoint, nominalArea,
+    (sA, sB) => patchSlicePolygon(boundary, cum, sA, sB, q), (sv) => [pointAtLength(boundary, cum, sv), q]);
 }
 
 const CLIP_EPS_IN = 0.02; // a small safety margin on the piece touching a corner's own extreme edge
@@ -948,7 +1004,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
       if (at.every(Boolean)) {
         const chain = chainIdx.map((idx, i) => ({ prim: primitives[idx], from: at[i], to: at[i + 1] }));
         const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], chain, d0, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
-        return { point: q, q, dirX: 0, dirY: 0, keepRefAsStart: q, keepRefAsEnd: q, trustO: false, kiteFan };
+        return { point: q, q, dirX: 0, dirY: 0, keepRefAsStart: q, keepRefAsEnd: q, trustO: false, kiteFan, tPrev: tangentAt(primitives[prevIdx], q), tCur: tangentAt(primitives[curIdx], q) };
       }
     }
     if (!o || !q) return null;
@@ -993,7 +1049,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     const B = jointPointAt(primitives, droppedIdx, curIdx, d0);
     if (!A || !B) return { ...joint, trustO }; // defensive: no patch rather than a bad one
     const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], [{ prim: dropped, from: A, to: B }], d0, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
-    return { ...joint, trustO, kiteFan };
+    return { ...joint, trustO, kiteFan, tPrev: tangentAt(primitives[prevIdx], q), tCur: tangentAt(primitives[curIdx], q) };
   });
 
   const pieces = [];
@@ -1009,9 +1065,10 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     // `.blockPolygon` below -- both are properties of the JOINT itself (shared context, not a
     // per-side clip object), so they must be read from the raw joint, not its per-side resolution
     // (a block joint's own resolved `forPrev`/`forCur` carry no such field at all).
-    const jointStart = jointFor(jointBefore[k], idx);
     const rawJointEnd = jointBefore[(k + 1) % m];
-    const jointEnd = jointFor(rawJointEnd, idx);
+    // T86 item 21b, the JOINT RULE: an ordinary mitre is a joint too -- each run clips half a joint short of it
+    const jointStart = mitreJointSide(jointBefore[k], jointFor(jointBefore[k], idx), 'keepRefAsStart', nominalJoint / 2);
+    const jointEnd = mitreJointSide(rawJointEnd, jointFor(rawJointEnd, idx), 'keepRefAsEnd', nominalJoint / 2);
     const built = prim.type === 'line'
       ? linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set, seed, pieceId, nextId, sequence, forcedFStart)
       : (() => {
