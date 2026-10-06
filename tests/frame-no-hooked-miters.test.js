@@ -160,29 +160,38 @@ describe('H23 item 39: generateFrame()\'s own real isValid logic, swept over eve
   // SAME retry loop, using the pre-item-39 chain (no margin check), would have found a pass -- otherwise it's
   // a pre-existing gap in an earlier check (unrelated to this item: see preExistingIsValid's own comment
   // above, and WORK-LOG for template_8's own measured case) and this sweep must not fail over it.
-  it.each(FRAME_DEFS.templates.map((tpl) => tpl.id))(`%s: ${N_SEEDS} seeds x 3 board sizes all pass the real ` +
-    'isValid whenever the pre-existing (pre-item-39) chain could have, using the shipped GENERATE_MAX_ATTEMPTS', (tplId) => {
+  // item 67 (test infra): one test per template x board x SEED_CHUNK seeds (was one test per template, all 3
+  // boards x 50 seeds: template_8 took 47 s in a full run -- its pre-existing gap pays the double retry on every
+  // seed). The same 50 seeds per template/board, the same check; each piece fits the declared heavy budget.
+  const SEED_CHUNK = 10;
+  // MEASURED: template_8 at 6x9 is ~1 s a seed (its pre-existing gap: nearly every seed runs both retry loops in
+  // full), 10 s a chunk of 10 under load -- its own smaller chunk.
+  const SEED_CHUNK_FOR = { 'template_8 6x9': 2 };
+  const CASES = FRAME_DEFS.templates.flatMap((tpl) => BOARDS.flatMap(([W, H]) => {
+    const n = SEED_CHUNK_FOR[`${tpl.id} ${W}x${H}`] || SEED_CHUNK;
+    return Array.from({ length: N_SEEDS / n }, (_, k) => [`${tpl.id} ${W}x${H} seeds ${k * n + 1}-${(k + 1) * n}`, tpl.id, W, H, k * n + 1, n]);
+  }));
+  it.each(CASES)('%s: each passes the real isValid whenever the pre-existing (pre-item-39) chain could have, ' +
+    'using the shipped GENERATE_MAX_ATTEMPTS', (_name, tplId, W, H, first, n) => {
     const tpl = FRAME_DEFS.templates.find((x) => x.id === tplId);
-    for (const [W, H] of BOARDS) {
-      const b = board(W, H);
-      const baseRec = normalizeFrameRecord({ templateId: tplId, seeds: {} });
-      const region = frameCutProfile(FRAME_DEFS, baseRec, b).region;
-      const t = frameParam(FRAME_DEFS, baseRec, 'frame_thickness');
-      let nPreExistingGaps = 0;
-      for (let seed = 1; seed <= N_SEEDS; seed++) {
-        const isValid = (s) => realIsValid(tpl, baseRec, b, region, t, s);
-        const seeds = generateValidFrameSeeds(tpl, region, seed, t, isValid);
-        if (isValid(seeds)) continue;
-        const preOnly = (s) => preExistingIsValid(tpl, baseRec, b, region, t, s);
-        const preSeeds = generateValidFrameSeeds(tpl, region, seed, t, preOnly);
-        if (!preOnly(preSeeds)) { nPreExistingGaps++; continue; } // pre-existing, out of this item's scope
-        expect.fail(`${tplId} ${W}x${H} seed ${seed}: a seed the pre-existing chain could clear is still ` +
-          'rejected after the real (margin-included) retry loop -- a genuine item-39 regression');
-      }
-      if (nPreExistingGaps) console.log(`${tplId} ${W}x${H}: ${nPreExistingGaps}/${N_SEEDS} external seeds hit a ` +
-        'pre-existing (unrelated) gap, not an item-39 regression -- see WORK-LOG');
+    const b = board(W, H);
+    const baseRec = normalizeFrameRecord({ templateId: tplId, seeds: {} });
+    const region = frameCutProfile(FRAME_DEFS, baseRec, b).region;
+    const t = frameParam(FRAME_DEFS, baseRec, 'frame_thickness');
+    let nPreExistingGaps = 0;
+    for (let seed = first; seed < first + n; seed++) {
+      const isValid = (s) => realIsValid(tpl, baseRec, b, region, t, s);
+      const seeds = generateValidFrameSeeds(tpl, region, seed, t, isValid);
+      if (isValid(seeds)) continue;
+      const preOnly = (s) => preExistingIsValid(tpl, baseRec, b, region, t, s);
+      const preSeeds = generateValidFrameSeeds(tpl, region, seed, t, preOnly);
+      if (!preOnly(preSeeds)) { nPreExistingGaps++; continue; } // pre-existing, out of this item's scope
+      expect.fail(`${tplId} ${W}x${H} seed ${seed}: a seed the pre-existing chain could clear is still ` +
+        'rejected after the real (margin-included) retry loop -- a genuine item-39 regression');
     }
-  }, 90000);
+    if (nPreExistingGaps) console.log(`${tplId} ${W}x${H} seeds ${first}-${first + n - 1}: ${nPreExistingGaps}/${n} ` +
+      'external seeds hit a pre-existing (unrelated) gap, not an item-39 regression -- see WORK-LOG');
+  }, HEAVY_TEST_MS);
 });
 
 describe('H23 item 39: mutation tests -- proving the sweep above is not vacuous', () => {

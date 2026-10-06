@@ -39,17 +39,20 @@ function weaklySimple(p) {
 
 
 describe('the band inner boundary never crosses itself (T86 item 16(c))', () => {
-  for (const templateId of TEMPLATES) {
-    it(`${templateId} at ${DEPTHS.join(' / ')} in`, () => {
+  // item 67 (test infra): one test per template x depth (was per template, all 4 depths: up to 5.7 s in a full run,
+  // timed out under the fleet's load). The silhouette is the same for every depth, so it is built once per template.
+  const _prims = new Map();
+  const primsFor = (templateId) => {
+    if (!_prims.has(templateId)) {
       const record = normalizeFrameRecord({ templateId });
       const sil = frameContourSilhouette({ defs: FRAME_DEFS, record, board: { widthIn: 7, heightIn: 9 } }, 0, 0);
-      const prims = buildRibbonPrimitives(sil.primitives);
-      const crossing = DEPTHS.filter((d) => {
-        // an area band keeps its exact width (a course band snaps to whole courses)
-        const inner = bricksContourBands(prims, [{ widthIn: d, pattern: 'fieldstone' }], { set: SET, seed: 1 }).innerPath;
-        return inner.length >= 3 && !weaklySimple(inner);
-      });
-      expect(crossing, 'depths whose inner boundary crosses itself').toEqual([]);
-    });
-  }
+      _prims.set(templateId, buildRibbonPrimitives(sil.primitives));
+    }
+    return _prims.get(templateId);
+  };
+  it.each(TEMPLATES.flatMap((t) => DEPTHS.map((d) => [t, d])))('%s at %s in', (templateId, d) => {
+    // an area band keeps its exact width (a course band snaps to whole courses)
+    const inner = bricksContourBands(primsFor(templateId), [{ widthIn: d, pattern: 'fieldstone' }], { set: SET, seed: 1 }).innerPath;
+    expect(inner.length >= 3 && !weaklySimple(inner), 'the inner boundary crosses itself at this depth').toBe(false);
+  });
 });
