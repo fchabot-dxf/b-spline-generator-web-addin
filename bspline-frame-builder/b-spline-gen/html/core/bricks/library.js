@@ -118,6 +118,7 @@ export const BRICK_SETS = Object.freeze([
   {
     id: 1,
     name: 'Brick 1 (red)',
+    faceColor: '#aa4433', // F35 item 56: the set's flat face colour (the SVG download's 'flat' style; the canvas fill when no photo resolves)
     engine: 'masonry', // Fred's own name for this engine (separate textured units + mortar joints,
     // vs P2's 'mc' = the MathieuConnery chiselled-ribbon engine) -- declared per set so the
     // adapter can route a set to the right engine without a type-sniffing guess.
@@ -189,6 +190,7 @@ export const BRICK_SETS = Object.freeze([
   {
     id: 2,
     name: 'Brick 2',
+    faceColor: '#b0603f',
     engine: 'mc', // the MathieuConnery chiselled-ribbon engine (pyramid/hip tiles) -- P2, not yet implemented
     shape: 'rect', // P2's own 'grid' squares reuse this set's samples once that layout lands
     layout: 'grid',
@@ -203,6 +205,7 @@ export const BRICK_SETS = Object.freeze([
   {
     id: 3,
     name: 'White rocks',
+    faceColor: '#c9c3b2',
     // H23 item 74b (advisor): "P1c: Set 2 'White rocks'" -- but BRICK_SETS id:2 is already
     // declared ('Brick 2', engine:'mc', P2's own reserved MathieuConnery slot); this item's own
     // earlier Set-3 comment already earmarked THIS slot for exactly this ashlar/stone follow-up
@@ -259,6 +262,7 @@ export const BRICK_SETS = Object.freeze([
   {
     id: 4,
     name: 'Grey brick',
+    faceColor: '#8d8a86',
     engine: 'masonry',
     shape: 'rect',
     layout: 'bond',
@@ -276,6 +280,7 @@ export const BRICK_SETS = Object.freeze([
   {
     id: 5,
     name: 'Grey stone',
+    faceColor: '#9a958c',
     engine: 'masonry',
     shape: 'irregular',
     layout: 'coursed_rubble',

@@ -1827,9 +1827,9 @@
                (styles/editor.css) — its two buttons stay normal, always-
                visible inline siblings there, byte-identical to before;
                only the mobile breakpoint turns it into an actual hidden-
-               until-tapped popover. SE10 AMEND: editor/tools/action-
-               tools.js:32 already wires bind('editorDownload', ...) to
-               saveWithTextCopies (SHOWN layers only) + a file-save-as —
+               until-tapped popover. editor/tools/action-tools.js wires
+               bind('editorDownload', ...) to saveSvgDownload (F35 item 56:
+               every layer, named groups, flat bricks) + a file-save-as —
                moving these buttons' DOM POSITION doesn't affect that
                id-based wiring at all. -->
           <div id="editorHeaderMoreMenu">
@@ -3302,6 +3302,21 @@
               <div style="flex:1;">
                 <label class="cad-label" style="font-size:10px;">Width (in)</label>
                 <input type="number" id="brickGroutWidth" value="0.06" min="0" max="0.5" step="0.005" style="width:100%;">
+              </div>
+            </div>
+            <!-- F35 item 55: the grout PAINT (main/brick-panel.js setGroutPaint): colour (None = the board shows through) +
+                 Edge (each brick's painted face inset; paint only). Edits the element Select picked, else every element. -->
+            <div id="brickGroutPaintRow" style="display:flex; gap:4px; align-items:flex-end; margin-bottom:6px;">
+              <div style="flex:1;">
+                <label class="cad-label" style="font-size:10px;">Colour <span id="brickGroutPaintScope" style="opacity:0.6;"></span></label>
+                <div style="display:flex; gap:4px;">
+                  <button type="button" id="brickGroutColorSwatch" class="cad-btn" title="Grout colour (the app's colour picker)" aria-haspopup="true" style="width:34px; min-width:34px; height:26px; padding:0;"></button>
+                  <button type="button" id="brickGroutColorNone" class="cad-btn" title="No grout colour: the board shows through the joints" style="height:26px;">None</button>
+                </div>
+              </div>
+              <div style="flex:1;">
+                <label class="cad-label" style="font-size:10px;">Edge (in)</label>
+                <input type="number" id="brickGroutEdge" value="0" min="0" max="0.25" step="0.005" style="width:100%;" title="Each brick's painted face is inset by this much, so the joint reads wider (paint only: the bricks do not change). Visible with a grout colour; always exact in the SVG.">
               </div>
             </div>
             <!-- F35 (Fred: detection only, never changes the value): the SAME hint as the

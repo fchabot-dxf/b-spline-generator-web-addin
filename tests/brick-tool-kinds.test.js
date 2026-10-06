@@ -37,6 +37,7 @@ function fakeEditor() {
     _sketchLayer: {
       node,
       polygon: (pts) => { const el = document.createElement('polygon'); el.setAttribute('points', pts); node.appendChild(el); return wrap(el); },
+      path: (d) => { const el = document.createElement('path'); el.setAttribute('d', d); node.appendChild(el); return wrap(el); }, // item 55: the grout node
       group: () => { const el = document.createElement('g'); node.appendChild(el); return wrap(el); }, // item 22: element records
       children: () => Object.assign([], { toArray: () => [] }) /* svg.js: an array (item 64: a kind layer runs addLayer) */,
     },

@@ -84,7 +84,7 @@ describe('31e: the wall lays the custom bond (real engine)', () => {
       fill: () => api, stroke: () => api }; return api; };
     const svgEl = (tag) => { const el = document.createElementNS('http://www.w3.org/2000/svg', tag); node.appendChild(el); return el; };
     return { _draw: {}, _mW: 7, _mH: 9, _activeLayer: '0', _layers: [{ id: '0', name: 'Layer 1', visible: true }],
-      _sketchLayer: { node, children: () => Object.assign([], { toArray: () => [] }) /* svg.js: an array (item 64: a kind layer runs addLayer) */, group: () => wrap(svgEl('g')), polygon: (pts) => { const el = svgEl('polygon'); el.setAttribute('points', pts); return wrap(el); } } };
+      _sketchLayer: { node, children: () => Object.assign([], { toArray: () => [] }) /* svg.js: an array (item 64: a kind layer runs addLayer) */, group: () => wrap(svgEl('g')), polygon: (pts) => { const el = svgEl('polygon'); el.setAttribute('points', pts); return wrap(el); }, path: (d) => { const el = svgEl('path'); el.setAttribute('d', d); return wrap(el); } } };
   }
   // row 0 (bottom): one whole brick + two halves, the whole one raised; row 1: four halves
   const tile = () => bondTogglePiece(bondJoin(customTile(2, 4, 0.5), 0, 0, 1), 0, 0);

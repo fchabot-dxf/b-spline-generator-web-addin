@@ -32,7 +32,7 @@ import {
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
-import { isCarved, isExported } from '../editor/layers.js';
+import { isCarved, isExported, BRICK_SEND_SKIP } from '../editor/layers.js';
 import {
     buildSketchManifest, splitManifestByKind, BOUNDARY_SKETCH_KIND, BOUNDARY_SKETCH_NAME,
 } from '../editor/editor-sketch-manifest.js';
@@ -162,7 +162,7 @@ export async function _bricksLayerSvg(editor) {
         const r = doc.documentElement;
         if (!r) continue;
         Array.from(r.children).forEach((ch) => {
-            if (ch.getAttribute(BRICK_GEN_ATTR) !== '1') { ch.remove(); return; }
+            if (ch.getAttribute(BRICK_GEN_ATTR) !== '1' || BRICK_SEND_SKIP.includes(ch.getAttribute('data-brick'))) { ch.remove(); return; }
             kept++;
             if (root) root.appendChild(ch);
         });

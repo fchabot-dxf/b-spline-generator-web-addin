@@ -109,8 +109,10 @@ export function generateBricks(input) {
   }).bricks;
   // T86 item 13: the app's own stub (editor-brick-tool.js dropExcludedWallBricks) stands down when this is set
   const notes = { ...(bandsReduced ? { bandsReduced } : {}), ...(input.wallRegion ? { wallRegionApplied: true } : {}) };
-  if (Array.isArray(input.exclusions)) return { bricks, frameBricks, seed, exclusionsApplied: true, ...notes };
-  return { bricks, frameBricks, seed, ...notes };
+  // F35 item 55: + `interiorOutline` (the wall's fill outline: the frame's innerPath, else the board) -- additive, read by
+  // the grout shape (grout-shape.js); every other field is as before
+  if (Array.isArray(input.exclusions)) return { bricks, frameBricks, seed, exclusionsApplied: true, ...notes, interiorOutline };
+  return { bricks, frameBricks, seed, ...notes, interiorOutline };
 }
 
 /** T86 item 18: the wall's region from `input.wallRegion` -- { strokes: [{ points, widthIn }], minus: [...] } (each
