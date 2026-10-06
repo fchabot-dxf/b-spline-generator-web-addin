@@ -54,8 +54,18 @@ export const GENERATE_AFTER_RESTORE = {
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, act, exists, CANVAS, heightsSettled, canvasSettled, editorOpen, openBrickTool, apply, rows, verdict, waitApp, openBrickTab, checkRow, openEditorTab, reloadWithStorage, drag;
+// ---- F35 item 37 (seat E): a FRESH page's first lay (Wall + Frame, Apply) and a reload restoring that board give the
+// IDENTICAL 3D heights hash. Reopened and found (seat E, measured): the brick samples' detail grids came from the
+// browser's own image downscaler, which differs by canvas backend and page load (editor-brick-surface.js areaAverageGrey
+// now), and a reload built an unmasked surface first (app-init.js bootBuildOwner now). The reload read waits on the
+// app's declared restore end (waitApp: core/state.js bootRestore), the live read on the app's own built state.
+export const FRESH_VS_RESTORED = {
+  name: 'Item 37: a fresh first lay and its reload give the same 3D heights',
+  wallTool: 'brickTool_wall', frameTool: 'brickTool_frame', generate: 'brickGenerate',
+};
+
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, act, exists, CANVAS, heightsSettled, canvasSettled, editorOpen, openBrickTool, apply, rows, verdict, waitApp, openBrickTab, checkRow, openEditorTab, reloadWithStorage, drag } = ctx); }
-export async function run() { await runPersistence(); await runPatternParamPersist(); }
+export async function run() { await runPersistence(); await runPatternParamPersist(); await runFreshVsRestored(); }
 
 // a page reload: run after every other group in an all-groups run (it always ran last)
 export const runsLast = true;
@@ -172,4 +182,17 @@ async function checkPersisted(phase) {
 function persistRow(name, ok, detail) {
   rows.push({ name, kind: 'persist', result: 'ok', observed: { detail }, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', persists: ok ? 'PASS' : 'FAIL' } });
   console.log(`${ok ? 'pass' : 'FAIL'}  ${name.padEnd(48)} ${detail}`);
+}
+
+// F35 item 37 (FRESH_VS_RESTORED above)
+async function runFreshVsRestored() {
+  const F = FRESH_VS_RESTORED;
+  await reloadWithStorage({});
+  await openEditorTab('editorTabBrick'); await click(F.wallTool, 800); await click(F.generate, 2500);
+  await click(F.frameTool, 800); await click(F.generate, 2500);
+  await apply();
+  const live = await heightsSettled(null, 40000);
+  await send('Page.reload', {}); await waitApp();
+  const back = await heightsSettled(null, 40000);
+  checkRow('persistence', F.name, !!live && live !== 'none' && live === back, `live ${live} vs restored ${back}`);
 }

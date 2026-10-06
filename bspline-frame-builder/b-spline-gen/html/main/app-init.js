@@ -1,9 +1,10 @@
-import { P, DEFAULT, loadLastSession, saveLastSession, lastResult } from '../core/state.js';
+import { P, DEFAULT, loadLastSession, saveLastSession, markBootRestoreComplete } from '../core/state.js';
 import { encodeLayersAttr, decodeLayersAttr } from '../editor/layers-attr.js';
 import { NoiseModes } from '../core/noise/index.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
-import { rebuild } from '../core/engine.js';
+import { rebuild, whenRebuildIdle } from '../core/engine.js';
+import { beginLoadingSequence } from '../core/loading-signal.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateGlobalButtons, takeSnapshot, globalHistoryLog, setUndoRestoring, isEditorOpen } from '../core/history.js';
 import { AppState } from './app-state.js';
@@ -185,18 +186,11 @@ export function editorRestoreSvg() {
   return P.editorSvg || null;
 }
 
-/** Does this serialized editor document have any drawn content at all?
- *  Used at boot, before window.svgEditor exists, to decide whether the
- *  first rebuild needs a mask refresh — a lightweight parse of the
- *  string, not a live editor._layers query (which isn't available yet). */
-function _editorSvgHasContent(svgText) {
-  if (!svgText) return false;
-  try {
-    const root = new DOMParser().parseFromString(svgText, 'image/svg+xml').documentElement;
-    return !!(root && root.children && root.children.length > 0);
-  } catch (_) {
-    return false;
-  }
+/** Item 37: who builds the 3D at boot -- ONE owner, so a reload never shows an intermediate surface.
+ *  'initSvgEditor': a saved drawing exists; the editor's restore masks it (its layers exist only there) and builds.
+ *  'initApp': no drawing; initApp builds the plain surface itself (the editor restore does nothing then). */
+export function bootBuildOwner() {
+  return editorRestoreSvg() ? 'initSvgEditor' : 'initApp';
 }
 
 /**
@@ -621,22 +615,12 @@ export async function initApp(preview, wireGlobalEvents) {
 
   AppState.isInitializing = false;
 
-  let grid = lastResult ?? resolveGrid(P.widthIn, P.heightIn, P.spacing);
-  if (!grid.nx || grid.nx < 4 || !grid.nz || grid.nz < 4) {
-    grid = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-  }
-  const { nx, nz } = grid;
-
-  // SE4c: content check via the editor document, not the old per-layer
-  // content field (retired). window.svgEditor doesn't exist yet at this
-  // point in boot (initSvgEditor runs right after initApp returns —
-  // main.js), so this
-  // parses the serialized P.editorSvg directly rather than querying a
-  // live editor._layers roster.
-  if (_editorSvgHasContent(P.editorSvg)) {
-    await refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
-  } else {
-    rebuild(preview, updateStampMasks, updatePreviewSculptMode);
+  // Item 37 (seat E, measured): the boot build has ONE owner (bootBuildOwner). A saved drawing is masked + built by
+  // initSvgEditor's restore, the first point where the editor's layers exist; masking it here too (before the editor
+  // existed) built an UNMASKED surface first -- 17 k of 25.5 k cells off by up to 0.37 in, on screen 1.4-5 s at x4.
+  if (bootBuildOwner() === 'initApp') {
+    beginLoadingSequence('sessionRestore');
+    rebuild(preview, updateStampMasks, updatePreviewSculptMode).then(whenRebuildIdle).then(markBootRestoreComplete);
   }
 
   // Seed a baseline snapshot so the FIRST user action is undoable. Undo
@@ -855,9 +839,10 @@ export function initSvgEditor(preview) {
     if (restoreSvg) {
       window.svgEditor.open(restoreSvg, P.widthIn, P.heightIn);
       const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-      // Not awaited (initSvgEditor itself isn't async) — fire-and-forget,
-      // same as the Apply/Cancel paths above.
-      refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
+      // Not awaited (initSvgEditor itself isn't async). Item 37: this is the boot build's owner (bootBuildOwner) --
+      // the loading card covers it end to end, and its landed build is the declared restore end (bootRestore).
+      beginLoadingSequence('sessionRestore');
+      refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode).then(whenRebuildIdle).then(markBootRestoreComplete);
       // SE11b: a restored drawing's colours should drape immediately, not
       // only after the next edit — "editor only... survives save/reopen"
       // (SE9) means drape survives reopen too.
@@ -865,6 +850,8 @@ export function initSvgEditor(preview) {
     }
   } catch (e) {
     console.warn('[initSvgEditor] editor SVG restore failed:', e);
+    // item 37: initApp left the boot build to this restore -- a failed restore still builds the board (unmasked)
+    rebuild(preview, updateStampMasks, updatePreviewSculptMode).then(whenRebuildIdle).then(markBootRestoreComplete);
   }
 
   // T61 (SE15 Slice 1, dev-only): window.__se15Manifest(layerId?) pulls a

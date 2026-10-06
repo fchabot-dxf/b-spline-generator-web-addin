@@ -15045,3 +15045,72 @@ WallPattern = {
   - Accent level -0.0625 -> Undo = 0.0625.
 - The custom join -> Undo (the tile and the open builder) is pinned by pattern-builder item 38; 30/30 pass.
 - Full vitest: 5 failed / 4739 passed. All 5 are 'Test timed out' in the parallel run (bricks-band-fit, bricks-no-corrupt-polygon, element-accents, frame-3d-sweep, silhouette-resolve), and each file passes alone (50/50).
+## seat D (bb) turn 10: A2 (3D-panel audit), a greyed number field greys its -/+ stepper (branch brick-sidebar-fixes)
+- **Measured** (headless, T1): Grout Flush leaves the Grout depth field disabled but both stepper buttons enabled; "+" moved 0.05 -> 0.055 with no effect. It is generic: Clumping's stepper at Suppression 0 is the same.
+  - Cause: the stepper buttons are generic wrappers (ui-bindings.js attachNumberSteppers, `.cad-stepper`, no ids), so no requires rule can name them.
+- **Fix, in the one place that applies the requires rules** (brick-panel.js syncControlRequires): each ruled control's own `.cad-stepper` buttons are greyed with it, with the same reason as their tooltip.
+- **Live after:** under Flush both buttons are off with the rule's tooltip, and "+" leaves 0.05. Clumping's steppers at Suppression 0 are off too.
+- **Test** (brick-discrete-controls-regen): "a greyed number field greys its -/+ stepper too, with the same reason". Fails 1/1 against the pre-change brick-panel.js.
+- **Matrix:** the runner's `isDisabled` (every requires row's "greyed" check) now counts a number field as greyed only if its stepper is greyed too.
+  - sidebar-3d: this tree 13/0. Clean main 52c3055: "Grout depth 0.05 (Flush) ... NOT greyed or hidden" = FAIL.
+
+## seat D (bb) turn 11: A1 (3D-panel audit), the sidebar shows the band-fit note
+- **Measured** (headless, T1 7x9, wall laid and applied, sidebar quick 3-band): before, `#brickLayWarnings` hidden and empty; the editor's Frame section said "Bands reduced to fit the board: 1 of 3 laid." So the sidebar pick changed nothing visible and said nothing.
+  - Cause: the note is declared `where: 'frame'` (BRICK_LAY_WARNINGS), and only elements marked `data-brick-lay-notes="frame"` showed it.
+- **Fix (declared, no greying, Fred's "make the best result"):** an element lists the note places it shows. `data-brick-lay-notes` takes a space-separated list, and one element may carry both it and `data-brick-lay-warnings`. The sidebar box now lists `frame`. The editor's general box does not (its Frame section shows the note).
+- **Live after:** sidebar "Bands reduced to fit the board: 1 of 3 laid." (1366 and 900); the editor's general box stays empty.
+- **Test** (bands-reduced-note): the sidebar box is read from the REAL page (its own fixture copies the old markup), and it shows the note and hides it when the stack fits. Fails 1/1 against the pre-change panel + page.
+- **Matrix 'lay':** + "Sidebar shows the band-fit note (a stack that only partly fits)" (QUICK_FRAME_LAYS.reducedPick, T18). Group: 9 rows, 0 FAIL.
+- **Shots:** seatD/a1_{before,after}_sidebar_three_band_{1366,900}.png.
+
+## seat E (61) turn 6: F35 item 37 / audit A4, the 3D live-vs-reload drift -- NOT REPRODUCED, closed as a load-timing artefact (branch height-drift-37)
+- **The report:** the 3D-panel audit (advisor's agent, main 52c3055) saw a few Applies whose live heights differed from a reload of the same board: p1 probe 2, 13.7% of cells; p18 probe 0, 4.5%, max 0.0004 in; T18 baseline. 2D identical every time. Seat 37's earlier finding was the fresh-start first lay's brick mask.
+- **Replayed, 36 comparisons, 0 differences** (live = lastResult.heights; hashes at 1e-5 / 1e-6):
+  - main 9180c67, seat 37's case (fresh start, first lay vs a reload restoring it): 6/6 runs identical brick masks, 8/8 identical masks + 3D heights.
+  - main, a 12-step sequence in one profile, each step Applied and compared with a reload (wall, frame, herringbone, size, a real brush stroke, Weathered, Organic, Recessed, Carved, Raised, stack, size): 10/10 measurable steps identical.
+  - 52c3055 (the audit's own commit), the T18 baseline replayed exactly from audit3d/audit.mjs (7x10, T18, Wall, Soldier frame, a brush drag, Apply; live vs 2 reloads): 4/4 identical.
+  - 52c3055, the audit's probe loop (re-lay Wall + Frame, Apply, compare with a reload) x6, 2 runs: 12/12 identical.
+  - 52c3055, the same loop under a CPU hog (the full vitest suite running alongside): 6/6 identical.
+  - A temporary hook dumping every input of the mask build (styled set, style, each brick's id / sample / flip / height offset / photo detail) was used and removed (restored from a saved copy; never committed). It had nothing to diff: the fresh and reload builds agreed every time.
+- **Reading:** the mask refresh's generation guard is sound (a superseded refresh drops its result and does not rebuild). The audit's "settled" test was three equal heights polls about 2 s apart; under fleet load a T18 rebuild can outlast that window, so it read an intermediate state. The matrix harness waits for the rebuild's completion count (lastResultGeneration) instead.
+- **Regression row** (advisor ruling): groups/persistence.mjs FRESH_VS_RESTORED. A fresh page lays a Wall + Frame and Applies, then a reload of that board must give the identical heights hash.
+  - Persistence group: 24 rows, 0 FAIL ("live 25521#21egbd vs restored 25521#21egbd").
+  - It pins a property that already holds, so it cannot be shown failing first on today's code. Said plainly: it guards against a return, it is not a reproduction.
+## seat D (bb) turn 15: F35 item 60, a Brush / Raised stroke keeps clear of the frame (branch brick-stroke-drop)
+- **Measured first, app-side** (seat A's brick-e2e board minus the Art layer; tools/repro BRICK_E2E steps; sampled overlap areas from the DOM; scratchpad p60/p60b.mjs):
+  - The raised stroke overlapped 3-5 frame stones, 0.10-0.37 in2 (the stone ring is seeded per run). Seat A's Fusion run saw 3 pairs, 0.272.
+  - Brush x brush: 4 pairs at 0 gap (E4).
+  - Wall slivers < 0.001 in2: 0 in 2 runs (E3 not reproduced app-side; advisor: seat A checks it in its Fusion after-run).
+- **E4 is fixed by fc's joint-rule (2db0668):** census on that branch: brush seams 0.034, 0 zero-gap pairs. The stroke x frame overlap was still there (1-3 pairs, up to 0.48 in2).
+- **Cause of the overlap:** a stroke lays through bricksForStroke -> bricksContourBands / bricksAlongPath, which take no exclusions. The 18c drop rule was private to core/bricks/fill-shape.js cutExclusions.
+- **Fix (advisor OK; fc OK, no collision with joint-rule):**
+  - fill-shape.js: `exclusionHoles` (grow by the joint) and `touchesDrop` (the 18c test) are extracted VERBATIM from cutExclusions, which now calls them. New export `dropTouching(bricks, exclusions, set)` applies the same test. index.js exports it. Not a generateBricks input, so no ENGINE_OPTIONS entry.
+  - editor-brick-tool.js regenerateOwnedBrickElements: the laid FRAME pieces go to dropTouching as {polygon, drop:true} for every stroke, with the stroke's own joint (resolvedSetFor).
+  - The stroke fingerprint gains the frame record's laid key, so a frame re-lay re-lays the strokes too.
+- **Live after** (3 runs on main + this): brush x frame overlaps 0 / 0 / 0; brush x wall 0. The remaining zero-gap pairs are E4, which joint-rule fixes.
+- **Not changed (flagged):** the stroke's grout ribbon (item 55, a 2D paint) still spans the spot a dropped brick leaves.
+- **Tests** (tests/stroke-drop-frame.test.js, 4):
+  - dropTouching: over -> dropped; within one joint -> dropped, past it -> kept; a cut exclusion / none -> untouched.
+  - regenerate: no stroke brick over a frame piece, and the stroke runs through without the frame. This one fails 1/1 against the pre-change editor-brick-tool.js (with the new engine kept).
+  - Wall behaviour unchanged: 63 brick / wall-area / stroke files, 581 passed.
+- **Matrix (item 60):** a new declared group 'strokes' (STROKE_CLEAR + runStrokesClear). It lays seat A's e2e Grey stone frame ring plus the same raised stroke and counts sampled stroke x frame overlaps.
+  - This tree: pass, 0 overlaps (3 stroke bricks, 54 frame pieces).
+  - Old main 52c3055: FAIL, 3 overlaps, 0.2605 in2.
+- **Shots** (seatD): f35_60_{before,after}_stroke_over_frame_{1366,900}.png. Before: the raised stroke runs over the stones on both sides of the waist. After: only its 3 bricks clear of the stones.
+- **Full vitest** (8 GB heap): 324 files, 5305 passed, 0 failed.
+- **Seen once, for seat A's E3:** one run of the census had a wall sliver of 0.00007 in2 (app-side); two earlier runs had none.
+
+## seat D (bb) turn 20: item 60 follow-up, a Continuous stroke across the frame is CUT, not removed
+- **Advisor's bisect:** main + stroke-drop failed the brush row "Brush profile: Continuous" (canvas unchanged); main alone passed.
+- **Measured:** before = after = 3#y0hqhc. The row's stroke crosses T1's frame band at the waist. A Continuous run is laid as long unbroken pieces, and the drop rule took every one touching the frame away, so both strokes reduced to the same few nodes (their grout ribbon) and the change was invisible.
+  - Unit numbers on a 0.2..5.8 in stroke across a 0.8 in frame piece: cut covers 4.70 in (= 5.6 - 0.8 - two 0.05 joints); drop covers 4.10.
+- **Fix (declared, engine + app):**
+  - fill-shape.js: the cut loop of cutExclusions is extracted verbatim as `cutPieces`; cutExclusions calls it.
+  - The export is now ONE op, `bricksClearOf(bricks, exclusions, set)`: a `drop: true` exclusion drops a touching brick whole (18c); any other exclusion CUTS it, each piece keeping the brick's fields (id `<id>~k`). It replaces my unmerged dropTouching.
+  - App: a stroke's frame exclusions are `drop: settings.profile !== 'continuous'`, so brick profiles drop whole bricks and a Continuous run is cut at the frame.
+- **Tests** (stroke-drop-frame, 5):
+  - The cut exclusion case now asserts the cut: 2 parts, fields kept, a joint off each side.
+  - New: a Continuous stroke across the frame is cut, never removed (covered length > 4.6). It fails 1/1 against drop-everything wiring.
+  - Engine / wall / stroke files: 63 files, 698 passed.
+- **Matrix:** brush 10/0 (Continuous now 3#1wpuvju -> 7#s250qh); strokes 1/0.
+- **"strokes did not report" under --parallel (advisor):** a group child exits without a report only on a port / Chrome-start failure (exit 2 before `finally`). With base 9701 and 22 groups, strokes (last) gets port 9921/9922. My own probes ran on 9921-9941 tonight, so the likeliest cause is a collision with my probe, not the group. My probes now use 11xxx.

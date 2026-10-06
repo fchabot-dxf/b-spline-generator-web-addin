@@ -688,8 +688,7 @@ function setupLazyMeta() {
  * into view (`setupLazyMeta` above), almost always for projects that are
  * NOT the one currently open, so there is no live `window.svgEditor` for
  * them. Instead this parses the fetched project's own `P.editorSvg` string
- * (the same lightweight, editor-independent approach `app-init.js`'s
- * `_editorSvgHasContent` already uses at boot) and cross-checks its
+ * (a lightweight, editor-independent parse) and cross-checks its
  * `data-editor-layers` roster for `visible`. This is also a real
  * correctness improvement over the old `.enabled` read, not just an
  * equivalent swap: `.enabled` defaulted `false` for layers 1/2 and was
