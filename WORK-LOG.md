@@ -23243,3 +23243,22 @@ such line drops, less a joint (bisection, 24 steps); note step {band: 0, step: '
   failing groups re-run alone.
 - Changed on purpose: the --parallel / all-groups report row ORDER (BRICK_CONTROLS is group by group); per-group order
   unchanged. Kept: loadFromStandIn in run.mjs, reached by no runner (pre-existing).
+
+## T86 item 31 -- PLAN (measured; awaiting GO): narrowestGap reads corners as gaps (seat B / fc, 2026-10-06)
+narrowestGap (item 28's fit rule: stack <= 1/3 of it) casts each boundary edge's inward normal to the first boundary it
+meets. MEASURED which edge pair gives the reading, 7x9: the bogus ones are all a ray whose first hit is the NEXT
+primitive -- a corner's wedge, not a gap: T7 0.007 in (the r 0.66 hook fillet into its line), T14 0.384 (an hourglass
+side arc into the bottom edge at the acute board corner), T17 0.345 (arc into arc). Everything those lays get is
+"(no fit)" drops on a board with plenty of room.
+Fix tried in a scratch copy, two declared parts:
+ (1) a ray whose FIRST hit is a neighbouring primitive is a corner's wedge: ignored (not continued past it -- my first
+     try continued the ray through the edge and read T14 top-to-bottom, 8.5 in);
+ (2) with (1), no edge normal crosses a WAIST made by two reflex primitive junctions (T14's hourglass: every side ray
+     reaches the corner first), so each reflex junction also casts its inward bisector, first hit, same filter.
+Readings old -> new: T7 0.007 / 0.012 / 0.011 -> 2.68 / 2.33 / 3.53 (7x9 / 6x9 / 9x12); T14 0.384 / 0.473 / 0.542 ->
+2.60 / 2.20 / 3.40 (the waist, which scales with the board); T17 0.345 / 0.999 / 0.648 -> 2.24 / 1.89 / 2.93; T16 (a
+waist the old rays missed) 4.45 / 3.51 / none -> 3.90 / 2.99 / 5.00. Every other template unchanged.
+Lays, 2,052 (19 templates x 9 presets x 0.75-1.5 in x 6x9 / 7x9 / 9x12): 68 change, all T7 / T14 / T16 / T17
+(16 of the 513 at 7x9 <= 1.25 in). Of the 68: 23 only lose a false "(no fit)" (same pieces), 3 T16 6x9 1 in gain a
+true one (waist 2.99 -> limit 1.00 < the 1 in band; same pieces), 42 lay more bands (e.g. T14 7x9 mixed_bands 1 in:
+106 -> 144 pieces). Band overlap 0 on all 68; smallest wall left 8.3 sq in (T16 6x9 at 1 in, unchanged).
