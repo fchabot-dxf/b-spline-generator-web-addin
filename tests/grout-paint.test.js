@@ -49,6 +49,15 @@ describe('groutShapeOf: the region minus the painted faces, one even-odd path', 
     expect(pointOnGrout(g1, 1.05, 1.5)).toBe(true);
     expect(pointOnGrout(g1, 1.5, 1.5)).toBe(false);
   });
+  it('a cut piece with an edge SHORTER than the inset keeps its face (measured: 17 of 147 faces dropped at 0.02)', () => {
+    // a live T1 7x9 wall piece cut at the waist: a 0.006 in edge between two longer ones
+    const piece = [{ x: 4.672, y: 3.67 }, { x: 3.426, y: 3.67 }, { x: 3.426, y: 3.3367 }, { x: 4.676, y: 3.3367 }, { x: 4.676, y: 3.6626 }];
+    const face = insetFace(piece, 0.02);
+    expect(face).not.toBeNull();
+    const xs = face.map((p) => p.x), ys = face.map((p) => p.y);
+    expect(Math.min(...xs)).toBeCloseTo(3.446, 3);
+    expect(Math.max(...ys)).toBeCloseTo(3.65, 2);
+  });
   it('an inset that swallows the brick leaves no face (the whole brick reads as joint)', () => {
     expect(insetFace(sq(0, 0, 0.1, 0.1), 0.06)).toBeNull();
     expect(insetFace(sq(0, 0, 1, 1), 0)).toEqual(sq(0, 0, 1, 1));

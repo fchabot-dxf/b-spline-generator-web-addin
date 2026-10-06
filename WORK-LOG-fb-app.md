@@ -14671,3 +14671,36 @@ WallPattern = {
   - 3D: the drape SVG holds the grout path (fill #3b3b3b). At a 0.034 in joint it is subtle in 3D: face view, mean RGB 158,141,111 -> 149,133,105, 126,691 px changed.
 - **Found, NOT mine (pre-existing):** Send's Bricks sketch carries `style="cursor: pointer;"` on a brick the editor's hover touched, so the sketch string changes after a mere hover. Its fills also carry the brickfill-N counter. Both are noise in any byte-compare of stamp.bricks.svg.
 - **Shots** (shots/seatE): item55_grout_mortar_edge003_2d_desktop.png, item55_grout_select_joint_wall_own_colour_desktop.png, item55_grout_brick_tab_900.png, item55_grout_3d_desktop.png, item55_grout_3d_900.png, item55_3d_face_none_branch.png, item55_3d_face_charcoal_branch.png.
+
+## seat E (61) turn 1 (cont.): F35 item 56, SVG DOWNLOAD -- flat, one file, named groups (branch grout-svg)
+- **Measured before** (seat C, confirmed by the fail-before run below): the download held every brick polygon, but each fill was `url(#brickfill-...)` and the file had 0 `<pattern>` defs (the patterns live in the editor's outer defs). Elsewhere every brick rendered black or empty.
+- **Declared** (editor/svg-export.js):
+  - SVG_BRICK_EXPORT: styles outline | flat | textured. Default 'flat', `exposed: ['flat']`; textured is `available: false` (declared, not built: each photo pattern would have to travel in the file).
+  - SVG_EXPORT_GROUPS, bottom to top: frame / art (per layer) / bricks (per element) / grout (per element). Each one is `<g id inkscape:groupmode="layer" inkscape:label>` (layerGroup), and the root declares xmlns:inkscape.
+  - library.js: a `faceColor` per BRICK_SET (Red #aa4433, Brick 2 #b0603f, White rocks #c9c3b2, Grey brick #8d8a86, Grey stone #9a958c). The canvas's own fallback table SET_COLORS now reads it too (it had 2 entries: sets 4 and 5 fell back to red).
+  - editor-frame-profile.js frameVectorParts: the SAME profile, inner edge, wood colour and miters the canvas draws, as data.
+  - editor-io.js saveSvgDownload (+ editor.saveSvgDownload); the Download button (action-tools.js) calls it. Fonts and text copies travel as before.
+- **The file:**
+  - frame = band (wood, even-odd) + inner edge + miters + cut profile;
+  - art = one sub-group per layer that holds art, in roster order. Hidden layers are included (turn-207 AMEND-3: isExported = every layer); no brick node and no record in it.
+  - bricks = one sub-group per element ('Wall', 'Frame', 'Wall area N', 'Brush stroke N'). Each brick is ONE `<path id="<owner>:<data-brick-id>" data-brick-id data-brick-set fill=faceColor>`. Its face is the brick inset by its element's Edge (GROUT_INSET_ATTR, written on the grout node when it paints), so the file reads only the drawing, no app state.
+  - grout = one sub-group per element with a grout shape: `<path id="<element>:grout" fill-rule="evenodd">`, filled with its colour, or fill="none" for None.
+- **insetFace fixed on the way (measured live):** at Edge 0.02, 17 of 147 faces DROPPED. Cut pieces carry edges as short as 0.006 in; a vertex offset reverses them, and item 55's reversal test then called the whole face swallowed.
+  - Now a convex piece = the intersection of each edge's inward half-plane: exact, and a short edge just vanishes.
+  - A non-convex piece keeps the vertex offset while no edge reverses, else falls back to the half-planes.
+  - Re-measured (a face is only counted as dropped if its bbox is wider than 2 x Edge): stretcher 0/147 at 0.01 and 0.02, 3 at 0.05; herringbone 0 / 2 / 1; fieldstone 0 / 0 / 0.
+  - Every dropped piece but one has 2A/P <= Edge (it really is all joint). The exception: one non-convex herringbone piece at Edge 0.05 (2A/P 0.137) that the half-plane fallback over-shrinks to nothing. Known, named, not fixed.
+  - Unit test added (the live piece with the 0.006 in edge).
+- **Tests:** tests/svg-download.test.js (7). Fail-before: a scratch tree at 3a10b65 (item 55, before 56), with the new svg-export.js copied in and `saveSvgDownload = saveWithTextCopies` (the old download) shimmed: **6/7 fail**, including "no url(#...)", which is seat C's measurement. The 1 that passes is the declarations test (the new module pinned against itself).
+  - jsdom's XML parser does not bind attribute namespaces (measured: `inkscape:label` comes back with namespaceURI null), so the unit tests read the qualified name. The live probe reads getAttributeNS(INKSCAPE_NS) in Chrome.
+- **Live** (scratchpad download_live.mjs: a REAL Download click with Chrome's download behaviour set, the saved file read back):
+  - fresh 7x9 T1, Wall + Frame, sidebar Mortar, Edge 0.02, a rect on Layer 1;
+  - the file is 36,702 bytes with 0 `url(#` and 0 `<pattern>`. Chrome's parser: no error; top groups [frame Frame layer] [art Art layer] [bricks Bricks layer] [grout Grout layer] (via getAttributeNS); art ['Layer 1']; bricks ['Wall','Frame'], 147 paths = 147 laid, fill #aa4433 only; grout ['Wall grout','Frame grout'] #cfc6b4 each; frame 7 parts. 0 page errors.
+  - 900 px: real mouse clicks on the header's overflow menu, then Download SVG, give a byte-identical file.
+  - The file opened ON ITS OWN in a blank page renders as flat red bricks on mortar joints with the frame outline (shot).
+- **For the advisor (not changed):**
+  - Z-order inside the file follows the declared list, so art sits UNDER the bricks. The live board's own roster does the same (Layer 1 under the Wall / Frame kind layers), and the shot of the file shows the art rect covered. If Fred wants art on top, it is one reorder of SVG_EXPORT_GROUPS.
+  - saveWithTextCopies has no app caller any more (the editor method and tests/brick-element-records.test.js still use it). Kept as a NAMED keep, to retire with those tests if you agree.
+  - The palette comment that named saveWithTextCopies as the download is updated.
+- **Fusion, unchanged:** the bricks still reach Fusion from Send's _bricksLayerSvg string (stamp.bricks.svg), not from this download, and the grout stays out of it (BRICK_SEND_SKIP, item 55's test).
+- **Shots** (shots/seatE): item56_download_file_alone_branch.png (the file alone), item56_editor_before_download_branch.png, item56_download_menu_900_branch.png. The file itself: item56_download_branch.svg.

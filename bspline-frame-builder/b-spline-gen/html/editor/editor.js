@@ -5,7 +5,7 @@
 
 import { logAction } from '../core/action-log.js';
 import { pieceKindOf, applyColorOverride } from './editor-piece-override.js';
-import { initIO, save, saveWithTextCopies, saveForRasterization, open, sync3DBackground, getPointerPos } from './editor-io.js';
+import { initIO, save, saveWithTextCopies, saveSvgDownload, saveForRasterization, open, sync3DBackground, getPointerPos } from './editor-io.js';
 import { commitText, cancelText } from './editor-text-session.js';
 import { initText, setFontFamily, setFontSize } from './editor-text-style.js';
 import { fitCurve, getHybridBezierPath } from './editor-curves.js';
@@ -287,6 +287,11 @@ export class VectorEditor {
     saveWithTextCopies(dpi = 96) {
         this._commitText();
         return saveWithTextCopies(this, dpi);
+    }
+    /** F35 item 56: the Download SVG file (editor-io.js saveSvgDownload: named groups, flat brick colours). */
+    saveSvgDownload(opts = {}) {
+        this._commitText();
+        return saveSvgDownload(this, opts);
     }
     /**
      * Async save that embeds @font-face (base64 data: URLs) for every

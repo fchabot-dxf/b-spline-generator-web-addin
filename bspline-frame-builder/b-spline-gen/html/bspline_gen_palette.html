@@ -1827,9 +1827,9 @@
                (styles/editor.css) — its two buttons stay normal, always-
                visible inline siblings there, byte-identical to before;
                only the mobile breakpoint turns it into an actual hidden-
-               until-tapped popover. SE10 AMEND: editor/tools/action-
-               tools.js:32 already wires bind('editorDownload', ...) to
-               saveWithTextCopies (SHOWN layers only) + a file-save-as —
+               until-tapped popover. editor/tools/action-tools.js wires
+               bind('editorDownload', ...) to saveSvgDownload (F35 item 56:
+               every layer, named groups, flat bricks) + a file-save-as —
                moving these buttons' DOM POSITION doesn't affect that
                id-based wiring at all. -->
           <div id="editorHeaderMoreMenu">

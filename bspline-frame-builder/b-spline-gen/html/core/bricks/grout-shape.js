@@ -13,29 +13,46 @@
  * polygon -- the geometry the height mask, Send and CAM read -- is never touched. The editor (editor-brick-tool.js
  * drawElementGrout), the Brick tab's Select and the SVG download all read this one function.
  */
-import { pointInPolygon, polygonIntersection, offsetPathInward, inwardSignFor, signedArea } from './geometry.js';
+import { pointInPolygon, polygonIntersection, offsetPathInward, inwardSignFor, signedArea, clipToHalfPlane, isConvex } from './geometry.js';
 
 /** The grout node's id: `<element id>:grout`. */
 export const GROUT_ID_SUFFIX = ':grout';
 export const groutIdOf = (elementId) => `${elementId}${GROUT_ID_SUFFIX}`;
 
-/** The painted face of a brick: its polygon inset by `insetIn` (>= 0). An inset that swallows the brick leaves no face:
- *  the whole brick reads as joint. Swallowed = an edge turned back on itself (an inset past the brick's middle reflects
- *  it through its centre, which keeps the area's sign: only the edge directions tell) or no area left. */
+/** The painted face of a brick: its polygon inset by `insetIn` (>= 0); null when the inset swallows it (the whole
+ *  brick reads as joint). A CONVEX piece (every brick, most cut pieces) is exact: the intersection of each edge's
+ *  inward half-plane, so an edge shorter than the inset simply vanishes (measured: cut pieces carry 0.006 in edges, and
+ *  a vertex offset reverses them -- 17 of 147 faces dropped at Edge 0.02). A non-convex piece takes the vertex offset
+ *  (offsetPathInward) while no edge reverses, else the half-planes (it then over-shrinks near its reflex corner). */
 export function insetFace(polygon, insetIn) {
   const inset = Number(insetIn) || 0;
   if (!polygon || polygon.length < 3) return null;
   if (inset <= 0) return polygon.map((p) => ({ x: p.x, y: p.y }));
+  if (isConvex(polygon)) return _halfPlaneInset(polygon, inset);
   const out = offsetPathInward(polygon, inset, inwardSignFor(polygon));
-  const a0 = signedArea(polygon), a1 = signedArea(out);
-  if (Math.sign(a1) !== Math.sign(a0) || Math.abs(a1) < 1e-6) return null;
   const n = polygon.length;
-  for (let i = 0; i < n; i++) {
+  let ok = Math.sign(signedArea(out)) === Math.sign(signedArea(polygon)) && Math.abs(signedArea(out)) > 1e-6;
+  for (let i = 0; ok && i < n; i++) {
     const j = (i + 1) % n;
-    const dot = (out[j].x - out[i].x) * (polygon[j].x - polygon[i].x) + (out[j].y - out[i].y) * (polygon[j].y - polygon[i].y);
-    if (dot < 0) return null;
+    ok = (out[j].x - out[i].x) * (polygon[j].x - polygon[i].x) + (out[j].y - out[i].y) * (polygon[j].y - polygon[i].y) >= 0;
   }
-  return out;
+  return ok ? out : _halfPlaneInset(polygon, inset);
+}
+/** The polygon cut by every edge's line moved `inset` inward (the inward side read off the winding: signedArea < 0 is
+ *  counter-clockwise in y-up, geometry.js measured), null when nothing (or no area) is left. */
+function _halfPlaneInset(polygon, inset) {
+  const ccw = signedArea(polygon) < 0;
+  let out = polygon.map((p) => ({ x: p.x, y: p.y }));
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i], b = polygon[(i + 1) % polygon.length];
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+    if (len < 1e-9) continue;
+    const nx = (ccw ? -dy : dy) / len, ny = (ccw ? dx : -dx) / len;
+    const point = { x: a.x + nx * inset, y: a.y + ny * inset };
+    out = clipToHalfPlane(out, { point, dirX: dx, dirY: dy }, { x: point.x + nx, y: point.y + ny });
+    if (!out || out.length < 3) return null;
+  }
+  return Math.abs(signedArea(out)) > 1e-6 ? out : null;
 }
 
 /** Points along ribbon primitives ({type:'line', p0, p1} | {type:'arc', cx, cy, r, theta1, theta2}, the frame contour

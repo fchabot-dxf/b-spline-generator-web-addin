@@ -18,6 +18,7 @@ import { dbg } from '../core/debug.js';
 import { OUTLINE_KINDS } from './editor-outline-preview.js';
 import { drawFrameProfile } from './editor-frame-profile.js';
 import { repaintBricks, migrateBrickRecords } from './editor-brick-tool.js';
+import { svgDownloadGroups, SVG_BRICK_EXPORT, INKSCAPE_NS } from './svg-export.js';
 
 /** Editor-IO diagnostic logging — fusLog goes to the Fusion log file so
  *  layer-restore regressions stay observable. Console output is quiet by
@@ -733,6 +734,33 @@ export async function saveWithTextCopies(editor, dpi = 96) {
     const activeAttrStr = editor._activeLayer != null ? ` data-editor-active-layer="${String(editor._activeLayer)}"` : '';
     const svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}"${layersAttrStr}${activeAttrStr}>${styleBlock}${content}${textContent}</svg>`;
     return svgString;
+}
+
+/** F35 item 56: the SVG DOWNLOAD -- ONE file whose top-level groups are svg-export.js's SVG_EXPORT_GROUPS (frame / art per
+ *  layer / bricks per element / grout per element), named for Illustrator / Inkscape, bricks as flat vector colours
+ *  (SVG_BRICK_EXPORT). The fonts and the text copies travel as they did in saveWithTextCopies. */
+export async function saveSvgDownload(editor, { style = SVG_BRICK_EXPORT.default, dpi = 96 } = {}) {
+    if (!editor._draw || !editor._sketchLayer) return "";
+    const textCopies = [];
+    const fontFamilies = new Set();
+    for (const ch of editor._sketchLayer.node.children) {
+        const originalTextSvg = decodeSnapshot(ch.getAttribute('data-original-text-svg'));
+        if (!originalTextSvg) continue;
+        textCopies.push(originalTextSvg);
+        const tempEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        tempEl.innerHTML = originalTextSvg;
+        const family = tempEl.querySelector('text')?.getAttribute('font-family');
+        if (family) fontFamilies.add(family.replace(/['"]/g, '').trim());
+    }
+    const fontCss = [];
+    for (const family of fontFamilies) {
+        const css = await getEmbeddedFontCss(family);
+        if (css) fontCss.push(css);
+    }
+    const styleBlock = fontCss.length ? `<defs><style type="text/css">${fontCss.join('\n')}</style></defs>` : '';
+    const textContent = textCopies.length ? `<defs class="editor-metadata">${textCopies.join('')}</defs>` : '';
+    const wPx = editor._mW * dpi, hPx = editor._mH * dpi;
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="${INKSCAPE_NS}" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${styleBlock}${svgDownloadGroups(editor, style)}${textContent}</svg>`;
 }
 
 /**

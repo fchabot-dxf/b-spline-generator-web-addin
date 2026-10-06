@@ -152,7 +152,7 @@ function applyBrickLayerTooling(layer, settings) {
  *  representative colour per set is the honest, achievable stand-in: Set
  *  1's own red-brick photos read red-brown; Set 3's own fieldstone photos
  *  read pale warm grey. */
-const SET_COLORS = Object.freeze({ 1: '#aa4433', 3: '#c9c3b2' });
+const SET_COLORS = Object.freeze(Object.fromEntries(BRICK_SETS.map((s) => [s.id, s.faceColor]))); // F35 item 56: each set's declared faceColor (library.js)
 const DEFAULT_BRICK_COLOR = SET_COLORS[1];
 
 /** Draws one `{id, polygon:{x,y}[], sampleId, flip, heightOffset}` brick as a
@@ -251,6 +251,7 @@ function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn, ownerId 
 export const GROUT_KIND = 'grout';
 export const GROUT_OF_ATTR = 'data-brick-grout-of'; // the element KIND it belongs to: wall | frame
 export const GROUT_REGION_ATTR = 'data-grout-region'; // its region [{ outer, holes }], JSON, board inches
+export const GROUT_INSET_ATTR = 'data-grout-inset'; // item 56: its element's Edge when painted (the SVG download insets the faces by it)
 export const GROUT_ELEMENT_KINDS = Object.freeze(['wall', 'frame']);
 /** The paint a NEW board starts with, and what a saved board without the keys reads: no colour, no inset. */
 export const GROUT_PAINT_DEFAULT = Object.freeze({ color: null, paintInsetIn: 0 });
@@ -290,6 +291,7 @@ function _paintGroutNode(editor, n, settings) {
   n.setAttribute('id', groutIdOf(id));
   n.setAttribute('fill', paint.color || 'none');
   n.setAttribute('fill-rule', 'evenodd');
+  n.setAttribute(GROUT_INSET_ATTR, String(paint.paintInsetIn));
   return shape;
 }
 const _roundRegion = (region) => region.map((r) => ({
