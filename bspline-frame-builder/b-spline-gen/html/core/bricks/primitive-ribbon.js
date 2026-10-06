@@ -658,7 +658,7 @@ function patchSlicePolygon(boundary, cum, sA, sB, q) {
  *  floor, 1.2x ceiling as everywhere else) -- a piece near the shared apex `q` is a genuine wedge, and
  *  a short one can still clip to a real sliver regardless of how evenly its own along-boundary length
  *  was planned; this is what "apex fan slivers merged" means, not a second, different defect. */
-function buildPatch(prevPrim, curPrim, dropped, d0, A, B, q, pitch, nominalJoint, width, sequence, forcedFStart) {
+function buildPatch(prevPrim, curPrim, chain, d0, q, pitch, nominalJoint, width, sequence, forcedFStart) {
   // T86 item 9 (the BEVEL sub-case: a dropped LINE between two NON-parallel sides, where the
   // direct skip-intersection IS defined -- unlike a NOTCH, see `buildNotchJoint`'s own header):
   // the simpler of the two dropped-primitive shapes -- no curve to tessellate, since a straight
@@ -666,15 +666,23 @@ function buildPatch(prevPrim, curPrim, dropped, d0, A, B, q, pitch, nominalJoint
   // segment from A to B directly, with the two flat strips already contributing A/B themselves as
   // their own endpoints (same as the arc case's `tessellateArcSpan(...).slice(1,-1)` dropping its
   // own first/last point for the identical reason -- here there is simply nothing left to drop).
-  const middle = dropped.type === 'line' ? [] : (() => {
-    const off = offsetPrimitive(dropped, d0);
-    const direction = Math.sign(dropped.theta2 - dropped.theta1) || 1;
-    const thetaA = Math.atan2(A.y - off.cy, A.x - off.cx);
-    let thetaB = Math.atan2(B.y - off.cy, B.x - off.cx);
+  // T86 item 21b: `chain` = the dropped primitives in walk order, each with its own d0 span
+  // `{ prim, from, to }` -- usually ONE (a fillet), and then the middle is exactly the one span above. T8's
+  // right-bottom corner at 1.25 in drops TWO (a fillet whose radius 1.253 is the band depth, plus the 1.11 in
+  // line after it); the middle then walks every span, joined at their own d0 joints.
+  const A = chain[0].from, B = chain[chain.length - 1].to;
+  const middle = [];
+  chain.forEach(({ prim, from, to }, i) => {
+    if (i > 0) middle.push(from); // the joint between this dropped primitive and the one before it
+    if (prim.type === 'line') return;
+    const off = offsetPrimitive(prim, d0);
+    const direction = Math.sign(prim.theta2 - prim.theta1) || 1;
+    const thetaA = Math.atan2(from.y - off.cy, from.x - off.cx);
+    let thetaB = Math.atan2(to.y - off.cy, to.x - off.cx);
     while ((thetaB - thetaA) * direction < 0) thetaB += direction * 2 * Math.PI;
     while ((thetaB - thetaA) * direction > 2 * Math.PI) thetaB -= direction * 2 * Math.PI;
-    return tessellateArcSpan(dropped, d0, thetaA, thetaB).slice(1, -1);
-  })();
+    middle.push(...tessellateArcSpan(prim, d0, thetaA, thetaB).slice(1, -1));
+  });
 
   const boundary = [
     ...flatStripToTangent(prevPrim, d0, q, A),
@@ -892,6 +900,21 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
       const notch = buildNotchJoint(primitives, prevIdx, droppedIdx, curIdx, d0, d1, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
       if (notch) return notch;
     }
+    // T86 item 21b: two or more primitives dropped between the neighbours (T8 1.25 in: a fillet + the line after it)
+    // can leave the neighbours' own d0 offsets with no crossing at all (`o` null), and returning null here left the
+    // corner with no joint and no patch (the neighbour's last piece ran on, the fillet's sector went bare: 0.29 sq in).
+    // The patch over the whole dropped chain fills it; the neighbours stay `q`-based, exactly as for one fillet.
+    if (droppedIdx !== null && !o && q) {
+      const chainIdx = [];
+      for (let idx = (prevIdx + 1) % n; idx !== curIdx; idx = (idx + 1) % n) if (primitiveLiveAtDepth(primitives, idx, d0, closed)) chainIdx.push(idx);
+      const ends = [prevIdx, ...chainIdx, curIdx];
+      const at = ends.slice(1).map((idx, i) => jointPointAt(primitives, ends[i], idx, d0));
+      if (at.every(Boolean)) {
+        const chain = chainIdx.map((idx, i) => ({ prim: primitives[idx], from: at[i], to: at[i + 1] }));
+        const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], chain, d0, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
+        return { point: q, q, dirX: 0, dirY: 0, keepRefAsStart: q, keepRefAsEnd: q, trustO: false, kiteFan };
+      }
+    }
     if (!o || !q) return null;
     // T86 item 1: a butt/lapped/block corner only ever applies at a genuine, undropped, line-line
     // joint -- a dropped primitive between the neighbours (almost always a fillet/arc) and any
@@ -933,7 +956,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     const A = jointPointAt(primitives, prevIdx, droppedIdx, d0);
     const B = jointPointAt(primitives, droppedIdx, curIdx, d0);
     if (!A || !B) return { ...joint, trustO }; // defensive: no patch rather than a bad one
-    const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], dropped, d0, A, B, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
+    const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], [{ prim: dropped, from: A, to: B }], d0, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
     return { ...joint, trustO, kiteFan };
   });
 
