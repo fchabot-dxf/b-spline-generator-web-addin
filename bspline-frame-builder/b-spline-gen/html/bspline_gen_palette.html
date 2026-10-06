@@ -19,8 +19,21 @@
        and the local preset feature continues to work unchanged.
        Deploy the Worker from cloud/preset-worker/ (see its README), then
        uncomment and paste the printed *.workers.dev URL below. -->
+  <!-- 2026-10-06 (the live worker: 500 "KV list() limit exceeded for the day", spent by a day of headless probes):
+       a page served from a LOOPBACK host -- every local harness and probe (tools/serve_app.py, http.server, the
+       brick matrix) -- never reaches Fred's real worker: its API URL is a dead loopback address (fetches fail fast,
+       the app reads it as offline; the brick matrix's stand-in answers by URL prefix, so it keeps working). A probe
+       that needs the real worker opts in with ?realCloud=1 (brick matrix: --real-cloud). The live site (https) and
+       Fusion (file://) are unchanged. -->
   <script>
-    window.BSPLINE_PRESETS_API_URL = 'https://projects-dansemur.dansemur.workers.dev';
+    (function () {
+      var REAL_CLOUD = 'https://projects-dansemur.dansemur.workers.dev';
+      var CLOUD_OFF = 'http://127.0.0.1:9/cloud-off';
+      var h = location.hostname;
+      var loopback = /^https?:$/.test(location.protocol) && (h === '127.0.0.1' || h === 'localhost' || h === '[::1]');
+      var optIn = /[?&]realCloud=1(&|$)/.test(location.search);
+      window.BSPLINE_PRESETS_API_URL = loopback && !optIn ? CLOUD_OFF : REAL_CLOUD;
+    })();
   </script>
   <!-- canvg v4 loaded dynamically inside stamp.js -->
   <!-- Consolidated stylesheets -->
@@ -291,6 +304,13 @@
     .cad-nav-version.build-ok      { color: #4caf50; }
     .cad-nav-version.build-stale   { color: #ffb300; }
     .cad-nav-version.build-unknown { color: var(--cad-text-muted); }
+    /* H23 item 93: a stale deploy marks the Settings button (where the badge lives) -- the
+       status line sits over the header buttons, so the build status never goes there. */
+    #settings-btn { position: relative; }
+    #settings-btn.build-warn::after {
+      content: '⚠'; position: absolute; top: -2px; right: -2px;
+      font-size: 10px; line-height: 1; color: #ffb300; pointer-events: none;
+    }
 
     /* Mobile: bump nav buttons to a touch target and keep the WHOLE header
        (back + unsaved dot + all 7 action buttons) on ONE row at 390px.

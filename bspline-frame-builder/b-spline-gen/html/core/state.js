@@ -1,7 +1,7 @@
 import { COORD_SYSTEM } from './coords.js';
 import { isDirty, markDirty } from './dirty.js';
 import { dbg } from './debug.js';
-import { fusLog } from './fusion-log.js';
+import { fusDebug } from './fusion-log.js';
 import { brickSetById } from './bricks/library.js';
 
 // Audit C4: the brick defaults' ONE source is Set 1's own declaration (library.js) -- the state
@@ -481,8 +481,8 @@ export function saveLastSession() {
             localStorage.removeItem('splineGenLastSession');
             throw quota;
         }
-        // Automatically send session JSON to Fusion log file if running inside Fusion
-        fusLog(JSON.stringify(session));
+        // The session JSON in the Fusion log is debug-level (H23 item 93: ~290 KB a save rotated the log twice a load)
+        fusDebug(JSON.stringify(session));
     } catch (e) {
         console.warn('saveLastSession failed:', e);
     }

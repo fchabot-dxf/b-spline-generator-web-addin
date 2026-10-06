@@ -37,6 +37,7 @@ import { handlePageViews } from './pageviews-route.js';
 import { handleBus } from './bus-route.js';
 import { readBoundedBody } from './body.js';
 import { checkEditGate, isGateKey } from './edit-gate.js';
+import { listItems, indexUpsert, indexRemove, rememberIfMissing } from './presets-index.js';
 
 export default {
   async fetch(request, env) {
@@ -216,8 +217,8 @@ async function handleBspline(request, env, method) {
   // List: GET /projects or /presets
   if ((path === '/projects' || path === '/presets') && method === 'GET') {
     try {
-      const list  = await env.PRESETS.list();
-      const items = list.keys.filter((k) => !isGateKey(k.name)).map((k) => ({ name: k.name, ...(k.metadata || {}) }));
+      // one KV read (presets-index.js), not list(): the free tier's 1,000 list() a day ran out (2026-10-06)
+      const items = await listItems(env.PRESETS, isGateKey);
       return json({ names: items.map((i) => i.name), items });
     } catch (e) {
       return json({ error: 'list failed', detail: String(e) }, 500);
@@ -232,19 +233,23 @@ async function handleBspline(request, env, method) {
     if (name.length > 200) return json({ error: 'name too long' }, 400);
 
     if (method === 'GET') {
-      const value = await env.PRESETS.get(name);
+      const { value, metadata } = await env.PRESETS.getWithMetadata(name);
       if (value === null) return json({ error: 'not found' }, 404);
+      await rememberIfMissing(env.PRESETS, name, metadata || {}); // self-heal a lost index update
       return new Response(value, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
     }
     if (method === 'PUT') {
       const r = await readBoundedBody(request); if (r.error) return r.error; const body = r.body;
       try { JSON.parse(body); } catch   { return json({ error: 'invalid JSON' }, 400); }
       const savedAt = Date.now();
-      await env.PRESETS.put(name, body, { metadata: { savedAt, size: body.length } });
+      const meta = { savedAt, size: body.length };
+      await env.PRESETS.put(name, body, { metadata: meta });
+      await indexUpsert(env.PRESETS, name, meta);
       return json({ ok: true, name, savedAt });
     }
     if (method === 'DELETE') {
       await env.PRESETS.delete(name);
+      await indexRemove(env.PRESETS, name);
       return json({ ok: true, name });
     }
     return json({ error: 'method not allowed' }, 405);
@@ -255,8 +260,8 @@ async function handleBspline(request, env, method) {
 
   if (path === '/cam-profiles' && method === 'GET') {
     try {
-      const list  = await env.PRESETS.list({ prefix: CAM_PREFIX });
-      const items = list.keys.map((k) => ({ name: k.name.slice(CAM_PREFIX.length), ...(k.metadata || {}) }));
+      const items = (await listItems(env.PRESETS, isGateKey)).filter((i) => i.name.startsWith(CAM_PREFIX))
+        .map((i) => ({ ...i, name: i.name.slice(CAM_PREFIX.length) }));
       return json({ names: items.map((i) => i.name), items });
     } catch (e) {
       return json({ error: 'list failed', detail: String(e) }, 500);
@@ -271,19 +276,23 @@ async function handleBspline(request, env, method) {
     const key = CAM_PREFIX + name;
 
     if (method === 'GET') {
-      const value = await env.PRESETS.get(key);
+      const { value, metadata } = await env.PRESETS.getWithMetadata(key);
       if (value === null) return json({ error: 'not found' }, 404);
+      await rememberIfMissing(env.PRESETS, key, metadata || {});
       return new Response(value, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
     }
     if (method === 'PUT') {
       const r = await readBoundedBody(request); if (r.error) return r.error; const body = r.body;
       try { JSON.parse(body); } catch   { return json({ error: 'invalid JSON' }, 400); }
       const savedAt = Date.now();
-      await env.PRESETS.put(key, body, { metadata: { savedAt, size: body.length } });
+      const meta = { savedAt, size: body.length };
+      await env.PRESETS.put(key, body, { metadata: meta });
+      await indexUpsert(env.PRESETS, key, meta);
       return json({ ok: true, name, savedAt });
     }
     if (method === 'DELETE') {
       await env.PRESETS.delete(key);
+      await indexRemove(env.PRESETS, key);
       return json({ ok: true, name });
     }
     return json({ error: 'method not allowed' }, 405);

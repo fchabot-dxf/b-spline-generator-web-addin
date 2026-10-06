@@ -23591,3 +23591,72 @@ changed lay 0.0308. Test: bricks-dropped-chain + T8 (mutation: the back-off on c
 - SWEEP: app-init.js _editorSvgHasContent (its only caller was the boot mask) removed; cloud-project-manager.js comment
   that cited it reworded; app-init.js lastResult import (unused after) dropped. Kept: initApp's refreshAllStampMasks
   import (initSvgEditor still uses it).
+
+## Projects worker: KV list() budget (advisor, urgent; seat B / fc, 2026-10-06), branch projects-list-budget
+Live GET /projects answered 500 "KV list() limit exceeded for the day" (free tier: 1,000 list() a day).
+MEASURED: the worker listed with PRESETS.list() on every GET /projects (the whole store) and GET /cam-profiles; the app
+(cloud-project-manager.js) listed at every page load (the "continue from phone" banner, 2.5 s after boot), again on
+every Projects-panel open and after every save / delete / rename; about 85 tools/repro scripts + the brick matrix
+load the app in headless Chrome over LOOPBACK http, and only the matrix installed a cloud stand-in.
+(2) Worker: presets-index.js -- one index key (__index::presets) kept in step by every PUT/DELETE (after the write: a
+gated write only once the password passed); both listings read it (1 KV read). Self-heal instead of locks (two writes
+at once can lose an entry; one user, rare): rebuilt from list() when missing / corrupt / older than 6 h; a GET of a
+key missing from the index puts it back. The rebuild pages with a cursor (the old single list() capped at 1,000 keys).
+(1) App: one list fetch shared by the boot banner and the panel within 30 s (LIST_CACHE_TTL_MS), in-flight shared, a
+failed one never reused, any write clears it. The banner stays (Fred's feature) -- now a KV read, not a list().
+(3) bspline_gen_palette.html: a loopback-served page's API URL is a dead loopback address unless ?realCloud=1 (the
+brick matrix: --real-cloud) -- one declared rule for every harness, current and future; live site / Fusion unchanged.
+NUMBERS: worker list() per GET /projects 1 -> 0 (a rebuild at most every 6 h); app list fetches per page load with
+the panel opened 2 -> 1; local probes reaching the real worker: all -> none.
+Tests: presets-index-worker (5: one list() then none, writes in step incl. /presets + /cam-profiles, refused write
+leaves it, self-heal + stale rebuild, corrupt index), project-list-budget (banner + panel share one fetch; TTL; failed
+not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Brick matrix password 4/4, persistence
+24/24, migration 5/5 through the stand-in behind the dead URL. Full vitest 333 / 5,427.
+## H23 item 92: the Fusion palette opened as the website (no Send button) -- seat A / 77, 2026-10-06
+- Found during the item 70 re-check: three fresh palette opens in a row came up in WEB mode ('STEP' / 'Add-in', no
+  Send). pollMode gave Fusion's `adsk` 3 x 100 ms; the page's JS logs reached Python seconds later, so adsk was
+  injected late. A test-only bump of MAX_MODE_CHECKS in the deployed copy gave Fusion mode at once.
+- Fix (declared, not a magic number): html/data/fusion-host.js declares the host flag (?host=fusion), the Fusion wait
+  (modeDetectTimeoutMs 10000), the poll step and the website's grace (webGraceMs 300, today's value). The add-in
+  (_palette_url) opens the palette at file:///<path>?host=fusion; pollMode waits up to the declared timeout only on a
+  page carrying the flag, and decides the moment adsk appears. The website / an older add-in keeps the 300 ms.
+- Probe before the fix (scratch palettes, deleted): palettes.add REFUSES a bare path with a query ("Invalid
+  htmlFileURL"); the file:/// form with a query loads and keeps location.search. (stamp-editor.py's comment says
+  palettes.add rejects query strings on creation -- true only for the bare-path form.)
+- [MODE] log line: how long the page waited for adsk, the margin the timeout keeps.
+- Tests: tests/fusion-mode-detect.test.js 5 (3/5 fail on the old pollMode: late adsk, decide-at-once, timeout
+  fallback); test_palette_host_url.py 2, driving the real CommandExecuteHandler (2/2 fail without the add-in change).
+  Full vitest 5420/5420 (332 files); b-spline-gen pytest 157/157. Known failures: none.
+- Live, brick-wall board, scratch palette opens by deleteMe + execute: c269381 5/5 Fusion mode; f6536fc 5/5 Fusion mode,
+  adsk after 102 / (lost to log rotation) / 549 / 864 / 0 ms. 549 and 864 are past the old 300 ms: those opens would have
+  been the website. Page load itself varied 2-50 s on this busy machine.
+- Side notes, not fixed: the log rotates at 512 KB and one palette load writes ~600 KB (the P dump), so a load's own
+  lines can be rotated out twice; the build-info status reads "could not resolve source HEAD" for a deploy from a
+  worktree (fb_shared/build_info.py:134) and covers the header buttons.
+## H23 item 93: the add-in log keeps its own Send; the build status never covers the header -- seat A / 77, 2026-10-06
+- Measured first (logs from the item 70 / 92 live runs): a palette load was 99.9% ONE line kind -- state.js
+  saveLastSession echoing the whole session JSON into the add-in log (~290 KB a save with a brick wall, ~2 saves a
+  load), so one load passed the 512 KB rotation twice and its own lines were gone. A Send's own ~55 KB was 2/3
+  '[DEBUG] ATTR TAG' (fb_engine build_context) + 1/6 'CONSTRAINT OK' lines.
+- Declared html/data/addin-log.js (pure JSON, read by both sides): debug false, debugPrefixes ['[DEBUG]',
+  'CONSTRAINT OK:'], rotateBytes. _log drops a line starting with a debug prefix unless debug is on (the sketch
+  builder's _Logger.records still counts them, so its summaries are unchanged); unreadable declaration -> the old
+  behaviour (everything, 512 KB). fusion-log.js gains fusDebug (sent only with debug on); the session echo uses it, so
+  by default it never crosses the bridge. [STAGE]/[MODE]/[XFER]/[PROGRESS]/warnings/errors are never demoted (test).
+  Nothing in the repo reads the session echo back out of the log (grepped).
+- Live (deployed c1667a8, 7x9 frame + brick wall, scratch doc): a palette load wrote 1,963 B (was ~600 KB); load +
+  Send incl. the frame build 21.7 KB (Send 19.5 KB: chunk transfer + XFER timing lead). rotateBytes 2 MB: a load +
+  Send fits twice even with debug on (~0.7 MB each).
+- build_info: a linked worktree's gitdir holds only HEAD; branch refs + packed-refs live in the dir its `commondir`
+  names, so a worktree deploy read 'could not resolve source HEAD'. _read_head_sha now looks there too. And the build
+  status no longer uses the fixed status line (position:fixed over the header, a never-clearing 'warn'):
+  main/build-badge.js paints the Settings > Version badge and marks the Settings button (⚠, tooltip) when stale;
+  'unknown' only mutes the badge. Live: worktree deploy -> header clear, Send to Fusion visible, no mark (HEAD
+  resolved = up to date).
+- Tests: test_addin_log_levels.py 5 (3/5 fail on the old _log), addin-log-debug.test.js 4 (2/4 fail on the old
+  code), test_build_info_worktree.py 5 (3/5 fail on the old resolver), build-badge-no-overlay.test.js 4 (the main.js
+  wiring check fails on the old main.js). Full vitest 5425/5425 (333 files); b-spline-gen pytest 160/160. Known
+  failures: none.
+- Not touched: the 5 '[ERROR] CONSTRAINT FAIL ... VCS_SKETCH_SOLVING_FAILED' lines every Send of this board logs
+  (also in the item 70 runs on other builds). _palette_url (item 92, not on main yet) parses its declaration the same
+  way as the new _read_declared_json: fold it in when both are merged.
