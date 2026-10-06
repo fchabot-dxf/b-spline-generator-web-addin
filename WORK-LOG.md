@@ -23828,3 +23828,6 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   10 of 31.8 GB free; at the time of the miss Fusion held 65 GB): one applied T1 board, 20 x (Quick pattern Herringbone,
   Stretcher) = 40 picks, each checked for a new laid geometry + pattern within 8 s: 40/40 re-laid (0.9 s each), 0 misses.
   Taken as the memory starvation at the time, not a fault in the pick path.
+- CORRECTION to the line above: Fusion was NOT restarted -- 1.2 GB was its working set; its private bytes were still
+  65.2 GB (pid 34688, since 2026-10-05 19:17; read PrivateMemorySize64, not WorkingSet64). The 40/40 run stands as a
+  measurement with 10 of 31.8 GB free; the miss is not explained by a restart, only by the lower free memory at the time.
