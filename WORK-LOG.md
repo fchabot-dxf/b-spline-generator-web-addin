@@ -22494,3 +22494,34 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
 - Hygiene: two scratch docs created and closed by handle; Fred's 'Untitled' untouched and re-activated; holder none.
 - Candidate quirks, ONE observation each (not recorded in the skill yet): job_stockFixedZMode is read in the setup's
   frame; an MM built after a same-name delete + recreate binds the deleted geometry; workCoordinateSystem reads mm.
+
+## H23 item 82b -- the Frame setup's fixed box gets its dims written (seat A / 77, 2026-10-05)
+- Same bug class as the panel box: the Frame spec is fixed_box but nothing wrote its dims, so Fusion's 13 x 10 in
+  default stood around a 10 x 8 model (measured on the item-82 acceptance build).
+- Declared: cam_position.py MARGIN_XY_IN (one margin, 1.0 in total) used by both boxes; new CAM_POSITION['frame_stock']
+  = margin + Z '(surfaceZHigh - surfaceZLow)' (the bars' own thickness: frame stock is not the 2 in panel blank),
+  xy centre, world-bottom. SETUP_SPECS: Back 'stock_box': 'stock', Frame 'stock_box': 'frame_stock';
+  _apply_stock_box(setup, name, logger, box_key). Frame's WCS untouched ('top 1', as before).
+- Tests: every fixed_box spec names a declared box; the Frame box writes margin X/Y + model Z; Back names 'stock'.
+  3/13 fail before, 13/13 after; CAM-builder 26/26.
+- LIVE (real Send WITH its frame this time, T1 7x9, frame bars frame_top/bottom/left/right): build 21 s, ok, errors [].
+    Frame : stock X 0-9.5, Y 0-7.6917, Z -1.6904..0 around the laid-flat model X 0.5-9.0, Y 0.5-7.1917, Z -1.69..0
+            = model + 1 in, Z = the bars' height (was 13 x 10).
+    Back / Top: unchanged behaviour -- with a frame the panel is inset (bbox +-3.25 x +-4.25), box 9.5 x 7.5 x 2,
+            points (-3.75, -4.75, 0.0175) / (3.75, -4.75, 2.0175), both origins on their points.
+- Candidate quirks (advisor: WORK-LOG only until a second, DIFFERENT case confirms; NOT in the skill):
+  1. ONE OBSERVATION, NOT YET CONFIRMED -- job_stockFixedZMode is read in the setup's own frame. Case: B-spline Back
+     (wcs_orientation axesXY with the builder's swapped axes, flipY false -> WCS Z (0,0,-1)), FixedBoxStock, Z mode
+     'bottom' offset 0 -> stock world z 1.088 .. -0.912 (on the panel's world TOP); 'top' -> world 0.0175 .. 2.0175.
+  2. ONE OBSERVATION, NOT YET CONFIRMED -- an MM created right after a same-name delete + recreate of a design
+     construction plane + sketch (__cam_wcs_*, offset plane, one sketch point, all in one fusion_execute call,
+     Manufacture workspace) bound the DELETED point: its copy's sketch listed the old position and referencePlane
+     raised 'InternalValidationError : dcSketch'. Second case attempted (82b): a plain sketch on the root XY plane
+     ('claude_q_recreate', one point) -- INCONCLUSIVE: that sketch was not carried into ANY new MM at all (0/3 MMs,
+     incl. one after design.computeAll(), sketch = last timeline item, marker at end), while the __cam_wcs_* sketches
+     on offset planes were. So what an MM snapshot includes is itself unexplained; not recorded.
+  3. ONE OBSERVATION, NOT YET CONFIRMED -- setup.workCoordinateSystem translation reads in MILLIMETRES (31.75 for a
+     1.25 in point, 25.4 for 1.0 in, 51.2456 for 2.0175 in) in new untitled documents, while every other API length
+     is cm. Possibly the document's display units; not tested in an inch document.
+- Hygiene: scratch doc closed by handle; probe MMs ('claude q MM1-3') and the probe sketch deleted first; Fred's
+  'Untitled' re-activated; holder none.

@@ -202,7 +202,7 @@ def test_back_and_top_share_the_declared_position(eng):
     back, top = (_spec(sb, n) for n in ('B-spline Back', 'B-spline Top'))
     assert back['mm_rule'] == top['mm_rule'] == 'bspline_set'
     assert top['stock_intent'] == 'from_prev_setup' and top['continue_machining'] is True
-    assert back['stock_box'] is True
+    assert back['stock_box'] == 'stock'
     assert (back['wcs_point'], top['wcs_point']) == ('back', 'flipped')
     for s in (back, top):
         assert s['wcs_point'] in eng.pos.CAM_POSITION['wcs_points']
@@ -284,3 +284,23 @@ def test_wcs_point_missing_is_reported_not_faked(eng):
     s = _Setup()
     assert not eng.sb._bind_wcs_point(s, _MM('mmA', sides=('back',)), 'flipped', 'S', None)
     assert s.parameters.itemByName('wcs_origin_mode').expression is None
+
+
+def test_every_fixed_box_setup_writes_a_declared_box(eng):
+    """H23 item 82b: a FixedBoxStock whose dims are never written defaults to 13 x 10 in X/Y (measured on a real
+    build: the Frame setup's stock was 13 x 10 around a 10 x 8 model). Every fixed_box setup names a declared box."""
+    for spec in eng.sb.SETUP_SPECS:
+        if spec['stock_intent'] in ('fixed_box', 'fixed_size'):
+            assert spec.get('stock_box') in eng.pos.CAM_POSITION, spec['name']
+
+
+def test_frame_box_is_the_frame_model_plus_the_shared_margin(eng):
+    s = _Setup(z_up=True)
+    eng.sb._apply_stock_box(s, 'Frame', None, 'frame_stock')
+    m = eng.pos.CAM_POSITION['stock']['margin_xy_in']
+    assert eng.pos.CAM_POSITION['frame_stock']['margin_xy_in'] == m       # one margin for both boxes
+    w = s.parameters.written()
+    assert w['job_stockFixedX'] == f"(surfaceXHigh - surfaceXLow) + {m} in"
+    assert w['job_stockFixedY'] == f"(surfaceYHigh - surfaceYLow) + {m} in"
+    assert w['job_stockFixedZ'] == "(surfaceZHigh - surfaceZLow)"          # the frame bars' own thickness
+    assert w['job_stockFixedZMode'] == "'bottom'"
