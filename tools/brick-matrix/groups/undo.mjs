@@ -11,11 +11,20 @@ export const UNDO_SETTINGS = {
   marker: './editor/undo-parts.js',
 };
 
+// ---- F35 item 71 (seat E): the MAIN screen's Undo / Redo after a sidebar Brick quick pick on an applied board.
+// Measured before (main 3a6c2a7): the pick took no global step -- Undo undid the older Apply step (pre-lay settings
+// back, the laid bricks + 3D left as picked). Now each pick is one global step (core/history.js recordBoardStep):
+// Undo -> the canvas, the 3D and the quick button back; Redo -> the pick again.
+export const SIDEBAR_UNDO = {
+  pick: 'brickQuick_pattern_herringbone', row: 'brickQuickRow_pattern', undo: 'btnGlobalUndo', redo: 'btnGlobalRedo',
+  marker: 'recordBoardStep', // core/history.js export (absent = skipped)
+};
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
-let sleep, js, jsJSON, click, setValue, canvasSettled, editorOpen, apply, checkRow, openEditorTab, reloadWithStorage;
-export function bind(ctx) { ({ sleep, js, jsJSON, click, setValue, canvasSettled, editorOpen, apply, checkRow, openEditorTab, reloadWithStorage } = ctx); }
-export async function run() { await runUndoSettings(); }
+let sleep, js, jsJSON, click, setValue, canvasSettled, heightsSettled, editorOpen, apply, checkRow, openEditorTab, reloadWithStorage;
+export function bind(ctx) { ({ sleep, js, jsJSON, click, setValue, canvasSettled, heightsSettled, editorOpen, apply, checkRow, openEditorTab, reloadWithStorage } = ctx); }
+export async function run() { await runUndoSettings(); await runSidebarUndo(); }
 
 // F35 item 38 (UNDO_SETTINGS above): editor Undo / Redo bring back the brick settings with the canvas
 async function runUndoSettings() {
@@ -43,4 +52,23 @@ async function runUndoSettings() {
   const lv1 = Number(await js(`document.getElementById(${JSON.stringify(U.level.id)})?.value`));
   checkRow('undo', 'Undo puts a 3D-only setting back (accent level)', lv1 === lv0 && lv0 !== U.level.value, `level ${lv0} -> ${U.level.value} -> undo -> ${lv1}`);
   if (await editorOpen()) await apply();
+}
+
+// F35 item 71 (SIDEBAR_UNDO above): the main screen's Undo / Redo of a sidebar quick pick
+async function runSidebarUndo() {
+  const U = SIDEBAR_UNDO;
+  if (!(await js(`import('./core/history.js').then((m) => typeof m[${JSON.stringify(U.marker)}] === 'function', () => false)`))) { checkRow('undo', 'Sidebar quick pick: main Undo restores the board', false, '', U.marker); return; }
+  if (await editorOpen()) { await apply(); }
+  const GEO = `import('./core/state.js').then((m) => { const d = new DOMParser().parseFromString(m.P.editorSvg || '', 'image/svg+xml'); const r = (v) => Math.round(Number(v) * 1e4) / 1e4;
+    const s = [...d.querySelectorAll('[data-brick-gen="1"]')].filter((n) => n.getAttribute('points')).map((n) => n.getAttribute('data-brick') + '|' + n.getAttribute('points').trim().split(/\s+/).map((q) => q.split(',').map(r).join(',')).join(' ')).sort().join(';');
+    let x = 2166136261; for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619); } return (x >>> 0).toString(36) + ':' + m.P.brickSettings.pattern; })`;
+  const active = (id) => js(`!!document.getElementById(${JSON.stringify(id)})?.classList.contains('active')`);
+  const was = await js(`document.querySelector('#${U.row} button.active')?.id || ''`); // the row's choice before the pick
+  const z0 = await heightsSettled(null); const g0 = await js(GEO);
+  await click(U.pick, 2500); const z1 = await heightsSettled(z0); await sleep(1500); const g1 = await js(GEO);
+  await click(U.undo, 2500); const z2 = await heightsSettled(z1); await sleep(1500); const g2 = await js(GEO);
+  checkRow('undo', 'Sidebar quick pick: main Undo restores the board', g1 !== g0 && g2 === g0 && z2 === z0 && !!was && (await active(was)) && !(await active(U.pick)),
+    `pick ${g0} -> ${g1}; undo -> ${g2 === g0 ? 'the board before' : g2}, 3D ${z2 === z0 ? 'back' : z2}, chip ${was} back ${await active(was)}`);
+  await click(U.redo, 2500); const z3 = await heightsSettled(z2); await sleep(1500); const g3 = await js(GEO);
+  checkRow('undo', 'Sidebar quick pick: main Redo brings the pick back', g3 === g1 && z3 === z1 && (await active(U.pick)), `redo -> ${g3 === g1 ? 'the pick' : g3}, 3D ${z3 === z1 ? 'the pick' : z3}`);
 }

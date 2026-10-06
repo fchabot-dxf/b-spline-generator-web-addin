@@ -19,6 +19,7 @@
  */
 import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
 import { withLoadingStageShownFirst, beginLoadingSequence } from '../core/loading-signal.js';
+import { recordBoardStep } from '../core/history.js';
 import { showToast } from '../core/toast.js';
 import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, layerOfElement, BRICK_KINDS,
@@ -2616,7 +2617,8 @@ function renderQuickSettings(container) {
       if (icon) { btn.innerHTML = icon; btn.title = choice.label; btn.setAttribute('aria-label', choice.label); btn.style.padding = '2px'; }
       else btn.textContent = choice.label;
       if (row.columns) btn.style.minWidth = '0'; // A9: a grid cell, not .cad-btn's 75 px floor (4 x 75 overflowed the sidebar)
-      btn.addEventListener('click', () => { if (row.lays) requestLay(row.lays); row.apply(choice); });
+      // item 71: one global undo step per pick (core/history.js recordBoardStep: the settings AND the laid bricks)
+      btn.addEventListener('click', () => recordBoardStep(`Bricks: ${row.label}`, () => { if (row.lays) requestLay(row.lays); row.apply(choice); }));
       list.appendChild(btn);
     }
     if (row.mixed) { // A5: shown by syncQuickSettings while no choice is current and the row's `when` holds

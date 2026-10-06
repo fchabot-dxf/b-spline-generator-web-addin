@@ -63,11 +63,11 @@ describe('F26 item 2 (b): Delete frame', () => {
     const labels = globalHistoryLog.map((x) => x.label);
     expect(labels).toEqual(['Initial', 'Before delete frame', 'Delete frame']);
     const step = globalHistoryLog[globalHistoryLog.length - 1];
-    expect(step.frame.before.templateId).toBe('template_1');
-    expect(step.frame.after.templateId).toBeNull();
+    expect(step.restore.frame.before.templateId).toBe('template_1');
+    expect(step.restore.frame.after.templateId).toBeNull();
     const applied = [];
-    unifiedUndo((snap, frame) => applied.push(['undo', snap.label, frame && frame.templateId]));
-    unifiedRedo((snap, frame) => applied.push(['redo', snap.label, frame && frame.templateId]));
+    unifiedUndo((snap, restore) => applied.push(['undo', snap.label, restore && restore.frame.templateId]));
+    unifiedRedo((snap, restore) => applied.push(['redo', snap.label, restore && restore.frame.templateId]));
     expect(applied).toEqual([['undo', 'Before delete frame', 'template_1'], ['redo', 'Delete frame', null]]);
   });
 
