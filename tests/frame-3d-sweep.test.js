@@ -32,38 +32,37 @@ const BOARDS = [[7, 9], [9, 7], [12, 6], [5, 5], [4, 3.5]];
 const BOTTOMS = [-2, -1, -0.25];
 
 describe('sweep: every bar is valid', () => {
-  it('templates x boards x frame bottom x sculpted panels', () => {
-    let checked = 0;
+  // advisor (2026-10-05): one test PER TEMPLATE (the cases are independent) -- the single 90 s test timed out in nearly
+  // every full run with 4 seats sharing the CPU; each template's boards x bottoms x sculpts stays well under 30 s
+  let checked = 0;
+  it.each(FRAME_DEFS.templates.map((t) => [t.id, t]))('%s: boards x frame bottom x sculpted panels', (_id, tpl) => {
     const bad = [];
-    for (const tpl of FRAME_DEFS.templates) {
-      for (const [W, H] of BOARDS) {
-        for (const z0 of BOTTOMS) {
-          for (const [sname, f] of Object.entries(SCULPTS)) {
-            const nx = Math.round(W / 0.1) + 1, nz = Math.round(H / 0.1) + 1;
-            const { mesh, solid, grid } = sculptedPanel(W, H, nx, nz, f);
-            const solidZ = drawnFaces([solid]);
-            const spec = frameSolidSpec(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id, frameBottomZ: z0 }), { widthIn: W, heightIn: H });
-            if (!spec || !spec.innerPrimitives) continue; // board too small for this frame: no bars, by the declared fit rule
-            const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-bars');
-            const p = bars.geometry.attributes.position.array;
-            const tag = `${tpl.id} ${W}x${H} z0=${z0} ${sname}`;
-            for (let i = 0; i < p.length; i += 3) {
-              const [x, y, z] = [p[i], p[i + 1], p[i + 2]];
-              if (![x, y, z].every(Number.isFinite)) { bad.push(`${tag}: non-finite vertex`); break; }
-              if (Math.abs(x) > W / 2 + 1e-6 || Math.abs(y) > H / 2 + 1e-6) { bad.push(`${tag}: outside the board`); break; }
-              if (Math.abs(z - z0) < 1e-9) continue; // a bottom vertex
-              if (z <= z0) { bad.push(`${tag}: top not above bottom`); break; }
-              if (Math.abs(z - Math.min(...solidZ(x, y))) > 1e-4) { bad.push(`${tag}: top off the DRAWN underside`); break; }
-            }
-            checked++;
+    for (const [W, H] of BOARDS) {
+      for (const z0 of BOTTOMS) {
+        for (const [sname, f] of Object.entries(SCULPTS)) {
+          const nx = Math.round(W / 0.1) + 1, nz = Math.round(H / 0.1) + 1;
+          const { mesh, solid, grid } = sculptedPanel(W, H, nx, nz, f);
+          const solidZ = drawnFaces([solid]);
+          const spec = frameSolidSpec(FRAME_DEFS, normalizeFrameRecord({ templateId: tpl.id, frameBottomZ: z0 }), { widthIn: W, heightIn: H });
+          if (!spec || !spec.innerPrimitives) continue; // board too small for this frame: no bars, by the declared fit rule
+          const bars = applyFrameToPanel(FakeTHREE, mesh, grid, spec).find((m) => m.name === 'frame-bars');
+          const p = bars.geometry.attributes.position.array;
+          const tag = `${tpl.id} ${W}x${H} z0=${z0} ${sname}`;
+          for (let i = 0; i < p.length; i += 3) {
+            const [x, y, z] = [p[i], p[i + 1], p[i + 2]];
+            if (![x, y, z].every(Number.isFinite)) { bad.push(`${tag}: non-finite vertex`); break; }
+            if (Math.abs(x) > W / 2 + 1e-6 || Math.abs(y) > H / 2 + 1e-6) { bad.push(`${tag}: outside the board`); break; }
+            if (Math.abs(z - z0) < 1e-9) continue; // a bottom vertex
+            if (z <= z0) { bad.push(`${tag}: top not above bottom`); break; }
+            if (Math.abs(z - Math.min(...solidZ(x, y))) > 1e-4) { bad.push(`${tag}: top off the DRAWN underside`); break; }
           }
+          checked++;
         }
       }
     }
     expect(bad).toEqual([]);
-    expect(checked).toBeGreaterThan(40);
-  }, 90000); // ~110 real solids + a drawn-face lookup each: ~2.5 s alone on a fast machine; T6 (a 6th template)
-  // took it past 30 s on a slow container (~30 s alone), so the limit has headroom now
+  }, 30000);
+  it('the sweep covered more than 40 solids in all', () => expect(checked).toBeGreaterThan(40));
 
   it('the bar top has rows ACROSS the ring width too, one per terrain cell', () => {
     const W = 7, H = 9, nx = 71, nz = 91; // 0.1 in cells
