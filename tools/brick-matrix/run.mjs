@@ -209,8 +209,10 @@ const targetId = (d) => d.click || d.set;
 const requirementMet = (q) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(q.control)}); if(!e) return false;
   const s=${JSON.stringify(q.satisfied)}; if ('gt' in s) return Number(e.value) > s.gt; if ('active' in s) return e.classList.contains('active') === s.active;
   if ('checked' in s) return e.checked === s.checked; return false; })()`);
-// unmet requirement: greyed out (disabled) or not shown at all
-const isDisabled = (elId) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(elId)}); return !e || !!e.disabled || e.offsetParent===null; })()`);
+// unmet requirement: greyed out (disabled) or not shown at all. A2 (seat D): a greyed number field counts only with its
+// -/+ stepper greyed too (the stepper still moved a greyed Grout depth 0.05 -> 0.055 before the fix)
+const isDisabled = (elId) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(elId)}); if (!e || e.offsetParent===null) return true;
+  return !!e.disabled && [...(e.closest('.cad-stepper')?.querySelectorAll('button') || [])].every((b) => b.disabled); })()`);
 const appRule = (elId) => js(`(async()=>{ let mod, eng;
   try { mod = await import('./main/brick-control-requires.js'); eng = await import('./core/bricks/index.js'); } catch { return null; }
   const el = document.getElementById(${JSON.stringify(elId)}); if (!el) return null;
