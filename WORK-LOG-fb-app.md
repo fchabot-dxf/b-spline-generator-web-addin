@@ -14929,3 +14929,4 @@ WallPattern = {
   - Against origin/main's three sources (swapped from saved copies, restored): **5/6 fail**. The Wall-refusal test pins behaviour that was already true.
 - **Matrix** (frame group): + Grey stone (sets frame 5), White rocks (frame 3, rock), Soldier back to Grey stone (frame 5), Red Brick again (frame 1). Run: 16 rows, 0 FAIL.
 - **Live** (frame_sets_live.mjs): Frame tool row = [Red Brick, White rocks, Grey brick, Grey stone]; Grey stone -> every frame piece data-brick-set 5; Wall tool row = [Red Brick, Grey brick]. 0 page errors. Shots: shots/seatE/item61_frame_set_grey_stone_desktop.png, item61_frame_set_grey_stone_900.png.
+- **Gate:** full vitest (8 GB heap, as the gate now runs) 2 failed / 4794 passed. One is frame-3d-sweep's 90 s timeout. The other was REAL: item29-grey-set counted every rendered Set button; it now counts the visible ones, since the Frame-only stone sets are hidden for the Wall. Both files pass, 9/9.
