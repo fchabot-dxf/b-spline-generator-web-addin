@@ -23591,3 +23591,24 @@ changed lay 0.0308. Test: bricks-dropped-chain + T8 (mutation: the back-off on c
 - SWEEP: app-init.js _editorSvgHasContent (its only caller was the boot mask) removed; cloud-project-manager.js comment
   that cited it reworded; app-init.js lastResult import (unused after) dropped. Kept: initApp's refreshAllStampMasks
   import (initSvgEditor still uses it).
+
+## Projects worker: KV list() budget (advisor, urgent; seat B / fc, 2026-10-06), branch projects-list-budget
+Live GET /projects answered 500 "KV list() limit exceeded for the day" (free tier: 1,000 list() a day).
+MEASURED: the worker listed with PRESETS.list() on every GET /projects (the whole store) and GET /cam-profiles; the app
+(cloud-project-manager.js) listed at every page load (the "continue from phone" banner, 2.5 s after boot), again on
+every Projects-panel open and after every save / delete / rename; about 85 tools/repro scripts + the brick matrix
+load the app in headless Chrome over LOOPBACK http, and only the matrix installed a cloud stand-in.
+(2) Worker: presets-index.js -- one index key (__index::presets) kept in step by every PUT/DELETE (after the write: a
+gated write only once the password passed); both listings read it (1 KV read). Self-heal instead of locks (two writes
+at once can lose an entry; one user, rare): rebuilt from list() when missing / corrupt / older than 6 h; a GET of a
+key missing from the index puts it back. The rebuild pages with a cursor (the old single list() capped at 1,000 keys).
+(1) App: one list fetch shared by the boot banner and the panel within 30 s (LIST_CACHE_TTL_MS), in-flight shared, a
+failed one never reused, any write clears it. The banner stays (Fred's feature) -- now a KV read, not a list().
+(3) bspline_gen_palette.html: a loopback-served page's API URL is a dead loopback address unless ?realCloud=1 (the
+brick matrix: --real-cloud) -- one declared rule for every harness, current and future; live site / Fusion unchanged.
+NUMBERS: worker list() per GET /projects 1 -> 0 (a rebuild at most every 6 h); app list fetches per page load with
+the panel opened 2 -> 1; local probes reaching the real worker: all -> none.
+Tests: presets-index-worker (5: one list() then none, writes in step incl. /presets + /cam-profiles, refused write
+leaves it, self-heal + stale rebuild, corrupt index), project-list-budget (banner + panel share one fetch; TTL; failed
+not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Brick matrix password 4/4, persistence
+24/24, migration 5/5 through the stand-in behind the dead URL. Full vitest 333 / 5,427.

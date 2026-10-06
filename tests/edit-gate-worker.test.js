@@ -15,6 +15,7 @@ function kv() {
   return {
     m,
     async get(k) { return m.has(k) ? m.get(k).v : null; },
+    async getWithMetadata(k) { return m.has(k) ? { value: m.get(k).v, metadata: m.get(k).meta || null } : { value: null, metadata: null }; },
     async put(k, v, opts = {}) { m.set(k, { v: String(v), meta: opts.metadata, ttl: opts.expirationTtl }); },
     async delete(k) { m.delete(k); },
     async list({ prefix = '' } = {}) { return { keys: [...m.keys()].filter((k) => k.startsWith(prefix)).map((k) => ({ name: k, metadata: m.get(k).meta })) }; },
