@@ -103,6 +103,16 @@ function lineLiveAtDepth(primitives, idx, depth, closed) {
   return project(jointWithNext) - project(jointWithPrev) > MIN_LINE_RUN_IN;
 }
 
+/** T86 item 30: whether a row whose inner edge is at `depth` loses a LINE that lies between two lines -- a feature
+ *  narrower than about two rows (both its corners' mitres consume more than its length), the one drop that strands the
+ *  band (MEASURED: T9 with 1.82 in flanges at 1 in, the flange ends laid nothing but fans at the board corners). A line
+ *  dropping beside an arc is NOT this: the arc's fan covers that corner and the row lays fine (T5 / T8 / T18 / T19). */
+export function lineBetweenLinesDropsAt(primitives, depth) {
+  const n = primitives.length;
+  return primitives.some((p, i) => p.type === 'line' && primitives[(i - 1 + n) % n].type === 'line'
+    && primitives[(i + 1) % n].type === 'line' && !lineLiveAtDepth(primitives, i, depth, true));
+}
+
 function primitiveLiveAtDepth(primitives, idx, depth, closed = true) {
   const prim = primitives[idx];
   // isArcFeasible(r, radialSign, halfWidth) checks `r - radialSign*halfWidth > floor` -- passing

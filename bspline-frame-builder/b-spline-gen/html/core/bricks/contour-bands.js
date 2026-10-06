@@ -35,7 +35,7 @@
  */
 import { inwardSignFor, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
-import { ribbonPieces, boundaryAtDepth } from './primitive-ribbon.js';
+import { ribbonPieces, boundaryAtDepth, lineBetweenLinesDropsAt } from './primitive-ribbon.js';
 import { openRibbonOutline } from './ribbon-outline.js'; // F35 item 55 (seat E): a Brush stroke's grout region
 import { scaledSet, BRICK_PATTERNS, MIN_PIECE_FRACTION } from './library.js';
 import { bricksFillShape } from './fill-shape.js';
@@ -117,6 +117,8 @@ function planBands(bands, L, H, set, closed) {
     const sequence = patternDef.kind === 'course-alternating' ? [L, H] : undefined;
     const staggerFrac = patternDef.staggerFrac || 0;
     const rows = isAreaBand ? 1 : Math.max(1, Math.round(band.widthIn / naturalWidth));
+    // T86 item 30: a band narrowed to fit (narrowSingleBand) is ONE row of the declared depth; its bricks are cut to it
+    if (band.narrowedTo > 0) return { patternName, cornerStyle, naturalWidth: band.narrowedTo, pitch, sequence, staggerFrac, rows: 1, isAreaBand };
     return { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows, isAreaBand };
   });
 }
@@ -470,6 +472,24 @@ function fitBandStack(bands, planned, gap, L, H) {
   return { bands: fitted, note: { requested: bands.length, kept: fitted.length, steps, gapIn: gap, limitIn: limit, requestedDepthIn: requested, depthIn: depthOf(kept), fits: depthOf(kept) <= limit } };
 }
 
+/** T86 item 30 (Fred's item 28 ruling, "make the app do the best result"; advisor (b')): a SINGLE band too deep for a
+ *  feature of the board -- its row would drop a line lying between two lines (lineBetweenLinesDropsAt) -- is laid at the
+ *  deepest depth where no such line drops, less a joint, instead of stranding fans and leaving the feature bare. Narrowing
+ *  is LOCAL: MEASURED over 456 lays (8 presets x 19 templates x 0.75 / 1 / 1.25 in) it changes none; a BAND_FIT_SHARE of
+ *  narrowestGap would have narrowed 201 of them (and narrowestGap reads T7 as 0.007 in -- item 31). Returns the narrowed
+ *  band + its note step, or null when the band lays as requested. */
+const NARROW_BISECT_STEPS = 24;
+function narrowSingleBand(enriched, band, planned, halfJoint, joint) {
+  const depth = planned.naturalWidth * planned.rows;
+  const rowEdge = (d) => d - halfJoint; // the row's inner edge under the joint rule (it stops half a joint short of the wall)
+  if (!lineBetweenLinesDropsAt(enriched, rowEdge(depth))) return null;
+  let lo = 0, hi = depth;
+  for (let k = 0; k < NARROW_BISECT_STEPS; k++) { const mid = (lo + hi) / 2; if (lineBetweenLinesDropsAt(enriched, rowEdge(mid))) hi = mid; else lo = mid; }
+  const toIn = lo - joint;
+  if (!(toIn > joint)) return null; // nothing sensible left to lay: as requested, with today's warning
+  return { band: { ...band, widthIn: toIn, narrowedTo: toIn }, step: { band: 0, step: 'narrow', toIn }, requestedDepthIn: depth };
+}
+
 export function bricksContourBands(primitives, bands, opts) {
   const { seed } = opts;
   const closed = opts.closed !== false;
@@ -487,6 +507,18 @@ export function bricksContourBands(primitives, bands, opts) {
   // opts.bandFit === false: a schematic on a tiny board (the band-preset / corner icons), drawn as requested
   const fit = fitBoard && opts.bandFit !== false ? fitBandStack(bands, plannedBands, narrowestGap(fitBoard), L, H) : null;
   if (fit) { bands = fit.bands; plannedBands = planBands(bands, L, H, set, closed); }
+  // T86 item 30: a single band (as requested, or what item 28 left) too deep for a feature narrows to fit it
+  let narrowNote = null;
+  // course bands only: an AREA band (fieldstone) fills its ring polygon, it has no run to drop and strand
+  if (closed && !opts.centered && opts.bandFit !== false && bands.length === 1 && !plannedBands[0].isAreaBand) {
+    const narrowed = narrowSingleBand(enriched, bands[0], plannedBands[0], set.grout.widthIn / 2, set.grout.widthIn);
+    if (narrowed) {
+      bands = [narrowed.band]; plannedBands = planBands(bands, L, H, set, closed);
+      narrowNote = fit
+        ? { ...fit.note, steps: [...fit.note.steps, narrowed.step], depthIn: narrowed.step.toIn, fits: true }
+        : { requested: 1, kept: 1, steps: [narrowed.step], requestedDepthIn: narrowed.requestedDepthIn, depthIn: narrowed.step.toIn, fits: true };
+    }
+  }
   let depthSoFar = opts.centered
     ? -plannedBands.reduce((sum, b) => sum + b.naturalWidth * b.rows, 0) / 2
     : 0;
@@ -558,7 +590,7 @@ export function bricksContourBands(primitives, bands, opts) {
   const laid = fitBoard ? clipBandPiecesToBoard(split, fitBoard, set) : bricks;
   // the wall keeps half its own joint from the band (grout is one global width, so band + wall = one joint)
   const wallDepth = bands.length ? depthSoFar + halfJoint : depthSoFar;
-  return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, wallDepth) : [], ...(fit ? { bandsReduced: fit.note } : {}),
+  return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, wallDepth) : [], ...(narrowNote ? { bandsReduced: narrowNote } : fit ? { bandsReduced: fit.note } : {}),
     // F35 item 55 (seat E): an open centred ribbon's outline (a Brush stroke's grout region), additive
     ...(!closed && opts.centered ? { ribbonOutline: openRibbonOutline(enriched, ribbonStartDepth, depthSoFar) } : {}) };
 }

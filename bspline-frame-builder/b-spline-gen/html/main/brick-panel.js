@@ -1490,6 +1490,8 @@ export function bandsReducedText(note) {
     .filter((b) => b <= note.kept);
   const parts = [`Bands reduced to fit the board: ${note.kept} of ${note.requested} laid`];
   if (narrowed.length) parts.push(`band ${narrowed.join(', ')} narrowed`);
+  // T86 item 30: a band narrowed to fit a feature is one row shallower than its bricks -- they are cut to the row depth
+  if ((note.steps || []).some((s) => s.step === 'narrow')) parts.push('bricks cut to the row depth');
   return parts.join('; ') + '.';
 }
 /** `where` = which note line shows it: none = the lay warnings (sidebar + editor Brick tab), 'frame' = the Frame

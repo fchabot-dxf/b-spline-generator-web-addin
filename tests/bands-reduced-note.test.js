@@ -100,6 +100,9 @@ describe('F35 item 35: the bands-reduced note', () => {
     expect(bandsReducedText(NOTE_DROP)).toBe('Bands reduced to fit the board: 2 of 3 laid.');
     expect(bandsReducedText({ ...NOTE_DROP, kept: 3, steps: [{ band: 2, step: 'row' }] })).toBe('Bands reduced to fit the board: 3 of 3 laid; band 3 narrowed.');
     expect(bandsReducedText(null)).toBe('');
+    // T86 item 30: a band narrowed to fit a feature -- its bricks are cut to the row depth
+    expect(bandsReducedText({ requested: 1, kept: 1, steps: [{ band: 0, step: 'narrow', toIn: 0.87 }], fits: true }))
+      .toBe('Bands reduced to fit the board: 1 of 1 laid; band 1 narrowed; bricks cut to the row depth.');
   });
   it('a reduced stack that FITS: the Frame note line, no empty-wall warning; band 3 greyed with why', () => {
     setup('frame');
