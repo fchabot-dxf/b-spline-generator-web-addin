@@ -2,6 +2,16 @@
  * core/bricks/geometry.js — PORTABLE (see rng.js). Small, pure polygon/path helpers. No brick-
  * domain knowledge -- these work on plain {x,y} points and polygons (arrays of {x,y}), reused by
  * every layout + the frame placer.
+ *
+ * KNOWN LIMITATION -- the polygon booleans (polygonIntersection / polygonDifference, Greiner-Hormann) can MISS an
+ * overlap that runs along an EDGE the two polygons share exactly: the crossings degenerate, and the result comes back
+ * as if the two only touched (intersection 0, difference = the subject untouched). The DEGENERACY_SHIFT path catches
+ * some of these, not all. MEASURED (T86, seat B): T16 6x9 1.5 in -- a band piece cut first by one cutter, then by a
+ * second whose edge coincided with the first cut, kept a 0.013 x 0.004 in tip inside the second cutter; the seam read
+ * 0.022 in for a 0.034 in joint. A caller that must not miss ground checks the result (a vertex still deeper than a
+ * hair inside the clip) and redoes the boolean with the clip nudged a hair larger -- contour-bands.js
+ * checkedDifference (CUT_NUDGE_IN, 1e-6 in). Related: a clip can also leave a zero-area SPIKE along a shared edge --
+ * dropSpikes.
  */
 
 const ON_EDGE_EPS_SQ = 1e-18; // (1e-9 in)^2 -- see pointInPolygon's own header for why this exists
