@@ -107,8 +107,8 @@ const BRICK_TOOLS = [
     tab: { order: 5, label: 'Scissors' },
     hint: 'Tap a brush stroke to split it -- each piece regenerates its own bricks independently once moved apart.' },
   // sharedRows: false (turn 197) -- a stripe pick restyles EXISTING strokes, so the panel's shared rows
-  // (BRICK_SHARED_SECTIONS: Set, Brick size .. Seed) don't apply and are hidden
-  { id: 'stripe', buttonId: 'brickTool_stripe', iconSvg: () => brickToolIconSvg('stripe'), label: 'Stripe', icon: '📏', settingsSection: 'brickStripeSection', sharedRows: false,
+  // (BRICK_ROW_SCOPES' element / both blocks) don't apply and are hidden
+  { id: 'stripe', iconSvg: () => brickToolIconSvg('stripe'), label: 'Stripe', icon: '📏', settingsSection: 'brickStripeSection', sharedRows: false,
     tabOf: 'brush', subTools: ['draw', 'select', 'stripe'], // item 43: Brush's sub-tool row stays in view while striping
     hint: 'Tap a brush stroke to split it into alternating brick-style runs.' },
 ];
@@ -2564,7 +2564,7 @@ const BRICK_QUICK_SETTINGS = [
 ];
 const quickButtonId = (row, choice) => `brickQuick_${row.id}_${choice.id}`;
 const quickRowId = (row) => `brickQuickRow_${row.id}`;
-const quickMixedId = (row) => `brickQuick_${row.id}_mixed`;
+const quickMixedId = (row) => `brickQuickMixed_${row.id}`; // its own namespace: never a choice's (brickQuick_<row>_<choice>)
 /** F35 item 55: the sidebar's grout colours, declared -- None (the board shows through) + a few mortar shades. */
 export const GROUT_COLOR_CHOICES = Object.freeze([
   { id: 'none', label: 'None (the board shows through)', color: null },

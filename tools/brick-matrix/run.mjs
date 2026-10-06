@@ -281,7 +281,8 @@ const editorOpen = () => js(`getComputedStyle(document.getElementById('svgEditor
 async function openBrickTool(tool) {
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
   await click('editorTabBrick', 800);
-  const active = await js(`document.querySelector('#editorToolbarBrick .tool-btn.active')?.id || ''`);
+  // F35 item 43: the tools are tabs (editor/tab-strip.js .ui-tab) at the top of the Brick panel
+  const active = await js(`document.querySelector('#editorToolbarBrick .ui-tab.active')?.id || ''`);
   if (tool && active !== `brickTool_${tool}`) await click(`brickTool_${tool}`, 800);
 }
 const apply = () => click('editorApply', 2000);
@@ -341,7 +342,7 @@ try {
 
   for (const c of CONTROLS) {
     if (c.introducedBy) {
-      if (c.kind === 'stripe') { await openBrickTool('brush'); await click('brickTool_stripe', 600); }
+      if (c.kind === 'stripe') { await openBrickTool('brush'); await click('brickSubTool_brush_stripe', 600); } // item 43: Brush > Stripe
       if (!(await exists(targetId(c.do)))) {
         rows.push({ name: c.name, kind: c.kind, result: `skipped: not in this build (introduced by ${c.introducedBy})`, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a' } });
         console.log(`skip  ${c.name.padEnd(34)} not in this build (introduced by ${c.introducedBy})`);
@@ -423,7 +424,7 @@ try {
       // a fresh stroke, striped into 4 runs, then the style pick
       await openBrickTool('brush');
       await click('brickTool_brush', 300); await drag([[1.5 / 7, 0.5], [5.5 / 7, 0.5]]);
-      await click('brickTool_stripe', 600);
+      await click('brickSubTool_brush_stripe', 600); // item 43: Stripe is a Brush sub-tool (no tab of its own)
       await js(`(async()=>{ const m=await import('./editor/editor-stripe-tool.js'); const ed=window.svgEditor;
         const spine=[...ed._sketchLayer.children()].reverse().find((el)=>el.attr('data-brick')==='brush-spine');
         m.stripeAt(ed, spine, { ...m.stripeSettings(ed), drive: 'count', count: 4 }); await new Promise(r=>setTimeout(r,1200)); return 1; })()`);

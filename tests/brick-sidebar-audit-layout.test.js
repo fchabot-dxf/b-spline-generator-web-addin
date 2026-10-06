@@ -34,12 +34,12 @@ describe('BRICK audit layout items', () => {
   it('A5: the quick Set row shows "Mixed" while the elements use different sets, nothing when they agree', () => {
     const [a, b] = BRICK_SET_IDS;
     selectSet(a, 'auto', ['wall', 'frame', 'brush', 'raisedBrush']);
-    expect($('brickQuick_set_mixed').style.display).toBe('none');
+    expect($('brickQuickMixed_set').style.display).toBe('none');
     selectSet(b, 'auto', ['frame']);
-    expect($('brickQuick_set_mixed').style.display).toBe('');
+    expect($('brickQuickMixed_set').style.display).toBe('');
     expect([...$('brickQuickRow_set').querySelectorAll('button.active')]).toEqual([]);
     selectSet(a, 'auto', ['wall', 'frame', 'brush', 'raisedBrush']);
-    expect($('brickQuick_set_mixed').style.display).toBe('none');
+    expect($('brickQuickMixed_set').style.display).toBe('none');
   });
   it('A9: the Wall pattern icons sit in a 4-column grid', () => {
     expect($('brickQuickRow_pattern').style.display).toBe('grid');
