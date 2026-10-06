@@ -14,7 +14,7 @@ import { initInteraction, updateHandles } from './editor-interaction.js';
 import { resetTransform, flattenTransform } from './editor-transform-handles.js';
 import { setMode, updateToolbarVisibility, updateSelectionHighlight, setHover, select, selectAdd, selectMany, updateHistoryButtons } from './editor-ui.js';
 import { setupEditorToolbar } from './editor-controls.js';
-import { initLayerControls, setActiveLayer, applyLayerState, renderLayersPanel } from './layers.js';
+import { initLayerControls, setActiveLayer, applyLayerState, renderLayersPanel, bakeBrickTransforms } from './layers.js';
 import { createEditorCanvas } from './init.js';
 import { fitView as _fitView } from './editor-view.js';
 import { frameSnapGate } from './editor-frame-profile.js';
@@ -393,6 +393,15 @@ export class VectorEditor {
         if (kind === 'commit') detectShapeLatticeDetach(this);
         if (kind === 'commit') refreshBoundaryPatterns(this); // T49 (SE13 §9): commit-only boundary-link refill, same hook
         if (kind === 'commit') refreshGuides(this); // BOUNDARY-GUIDE: Generate / Size edit / undo can move or add a box
+        // F35 item 65: a brick piece moved / transformed by hand keeps its new place in its points (every brick reader,
+        // the height mask first, reads points). The gesture's own undo step (just pushed: still the top) is refreshed
+        // to match -- the same fold-in rule as a commit-triggered refill; any other top (after an undo) is left alone
+        if (kind === 'commit' && bakeBrickTransforms(this)) {
+            const stack = this._undoStack;
+            if (Array.isArray(stack) && stack.length && stack[stack.length - 1] === this._lastPushedState) {
+                stack[stack.length - 1] = this._lastPushedState = this._snapshotState();
+            }
+        }
         if (!this._onChange) return;
         if (kind === 'commit') {
             if (this._pendingChangeFrame != null) {

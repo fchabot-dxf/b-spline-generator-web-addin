@@ -96,7 +96,8 @@ describe('item 29 (c): a declared Grey set', () => {
     setup();
     const setRow = [...document.querySelectorAll('#brickSetRow button')].map((b) => [b.id, b.textContent]);
     expect(setRow).toContainEqual(['brickSet_7', 'Grey Brick']);
-    expect(setRow.length).toBe(BRICK_SET_IDS.length);
+    // item 61: the row also holds the Frame's band-capable stone sets, hidden for every other element
+    expect([...document.querySelectorAll('#brickSetRow button')].filter((b) => b.style.display !== 'none').length).toBe(BRICK_SET_IDS.length);
     expect($('brickQuick_set_7')).toBeTruthy();
   });
 });

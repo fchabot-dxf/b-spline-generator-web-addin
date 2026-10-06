@@ -27,8 +27,12 @@ function makeMockEditor() {
   let polygonCalls = 0;
   const sketchLayer = {
     children() { const arr = elements.slice(); arr.toArray = () => arr; return arr; },
-    polygon() {
-      polygonCalls++;
+    polygon() { polygonCalls++; return make('polygon'); },
+    path() { return make('path'); }, // item 55: a stroke's grout node
+    node: { closest: () => null, querySelectorAll: () => [] },
+  };
+  function make(type) {
+    {
       const el = {
         type: 'polygon', _attrs: {},
         fill() { return el; }, stroke() { return el; },
@@ -37,11 +41,12 @@ function makeMockEditor() {
         _classes: new Set(), addClass(c) { el._classes.add(c); return el; }, removeClass(c) { el._classes.delete(c); return el; },
         remove() { elements = elements.filter((e) => e !== el); },
       };
+      el.type = type;
+      el.node = { getAttribute: (k) => el._attrs[k] ?? null, setAttribute: (k, v) => { el._attrs[k] = v; } };
       elements.push(el);
       return el;
-    },
-    node: { closest: () => null },
-  };
+    }
+  }
   return {
     editor: {
       _sketchLayer: sketchLayer,
