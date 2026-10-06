@@ -23123,3 +23123,49 @@ On top of V1 / V2 / V4 (above):
   h23_item89_template_12__single_soldier.png.
 - For B's after-run: same tools, same seed, same board -> diff against tools/repro/h23_item89_baseline/.
 - Hygiene: scratch doc closed by handle (only Fred's Untitled), holder none, my server + Chrome stopped.
+
+## T86 item 21b -- the JOINT RULE (option A + the planner + constant-width joints): every seam is the declared joint (seat B / fc, 2026-10-06)
+Branch joint-rule (off corner-21b, main 845b794 merged). FOR FRED'S YES before merge: it re-lays every frame once.
+**Declared rules (all in core/bricks):**
+- planner (piece-plan planCornerRun): a joint is never flexed. A run starts with a whole brick (a staggered row: its
+  stagger fraction -- courses stay exactly half a brick apart); whole bricks follow; the END closer takes the slack,
+  within MIN_CLOSER_FRACTION 0.25 .. CLOSER_MAX_FRACTION 1.2 of a brick by the number of whole bricks; a closer still over
+  the ceiling splits into two equal closers; a run too short for a brick + a closer is one piece (or two equal halves).
+- rows / bands / wall (contour-bands rowDepths): each row stops half a joint short of the row or band beside it and of the
+  wall; only the stack's own outer edge (the board, an open stroke's two edges) has none. innerPath (where the wall
+  starts) moves in by half a joint (one global grout width: band half + wall half = one joint).
+- mitres / notches (primitive-ribbon mitreJointSide): each run clips half a joint back from the mitre line, the corner
+  points slid ALONG the run so they stay on its edges (a first version moved them straight off the line: a staggered
+  row's half brick read 0.363, caught by the pattern test). Fan corners (fanJointSide): both runs back off
+  j / (2 sin(alpha/2)) so their two corners are one joint apart.
+- voussoirs (arc-voussoir buildPiece): a joint is a constant-width strip; an interior side crosses radius R at
+  thetaM + asin(j / 2R) (exact -- a chord clip sagged inside the true arc and failed the outer-radius test).
+- fans / notch patches (primitive-ribbon jointedSlices, one helper for buildPatch, buildNotchPatch, buildNotchQuadPatch):
+  dividers are joint-wide strips, the first / last slice stands a full joint off the run it meets.
+- medial step (contour-bands): pairs closer than a joint are conflicts too (touching = a 0-gap seam); every cut is
+  checked (a difference may remove only shared ground -- MEASURED: a degenerate one cut a 0.468 sq in voussoir to 0.016
+  and its twin came out LARGER); the shared-area floor 1e-9 (a sharp tip in a joint strip shares ~1e-7).
+- arc floor (arc-voussoir MIN_RADIUS_IN 0.01 -> 0.1): an arc whose inner edge cannot hold its joints drops to a fan
+  (T18 / T19 1.25 in: the shoulder arc's voussoir tips met the top bar at its centre). Tried first and rejected: 0.05
+  (still touching), a chord fallback for self-crossing field cuts (worse: 72 tight pairs, overlap up).
+**Sweep (456 lays: 8 presets x 19 templates x 0.75 / 1 / 1.25 in) vs neck-medial:** narrowest seam per case 0 in EVERY
+case -> lowest 0.0314 in, median 0.034, 0 cases under 0.030 (79,392 seams under 0.032 -> 28, all arc chord sag);
+same-row joints exactly 0: 1,494 -> 0, under 0.029: 14,582 -> 0, over 0.09: 273 -> 0; band overlap 13.2 -> 0.000 sq in;
+voids 70.3 -> 1.35 sq in, all of it MORTAR KNOTS where constant-width fan joints converge on the apex (accepted by the
+advisor; T18 / T19 1.25 ~0.027 per shoulder, T5 0.005, T8 0.009). 0 / 456 byte-identical (the re-lay).
+**Tests:** new tests/bricks-joint-rule.test.js (6 templates x 5 presets x 1 / 1.25: no seam under joint - 0.004; with the
+row insets removed 5/6 FAIL). 14 test files updated, each with a one-line reason in the test (old contract -> which
+declared rule): planner pins rewritten to the rule; innerPath / cross-width / corner-void (a 45 deg mitre joint reads
+j / sin 45) / scale-grout arithmetic; fieldstone ring excludes the band-to-wall joint; neck covers + T1 digests
+re-pinned (cover bound 0.16 -> 0.05 since the pins are now the cut lay itself; the no-hole mutant still fails, 0.162);
+fillet coverage + board bare check count a point inside a joint as mortar (bare check: TRUE distance, original 1.5 joint
+reach -- the axis probes missed a diagonal joint); build-patch's mixed_bands check now selects the soldier band (its size
+filter caught header pieces); header ">4 vertices" now checks the oversampling it documents (redundant collinear
+vertex; a mitre strip's 0.013 in chamfer is a real 5th vertex; self-test added); stack "no stagger" checks the declared
+whole-brick start. No tolerance loosened. Real findings from the four "real look" tests: the mitre slide bug, the long
+closer (split), the header filter, a diagonal-joint probe.
+**Gates:** bricks domain 543 + joint-rule 6 green; full vitest 317 / 320 -- three 5 s / 90 s timeouts on a loaded run
+(no-corrupt-polygon T11, rock-set-bands, frame-3d-sweep); the two bricks files time the same on main and branch
+(6.5 s each, measured twice). Sheet: shots/seatB/neck16c2/joint_rule_before_after.png (T1 single 1, T18 three_band 1.25,
+T7 three_band 1, T11 dc 1.25, walls included; close-ups: a mitre, a row's joints, a labelled mortar knot).
+Fusion acceptance pending: seat A's item 89 run (profiles == pieces on all 57).
