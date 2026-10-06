@@ -150,13 +150,17 @@ describe('Brick slider timing: live preview while dragging, full commit on relea
     expect(runBricks).not.toHaveBeenCalled();
   });
 
-  it('Frame tool with no usable frame on this board: no live preview, and release does not call runBricks either (matches the Frame button\'s own existing guard)', () => {
+  // F35 item 66 inverts this: with NO frame template the bands follow the board rectangle (it is a usable contour now),
+  // so the Frame tool previews while dragging and lays on release like the Wall
+  it('Frame tool with no frame template (item 66): the bands follow the board rectangle -- live preview + a lay on release', () => {
+    window.svgEditor._mW = 7; window.svgEditor._mH = 9; // a real editor always has its board size
     document.getElementById('brickTool_frame').click();
+    vi.clearAllMocks();
     setAndFire('autoNumber', 1.6, 'input');
     raf.runPending();
-    expect(runBricksPreview).not.toHaveBeenCalled();
-    setAndFire('autoNumber', 1.6, 'change');
-    expect(runBricks).not.toHaveBeenCalled();
+    expect(runBricksPreview).toHaveBeenCalled();
+    setAndFire('autoNumber', 1.7, 'change');
+    expect(runBricks).toHaveBeenCalled();
   });
 
   it('a measured-slow preview tick (>50ms) falls back to outline-only for the REST of that drag; the next commit resets it', () => {

@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -25,7 +25,7 @@ const arg = (name, dflt) => { const i = process.argv.indexOf(`--${name}`); retur
 const flag = (name) => process.argv.includes(`--${name}`);
 const ROOT = arg('root', path.resolve(HERE, '../../bspline-frame-builder'));
 const OUT = path.resolve(arg('out', 'brick-matrix-report'));
-const PORT = Number(arg('port', 9701)), HTTP = PORT + 1;
+let PORT = Number(arg('port', 9701)), HTTP = PORT + 1;
 const CHROME = process.env.CHROME || 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -123,6 +123,13 @@ const CONTROLS = arg('group') ? BRICK_CONTROLS.filter((c) => groupOf(c) === arg(
 // A BRAND-NEW profile every run: the app restores its last saved session from localStorage, so a reused
 // profile starts the matrix from the previous run's end state (a row that re-picks the current value then
 // "does nothing"). Removed again in stop().
+// advisor: a busy DEFAULT port (another seat's run) is skipped for the next free pair, not fatal; an explicit --port is
+// held to (the check below still refuses it when taken)
+const portAnswers = (port) => fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(400) }).then(() => true, () => false);
+if (!arg('port')) {
+  for (let i = 0; i < 40 && ((await portAnswers(PORT)) || (await portAnswers(HTTP))); i++) { PORT += 10; HTTP = PORT + 1; }
+  if (PORT !== 9701) console.log(`brick-matrix: the default port was busy; using ${PORT}/${HTTP}`);
+}
 const profile = mkdtempSync(path.join(os.tmpdir(), `brick-matrix-chrome-${PORT}-`));
 // ... and nothing may already answer on that port: two trees often serve an identical palette page, so the
 // byte check below alone cannot tell another seat's server from ours.
@@ -235,11 +242,16 @@ const isPending = () => js(`!!document.getElementById('brickGenerate')?.classLis
 // --parallel load while it passed alone on main afdc4c0 AND on the branch (47/47 each): the rebuild started after
 // the 6 s window. A row that EXPECTS the 3D to change gives it THREE_D_EXPECTED_CHANGE_MS before calling it unchanged.
 const THREE_D_CHANGE_MS = 6000, THREE_D_EXPECTED_CHANGE_MS = 20000;
-async function heightsSettled(prev, maxMs = 30000, changeMs = THREE_D_CHANGE_MS) {
+// advisor follow-up: the rebuild's OWN completion count (core/state.js lastResultGeneration) -- `sinceGen` = the count
+// before the action: "unchanged" is only concluded after a rebuild has COMPLETED since then (a build without the
+// counter falls back to the time window alone)
+const GEN = `import('./core/state.js').then((m) => (typeof m.lastResultGeneration === 'number' ? m.lastResultGeneration : null))`;
+async function heightsSettled(prev, maxMs = 30000, changeMs = THREE_D_CHANGE_MS, sinceGen = null) {
   let last = await js(HEIGHTS), same = 0; const t0 = Date.now();
   while (Date.now() - t0 < maxMs) {
     await sleep(700); const h = await js(HEIGHTS);
-    if (h === last) { if (++same >= 3 && (h !== prev || Date.now() - t0 > changeMs)) return h; } else { same = 0; last = h; }
+    const rebuilt = sinceGen == null || ((await js(GEN)) ?? Infinity) > sinceGen;
+    if (h === last) { if (++same >= 3 && (h !== prev || (rebuilt && Date.now() - t0 > changeMs))) return h; } else { same = 0; last = h; }
   }
   return last;
 }
@@ -363,8 +375,9 @@ try {
       const reads = c.expect.reads ? (await jsJSON(`JSON.stringify(Object.fromEntries(${JSON.stringify(Object.keys(c.expect.reads))}.map((id) => [id, Number(document.getElementById(id)?.value)])))`)) : null;
       const readsOk = !!reads && Object.entries(c.expect.reads).every(([id, v]) => Math.abs(reads[id] - v) < 1e-6);
       const setsOk = !!sets && Object.entries(c.expect.sets).every(([k, id]) => sets[k] && sets[k].length === 1 && sets[k][0] === String(id));
+      const g0 = await js(GEN);
       await apply();
-      const z1 = await heightsSettled(Z, 30000, c.expect.threeD === true ? THREE_D_EXPECTED_CHANGE_MS : THREE_D_CHANGE_MS);
+      const z1 = await heightsSettled(Z, 30000, c.expect.threeD === true ? THREE_D_EXPECTED_CHANGE_MS : THREE_D_CHANGE_MS, g0);
       await record(c, { result, pending: p, canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 }, sets, setsOk, reads, readsOk });
       Z = z1;
     } else if (c.kind === 'relay') {
@@ -442,7 +455,7 @@ try {
   }
   if (!arg('group') || arg('group') === 'layout') await runLayout();
   if (!arg('group') || arg('group') === 'clear') await runClear();
-  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); }
+  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); }
   if (!arg('group') || arg('group') === 'select') await runSelect();
   if (!arg('group') || arg('group') === 'migration') await runMigration();
   if (!arg('group') || arg('group') === 'frame-ui') await runFrameUi();
@@ -738,6 +751,30 @@ async function openEditorTab(tabId) {
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
   await click(tabId, 900);
+}
+
+// F35 item 42 (controls.mjs WALL_NO_FRAME): Wall only, no Frame element -> the wall's box = the frame contour's box
+async function runWallNoFrame() {
+  const N = WALL_NO_FRAME;
+  for (const c of N.cases) {
+    const name = `No Frame element (${c.template || 'template None'}): the wall fills the frame contour`;
+    await reloadWithStorage({});
+    if (!(await js(N.marker))) { checkRow('lay', name, false, '', 'F35 item 42'); continue; }
+    await js(`(()=>{ const h=document.getElementById('heightIn'); h.value=${JSON.stringify(String(c.heightIn))}; h.dispatchEvent(new Event('change')); return 1; })()`); await sleep(2000);
+    await openEditorTab('editorTabFrame');
+    await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value=${JSON.stringify(c.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2500)); return 1; })()`);
+    await openEditorTab('editorTabBrick'); await click(N.wallTool, 900); await click(N.generate, 2500);
+    const m = await jsJSON(`(async()=>{ const ed=window.svgEditor; const fp=await import('./editor/editor-frame-profile.js'); const cf=await import('./editor/contour-from-frame.js');
+      const ctx=fp.frameContext(ed); const sil=ctx?cf.frameContourSilhouette(ctx,0,0):null;
+      const cpts = sil && sil.primitives ? sil.primitives.flatMap((p)=>Object.values(p).filter((v)=>v&&typeof v==='object'&&'x' in v).map((v)=>[v.x,v.y])) : [[0,0],[ed._mW,ed._mH]];
+      const wpts=[...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick="wall"]')].flatMap((n)=>n.getAttribute('points').trim().split(/[ ]+/).map((q)=>q.split(',').map(Number)));
+      const bb=(p)=>[Math.min(...p.map((q)=>q[0])),Math.max(...p.map((q)=>q[0])),Math.max(...p.map((q)=>q[1]))];
+      return JSON.stringify({ wall: wpts.length ? bb(wpts) : null, contour: bb(cpts), frame: ed._sketchLayer.node.querySelectorAll('[data-brick="frame"]').length }); })()`);
+    // x left / x right / the bottom (a template's top is often an arch: its apex is not in the primitives' points)
+    const ok = !!m.wall && m.frame === 0 && m.wall.every((v, i) => Math.abs(v - m.contour[i]) <= N.tol);
+    checkRow('lay', name, ok, `wall x ${m.wall ? m.wall[0].toFixed(2) + '-' + m.wall[1].toFixed(2) + ' bottom ' + m.wall[2].toFixed(2) : 'none'} vs contour x ${m.contour[0].toFixed(2)}-${m.contour[1].toFixed(2)} bottom ${m.contour[2].toFixed(2)}; frame bricks ${m.frame}`);
+  }
+  if (await editorOpen()) await apply();
 }
 
 async function runLayWarnings() {
@@ -1091,7 +1128,7 @@ function layersState() {
     const h = (str) => { let x = 5381; for (let i = 0; i < str.length; i++) x = ((x * 33) ^ str.charCodeAt(i)) >>> 0; return x.toString(36); };
     const polys = (sel) => h(all(sel).map((e) => e.getAttribute('points') || e.getAttribute('d') || '').sort().join('|'));
     const art = [...n.children].filter((e) => !L.isBrickToolNode(e) && !e.hasAttribute('data-brick-record'));
-    return JSON.stringify({ active: String(ed._activeLayer), layers: (ed._layers || []).map((l) => ({ id: String(l.id), name: l.name, carve: l.carve !== false, holdsBricks: !!l.holdsBricks })),
+    return JSON.stringify({ active: String(ed._activeLayer), layers: (ed._layers || []).map((l) => ({ id: String(l.id), name: l.name, carve: l.carve !== false, holdsBricks: !!l.holdsBricks, brickKind: l.brickKind || null })),
       wall: ids('[data-brick="wall"]'), wallN: all('[data-brick="wall"]').length, wallPolys: polys('[data-brick="wall"]'),
       frame: ids('[data-brick="frame"]'), frameN: all('[data-brick="frame"]').length,
       record: ids('[data-brick-record="wall-full"]'),
@@ -1109,6 +1146,10 @@ async function layersRead() {
 // Select tool, then right-click it.
 async function rightClickBrick(kind) {
   await click(BRICK_LAYERS.artworkTab, 800); await click(BRICK_LAYERS.selectTool, 500);
+  // F35 item 64: bricks sit on their kind's own layer, usually NOT the active one, and an inactive layer takes no art-tool
+  // pointer events (.inactive-layer) -- so, like a user, activate the brick's layer first (its row in the Layers list)
+  await js(`(()=>{ const n=window.svgEditor._sketchLayer.node.querySelector('[data-brick="${kind}"]'); const id=n&&n.getAttribute('data-layer'); const row=id&&document.querySelector('#editorLayersList [data-layer-id="'+id+'"]'); if(row) row.click(); return !!row; })()`);
+  await sleep(400);
   const at = await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="${kind}"]')];
     for (const n of ns) { const r=n.getBoundingClientRect(); const x=r.left+r.width/2, y=r.top+r.height/2; if (document.elementFromPoint(x,y)===n) return {x,y}; } return null; })())`);
   if (!at) return false;
@@ -1139,11 +1180,14 @@ async function runBrickLayers() {
   const s0 = await layersRead();
   await click('brickTool_wall', 800); await click('brickGenerate', 2000);
   await click('brickTool_frame', 800); await click('brickGenerate', 2000);
-  // 1. a fresh board: Wall + Frame land on the active layer, no layer is added
+  // 1. F35 item 64 (supersedes slice 3's "on the active layer"): a fresh board: Wall + Frame each land on their KIND's
+  // own layer, created on first use ("Wall", "Frame"); the active layer is untouched; no legacy holdsBricks layer
   const s1 = await layersRead();
-  checkRow('layers', 'Fresh board: Wall + Frame on the active layer, no new layer',
-    s1.wallN > 0 && s1.frameN > 0 && s1.wall.length === 1 && s1.wall[0] === s1.active && s1.frame.length === 1 && s1.frame[0] === s1.active && s1.layers.length === s0.layers.length && !s1.layers.some((l) => l.holdsBricks),
-    `active ${s1.active}; wall on ${s1.wall}, frame on ${s1.frame}; layers ${s0.layers.length} -> ${s1.layers.length}${s1.layers.some((l) => l.holdsBricks) ? ', a holdsBricks layer' : ''}`);
+  const kindId = (st, kind) => (st.layers.find((l) => l.brickKind === kind) || {}).id;
+  checkRow('layers', 'Fresh board: Wall + Frame each on their own kind layer (item 64)',
+    s1.wallN > 0 && s1.frameN > 0 && s1.wall.length === 1 && s1.wall[0] === kindId(s1, 'wall') && s1.frame.length === 1 && s1.frame[0] === kindId(s1, 'frame')
+      && s1.layers.length === s0.layers.length + 2 && s1.active === s0.active && !s1.layers.some((l) => l.holdsBricks),
+    `active ${s0.active} -> ${s1.active}; wall on ${s1.wall} (Wall = ${kindId(s1, 'wall')}), frame on ${s1.frame} (Frame = ${kindId(s1, 'frame')}); layers ${s0.layers.length} -> ${s1.layers.length}`);
   // 2. Move to layer -> New layer...: the whole wall + its record move, the frame stays; one undo step brings it back
   let moved = false, detail = '';
   if (await rightClickBrick('wall')) {
@@ -1206,7 +1250,8 @@ async function runBrickLayers() {
     const sb = await layersRead();
     if (o.item === 'editorClear_bricks') {
       const shared = sa.artLayers.some((id) => sa.wall.includes(id));
-      checkRow('layers', 'Clear Bricks: every brick goes, the art on its layer stays', shared && sa.wallN > 0 && sb.wallN === 0 && sb.frameN === 0 && sb.brushN === 0 && sb.artN === sa.artN,
+      // item 64: the wall sits on its own kind layer, so art and bricks no longer share a layer by default (shared is reported)
+      checkRow('layers', 'Clear Bricks: every brick goes, the art on its layer stays', sa.wallN > 0 && sb.wallN === 0 && sb.frameN === 0 && sb.brushN === 0 && sb.artN === sa.artN,
         `art on ${sa.artLayers}, wall on ${sa.wall} (shared ${shared}); bricks ${sa.wallN + sa.frameN} -> ${sb.wallN + sb.frameN + sb.brushN}; art ${sa.artN} -> ${sb.artN}`);
     } else {
       const kept = sa.wall.every((id) => sb.layers.some((l) => l.id === id));
@@ -1215,7 +1260,8 @@ async function runBrickLayers() {
     }
     void f0;
   }
-  // 7. a Brush stroke with Layer 2 active: spine + bricks on Layer 2; moving one brick moves the spine and every piece
+  // 7. F35 item 64: a Brush stroke with Layer 2 active goes on the "Brush" kind layer (was: the active Layer 2), spine and
+  // bricks; moving one brick moves the spine and every piece
   await reloadWithStorage({});
   await openEditorTab('editorTabBrick');
   await click(B.addLayer, 900);
@@ -1224,9 +1270,10 @@ async function runBrickLayers() {
   await click('brickTool_brush', 900);
   await drag(B.stroke); await sleep(1500);
   const s7 = await layersRead();
-  checkRow('layers', 'A Brush stroke goes on the active layer (Layer 2), spine and bricks',
-    s7.brushN > 0 && s7.brush.length === 1 && s7.brush[0] === layer2 && s7.spine.length === 1 && s7.spine[0] === layer2 && s7a.layers.length >= 2,
-    `active ${layer2} of ${s7a.layers.length} layers; bricks (${s7.brushN}) on ${s7.brush}, spine on ${s7.spine}`);
+  const brushId = (s7.layers.find((l) => l.brickKind === 'brush') || {}).id;
+  checkRow('layers', 'A Brush stroke goes on the Brush kind layer (item 64), spine and bricks',
+    s7.brushN > 0 && !!brushId && brushId !== layer2 && s7.brush.length === 1 && s7.brush[0] === brushId && s7.spine.length === 1 && s7.spine[0] === brushId && s7a.layers.length >= 2,
+    `active ${layer2} of ${s7a.layers.length} layers; Brush layer ${brushId}; bricks (${s7.brushN}) on ${s7.brush}, spine on ${s7.spine}`);
   const layer1 = s7a.layers.find((l) => l.id !== layer2);
   let m7 = 'no brush piece under the pointer';
   if (layer1 && await rightClickBrick('brush')) { const a = await menuRow(B.menuMove); await sleep(400); const b = await menuRow(layer1.name); await sleep(1500); m7 = `menu ${a}/${b}`; }
@@ -1253,9 +1300,11 @@ async function runBrickLayers() {
   const on = await jsJSON(`JSON.stringify([...new Set([...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].map((n)=>n.getAttribute('data-layer')))])`);
   await openEditorTab(B.artworkTab);
   const home = await js(`!document.getElementById(${JSON.stringify(T.slot)}).contains(document.getElementById(${JSON.stringify(T.list)})) && !!document.getElementById(${JSON.stringify(T.list)}).offsetParent`);
-  checkRow('layers', 'Brick tab: the layers show with a tool, a picked row takes the lay',
-    vis.hosted && vis.shown && vis.rows.length >= 2 && !!pick && on.length === 1 && on[0] === pick && home,
-    `hosted ${vis.hosted}, shown ${vis.shown}, rows ${vis.rows.length}; picked ${pick}: wall on ${on}; Artwork has the list back ${home}`);
+  // item 64: a picked row is the ACTIVE layer, but a NEW wall goes on its own "Wall" kind layer, not the picked one
+  const wallKind = (await layersRead()).layers.find((l) => l.brickKind === 'wall');
+  checkRow('layers', 'Brick tab: the layers show with a tool; a new wall goes on the Wall layer, not the picked row',
+    vis.hosted && vis.shown && vis.rows.length >= 2 && !!pick && !!wallKind && on.length === 1 && on[0] === wallKind.id && wallKind.id !== pick && home,
+    `hosted ${vis.hosted}, shown ${vis.shown}, rows ${vis.rows.length}; picked ${pick}: wall on ${on} (Wall = ${wallKind ? wallKind.id : 'none'}); Artwork has the list back ${home}`);
   if (await editorOpen()) await apply();
 }
 
@@ -1335,7 +1384,9 @@ async function runWallAreas() {
   // 5. Select on an area brings its own settings back
   await click('brickTool_wall', 700); await click(A.selectTool, 700);
   const at = await jsJSON(`JSON.stringify((()=>{ const ns=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].filter((e)=>e.getAttribute('data-brick-owner')===${JSON.stringify(a)});
-    for (const n of ns) { const q=n.getBoundingClientRect(); const x=q.left+q.width/2, y=q.top+q.height/2; if (document.elementFromPoint(x,y)===n) return {x,y}; } return null; })())`);
+    // item 64: the area's bricks sit on the Wall layer, usually not the active one, so they take no pointer events
+    // (.inactive-layer): the Brick tab's Select hit-tests the board point by geometry, so the brick need not be the target
+    for (const n of ns) { const q=n.getBoundingClientRect(); const x=q.left+q.width/2, y=q.top+q.height/2; const top=document.elementFromPoint(x,y); if (top && (top===n || top.closest('svg'))) return {x,y}; } return null; })())`);
   if (at) {
     await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: at.x, y: at.y, button: 'left', buttons: 1, clickCount: 1 });
     await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 });

@@ -41,7 +41,7 @@ const hidden = (el) => el._classes.has('layer-hidden');
 
 describe('bricks drawn onto the Bricks layer take its current state', () => {
   it('a hidden Bricks layer: every newly laid brick is hidden', () => {
-    const ed = fakeEditor({ bricksVisible: false });
+    const ed = fakeEditor({ bricksVisible: false, recordOn: '1' }); // item 64: an element already ON that layer
     runBricks(ed, P.brickSettings, null);
     expect(ed.elements.filter((e) => e._attrs['data-brick']).length).toBe(3); // the bricks (item 22's records aside)
     expect(ed.elements.every(hidden)).toBe(true);
@@ -52,7 +52,7 @@ describe('bricks drawn onto the Bricks layer take its current state', () => {
     expect(ed.elements.some(hidden)).toBe(false);
   });
   it('the slow-drag outline preview follows the same rule', () => {
-    const ed = fakeEditor({ bricksVisible: false });
+    const ed = fakeEditor({ bricksVisible: false, recordOn: '1' }); // item 64: an element already ON that layer
     runBricksOutlinePreview(ed);
     expect(ed.elements.length).toBe(1);
     expect(hidden(ed.elements[0])).toBe(true);
@@ -62,16 +62,24 @@ describe('bricks drawn onto the Bricks layer take its current state', () => {
     runBricks(ed, P.brickSettings, null);
     expect(ed.elements.filter((e) => e._attrs['data-brick']).every((e) => e._attrs['data-layer'] === '1' && e._classes.has('inactive-layer'))).toBe(true);
   });
-  it('a NEW element lays on the active layer: not dimmed', () => {
+  // F35 item 64 (supersedes slice 3's "a NEW element lays on the active layer"): it lays on its KIND's own layer, created
+  // visible (.inactive-layer only stops art-tool pointer events -- no dimming since Fred 2026-09-24)
+  it('item 64: a NEW element lays on its kind’s own layer (not the active one), visible', () => {
     const ed = fakeEditor({ bricksVisible: true, active: '0' });
     runBricks(ed, P.brickSettings, null);
-    expect(ed.elements.filter((e) => e._attrs['data-brick']).every((e) => e._attrs['data-layer'] === '0' && !e._classes.has('inactive-layer'))).toBe(true);
+    const laid = ed.elements.filter((e) => e._attrs['data-brick']);
+    expect(laid.length).toBeGreaterThan(0);
+    for (const e of laid) {
+      const layer = ed._layers.find((l) => l.id === e._attrs['data-layer']);
+      expect(layer.brickKind).toBe(e._attrs['data-brick']);
+      expect(hidden(e)).toBe(false);
+    }
   });
 });
 
 describe('applyLayerStateTo (one element) matches the full applyLayerState rule', () => {
   it('unhiding the layer then re-applying shows the element', () => {
-    const ed = fakeEditor({ bricksVisible: false });
+    const ed = fakeEditor({ bricksVisible: false, recordOn: '1' }); // item 64: an element already ON that layer
     runBricks(ed, P.brickSettings, null);
     ed._layers[1].visible = true;
     applyLayerStateTo(ed, ed.elements[0]);
