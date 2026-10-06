@@ -31,8 +31,8 @@ import {
   loadPhotoPatterns, settingsToPhotoEdits, settingsToTweaks, settingsToRelief, editsToSettings,
   DEFAULT_PHOTO_RELIEF_IN, MAX_PHOTO_RELIEF_IN,
 } from '../core/photo/patterns.js';
-import { fileToDataUrl } from '../core/photo/codec.js';
-import { ensurePhotoDecoded, getRawPhotoImage } from '../core/photo/state.js';
+import { fileToDataUrl, downscalePhotoDataUrl } from '../core/photo/codec.js';
+import { ensurePhotoDecoded, getRawPhotoImage, isPhotoReady } from '../core/photo/state.js';
 import { computeMirrorDimRects } from '../core/photo/mirror-dim.js';
 import { registerTweaksTarget, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { applyParam } from './param-manager.js';
@@ -267,6 +267,28 @@ function loadImage(urlOrDataUrl, edits, tweaks, reliefIn = DEFAULT_PHOTO_RELIEF_
   notifyChange();
 }
 
+/** Item 74a: a photo that came back from a SAVE (the session restore, a project load, a global undo) -- nothing else
+ *  decodes it (measured on main: after a reload the restored photo stayed undecoded and the terrain was flat). One read
+ *  point: a session saved before the upload downscale holds the full-size photo, so it is downscaled here and the small
+ *  copy saved (the terrain is unchanged: the decode samples at the same size either way); then it is decoded and the
+ *  terrain rebuilt with it. A no-op when there is no photo or it is already decoded. */
+export function adoptStoredPhoto() {
+  const stored = P.photoImageDataUrl;
+  if (!stored || isPhotoReady(stored)) return Promise.resolve();
+  return downscalePhotoDataUrl(stored).catch(() => stored).then((url) => {
+    if (P.photoImageDataUrl !== stored) return null; // replaced meanwhile: that photo has its own follow-through
+    const swapped = url !== stored;
+    if (swapped) P.photoImageDataUrl = url;
+    return ensurePhotoDecoded(url).then(() => {
+      if (P.photoImageDataUrl !== url) return;
+      syncControlsFromState();
+      drawPreview();
+      if (swapped) saveLastSession();
+      if (_onChange) _onChange();
+    });
+  });
+}
+
 /** F35 item 28: the editor's Clear > Photo -- no photo, as on a new board (core/state.js defaults: no image,
  *  no edits, no pattern); the controls, the preview and the terrain follow through the usual change. */
 /** F35 item 28: the photo's own state (for the Clear's one-step undo). */
@@ -434,7 +456,7 @@ export function initPhotoPanel({ onChange }) {
   document.getElementById('photoFileInput')?.addEventListener('change', async (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
-    const dataUrl = await fileToDataUrl(file);
+    const dataUrl = await downscalePhotoDataUrl(await fileToDataUrl(file)); // item 74a: stored downscaled
     P.photoPatternId = null; // a user's own upload has no pattern entry to save back into
     loadImage(dataUrl, [], {});
     syncSaveButtonState();
@@ -497,7 +519,7 @@ export function initPhotoPanel({ onChange }) {
 
   if (P.photoImageDataUrl) {
     syncControlsFromState();
-    ensurePhotoDecoded(P.photoImageDataUrl).then(drawPreview);
+    adoptStoredPhoto();
   }
 }
 

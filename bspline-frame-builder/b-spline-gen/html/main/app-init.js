@@ -23,6 +23,7 @@ import { frameContext, drawFrameProfile } from '../editor/editor-frame-profile.j
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 import { FRAME_DEFS, frameParam, normalizeFrameRecord, setFrameRecord } from '../core/frame-record.js';
 import { syncFramePanel } from './frame-panel.js';
+import { adoptStoredPhoto } from './photo-panel.js';
 import { endEditorSession } from '../editor/editor-text-session.js';
 import { brickSetById, FRAME_PRESETS } from '../core/bricks/library.js';
 import { ROCK_SET_ID, BRICK_SET_IDS, FOLDED_FRAME_PRESETS } from '../editor/editor-brick-tool.js';
@@ -606,6 +607,7 @@ export async function initApp(preview, wireGlobalEvents) {
   if (!restored && !P.frame) P.frame = normalizeFrameRecord({ templateId: FRESH_START_FRAME_TEMPLATE });
   // the Frame panel was built before this ran (main.js initFramePanel): show the restored / fresh-start frame
   syncFramePanel();
+  adoptStoredPhoto(); // item 74a: likewise the Photo panel -- the restored photo is decoded (and a full-size one downscaled)
 
   // syncUItoParam fires a real 'change' on checkboxes, which schedules an undo step -- and that step marked a fresh,
   // untouched start as "unsaved" (the leave-page warning then fired for nothing). The same guard applySnapshot uses.

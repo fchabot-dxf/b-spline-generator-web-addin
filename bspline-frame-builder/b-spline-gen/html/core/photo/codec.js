@@ -32,6 +32,40 @@ export function fileToDataUrl(file) {
   });
 }
 
+/** The size a photo is sampled (and, item 74a, stored) at: its own size, or scaled down so its long side is
+ * `maxDim`. One declaration for both, so the stored copy is exactly what the decode samples. */
+export function photoSize(naturalWidth, naturalHeight, maxDim = PHOTO_MAX_DIM) {
+  const scale = Math.min(1, maxDim / Math.max(naturalWidth, naturalHeight));
+  return { w: Math.max(1, Math.round(naturalWidth * scale)), h: Math.max(1, Math.round(naturalHeight * scale)) };
+}
+
+/** Item 74a (seat D, measured: a 5.5 MB phone JPEG went into P as-is, the session save hit the storage quota and a
+ * reload lost the whole board): the photo as P stores it -- core/state.js's declared "downscaled at upload time".
+ * A data: URL larger than `maxDim` is redrawn at photoSize as a PNG (the same size and draw decodeImageToGrey
+ * samples, so the terrain is unchanged); one already within it comes back as the same string, and a plain URL (a
+ * built-in pattern) passes through. */
+export function downscalePhotoDataUrl(dataUrl, maxDim = PHOTO_MAX_DIM) {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return Promise.resolve(dataUrl);
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const { w, h } = photoSize(image.naturalWidth, image.naturalHeight, maxDim);
+        if (w === image.naturalWidth && h === image.naturalHeight) { resolve(dataUrl); return; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(image, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    image.onerror = () => reject(new Error('Image failed to load'));
+    image.src = dataUrl;
+  });
+}
+
 /** Decode a data: URL (or any <img>-loadable URL) into a downscaled
  * greyscale buffer: { data: Float32Array, w, h }, values 0..1. */
 export function decodeImageToGrey(dataUrl, maxDim = PHOTO_MAX_DIM) {
@@ -39,9 +73,7 @@ export function decodeImageToGrey(dataUrl, maxDim = PHOTO_MAX_DIM) {
     const image = new Image();
     image.onload = () => {
       try {
-        const scale = Math.min(1, maxDim / Math.max(image.naturalWidth, image.naturalHeight));
-        const w = Math.max(1, Math.round(image.naturalWidth * scale));
-        const h = Math.max(1, Math.round(image.naturalHeight * scale));
+        const { w, h } = photoSize(image.naturalWidth, image.naturalHeight, maxDim);
         const canvas = document.createElement('canvas');
         canvas.width = w;
         canvas.height = h;
