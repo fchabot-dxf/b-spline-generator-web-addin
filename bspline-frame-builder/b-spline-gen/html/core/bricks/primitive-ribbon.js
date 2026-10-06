@@ -288,7 +288,13 @@ function mitreJointSide(raw, joint, keepKey, half) {
   if (joint.trustO === false) return fanJointSide(raw, joint, keepKey, half);
   const nx = -joint.dirY, ny = joint.dirX, ref = joint[keepKey];
   const side = Math.sign((ref.x - joint.point.x) * nx + (ref.y - joint.point.y) * ny) || 1;
-  const shift = (p) => ({ x: p.x + nx * side * half, y: p.y + ny * side * half });
+  // slide along THIS run (its direction at the corner: toward its keep reference) until the line is half a joint away,
+  // so the corner points stay ON the run's own d0 / d1 edges -- the run plans its pieces from them (MEASURED: moved
+  // straight off the mitre instead, a staggered row's half-brick came out 0.363 in, the start read 0.012 in early)
+  const tx = ref.x - joint.point.x, ty = ref.y - joint.point.y, tl = Math.hypot(tx, ty) || 1;
+  const across = ((tx / tl) * nx + (ty / tl) * ny) * side; // > 0: the run leaves the line toward its own side
+  const u = half / Math.max(across, 0.05);
+  const shift = (p) => ({ x: p.x + (tx / tl) * u, y: p.y + (ty / tl) * u });
   // the reference point moves WITH the line (it sits only KEEP_REF_STEP_IN from the corner, less than half a joint)
   return { ...joint, point: shift(joint.point), q: shift(joint.q), [keepKey]: shift(ref) };
 }

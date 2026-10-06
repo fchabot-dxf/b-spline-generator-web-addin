@@ -126,17 +126,18 @@ export function planCornerRun(runLength, pitch, nominalJoint, fractions, sequenc
   // the ends on FILL_FRACTIONS and flexed every joint to absorb the error (jointWidth = nominal + slack / joints) --
   // over 456 band lays, 960 straight-run joints came out exactly 0 wide (a 0-gap seam: a zero-area sliver profile in
   // Fusion, seat A's e2e), 5,066 under 0.029 in and 264 over 0.09 in (nominal 0.034).
-  // Declared: the middle pieces cycle `sequence` (whole bricks); the fewest of them that keep each closer within
-  // CLOSER_MAX_FRACTION of a brick; a staggered row's start keeps its declared fraction and the end closer takes all the
-  // slack; a closer under MIN_CLOSER_FRACTION gives back a whole piece; a run too short for two closers is one piece.
+  // Declared: the run STARTS with a whole brick (a staggered row: its declared stagger fraction -- so courses stay
+  // exactly half a brick apart, the running-bond rule); the middle pieces cycle `sequence`; the END closer takes all the
+  // slack, kept within [MIN_CLOSER_FRACTION, CLOSER_MAX_FRACTION] of a brick by the number of whole pieces. A run too
+  // short for that splits into two equal closers, or is one piece when no longer than CLOSER_MAX_FRACTION.
   const seq = sequence && sequence.length ? sequence : [pitch];
   const minClose = MIN_CLOSER_FRACTION * pitch, maxClose = CLOSER_MAX_FRACTION * pitch;
   if (runLength < 2 * minClose + nominalJoint - 1e-9) return { lengths: [runLength], jointWidth: nominalJoint };
   const wholeTotal = (w) => { let t = 0; for (let k = 0; k < w; k++) t += seq[k % seq.length]; return t; };
+  const startLen = (forcedFStart != null ? forcedFStart : 1) * pitch;
   const closers = (w) => {
-    const left = runLength - wholeTotal(w) - (w + 1) * nominalJoint; // what the two closers share
-    if (forcedFStart != null) { const a = forcedFStart * pitch; return [a, left - a]; }
-    return [left / 2, left / 2];
+    const left = runLength - wholeTotal(w) - (w + 1) * nominalJoint; // what the start piece and the end closer share
+    return [startLen, left - startLen];
   };
   let w = 0;
   while (Math.max(...closers(w)) > maxClose && closers(w + 1).every((c) => c >= minClose)) w++;
@@ -151,7 +152,9 @@ export function planCornerRun(runLength, pitch, nominalJoint, fractions, sequenc
   }
   const middle = [];
   for (let k = 0; k < w; k++) middle.push(seq[k % seq.length]);
-  return { lengths: [a, ...middle, b], jointWidth: nominalJoint };
+  // a closer still over the ceiling (one more whole brick would leave it under the floor) splits into two equal closers
+  const ends = b > maxClose ? [(b - nominalJoint) / 2, (b - nominalJoint) / 2] : [b];
+  return { lengths: [a, ...middle, ...ends], jointWidth: nominalJoint };
 }
 // T86 item 21b: a closer (a run's end piece, which takes the run's slack) is at least this much of a brick, at most
 // CLOSER_MAX_FRACTION (the 1.2x piece ceiling mergeSlivers already declares)
