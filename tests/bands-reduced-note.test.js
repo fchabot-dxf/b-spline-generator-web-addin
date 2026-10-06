@@ -3,6 +3,7 @@
  * `bandsReduced`, T86 item 28), the Frame section says so in plain words in place of the empty-wall warning (which
  * stays only when the reduced stack still does not fit), and the bands it dropped grey out with why.
  */
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
@@ -126,6 +127,20 @@ describe('F35 item 35: the bands-reduced note', () => {
     lay({ wallCount: 0, frameCount: 300, bandsReduced: { ...NOTE_DROP, kept: 1, fits: false } });
     expect(shown('brickLayWarnings')).toBe(true);
     expect(shown('brickFrameBandsNote')).toBe(true);
+  });
+  // A1 (3D-panel audit: a sidebar Frame bands pick that only partly fits said nothing there): the sidebar's note box
+  // lists the Frame section's notes too -- read from the REAL page, not this fixture's copy
+  it('the main sidebar shows the band-fit note too (its box lists the frame notes in the page)', () => {
+    setup('frame');
+    const html = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
+    const real = html.match(/<div id="brickLayWarnings"[^>]*>/)[0];
+    const holder = document.createElement('div'); holder.innerHTML = real + '</div>';
+    $('brickLayWarnings').replaceWith(holder.firstChild);
+    lay({ wallCount: 12, frameCount: 200, bandsReduced: NOTE_DROP });
+    expect(shown('brickLayWarnings')).toBe(true);
+    expect($('brickLayWarnings').textContent).toBe('Bands reduced to fit the board: 2 of 3 laid.');
+    lay({ wallCount: 12, frameCount: 200, bandsReduced: null });
+    expect(shown('brickLayWarnings')).toBe(false);
   });
   it('a stack laid as requested: no note, nothing greyed', () => {
     setup('frame');
