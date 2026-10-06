@@ -23857,3 +23857,24 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   fusion-send-stages + loading-signal 24/24. Known failures: none.
 - NOT YET LIVE: the Fusion run (fast Send, no setups, BUILD + APPLY -> same toolpaths, user setup survives) waits
   for the advisor's holder release.
+## H23 item 99 live + 99b (seat A / 77, 2026-10-06)
+- Deploys 82aa441 (-27) and 887637c (-28), from the branch worktree with main 9a5c8b1 merged; T1 7x9 cam-bricks payload,
+  one tagged scratch doc (closed by handle at the end; Fred's Untitled untouched; holder back to none).
+- The clear, LIVE: on a doc with built CAM + a user 'My setup' / 'My MM', the Send removed exactly 4 setups + 3 MMs in
+  0.1 s; the user ones survived (shot shots/seatA/item99_after_resend_build_cam_tree.png). Engine loaded from the
+  deployed AddIns/bspline-frame-builder/CAM-builder. On a document that never had CAM, itemByProductType RAISES
+  '3 : failed to find product' (not None) -> logged as 'nothing to clear' (8934c1e).
+- Send speed: re-Send with the clear 62 s; the same re-Send with the clear patched out (main) 296 s.
+- Same toolpaths: clear + BUILD + APPLY (no Send between) 7/7, machining time + feed distance identical to the first
+  build on all 7 ops.
+- NOT solved, filed as [H23-item-100]: the first BUILD after a re-Send -> APPLY 0/7 'Model has one or more missing
+  selections' (2/2); main without the clear is worse (reuse, 8 models per setup, duplicated ops, 0/14). A workspace
+  hypothesis (BUILD from Design with an existing CAM product) fit 18:12/18:22 but was refuted at 18:34 (0-body MMs
+  from Manufacture too).
+- Plan (2) answer: on a fresh Fusion (7-10 GB) pass 1 still left 4/7 empty; item 95's later passes -> 7/7. Not memory.
+- 99b (887637c, 291f066): a Send from the Manufacture workspace failed at once 'No active Fusion design' (every
+  b-spline-gen design read was Design.cast(app.activeProduct) -- the CAM product there). _active_design() at all 10
+  sites; a non-preview Send first switches to the Design workspace (frame-builder's frame_engine.py:129/171 and
+  solid_coordinator.py:49 read app.activeProduct themselves). LIVE: Send from Manufacture -> 80.9 s, import + all 4
+  frame bodies, no failure. The switch log first read the product after the switch ('was DesignProductType'), fixed.
+- Tests: test_send_from_manufacture.py (4) fails 4/4 pre-99b; b-spline-gen 180/180. Known failures: none.
