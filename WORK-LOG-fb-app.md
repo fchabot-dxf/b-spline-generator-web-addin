@@ -15032,3 +15032,6 @@ WallPattern = {
 - **Matrix (item 60):** a new declared group 'strokes' (STROKE_CLEAR + runStrokesClear). It lays seat A's e2e Grey stone frame ring plus the same raised stroke and counts sampled stroke x frame overlaps.
   - This tree: pass, 0 overlaps (3 stroke bricks, 54 frame pieces).
   - Old main 52c3055: FAIL, 3 overlaps, 0.2605 in2.
+- **Shots** (seatD): f35_60_{before,after}_stroke_over_frame_{1366,900}.png. Before: the raised stroke runs over the stones on both sides of the waist. After: only its 3 bricks clear of the stones.
+- **Full vitest** (8 GB heap): 324 files, 5305 passed, 0 failed.
+- **Seen once, for seat A's E3:** one run of the census had a wall sliver of 0.00007 in2 (app-side); two earlier runs had none.
