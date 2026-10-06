@@ -6,6 +6,7 @@ import { initShapeLatticeProperties } from './properties-shape-lattice.js';
 import { initStripeProperties } from './properties-stripe.js';
 import { initTouchActionsProperties } from './properties-touch-actions.js';
 import { initLatticeSideColumn } from './lattice-side-column.js';
+import { initNextSettingsUndo } from './next-settings-undo.js';
 import { registerEditorTools } from './tools/index.js';
 
 // SA-DEAD-5: the #editorSidebarToggle click handler (collapse/expand the
@@ -23,6 +24,7 @@ function setupEditorToolbar(editor) {
     initStripeProperties(editor); // F27 item 3
     initTouchActionsProperties(editor); // SE7m
     initLatticeSideColumn(editor); // UI2 + AMEND 2 — must run AFTER the two lattice inits above (needs both panel bodies already populated so section-tagging sees real content)
+    initNextSettingsUndo(editor); // item 74d: after every panel's own handlers are bound
 }
 
 export { setupEditorToolbar };

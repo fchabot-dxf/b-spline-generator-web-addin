@@ -17,6 +17,18 @@ export const UNDO_SETTINGS = {
   nextStroke: { tool: 'brickTool_brush', from: 'brickBtnProfileStripped', to: 'brickBtnProfileContinuous' },
   // item 73: the Stripe tool's settings (the same panel in both tabs) -- a count stepper click = one step, Undo puts it back
   stripe: { box: 'stripeCount', tabs: [['editorTabBrick', 'brickTool_stripe'], ['editorTabArtwork', 'toolStripe']] },
+  // item 74d (seat D's Artwork audit): an Artwork next-element setting is ONE step and Undo puts it back. `act` = a button
+  // to click, `stepper` = a box whose stepper '+' to click; `watch` = what shows the value (a group button: its active one)
+  artworkNext: [
+    { tab: 'artTab_general', act: 'editorStrokeWidthPlus', watch: 'editorStrokeWidth' },
+    { tab: 'artTab_general', act: 'editorFillModeFill', watch: 'editorFillModeFill' },
+    { tab: 'artTab_draw', tool: 'toolExpand', act: 'editorExpandDetailPlus', watch: 'editorExpandDetail' },
+    { tab: 'artTab_text', tool: 'toolText', act: 'editorFontSizePlus', watch: 'editorFontSize' },
+    { tab: 'artTab_lattice', tool: 'toolLattice', stepper: 'latticeRailsSpacing', watch: 'latticeRailsSpacing' },
+    { tab: 'artTab_lattice', tool: 'toolLattice', act: 'latticeTiesModeDensity', watch: 'latticeTiesModeDensity' },
+    { tab: 'artTab_shape', tool: 'toolShapeLattice', stepper: 'shapeLatticeTiesCountMin', watch: 'shapeLatticeTiesCountMin' },
+  ],
+  artworkMarker: './editor/next-settings-undo.js',
 };
 
 // ---- F35 item 71 (seat E): the MAIN screen's Undo / Redo after a sidebar Brick quick pick on an applied board.
@@ -82,6 +94,19 @@ async function runUndoSettings() {
       return JSON.stringify({ v0, v1, v2: box.value, steps: n1 - n0 }); })()`);
     checkRow('undo', `Stripe count (${tab.replace('editorTab', '')} tab) is ONE undo step, Undo puts it back`, sr.steps === 1 && sr.v1 !== sr.v0 && sr.v2 === sr.v0,
       `${sr.v0} -> ${sr.v1} (${sr.steps} undo steps) -> undo -> ${sr.v2}`);
+  }
+  const hasArtwork = await js(`import(${JSON.stringify(U.artworkMarker)}).then(() => true, () => false)`);
+  for (const c of U.artworkNext) {
+    const name = `Artwork ${c.watch}: a next-element setting is ONE undo step, Undo puts it back`;
+    if (!hasArtwork) { checkRow('undo', name, false, '', 'item 74d'); continue; }
+    await click('editorTabArtwork', 900); await click(c.tab, 600); if (c.tool) await click(c.tool, 700);
+    const ar = await jsJSON(`(async()=>{ const W=(ms)=>new Promise((r)=>setTimeout(r,ms)); const ed=window.svgEditor; const c=${JSON.stringify(c)};
+      const val=()=>{ const e=document.getElementById(c.watch); return e.tagName==='BUTTON' ? [...e.parentElement.querySelectorAll(':scope > button.active')].map((b)=>b.id).join() : e.value; };
+      const v0=val(), n0=ed._undoStack.length;
+      if (c.act) document.getElementById(c.act).click(); else [...document.getElementById(c.stepper).closest('.cad-stepper').querySelectorAll('button')][1].click();
+      await W(1000); const v1=val(), n1=ed._undoStack.length; document.getElementById(${JSON.stringify(U.undo)}).click(); await W(1000);
+      return JSON.stringify({ v0, v1, v2: val(), steps: n1 - n0 }); })()`);
+    checkRow('undo', name, ar.steps === 1 && ar.v1 !== ar.v0 && ar.v2 === ar.v0, `${ar.v0} -> ${ar.v1} (${ar.steps} undo steps) -> undo -> ${ar.v2}`);
   }
   if (await editorOpen()) await apply();
 }
