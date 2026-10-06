@@ -23273,3 +23273,35 @@ On top of V1 / V2 / V4 (above):
 - Cost: under 100% CPU from other runs, 9 capture cases failed on the first pass (dropped module fetch / app not up);
   one fill pass recovered all 9. Stone imports take ~1.5-2 min each in Fusion (profile measuring). Calls ran 3-6 cases
   then waited for Fusion to go idle, so no two calls overlapped.
+## H23 item 90 -- CAM on the waiting engine stack: Send + BUILD + APPLY, main vs seam-9x12 8ab1729 (seat A / 77, 2026-10-06)
+- Boards: T1 7x9, the template's own FITTED frame (no Generate), brick 1 in, three_band frame + wall, applied (the brick
+  layers carve -> Stamped variant). (a) default set (106 frame + 99 wall pieces before and after); (b) Grey stone ring
+  (set 5, picked through selectSet: 100 -> 88 frame pieces after, + 124 wall). Captured from a 62c1b13 worktree (the
+  main seam-9x12 sits on) and an 8ab1729 worktree, ports verified free, --root guard 31/31, Math.random seeded
+  (terrain seed 1218 in all four payloads). The Fusion-side code (b-spline-gen.py, CAM-builder, frame-builder) is
+  identical in the deployed 205b41b and 8ab1729 -- only 7 app files differ, so any toolpath change comes from the board.
+- Capture tool (tools/repro/capture_send_payload.mjs): scenario cam-bricks + --root guard, --seed, --frameSet; a fresh
+  Chrome profile every run. Fusion driver: tools/repro/h23_item90/fusion_send_build_apply.py (the add-in's own
+  _handle_generate, the CAM engine's run, the palette's _do_apply_toolpaths, per-op state + getMachiningTime).
+- ALL FOUR BOARDS end 7/7 ops valid, hasError False, hasWarning False. Send 29-49 s, BUILD 39-56 s (noise: 100% CPU).
+- Machining time (Fusion's getMachiningTime, feed scale 1, the same settings for every board; clean pass = every
+  toolpath cleared, then all 7 generated in order in ONE pass):
+    bricks  Pocket back 502.9 -> 510.6 (+1.5%), Back spiral 87.2 -> 87.3, Pocket front 537.1 -> 542.2 (+0.9%),
+            Top spiral 89.4 -> 89.5, Pocket front deloge (rest) 238.3 -> 266.3 (+11.7%), Frame 452.4/181.4 ->
+            456.3/180.9. TOTAL 2088.7 -> 2133.1 s (+2.1%); Back+Top 1454.9 -> 1495.9 s (+2.8%, +41 s, most of it
+            the rest op).
+    stone   Pocket back 534.7 -> 541.9 (+1.3%), spirals +-0.6%, Pocket front +0.5%, deloge 269.2 -> 254.9 (-5.3%),
+            Frame pocket 477.5 -> 492.6 (+3.2%). TOTAL 2180.0 -> 2190.6 s (+0.5%); Back+Top -0.3%.
+  So the joint rule's extra joints cost ~1-1.5% on the pockets and move the rest-machining op either way (+12% bricks,
+  -5% stone). Not material on the whole job (+2.1% / +0.5%).
+  Generation seconds (clean pass, Back/Top/Frame): bricks 17.4/39.2/4.3 -> 15.7/74.1/5.6; stone 11.6/35.4/4.3 ->
+  12.5/45.2/3.3. Top varies 35-74 s between identical passes on this loaded machine, so these are not a reliable
+  measure; the machining estimate is.
+- FINDING (CAM, on main as well as the branch, 4/4 boards): the FIRST APPLY right after BUILD generates only 3/7.
+  'B-spline Back' "generated in 0.4s" with both Back ops "Invalidated: Generation failed" (no error / warning text),
+  Top's first two missing, the rest op + Frame generated, Frame taking ~130 s in that pass (4 s otherwise).
+  Generating again (the add-in's own TPGen event) produces them. Back's Morphed Spiral sometimes needs one more pass
+  (2 of 4 boards). In item 83 (deployed afdc4c0) the first APPLY generated 7/7. The WCS / stock readbacks are as
+  declared: the "POS DIAG ... cm" lines print millimetres (x -95.25 = -3.75 in), a label slip, not the cause. Not
+  investigated further (no CAM change was asked for).
+- Hygiene: scratch docs closed by handle (only Fred's Untitled), holder none, both servers stopped.
