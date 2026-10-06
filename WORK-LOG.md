@@ -22563,3 +22563,74 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
 - Harness: item61_full_matrix_sweep.py gains an optional READBACK(des, case) hook (committed); the driver with the
   T10 apex readback (run.py) stays in the scratchpad. Timed-out calls were waited out via the sweep's own re-entry
   lock + polling the results file; no case ran twice. Fusion: one doc per case, closed by the sweep; holder none.
+
+## T86 item 16(c) part 2 -- PLAN: band pieces split at the medial line (seat B / fc, 2026-10-05 night)
+
+**Baseline re-measured on main 7633a5e** (19 templates x single_soldier / three_band / double_course x 0.75 / 1 /
+1.25 in, 7x9, Red Brick seed 1, shapely; scratch sweep = a vitest dump of every frame piece + sweep.py):
+overlap (sum - union) **17.824 sq in** = 88's number. Split: same row, pieces >= 3 apart in the walk (a row meeting
+itself across a neck) **14.49**; everything else (corner fans, 21b's) **3.42**. Worst: T18 / T19 at 1.25 in 1.44
+each (neck 1.18 + corner fan 0.27), T14 0.82 (all neck), T11 double_course 1.25 0.76, T16 three_band 0.75 0.59.
+Shot: shots/seatB/neck16c2/before_worst_necks.png (overlap in red).
+
+**What the shot shows.** T18 / T19: the waist's two facing arcs; each row's pieces run to depth d1 past the half-gap,
+so the two sides' wedges cover one LENS. T14: the X waist; the four arms' pieces cover one DIAMOND. T16 three_band:
+the outer band of one side over the outer AND middle band of the other -- the clash crosses rows and bands, so a
+per-row fix cannot be the whole answer.
+
+**Why "split at the lobes" alone does not separate the sides.** At a neck the ring between the board and the
+untangled d1 boundary is ONE connected region (the lens is inside it); the lobes are the WALL's windows on either
+side. What the untangle does give us: the two crossing points of the dropped inverted loop are exactly where the
+two sides' offsets meet at d1 -- the two ENDS of the medial curve through the lens. The cut we want is that curve.
+
+```
+   left arc (centre cL)          right arc (centre cR)
+        \  wedge Pi  \   tip X1   /  wedge Pj  /
+         \            \    *     /            /
+          \     depth_i < depth_j | depth_j < depth_i
+           \            \   |   /            /
+            )  keeps     \  |  /   keeps    (       medial curve = { depth_i(x) = depth_j(x) }
+           /   left half  \ | /  right half  \      (two lines: the bisector; two arcs: a hyperbola;
+          /                \|/                \      a line + an arc: a parabola) -- runs X1 -> X2
+                            *  tip X2
+```
+
+**The rule (declared, one sentence):** every point of the band area belongs to the band piece whose OWN depth there
+is smallest -- depth measured from the piece's own source primitive exactly as the piece was built (line:
+n.(x - p0); arc: radialSign * (r - |x - c|)), i.e. the side of the medial line it lies on; the row inside that side
+follows from depth as today. Properties, by construction:
+- order-free: every piece is cut from the ORIGINAL pieces, not from already-cut ones (attempt A's cycle
+  A->B->C->A, where nobody kept the region, cannot happen);
+- no void: a point is removed from a piece only because a piece with a strictly smaller depth covers it, so the
+  smallest-depth piece covering it keeps it (the union is unchanged);
+- no overlap: two pieces keep the same point only where their depths tie (the curve itself);
+- byte-identical when clean: a piece is touched only if it overlaps a CONFLICTING piece (> 1e-4 sq in).
+
+**Conflicting = different source primitive AND not joint neighbours in that row's live walk** (any band / row).
+Joint neighbours already meet at their mitre (which IS their medial line); their fan residual is 21b's and stays
+untouched here, so ordinary corners stay byte-identical. Kite-fan / notch / quoin pieces have no single source
+primitive: they keep today's shape in this item (21b's territory).
+
+**The cut, exactly.** f(x) = depth_i(x) - depth_j(x) is a smooth scalar field. Clip Pi to f <= 0 with a
+Sutherland-Hodgman walk on the field's sign (geometry.js, a new `clipToField(poly, f)`; clipToHalfPlane is the
+special case of a linear f): an edge crossing gets its point by bisection to 1e-10; the new edge between two
+crossings is refined onto the zero set (points stepped along it and Newton-projected), so Pi and Pj get the SAME
+curve (not two different chords) -- no hairline sliver either way. Restricted to where Pj actually is: Pi loses
+only Pi & Pj & {f > 0} (a polygonDifference against Pj clipped to f >= 0), never ground no conflicting piece covers;
+a cut leaving a piece under library MIN_PIECE_FRACTION drops it only if the rule above gives that ground to another
+piece (it does, by definition), so no hole. Pieces get an internal source-primitive tag in ribbonPieces (stripped
+before bricksContourBands returns: no new field on the output, no app-visible contract change).
+
+**Where:** contour-bands.js after the rows are built, before the board clip -- one declared step
+(`yieldAtMedialLine`), next to the fit rule (item 28: the fit rule caps the stack at 1/3 of the narrowest gap; at a
+neck narrower than the board's narrowest probe the medial line is the local limit -- the same idea, per point).
+
+**Sweep I will run (same dump, same shapely):** per case lost ground (union_before - union_after) < 0.01 sq in AND
+neck overlap < 0.01; corner-fan overlap must not GROW (it is 21b's to remove; today 3.42 total); cases with zero
+neck overlap byte-identical (piece list equal); the bricks domain (tests/bricks-*.test.js) green; full vitest
+before the DM. New test: tests/bricks-neck-medial.test.js, T18 / T19 / T14 at 1.25 single_soldier + T16 three_band
+0.75: no neck overlap, union unchanged within 0.01, T1 byte-identical -- shown to FAIL on main first.
+Shots: shots/seatB/neck16c2/after_worst_necks.png (same five cases).
+
+**Open question for the advisor:** the bar "overlap < 0.01 per case" -- I read it as the NECK overlap (this item);
+the corner-fan residual (T18 / T19 0.27 each, 3.42 total) is 21b, task 2. Say if you want both under one bar.
