@@ -1,4 +1,6 @@
-// Brick matrix group 'lay': lay warnings, the bands-reduced note, a wall with no Frame element, the sidebar Frame-bands pick, carving under a flat wall.
+// Brick matrix group 'lay': lay warnings, the bands-reduced note, a wall with no Frame element, the sidebar Frame-bands pick, carving under a flat wall,
+// strokes following the global size and the quick Set (A6).
+import { dragIn } from './areas.mjs';
 // Declared rows / constants for this group live HERE; run.mjs only drives them (tools/brick-matrix/groups/index.mjs).
 
 // ---- lay warnings (seat 37, audit B1, fb-app dd5a59c): bands that cover the whole board leave no room for the
@@ -54,8 +56,16 @@ export const CARVE_UNDER_FLAT = {
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, click, exists, heightsSettled, editorOpen, apply, rows, waitApp, checkRow, wallCount, openEditorTab, reloadWithStorage;
+// ---- audit A6 (seat E, on seat D's draft): a drawn Brush stroke follows the GLOBAL brick size (Fred: single size), and the
+// sidebar's quick Set (apply to all). A real drag on a board with no Wall / Frame, then the size preset: the stroke re-lays at
+// the new size; then a Wall and the quick Set: the stroke takes the set. FAILS (not skips) without the fix.
+export const STROKES_FOLLOW = {
+  stroke: [[1.2, 4.5], [5.8, 4.5]], sizePreset: 'brickSizePreset_quarter3', sizeIn: 0.75,
+  quickSet: 'brickQuick_set_4', setId: 4, wallTool: 'brickTool_wall', generate: 'brickGenerate',
+};
+
 export function bind(ctx) { ({ sleep, send, js, jsJSON, click, exists, heightsSettled, editorOpen, apply, rows, waitApp, checkRow, wallCount, openEditorTab, reloadWithStorage } = ctx); }
-export async function run() { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); await runQuickFrameLays(); await runCarveUnderFlat(); }
+export async function run() { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); await runQuickFrameLays(); await runCarveUnderFlat(); await runStrokesFollow(); }
 
 async function noteState(id) {
   return (await jsJSON(`JSON.stringify((()=>{ const n=document.getElementById(${JSON.stringify(id)}); if(!n) return { missing: true }; return { shown: n.offsetParent !== null && getComputedStyle(n).display !== 'none', text: (n.textContent||'').trim() }; })())`));
@@ -187,5 +197,26 @@ async function runBandsNote() {
   await click(W.fits, 2500);
   const b = await read();
   checkRow('lay', `${W.template}: a stack that fits -> no note, no dropped rows`, b.note === null && b.dropped === 0, `note ${b.note === null ? 'hidden' : `"${b.note}"`}, ${b.dropped} dropped rows`);
+  if (await editorOpen()) await apply();
+}
+
+// audit A6 (STROKES_FOLLOW above): a drawn stroke follows the global size and the quick Set
+async function runStrokesFollow() {
+  const F = STROKES_FOLLOW;
+  const read = () => jsJSON(`(()=>{ const n=window.svgEditor._sketchLayer.node; const sp=n.querySelector('[data-brick="brush-spine"]'); const s=sp?JSON.parse(sp.getAttribute('data-brick-settings')):{};
+    return JSON.stringify({ pieces: n.querySelectorAll('[data-brick="brush"]').length, size: s.brickLengthIn, setId: s.setId, sets: [...new Set([...n.querySelectorAll('[data-brick="brush"]')].map((b)=>b.getAttribute('data-brick-set')))] }); })()`);
+  await reloadWithStorage({});
+  await openEditorTab('editorTabBrick'); await click('brickTool_brush', 800);
+  await dragIn(F.stroke); await sleep(1500);
+  const a = await read();
+  await click(F.sizePreset, 2500);
+  const b = await read();
+  checkRow('lay', 'A6: a stroke follows the global Brick size (no Wall / Frame on the board)', a.pieces > 0 && b.size === F.sizeIn && b.pieces !== a.pieces,
+    `pieces ${a.pieces} -> ${b.pieces}, snapshot size ${a.size} -> ${b.size}`);
+  await click(F.wallTool, 800); await click(F.generate, 2500);
+  await click(F.quickSet, 2500);
+  const c = await read();
+  checkRow('lay', 'A6: the quick Set (apply to all) reaches a stroke', c.setId === F.setId && c.sets.length === 1 && c.sets[0] === String(F.setId),
+    `stroke set ${b.setId} -> ${c.setId}, pieces' sets ${JSON.stringify(c.sets)}`);
   if (await editorOpen()) await apply();
 }

@@ -27,7 +27,8 @@ export async function run() { await runWallAreas(); }
 // F35 item 22 slice 2 (37, fb-app 58be3ed) on T86 18b/18c: the Area brush paints wall areas of COMPLETE bricks,
 // newest first (an older area drops the bricks that would touch a newer one). The sketch layer's units are board
 // inches (the brush's own stroke width is widthIn), so a board point maps to the screen by the layer's own CTM.
-async function dragIn(ptsIn) {
+/** A real mouse drag through board-inch points (exported: the lay group's A6 rows draw a stroke with it). */
+export async function dragIn(ptsIn) {
   const ps = await jsJSON(`JSON.stringify((()=>{ const m=window.svgEditor._sketchLayer.node.getScreenCTM(); return ${JSON.stringify(ptsIn)}.map(([x,y])=>({ x: m.a*x + m.c*y + m.e, y: m.b*x + m.d*y + m.f })); })())`);
   await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: ps[0].x, y: ps[0].y, button: 'none', buttons: 0 });
   await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: ps[0].x, y: ps[0].y, button: 'left', buttons: 1, clickCount: 1 });
