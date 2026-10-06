@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -455,7 +455,7 @@ try {
   }
   if (!arg('group') || arg('group') === 'layout') await runLayout();
   if (!arg('group') || arg('group') === 'clear') await runClear();
-  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); }
+  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); }
   if (!arg('group') || arg('group') === 'select') await runSelect();
   if (!arg('group') || arg('group') === 'migration') await runMigration();
   if (!arg('group') || arg('group') === 'frame-ui') await runFrameUi();
@@ -751,6 +751,30 @@ async function openEditorTab(tabId) {
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
   await click(tabId, 900);
+}
+
+// F35 item 42 (controls.mjs WALL_NO_FRAME): Wall only, no Frame element -> the wall's box = the frame contour's box
+async function runWallNoFrame() {
+  const N = WALL_NO_FRAME;
+  for (const c of N.cases) {
+    const name = `No Frame element (${c.template || 'template None'}): the wall fills the frame contour`;
+    await reloadWithStorage({});
+    if (!(await js(N.marker))) { checkRow('lay', name, false, '', 'F35 item 42'); continue; }
+    await js(`(()=>{ const h=document.getElementById('heightIn'); h.value=${JSON.stringify(String(c.heightIn))}; h.dispatchEvent(new Event('change')); return 1; })()`); await sleep(2000);
+    await openEditorTab('editorTabFrame');
+    await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value=${JSON.stringify(c.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2500)); return 1; })()`);
+    await openEditorTab('editorTabBrick'); await click(N.wallTool, 900); await click(N.generate, 2500);
+    const m = await jsJSON(`(async()=>{ const ed=window.svgEditor; const fp=await import('./editor/editor-frame-profile.js'); const cf=await import('./editor/contour-from-frame.js');
+      const ctx=fp.frameContext(ed); const sil=ctx?cf.frameContourSilhouette(ctx,0,0):null;
+      const cpts = sil && sil.primitives ? sil.primitives.flatMap((p)=>Object.values(p).filter((v)=>v&&typeof v==='object'&&'x' in v).map((v)=>[v.x,v.y])) : [[0,0],[ed._mW,ed._mH]];
+      const wpts=[...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick="wall"]')].flatMap((n)=>n.getAttribute('points').trim().split(/[ ]+/).map((q)=>q.split(',').map(Number)));
+      const bb=(p)=>[Math.min(...p.map((q)=>q[0])),Math.max(...p.map((q)=>q[0])),Math.max(...p.map((q)=>q[1]))];
+      return JSON.stringify({ wall: wpts.length ? bb(wpts) : null, contour: bb(cpts), frame: ed._sketchLayer.node.querySelectorAll('[data-brick="frame"]').length }); })()`);
+    // x left / x right / the bottom (a template's top is often an arch: its apex is not in the primitives' points)
+    const ok = !!m.wall && m.frame === 0 && m.wall.every((v, i) => Math.abs(v - m.contour[i]) <= N.tol);
+    checkRow('lay', name, ok, `wall x ${m.wall ? m.wall[0].toFixed(2) + '-' + m.wall[1].toFixed(2) + ' bottom ' + m.wall[2].toFixed(2) : 'none'} vs contour x ${m.contour[0].toFixed(2)}-${m.contour[1].toFixed(2)} bottom ${m.contour[2].toFixed(2)}; frame bricks ${m.frame}`);
+  }
+  if (await editorOpen()) await apply();
 }
 
 async function runLayWarnings() {

@@ -57,7 +57,6 @@ const FIXTURE = `
   <span id="stripeColoursLabel">Colours</span><input type="checkbox" id="stripeThree"><button id="stripeColorsReset"></button>
   <div id="stripeColorPresets"></div><div id="stripeColorSwatches"></div><div id="stripeBrickStyles" style="display:none;"></div>
   <div id="stripeTargetHint">Tap a rail, a contour segment or a line.</div>
-  <input type="checkbox" id="brickFrameOffsetOn" checked><input id="brickFrameOffsetDistance" value="0">
   <input id="brickLevel_wall" value="0"><input id="brickLevel_frame" value="0">
   <div id="brickSidebarNoBricks" style="display:none;"></div><div id="brickStartHint" style="display:none;"></div>
   <div id="brickAccentList"></div><button id="brickAccentClick">Click bricks</button>
