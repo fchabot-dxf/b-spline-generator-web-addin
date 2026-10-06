@@ -1044,6 +1044,7 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
         setup.name = spec['name']
     except Exception as e:
         _log(logger, f"SETUP BUILD ({spec['name']}): name set failed: {e}", "WARNING")
+    _tag_setup(setup, spec['name'], logger)
 
     # Assign default machine — SKIPPED when skip_machine=True. The user
     # then attaches it via the ADD MACHINE button in the palette.
@@ -1052,6 +1053,48 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
     else:
         _log(logger, f"SETUP BUILD ({spec['name']}): skip_machine=True, machine deferred", "DEBUG")
 
+    _configure_setup(setup, mm, spec, logger)
+
+    try:
+        mm_name = mm.name
+    except Exception:
+        mm_name = '<unknown>'
+    _log(logger, f"SETUP BUILD ({spec['name']}): created -> MM '{mm_name}'")
+
+    # Apply cloud toolpath templates — SKIPPED when skip_templates=True
+    # (BUILD phase of the split flow; APPLY TOOLPATHS handles templates
+    # later via apply_templates_to_existing_setups()).
+    if not skip_templates:
+        try:
+            from . import template_assignments as _tpl_overrides
+            design = adsk.fusion.Design.cast(cam.parentDocument.products.itemByProductType('DesignProductType'))
+            cloud_templates = _tpl_overrides.resolve_templates(
+                design, spec['name'], spec.get('cloud_templates') or [])
+        except Exception as e:
+            _log(logger,
+                 f"SETUP BUILD ({spec['name']}): override lookup failed ({e}); using spec defaults",
+                 "WARNING")
+            cloud_templates = spec.get('cloud_templates') or []
+        if cloud_templates:
+            _apply_cloud_templates(setup, cloud_templates, spec['name'], logger)
+            if spec.get('op_heights'):
+                _apply_op_heights(setup, spec['name'], logger)
+    else:
+        _log(logger, f"SETUP BUILD ({spec['name']}): skip_templates=True, templates deferred", "DEBUG")
+
+    return setup
+
+
+# ---------------------------------------------------------------------------
+# Internals
+# ---------------------------------------------------------------------------
+
+
+def _configure_setup(setup, mm, spec, logger):
+    """Every spec-driven write on a LIVE setup: stock mode, WCS (modes, axes, flipY, box point, the shared
+    CAM_POSITION point), the declared stock box, rest machining, stock offsets, then the readback log.
+    Split out of build_setup (H23 item 86) so a re-BUILD can re-apply it to an EXISTING setup in place
+    (update_setups_in_place) instead of deleting + recreating it. Templates / operations are not touched."""
     # Stock mode via the TYPED enum (Autodesk sample
     # `CreateSetupsFromHoleRecognition` uses this idiom:
     # `setup.stockMode = adsk.cam.SetupStockModes.RelativeBoxStock`).
@@ -1182,39 +1225,6 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
     # gun — it tells us exactly which parameter Fusion didn't honour.
     _log_wcs_readback(setup, spec, logger)
 
-    try:
-        mm_name = mm.name
-    except Exception:
-        mm_name = '<unknown>'
-    _log(logger, f"SETUP BUILD ({spec['name']}): created -> MM '{mm_name}'")
-
-    # Apply cloud toolpath templates — SKIPPED when skip_templates=True
-    # (BUILD phase of the split flow; APPLY TOOLPATHS handles templates
-    # later via apply_templates_to_existing_setups()).
-    if not skip_templates:
-        try:
-            from . import template_assignments as _tpl_overrides
-            design = adsk.fusion.Design.cast(cam.parentDocument.products.itemByProductType('DesignProductType'))
-            cloud_templates = _tpl_overrides.resolve_templates(
-                design, spec['name'], spec.get('cloud_templates') or [])
-        except Exception as e:
-            _log(logger,
-                 f"SETUP BUILD ({spec['name']}): override lookup failed ({e}); using spec defaults",
-                 "WARNING")
-            cloud_templates = spec.get('cloud_templates') or []
-        if cloud_templates:
-            _apply_cloud_templates(setup, cloud_templates, spec['name'], logger)
-            if spec.get('op_heights'):
-                _apply_op_heights(setup, spec['name'], logger)
-    else:
-        _log(logger, f"SETUP BUILD ({spec['name']}): skip_templates=True, templates deferred", "DEBUG")
-
-    return setup
-
-
-# ---------------------------------------------------------------------------
-# Internals
-# ---------------------------------------------------------------------------
 
 
 def _rename_created_operations(results, base_name, setup_name, logger):
@@ -1462,6 +1472,93 @@ def _set_stock_mode(setup, intent, setup_name, logger):
 # ---------------------------------------------------------------------------
 # H23 item 82 -- CAM_POSITION writers (one stock, one WCS, stock-relative heights)
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# H23 item 86 -- re-BUILD in place: reuse the existing MMs + setups
+# ---------------------------------------------------------------------------
+# MEASURED (item 85): a re-BUILD on an unchanged board cost ~47 s (MM snapshots + Fusion's first setup on the dense
+# panel), while re-applying stock / WCS on the existing setups took ~1.3 s; and after their models change a setup's
+# orientation axes and declared box must be RE-APPLIED (stock X read 7.5 instead of 9.5 after a re-bind).
+#
+# Identity, declared: a setup carries SETUP_ATTR = <its SETUP_SPECS name> (Setup has attributes); an MM is found by
+# its declared display name (ManufacturingModel has NO attributes -- measured). A build is reused only when every
+# MM_RULES MM and every SETUP_SPECS setup is present and valid; anything missing / invalid -> the full recreate.
+SETUP_ATTR = ('CAMBuilder', 'setup')
+
+
+def _tag_setup(setup, spec_name, logger=None):
+    try:
+        old = setup.attributes.itemByName(*SETUP_ATTR)
+        if old:
+            old.deleteMe()
+        setup.attributes.add(SETUP_ATTR[0], SETUP_ATTR[1], spec_name)
+    except Exception as e:
+        _log(logger, f"SETUP BUILD ({spec_name}): tag failed: {e}", "WARNING")
+
+
+def find_reusable_build(cam, mm_names_by_rule, logger=None):
+    """{'mms': {rule: mm}, 'setups': {spec name: setup}} when the whole declared build exists and is valid, else
+    None (the caller then does today's full recreate). Setups by SETUP_ATTR, MMs by `mm_names_by_rule`."""
+    mms = {}
+    by_name = {}
+    for j in range(cam.manufacturingModels.count):
+        m = cam.manufacturingModels.item(j)
+        by_name[m.name] = m
+    for rule, name in mm_names_by_rule.items():
+        m = by_name.get(name)
+        if m is None or not m.isValid:
+            _log(logger, f"REUSE: MM {name!r} missing or invalid -> full recreate", "INFO")
+            return None
+        mms[rule] = m
+    tagged = {}
+    for i in range(cam.setups.count):
+        s = cam.setups.item(i)
+        try:
+            a = s.attributes.itemByName(*SETUP_ATTR)
+        except Exception:
+            a = None
+        if a:
+            tagged[a.value] = s
+    setups = {}
+    for spec in SETUP_SPECS:
+        s = tagged.get(spec['name'])
+        if s is None or not s.isValid:
+            _log(logger, f"REUSE: setup {spec['name']!r} missing, untagged or invalid -> full recreate", "INFO")
+            return None
+        setups[spec['name']] = s
+    return {'mms': mms, 'setups': setups}
+
+
+def _rebind_models(setup, mm, setup_name, logger):
+    """Point the setup at its MM's CURRENT bodies (a Send replaces them; the MM snapshot follows the design)."""
+    bodies = _collect_bodies(mm)
+    if not bodies:
+        return 0
+    coll = adsk.core.ObjectCollection.create()
+    for b in bodies:
+        coll.add(b)
+    setup.models = coll
+    _log(logger, f"REUSE ({setup_name}): models re-bound ({len(bodies)} body/bodies)", "DEBUG")
+    return len(bodies)
+
+
+def update_setups_in_place(cam, reuse, logger=None):
+    """Re-apply every SETUP_SPECS setup's declared configuration to the EXISTING setups (models re-bound first, then
+    _configure_setup: stock, WCS axes / point, the declared box, offsets; 3D op heights when declared). Operations,
+    templates and generated toolpaths stay (Fusion marks changed ones out of date). Returns the setups."""
+    out = []
+    for spec in SETUP_SPECS:
+        setup = reuse['setups'][spec['name']]
+        mm = reuse['mms'][spec['mm_rule']]
+        _rebind_models(setup, mm, spec['name'], logger)
+        _configure_setup(setup, mm, spec, logger)
+        if spec.get('op_heights') and setup.operations.count:
+            _apply_op_heights(setup, spec['name'], logger)
+        _log(logger, f"REUSE ({spec['name']}): updated in place")
+        out.append(setup)
+    _propagate_part_position_pass(out, logger, cam=cam)   # same pass 2 as build_all_setups
+    return out
+
 
 def _apply_stock_box(setup, setup_name, logger, box_key='stock'):
     """Write a declared fixed stock box (CAM_POSITION[box_key]) on a live setup.
