@@ -130,12 +130,12 @@ async function runLayWarnings() {
   await openEditorTab('editorTabFrame');
   await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(W.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
   await apply(); await heightsSettled(null);
-  await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+  await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
   if (!(await exists(W.tooMany))) { checkRow('lay', `${W.template}: too many bands -> no wall + notes`, false, '', W.introducedBy); return; }
   const size = async (id) => { // the Wall tool's brick size, then back to the sidebar
     await openEditorTab('editorTabBrick'); await click('brickTool_wall', 900); await click(id, 2500);
     await apply(); await heightsSettled(null);
-    await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+    await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
   };
   // 1. bands that cover the board: no wall, both notes say so
   await size(W.tooManySize);

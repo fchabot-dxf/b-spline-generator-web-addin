@@ -103,7 +103,7 @@ async function runPersistence() {
     }
     if (step.sidebar) {
       if (await editorOpen()) await apply();
-      await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+      await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
       continue;
     }
     if (step.click === 'brickGenerate') { await click('brickGenerate', 1800); continue; }
