@@ -1,3 +1,4 @@
+import { withLoadingStage } from '../core/loading-signal.js';
 import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache } from '../core/state.js';
 import { syncUItoParam } from '../core/ui-utils.js';
 import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring } from '../core/history.js';
@@ -21,8 +22,13 @@ import { updateSculptToolButtons } from './param-manager.js';
  * is exactly the shape of bug that shipped originally — one function,
  * one behavior, reused for two meanings that needed to differ.
  */
-export async function applySnapshot(snap, preview, { source } = {}) {
-  if (!snap) return;
+/** F35 item 41: a restore (a project load, a global undo) is a declared loading stage -- painted before it runs. */
+export function applySnapshot(snap, preview, opts = {}) {
+  if (!snap) return Promise.resolve();
+  return withLoadingStage('restore', () => _applySnapshot(snap, preview, opts));
+}
+
+async function _applySnapshot(snap, preview, { source } = {}) {
   if (source !== 'undo' && source !== 'load') {
     throw new Error(`applySnapshot: source must be 'undo' or 'load' (got ${JSON.stringify(source)})`);
   }

@@ -32,7 +32,7 @@ function fakeEditor() {
     _activeLayer: '0',
     _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Layer 2', visible: true }],
     _sketchLayer: { node, children: () => Object.assign([], { toArray: () => [] }) /* svg.js: an array (item 64: a kind layer runs addLayer) */,
-      group: () => wrap(svgEl('g')), polygon: (pts) => { const el = svgEl('polygon'); el.setAttribute('points', pts); return wrap(el); } },
+      group: () => wrap(svgEl('g')), polygon: (pts) => { const el = svgEl('polygon'); el.setAttribute('points', pts); return wrap(el); }, path: (d) => { const el = svgEl('path'); el.setAttribute('d', d); return wrap(el); } },
   };
 }
 const S = () => ({ ...P.brickSettings, pattern: 'stretcher', wallRotationDeg: 0 });

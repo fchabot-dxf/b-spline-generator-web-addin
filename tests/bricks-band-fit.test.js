@@ -67,22 +67,23 @@ describe('band stacks that do not fit (T86 item 28)', () => {
     expect(narrowestGap([{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 7, y: 9 }, { x: 0, y: 9 }])).toBeCloseTo(7, 9);
     expect(narrowestGap([{ x: 0, y: 0 }, { x: 0, y: 9 }, { x: 7, y: 9 }, { x: 7, y: 0 }])).toBeCloseTo(7, 9); // either winding
   });
-  it('every template x board x size: a stack that fits is laid whole; a reduced one fits or keeps one band; a wall wherever it fits; no band overlap', () => {
+  // item 67 (test infra): one test per template x board (was one test over all of them: 11.7 s in a full run, a
+  // timeout under the fleet's load). The same cases, the same checks.
+  const CASES = FRAME_DEFS.templates.flatMap(({ id }) => [[6, 9], [7, 9], [9, 12]].map(([W, H]) => [`${id} ${W}x${H}`, id, W, H]));
+  it.each(CASES)('%s x every size: a stack that fits is laid whole; a reduced one fits or keeps one band; a wall wherever it fits; no band overlap', (_name, id, W, H) => {
     const bad = [];
-    for (const { id } of FRAME_DEFS.templates) for (const [W, H] of [[6, 9], [7, 9], [9, 12]]) {
-      const prims = primsOf(id, W, H);
-      for (const L of [0.75, 1, 1.25, 1.5]) {
-        const tag = `${id} ${W}x${H} ${L}`;
-        const r = lay(prims, W, H, 'three_band', L);
-        const n = r.bandsReduced;
-        const bandsLaid = new Set(r.frameBricks.map((b) => b.bandIndex)).size;
-        if (!n && bandsLaid !== FRAME_PRESETS.three_band.length) bad.push(`${tag}: no note but ${bandsLaid} bands laid`);
-        if (n && !n.fits && n.kept !== 1) bad.push(`${tag}: still too deep with ${n.kept} bands`);
-        if (n && Math.abs(n.limitIn - BAND_FIT_SHARE * n.gapIn) > 1e-9) bad.push(`${tag}: limit is not the declared share`);
-        if ((!n || n.fits) && r.bricks.length === 0) bad.push(`${tag}: the stack fits but no wall`);
-        const ov = bandOverlap(r.frameBricks);
-        if (ov > (KNOWN_BAND_OVERLAP_SQIN[tag] ?? OVERLAP_TOL_SQIN)) bad.push(`${tag}: band overlap ${ov.toFixed(2)} sq in`);
-      }
+    const prims = primsOf(id, W, H);
+    for (const L of [0.75, 1, 1.25, 1.5]) {
+      const tag = `${id} ${W}x${H} ${L}`;
+      const r = lay(prims, W, H, 'three_band', L);
+      const n = r.bandsReduced;
+      const bandsLaid = new Set(r.frameBricks.map((b) => b.bandIndex)).size;
+      if (!n && bandsLaid !== FRAME_PRESETS.three_band.length) bad.push(`${tag}: no note but ${bandsLaid} bands laid`);
+      if (n && !n.fits && n.kept !== 1) bad.push(`${tag}: still too deep with ${n.kept} bands`);
+      if (n && Math.abs(n.limitIn - BAND_FIT_SHARE * n.gapIn) > 1e-9) bad.push(`${tag}: limit is not the declared share`);
+      if ((!n || n.fits) && r.bricks.length === 0) bad.push(`${tag}: the stack fits but no wall`);
+      const ov = bandOverlap(r.frameBricks);
+      if (ov > (KNOWN_BAND_OVERLAP_SQIN[tag] ?? OVERLAP_TOL_SQIN)) bad.push(`${tag}: band overlap ${ov.toFixed(2)} sq in`);
     }
     expect(bad).toEqual([]);
   });

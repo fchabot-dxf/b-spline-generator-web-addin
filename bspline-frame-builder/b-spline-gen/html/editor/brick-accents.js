@@ -1,7 +1,7 @@
 /**
  * editor/brick-accents.js -- F35 item 15, RAISED ACCENTS (Fred's 4th sheet, shots/fred/ref_accent_brick_levels.jpg):
  * selected Wall bricks sit proud (or recessed) of the wall by a Level, in a decorative motif, inside a zone
- * (the lower third by default). Pure: no DOM, no engine call. Everything is DECLARED:
+ * (the whole wall, F35 item 57). Pure: no DOM, no engine call. Everything is DECLARED:
  *   ACCENT_MOTIFS  -- the rule that picks a brick from its (course, column) in the zone
  *   ACCENT_PRESETS -- the user's choices: a motif + its parameters + a zone (a new preset = one more entry)
  * Plus 'custom' ("Click bricks"): the raised bricks are the ones under the user's stored click POINTS, so a
@@ -12,7 +12,7 @@
  * a course. Course 0 is the zone's BOTTOM course (the board's y grows downward). Course-free layouts
  * (herringbone, fieldstone) still get a grid, just a looser one.
  * The ZONE is measured over the WALL's own extent (its bricks' lowest to highest point), not the board:
- * a Wall inside a frame (or, later, a wall element anywhere on the board) gets ITS lower third.
+ * a Wall inside a frame (or, later, a wall element anywhere on the board) gets ITS zone (ACCENT_ZONES).
  */
 import { pointInPolygon, polygonCentroid, hashedRandom } from '../core/bricks/index.js';
 
@@ -61,20 +61,23 @@ export function tileOf(preset, max = 8, ctx = { seed: 1 }) {
   return null;
 }
 
-const LOWER_THIRD = Object.freeze([0, 1 / 3]); // zone = [from, to] as fractions of the board height, from the bottom
+// zone = [from, to] as fractions of the WALL's height, from its bottom. F35 item 57 (Fred: "always puts them at the
+// bottom, never higher"): the presets cover the WHOLE wall, as their picker icons show; LOWER_THIRD stays declared.
+export const ACCENT_ZONES = Object.freeze({ WHOLE: Object.freeze([0, 1]), LOWER_THIRD: Object.freeze([0, 1 / 3]) });
+const { WHOLE, LOWER_THIRD } = ACCENT_ZONES;
 
 /** The 10 presets (advisor turn 207: "10, not 6", Fred picks from the icons). Ids are stable keys. */
 export const ACCENT_PRESETS = Object.freeze([
-  { id: 'checker', label: 'Checker', motif: 'checker', params: {}, zone: LOWER_THIRD },
-  { id: 'staircase', label: 'Staircase', motif: 'staircase', params: { period: 6, width: 1 }, zone: LOWER_THIRD },
-  { id: 'doubleStaircase', label: 'Double staircase', motif: 'staircase', params: { period: 8, width: 2 }, zone: LOWER_THIRD },
-  { id: 'pyramid', label: 'Pyramid', motif: 'pyramid', params: { period: 8, height: 4 }, zone: LOWER_THIRD },
-  { id: 'zigzag', label: 'Zigzag', motif: 'zigzag', params: { amp: 3, period: 8 }, zone: LOWER_THIRD },
-  { id: 'courseBand', label: 'Course bands', motif: 'courseBand', params: { every: 4, count: 1 }, zone: LOWER_THIRD },
-  { id: 'doubleBand', label: 'Double course bands', motif: 'courseBand', params: { every: 6, count: 2 }, zone: LOWER_THIRD },
-  { id: 'crenellation', label: 'Crenellation', motif: 'crenellation', params: { every: 3 }, zone: LOWER_THIRD },
-  { id: 'sparseDots', label: 'Sparse dots', motif: 'everyNth', params: { n: 4, m: 3, shift: 2 }, zone: LOWER_THIRD },
-  { id: 'random', label: 'Random 15%', motif: 'random', params: { share: 0.15 }, zone: LOWER_THIRD },
+  { id: 'checker', label: 'Checker', motif: 'checker', params: {}, zone: WHOLE },
+  { id: 'staircase', label: 'Staircase', motif: 'staircase', params: { period: 6, width: 1 }, zone: WHOLE },
+  { id: 'doubleStaircase', label: 'Double staircase', motif: 'staircase', params: { period: 8, width: 2 }, zone: WHOLE },
+  { id: 'pyramid', label: 'Pyramid', motif: 'pyramid', params: { period: 8, height: 4 }, zone: WHOLE },
+  { id: 'zigzag', label: 'Zigzag', motif: 'zigzag', params: { amp: 3, period: 8 }, zone: WHOLE },
+  { id: 'courseBand', label: 'Course bands', motif: 'courseBand', params: { every: 4, count: 1 }, zone: WHOLE },
+  { id: 'doubleBand', label: 'Double course bands', motif: 'courseBand', params: { every: 6, count: 2 }, zone: WHOLE },
+  { id: 'crenellation', label: 'Crenellation', motif: 'crenellation', params: { every: 3 }, zone: WHOLE },
+  { id: 'sparseDots', label: 'Sparse dots', motif: 'everyNth', params: { n: 4, m: 3, shift: 2 }, zone: WHOLE },
+  { id: 'random', label: 'Random 15%', motif: 'random', params: { share: 0.15 }, zone: WHOLE },
 ]);
 export const ACCENT_CUSTOM = Object.freeze({ id: 'custom', label: 'Custom (click bricks)' });
 export const DEFAULT_ACCENT = Object.freeze({ preset: 'none', levelIn: 0.0625, clicks: [] });

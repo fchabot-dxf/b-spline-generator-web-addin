@@ -1,6 +1,6 @@
 /**
  * F35 item 15: RAISED ACCENTS (editor/brick-accents.js) -- 10 declared presets (a motif + params + a zone,
- * the lower third) and Custom "Click bricks" (stored points, re-mapped after a re-lay). The height mask
+ * the whole wall since F35 item 57) and Custom "Click bricks" (stored points, re-mapped after a re-lay). The height mask
  * lifts exactly the accented Wall bricks by the accent Level; the picker icons are drawn by the real engine.
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -12,7 +12,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-surface.
 }));
 
 import {
-  ACCENT_PRESETS, ACCENT_MOTIFS, accentGrid, accentedBrickIndices, toggleAccentClick,
+  ACCENT_PRESETS, ACCENT_MOTIFS, ACCENT_ZONES, accentGrid, accentedBrickIndices, toggleAccentClick,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js';
 import { accentIconSvg, BRICK_GEN_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { rasterizeBrickHeightMask } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-height-mask.js';
@@ -66,7 +66,15 @@ describe('the 10 presets', () => {
   it.each(ACCENT_PRESETS.map((p) => [p.id]))('%s raises some bricks, all inside its zone', (id) => {
     const raised = accentedBrickIndices(bricks, { preset: id }, { seed: 1 });
     expect(raised.size).toBeGreaterThan(0);
-    for (const k of raised) expect(up(bricks[k])).toBeLessThanOrEqual(1 / 3 + 1e-9);
+    const [from, to] = ACCENT_PRESETS.find((p) => p.id === id).zone;
+    for (const k of raised) expect(up(bricks[k])).toBeGreaterThanOrEqual(from - 1e-9);
+    for (const k of raised) expect(up(bricks[k])).toBeLessThanOrEqual(to + 1e-9);
+  });
+  // F35 item 57 (Fred: "always puts them at the bottom, never higher"): the presets cover the whole wall, as the
+  // icons show. Pyramid is the one motif anchored on course 0 by its own rule (a pyramid stands on the bottom).
+  it.each(ACCENT_PRESETS.filter((p) => p.motif !== 'pyramid').map((p) => [p.id]))('%s also raises bricks in the TOP third of the wall', (id) => {
+    const raised = [...accentedBrickIndices(bricks, { preset: id }, { seed: 1 })];
+    expect(raised.filter((k) => up(bricks[k]) > 2 / 3).length).toBeGreaterThan(0);
   });
   it('every preset raises a different set of bricks', () => {
     const sets = ACCENT_PRESETS.map((p) => [...accentedBrickIndices(bricks, { preset: p.id }, { seed: 1 })].join(','));
@@ -82,7 +90,7 @@ describe('the 10 presets', () => {
   });
   it('the zone follows the WALL, not the board: a wall in the board\'s upper half still gets its own lower third', () => {
     const shifted = bricks.filter((b) => polygonCentroid(b.polygon).y < H / 2); // the top half of the board only
-    const raised = accentedBrickIndices(shifted, { preset: 'courseBand' }, { seed: 1 });
+    const raised = accentedBrickIndices(shifted, { preset: 'courseBand' }, { seed: 1, zone: ACCENT_ZONES.LOWER_THIRD });
     expect(raised.size).toBeGreaterThan(0);
     const upS = upIn(shifted);
     for (const k of raised) expect(upS(shifted[k])).toBeLessThanOrEqual(1 / 3 + 1e-9);

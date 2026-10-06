@@ -30,7 +30,8 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async
 });
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, frameContext: vi.fn(() => ({})) };
+  // a FRAMED context, as the app's provider gives with a template picked (item 66: no templateId = the board rectangle)
+  return { ...actual, frameContext: vi.fn(() => ({ defs: { templates: [] }, record: { templateId: 'template_1' } })) };
 });
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -379,7 +380,7 @@ describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + 
   });
   it('one quick row per declared setting, a button per choice, the current one active', () => {
     const rows = [...$('brickQuickSettings').querySelectorAll('label')].map((l) => l.textContent);
-    expect(rows).toEqual(['Set', 'Brick size', 'Wall pattern', 'Frame bands']);
+    expect(rows).toEqual(['Set', 'Brick size', 'Wall pattern', 'Frame bands', 'Grout colour']); // + F35 item 55
     expect($('brickQuick_set_1').classList.contains('active')).toBe(true);
     expect($('brickQuick_pattern_stretcher').classList.contains('active')).toBe(true);
     expect($('brickQuick_frameBands_single_soldier').classList.contains('active')).toBe(true);
@@ -749,6 +750,22 @@ describe("audit (88's matrix): controls grey out while their declared requiremen
     $('brickBtnGroutFlush').click();
     expect($('brickGroutDepth').disabled).toBe(true);
   });
+  // A2 (3D-panel audit, measured: under Flush the field was greyed but its + still moved 0.05 -> 0.055): a number
+  // field's -/+ stepper (ui-bindings.js attachNumberSteppers' wrapper, buttons without ids) follows the field's rule
+  it('a greyed number field greys its -/+ stepper too, with the same reason', () => {
+    window.svgEditor._notifyChange = vi.fn();
+    const input = $('brickGroutDepth');
+    const wrap = document.createElement('div'); wrap.className = 'cad-stepper';
+    input.parentNode.insertBefore(wrap, input);
+    const minus = document.createElement('button'), plus = document.createElement('button');
+    wrap.append(minus, input, plus);
+    $('brickBtnGroutRecessed').click();
+    $('brickBtnGroutFlush').click();
+    expect([minus.disabled, plus.disabled]).toEqual([true, true]);
+    expect(plus.title).toMatch(/Flush/);
+    $('brickBtnGroutRecessed').click();
+    expect([minus.disabled, plus.disabled]).toEqual([false, false]);
+  });
 });
 
 describe('turn 197 (88): a number box applies while typing, once the typing pauses', () => {
@@ -910,7 +927,7 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
     setup('brush');
     expect($('brickBtnReliefCarved').disabled).toBe(true);
     expect($('brickQuick_pattern_herringbone').disabled).toBe(true);
-    expect($('brickBtnReliefCarved').title).toMatch(/No Wall or Frame bricks/);
+    expect($('brickBtnReliefCarved').title).toMatch(/No bricks on this board yet/);
     expect(shown('brickSidebarNoBricks')).toBe(true);
     $('brickTool_wall').click();
     $('brickGenerate').click();
@@ -944,7 +961,7 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
       expect(showToast).not.toHaveBeenCalledWith(FRAME_NEEDS_A_FRAME, 'warn');
       expect(buildRibbonPrimitives.mock.calls.at(-1)[0].map((p) => [p.p0.x, p.p0.y])).toEqual([[0, 0], [7, 0], [7, 9], [0, 9]]);
     } finally {
-      frameContext.mockImplementation(() => ({}));
+      frameContext.mockImplementation(() => ({ defs: { templates: [] }, record: { templateId: 'template_1' } }));
     }
   });
   it('N9: a template whose outline cannot carry a contour says so in a toast (not only the console)', () => {
@@ -1034,7 +1051,7 @@ describe('turn 207 (Fred / 88): the Frame element (and the Wall in it) follows t
       expect(call[3].kinds).toContain('frame');
       expect(call[2]).toBeTruthy();
     } finally {
-      frameContext.mockImplementation(() => ({}));
+      frameContext.mockImplementation(() => ({ defs: { templates: [] }, record: { templateId: 'template_1' } }));
     }
   });
   it('Frame bricks on the canvas, a template whose outline cannot carry a contour: the Frame kind re-lays with no frame = clears it', () => {
@@ -1059,7 +1076,8 @@ describe('F35 item 23: per-element Set, Fieldstone = the rock set', () => {
     setup('wall');
     // T86 item 24 (seat B): Grey brick (set 4, a bond set) joins by its own declaration; Grey stone (set 5, coursed
     // rubble) is not a bond set, so like White Rocks it is not listed here
-    expect([...document.querySelectorAll('#brickSetRow button')].map((b) => [b.id, b.textContent])).toEqual([['brickSet_1', 'Red Brick'], ['brickSet_4', 'Grey brick']]);
+    // item 61: the row holds every set some element can take; the Wall shows its own (the Frame adds the band-capable ones)
+    expect([...document.querySelectorAll('#brickSetRow button')].filter((b) => b.style.display !== 'none').map((b) => [b.id, b.textContent])).toEqual([['brickSet_1', 'Red Brick'], ['brickSet_4', 'Grey brick']]);
     expect([...document.querySelectorAll('#brickQuickSettings [id^=brickQuick_set_]')].map((b) => b.id)).toEqual(['brickQuick_set_1', 'brickQuick_set_4']);
   });
 
@@ -1138,5 +1156,15 @@ describe('F35 item 23: per-element Set, Fieldstone = the rock set', () => {
     $('brickAccent_sparseDots').click();
     expect(P.brickSettings.accent.preset).toBe('sparseDots');
     expect(runBricks.mock.calls.every((c) => !c[3].kinds.includes('frame') || c[3].kinds.includes('wall'))).toBe(true);
+  });
+});
+
+describe('item 67: the panel wires its page (document) listeners once per page', () => {
+  it('a second initBrickPanel adds no document listener (a copy per init re-ran every handler: N2 3.7 s after ~80 inits)', () => {
+    setup('wall'); // an init has run (here or in an earlier test)
+    const add = vi.spyOn(document, 'addEventListener');
+    initBrickPanel();
+    expect(add).not.toHaveBeenCalled();
+    add.mockRestore();
   });
 });

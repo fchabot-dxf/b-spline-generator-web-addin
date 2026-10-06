@@ -16,7 +16,7 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-surface-styles.js';
 import { brickTopHeight } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/height-profile.js';
 import { brickSetById } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
-import { rasterizeBrickHeightMask } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-height-mask.js';
+import { rasterizeBrickHeightMask, brickFaceHeight } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-height-mask.js';
 import { BRICK_GEN_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
 const SET1 = brickSetById(1);
@@ -130,7 +130,6 @@ describe('rasterizeBrickHeightMask with a surface style', () => {
   it('Recessed grout (Clean): the joint goes down by grout depth, the open board is untouched', async () => {
     const flush = await run({ groutWidthIn: 0.25, groutProfile: 'flush', groutDepthIn: 0.05 });
     const r = await run(RECESSED);
-    expect(flush.isStamped[joint]).toBe(0);
     expect(r.isStamped[joint]).toBe(1);
     expect(r.body[joint] * 0.125).toBeCloseTo(-0.05, 6);
     expect(r.isStamped[open]).toBe(0);
@@ -138,12 +137,29 @@ describe('rasterizeBrickHeightMask with a surface style', () => {
     expect(r.body[inBrick]).toBe(flush.body[inBrick]); // bricks themselves untouched by the grout setting
   });
 
-  it('Flush = no recess in every style (Weathered included); Weathered still restyles the bricks', async () => {
+  // F35 item 62 (Fred: Flush still showed every brick as a separate ridge; measured joints at the ground, 0.11 in
+  // under the median brick top): Flush FILLS the joint to the bricks' face, the open board stays untouched
+  it('Flush (Clean): the joint is filled to the bricks’ face, the open board is untouched', async () => {
+    const f = await run({ groutWidthIn: 0.25, groutProfile: 'flush', groutDepthIn: 0.05 });
+    const set1 = brickSetById(1);
+    expect(f.isStamped[joint]).toBe(1);
+    expect(f.body[joint] * 0.125).toBeCloseTo(brickFaceHeight({ heightOffset: 0 }, { ...set1, reliefIn: 0.125 }), 6);
+    expect(f.body[joint]).toBeGreaterThan(0.5); // up at the face, not near the ground
+    expect(f.isStamped[open]).toBe(0);
+    expect(f.body[open]).toBe(0);
+  });
+  it('Flush in every style (Weathered included) fills the joint; Weathered still restyles the bricks', async () => {
     const clean = await run({});
     const w = await run({ surfaceStyle: 'weathered', groutWidthIn: 0.25, groutProfile: 'flush', groutDepthIn: 0.05 });
-    expect(w.isStamped[joint]).toBe(0);
-    expect(w.body[joint]).toBe(0);
+    expect(w.isStamped[joint]).toBe(1);
+    expect(w.body[joint]).toBeGreaterThan(0);
     expect(w.body[inBrick]).not.toBe(clean.body[inBrick]);
+  });
+  it('Flush next to a raised brick: the joint takes the LOWER face, so the raised brick stands proud', async () => {
+    const plain = await run({ groutWidthIn: 0.25, groutProfile: 'flush' });
+    const raised = await run({ groutWidthIn: 0.25, groutProfile: 'flush', levels: { wall: 0.05 } }); // the left brick up
+    expect(raised.body[joint]).toBeCloseTo(plain.body[joint], 6);
+    expect(raised.body[inBrick]).toBeGreaterThan(raised.body[joint]);
   });
 
   it('Weathered + Recessed: grout depth x jointDepthScale', async () => {

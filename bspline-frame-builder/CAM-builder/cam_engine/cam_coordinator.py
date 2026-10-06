@@ -234,7 +234,7 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
         except Exception as e:
             _log(logger, f"COORDINATOR: ensure_wcs_sketches raised {type(e).__name__}: {e}", "WARNING")
 
-        # H23 item 86: a re-BUILD REUSES the existing build (every declared MM + tagged setup
+        # H23 item 86: a re-BUILD REUSES the existing build (every declared MM + setup, by its declared name,
         # present and valid) and re-applies the declared configuration in place (~1 s,
         # measured); otherwise today's full recreate (cleanup, then MMs, then setups).
         reuse = setup_builder.find_reusable_build(

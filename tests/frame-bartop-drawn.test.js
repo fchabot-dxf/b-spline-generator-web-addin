@@ -38,14 +38,23 @@ const HEAVY_MESH_TIMEOUT_MS = 20_000;
 const CASES = [];
 for (const id of ['template_1', 'template_2', 'template_3', 'template_4', 'template_5', 'template_6']) for (const [spacing, thick] of [[0.4, 0.2], [0.15, 1.0], [0.05, 0.2]]) CASES.push([id, spacing, thick]);
 
+// item 67 (test infra): the panel depends only on spacing x thicken, so the 3 are built once and shared by the 6
+// templates (applyFrameToPanel re-indexes the panel from its own cached full index on every call -- the app's re-apply
+// path -- and the panel's drawn faces are read after each case's own apply, as before).
+const _built = new Map();
+const builtFor = (spacing, thick) => {
+  const key = `${spacing}|${thick}`;
+  if (!_built.has(key)) { const b = build(spacing, thick); _built.set(key, { ...b, solidZ: drawnFaces([b.solid]) }); }
+  return _built.get(key);
+};
+
 describe('bar tops vs the DRAWN panel faces (normal-offset underside)', () => {
   it.each(CASES)('%s spacing %s thicken %s', (id, spacing, thick) => {
-    const { mesh, solid, grid } = build(spacing, thick);
+    const { mesh, grid, solidZ } = builtFor(spacing, thick);
     const spec = frameSolidSpec(FRAME_DEFS, normalizeFrameRecord({ templateId: id, frameBottomZ: -1 }), { widthIn: W, heightIn: H });
     const extra = applyFrameToPanel(FakeTHREE, mesh, grid, spec);
     const bars = extra.find((m) => m.name === 'frame-bars');
     const { outer, inner } = frameLoopsWorld(spec, grid);
-    const solidZ = drawnFaces([solid]);
     const panelZ = drawnFaces([mesh, ...extra.filter((m) => m.name === 'frame-panel-rim')]);
     const barZ = drawnFaces([bars]);
 

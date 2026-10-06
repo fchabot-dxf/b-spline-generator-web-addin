@@ -19,6 +19,7 @@ import { frameSendPayload } from './frame-panel.js';
 import { confirmDialog } from '../core/confirm-dialog.js';
 import { rebuild } from '../core/engine.js';
 import { generateThickenedStep } from '../core/stepWriter.js';
+import { withLoadingStage, beginLoadingSequence } from '../core/loading-signal.js';
 import {
     fusLog,
     sendFusionPayloadChunked,
@@ -32,7 +33,7 @@ import {
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { bakeSvgForCarving, getLayerSvg } from '../editor/editor-io.js';
-import { isCarved, isExported } from '../editor/layers.js';
+import { isCarved, isExported, BRICK_SEND_SKIP } from '../editor/layers.js';
 import {
     buildSketchManifest, splitManifestByKind, BOUNDARY_SKETCH_KIND, BOUNDARY_SKETCH_NAME,
 } from '../editor/editor-sketch-manifest.js';
@@ -162,7 +163,7 @@ export async function _bricksLayerSvg(editor) {
         const r = doc.documentElement;
         if (!r) continue;
         Array.from(r.children).forEach((ch) => {
-            if (ch.getAttribute(BRICK_GEN_ATTR) !== '1') { ch.remove(); return; }
+            if (ch.getAttribute(BRICK_GEN_ATTR) !== '1' || BRICK_SEND_SKIP.includes(ch.getAttribute('data-brick'))) { ch.remove(); return; }
             kept++;
             if (root) root.appendChild(ch);
         });
@@ -491,9 +492,10 @@ export async function executeExport(preview, options = null, isAppend = false, f
     }
 
     if (!options) options = readWizardOptions();
+    beginLoadingSequence('export'); // item 41
 
     try {
-        await withExportResolution(preview, async () => {
+        await withExportResolution(preview, () => withLoadingStage('stepExport', async () => {
             const heights   = lastResult.heights;
             const offsetPts = lastResult.thickenData?.offsetPts;
             const unstamped = lastResult.cleanHeights || heights;
@@ -529,7 +531,7 @@ export async function executeExport(preview, options = null, isAppend = false, f
                     selectedVariants, layersToExport, btn,
                 });
             }
-        });
+        }));
     } catch (e) {
         console.error('Export Failed:', e);
         if (btn) { btn.disabled = false; btn.textContent = 'Try Again'; }

@@ -1,0 +1,98 @@
+== bricks (svgPieces / profiles / slivers / outline)
+template_1__double_course     102  102  0 1uyqir5
+template_1__single_soldier    106  106  0 1uyqir5
+template_1__three_band        106  106  0 1uyqir5
+template_2__double_course      88   88  0 d6a9h4
+template_2__single_soldier     94   94  0 d6a9h4
+template_2__three_band        117  117  0 d6a9h4
+template_3__double_course      93   93  0 1lvix0c
+template_3__single_soldier     97   97  0 1lvix0c
+template_3__three_band         97   97  0 1lvix0c
+template_4__double_course     102  102  0 1h6asq4
+template_4__single_soldier    108  108  0 1h6asq4
+template_4__three_band        108  108  0 1h6asq4
+template_5__double_course     112  112  0 veux1z
+template_5__single_soldier    114  114  0 veux1z
+template_5__three_band        114  114  0 veux1z
+template_6__double_course      91   91  0 17t8owx
+template_6__single_soldier     99   99  0 17t8owx
+template_6__three_band         99   99  0 17t8owx
+template_7__double_course      79   79  0 tfd9im
+template_7__single_soldier     83   83  0 tfd9im
+template_7__three_band         83   83  0 tfd9im
+template_8__double_course      97   97  0 175ddp3
+template_8__single_soldier    101  101  0 175ddp3
+template_8__three_band        101  101  0 175ddp3
+template_9__double_course     120  120  0 1kupqgx
+template_9__single_soldier    126  126  0 1kupqgx
+template_9__three_band        126  126  0 1kupqgx
+template_10__double_course     98   98  0 1i02z9t
+template_10__single_soldier   100  100  0 1i02z9t
+template_10__three_band       100  100  0 1i02z9t
+template_11__double_course     89   89  0 13i0447
+template_11__single_soldier    93   93  0 13i0447
+template_11__three_band        93   93  0 13i0447
+template_12__double_course    100  100  0 1fdxux
+template_12__single_soldier   103  103  0 1fdxux
+template_12__three_band       103  103  0 1fdxux
+template_13__double_course     87   87  0 klz93a
+template_13__single_soldier    92   92  0 klz93a
+template_13__three_band       114  114  0 klz93a
+template_14__double_course    108  108  0 p68haq
+template_14__single_soldier   108  108  0 p68haq
+template_14__three_band       108  108  0 p68haq
+template_15__double_course     83   83  0 1bzegme
+template_15__single_soldier    86   86  0 1bzegme
+template_15__three_band        86   86  0 1bzegme
+template_16__double_course     91   91  0 9jmvi0
+template_16__single_soldier    91   91  0 9jmvi0
+template_16__three_band        91   91  0 9jmvi0
+template_17__double_course     91   91  0 1w5z5c
+template_17__single_soldier    91   91  0 1w5z5c
+template_17__three_band        91   91  0 1w5z5c
+template_18__double_course     97   97  0 qsai4j
+template_18__single_soldier    99   99  0 qsai4j
+template_18__three_band        99   99  0 qsai4j
+template_19__double_course     95   95  0 13e5ymj
+template_19__single_soldier    97   97  0 13e5ymj
+template_19__three_band        97   97  0 13e5ymj
+== set3 (svgPieces / profiles / slivers / outline)
+template_1__three_band         91   91  0 1uyqir5  set via selectSet
+template_2__three_band         85   85  0 d6a9h4  set via direct (setIds.frame)
+template_3__three_band         85   85  0 1lvix0c  set via selectSet
+template_4__three_band        103  103  0 1h6asq4  set via selectSet
+template_5__three_band        102  102  0 veux1z  set via selectSet
+template_6__three_band         86   86  0 17t8owx  set via selectSet
+template_7__three_band         78   78  0 tfd9im  set via selectSet
+template_8__three_band         86   86  0 175ddp3  set via selectSet
+template_9__three_band        112  112  0 1kupqgx  set via selectSet
+template_10__three_band        82   82  0 1i02z9t  set via selectSet
+template_11__three_band        67   67  0 13i0447  set via direct (setIds.frame)
+template_12__three_band        93   93  0 1fdxux  set via selectSet
+template_13__three_band        88   88  0 klz93a  set via selectSet
+template_14__three_band        90   90  0 p68haq  set via selectSet
+template_15__three_band        81   81  0 1bzegme  set via selectSet
+template_16__three_band        77   77  0 9jmvi0  set via selectSet
+template_17__three_band        86   86  0 1w5z5c  set via selectSet
+template_18__three_band        80   80  0 qsai4j  set via selectSet
+template_19__three_band        80   80  0 13e5ymj  set via selectSet
+== set5 (svgPieces / profiles / slivers / outline)
+template_1__three_band         91   91  0 1uyqir5  set via selectSet
+template_2__three_band         84   84  0 d6a9h4  set via selectSet
+template_3__three_band         85   85  0 1lvix0c  set via selectSet
+template_4__three_band         95   95  0 1h6asq4  set via direct (setIds.frame)
+template_5__three_band        102  102  0 veux1z  set via selectSet
+template_6__three_band         86   86  0 17t8owx  set via selectSet
+template_7__three_band         78   78  0 tfd9im  set via selectSet
+template_8__three_band         96   96  0 175ddp3  set via direct (setIds.frame)
+template_9__three_band        112  112  0 1kupqgx  set via selectSet
+template_10__three_band        82   82  0 1i02z9t  set via selectSet
+template_11__three_band        81   81  0 13i0447  set via selectSet
+template_12__three_band        93   93  0 1fdxux  set via selectSet
+template_13__three_band        88   88  0 klz93a  set via selectSet
+template_14__three_band        90   90  0 p68haq  set via selectSet
+template_15__three_band        81   81  0 1bzegme  set via selectSet
+template_16__three_band        77   77  0 9jmvi0  set via selectSet
+template_17__three_band        86   86  0 1w5z5c  set via selectSet
+template_18__three_band        80   80  0 qsai4j  set via selectSet
+template_19__three_band        80   80  0 13e5ymj  set via selectSet

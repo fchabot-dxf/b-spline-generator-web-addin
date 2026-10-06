@@ -1,0 +1,152 @@
+// H23 item 89: the Fusion-side BASELINE for the joint-planner fix -- frame bands only (no wall), every template x
+// BAND_PRESETS at BRICK_LENGTH_IN, laid in the real app (headless Chrome, a fresh state per case), and the Bricks
+// payload taken through the Send's own functions (export-flow.js _bricksLayerSvg + editor-io.js bakeSvgForCarving,
+// exactly what sendToFusion puts in stamp.bricks). One JSON per case in <outDir>; existing cases are skipped (resume).
+//   python tools/serve_app.py <port>   then
+//   node tools/repro/h23_item89_band_sweep.mjs <outDir> <paletteUrl> [cdpPort] [--board=WxH] [--only=template_1,...] [--seed=89] [--frame=fitted|generate]
+//        [--root=<the bspline-frame-builder dir the server should be serving>]
+// The Fusion half (import the svg through the add-in's own _apply_bricks_sketch) reads these files.
+import { spawn } from 'node:child_process';
+import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+const ALL_PRESETS = ['single_soldier', 'three_band', 'double_course'];
+const BRICK_LENGTH_IN = 1;
+const ARGS = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const opt = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3) || d;
+const [OUT, URL, PORTARG] = ARGS;
+const PORT = Number(PORTARG || 9396);
+const [BW, BH] = opt('board', '7x9').split('x').map(Number);
+const ONLY = opt('only', '') ? opt('only', '').split(',') : null;
+// --frame: which board shape the frame takes. 'fitted' (default) = the template's own fitted shape, no [Generate]: the
+// outline is identical across fresh loads (measured, T1 3/3), so a before/after sweep lays the SAME boards. 'generate' =
+// the Frame tab's [Generate] (a random shape: nextSeed() = Math.random, and the seeded PRNG does not pin it -- the number
+// of draws before Generate depends on timing; measured, B's runs and mine drew different T9 boards).
+const FRAME_MODE = opt('frame', 'fitted');
+// --presets=a,b: only these band presets (default all three). --frameSet=<id>: the frame's brick set (core/bricks/library.js
+// BRICK_SETS id; e.g. 3 White rocks, 5 Grey stone), picked through the app's own selectSet(id, .., ['frame']); the set the
+// frame bricks really carry is read back per case (frameSets), and when the picker did not take it (a set not offered for
+// the frame) the case writes it the way item 83 did (setIds.frame, no band patterns) and says so (frameSetVia).
+const BAND_PRESETS = opt('presets', '') ? opt('presets', '').split(',') : ALL_PRESETS;
+const FRAME_SET = opt('frameSet', '') ? Number(opt('frameSet', '')) : null;
+if (BAND_PRESETS.some((p) => !ALL_PRESETS.includes(p))) { console.log(`--presets: one of ${ALL_PRESETS.join(', ')}`); process.exit(2); }
+if (!['fitted', 'generate'].includes(FRAME_MODE)) { console.log(`--frame must be fitted or generate, not ${FRAME_MODE}`); process.exit(2); }
+const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+// --root: the served app must BE that tree (MEASURED, item 89 after-run: two days-old servers held the port, ours never
+// bound, and the capture silently swept another worktree's engine). The palette page and every core/bricks/*.js are
+// fetched from the server and byte-compared with the same files under --root; any difference stops the sweep.
+const ROOT = opt('root', '');
+if (ROOT) {
+  const html = join(ROOT, 'b-spline-gen', 'html');
+  const files = ['bspline_gen_palette.html', ...readdirSync(join(html, 'core', 'bricks'), { recursive: true })
+    .filter((f) => String(f).endsWith('.js')).map((f) => 'core/bricks/' + String(f).split(String.fromCharCode(92)).join('/'))];
+  const base = URL.replace(/[^/]*$/, '');
+  for (const f of files) {
+    const served = Buffer.from(await (await fetch(base + f)).arrayBuffer());
+    if (!served.equals(readFileSync(join(html, ...f.split('/'))))) { console.log(`SERVED != --root: ${f} (another server on this port?)`); process.exit(2); }
+  }
+  console.log(`served app == --root (${files.length} files checked)`);
+}
+const PROFILE = `${OUT}/chrome-sweep-${PORT}`;
+mkdirSync(OUT, { recursive: true });
+rmSync(PROFILE, { recursive: true, force: true }); // a reused profile restores the previous board (item 83)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${PROFILE}`,
+  '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: 'ignore' });
+let wsUrl = null;
+for (let i = 0; i < 50 && !wsUrl; i++) {
+  await sleep(200);
+  try { const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json(); wsUrl = list.find((t) => t.type === 'page')?.webSocketDebuggerUrl; } catch (_) { /* not up yet */ }
+}
+if (!wsUrl) { console.log('NO CDP'); chrome.kill(); process.exit(1); }
+const ws = new WebSocket(wsUrl);
+await new Promise((r) => ws.addEventListener('open', r));
+let id = 0; const pending = new Map();
+ws.addEventListener('message', (ev) => {
+  const msg = JSON.parse(ev.data);
+  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
+});
+const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+const evalJS = async (expr) => {
+  const r = (await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true })).result;
+  if (r?.exceptionDetails) console.log('PAGE EVAL ERROR:', String(r.exceptionDetails.exception?.description || r.exceptionDetails.text).split(/\r?\n/)[0]);
+  return r?.result?.value;
+};
+const appUp = async () => { for (let i = 0; i < 60; i++) { await sleep(1000); if (await evalJS(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; } await sleep(2000); };
+await send('Runtime.enable'); await send('Page.enable');
+await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+// Math.random SEEDED before any page script: a fresh load otherwise draws a new frame shape / terrain each time
+// (measured: one template, three different silhouettes), and the before/after must lay the SAME boards.
+const SEED = Number(opt('seed', '89'));
+await send('Page.addScriptToEvaluateOnNewDocument', { source: `
+  { let s = ${SEED} >>> 0; Math.random = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; }
+  window.adsk = { fusionSendData() { return ''; } };` });
+
+// the template list, read once from the app (retried: under load the local server sometimes drops a module fetch)
+let templates = null;
+for (let attempt = 1; attempt <= 3 && !templates; attempt++) {
+  await send('Page.navigate', { url: URL }); await appUp();
+  const raw = await evalJS(`(async()=>{ const FD = (await import('./data/frame-defs.js')).default; return JSON.stringify(FD.templates.map((t) => t.id)); })()`);
+  try { templates = typeof raw === 'string' ? JSON.parse(raw) : null; } catch { templates = null; }
+}
+if (!templates) { console.log('could not read the template list'); ws.close(); chrome.kill(); process.exit(2); }
+const todo = templates.filter((t) => !ONLY || ONLY.includes(t));
+for (const template of todo) {
+  for (const preset of BAND_PRESETS) {
+    const file = `${OUT}/${template}__${preset}.json`;
+    if (existsSync(file)) { console.log('skip (done)', template, preset); continue; }
+    // A FRESH start: wipe the origin's storage from about:blank. MEASURED (item 89 follow-up): localStorage.clear() from
+    // inside the app and then navigating does NOT give one -- the previous board (frame record, terrain seed) came back.
+    await send('Page.navigate', { url: 'about:blank' }); await sleep(800);
+    await send('Storage.clearDataForOrigin', { origin: new globalThis.URL(URL).origin, storageTypes: 'all' });
+    await send('Page.navigate', { url: URL }); await appUp();
+    const t0 = Date.now();
+    const raw = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
+      document.getElementById('btnStampEdit').click(); await W(2500);
+      { const w = document.getElementById('widthIn'), h = document.getElementById('heightIn');
+        w.value = '${BW}'; w.dispatchEvent(new Event('change')); h.value = '${BH}'; h.dispatchEvent(new Event('change')); await W(500); }
+      (await import('./main/frame-panel.js')).editFrame({ templateId: '${template}', params: {} }); await W(1500);
+      ${FRAME_MODE === 'generate' ? "document.getElementById('editorFrameGenerate').click(); await W(1500);" : ''}
+      document.getElementById('editorTabBrick').click(); await W(800);
+      const B = await import('./main/brick-panel.js'), S = await import('./core/state.js');
+      B.setBrickSize(${BRICK_LENGTH_IN}); B.setFrameBandPreset('${preset}'); await W(300);
+      let frameSetVia = null;
+      const want = ${FRAME_SET === null ? 'null' : FRAME_SET};
+      if (want !== null) {
+        const lib = await import('./core/bricks/library.js');
+        const rockPattern = (lib.BRICK_SETS.find((x) => x.id === want) || {}).layout;
+        const before = JSON.stringify([S.P.brickSettings.setIds, S.P.brickSettings.frameBandPatterns]);
+        B.selectSet(want, 'none', ['frame']); await W(300);
+        frameSetVia = JSON.stringify([S.P.brickSettings.setIds, S.P.brickSettings.frameBandPatterns]) !== before ? 'selectSet' : null;
+        if (!frameSetVia) { S.P.brickSettings.setIds = { ...S.P.brickSettings.setIds, frame: want }; S.P.brickSettings.frameBandPatterns = []; frameSetVia = 'direct (setIds.frame)'; }
+      }
+      document.getElementById('brickTool_frame').click(); await W(500);
+      const t = performance.now();
+      document.getElementById('brickGenerate').click();
+      const q = () => document.querySelectorAll('[data-brick-gen="1"]').length;
+      let last = -1, stable = 0;
+      for (let i = 0; i < 120 && stable < 6; i++) { await W(250); const n = q(); if (n === last && n > 0) stable++; else stable = 0; last = n; }
+      const layMs = Math.round(performance.now() - t);
+      const ed = window.svgEditor, X = await import('./main/export-flow.js'), IO = await import('./editor/editor-io.js');
+      const polys = [...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"]')];
+      const byKind = {}; for (const p of polys) { const k = p.getAttribute('data-brick') || '?'; byKind[k] = (byKind[k] || 0) + 1; }
+      const raw = await X._bricksLayerSvg(ed);
+      const svg = raw ? await IO.bakeSvgForCarving(raw, S.P.widthIn, S.P.heightIn, 96) : '';
+      // the board this case laid: the frame record + a hash of its outline primitives (before/after must match it)
+      const FR = await import('./core/frame-record.js'), FP = await import('./editor/editor-frame-profile.js'), FD = (await import('./data/frame-defs.js')).default;
+      const rec = FR.getFrameRecord(), prims = FP.frameCutProfile(FD, rec, { widthIn: S.P.widthIn, heightIn: S.P.heightIn }).primitives;
+      const ps = JSON.stringify(prims, (k, v) => (typeof v === 'number' ? Math.round(v * 1e4) / 1e4 : v));
+      let hx = 2166136261; for (let i = 0; i < ps.length; i++) { hx ^= ps.charCodeAt(i); hx = Math.imul(hx, 16777619); }
+      const svgPieces = (svg.match(/<polygon/g) || []).length; // what the Bricks sketch receives (no 'grout' element)
+      const frameSets = [...new Set(polys.filter((p) => p.getAttribute('data-brick') === 'frame').map((p) => p.getAttribute('data-brick-set')))];
+      return JSON.stringify({ pieces: polys.length, svgPieces, byKind, frameSetWanted: want, frameSetVia, frameSets, layMs, board: [S.P.widthIn, S.P.heightIn],
+        frameMode: '${FRAME_MODE}', frame: rec, outlineHash: (hx >>> 0).toString(36),
+        brickLengthIn: S.P.brickSettings.brickLengthIn, preset: S.P.brickSettings.frameBandPreset,
+        bricks: svg ? { enabled: true, carve: true, svg } : { enabled: false } }); })()`);
+    let r = null; try { r = typeof raw === 'string' ? JSON.parse(raw) : null; } catch { r = null; }
+    if (!r) { console.log('FAILED', template, preset); continue; }
+    writeFileSync(file, JSON.stringify({ template, ...r }));
+    console.log(template, preset, 'outline', r.outlineHash, r.frameSetWanted !== null ? `set ${r.frameSetWanted} via ${r.frameSetVia} -> laid ${r.frameSets}` : '', 'svgPieces', r.svgPieces, 'pieces', r.pieces, JSON.stringify(r.byKind), 'lay ms', r.layMs, 'case s', ((Date.now() - t0) / 1000).toFixed(1));
+  }
+}
+ws.close(); chrome.kill();

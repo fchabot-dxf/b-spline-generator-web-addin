@@ -52,10 +52,21 @@ export function flatBrickPlaneHeights(heights, brickOf, count, nx) {
   return out;
 }
 
+/** F35 item 44: what a stamp pass IS (rebuild.js _collectStampPasses tags each): a layer's ART, or a layer's BRICKS.
+ *  A pass without a kind is art (every pre-item-22 caller). */
+export const STAMP_PASS_KIND = Object.freeze({ art: 'art', bricks: 'bricks' });
+
 export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
   const { stampDepth = 0, stampEdgeFilletRadius = 0 } = defaults;
   const stampedHeights = new Float32Array(cleanHeights);
   if (!Array.isArray(layers)) return stampedHeights;
+  // F35 item 44 (Fred: "if there's a carving in art, the bricks don't work"): what the ART passes so far added to each
+  // point. A Flat brick fits its plane to the heights WITHOUT it (the terrain + the brick passes below), then adds it
+  // back, so a carving under a brick cuts into it as in Organic. Measured before (7x9 T1, a 0.35 in carve across 20 of
+  // 140 Flat bricks): 1,752 points of the crossed bricks off the stroke moved (max 0.10 in) -- each brick's plane had
+  // been fitted over the groove -- and the plane replaced the groove under it.
+  const artDelta = new Float32Array(nx * nz);
+  let anyArt = false;
 
   // Step 2 unification: prefer tooling values from the matching editor
   // layer when one exists. Falls through to the stamp layer's own field,
@@ -110,7 +121,9 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
     // Flat brick tops: fitted against the heights BELOW this layer (terrain + earlier layers), the
     // same base an Organic brick drapes onto
     const flatTop = (m && m.flatTop && m.flatTop.brickOf && m.flatTop.brickOf.length === nx * nz) ? m.flatTop : null;
-    const planeZ = flatTop ? flatBrickPlaneHeights(stampedHeights, flatTop.brickOf, flatTop.count, nx) : null;
+    const base = flatTop && anyArt ? stampedHeights.map((v, k) => v - artDelta[k]) : stampedHeights;
+    const planeZ = flatTop ? flatBrickPlaneHeights(base, flatTop.brickOf, flatTop.count, nx) : null;
+    const isArt = layer.kind !== STAMP_PASS_KIND.bricks;
 
     for (let k = 0; k < nx * nz; k++) {
       const bodyVal   = body[k];
@@ -118,17 +131,19 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
       // a Flat brick point: its brick's plane REPLACES the terrain under it (suppression is moot);
       // grout (NaN) falls through and stays draped, exactly as in Organic
       if (planeZ && !Number.isNaN(planeZ[k])) {
-        stampedHeights[k] = planeZ[k] + bodyVal * layerDepth + filletVal * filletAmplitude;
+        stampedHeights[k] = planeZ[k] + artDelta[k] + bodyVal * layerDepth + filletVal * filletAmplitude;
         continue;
       }
       const stamped   = isStamped ? isStamped[k] : (bodyVal > 1e-6);
       if (!stamped && bodyVal < 1e-6 && filletVal < 1e-6) continue;
 
+      const before = stampedHeights[k];
       if (suppressStrength > 0) {
         stampedHeights[k] = (stampedHeights[k] * (1 - suppressStrength))
                           + (smoothedTerrain[k] * suppressStrength);
       }
       stampedHeights[k] += bodyVal * layerDepth + filletVal * filletAmplitude;
+      if (isArt) { artDelta[k] += stampedHeights[k] - before; anyArt = true; }
     }
   });
 

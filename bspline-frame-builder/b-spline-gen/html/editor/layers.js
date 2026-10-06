@@ -206,13 +206,21 @@ export function ensureActiveLayer(editor) {
 /** Audit (batch 2): an element hidden on its own (display:none -- a Shape Lattice contour with Show contour off)
  *  is not there for picking or snapping, same as one on a hidden layer. The scissors, the Stripe tool and Select
  *  used to cut / stripe / select an invisible contour piece. */
+/** F35 item 55: a LOCKED node (the grout shape) -- the Brick tab owns it: art tools never pick, select, snap to, cut,
+ *  erase, move, restyle or delete it (only its element's re-lay or Clear > Bricks removes it). One attribute, read
+ *  by every picker gate below and by editor-ui.js's selection. */
+export const LOCKED_ATTR = 'data-locked';
+export function isLockedNode(node) {
+  const n = node && (node.node || node);
+  return !!(n && typeof n.getAttribute === 'function' && n.getAttribute(LOCKED_ATTR) === '1');
+}
 function _hiddenItself(node) {
   const n = node && (node.node || node);
   return !!(n && typeof n.getAttribute === 'function' && n.getAttribute('display') === 'none');
 }
 
 export function isEditableByLayer(editor, node) {
-  return getElementLayer(node) === getActiveLayer(editor) && !_hiddenItself(node);
+  return getElementLayer(node) === getActiveLayer(editor) && !_hiddenItself(node) && !isLockedNode(node);
 }
 
 /** SE7h add-on (Fred: generated Rails/Ties/Nodes pieces were unclickable
@@ -233,7 +241,7 @@ export function isOnVisibleLayer(editor, node) {
   const layerId = getElementLayer(node);
   const layers = Array.isArray(editor._layers) ? editor._layers : [];
   const layer = layers.find((l) => String(l.id) === layerId);
-  return (!layer || layer.visible !== false) && !_hiddenItself(node);
+  return (!layer || layer.visible !== false) && !_hiddenItself(node) && !isLockedNode(node);
 }
 
 // ----------- Data ops -----------
@@ -770,12 +778,30 @@ export const BRICK_EDITOR_ONLY_ATTRS = Object.freeze({
   frame: ['data-brick-owner', 'data-brick-band', 'data-brick-row', 'data-brick-piece', 'data-brick-accent'],
   brush: ['data-brick-band', 'data-brick-row', 'data-brick-piece', 'data-brick-accent'],
 });
-/** Strip BRICK_EDITOR_ONLY_ATTRS from one (plain DOM) element; true when it changed anything. */
+/** F35 item 55: brick-tool node KINDS (`data-brick`) that never go into Send's Bricks sketch (stamp.bricks.svg): the
+ *  grout shape is paint, not geometry (Fred: it reaches Fusion only by the SVG import, and only when the advisor
+ *  says). main/export-flow.js _bricksLayerSvg reads this list. */
+export const BRICK_SEND_SKIP = Object.freeze(['grout']);
+/** Advisor (seat E finding): the editor's own LOOK on a brick piece -- the inline cursor open() puts on every child
+ *  (editor-io.js) and the hover / selection classes (editor-ui.js) -- is editor-only too: before, a mere hover or a
+ *  reopen changed Send's Bricks sketch (stamp.bricks.svg). Stripped from every brick node (data-brick) with the attributes. */
+export const EDITOR_ONLY_STYLE = Object.freeze({ props: Object.freeze(['cursor']), classes: Object.freeze(['svg-hover', 'svg-selected']) });
+/** Strip BRICK_EDITOR_ONLY_ATTRS + EDITOR_ONLY_STYLE from one (plain DOM) element; true when it changed anything. */
 export function stripEditorOnlyBrickAttrs(el) {
-  const attrs = el && el.getAttribute ? BRICK_EDITOR_ONLY_ATTRS[el.getAttribute('data-brick')] : null;
-  if (!attrs) return false;
+  if (!el || !el.getAttribute || !el.hasAttribute('data-brick')) return false; // any brick node, by its kind (as before)
   let changed = false;
-  for (const a of attrs) if (el.hasAttribute(a)) { el.removeAttribute(a); changed = true; }
+  for (const a of BRICK_EDITOR_ONLY_ATTRS[el.getAttribute('data-brick')] || []) if (el.hasAttribute(a)) { el.removeAttribute(a); changed = true; }
+  const style = el.getAttribute('style');
+  if (style != null) {
+    const kept = style.split(';').map((d) => d.trim()).filter((d) => d && !EDITOR_ONLY_STYLE.props.includes(d.split(':')[0].trim().toLowerCase()));
+    const next = kept.join('; ');
+    if (next !== style.trim().replace(/;$/, '')) { if (next) el.setAttribute('style', next); else el.removeAttribute('style'); changed = true; }
+  }
+  const cls = el.getAttribute('class');
+  if (cls != null) {
+    const kept = cls.split(/\s+/).filter((c) => c && !EDITOR_ONLY_STYLE.classes.includes(c));
+    if (kept.length !== cls.split(/\s+/).filter(Boolean).length) { if (kept.length) el.setAttribute('class', kept.join(' ')); else el.removeAttribute('class'); changed = true; }
+  }
   return changed;
 }
 /** F35 item 22 slice 3: a node the BRICK TOOLS own -- a laid piece (data-brick-gen) or a Brush stroke's spine
@@ -785,6 +811,41 @@ export function stripEditorOnlyBrickAttrs(el) {
 export function isBrickToolNode(el) {
   return !!(el && el.getAttribute) && (el.getAttribute('data-brick-gen') === '1' || el.getAttribute('data-brick') === 'brush-spine');
 }
+/** F35 item 65 (Fred: moving / transforming bricks by hand in the editor did not update the 3D). MEASURED: a Select-tool
+ *  move stores `transform="matrix(1,0,0,1,dx,dy)"` on the piece and leaves `points` as laid, while every brick reader
+ *  (the height mask, accents, Send's Bricks sketch, the laid key...) reads `points` -- so the 3D kept the brick where it
+ *  was laid (a Delete, which removes the node, already updated it). The ONE declared hook: the editor's commit
+ *  (editor.js _notifyChange('commit'), which every gesture ends in) bakes a laid piece's transform into its points
+ *  and drops the attribute, before the remask; the step's undo snapshot is refreshed to match. Its texture follows
+ *  (the fill pattern is objectBoundingBox). Brush spines are not baked here (their own regenerate path). */
+const _MATRIX_RE = /^\s*matrix\(\s*([^)]*)\)\s*$/;
+const _TRANSLATE_RE = /^\s*translate\(\s*([-\d.eE+]+)(?:[\s,]+([-\d.eE+]+))?\s*\)\s*$/;
+function _pieceMatrix(n) {
+  const base = n.transform && n.transform.baseVal;
+  const m = base && typeof base.consolidate === 'function' ? base.consolidate() : null;
+  if (m && m.matrix) return [m.matrix.a, m.matrix.b, m.matrix.c, m.matrix.d, m.matrix.e, m.matrix.f];
+  const t = n.getAttribute('transform') || '';
+  const mm = t.match(_MATRIX_RE);
+  if (mm) { const v = mm[1].split(/[\s,]+/).map(Number); return v.length === 6 && v.every(Number.isFinite) ? v : null; }
+  const tt = t.match(_TRANSLATE_RE);
+  return tt ? [1, 0, 0, 1, Number(tt[1]), Number(tt[2] || 0)] : null;
+}
+export function bakeBrickTransforms(editor) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
+  if (!node || !node.querySelectorAll) return 0;
+  let baked = 0;
+  for (const n of node.querySelectorAll(`[data-brick-gen="1"][transform]`)) {
+    const m = _pieceMatrix(n);
+    if (!m || !n.hasAttribute('points')) continue;
+    const [a, b, c, d, e, f] = m;
+    const pts = n.getAttribute('points').trim().split(/\s+/).filter(Boolean).map((pair) => pair.split(',').map(Number));
+    n.setAttribute('points', pts.map(([x, y]) => `${a * x + c * y + e},${b * x + d * y + f}`).join(' '));
+    n.removeAttribute('transform');
+    baked++;
+  }
+  return baked;
+}
+
 /** F35 item 64 (Fred: "make wall and frame use their own layers, as brick brush drawing too; they still interact with
  *  each other"): each brick element KIND lays a NEW element on its OWN layer -- created on first use, reused after,
  *  found by the layer's declared `brickKind` (persisted; never by its name, which the user may rename) -- instead of

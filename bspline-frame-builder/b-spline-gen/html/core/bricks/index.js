@@ -6,9 +6,10 @@
  * use.
  */
 export { bricksAlongPath } from './along-path.js';
-export { bricksFillShape } from './fill-shape.js';
+export { bricksFillShape, bricksClearOf } from './fill-shape.js';
 export { strokesToRegion } from './region.js'; // T86 item 18: painted strokes -> the wall's region
 export { bricksGroutCut } from './grout-cut.js'; // T86 item 10: the Raised brush's grout mode
+export { groutShapeOf, groutIdOf, insetFace, pointOnGrout, primitivesOutline, GROUT_ID_SUFFIX } from './grout-shape.js'; // F35 item 55
 export { bricksContourBands, bandFrameAt } from './contour-bands.js';
 // T86 item 2: `ribbonPieces` itself -- the per-row primitive `bricksContourBands` already calls
 // internally, now exported directly too (sequence/forcedFStart params included) for a consumer that

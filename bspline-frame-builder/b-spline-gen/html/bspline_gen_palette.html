@@ -390,6 +390,51 @@
     .fusion-status[data-kind="ok"]   { color: var(--cad-accent-green); }
     .fusion-status[data-kind="warn"] { color: #ffb300; }
 
+    /* F35 item 41: the loading overlay (core/loading-signal.js). Above the editor modal (.cad-modal-overlay 9999)
+       and the status line; never blocks input. data-surface: 'card' = centred (the declared-long steps), 'pill' =
+       a small corner chip (a single lay); data-group tints the spinner (computing | waiting | refreshing). */
+    .loading-stage {
+      position: fixed;
+      z-index: 10001;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #f0f0f0; /* on its own dark card, like the splash */
+      background: rgba(22, 22, 22, 0.92);
+      border: 1px solid var(--cad-border-standard);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+    }
+    .loading-stage[hidden] { display: none; }
+    .loading-stage[data-surface="card"] {
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: calc(100vw - 32px);
+      padding: 16px 22px;
+      border-radius: 10px;
+      font-size: 15px;
+    }
+    .loading-stage[data-surface="pill"] {
+      top: 48px;
+      right: 16px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+    .loading-stage-spinner {
+      flex: none;
+      width: 18px;
+      height: 18px;
+      border: 3px solid rgba(255, 255, 255, 0.15);
+      border-top-color: var(--cad-accent-blue);
+      border-radius: 50%;
+      animation: app-splash-spin 0.8s linear infinite;
+    }
+    .loading-stage[data-surface="pill"] .loading-stage-spinner { width: 12px; height: 12px; border-width: 2px; }
+    .loading-stage[data-group="waiting"] .loading-stage-spinner { border-top-color: #ffb300; }
+    .loading-stage[data-group="refreshing"] .loading-stage-spinner { border-top-color: var(--cad-accent-green); }
+
     /* Splash screen (H9: Fred, "the title could go away, if we had a
        splash screen for loading" -- carries the brand now that the header
        no longer does). Shown until main.js's initApp callback fires --
@@ -533,6 +578,7 @@
     </div>
   </header>
   <div id="fusion-status" class="fusion-status" hidden role="status" aria-live="polite"></div>
+  <div id="loading-stage" class="loading-stage" hidden role="status" aria-live="polite"><span class="loading-stage-spinner"></span><span class="loading-stage-text"></span></div>
 
   <main class="cad-main-content app">
     <aside class="cad-sidebar">
@@ -912,7 +958,7 @@
           <div id="brickSidebarNoBricks" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);">No bricks on this board yet. Open the editor's Brick tab, pick Wall or Frame and press Generate -- these settings then apply at once.</div>
           <div id="brickQuickSettings"></div>
           <!-- blind-spot audit B1: what the last lay left the user must know (main/brick-panel.js BRICK_LAY_WARNINGS) -->
-          <div id="brickLayWarnings" data-brick-lay-warnings role="status" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);"></div>
+          <div id="brickLayWarnings" data-brick-lay-warnings data-brick-lay-notes="frame" role="status" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);"></div>
 
           <label class="cad-label" style="font-weight:600; opacity:0.75; margin:6px 0 4px;">3D</label>
         <label class="cad-label">Relief</label>
@@ -1827,9 +1873,9 @@
                (styles/editor.css) — its two buttons stay normal, always-
                visible inline siblings there, byte-identical to before;
                only the mobile breakpoint turns it into an actual hidden-
-               until-tapped popover. SE10 AMEND: editor/tools/action-
-               tools.js:32 already wires bind('editorDownload', ...) to
-               saveWithTextCopies (SHOWN layers only) + a file-save-as —
+               until-tapped popover. editor/tools/action-tools.js wires
+               bind('editorDownload', ...) to saveSvgDownload (F35 item 56:
+               every layer, named groups, flat bricks) + a file-save-as —
                moving these buttons' DOM POSITION doesn't affect that
                id-based wiring at all. -->
           <div id="editorHeaderMoreMenu">
@@ -3302,6 +3348,21 @@
               <div style="flex:1;">
                 <label class="cad-label" style="font-size:10px;">Width (in)</label>
                 <input type="number" id="brickGroutWidth" value="0.06" min="0" max="0.5" step="0.005" style="width:100%;">
+              </div>
+            </div>
+            <!-- F35 item 55: the grout PAINT (main/brick-panel.js setGroutPaint): colour (None = the board shows through) +
+                 Edge (each brick's painted face inset; paint only). Edits the element Select picked, else every element. -->
+            <div id="brickGroutPaintRow" style="display:flex; gap:4px; align-items:flex-end; margin-bottom:6px;">
+              <div style="flex:1;">
+                <label class="cad-label" style="font-size:10px;">Colour <span id="brickGroutPaintScope" style="opacity:0.6;"></span></label>
+                <div style="display:flex; gap:4px;">
+                  <button type="button" id="brickGroutColorSwatch" class="cad-btn" title="Grout colour (the app's colour picker)" aria-haspopup="true" style="width:34px; min-width:34px; height:26px; padding:0;"></button>
+                  <button type="button" id="brickGroutColorNone" class="cad-btn" title="No grout colour: the board shows through the joints" style="height:26px;">None</button>
+                </div>
+              </div>
+              <div style="flex:1;">
+                <label class="cad-label" style="font-size:10px;">Edge (in)</label>
+                <input type="number" id="brickGroutEdge" value="0" min="0" max="0.25" step="0.005" style="width:100%;" title="Each brick's painted face is inset by this much, so the joint reads wider (paint only: the bricks do not change). Visible with a grout colour; always exact in the SVG.">
               </div>
             </div>
             <!-- F35 (Fred: detection only, never changes the value): the SAME hint as the

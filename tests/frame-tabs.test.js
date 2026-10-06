@@ -58,9 +58,9 @@ const change = (id, value) => { $(id).value = value; $(id).dispatchEvent(new Eve
 const shown = (id) => $(id).style.display !== 'none';
 
 describe('editor [Frame | Artwork] tabs', () => {
-  it('"Edit frame shape" opens the editor on the Frame tab; "Open SVG Editor" on the Artwork tab', () => {
+  it('"Edit frame shape" opens the editor on the Frame tab; "Open SVG Editor" on the Artwork tab', async () => {
     $('btnEditFrameShape').click();
-    expect(getEditorTab()).toBe('frame');
+    await vi.waitFor(() => expect(getEditorTab()).toBe('frame')); // item 41: its loading stage paints first
     expect([shown('editorFramePanel'), shown('editorLayersPanel'), shown('editorFrameShield')]).toEqual([true, false, true]);
     expect($('editorDrawerTab-layers').textContent).toBe('Frame'); // mobile drawer label
     $('btnStampEdit').click();
