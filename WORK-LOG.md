@@ -23748,3 +23748,20 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
     T16 7x9 + wall + lattice (palette Send + CAM palette BUILD / APPLY clicks): pass 1 Back 0.3 s; pass 2 op by op
       (7.3 / 2.0 / 4.1 / 1.6 / 20.4 s) -> post-audit ok=7 missing=0, all 7 valid; the palette ends
       '✓ TOOLPATHS complete -- 7 ops ok'.
+
+## H23 item 96: CAM end to end for the bricks board, 3 timed runs on cam-firstgen-95 (seat A / 77, 2026-10-06)
+- Board: T1 7x9, fitted frame, brick 1 in, three_band frame + wall, carving (cam-bricks), captured fresh from this
+  branch (main 1b83ace + item 95; port verified free, --root guard 31/31; 207 pieces = 106 frame + 99 wall + 2 grout,
+  as item 90; the seed now reads back terrain 18905, so the terrain differs from item 90's 1218). Fusion driver:
+  tools/repro/h23_item90/fusion_send_build_apply.py, a fresh scratch doc per run, 39b6ed6 deployed.
+    run | Send s | BUILD s | templates s | generation s | passes | result
+     1  |  40.0  |  33.7   |    1.5      |    164       |   2    | 7/7 valid
+     2  |  37.1  |  28.3   |    1.2      |    154       |   2    | 7/7 valid
+     3  |  39.2  |  54.4   |    8.0      |    173       |   3    | 7/7 valid
+  Wall time Send -> all toolpaths ~4 min (239 / 221 / 275 s). Fusion's machining-time estimate is identical in all
+  three (2327 s ~ 39 min: Back 760.7 + 89.0, Top 482.2 + 90.9 + 249.3, Frame 472.3 + 182.9).
+- Pass detail: runs 1-2 as in item 95 (pass 1 Back 0.3 s = empty; pass 2 op by op made all). Run 3 differed: pass 1
+  generated Back's Pocket (9.9 s) but both Morphed Spirals came back empty; in pass 2 both Morphed Spirals failed
+  AGAIN (0.3 s each) although generated alone with their Pockets valid; pass 3 made them (2.1 / 3.2 s) and redid the
+  stale deloge. So MAX_GENERATION_PASSES = 3 had no spare left in run 3 -- flagged to the advisor (raise to 4, or look
+  for what makes a generation 0.3 s-empty; it is not only the first one).
