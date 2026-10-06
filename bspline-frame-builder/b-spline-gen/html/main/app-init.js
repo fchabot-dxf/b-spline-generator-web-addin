@@ -6,7 +6,7 @@ import { resolveGrid } from '../core/terrain.js';
 import { rebuild, whenRebuildIdle } from '../core/engine.js';
 import { beginLoadingSequence } from '../core/loading-signal.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
-import { updateGlobalButtons, takeSnapshot, globalHistoryLog, setUndoRestoring, isEditorOpen } from '../core/history.js';
+import { updateGlobalButtons, takeSnapshot, globalHistoryLog, setUndoRestoring, isEditorOpen, ensureUndoBaseline } from '../core/history.js';
 import { AppState } from './app-state.js';
 import { markDirty } from '../core/dirty.js';
 import { showToast } from '../core/toast.js';
@@ -794,6 +794,10 @@ export function initSvgEditor(preview) {
           refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
           await refreshDrape(preview);
           showToast('✓ Applied'); // workflow audit #12: Apply used to close with no confirmation
+          // item 69 (seat E, measured: after a brick lay + Apply the global history's newest snapshot predated the lay,
+          // so a sidebar step undone next -- a layer's carve toggle, Delete frame -- restored an older board, or nothing
+          // for a layer the lay created): the applied board is the global history's baseline
+          ensureUndoBaseline('Apply');
         }
       } else if (SvgEditorSnapshot.active) {
         // Cancel path — restore the pre-edit DOCUMENT (onChange already

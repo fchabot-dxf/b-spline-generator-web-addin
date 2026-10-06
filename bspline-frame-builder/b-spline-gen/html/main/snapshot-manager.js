@@ -1,5 +1,6 @@
 import { withLoadingStage } from '../core/loading-signal.js';
-import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache } from '../core/state.js';
+import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache, layerToolingChanged } from '../core/state.js';
+import { renderLayersPanel } from '../editor/layers.js';
 import { syncUItoParam } from '../core/ui-utils.js';
 import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring } from '../core/history.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
@@ -78,7 +79,13 @@ async function _applySnapshot(snap, preview, { source, frame } = {}) {
   // Depth field visibly snaps back on undo instead of only the model
   // reverting underneath a stale-looking number.
   const editorForTooling = (typeof window !== 'undefined') ? window.svgEditor : null;
-  if (editorForTooling) restoreLayerTooling(editorForTooling._layers, snap.layerTooling);
+  if (editorForTooling) {
+    restoreLayerTooling(editorForTooling._layers, snap.layerTooling);
+    // item 69: the layer rows (the carve / eye toggles) show the restored fields, and the restored tooling reaches
+    // the saved drawing's roster like any other layer-tooling write (core/state.js layerToolingChanged)
+    renderLayersPanel(editorForTooling);
+    layerToolingChanged();
+  }
   AppState.stampCtx?.broadcastSyncFromLayer?.();
 
   // SE4c: this is also the cloud-project-load apply step (cloud-project-
