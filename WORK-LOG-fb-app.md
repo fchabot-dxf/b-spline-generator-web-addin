@@ -14727,3 +14727,17 @@ WallPattern = {
   - Result: 5 files, 123/123.
 - **Matrix 'lay':** the "greyed under template None" row is replaced by "Sidebar Frame bands under template None lays along the board edge": 0/7 greyed, 74 frame bricks, 3D changed. Group: 8 rows, 0 FAIL.
 - **Live:** None + the editor's Frame tool Generate: 0 -> 80 frame bricks.
+
+## F35 item 38 onto main -- seat F (session fa), 2026-10-05
+- Merged origin/main (352603f) into seat C's parked undo-settings (26e5fec); merge ba7d765.
+- Conflicts, both sides kept:
+  - brick-panel imports (registerUndoPart + FRAME_NEEDS_A_FRAME);
+  - pattern-builder tests (item 38 undo describe + item 39 Generate describe);
+  - brick-matrix controls/run (UNDO_SETTINGS + GENERATE_AFTER_RESTORE / WALL_NO_FRAME / GROUT_JOINTS / QUICK_FRAME_LAYS; groups 'undo' + 'grout').
+  - NEXT-SESSION-fb-app took main's.
+- Re-verified live: matrix --group undo, 3 rows, 0 FAIL, 0 page errors.
+  - Stack pick 140#ydf4k0 -> Undo = the baseline 147#izl5fs canvas, and the stretcher chip is active again.
+  - Redo = the pick + its chip.
+  - Accent level -0.0625 -> Undo = 0.0625.
+- The custom join -> Undo (the tile and the open builder) is pinned by pattern-builder item 38; 30/30 pass.
+- Full vitest: 5 failed / 4739 passed. All 5 are 'Test timed out' in the parallel run (bricks-band-fit, bricks-no-corrupt-polygon, element-accents, frame-3d-sweep, silhouette-resolve), and each file passes alone (50/50).
