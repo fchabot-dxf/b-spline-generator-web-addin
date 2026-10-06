@@ -782,12 +782,26 @@ export const BRICK_EDITOR_ONLY_ATTRS = Object.freeze({
  *  grout shape is paint, not geometry (Fred: it reaches Fusion only by the SVG import, and only when the advisor
  *  says). main/export-flow.js _bricksLayerSvg reads this list. */
 export const BRICK_SEND_SKIP = Object.freeze(['grout']);
-/** Strip BRICK_EDITOR_ONLY_ATTRS from one (plain DOM) element; true when it changed anything. */
+/** Advisor (seat E finding): the editor's own LOOK on a brick piece -- the inline cursor open() puts on every child
+ *  (editor-io.js) and the hover / selection classes (editor-ui.js) -- is editor-only too: before, a mere hover or a
+ *  reopen changed Send's Bricks sketch (stamp.bricks.svg). Stripped from every brick node (data-brick) with the attributes. */
+export const EDITOR_ONLY_STYLE = Object.freeze({ props: Object.freeze(['cursor']), classes: Object.freeze(['svg-hover', 'svg-selected']) });
+/** Strip BRICK_EDITOR_ONLY_ATTRS + EDITOR_ONLY_STYLE from one (plain DOM) element; true when it changed anything. */
 export function stripEditorOnlyBrickAttrs(el) {
-  const attrs = el && el.getAttribute ? BRICK_EDITOR_ONLY_ATTRS[el.getAttribute('data-brick')] : null;
-  if (!attrs) return false;
+  if (!el || !el.getAttribute || !el.hasAttribute('data-brick')) return false; // any brick node, by its kind (as before)
   let changed = false;
-  for (const a of attrs) if (el.hasAttribute(a)) { el.removeAttribute(a); changed = true; }
+  for (const a of BRICK_EDITOR_ONLY_ATTRS[el.getAttribute('data-brick')] || []) if (el.hasAttribute(a)) { el.removeAttribute(a); changed = true; }
+  const style = el.getAttribute('style');
+  if (style != null) {
+    const kept = style.split(';').map((d) => d.trim()).filter((d) => d && !EDITOR_ONLY_STYLE.props.includes(d.split(':')[0].trim().toLowerCase()));
+    const next = kept.join('; ');
+    if (next !== style.trim().replace(/;$/, '')) { if (next) el.setAttribute('style', next); else el.removeAttribute('style'); changed = true; }
+  }
+  const cls = el.getAttribute('class');
+  if (cls != null) {
+    const kept = cls.split(/\s+/).filter((c) => c && !EDITOR_ONLY_STYLE.classes.includes(c));
+    if (kept.length !== cls.split(/\s+/).filter(Boolean).length) { if (kept.length) el.setAttribute('class', kept.join(' ')); else el.removeAttribute('class'); changed = true; }
+  }
   return changed;
 }
 /** F35 item 22 slice 3: a node the BRICK TOOLS own -- a laid piece (data-brick-gen) or a Brush stroke's spine

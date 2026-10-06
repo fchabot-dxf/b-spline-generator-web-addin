@@ -1,6 +1,7 @@
 /**
  * F35 item 56 (seat E): the SVG DOWNLOAD -- ONE file, top-level groups frame / art (per layer) / bricks (per element) /
- * grout (per element), each named for Illustrator / Inkscape (id + inkscape:label + groupmode layer); bricks as FLAT
+ * grout (per element), each named for Illustrator / Inkscape (id + inkscape:label + groupmode layer), stacked as the
+ * Layers panel is (advisor: frame at the bottom, then each layer's art, bricks, grout, bottom to top); bricks as FLAT
  * vector colours (each a path filled with its set's declared faceColor, its face inset by its element's Edge), piece ids
  * kept; no fill points at a pattern the file lacks (seat C's measurement: 151 fills -> 0 embedded patterns).
  */
@@ -78,30 +79,40 @@ describe('declared: the styles and the groups', () => {
 });
 
 describe('the download: one file, named groups, flat bricks', () => {
-  it('top-level groups frame / art / bricks / grout, in that order, each a named Inkscape layer', async () => {
-    const root = parse(await saveSvgDownload(laidBoard()));
+  it('top-level groups stack as the Layers panel: each layer’s art, then its elements’ bricks + grout; each a named Inkscape layer', async () => {
+    const ed = laidBoard();
+    const root = parse(await saveSvgDownload(ed));
     expect(root.querySelector('parsererror')).toBeNull();
     const top = [...root.children].filter((c) => c.tagName === 'g');
-    expect(top.map((g) => g.id)).toEqual(SVG_EXPORT_GROUPS.map((g) => g.id));
-    expect(top.map(label)).toEqual(['Frame', 'Art', 'Bricks', 'Grout']);
+    const rec = (k) => brickRecordNode(ed, k).getAttribute('data-brick-element');
+    // roster bottom -> top: Layer 1, Hidden art, then the Wall and Frame kind layers (item 64); no frame template here
+    expect(top.map((g) => g.id)).toEqual(['art:0', 'art:9', `bricks:${rec('wall')}`, `grout:${rec('wall')}`, `bricks:${rec('frame')}`, `grout:${rec('frame')}`]);
+    expect(top.map(label)).toEqual(['Layer 1', 'Hidden art', 'Wall', 'Wall grout', 'Frame', 'Frame grout']);
+    expect(SVG_EXPORT_GROUPS.map((g) => [g.id, g.place])).toEqual([['frame', 'bottom'], ['art', 'layer'], ['bricks', 'layer'], ['grout', 'layer']]);
     for (const g of top) expect(g.getAttribute('inkscape:groupmode')).toBe('layer');
     expect(root.getAttribute('xmlns:inkscape')).toBe(INKSCAPE_NS);
   });
 
-  it('every laid brick is ONE path in its element’s sub-group, filled with its set’s faceColor; ids kept and unique; no url(#...) anywhere', async () => {
+  it('the user’s roster order wins: the Wall layer moved to the bottom puts its bricks under the art', async () => {
+    const ed = laidBoard();
+    const wall = ed._layers.find((l) => l.brickKind === 'wall');
+    ed._layers = [wall, ...ed._layers.filter((l) => l !== wall)];
+    const top = [...parse(await saveSvgDownload(ed)).children].filter((c) => c.tagName === 'g').map((g) => g.id);
+    expect(top.indexOf(`bricks:${brickRecordNode(ed, 'wall').getAttribute('data-brick-element')}`)).toBeLessThan(top.indexOf('art:0'));
+  });
+
+  it('every laid brick is ONE path in its element’s group, filled with its set’s faceColor; ids kept and unique; no url(#...) anywhere', async () => {
     const ed = laidBoard();
     const svg = await saveSvgDownload(ed);
     expect(svg).not.toContain('url(#');
     const root = parse(svg);
     const laid = [...ed._sketchLayer.node.querySelectorAll('[data-brick="wall"], [data-brick="frame"]')];
-    const paths = [...root.querySelector('#bricks').querySelectorAll('path')];
+    const paths = [...root.querySelectorAll('g[id^="bricks:"] path')];
     expect(paths).toHaveLength(laid.length);
     const ids = paths.map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
     const red = BRICK_SETS.find((s) => s.id === 1).faceColor;
     expect(paths.every((p) => p.getAttribute('fill') === red)).toBe(true);
-    const subs = [...root.querySelector('#bricks').children];
-    expect(subs.map(label)).toEqual(['Frame', 'Wall']);
     const wallRec = brickRecordNode(ed, 'wall').getAttribute('data-brick-element');
     const wall0 = laid.find((n) => n.getAttribute('data-brick') === 'wall');
     expect(ids).toContain(`${wallRec}:${wall0.getAttribute('data-brick-id')}`);
@@ -121,21 +132,21 @@ describe('the download: one file, named groups, flat bricks', () => {
     expect([...ed._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].map((n) => n.getAttribute('points'))).toEqual(before);
   });
 
-  it('grout: one sub-group per element, the path `<element>:grout` with its colour; None = no fill', async () => {
+  it('grout: one group per element, the path `<element>:grout` with its colour; None = no fill', async () => {
     const ed = laidBoard();
     const root = parse(await saveSvgDownload(ed));
-    const grout = [...root.querySelector('#grout').querySelectorAll('path')];
+    const grout = [...root.querySelectorAll('g[id^="grout:"] path')];
     expect(grout.map((p) => p.id).sort()).toEqual(['frame', 'wall'].map((k) => `${brickRecordNode(ed, k).getAttribute('data-brick-element')}:grout`).sort());
     expect(grout.every((p) => p.getAttribute('fill') === '#cfc6b4' && p.getAttribute('fill-rule') === 'evenodd')).toBe(true);
     const none = parse(await saveSvgDownload(laidBoard({ color: null, paintInsetIn: 0 })));
-    expect([...none.querySelector('#grout').querySelectorAll('path')].every((p) => p.getAttribute('fill') === 'none')).toBe(true);
+    expect([...none.querySelectorAll('g[id^="grout:"] path')].every((p) => p.getAttribute('fill') === 'none')).toBe(true);
   });
 
-  it('art: one sub-group per layer holding art, hidden layers included; no brick, no record in it', async () => {
+  it('art: one group per layer holding art, hidden layers included; no brick, no record in it', async () => {
     const root = parse(await saveSvgDownload(laidBoard()));
-    const art = root.querySelector('#art');
-    expect([...art.children].map(label)).toEqual(['Layer 1', 'Hidden art']);
-    expect(art.querySelectorAll('rect')).toHaveLength(2);
-    expect(art.querySelector('[data-brick-gen], [data-brick-record]')).toBeNull();
+    const art = [...root.querySelectorAll('g[id^="art:"]')];
+    expect(art.map(label)).toEqual(['Layer 1', 'Hidden art']);
+    expect(art.flatMap((g) => [...g.querySelectorAll('rect')])).toHaveLength(2);
+    expect(art.some((g) => g.querySelector('[data-brick-gen], [data-brick-record]'))).toBe(false);
   });
 });

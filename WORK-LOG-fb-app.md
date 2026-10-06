@@ -14799,3 +14799,23 @@ WallPattern = {
   - Result: 5 files, 123/123.
 - **Matrix 'lay':** the "greyed under template None" row is replaced by "Sidebar Frame bands under template None lays along the board edge": 0/7 greyed, 74 frame bricks, 3D changed. Group: 8 rows, 0 FAIL.
 - **Live:** None + the editor's Frame tool Generate: 0 -> 80 frame bricks.
+
+### seat E (61) turn 2: the advisor's answers on 55/56, folded into one commit (grout-svg)
+- **(2) Group order = the LAYERS roster** (advisor: "art over or under bricks is whatever Fred arranged"):
+  - SVG_EXPORT_GROUPS now declares a `place` per kind: frame 'bottom'; art / bricks / grout 'layer'.
+  - svgDownloadGroups stacks the frame first, then each layer of editor._layers bottom to top (syncLayerZOrder's own order): that layer's art group, then each brick element on it (its bricks group, its grout group).
+  - Top-level ids are now `art:<layer>`, `bricks:<element>`, `grout:<element>` (labels: the layer name, 'Wall', 'Wall grout', ...). An element on a layer the roster lacks goes on top, never dropped.
+  - Tests: the stacking on the test board; a roster reorder (the Wall layer to the bottom) puts its bricks under the art.
+- **(3) saveWithTextCopies retired** (removal sweep):
+  - editor-io.js: the function, its only helper _serializeVisibleLayers (and its T27 doc block), and the imports only they used (isExported, BRICK_RECORD_ATTR) are gone.
+  - editor.js: the method and its import are gone.
+  - tests/brick-element-records.test.js: "records are never downloaded" now reads saveSvgDownload. The item-22 byte-identity pin keeps the BAKED layer SVG (Send's sketch). The download is no longer a copy of the drawing (its own pins are in svg-download.test.js), and the brush-owner check reads the baked layer.
+  - SE7B design doc: a retirement note.
+  - Grep (js/html/py, NUL-safe tree, no scratch): only the two retirement notes remain. The WORK-LOG history is left as written.
+- **(4) Editor-only look stripped from Send** (layers.js EDITOR_ONLY_STYLE { props ['cursor'], classes ['svg-hover','svg-selected'] }):
+  - Source: editor-io.js open() puts style cursor on every child at each reopen; editor-ui.js adds svg-hover / svg-selected.
+  - stripEditorOnlyBrickAttrs now strips these from EVERY brick-tool node, along with the per-kind attributes. Layer-state classes (inactive-layer) stay: today's sketches carry them.
+  - Test: the same brick with and without the look gives a byte-identical _bricksLayerSvg.
+- **Fail-before** (scratch tree at 03972e9, the pushed tip): **3/3 new tests fail** (roster stacking, roster reorder, the hover look); the other 24 in those files pass.
+- **Gate:** full vitest 1 failed / 4766 passed. The one failure is frame-3d-sweep's 90 s timeout, which passes alone. An earlier contended run (my probe was running alongside it) had also caught a REAL break: my first guard (isBrickToolNode) skipped item 49's flag strip on a node without data-brick-gen. The guard is now "any node with data-brick", as before; pattern-builder-cuts is green.
+- **Live** (download_live.mjs, real click): the top groups are frame, art 'Layer 1', 'Wall', 'Wall grout', 'Frame', 'Frame grout'. That is the panel's roster (top to bottom: Frame, Wall, Layer 1) read bottom up. 147 paths for 147 laid bricks, 0 url(#; the 900 px overflow-menu download is byte-identical. 0 page errors.

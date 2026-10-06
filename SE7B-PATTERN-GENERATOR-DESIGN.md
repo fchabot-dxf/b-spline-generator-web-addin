@@ -80,7 +80,7 @@ PATTERN = {
 spans 3 layers by construction (it isn't a property of any one of them), so it gets its own root
 attribute, `data-lattice-pattern="<json>"`, written and read at the exact 3 call sites
 `_serializeLayersAttr`/`data-editor-layers` already use: `save()` (`editor-io.js:205-220`),
-`saveForRasterization()` (`:316-354`), `saveWithTextCopies()` (`:356-392`) on the write side, `open()`
+`saveForRasterization()` (`:316-354`), `saveWithTextCopies()` (`:356-392`, retired by F35 item 56: the download is `saveSvgDownload`, editor/svg-export.js) on the write side, `open()`
 (`:487+`, alongside the existing `data-editor-layers` read at `:555-563`) on the read side. Declare a
 sibling `_serializeLatticePatternAttr(editor)` next to `_serializeLayersAttr` (`:68-90`) rather than
 inlining JSON.stringify at 3 call sites — same reason `_serializeLayersAttr` itself is a named function

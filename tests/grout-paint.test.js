@@ -24,7 +24,7 @@ import {
   runBricks, groutPaintOf, repaintGrout, brickElementAt, brickRecordNode, frameBandsOf, GROUT_PAINT_DEFAULT,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { rasterizeBrickHeightMask } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-height-mask.js';
-import { isEditableByLayer, isOnVisibleLayer, isLockedNode, BRICK_SEND_SKIP } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
+import { isEditableByLayer, isOnVisibleLayer, isLockedNode, BRICK_SEND_SKIP, EDITOR_ONLY_STYLE } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 import { _bricksLayerSvg } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
@@ -248,5 +248,19 @@ describe('Send: the grout never goes into the Bricks sketch (stamp.bricks.svg)',
     expect(withGrout).not.toContain('<path');
     expect(withGrout).not.toContain('grout');
     expect(withGrout).toBe(without);
+  });
+  // advisor (seat E finding): the editor's own look -- open()'s inline cursor, the hover / selection classes -- never
+  // reaches stamp.bricks.svg (layers.js EDITOR_ONLY_STYLE)
+  it('hovering, selecting or reopening a brick does not change the Bricks sketch', async () => {
+    const plain = '<polygon points="0,0 1,0 1,0.3 0,0.3" data-layer="b1" data-brick="wall" data-brick-gen="1" fill="#aa4433"/>';
+    const looked = '<polygon points="0,0 1,0 1,0.3 0,0.3" data-layer="b1" data-brick="wall" data-brick-gen="1" fill="#aa4433" style="cursor: pointer;" class="svg-hover svg-selected"/>';
+    expect(EDITOR_ONLY_STYLE).toEqual({ props: ['cursor'], classes: ['svg-hover', 'svg-selected'] });
+    const a = await _bricksLayerSvg(bricksEditor(plain)), b = await _bricksLayerSvg(bricksEditor(looked));
+    expect(b).not.toContain('cursor');
+    expect(b).not.toContain('svg-hover');
+    expect(b).toBe(a);
+    // a layer-state class is NOT editor-only look: it stays (today's sketches carry it)
+    const dim = await _bricksLayerSvg(bricksEditor(looked.replace('svg-hover svg-selected', 'inactive-layer svg-hover')));
+    expect(dim).toContain('class="inactive-layer"');
   });
 });

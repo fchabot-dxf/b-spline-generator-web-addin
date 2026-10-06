@@ -2,7 +2,9 @@
  * editor/svg-export.js -- F35 item 56: the SVG DOWNLOAD as a drawing (Fred: bricks are also a print / plot output).
  *
  * ONE file, its top-level groups declared once (SVG_EXPORT_GROUPS), each a named layer Illustrator / Inkscape list
- * (id + inkscape:label + inkscape:groupmode="layer"):
+ * (id + inkscape:label + inkscape:groupmode="layer"), stacked as the user arranged the LAYERS panel (advisor ruling):
+ * the frame at the bottom, then each layer bottom to top -- its art, then each brick element on it (its bricks, its
+ * grout) -- so art over or under bricks is whatever the roster says:
  *   frame  -- the frame's band (its wood colour), cut profile, inner edge and miters (editor-frame-profile.js
  *             frameVectorParts: the same parts the canvas draws);
  *   art    -- one sub-group per layer that holds art, in roster order; hidden layers included (turn 207 AMEND-3:
@@ -36,12 +38,13 @@ export const SVG_BRICK_EXPORT = Object.freeze({
   exposed: Object.freeze(['flat']),
 });
 
-/** The file's top-level groups, bottom to top. `per`: what each sub-group is. */
+/** The file's group kinds. `place`: 'bottom' = once, under everything; 'layer' = at its layer's position in the roster
+ *  (editor._layers, bottom to top), in this order within a layer. `per`: one group per layer / per brick element. */
 export const SVG_EXPORT_GROUPS = Object.freeze([
-  Object.freeze({ id: 'frame', label: 'Frame' }),
-  Object.freeze({ id: 'art', label: 'Art', per: 'layer' }),
-  Object.freeze({ id: 'bricks', label: 'Bricks', per: 'element' }),
-  Object.freeze({ id: 'grout', label: 'Grout', per: 'element' }),
+  Object.freeze({ id: 'frame', label: 'Frame', place: 'bottom' }),
+  Object.freeze({ id: 'art', label: 'Art', place: 'layer', per: 'layer' }),
+  Object.freeze({ id: 'bricks', label: 'Bricks', place: 'layer', per: 'element' }),
+  Object.freeze({ id: 'grout', label: 'Grout', place: 'layer', per: 'element' }),
 ]);
 export const INKSCAPE_NS = 'http://www.inkscape.org/namespaces/inkscape';
 
@@ -67,16 +70,10 @@ function _frameGroup(editor) {
   return inner;
 }
 
-function _artGroups(editor) {
-  const root = editor._sketchLayer.node;
-  const out = [];
-  for (const layer of editor._layers || []) {
-    const nodes = [...root.children].filter((n) => String(n.getAttribute('data-layer')) === String(layer.id)
-      && !isBrickToolNode(n) && !n.hasAttribute(BRICK_RECORD_ATTR));
-    if (!nodes.length) continue;
-    out.push(layerGroup(`art:${layer.id}`, layer.name || `Layer ${layer.id}`, stripSvgjsAttributes(nodes.map((n) => n.outerHTML).join(''))));
-  }
-  return out.join('');
+/** One layer's art nodes (no brick-tool node, no record), or [] -- in drawing order. */
+function _artNodes(editor, layer) {
+  return [...editor._sketchLayer.node.children].filter((n) => String(n.getAttribute('data-layer')) === String(layer.id)
+    && !isBrickToolNode(n) && !n.hasAttribute(BRICK_RECORD_ATTR));
 }
 
 /** The brick elements on the drawing, in drawing order: [{ id, kind, label, bricks: [node], grout: node|null }]. */
@@ -113,23 +110,36 @@ function _brickPath(n, inset, style) {
   return `<path id="${_esc(`${owner}:${brickId}`)}" data-brick-id="${_esc(brickId)}" data-brick-set="${_esc(setId)}" d="${_pathD(face)}" ${paint}/>`;
 }
 
-/** The four groups' markup for a download in `styleId` (SVG_BRICK_EXPORT). */
+/** Every group's markup for a download in `styleId` (SVG_BRICK_EXPORT), stacked per SVG_EXPORT_GROUPS. */
 export function svgDownloadGroups(editor, styleId = SVG_BRICK_EXPORT.default) {
   const style = SVG_BRICK_EXPORT.styles[styleId];
   if (!style || style.available === false) throw new Error(`SVG download style "${styleId}" is not available`);
   const elements = editor._sketchLayer ? brickElementsOf(editor) : [];
-  const bodies = {
-    frame: () => _frameGroup(editor),
-    art: () => _artGroups(editor),
-    bricks: () => elements.map((e) => {
+  const layerOf = (e) => String(e.bricks[0].getAttribute('data-layer'));
+  const roster = (editor._layers || []).map((l) => String(l.id));
+  const groupFor = {
+    art: (layer) => {
+      const nodes = _artNodes(editor, layer);
+      return nodes.length ? [layerGroup(`art:${layer.id}`, layer.name || `Layer ${layer.id}`, stripSvgjsAttributes(nodes.map((n) => n.outerHTML).join('')))] : [];
+    },
+    bricks: (layer) => elements.filter((e) => layerOf(e) === String(layer.id)).map((e) => {
       const inset = e.grout ? Number(e.grout.getAttribute(GROUT_INSET_ATTR)) || 0 : 0;
       return layerGroup(`bricks:${e.id}`, e.label, e.bricks.map((n) => _brickPath(n, inset, style)).join(''));
-    }).join(''),
-    grout: () => elements.filter((e) => e.grout).map((e) => {
+    }),
+    grout: (layer) => elements.filter((e) => e.grout && layerOf(e) === String(layer.id)).map((e) => {
       const g = e.grout;
       const fill = g.getAttribute('fill') && g.getAttribute('fill') !== 'none' ? g.getAttribute('fill') : 'none';
       return layerGroup(`grout:${e.id}`, `${e.label} grout`, `<path id="${_esc(g.getAttribute('id') || `${e.id}:grout`)}" d="${g.getAttribute('d') || ''}" fill="${fill}" fill-rule="evenodd"/>`);
-    }).join(''),
+    }),
   };
-  return SVG_EXPORT_GROUPS.map((grp) => layerGroup(grp.id, grp.label, bodies[grp.id]())).join('');
+  const out = [];
+  for (const kind of SVG_EXPORT_GROUPS.filter((k) => k.place === 'bottom')) {
+    if (kind.id === 'frame') { const f = _frameGroup(editor); if (f) out.push(layerGroup('frame', kind.label, f)); }
+  }
+  // the roster, bottom to top; an element on a layer the roster lacks goes on top (never dropped)
+  const layers = [...(editor._layers || []), ...[...new Set(elements.map(layerOf))].filter((id) => !roster.includes(id)).map((id) => ({ id, name: `Layer ${id}` }))];
+  for (const layer of layers) {
+    for (const kind of SVG_EXPORT_GROUPS.filter((k) => k.place === 'layer')) out.push(...groupFor[kind.id](layer));
+  }
+  return out.join('');
 }
