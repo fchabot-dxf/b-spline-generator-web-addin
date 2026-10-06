@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, GROUT_JOINTS } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'persistence'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'persistence', 'grout'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -449,6 +449,7 @@ try {
   if (!arg('group') || arg('group') === 'password') await runPassword();
   if (!arg('group') || arg('group') === 'layers') await runBrickLayers();
   if (!arg('group') || arg('group') === 'areas') await runWallAreas();
+  if (!arg('group') || arg('group') === 'grout') await runGroutJoints();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
   if (!arg('group') || arg('group') === 'persistence') { await runPersistence(); await runPatternParamPersist(); }
 } catch (e) {
@@ -1304,6 +1305,34 @@ async function overlapPairs(a, b, tol) {
   let pairs = 0;
   for (const p of a) for (const q of b) if (Math.abs(G.signedArea(G.polygonIntersection(p, q))) > tol) pairs++;
   return pairs;
+}
+
+// F35 item 62: joint height vs brick height per grout profile (GROUT_JOINTS), median over the wall's interior
+function jointProbe() { return `(async()=>{ const m=await import('./core/state.js'); const { pointInPolygon } = await import('./core/bricks/index.js');
+  const r=m.lastResult, h=r.heights, base=r.baseHeights, nx=r.nx, nz=r.nz, W=m.P.widthIn, H=m.P.heightIn;
+  const bb=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick="wall"]')].map((n)=>{
+    const p=n.getAttribute('points').trim().split(/\\s+/).map((s)=>{ const [x,y]=s.split(',').map(Number); return {x,y}; });
+    return { p, x0:Math.min(...p.map((q)=>q.x)), x1:Math.max(...p.map((q)=>q.x)), y0:Math.min(...p.map((q)=>q.y)), y1:Math.max(...p.map((q)=>q.y)) }; });
+  const inB=(x,y)=>bb.some((b)=>x>=b.x0&&x<=b.x1&&y>=b.y0&&y<=b.y1&&pointInPolygon(x,y,b.p)); const R=0.04;
+  const brick=[], joint=[];
+  for (let j=0;j<nz;j++) for (let i=0;i<nx;i++){ const k=j*nx+i, x=i/(nx-1)*W, y=H*(1-j/(nz-1)), d=h[k]-(base?base[k]:0);
+    if (inB(x,y)) brick.push(d); else if ((inB(x+R,y)&&inB(x-R,y))||(inB(x,y+R)&&inB(x,y-R))) joint.push(d); }
+  const med=(a)=>{ const s=[...a].sort((u,v)=>u-v); return s.length ? s[Math.floor((s.length-1)/2)] : null; };
+  return JSON.stringify({ brick: med(brick), joint: med(joint), joints: joint.length }); })()`; }
+async function runGroutJoints() {
+  const G = GROUT_JOINTS;
+  await openEditorTab('editorTabBrick');
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(G.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  await click(G.wallTool, 800); await click('brickGenerate', 3000);
+  let Z = null;
+  for (const pr of G.profiles) {
+    if (!(await exists(pr.button))) { checkRow('grout', `Grout: ${pr.name}`, false, 'control missing', G.introducedBy); continue; }
+    if (!(await editorOpen())) await openEditorTab('editorTabBrick');
+    await click(pr.button, 1200); await apply(); Z = await heightsSettled(Z);
+    const m = await jsJSON(jointProbe());
+    const ok = m.joints > 0 && ('jointOverBrickAtLeast' in pr ? m.joint >= pr.jointOverBrickAtLeast * m.brick : m.joint < pr.jointBelow);
+    checkRow('grout', `Grout: ${pr.name}`, ok, `joint median ${m.joint?.toFixed(4)} in vs brick median ${m.brick?.toFixed(4)} in over ${m.joints} joint cells`);
+  }
 }
 
 async function runWallAreas() {

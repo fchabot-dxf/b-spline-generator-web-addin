@@ -14674,3 +14674,15 @@ WallPattern = {
 - **Matrix:** no new row. The existing sidebar row "Grout: Flush" (3D changes) still holds. A joint-height row needs runner code; flagged to the advisor.
 - **Fast tier:** the 12 files reading the mask / grout / accents, 221/221.
 - **Shots** (shots/seatD): f35_62_{before,after}_flush_3d_{1366,900}.png (T1, 1.5 in, Flush). The terrain differs between them (a fresh-start seed).
+
+## seat D (bb) turn 5: merge origin/main 52c3055 + the item-62 joint-height matrix row
+- **Merge:** one conflict in main/brick-panel.js. Seat C's item-46 setFrameBandPattern and my FRAME_PRESET_DROPS were added at the same spot; both kept, each in its one declared place. Commit 9c1810a.
+  - Re-run on the merged tree: brick-discrete-controls-regen + frame-corners-panel + brick-accents + element-accents + brick-surface-style = 162/162. Matrix frame-ui 16/0, frame 15/0, wall 47 with 1 FAIL (below).
+- **Wall "Clumping 0.9 (Suppression 0.5)" 3D FAIL: intermittent.** 1 of 2 runs on this tree, 0 of 1 on clean main 52c3055; the re-run on this tree is 47/0.
+  - In the failing run, the row's "after" canvas (211#bc0cji) was byte-identical to the Suppression 0.5 row's "after" canvas. So the re-lay it measured did not carry Clumping 0.9 (or carried it with no effect), and "3D unchanged" was the right verdict for that canvas.
+  - In the passing runs Clumping lays a different canvas (218#1dpo61d -> 218#1q7uz5b; on main 214 -> 213 bricks).
+  - Likely a race between the matrix's canvas settle and the clumping re-lay. Seat C's row; not chased here.
+- **The joint-height row (advisor: yes):** a new declared group `grout`: GROUT_JOINTS in controls.mjs, runGroutJoints in run.mjs. It compares the median joint height with the median brick height under each profile, from lastResult heights minus baseHeights over the wall's interior.
+  - Thresholds: Flush, joint >= 0.75 x the brick median; Recessed, joint < 0.
+  - This tree: Flush 0.0979 vs 0.1130 (pass); Recessed -0.0550 (pass).
+  - Clean main: Flush 0.0000 vs 0.1149 = FAIL; Recessed pass. So the row is not vacuous.
