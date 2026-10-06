@@ -27,10 +27,18 @@ import { withLoadingStage } from '../loading-signal.js';
 
 import { applyStampLayers, STAMP_PASS_KIND } from './apply-stamp-layers.js';
 import { buildThickenData } from './build-thicken-data.js';
-import { scheduleRebuild } from './scheduler.js';
+import { scheduleRebuild, isRebuildScheduled } from './scheduler.js';
 import { isCarved } from '../../editor/layers.js';
 
 const yieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
+
+// Item 37: "the 3D is built" as an event, not a quiet window -- nothing running, queued or on the scheduler's timer.
+const _idleWaiters = [];
+const _rebuildIdle = () => !rebuild.isRebuilding && !rebuild.pendingRebuild && !isRebuildScheduled();
+/** Resolves once no rebuild is running, queued or scheduled (at once if none is). */
+export function whenRebuildIdle() {
+    return _rebuildIdle() ? Promise.resolve() : new Promise((resolve) => _idleWaiters.push(resolve));
+}
 
 export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode) {
     if (rebuild.isRebuilding) {
@@ -97,6 +105,7 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
             rebuild.pendingRebuild = null;
             next();
         }
+        if (_rebuildIdle()) _idleWaiters.splice(0).forEach((resolve) => resolve());
     }
 }
 
