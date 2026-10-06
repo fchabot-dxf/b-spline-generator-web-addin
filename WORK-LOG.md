@@ -23176,3 +23176,16 @@ Fusion acceptance pending: seat A's item 89 run (profiles == pieces on all 57).
   with the extension restored it FAILS: the start brick at 0.98 against the stroke end at 1.0). Sheet: a stroke row added.
 - main 33816b6 merged (70b8225, seat E's grout / SVG items): full vitest 322 / 322 files green (80.6 s) before this fix;
   bricks domain after it green (one loaded run timed out boundary-at-depth-simple at 30 s, alone 19 / 19).
+
+## T86 item 30 -- PLAN (measured, decided; build after the joint rule merges) (seat B / fc, 2026-10-06)
+Found through seat A's item 89 harness: the frame Generate step draws a different shape per case (record frameInfo per
+case: templateId, params, silhouette). One draw of T9 had 1.82 in flanges; at a 1 in single band the flange ends lay
+NOTHING but fans stranded at the four board corners -- PRE-EXISTING (main 845b794 identical, 84 vs 82 pieces).
+Measured on that outline, one soldier band, flange ground farther than a joint from any piece: depth 1.0 -> 6.151 sq in
+bare; 0.9 -> 0.000; 0.8 / 0.7 / 0.6 / 0.5 / 0.4 -> 0.001. The cliff is half the flange (0.91): past it the 1.82 in
+flange-end line cannot hold both corners' mitres and drops, and the corners cascade into fans.
+DECIDED (advisor, Fred's item 28 "ok to all"): option (a) -- the fit rule's own BAND_FIT_SHARE (1/3 of narrowestGap,
+0.607 here) also governs a SINGLE band too deep for the board (today "the outermost band is never reduced"); one declared
+share for every reduction. Note text: "band narrowed to fit; bricks cut to the row depth" (a soldier row narrower than its
+brick cuts the bricks to the row depth -- no smaller whole-brick pattern to fall back to). Acceptance: before/after on T9
+thick flange (single, dc at 1 in) + the 456-lay sweep showing nothing else changes.
