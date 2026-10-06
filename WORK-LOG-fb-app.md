@@ -15011,6 +15011,20 @@ WallPattern = {
 - **Matrix** (frame group): + Grey stone (sets frame 5), White rocks (frame 3, rock), Soldier back to Grey stone (frame 5), Red Brick again (frame 1). Run: 16 rows, 0 FAIL.
 - **Live** (frame_sets_live.mjs): Frame tool row = [Red Brick, White rocks, Grey brick, Grey stone]; Grey stone -> every frame piece data-brick-set 5; Wall tool row = [Red Brick, Grey brick]. 0 page errors. Shots: shots/seatE/item61_frame_set_grey_stone_desktop.png, item61_frame_set_grey_stone_900.png.
 - **Gate:** full vitest (8 GB heap, as the gate now runs) 2 failed / 4794 passed. One is frame-3d-sweep's 90 s timeout. The other was REAL: item29-grey-set counted every rendered Set button; it now counts the visible ones, since the Frame-only stone sets are hidden for the Wall. Both files pass, 9/9.
+
+## F35 item 38 onto main -- seat F (session fa), 2026-10-05
+- Merged origin/main (352603f) into seat C's parked undo-settings (26e5fec); merge ba7d765.
+- Conflicts, both sides kept:
+  - brick-panel imports (registerUndoPart + FRAME_NEEDS_A_FRAME);
+  - pattern-builder tests (item 38 undo describe + item 39 Generate describe);
+  - brick-matrix controls/run (UNDO_SETTINGS + GENERATE_AFTER_RESTORE / WALL_NO_FRAME / GROUT_JOINTS / QUICK_FRAME_LAYS; groups 'undo' + 'grout').
+  - NEXT-SESSION-fb-app took main's.
+- Re-verified live: matrix --group undo, 3 rows, 0 FAIL, 0 page errors.
+  - Stack pick 140#ydf4k0 -> Undo = the baseline 147#izl5fs canvas, and the stretcher chip is active again.
+  - Redo = the pick + its chip.
+  - Accent level -0.0625 -> Undo = 0.0625.
+- The custom join -> Undo (the tile and the open builder) is pinned by pattern-builder item 38; 30/30 pass.
+- Full vitest: 5 failed / 4739 passed. All 5 are 'Test timed out' in the parallel run (bricks-band-fit, bricks-no-corrupt-polygon, element-accents, frame-3d-sweep, silhouette-resolve), and each file passes alone (50/50).
 ## seat D (bb) turn 10: A2 (3D-panel audit), a greyed number field greys its -/+ stepper (branch brick-sidebar-fixes)
 - **Measured** (headless, T1): Grout Flush leaves the Grout depth field disabled but both stepper buttons enabled; "+" moved 0.05 -> 0.055 with no effect. It is generic: Clumping's stepper at Suppression 0 is the same.
   - Cause: the stepper buttons are generic wrappers (ui-bindings.js attachNumberSteppers, `.cad-stepper`, no ids), so no requires rule can name them.
