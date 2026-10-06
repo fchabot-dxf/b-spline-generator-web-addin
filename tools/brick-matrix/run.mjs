@@ -206,7 +206,10 @@ async function jsJSON(expr) {
 const shot = async (name) => { const r = await send('Page.captureScreenshot', { format: 'png' }); writeFileSync(path.join(OUT, `${name}.png`), Buffer.from(r.result.data, 'base64')); };
 const click = (elId, wait = 1200) => js(`(async()=>{ const b=document.getElementById(${JSON.stringify(elId)}); if(!b) return 'MISSING'; if(b.disabled) return 'DISABLED'; b.click(); await new Promise(r=>setTimeout(r,${wait})); return 'ok'; })()`);
 const setValue = (elId, v, event) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(elId)}); if(!e) return 'MISSING'; if(e.disabled) return 'DISABLED'; e.value=${JSON.stringify(String(v))}; e.dispatchEvent(new Event(${JSON.stringify(event)})); return 'ok'; })()`);
-const act = async (d) => (d.click ? click(d.click, 400) : setValue(d.set, d.value, d.event));
+// F35 item 43: a Brick-panel control is acted on / checked with ITS tab up (General for a global block) -- hidden by
+// the other tab is not "greyed out" (main/brick-panel.js revealBrickControl; a no-op for any other control)
+const reveal = (elId) => js(`import('./main/brick-panel.js').then((m) => (m.revealBrickControl ? m.revealBrickControl(${JSON.stringify(elId)}) : 0, 1), () => 1)`);
+const act = async (d) => { await reveal(d.click || d.set); return d.click ? click(d.click, 400) : setValue(d.set, d.value, d.event); };
 const targetId = (d) => d.click || d.set;
 // a row's `requires`: is the other control in the state this one depends on?
 const requirementMet = (q) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(q.control)}); if(!e) return false;
@@ -214,8 +217,8 @@ const requirementMet = (q) => js(`(()=>{ const e=document.getElementById(${JSON.
   if ('checked' in s) return e.checked === s.checked; return false; })()`);
 // unmet requirement: greyed out (disabled) or not shown at all. A2 (seat D): a greyed number field counts only with its
 // -/+ stepper greyed too (the stepper still moved a greyed Grout depth 0.05 -> 0.055 before the fix)
-const isDisabled = (elId) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(elId)}); if (!e || e.offsetParent===null) return true;
-  return !!e.disabled && [...(e.closest('.cad-stepper')?.querySelectorAll('button') || [])].every((b) => b.disabled); })()`);
+const isDisabled = async (elId) => (await reveal(elId), js(`(()=>{ const e=document.getElementById(${JSON.stringify(elId)}); if (!e || e.offsetParent===null) return true;
+  return !!e.disabled && [...(e.closest('.cad-stepper')?.querySelectorAll('button') || [])].every((b) => b.disabled); })()`));
 const appRule = (elId) => js(`(async()=>{ let mod, eng;
   try { mod = await import('./main/brick-control-requires.js'); eng = await import('./core/bricks/index.js'); } catch { return null; }
   const el = document.getElementById(${JSON.stringify(elId)}); if (!el) return null;
@@ -284,7 +287,8 @@ const editorOpen = () => js(`getComputedStyle(document.getElementById('svgEditor
 async function openBrickTool(tool) {
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
   await click('editorTabBrick', 800);
-  const active = await js(`document.querySelector('#editorToolbarBrick .tool-btn.active')?.id || ''`);
+  // F35 item 43: the tools are tabs (editor/tab-strip.js .ui-tab) at the top of the Brick panel
+  const active = await js(`document.querySelector('#editorToolbarBrick .ui-tab.active')?.id || ''`);
   if (tool && active !== `brickTool_${tool}`) await click(`brickTool_${tool}`, 800);
 }
 const apply = () => click('editorApply', 2000);
@@ -344,7 +348,7 @@ try {
 
   for (const c of CONTROLS) {
     if (c.introducedBy) {
-      if (c.kind === 'stripe') { await openBrickTool('brush'); await click('brickTool_stripe', 600); }
+      if (c.kind === 'stripe') { await openBrickTool('brush'); await click('brickSubTool_brush_stripe', 600); } // item 43: Brush > Stripe
       if (!(await exists(targetId(c.do)))) {
         rows.push({ name: c.name, kind: c.kind, result: `skipped: not in this build (introduced by ${c.introducedBy})`, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a' } });
         console.log(`skip  ${c.name.padEnd(34)} not in this build (introduced by ${c.introducedBy})`);
@@ -360,7 +364,7 @@ try {
       if (c.kind === 'editor' || c.kind === 'editor3d') await openBrickTool(c.tool);
       else if (c.kind === 'brush' || c.kind === 'stripe') await openBrickTool('brush');
       else if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
-      if (c.kind === 'sidebar') await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+      if (c.kind === 'sidebar') await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
       // the dependency is unmet: the control must be greyed out or hidden -- that is the whole check for this row
       const disabled = await isDisabled(targetId(c.do));
       const row = { name: c.name, kind: c.kind, tool: c.tool || null, result: 'requires unmet', requires: rule.requires, requiresSource: rule.source,
@@ -426,7 +430,7 @@ try {
       // a fresh stroke, striped into 4 runs, then the style pick
       await openBrickTool('brush');
       await click('brickTool_brush', 300); await drag([[1.5 / 7, 0.5], [5.5 / 7, 0.5]]);
-      await click('brickTool_stripe', 600);
+      await click('brickSubTool_brush_stripe', 600); // item 43: Stripe is a Brush sub-tool (no tab of its own)
       await js(`(async()=>{ const m=await import('./editor/editor-stripe-tool.js'); const ed=window.svgEditor;
         const spine=[...ed._sketchLayer.children()].reverse().find((el)=>el.attr('data-brick')==='brush-spine');
         m.stripeAt(ed, spine, { ...m.stripeSettings(ed), drive: 'count', count: 4 }); await new Promise(r=>setTimeout(r,1200)); return 1; })()`);
@@ -438,7 +442,7 @@ try {
     } else if (c.kind === 'opens') {
       // a sidebar button that opens the editor on a declared tab: open?, on that tab? -- then close it again
       if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
-      await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+      await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
       const result = await act(c.do);
       await sleep(2500);
       const opened = await editorOpen();
@@ -453,7 +457,7 @@ try {
       if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
     } else if (c.kind === 'sidebar') {
       if (await editorOpen()) { await apply(); Z = await heightsSettled(Z); }
-      await js(`(()=>{ const h=document.querySelector('.panel-brick > .panel-header'); if (h && h.classList.contains('collapsed')) h.click(); return 1; })()`);
+      await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
       const c0 = await js(CANVAS);
       const result = await act(c.do);
       await sleep(1500);

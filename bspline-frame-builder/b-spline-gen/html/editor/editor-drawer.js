@@ -20,26 +20,19 @@ import { el, on } from './dom.js';
 import { makeSplitter } from './splitter.js';
 import { LANDSCAPE_PHONE_QUERY } from './breakpoints.js';
 
-/** Declared once — a future tool with its own options panel is one entry
- *  here, not a new mechanism. Only Lattice has one today; every other
- *  mode falls through to `null` (drawer shows Layers only, no tool tab),
- *  matching the dispatch's own "tools with no options -> the tab shows
- *  Layers only." */
+/** Declared once — the tools with their own options panel (a future one is one entry here): entering one opens the
+ *  drawer at peek. The Art tabs (Fred: "what's stripe and brick?") retired the drawer's tool | panel tab pair -- the
+ *  panel's settings mount under Layers on every viewport now (lattice-side-column.js TOOL_PANEL_MOUNTS). */
 export const TOOL_PANELS = {
-  lattice: { panelId: 'editorLatticePanel', label: 'Lattice Pattern' },
-  // T58 (SE14 Slice 3): the first REAL exercise of "a future tool with its
-  // own options panel is one entry here" — see this file's own generalized
-  // _activateTab/measuredPeekFloorPx below (they used to hardcode
-  // 'editorLatticePanel' since only one entry ever existed; a second entry
-  // is what actually proves the table generic, not just declared that way).
-  shapeLattice: { panelId: 'editorShapeLatticePanel', label: 'Shape Lattice' },
-  stripe: { panelId: 'editorStripePanel', label: 'Stripe' }, // F27 item 3
+  lattice: { panelId: 'editorLatticePanel' },
+  shapeLattice: { panelId: 'editorShapeLatticePanel' }, // T58 (SE14 Slice 3)
+  stripe: { panelId: 'editorStripePanel' }, // F27 item 3
 };
 
 export const DRAWER_SNAP_STATES = ['peek', 'half', 'full'];
 const DRAWER_HEIGHT_STORAGE_KEY = 'bspline.editor.drawerHeightPx';
 
-/** Peek is a fixed px height (the dispatch's own "~96px: tabs + essentials
+/** Peek is a fixed px height (the dispatch's own "~96px: essentials
  *  row" — a slim, content-driven amount, not a viewport proportion); half
  *  and full are vh-based fractions of the CURRENT viewport, matching the
  *  dispatch's own "~50vh"/"~88vh". */
@@ -49,8 +42,7 @@ const FULL_VH_FRACTION = 0.88;
 
 /** Pure: resolve a snap state to a concrete px height for the given
  *  viewport height. 'peek' is this function's OWN floor only — initDrawer
- *  raises it live against the Lattice tool's actually-measured essentials
- *  (its own peek content can exceed 96px; see measuredPeekFloorPx below). */
+ *  raises it live against the active tab's declared peek essentials (tabEssentialsFloorPx below). */
 export function drawerHeightPx(state, viewportHeight) {
   if (state === 'half') return Math.round(viewportHeight * HALF_VH_FRACTION);
   if (state === 'full') return Math.round(viewportHeight * FULL_VH_FRACTION);
@@ -92,81 +84,6 @@ export function landscapeWidthPx(state, viewportWidth) {
   return LANDSCAPE_CANVAS_MAX_WIDTH_PX; // 'canvasMax', and the floor for any unrecognized state
 }
 
-/** SE7k's Add: row and the Generate/Regenerate footer are the dispatch's
- *  own declared peek-row content ("Lattice's peek row = Add: Rail/Tie/
- *  Node + Generate/Regenerate") — no DOM relocation needed to achieve
- *  that: Add is already the body's first (non-collapsible) child, and
- *  the footer becomes `position:sticky; bottom:0` (styles/editor.css)
- *  inside the drawer body's own scroll context, so both stay visible at
- *  ANY drawer height, including peek, without duplicating their markup
- *  or breaking properties-lattice.js's existing getElementById wiring
- *  (an element's DOM POSITION is irrelevant to that; only its id is). */
-function _syncTabsForMode(editor, mode) {
-  const toolTab = el('editorDrawerTab-tool');
-  const layersTab = el('editorDrawerTab-layers');
-  if (!toolTab || !layersTab) return;
-  // Fred (phone, Frame tab showing the Shape Lattice panel): "if I'm in frame the panel should show the
-  // frame settings not the vectors, the tab should be the toggle". The Frame / Artwork switch decides
-  // what the drawer holds: in Frame it is ONLY the frame settings (the second slot, which setEditorTab
-  // fills with #editorFramePanel) -- no tool panel and no drawer tab strip to pick between them.
-  const frameTab = !!editor && editor._editorTab === 'frame';
-  const tabs = el('editorDrawerTabs');
-  if (tabs) tabs.style.display = frameTab ? 'none' : '';
-  // The current tool's own panel stays visible by its toolbar-group rule (editor-ui.js) whatever the drawer
-  // does, so in Frame it has to be hidden here explicitly (and un-hidden again by _activateTab on Artwork).
-  const modePanel = TOOL_PANELS[mode] ? el(TOOL_PANELS[mode].panelId) : null;
-  if (frameTab && modePanel) modePanel.classList.add('editor-drawer-tab-hidden');
-  const toolPanel = frameTab ? null : TOOL_PANELS[mode];
-  toolTab.classList.toggle('hidden', !toolPanel);
-  toolTab.textContent = toolPanel ? toolPanel.label : '';
-  // T58: which panel element the tab tracks travels WITH the tab button
-  // itself (a data attribute, not a second parameter threaded through
-  // every _activateTab call site below) — now that TOOL_PANELS has a
-  // second entry, "the tool tab's panel" is no longer always
-  // #editorLatticePanel; a click on the tab (below) needs to resolve the
-  // SAME panel this call just picked, not a hardcoded one.
-  toolTab.dataset.panelId = toolPanel ? toolPanel.panelId : '';
-  // A tool switch always shows THAT tool's own tab (matches the
-  // dispatch's own "opening the Lattice tool opens the drawer at peek" —
-  // switching tools is meant to surface the new tool's options, not
-  // preserve whichever tab a PREVIOUS tool happened to leave active): a
-  // mode with its own panel activates the tool tab; one without leaves
-  // Layers as the only (and therefore active) tab.
-  _activateTab(editor, toolPanel ? 'tool' : 'layers');
-}
-
-/** T58: generalized from a hardcoded `#editorLatticePanel` reference —
- *  reads WHICH panel the tool tab currently represents off its own
- *  `dataset.panelId` (set by `_syncTabsForMode` above on every mode
- *  switch), so a second (or Nth) `TOOL_PANELS` entry shows/hides the
- *  RIGHT panel rather than always the Lattice one. Every OTHER
- *  `TOOL_PANELS` panel is left alone here (not force-hidden) — each one
- *  is already gated by `editor-ui.js`'s own `TOOLBAR_GROUPS` predicate
- *  (`currentMode === '<mode>'`), which independently hides it the moment
- *  the mode isn't its own; this toggle only needs to pick the right
- *  panel among the (at most one) that TOOLBAR_GROUPS already left
- *  visible. */
-function _activateTab(editor, which) {
-  const toolTab = el('editorDrawerTab-tool');
-  const layersTab = el('editorDrawerTab-layers');
-  const layersPanel = el('editorLayersPanel');
-  if (!toolTab || !layersTab) return;
-  const toolPanelId = toolTab.dataset.panelId;
-  const toolPanel = toolPanelId ? el(toolPanelId) : null;
-  toolTab.classList.toggle('active', which === 'tool');
-  layersTab.classList.toggle('active', which === 'layers');
-  if (toolPanel) toolPanel.classList.toggle('editor-drawer-tab-hidden', which !== 'tool');
-  if (layersPanel) layersPanel.classList.toggle('editor-drawer-tab-hidden', which !== 'layers');
-}
-
-/** Called from editor-ui.js's setMode on every tool switch, and from
- *  frame-panel.js's setEditorTab on every Frame / Artwork switch — keeps
- *  the drawer's tabs in sync with the editor tab and whether the CURRENT
- *  tool has an options panel at all. A no-op if the drawer isn't in this
- *  host's DOM. */
-export function syncDrawerForMode(editor, mode) {
-  _syncTabsForMode(editor, mode);
-}
 
 /** MOB3: Download SVG / Clear's ⋯ overflow menu (narrow/coarse only —
  *  desktop keeps them inline, styles/editor.css's `display:contents` on
@@ -223,9 +140,7 @@ export function initHeaderOverflowMenu() {
 export function initDrawer(editor) {
   const drawer = el('editorMobileDrawer');
   const handle = el('editorDrawerHandle');
-  const toolTab = el('editorDrawerTab-tool');
-  const layersTab = el('editorDrawerTab-layers');
-  if (!drawer || !handle || !toolTab || !layersTab) return; // panel not present in this host — no-op, matches other init*() modules' own guard shape
+  if (!drawer || !handle) return; // panel not present in this host — no-op, matches other init*() modules' own guard shape
 
   // MOB4: shared by both splitters below (each is the OTHER one's
   // `enabled()` gate).
@@ -239,51 +154,7 @@ export function initDrawer(editor) {
   // mobile is the SAME declared mechanism instead of this file's own
   // former mobile-only copy of it.
 
-  on(toolTab, 'click', () => _activateTab(editor, 'tool'));
-  on(layersTab, 'click', () => _activateTab(editor, 'layers'));
-  _activateTab(editor, 'layers'); // a sane default before the first setMode() call ever runs
 
-  // Peek's declared ~96px (drawerHeightPx's own pure floor, used as-is by
-  // its unit tests) doesn't actually leave room for the handle + tabs bar
-  // PLUS Lattice's own declared peek row (Add: Rail/Tie/Node + Generate/
-  // Regenerate) once real chrome heights are subtracted — confirmed live:
-  // both landed off-screen with the bare constant. Measures the ACTUAL
-  // essentials instead (handle + tabs + Add section + footer, all normal-
-  // flow children of the scrollable #editorDrawerBody, so their own
-  // offsetHeight is never artificially compressed by the drawer's current
-  // overall height) and uses whichever is taller — the constant stays as
-  // the documented floor for a tab with no measurable essentials (Layers-
-  // only tools).
-  function measuredPeekFloorPx() {
-    const chrome = handle.offsetHeight + (el('editorDrawerTabs')?.offsetHeight || 0);
-    // T58: read the CURRENT tool tab's own panel (dataset.panelId, set by
-    // _syncTabsForMode) rather than hardcoding editorLatticePanel — a
-    // second TOOL_PANELS entry needs its OWN essentials measured, not
-    // Lattice's.
-    const panelId = el('editorDrawerTab-tool')?.dataset.panelId;
-    const panel = panelId ? el(panelId) : null;
-    const showing = panel && !panel.classList.contains('editor-drawer-tab-hidden');
-    if (showing) {
-      // UI3 AMEND 1: querySelector alone would find whichever
-      // `[data-no-collapse]` element is FIRST in DOM order — since
-      // lattice-side-column.js's new icon row hides the old Add div
-      // (still `[data-no-collapse]`, now permanently `display:none`,
-      // `offsetHeight` 0) rather than removing it, and inserts its own
-      // new row right AFTER it, `querySelector` kept matching the dead
-      // zero-height one — confirmed live (the icon row landed off-screen
-      // at peek, the exact "measured the wrong/hidden element" bug this
-      // function's own T58 history already had once before with the
-      // panel itself). Summing every match instead of trusting the first
-      // is correct for BOTH today's shape (one hidden + one real) and
-      // don't-care about a future one (an all-hidden or all-visible set
-      // sums the same either way).
-      const addSections = document.querySelectorAll(`#${panelId}Body [data-no-collapse]`);
-      const addHeight = Array.from(addSections).reduce((sum, node) => sum + node.offsetHeight, 0);
-      const footer = el(`${panelId}Footer`);
-      if (addSections.length && footer) return chrome + addHeight + footer.offsetHeight + 24;
-    }
-    return drawerHeightPx('peek', window.innerHeight);
-  }
   // The ACTIVE TAB's declared peek essentials (main/editor-tabs.js EDITOR_TABS[].peekEssentials, handed
   // over as drawer.dataset.peekEssentials on every tab switch): selectors whose rendered elements must show
   // in full at peek -- e.g. the Brick panel's pinned Generate (Fred: "Wall is missing the generate button":
@@ -294,10 +165,11 @@ export function initDrawer(editor) {
     const h = selectors.reduce((sum, sel) => sum + Array.from(document.querySelectorAll(sel))
       .filter((node) => node.offsetParent !== null).reduce((s, node) => s + node.offsetHeight, 0), 0);
     if (!h) return 0;
-    return handle.offsetHeight + (el('editorDrawerTabs')?.offsetHeight || 0) + h + 8;
+    return handle.offsetHeight + h + 8;
   }
   function peekFloorPx() {
-    return Math.max(drawerHeightPx('peek', window.innerHeight), measuredPeekFloorPx(), tabEssentialsFloorPx());
+    // the Art tabs: the tab pair and the tool-panel floor are retired -- a tool's settings sit under Layers now
+    return Math.max(drawerHeightPx('peek', window.innerHeight), tabEssentialsFloorPx());
   }
   // The splitter's own declared snap points — DRAWER_SNAP_STATES stays the
   // single source of the three names (peek/half/full order); 'peek' alone
@@ -347,12 +219,12 @@ export function initDrawer(editor) {
     onDragEnd: () => drawer.classList.remove('is-dragging'),
   });
   // Audit C11: a tab tap at peek height used to only switch the tab, leaving its panel hidden below
-  // the fold (the handle drag was the only way up). At peek, a tab tap now also opens to 'half'.
-  for (const tab of [toolTab, layersTab]) {
-    on(tab, 'click', () => {
-      if (!isLandscapeMode() && drawer.classList.contains('is-peek')) splitter.snapTo('half');
-    });
-  }
+  // the fold (the handle drag was the only way up). At peek, a tab tap now also opens to 'half' -- since the Art tabs,
+  // a tab of any panel's strip in the drawer (editor/tab-strip.js .ui-tab-strip; the drawer's own tab pair is retired).
+  on(drawer, 'click', (e) => {
+    if (e.target && e.target.closest && e.target.closest('.ui-tab-strip .ui-tab')
+      && !isLandscapeMode() && drawer.classList.contains('is-peek')) splitter.snapTo('half');
+  });
 
   // The peek floor depends on what the drawer currently holds (the tab's declared essentials appear only
   // once their panel shows, e.g. the Brick panel on picking Wall), so a drawer AT peek re-measures when the
@@ -431,13 +303,6 @@ export function initDrawer(editor) {
 
   document.addEventListener('editorModeChanged', (e) => {
     if (e.detail && e.detail.editor === editor) {
-      // _syncTabsForMode FIRST: it un-hides the Lattice panel for 'lattice'
-      // mode, and measuredPeekFloorPx() (splitter's own 'peek' snap) can
-      // only measure the Add/footer content once that panel is actually
-      // visible — reversed, this call measured the STILL-HIDDEN panel and
-      // silently fell back to the bare 96px floor (confirmed live: Add/
-      // Generate landed off-screen at peek on the very first tool-open).
-      _syncTabsForMode(editor, e.detail.mode);
       // T58: generalized from `mode === 'lattice'` — ANY tool with its own
       // TOOL_PANELS entry snaps the drawer open at peek on entry, not just
       // the Lattice tool specifically (the dispatch's own reasoning —

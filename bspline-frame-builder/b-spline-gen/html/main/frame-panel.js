@@ -31,7 +31,6 @@ import { nextSeed } from '../editor/editor-lattice-pattern.js';
 import { frameCutProfile, frameInnerProfile, frameMiters, miterStaysInsideWood, outlineHasUndercut, mitersCollide, blankWidthIn, formatBlankWidthIn } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
 import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
-import { syncDrawerForMode } from '../editor/editor-drawer.js';
 import { inputProfileFor } from '../editor/editor-input.js';
 import { FRAME_HANDLE_RADIUS } from '../editor/editor-frame-profile.js';
 import { insetWindowGeometry, insetWindowOuterRect } from '../core/inset-window.js';
@@ -251,8 +250,6 @@ document.addEventListener('editorTabChanged', (e) => {
   if ($('editorFrameShield')) $('editorFrameShield').style.display = frame ? '' : 'none';
   const ed = typeof window !== 'undefined' ? window.svgEditor : null;
   setEditorFocus(ed, e.detail.tab);
-  // Fred: "the tab should be the toggle" -- the phone drawer follows this switch (Frame: frame settings only).
-  if (ed) syncDrawerForMode(ed, ed._currentMode);
   // T81 item 1: leaving the Frame tab drops its handles entirely (below) --
   // a hover/grab cursor read from the OLD tab must not stick around either.
   if (!frame) _clearFrameHover();

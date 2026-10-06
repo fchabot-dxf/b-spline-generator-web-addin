@@ -38,6 +38,7 @@ import { registerTweaksTarget, renderTweaksPanel } from '../core/noise/tweaks-ui
 import { applyParam } from './param-manager.js';
 import { setEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
+import { renderTabStrip } from '../editor/tab-strip.js';
 import { photoToolIconSvg } from '../editor/photo-tool-icons.js';
 
 /** F35 item 10 (advisor, Fred's own reasoning: "each tab uses a completely different toolbar"):
@@ -54,7 +55,21 @@ const PHOTO_TOOLS = [
   { id: 'blur', buttonId: 'photoTool_blur', iconSvg: () => photoToolIconSvg('blur'), label: 'Blur', icon: '🌫️', hint: 'Smooth the photo before it becomes height.' },
 ];
 
+/** The Photo TABS (Fred's OK on mockup v2): Source | Adjust | Relief at the top of the Photo panel. A tab shows its own
+ *  blocks and EVERY section of its tools at once (Photo's tools are settings switches, not canvas gestures); the left
+ *  rail stays (its icons are Fred's picks) and a tool pick opens that tool's tab. Every tool sits in exactly one tab; the
+ *  blocks no tab lists (the preview, Save) show on every tab. */
+export const PHOTO_TABS = Object.freeze([
+  Object.freeze({ id: 'source', label: 'Source', tools: Object.freeze(['crop', 'straighten', 'rotateFlip']), blocks: Object.freeze(['photoSourceBlock']) }),
+  Object.freeze({ id: 'adjust', label: 'Adjust', tools: Object.freeze(['levels', 'blur']), blocks: Object.freeze([]) }),
+  Object.freeze({ id: 'relief', label: 'Relief', tools: Object.freeze([]), blocks: Object.freeze(['photoReliefBlock']) }),
+]);
+export const photoTabOfTool = (toolId) => (PHOTO_TABS.find((t) => t.tools.includes(toolId)) || {}).id || null;
+
 let _activePhotoTool = PHOTO_TOOLS[0].id;
+let _photoTab = photoTabOfTool(PHOTO_TOOLS[0].id);
+let _syncPhotoTabs = null;
+export const activePhotoTab = () => _photoTab;
 let _onChange = null;
 let _patterns = [];
 
@@ -67,14 +82,29 @@ function renderPhotoToolbar(container) {
 
 function syncPhotoToolButtons() {
   syncToolRegistryButtons(PHOTO_TOOLS, _activePhotoTool);
+  const tab = PHOTO_TABS.find((t) => t.id === _photoTab);
   for (const tool of PHOTO_TOOLS) {
     const section = document.getElementById(`photoToolSection_${tool.id}`);
-    if (section) section.style.display = tool.id === _activePhotoTool ? '' : 'none';
+    if (section) section.style.display = tab && tab.tools.includes(tool.id) ? '' : 'none';
   }
+  for (const t of PHOTO_TABS) {
+    for (const id of t.blocks) { const el = document.getElementById(id); if (el) el.style.display = t === tab ? 'flex' : 'none'; }
+  }
+  if (_syncPhotoTabs) _syncPhotoTabs(_photoTab);
 }
 
 function selectPhotoTool(id) {
   _activePhotoTool = id;
+  _photoTab = photoTabOfTool(id) || _photoTab; // the Photo tabs: a rail pick opens its tool's tab
+  syncPhotoToolButtons();
+}
+
+/** A tab pick: its blocks + its tools' sections; the rail highlights the tab's first tool (none for Relief). */
+export function setPhotoTab(id) {
+  const tab = PHOTO_TABS.find((t) => t.id === id);
+  if (!tab) return;
+  _photoTab = id;
+  _activePhotoTool = tab.tools[0] || null;
   syncPhotoToolButtons();
 }
 
@@ -383,6 +413,7 @@ export function initPhotoPanel({ onChange }) {
 
   document.getElementById('editorTabPhoto')?.addEventListener('click', () => setEditorTab('photo'));
   renderPhotoToolbar(document.getElementById('editorToolbarPhoto'));
+  _syncPhotoTabs = renderTabStrip(document.getElementById('photoTabStrip'), PHOTO_TABS, setPhotoTab, { idPrefix: 'photoTab_' });
   syncPhotoToolButtons();
 
   // F34 item 1 (Fred: "show the photo's effect params inside the Photo tab

@@ -16,12 +16,18 @@ const parse = (svg) => new DOMParser().parseFromString(svg, 'image/svg+xml');
 
 describe('Brick tool icons', () => {
   it('one icon per Brick tool, in the editor icon box (24 units), at the asked size', () => {
-    expect(Object.keys(BRICK_TOOL_ICONS)).toEqual(TOOLS);
+    expect(Object.keys(BRICK_TOOL_ICONS)).toEqual([...TOOLS, 'general']); // item 43: + the General tab's
     for (const id of TOOLS) {
       const svg = brickToolIconSvg(id, 40);
       expect(svg, id).toMatch(/^<svg[^>]*viewBox="0 0 24 24" width="40" height="40"/);
     }
     expect(brickToolIconSvg('nope')).toBe(null);
+  });
+  it('item 43: the General tab icon is a glyph only (three sliders), no miniature', () => {
+    const svg = brickToolIconSvg('general', 18);
+    expect(svg).toMatch(/^<svg[^>]*viewBox="0 0 24 24" width="18" height="18"/);
+    expect(svg).not.toMatch(/<polygon/);
+    expect((svg.match(/<circle/g) || []).length).toBe(3);
   });
   it('every miniature is laid by the engine: real parsed polygons, inside the 24 box', () => {
     for (const id of TOOLS) {

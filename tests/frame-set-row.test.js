@@ -53,7 +53,7 @@ import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/ed
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
-  <button id="editorTabBrick">Brick</button><button id="editorDrawerTab-layers">Brick</button>
+  <button id="editorTabBrick">Brick</button>
   <div id="editorToolbarBrick"></div>
   <div id="brickToolHint"></div>
   <div id="brickBrushSection" style="display:none;">

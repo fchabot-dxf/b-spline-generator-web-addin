@@ -588,8 +588,7 @@
     display: contents;
 }
 .editor-drawer-handle,
-.editor-drawer-handle-v,
-.editor-drawer-tabs {
+.editor-drawer-handle-v {
     display: none;
 }
 
@@ -635,31 +634,6 @@
         min-height: 0;
     }
 
-    .editor-drawer-tabs {
-        flex-shrink: 0;
-        display: flex;
-        border-bottom: 1px solid var(--cad-border-standard);
-    }
-    .editor-drawer-tab {
-        flex: 1;
-        height: 44px; /* pointer:coarse touch target, this file's own convention (.layer-visibility etc.) */
-        border: none;
-        background: none;
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: #666;
-        cursor: pointer;
-    }
-    .editor-drawer-tab.active {
-        color: var(--cad-accent);
-        box-shadow: inset 0 -2px 0 var(--cad-accent);
-    }
-    .editor-drawer-tab.hidden {
-        display: none;
-    }
-
     /* ID selector, not just `.editor-drawer-body` — needed to beat the
        base `#editorDrawerBody{display:contents}` rule above at EQUAL
        specificity (same selector), which an ID beats a class selector at
@@ -681,7 +655,7 @@
 
     /* The two panels become plain in-flow blocks filling the drawer body
        (not the row-layout flex siblings/fixed-position sheets they used
-       to be) — only the ACTIVE tab's own panel is shown. */
+       to be). The Art tabs retired the drawer's tool | panel tab pair: a tool's settings mount under Layers. */
     #editorMobileDrawer .editor-lattice-panel,
     #editorMobileDrawer .editor-layers-panel {
         width: 100% !important;
@@ -700,16 +674,6 @@
            live: without this, Generate sat in normal flow far below the
            viewport at peek, invisible, regardless of drawer height. */
         overflow: visible !important;
-    }
-    .editor-drawer-tab-hidden {
-        display: none !important;
-    }
-
-    /* The drawer's own tab already carries this panel's name — showing
-       it a second time inside the panel itself is redundant clutter at
-       this width. Desktop (outside this breakpoint) keeps it. */
-    #editorLatticePanelHeader {
-        display: none;
     }
 
     /* Peek's own declared content ("Add: Rail/Tie/Node + Generate/
