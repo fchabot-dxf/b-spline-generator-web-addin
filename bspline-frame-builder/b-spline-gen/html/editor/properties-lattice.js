@@ -54,7 +54,14 @@ function _currentPattern(editor) {
 // panel already uses internally, not a second one.
 export { _currentPattern as currentPatternLattice };
 
+/** Item 74e (advisor; seat D's Artwork audit: the Lattice panels mix live settings -- orientation, size, colours, widths
+ *  -- with ones only Generate reads -- rails anchor / spacing, ties, nodes -- and nothing said which): the one line over
+ *  the next-Generate group, in both lattice panels (the markup's [data-lattice-hint="next-generate"]), like Brick's
+ *  "Settings for the next frame". */
+export const LATTICE_NEXT_GENERATE_HINT = 'Applies on the next Generate';
+
 export function initLatticeProperties(editor) {
+    for (const node of document.querySelectorAll('[data-lattice-hint="next-generate"]')) node.textContent = LATTICE_NEXT_GENERATE_HINT;
     // RAIL-SPACING R7: the old grid-step Spacing select + Every/Offset +
     // seeded count-range fields are REMOVED from the UI (ruling) — an old
     // saved pattern's own stored values for these are untouched (nothing
