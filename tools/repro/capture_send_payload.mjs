@@ -19,6 +19,12 @@
 //   --carve (H23 item 82, CAM same-position stock): after the scenario, turn 3D carve ON for the layers it drew
 //          (CARVE_LAYERS below) so the stamp bakes and the Send carries the STAMPED STEP variant next to Clean
 //          (export-flow.js ships 'Stamped' only when a carving layer exists). Without it: Clean only, as before.
+//   scenario brick-e2e (H23 item 83, end-to-end brick acceptance): T1 frame + bricks per BRICK_E2E below -- the
+//          frame band in Set 5 (Grey stone; written into P.brickSettings: the app's set picker only offers the bond
+//          sets), a pattern-builder custom bond at unit 1/2 with raised cells, two painted wall areas with different
+//          patterns (areas replace the whole-board wall in the app), one raised brush stroke, one 'Art' layer with a
+//          carving stroke (carve on, the editor's own Apply bakes the masks). Also writes <out>.app.json (the app's
+//          own piece counts by kind, areas, layers) and <out>.png (the editor view).
 // Serve with tools/serve_app.py so the CSS loads.
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -37,6 +43,22 @@ const CUT = process.argv.includes('--cut');
 // --carve: the layer names the lattice scenarios draw into (editor layer .name), carved for a Stamped Send.
 const CARVE = process.argv.includes('--carve');
 const CARVE_LAYERS = ['Rails', 'Contour', 'Ties', 'Nodes'];
+// H23 item 83: the brick-e2e board, declared (board inches, origin top-left, y down -- the editor's own frame).
+const BRICK_E2E = {
+  template: 'template_1',
+  frameSet: 5,                                     // Grey stone: its bandLayout 'fieldstone' rings the frame
+  builder: { base: 'custom', unit: 0.5, joins: [[0, 0, 1]], raised: [[0, 0], [1, 2]], levelIn: 0.0625 },
+  areaWidthIn: 2,
+  // Painted in this order. The app drops a custom tile's raised marks whenever another bond is picked (item 31,
+  // setWallPattern), and the accent is shared by every area -- so the builder area comes LAST, with no pattern
+  // pick after it. pattern 'builder' = lay with the pattern builder's custom bond above.
+  areas: [
+    { pattern: 'herringbone', points: [[1.6, 6.4], [3.5, 6.0], [5.4, 6.4]] },
+    { pattern: 'builder', points: [[1.6, 2.2], [3.5, 2.6], [5.4, 2.2]] },
+  ],
+  raisedStroke: [[1.4, 4.5], [2.5, 4.2], [3.5, 4.5], [4.5, 4.8], [5.6, 4.5]],
+  art: { name: 'Art', path: 'M 2.2 3.4 C 3.0 2.9, 4.0 3.9, 4.8 3.4', strokeIn: 0.05 },
+};
 const [OUT, URL, SCENARIO = 'shape-lattice', PORTARG] = ARGS;
 const PORT = Number(PORTARG || 9395);
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
@@ -71,7 +93,7 @@ await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, dev
 // The stub: the app detects Fusion mode through window.adsk; every send is recorded, nothing answers.
 await send('Page.addScriptToEvaluateOnNewDocument', { source: `
   window.__sends = [];
-  window.adsk = { fusionSendData(action, data) { window.__sends.push([action, data]); return ''; } };` });
+  window.adsk = { fusionSendData(action, data) { window.__sends.push([action, data, performance.now()]); return ''; } };` });
 await send('Page.navigate', { url: URL }); await sleep(9000);
 
 const steps = {
@@ -87,6 +109,36 @@ const steps = {
      document.getElementById('toolShapeLattice').click(); await W(900);
      document.getElementById('shapeLatticeGenerate').click(); await W(3000);
      const f = document.getElementById('shapeLatticeContourFromFrame'); f.checked = true; f.dispatchEvent(new Event('change')); await W(3000);`,
+  // H23 item 83: see BRICK_E2E. Each step is the app's own exported function (the ones its tests drive).
+  'brick-e2e': `const E = ${JSON.stringify(BRICK_E2E)};
+     (await import('./main/frame-panel.js')).editFrame({ templateId: E.template, params: {} }); await W(1500);
+     document.getElementById('editorFrameGenerate').click(); await W(1500);
+     document.getElementById('editorTabBrick').click(); await W(800);
+     const B = await import('./main/brick-panel.js'), S = await import('./core/state.js');
+     const L = await import('./editor/layers.js'), T = await import('./editor/editor-brick-tool.js');
+     const ed = window.svgEditor;
+     S.P.brickSettings.setIds = { ...S.P.brickSettings.setIds, frame: E.frameSet }; S.P.brickSettings.frameBandPatterns = [];
+     document.getElementById('brickTool_frame').click(); await W(500); document.getElementById('brickGenerate').click(); await W(3000);
+     document.getElementById('brickTool_wall').click(); await W(500); document.getElementById('brickGenerate').click(); await W(3000);
+     B.setWallAreaWidth(E.areaWidthIn);
+     for (const a of E.areas) { B.selectBrickElement(null);
+       if (a.pattern === 'builder') { B.openPatternBuilder(); B.builderSetBase(E.builder.base); B.builderSetUnit(E.builder.unit);
+         for (const [r, x, y] of E.builder.joins) B.builderJoin(r, x, y);
+         for (const [r, c] of E.builder.raised) B.builderToggleCell(r, c);
+         B.setAccentLevel(E.builder.levelIn); await W(3000); B.selectBrickElement(null); }
+       else { B.setWallPattern(a.pattern); await W(800); }
+       B.paintWallArea(a.points.map(([x, y]) => ({ x, y }))); await W(3500); }
+     B.closePatternBuilder && B.closePatternBuilder();
+     B.selectBrickElement(null);
+     document.getElementById('brickTool_raisedBrush').click(); await W(500);
+     const st = E.raisedStroke; T.brickBrushHandler.start(ed, { x: st[0][0], y: st[0][1] });
+     for (const [x, y] of st.slice(1)) T.brickBrushHandler.update(ed, { x, y });
+     T.brickBrushHandler.finish(ed); await W(3500);
+     const art = L.addLayer(ed, { name: E.art.name }); L.setActiveLayer(ed, art.id);
+     ed._sketchLayer.path(E.art.path).fill('none').stroke({ color: '#000', width: E.art.strokeIn }).attr('data-layer', art.id);
+     (await import('./editor/editor-commit.js')).commitEdit(ed); await W(800);
+     L.setLayerCarve(ed, art.id, true); await W(800);
+     document.getElementById('editorApply').click(); await W(9000);`,
 }[SCENARIO];
 if (!steps) { console.log('unknown scenario', SCENARIO); chrome.kill(); process.exit(1); }
 const [BOARD_W, BOARD_H] = BOARD ? BOARD.split('x') : [];
@@ -191,14 +243,36 @@ await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
   [...document.querySelectorAll('button')].find(b => /apply stencils/i.test(b.textContent))?.click(); await W(4000);
 })()`);
 console.log('lattice pieces drawn:', built);
+if (SCENARIO === 'brick-e2e') {
+  const app = JSON.parse(await evalJS(`(async()=>{ const ed = window.svgEditor, S = await import('./core/state.js');
+    const X = await import('./main/export-flow.js'); const T = await import('./editor/editor-brick-tool.js');
+    const polys = [...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"]')];
+    const byKind = {}; for (const p of polys) { const k = p.getAttribute('data-brick') || '?'; byKind[k] = (byKind[k] || 0) + 1; }
+    const raised = polys.filter((p) => p.getAttribute('data-brick-accent-marked') === '1').length;
+    const offs = polys.map((p) => +p.getAttribute('data-brick-height-offset') || 0).filter((v) => v !== 0);
+    return JSON.stringify({ pieces: polys.length, byKind, accentMarked: raised, heightOffsets: [...new Set(offs)],
+      areas: (T.wallAreaRecords ? T.wallAreaRecords(ed).length : null), carving: X.activeStampLayers().length,
+      layers: ed._layers.map((l) => ({ id: l.id, name: l.name, carve: l.carve, holdsBricks: !!l.holdsBricks })),
+      brickSettings: { setIds: S.P.brickSettings.setIds, pattern: S.P.brickSettings.pattern, accent: S.P.brickSettings.accent } }); })()`));
+  writeFileSync(OUT.replace(/\.json$/, '') + '.app.json', JSON.stringify(app, null, 1));
+  console.log('app readback:', JSON.stringify({ pieces: app.pieces, byKind: app.byKind, accentMarked: app.accentMarked, areas: app.areas, carving: app.carving }));
+  const shot = await send('Page.captureScreenshot', { format: 'png' });
+  if (shot?.result?.data) writeFileSync(OUT.replace(/\.json$/, '') + '.png', Buffer.from(shot.result.data, 'base64'));
+}
 if (CARVE) {
   const st = await evalJS(`(async()=>{ const X = await import('./main/export-flow.js');
     return JSON.stringify({ carving: X.activeStampLayers().length, exportable: X.exportableStampLayers().length,
       stencilBtn: !![...document.querySelectorAll('button')].find(b => /apply stencils/i.test(b.textContent)) }); })()`);
   console.log('after stencils:', st);
 }
+const tClick = await evalJS('performance.now()');
 await evalJS(`(async()=>{ document.getElementById('btnDownload').click(); await new Promise(r=>setTimeout(r,30000)); })()`);
 const sends = await evalJS('window.__sends');
+// H23 item 83 timing: the app side of a Send, from the click (ms after it) -- send[2] = performance.now() at the call
+{ const at = (a) => (sends || []).filter((q) => q[0] === a).map((q) => Math.round(q[2] - tClick));
+  const ch = at('generate_chunk');
+  console.log('send timing ms after click:', JSON.stringify({ generate_start: at('generate_start'), first_chunk: ch[0], last_chunk: ch[ch.length - 1],
+    chunks: ch.length, generate_finish: at('generate_finish') })); }
 const actions = (sends || []).map((s) => s[0]);
 console.log('sends:', [...new Set(actions)].join(', '), '| total', actions.length);
 const chunks = (sends || []).filter((s) => s[0] === 'generate_chunk').map((s) => JSON.parse(s[1]))

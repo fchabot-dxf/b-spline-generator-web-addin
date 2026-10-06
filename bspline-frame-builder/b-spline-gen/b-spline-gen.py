@@ -265,6 +265,99 @@ custom_graphics_group     = None
 importing_done = False
 chunk_buffer   = []
 
+
+def _apply_send_visibility(consolidated):
+    """The Send's visibility rule (Fred: "Stamped wins"), moved here unchanged from _handle_generate's
+    unified post-import block so a fake-Fusion test can pin it (H23 item 83 / D6):
+      body level, ALWAYS: panel visible, surface hidden;
+      occurrence level: a Stamped occurrence that carries a panel body is the ONE visible occurrence (Clean
+      hidden, never deleted); with no Stamped, the first occurrence (Clean) is the visible one.
+    The per-call `is_visible` flag is deliberately ignored here (see the caller's note).
+    Returns (best, stamped_with_panel)."""
+    def _has_panel_body(o):
+        try:
+            for i in range(o.component.bRepBodies.count):
+                nm = (o.component.bRepBodies.item(i).name or '').lower()
+                if _is_panel_body_name(nm):
+                    return True
+        except Exception:
+            pass
+        return False
+
+    stamped_with_panel = None
+    for occ in consolidated:
+        try:
+            nm = (occ.component.name or '').lower()
+        except Exception: nm = ''
+        if 'stamped' in nm and _has_panel_body(occ):
+            stamped_with_panel = occ
+            break
+
+    best = stamped_with_panel
+    if not best and consolidated:
+        best = consolidated[0]
+
+    def _set_body_visibility(occ):
+        """Panels visible, surfaces hidden -- unconditionally."""
+        try:
+            for i in range(occ.component.bRepBodies.count):
+                b  = occ.component.bRepBodies.item(i)
+                bn = (b.name or '').lower()
+                if _is_panel_body_name(bn):
+                    try: b.isLightBulbOn = True
+                    except Exception: pass
+                elif _is_surface_body_name(bn):
+                    try: b.isLightBulbOn = False
+                    except Exception: pass
+        except Exception as e:
+            _log(f'[VISIBILITY] body toggle failed: {e}')
+
+    for occ in consolidated:
+        _set_body_visibility(occ)
+    for occ in consolidated:
+        try: occ.isLightBulbOn = (occ is best)
+        except Exception: pass
+    return best, stamped_with_panel
+
+
+class _TransferTimer:
+    """H23 item 85 (detection only): times the palette -> Python chunked Send transfer.
+
+    One line per chunk (index, bytes, ms since the transfer started) and one summary line at the
+    finish ("transfer N chunks, X MB in Y s"), plus the handling time after the last chunk. `start` also
+    records the wall clock in epoch ms, so the app's own click time (same PC) lines up with it. The
+    clocks are injectable for the test."""
+
+    def __init__(self, clock=None, wall=None):
+        import time as _time
+        self._clock = clock or _time.perf_counter
+        self._wall = wall or _time.time
+        self.t0 = None
+        self.n = 0
+        self.nbytes = 0
+
+    def start(self):
+        self.t0, self.n, self.nbytes = self._clock(), 0, 0
+        return f'[XFER] start epoch_ms={int(self._wall() * 1000)}'
+
+    def chunk(self, index, nbytes):
+        if self.t0 is None:
+            self.start()
+        self.n += 1
+        self.nbytes += nbytes
+        return f'[XFER] chunk {index}: {nbytes} bytes at +{(self._clock() - self.t0) * 1000:.0f} ms'
+
+    def finish(self):
+        dt = (self._clock() - self.t0) if self.t0 is not None else 0.0
+        return f'[XFER] transfer {self.n} chunks, {self.nbytes / 1e6:.2f} MB in {dt:.2f} s'
+
+    def handled(self):
+        dt = (self._clock() - self.t0) if self.t0 is not None else 0.0
+        return f'[XFER] Send handled at +{dt:.2f} s (epoch_ms={int(self._wall() * 1000)})'
+
+
+_transfer_timer = _TransferTimer()
+
 # ── Body name classifiers ────────────────────────────────────────────────────
 # A "panel" or "surface" body may end up with several name shapes:
 #   - clean rename: 'panel' / 'surface'
@@ -1280,13 +1373,14 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 chunk_buffer   = []
                 importing_done = False
                 _log('Chunked transfer started...')
+                _log(_transfer_timer.start())
                 return
 
             if action == 'generate_chunk':
                 data = json.loads(htmlArgs.data) if htmlArgs.data else {}
                 chunk = data.get('data', '')
                 chunk_buffer.append(chunk)
-                _log(f'Received chunk {data.get("index")} (buffer size: {len(chunk_buffer)})')
+                _log(_transfer_timer.chunk(data.get("index"), len(chunk.encode('utf-8'))))
                 return
 
             if action == 'generate_finish':
@@ -1294,9 +1388,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 num_chunks = len(chunk_buffer)
                 chunk_buffer = []
                 _log(f'Chunked transfer complete — received {len(payload_json)} chars across {num_chunks} chunks')
+                _log(_transfer_timer.finish())
                 try:
                     payload = json.loads(payload_json)
                     self._handle_generate(payload)
+                    _log(_transfer_timer.handled())
                 except Exception as e:
                     _log(f'ERROR: Failed to parse chunked JSON payload: {e}')
                     if ui: ui.messageBox('Failed to parse STEP payload.')
@@ -1858,81 +1954,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                             else:
                                 last_imported_occurrences = list(consolidated)
 
-                            # Re-pick primary -- prefer Stamped (if it actually
-                            # carries a 'panel' body), fall back to first
-                            # consolidated occurrence.
-                            def _has_panel_body(o):
-                                try:
-                                    for i in range(o.component.bRepBodies.count):
-                                        nm = (o.component.bRepBodies.item(i).name or '').lower()
-                                        if _is_panel_body_name(nm):
-                                            return True
-                                except Exception:
-                                    pass
-                                return False
-
-                            stamped_with_panel = None
-                            for occ in consolidated:
-                                try:
-                                    nm = (occ.component.name or '').lower()
-                                except Exception: nm = ''
-                                if 'stamped' in nm and _has_panel_body(occ):
-                                    stamped_with_panel = occ
-                                    break
-
-                            best = stamped_with_panel
-                            if not best and consolidated:
-                                best = consolidated[0]
+                            # The visibility rule lives in _apply_send_visibility (module level, pinned by
+                            # test_send_visibility.py): Stamped-with-panel wins, else the first occurrence.
+                            best, stamped_with_panel = _apply_send_visibility(consolidated)
                             if best:
                                 primary_imported_occurrence = best
-
-                            # Visibility rules (final):
-                            #   Body level — ALWAYS:
-                            #     panel  → visible
-                            #     surface → hidden
-                            #   Component (occurrence) level:
-                            #     - If a Stamped (with panel) exists, it's the
-                            #       primary visible occurrence; Clean is hidden.
-                            #     - If only Clean exists, Clean is the visible
-                            #       occurrence.
-                            def _set_body_visibility(occ):
-                                """Panels visible, surfaces hidden — unconditionally."""
-                                try:
-                                    for i in range(occ.component.bRepBodies.count):
-                                        b  = occ.component.bRepBodies.item(i)
-                                        bn = (b.name or '').lower()
-                                        if _is_panel_body_name(bn):
-                                            try: b.isLightBulbOn = True
-                                            except Exception: pass
-                                        elif _is_surface_body_name(bn):
-                                            try: b.isLightBulbOn = False
-                                            except Exception: pass
-                                except Exception as e:
-                                    _log(f'[VISIBILITY] body toggle failed: {e}')
-
-                            # Stamp body visibility on every consolidated occurrence first
-                            # — same rule everywhere, doesn't depend on which one is primary.
-                            for occ in consolidated:
-                                _set_body_visibility(occ)
-
-                            # Then occurrence visibility: only the primary lights up.
-                            #
-                            # NOTE: we IGNORE the per-call `is_visible` flag here.
-                            # JS sends `isVisible: false` for surface-variant calls
-                            # (e.g. cleanSurface, stampedSurface) so they don't
-                            # visually clash with the solid imports. After
-                            # consolidation that signal is meaningless: the surface
-                            # body is already inside the same component as the
-                            # panel and is hidden body-side. The consolidated
-                            # primary occurrence (panel-bearing) must be visible
-                            # so the user can see the panel that just landed.
-                            # If we honor `is_visible` here, the LAST call's
-                            # value wins — and surface calls run last in the
-                            # back-to-back single-step pattern, so Stamped
-                            # ends up dark even though it should be primary.
-                            for occ in consolidated:
-                                try: occ.isLightBulbOn = (occ is best)
-                                except Exception: pass
 
                             if stamped_with_panel is not None:
                                 _log('[VISIBILITY] Stamped panel is primary; Clean occurrence hidden. Surfaces hidden.')
