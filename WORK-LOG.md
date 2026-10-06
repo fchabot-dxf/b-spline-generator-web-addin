@@ -23388,3 +23388,17 @@ the roof lays. Item 30 does not narrow it: the roof lines lie between ARCS (the 
   Test bricks-dropped-chain (4 cases under 0.1 sq in; mutation: chain -> T7 fails, notch-for-arcs -> T18 / T19 fail).
   Full vitest 328 / 5,400. Shot item34_dropped_chain_before_after.png. NOT fixed (separate, = main): T8 9x12 1.5 in,
   0.24 sq in between arc 10's last voussoir and the corner fan.
+
+## T86 item 35 -- the T8 9x12 1.5 in voussoir-to-fan gap (advisor GO, seat B / fc, 2026-10-06), on seam-9x12
+MEASURED: not the patch (its strip starts exactly at q's angle, -106.6 deg) -- the voussoir run of arc 10 (convex,
+r 1.60, inner radius at 1.5 in 0.11) ended at -120.5 deg: the joint rule's fan-corner back-off (fanJointSide) moved
+q 0.03 in back along the run's tangent, and on a 0.11 in inner circle that is 15 deg of arc -- the radial end swung, a
+wedge 0.03 in at q and 0.42 in at the rim (0.24 sq in bare). Fix (primitive-ribbon mitreJointSide): a CONVEX arc run
+keeps the fan's own corner (its end is the radial through q) and the fan yields it a constant joint (yieldAtMedialLine:
+a fan yields a run all it covers plus a joint). Tried first on EVERY arc: 905 lays moved (116 materially, incl. T1 7x9
+at 1 in, the no-neck digest pin) -- a concave arc's inner radius is its LARGER one, the back-off narrows toward the rim,
+no wedge: left as it was. Convex only, sweep vs the item 34 tip, 2,166 lays: 62 change, 24 materially -- T8 9x12 1.5
+bare 0.235 -> 0.003; T5 6x9 1 / 7x9 1.25 / 7x9 1.5 one or two more voussoirs, bare and seams equal or better; nothing
+worse; stone 0; at 7x9 1 in only sub-tolerance vertex detail (T5). Total bare 21.3 -> 19.8 sq in; min seam of any
+changed lay 0.0308. Test: bricks-dropped-chain + T8 (mutation: the back-off on convex arcs -> T8 fails). Full vitest
+329 / 5,406.

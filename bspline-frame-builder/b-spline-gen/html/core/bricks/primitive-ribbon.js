@@ -293,9 +293,14 @@ function buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipTh
  *  joint toward that run's own side, so the two runs meet with a full joint between them instead of abutting (a
  *  0-gap seam: a zero-area sliver profile in Fusion, seat A's e2e). Butt / block / notch joints carry their own gaps,
  *  and a `trustO:false` joint (a fan's corner) is the fan's to keep clear of; those come back unchanged. */
-function mitreJointSide(raw, joint, keepKey, half) {
+function mitreJointSide(raw, joint, keepKey, half, onConvexArc = false) {
   if (!raw || !joint || raw.isButt || raw.isBlock || !(half > 0)) return joint;
-  if (joint.trustO === false) return fanJointSide(raw, joint, keepKey, half);
+  // T86 item 35: a CONVEX arc run (its radius shrinks with depth) keeps the fan's own corner -- moved back along its
+  // tangent, a voussoir's radial end swung through j / R radians at the small inner radius (T8 9x12 1.5 in: R 0.11 in,
+  // 15 deg, a wedge 0.03 in at q and 0.42 in at the rim, 0.24 sq in bare). Its end stays the radial through `q`; the
+  // fan yields it a constant joint (contour-bands yieldAtMedialLine: a fan yields a run all it covers plus a joint).
+  // A concave arc's inner radius is its LARGER one -- the move narrows toward the rim, no wedge: unchanged.
+  if (joint.trustO === false) return onConvexArc ? joint : fanJointSide(raw, joint, keepKey, half);
   const nx = -joint.dirY, ny = joint.dirX, ref = joint[keepKey];
   const side = Math.sign((ref.x - joint.point.x) * nx + (ref.y - joint.point.y) * ny) || 1;
   // slide along THIS run (its direction at the corner: toward its keep reference) until the line is half a joint away,
@@ -1093,8 +1098,9 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     // (a block joint's own resolved `forPrev`/`forCur` carry no such field at all).
     const rawJointEnd = jointBefore[(k + 1) % m];
     // T86 item 21b, the JOINT RULE: an ordinary mitre is a joint too -- each run clips half a joint short of it
-    const jointStart = mitreJointSide(jointBefore[k], jointFor(jointBefore[k], idx), 'keepRefAsStart', nominalJoint / 2);
-    const jointEnd = mitreJointSide(rawJointEnd, jointFor(rawJointEnd, idx), 'keepRefAsEnd', nominalJoint / 2);
+    const onConvexArc = primitives[idx].type === 'arc' && primitives[idx].radialSign > 0;
+    const jointStart = mitreJointSide(jointBefore[k], jointFor(jointBefore[k], idx), 'keepRefAsStart', nominalJoint / 2, onConvexArc);
+    const jointEnd = mitreJointSide(rawJointEnd, jointFor(rawJointEnd, idx), 'keepRefAsEnd', nominalJoint / 2, onConvexArc);
     const built = prim.type === 'line'
       ? linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set, seed, pieceId, nextId, sequence, forcedFStart)
       : (() => {

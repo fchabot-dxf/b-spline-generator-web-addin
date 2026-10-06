@@ -6,7 +6,10 @@
  *     the patch walked only the FIRST dropped primitive, whose far tangent point does not exist: no patch at all.
  *   - T18 / T19 6x9 at 1.25 in: 0.69 / 0.74 sq in -- an r 1.09 shoulder ARC drops where its neighbours' offsets never
  *     cross; the notch construction (meant for a dropped LINE) laid straight-chord fans, the crescent left bare.
- * After: 0.03 / 0.00 and 0.01 / 0.06 sq in. Bare = inside the board, outside the wall, farther than a joint and a
+ *   - T86 item 35, T8 9x12 at 1.5 in: 0.24 sq in -- an ARC run ending at a fan's corner was moved back along its
+ *     tangent by the joint rule; at an inner radius of 0.11 in that swung the voussoir's radial end 15 deg, a wedge
+ *     0.42 in wide at the rim. An arc run now keeps the fan's corner; the fan yields it the joint.
+ * After: 0.03 / 0.00 and 0.01 / 0.06 sq in, and T8 0.00. Bare = inside the board, outside the wall, farther than a joint and a
  * half from every band piece.
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -55,7 +58,7 @@ function bareBandGround(id, W, H, L) {
 
 describe('dropped primitives: their ground is a patch of whole fan pieces, not bare (T86 item 34)', () => {
   // [template, board, brick in, bare before (sq in)]
-  const CASES = [['template_7', 7, 9, 1.5, 4.9], ['template_7', 6, 9, 1.5, 2.9], ['template_18', 6, 9, 1.25, 0.69], ['template_19', 6, 9, 1.25, 0.74]];
+  const CASES = [['template_7', 7, 9, 1.5, 4.9], ['template_7', 6, 9, 1.5, 2.9], ['template_18', 6, 9, 1.25, 0.69], ['template_19', 6, 9, 1.25, 0.74], ['template_8', 9, 12, 1.5, 0.24]];
   it.each(CASES)('%s %sx%s at %s in single_soldier: bare band ground under 0.1 sq in (was %s)', (id, W, H, L) => {
     expect(bareBandGround(id, W, H, L)).toBeLessThan(0.1);
   });
