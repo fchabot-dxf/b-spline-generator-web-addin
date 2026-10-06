@@ -7,5 +7,6 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     include: ['tests/**/*.test.js'],
+    setupFiles: ['tests/setup-paint.js'], // item 41: the paint step is immediate in tests (see the file)
   },
 });

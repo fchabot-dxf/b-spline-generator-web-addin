@@ -47,6 +47,7 @@ import { applySnapshot } from '../bspline-frame-builder/b-spline-gen/html/main/s
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import * as appInit from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 import { updateStampMasks } from '../bspline-frame-builder/b-spline-gen/html/main/stamp-mask-manager.js';
+import { currentLoadingStage, resetLoadingSignal } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 function mockEditor() {
   return {
@@ -190,5 +191,22 @@ describe('audit v2 N2: a load or a global undo announces that P.brickSettings wa
     await applySnapshot({ P: { brickSettings } }, null, { source });
     expect(appInit.announceBrickSettingsRestored).toHaveBeenCalledTimes(1);
     expect(seen).toBe(brickSettings); // the panel re-syncs from the RESTORED object, not the one before
+  });
+});
+
+describe('F35 item 41: a restore (load or global undo) is a declared loading stage, painted before it runs', () => {
+  it("'restore' shows first; the restore work starts only after the paint; it leaves when done", async () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<div id="loading-stage" hidden><span class="loading-stage-text"></span></div>';
+    document.body.appendChild(root);
+    resetLoadingSignal();
+    vi.clearAllMocks();
+    const p = applySnapshot({ P: {} }, null, { source: 'undo' });
+    expect(currentLoadingStage()).toEqual({ id: 'restore', text: 'Refreshing - restoring the board', surface: 'card' });
+    expect(appInit.runMigrations).not.toHaveBeenCalled(); // not yet: the stage gets its paint first
+    await p;
+    expect(appInit.runMigrations).toHaveBeenCalled();
+    resetLoadingSignal();
+    root.remove();
   });
 });

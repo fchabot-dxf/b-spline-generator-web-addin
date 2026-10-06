@@ -40,24 +40,25 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
     rebuild.isRebuilding = true;
 
     try {
-        await withLoadingStage('rebuild', async () => {
-            const statusBar = document.getElementById('bottomStatusBar');
-            const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
+        const statusBar = document.getElementById('bottomStatusBar');
+        const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
 
+        await yieldToMain();
+        reconcileSculptDeltas(nx, nz);
+
+        // ── Stroke fast-path ─────────────────────────────────────────────
+        // If a sculpt drag is active and the cached baseline matches the
+        // current grid size, skip the heavy work and just push the new top
+        // heights to the preview. The full rebuild re-runs at
+        // onSculptStrokeEnd, which clears strokeCache. Outside the loading
+        // stage (item 41): a stroke tick is live feedback, not a wait.
+        if (canTakeStrokeFastPath(nx, nz)) {
+            handleStrokeFastPath(preview, nx, nz);
             await yieldToMain();
-            reconcileSculptDeltas(nx, nz);
+            return;
+        }
 
-            // ── Stroke fast-path ─────────────────────────────────────────────
-            // If a sculpt drag is active and the cached baseline matches the
-            // current grid size, skip the heavy work and just push the new top
-            // heights to the preview. The full rebuild re-runs at
-            // onSculptStrokeEnd, which clears strokeCache.
-            if (canTakeStrokeFastPath(nx, nz)) {
-                handleStrokeFastPath(preview, nx, nz);
-                await yieldToMain();
-                return;
-            }
-
+        await withLoadingStage('rebuild', async () => {
             await yieldToMain();
             const { heights, cleanHeights, baseHeights, generated } = buildHeights(nx, nz);
             setLastResult({ ...generated, heights, cleanHeights, baseHeights, nx, nz });

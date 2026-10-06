@@ -29,18 +29,19 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 });
 
 import {
-  initBrickPanel, generateBricks, setWallPattern, BRICK_LAY_WARNINGS, LAY_STATUS_BUDGET_MS, predictedLayMs,
+  initBrickPanel, generateBricks, setWallPattern, BRICK_LAY_WARNINGS,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { commitEdit } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js';
 import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
-import { setFusionStatus } from '../bspline-frame-builder/b-spline-gen/html/core/fusion-bridge.js';
+import { currentLoadingStage, resetLoadingSignal, setPaintScheduler } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 import { setFrameRecord, getFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { SvgEditorSnapshot, restoreEditorSnapshotState } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 
 const PALETTE = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf-8');
 
 const FIXTURE = `
+  <div id="loading-stage" hidden><span class="loading-stage-text"></span></div>
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
   <button id="editorTabBrick">Brick</button><button id="editorDrawerTab-layers">Brick</button>
   <div id="editorToolbarBrick"></div>
@@ -200,39 +201,40 @@ describe('B7: no stale "Press Generate" wording (item 27 lays at once)', () => {
   });
 });
 
-describe('B8: a re-lay over the declared budget shows the loading stage FIRST', () => {
+describe('B8 + item 41: EVERY re-lay a gesture causes shows its loading stage FIRST, then lays', () => {
   beforeEach(() => setup('wall'));
-  function measuredLay(ms) {
-    let t = 1000;
-    const now = vi.spyOn(performance, 'now').mockImplementation(() => { const v = t; t += ms; return v; });
-    generateBricks();
-    now.mockRestore();
-  }
+  afterEach(() => setPaintScheduler((cb) => cb()));
 
-  it('under the budget: a release re-lays at once (no status, no wait)', () => {
-    measuredLay(20);
-    expect(predictedLayMs()).toBeLessThan(LAY_STATUS_BUDGET_MS);
-    runBricks.mockClear();
-    setWallPattern('soldier', 'auto');
-    expect(runBricks).toHaveBeenCalledTimes(1);
-    expect(setFusionStatus).not.toHaveBeenCalledWith('Laying bricks…', 'busy');
-  });
-
-  it('at/over the budget (a rock set: 276-457 ms): the status paints, THEN the lay runs, then it clears', () => {
-    expect(LAY_STATUS_BUDGET_MS).toBe(300);
-    measuredLay(450);
-    expect(predictedLayMs()).toBeGreaterThanOrEqual(LAY_STATUS_BUDGET_MS);
+  it('the stage paints, THEN the lay runs (two frames), then it clears; a second release while queued = ONE lay, latest settings', async () => {
     const frames = [];
     vi.stubGlobal('requestAnimationFrame', (cb) => { frames.push(cb); return frames.length; });
-    runBricks.mockClear(); setFusionStatus.mockClear();
+    setPaintScheduler(null); // the real paint step (the suite's is immediate)
+    resetLoadingSignal(); // setup's Generate opened its 'generate' sequence: this is a plain release
+    runBricks.mockClear();
     setWallPattern('soldier', 'auto');
-    expect(setFusionStatus).toHaveBeenCalledWith('Laying bricks…', 'busy');
-    expect(runBricks).not.toHaveBeenCalled(); // not yet: the status gets its paint first
-    setWallPattern('stretcher', 'auto'); // a second release while queued: still ONE lay, with the latest settings
-    frames.shift()(); frames.shift()();
+    // a single lay = the corner pill
+    expect(currentLoadingStage()).toEqual({ id: 'bricks', text: 'Computing - laying bricks', surface: 'pill' });
+    expect(runBricks).not.toHaveBeenCalled(); // not yet: the stage gets its paint first
+    setWallPattern('stretcher', 'auto');
+    frames.shift()();
+    expect(runBricks).not.toHaveBeenCalled(); // one frame is not the painted one
+    frames.shift()();
     expect(runBricks).toHaveBeenCalledTimes(1);
     expect(runBricks.mock.calls[0][1].pattern).toBe('stretcher');
-    expect(setFusionStatus).toHaveBeenLastCalledWith('', 'busy');
+    await vi.waitFor(() => expect(currentLoadingStage()).toBe(null), { timeout: 1000 });
+  });
+
+  it('a quick lay is no exception (the old 300 ms prediction is gone): even an instant lay shows first', () => {
+    const frames = [];
+    vi.stubGlobal('requestAnimationFrame', (cb) => { frames.push(cb); return frames.length; });
+    setPaintScheduler(null);
+    resetLoadingSignal();
+    runBricks.mockClear();
+    setWallPattern('soldier', 'auto');
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(currentLoadingStage()?.id).toBe('bricks');
+    frames.shift()(); frames.shift()(); // let it lay: a queued lay left behind would swallow the next test's
+    expect(runBricks).toHaveBeenCalledTimes(1);
   });
 });
 
