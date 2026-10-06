@@ -15029,3 +15029,6 @@ WallPattern = {
   - dropTouching: over -> dropped; within one joint -> dropped, past it -> kept; a cut exclusion / none -> untouched.
   - regenerate: no stroke brick over a frame piece, and the stroke runs through without the frame. This one fails 1/1 against the pre-change editor-brick-tool.js (with the new engine kept).
   - Wall behaviour unchanged: 63 brick / wall-area / stroke files, 581 passed.
+- **Matrix (item 60):** a new declared group 'strokes' (STROKE_CLEAR + runStrokesClear). It lays seat A's e2e Grey stone frame ring plus the same raised stroke and counts sampled stroke x frame overlaps.
+  - This tree: pass, 0 overlaps (3 stroke bricks, 54 frame pieces).
+  - Old main 52c3055: FAIL, 3 overlaps, 0.2605 in2.

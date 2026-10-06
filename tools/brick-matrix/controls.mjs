@@ -336,6 +336,15 @@ export const HAND_EDIT = {
   introducedBy: 'item 65',
 };
 
+// ---- F35 item 60 (seat D): a Raised brush stroke keeps clear of the frame (the 18c drop rule). Seat A's brick-e2e board:
+// the Grey stone frame ring (Set 5) and its raised stroke across the waist -- measured before the fix: 3-5 stroke bricks
+// over frame stones, up to 0.37 in2 (sampled overlap, `grid` in).
+export const STROKE_CLEAR = {
+  template: 'template_1', frameSet: 5, raisedTool: 'brickTool_raisedBrush',
+  stroke: [[1.4, 4.5], [2.5, 4.2], [3.5, 4.5], [4.5, 4.8], [5.6, 4.5]], grid: 0.004, maxOverlapSqIn: 2e-4,
+  introducedBy: 'item 60',
+};
+
 export const BANDS_NOTE = {
   template: 'template_1', tooDeep: 'brickFramePreset_three_band', fits: 'brickFramePreset_single_soldier',
   note: 'brickFrameBandsNote', text: 'Bands reduced to fit the board: 1 of 3 laid.', dropped: '[data-band-dropped="1"]',

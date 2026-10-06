@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME, GROUT_JOINTS, QUICK_FRAME_LAYS, CARVE_UNDER_FLAT, HAND_EDIT } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, WALL_NO_FRAME, GROUT_JOINTS, QUICK_FRAME_LAYS, CARVE_UNDER_FLAT, HAND_EDIT, STROKE_CLEAR } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -31,7 +31,7 @@ mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Row groups: rows share state (and a baseline) only within a group, so groups can run side by side.
-const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'persistence', 'grout', 'handedit'];
+const GROUPS = ['wall', 'frame', 'brush', 'sidebar-quick', 'sidebar-3d', 'layout', 'clear', 'lay', 'select', 'migration', 'frame-ui', 'password', 'layers', 'areas', 'persistence', 'grout', 'handedit', 'strokes'];
 
 // The Project Manager's cloud API (window.BSPLINE_PRESETS_API_URL + /projects), answered IN THE PAGE from
 // localStorage, installed before any page script runs: a matrix run must never write Fred's real projects.
@@ -462,6 +462,7 @@ try {
   if (!arg('group') || arg('group') === 'password') await runPassword();
   if (!arg('group') || arg('group') === 'layers') await runBrickLayers();
   if (!arg('group') || arg('group') === 'areas') await runWallAreas();
+  if (!arg('group') || arg('group') === 'strokes') await runStrokesClear();
   if (!arg('group') || arg('group') === 'grout') await runGroutJoints();
   if (!arg('group') || arg('group') === 'handedit') await runHandEdit();
   // persistence reloads the page, so it always runs LAST (and alone in --parallel's own 'persistence' group)
@@ -1457,6 +1458,33 @@ async function runHandEdit() {
   const moved = !!after && after.points !== b.points && !after.transform;
   checkRow('handedit', 'Hand-moved brick: 3D follows, survives reopen', moved && z1 !== z0 && !!reopened && reopened.points === after.points,
     `points ${moved ? 'moved' : 'UNMOVED'}${after && after.transform ? ' (transform ' + after.transform + ')' : ''}, 3D ${z1 !== z0 ? 'changed' : 'UNCHANGED'}, reopened ${reopened && after && reopened.points === after.points ? 'kept' : 'LOST'}`);
+  if (await editorOpen()) await apply();
+}
+
+// F35 item 60: a Raised brush stroke across the frame lays no brick over a frame piece (STROKE_CLEAR)
+async function runStrokesClear() {
+  const K = STROKE_CLEAR;
+  await openEditorTab('editorTabBrick');
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(K.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  if (!(await exists(K.raisedTool))) { checkRow('strokes', 'Raised stroke keeps clear of the frame', false, '', K.introducedBy); return; }
+  const r = await jsJSON(`(async()=>{ const W=(ms)=>new Promise((r)=>setTimeout(r,ms)); const K=${JSON.stringify(K)};
+    const S=await import('./core/state.js'), T=await import('./editor/editor-brick-tool.js'), { pointInPolygon }=await import('./core/bricks/index.js');
+    const ed=window.svgEditor;
+    S.P.brickSettings.setIds={ ...S.P.brickSettings.setIds, frame: K.frameSet }; S.P.brickSettings.frameBandPatterns=[];
+    document.getElementById('brickTool_frame').click(); await W(500); document.getElementById('brickGenerate').click(); await W(3000);
+    document.getElementById(K.raisedTool).click(); await W(500);
+    T.brickBrushHandler.start(ed, { x: K.stroke[0][0], y: K.stroke[0][1] });
+    for (const [x, y] of K.stroke.slice(1)) T.brickBrushHandler.update(ed, { x, y });
+    T.brickBrushHandler.finish(ed); await W(3000);
+    const box=(n)=>{ const p=n.getAttribute('points').trim().split(/\\s+/).map((s)=>{ const [x,y]=s.split(',').map(Number); return {x,y}; });
+      return { p, x0:Math.min(...p.map((q)=>q.x)), x1:Math.max(...p.map((q)=>q.x)), y0:Math.min(...p.map((q)=>q.y)), y1:Math.max(...p.map((q)=>q.y)) }; };
+    const of=(k)=>[...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick="'+k+'"]')].map(box);
+    const brush=of('brush'), frame=of('frame'); let pairs=0, area=0;
+    for (const a of brush) for (const b of frame) { const x0=Math.max(a.x0,b.x0), x1=Math.min(a.x1,b.x1), y0=Math.max(a.y0,b.y0), y1=Math.min(a.y1,b.y1); if (x1<=x0||y1<=y0) continue;
+      let n=0; for (let x=x0+K.grid/2;x<x1;x+=K.grid) for (let y=y0+K.grid/2;y<y1;y+=K.grid) if (pointInPolygon(x,y,a.p)&&pointInPolygon(x,y,b.p)) n++;
+      const s=n*K.grid*K.grid; if (s>K.maxOverlapSqIn) { pairs++; area+=s; } }
+    return JSON.stringify({ brush: brush.length, frame: frame.length, pairs, area: +area.toFixed(4) }); })()`);
+  checkRow('strokes', 'Raised stroke keeps clear of the frame', r.brush > 0 && r.frame > 0 && r.pairs === 0, `${r.pairs} stroke x frame overlaps (${r.area} in2); ${r.brush} stroke bricks, ${r.frame} frame pieces`);
   if (await editorOpen()) await apply();
 }
 
