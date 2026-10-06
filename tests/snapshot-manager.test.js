@@ -238,7 +238,19 @@ describe("applySnapshot (undo): item 69 -- the layer rows follow the restored to
     setFrameRecord({ templateId: null, params: {} });
     await applySnapshot({ P: {} }, null, { source: 'undo' });
     expect(getFrameRecord().templateId).toBeNull(); // no declared transition: the frame is left alone
-    await applySnapshot({ P: {} }, null, { source: 'undo', frame: { templateId: 'template_1', params: {} } });
+    await applySnapshot({ P: {} }, null, { source: 'undo', restore: { frame: { templateId: 'template_1', params: {} } } });
     expect(getFrameRecord().templateId).toBe('template_1');
+  });
+
+  // item 71: a sidebar board change's own drawing comes back into P and the live editor
+  it('restores the drawing the undone step declared: P.editorSvg and the live editor (open)', async () => {
+    const editor = { ...mockEditor(), _layers: [] };
+    window.svgEditor = editor;
+    P.editorSvg = '<svg>after</svg>';
+    await applySnapshot({ P: {} }, null, { source: 'undo', restore: { editorSvg: '<svg>before</svg>' } });
+    expect(P.editorSvg).toBe('<svg>before</svg>');
+    expect(editor.open).toHaveBeenCalledWith('<svg>before</svg>', P.widthIn, P.heightIn);
+    await applySnapshot({ P: {} }, null, { source: 'undo' });
+    expect(editor.open).toHaveBeenCalledTimes(1); // no declared drawing: the drawing is left alone
   });
 });

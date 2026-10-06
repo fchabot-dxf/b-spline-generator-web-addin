@@ -301,7 +301,7 @@ export function deleteFrame() {
   editFrame({ templateId: null, params: {} });
   // item 69 (seat E, measured: the sidebar Undo left the frame deleted): its own GLOBAL undo step, carrying the
   // frame transition -- the sidebar's Undo restores the frame (and the 3D follows its re-lay)
-  takeSnapshot('Delete frame', { frame: { before, after: _clone(getFrameRecord()) } });
+  takeSnapshot('Delete frame', { restore: { frame: { before, after: _clone(getFrameRecord()) } } });
   if (isFusionMode) {
     try {
       adsk.fusionSendData('delete_frame', '{}');

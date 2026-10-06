@@ -23806,3 +23806,21 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   cases at 1.25 in although every outline differs (only the two horizontal bars change, by 1 in < one brick).
 - Slip: one 9x12 row (template_5__three_band) got a duplicate "sketch: false" row from an overlapped timed-out call; the
   first row (216 == 216) is kept. Heavy templates (16-19, ~1,100-2,300 curves) take 5-10 s each: batches of 2 there.
+
+## F35 item 71 -- a sidebar Brick pick is one global undo step (seat E / 61, 2026-10-06)
+- MEASURED on main 3a6c2a7 (T1, applied board, sidebar Quick pattern Herringbone, then the MAIN screen's Undo): the pick
+  took NO global step (history top stayed 'Apply'); Undo undid the OLDER Apply step -- brickSettings went back to a
+  pre-lay state (not the pre-pick one), the laid bricks + 3D stayed Herringbone (the drawing is in UNDO_KEEPS), the
+  quick row lit Stretcher over a Herringbone board; Redo did not bring the pick's settings back either.
+- FIX (declared, the snapshot path): core/history.js UNDO_STEP_RESTORES -- the UNDO_KEEPS keys a STEP may restore,
+  { frame, editorSvg }, each { before, after }; an `after` left out is read from the live state when the step is
+  undone (the re-lay serializes async). recordBoardStep(label, change): baseline, the drawing before, the change, one
+  step. brick-panel.js BRICK_QUICK_SETTINGS clicks go through it ('Bricks: <row label>'). snapshot-manager.js puts a
+  restored drawing back into P + the live editor (open, as a load does) + drape. Item 69's Delete frame moved onto the
+  same field (restore.frame). Inside the editor no global step (the editor's own undo).
+- LIVE after (branch): pattern / size / frame bands / grout colour: Undo -> settings, brick GEOMETRY, 3D, quick chip
+  back; Redo -> the pick (4/4). Raw-markup hash of the drawing differs after editor.open (attribute order/class);
+  geometry is the comparison. One early branch run showed the pick not re-laying; not reproduced in 6 later runs.
+- TESTS: tests/brick-quick-undo.test.js (4; the click row mutation-fails with the old unwrapped handler);
+  snapshot-manager + delete-frame rows moved to restore.*. Matrix undo group + 2 rows (SIDEBAR_UNDO): 5 rows 0 FAIL.
+  Full vitest 344 files, 5478 passed (first run lost workers to 'process out of memory' under fleet load; re-run green).
