@@ -426,31 +426,55 @@ export const BAND_FIT_SHARE = 1 / 3;
 export const BAND_FIT_STEPS = Object.freeze(['row', 'course', 'drop']);
 
 /** The board's narrowest gap between opposite sides: from the middle of every boundary edge, a ray along the inward
- *  normal to the first boundary it meets; the shortest. */
-export function narrowestGap(board) {
-  const n = board.length;
+ *  normal to the FIRST boundary it meets; the shortest. T86 item 31 (MEASURED: T7 read 0.007 in, T14 0.384, T17 0.345):
+ *   - a ray whose first hit is a NEIGHBOURING primitive is a corner's wedge, not a gap: ignored (not continued past it);
+ *   - a waist between two REFLEX primitive junctions is crossed by no edge normal (T14's hourglass: every side ray meets
+ *     its corner first), so each reflex junction also casts its inward bisector, under the same filter.
+ *  `source[k]` = the primitive that boundary vertex k (and edge k -> k+1) belongs to; omitted, every edge is its own. */
+export function narrowestGap(board, source = board.map((_, k) => k)) {
+  const n = board.length, m = Math.max(...source) + 1;
   // signedArea is NEGATIVE for a counter-clockwise loop (x right, y up; measured on a unit square), whose inside is
   // on the left of each edge: (-dy, dx)
   const inward = signedArea(board) < 0 ? 1 : -1;
-  let best = Infinity;
-  for (let i = 0; i < n; i++) {
-    const a = board[i], b = board[(i + 1) % n];
-    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
-    if (len < 1e-9) continue;
-    const nx = (-dy / len) * inward, ny = (dx / len) * inward;
-    const ox = (a.x + b.x) / 2, oy = (a.y + b.y) / 2;
+  const neighbours = (p, q) => p !== q && ((p + 1) % m === q || (q + 1) % m === p);
+  const firstHit = (ox, oy, nx, ny, from, skip) => {
+    let t0 = Infinity, hit = -1;
     for (let j = 0; j < n; j++) {
-      if (j === i) continue;
+      if (skip.includes(j)) continue;
       const c = board[j], d = board[(j + 1) % n];
       const ex = d.x - c.x, ey = d.y - c.y;
       const den = nx * ey - ny * ex;
       if (Math.abs(den) < 1e-12) continue;
       const t = ((c.x - ox) * ey - (c.y - oy) * ex) / den; // along the ray
       const u = ((c.x - ox) * ny - (c.y - oy) * nx) / den; // along edge j
-      if (t > 1e-6 && u >= 0 && u <= 1 && t < best) best = t;
+      if (t > 1e-6 && u >= 0 && u <= 1 && t < t0) { t0 = t; hit = j; }
     }
+    if (hit >= 0) plain = Math.min(plain, t0);
+    return hit >= 0 && !from.some((p) => neighbours(p, source[hit])) ? t0 : Infinity;
+  };
+  let plain = Infinity; // every first hit, filter or not: the reading when no ray qualifies (a lens, a triangle -- every
+  // primitive the others' neighbour)
+  const edgeNormal = (k) => {
+    const a = board[k], b = board[(k + 1) % n], dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+    return len < 1e-9 ? null : { x: (-dy / len) * inward, y: (dx / len) * inward, dx, dy };
+  };
+  let best = Infinity;
+  for (let i = 0; i < n; i++) {
+    const nrm = edgeNormal(i);
+    if (!nrm) continue;
+    const a = board[i], b = board[(i + 1) % n];
+    best = Math.min(best, firstHit((a.x + b.x) / 2, (a.y + b.y) / 2, nrm.x, nrm.y, [source[i]], [i]));
   }
-  return best;
+  for (let v = 0; v < n; v++) {
+    const pv = (v - 1 + n) % n;
+    if (source[pv] === source[v]) continue; // a primitive junction only
+    const n1 = edgeNormal(pv), n2 = edgeNormal(v);
+    if (!n1 || !n2 || (n1.dx * n2.dy - n1.dy * n2.dx) * inward >= 0) continue; // reflex: turns away from the inside
+    const mx = n1.x + n2.x, my = n1.y + n2.y, ml = Math.hypot(mx, my);
+    if (ml < 1e-9) continue;
+    best = Math.min(best, firstHit(board[v].x, board[v].y, mx / ml, my / ml, [source[pv], source[v]], [pv, v]));
+  }
+  return Number.isFinite(best) ? best : plain;
 }
 
 function fitBandStack(bands, planned, gap, L, H) {
@@ -477,7 +501,7 @@ function fitBandStack(bands, planned, gap, L, H) {
  *  deepest depth where no such line drops, less a joint, instead of stranding fans and leaving the feature bare. Narrowing
  *  is LOCAL: MEASURED over 456 lays (8 presets x 19 templates x 0.75 / 1 / 1.25 in, 7x9) it changes none, and over 2,052
  *  (+ 1.5 in, 6x9 / 9x12) 36 -- T6 / T9 / T15 at 1.25-1.5 in, bare band ground up to 8.8 sq in -> 0; a BAND_FIT_SHARE of
- *  narrowestGap would have narrowed 201 of the 456 (and narrowestGap reads T7 as 0.007 in -- item 31). Returns the narrowed
+ *  narrowestGap would have narrowed 201 of the 456 (when it still read T7 as 0.007 in -- item 31). Returns the narrowed
  *  band + its note step, or null when the band lays as requested. */
 const NARROW_BISECT_STEPS = 24;
 function narrowSingleBand(enriched, band, planned, halfJoint, joint) {
@@ -509,8 +533,9 @@ export function bricksContourBands(primitives, bands, opts) {
   let plannedBands = planBands(bands, L, H, set, closed);
   // T86 item 28: a closed, outer stack (the frame) obeys the fit rule; centred and open ones (brush ribbons) have no board
   const fitBoard = closed && !opts.centered ? tessellate(primitives, BOARD_CLIP_ARC_STEPS) : null;
+  const fitBoardSource = fitBoard ? primitives.flatMap((prim, k) => (prim.type === 'arc' ? Array(BOARD_CLIP_ARC_STEPS).fill(k) : [k])) : null;
   // opts.bandFit === false: a schematic on a tiny board (the band-preset / corner icons), drawn as requested
-  const fit = fitBoard && opts.bandFit !== false ? fitBandStack(bands, plannedBands, narrowestGap(fitBoard), L, H) : null;
+  const fit = fitBoard && opts.bandFit !== false ? fitBandStack(bands, plannedBands, narrowestGap(fitBoard, fitBoardSource), L, H) : null;
   if (fit) { bands = fit.bands; plannedBands = planBands(bands, L, H, set, closed); }
   // T86 item 30: a single band (as requested, or what item 28 left) too deep for a feature narrows to fit it
   let narrowNote = null, narrowWallDepth = 0;

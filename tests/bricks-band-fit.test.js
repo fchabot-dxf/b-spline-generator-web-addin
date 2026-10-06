@@ -69,6 +69,24 @@ describe('band stacks that do not fit (T86 item 28)', () => {
     expect(narrowestGap([{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 7, y: 9 }, { x: 0, y: 9 }])).toBeCloseTo(7, 9);
     expect(narrowestGap([{ x: 0, y: 0 }, { x: 0, y: 9 }, { x: 7, y: 9 }, { x: 7, y: 0 }])).toBeCloseTo(7, 9); // either winding
   });
+  // T86 item 31: a ray whose first hit is the neighbouring primitive is a corner's wedge (T7 read 0.007 in, T14 0.384,
+  // T17 0.345 -- every three_band lay on them a "(no fit)" drop); a waist between two reflex junctions is read along
+  // their bisectors (no edge normal crosses T14's hourglass waist: every side ray meets its corner first)
+  it('an hourglass reads its waist, not its acute corners', () => {
+    const hourglass = [{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 4.8, y: 4.5 }, { x: 7, y: 9 }, { x: 0, y: 9 }, { x: 2.2, y: 4.5 }];
+    expect(narrowestGap(hourglass)).toBeCloseTo(2.6, 9);
+    expect(narrowestGap([...hourglass].reverse())).toBeCloseTo(2.6, 9);
+  });
+  it('a board whose primitives are all neighbours (a triangle) keeps the plain first-hit reading', () => {
+    expect(Number.isFinite(narrowestGap([{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 3.5, y: 9 }]))).toBe(true);
+  });
+  // mixed_bands at 1 in was a "(no fit)" drop to one band on T7 / T14 / T17 (T14: 106 pieces; now 144, a wall kept)
+  it.each([['template_7', 2.68, 'mixed_bands'], ['template_14', 2.6, 'mixed_bands'], ['template_17', 2.24, 'mixed_bands'], ['template_16', 3.9, 'three_band']])(
+    '%s 7x9: the gap the fit rule reads is the board\'s own (%s in); %s at 1 in fits', (id, gap, preset) => {
+      const r = lay(primsOf(id, 7, 9), 7, 9, preset, 1);
+      expect(r.bandsReduced.gapIn).toBeCloseTo(gap, 2);
+      expect(r.bandsReduced.fits).toBe(true);
+    });
   // item 67 (test infra): one test per template x board (was one test over all of them: 11.7 s in a full run, a
   // timeout under the fleet's load). The same cases, the same checks.
   const CASES = FRAME_DEFS.templates.flatMap(({ id }) => [[6, 9], [7, 9], [9, 12]].map(([W, H]) => [`${id} ${W}x${H}`, id, W, H]));

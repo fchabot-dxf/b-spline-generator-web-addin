@@ -23262,3 +23262,13 @@ Lays, 2,052 (19 templates x 9 presets x 0.75-1.5 in x 6x9 / 7x9 / 9x12): 68 chan
 (16 of the 513 at 7x9 <= 1.25 in). Of the 68: 23 only lose a false "(no fit)" (same pieces), 3 T16 6x9 1 in gain a
 true one (waist 2.99 -> limit 1.00 < the 1 in band; same pieces), 42 lay more bands (e.g. T14 7x9 mixed_bands 1 in:
 106 -> 144 pieces). Band overlap 0 on all 68; smallest wall left 8.3 sq in (T16 6x9 at 1 in, unchanged).
+- BUILT (advisor GO, both parts): narrowestGap(board, source) -- source = the primitive per tessellated vertex
+  (bricksContourBands passes it; omitted, every edge is its own). Declared fallback: when no ray qualifies (a lens, a
+  triangle: every primitive the others' neighbour) the plain first-hit reading. Real code == the scratch variant on all
+  2,052 lays (0 differ). Tests (bricks-band-fit): the hourglass reads its 2.6 in waist (either winding); a triangle
+  stays finite; T7 / T14 / T17 / T16 7x9 read 2.68 / 2.60 / 2.24 / 3.90 and mixed_bands (three_band T16) at 1 in fits.
+  Mutation-checked: no corner filter -> 3 fail, no bisectors -> 3 fail. Full vitest 325 files / 5,350 passed (two
+  earlier full runs each had one non-bricks test time out under fleet load -- blind-spot-audit 12.5 s, frame-bartop-drawn
+  22.5 s; both pass alone). Shot shots/seatB/neck16c2/item31_t14_t7_mixed_bands_before_after.png: T14 7x9 mixed_bands
+  1 in gap 0.38 -> 2.60, 1/3 bands (no fit) -> 2/3, 140 -> 194 band pieces; T7 gap 0.01 -> 2.68, 1/3 -> 2/3, 117 -> 156
+  (engine lay; bricksContourBands alone counts 106 -> 144 on T14).
