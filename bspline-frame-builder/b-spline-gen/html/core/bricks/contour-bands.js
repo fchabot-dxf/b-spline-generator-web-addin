@@ -36,6 +36,7 @@
 import { inwardSignFor, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, boundaryAtDepth } from './primitive-ribbon.js';
+import { openRibbonOutline } from './ribbon-outline.js'; // F35 item 55 (seat E): a Brush stroke's grout region
 import { scaledSet, BRICK_PATTERNS, MIN_PIECE_FRACTION } from './library.js';
 import { bricksFillShape } from './fill-shape.js';
 import { axisLen, courseHeightFor } from './layouts/bond.js';
@@ -462,6 +463,7 @@ export function bricksContourBands(primitives, bands, opts) {
   let depthSoFar = opts.centered
     ? -plannedBands.reduce((sum, b) => sum + b.naturalWidth * b.rows, 0) / 2
     : 0;
+  const ribbonStartDepth = depthSoFar; // F35 item 55: an open centred ribbon's first edge
   let nextId = 0;
 
   bands.forEach((band, bandIndex) => {
@@ -516,7 +518,9 @@ export function bricksContourBands(primitives, bands, opts) {
   const boardWidth = fitBoard ? Math.min(...['x', 'y'].map((k) => Math.max(...fitBoard.map((p) => p[k])) - Math.min(...fitBoard.map((p) => p[k])))) : 0;
   const split = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set) : bricks;
   const laid = fitBoard ? clipBandPiecesToBoard(split, fitBoard, set) : bricks;
-  return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, depthSoFar) : [], ...(fit ? { bandsReduced: fit.note } : {}) };
+  return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, depthSoFar) : [], ...(fit ? { bandsReduced: fit.note } : {}),
+    // F35 item 55 (seat E): an open centred ribbon's outline (a Brush stroke's grout region), additive
+    ...(!closed && opts.centered ? { ribbonOutline: openRibbonOutline(enriched, ribbonStartDepth, depthSoFar) } : {}) };
 }
 
 /**

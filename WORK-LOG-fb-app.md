@@ -14933,3 +14933,27 @@ WallPattern = {
   - the stroke laid 4 pieces at 1.25; the 3/4 preset -> 6 pieces at 0.75;
   - a Wall + the quick Set Grey brick -> the stroke's pieces all set 4. 0 page errors.
   - Shots: shots/seatE/a6_stroke_before_size.png, a6_stroke_after_size_3_4.png.
+## seat E (61) turn 4: Brush stroke grout -- the engine's ribbon (branch brush-grout, off grout-svg + origin/main)
+- **Engine (additive, fc cleared it by DM):**
+  - new core/bricks/ribbon-outline.js: openRibbonOutline(enriched, depthA, depthB) and ribbonEdge. Each primitive is offset to the edge depth (a line by its normal, an arc by r - radialSign x d: primitive-ribbon's convention); consecutive primitives are mitred at curveIntersection nearest the original junction (the bricks' own joint rule), with a bevel when the offsets do not meet; the ends are closed square.
+  - contour-bands.js: an import, `ribbonStartDepth`, and one spread on the return, `ribbonOutline` (open + centred only). fc's joint-rule branch will touch neighbouring lines; whoever lands second resolves (fc offered).
+- **App:**
+  - GROUT_ELEMENT_KINDS += 'brush'.
+  - bricksForBrushStroke / bricksForStroke take an optional `out` that receives ribbonOutline (the return types do not change).
+  - regenerateOwnedBrickElements: one grout node per STROKE (owner = the stroke id; its region = its chains' ribbons), drawn on the stroke's layer.
+  - Every stroke's grout node is removed first (a deleted stroke leaves none), and its PAINT is read back and handed to its redraw: grout paint is per kind, never frozen into a stroke's snapshot.
+  - _ownedBrickPolys / _groutCutouts / elementsWithoutGrout read a stroke's chain owners (`<id>:<chain>`) as the stroke.
+  - brickElementAt's grout hit reports the stroke's own kind (brush / raisedBrush).
+  - forceRegenerateOwnedBrickElements: a paint change on a board whose strokes have no grout node yet regenerates them (same settings + seed) before falling back to the Wall / Frame re-lay.
+- **Measured facts** (named, not changed):
+  1. A stroke's bricks BUTT along the run with no joint: one brick ends at x 2.25 and the next starts at 2.25 (stretcher_1, Set 1). So a stroke's grout shows only with an Edge > 0, and there is no joint point to click: Select on any stroke brick already picks the stroke.
+  2. The end bricks overhang the stroke's ends by 0.02 in (x -0.02..4.02 on a 0..4 stroke). The ribbon stops at the stroke's ends, so the faces are cut to it there, and those two slivers get no grout paint.
+  3. The sidebar's quick rows (Grout colour included) are greyed until a Wall or Frame is laid (the existing 'bricksLaid' rule). On a stroke-only board the Brick tab's swatch paints; exempting the row would change a guard, so I am asking the advisor.
+- **Tests** (grout-paint.test.js +3):
+  - the open centred ribbon outline (a straight stroke = a rectangle; a closed contour has none);
+  - an L edge mitred at the corner;
+  - a stroke's one locked grout node over its ribbon: every brick centroid inside, the paint kept across a re-draw, none left after a delete.
+  - bricks-regen-perf's mock gained path() + a node.
+  - Fail-before at 5355784 (only ribbon-outline.js copied in): **2/2 integration tests fail**; the L-edge unit test pins the new module itself.
+- **Live** (brush_grout_live.mjs, a REAL mouse drag of an L stroke, fresh 7x9): 6 stroke bricks, 1 grout node 'brush' (locked); Edge 0.03 -> inset 0.03; the Brick tab swatch -> #616161; the sidebar quick row reads DISABLED (fact 3). Shot: shots/seatE/item55_brush_stroke_grout_desktop.png (a grey rim, mitred at the corner). 0 page errors.
+- **Gate (pre-merge):** full vitest 1 failed / 4777 passed; the one is frame-3d-sweep's 90 s timeout (passes alone, as before).

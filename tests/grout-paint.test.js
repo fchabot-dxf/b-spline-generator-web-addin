@@ -18,10 +18,13 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-surface.
 }));
 
 import { groutShapeOf, insetFace, pointOnGrout, groutIdOf, primitivesOutline } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/grout-shape.js';
+import { ribbonEdge } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/ribbon-outline.js';
+import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
+import { BRUSH_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { generateBricks } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js';
 import { brickSetById } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import {
-  runBricks, groutPaintOf, repaintGrout, brickElementAt, brickRecordNode, frameBandsOf, GROUT_PAINT_DEFAULT,
+  runBricks, groutPaintOf, repaintGrout, brickElementAt, brickRecordNode, frameBandsOf, GROUT_PAINT_DEFAULT, forceRegenerateOwnedBrickElements,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { rasterizeBrickHeightMask } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-height-mask.js';
 import { isEditableByLayer, isOnVisibleLayer, isLockedNode, BRICK_SEND_SKIP, EDITOR_ONLY_STYLE } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
@@ -262,5 +265,84 @@ describe('Send: the grout never goes into the Bricks sketch (stamp.bricks.svg)',
     // a layer-state class is NOT editor-only look: it stays (today's sketches carry it)
     const dim = await _bricksLayerSvg(bricksEditor(looked.replace('svg-hover svg-selected', 'inactive-layer svg-hover')));
     expect(dim).toContain('class="inactive-layer"');
+  });
+});
+
+// F35 item 55 follow-up (advisor): a BRUSH stroke's grout -- its region is the ribbon the engine laid it in
+// (contour-bands ribbonOutline for an open centred ribbon, core/bricks/ribbon-outline.js), one grout node per stroke
+describe('Brush stroke grout: the engine ribbon + one node per stroke', () => {
+  const set = brickSetById(1);
+  const line = (a, b) => ({ type: 'line', p0: a, p1: b });
+  it('an open centred ribbon returns its outline (additive); a closed contour does not', () => {
+    const prims = [line({ x: 0, y: 1 }, { x: 4, y: 1 })];
+    const r = bricksContourBands(prims, BRUSH_PRESETS.stretcher_1, { set, seed: 1, closed: false, centered: true });
+    expect(Object.keys(r).sort()).toEqual(['bricks', 'innerPath', 'ribbonOutline']);
+    const xs = r.ribbonOutline.map((p) => p.x), ys = r.ribbonOutline.map((p) => p.y);
+    expect(Math.min(...xs)).toBeCloseTo(0, 6); expect(Math.max(...xs)).toBeCloseTo(4, 6);
+    expect(Math.min(...ys) + Math.max(...ys)).toBeCloseTo(2, 6); // centred on the stroke
+    expect(r.ribbonOutline.length).toBe(4); // a straight ribbon is a rectangle: the stroke's own ends, the bricks' own edges
+    // every brick sits across the ribbon's width; the end bricks overhang the stroke's ends by the engine's own end
+    // allowance (measured 0.02 in at Set 1) -- their grout face is cut to the ribbon there (groutShapeOf)
+    for (const b of r.bricks) for (const v of b.polygon) {
+      expect(v.y).toBeGreaterThanOrEqual(Math.min(...ys) - 1e-9); expect(v.y).toBeLessThanOrEqual(Math.max(...ys) + 1e-9);
+      expect(v.x).toBeGreaterThanOrEqual(-0.05); expect(v.x).toBeLessThanOrEqual(4.05);
+    }
+    const closed = bricksContourBands(RECT, frameBandsOf(P.brickSettings), { set, seed: 1 });
+    expect('ribbonOutline' in closed).toBe(false);
+  });
+  it('an L stroke: each edge is mitred at the corner (the bricks’ own joint rule)', () => {
+    const prims = [line({ x: 0, y: 0 }, { x: 2, y: 0 }), line({ x: 2, y: 0 }, { x: 2, y: 2 })].map((p) => {
+      const dx = p.p1.x - p.p0.x, dy = p.p1.y - p.p0.y, len = Math.hypot(dx, dy);
+      return { ...p, nx: -dy / len, ny: dx / len };
+    });
+    const edge = ribbonEdge(prims, 0.25);
+    expect(edge).toHaveLength(3);
+    expect(edge[1].x).toBeCloseTo(1.75, 6); expect(edge[1].y).toBeCloseTo(0.25, 6);
+  });
+
+  function strokeEditor() {
+    const ed = fakeEditor();
+    ed._layers = [{ id: 'S', name: 'Brush', visible: true, brickKind: 'brush' }];
+    const spine = (x1, y1, x2, y2) => {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      Object.entries({ x1, y1, x2, y2, 'data-brick': 'brush-spine', 'data-brick-element': 'st1', 'data-layer': 'S',
+        'data-brick-settings': JSON.stringify({ ...P.brickSettings, setId: 1, seed: 2 }) }).forEach(([k, v]) => el.setAttribute(k, String(v))); // a stroke freezes its set
+      ed._sketchLayer.node.appendChild(el);
+      return el;
+    };
+    return { ed, spine };
+  }
+  it('a stroke gets ONE grout node (its id, kind brush, locked) over its ribbon; a re-draw keeps the paint; a deleted stroke leaves none', () => {
+    const { ed, spine } = strokeEditor();
+    const s1 = spine(1, 1, 4, 1); spine(4, 1, 4, 4);
+    forceRegenerateOwnedBrickElements(ed);
+    const grout = q(ed, '[data-brick="grout"]');
+    expect(grout).toHaveLength(1);
+    expect(grout[0].getAttribute('data-brick-grout-of')).toBe('brush');
+    expect(grout[0].getAttribute('data-brick-owner')).toBe('st1');
+    expect(grout[0].getAttribute('id')).toBe('st1:grout');
+    expect(isLockedNode(grout[0])).toBe(true);
+    expect(q(ed, '[data-brick="brush"]').length).toBeGreaterThan(3);
+    // the region is the stroke's ribbon: every stroke brick's centroid lies on it (measured: a stroke's bricks butt with no
+    // joint along the run, so its grout reads only with an Edge; Select on any of its bricks already picks the stroke)
+    const region = JSON.parse(grout[0].getAttribute('data-grout-region'));
+    for (const n of q(ed, '[data-brick="brush"]')) {
+      const v = n.getAttribute('points').trim().split(/[ ,]+/).map(Number);
+      const cx = v.filter((_, i) => i % 2 === 0).reduce((a, b) => a + b, 0) / (v.length / 2), cy = v.filter((_, i) => i % 2).reduce((a, b) => a + b, 0) / (v.length / 2);
+      expect(pointOnGrout({ loops: region.map((r) => r.outer) }, cx, cy)).toBe(true);
+    }
+    expect(brickElementAt(ed, { x: 1.5, y: 1 })).toEqual({ id: 'st1', kind: 'brush' });
+    // paint it, move the stroke: its new node keeps the paint (never frozen into the stroke's snapshot)
+    repaintGrout(ed, { ...P.brickSettings, groutPaintByElement: { brush: { color: '#3b3b3b', paintInsetIn: 0.02 } } });
+    s1.setAttribute('x1', '0.5');
+    forceRegenerateOwnedBrickElements(ed);
+    const again = q(ed, '[data-brick="grout"]');
+    expect(again).toHaveLength(1);
+    expect(again[0].getAttribute('fill')).toBe('#3b3b3b');
+    expect(again[0].getAttribute('data-grout-inset')).toBe('0.02');
+    // the stroke deleted: its grout goes with it
+    q(ed, '[data-brick="brush-spine"]').forEach((n) => n.remove());
+    forceRegenerateOwnedBrickElements(ed);
+    expect(q(ed, '[data-brick="grout"]')).toHaveLength(0);
   });
 });
