@@ -29,6 +29,7 @@ import { applyStampLayers, STAMP_PASS_KIND } from './apply-stamp-layers.js';
 import { buildThickenData } from './build-thicken-data.js';
 import { scheduleRebuild, isRebuildScheduled } from './scheduler.js';
 import { isCarved } from '../../editor/layers.js';
+import { isPhotoReady } from '../photo/state.js';
 
 const yieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -39,6 +40,40 @@ const _rebuildIdle = () => !rebuild.isRebuilding && !rebuild.pendingRebuild && !
 export function whenRebuildIdle() {
     return _rebuildIdle() ? Promise.resolve() : new Promise((resolve) => _idleWaiters.push(resolve));
 }
+
+// Item 69 (seat E, measured: 30 sidebar controls rebuilt the 3D without changing it, 1.1-8.2 s at CPU x4): a build
+// whose INPUTS equal the last completed build's is skipped. The inputs are DECLARED as everything a build reads --
+// all of P (terrain.js reads P whole) minus REBUILD_INERT_KEYS, the sculpt deltas, the editor layers' tooling + mask
+// objects, the grid, the preview -- so an unlisted input only costs a rebuild, never a stale 3D.
+/** P keys no build reads (measured: their only readers are the sculpt interaction / the export). */
+export const REBUILD_INERT_KEYS = new Set([
+    'activeSculptLayer', 'sculptTopMode', 'sculptBotMode',
+    'sculptTopRadius', 'sculptTopStrength', 'sculptTopNoiseScale', // Strength = the Hardness control (state.js INPUT_PAIRS)
+    'sculptBotRadius', 'sculptBotStrength', 'sculptBotNoiseScale',
+    'decalOpacity',
+]);
+const _objectIds = new WeakMap();
+let _nextObjectId = 1;
+const _idOf = (o) => { if (!o || typeof o !== 'object') return 0; if (!_objectIds.has(o)) _objectIds.set(o, _nextObjectId++); return _objectIds.get(o); };
+function _fnv(h, str) { for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h; }
+function _fnvArray(h, a) { if (!a) return _fnv(h, '-'); h = _fnv(h, String(a.length)); for (let i = 0; i < a.length; i++) { h ^= Math.round(a[i] * 1e6); h = Math.imul(h, 16777619); } return h; }
+/** The declared build inputs as one digest, or null when they cannot be read (then the build always runs). */
+export function rebuildInputDigest(preview, nx, nz) {
+    try {
+        let h = 2166136261;
+        // + the one async input outside P: the Photo filter's decoded image (core/photo/state.js) lands after its URL
+        h = _fnv(h, `${nx}x${nz}|${_idOf(preview)}|${isFusionMode}|${isPhotoReady(P.photoImageDataUrl)}`);
+        h = _fnv(h, JSON.stringify(P, (k, v) => (REBUILD_INERT_KEYS.has(k) ? undefined : v)));
+        h = _fnvArray(h, preDelta); h = _fnvArray(h, postDelta); h = _fnvArray(h, extraThickenThinMask);
+        const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers)) ? window.svgEditor._layers : [];
+        for (const l of layers) {
+            h = _fnv(h, JSON.stringify(l, (k, v) => (k && (k[0] === '_' || (v && typeof v === 'object' && 'nodeType' in v)) ? undefined : v)));
+            h = _fnv(h, `|${_idOf(l._mask)}|${_idOf(l._brickMask)}|${l._brickDepth}`);
+        }
+        return (h >>> 0).toString(36);
+    } catch (_) { return null; }
+}
+let _lastBuiltDigest = null;
 
 export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode) {
     if (rebuild.isRebuilding) {
@@ -66,6 +101,12 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
             return;
         }
 
+        const digest = rebuildInputDigest(preview, nx, nz);
+        if (digest !== null && digest === _lastBuiltDigest && lastResult) {
+            if (preview) updatePreviewSculptMode(preview, scheduleRebuild); // the cheap interaction sync still runs
+            return;
+        }
+        _lastBuiltDigest = null; // a build that throws leaves no digest: the next one runs
         await withLoadingStage('rebuild', async () => {
             await yieldToMain();
             const { heights, cleanHeights, baseHeights, generated } = buildHeights(nx, nz);
@@ -98,6 +139,7 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
 
             if (statusBar) updateStatusBar(statusBar, thicken, nx, nz);
         }, { spacing: P.spacing });
+        _lastBuiltDigest = digest;
     } finally {
         rebuild.isRebuilding = false;
         if (rebuild.pendingRebuild) {
