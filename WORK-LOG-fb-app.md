@@ -14912,3 +14912,20 @@ WallPattern = {
   - Shots: shots/seatE/item44_carve_on_flat_main.png / item44_carve_on_flat_branch.png (+ item44_flat_top_with_carve_branch.png, item44_organic_top_with_carve_branch.png, item44_one_load_*.png from the measure).
 - **Probe harness note:** ports 9861/9862 showed LISTEN entries whose PIDs no longer exist (stale sockets after my timed-out runs); nothing to kill. I moved to 9961. Ports 9871/9881 belonged to another seat's matrix run: left alone.
 - **Gate:** full vitest 5 failed / 4738 passed under load. All 4 files pass alone, 56/56: no-corrupt-polygon x2, fieldstone and frame-3d-sweep are timeouts; frame-gen was a deep-equal failure under load, and it is not in files I touched.
+
+## seat E (61) turn 5: F35 item 61, the Frame Set row lists every band-capable set (branch frame-sets-61)
+- **Measured before:** the Set row listed BRICK_SET_IDS (the bond sets 1, 4) for every element. A Set 5 (Grey stone) frame was reachable only by writing P.brickSettings.setIds.frame (seat A's D4). White rocks came only through the Fieldstone band pattern.
+- **Declared** (editor-brick-tool.js):
+  - frameModeOfSet(id) reads each set's own declaration: 'set' = the bands are laid with its own pieces (every bond set, as courses; Grey stone, which now declares `frameBands: 'set'` in library.js); 'pattern' = its layout is a band-capable pattern (White rocks: Fieldstone, BRICK_PATTERNS bandCapable); null = no frame (Brick 2, 'grid').
+  - FRAME_SET_IDS = [1, 3, 4, 5]; setsOfferedFor(kind) = the Frame: FRAME_SET_IDS, every other element: BRICK_SET_IDS.
+  - Measured live and corrected in the same turn: my first wording said Grey stone lays "course bands". The live frame shows grey STONES in each band (the engine lays a non-bond set's own layout per band), so the value is 'set', not 'course'.
+- **Panel:**
+  - The Set row renders every set some element can take and shows the active element's own (syncSetPicker hides the rest).
+  - selectTool now re-syncs the Set row. It never did, so the active button kept the previous tool's element after a tool switch.
+  - selectSet checks the set is offered to every kind it writes. On the Frame, a 'pattern' set (White rocks) writes Fieldstone on every band, the same as setFrameRock: the set implies the pattern, and the frame's own brick set stays in setIds.frame. The way back is the existing item-46 rule (a course band pattern leaves rock), so the frame returns to Grey stone, or to whatever it held.
+  - The sidebar quick Set stays the bond sets (apply to all elements).
+- **Tests:**
+  - New tests/frame-set-row.test.js (6). It is its own file, same mocks / fixture / setup as brick-discrete-controls-regen, because that file runs out of heap. Its one Set-row assertion now counts visible buttons.
+  - Against origin/main's three sources (swapped from saved copies, restored): **5/6 fail**. The Wall-refusal test pins behaviour that was already true.
+- **Matrix** (frame group): + Grey stone (sets frame 5), White rocks (frame 3, rock), Soldier back to Grey stone (frame 5), Red Brick again (frame 1). Run: 16 rows, 0 FAIL.
+- **Live** (frame_sets_live.mjs): Frame tool row = [Red Brick, White rocks, Grey brick, Grey stone]; Grey stone -> every frame piece data-brick-set 5; Wall tool row = [Red Brick, Grey brick]. 0 page errors. Shots: shots/seatE/item61_frame_set_grey_stone_desktop.png, item61_frame_set_grey_stone_900.png.

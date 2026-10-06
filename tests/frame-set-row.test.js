@@ -1,6 +1,6 @@
 /**
  * F35 item 61 (seat E): the FRAME's Set row lists every band-capable set (editor-brick-tool.js FRAME_SET_IDS, from the
- * sets' own declarations: bond sets + Grey stone's frameBands 'course' + White rocks, whose layout is a band-capable
+ * sets' own declarations: bond sets + Grey stone's frameBands 'set' + White rocks, whose layout is a band-capable
  * pattern), with the pattern-implies-set rule both ways. Its own file (the same mocks / fixture / setup as
  * brick-discrete-controls-regen.test.js): that file runs out of heap near its end (measured, seat E turn 5).
  */
@@ -143,7 +143,7 @@ const shownSets = () => [...document.querySelectorAll('#brickSetRow button')].fi
 const activeSet = () => [...document.querySelectorAll('#brickSetRow button.active')].map((b) => b.id);
 
 describe('item 61: the Frame Set row lists every band-capable set', () => {
-  it('declared: the Frame takes the bond sets, White rocks (a band pattern) and Grey stone (course bands); the Wall the bond sets', () => {
+  it('declared: the Frame takes the bond sets, White rocks (a band pattern) and Grey stone (its own pieces); the Wall the bond sets', () => {
     setup('wall');
     expect(FRAME_SET_IDS).toEqual([1, 3, 4, 5]);
     expect(setsOfferedFor('wall')).toEqual([1, 4]);
@@ -154,7 +154,7 @@ describe('item 61: the Frame Set row lists every band-capable set', () => {
     $('brickTool_frame').click();
     expect(shownSets()).toEqual(['brickSet_1', 'brickSet_3', 'brickSet_4', 'brickSet_5']);
   });
-  it('Frame + Grey stone: the frame lays Set 5 as course bands (its row active), at once', () => {
+  it('Frame + Grey stone: the frame lays Set 5 (its row active), at once', () => {
     setup('frame');
     $('brickSet_5').click();
     expect(elementSetId(P.brickSettings, 'frame')).toBe(5);
@@ -175,7 +175,7 @@ describe('item 61: the Frame Set row lists every band-capable set', () => {
     expect(isRockFrame(P.brickSettings)).toBe(false);
     expect(elementSetId(P.brickSettings, 'frame')).toBe(5);
   });
-  it('a Fieldstone band on a Grey stone frame makes it rock; Grey stone picked again brings the course bands back', () => {
+  it('a Fieldstone band on a Grey stone frame makes it rock; Grey stone picked again brings its own bands back', () => {
     setup('frame');
     $('brickSet_5').click();
     setFrameBandPattern(0, 'fieldstone');

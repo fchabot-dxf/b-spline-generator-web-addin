@@ -598,14 +598,14 @@ export const ROCK_SET_ID = (BRICK_SETS.find((s) => s.layout === 'fieldstone') ||
  *  stone): the set is implied by the pattern, never picked in the Set row. null for every other pattern. */
 export const patternSetId = (pattern) => (pattern && pattern !== 'bond' ? (BRICK_SETS.find((s) => s.layout === pattern) || {}).id ?? null : null);
 export const BRICK_SET_IDS = Object.freeze(BRICK_SETS.filter((s) => s.layout === 'bond').map((s) => s.id));
-/** F35 item 61: how a set lays a FRAME, read from its declaration -- 'course': course bands of its own pieces (every bond
- *  set; a stone set that declares `frameBands: 'course'`, Grey stone); 'pattern': its layout is a band-capable pattern
+/** F35 item 61: how a set lays a FRAME, read from its declaration -- 'set': the bands are laid with its own pieces (every
+ *  bond set, as courses; a stone set that declares `frameBands: 'set'`, Grey stone, as stones); 'pattern': its layout is a band-capable pattern
  *  (BRICK_PATTERNS bandCapable: Fieldstone -> picking White rocks makes the frame rock, the pattern-implies-set rule);
  *  null: it cannot lay a frame. */
 export function frameModeOfSet(id) {
   const s = BRICK_SETS.find((x) => x.id === id);
   if (!s) return null;
-  if (s.layout === 'bond' || s.frameBands === 'course') return 'course';
+  if (s.layout === 'bond' || s.frameBands === 'set') return 'set';
   return BRICK_PATTERNS[s.layout] && BRICK_PATTERNS[s.layout].bandCapable ? 'pattern' : null;
 }
 /** The sets the Frame's Set row offers (every band-capable set), in declaration order. */
