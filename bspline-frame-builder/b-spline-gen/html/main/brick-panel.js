@@ -1240,7 +1240,9 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
 /** Audit (88's matrix): grey out every control whose declared requirement is unmet
  *  (main/brick-control-requires.js) -- disabled, with the reason as its tooltip. */
 function syncControlRequires() {
-  const ctx = { engineOptions: ENGINE_OPTIONS, facts: { bricksLaid: _bricksLaid() } };
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  // item 63: a frame contour to lay bands along (none under template None with Offset on); unknown without an editor
+  const ctx = { engineOptions: ENGINE_OPTIONS, facts: { bricksLaid: _bricksLaid(), ...(editor ? { frameContour: !!frameBandContour(editor) } : {}) } };
   // a control under several rules is greyed while ANY is unmet (the first unmet rule's reason shows)
   const unmet = new Map(), ruled = new Set(), whys = new Set();
   for (const rule of BRICK_CONTROL_REQUIRES) {
@@ -1473,8 +1475,14 @@ function _layBricks(editor, frameGeom, kinds, { amend = null } = {}) {
 
 /** Audit C1: what Generate lays -- every element kind already on the canvas, plus the active tool's
  *  own kind (BRICK_TOOLS `lays`). Frame needs a usable frame. A Wall alone never brings Frame bands. */
+/** F35 item 63: an element a control asks to LAY even though it is not on the canvas yet (the sidebar's Frame bands
+ *  pick, BRICK_QUICK_SETTINGS `lays`). Kept until the next lay runs -- a deferred lay (_relayOnRelease) still sees
+ *  it -- and dropped by that lay. */
+const _requestedKinds = new Set();
+export function requestLay(kind) { if (BRICK_KINDS.includes(kind)) _requestedKinds.add(kind); }
+
 function _kindsToLay(editor, frameGeom) {
-  const present = _presentKinds(editor);
+  const present = [..._presentKinds(editor), ..._requestedKinds];
   const active = BRICK_TOOLS.find((t) => t.id === _activeTool);
   // a Frame element ON the canvas is always re-laid: with no frame contour left (template Rectangle, Offset on)
   // that lays nothing, i.e. clears it -- stale bands must not stay and carve (turn 207)
@@ -1508,6 +1516,7 @@ export function generateBricks({ amend = null } = {}) {
   if (!editor) return false;
   const frameGeom = resolveFrameGeom(editor);
   const kinds = _kindsToLay(editor, frameGeom);
+  _requestedKinds.clear(); // item 63: a request is for the next lay only
   if (!frameGeom && BRICK_TOOLS.find((t) => t.id === _activeTool)?.lays === 'frame') showToast(FRAME_NEEDS_A_FRAME, 'warn');
   if (!kinds.length) return false;
   return _layBricks(editor, frameGeom, kinds, { amend }) !== false;
@@ -2367,10 +2376,13 @@ const BRICK_QUICK_SETTINGS = [
     isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
   { id: 'pattern', label: 'Wall pattern', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternIconSvg(c.id, 24),
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
+  // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
+  // (`lays`), or re-lays it; greyed while the board has no frame contour (BRICK_CONTROL_REQUIRES 'frameContour')
   { id: 'frameBands', label: 'Frame bands', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetIconSvg(c.id, 24),
-    isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
+    lays: 'frame', isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
 ];
 const quickButtonId = (row, choice) => `brickQuick_${row.id}_${choice.id}`;
+const quickRowId = (row) => `brickQuickRow_${row.id}`;
 
 function renderQuickSettings(container) {
   if (!container) return;
@@ -2381,6 +2393,7 @@ function renderQuickSettings(container) {
     label.textContent = row.label;
     container.appendChild(label);
     const list = document.createElement('div');
+    list.id = quickRowId(row);
     list.style.cssText = 'display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;';
     for (const choice of row.choices()) {
       const btn = document.createElement('button');
@@ -2391,7 +2404,7 @@ function renderQuickSettings(container) {
       const icon = row.iconFor && row.iconFor(choice);
       if (icon) { btn.innerHTML = icon; btn.title = choice.label; btn.setAttribute('aria-label', choice.label); btn.style.padding = '2px'; }
       else btn.textContent = choice.label;
-      btn.addEventListener('click', () => row.apply(choice));
+      btn.addEventListener('click', () => { if (row.lays) requestLay(row.lays); row.apply(choice); });
       list.appendChild(btn);
     }
     container.appendChild(list);

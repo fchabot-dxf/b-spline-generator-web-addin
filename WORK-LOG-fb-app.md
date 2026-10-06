@@ -14686,3 +14686,20 @@ WallPattern = {
   - Thresholds: Flush, joint >= 0.75 x the brick median; Recessed, joint < 0.
   - This tree: Flush 0.0979 vs 0.1130 (pass); Recessed -0.0550 (pass).
   - Clean main: Flush 0.0000 vs 0.1149 = FAIL; Recessed pass. So the row is not vacuous.
+
+## seat D (bb) turn 6: F35 item 63, the sidebar Frame bands pick lays the frame
+- **Measured first** (headless, T18 7x9, Fred's state: wall laid with the Wall tool, the default Soldier preset never laid, editor applied and closed):
+  - Main sidebar quick Soldier: 0 frame bricks, 3D unchanged. 3-band: the same. None: the wall regrows 21 -> 104. Soldier again: the wall shrinks back to 21, still 0 frame bricks, so a bare ring where the frame would go.
+  - Cause: a re-lay lays only the kinds ON the canvas plus the active tool's kind (`_kindsToLay`). From the sidebar a frame that is not there is never added.
+- **Fix (declared):**
+  - The quick row declares `lays: 'frame'` (BRICK_QUICK_SETTINGS). Its pick calls `requestLay('frame')`.
+  - `_requestedKinds` joins `_kindsToLay`'s present kinds until the next lay runs. So a deferred lay (`_relayOnRelease`'s queued one) still sees it. The next generateBricks clears it (one-shot).
+  - Greyed: each quick row's list now has an id (`brickQuickRow_<id>`). One BRICK_CONTROL_REQUIRES rule greys `within: ['brickQuickRow_frameBands']` on the new fact `frameContour` (= frameBandContour(editor), unknown without an editor = met). Tooltip: "No frame on this board -- pick a frame template (or turn Offset from frame off) to lay frame bands".
+- **After, live** (same probe):
+  - quick Soldier: frame 0 -> 81, 3D changed.
+  - 3-band: frame 81, 3D unchanged. Measured why: the fit rule lays 1 of 3 bands ("Bands reduced to fit the board: 1 of 3 laid."), the same single band.
+  - None: frame cleared. Soldier: laid again.
+  - Template None: 7/7 buttons greyed with the tooltip.
+- **Tests** (frame-corners-panel, item 63 describe): (1) a wall but no Frame: the pick lays wall + frame, the already-chosen preset too, and a later pattern re-lay lays only the wall. (2) no frame contour: the row is greyed with the reason, and un-greyed when a contour exists. These fail 2/2 against the pre-change brick-panel.js + brick-control-requires.js.
+- **Matrix, group 'lay':** declared QUICK_FRAME_LAYS + runQuickFrameLays: "Sidebar Frame bands lays the frame (no Frame on the board)" (0 -> 81, 3D changed) and "greyed under template None" (7/7). Group: 6 rows, 0 FAIL.
+- **Shots** (seatD): f35_63_{before,after}_{1_wall_only,2_quick_soldier}_{1366,900}.png. BRICK section open; before = no band, after = the soldier ring laid.

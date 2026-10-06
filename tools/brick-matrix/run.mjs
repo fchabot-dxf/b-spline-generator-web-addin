@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, GROUT_JOINTS } from './controls.mjs';
+import { BRICK_CONTROLS, REQUIRES_SOURCE, PERSIST_BOARD, PEEK_LAYOUT, CLEAR_MENU, LAY_WARNING, SELECT_ELEMENT, MIGRATION, EDIT_PASSWORD_TEST, GROUP_SETUP, BRICK_LAYERS, PATTERN_PARAM_PERSIST, BANDS_NOTE, WALL_AREAS, GENERATE_AFTER_RESTORE, GROUT_JOINTS, QUICK_FRAME_LAYS } from './controls.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -442,7 +442,7 @@ try {
   }
   if (!arg('group') || arg('group') === 'layout') await runLayout();
   if (!arg('group') || arg('group') === 'clear') await runClear();
-  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); }
+  if (!arg('group') || arg('group') === 'lay') { await runLayWarnings(); await runBandsNote(); await runQuickFrameLays(); }
   if (!arg('group') || arg('group') === 'select') await runSelect();
   if (!arg('group') || arg('group') === 'migration') await runMigration();
   if (!arg('group') || arg('group') === 'frame-ui') await runFrameUi();
@@ -772,6 +772,25 @@ async function runLayWarnings() {
   checkRow('lay', `${W.template}: bands fit again -> wall back, notes hidden`, walls2 > 0 && !side2.shown && !ed2.shown,
     `wall ${walls2}, sidebar note ${side2.shown ? 'shown' : 'hidden'}, editor note ${ed2.shown ? 'shown' : 'hidden'}`);
   if (await editorOpen()) { await apply(); await heightsSettled(null); }
+}
+
+// F35 item 63: the sidebar Frame bands pick lays a frame that is not on the board yet (QUICK_FRAME_LAYS)
+async function runQuickFrameLays() {
+  const Q = QUICK_FRAME_LAYS;
+  const setTemplate = (t) => js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(t)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  const frames = () => js(`window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]').length`);
+  await reloadWithStorage({}); // the defaults: a Soldier preset that is not laid until the Frame tool lays it
+  await openEditorTab('editorTabBrick'); await setTemplate(Q.template);
+  await click('brickTool_wall', 800); await click('brickGenerate', 2500);
+  await apply(); const z0 = await heightsSettled(null);
+  const f0 = await frames();
+  if (!(await exists(Q.row))) { checkRow('lay', 'Sidebar Frame bands lays the frame (no Frame on the board)', false, '', Q.introducedBy); return; }
+  await click(Q.pick, 2500); const z1 = await heightsSettled(z0);
+  const f1 = await frames();
+  checkRow('lay', 'Sidebar Frame bands lays the frame (no Frame on the board)', f0 === 0 && f1 > 0 && z1 !== z0, `frame bricks ${f0} -> ${f1}, 3D ${z1 !== z0 ? 'changed' : 'UNCHANGED'}`);
+  await openEditorTab('editorTabBrick'); await setTemplate(''); await apply();
+  const g = await jsJSON(`JSON.stringify((()=>{ const b=[...document.querySelectorAll('#${Q.row} button')]; return { n: b.length, off: b.filter((x)=>x.disabled).length, why: (b[0]&&b[0].title)||'' }; })())`);
+  checkRow('lay', 'Sidebar Frame bands greyed under template None', g.n > 0 && g.off === g.n && g.why.includes(Q.noTemplateWhy), `${g.off}/${g.n} greyed, tooltip "${g.why.slice(0, 50)}"`);
 }
 
 async function runBandsNote() {

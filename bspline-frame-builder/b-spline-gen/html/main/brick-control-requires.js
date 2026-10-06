@@ -36,6 +36,9 @@ export const BRICK_CONTROL_REQUIRES = [
     why: 'Grout mode cuts joints with the engine\'s bricksGroutCut (seat B, T86 item 10) -- hidden until it exists' },
   { controls: SIDEBAR_BRICK_CONTROLS, within: ['brickQuickSettings', 'brickSurfaceStyleToggle'], requires: { fact: 'bricksLaid' },
     why: 'No Wall or Frame bricks on this board yet -- lay them in the editor\'s Brick tab first' },
+  // F35 item 63: the sidebar's Frame bands pick lays the frame along the frame's contour -- none without a template
+  { controls: [], within: ['brickQuickRow_frameBands'], requires: { fact: 'frameContour' },
+    why: 'No frame on this board -- pick a frame template (or turn Offset from frame off) to lay frame bands' },
 ];
 
 /** Is `requires` met, given the DOM node of its control? (null control = met: never grey on a missing node) */

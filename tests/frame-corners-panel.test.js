@@ -27,6 +27,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 
 import { initBrickPanel, setFrameRock } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, FRAME_CORNERS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const FIXTURE = `
@@ -153,5 +154,42 @@ describe('item 33: the Corners row in the Frame section', () => {
     // turn 261: a band row lists only what a band can lay -- the Wall-only patterns are absent, not greyed
     for (const id of ['herringbone', 'basketweave', 'chevron', 'square_grid', 'none']) expect($(`brickFrameBandPattern_0_${id}`), id).toBeNull();
     expect($('brickFrameBandPattern_0_fieldstone')).toBeTruthy(); // band-capable
+  });
+});
+
+// F35 item 63 (Fred: the main sidebar's Frame bands pick did nothing on T18 with a wall laid and no Frame element --
+// measured: frame 0 bricks, 3D unchanged): the pick LAYS the frame (or re-lays it); greyed with no frame contour
+describe('item 63: the sidebar Frame bands pick lays the frame', () => {
+  const addWall = () => {
+    const n = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    n.setAttribute('data-brick-gen', '1'); n.setAttribute('data-brick', 'wall'); n.setAttribute('points', '1,1 2,1 2,2 1,2');
+    window.svgEditor._sketchLayer.node.appendChild(n);
+    document.dispatchEvent(new Event('editorCommit')); // the lay's own commit: the sidebar controls apply now
+  };
+  const kindsOfLastLay = () => runBricks.mock.calls.at(-1)?.[3]?.kinds;
+  beforeEach(() => { P.brickSettings.frameBandPreset = 'single_soldier'; P.brickSettings.frameCorner = null; P.brickSettings.frameBandPatterns = []; });
+  it('a wall but no Frame element: the pick lays the frame too; the next re-lay does not add it by itself', () => {
+    setup('wall');
+    addWall();
+    runBricks.mockClear();
+    $('brickQuick_frameBands_three_band').click();
+    expect(P.brickSettings.frameBandPreset).toBe('three_band');
+    expect(kindsOfLastLay()).toEqual(expect.arrayContaining(['wall', 'frame']));
+    $('brickQuick_frameBands_single_soldier').click(); // the already-chosen preset lays it too
+    expect(kindsOfLastLay()).toEqual(expect.arrayContaining(['wall', 'frame']));
+    $('brickQuick_pattern_herringbone').click(); // any other re-lay: only what is on the canvas (the mock lays nothing)
+    expect(kindsOfLastLay()).toEqual(['wall']);
+  });
+  it('no frame contour (template None): the row is greyed with the reason', () => {
+    setup('wall');
+    addWall();
+    frameContourSilhouette.mockReturnValue({ error: 'noFrame' });
+    document.dispatchEvent(new Event('editorCommit'));
+    const btn = $('brickQuick_frameBands_single_soldier');
+    expect(btn.disabled).toBe(true);
+    expect(btn.title).toMatch(/No frame on this board/);
+    frameContourSilhouette.mockReturnValue({ primitives: [] });
+    document.dispatchEvent(new Event('editorCommit'));
+    expect($('brickQuick_frameBands_single_soldier').disabled).toBe(false);
   });
 });
