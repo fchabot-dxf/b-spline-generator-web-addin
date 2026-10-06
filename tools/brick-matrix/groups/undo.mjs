@@ -9,6 +9,9 @@ export const UNDO_SETTINGS = {
   from: 'brickPattern_stretcher', to: 'brickPattern_stack', undo: 'editorUndo', redo: 'editorRedo',
   accent: 'brickAccent_checker', level: { id: 'brickAccentLevel', value: -0.0625 },
   marker: './editor/undo-parts.js',
+  // item 68 (seat D's editor audit, measured: a stepper click = 'input' + 'change' re-laid twice and pushed TWO entries,
+  // so one Undo kept the new value): one stepper click = ONE undo step, and Undo puts the value back
+  stepperBox: 'brickGroutWidth',
 };
 
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
@@ -42,5 +45,12 @@ async function runUndoSettings() {
   await click(U.undo, 1500);
   const lv1 = Number(await js(`document.getElementById(${JSON.stringify(U.level.id)})?.value`));
   checkRow('undo', 'Undo puts a 3D-only setting back (accent level)', lv1 === lv0 && lv0 !== U.level.value, `level ${lv0} -> ${U.level.value} -> undo -> ${lv1}`);
+  // item 68: a real stepper click on a number box is one undo step (the typing settle no longer commits a second time)
+  const step = await jsJSON(`(async()=>{ const W=(ms)=>new Promise((r)=>setTimeout(r,ms)); const ed=window.svgEditor; const box=document.getElementById(${JSON.stringify(U.stepperBox)});
+    const v0=box.value, n0=ed._undoStack.length; [...box.closest('.cad-stepper').querySelectorAll('button')][1].click(); await W(1500);
+    const v1=box.value, n1=ed._undoStack.length; document.getElementById(${JSON.stringify(U.undo)}).click(); await W(1500);
+    return JSON.stringify({ v0, v1, v2: box.value, steps: n1 - n0 }); })()`);
+  checkRow('undo', 'A stepper click is ONE undo step, Undo puts the value back', step.steps === 1 && step.v1 !== step.v0 && step.v2 === step.v0,
+    `${U.stepperBox} ${step.v0} -> ${step.v1} (${step.steps} undo steps) -> undo -> ${step.v2}`);
   if (await editorOpen()) await apply();
 }
