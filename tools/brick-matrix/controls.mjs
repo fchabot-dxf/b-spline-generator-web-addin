@@ -317,6 +317,8 @@ export const GROUT_JOINTS = {
 export const QUICK_FRAME_LAYS = {
   template: 'template_18', pick: 'brickQuick_frameBands_single_soldier', row: 'brickQuickRow_frameBands',
   noTemplatePick: 'brickQuick_frameBands_double_course', introducedBy: 'item 63',
+  // A1 (3D-panel audit): a stack that only partly fits says so in the SIDEBAR too (T18 7x9: 1 of 3 laid, measured)
+  reducedPick: 'brickQuick_frameBands_three_band', sidebarNote: 'brickLayWarnings', reducedText: 'Bands reduced to fit the board:',
 };
 
 // ---- F35 item 65 (seat D): a brick moved BY HAND (Select tool, a real drag) follows in the 3D and survives Apply +

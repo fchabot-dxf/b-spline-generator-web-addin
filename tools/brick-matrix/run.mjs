@@ -830,6 +830,9 @@ async function runQuickFrameLays() {
   await click(Q.pick, 2500); const z1 = await heightsSettled(z0);
   const f1 = await frames();
   checkRow('lay', 'Sidebar Frame bands lays the frame (no Frame on the board)', f0 === 0 && f1 > 0 && z1 !== z0, `frame bricks ${f0} -> ${f1}, 3D ${z1 !== z0 ? 'changed' : 'UNCHANGED'}`);
+  await click(Q.reducedPick, 2500);
+  const note = await jsJSON(`JSON.stringify((()=>{ const e=document.getElementById(${JSON.stringify(Q.sidebarNote)}); return { shown: !!e && getComputedStyle(e).display !== 'none', text: e ? e.textContent.trim() : '' }; })())`);
+  checkRow('lay', 'Sidebar shows the band-fit note (a stack that only partly fits)', note.shown && note.text.startsWith(Q.reducedText), `sidebar note ${note.shown ? `"${note.text}"` : 'HIDDEN'}`);
   // template None = the board rectangle (item 66): the row stays live, a pick lays the bands along the board edge
   await openEditorTab('editorTabBrick'); await setTemplate(''); await apply(); const z2 = await heightsSettled(z1);
   const g = await jsJSON(`JSON.stringify((()=>{ const b=[...document.querySelectorAll('#${Q.row} button')]; return { n: b.length, off: b.filter((x)=>x.disabled).length }; })())`);

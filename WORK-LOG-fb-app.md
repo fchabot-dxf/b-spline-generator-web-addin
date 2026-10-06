@@ -14763,3 +14763,12 @@ WallPattern = {
 - **Test** (brick-discrete-controls-regen): "a greyed number field greys its -/+ stepper too, with the same reason". Fails 1/1 against the pre-change brick-panel.js.
 - **Matrix:** the runner's `isDisabled` (every requires row's "greyed" check) now counts a number field as greyed only if its stepper is greyed too.
   - sidebar-3d: this tree 13/0. Clean main 52c3055: "Grout depth 0.05 (Flush) ... NOT greyed or hidden" = FAIL.
+
+## seat D (bb) turn 11: A1 (3D-panel audit), the sidebar shows the band-fit note
+- **Measured** (headless, T1 7x9, wall laid and applied, sidebar quick 3-band): before, `#brickLayWarnings` hidden and empty; the editor's Frame section said "Bands reduced to fit the board: 1 of 3 laid." So the sidebar pick changed nothing visible and said nothing.
+  - Cause: the note is declared `where: 'frame'` (BRICK_LAY_WARNINGS), and only elements marked `data-brick-lay-notes="frame"` showed it.
+- **Fix (declared, no greying, Fred's "make the best result"):** an element lists the note places it shows. `data-brick-lay-notes` takes a space-separated list, and one element may carry both it and `data-brick-lay-warnings`. The sidebar box now lists `frame`. The editor's general box does not (its Frame section shows the note).
+- **Live after:** sidebar "Bands reduced to fit the board: 1 of 3 laid." (1366 and 900); the editor's general box stays empty.
+- **Test** (bands-reduced-note): the sidebar box is read from the REAL page (its own fixture copies the old markup), and it shows the note and hides it when the stack fits. Fails 1/1 against the pre-change panel + page.
+- **Matrix 'lay':** + "Sidebar shows the band-fit note (a stack that only partly fits)" (QUICK_FRAME_LAYS.reducedPick, T18). Group: 9 rows, 0 FAIL.
+- **Shots:** seatD/a1_{before,after}_sidebar_three_band_{1366,900}.png.

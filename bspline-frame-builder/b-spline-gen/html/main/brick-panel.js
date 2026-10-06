@@ -1410,11 +1410,15 @@ export const currentLayWarnings = () => _layWarnings.slice();
 const _warningText = (w) => (typeof w.text === 'function' ? w.text(_layCounts || {}) : w.text);
 function _syncLayWarnings() {
   if (typeof document === 'undefined') return;
-  // every place that shows them is marked data-brick-lay-warnings (the sidebar's note + the editor Brick tab's) or,
-  // for a note of one section, data-brick-lay-notes="<where>" (F35 item 35: the Frame section's)
-  const show = (el, list) => { el.textContent = list.map(_warningText).join(' '); el.style.display = list.length ? '' : 'none'; };
-  for (const el of document.querySelectorAll('[data-brick-lay-warnings]')) show(el, _layWarnings.filter((w) => !w.where));
-  for (const el of document.querySelectorAll('[data-brick-lay-notes]')) show(el, _layWarnings.filter((w) => w.where === el.getAttribute('data-brick-lay-notes')));
+  // every place that shows them is marked data-brick-lay-warnings (the general ones: the sidebar's note + the editor
+  // Brick tab's) and/or data-brick-lay-notes="<where> ..." (a section's notes: F35 item 35, the Frame section's). A1
+  // (3D-panel audit): the sidebar lists 'frame' too -- a quick Frame bands pick that only partly fits said nothing there
+  const shows = (el, w) => (w.where ? (el.getAttribute('data-brick-lay-notes') || '').split(/\s+/).includes(w.where) : el.hasAttribute('data-brick-lay-warnings'));
+  for (const el of document.querySelectorAll('[data-brick-lay-warnings], [data-brick-lay-notes]')) {
+    const list = _layWarnings.filter((w) => shows(el, w));
+    el.textContent = list.map(_warningText).join(' ');
+    el.style.display = list.length ? '' : 'none';
+  }
 }
 
 function _layBricks(editor, frameGeom, kinds, { amend = null } = {}) {
