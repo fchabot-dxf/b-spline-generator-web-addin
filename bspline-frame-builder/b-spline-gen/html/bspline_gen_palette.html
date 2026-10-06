@@ -1847,7 +1847,9 @@
            hand-drawn Artwork shapes -- shown on the Artwork tab only, hidden for Frame/Photo/Brick
            (main/editor-tabs.js's own setEditorTab; not one of EDITOR_TABS' own toolbar/panel pairs
            since it isn't a tab, just shared styling chrome for ONE of them). -->
-      <div class="editor-toolbar-top" id="editorToolbarTop" style="height: 38px; background: #fff; border-bottom: 1px solid var(--cad-border-standard); display: flex; align-items: center; padding: 0 12px; gap: 16px; flex-shrink: 0; overflow: hidden;">
+      <!-- F35 item 53 (Fred: the option bar clipped its GRID label + STYLE chips): it sizes to its content and wraps to a
+           second row when narrow -- measured before: a fixed 38 px + overflow hidden cut the Artwork groups by 25 px -->
+      <div class="editor-toolbar-top" id="editorToolbarTop" style="min-height: 38px; background: #fff; border-bottom: 1px solid var(--cad-border-standard); display: flex; flex-wrap: wrap; align-items: center; padding: 0 12px; gap: 4px 16px; flex-shrink: 0;">
         <div id="editorStrokeGroup" style="display:flex; align-items:center; gap:8px;">
           <span style="color:#666; text-transform:uppercase; font-weight:700; font-size:9px; letter-spacing:0.08em;">Stroke</span>
           <div class="stepper-container" style="display:flex; align-items:center; background:#f9f9f9; border:1px solid #ccc; border-radius:3px; height:24px; padding:0 2px;">
@@ -2267,7 +2269,8 @@
                      cells, snapped toward a nearby rail); Rails (every tie
                      bridges adjacent rails exactly, ends land ON a rail)
                      is a real, declared alternative, not the default. -->
-                <div role="group" class="segmented-group">
+                <div style="font-size:10px; opacity:0.7; margin:2px 0;">Span</div><!-- F35 item 54: the labels come from TIE_SPAN_MODES -->
+                <div role="group" class="segmented-group" aria-label="Span">
                   <button type="button" id="latticeTiesSpanModeCells" class="editor-fillmode-btn active" style="flex:1;" title="Short stub, spanMin-spanMax grid cells, snapped toward a nearby rail">Cells</button>
                   <button type="button" id="latticeTiesSpanModeRails" class="editor-fillmode-btn" style="flex:1;" title="Bridges adjacent rails exactly">Rails</button>
                 </div>
@@ -2729,7 +2732,8 @@
                     <input id="shapeLatticeTiesCountMax" type="number" min="1" step="1" value="13" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
                   </label>
                 </div>
-                <div role="group" class="segmented-group">
+                <div style="font-size:10px; opacity:0.7; margin:2px 0;">Span</div><!-- F35 item 54: the labels come from TIE_SPAN_MODES -->
+                <div role="group" class="segmented-group" aria-label="Span">
                   <button type="button" id="shapeLatticeTiesSpanModeCells" class="editor-fillmode-btn active" style="flex:1;" title="Short stub, spanMin-spanMax grid cells, snapped toward a nearby rail">Cells</button>
                   <button type="button" id="shapeLatticeTiesSpanModeRails" class="editor-fillmode-btn" style="flex:1;" title="Bridges adjacent rails exactly">Rails</button>
                 </div>
@@ -3221,8 +3225,12 @@
                 </div>
               </div>
               <!-- F35 item 16: LEVEL, this element's height offset (+ proud / - recessed), 3D only -->
-              <label class="cad-label">Level (in)</label>
-              <input type="number" id="brickLevel_wall" value="0" min="-0.25" max="0.25" step="0.015625" style="width:100%; margin-bottom:12px;" title="+ sits proud of the other bricks, - sits recessed (3D only)">
+              <!-- F35 item 50: the Level row owns its line + bottom margin (the stepper wraps the input, so a margin on
+                   the input stayed INSIDE the wrapper and the section edge cut the stepper box, measured flush) -->
+              <div class="brick-level-row" style="margin-bottom:12px;">
+                <label class="cad-label">Level (in)</label>
+                <input type="number" id="brickLevel_wall" value="0" min="-0.25" max="0.25" step="0.015625" style="width:100%;" title="+ sits proud of the other bricks, - sits recessed (3D only)">
+              </div>
             </div>
 
             <!-- F35 item 16 follow-up: shown only while Frame is the active tool (syncFrameSection). -->
@@ -3268,8 +3276,12 @@
               </label>
               <label class="cad-label" style="font-size:10px;">Distance from the frame's outer edge (in, +in / -out)</label>
               <input type="number" id="brickFrameOffsetDistance" value="0" step="0.05" style="width:100%; margin-bottom:10px;">
-              <label class="cad-label">Level (in)</label>
-              <input type="number" id="brickLevel_frame" value="0" min="-0.25" max="0.25" step="0.015625" style="width:100%; margin-bottom:12px;" title="+ sits proud of the other bricks, - sits recessed (3D only)">
+              <!-- F35 item 50: the Level row owns its line + bottom margin (the stepper wraps the input, so a margin on
+                   the input stayed INSIDE the wrapper and the section edge cut the stepper box, measured flush) -->
+              <div class="brick-level-row" style="margin-bottom:12px;">
+                <label class="cad-label">Level (in)</label>
+                <input type="number" id="brickLevel_frame" value="0" min="-0.25" max="0.25" step="0.015625" style="width:100%;" title="+ sits proud of the other bricks, - sits recessed (3D only)">
+              </div>
             </div>
 
             <!-- F35 item 16 (Fred: "I'd rather they all have the same size"): ONE global brick

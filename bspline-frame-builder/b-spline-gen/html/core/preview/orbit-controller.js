@@ -12,6 +12,30 @@
  * goHome() / animateTo() are external triggers (Home button, ViewCube).
  */
 
+/** The orthographic frustum's half-height per unit of orbit radius (updateFrustum); the face view's fit reads it. */
+export const FRUSTUM_SCALE = 0.35;
+
+/** F35 item 51 (Fred, a screenshot of the view he wants): the Home button CYCLES through these, in order -- each press
+ *  goes to the next view (iso -> face -> iso ...), the first press after load to `iso` (today's Home). `euler` =
+ *  [x, y, z] in 'ZXY' order (the orbit's own convention): iso = the Fusion Z-up isometric (TOP / FRONT / RIGHT);
+ *  face = the board seen face-on and upright (camera on the +Z side, Y up, X right) with a slight yaw so the RIGHT
+ *  side shows. `fit`: how the radius is chosen (homeViewRadius). */
+export const HOME_VIEWS = Object.freeze([
+  Object.freeze({ id: 'iso', label: 'iso', euler: Object.freeze([0.955, 0, Math.PI / 4]), fit: 'iso' }),
+  Object.freeze({ id: 'face', label: 'face', euler: Object.freeze([0, (17 * Math.PI) / 180, 0]), fit: 'board' }),
+]);
+/** The face view's margin round the board when it fills the view. */
+export const HOME_BOARD_FIT_MARGIN = 1.08;
+/** The next Home view's index (start from -1: the first press = HOME_VIEWS[0]). */
+export const nextHomeIndex = (i) => (Number.isInteger(i) && i >= 0 ? i + 1 : 0) % HOME_VIEWS.length;
+/** The orbit radius for `view` on a W x H board in a canvas of aspect w/h. */
+export function homeViewRadius(view, W, H, aspect) {
+  if (view.fit === 'board') return (Math.max(H / 2, W / (2 * aspect)) * HOME_BOARD_FIT_MARGIN) / FRUSTUM_SCALE;
+  const rV = H / 0.8, rH = W / (0.8 * aspect); // iso: today's Home fit, unchanged
+  return Math.max(rV, rH, Math.sqrt(W * W + H * H) * 1.5) * 1.25;
+}
+export const HOME_BUTTON_TITLE = `Home view: ${HOME_VIEWS.map((v) => v.label).join(' / ')}`;
+
 export class OrbitController {
   /**
    * @param {object} deps
@@ -83,7 +107,7 @@ export class OrbitController {
     const h = this._canvas.clientHeight;
     if (w <= 0 || h <= 0) return;
     const aspect = w / h;
-    const size   = Math.max(0.1, this._orb.r * 0.35);
+    const size   = Math.max(0.1, this._orb.r * FRUSTUM_SCALE);
     this._camera.left   = -size * aspect;
     this._camera.right  =  size * aspect;
     this._camera.top    =  size;
@@ -91,21 +115,20 @@ export class OrbitController {
     this._camera.updateProjectionMatrix();
   }
 
-  /** Reset to the home isometric view, fitted to the current stock size. */
+  /** Go to the NEXT home view (HOME_VIEWS, item 51), fitted to the current stock size; returns it. */
   goHome(W, H) {
-    if (!W || !H) return;
+    if (!W || !H) return null;
     const rect = this._canvas.getBoundingClientRect();
     const canvasW = rect.width  || this._canvas.clientWidth  || 800;
     const canvasH = rect.height || this._canvas.clientHeight || 600;
     const aspect  = canvasW / canvasH;
 
-    const rV = H / 0.8;
-    const rH = W / (0.8 * aspect);
-    const rFit = Math.max(rV, rH, Math.sqrt(W * W + H * H) * 1.5) * 1.25;
-
-    this._targetOrb.q.setFromEuler(new this._THREE.Euler(0.955, 0, Math.PI / 4, 'ZXY'));
-    this._targetOrb.r = rFit;
+    this._homeIndex = nextHomeIndex(this._homeIndex);
+    const view = HOME_VIEWS[this._homeIndex];
+    this._targetOrb.q.setFromEuler(new this._THREE.Euler(view.euler[0], view.euler[1], view.euler[2], 'ZXY'));
+    this._targetOrb.r = homeViewRadius(view, W, H, aspect);
     this._targetOrb.target.set(0, 0, this._targetOrb.target.z || 0);
+    return view;
   }
 
   /** Animate to a specific theta/phi (used by ViewCube clicks). */

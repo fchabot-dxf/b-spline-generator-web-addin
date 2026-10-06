@@ -230,12 +230,16 @@ const BRUSH = CANVAS.replace("'[data-brick]'", `'[data-brick="brush"]'`).replace
 const HEIGHTS = `(async()=>{ const m=await import('./core/state.js'); const h=m.lastResult?.heights; if(!h) return 'none';
   let x=2166136261; for (let i=0;i<h.length;i++){ x^=Math.round(h[i]*1e5); x=Math.imul(x,16777619);} return h.length+'#'+(x>>>0).toString(36); })()`;
 const isPending = () => js(`!!document.getElementById('brickGenerate')?.classList.contains('pending')`);
-// a rebuild is async: wait until the heightmap hash is stable for 3 polls (and give a change 6s to appear)
-async function heightsSettled(prev, maxMs = 30000) {
+// a rebuild is async: wait until the heightmap hash is stable for 3 polls (and give a change 6s to appear).
+// MEASURED (advisor's band-rows gate, 182 rows): "Clumping 0.9 (Suppression 0.5)" read "3D unchanged" under the
+// --parallel load while it passed alone on main afdc4c0 AND on the branch (47/47 each): the rebuild started after
+// the 6 s window. A row that EXPECTS the 3D to change gives it THREE_D_EXPECTED_CHANGE_MS before calling it unchanged.
+const THREE_D_CHANGE_MS = 6000, THREE_D_EXPECTED_CHANGE_MS = 20000;
+async function heightsSettled(prev, maxMs = 30000, changeMs = THREE_D_CHANGE_MS) {
   let last = await js(HEIGHTS), same = 0; const t0 = Date.now();
   while (Date.now() - t0 < maxMs) {
     await sleep(700); const h = await js(HEIGHTS);
-    if (h === last) { if (++same >= 3 && (h !== prev || Date.now() - t0 > 6000)) return h; } else { same = 0; last = h; }
+    if (h === last) { if (++same >= 3 && (h !== prev || Date.now() - t0 > changeMs)) return h; } else { same = 0; last = h; }
   }
   return last;
 }
@@ -360,7 +364,7 @@ try {
       const readsOk = !!reads && Object.entries(c.expect.reads).every(([id, v]) => Math.abs(reads[id] - v) < 1e-6);
       const setsOk = !!sets && Object.entries(c.expect.sets).every(([k, id]) => sets[k] && sets[k].length === 1 && sets[k][0] === String(id));
       await apply();
-      const z1 = await heightsSettled(Z);
+      const z1 = await heightsSettled(Z, 30000, c.expect.threeD === true ? THREE_D_EXPECTED_CHANGE_MS : THREE_D_CHANGE_MS);
       await record(c, { result, pending: p, canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 }, sets, setsOk, reads, readsOk });
       Z = z1;
     } else if (c.kind === 'relay') {
@@ -431,7 +435,7 @@ try {
       const result = await act(c.do);
       await sleep(1500);
       const c1 = await js(CANVAS);
-      const z1 = await heightsSettled(Z);
+      const z1 = await heightsSettled(Z, 30000, c.expect.threeD === true ? THREE_D_EXPECTED_CHANGE_MS : THREE_D_CHANGE_MS);
       await record(c, { result, pending: await isPending(), canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 } });
       Z = z1;
     }

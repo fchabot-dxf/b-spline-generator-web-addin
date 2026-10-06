@@ -14,7 +14,9 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async
   return { ...actual, get ENGINE_OPTIONS() { return actual.ENGINE_OPTIONS.filter((o) => !engineOpts.without.includes(o)); } };
 });
 
-import { runBricks, syncAccentHighlight, BRICK_GEN_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { runBricks, syncAccentHighlight, BRICK_GEN_ATTR, ACCENT_OUTLINE, ACCENT_FLAG_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { stripEditorOnlyBrickAttrs } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
+import { buildDrapeSvg } from '../bspline-frame-builder/b-spline-gen/html/core/preview/drape-svg.js';
 import { accentCutsFor, accentedBrickIndices, ACCENT_MARK_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js';
 import { rasterizeBrickHeightMask } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-height-mask.js';
 import { BRICK_EDITOR_ONLY_ATTRS } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
@@ -106,5 +108,47 @@ describe('31b: the marks win over the grid rule wherever the accent is cut', () 
     const flat = await mask(undefined), m = await mask(tileAccent(0.5));
     expect(m.body[K(1.1, 1)]).toBeGreaterThan(flat.body[K(1.1, 1)]);
     expect(m.body[K(2.7, 1)]).toBeCloseTo(flat.body[K(2.7, 1)], 6);
+  });
+});
+
+describe('item 49: the accent outline is editor-only -- never in the drawing, the 3D drape, Send or the download', () => {
+  const yellow = new RegExp(ACCENT_OUTLINE.color, 'i');
+  it('marked bricks carry only the inert flag; the serialized drawing and its 3D drape hold no outline colour', () => {
+    const ed = fakeEditor();
+    runBricks(ed, S(tileAccent(0.5)), null);
+    const marked = syncAccentHighlight(ed, tileAccent(0.5), 1);
+    expect(marked).toBeGreaterThan(5);
+    const nodes = wallNodes(ed);
+    expect(nodes.filter((n) => n.getAttribute(ACCENT_FLAG_ATTR) === '1')).toHaveLength(marked);
+    expect(nodes.some((n) => yellow.test(n.getAttribute('stroke') || ''))).toBe(false);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 7 9">${ed._sketchLayer.node.innerHTML}</svg>`;
+    expect(yellow.test(svg)).toBe(false);
+    const layerId = nodes[0].getAttribute('data-layer');
+    expect(yellow.test(buildDrapeSvg([{ id: layerId, name: 'L', visible: true, showColor: true }], svg) || '')).toBe(false);
+  });
+  it('the outline is ONE rule of the live page, from ACCENT_OUTLINE', () => {
+    const ed = fakeEditor();
+    runBricks(ed, S(tileAccent(0.5)), null);
+    syncAccentHighlight(ed, tileAccent(0.5), 1);
+    const rule = document.getElementById('brickAccentOutlineStyle');
+    expect(rule && rule.textContent).toContain(`[${ACCENT_FLAG_ATTR}="1"]`);
+    expect(rule.textContent).toContain(ACCENT_OUTLINE.color);
+    syncAccentHighlight(ed, tileAccent(0.5), 1);
+    expect(document.querySelectorAll('#brickAccentOutlineStyle')).toHaveLength(1);
+  });
+  it('a board saved before item 49 (the old stroke attribute) loses it on the next sync', () => {
+    const ed = fakeEditor();
+    runBricks(ed, S(tileAccent(0.5)), null);
+    for (const n of wallNodes(ed)) { n.setAttribute('stroke', ACCENT_OUTLINE.color); n.setAttribute('stroke-width', '0.05'); }
+    syncAccentHighlight(ed, tileAccent(0.5), 1);
+    expect(wallNodes(ed).some((n) => yellow.test(n.getAttribute('stroke') || ''))).toBe(false);
+  });
+  it('Send and the download strip the flag (every brick kind)', () => {
+    for (const kind of ['wall', 'frame', 'brush']) {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      el.setAttribute('data-brick', kind); el.setAttribute(ACCENT_FLAG_ATTR, '1');
+      stripEditorOnlyBrickAttrs(el);
+      expect(el.hasAttribute(ACCENT_FLAG_ATTR), kind).toBe(false);
+    }
   });
 });
