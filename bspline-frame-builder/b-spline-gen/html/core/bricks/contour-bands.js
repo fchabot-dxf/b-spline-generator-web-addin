@@ -33,7 +33,7 @@
  * full-size bricks, never one row of stretched ones, and the next band always starts exactly where
  * the actual (snapped) rows end, with no seam gap.
  */
-import { inwardSignFor, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea } from './geometry.js';
+import { inwardSignFor, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, boundaryAtDepth } from './primitive-ribbon.js';
 import { scaledSet, BRICK_PATTERNS, MIN_PIECE_FRACTION } from './library.js';
@@ -252,6 +252,108 @@ function clipBandPiecesToBoard(bricks, board, set) {
   return out;
 }
 
+/** T86 16(c) part 2 (Fred's T18 / T19 / T14 necks): where the board is narrower than twice the band, a row's pieces from
+ *  OPPOSITE sides lay over the same ground (each is built from its own primitive with no knowledge of the other).
+ *  Declared rule: every point of the band area belongs to the piece whose OWN depth there is smallest -- depth from
+ *  the primitive the piece was offset from, exactly as it was built (sourceDepth) -- i.e. the side of the medial line
+ *  it lies on; ties go to the lower source index (seed-stable). Each piece is cut against the ORIGINAL pieces it
+ *  conflicts with, never against already-cut ones, so no region is handed round a cycle (attempt A, WORK-LOG) and
+ *  the smallest-depth piece always keeps its ground. The one ground that goes: a far piece's tongue left past the
+ *  line inside a near-side joint, cut off from its own piece (MEASURED on the 171-case sweep: every gap that opens
+ *  is narrower than the same board's widest existing joint -- it is joint, not a hole). Conflicting = two pieces of different
+ *  source primitives that are not joint neighbours in either piece's row walk (neighbours already meet at their
+ *  mitre, their own medial line; a corner's fan residual is 21b's) and overlap by more than MEDIAL_OVERLAP_SQIN.
+ *  A piece no conflict touches is returned as the same object (clean boards are byte-identical). Under-size pieces
+ *  after the cut: see the drop loop below. */
+const MEDIAL_OVERLAP_SQIN = 1e-4;
+const MEDIAL_HOLE_SQIN = 0.002; // a drop opening less than this (a grout-wide fleck, 0.034 x 0.06 in) is not a hole
+const MEDIAL_DROP_PASSES = 16; // a bound on the one-at-a-time drop trials below (T14's X takes 4)
+function sourceDepth(prim) {
+  if (prim.type === 'line') return (p) => (p.x - prim.p0.x) * prim.nx + (p.y - prim.p0.y) * prim.ny;
+  return (p) => prim.radialSign * (prim.r - Math.hypot(p.x - prim.cx, p.y - prim.cy));
+}
+function jointNeighbours(live, a, b) {
+  if (!live) return false;
+  const i = live.indexOf(a), j = live.indexOf(b), m = live.length;
+  return i >= 0 && j >= 0 && ((i + 1) % m === j || (j + 1) % m === i);
+}
+function yieldAtMedialLine(bricks, origins, primitives, set) {
+  const box = (p) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const q of p) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); } return [x0, y0, x1, y1]; };
+  const boxes = bricks.map((b) => box(b.polygon));
+  const conflicts = bricks.map(() => []);
+  for (let i = 0; i < bricks.length; i++) {
+    const oi = origins[i];
+    if (oi.src < 0) continue;
+    for (let j = i + 1; j < bricks.length; j++) {
+      const oj = origins[j], a = boxes[i], b = boxes[j];
+      if (oj.src < 0 || oj.src === oi.src) continue;
+      if (a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]) continue;
+      if (jointNeighbours(oi.live, oi.src, oj.src) || jointNeighbours(oj.live, oi.src, oj.src)) continue;
+      const lens = polygonIntersection(bricks[i].polygon, bricks[j].polygon);
+      if (lens.length < 3 || Math.abs(signedArea(lens)) <= MEDIAL_OVERLAP_SQIN) continue;
+      conflicts[i].push(j); conflicts[j].push(i);
+    }
+  }
+  if (!conflicts.some((c) => c.length)) return bricks;
+  const depth = primitives.map(sourceDepth);
+  const minArea = MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
+  const cutAll = (dropped) => bricks.map((b, i) => {
+    if (dropped.has(i)) return [];
+    let pieces = [b.polygon];
+    const di = depth[origins[i].src];
+    for (const j of conflicts[i]) {
+      if (dropped.has(j)) continue;
+      // the ground piece j takes from piece i: where j covers it AND j's own depth is smaller (ties: lower source)
+      const dj = depth[origins[j].src];
+      const taken = clipToField(bricks[j].polygon, (p) => dj(p) - di(p), origins[j].src > origins[i].src);
+      if (taken.length < 3) continue;
+      pieces = pieces.flatMap((q) => polygonDifference(q, taken));
+    }
+    if (pieces.length === 1) return pieces[0];
+    // a cut can split a piece; the largest part stays the brick (the rest is a fragment in the other side's joint)
+    return pieces.reduce((best, q) => (Math.abs(signedArea(q)) > Math.abs(signedArea(best)) ? q : best), []);
+  });
+  const areaOf = (poly) => (poly.length < 3 ? 0 : Math.abs(signedArea(poly)));
+  // the ground of piece i (its cut) that no other piece covers once the others are re-cut without it
+  const orphaned = (i, poly, others) => {
+    const bi = box(poly);
+    let left = areaOf(poly);
+    others.forEach((q, k) => {
+      if (k === i || q.length < 3) return;
+      const bk = box(q);
+      if (bk[2] < bi[0] || bi[2] < bk[0] || bk[3] < bi[1] || bi[3] < bk[1]) return;
+      left -= areaOf(polygonIntersection(poly, q));
+    });
+    return left;
+  };
+  // A piece the cut leaves under MIN_PIECE_FRACTION drops, one at a time, smallest first, and the cuts are redone
+  // without it so its ground goes to the piece across the line. A drop that would open a hole (the re-cut pieces do
+  // not cover the dropped piece's ground -- T14's X: a kite's tip beside the X is its own side's, nobody else's) is
+  // undone and the piece stays, under-size: a small piece beats a hole. A sliver whose drop opens
+  // less than MEDIAL_HOLE_SQIN still drops: a fleck that size reads as joint, a brick that size does not.
+  let dropped = new Set();
+  const kept = new Set();
+  let cut = cutAll(dropped);
+  for (let pass = 0; pass < MEDIAL_DROP_PASSES; pass++) {
+    let smallest = -1, smallestArea = minArea;
+    cut.forEach((poly, i) => {
+      if (!conflicts[i].length || dropped.has(i) || kept.has(i)) return;
+      if (areaOf(poly) < smallestArea) { smallest = i; smallestArea = areaOf(poly); }
+    });
+    if (smallest < 0) break;
+    const trial = new Set([...dropped, smallest]);
+    const trialCut = cutAll(trial);
+    if (orphaned(smallest, cut[smallest], trialCut) > MEDIAL_HOLE_SQIN) { kept.add(smallest); continue; }
+    dropped = trial; cut = trialCut;
+  }
+  const out = [];
+  bricks.forEach((b, i) => {
+    if (dropped.has(i) || cut[i].length < 3) return;
+    out.push(cut[i] === b.polygon ? b : { ...b, polygon: cut[i] });
+  });
+  return out;
+}
+
 /**
  * T86 item 28 (Fred, the 3-band preset on a 7x9 at 1.25 in: "make the app do the best result"): the FIT RULE for a
  * band stack. The stack's total depth may take at most BAND_FIT_SHARE of the board's narrowest gap between opposite
@@ -323,6 +425,7 @@ export function bricksContourBands(primitives, bands, opts) {
   const enriched = enrichPrimitives(primitives, inwardSign);
 
   const bricks = [];
+  const origins = []; // per brick, for yieldAtMedialLine: { src, live } (src -1 = no single source primitive)
   const L = set.brickLengthIn, H = set.brickHeightIn;
   let plannedBands = planBands(bands, L, H, set, closed);
   // T86 item 28: a closed, outer stack (the frame) obeys the fit rule; centred and open ones (brush ribbons) have no board
@@ -349,6 +452,7 @@ export function bricksContourBands(primitives, bands, opts) {
     if (isAreaBand) {
       const { pieces, nextId: afterId } = buildAreaBandBricks(enriched, depthSoFar, band, patternName, set, seed, bandIndex, nextId);
       bricks.push(...pieces);
+      for (let i = 0; i < pieces.length; i++) origins.push({ src: -1, live: null });
       nextId = afterId;
       depthSoFar += naturalWidth * rows;
       return; // forEach callback -- next band
@@ -366,19 +470,20 @@ export function bricksContourBands(primitives, bands, opts) {
       // `planCornerRun`'s own header).
       const rowSequence = sequence && odd ? [sequence[1], sequence[0]] : sequence;
       const forcedFStart = !sequence && staggerFrac > 0 && odd ? staggerFrac : undefined;
-      const { pieces, nextId: afterId } = ribbonPieces(
+      const { pieces, nextId: afterId, sources, liveIndices } = ribbonPieces(
         enriched, d0, d1, set, patternName, pitch, set.grout.widthIn,
         seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
         rowSequence, forcedFStart, closed, row,
       );
       bricks.push(...pieces);
+      for (const src of sources) origins.push({ src, live: liveIndices });
       nextId = afterId;
     }
     depthSoFar += naturalWidth * rows;
   });
 
   // centred bands straddle the path by design, and an open path has no board: only a closed outer stack is clipped
-  const laid = fitBoard ? clipBandPiecesToBoard(bricks, fitBoard, set) : bricks;
+  const laid = fitBoard ? clipBandPiecesToBoard(yieldAtMedialLine(bricks, origins, enriched, set), fitBoard, set) : bricks;
   return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, depthSoFar) : [], ...(fit ? { bandsReduced: fit.note } : {}) };
 }
 
