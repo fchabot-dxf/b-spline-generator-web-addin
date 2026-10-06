@@ -23824,3 +23824,7 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - TESTS: tests/brick-quick-undo.test.js (4; the click row mutation-fails with the old unwrapped handler);
   snapshot-manager + delete-frame rows moved to restore.*. Matrix undo group + 2 rows (SIDEBAR_UNDO): 5 rows 0 FAIL.
   Full vitest 344 files, 5478 passed (first run lost workers to 'process out of memory' under fleet load; re-run green).
+- CLOSED (item 71 follow-up): the one early pick that did not re-lay. Re-run after Fusion's restart (Fusion 1.2 GB,
+  10 of 31.8 GB free; at the time of the miss Fusion held 65 GB): one applied T1 board, 20 x (Quick pattern Herringbone,
+  Stretcher) = 40 picks, each checked for a new laid geometry + pattern within 8 s: 40/40 re-laid (0.9 s each), 0 misses.
+  Taken as the memory starvation at the time, not a fault in the pick path.
