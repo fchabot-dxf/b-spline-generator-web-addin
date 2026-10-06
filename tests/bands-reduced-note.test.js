@@ -128,6 +128,21 @@ describe('F35 item 35: the bands-reduced note', () => {
     expect(shown('brickLayWarnings')).toBe(true);
     expect(shown('brickFrameBandsNote')).toBe(true);
   });
+  // T86 item 30: a band NARROWED to fit a feature can leave no wall (T9 7x9 1.5 in: the band fills the web) -- that fit
+  // is not item 28's (a wall always remains), so the empty-wall warning shows beside the note (the brick-matrix lay row)
+  it('a narrowed band with an empty wall: the warning shows too, beside the note', () => {
+    setup('frame');
+    const rec = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    rec.setAttribute('data-brick-record', 'wall-full'); rec.setAttribute('data-layer', 'b');
+    window.svgEditor._sketchLayer.node.appendChild(rec);
+    const NARROWED = { requested: 3, kept: 1, steps: [{ band: 2, step: 'drop' }, { band: 1, step: 'drop' }, { band: 0, step: 'narrow', toIn: 1.46 }], gapIn: 2.94, limitIn: 0.98, requestedDepthIn: 3.2, depthIn: 1.46, fits: true };
+    lay({ wallCount: 0, frameCount: 92, bandsReduced: NARROWED });
+    expect(shown('brickLayWarnings')).toBe(true);
+    expect($('brickLayWarnings').textContent).toMatch(/no room for the wall/);
+    expect(shown('brickFrameBandsNote')).toBe(true);
+    lay({ wallCount: 40, frameCount: 92, bandsReduced: NARROWED });
+    expect(shown('brickLayWarnings')).toBe(false);
+  });
   // A1 (3D-panel audit: a sidebar Frame bands pick that only partly fits said nothing there): the sidebar's note box
   // lists the Frame section's notes too -- read from the REAL page, not this fixture's copy
   it('the main sidebar shows the band-fit note too (its box lists the frame notes in the page)', () => {
