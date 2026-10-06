@@ -30,7 +30,8 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async
 });
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, frameContext: vi.fn(() => ({})) };
+  // a FRAMED context, as the app's provider gives with a template picked (item 66: no templateId = the board rectangle)
+  return { ...actual, frameContext: vi.fn(() => ({ defs: { templates: [] }, record: { templateId: 'template_1' } })) };
 });
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -944,7 +945,7 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
       expect(showToast).not.toHaveBeenCalledWith(FRAME_NEEDS_A_FRAME, 'warn');
       expect(buildRibbonPrimitives.mock.calls.at(-1)[0].map((p) => [p.p0.x, p.p0.y])).toEqual([[0, 0], [7, 0], [7, 9], [0, 9]]);
     } finally {
-      frameContext.mockImplementation(() => ({}));
+      frameContext.mockImplementation(() => ({ defs: { templates: [] }, record: { templateId: 'template_1' } }));
     }
   });
   it('N9: a template whose outline cannot carry a contour says so in a toast (not only the console)', () => {
@@ -1034,7 +1035,7 @@ describe('turn 207 (Fred / 88): the Frame element (and the Wall in it) follows t
       expect(call[3].kinds).toContain('frame');
       expect(call[2]).toBeTruthy();
     } finally {
-      frameContext.mockImplementation(() => ({}));
+      frameContext.mockImplementation(() => ({ defs: { templates: [] }, record: { templateId: 'template_1' } }));
     }
   });
   it('Frame bricks on the canvas, a template whose outline cannot carry a contour: the Frame kind re-lays with no frame = clears it', () => {

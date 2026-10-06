@@ -40,10 +40,10 @@ import {
   bondShift, wallPatternOfBase,
 } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
-import { BRICK_CONTROL_REQUIRES, requirementMet } from './brick-control-requires.js';
+import { BRICK_CONTROL_REQUIRES, requirementMet, FRAME_NEEDS_A_FRAME } from './brick-control-requires.js';
 import { ENGINE_OPTIONS } from '../core/bricks/index.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
-import { frameContourSilhouette } from '../editor/contour-from-frame.js';
+import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.js';
 import { rectToPrimitives } from '../core/inset-window.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
@@ -1263,7 +1263,9 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease') {
 /** Audit (88's matrix): grey out every control whose declared requirement is unmet
  *  (main/brick-control-requires.js) -- disabled, with the reason as its tooltip. */
 function syncControlRequires() {
-  const ctx = { engineOptions: ENGINE_OPTIONS, facts: { bricksLaid: _bricksLaid() } };
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  // item 63: a frame contour to lay bands along (none only for an outline that can't carry one); unknown without an editor
+  const ctx = { engineOptions: ENGINE_OPTIONS, facts: { bricksLaid: _bricksLaid(), ...(editor ? { frameContour: !!frameBandContour(editor) } : {}) } };
   // a control under several rules is greyed while ANY is unmet (the first unmet rule's reason shows)
   const unmet = new Map(), ruled = new Set(), whys = new Set();
   for (const rule of BRICK_CONTROL_REQUIRES) {
@@ -1498,8 +1500,14 @@ function _layBricks(editor, frameGeom, kinds, { amend = null } = {}) {
 
 /** Audit C1: what Generate lays -- every element kind already on the canvas, plus the active tool's
  *  own kind (BRICK_TOOLS `lays`). Frame needs a usable frame. A Wall alone never brings Frame bands. */
+/** F35 item 63: an element a control asks to LAY even though it is not on the canvas yet (the sidebar's Frame bands
+ *  pick, BRICK_QUICK_SETTINGS `lays`). Kept until the next lay runs -- a deferred lay (_relayOnRelease) still sees
+ *  it -- and dropped by that lay. */
+const _requestedKinds = new Set();
+export function requestLay(kind) { if (BRICK_KINDS.includes(kind)) _requestedKinds.add(kind); }
+
 function _kindsToLay(editor, frameGeom) {
-  const present = _presentKinds(editor);
+  const present = [..._presentKinds(editor), ..._requestedKinds];
   const active = BRICK_TOOLS.find((t) => t.id === _activeTool);
   // a Frame element ON the canvas is always re-laid: with no frame contour left (template Rectangle, Offset on)
   // that lays nothing, i.e. clears it -- stale bands must not stay and carve (turn 207)
@@ -1513,7 +1521,7 @@ function _kindsToLay(editor, frameGeom) {
 /** Audit v2 N9: Generate with the Frame tool on a board with no usable frame outline laid nothing and said so only in
  *  the console. Since item 66 a board with NO template lays the bands along its rectangle; this is left for a template
  *  whose outline cannot carry a contour. */
-export const FRAME_NEEDS_A_FRAME = "This frame's outline can't carry brick bands -- pick another frame template.";
+export { FRAME_NEEDS_A_FRAME }; // declared once in brick-control-requires.js (the toast and the greyed row's reason)
 
 /** F35 item 39 (Fred, on a restored board: "the opened geometry isn't refreshable by a simple Generate; it needs a
  *  setting changed"): the Generate BUTTON = re-lay now with a NEW brick seed, like the terrain's Generate New Seed --
@@ -1534,6 +1542,7 @@ export function generateBricks({ amend = null } = {}) {
   if (!editor) return false;
   const frameGeom = resolveFrameGeom(editor);
   const kinds = _kindsToLay(editor, frameGeom);
+  _requestedKinds.clear(); // item 63: a request is for the next lay only
   if (!frameGeom && BRICK_TOOLS.find((t) => t.id === _activeTool)?.lays === 'frame') showToast(FRAME_NEEDS_A_FRAME, 'warn');
   if (!kinds.length) return false;
   return _layBricks(editor, frameGeom, kinds, { amend }) !== false;
@@ -1725,10 +1734,17 @@ export function setFrameBandPattern(i, patternId, commit = 'generate') {
   commitBrickSetting(commit);
 }
 
+/** What a new Frame band PRESET drops, declared once (Fred, item 33: "a pick is dropped on a preset change"):
+ *  the corner pick (the preset starts on its OWN corner) and, F35 item 58 follow-up, the per-band accents (and
+ *  with them their levels) -- they are stored by band NUMBER, so an old pick would land on the new preset's band.
+ *  A pattern change on one band keeps that band's accent (setFrameBandPattern does not read this). */
+export const FRAME_PRESET_DROPS = Object.freeze({ frameCorner: () => null, frameBandAccents: () => [] });
+
 export function setFrameBandPreset(presetId, commit = 'generate') {
   const wasRock = isRockFrame(P.brickSettings);
   P.brickSettings.frameBandPreset = presetId;
-  P.brickSettings.frameCorner = null; // item 33: a new preset starts on its OWN corner (the picker overrides)
+  for (const [key, fresh] of Object.entries(FRAME_PRESET_DROPS)) P.brickSettings[key] = fresh();
+  if (_accentClickArmed && _accentClickTarget.kind === 'frameBand') _disarmAccentClick(); // its band's pick is gone
   // a rock frame stays rock with another band count: every band of the new preset fieldstone
   if (wasRock) P.brickSettings.frameBandPatterns = (FRAME_PRESETS[presetId] || []).map(() => 'fieldstone');
   syncFramePresetButtons();
@@ -2389,13 +2405,16 @@ const BRICK_QUICK_SETTINGS = [
     isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
   { id: 'pattern', label: 'Wall pattern', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternIconSvg(c.id, 24),
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
+  // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
+  // (`lays`), or re-lays it; greyed while the board has no frame contour (BRICK_CONTROL_REQUIRES 'frameContour')
   { id: 'frameBands', label: 'Frame bands', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetIconSvg(c.id, 24),
-    isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
+    lays: 'frame', isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
   // F35 item 55: the board-wide grout colour (paint only, nothing re-lays); any other hex from the Brick tab's picker
   { id: 'groutColor', label: 'Grout colour', choices: () => GROUT_COLOR_CHOICES, iconFor: _groutSwatchSvg,
     isCurrent: (c) => c.color === ((P.brickSettings.groutPaint || {}).color ?? null), apply: (c) => setGroutPaint({ color: c.color }, null) },
 ];
 const quickButtonId = (row, choice) => `brickQuick_${row.id}_${choice.id}`;
+const quickRowId = (row) => `brickQuickRow_${row.id}`;
 /** F35 item 55: the sidebar's grout colours, declared -- None (the board shows through) + a few mortar shades. */
 export const GROUT_COLOR_CHOICES = Object.freeze([
   { id: 'none', label: 'None (the board shows through)', color: null },
@@ -2419,6 +2438,7 @@ function renderQuickSettings(container) {
     label.textContent = row.label;
     container.appendChild(label);
     const list = document.createElement('div');
+    list.id = quickRowId(row);
     list.style.cssText = 'display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;';
     for (const choice of row.choices()) {
       const btn = document.createElement('button');
@@ -2429,7 +2449,7 @@ function renderQuickSettings(container) {
       const icon = row.iconFor && row.iconFor(choice);
       if (icon) { btn.innerHTML = icon; btn.title = choice.label; btn.setAttribute('aria-label', choice.label); btn.style.padding = '2px'; }
       else btn.textContent = choice.label;
-      btn.addEventListener('click', () => row.apply(choice));
+      btn.addEventListener('click', () => { if (row.lays) requestLay(row.lays); row.apply(choice); });
       list.appendChild(btn);
     }
     container.appendChild(list);
@@ -2483,7 +2503,9 @@ function frameBandContour(editor) {
   const rect = () => rectToPrimitives({ x1: 0, y1: 0, x2: editor._mW, y2: editor._mH });
   if (off.on === false) return rect();
   const ctx = frameContext(editor);
-  if (!ctx) return rect(); // item 66: no frame template = the board rectangle
+  // item 66: no frame template = the board rectangle. MEASURED live (seat D, item 63): under template None the
+  // provider still returns a context ({defs, record} with no templateId), so `!ctx` alone never fired there
+  if (!ctx || !hasFrame(ctx)) return rect();
   const sil = frameContourSilhouette(ctx, Number(off.distance) || 0, 0);
   return sil.error ? null : sil.primitives;
 }

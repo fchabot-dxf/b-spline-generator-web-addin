@@ -71,6 +71,18 @@
       "shots": [
         "seatE"
       ]
+    },
+    {
+      "key": "seatF",
+      "name": "Seat F",
+      "station": "home-pc",
+      "branch": "load-stages",
+      "task": "NEXT-SESSION-fb-app.md",
+      "checkout": "-wt\\fa",
+      "session": "b-spline-generator-web-addin-fa",
+      "shots": [
+        "seatF"
+      ]
     }
   ]
 }
