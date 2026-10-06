@@ -911,7 +911,7 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
     setup('brush');
     expect($('brickBtnReliefCarved').disabled).toBe(true);
     expect($('brickQuick_pattern_herringbone').disabled).toBe(true);
-    expect($('brickBtnReliefCarved').title).toMatch(/No Wall or Frame bricks/);
+    expect($('brickBtnReliefCarved').title).toMatch(/No bricks on this board yet/);
     expect(shown('brickSidebarNoBricks')).toBe(true);
     $('brickTool_wall').click();
     $('brickGenerate').click();

@@ -1352,12 +1352,18 @@ function _presentKinds(editor) {
     || !!node?.querySelector?.(`[data-brick-gen="1"][data-brick="${kind}"]`));
 }
 
-/** Audit v2 N5: does the board have Wall/Frame bricks? The live canvas, or the saved drawing while the editor
- *  has not loaded it yet (after a reload, before it is opened). */
-function _bricksLaid() {
-  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+/** Audit v2 N5: does the board have bricks? The live canvas, or the saved drawing while the editor has not loaded it
+ *  yet (after a reload, before it is opened). Advisor (seat E, brush grout): ANY brick element counts -- a Wall / Frame
+ *  record or piece, a Brush / Raised stroke (its spine or pieces) -- so the sidebar's quick rows (the grout colour of a
+ *  stroke-only board) are not greyed while the board holds strokes. */
+export function boardHasBricks(editor, savedSvg) {
+  const node = editor && editor._sketchLayer && editor._sketchLayer.node;
   if (_presentKinds(editor).length) return true;
-  return typeof P.editorSvg === 'string' && /data-brick="(wall|frame)"/.test(P.editorSvg);
+  if (node && node.querySelector && node.querySelector('[data-brick-gen="1"], [data-brick="brush-spine"]')) return true;
+  return typeof savedSvg === 'string' && /data-brick="(wall|frame|brush|brush-spine)"/.test(savedSvg);
+}
+function _bricksLaid() {
+  return boardHasBricks(typeof window !== 'undefined' ? window.svgEditor : null, P.editorSvg);
 }
 
 /** F35 item 27: the frame part of a laid key (`#frame:` -- the frame record + board size those bricks were laid
