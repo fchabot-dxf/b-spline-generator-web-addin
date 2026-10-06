@@ -504,6 +504,42 @@ def _send_stage(stage_id, is_preview=False):
         pass
 
 
+# H23 item 99b: the Design is read from the ACTIVE DOCUMENT, never from app.activeProduct -- in the Manufacture workspace
+# (where the user is after BUILD + APPLY) activeProduct is the CAM product and a Send failed at once with "No active
+# Fusion design" (measured live, seat A, 2026-10-06).
+DESIGN_WORKSPACE_ID = 'FusionSolidEnvironment'
+
+
+def _active_design():
+    """The active document's Design, whichever workspace is active; None when there is none."""
+    try:
+        des = adsk.fusion.Design.cast(app.activeProduct)
+        if des:
+            return des
+        doc = app.activeDocument
+        if not doc:
+            return None
+        return adsk.fusion.Design.cast(doc.products.itemByProductType('DesignProductType'))
+    except Exception:
+        return None
+
+
+def _ensure_design_workspace():
+    """A Send started from another workspace (Manufacture) switches to the Design workspace first: the frame-builder
+    engines a Send runs read app.activeProduct themselves. Returns True when it switched."""
+    try:
+        if adsk.fusion.Design.cast(app.activeProduct):
+            return False
+        ws = app.userInterface.workspaces.itemById(DESIGN_WORKSPACE_ID)
+        if ws and _active_design():
+            ws.activate()
+            _log(f'[SEND] switched to the Design workspace (was {app.activeProduct.productType if app.activeProduct else None})')
+            return True
+    except Exception as e:
+        _log(f'[SEND] Design workspace switch failed: {e}')
+    return False
+
+
 # H23 item 99 (Fred, CAM option (b)): a Send clears the CAM our BUILD made (its setups AND its Manufacturing Models,
 # found by the names CAM-builder declares -- SETUP_SPECS / MM_RULES -- via cam_coordinator.clear_addin_build); the
 # user presses BUILD + APPLY again afterwards (a full recreate, ~50 s). Anything else in the CAM workspace stays.
@@ -559,7 +595,7 @@ def _clear_custom_graphics():
     """Remove the native canvas preview mesh."""
     global custom_graphics_group
     try:
-        des = adsk.fusion.Design.cast(app.activeProduct)
+        des = _active_design()
         if not des: return
         count = 0
         groups = [g for g in des.rootComponent.customGraphicsGroups]
@@ -594,7 +630,7 @@ def _remove_last_import():
     document-blind (set by whichever document was active at Send time), so they must never be trusted as the
     deletion source on their own; each one is checked against the active design first (_in_active_design)."""
     global last_imported_occurrences, current_import_group
-    des = adsk.fusion.Design.cast(app.activeProduct)
+    des = _active_design()
 
     if 'current_import_group' in globals() and current_import_group:
         try:
@@ -676,8 +712,7 @@ def _timeline_marker_safe():
     accessible. Callers must handle the None case gracefully.
     """
     try:
-        app = adsk.core.Application.get()
-        design = adsk.fusion.Design.cast(app.activeProduct)
+        design = _active_design()
         if not design:
             return None
         # Direct-edit designs have no timeline → designType == DirectDesignType.
@@ -700,8 +735,7 @@ def _wrap_timeline_in_group(start_count, group_name):
     if start_count is None:
         return
     try:
-        app = adsk.core.Application.get()
-        design = adsk.fusion.Design.cast(app.activeProduct)
+        design = _active_design()
         if not design or design.designType != adsk.fusion.DesignTypes.ParametricDesignType:
             return
         timeline = design.timeline
@@ -1145,8 +1179,7 @@ def _get_current_board_size():
     """
     out = {}
     try:
-        app = adsk.core.Application.get()
-        design = adsk.fusion.Design.cast(app.activeProduct)
+        design = _active_design()
         if not design:
             return out
         w_param = design.allParameters.itemByName('widthIn') or design.allParameters.itemByName('BSG_widthIn')
@@ -1578,7 +1611,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 indices = data.get('indices', [])
                 if not verts or not indices:
                     return
-                des = adsk.fusion.Design.cast(app.activeProduct)
+                des = _active_design()
                 if not des:
                     return
 
@@ -1698,7 +1731,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         {ok, frames, error}."""
         result = {'ok': False, 'frames': [], 'error': None}
         try:
-            des = adsk.fusion.Design.cast(app.activeProduct)
+            des = _active_design()
             if not des:
                 raise RuntimeError('No active Fusion design.')
             result['frames'] = _delete_frames(des)
@@ -1723,7 +1756,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         global last_imported_occurrences, current_import_group
         result = {'ok': False, 'frames': [], 'bsplineSets': 0, 'error': None}
         try:
-            des = adsk.fusion.Design.cast(app.activeProduct)
+            des = _active_design()
             if not des:
                 raise RuntimeError('No active Fusion design.')
             result['frames'] = _delete_frames(des)
@@ -1752,7 +1785,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             from fb_engine import send_frame as fb_send, solid_coordinator
             from fb_engine.template_resolver import resolve_template
             from fb_utils.fb_logger import DebugLogger
-            design = adsk.fusion.Design.cast(app.activeProduct)
+            design = _active_design()
             result = fb_send.send_frame(
                 design, payload, lambda: _find_bspline_core_body(design), DebugLogger(_frame_builder_dir()),
                 resolve_template=resolve_template,
@@ -1813,8 +1846,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             else:
                 _log(f'[SINGLE-STEP] Legacy single-stepText path.')
 
-            # 1. Check for active design
-            des = adsk.fusion.Design.cast(app.activeProduct)
+            # 1. Check for active design (H23 item 99b: from the active document; a Send from Manufacture switches
+            #    to the Design workspace first)
+            if not is_preview:
+                _ensure_design_workspace()
+            des = _active_design()
             if not des:
                 _log('ERROR: no active Design product')
                 if not is_preview: _send_import_failed('No active Fusion design -- open or create a design, then Send again.')
