@@ -22938,3 +22938,27 @@ T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given 
   out at 90 s again (139.9 s run, loaded machine), as logged above: no bricks import, passes alone.
 - Shots: before_after_worst_necks.png re-rendered from this build; t18_seam_zoom.png (the seam as a joint);
   t14_x_centre_zoom.png (main vs branch, the X centre: two 0.093 sq in half-diamonds, blue = joint given back).
+
+## H23 P1 option B probe -- keep the frame across a Send, rebuild only its solid (seat A / 77, 2026-10-05, no build)
+- Why the spec'd P1 can't fire: a Send deletes the frame FIRST, then every B-Spline Set (b-spline-gen.py
+  _handle_generate); the bars extrude TO core.underside (a face of the set's Clean panel) and the trim lives in that
+  set. A hash can't keep a frame whose target is replaced on every Send.
+- (1) Frame build split, from the frame log of two e2e Sends (T1 7x9): fresh doc 20:34: sketch 8 s, solid 7.6 s (bars
+  3 s, trim 4 s), ~17 s total; item 87's D 22:04: sketch 10 s, solid 36.5 s (bars 11 s, trim 18 s + 5 s).
+- (2) Live, deployed main 2b5695d, scratch doc: base Send with the frame, then a re-Send of the same board with the
+  frame delete stubbed (payload without frame):
+    swap Send 28.6 s. The kept bars stay as bodies but warn "Face 1 missing ... using cached geometry"; the trim is
+      gone (it lived in the old set); the new set lands at the timeline END, after the frame.
+    reordering the set's 3 items back to the front (later -> earlier works; reorder(count) raises featureAtIndex):
+      7.8 s.
+    RE-POINTING IS NOT POSSIBLE: ExtrudeFeature.setOneSideExtent raises "InternalValidationError : toEntity" for a
+      new ToEntity extent (rolled or not, chained or not, proxy or native face) and even for a DistanceExtent -- the
+      dead target blocks every edit (unrolled: "Didn't roll editing feature back"). extentOne.entity raises
+      "targets.size() == 1". (One observation, one geometry.)
+    Fallback B' (keep the frame component + its 3 sketches, delete the 4 bar features, re-run build_solid_logic_v3
+      alone): deleting the bars blocked Fusion ~2 min; the solid-only rebuild took 35.1 s; the result is IDENTICAL to
+      the base (8 bodies, volumes + bboxes to 4 dp; timeline order and health the same as the base).
+- Verdict: B saves at most the 8-10 s sketch and costs a 7.8 s reorder + a minutes-long delete of the broken bars +
+  a slower solid. Not worth it. Not built.
+- Hygiene: scratch doc closed by handle (verified only Fred's Untitled), no claude77 modules or worktree paths left,
+  holder none.
