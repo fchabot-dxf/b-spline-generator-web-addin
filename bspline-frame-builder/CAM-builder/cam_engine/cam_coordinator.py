@@ -227,32 +227,45 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
     else:
         # ── B-spline: the declared MM_RULES / SETUP_SPECS pipeline ─────────────
 
-        # Auto-cleanup: delete any prior build's Setups and MMs with our
-        # known names so a re-run REPLACES instead of DOUBLING.
-        _log(logger, "COORDINATOR: entering bspline branch, about to run cleanup", "INFO")
-        try:
-            _cleanup_previous_build(cam, logger)
-            _log(logger, "COORDINATOR: cleanup returned normally", "DEBUG")
-        except Exception as e:
-            import traceback as _tb
-            _log(logger, f"COORDINATOR: cleanup raised {type(e).__name__}: {e}\n{_tb.format_exc()}", "WARNING")
-
-        # H23 item 82: the shared WCS points go into the SOURCE design before the MMs
-        # snapshot it, so every MM carries its own copy for its setups to bind.
+        # H23 item 82: the shared WCS points go into the SOURCE design (moved in place on a
+        # later BUILD), so every MM carries its own copy for its setups to bind.
         try:
             setup_builder.ensure_wcs_sketches(design, logger)
         except Exception as e:
             _log(logger, f"COORDINATOR: ensure_wcs_sketches raised {type(e).__name__}: {e}", "WARNING")
 
-        mms = mm_builder.build_all_mms(cam, design, classifier, logger)
+        # H23 item 86: a re-BUILD REUSES the existing build (every declared MM + tagged setup
+        # present and valid) and re-applies the declared configuration in place (~1 s,
+        # measured); otherwise today's full recreate (cleanup, then MMs, then setups).
+        reuse = setup_builder.find_reusable_build(
+            cam, {r: mm_builder._mm_display_name(r) for r in mm_builder.MM_RULES}, logger)
+        report['reused'] = reuse is not None
+        if reuse is not None:
+            _log(logger, "COORDINATOR: reusing the existing build in place", "INFO")
+            mms = reuse['mms']
+        else:
+            # Auto-cleanup: delete any prior build's Setups and MMs with our
+            # known names so a re-run REPLACES instead of DOUBLING.
+            _log(logger, "COORDINATOR: entering bspline branch, about to run cleanup", "INFO")
+            try:
+                _cleanup_previous_build(cam, logger)
+                _log(logger, "COORDINATOR: cleanup returned normally", "DEBUG")
+            except Exception as e:
+                import traceback as _tb
+                _log(logger, f"COORDINATOR: cleanup raised {type(e).__name__}: {e}\n{_tb.format_exc()}", "WARNING")
+            mms = mm_builder.build_all_mms(cam, design, classifier, logger)
+
         for rule in mm_builder.MM_RULES:
             report['mms'][rule] = (rule in mms)
             if rule not in mms:
                 report['errors'].append(f"MM '{rule}' was not built.")
 
-        setups = setup_builder.build_all_setups(cam, mms, logger,
-                                                skip_templates=skip_templates,
-                                                skip_machine=skip_machine)
+        if reuse is not None:
+            setups = setup_builder.update_setups_in_place(cam, reuse, logger)
+        else:
+            setups = setup_builder.build_all_setups(cam, mms, logger,
+                                                    skip_templates=skip_templates,
+                                                    skip_machine=skip_machine)
         built_names = {s.name for s in setups}
         for spec in setup_builder.SETUP_SPECS:
             report['setups'].append({
