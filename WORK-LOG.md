@@ -23189,3 +23189,8 @@ DECIDED (advisor, Fred's item 28 "ok to all"): option (a) -- the fit rule's own 
 share for every reduction. Note text: "band narrowed to fit; bricks cut to the row depth" (a soldier row narrower than its
 brick cuts the bricks to the row depth -- no smaller whole-brick pattern to fall back to). Acceptance: before/after on T9
 thick flange (single, dc at 1 in) + the 456-lay sweep showing nothing else changes.
+- Item 89 Fusion acceptance on joint-rule 2db0668 (seat A, item89-baseline @ 920a63f, table_jointrule_2db0668.txt):
+  ACCEPTED -- 57 / 57 boards profiles == pieces, 0 slivers, 0 open ends, 0 multi-loop profiles (baseline on main: 14 / 57
+  mismatched, 445 extra profiles, 172 slivers; worst T14 three_band 133/289/92 -> 133/133/0, T3 three_band 145/248/48 ->
+  97/97/0). Server verified (--root guard byte-matched 30 served files). Caveat: the sweep's frame Generate is not
+  reproducible even seeded, so before / after are not the same boards case by case; the acceptance holds on every board.
