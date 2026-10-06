@@ -39,7 +39,7 @@ export const BRICK_CONTROL_REQUIRES = [
   { controls: ['brickRaisedMode_grout'], requires: { engineOption: 'groutCut' }, hides: true,
     why: 'Grout mode cuts joints with the engine\'s bricksGroutCut (seat B, T86 item 10) -- hidden until it exists' },
   { controls: SIDEBAR_BRICK_CONTROLS, within: ['brickQuickSettings', 'brickSurfaceStyleToggle'], requires: { fact: 'bricksLaid' },
-    why: 'No Wall or Frame bricks on this board yet -- lay them in the editor\'s Brick tab first' },
+    why: 'No bricks on this board yet -- lay a Wall, a Frame or a Brush stroke in the editor\'s Brick tab first' },
   // F35 item 63: the sidebar's Frame bands pick lays the frame along its contour -- none for an outline that can't carry one
   { controls: [], within: ['brickQuickRow_frameBands'], requires: { fact: 'frameContour' }, why: FRAME_NEEDS_A_FRAME },
 ];

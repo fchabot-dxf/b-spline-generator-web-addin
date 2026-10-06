@@ -114,6 +114,11 @@ export const BRICK_CONTROLS = [
   { name: 'Grout width 0.08', kind: 'editor', tool: 'wall', do: set('brickGroutWidth', 0.08, 'input'), expect: LAYOUT },
   // F35 item 55 (seat E): the grout PAINT -- the canvas changes (the grout node's d / fill), the 3D heights must NOT (paint only)
   { name: 'Grout edge 0.03 (paint only)', kind: 'editor', tool: 'wall', do: set('brickGroutEdge', 0.03), expect: { ...E(false, true, false), ...AT_ONCE }, introducedBy: '3a10b65' },
+  // seat D (measured): the baseline's Generate re-rolls the brick seed (F35 item 39), and on some seeds the top bias
+  // (0.8 x course height vs 0.2 x noise, core/bricks/suppression.js) removes the same top pieces whatever the noise
+  // scale -- Clumping is then a genuine no-op and its row failed at random (same canvas as the row before). A declared
+  // seed makes Suppression + Clumping test the controls, not the dice.
+  { name: 'Brick seed 7919 (Suppression/Clumping rows)', kind: 'editor', tool: 'wall', do: set('brickSeed', 7919, 'input'), expect: LAYOUT },
   { name: 'Suppression 0.5', kind: 'editor', tool: 'wall', do: set('brickSuppression', 0.5), expect: LAYOUT },
   { name: 'Clumping 0.9 (Suppression 0.5)', kind: 'editor', tool: 'wall', do: set('brickClumping', 0.9), expect: LAYOUT, requires: NEEDS_SUPPRESSION },
   { name: 'Suppression 0', kind: 'editor', tool: 'wall', do: set('brickSuppression', 0), expect: LAYOUT },
@@ -138,6 +143,12 @@ export const BRICK_CONTROLS = [
   // band 1 brings the brick frame back (its own set) -- the Soldier button must exist on a rock frame's row
   { name: 'Band 1 pattern: Fieldstone again (rock frame)', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_fieldstone'), expect: { ...LAYOUT, sets: { frame: 3 } }, introducedBy: '40c4bdf' },
   { name: 'Band 1 pattern: Soldier, back from rock (item 46)', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_soldier'), expect: { ...LAYOUT, sets: { frame: 1 } }, introducedBy: '40c4bdf' },
+  // F35 item 61 (seat E): the Frame Set row lists every band-capable set -- Grey stone lays its own stones, White rocks makes
+  // the frame rock (the set implies the pattern) and a course band pattern brings Grey stone back (the pattern implies the set)
+  { name: 'Frame Set: Grey stone (its own stones)', kind: 'editor', tool: 'frame', do: click('brickSet_5'), expect: { ...LAYOUT, sets: { frame: 5 } }, introducedBy: '0922034' },
+  { name: 'Frame Set: White rocks (the frame turns rock)', kind: 'editor', tool: 'frame', do: click('brickSet_3'), expect: { ...LAYOUT, sets: { frame: 3 } }, introducedBy: '0922034' },
+  { name: 'Band 1 pattern: Soldier, back to Grey stone', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_soldier'), expect: { ...LAYOUT, sets: { frame: 5 } }, introducedBy: '0922034' },
+  { name: 'Frame Set: Red Brick again', kind: 'editor', tool: 'frame', do: click('brickSet_1'), expect: { ...LAYOUT, sets: { frame: 1 } }, introducedBy: '0922034' },
   // F35 item 66: the 'Frame offset distance / off / on' rows went with the retired Offset-from-frame control
   { name: 'Frame Level -1/8', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', -0.125), expect: LEVEL, introducedBy: '90a1483' },
   { name: 'Frame Level 0', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', 0), expect: LEVEL, introducedBy: '90a1483' },
@@ -315,6 +326,14 @@ export const GROUT_JOINTS = {
 export const QUICK_FRAME_LAYS = {
   template: 'template_18', pick: 'brickQuick_frameBands_single_soldier', row: 'brickQuickRow_frameBands',
   noTemplatePick: 'brickQuick_frameBands_double_course', introducedBy: 'item 63',
+};
+
+// ---- F35 item 65 (seat D): a brick moved BY HAND (Select tool, a real drag) follows in the 3D and survives Apply +
+// reopen. Measured before the fix: the move was stored as a transform the height mask never read -- 3D unchanged.
+export const HAND_EDIT = {
+  template: 'template_1', size: 'brickSizePreset_half1', selectTool: 'toolSelect',
+  dragBrickWidths: 0.6, // drag the middle wall brick right by this share of its own width
+  introducedBy: 'item 65',
 };
 
 export const BANDS_NOTE = {

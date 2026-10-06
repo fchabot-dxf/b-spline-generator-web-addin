@@ -17,22 +17,13 @@ import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/htm
 import { bricksContourBands } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
 import { BRICK_SETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { pointInPolygon, polygonIntersection, signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { totalOverlapArea } from './helpers/polygon-overlap.js'; // item 67: the shared bbox-prefiltered check
 
 function realContour(templateId, widthIn, heightIn) {
   const record = normalizeFrameRecord({ templateId });
   const frame = { defs: FRAME_DEFS, record, board: { widthIn, heightIn } };
   const sil = frameContourSilhouette(frame, 0, 0);
   return { primitives: buildRibbonPrimitives(sil.primitives) };
-}
-function totalOverlapArea(cells) {
-  let total = 0;
-  for (let i = 0; i < cells.length; i++) {
-    for (let j = i + 1; j < cells.length; j++) {
-      const inter = polygonIntersection(cells[i].polygon, cells[j].polygon);
-      if (inter.length >= 3) total += Math.abs(signedArea(inter));
-    }
-  }
-  return total;
 }
 // area of `poly` that falls OUTSIDE `boundary` -- poly's own area minus its exact intersection with
 // boundary -- the rigorous check (not point-sampling, which can't tell "a vertex touches the ring's
