@@ -34,13 +34,14 @@ import {
 import { runBricks } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { commitEdit } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js';
 import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
-import { setFusionStatus } from '../bspline-frame-builder/b-spline-gen/html/core/fusion-bridge.js';
+import { currentLoadingStage, resetLoadingSignal } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 import { setFrameRecord, getFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { SvgEditorSnapshot, restoreEditorSnapshotState } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 
 const PALETTE = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf-8');
 
 const FIXTURE = `
+  <div id="loading-stage" hidden><span class="loading-stage-text"></span></div>
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
   <button id="editorTabBrick">Brick</button><button id="editorDrawerTab-layers">Brick</button>
   <div id="editorToolbarBrick"></div>
@@ -209,30 +210,34 @@ describe('B8: a re-lay over the declared budget shows the loading stage FIRST', 
     now.mockRestore();
   }
 
+  afterEach(() => measuredLay(1)); // the prediction is per signature and module-wide: leave a fast one behind
+
   it('under the budget: a release re-lays at once (no status, no wait)', () => {
     measuredLay(20);
     expect(predictedLayMs()).toBeLessThan(LAY_STATUS_BUDGET_MS);
     runBricks.mockClear();
     setWallPattern('soldier', 'auto');
     expect(runBricks).toHaveBeenCalledTimes(1);
-    expect(setFusionStatus).not.toHaveBeenCalledWith('Laying bricks…', 'busy');
+    expect(currentLoadingStage()).toBe(null);
   });
 
-  it('at/over the budget (a rock set: 276-457 ms): the status paints, THEN the lay runs, then it clears', () => {
+  it('at/over the budget (a rock set: 276-457 ms): the stage paints, THEN the lay runs, then it clears', async () => {
     expect(LAY_STATUS_BUDGET_MS).toBe(300);
     measuredLay(450);
     expect(predictedLayMs()).toBeGreaterThanOrEqual(LAY_STATUS_BUDGET_MS);
     const frames = [];
     vi.stubGlobal('requestAnimationFrame', (cb) => { frames.push(cb); return frames.length; });
-    runBricks.mockClear(); setFusionStatus.mockClear();
+    resetLoadingSignal(); // setup's Generate opened its 'generate' sequence: this is a plain release
+    runBricks.mockClear();
     setWallPattern('soldier', 'auto');
-    expect(setFusionStatus).toHaveBeenCalledWith('Laying bricks…', 'busy');
-    expect(runBricks).not.toHaveBeenCalled(); // not yet: the status gets its paint first
+    // item 41: the declared stage, on the overlay (a single lay = the corner pill)
+    expect(currentLoadingStage()).toEqual({ id: 'bricks', text: 'Computing - laying bricks', surface: 'pill' });
+    expect(runBricks).not.toHaveBeenCalled(); // not yet: the stage gets its paint first
     setWallPattern('stretcher', 'auto'); // a second release while queued: still ONE lay, with the latest settings
     frames.shift()(); frames.shift()();
-    expect(runBricks).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(runBricks).toHaveBeenCalledTimes(1));
     expect(runBricks.mock.calls[0][1].pattern).toBe('stretcher');
-    expect(setFusionStatus).toHaveBeenLastCalledWith('', 'busy');
+    await vi.waitFor(() => expect(currentLoadingStage()).toBe(null), { timeout: 1000 });
   });
 });
 

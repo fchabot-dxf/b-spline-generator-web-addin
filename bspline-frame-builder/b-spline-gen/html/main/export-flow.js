@@ -19,6 +19,7 @@ import { frameSendPayload } from './frame-panel.js';
 import { confirmDialog } from '../core/confirm-dialog.js';
 import { rebuild } from '../core/engine.js';
 import { generateThickenedStep } from '../core/stepWriter.js';
+import { withLoadingStage, beginLoadingSequence } from '../core/loading-signal.js';
 import {
     fusLog,
     sendFusionPayloadChunked,
@@ -491,9 +492,10 @@ export async function executeExport(preview, options = null, isAppend = false, f
     }
 
     if (!options) options = readWizardOptions();
+    beginLoadingSequence('export'); // item 41
 
     try {
-        await withExportResolution(preview, async () => {
+        await withExportResolution(preview, () => withLoadingStage('stepExport', async () => {
             const heights   = lastResult.heights;
             const offsetPts = lastResult.thickenData?.offsetPts;
             const unstamped = lastResult.cleanHeights || heights;
@@ -529,7 +531,7 @@ export async function executeExport(preview, options = null, isAppend = false, f
                     selectedVariants, layersToExport, btn,
                 });
             }
-        });
+        }));
     } catch (e) {
         console.error('Export Failed:', e);
         if (btn) { btn.disabled = false; btn.textContent = 'Try Again'; }

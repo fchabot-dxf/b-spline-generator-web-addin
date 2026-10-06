@@ -18,7 +18,7 @@
  * `window.svgEditor` fresh at the point of use instead of caching it.
  */
 import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
-import { withLoadingStage, withLoadingStageShownFirst } from '../core/loading-signal.js';
+import { withLoadingStageShownFirst, beginLoadingSequence } from '../core/loading-signal.js';
 import { showToast } from '../core/toast.js';
 import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, layerOfElement, BRICK_KINDS,
@@ -1148,21 +1148,32 @@ const AUTO_COMMIT = {
   onRelease: () => { notifyChange(); _relayOnRelease(); },
 };
 
-/** Blind-spot audit B8: a re-lay measured at or over this budget (a rock set: 276-457 ms on desktop, 1-2 s on a
- *  phone) shows the 'bricks' loading stage FIRST and lays a moment later, so the status actually paints -- the
- *  lay is synchronous, so withLoadingStage's own timer can never show it. Predicted from the last lay with the
- *  same layouts + size (_laySignature); a first lay of a new combination is measured, not predicted. */
+/** Blind-spot audit B8 + F35 item 41: the lay is synchronous, so its 'bricks' stage must be shown FIRST and the lay
+ *  run a moment later, or it can never paint. A re-lay predicted at or over this budget (a rock set: 276-457 ms on
+ *  desktop, 1-2 s on a phone) does that; a quicker one lays at once (item 41 measured a single lay at 900 px / CPU x4
+ *  blocking 59-68 ms: no wait to show). Predicted from the last lay with the same layouts + size + kinds laid
+ *  (_laySignature; item 41: Generate lays Wall AND Frame, 747 ms at CPU x10, vs one element's 258 ms); a
+ *  first lay of a new combination is predicted from the most recent lay of any (item 41 measured a rock set -> a
+ *  new pattern blocking 1.6 s at CPU x10 with nothing shown when an unseen combination predicted 0). */
 export const LAY_STATUS_BUDGET_MS = 300;
 const _layMs = new Map();
-const _laySignature = () => `${wallLayoutFor(P.brickSettings)}|${isRockFrame(P.brickSettings) ? 'rock' : 'brick'}|${P.brickSettings.brickLengthIn}`;
-export const predictedLayMs = () => _layMs.get(_laySignature()) ?? 0;
-let _relayQueued = false;
-function _relayOnRelease() {
-  if (predictedLayMs() < LAY_STATUS_BUDGET_MS) { generateBricks(); return; }
-  if (_relayQueued) return; // one queued lay reads the LATEST settings when it runs
-  _relayQueued = true;
-  withLoadingStageShownFirst('bricks', () => { _relayQueued = false; generateBricks(); });
+let _lastLayMs = 0;
+const _laySignature = (kinds) => `${wallLayoutFor(P.brickSettings)}|${isRockFrame(P.brickSettings) ? 'rock' : 'brick'}|${P.brickSettings.brickLengthIn}|${kinds.join('+')}`;
+// the kinds a re-lay will lay, before it runs (the frame outline is not resolved for a prediction: assume it is usable)
+const _kindsAboutToLay = () => {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  return editor ? _kindsToLay(editor, true) : [];
+};
+export const predictedLayMs = () => _layMs.get(_laySignature(_kindsAboutToLay())) ?? _lastLayMs;
+let _relayQueued = null; // the queued lay's options (one queued lay reads the LATEST settings when it runs)
+/** Every re-lay a gesture causes goes through here (item 41): shown first when it will take long enough to see. */
+function _relayStaged(opts = {}) {
+  if (predictedLayMs() < LAY_STATUS_BUDGET_MS) { generateBricks(opts); return; }
+  if (_relayQueued) { _relayQueued = { amend: _relayQueued.amend || opts.amend || null }; return; }
+  _relayQueued = { amend: opts.amend || null };
+  withLoadingStageShownFirst('bricks', () => { const o = _relayQueued; _relayQueued = null; generateBricks(o); });
 }
+function _relayOnRelease() { _relayStaged(); }
 const BRICK_COMMIT = {
   generate: AUTO_COMMIT,
   auto: AUTO_COMMIT,
@@ -1346,7 +1357,7 @@ function _relayIfBrushChanged() {
   if (!_presentKinds(editor).includes('wall')) return;
   const laid = _laidBrushKey();
   if (laid === null || laid === _brushKey()) return;
-  generateBricks();
+  _relayStaged();
 }
 
 const FRAME_RELAY_SETTLE_MS = 350;
@@ -1370,7 +1381,7 @@ function _relayIfFrameChanged() {
   if (_presentKinds(editor).every((kind) => _framePartOf(_laidKeyOf(editor, kind)) === frameKey)) return;
   const amend = _frameRelayAmend;
   _frameRelayAmend = null;
-  generateBricks({ amend });
+  _relayStaged({ amend });
 }
 
 /** Lay the given element kinds with the current settings, stamping their key on the Bricks layer. */
@@ -1417,11 +1428,10 @@ function _layBricks(editor, frameGeom, kinds, { amend = null } = {}) {
   // so -- never an empty canvas with no message. The layout stays pending (nothing new was laid).
   let failed = null, counts = null;
   const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-  withLoadingStage('bricks', () => {
-    try { counts = runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey(), kinds, amend }); }
-    catch (e) { failed = e; }
-  });
-  if (typeof performance !== 'undefined') _layMs.set(_laySignature(), performance.now() - t0); // audit B8
+  // the 'bricks' stage is entered by the caller BEFORE this (_relayStaged): a synchronous lay cannot paint it
+  try { counts = runBricks(editor, P.brickSettings, frameGeom, { laidKey: _layoutKey(), kinds, amend }); }
+  catch (e) { failed = e; }
+  if (typeof performance !== 'undefined') { _lastLayMs = performance.now() - t0; _layMs.set(_laySignature(kinds || BRICK_KINDS), _lastLayMs); } // audit B8
   if (failed) {
     console.error('Brick Generate failed:', failed);
     showToast(`Generate failed -- the previous bricks are kept (${(failed && failed.message) || failed})`, 'error');
@@ -1480,6 +1490,9 @@ export const FRAME_NEEDS_A_FRAME = "This frame's outline can't carry brick bands
 export const BRICK_SEED_RANGE = 1000000;
 export const newBrickSeed = () => Math.floor(Math.random() * BRICK_SEED_RANGE);
 export function generateNow() {
+  // item 41: Generate is a declared sequence (lay -> carve -> build). Its lay shows first like every re-lay
+  // (_relayStaged: predicted >= LAY_STATUS_BUDGET_MS); the steps after it read "step 2 of 3", "step 3 of 3".
+  beginLoadingSequence('generate');
   setSeed(newBrickSeed());
 }
 
@@ -2118,7 +2131,7 @@ export function paintWallArea(points) {
   const id = addWallAreaStroke(editor, { points, widthIn: Number(P.brickSettings.wallAreaWidthIn) || 1 }, P.brickSettings, into);
   _selectedElement = { id, kind: 'wall' };
   editor._brickWallAreaId = id;
-  generateBricks();
+  _relayStaged();
   _syncSubTools();
   return id;
 }
@@ -2127,7 +2140,7 @@ export function clearAllWallAreas() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (!editor || !clearWallAreas(editor)) return false;
   selectBrickElement(null);
-  generateBricks();
+  _relayStaged();
   return true;
 }
 const ELEMENT_LABELS = { wall: 'Wall', frame: 'Frame', brush: 'stroke', raisedBrush: 'raised stroke' };

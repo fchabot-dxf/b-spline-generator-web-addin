@@ -390,6 +390,51 @@
     .fusion-status[data-kind="ok"]   { color: var(--cad-accent-green); }
     .fusion-status[data-kind="warn"] { color: #ffb300; }
 
+    /* F35 item 41: the loading overlay (core/loading-signal.js). Above the editor modal (.cad-modal-overlay 9999)
+       and the status line; never blocks input. data-surface: 'card' = centred (the declared-long steps), 'pill' =
+       a small corner chip (a single lay); data-group tints the spinner (computing | waiting | refreshing). */
+    .loading-stage {
+      position: fixed;
+      z-index: 10001;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #f0f0f0; /* on its own dark card, like the splash */
+      background: rgba(22, 22, 22, 0.92);
+      border: 1px solid var(--cad-border-standard);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+    }
+    .loading-stage[hidden] { display: none; }
+    .loading-stage[data-surface="card"] {
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: calc(100vw - 32px);
+      padding: 16px 22px;
+      border-radius: 10px;
+      font-size: 15px;
+    }
+    .loading-stage[data-surface="pill"] {
+      top: 48px;
+      right: 16px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+    .loading-stage-spinner {
+      flex: none;
+      width: 18px;
+      height: 18px;
+      border: 3px solid rgba(255, 255, 255, 0.15);
+      border-top-color: var(--cad-accent-blue);
+      border-radius: 50%;
+      animation: app-splash-spin 0.8s linear infinite;
+    }
+    .loading-stage[data-surface="pill"] .loading-stage-spinner { width: 12px; height: 12px; border-width: 2px; }
+    .loading-stage[data-group="waiting"] .loading-stage-spinner { border-top-color: #ffb300; }
+    .loading-stage[data-group="refreshing"] .loading-stage-spinner { border-top-color: var(--cad-accent-green); }
+
     /* Splash screen (H9: Fred, "the title could go away, if we had a
        splash screen for loading" -- carries the brand now that the header
        no longer does). Shown until main.js's initApp callback fires --
@@ -533,6 +578,7 @@
     </div>
   </header>
   <div id="fusion-status" class="fusion-status" hidden role="status" aria-live="polite"></div>
+  <div id="loading-stage" class="loading-stage" hidden role="status" aria-live="polite"><span class="loading-stage-spinner"></span><span class="loading-stage-text"></span></div>
 
   <main class="cad-main-content app">
     <aside class="cad-sidebar">

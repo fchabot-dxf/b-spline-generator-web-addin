@@ -14631,3 +14631,50 @@ WallPattern = {
 - **Matrix (60ffb6a):** 6 wall rows: open; start from Checker; unit 1/2; base Custom (3D unchecked by construction); offset; back to Stretcher. `run.mjs --group wall`: 47 rows, 0 FAIL, 0 page errors.
   - Measured first: a tapped cell (0,1) hits no brick on the matrix baseline (a wall inside a Soldier frame, T1's waist), because unit-1 columns are absolute. That is why the row starts from Checker instead.
 - **Not done / for later:** join and split on a BUILT-IN base (they act on Custom only; a built-in -> tile conversion is ambiguous because built-in stagger counts from the top); a unit change on Custom keeps the CELL counts (the bricks rescale with the unit).
+
+## F35 item 41 -- LOAD STAGES (seat F, session fa, 2026-10-05)
+- **Ask (Fred, phone):** "the screen looks frozen, the load screen doesn't detect all computing states"; "can there be actual load stages, like computing, waiting, refreshing?"
+- **Measured first** (tools/repro/f35item41_load_stages_measure.mjs; headless, 900x1000, CPU x4, default T1; the cloud is faked in-page with 800 ms latency and workers.dev is blocked, so nothing is written):
+  - Before: 9 of 12 long actions showed nothing (open editor, every lay, Generate, the pattern builder, cloud save, STEP export).
+  - Apply / new seed / project load showed their stage 340-2263 ms late, on the 11 px #fusion-status line.
+  - Project load was the worst: 2.2 s blocked before anything showed.
+- **Root causes:**
+  - _layBricks wrapped a SYNCHRONOUS runBricks in withLoadingStage, so its 250 ms timer could never fire.
+  - Nothing on the load, save or export paths entered a stage.
+  - The surface (the 11 px top line) does not read as a load screen on a phone.
+- **Built (advisor-approved surface: centred card + corner pill):**
+  - core/loading-signal.js declares LOADING_STAGES {group: computing | waiting | refreshing, label, surface: card | pill} and LOADING_SEQUENCES (generate, apply, newSeed, projectLoad, export).
+  - The overlay text is "<Group> - <label>[, step i of n]".
+  - withLoadingStage enters the stage, waits two animation frames (painted), then runs the work. Before, it showed only after a 250 ms timer.
+  - A shown stage stays up at least 300 ms. Stages nest. A sequence keeps the card up between its steps and closes after its last step, or after 1 s of nothing.
+  - #loading-stage (palette): z 10001 (above the editor modal), pointer-events none. Fusion messages keep #fusion-status.
+- **Wired:**
+  - Every gesture re-lay goes through _relayStaged: the release path, frame re-lay, brush change, area paint and area clear.
+  - openEditorOn paints its pill first.
+  - applySnapshot (load + global undo) runs under 'restore'.
+  - Cloud: load = cloudLoad, save = cloudSave (including the pre-save cloud check).
+  - Export: stepExport.
+  - Sequences start from Generate, Apply, the new-seed button, cloud load and export.
+  - The rebuild's sculpt-stroke fast path stays OUTSIDE the stage, so a stroke tick never flashes the card.
+- **The lay budget stays 300 ms (B8, Fred's number). I tried 100 ms + always-stage-Generate and backed both out:**
+  - Single lays measured 59-68 ms blocked at CPU x4, so there is nothing to show.
+  - Making Generate always defer breaks the synchronous "Generate re-lays now" contract in ~30 tests across 5 files: their rAF stub is a no-op, so the lay never runs.
+  - Two fixes to the prediction instead:
+    - It is keyed on the laid KINDS too: Generate lays Wall+Frame, 747 ms at x10, vs one element's 258.
+    - An unseen combination predicts from the most recent lay, not 0 (a rock set -> new pattern blocked 1.6 s at x10 with nothing shown).
+- **After** (x4, shots/seatF/item41_after_cpu4.json): stage painted at:
+  - Apply 21 ms, project load 17 ms, open editor 15 ms, cloud save at once, new seed 240 ms.
+  - Export ~110 ms (the probe itself waits 400 ms between Send and the wizard button).
+  - Still blind at x4: Generate on a fresh element combination (189 ms blocked) and pattern builder open (279 ms).
+  - At x10 (item41_after_cpu10.json): the rock-set Generate shows "Computing - laying bricks, step 1 of 3" at 44 ms (before: 1.3 s blocked, nothing). Still blind: first lays of an unseen combination, pattern builder open/edits 150-400 ms.
+- **Tests:**
+  - loading-signal (14, rewritten for the new contract): the table, paint-first, min-visible, nesting, reject, steps, sequence close.
+  - B8 rewritten (overlay, not setFusionStatus; afterEach leaves a fast prediction so the module-wide map does not leak into B9).
+  - open-editor-buttons +1 (paint-first open), snapshot-manager +1 (restore paints first).
+  - frame-tabs / open-editor wait for the deferred open.
+  - Fail-before: 18/18 new or changed tests fail against 338d86c (a scratch worktree).
+- **Shots:** shots/seatF/item41_card_mid_apply_900_cpu4.png, item41_pill_mid_open_editor_900_cpu4.png, item41_card_mid_apply_900_cpu10.png.
+- **Known / for the advisor:**
+  - Every rebuild now shows the card (no 250 ms threshold): during a terrain slider drag it reappears per rebuild.
+  - The export sequence reads "step 3 of 3" when the export resolution equals the display one (steps 1-2 are skipped).
+  - Pattern-builder edits get no pill yet (the edit is synchronous inside builderToggleCell, and its tests are synchronous).
