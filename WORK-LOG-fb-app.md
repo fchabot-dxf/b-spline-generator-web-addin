@@ -15139,3 +15139,12 @@ WallPattern = {
 - **Not verified live yet:** a real Send in Fusion (seat A's holder slot).
 - **Risk for the advisor:** doEvents inside the import lets Fusion run other palette messages mid-import. check_import_status is inert while importing_done is False, but a preview_mesh (the palette's restoring rebuild right after the hand-off) could now run during the import.
 - **Not done:** CAM BUILD / APPLY held stages (advisor: after the Send works).
+- **Live Send (seat A, 07:45, T16 + red wall, 38 s import)**:
+  - The stages work, but each one painted ONE POST BEHIND. A single doEvents returned before the web view handled the message, so the bricks, cleanup and frame steps never showed; the card said 'stamping the artwork' through the 12 s frame build.
+  - The queued status poll hid the palette the moment the import ended, so 'Imported into Fusion' was never seen.
+  - Risk A: clean. doEvents painted but dispatched no palette event mid-import (all of them ran at finalize).
+- **Fix:**
+  - _pump_palette pumps doEvents for POST_PAINT_PUMP_S (0.08 s) after every post.
+  - import_success goes through _post_to_palette.
+  - check_import_status hides the palette only when _may_hide_after_import(): the success state has been up IMPORT_SUCCESS_SHOW_S (1.5 s).
+  - Python tests 7/7 (5 fail against c537833); add-in pytest 162.

@@ -21,8 +21,8 @@ def _fake_palette(monkeypatch):
     ui = types.SimpleNamespace(palettes=types.SimpleNamespace(itemById=lambda _id: pal))
     monkeypatch.setattr(bsg, 'app', types.SimpleNamespace(userInterface=ui))
     monkeypatch.setattr(bsg, '_log', lambda msg: logged.append(msg))
-    # every post lets the palette paint at once (adsk.doEvents): recorded in the same list, in order
-    monkeypatch.setattr(bsg.adsk, 'doEvents', lambda: sent.append(('doEvents', None)), raising=False)
+    # every post is followed by the paint pump (_pump_palette): recorded in the same list, in order
+    monkeypatch.setattr(bsg, '_pump_palette', lambda window_s=None: sent.append(('pump', None)))
     return sent, logged
 
 
@@ -38,13 +38,31 @@ def test_a_declared_stage_is_sent_by_id(monkeypatch):
     sent, _ = _fake_palette(monkeypatch)
     for sid in bsg._fusion_send_stage_ids():
         bsg._send_stage(sid)
-    assert sent == [x for sid in bsg._fusion_send_stage_ids() for x in (('import_stage', {'id': sid}), ('doEvents', None))]
+    assert sent == [x for sid in bsg._fusion_send_stage_ids() for x in (('import_stage', {'id': sid}), ('pump', None))]
 
 
 def test_a_progress_message_is_painted_at_once_too(monkeypatch):
     sent, _ = _fake_palette(monkeypatch)
     bsg._send_progress('Building the frame...')
-    assert sent == [('import_progress', {'msg': 'Building the frame...'}), ('doEvents', None)]
+    assert sent == [('import_progress', {'msg': 'Building the frame...'}), ('pump', None)]
+
+
+def test_the_pump_keeps_pumping_for_its_window_not_once(monkeypatch):
+    # seat A's live Send: ONE doEvents returned before the web view ran the message -> every post painted the previous
+    calls = []
+    monkeypatch.setattr(bsg.adsk, 'doEvents', lambda: calls.append(bsg.time.monotonic()), raising=False)
+    t0 = bsg.time.monotonic()
+    bsg._pump_palette()
+    assert len(calls) > 1
+    assert calls[-1] - t0 >= bsg.POST_PAINT_PUMP_S
+
+
+def test_the_success_state_is_on_screen_before_the_palette_hides(monkeypatch):
+    monkeypatch.setattr(bsg, '_import_success_at', 100.0)
+    assert bsg._may_hide_after_import(now=100.0 + bsg.IMPORT_SUCCESS_SHOW_S - 0.1) is False
+    assert bsg._may_hide_after_import(now=100.0 + bsg.IMPORT_SUCCESS_SHOW_S) is True
+    monkeypatch.setattr(bsg, '_import_success_at', None)
+    assert bsg._may_hide_after_import(now=0.0) is True  # no success posted: the old behaviour
 
 
 def test_never_for_a_preview_and_never_an_undeclared_id(monkeypatch):

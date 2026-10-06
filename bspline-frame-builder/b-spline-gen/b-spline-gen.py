@@ -8,7 +8,7 @@ import adsk.core, adsk.fusion, adsk.cam, traceback
 
 # adsk check: removed diagnostic
 
-import os, tempfile, json, re, base64
+import os, tempfile, json, re, base64, time
 from datetime import datetime
 
 # T63 (SE15): the constrained-sketch builder — a sibling module in this
@@ -391,13 +391,43 @@ def _post_to_palette(action, payload):
     window runs on Fusion's main thread, so a message sent from inside a long handler (_handle_generate: the whole
     import) is not painted until the handler returns -- a 10 s block showed the earlier text the whole time.
     adsk.doEvents() right after the send painted it 3.5 s into the same block (the CAM builder and the exporter pump
-    the same way). Returns True if the palette was there."""
+    the same way). ONE doEvents was not enough (seat A's live Send, 2026-10-06): it returned before the web view had
+    handled the message, so every post painted the PREVIOUS one -- the bricks, cleanup and frame steps never showed.
+    So the add-in pumps for POST_PAINT_PUMP_S after each post. Returns True if the palette was there."""
     pal = app.userInterface.palettes.itemById(PALETTE_ID)
     if not pal:
         return False
     pal.sendInfoToHTML(action, json.dumps(payload))
-    adsk.doEvents()
+    _pump_palette()
     return True
+
+
+# F35 item 70: how long the add-in keeps pumping Fusion's events after a post, so the web view runs the message and
+# paints it before the add-in goes on (~10 posts a Send: under a second in all, on a 13-38 s import).
+POST_PAINT_PUMP_S = 0.08
+
+
+def _pump_palette(window_s=None):
+    end = time.monotonic() + (POST_PAINT_PUMP_S if window_s is None else window_s)
+    while True:
+        adsk.doEvents()
+        if time.monotonic() >= end:
+            return
+        time.sleep(0.01)
+
+
+# F35 item 70: 'Imported into Fusion' stays on screen at least this long before the add-in hides the palette. The
+# palette's import-status poll queued during the import (its events only run after the handler returns) used to hide it
+# the moment the import ended, so the success state was never seen.
+IMPORT_SUCCESS_SHOW_S = 1.5
+_import_success_at = None
+
+
+def _may_hide_after_import(now=None):
+    """True once the success state has been on screen for IMPORT_SUCCESS_SHOW_S (or no success was posted)."""
+    if _import_success_at is None:
+        return True
+    return (time.monotonic() if now is None else now) - _import_success_at >= IMPORT_SUCCESS_SHOW_S
 
 
 def _send_progress(msg):
@@ -1373,7 +1403,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             # ── Polling: JS asks whether the import finished ──────────────────
             if action == 'check_import_status':
-                if importing_done:
+                if importing_done and _may_hide_after_import():
                     pal = None
                     if app.userInterface:
                         pal = app.userInterface.palettes.itemById(PALETTE_ID)
@@ -1692,7 +1722,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         and SVG stamp layers are applied to that primary body afterwards.
         Log tags: [MULTI-VARIANT] and [SINGLE-STEP] for easy grep.
         """
-        global importing_done, last_imported_occurrences
+        global importing_done, last_imported_occurrences, _import_success_at
         try:
             is_preview = data.get('isPreview', False)
             if not is_preview:
@@ -2105,9 +2135,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 _send_progress('Finalizing Import...')
                 _log('Import session finalized.')
 
-            pal = app.userInterface.palettes.itemById(PALETTE_ID)
-            if pal:
-                pal.sendInfoToHTML('import_success', '{}')
+            if _post_to_palette('import_success', {}):  # painted at once; hidden no sooner than IMPORT_SUCCESS_SHOW_S
+                _import_success_at = time.monotonic()
 
         except Exception:
             tb = traceback.format_exc()
