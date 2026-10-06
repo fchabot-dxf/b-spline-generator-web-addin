@@ -1006,7 +1006,10 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     // other -- see `buildNotchJoint`'s own header) makes the direct skip-intersection above come back
     // `null`, never merely fictitious -- try the notch construction FIRST, before falling back to
     // "no joint" for the ordinary (genuinely open end) case that null also covers.
-    if (droppedIdx !== null && (!o || !q)) {
+    // T86 item 34: a notch is a dropped LINE; a dropped ARC (T18 / T19 6x9 at 1.25 in: an r 1.09 shoulder whose
+    // neighbours' offsets never cross) took the notch's straight-chord fans and left the crescent between the chords
+    // and the arc bare (0.7 sq in) -- it goes to the patch below, which follows the arc's own outline
+    if (droppedIdx !== null && (!o || !q) && primitives[droppedIdx].type === 'line') {
       const notch = buildNotchJoint(primitives, prevIdx, droppedIdx, curIdx, d0, d1, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
       if (notch) return notch;
     }
@@ -1062,11 +1065,16 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     // to the dropped primitive's own TRUE tangent points (`A`/`B`), around its own TRUE arc, and back
     // down to `q` -- is `buildPatch`'s own job instead, entirely independent of either neighbour's
     // own piece sizing.
-    const dropped = primitives[droppedIdx];
-    const A = jointPointAt(primitives, prevIdx, droppedIdx, d0);
-    const B = jointPointAt(primitives, droppedIdx, curIdx, d0);
-    if (!A || !B) return { ...joint, trustO }; // defensive: no patch rather than a bad one
-    const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], [{ prim: dropped, from: A, to: B }], d0, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
+    // T86 item 34: the patch walks EVERY primitive dropped between the neighbours, not just the first (T7's roof at
+    // 1.5 in drops both roof lines between the hooks; the first one's far tangent point with `curIdx` does not
+    // exist, and the corner got no patch -- the whole gable bare, 4.9 sq in on 7x9). One dropped primitive: as before.
+    const chainIdx = [];
+    for (let idx = (prevIdx + 1) % n; idx !== curIdx; idx = (idx + 1) % n) if (primitiveLiveAtDepth(primitives, idx, d0, closed)) chainIdx.push(idx);
+    const ends = [prevIdx, ...chainIdx, curIdx];
+    const at = ends.slice(1).map((idx, i) => jointPointAt(primitives, ends[i], idx, d0));
+    if (!at.every(Boolean)) return { ...joint, trustO }; // defensive: no patch rather than a bad one
+    const chain = chainIdx.map((idx, i) => ({ prim: primitives[idx], from: at[i], to: at[i + 1] }));
+    const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], chain, d0, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
     return { ...joint, trustO, kiteFan, tPrev: tangentAt(primitives[prevIdx], q), tCur: tangentAt(primitives[curIdx], q) };
   });
 

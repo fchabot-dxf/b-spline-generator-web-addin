@@ -23374,3 +23374,17 @@ nudge) -> T16 6x9 / T18 9x12 fail. Full vitest 327 / 5,394.
 Render (T7 7x9 single_soldier 1.25 vs 1.5): at 1.5 in the whole roof gable above the hooks is bare -- the gable's
 inradius is ~0.5 in, so the two roof lines' rows drop at 1.5 in, and the hooks' fans do not reach into it; at 1.25 in
 the roof lays. Item 30 does not narrow it: the roof lines lie between ARCS (the hooks), not between two lines.
+- BUILT (advisor GO (a)), primitive-ribbon.js. MEASURED first: the bare ground was never built (bare equal before and
+  after the medial yield and the board clip), from two gaps in the corner patch over dropped primitives:
+  (1) the joint path with a dropped primitive and a defined outer joint `o` patched only the FIRST dropped primitive --
+      T7 at 1.5 in drops BOTH roof lines between the hooks, the first's far tangent point does not exist, no patch:
+      it now walks the whole dropped chain (as item 21b's `!o` branch already did); one dropped primitive: as before;
+  (2) the NOTCH construction (straight-chord fans, for a dropped LINE between sides) also took a dropped ARC whose
+      neighbours' offsets never cross -- T18 / T19 6x9 1.25 in, the r 1.09 shoulders: a notch is now a dropped line
+      only; an arc goes to the chain patch, whose fans follow the arc.
+  Sweep vs the previous tip, 2,166 lays: 24 change -- T7 7x9 / 6x9 1.5 in bare 4.90 / 2.92 -> 0.03 / 0.00 (43 -> 60 /
+  45 -> 58 pieces), T18 / T19 6x9 1.25 in 0.69 / 0.74 -> 0.01 / 0.06 (+2 pieces), 6 presets each; nothing worse in
+  overlap, seam or bare anywhere; 0 stone lays, 0 lays at 7x9 1 in. Total bare band ground 76.2 -> 21.3 sq in.
+  Test bricks-dropped-chain (4 cases under 0.1 sq in; mutation: chain -> T7 fails, notch-for-arcs -> T18 / T19 fail).
+  Full vitest 328 / 5,400. Shot item34_dropped_chain_before_after.png. NOT fixed (separate, = main): T8 9x12 1.5 in,
+  0.24 sq in between arc 10's last voussoir and the corner fan.
