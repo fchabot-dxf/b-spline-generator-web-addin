@@ -59,6 +59,7 @@ const evalJS = async (expr) => {
   if (r?.exceptionDetails) console.log('PAGE EVAL ERROR:', String(r.exceptionDetails.exception?.description || r.exceptionDetails.text).split(/\r?\n/)[0]);
   return r?.result?.value;
 };
+const appUp = async () => { for (let i = 0; i < 60; i++) { await sleep(1000); if (await evalJS(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; } await sleep(2000); };
 await send('Runtime.enable'); await send('Page.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
 // Math.random SEEDED before any page script: a fresh load otherwise draws a new frame shape / terrain each time
@@ -69,7 +70,7 @@ await send('Page.addScriptToEvaluateOnNewDocument', { source: `
   window.adsk = { fusionSendData() { return ''; } };` });
 
 const templates = JSON.parse(await (async () => {
-  await send('Page.navigate', { url: URL }); await sleep(8000);
+  await send('Page.navigate', { url: URL }); await appUp();
   return evalJS(`(async()=>{ const FD = (await import('./data/frame-defs.js')).default; return JSON.stringify(FD.templates.map((t) => t.id)); })()`);
 })());
 const todo = templates.filter((t) => !ONLY || ONLY.includes(t));
@@ -81,9 +82,9 @@ for (const template of todo) {
     // inside the app and then navigating does NOT give one -- the previous board (frame record, terrain seed) came back.
     await send('Page.navigate', { url: 'about:blank' }); await sleep(800);
     await send('Storage.clearDataForOrigin', { origin: new globalThis.URL(URL).origin, storageTypes: 'all' });
-    await send('Page.navigate', { url: URL }); await sleep(8000);
+    await send('Page.navigate', { url: URL }); await appUp();
     const t0 = Date.now();
-    const r = JSON.parse(await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
+    const raw = await evalJS(`(async()=>{ const W=ms=>new Promise(r=>setTimeout(r,ms));
       document.getElementById('btnStampEdit').click(); await W(2500);
       { const w = document.getElementById('widthIn'), h = document.getElementById('heightIn');
         w.value = '${BW}'; w.dispatchEvent(new Event('change')); h.value = '${BH}'; h.dispatchEvent(new Event('change')); await W(500); }
@@ -106,7 +107,8 @@ for (const template of todo) {
       const svg = raw ? await IO.bakeSvgForCarving(raw, S.P.widthIn, S.P.heightIn, 96) : '';
       return JSON.stringify({ pieces: polys.length, byKind, layMs, board: [S.P.widthIn, S.P.heightIn],
         brickLengthIn: S.P.brickSettings.brickLengthIn, preset: S.P.brickSettings.frameBandPreset,
-        bricks: svg ? { enabled: true, carve: true, svg } : { enabled: false } }); })()`) || 'null');
+        bricks: svg ? { enabled: true, carve: true, svg } : { enabled: false } }); })()`);
+    let r = null; try { r = typeof raw === 'string' ? JSON.parse(raw) : null; } catch { r = null; }
     if (!r) { console.log('FAILED', template, preset); continue; }
     writeFileSync(file, JSON.stringify({ template, ...r }));
     console.log(template, preset, 'pieces', r.pieces, JSON.stringify(r.byKind), 'lay ms', r.layMs, 'case s', ((Date.now() - t0) / 1000).toFixed(1));

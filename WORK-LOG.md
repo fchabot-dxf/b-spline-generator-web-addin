@@ -23043,3 +23043,28 @@ T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given 
 - Slip: the 9ade383 commit landed without these files and this entry (a cp after git rm failed and the chain
   stopped); added in the next commit.
 - Hygiene: scratch doc closed by handle (only Fred's Untitled), holder none, servers + Chrome stopped.
+
+## H23 item 89 AFTER-RUN on seat B's joint-rule 2db0668 (seat A / 77, 2026-10-06)
+- FIRST ATTEMPT RETRACTED: port 8794 was held by two days-old servers (pid 52764 'python -m http.server 8794', 02-Oct;
+  pid 29036 fb-app worktree serve_app.py 8794, 03-Oct). My server could not bind, and the "after" capture swept another
+  tree's app (40/57 boards point-for-point equal to the baseline, which was the tell). Not my PIDs; reported, not
+  killed. The sweep now has --root: it byte-compares the served palette + every core/bricks/*.js with the tree on
+  disk and exits 2 on a difference. Checked: pointed at the zombie on 8794 -> refused. It also polls for the app being
+  up instead of a fixed 8 s (one case died at "click of null" under 100% CPU); a page error is now a FAILED case,
+  not a crash.
+- CLEAN RUN: port 8795 confirmed free before start; guard: 30 served files == the joint-rule worktree. All 57 cases
+  (fixed tool, --seed 89, 7x9, 1 in, Frame tool alone); Fusion through the deployed _apply_bricks_sketch
+  (b-spline-gen.py identical in 2b5695d, main f3903b7 and 2db0668). Pieces = the <polygon>s in stamp.bricks (the
+  app's count also has 1 'grout' element per board, which is not in the Bricks svg).
+- RESULT: 57/57 profiles == pieces, 0 slivers, 0 open ends, 0 multi-loop; import median 1.56 s
+  (tools/repro/h23_item89_baseline/*_jointrule_2db0668.*). Worst baseline cases: T14 three_band 133/289/92 -> 133/133/0;
+  T3 three_band 145/248/48 -> 97/97/0.
+- CAVEAT (B found it, confirmed by the counts): the board SHAPE is not pinned. The sweep clicks the Frame tab's
+  [Generate], a random shape (nextSeed() = Math.random); the seeded PRNG does not make it reproducible, because the
+  number of draws before Generate depends on timing. So before/after are not the same boards case by case (e.g. T9
+  double_course 122 here vs B's 82). The acceptance claim (profiles == pieces on every board laid) does not need
+  identical boards; a per-board comparison does. Fix proposed, not built: declare the frame (no Generate, the
+  template's own fitted shape, which is identical across fresh loads, measured) and record the frame record in each
+  case json.
+- Slip: three cases got a duplicate "sketch: false" row: a call ran while a timed-out one was still on the same case.
+  The valid rows were re-measured alone and agree exactly (T19 single 103, T7 double 81, T7 single 85).
