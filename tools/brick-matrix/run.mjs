@@ -21,6 +21,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { GROUPS, GROUP_OF, RUNNER_ORDER, bindGroups, runGroup, CLEAR_MENU, EDIT_PASSWORD_TEST, BRICK_CONTROLS, REQUIRES_SOURCE, GROUP_SETUP } from './groups/index.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
+import { portBusy, dropStaleProfiles } from './ports.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const arg = (name, dflt) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt; };
@@ -78,12 +79,14 @@ if (arg('only-if-changed')) {
 if (flag('parallel')) {
   const t0 = Date.now();
   // MEASURED: two gates at once (the advisor's and a seat's) -- one group's served-root check found its port taken
-  // and the group never ran. Pick a base whose every group port (DevTools + HTTP) answers nothing; shift by 1000.
-  const answers = (port) => fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(400) }).then(() => true, () => false);
+  // and the group never ran. Pick a base whose every group port (DevTools + HTTP) is free; shift by 1000. Free = bindable
+  // (ports.mjs: Fusion's adexmtsv.exe held 9891, strokes' DevTools port, and dropped HTTP -- the old fetch read it as free)
+  const dropped = dropStaleProfiles();
+  if (dropped) console.log(`brick-matrix: removed ${dropped} leftover Chrome profile dir(s) no Chrome was using`);
   let base = PORT;
   for (let tries = 0; tries < 5; tries++) {
     const ports = GROUPS.flatMap((_, i) => [base + 10 * (i + 1), base + 10 * (i + 1) + 1]);
-    const busy = (await Promise.all(ports.map(answers))).some(Boolean);
+    const busy = (await Promise.all(ports.map(portBusy))).some(Boolean);
     if (!busy) break;
     console.log(`ports ${base + 10}..${base + 10 * GROUPS.length + 1} in use (another run?) -- trying ${base + 1000}`);
     base += 1000;
@@ -127,10 +130,13 @@ const CONTROLS = arg('group') ? BRICK_CONTROLS.filter((c) => groupOf(c) === arg(
 // "does nothing"). Removed again in stop().
 // advisor: a busy DEFAULT port (another seat's run) is skipped for the next free pair, not fatal; an explicit --port is
 // held to (the check below still refuses it when taken)
-const portAnswers = (port) => fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(400) }).then(() => true, () => false);
 if (!arg('port')) {
-  for (let i = 0; i < 40 && ((await portAnswers(PORT)) || (await portAnswers(HTTP))); i++) { PORT += 10; HTTP = PORT + 1; }
+  const dropped = dropStaleProfiles();
+  if (dropped) console.log(`brick-matrix: removed ${dropped} leftover Chrome profile dir(s) no Chrome was using`);
+  for (let i = 0; i < 40 && ((await portBusy(PORT)) || (await portBusy(HTTP))); i++) { PORT += 10; HTTP = PORT + 1; }
   if (PORT !== 9701) console.log(`brick-matrix: the default port was busy; using ${PORT}/${HTTP}`);
+} else if (await portBusy(PORT)) {
+  console.error(`brick-matrix: DevTools port ${PORT} is held by another process (it cannot be bound); pick another --port`); process.exit(2);
 }
 const profile = mkdtempSync(path.join(os.tmpdir(), `brick-matrix-chrome-${PORT}-`));
 // ... and nothing may already answer on that port: two trees often serve an identical palette page, so the
