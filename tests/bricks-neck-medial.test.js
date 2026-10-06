@@ -45,6 +45,37 @@ function crossSideOverlap(frame) {
   }
   return sum;
 }
+function nearestOnSeg(px, py, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+  const t = Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / l2));
+  return { x: a.x + t * dx, y: a.y + t * dy };
+}
+/** the closest pair of points between two polygons (vertex to edge, both ways) */
+function closest(A, B) {
+  let best = { d: Infinity };
+  for (const [P, Q] of [[A, B], [B, A]]) for (const p of P) for (let i = 0; i < Q.length; i++) {
+    const q = nearestOnSeg(p.x, p.y, Q[i], Q[(i + 1) % Q.length]), d = Math.hypot(p.x - q.x, p.y - q.y);
+    if (d < best.d) best = { d, x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+  }
+  return best;
+}
+/** the narrowest joint of the medial seam: a left piece against a right piece, closest where the board's centre line
+ *  crosses the neck (|x - 3.5| <= 0.1, y inside the declared neck window). The seam must be a joint, not two pieces
+ *  abutting (seat A's Fusion e2e: a 0-gap seam becomes zero-area sliver profiles). Ordinary joints elsewhere (an arc's
+ *  own voussoir joints straddling x = 3.5, the shoulders' corner seams, a mitre) are outside the window: 21b's. */
+function narrowestSeam(frame, [y0, y1]) {
+  const side = frame.map((b) => Math.sign(polygonCentroid(b.polygon).x - MID));
+  const bx = frame.map((b) => box(b.polygon));
+  let worst = Infinity;
+  for (let i = 0; i < frame.length; i++) for (let j = i + 1; j < frame.length; j++) {
+    if (side[i] * side[j] >= 0) continue;
+    const a = bx[i], b = bx[j], m = 0.1;
+    if (a[1] + m < b[0] || b[1] + m < a[0] || a[3] + m < b[2] || b[3] + m < a[2]) continue;
+    const c = closest(frame[i].polygon, frame[j].polygon);
+    if (Math.abs(c.x - MID) <= 0.1 && c.y >= y0 && c.y <= y1) worst = Math.min(worst, c.d);
+  }
+  return worst;
+}
 /** the ground covered in the neck strip (|x - 3.5| < 0.6): grid points (0.02 in) inside any brick, frame or wall,
  *  times the cell area -- the union measure the sweep uses, here on a grid */
 const STEP = 0.02;
@@ -67,12 +98,14 @@ const MAIN_NECK_COVER = { template_18: 9.3192, template_19: 9.2828, template_14:
 const MAIN_T1_DIGESTS = { single_soldier: 2521265454, three_band: 2521265454, double_course: 807046501 };
 
 describe('one row meeting itself across a neck: split at the medial line (T86 16(c) part 2)', () => {
-  const NECKS = [['template_18', 'single_soldier', 1.25], ['template_19', 'single_soldier', 1.25],
-    ['template_14', 'single_soldier', 1.25], ['template_16', 'three_band', 0.75]];
-  for (const [id, preset, L] of NECKS) {
-    it(`${id} ${preset} ${L} in: no overlap across the neck, the ground stays covered`, () => {
+  // [template, preset, size, the neck window in y (in) where the medial seam runs]
+  const NECKS = [['template_18', 'single_soldier', 1.25, [4, 7]], ['template_19', 'single_soldier', 1.25, [4, 7]],
+    ['template_14', 'single_soldier', 1.25, [3.6, 5.4]], ['template_16', 'three_band', 0.75, [3.5, 5.5]]];
+  for (const [id, preset, L, neck] of NECKS) {
+    it(`${id} ${preset} ${L} in: no overlap across the neck, the seam is a joint, the ground stays covered`, () => {
       const { r } = lay(id, preset, L);
       expect(crossSideOverlap(r.frameBricks)).toBeLessThan(0.01);
+      expect(narrowestSeam(r.frameBricks, neck)).toBeGreaterThan(SET.grout.widthIn - 0.002);
       expect(neckCover([...r.frameBricks, ...r.bricks])).toBeGreaterThan(MAIN_NECK_COVER[id] - COVER_LOSS_IN2); // what the frame leaves is the wall's
     });
   }
