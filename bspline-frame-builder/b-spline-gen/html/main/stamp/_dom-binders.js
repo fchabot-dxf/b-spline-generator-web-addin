@@ -23,6 +23,7 @@
  */
 import { scheduleUndoSnapshot } from '../../core/history.js';
 import { attachFormula } from '../../core/formula-field.js';
+import { layerToolingChanged } from '../../core/state.js';
 
 export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask }) {
   // Defensive default so older callers that don't supply activeEditorLayer
@@ -72,7 +73,7 @@ export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask
         // see the change immediately when they read from editor._layers
         // (Step 2 of stamp-layer → editor-layer unification).
         const eLayer = _editorLayer();
-        if (eLayer) eLayer[layerField] = value;
+        if (eLayer) { eLayer[layerField] = value; layerToolingChanged(); }
         if (triggerRemask) requestRemask();
       };
       if (num) {
@@ -117,7 +118,7 @@ export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask
         const layer = activeLayer();
         if (layer) layer[layerField] = value;
         const eLayer = _editorLayer();
-        if (eLayer) eLayer[layerField] = value;
+        if (eLayer) { eLayer[layerField] = value; layerToolingChanged(); }
         setActive(value);
         if (triggerRemask) requestRemask();
         scheduleUndoSnapshot(layerField, opts.undoLabel);
@@ -140,7 +141,7 @@ export function createDomBinders({ activeLayer, activeEditorLayer, requestRemask
           if (layer) layer[layerField] = cb.checked;
           // Mirror to editor layer (Step 2 unification).
           const eLayer = _editorLayer();
-          if (eLayer) eLayer[layerField] = cb.checked;
+          if (eLayer) { eLayer[layerField] = cb.checked; layerToolingChanged(); }
           if (triggerRemask) requestRemask();
           scheduleUndoSnapshot(checkboxId);
         });

@@ -421,6 +421,15 @@ export function setPostDelta(val) { postDelta = val; }
 /** A completed 3D rebuild's count (setLastResult): the brick matrix waits on it instead of a time window (advisor: under
  *  a loaded --parallel gate the rebuild can start after any fixed window). Read-only for everyone else. */
 export let lastResultGeneration = 0;
+/** Item 69 (seat E, measured: blur 4 -> 0, V-bit 120 -> 90 after a reload): a sidebar write to an editor layer's
+ *  tooling field goes through the editor's own change pipeline ('tooling' = serialize + persist, app-init.js
+ *  CHANGE_PIPELINE) so the saved drawing's layer roster holds it -- the layer is the one store (the mask reads it);
+ *  P.stamp* stays its mirror (still read as a fallback: stamp-mask-manager.js, rebuild.js). Coalesced per frame by
+ *  the editor's _notifyChange. */
+export function layerToolingChanged() {
+    const ed = typeof window !== 'undefined' ? window.svgEditor : null;
+    if (ed && typeof ed._notifyChange === 'function') ed._notifyChange('tooling');
+}
 export function setLastResult(val) { lastResult = val; lastResultGeneration++; }
 /** Item 37: the page-load restore's declared end -- the boot build owner's (app-init.js bootBuildOwner) build has
  *  landed. `generation` is lastResultGeneration at that moment. Probes and the brick matrix wait on `complete` after a
@@ -592,7 +601,7 @@ export function updateP(key, value) {
         try {
             const editorLayer = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers))
                 ? window.svgEditor._layers[P.activeLayerIdx] : null;
-            if (editorLayer) editorLayer[layerSpecific[key]] = P[key];
+            if (editorLayer) { editorLayer[layerSpecific[key]] = P[key]; layerToolingChanged(); }
         } catch (_) { /* defensive: state.js must not crash on editor access */ }
     }
 

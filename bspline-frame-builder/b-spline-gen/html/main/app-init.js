@@ -102,6 +102,9 @@ export function announceBrickSettingsRestored() {
 export const CHANGE_PIPELINE = {
     live:   ['serialize', 'remask'],
     commit: ['serialize', 'persist', 'remask'],
+    // item 69: a sidebar write to a layer's tooling field (core/state.js layerToolingChanged) -- re-serialize the
+    // roster (data-editor-layers) into P.editorSvg and save it; the sidebar already remasks on its own
+    tooling: ['serialize', 'persist'],
 };
 
 /**
@@ -116,6 +119,7 @@ export const CHANGE_PIPELINE = {
 export const CHANGE_PIPELINE_IN_EDITOR = {
     live:   ['serialize'],
     commit: ['serialize', 'persist'],
+    tooling: ['serialize', 'persist'],
 };
 
 /** PERF category timing — off by default (core/debug.js's own gate), so
