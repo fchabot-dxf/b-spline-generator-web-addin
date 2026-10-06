@@ -22669,3 +22669,37 @@ For the next seat B: two seams between accent-cuts and custom-bond were MEASURED
   To close the gap to "~2 min": one timestamped log line per received chunk in the add-in would measure the real
   palette transfer (detection-only; your call).
 - Capture tool: the stub records performance.now() with each send; the run prints the Send timing breakdown.
+
+## H23 item 85 -- Send transfer timing (code), the D6 visibility test, and re-BUILD / re-Send measured (seat A / 77, 2026-10-05)
+- Branch send-timing-85 off origin/main e5754a7 + my unmerged brick-e2e-83 (tooling + WORK-LOG).
+- (1) b-spline-gen: _TransferTimer, detection only -- '[XFER] start epoch_ms=...', one '[XFER] chunk i: N bytes at
+  +T ms' per chunk, '[XFER] transfer N chunks, X MB in Y s', '[XFER] Send handled at +Z s (epoch_ms=...)'. Replaces
+  the old 'Received chunk i (buffer size)' line (nothing parsed it). The live palette transfer is measured on the next
+  real Send after the advisor deploys main (I cannot drive the palette's JS: no eval channel, no on-screen clicks).
+- D6 test: the Send's 'Stamped wins' block moved UNCHANGED into _apply_send_visibility(consolidated) (module level).
+  test_send_visibility.py 4/4: Stamped present -> Clean occurrence off / Stamped on, panels on + surfaces off; no
+  Stamped -> Clean on; a Stamped without a panel body does not win; the transfer timer through the real notify()
+  path with fixed clocks (exact lines). A 'Clean wins' mutant fails 2/4; restored byte-identical; b-spline-gen 155/155.
+- (2) MEASURED, e2e board, deployed afdc4c0, scratch doc:
+    BUILD #1 76 s; BUILD #2 on the UNCHANGED board ~47 s: cleanup (4 setups + 3 MMs) + WCS < 1 | MM Stock 4 |
+      MM B-spline 6 | MM Frame 5 | Stock setup 1 | B-spline Back 26 (inside cam.setups.add on the dense Stamped body,
+      again) | Top 2 | Frame 2. Nothing is reused today.
+    PROBE A, in place on the existing setups (deployed _bind_wcs_point / _apply_stock_box): Back WCS 0.31 s + box
+      0.92 s (9/9 writes), Top WCS 0.11 s = 1.3 s total; origins exact ((-3.75, -4.75, 0.0289) / (3.75, -4.75,
+      2.0289)).
+    PROBE B, a RE-SEND of the same board into the same doc with the CAM build in place: all 3 MMs and 4 setups stay
+      VALID, every setup's model is live ('panel' x2, the 4 frame bars), origins unchanged, and the B-spline MM shows
+      the NEW Stamped panel (its snapshot follows the design and still excludes Clean). So keeping MMs/setups across
+      Sends works structurally -- BUT that re-Send took 220 s instead of 32 s (b_spline_gen_log): Clean STEP 5 (4),
+      Stamped STEP 36 (7), post-import/visibility 13 (<1), art + bricks 44 (~4), FRAME 121 (17). Every design change
+      during the Send re-derives the 3 MMs and their setups. This is very likely Fred's "~2 min Send": he re-Sends
+      into a document that already holds his CAM build.
+- Proposals (numbers only, nothing changed):
+  P2 (re-BUILD): keep the MMs + setups and update stock/WCS/heights in place -> ~1.3 s instead of ~47 s; the
+     setups follow a re-Sent board by themselves (probe B). The template ops and toolpaths would also be kept, so
+     APPLY would only regenerate (Fusion marks them out of date).
+  P3 (NEW, the big one): the CAM build makes every later Send ~7x slower (32 s -> 220 s). Options to measure next:
+     (a) the Send suspends CAM re-derivation while it imports (if Fusion offers a switch -- unverified), (b) the Send
+     deletes the CAM build first and BUILD recreates it (Send 32 s + BUILD ~50 s = ~80 s < 220 s), (c) Fred Sends
+     into a design without CAM and keeps CAM in a separate document (manual workflow change).
+- Hygiene: scratch doc closed by handle; holder none after each batch.
