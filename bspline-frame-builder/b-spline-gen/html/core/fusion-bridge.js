@@ -155,6 +155,8 @@ export function pollMode(onFusionReady, onWebMode) {
     const check = () => {
         if (typeof adsk !== 'undefined' && adsk.fusionSendData) {
             setIsFusionMode(true);
+            // how close a late adsk came to modeDetectTimeoutMs -- the margin the declared timeout must keep
+            fusLog(`[MODE] Fusion host: adsk after ${Date.now() - t0} ms (waits up to ${waitMs} ms)`);
             onFusionReady();
         } else if (Date.now() - t0 < waitMs) {
             setTimeout(check, FUSION_HOST.pollMs);
