@@ -795,11 +795,21 @@ export function toolMiniBricks(kind) {
  *  Draws the corner-style icons and the band-preset icons; a new FRAME_CORNERS / FRAME_PRESETS entry gets its icon
  *  free. Cached by `key`. */
 const MINI_FRAME = Object.freeze({ marginIn: 0.4 });
+/** Item 74c (Fred: "Frame band preset and corner icon are too similar"; he picked the whole frame): how a band PRESET's
+ *  icon is drawn. 'ring' = the WHOLE frame -- the preset's bands round a small square board (its inside `innerShare` of
+ *  the band stack, at least `innerMinIn`), drawn whole; 'corner' = one corner, as the Corners row draws its icons (the
+ *  preset look before 74c). The pick is PRESET_ICON_STYLE; the Corners row always draws 'corner'. */
+export const PRESET_ICON_STYLES = Object.freeze({
+  ring: Object.freeze({ whole: true, innerShare: 0.5, innerMinIn: 0.5 }),
+  corner: Object.freeze({ whole: false }),
+});
+export const PRESET_ICON_STYLE = 'ring';
 const _miniFrames = new Map();
-function _miniFrame(key, bands) {
+function _miniFrame(key, bands, style = PRESET_ICON_STYLES.corner) {
   if (_miniFrames.has(key)) return _miniFrames.get(key);
   const depth = bands.reduce((a, b) => a + b.widthIn, 0);
-  const crop = depth + MINI_FRAME.marginIn, w = 2 * depth + MINI_FRAME.marginIn;
+  const w = style.whole ? 2 * depth + Math.max(style.innerMinIn, depth * style.innerShare) : 2 * depth + MINI_FRAME.marginIn;
+  const crop = style.whole ? w : depth + MINI_FRAME.marginIn;
   let bricks = [];
   try {
     const s = TOOL_MINI_BRICK;
@@ -825,8 +835,8 @@ function _miniFrameSvg({ bricks, crop: c }, heightPx) {
 const _cornerBands = (cornerId) => { const band = { widthIn: 0.75, pattern: 'soldier', cornerStyle: cornerId }; return [band, band]; };
 export const frameCornerBricks = (cornerId) => _miniFrame(`corner:${cornerId}`, _cornerBands(cornerId)).bricks;
 export const frameCornerIconSvg = (cornerId, heightPx = 26) => _miniFrameSvg(_miniFrame(`corner:${cornerId}`, _cornerBands(cornerId)), heightPx);
-/** Item 33 (audit N10, Fred's long-list rule): a band PRESET's icon -- its band stack at a corner, as laid; None = a
- *  struck-through tile (the Wall grid's own 'none'). */
+/** Item 33 (audit N10, Fred's long-list rule): a band PRESET's icon -- its band stack as laid, drawn in the declared
+ *  PRESET_ICON_STYLE (item 74c: the whole frame); None = a struck-through tile (the Wall grid's own 'none'). */
 export function framePresetIconSvg(presetId, heightPx = 26) {
   const bands = FRAME_PRESETS[presetId];
   if (!bands) return null;
@@ -834,7 +844,7 @@ export function framePresetIconSvg(presetId, heightPx = 26) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 1 1" aria-hidden="true">`
       + `<rect width="1" height="1" fill="#efe6da"/><line x1="0.15" y1="0.85" x2="0.85" y2="0.15" stroke="#8a8078" stroke-width="0.06"/></svg>`;
   }
-  return _miniFrameSvg(_miniFrame(`preset:${presetId}`, bands), heightPx);
+  return _miniFrameSvg(_miniFrame(`preset:${PRESET_ICON_STYLE}:${presetId}`, bands, PRESET_ICON_STYLES[PRESET_ICON_STYLE]), heightPx);
 }
 // one argument only: it is passed straight to .map(), whose index must never reach the markup (a second
 // `attrs` parameter once turned every pattern icon into `<polygon0 ...>` -- drawn as nothing, measured live)
