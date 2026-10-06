@@ -176,6 +176,12 @@ const BUTT_PARALLEL_DOT = 0.999; // H23 item 76 cont. (butt corner): tangents th
  *  1.25 in). Declared: butt / lapped / block serve corners within BUTT_SQUARE_WINDOW_DEG of square (block: convex ones
  *  too, see buildBlockJoint); any other corner falls back to the mitre, as arc-involved corners already do. */
 const BUTT_SQUARE_WINDOW_DEG = 15;
+const SQUARE_CORNER_DOT = 1e-9; // |cos| below this: a true right angle, built exactly as before 21b (byte-identical)
+/** Where the line through `point` along `dir` crosses `prim`'s own offset line at depth `d` (a line primitive). */
+function crossAtDepth(prim, d, point, dir) {
+  const off = offsetPrimitive(prim, d);
+  return lineLineIntersection({ x: off.p0.x, y: off.p0.y }, { x: off.p1.x - off.p0.x, y: off.p1.y - off.p0.y }, point, dir);
+}
 const BUTT_SQUARE_MAX_DOT = Math.sin((BUTT_SQUARE_WINDOW_DEG * Math.PI) / 180);
 
 /**
@@ -254,7 +260,23 @@ function buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipTh
   // changes a point's own tangential projection), so `sStart`/`sEnd` land exactly on the primitive's
   // own true endpoint, not past it.
   const throughSentinel = { point: o, q: o, dirX: 0, dirY: 0, keepRefAsStart: o, keepRefAsEnd: o, trustO: false };
-  return { throughIdx, forThrough: throughSentinel, forButt: square, isButt: true };
+  if (dot < SQUARE_CORNER_DOT) return { throughIdx, forThrough: throughSentinel, forButt: square, isButt: true };
+  // 21b, a corner inside the window but not square (T12's ~81 deg bottom corners: two wedge voids, 0.061 sq in each):
+  // the faces must meet the faces they butt, not the runs' own normals. The butt run is cut PARALLEL to the through
+  // band's inner edge, one joint inside it; the through run reaches the outline (the butt primitive's own line) and is
+  // cut along it -- at a square corner both reduce to the construction above.
+  const tThrough = tangentAt(through, o);
+  // one joint square to the through band's inner edge, i.e. joint / sin(corner) along the butt run's own outer line;
+  // the cut's two ends on the butt run's outer and inner lines bound the run's last piece (a clip only trims)
+  const sinCorner = Math.sqrt(Math.max(1 - dot * dot, 1e-12));
+  const buttCut = stepFrom(cut0, buttTangent, (nominalJoint / sinCorner) * awaySign);
+  const buttCutInner = crossAtDepth(butt, d1, buttCut, tThrough) || buttCut;
+  const buttKeep = stepFrom(buttCut, buttTangent, awaySign);
+  const forButt = { point: buttCut, q: buttCutInner, dirX: tThrough.x, dirY: tThrough.y, keepRefAsStart: buttKeep, keepRefAsEnd: buttKeep, trustO: true };
+  const reach = lineLineIntersection({ x: throughD1.p0.x, y: throughD1.p0.y }, { x: throughD1.p1.x - throughD1.p0.x, y: throughD1.p1.y - throughD1.p0.y }, o, buttTangent);
+  const intoThrough = stepFrom(o, tThrough, throughIdx === prevIdx ? -1 : 1);
+  const forThrough = { point: o, q: reach || o, dirX: buttTangent.x, dirY: buttTangent.y, keepRefAsStart: intoThrough, keepRefAsEnd: intoThrough, trustO: true };
+  return { throughIdx, forThrough, forButt, isButt: true };
 }
 
 /** Resolve a `jointBefore` entry to the object a specific primitive (`idx`) should actually clip
@@ -301,7 +323,7 @@ const QUOIN_SET = brickSetById(3); // "White rocks" (library.js:181) -- already 
  * uses, for the exact same reason: an id assigned here could collide with one the main loop hands
  * out later).
  */
-function buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint) {
+function buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1) {
   const tPrev = tangentAt(primitives[prevIdx], o);
   const tCur = tangentAt(primitives[curIdx], o);
   const dot = Math.abs(tPrev.x * tCur.x + tPrev.y * tCur.y);
@@ -320,12 +342,21 @@ function buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint) {
   // same convention `buildButtJoint`'s own grout gap already established.
   const blockPrevPoint = stepFrom(o, tPrev, -blockSize); // prevIdx ENDS at o -- step backward, away from it
   const blockCurPoint = stepFrom(o, tCur, blockSize); // curIdx STARTS at o -- step forward, away from it
-  const cutPrevPoint = stepFrom(blockPrevPoint, tPrev, -nominalJoint);
-  const cutCurPoint = stepFrom(blockCurPoint, tCur, nominalJoint);
+  // 21b: each run is cut parallel to the block face it meets (prev meets the face along tCur, cur the face along
+  // tPrev), one joint off it measured square to that face; at a right angle that is the run's own normal, as before
+  const sinCorner = Math.sqrt(Math.max(1 - dot * dot, 1e-12));
+  const gapAlong = dot < SQUARE_CORNER_DOT ? nominalJoint : nominalJoint / sinCorner;
+  const cutPrevPoint = stepFrom(blockPrevPoint, tPrev, -gapAlong);
+  const cutCurPoint = stepFrom(blockCurPoint, tCur, gapAlong);
   const keepRefPrev = stepFrom(cutPrevPoint, tPrev, -1); // further into prevIdx's own run
   const keepRefCur = stepFrom(cutCurPoint, tCur, 1); // further into curIdx's own run
-  const forPrev = { point: cutPrevPoint, q: cutPrevPoint, dirX: prevPrim.nx, dirY: prevPrim.ny, keepRefAsStart: keepRefPrev, keepRefAsEnd: keepRefPrev, trustO: true };
-  const forCur = { point: cutCurPoint, q: cutCurPoint, dirX: curPrim.nx, dirY: curPrim.ny, keepRefAsStart: keepRefCur, keepRefAsEnd: keepRefCur, trustO: true };
+  const square = dot < SQUARE_CORNER_DOT;
+  const forPrev = square
+    ? { point: cutPrevPoint, q: cutPrevPoint, dirX: prevPrim.nx, dirY: prevPrim.ny, keepRefAsStart: keepRefPrev, keepRefAsEnd: keepRefPrev, trustO: true }
+    : { point: cutPrevPoint, q: crossAtDepth(prevPrim, d1, cutPrevPoint, tCur) || cutPrevPoint, dirX: tCur.x, dirY: tCur.y, keepRefAsStart: keepRefPrev, keepRefAsEnd: keepRefPrev, trustO: true };
+  const forCur = square
+    ? { point: cutCurPoint, q: cutCurPoint, dirX: curPrim.nx, dirY: curPrim.ny, keepRefAsStart: keepRefCur, keepRefAsEnd: keepRefCur, trustO: true }
+    : { point: cutCurPoint, q: crossAtDepth(curPrim, d1, cutCurPoint, tPrev) || cutCurPoint, dirX: tPrev.x, dirY: tPrev.y, keepRefAsStart: keepRefCur, keepRefAsEnd: keepRefCur, trustO: true };
 
   // The block's own square: o (the true corner) -> blockPrevPoint -> inner -> blockCurPoint -> back
   // to o. `inner` is `blockPrevPoint` stepped along curIdx's own tangent by `blockSize` -- exact at a
@@ -929,7 +960,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     }
     if (cornerStyle === 'block' && droppedIdx === null
         && primitives[prevIdx].type === 'line' && primitives[curIdx].type === 'line') {
-      const block = buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint);
+      const block = buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1);
       if (block) return block;
     }
     // the SAME joint, approached by its own two DIFFERENT primitives, must keep OPPOSITE sides of
