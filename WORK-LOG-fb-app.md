@@ -14845,3 +14845,96 @@ WallPattern = {
 - **Fail-before** (scratch tree at 03972e9, the pushed tip): **3/3 new tests fail** (roster stacking, roster reorder, the hover look); the other 24 in those files pass.
 - **Gate:** full vitest 1 failed / 4766 passed. The one failure is frame-3d-sweep's 90 s timeout, which passes alone. An earlier contended run (my probe was running alongside it) had also caught a REAL break: my first guard (isBrickToolNode) skipped item 49's flag strip on a node without data-brick-gen. The guard is now "any node with data-brick", as before; pattern-builder-cuts is green.
 - **Live** (download_live.mjs, real click): the top groups are frame, art 'Layer 1', 'Wall', 'Wall grout', 'Frame', 'Frame grout'. That is the panel's roster (top to bottom: Frame, Wall, Layer 1) read bottom up. 147 paths for 147 laid bricks, 0 url(#; the 900 px overflow-menu download is byte-identical. 0 page errors.
+## F35 item 41 -- LOAD STAGES (seat F, session fa, 2026-10-05)
+- **Ask (Fred, phone):** "the screen looks frozen, the load screen doesn't detect all computing states"; "can there be actual load stages, like computing, waiting, refreshing?"
+- **Measured first** (tools/repro/f35item41_load_stages_measure.mjs; headless, 900x1000, CPU x4, default T1; the cloud is faked in-page with 800 ms latency and workers.dev is blocked, so nothing is written):
+  - Before: 9 of 12 long actions showed nothing (open editor, every lay, Generate, the pattern builder, cloud save, STEP export).
+  - Apply / new seed / project load showed their stage 340-2263 ms late, on the 11 px #fusion-status line.
+  - Project load was the worst: 2.2 s blocked before anything showed.
+- **Root causes:**
+  - _layBricks wrapped a SYNCHRONOUS runBricks in withLoadingStage, so its 250 ms timer could never fire.
+  - Nothing on the load, save or export paths entered a stage.
+  - The surface (the 11 px top line) does not read as a load screen on a phone.
+- **Built (advisor-approved surface: centred card + corner pill):**
+  - core/loading-signal.js declares LOADING_STAGES {group: computing | waiting | refreshing, label, surface: card | pill} and LOADING_SEQUENCES (generate, apply, newSeed, projectLoad, export).
+  - The overlay text is "<Group> - <label>[, step i of n]".
+  - withLoadingStage enters the stage, waits two animation frames (painted), then runs the work. Before, it showed only after a 250 ms timer.
+  - A shown stage stays up at least 300 ms. Stages nest. A sequence keeps the card up between its steps and closes after its last step, or after 1 s of nothing.
+  - #loading-stage (palette): z 10001 (above the editor modal), pointer-events none. Fusion messages keep #fusion-status.
+- **Wired:**
+  - Every gesture re-lay goes through _relayStaged: the release path, frame re-lay, brush change, area paint and area clear.
+  - openEditorOn paints its pill first.
+  - applySnapshot (load + global undo) runs under 'restore'.
+  - Cloud: load = cloudLoad, save = cloudSave (including the pre-save cloud check).
+  - Export: stepExport.
+  - Sequences start from Generate, Apply, the new-seed button, cloud load and export.
+  - The rebuild's sculpt-stroke fast path stays OUTSIDE the stage, so a stroke tick never flashes the card.
+- **The lay budget stays 300 ms (B8, Fred's number). I tried 100 ms + always-stage-Generate and backed both out:**
+  - Single lays measured 59-68 ms blocked at CPU x4, so there is nothing to show.
+  - Making Generate always defer breaks the synchronous "Generate re-lays now" contract in ~30 tests across 5 files: their rAF stub is a no-op, so the lay never runs.
+  - Two fixes to the prediction instead:
+    - It is keyed on the laid KINDS too: Generate lays Wall+Frame, 747 ms at x10, vs one element's 258.
+    - An unseen combination predicts from the most recent lay, not 0 (a rock set -> new pattern blocked 1.6 s at x10 with nothing shown).
+- **After** (x4, shots/seatF/item41_after_cpu4.json): stage painted at:
+  - Apply 21 ms, project load 17 ms, open editor 15 ms, cloud save at once, new seed 240 ms.
+  - Export ~110 ms (the probe itself waits 400 ms between Send and the wizard button).
+  - Still blind at x4: Generate on a fresh element combination (189 ms blocked) and pattern builder open (279 ms).
+  - At x10 (item41_after_cpu10.json): the rock-set Generate shows "Computing - laying bricks, step 1 of 3" at 44 ms (before: 1.3 s blocked, nothing). Still blind: first lays of an unseen combination, pattern builder open/edits 150-400 ms.
+- **Tests:**
+  - loading-signal (14, rewritten for the new contract): the table, paint-first, min-visible, nesting, reject, steps, sequence close.
+  - B8 rewritten (overlay, not setFusionStatus; afterEach leaves a fast prediction so the module-wide map does not leak into B9).
+  - open-editor-buttons +1 (paint-first open), snapshot-manager +1 (restore paints first).
+  - frame-tabs / open-editor wait for the deferred open.
+  - Fail-before: 18/18 new or changed tests fail against 338d86c (a scratch worktree).
+- **Shots:** shots/seatF/item41_card_mid_apply_900_cpu4.png, item41_pill_mid_open_editor_900_cpu4.png, item41_card_mid_apply_900_cpu10.png.
+- **Known / for the advisor:**
+  - Every rebuild now shows the card (no 250 ms threshold): during a terrain slider drag it reappears per rebuild.
+  - The export sequence reads "step 3 of 3" when the export resolution equals the display one (steps 1-2 are skipped).
+  - Pattern-builder edits get no pill yet (the edit is synchronous inside builderToggleCell, and its tests are synchronous).
+- **Gate fix (advisor):** a rebuild during a CONTINUOUS gesture shows the pill, not the card.
+  - Declared per stage: gestureSurface 'pill' on rebuild + heightMask.
+  - continuousGesture(on): a range-input pointerdown..pointerup (installGestureWatch, installed in main.js), or a sculpt stroke (sculpt-interaction onStart / onStrokeEnd).
+  - GESTURE_GRACE_MS 600 covers the trailing rebuild a release or stroke end schedules. The 300 ms minimum stays.
+  - Tests +3 (3/3 fail against 67d5188's loading-signal.js).
+
+## F35 item 41 follow-up -- PAINT FIRST FOR EVERY GESTURE LAY (seat F, branch paint-first off load-stages)
+- **Advisor:** "one declared switch (lays defer one frame), convert the tests in the same commit".
+- **App:**
+  - _relayStaged now shows the 'bricks' stage first for EVERY gesture re-lay. Gone: the 300 ms prediction (LAY_STATUS_BUDGET_MS, predictedLayMs, the _layMs map). It missed Generate on a new Wall+Frame mix (747 ms at x10) and a rock set -> new pattern (1.6 s).
+  - The pattern builder's open button paints its new 'openBuilder' pill first.
+- **The switch:** core/loading-signal.js setPaintScheduler is THE paint step: two animation frames (default) or a given function. withLoadingStageShownFirst runs the job inside the paint step itself (no extra microtask).
+- **Tests:** vitest setupFiles tests/setup-paint.js sets an immediate paint step + resets the signal before every test.
+  - Why an immediate step instead of ~80 sync assertions turned into awaits: a panel test reads a gesture's lay synchronously; deferral is a property of the paint step, and the paint step has its own tests.
+  - The tests OF the deferral opt back into real frames (setPaintScheduler(null)): loading-signal, blind-spot B8 (rewritten: every re-lay shows first, even an instant one), open-editor, pattern-builder (+1: the builder opens after its pill).
+  - Fail-before: 3/3 behavior tests fail with the pre-change brick-panel.js.
+- **Measured** (probe, 900 px; shots/seatF/item41pf_after_cpu4.json and item41pf_after_cpu10.json):
+  - x4: Generate painted at 15 ms (was blind, 189 ms blocked); rock-set pattern release painted at 28 ms.
+  - x4: every action still without a stage blocks <= 67 ms (a single tool-click lay, builder toggle/resize).
+  - x10: Generate painted at 113 ms (was 747 ms blind). Still blind at x10: builder toggle 169 ms, lay frame tool click 152 ms (that click is not a re-lay).
+- **Shots:** item41pf_card_mid_generate_900_cpu4.png, item41pf_pill_mid_lay_900_cpu4.png.
+## seat E (61) turn 3: F35 item 44, bricks vs a carving Artwork layer -- MEASURED, then fixed at the cause (branch carve-44)
+- **Measure** (probes item44_one_load.mjs / item44_topmode.mjs, ONE page load each: a fresh load rolls a new terrain seed, so cross-load heights are not comparable):
+  - Setup: 7x9 T1, a Wall (140 bricks), a 0.35 in carving stroke drawn diagonally across it on Layer 1 (carve on, depth 0.25, vbit). The 3D heights (141x181) are diffed per cell: NEAR = within 0.175 in of the stroke, FAR = more than 0.325 in from it.
+  - The grid's orientation was MEASURED both ways (feedback: measure, don't re-reason): heights row 0 = the board's BOTTOM edge. My first pass had it flipped, and its numbers were void.
+  - Piece counts never change: 140 wall, 140 Send polygons, brick mask present, whether the art is drawn before or after the lay, on another layer or the Wall's own, or with carve toggled.
+  - Organic tops: near 849/873 cells changed, far 0. Correct.
+  - FLAT tops (the new-board default): near 865/873, but 1,793 FAR cells changed (max 0.104 in), 1,752 of them on the 20 bricks the stroke crosses. Every crossed brick tilts or shifts, and its groove is replaced by its plane. This is Fred's "the bricks don't work".
+  - Art on the Wall's own layer = art on another layer, cell for cell. The advisor dropped "bricks lay where the stroke is not" (their expectation, not Fred's; since item 64 art and bricks rarely share a layer).
+- **Cause:** core/engine/apply-stamp-layers.js. A Flat brick's plane (flatBrickPlaneHeights) was fitted to stampedHeights, which already held the earlier ART passes, and the plane then REPLACED the heights under the brick.
+- **Fix (advisor-approved as proposed):**
+  - Declared STAMP_PASS_KIND { art, bricks }; rebuild.js _collectStampPasses tags each pass (an untagged pass is art, as every old caller expects).
+  - applyStampLayers accumulates the art passes' delta per point.
+  - A Flat brick fits its plane to the heights minus that delta (the terrain + the brick passes below), then adds it back: z = plane + artDelta + body x depth.
+  - Art on a layer ABOVE the bricks is unchanged (applied after, it just adds).
+- **Tests:** brick-top-flat.test.js + 3:
+  - a crossed brick's off-groove points equal the no-carve run, and so does the other brick;
+  - the groove under a Flat brick = the carve = the Organic groove;
+  - art above still just adds, and an untagged pass is art.
+  - Against origin/main's apply-stamp-layers.js (swapped from a saved copy, restored, cmp clean): **3/3 fail**. The third mostly pins existing behaviour and fails there on the missing declaration.
+- **Matrix:** controls.mjs CARVE_UNDER_FLAT + run.mjs runCarveUnderFlat (lay group); it FAILS, not skips, on a build without the fix. Lay group: 9 rows, 0 FAIL. The new row: 16 bricks crossed; off-stroke points on them changed 0/1326; under the stroke 848/873 cut.
+- **Before / after, the same carve on Flat** (carve_shots.mjs, the art layer's colour off so the surface shows):
+  - main 352603f: 1,822 off-stroke cells changed, max 0.098 in; the groove is invisible across the bricks;
+  - carve-44: 0 changed, and the groove cuts visibly across them.
+  - Shots: shots/seatE/item44_carve_on_flat_main.png / item44_carve_on_flat_branch.png (+ item44_flat_top_with_carve_branch.png, item44_organic_top_with_carve_branch.png, item44_one_load_*.png from the measure).
+- **Probe harness note:** ports 9861/9862 showed LISTEN entries whose PIDs no longer exist (stale sockets after my timed-out runs); nothing to kill. I moved to 9961. Ports 9871/9881 belonged to another seat's matrix run: left alone.
+- **Gate:** full vitest 5 failed / 4738 passed under load. All 4 files pass alone, 56/56: no-corrupt-polygon x2, fieldstone and frame-3d-sweep are timeouts; frame-gen was a deep-equal failure under load, and it is not in files I touched.

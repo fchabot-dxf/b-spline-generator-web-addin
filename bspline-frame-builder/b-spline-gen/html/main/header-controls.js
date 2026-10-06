@@ -11,6 +11,7 @@
  * pipeline lives in its own module — header-controls just translates
  * clicks into invocations.
  */
+import { beginLoadingSequence } from '../core/loading-signal.js';
 import { isFusionMode } from '../core/state.js';
 import { applyParam } from './param-manager.js';
 import { isHapticEnabled, setHapticEnabled } from '../core/haptics.js';
@@ -67,6 +68,7 @@ export function bindHeaderAndSettings(preview, { onGenerate, onFusionApply, onWi
     const btnRandomSeed = document.getElementById('btnRandomSeed');
     if (btnRandomSeed) {
         btnRandomSeed.addEventListener('click', () => {
+            beginLoadingSequence('newSeed'); // item 41: the carve + rebuild it causes read as steps
             applyParam('seed', Math.floor(Math.random() * 99999));
         });
     }

@@ -22,6 +22,7 @@ import { confirmDialog } from '../core/confirm-dialog.js';
 import { showToast } from '../core/toast.js';
 import { FRAME_DEFS, findFrameTemplate } from '../core/frame-record.js';
 import { editFetch, bindEditPasswordSettings } from './edit-password.js';
+import { withLoadingStage, beginLoadingSequence } from '../core/loading-signal.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 function getApiUrl() {
@@ -1018,7 +1019,7 @@ async function _saveTo(fullName) {
 
   const known = _knownSavedAt(fullName);
   if (known) {
-    const cloud = await _cloudSavedAt(fullName);
+    const cloud = await withLoadingStage('cloudSave', () => _cloudSavedAt(fullName)); // item 41: the check waits on the cloud too
     if (cloud > known + 1000) {
       const when = new Date(cloud).toLocaleString();
       const ok = await confirmDialog(`"${fullName}" was saved from another device since you opened it (${when}).\n`
@@ -1031,11 +1032,11 @@ async function _saveTo(fullName) {
   if (_btnSave) _btnSave.disabled = true;
   setMsg(`Saving "${fullName}"…`);
   try {
-    const r = await editFetch(`${_API_URL}/projects/${encodeURIComponent(fullName)}`, {
+    const r = await withLoadingStage('cloudSave', () => editFetch(`${_API_URL}/projects/${encodeURIComponent(fullName)}`, {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(buildSnapshot()),
-    });
+    }));
     if (!r.ok) throw new Error((await safeJson(r)).error || `HTTP ${r.status}`);
     _rememberSavedAt(fullName, (await safeJson(r)).savedAt || Date.now());
     setMsg(`✓ Saved "${fullName}"`, 'ok');
@@ -1159,8 +1160,9 @@ async function _loadFrom(name) {
   if (isDirty() && !(await confirmDialog('You have unsaved changes. Load this project and lose them?'))) return false;
 
   setMsg('Loading…');
+  beginLoadingSequence('projectLoad'); // item 41: waiting -> restoring -> carving -> building, as steps
   try {
-    const r    = await fetch(`${_API_URL}/projects/${encodeURIComponent(name)}`);
+    const r    = await withLoadingStage('cloudLoad', () => fetch(`${_API_URL}/projects/${encodeURIComponent(name)}`));
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const snap = await r.json();
     // #9: the cloud save time this load is based on (the list's, else a fresh look)

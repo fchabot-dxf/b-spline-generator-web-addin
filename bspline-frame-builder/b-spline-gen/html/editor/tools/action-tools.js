@@ -1,3 +1,4 @@
+import { beginLoadingSequence } from '../../core/loading-signal.js';
 import { bindClick } from '../dom.js';
 import { endEditorSession } from '../editor-text-session.js';
 import { isUnexpandable, unexpand } from '../editor-expand-commit.js';
@@ -44,7 +45,7 @@ export function registerActionTools(editor) {
   // SE8a / SA-TEXT-1: both go through the ONE editor-close contract now —
   // Cancel used to skip text-session teardown entirely (see
   // endEditorSession's own comment for the leaked-listener failure mode).
-  bind('editorApply',  () => endEditorSession(editor, { commit: true }));
+  bind('editorApply',  () => { beginLoadingSequence('apply'); endEditorSession(editor, { commit: true }); }); // item 41
   // workflow audit #5: Cancel sits next to Apply and used to drop every edit without a word -- it asks first when
   // there is anything to lose (the editor's own undo stack holds only the opening state otherwise)
   bind('editorCancel', async () => {

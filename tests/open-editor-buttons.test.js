@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { initFramePanel, OPEN_EDITOR_BUTTONS } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { getEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
+import { currentLoadingStage, resetLoadingSignal, setPaintScheduler } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 const FIXTURE = `
   <input id="widthIn" value="7"><input id="heightIn" value="9">
@@ -20,7 +21,8 @@ const FIXTURE = `
   <div id="editorFrameShield" style="display:none"></div>
   <aside id="editorFramePanel" style="display:none"><select id="editorFrameTemplate"></select></aside>
   <aside id="editorLayersPanel"></aside><aside id="editorBrickPanel" style="display:none"></aside>
-  <button id="editorDrawerTab-layers">Layers</button>`;
+  <button id="editorDrawerTab-layers">Layers</button>
+  <div id="loading-stage" hidden><span class="loading-stage-text"></span></div>`;
 
 let root;
 beforeEach(() => {
@@ -37,12 +39,24 @@ describe('the sidebar open-the-editor buttons', () => {
   it('declared: Edit frame -> Frame tab, Brick editor -> Brick tab', () => {
     expect(OPEN_EDITOR_BUTTONS).toEqual([{ id: 'btnEditFrameShape', tab: 'frame' }, { id: 'btnEditBricks', tab: 'brick' }]);
   });
-  it('Brick editor opens the editor through btnStampEdit, on the Brick tab', () => {
+  it('Brick editor opens the editor through btnStampEdit, on the Brick tab', async () => {
     const open = vi.fn();
     document.getElementById('btnStampEdit').addEventListener('click', open);
     document.getElementById('btnEditBricks').click();
-    expect(open).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1)); // item 41: its loading stage paints first
     expect(getEditorTab()).toBe('brick');
+  });
+  it('item 41: opening shows its loading stage FIRST -- the open itself runs after the paint', async () => {
+    resetLoadingSignal();
+    setPaintScheduler(null); // the real paint step (the suite's is immediate)
+    let seen = 'not opened';
+    document.getElementById('btnStampEdit').addEventListener('click', () => { seen = currentLoadingStage(); });
+    document.getElementById('btnEditBricks').click();
+    expect(currentLoadingStage()).toEqual({ id: 'openEditor', text: 'Refreshing - opening the editor', surface: 'pill' });
+    expect(seen).toBe('not opened');
+    await vi.waitFor(() => expect(seen).not.toBe('not opened'));
+    expect(seen?.id).toBe('openEditor'); // the stage was on screen while the editor opened
+    resetLoadingSignal();
   });
   it('the button is the first thing in the BRICK section', () => {
     const html = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');

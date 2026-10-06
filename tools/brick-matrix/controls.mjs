@@ -442,3 +442,13 @@ export const WALL_NO_FRAME = {
   wallTool: 'brickTool_wall', generate: 'brickGenerate', tol: 0.1,
   marker: "import('./editor/editor-brick-tool.js').then((m) => !!m.frameGeomForLay)",
 };
+
+// ---- a carving ART stroke under FLAT bricks (F35 item 44, seat E; Fred: "if there's a carving in art, the bricks don't work").
+// Measured before (7x9 T1): every Flat brick the carve crosses moved off the stroke (1,752 points, max 0.10 in). The row lays a
+// Wall (Flat tops, the new-board default), draws this stroke on the art layer (carving), and checks in 3D: the crossed bricks'
+// points away from the stroke are unchanged, and the stroke itself cuts. It FAILS (not skips) on a build without the fix.
+export const CARVE_UNDER_FLAT = {
+  stroke: { a: { x: 1.6, y: 2.2 }, b: { x: 5.4, y: 6.8 }, widthIn: 0.35 }, farMarginIn: 0.15,
+  wallTool: 'brickTool_wall', generate: 'brickGenerate', minNearChangedShare: 0.9,
+  introducedBy: 'F35 item 44',
+};
