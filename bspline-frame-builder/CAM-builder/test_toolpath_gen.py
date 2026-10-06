@@ -149,3 +149,40 @@ def test_passes_are_bounded_by_the_declaration():
 def test_the_declaration_keeps_a_spare_pass_beyond_the_measured_three():
     # item 96 run 3 needed pass 3 (both Morphed Spirals came back empty again in pass 2); keep one spare
     assert tg.MAX_GENERATION_PASSES >= 4
+
+
+# H23 item 98: an op left without a toolpath says WHY in the TPGen audit. Seat A, 2026-10-06: after a long session
+# (Fusion at 65 GB private bytes) the empty ops' own op.error read 'Out of memory.' while the audit only logged
+# 'MISSING toolpath', so hours went into a timing hypothesis.
+
+class _ErrOp:
+    def __init__(self, error='', warning=''):
+        self.error, self.warning = error, warning
+
+
+class _RaisingOp:
+    @property
+    def error(self):
+        raise RuntimeError('not available')
+
+    warning = ''
+
+
+def test_why_empty_reports_fusions_own_error_first_line():
+    assert tg.why_empty(_ErrOp(error='Out of memory.\n\n')) == 'error: Out of memory.'
+
+
+def test_why_empty_reports_the_warning_too_and_nothing_when_fusion_says_nothing():
+    assert tg.why_empty(_ErrOp(error='Out of memory.', warning='Stock is empty.\nmore')) == \
+        'error: Out of memory.; warning: Stock is empty.'
+    assert tg.why_empty(_ErrOp()) == ''
+
+
+def test_why_empty_never_raises():
+    assert tg.why_empty(_RaisingOp()) == ''
+
+
+def test_the_tpgen_audit_logs_the_reason_for_each_missing_op():
+    src = open(os.path.join(_HERE, 'cam-builder.py'), encoding='utf-8').read()
+    audit = src[src.index('MISSING toolpath') - 400: src.index('MISSING toolpath') + 200]
+    assert 'why_empty(' in audit

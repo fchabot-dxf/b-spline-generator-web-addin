@@ -2014,7 +2014,9 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
                             _log(f"DEFERRED TPGEN AUDIT: ✓ '{op.name}' in '{setup.name}' has toolpath", "DEBUG")
                         else:
                             errors += 1
-                            _log(f"DEFERRED TPGEN AUDIT: ✗ '{op.name}' in '{setup.name}' MISSING toolpath", "WARNING")
+                            why = _tg.why_empty(op)   # H23 item 98: Fusion's own reason, e.g. 'Out of memory.'
+                            _log(f"DEFERRED TPGEN AUDIT: ✗ '{op.name}' in '{setup.name}' MISSING toolpath"
+                                 + (f" -- {why}" if why else ""), "WARNING")
                     except Exception as e:
                         _log(f"DEFERRED TPGEN AUDIT: '{op.name}' check failed: {e}", "WARNING")
             _log(f"DEFERRED TPGEN: post-audit ok={dispatched} missing={errors}")

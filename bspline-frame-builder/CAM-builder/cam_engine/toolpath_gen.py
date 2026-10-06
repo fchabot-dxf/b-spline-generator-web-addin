@@ -32,6 +32,21 @@ def _valid(op):
     return bool(op.hasToolpath and op.isToolpathValid)
 
 
+def why_empty(op):
+    """What Fusion itself says about an op left without a toolpath: the first line of its error and of its warning,
+    '' when it says nothing (H23 item 98 -- after a long session the empty ops' op.error read 'Out of memory.' while
+    the audit logged only 'MISSING'). Never raises."""
+    parts = []
+    for attr in ('error', 'warning'):
+        try:
+            text = (getattr(op, attr) or '').strip()
+        except Exception:
+            text = ''
+        if text:
+            parts.append(f"{attr}: {text.splitlines()[0].strip()}")
+    return '; '.join(parts)
+
+
 def missing_ops(setup):
     """The names of `setup`'s operations without a valid toolpath."""
     return [op.name for op in _ops(setup) if not _valid(op)]
