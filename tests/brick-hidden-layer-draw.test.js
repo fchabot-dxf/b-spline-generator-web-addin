@@ -24,6 +24,7 @@ function fakeEditor({ bricksVisible, active = '1', recordOn = null }) {
       attr(k, ...r) { if (!r.length) return el._attrs[k]; el._attrs[k] = r[0]; return el; },
       fill() { return el; }, stroke() { return el; },
       addClass(c) { el._classes.add(c); return el; }, removeClass(c) { el._classes.delete(c); return el; } };
+    el.node = { getAttribute: (k) => el._attrs[k] ?? null, setAttribute: (k, v) => { el._attrs[k] = v; } }; // item 55: the grout node is painted through its DOM node
     elements.push(el);
     return el;
   };
@@ -31,7 +32,7 @@ function fakeEditor({ bricksVisible, active = '1', recordOn = null }) {
     elements,
     _mW: 7, _mH: 9, _activeLayer: active, // item 22 slice 3: a new element lays on the ACTIVE layer
     _layers: [{ id: '0', name: 'Layer 1', visible: true }, { id: '1', name: 'Bricks', holdsBricks: true, visible: bricksVisible }],
-    _sketchLayer: { polygon: make, line: make, group: make, node: { querySelectorAll: () => [],
+    _sketchLayer: { polygon: make, path: make, line: make, group: make, node: { querySelectorAll: () => [],
       // an existing element's record (recordOn = its layer): a re-lay draws there, active or not
       querySelector: (sel) => (recordOn && sel.includes('data-brick-record') ? { getAttribute: (k) => (k === 'data-layer' ? recordOn : 'be1'), setAttribute: () => {} } : null) },
       children: () => ({ toArray: () => elements, forEach: (f) => elements.forEach(f) }) },
@@ -43,7 +44,8 @@ describe('bricks drawn onto the Bricks layer take its current state', () => {
   it('a hidden Bricks layer: every newly laid brick is hidden', () => {
     const ed = fakeEditor({ bricksVisible: false, recordOn: '1' }); // item 64: an element already ON that layer
     runBricks(ed, P.brickSettings, null);
-    expect(ed.elements.filter((e) => e._attrs['data-brick']).length).toBe(3); // the bricks (item 22's records aside)
+    expect(ed.elements.filter((e) => e._attrs['data-brick'] && e._attrs['data-brick'] !== 'grout').length).toBe(3); // the bricks (item 22's records aside)
+    expect(ed.elements.filter((e) => e._attrs['data-brick'] === 'grout').length).toBe(1); // item 55: + the wall's grout node, hidden with it
     expect(ed.elements.every(hidden)).toBe(true);
   });
   it('a visible Bricks layer: none hidden', () => {
@@ -71,7 +73,7 @@ describe('bricks drawn onto the Bricks layer take its current state', () => {
     expect(laid.length).toBeGreaterThan(0);
     for (const e of laid) {
       const layer = ed._layers.find((l) => l.id === e._attrs['data-layer']);
-      expect(layer.brickKind).toBe(e._attrs['data-brick']);
+      expect(layer.brickKind).toBe(e._attrs['data-brick-grout-of'] || e._attrs['data-brick']); // item 55: a grout node is on its element's layer
       expect(hidden(e)).toBe(false);
     }
   });

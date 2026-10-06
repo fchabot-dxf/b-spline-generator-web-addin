@@ -379,7 +379,7 @@ describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + 
   });
   it('one quick row per declared setting, a button per choice, the current one active', () => {
     const rows = [...$('brickQuickSettings').querySelectorAll('label')].map((l) => l.textContent);
-    expect(rows).toEqual(['Set', 'Brick size', 'Wall pattern', 'Frame bands']);
+    expect(rows).toEqual(['Set', 'Brick size', 'Wall pattern', 'Frame bands', 'Grout colour']); // + F35 item 55
     expect($('brickQuick_set_1').classList.contains('active')).toBe(true);
     expect($('brickQuick_pattern_stretcher').classList.contains('active')).toBe(true);
     expect($('brickQuick_frameBands_single_soldier').classList.contains('active')).toBe(true);

@@ -45,6 +45,7 @@ function fakeEditor() {
     _sketchLayer: {
       node,
       polygon: (pts) => { const w = make('polygon')(); w.node.setAttribute('points', pts); return w; },
+      path: (d) => { const w = make('path')(); w.node.setAttribute('d', d); return w; }, // item 55: the grout node
       group: make('g'),
       children: () => { const arr = [...node.children].map(wrap); return { toArray: () => arr, forEach: (f) => arr.forEach(f), map: (f) => arr.map(f) }; },
     },
