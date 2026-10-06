@@ -1,10 +1,11 @@
 """
 H23 item 95: the doc's first toolpath generation after BUILD left 3-4 of 7 ops without a toolpath (live, two boards,
-main as deployed); every second generation made them. cam_engine/toolpath_gen.generate_setups generates each setup
-once, then again any setup still holding an op without a valid toolpath, in setup order (checked when reached, so
-a setup made stale by an earlier regeneration is redone and a complete one is not), up to MAX_GENERATION_PASSES.
-Driven with fakes that behave like the live run: an op's FIRST generation fails, and generating a setup again
-leaves every later setup that reads its stock out of date.
+main as deployed). cam_engine/toolpath_gen.generate_setups: pass 1 setup by setup (as before); later passes op by
+op, in order, every op with no valid toolpath when reached, up to MAX_GENERATION_PASSES.
+The fake CAM behaves like the live runs: an op's FIRST generation comes back empty; an op generated while its
+upstream (the op before it in the setup) was not valid at the START of the call comes back empty when it is
+a REgeneration (a first generation does not need it: the Frame's chain); generating
+anything stales the ops of later setups that read the previous setup's stock.
 
 Run with:
     cd bspline-frame-builder/CAM-builder
@@ -20,7 +21,7 @@ if _HERE not in sys.path:
 from cam_engine import toolpath_gen as tg  # noqa: E402  (pure: no adsk import)
 
 
-class _Ops(list):
+class _List(list):
     @property
     def count(self):
         return len(self)
@@ -34,11 +35,14 @@ class _Op:
         self.name, self.fails_first = name, fails_first
         self.hasToolpath = self.isToolpathValid = False
         self.generations = 0
+        self.never = False
 
 
 class _Setup:
     def __init__(self, name, ops, reads_previous_stock=False):
-        self.name, self.operations, self.reads_previous_stock = name, _Ops(ops), reads_previous_stock
+        self.name, self.operations, self.reads_previous_stock = name, _List(ops), reads_previous_stock
+        for op in ops:
+            op.parentSetup = self
 
 
 class _Future:
@@ -46,25 +50,39 @@ class _Future:
 
 
 class _Cam:
-    """generateToolpath(setup): each op generates (a failing-first op stays empty on its first generation), and every
-    LATER setup that reads the previous setup's stock goes out of date."""
-
     def __init__(self, setups):
-        self.setups = _Ops(setups)
+        self.setups = _List(setups)
         self.calls = []
 
-    def generateToolpath(self, setup):
-        self.calls.append(setup.name)
-        for op in setup.operations:
-            op.generations += 1
-            ok = not (op.fails_first and op.generations == 1)
-            op.hasToolpath = op.hasToolpath or ok
-            op.isToolpathValid = ok
+    def _gen_op(self, op, upstream_ok):
+        op.generations += 1
+        # measured: a first generation does not need its upstream ready (Frame's chain, pass 1); a REgeneration
+        # started while its upstream was empty failed again (Back's Morphed Spiral, setup regenerated in pass 2)
+        ok = not op.never and not (op.fails_first and op.generations == 1) and (op.generations == 1 or upstream_ok)
+        op.hasToolpath = op.hasToolpath or ok
+        op.isToolpathValid = ok
+
+    def _stale_after(self, setup):
         idx = list(self.setups).index(setup)
         for later in list(self.setups)[idx + 1:]:
             if later.reads_previous_stock:
                 for op in later.operations:
                     op.isToolpathValid = False
+
+    def generateToolpath(self, target):
+        if isinstance(target, _Setup):
+            self.calls.append(target.name)
+            at_start = [o.hasToolpath and o.isToolpathValid for o in target.operations]
+            for k, op in enumerate(target.operations):
+                self._gen_op(op, upstream_ok=(k == 0 or at_start[k - 1]))
+            self._stale_after(target)
+        else:
+            setup = target.parentSetup
+            self.calls.append(f"{setup.name}/{target.name}")
+            k = list(setup.operations).index(target)
+            prev = setup.operations[k - 1] if k else None
+            self._gen_op(target, upstream_ok=(prev is None or (prev.hasToolpath and prev.isToolpathValid)))
+            self._stale_after(setup)
         return _Future()
 
 
@@ -89,17 +107,28 @@ def _all_valid(cam):
 
 
 def test_the_live_first_pass_failure_ends_with_every_toolpath_valid():
-    # E-run on the cam-bricks board: Back's 2 ops and Top's first 2 empty after the first generation
+    # the cam-bricks runs: Back's 2 ops and Top's first 2 come back empty from the doc's first generation
     cam = _board(back_fail=('Pocket back1', 'Morphed Spiral1'), top_fail=('Pocket front FRED', 'Morphed Spiral1'))
     _run(cam)
     assert _all_valid(cam)
 
 
-def test_pass_two_regenerates_in_setup_order_and_redoes_a_setup_made_stale():
+def test_a_whole_setup_regeneration_alone_would_leave_the_chained_op_empty():
+    # the live ok=6 missing=1: regenerating Back as a SETUP brought its Pocket back but not the Morphed Spiral
+    # started while the Pocket was empty -- the reason later passes go op by op
+    cam = _board(back_fail=('Pocket back1', 'Morphed Spiral1'))
+    cam.generateToolpath(cam.setups.item(1))
+    cam.generateToolpath(cam.setups.item(1))
+    assert tg.missing_ops(cam.setups.item(1)) == ['Morphed Spiral1']
+
+
+def test_later_passes_go_op_by_op_in_order_and_redo_what_went_stale():
     cam = _board(back_fail=('Morphed Spiral1',))
     _run(cam)
-    # pass 1: Back, Top, Frame (Stock has no ops); pass 2: Back (empty op), then Top (stale: reads Back's stock)
-    assert cam.calls == ['B-spline Back', 'B-spline Top', 'Frame', 'B-spline Back', 'B-spline Top']
+    # pass 1: the setups; pass 2: Back's empty op, then Top's ops (stale: they read Back's stock), in order
+    assert cam.calls == ['B-spline Back', 'B-spline Top', 'Frame', 'B-spline Back/Morphed Spiral1',
+                         'B-spline Top/Pocket front FRED', 'B-spline Top/Morphed Spiral1',
+                         'B-spline Top/Pocket front deloge FRED1']
     assert _all_valid(cam)
 
 
@@ -112,17 +141,10 @@ def test_a_complete_first_pass_generates_each_setup_once():
 
 def test_passes_are_bounded_by_the_declaration():
     cam = _board()
-    never = cam.setups.item(2).operations.item(1)   # Top's Morphed Spiral1: never gets a toolpath
-    gen = cam.generateToolpath
-
-    def generate(setup):
-        future = gen(setup)
-        never.hasToolpath = never.isToolpathValid = False
-        return future
-    cam.generateToolpath = generate
+    cam.setups.item(2).operations.item(1).never = True   # Top's Morphed Spiral1 never gets a toolpath
     _run(cam)
-    assert cam.calls.count('B-spline Top') == tg.MAX_GENERATION_PASSES
+    assert cam.calls.count('B-spline Top/Morphed Spiral1') == tg.MAX_GENERATION_PASSES - 1
 
 
-def test_the_declaration_allows_a_second_pass():
+def test_the_declaration_allows_a_later_pass():
     assert tg.MAX_GENERATION_PASSES >= 2
