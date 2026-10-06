@@ -23591,3 +23591,25 @@ changed lay 0.0308. Test: bricks-dropped-chain + T8 (mutation: the back-off on c
 - SWEEP: app-init.js _editorSvgHasContent (its only caller was the boot mask) removed; cloud-project-manager.js comment
   that cited it reworded; app-init.js lastResult import (unused after) dropped. Kept: initApp's refreshAllStampMasks
   import (initSvgEditor still uses it).
+
+## H23 item 92: the Fusion palette opened as the website (no Send button) -- seat A / 77, 2026-10-06
+- Found during the item 70 re-check: three fresh palette opens in a row came up in WEB mode ('STEP' / 'Add-in', no
+  Send). pollMode gave Fusion's `adsk` 3 x 100 ms; the page's JS logs reached Python seconds later, so adsk was
+  injected late. A test-only bump of MAX_MODE_CHECKS in the deployed copy gave Fusion mode at once.
+- Fix (declared, not a magic number): html/data/fusion-host.js declares the host flag (?host=fusion), the Fusion wait
+  (modeDetectTimeoutMs 10000), the poll step and the website's grace (webGraceMs 300, today's value). The add-in
+  (_palette_url) opens the palette at file:///<path>?host=fusion; pollMode waits up to the declared timeout only on a
+  page carrying the flag, and decides the moment adsk appears. The website / an older add-in keeps the 300 ms.
+- Probe before the fix (scratch palettes, deleted): palettes.add REFUSES a bare path with a query ("Invalid
+  htmlFileURL"); the file:/// form with a query loads and keeps location.search. (stamp-editor.py's comment says
+  palettes.add rejects query strings on creation -- true only for the bare-path form.)
+- [MODE] log line: how long the page waited for adsk, the margin the timeout keeps.
+- Tests: tests/fusion-mode-detect.test.js 5 (3/5 fail on the old pollMode: late adsk, decide-at-once, timeout
+  fallback); test_palette_host_url.py 2, driving the real CommandExecuteHandler (2/2 fail without the add-in change).
+  Full vitest 5420/5420 (332 files); b-spline-gen pytest 157/157. Known failures: none.
+- Live, brick-wall board, scratch palette opens by deleteMe + execute: c269381 5/5 Fusion mode; f6536fc 5/5 Fusion mode,
+  adsk after 102 / (lost to log rotation) / 549 / 864 / 0 ms. 549 and 864 are past the old 300 ms: those opens would have
+  been the website. Page load itself varied 2-50 s on this busy machine.
+- Side notes, not fixed: the log rotates at 512 KB and one palette load writes ~600 KB (the P dump), so a load's own
+  lines can be rotated out twice; the build-info status reads "could not resolve source HEAD" for a deploy from a
+  worktree (fb_shared/build_info.py:134) and covers the header buttons.
