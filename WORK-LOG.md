@@ -23402,3 +23402,157 @@ bare 0.235 -> 0.003; T5 6x9 1 / 7x9 1.25 / 7x9 1.5 one or two more voussoirs, ba
 worse; stone 0; at 7x9 1 in only sub-tolerance vertex detail (T5). Total bare 21.3 -> 19.8 sq in; min seam of any
 changed lay 0.0308. Test: bricks-dropped-chain + T8 (mutation: the back-off on convex arcs -> T8 fails). Full vitest
 329 / 5,406.
+
+## H23 item 91 -- the first APPLY after BUILD generated 3/7 ops: item 86's setup tag (seat A / 77, 2026-10-06)
+- Symptom (item 90, main and seam-9x12 alike, 4/4 boards): the first APPLY right after BUILD generated 3/7 ops --
+  'B-spline Back' "generated in 0.4s" with both ops "Invalidated: Generation failed" (no error / warning text), Top's
+  first two missing, Frame ~130 s. Generating again produced them. In item 83 (afdc4c0) the first APPLY made 7/7.
+- Bisect, one board (T1 7x9 bricks, the item-90 "before" payload), deployed add-ins, only the CAM engine swapped
+  (sys.path, restored after each call; verified):
+    afdc4c0 engine: first APPLY 7/7 (Back 49.7 s). The only CAM change since: 4ea8973 (item 86, mine).
+    In it, on a FRESH build: the _configure_setup move is byte-identical (checked); the coordinator only reorders
+      the WCS-sketch step vs the cleanup (a no-op on a fresh doc); the one new write is _tag_setup -- an attribute
+      ('CAMBuilder', 'setup') added to every fresh setup.
+    main engine with _tag_setup patched to a no-op (setups confirmed untagged): first APPLY 7/7 (Back 49.4 s).
+  -> Writing an attribute on a fresh setup during BUILD makes the first generation fail. (One observation per board,
+  two boards; the mechanism inside Fusion is not known.)
+- FIX (cam_engine/setup_builder.py): BUILD writes no attribute on a setup; SETUP_ATTR / _tag_setup removed. A re-BUILD
+  finds its setups by their SETUP_SPECS name -- the identity _cleanup_previous_build already deletes by -- each
+  present ONCE and valid (a duplicated name -> the full recreate). Also the POS DIAG units: the WCS translation reads
+  in mm (measured, item 82), so those lines now say mm, and the derived stock 'bottom' subtracts the stock span in mm
+  (it divided by 10 and printed 'cm': mixed units).
+- Tests (test_cam_reuse.py): build_setup driven with fakes writes no attribute on the fresh setup (new); reuse by
+  name; a duplicated setup name -> full recreate (replaces the "untagged" case). 10/10; against main's setup_builder
+  3/10 fail (incl. the no-attribute test). CAM-builder 36/36.
+- LIVE (the branch engine via the swap, deployed add-ins otherwise): first APPLY after BUILD = 7/7, valid, no error /
+  warning, on two boards (bricks: Back 50.7 s; Grey stone ring: Back 44.5 s). A re-BUILD on the bricks doc REUSED by
+  name in 8.9 s (setups valid, ops kept). The POS DIAG label fix shows only once deployed (that log runs inside the
+  deferred generation, after the swap is restored).
+- Hygiene: scratch docs closed by handle (only Fred's Untitled), holder none.
+## H23 item 89 CORRECTION -- the first baseline was not fresh per case; redone (seat A / 77, 2026-10-05)
+- The advisor asked about "unseeded, 3 silhouettes in 3 loads". MEASURED (T1, 3 genuinely fresh loads, unseeded):
+    before Generate: frame seeds {} and the 12 outline primitives are IDENTICAL in all 3 loads. Only the terrain
+      seed differs (27673 / 72783 / 90091), which is by design.
+    the Frame tab's [Generate] = generateFrame(seed = nextSeed()), nextSeed() = Math.floor(Math.random()*1e6)
+      (editor/editor-lattice-pattern.js:777), documented "a new seeded random frame shape". The sweep clicked it on
+      every case: that is where the 3 silhouettes came from.
+    a saved board: after Generate, a plain reload restored the same seeds and outline, 3/3. NO outline bug.
+- THE DEFECT WAS MINE: localStorage.clear() run inside the app and then navigating does NOT give a fresh start. The
+  previous board came back (same terrain seed, previous frame record, 2 of 2 loads), so every case of the first
+  baseline started from the previous case's board. Re-running T1/T10/T12 genuinely fresh changed 7 of 9 piece counts
+  and 9 of 9 svgs (T1 single 110 -> 116). The sweep now wipes the origin from about:blank
+  (Storage.clearDataForOrigin, storageTypes 'all'); two fresh runs gave byte-identical svgs, 6 of 6 cases.
+  The first item 89 table above is INVALID. Its files were removed in 9ade383; the replacement is
+  tools/repro/h23_item89_baseline/*_fresh.*
+- Redone, same method otherwise (all 57 fresh; Fusion through the COMMITTED h23_item89_fusion_import.py, run end to
+  end, 2 per call, nothing else running). pieces / profiles / slivers < 1e-4 in2 / import s:
+    template    | single_soldier     | three_band         | double_course
+    template_1  | 116/116/ 0/1.28    | 116/116/ 0/1.28    | 112/112/ 0/1.15
+    template_2  |  87/ 87/ 0/1.33    |  87/ 87/ 0/3.96    |  79/ 79/ 0/1.16
+    template_3  |  94/ 94/ 0/5.51    | 145/248/48/3.67    |  90/ 90/ 0/2.99
+    template_4  | 100/100/ 0/3.20    | 100/100/ 0/4.72    |  96/ 96/ 0/2.83
+    template_5  | 113/121/ 2/1.58    | 113/121/ 2/5.97    | 107/115/ 2/1.74
+    template_6  |  99/ 99/ 0/2.44    |  99/ 99/ 0/3.66    |  91/ 91/ 0/3.05
+    template_7  |  86/ 86/ 0/3.19    |  86/ 86/ 0/1.80    |  80/ 80/ 0/1.97
+    template_8  | 105/136/ 7/2.55    | 105/136/ 7/1.44    |  95/ 95/ 0/2.69
+    template_9  |  84/ 84/ 0/1.20    |  84/ 84/ 0/1.15    |  84/ 84/ 0/1.20
+    template_10 | 103/109/ 0/1.53    | 103/109/ 0/1.57    |  99/ 99/ 0/1.73
+    template_11 |  84/ 84/ 0/1.15    |  84/ 84/ 0/1.52    |  72/ 72/ 0/4.52
+    template_12 | 114/114/ 0/1.52    | 114/114/ 0/1.88    | 110/114/ 0/1.58
+    template_13 |  91/ 91/ 0/1.46    |  91/ 91/ 0/1.19    |  82/ 88/ 0/1.11
+    template_14 |  90/ 90/ 0/1.10    | 133/289/92/1.44    |  85/ 85/ 0/1.02
+    template_15 |  86/ 86/ 0/1.66    |  86/ 86/ 0/1.01    |  82/ 82/ 0/3.69
+    template_16 |  86/ 86/ 0/1.04    |  86/ 86/ 0/1.23    |  86/ 86/ 0/1.05
+    template_17 |  89/ 89/ 0/1.01    |  89/ 89/ 0/1.11    |  89/ 89/ 0/1.10
+    template_18 |  94/ 94/ 0/1.34    |  94/ 94/ 0/1.23    |  90/ 90/ 0/1.23
+    template_19 | 104/130/ 4/1.31    | 104/130/ 4/1.53    | 102/128/ 4/1.29
+  TOTALS: 14/57 mismatched, 445 extra profiles, 172 slivers, 0 open ends, 0 multi-loop; import median 1.52 s,
+  max 5.97 s.
+- WORST 3:
+    T14 three_band 133/289/92: the small profiles spread ALONG the inner stretcher bands (x +-1.0..1.5, the whole
+      height). The stretcher bricks meet end to end with no joint: B's "zero-wide joints inside band rows".
+    T3 three_band 145/248/48: the same, along its inner bands (x +-1.5..2.0).
+    T8 single_soldier 105/136/7: all 19 small profiles at ONE corner (2.3..2.4, 3.2..3.4), a corner fan.
+  Note: three_band lays 3 real bands only on T3 and T14 here (145 / 133 pieces vs 94 / 90 single); elsewhere its
+  counts equal single_soldier's.
+- Shots (shots/seatA): h23_item89v2_template_14__three_band.png, h23_item89v2_template_3__three_band.png,
+  h23_item89v2_template_8__single_soldier.png. (The h23_item89_* shots of the first run are of the invalid boards.)
+- Slip: the 9ade383 commit landed without these files and this entry (a cp after git rm failed and the chain
+  stopped); added in the next commit.
+- Hygiene: scratch doc closed by handle (only Fred's Untitled), holder none, servers + Chrome stopped.
+
+## H23 item 89 AFTER-RUN on seat B's joint-rule 2db0668 (seat A / 77, 2026-10-06)
+- FIRST ATTEMPT RETRACTED: port 8794 was held by two days-old servers (pid 52764 'python -m http.server 8794', 02-Oct;
+  pid 29036 fb-app worktree serve_app.py 8794, 03-Oct). My server could not bind, and the "after" capture swept another
+  tree's app (40/57 boards point-for-point equal to the baseline, which was the tell). Not my PIDs; reported, not
+  killed. The sweep now has --root: it byte-compares the served palette + every core/bricks/*.js with the tree on
+  disk and exits 2 on a difference. Checked: pointed at the zombie on 8794 -> refused. It also polls for the app being
+  up instead of a fixed 8 s (one case died at "click of null" under 100% CPU); a page error is now a FAILED case,
+  not a crash.
+- CLEAN RUN: port 8795 confirmed free before start; guard: 30 served files == the joint-rule worktree. All 57 cases
+  (fixed tool, --seed 89, 7x9, 1 in, Frame tool alone); Fusion through the deployed _apply_bricks_sketch
+  (b-spline-gen.py identical in 2b5695d, main f3903b7 and 2db0668). Pieces = the <polygon>s in stamp.bricks (the
+  app's count also has 1 'grout' element per board, which is not in the Bricks svg).
+- RESULT: 57/57 profiles == pieces, 0 slivers, 0 open ends, 0 multi-loop; import median 1.56 s
+  (tools/repro/h23_item89_baseline/*_jointrule_2db0668.*). Worst baseline cases: T14 three_band 133/289/92 -> 133/133/0;
+  T3 three_band 145/248/48 -> 97/97/0.
+- CAVEAT (B found it, confirmed by the counts): the board SHAPE is not pinned. The sweep clicks the Frame tab's
+  [Generate], a random shape (nextSeed() = Math.random); the seeded PRNG does not make it reproducible, because the
+  number of draws before Generate depends on timing. So before/after are not the same boards case by case (e.g. T9
+  double_course 122 here vs B's 82). The acceptance claim (profiles == pieces on every board laid) does not need
+  identical boards; a per-board comparison does. Fix proposed, not built: declare the frame (no Generate, the
+  template's own fitted shape, which is identical across fresh loads, measured) and record the frame record in each
+  case json.
+- Slip: three cases got a duplicate "sketch: false" row: a call ran while a timed-out one was still on the same case.
+  The valid rows were re-measured alone and agree exactly (T19 single 103, T7 double 81, T7 single 85).
+
+## H23 item 89 re-check on ring-pinch d464848 (joint rule + items 30, 31, 32/33), with stone rings (seat A / 77, 2026-10-06)
+- Asked by seat B for the advisor. Fitted frames (the sweep's default since 5fd7468), 7x9, brick 1 in, Frame tool alone.
+  Served from a ring-pinch worktree on port 8797: confirmed free before start, and the --root guard matched 31 files
+  on every pass. Fusion through the deployed _apply_bricks_sketch: b-spline-gen.py is identical in the deployed
+  205b41b and d464848.
+- Sweep options added (declared, this branch): --frameSet=<id> picks the frame's set through the app's own
+  selectSet(id, .., ['frame']), reads back the set the frame bricks carry (frameSets) and falls back to a direct write
+  only if the picker did not take it (frameSetVia; never needed here). --presets=a,b limits the band presets. The
+  first template-list read retries (one start-up module fetch was dropped under load).
+- RESULT, 95 boards (pieces = the <polygon>s in stamp.bricks; the app's extra 'grout' element is not in the svg):
+    bricks (default set): 19 templates x single_soldier / three_band / double_course = 57 -> 57/57 profiles == pieces
+    White rocks (set 3), three_band x 19 -> 19/19; Grey stone (set 5), three_band x 19 -> 19/19 (both via selectSet,
+      every board laid the set asked for; stones ~29 vertices each, 2,272-2,800 curves per sketch)
+    0 slivers, 0 open ends, 0 multi-loop, no duplicate row disagreeing. Table + raw rows:
+    tools/repro/h23_item89_baseline/*ringpinch_d464848*.
+- Cost: under 100% CPU from other runs, 9 capture cases failed on the first pass (dropped module fetch / app not up);
+  one fill pass recovered all 9. Stone imports take ~1.5-2 min each in Fusion (profile measuring). Calls ran 3-6 cases
+  then waited for Fusion to go idle, so no two calls overlapped.
+## H23 item 90 -- CAM on the waiting engine stack: Send + BUILD + APPLY, main vs seam-9x12 8ab1729 (seat A / 77, 2026-10-06)
+- Boards: T1 7x9, the template's own FITTED frame (no Generate), brick 1 in, three_band frame + wall, applied (the brick
+  layers carve -> Stamped variant). (a) default set (106 frame + 99 wall pieces before and after); (b) Grey stone ring
+  (set 5, picked through selectSet: 100 -> 88 frame pieces after, + 124 wall). Captured from a 62c1b13 worktree (the
+  main seam-9x12 sits on) and an 8ab1729 worktree, ports verified free, --root guard 31/31, Math.random seeded
+  (terrain seed 1218 in all four payloads). The Fusion-side code (b-spline-gen.py, CAM-builder, frame-builder) is
+  identical in the deployed 205b41b and 8ab1729 -- only 7 app files differ, so any toolpath change comes from the board.
+- Capture tool (tools/repro/capture_send_payload.mjs): scenario cam-bricks + --root guard, --seed, --frameSet; a fresh
+  Chrome profile every run. Fusion driver: tools/repro/h23_item90/fusion_send_build_apply.py (the add-in's own
+  _handle_generate, the CAM engine's run, the palette's _do_apply_toolpaths, per-op state + getMachiningTime).
+- ALL FOUR BOARDS end 7/7 ops valid, hasError False, hasWarning False. Send 29-49 s, BUILD 39-56 s (noise: 100% CPU).
+- Machining time (Fusion's getMachiningTime, feed scale 1, the same settings for every board; clean pass = every
+  toolpath cleared, then all 7 generated in order in ONE pass):
+    bricks  Pocket back 502.9 -> 510.6 (+1.5%), Back spiral 87.2 -> 87.3, Pocket front 537.1 -> 542.2 (+0.9%),
+            Top spiral 89.4 -> 89.5, Pocket front deloge (rest) 238.3 -> 266.3 (+11.7%), Frame 452.4/181.4 ->
+            456.3/180.9. TOTAL 2088.7 -> 2133.1 s (+2.1%); Back+Top 1454.9 -> 1495.9 s (+2.8%, +41 s, most of it
+            the rest op).
+    stone   Pocket back 534.7 -> 541.9 (+1.3%), spirals +-0.6%, Pocket front +0.5%, deloge 269.2 -> 254.9 (-5.3%),
+            Frame pocket 477.5 -> 492.6 (+3.2%). TOTAL 2180.0 -> 2190.6 s (+0.5%); Back+Top -0.3%.
+  So the joint rule's extra joints cost ~1-1.5% on the pockets and move the rest-machining op either way (+12% bricks,
+  -5% stone). Not material on the whole job (+2.1% / +0.5%).
+  Generation seconds (clean pass, Back/Top/Frame): bricks 17.4/39.2/4.3 -> 15.7/74.1/5.6; stone 11.6/35.4/4.3 ->
+  12.5/45.2/3.3. Top varies 35-74 s between identical passes on this loaded machine, so these are not a reliable
+  measure; the machining estimate is.
+- FINDING (CAM, on main as well as the branch, 4/4 boards): the FIRST APPLY right after BUILD generates only 3/7.
+  'B-spline Back' "generated in 0.4s" with both Back ops "Invalidated: Generation failed" (no error / warning text),
+  Top's first two missing, the rest op + Frame generated, Frame taking ~130 s in that pass (4 s otherwise).
+  Generating again (the add-in's own TPGen event) produces them. Back's Morphed Spiral sometimes needs one more pass
+  (2 of 4 boards). In item 83 (deployed afdc4c0) the first APPLY generated 7/7. The WCS / stock readbacks are as
+  declared: the "POS DIAG ... cm" lines print millimetres (x -95.25 = -3.75 in), a label slip, not the cause. Not
+  investigated further (no CAM change was asked for).
+- Hygiene: scratch docs closed by handle (only Fred's Untitled), holder none, both servers stopped.

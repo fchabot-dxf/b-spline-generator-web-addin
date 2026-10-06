@@ -321,7 +321,7 @@ def log_position_diagnostics(cam, logger=None):
         try:
             wcs = s.workCoordinateSystem
             t = wcs.translation
-            _log(logger, f"POS DIAG: {s.name} WCS translation = ({t.x:.3f}, {t.y:.3f}, {t.z:.3f}) cm", "INFO")
+            _log(logger, f"POS DIAG: {s.name} WCS translation = ({t.x:.3f}, {t.y:.3f}, {t.z:.3f}) mm", "INFO")   # the WCS reads in mm (item 82)
             # Full Matrix3D — extract axis vectors
             try:
                 arr = wcs.asArray()
@@ -392,23 +392,20 @@ def log_position_diagnostics(cam, logger=None):
             syHigh = s.parameters.itemByName('stockYHigh').value.value
             szLow = s.parameters.itemByName('stockZLow').value.value
             szHigh = s.parameters.itemByName('stockZHigh').value.value
-            # Note: stock dims are in MM internally even though the
-            # itemByName returns floats. WCS translation is in CM. We
-            # need consistent units to add. Convert stock to CM (/10).
-            # Actually .value.value for stock params returns mm-scaled
-            # floats (we saw 254 for 254mm). Let me convert to cm.
+            # Units (H23 item 91): the stock params AND the WCS translation both read in MM (measured, item 82: x
+            # -95.25 for a -3.75 in WCS), so the span is subtracted in mm and every line below says mm. (This used to
+            # divide the span by 10 and print 'cm': mixed units, mislabelled.)
             stock_zspan_mm = szHigh - szLow  # 76.2 for stock
-            stock_zspan_cm = stock_zspan_mm / 10.0
             # 'top 1' = WCS translation. 'bottom 1' = WCS - stock_zspan in WCS Z direction
-            bx = o.x - zx * stock_zspan_cm
-            by = o.y - zy * stock_zspan_cm
-            bz = o.z - zz * stock_zspan_cm
-            _log(logger, f"POS DIAG: {s.name} derived stock 'bottom 1' (fixture point) at design world = ({bx:.3f}, {by:.3f}, {bz:.3f}) cm", "INFO")
-            _log(logger, f"POS DIAG: {s.name} offset from fence corner (0,0,0) = ({bx:.3f}, {by:.3f}, {bz:.3f}) cm", "INFO")
+            bx = o.x - zx * stock_zspan_mm
+            by = o.y - zy * stock_zspan_mm
+            bz = o.z - zz * stock_zspan_mm
+            _log(logger, f"POS DIAG: {s.name} derived stock 'bottom 1' (fixture point) at design world = ({bx:.3f}, {by:.3f}, {bz:.3f}) mm", "INFO")
+            _log(logger, f"POS DIAG: {s.name} offset from fence corner (0,0,0) = ({bx:.3f}, {by:.3f}, {bz:.3f}) mm", "INFO")
             # If we want bottom 1 to be at fence corner = (0,0,0), table_0
             # would need to shift by -(bx, by, bz) in DESIGN coords.
             # In .mch coords that becomes... unknown until we test.
-            _log(logger, f"POS DIAG: {s.name} TO MOVE TO FENCE: shift design coords by ({-bx:.3f}, {-by:.3f}, {-bz:.3f}) cm", "INFO")
+            _log(logger, f"POS DIAG: {s.name} TO MOVE TO FENCE: shift design coords by ({-bx:.3f}, {-by:.3f}, {-bz:.3f}) mm", "INFO")
         except Exception as e:
             _log(logger, f"POS DIAG: {s.name} derived bottom 1 failed: {type(e).__name__}: {e}", "WARNING")
 
@@ -1044,7 +1041,6 @@ def build_setup(cam, mms, spec, logger=None, skip_templates=False, skip_machine=
         setup.name = spec['name']
     except Exception as e:
         _log(logger, f"SETUP BUILD ({spec['name']}): name set failed: {e}", "WARNING")
-    _tag_setup(setup, spec['name'], logger)
 
     # Assign default machine — SKIPPED when skip_machine=True. The user
     # then attaches it via the ADD MACHINE button in the palette.
@@ -1480,25 +1476,17 @@ def _set_stock_mode(setup, intent, setup_name, logger):
 # panel), while re-applying stock / WCS on the existing setups took ~1.3 s; and after their models change a setup's
 # orientation axes and declared box must be RE-APPLIED (stock X read 7.5 instead of 9.5 after a re-bind).
 #
-# Identity, declared: a setup carries SETUP_ATTR = <its SETUP_SPECS name> (Setup has attributes); an MM is found by
-# its declared display name (ManufacturingModel has NO attributes -- measured). A build is reused only when every
-# MM_RULES MM and every SETUP_SPECS setup is present and valid; anything missing / invalid -> the full recreate.
-SETUP_ATTR = ('CAMBuilder', 'setup')
-
-
-def _tag_setup(setup, spec_name, logger=None):
-    try:
-        old = setup.attributes.itemByName(*SETUP_ATTR)
-        if old:
-            old.deleteMe()
-        setup.attributes.add(SETUP_ATTR[0], SETUP_ATTR[1], spec_name)
-    except Exception as e:
-        _log(logger, f"SETUP BUILD ({spec_name}): tag failed: {e}", "WARNING")
+# Identity, declared: a setup is found by its SETUP_SPECS name, an MM by its declared display name -- the same names
+# _cleanup_previous_build already deletes by. A build is reused only when every MM_RULES MM and every SETUP_SPECS setup
+# is present ONCE and valid; anything missing / invalid / duplicated -> the full recreate.
+# H23 item 91 (MEASURED, 4/4 boards): item 86 first tagged each fresh setup with an attribute during BUILD, and the
+# FIRST APPLY after that BUILD generated 3/7 ops ('B-spline Back' "Invalidated: Generation failed" in 0.4 s). The same
+# BUILD with the tag write patched out generated 7/7. So BUILD writes NO attribute on a setup.
 
 
 def find_reusable_build(cam, mm_names_by_rule, logger=None):
     """{'mms': {rule: mm}, 'setups': {spec name: setup}} when the whole declared build exists and is valid, else
-    None (the caller then does today's full recreate). Setups by SETUP_ATTR, MMs by `mm_names_by_rule`."""
+    None (the caller then does today's full recreate). Setups by their SETUP_SPECS name, MMs by `mm_names_by_rule`."""
     mms = {}
     by_name = {}
     for j in range(cam.manufacturingModels.count):
@@ -1510,22 +1498,17 @@ def find_reusable_build(cam, mm_names_by_rule, logger=None):
             _log(logger, f"REUSE: MM {name!r} missing or invalid -> full recreate", "INFO")
             return None
         mms[rule] = m
-    tagged = {}
+    named = {}
     for i in range(cam.setups.count):
         s = cam.setups.item(i)
-        try:
-            a = s.attributes.itemByName(*SETUP_ATTR)
-        except Exception:
-            a = None
-        if a:
-            tagged[a.value] = s
+        named.setdefault(s.name, []).append(s)
     setups = {}
     for spec in SETUP_SPECS:
-        s = tagged.get(spec['name'])
-        if s is None or not s.isValid:
-            _log(logger, f"REUSE: setup {spec['name']!r} missing, untagged or invalid -> full recreate", "INFO")
+        found = named.get(spec['name'], [])
+        if len(found) != 1 or not found[0].isValid:
+            _log(logger, f"REUSE: setup {spec['name']!r} missing, duplicated or invalid -> full recreate", "INFO")
             return None
-        setups[spec['name']] = s
+        setups[spec['name']] = found[0]
     return {'mms': mms, 'setups': setups}
 
 
