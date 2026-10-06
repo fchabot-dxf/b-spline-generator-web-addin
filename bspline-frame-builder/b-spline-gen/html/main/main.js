@@ -43,7 +43,7 @@ import { initViewModeToggle } from './view-mode-toggle.js';
 import { bindHeaderAndSettings } from './header-controls.js';
 import { paintBuildInfo } from './build-badge.js';
 import { wireGlobalEvents } from './global-events.js';
-import { installGestureWatch } from '../core/loading-signal.js';
+import { installGestureWatch, holdLoadingStage, releaseHeldStage } from '../core/loading-signal.js';
 import {
     onGenerate, onFusionApply, executeExport, closeWizard,
 } from './export-flow.js';
@@ -210,6 +210,14 @@ function handleFusionHandshake(ev) {
     if (action === 'import_ready' || action === 'reset_ui') {
         stopFusionPolling();
         setFusionActionState(FUSION_IDLE_LABEL, false);
+        releaseHeldStage(); // item 70
+        return;
+    }
+    // item 70: the add-in reports each step of a Send by its declared id (data/fusion-send-stages.js) -- held on the
+    // card ("Waiting - Fusion: building the frame, step 9 of 11") until the next step or the end
+    if (action === 'import_stage') {
+        let id = ''; try { id = JSON.parse(ev.detail.data || '{}').id || ''; } catch (e) {}
+        if (id) holdLoadingStage(id);
         return;
     }
 
@@ -218,12 +226,18 @@ function handleFusionHandshake(ev) {
         if (msg) setFusionStatus(msg, 'busy');
         return;
     }
-    if (action === 'import_success') { setFusionStatus('Imported into Fusion ✓', 'ok'); return; }
+    if (action === 'import_success') {
+        releaseHeldStage(); // item 70: Fusion's stages end; the button was held until now
+        setFusionActionState(FUSION_IDLE_LABEL, false);
+        setFusionStatus('Imported into Fusion ✓', 'ok');
+        return;
+    }
     // workflow audit #15: a failed Send reports at once (the palette used to wait out its whole poll)
     if (action === 'import_failed') {
         let msg = ''; try { msg = JSON.parse(ev.detail.data || '{}').msg || ''; } catch (e) {}
         stopFusionPolling();
         setFusionActionState(FUSION_IDLE_LABEL, false);
+        releaseHeldStage(); // item 70
         setFusionStatus(msg || 'The Send failed in Fusion', 'warn');
         return;
     }

@@ -23660,6 +23660,51 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Not touched: the 5 '[ERROR] CONSTRAINT FAIL ... VCS_SKETCH_SOLVING_FAILED' lines every Send of this board logs
   (also in the item 70 runs on other builds). _palette_url (item 92, not on main yet) parses its declaration the same
   way as the new _read_declared_json: fold it in when both are merged.
+## F35 item 69 -- main sidebar audit, T1 7x9 / T18 7x10, desktop + 900 px (seat E / 61, 2026-10-06)
+- METHOD: every visible control of Stock, Frame, Skeleton, Filter, Stamp, Sculpt top/bottom, Thicken, View, Export,
+  Resolution on both boards: change at CPU x4 (settle by lastResultGeneration + loading card), reload = live (waits on
+  item 37's bootRestore), revert, two changes 100 ms apart, Undo/Redo; layout per panel at 1400 and 900 px. Flags from
+  runs under fleet load were re-run alone: filter +, decal on/off, skeleton + / smooth / clustering, the stamp layer-row
+  carve toggle all CLEARED (load artefacts); several earlier 'reload' flags were item 37's gen-1 read (fixed there).
+- FIXED HERE: truncated stepper boxes (the palette rule was [type="number"]-qualified; formula fields are type="text"):
+  15 at 1400 px / 2 at 900 px -> 0. tests/stepper-input-css.test.js fails 1/1 before.
+- LISTED FOR THE ADVISOR (not one-liners): (1) HIGH stamp settings set from the sidebar are lost on reload -- the live
+  editor layer changes but P.editorSvg's data-editor-layers is not re-serialized; measured blur 4->0, V-bit 120->90,
+  smoothing 27->15, fillet 0.4->0; the mask reads the layer (stamp-mask-manager.js:139). (2) Delete frame cannot be
+  undone (frame stays gone, 3D unchanged). (3) 30 controls rebuild the 3D without changing it, 1.1-8.2 s at x4, no card
+  (sculpt tools / brush settings, decal opacity, adaptiveDisplay, ...); detailDensity changes the 3D with no card.
+  (4) thicken slider step 0.01 cannot hold the 0.125 default. (5) sculpt tool choice not kept across reload. (6) layer-row
+  carve button keeps its look after Undo. (7) enabled controls with no effect here (stamp Transform with no stamp art).
+- Sheet: shots/seatE/item69/sheet.html (+ sheet_preview.png). Full vitest 328 files, 5349 passed, 6 todo, 0 failed.
+
+## H23 item 94: the 5 SE15 CONSTRAINT FAILs on the 7x9 T16 board -- real, three causes, fixed by declaration (seat A / 77, 2026-10-06)
+- NOT the frame (Frame_1 builds ok): the SE15 constrained sketches of the board's Shape Lattice artwork, a frame-offset
+  contour (T16 Arched Funnel) that had been CUT (its right flank is 5 arc pieces, the left one arc). Rebuilt live
+  from the Send's own manifests (last_send.json) through the add-in's build_constrained_sketch in a scratch doc:
+  the same 5 failures, and the geometry really wrong -- contour ends up to 208 in off (an arc's radius doubled),
+  rails 6.9 in, ties/nodes 4.7 in. Not harmless.
+- Cause 1: Tangent declared at the contour's MITER corners (turns 74 / 94 / 43 deg). A cut drops the frame contour's
+  `corners` list (_drawnContourSilhouette), so every arc-adjacent joint got a Tangent; on the loose chain Fusion bends
+  the shape to satisfy them. Fix: a Tangent only where the drawn joint IS tangent -- isTangentJoint, factored out of
+  outlineDefects (same test, same 1e-4 tolerance, now TANGENT_JOINT_TOL).
+- Cause 2: 17 of 18 rail-end -> contour Coincidents named the WRONG seg: computePattern attributes ends by the FRESH
+  contour's numbering (latticeExtentFor) while a cut sends the drawn pieces, renumbered. Fix: _retargetContourEnds
+  re-resolves each end against the contour that is sent with primitiveHitAt (computePattern's own attribution),
+  tolerance CONTOUR_HIT_TOL_IN = 2e-3 in, now declared once and read by both. Only for a cut (an uncut manifest is
+  byte-identical, tested).
+- Cause 3: with 1+2 fixed (variant A, live) the contour still failed Tangent seg5/seg6 -- two pieces of ONE circle,
+  the joint next to the seg4/seg5 miter corner -- and a later arc's radius doubled. Without the 4 co-circular
+  Tangents (variant B) every layer built exact. Narrowed: seg5/seg6 restored alone fails, seg7/seg8 alone builds;
+  isolated co-circular pairs (4 radii/sweeps) and 3/5-piece chains build exact with or without Tangent. So: no
+  Tangent between pieces of one circle (_sameCircle) -- nothing lost (one circle by construction, loose contour).
+  Not a general Fusion rule (needs the loop), not root-caused, so not recorded in fusion360-quirks.
+- Tests: tests/se15-tangent-only-where-tangent.test.js 7 (T16 7x9 frame-offset contour, cut once): no Tangent at a
+  non-tangent joint (failed on the old producer: seg0/seg1), none at the cut joint, uncut Tangents unchanged, every
+  fill end on the piece it names (failed on the old code: rail0:S 1.48 in off) and none lost, uncut manifest
+  byte-identical. Related suites 477/477; full vitest 5440/5440 (335 files). Known failures: none.
+- Live end-to-end (deployed d52c5da = this + main 32a9fa4, the board's real Send from the palette): Lattice
+  Boundary / L2 contour / L1 rails / L3 ties / L4 nodes all constraints_issues=0, parity_maxErr 0 / 0 / 1e-6 / 0 /
+  0, no [ERROR], no PARITY WARNING (were 5 failures, 208 / 6.9 / 4.7 in); the contour builds in 1.1 s (was 4.7 s).
 
 ## F35 item 69 batch -- sidebar fixes (1) (2) (3) (4) (6) (seat E / 61, 2026-10-06)
 - (1) Stamp settings survive a reload. ROOT (measured): a sidebar write to an editor layer's tooling changed the
