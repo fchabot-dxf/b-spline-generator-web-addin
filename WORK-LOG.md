@@ -23340,3 +23340,20 @@ On top of V1 / V2 / V4 (above):
 - SWEEP: app-init.js _editorSvgHasContent (its only caller was the boot mask) removed; cloud-project-manager.js comment
   that cited it reworded; app-init.js lastResult import (unused after) dropped. Kept: initApp's refreshAllStampMasks
   import (initSvgEditor still uses it).
+
+## F35 item 69 -- main sidebar audit, T1 7x9 / T18 7x10, desktop + 900 px (seat E / 61, 2026-10-06)
+- METHOD: every visible control of Stock, Frame, Skeleton, Filter, Stamp, Sculpt top/bottom, Thicken, View, Export,
+  Resolution on both boards: change at CPU x4 (settle by lastResultGeneration + loading card), reload = live (waits on
+  item 37's bootRestore), revert, two changes 100 ms apart, Undo/Redo; layout per panel at 1400 and 900 px. Flags from
+  runs under fleet load were re-run alone: filter +, decal on/off, skeleton + / smooth / clustering, the stamp layer-row
+  carve toggle all CLEARED (load artefacts); several earlier 'reload' flags were item 37's gen-1 read (fixed there).
+- FIXED HERE: truncated stepper boxes (the palette rule was [type="number"]-qualified; formula fields are type="text"):
+  15 at 1400 px / 2 at 900 px -> 0. tests/stepper-input-css.test.js fails 1/1 before.
+- LISTED FOR THE ADVISOR (not one-liners): (1) HIGH stamp settings set from the sidebar are lost on reload -- the live
+  editor layer changes but P.editorSvg's data-editor-layers is not re-serialized; measured blur 4->0, V-bit 120->90,
+  smoothing 27->15, fillet 0.4->0; the mask reads the layer (stamp-mask-manager.js:139). (2) Delete frame cannot be
+  undone (frame stays gone, 3D unchanged). (3) 30 controls rebuild the 3D without changing it, 1.1-8.2 s at x4, no card
+  (sculpt tools / brush settings, decal opacity, adaptiveDisplay, ...); detailDensity changes the 3D with no card.
+  (4) thicken slider step 0.01 cannot hold the 0.125 default. (5) sculpt tool choice not kept across reload. (6) layer-row
+  carve button keeps its look after Undo. (7) enabled controls with no effect here (stamp Transform with no stamp art).
+- Sheet: shots/seatE/item69/sheet.html (+ sheet_preview.png). Full vitest 328 files, 5349 passed, 6 todo, 0 failed.
