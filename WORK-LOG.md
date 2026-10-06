@@ -22989,3 +22989,22 @@ so "clean boards stay byte-identical" cannot hold for step 2. Options: (A) every
 re-lay once, corners look like every other joint, Fusion gets no 0-gap seams); (B) only corners that overlap or touch
 get it (clean saved boards identical, but two kinds of corner on one board). Recommendation: A, in one commit after
 1 / 3 / 4, with before/after full-board shots for Fred.
+
+## T86 item 21b -- progress: voids (seat B / fc, 2026-10-06)
+Sweep widened to EVERY FRAME_PRESET (8 non-empty) x 19 templates x 0.75 / 1 / 1.25 in = 456 cases, scored by
+scratch corner.py (overlap by kind via scratch source tags; band-ring voids farther than 0.045 in from every piece).
+Base = neck-medial 44f375e: overlap 13.22 sq in, voids 70.33 (70 cases >= 0.01).
+- V1 (4cc... see git log, primitive-ribbon BUTT_SQUARE_WINDOW_DEG = 15): butt / lapped only within 15 deg of square,
+  block only at convex corners within it; else the mitre. T11 double_course 1.25 2.78 -> 0 (the verticals carry
+  pieces again), T9 quoin 14.77 -> 0, T6 quoin 6.83 -> 0. Voids 70.3 -> 5.9.
+- V2 (4db5ab3): a corner dropping TWO primitives (T8 1.25: a fillet whose radius 1.253 = the depth, plus the line after
+  it) had no joint at all (the neighbours' d0 offsets never cross, `o` null); buildPatch now takes the dropped chain.
+  Voids -> 4.16.
+- V4 (f117998): near-square but not square butt / block corners (T12 / T13 ~81 deg) cut parallel to the face they meet
+  and bound the run's last piece on both edges; a true right angle is built exactly as before. Voids -> 2.02.
+- Left (not corners): T18 / T19 shoulder voussoir joints widening toward the rim of a tight convex arc (0.09); many tiny
+  wide joints in stretcher rows (<= 0.02 per case).
+**FINDING (pre-existing, bigger than 21b):** the row planner puts a run's length error into its JOINTS
+(piece-plan.js planCornerRun: jointWidth = max(0, nominal + slack / nJoints)). Over the 456 cases, joints between
+consecutive pieces of one row: straight runs 960 exactly 0 wide, 5,066 under 0.029 in, 264 over 0.09 in (nominal 0.034);
+arcs 534 exactly 0. A 0-wide joint is the same Fusion sliver defect as the 0-gap seams. Raised with the advisor.
