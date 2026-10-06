@@ -3,7 +3,7 @@
 // payload taken through the Send's own functions (export-flow.js _bricksLayerSvg + editor-io.js bakeSvgForCarving,
 // exactly what sendToFusion puts in stamp.bricks). One JSON per case in <outDir>; existing cases are skipped (resume).
 //   python tools/serve_app.py <port>   then
-//   node tools/repro/h23_item89_band_sweep.mjs <outDir> <paletteUrl> [cdpPort] [--board=WxH] [--only=template_1,...] [--seed=89] [--frame=fitted|generate]
+//   node tools/repro/h23_item89_band_sweep.mjs <outDir> <paletteUrl> [cdpPort] [--board=WxH] [--only=template_1,...] [--seed=89] [--frame=fitted|generate] [--brick=<in>]
 //        [--root=<the bspline-frame-builder dir the server should be serving>]
 // The Fusion half (import the svg through the add-in's own _apply_bricks_sketch) reads these files.
 import { spawn } from 'node:child_process';
@@ -11,7 +11,10 @@ import { writeFileSync, mkdirSync, existsSync, rmSync, readFileSync, readdirSync
 import { join } from 'node:path';
 
 const ALL_PRESETS = ['single_soldier', 'three_band', 'double_course'];
-const BRICK_LENGTH_IN = 1;
+// --brick=<in>: the brick length the frame is laid at (default 1, the original baseline's); each case records the length the
+// app really took (brickLengthIn: setBrickSize clamps to its own declared range)
+const BRICK_LENGTH_IN = Number((process.argv.find((a) => a.startsWith('--brick=')) || '--brick=1').slice(8));
+if (!(BRICK_LENGTH_IN > 0)) { console.log('--brick must be a positive length in inches'); process.exit(2); }
 const ARGS = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const opt = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').slice(k.length + 3) || d;
 const [OUT, URL, PORTARG] = ARGS;
@@ -47,10 +50,18 @@ if (ROOT) {
   }
   console.log(`served app == --root (${files.length} files checked)`);
 }
-const PROFILE = `${OUT}/chrome-sweep-${PORT}`;
 mkdirSync(OUT, { recursive: true });
-rmSync(PROFILE, { recursive: true, force: true }); // a reused profile restores the previous board (item 83)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// A FRESH profile: a reused one restores the previous board (item 83). The previous run's Chrome can still hold its
+// profile for a while after exit (MEASURED: a fill pass right after a pass died on EPERM removing it), so retry, and
+// if it stays locked use a new folder instead of crashing.
+let PROFILE = `${OUT}/chrome-sweep-${PORT}`;
+for (let i = 0; ; i++) {
+  try { rmSync(PROFILE, { recursive: true, force: true }); break; } catch (e) {
+    if (i >= 10) { PROFILE = `${OUT}/chrome-sweep-${PORT}-${Date.now()}`; console.log(`profile still locked (${e.code}); using ${PROFILE}`); break; }
+    await sleep(1500);
+  }
+}
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${PROFILE}`,
   '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: 'ignore' });
 let wsUrl = null;

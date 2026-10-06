@@ -23087,3 +23087,19 @@ T11 double_course 1.25, T16 three_band 0.75; red = overlap, blue = ground given 
 - Cost: under 100% CPU from other runs, 9 capture cases failed on the first pass (dropped module fetch / app not up);
   one fill pass recovered all 9. Stone imports take ~1.5-2 min each in Fusion (profile measuring). Calls ran 3-6 cases
   then waited for Fusion to go idle, so no two calls overlapped.
+
+## H23 item 89 --brick re-check of seam-9x12 0f85fe3 (seat A / 77, 2026-10-06)
+- Asked by the advisor after item 91: re-check the boards seam-9x12 changed -- 9x12 at 0.75 in, 6x9 and 7x9 at 1.25 and
+  1.5 in. Bricks only (default set), fitted frames, the 3 band presets, 19 templates = 57 boards per combo.
+- Sweep option added (declared): --brick=<in> sets the brick length the app lays (default 1, a non-positive value
+  exits 2); each case records brickLengthIn. Also: the fill pass crashed with EPERM when the previous Chrome still
+  held the profile folder -- the wipe now retries 10 x 1.5 s, then uses a fresh timestamped profile folder.
+- Served from a 0f85fe3 worktree on port 8803 (confirmed free before start); the --root guard matched 31 files on every
+  pass. Fusion through the deployed _apply_bricks_sketch (main f818ae8 deployed; b-spline-gen.py brick import unchanged).
+- RESULT: 285/285 profiles == svgPieces, 0 slivers, 0 multi-loop, 0 open ends.
+    9x12 @ 0.75: 57/57 (106-216 pieces)   6x9 @ 1.25: 57/57 (62-104)   6x9 @ 1.5: 57/57 (52-92)
+    7x9 @ 1.25: 57/57 (64-104)            7x9 @ 1.5: 57/57 (54-92)
+  Table + raw rows: tools/repro/h23_item89_baseline/*seam9x12_0f85fe3*. 6x9 and 7x9 share the piece count in 53/57
+  cases at 1.25 in although every outline differs (only the two horizontal bars change, by 1 in < one brick).
+- Slip: one 9x12 row (template_5__three_band) got a duplicate "sketch: false" row from an overlapped timed-out call; the
+  first row (216 == 216) is kept. Heavy templates (16-19, ~1,100-2,300 curves) take 5-10 s each: batches of 2 there.
