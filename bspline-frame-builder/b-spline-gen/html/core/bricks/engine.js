@@ -17,6 +17,7 @@ import { brickTopHeight } from './height-profile.js';
 import { suppressBricks } from './suppression.js';
 import { laySurround } from './inset-surround.js';
 import { scaledSet } from './library.js';
+import { applyFanCentre, FAN_CENTRE_DEFAULT } from './fan-centre.js';
 
 /**
  * @param {object} input
@@ -61,6 +62,7 @@ export const ENGINE_OPTIONS = Object.freeze([
   'customBond', // T86 item 27: a declared course sequence (pieces in brick units + an offset per course)
   'suppressFrame', 'frameSuppression', // T86 item 29 (lane-b): the frame bands crumble by the wall's rule (suppression.js suppressBricks)
   'insetSurround', // T86 item 29 (lane-b): { rect, preset, corner?, set? } -- a band stack around the inset window (inset-surround.js)
+  'fanCentre', // T86 item 16e: how a frame corner's fan ends at its centre (fan-centre.js FAN_CENTRES); absent = needle
 ]);
 
 export function generateBricks(input) {
@@ -95,6 +97,8 @@ export function generateBricks(input) {
     frameBricks = res.bricks;
     interiorOutline = res.innerPath;
     bandsReduced = res.bandsReduced;
+    // T86 item 16e: the fan centre (fan-centre.js); absent / needle = no call, the lay byte-identical
+    if (input.fanCentre && input.fanCentre !== FAN_CENTRE_DEFAULT) frameBricks = applyFanCentre(frameBricks, input.fanCentre, { set: scaledSet(frameSet, scale), region: interiorOutline });
     // T86 item 29: the frame crumbles by the SAME rule as the wall (whole pieces, top-weighted, exact count, clumping);
     // off (absent / false / 0) = no call, the lay byte-identical
     if (input.suppressFrame && input.frameSuppression > 0) {
