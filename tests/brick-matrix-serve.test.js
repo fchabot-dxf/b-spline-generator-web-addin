@@ -47,7 +47,9 @@ describe('item 74k: the matrix server takes a burst of requests', () => {
     expect(src).not.toMatch(/'-m', 'http\.server'/);
     expect(src).toMatch(/let boot = await waitApp\(\);/);
     expect(src).toMatch(/if \(!boot\.booted\) throw new Error\(`setup failed: the app never booted/);
-    // the one measured reload: a module lost to the client's own socket exhaustion under load
-    expect(src).toMatch(/const BOOT_RELOAD_ERRORS = \[[^\]]*'net::ERR_NO_BUFFER_SPACE'/);
+    // the measured boot retries are declared in boot.mjs (tests/brick-matrix-boot.test.js) and run.mjs takes them there
+    expect(readFileSync('tools/brick-matrix/boot.mjs', 'utf8')).toMatch(/export const BOOT_RELOAD_ERRORS = \[[^\]]*'net::ERR_NO_BUFFER_SPACE'/);
+    expect(src).toMatch(/const retry = boot\.booted \? null : bootRetry\(failedRequests\);/);
+    expect(src).toMatch(/retry === 'navigate' \? send\('Page\.navigate', \{ url: paletteUrl \}\) : send\('Page\.reload', \{\}\)/);
   });
 });

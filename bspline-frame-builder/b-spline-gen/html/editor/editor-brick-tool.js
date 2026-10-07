@@ -54,7 +54,7 @@ import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, frameHasFan, FAN_CENTRES, FAN_CENTRE_DEFAULT, fanGroups } from '../core/bricks/index.js';
+import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, frameHasFan, FAN_CENTRES, FAN_CENTRE_DEFAULT, fanGroups, applyGroutCuts } from '../core/bricks/index.js';
 import FRAME_DEFS from '../data/frame-defs.js';
 import { frameContourSilhouette } from './contour-from-frame.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
@@ -1191,6 +1191,25 @@ export function showElementSelection(editor, elementId) {
  *  brush brick on the canvas is an exclusion for the Wall fill -- `input.exclusions = [{polygon}]`, board
  *  inches, the signature agreed with seat B (d3, T86 item 13: the engine DROPS any wall piece overlapping
  *  an exclusion). Read straight off the DOM, same as the height mask does. */
+/** T86 item 10: the Raised brush's GROUT-mode strokes as the engine's cuts -- each stroke's spine segments chained back
+ *  into polylines (reconstructChains, as its bricks would be), [{ polyline }] each; the width is each element's own joint
+ *  (the engine's default). The Wall / Frame lay passes them as `groutCut`; [] with none. */
+export function groutCutPolylines(editor) {
+  if (!editor || !editor._sketchLayer || typeof editor._sketchLayer.children !== 'function') return [];
+  const byElement = new Map();
+  for (const el of editor._sketchLayer.children().toArray()) {
+    if (el.attr(BRICK_ATTR) !== SPINE_KIND) continue;
+    const settings = decodeBrickSettings(el.attr(BRICK_SETTINGS_ATTR));
+    if (!settings || settings.strokeMode !== 'grout') continue;
+    const id = el.attr(BRICK_ELEMENT_ATTR);
+    const [a, b] = pieceEnds(el);
+    if (!byElement.has(id)) byElement.set(id, []);
+    byElement.get(id).push({ a, b, stripeId: null, settings });
+  }
+  return [...byElement.values()].flatMap((segs) => reconstructChains(segs)).filter((c) => c.points.length >= 2)
+    .map((c) => ({ polyline: c.points.map((p) => ({ x: p.x, y: p.y })) }));
+}
+
 export function brushExclusions(editor) {
   const node = editor && editor._sketchLayer && editor._sketchLayer.node;
   if (!node || !node.querySelectorAll) return [];
@@ -1265,6 +1284,9 @@ function _layInput(editor, settings, frameGeom) {
   // F35 item 29 (a): the Wall's Rustic amount, for a running bond only (0 = absent = today's clean coursing)
   const rustic = Number(settings.rusticByElement && settings.rusticByElement.wall) || 0;
   if (rustic > 0 && isRunningBond(settings.pattern)) input.rustic = rustic;
+  // T86 item 10: the Raised brush's grout-mode strokes cut joints through the laid Wall / Frame (none = absent = as before)
+  const cuts = groutCutPolylines(editor);
+  if (cuts.length) input.groutCut = cuts;
   // F35 item 13: the Wall pattern's rotation (wall only; 0 = absent = today's lay, byte-identical)
   const rotationDeg = Number(settings.wallRotationDeg) || 0;
   if (rotationDeg) input.rotationDeg = rotationDeg;
@@ -1958,6 +1980,10 @@ export function regenerateOwnedBrickElements(editor) {
   }
   const laidChains = strokeBricksWithCrossings(allChains, framePieces);
   const laidOf = new Map(allChains.map((c, k) => [`${c.elementId}:${c.chainIdx}`, laidChains[k]]));
+  // T86 item 10 (Fred: "also cut Brush bricks"): the grout-mode strokes cut every stroke's bricks too -- the SAME cut step
+  // as the Wall / Frame (core/bricks applyGroutCuts), at the stroke's own set's joint and floor; every stroke is re-derived
+  // from the spines here, so a stroke laid after a cut is cut as well (and a new cut changes this fingerprint)
+  const groutCuts = groutCutPolylines(editor);
   for (const [elementId, segs] of byElement) {
     const chains = reconstructChains(segs);
     const region = []; // F35 item 55: the stroke's ribbons, one per chain (a cut stroke: one per part)
@@ -1967,7 +1993,7 @@ export function regenerateOwnedBrickElements(editor) {
       const settings = chain.cycleIndex == null
         ? chain.settings
         : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
-      const bricks = laid.bricks;
+      const bricks = applyGroutCuts(laid.bricks, groutCuts, resolvedSetFor(settings), scaleFor(settings));
       if (bricks.length) for (const outer of laid.outlines) region.push({ outer, holes: [] });
       const ownerId = `${elementId}:${chainIdx}`;
       const layer = strokeLayer.get(elementId);

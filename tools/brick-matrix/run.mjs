@@ -22,6 +22,7 @@ import path from 'node:path';
 import { GROUPS, GROUP_OF, RUNNER_ORDER, bindGroups, runGroup, CLEAR_MENU, EDIT_PASSWORD_TEST, BRICK_CONTROLS, REQUIRES_SOURCE, GROUP_SETUP } from './groups/index.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 import { portBusy, dropStaleProfiles } from './ports.mjs';
+import { bootRetry } from './boot.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const arg = (name, dflt) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt; };
@@ -178,9 +179,6 @@ let id = 0; const pending = new Map(); const pageErrors = [];
 // item 74k: every request the page could not load (url -> error) -- a failed module request leaves no app at all, and
 // a setup that never boots names them
 const requestUrls = new Map(), failedRequests = [];
-// the transient network errors a page load can lose a module to (measured under the gate's load; serve.py's backlog
-// removed the refusals it could, ERR_NO_BUFFER_SPACE is the client's own socket exhaustion)
-const BOOT_RELOAD_ERRORS = ['net::ERR_NO_BUFFER_SPACE', 'net::ERR_CONNECTION_REFUSED', 'net::ERR_CONNECTION_RESET'];
 ws.addEventListener('message', (ev) => {
   const m = JSON.parse(ev.data);
   if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); return; }
@@ -334,19 +332,24 @@ try {
   await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
   if (!REAL_CLOUD) await send('Page.addScriptToEvaluateOnNewDocument', { source: CLOUD_STAND_IN.replace('__EDIT_PASSWORD__', EDIT_PASSWORD_TEST.password) });
   await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
-  await send('Page.navigate', { url: `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html${REAL_CLOUD ? '?realCloud=1' : ''}` });
+  const paletteUrl = `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html${REAL_CLOUD ? '?realCloud=1' : ''}`;
+  await send('Page.navigate', { url: paletteUrl });
   // item 74k (seat D, measured: "no bricks laid at baseline (none)" was a page whose app NEVER booted -- a refused module
   // request kills the module graph: no editor, the splash up; the old splash check timed out and the lay ran on a dead
   // page, retried blind): the baseline waits for the app's declared ready signal (waitApp: core/state.js
   // bootRestore.complete), then lays ONCE. A page that never boots is a named setup error.
   let boot = await waitApp();
-  // the one measured case a reload cures: a module request lost to the machine's own network stack under load
-  // (BOOT_RELOAD_ERRORS -- ERR_NO_BUFFER_SPACE: the client ran out of socket buffers, which no server setting prevents)
-  // kills the page's module graph for good. Reloaded ONCE, then the same declared wait; any other never-booted page
-  // is a named setup error.
-  if (!boot.booted && failedRequests.some((f) => BOOT_RELOAD_ERRORS.some((e) => f.endsWith(e)))) {
-    console.log(`the app never booted (${failedRequests.slice(0, 3).join(', ')}) -- one reload`);
-    failedRequests.length = 0; await send('Page.reload', {}); boot = await waitApp();
+  // the measured cases one retry cures (boot.mjs bootRetry): a module request lost to the machine's own network stack
+  // under load (BOOT_RELOAD_ERRORS -- ERR_NO_BUFFER_SPACE: the client ran out of socket buffers, which no server setting
+  // prevents) kills the page's module graph for good -> one reload; the palette DOCUMENT cancelled (ERR_ABORTED) leaves
+  // the page on about:blank, where a reload reloads about:blank -> one fresh navigate. Then the same declared wait; any
+  // other never-booted page is a named setup error.
+  const retry = boot.booted ? null : bootRetry(failedRequests);
+  if (retry) {
+    console.log(`the app never booted (${failedRequests.slice(0, 3).join(', ')}) -- one ${retry}`);
+    failedRequests.length = 0;
+    await (retry === 'navigate' ? send('Page.navigate', { url: paletteUrl }) : send('Page.reload', {}));
+    boot = await waitApp();
   }
   if (!boot.booted) throw new Error(`setup failed: the app never booted (${boot.why}; failed requests: ${failedRequests.slice(0, 4).join(', ') || 'none'})`);
   await openBrickTool('wall');
