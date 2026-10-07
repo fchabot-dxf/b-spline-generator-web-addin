@@ -24053,3 +24053,16 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   (seam band 3.9 J, seam wall / node wall 4.8 J; main had 7.7 / 8.4 / 8.4). T14 1.25, T18 / T19 1.25 unchanged (0 bare).
   T9 0.75's one-piece change is gone (it was a wrap). Full vitest 370 files, 5710 passed, 0 failed; full sweep 19/19.
 - SHOT shots/seatE/t86_16f/wartfix_T14_1.5.png (+ T9 0.75).
+## "Preserving 7x9 border lines" on a 9x12 board -- measured: no carving bug, the label was wrong (seat A / 77, 2026-10-07)
+- Seen on item 100's T11 9x12 Send. The text is a hardcoded log label (b-spline-gen.py _import_single_layer_svg);
+  _prescale_svg is a no-op (the SVG arrives baked by editor-io.js bakeSvgForCarving).
+- But the captured 9x12 payload's stamp SVGs carry viewBox="-432 -576 864 1152" (9x12 at 96 dpi) with the editor's
+  STALE width="672" height="864" (7x9): bakeSvgForCarving sets the viewBox from the board and keeps the root's
+  width/height. So: does Fusion size an import by width/height or by viewBox?
+- LIVE probe (scratch doc, closed by handle; holder released): one +-432 x +-576 rect imported three ways
+  (createSVGImportOptions, scale 1.0, as the add-in does): width/height 864x1152 -> 9.0008 x 12.0008 in; 672x864
+  (stale) -> 9.0008 x 12.0008 in; none -> 9.0008 x 12.0008 in. Fusion uses the viewBox; width/height are ignored.
+- Every Fusion-bound SVG in three captured payloads (T11 9x12 layers 2-4, T1 7x9 bricks, T16 7x9 layers 2-4) carries
+  exactly its board's viewBox; bakeSvgForCarving is the only bake site. No carving bug.
+- Fix: the log names the real board size ('[STAMP] Preserving 9x12 border lines ...'), with the measurement in the
+  comment. Log text only -- no test (nothing reads it). b-spline-gen 180/180. Known failures: none.
