@@ -18,6 +18,7 @@ import { suppressBricks } from './suppression.js';
 import { laySurround } from './inset-surround.js';
 import { bareTips } from './tip-fill.js';
 import { scaledSet } from './library.js';
+import { applyGroutCuts, groutCutsOf } from './grout-cut.js';
 import { applyFanCentre, FAN_CENTRE_DEFAULT } from './fan-centre.js';
 
 /**
@@ -63,6 +64,7 @@ export const ENGINE_OPTIONS = Object.freeze([
   'customBond', // T86 item 27: a declared course sequence (pieces in brick units + an offset per course)
   'suppressFrame', 'frameSuppression', // T86 item 29 (lane-b): the frame bands crumble by the wall's rule (suppression.js suppressBricks)
   'insetSurround', // T86 item 29 (lane-b): { rect, preset, corner?, set? } -- a band stack around the inset window (inset-surround.js)
+  'groutCut', // T86 item 10: [{ polyline, widthIn? }] -- grout joints cut through the laid pieces (grout-cut.js), after the lay
   'fanCentre', // T86 item 16e: how a frame corner's fan ends at its centre (fan-centre.js FAN_CENTRES); absent = needle
 ]);
 
@@ -122,6 +124,14 @@ export function generateBricks(input) {
     exclusions: wallExclusions,
     region,
   }).bricks;
+  // T86 item 10 (the Raised brush's Grout mode): each cut polyline opens a joint through the laid pieces AFTER the lay --
+  // the wall at the wall set's joint, the frame (and the window surround) at the frame set's, unless the cut declares
+  // its own width; a piece under the quarter-brick floor of its element drops into the joint. No cut = as before.
+  const cuts = groutCutsOf(input.groutCut);
+  const cutAll = (pieces, s) => applyGroutCuts(pieces, cuts, s, scale); // the one shared cut step (grout-cut.js)
+  const wallBricks = cutAll(bricks, set);
+  const frameSetUsed = (frame && frame.set) || set;
+  const surroundBricks = surround ? cutAll(surround.bricks, frameSetUsed) : null;
   // T86 item 16f (B1): the wall region's acute tips (>= TIP_FILL_MIN_DEG) the wall leaves bare are the band's -- the frame's
   // innermost row reaches into what the wall leaves uncovered (a joint off every wall brick; the wall itself is untouched)
   const tips = frameLay && frameLay.bands.length && bricks.length ? bareTips(interiorOutline, bricks, scaledSet(set, scale)) : [];
@@ -132,6 +142,9 @@ export function generateBricks(input) {
   if (frameLay && input.fanCentre && input.fanCentre !== FAN_CENTRE_DEFAULT) {
     frameBricks = applyFanCentre(frameBricks, input.fanCentre, { set: scaledSet(frameLay.frameSet, scale), region: interiorOutline });
   }
+  // T86 item 10: the grout cuts on the frame's ONE lay (after the tip re-lay and the fan centre, before the crumble, so the
+  // crumble picks among the cut pieces)
+  if (frameLay) frameBricks = cutAll(frameBricks, frameLay.frameSet);
   // T86 item 29: the frame crumbles by the SAME rule as the wall (whole pieces, top-weighted, exact count, clumping);
   // off (absent / false / 0) = no call, the lay byte-identical
   if (frameLay && input.suppressFrame && input.frameSuppression > 0) {
@@ -139,12 +152,14 @@ export function generateBricks(input) {
       seed, scaledSet(frameLay.frameSet, scale).brickHeightIn);
   }
   // T86 item 13: the app's own stub (editor-brick-tool.js dropExcludedWallBricks) stands down when this is set
-  const notes = { ...(bandsReduced ? { bandsReduced } : {}), ...(input.wallRegion ? { wallRegionApplied: true } : {}), ...(surround ? { surroundBricks: surround.bricks } : {}) };
+  const notes = { ...(bandsReduced ? { bandsReduced } : {}), ...(input.wallRegion ? { wallRegionApplied: true } : {}), ...(surround ? { surroundBricks } : {}),
+    ...(cuts.length ? { groutCutApplied: cuts.length } : {}) };
   // F35 item 55: + `interiorOutline` (the wall's fill outline: the frame's innerPath, else the board) -- additive, read by
   // the grout shape (grout-shape.js); every other field is as before
-  if (Array.isArray(input.exclusions)) return { bricks, frameBricks, seed, exclusionsApplied: true, ...notes, interiorOutline };
-  return { bricks, frameBricks, seed, ...notes, interiorOutline };
+  if (Array.isArray(input.exclusions)) return { bricks: wallBricks, frameBricks, seed, exclusionsApplied: true, ...notes, interiorOutline };
+  return { bricks: wallBricks, frameBricks, seed, ...notes, interiorOutline };
 }
+
 
 /** T86 item 18: the wall's region from `input.wallRegion` -- { strokes: [{ points, widthIn }], minus: [...] } (each
  *  NEWER area's strokes; region.js strokesToRegion, the minus grown by the wall set's grout so two areas never butt),

@@ -23,10 +23,10 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/toast.js', () => ({ sho
 // under test here).
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js', () => ({ commitEdit: vi.fn() }));
 // turn 199: the engine's honoured-option list, mutable so a test can stand in for "T86 item 17 landed"
-const engineOpts = vi.hoisted(() => ({ extra: [] }));
+const engineOpts = vi.hoisted(() => ({ extra: [], drop: [] })); // drop: an engine without that key (T86 item 10)
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, get ENGINE_OPTIONS() { return [...actual.ENGINE_OPTIONS, ...engineOpts.extra]; } };
+  return { ...actual, get ENGINE_OPTIONS() { return [...actual.ENGINE_OPTIONS.filter((k) => !engineOpts.drop.includes(k)), ...engineOpts.extra]; } };
 });
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -832,16 +832,19 @@ describe('turn 201: the Raised brush (a Brush variant; Level + modes in its own 
     $('brickTool_brush').click();
     expect(window.svgEditor._brickStrokeOverrides()).toEqual({ setId: 1, rustic: 0, grout: expect.objectContaining({ widthIn: 0.034 }) }); // item 29: + Rustic; + its joint
   });
-  it('Grout mode is hidden until the engine lists groutCut, then pickable', () => {
-    $('brickTool_raisedBrush').click();
+  it('Grout mode shows and is pickable now the engine lists groutCut (T86 item 10); hidden + refused without it', () => {
+    const resync = () => document.dispatchEvent(new CustomEvent('brickSettingsRestored')); // the panel's full re-sync
+    engineOpts.drop = ['groutCut'];
+    $('brickTool_raisedBrush').click(); resync();
     expect($('brickRaisedMode_grout').style.display).toBe('none');
     setRaisedMode('grout');
     expect(P.brickSettings.raisedMode).toBe('bricks'); // refused while hidden
-    engineOpts.extra = ['groutCut'];
-    $('brickTool_wall').click(); $('brickTool_raisedBrush').click();
+    engineOpts.drop = [];
+    resync();
+    expect($('brickRaisedMode_grout').style.display).toBe('');
     setRaisedMode('grout');
     expect(P.brickSettings.raisedMode).toBe('grout');
-    engineOpts.extra = [];
+    setRaisedMode('bricks');
   });
   it('Raised brush settings never make the Wall pending', () => {
     $('brickTool_raisedBrush').click();
