@@ -24322,3 +24322,37 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   board: two boards took 34 s under load.
 - Full vitest: 378 files / 5858 tests passed, 0 failed (a first run lost a worker -- 357 files -- with one
   frame-no-hooked-miters flake that passed alone and in the re-run).
+## T86 item 5 -- brush crossings: one runs through, the other is cut straight along its edge, one joint off (seat E / 61, 2026-10-07)
+- Fred's picks on the mock: end-touch 5b (the ENDING stroke stops, whatever the order); X: the EARLIER stroke runs
+  through (creation order = the spines' document order, declared); the wall keeps flowing around strokes (item 13).
+- DECLARED core/bricks/crossings.js: CROSSING_RULE {frameRunsThrough, endingStrokeStops, atAnX: 'earlier'};
+  strokeCrossings (who is cut by whom); splitAtCrossings (the free parts of a centreline outside the through regions,
+  each ending on a CUT {point, dirX, dirY} = the region edge it meets; a part runs past its cut by halfWidth / tan(angle)
+  so both its edges reach the cut, and keeps no vertex within that reach -- ONE straight primitive carries the cut);
+  simplifyOutline + throughRegion (a ribbon outline grown by a joint).
+- ENGINE: primitive-ribbon cutJoint -- an open ribbon's first / last run ends on a declared cut joint (o / q where the
+  cut meets the row's two edges, keep refs inside, isCut, no half-joint shift); contour-bands opts.cutEnds (open only).
+  The run is planned from the fill set up to it like any corner (no clipped sliver); a stroke's own corners stay mitred.
+- APP editor-brick-tool: strokeBricksWithCrossings(strokes, framePieces) -- every stroke laid as drawn, the rule applied,
+  each cut stroke split and its parts laid with cutEnds (its grout outline clipped at the cuts); the frame always runs
+  through (replaces 18c's whole-brick drop with the cut); a stroke meeting nothing keeps its bricks (byte-identical); a
+  Continuous run is still CUT (bricksClearOf); a cut stroke's piece still overlapping what it is cut by (a stroke
+  alongside, not across) is not laid. Merged with main's item 10: the grout cuts apply to the crossing-laid strokes.
+- MEASURED on the way (each fixed, each in a test): (1) the ribbon outline is 96 vertices on a straight stroke, collinear /
+  doubling back -- grown with a mitred offset it spiked 0.14 in and the cut came out wedged -> simplifyOutline; (2) the
+  part kept the stroke's sample points, so the cut joint clipped only the tip primitive and the piece before it crossed
+  the cut -> the straight tail; (3) LIVE the Brush draws a straight stroke as TWO points: two 4-vertex outlines in an X
+  have no vertex inside each other, so a vertex-only "meets" found no junction -> an edge-distance test (the unit tests
+  had passed on 25-point strokes; the matrix caught it).
+- TESTS tests/brush-crossings.test.js (16): the rule declared; X / T / end-touch 5b / no contact / an X of two-point
+  strokes; the split (two parts cut along +-x; a part under 1/4 brick not laid); the outline simplification; the six cases
+  laid: no overlap (stroke x stroke, stroke x frame), the cut one joint (+-10 %) off, the through stroke byte-identical to
+  laid alone, no piece under 1/4 of the stroke's own median; a stroke meeting nothing byte-identical. Mutations: 5b off ->
+  2 fail; simplifyOutline off -> 4 fail; the vertex-only meets -> the two-point X fails. stroke-drop-frame (5) passes.
+  Full vitest 382 files, 5891 passed, 0 failed.
+- MATRIX strokes group (+6 rows, 7 rows 0 FAIL): the band case (on STROKE_CLEAR's frame), then frame None, X 90 / 45,
+  curved X, T, end-touch -- gap at the cut 0.034 in = the joint, overlaps 0. On main's engine + app: 6 of them FAIL.
+- FOUND, NOT MINE: strokes.mjs STROKE_CLEAR's in-page parser has split(/\s+/) inside a template literal (a single
+  backslash) -> the page gets /s+/, every point parses to NaN, the overlap count is always 0 -- the row cannot fail.
+- SHOTS shots/seatE/t86_5/: crossings_real.png (the six cases, laid by the real code, today | new);
+  live_before_after.png (the real app, main vs this branch); crossings_mock_zoom.png (Fred's mock).
