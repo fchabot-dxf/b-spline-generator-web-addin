@@ -24058,3 +24058,22 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   stage posts + paint pumps did not repaint the palette while the build held Fusion's main thread. So the step-5 card
   is NOT visible on main; F's deferred build (cam-build-deferred, unmerged) is what paints the steps (readback 2 showed
   "step 4 of 4" there).
+## F35 item 70 (taken over from seat F) + H23 item 101 on one branch: cam-deferred-101 (seat A / 77, 2026-10-07)
+- Advisor: F offline; rebase F's cam-build-deferred (cee7103, 23a3bde) + 101 onto main, review F's code as mine.
+  Merged (not rebased: F's commits are pushed) onto main 38282b6; WORK-LOG-fb-app conflict = both sides kept.
+- REVIEW of F's code: cam_coordinator.run_steps (a generator yielding each declared step; run() drains it, so every
+  other caller is unchanged; main's item 100 'activate Manufacture first' sits before the first yield -- checked);
+  cam-builder: _do_generate starts the generator and returns; _BuildStepHandler / _advance_build runs one step per
+  CustomEvent tick, posts it, schedules the next tick PALETTE_SETTLE_S later from a threading.Timer (fireCustomEvent:
+  the thread-safe way in); an exception ends the build with a failed report (return before the post: correct); palette
+  actions during the build queue (_actions_waiting) and replay after the report; core/loading-signal.js
+  PAINT_FALLBACK_MS. Found nothing wrong in F's own code.
+- INTEGRATION with 101: the build's own APPLY is a DEFERRED step too -- _finish_build posts camBuildApply, holds the
+  report (_apply_after_build) and schedules one more tick; that tick runs the APPLY core, then ONE report
+  (_send_build_report). _build_running() = steps or the APPLY step still to run, so actions keep waiting until the
+  report. NEW guard (review finding): a waiting apply_toolpaths is DROPPED when the build has just applied -- replaying
+  it would apply the templates twice (doubled operations, seen on 2026-10-06's reuse run); mutation-checked. An APPLY
+  that raises still reports and ends the build. page_log is logged before the build queue.
+- Tests: F's TestTheDeferredBuild moved to 6 ticks (+camBuildApply, then the report) + 2 new (a waiting APPLY dropped;
+  an action during the APPLY step waits); test_build_then_apply.py rewritten for the deferred flow (4). CAM-builder
+  76/76. Full vitest: pending a clean run (workers could not start under the gate's RAM load).
