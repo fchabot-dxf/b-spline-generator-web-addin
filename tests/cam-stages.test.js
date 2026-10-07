@@ -37,9 +37,9 @@ describe('the CAM steps, declared once', () => {
 describe('window.camLoading (the palette calls it)', () => {
   it('begin paints the first step of the sequence; stage moves on; end closes it', async () => {
     await window.camLoading.begin('camBuild');
-    expect(currentLoadingStage()).toEqual({ id: 'camWcs', text: 'Waiting - Fusion: preparing the stock sketches, step 1 of 4', surface: 'card' });
+    expect(currentLoadingStage()).toEqual({ id: 'camWcs', text: 'Waiting - Fusion: preparing the stock sketches, step 1 of 5', surface: 'card' });
     await window.camLoading.stage('camSetups');
-    expect(currentLoadingStage().text).toBe('Waiting - Fusion: building the Setups, step 4 of 4');
+    expect(currentLoadingStage().text).toBe('Waiting - Fusion: building the Setups, step 4 of 5');
     window.camLoading.end();
     await new Promise((r) => setTimeout(r, 400)); // the shared minimum visible time
     expect(currentLoadingStage()).toBe(null);
@@ -57,7 +57,7 @@ describe('the CAM palette wiring', () => {
     expect(PALETTE).toMatch(/withCamStages\('camBuild', \(\) => send\('build'/);
     expect(PALETTE).toMatch(/withCamStages\('camApply', \(\) => send\('apply_toolpaths'/);
     expect(PALETTE).toMatch(/action === 'build_confirm'\) \{ if \(window\.camLoading\) window\.camLoading\.end\(\)/);
-    expect(PALETTE).toMatch(/action === 'cam_stage'\) \{ if \(window\.camLoading && payload\.id\) window\.camLoading\.stage\(payload\.id\)/);
+    expect(PALETTE).toMatch(/action === 'cam_stage'\) \{ if \(window\.camLoading && payload\.id\) window\.camLoading\.stage\(payload\.id, payload\.grow\)/);
     expect(PALETTE).toMatch(/action === 'report' && window\.camLoading\) window\.camLoading\.end\(\)/);
   });
 });

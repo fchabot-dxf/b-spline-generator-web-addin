@@ -24035,3 +24035,17 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   in, same assertions, ~6 s; fails on the pre-(A) ribbon: T1 + T18 1 in 1.6 J). The full 19 x 4 sweep:
   SEAM_SWEEP_FULL=1 npx vitest run tests/bricks-seam-sweep.test.js -- 29 s now (19/19), after the gap scan got 0.5 in
   buckets for pieces and contour segments (it was ~12 min: every grid point tested every piece and every contour segment).
+- STEP 2 (Fred: "perhaps simply add the step in a splash load image"; "the load splash could list all the steps"; steps
+  can "grow live"):
+  - BUILD ends with APPLY: cam-stages.js camBuild gains camBuildApply ("applying toolpaths", step 5 of 5). A build
+    that built posts it, logs '[CAM BUILD] then APPLY' and runs _apply_toolpaths(post_stages=False) -- the APPLY core,
+    split out of _do_apply_toolpaths, returns (ok, msg) and sends nothing -- then ONE build report carries both
+    messages (report.apply). A failed build does not apply. The APPLY TOOLPATHS button stays (its own stages + report).
+  - The card lists every step (core/loading-signal.js _renderSteps, once for every card: app refresh, Fusion Send,
+    CAM): done / current / pending / skipped (passed without running); pills show none. growLoadingSequence({steps} |
+    {insertAfter, step}) grows the list live (a new step declared on the spot); a CAM 'cam_stage' report may carry
+    'grow' (cam-loading.js, _post_cam_stage(grow=)). endLoadingSequence: the report closes the card whatever step it
+    reached (the CAM end(); before, a 4-step BUILD closed by leaving its last step).
+  - Tests: test_build_then_apply.py (4), tests/loading-steps-list.test.js (14: one per declared sequence, skipped,
+    pill, grows mid-run, CAM report grow); cam-stages pins moved to 5 steps. CAM-builder 63/63, full vitest 371 files
+    5711/0. Known failures: none. Shots: shots/seatA/cam_build_card_{phone,desktop,grown_phone}.png (headless, branch).

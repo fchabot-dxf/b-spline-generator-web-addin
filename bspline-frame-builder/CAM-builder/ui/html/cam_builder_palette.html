@@ -1526,7 +1526,7 @@
 
         if (action === 'build_confirm') { if (window.camLoading) window.camLoading.end(); confirmBuild(payload.setups || []); return; }
         // item 70: the add-in's step reports (cam-stages.js ids), held on the card until the next one or the report
-        if (action === 'cam_stage') { if (window.camLoading && payload.id) window.camLoading.stage(payload.id); return; }
+        if (action === 'cam_stage') { if (window.camLoading && payload.id) window.camLoading.stage(payload.id, payload.grow); return; }
 
         // ── report: BOTH tabs' operations complete via this one event
         // name — gated on which tab actually triggered it, since the two
