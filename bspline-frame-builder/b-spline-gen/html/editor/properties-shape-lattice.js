@@ -28,6 +28,7 @@ import { primitiveFromContourD, mergeContourPrimitives, splitContourPrimitive, C
 import { arcPointAtFraction } from './editor-primitives.js';
 import { STRIPE_ATTR, STRIPE_SRC_ATTR } from './editor-stripe-tool.js';
 import {
+    SEGMENT_STYLE_CHOICES, AUTO_SEGMENT_STYLE, segmentStylePatch, segmentChoiceOf,
     PRESETS, generateSilhouette, generateContourSilhouette, primitiveToPathD, outlineDefects, feasibleParamRanges, SHAPE_PARAM_KEYS,
 } from './editor-shape-lattice-generator.js';
 import { setEditorStatusHint } from './editor-ui.js';
@@ -593,7 +594,8 @@ export async function writeSegmentStyle(editor, index, patch) {
     const cur = shape.segments[index] || { style: 'straight', bulge: 0, dir: 'out', cornerRadius: 0 };
     // SIL-RESOLVE (F5): a segment the user styled is USER-owned and survives
     // param changes verbatim; every other segment is re-solved each time.
-    const next = { ...cur, ...patch, user: true };
+    // Item 74j: Auto (SEGMENT_STYLE_CHOICES) is the way back -- a bare auto segment, no ownership, the solver shapes it.
+    const next = patch && patch.style === AUTO_SEGMENT_STYLE ? { style: AUTO_SEGMENT_STYLE } : { ...cur, ...patch, user: true };
     shape.segments[index] = next;
     const mirror = mirrorSegmentIndex(index, n);
     if (mirror !== index) shape.segments[mirror] = { ...next };
@@ -832,6 +834,17 @@ export function detectShapeLatticeDetach(editor) {
  * them from the pointer event; converting a model point through the
  * SVG's own screen CTM would be strictly more code for the same result.
  */
+/** Item 74j: which SEGMENT_STYLE_CHOICES entry segment `index` shows -- from the RESOLVED silhouette (its SIL-RESOLVE
+ *  ownership: a user-owned segment shows its style, every other one Auto), the stored one if it can't resolve. */
+export function _segmentChoiceAt(editor, pattern, shape, index) {
+    try {
+        return segmentChoiceOf(generateSilhouette(_shapeContourRegion(editor, pattern), shape).segments[index]);
+    } catch (_) {
+        const seg = shape.segments && shape.segments[index];
+        return seg && seg.user === true ? seg.style : AUTO_SEGMENT_STYLE;
+    }
+}
+
 export function openSegmentStyleBar(editor, index, screenX, screenY) {
     document.querySelectorAll('.shape-lattice-segment-bar').forEach((el) => el.remove());
     const p = currentPattern(editor);
@@ -844,18 +857,18 @@ export function openSegmentStyleBar(editor, index, screenX, screenY) {
     bar.className = 'shape-lattice-segment-bar segmented-group';
     bar.setAttribute('role', 'group');
     bar.style.cssText = 'position:fixed; z-index:10000; height:32px; box-shadow:0 2px 8px rgba(0,0,0,0.2);';
-    const STYLES = [['straight', 'Straight'], ['curve', 'Curve'], ['kink', 'Kink']];
-    for (const [value, label] of STYLES) {
+    // item 74j: the declared choices (Auto first); the active one is the solver's verdict on THIS segment
+    const active = _segmentChoiceAt(editor, p, shape, index);
+    for (const choice of SEGMENT_STYLE_CHOICES) {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.textContent = label;
-        btn.className = 'editor-fillmode-btn' + (seg.style === value || (value === 'straight' && !seg.style) ? ' active' : '');
+        btn.textContent = choice.label;
+        btn.title = choice.title;
+        btn.className = 'editor-fillmode-btn' + (choice.id === active ? ' active' : '');
         btn.style.cssText = 'padding:0 10px; font-size:11px;';
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
-            const patch = value === 'straight' ? { style: 'straight', bulge: 0 }
-                : { style: value, bulge: seg.bulge > 0 ? seg.bulge : 0.5 };
-            writeSegmentStyle(editor, index, patch);
+            writeSegmentStyle(editor, index, segmentStylePatch(choice.id, seg));
             bar.remove();
         });
         bar.appendChild(btn);
@@ -904,9 +917,22 @@ export function initShapeLatticeProperties(editor) {
 
     // ── Segments section ────────────────────────────────────────────
     const segmentIndexEl = el('shapeSegmentIndex');
-    const segStyleStraightEl = el('shapeSegStyleStraight');
-    const segStyleCurveEl = el('shapeSegStyleCurve');
-    const segStyleKinkEl = el('shapeSegStyleKink');
+    // item 74j: one button per declared choice (`shapeSegStyle<Label>`), in the declared order -- the markup's own
+    // buttons are reused, a missing one (Auto) is made next to them
+    const segStyleEls = {};
+    const segStyleGroupEl = el('shapeSegStyleStraight')?.parentElement || null;
+    for (const choice of SEGMENT_STYLE_CHOICES) {
+        let b = el(`shapeSegStyle${choice.label}`);
+        if (!b && segStyleGroupEl && typeof document !== 'undefined') {
+            b = document.createElement('button');
+            b.type = 'button'; b.id = `shapeSegStyle${choice.label}`; b.className = 'editor-fillmode-btn'; b.style.flex = '1';
+        }
+        if (!b) continue;
+        b.textContent = choice.label;
+        b.title = choice.title;
+        if (segStyleGroupEl) segStyleGroupEl.appendChild(b);
+        segStyleEls[choice.id] = b;
+    }
     const segCurveFieldsEl = el('shapeSegCurveFields');
     const segDirOutEl = el('shapeSegDirOut');
     const segDirInEl = el('shapeSegDirIn');
@@ -1090,11 +1116,9 @@ export function initShapeLatticeProperties(editor) {
      *  per-segment controls — called on a list selection AND right after
      *  a regenerate (the selected index's own values may have shifted). */
     function _syncSegmentFields(shape, index) {
-        const seg = (shape.segments && shape.segments[index]) || { style: 'straight', bulge: 0, dir: 'out' };
-        const style = seg.style || 'straight';
-        if (segStyleStraightEl) segStyleStraightEl.classList.toggle('active', style !== 'curve' && style !== 'kink');
-        if (segStyleCurveEl) segStyleCurveEl.classList.toggle('active', style === 'curve');
-        if (segStyleKinkEl) segStyleKinkEl.classList.toggle('active', style === 'kink');
+        const seg = (shape.segments && shape.segments[index]) || { style: AUTO_SEGMENT_STYLE, bulge: 0, dir: 'out' };
+        const style = _segmentChoiceAt(editor, currentPattern(editor), shape, index); // item 74j: Auto unless pinned
+        for (const [id, b] of Object.entries(segStyleEls)) b.classList.toggle('active', id === style);
         if (segCurveFieldsEl) segCurveFieldsEl.style.display = style === 'curve' ? 'flex' : 'none';
         const dir = seg.dir || 'out';
         if (segDirOutEl) segDirOutEl.classList.toggle('active', dir !== 'in');
@@ -1448,9 +1472,7 @@ export function initShapeLatticeProperties(editor) {
             _syncSegmentFields(currentShape(p), _curSegmentIndex());
         });
     }
-    if (segStyleStraightEl) on(segStyleStraightEl, 'click', () => _writeSegment({ style: 'straight', bulge: 0 }));
-    if (segStyleCurveEl) on(segStyleCurveEl, 'click', () => _writeSegment({ style: 'curve', bulge: _curBulgeOrDefault() }));
-    if (segStyleKinkEl) on(segStyleKinkEl, 'click', () => _writeSegment({ style: 'kink', bulge: _curBulgeOrDefault() }));
+    for (const [id, b] of Object.entries(segStyleEls)) on(b, 'click', () => _writeSegment(segmentStylePatch(id, { bulge: _curBulgeOrDefault() })));
     if (segDirOutEl) on(segDirOutEl, 'click', () => _writeSegment({ dir: 'out' }));
     if (segDirInEl) on(segDirInEl, 'click', () => _writeSegment({ dir: 'in' }));
     if (segBulgeEl) on(segBulgeEl, 'change', () => _writeSegment({ bulge: parseFloat(segBulgeEl.value) || 0 }));

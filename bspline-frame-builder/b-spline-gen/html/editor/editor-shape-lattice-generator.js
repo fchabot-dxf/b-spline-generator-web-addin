@@ -67,6 +67,28 @@ export const ALL_STYLES = [
 ];
 export const WIRED_STYLES = ['straight', 'curve', 'kink'];
 
+/** Item 74j (Fred: "Auto | Straight | Curve", Auto the default): the segment-style CHOICES the panel and the canvas
+ *  popup offer, in order. `auto` is not a geometry -- it un-pins the segment (no SIL-RESOLVE ownership), so the solver
+ *  shapes it again; every other choice pins its style. `bulge`: what a pick writes -- 'none' (no bulge field), 'zero',
+ *  or 'keep' (the segment's own bulge, else 0.5). A stored segment with no style reads as auto (a legacy save). */
+export const AUTO_SEGMENT_STYLE = 'auto';
+export const SEGMENT_STYLE_CHOICES = Object.freeze([
+  Object.freeze({ id: AUTO_SEGMENT_STYLE, label: 'Auto', title: 'The shape decides this segment (not pinned)', bulge: 'none' }),
+  Object.freeze({ id: 'straight', label: 'Straight', title: 'No arc', bulge: 'zero' }),
+  Object.freeze({ id: 'curve', label: 'Curve', title: 'A circular arc', bulge: 'keep' }),
+  Object.freeze({ id: 'kink', label: 'Kink', title: 'A sharp offset vertex', bulge: 'keep' }),
+]);
+/** The stored patch a choice writes onto segment `seg` (auto = a bare { style: 'auto' }: nothing pinned). */
+export function segmentStylePatch(choiceId, seg) {
+  const c = SEGMENT_STYLE_CHOICES.find((x) => x.id === choiceId);
+  if (!c) return null;
+  if (c.bulge === 'none') return { style: c.id };
+  if (c.bulge === 'zero') return { style: c.id, bulge: 0 };
+  return { style: c.id, bulge: seg && seg.bulge > 0 ? seg.bulge : 0.5 };
+}
+/** Which choice a segment of the RESOLVED silhouette shows: its style when the solver says it is user-owned, else auto. */
+export const segmentChoiceOf = (resolvedSeg) => (resolvedSeg && resolvedSeg.user === true ? resolvedSeg.style : AUTO_SEGMENT_STYLE);
+
 /**
  * T55 — declared preset table. Each preset's `params` are the TRUE
  * independent degrees of freedom: exact tangency between adjacent arcs
@@ -1916,7 +1938,7 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
 
 function _normalizeSegment(seg) {
   const out = {
-    style: (seg && seg.style) || 'straight',
+    style: (seg && seg.style) || AUTO_SEGMENT_STYLE, // item 74j: no style saved = auto (the solver's), never a pinned straight
     bulge: (seg && seg.bulge) || 0,
     dir: (seg && seg.dir) || 'out',
     cornerRadius: (seg && seg.cornerRadius) || 0,
@@ -1940,7 +1962,8 @@ function _mergeSegments(fresh, override) {
   let hasUserSegments = false;
   const segments = fresh.map((f, i) => {
     const o = _normalizeSegment(override[i]);
-    const own = o.user === true || o.style !== f.style || (o.style !== 'straight' && o.dir !== f.dir);
+    // item 74j: an auto segment is never owned -- the solver shapes it
+    const own = o.style !== AUTO_SEGMENT_STYLE && (o.user === true || o.style !== f.style || (o.style !== 'straight' && o.dir !== f.dir));
     if (!own) return f;
     hasUserSegments = true;
     return { ...o, user: true };
