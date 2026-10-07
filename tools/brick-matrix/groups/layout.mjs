@@ -38,11 +38,18 @@ export const ANCHOR_GREY = {
   ],
 };
 
+// ---- item 74i: with the Shape Lattice's "Offset from frame" on, the Size / Shape / Segments blocks are inert (F21) and a
+// declared line says why. Driven with REAL pointer input (advisor: a scripted click bypasses inert -- 74g's false finding).
+export const FOLLOWS_FRAME = {
+  open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], toggle: 'shapeLatticeContourFromFrame', note: 'shapeLatticeFollowsFrameNote',
+  text: 'The shape follows the frame while Offset from frame is on', blocks: ['shapeLatticeShapeBlock', 'shapeLatticeSegmentsBlock'], probe: 'shapeSegStyleCurve',
+};
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -136,4 +143,28 @@ async function runAnchorGrey() {
     checkRow('layout', `Anchor grey: ${pn.name} at ${A.liveSpacing} in -- every anchor live`, g2.length === 0, `greyed: ${g2.join(', ') || 'none'}`);
     await spacing(pn.prefix, 1); await sleep(400);
   }
+}
+
+async function runFollowsFrame() {
+  const F = FOLLOWS_FRAME;
+  await send('Emulation.setDeviceMetricsOverride', { width: 1366, height: 900, deviceScaleFactor: 1, mobile: false });
+  await send('Page.reload', {}); await waitApp(); await openBrickTab();
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value='template_1'; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  for (const id of F.open) await click(id, 700);
+  const realClick = async (id) => {
+    const r = await jsJSON(`JSON.stringify((()=>{ const e=document.getElementById(${JSON.stringify(id)}); e.scrollIntoView({block:'center'}); const b=e.getBoundingClientRect(); return { x: b.left + b.width/2, y: b.top + b.height/2 }; })())`);
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: r.x, y: r.y, button: 'left', buttons: 1, clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: r.x, y: r.y, button: 'left', buttons: 0, clickCount: 1 }); await sleep(900);
+  };
+  const state = () => jsJSON(`JSON.stringify((()=>{ const n=document.getElementById(${JSON.stringify(F.note)}); return { on: document.getElementById(${JSON.stringify(F.toggle)}).checked,
+    shown: !!n && n.offsetParent !== null, text: n ? n.textContent : '', inert: ${JSON.stringify(F.blocks)}.map((id)=>!!document.getElementById(id)?.inert),
+    probeActive: document.getElementById(${JSON.stringify(F.probe)}).classList.contains('active'), steps: window.svgEditor._undoStack.length }; })())`);
+  const s0 = await state();
+  await realClick(F.probe); const s1 = await state();
+  checkRow('layout', 'Follows frame: while Offset from frame is on, the line says why and the blocks ignore a real click',
+    s0.on && s0.shown && s0.text === F.text && s0.inert.every(Boolean) && !s1.probeActive && s1.steps === s0.steps,
+    `on ${s0.on}, line ${s0.shown ? 'shown' : 'HIDDEN'} "${s0.text}", inert ${s0.inert}, real click on ${F.probe}: ${s1.probeActive ? 'TOOK' : 'ignored'}, steps +${s1.steps - s0.steps}`);
+  await realClick(F.toggle); const s2 = await state();
+  checkRow('layout', 'Follows frame: Offset from frame off -- the line hides, the blocks are live',
+    !s2.on && !s2.shown && s2.inert.every((x) => !x), `on ${s2.on}, line ${s2.shown ? 'SHOWN' : 'hidden'}, inert ${s2.inert}`);
 }
