@@ -24156,3 +24156,39 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   exactly its board's viewBox; bakeSvgForCarving is the only bake site. No carving bug.
 - Fix: the log names the real board size ('[STAMP] Preserving 9x12 border lines ...'), with the measurement in the
   comment. Log text only -- no test (nothing reads it). b-spline-gen 180/180. Known failures: none.
+## T86 item 16e -- FAN CENTRE choice Needle | Eye | Stone (Fred on the mock: "I like them all, add a choice") (seat E / 61, 2026-10-07)
+- DECLARED once: core/bricks/fan-centre.js FAN_CENTRES [{id, label, title, cut, stone}] needle | eye | stone,
+  FAN_CENTRE_DEFAULT 'needle', FAN_MIN_TIP_OF_HEIGHT 1/3 (MIN_TIP_WIDTH). generateBricks reads `fanCentre`
+  (ENGINE_OPTIONS); absent / needle / unknown = no call (frame deep-equal to today, pinned). Applied to the frame as
+  finally laid (after 16f's tip re-lay, before the frame crumble).
+- FAN IDENTITY DECLARED, not inferred: primitive-ribbon's kite-fan pieces carry `fanApex` (the joint's q; additive, the
+  T1 digest pins [id, polygon] only). First try grouped slices by their needle tips and split every fan into pairs
+  (the tips sit round the apex's mortar disc, not on one point) -- measured T18 12 "fans" of 2, now 4 / 11 / 12 / 4.
+- EYE: each slice cut square to its own axis at ONE radius per fan = where the MEDIAN slice reaches MIN_TIP_WIDTH (the
+  mock's rule). Measured per-slice radii: T18 1.25 run-side slices need up to 0.83 in vs a 0.43 median (they are
+  clipped a joint off the run's end line) -- the max would double the eye. Kept the median: narrowest square end =
+  0.36 x MIN_TIP_WIDTH on T18 1.25's big fans (0.9 on T1 1, 0.84 T1 0.75 soldier/stretcher, 0.62 T2 1) -- REPORTED.
+- STONE: a circle of R - J round the apex minus the wall's region near the apex (grown J/2) and every piece near it
+  (grown J); a split keeps the part on the fan's side (nearest R/2 along the slices' mean direction). Two traps fixed
+  on the way: the whole interior outline as a cutter broke the polygon booleans (T1: stone emptied) -> a local box of it;
+  "largest part" kept the wall-side quarter -> the fan-side reference point. geometry.js signedArea is the NEGATIVE
+  shoelace area (the first convexity test kept reflex corners). Stones carry fanCentre: true and their fan's first
+  slice's sample fields.
+- FACT (74b's grey + explain): contour-bands frameHasFan = the joints-only plan counts fan joints (no pieces laid);
+  brick-control-requires FAN_FACT rule greys Eye / Stone with FAN_CENTRE_NO_FAN on a frame with no fan (T9); Needle never.
+- UI: state.js frameFanCentre null; editor-brick-tool FRAME_FAN_CENTRES (= the engine's), frameFanCentreOf, lay input
+  sends fanCentre only off the default, frameHasFanFor, fanCentreIconSvg (FAN_CENTRE_ICON: T18 7x9 at 1.25 in, the fan
+  Fred picked from, cropped to its biggest fan; T1's 4-slice fan did not read at 30 px). brick-panel: the Fan centre
+  row (renderFrameFanCentreList / setFrameFanCentre, synced with the Corners row: hidden with no bands / rock frame);
+  HTML row brickFrameFanCentreRow in brick-tab-sections' Corners section. A pick survives a preset change (not per band).
+- TESTS: bricks-fan-centre (18): declarations, fan groups by declaration, needle/absent/unknown deep-equal, eye (one
+  radius per fan, median end >= MIN_TIP_WIDTH, narrowest >= measured share, non-fan pieces identical), stone (one per
+  fan, simple, a joint off every piece, eye + stones only), no-fan frame unchanged, absent-field read + lay input, fact,
+  grey rule, icons. frame-corners-panel (+3): row, pick re-lays + survives a preset change, hidden with Corners.
+  Cannot pass on main (module absent). Mutations: R = smallest slice's radius -> 4 fail; frameFanCentreOf always needle
+  -> 2 fail. Full vitest 371 files, 5756 passed, 0 failed.
+- MATRIX frame-ui (+5 rows, 22 rows 0 FAIL): in the Corners section Needle active; Eye re-lays at once; Stone re-lays,
+  +4 stones (89 -> 93); one undo step (Undo -> Eye frame + active, Redo -> Stone); greyed on T9 with the reason, Needle
+  live. layout group 35 rows 0 FAIL.
+- SHOTS shots/seatE/t86_16e/: engine_check.png (T18 1.25, T1 1, T1 0.75 soldier/stretcher x 3 choices), whole_T18.png,
+  icons.png, live_eye.png / live_stone.png (the app: Corners section with the Fan centre row, stones on the canvas).

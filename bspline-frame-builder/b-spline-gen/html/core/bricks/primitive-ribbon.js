@@ -1163,7 +1163,8 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
         if (polygon.length < 3) { nextId++; continue; }
         const { sampleId, flip } = pickSample(set, seed, 'bricks', nextId);
         const heightOffset = (mulberry32(seedFor(seed, 'bricks-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
-        pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset });
+        // T86 item 16e: a corner fan's slice declares the apex its fan converges on (fan-centre.js groups by it; additive)
+        pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset, ...(rawJointEnd.q ? { fanApex: { x: rawJointEnd.q.x, y: rawJointEnd.q.y } } : {}) });
         sources.push(-1);
         nextId++;
       }
