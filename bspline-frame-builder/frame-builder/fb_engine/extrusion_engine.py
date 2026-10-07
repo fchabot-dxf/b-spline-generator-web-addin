@@ -44,6 +44,9 @@ class ExtrusionEngine:
         Returns the list of new BAR bodies (SURROUND produces no bodies,
         only a cut feature).
         """
+        # the bodies the SURROUND cuts actually modified (_finalize_feature) -- the coordinator restores each one's
+        # own paint: the to_face body is not always the cut's target (measured live 2026-10-07)
+        self.cut_bodies = []
         total_profiles = sketch.profiles.count
         self.log.log(
             f"EXTRUDER: component='{comp.name}' sketch='{sketch.name}' "
@@ -233,6 +236,14 @@ class ExtrusionEngine:
                 face.appearance = None
         except Exception:
             pass
+        try:
+            cut = list(feat.bodies)
+            if not hasattr(self, 'cut_bodies'):
+                self.cut_bodies = []
+            self.cut_bodies.extend(cut)
+            self.log.log(f"    {cut_name} cut: {[f'{b.name}@{b.parentComponent.name}' for b in cut]}")
+        except Exception as e:
+            self.log.log(f"    {cut_name}: cut bodies not read ({e})", "WARNING")
         return []
 
     # ------------------------------------------------------------------

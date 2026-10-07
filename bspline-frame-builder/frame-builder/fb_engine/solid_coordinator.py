@@ -152,6 +152,13 @@ class SolidCoordinator:
             # clears Fusion's grey-steel face overrides on the cut faces.
             t_finish = time.time()
             self.appearance_strategy.restore(core_body, original_app)
+            # ...and every body the trim actually CUT, each with its OWN component's paint. MEASURED live 2026-10-07
+            # (Fred: "the B-spline edge in Fusion is wood colour ... depends on the component"): the face was Clean's
+            # panel (red) while t1_TRIM_CUT cut Stamped's -- its 12 new walls showed the Pine material, only its two
+            # B-spline faces kept the green, as face overrides. capture() after the cut reads that body's own paint
+            # back from its surviving import faces; restore() re-stamps it on the whole body and clears the overrides.
+            for cut_body in getattr(self.extrusion_engine, 'cut_bodies', None) or []:
+                self.appearance_strategy.restore(cut_body, self.appearance_strategy.capture(cut_body))
 
             # 5. FINISHING — strategy applies the UI-selected preset to new
             # bar bodies, or falls back to the captured panel paint, or
