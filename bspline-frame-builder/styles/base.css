@@ -1445,6 +1445,12 @@ header {
     background: #e8f0fe;
     color: #1f6fd1;
 }
+/* item 74h (seat D, measured: a greyed lattice anchor's text was (160,165,173) -- the SAME as any inactive segment, so
+   the grey was invisible): a disabled segment dims, like turn 203's disabled number box */
+.editor-fillmode-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
 
 .cad-btn {
     min-width: 75px;

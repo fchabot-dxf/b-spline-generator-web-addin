@@ -27,11 +27,22 @@ export const PANEL_FIT = {
   ],
 };
 
+// ---- item 74h (Fred: grey + explain): a lattice rails anchor is greyed while it would lay the same rails as the current
+// one. T1, after a Generate: the Box Lattice at 1 in greys Start / End (Center current), at `liveSpacing` none; the Shape
+// Lattice's span differs, so none greys there (measured, seat D). `why` = the tooltip shown on a greyed anchor.
+export const ANCHOR_GREY = {
+  why: 'Same rails as the current anchor at this spacing', liveSpacing: 0.75,
+  panels: [
+    { name: 'Lattice', open: ['editorTabArtwork', 'artTab_lattice', 'toolLattice'], generate: 'latticeGenerate', prefix: 'lattice', greyAt1: ['Start', 'End'] },
+    { name: 'Shape Lattice', open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], generate: 'shapeLatticeGenerate', prefix: 'shapeLattice', greyAt1: [] },
+  ],
+};
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
-let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key;
-export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); }
+let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow;
+export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow } = ctx); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -103,5 +114,26 @@ async function runPanelFit() {
       console.log(`${ok ? 'pass' : 'FAIL'}  ${name}`.padEnd(70) + (ok ? '' : ` ${JSON.stringify(bad)}`));
       if (!ok) await shot(`FAIL_panelfit_${vp.width}_${sec.name.replace(/\W+/g, '_')}`);
     }
+  }
+}
+
+async function runAnchorGrey() {
+  const A = ANCHOR_GREY;
+  await send('Emulation.setDeviceMetricsOverride', { width: 1366, height: 900, deviceScaleFactor: 1, mobile: false });
+  await send('Page.reload', {}); await waitApp(); await openBrickTab();
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value='template_1'; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+  const row = (prefix) => jsJSON(`JSON.stringify(Object.fromEntries(['Start','Center','End'].map((a)=>{ const b=document.getElementById(${JSON.stringify(prefix)}+'RailsAnchor'+a); return [a, { grey: !!b?.disabled, title: b?.title || '' }]; })))`);
+  const spacing = (prefix, v) => js(`(()=>{ const e=document.getElementById(${JSON.stringify(prefix)}+'RailsSpacing'); e.value=${JSON.stringify(String(v))}; e.dispatchEvent(new Event('input')); e.dispatchEvent(new Event('change')); return 1; })()`);
+  for (const pn of A.panels) {
+    for (const id of pn.open) await click(id, 700);
+    await click(pn.generate, 3500);
+    const r1 = await row(pn.prefix);
+    const greyed = Object.keys(r1).filter((a) => r1[a].grey);
+    const ok1 = JSON.stringify(greyed) === JSON.stringify(pn.greyAt1) && greyed.every((a) => r1[a].title === A.why);
+    checkRow('layout', `Anchor grey: ${pn.name} on T1 at 1 in greys ${pn.greyAt1.join(' + ') || 'none'}`, ok1, `greyed: ${greyed.join(', ') || 'none'}${greyed.length ? ` ("${r1[greyed[0]].title}")` : ''}`);
+    await spacing(pn.prefix, A.liveSpacing); await sleep(600);
+    const r2 = await row(pn.prefix); const g2 = Object.keys(r2).filter((a) => r2[a].grey);
+    checkRow('layout', `Anchor grey: ${pn.name} at ${A.liveSpacing} in -- every anchor live`, g2.length === 0, `greyed: ${g2.join(', ') || 'none'}`);
+    await spacing(pn.prefix, 1); await sleep(400);
   }
 }

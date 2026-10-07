@@ -14,6 +14,7 @@ import {
     _findBoundaryElements, resolvePatternLayer, freshPattern, labelTieSpanButtons } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
 import { getActiveLayer } from './layers.js';
+import { initAnchorGrey } from './lattice-anchor-grey.js';
 import { mountSelectedPiecePanel } from './lattice-piece-panel.js';
 import { latticeScope, attachLatticeFormulaFields } from './lattice-formula-fields.js';
 import { commitEdit } from './editor-commit.js';
@@ -584,6 +585,7 @@ export function initLatticeProperties(editor) {
 
     syncFieldsFromPattern();
     on(toolBtn, 'click', syncFieldsFromPattern);
+    initAnchorGrey(editor, 'lattice'); // item 74h
 
     on(generateBtn, 'click', async () => {
         // SE7g (Fred: "the generate button needs to automatically use a

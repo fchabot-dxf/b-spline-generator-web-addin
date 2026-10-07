@@ -70,9 +70,11 @@ export function initNextSettingsUndo(editor) {
       for (const p of PANEL_NEXT_SETTINGS) {
         for (const id of p.values) { const n = el(id); if (n && id in panel) n.value = panel[id]; }
         for (const id of p.checks) { const n = el(id); if (n && id in panel) n.checked = panel[id]; }
-        for (const g of p.groups) { const want = panel[g[0]]; const b = want && el(want); if (b && !b.classList.contains('active')) b.click(); }
+        // a greyed choice (74h: same rails as the current anchor) is still the stored one -- un-grey it to restore it
+        for (const g of p.groups) { const want = panel[g[0]]; const b = want && el(want); if (b && !b.classList.contains('active')) { b.disabled = false; b.click(); } }
       }
     } finally { suppress = false; }
+    if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('nextSettingsRestored', { detail: { editor } }));
   };
   registerUndoPart(NEXT_SETTINGS_PART, { take, restore });
 
