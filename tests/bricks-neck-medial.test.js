@@ -101,7 +101,9 @@ const MAIN_NECK_COVER = { template_18: 9.1160, template_19: 8.9612, template_14:
 /** frame digests of T1 7x9 at 1 in on main (0443c48, before this item) -- byte-identical means the same digest */
 // 21b joint rule (re-pinned): the joint rule re-lays every frame once (Fred's call, with the before/after sheet); this pins
 // the new lay so a later change that touches a board with no neck is still caught
-const MAIN_T1_DIGESTS = { single_soldier: 2787030508, three_band: 2787030508, double_course: 1334897525 };
+// T86 item 16d (re-pinned, seat E 2026-10-07): a fan now lays from the runs' RESOLVED ends (primitive-ribbon.js fanRunEnds),
+// so the fan-to-run seam is one joint -- every frame with a fan corner re-lays once (T1's shoulders among them)
+const MAIN_T1_DIGESTS = { single_soldier: 1625969025, three_band: 1625969025, double_course: 110448920 };
 
 describe('one row meeting itself across a neck: split at the medial line (T86 16(c) part 2)', () => {
   // [template, preset, size, the neck window in y (in) where the medial seam runs]
