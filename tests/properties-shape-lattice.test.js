@@ -365,7 +365,7 @@ describe('initShapeLatticeProperties: Segments section', () => {
     }
   });
 
-  it('selecting a different segment in the list reflects ITS OWN style, not the previously-edited one', async () => {
+  it('selecting a different segment in the list reflects ITS OWN choice, not the previously-edited one (item 74j: an unpinned one = Auto)', async () => {
     initShapeLatticeProperties(editor);
     document.getElementById('shapeSegmentIndex').value = '0';
     document.getElementById('shapeSegStyleCurve').click();
@@ -374,11 +374,10 @@ describe('initShapeLatticeProperties: Segments section', () => {
     const select = document.getElementById('shapeSegmentIndex');
     select.value = '1';
     select.dispatchEvent(new Event('change'));
-    // segment 1 (the shoulder arc) is a 'curve' by the GENERATOR's own
-    // fresh default (editor-shape-lattice-generator.js's _solveHourglass)
-    // — a real, independently-known expectation, not just "whatever the
-    // code produces".
-    expect(document.getElementById('shapeSegStyleCurve').classList.contains('active')).toBe(true);
+    // segment 1 (the shoulder arc) is a 'curve' by the GENERATOR's own fresh default, but nobody pinned it: item 74j
+    // (Fred: Auto | Straight | Curve, Auto the default) -- it shows Auto, NOT segment 0's pinned Curve
+    expect(document.getElementById('shapeSegStyleAuto').classList.contains('active')).toBe(true);
+    expect(document.getElementById('shapeSegStyleCurve').classList.contains('active')).toBe(false);
   });
 });
 
@@ -860,14 +859,14 @@ describe('properties-shape-lattice.js: module-level exports (T59)', () => {
       document.querySelectorAll('.shape-lattice-segment-bar').forEach((el) => el.remove());
     });
 
-    it('opens a floating bar with 3 style buttons, straight active by default', async () => {
+    it('opens a floating bar with the declared choices, Auto active on an unpinned segment (item 74j)', async () => {
       await regenerateSilhouetteAndFill(editor);
       openSegmentStyleBar(editor, 1, 100, 100); // segment 1 = the shoulder arc, a 'curve' by the generator's own fresh default
       const bar = document.querySelector('.shape-lattice-segment-bar');
       expect(bar).toBeTruthy();
       const buttons = Array.from(bar.querySelectorAll('button'));
-      expect(buttons.map((b) => b.textContent)).toEqual(['Straight', 'Curve', 'Kink']);
-      expect(buttons[1].classList.contains('active')).toBe(true); // 'Curve', matching segment 1's own fresh default
+      expect(buttons.map((b) => b.textContent)).toEqual(['Auto', 'Straight', 'Curve', 'Kink']);
+      expect(buttons.filter((b) => b.classList.contains('active')).map((b) => b.textContent)).toEqual(['Auto']); // unpinned
     });
 
     it('clicking a style button writes it via writeSegmentStyle and closes the bar', async () => {

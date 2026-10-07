@@ -1447,6 +1447,11 @@ header {
 }
 /* item 74h (seat D, measured: a greyed lattice anchor's text was (160,165,173) -- the SAME as any inactive segment, so
    the grey was invisible): a disabled segment dims, like turn 203's disabled number box */
+/* item 74j (seat D, measured at 1366: Auto | Straight | Curve | Kink needed 184 px in the 172 px group -- "Kink" was
+   cut to "Kinl"): the segment-style row's four choices take less side padding */
+.segment-style-group > .editor-fillmode-btn {
+    padding: 0 4px;
+}
 .editor-fillmode-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;

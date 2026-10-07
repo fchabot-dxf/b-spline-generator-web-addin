@@ -24,6 +24,9 @@ export const PANEL_FIT = {
     // item 74e: the "Applies on the next Generate" line over each lattice panel's next-Generate group
     { name: 'Lattice next-Generate hint', open: ['editorTabArtwork', 'artTab_lattice', 'toolLattice'], ids: ['latticeNextGenerateHint'] },
     { name: 'Shape Lattice next-Generate hint', open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], ids: ['shapeLatticeNextGenerateHint'] },
+    // item 74j: the four segment-style choices fit their row (measured: "Kink" was clipped at 1366)
+    { name: 'Shape segment styles', open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], ids: ['shapeSegStyleAuto', 'shapeSegStyleStraight', 'shapeSegStyleCurve', 'shapeSegStyleKink'],
+      unfold: ['shapeLatticeSegmentsBlock'] }, // folded by default when narrow: opened by its label, as a user does
   ],
 };
 
@@ -106,6 +109,8 @@ async function runPanelFit() {
     await send('Page.reload', {}); await waitApp(); await openBrickTab();
     for (const sec of PANEL_FIT.sections) {
       for (const id of sec.open) await click(id, 900);
+      for (const id of sec.unfold || []) await js(`(()=>{ const b=document.getElementById(${JSON.stringify(id)}); const body=b && b.firstElementChild && b.firstElementChild.nextElementSibling; if (body && body.offsetParent === null) b.firstElementChild.click(); return 1; })()`);
+      if (sec.unfold) await sleep(600);
       const r = await jsJSON(PANEL_FIT_PROBE(sec.ids));
       const ok = r.every((c) => !c.missing && c.shown && c.inside);
       const name = `Panel fit ${vp.name}: ${sec.name} fields inside the panel`;

@@ -38,6 +38,14 @@ export const UNDO_SETTINGS = {
   ],
 };
 
+// ---- item 74j (Fred: Auto | Straight | Curve, Auto the default): on a Shape Lattice drawn from its own shape (Offset
+// from frame OFF -- with it on the Segments block is inert), Curve pins a segment and changes the outline; Auto un-pins
+// it and the outline is the ORIGINAL again; each pick is ONE undo step and Undo after Auto is Curve again. Real pointer.
+export const SEGMENT_AUTO = {
+  open: ['editorTabArtwork', 'artTab_shape', 'toolShapeLattice'], offset: 'shapeLatticeContourFromFrame', generate: 'shapeLatticeGenerate',
+  segment: '0', curve: 'shapeSegStyleCurve', auto: 'shapeSegStyleAuto', marker: 'SEGMENT_STYLE_CHOICES',
+};
+
 // ---- F35 item 71 (seat E): the MAIN screen's Undo / Redo after a sidebar Brick quick pick on an applied board.
 // Measured before (main 3a6c2a7): the pick took no global step -- Undo undid the older Apply step (pre-lay settings
 // back, the laid bricks + 3D left as picked). Now each pick is one global step (core/history.js recordBoardStep):
@@ -49,8 +57,8 @@ export const SIDEBAR_UNDO = {
 
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
-let sleep, js, jsJSON, click, setValue, canvasSettled, heightsSettled, editorOpen, apply, checkRow, openEditorTab, reloadWithStorage;
-export function bind(ctx) { ({ sleep, js, jsJSON, click, setValue, canvasSettled, heightsSettled, editorOpen, apply, checkRow, openEditorTab, reloadWithStorage } = ctx); }
+let sleep, js, jsJSON, click, setValue, canvasSettled, heightsSettled, editorOpen, apply, checkRow, openEditorTab, reloadWithStorage, send;
+export function bind(ctx) { ({ sleep, js, jsJSON, click, setValue, canvasSettled, heightsSettled, editorOpen, apply, checkRow, openEditorTab, reloadWithStorage, send } = ctx); }
 export async function run() { await runUndoSettings(); await runSidebarUndo(); }
 
 // F35 item 38 (UNDO_SETTINGS above): editor Undo / Redo bring back the brick settings with the canvas
@@ -126,6 +134,7 @@ async function runUndoSettings() {
       return JSON.stringify({ v0, v1, v2: val(), steps: n1 - n0 }); })()`);
     checkRow('undo', name, pr.steps === 1 && pr.v1 !== pr.v0 && pr.v2 === pr.v0, `${pr.v0} -> ${pr.v1} (${pr.steps} undo steps) -> undo -> ${pr.v2}`);
   }
+  await runSegmentAuto();
   if (await editorOpen()) await apply();
 }
 
@@ -146,4 +155,29 @@ async function runSidebarUndo() {
     `pick ${g0} -> ${g1}; undo -> ${g2 === g0 ? 'the board before' : g2}, 3D ${z2 === z0 ? 'back' : z2}, chip ${was} back ${await active(was)}`);
   await click(U.redo, 2500); const z3 = await heightsSettled(z2); await sleep(1500); const g3 = await js(GEO);
   checkRow('undo', 'Sidebar quick pick: main Redo brings the pick back', g3 === g1 && z3 === z1 && (await active(U.pick)), `redo -> ${g3 === g1 ? 'the pick' : g3}, 3D ${z3 === z1 ? 'the pick' : z3}`);
+}
+
+async function runSegmentAuto() {
+  const S = SEGMENT_AUTO;
+  const name = 'Shape segment: Curve pins it, Auto gives back the original outline -- one undo step each';
+  const has = await js(`import('./editor/editor-shape-lattice-generator.js').then((m) => !!m[${JSON.stringify(S.marker)}], () => false)`);
+  if (!has) { checkRow('undo', name, false, '', 'item 74j'); return; }
+  for (const id of S.open) await click(id, 700);
+  const realClick = async (id) => {
+    const r = await jsJSON(`JSON.stringify((()=>{ const e=document.getElementById(${JSON.stringify(id)}); e.scrollIntoView({block:'center'}); const b=e.getBoundingClientRect(); return { x: b.left + b.width/2, y: b.top + b.height/2 }; })())`);
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: r.x, y: r.y, button: 'left', buttons: 1, clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: r.x, y: r.y, button: 'left', buttons: 0, clickCount: 1 }); await sleep(1200);
+  };
+  // the contour's own outline (its segment paths) + the undo depth + which choice shows
+  const read = () => jsJSON(`JSON.stringify((()=>{ const d=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-shape-segment],[data-contour-seg],path[data-lattice="contour"]')].map((e)=>e.getAttribute('d')).join('|');
+    let h=2166136261; for (let i=0;i<d.length;i++){ h^=d.charCodeAt(i); h=Math.imul(h,16777619);} const act=[...document.getElementById(${JSON.stringify(S.auto)}).parentElement.querySelectorAll('button.active')].map((b)=>b.id).join();
+    return { outline: (h>>>0).toString(36) + '/' + d.length, steps: window.svgEditor._undoStack.length, active: act }; })())`);
+  if (await js(`document.getElementById(${JSON.stringify(S.offset)}).checked`)) await realClick(S.offset);
+  await click(S.generate, 3500);
+  await js(`(()=>{ const s=document.getElementById('shapeSegmentIndex'); s.value=${JSON.stringify(S.segment)}; s.dispatchEvent(new Event('change')); return 1; })()`); await sleep(500);
+  const r0 = await read(); await realClick(S.curve); const r1 = await read(); await realClick(S.auto); const r2 = await read();
+  await click('editorUndo', 1500); const r3 = await read();
+  checkRow('undo', name, r0.outline.split('/')[1] !== '0' && r1.outline !== r0.outline && r2.outline === r0.outline && r1.steps === r0.steps + 1 && r2.steps === r1.steps + 1
+    && r0.active === S.auto && r1.active === S.curve && r2.active === S.auto && r3.outline === r1.outline,
+    `outline ${r0.outline} (${r0.active}) -> Curve ${r1.outline} (+${r1.steps - r0.steps}, ${r1.active}) -> Auto ${r2.outline} (+${r2.steps - r1.steps}, ${r2.active}) -> undo ${r3.outline === r1.outline ? '= Curve' : r3.outline}`);
 }
