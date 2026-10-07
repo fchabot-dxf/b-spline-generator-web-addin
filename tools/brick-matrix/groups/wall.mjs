@@ -70,6 +70,9 @@ export const rows = [
   { name: 'Brick seed 7919 (Suppression/Clumping rows)', kind: 'editor', tool: 'wall', do: set('brickSeed', 7919, 'input'), expect: LAYOUT },
   { name: 'Suppression 0.5', kind: 'editor', tool: 'wall', do: set('brickSuppression', 0.5), expect: LAYOUT },
   { name: 'Clumping 0.9 (Suppression 0.5)', kind: 'editor', tool: 'wall', do: set('brickClumping', 0.9), expect: LAYOUT, requires: NEEDS_SUPPRESSION },
+  // item 9 (General only): where the crumble starts -- 0.1 = mostly anywhere, then back to the 0.8 every board reads
+  { name: 'Crumble top bias 0.1 (Suppression 0.5)', kind: 'editor', tool: 'wall', do: set('brickTopBias', 0.1), expect: LAYOUT, introducedBy: 'item9' },
+  { name: 'Crumble top bias 0.8 (Suppression 0.5)', kind: 'editor', tool: 'wall', do: set('brickTopBias', 0.8), expect: LAYOUT, introducedBy: 'item9' },
   { name: 'Suppression 0', kind: 'editor', tool: 'wall', do: set('brickSuppression', 0), expect: LAYOUT },
   { name: 'Clumping 0.1 (Suppression 0)', kind: 'editor', tool: 'wall', do: set('brickClumping', 0.1), expect: LAYOUT, requires: NEEDS_SUPPRESSION },
   { name: 'Seed 77', kind: 'editor', tool: 'wall', do: set('brickSeed', 77, 'input'), expect: LAYOUT },

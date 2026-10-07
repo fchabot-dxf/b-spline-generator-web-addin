@@ -22,9 +22,12 @@ describe('BRICK_CONTROL_REQUIRES', () => {
       const subTool = (id) => /^brickSubTool_[a-z]+_[a-z]+$/.test(id) && panel.includes('`brickSubTool_${tool.id}_${sid}`')
         && panel.includes(`subTools: [`) && panel.includes(`'${id.split('_')[2]}'`);
       const exists = (id) => html.includes(`id="${id}"`) || panel.includes(`\`${id.slice(0, id.lastIndexOf('_') + 1)}\${`) || quick(id) || subTool(id);
-      for (const id of [...r.controls, ...(r.within || []), r.requires.control].filter(Boolean)) expect(exists(id), id).toBe(true);
-      if (r.requires.engineOption || r.requires.fact) continue; // an engine option / a board fact, not a control state
-      expect(Object.keys(r.requires.satisfied).some((k) => ['gt', 'active', 'checked'].includes(k))).toBe(true);
+      const members = r.requires.anyOf || [r.requires]; // item 9: an anyOf rule's members are each a rule of their own
+      for (const id of [...r.controls, ...(r.within || []), ...members.map((m) => m.control)].filter(Boolean)) expect(exists(id), id).toBe(true);
+      for (const m of members) {
+        if (m.engineOption || m.fact) continue; // an engine option / a board fact, not a control state
+        expect(Object.keys(m.satisfied).some((k) => ['gt', 'active', 'checked'].includes(k))).toBe(true);
+      }
       expect(r.why).toBeTruthy();
     }
   });
@@ -34,6 +37,29 @@ describe('BRICK_CONTROL_REQUIRES', () => {
     expect(requirementMet({ satisfied: { active: true } }, { classList: { contains: () => false } })).toBe(false);
     expect(requirementMet({ satisfied: { checked: true } }, { checked: true })).toBe(true);
     expect(requirementMet({ satisfied: { gt: 0 } }, null)).toBe(true);
+  });
+  it('item 9: anyOf is met while any member is met; a member with no control on the page is left out', () => {
+    const els = { a: { value: '0' }, b: { checked: false } };
+    const ctx = { elementOf: (id) => els[id] || null };
+    const rule = { anyOf: [{ control: 'a', satisfied: { gt: 0 } }, { control: 'b', satisfied: { checked: true } }] };
+    expect(requirementMet(rule, null, ctx)).toBe(false);
+    els.b.checked = true;
+    expect(requirementMet(rule, null, ctx)).toBe(true);
+    els.b.checked = false; els.a.value = '0.4';
+    expect(requirementMet(rule, null, ctx)).toBe(true);
+    els.a.value = '0'; delete els.b; // the checkbox not on this page: the rule reads the Suppression alone
+    expect(requirementMet(rule, null, ctx)).toBe(false);
+    expect(requirementMet(rule, null, { elementOf: () => null })).toBe(true); // nothing on the page: met
+  });
+  it('item 9: Clumping is live with wall Suppression > 0 OR "Crumble frame too" on', () => {
+    const rule = BRICK_CONTROL_REQUIRES.find((r) => r.controls.includes('brickClumping'));
+    const els = { brickSuppression: { value: '0' }, brickSuppressFrame: { checked: false } };
+    const met = () => requirementMet(rule.requires, null, { elementOf: (id) => els[id] || null });
+    expect(met()).toBe(false);
+    els.brickSuppressFrame.checked = true;
+    expect(met()).toBe(true);
+    els.brickSuppressFrame.checked = false; els.brickSuppression.value = '0.3';
+    expect(met()).toBe(true);
   });
 });
 

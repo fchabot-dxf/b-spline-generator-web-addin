@@ -28,7 +28,7 @@ import {
   BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
-  FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
+  FRAME_CORNERS, FOLDED_FRAME_PRESETS, topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_CORNER_LIST, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
   brushStrokeSettings, restyleBrushStroke, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
   groutPaintOf, repaintGrout, GROUT_ELEMENT_KINDS, GROUT_PAINT_DEFAULT, elementsWithoutGrout, forceRegenerateOwnedBrickElements,
@@ -46,7 +46,8 @@ import { BRICK_CONTROL_REQUIRES, requirementMet, FRAME_NEEDS_A_FRAME, cornerFact
 import { ENGINE_OPTIONS } from '../core/bricks/index.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.js';
-import { rectToPrimitives } from '../core/inset-window.js';
+import { rectToPrimitives, insetWindowOuterRect } from '../core/inset-window.js';
+import { getFrameRecord } from '../core/frame-record.js';
 import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
@@ -1174,6 +1175,9 @@ function syncControlsFromState() {
   setPair('brickReliefHeightSlider', 'brickReliefHeight', s.reliefIn);
   setPair('brickSuppressionSlider', 'brickSuppression', s.suppression);
   setPair('brickClumpingSlider', 'brickClumping', s.clumping);
+  setPair('brickTopBiasSlider', 'brickTopBias', topBiasOf(s)); // item 9
+  syncFrameCrumble();
+  syncWindowSurround();
   document.getElementById('brickSeed').value = s.seed;
   syncProfileToggle();
   syncOrientationToggle();
@@ -1972,6 +1976,73 @@ export function setFrameCorner(cornerId, commit = 'generate') {
   commitBrickSetting(commit);
 }
 
+/** Item 9: "Crumble frame too" -- on writes the amount the frame crumbles by (its own, else the declared default) so the
+ *  slider shows what is laid; off drops nothing but the switch (the amount comes back with it). One undo step. */
+export function setFrameCrumble(on, commit = 'generate') {
+  P.brickSettings.suppressFrame = !!on;
+  if (on) P.brickSettings.frameSuppression = frameSuppressionOf(P.brickSettings);
+  syncFrameCrumble();
+  commitBrickSetting(commit);
+}
+function syncFrameCrumble() {
+  const box = document.getElementById('brickSuppressFrame');
+  if (box) box.checked = !!P.brickSettings.suppressFrame;
+  setPair('brickFrameSuppressionSlider', 'brickFrameSuppression', frameSuppressionOf(P.brickSettings));
+}
+
+/** Item 9: the Window surround rows -- the Frame's own preset list (its empty 'none' preset = no surround) and icons,
+ *  then the corners (SURROUND_CORNER_LIST, the Frame's own corner icons). Shown while the frame's inset window is on,
+ *  else the hint. */
+const SURROUND_CHOICES = () => FRAME_PRESET_LIST;
+function _iconButton(id, label, title, svg, onClick) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'cad-btn brick-accent-icon'; // the same small icon button as the Frame's preset / corner rows
+  btn.id = id;
+  btn.title = title;
+  btn.setAttribute('aria-label', label);
+  btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
+  btn.innerHTML = svg || label;
+  btn.addEventListener('click', onClick);
+  return btn;
+}
+function renderWindowSurround() {
+  const presets = document.getElementById('brickSurroundPresetList');
+  const corners = document.getElementById('brickSurroundCornerList');
+  if (presets) {
+    presets.innerHTML = '';
+    for (const c of SURROUND_CHOICES()) {
+      presets.appendChild(_iconButton(`brickSurroundPreset_${c.id}`, c.label, c.id === SURROUND_NONE ? 'No surround' : c.label, framePresetIconSvg(c.id, 30),
+        () => setWindowSurround({ preset: c.id })));
+    }
+  }
+  if (corners) {
+    corners.innerHTML = '';
+    for (const c of SURROUND_CORNER_LIST) {
+      corners.appendChild(_iconButton(`brickSurroundCorner_${c.id}`, c.label, c.title, frameCornerIconSvg(c.id, 30),
+        () => setWindowSurround({ corner: c.id })));
+    }
+  }
+  syncWindowSurround();
+}
+function syncWindowSurround() {
+  const on = !!(getFrameRecord().insetWindow && getFrameRecord().insetWindow.enabled);
+  const show = (id, v) => { const el = document.getElementById(id); if (el) el.style.display = v ? '' : 'none'; };
+  show('brickSurroundHint', !on);
+  show('brickSurroundRows', on);
+  const w = windowSurroundOf(P.brickSettings);
+  show('brickSurroundCornerLabel', w.preset !== SURROUND_NONE);
+  show('brickSurroundCornerList', w.preset !== SURROUND_NONE);
+  for (const c of SURROUND_CHOICES()) document.getElementById(`brickSurroundPreset_${c.id}`)?.classList.toggle('active', c.id === w.preset);
+  for (const c of SURROUND_CORNER_LIST) document.getElementById(`brickSurroundCorner_${c.id}`)?.classList.toggle('active', c.id === w.corner);
+}
+/** Item 9: a surround pick (`patch`: preset and/or corner) -- re-lays at once, one undo step. */
+export function setWindowSurround(patch, commit = 'generate') {
+  P.brickSettings.windowSurround = { ...windowSurroundOf(P.brickSettings), ...patch };
+  syncWindowSurround();
+  commitBrickSetting(commit);
+}
+
 /** T86 item 7 (Fred: "a brush line can have a few brick patterns, maybe 2 and 3 bricks wide") --
  *  same button-list precedent as `renderFramePresetList` above, reading/writing
  *  `P.brickSettings.brushBandPreset` instead. A deliberately small, named list (not a per-band
@@ -2739,12 +2810,18 @@ function frameBandContour(editor) {
   return sil.error ? null : sil.primitives;
 }
 
+/** Item 9: the frame record's inset window, ON, as its outer rect on the board (core/inset-window.js); else null. */
+function _insetWindowRect(editor) {
+  const w = getFrameRecord().insetWindow;
+  return w && w.enabled && editor ? insetWindowOuterRect(w, editor._mW, editor._mH) : null;
+}
 function resolveFrameGeom(editor) {
   const contour = frameBandContour(editor);
   if (!contour) return null;
   const primitives = buildRibbonPrimitives(contour);
   // item 33: + the element's corner (frameBandsOf -- the preset's own unless the Corners row picked one)
-  return { primitives, bands: frameBandsOf(P.brickSettings) };
+  // item 9: + the inset window's outer rect while it is on (the Window surround lays around it)
+  return { primitives, bands: frameBandsOf(P.brickSettings), insetRect: _insetWindowRect(editor) };
 }
 
 // F35 (Fred: "resolution is his own responsibility via the resolution panel" -- REVERSING the
@@ -2889,6 +2966,12 @@ export function initBrickPanel() {
   bindSlider('brickLargeStonesSlider', 'brickLargeStones', 'largeStones', (v) => Math.max(0, Math.min(1, parseFloat(v))));
   bindSlider('brickSuppressionSlider', 'brickSuppression', 'suppression');
   bindSlider('brickClumpingSlider', 'brickClumping', 'clumping');
+  // item 9: the crumble's top bias (General), the frame's own crumble + the window surround (Frame tab)
+  bindSlider('brickTopBiasSlider', 'brickTopBias', 'topBias');
+  bindSlider('brickFrameSuppressionSlider', 'brickFrameSuppression', 'frameSuppression');
+  document.getElementById('brickSuppressFrame')?.addEventListener('change', (e) => setFrameCrumble(e.target.checked));
+  renderWindowSurround();
+  onPageEvent('windowSurround', 'frameRecordChanged', () => syncWindowSurround());
   const settleSeed = settleAfterTyping('generate'); // item 27: a typed seed re-lays once the typing pauses
   document.getElementById('brickSeed')?.addEventListener('input', (e) => {
     const v = parseInt(e.target.value, 10);
