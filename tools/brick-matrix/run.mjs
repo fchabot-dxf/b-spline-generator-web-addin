@@ -144,7 +144,8 @@ const profile = mkdtempSync(path.join(os.tmpdir(), `brick-matrix-chrome-${PORT}-
 if (await fetch(`http://127.0.0.1:${HTTP}/`).then(() => true, () => false)) {
   rmSync(profile, { recursive: true, force: true }); console.error(`brick-matrix: port ${HTTP} is already serving something (another seat's run?); pick another --port`); process.exit(2);
 }
-const server = spawn('python', ['-m', 'http.server', String(HTTP), '--bind', '127.0.0.1'], { cwd: ROOT, stdio: 'ignore' });
+// item 74k: serve.py = http.server with a 128 listen backlog (stock 5 refused module requests under load -- measured)
+const server = spawn('python', [path.join(HERE, 'serve.py'), String(HTTP)], { cwd: ROOT, stdio: 'ignore' });
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, '--no-first-run',
   '--no-default-browser-check', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'], { stdio: 'ignore' });
 const stop = () => { try { chrome.kill(); } catch {} try { server.kill(); } catch {} };
@@ -174,9 +175,17 @@ for (let i = 0; i < 150 && !wsUrl; i++) { await sleep(200); try { wsUrl = (await
 if (!wsUrl) { stop(); console.error('brick-matrix: no Chrome DevTools endpoint'); process.exit(2); }
 const ws = new WebSocket(wsUrl); await new Promise((r) => ws.addEventListener('open', r));
 let id = 0; const pending = new Map(); const pageErrors = [];
+// item 74k: every request the page could not load (url -> error) -- a failed module request leaves no app at all, and
+// a setup that never boots names them
+const requestUrls = new Map(), failedRequests = [];
+// the transient network errors a page load can lose a module to (measured under the gate's load; serve.py's backlog
+// removed the refusals it could, ERR_NO_BUFFER_SPACE is the client's own socket exhaustion)
+const BOOT_RELOAD_ERRORS = ['net::ERR_NO_BUFFER_SPACE', 'net::ERR_CONNECTION_REFUSED', 'net::ERR_CONNECTION_RESET'];
 ws.addEventListener('message', (ev) => {
   const m = JSON.parse(ev.data);
   if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); return; }
+  if (m.method === 'Network.requestWillBeSent') requestUrls.set(m.params.requestId, m.params.request.url);
+  if (m.method === 'Network.loadingFailed') failedRequests.push(`${(requestUrls.get(m.params.requestId) || '?').split('/html/').pop()}: ${m.params.errorText || `blocked ${m.params.blockedReason || '?'}`}`);
   if (m.method === 'Runtime.exceptionThrown') pageErrors.push((m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text).split('\n')[0]);
   if (m.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true });
 });
@@ -322,32 +331,32 @@ async function record(c, obs) {
 }
 
 try {
-  await send('Runtime.enable'); await send('Page.enable');
+  await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
   if (!REAL_CLOUD) await send('Page.addScriptToEvaluateOnNewDocument', { source: CLOUD_STAND_IN.replace('__EDIT_PASSWORD__', EDIT_PASSWORD_TEST.password) });
   await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html${REAL_CLOUD ? '?realCloud=1' : ''}` });
-  for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; }
-  await sleep(3000);
-  // baseline: a wall and a frame laid, applied. Under load (--parallel) the app can still be starting, so
-  // the editor must really exist and the baseline must really hold bricks before any row is measured --
-  // retried, and a setup that never comes up is a SETUP error, not N misleading row FAILs.
-  let baseline = 'none';
-  for (let attempt = 1; attempt <= 4 && !/^[1-9]/.test(baseline); attempt++) {
-    if (attempt > 1) { console.log(`baseline attempt ${attempt} (got ${baseline})`); await sleep(5000); }
-    if (attempt > 2) { // a page that never brought the editor up: reload it, wait for the app again
-      await send('Page.reload', {});
-      for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; }
-      await sleep(3000);
-    }
-    await openBrickTool('wall');
-    for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
-    for (const pin of GROUP_SETUP[arg('group')] || []) { // a group's declared setup (its groups/<group>.mjs `setup`), before the baseline lay
-      const r = await setValue(pin.set, pin.value, pin.event); console.log(`setup pin ${pin.set}=${pin.value}: ${r} (${pin.why})`); await sleep(1500);
-    }
-    await click('brickGenerate', 1800);
-    await openBrickTool('frame'); await click('brickGenerate', 1800);
-    baseline = await js(CANVAS);
+  // item 74k (seat D, measured: "no bricks laid at baseline (none)" was a page whose app NEVER booted -- a refused module
+  // request kills the module graph: no editor, the splash up; the old splash check timed out and the lay ran on a dead
+  // page, retried blind): the baseline waits for the app's declared ready signal (waitApp: core/state.js
+  // bootRestore.complete), then lays ONCE. A page that never boots is a named setup error.
+  let boot = await waitApp();
+  // the one measured case a reload cures: a module request lost to the machine's own network stack under load
+  // (BOOT_RELOAD_ERRORS -- ERR_NO_BUFFER_SPACE: the client ran out of socket buffers, which no server setting prevents)
+  // kills the page's module graph for good. Reloaded ONCE, then the same declared wait; any other never-booted page
+  // is a named setup error.
+  if (!boot.booted && failedRequests.some((f) => BOOT_RELOAD_ERRORS.some((e) => f.endsWith(e)))) {
+    console.log(`the app never booted (${failedRequests.slice(0, 3).join(', ')}) -- one reload`);
+    failedRequests.length = 0; await send('Page.reload', {}); boot = await waitApp();
   }
+  if (!boot.booted) throw new Error(`setup failed: the app never booted (${boot.why}; failed requests: ${failedRequests.slice(0, 4).join(', ') || 'none'})`);
+  await openBrickTool('wall');
+  for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
+  for (const pin of GROUP_SETUP[arg('group')] || []) { // a group's declared setup (its groups/<group>.mjs `setup`), before the baseline lay
+    const r = await setValue(pin.set, pin.value, pin.event); console.log(`setup pin ${pin.set}=${pin.value}: ${r} (${pin.why})`); await sleep(1500);
+  }
+  await click('brickGenerate', 1800);
+  await openBrickTool('frame'); await click('brickGenerate', 1800);
+  const baseline = await js(CANVAS);
   if (!/^[1-9]/.test(baseline)) throw new Error(`setup failed: no bricks laid at baseline (${baseline})`);
   await apply(); Z = await heightsSettled(null);
   console.log('baseline', baseline, Z, '| requires from:', REQUIRES_SOURCE);
@@ -491,16 +500,19 @@ try {
 }
 
 // ---------------------------------------------------------------- page helpers shared by several groups (hoisted)
+/** Wait for the page's app: { booted, why }. item 37 (seat E): the load's declared end is core/state.js
+ *  bootRestore.complete (the boot build landed); a build without it keeps the old 3 s window. item 74k: it says so
+ *  when the app never boots (a failed module request leaves no app at all), instead of returning as if it had. */
 async function waitApp() {
-  for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`)) break; }
-  // item 37 (seat E): the page load's declared end -- core/state.js bootRestore.complete (the boot build landed); a
-  // build without it keeps the old 3 s window
+  for (let i = 0; i < 90; i++) { await sleep(1000); if (await js(`!!document.getElementById('btnStampEdit') && !document.getElementById('app-splash-name')?.offsetParent`).catch(() => false)) break; }
   for (let i = 0; i < 180; i++) {
-    const done = await js(`import('./core/state.js').then((m) => (m.bootRestore ? m.bootRestore.complete : null))`).catch(() => false);
-    if (done === null) { await sleep(3000); return; }
-    if (done) return;
+    const done = await js(`import('./core/state.js').then((m) => (m.bootRestore ? m.bootRestore.complete : null), () => 'import-failed')`).catch(() => false);
+    if (done === null) { await sleep(3000); return { booted: true, why: 'no boot signal in this build' }; }
+    if (done === true) return { booted: true, why: 'bootRestore.complete' };
+    if (done === 'import-failed') return { booted: false, why: 'core/state.js failed to load -- a module request failed' };
     await sleep(500);
   }
+  return { booted: false, why: 'bootRestore.complete never set in 90 s' };
 }
 async function openBrickTab() {
   if (!(await editorOpen())) await click('btnStampEdit', 2500);
