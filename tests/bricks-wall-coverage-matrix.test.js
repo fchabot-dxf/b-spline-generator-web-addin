@@ -38,32 +38,81 @@ const segDist = (px, py, a, b) => {
   const ex = b.x - a.x, ey = b.y - a.y, l = ex * ex + ey * ey, u = l ? Math.max(0, Math.min(1, ((px - a.x) * ex + (py - a.y) * ey) / l)) : 0;
   return Math.hypot(a.x + u * ex - px, a.y + u * ey - py);
 };
-/** board ground inside the contour that is in no brick and more than one joint from every brick */
-function bareSqIn(contour, bricks, J) {
-  const boxes = bricks.map((b) => { const xs = b.polygon.map((p) => p.x), ys = b.polygon.map((p) => p.y); return { p: b.polygon, x0: Math.min(...xs) - J, x1: Math.max(...xs) + J, y0: Math.min(...ys) - J, y1: Math.max(...ys) + J }; });
+/** a brick's polygon + its box grown by one joint (the only bricks that can be "near" a point lie in its box) */
+const boxesOf = (bricks, J) => bricks.map((b) => { const xs = b.polygon.map((p) => p.x), ys = b.polygon.map((p) => p.y); return { p: b.polygon, x0: Math.min(...xs) - J, x1: Math.max(...xs) + J, y0: Math.min(...ys) - J, y1: Math.max(...ys) + J }; });
+const nearBox = (b, x, y, J) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1
+  && (pointInPolygon(x, y, b.p) || b.p.some((q, i) => segDist(x, y, q, b.p[(i + 1) % b.p.length]) <= J * 1.05));
+/** board ground inside the contour that is in no brick and more than one joint from every brick -- the reference scan
+ *  (every box per grid point); kept to pin bareSqIn below to it */
+function bareSqInScan(contour, bricks, J) {
+  const boxes = boxesOf(bricks, J);
   let bare = 0;
   for (let y = GRID_IN / 2; y < H; y += GRID_IN) for (let x = GRID_IN / 2; x < W; x += GRID_IN) {
     if (!pointInPolygon(x, y, contour)) continue;
-    const near = boxes.some((b) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1
-      && (pointInPolygon(x, y, b.p) || b.p.some((q, i) => segDist(x, y, q, b.p[(i + 1) % b.p.length]) <= J * 1.05)));
-    if (!near) bare++;
+    if (!boxes.some((b) => nearBox(b, x, y, J))) bare++;
+  }
+  return bare * GRID_IN * GRID_IN;
+}
+/** The same count, with the boxes bucketed on a coarse grid (load-proofing, seat D 2026-10-07): a box is filed in every
+ *  bucket it overlaps, so the bucket of a point holds every box that contains it -- the same `nearBox` test on the same
+ *  candidates that can pass it, so the same verdict per point. MEASURED before: this scan was 0.86 s of template_1's
+ *  1.44 s (the rest is generateBricks), and the template_1 case (4 sizes) timed out at 35-38 s in 2 of 12 loaded runs. */
+const BUCKET_IN = 0.25;
+function bareSqIn(contour, bricks, J) {
+  const nx = Math.ceil(W / BUCKET_IN) + 1, buckets = new Map();
+  const cell = (v) => Math.floor(v / BUCKET_IN);
+  for (const b of boxesOf(bricks, J)) {
+    for (let j = cell(b.y0); j <= cell(b.y1); j++) for (let i = cell(b.x0); i <= cell(b.x1); i++) {
+      const k = j * nx + i;
+      if (!buckets.has(k)) buckets.set(k, []);
+      buckets.get(k).push(b);
+    }
+  }
+  let bare = 0;
+  for (let y = GRID_IN / 2; y < H; y += GRID_IN) for (let x = GRID_IN / 2; x < W; x += GRID_IN) {
+    if (!pointInPolygon(x, y, contour)) continue;
+    if (!(buckets.get(cell(y) * nx + cell(x)) || []).some((b) => nearBox(b, x, y, J))) bare++;
   }
   return bare * GRID_IN * GRID_IN;
 }
 
-describe('T86 item 16b-REOPENED: the wall covers its region at every size; no bare ground (single soldier, 7x9)', () => {
-  it.each(TEMPLATES)('%s at 0.75 / 1 / 1.25 / 1.5 in', (tpl) => {
+const LAY_BOARD = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }];
+const contourCache = new Map();
+/** a template's Wall contour (single soldier band), once per template */
+function contourOf(tpl) {
+  if (!contourCache.has(tpl)) {
     const sil = frameContourSilhouette({ defs: FRAME_DEFS, record: normalizeFrameRecord({ templateId: tpl }), board: { widthIn: W, heightIn: H } }, 0, 0);
-    const prims = buildRibbonPrimitives(sil.primitives), contour = tess(prims);
-    for (const L of SIZES) {
-      const s = scaledSet(SET, L / SET.brickLengthIn), J = s.grout.widthIn;
-      const ideal = (s.brickLengthIn * s.brickHeightIn) / ((s.brickLengthIn + J) * (s.brickHeightIn + J));
-      const r = generateBricks({ boardOutline: [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }], set: SET, seed: 1, scale: L / SET.brickLengthIn, suppression: 0, clumping: 0, frame: { primitives: prims, bands: FRAME_PRESETS.single_soldier } });
-      const region = area(r.interiorOutline), wall = r.bricks.reduce((t, b) => t + area(b.polygon), 0);
-      const tag = `${tpl} ${L}`;
-      if (NO_WALL_ROOM.has(tag)) expect(r.bricks.length, tag).toBe(0);
-      else if (region >= REGION_MIN_SQIN) expect(wall / region / ideal, `${tag}: wall share of its region vs the ideal`).toBeGreaterThanOrEqual(COVER_MIN_RATIO);
-      expect(bareSqIn(contour, [...r.frameBricks, ...r.bricks], J), `${tag}: bare ground sq in`).toBeLessThanOrEqual(BARE_MAX_SQIN);
-    }
+    const prims = buildRibbonPrimitives(sil.primitives);
+    contourCache.set(tpl, { prims, contour: tess(prims) });
+  }
+  return contourCache.get(tpl);
+}
+const layAt = (prims, L) => generateBricks({ boardOutline: LAY_BOARD, set: SET, seed: 1, scale: L / SET.brickLengthIn, suppression: 0, clumping: 0, frame: { primitives: prims, bands: FRAME_PRESETS.single_soldier } });
+
+describe('T86 item 16b-REOPENED: the wall covers its region at every size; no bare ground (single soldier, 7x9)', () => {
+  // one case per template x size (was one per template, 4 sizes: the same lays and checks, each case a quarter)
+  it.each(TEMPLATES.flatMap((tpl) => SIZES.map((L) => [tpl, L])))('%s at %s in', (tpl, L) => {
+    const { prims, contour } = contourOf(tpl);
+    const s = scaledSet(SET, L / SET.brickLengthIn), J = s.grout.widthIn;
+    const ideal = (s.brickLengthIn * s.brickHeightIn) / ((s.brickLengthIn + J) * (s.brickHeightIn + J));
+    const r = layAt(prims, L);
+    const region = area(r.interiorOutline), wall = r.bricks.reduce((t, b) => t + area(b.polygon), 0);
+    const tag = `${tpl} ${L}`;
+    if (NO_WALL_ROOM.has(tag)) expect(r.bricks.length, tag).toBe(0);
+    else if (region >= REGION_MIN_SQIN) expect(wall / region / ideal, `${tag}: wall share of its region vs the ideal`).toBeGreaterThanOrEqual(COVER_MIN_RATIO);
+    expect(bareSqIn(contour, [...r.frameBricks, ...r.bricks], J), `${tag}: bare ground sq in`).toBeLessThanOrEqual(BARE_MAX_SQIN);
+  });
+  // the bucketed count IS the reference scan's (a curved waist, a template with no wall room, and a lay with a hole
+  // punched in it so the bare count is not 0)
+  it.each([['template_1', 1], ['template_9', 1.5], ['template_5', 0.75]])('bareSqIn equals the reference scan: %s at %s in', (tpl, L) => {
+    const { prims, contour } = contourOf(tpl);
+    const J = scaledSet(SET, L / SET.brickLengthIn).grout.widthIn;
+    const r = layAt(prims, L);
+    const all = [...r.frameBricks, ...r.bricks];
+    const holed = all.filter((_, i) => i % 7 !== 3);
+    expect(bareSqIn(contour, all, J)).toBe(bareSqInScan(contour, all, J));
+    const bare = bareSqIn(contour, holed, J);
+    expect(bare).toBeGreaterThan(0);
+    expect(bare).toBe(bareSqInScan(contour, holed, J));
   });
 });
