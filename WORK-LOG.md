@@ -23923,3 +23923,26 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   Fusion does differently on a doc's first generation (needs a fresh doc per sample, ~4 GB each -- under the 12 GB
   ceiling that is ~2 samples per Fusion session).
 - Known failures: none (no code change).
+
+## T86 item 29 (lane-b) -- frame suppression + inset-window brick surround in the engine (seat E / 61, 2026-10-07; seat B offline)
+- BEFORE (seat D measured): suppression reached only the wall fill (bricksFillShape); frame bricks never crumbled; no
+  inset surround existed. Unblocks fb-app F35 item 9 (D's UI).
+- FRAME SUPPRESSION: ENGINE_OPTIONS 'suppressFrame' + 'frameSuppression'. suppression.js suppressBricks: the SAME rule
+  (computeSuppressedCells unchanged -- whole pieces, top-weighted, exact count, clumping noise) over a laid brick list:
+  each brick a one-cell piece at its centroid, course = the brick-height row from the topmost brick; seed salted
+  ('frame-suppression'). topBias / clumping shared with the wall. Off (absent / false / 0) = no call.
+- SURROUND: ENGINE_OPTIONS 'insetSurround' = { rect (the window's OUTER rect: insetWindowOuterRect), preset (FRAME_PRESETS),
+  corner? (SURROUND_CORNERS, default mitre -> each band's cornerStyle), set? }. inset-surround.js laySurround: the ribbon
+  path lays INWARD only (tried a sign flip to lay outward from the hole: 0 pieces), so the stack is laid inward from the
+  window rect grown by its depth, the depth MEASURED from a first lay's innerPath, then relaid. The path keeps one joint
+  between its innermost row and what lies inside: inside is the OPENING, so the rect is first shrunk by the set's grout
+  (measured 0.034 in short without it; 0 after). Output: generateBricks' new field surroundBricks; the wall is cut around
+  the surround's outer rect (an exclusion, one joint off), so nothing lays in the window. No clamp vs frame/board edge.
+- TESTS tests/bricks-frame-suppression-surround.test.js (12): off deep-equal on T1 + T18 (3 forms); exact count, subset,
+  same seed same set / other seed other set; top-weighted; the wall untouched; the surround on T1 for 3 presets (no
+  vertex in the window, all 4 edges touched, no wall in the window, wall/ring overlap 0); mitres at all 4 corners, butt
+  differs; invalid preset / rect -> none; ENGINE_OPTIONS lists the 3 keys. On a tree without the feature: 8 fail, the 4
+  invariants pass. Full vitest 362 files, 5626 passed.
+- SHOTS shots/seatE/t86_29/T1_before_after.png, T18_before_after.png (before / frameSuppression 0.3 / surround
+  single_soldier / soldier_stretcher; windows placed where the stack fits). NOTE for the UI: at the shared topBias 0.8 the
+  frame loses its whole top bar first (the wall rule, by design) -- reads as "top missing" more than "crumbled".
