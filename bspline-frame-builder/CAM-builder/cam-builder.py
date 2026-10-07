@@ -75,6 +75,12 @@ _axispick_event = None
 _build_step_event = None
 _build_steps = None      # F35 item 70: the running BUILD (cam_coordinator.run_steps), advanced one step per tick
 _actions_waiting = []   # palette actions that arrived during a BUILD, replayed in order when it ends
+_apply_after_build = None  # H23 item 101: the built report, waiting for the BUILD's own APPLY step on the next tick
+
+
+def _build_running():
+    """A BUILD is under way: its steps, or its own APPLY step (item 101), still to run."""
+    return _build_steps is not None or _apply_after_build is not None
 
 
 # ---------------------------------------------------------------------------
@@ -238,10 +244,16 @@ class _CamHtmlEventHandler(adsk.core.HTMLEventHandler):
             action = ea.action or data.get('action')
             if action == 'response':
                 return  # Fusion's own ack of sendInfoToHTML, not a page action
+            # H23 item 101: what the PAGE did with a click (its own timestamps), logged on arrival and never dispatched,
+            # so the log shows whether a click made during a blocked BUILD left the page, and when it arrived here.
+            if action == 'page_log':
+                for line in data.get('lines') or []:
+                    _log(f"[PAGE] {str(line)[:300]}" + (' (ring)' if data.get('ring') else ''))
+                return
             # F35 item 70: a BUILD now runs as deferred steps (_advance_build), so Fusion is no longer blocked
             # while it runs; an action arriving meanwhile waits for the build's end, as it did when the build
             # blocked the main thread (never two builds, or an APPLY, interleaved with one).
-            if _build_steps is not None:
+            if _build_running():
                 _actions_waiting.append((action, data))
                 _log(f"[CAM BUILD] {action!r} waits for the running build")
                 return
@@ -1156,8 +1168,11 @@ def _palette_stages():
     return palette_stages
 
 
-def _post_cam_stage(stage_id):
-    """Tell the CAM palette which declared step Fusion is on now; never an undeclared id (logged instead)."""
+def _post_cam_stage(stage_id, grow=None):
+    """Tell the CAM palette which declared step Fusion is on now; never an undeclared id (logged instead).
+    `grow` (Fred, 2026-10-07: the card's step list may grow live) = a change for the palette's list before the step
+    shows: {'steps': [...]} or {'insertAfter': id, 'step': id | {'id', 'label'}} (core/loading-signal.js
+    growLoadingSequence)."""
     global _cam_stage_ids_cache
     try:
         ps = _palette_stages()
@@ -1168,7 +1183,7 @@ def _post_cam_stage(stage_id):
             return
         palette = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
         if palette:
-            palette.sendInfoToHTML('cam_stage', json.dumps({'id': stage_id}))
+            palette.sendInfoToHTML('cam_stage', json.dumps({'id': stage_id, **({'grow': grow} if grow else {})}))
             ps.pump(adsk.doEvents)
             _log(f'[CAM STAGE] {stage_id}')
     except Exception:
@@ -1273,9 +1288,7 @@ def _do_generate(confirmed=False):
             _send_to_html('build_confirm', {'setups': busy})
             return
 
-    # Phase: build only — no templates, no machine, no toolpath gen.
-    # User attaches machine via ADD MACHINE button, picks origin via
-    # SELECT ORIGIN, then runs APPLY TOOLPATHS to finish.
+    # Phase: build (no machine), then its own APPLY step (H23 item 101, _finish_build); ADD MACHINE stays a button.
     # F35 item 70: the build runs ONE declared step per deferred CustomEvent (_advance_build), not in this HTML
     # handler: measured live, the palette got none of the step messages posted after the Manufacture switch, nor the
     # one after the MMs were built, until the handler returned. Each step's handler returns before the next starts.
@@ -1297,6 +1310,8 @@ def _advance_build():
     global _build_steps
     steps = _build_steps
     if steps is None:
+        if _apply_after_build is not None:
+            _run_apply_after_build()
         return
     try:
         stage_id = next(steps)
@@ -1325,27 +1340,52 @@ def _schedule_next_build_step():
 
 
 def _finish_build(report, failed=False):
-    """The build's report to the palette, then the actions that waited for it, in order."""
+    """The build's steps are over. H23 item 101 (Fred: "simply add the step in a splash load image"; an APPLY clicked
+    during a blocked BUILD step never reaches the page): a BUILD that built ends with APPLY, as its own declared step
+    (cam-stages.js camBuild: camBuildApply) -- posted now, run on the next tick so the palette paints it first
+    (_run_apply_after_build), then ONE report. A failed build reports at once. The APPLY TOOLPATHS button stays."""
+    global _apply_after_build
     if not failed:
-
-        # NO toolpath generation here — that's now the APPLY TOOLPATHS button.
-        # User pauses between BUILD and APPLY TOOLPATHS to click Origin in
-        # the Part Position panel of one setup (the only manual step).
-
         # Friendly completion message for the palette status bar.
         n_mms = sum(1 for v in report.get('mms', {}).values() if v)
         n_setups = sum(1 for s in report.get('setups', []) if s.get('ok'))
         report['msg'] = f"BUILD complete — {n_mms} MM(s), {n_setups} setup(s) created."
+        if report.get('ok'):
+            _post_cam_stage('camBuildApply')
+            _log("[CAM BUILD] then APPLY")
+            _apply_after_build = report
+            _schedule_next_build_step()
+            return
+    _send_build_report(report)
+
+
+def _run_apply_after_build():
+    """The BUILD's own APPLY step (item 101), on its tick: apply, then the build's one report."""
+    global _apply_after_build
+    report, _apply_after_build = _apply_after_build, None
+    try:
+        ok, msg = _apply_toolpaths(post_stages=False)
+    except Exception:
+        _log_error("BUILD's APPLY step raised\n" + traceback.format_exc())
+        ok, msg = False, 'APPLY raised — see log.'
+    report['apply'] = {'ok': ok, 'msg': msg}
+    report['msg'] += f" {msg}" if ok else f" APPLY failed: {msg}"
+    _send_build_report(report)
+
+
+def _send_build_report(report):
+    """The build's report to the palette, then the actions that waited for it, in order -- except an APPLY when the
+    build has just applied (it would apply the templates a second time: doubled operations)."""
     _log("CKPT DOGEN 5: sending build-phase report to HTML")
     _send_to_html('report', report)
     _log("CKPT DOGEN 6: report sent")
     waiting = list(_actions_waiting)
     _actions_waiting.clear()
     for action, data in waiting:
+        if action == 'apply_toolpaths' and (report.get('apply') or {}).get('ok'):
+            _log("[CAM BUILD] a waiting 'apply_toolpaths' is dropped: the build has just applied")
+            continue
         _dispatch_palette_action(action, data)
-
-    # Don't auto-hide the palette — user still needs to click Origin
-    # in Part Position, then click APPLY TOOLPATHS to finish.
 
 
 def _do_add_machine():
@@ -1430,11 +1470,17 @@ def _do_sync_table_attach():
 
 
 def _do_apply_toolpaths():
-    """Phase 2 of the split flow: apply templates + run toolpath gen.
+    """The APPLY TOOLPATHS button: apply the templates + start toolpath generation (_apply_toolpaths), then report."""
+    ok, msg = _apply_toolpaths()
+    _send_to_html('report', {'ok': ok, 'msg': msg})
 
-    Triggered by the APPLY TOOLPATHS button. Assumes BUILD ran first
-    and the user has clicked Origin in Part Position → Table Attach
-    Point on one setup. This function:
+
+def _apply_toolpaths(post_stages=True):
+    """Phase 2 of the split flow: apply templates + run toolpath gen. Returns (ok, msg); sends no report.
+
+    Run by the APPLY TOOLPATHS button and, since H23 item 101 (Fred: "simply add the step in a splash load image"),
+    at the end of every BUILD (its own declared step, camBuildApply -- post_stages=False: APPLY's own steps are not
+    in the BUILD sequence). This function:
       1. Applies cloud templates to all existing setups (per SETUP_SPECS)
       2. Fires the deferred TPGen event which:
          - Captures/replays the Table Attach Point token
@@ -1445,45 +1491,39 @@ def _do_apply_toolpaths():
         _load_engine()
     except Exception:
         _log_error("B-spline engine load failed\n" + traceback.format_exc())
-        _send_to_html('report', {'ok': False, 'msg': 'Engine load failed — see log.'})
-        return
+        return False, 'Engine load failed — see log.'
 
     app = adsk.core.Application.get()
     doc = app.activeDocument
     if not doc:
         _log("APPLY TOOLPATHS: no active doc", "WARNING")
-        _send_to_html('report', {'ok': False, 'msg': 'No active document.'})
-        return
+        return False, 'No active document.'
 
     cam = doc.products.itemByProductType('CAMProductType')
     if not cam:
         _log("APPLY TOOLPATHS: no CAM product", "WARNING")
-        _send_to_html('report', {'ok': False, 'msg': 'No CAM product.'})
-        return
+        return False, 'No CAM product.'
 
     if cam.setups.count == 0:
         _log("APPLY TOOLPATHS: no setups (click BUILD first)", "WARNING")
-        _send_to_html('report', {
-            'ok': False,
-            'msg': 'No setups in this document — click BUILD first.',
-        })
-        return
+        return False, 'No setups in this document — click BUILD first.'
 
     try:
         from cam_engine import setup_builder as _sb
         _log("APPLY TOOLPATHS: applying templates to existing setups")
-        _post_cam_stage('camTemplates')  # F35 item 70
+        if post_stages:
+            _post_cam_stage('camTemplates')  # F35 item 70
         n = _sb.apply_templates_to_existing_setups(cam, logger=_logger)
         _log(f"APPLY TOOLPATHS: templates applied to {n} setup(s)")
     except Exception:
         _log_error("APPLY TOOLPATHS: template apply raised\n" + traceback.format_exc())
-        _send_to_html('report', {'ok': False, 'msg': 'Template apply raised — see log.'})
-        return
+        return False, 'Template apply raised — see log.'
 
     # Kick off deferred toolpath generation (also handles Table Attach
     # token capture/replay + tool renumber via the existing handler).
     _log("APPLY TOOLPATHS: kicking off deferred toolpath generation")
-    _post_cam_stage('camToolpaths')  # F35 item 70
+    if post_stages:
+        _post_cam_stage('camToolpaths')  # F35 item 70
     fake_report = {
         'ok': True,
         'mode': 'bspline',
@@ -1491,11 +1531,7 @@ def _do_apply_toolpaths():
                    for i in range(cam.setups.count)],
     }
     _kick_off_toolpath_generation(fake_report)
-
-    _send_to_html('report', {
-        'ok': True,
-        'msg': f'Templates applied to {n} setup(s). Toolpath generation in progress.',
-    })
+    return True, f'Templates applied to {n} setup(s). Toolpath generation in progress.'
 
 
 # ---------------------------------------------------------------------------

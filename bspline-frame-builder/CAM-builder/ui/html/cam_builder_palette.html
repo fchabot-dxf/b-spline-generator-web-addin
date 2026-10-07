@@ -749,10 +749,35 @@
     return SETUP_KEYS.find(k => k.replace(/[^a-z]/g, '') === flat) || null;
   }
 
+  // H23 item 101 (an APPLY clicked mid-BUILD never reached the add-in, live): the page keeps its OWN timestamped
+  // trail of each user action (PAGE_LOG_ACTIONS) -- click, stage begin, painted, sent, what fusionSendData returned --
+  // sends each line as 'page_log' (the add-in logs it at once, never behind a build) and re-sends the whole ring with
+  // the next build report, so a line whose own send was lost during a blocked step still reaches the log.
+  const PAGE_LOG_ACTIONS = ['build', 'apply_toolpaths'];
+  const PAGE_LOG = [];
+  const PAGE_LOG_MAX = 60;
+  function pageLog(msg) {
+    const line = new Date().toISOString().slice(11, 23) + ' ' + msg;
+    PAGE_LOG.push(line);
+    if (PAGE_LOG.length > PAGE_LOG_MAX) PAGE_LOG.shift();
+    try {
+      if (window.adsk && window.adsk.fusionSendData)
+        window.adsk.fusionSendData('page_log', JSON.stringify({ action: 'page_log', lines: [line] }));
+    } catch (e) { PAGE_LOG.push('page_log send threw: ' + e); }
+  }
+  function flushPageLogRing() {
+    if (!PAGE_LOG.length || !(window.adsk && window.adsk.fusionSendData)) return;
+    try { window.adsk.fusionSendData('page_log', JSON.stringify({ action: 'page_log', ring: true, lines: PAGE_LOG.slice() })); } catch (_) { /* nothing more to do */ }
+  }
+
   function send(action, payload) {
     const data = JSON.stringify(Object.assign({ action }, payload || {}));
-    if (window.adsk && window.adsk.fusionSendData)
-      window.adsk.fusionSendData(action, data);
+    const traced = PAGE_LOG_ACTIONS.includes(action);
+    if (traced) pageLog('send ' + action);
+    if (window.adsk && window.adsk.fusionSendData) {
+      const ret = window.adsk.fusionSendData(action, data);
+      if (traced) pageLog('sent ' + action + ' -> ' + (ret && typeof ret.then === 'function' ? 'promise' : JSON.stringify(ret)));
+    } else if (traced) pageLog('NOT sent ' + action + ': no fusionSendData');
   }
 
   // Shared status line — writes to whichever tab is currently active.
@@ -783,10 +808,13 @@
 
   // item 70: the declared BUILD / APPLY steps on the loading card, painted BEFORE the request leaves (cam-loading.js)
   function withCamStages(sequenceId, go) {
-    if (window.camLoading) window.camLoading.begin(sequenceId).then(go, go);
-    else go();
+    pageLog(sequenceId + ' begin');
+    const run = (how) => () => { pageLog(sequenceId + ' ' + how + ' -> send'); go(); };
+    if (window.camLoading) window.camLoading.begin(sequenceId).then(run('painted'), run('paint failed'));
+    else run('no loading card')();
   }
   function runBuild(confirmed) {
+    pageLog('BUILD click' + (confirmed ? ' (confirmed)' : ''));
     SETUP_KEYS.forEach(k => setSetupState(k, 'pending'));
     setStatus('building setups...');
     withCamStages('camBuild', () => send('build', { mode: 'bspline', confirmed: confirmed === true }));
@@ -825,6 +853,7 @@
   }
 
   function runApplyToolpaths() {
+    pageLog('APPLY click');
     setStatus('applying templates + generating toolpaths...');
     withCamStages('camApply', () => send('apply_toolpaths', { mode: 'bspline' }));
   }
@@ -1497,13 +1526,14 @@
 
         if (action === 'build_confirm') { if (window.camLoading) window.camLoading.end(); confirmBuild(payload.setups || []); return; }
         // item 70: the add-in's step reports (cam-stages.js ids), held on the card until the next one or the report
-        if (action === 'cam_stage') { if (window.camLoading && payload.id) window.camLoading.stage(payload.id); return; }
+        if (action === 'cam_stage') { if (window.camLoading && payload.id) window.camLoading.stage(payload.id, payload.grow); return; }
 
         // ── report: BOTH tabs' operations complete via this one event
         // name — gated on which tab actually triggered it, since the two
         // payload shapes are genuinely different (Builder: fixed SETUP_KEYS
         // dots; Studio: per-component state + setups_built count). ──────
         if (action === 'report' && window.camLoading) window.camLoading.end(); // item 70: the work is over
+        if (action === 'report') flushPageLogRing(); // item 101: the page's own trail, incl. lines lost mid-build
         if (action === 'report' && currentMode === 'bspline') {
           if (payload.msg) {
             const ok = payload.ok !== false;

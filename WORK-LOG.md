@@ -23961,6 +23961,28 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - TEST tests/bricks-wall-coverage-matrix.test.js (19 rows, ~8 s): coverage >= 98 % of ideal where the region >= 1 sq in,
   T9 1.5 declared no-room (0 wall), bare <= 0.3 sq in (0.04 in grid). Mutation (the fill drops every 3rd brick): 19/19 fail.
 - Shots shots/seatE/t86_16b/edge_cases.png (T9 1.5, T15 1.5, T18 1.25, T1 1.25).
+## H23 item 101 step 1 -- the CAM palette's own click trail (seat A / 77, 2026-10-07)
+- Readback 2 (cam-build-deferred, live): an APPLY clicked at 08:20:12 inside a ~57 s blocked BUILD step never reached
+  the add-in (not even as 'waits'); from outside it was not visible whether the page dropped it or it never left.
+- Detection only (no behaviour change): the palette keeps a timestamped ring (PAGE_LOG, 60 lines) for the declared
+  traced actions (PAGE_LOG_ACTIONS: build, apply_toolpaths) -- click, '<seq> begin', '<seq> painted -> send',
+  'send <action>', 'sent <action> -> <what fusionSendData returned>' -- sending each line as 'page_log'; the whole ring
+  goes again (ring: true) with each build report, so a line whose own send was lost during a block still arrives.
+  cam-builder.py logs page_log lines as '[PAGE] ...' on arrival and never dispatches them.
+- Note: main has no deferred build (cam-build-deferred 23a3bde is unmerged), so on main BUILD still runs inside the
+  click handler; the trail works on both.
+- Tests: CAM-builder/test_page_log.py (2, fail 2/2 on main), tests/cam-page-log.test.js (3, cannot load on main: the
+  functions are absent). CAM-builder 59/59, cam-page-log + cam-stages 8/8. Full vitest: the first run could not start
+  its workers (RAM pressure); re-run pending. Known failures: none in the files run.
+- Next (step 2, after a live trail): a declared queue once the trail shows where the click is lost.
+- LIVE TRAIL (2026-10-07 12:54, F's deferred build + this trail merged locally, efa0501, deploys.log -4; T16 7x9, fresh
+  doc, verified-handle clicks; shots shots/seatA/i101/): BUILD click 12:54:22.664 -> the page logged 'BUILD click',
+  'camBuild begin', 'painted -> send', 'send build', 'sent build -> promise' (all arrived at once). APPLY clicked at
+  12:54:44.170 on the button (PrintWindow / screen frames: APPLY spans y 609-631 / 617-639; the card has
+  pointer-events:none) while a deferred step blocked Fusion (PrintWindow 12:54:25 -> 12:54:45; 'building the
+  Manufacturing Models, step 3 of 4' on screen). The page NEVER logged 'APPLY click' -- not live, not in the ring
+  re-sent with the report at 12:54:50. So the click is lost before the page's JS: the web view does not deliver input
+  while Fusion's main thread is busy. A queue in the add-in or the page cannot catch it.
 ## Brick-tab v2 -- each Brick-editor tab gets its own colour-coded sections (seat A / 77, 2026-10-07)
 - Fred: "sections are unique"; "organise the params into actual sections"; "color coded"; mockup v2 "Yes, build it";
   accent title "Accent relief". Measured first (live probe, 6 tabs at 390): one static "Brick" layers-header sat above
@@ -24013,3 +24035,26 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   in, same assertions, ~6 s; fails on the pre-(A) ribbon: T1 + T18 1 in 1.6 J). The full 19 x 4 sweep:
   SEAM_SWEEP_FULL=1 npx vitest run tests/bricks-seam-sweep.test.js -- 29 s now (19/19), after the gap scan got 0.5 in
   buckets for pieces and contour segments (it was ~12 min: every grid point tested every piece and every contour segment).
+- STEP 2 (Fred: "perhaps simply add the step in a splash load image"; "the load splash could list all the steps"; steps
+  can "grow live"):
+  - BUILD ends with APPLY: cam-stages.js camBuild gains camBuildApply ("applying toolpaths", step 5 of 5). A build
+    that built posts it, logs '[CAM BUILD] then APPLY' and runs _apply_toolpaths(post_stages=False) -- the APPLY core,
+    split out of _do_apply_toolpaths, returns (ok, msg) and sends nothing -- then ONE build report carries both
+    messages (report.apply). A failed build does not apply. The APPLY TOOLPATHS button stays (its own stages + report).
+  - The card lists every step (core/loading-signal.js _renderSteps, once for every card: app refresh, Fusion Send,
+    CAM): done / current / pending / skipped (passed without running); pills show none. growLoadingSequence({steps} |
+    {insertAfter, step}) grows the list live (a new step declared on the spot); a CAM 'cam_stage' report may carry
+    'grow' (cam-loading.js, _post_cam_stage(grow=)). endLoadingSequence: the report closes the card whatever step it
+    reached (the CAM end(); before, a 4-step BUILD closed by leaving its last step).
+  - Tests: test_build_then_apply.py (4), tests/loading-steps-list.test.js (14: one per declared sequence, skipped,
+    pill, grows mid-run, CAM report grow); cam-stages pins moved to 5 steps. CAM-builder 63/63, full vitest 371 files
+    5711/0. Known failures: none. Shots: shots/seatA/cam_build_card_{phone,desktop,grown_phone}.png (headless, branch).
+- LIVE (2026-10-07 14:45, this branch 61e5be0 = main 38282b6 merged, deploys.log -6; T1 7x9 cam-bricks, fresh doc,
+  ONE verified BUILD click, no APPLY click; shots shots/seatA/i101b/): camWcs -> camCleanup -> camModels -> camSetups ->
+  'CKPT DOGEN 2' (ok) -> camBuildApply -> '[CAM BUILD] then APPLY' -> templates applied to 3 setups -> TPGen kicked off ->
+  ONE report; TPGen: Back 50.1 s, Top 105.0 s, Frame 126.9 s -> post-audit ok=7 missing=0 (pass 1 alone this time).
+  The card: on main's SYNCHRONOUS build it showed "step 1 of 5" (checklist: preparing the stock sketches current, the
+  rest pending) from the click until the report closed it -- PrintWindow at 14:47:48 and the screen frames alike; the
+  stage posts + paint pumps did not repaint the palette while the build held Fusion's main thread. So the step-5 card
+  is NOT visible on main; F's deferred build (cam-build-deferred, unmerged) is what paints the steps (readback 2 showed
+  "step 4 of 4" there).

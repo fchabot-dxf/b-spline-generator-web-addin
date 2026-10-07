@@ -135,6 +135,8 @@ class TestTheDeferredBuild:
                 events.append(f'work after {sid}')
             return {'ok': True, 'mode': 'bspline', 'mms': {'stock': True}, 'setups': [{'name': 'Setup 1', 'ok': True}]}
         monkeypatch.setattr(cb, '_engine', type('E', (), {'run_steps': staticmethod(run_steps)}), raising=False)
+        # H23 item 101: the build's own APPLY step (the APPLY core, mocked)
+        monkeypatch.setattr(cb, '_apply_toolpaths', lambda post_stages=True: events.append(('apply', post_stages)) or (True, 'Applied.'))
         return cb, fired, events
 
     def test_the_html_handler_returns_before_the_build_starts(self, monkeypatch):
@@ -146,25 +148,54 @@ class TestTheDeferredBuild:
     def test_each_tick_runs_one_step_posts_it_and_schedules_the_next_then_reports(self, monkeypatch):
         cb, fired, events = self._module(monkeypatch)
         cb._do_generate(confirmed=True)
-        for _ in range(5):
+        for _ in range(6):
             cb._advance_build()
+        # H23 item 101: after the build's steps, its own APPLY step (camBuildApply) is posted, run on the NEXT tick
+        # (so the palette paints it first), then ONE report
         assert events == ['build started', ('stage', 'camWcs'), 'work after camWcs', ('stage', 'camCleanup'),
                           'work after camCleanup', ('stage', 'camModels'), 'work after camModels', ('stage', 'camSetups'),
-                          'work after camSetups', ('report', 'BUILD complete — 1 MM(s), 1 setup(s) created.')]
-        assert fired == [cb.BUILD_STEP_EVENT_ID] * 5  # one per step; none after the report
+                          'work after camSetups', ('stage', 'camBuildApply'), ('apply', False),
+                          ('report', 'BUILD complete — 1 MM(s), 1 setup(s) created. Applied.')]
+        assert fired == [cb.BUILD_STEP_EVENT_ID] * 6  # one per step + the APPLY step; none after the report
         # seat A, live: a tick fired at once ran the setup build before the palette took the step -- each later tick
         # waits PALETTE_SETTLE_S after its post
-        assert self.delays == [cb.PALETTE_SETTLE_S] * 4 and cb.PALETTE_SETTLE_S >= 0.2
-        assert cb._build_steps is None
+        assert self.delays == [cb.PALETTE_SETTLE_S] * 5 and cb.PALETTE_SETTLE_S >= 0.2
+        assert cb._build_steps is None and cb._apply_after_build is None
 
     def test_a_palette_action_during_the_build_waits_and_runs_after_the_report(self, monkeypatch):
         cb, fired, events = self._module(monkeypatch)
-        monkeypatch.setattr(cb, '_do_apply_toolpaths', lambda: events.append('apply ran'))
+        monkeypatch.setattr(cb, '_do_add_machine', lambda: events.append('add machine ran'))
+        cb._do_generate(confirmed=True)
+        cb._advance_build()
+        import types as _t
+        cb._CamHtmlEventHandler().notify(_t.SimpleNamespace(action='add_machine', data='{}'))
+        assert 'add machine ran' not in events
+        for _ in range(5):
+            cb._advance_build()
+        assert events[-2:] == [('report', 'BUILD complete — 1 MM(s), 1 setup(s) created. Applied.'), 'add machine ran']
+
+    def test_a_waiting_apply_is_dropped_when_the_build_has_just_applied(self, monkeypatch):
+        # H23 item 101: replaying it would apply the templates a second time (doubled operations)
+        cb, fired, events = self._module(monkeypatch)
+        monkeypatch.setattr(cb, '_do_apply_toolpaths', lambda: events.append('apply button ran'))
         cb._do_generate(confirmed=True)
         cb._advance_build()
         import types as _t
         cb._CamHtmlEventHandler().notify(_t.SimpleNamespace(action='apply_toolpaths', data='{}'))
-        assert 'apply ran' not in events
-        for _ in range(4):
+        for _ in range(5):
             cb._advance_build()
-        assert events[-2:] == [('report', 'BUILD complete — 1 MM(s), 1 setup(s) created.'), 'apply ran']
+        assert 'apply button ran' not in events
+        assert events.count(('apply', False)) == 1
+
+    def test_an_action_during_the_builds_own_apply_step_still_waits(self, monkeypatch):
+        cb, fired, events = self._module(monkeypatch)
+        monkeypatch.setattr(cb, '_do_add_machine', lambda: events.append('add machine ran'))
+        cb._do_generate(confirmed=True)
+        for _ in range(5):
+            cb._advance_build()  # the steps are done; the APPLY step is posted, not yet run
+        assert cb._build_steps is None and cb._apply_after_build is not None and cb._build_running()
+        import types as _t
+        cb._CamHtmlEventHandler().notify(_t.SimpleNamespace(action='add_machine', data='{}'))
+        assert 'add machine ran' not in events
+        cb._advance_build()
+        assert events[-1] == 'add machine ran'
