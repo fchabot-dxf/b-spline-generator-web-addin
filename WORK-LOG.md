@@ -24192,3 +24192,20 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   live. layout group 35 rows 0 FAIL.
 - SHOTS shots/seatE/t86_16e/: engine_check.png (T18 1.25, T1 1, T1 0.75 soldier/stretcher x 3 choices), whole_T18.png,
   icons.png, live_eye.png / live_stone.png (the app: Corners section with the Fan centre row, stones on the canvas).
+## T86 -- a lay with a bare tip laid the frame twice: now planned first, laid once (seat E / 61, 2026-10-07)
+- MEASURED (stage timers in generateBricks / bricksContourBands): a tip lay (16f) laid the frame for the wall's inner path,
+  then again with the tip zones -- the second lay as long as the first; bareTips and the wall were small. Inside a frame
+  lay the cost is the board clip (clipBandPiecesToBoard) and the medial split, not the pieces -- so re-laying only the
+  innermost row would have saved little.
+- FIX: the wall needs only the frame's inner path, which is the band PLAN's (depths, fit rule, narrowing), not the
+  pieces'. contour-bands opts.planOnly skips the rows' pieces (the rest runs on an empty set); generateBricks plans the
+  frame, lays the wall, finds the bare tips, then lays the frame ONCE (with tipZones when there are any).
+- BYTE-IDENTICAL: 228 lays (19 templates x 0.75 / 1 / 1.25 / 1.5 in x single soldier / three band / single + Stone fan
+  centre), digest of frameBricks + wall + interiorOutline + bandsReduced: 0 changed.
+- CPU time per lay (process.cpuUsage, two runs each, main -> new): T1 1 in 55/48 -> 31/30 ms; T14 1.5 101/96 -> 64/52;
+  T18 1.25 157/128 -> 66/72; a no-tip lay (T2 1) 17/17 -> 14/15 (the plan costs nothing measurable). Wall-clock under
+  the fleet's load was too noisy to read (a no-tip lay swung 9 -> 18 ms between runs).
+- TEST tests/bricks-frame-laid-once.test.js (5): one plan + one frame lay per generateBricks on T14 1.5 (a tip lay),
+  T18 1.25, T1 1, T2 1 (bricksContourBands counted through a vi.mock wrapper); the plan's innerPath / bandsReduced equal
+  the full lay's on every template x single / three band at 1.25 in. On main's engine.js: 4 of 5 fail (2 full lays).
+  Full vitest 374 files, 5842 passed, 0 failed; full seam sweep 19/19.
