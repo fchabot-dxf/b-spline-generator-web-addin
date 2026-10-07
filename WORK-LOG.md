@@ -23983,3 +23983,7 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   lobe split + wall-front zone, contour-bands fillTips = sides extended past d1, clipped to the own half-zone, spliced by
   mergeAcrossSeam). It filled T14's X but over the 76 lays opened holes up to 17 J (T10 1.25 0.86 sq in): the zone must
   be ONLY what the wall leaves uncovered (no wall drops) and a refused splice needs a fallback.
+- 16d sweep RUNS (advisor: the gate's budget is ~10 min): the default suite sweeps FAST_SET (T1, T14, T16, T18 at 1 and 1.5
+  in, same assertions, ~6 s; fails on the pre-(A) ribbon: T1 + T18 1 in 1.6 J). The full 19 x 4 sweep:
+  SEAM_SWEEP_FULL=1 npx vitest run tests/bricks-seam-sweep.test.js -- 29 s now (19/19), after the gap scan got 0.5 in
+  buckets for pieces and contour segments (it was ~12 min: every grid point tested every piece and every contour segment).

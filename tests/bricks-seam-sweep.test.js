@@ -8,6 +8,9 @@
  *    every piece (a gap wider than 1.5 joints). Grouped by what borders its widest point: a SEAM (two pieces) or a NODE
  *    (three or more: joints meeting -- a fan's apex, an X), and fan / band / wall. Known open items: the fan's apex
  *    spots (16e), the wall-region tips (16f).
+ * RUNS: the default suite sweeps a fixed representative subset (FAST_SET: T1, T14, T16, T18 at 1 and 1.5 in -- a fan corner,
+ * the X, a neck, the base strips) with the same assertions, inside the gate's budget. The full 19 x 4 sweep (~12 min under
+ * load) runs with SEAM_SWEEP_FULL=1:   SEAM_SWEEP_FULL=1 npx vitest run tests/bricks-seam-sweep.test.js
  * MEASURE_SEAMS=1 prints the per-class values instead of asserting them (to re-cap after a deliberate change).
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -22,8 +25,12 @@ import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/htm
 vi.setConfig({ testTimeout: 300000 }); // 4 lays + a fine gap grid per template: minutes under the fleet's load
 
 const SET = BRICK_SETS[0];
-const W = 7, H = 9, SIZES = [0.75, 1, 1.25, 1.5], GRID_IN = 0.02;
-const TEMPLATES = FRAME_DEFS.templates.map((t) => t.id).filter((k) => /^template_\d+$/.test(k));
+const W = 7, H = 9, GRID_IN = 0.02;
+const FULL = !!process.env.SEAM_SWEEP_FULL;
+/** the default run's representative subset (the full sweep: SEAM_SWEEP_FULL=1) */
+const FAST_SET = { templates: ['template_1', 'template_14', 'template_16', 'template_18'], sizes: [1, 1.5] };
+const SIZES = FULL ? [0.75, 1, 1.25, 1.5] : FAST_SET.sizes;
+const TEMPLATES = FULL ? FRAME_DEFS.templates.map((t) => t.id).filter((k) => /^template_\d+$/.test(k)) : FAST_SET.templates;
 const MEASURE = !!process.env.MEASURE_SEAMS;
 /** Fred's joint rule, with the measurement's own tolerance */
 const FAN_SEAM_MAX_J = 1.5;
@@ -91,17 +98,35 @@ function widestFanSeam(frame, J, others) {
   return worst;
 }
 
+/** a grid of CELL_IN buckets: each item listed in every cell its box (grown by `pad`) touches */
+const CELL_IN = 0.5;
+function buckets(items, boxOf, pad) {
+  const map = new Map();
+  for (const it of items) {
+    const [x0, y0, x1, y1] = boxOf(it);
+    for (let gx = Math.floor((x0 - pad) / CELL_IN); gx <= Math.floor((x1 + pad) / CELL_IN); gx++) for (let gy = Math.floor((y0 - pad) / CELL_IN); gy <= Math.floor((y1 + pad) / CELL_IN); gy++) {
+      const k = gx * 1000 + gy; if (!map.has(k)) map.set(k, []); map.get(k).push(it);
+    }
+  }
+  return (x, y) => map.get(Math.floor(x / CELL_IN) * 1000 + Math.floor(y / CELL_IN)) || [];
+}
+
 /** every other gap wider than 1.5 J, grouped: { 'seam band': {maxJ, sqIn}, 'node fan': ..., ... } */
 function otherGaps(contour, frame, wall, J) {
   const pieces = [...frame.map((b) => ({ p: b.polygon, kind: b.fan ? 'fan' : 'band', bx: box(b.polygon) })), ...wall.map((b) => ({ p: b.polygon, kind: 'wall', bx: box(b.polygon) }))];
-  const inside = (x, y) => pointInPolygon(x, y, contour) && contour.every((q, i) => segDist(x, y, q, contour[(i + 1) % contour.length]) > 0.05);
+  const EDGE_IN = 0.05, REACH = 2 * J + 0.05; // a gap point is at most ~4 J from a piece; the board's edge is skipped
+  const near = buckets(pieces, (q) => q.bx, REACH);
+  const segs = contour.map((a, i) => ({ a, b: contour[(i + 1) % contour.length] }));
+  const nearSegs = buckets(segs, (sg) => [Math.min(sg.a.x, sg.b.x), Math.min(sg.a.y, sg.b.y), Math.max(sg.a.x, sg.b.x), Math.max(sg.a.y, sg.b.y)], EDGE_IN);
+  const inside = (x, y) => pointInPolygon(x, y, contour) && nearSegs(x, y).every((sg) => segDist(x, y, sg.a, sg.b) > EDGE_IN);
   const out = {};
   for (let y = GRID_IN / 2; y < H; y += GRID_IN) for (let x = GRID_IN / 2; x < W; x += GRID_IN) {
     if (!inside(x, y)) continue;
-    let d = Infinity;
-    for (const q of pieces) { if (x < q.bx[0] - d || x > q.bx[2] + d || y < q.bx[1] - d || y > q.bx[3] + d) continue; d = Math.min(d, polyDist(x, y, q.p)); if (d === 0) break; }
+    const cand = near(x, y);
+    let d = cand.length ? Infinity : REACH; // no piece within reach: wider than any joint, and counted as such
+    for (const q of cand) { if (x < q.bx[0] - d || x > q.bx[2] + d || y < q.bx[1] - d || y > q.bx[3] + d) continue; d = Math.min(d, polyDist(x, y, q.p)); if (d === 0) break; }
     if (!(d > 0.75 * J)) continue;
-    const touching = pieces.filter((q) => !(x < q.bx[0] - d * 1.1 || x > q.bx[2] + d * 1.1 || y < q.bx[1] - d * 1.1 || y > q.bx[3] + d * 1.1) && polyDist(x, y, q.p) <= d * 1.08 + 1e-3);
+    const touching = cand.filter((q) => !(x < q.bx[0] - d * 1.1 || x > q.bx[2] + d * 1.1 || y < q.bx[1] - d * 1.1 || y > q.bx[3] + d * 1.1) && polyDist(x, y, q.p) <= d * 1.08 + 1e-3);
     const kinds = new Set(touching.map((q) => q.kind));
     const cls = `${touching.length >= 3 ? 'node' : 'seam'} ${kinds.has('fan') ? 'fan' : kinds.has('wall') ? 'wall' : 'band'}`;
     const c = (out[cls] = out[cls] || { maxJ: 0, sqIn: 0 });
