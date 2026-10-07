@@ -23961,3 +23961,29 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - TEST tests/bricks-wall-coverage-matrix.test.js (19 rows, ~8 s): coverage >= 98 % of ideal where the region >= 1 sq in,
   T9 1.5 declared no-room (0 wall), bare <= 0.3 sq in (0.04 in grid). Mutation (the fill drops every 3rd brick): 19/19 fail.
 - Shots shots/seatE/t86_16b/edge_cases.png (T9 1.5, T15 1.5, T18 1.25, T1 1.25).
+## Brick-tab v2 -- each Brick-editor tab gets its own colour-coded sections (seat A / 77, 2026-10-07)
+- Fred: "sections are unique"; "organise the params into actual sections"; "color coded"; mockup v2 "Yes, build it";
+  accent title "Accent relief". Measured first (live probe, 6 tabs at 390): one static "Brick" layers-header sat above
+  every tab; the Set row and the whole Grout block (width + Colour/Edge) showed in all four element tabs.
+- DECLARED: main/brick-tab-sections.js BRICK_TAB_SECTIONS {tab: {host, after, sections: [{id, title, kind, rows,
+  titleOf}]}} (tabs = the Brick tab strip's ids). SHARED_ROWS is derived (rows several tabs declare: the set, the joint
+  width + its spacing hint) -- one DOM node moved into the active tab's section on each tab switch. Kind hues:
+  section-themes.js BRICK_SECTION_THEMES (one kind = one colour in every tab), tinted through themeTokens like every
+  section (themeBrickSection). Sections reuse the sidebar's .panel/.panel-header (fold arrow)/.panel-body; fold state
+  is remembered in the sidebar's own store (panel-bricksec-<tab>-<id>). A section with every row hidden hides too
+  (MutationObserver on the panel; Corners on a band-less frame).
+- Groups: General = Brick size (in) / Look · every element (grout Colour + Edge, now ONLY here) / Crumble (Suppression,
+  Clumping, Crumble top bias) / Randomness (Seed). Wall = Bricks / Pattern / Accent relief / Height / Joint. Frame =
+  Bricks / Bands / Corners / Height / Crumble (item 9) / Window surround (item 9, own kind) / Joint. Brush = Bricks /
+  Stroke / Accent relief / Height / Joint. Raised = Bricks / Mode / Height / Joint. Scissors / Stripe: none.
+- HTML: label+control pairs wrapped as id'd rows; the shared "Brick" header, the Set and Grout labels and the emptied
+  brickGroutBlock / brickScatterBlock wrappers removed. Swept: BRICK_ROW_SCOPES loses those two scopes (no 'both' left;
+  the generic branch stays); EDITOR_SECTION_THEMES loses editorBrickPanel + the 4 tool-section tints (Stripe kept) and
+  the now-unused head-only branch + its CSS :not(); revealBrickControl asks the section map first.
+- Deviation from the mockup: the size title keeps its unit, "Brick size (in)".
+- Tests: tests/brick-tab-sections.test.js (13; cannot pass on main: the module is absent; the empty-section rule
+  mutation-fails); 5 existing files moved to the new structure. Full vitest 5682/0 (one earlier run had the Corners
+  test fail under load via happy-dom's late MutationObserver -> that test now calls the sync directly). Matrix layout
+  group 35 rows 0 FAIL incl. 15 new 'Brick sections' rows (1366 / 900 / phone x 5 tabs: unique titles, every control in
+  a section, none past the edge). Known failures: none.
+- Shots: shots/seatA/brick_tabs_built_<tab>.png (NOW 390 on main adb06a1 | BUILT 390 | 900 | 1366).

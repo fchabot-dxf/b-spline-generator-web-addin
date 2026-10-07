@@ -76,7 +76,7 @@ const FIXTURE = `
   <div id="brickSurfaceWearRow" style="display:none;"><input type="range" id="brickSurfaceWearSlider" min="0" max="1" step="0.05"><input id="brickSurfaceWear"></div>
   <div id="brickQuickSettings"></div>
   <div id="brickRaisedSection"><div id="brickRaisedModeToggle"></div><input id="brickRaisedLevel"></div>
-  <div id="brickWallSection"></div><div id="brickSharedSet"></div><div id="brickSharedLayout"><div id="brickSizeBlock"></div><div id="brickGroutBlock"><div id="brickGroutWidthRow"></div></div><div id="brickScatterBlock"></div></div>
+  <div id="brickWallSection"></div><div id="brickSharedSet"></div><div id="brickSharedLayout"><div id="brickSizeBlock"></div><div id="brickGroutWidthRow"></div></div>
   <div id="brickLargeStonesRow" style="display:none;"><input type="range" id="brickLargeStonesSlider" min="0" max="1" step="0.05"><input id="brickLargeStones"></div>
   <span id="stripeColoursLabel">Colours</span><input type="checkbox" id="stripeThree"><button id="stripeColorsReset"></button>
   <div id="stripeColorPresets"></div><div id="stripeColorSwatches"></div><div id="stripeBrickStyles" style="display:none;"></div>
@@ -709,17 +709,17 @@ describe('turn 197: Stripe hides the shared rows; F35 item 21 Large stones (fiel
   // global (size, suppression..seed) only in General, element (Set, grout width) in a tool's tab, the Grout block in both
   it('Stripe declares sharedRows: false -> its tab shows no shared row; the Wall tab shows its element rows only', () => {
     expect(shown('brickSharedSet')).toBe(true);
-    expect(shown('brickGroutBlock') && shown('brickGroutWidthRow')).toBe(true);
-    expect(shown('brickSizeBlock') || shown('brickScatterBlock')).toBe(false);
+    expect(shown('brickGroutWidthRow')).toBe(true);
+    expect(shown('brickSizeBlock') || shown('brickSec_general_size')).toBe(false); // Brick-tab v2: General's own sections
     $('brickTool_brush').click(); $('brickSubTool_brush_stripe').click();
-    for (const id of ['brickSharedSet', 'brickGroutBlock', 'brickSizeBlock', 'brickScatterBlock']) expect(shown(id), id).toBe(false);
+    for (const id of ['brickSharedSet', 'brickGroutWidthRow', 'brickSizeBlock', 'brickSec_general_size']) expect(shown(id), id).toBe(false);
     $('brickTool_wall').click();
     expect(shown('brickSharedSet')).toBe(true);
-    expect(shown('brickGroutBlock')).toBe(true);
+    expect(shown('brickGroutWidthRow')).toBe(true);
   });
   it('item 43: General shows the global blocks + the Grout block (not its Width row) and no tool section; the tool stays', () => {
     $('brickTab_general').click();
-    for (const id of ['brickSizeBlock', 'brickScatterBlock', 'brickGroutBlock']) expect(shown(id), id).toBe(true);
+    for (const id of ['brickSizeBlock', 'brickSec_general_size']) expect(shown(id), id).toBe(true);
     for (const id of ['brickSharedSet', 'brickGroutWidthRow', 'brickWallSection', 'brickToolHint']) expect(shown(id), id).toBe(false);
     expect($('brickTab_general').classList.contains('active')).toBe(true);
     expect($('brickTool_wall').classList.contains('active')).toBe(false);
@@ -965,7 +965,7 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
   it("N7: Scissors hides the shared rows too (a cut keeps each piece's draw-time settings)", () => {
     setup('wall');
     $('brickTool_scissors').click();
-    for (const id of ['brickSharedSet', 'brickGroutBlock', 'brickSizeBlock', 'brickScatterBlock']) expect(shown(id), id).toBe(false); // item 43: by scope
+    for (const id of ['brickSharedSet', 'brickGroutWidthRow', 'brickSizeBlock', 'brickSec_general_size']) expect(shown(id), id).toBe(false); // item 43: by scope
   });
 
   // item 66 inverts N9's "no template -> a toast": no template = the bands follow the board rectangle; the toast stays

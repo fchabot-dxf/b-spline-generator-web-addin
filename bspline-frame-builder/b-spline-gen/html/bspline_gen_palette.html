@@ -3105,7 +3105,7 @@
           <!-- F35 item 40 (Fred: "We don't see layers still"): the shared Layers component, hosted here while the Brick
                tab is active (bricks land on the ACTIVE layer since item 22 slice 3) -->
           <div id="brickLayersSlot"></div>
-          <div class="layers-header"><span>Brick</span></div>
+          <!-- Fred (2026-10-07, v2 "Yes, build it"): no shared header -- each tab shows its OWN colour-coded sections, declared in main/brick-tab-sections.js -->
           <div style="padding:10px; display:flex; flex-direction:column; gap:4px; font-size:11px;">
             <!-- Audit K3: the active tool's hint heads the panel; under the Set picker it read as a caption
                  for Red Brick / White Rocks. -->
@@ -3116,7 +3116,6 @@
             <!-- turn 197: the panel's SHARED rows (Set here; Brick size .. Seed below) -- a tool that declares
                  sharedRows: false (main/brick-panel.js BRICK_TOOLS: Stripe) hides them -->
             <div id="brickSharedSet">
-            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Set</label>
             <!-- F35 item 23: rendered from the BRICK sets' declarations (main/brick-panel.js renderSetRow); the rock
                  set is implied by the Fieldstone pattern. Per element: it edits the active tool's set. -->
             <div id="brickSetRow" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;"></div>
@@ -3139,23 +3138,29 @@
                   <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickRustic_brush" value="0" min="0" max="1" step="0.05"></div>
                 </div>
               </div>
+              <div id="brickBrushProfileRow">
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Brush: Profile</label>
               <div class="relief-toggle" id="brickBrushProfileToggle" style="margin-bottom:12px;">
                 <button type="button" class="relief-toggle-btn active" id="brickBtnProfileStripped" title="Individual bricks with grout joints"><span>Stripped</span></button>
                 <button type="button" class="relief-toggle-btn" id="brickBtnProfileContinuous" title="One unbroken textured band, no joints"><span>Continuous</span></button>
               </div>
+              </div>
 
+              <div id="brickBrushOrientationRow">
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Brush: Orientation</label>
               <div class="relief-toggle" id="brickBrushOrientationToggle" style="margin-bottom:12px;">
                 <button type="button" class="relief-toggle-btn active" id="brickBtnOrientationStretcher" title="Bricks laid along the stroke"><span>Stretcher</span></button>
                 <button type="button" class="relief-toggle-btn" id="brickBtnOrientationSoldier" title="Bricks standing on end, across the stroke"><span>Soldier</span></button>
               </div>
+              </div>
 
               <!-- T86 item 7: the Brush band-preset picker (core/bricks/library.js BRUSH_PRESETS),
                    straddling the drawn stroke's centreline; replaces the earlier greyed width placeholders. -->
+              <div id="brickBrushPresetRow">
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Brush: Width / pattern</label>
               <div id="brickBrushPresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
                 <!-- Populated at runtime by main/brick-panel.js's declared BRUSH_PRESET_LIST. -->
+              </div>
               </div>
             </div>
 
@@ -3170,18 +3175,22 @@
               <div id="brickWallAreaRow" style="display:none; gap:4px; align-items:center; flex-wrap:wrap; margin:-4px 0 10px;"></div>
               <!-- item 68: painted areas, none selected -> a Wall pick changes no area (main/brick-panel.js WALL_AREA_HINT) -->
               <div id="brickWallAreaHint" role="note" style="display:none; font-size:11px; opacity:0.8; margin:-4px 0 8px;"></div>
-              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
+              <div id="brickWallPatternRow">
+              <label id="brickWallPatternLabel" class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Wall pattern</label>
               <div id="brickPatternList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
                 <!-- Populated at runtime by main/brick-panel.js's declared WALL_PATTERN_LIST. -->
+              </div>
               </div>
               <!-- F35 item 13: the Wall pattern's ROTATION (main/brick-panel.js WALL_ROTATIONS); hidden until the engine lists rotationDeg -->
               <div id="brickWallRotationRow" style="display:flex; gap:4px; align-items:center; margin:0 0 10px;"></div>
               <!-- F35 item 31d (Fred: "the raised bricks should be part of the normal pattern section"): the ACCENT row,
                    right under the bond grid -- None + the presets as engine-drawn icons + Custom… (the pattern
                    builder, item 31) + Click bricks; the signed Accent level (item 32). -->
-              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Accent</label>
+              <div id="brickWallAccentRow">
+              <label id="brickWallAccentLabel" class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Accent</label>
               <div id="brickAccentList" style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:4px; margin-bottom:6px;"></div>
-              <div style="display:flex; gap:6px; margin-bottom:6px;">
+              </div>
+              <div id="brickAccentActionsRow" style="display:flex; gap:6px; margin-bottom:6px;">
                 <button type="button" class="cad-btn" id="brickAccentCustomOpen" style="flex:1; height:auto; min-height:22px;" title="Build your own pattern: a tile of bricks to raise or sink, repeated over the wall">Custom…</button>
                 <button type="button" class="cad-btn" id="brickAccentClick" style="flex:1; height:auto; min-height:22px; white-space:normal; line-height:1.25; padding:3px 6px;" title="Custom: click Wall bricks on the canvas to raise one, click it again to lower it">Click bricks</button>
               </div>
@@ -3211,7 +3220,7 @@
               <!-- F35 item 16: LEVEL, this element's height offset (+ proud / - recessed), 3D only -->
               <!-- F35 item 50: the Level row owns its line + bottom margin (the stepper wraps the input, so a margin on
                    the input stayed INSIDE the wrapper and the section edge cut the stepper box, measured flush) -->
-              <div class="brick-level-row" style="margin-bottom:12px;">
+              <div id="brickLevelRow_wall" class="brick-level-row" style="margin-bottom:12px;">
                 <label class="cad-label">Level (in)</label>
                 <input type="number" id="brickLevel_wall" value="0" min="-0.25" max="0.25" step="0.015625" style="width:100%;" title="+ sits proud of the other bricks, - sits recessed (3D only)">
               </div>
@@ -3224,10 +3233,14 @@
               <!-- F35 item 36: Draw / Select a raised stroke -->
               <div id="brickSubTools_raisedBrush" style="display:flex; gap:6px; margin-bottom:4px; flex-wrap:wrap;"></div>
               <div id="brickElementLabel_raisedBrush" style="font-size:10px; opacity:0.65; margin:0 0 10px;"></div>
-              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Raised brush: Mode</label>
+              <div id="brickRaisedModeRow">
+              <label id="brickRaisedModeLabel" class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Raised brush: Mode</label>
               <div class="relief-toggle" id="brickRaisedModeToggle" style="margin-bottom:12px;"></div>
+              </div>
+              <div id="brickRaisedLevelRow">
               <label class="cad-label">Level (in, proud of the other bricks)</label>
               <input type="number" id="brickRaisedLevel" value="0.0625" min="-0.25" max="0.25" step="0.015625" style="width:100%; margin-bottom:12px;">
+              </div>
             </div>
 
             <!-- turn 195: the Stripe tool's own section -- main/editor-tabs.js (modeHosts) moves the stripe
@@ -3238,32 +3251,39 @@
               <!-- F35 item 22: this element tool's sub-tools (main/brick-panel.js BRICK_SUB_TOOLS) + what the section edits -->
               <div id="brickSubTools_frame" style="display:flex; gap:6px; margin-bottom:4px; flex-wrap:wrap;"></div>
               <div id="brickElementLabel_frame" style="font-size:10px; opacity:0.65; margin:0 0 10px;"></div>
+              <div id="brickFramePresetRow">
               <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
               <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
                 <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
               </div>
+              </div>
 
               <!-- item 33: the Frame element's corner (main/brick-panel.js renderFrameCornerList, FRAME_CORNERS) -->
+              <div id="brickFrameCornerRow">
               <label id="brickFrameCornerLabel" class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Corners</label>
               <div id="brickFrameCornerList" style="display:flex; gap:4px; margin-bottom:12px; flex-wrap:wrap;"></div>
+              </div>
 
               <!-- F35 item 35: the Frame's band-fit note (main/brick-panel.js BRICK_LAY_WARNINGS where 'frame') -->
               <div id="brickFrameBandsNoteRow"><div id="brickFrameBandsNote" data-brick-lay-notes="frame" style="display:none; font-size:11px; background:#eef4ff; border-radius:4px; padding:6px 8px; margin-bottom:8px;"></div></div>
+              <div id="brickFrameBandPatternRow">
               <label id="brickFrameBandPatternLabel" class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Band patterns</label>
               <div id="brickFrameBandPatternList" style="margin-bottom:12px;">
                 <!-- Populated at runtime by main/brick-panel.js's declared renderFrameBandPatternList. -->
+              </div>
               </div>
               <!-- F35 item 66: the Offset-from-frame controls are retired (Fred: "the brick frame is always offset from frame
                    anyway, so remove that"): the bands follow the frame's outer edge, the board rectangle with no template -->
               <!-- F35 item 50: the Level row owns its line + bottom margin (the stepper wraps the input, so a margin on
                    the input stayed INSIDE the wrapper and the section edge cut the stepper box, measured flush) -->
-              <div class="brick-level-row" style="margin-bottom:12px;">
+              <div id="brickLevelRow_frame" class="brick-level-row" style="margin-bottom:12px;">
                 <label class="cad-label">Level (in)</label>
                 <input type="number" id="brickLevel_frame" value="0" min="-0.25" max="0.25" step="0.015625" style="width:100%;" title="+ sits proud of the other bricks, - sits recessed (3D only)">
               </div>
 
               <!-- item 9: the frame crumbles by the wall's rule (General's Clumping + Crumble top bias), by its own amount;
                    main/brick-panel.js setFrameCrumble. Off = the engine is not asked. -->
+              <div id="brickFrameCrumbleRow">
               <label class="cad-label" style="display:flex; flex-direction:row; align-items:center; gap:6px; margin-bottom:4px;">
                 <input type="checkbox" id="brickSuppressFrame" style="width:auto; margin:0;"> Crumble frame too
               </label>
@@ -3271,15 +3291,18 @@
                 <input type="range" id="brickFrameSuppressionSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.3" title="How much of the frame crumbles away">
                 <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickFrameSuppression" value="0.3" min="0" max="1" step="0.01"></div>
               </div>
+              </div>
 
               <!-- item 9: the inset window's brick surround, part of the Frame element (main/brick-panel.js
                    renderWindowSurround: None + the frame band presets, then the engine's SURROUND_CORNERS) -->
-              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Window surround</label>
+              <div id="brickWindowSurroundRow">
+              <label id="brickSurroundLabel" class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Window surround</label>
               <div id="brickSurroundHint" style="font-size:11px; opacity:0.7; margin-bottom:12px;">Turn on the inset window in the Frame panel</div>
               <div id="brickSurroundRows">
                 <div id="brickSurroundPresetList" style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;"></div>
                 <label id="brickSurroundCornerLabel" class="cad-label" style="font-size:10px; margin-bottom:4px;">Corners</label>
                 <div id="brickSurroundCornerList" style="display:flex; gap:4px; margin-bottom:12px; flex-wrap:wrap;"></div>
+              </div>
               </div>
             </div>
 
@@ -3294,7 +3317,7 @@
             <div id="brickSharedLayout">
             <!-- F35 item 43: each block's scope is declared in main/brick-panel.js BRICK_ROW_SCOPES (global = General tab) -->
             <div id="brickSizeBlock">
-            <label class="cad-label">Brick size (in)</label>
+            <label id="brickSizeLabel" class="cad-label">Brick size (in)</label>
             <div class="cad-slider-row" style="margin-bottom:6px;">
               <input type="range" id="brickSizeSlider" class="cad-slider" min="0" max="1000" step="1" value="226">
               <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickSize" value="0.75" min="0.375" max="8" step="0.025"></div>
@@ -3304,8 +3327,6 @@
             </div>
             </div>
 
-            <div id="brickGroutBlock">
-            <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Grout</label>
             <div id="brickGroutWidthRow" style="display:flex; gap:4px; margin-bottom:6px;">
               <div style="flex:1;">
                 <label class="cad-label" style="font-size:10px;">Width (in)</label>
@@ -3331,28 +3352,32 @@
                  Resolution panel's own #spacingGroutHint, shown here too since this is where a
                  user is most likely to be looking when grout width changes. -->
             <div id="brickGroutSpacingHint" style="display:none; font-size:10px; color:#b8860b; margin:0 0 12px;"></div>
-            </div>
 
-            <div id="brickScatterBlock">
+            <div id="brickSuppressionRow">
             <label class="cad-label">Suppression</label>
             <div class="cad-slider-row" style="margin-bottom:10px;">
               <input type="range" id="brickSuppressionSlider" class="cad-slider" min="0" max="0.9" step="0.01" value="0">
               <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickSuppression" value="0"></div>
             </div>
+            </div>
 
+            <div id="brickClumpingRow">
             <label class="cad-label">Clumping</label>
             <div class="cad-slider-row" style="margin-bottom:10px;">
               <input type="range" id="brickClumpingSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.3">
               <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickClumping" value="0.3"></div>
             </div>
+            </div>
 
             <!-- item 9 (Fred: General only): where the crumble starts, for the wall AND the frame crumble -->
+            <div id="brickTopBiasRow">
             <label class="cad-label" for="brickTopBias" title="Applies to the wall and frame crumble: 1 = the top crumbles first, 0 = anywhere">Crumble top bias</label>
             <div class="cad-slider-row" style="margin-bottom:10px;">
               <input type="range" id="brickTopBiasSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.8" title="Applies to the wall and frame crumble: 1 = the top crumbles first, 0 = anywhere">
               <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickTopBias" value="0.8" min="0" max="1" step="0.05" title="Applies to the wall and frame crumble: 1 = the top crumbles first, 0 = anywhere"></div>
             </div>
-
+            </div>
+            <div id="brickSeedRow">
             <label class="cad-label">Seed</label>
             <div class="brick-seed-row" style="display:flex; gap:6px; margin-bottom:4px;">
               <input type="number" id="brickSeed" value="1" style="flex:1;">

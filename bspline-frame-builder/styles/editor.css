@@ -1976,7 +1976,7 @@
     color: var(--section-text);
     border-left: 4px solid var(--section-stripe);
 }
-.editor-layers-panel.section-themed-panel:not(.section-themed-headonly) {
+.editor-layers-panel.section-themed-panel {
     background: var(--section-body);
 }
 .section-themed-section {
@@ -1984,4 +1984,27 @@
     border-left: 4px solid var(--section-stripe);
     padding-left: 6px;
     border-radius: 4px;
+}
+
+/* Brick-tab v2 (Fred, 2026-10-07: sections, colour coded): each Brick-editor tab's settings sit in their own foldable
+   sections (main/brick-tab-sections.js BRICK_TAB_SECTIONS), tinted by KIND (section-themes.js BRICK_SECTION_THEMES ->
+   --section-* tokens); the base .panel / .panel-header (fold arrow) / .panel-body rules do the rest. */
+.brick-sec {
+    margin: 0 0 8px;
+    border-left: none;
+    box-shadow: none;
+}
+.brick-sec.section-themed-brick > .panel-header {
+    background: var(--section-header);
+    color: var(--section-text);
+    border-left: 4px solid var(--section-stripe);
+}
+.brick-sec.section-themed-brick > .panel-body {
+    background: var(--section-body);
+    border-left: 4px solid var(--section-stripe);
+    gap: 0;
+}
+/* a label the section's own title replaces (BRICK_TAB_SECTIONS titleOf) */
+.brick-sec-title-label {
+    display: none !important;
 }

@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { brickTabs, BRICK_GENERAL_TAB, BRICK_ROW_SCOPES, BRICK_SUB_TOOLS } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
+import { BRICK_TAB_SECTIONS } from '../bspline-frame-builder/b-spline-gen/html/main/brick-tab-sections.js';
 import { EDITOR_TABS } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
@@ -52,8 +53,10 @@ describe('item 43: the Brick tab strip', () => {
     for (const id of Object.keys(BRICK_ROW_SCOPES)) expect($(id), id).not.toBeNull();
     const blocks = [...$('brickSharedLayout').children];
     expect(blocks.length).toBeGreaterThan(0);
-    for (const b of blocks) expect(BRICK_ROW_SCOPES[b.id], b.id || b.outerHTML.slice(0, 60)).toBeDefined();
-    expect(new Set(Object.values(BRICK_ROW_SCOPES))).toEqual(new Set(['element', 'global', 'both']));
+    // Brick-tab v2: a row is declared by its scope or by the Brick-tab section that holds it
+    const sectionRows = new Set(Object.values(BRICK_TAB_SECTIONS).flatMap((t) => t.sections.flatMap((s) => s.rows)));
+    for (const b of blocks) expect(BRICK_ROW_SCOPES[b.id] || sectionRows.has(b.id), b.id || b.outerHTML.slice(0, 60)).toBeTruthy();
+    expect(new Set(Object.values(BRICK_ROW_SCOPES))).toEqual(new Set(['element', 'global']));
   });
 
   it('the Stripe section carries the Brush sub-tool row (Draw / Select / Stripe stay in view while striping)', () => {
