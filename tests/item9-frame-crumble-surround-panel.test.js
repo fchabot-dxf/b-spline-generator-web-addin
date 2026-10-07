@@ -15,7 +15,8 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js'
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/toast.js', () => ({ showToast: vi.fn() }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js', () => ({ commitEdit: vi.fn() }));
 
-import { initBrickPanel, BRICK_ROW_SCOPES, revealBrickControl, activeBrickTab } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
+import { initBrickPanel, revealBrickControl, activeBrickTab } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
+import { BRICK_TAB_SECTIONS } from '../bspline-frame-builder/b-spline-gen/html/main/brick-tab-sections.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { setFrameRecord, getFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
@@ -105,9 +106,9 @@ describe('item 9: the Window surround block (Frame tab)', () => {
 });
 
 describe('item 9: Crumble top bias (General tab only)', () => {
-  it('lives in the global scatter block, labelled, with the tooltip naming the wall and frame crumble', () => {
-    expect(BRICK_ROW_SCOPES.brickScatterBlock).toBe('global');
-    expect($('brickScatterBlock').contains($('brickTopBias'))).toBe(true);
+  it("lives in General's Crumble section (Brick-tab v2), labelled, with the tooltip naming the wall and frame crumble", () => {
+    expect(BRICK_TAB_SECTIONS.general.sections.find((s) => s.id === 'crumble').rows).toContain('brickTopBiasRow');
+    expect($('brickSec_general_crumble').contains($('brickTopBias'))).toBe(true);
     const label = document.querySelector('label[for="brickTopBias"]');
     expect(label.textContent).toBe('Crumble top bias');
     expect(label.title).toMatch(/wall and frame crumble/);

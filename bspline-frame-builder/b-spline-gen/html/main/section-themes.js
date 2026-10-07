@@ -31,17 +31,30 @@ export const SECTION_THEMES = Object.freeze({
 
 /** The editor's right panels / sections -> the sidebar theme they share (+ a lightness step within the family). */
 export const EDITOR_SECTION_THEMES = Object.freeze({
-  // a PANEL: its own grey header (.layers-header) takes the theme's header + stripe (Fred); `body: false` = its
-  // sections carry the tint instead (the Brick panel)
+  // a PANEL: its own grey header (.layers-header) takes the theme's header + stripe (Fred)
   editorFramePanel: { theme: 'frame', part: 'panel' },
   editorLayersPanel: { theme: 'stamp', part: 'panel' },
   editorPhotoPanel: { theme: 'photo', part: 'panel' },
-  editorBrickPanel: { theme: 'brick', part: 'panel', body: false },
-  brickWallSection: { theme: 'brick', shade: 0 },
-  brickFrameSection: { theme: 'brick', shade: 1 },
-  brickBrushSection: { theme: 'brick', shade: 2 },
-  brickRaisedSection: { theme: 'brick', shade: 3 },
+  // Brick-tab v2 (Fred, 2026-10-07): the Wall / Frame / Brush / Raised settings now sit in their own KIND sections
+  // (BRICK_SECTION_THEMES below), so the whole-tool tints and the shared 'Brick' header are gone; Stripe has none.
   brickStripeSection: { theme: 'brick', shade: 4 },
+});
+
+/** Fred (2026-10-07, Brick-tab v2: "color coded"): the Brick editor's section KINDS (main/brick-tab-sections.js) --
+ *  one hue per kind, so the same kind is the same colour in every tab (Joint is always Joint's colour). Derived by
+ *  themeTokens like every other section. */
+export const BRICK_SECTION_THEMES = Object.freeze({
+  'brick-size': { hue: 210 },
+  'brick-look': { hue: 150 },
+  'brick-crumble': { hue: 70 },
+  'brick-random': { hue: 250 },
+  'brick-bricks': { hue: 6 },
+  'brick-pattern': { hue: 28 },
+  'brick-accent': { hue: 330 },
+  'brick-corners': { hue: 48 },
+  'brick-height': { hue: 285 },
+  'brick-joint': { hue: 185 },
+  'brick-surround': { hue: 115 },
 });
 
 /** Derivation rules (HSL), one per token and theme. `shade` shifts lightness by SHADE_STEP per step. */
@@ -54,7 +67,7 @@ const SHADE_STEP = { light: -1.2, dark: 1.2 };
 /** { body, header, stripe, text } CSS colours for a theme id (or an editor section id) in 'light' | 'dark'. */
 export function themeTokens(id, mode = 'light') {
   const editor = EDITOR_SECTION_THEMES[id];
-  const theme = SECTION_THEMES[editor ? editor.theme : id];
+  const theme = SECTION_THEMES[editor ? editor.theme : id] || BRICK_SECTION_THEMES[id];
   if (!theme) return null;
   const shade = (editor && editor.shade) || 0;
   const rules = THEME_RULES[mode] || THEME_RULES.light;
@@ -83,8 +96,16 @@ export function applySectionThemes(doc = typeof document !== 'undefined' ? docum
     if (!el) continue;
     _writeTokens(el, id);
     el.classList.add(def.part === 'panel' ? 'section-themed-panel' : 'section-themed-section');
-    if (def.part === 'panel' && def.body === false) el.classList.add('section-themed-headonly');
     n++;
   }
   return n;
+}
+
+/** Brick-tab v2: tint ONE Brick-editor section by its kind (BRICK_SECTION_THEMES) -- the sections are built at
+ *  runtime (main/brick-tab-sections.js), after applySectionThemes ran. */
+export function themeBrickSection(el, kind) {
+  if (!el || !BRICK_SECTION_THEMES[kind]) return false;
+  _writeTokens(el, kind);
+  el.classList.add('section-themed-brick');
+  return true;
 }

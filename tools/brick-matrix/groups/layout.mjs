@@ -48,11 +48,25 @@ export const FOLLOWS_FRAME = {
   text: 'The shape follows the frame while Offset from frame is on', blocks: ['shapeLatticeShapeBlock', 'shapeLatticeSegmentsBlock'], probe: 'shapeSegStyleCurve',
 };
 
+// ---- Brick-tab v2 (Fred, 2026-10-07: "sections are unique"; "organise the params into actual sections"): per viewport x
+// Brick tab, the shown section titles are unique, every shown control of the tab sits in a shown section (the tab's
+// chrome excepted: `outside`), and no section runs past the panel's right edge. The sections themselves are the app's
+// declaration (main/brick-tab-sections.js BRICK_TAB_SECTIONS); this only checks what the page shows.
+export const BRICK_SECTIONS_LAYOUT = {
+  viewports: [
+    { name: 'desktop 1366x900', width: 1366, height: 900, mobile: false },
+    { name: 'narrow 900x900', width: 900, height: 900, mobile: false },
+    { name: 'phone 390x844', width: 390, height: 844, mobile: true },
+  ],
+  tabs: ['brickTab_general', 'brickTool_wall', 'brickTool_frame', 'brickTool_brush', 'brickTool_raisedBrush'],
+  outside: '#editorToolbarBrick, #brickLayersSlot, .sticky-actions, [id^="brickSubTools_"], #brickWallAreaRow, #brickEditorLayWarnings',
+};
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -172,4 +186,34 @@ async function runFollowsFrame() {
   await realClick(F.toggle); const s2 = await state();
   checkRow('layout', 'Follows frame: Offset from frame off -- the line hides, the blocks are live',
     !s2.on && !s2.shown && s2.inert.every((x) => !x), `on ${s2.on}, line ${s2.shown ? 'SHOWN' : 'hidden'}, inert ${s2.inert}`);
+}
+
+// ---------------------------------------------------------------- Brick-tab v2 sections
+const BRICK_SECTIONS_PROBE = (outside) => `JSON.stringify((()=>{
+  const panel = document.getElementById('editorBrickPanel'); const pr = panel.getBoundingClientRect();
+  const shown = (e) => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
+  const secs = [...panel.querySelectorAll('.brick-sec')].filter(shown);
+  const titles = secs.map((s) => s.querySelector('.panel-header').textContent.trim());
+  const stray = [...panel.querySelectorAll('input, select, button, textarea')].filter(shown)
+    .filter((c) => !c.closest(${JSON.stringify(outside)}) && !c.closest('.brick-sec')).map((c) => c.id || c.textContent.trim().slice(0, 20));
+  const spill = secs.filter((s) => s.getBoundingClientRect().right > pr.right + 1).map((s) => s.id);
+  return { titles, stray, spill };
+})())`;
+async function runBrickSections() {
+  const L = BRICK_SECTIONS_LAYOUT;
+  for (const vp of L.viewports) {
+    await send('Emulation.setDeviceMetricsOverride', { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: !!vp.mobile });
+    await send('Emulation.setTouchEmulationEnabled', { enabled: !!vp.mobile, maxTouchPoints: vp.mobile ? 5 : 1 });
+    await send('Page.reload', {}); await waitApp(); await openBrickTab();
+    for (const tab of L.tabs) {
+      await click(tab, 900);
+      const r = await jsJSON(BRICK_SECTIONS_PROBE(L.outside));
+      const unique = new Set(r.titles).size === r.titles.length;
+      const ok = r.titles.length > 0 && unique && r.stray.length === 0 && r.spill.length === 0;
+      checkRow('layout', `Brick sections ${vp.name}: ${tab.replace(/^brick(Tab|Tool)_/, '')} -- unique titles, every control in a section, none past the edge`, ok,
+        `titles: ${r.titles.join(' / ')}${r.stray.length ? `; outside a section: ${r.stray.join(', ')}` : ''}${r.spill.length ? `; past the edge: ${r.spill.join(', ')}` : ''}`);
+      if (!ok) await shot(`FAIL_bricksections_${vp.width}_${tab}`);
+    }
+  }
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
 }
