@@ -1119,6 +1119,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
 
   const pieces = [];
   const sources = []; // T86 16(c) part 2: per piece, the primitive it was offset from (-1: a joint's fan, -2: a quoin)
+  const fanSides = []; // T86 item 30: per piece, a fan slice's corner -- the two live primitives it sits between; null otherwise
   let nextId = startId;
   for (let k = 0; k < m; k++) {
     const idx = liveIndices[k];
@@ -1145,7 +1146,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
         );
       })();
     pieces.push(...built.pieces);
-    for (let s = 0; s < built.pieces.length; s++) sources.push(idx);
+    for (let s = 0; s < built.pieces.length; s++) { sources.push(idx); fanSides.push(null); }
     nextId = built.nextId;
 
     // kite-fan pieces (see the jointBefore map's own header above) belong HERE in build order --
@@ -1166,6 +1167,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
         // T86 item 16e: a corner fan's slice declares the apex its fan converges on (fan-centre.js groups by it; additive)
         pieces.push({ id: `${pieceId}-${nextId}`, polygon, pieceId, sampleId, flip, heightOffset, ...(rawJointEnd.q ? { fanApex: { x: rawJointEnd.q.x, y: rawJointEnd.q.y } } : {}) });
         sources.push(-1);
+        fanSides.push([idx, liveIndices[(k + 1) % m]]);
         nextId++;
       }
     }
@@ -1179,6 +1181,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
       const heightOffset = (mulberry32(seedFor(seed, 'bricks-block-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
       pieces.push({ id: `${pieceId}-${nextId}`, polygon: rawJointEnd.blockPolygon, pieceId, sampleId, flip, heightOffset });
       sources.push(-2);
+      fanSides.push(null);
       nextId++;
     }
   }
@@ -1189,7 +1192,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
   // upstream choice that could reorder this array is itself seed-deterministic).
   // `sources` rides alongside (never on the pieces: the output shape is unchanged) for contour-bands.js
   // yieldAtMedialLine, which needs each piece's own depth field (or its kind: a fan, a quoin)
-  return { pieces: pieces.map((p, pieceIndex) => ({ ...p, bandIndex, rowIndex, pieceIndex })), nextId, sources };
+  return { pieces: pieces.map((p, pieceIndex) => ({ ...p, bandIndex, rowIndex, pieceIndex })), nextId, sources, fanSides };
 }
 
 const BOUNDARY_ARC_STEPS = 16; // a smoothness floor for the TESSELLATED polyline this returns, same
