@@ -160,11 +160,18 @@ function _trianglePolygonPieces(tri, poly) {
   // closes further on (every convex corner of Templates 1-5, walked exactly as before), but at a reflex vertex the
   // chain never closed and the whole triangle was lost to the centroid test. So the walk is redone with the rule
   // only when the plain one leaves a chain open.
+  // A segment whose bounding box misses the triangle's is outside it: the walk skips it without the clip (the cost
+  // MEASURED: the whole outline was clipped against every crossed triangle -- the frame-3d-sweep's slowest step). Not
+  // while an exitAtStart chain is open: that rule reads a start point on an edge's LINE, which may lie off the box.
+  const bx0 = Math.min(tri[0].x, tri[1].x, tri[2].x), bx1 = Math.max(tri[0].x, tri[1].x, tri[2].x);
+  const by0 = Math.min(tri[0].y, tri[1].y, tri[2].y), by1 = Math.max(tri[0].y, tri[1].y, tri[2].y);
   const walk = (exitAtStart) => {
     const chains = [];
     let cur = null;
     for (let m = 0; m < n; m++) {
-      const P = poly[(start + m) % n], Q = poly[(start + m + 1) % n], d = { x: Q.x - P.x, y: Q.y - P.y };
+      const P = poly[(start + m) % n], Q = poly[(start + m + 1) % n];
+      if (!(exitAtStart && cur) && ((P.x < bx0 && Q.x < bx0) || (P.x > bx1 && Q.x > bx1) || (P.y < by0 && Q.y < by0) || (P.y > by1 && Q.y > by1))) continue;
+      const d = { x: Q.x - P.x, y: Q.y - P.y };
       let te = 0, tx = 1, ee = -1, ex = -1, empty = false;
       planes.forEach((pl, e) => { // Cyrus-Beck
         const f0 = side(pl, P), fd = (pl.B.x - pl.A.x) * d.y - (pl.B.y - pl.A.y) * d.x;
