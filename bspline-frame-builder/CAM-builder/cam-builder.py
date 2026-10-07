@@ -234,6 +234,12 @@ class _CamHtmlEventHandler(adsk.core.HTMLEventHandler):
             action = ea.action or data.get('action')
             if action == 'response':
                 return  # Fusion's own ack of sendInfoToHTML, not a page action
+            # H23 item 101: what the PAGE did with a click (its own timestamps), logged on arrival and never dispatched,
+            # so the log shows whether a click made during a blocked BUILD left the page, and when it arrived here.
+            if action == 'page_log':
+                for line in data.get('lines') or []:
+                    _log(f"[PAGE] {str(line)[:300]}" + (' (ring)' if data.get('ring') else ''))
+                return
             if action == 'preview_bodies':
                 _do_preview()
             elif action == 'build':

@@ -23961,3 +23961,17 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - TEST tests/bricks-wall-coverage-matrix.test.js (19 rows, ~8 s): coverage >= 98 % of ideal where the region >= 1 sq in,
   T9 1.5 declared no-room (0 wall), bare <= 0.3 sq in (0.04 in grid). Mutation (the fill drops every 3rd brick): 19/19 fail.
 - Shots shots/seatE/t86_16b/edge_cases.png (T9 1.5, T15 1.5, T18 1.25, T1 1.25).
+## H23 item 101 step 1 -- the CAM palette's own click trail (seat A / 77, 2026-10-07)
+- Readback 2 (cam-build-deferred, live): an APPLY clicked at 08:20:12 inside a ~57 s blocked BUILD step never reached
+  the add-in (not even as 'waits'); from outside it was not visible whether the page dropped it or it never left.
+- Detection only (no behaviour change): the palette keeps a timestamped ring (PAGE_LOG, 60 lines) for the declared
+  traced actions (PAGE_LOG_ACTIONS: build, apply_toolpaths) -- click, '<seq> begin', '<seq> painted -> send',
+  'send <action>', 'sent <action> -> <what fusionSendData returned>' -- sending each line as 'page_log'; the whole ring
+  goes again (ring: true) with each build report, so a line whose own send was lost during a block still arrives.
+  cam-builder.py logs page_log lines as '[PAGE] ...' on arrival and never dispatches them.
+- Note: main has no deferred build (cam-build-deferred 23a3bde is unmerged), so on main BUILD still runs inside the
+  click handler; the trail works on both.
+- Tests: CAM-builder/test_page_log.py (2, fail 2/2 on main), tests/cam-page-log.test.js (3, cannot load on main: the
+  functions are absent). CAM-builder 59/59, cam-page-log + cam-stages 8/8. Full vitest: the first run could not start
+  its workers (RAM pressure); re-run pending. Known failures: none in the files run.
+- Next (step 2, after a live trail): a declared queue once the trail shows where the click is lost.
