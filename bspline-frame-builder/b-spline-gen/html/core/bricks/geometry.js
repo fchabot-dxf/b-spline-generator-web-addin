@@ -144,10 +144,19 @@ export function signedArea(path) {
   return a / 2;
 }
 
-/** Which `offsetPathInward` sign (+1 or -1) actually moves points TOWARD the polygon's own
- *  centroid -- determined empirically (a tiny trial offset both ways), not from a winding-
- *  direction assumption, so this works regardless of how the caller's own path was wound. */
+const INWARD_MIN_AREA = 1e-12; // sq in: below this a path has no winding to read
+/** Which `offsetPathInward` sign (+1 or -1) moves a closed path's points INTO it -- read from its winding: the offset
+ *  steps along each edge's left normal, which points inside exactly when the standard shoelace area is positive, i.e.
+ *  when signedArea (this file's, the NEGATIVE shoelace) is below zero. Works however the caller's path was wound.
+ *  T86 (seat E, the silent zero-brick lay; MEASURED): the previous rule -- a trial offset both ways, the side whose points end nearer the centroid
+ *  -- is a vote of every vertex, so densely tessellated concave arcs out-voted the straight sides: a frame outline with a
+ *  notch (T1's, alone on a side) laid its whole band OUTSIDE the board and the board clip dropped every piece (0 laid,
+ *  no note); and polygonDifference nudged a concave clip the wrong way (19 calls in the suite). Over the suite the two
+ *  rules disagreed only on those; on every simple polygon the winding matched a point-in-polygon check. A path with no
+ *  area has no winding: it keeps the trial offset. */
 export function inwardSignFor(path) {
+  const area = signedArea(path);
+  if (Math.abs(area) > INWARD_MIN_AREA) return area < 0 ? 1 : -1;
   const c = polygonCentroid(path);
   const dist = (pts) => pts.reduce((s, p) => s + Math.hypot(p.x - c.x, p.y - c.y), 0);
   const plus = offsetPathInward(path, 0.01, 1);
