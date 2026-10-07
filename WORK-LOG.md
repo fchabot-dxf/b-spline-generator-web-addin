@@ -24117,3 +24117,10 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   (seam band 3.9 J, seam wall / node wall 4.8 J; main had 7.7 / 8.4 / 8.4). T14 1.25, T18 / T19 1.25 unchanged (0 bare).
   T9 0.75's one-piece change is gone (it was a wrap). Full vitest 370 files, 5710 passed, 0 failed; full sweep 19/19.
 - SHOT shots/seatE/t86_16f/wartfix_T14_1.5.png (+ T9 0.75).
+- LIVE (2026-10-07 15:13, cam-deferred-101 1eee8ec = main 8de200f merged, deploys.log -8; T1 7x9 cam-bricks, fresh
+  doc, ONE verified BUILD click, no APPLY click; shots shots/seatA/d101/ + cam_build_live_steps_strip.png): the
+  deferred build posted every step live -- camWcs 15:13:57, camCleanup + camModels 15:13:58, camSetups 15:14:16,
+  steps done 15:14:38, camBuildApply 15:14:39, '[CAM BUILD] then APPLY', templates on 3 setups, TPGen kicked off, ONE
+  report 15:14:41 (build 45 s). The screen frames show each card in turn: step 1 of 5 .. 'applying toolpaths, step 5
+  of 5' (15:14:39.677, steps 1-4 ticked), then done. TPGen: pass 1 left Back empty (0.3 s), pass 2 -> post-audit
+  ok=7 missing=0. Fusion 10.2 GB after; main 8de200f redeployed (-9), holder none.
