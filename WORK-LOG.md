@@ -24124,3 +24124,22 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   report 15:14:41 (build 45 s). The screen frames show each card in turn: step 1 of 5 .. 'applying toolpaths, step 5
   of 5' (15:14:39.677, steps 1-4 ticked), then done. TPGen: pass 1 left Back empty (0.3 s), pass 2 -> post-audit
   ok=7 missing=0. Fusion 10.2 GB after; main 8de200f redeployed (-9), holder none.
+## The open editor follows a board change (phone) -- seat A / 77, 2026-10-07
+- Asked: does the SVG download print at the board's size (the editor root carried a stale 7x9 width/height)?
+  MEASURED headless on main abdff5e: the normal flows are right -- the download is width/height = board x 96 with
+  viewBox 0 0 W H (9x12 -> 864x1152, 7x9 -> 672x864), all three editor-io builders read editor._mW/_mH; the stamp
+  rasterizer overrides width/height; Fusion sizes by viewBox (measured earlier).
+- BUG (phone only): at 390 px the sidebar's widthIn/heightIn stay reachable WHILE the editor is open (elementFromPoint
+  hits the input; at 1366 the editor covers them), and app-init _resyncEditorToStock returned while #svgEditorModal
+  was open -- the editor kept the old board: outline, grid, the download (672x864, viewBox 0 0 7 9 on a 9x12 board:
+  printed 7x9, clipped the rest), the Shape Lattice's extent (the item-100 T11 capture's lattice sat off-centre: the
+  capture tool opens the editor before setting the board) and the bricks' board.
+- FIX (advisor: (A), expected behaviour): an OPEN editor follows in place (setModelMetrics: view, grid, outline,
+  guides; no reload, so undo + selection stay); a closed one reloads as before; then the frame profile, one commit and
+  'editorBoardResized' -- the Brick panel's frame re-lay now also follows that (the board size is part of _frameKey;
+  before, only frameRecordChanged re-laid), so it always runs on the new size. Lattice: board-relative tools read
+  _mW/_mH at their next Generate; the grid and guides are redrawn by setModelMetrics.
+- Tests: tests/editor-follows-board.test.js (3) + brick-element-laid-key-panel (+1: a new board re-lays once, the
+  same board again nothing) -- 3 fail on main (the 4th pins today's no-op). Matrix layout group +1 row (phone 390:
+  editor open, 7x9 -> 9x12 through the real inputs: editor board 9x12, download 864x1152 viewBox 0 0 9 12): 36 rows
+  0 FAIL. Full vitest 373 files 5819/0. Known failures: none. Shots: shots/seatA/board_follows_phone_strip.png.

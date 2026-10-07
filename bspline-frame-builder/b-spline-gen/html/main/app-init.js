@@ -717,15 +717,25 @@ export async function refreshDrape(preview) {
  * Debounced: a stepper burst resyncs once. With the editor open, its own open/Apply handles it.
  */
 let _stockResyncTimer = null;
+/** The editor follows the board (stockSizeChanged). 2026-10-07 (seat A, measured): at phone width the sidebar's board
+ *  size stays reachable WHILE the editor is open -- this used to skip the open editor, which then kept the old board
+ *  (outline, grid, the SVG download's size, the Shape Lattice's extent, the bricks' board) until it was reopened. An
+ *  OPEN editor now follows in place (setModelMetrics: view, grid, outline, guides -- no reload, so undo and selection
+ *  stay); a closed one reloads as before. Then, either way, the frame profile, one commit, and 'editorBoardResized'
+ *  -- what else depends on the board inside the editor follows THAT (the Brick re-lay, main/brick-panel.js), so it
+ *  always runs on the new size. */
 function _resyncEditorToStock() {
   const ed = window.svgEditor;
-  if (!ed || !ed._draw || !P.editorSvg) return;
-  const modal = document.getElementById('svgEditorModal');
-  if (modal && modal.style.display && modal.style.display !== 'none') return;
+  if (!ed || !ed._draw) return;
   if (ed._mW === P.widthIn && ed._mH === P.heightIn) return;
-  ed.open(editorRestoreSvg(), P.widthIn, P.heightIn);
+  const modal = document.getElementById('svgEditorModal');
+  const editorOpen = !!(modal && modal.style.display && modal.style.display !== 'none');
+  if (editorOpen) ed.setModelMetrics(P.widthIn, P.heightIn);
+  else if (P.editorSvg) ed.open(editorRestoreSvg(), P.widthIn, P.heightIn);
+  else return;
   drawFrameProfile(ed);
   if (typeof ed._notifyChange === 'function') ed._notifyChange('commit');
+  document.dispatchEvent(new CustomEvent('editorBoardResized', { detail: { w: P.widthIn, h: P.heightIn, editorOpen } }));
 }
 if (typeof document !== 'undefined') {
   document.addEventListener('stockSizeChanged', () => {

@@ -62,11 +62,18 @@ export const BRICK_SECTIONS_LAYOUT = {
   outside: '#editorToolbarBrick, #brickLayersSlot, .sticky-actions, [id^="brickSubTools_"], #brickWallAreaRow, #brickEditorLayWarnings',
 };
 
+// ---- 2026-10-07 (seat A): at phone width the sidebar's board size stays reachable WHILE the editor is open; the open
+// editor follows the new board in place (app-init _resyncEditorToStock): its own board, and the SVG download's size.
+export const BOARD_FOLLOWS = {
+  viewport: { name: 'phone 390x844', width: 390, height: 844, mobile: true },
+  from: [7, 9], to: [9, 12], dpi: 96,
+};
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -217,3 +224,30 @@ async function runBrickSections() {
   }
   await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
 }
+
+// ---------------------------------------------------------------- the open editor follows a board change (phone)
+async function runBoardFollows() {
+  const B = BOARD_FOLLOWS;
+  await send('Emulation.setDeviceMetricsOverride', { width: B.viewport.width, height: B.viewport.height, deviceScaleFactor: 1, mobile: true });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await send('Page.reload', {}); await waitApp(); await openBrickTab();
+  const setBoard = ([w, h]) => js(`(async () => { for (const [id, v] of [['widthIn', ${w}], ['heightIn', ${h}]]) { const e = document.getElementById(id);
+    e.value = String(v); e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); }
+    await new Promise((r) => setTimeout(r, 1500)); return 1; })()`);
+  await setBoard(B.from);
+  await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('btnStampEdit').click(); await new Promise((r) => setTimeout(r, 1500)); return 1; })()`);
+  await setBoard(B.to);
+  const r = await jsJSON(`(async () => { const ed = window.svgEditor; const io = await import('./editor/editor-io.js');
+    const head = ((await io.saveSvgDownload(ed)).match(/<svg[^>]*>/) || [''])[0];
+    const m = document.getElementById('svgEditorModal');
+    return JSON.stringify({ open: !!(m && m.style.display !== 'none'), mW: ed._mW, mH: ed._mH,
+      w: +(head.match(/ width="([^"]+)"/) || [])[1], h: +(head.match(/ height="([^"]+)"/) || [])[1], vb: (head.match(/viewBox="([^"]+)"/) || [])[1] }); })()`);
+  const [W, H] = B.to;
+  const ok = r.open && r.mW === W && r.mH === H && r.w === W * B.dpi && r.h === H * B.dpi && r.vb === `0 0 ${W} ${H}`;
+  checkRow('layout', `Board change with the editor open (${B.viewport.name}): the editor and the SVG download follow ${B.from.join('x')} -> ${W}x${H}`, ok,
+    `editor open ${r.open}, editor board ${r.mW}x${r.mH}, download ${r.w}x${r.h} viewBox ${r.vb}`);
+  if (!ok) await shot('FAIL_board_follows_phone');
+  await setBoard(B.from);
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
+}
+
