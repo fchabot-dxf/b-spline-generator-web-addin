@@ -29,6 +29,13 @@ export const UNDO_SETTINGS = {
     { tab: 'artTab_shape', tool: 'toolShapeLattice', stepper: 'shapeLatticeTiesCountMin', watch: 'shapeLatticeTiesCountMin' },
   ],
   artworkMarker: './editor/next-settings-undo.js',
+  // item 74f: a Photo edit is ONE editor undo step and the editor's Undo takes it back (P.photoEdits). `act` = a button;
+  // `drag` = a slider dragged (input ticks, then the release's 'change')
+  photo: [
+    { tab: 'photoTab_source', act: 'photoBtnRotate' },
+    { tab: 'photoTab_relief', act: 'photoBtnReliefCarved' },
+    { tab: 'photoTab_adjust', drag: 'photoBrightnessSlider', values: [0.1, 0.2, 0.3] },
+  ],
 };
 
 // ---- F35 item 71 (seat E): the MAIN screen's Undo / Redo after a sidebar Brick quick pick on an applied board.
@@ -107,6 +114,17 @@ async function runUndoSettings() {
       await W(1000); const v1=val(), n1=ed._undoStack.length; document.getElementById(${JSON.stringify(U.undo)}).click(); await W(1000);
       return JSON.stringify({ v0, v1, v2: val(), steps: n1 - n0 }); })()`);
     checkRow('undo', name, ar.steps === 1 && ar.v1 !== ar.v0 && ar.v2 === ar.v0, `${ar.v0} -> ${ar.v1} (${ar.steps} undo steps) -> undo -> ${ar.v2}`);
+  }
+  for (const c of U.photo) {
+    const name = `Photo ${c.act || c.drag}: one editor undo step, the editor's Undo takes it back`;
+    await click('editorTabPhoto', 900); await click(c.tab, 600);
+    const pr = await jsJSON(`(async()=>{ const W=(ms)=>new Promise((r)=>setTimeout(r,ms)); const { P }=await import('./core/state.js'); const ed=window.svgEditor; const c=${JSON.stringify(c)};
+      const val=()=>JSON.stringify(P.photoEdits||[]); const v0=val(), n0=ed._undoStack.length;
+      if (c.act) document.getElementById(c.act).click();
+      else { const e=document.getElementById(c.drag); for (const v of c.values) { e.value=String(v); e.dispatchEvent(new Event('input')); await W(60); } e.dispatchEvent(new Event('change')); }
+      await W(900); const v1=val(), n1=ed._undoStack.length; document.getElementById(${JSON.stringify(U.undo)}).click(); await W(1200);
+      return JSON.stringify({ v0, v1, v2: val(), steps: n1 - n0 }); })()`);
+    checkRow('undo', name, pr.steps === 1 && pr.v1 !== pr.v0 && pr.v2 === pr.v0, `${pr.v0} -> ${pr.v1} (${pr.steps} undo steps) -> undo -> ${pr.v2}`);
   }
   if (await editorOpen()) await apply();
 }

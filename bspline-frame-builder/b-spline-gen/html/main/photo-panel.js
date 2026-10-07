@@ -40,6 +40,8 @@ import { setEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
 import { photoToolIconSvg } from '../editor/photo-tool-icons.js';
+import { registerUndoPart } from '../editor/undo-parts.js';
+import { commitEdit } from '../editor/editor-commit.js';
 
 /** F35 item 10 (advisor, Fred's own reasoning: "each tab uses a completely different toolbar"):
  *  Photo's own left-rail toolbar, moved here from the old sidebar panel's single always-visible
@@ -122,6 +124,28 @@ function notifyChange() {
   if (_onChange) _onChange();
 }
 
+/** Item 74f (advisor; seat D's Photo audit, measured: crop / levels / brightness / blur / relief changed the 3D but the
+ *  editor's Undo did not take them back -- only the panel's own Undo button did): the photo (its source, edit list,
+ *  pattern and relief height) rides in every editor undo entry (item 38's parts), and each photo gesture is ONE editor
+ *  step -- a slider on release ('change'), a button on click, a load / pattern / clear when it lands. Once the photo is in
+ *  every entry, every photo change must be a step, or an Undo of something else would take the photo back with it.
+ *  The panel's own Undo button keeps working as before (and is a step too). */
+const photoUndoState = () => ({ ...photoState(), reliefIn: P.carveZ ?? null });
+const samePhoto = (a, b) => !!a && !!b && a.url === b.url && a.patternId === b.patternId && a.reliefIn === b.reliefIn
+  && JSON.stringify(a.edits) === JSON.stringify(b.edits);
+function photoStep() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!editor || !Array.isArray(editor._undoStack)) return;
+  const top = editor._undoStack[editor._undoStack.length - 1];
+  if (top && top.parts && samePhoto(top.parts.photo, photoUndoState())) return; // nothing new: no step
+  commitEdit(editor);
+}
+function restorePhotoUndo(state) {
+  if (!state || samePhoto(state, photoUndoState())) return; // an Undo of something else: the photo stays, no rebuild
+  restorePhoto(state);
+  if (state.reliefIn != null && state.reliefIn !== P.carveZ) { setReliefHeight(state.reliefIn); syncReliefHeightDisplay(); }
+}
+
 /** The params of the LAST step of `opName` in P.photoEdits, merged onto
  * `fallback` -- so touching one slider (e.g. levels black) doesn't clobber
  * the others (white/mid) already set by this same step. */
@@ -161,6 +185,7 @@ function setStraighten(degrees) {
 function appendDiscreteOp(opName, params) {
   P.photoEdits = [...(P.photoEdits || []), { op: opName, params }];
   notifyChange();
+  photoStep();
 }
 
 // Relief toggle (Raised/Carved): a 2-state control over the SAME `invert`
@@ -177,6 +202,7 @@ function setInvert(on) {
   P.photoEdits = steps;
   syncReliefToggle();
   notifyChange();
+  photoStep();
 }
 
 function syncReliefToggle() {
@@ -208,6 +234,7 @@ function undo() {
   P.photoEdits = steps.slice(0, -1);
   syncControlsFromState();
   notifyChange();
+  photoStep();
 }
 
 function setPair(sliderId, numberId, v) {
@@ -265,6 +292,7 @@ function loadImage(urlOrDataUrl, edits, tweaks, reliefIn = DEFAULT_PHOTO_RELIEF_
     notifyChange();
   });
   notifyChange();
+  photoStep(); // a new photo (a file or a pattern) is one step
 }
 
 /** Item 74a: a photo that came back from a SAVE (the session restore, a project load, a global undo) -- nothing else
@@ -315,6 +343,7 @@ export function clearPhoto() {
   syncSaveButtonState();
   drawPreview();
   notifyChange();
+  photoStep();
 }
 
 function syncSaveButtonState() {
@@ -428,10 +457,13 @@ function bindSlider(sliderId, numberId, opName, paramKey, fallback) {
   };
   slider?.addEventListener('input', (e) => apply(e.target.value));
   number?.addEventListener('input', (e) => apply(e.target.value));
+  slider?.addEventListener('change', photoStep); // item 74f: a drag is one step, on release
+  number?.addEventListener('change', photoStep);
 }
 
 export function initPhotoPanel({ onChange }) {
   _onChange = onChange;
+  registerUndoPart('photo', { take: photoUndoState, restore: restorePhotoUndo }); // item 74f
 
   document.getElementById('editorTabPhoto')?.addEventListener('click', () => setEditorTab('photo'));
   renderPhotoToolbar(document.getElementById('editorToolbarPhoto'));
@@ -488,6 +520,8 @@ export function initPhotoPanel({ onChange }) {
   };
   straightenSlider?.addEventListener('input', (e) => applyStraighten(e.target.value));
   straightenNumber?.addEventListener('input', (e) => applyStraighten(e.target.value));
+  straightenSlider?.addEventListener('change', photoStep);
+  straightenNumber?.addEventListener('change', photoStep);
 
   bindSlider('photoLevelsBlackSlider', 'photoLevelsBlack', 'levels', 'black', { black: 0, white: 1, mid: 1 });
   bindSlider('photoLevelsWhiteSlider', 'photoLevelsWhite', 'levels', 'white', { black: 0, white: 1, mid: 1 });
@@ -506,6 +540,8 @@ export function initPhotoPanel({ onChange }) {
   };
   reliefSlider?.addEventListener('input', (e) => applyRelief(e.target.value));
   reliefNumber?.addEventListener('input', (e) => applyRelief(e.target.value));
+  reliefSlider?.addEventListener('change', photoStep);
+  reliefNumber?.addEventListener('change', photoStep);
 
   document.getElementById('photoBtnSaveToPattern')?.addEventListener('click', saveSettingsToCurrentPattern);
   syncSaveButtonState();
