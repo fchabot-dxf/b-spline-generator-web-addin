@@ -53,6 +53,15 @@ describe('item 9: Crumble frame too (Frame tab)', () => {
     expect(P.brickSettings.frameSuppression).toBe(0.6);
     expect($('brickFrameSuppression').disabled).toBe(true);
   });
+  it('Clumping (General) is live while the frame crumbles, even at wall Suppression 0', () => {
+    $('brickSuppression').value = '0';
+    $('brickSuppression').dispatchEvent(new Event('change'));
+    expect($('brickClumping').disabled).toBe(true);
+    $('brickSuppressFrame').click();
+    expect($('brickClumping').disabled).toBe(false);
+    $('brickSuppressFrame').click();
+    expect($('brickClumping').disabled).toBe(true);
+  });
   it('a restored settings step (undo) shows on the controls', () => {
     P.brickSettings.suppressFrame = true;
     P.brickSettings.frameSuppression = 0.45;

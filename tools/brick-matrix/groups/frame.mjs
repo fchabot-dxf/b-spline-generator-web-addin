@@ -34,6 +34,8 @@ export const rows = [
   // surround (part of the Frame element; its rows show while the inset window is on)
   { name: 'Crumble frame too: on', kind: 'editor', tool: 'frame', do: click('brickSuppressFrame'), expect: LAYOUT, introducedBy: 'item9' },
   { name: 'Frame crumble amount 0.6', kind: 'editor', tool: 'frame', do: set('brickFrameSuppression', 0.6), expect: LAYOUT, introducedBy: 'item9' },
+  // Clumping shapes the frame crumble too: live (and re-lays the frame) at wall Suppression 0 (brick-control-requires anyOf)
+  { name: 'Clumping 0.9 (frame crumbles, wall Suppression 0)', kind: 'editor', tool: 'frame', do: set('brickClumping', 0.9), expect: LAYOUT, introducedBy: 'item9' },
   { name: 'Crumble frame too: off', kind: 'editor', tool: 'frame', do: click('brickSuppressFrame'), expect: LAYOUT, introducedBy: 'item9' },
   { name: 'Frame crumble amount while off (greyed)', kind: 'editor', tool: 'frame', do: set('brickFrameSuppression', 0.4), expect: LAYOUT, introducedBy: 'item9' },
   { name: 'Inset window on (for the surround)', kind: 'editor', tool: 'frame', do: click('editorFrameInsetWindowToggle'), expect: E(false, null, null), introducedBy: 'item9' },

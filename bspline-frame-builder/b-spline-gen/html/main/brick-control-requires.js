@@ -10,6 +10,8 @@
  * `requires: { fact: name }` (audit v2 N5) = a fact about the board the panel supplies as ctx.facts[name]
  * (a missing fact counts as met, like a missing control). `within: [containerId]` greys every button /
  * input INSIDE those containers too (their buttons are rendered from data, ids not listed here).
+ * `requires: { anyOf: [requires, ...] }` (item 9) = met while ANY member is met; each member names its own control
+ * (looked up by id: ctx.elementOf, else the document); a member whose control is missing is left out, none left = met.
  * A control under several rules is greyed while ANY of them is unmet.
  */
 /** A frame lay with no contour to follow (the frame's outline can't carry bands): the toast's words, and the
@@ -28,8 +30,10 @@ const SIDEBAR_BRICK_CONTROLS = ['brickBtnReliefRaised', 'brickBtnReliefCarved', 
   'brickBtnGroutRecessed', 'brickBtnGroutFlush'];
 
 export const BRICK_CONTROL_REQUIRES = [
-  { controls: ['brickClumping', 'brickClumpingSlider'], requires: { control: 'brickSuppression', satisfied: { gt: 0 } },
-    why: 'Clumping only shapes which bricks Suppression removes -- no effect at Suppression 0' },
+  // item 9: Clumping also shapes the frame's crumble ("Crumble frame too")
+  { controls: ['brickClumping', 'brickClumpingSlider'], requires: { anyOf: [
+    { control: 'brickSuppression', satisfied: { gt: 0 } }, { control: 'brickSuppressFrame', satisfied: { checked: true } }] },
+    why: 'Clumping only shapes which bricks the crumble removes -- no effect at Suppression 0 with the frame crumble off' },
   { controls: ['brickFrameSuppression', 'brickFrameSuppressionSlider'], requires: { control: 'brickSuppressFrame', satisfied: { checked: true } },
     why: 'The frame crumbles only with "Crumble frame too" on' },
   { controls: ['brickGroutDepth'], requires: { control: 'brickBtnGroutRecessed', satisfied: { active: true } },
@@ -56,6 +60,12 @@ export const BRICK_CONTROL_REQUIRES = [
 
 /** Is `requires` met, given the DOM node of its control? (null control = met: never grey on a missing node) */
 export function requirementMet(requires, controlEl, ctx = {}) {
+  if (requires.anyOf) {
+    const elementOf = ctx.elementOf || ((id) => (typeof document !== 'undefined' ? document.getElementById(id) : null));
+    // a member whose control is missing is left out (it can't make the rule met); none left = met, like a missing control
+    const live = requires.anyOf.map((r) => ({ r, el: r.control ? elementOf(r.control) : null })).filter((m) => !m.r.control || m.el);
+    return !live.length || live.some((m) => requirementMet(m.r, m.el, ctx));
+  }
   if (requires.engineOption) return (ctx.engineOptions || []).includes(requires.engineOption);
   if (requires.fact) return !ctx.facts || ctx.facts[requires.fact] !== false;
   if (!controlEl) return true;
