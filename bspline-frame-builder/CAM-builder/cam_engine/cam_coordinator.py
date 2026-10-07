@@ -145,6 +145,14 @@ def run(classifier, app=None, logger=None, mode='bspline', component_names=None,
 
     app = app or adsk.core.Application.get()
 
+    # H23 item 100: BUILD always runs in the Manufacture workspace. Measured live (seat A, 2026-10-06, 3/3): a BUILD
+    # started from the Design workspace -- where a re-Send leaves the user once the doc already has CAM -- made MMs
+    # whose occurrence filter Fusion UNDID when the workspace later switched to Manufacture (the B-spline MM held the
+    # whole design again) and every setup lost its models: APPLY 0/7, "Model has one or more missing selections".
+    # The same re-Send + BUILD started from Manufacture: 7/7, toolpaths identical. (The first BUILD on a fresh doc
+    # worked only because acquire_cam failed there, which switched the workspace below.)
+    cam_workspace.activate_manufacture_workspace(app=app, logger=logger)
+
     # First try a cheap acquire — if Manufacture is already active (or the
     # document already has a CAM product cached) this is a no-op fast path.
     cam = cam_workspace.acquire_cam(app=app, logger=logger)
