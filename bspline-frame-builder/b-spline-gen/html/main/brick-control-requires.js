@@ -30,6 +30,8 @@ const SIDEBAR_BRICK_CONTROLS = ['brickBtnReliefRaised', 'brickBtnReliefCarved', 
 export const BRICK_CONTROL_REQUIRES = [
   { controls: ['brickClumping', 'brickClumpingSlider'], requires: { control: 'brickSuppression', satisfied: { gt: 0 } },
     why: 'Clumping only shapes which bricks Suppression removes -- no effect at Suppression 0' },
+  { controls: ['brickFrameSuppression', 'brickFrameSuppressionSlider'], requires: { control: 'brickSuppressFrame', satisfied: { checked: true } },
+    why: 'The frame crumbles only with "Crumble frame too" on' },
   { controls: ['brickGroutDepth'], requires: { control: 'brickBtnGroutRecessed', satisfied: { active: true } },
     why: 'Grout depth is the recess depth -- no effect while the grout is Flush' },
   { controls: ['brickLargeStonesRow'], requires: { engineOption: 'largeStones' }, hides: true,

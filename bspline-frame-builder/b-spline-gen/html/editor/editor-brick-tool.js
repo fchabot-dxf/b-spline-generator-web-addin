@@ -57,6 +57,7 @@ import { STRIPE_ATTR } from './editor-stripe-tool.js';
 import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect } from '../core/bricks/index.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
 import { rectToPrimitives } from '../core/inset-window.js';
+import { SURROUND_CORNERS } from '../core/bricks/inset-surround.js';
 import { brickFillPaint } from './editor-brick-surface.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
 import { radialSignAt } from '../core/bricks/arc-voussoir.js';
@@ -636,6 +637,25 @@ export const FOLDED_FRAME_PRESETS = Object.freeze({
   butt_frame: { preset: 'single_soldier', corner: 'butt' },
   quoin_corners: { preset: 'single_soldier', corner: 'block' },
 });
+
+/** Item 9 (T86 item 29's engine keys): the crumble's TOP BIAS, one board-wide value for the wall and the frame crumble
+ *  (Fred: 0.8 for every board, new and old) -- an absent field reads TOP_BIAS_DEFAULT, the engine's own default. */
+export const TOP_BIAS_DEFAULT = 0.8;
+export const topBiasOf = (settings) => (Number.isFinite(settings && settings.topBias) ? settings.topBias : TOP_BIAS_DEFAULT);
+/** Item 9: "Crumble frame too" -- the frame's bands crumble by the wall's rule, by their own amount. Off (absent) = the
+ *  engine is not asked (suppressFrame / frameSuppression unsent), the lay byte-identical. */
+export const FRAME_SUPPRESSION_DEFAULT = 0.3;
+export const frameSuppressionOf = (settings) =>
+  (Number.isFinite(settings && settings.frameSuppression) ? settings.frameSuppression : FRAME_SUPPRESSION_DEFAULT);
+/** Item 9: the inset window's brick SURROUND, part of the Frame element: a FRAME_PRESETS band stack + a corner from the
+ *  engine's SURROUND_CORNERS (the Frame's own corner list, filtered). Absent / 'none' = no surround (unsent). */
+export const SURROUND_NONE = 'none'; // FRAME_PRESETS' own empty preset (the Frame row's "None")
+export const SURROUND_CORNER_LIST = Object.freeze(FRAME_CORNERS.filter((c) => SURROUND_CORNERS.includes(c.id)));
+export function windowSurroundOf(settings) {
+  const w = (settings && settings.windowSurround) || {};
+  const preset = FRAME_PRESETS[w.preset] && FRAME_PRESETS[w.preset].length ? w.preset : SURROUND_NONE;
+  return { preset, corner: SURROUND_CORNERS.includes(w.corner) ? w.corner : SURROUND_CORNERS[0] };
+}
 /** The corner a Frame element is laid with: its own pick (`settings.frameCorner`), else its preset's own
  *  (Fred: mitred for plain Soldier). */
 export function frameCornerOf(settings) {
@@ -1148,6 +1168,14 @@ export function polygonsOverlap(p, q) {
   }
   return false;
 }
+/** Item 9: the window surround's grout region -- the ring its pieces cover: their bounding rect (the engine lays the stack
+ *  inward from a rect) around the window's own outer rect (the opening, no grout). Exported for tests. */
+export function surroundRing(pieces, rect) {
+  const pts = pieces.flatMap((b) => b.polygon);
+  const box = { x1: Math.min(...pts.map((p) => p.x)), y1: Math.min(...pts.map((p) => p.y)), x2: Math.max(...pts.map((p) => p.x)), y2: Math.max(...pts.map((p) => p.y)) };
+  const poly = (r) => [{ x: r.x1, y: r.y1 }, { x: r.x2, y: r.y1 }, { x: r.x2, y: r.y2 }, { x: r.x1, y: r.y2 }];
+  return { outer: poly(box), holes: [poly(rect)] };
+}
 export function dropExcludedWallBricks(bricks, exclusions) {
   if (!exclusions || !exclusions.length) return bricks;
   return bricks.filter((b) => !exclusions.some((e) => polygonsOverlap(b.polygon, e.polygon)));
@@ -1164,9 +1192,14 @@ function _layInput(editor, settings, frameGeom) {
     set: resolvedSetFor(wallSettings),
     scale: scaleFor(wallSettings),
     suppression: settings.suppression,
+    topBias: topBiasOf(settings), // item 9: absent = 0.8, the engine's own default (the lay unchanged)
     clumping: settings.clumping,
     seed: settings.seed,
   };
+  // item 9: the frame's crumble and the inset window's surround -- sent only while on (off = the lay byte-identical)
+  if (settings.suppressFrame) Object.assign(input, { suppressFrame: true, frameSuppression: frameSuppressionOf(settings) });
+  const surround = windowSurroundOf(settings);
+  if (frameGeom && frameGeom.insetRect && surround.preset !== SURROUND_NONE) input.insetSurround = { rect: frameGeom.insetRect, ...surround };
   // the engine applies ONE `scale` (the Wall's) to the frame's set too -- so the frame's set goes in pre-scaled
   // by its own scale over the Wall's (the engine's own scaledSet): its bricks / stones keep the global size
   if (frameGeom) input.frame = { ...frameGeom, set: scaledSet(resolvedSetFor(frameSettings), scaleFor(frameSettings) / input.scale) };
@@ -1184,6 +1217,9 @@ function _layInput(editor, settings, frameGeom) {
   Object.assign(input, accentLayInput(settings.accent, ENGINE_OPTIONS));
   return input;
 }
+
+/** Item 9: the lay input, exported for tests (what the engine is asked for these settings). */
+export const brickLayInput = (editor, settings, frameGeom) => _layInput(editor, settings, frameGeom);
 
 /** Item 74b: which corner choices change the frame these settings lay -- core/bricks frameCornerEffect on the SAME
  *  input a lay builds (the frame's own set and scale, the fit rule); null with no frame contour to lay along. */
@@ -1206,7 +1242,8 @@ export const wallAreaSettings = (editor, area, settings) =>
 export function frameGeomForLay(editor, frameGeom, kinds = BRICK_KINDS) {
   if (!frameGeom) return frameGeom;
   const frameElement = kinds.includes('frame') || !!brickRecordNode(editor, 'frame');
-  return frameElement ? frameGeom : { ...frameGeom, bands: [] };
+  // item 9: the window surround is part of the Frame element too -- no Frame, no surround (and no wall cut around it)
+  return frameElement ? frameGeom : { ...frameGeom, bands: [], insetRect: null };
 }
 
 function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
@@ -1231,7 +1268,10 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   // canvas stay exactly as they were (the caller reports the failure).
   const result = generateBricks(input);
   const bricks = result.exclusionsApplied ? result.bricks : dropExcludedWallBricks(result.bricks, exclusions);
-  const { frameBricks } = result;
+  // item 9: the window surround's pieces are FRAME pieces (its layer, record, mask, select); `ring` = its footprint
+  const surroundBricks = result.surroundBricks || [];
+  const frameBricks = surroundBricks.length ? [...result.frameBricks, ...surroundBricks] : result.frameBricks;
+  const ring = surroundBricks.length ? surroundRing(surroundBricks, input.insetSurround.rect) : null;
   const areaLays = [];
   for (let i = areas.length - 1; i >= 0; i--) {
     const area = areas[i];
@@ -1258,9 +1298,9 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const interior = result.interiorOutline && result.interiorOutline.length >= 3 ? result.interiorOutline : boardPolygon(editor);
   if (lays('frame') && frameBricks.length && frameGeom && frameGeom.primitives && frameGeom.primitives.length) {
     const outer = primitivesOutline(frameGeom.primitives);
-    drawElementGrout(editor, layerOf.frame, 'frame', owner('frame'), [{ outer, holes: [interior] }], settings);
+    drawElementGrout(editor, layerOf.frame, 'frame', owner('frame'), [{ outer, holes: [interior] }, ...(ring ? [ring] : [])], settings);
   }
-  if (lays('wall') && !areas.length && bricks.length) drawElementGrout(editor, layerOf.wall, 'wall', owner('wall'), [{ outer: interior, holes: [] }], settings);
+  if (lays('wall') && !areas.length && bricks.length) drawElementGrout(editor, layerOf.wall, 'wall', owner('wall'), [{ outer: interior, holes: ring ? [ring.outer] : [] }], settings);
   areas.forEach((area, i) => {
     const lay = areaLays.find((l) => l.area === area);
     if (!lay || !lay.bricks.length) return;

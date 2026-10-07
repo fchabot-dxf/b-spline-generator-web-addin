@@ -1,7 +1,7 @@
 // Brick matrix group 'frame': the Frame tool's editor rows (incl. two Wall-tool rows that need the frame group's state).
 // Declared rows / constants for this group live HERE; run.mjs only drives them (tools/brick-matrix/groups/index.mjs).
 
-import { LAYOUT, LEVEL, click, set } from './_shared.mjs';
+import { E, LAYOUT, LEVEL, click, set } from './_shared.mjs';
 
 export const rows = [
   // ---- editor, Frame tool
@@ -30,6 +30,17 @@ export const rows = [
   { name: 'Frame Level 0', kind: 'editor', tool: 'frame', do: set('brickLevel_frame', 0), expect: LEVEL, introducedBy: '90a1483' },
   { name: 'Frame preset: None', kind: 'editor', tool: 'frame', do: click('brickFramePreset_none'), expect: LAYOUT },
   { name: 'Frame preset: Soldier', kind: 'editor', tool: 'frame', do: click('brickFramePreset_single_soldier'), expect: LAYOUT },
+  // item 9: the frame crumbles by the wall's rule (its own amount, greyed while off), and the inset window's brick
+  // surround (part of the Frame element; its rows show while the inset window is on)
+  { name: 'Crumble frame too: on', kind: 'editor', tool: 'frame', do: click('brickSuppressFrame'), expect: LAYOUT, introducedBy: 'item9' },
+  { name: 'Frame crumble amount 0.6', kind: 'editor', tool: 'frame', do: set('brickFrameSuppression', 0.6), expect: LAYOUT, introducedBy: 'item9' },
+  { name: 'Crumble frame too: off', kind: 'editor', tool: 'frame', do: click('brickSuppressFrame'), expect: LAYOUT, introducedBy: 'item9' },
+  { name: 'Frame crumble amount while off (greyed)', kind: 'editor', tool: 'frame', do: set('brickFrameSuppression', 0.4), expect: LAYOUT, introducedBy: 'item9' },
+  { name: 'Inset window on (for the surround)', kind: 'editor', tool: 'frame', do: click('editorFrameInsetWindowToggle'), expect: E(false, null, null), introducedBy: 'item9' },
+  { name: 'Window surround: Soldier', kind: 'editor', tool: 'frame', do: click('brickSurroundPreset_single_soldier'), expect: LAYOUT, introducedBy: 'item9' },
+  { name: 'Window surround corners: Butt', kind: 'editor', tool: 'frame', do: click('brickSurroundCorner_butt'), expect: LAYOUT, introducedBy: 'item9' },
+  { name: 'Window surround: None', kind: 'editor', tool: 'frame', do: click('brickSurroundPreset_none'), expect: LAYOUT, introducedBy: 'item9' },
+  { name: 'Inset window off', kind: 'editor', tool: 'frame', do: click('editorFrameInsetWindowToggle'), expect: E(false, null, null), introducedBy: 'item9' },
 ];
 
 // ---- group setup pins (advisor, 2026-10-05): what a group's rows depend on is declared, never the new-board default.
