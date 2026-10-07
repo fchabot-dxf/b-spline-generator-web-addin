@@ -13,11 +13,49 @@ export const GROUT_JOINTS = {
   introducedBy: 'a972287',
 };
 
+// ---- item 74n (seat D): the panel's CUT EDGE -- the grid points within `bandIn` inside the panel outline stand at brick
+// height as often as the interior does (no low band = no teeth along the edge). Measured on main bc49c4a, T1 basketweave:
+// band 0.07 / 0.08 / 0.13 vs interior 0.71 / 0.75 / 0.79 at 0.75 / 1 / 1.25 in; with the edge ring 0.81 / 0.85 / 0.87.
+export const EDGE_BAND = {
+  template: 'template_1', wallTool: 'brickTool_wall', pattern: 'brickPattern_basketweave', sizes: [0.75, 1, 1.25],
+  bandIn: 0.025, interiorFromIn: 0.1, maxBelowInterior: 0.15, marker: 'panelTrimOutline', introducedBy: 'item74n',
+};
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
-let js, jsJSON, click, exists, heightsSettled, editorOpen, apply, checkRow, openEditorTab;
-export function bind(ctx) { ({ js, jsJSON, click, exists, heightsSettled, editorOpen, apply, checkRow, openEditorTab } = ctx); }
-export async function run() { await runGroutJoints(); }
+let js, jsJSON, click, exists, heightsSettled, editorOpen, apply, checkRow, openEditorTab, setValue;
+export function bind(ctx) { ({ js, jsJSON, click, exists, heightsSettled, editorOpen, apply, checkRow, openEditorTab, setValue } = ctx); }
+export async function run() { await runGroutJoints(); await runEdgeBand(); }
+
+// item 74n: the raised share of the grid points in the edge band (inside the panel's trim outline) vs the interior
+function edgeBandProbe(E) { return `(async()=>{ const st=await import('./core/state.js'); const sm=await import('./main/stamp-mask-manager.js');
+  const fp=await import('./editor/editor-frame-profile.js'); const { pointInPolygon }=await import('./core/bricks/index.js');
+  const P=st.P, r=st.lastResult, W=P.widthIn, H=P.heightIn, nx=r.nx, nz=r.nz, h=r.heights, base=r.baseHeights;
+  const loop=sm.${E.marker}(fp.frameContext(window.svgEditor), nx, nz, W, H); if(!loop) return JSON.stringify({ loop: null });
+  const segD=(x,y,a,b)=>{ const dx=b.x-a.x, dy=b.y-a.y; let t=((x-a.x)*dx+(y-a.y)*dy)/(dx*dx+dy*dy||1); t=Math.max(0,Math.min(1,t)); return Math.hypot(x-a.x-t*dx, y-a.y-t*dy); };
+  const half=P.brickSettings.reliefIn/2; let bn=0, bu=0, inn=0, inu=0;
+  for (let j=0;j<nz;j++) for (let i=0;i<nx;i++) { const x=i/(nx-1)*W, y=H*(1-j/(nz-1)); if(!pointInPolygon(x,y,loop)) continue;
+    let d=Infinity; for (let q=0;q<loop.length;q++) { d=Math.min(d, segD(x,y,loop[q],loop[(q+1)%loop.length])); if (d<${E.bandIn}) break; }
+    const up=h[j*nx+i]-(base?base[j*nx+i]:0) > half;
+    if (d<${E.bandIn}) { bn++; if(up) bu++; } else if (d>=${E.interiorFromIn} && d<${E.interiorFromIn}+0.4) { inn++; if(up) inu++; } }
+  return JSON.stringify({ band: bn? bu/bn : null, interior: inn? inu/inn : null, bandPoints: bn }); })()`; }
+async function runEdgeBand() {
+  const E = EDGE_BAND;
+  const has = await js(`import('./main/stamp-mask-manager.js').then((m) => typeof m.${E.marker} === 'function', () => false)`);
+  for (const size of E.sizes) {
+    const name = `Cut edge: no low band at ${size} in (teeth)`;
+    if (!has) { checkRow('grout', name, false, '', E.introducedBy); continue; }
+    if (!(await editorOpen())) await openEditorTab('editorTabBrick');
+    await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s || s.value===${JSON.stringify(E.template)}) return 1; s.value=${JSON.stringify(E.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
+    await click('brickTab_general', 600); await setValue('brickSize', size, 'change');
+    await click(E.wallTool, 800); await click(E.pattern, 1500); await click('brickGenerate', 3000);
+    const g0 = await js(`import('./core/state.js').then((m) => m.lastResultGeneration)`);
+    await apply(); await heightsSettled(null, 60000, 1500, g0); // settled AND rebuilt since this lay's Apply
+    const m = await jsJSON(edgeBandProbe(E));
+    const ok = m.band != null && m.interior != null && m.band >= m.interior - E.maxBelowInterior;
+    checkRow('grout', name, ok, `edge band (${E.bandIn} in) raised ${m.band?.toFixed(2)} vs interior ${m.interior?.toFixed(2)} over ${m.bandPoints} band points`);
+  }
+}
 
 // F35 item 62: joint height vs brick height per grout profile (GROUT_JOINTS), median over the wall's interior
 function jointProbe() { return `(async()=>{ const m=await import('./core/state.js'); const { pointInPolygon } = await import('./core/bricks/index.js');

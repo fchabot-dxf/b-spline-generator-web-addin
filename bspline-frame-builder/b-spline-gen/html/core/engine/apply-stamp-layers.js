@@ -145,6 +145,11 @@ export function applyStampLayers(cleanHeights, layers, nx, nz, defaults = {}) {
       stampedHeights[k] += bodyVal * layerDepth + filletVal * filletAmplitude;
       if (isArt) { artDelta[k] += stampedHeights[k] - before; anyArt = true; }
     }
+    // item 74n (core/bricks/mask-edge.js): past the panel outline a brick pass carries its edge points' final height, so
+    // the triangles the outline crosses are level with the bricks there (the trim cut them into teeth before); points
+    // inside the outline are never a target, so nothing inside changes
+    const edgeSource = !isArt && m.edgeSource && m.edgeSource.length === nx * nz ? m.edgeSource : null;
+    if (edgeSource) for (let k = 0; k < nx * nz; k++) if (edgeSource[k] >= 0) stampedHeights[k] = stampedHeights[edgeSource[k]];
   });
 
   // NaN guard — fall back to the clean baseline (or 0).
