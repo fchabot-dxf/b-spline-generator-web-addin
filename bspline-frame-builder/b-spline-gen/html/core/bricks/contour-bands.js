@@ -426,8 +426,14 @@ function medialDistance(da, db, p) {
  *  rule's shoulder): a cutter that only TOUCHED a piece (shared area 0) came back from polygonDifference as a 0.016 sq in
  *  remnant of a 0.468 sq in voussoir, and its mirror twin came back LARGER than it went in. No shared ground: the
  *  piece is kept whole; a result that disagrees with area(piece) - area(shared) by more than CUT_CHECK_SQIN: the cut is
- *  refused and the piece kept whole (an overlap the sweep sees, never a brick silently lost). */
+ *  refused and the piece kept whole (an overlap the sweep sees, never a brick silently lost).
+ *  T86 item 12 (seat E, MEASURED over 35,201 cuts -- every template, 7x9 + 9x12, 0.75 to 8 in, single + three band): a
+ *  sound cut's error grows with the piece (97.5 % exact to 1e-4 of its area, 99.9 % within 0.31 %), while the failures
+ *  the check exists for are wild (10 cuts beyond 3 %, up to 60 %). The absolute limit alone refused 556 sound cuts on
+ *  big pieces (life-size T1 9x12 at 3 in: 0.0013 sq in off on a 2.38 sq in piece) and left their overlaps standing
+ *  (item 12's "line-arc / arc-arc overlap"). The limit is the larger of CUT_CHECK_SQIN and CUT_CHECK_SHARE of the piece. */
 const CUT_CHECK_SQIN = 1e-3;
+const CUT_CHECK_SHARE = 0.005;
 const SEAM_TOLERANCE_IN = 0.002; // a seam this much under the joint is a joint (arc chords sag ~0.004 in at 1.25 in)
 /** The shortest distance between two polygons' outlines (vertex to edge, both ways); 0 when they cross. */
 function polygonDistance(A, B) {
@@ -452,7 +458,8 @@ function checkedDifferenceOnce(piece, cutter) {
   if (shared < 1e-9) return [piece]; // a sharp tip in a joint-wide strip shares ~1e-7 sq in
   const left = polygonDifference(piece, cutter).map((q) => dropSpikes(q)).filter((q) => q.length >= 3); // a spike along the cutter reaches the next piece
   const kept = left.reduce((sum, q) => sum + Math.abs(signedArea(q)), 0);
-  return Math.abs(kept - (Math.abs(signedArea(piece)) - shared)) > CUT_CHECK_SQIN ? [piece] : left;
+  const whole = Math.abs(signedArea(piece));
+  return Math.abs(kept - (whole - shared)) > Math.max(CUT_CHECK_SQIN, CUT_CHECK_SHARE * whole) ? [piece] : left;
 }
 function checkedDifference(piece, cutter) {
   const left = checkedDifferenceOnce(piece, cutter);
