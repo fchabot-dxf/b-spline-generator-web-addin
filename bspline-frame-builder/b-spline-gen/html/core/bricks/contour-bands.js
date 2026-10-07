@@ -800,6 +800,7 @@ export function bricksContourBands(primitives, bands, opts) {
       // `planCornerRun`'s own header).
       const rowSequence = sequence && odd ? [sequence[1], sequence[0]] : sequence;
       const forcedFStart = !sequence && staggerFrac > 0 && odd ? staggerFrac : undefined;
+      if (opts.planOnly) continue; // T86 (seat E): the plan only -- the bands, the fit rule and the wall's inner path, no pieces
       if (opts.cornerCutsOnly) { // item 74b (frameCornerEffect): this row's joints only, no pieces
         const { joints } = ribbonJoints(enriched, d0, d1, pitch, set.grout.widthIn, cornerStyle, bandIndex, rowSequence, forcedFStart, closed);
         cornerCuts += joints.filter((j) => j && (j.isButt || j.isBlock)).length;

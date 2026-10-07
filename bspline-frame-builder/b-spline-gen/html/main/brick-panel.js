@@ -3044,6 +3044,8 @@ export function initBrickPanel() {
   // the frame changed (template, shape): re-lay once it settles (item 27 -- the editor too; a template with no
   // contour clears the Frame). Wired ONCE per page (onPageEvent): it RE-LAYS, so a second copy would re-lay twice
   onPageEvent('frameRelay', 'frameRecordChanged', (e) => _scheduleFrameRelay(!!(e && e.detail && e.detail.restored)));
+  // 2026-10-07: the board size is part of the frame key (_frameKey) -- a new board re-lays too, once the editor has it
+  onPageEvent('frameRelayBoard', 'editorBoardResized', () => _scheduleFrameRelay());
   // Audit B1 + v2 N2: P.brickSettings was replaced (Cancel, session restore, project load, global undo --
   // app-init.js announceBrickSettingsRestored). A load swaps in a NEW object: an armed Brush keeps
   // reading the editor's own reference, so it is re-pointed too.

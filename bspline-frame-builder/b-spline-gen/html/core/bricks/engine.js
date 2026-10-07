@@ -95,10 +95,12 @@ export function generateBricks(input) {
     // before this) is unaffected; Wall's own bricksFillShape call below
     // always keeps the top-level `set`, never this override.
     const frameSet = frame.set || set;
-    const res = bricksContourBands(frame.primitives, frame.bands || [], { set: frameSet, seed, scale, bandFit: input.bandFit });
-    frameBricks = res.bricks;
-    interiorOutline = res.innerPath;
-    bandsReduced = res.bandsReduced;
+    // T86 (seat E, MEASURED: a lay with a bare tip laid the frame twice, the second lay as long as the first): the frame is
+    // PLANNED here (its bands, the fit rule, the wall's inner path -- no pieces) and laid ONCE below, after the wall, with the
+    // wall's bare tips (item 16f) when it has any. The inner path is the plan's own (contour-bands opts.planOnly).
+    const plan = bricksContourBands(frame.primitives, frame.bands || [], { set: frameSet, seed, scale, bandFit: input.bandFit, planOnly: true });
+    interiorOutline = plan.innerPath;
+    bandsReduced = plan.bandsReduced;
     frameLay = { frameSet, bands: frame.bands || [] };
   }
   // T86 item 29: the inset window's surround (its own field); the wall is cut around it (its outer rect, one joint off)
@@ -120,12 +122,11 @@ export function generateBricks(input) {
     exclusions: wallExclusions,
     region,
   }).bricks;
-  // T86 item 16f (B1): the wall region's acute tips (>= TIP_FILL_MIN_DEG) the wall leaves bare are the band's -- the frame
-  // is laid again with its innermost row reaching into what the wall leaves uncovered (a joint off every wall brick; the
-  // wall itself is untouched); no bare tip = nothing laid twice
+  // T86 item 16f (B1): the wall region's acute tips (>= TIP_FILL_MIN_DEG) the wall leaves bare are the band's -- the frame's
+  // innermost row reaches into what the wall leaves uncovered (a joint off every wall brick; the wall itself is untouched)
   const tips = frameLay && frameLay.bands.length && bricks.length ? bareTips(interiorOutline, bricks, scaledSet(set, scale)) : [];
-  if (tips.length) {
-    frameBricks = bricksContourBands(frame.primitives, frameLay.bands, { set: frameLay.frameSet, seed, scale, bandFit: input.bandFit, tipZones: tips }).bricks;
+  if (frameLay) {
+    frameBricks = bricksContourBands(frame.primitives, frameLay.bands, { set: frameLay.frameSet, seed, scale, bandFit: input.bandFit, ...(tips.length ? { tipZones: tips } : {}) }).bricks;
   }
   // T86 item 16e: the fan centre (fan-centre.js), on the frame as finally laid; absent / needle = no call, the lay byte-identical
   if (frameLay && input.fanCentre && input.fanCentre !== FAN_CENTRE_DEFAULT) {

@@ -127,4 +127,22 @@ describe('item 22 step 3: the panel reads each ELEMENT\'s own laid key', () => {
     vi.advanceTimersByTime(400);
     expect(runBricks).toHaveBeenCalledTimes(1);
   });
+
+  it('a new board re-lays once the editor has it (editorBoardResized, 2026-10-07); the same board again lays nothing', () => {
+    setup();
+    vi.useFakeTimers();
+    const [w, h] = [P.widthIn, P.heightIn];
+    try {
+      P.widthIn = 9; P.heightIn = 12; // the board size is part of the laid key (_frameKey)
+      document.dispatchEvent(new CustomEvent('editorBoardResized'));
+      vi.advanceTimersByTime(400);
+      expect(runBricks).toHaveBeenCalledTimes(1);
+      runBricks.mockClear();
+      document.dispatchEvent(new CustomEvent('editorBoardResized'));
+      vi.advanceTimersByTime(400);
+      expect(runBricks).not.toHaveBeenCalled();
+    } finally {
+      P.widthIn = w; P.heightIn = h;
+    }
+  });
 });
