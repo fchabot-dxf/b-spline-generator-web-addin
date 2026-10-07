@@ -24049,3 +24049,12 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   - Tests: test_build_then_apply.py (4), tests/loading-steps-list.test.js (14: one per declared sequence, skipped,
     pill, grows mid-run, CAM report grow); cam-stages pins moved to 5 steps. CAM-builder 63/63, full vitest 371 files
     5711/0. Known failures: none. Shots: shots/seatA/cam_build_card_{phone,desktop,grown_phone}.png (headless, branch).
+- LIVE (2026-10-07 14:45, this branch 61e5be0 = main 38282b6 merged, deploys.log -6; T1 7x9 cam-bricks, fresh doc,
+  ONE verified BUILD click, no APPLY click; shots shots/seatA/i101b/): camWcs -> camCleanup -> camModels -> camSetups ->
+  'CKPT DOGEN 2' (ok) -> camBuildApply -> '[CAM BUILD] then APPLY' -> templates applied to 3 setups -> TPGen kicked off ->
+  ONE report; TPGen: Back 50.1 s, Top 105.0 s, Frame 126.9 s -> post-audit ok=7 missing=0 (pass 1 alone this time).
+  The card: on main's SYNCHRONOUS build it showed "step 1 of 5" (checklist: preparing the stock sketches current, the
+  rest pending) from the click until the report closed it -- PrintWindow at 14:47:48 and the screen frames alike; the
+  stage posts + paint pumps did not repaint the palette while the build held Fusion's main thread. So the step-5 card
+  is NOT visible on main; F's deferred build (cam-build-deferred, unmerged) is what paints the steps (readback 2 showed
+  "step 4 of 4" there).
