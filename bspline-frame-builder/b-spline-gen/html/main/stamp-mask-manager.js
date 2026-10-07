@@ -4,7 +4,9 @@ import { applyLayerTransform } from '../core/stamp/transform.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { getLayerSvg } from '../editor/editor-io.js';
 import { isCarved } from '../editor/layers.js';
-import { frameContext } from '../editor/editor-frame-profile.js';
+import { frameContext, frameSolidSpec } from '../editor/editor-frame-profile.js';
+import { frameLoopsWorld } from '../core/preview/frame-mesh.js';
+import { maskEdgeSource } from '../core/bricks/mask-edge.js';
 import { frameWindowGeometry } from '../editor/contour-from-frame.js';
 import { rectContains } from '../core/inset-window.js';
 import { layerHasBrickPieces, brickDepth, elementGroutWidth, BRICK_KINDS } from '../editor/editor-brick-tool.js';
@@ -89,6 +91,16 @@ export function clearStampMaskInWindow(result, hole, nx, nz, widthIn, heightIn) 
  * SE4b: the P.stampLayers content mirror is retired — masks live only
  * on the editor layer's own `_mask`.
  */
+/** Item 74n: the panel's trim loop in board inches (editor: y down) -- the SAME loop the 3D preview trims the panel on
+ *  (core/preview/frame-mesh.js frameLoopsWorld, from frameSolidSpec), so the bricks' edge height is carried past exactly
+ *  that outline; null with no frame outline (the board rectangle = the grid's own edge, nothing outside it). */
+export function panelTrimOutline(ctx, nx, nz, widthIn, heightIn) {
+  const spec = ctx && ctx.defs && ctx.record ? frameSolidSpec(ctx.defs, ctx.record, { widthIn, heightIn }) : null;
+  if (!spec || !spec.outerPrimitives) return null;
+  const loop = frameLoopsWorld(spec, { W: widthIn, H: heightIn, nx, nz }).panel;
+  return loop && loop.length >= 3 ? loop.map((p) => ({ x: p.x + widthIn / 2, y: heightIn / 2 - p.y })) : null;
+}
+
 export async function updateStampMasks(nx, nz) {
   const myGeneration = ++_refreshGeneration;
   const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
@@ -97,6 +109,10 @@ export async function updateStampMasks(nx, nz) {
   // per-layer); unconditional (not opt-in like the Shape Lattice's contour.fromFrame), since the window is
   // a literal hole in the panel regardless of what any individual stamp layer is doing.
   const windowHole = frameWindowGeometry(frameContext(editor))?.hole || null;
+  // item 74n: past the panel outline, each brick mask carries its edge points' height (maskEdgeSource), computed once
+  let edgeSource;
+  const brickEdgeSource = () => (edgeSource !== undefined ? edgeSource
+    : (edgeSource = maskEdgeSource(panelTrimOutline(frameContext(editor), nx, nz, P.widthIn, P.heightIn), nx, nz, P.widthIn, P.heightIn)));
 
   // Build the work list. Each entry: { idx, layer, svg }
   const work = [];
@@ -192,6 +208,7 @@ export async function updateStampMasks(nx, nz) {
     // means newer raster passes can clobber older ones in any order.
     if (myGeneration !== _refreshGeneration) return;
     for (const m of [result, brickResult]) if (m && windowHole) clearStampMaskInWindow(m, windowHole, nx, nz, P.widthIn, P.heightIn);
+    if (brickResult) { const src = brickEdgeSource(); if (src) brickResult.edgeSource = src; }
     layer._mask = result;
     layer._brickMask = brickResult;
     layer._brickDepth = bDepth;
