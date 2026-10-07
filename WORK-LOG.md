@@ -23905,3 +23905,21 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   memory (18.6 GB private, not responding, 1.4 GB of the PC's 32 GB RAM free with gate Chromes holding ~9 GB) and the
   advisor ended it by PID. New ceiling: stop and ask for a restart at 12 GB private, checked before each cycle (the
   earlier 40 GB ceiling was wrong for a 32 GB PC; this run crossed 12 GB from cycle 1 on).
+## H23 item 97 -- what makes a Morphed Spiral come back empty in ~0.3 s (seat A / 77, 2026-10-06)
+- Fresh Fusion (83996), item 100's fix deployed (4ea45fc), one fresh doc: T1 7x9 cam-bricks Send -> BUILD -> APPLY.
+  APPLY pass 1 again: 'B-spline Back' generated in 0.4 s with both ops empty; the later passes made it 7/7.
+- 10 later regenerations of Back's ops in that doc (scratchpad e97.py, results e97/results.jsonl), each starting from
+  the cleared op(s):
+  - pm (clear Pocket + Spiral; Pocket, then the Spiral the moment it finished, gap 0): 3/3 Spirals valid (13.8-76 s);
+  - setup (clear both, generate the WHOLE setup in one call, the pass-1 shape): 5/5, both ops valid (17-37 s);
+  - m (Spiral alone, Pocket valid): 2/2 valid (2.6-5.6 s).
+  10/10 valid, 0 empty in 0.3 s. (The planned gap-5 pm trials were dropped: gap 0, the harshest case, never failed.)
+- So the empty ~0.3 s generation is not a Pocket -> Spiral stock-timing race we could fix by spacing calls: it
+  happens only in the doc's FIRST generation after the templates were applied (pass 1, 'B-spline Back' empty in
+  0.3-0.4 s in every APPLY seen today, 6/6), and the same ops regenerate fine afterwards whatever the order or gap.
+  Item 95's docstring already measured that a single op as the doc's first generation fails the same way and that
+  forcing the MMs' evaluation first did not help. No declared fix: no timing dependency we control was found; item
+  95's later passes (MAX_GENERATION_PASSES = 4) remain the answer. Open question for a future item, if wanted: what
+  Fusion does differently on a doc's first generation (needs a fresh doc per sample, ~4 GB each -- under the 12 GB
+  ceiling that is ~2 samples per Fusion session).
+- Known failures: none (no code change).
