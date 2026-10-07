@@ -24013,3 +24013,31 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   in, same assertions, ~6 s; fails on the pre-(A) ribbon: T1 + T18 1 in 1.6 J). The full 19 x 4 sweep:
   SEAM_SWEEP_FULL=1 npx vitest run tests/bricks-seam-sweep.test.js -- 29 s now (19/19), after the gap scan got 0.5 in
   buckets for pieces and contour segments (it was ~12 min: every grid point tested every piece and every contour segment).
+## T86 item 16f -- B1: the band fills the wall region's bare tips >= 60 deg, only where the wall leaves them uncovered (seat E / 61, 2026-10-07)
+- DESIGN (advisor, after 16d's prototype opened holes up to 17 J): tip-fill.js bareTips finds the wall region's convex
+  corners >= TIP_FILL_MIN_DEG (60) whose zone (apex -> one course + a joint wide, down to the wall's first real course)
+  the wall leaves > half bare; generateBricks then lays the frame AGAIN with opts.tipZones. The WALL IS NEVER TOUCHED:
+  each zone carries its nearby wall bricks grown by a joint as `blockers`, and the extension is cut by them (differences
+  only). Engine: frame suppression (item 29) moved after the re-lay so it crumbles the final frame.
+- contour-bands fillTips: the innermost row's piece next to a tip is extended past d1 (its own column, longer), kept in
+  its half of the tip (half a joint off the bisector), before the zone base, minus the blockers. Splice order:
+  mergeAcrossSeam -> NEW fallback twinMinusBeyond (the deeper twin minus every part past d1 that is not the extension;
+  one simple polygon within TWIN_AREA_TOL 2 % of piece + extension, else null) -> the piece as laid. A blocker difference
+  that GAINS area (geometry.js Greiner-Hormann limitation, seen on T1 0.75 / 1) drops that extension rather than fill wrong.
+- MEASURED (76 lays): bareTips finds tips on 40 lays (mostly 104-131 deg fan-corner region corners the wall already
+  covers -> 0 change); pieces actually changed on 12 lays. Splices: 4 direct, 17 via the fallback, 93 refused (mostly
+  slivers the blockers already cut to nothing). Tip zones' bare area (board > 0.75 J from every piece): T14 1.5 0.068 ->
+  0, T14 1.25 0.063 -> 0, T18 1.25 0.018 -> 0, T19 1.25 0.017 -> 0 sq in. Seam sweep: T14 1.25 + 1.5 lose every
+  gap class (worst 8.4 J -> none), T18 / T19 1.25 lose 'seam wall' (4.5 J) and 'seam band' 4.0 -> 2.8 / 4.1 -> 2.4 J;
+  no class worse anywhere (CAPS re-capped for T14 / T18 / T19 only).
+- COST: a lay with a bare tip lays the frame twice: T1 1 in 14 -> 28 ms, T14 1.5 21 -> 49 ms; no-tip lays unchanged (T2 7 ms).
+- KNOWN WART (decision for the advisor): T14 1.5 keeps the wall's small triangular sliver inside the tip (no wall
+  drops), so the band piece beside it wraps it with a notch and a thin tongue down the bisector -- see the shot.
+- TESTS tests/bricks-tip-fill.test.js (11): the 4 tips filled (bare <= 0.005 sq in), every changed piece a joint off
+  every band / wall piece (or no closer than its own main twin: a band arc edge vs the wall's polygonal outline sits
+  0.025 in on T18 / T19 on main already; 0.001 in tolerance for the re-refined arc), the wall keeps T14 1.5's sliver,
+  a no-tip lay (T2 1) deep-equal to the tipless frame, bareTips 40 / 55 deg -> none, 65 / 90 -> one, 60 declared.
+  Fail-before: main's engine + contour-bands -> 4/4 fill rows fail. Mutations: wall drop re-added -> sliver row + 3
+  fill rows fail; TIP_FILL_MIN_DEG 50 -> 'declares 60' + the 55 deg row fail. Full vitest 370 files, 5704 passed, 0 failed.
+  Full sweep (SEAM_SWEEP_FULL=1) 19/19.
+- SHOTS shots/seatE/t86_16f/before_after_tips.png (T14 1.5 / 1.25, T18 1.25, T16 1.25, T1 0.75, T9 0.75; changed pieces blue).

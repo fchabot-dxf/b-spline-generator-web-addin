@@ -34,7 +34,7 @@ const TEMPLATES = FULL ? FRAME_DEFS.templates.map((t) => t.id).filter((k) => /^t
 const MEASURE = !!process.env.MEASURE_SEAMS;
 /** Fred's joint rule, with the measurement's own tolerance */
 const FAN_SEAM_MAX_J = 1.5;
-/** today's other gaps per template (widest, in joints; total sq in), measured on 16d (A) -- a cap, not a goal */
+/** today's other gaps per template (widest, in joints; total sq in), measured on 16d (A); T14 / T18 / T19 re-capped on 16f (B1: their tips filled) -- a cap, not a goal */
 const CAPS = {
   template_1: {1: {'seam band': [2.6, 0.008], 'seam fan': [2.8, 0.0072], 'node wall': [1.8, 0.0012], 'seam wall': [1.8, 0.0004], 'node fan': [2.8, 0.0012]}, 0.75: {'seam band': [2.3, 0.0072], 'node fan': [2.5, 0.0008], 'seam fan': [2.7, 0.0052]}, 1.25: {'seam fan': [2.6, 0.0072], 'seam band': [2.8, 0.0072], 'node fan': [2.5, 0.0004]}, 1.5: {'seam fan': [2.9, 0.0072], 'seam band': [2.9, 0.01]}},
   template_2: {1: {'node fan': [2.8, 0.0008], 'seam fan': [2.9, 0.0048], 'seam band': [3.1, 0.0048]}, 0.75: {'seam fan': [2.9, 0.0048], 'seam band': [3, 0.0052]}, 1.25: {'seam fan': [2.5, 0.0036], 'seam band': [2.3, 0.0024], 'node fan': [2.9, 0.0008]}, 1.5: {'seam fan': [2.6, 0.0044], 'seam band': [2.6, 0.0024]}},
@@ -49,12 +49,12 @@ const CAPS = {
   template_11: {1: {'seam band': [2.4, 0.0036], 'seam fan': [3.1, 0.0052], 'node fan': [3.1, 0.0008]}, 0.75: {'seam band': [2.8, 0.0048], 'seam fan': [2.8, 0.0044], 'node fan': [3.2, 0.0012]}, 1.25: {'seam fan': [1.6, 0.0004]}, 1.5: {'seam band': [3.9, 0.018], 'seam fan': [2.5, 0.0028], 'seam wall': [4.2, 0.0048]}},
   template_12: {1: {'seam band': [2.4, 0.0076], 'seam fan': [2.8, 0.0076], 'node wall': [1.8, 0.0012], 'seam wall': [1.8, 0.0004], 'node fan': [2.8, 0.0012]}, 0.75: {'seam fan': [2.6, 0.006], 'seam band': [2.9, 0.0088], 'node fan': [3, 0.0008]}, 1.25: {'seam band': [2.6, 0.0076], 'seam fan': [2.6, 0.0072], 'node fan': [2.5, 0.0004]}, 1.5: {'seam fan': [2.7, 0.0076], 'seam band': [2.9, 0.0096]}},
   template_13: {1: {'seam fan': [2.9, 0.0048], 'seam band': [3.1, 0.0048], 'node fan': [2.8, 0.0004]}, 0.75: {'seam fan': [2.9, 0.0044], 'seam band': [3, 0.006]}, 1.25: {'seam band': [2.1, 0.0012], 'seam wall': [1.8, 0.0008], 'node fan': [2.6, 0.0004], 'seam fan': [2.6, 0.0032]}, 1.5: {'seam band': [2.2, 0.0036], 'seam fan': [2.5, 0.0032], 'node fan': [2.1, 0.0004]}},
-  template_14: {1: {'seam wall': [1.6, 0.0004]}, 0.75: {'seam wall': [1.6, 0.0008]}, 1.25: {'seam wall': [7.2, 0.0296], 'seam band': [6.8, 0.0384], 'node wall': [5.8, 0.0004]}, 1.5: {'seam band': [7.7, 0.034], 'seam wall': [8.4, 0.0356], 'node wall': [8.4, 0.0012]}},
+  template_14: {1: {'seam wall': [1.6, 0.0004]}, 0.75: {'seam wall': [1.6, 0.0008]}, 1.25: {}, 1.5: {}},
   template_15: {1: {'seam band': [1.6, 0.0008]}, 0.75: {'seam wall': [1.5, 0.0004]}, 1.25: {'node band': [2, 0.0004]}, 1.5: {'seam band': [2.2, 0.12], 'seam wall': [2.4, 0.0684], 'node wall': [2.4, 0.0008]}},
   template_16: {1: {'node wall': [1.5, 0.0008], 'seam wall': [1.5, 0.0004]}, 0.75: {'seam wall': [1.5, 0.0004]}, 1.25: {'seam wall': [3.9, 0.0048], 'node wall': [4, 0.0008], 'seam band': [3.5, 0.0096]}, 1.5: {'seam band': [6.5, 0.04], 'seam wall': [6.8, 0.0136]}},
   template_17: {1: {'seam band': [1.7, 0.0004], 'seam wall': [1.5, 0.0004]}, 0.75: {'seam band': [1.5, 0.0004], 'seam wall': [1.5, 0.0004]}, 1.25: {'seam band': [1.5, 0.0004]}, 1.5: {'seam wall': [1.5, 0.0004], 'seam band': [1.5, 0.0004]}},
-  template_18: {1: {'seam band': [2.6, 0.006], 'seam fan': [2.8, 0.0028], 'node fan': [2.8, 0.0004]}, 0.75: {'seam band': [1.6, 0.0004]}, 1.25: {'seam band': [4, 0.0216], 'seam fan': [3.6, 0.034], 'node fan': [3.2, 0.0016], 'seam wall': [4.5, 0.0072]}, 1.5: {'seam fan': [2.5, 0.0072], 'seam band': [3, 0.0092], 'node fan': [1.7, 0.0004]}},
-  template_19: {1: {'seam wall': [1.6, 0.0012], 'seam band': [2.1, 0.0036], 'seam fan': [2.5, 0.0032], 'node fan': [2.7, 0.0004]}, 0.75: {}, 1.25: {'seam band': [4.1, 0.018], 'seam fan': [3.6, 0.0348], 'node fan': [3.2, 0.0016], 'seam wall': [4.5, 0.0072]}, 1.5: {'seam band': [2.7, 0.0064], 'seam fan': [2.7, 0.008], 'node fan': [2.9, 0.0012]}},
+  template_18: {1: {'seam band': [2.6, 0.006], 'seam fan': [2.8, 0.0028], 'node fan': [2.8, 0.0004]}, 0.75: {'seam band': [1.6, 0.0004]}, 1.25: {'seam band': [2.8, 0.0104], 'seam fan': [3.6, 0.034], 'node fan': [3.2, 0.0016]}, 1.5: {'seam fan': [2.5, 0.0072], 'seam band': [3, 0.0092], 'node fan': [1.7, 0.0004]}},
+  template_19: {1: {'seam wall': [1.6, 0.0012], 'seam band': [2.1, 0.0036], 'seam fan': [2.5, 0.0032], 'node fan': [2.7, 0.0004]}, 0.75: {}, 1.25: {'seam band': [2.4, 0.0068], 'seam fan': [3.6, 0.0348], 'node fan': [3.2, 0.0016]}, 1.5: {'seam band': [2.7, 0.0064], 'seam fan': [2.7, 0.008], 'node fan': [2.9, 0.0012]}},
 };
 
 const segDist = (px, py, a, b) => {

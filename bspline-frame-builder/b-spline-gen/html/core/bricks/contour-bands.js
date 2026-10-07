@@ -33,7 +33,7 @@
  * full-size bricks, never one row of stretched ones, and the next band always starts exactly where
  * the actual (snapped) rows end, with no seam gap.
  */
-import { inwardSignFor, pointInPolygon, dropSpikes, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward } from './geometry.js';
+import { isSimplePolygon, dedupePolygon, inwardSignFor, pointInPolygon, dropSpikes, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward, clipToHalfPlane } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, ribbonJoints, boundaryAtDepth, lineBetweenLinesDropsAt } from './primitive-ribbon.js';
 import { openRibbonOutline } from './ribbon-outline.js'; // F35 item 55 (seat E): a Brush stroke's grout region
@@ -253,6 +253,123 @@ function clipBandPiecesToBoard(bricks, board, set) {
     if (kept >= minArea) out.push({ ...b, polygon: inside });
   }
   return out;
+}
+
+/** T86 item 16f (B1): an innermost-row piece next to a bare tip (tip-fill.js bareTips) is laid DEEPER into it: the piece's
+ *  inner-edge vertices (depth d1 from its own source primitive) are pushed on along that primitive's depth direction --
+ *  the same column, longer. Its part past d1 is kept where it lies in the tip on ITS side of the tip's bisector (the medial
+ *  line through the apex), half a joint off it, before the zone's base, and a joint off every wall brick (the zone's
+ *  blockers: the wall is never dropped). That extension is spliced onto the piece (mergeAcrossSeam); a refused splice
+ *  falls back to the twin minus everything past d1 that is not the extension (twinMinusBeyond, differences only); a
+ *  refused fallback keeps the piece as laid. The two sides meet at the medial line like any neck. A fan / quoin piece is
+ *  not lengthened (it has no single depth direction). */
+function fillTips(bricks, tipRow, zones, set, enriched, reach) {
+  const { start, count, sources, d1 } = tipRow;
+  const J = set.grout.widthIn, half = J / 2;
+  const areaOf = (p) => (p && p.length >= 3 ? Math.abs(signedArea(p)) : 0);
+  for (let k = 0; k < count; k++) {
+    const src = sources[k];
+    if (!(src >= 0)) continue;
+    const b = bricks[start + k], depth = sourceDepth(enriched[src]);
+    const P = b.polygon, m = P.length, atD1 = P.map((p) => Math.abs(depth(p) - d1) < 1e-4);
+    if (!atD1.some(Boolean)) continue;
+    const c = P.reduce((acc, p) => ({ x: acc.x + p.x / m, y: acc.y + p.y / m }), { x: 0, y: 0 });
+    for (const z of zones) {
+      if (!P.some((p) => Math.hypot(p.x - z.apex.x, p.y - z.apex.y) < z.depthIn + reach + set.brickLengthIn)) continue;
+      // the piece, its sides extended past d1 (an inner-edge vertex next to a side edge moves along THAT edge; one inside a
+      // curved inner edge along the depth direction) -- the same column, longer
+      const deep = P.map((p, i) => {
+        if (!atD1[i]) return p;
+        const ni = [(i - 1 + m) % m, (i + 1) % m].find((q) => !atD1[q]);
+        let d;
+        if (ni !== undefined) d = { x: p.x - P[ni].x, y: p.y - P[ni].y };
+        else { const h = 1e-5; d = { x: depth({ x: p.x + h, y: p.y }) - depth({ x: p.x - h, y: p.y }), y: depth({ x: p.x, y: p.y + h }) - depth({ x: p.x, y: p.y - h }) }; }
+        const l = Math.hypot(d.x, d.y) || 1;
+        return { x: p.x + (d.x / l) * reach, y: p.y + (d.y / l) * reach };
+      });
+      // the extension: past d1, before the zone's base, on this piece's side of the tip's bisector half a joint off it
+      const nx = -z.dir.y, ny = z.dir.x, side = Math.sign((c.x - z.apex.x) * nx + (c.y - z.apex.y) * ny) || 1;
+      const baseLine = { point: { x: z.apex.x + z.dir.x * z.depthIn, y: z.apex.y + z.dir.y * z.depthIn }, dirX: nx, dirY: ny };
+      const sideLine = { point: { x: z.apex.x + nx * side * half, y: z.apex.y + ny * side * half }, dirX: z.dir.x, dirY: z.dir.y };
+      // only a piece the tip lies near takes part: one of its inner-edge vertices within a brick length of the zone (a column
+      // that does not truly meet the tip is refused by the merge)
+      const zoneDist = (p) => { if (pointInPolygon(p.x, p.y, z.polygon)) return 0; let d = Infinity; const Z = z.polygon; for (let q = 0; q < Z.length; q++) { const a = Z[q], b2 = Z[(q + 1) % Z.length], ex = b2.x - a.x, ey = b2.y - a.y, l = ex * ex + ey * ey || 1, t = Math.max(0, Math.min(1, ((p.x - a.x) * ex + (p.y - a.y) * ey) / l)); d = Math.min(d, Math.hypot(a.x + t * ex - p.x, a.y + t * ey - p.y)); } return d; };
+      if (!P.some((p, i) => atD1[i] && zoneDist(p) <= set.brickLengthIn)) continue;
+      let ext = clipToField(deep, (p) => d1 - depth(p));
+      // inside the zone itself (taken toward the band past the strip between the row and the wall region)
+      const zoneReach = clipToHalfPlane(offsetPathInward(z.polygon, 2 * J, -inwardSignFor(z.polygon)), baseLine, z.apex); // past d1: the depth clip above sets the seam exactly
+      ext = zoneReach.length >= 3 ? polygonIntersection(ext, zoneReach) : [];
+      ext = clipToHalfPlane(ext, baseLine, z.apex);
+      ext = clipToHalfPlane(ext, sideLine, { x: z.apex.x + nx * side, y: z.apex.y + ny * side });
+      // T86 item 16f: a joint off every wall brick near the tip (z.blockers) -- the part still touching the row's seam
+      for (const w of z.blockers || []) {
+        if (areaOf(ext) < 1e-5) break;
+        const parts = polygonDifference(ext, w).filter((q) => q.some((p) => Math.abs(depth(p) - d1) < 1e-4));
+        const next = parts.length ? parts.reduce((a, q) => (areaOf(q) > areaOf(a) ? q : a)) : [];
+        // a difference that GAINS area has failed (geometry.js KNOWN LIMITATION): no fill rather than a wrong one
+        if (areaOf(next) > areaOf(ext) + 1e-6) { ext = []; break; }
+        ext = next;
+      }
+      ext = dedupePolygon(ext);
+      if (areaOf(ext) < 1e-5) continue;
+      const merged = mergeAcrossSeam(bricks[start + k].polygon, ext, (p) => Math.abs(depth(p) - d1) < 1e-4)
+        || twinMinusBeyond(deep, ext, bricks[start + k].polygon, depth, d1);
+      if (merged) bricks[start + k] = { ...bricks[start + k], polygon: merged };
+    }
+  }
+}
+
+/** T86 item 16f: the fallback when the splice is refused -- the piece's deeper twin minus everything past the seam (d1)
+ *  that is not the extension, by differences only. null unless that is ONE simple polygon with both areas. */
+function twinMinusBeyond(deep, ext, piece, depth, d1) {
+  const areaOf = (p) => (p && p.length >= 3 ? Math.abs(signedArea(p)) : 0);
+  let out = deep;
+  for (const cut of polygonDifference(clipToField(deep, (p) => d1 - depth(p)), ext)) {
+    const parts = polygonDifference(out, cut).filter((q) => areaOf(q) > 1e-6);
+    if (parts.length !== 1) return null;
+    out = parts[0];
+  }
+  out = dedupePolygon(out);
+  const target = areaOf(piece) + areaOf(ext);
+  return out.length >= 3 && isSimplePolygon(out) && Math.abs(areaOf(out) - target) < TWIN_AREA_TOL * target ? out : null;
+}
+/** How far the fallback's area may stray from piece + extension (the twin's own seam is clipped, not shared). */
+const TWIN_AREA_TOL = 0.02;
+
+/** `piece` and `ext` share a seam (a run of `piece`'s vertices on it, and `ext`'s own run on it, between two of `piece`'s):
+ *  the one polygon covering both -- `piece`'s outline with `ext`'s outer path spliced in between its two seam ends. null
+ *  when the two do not join as declared (the result must be simple and have both areas). */
+function mergeAcrossSeam(piece, ext, onSeam) {
+  const areaOf = (p) => Math.abs(signedArea(p));
+  const n = ext.length, seamE = ext.map(onSeam);
+  if (seamE.every(Boolean) || !seamE.some(Boolean)) return null;
+  // ext's outer path: from the last seam vertex before a non-seam run, around the non-seam vertices, to the next seam vertex
+  const firstOut = seamE.findIndex((v, i) => !v && seamE[(i - 1 + n) % n]);
+  if (firstOut < 0) return null;
+  const path = [ext[(firstOut - 1 + n) % n]];
+  let i = firstOut;
+  while (!seamE[i]) { path.push(ext[i]); i = (i + 1) % n; }
+  path.push(ext[i]); // path: seam end A, the outer vertices, seam end B
+  const A = path[0], B = path[path.length - 1];
+  // insert the path into `piece` on the edge (or vertex) where A and B sit, in either direction; keep the valid one
+  const m = piece.length;
+  const segDist = (p, a, b) => { const ex = b.x - a.x, ey = b.y - a.y, l = ex * ex + ey * ey || 1, t = Math.max(0, Math.min(1, ((p.x - a.x) * ex + (p.y - a.y) * ey) / l)); return { d: Math.hypot(a.x + t * ex - p.x, a.y + t * ey - p.y), t }; };
+  const locate = (p) => { let best = null; for (let e = 0; e < m; e++) { const r = segDist(p, piece[e], piece[(e + 1) % m]); if (!best || r.d < best.d) best = { e, t: r.t, d: r.d }; } return best; };
+  const la = locate(A), lb = locate(B);
+  if (la.d > 1e-4 || lb.d > 1e-4) return null;
+  const target = areaOf(piece) + areaOf(ext);
+  // the outline with piece's stretch from P forward to Q replaced by `inner` (P ... Q, the extension's outer path)
+  const build = (P, Q, inner) => {
+    const out = [inner[inner.length - 1]]; // Q
+    const steps = P.e === Q.e && P.t <= Q.t ? m : (P.e - Q.e + m) % m; // vertices from Q's edge end round to P's edge start
+    for (let s = 1; s <= steps; s++) out.push(piece[(Q.e + s) % m]);
+    out.push(...inner.slice(0, -1)); // P, then the outer vertices
+    return dedupePolygon(out);
+  };
+  for (const cand of [build(la, lb, path), build(lb, la, [...path].reverse())]) {
+    if (cand.length >= 3 && isSimplePolygon(cand) && Math.abs(areaOf(cand) - target) < 1e-4 * Math.max(1, target)) return cand;
+  }
+  return null;
 }
 
 /** T86 16(c) part 2 (Fred's T18 / T19 / T14 necks): where the board is narrower than twice the band, a row's pieces from
@@ -616,6 +733,13 @@ export function bricksContourBands(primitives, bands, opts) {
     d1 < stackEnd - 1e-9 || closed ? d1 - halfJoint : d1,
   ];
 
+  // T86 item 16f (B1): opts.tipZones (tip-fill.js bareTips: the wall region's acute tips the wall leaves bare) -- the
+  // innermost course row's pieces next to a tip are laid deeper into it (fillTips, below)
+  const tipZones = closed && !opts.centered && Array.isArray(opts.tipZones) ? opts.tipZones.filter((z) => z && z.polygon && z.polygon.length >= 3) : [];
+  const lastCourseBand = tipZones.length && !plannedBands[plannedBands.length - 1].isAreaBand ? plannedBands.length - 1 : -1;
+  // how far a piece may lengthen (it is clipped to the zone anyway): enough for a column that starts up the band's edge
+  const tipReach = lastCourseBand >= 0 ? 2 * (Math.max(...tipZones.map((z) => z.depthIn)) + set.brickLengthIn) : 0;
+  let tipRow = null;
   bands.forEach((band, bandIndex) => {
     // T86 item 2: read the SAME declared pitch/cross axes + stagger `layouts/bond.js`'s own
     // Wall-side rows already use (`axisLen`/`courseHeightFor`, imported not re-derived) instead of
@@ -659,6 +783,8 @@ export function bricksContourBands(primitives, bands, opts) {
         seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
         rowSequence, forcedFStart, closed, row,
       );
+      // T86 item 16f (B1): the innermost course row's pieces may reach into the bare tips (tipZones; fillTips, below)
+      if (tipReach && bandIndex === lastCourseBand && row === rows - 1) tipRow = { start: bricks.length, count: pieces.length, sources, d1 };
       // T86 item 16d: a corner's fan slice is declared as such (`fan: true`, additive; the drawing never reads it) -- the
       // seam sweep (tests/bricks-seam-sweep.test.js) measures the fan-to-run joints by it
       bricks.push(...pieces.map((piece, i) => (sources[i] === FAN ? { ...piece, fan: true } : piece)));
@@ -675,6 +801,7 @@ export function bricksContourBands(primitives, bands, opts) {
   // life-size 8 in soldier band on a 7 x 9 board, tests/bricks-no-corrupt-polygon.test.js, ~3000 conflicting pairs,
   // 2 s per lay). Not narrowestGap: its normal rays read T14's X corners as a gap narrower than a 1.25 in band.
   const boardWidth = fitBoard ? Math.min(...['x', 'y'].map((k) => Math.max(...fitBoard.map((p) => p[k])) - Math.min(...fitBoard.map((p) => p[k])))) : 0;
+  if (tipRow) fillTips(bricks, tipRow, tipZones, set, enriched, tipReach);
   const split = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set) : bricks;
   const laid = fitBoard ? clipBandPiecesToBoard(split, fitBoard, set) : bricks;
   // the wall keeps half its own joint from the band (grout is one global width, so band + wall = one joint)
