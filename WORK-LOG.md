@@ -23975,3 +23975,11 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   functions are absent). CAM-builder 59/59, cam-page-log + cam-stages 8/8. Full vitest: the first run could not start
   its workers (RAM pressure); re-run pending. Known failures: none in the files run.
 - Next (step 2, after a live trail): a declared queue once the trail shows where the click is lost.
+- LIVE TRAIL (2026-10-07 12:54, F's deferred build + this trail merged locally, efa0501, deploys.log -4; T16 7x9, fresh
+  doc, verified-handle clicks; shots shots/seatA/i101/): BUILD click 12:54:22.664 -> the page logged 'BUILD click',
+  'camBuild begin', 'painted -> send', 'send build', 'sent build -> promise' (all arrived at once). APPLY clicked at
+  12:54:44.170 on the button (PrintWindow / screen frames: APPLY spans y 609-631 / 617-639; the card has
+  pointer-events:none) while a deferred step blocked Fusion (PrintWindow 12:54:25 -> 12:54:45; 'building the
+  Manufacturing Models, step 3 of 4' on screen). The page NEVER logged 'APPLY click' -- not live, not in the ring
+  re-sent with the report at 12:54:50. So the click is lost before the page's JS: the web view does not deliver input
+  while Fusion's main thread is busy. A queue in the add-in or the page cannot catch it.
