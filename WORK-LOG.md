@@ -23878,3 +23878,26 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   solid_coordinator.py:49 read app.activeProduct themselves). LIVE: Send from Manufacture -> 80.9 s, import + all 4
   frame bodies, no failure. The switch log first read the product after the switch ('was DesignProductType'), fixed.
 - Tests: test_send_from_manufacture.py (4) fails 4/4 pre-99b; b-spline-gen 180/180. Known failures: none.
+## H23 item 100 -- BUILD after a re-Send lost every setup's models (seat A / 77, 2026-10-06)
+- Fresh Fusion (40804), fresh tagged scratch doc, T1 7x9 cam-bricks payload, a JSON dump of every MM's bodies and
+  every setup's models after each step (scratchpad e100.py):
+  1 Send, 2 BUILD (fresh doc: acquire_cam fails, so run() switched to Manufacture), 3 APPLY 7/7;
+  4 re-Send (from Manufacture; 99b switched to Design; the clear removed 4 setups + 3 MMs), 5 BUILD from Design: MMs
+  and models looked RIGHT (B-spline MM = Stamped panel, setups bound to valid MM proxies), 6 APPLY (it switches to
+  Manufacture): 0/7 'Model has one or more missing selections' -- the dump after it shows the B-spline and Frame MMs
+  holding the WHOLE design again (panel x2, surfaces, frame: their occurrence filter undone) and every setup's models
+  0. 3/3 across two Fusion sessions.
+- Control, same doc: re-Send, activate Manufacture BEFORE BUILD -> Top built with a real 13 s compute, APPLY 7/7,
+  toolpaths identical to the item 99 baseline on all 7 ops.
+- Cause: once the doc has CAM, acquire_cam succeeds from the Design workspace, so run() never switched; MMs built
+  there are reset when Manufacture activates. FIX (5abff00): run() activates the Manufacture workspace first, always.
+  test_build_in_manufacture.py (2): the re-Send case fails 1/2 without the fix (the fresh-doc case pins today's
+  behaviour); CAM-builder 57/57. Known failures: none.
+- LIVE with the fix deployed (-30): cycle 1 T1 7x9 re-Send (from Manufacture) -> BUILD ('CAM: switched to Manufacture
+  workspace', Top 16 s) -> APPLY 7/7; cycle 2 a NEW capture, T11 9x12 carved (capture_send_payload.mjs
+  shape-lattice-frame --template=template_11 --board=9x12 --carve) re-Sent over it -> BUILD (5 T11 frame pieces bound)
+  -> APPLY 7/7. Shots: shots/seatA/item100_fix_cycle1_resend_build_apply_7of7.png, item100_fix_cycle2_t11_9x12_7of7.png.
+- NOT confirmed on a 2nd geometry (so NOT in fusion360-quirks yet): 'an MM built while Design is active is reset when
+  Manufacture activates'. The T11 check (re-Send, old BUILD from Design, dump, activate Manufacture, dump) never ran:
+  Fusion 40804 exited right after that re-Send finished (20:04:08; nothing in the CAM log after 19:59; ~18 GB private,
+  not memory). Observation only: the stamp log said 'Preserving 7x9 border lines' on the 9x12 T11 board.
