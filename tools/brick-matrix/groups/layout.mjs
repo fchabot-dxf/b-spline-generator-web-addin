@@ -235,17 +235,24 @@ async function runBoardFollows() {
     e.value = String(v); e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); }
     await new Promise((r) => setTimeout(r, 1500)); return 1; })()`);
   await setBoard(B.from);
-  await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('btnStampEdit').click(); await new Promise((r) => setTimeout(r, 1500)); return 1; })()`);
+  await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('btnStampEdit').click();
+    for (let i = 0; i < 60 && !window.svgEditor?._draw; i++) await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, 1500)); return 1; })()`);
   await setBoard(B.to);
   const r = await jsJSON(`(async () => { const ed = window.svgEditor; const io = await import('./editor/editor-io.js');
     const head = ((await io.saveSvgDownload(ed)).match(/<svg[^>]*>/) || [''])[0];
     const m = document.getElementById('svgEditorModal');
-    return JSON.stringify({ open: !!(m && m.style.display !== 'none'), mW: ed._mW, mH: ed._mH,
-      w: +(head.match(/ width="([^"]+)"/) || [])[1], h: +(head.match(/ height="([^"]+)"/) || [])[1], vb: (head.match(/viewBox="([^"]+)"/) || [])[1] }); })()`);
+    const view = await import('./editor/editor-view.js'); const fp = await import('./editor/editor-frame-profile.js');
+    // "whole board" = what a fresh open shows: the frame's cut region (FB-APP F7) or, with no frame, the board
+    const vb = ed._draw.viewbox(); const t = 1e-6; const g = fp.frameFitRegion(ed) || { x: 0, y: 0, w: ed._mW, h: ed._mH };
+    const wholeBoard = vb.x <= g.x + t && vb.y <= g.y + t && vb.x + vb.width >= g.x + g.w - t && vb.y + vb.height >= g.y + g.h - t;
+    return JSON.stringify({ open: !!(m && m.style.display !== 'none'), mW: ed._mW, mH: ed._mH, wholeBoard, fitted: view.isFittedView(ed),
+      vb: [vb.x, vb.y, vb.width, vb.height].map((n) => +n.toFixed(3)),
+      w: +(head.match(/ width="([^"]+)"/) || [])[1], h: +(head.match(/ height="([^"]+)"/) || [])[1], dlvb: (head.match(/viewBox="([^"]+)"/) || [])[1] }); })()`);
   const [W, H] = B.to;
-  const ok = r.open && r.mW === W && r.mH === H && r.w === W * B.dpi && r.h === H * B.dpi && r.vb === `0 0 ${W} ${H}`;
-  checkRow('layout', `Board change with the editor open (${B.viewport.name}): the editor and the SVG download follow ${B.from.join('x')} -> ${W}x${H}`, ok,
-    `editor open ${r.open}, editor board ${r.mW}x${r.mH}, download ${r.w}x${r.h} viewBox ${r.vb}`);
+  const ok = r.open && r.mW === W && r.mH === H && r.w === W * B.dpi && r.h === H * B.dpi && r.dlvb === `0 0 ${W} ${H}` && r.wholeBoard && r.fitted;
+  checkRow('layout', `Board change with the editor open (${B.viewport.name}): the editor, its view (whole board, fitted) and the SVG download follow ${B.from.join('x')} -> ${W}x${H}`, ok,
+    `editor open ${r.open}, editor board ${r.mW}x${r.mH}, view ${r.vb.join(' ')} (whole board ${r.wholeBoard}, fitted ${r.fitted}), download ${r.w}x${r.h} viewBox ${r.dlvb}`);
   if (!ok) await shot('FAIL_board_follows_phone');
   await setBoard(B.from);
   await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });

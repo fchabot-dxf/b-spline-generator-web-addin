@@ -21,8 +21,11 @@ import { drawFrameProfile } from '../bspline-frame-builder/b-spline-gen/html/edi
 
 // the real editor's surface this path touches (VectorEditor: _draw, _mW/_mH, setModelMetrics, open, _notifyChange)
 function editor(w = 7, h = 9) {
-  const ed = { _draw: {}, _mW: w, _mH: h, _undoStack: ['before'], calls: [] };
-  ed.setModelMetrics = vi.fn((nw, nh) => { ed._mW = nw; ed._mH = nh; ed.calls.push('metrics'); });
+  const ed = { _mW: w, _mH: h, _undoStack: ['before'], calls: [], _view: { zoom: 1, cx: w / 2, cy: h / 2 } }; // a fitted view
+  ed._draw = { viewbox: vi.fn(() => ed.calls.push('viewbox')) };
+  // the real setModelMetrics fits on the OLD frame region (the profile is redrawn after it): modelled as a stale fit
+  ed.setModelMetrics = vi.fn((nw, nh) => { ed._mW = nw; ed._mH = nh; ed._view = { zoom: 1.4, cx: 3.5, cy: 4.5 }; ed.calls.push('metrics'); });
+  ed.fitView = vi.fn(() => { ed._view = { zoom: 1, cx: ed._mW / 2, cy: ed._mH / 2 }; ed.calls.push('fit'); });
   ed.open = vi.fn((svg, nw, nh) => { ed._mW = nw; ed._mH = nh; ed._undoStack = []; ed.calls.push('open'); });
   ed._notifyChange = vi.fn((kind) => ed.calls.push(`notify:${kind}`));
   return ed;
@@ -58,8 +61,21 @@ describe('the editor follows a board change', () => {
     expect(ed._undoStack).toEqual(['before']);
     expect([ed._mW, ed._mH]).toEqual([9, 12]);
     expect(drawFrameProfile).toHaveBeenCalledWith(ed);
-    expect(ed.calls).toEqual(['metrics', 'notify:commit']);
+    // the whole new board in view, fitted AFTER the frame profile is redrawn (the stale fit is replaced)
+    expect(ed.calls).toEqual(['metrics', 'fit', 'notify:commit']);
+    expect(drawFrameProfile.mock.invocationCallOrder[0]).toBeLessThan(ed.fitView.mock.invocationCallOrder[0]);
+    expect(ed._view).toEqual({ zoom: 1, cx: 4.5, cy: 6 });
     expect(resized).toEqual([{ w: 9, h: 12, editorOpen: true }]);
+  });
+
+  it('OPEN editor the user had zoomed / panned: their view stays (not refitted)', () => {
+    const ed = window.svgEditor = editor();
+    ed._view = { zoom: 2.5, cx: 2, cy: 3 };
+    document.getElementById('svgEditorModal').style.display = 'flex';
+    boardChange(9, 12);
+    expect(ed.fitView).not.toHaveBeenCalled();
+    expect(ed._view).toEqual({ zoom: 2.5, cx: 2, cy: 3 });
+    expect(ed._draw.viewbox).toHaveBeenCalled(); // re-applied on the new board
   });
 
   it('closed editor: reloads at the new board as before, then the same follow-ups', () => {

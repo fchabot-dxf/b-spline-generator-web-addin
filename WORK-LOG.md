@@ -24211,3 +24211,20 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   live. layout group 35 rows 0 FAIL.
 - SHOTS shots/seatE/t86_16e/: engine_check.png (T18 1.25, T1 1, T1 0.75 soldier/stretcher x 3 choices), whole_T18.png,
   icons.png, live_eye.png / live_stone.png (the app: Corners section with the Fan centre row, stones on the canvas).
+
+### 2026-10-07 addendum (seat A): the open editor refits the new board (advisor: AFTER strip cropped the 9x12)
+- Cause: `setModelMetrics` fits inside itself, BEFORE `drawFrameProfile` redraws the frame, so it fitted the OLD 7x9
+  frame region onto the 9x12 board (live view -0.75 -1.167 8.5 11.333: right side and top off-canvas).
+- Fix (app-init `_resyncEditorToStock`, open-editor branch): note `isFittedView(ed)` before the change; after the
+  profile is redrawn, `ed.fitView()` (the same call a fresh open makes) -- unless the user had zoomed/panned, then
+  their view is re-applied. editor-view.js declares `fittedView(editor)` (pure; `fitView` now uses it) and
+  `isFittedView(editor)`.
+- "Whole board visible" = what a fresh open shows: the frame's cut region (FB-APP F7) or, with no frame, the board.
+  A first version of the matrix check demanded the full 0..9 x 0..12 stock and failed on a correct fit (a fresh
+  open crops the margin outside the frame on purpose) -- corrected to the fit region.
+- Matrix row (layout group, BOARD_FOLLOWS) now also requires wholeBoard && fitted; it waits for window.svgEditor
+  after opening (one loaded run threw "_draw of undefined" -> a run error, no row).
+- Non-vacuous: with the refit removed, tests/editor-follows-board.test.js fails 1/4 (the open-editor test) and the
+  matrix row FAILs (whole board false, fitted false). Restored: layout 36 rows 0 FAIL 0 page errors; full vitest
+  374 files / 5842 tests passed, 0 failed.
+- Shots: shots/seatA/board_follows_phone_strip.png (re-shot AFTER: the whole 9x12 frame fitted).

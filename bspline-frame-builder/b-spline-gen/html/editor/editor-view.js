@@ -82,10 +82,22 @@ export function applyView(editor) {
 /** Reset to the fitted view (zoom 1, centered on the whole board) and
  *  apply it immediately. */
 export function fitView(editor) {
-    // FB-APP F7: with a frame, fit its cut profile's region, not the stock.
+    editor._view = fittedView(editor);
+    applyView(editor);
+}
+
+/** Pure: the view fitView would set now -- FB-APP F7: with a frame, its cut profile's region, else the whole board. */
+export function fittedView(editor) {
     const r = frameFitRegion(editor);
-    editor._view = r
+    return r
         ? { zoom: Math.min(editor._mW / r.w, editor._mH / r.h), cx: r.x + r.w / 2, cy: r.y + r.h / 2 }
         : { zoom: 1, cx: editor._mW / 2, cy: editor._mH / 2 };
-    applyView(editor);
+}
+
+/** Is the live view still the fitted one (the user has not zoomed or panned)? */
+export function isFittedView(editor, eps = 1e-6) {
+    const v = editor && editor._view, f = fittedView(editor);
+    if (!v) return true;
+    return Math.abs(v.zoom - f.zoom) <= eps * Math.max(1, f.zoom) && Math.abs(v.cx - f.cx) <= eps * editor._mW
+        && Math.abs(v.cy - f.cy) <= eps * editor._mH;
 }

@@ -20,6 +20,7 @@ import { dbg, isDebugEnabled } from '../core/debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { buildSketchManifest } from '../editor/editor-sketch-manifest.js';
 import { frameContext, drawFrameProfile } from '../editor/editor-frame-profile.js';
+import { isFittedView, applyView } from '../editor/editor-view.js';
 import { boardRegion } from '../editor/editor-shape-lattice-interaction.js';
 import { FRAME_DEFS, frameParam, normalizeFrameRecord, setFrameRecord } from '../core/frame-record.js';
 import { syncFramePanel } from './frame-panel.js';
@@ -730,10 +731,19 @@ function _resyncEditorToStock() {
   if (ed._mW === P.widthIn && ed._mH === P.heightIn) return;
   const modal = document.getElementById('svgEditorModal');
   const editorOpen = !!(modal && modal.style.display && modal.style.display !== 'none');
-  if (editorOpen) ed.setModelMetrics(P.widthIn, P.heightIn);
-  else if (P.editorSvg) ed.open(editorRestoreSvg(), P.widthIn, P.heightIn);
-  else return;
-  drawFrameProfile(ed);
+  if (editorOpen) {
+    // the WHOLE new board in view, as a fresh open shows it -- unless the user had zoomed / panned on purpose: their
+    // view stays. The fit runs AFTER the frame profile is redrawn (a framed board fits its frame's region).
+    const wasFitted = isFittedView(ed);
+    const userView = ed._view ? { ...ed._view } : null;
+    ed.setModelMetrics(P.widthIn, P.heightIn);
+    drawFrameProfile(ed);
+    if (wasFitted || !userView) ed.fitView();
+    else { ed._view = userView; applyView(ed); }
+  } else if (P.editorSvg) {
+    ed.open(editorRestoreSvg(), P.widthIn, P.heightIn);
+    drawFrameProfile(ed);
+  } else return;
   if (typeof ed._notifyChange === 'function') ed._notifyChange('commit');
   document.dispatchEvent(new CustomEvent('editorBoardResized', { detail: { w: P.widthIn, h: P.heightIn, editorOpen } }));
 }
