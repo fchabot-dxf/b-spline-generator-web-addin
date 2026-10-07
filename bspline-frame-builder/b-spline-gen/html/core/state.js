@@ -174,6 +174,8 @@ export const DEFAULT = {
       frameBandPreset: 'single_soldier',
       // item 33: the Frame element's corner (editor-brick-tool.js FRAME_CORNERS id); null = the preset's own
       frameCorner: null,
+      // T86 item 16e: how the Frame's corner fans end (editor-brick-tool.js FRAME_FAN_CENTRES id); null = Needle (today)
+      frameFanCentre: null,
       // F35 item 7: the Wall pattern picker's own choice -- any core/bricks/library.js
       // BRICK_PATTERNS key. A key, not the pattern definition itself, same "track the current
       // declaration" convention as frameBandPreset above.

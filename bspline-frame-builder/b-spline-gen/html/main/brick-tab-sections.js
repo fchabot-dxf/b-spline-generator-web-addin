@@ -32,7 +32,7 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
   frame: Object.freeze({ host: 'brickFrameSection', after: 'brickElementLabel_frame', sections: Object.freeze([
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
     sec('bands', 'Bands', 'brick-pattern', ['brickFramePresetRow', 'brickFrameBandsNoteRow', 'brickFrameBandPatternRow']),
-    sec('corners', 'Corners', 'brick-corners', ['brickFrameCornerRow'], { titleOf: 'brickFrameCornerLabel' }),
+    sec('corners', 'Corners', 'brick-corners', ['brickFrameCornerRow', 'brickFrameFanCentreRow'], { titleOf: 'brickFrameCornerLabel' }), // + T86 item 16e
     sec('height', 'Height', 'brick-height', ['brickLevelRow_frame']),
     // item 9 (Fred: the frame crumbles by the wall's rule; the inset window's brick surround)
     sec('crumble', 'Crumble', 'brick-crumble', ['brickFrameCrumbleRow']),

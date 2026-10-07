@@ -24143,3 +24143,71 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   same board again nothing) -- 3 fail on main (the 4th pins today's no-op). Matrix layout group +1 row (phone 390:
   editor open, 7x9 -> 9x12 through the real inputs: editor board 9x12, download 864x1152 viewBox 0 0 9 12): 36 rows
   0 FAIL. Full vitest 373 files 5819/0. Known failures: none. Shots: shots/seatA/board_follows_phone_strip.png.
+## The CAM card stays through the toolpaths, each later pass on it (seat A / 77, 2026-10-07)
+- Fred: the loading card "could list all the steps" and the steps "grow live". Until now the BUILD / APPLY card
+  closed at their report while the deferred toolpath generation ran on for 2-4 min with no signal.
+- cam-stages.js: camTpgen ("generating the toolpaths") ends camBuild and camApply. The BUILD / APPLY report carries
+  toolpaths_pending when its APPLY worked; the palette then keeps the card (cam_builder_palette.html). The toolpath
+  handler (_DeferredTPGenHandler) posts camTpgen as it starts, and toolpath_gen.generate_setups(on_pass=) tells each
+  LATER pass (item 95) as it starts: _post_tpgen_pass posts "toolpaths, pass N" with a grow that inserts it right
+  after the previous step (the card appends it on the spot). Its own 'TOOLPATHS complete' report closes the card;
+  every early exit (no CAM product, an exception) now sends a report too, so the card never hangs.
+- _post_cam_stage accepts an id its own grow declares (a pass step), still refuses any other undeclared id.
+- Tests: test_tpgen_card.py (3) + test_toolpath_gen (on_pass: [2] / none / 2..MAX) -- 4/4 fail on cam-deferred-101;
+  loading-steps-list (+1: the card grows pass 2, 3 after camTpgen) and the cam-stages pins moved to 6 steps.
+  CAM-builder 85/85, full vitest 372 files 5756/0. Known failures: none. Live run: pending the holder.
+- LIVE (2026-10-07 15:46, cam-card-tpgen 1f3fcb1 on cam-deferred-101, deploys.log -10; T1 7x9, fresh doc, ONE
+  verified BUILD click; shots shots/seatA/ct/ + cam_card_tpgen_live_strip.png): build steps 15:46:13-15:47:36,
+  camBuildApply, report (toolpaths_pending) 15:47:39 -- the card stayed -- camTpgen 15:47:39 ("generating the
+  toolpaths, step 6 of 6", steps 1-5 ticked), pass 1 (Back empty 0.4 s, Top 41.9 s, Frame 87.5 s), camTpgenPass2
+  15:49:51 grown live onto the open card ("toolpaths, pass 2, step 7 of 7"), post-audit ok=7 missing=0 15:53:18 and
+  the card closed: status "TOOLPATHS complete -- 7 ops ok". Fusion 12.4 GB after (over the 12 GB line: restart asked).
+## "Preserving 7x9 border lines" on a 9x12 board -- measured: no carving bug, the label was wrong (seat A / 77, 2026-10-07)
+- Seen on item 100's T11 9x12 Send. The text is a hardcoded log label (b-spline-gen.py _import_single_layer_svg);
+  _prescale_svg is a no-op (the SVG arrives baked by editor-io.js bakeSvgForCarving).
+- But the captured 9x12 payload's stamp SVGs carry viewBox="-432 -576 864 1152" (9x12 at 96 dpi) with the editor's
+  STALE width="672" height="864" (7x9): bakeSvgForCarving sets the viewBox from the board and keeps the root's
+  width/height. So: does Fusion size an import by width/height or by viewBox?
+- LIVE probe (scratch doc, closed by handle; holder released): one +-432 x +-576 rect imported three ways
+  (createSVGImportOptions, scale 1.0, as the add-in does): width/height 864x1152 -> 9.0008 x 12.0008 in; 672x864
+  (stale) -> 9.0008 x 12.0008 in; none -> 9.0008 x 12.0008 in. Fusion uses the viewBox; width/height are ignored.
+- Every Fusion-bound SVG in three captured payloads (T11 9x12 layers 2-4, T1 7x9 bricks, T16 7x9 layers 2-4) carries
+  exactly its board's viewBox; bakeSvgForCarving is the only bake site. No carving bug.
+- Fix: the log names the real board size ('[STAMP] Preserving 9x12 border lines ...'), with the measurement in the
+  comment. Log text only -- no test (nothing reads it). b-spline-gen 180/180. Known failures: none.
+## T86 item 16e -- FAN CENTRE choice Needle | Eye | Stone (Fred on the mock: "I like them all, add a choice") (seat E / 61, 2026-10-07)
+- DECLARED once: core/bricks/fan-centre.js FAN_CENTRES [{id, label, title, cut, stone}] needle | eye | stone,
+  FAN_CENTRE_DEFAULT 'needle', FAN_MIN_TIP_OF_HEIGHT 1/3 (MIN_TIP_WIDTH). generateBricks reads `fanCentre`
+  (ENGINE_OPTIONS); absent / needle / unknown = no call (frame deep-equal to today, pinned). Applied to the frame as
+  finally laid (after 16f's tip re-lay, before the frame crumble).
+- FAN IDENTITY DECLARED, not inferred: primitive-ribbon's kite-fan pieces carry `fanApex` (the joint's q; additive, the
+  T1 digest pins [id, polygon] only). First try grouped slices by their needle tips and split every fan into pairs
+  (the tips sit round the apex's mortar disc, not on one point) -- measured T18 12 "fans" of 2, now 4 / 11 / 12 / 4.
+- EYE: each slice cut square to its own axis at ONE radius per fan = where the MEDIAN slice reaches MIN_TIP_WIDTH (the
+  mock's rule). Measured per-slice radii: T18 1.25 run-side slices need up to 0.83 in vs a 0.43 median (they are
+  clipped a joint off the run's end line) -- the max would double the eye. Kept the median: narrowest square end =
+  0.36 x MIN_TIP_WIDTH on T18 1.25's big fans (0.9 on T1 1, 0.84 T1 0.75 soldier/stretcher, 0.62 T2 1) -- REPORTED.
+- STONE: a circle of R - J round the apex minus the wall's region near the apex (grown J/2) and every piece near it
+  (grown J); a split keeps the part on the fan's side (nearest R/2 along the slices' mean direction). Two traps fixed
+  on the way: the whole interior outline as a cutter broke the polygon booleans (T1: stone emptied) -> a local box of it;
+  "largest part" kept the wall-side quarter -> the fan-side reference point. geometry.js signedArea is the NEGATIVE
+  shoelace area (the first convexity test kept reflex corners). Stones carry fanCentre: true and their fan's first
+  slice's sample fields.
+- FACT (74b's grey + explain): contour-bands frameHasFan = the joints-only plan counts fan joints (no pieces laid);
+  brick-control-requires FAN_FACT rule greys Eye / Stone with FAN_CENTRE_NO_FAN on a frame with no fan (T9); Needle never.
+- UI: state.js frameFanCentre null; editor-brick-tool FRAME_FAN_CENTRES (= the engine's), frameFanCentreOf, lay input
+  sends fanCentre only off the default, frameHasFanFor, fanCentreIconSvg (FAN_CENTRE_ICON: T18 7x9 at 1.25 in, the fan
+  Fred picked from, cropped to its biggest fan; T1's 4-slice fan did not read at 30 px). brick-panel: the Fan centre
+  row (renderFrameFanCentreList / setFrameFanCentre, synced with the Corners row: hidden with no bands / rock frame);
+  HTML row brickFrameFanCentreRow in brick-tab-sections' Corners section. A pick survives a preset change (not per band).
+- TESTS: bricks-fan-centre (18): declarations, fan groups by declaration, needle/absent/unknown deep-equal, eye (one
+  radius per fan, median end >= MIN_TIP_WIDTH, narrowest >= measured share, non-fan pieces identical), stone (one per
+  fan, simple, a joint off every piece, eye + stones only), no-fan frame unchanged, absent-field read + lay input, fact,
+  grey rule, icons. frame-corners-panel (+3): row, pick re-lays + survives a preset change, hidden with Corners.
+  Cannot pass on main (module absent). Mutations: R = smallest slice's radius -> 4 fail; frameFanCentreOf always needle
+  -> 2 fail. Full vitest 371 files, 5756 passed, 0 failed.
+- MATRIX frame-ui (+5 rows, 22 rows 0 FAIL): in the Corners section Needle active; Eye re-lays at once; Stone re-lays,
+  +4 stones (89 -> 93); one undo step (Undo -> Eye frame + active, Redo -> Stone); greyed on T9 with the reason, Needle
+  live. layout group 35 rows 0 FAIL.
+- SHOTS shots/seatE/t86_16e/: engine_check.png (T18 1.25, T1 1, T1 0.75 soldier/stretcher x 3 choices), whole_T18.png,
+  icons.png, live_eye.png / live_stone.png (the app: Corners section with the Fan centre row, stones on the canvas).

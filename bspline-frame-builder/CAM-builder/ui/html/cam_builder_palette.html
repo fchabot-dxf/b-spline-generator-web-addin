@@ -1532,7 +1532,8 @@
         // name — gated on which tab actually triggered it, since the two
         // payload shapes are genuinely different (Builder: fixed SETUP_KEYS
         // dots; Studio: per-component state + setups_built count). ──────
-        if (action === 'report' && window.camLoading) window.camLoading.end(); // item 70: the work is over
+        // item 70: the work is over -- unless the toolpaths still follow (the card stays through them, Fred 2026-10-07)
+        if (action === 'report' && window.camLoading && !payload.toolpaths_pending) window.camLoading.end();
         if (action === 'report') flushPageLogRing(); // item 101: the page's own trail, incl. lines lost mid-build
         if (action === 'report' && currentMode === 'bspline') {
           if (payload.msg) {

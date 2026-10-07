@@ -33,12 +33,12 @@ describe('every declared sequence lists its steps on a card', () => {
       }
     });
   }
-  it('CAM BUILD ends with APPLY as its own 5th step (H23 item 101)', async () => {
-    expect(CAM_STAGES.sequences.camBuild).toEqual(['camWcs', 'camCleanup', 'camModels', 'camSetups', 'camBuildApply']);
+  it('CAM BUILD runs APPLY as its own 5th step (H23 item 101), the toolpaths after it', async () => {
+    expect(CAM_STAGES.sequences.camBuild).toEqual(['camWcs', 'camCleanup', 'camModels', 'camSetups', 'camBuildApply', 'camTpgen']);
     beginLoadingSequence('camBuild');
     await holdLoadingStage('camBuildApply');
-    expect(currentLoadingStage().text).toBe('Waiting - Fusion: applying toolpaths, step 5 of 5');
-    expect(currentLoadingSteps().at(-1)).toEqual({ id: 'camBuildApply', label: 'Fusion: applying toolpaths', state: 'current' });
+    expect(currentLoadingStage().text).toBe('Waiting - Fusion: applying toolpaths, step 5 of 6');
+    expect(currentLoadingSteps().find((s) => s.id === 'camBuildApply')).toEqual({ id: 'camBuildApply', label: 'Fusion: applying toolpaths', state: 'current' });
   });
 });
 
@@ -47,7 +47,7 @@ describe('the list itself', () => {
     beginLoadingSequence('camBuild');
     await holdLoadingStage('camWcs');
     await holdLoadingStage('camModels');
-    expect(currentLoadingSteps().map((s) => s.state)).toEqual(['done', 'skipped', 'current', 'pending', 'pending']);
+    expect(currentLoadingSteps().map((s) => s.state)).toEqual(['done', 'skipped', 'current', 'pending', 'pending', 'pending']);
   });
   it('a pill shows no list, and no sequence = no list', async () => {
     await holdLoadingStage('bricks');
@@ -66,9 +66,9 @@ describe('the steps grow live', () => {
     await holdLoadingStage('camModels');
     expect(growLoadingSequence({ insertAfter: 'camSetups', step: { id: 'camTpgenPass2', label: 'Fusion: toolpaths, pass 2' } })).toBe(true);
     expect(currentLoadingSteps().map((s) => `${s.id}:${s.state}`)).toEqual(
-      ['camWcs:skipped', 'camCleanup:skipped', 'camModels:current', 'camSetups:pending', 'camTpgenPass2:pending', 'camBuildApply:pending']);
+      ['camWcs:skipped', 'camCleanup:skipped', 'camModels:current', 'camSetups:pending', 'camTpgenPass2:pending', 'camBuildApply:pending', 'camTpgen:pending']);
     await holdLoadingStage('camTpgenPass2');
-    expect(currentLoadingStage().text).toBe('Waiting - Fusion: toolpaths, pass 2, step 5 of 6');
+    expect(currentLoadingStage().text).toBe('Waiting - Fusion: toolpaths, pass 2, step 5 of 7');
     expect(currentLoadingSteps()[4]).toEqual({ id: 'camTpgenPass2', label: 'Fusion: toolpaths, pass 2', state: 'current' });
     expect(LOADING_SEQUENCES.camBuild.stages).not.toContain('camTpgenPass2');
     expect(LOADING_STAGES.camTpgenPass2).toBeTruthy();
@@ -83,3 +83,18 @@ describe('the steps grow live', () => {
     expect(growLoadingSequence({ steps: ['camWcs'] })).toBe(false);
   });
 });
+
+describe('the CAM card stays through the toolpaths (Fred, 2026-10-07)', () => {
+  it('the toolpath step ends BUILD and APPLY; each later pass grows the open card after the previous step', async () => {
+    expect(CAM_STAGES.sequences.camBuild.at(-1)).toBe('camTpgen');
+    expect(CAM_STAGES.sequences.camApply.at(-1)).toBe('camTpgen');
+    window.camLoading.begin('camBuild');
+    await window.camLoading.stage('camTpgen');
+    await window.camLoading.stage('camTpgenPass2', { insertAfter: 'camTpgen', step: { id: 'camTpgenPass2', label: 'Fusion: toolpaths, pass 2' } });
+    await window.camLoading.stage('camTpgenPass3', { insertAfter: 'camTpgenPass2', step: { id: 'camTpgenPass3', label: 'Fusion: toolpaths, pass 3' } });
+    expect(currentLoadingSteps().slice(-3).map((s) => `${s.label}:${s.state}`)).toEqual(
+      ['Fusion: generating the toolpaths:done', 'Fusion: toolpaths, pass 2:done', 'Fusion: toolpaths, pass 3:current']);
+    expect(currentLoadingStage().text).toBe('Waiting - Fusion: toolpaths, pass 3, step 8 of 8');
+  });
+});
+
