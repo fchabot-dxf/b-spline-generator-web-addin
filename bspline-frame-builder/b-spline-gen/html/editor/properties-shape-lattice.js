@@ -19,6 +19,7 @@
  * instead (T58's own "the box # Lattice loses its Boundary row").
  */
 import { el, on } from './dom.js';
+import { initAnchorGrey } from './lattice-anchor-grey.js';
 import {
     PATTERN_DEFAULTS, generatePattern, unprotectRails, nextSeed, recolorOwnedKind, rewidthOwnedKind, rewidthOwnedKinds,
     stampBoundaryRef, _findBoundaryElements, hasGeneratedSilhouette, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR,
@@ -1560,6 +1561,7 @@ export function initShapeLatticeProperties(editor) {
 
     syncFieldsFromPattern();
     if (toolBtn) on(toolBtn, 'click', syncFieldsFromPattern);
+    initAnchorGrey(editor, 'shapeLattice'); // item 74h
 
     on(generateBtn, 'click', async () => {
         if (fillSeedEl) fillSeedEl.value = nextSeed();

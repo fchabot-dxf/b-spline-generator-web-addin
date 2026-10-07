@@ -933,6 +933,21 @@ function _railRowsBySpacing(jMin, jMax, rails, gridSpacing) {
   return kept.sort((a, b) => a - b);
 }
 
+/** Item 74h (Fred: grey + explain, the 74b precedent; measured: on T1 at the default 1 in spacing Start / Center / End
+ *  all laid the same 9 rails -- the 8 in span is an even multiple of the step): per anchor, whether it would lay EXACTLY
+ *  the rails the current anchor lays, from the rail plan alone (`_railRowsBySpacing`, nothing laid). `railSpan` = the
+ *  canonical {jMin, jMax} the last Generate stored on the pattern; no span, or a rails mode other than 'spacing' (no
+ *  anchor there), = no facts. The current anchor itself is never "same". */
+export const RAIL_ANCHORS = Object.freeze(['start', 'center', 'end']);
+export function railAnchorsSameAsCurrent(railSpan, rails, gridSpacing) {
+  const r = { ...PATTERN_DEFAULTS.rails, ...(rails || {}) };
+  if (!railSpan || r.mode !== 'spacing') return {};
+  const rowsOf = (anchor) => JSON.stringify(_railRowsBySpacing(railSpan.jMin, railSpan.jMax, { ...r, anchor }, gridSpacing)
+    .map((j) => Math.round(j * 1e6) / 1e6));
+  const current = rowsOf(r.anchor);
+  return Object.fromEntries(RAIL_ANCHORS.map((a) => [a, a !== r.anchor && rowsOf(a) === current]));
+}
+
 /** Per-column independent seed derivation — mirrors core/terrain.js's own
  *  XOR-derived sub-seeds (noiseFine/noiseWarp/noiseCoarse,
  *  terrain.js:37-39; lcgPoints(seed ^ 0xdeadbeef, ...), terrain.js:192),
