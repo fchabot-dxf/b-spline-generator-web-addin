@@ -23946,3 +23946,18 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - SHOTS shots/seatE/t86_29/T1_before_after.png, T18_before_after.png (before / frameSuppression 0.3 / surround
   single_soldier / soldier_stretcher; windows placed where the stack fits). NOTE for the UI: at the shared topBias 0.8 the
   frame loses its whole top bar first (the wall rule, by design) -- reads as "top missing" more than "crumbled".
+## T86 item 16b-REOPENED -- re-measured: the wall no longer drops bricks; a coverage matrix pins it (seat E / 61, 2026-10-07)
+- MEASURED on main 7f862c5, every template x 0.75 / 1 / 1.25 / 1.5 in, 7x9, single soldier, seed 1 (76 lays):
+  - the wall covers its own region (interiorOutline) at >= 99.0 % of the bond's ideal L*H/((L+J)(H+J)) in all 76 --
+    the v2 sheet's "sparse field / dropped courses" is gone; the REGION shrinks with size because the soldier band's
+    depth is the brick length (T1 30.5 -> 13.6 sq in from 0.75 to 1.5 in);
+  - bare board (in no brick, > 1 joint from every brick) <= 0.18 sq in per lay (T15 1.5 the worst);
+  - T9 at 1.5 in: NO wall interior -- the single band covers the board (0.15 sq in bare). fitBandStack leaves a single
+    band as requested (the outermost band is never reduced); the 1/3 share applied to single bands was measured to
+    narrow 201 of 456 lays (contour-bands.js narrowSingleBand header). Not built: needs a decision (reported).
+- FOUND (not 16b): band-internal SEAM gaps wider than 2 joints in 53 / 76 lays (worst 8.5 joints ~ 0.29 in, T14 1.5;
+  areas <= 0.26 sq in): where band fronts meet on the centre line (x 3.51: T14 / T16 / T7 / T11) and at the fan-to-
+  straight junctions of T18 / T19's base (5.72, 7.56). Item 12 / 16c territory (medial line, joints). Reported.
+- TEST tests/bricks-wall-coverage-matrix.test.js (19 rows, ~8 s): coverage >= 98 % of ideal where the region >= 1 sq in,
+  T9 1.5 declared no-room (0 wall), bare <= 0.3 sq in (0.04 in grid). Mutation (the fill drops every 3rd brick): 19/19 fail.
+- Shots shots/seatE/t86_16b/edge_cases.png (T9 1.5, T15 1.5, T18 1.25, T1 1.25).
