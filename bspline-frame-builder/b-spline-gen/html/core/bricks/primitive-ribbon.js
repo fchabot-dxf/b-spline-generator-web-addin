@@ -320,11 +320,30 @@ function mitreJointSide(raw, joint, keepKey, half, onConvexArc = false) {
  *  stands a joint off each run (buildPatch). Needs the joint's own two tangents at `q` (`tPrev`, `tCur`). */
 function fanJointSide(raw, joint, keepKey, half) {
   if (!raw.tPrev || !raw.tCur) return joint;
-  const cosAlpha = -(raw.tPrev.x * raw.tCur.x + raw.tPrev.y * raw.tCur.y);
+  return { ...joint, q: fanRunCorner(joint.q, raw.tPrev, raw.tCur, keepKey === 'keepRefAsEnd' ? 'prev' : 'cur', half) };
+}
+/** T86 item 21b's move, declared ONCE (T86 item 16d): where a run beside a fan's corner ends -- its inner corner `q`
+ *  moved back along its own line by j / (2 sin(alpha / 2)) (capped at 2 j). The run's end (fanJointSide) AND the fan's
+ *  own boundary next to it (buildPatch) read this, so the fan lays from the run's RESOLVED end: the seam between the
+ *  fan and the run is one joint. Before, the fan was laid from the unmoved `q` and every move widened that seam by
+ *  the move (MEASURED: T18 7x9 1.25 in, 3 joints = 1 + the 2-joint move; 227 seams over 1.5 joints in 47 of 76 lays).
+ *  `side` 'prev' = the run ending at the corner (moved against tPrev), 'cur' = the run starting there (along tCur). */
+function fanRunCorner(q, tPrev, tCur, side, half) {
+  const cosAlpha = -(tPrev.x * tCur.x + tPrev.y * tCur.y);
   const sinHalf = Math.sqrt(Math.max((1 - cosAlpha) / 2, 1e-6));
   const back = Math.min(half / sinHalf, 4 * half);
-  const t = keepKey === 'keepRefAsEnd' ? { x: -raw.tPrev.x, y: -raw.tPrev.y } : raw.tCur; // away from q, into the run
-  return { ...joint, q: { x: joint.q.x + t.x * back, y: joint.q.y + t.y * back } };
+  const t = side === 'prev' ? { x: -tPrev.x, y: -tPrev.y } : tCur; // away from q, into the run
+  return { x: q.x + t.x * back, y: q.y + t.y * back };
+}
+/** Where each run beside a fan's corner ends (fanRunCorner), or `q` itself for a CONVEX arc run (item 35: it keeps the
+ *  fan's own corner) -- the same rule mitreJointSide applies to the runs. */
+function fanRunEnds(primitives, prevIdx, curIdx, q, nominalJoint) {
+  const tPrev = tangentAt(primitives[prevIdx], q), tCur = tangentAt(primitives[curIdx], q), half = nominalJoint / 2;
+  const convex = (prim) => prim.type === 'arc' && prim.radialSign > 0;
+  return {
+    qPrev: convex(primitives[prevIdx]) ? q : fanRunCorner(q, tPrev, tCur, 'prev', half),
+    qCur: convex(primitives[curIdx]) ? q : fanRunCorner(q, tPrev, tCur, 'cur', half),
+  };
 }
 
 /** Resolve a `jointBefore` entry to the object a specific primitive (`idx`) should actually clip
@@ -771,7 +790,9 @@ function patchSlicePolygon(boundary, cum, sA, sB, q) {
  *  floor, 1.2x ceiling as everywhere else) -- a piece near the shared apex `q` is a genuine wedge, and
  *  a short one can still clip to a real sliver regardless of how evenly its own along-boundary length
  *  was planned; this is what "apex fan slivers merged" means, not a second, different defect. */
-function buildPatch(prevPrim, curPrim, chain, d0, q, pitch, nominalJoint, width, sequence, forcedFStart) {
+function buildPatch(prevPrim, curPrim, chain, d0, q, pitch, nominalJoint, width, sequence, forcedFStart, runEnds = null) {
+  // T86 item 16d: the runs' RESOLVED inner corners (fanRunEnds); absent = the corner `q` itself (as before)
+  const qPrev = (runEnds && runEnds.qPrev) || q, qCur = (runEnds && runEnds.qCur) || q;
   // T86 item 9 (the BEVEL sub-case: a dropped LINE between two NON-parallel sides, where the
   // direct skip-intersection IS defined -- unlike a NOTCH, see `buildNotchJoint`'s own header):
   // the simpler of the two dropped-primitive shapes -- no curve to tessellate, since a straight
@@ -798,9 +819,9 @@ function buildPatch(prevPrim, curPrim, chain, d0, q, pitch, nominalJoint, width,
   });
 
   const boundary = [
-    ...flatStripToTangent(prevPrim, d0, q, A),
+    ...flatStripToTangent(prevPrim, d0, qPrev, A),
     ...middle,
-    ...flatStripToTangent(curPrim, d0, q, B).reverse(),
+    ...flatStripToTangent(curPrim, d0, qCur, B).reverse(),
   ];
   const cum = cumulativeLengths(boundary);
   const totalLen = cum[cum.length - 1];
@@ -818,8 +839,11 @@ function buildPatch(prevPrim, curPrim, chain, d0, q, pitch, nominalJoint, width,
   // SAME apex `q` can still clip to a real sliver even with an evenly-planned along-boundary length
   // (the apex end of a wedge is inherently narrow) -- the SAME `mergeSlivers` `linePieces`/
   // `voussoirPieces` already use, now over LENGTH-based spans instead of boundary-INDEX ones.
+  // T86 item 16d: the first / last dividing line is the run's own end (its d0 end to its resolved corner), so the slice
+  // beside it is clipped one joint off that end, parallel to it, all the way in; the slices between still meet at `q`
+  const divider = (sv) => [pointAtLength(boundary, cum, sv), sv <= 1e-9 ? qPrev : sv >= totalLen - 1e-9 ? qCur : q];
   return jointedSlices(spans, totalLen, jointWidth, nominalJoint, nominalArea,
-    (sA, sB) => patchSlicePolygon(boundary, cum, sA, sB, q), (sv) => [pointAtLength(boundary, cum, sv), q]);
+    (sA, sB) => patchSlicePolygon(boundary, cum, sA, sB, q), divider);
 }
 
 const CLIP_EPS_IN = 0.02; // a small safety margin on the piece touching a corner's own extreme edge
@@ -1001,7 +1025,7 @@ export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyl
       const at = ends.slice(1).map((idx, i) => jointPointAt(primitives, ends[i], idx, d0));
       if (at.every(Boolean)) {
         const chain = chainIdx.map((idx, i) => ({ prim: primitives[idx], from: at[i], to: at[i + 1] }));
-        const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], chain, d0, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
+        const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], chain, d0, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart, fanRunEnds(primitives, prevIdx, curIdx, q, nominalJoint));
         return { point: q, q, dirX: 0, dirY: 0, keepRefAsStart: q, keepRefAsEnd: q, trustO: false, kiteFan, tPrev: tangentAt(primitives[prevIdx], q), tCur: tangentAt(primitives[curIdx], q) };
       }
     }
@@ -1051,7 +1075,7 @@ export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyl
     const at = ends.slice(1).map((idx, i) => jointPointAt(primitives, ends[i], idx, d0));
     if (!at.every(Boolean)) return { ...joint, trustO }; // defensive: no patch rather than a bad one
     const chain = chainIdx.map((idx, i) => ({ prim: primitives[idx], from: at[i], to: at[i + 1] }));
-    const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], chain, d0, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart);
+    const kiteFan = buildPatch(primitives[prevIdx], primitives[curIdx], chain, d0, q, pitch, nominalJoint, d1 - d0, sequence, forcedFStart, fanRunEnds(primitives, prevIdx, curIdx, q, nominalJoint));
     return { ...joint, trustO, kiteFan, tPrev: tangentAt(primitives[prevIdx], q), tCur: tangentAt(primitives[curIdx], q) };
   });
   return { liveIndices, joints };
