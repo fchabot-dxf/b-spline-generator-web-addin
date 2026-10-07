@@ -882,6 +882,11 @@ export function openSegmentStyleBar(editor, index, screenX, screenY) {
     return bar;
 }
 
+/** Item 74i (Fred: grey + explain; seat D measured: with "Offset from frame" on, the Size / Shape / Segments blocks are
+ *  inert and dim -- F21 -- but nothing said why, and an inert control shows no tooltip): the line shown under the toggle
+ *  while it is on. */
+export const SHAPE_FOLLOWS_FRAME_NOTE = 'The shape follows the frame while Offset from frame is on';
+
 export function initShapeLatticeProperties(editor) {
     const toolBtn = el('toolShapeLattice');
     const generateBtn = el('shapeLatticeGenerate');
@@ -989,6 +994,8 @@ export function initShapeLatticeProperties(editor) {
     const fromFrameEl = el('shapeLatticeContourFromFrame');
     const fromFrameDistanceEl = el('shapeLatticeContourFromFrameDistance');
     const fromFrameHintEl = el('shapeLatticeContourFromFrameHint');
+    const followsFrameNoteEl = el('shapeLatticeFollowsFrameNote');
+    if (followsFrameNoteEl) followsFrameNoteEl.textContent = SHAPE_FOLLOWS_FRAME_NOTE;
     const shapeBlockEl = el('shapeLatticeShapeBlock');
     const segmentsBlockEl = el('shapeLatticeSegmentsBlock');
     const boundaryFieldsEl = el('shapeLatticeBoundaryFields'); // the Boundary size only sizes the PRESET shape
@@ -1518,6 +1525,7 @@ export function initShapeLatticeProperties(editor) {
         if (fromFrameEl) { fromFrameEl.checked = ff.on; fromFrameEl.disabled = !framed && !ff.on; }
         if (fromFrameDistanceEl) { fromFrameDistanceEl.value = ff.distance; fromFrameDistanceEl.disabled = !ff.on; }
         if (fromFrameHintEl) fromFrameHintEl.style.display = framed ? 'none' : 'block';
+        if (followsFrameNoteEl) followsFrameNoteEl.style.display = ff.on ? 'block' : 'none'; // item 74i: the blocks below go inert
         for (const b of [shapeBlockEl, segmentsBlockEl, boundaryFieldsEl]) {
             if (!b) continue;
             b.inert = ff.on;
