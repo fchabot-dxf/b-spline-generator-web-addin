@@ -24268,3 +24268,21 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   T18 1.25, T1 1, T2 1 (bricksContourBands counted through a vi.mock wrapper); the plan's innerPath / bandsReduced equal
   the full lay's on every template x single / three band at 1.25 in. On main's engine.js: 4 of 5 fail (2 full lays).
   Full vitest 374 files, 5842 passed, 0 failed; full seam sweep 19/19.
+
+### 2026-10-07 (seat A): brick matrix -- a cancelled palette DOCUMENT gets one fresh navigate, not a reload
+- Seat D's parallel strokes run r8: "the app never booted (core/state.js failed to load ...; failed requests:
+  bspline_gen_palette.html: net::ERR_ABORTED)". The palette document itself, not a module.
+- Boot-only stress (the matrix's own serve.py + Chrome pair, 29 boots: 10 at 1.5 s + 19 at 1 s stagger) did not
+  reproduce it (all booted, 0 Document failures). So I reproduced it deterministically instead: Fetch.failRequest
+  'Aborted' on the first palette request gives D's signature exactly (navigate errorText net::ERR_ABORTED, location
+  about:blank, the boot probe import-failed).
+- MEASURED cure: Page.reload stays on about:blank and never boots (it reloads the blank page); a fresh Page.navigate
+  to the palette boots. So ERR_ABORTED is NOT added to BOOT_RELOAD_ERRORS (the reload would not cure it).
+- Declared: tools/brick-matrix/boot.mjs -- BOOT_RELOAD_ERRORS (moved from run.mjs, unchanged), BOOT_RENAVIGATE_ERRORS
+  ['net::ERR_ABORTED'] for the palette document only, bootRetry(failedRequests) -> 'navigate' | 'reload' | null.
+  run.mjs keeps the palette URL and takes one retry from bootRetry. Unchanged on purpose: a module ERR_ABORTED is not
+  retried, and the old reload list still reloads (both unmeasured otherwise).
+- Live: with a scratch injection of the abort (not committed), run.mjs --group password logged "the app never booted
+  (bspline_gen_palette.html: net::ERR_ABORTED) -- one navigate", booted, 4 rows 0 FAIL 0 page errors.
+- Tests: tests/brick-matrix-boot.test.js 5/5 (fails 1/5 with the document case mutated to 'reload');
+  brick-matrix-serve.test.js now reads the list from boot.mjs and pins run.mjs's retry wiring.
