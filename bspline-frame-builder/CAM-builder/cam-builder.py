@@ -1178,7 +1178,8 @@ def _post_cam_stage(stage_id, grow=None):
         ps = _palette_stages()
         if _cam_stage_ids_cache is None:
             _cam_stage_ids_cache = ps.declared_stage_ids(CAM_STAGES_FILE)
-        if stage_id not in _cam_stage_ids_cache:
+        grown = ((grow or {}).get('step') or {}) if isinstance((grow or {}).get('step'), dict) else {}
+        if stage_id not in _cam_stage_ids_cache and grown.get('id') != stage_id:
             _log(f'[CAM STAGE] undeclared stage id {stage_id!r} -- not sent (ui/html/cam-stages.js)')
             return
         palette = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
@@ -1376,6 +1377,8 @@ def _run_apply_after_build():
 def _send_build_report(report):
     """The build's report to the palette, then the actions that waited for it, in order -- except an APPLY when the
     build has just applied (it would apply the templates a second time: doubled operations)."""
+    if (report.get('apply') or {}).get('ok'):
+        report['toolpaths_pending'] = True  # the card stays open through the toolpaths (_DeferredTPGenHandler)
     _log("CKPT DOGEN 5: sending build-phase report to HTML")
     _send_to_html('report', report)
     _log("CKPT DOGEN 6: report sent")
@@ -1472,7 +1475,7 @@ def _do_sync_table_attach():
 def _do_apply_toolpaths():
     """The APPLY TOOLPATHS button: apply the templates + start toolpath generation (_apply_toolpaths), then report."""
     ok, msg = _apply_toolpaths()
-    _send_to_html('report', {'ok': ok, 'msg': msg})
+    _send_to_html('report', {'ok': ok, 'msg': msg, **({'toolpaths_pending': True} if ok else {})})
 
 
 def _apply_toolpaths(post_stages=True):
@@ -1582,7 +1585,10 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
             cam = app.activeDocument.products.itemByProductType('CAMProductType')
             if not cam:
                 _log("DEFERRED TPGEN: no CAM product", "WARNING")
+                _send_to_html('report', {'ok': False, 'msg': 'No CAM product -- no toolpaths generated.'})  # closes the card
                 return
+            # Fred (2026-10-07): the BUILD / APPLY card stays open through the toolpaths and lists each later pass
+            _post_cam_stage('camTpgen')
 
             # WARMUP: Fusion's CAM calculator needs to be "awake" before the
             # first generateToolpath call. After fresh MM/Setup creation it
@@ -1785,7 +1791,7 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
                     adsk.doEvents()
                     time.sleep(0.2)
                 return True
-            _tg.generate_setups(cam, wait=_await, log=_log)
+            _tg.generate_setups(cam, wait=_await, log=_log, on_pass=_post_tpgen_pass)
 
             if f is not None:
                 bulk_timeout = 1800.0
@@ -2133,6 +2139,24 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
                 pass
         except Exception:
             _log_error("deferred TPGen\n" + traceback.format_exc())
+            try:
+                _send_to_html('report', {'ok': False, 'msg': 'Toolpath generation raised -- see log.'})  # closes the card
+            except Exception:
+                pass
+
+
+_tpgen_last_step = ['camTpgen']
+
+
+def _post_tpgen_pass(p):
+    """Fred (2026-10-07: the card's steps grow live): a later toolpath pass (item 95) joins the open card as its own
+    step, right after the previous one."""
+    if p <= 2:
+        _tpgen_last_step[0] = 'camTpgen'
+    step_id = f'camTpgenPass{p}'
+    _post_cam_stage(step_id, grow={'insertAfter': _tpgen_last_step[0],
+                                   'step': {'id': step_id, 'label': f'Fusion: toolpaths, pass {p}'}})
+    _tpgen_last_step[0] = step_id
 
 
 def _register_refresh_event():
