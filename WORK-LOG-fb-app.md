@@ -15262,3 +15262,30 @@ WallPattern = {
 - **Live after** (both tabs): by length / stepper / typed count each +1 step, and Undo restores drive and count.
 - **Tests** (properties-stripe): one push per change and none per keystroke; the part takes and restores, panel included. Both fail before.
 - **Matrix 'undo':** "Stripe count (Brick tab / Artwork tab) is ONE undo step, Undo puts it back". This tree 9/0. The older tree: FAIL (0 steps, undo leaves 6 / 7).
+
+## seat D (bb) turn 65: the "frame-gen" gate flake = frame-no-hooked-miters' template_8 6x9 sweep, load-proofed (branch frame-gen-load-proof, off main a71019e)
+- **Measured first:**
+  - tests/frame-gen.test.js itself: alone, all 24 cases take 9-333 ms (suite timeout 30 s); no timers, no deferred work, a seeded generator.
+  - 12 parallel runs of frame-gen + frame-no-hooked-miters + bricks-wall-coverage-matrix: frame-gen failed 0 of 12.
+  - frame-no-hooked-miters timed out in 9 of 12 (13 cases, 30-46 s), all but one in template_8 6x9; the coverage matrix in 2 of 12.
+  - My own 74n gate run failed the same way (template_8 6x9 seeds 17-18). The gate summary's "frame-gen" is this file.
+- **Why it is slow:**
+  - template_8 6x9 has a pre-existing gap (~99.5% of draws fail the plain piece-length check), so nearly every seed runs the full 500-draw retry loop, and the sweep ran it TWICE (realIsValid, then preExistingIsValid).
+  - Profiled one loop: drawing the 500 candidates (generateFrameSeeds) is 2.2 s, checking them 0.8 s.
+  - Memoizing the checks alone gave nothing (median 1.6-1.7 s a 2-seed chunk, unchanged): the cost is the draws.
+- **Fix (test only, nothing weakened):**
+  - The shipped generateValidFrameSeeds runs ONCE and its draws are recorded through the isValid callback; the last draw (returned unchecked by the loop) is checked through the same wrapper, so the record is the complete sequence.
+  - When the real loop rejects every draw, that record IS what the pre-only loop would walk (same seeded draws), so "could the pre-existing chain pass" = any recorded draw passes it.
+  - Both checks are memoized per draw: realIsValid is preExistingIsValid's 3 checks in the same order plus the margin check, so real = pre && realIsValid.
+  - template_8 6x9 is chunked 1 seed a case (was 2); the same 50 seeds.
+- **Proof:**
+  - Alone: template_8 6x9 chunks went from median 1.6-1.7 s / max 6-9 s to median 1.04 s / max 3.2 s at 2 seeds; 1 seed a case halves that.
+  - Mutation (the margin check rejects every draw): the old and the new sweep flag the same template/board cases.
+  - 12 parallel stress runs: 12/12 green, slowest sweep case 2.5 s (the machine was evidently lighter than in the first stress, so the controlled number is the alone timing).
+- **74o, recorded for later (Fred chose KEEP the slivers after the 74n edge fix; branch wall-edge-floor-74o deleted):**
+  - The mechanism that worked: geometry.js `clipCellToBoard(poly, outline, ref)` = clipPolygonToBoard, then drop the piece (return []) if its area < MIN_PIECE_FRACTION x the UNCUT cell's area (the pattern's own unit: a brick, a header end, a tile, a dot).
+  - It was wired into bond.js:329, basketweave.js:59, herringbone.js:71, and the sheet-patterns / tiles pushCell helpers. Fieldstone keeps its tier floor; coursed rubble already floored.
+  - MIN_PIECE_FRACTION's value had to live in geometry.js, re-exported by library.js: library.js imports layouts/tiles.js, so tiles importing library.js is a load cycle.
+  - Measured on main bc49c4a: 1,053 of 1,197 lays (19 templates x 21 patterns x 3 sizes) had outline-cut pieces under that floor, 18,620 pieces.
+  - Dropping them broke 39 pinned tests: the waist fill (H23 74/76), wall-meets-band (T86 16b), the coverage matrix and others.
+  - If Fred asks again, the option that keeps every coverage pin is MERGE a sub-floor piece into its course / tile neighbour instead of dropping it.

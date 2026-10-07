@@ -148,6 +148,32 @@ describe('H23 item 39: T7\'s own eave -- the captured case item 38 found, confir
   });
 });
 
+// Load-proofing (seat D, 2026-10-07): the sweep below asked two questions per rejected seed with two retry loops --
+// realIsValid, then preExistingIsValid -- and both loops walk the SAME draws (generateFrameSeeds is seeded: seed +
+// attempt * GENERATE_RETRY_SALT). Now the shipped loop runs once and records its draws; the pre-existing question is
+// answered on that record. realIsValid is preExistingIsValid's three checks, in the same order, then the margin check,
+// so real(s) === pre(s) && realIsValid(s): one evaluation per draw, memoized per test case, both verdicts unchanged.
+// MEASURED before: template_8 6x9 draws cost 2.2 s of generation + 0.8 s of checks per 500 (one rejected seed's loop),
+// and the sweep ran that twice; 12 parallel runs of 3 heavy files timed it out (30-46 s a case) in 9 of 12.
+function memoizedChecks(tpl, rec, b, region, t) {
+  const memo = new Map();
+  const at = (s) => {
+    const k = JSON.stringify(s);
+    let m = memo.get(k);
+    if (!m) { m = { pre: preExistingIsValid(tpl, rec, b, region, t, s) }; memo.set(k, m); }
+    return m;
+  };
+  return {
+    pre: (s) => at(s).pre,
+    real: (s) => {
+      const m = at(s);
+      if (!m.pre) return false;
+      if (m.real === undefined) m.real = realIsValid(tpl, rec, b, region, t, s);
+      return m.real;
+    },
+  };
+}
+
 describe('H23 item 39: generateFrame()\'s own real isValid logic, swept over every template', () => {
   // 50, not T10's own 500 (tests/frame-template-10.test.js): this sweep runs the retry loop TWICE per seed
   // that fails (once real, once pre-existing-only, to tell a regression apart from a pre-existing gap --
@@ -164,9 +190,10 @@ describe('H23 item 39: generateFrame()\'s own real isValid logic, swept over eve
   // boards x 50 seeds: template_8 took 47 s in a full run -- its pre-existing gap pays the double retry on every
   // seed). The same 50 seeds per template/board, the same check; each piece fits the declared heavy budget.
   const SEED_CHUNK = 10;
-  // MEASURED: template_8 at 6x9 is ~1 s a seed (its pre-existing gap: nearly every seed runs both retry loops in
-  // full), 10 s a chunk of 10 under load -- its own smaller chunk.
-  const SEED_CHUNK_FOR = { 'template_8 6x9': 2 };
+  // MEASURED: template_8 at 6x9 is ~1 s a seed (its pre-existing gap: nearly every seed runs the retry loop in full,
+  // all 500 draws) -- its own smaller chunk. Load-proofing (seat D): one seed a case (was 2: up to 3.2 s alone after
+  // the single-loop change above, 30-46 s a case at 6-8x load before it); the same 50 seeds.
+  const SEED_CHUNK_FOR = { 'template_8 6x9': 1 };
   const CASES = FRAME_DEFS.templates.flatMap((tpl) => BOARDS.flatMap(([W, H]) => {
     const n = SEED_CHUNK_FOR[`${tpl.id} ${W}x${H}`] || SEED_CHUNK;
     return Array.from({ length: N_SEEDS / n }, (_, k) => [`${tpl.id} ${W}x${H} seeds ${k * n + 1}-${(k + 1) * n}`, tpl.id, W, H, k * n + 1, n]);
@@ -179,13 +206,15 @@ describe('H23 item 39: generateFrame()\'s own real isValid logic, swept over eve
     const region = frameCutProfile(FRAME_DEFS, baseRec, b).region;
     const t = frameParam(FRAME_DEFS, baseRec, 'frame_thickness');
     let nPreExistingGaps = 0;
+    const checks = memoizedChecks(tpl, baseRec, b, region, t); // the same two verdicts, one evaluation a candidate
     for (let seed = first; seed < first + n; seed++) {
-      const isValid = (s) => realIsValid(tpl, baseRec, b, region, t, s);
+      const seen = []; // every candidate the shipped retry loop draws, in order
+      const isValid = (s) => { seen.push(s); return checks.real(s); };
       const seeds = generateValidFrameSeeds(tpl, region, seed, t, isValid);
-      if (isValid(seeds)) continue;
-      const preOnly = (s) => preExistingIsValid(tpl, baseRec, b, region, t, s);
-      const preSeeds = generateValidFrameSeeds(tpl, region, seed, t, preOnly);
-      if (!preOnly(preSeeds)) { nPreExistingGaps++; continue; } // pre-existing, out of this item's scope
+      if (isValid(seeds)) continue; // (the loop returns its last draw unchecked: this checks it, so `seen` is complete)
+      // the real loop rejected every draw, so `seen` IS the sequence the pre-only loop would walk: the pre-existing
+      // chain could pass iff one of them passes it (no second generation pass -- it was 2/3 of this sweep's time)
+      if (!seen.some(checks.pre)) { nPreExistingGaps++; continue; } // pre-existing, out of this item's scope
       expect.fail(`${tplId} ${W}x${H} seed ${seed}: a seed the pre-existing chain could clear is still ` +
         'rejected after the real (margin-included) retry loop -- a genuine item-39 regression');
     }
