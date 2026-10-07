@@ -23901,3 +23901,7 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   Manufacture activates'. The T11 check (re-Send, old BUILD from Design, dump, activate Manufacture, dump) never ran:
   Fusion 40804 exited right after that re-Send finished (20:04:08; nothing in the CAM log after 19:59; ~18 GB private,
   not memory). Observation only: the stamp log said 'Preserving 7x9 border lines' on the 9x12 T11 board.
+- CORRECTION (item 100, same evening): the 20:04 Fusion exit was not a crash and not unexplained -- Fusion was out of
+  memory (18.6 GB private, not responding, 1.4 GB of the PC's 32 GB RAM free with gate Chromes holding ~9 GB) and the
+  advisor ended it by PID. New ceiling: stop and ask for a restart at 12 GB private, checked before each cycle (the
+  earlier 40 GB ceiling was wrong for a 32 GB PC; this run crossed 12 GB from cycle 1 on).
