@@ -3261,6 +3261,26 @@
                 <label class="cad-label">Level (in)</label>
                 <input type="number" id="brickLevel_frame" value="0" min="-0.25" max="0.25" step="0.015625" style="width:100%;" title="+ sits proud of the other bricks, - sits recessed (3D only)">
               </div>
+
+              <!-- item 9: the frame crumbles by the wall's rule (General's Clumping + Crumble top bias), by its own amount;
+                   main/brick-panel.js setFrameCrumble. Off = the engine is not asked. -->
+              <label class="cad-label" style="display:flex; flex-direction:row; align-items:center; gap:6px; margin-bottom:4px;">
+                <input type="checkbox" id="brickSuppressFrame" style="width:auto; margin:0;"> Crumble frame too
+              </label>
+              <div class="cad-slider-row" id="brickFrameSuppressionRow" style="margin-bottom:12px;">
+                <input type="range" id="brickFrameSuppressionSlider" class="cad-slider" min="0" max="1" step="0.01" value="0.3" title="How much of the frame crumbles away">
+                <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickFrameSuppression" value="0.3" min="0" max="1" step="0.01"></div>
+              </div>
+
+              <!-- item 9: the inset window's brick surround, part of the Frame element (main/brick-panel.js
+                   renderWindowSurround: None + the frame band presets, then the engine's SURROUND_CORNERS) -->
+              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Window surround</label>
+              <div id="brickSurroundHint" style="font-size:11px; opacity:0.7; margin-bottom:12px;">Turn on the inset window in the Frame panel</div>
+              <div id="brickSurroundRows">
+                <div id="brickSurroundPresetList" style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;"></div>
+                <label id="brickSurroundCornerLabel" class="cad-label" style="font-size:10px; margin-bottom:4px;">Corners</label>
+                <div id="brickSurroundCornerList" style="display:flex; gap:4px; margin-bottom:12px; flex-wrap:wrap;"></div>
+              </div>
             </div>
 
             <!-- F35 item 16 (Fred: "I'd rather they all have the same size"): ONE global brick
@@ -3324,6 +3344,13 @@
             <div class="cad-slider-row" style="margin-bottom:10px;">
               <input type="range" id="brickClumpingSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.3">
               <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickClumping" value="0.3"></div>
+            </div>
+
+            <!-- item 9 (Fred: General only): where the crumble starts, for the wall AND the frame crumble -->
+            <label class="cad-label" for="brickTopBias" title="Applies to the wall and frame crumble: 1 = the top crumbles first, 0 = anywhere">Crumble top bias</label>
+            <div class="cad-slider-row" style="margin-bottom:10px;">
+              <input type="range" id="brickTopBiasSlider" class="cad-slider" min="0" max="1" step="0.05" value="0.8" title="Applies to the wall and frame crumble: 1 = the top crumbles first, 0 = anywhere">
+              <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickTopBias" value="0.8" min="0" max="1" step="0.05" title="Applies to the wall and frame crumble: 1 = the top crumbles first, 0 = anywhere"></div>
             </div>
 
             <label class="cad-label">Seed</label>
