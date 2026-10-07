@@ -1,0 +1,90 @@
+{
+ "source": "bspline-frame-builder/scratch/real_send_t7_7x9_full.json -> params.editorSvg data-editor-layers[0].pattern.shape",
+ "region": {
+  "x": 0,
+  "y": 0,
+  "w": 7,
+  "h": 9
+ },
+ "mainOutlineFnv": "1yd4eik",
+ "shape": {
+  "source": "generated",
+  "preset": "hourglass",
+  "seed": 42,
+  "params": {},
+  "segments": [
+   {
+    "style": "straight",
+    "bulge": 0,
+    "dir": "out",
+    "cornerRadius": 0
+   },
+   {
+    "style": "curve",
+    "bulge": 0.4142135623730953,
+    "dir": "out",
+    "cornerRadius": 0
+   },
+   {
+    "style": "curve",
+    "bulge": 1,
+    "dir": "in",
+    "cornerRadius": 0
+   },
+   {
+    "style": "curve",
+    "bulge": 0.41421356237309487,
+    "dir": "out",
+    "cornerRadius": 0
+   },
+   {
+    "style": "straight",
+    "bulge": 0,
+    "dir": "out",
+    "cornerRadius": 0
+   },
+   {
+    "style": "straight",
+    "bulge": 0,
+    "dir": "out",
+    "cornerRadius": 0
+   },
+   {
+    "style": "straight",
+    "bulge": 0,
+    "dir": "out",
+    "cornerRadius": 0
+   },
+   {
+    "style": "curve",
+    "bulge": 0.41421356237309487,
+    "dir": "out",
+    "cornerRadius": 0
+   },
+   {
+    "style": "curve",
+    "bulge": 1,
+    "dir": "in",
+    "cornerRadius": 0
+   },
+   {
+    "style": "curve",
+    "bulge": 0.4142135623730953,
+    "dir": "out",
+    "cornerRadius": 0
+   },
+   {
+    "style": "straight",
+    "bulge": 0,
+    "dir": "out",
+    "cornerRadius": 0
+   },
+   {
+    "style": "straight",
+    "bulge": 0,
+    "dir": "out",
+    "cornerRadius": 0
+   }
+  ]
+ }
+}
