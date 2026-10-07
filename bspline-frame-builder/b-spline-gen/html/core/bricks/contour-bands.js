@@ -659,7 +659,9 @@ export function bricksContourBands(primitives, bands, opts) {
         seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
         rowSequence, forcedFStart, closed, row,
       );
-      bricks.push(...pieces);
+      // T86 item 16d: a corner's fan slice is declared as such (`fan: true`, additive; the drawing never reads it) -- the
+      // seam sweep (tests/bricks-seam-sweep.test.js) measures the fan-to-run joints by it
+      bricks.push(...pieces.map((piece, i) => (sources[i] === FAN ? { ...piece, fan: true } : piece)));
       for (const src of sources) origins.push({ src });
       nextId = afterId;
     }
