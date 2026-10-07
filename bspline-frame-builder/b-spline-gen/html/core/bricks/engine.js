@@ -16,6 +16,7 @@ import { pointInPolygon } from './geometry.js';
 import { brickTopHeight } from './height-profile.js';
 import { suppressBricks } from './suppression.js';
 import { laySurround } from './inset-surround.js';
+import { bareTips } from './tip-fill.js';
 import { scaledSet } from './library.js';
 
 /**
@@ -69,6 +70,7 @@ export function generateBricks(input) {
   let interiorOutline = boardOutline;
   let frameBricks = [];
   let bandsReduced; // T86 item 28: contour-bands' fit-rule note, when the requested stack did not fit
+  let frameLay = null; // T86 item 16f: how the frame was laid, to lay it again into the wall's bare tips
   // T86 item 14 (Fred: a Wall with no Frame bands was filling `boardOutline` -- in the live app,
   // ALWAYS a plain bounding rectangle (editor-brick-tool.js's own `boardPolygon`), never the
   // template's own true (often non-rectangular: hourglass waists, tapered sides, arched tops)
@@ -95,12 +97,7 @@ export function generateBricks(input) {
     frameBricks = res.bricks;
     interiorOutline = res.innerPath;
     bandsReduced = res.bandsReduced;
-    // T86 item 29: the frame crumbles by the SAME rule as the wall (whole pieces, top-weighted, exact count, clumping);
-    // off (absent / false / 0) = no call, the lay byte-identical
-    if (input.suppressFrame && input.frameSuppression > 0) {
-      frameBricks = suppressBricks(frameBricks, { suppression: input.frameSuppression, topBias: input.topBias ?? 0.8, clumping: input.clumping ?? 0.3 },
-        seed, scaledSet(frameSet, scale).brickHeightIn);
-    }
+    frameLay = { frameSet, bands: frame.bands || [] };
   }
   // T86 item 29: the inset window's surround (its own field); the wall is cut around it (its outer rect, one joint off)
   const surround = input.insetSurround ? laySurround(input.insetSurround, { set: (frame && frame.set) || set, seed, scale }) : null;
@@ -121,6 +118,19 @@ export function generateBricks(input) {
     exclusions: wallExclusions,
     region,
   }).bricks;
+  // T86 item 16f (B1): the wall region's acute tips (>= TIP_FILL_MIN_DEG) the wall leaves bare are the band's -- the frame
+  // is laid again with its innermost row reaching into what the wall leaves uncovered (a joint off every wall brick; the
+  // wall itself is untouched); no bare tip = nothing laid twice
+  const tips = frameLay && frameLay.bands.length && bricks.length ? bareTips(interiorOutline, bricks, scaledSet(set, scale)) : [];
+  if (tips.length) {
+    frameBricks = bricksContourBands(frame.primitives, frameLay.bands, { set: frameLay.frameSet, seed, scale, bandFit: input.bandFit, tipZones: tips }).bricks;
+  }
+  // T86 item 29: the frame crumbles by the SAME rule as the wall (whole pieces, top-weighted, exact count, clumping);
+  // off (absent / false / 0) = no call, the lay byte-identical
+  if (frameLay && input.suppressFrame && input.frameSuppression > 0) {
+    frameBricks = suppressBricks(frameBricks, { suppression: input.frameSuppression, topBias: input.topBias ?? 0.8, clumping: input.clumping ?? 0.3 },
+      seed, scaledSet(frameLay.frameSet, scale).brickHeightIn);
+  }
   // T86 item 13: the app's own stub (editor-brick-tool.js dropExcludedWallBricks) stands down when this is set
   const notes = { ...(bandsReduced ? { bandsReduced } : {}), ...(input.wallRegion ? { wallRegionApplied: true } : {}), ...(surround ? { surroundBricks: surround.bricks } : {}) };
   // F35 item 55: + `interiorOutline` (the wall's fill outline: the frame's innerPath, else the board) -- additive, read by
