@@ -53,6 +53,7 @@ import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
 import { brickToolIconSvg } from '../editor/brick-tool-icons.js';
+import { applyBrickTabSections, brickTabOfControl } from './brick-tab-sections.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -124,11 +125,11 @@ export const brickTabs = () => [BRICK_GENERAL_TAB, ...BRICK_TOOLS.filter((t) => 
   .map((t) => ({ id: t.id, buttonId: t.buttonId, label: t.tab.label, iconSvg: t.iconSvg, title: `${t.label} -- ${t.hint}` }))];
 /** F35 item 43 (each setting's scope declared once): the panel's shared rows. 'global' = board-wide, shown ONLY in the
  *  General tab; 'element' = edits the active tool's element, shown in its tab (not for a tool with sharedRows: false);
- *  'both' = General AND the element tabs (the Grout block: its paint edits the picked element, else every element --
- *  item 55 -- while its Width row edits the active element's joint, so that row alone is 'element'). */
+ *  'both' = General AND the element tabs. Brick-tab v2 (Fred, 2026-10-07): the grout paint (Colour + Edge) is General's
+ *  own "Look" section and Suppression .. Seed its Crumble / Randomness sections (main/brick-tab-sections.js), so the
+ *  Grout and Scatter blocks -- the only 'both' and the other 'global' scope -- are gone. */
 export const BRICK_ROW_SCOPES = Object.freeze({
-  brickSharedSet: 'element', brickSizeBlock: 'global', brickGroutBlock: 'both', brickGroutWidthRow: 'element',
-  brickScatterBlock: 'global',
+  brickSharedSet: 'element', brickSizeBlock: 'global', brickGroutWidthRow: 'element',
 });
 
 let _activeTool = null;
@@ -146,6 +147,14 @@ let _syncTabs = null;
 export function revealBrickControl(id) {
   const el = typeof document !== 'undefined' ? document.getElementById(id) : null;
   if (!el) return false;
+  // Brick-tab v2: a control in a declared section belongs to that section's tab (a shared row: the active tool's)
+  const sectionTab = brickTabOfControl(el);
+  if (sectionTab) {
+    const general = activeBrickTab() === BRICK_GENERAL_TAB.id;
+    if (sectionTab === BRICK_GENERAL_TAB.id && !general) pickBrickTab(BRICK_GENERAL_TAB.id);
+    else if (sectionTab !== BRICK_GENERAL_TAB.id && general && _activeTool) { _generalTab = false; syncToolButtons(); }
+    return true;
+  }
   const block = Object.keys(BRICK_ROW_SCOPES).filter((b) => document.getElementById(b)?.contains(el))
     .sort((a, b) => (document.getElementById(a).contains(document.getElementById(b)) ? 1 : -1))[0]; // the innermost
   const scope = block ? BRICK_ROW_SCOPES[block] : null;
@@ -1104,6 +1113,8 @@ function syncToolSections() {
   }
   const hint = document.getElementById('brickToolHint');
   if (hint) hint.style.display = general ? 'none' : '';
+  // Brick-tab v2: the active tab's own sections (and the shared rows moved into them)
+  applyBrickTabSections(general ? BRICK_GENERAL_TAB.id : _activeTool);
 }
 
 /** F35 item 21: the Large stones row shows only while the Wall's layout is fieldstone. */

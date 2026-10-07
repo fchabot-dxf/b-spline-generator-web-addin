@@ -23983,3 +23983,55 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   Manufacturing Models, step 3 of 4' on screen). The page NEVER logged 'APPLY click' -- not live, not in the ring
   re-sent with the report at 12:54:50. So the click is lost before the page's JS: the web view does not deliver input
   while Fusion's main thread is busy. A queue in the add-in or the page cannot catch it.
+## Brick-tab v2 -- each Brick-editor tab gets its own colour-coded sections (seat A / 77, 2026-10-07)
+- Fred: "sections are unique"; "organise the params into actual sections"; "color coded"; mockup v2 "Yes, build it";
+  accent title "Accent relief". Measured first (live probe, 6 tabs at 390): one static "Brick" layers-header sat above
+  every tab; the Set row and the whole Grout block (width + Colour/Edge) showed in all four element tabs.
+- DECLARED: main/brick-tab-sections.js BRICK_TAB_SECTIONS {tab: {host, after, sections: [{id, title, kind, rows,
+  titleOf}]}} (tabs = the Brick tab strip's ids). SHARED_ROWS is derived (rows several tabs declare: the set, the joint
+  width + its spacing hint) -- one DOM node moved into the active tab's section on each tab switch. Kind hues:
+  section-themes.js BRICK_SECTION_THEMES (one kind = one colour in every tab), tinted through themeTokens like every
+  section (themeBrickSection). Sections reuse the sidebar's .panel/.panel-header (fold arrow)/.panel-body; fold state
+  is remembered in the sidebar's own store (panel-bricksec-<tab>-<id>). A section with every row hidden hides too
+  (MutationObserver on the panel; Corners on a band-less frame).
+- Groups: General = Brick size (in) / Look · every element (grout Colour + Edge, now ONLY here) / Crumble (Suppression,
+  Clumping, Crumble top bias) / Randomness (Seed). Wall = Bricks / Pattern / Accent relief / Height / Joint. Frame =
+  Bricks / Bands / Corners / Height / Crumble (item 9) / Window surround (item 9, own kind) / Joint. Brush = Bricks /
+  Stroke / Accent relief / Height / Joint. Raised = Bricks / Mode / Height / Joint. Scissors / Stripe: none.
+- HTML: label+control pairs wrapped as id'd rows; the shared "Brick" header, the Set and Grout labels and the emptied
+  brickGroutBlock / brickScatterBlock wrappers removed. Swept: BRICK_ROW_SCOPES loses those two scopes (no 'both' left;
+  the generic branch stays); EDITOR_SECTION_THEMES loses editorBrickPanel + the 4 tool-section tints (Stripe kept) and
+  the now-unused head-only branch + its CSS :not(); revealBrickControl asks the section map first.
+- Deviation from the mockup: the size title keeps its unit, "Brick size (in)".
+- Tests: tests/brick-tab-sections.test.js (13; cannot pass on main: the module is absent; the empty-section rule
+  mutation-fails); 5 existing files moved to the new structure. Full vitest 5682/0 (one earlier run had the Corners
+  test fail under load via happy-dom's late MutationObserver -> that test now calls the sync directly). Matrix layout
+  group 35 rows 0 FAIL incl. 15 new 'Brick sections' rows (1366 / 900 / phone x 5 tabs: unique titles, every control in
+  a section, none past the edge). Known failures: none.
+- Shots: shots/seatA/brick_tabs_built_<tab>.png (NOW 390 on main adb06a1 | BUILT 390 | 900 | 1366).
+
+## T86 item 16d -- seam gaps: (A) a fan lays from the runs' resolved ends; the sweep pins every seam (seat E / 61, 2026-10-07)
+- MEASURED per joint (19 templates x 0.75 / 1 / 1.25 / 1.5 in, 7x9, single soldier = 76 lays; gap = board > 0.75 J from
+  every piece): every gap was already in the RAW ribbon pieces (before yieldAtMedialLine / the board clip). Classes:
+  fan corners 227 gaps / 47 lays (max 5.5 J -- T18 / T19 base strips 3 J full band depth); run-run at the centre line
+  13 / 11 (max 8.6 J -- the wall region's acute tips: T14 X, T16 / T11 / T18 / T19 necks); wall tips 18 / 10; other 3 / 3.
+- (A) ROOT: primitive-ribbon fanJointSide (21b) moves a run's end back up to 2 joints beside a fan, but the fan was laid
+  from the run's UNMOVED end (buildPatch) -- every move widened the fan seam by the move (T18 1.25 base: 1 + 2 = 3 J).
+  FIX (declared once): fanRunCorner = 21b's move; fanRunEnds (item 35's convex-arc exemption kept) feeds it to the fan;
+  the fan's first / last divider is the run's own end line, so the slice beside it is one joint off it all the way in.
+  Experiment rejected: removing the move-back (template_8 9x12 gets 4 seams UNDER a joint).
+- Declared: frame bricks carry `fan: true` on a corner's fan slices (additive, not drawn) -- the sweep's handle.
+- TEST tests/bricks-seam-sweep.test.js (19 x 4 lays): every fan-to-run SEAM (neighbours, >= 0.25 in facing stretch) is
+  <= 1.5 J -- measured after A: exactly 1.0 J in all 47 lays with a fan corner (fails on the pre-A ribbon: T18 1 in 1.6 J);
+  every other gap class (seam / node x fan / band / wall) capped at today's widest + area (CAPS, MEASURE_SEAMS=1 re-caps).
+  T1 digest re-pinned in bricks-neck-medial (every frame with a fan corner re-lays once; 21b precedent).
+- PARKED with measured designs: 16e = the fan's apex spots (2-4 J, median 0.004 sq in, where a 21b-moved run meets an
+  item-35-exempt convex arc run: let the convex run take the move too, measure item 35's T8 9x12 wedge); 16f = B1, the
+  wall-region tips >= TIP_FILL_MIN_DEG 60 filled by the band (prototype in seat E's scratch: tip-fill.js bareTips with
+  lobe split + wall-front zone, contour-bands fillTips = sides extended past d1, clipped to the own half-zone, spliced by
+  mergeAcrossSeam). It filled T14's X but over the 76 lays opened holes up to 17 J (T10 1.25 0.86 sq in): the zone must
+  be ONLY what the wall leaves uncovered (no wall drops) and a refused splice needs a fallback.
+- 16d sweep RUNS (advisor: the gate's budget is ~10 min): the default suite sweeps FAST_SET (T1, T14, T16, T18 at 1 and 1.5
+  in, same assertions, ~6 s; fails on the pre-(A) ribbon: T1 + T18 1 in 1.6 J). The full 19 x 4 sweep:
+  SEAM_SWEEP_FULL=1 npx vitest run tests/bricks-seam-sweep.test.js -- 29 s now (19/19), after the gap scan got 0.5 in
+  buckets for pieces and contour segments (it was ~12 min: every grid point tested every piece and every contour segment).

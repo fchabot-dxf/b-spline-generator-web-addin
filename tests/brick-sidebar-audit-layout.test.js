@@ -79,8 +79,8 @@ describe('item 43: revealBrickControl (the brick matrix acts with the tab of the
     expect(activeBrickTab()).toBe('wall');
     revealBrickControl('brickSuppression');
     expect(activeBrickTab()).toBe('general');
-    expect($('brickScatterBlock').style.display).toBe('');
-    revealBrickControl('brickGroutWidth'); // the Grout block is 'both', its Width row 'element'
+    expect($('brickSec_general_crumble').style.display).toBe(''); // Brick-tab v2: General's Crumble section
+    revealBrickControl('brickGroutWidth'); // the Joint width is per element: the tool's tab
     expect(activeBrickTab()).toBe('wall');
     revealBrickControl('isolateSkeleton'); // not a Brick-panel control
     expect(activeBrickTab()).toBe('wall');
