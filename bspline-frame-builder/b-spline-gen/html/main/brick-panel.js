@@ -30,7 +30,7 @@ import {
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
   FRAME_CORNERS, FOLDED_FRAME_PRESETS, topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_CORNER_LIST, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
-  brushStrokeSettings, restyleBrushStroke, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
+  brushStrokeSettings, restyleBrushStroke, groutCutPolylines, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
   groutPaintOf, repaintGrout, GROUT_ELEMENT_KINDS, GROUT_PAINT_DEFAULT, elementsWithoutGrout, forceRegenerateOwnedBrickElements,
 } from '../editor/editor-brick-tool.js';
 import { openColorMosaic } from '../editor/editor-color.js';
@@ -1476,10 +1476,16 @@ const _settingsKey = () => JSON.stringify(P.brickSettings, function (k, v) {
  *  footprints (every brush brick's points) join the laid key. Item 27: adding, editing or deleting a stroke
  *  re-lays the Wall at once (_relayIfBrushChanged, below). Always the footprints now (it used to be '' with no
  *  Wall on the canvas -- which only mattered for the retired pending dot, and made a first lay's key omit them). */
+// T86 item 10: the grout cuts' part of a laid key (the Raised brush's grout-mode strokes); absent with no cut, so a board
+// without one keeps the key it always had
+const CUT_KEY = '#cut:';
 function _brushKey() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  return brushExclusions(editor).map((e) => e.polygon.map((p) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ')).sort().join('|');
+  const strokes = brushExclusions(editor).map((e) => e.polygon.map((p) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ')).sort().join('|');
+  const cuts = groutCutPolylines(editor).map((c) => c.polyline.map((p) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`).join(' ')).sort().join('|');
+  return cuts ? `${strokes}${CUT_KEY}${cuts}` : strokes;
 }
+const _cutPartOf = (brushKey) => { const at = brushKey.indexOf(CUT_KEY); return at < 0 ? '' : brushKey.slice(at); };
 /** Turn 207 (Fred / 88's finding: after a template change the old Frame bricks stayed, and would still carve):
  *  the Frame bands follow the frame, and the Wall fills its interior -- so the FRAME RECORD (template, its
  *  params and seeds) and the board size are part of what was laid. A change makes the layout pending in the
@@ -1541,7 +1547,7 @@ function _framePartOf(laid) {
 /** F35 item 27: the brush part of the WALL's laid key -- the strokes it flows around (null = no key). */
 function _laidBrushKey() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  const laid = _laidKeyOf(editor, 'wall');
+  const laid = _laidKeyOf(editor, 'wall') ?? _laidKeyOf(editor, 'frame'); // T86 item 10: a frame-only board's cuts
   if (laid == null) return null;
   const at = laid.indexOf('#brush:');
   return at < 0 ? '' : laid.slice(at + '#brush:'.length);
@@ -1552,9 +1558,12 @@ function _laidBrushKey() {
  *  re-lay's own commit then finds them equal, so it stops there. */
 function _relayIfBrushChanged() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  if (!_presentKinds(editor).includes('wall')) return;
-  const laid = _laidBrushKey();
-  if (laid === null || laid === _brushKey()) return;
+  const present = _presentKinds(editor);
+  if (!present.includes('wall') && !present.includes('frame')) return;
+  const laid = _laidBrushKey(), now = _brushKey();
+  if (laid === null || laid === now) return;
+  // the Wall flows around every stroke; the Frame only follows the grout cuts (T86 item 10)
+  if (!present.includes('wall') && _cutPartOf(laid) === _cutPartOf(now)) return;
   // item 68 (measured: one Brick size change on a board with a stroke = TWO undo steps -- the strokes follow the size,
   // their new footprints re-lay the wall from inside the first lay's commit): one gesture = one undo step. This runs on
   // the editorCommit a commit dispatches BEFORE its push, so the re-lay is queued a microtask later, once the gesture's

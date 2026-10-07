@@ -59,8 +59,8 @@ function check(before, after, line, widthIn, overlapTol = 1e-4) {
 }
 
 describe('bricksGroutCut (T86 item 10)', () => {
-  it('not listed in ENGINE_OPTIONS yet: 37 lists it with the grout mode it shows (the wallRegion ruling)', () => {
-    expect(ENGINE_OPTIONS).not.toContain('groutCut');
+  it('listed in ENGINE_OPTIONS: generateBricks reads groutCut, so the Raised brush shows its Grout mode', () => {
+    expect(ENGINE_OPTIONS).toContain('groutCut');
   });
   for (const [name, line] of [['straight', STRAIGHT], ['curved', CURVED]]) {
     it(`a ${name} cut across running bond: a joint through every brick it crosses, no overlap, no sliver`, () => {

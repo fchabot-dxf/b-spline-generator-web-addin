@@ -1137,6 +1137,25 @@ export function showElementSelection(editor, elementId) {
  *  brush brick on the canvas is an exclusion for the Wall fill -- `input.exclusions = [{polygon}]`, board
  *  inches, the signature agreed with seat B (d3, T86 item 13: the engine DROPS any wall piece overlapping
  *  an exclusion). Read straight off the DOM, same as the height mask does. */
+/** T86 item 10: the Raised brush's GROUT-mode strokes as the engine's cuts -- each stroke's spine segments chained back
+ *  into polylines (reconstructChains, as its bricks would be), [{ polyline }] each; the width is each element's own joint
+ *  (the engine's default). The Wall / Frame lay passes them as `groutCut`; [] with none. */
+export function groutCutPolylines(editor) {
+  if (!editor || !editor._sketchLayer || typeof editor._sketchLayer.children !== 'function') return [];
+  const byElement = new Map();
+  for (const el of editor._sketchLayer.children().toArray()) {
+    if (el.attr(BRICK_ATTR) !== SPINE_KIND) continue;
+    const settings = decodeBrickSettings(el.attr(BRICK_SETTINGS_ATTR));
+    if (!settings || settings.strokeMode !== 'grout') continue;
+    const id = el.attr(BRICK_ELEMENT_ATTR);
+    const [a, b] = pieceEnds(el);
+    if (!byElement.has(id)) byElement.set(id, []);
+    byElement.get(id).push({ a, b, stripeId: null, settings });
+  }
+  return [...byElement.values()].flatMap((segs) => reconstructChains(segs)).filter((c) => c.points.length >= 2)
+    .map((c) => ({ polyline: c.points.map((p) => ({ x: p.x, y: p.y })) }));
+}
+
 export function brushExclusions(editor) {
   const node = editor && editor._sketchLayer && editor._sketchLayer.node;
   if (!node || !node.querySelectorAll) return [];
@@ -1209,6 +1228,9 @@ function _layInput(editor, settings, frameGeom) {
   // F35 item 29 (a): the Wall's Rustic amount, for a running bond only (0 = absent = today's clean coursing)
   const rustic = Number(settings.rusticByElement && settings.rusticByElement.wall) || 0;
   if (rustic > 0 && isRunningBond(settings.pattern)) input.rustic = rustic;
+  // T86 item 10: the Raised brush's grout-mode strokes cut joints through the laid Wall / Frame (none = absent = as before)
+  const cuts = groutCutPolylines(editor);
+  if (cuts.length) input.groutCut = cuts;
   // F35 item 13: the Wall pattern's rotation (wall only; 0 = absent = today's lay, byte-identical)
   const rotationDeg = Number(settings.wallRotationDeg) || 0;
   if (rotationDeg) input.rotationDeg = rotationDeg;
