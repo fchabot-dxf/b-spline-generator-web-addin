@@ -308,6 +308,9 @@ function fillTips(bricks, tipRow, zones, set, enriched, reach) {
         const next = parts.length ? parts.reduce((a, q) => (areaOf(q) > areaOf(a) ? q : a)) : [];
         // a difference that GAINS area has failed (geometry.js KNOWN LIMITATION): no fill rather than a wrong one
         if (areaOf(next) > areaOf(ext) + 1e-6) { ext = []; break; }
+        // an extension that would WRAP a blocker (what is left still reaches round it: the blocker meets its convex hull) is
+        // not laid -- the strip it keeps beside the blocker is a thin tongue, Fred's short grain (advisor, 2026-10-07: T14 1.5 in)
+        if (next.length >= 3 && areaOf(next) < areaOf(ext) - 1e-6 && areaOf(polygonIntersection(convexHull(next), w)) > WRAP_MIN_SQIN) { ext = []; break; }
         ext = next;
       }
       ext = dedupePolygon(ext);
@@ -317,6 +320,17 @@ function fillTips(bricks, tipRow, zones, set, enriched, reach) {
       if (merged) bricks[start + k] = { ...bricks[start + k], polygon: merged };
     }
   }
+}
+
+/** T86 item 16f: a blocker overlapping an extension's convex hull by more than this is wrapped, not trimmed (sq in). */
+const WRAP_MIN_SQIN = 1e-5;
+/** The convex hull of a point set (monotone chain), counter-clockwise. */
+function convexHull(points) {
+  const pts = [...points].sort((a, b) => a.x - b.x || a.y - b.y), cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lo = [], hi = [];
+  for (const p of pts) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+  for (const p of pts.reverse()) { while (hi.length >= 2 && cross(hi[hi.length - 2], hi[hi.length - 1], p) <= 0) hi.pop(); hi.push(p); }
+  return [...lo.slice(0, -1), ...hi.slice(0, -1)];
 }
 
 /** T86 item 16f: the fallback when the splice is refused -- the piece's deeper twin minus everything past the seam (d1)

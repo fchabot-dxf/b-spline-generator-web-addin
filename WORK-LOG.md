@@ -24041,3 +24041,15 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   fill rows fail; TIP_FILL_MIN_DEG 50 -> 'declares 60' + the 55 deg row fail. Full vitest 370 files, 5704 passed, 0 failed.
   Full sweep (SEAM_SWEEP_FULL=1) 19/19.
 - SHOTS shots/seatE/t86_16f/before_after_tips.png (T14 1.5 / 1.25, T18 1.25, T16 1.25, T1 0.75, T9 0.75; changed pieces blue).
+### 16f wart fix -- (c): an extension that would WRAP a wall blocker is not laid (seat E / 61, 2026-10-07)
+- Advisor picked (c). fillTips: after a blocker cut, if what is left still reaches round the blocker (the blocker meets
+  the remaining extension's convex hull by > WRAP_MIN_SQIN 1e-5 sq in) that piece is not extended. Local convexHull
+  (monotone chain) beside fillTips -- the bricks geometry had none. No wall drops, no guard.
+- TEST (new rows in bricks-tip-fill): no extended piece grows a part narrower than 1/3 brick height vs its main twin
+  (narrowArea: grid points no inscribed disc of diameter H/3 reaches, minus what a convex corner >= TIP_FILL_MIN_DEG / 2
+  explains -- a tip half's / mitre's declared point; without that excuse T14 1.25's 52 deg tip point read 0.0031).
+  On 23b9046 (before the fix): T14 1.5 frame-16 = 0.0046 sq in -> fails; after: every extended piece 0 (max 0.0002).
+- RESULT: T14 1.5 fills the left half only (bare 0.068 -> 0.022 sq in; the row's cap 0.025); sweep re-capped for T14 1.5
+  (seam band 3.9 J, seam wall / node wall 4.8 J; main had 7.7 / 8.4 / 8.4). T14 1.25, T18 / T19 1.25 unchanged (0 bare).
+  T9 0.75's one-piece change is gone (it was a wrap). Full vitest 370 files, 5710 passed, 0 failed; full sweep 19/19.
+- SHOT shots/seatE/t86_16f/wartfix_T14_1.5.png (+ T9 0.75).

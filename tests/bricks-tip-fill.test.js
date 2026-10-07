@@ -42,11 +42,30 @@ function bareIn(zone, pieces) {
   }
   return n * h * h;
 }
+/** the part of a polygon no disc of diameter `w` inside it reaches (sq in, 0.01 in grid), less what a pointed corner of
+ *  at least half TIP_FILL_MIN_DEG explains (a mitre's / a tip half's declared point): a thin tongue's area */
+function narrowArea(P, w) {
+  const xs = P.map((p) => p.x), ys = P.map((p) => p.y), h = 0.01, pts = [];
+  for (let x = Math.min(...xs) + h / 2; x < Math.max(...xs); x += h) for (let y = Math.min(...ys) + h / 2; y < Math.max(...ys); y += h) {
+    if (pointInPolygon(x, y, P)) pts.push({ x, y, r: Math.min(...P.map((a, i) => segDist({ x, y }, a, P[(i + 1) % P.length]))) });
+  }
+  const centres = pts.filter((c) => c.r >= w / 2), n = P.length, sgn = Math.sign(P.reduce((a, p, i) => a + p.x * P[(i + 1) % n].y - P[(i + 1) % n].x * p.y, 0));
+  const corners = P.map((b, i) => {
+    const a = P[(i - 1 + n) % n], c = P[(i + 1) % n], v1 = { x: a.x - b.x, y: a.y - b.y }, v2 = { x: c.x - b.x, y: c.y - b.y };
+    const l = Math.hypot(v1.x, v1.y) * Math.hypot(v2.x, v2.y);
+    const th = l > 1e-12 ? Math.acos(Math.max(-1, Math.min(1, (v1.x * v2.x + v1.y * v2.y) / l))) : Math.PI;
+    const convex = Math.sign(v2.x * v1.y - v2.y * v1.x) === sgn;
+    return convex && (th * 180) / Math.PI >= TIP_FILL_MIN_DEG / 2 ? { b, reach: w / 2 / Math.sin(th / 2) + h } : null;
+  }).filter(Boolean);
+  return pts.filter((p) => !centres.some((c) => Math.hypot(p.x - c.x, p.y - c.y) <= c.r)
+    && !corners.some((k) => Math.hypot(p.x - k.b.x, p.y - k.b.y) <= k.reach)).length * h * h;
+}
 const key = (b) => JSON.stringify(b.polygon.map((p) => [+p.x.toFixed(5), +p.y.toFixed(5)]));
 
 describe('T86 16f: the band fills the bare tips it can', () => {
-  // [template, size, the filled tip's bare area today (sq in, measured on main), the most it may keep after]
-  const FILLED = [['template_14', 1.5, 0.068, 0.005], ['template_14', 1.25, 0.063, 0.005], ['template_18', 1.25, 0.018, 0.005], ['template_19', 1.25, 0.017, 0.005]];
+  // [template, size, the filled tip's bare area today (sq in, measured on main), the most it may keep after]; T14 1.5 keeps
+  // 0.022: the side whose extension would wrap the wall's sliver is not extended (advisor (c), 2026-10-07)
+  const FILLED = [['template_14', 1.5, 0.068, 0.025], ['template_14', 1.25, 0.063, 0.005], ['template_18', 1.25, 0.018, 0.005], ['template_19', 1.25, 0.017, 0.005]];
   it.each(FILLED)('%s at %s in: the tip is filled, a joint off every piece, the wall untouched', (tpl, L, today, cap) => {
     const { r, before, tips } = lay(tpl, L);
     const tip = tips.find((t) => Math.abs(t.apex.x - 3.5) < 0.01);
@@ -67,6 +86,18 @@ describe('T86 16f: the band fills the bare tips it can', () => {
         const g = gap(c.polygon, o.polygon);
         if (g <= 0.9 * J) expect(g).toBeGreaterThanOrEqual(gap(twin.get(c.id).polygon, o.polygon) - 0.001); // 0.001 in: the depth clip re-refines the arc edge (T19 1.25: 0.0005)
       }
+    }
+  });
+
+  // advisor 2026-10-07 (the T14 1.5 in tongue round a wall sliver = Fred's short grain): an extended piece adds no part
+  // narrower than a third of a brick height to what its own twin on main already had (a mitre's point is narrow too)
+  it.each([['template_14', 1.5], ['template_14', 1.25], ['template_18', 1.25], ['template_19', 1.25], ['template_1', 0.75], ['template_9', 0.75]])('%s at %s in: no extended piece grows a part narrower than 1/3 brick height', (tpl, L) => {
+    const { r, before } = lay(tpl, L);
+    const w = (SET.brickHeightIn * L) / SET.brickLengthIn / 3, twin = new Map(before.map((b) => [b.id, b])), old = new Set(before.map(key));
+    for (const c of r.frameBricks.filter((b) => !old.has(key(b)))) {
+      const grown = narrowArea(c.polygon, w) - narrowArea(twin.get(c.id).polygon, w);
+      if (process.env.MEASURE_TIPS) console.log('NARROW', tpl, L, c.id, grown.toFixed(4));
+      expect(grown).toBeLessThanOrEqual(0.0005);
     }
   });
 
