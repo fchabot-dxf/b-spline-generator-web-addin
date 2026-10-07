@@ -23,6 +23,10 @@ export const FRAME_NEEDS_A_FRAME = "This frame's outline can't carry brick bands
  *  when the size allows; the mitre is never greyed. The fact is the engine's (frameCornerEffect), not a clamp. */
 export const CORNER_NOT_LONG_ENOUGH = 'No square corner here is long enough at this brick size';
 export const cornerFact = (style) => `cornerTakes_${style}`;
+/** T86 item 16e (74b's grey + explain): a fan centre other than the Needle on a frame with no corner fan would re-lay the
+ *  identical frame. The fact is the engine's (frameHasFan). */
+export const FAN_CENTRE_NO_FAN = 'This frame has no fan corner at this brick size';
+export const FAN_FACT = 'frameHasFan';
 
 // Audit v2 N5: the main sidebar's BRICK controls (quick settings + 3D) -- they act on laid Wall/Frame bricks
 const SIDEBAR_BRICK_CONTROLS = ['brickBtnReliefRaised', 'brickBtnReliefCarved', 'brickBtnTopOrganic', 'brickBtnTopFlat',
@@ -56,6 +60,8 @@ export const BRICK_CONTROL_REQUIRES = [
   { controls: [], within: ['brickQuickRow_frameBands'], requires: { fact: 'frameContour' }, why: FRAME_NEEDS_A_FRAME },
   // item 74b: one rule per cutting corner style (core/bricks CORNER_CUT_STYLES)
   ...['butt', 'block', 'lapped'].map((style) => ({ controls: [`brickFrameCorner_${style}`], requires: { fact: cornerFact(style) }, why: CORNER_NOT_LONG_ENOUGH })),
+  // T86 item 16e: Eye / Stone act on a frame's corner fans only (the Needle is never greyed)
+  { controls: ['brickFrameFanCentre_eye', 'brickFrameFanCentre_stone'], requires: { fact: FAN_FACT }, why: FAN_CENTRE_NO_FAN },
 ];
 
 /** Is `requires` met, given the DOM node of its control? (null control = met: never grey on a missing node) */

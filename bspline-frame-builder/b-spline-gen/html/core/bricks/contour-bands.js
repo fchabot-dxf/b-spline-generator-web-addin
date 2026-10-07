@@ -699,6 +699,11 @@ export function frameCornerEffect(primitives, bands, opts) {
   }
   return out;
 }
+/** T86 item 16e: whether this frame lays any corner FAN (a fan centre choice acts on it) -- the same joints-only plan as
+ *  frameCornerEffect, with the bands' own corner. */
+export function frameHasFan(primitives, bands, opts) {
+  return bricksContourBands(primitives, bands, { ...opts, cornerCutsOnly: true }).fanCorners > 0;
+}
 
 export function bricksContourBands(primitives, bands, opts) {
   const { seed } = opts;
@@ -736,6 +741,7 @@ export function bricksContourBands(primitives, bands, opts) {
   const ribbonStartDepth = depthSoFar; // F35 item 55: an open centred ribbon's first edge
   let nextId = 0;
   let cornerCuts = 0; // opts.cornerCutsOnly: the butt / block cuts the planned rows' joints take
+  let fanCorners = 0; // ... and the corner fans they lay (T86 item 16e: a fan centre choice only acts on a frame with one)
   // T86 item 21b, the JOINT RULE: every seam is the declared joint, rows and bands included (advisor; seat A's Fusion
   // e2e counted 147 profiles for 126 pieces, the extras from 0-gap wall-vs-band contacts, and two abutting courses
   // read as one slab in 3D). Each row stops half a joint short of the row (or band) beside it and of the wall; only
@@ -790,6 +796,7 @@ export function bricksContourBands(primitives, bands, opts) {
       if (opts.cornerCutsOnly) { // item 74b (frameCornerEffect): this row's joints only, no pieces
         const { joints } = ribbonJoints(enriched, d0, d1, pitch, set.grout.widthIn, cornerStyle, bandIndex, rowSequence, forcedFStart, closed);
         cornerCuts += joints.filter((j) => j && (j.isButt || j.isBlock)).length;
+        fanCorners += joints.filter((j) => j && j.q && j.kiteFan && j.kiteFan.length).length;
         continue;
       }
       const { pieces, nextId: afterId, sources } = ribbonPieces(
@@ -807,7 +814,7 @@ export function bricksContourBands(primitives, bands, opts) {
     }
     depthSoFar += naturalWidth * rows;
   });
-  if (opts.cornerCutsOnly) return { cornerCuts };
+  if (opts.cornerCutsOnly) return { cornerCuts, fanCorners };
 
   // centred bands straddle the path by design, and an open path has no board: only a closed outer stack is clipped
   // a band at least as deep as the board is wide (its bounding box's shorter side) has no medial line to split at --

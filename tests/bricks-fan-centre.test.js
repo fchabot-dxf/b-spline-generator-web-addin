@@ -12,7 +12,10 @@ import { generateBricks, ENGINE_OPTIONS } from '../bspline-frame-builder/b-splin
 import { BRICK_SETS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { FAN_CENTRES, FAN_CENTRE_DEFAULT, FAN_MIN_TIP_OF_HEIGHT, fanGroups } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/fan-centre.js';
 import { pointInPolygon, signedArea, isSimplePolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
-import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { buildRibbonPrimitives, brickLayInput, frameFanCentreOf, frameBandsOf, FRAME_FAN_CENTRES, fanCentreIconSvg, frameHasFanFor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { frameHasFan } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/contour-bands.js';
+import { BRICK_CONTROL_REQUIRES, requirementMet, FAN_FACT } from '../bspline-frame-builder/b-spline-gen/html/main/brick-control-requires.js';
+import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 const SET = BRICK_SETS[0], J = SET.grout.widthIn;
 const BOARD = [{ x: 0, y: 0 }, { x: 7, y: 0 }, { x: 7, y: 9 }, { x: 0, y: 9 }];
@@ -105,5 +108,51 @@ describe('T86 16e: Eye and Stone', () => {
     const today = lay('template_9', 1).frameBricks;
     expect(fanGroups(today)).toEqual([]);
     for (const s of ['eye', 'stone']) expect(lay('template_9', 1, s).frameBricks).toEqual(today);
+  });
+});
+
+// ---- the app side (editor-brick-tool.js): the settings field, the lay input, the fact, the icons
+
+describe('T86 16e: the Frame element\'s fan centre setting', () => {
+  const editor = { _mW: 7, _mH: 9 };
+  const settings = (extra) => ({ ...JSON.parse(JSON.stringify(P.brickSettings)), frameBandPreset: 'single_soldier', ...extra });
+  const geom = (s) => { lay('template_1', 1); return { primitives: prims.get('template_1'), bands: frameBandsOf(s), insetRect: null }; };
+  it('the picker lists the engine\'s own declaration; a new board starts on Needle (null)', () => {
+    expect(FRAME_FAN_CENTRES).toBe(FAN_CENTRES);
+    expect(P.brickSettings.frameFanCentre).toBeNull();
+  });
+  it('an absent / null / unknown field reads Needle and is NOT sent (a saved board lays byte-identical); a pick is sent', () => {
+    for (const v of [undefined, null, 'needle', 'bogus']) {
+      const s = settings(v === undefined ? {} : { frameFanCentre: v });
+      if (v === undefined) delete s.frameFanCentre;
+      expect(frameFanCentreOf(s), String(v)).toBe('needle');
+      expect('fanCentre' in brickLayInput(editor, s, geom(s)), String(v)).toBe(false);
+    }
+    for (const v of ['eye', 'stone']) {
+      const s = settings({ frameFanCentre: v });
+      expect(brickLayInput(editor, s, geom(s)).fanCentre).toBe(v);
+    }
+  });
+  it('the fact: T1 has corner fans, a plain rectangle frame has none; no frame contour = no fact', () => {
+    const s = settings({});
+    expect(frameHasFanFor(editor, s, geom(s))).toBe(true);
+    const rect = buildRibbonPrimitives([[0, 0], [7, 0], [7, 9], [0, 9]].map(([x, y]) => ({ type: 'L', p0: { x, y } })));
+    expect(frameHasFan(rect, FRAME_PRESETS.single_soldier, { set: SET, seed: 1, scale: 1 / 0.75 })).toBe(false);
+    expect(frameHasFanFor(editor, s, null)).toBeNull();
+  });
+  it('Eye and Stone grey out on a frame with no fan (declared rule); the Needle never does', () => {
+    const rules = BRICK_CONTROL_REQUIRES.filter((r) => r.requires.fact === FAN_FACT);
+    expect(rules.flatMap((r) => r.controls).sort()).toEqual(['brickFrameFanCentre_eye', 'brickFrameFanCentre_stone']);
+    for (const r of rules) {
+      expect(requirementMet(r.requires, null, { facts: { [FAN_FACT]: false } })).toBe(false);
+      expect(requirementMet(r.requires, null, { facts: { [FAN_FACT]: true } })).toBe(true);
+    }
+  });
+  it('each choice gets an engine-drawn icon of a real fan, all three different (the Stone draws its stone)', () => {
+    const svgs = FRAME_FAN_CENTRES.map((c) => fanCentreIconSvg(c.id, 30));
+    for (const s of svgs) expect(s).toMatch(/^<svg[^>]*>.*<polygon/);
+    expect(new Set(svgs).size).toBe(3);
+    expect(svgs[2]).toMatch(/fill="#6f675d"><polygon/);
+    expect(svgs[0]).not.toMatch(/fill="#6f675d"><polygon/);
   });
 });
