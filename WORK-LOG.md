@@ -24124,3 +24124,16 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   report 15:14:41 (build 45 s). The screen frames show each card in turn: step 1 of 5 .. 'applying toolpaths, step 5
   of 5' (15:14:39.677, steps 1-4 ticked), then done. TPGen: pass 1 left Back empty (0.3 s), pass 2 -> post-audit
   ok=7 missing=0. Fusion 10.2 GB after; main 8de200f redeployed (-9), holder none.
+## The CAM card stays through the toolpaths, each later pass on it (seat A / 77, 2026-10-07)
+- Fred: the loading card "could list all the steps" and the steps "grow live". Until now the BUILD / APPLY card
+  closed at their report while the deferred toolpath generation ran on for 2-4 min with no signal.
+- cam-stages.js: camTpgen ("generating the toolpaths") ends camBuild and camApply. The BUILD / APPLY report carries
+  toolpaths_pending when its APPLY worked; the palette then keeps the card (cam_builder_palette.html). The toolpath
+  handler (_DeferredTPGenHandler) posts camTpgen as it starts, and toolpath_gen.generate_setups(on_pass=) tells each
+  LATER pass (item 95) as it starts: _post_tpgen_pass posts "toolpaths, pass N" with a grow that inserts it right
+  after the previous step (the card appends it on the spot). Its own 'TOOLPATHS complete' report closes the card;
+  every early exit (no CAM product, an exception) now sends a report too, so the card never hangs.
+- _post_cam_stage accepts an id its own grow declares (a pass step), still refuses any other undeclared id.
+- Tests: test_tpgen_card.py (3) + test_toolpath_gen (on_pass: [2] / none / 2..MAX) -- 4/4 fail on cam-deferred-101;
+  loading-steps-list (+1: the card grows pass 2, 3 after camTpgen) and the cam-stages pins moved to 6 steps.
+  CAM-builder 85/85, full vitest 372 files 5756/0. Known failures: none. Live run: pending the holder.

@@ -67,12 +67,13 @@ def _generate(cam, target, label, wait, log, timeout_s, suffix=''):
     return round(time.time() - t0, 1), bool(done)
 
 
-def generate_setups(cam, wait, log, timeout_s=PER_SETUP_TIMEOUT_S, passes=MAX_GENERATION_PASSES):
+def generate_setups(cam, wait, log, timeout_s=PER_SETUP_TIMEOUT_S, passes=MAX_GENERATION_PASSES, on_pass=None):
     """Pass 1: every setup with operations, one at a time. Passes 2..`passes`: op by op, in order, every op with no
     valid toolpath when reached. Stops as soon as a pass leaves nothing missing.
 
     `wait(future, timeout_s)` blocks (pumping Fusion's events) until the future completes or the timeout passes and
-    returns True if it completed; `log(msg, level='INFO')`. Returns [(pass, label, seconds, completed)]."""
+    returns True if it completed; `log(msg, level='INFO')`; `on_pass(p)`, when given, is told each LATER pass as it
+    starts (Fred, 2026-10-07: the loading card's step list grows live). Returns [(pass, label, seconds, completed)]."""
     out = []
     setups = [cam.setups.item(i) for i in range(cam.setups.count)]
     for s in setups:
@@ -84,6 +85,8 @@ def generate_setups(cam, wait, log, timeout_s=PER_SETUP_TIMEOUT_S, passes=MAX_GE
         gone = [f"{s.name}/{n}" for s in setups for n in missing_ops(s)]
         if not gone:
             break
+        if on_pass:
+            on_pass(p)
         log(f"DEFERRED TPGEN: pass {p}: no valid toolpath for {gone} -- generating them again op by op, in order "
             f"(the doc's first generation leaves ops empty, H23 item 95)")
         for s in setups:
