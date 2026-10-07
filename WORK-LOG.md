@@ -24192,6 +24192,29 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   live. layout group 35 rows 0 FAIL.
 - SHOTS shots/seatE/t86_16e/: engine_check.png (T18 1.25, T1 1, T1 0.75 soldier/stretcher x 3 choices), whole_T18.png,
   icons.png, live_eye.png / live_stone.png (the app: Corners section with the Fan centre row, stones on the canvas).
+## T86 -- the silent zero-brick lay: inwardSignFor reads the winding (seat E / 61, 2026-10-07)
+- FOUND building the 16e icons: an outline with T1's right-side notch alone (its exact arcs, a 4 or 6.75 in wide board)
+  laid 0 frame pieces with no note; a plain rectangle laid 66.
+- MEASURED stage by stage: ribbonPieces laid 99 / 123 pieces, yieldAtMedialLine kept all, clipBandPiecesToBoard dropped
+  every one -- the board was fine (simple, 16.85 sq in), the pieces were all OUTSIDE it: inwardSignFor returned -1.
+- ROOT: inwardSignFor voted with every vertex (a 0.01 in trial offset both ways, the side whose points end nearer the
+  centroid). The notch's 48 tessellated arc points, where "inward" carries them away from the centroid, out-voted the
+  straight sides' 5 -- the sign depended on tessellation density, not geometry.
+- FIX (declared math, not a patch): the winding. offsetPathInward steps along the left normal, which points inside
+  exactly when the standard shoelace area is positive = geometry.js signedArea (the NEGATIVE shoelace) below zero. A
+  path with no area (|area| <= INWARD_MIN_AREA 1e-12) keeps the trial offset.
+- CENSUS before the swap (both rules logged, the full suite): they disagreed only on the notch (2 outlines) and in
+  polygonDifference's degeneracy nudge on a concave clip (19 calls: the nudge went the wrong way) + 2 calls on a
+  self-intersecting clip + 1 degenerate 0.0002 sq in sliver; on every simple polygon the winding matched a
+  point-in-polygon check of the longest edge's nudged midpoint. Reach on real frames: every template x portrait board
+  4..14 x w..18 in (2078 outlines) read the same sign either way -- no live board was affected.
+- BYTE-IDENTICAL: 19 templates x 0.75 / 1 / 1.25 / 1.5 in x (single soldier, three band, single soldier + Stone fan
+  centre) = 228 lays, frame + wall digests: 0 changed.
+- TEST tests/bricks-inward-sign.test.js (4): the notch board in both windings (the inward offset of the 4 straight-side
+  corners lands inside; the sign = the winding); the notch outline at W 4 / 6.75 lays > 50 pieces, every one inside.
+  Fails 4/4 on main's geometry.js. Full vitest 374 files, 5841 passed, 0 failed; full seam sweep 19/19. Matrix not run
+  (a core helper with every lay byte-identical; the gate runs it).
+- SHOT shots/seatE/t86_zero/before_after.png (0 pieces -> 74).
 ## T86 -- a lay with a bare tip laid the frame twice: now planned first, laid once (seat E / 61, 2026-10-07)
 - MEASURED (stage timers in generateBricks / bricksContourBands): a tip lay (16f) laid the frame for the wall's inner path,
   then again with the tip zones -- the second lay as long as the first; bareTips and the wall were small. Inside a frame
