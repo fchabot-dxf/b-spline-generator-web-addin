@@ -24137,3 +24137,9 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Tests: test_tpgen_card.py (3) + test_toolpath_gen (on_pass: [2] / none / 2..MAX) -- 4/4 fail on cam-deferred-101;
   loading-steps-list (+1: the card grows pass 2, 3 after camTpgen) and the cam-stages pins moved to 6 steps.
   CAM-builder 85/85, full vitest 372 files 5756/0. Known failures: none. Live run: pending the holder.
+- LIVE (2026-10-07 15:46, cam-card-tpgen 1f3fcb1 on cam-deferred-101, deploys.log -10; T1 7x9, fresh doc, ONE
+  verified BUILD click; shots shots/seatA/ct/ + cam_card_tpgen_live_strip.png): build steps 15:46:13-15:47:36,
+  camBuildApply, report (toolpaths_pending) 15:47:39 -- the card stayed -- camTpgen 15:47:39 ("generating the
+  toolpaths, step 6 of 6", steps 1-5 ticked), pass 1 (Back empty 0.4 s, Top 41.9 s, Frame 87.5 s), camTpgenPass2
+  15:49:51 grown live onto the open card ("toolpaths, pass 2, step 7 of 7"), post-audit ok=7 missing=0 15:53:18 and
+  the card closed: status "TOOLPATHS complete -- 7 ops ok". Fusion 12.4 GB after (over the 12 GB line: restart asked).
