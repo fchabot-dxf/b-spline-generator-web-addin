@@ -2488,8 +2488,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             import_mgr.importToTarget(svg_options, sketch)
 
 
-            # 4. Preserving Calibration Boundary Lines (User likes them for alignment)
-            _log(f'[STAMP] Preserving 7x9 border lines for {sketch_name}')
+            # 4. Preserving Calibration Boundary Lines (User likes them for alignment). The size here is only the
+            #    log's: Fusion sizes an imported SVG by its viewBox (bakeSvgForCarving sets it from the board), not
+            #    by its width/height -- measured 2026-10-07 (seat A): a 9x12 viewBox imported at 9x12 in with
+            #    width/height 864x1152, 672x864 (the editor's stale 7x9) and none alike. The label used to say 7x9.
+            _log(f'[STAMP] Preserving {width_in:g}x{height_in:g} border lines for {sketch_name}')
 
             # Cleanup temp file
             if os.path.exists(tmp_path):
