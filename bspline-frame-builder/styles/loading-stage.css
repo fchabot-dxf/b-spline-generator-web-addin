@@ -49,3 +49,29 @@
 @keyframes loading-stage-spin {
   to { transform: rotate(360deg); }
 }
+
+/* Fred (2026-10-07: "the load splash could list all the steps"): a card inside a sequence lists every step under the
+   headline (core/loading-signal.js _renderSteps): done ticked, the current one bold with the group's dot, the rest
+   pending; a step passed without running reads skipped. The list may grow while the action runs. */
+.loading-stage[data-surface="card"] { flex-wrap: wrap; }
+.loading-stage-steps {
+  flex-basis: 100%;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 10px 0 0 28px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.loading-stage-steps[hidden] { display: none; }
+.loading-stage-steps li { position: relative; opacity: 0.55; }
+.loading-stage-steps li::before { position: absolute; left: -20px; width: 14px; text-align: center; }
+.loading-stage-steps li[data-state="done"] { opacity: 0.85; }
+.loading-stage-steps li[data-state="done"]::before { content: '✓'; color: var(--cad-accent-green, #43a047); }
+.loading-stage-steps li[data-state="current"] { opacity: 1; font-weight: 600; }
+.loading-stage-steps li[data-state="current"]::before { content: '●'; color: var(--cad-accent-blue); }
+.loading-stage[data-group="waiting"] .loading-stage-steps li[data-state="current"]::before { color: #ffb300; }
+.loading-stage[data-group="refreshing"] .loading-stage-steps li[data-state="current"]::before { color: var(--cad-accent-green); }
+.loading-stage-steps li[data-state="pending"]::before { content: '○'; }
+.loading-stage-steps li[data-state="skipped"] { text-decoration: line-through; }
+.loading-stage-steps li[data-state="skipped"]::before { content: '–'; }

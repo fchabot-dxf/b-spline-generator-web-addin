@@ -23,7 +23,7 @@ streams the report back to the palette so the user can sanity-check
 classification before writing anything.
 """
 
-import os, sys, json, traceback, importlib.util
+import os, sys, json, threading, traceback, importlib.util
 
 import adsk.core
 import adsk.fusion
@@ -40,6 +40,7 @@ PALETTE_ID        = 'CamBuilder_Palette'
 PANEL_ID          = 'bsplinePanel'    # shared with the rest of the suite
 REFRESH_EVENT_ID  = 'CamBuilder_DeferredRefresh'
 TPGEN_EVENT_ID    = 'CamBuilder_DeferredTPGen'
+BUILD_STEP_EVENT_ID = 'CamBuilder_BuildStep'  # F35 item 70: one BUILD step per tick (_advance_build)
 AXISPICK_EVENT_ID = 'CamStudio_AxisPick'   # deferred viewport pick for WCS X/Y
 
 PALETTE_NAME      = 'CAM'
@@ -71,6 +72,15 @@ _picked_axis_tokens = {}
 _cam_closed_handler = None   # CAM1b: renamed from _studio_closed_handler — clears the
                              # GENERIC tab's live preview graphics when the merged palette closes
 _axispick_event = None
+_build_step_event = None
+_build_steps = None      # F35 item 70: the running BUILD (cam_coordinator.run_steps), advanced one step per tick
+_actions_waiting = []   # palette actions that arrived during a BUILD, replayed in order when it ends
+_apply_after_build = None  # H23 item 101: the built report, waiting for the BUILD's own APPLY step on the next tick
+
+
+def _build_running():
+    """A BUILD is under way: its steps, or its own APPLY step (item 101), still to run."""
+    return _build_steps is not None or _apply_after_build is not None
 
 
 # ---------------------------------------------------------------------------
@@ -234,48 +244,69 @@ class _CamHtmlEventHandler(adsk.core.HTMLEventHandler):
             action = ea.action or data.get('action')
             if action == 'response':
                 return  # Fusion's own ack of sendInfoToHTML, not a page action
-            if action == 'preview_bodies':
-                _do_preview()
-            elif action == 'build':
-                _do_generate(confirmed=bool(data.get('confirmed')))
-            elif action == 'add_machine':
-                _do_add_machine()
-            elif action == 'sync_table_attach':
-                _do_sync_table_attach()
-            elif action == 'apply_toolpaths':
-                _do_apply_toolpaths()
-            elif action == 'list_cam_templates':
-                _do_list_cam_templates()
-                # Piggyback the deployed version stamp on the first boot pull.
-                _p = _build_info_payload()
-                if _p:
-                    _send_to_html('build_info', _p)
-            elif action == 'get_template_assignments':
-                _do_get_template_assignments()
-            elif action == 'set_template_assignments':
-                _do_set_template_assignments(data)
-            elif action == 'init':
-                _do_studio_init()
-                # Piggyback the deployed version stamp on studio init.
-                _p = _build_info_payload()
-                if _p:
-                    _send_to_html('build_info', _p)
-            elif action == 'import_setup':
-                _do_import_setup(data)
-            elif action == 'preview_stock':
-                _do_studio_preview(data)
-            elif action == 'preview_clear':
-                _clear_studio_preview()
-            elif action == 'generate':
-                _do_studio_generate(data)
-            elif action == 'select_x_axis':
-                adsk.core.Application.get().fireCustomEvent(AXISPICK_EVENT_ID, 'x')
-            elif action == 'select_y_axis':
-                adsk.core.Application.get().fireCustomEvent(AXISPICK_EVENT_ID, 'y')
-            else:
-                _log(f"unknown HTML action: {action!r}", "WARNING")
+            # H23 item 101: what the PAGE did with a click (its own timestamps), logged on arrival and never dispatched,
+            # so the log shows whether a click made during a blocked BUILD left the page, and when it arrived here.
+            if action == 'page_log':
+                for line in data.get('lines') or []:
+                    _log(f"[PAGE] {str(line)[:300]}" + (' (ring)' if data.get('ring') else ''))
+                return
+            # F35 item 70: a BUILD now runs as deferred steps (_advance_build), so Fusion is no longer blocked
+            # while it runs; an action arriving meanwhile waits for the build's end, as it did when the build
+            # blocked the main thread (never two builds, or an APPLY, interleaved with one).
+            if _build_running():
+                _actions_waiting.append((action, data))
+                _log(f"[CAM BUILD] {action!r} waits for the running build")
+                return
+            _dispatch_palette_action(action, data)
         except Exception:
             _log_error("CamHtmlEvent\n" + traceback.format_exc())
+
+
+def _dispatch_palette_action(action, data):
+    """One palette action, by name (CamHtmlEventHandler; replayed by _finish_build for those that waited)."""
+    try:
+        if action == 'preview_bodies':
+            _do_preview()
+        elif action == 'build':
+            _do_generate(confirmed=bool(data.get('confirmed')))
+        elif action == 'add_machine':
+            _do_add_machine()
+        elif action == 'sync_table_attach':
+            _do_sync_table_attach()
+        elif action == 'apply_toolpaths':
+            _do_apply_toolpaths()
+        elif action == 'list_cam_templates':
+            _do_list_cam_templates()
+            # Piggyback the deployed version stamp on the first boot pull.
+            _p = _build_info_payload()
+            if _p:
+                _send_to_html('build_info', _p)
+        elif action == 'get_template_assignments':
+            _do_get_template_assignments()
+        elif action == 'set_template_assignments':
+            _do_set_template_assignments(data)
+        elif action == 'init':
+            _do_studio_init()
+            # Piggyback the deployed version stamp on studio init.
+            _p = _build_info_payload()
+            if _p:
+                _send_to_html('build_info', _p)
+        elif action == 'import_setup':
+            _do_import_setup(data)
+        elif action == 'preview_stock':
+            _do_studio_preview(data)
+        elif action == 'preview_clear':
+            _clear_studio_preview()
+        elif action == 'generate':
+            _do_studio_generate(data)
+        elif action == 'select_x_axis':
+            adsk.core.Application.get().fireCustomEvent(AXISPICK_EVENT_ID, 'x')
+        elif action == 'select_y_axis':
+            adsk.core.Application.get().fireCustomEvent(AXISPICK_EVENT_ID, 'y')
+        else:
+            _log(f"unknown HTML action: {action!r}", "WARNING")
+    except Exception:
+        _log_error("CamHtmlEvent\n" + traceback.format_exc())
 
 
 # ---------------------------------------------------------------------------
@@ -1137,19 +1168,23 @@ def _palette_stages():
     return palette_stages
 
 
-def _post_cam_stage(stage_id):
-    """Tell the CAM palette which declared step Fusion is on now; never an undeclared id (logged instead)."""
+def _post_cam_stage(stage_id, grow=None):
+    """Tell the CAM palette which declared step Fusion is on now; never an undeclared id (logged instead).
+    `grow` (Fred, 2026-10-07: the card's step list may grow live) = a change for the palette's list before the step
+    shows: {'steps': [...]} or {'insertAfter': id, 'step': id | {'id', 'label'}} (core/loading-signal.js
+    growLoadingSequence)."""
     global _cam_stage_ids_cache
     try:
         ps = _palette_stages()
         if _cam_stage_ids_cache is None:
             _cam_stage_ids_cache = ps.declared_stage_ids(CAM_STAGES_FILE)
-        if stage_id not in _cam_stage_ids_cache:
+        grown = ((grow or {}).get('step') or {}) if isinstance((grow or {}).get('step'), dict) else {}
+        if stage_id not in _cam_stage_ids_cache and grown.get('id') != stage_id:
             _log(f'[CAM STAGE] undeclared stage id {stage_id!r} -- not sent (ui/html/cam-stages.js)')
             return
         palette = adsk.core.Application.get().userInterface.palettes.itemById(PALETTE_ID)
         if palette:
-            palette.sendInfoToHTML('cam_stage', json.dumps({'id': stage_id}))
+            palette.sendInfoToHTML('cam_stage', json.dumps({'id': stage_id, **({'grow': grow} if grow else {})}))
             ps.pump(adsk.doEvents)
             _log(f'[CAM STAGE] {stage_id}')
     except Exception:
@@ -1254,42 +1289,106 @@ def _do_generate(confirmed=False):
             _send_to_html('build_confirm', {'setups': busy})
             return
 
-    # Phase: build only — no templates, no machine, no toolpath gen.
-    # User attaches machine via ADD MACHINE button, picks origin via
-    # SELECT ORIGIN, then runs APPLY TOOLPATHS to finish.
-    try:
-        _log("CKPT DOGEN 1: about to call _engine.run(mode=bspline, skip_templates=True, skip_machine=True)")
-        report = _engine.run(
-            classifier=_classify_body,
-            logger=_logger,
-            mode='bspline',
-            skip_templates=True,
-            skip_machine=True,
-            on_stage=_post_cam_stage,  # F35 item 70
-        )
-        _log(f"CKPT DOGEN 2: _engine.run returned (report.ok={report.get('ok')})")
-    except Exception:
-        _log_error("B-spline engine.run failed\n" + traceback.format_exc())
-        _send_to_html('report', {
-            'ok': False, 'mode': 'bspline',
-            'errors': ['Engine.run raised — see log.'],
-        })
+    # Phase: build (no machine), then its own APPLY step (H23 item 101, _finish_build); ADD MACHINE stays a button.
+    # F35 item 70: the build runs ONE declared step per deferred CustomEvent (_advance_build), not in this HTML
+    # handler: measured live, the palette got none of the step messages posted after the Manufacture switch, nor the
+    # one after the MMs were built, until the handler returned. Each step's handler returns before the next starts.
+    global _build_steps
+    _log("CKPT DOGEN 1: starting the build as deferred steps (engine.run_steps, mode=bspline, no templates, no machine)")
+    _build_steps = _engine.run_steps(
+        classifier=_classify_body,
+        logger=_logger,
+        mode='bspline',
+        skip_templates=True,
+        skip_machine=True,
+    )
+    adsk.core.Application.get().fireCustomEvent(BUILD_STEP_EVENT_ID, '{}')
+
+
+def _advance_build():
+    """One step of the running BUILD: run the engine up to its next declared step, post that step to the palette,
+    and schedule the next tick -- or, at the end, send the report (_finish_build)."""
+    global _build_steps
+    steps = _build_steps
+    if steps is None:
+        if _apply_after_build is not None:
+            _run_apply_after_build()
         return
+    try:
+        stage_id = next(steps)
+    except StopIteration as done:
+        _build_steps = None
+        _log(f"CKPT DOGEN 2: the build's steps are done (report.ok={(done.value or {}).get('ok')})")
+        _finish_build(done.value or {'ok': False, 'mode': 'bspline', 'errors': ['The build returned no report.']})
+        return
+    except Exception:
+        _build_steps = None
+        _log_error("B-spline engine.run_steps failed\n" + traceback.format_exc())
+        _finish_build({'ok': False, 'mode': 'bspline', 'errors': ['Engine.run raised — see log.']}, failed=True)
+        return
+    _post_cam_stage(stage_id)
+    _schedule_next_build_step()
 
-    # NO toolpath generation here — that's now the APPLY TOOLPATHS button.
-    # User pauses between BUILD and APPLY TOOLPATHS to click Origin in
-    # the Part Position panel of one setup (the only manual step).
 
-    # Friendly completion message for the palette status bar.
-    n_mms = sum(1 for v in report.get('mms', {}).values() if v)
-    n_setups = sum(1 for s in report.get('setups', []) if s.get('ok'))
-    report['msg'] = f"BUILD complete — {n_mms} MM(s), {n_setups} setup(s) created."
+# F35 item 70, MEASURED live (seat A, 2026-10-06): the next tick fired at once ran the setup build (~7 s, no pump)
+# before the palette had taken the 'building the Setups' message -- the card never showed. Fusion is left idle this
+# long after each post, then the next step's tick is fired (fireCustomEvent is the thread-safe way in).
+PALETTE_SETTLE_S = 0.25
+
+
+def _schedule_next_build_step():
+    threading.Timer(PALETTE_SETTLE_S, lambda: adsk.core.Application.get().fireCustomEvent(BUILD_STEP_EVENT_ID, '{}')).start()
+
+
+def _finish_build(report, failed=False):
+    """The build's steps are over. H23 item 101 (Fred: "simply add the step in a splash load image"; an APPLY clicked
+    during a blocked BUILD step never reaches the page): a BUILD that built ends with APPLY, as its own declared step
+    (cam-stages.js camBuild: camBuildApply) -- posted now, run on the next tick so the palette paints it first
+    (_run_apply_after_build), then ONE report. A failed build reports at once. The APPLY TOOLPATHS button stays."""
+    global _apply_after_build
+    if not failed:
+        # Friendly completion message for the palette status bar.
+        n_mms = sum(1 for v in report.get('mms', {}).values() if v)
+        n_setups = sum(1 for s in report.get('setups', []) if s.get('ok'))
+        report['msg'] = f"BUILD complete — {n_mms} MM(s), {n_setups} setup(s) created."
+        if report.get('ok'):
+            _post_cam_stage('camBuildApply')
+            _log("[CAM BUILD] then APPLY")
+            _apply_after_build = report
+            _schedule_next_build_step()
+            return
+    _send_build_report(report)
+
+
+def _run_apply_after_build():
+    """The BUILD's own APPLY step (item 101), on its tick: apply, then the build's one report."""
+    global _apply_after_build
+    report, _apply_after_build = _apply_after_build, None
+    try:
+        ok, msg = _apply_toolpaths(post_stages=False)
+    except Exception:
+        _log_error("BUILD's APPLY step raised\n" + traceback.format_exc())
+        ok, msg = False, 'APPLY raised — see log.'
+    report['apply'] = {'ok': ok, 'msg': msg}
+    report['msg'] += f" {msg}" if ok else f" APPLY failed: {msg}"
+    _send_build_report(report)
+
+
+def _send_build_report(report):
+    """The build's report to the palette, then the actions that waited for it, in order -- except an APPLY when the
+    build has just applied (it would apply the templates a second time: doubled operations)."""
+    if (report.get('apply') or {}).get('ok'):
+        report['toolpaths_pending'] = True  # the card stays open through the toolpaths (_DeferredTPGenHandler)
     _log("CKPT DOGEN 5: sending build-phase report to HTML")
     _send_to_html('report', report)
     _log("CKPT DOGEN 6: report sent")
-
-    # Don't auto-hide the palette — user still needs to click Origin
-    # in Part Position, then click APPLY TOOLPATHS to finish.
+    waiting = list(_actions_waiting)
+    _actions_waiting.clear()
+    for action, data in waiting:
+        if action == 'apply_toolpaths' and (report.get('apply') or {}).get('ok'):
+            _log("[CAM BUILD] a waiting 'apply_toolpaths' is dropped: the build has just applied")
+            continue
+        _dispatch_palette_action(action, data)
 
 
 def _do_add_machine():
@@ -1374,11 +1473,17 @@ def _do_sync_table_attach():
 
 
 def _do_apply_toolpaths():
-    """Phase 2 of the split flow: apply templates + run toolpath gen.
+    """The APPLY TOOLPATHS button: apply the templates + start toolpath generation (_apply_toolpaths), then report."""
+    ok, msg = _apply_toolpaths()
+    _send_to_html('report', {'ok': ok, 'msg': msg, **({'toolpaths_pending': True} if ok else {})})
 
-    Triggered by the APPLY TOOLPATHS button. Assumes BUILD ran first
-    and the user has clicked Origin in Part Position → Table Attach
-    Point on one setup. This function:
+
+def _apply_toolpaths(post_stages=True):
+    """Phase 2 of the split flow: apply templates + run toolpath gen. Returns (ok, msg); sends no report.
+
+    Run by the APPLY TOOLPATHS button and, since H23 item 101 (Fred: "simply add the step in a splash load image"),
+    at the end of every BUILD (its own declared step, camBuildApply -- post_stages=False: APPLY's own steps are not
+    in the BUILD sequence). This function:
       1. Applies cloud templates to all existing setups (per SETUP_SPECS)
       2. Fires the deferred TPGen event which:
          - Captures/replays the Table Attach Point token
@@ -1389,45 +1494,39 @@ def _do_apply_toolpaths():
         _load_engine()
     except Exception:
         _log_error("B-spline engine load failed\n" + traceback.format_exc())
-        _send_to_html('report', {'ok': False, 'msg': 'Engine load failed — see log.'})
-        return
+        return False, 'Engine load failed — see log.'
 
     app = adsk.core.Application.get()
     doc = app.activeDocument
     if not doc:
         _log("APPLY TOOLPATHS: no active doc", "WARNING")
-        _send_to_html('report', {'ok': False, 'msg': 'No active document.'})
-        return
+        return False, 'No active document.'
 
     cam = doc.products.itemByProductType('CAMProductType')
     if not cam:
         _log("APPLY TOOLPATHS: no CAM product", "WARNING")
-        _send_to_html('report', {'ok': False, 'msg': 'No CAM product.'})
-        return
+        return False, 'No CAM product.'
 
     if cam.setups.count == 0:
         _log("APPLY TOOLPATHS: no setups (click BUILD first)", "WARNING")
-        _send_to_html('report', {
-            'ok': False,
-            'msg': 'No setups in this document — click BUILD first.',
-        })
-        return
+        return False, 'No setups in this document — click BUILD first.'
 
     try:
         from cam_engine import setup_builder as _sb
         _log("APPLY TOOLPATHS: applying templates to existing setups")
-        _post_cam_stage('camTemplates')  # F35 item 70
+        if post_stages:
+            _post_cam_stage('camTemplates')  # F35 item 70
         n = _sb.apply_templates_to_existing_setups(cam, logger=_logger)
         _log(f"APPLY TOOLPATHS: templates applied to {n} setup(s)")
     except Exception:
         _log_error("APPLY TOOLPATHS: template apply raised\n" + traceback.format_exc())
-        _send_to_html('report', {'ok': False, 'msg': 'Template apply raised — see log.'})
-        return
+        return False, 'Template apply raised — see log.'
 
     # Kick off deferred toolpath generation (also handles Table Attach
     # token capture/replay + tool renumber via the existing handler).
     _log("APPLY TOOLPATHS: kicking off deferred toolpath generation")
-    _post_cam_stage('camToolpaths')  # F35 item 70
+    if post_stages:
+        _post_cam_stage('camToolpaths')  # F35 item 70
     fake_report = {
         'ok': True,
         'mode': 'bspline',
@@ -1435,11 +1534,7 @@ def _do_apply_toolpaths():
                    for i in range(cam.setups.count)],
     }
     _kick_off_toolpath_generation(fake_report)
-
-    _send_to_html('report', {
-        'ok': True,
-        'msg': f'Templates applied to {n} setup(s). Toolpath generation in progress.',
-    })
+    return True, f'Templates applied to {n} setup(s). Toolpath generation in progress.'
 
 
 # ---------------------------------------------------------------------------
@@ -1453,6 +1548,15 @@ class _DeferredRefreshHandler(adsk.core.CustomEventHandler):
             run(None)
         except Exception:
             _log_error("deferred refresh\n" + traceback.format_exc())
+
+
+class _BuildStepHandler(adsk.core.CustomEventHandler):
+    """F35 item 70: one BUILD step per tick (see _do_generate / _advance_build)."""
+    def notify(self, args):
+        try:
+            _advance_build()
+        except Exception:
+            _log_error("build step\n" + traceback.format_exc())
 
 
 class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
@@ -1481,7 +1585,10 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
             cam = app.activeDocument.products.itemByProductType('CAMProductType')
             if not cam:
                 _log("DEFERRED TPGEN: no CAM product", "WARNING")
+                _send_to_html('report', {'ok': False, 'msg': 'No CAM product -- no toolpaths generated.'})  # closes the card
                 return
+            # Fred (2026-10-07): the BUILD / APPLY card stays open through the toolpaths and lists each later pass
+            _post_cam_stage('camTpgen')
 
             # WARMUP: Fusion's CAM calculator needs to be "awake" before the
             # first generateToolpath call. After fresh MM/Setup creation it
@@ -1684,7 +1791,7 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
                     adsk.doEvents()
                     time.sleep(0.2)
                 return True
-            _tg.generate_setups(cam, wait=_await, log=_log)
+            _tg.generate_setups(cam, wait=_await, log=_log, on_pass=_post_tpgen_pass)
 
             if f is not None:
                 bulk_timeout = 1800.0
@@ -2032,6 +2139,24 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
                 pass
         except Exception:
             _log_error("deferred TPGen\n" + traceback.format_exc())
+            try:
+                _send_to_html('report', {'ok': False, 'msg': 'Toolpath generation raised -- see log.'})  # closes the card
+            except Exception:
+                pass
+
+
+_tpgen_last_step = ['camTpgen']
+
+
+def _post_tpgen_pass(p):
+    """Fred (2026-10-07: the card's steps grow live): a later toolpath pass (item 95) joins the open card as its own
+    step, right after the previous one."""
+    if p <= 2:
+        _tpgen_last_step[0] = 'camTpgen'
+    step_id = f'camTpgenPass{p}'
+    _post_cam_stage(step_id, grow={'insertAfter': _tpgen_last_step[0],
+                                   'step': {'id': step_id, 'label': f'Fusion: toolpaths, pass {p}'}})
+    _tpgen_last_step[0] = step_id
 
 
 def _register_refresh_event():
@@ -2066,6 +2191,16 @@ def _register_refresh_event():
         h_tp = _DeferredTPGenHandler()
         _tpgen_event.add(h_tp)
         _refresh_handlers.append(h_tp)
+
+        # F35 item 70: the deferred BUILD steps (same lifecycle).
+        try:
+            app.unregisterCustomEvent(BUILD_STEP_EVENT_ID)
+        except Exception:
+            pass
+        _build_step_event = app.registerCustomEvent(BUILD_STEP_EVENT_ID)
+        h_bs = _BuildStepHandler()
+        _build_step_event.add(h_bs)
+        _refresh_handlers.append(h_bs)
 
         # Deferred WCS axis pick (GENERIC tab). Same lifecycle/context reason:
         # selectEntity must not run inside the HTML palette event handler.
@@ -2277,6 +2412,10 @@ def stop(context):
             pass
         try:
             app.unregisterCustomEvent(TPGEN_EVENT_ID)
+        except Exception:
+            pass
+        try:
+            app.unregisterCustomEvent(BUILD_STEP_EVENT_ID)
         except Exception:
             pass
         try:

@@ -9,10 +9,12 @@ export default {
     { "id": "camModels", "label": "building the Manufacturing Models" },
     { "id": "camSetups", "label": "building the Setups" },
     { "id": "camTemplates", "label": "applying the toolpath templates" },
-    { "id": "camToolpaths", "label": "starting the toolpaths" }
+    { "id": "camToolpaths", "label": "starting the toolpaths" },
+    { "id": "camBuildApply", "label": "applying toolpaths" },
+    { "id": "camTpgen", "label": "generating the toolpaths" }
   ],
   "sequences": {
-    "camBuild": ["camWcs", "camCleanup", "camModels", "camSetups"],
-    "camApply": ["camTemplates", "camToolpaths"]
+    "camBuild": ["camWcs", "camCleanup", "camModels", "camSetups", "camBuildApply", "camTpgen"],
+    "camApply": ["camTemplates", "camToolpaths", "camTpgen"]
   }
 }

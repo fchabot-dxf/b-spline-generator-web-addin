@@ -94,7 +94,17 @@ export function installGestureWatch(doc = typeof document !== 'undefined' ? docu
 
 const _raf = () => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (cb) => setTimeout(cb, 16));
 /** THE paint step: run `cb` once the stage is on screen (two animation frames: the second is the painted one). */
-const TWO_FRAMES = (cb) => { const raf = _raf(); raf(() => raf(cb)); };
+/** A frame that never comes must not hold the work forever: animation frames stall while the host does not paint
+ *  the page (MEASURED live in the Fusion CAM palette, seat A 2026-10-06: an APPLY clicked during a BUILD waited on its
+ *  first card's paint and never sent at all). The work goes ahead after PAINT_FALLBACK_MS, frames or not. */
+export const PAINT_FALLBACK_MS = 250;
+const TWO_FRAMES = (cb) => {
+  let done = false;
+  const go = () => { if (!done) { done = true; cb(); } };
+  const raf = _raf();
+  raf(() => raf(go));
+  setTimeout(go, PAINT_FALLBACK_MS);
+};
 let _afterPaint = TWO_FRAMES;
 /** The one switch for the paint step. The app never calls it; the vitest setup (tests/setup-paint.js) sets an
  *  immediate one so a panel test reads a gesture's lay synchronously, and the tests OF the deferral put the real
@@ -102,6 +112,12 @@ let _afterPaint = TWO_FRAMES;
 export function setPaintScheduler(fn) { _afterPaint = fn || TWO_FRAMES; }
 const paintFrames = () => new Promise((resolve) => _afterPaint(resolve));
 
+/** A step's own label (no group prefix): the card's checklist line. */
+export function stepLabel(id, ctx) {
+  const stage = LOADING_STAGES[id];
+  if (!stage) return id;
+  return typeof stage.label === 'function' ? stage.label(ctx) : stage.label;
+}
 /** The overlay text for stage `id`: "Computing - laying bricks", plus ", step 2 of 4" inside a sequence. */
 export function stageText(id, ctx, sequence = _sequence) {
   const stage = LOADING_STAGES[id];
@@ -129,7 +145,42 @@ function _render() {
   el.dataset.surface = surface;
   el.dataset.group = stage.group;
   el.dataset.stage = top.id;
+  _renderSteps(el, surface, top);
   if (el.hidden) { el.hidden = false; _shownAt = Date.now(); }
+}
+/** Fred (2026-10-07: "the load splash could list all the steps"): on a CARD inside a sequence, the whole step list
+ *  under the headline -- done (ticked), the current one, the rest pending; a step passed without running (no
+ *  cleanup on a reuse) reads 'skipped'. Pills show no list. One renderer for every card (app refresh, Fusion Send,
+ *  CAM BUILD). */
+function _renderSteps(el, surface, top) {
+  let list = el.querySelector('.loading-stage-steps');
+  const seq = _sequence && _sequence.stages.includes(top.id) ? _sequence : null;
+  if (surface !== 'card' || !seq || seq.stages.length < 2) { if (list) list.hidden = true; return; }
+  if (!list) {
+    if (typeof document === 'undefined') return;
+    list = document.createElement('ol');
+    list.className = 'loading-stage-steps';
+    el.appendChild(list);
+  }
+  seq.seen.add(top.id);
+  list.hidden = false;
+  list.textContent = '';
+  for (const step of sequenceSteps(seq, top)) {
+    const li = document.createElement('li');
+    li.dataset.stage = step.id;
+    li.dataset.state = step.state;
+    li.textContent = step.label;
+    list.appendChild(li);
+  }
+}
+/** Pure: the checklist of `seq` with `top` current -- [{ id, label, state: done | current | pending | skipped }]. */
+export function sequenceSteps(seq, top) {
+  const at = seq.stages.indexOf(top.id);
+  return seq.stages.map((id, i) => ({
+    id,
+    label: stepLabel(id, i === at ? top.ctx : undefined),
+    state: i === at ? 'current' : i < at ? (seq.seen.has(id) ? 'done' : 'skipped') : 'pending',
+  }));
 }
 
 function _hideSoon() {
@@ -174,12 +225,52 @@ export function beginLoadingSequence(seqId) {
   const def = LOADING_SEQUENCES[seqId];
   if (!def) return;
   if (_sequence) clearTimeout(_sequence.timer);
-  const seq = { id: seqId, stages: def.stages, surface: def.surface || null, timer: null };
+  const seq = { id: seqId, stages: [...def.stages], surface: def.surface || null, timer: null, seen: new Set() };
   _sequence = seq;
   seq.timer = setTimeout(() => _endSequence(seq), SEQUENCE_IDLE_MS);
   if (_stack.length) _render();
 }
 
+/** Fred (2026-10-07): the steps can GROW live -- the running action adds a step it only now knows it needs (an extra
+ *  toolpath pass, an APPLY after a BUILD). `change` = { steps: [...] } (the reporter's whole list) or
+ *  { insertAfter: id, step } (one step after `id`; at the end when `id` is not in the list). A step is a declared id,
+ *  or { id, label, group } -- declared on the spot (a card step). The declared sequence is only the STARTING list.
+ *  Returns false when no sequence runs. */
+export function growLoadingSequence(change) {
+  const seq = _sequence;
+  if (!seq || !change) return false;
+  const declare = (step) => {
+    if (step && typeof step === 'object') {
+      if (step.id && !LOADING_STAGES[step.id]) LOADING_STAGES[step.id] = { group: step.group || 'waiting', label: step.label || step.id, surface: 'card' };
+      return step.id;
+    }
+    return step;
+  };
+  if (Array.isArray(change.steps)) seq.stages = change.steps.map(declare).filter(Boolean);
+  else if (change.step) {
+    const id = declare(change.step);
+    if (!id || seq.stages.includes(id)) return false;
+    const after = seq.stages.indexOf(change.insertAfter);
+    seq.stages.splice(after >= 0 ? after + 1 : seq.stages.length, 0, id);
+  } else return false;
+  if (_stack.length) _render();
+  return true;
+}
+/** The card's step list now (tests, probes): [{ id, label, state }] or null when no list shows. */
+export function currentLoadingSteps() {
+  const el = _el();
+  const list = el && !el.hidden ? el.querySelector('.loading-stage-steps') : null;
+  if (!list || list.hidden) return null;
+  return [...list.children].map((li) => ({ id: li.dataset.stage, label: li.textContent, state: li.dataset.state }));
+}
+/** The running action says it is over (a report came): its sequence closes now, whichever step it reached (a BUILD
+ *  that failed before its APPLY step) -- the overlay does not wait out SEQUENCE_IDLE_MS. */
+export function endLoadingSequence() {
+  if (!_sequence) return;
+  clearTimeout(_sequence.timer);
+  _sequence = null;
+  _hideSoon();
+}
 /** item 70: another palette's own stages join the tables -- the CAM palette declares its BUILD / APPLY steps in
  *  CAM-builder/ui/html/cam-stages.js and registers them through here (cam-loading.js), so both palettes share one
  *  overlay, one paint rule and one set of surfaces. */

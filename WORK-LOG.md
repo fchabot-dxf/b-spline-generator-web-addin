@@ -23961,6 +23961,28 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - TEST tests/bricks-wall-coverage-matrix.test.js (19 rows, ~8 s): coverage >= 98 % of ideal where the region >= 1 sq in,
   T9 1.5 declared no-room (0 wall), bare <= 0.3 sq in (0.04 in grid). Mutation (the fill drops every 3rd brick): 19/19 fail.
 - Shots shots/seatE/t86_16b/edge_cases.png (T9 1.5, T15 1.5, T18 1.25, T1 1.25).
+## H23 item 101 step 1 -- the CAM palette's own click trail (seat A / 77, 2026-10-07)
+- Readback 2 (cam-build-deferred, live): an APPLY clicked at 08:20:12 inside a ~57 s blocked BUILD step never reached
+  the add-in (not even as 'waits'); from outside it was not visible whether the page dropped it or it never left.
+- Detection only (no behaviour change): the palette keeps a timestamped ring (PAGE_LOG, 60 lines) for the declared
+  traced actions (PAGE_LOG_ACTIONS: build, apply_toolpaths) -- click, '<seq> begin', '<seq> painted -> send',
+  'send <action>', 'sent <action> -> <what fusionSendData returned>' -- sending each line as 'page_log'; the whole ring
+  goes again (ring: true) with each build report, so a line whose own send was lost during a block still arrives.
+  cam-builder.py logs page_log lines as '[PAGE] ...' on arrival and never dispatches them.
+- Note: main has no deferred build (cam-build-deferred 23a3bde is unmerged), so on main BUILD still runs inside the
+  click handler; the trail works on both.
+- Tests: CAM-builder/test_page_log.py (2, fail 2/2 on main), tests/cam-page-log.test.js (3, cannot load on main: the
+  functions are absent). CAM-builder 59/59, cam-page-log + cam-stages 8/8. Full vitest: the first run could not start
+  its workers (RAM pressure); re-run pending. Known failures: none in the files run.
+- Next (step 2, after a live trail): a declared queue once the trail shows where the click is lost.
+- LIVE TRAIL (2026-10-07 12:54, F's deferred build + this trail merged locally, efa0501, deploys.log -4; T16 7x9, fresh
+  doc, verified-handle clicks; shots shots/seatA/i101/): BUILD click 12:54:22.664 -> the page logged 'BUILD click',
+  'camBuild begin', 'painted -> send', 'send build', 'sent build -> promise' (all arrived at once). APPLY clicked at
+  12:54:44.170 on the button (PrintWindow / screen frames: APPLY spans y 609-631 / 617-639; the card has
+  pointer-events:none) while a deferred step blocked Fusion (PrintWindow 12:54:25 -> 12:54:45; 'building the
+  Manufacturing Models, step 3 of 4' on screen). The page NEVER logged 'APPLY click' -- not live, not in the ring
+  re-sent with the report at 12:54:50. So the click is lost before the page's JS: the web view does not deliver input
+  while Fusion's main thread is busy. A queue in the add-in or the page cannot catch it.
 ## Brick-tab v2 -- each Brick-editor tab gets its own colour-coded sections (seat A / 77, 2026-10-07)
 - Fred: "sections are unique"; "organise the params into actual sections"; "color coded"; mockup v2 "Yes, build it";
   accent title "Accent relief". Measured first (live probe, 6 tabs at 390): one static "Brick" layers-header sat above
@@ -24013,3 +24035,236 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   in, same assertions, ~6 s; fails on the pre-(A) ribbon: T1 + T18 1 in 1.6 J). The full 19 x 4 sweep:
   SEAM_SWEEP_FULL=1 npx vitest run tests/bricks-seam-sweep.test.js -- 29 s now (19/19), after the gap scan got 0.5 in
   buckets for pieces and contour segments (it was ~12 min: every grid point tested every piece and every contour segment).
+- STEP 2 (Fred: "perhaps simply add the step in a splash load image"; "the load splash could list all the steps"; steps
+  can "grow live"):
+  - BUILD ends with APPLY: cam-stages.js camBuild gains camBuildApply ("applying toolpaths", step 5 of 5). A build
+    that built posts it, logs '[CAM BUILD] then APPLY' and runs _apply_toolpaths(post_stages=False) -- the APPLY core,
+    split out of _do_apply_toolpaths, returns (ok, msg) and sends nothing -- then ONE build report carries both
+    messages (report.apply). A failed build does not apply. The APPLY TOOLPATHS button stays (its own stages + report).
+  - The card lists every step (core/loading-signal.js _renderSteps, once for every card: app refresh, Fusion Send,
+    CAM): done / current / pending / skipped (passed without running); pills show none. growLoadingSequence({steps} |
+    {insertAfter, step}) grows the list live (a new step declared on the spot); a CAM 'cam_stage' report may carry
+    'grow' (cam-loading.js, _post_cam_stage(grow=)). endLoadingSequence: the report closes the card whatever step it
+    reached (the CAM end(); before, a 4-step BUILD closed by leaving its last step).
+  - Tests: test_build_then_apply.py (4), tests/loading-steps-list.test.js (14: one per declared sequence, skipped,
+    pill, grows mid-run, CAM report grow); cam-stages pins moved to 5 steps. CAM-builder 63/63, full vitest 371 files
+    5711/0. Known failures: none. Shots: shots/seatA/cam_build_card_{phone,desktop,grown_phone}.png (headless, branch).
+- LIVE (2026-10-07 14:45, this branch 61e5be0 = main 38282b6 merged, deploys.log -6; T1 7x9 cam-bricks, fresh doc,
+  ONE verified BUILD click, no APPLY click; shots shots/seatA/i101b/): camWcs -> camCleanup -> camModels -> camSetups ->
+  'CKPT DOGEN 2' (ok) -> camBuildApply -> '[CAM BUILD] then APPLY' -> templates applied to 3 setups -> TPGen kicked off ->
+  ONE report; TPGen: Back 50.1 s, Top 105.0 s, Frame 126.9 s -> post-audit ok=7 missing=0 (pass 1 alone this time).
+  The card: on main's SYNCHRONOUS build it showed "step 1 of 5" (checklist: preparing the stock sketches current, the
+  rest pending) from the click until the report closed it -- PrintWindow at 14:47:48 and the screen frames alike; the
+  stage posts + paint pumps did not repaint the palette while the build held Fusion's main thread. So the step-5 card
+  is NOT visible on main; F's deferred build (cam-build-deferred, unmerged) is what paints the steps (readback 2 showed
+  "step 4 of 4" there).
+## F35 item 70 (taken over from seat F) + H23 item 101 on one branch: cam-deferred-101 (seat A / 77, 2026-10-07)
+- Advisor: F offline; rebase F's cam-build-deferred (cee7103, 23a3bde) + 101 onto main, review F's code as mine.
+  Merged (not rebased: F's commits are pushed) onto main 38282b6; WORK-LOG-fb-app conflict = both sides kept.
+- REVIEW of F's code: cam_coordinator.run_steps (a generator yielding each declared step; run() drains it, so every
+  other caller is unchanged; main's item 100 'activate Manufacture first' sits before the first yield -- checked);
+  cam-builder: _do_generate starts the generator and returns; _BuildStepHandler / _advance_build runs one step per
+  CustomEvent tick, posts it, schedules the next tick PALETTE_SETTLE_S later from a threading.Timer (fireCustomEvent:
+  the thread-safe way in); an exception ends the build with a failed report (return before the post: correct); palette
+  actions during the build queue (_actions_waiting) and replay after the report; core/loading-signal.js
+  PAINT_FALLBACK_MS. Found nothing wrong in F's own code.
+- INTEGRATION with 101: the build's own APPLY is a DEFERRED step too -- _finish_build posts camBuildApply, holds the
+  report (_apply_after_build) and schedules one more tick; that tick runs the APPLY core, then ONE report
+  (_send_build_report). _build_running() = steps or the APPLY step still to run, so actions keep waiting until the
+  report. NEW guard (review finding): a waiting apply_toolpaths is DROPPED when the build has just applied -- replaying
+  it would apply the templates twice (doubled operations, seen on 2026-10-06's reuse run); mutation-checked. An APPLY
+  that raises still reports and ends the build. page_log is logged before the build queue.
+- Tests: F's TestTheDeferredBuild moved to 6 ticks (+camBuildApply, then the report) + 2 new (a waiting APPLY dropped;
+  an action during the APPLY step waits); test_build_then_apply.py rewritten for the deferred flow (4). CAM-builder
+  76/76. Full vitest: pending a clean run (workers could not start under the gate's RAM load).
+## T86 item 16f -- B1: the band fills the wall region's bare tips >= 60 deg, only where the wall leaves them uncovered (seat E / 61, 2026-10-07)
+- DESIGN (advisor, after 16d's prototype opened holes up to 17 J): tip-fill.js bareTips finds the wall region's convex
+  corners >= TIP_FILL_MIN_DEG (60) whose zone (apex -> one course + a joint wide, down to the wall's first real course)
+  the wall leaves > half bare; generateBricks then lays the frame AGAIN with opts.tipZones. The WALL IS NEVER TOUCHED:
+  each zone carries its nearby wall bricks grown by a joint as `blockers`, and the extension is cut by them (differences
+  only). Engine: frame suppression (item 29) moved after the re-lay so it crumbles the final frame.
+- contour-bands fillTips: the innermost row's piece next to a tip is extended past d1 (its own column, longer), kept in
+  its half of the tip (half a joint off the bisector), before the zone base, minus the blockers. Splice order:
+  mergeAcrossSeam -> NEW fallback twinMinusBeyond (the deeper twin minus every part past d1 that is not the extension;
+  one simple polygon within TWIN_AREA_TOL 2 % of piece + extension, else null) -> the piece as laid. A blocker difference
+  that GAINS area (geometry.js Greiner-Hormann limitation, seen on T1 0.75 / 1) drops that extension rather than fill wrong.
+- MEASURED (76 lays): bareTips finds tips on 40 lays (mostly 104-131 deg fan-corner region corners the wall already
+  covers -> 0 change); pieces actually changed on 12 lays. Splices: 4 direct, 17 via the fallback, 93 refused (mostly
+  slivers the blockers already cut to nothing). Tip zones' bare area (board > 0.75 J from every piece): T14 1.5 0.068 ->
+  0, T14 1.25 0.063 -> 0, T18 1.25 0.018 -> 0, T19 1.25 0.017 -> 0 sq in. Seam sweep: T14 1.25 + 1.5 lose every
+  gap class (worst 8.4 J -> none), T18 / T19 1.25 lose 'seam wall' (4.5 J) and 'seam band' 4.0 -> 2.8 / 4.1 -> 2.4 J;
+  no class worse anywhere (CAPS re-capped for T14 / T18 / T19 only).
+- COST: a lay with a bare tip lays the frame twice: T1 1 in 14 -> 28 ms, T14 1.5 21 -> 49 ms; no-tip lays unchanged (T2 7 ms).
+- KNOWN WART (decision for the advisor): T14 1.5 keeps the wall's small triangular sliver inside the tip (no wall
+  drops), so the band piece beside it wraps it with a notch and a thin tongue down the bisector -- see the shot.
+- TESTS tests/bricks-tip-fill.test.js (11): the 4 tips filled (bare <= 0.005 sq in), every changed piece a joint off
+  every band / wall piece (or no closer than its own main twin: a band arc edge vs the wall's polygonal outline sits
+  0.025 in on T18 / T19 on main already; 0.001 in tolerance for the re-refined arc), the wall keeps T14 1.5's sliver,
+  a no-tip lay (T2 1) deep-equal to the tipless frame, bareTips 40 / 55 deg -> none, 65 / 90 -> one, 60 declared.
+  Fail-before: main's engine + contour-bands -> 4/4 fill rows fail. Mutations: wall drop re-added -> sliver row + 3
+  fill rows fail; TIP_FILL_MIN_DEG 50 -> 'declares 60' + the 55 deg row fail. Full vitest 370 files, 5704 passed, 0 failed.
+  Full sweep (SEAM_SWEEP_FULL=1) 19/19.
+- SHOTS shots/seatE/t86_16f/before_after_tips.png (T14 1.5 / 1.25, T18 1.25, T16 1.25, T1 0.75, T9 0.75; changed pieces blue).
+### 16f wart fix -- (c): an extension that would WRAP a wall blocker is not laid (seat E / 61, 2026-10-07)
+- Advisor picked (c). fillTips: after a blocker cut, if what is left still reaches round the blocker (the blocker meets
+  the remaining extension's convex hull by > WRAP_MIN_SQIN 1e-5 sq in) that piece is not extended. Local convexHull
+  (monotone chain) beside fillTips -- the bricks geometry had none. No wall drops, no guard.
+- TEST (new rows in bricks-tip-fill): no extended piece grows a part narrower than 1/3 brick height vs its main twin
+  (narrowArea: grid points no inscribed disc of diameter H/3 reaches, minus what a convex corner >= TIP_FILL_MIN_DEG / 2
+  explains -- a tip half's / mitre's declared point; without that excuse T14 1.25's 52 deg tip point read 0.0031).
+  On 23b9046 (before the fix): T14 1.5 frame-16 = 0.0046 sq in -> fails; after: every extended piece 0 (max 0.0002).
+- RESULT: T14 1.5 fills the left half only (bare 0.068 -> 0.022 sq in; the row's cap 0.025); sweep re-capped for T14 1.5
+  (seam band 3.9 J, seam wall / node wall 4.8 J; main had 7.7 / 8.4 / 8.4). T14 1.25, T18 / T19 1.25 unchanged (0 bare).
+  T9 0.75's one-piece change is gone (it was a wrap). Full vitest 370 files, 5710 passed, 0 failed; full sweep 19/19.
+- SHOT shots/seatE/t86_16f/wartfix_T14_1.5.png (+ T9 0.75).
+- LIVE (2026-10-07 15:13, cam-deferred-101 1eee8ec = main 8de200f merged, deploys.log -8; T1 7x9 cam-bricks, fresh
+  doc, ONE verified BUILD click, no APPLY click; shots shots/seatA/d101/ + cam_build_live_steps_strip.png): the
+  deferred build posted every step live -- camWcs 15:13:57, camCleanup + camModels 15:13:58, camSetups 15:14:16,
+  steps done 15:14:38, camBuildApply 15:14:39, '[CAM BUILD] then APPLY', templates on 3 setups, TPGen kicked off, ONE
+  report 15:14:41 (build 45 s). The screen frames show each card in turn: step 1 of 5 .. 'applying toolpaths, step 5
+  of 5' (15:14:39.677, steps 1-4 ticked), then done. TPGen: pass 1 left Back empty (0.3 s), pass 2 -> post-audit
+  ok=7 missing=0. Fusion 10.2 GB after; main 8de200f redeployed (-9), holder none.
+## The open editor follows a board change (phone) -- seat A / 77, 2026-10-07
+- Asked: does the SVG download print at the board's size (the editor root carried a stale 7x9 width/height)?
+  MEASURED headless on main abdff5e: the normal flows are right -- the download is width/height = board x 96 with
+  viewBox 0 0 W H (9x12 -> 864x1152, 7x9 -> 672x864), all three editor-io builders read editor._mW/_mH; the stamp
+  rasterizer overrides width/height; Fusion sizes by viewBox (measured earlier).
+- BUG (phone only): at 390 px the sidebar's widthIn/heightIn stay reachable WHILE the editor is open (elementFromPoint
+  hits the input; at 1366 the editor covers them), and app-init _resyncEditorToStock returned while #svgEditorModal
+  was open -- the editor kept the old board: outline, grid, the download (672x864, viewBox 0 0 7 9 on a 9x12 board:
+  printed 7x9, clipped the rest), the Shape Lattice's extent (the item-100 T11 capture's lattice sat off-centre: the
+  capture tool opens the editor before setting the board) and the bricks' board.
+- FIX (advisor: (A), expected behaviour): an OPEN editor follows in place (setModelMetrics: view, grid, outline,
+  guides; no reload, so undo + selection stay); a closed one reloads as before; then the frame profile, one commit and
+  'editorBoardResized' -- the Brick panel's frame re-lay now also follows that (the board size is part of _frameKey;
+  before, only frameRecordChanged re-laid), so it always runs on the new size. Lattice: board-relative tools read
+  _mW/_mH at their next Generate; the grid and guides are redrawn by setModelMetrics.
+- Tests: tests/editor-follows-board.test.js (3) + brick-element-laid-key-panel (+1: a new board re-lays once, the
+  same board again nothing) -- 3 fail on main (the 4th pins today's no-op). Matrix layout group +1 row (phone 390:
+  editor open, 7x9 -> 9x12 through the real inputs: editor board 9x12, download 864x1152 viewBox 0 0 9 12): 36 rows
+  0 FAIL. Full vitest 373 files 5819/0. Known failures: none. Shots: shots/seatA/board_follows_phone_strip.png.
+## The CAM card stays through the toolpaths, each later pass on it (seat A / 77, 2026-10-07)
+- Fred: the loading card "could list all the steps" and the steps "grow live". Until now the BUILD / APPLY card
+  closed at their report while the deferred toolpath generation ran on for 2-4 min with no signal.
+- cam-stages.js: camTpgen ("generating the toolpaths") ends camBuild and camApply. The BUILD / APPLY report carries
+  toolpaths_pending when its APPLY worked; the palette then keeps the card (cam_builder_palette.html). The toolpath
+  handler (_DeferredTPGenHandler) posts camTpgen as it starts, and toolpath_gen.generate_setups(on_pass=) tells each
+  LATER pass (item 95) as it starts: _post_tpgen_pass posts "toolpaths, pass N" with a grow that inserts it right
+  after the previous step (the card appends it on the spot). Its own 'TOOLPATHS complete' report closes the card;
+  every early exit (no CAM product, an exception) now sends a report too, so the card never hangs.
+- _post_cam_stage accepts an id its own grow declares (a pass step), still refuses any other undeclared id.
+- Tests: test_tpgen_card.py (3) + test_toolpath_gen (on_pass: [2] / none / 2..MAX) -- 4/4 fail on cam-deferred-101;
+  loading-steps-list (+1: the card grows pass 2, 3 after camTpgen) and the cam-stages pins moved to 6 steps.
+  CAM-builder 85/85, full vitest 372 files 5756/0. Known failures: none. Live run: pending the holder.
+- LIVE (2026-10-07 15:46, cam-card-tpgen 1f3fcb1 on cam-deferred-101, deploys.log -10; T1 7x9, fresh doc, ONE
+  verified BUILD click; shots shots/seatA/ct/ + cam_card_tpgen_live_strip.png): build steps 15:46:13-15:47:36,
+  camBuildApply, report (toolpaths_pending) 15:47:39 -- the card stayed -- camTpgen 15:47:39 ("generating the
+  toolpaths, step 6 of 6", steps 1-5 ticked), pass 1 (Back empty 0.4 s, Top 41.9 s, Frame 87.5 s), camTpgenPass2
+  15:49:51 grown live onto the open card ("toolpaths, pass 2, step 7 of 7"), post-audit ok=7 missing=0 15:53:18 and
+  the card closed: status "TOOLPATHS complete -- 7 ops ok". Fusion 12.4 GB after (over the 12 GB line: restart asked).
+## "Preserving 7x9 border lines" on a 9x12 board -- measured: no carving bug, the label was wrong (seat A / 77, 2026-10-07)
+- Seen on item 100's T11 9x12 Send. The text is a hardcoded log label (b-spline-gen.py _import_single_layer_svg);
+  _prescale_svg is a no-op (the SVG arrives baked by editor-io.js bakeSvgForCarving).
+- But the captured 9x12 payload's stamp SVGs carry viewBox="-432 -576 864 1152" (9x12 at 96 dpi) with the editor's
+  STALE width="672" height="864" (7x9): bakeSvgForCarving sets the viewBox from the board and keeps the root's
+  width/height. So: does Fusion size an import by width/height or by viewBox?
+- LIVE probe (scratch doc, closed by handle; holder released): one +-432 x +-576 rect imported three ways
+  (createSVGImportOptions, scale 1.0, as the add-in does): width/height 864x1152 -> 9.0008 x 12.0008 in; 672x864
+  (stale) -> 9.0008 x 12.0008 in; none -> 9.0008 x 12.0008 in. Fusion uses the viewBox; width/height are ignored.
+- Every Fusion-bound SVG in three captured payloads (T11 9x12 layers 2-4, T1 7x9 bricks, T16 7x9 layers 2-4) carries
+  exactly its board's viewBox; bakeSvgForCarving is the only bake site. No carving bug.
+- Fix: the log names the real board size ('[STAMP] Preserving 9x12 border lines ...'), with the measurement in the
+  comment. Log text only -- no test (nothing reads it). b-spline-gen 180/180. Known failures: none.
+## T86 item 16e -- FAN CENTRE choice Needle | Eye | Stone (Fred on the mock: "I like them all, add a choice") (seat E / 61, 2026-10-07)
+- DECLARED once: core/bricks/fan-centre.js FAN_CENTRES [{id, label, title, cut, stone}] needle | eye | stone,
+  FAN_CENTRE_DEFAULT 'needle', FAN_MIN_TIP_OF_HEIGHT 1/3 (MIN_TIP_WIDTH). generateBricks reads `fanCentre`
+  (ENGINE_OPTIONS); absent / needle / unknown = no call (frame deep-equal to today, pinned). Applied to the frame as
+  finally laid (after 16f's tip re-lay, before the frame crumble).
+- FAN IDENTITY DECLARED, not inferred: primitive-ribbon's kite-fan pieces carry `fanApex` (the joint's q; additive, the
+  T1 digest pins [id, polygon] only). First try grouped slices by their needle tips and split every fan into pairs
+  (the tips sit round the apex's mortar disc, not on one point) -- measured T18 12 "fans" of 2, now 4 / 11 / 12 / 4.
+- EYE: each slice cut square to its own axis at ONE radius per fan = where the MEDIAN slice reaches MIN_TIP_WIDTH (the
+  mock's rule). Measured per-slice radii: T18 1.25 run-side slices need up to 0.83 in vs a 0.43 median (they are
+  clipped a joint off the run's end line) -- the max would double the eye. Kept the median: narrowest square end =
+  0.36 x MIN_TIP_WIDTH on T18 1.25's big fans (0.9 on T1 1, 0.84 T1 0.75 soldier/stretcher, 0.62 T2 1) -- REPORTED.
+- STONE: a circle of R - J round the apex minus the wall's region near the apex (grown J/2) and every piece near it
+  (grown J); a split keeps the part on the fan's side (nearest R/2 along the slices' mean direction). Two traps fixed
+  on the way: the whole interior outline as a cutter broke the polygon booleans (T1: stone emptied) -> a local box of it;
+  "largest part" kept the wall-side quarter -> the fan-side reference point. geometry.js signedArea is the NEGATIVE
+  shoelace area (the first convexity test kept reflex corners). Stones carry fanCentre: true and their fan's first
+  slice's sample fields.
+- FACT (74b's grey + explain): contour-bands frameHasFan = the joints-only plan counts fan joints (no pieces laid);
+  brick-control-requires FAN_FACT rule greys Eye / Stone with FAN_CENTRE_NO_FAN on a frame with no fan (T9); Needle never.
+- UI: state.js frameFanCentre null; editor-brick-tool FRAME_FAN_CENTRES (= the engine's), frameFanCentreOf, lay input
+  sends fanCentre only off the default, frameHasFanFor, fanCentreIconSvg (FAN_CENTRE_ICON: T18 7x9 at 1.25 in, the fan
+  Fred picked from, cropped to its biggest fan; T1's 4-slice fan did not read at 30 px). brick-panel: the Fan centre
+  row (renderFrameFanCentreList / setFrameFanCentre, synced with the Corners row: hidden with no bands / rock frame);
+  HTML row brickFrameFanCentreRow in brick-tab-sections' Corners section. A pick survives a preset change (not per band).
+- TESTS: bricks-fan-centre (18): declarations, fan groups by declaration, needle/absent/unknown deep-equal, eye (one
+  radius per fan, median end >= MIN_TIP_WIDTH, narrowest >= measured share, non-fan pieces identical), stone (one per
+  fan, simple, a joint off every piece, eye + stones only), no-fan frame unchanged, absent-field read + lay input, fact,
+  grey rule, icons. frame-corners-panel (+3): row, pick re-lays + survives a preset change, hidden with Corners.
+  Cannot pass on main (module absent). Mutations: R = smallest slice's radius -> 4 fail; frameFanCentreOf always needle
+  -> 2 fail. Full vitest 371 files, 5756 passed, 0 failed.
+- MATRIX frame-ui (+5 rows, 22 rows 0 FAIL): in the Corners section Needle active; Eye re-lays at once; Stone re-lays,
+  +4 stones (89 -> 93); one undo step (Undo -> Eye frame + active, Redo -> Stone); greyed on T9 with the reason, Needle
+  live. layout group 35 rows 0 FAIL.
+- SHOTS shots/seatE/t86_16e/: engine_check.png (T18 1.25, T1 1, T1 0.75 soldier/stretcher x 3 choices), whole_T18.png,
+  icons.png, live_eye.png / live_stone.png (the app: Corners section with the Fan centre row, stones on the canvas).
+
+### 2026-10-07 addendum (seat A): the open editor refits the new board (advisor: AFTER strip cropped the 9x12)
+- Cause: `setModelMetrics` fits inside itself, BEFORE `drawFrameProfile` redraws the frame, so it fitted the OLD 7x9
+  frame region onto the 9x12 board (live view -0.75 -1.167 8.5 11.333: right side and top off-canvas).
+- Fix (app-init `_resyncEditorToStock`, open-editor branch): note `isFittedView(ed)` before the change; after the
+  profile is redrawn, `ed.fitView()` (the same call a fresh open makes) -- unless the user had zoomed/panned, then
+  their view is re-applied. editor-view.js declares `fittedView(editor)` (pure; `fitView` now uses it) and
+  `isFittedView(editor)`.
+- "Whole board visible" = what a fresh open shows: the frame's cut region (FB-APP F7) or, with no frame, the board.
+  A first version of the matrix check demanded the full 0..9 x 0..12 stock and failed on a correct fit (a fresh
+  open crops the margin outside the frame on purpose) -- corrected to the fit region.
+- Matrix row (layout group, BOARD_FOLLOWS) now also requires wholeBoard && fitted; it waits for window.svgEditor
+  after opening (one loaded run threw "_draw of undefined" -> a run error, no row).
+- Non-vacuous: with the refit removed, tests/editor-follows-board.test.js fails 1/4 (the open-editor test) and the
+  matrix row FAILs (whole board false, fitted false). Restored: layout 36 rows 0 FAIL 0 page errors; full vitest
+  374 files / 5842 tests passed, 0 failed.
+- Shots: shots/seatA/board_follows_phone_strip.png (re-shot AFTER: the whole 9x12 frame fitted).
+## T86 -- the silent zero-brick lay: inwardSignFor reads the winding (seat E / 61, 2026-10-07)
+- FOUND building the 16e icons: an outline with T1's right-side notch alone (its exact arcs, a 4 or 6.75 in wide board)
+  laid 0 frame pieces with no note; a plain rectangle laid 66.
+- MEASURED stage by stage: ribbonPieces laid 99 / 123 pieces, yieldAtMedialLine kept all, clipBandPiecesToBoard dropped
+  every one -- the board was fine (simple, 16.85 sq in), the pieces were all OUTSIDE it: inwardSignFor returned -1.
+- ROOT: inwardSignFor voted with every vertex (a 0.01 in trial offset both ways, the side whose points end nearer the
+  centroid). The notch's 48 tessellated arc points, where "inward" carries them away from the centroid, out-voted the
+  straight sides' 5 -- the sign depended on tessellation density, not geometry.
+- FIX (declared math, not a patch): the winding. offsetPathInward steps along the left normal, which points inside
+  exactly when the standard shoelace area is positive = geometry.js signedArea (the NEGATIVE shoelace) below zero. A
+  path with no area (|area| <= INWARD_MIN_AREA 1e-12) keeps the trial offset.
+- CENSUS before the swap (both rules logged, the full suite): they disagreed only on the notch (2 outlines) and in
+  polygonDifference's degeneracy nudge on a concave clip (19 calls: the nudge went the wrong way) + 2 calls on a
+  self-intersecting clip + 1 degenerate 0.0002 sq in sliver; on every simple polygon the winding matched a
+  point-in-polygon check of the longest edge's nudged midpoint. Reach on real frames: every template x portrait board
+  4..14 x w..18 in (2078 outlines) read the same sign either way -- no live board was affected.
+- BYTE-IDENTICAL: 19 templates x 0.75 / 1 / 1.25 / 1.5 in x (single soldier, three band, single soldier + Stone fan
+  centre) = 228 lays, frame + wall digests: 0 changed.
+- TEST tests/bricks-inward-sign.test.js (4): the notch board in both windings (the inward offset of the 4 straight-side
+  corners lands inside; the sign = the winding); the notch outline at W 4 / 6.75 lays > 50 pieces, every one inside.
+  Fails 4/4 on main's geometry.js. Full vitest 374 files, 5841 passed, 0 failed; full seam sweep 19/19. Matrix not run
+  (a core helper with every lay byte-identical; the gate runs it).
+- SHOT shots/seatE/t86_zero/before_after.png (0 pieces -> 74).
+## T86 -- a lay with a bare tip laid the frame twice: now planned first, laid once (seat E / 61, 2026-10-07)
+- MEASURED (stage timers in generateBricks / bricksContourBands): a tip lay (16f) laid the frame for the wall's inner path,
+  then again with the tip zones -- the second lay as long as the first; bareTips and the wall were small. Inside a frame
+  lay the cost is the board clip (clipBandPiecesToBoard) and the medial split, not the pieces -- so re-laying only the
+  innermost row would have saved little.
+- FIX: the wall needs only the frame's inner path, which is the band PLAN's (depths, fit rule, narrowing), not the
+  pieces'. contour-bands opts.planOnly skips the rows' pieces (the rest runs on an empty set); generateBricks plans the
+  frame, lays the wall, finds the bare tips, then lays the frame ONCE (with tipZones when there are any).
+- BYTE-IDENTICAL: 228 lays (19 templates x 0.75 / 1 / 1.25 / 1.5 in x single soldier / three band / single + Stone fan
+  centre), digest of frameBricks + wall + interiorOutline + bandsReduced: 0 changed.
+- CPU time per lay (process.cpuUsage, two runs each, main -> new): T1 1 in 55/48 -> 31/30 ms; T14 1.5 101/96 -> 64/52;
+  T18 1.25 157/128 -> 66/72; a no-tip lay (T2 1) 17/17 -> 14/15 (the plan costs nothing measurable). Wall-clock under
+  the fleet's load was too noisy to read (a no-tip lay swung 9 -> 18 ms between runs).
+- TEST tests/bricks-frame-laid-once.test.js (5): one plan + one frame lay per generateBricks on T14 1.5 (a tip lay),
+  T18 1.25, T1 1, T2 1 (bricksContourBands counted through a vi.mock wrapper); the plan's innerPath / bandsReduced equal
+  the full lay's on every template x single / three band at 1.25 in. On main's engine.js: 4 of 5 fail (2 full lays).
+  Full vitest 374 files, 5842 passed, 0 failed; full seam sweep 19/19.

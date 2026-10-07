@@ -186,3 +186,19 @@ def test_the_tpgen_audit_logs_the_reason_for_each_missing_op():
     src = open(os.path.join(_HERE, 'cam-builder.py'), encoding='utf-8').read()
     audit = src[src.index('MISSING toolpath') - 400: src.index('MISSING toolpath') + 200]
     assert 'why_empty(' in audit
+
+
+def test_each_later_pass_is_announced_as_it_starts_and_a_clean_first_pass_announces_none():
+    # Fred (2026-10-07): the loading card lists each later pass as it starts (on_pass -> cam-builder.py)
+    seen = []
+    cam = _board(back_fail=('Morphed Spiral1',))
+    _run(cam, on_pass=seen.append)
+    assert seen == [2]
+    seen.clear()
+    _run(_board(), on_pass=seen.append)
+    assert seen == []
+    cam = _board()
+    cam.setups.item(2).operations.item(1).never = True
+    _run(cam, on_pass=seen.append)
+    assert seen == list(range(2, tg.MAX_GENERATION_PASSES + 1))
+

@@ -16,8 +16,10 @@ import { pointInPolygon } from './geometry.js';
 import { brickTopHeight } from './height-profile.js';
 import { suppressBricks } from './suppression.js';
 import { laySurround } from './inset-surround.js';
+import { bareTips } from './tip-fill.js';
 import { scaledSet } from './library.js';
 import { applyGroutCuts, groutCutsOf } from './grout-cut.js';
+import { applyFanCentre, FAN_CENTRE_DEFAULT } from './fan-centre.js';
 
 /**
  * @param {object} input
@@ -63,6 +65,7 @@ export const ENGINE_OPTIONS = Object.freeze([
   'suppressFrame', 'frameSuppression', // T86 item 29 (lane-b): the frame bands crumble by the wall's rule (suppression.js suppressBricks)
   'insetSurround', // T86 item 29 (lane-b): { rect, preset, corner?, set? } -- a band stack around the inset window (inset-surround.js)
   'groutCut', // T86 item 10: [{ polyline, widthIn? }] -- grout joints cut through the laid pieces (grout-cut.js), after the lay
+  'fanCentre', // T86 item 16e: how a frame corner's fan ends at its centre (fan-centre.js FAN_CENTRES); absent = needle
 ]);
 
 export function generateBricks(input) {
@@ -71,6 +74,7 @@ export function generateBricks(input) {
   let interiorOutline = boardOutline;
   let frameBricks = [];
   let bandsReduced; // T86 item 28: contour-bands' fit-rule note, when the requested stack did not fit
+  let frameLay = null; // T86 item 16f: how the frame was laid, to lay it again into the wall's bare tips
   // T86 item 14 (Fred: a Wall with no Frame bands was filling `boardOutline` -- in the live app,
   // ALWAYS a plain bounding rectangle (editor-brick-tool.js's own `boardPolygon`), never the
   // template's own true (often non-rectangular: hourglass waists, tapered sides, arched tops)
@@ -93,16 +97,13 @@ export function generateBricks(input) {
     // before this) is unaffected; Wall's own bricksFillShape call below
     // always keeps the top-level `set`, never this override.
     const frameSet = frame.set || set;
-    const res = bricksContourBands(frame.primitives, frame.bands || [], { set: frameSet, seed, scale, bandFit: input.bandFit });
-    frameBricks = res.bricks;
-    interiorOutline = res.innerPath;
-    bandsReduced = res.bandsReduced;
-    // T86 item 29: the frame crumbles by the SAME rule as the wall (whole pieces, top-weighted, exact count, clumping);
-    // off (absent / false / 0) = no call, the lay byte-identical
-    if (input.suppressFrame && input.frameSuppression > 0) {
-      frameBricks = suppressBricks(frameBricks, { suppression: input.frameSuppression, topBias: input.topBias ?? 0.8, clumping: input.clumping ?? 0.3 },
-        seed, scaledSet(frameSet, scale).brickHeightIn);
-    }
+    // T86 (seat E, MEASURED: a lay with a bare tip laid the frame twice, the second lay as long as the first): the frame is
+    // PLANNED here (its bands, the fit rule, the wall's inner path -- no pieces) and laid ONCE below, after the wall, with the
+    // wall's bare tips (item 16f) when it has any. The inner path is the plan's own (contour-bands opts.planOnly).
+    const plan = bricksContourBands(frame.primitives, frame.bands || [], { set: frameSet, seed, scale, bandFit: input.bandFit, planOnly: true });
+    interiorOutline = plan.innerPath;
+    bandsReduced = plan.bandsReduced;
+    frameLay = { frameSet, bands: frame.bands || [] };
   }
   // T86 item 29: the inset window's surround (its own field); the wall is cut around it (its outer rect, one joint off)
   const surround = input.insetSurround ? laySurround(input.insetSurround, { set: (frame && frame.set) || set, seed, scale }) : null;
@@ -130,8 +131,26 @@ export function generateBricks(input) {
   const cutAll = (pieces, s) => applyGroutCuts(pieces, cuts, s, scale); // the one shared cut step (grout-cut.js)
   const wallBricks = cutAll(bricks, set);
   const frameSetUsed = (frame && frame.set) || set;
-  frameBricks = cutAll(frameBricks, frameSetUsed);
   const surroundBricks = surround ? cutAll(surround.bricks, frameSetUsed) : null;
+  // T86 item 16f (B1): the wall region's acute tips (>= TIP_FILL_MIN_DEG) the wall leaves bare are the band's -- the frame's
+  // innermost row reaches into what the wall leaves uncovered (a joint off every wall brick; the wall itself is untouched)
+  const tips = frameLay && frameLay.bands.length && bricks.length ? bareTips(interiorOutline, bricks, scaledSet(set, scale)) : [];
+  if (frameLay) {
+    frameBricks = bricksContourBands(frame.primitives, frameLay.bands, { set: frameLay.frameSet, seed, scale, bandFit: input.bandFit, ...(tips.length ? { tipZones: tips } : {}) }).bricks;
+  }
+  // T86 item 16e: the fan centre (fan-centre.js), on the frame as finally laid; absent / needle = no call, the lay byte-identical
+  if (frameLay && input.fanCentre && input.fanCentre !== FAN_CENTRE_DEFAULT) {
+    frameBricks = applyFanCentre(frameBricks, input.fanCentre, { set: scaledSet(frameLay.frameSet, scale), region: interiorOutline });
+  }
+  // T86 item 10: the grout cuts on the frame's ONE lay (after the tip re-lay and the fan centre, before the crumble, so the
+  // crumble picks among the cut pieces)
+  if (frameLay) frameBricks = cutAll(frameBricks, frameLay.frameSet);
+  // T86 item 29: the frame crumbles by the SAME rule as the wall (whole pieces, top-weighted, exact count, clumping);
+  // off (absent / false / 0) = no call, the lay byte-identical
+  if (frameLay && input.suppressFrame && input.frameSuppression > 0) {
+    frameBricks = suppressBricks(frameBricks, { suppression: input.frameSuppression, topBias: input.topBias ?? 0.8, clumping: input.clumping ?? 0.3 },
+      seed, scaledSet(frameLay.frameSet, scale).brickHeightIn);
+  }
   // T86 item 13: the app's own stub (editor-brick-tool.js dropExcludedWallBricks) stands down when this is set
   const notes = { ...(bandsReduced ? { bandsReduced } : {}), ...(input.wallRegion ? { wallRegionApplied: true } : {}), ...(surround ? { surroundBricks } : {}),
     ...(cuts.length ? { groutCutApplied: cuts.length } : {}) };

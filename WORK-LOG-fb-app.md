@@ -15289,3 +15289,37 @@ WallPattern = {
   - Measured on main bc49c4a: 1,053 of 1,197 lays (19 templates x 21 patterns x 3 sizes) had outline-cut pieces under that floor, 18,620 pieces.
   - Dropping them broke 39 pinned tests: the waist fill (H23 74/76), wall-meets-band (T86 16b), the coverage matrix and others.
   - If Fred asks again, the option that keeps every coverage pin is MERGE a sub-floor piece into its course / tile neighbour instead of dropping it.
+
+## F35 item 70, CAM BUILD as deferred steps (seat F, branch cam-build-deferred; advisor-approved after seat A's check)
+- **Measured (seat A, 2026-10-06):**
+  - With the Manufacture switch inside BUILD's HTML handler, no step message after it reached the palette.
+  - With Manufacture already active, steps 1-3 landed live, but step 4 (posted after the MMs were built) painted 8.4 s late, right after the report.
+  - So both the switch and the MM build hold palette messages until the handler returns.
+- **Built:**
+  - cam_coordinator.run_steps() is the pipeline as a GENERATOR. It yields each declared step id where the work may pause: camWcs right after the CAM product is acquired (after a possible workspace switch), camCleanup, camModels, camSetups (after the MMs). It returns the report.
+  - run() drains it (on_stage per step), so every other caller is unchanged.
+  - cam-builder: _do_generate starts the generator and fires BUILD_STEP_EVENT_ID; the HTML handler returns before any build work.
+  - _advance_build (a CustomEvent handler, registered and unregistered like TPGen) runs one step, posts it, fires the next tick; at the end _finish_build sends the report.
+  - Palette actions arriving during a build queue (_actions_waiting) and are replayed in order after the report. That is the order the blocked main thread used to give; never an APPLY interleaved with a BUILD.
+  - Dispatch is extracted as _dispatch_palette_action.
+- **Tests:** test_cam_stages.py +6.
+  - Pause order fresh: step, wcs, step, cleanup, step, mms, step, setups. Reused: step, wcs, step, in_place.
+  - run() unchanged.
+  - The handler returns before the build starts (fake event).
+  - One step per tick, then the report.
+  - An APPLY during a build runs after the report.
+  - 7/10 fail against main (the 3 that pass pin the file parse, the pump, run()). CAM pytest 46.
+- **Next:** seat A's live readback of the four BUILD cards painting live.
+- **Readback 1 of cee7103 (seat A, 10:50):**
+  - Result parity OK. Steps 1-3 painted live even with the Manufacture switch inside BUILD (before: nothing after step 1).
+  - Step 4 never showed: the next tick, fired at once, ran the ~7 s setup build before the palette took the message.
+  - An APPLY clicked mid-build was LOST: its card's paint waited on animation frames that never came, so send() never fired.
+  - Fusion's viewport also covered the palette exactly during the setup build (10:51:02-:09), lifting by itself with the report.
+- **Fixes:**
+  - _advance_build posts the step, then fires the next tick from a timer PALETTE_SETTLE_S (0.25 s) later (fireCustomEvent is thread-safe), so Fusion is idle while the palette takes the message.
+  - core/loading-signal.js: the paint step resolves after PAINT_FALLBACK_MS (250 ms) if no frame comes. This applies to every paint-first user, the Send's hand-off too.
+  - The cover is not re-raised: it lasts the setup build only, and a re-raise from the add-in cannot run while that build blocks Fusion.
+- **Tests:**
+  - test_cam_stages: the tick timer at PALETTE_SETTLE_S.
+  - loading-signal +2: the no-frames test fails before (hangs); the frames-come test pins that the work runs once.
+  - Full vitest 340/340 (5461); CAM pytest 46; add-in pytest 170.

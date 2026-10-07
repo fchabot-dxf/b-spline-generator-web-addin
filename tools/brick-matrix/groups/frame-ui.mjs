@@ -139,6 +139,7 @@ async function runFrameUi() {
     if (await editorOpen()) await apply();
   }
   await runCornerEffect();
+  await runFanCentre();
 }
 
 // ---- item 74b (Fred: grey + explain): a corner choice is greyed exactly where it would re-lay the identical frame. On the
@@ -166,4 +167,48 @@ async function runCornerEffect() {
   checkRow('frame-ui', 'Corners: greyed exactly where the corner re-lays the identical frame (T18 7x9, 1.25 in)',
     agree && !r.grey.mitre && cut.some((c) => r.grey[c]),
     cut.map((c) => `${c} ${r.grey[c] ? 'greyed' : 'live'}, lay ${r.laid[c] === r.laid.mitre ? 'identical' : 'differs'}`).join('; ') + ` (mitre ${r.grey.mitre ? 'GREYED' : 'live'}; tooltip "${r.title}")`);
+}
+
+// ---- T86 item 16e (Fred on the fan mock: "I like them all, add a choice"): the Fan centre row in the Corners section, on
+// CORNER_EFFECT_BOARD (T18 7x9 at 1.25 in: 4 corner fans). Each choice re-lays the frame at once (Stone adds one stone per
+// fan), a pick is ONE undo step (Undo puts the canvas and the active choice back, Redo forward), and on a frame with no
+// fan corner (noFanTemplate) Eye / Stone are greyed with the declared reason, the Needle never.
+export const FAN_CENTRE_ROWS = { fans: 4, noFanTemplate: 'template_9' };
+const FRAME_HASH = `(()=>{ const n=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')]; const s=n.map((x)=>x.getAttribute('points')).sort().join('|'); let h=2166136261; for (let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619);} return JSON.stringify({ hash: (h>>>0).toString(36), count: n.length }); })()`;
+async function fanState() {
+  const f = await jsJSON(FRAME_HASH);
+  return { ...f, ...(await jsJSON(`(async()=>{ const { P }=await import('./core/state.js'); const R=await import('./main/brick-control-requires.js');
+    const list=document.getElementById('brickFrameFanCentreList'), row=document.getElementById('brickFrameFanCentreRow'), corners=document.getElementById('brickFrameCornerRow');
+    const btn=(id)=>document.getElementById('brickFrameFanCentre_'+id);
+    return JSON.stringify({ pick: P.brickSettings.frameFanCentre ?? null, buttons: list ? list.querySelectorAll('button').length : 0,
+      shown: !!list && list.offsetParent !== null, sameSection: !!row && !!corners && row.parentElement === corners.parentElement,
+      active: ['needle','eye','stone'].filter((id)=>btn(id)?.classList.contains('active')),
+      grey: Object.fromEntries(['needle','eye','stone'].map((id)=>[id, !!btn(id)?.disabled])), why: R.FAN_CENTRE_NO_FAN, eyeTitle: btn('eye')?.title || '' }); })()`)) };
+}
+async function runFanCentre() {
+  const R = FAN_CENTRE_ROWS;
+  if (!(await exists('brickFrameFanCentreList'))) { checkRow('frame-ui', 'Fan centre row', false, '', 'T86 16e'); return; }
+  const s0 = await fanState();
+  checkRow('frame-ui', 'Fan centre: in the Corners section, Needle | Eye | Stone, Needle active', s0.shown && s0.sameSection && s0.buttons === 3 && s0.active.join() === 'needle' && s0.pick === null,
+    `shown ${s0.shown}, same section as Corners ${s0.sameSection}, ${s0.buttons} buttons, active ${s0.active.join(',')}, pick ${s0.pick}`);
+  await click('brickFrameFanCentre_eye', 400); await sleep(2500);
+  const s1 = await fanState();
+  checkRow('frame-ui', 'Fan centre: Eye re-lays the frame at once', s1.hash !== s0.hash && s1.active.join() === 'eye' && s1.count === s0.count,
+    `frame ${s1.hash === s0.hash ? 'UNCHANGED' : 'changed'}, active ${s1.active.join(',')}, ${s0.count} -> ${s1.count} pieces`);
+  await click('brickFrameFanCentre_stone', 400); await sleep(2500);
+  const s2 = await fanState();
+  checkRow('frame-ui', `Fan centre: Stone re-lays at once, one stone per fan (${R.fans})`, s2.hash !== s1.hash && s2.active.join() === 'stone' && s2.count === s1.count + R.fans,
+    `frame ${s2.hash === s1.hash ? 'UNCHANGED' : 'changed'}, active ${s2.active.join(',')}, ${s1.count} -> ${s2.count} pieces`);
+  await click('editorUndo', 2500);
+  const u = await fanState();
+  await click('editorRedo', 2500);
+  const r = await fanState();
+  checkRow('frame-ui', 'Fan centre: a pick is one undo step (Undo back to Eye, Redo to Stone)', u.hash === s1.hash && u.active.join() === 'eye' && r.hash === s2.hash && r.active.join() === 'stone',
+    `undo: ${u.hash === s1.hash ? 'Eye frame' : 'OTHER frame'}, active ${u.active.join(',')}; redo: ${r.hash === s2.hash ? 'Stone frame' : 'OTHER frame'}, active ${r.active.join(',')}`);
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value=${JSON.stringify(R.noFanTemplate)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2500)); return 1; })()`);
+  await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900); await sleep(1500);
+  const g = await fanState();
+  checkRow('frame-ui', `Fan centre: greyed with no fan corner (${R.noFanTemplate}), the Needle live`, g.grey.eye && g.grey.stone && !g.grey.needle && g.eyeTitle === g.why,
+    `eye ${g.grey.eye ? 'greyed' : 'LIVE'}, stone ${g.grey.stone ? 'greyed' : 'LIVE'}, needle ${g.grey.needle ? 'GREYED' : 'live'}; tooltip "${g.eyeTitle}"`);
+  await js(`(async()=>{ const { P }=await import('./core/state.js'); const BP=await import('./main/brick-panel.js'); P.brickSettings.frameFanCentre=null; BP.generateBricks(); await new Promise(r=>setTimeout(r,2000)); return 1; })()`);
 }

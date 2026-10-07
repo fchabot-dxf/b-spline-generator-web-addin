@@ -29,6 +29,7 @@ import {
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
   FRAME_CORNERS, FOLDED_FRAME_PRESETS, topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_CORNER_LIST, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
+  FRAME_FAN_CENTRES, frameFanCentreOf, fanCentreIconSvg, frameHasFanFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
   brushStrokeSettings, restyleBrushStroke, groutCutPolylines, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
   groutPaintOf, repaintGrout, GROUT_ELEMENT_KINDS, GROUT_PAINT_DEFAULT, elementsWithoutGrout, forceRegenerateOwnedBrickElements,
@@ -42,7 +43,7 @@ import {
 } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
-import { BRICK_CONTROL_REQUIRES, requirementMet, FRAME_NEEDS_A_FRAME, cornerFact } from './brick-control-requires.js';
+import { BRICK_CONTROL_REQUIRES, requirementMet, FRAME_NEEDS_A_FRAME, cornerFact, FAN_FACT } from './brick-control-requires.js';
 import { ENGINE_OPTIONS } from '../core/bricks/index.js';
 import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.js';
@@ -1413,13 +1414,18 @@ function cornerFacts(editor) {
   const effect = frameCornerEffectFor(editor, P.brickSettings, resolveFrameGeom(editor));
   return effect ? Object.fromEntries(Object.keys(effect).map((style) => [cornerFact(style), effect[style]])) : {};
 }
+/** T86 item 16e: whether the frame these settings lay has a corner fan (no facts = met: never greyed) */
+function fanFacts(editor) {
+  const has = frameHasFanFor(editor, P.brickSettings, resolveFrameGeom(editor));
+  return has === null ? {} : { [FAN_FACT]: has };
+}
 
 /** Audit (88's matrix): grey out every control whose declared requirement is unmet
  *  (main/brick-control-requires.js) -- disabled, with the reason as its tooltip. */
 function syncControlRequires() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   // item 63: a frame contour to lay bands along (none only for an outline that can't carry one); unknown without an editor
-  const ctx = { engineOptions: ENGINE_OPTIONS, facts: { bricksLaid: _bricksLaid(), ...(editor ? { frameContour: !!frameBandContour(editor), ...cornerFacts(editor) } : {}) } };
+  const ctx = { engineOptions: ENGINE_OPTIONS, facts: { bricksLaid: _bricksLaid(), ...(editor ? { frameContour: !!frameBandContour(editor), ...cornerFacts(editor), ...fanFacts(editor) } : {}) } };
   // a control under several rules is greyed while ANY is unmet (the first unmet rule's reason shows)
   const unmet = new Map(), ruled = new Set(), whys = new Set();
   for (const rule of BRICK_CONTROL_REQUIRES) {
@@ -1987,6 +1993,44 @@ function syncFrameCornerButtons() {
   for (const corner of FRAME_CORNERS) {
     document.getElementById(`brickFrameCorner_${corner.id}`)?.classList.toggle('active', corner.id === active);
   }
+  syncFrameFanCentreButtons(show);
+}
+/** T86 item 16e: the Frame element's FAN CENTRE row -- one engine-drawn fan per FRAME_FAN_CENTRES entry (the name + what
+ *  it does as the tooltip). The active one = frameFanCentreOf (the element's pick, else the Needle). */
+function renderFrameFanCentreList(container) {
+  if (!container) return;
+  container.innerHTML = '';
+  for (const centre of FRAME_FAN_CENTRES) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cad-btn brick-accent-icon'; // the Corners row's own small icon button
+    btn.id = `brickFrameFanCentre_${centre.id}`;
+    btn.title = centre.title;
+    btn.setAttribute('aria-label', centre.label);
+    btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
+    btn.innerHTML = fanCentreIconSvg(centre.id, 30) || centre.label;
+    btn.addEventListener('click', () => setFrameFanCentre(centre.id));
+    container.appendChild(btn);
+  }
+  syncFrameCornerButtons();
+}
+/** Shown with the Corners row (a brick frame with bands). */
+function syncFrameFanCentreButtons(show) {
+  for (const id of ['brickFrameFanCentreLabel', 'brickFrameFanCentreList']) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = show ? '' : 'none';
+  }
+  const active = frameFanCentreOf(P.brickSettings);
+  for (const centre of FRAME_FAN_CENTRES) {
+    document.getElementById(`brickFrameFanCentre_${centre.id}`)?.classList.toggle('active', centre.id === active);
+  }
+}
+/** T86 item 16e: pick how the Frame's corner fans end -- re-lays at once (one undo step, like a corner pick). */
+export function setFrameFanCentre(centreId, commit = 'generate') {
+  if (!FRAME_FAN_CENTRES.some((c) => c.id === centreId)) return;
+  P.brickSettings.frameFanCentre = centreId;
+  syncFrameCornerButtons();
+  commitBrickSetting(commit);
 }
 /** Item 33: pick the Frame element's corner -- re-lays at once. */
 export function setFrameCorner(cornerId, commit = 'generate') {
@@ -2916,6 +2960,7 @@ export function initBrickPanel() {
   syncToolButtons();
   renderFramePresetList(document.getElementById('brickFramePresetList'));
   renderFrameCornerList(document.getElementById('brickFrameCornerList'));
+  renderFrameFanCentreList(document.getElementById('brickFrameFanCentreList')); // T86 item 16e
   syncFramePresetButtons();
   renderBrushPresetList(document.getElementById('brickBrushPresetList'));
   syncBrushPresetButtons();
@@ -3008,6 +3053,8 @@ export function initBrickPanel() {
   // the frame changed (template, shape): re-lay once it settles (item 27 -- the editor too; a template with no
   // contour clears the Frame). Wired ONCE per page (onPageEvent): it RE-LAYS, so a second copy would re-lay twice
   onPageEvent('frameRelay', 'frameRecordChanged', (e) => _scheduleFrameRelay(!!(e && e.detail && e.detail.restored)));
+  // 2026-10-07: the board size is part of the frame key (_frameKey) -- a new board re-lays too, once the editor has it
+  onPageEvent('frameRelayBoard', 'editorBoardResized', () => _scheduleFrameRelay());
   // Audit B1 + v2 N2: P.brickSettings was replaced (Cancel, session restore, project load, global undo --
   // app-init.js announceBrickSettingsRestored). A load swaps in a NEW object: an armed Brush keeps
   // reading the editor's own reference, so it is re-pointed too.

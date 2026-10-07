@@ -54,7 +54,9 @@ import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, applyGroutCuts } from '../core/bricks/index.js';
+import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, frameHasFan, FAN_CENTRES, FAN_CENTRE_DEFAULT, fanGroups, applyGroutCuts } from '../core/bricks/index.js';
+import FRAME_DEFS from '../data/frame-defs.js';
+import { frameContourSilhouette } from './contour-from-frame.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
 import { rectToPrimitives } from '../core/inset-window.js';
 import { SURROUND_CORNERS } from '../core/bricks/inset-surround.js';
@@ -675,6 +677,15 @@ export function frameBandsOf(settings) {
     ...(corner ? { cornerStyle: corner } : {}),
   }));
 }
+/** T86 item 16e: how a Frame element's corner FANS end at their centre -- the engine's own declaration (core/bricks
+ *  fan-centre.js FAN_CENTRES: Needle | Eye | Stone), in picker order. */
+export const FRAME_FAN_CENTRES = FAN_CENTRES;
+/** The fan centre a Frame element is laid with: its own pick (`settings.frameFanCentre`), else the engine's default
+ *  (Needle: an absent field lays today's fans, byte-identical). */
+export function frameFanCentreOf(settings) {
+  const id = settings && settings.frameFanCentre;
+  return FAN_CENTRES.some((c) => c.id === id) ? id : FAN_CENTRE_DEFAULT;
+}
 /** The set an element is laid with. */
 export function elementSetId(settings, kind) {
   if (kind === 'wall' && patternSetId(settings.pattern) != null) return patternSetId(settings.pattern);
@@ -855,6 +866,42 @@ function _miniFrameSvg({ bricks, crop: c }, heightPx) {
 const _cornerBands = (cornerId) => { const band = { widthIn: 0.75, pattern: 'soldier', cornerStyle: cornerId }; return [band, band]; };
 export const frameCornerBricks = (cornerId) => _miniFrame(`corner:${cornerId}`, _cornerBands(cornerId)).bricks;
 export const frameCornerIconSvg = (cornerId, heightPx = 26) => _miniFrameSvg(_miniFrame(`corner:${cornerId}`, _cornerBands(cornerId)), heightPx);
+/** T86 item 16e: the fan centre picker's icons -- a corner fan of a declared template, laid by the real engine with each
+ *  choice and cropped to its biggest fan, apex at the centre (the fan Fred picked from: T18's 12-slice base fan at 1.25 in,
+ *  a slightly heavier joint so it reads at 30 px). A new FAN_CENTRES entry gets its icon free. */
+export const FAN_CENTRE_ICON = Object.freeze({
+  templateId: 'template_18', board: Object.freeze({ widthIn: 7, heightIn: 9 }), halfIn: 0.75,
+  brick: Object.freeze({ ...TOOL_MINI_BRICK, brickLengthIn: 1.25, grout: Object.freeze({ widthIn: 0.05 }) }),
+});
+const _fanCentreIcons = new Map();
+export function fanCentreIconSvg(styleId, heightPx = 26) {
+  const key = `${styleId}:${heightPx}`;
+  if (_fanCentreIcons.has(key)) return _fanCentreIcons.get(key);
+  let svg = null;
+  try {
+    const { templateId, board, halfIn, brick: s } = FAN_CENTRE_ICON;
+    const sil = frameContourSilhouette({ defs: FRAME_DEFS, record: { templateId }, board }, 0, 0);
+    const primitives = buildRibbonPrimitives(sil.primitives);
+    const lay = (fanCentre) => generateBricks({
+      boardOutline: [{ x: 0, y: 0 }, { x: board.widthIn, y: 0 }, { x: board.widthIn, y: board.heightIn }, { x: 0, y: board.heightIn }],
+      set: resolvedSetFor(s), scale: scaleFor(s), suppression: 0, clumping: 0, seed: s.seed, skipWallFill: true, ...(fanCentre ? { fanCentre } : {}),
+      frame: { primitives, bands: FRAME_PRESETS.single_soldier },
+    }).frameBricks;
+    const fan = fanGroups(lay(null)).sort((a, b) => b.slices.length - a.slices.length)[0];
+    if (fan) {
+      const bricks = lay(styleId === FAN_CENTRE_DEFAULT ? null : styleId), x0 = fan.apex.x - halfIn, y0 = fan.apex.y - halfIn, w = 2 * halfIn;
+      const inView = (b) => b.polygon.some((p) => p.x > x0 && p.x < x0 + w && p.y > y0 && p.y < y0 + w);
+      svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="${+x0.toFixed(3)} ${+y0.toFixed(3)} ${+w.toFixed(3)} ${+w.toFixed(3)}" aria-hidden="true">`
+        + `<rect x="${+x0.toFixed(3)}" y="${+y0.toFixed(3)}" width="${+w.toFixed(3)}" height="${+w.toFixed(3)}" fill="#efe6da"/>`
+        + `<g fill="#b5533c">${bricks.filter((b) => inView(b) && !b.fanCentre).map((b) => _iconPolygon(b)).join('')}</g>`
+        + `<g fill="#6f675d">${bricks.filter((b) => inView(b) && b.fanCentre).map((b) => _iconPolygon(b)).join('')}</g></svg>`;
+    }
+  } catch (_) {
+    svg = null;
+  }
+  _fanCentreIcons.set(key, svg);
+  return svg;
+}
 /** Item 33 (audit N10, Fred's long-list rule): a band PRESET's icon -- its band stack as laid, drawn in the declared
  *  PRESET_ICON_STYLE (item 74c: the whole frame); None = a struck-through tile (the Wall grid's own 'none'). */
 export function framePresetIconSvg(presetId, heightPx = 26) {
@@ -1222,6 +1269,8 @@ function _layInput(editor, settings, frameGeom) {
   // the engine applies ONE `scale` (the Wall's) to the frame's set too -- so the frame's set goes in pre-scaled
   // by its own scale over the Wall's (the engine's own scaledSet): its bricks / stones keep the global size
   if (frameGeom) input.frame = { ...frameGeom, set: scaledSet(resolvedSetFor(frameSettings), scaleFor(frameSettings) / input.scale) };
+  // T86 item 16e: the frame's fan centre -- sent only off the default (Needle = absent = the lay byte-identical)
+  if (frameGeom && frameFanCentreOf(settings) !== FAN_CENTRE_DEFAULT) input.fanCentre = frameFanCentreOf(settings);
   applyWallPattern(input, wallSettings);
   // F35 item 21: the fieldstone layout's share of large stones (d3's T86 item 17 reads it; inert until then)
   if (wallLayoutFor(settings) === 'fieldstone') input.largeStones = Number.isFinite(settings.largeStones) ? settings.largeStones : 0.5;
@@ -1249,6 +1298,14 @@ export function frameCornerEffectFor(editor, settings, frameGeom) {
   if (!frameGeom || !frameGeom.primitives || !frameGeom.primitives.length) return null;
   const { frame, seed, scale, bandFit } = _layInput(editor, settings, frameGeom);
   return frameCornerEffect(frame.primitives, frame.bands || [], { set: frame.set, seed, scale, bandFit });
+}
+
+/** T86 item 16e: whether the frame these settings lay has a corner FAN (a fan centre choice acts on it) -- core/bricks
+ *  frameHasFan on the SAME input a lay builds; null with no frame contour to lay along. */
+export function frameHasFanFor(editor, settings, frameGeom) {
+  if (!frameGeom || !frameGeom.primitives || !frameGeom.primitives.length) return null;
+  const { frame, seed, scale, bandFit } = _layInput(editor, settings, frameGeom);
+  return frameHasFan(frame.primitives, frame.bands || [], { set: frame.set, seed, scale, bandFit });
 }
 
 /** F35 item 22 slice 2: the settings a painted area is laid with -- the SELECTED area (editor._brickWallAreaId,

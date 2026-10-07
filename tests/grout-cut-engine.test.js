@@ -104,3 +104,16 @@ describe('T86 item 10: the whole drawn line is the cut (one swept band), not one
     expect(out).toEqual([piece]);
   });
 });
+
+describe('T86 item 10 x seat E\'s single frame lay: the cut runs on the frame as laid, BEFORE the frame crumble', () => {
+  it('cut + "Crumble frame too" = the crumble of the cut pieces of the plain lay', async () => {
+    const { suppressBricks } = await import('../bspline-frame-builder/b-spline-gen/html/core/bricks/suppression.js');
+    const crumble = { suppressFrame: true, frameSuppression: 0.4, topBias: 0.8, clumping: 0.3 };
+    const plain = lay({ topBias: 0.8, clumping: 0.3 });
+    const both = lay({ ...crumble, groutCut: [{ polyline: CUT }] });
+    const cutFirst = applyGroutCuts(plain.frameBricks, [{ polyline: CUT }], SET, SCALE);
+    const expected = suppressBricks(cutFirst, { suppression: 0.4, topBias: 0.8, clumping: 0.3 }, 3, scaledSet(SET, SCALE).brickHeightIn);
+    expect(JSON.stringify(both.frameBricks)).toBe(JSON.stringify(expected));
+    expect(covering(both.frameBricks, CUT)).toBe(0);
+  });
+});

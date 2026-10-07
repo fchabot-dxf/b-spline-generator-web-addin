@@ -10,6 +10,7 @@ import {
   withLoadingStage, withLoadingStageShownFirst, beginLoadingSequence, currentLoadingStage, resetLoadingSignal, stageText, setPaintScheduler,
   continuousGesture, installGestureWatch,
   LOADING_STAGES, LOADING_SEQUENCES, STAGE_GROUPS, MIN_VISIBLE_MS, SEQUENCE_IDLE_MS, GESTURE_GRACE_MS, HIDE_GRACE_MS,
+  PAINT_FALLBACK_MS,
 } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 const FIXTURE = `<div id="loading-stage" class="loading-stage" hidden role="status" aria-live="polite"><span class="loading-stage-spinner"></span><span class="loading-stage-text"></span></div>`;
@@ -250,5 +251,29 @@ describe('geometry refresh (Fred: "load screens were for during refresh of geome
     const r = withLoadingStage('rebuild', () => currentLoadingStage().surface); // a new appearance, no gesture: the card
     runFrames();
     expect(await r).toBe('card');
+  });
+});
+
+describe('the paint step never holds the work forever', () => {
+  it('frames that never come (a host that does not paint the page): the work goes ahead after PAINT_FALLBACK_MS', async () => {
+    // seat A, live in the Fusion CAM palette: an APPLY clicked during a BUILD waited on its card's paint, never sent
+    expect(PAINT_FALLBACK_MS).toBe(250);
+    vi.stubGlobal('requestAnimationFrame', () => 1); // no frame, ever
+    let ran = false;
+    const p = withLoadingStage('stepExport', () => { ran = true; });
+    await vi.advanceTimersByTimeAsync(PAINT_FALLBACK_MS - 10);
+    expect(ran).toBe(false); // the paint still gets its chance
+    await vi.advanceTimersByTimeAsync(20);
+    await p;
+    expect(ran).toBe(true);
+  });
+
+  it('frames that do come: the work runs once, at the second frame, and the fallback does not run it again', async () => {
+    let runs = 0;
+    const p = withLoadingStage('stepExport', () => { runs++; });
+    runFrames();
+    await p;
+    await vi.advanceTimersByTimeAsync(PAINT_FALLBACK_MS + 10);
+    expect(runs).toBe(1);
   });
 });

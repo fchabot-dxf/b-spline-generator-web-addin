@@ -4,7 +4,7 @@
 // window.camLoading: begin(sequence) paints the sequence's first step BEFORE the request goes to Fusion (the add-in
 // works on Fusion's main thread, which is also the palette's); stage(id) follows the add-in's 'cam_stage' reports;
 // end() closes it on the report.
-import { declareLoadingStages, beginLoadingSequence, holdLoadingStage, releaseHeldStage } from '../../../b-spline-gen/html/core/loading-signal.js';
+import { declareLoadingStages, beginLoadingSequence, holdLoadingStage, releaseHeldStage, growLoadingSequence, endLoadingSequence } from '../../../b-spline-gen/html/core/loading-signal.js';
 import CAM_STAGES from './cam-stages.js';
 
 declareLoadingStages(
@@ -17,6 +17,7 @@ window.camLoading = {
     beginLoadingSequence(sequenceId);
     return holdLoadingStage(CAM_STAGES.sequences[sequenceId][0]);
   },
-  stage: (id) => holdLoadingStage(id),
-  end: () => releaseHeldStage(),
+  // a report may grow the step list first (core/loading-signal.js growLoadingSequence: the add-in adds a step mid-run)
+  stage: (id, grow) => { if (grow) growLoadingSequence(grow); return holdLoadingStage(id); },
+  end: () => { endLoadingSequence(); return releaseHeldStage(); }, // the report: the work is over, whatever step it reached
 };

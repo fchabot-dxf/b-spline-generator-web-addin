@@ -28,7 +28,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 import { setPaintScheduler } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 import { WALL_AREA_HINT } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { initBrickPanel, setFrameRock } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
-import { runBricks, FRAME_CORNERS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { runBricks, FRAME_CORNERS, FRAME_FAN_CENTRES } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { frameContext } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/main/brick-control-requires.js';
@@ -43,7 +43,7 @@ const FIXTURE = `
     <div id="brickBrushProfileToggle"><button id="brickBtnProfileStripped" class="active"></button><button id="brickBtnProfileContinuous"></button></div>
     <div id="brickBrushOrientationToggle"><button id="brickBtnOrientationStretcher" class="active"></button><button id="brickBtnOrientationSoldier"></button></div>
   </div>
-  <div id="brickFramePresetList"></div><label id="brickFrameCornerLabel">Corners</label><div id="brickFrameCornerList"></div>
+  <div id="brickFramePresetList"></div><label id="brickFrameCornerLabel">Corners</label><div id="brickFrameCornerList"></div><label id="brickFrameFanCentreLabel">Fan centre</label><div id="brickFrameFanCentreList"></div>
   <div id="brickBrushPresetList"></div>
   <div id="brickPatternList"></div><div id="brickRusticRow_wall" style="display:none;"><input type="range" id="brickRusticSlider_wall"><input id="brickRustic_wall"></div><div id="brickRusticRow_brush" style="display:none;"><input type="range" id="brickRusticSlider_brush"><input id="brickRustic_brush"></div>
   <label id="brickFrameBandPatternLabel">Band patterns</label><div id="brickFrameBandPatternList"></div>
@@ -157,6 +157,41 @@ describe('item 33: the Corners row in the Frame section', () => {
     // turn 261: a band row lists only what a band can lay -- the Wall-only patterns are absent, not greyed
     for (const id of ['herringbone', 'basketweave', 'chevron', 'square_grid', 'none']) expect($(`brickFrameBandPattern_0_${id}`), id).toBeNull();
     expect($('brickFrameBandPattern_0_fieldstone')).toBeTruthy(); // band-capable
+  });
+});
+
+const activeFanCentre = () => [...document.querySelectorAll('[id^=brickFrameFanCentre_]')].filter((b) => b.classList.contains('active')).map((b) => b.id);
+
+// T86 item 16e (Fred on the fan mock: "I like them all, add a choice"): the Fan centre row, in the Corners section
+describe('item 16e: the Fan centre row', () => {
+  beforeEach(() => { P.brickSettings.frameBandPreset = 'single_soldier'; P.brickSettings.frameCorner = null; P.brickSettings.frameFanCentre = null; P.brickSettings.frameBandPatterns = []; });
+  it('one button per fan centre, each with its tooltip; an absent pick shows Needle active', () => {
+    setup('frame');
+    expect(FRAME_FAN_CENTRES.map((c) => c.id)).toEqual(['needle', 'eye', 'stone']);
+    for (const c of FRAME_FAN_CENTRES) expect($(`brickFrameFanCentre_${c.id}`).title, c.id).toBe(c.title);
+    expect(activeFanCentre()).toEqual(['brickFrameFanCentre_needle']);
+    expect(shown('brickFrameFanCentreList')).toBe(true);
+  });
+  it('a pick sets the element’s fan centre and re-lays at once; it survives a preset change (not per band)', () => {
+    setup('frame');
+    runBricks.mockClear();
+    $('brickFrameFanCentre_stone').click();
+    expect(P.brickSettings.frameFanCentre).toBe('stone');
+    expect(activeFanCentre()).toEqual(['brickFrameFanCentre_stone']);
+    expect(runBricks).toHaveBeenCalled();
+    $('brickFramePreset_three_band').click();
+    expect(P.brickSettings.frameFanCentre).toBe('stone');
+    expect(activeFanCentre()).toEqual(['brickFrameFanCentre_stone']);
+  });
+  it('hidden with the Corners row: no bands (None), a rock frame', () => {
+    setup('frame');
+    $('brickFramePreset_none').click();
+    expect(shown('brickFrameFanCentreList')).toBe(false);
+    $('brickFramePreset_single_soldier').click();
+    expect(shown('brickFrameFanCentreList')).toBe(true);
+    setFrameRock(true);
+    expect(shown('brickFrameFanCentreList')).toBe(false);
+    setFrameRock(false);
   });
 });
 
