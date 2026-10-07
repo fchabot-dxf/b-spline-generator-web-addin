@@ -24268,3 +24268,23 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   T18 1.25, T1 1, T2 1 (bricksContourBands counted through a vi.mock wrapper); the plan's innerPath / bandsReduced equal
   the full lay's on every template x single / three band at 1.25 in. On main's engine.js: 4 of 5 fail (2 full lays).
   Full vitest 374 files, 5842 passed, 0 failed; full seam sweep 19/19.
+## T86 item 12 -- life-size line-arc / arc-arc overlaps: the medial cut was right, its area check refused it (seat E / 61, 2026-10-07)
+- MEASURED on main (after 16(c)'s yieldAtMedialLine), every template x 7x9 / 9x12 x single soldier / soldier+stretcher,
+  as laid (fit rule on) and as requested (bandFit false): T1's shoulder/waist at 4 in (item 11's case) no longer overlaps.
+  BUT as laid, overlaps remained from 2 in up (the 3 in and Life 8 in presets reach them). Classified per pair:
+  (a) RUN-RUN (item 12's class): T1 9x12 3 in 12 %, T10 9x12 4 in 41 %, T17 7x9 4 in 6 %, T14 9x12 4 in 1 %, T5 / T7 9x12
+      4 in ~9 %, T7 9x12 8 in 98 % -- facing concave waists, a waist against a line, two big facing arcs;
+  (b) FAN-FAN: a corner fan's own slices crossing at big depth (T19 from 2 in, T18 / T5 from 2.5 in, T4 / T7 from 3 in);
+  (c) a band as deep as the board is wide (8 in on 7x9: T14 / T16 / T17) -- laid as requested by item 28's design.
+- ROOT of (a): yieldAtMedialLine found the pairs and cut them on the medial line, but checkedDifferenceOnce REFUSED every
+  cut: |kept - (piece - shared)| was 0.0011..0.0018 sq in on 2.4..4.1 sq in pieces, over the absolute CUT_CHECK_SQIN
+  1e-3 -> [piece] uncut -> the overlap stood.
+- MEASURED the check over 35,201 cuts (every template x both boards x 0.75..8 in x single / three band): 97.5 % exact to
+  1e-4 of the piece area, 99.9 % within 0.31 %; the wild failures it exists for: 10 beyond 3 %, up to 60 %. 556 sound
+  cuts refused. FIX: the limit is max(CUT_CHECK_SQIN, CUT_CHECK_SHARE 0.005 x the piece's area).
+- RESULT: run-run overlaps as laid: 0 everywhere except class (c). Lays changed: 8 of 380 (all at 3 in); every lay at
+  0.75 / 1 / 1.25 / 1.5 in byte-identical (19 templates x 2 boards x 2 presets). Full seam sweep 19/19.
+- NOT FIXED, REPORTED: (b) fan slices crossing at >= 2 in -- a different construction (buildPatch at big depth).
+- TEST tests/bricks-life-size-medial.test.js (6): the six (a) cases lay with no run piece overlapping another; 6/6 fail on
+  main. Full vitest 375 files, 5847 passed, 0 failed (a first run had 2 load timeouts in unrelated files: green on re-run).
+- SHOT shots/seatE/t86_12/item12_before_after.png (T1 9x12 3 in, T10 9x12 4 in); overlaps_main.png (class b on main).
