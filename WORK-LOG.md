@@ -24124,6 +24124,25 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   report 15:14:41 (build 45 s). The screen frames show each card in turn: step 1 of 5 .. 'applying toolpaths, step 5
   of 5' (15:14:39.677, steps 1-4 ticked), then done. TPGen: pass 1 left Back empty (0.3 s), pass 2 -> post-audit
   ok=7 missing=0. Fusion 10.2 GB after; main 8de200f redeployed (-9), holder none.
+## The open editor follows a board change (phone) -- seat A / 77, 2026-10-07
+- Asked: does the SVG download print at the board's size (the editor root carried a stale 7x9 width/height)?
+  MEASURED headless on main abdff5e: the normal flows are right -- the download is width/height = board x 96 with
+  viewBox 0 0 W H (9x12 -> 864x1152, 7x9 -> 672x864), all three editor-io builders read editor._mW/_mH; the stamp
+  rasterizer overrides width/height; Fusion sizes by viewBox (measured earlier).
+- BUG (phone only): at 390 px the sidebar's widthIn/heightIn stay reachable WHILE the editor is open (elementFromPoint
+  hits the input; at 1366 the editor covers them), and app-init _resyncEditorToStock returned while #svgEditorModal
+  was open -- the editor kept the old board: outline, grid, the download (672x864, viewBox 0 0 7 9 on a 9x12 board:
+  printed 7x9, clipped the rest), the Shape Lattice's extent (the item-100 T11 capture's lattice sat off-centre: the
+  capture tool opens the editor before setting the board) and the bricks' board.
+- FIX (advisor: (A), expected behaviour): an OPEN editor follows in place (setModelMetrics: view, grid, outline,
+  guides; no reload, so undo + selection stay); a closed one reloads as before; then the frame profile, one commit and
+  'editorBoardResized' -- the Brick panel's frame re-lay now also follows that (the board size is part of _frameKey;
+  before, only frameRecordChanged re-laid), so it always runs on the new size. Lattice: board-relative tools read
+  _mW/_mH at their next Generate; the grid and guides are redrawn by setModelMetrics.
+- Tests: tests/editor-follows-board.test.js (3) + brick-element-laid-key-panel (+1: a new board re-lays once, the
+  same board again nothing) -- 3 fail on main (the 4th pins today's no-op). Matrix layout group +1 row (phone 390:
+  editor open, 7x9 -> 9x12 through the real inputs: editor board 9x12, download 864x1152 viewBox 0 0 9 12): 36 rows
+  0 FAIL. Full vitest 373 files 5819/0. Known failures: none. Shots: shots/seatA/board_follows_phone_strip.png.
 ## The CAM card stays through the toolpaths, each later pass on it (seat A / 77, 2026-10-07)
 - Fred: the loading card "could list all the steps" and the steps "grow live". Until now the BUILD / APPLY card
   closed at their report while the deferred toolpath generation ran on for 2-4 min with no signal.
@@ -24192,6 +24211,23 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   live. layout group 35 rows 0 FAIL.
 - SHOTS shots/seatE/t86_16e/: engine_check.png (T18 1.25, T1 1, T1 0.75 soldier/stretcher x 3 choices), whole_T18.png,
   icons.png, live_eye.png / live_stone.png (the app: Corners section with the Fan centre row, stones on the canvas).
+
+### 2026-10-07 addendum (seat A): the open editor refits the new board (advisor: AFTER strip cropped the 9x12)
+- Cause: `setModelMetrics` fits inside itself, BEFORE `drawFrameProfile` redraws the frame, so it fitted the OLD 7x9
+  frame region onto the 9x12 board (live view -0.75 -1.167 8.5 11.333: right side and top off-canvas).
+- Fix (app-init `_resyncEditorToStock`, open-editor branch): note `isFittedView(ed)` before the change; after the
+  profile is redrawn, `ed.fitView()` (the same call a fresh open makes) -- unless the user had zoomed/panned, then
+  their view is re-applied. editor-view.js declares `fittedView(editor)` (pure; `fitView` now uses it) and
+  `isFittedView(editor)`.
+- "Whole board visible" = what a fresh open shows: the frame's cut region (FB-APP F7) or, with no frame, the board.
+  A first version of the matrix check demanded the full 0..9 x 0..12 stock and failed on a correct fit (a fresh
+  open crops the margin outside the frame on purpose) -- corrected to the fit region.
+- Matrix row (layout group, BOARD_FOLLOWS) now also requires wholeBoard && fitted; it waits for window.svgEditor
+  after opening (one loaded run threw "_draw of undefined" -> a run error, no row).
+- Non-vacuous: with the refit removed, tests/editor-follows-board.test.js fails 1/4 (the open-editor test) and the
+  matrix row FAILs (whole board false, fitted false). Restored: layout 36 rows 0 FAIL 0 page errors; full vitest
+  374 files / 5842 tests passed, 0 failed.
+- Shots: shots/seatA/board_follows_phone_strip.png (re-shot AFTER: the whole 9x12 frame fitted).
 ## T86 -- the silent zero-brick lay: inwardSignFor reads the winding (seat E / 61, 2026-10-07)
 - FOUND building the 16e icons: an outline with T1's right-side notch alone (its exact arcs, a 4 or 6.75 in wide board)
   laid 0 frame pieces with no note; a plain rectangle laid 66.
