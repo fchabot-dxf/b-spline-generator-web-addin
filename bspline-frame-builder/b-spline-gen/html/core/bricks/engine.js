@@ -14,6 +14,9 @@ import { strokesToRegion, WALL_REGION_PICK } from './region.js';
 import { bricksContourBands } from './contour-bands.js';
 import { pointInPolygon } from './geometry.js';
 import { brickTopHeight } from './height-profile.js';
+import { suppressBricks } from './suppression.js';
+import { laySurround } from './inset-surround.js';
+import { scaledSet } from './library.js';
 
 /**
  * @param {object} input
@@ -56,6 +59,8 @@ export const ENGINE_OPTIONS = Object.freeze([
   'rustic', // T86 item 22: rustic running bond, 0..1 (library.js RUSTIC); the Brush reads it too (along-path)
   'accentCuts', // T86 item 26: an accent tile at 1/2 or 1/4 brick splits bricks and marks the pieces (accentMarked)
   'customBond', // T86 item 27: a declared course sequence (pieces in brick units + an offset per course)
+  'suppressFrame', 'frameSuppression', // T86 item 29 (lane-b): the frame bands crumble by the wall's rule (suppression.js suppressBricks)
+  'insetSurround', // T86 item 29 (lane-b): { rect, preset, corner?, set? } -- a band stack around the inset window (inset-surround.js)
 ]);
 
 export function generateBricks(input) {
@@ -90,7 +95,16 @@ export function generateBricks(input) {
     frameBricks = res.bricks;
     interiorOutline = res.innerPath;
     bandsReduced = res.bandsReduced;
+    // T86 item 29: the frame crumbles by the SAME rule as the wall (whole pieces, top-weighted, exact count, clumping);
+    // off (absent / false / 0) = no call, the lay byte-identical
+    if (input.suppressFrame && input.frameSuppression > 0) {
+      frameBricks = suppressBricks(frameBricks, { suppression: input.frameSuppression, topBias: input.topBias ?? 0.8, clumping: input.clumping ?? 0.3 },
+        seed, scaledSet(frameSet, scale).brickHeightIn);
+    }
   }
+  // T86 item 29: the inset window's surround (its own field); the wall is cut around it (its outer rect, one joint off)
+  const surround = input.insetSurround ? laySurround(input.insetSurround, { set: (frame && frame.set) || set, seed, scale }) : null;
+  const wallExclusions = surround ? [...(input.exclusions || []), { polygon: surround.outer }] : input.exclusions;
 
   const region = wallRegionOf(input.wallRegion, set);
   const bricks = input.skipWallFill ? [] : bricksFillShape(interiorOutline, null, {
@@ -104,11 +118,11 @@ export function generateBricks(input) {
     rustic: input.rustic,
     accentCuts: input.accentCuts,
     customBond: input.customBond,
-    exclusions: input.exclusions,
+    exclusions: wallExclusions,
     region,
   }).bricks;
   // T86 item 13: the app's own stub (editor-brick-tool.js dropExcludedWallBricks) stands down when this is set
-  const notes = { ...(bandsReduced ? { bandsReduced } : {}), ...(input.wallRegion ? { wallRegionApplied: true } : {}) };
+  const notes = { ...(bandsReduced ? { bandsReduced } : {}), ...(input.wallRegion ? { wallRegionApplied: true } : {}), ...(surround ? { surroundBricks: surround.bricks } : {}) };
   // F35 item 55: + `interiorOutline` (the wall's fill outline: the frame's innerPath, else the board) -- additive, read by
   // the grout shape (grout-shape.js); every other field is as before
   if (Array.isArray(input.exclusions)) return { bricks, frameBricks, seed, exclusionsApplied: true, ...notes, interiorOutline };

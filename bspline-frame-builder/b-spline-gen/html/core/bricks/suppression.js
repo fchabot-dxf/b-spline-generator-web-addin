@@ -21,6 +21,8 @@
  * elsewhere. A layout using a different convention would need its own course-index meaning here.
  */
 import { valueNoise2 } from './noise2d.js';
+import { polygonCentroid } from './geometry.js';
+import { seedFor } from './rng.js';
 
 /**
  * @param {Map} pieceOf — cellId -> {pieceId, cellIds} (pieces.assignPieces's own output)
@@ -66,4 +68,19 @@ export function computeSuppressedCells(pieceOf, cells, settings, seed) {
     for (const id of scored[i].cellIds) suppressed.add(id);
   }
   return suppressed;
+}
+
+/** T86 item 29: the SAME crumble rule (computeSuppressedCells: whole pieces, weighted to the top, exact count, clumping
+ *  = noise scale) for a laid brick list that has no layout cells -- the frame bands. Each brick is its own one-cell
+ *  piece at its centroid; its course = the brick-height row its centroid falls in, counted from the topmost brick (so
+ *  "the top" means what it means for the wall). `purpose` salts the seed, so the frame's noise is not the wall's.
+ *  Returns the KEPT bricks, in their original order. */
+export function suppressBricks(bricks, settings, seed, courseIn, purpose = 'frame-suppression') {
+  if (!bricks.length || !((settings.suppression ?? 0) > 0)) return bricks;
+  const centres = bricks.map((b) => polygonCentroid(b.polygon));
+  const minY = Math.min(...centres.map((c) => c.y));
+  const cells = centres.map((c, i) => ({ id: i, cx: c.x, cy: c.y, courseIndex: Math.floor((c.y - minY) / (courseIn > 0 ? courseIn : 1)) }));
+  const pieceOf = new Map(cells.map((c) => [c.id, { pieceId: 'single', cellIds: [c.id] }]));
+  const gone = computeSuppressedCells(pieceOf, cells, settings, seedFor(seed, purpose, 0));
+  return bricks.filter((_, i) => !gone.has(i));
 }
