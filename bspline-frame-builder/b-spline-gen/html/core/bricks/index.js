@@ -8,7 +8,7 @@
 export { bricksAlongPath } from './along-path.js';
 export { bricksFillShape, bricksClearOf } from './fill-shape.js';
 export { strokesToRegion } from './region.js'; // T86 item 18: painted strokes -> the wall's region
-export { bricksGroutCut } from './grout-cut.js'; // T86 item 10: the Raised brush's grout mode
+export { bricksGroutCut, applyGroutCuts } from './grout-cut.js'; // T86 item 10: the Raised brush's grout mode (+ the one shared cut step)
 export { groutShapeOf, groutIdOf, insetFace, pointOnGrout, primitivesOutline, GROUT_ID_SUFFIX } from './grout-shape.js'; // F35 item 55
 export { bricksContourBands, bandFrameAt, frameCornerEffect, CORNER_CUT_STYLES } from './contour-bands.js';
 // T86 item 2: `ribbonPieces` itself -- the per-row primitive `bricksContourBands` already calls

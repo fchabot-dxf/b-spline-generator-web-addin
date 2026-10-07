@@ -32,14 +32,18 @@ export const GROUT_CUT = {
 };
 let js, jsJSON, send, sleep, openBrickTool, clickEl, checkRow, key;
 export function bind(ctx) { ({ js, jsJSON, send, sleep, openBrickTool, click: clickEl, checkRow, key } = ctx); }
-export async function run() { await runGroutCut(); }
+export async function run() { await runGroutCut(); await runBrushCut(); }
 
-/** the wall's pieces vs a line (board inches): how many of its samples lie under a piece; null = the recorded cut */
-const COUNTS = (line = null) => `(async()=>{ const bt=await import('./editor/editor-brick-tool.js'); const { pointInPolygon }=await import('./core/bricks/index.js'); const ed=window.svgEditor;
-  const wall=[...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick="wall"]')].map((n)=>n.getAttribute('points').trim().split(/\\s+/).map((s)=>{ const [x,y]=s.split(',').map(Number); return {x,y}; }));
+/** a kind's pieces vs a line (board inches): how many of its samples lie under a piece; null = the recorded cut */
+const COUNTS = (line = null, kind = 'wall') => `(async()=>{ const bt=await import('./editor/editor-brick-tool.js'); const { pointInPolygon }=await import('./core/bricks/index.js'); const ed=window.svgEditor;
+  const wall=[...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick="${kind}"]')].map((n)=>n.getAttribute('points').trim().split(/\\s+/).map((s)=>{ const [x,y]=s.split(',').map(Number); return {x,y}; }));
   const line=${line ? JSON.stringify(line) : 'bt.groutCutPolylines(ed).flatMap((c)=>c.polyline)'}; const samples=[];
   for (let i=1;i<line.length;i++){ const a=line[i-1], b=line[i]; for (let k=0;k<6;k++) samples.push({x:a.x+(b.x-a.x)*k/6, y:a.y+(b.y-a.y)*k/6}); }
-  return JSON.stringify({ line, wall: wall.length, samples: samples.length, over: samples.filter((s)=>wall.some((pg)=>pointInPolygon(s.x,s.y,pg))).length, undo: ed._undoStack.length }); })()`;
+  const nodes=[...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick="${kind}"]')];
+  const C=await import('./core/bricks/index.js');
+  const hits=wall.map((pg,i)=>({ pg, i })).filter(({ pg })=>samples.some((s)=>pointInPolygon(s.x,s.y,pg))).slice(0,4)
+    .map(({ pg, i })=>({ owner: nodes[i].getAttribute('data-brick-owner'), layer: nodes[i].getAttribute('data-layer'), n: pg.length, recut: C.bricksGroutCut([{ id: 'x', polygon: pg }], line, { widthIn: 0.034 }).length }));
+  return JSON.stringify({ line, wall: wall.length, samples: samples.length, over: samples.filter((s)=>wall.some((pg)=>pointInPolygon(s.x,s.y,pg))).length, undo: ed._undoStack.length, hits }); })()`;
 async function boardDrag(pts) {
   const at = async ([x, y]) => jsJSON(`(()=>{ const n=window.svgEditor._sketchLayer.node, m=n.getScreenCTM(), pt=n.ownerSVGElement.createSVGPoint(); pt.x=${x}; pt.y=${y}; const s=pt.matrixTransform(m); return JSON.stringify({x:s.x, y:s.y}); })()`);
   const ps = []; for (const q of pts) ps.push(await at(q));
@@ -67,4 +71,38 @@ async function runGroutCut() {
   await clickEl('brickRaisedMode_bricks', 400); // leave the brush as the group found it
   const ok = after.samples > 0 && after.over === 0 && undone.over > 0 && after.undo === before.undo + 1 && undone.wall === before.wall;
   checkRow('brush', name, ok, `recorded stroke samples under a wall piece: ${after.over}/${after.samples} after the cut, ${undone.over} after Undo; wall pieces ${before.wall} -> ${after.wall} -> ${undone.wall}; undo steps +${after.undo - before.undo}`);
+}
+
+// ---- T86 item 10 extended (Fred: "also cut Brush bricks"): the same cut step on Brush strokes -- (a) a cut drawn across an
+// existing Brush stroke, (b) a Brush stroke drawn across an existing cut. Either way: the recorded cut line under no Brush
+// piece; Undo of the later stroke puts the uncut pieces back (a).
+export const GROUT_CUT_BRUSH = { brushStroke: [[1.6, 5.0], [5.4, 5.2]], cut: [[3.3, 4.3], [3.6, 5.9]], introducedBy: 'T86 item 10 (brush)' };
+async function drawWith(tool, grout, pts) {
+  await openBrickTool(tool);
+  if (tool === GROUT_CUT.tool) await clickEl(grout ? GROUT_CUT.mode : 'brickRaisedMode_bricks', 500);
+  await boardDrag(pts); await sleep(3500);
+}
+async function runBrushCut() {
+  const B = GROUT_CUT_BRUSH;
+  const nameA = 'Grout cut through a Brush stroke: no Brush piece under it, Undo restores', nameB = 'A Brush stroke drawn after a Grout cut is cut too';
+  if (!(await js(`import('./core/bricks/index.js').then((m) => typeof m.applyGroutCuts === 'function', () => false)`))) {
+    checkRow('brush', nameA, false, '', B.introducedBy); checkRow('brush', nameB, false, '', B.introducedBy); return;
+  }
+  // (a) stroke, then the cut across it
+  await drawWith('brush', false, B.brushStroke);
+  await drawWith(GROUT_CUT.tool, true, B.cut);
+  const a = await jsJSON(COUNTS(null, 'brush'));
+  await key('z'); await sleep(3500);
+  const aUndone = await jsJSON(COUNTS(a.line, 'brush'));
+  await key('z'); await sleep(3000); // the brush stroke too: the board as the group found it
+  checkRow('brush', nameA, a.samples > 0 && a.over === 0 && aUndone.over > 0,
+    `recorded cut samples under a Brush piece: ${a.over}/${a.samples} after the cut, ${aUndone.over} after Undo (brush pieces ${a.wall} -> ${aUndone.wall})${a.over ? ` hits ${JSON.stringify(a.hits)} line ${JSON.stringify(a.line)}` : ''}`);
+  // (b) the cut, then a stroke across it
+  await drawWith(GROUT_CUT.tool, true, B.cut);
+  await drawWith('brush', false, B.brushStroke);
+  const b = await jsJSON(COUNTS(null, 'brush'));
+  await key('z'); await sleep(3000); await key('z'); await sleep(3000);
+  await clickEl('brickRaisedMode_bricks', 400);
+  checkRow('brush', nameB, b.samples > 0 && b.wall > 0 && b.over === 0,
+    `recorded cut samples under a Brush piece: ${b.over}/${b.samples} (brush pieces ${b.wall})`);
 }

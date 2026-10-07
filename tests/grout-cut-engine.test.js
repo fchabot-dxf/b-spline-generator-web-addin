@@ -59,3 +59,48 @@ describe('T86 item 10: generateBricks groutCut', () => {
     expect(wide).toBeLessThan(own); // a wider cut takes more of the wall
   });
 });
+
+// Fred (item 10 extended): "also cut Brush bricks" -- one declared cut step for every element (grout-cut.js applyGroutCuts)
+import { applyGroutCuts, bricksAlongPath } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/index.js';
+
+describe('T86 item 10: applyGroutCuts, the one shared cut step (Wall / Frame / Brush)', () => {
+  const STROKE = [{ x: 1, y: 5 }, { x: 6, y: 5.4 }];
+  const ACROSS = [{ x: 3.2, y: 4.2 }, { x: 3.6, y: 6.2 }];
+  const brush = () => bricksAlongPath(STROKE, { set: SET, scale: SCALE, seed: 4 }).bricks;
+  it('cuts a Brush stroke\'s bricks at the set\'s joint: none covers the cut line, none under the floor', () => {
+    const before = brush();
+    expect(covering(before, ACROSS)).toBeGreaterThan(0);
+    const after = applyGroutCuts(before, [{ polyline: ACROSS }], SET, SCALE);
+    expect(covering(after, ACROSS)).toBe(0);
+    const eff = scaledSet(SET, SCALE), floor = MIN_PIECE_FRACTION * eff.brickLengthIn * eff.brickHeightIn;
+    for (const b of after) expect(area(b.polygon)).toBeGreaterThanOrEqual(floor - 1e-9);
+  });
+  it('no cut, an empty cut, or no pieces = the same pieces back', () => {
+    const before = brush();
+    expect(applyGroutCuts(before, [], SET, SCALE)).toBe(before);
+    expect(applyGroutCuts(before, [{ polyline: [] }], SET, SCALE)).toBe(before);
+    expect(applyGroutCuts([], [{ polyline: ACROSS }], SET, SCALE)).toEqual([]);
+  });
+  it('generateBricks\' wall cut IS this step over the plain lay (the elements cannot diverge)', () => {
+    const plain = lay(), cut = lay({ groutCut: [{ polyline: CUT }] });
+    expect(JSON.stringify(cut.bricks)).toBe(JSON.stringify(applyGroutCuts(plain.bricks, [{ polyline: CUT }], SET, SCALE)));
+  });
+});
+
+describe('T86 item 10: the whole drawn line is the cut (one swept band), not one capsule per segment', () => {
+  // captured in the brush matrix (Soldier brush piece, the recorded cut): the line STARTS inside the piece, leaves by its
+  // right edge, comes back and leaves again. One capsule per segment ignored the first segment (wholly inside = a dab),
+  // so 6 of 36 samples of the drawn cut stayed under the piece; the band carves the drawn line as one shape
+  const piece = { id: 's', polygon: [{ x: 3.1626, y: 3.8503 }, { x: 3.4959, y: 3.8583 }, { x: 3.467, y: 5.1424 }, { x: 3.1626, y: 5.1497 }] };
+  const line = [{ x: 3.25, y: 4.25 }, { x: 3.25, y: 4.5 }, { x: 3.5, y: 4.75 }, { x: 3.4371, y: 4.9702 }, { x: 3.5394, y: 5.3407 }, { x: 3.443, y: 5.5577 }, { x: 3.5, y: 6 }];
+  it('no sample of the drawn line stays under the piece', async () => {
+    const { bricksGroutCut } = await import('../bspline-frame-builder/b-spline-gen/html/core/bricks/grout-cut.js');
+    expect(covering([piece], line)).toBeGreaterThan(0);
+    expect(covering(bricksGroutCut([piece], line, { widthIn: 0.034 }), line)).toBe(0);
+  });
+  it('a dab inside one piece still opens no joint (the piece comes back whole)', async () => {
+    const { bricksGroutCut } = await import('../bspline-frame-builder/b-spline-gen/html/core/bricks/grout-cut.js');
+    const out = bricksGroutCut([piece], [{ x: 3.3, y: 4.3 }, { x: 3.31, y: 4.4 }, { x: 3.3, y: 4.5 }], { widthIn: 0.034 });
+    expect(out).toEqual([piece]);
+  });
+});

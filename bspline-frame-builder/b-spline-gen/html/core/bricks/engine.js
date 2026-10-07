@@ -16,8 +16,8 @@ import { pointInPolygon } from './geometry.js';
 import { brickTopHeight } from './height-profile.js';
 import { suppressBricks } from './suppression.js';
 import { laySurround } from './inset-surround.js';
-import { scaledSet, MIN_PIECE_FRACTION } from './library.js';
-import { bricksGroutCut } from './grout-cut.js';
+import { scaledSet } from './library.js';
+import { applyGroutCuts, groutCutsOf } from './grout-cut.js';
 
 /**
  * @param {object} input
@@ -127,12 +127,7 @@ export function generateBricks(input) {
   // the wall at the wall set's joint, the frame (and the window surround) at the frame set's, unless the cut declares
   // its own width; a piece under the quarter-brick floor of its element drops into the joint. No cut = as before.
   const cuts = groutCutsOf(input.groutCut);
-  const cutAll = (pieces, s) => {
-    if (!cuts.length || !pieces.length) return pieces;
-    const eff = scaledSet(s, scale);
-    const minPieceArea = MIN_PIECE_FRACTION * eff.brickLengthIn * eff.brickHeightIn;
-    return cuts.reduce((acc, c) => bricksGroutCut(acc, c.polyline, { widthIn: c.widthIn ?? eff.grout.widthIn, minPieceArea }), pieces);
-  };
+  const cutAll = (pieces, s) => applyGroutCuts(pieces, cuts, s, scale); // the one shared cut step (grout-cut.js)
   const wallBricks = cutAll(bricks, set);
   const frameSetUsed = (frame && frame.set) || set;
   frameBricks = cutAll(frameBricks, frameSetUsed);
@@ -146,8 +141,6 @@ export function generateBricks(input) {
   return { bricks: wallBricks, frameBricks, seed, ...notes, interiorOutline };
 }
 
-/** T86 item 10: the declared grout cuts -- each { polyline: [{x, y}, ...], widthIn? } with at least one point. */
-const groutCutsOf = (list) => (Array.isArray(list) ? list.filter((c) => c && Array.isArray(c.polyline) && c.polyline.length) : []);
 
 /** T86 item 18: the wall's region from `input.wallRegion` -- { strokes: [{ points, widthIn }], minus: [...] } (each
  *  NEWER area's strokes; region.js strokesToRegion, the minus grown by the wall set's grout so two areas never butt),

@@ -54,7 +54,7 @@ import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect } from '../core/bricks/index.js';
+import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, applyGroutCuts } from '../core/bricks/index.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
 import { rectToPrimitives } from '../core/inset-window.js';
 import { SURROUND_CORNERS } from '../core/bricks/inset-surround.js';
@@ -1864,6 +1864,10 @@ export function regenerateOwnedBrickElements(editor) {
   // Continuous run, one unbroken piece, is CUT there instead (dropping it would take the whole stroke away)
   const framePieces = [...editor._sketchLayer.node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="frame"]`)].map(_nodePolygon);
   const frameExclusions = (settings) => framePieces.map((polygon) => ({ polygon, drop: settings.profile !== 'continuous' }));
+  // T86 item 10 (Fred: "also cut Brush bricks"): the grout-mode strokes cut every stroke's bricks too -- the SAME cut step
+  // as the Wall / Frame (core/bricks applyGroutCuts), at the stroke's own set's joint and floor; every stroke is re-derived
+  // from the spines here, so a stroke laid after a cut is cut as well (and a new cut changes this fingerprint)
+  const groutCuts = groutCutPolylines(editor);
   for (const [elementId, segs] of byElement) {
     const chains = reconstructChains(segs);
     const region = []; // F35 item 55: the stroke's ribbons, one per chain
@@ -1873,7 +1877,8 @@ export function regenerateOwnedBrickElements(editor) {
         ? chain.settings
         : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
       const out = {};
-      const bricks = bricksClearOf(bricksForStroke(chain.points, settings, out), frameExclusions(settings), resolvedSetFor(settings));
+      const cleared = bricksClearOf(bricksForStroke(chain.points, settings, out), frameExclusions(settings), resolvedSetFor(settings));
+      const bricks = applyGroutCuts(cleared, groutCuts, resolvedSetFor(settings), scaleFor(settings));
       if (bricks.length && out.ribbonOutline && out.ribbonOutline.length >= 3) region.push({ outer: out.ribbonOutline, holes: [] });
       const ownerId = `${elementId}:${chainIdx}`;
       const layer = strokeLayer.get(elementId);
