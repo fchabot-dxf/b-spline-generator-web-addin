@@ -24780,3 +24780,18 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   in -- the ring's own corner wedges, measured 0 - 0.33 -- and no overlap). Fails 4/4 on main's contour-bands.js (8.3 /
   4.4 / 5.9 / 3.9 sq in bare). Band / stone / engine suites (82 files): 1126/1126. Matrix strokes group alone: 19 rows, 0 FAIL.
 - Merged origin/main (3f3800d, D's tip-fill-fans) first; my contour-bands change re-applied cleanly. fillTips untouched.
+
+### 2026-10-08 (seat A): Fusion APPLY -- generating the B-spline setups OP BY OP in pass 1 (measured, n=1 each, no code change)
+- Today's APPLYs: pass 1 generated the WHOLE 'B-spline Top' setup for 30.8 / 273 / 53 s and it still came back invalid
+  ('B-spline Back' empty in 0.3 s); the later passes made 7/7. Pick: the COST of that doomed first try.
+- Method (scratch-only, e3_opfirst.py): the add-in's REAL deferred TPGen event (warmup, tool numbers, table attach as an
+  APPLY), with toolpath_gen.generate_setups swapped for one run (restores itself): pass 1 = B-spline setups op by op,
+  Frame whole. Same Fusion session (41896), fresh doc each, T1 7x9 Send -> BUILD -> template apply (2/3/2 ops).
+- OP-FIRST (02:25): ALL 7 valid in pass 1 (no later pass); Back 51.3 + 9.9 s, Top 20.1 + 11.4 + 97.4 s, Frame 6.1 s;
+  generation 3 min 16 s.
+- CONTROL, original (02:54): pass 1 Back 0.3 s / Top 23.2 s -> 4 B-spline ops empty, Frame 65.3 s; pass 2 + pass 3
+  (Back's Spiral + Top's deloge redone); generation 3 min 45 s.
+- Reading: op-first removed the empty-first-generation symptom in this sample and was ~13% faster (Frame 65 -> 6 s: its
+  stock likely already computed by the ops before it). n=1 per arm, toolpaths not yet compared op for op -> next: one
+  more sample each after a Fusion restart, with every op's toolpath summary recorded; a declared toolpath_gen change only
+  if it holds.
