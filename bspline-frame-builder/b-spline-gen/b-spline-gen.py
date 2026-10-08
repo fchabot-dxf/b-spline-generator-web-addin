@@ -326,6 +326,18 @@ def _document_closed_handler():
 
 _doc_closed_handler = None
 
+
+def install_session_handlers():
+    """The application-level handlers this module keeps while the add-in runs (stop() removes them). Called by the
+    PARENT add-in right after it loads this module (bspline-frame-builder.py) -- MEASURED live 2026-10-07: the parent
+    never calls this module's run(), so a registration placed there never happened. Idempotent."""
+    global _doc_closed_handler
+    if _doc_closed_handler is not None:
+        return
+    _doc_closed_handler = _document_closed_handler()
+    app.documentClosed.add(_doc_closed_handler)
+    handlers.append(_doc_closed_handler)
+
 # Globals for the chunked-transfer + polling handshake
 importing_done = False
 chunk_buffer   = []
@@ -2701,10 +2713,7 @@ def run(context):
         handlers.append(onCommandCreated)
         _log('CommandCreatedHandler wired')
 
-        global _doc_closed_handler
-        _doc_closed_handler = _document_closed_handler()
-        app.documentClosed.add(_doc_closed_handler)
-        handlers.append(_doc_closed_handler)
+        install_session_handlers()
 
 
         # Find workspace → tab → panel (three-level fallback)

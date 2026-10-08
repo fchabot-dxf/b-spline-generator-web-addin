@@ -24507,3 +24507,8 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   BUILT with no ops yet). The palette's showSetupList feeds the cards AND the header from every source (the doc on
   open, BUILD and TPGen reports); the initial text is an ellipsis until the add-in answers.
 - tests/cam-setup-state.test.js 6 (+2 header, pins updated); 3 fail against the pre-change palette + map.
+- LIVE (Fusion 65140, 6abf8ad deployed): the reading inside Fusion = 5.8 GB (the OS: 5.75 GB private) -- the reader is
+  right. But the documentClosed handler was NOT registered: the parent add-in (bspline-frame-builder.py) loads
+  b-spline-gen and calls its stop(), never its run() -- my registration in run() was dead code (the stubbed suites
+  could not see it). Now a declared install_session_handlers() in b-spline-gen (idempotent), called by the parent right
+  after it loads the module; b-spline-gen's stop() still removes it. Pinned (fb_shared/test_fusion_memory.py).

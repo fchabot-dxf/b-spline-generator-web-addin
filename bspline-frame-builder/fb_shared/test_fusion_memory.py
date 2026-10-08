@@ -46,3 +46,14 @@ def test_send_and_build_both_read_it_before_they_start():
     # the BUILD reading comes before the engine loads (the start of _do_generate)
     gen = cam[cam.index('def _do_generate('):]
     assert gen.index("_post_fusion_memory('BUILD')") < gen.index('_load_engine()')
+
+
+def test_the_stale_import_refs_hygiene_is_installed_by_the_parent():
+    """MEASURED live 2026-10-07: the parent add-in never calls b-spline-gen's run(), so a registration there never
+    happened; the parent installs b-spline-gen's session handlers right after loading it."""
+    parent = open(os.path.join(_ROOT, 'bspline-frame-builder.py'), encoding='utf-8').read()
+    bsg = open(os.path.join(_ROOT, 'b-spline-gen', 'b-spline-gen.py'), encoding='utf-8').read()
+    load = parent.index("_bs        = _load_submodule('bspline_ui'")
+    assert load < parent.index('_bs.install_session_handlers()')
+    assert 'def install_session_handlers():' in bsg and 'app.documentClosed.add(_doc_closed_handler)' in bsg
+    assert 'app.documentClosed.remove(_doc_closed_handler)' in bsg  # stop() removes it
