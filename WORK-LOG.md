@@ -24579,3 +24579,8 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - tests/frame-corner-checks-lay-nothing.test.js 2 (a spy on bricksFillShape: the checks never fill, a full lay does);
   the check one fails pre-change. frame-corner-effect + bricks-fan-centre + it: 39/39.
 - The tap latency re-measure is pending a free gate slot (the guard refused twice).
+- AFTER (same probe, same sequence, 9b5d75b): the profiled set-3 tap 13.8 -> 2.9 s (the corner checks gone from the
+  profile; the lay itself 2.6 s). Plain probe: brick set after the stone-ring sequence 24.1 -> 2.10 s; accent pick
+  1.18 -> 0.43 s; frame band preset 1.01 / 1.05 / 0.48 s, band pattern 0.94 s, other set taps 1.05 / 0.74 s (each tap's
+  real re-lay -- item 27 re-lays at once). Further cuts = the engine's fieldstone sampling (pointInPolygon /
+  distSqToSegment), a separate pick.
