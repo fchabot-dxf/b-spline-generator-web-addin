@@ -103,6 +103,53 @@ function lineLiveAtDepth(primitives, idx, depth, closed) {
   return project(jointWithNext) - project(jointWithPrev) > MIN_LINE_RUN_IN;
 }
 
+/** T86 item 30 (fan slices crossing at 2-8 in): `lineLiveAtDepth` judges a line against its IMMEDIATE neighbours, and
+ *  when one of those has itself dropped at this depth (a corner fillet) their joint is null -- "can't judge, assume
+ *  live". MEASURED (seat D): on T7 9x12 at 4 in the bottom line stayed live although, between the neighbours that ARE
+ *  live there (the two side arcs), its run is inverted -- its two corners' fans then aimed past each other (each apex on
+ *  the other's side) and crossed: every overlapping fan pair of that kind is two corners sharing such an edge. Here, once
+ *  the live set is known, a live line between two FAN corners whose run between its LIVE neighbours is not over
+ *  MIN_LINE_RUN_IN drops too (repeated: a drop changes its neighbours' neighbours); its two corners then are one joint,
+ *  whose patch lays one fan over it. A pair with no joint at this depth keeps the line (the same "can't judge, assume
+ *  live"). Mutates `live`.
+ *  DECLARED depth limit (FAN_MERGE_MAX_DEPTH_SHARE): only while the row's depth is at most that share of the contour's
+ *  shorter side. MEASURED (19 templates x 7x9 / 9x12 x 8 presets): below it the merge takes every fan-fan overlap away
+ *  (2-4 in), but at a band nearly as deep as the board (8 in on 9 in) the merged fan's neighbours overlapped or opened
+ *  more than before (T17 9x12 8 in: bare 19 -> 49 sq in) -- those lays stay as they were. */
+const FAN_MERGE_MAX_DEPTH_SHARE = 0.75;
+function contourShortSide(primitives) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const add = (p) => { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); };
+  for (const prim of primitives) {
+    if (prim.type === 'line') { add(prim.p0); add(prim.p1); continue; }
+    for (let k = 0; k <= 8; k++) { const t = prim.theta1 + ((prim.theta2 - prim.theta1) * k) / 8; add({ x: prim.cx + prim.r * Math.cos(t), y: prim.cy + prim.r * Math.sin(t) }); }
+  }
+  return Math.min(x1 - x0, y1 - y0);
+}
+function dropLinesInvertedAmongLive(primitives, live, depth) {
+  if (!(depth <= FAN_MERGE_MAX_DEPTH_SHARE * contourShortSide(primitives))) return;
+  for (let changed = true; changed && live.length > 2;) {
+    changed = false;
+    for (let k = 0; k < live.length; k++) {
+      const idx = live[k], prim = primitives[idx];
+      if (prim.type !== 'line') continue;
+      const prev = live[(k - 1 + live.length) % live.length], next = live[(k + 1) % live.length];
+      // only a line between TWO fan corners (both immediate neighbours dropped here): the case that makes two fans cross.
+      // A dead line with one ordinary mitre end is already laid sound (MEASURED T11 7x9 1.25 in: run -0.24 in, 0 overlaps)
+      // and its lay stays as it was
+      if (prev === (idx - 1 + primitives.length) % primitives.length || next === (idx + 1) % primitives.length) continue;
+      const a = jointPointAt(primitives, prev, idx, depth), b = jointPointAt(primitives, idx, next, depth);
+      if (!a || !b) continue;
+      const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y, len = Math.hypot(dx, dy) || 1;
+      const along = (pt) => ((pt.x - prim.p0.x) * dx + (pt.y - prim.p0.y) * dy) / len;
+      if (along(b) - along(a) > MIN_LINE_RUN_IN) continue;
+      live.splice(k, 1);
+      changed = true;
+      break;
+    }
+  }
+}
+
 /** T86 item 30: whether a row whose inner edge is at `depth` loses a LINE that lies between two lines -- a feature
  *  narrower than about two rows (both its corners' mitres consume more than its length), the one drop that strands the
  *  band (MEASURED: T9 with 1.82 in flanges at 1 in, the flange ends laid nothing but fans at the board corners). A line
@@ -972,6 +1019,7 @@ export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyl
   const n = primitives.length;
   const liveIndices = [];
   for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives, i, d1, closed)) liveIndices.push(i);
+  if (closed) dropLinesInvertedAmongLive(primitives, liveIndices, d1);
   const m = liveIndices.length;
 
   const joints = liveIndices.map((curIdx, k) => {

@@ -470,9 +470,14 @@ function checkedDifference(piece, cutter) {
 /** T86 item 30 (seat E's sweep, fan slices crossing at 2-8 in): at big depth two corners' fans reach past each other
  *  -- MEASURED every overlapping fan pair (7x9 / 9x12, 0.75-8 in, single soldier) is two DIFFERENT corners' fans, never
  *  one corner's own slices. One corner = the same two live primitives either side (`sides`); a fan from before the
- *  sides were recorded counts as the same corner (the old rule). Two corners' fans split like two runs: each point goes
- *  to the fan whose corner's nearer side is nearer (fanDepth), each side half a joint short of the line. */
-const sameFanCorner = (a, b) => !a.sides || !b.sides || (a.sides[0] === b.sides[0] && a.sides[1] === b.sides[1]);
+ *  sides were recorded counts as the same corner (the old rule). Two kinds:
+ *   - two corners on either side of ONE edge (they share a side): the edge's run is dead between them, and
+ *     primitive-ribbon's dropLinesInvertedAmongLive makes them one corner with one fan -- not split here (MEASURED:
+ *     splitting the tiny overlaps left between such fans opened 0.3-0.6 sq in bare wedges on T1 / T10 / T12 7x9 4 in);
+ *   - two FACING corners (no shared side: across a neck -- T18, T4): split like two runs, each point to the fan whose
+ *     corner's nearer side is nearer (fanDepth), each side half a joint short of the line. */
+const sameFanCorner = (a, b) => !a.sides || !b.sides || (a.sides[0] === b.sides[0] && a.sides[1] === b.sides[1])
+  || a.sides.some((s) => b.sides.includes(s)); // a shared side: not split (see above)
 const fanKey = (o) => o.sides[0] * 1e6 + o.sides[1]; // the tie order between two corners' fans (seed-stable)
 function yieldAtMedialLine(bricks, origins, primitives, set) {
   const box = (p) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const q of p) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); } return [x0, y0, x1, y1]; };
@@ -483,13 +488,17 @@ function yieldAtMedialLine(bricks, origins, primitives, set) {
     if (oi.src < QUOIN) continue;
     for (let j = i + 1; j < bricks.length; j++) {
       const oj = origins[j], a = boxes[i], b = boxes[j];
-      if (oj.src < QUOIN || oj.src === oi.src) continue;
+      // the same source = one run's own pieces, or one corner's fan slices (T86 item 30: two corners' fans go on)
+      if (oj.src < QUOIN || (oj.src === oi.src && !(oi.src === FAN && !sameFanCorner(oi, oj)))) continue;
       if (Math.min(oi.src, oj.src) === QUOIN && Math.max(oi.src, oj.src) !== FAN) continue; // a run meets a quoin on its cut
       if (oi.src === FAN && oj.src === FAN && sameFanCorner(oi, oj)) continue; // one corner's slices meet on their planned joint
       const reach = set.grout.widthIn; // T86 21b: a pair closer than a joint is a conflict too (touching = a 0-gap seam)
       if (a[2] + reach < b[0] || b[2] + reach < a[0] || a[3] + reach < b[1] || b[3] + reach < a[1]) continue;
       const lens = polygonIntersection(bricks[i].polygon, bricks[j].polygon);
       const overlapping = lens.length >= 3 && Math.abs(signedArea(lens)) > MEDIAL_OVERLAP_SQIN;
+      // T86 item 30: two corners' fans are split only where they really OVERLAP -- two that merely touch keep their ground
+      // (MEASURED: splitting touching fans on T1 / T10 / T12 7x9 at 4 in opened 0.3-0.6 sq in bare wedges)
+      if (!overlapping && oi.src === FAN && oj.src === FAN) continue;
       if (!overlapping && polygonDistance(bricks[i].polygon, bricks[j].polygon) >= set.grout.widthIn - SEAM_TOLERANCE_IN) continue;
       conflicts[i].push(j); conflicts[j].push(i);
     }
