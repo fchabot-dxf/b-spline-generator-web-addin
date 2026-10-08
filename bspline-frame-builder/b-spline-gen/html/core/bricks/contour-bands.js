@@ -35,7 +35,7 @@
  */
 import { isSimplePolygon, dedupePolygon, inwardSignFor, pointInPolygon, dropSpikes, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward, clipToHalfPlane } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
-import { ribbonPieces, ribbonJoints, boundaryAtDepth, wallRegionAtDepth, lineBetweenLinesDropsAt } from './primitive-ribbon.js';
+import { ribbonPieces, ribbonJoints, boundaryAtDepth, wallRegionAtDepth, lineBetweenLinesDropsAt, longArcDropsAt } from './primitive-ribbon.js';
 import { openRibbonOutline } from './ribbon-outline.js'; // F35 item 55 (seat E): a Brush stroke's grout region
 import { scaledSet, BRICK_PATTERNS } from './library.js';
 import { minPieceAreaOf, LAID_BY_COURSES } from './piece-floor.js';
@@ -762,17 +762,28 @@ function fitBandStack(bands, planned, gap, L, H) {
  *  narrowestGap would have narrowed 201 of the 456 (when it still read T7 as 0.007 in -- item 31). Returns the narrowed
  *  band + its note step, or null when the band lays as requested. */
 const NARROW_BISECT_STEPS = 24;
+/** the arc trigger (longArcDropsAt) acts only on a band at least this deep (a plain threshold, advisor: not keyed to a preset). MEASURED
+ *  (seat E, 2026-10-08): on every band depth it also caught corner arcs at 0.75 - 1.5 in -- 196 of 1,368 lays changed at
+ *  Fred's sizes, where the corner fans already cover them -- and no length / turn tells the two apart (T18 7x9's dome is
+ *  r 2.63, 93 deg; its fillets r 0.7 - 1.3, 69 - 170 deg; T1's 155 deg arc dies at 0.75 in and lays fine). An arc counts
+ *  when it is at least as long as the band is deep. At 2 in it also took T18 / T19 9x12 from 0 to a 0.07-face patch
+ *  (2 in measured a wash: two better, two worse), so the threshold is 3. */
+const LONG_ARC_MIN_DEPTH_IN = 3;
 function narrowSingleBand(enriched, band, planned, halfJoint, joint) {
   const depth = planned.naturalWidth * planned.rows;
   const rowEdge = (d) => d - halfJoint; // the row's inner edge under the joint rule (it stops half a joint short of the wall)
-  if (!lineBetweenLinesDropsAt(enriched, rowEdge(depth))) return null;
+  // the trigger: a line between two lines drops (item 30), or an arc as long as the band is deep dies (longArcDropsAt)
+  const arcs = depth >= LONG_ARC_MIN_DEPTH_IN - 1e-9; // a 3 in brick scales to 2.9999...
+  const drops = (d) => lineBetweenLinesDropsAt(enriched, rowEdge(d)) || (arcs && longArcDropsAt(enriched, rowEdge(d), depth));
+  if (!drops(depth)) return null;
   let lo = 0, hi = depth;
-  for (let k = 0; k < NARROW_BISECT_STEPS; k++) { const mid = (lo + hi) / 2; if (lineBetweenLinesDropsAt(enriched, rowEdge(mid))) hi = mid; else lo = mid; }
+  for (let k = 0; k < NARROW_BISECT_STEPS; k++) { const mid = (lo + hi) / 2; if (drops(mid)) hi = mid; else lo = mid; }
   // the band stops where that line's run at its row edge is ONE JOINT: at a neck the line's run is the gap between the
   // two facing rows, so the seam there is one joint (seat D, 2026-10-08, MEASURED: "the cliff less a joint" left the
   // run's floor + 2 joints -- T15 / T9 7x9 1.5 in a 0.088 in seam, 2.6 joints, a bare line down the board)
   let jlo = 0, jhi = lo;
-  for (let k = 0; k < NARROW_BISECT_STEPS; k++) { const mid = (jlo + jhi) / 2; if (lineBetweenLinesDropsAt(enriched, rowEdge(mid), joint)) jhi = mid; else jlo = mid; }
+  // (an arc: the band stops a joint short of where it dies -- the same one-joint seam)
+  for (let k = 0; k < NARROW_BISECT_STEPS; k++) { const mid = (jlo + jhi) / 2; if (lineBetweenLinesDropsAt(enriched, rowEdge(mid), joint) || (arcs && longArcDropsAt(enriched, rowEdge(mid + joint), depth))) jhi = mid; else jlo = mid; }
   const toIn = jlo;
   if (!(toIn > joint)) return null; // nothing sensible left to lay: as requested, with today's warning
   // the wall's boundary is taken PAST the cliff (hi: the line has dropped) and half a joint further: at the band's own

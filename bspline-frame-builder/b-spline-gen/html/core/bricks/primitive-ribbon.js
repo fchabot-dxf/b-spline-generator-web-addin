@@ -160,6 +160,15 @@ export function lineBetweenLinesDropsAt(primitives, depth, minRun = MIN_LINE_RUN
     && primitives[(i + 1) % n].type === 'line' && !lineLiveAtDepth(primitives, i, depth, true, minRun));
 }
 
+/** Item 28 (b') for ARCS (seat E, 2026-10-08; Fred: "make the app do the best result"): whether a row whose inner edge is
+ *  at `depth` loses an arc at least `minLen` long -- a convex arc dies when the depth passes its radius, and the caller
+ *  (contour-bands.js narrowSingleBand) asks only for a band at least LONG_ARC_MIN_DEPTH_IN deep, where such an arc
+ *  stranded the band (the caveat on lineBetweenLinesDropsAt above holds at Fred's sizes). MEASURED at the 3 in preset: T18 7x9's head dome (r ~2.3 in, ~7 in long)
+ *  died under a 3 in soldier band and laid nothing -- 2.05 sq in bare, 8.8 sq in on the board. */
+export function longArcDropsAt(primitives, depth, minLen) {
+  return primitives.some((p, i) => p.type === 'arc' && p.r * Math.abs(p.theta2 - p.theta1) >= minLen && !primitiveLiveAtDepth(primitives, i, depth));
+}
+
 function primitiveLiveAtDepth(primitives, idx, depth, closed = true) {
   const prim = primitives[idx];
   // isArcFeasible(r, radialSign, halfWidth) checks `r - radialSign*halfWidth > floor` -- passing

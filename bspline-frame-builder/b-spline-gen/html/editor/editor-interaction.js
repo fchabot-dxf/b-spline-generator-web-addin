@@ -22,7 +22,7 @@ import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTi
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer, isOnVisibleLayer } from './layers.js';
 import { worldBbox, toLocal, worldPoint } from './editor-coords.js';
-import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, maybeShowExpandCallout, updateHistoryButtons } from './editor-ui.js';
+import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, updateHistoryButtons } from './editor-ui.js';
 import { on, el, _isTypingTarget } from './dom.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
@@ -1204,7 +1204,6 @@ function _commitAnchorPath(editor) {
     editor._select(finalPath);
     applyLayerState(editor);
     commitEdit(editor); // audit batch 3: the one commit
-    try { maybeShowExpandCallout(editor); } catch (_) {}
 }
 
 function _cancelAnchorMode(editor) {
@@ -3181,7 +3180,6 @@ function finishDrawing(editor, modeId) {
     editor._select(finalPath);
     applyLayerState(editor);
     commitEdit(editor); // audit batch 3: the one commit
-    try { maybeShowExpandCallout(editor); } catch (_) {}
 }
 
 

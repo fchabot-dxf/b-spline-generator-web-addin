@@ -25350,3 +25350,31 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   time is enough). Fusion sessions 61560 / 14752 hit the 8 GB line after ~1.5 cycles each (send +3.4 GB).
 - Process slip, owned: once two fusion_execute calls in one message (summary + close) -- ran in order, no effect.
 - Holder back to none; scratch docs closed by handle; Fred's Untitled untouched.
+
+### The 3 in preset's bare ground: a band >= 3 in deep also narrows where a long arc dies (seat E / 61, 2026-10-08)
+- MEASURED (single soldier, 3 in, every template x 7x9 / 9x12; shots shots/seatE/gaps/g3_*): T18 7x9 8.8 sq in bare (neck
+  3.15, head DOME 2.05 -- its arc laid nothing --, shoulder wedges 2 x 1.13), T18 9x12 4.4 (one neck patch), T19 7x9 4.7.
+  The wall had no room in all of them: the bare ground is inside the band. CAUSE: the fit rule never reduces the outermost
+  band, and narrowSingleBand (item 28 (b'), Fred: "make the app do the best result") narrowed only when a LINE between two
+  lines drops; T18's dome and neck fillets are ARCS.
+- FIX (advisor: (A), precedent): primitive-ribbon.js longArcDropsAt -- the narrowing also triggers when an arc at least as
+  long as the band is deep dies at the row edge (a convex arc dies when the depth passes its radius), and for an arc the
+  band stops a joint short of where it dies. Only for a band at least LONG_ARC_MIN_DEPTH_IN (3) deep: a plain declared
+  threshold (advisor: not keyed to a preset).
+- WHY THE THRESHOLD (measured, two tries): on every band depth the trigger changed 196 of 1,368 lays at 0.75 - 1.5 in --
+  it caught corner arcs the fans already cover, and no length / turn tells them from a feature (T18 7x9's dome r 2.63, 93
+  deg; its fillets r 0.7 - 1.3, 69 - 170 deg; T1's 155 deg arc dies at 0.75 in and lays fine); "two band depths long"
+  changed nothing, the dome included. Gated at 2 in it changed 17 lays (2 / 3 / 4 in), but T18 / T19 9x12 2 in went from
+  0 to a 0.07-face patch, so 3 in.
+- RESULT (3 and 4 in, single soldier; bare sq in, largest face):
+  3 in -- T18 7x9 8.77 -> 4.68 (narrowed to 2.52 in, the dome laid: shots/seatE/gaps/T18_7x9_3in_before_after.png),
+  T18 9x12 4.37 -> 0.01 and T19 9x12 1.83 -> 0.01 (1.57 in, the wall laid), T19 7x9 4.74 -> 1.08, T17 7x9 0.61 -> 0.50,
+  T16 7x9 3.37 -> 2.47 (face 0.897 -> 0.944);
+  4 in -- better: T17 7x9 5.41 -> 4.55, T17 9x12 3.56 -> 1.23, T18 9x12 13.64 -> 7.57, T19 9x12 6.85 -> 0.84; worse: T16 7x9
+  2.20 -> 2.74 (0.286 -> 0.538), T16 9x12 1.55 -> 2.11 (0.162 -> 0.236); face up, bare down: T18 7x9 (0.594 -> 0.731),
+  T18 9x12 (1.257 -> 1.267). GAP_CAPS updated, the 4 rising ones raised with the reason (advisor's yes).
+- NOT done (advisor: too risky for the 3 in preset alone): T18 7x9's neck patch (3.0 sq in) is facing sides closer than
+  two rows -- a narrowest-gap trigger.
+- PROOF: 1,368 lays hashed (every template x 7x9 / 9x12 x every preset at 0.75 - 1.5 in + single soldier 2 - 8 in): exactly 13
+  change (3 in 6, 4 in 7); 0.75 - 2 in and 8 in byte-identical to main. GAP_SWEEP_FULL 760/760; the FAST set fails on main
+  (T18 9x12 3 in: 1.80 faces vs the default 0.05); band / ribbon / engine suites (106 files) 2381/2381.
