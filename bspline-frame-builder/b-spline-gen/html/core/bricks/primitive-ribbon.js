@@ -82,7 +82,7 @@ const MIN_LINE_RUN_IN = 0.02; // T86 item 9 (reusing item 4b's own floor): a dec
  *  never the live-filtered one: a primitive's own corner consumption with whatever is physically
  *  adjacent to it at depth 0 is a LOCAL fact, unaffected by what else drops elsewhere on the same
  *  row. */
-function lineLiveAtDepth(primitives, idx, depth, closed) {
+function lineLiveAtDepth(primitives, idx, depth, closed, minRun = MIN_LINE_RUN_IN) {
   const prim = primitives[idx];
   const n = primitives.length;
   // T86 item 9 bug (found testing the brush's own OPEN primitive lists against this NEW check,
@@ -100,7 +100,7 @@ function lineLiveAtDepth(primitives, idx, depth, closed) {
   const dx = prim.p1.x - prim.p0.x, dy = prim.p1.y - prim.p0.y, totalLen = Math.hypot(dx, dy) || 1;
   const tx = dx / totalLen, ty = dy / totalLen;
   const project = (pt) => (pt.x - prim.p0.x) * tx + (pt.y - prim.p0.y) * ty;
-  return project(jointWithNext) - project(jointWithPrev) > MIN_LINE_RUN_IN;
+  return project(jointWithNext) - project(jointWithPrev) > minRun;
 }
 
 /** T86 item 30 (fan slices crossing at 2-8 in): `lineLiveAtDepth` judges a line against its IMMEDIATE neighbours, and
@@ -154,10 +154,10 @@ function dropLinesInvertedAmongLive(primitives, live, depth) {
  *  narrower than about two rows (both its corners' mitres consume more than its length), the one drop that strands the
  *  band (MEASURED: T9 with 1.82 in flanges at 1 in, the flange ends laid nothing but fans at the board corners). A line
  *  dropping beside an arc is NOT this: the arc's fan covers that corner and the row lays fine (T5 / T8 / T18 / T19). */
-export function lineBetweenLinesDropsAt(primitives, depth) {
+export function lineBetweenLinesDropsAt(primitives, depth, minRun = MIN_LINE_RUN_IN) {
   const n = primitives.length;
   return primitives.some((p, i) => p.type === 'line' && primitives[(i - 1 + n) % n].type === 'line'
-    && primitives[(i + 1) % n].type === 'line' && !lineLiveAtDepth(primitives, i, depth, true));
+    && primitives[(i + 1) % n].type === 'line' && !lineLiveAtDepth(primitives, i, depth, true, minRun));
 }
 
 function primitiveLiveAtDepth(primitives, idx, depth, closed = true) {
