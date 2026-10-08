@@ -25040,3 +25040,13 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   f559a91f).
 - TESTS: editor-topview-lazy.test.js +3 (restored -> repaint on read / at once when showing; lost at read -> repaint).
   Fail 3/3 on main's file; dropping the isContextLost check fails 1. Full suite: 397 files, 5984/5984. Known failures: none.
+
+### 2026-10-08 (seat A): heavy-run guard -- declared lock list incl. DDCS Studio's gate (advisor ask)
+- tools/heavy-run-guard.mjs: GATE_LOCKS = [ours ~/.bspline-status/gate_running (ownerPasses: the gate's own run,
+  BSPLINE_GATE_LOCK_OWNER == the lock's first field, now a Windows pid), DDCS Studio's ~/.ddcs-status/gate_running
+  (ownerPasses false: always refuses, prints its line)]. A new project's lock is a new row. GATE_LOCK stays (= row 0).
+- heavyRunVerdict takes lockTexts (aligned with GATE_LOCKS); an owned lock no longer short-circuits past the others.
+- Live: refused with "DDCS Studio's gate ... is running (...: \"ddcs-studio-project-5f 07:37 full gate ... est. end
+  10:00\")", exit 3.
+- TESTS 11/11; fail 6 on main's guard; DDCS-owner-pass mutation fails 2. Full suite NOT run: DDCS's gate holds the PC
+  until ~10:00 (the advisor's gate will run it).
