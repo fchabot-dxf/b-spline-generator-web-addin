@@ -54,6 +54,7 @@ const js = async (expr) => {
 
 try {
   await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
+  await send('Network.setCacheDisabled', { cacheDisabled: true }); // a reused profile must not serve a stale stylesheet
   await send('Network.setBlockedURLs', { urls: ['*workers.dev*'] });
   await send('Emulation.setDeviceMetricsOverride', { ...VIEW, deviceScaleFactor: 1, mobile: true });
   await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
@@ -165,7 +166,8 @@ try {
         if (seen.has(e)) continue; seen.add(e);
         if (!e.getClientRects().length || getComputedStyle(e).visibility === 'hidden' || e.type === 'hidden') continue;
         e.scrollIntoView({ block: 'center', inline: 'center' });
-        const r = e.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        // a checkbox's target is its label row (the matrix's layout 'Touch targets' rows measure it the same way)
+        const r = ((e.type === 'checkbox' && e.closest('label')) || e).getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
         const inView = cx >= 0 && cx <= innerWidth && cy >= 0 && cy <= innerHeight;
         const hit = inView ? document.elementFromPoint(cx, cy) : null;
         out.push({ id: e.id || e.getAttribute('aria-label') || e.title || e.textContent.trim().slice(0, 20), inView,

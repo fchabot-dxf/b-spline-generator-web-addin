@@ -24852,3 +24852,24 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   lands somewhere else in the next (the first dab run sat on a joint and proved nothing). A dab case must measure the
   lay it was aimed at (no second Generate).
 - No code change.
+
+### 2026-10-08 (seat D): touch targets >= 28 px on a phone (Fred: "yes, all controls")
+- DECLARED (styles/editor.css, under the (pointer: coarse) signal SA-MOBILE-4 already uses): --touch-target-min 28px, a
+  floor on every control's SMALLER side -- the shared classes (.editor-fillmode-btn, .layers-add-btn, .layer-delete,
+  .panel-color-swatch, .brick-accent-icon, .cad-btn, .relief-toggle-btn, the 2D / 3D toggle), every button in the Art
+  panel and the lattice panels, the editor's selects / text / number inputs and checkbox label rows, and the steppers
+  through their own declared --cad-stepper-btn-width; + a 6 px gap before the layer delete x. !important because several
+  controls size themselves inline (the accent Custom min-height 22, the grid-spacing select height 24, the Shape
+  randomize 26x26) and the editor header forces min-width 0 from an id selector. Desktop (fine pointer) untouched.
+- Found while building (each read back from computed styles, not guessed): the first, class-only rule missed the
+  steppers (44 px tall but 22-24 wide), inline-sized controls, the layer toggles' min-width 24, the header buttons;
+  a re-probe once read a STALE stylesheet from a reused Chrome profile -- the audit tool and probes now disable the cache.
+- TEST: matrix layout group, TOUCH_TARGETS (declared in groups/layout.mjs): 390 x 844, touch + coarse pointer, one row
+  per Brick tab (6) + Art tab (6): every shown control in the editor has its smaller side >= 28 px (a checkbox by its
+  label; range sliders and the colour input under its toggle skipped). Layout group 48 rows 0 FAIL; on the pre-change
+  editor.css the 12 new rows FAIL 12/12 (mode tabs 21 px, header buttons, ...); the desktop / narrow rows still pass.
+- ACCEPTANCE (tools/repro/art_phone_audit.mjs, coarse pointer now emulated, a checkbox measured by its label):
+  349 control views, 0 under 28 px, 0 unreachable (the colour input under its own toggle is by design); 26 actions,
+  longest task 163 ms. Full suite (npm run test:full) 5970/5970. Known failures: none.
+- Shots: shots/seatD/atouch/touch_targets_built_390.png (main vs built, the real app at 390 px, coarse pointer);
+  the sheet Fred picked from: shots/seatD/aart/touch_targets_A_before_after.png.
