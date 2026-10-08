@@ -24920,3 +24920,25 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - VERDICT: op-first does not hold (same total time, the symptom stays). No toolpath_gen change. The one real effect
   is the doomed pass-1 tries get cheaper (~20 s of Top in sample 2/4), and pass 2's op-by-op time absorbs it.
   Holder back to none; scratch docs closed by handle; Fred's Untitled untouched.
+
+### 2026-10-08 (seat A): lazy editor top view (advisor go, pick 2)
+- MEASURED: updateEditorTopView ran on every rebuild: its own 384-wide noise heightmap (33 ms desktop) + shading
+  (3 ms) + sync3DBackground's toDataURL into the editor's backdrop -- the backdrop is its ONLY reader. On this PC
+  (4x CPU, phone width) that toDataURL stalled 5.2 - 14.0 s on a fresh canvas (12 - 185 ms on repeats): the
+  "14 - 21 s toDataURL" in today's slow phone Generate profiles.
+- CHANGE: with the editor modal hidden, updateEditorTopView stores (heights, nx, nz) and returns; sync3DBackground
+  (editor open, and every other backdrop refresh) calls flushEditorTopView() first, which paints the latest stored
+  inputs once. Editor showing: eager as before. P / preDelta are read at paint time; both change only through a
+  rebuild, which re-stores.
+- Loading rule: opening runs inside the existing declared 'openEditor' stage (openEditorOn); the probe saw it on every
+  open, both arms. The paint moved there: 157 - 237 ms at 4x CPU.
+- Identity: backdrop data URL SHA-256 identical main vs lazy on matched seeded runs (3 pairs). One main-arm run
+  showed a near-empty 7.6 k-char backdrop (main's eager path, not reproduced; noted only).
+- Phone Generate (2nd tap, same seed): main 7.7 / 8.6 / 7.7 / 6.8 s, lazy 3.9 / 8.1 / 4.1 s -- GPU-noisy on this PC
+  today, but the multi-second toDataURL is gone from closed-editor Generates by construction.
+- TESTS: tests/editor-topview-lazy.test.js (fake canvas recording putImageData bytes): closed rebuild paints nothing;
+  open-time flush == eager bytes; last closed rebuild wins and paints once; showing -> paints + syncs. Fails 2/4 on
+  main's eager file; first-rebuild-wins mutation fails 1. Full suite: 397 files, 5980/5980. Known failures: none.
+- Possible follow-up, NOT done: getContext('2d', { willReadFrequently: true }) keeps the canvas CPU-side (no GPU
+  readback on toDataURL), but the reticle's antialiasing may differ, so it is not identical by construction --
+  measure first if wanted.
