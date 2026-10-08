@@ -79,11 +79,16 @@ export const frameHistoryDepth = () => _frameHistory.length;
  *  them together with the previous handle drag, or couldn't undo them at all). */
 export function editFrame(patch) {
   // the 'frame' stage on screen first (core/loading-signal.js): a frame edit blocks up to ~2 s on a phone
-  return withLoadingStageShownFirst('frame', () => {
-    pushFrameHistory();
-    setFrameRecord(patch);
-    syncFramePanel();
-  });
+  return withLoadingStageShownFirst('frame', () => editFrameNow(patch));
+}
+/** The same edit, NOW (no stage): for a caller that reads the result in the same breath -- a Clear records the steps
+ *  and the frame it left (editor-clear-menu.js undoLastClear compares them), Delete frame snapshots the frame after.
+ *  MEASURED (the gate's clear row): through the deferred editFrame, Clear All's one undo restored neither the frame
+ *  nor the photo (it recorded 0 frame steps and the old frame, then refused as "changed since"). */
+export function editFrameNow(patch) {
+  pushFrameHistory();
+  setFrameRecord(patch);
+  syncFramePanel();
 }
 function _syncUndo() { if ($('editorFrameUndo')) $('editorFrameUndo').disabled = _frameHistory.length === 0; }
 
@@ -301,7 +306,7 @@ export function sendFrame() {
 export function deleteFrame() {
   const before = _clone(getFrameRecord());
   ensureUndoBaseline('Before delete frame'); // the step undoes to exactly this board, not an older snapshot's
-  editFrame({ templateId: null, params: {} });
+  editFrameNow({ templateId: null, params: {} }); // NOW: the snapshot below reads the frame after
   // item 69 (seat E, measured: the sidebar Undo left the frame deleted): its own GLOBAL undo step, carrying the
   // frame transition -- the sidebar's Undo restores the frame (and the 3D follows its re-lay)
   takeSnapshot('Delete frame', { restore: { frame: { before, after: _clone(getFrameRecord()) } } });
@@ -852,7 +857,7 @@ export function initFramePanel() {
   // "None" — same reset a manual template-dropdown-to-"None" change does
   // (setFrameRecord({templateId:null, params:{}})), with its own
   // pushFrameHistory() step so Ctrl+Z on the Frame tab undoes it.
-  setFrameClearHandler(() => editFrame({ templateId: null, params: {} }));
+  setFrameClearHandler(() => editFrameNow({ templateId: null, params: {} })); // NOW: the Clear records what it left
   // F7: the 3D preview asks with the grid size it is actually drawing.
   AppState.preview?.setFrameProvider?.((W, H) => frameSolidSpec(FRAME_DEFS, getFrameRecord(), { widthIn: W, heightIn: H }));
   const tplSel = $('frameTemplate');
@@ -876,7 +881,7 @@ export function initFramePanel() {
   }
   $('editorFrameTemplate')?.addEventListener('change', (e) => editFrame({ templateId: e.target.value || null, params: {} }));
   $('editorFrameGenerate')?.addEventListener('click', () => generateFrame());
-  $('btnDeleteFrame')?.addEventListener('click', () => deleteFrame()); // F26 item 2 (b)
+  $('btnDeleteFrame')?.addEventListener('click', () => withLoadingStageShownFirst('frame', () => deleteFrame())); // F26 item 2 (b)
   $('editorFrameUndo')?.addEventListener('click', () => withLoadingStageShownFirst('frame', () => undoFrame()));
   // Ctrl/Cmd+Z in the Frame tab undoes the FRAME (the artwork's undo is locked there, F8)
   if (!_undoKeyWired) { // once per page (initFramePanel may run again, e.g. in tests)

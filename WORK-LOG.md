@@ -25066,3 +25066,11 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   gone after); frame-gen +1 (Generate / template / Undo: the stage up, the record unchanged until the paint, done
   after). On main's source the 3 fail. Known failures: none (full suite below).
 - Shots / data: shots/seatD/afp/frame_phone_*.png, photo_phone_*.png, *_phone_audit.json.
+- GATE FIX (the advisor's gate, matrix clear "Clear All: one undo restores all" -- not restored: frame, photo): REAL,
+  not timing. The Clear menu's frame clear went through the now-deferred editFrame, and Clear records synchronously the
+  Frame steps it pushed + the frame it left (editor-clear-menu.js) -> 0 steps and the old frame -> undoLastClear refused
+  ("changed since"), so neither the frame nor the photo came back. Same trap in deleteFrame (its global snapshot read the
+  frame right after). editFrameNow = the synchronous edit (exported); editFrame = the 'frame' stage around it (the
+  Frame-tab controls); the clear handler and deleteFrame call editFrameNow; the Delete button's click carries the stage.
+  Test (frame-gen): with the paint deferred, the clear and Delete frame act at once (mutation: the handler back on
+  editFrame -> fails). Matrix clear group 11/11 (was 1 FAIL).

@@ -15,8 +15,9 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
 import { feasibleParamRanges } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 import {
-  initFramePanel, setEditorTab, generateFrame, undoFrame, frameHistoryDepth, sendFrame,
+  initFramePanel, setEditorTab, generateFrame, undoFrame, frameHistoryDepth, sendFrame, deleteFrame,
 } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+import { clearFrame } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { currentLoadingStage, resetLoadingSignal, setPaintScheduler } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 const BOARD = { widthIn: 7, heightIn: 9 };
@@ -218,6 +219,24 @@ describe('Frame tab: Generate, tweak, save/reload, Undo', () => {
         while (frames.length) frames.shift()();
         expect(JSON.stringify(getFrameRecord()), `${name}: done after the paint`).not.toBe(before);
         resetLoadingSignal();
+      }
+    } finally { setPaintScheduler((cb) => cb()); vi.unstubAllGlobals(); resetLoadingSignal(); }
+  });
+
+  it('the Clear menu’s frame clear and Delete frame act NOW, even with the paint deferred (a Clear records the steps + the frame it left)', () => {
+    // MEASURED (the gate's clear row): through the deferred editFrame, Clear All's one undo restored neither the frame
+    // nor the photo -- it recorded 0 frame steps and the old frame, then refused as "changed since"
+    const frames = [];
+    vi.stubGlobal('requestAnimationFrame', (cb) => { frames.push(cb); return frames.length; });
+    setPaintScheduler(null); // the real paint step (the suite's is immediate)
+    try {
+      for (const [name, act] of [['the Clear menu’s frame clear', () => clearFrame()], ['Delete frame', () => deleteFrame()]]) {
+        setFrameRecord({ templateId: 'template_1' });
+        const depth = frameHistoryDepth();
+        act();
+        expect(getFrameRecord().templateId, `${name}: the frame is gone at once`).toBeNull();
+        expect(frameHistoryDepth(), `${name}: its undo step pushed at once`).toBe(depth + 1);
+        while (frames.length) frames.shift()();
       }
     } finally { setPaintScheduler((cb) => cb()); vi.unstubAllGlobals(); resetLoadingSignal(); }
   });
