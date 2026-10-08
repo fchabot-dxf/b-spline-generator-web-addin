@@ -24849,3 +24849,49 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   declaration for both tests). tests/bricks-gap-sweep.test.js: Fred's sizes <= PATCH_MAX_FACE / PATCH_KNOWN and 0 pieces
   outside; 2 - 8 in GAP_CAPS [face, sq in, wall pieces outside], may only fall. FAST 6 lays by default, GAP_SWEEP_FULL=1 760
   lays in 85 s (all pass). Mutation: the band clip dropping at 20 x its floor fails 2/6 of FAST (T18 9x12 3 in, T5 8 in).
+
+### 2026-10-08 (seat D): pick 2 -- the Art editor on Fred's phone, MEASURED (no app change; a touch-size decision is the advisor's)
+- TOOL: tools/repro/art_phone_audit.mjs -- real Chrome, 390 x 844, touch, CPU 4x, REAL touch input (CDP
+  Input.dispatchTouchEvent), the matrix's own serve root (bspline-frame-builder: a first run served the html folder and
+  lost the stylesheets -- every reach number from it was wrong, discarded). Per action: response (touch -> the end of
+  the last long task), longest task, blind time (long tasks with no loading card), and the EFFECT (the drawing's element
+  count + the editor mode before / after: a gesture that lands nowhere is not "fast"). Reach, per Art tab: every visible
+  control in the Artwork panel + top bar scrolled into view -- in the viewport, the element under its own centre, its
+  smaller side.
+- SPEED (27 actions: the 6 tabs, freehand / line / rect / circle, undo / redo, select / fit / delete, Lattice Generate,
+  Shape Generate + its undo, layer add / visibility): nothing is slow. Longest single task 199 ms (Shape Generate),
+  Lattice Generate 165, a freehand stroke 186 (its 1.2 s response is the drag itself); no action needs the loading card.
+  (My select tap missed the stroke, so that Delete removed nothing -- the script's aim, not the app.)
+- REACH: 349 control views over the 6 tabs, every one on screen and under its own centre (the 1 px native colour input
+  under its own toggle is by design). Under 24 px (WCAG 2.5.8's minimum): ~33 segmented buttons at 22 px (fill mode,
+  grid / snap, the Lattice + Shape Lattice orient / anchor / ties / colour switches), Add layer 22, the auto-nodes checkbox
+  14, contour-from-frame 16, and Delete layer 18 px beside three 24 px toggles (undoable in one step: H20 item 4 removed
+  its confirm, removeLayer pushes the undo state).
+- NOT a bug: General shows no stroke width while the Text tool is armed -- TOOLBAR_GROUPS.editorStrokeGroup hides it in
+  text mode by declaration (text uses fill), and General leaves the tool as it is.
+- Shots / data: shots/seatD/aart/art_phone_open.png (the drawer layout), art_phone_end.png, art_phone_audit.json.
+
+### Pick 1: stones across templates and sizes -- measured, nothing to fix (seat E / 61, 2026-10-08)
+- ENGINE (generateBricks + the app's bricksForBrushStroke, T1 / T10 / T18 7x9, White rocks wall in a White rocks or
+  Grey stone ring, 0.75 / 1 / 1.25 in; brush X, brush T, a grout cut across the wall, one across the ring): 72 rows,
+  0 overlaps (wall x wall / wall x frame / frame x frame / wall x stroke), extra bare over the plain lay <= 0.08 sq in
+  (T18 brush X at 1.25 in), none over the matrix slack 0.1. A first count read 36 rows "overlapping": the harness's own
+  stroke x stroke (the engine has no crossing split; the app does) and stroke x ring (the app cuts strokes at the frame).
+- IN APP (the strokes group's STONE_CUTS cases, temporarily looped over T10 / T18 at 0.75 / 1 in and T1 at 0.75 in;
+  T1 at 1.25 in is the permanent row): 25 rows, 0 FAIL, 0 overlaps, junction bare 0 - 0.033 sq in (widest 3.1 joints,
+  T18 grout cut across the ring at 1 in). T18's "plain stretch" reads ~0.18 at every size: its plain point (4.6, 6.6)
+  sits at T18's board edge and the window counts off-board points -- a harness reading, not a hole.
+- No code change; the temporary loop was not committed (strokes.mjs restored).
+
+### Pick 3: Continuous strokes + Raised dabs over stones -- measured, nothing to fix (seat E / 61, 2026-10-08)
+- IN APP (template_1, White rocks wall in a Grey stone ring, 1.25 in; the strokes group's STONE_CUTS measure, a
+  temporary probe, not committed): Continuous X on the wall -- junction bare 0.0024 sq in, 0 overlaps; a Continuous
+  stroke into the ring 0.0136; a Raised-bricks stroke across the wall 0; all vs a plain stretch of 0.
+- DABS, aimed at the biggest stone's centroid near the board's centre: a Raised-bricks dab (one 0.33 in piece) inside a
+  0.45 sq in stone -- the stone is split by a joint-wide seam along the dab and wraps it (fill-shape.js splitRound, live):
+  bare 0, overlaps 0 (shot: shots/seatE/stones/dab_raised_zoom2.png). A grout dab inside a 1.26 sq in stone leaves the
+  stone whole, as grout-cut.js declares (a cut that never reaches a brick's edge opens no joint): bare 0.
+- TRAP for the next probe: the probe's Generate after the strokes RE-SEEDS the wall, so a dab aimed at one lay's stone
+  lands somewhere else in the next (the first dab run sat on a joint and proved nothing). A dab case must measure the
+  lay it was aimed at (no second Generate).
+- No code change.
