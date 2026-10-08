@@ -25258,3 +25258,15 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   6008/6008. Known failures: none.
 - Overlap note: D's frame-photo-loading also touches photo loading (photo-panel.js); this branch does not edit
   photo-panel.js.
+
+### 2026-10-08 (seat D): pick 3 -- FAST-set blind spots, by REPLAY (each past fix's pre-fix engine, FULL vs FAST)
+- TOOL: tools/repro/replay_fast_vs_full.sh -- per fix commit, its PRE-fix core/ under today's sweep tests, every sweep
+  with a FULL mode (overlap / gap / seam / tip-fill-fans), FAST then FULL, behind the heavy-run guard. A fix whose FULL
+  fails while FAST passes = a gap. Replayed: 1e65704, dd98654, 8b38324, 2c32648, 6802fef, a96e521, 4aff8fa (56 runs).
+- RESULT: gap + seam + tip-fill-fans: whenever FULL failed, FAST failed too (no gap). OVERLAP: 2 gaps -- before dd98654
+  and before 6802fef the full sweep failed T16 / T17 9x12 at 8 in (29 / 27 fan x fan pairs, cap 0) while FAST passed 5/5
+  (the 8 in shared-side fan class seat E fixed in 1e65704; E's FAST extra covered T1 7x9 / T5 9x12 8 in only).
+- FIX: FAST_SET.extra + template_16: [8] (both boards). FAST 6/6 in 8.6 s (was 8.4 s). PROOF: the new FAST set on
+  dd98654^ and 6802fef^ cores now FAILS (T16 9x12 8 in, 29 pairs); on main 6/6.
+- Note: a replay FAIL is not always "the bug that fix fixed" (today's caps can be tighter than that day's engine);
+  the gap test only needs FULL vs FAST to disagree on the same source.

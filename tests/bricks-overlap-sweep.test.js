@@ -26,8 +26,10 @@ const FULL = !!process.env.OVERLAP_SWEEP_FULL, MEASURE = !!process.env.MEASURE_O
 const BOARDS = [[7, 9], [9, 12]];
 /** the default run's subset: item 12's run-run cases (T1 / T10 9x12) and item 30's fan cases (T18 / T19) at 3 / 4 in, plus
  *  (`extra`) the 8 in lays where two shared-side corners' fans stacked after 7eb3df7 -- the gate's fast run had no 8 in
- *  case, so the full sweep went red unseen (seat E, 2026-10-08) */
-const FAST_SET = { templates: ['template_1', 'template_10', 'template_18', 'template_19'], sizes: [3, 4], extra: { template_1: [8], template_5: [8] } };
+ *  case, so the full sweep went red unseen (seat E, 2026-10-08). + T16 at 8 in (seat D, 2026-10-08, a replay of each past
+ *  engine fix's PRE-fix source through every sweep, FULL vs FAST: before dd98654 / 6802fef the full sweep failed T16 / T17
+ *  9x12 8 in -- 29 / 27 fan x fan pairs -- and this fast set passed 5/5; T16 alone catches that class) */
+const FAST_SET = { templates: ['template_1', 'template_10', 'template_18', 'template_19'], sizes: [3, 4], extra: { template_1: [8], template_5: [8], template_16: [8] } };
 const SIZES_ALL = [0.75, 1, 1.25, 1.5, 2, 3, 4, 8];
 const sizesFor = (tpl) => (FULL ? SIZES_ALL : [...(FAST_SET.templates.includes(tpl) ? FAST_SET.sizes : []), ...(FAST_SET.extra[tpl] || [])]);
 const TEMPLATES = FULL ? FRAME_DEFS.templates.map((t) => t.id).filter((k) => /^template_\d+$/.test(k)) : [...new Set([...FAST_SET.templates, ...Object.keys(FAST_SET.extra)])];
