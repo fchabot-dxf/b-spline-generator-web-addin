@@ -24895,3 +24895,28 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   the main thread), 2.8 s toDataURL; frame-mesh is ~0.2 s (walk + apply ~160 ms before this round, ~35 after).
   Not yet known whether it is main's code or this PC's GPU/headless state today: next step would be the same
   probe at yesterday's main.
+
+### 2026-10-08 (seat A): Fusion APPLY -- generating the B-spline setups OP BY OP in pass 1 (measured, n=1 each, no code change)
+- Today's APPLYs: pass 1 generated the WHOLE 'B-spline Top' setup for 30.8 / 273 / 53 s and it still came back invalid
+  ('B-spline Back' empty in 0.3 s); the later passes made 7/7. Pick: the COST of that doomed first try.
+- Method (scratch-only, e3_opfirst.py): the add-in's REAL deferred TPGen event (warmup, tool numbers, table attach as an
+  APPLY), with toolpath_gen.generate_setups swapped for one run (restores itself): pass 1 = B-spline setups op by op,
+  Frame whole. Same Fusion session (41896), fresh doc each, T1 7x9 Send -> BUILD -> template apply (2/3/2 ops).
+- OP-FIRST (02:25): ALL 7 valid in pass 1 (no later pass); Back 51.3 + 9.9 s, Top 20.1 + 11.4 + 97.4 s, Frame 6.1 s;
+  generation 3 min 16 s.
+- CONTROL, original (02:54): pass 1 Back 0.3 s / Top 23.2 s -> 4 B-spline ops empty, Frame 65.3 s; pass 2 + pass 3
+  (Back's Spiral + Top's deloge redone); generation 3 min 45 s.
+- Reading: op-first removed the empty-first-generation symptom in this sample and was ~13% faster (Frame 65 -> 6 s: its
+  stock likely already computed by the ops before it). n=1 per arm, toolpaths not yet compared op for op -> next: one
+  more sample each after a Fusion restart, with every op's toolpath summary recorded; a declared toolpath_gen change only
+  if it holds.
+- CONFIRMING PAIR (fresh Fusion 27252 after a restart, same recipe, every op's toolpath read back with
+  cam.getMachiningTime(op, 1, 500, 0)):
+  - OP-FIRST (03:11:19 -> 03:14:02, 2 min 43 s): pass 1 left 4 of 5 B-spline ops EMPTY (0.3 s each), deloge 22.0 s,
+    Frame 65.0 s; pass 2 made 7/7. So op-first does NOT remove the empty first generation -- sample 1 was the outlier.
+  - CONTROL (03:28:05 -> 03:30:47, 2 min 42 s): pass 1 Back 0.3 s, Top 24.1 s (invalid), Frame 66.6 s; pass 2 made 7/7.
+  - Toolpaths: IDENTICAL op for op in both arms (machining time / feed / rapid distance, 7 ops; e.g. Back pocket
+    760.68 s / 4711.492 cm / 215.59 cm, Frame pocket 472.33 s / 9686.545 / 823.943).
+- VERDICT: op-first does not hold (same total time, the symptom stays). No toolpath_gen change. The one real effect
+  is the doomed pass-1 tries get cheaper (~20 s of Top in sample 2/4), and pass 2's op-by-op time absorbs it.
+  Holder back to none; scratch docs closed by handle; Fred's Untitled untouched.
