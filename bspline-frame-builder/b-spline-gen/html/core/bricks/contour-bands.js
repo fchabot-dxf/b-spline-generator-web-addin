@@ -718,7 +718,8 @@ function fitBandStack(bands, planned, gap, L, H) {
 
 /** T86 item 30 (Fred's item 28 ruling, "make the app do the best result"; advisor (b')): a SINGLE band too deep for a
  *  feature of the board -- its row would drop a line lying between two lines (lineBetweenLinesDropsAt) -- is laid at the
- *  deepest depth where no such line drops, less a joint, instead of stranding fans and leaving the feature bare. Narrowing
+ *  depth where that line's run is one joint (the seam with the facing row), instead of stranding fans and leaving the
+ *  feature bare. Narrowing
  *  is LOCAL: MEASURED over 456 lays (8 presets x 19 templates x 0.75 / 1 / 1.25 in, 7x9) it changes none, and over 2,052
  *  (+ 1.5 in, 6x9 / 9x12) 36 -- T6 / T9 / T15 at 1.25-1.5 in, bare band ground up to 8.8 sq in -> 0; a BAND_FIT_SHARE of
  *  narrowestGap would have narrowed 201 of the 456 (when it still read T7 as 0.007 in -- item 31). Returns the narrowed
@@ -730,12 +731,18 @@ function narrowSingleBand(enriched, band, planned, halfJoint, joint) {
   if (!lineBetweenLinesDropsAt(enriched, rowEdge(depth))) return null;
   let lo = 0, hi = depth;
   for (let k = 0; k < NARROW_BISECT_STEPS; k++) { const mid = (lo + hi) / 2; if (lineBetweenLinesDropsAt(enriched, rowEdge(mid))) hi = mid; else lo = mid; }
-  const toIn = lo - joint;
+  // the band stops where that line's run at its row edge is ONE JOINT: at a neck the line's run is the gap between the
+  // two facing rows, so the seam there is one joint (seat D, 2026-10-08, MEASURED: "the cliff less a joint" left the
+  // run's floor + 2 joints -- T15 / T9 7x9 1.5 in a 0.088 in seam, 2.6 joints, a bare line down the board)
+  let jlo = 0, jhi = lo;
+  for (let k = 0; k < NARROW_BISECT_STEPS; k++) { const mid = (jlo + jhi) / 2; if (lineBetweenLinesDropsAt(enriched, rowEdge(mid), joint)) jhi = mid; else jlo = mid; }
+  const toIn = jlo;
   if (!(toIn > joint)) return null; // nothing sensible left to lay: as requested, with today's warning
   // the wall's boundary is taken PAST the cliff (hi: the line has dropped) and half a joint further: at the band's own
   // wall depth (lo) the consumed feature is still a sliver of wall -- T9 7x9 1.5 in a 0.018 in skeleton, a tapering neck
   // (T15 / T6 1.5 in) a spike under 0.01 in -- which bondLayout fills with cells over the band (MEASURED: 0.03-0.99 sq in).
-  // Wall ground narrower than a joint is mortar. Cost: on a narrowed lay the band-to-wall seam is 1.5 joints.
+  // Wall ground narrower than a joint is mortar. The caller takes the deeper of this and the band's own edge + half a
+  // joint, so the band-to-wall seam stays at least a joint.
   return { band: { ...band, widthIn: toIn, narrowedTo: toIn }, step: { band: 0, step: 'narrow', toIn }, requestedDepthIn: depth, wallDepthIn: rowEdge(hi) + halfJoint };
 }
 
