@@ -133,6 +133,18 @@ export function updateEditorTopView(heightsLow, nxLow, nzLow) {
     _syncBackdrop();
 }
 
+/** Repaint the backdrop from the last rebuild's inputs with the CURRENT params -- for a change the editor's backdrop
+ *  must show but that builds no 3D (a Photo-tab edit while the editor is open: main/app-init.js PHOTO_CHANGE). At
+ *  most once per animation frame, like the editor's own 'live' changes: a drag's steps that land while one paints
+ *  are drawn once, with the latest value (the paint reads the params when it runs). */
+let _refreshQueued = false;
+export function refreshEditorTopView() {
+    if (_refreshQueued) return;
+    _refreshQueued = true;
+    const run = () => { _refreshQueued = false; if (_lastTopView) updateEditorTopView(..._lastTopView); };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run); else setTimeout(run, 0);
+}
+
 function _syncBackdrop() {
     if (window.svgEditor && typeof window.svgEditor.sync3DBackground === 'function') {
         window.svgEditor.sync3DBackground();

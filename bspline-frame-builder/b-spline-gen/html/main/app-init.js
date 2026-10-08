@@ -124,6 +124,18 @@ export const CHANGE_PIPELINE_IN_EDITOR = {
     tooling: ['serialize', 'persist'],
 };
 
+/**
+ * The same rule for the Photo tab (2026-10-08): its panel calls back on EVERY slider step and every button, not through
+ * the editor's onChange, so it had bypassed CHANGE_PIPELINE_IN_EDITOR -- MEASURED (phone, 4x CPU): each straighten step
+ * rebuilt the hidden 3D, 2.2 s a step, 1.6 s of it the 3D view (the frame mesh 1.4 s); a drag 4.9 - 8.5 s (seat D).
+ * With the editor open a photo edit repaints the editor's backdrop (its live feedback there) and builds no 3D; the 3D
+ * is built when the session ends -- Apply, Cancel, or the 3D toggle (Apply's way; the session fingerprint includes
+ * the photo). With the editor closed: the full rebuild, as before.
+ */
+export const PHOTO_CHANGE = Object.freeze({ inEditor: 'backdrop', closed: 'rebuild' });
+/** What a photo change does now: PHOTO_CHANGE's row for whether the editor is open. */
+export const photoChangeAction = () => PHOTO_CHANGE[isEditorOpen() ? 'inEditor' : 'closed'];
+
 /** PERF category timing — off by default (core/debug.js's own gate), so
  *  this costs nothing until switched on. Goes through THREE channels when
  *  on: `dbg()` (site devtools console), `fusLog` (the add-in's log file —

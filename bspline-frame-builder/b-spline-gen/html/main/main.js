@@ -36,7 +36,8 @@ import { saveLastSession, isFusionMode } from '../core/state.js';
 import { isDirty } from '../core/dirty.js';
 import { applyParam } from './param-manager.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
-import { initApp, initSvgEditor } from './app-init.js';
+import { initApp, initSvgEditor, photoChangeAction } from './app-init.js';
+import { refreshEditorTopView } from '../core/render-topview.js';
 import { bindControls } from './ui-bindings.js';
 import { bindProjectManager } from './cloud-project-manager.js';
 import { receiveEditPasswordFromFusion } from './edit-password.js';
@@ -128,11 +129,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // F34 item 1: the Photo filter's own small editor (pattern row, load-my-
     // own, crop/rotate/flip/levels/brightness/contrast/blur/invert, undo).
+    // app-init.js PHOTO_CHANGE: with the editor open a photo edit repaints its backdrop only (no 3D while editing)
     initPhotoPanel({
-        onChange: () => scheduleRebuild(
-            () => rebuild(preview, updateStampMasks, updatePreviewSculptMode),
-            0,
-        ),
+        onChange: () => (photoChangeAction() === 'backdrop'
+            ? refreshEditorTopView()
+            : scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0)),
     });
 
     // F35 item 1: the Brick tab (set picker + declared tool list + common
