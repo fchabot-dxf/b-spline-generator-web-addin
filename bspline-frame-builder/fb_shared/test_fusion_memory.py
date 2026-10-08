@@ -55,5 +55,5 @@ def test_the_stale_import_refs_hygiene_is_installed_by_the_parent():
     bsg = open(os.path.join(_ROOT, 'b-spline-gen', 'b-spline-gen.py'), encoding='utf-8').read()
     load = parent.index("_bs        = _load_submodule('bspline_ui'")
     assert load < parent.index('_bs.install_session_handlers()')
-    assert 'def install_session_handlers():' in bsg and 'app.documentClosed.add(_doc_closed_handler)' in bsg
-    assert 'app.documentClosed.remove(_doc_closed_handler)' in bsg  # stop() removes it
+    assert 'def install_session_handlers():' in bsg and 'app.documentClosing.add(_doc_closed_handler)' in bsg
+    assert 'app.documentClosing.remove(_doc_closed_handler)' in bsg  # stop() removes it

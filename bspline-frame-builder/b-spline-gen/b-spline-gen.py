@@ -297,20 +297,25 @@ current_import_group      = None
 custom_graphics_group     = None
 
 
-def _drop_stale_import_refs():
-    """A closed doc's occurrences stay referenced here as invalid proxies (MEASURED 2026-10-07: 3 of them, the only
+def _drop_stale_import_refs(closing_doc=None):
+    """A closed doc's occurrences stayed referenced here as invalid proxies (MEASURED 2026-10-07: 3 of them, the only
     closed-doc objects this add-in held). Dropping them freed no memory (Fusion keeps its own, fb_shared.fusion_memory)
-    -- hygiene: the import state only ever names live occurrences."""
+    -- hygiene: the import state only ever names occurrences of open documents. MEASURED live the same day: at
+    documentClosing AND documentClosed the closing doc's occurrences still read isValid True (they turn invalid after),
+    so the ones dropped are those whose document IS the closing one (`==` identifies it there: True for the closing
+    doc, False for another); an already-invalid one goes too."""
     global last_imported_occurrences, current_import_group
 
-    def _alive(o):
+    def _keep(o):
         try:
-            return bool(o) and o.isValid
+            if not (o and o.isValid):
+                return False
+            return closing_doc is None or not (o.component.parentDesign.parentDocument == closing_doc)
         except Exception:
             return False
-    if current_import_group is not None and not _alive(current_import_group):
+    if current_import_group is not None and not _keep(current_import_group):
         current_import_group = None
-    last_imported_occurrences = [o for o in last_imported_occurrences if _alive(o)]
+    last_imported_occurrences = [o for o in last_imported_occurrences if _keep(o)]
 
 
 def _document_closed_handler():
@@ -318,9 +323,9 @@ def _document_closed_handler():
     class DocumentClosedHandler(adsk.core.DocumentEventHandler):
         def notify(self, args):
             try:
-                _drop_stale_import_refs()
+                _drop_stale_import_refs(args.document)
             except Exception:
-                _log('documentClosed: dropping stale import refs failed')
+                _log('documentClosing: dropping stale import refs failed')
     return DocumentClosedHandler()
 
 
@@ -335,7 +340,7 @@ def install_session_handlers():
     if _doc_closed_handler is not None:
         return
     _doc_closed_handler = _document_closed_handler()
-    app.documentClosed.add(_doc_closed_handler)
+    app.documentClosing.add(_doc_closed_handler)
     handlers.append(_doc_closed_handler)
 
 # Globals for the chunked-transfer + polling handshake
@@ -2779,7 +2784,7 @@ def stop(context):
         global _doc_closed_handler
         if _doc_closed_handler is not None:
             try:
-                app.documentClosed.remove(_doc_closed_handler)
+                app.documentClosing.remove(_doc_closed_handler)
             except Exception:
                 pass
             _doc_closed_handler = None

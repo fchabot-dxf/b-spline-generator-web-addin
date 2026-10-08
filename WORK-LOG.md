@@ -24512,3 +24512,10 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   b-spline-gen and calls its stop(), never its run() -- my registration in run() was dead code (the stubbed suites
   could not see it). Now a declared install_session_handlers() in b-spline-gen (idempotent), called by the parent right
   after it loads the module; b-spline-gen's stop() still removes it. Pinned (fb_shared/test_fusion_memory.py).
+- LIVE, second finding: with the handler registered, the stale refs were STILL there after closing the doc. MEASURED
+  with a scratch handler on a throwaway doc: at documentClosing AND documentClosed the closing doc's occurrence reads
+  isValid True (invalid only after the events) -- an isValid test in the handler can never drop it. Measured the same
+  way: at documentClosing, occurrence.component.parentDesign.parentDocument == args.document is True for the closing
+  doc and False for another. Now a documentClosing handler drops the import refs whose document IS the closing one
+  (+ any already invalid). b-spline-gen/test_stale_import_refs.py 3 (the old isValid-only rule fails 1/3).
+  Suites: b-spline-gen 183/183, CAM-builder 88/88, fb_shared 11/11.
