@@ -19,6 +19,12 @@ export function setupCardState(entry) {
     : { state: 'ok', text: `toolpaths ${entry.ops}/${entry.ops}` };
 }
 
+/** Fred-facing lines for a card's ops without a valid toolpath (2026-10-07: the card said "1 missing" but not which
+ *  op or why; the add-in knows both -- toolpath_gen.setup_states 'missing', Fusion's own reason). */
+export function missingLines(entry) {
+  return ((entry && entry.missing) || []).map((m) => `${m.op}: ${m.why ? `Fusion says "${m.why}"` : 'no reason given by Fusion'}`);
+}
+
 /** The B-spline tab's header line from the same entries (it was static text: "3 MMs · 4 SETUPS · READY" on a doc
  *  with no CAM at all). [] -> NO CAM YET; counts -> the toolpaths over every op; no counts (a BUILD report) -> BUILT. */
 export function headerSummary(entries) {
@@ -34,4 +40,5 @@ export function headerSummary(entries) {
 if (typeof window !== 'undefined') { // the palette's classic script
   window.camSetupCardState = setupCardState;
   window.camSetupHeader = headerSummary;
+  window.camSetupMissing = missingLines;
 }

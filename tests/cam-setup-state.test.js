@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { setupCardState, headerSummary } from '../bspline-frame-builder/CAM-builder/ui/html/cam-setup-state.js';
+import { setupCardState, headerSummary, missingLines } from '../bspline-frame-builder/CAM-builder/ui/html/cam-setup-state.js';
 
 describe('the declared card states', () => {
   it('no entry -> pending; a failed build -> failed', () => {
@@ -36,6 +36,19 @@ describe('the header line, from the same entries (it was static: "3 MMs · 4 SET
   });
 });
 
+describe('which op is missing, and Fusion\'s own reason (the card said "1 missing" but not which or why)', () => {
+  it('one line per missing op: its name and what Fusion says, or that it says nothing', () => {
+    expect(missingLines({ name: 'B-spline Top', ok: true, ops: 3, toolpaths: 1, missing: [
+      { op: 'Morphed Spiral1', why: 'error: Out of memory.' }, { op: 'Pocket front FRED', why: '' }] }))
+      .toEqual(['Morphed Spiral1: Fusion says "error: Out of memory."', 'Pocket front FRED: no reason given by Fusion']);
+  });
+  it('nothing missing, an older report without the field, or no entry -> no lines', () => {
+    expect(missingLines({ name: 'Frame', ok: true, ops: 2, toolpaths: 2, missing: [] })).toEqual([]);
+    expect(missingLines({ name: 'Frame', ok: true })).toEqual([]);
+    expect(missingLines(undefined)).toEqual([]);
+  });
+});
+
 describe('the palette reads every source through it', () => {
   const html = readFileSync('bspline-frame-builder/CAM-builder/ui/html/cam_builder_palette.html', 'utf8');
   it('loads the map, asks for the doc\'s states when the B-spline tab boots, and shows reports + states the same way', () => {
@@ -45,6 +58,7 @@ describe('the palette reads every source through it', () => {
     expect(html).toMatch(/if \(payload\.setups\) showSetupList\(payload\.setups\);/);
     expect(html).toMatch(/head\.textContent = window\.camSetupHeader\(list \|\| \[\]\)/); // the header from the same list
     expect(html).not.toContain('3 MMs &middot; 4 SETUPS &middot; READY'); // the static header is gone
+    expect(html).toContain("showMissing(key, window.camSetupMissing ? window.camSetupMissing(s) : []);"); // which + why
     expect(html).not.toMatch(/setSetupState\(key, s\.ok \? 'ok' : 'fail'\)/); // the old ok/fail-only path is gone
   });
 });

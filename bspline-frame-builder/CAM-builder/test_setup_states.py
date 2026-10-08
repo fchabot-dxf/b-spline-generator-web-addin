@@ -25,8 +25,8 @@ class _Ops:
         return self._ops[j]
 
 
-def _op(has, valid):
-    return types.SimpleNamespace(hasToolpath=has, isToolpathValid=valid)
+def _op(has, valid, name='op', error='', warning=''):
+    return types.SimpleNamespace(hasToolpath=has, isToolpathValid=valid, name=name, error=error, warning=warning)
 
 
 def _cam(*setups):
@@ -37,13 +37,16 @@ def _cam(*setups):
 def test_each_setup_with_its_ops_and_valid_toolpaths():
     cam = _cam(('Stock', []),
                ('B-spline Back', [_op(True, True), _op(True, True)]),
-               ('B-spline Top', [_op(True, True), _op(False, False), _op(True, False)]),  # empty, and stale
+               ('B-spline Top', [_op(True, True), _op(False, False, 'Morphed Spiral1', error='Out of memory.\nmore'),
+                                 _op(True, False, 'Pocket front FRED')]),  # empty (with Fusion's reason), and stale
                ('Frame', [_op(True, True), _op(True, True)]))
     assert tg.setup_states(cam) == [
-        {'name': 'Stock', 'ok': True, 'ops': 0, 'toolpaths': 0},
-        {'name': 'B-spline Back', 'ok': True, 'ops': 2, 'toolpaths': 2},
-        {'name': 'B-spline Top', 'ok': True, 'ops': 3, 'toolpaths': 1},  # only a VALID toolpath counts
-        {'name': 'Frame', 'ok': True, 'ops': 2, 'toolpaths': 2},
+        {'name': 'Stock', 'ok': True, 'ops': 0, 'toolpaths': 0, 'missing': []},
+        {'name': 'B-spline Back', 'ok': True, 'ops': 2, 'toolpaths': 2, 'missing': []},
+        {'name': 'B-spline Top', 'ok': True, 'ops': 3, 'toolpaths': 1,  # only a VALID toolpath counts
+         'missing': [{'op': 'Morphed Spiral1', 'why': 'error: Out of memory.'},  # which op, and Fusion's own why
+                     {'op': 'Pocket front FRED', 'why': ''}]},
+        {'name': 'Frame', 'ok': True, 'ops': 2, 'toolpaths': 2, 'missing': []},
     ]
 
 
@@ -63,4 +66,4 @@ def test_the_palette_open_asks_for_them_and_gets_them(monkeypatch):
     adsk.core.Application = types.SimpleNamespace(get=lambda: types.SimpleNamespace(activeDocument=doc))
     adsk.cam.CAM = types.SimpleNamespace(cast=lambda x: x)
     cb._CamHtmlEventHandler().notify(types.SimpleNamespace(action='get_setup_states', data=json.dumps({})))
-    assert sent == [('setup_states', {'setups': [{'name': 'Frame', 'ok': True, 'ops': 1, 'toolpaths': 1}]})]
+    assert sent == [('setup_states', {'setups': [{'name': 'Frame', 'ok': True, 'ops': 1, 'toolpaths': 1, 'missing': []}]})]
