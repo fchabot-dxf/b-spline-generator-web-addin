@@ -24584,3 +24584,22 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   a T5 corner, start here.
 - tests/bricks-fan-crossing.test.js 7: 6 fail on main; drop rule off -> 5 fail; facing split off -> 2 fail.
   Full suite (npm run test:full) 5918/5918.
+
+### 2026-10-07 (seat D): T86 item 16(d) -- T1's missing wall brick: already fixed by item 21c, now pinned
+- MEASURED on main (engine, T1 7x9 single soldier, 0.75 / 1 / 1.25 / 1.5 in, bare = in the contour, in no brick and
+  > 1 joint from every brick, 0.02 in grid, 4-neighbour patches): largest bare patch 0.0024 sq in -- no hole.
+- REPRODUCED on main as of the advisor's 10-04 16:34 sheet (e9b9acc): one patch at the wall's top-right corner under
+  the band, every size: 0.042 sq in at 0.75 in (x 5.70-5.96, y 1.04-1.20 -- the shot's dark hole), 0.086 / 0.084 /
+  0.281 at 1 / 1.25 / 1.5 in. Wall / frame counts 193 / 136 = the sheet's report.json, so the sheet was this lay.
+- BISECTED (first-parent main, probe = largest patch > 0.01): fixed by 505532a, the merge that brought T86 item 21c
+  (d23c428 roundPolygonCorners leaves reflex corners sharp; 7a457b5 polygonIntersection on touching inputs). Not crumble:
+  the brick suppression slider defaults to 0 (the 0.15 in layers.js is the image layers' own).
+- WHY nothing caught it: bricks-wall-coverage-matrix caps bare ground at 0.3 sq in PER LAY, and one dropped corner brick
+  is 0.04-0.28 sq in. Added the per-patch bar to the same scan (no second pass): the largest connected bare patch <=
+  PATCH_MAX_FACE 0.05 of one brick face (L x H of the scaled set). Main: <= 0.02 of a face at 0.75-1.25 in. Three 1.5 in
+  lays sit above it today and are capped at their measure (PATCH_KNOWN: T15 0.2 / T16 0.08 / T9 0.25, measured 0.195 /
+  0.072 / 0.240) -- T15 / T16 are item 16f's parked wall tips, T9 1.5 is the no-wall-room lay.
+- PROOF: the new file on the 10-04 engine fails 43 lays on the patch bar ALONE (they pass the 0.3 sq in cap), incl.
+  T1 at all four sizes (0.26 / 0.32 / 0.25 / 0.43 of a face). Main 79/79. The bareSqIn == reference-scan pins unchanged
+  (bareSqIn is now bareGround(...).sqIn, the same grid points).
+- Shots: shots/seatD/a16d/t1_engine_1004.png (red = bare, the corner hole) | t1_engine_main.png (none).

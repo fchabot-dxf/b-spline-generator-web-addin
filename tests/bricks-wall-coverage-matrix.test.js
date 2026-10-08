@@ -29,6 +29,12 @@ const TEMPLATES = FRAME_DEFS.templates.map((t) => t.id).filter((k) => /^template
 const COVER_MIN_RATIO = 0.98, REGION_MIN_SQIN = 1, BARE_MAX_SQIN = 0.3, GRID_IN = 0.04;
 /** where the single soldier band covers the board and no wall interior remains (measured) */
 const NO_WALL_ROOM = new Set(['template_9 1.5']);
+/** T86 item 16(d): the largest single bare patch, as a share of ONE brick face (L x H of the scaled set). A dropped wall
+ *  brick is one patch: T1's top-right corner brick (dropped before item 21c d23c428) left 0.16-0.37 of a face at
+ *  0.75-1.5 in; main is <= 0.02 at 0.75-1.25 in (seat D, 2026-10-07). The 1.5 in wall tips are item 16f's parked class
+ *  and are capped at today's measure instead (PATCH_KNOWN, a face share each). */
+const PATCH_MAX_FACE = 0.05;
+const PATCH_KNOWN = { 'template_15 1.5': 0.2, 'template_16 1.5': 0.08, 'template_9 1.5': 0.25 }; // measured 0.195 / 0.072 / 0.240
 
 const area = (p) => (p && p.length >= 3 ? Math.abs(signedArea(p)) : 0);
 const tess = (prims) => prims.flatMap((p) => (p.type === 'arc'
@@ -58,7 +64,7 @@ function bareSqInScan(contour, bricks, J) {
  *  candidates that can pass it, so the same verdict per point. MEASURED before: this scan was 0.86 s of template_1's
  *  1.44 s (the rest is generateBricks), and the template_1 case (4 sizes) timed out at 35-38 s in 2 of 12 loaded runs. */
 const BUCKET_IN = 0.25;
-function bareSqIn(contour, bricks, J) {
+function bareGround(contour, bricks, J) {
   const nx = Math.ceil(W / BUCKET_IN) + 1, buckets = new Map();
   const cell = (v) => Math.floor(v / BUCKET_IN);
   for (const b of boxesOf(bricks, J)) {
@@ -68,13 +74,27 @@ function bareSqIn(contour, bricks, J) {
       buckets.get(k).push(b);
     }
   }
-  let bare = 0;
-  for (let y = GRID_IN / 2; y < H; y += GRID_IN) for (let x = GRID_IN / 2; x < W; x += GRID_IN) {
+  const bare = new Set(), cols = Math.ceil(W / GRID_IN) + 1;
+  let row = 0;
+  for (let y = GRID_IN / 2; y < H; y += GRID_IN, row++) for (let x = GRID_IN / 2, col = 0; x < W; x += GRID_IN, col++) {
     if (!pointInPolygon(x, y, contour)) continue;
-    if (!(buckets.get(cell(y) * nx + cell(x)) || []).some((b) => nearBox(b, x, y, J))) bare++;
+    if (!(buckets.get(cell(y) * nx + cell(x)) || []).some((b) => nearBox(b, x, y, J))) bare.add(row * cols + col);
   }
-  return bare * GRID_IN * GRID_IN;
+  // T86 item 16(d): the largest CONNECTED bare patch (4-neighbour grid points) -- one dropped wall brick is one patch
+  let largest = 0;
+  const seen = new Set();
+  for (const s of bare) {
+    if (seen.has(s)) continue;
+    let n = 0;
+    for (const st = [s], _ = seen.add(s); st.length; n++) {
+      const c = st.pop();
+      for (const k of [c + 1, c - 1, c + cols, c - cols]) if (bare.has(k) && !seen.has(k)) { seen.add(k); st.push(k); }
+    }
+    largest = Math.max(largest, n);
+  }
+  return { sqIn: bare.size * GRID_IN * GRID_IN, largestSqIn: largest * GRID_IN * GRID_IN };
 }
+const bareSqIn = (contour, bricks, J) => bareGround(contour, bricks, J).sqIn;
 
 const LAY_BOARD = [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }];
 const contourCache = new Map();
@@ -100,7 +120,10 @@ describe('T86 item 16b-REOPENED: the wall covers its region at every size; no ba
     const tag = `${tpl} ${L}`;
     if (NO_WALL_ROOM.has(tag)) expect(r.bricks.length, tag).toBe(0);
     else if (region >= REGION_MIN_SQIN) expect(wall / region / ideal, `${tag}: wall share of its region vs the ideal`).toBeGreaterThanOrEqual(COVER_MIN_RATIO);
-    expect(bareSqIn(contour, [...r.frameBricks, ...r.bricks], J), `${tag}: bare ground sq in`).toBeLessThanOrEqual(BARE_MAX_SQIN);
+    const bare = bareGround(contour, [...r.frameBricks, ...r.bricks], J);
+    expect(bare.sqIn, `${tag}: bare ground sq in`).toBeLessThanOrEqual(BARE_MAX_SQIN);
+    const face = s.brickLengthIn * s.brickHeightIn;
+    expect(bare.largestSqIn / face, `${tag}: largest bare patch, share of one brick face`).toBeLessThanOrEqual(PATCH_KNOWN[tag] ?? PATCH_MAX_FACE);
   });
   // the bucketed count IS the reference scan's (a curved waist, a template with no wall room, and a lay with a hole
   // punched in it so the bare count is not 0)
