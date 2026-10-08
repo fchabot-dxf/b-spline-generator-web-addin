@@ -24338,6 +24338,17 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Single files: loading-steps-list 18/18, loading-signal 21/21, fusion-send-stages 5/5. The full suite was NOT clean:
   run at 3.9 GB free during the advisor's gate (Fred: 1.6 GB free, CPU 100%); 15 failures in unrelated files
   (timeouts / benchmarks under that load). To re-run when the advisor clears heavy runs.
+
+### 2026-10-07 (seat A): frame clip -- a y-banded point-in-polygon (byte-identical, advisor pick 2, step 1)
+- Profile on main b98cd0f (frame-clip-skip in): pointInPolygon 13% (every panel vertex against the WHOLE outline),
+  the clip walk 11%, crossed 6.9%, creasedNormals 6.2%, GC 5.4%.
+- frame-mesh.js polygonPointTester(poly), built once per clipPanelToOutline: edges bucketed by y-band; an edge toggles
+  only when min(a.y,b.y) <= y < max(a.y,b.y), so y's band lists every edge that can, the per-edge test is the same
+  expression and parity is order-free -> the same boolean. Used for the vertex isIn and both centroid tests; the
+  exported pointInPolygon is unchanged.
+- MEASURED: all 747 frame-3d-sweep applies hash identical to the pre-skip baseline. Back-to-back CPU: main 28.2 ->
+  23.7 ms per apply (-16%; run-to-run noise seen: 19.3-23.7 for the same code). frame-clip-identical (pinned
+  digests) + frame-mesh-normals + frame-bartop-drawn 35/35, frame-3d + frame-3d-sweep 133/133.
 ## T86 item 5 -- brush crossings: one runs through, the other is cut straight along its edge, one joint off (seat E / 61, 2026-10-07)
 - Fred's picks on the mock: end-touch 5b (the ENDING stroke stops, whatever the order); X: the EARLIER stroke runs
   through (creation order = the spines' document order, declared); the wall keeps flowing around strokes (item 13).
@@ -24455,3 +24466,44 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   deferred-build harness (test_cam_stages.TestTheDeferredBuild, also run by test_build_then_apply / test_tpgen_card)
   asserts the build's own step sequence; it now stubs the detection-only reading. Suites: b-spline-gen 180/180,
   CAM-builder 85/85, fb_shared 10/10, fusion-memory-line 5/5.
+### Pick 2 -- Continuous strokes in the crossing rule; the window surround runs through (seat E / 61, 2026-10-08)
+- MEASURED: a Continuous stroke has no ribbon outline (bricksAlongPath lays one unbroken piece per corner-bounded run), so
+  strokeCrossings never saw it -- it neither ran through nor stopped; a brick stroke crossed it with an overlap and it
+  crossed brick strokes the same way (4 cases, all overlapping on brush-crossings-5).
+- BUILT: a stroke's REGIONS = its ribbon outline, or (Continuous) its own pieces; strokeCrossings reads any number of
+  region polygons per stroke (meets / ends-on over all of them); a through Continuous stroke cuts the others with its pieces
+  grown by a joint; a cut Continuous stroke is still CUT as one piece (bricksClearOf), as before.
+- Window surround: laid into the frame's pieces (editor-brick-tool.js: frameBricks + surroundBricks, drawn as frame), so a
+  stroke already runs into it like the frame -- now pinned by a test (it passed before; a pin, not a fix).
+- TESTS brush-crossings (+5, 21): brick X / T over an earlier Continuous, Continuous X / T over an earlier brick stroke: no
+  overlap, the cut a joint (+-10 %) off -- measured exactly 1.000 J in all five; the surround ring case. On brush-crossings-5's
+  code the four Continuous cases fail (4/21). Matrix rows: not run yet (heavy -- after your clear).
+
+### 2026-10-07 (seat A): the CAM setup cards show the doc's real state -- advisor pick 1, (a) + (b)
+- Corrected premise (told the advisor): the B-spline cards only changed on a palette BUILD report ({name, ok} ->
+  "ok"/"fail"); my "pending after toolpaths" shot came from driving BUILD through engine.run. Real gaps: (a) after
+  APPLY a card read "ok" (= built) whatever its toolpaths; (b) a palette opened on an already-built doc read "pending"
+  on every card (init_result never touches the B-spline cards).
+- One declared source, cam_engine/toolpath_gen.py setup_states(cam): read-only [{name, ok, ops, toolpaths}], a toolpath
+  counted only when VALID (_valid: hasToolpath and isToolpathValid). Sent by (a) the final TPGen report ('setups') and
+  (b) a new read-only 'get_setup_states' action the B-spline tab sends when it boots (no workspace switch; no CAM
+  product -> []).
+- One declared map, ui/html/cam-setup-state.js setupCardState: no entry -> pending; ok false -> failed; no counts (a
+  BUILD report) -> built; 0 ops -> built · no operations; all valid -> toolpaths n/n (green); else
+  toolpaths k/n · m missing (red). The palette's classic script reads every source through showSetupEntry.
+- Tests: CAM-builder/test_setup_states.py 3 (fails 3/3 pre-change); tests/cam-setup-state.test.js 4 (the map; the
+  wiring pin fails 1/4 against the old palette). CAM-builder pytest 88/88. Live Fusion confirmation pending (holder).
+- LIVE (Fusion 65140, cam-setup-states ad6ad8c deployed and loaded, then main b98cd0f redeployed): fresh T1 7x9 Send;
+  the palette opened on it read "pending" (no CAM); one real BUILD SETUPS click (BUILD + its APPLY + TPGen, post-audit
+  ok=7 missing=0, 0 [ERROR]) -> Stock "built · no operations", B-spline Back "toolpaths 2/2", B-spline Top
+  "toolpaths 3/3", Frame "toolpaths 2/2", all green; the palette deleteMe'd and reopened (a fresh page) -> the same
+  states from get_setup_states alone. Shots: shots/seatA/cam_cards/cam_cards_strip.png.
+
+### 2026-10-07 (seat A): the CAM palette header from the doc's setup states (stacked on cam-setup-states) -- pick 1
+- The B-spline tab's header was static HTML ("3 MMs · 4 SETUPS · READY", cam_builder_palette.html:372): it read that
+  on a doc with no CAM at all (shots/seatA/cam_cards/00_open_no_cam.png).
+- cam-setup-state.js headerSummary(entries), the same entries as the cards: [] -> NO CAM YET; a BUILD report (no
+  counts) -> N SETUPS · BUILT; a failed build -> N SETUPS · BUILD FAILED; counts -> N SETUPS · TOOLPATHS done/ops (or
+  BUILT with no ops yet). The palette's showSetupList feeds the cards AND the header from every source (the doc on
+  open, BUILD and TPGen reports); the initial text is an ellipsis until the add-in answers.
+- tests/cam-setup-state.test.js 6 (+2 header, pins updated); 3 fail against the pre-change palette + map.

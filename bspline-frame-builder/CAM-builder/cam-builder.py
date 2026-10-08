@@ -283,6 +283,8 @@ def _dispatch_palette_action(action, data):
                 _send_to_html('build_info', _p)
         elif action == 'get_template_assignments':
             _do_get_template_assignments()
+        elif action == 'get_setup_states':
+            _do_get_setup_states()
         elif action == 'set_template_assignments':
             _do_set_template_assignments(data)
         elif action == 'init':
@@ -1486,6 +1488,19 @@ def _do_sync_table_attach():
         _send_to_html('report', {'ok': False, 'msg': 'Sync table attach raised — see log.'})
 
 
+def _do_get_setup_states():
+    """The palette opens (its B-spline tab boots): the active doc's setups as the cards show them -- read-only, no
+    workspace switch; nothing when the doc has no CAM yet (the cards keep 'pending')."""
+    try:
+        _load_engine()
+        doc = adsk.core.Application.get().activeDocument
+        cam = adsk.cam.CAM.cast(doc.products.itemByProductType('CAMProductType')) if doc else None
+        from cam_engine import toolpath_gen as _tg
+        _send_to_html('setup_states', {'setups': _tg.setup_states(cam)})
+    except Exception:
+        _log_error("_do_get_setup_states\n" + traceback.format_exc())
+
+
 def _do_apply_toolpaths():
     """The APPLY TOOLPATHS button: apply the templates + start toolpath generation (_apply_toolpaths), then report."""
     ok, msg = _apply_toolpaths()
@@ -2148,6 +2163,7 @@ class _DeferredTPGenHandler(adsk.core.CustomEventHandler):
                     'ok': errors == 0,
                     'msg': f"TOOLPATHS complete — {dispatched} ops ok"
                            + (f", {errors} missing" if errors else ""),
+                    'setups': _tg.setup_states(cam),  # each setup card: toolpaths n/m (cam-setup-state.js)
                 })
             except Exception:
                 pass

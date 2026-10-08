@@ -370,7 +370,7 @@
          PREVIEW/GENERATE on row 1 never clip or wrap at the docked width. -->
     <div class="cam-header-meta">
       <span id="build-badge" class="cad-nav-version" title=""></span>
-      <span id="status-summary-bspline" class="cam-tab-header-item" data-mode="bspline" style="font-weight:600;color:var(--cad-accent-blue);">3 MMs &middot; 4 SETUPS &middot; READY</span>
+      <span id="status-summary-bspline" class="cam-tab-header-item" data-mode="bspline" style="font-weight:600;color:var(--cad-accent-blue);">&hellip;</span>
       <span id="status-summary-generic" class="cam-tab-header-item hidden" data-mode="generic" style="font-weight:600;color:var(--cad-accent-blue);">…</span>
     </div>
 
@@ -707,6 +707,7 @@
 <script type="module" src="./cam-loading.js"></script>
 <script type="module" src="../../../b-spline-gen/html/core/fusion-memory-line.js"></script>
 <div id="fusion-memory-line" class="fusion-memory-line" hidden role="status" aria-live="polite"></div>
+<script type="module" src="./cam-setup-state.js"></script>
 <script>
   /* ── Mode tabs (CAM1a) ──────────────────────────────────────────────────
      One shared shell, one dispatcher on the Python side. Each tab keeps its
@@ -735,6 +736,7 @@
       bootedBspline = true;
       send('list_cam_templates');
       send('get_template_assignments');
+      send('get_setup_states'); // the cards show the doc as it is (a palette opened on a built doc)
     } else if (currentMode === 'generic' && !bootedGeneric) {
       bootedGeneric = true;
       send('init');
@@ -793,7 +795,7 @@
     bar.className = 'cam-status' + (cls ? ' ' + cls : '');
   }
 
-  function setSetupState(key, state) {
+  function setSetupState(key, state, text) {
     const dot = document.getElementById('dot-' + key);
     const lbl = document.getElementById('state-' + key);
     if (dot) {
@@ -801,7 +803,21 @@
       if (state === 'ok')   dot.classList.add('ok');
       if (state === 'fail') dot.classList.add('fail');
     }
-    if (lbl) lbl.textContent = state;
+    if (lbl) lbl.textContent = text || state;
+  }
+  // a setup entry from the add-in (a report, or the doc as it is on open) -> its card, by the declared map
+  // (cam-setup-state.js)
+  // ...and the header line from the whole list (cam-setup-state.js headerSummary)
+  function showSetupList(list) {
+    (list || []).forEach(showSetupEntry);
+    const head = document.getElementById('status-summary-bspline');
+    if (head && window.camSetupHeader) head.textContent = window.camSetupHeader(list || []);
+  }
+  function showSetupEntry(s) {
+    const key = setupKeyFor(s.name);
+    if (!key) return;
+    const card = window.camSetupCardState ? window.camSetupCardState(s) : { state: s.ok ? 'ok' : 'fail' };
+    setSetupState(key, card.state, card.text);
   }
 
   function runPreview() {
@@ -1530,6 +1546,7 @@
         if (action === 'build_confirm') { if (window.camLoading) window.camLoading.end(); confirmBuild(payload.setups || []); return; }
         // item 70: the add-in's step reports (cam-stages.js ids), held on the card until the next one or the report
         if (action === 'fusion_memory') { if (window.paintFusionMemory) window.paintFusionMemory(payload); return; } // detection only
+        if (action === 'setup_states') { showSetupList(payload.setups); return; }
         if (action === 'cam_stage') { if (window.camLoading && payload.id) window.camLoading.stage(payload.id, payload.grow); return; }
 
         // ── report: BOTH tabs' operations complete via this one event
@@ -1544,10 +1561,7 @@
             const ok = payload.ok !== false;
             setStatus((ok ? '✓ ' : '✗ ') + payload.msg);
           }
-          (payload.setups || []).forEach(s => {
-            const key = setupKeyFor(s.name);
-            if (key) setSetupState(key, s.ok ? 'ok' : 'fail');
-          });
+          if (payload.setups) showSetupList(payload.setups);
           // item 70 (seat A, measured live): APPLY's own report carries no MM / setup counts -- the build summary then
           // read 'done · 0 MMs · 0 setups' over its message for the whole toolpath generation; and a failure with no
           // errors list read 'failed —' and nothing. The summary is a BUILD report's (it carries mms); the rest keep

@@ -1887,9 +1887,14 @@ export function bricksForStroke(points, settings, out = null, cutEnds = null) {
  *  @param {Array<{points, settings}>} strokes  @param {Array<{x,y}[]>} framePieces the laid frame's pieces
  *  @returns {Array<{bricks: Array, outlines: Array}>} per stroke, its bricks and its grout outline(s) */
 export function strokeBricksWithCrossings(strokes, framePieces = []) {
-  const first = strokes.map((st) => { const out = {}; const bricks = bricksForStroke(st.points, st.settings, out); return { bricks, outline: out.ribbonOutline || null }; });
+  // what each stroke covers: a brick stroke its ribbon outline; a Continuous run (no outline) its own pieces -- so it runs
+  // through, and stops, by the same rule as any stroke (pick 2, seat E)
+  const first = strokes.map((st) => {
+    const out = {}, bricks = bricksForStroke(st.points, st.settings, out), outline = out.ribbonOutline || null;
+    return { bricks, outline, regions: outline ? [outline] : st.settings.profile === 'continuous' ? bricks.map((b) => b.polygon) : [] };
+  });
   const jointOf = (st) => resolvedSetFor(st.settings).grout.widthIn;
-  const cutBy = strokeCrossings(strokes.map((st, i) => ({ points: st.points, outline: first[i].outline })), Math.max(0, ...strokes.map(jointOf)));
+  const cutBy = strokeCrossings(strokes.map((st, i) => ({ points: st.points, regions: first[i].regions })), Math.max(0, ...strokes.map(jointOf)));
   const box = (P) => P.reduce((b, p) => [Math.min(b[0], p.x), Math.min(b[1], p.y), Math.max(b[2], p.x), Math.max(b[3], p.y)], [Infinity, Infinity, -Infinity, -Infinity]);
   const meetsBox = (a, b, d) => !(a[2] + d < b[0] || b[2] + d < a[0] || a[3] + d < b[1] || b[3] + d < a[1]);
   const areaOf = (P) => (P && P.length >= 3 ? Math.abs(signedArea(P)) : 0);
@@ -1899,7 +1904,7 @@ export function strokeBricksWithCrossings(strokes, framePieces = []) {
   }));
   return strokes.map((st, i) => {
     const own = first[i], J = jointOf(st), set = resolvedSetFor(st.settings);
-    const throughStrokes = cutBy[i].map((k) => first[k].outline).filter(Boolean);
+    const throughStrokes = cutBy[i].flatMap((k) => first[k].regions);
     // a Continuous run has no ribbon outline: its own pieces give its extent
     const ob = own.outline ? box(own.outline) : own.bricks.length ? box(own.bricks.flatMap((b) => b.polygon)) : null;
     const nearFrame = ob ? framePieces.filter((p) => p.length >= 3 && meetsBox(box(p), ob, J)) : [];
