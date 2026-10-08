@@ -24940,3 +24940,17 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   longest task 163 ms. Full suite (npm run test:full) 5970/5970. Known failures: none.
 - Shots: shots/seatD/atouch/touch_targets_built_390.png (main vs built, the real app at 390 px, coarse pointer);
   the sheet Fred picked from: shots/seatD/aart/touch_targets_A_before_after.png.
+
+### 2026-10-08 (seat A): why pass 1 leaves B-spline ops empty -- Fusion says nothing (report only, no code change)
+- Fresh Fusion 76880, main b780560 deployed. T1 7x9 3-band wall payload, Send 34.4 s -> BUILD 29.4 s -> templates
+  (2/3/2 ops), the add-in's REAL deferred TPGen with toolpath_gen.generate_setups UNCHANGED, wrapped for one run so
+  that right after pass 1 (when pass 2 starts) every op's state was read: valid / hasToolpath / why_empty (Fusion's own
+  op.error + op.warning) / isGenerating / generatingProgress / isSuppressed / isProtected.
+- Pass 1: Back 0.3 s, Top 23.0 s, Frame 60.6 s. After it: B-spline Back pocket + spiral and B-spline Top pocket +
+  spiral had NO toolpath at all (has False), were NOT generating, not suppressed / protected, and op.error and
+  op.warning were both EMPTY. Top's last op (deloge) and both Frame ops were valid. Pass 2 (op by op) made all 4 in
+  10.8 + 3.4 + 10.6 + 4.4 s (+ deloge redone 36.2 s); post-audit ok=7.
+- Reading: Fusion silently skips those ops in the setup-level generateToolpath(setup) on a fresh doc -- no error to
+  read, so why_empty cannot name a cause, and there is no message-driven fix. The empty set matches every earlier
+  sample (the first ops of each B-spline setup; Back's both). pass 2's op-by-op retry stays the working answer.
+  Snapshot: scratchpad why1_after_pass1.json. Holder back to none; scratch doc closed by handle.
