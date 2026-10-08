@@ -25231,3 +25231,30 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Round 1 (2+2 loads each, right after the gate): noisy, both arms' first loads cold (main ready 9.1 / 7.2 s) -- not
   used for the comparison; listed in the probe output only.
 - Nothing to fix from this.
+
+### 2026-10-08 (seat A): Photo straighten drag -- photo edits in the editor reach its backdrop, not the hidden 3D (advisor go)
+- MEASURED (seeded phone, 4x CPU, main 5322738, a pattern loaded, a scripted 10-step drag at 60 ms + release): every
+  'input' ran setStraighten -> notifyChange -> main.js onChange -> scheduleRebuild(rebuild, 0): a FULL rebuild a step
+  (2.2 s; the 3D preview update 1.6 s of it, the frame mesh 1.4 s). The Photo tab lives ONLY in the editor, and
+  F35 item 18 (4) ("no 3D while editing", CHANGE_PIPELINE_IN_EDITOR) says an in-editor edit builds no 3D -- the photo
+  panel's own callback had bypassed it.
+- CHANGE 1 (declared): app-init.js PHOTO_CHANGE { inEditor: 'backdrop', closed: 'rebuild' } + photoChangeAction();
+  main.js's photo callback reads it. 'backdrop' = render-topview.js refreshEditorTopView: repaint from the last
+  rebuild's inputs with the current params, at most once per animation frame (the latest value). The 3D is built when
+  the session ends -- Apply, Cancel (both remask), the 3D toggle (Apply's way; editorSessionFingerprint includes the
+  photo, so a photo-only session is "changed"). The editor has no 3D view of its own (currentViewMode = editor open ?
+  2d : 3d), so the advisor's "3D showing -> rebuild on release" case cannot arise; the release still makes the one undo
+  step (photoStep), unchanged.
+- CHANGE 2: core/photo/state.js getProcessedPhotoImage -- the sampler calls it for EVERY pixel and each call built
+  url + JSON(edits) as the key: 1.1 s self of one 384-wide backdrop paint (profile). The same url / edits OBJECTS as the
+  last check now skip it (every P.photoEdits writer in photo-panel.js assigns a new array -- grepped, 8 writers); a
+  re-decode resets the check (a unique sentinel).
+- RESULT (browser, editor open, alternating x2, 10-step drag): main 4.1 - 5.5 s to idle with 1 - 2 rebuilds, release ->
+  idle 0.8 - 0.96 s; branch 2.1 - 2.4 s, 0 rebuilds, release -> idle 0.33 s. The backdrop after every drag is
+  byte-identical to a forced full rebuild's AND to main's (8/8 drags, sha a623a676 / fb46a410).
+- TESTS: tests/photo-edit-in-editor.test.js 5 (PHOTO_CHANGE rows; main.js wiring; one paint per frame with the latest
+  params; key built once over 1000 samples; same-content array reuses, new content / re-decode re-process). Old
+  state.js fails 1; no reset on re-decode fails 1; no frame coalescing fails 1. Full suite (main merged): 401 files,
+  6008/6008. Known failures: none.
+- Overlap note: D's frame-photo-loading also touches photo loading (photo-panel.js); this branch does not edit
+  photo-panel.js.
