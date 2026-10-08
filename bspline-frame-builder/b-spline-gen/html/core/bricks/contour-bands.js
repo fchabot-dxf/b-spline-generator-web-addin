@@ -262,11 +262,18 @@ function clipBandPiecesToBoard(bricks, board, set) {
  *  blockers: the wall is never dropped). That extension is spliced onto the piece (mergeAcrossSeam); a refused splice
  *  falls back to the twin minus everything past d1 that is not the extension (twinMinusBeyond, differences only); a
  *  refused fallback keeps the piece as laid. The two sides meet at the medial line like any neck. A fan / quoin piece is
- *  not lengthened (it has no single depth direction). */
+ *  not lengthened (it has no single depth direction).
+ *  The frame's OWN fan slices near a tip are blockers too, grown by a joint like the wall's (seat D, 2026-10-08, MEASURED: a
+ *  tip is judged bare against the wall only; on T11 butt_frame 0.75 in the corner fan already held it, the run's extension
+ *  took it, the fan yielded to the extension at the medial split and the split trimmed the extension back -- 0.17 sq in
+ *  bare). An extension takes only ground no piece holds. */
 function fillTips(bricks, tipRow, zones, set, enriched, reach) {
   const { start, count, sources, d1 } = tipRow;
   const J = set.grout.widthIn, half = J / 2;
   const areaOf = (p) => (p && p.length >= 3 ? Math.abs(signedArea(p)) : 0);
+  const fanBlockers = new Map(zones.map((z) => [z, bricks
+    .filter((b) => b.fan && b.polygon.some((p) => Math.hypot(p.x - z.apex.x, p.y - z.apex.y) < z.depthIn + reach + set.brickLengthIn))
+    .map((b) => offsetPathInward(b.polygon, J, -inwardSignFor(b.polygon)))]));
   for (let k = 0; k < count; k++) {
     const src = sources[k];
     if (!(src >= 0)) continue;
@@ -302,7 +309,7 @@ function fillTips(bricks, tipRow, zones, set, enriched, reach) {
       ext = clipToHalfPlane(ext, baseLine, z.apex);
       ext = clipToHalfPlane(ext, sideLine, { x: z.apex.x + nx * side, y: z.apex.y + ny * side });
       // T86 item 16f: a joint off every wall brick near the tip (z.blockers) -- the part still touching the row's seam
-      for (const w of z.blockers || []) {
+      for (const w of [...(z.blockers || []), ...fanBlockers.get(z)]) {
         if (areaOf(ext) < 1e-5) break;
         const parts = polygonDifference(ext, w).filter((q) => q.some((p) => Math.abs(depth(p) - d1) < 1e-4));
         const next = parts.length ? parts.reduce((a, q) => (areaOf(q) > areaOf(a) ? q : a)) : [];
