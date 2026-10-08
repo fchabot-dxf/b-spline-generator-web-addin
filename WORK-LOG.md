@@ -25070,6 +25070,39 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   height-grey module; the bricks are photo patterns). Full suite (npm run test:full) 5989/5989. Known failures: none.
 - Shots: shots/seatD/agrey/grey_by_height_built.png (main vs built, 1366 / 390 / SVG, the real app both sides);
   the mock Fred picked from: grey_by_height_mock.png.
+### 2026-10-08 (seat D): pick 2 -- Frame + Photo on the phone, MEASURED; the two blind spots get their loading stage
+- TOOL: tools/repro/art_phone_audit.mjs SURFACE art | frame | photo (each tab's actions + reach; effect = the drawing's
+  markup / the photo preview's pixels; Photo per tool + its Relief tab). 390 px, touch, coarse, CPU 4x, real touch.
+- FRAME (before): every action BLIND (no card / pill): template change 2.2 s (one 2.15 s task), Generate 0.7-1.1 s,
+  thickness 0.9, undo 0.9, inset-window edits ~0.5. Reach: 24 controls, all reachable. CPU profile (4x, after
+  frame-mesh-r3 c4ff8a0): Generate 1581 ms = generateValidFrameSeeds 528 + applyFrameToPanel (frame-mesh) 521 + the Brick
+  panel's syncControlRequires / cornerFacts 315 (narrowestGapCached 246: a new frame = a miss) + frameCutProfile 239;
+  template change 526 = applyFrameToPanel 364. Handed to seat A (the frame-mesh owner) as numbers; A passes the ringArrays
+  cost (286 ms) to the advisor as a candidate.
+- PHOTO (before): the card shows for every rebuild; a PATTERN pick blind ~1.2 s on its decode first (5 ms timeline: a
+  920 ms task at 100 ms, the first card at 1442 ms). Straighten drag 4.9-8.5 s (card up), relief carved / raised ok.
+  Reach: 208-216 control views, all reachable; under 24 px only sliders + the file input (touch-targets-app covers it).
+- FIX (advisor + seat A: yes; loading-signal.js is nobody's): two DECLARED stages, LOADING_STAGES frame ('building the
+  frame', pill) + photo ('loading the photo', pill). frame-panel.js editFrame / generateFrame run in
+  withLoadingStageShownFirst('frame') (every Frame-tab edit goes through editFrame), the Undo button + Ctrl+Z too
+  (undoFrame stays sync: its true / false is read); photo-panel.js loadImage's decode + its follow-through run in
+  withLoadingStage('photo') (on screen first, held until the decode is done; the rebuild's card follows).
+- AFTER (5 ms timeline + a frame-accurate rAF check, 4x): template stage painted at 11 ms before its 0.6-3.2 s task,
+  Generate 31-66 ms, every Frame tap blind 0; a pattern pick painted at 77-207 ms (one 186 ms sync task first: the click's
+  own state writes), was 1442. One earlier cold run read the first Generate at 1.8 s by the 5 ms poll (a starved timer,
+  no rAF check then) -- not reproduced with the frame-accurate check.
+- TESTS: frame-photo-loading-stage.test.js 2 (the declared rows; a pattern pick: stage first, held through the decode,
+  gone after); frame-gen +1 (Generate / template / Undo: the stage up, the record unchanged until the paint, done
+  after). On main's source the 3 fail. Known failures: none (full suite below).
+- Shots / data: shots/seatD/afp/frame_phone_*.png, photo_phone_*.png, *_phone_audit.json.
+- GATE FIX (the advisor's gate, matrix clear "Clear All: one undo restores all" -- not restored: frame, photo): REAL,
+  not timing. The Clear menu's frame clear went through the now-deferred editFrame, and Clear records synchronously the
+  Frame steps it pushed + the frame it left (editor-clear-menu.js) -> 0 steps and the old frame -> undoLastClear refused
+  ("changed since"), so neither the frame nor the photo came back. Same trap in deleteFrame (its global snapshot read the
+  frame right after). editFrameNow = the synchronous edit (exported); editFrame = the 'frame' stage around it (the
+  Frame-tab controls); the clear handler and deleteFrame call editFrameNow; the Delete button's click carries the stage.
+  Test (frame-gen): with the paint deferred, the clear and Delete frame act at once (mutation: the handler back on
+  editFrame -> fails). Matrix clear group 11/11 (was 1 FAIL).
 ### 2026-10-08 (seat D): matrix grout "Cut edge: no low band" (74n) -- a flaky bar, reframed as a share of the interior
 - The advisor's gate failed the 1 / 1.25 in rows alone (0.65 vs 0.82). MEASURED: plain main x2 PASS but band / interior
   swing 0.91-1.12; with generate-first-tap merged x2: PASS, then FAIL at 1.25 in (0.60 vs 0.81). The row takes the
