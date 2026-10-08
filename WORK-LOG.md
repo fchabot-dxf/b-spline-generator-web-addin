@@ -25040,3 +25040,13 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   f559a91f).
 - TESTS: editor-topview-lazy.test.js +3 (restored -> repaint on read / at once when showing; lost at read -> repaint).
   Fail 3/3 on main's file; dropping the isContextLost check fails 1. Full suite: 397 files, 5984/5984. Known failures: none.
+
+### 2026-10-08 (seat D): matrix grout "Cut edge: no low band" (74n) -- a flaky bar, reframed as a share of the interior
+- The advisor's gate failed the 1 / 1.25 in rows alone (0.65 vs 0.82). MEASURED: plain main x2 PASS but band / interior
+  swing 0.91-1.12; with generate-first-tap merged x2: PASS, then FAIL at 1.25 in (0.60 vs 0.81). The row takes the
+  page's fresh start (random terrain / seed) and a basketweave lays different bricks along the 0.025 in band each run;
+  the mask-edge path does not read top-view.js / renderTopView (the row reads lastResult.heights).
+- The real defect (the edge copy off: BRICK_MASK_EDGE_RING_CELLS 0, 74n's mutation): share 0.11 / 0.17 / 0.21 (74n's own
+  0.05-0.12 vs 0.72-0.81). Healthy: 0.74-1.12 over 6 runs x 3 sizes. The old "within 0.15 below the interior" sat in the
+  scene's noise; DECLARED EDGE_BAND.minShareOfInterior 0.5 (the row prints the share). No scene pinning (advisor).
+- PROOF: as-is 3/3 pass (1.04 / 1.03 / 1.03); ring 0 3/3 FAIL (0.11 / 0.17 / 0.21). Matrix-only change: no vitest reads it.
