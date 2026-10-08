@@ -24426,3 +24426,26 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   empty), so "touching" the ops before the first generation fixes the Pockets, not the Spirals.
 - One sample per variant = an observation, not a rule; no fix declared. The later passes (MAX_GENERATION_PASSES = 4)
   stay the answer. Next if wanted: B again (repeatability), then B + a Spiral-only pre-generation.
+
+### 2026-10-07 (seat D): T86 item 30 -- fan slices crossing at 2-8 in (c04773a, accepted)
+- Measured on merged main: every overlapping fan pair was two DIFFERENT corners. Two classes:
+  ADJACENT (two fan corners either side of one line whose run is dead at that depth -- the line was kept live because
+  only its own neighbours were checked) and FACING (two corners across a neck, T18).
+- ADJACENT: primitive-ribbon dropLinesInvertedAmongLive drops a line whose BOTH ends are fan corners and whose run is
+  inverted/shorter than MIN_LINE_RUN_IN at that depth -> the two corners are one joint, one fan. Restricted to
+  both-fan-corner lines because the first, wider rule changed T11 at 1.25 in.
+- FACING: contour-bands pairs two corners' fans (ribbonPieces now returns fanSides) only when their sides are disjoint
+  AND they truly overlap, and splits them on the medial line of min(depth of the two sides). Fans that only touch are
+  not cut (cutting them opened bare wedges).
+- DECLARED depth cap FAN_MERGE_MAX_DEPTH_SHARE = 0.75 of the contour's short side: deeper bands (8 in on 7x9) stay as
+  main lays them -- item 28's class (c), T16/T17 7x9 at 8 in, left to item 28 per the advisor.
+- Numbers (19 templates x 2 boards x 8 presets vs merged main): all 1,216 lays at 0.75-1.5 in byte-identical; 166 lays
+  changed, all at 2-8 in. Fan-fan pairs 3,030 -> 456 (all T16/T17 at 8 in, under the cap); fan-run 12 -> 12, run-run
+  30 -> 30; overlap area grew in 0 lays (1,172 -> 791 sq in total). Bare shrank in 28 lays, grew in 8 (4 cases x 2):
+  T19 7x9 4 in +0.26 (same lay -5.8 sq in overlap), T18 9x12 3 in +0.08, T4 9x12 8 in +0.04, T4 9x12 4 in +0.01 --
+  accepted by the advisor as a trade at 2-4 in.
+- ODDITY (noted, not fixed): T5 7x9 at 2.5 in, one merged fan's apex lies just OUTSIDE the board. Its slices are tiny,
+  the band-inside-board test passes and that lay's numbers did not get worse. If a later item sees a stray fan sliver at
+  a T5 corner, start here.
+- tests/bricks-fan-crossing.test.js 7: 6 fail on main; drop rule off -> 5 fail; facing split off -> 2 fail.
+  Full suite (npm run test:full) 5918/5918.
