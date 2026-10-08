@@ -25307,3 +25307,16 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   a relief-only session takes Apply on [3D] with the real fingerprint) + editor-session-fingerprint's relief case.
   Mutations: unconditional refreshFrame fails 1; no relief in the fingerprint fails 2; applyParam ignoring the option
   fails 1. Full suite 402 files, 6014/6014. Known failures: none.
+
+### 2026-10-08 (seat A): the editor backdrop's paint cost (pick 2) -- measured, nothing taken
+- PROFILE (phone 4x CPU, quiet GPU, main with the lazy top view + photo cache fix, a 10-step photo straighten drag in
+  the editor): backdrop refreshes 1813 ms inclusive -- generateHeightmap at 384 wide 996 (photo sampling 458; the
+  coarse seed field, perlin sample 286 + fbm 278), sync3DBackground 479 (toDataURL 394 self), computeTopViewPixels 141.
+- The coarse seed field is NOT skippable for photo: photo.js cMultiplier = 2.5, the coarse field shapes the photo's
+  heights (terrain.js Pass 2) -- a real input, not waste.
+- TRIED canvas.toBlob instead of toDataURL (the same PNG, encoded off the main thread; the image showing the previous
+  picture until the blob lands; superseded blobs dropped): decoded backdrop pixels identical to main's (sha of
+  getImageData, 4/4 drags), toDataURL gone from the profile -- but the drag's time to idle did not move (branch
+  1.83 - 2.58 s, mean ~2.13; main 1.95 - 2.28 s, mean ~2.17). Not measurably faster -> reverted, not committed.
+- Nothing identical-and-faster left in the backdrop paint that I can see; the remaining cost is the 384-wide heightmap
+  itself (the photo + seed field sampled per pixel).
