@@ -24780,31 +24780,6 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   in -- the ring's own corner wedges, measured 0 - 0.33 -- and no overlap). Fails 4/4 on main's contour-bands.js (8.3 /
   4.4 / 5.9 / 3.9 sq in bare). Band / stone / engine suites (82 files): 1126/1126. Matrix strokes group alone: 19 rows, 0 FAIL.
 - Merged origin/main (3f3800d, D's tip-fill-fans) first; my contour-bands change re-applied cleanly. fillTips untouched.
-
-### Pick 1: stones across templates and sizes -- measured, nothing to fix (seat E / 61, 2026-10-08)
-- ENGINE (generateBricks + the app's bricksForBrushStroke, T1 / T10 / T18 7x9, White rocks wall in a White rocks or
-  Grey stone ring, 0.75 / 1 / 1.25 in; brush X, brush T, a grout cut across the wall, one across the ring): 72 rows,
-  0 overlaps (wall x wall / wall x frame / frame x frame / wall x stroke), extra bare over the plain lay <= 0.08 sq in
-  (T18 brush X at 1.25 in), none over the matrix slack 0.1. A first count read 36 rows "overlapping": the harness's own
-  stroke x stroke (the engine has no crossing split; the app does) and stroke x ring (the app cuts strokes at the frame).
-- IN APP (the strokes group's STONE_CUTS cases, temporarily looped over T10 / T18 at 0.75 / 1 in and T1 at 0.75 in;
-  T1 at 1.25 in is the permanent row): 25 rows, 0 FAIL, 0 overlaps, junction bare 0 - 0.033 sq in (widest 3.1 joints,
-  T18 grout cut across the ring at 1 in). T18's "plain stretch" reads ~0.18 at every size: its plain point (4.6, 6.6)
-  sits at T18's board edge and the window counts off-board points -- a harness reading, not a hole.
-- No code change; the temporary loop was not committed (strokes.mjs restored).
-
-### Pick 3: Continuous strokes + Raised dabs over stones -- measured, nothing to fix (seat E / 61, 2026-10-08)
-- IN APP (template_1, White rocks wall in a Grey stone ring, 1.25 in; the strokes group's STONE_CUTS measure, a
-  temporary probe, not committed): Continuous X on the wall -- junction bare 0.0024 sq in, 0 overlaps; a Continuous
-  stroke into the ring 0.0136; a Raised-bricks stroke across the wall 0; all vs a plain stretch of 0.
-- DABS, aimed at the biggest stone's centroid near the board's centre: a Raised-bricks dab (one 0.33 in piece) inside a
-  0.45 sq in stone -- the stone is split by a joint-wide seam along the dab and wraps it (fill-shape.js splitRound, live):
-  bare 0, overlaps 0 (shot: shots/seatE/stones/dab_raised_zoom2.png). A grout dab inside a 1.26 sq in stone leaves the
-  stone whole, as grout-cut.js declares (a cut that never reaches a brick's edge opens no joint): bare 0.
-- TRAP for the next probe: the probe's Generate after the strokes RE-SEEDS the wall, so a dab aimed at one lay's stone
-  lands somewhere else in the next (the first dab run sat on a joint and proved nothing). A dab case must measure the
-  lay it was aimed at (no second Generate).
-- No code change.
 ### 2026-10-08 (seat D): T86 21b measured closed; the 1.5 in narrowed-band seams (T15 / T9) are one joint
 - 21b (three-band corner overlap), MEASURED, no code: three_band frame lays, 19 templates x 0.75-1.5 in, fit rule on:
   7x9 / 9x12 0 pairs > 1e-3 sq in; 12x16 0 in 76 lays (6 keep all three bands); 18x24 0 in 76 (35 keep all three).
@@ -24831,24 +24806,6 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   (the seam at T15 y = 3 / 4.2 and T9's two seams is one joint; main: 4/4 fail, 0.088). The 57 files touching the
   narrowing / bands 1728/1728; full suite (npm run test:full) 5966/5966. Known failures: none.
 - Shots: shots/seatD/a15/tips_main.png (before; red = bare) | tips_after.png.
-
-### The gap sweep (advisor's order 2 -> 1 -> 3: pick 2 first) -- measured; Fred's sizes clean, 2 - 8 in capped (seat E / 61, 2026-10-08)
-- MEASURE: D's tests/bare-ground.js (bareGround, largest connected patch / one brick face vs PATCH_MAX_FACE 0.05), over
-  what no test pinned: every preset x template x 7x9 / 9x12 at 1.25 / 1.5 in (tip-fill-fans pins 0.75 / 1 in, the
-  coverage matrix the single soldier 7x9), and single soldier + three-band at 2 / 3 / 4 / 8 in. Plus a new count: wall /
-  frame pieces with a vertex more than a joint OUTSIDE the outline.
-- FRED'S SIZES (608 lays): only T16 7x9 1.5 in over (0.072 of a face, identical under all presets -- the wall's 39 deg
-  neck tip, already D's known patch); 0 pieces outside the outline. Nothing to fix.
-- 2 - 8 in (304 lays; three-band identical to single soldier in every lay -- the fit rule leaves one band): 110 over the
-  face share, worst T18 9x12 3 in (one 4.3 sq in patch, 1.8 faces), T18 7x9 3 in 1.3, T18 9x12 4 in 1.26, T17 9x12 8 in
-  1.13, T5 7x9 8 in 0.95. AND 18 lays (single soldier) lay WALL pieces outside the outline: T14 7x9 3 in 10, T14 7x9 4 in
-  7, T16 9x12 3 in 6, T17 9x12 3 in 6, T19 at 3 / 4 / 8 in 3-5. Never a frame piece. Listed and capped, not fixed
-  (advisor: 2 - 8 in list and cap). Shots: shots/seatE/gaps/ (T18 9x12 3 in, T17 7x9 4 in -- the wall bricks past the
-  left edge, T5 7x9 8 in).
-- DECLARED: tests/bare-ground.js PATCH_KNOWN (moved from the coverage matrix, keyed template + board + size, one
-  declaration for both tests). tests/bricks-gap-sweep.test.js: Fred's sizes <= PATCH_MAX_FACE / PATCH_KNOWN and 0 pieces
-  outside; 2 - 8 in GAP_CAPS [face, sq in, wall pieces outside], may only fall. FAST 6 lays by default, GAP_SWEEP_FULL=1 760
-  lays in 85 s (all pass). Mutation: the band clip dropping at 20 x its floor fails 2/6 of FAST (T18 9x12 3 in, T5 8 in).
 
 ### 2026-10-08 (seat D): pick 2 -- the Art editor on Fred's phone, MEASURED (no app change; a touch-size decision is the advisor's)
 - TOOL: tools/repro/art_phone_audit.mjs -- real Chrome, 390 x 844, touch, CPU 4x, REAL touch input (CDP
@@ -24895,3 +24852,21 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   lands somewhere else in the next (the first dab run sat on a joint and proved nothing). A dab case must measure the
   lay it was aimed at (no second Generate).
 - No code change.
+
+### The gap sweep (advisor's order 2 -> 1 -> 3: pick 2 first) -- measured; Fred's sizes clean, 2 - 8 in capped (seat E / 61, 2026-10-08)
+- MEASURE: D's tests/bare-ground.js (bareGround, largest connected patch / one brick face vs PATCH_MAX_FACE 0.05), over
+  what no test pinned: every preset x template x 7x9 / 9x12 at 1.25 / 1.5 in (tip-fill-fans pins 0.75 / 1 in, the
+  coverage matrix the single soldier 7x9), and single soldier + three-band at 2 / 3 / 4 / 8 in. Plus a new count: wall /
+  frame pieces with a vertex more than a joint OUTSIDE the outline.
+- FRED'S SIZES (608 lays): only T16 7x9 1.5 in over (0.072 of a face, identical under all presets -- the wall's 39 deg
+  neck tip, already D's known patch); 0 pieces outside the outline. Nothing to fix.
+- 2 - 8 in (304 lays; three-band identical to single soldier in every lay -- the fit rule leaves one band): 110 over the
+  face share, worst T18 9x12 3 in (one 4.3 sq in patch, 1.8 faces), T18 7x9 3 in 1.3, T18 9x12 4 in 1.26, T17 9x12 8 in
+  1.13, T5 7x9 8 in 0.95. AND 18 lays (single soldier) lay WALL pieces outside the outline: T14 7x9 3 in 10, T14 7x9 4 in
+  7, T16 9x12 3 in 6, T17 9x12 3 in 6, T19 at 3 / 4 / 8 in 3-5. Never a frame piece. Listed and capped, not fixed
+  (advisor: 2 - 8 in list and cap). Shots: shots/seatE/gaps/ (T18 9x12 3 in, T17 7x9 4 in -- the wall bricks past the
+  left edge, T5 7x9 8 in).
+- DECLARED: tests/bare-ground.js PATCH_KNOWN (moved from the coverage matrix, keyed template + board + size, one
+  declaration for both tests). tests/bricks-gap-sweep.test.js: Fred's sizes <= PATCH_MAX_FACE / PATCH_KNOWN and 0 pieces
+  outside; 2 - 8 in GAP_CAPS [face, sq in, wall pieces outside], may only fall. FAST 6 lays by default, GAP_SWEEP_FULL=1 760
+  lays in 85 s (all pass). Mutation: the band clip dropping at 20 x its floor fails 2/6 of FAST (T18 9x12 3 in, T5 8 in).
