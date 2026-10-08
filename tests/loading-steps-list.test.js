@@ -98,3 +98,34 @@ describe('the CAM card stays through the toolpaths (Fred, 2026-10-07)', () => {
   });
 });
 
+
+describe('the spinner sits on the working step (Fred 2026-10-07: "make the spinner on the working item")', () => {
+  const card = () => document.getElementById('loading-stage');
+  const spinners = () => [...card().querySelectorAll('.loading-stage-spinner')];
+  it('on a card with a list: ONE spinner, inside the current line (no dot there), never in the headline', async () => {
+    beginLoadingSequence('camBuild');
+    for (const id of ['camWcs', 'camModels', 'camSetups']) {
+      await holdLoadingStage(id);
+      expect(spinners()).toHaveLength(1);
+      const li = spinners()[0].parentElement;
+      expect(li.tagName).toBe('LI');
+      expect(li.dataset.stage).toBe(id);
+      expect(li.dataset.state).toBe('current');
+      expect(li.hasAttribute('data-spinner')).toBe(true);
+      expect(li.textContent).toBe(stepLabel(id)); // the label is untouched (the spinner has no text)
+      expect(card().querySelectorAll('li[data-spinner]')).toHaveLength(1); // done / pending lines keep their marks
+      expect(card().querySelector('.loading-stage-text').textContent).toBe(currentLoadingStage().text);
+    }
+  });
+  it('a pill, and a card with no list, keep the spinner at the start of the card', async () => {
+    beginLoadingSequence('camBuild');
+    await holdLoadingStage('camModels');
+    resetLoadingSignal();
+    await holdLoadingStage('bricks'); // a pill
+    expect(spinners()).toHaveLength(1);
+    expect(card().firstElementChild).toBe(spinners()[0]);
+    resetLoadingSignal();
+    await holdLoadingStage('cloudLoad'); // a card outside any sequence
+    expect(card().firstElementChild).toBe(spinners()[0]);
+  });
+});

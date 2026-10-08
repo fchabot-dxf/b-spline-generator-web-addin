@@ -54,7 +54,7 @@ import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, frameHasFan, FAN_CENTRES, FAN_CENTRE_DEFAULT, fanGroups } from '../core/bricks/index.js';
+import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, frameHasFan, FAN_CENTRES, FAN_CENTRE_DEFAULT, fanGroups, applyGroutCuts } from '../core/bricks/index.js';
 import FRAME_DEFS from '../data/frame-defs.js';
 import { frameContourSilhouette } from './contour-from-frame.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
@@ -66,7 +66,8 @@ import { radialSignAt } from '../core/bricks/arc-voussoir.js';
 import { accentedBrickIndices, accentedRunIndices, accentLayInput, ACCENT_MARK_ATTR } from './brick-accents.js';
 import { groutShapeOf, groutIdOf, pointOnGrout, primitivesOutline } from '../core/bricks/grout-shape.js';
 import { wallRegionOf } from '../core/bricks/engine.js';
-import { polygonIntersection } from '../core/bricks/geometry.js';
+import { polygonIntersection, clipToHalfPlane, signedArea } from '../core/bricks/geometry.js';
+import { strokeCrossings, splitAtCrossings, throughRegion } from '../core/bricks/crossings.js';
 
 export const BRICK_ATTR = 'data-brick'; // 'brush' | 'wall' | 'frame' | 'brush-spine'
 export const BRICK_GEN_ATTR = 'data-brick-gen'; // '1' on every adapter-drawn piece
@@ -585,7 +586,13 @@ export function bricksForBrushStroke(points, settings, opts, out = null) {
   if (opts.profile === 'continuous') return bricksAlongPath(points, { ...opts, closed: false }).bricks;
   const bands = BRUSH_PRESETS[settings.brushBandPreset] || BRUSH_PRESETS.stretcher_1;
   const res = bricksContourBands(strokePrimitives(points), bands, { ...opts, closed: false, centered: true });
-  if (out) out.ribbonOutline = res.ribbonOutline || null; // F35 item 55: the stroke's grout region
+  let outline = res.ribbonOutline || null;
+  // T86 item 5: a part of a cut stroke (opts.cutEnds) runs past its cut; its grout region stops on the cut line too
+  if (outline && opts.cutEnds) {
+    const inside = points[Math.floor(points.length / 2)];
+    for (const cut of [opts.cutEnds.start, opts.cutEnds.end]) if (cut && outline.length >= 3) outline = clipToHalfPlane(outline, cut, inside);
+  }
+  if (out) out.ribbonOutline = outline && outline.length >= 3 ? outline : null; // F35 item 55: the stroke's grout region
   return res.bricks;
 }
 
@@ -1184,6 +1191,25 @@ export function showElementSelection(editor, elementId) {
  *  brush brick on the canvas is an exclusion for the Wall fill -- `input.exclusions = [{polygon}]`, board
  *  inches, the signature agreed with seat B (d3, T86 item 13: the engine DROPS any wall piece overlapping
  *  an exclusion). Read straight off the DOM, same as the height mask does. */
+/** T86 item 10: the Raised brush's GROUT-mode strokes as the engine's cuts -- each stroke's spine segments chained back
+ *  into polylines (reconstructChains, as its bricks would be), [{ polyline }] each; the width is each element's own joint
+ *  (the engine's default). The Wall / Frame lay passes them as `groutCut`; [] with none. */
+export function groutCutPolylines(editor) {
+  if (!editor || !editor._sketchLayer || typeof editor._sketchLayer.children !== 'function') return [];
+  const byElement = new Map();
+  for (const el of editor._sketchLayer.children().toArray()) {
+    if (el.attr(BRICK_ATTR) !== SPINE_KIND) continue;
+    const settings = decodeBrickSettings(el.attr(BRICK_SETTINGS_ATTR));
+    if (!settings || settings.strokeMode !== 'grout') continue;
+    const id = el.attr(BRICK_ELEMENT_ATTR);
+    const [a, b] = pieceEnds(el);
+    if (!byElement.has(id)) byElement.set(id, []);
+    byElement.get(id).push({ a, b, stripeId: null, settings });
+  }
+  return [...byElement.values()].flatMap((segs) => reconstructChains(segs)).filter((c) => c.points.length >= 2)
+    .map((c) => ({ polyline: c.points.map((p) => ({ x: p.x, y: p.y })) }));
+}
+
 export function brushExclusions(editor) {
   const node = editor && editor._sketchLayer && editor._sketchLayer.node;
   if (!node || !node.querySelectorAll) return [];
@@ -1258,6 +1284,9 @@ function _layInput(editor, settings, frameGeom) {
   // F35 item 29 (a): the Wall's Rustic amount, for a running bond only (0 = absent = today's clean coursing)
   const rustic = Number(settings.rusticByElement && settings.rusticByElement.wall) || 0;
   if (rustic > 0 && isRunningBond(settings.pattern)) input.rustic = rustic;
+  // T86 item 10: the Raised brush's grout-mode strokes cut joints through the laid Wall / Frame (none = absent = as before)
+  const cuts = groutCutPolylines(editor);
+  if (cuts.length) input.groutCut = cuts;
   // F35 item 13: the Wall pattern's rotation (wall only; 0 = absent = today's lay, byte-identical)
   const rotationDeg = Number(settings.wallRotationDeg) || 0;
   if (rotationDeg) input.rotationDeg = rotationDeg;
@@ -1842,11 +1871,54 @@ let _lastSpineFingerprint = null;
  *  item 10); STUB until the engine has it (the mode is hidden until ENGINE_OPTIONS lists 'groutCut'), so
  *  the stroke keeps its spine and draws nothing. `levelIn` (the Raised brush's Level) lifts every brick of
  *  the stroke by that much (its heightOffset, read by the height mask). Exported for tests. */
-export function bricksForStroke(points, settings, out = null) {
+export function bricksForStroke(points, settings, out = null, cutEnds = null) {
   if (settings.strokeMode === 'grout') return [];
   const level = Number(settings.levelIn) || 0;
-  const bricks = bricksForBrushStroke(points, settings, toBrickOpts(settings), out);
+  const bricks = bricksForBrushStroke(points, settings, { ...toBrickOpts(settings), ...(cutEnds ? { cutEnds } : {}) }, out);
   return level ? bricks.map((b) => ({ ...b, heightOffset: (b.heightOffset || 0) + level })) : bricks;
+}
+
+/** T86 item 5 (Fred's crossing rule, core/bricks/crossings.js): the strokes, in creation order, laid as drawn, then each
+ *  one CUT where another stroke runs through it (an X: the earlier; a T / an end-touch: the stroke that ends stops) or
+ *  where it meets the frame (the frame always runs through) -- split there and laid again part by part, each part ending
+ *  on a straight cut a joint off the through edge (the run re-planned from the fill set). A stroke that meets nothing
+ *  keeps its bricks as laid (byte-identical). A Continuous run is one piece: it is CUT there instead (bricksClearOf).
+ *  A cut stroke's piece still overlapping what it is cut by (a stroke running alongside, not across) is not laid.
+ *  @param {Array<{points, settings}>} strokes  @param {Array<{x,y}[]>} framePieces the laid frame's pieces
+ *  @returns {Array<{bricks: Array, outlines: Array}>} per stroke, its bricks and its grout outline(s) */
+export function strokeBricksWithCrossings(strokes, framePieces = []) {
+  const first = strokes.map((st) => { const out = {}; const bricks = bricksForStroke(st.points, st.settings, out); return { bricks, outline: out.ribbonOutline || null }; });
+  const jointOf = (st) => resolvedSetFor(st.settings).grout.widthIn;
+  const cutBy = strokeCrossings(strokes.map((st, i) => ({ points: st.points, outline: first[i].outline })), Math.max(0, ...strokes.map(jointOf)));
+  const box = (P) => P.reduce((b, p) => [Math.min(b[0], p.x), Math.min(b[1], p.y), Math.max(b[2], p.x), Math.max(b[3], p.y)], [Infinity, Infinity, -Infinity, -Infinity]);
+  const meetsBox = (a, b, d) => !(a[2] + d < b[0] || b[2] + d < a[0] || a[3] + d < b[1] || b[3] + d < a[1]);
+  const areaOf = (P) => (P && P.length >= 3 ? Math.abs(signedArea(P)) : 0);
+  const distToPath = (p, pts) => Math.min(...pts.slice(1).map((b, k) => {
+    const a = pts[k], ex = b.x - a.x, ey = b.y - a.y, l = ex * ex + ey * ey || 1e-12, t = Math.max(0, Math.min(1, ((p.x - a.x) * ex + (p.y - a.y) * ey) / l));
+    return Math.hypot(a.x + t * ex - p.x, a.y + t * ey - p.y);
+  }));
+  return strokes.map((st, i) => {
+    const own = first[i], J = jointOf(st), set = resolvedSetFor(st.settings);
+    const throughStrokes = cutBy[i].map((k) => first[k].outline).filter(Boolean);
+    // a Continuous run has no ribbon outline: its own pieces give its extent
+    const ob = own.outline ? box(own.outline) : own.bricks.length ? box(own.bricks.flatMap((b) => b.polygon)) : null;
+    const nearFrame = ob ? framePieces.filter((p) => p.length >= 3 && meetsBox(box(p), ob, J)) : [];
+    const obstacles = [...throughStrokes, ...nearFrame];
+    if (!obstacles.length) return { bricks: own.bricks, outlines: own.outline ? [own.outline] : [] };
+    if (st.settings.profile === 'continuous') {
+      return { bricks: bricksClearOf(own.bricks, obstacles.map((polygon) => ({ polygon, drop: false })), set), outlines: own.outline ? [own.outline] : [] };
+    }
+    const halfWidth = Math.max(...own.outline.map((p) => distToPath(p, st.points)));
+    const parts = splitAtCrossings(st.points, obstacles.map((p) => throughRegion(p, J)), { halfWidth, brickLengthIn: set.brickLengthIn * scaleFor(st.settings) });
+    const whole = parts.length === 1 && !parts[0].start && !parts[0].end;
+    const laid = whole ? [{ bricks: own.bricks, outline: own.outline }] : parts.map((part, k) => {
+      const out = {};
+      const bricks = bricksForStroke(part.points, st.settings, out, { start: part.start, end: part.end }).map((b) => (k ? { ...b, id: `${b.id}~p${k}` } : b));
+      return { bricks, outline: out.ribbonOutline || null };
+    });
+    const clear = (b) => !obstacles.some((p) => areaOf(polygonIntersection(b.polygon, p)) > 1e-4);
+    return { bricks: laid.flatMap((l) => l.bricks).filter(clear), outlines: laid.map((l) => l.outline).filter((o) => o && o.length >= 3) };
+  });
 }
 
 export function regenerateOwnedBrickElements(editor) {
@@ -1894,22 +1966,35 @@ export function regenerateOwnedBrickElements(editor) {
     g.remove();
   }
 
-  // F35 item 60 (seat A's e2e: a raised stroke over the frame's stones, the raise added onto the stone): a stroke keeps
-  // clear of the laid FRAME pieces (the engine's bricksClearOf) -- a brick touching one is dropped whole (18c); a
-  // Continuous run, one unbroken piece, is CUT there instead (dropping it would take the whole stroke away)
+  // F35 item 60 (seat A's e2e: a raised stroke over the frame's stones) + T86 item 5 (Fred's crossing rule): a stroke
+  // keeps clear of the laid FRAME pieces and of the strokes that run through it -- cut straight a joint off their edge
+  // (strokeBricksWithCrossings); every stroke of the board is laid first, in creation order (document order)
   const framePieces = [...editor._sketchLayer.node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][${BRICK_ATTR}="frame"]`)].map(_nodePolygon);
-  const frameExclusions = (settings) => framePieces.map((polygon) => ({ polygon, drop: settings.profile !== 'continuous' }));
+  const allChains = [];
+  for (const [elementId, segs] of byElement) {
+    reconstructChains(segs).forEach((chain, chainIdx) => {
+      if (chain.points.length < 2) return;
+      const settings = chain.cycleIndex == null ? chain.settings : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
+      allChains.push({ elementId, chainIdx, points: chain.points, settings });
+    });
+  }
+  const laidChains = strokeBricksWithCrossings(allChains, framePieces);
+  const laidOf = new Map(allChains.map((c, k) => [`${c.elementId}:${c.chainIdx}`, laidChains[k]]));
+  // T86 item 10 (Fred: "also cut Brush bricks"): the grout-mode strokes cut every stroke's bricks too -- the SAME cut step
+  // as the Wall / Frame (core/bricks applyGroutCuts), at the stroke's own set's joint and floor; every stroke is re-derived
+  // from the spines here, so a stroke laid after a cut is cut as well (and a new cut changes this fingerprint)
+  const groutCuts = groutCutPolylines(editor);
   for (const [elementId, segs] of byElement) {
     const chains = reconstructChains(segs);
-    const region = []; // F35 item 55: the stroke's ribbons, one per chain
+    const region = []; // F35 item 55: the stroke's ribbons, one per chain (a cut stroke: one per part)
     chains.forEach((chain, chainIdx) => {
-      if (chain.points.length < 2) return;
+      const laid = laidOf.get(`${elementId}:${chainIdx}`);
+      if (!laid) return;
       const settings = chain.cycleIndex == null
         ? chain.settings
         : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
-      const out = {};
-      const bricks = bricksClearOf(bricksForStroke(chain.points, settings, out), frameExclusions(settings), resolvedSetFor(settings));
-      if (bricks.length && out.ribbonOutline && out.ribbonOutline.length >= 3) region.push({ outer: out.ribbonOutline, holes: [] });
+      const bricks = applyGroutCuts(laid.bricks, groutCuts, resolvedSetFor(settings), scaleFor(settings));
+      if (bricks.length) for (const outer of laid.outlines) region.push({ outer, holes: [] });
       const ownerId = `${elementId}:${chainIdx}`;
       const layer = strokeLayer.get(elementId);
       if (!layer) return;

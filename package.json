@@ -5,7 +5,8 @@
   "scripts": {
     "start": "python -m http.server 8080",
     "serve": "npx serve -l 8080 .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:full": "node tools/heavy-run-guard.mjs \"full vitest\" && vitest run"
   },
   "keywords": [
     "fusion360",

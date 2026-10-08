@@ -24288,3 +24288,141 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - TEST tests/bricks-life-size-medial.test.js (6): the six (a) cases lay with no run piece overlapping another; 6/6 fail on
   main. Full vitest 375 files, 5847 passed, 0 failed (a first run had 2 load timeouts in unrelated files: green on re-run).
 - SHOT shots/seatE/t86_12/item12_before_after.png (T1 9x12 3 in, T10 9x12 4 in); overlaps_main.png (class b on main).
+
+### 2026-10-07 (seat A): brick matrix -- a cancelled palette DOCUMENT gets one fresh navigate, not a reload
+- Seat D's parallel strokes run r8: "the app never booted (core/state.js failed to load ...; failed requests:
+  bspline_gen_palette.html: net::ERR_ABORTED)". The palette document itself, not a module.
+- Boot-only stress (the matrix's own serve.py + Chrome pair, 29 boots: 10 at 1.5 s + 19 at 1 s stagger) did not
+  reproduce it (all booted, 0 Document failures). So I reproduced it deterministically instead: Fetch.failRequest
+  'Aborted' on the first palette request gives D's signature exactly (navigate errorText net::ERR_ABORTED, location
+  about:blank, the boot probe import-failed).
+- MEASURED cure: Page.reload stays on about:blank and never boots (it reloads the blank page); a fresh Page.navigate
+  to the palette boots. So ERR_ABORTED is NOT added to BOOT_RELOAD_ERRORS (the reload would not cure it).
+- Declared: tools/brick-matrix/boot.mjs -- BOOT_RELOAD_ERRORS (moved from run.mjs, unchanged), BOOT_RENAVIGATE_ERRORS
+  ['net::ERR_ABORTED'] for the palette document only, bootRetry(failedRequests) -> 'navigate' | 'reload' | null.
+  run.mjs keeps the palette URL and takes one retry from bootRetry. Unchanged on purpose: a module ERR_ABORTED is not
+  retried, and the old reload list still reloads (both unmeasured otherwise).
+- Live: with a scratch injection of the abort (not committed), run.mjs --group password logged "the app never booted
+  (bspline_gen_palette.html: net::ERR_ABORTED) -- one navigate", booted, 4 rows 0 FAIL 0 page errors.
+- Tests: tests/brick-matrix-boot.test.js 5/5 (fails 1/5 with the document case mutated to 'reload');
+  brick-matrix-serve.test.js now reads the list from boot.mjs and pins run.mjs's retry wiring.
+### 2026-10-07 (seat A): frame clip skips far outline segments -- byte-identical, -21% apply CPU (advisor: yes)
+- Found while measuring the frame-3d-sweep template_5 timeouts (verdict: machine load, not template_5 -- every template
+  costs 0.15-0.8 s CPU a case; the kept failing log's slow list spans all templates). CPU profile of the sweep:
+  27% in _trianglePolygonPieces' walk (core/preview/frame-mesh.js), which Cyrus-Beck-clips EVERY outline segment
+  against every triangle the outline crosses, + 19% GC (a fresh object and closure per segment).
+- Change: the walk skips a segment whose bounding box is strictly off the triangle's (it is outside the triangle, so the
+  clip only ever said "outside, continue"). Not while an exitAtStart chain is open: that rule reads a start point on an
+  edge's LINE (tx === 0), which can lie off the box.
+- MEASURED: all 747 frame-3d-sweep applies (19 templates x 5 boards x 3 bottoms x 3 sculpts) hashed identical before /
+  after (sha1 of every returned mesh's attributes + index, and the panel's re-index); apply CPU 49.8 -> 39.5 ms.
+- tests/frame-clip-identical.test.js pins the 19 digests at 7x9 (frame bottom -1, the waves panel), computed on main's
+  frame-mesh.js BEFORE the change (tests/fixtures/frame-clip-digests.json; PIN=1 re-pins after a deliberate geometry
+  change). Passes on the old and the new code; fails 1/1 with a sloppy skip (&& -> || on one bbox side). Cut to one
+  board: two boards took 34 s under load.
+- Full vitest: 378 files / 5858 tests passed, 0 failed (a first run lost a worker -- 357 files -- with one
+  frame-no-hooked-miters flake that passed alone and in the re-run).
+
+### 2026-10-07 (seat A): the loading card's spinner sits on the working step (Fred: "make the spinner on the working item")
+- core/loading-signal.js _renderSteps (the one card renderer: app refresh, Fusion Send, CAM BUILD/APPLY): on a card
+  with a step list, the card's ONE existing .loading-stage-spinner element moves into the current step's line
+  (li[data-spinner]), in place of its dot; the headline keeps its text alone. A pill or a list-less card puts it back
+  at the start of the card. styles/loading-stage.css: no dot on li[data-spinner], the spinner sized/placed in the
+  marker column (12 px); the group tint (waiting amber / refreshing green) still applies (descendant selectors).
+  Pills unchanged.
+- Tests (tests/loading-steps-list.test.js +2): one spinner, inside the current li at every step, headline text intact,
+  done/pending lines keep their marks; pill and no-list card keep it first. Pre-change: 1 of the 2 fails (the other
+  pins the unchanged spinner place); with the move-back line removed it fails too.
+- Shots (shots/seatA/step_spinner/step_spinner_strip.png): phone 390 + desktop 1400, Fusion Send held at step 6 of 12,
+  before (main) / after; the probe read the spinner's parent: DIV before, LI after.
+- Single files: loading-steps-list 18/18, loading-signal 21/21, fusion-send-stages 5/5. The full suite was NOT clean:
+  run at 3.9 GB free during the advisor's gate (Fred: 1.6 GB free, CPU 100%); 15 failures in unrelated files
+  (timeouts / benchmarks under that load). To re-run when the advisor clears heavy runs.
+## T86 item 5 -- brush crossings: one runs through, the other is cut straight along its edge, one joint off (seat E / 61, 2026-10-07)
+- Fred's picks on the mock: end-touch 5b (the ENDING stroke stops, whatever the order); X: the EARLIER stroke runs
+  through (creation order = the spines' document order, declared); the wall keeps flowing around strokes (item 13).
+- DECLARED core/bricks/crossings.js: CROSSING_RULE {frameRunsThrough, endingStrokeStops, atAnX: 'earlier'};
+  strokeCrossings (who is cut by whom); splitAtCrossings (the free parts of a centreline outside the through regions,
+  each ending on a CUT {point, dirX, dirY} = the region edge it meets; a part runs past its cut by halfWidth / tan(angle)
+  so both its edges reach the cut, and keeps no vertex within that reach -- ONE straight primitive carries the cut);
+  simplifyOutline + throughRegion (a ribbon outline grown by a joint).
+- ENGINE: primitive-ribbon cutJoint -- an open ribbon's first / last run ends on a declared cut joint (o / q where the
+  cut meets the row's two edges, keep refs inside, isCut, no half-joint shift); contour-bands opts.cutEnds (open only).
+  The run is planned from the fill set up to it like any corner (no clipped sliver); a stroke's own corners stay mitred.
+- APP editor-brick-tool: strokeBricksWithCrossings(strokes, framePieces) -- every stroke laid as drawn, the rule applied,
+  each cut stroke split and its parts laid with cutEnds (its grout outline clipped at the cuts); the frame always runs
+  through (replaces 18c's whole-brick drop with the cut); a stroke meeting nothing keeps its bricks (byte-identical); a
+  Continuous run is still CUT (bricksClearOf); a cut stroke's piece still overlapping what it is cut by (a stroke
+  alongside, not across) is not laid. Merged with main's item 10: the grout cuts apply to the crossing-laid strokes.
+- MEASURED on the way (each fixed, each in a test): (1) the ribbon outline is 96 vertices on a straight stroke, collinear /
+  doubling back -- grown with a mitred offset it spiked 0.14 in and the cut came out wedged -> simplifyOutline; (2) the
+  part kept the stroke's sample points, so the cut joint clipped only the tip primitive and the piece before it crossed
+  the cut -> the straight tail; (3) LIVE the Brush draws a straight stroke as TWO points: two 4-vertex outlines in an X
+  have no vertex inside each other, so a vertex-only "meets" found no junction -> an edge-distance test (the unit tests
+  had passed on 25-point strokes; the matrix caught it).
+- TESTS tests/brush-crossings.test.js (16): the rule declared; X / T / end-touch 5b / no contact / an X of two-point
+  strokes; the split (two parts cut along +-x; a part under 1/4 brick not laid); the outline simplification; the six cases
+  laid: no overlap (stroke x stroke, stroke x frame), the cut one joint (+-10 %) off, the through stroke byte-identical to
+  laid alone, no piece under 1/4 of the stroke's own median; a stroke meeting nothing byte-identical. Mutations: 5b off ->
+  2 fail; simplifyOutline off -> 4 fail; the vertex-only meets -> the two-point X fails. stroke-drop-frame (5) passes.
+  Full vitest 382 files, 5891 passed, 0 failed.
+- MATRIX strokes group (+6 rows, 7 rows 0 FAIL): the band case (on STROKE_CLEAR's frame), then frame None, X 90 / 45,
+  curved X, T, end-touch -- gap at the cut 0.034 in = the joint, overlaps 0. On main's engine + app: 6 of them FAIL.
+- FOUND, NOT MINE: strokes.mjs STROKE_CLEAR's in-page parser has split(/\s+/) inside a template literal (a single
+  backslash) -> the page gets /s+/, every point parses to NaN, the overlap count is always 0 -- the row cannot fail.
+- SHOTS shots/seatE/t86_5/: crossings_real.png (the six cases, laid by the real code, today | new);
+  live_before_after.png (the real app, main vs this branch); crossings_mock_zoom.png (Fred's mock).
+### Matrix strokes: STROKE_CLEAR could not fail -- the in-page parser's backslash doubled (seat E / 61, 2026-10-08)
+- FOUND during item 5: STROKE_CLEAR (seat D's item 60 row) parsed points with split(/\s+/) inside a template literal; a single
+  backslash hands the page /s+/, every point parses to NaN, the overlap count is always 0. Fixed: split(/\s+/) (eaba4f0).
+- PROOF (strokes group, live, one run each, after the gate cleared): (a) fixed row, this branch: pass, 0 overlaps; (b) fixed
+  row + a PLANTED overlap (strokes told to ignore the frame): FAIL, 4 stroke x frame overlaps, 0.3678 sq in; (c) the OLD row,
+  the same planted overlap: pass, 0 -- it could not fail; (d) fixed row on main's engine + app: pass, 0.
+## Matrix Chrome hygiene -- runs on record, stopped on every exit path; orphans found and cleared by their owner (seat E / 61, 2026-10-08)
+- WHY: 167 Chromes on Fred's PC (1.6 GB free of 32); run.mjs stopped its Chrome + serve.py only in its finally block.
+- BUILT (47dbbd5, merged): tools/brick-matrix/run-registry.mjs -- a run writes %TEMP%/brick-matrix-runs/<pid>.json (Chrome /
+  server PIDs, profile, ports, root) and removes it on stop; the stop (idempotent) kills Chrome with its renderers (taskkill
+  /T) from finally, SIGINT / SIGTERM / SIGHUP / SIGBREAK and process exit. tools/brick-matrix/orphans.mjs: report only by
+  default; --kill --root <worktree> kills only that worktree's orphans, each PID re-checked against its record.
+- LIVE PROOF (after the gate cleared): (1) run.mjs HARD-killed mid-run (Stop-Process -Force, its Chrome + 2 serve.py + 8
+  renderers up): Windows took its children down with it -- only the record stayed; orphans.mjs reported it "nothing left
+  running" and removed the stale record. So a killed run does NOT orphan its Chrome here (on the 10-07 stop the parent SHELL
+  died and run.mjs itself kept running). (2) a TRUE orphan (a Chrome + serve.py spawned detached and recorded, the recording
+  process exited): reported with both PIDs; --kill --root <another worktree> killed nothing; --kill --root <mine> killed
+  both, 0 left, record gone. (3) a run that finishes: no record, no Chrome after.
+- TWO BUGS the live proof found (fixed here, matrix-chrome-hygiene-2): (a) taskkill /T exits non-zero when a renderer is
+  already ending while the browser does go -> the kill read as failed and the Chrome was not reported killed; killTree now
+  judges by the process being GONE (polled 5 s). (b) a shell whose command line merely MENTIONED a matrix profile was listed
+  as an unregistered matrix Chrome (and would have passed the PID-reuse check): both checks now require the executable to be
+  a Chrome. Tests: brick-matrix-registry +2 cases (10); the text-only match -> 2 fail.
+
+### 2026-10-07 (seat A): a declared heavy-run guard (tools/heavy-run-guard.mjs) -- advisor pick 3
+- Why: Fred's PC crawled (1.6 GB free of 32, CPU 100%, 167 Chromes) while the gate ran and seats started full runs
+  beside it; I had printed my free-RAM figure and run anyway. A rule a person reads is not a guard.
+- tools/heavy-run-guard.mjs, the one place: refuses (exit 3, reason printed) while ~/.bspline-status/gate_running
+  exists or free RAM < MIN_FREE_GB = 4 (os.freemem -- measured 9.78 vs WMI FreePhysicalMemory 9.68 GB, same source).
+  The gate's OWN runs pass: gate.sh writes "<pid> <HH:MM> <args>"; a process whose BSPLINE_GATE_LOCK_OWNER equals that
+  pid is the gate's (advisor: otherwise the gate blocks itself). Not an ancestor-pid check: gate.sh's $$ is an MSYS
+  pid, not the Windows pid node sees. NEEDS one line in the advisor's gate.sh after the lock write:
+  export BSPLINE_GATE_LOCK_OWNER=$$
+- Wired: tools/brick-matrix/run.mjs guards every top-level run AFTER the free --only-if-changed check; --parallel marks
+  its own group children (BSPLINE_HEAVY_RUN_CHILD=1) so they are not re-judged mid-run. npm run test:full = guard &&
+  vitest run; plain npm test / vitest run <file> stay unguarded (single files are fine any time).
+- tests/heavy-run-guard.test.js 8: every verdict path, the CLI end to end against a temporary home (exit 3 with a lock,
+  0 for its owner), and the wiring pins. Mutation (owner pass removed): 2 fail. The matrix/boot/serve/ports neighbours
+  22/22 with it. Full suite not run (heavy runs are E's and D's slots now).
+
+### 2026-10-07 (seat A): (2) the empty first toolpath pass -- two warm-up variants, one fresh doc each (no code change)
+- Fresh Fusion 47276, main ebde06c, T1 7x9 Send -> BUILD (engine.run) -> the engine's own template apply -> variant
+  -> the add-in's own deferred TPGen event. Control: the 19:34 APPLY click (Fusion 21188): pass 1 left all 5 B-spline
+  ops invalid (Back 0.3 s; Top 30.8 s yet invalid), Frame valid; pass 2 -> 7/7.
+- A (settle). Designed: pump events 10 s, then fire. NOT run as designed -- I sent the prep and fire calls in parallel
+  (against the serial rule); the fire ran inside the prep's event pump. Measured instead from the log: templates done
+  20:16:03, generation started 20:16:36 = >= 33 s of settling with events pumping. Pass 1: all 5 B-spline ops invalid
+  (Back ran 15.7 s this time, not 0.3 s), Frame valid; passes 2-3 -> 7/7. So more settle time does not help.
+- B (lazy references): activate every setup and read all 3193 op parameters (244 CAD-object refs, 11 contour
+  selections, all empty) before firing. Pass 1: the 3 Pockets VALID, only the 2 Morphed Spirals invalid; in pass 2
+  both Spirals again empty in 0.3 s; pass 3 -> 7/7. Same shape as item 95's one-op warm-up (Pockets fine, both Spirals
+  empty), so "touching" the ops before the first generation fixes the Pockets, not the Spirals.
+- One sample per variant = an observation, not a rule; no fix declared. The later passes (MAX_GENERATION_PASSES = 4)
+  stay the answer. Next if wanted: B again (repeatability), then B + a Spiral-only pre-generation.

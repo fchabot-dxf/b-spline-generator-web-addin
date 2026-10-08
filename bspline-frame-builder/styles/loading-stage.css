@@ -75,3 +75,14 @@
 .loading-stage-steps li[data-state="pending"]::before { content: '○'; }
 .loading-stage-steps li[data-state="skipped"] { text-decoration: line-through; }
 .loading-stage-steps li[data-state="skipped"]::before { content: '–'; }
+/* Fred (2026-10-07: "make the spinner on the working item"): the card's spinner sits on the current step's line in
+   place of its dot (loading-signal.js _renderSteps moves the element; the group tint above still applies) */
+.loading-stage-steps li[data-spinner]::before { content: none; }
+.loading-stage-steps li > .loading-stage-spinner {
+  position: absolute;
+  left: -19px;
+  top: 0.4em;
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+}

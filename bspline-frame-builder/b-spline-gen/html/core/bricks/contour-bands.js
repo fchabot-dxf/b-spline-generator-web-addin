@@ -834,7 +834,7 @@ export function bricksContourBands(primitives, bands, opts) {
       const { pieces, nextId: afterId, sources, fanSides } = ribbonPieces(
         enriched, d0, d1, set, patternName, pitch, set.grout.widthIn,
         seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
-        rowSequence, forcedFStart, closed, row,
+        rowSequence, forcedFStart, closed, row, closed ? null : opts.cutEnds || null, // T86 item 5: an open stroke's cut ends
       );
       // T86 item 16f (B1): the innermost course row's pieces may reach into the bare tips (tipZones; fillTips, below)
       if (tipReach && bandIndex === lastCourseBand && row === rows - 1) tipRow = { start: bricks.length, count: pieces.length, sources, d1 };

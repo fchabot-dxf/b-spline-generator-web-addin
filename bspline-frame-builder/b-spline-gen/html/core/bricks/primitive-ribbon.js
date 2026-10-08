@@ -41,7 +41,7 @@
  * collected into `pieces` right after whichever primitive owns that joint as its own `jointEnd`
  * (preserving build-order == walk-order, which other code relies on).
  */
-import { curveIntersection, lineLineIntersection } from './curve-intersect.js';
+import { curveIntersection, lineLineIntersection, lineCircleIntersections } from './curve-intersect.js';
 import { clipToHalfPlane, signedArea } from './geometry.js';
 import { planCornerRun, mergeSlivers, pickSample } from './piece-plan.js';
 import { isArcFeasible, voussoirPieces } from './arc-voussoir.js';
@@ -216,6 +216,30 @@ function tangentAt(prim, point) {
   const direction = Math.sign(prim.theta2 - prim.theta1) || 1;
   return { x: -Math.sin(theta) * direction, y: Math.cos(theta) * direction };
 }
+/** T86 item 5 (crossings.js): an open ribbon's END on a declared CUT line { point, dirX, dirY } -- a straight cut along
+ *  the edge it stops on (it is a joint off that edge already: no half-joint shift, like a butt), read by linePieces /
+ *  voussoirPieces like any corner joint, so the run is planned from the fill set up to it. `o` / `q` are where the cut
+ *  meets this row's two edges (depth d0 / d1); the keep references sit just inside the run. null when the cut misses. */
+function cutJoint(prim, cut, d0, d1, which) {
+  const dir = { x: cut.dirX, y: cut.dirY };
+  let at, tangent;
+  if (prim.type === 'line') {
+    const l = Math.hypot(prim.p1.x - prim.p0.x, prim.p1.y - prim.p0.y) || 1, t = { x: (prim.p1.x - prim.p0.x) / l, y: (prim.p1.y - prim.p0.y) / l };
+    at = (d) => lineLineIntersection({ x: prim.p0.x + prim.nx * d, y: prim.p0.y + prim.ny * d }, t, cut.point, dir);
+    tangent = t;
+  } else {
+    const nearest = (pts) => pts.reduce((b, p) => (!b || Math.hypot(p.x - cut.point.x, p.y - cut.point.y) < Math.hypot(b.x - cut.point.x, b.y - cut.point.y) ? p : b), null);
+    at = (d) => nearest(lineCircleIntersections(cut.point, dir, { x: prim.cx, y: prim.cy }, prim.r - prim.radialSign * d));
+    const th = which === 'start' ? prim.theta1 : prim.theta2, sgn = Math.sign(prim.theta2 - prim.theta1) || 1;
+    tangent = { x: -Math.sin(th) * sgn, y: Math.cos(th) * sgn };
+  }
+  const o = at(d0), q = at(d1);
+  if (!o || !q) return null;
+  const into = which === 'start' ? 1 : -1, mid = { x: (o.x + q.x) / 2, y: (o.y + q.y) / 2 };
+  const keep = stepFrom(mid, tangent, into * KEEP_REF_STEP_IN);
+  return { point: o, q, dirX: dir.x, dirY: dir.y, keepRefAsStart: keep, keepRefAsEnd: keep, trustO: true, isCut: true };
+}
+
 function stepFrom(point, tangent, signedStep) {
   return { x: point.x + tangent.x * signedStep, y: point.y + tangent.y * signedStep };
 }
@@ -1158,7 +1182,7 @@ export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyl
  *   concrete fraction (or `undefined` for an unstaggered row) before calling.
  * @returns {{ pieces: Array, nextId: number }}
  */
-export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true, rowIndex = 0) {
+export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true, rowIndex = 0, cutEnds = null) {
   const { liveIndices, joints: jointBefore } = ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyle, bandIndex, sequence, forcedFStart, closed);
   if (liveIndices.length === 0) return { pieces: [], nextId: startId };
   const m = liveIndices.length;
@@ -1182,8 +1206,11 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     const rawJointEnd = jointBefore[(k + 1) % m];
     // T86 item 21b, the JOINT RULE: an ordinary mitre is a joint too -- each run clips half a joint short of it
     const onConvexArc = primitives[idx].type === 'arc' && primitives[idx].radialSign > 0;
-    const jointStart = mitreJointSide(jointBefore[k], jointFor(jointBefore[k], idx), 'keepRefAsStart', nominalJoint / 2, onConvexArc);
-    const jointEnd = mitreJointSide(rawJointEnd, jointFor(rawJointEnd, idx), 'keepRefAsEnd', nominalJoint / 2, onConvexArc);
+    // T86 item 5: an open ribbon's first / last run may end on a declared CUT (crossings.js) instead of its plain square end
+    const cutStart = !closed && k === 0 && cutEnds && cutEnds.start ? cutJoint(prim, cutEnds.start, d0, d1, 'start') : null;
+    const cutEnd = !closed && k === m - 1 && cutEnds && cutEnds.end ? cutJoint(prim, cutEnds.end, d0, d1, 'end') : null;
+    const jointStart = cutStart || mitreJointSide(jointBefore[k], jointFor(jointBefore[k], idx), 'keepRefAsStart', nominalJoint / 2, onConvexArc);
+    const jointEnd = cutEnd || mitreJointSide(rawJointEnd, jointFor(rawJointEnd, idx), 'keepRefAsEnd', nominalJoint / 2, onConvexArc);
     const built = prim.type === 'line'
       ? linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set, seed, pieceId, nextId, sequence, forcedFStart)
       : (() => {
