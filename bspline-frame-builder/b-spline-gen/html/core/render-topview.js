@@ -104,14 +104,46 @@ export function computeTopViewPixels(heights, nx, nz, symmetry) {
 }
 
 /**
- * Renders the terrain preview into the hidden SVG Editor background canvas.
+ * Lazy top view (2026-10-08, measured: ~0.5 s of a ~1.25 s phone Generate at 4x CPU, its own 384-wide noise
+ * heightmap + shading + the backdrop's PNG encode). Its only reader is the editor's backdrop (sync3DBackground), so
+ * while the editor is closed a rebuild only keeps its inputs, and the backdrop renders them when it next reads the
+ * canvas (editor open). Same inputs, same pixels -- only when they are drawn moves.
+ */
+let _pendingTopView = null;
+
+/** The editor modal is showing (the same test core/history.js isEditorOpen makes). */
+function _editorShowing() {
+    const modal = document.getElementById('svgEditorModal');
+    return !!modal && modal.style.display !== 'none';
+}
+
+/**
+ * Renders the terrain preview into the hidden SVG Editor background canvas -- now when the editor is showing (and
+ * refreshes its backdrop), else when the backdrop next reads it (flushEditorTopView).
  * @param {Float32Array} heightsLow - The current 3D mesh heights (for sculpt sampling)
  * @param {number} nxLow - Grid width
  * @param {number} nzLow - Grid depth
  */
 export function updateEditorTopView(heightsLow, nxLow, nzLow) {
+    if (!_editorShowing()) { _pendingTopView = [heightsLow, nxLow, nzLow]; return; }
+    _pendingTopView = null;
+    if (!_paintTopView(heightsLow, nxLow, nzLow)) return;
+    if (window.svgEditor && typeof window.svgEditor.sync3DBackground === 'function') {
+        window.svgEditor.sync3DBackground();
+    }
+}
+
+/** Paint a deferred top view into its canvas, if one is waiting (the backdrop calls this before reading it). */
+export function flushEditorTopView() {
+    if (!_pendingTopView) return;
+    const args = _pendingTopView;
+    _pendingTopView = null;
+    _paintTopView(...args);
+}
+
+function _paintTopView(heightsLow, nxLow, nzLow) {
     const canvas = document.getElementById('svgEditorTopView');
-    if (!canvas) return;
+    if (!canvas) return false;
 
     const ctx = canvas.getContext('2d');
     const aspect = P.widthIn / P.heightIn;
@@ -156,8 +188,5 @@ export function updateEditorTopView(heightsLow, nxLow, nzLow) {
     ctx.beginPath(); ctx.moveTo(cx, cy - 20); ctx.lineTo(cx, cy + 20); ctx.stroke();
     ctx.fillStyle = 'rgba(0, 120, 212, 0.6)';
     ctx.beginPath(); ctx.arc(cx, cy, 1.5, 0, Math.PI * 2); ctx.fill();
-
-    if (window.svgEditor && typeof window.svgEditor.sync3DBackground === 'function') {
-        window.svgEditor.sync3DBackground();
-    }
+    return true;
 }
