@@ -35,14 +35,17 @@ def _valid(op):
 def setup_states(cam):
     """Read-only, light: each setup of `cam` as the palette's setup cards show it (ui/html/cam-setup-state.js) --
     [{'name', 'ok': True, 'ops': n, 'toolpaths': n with a valid toolpath}]. [] with no CAM product. One source for
-    the final TPGen report (after the toolpaths) and the palette's open (get_setup_states)."""
+    the final TPGen report (after the toolpaths) and the palette's open (get_setup_states). 'missing' (2026-10-07):
+    each op without a valid toolpath, with Fusion's own reason (why_empty, '' when it gives none) -- the card says
+    WHICH op and WHY, not only how many."""
     out = []
     if not cam:
         return out
     for i in range(cam.setups.count):
         s = cam.setups.item(i)
         ops = _ops(s)
-        out.append({'name': s.name, 'ok': True, 'ops': len(ops), 'toolpaths': sum(1 for op in ops if _valid(op))})
+        out.append({'name': s.name, 'ok': True, 'ops': len(ops), 'toolpaths': sum(1 for op in ops if _valid(op)),
+                    'missing': [{'op': op.name, 'why': why_empty(op)} for op in ops if not _valid(op)]})
     return out
 
 

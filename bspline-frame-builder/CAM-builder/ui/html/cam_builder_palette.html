@@ -813,11 +813,28 @@
     const head = document.getElementById('status-summary-bspline');
     if (head && window.camSetupHeader) head.textContent = window.camSetupHeader(list || []);
   }
+  // the card's missing toolpaths, one line each (op + Fusion's own reason), under its status row; hidden when none
+  function showMissing(key, lines) {
+    const state = document.getElementById('state-' + key);
+    if (!state) return;
+    let box = document.getElementById('missing-' + key);
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'missing-' + key;
+      box.className = 'cam-missing';
+      box.style.cssText = 'font-size:10px; color:#b00020; margin:2px 0 0; line-height:1.4;';
+      state.closest('.cam-status-row').parentElement.after(box);
+    }
+    box.textContent = '';
+    for (const l of lines) { const d = document.createElement('div'); d.textContent = l; box.appendChild(d); }
+    box.hidden = !lines.length;
+  }
   function showSetupEntry(s) {
     const key = setupKeyFor(s.name);
     if (!key) return;
     const card = window.camSetupCardState ? window.camSetupCardState(s) : { state: s.ok ? 'ok' : 'fail' };
     setSetupState(key, card.state, card.text);
+    showMissing(key, window.camSetupMissing ? window.camSetupMissing(s) : []);
   }
 
   function runPreview() {

@@ -24532,3 +24532,17 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   doc and False for another. Now a documentClosing handler drops the import refs whose document IS the closing one
   (+ any already invalid). b-spline-gen/test_stale_import_refs.py 3 (the old isValid-only rule fails 1/3).
   Suites: b-spline-gen 183/183, CAM-builder 88/88, fb_shared 11/11.
+
+### 2026-10-07 (seat A): the CAM card says WHICH op is missing and WHY (Fusion's own reason) -- user pick 2
+- After APPLY a red card read "toolpaths 2/3 · 1 missing" but not which op or why; the add-in knew both and only logged
+  them (the TPGen audit, toolpath_gen.why_empty -- e.g. 'Out of memory.' after a long session, H23 item 98).
+- toolpath_gen.setup_states: each setup's 'missing' = [{op, why}] for ops without a valid toolpath (why = why_empty,
+  '' when Fusion says nothing). Same source for the TPGen report and the palette open.
+- cam-setup-state.js missingLines(entry): one line per op -- '<op>: Fusion says "<why>"' or '<op>: no reason given by
+  Fusion'. The palette's showMissing puts them under the card's status row (red, small; hidden when none), through
+  showSetupEntry for every source.
+- Tests: CAM-builder/test_setup_states.py (the op names + reasons, first line of a multi-line error; 2 fail
+  pre-change); tests/cam-setup-state.test.js 8 (3 fail pre-change). CAM-builder 88/88.
+- Shot: shots/seatA/cam_missing/card_missing.png (the real palette, fed a setup_states message headless: "toolpaths
+  1/3 · 2 missing" + 'Morphed Spiral1: Fusion says "error: Out of memory."' + 'Pocket front deloge FRED1: no reason
+  given by Fusion'; header "4 SETUPS · TOOLPATHS 5/7"). A live Fusion confirm can ride on pick 1's first Fusion slot.
