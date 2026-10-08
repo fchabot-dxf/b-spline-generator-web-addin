@@ -25391,3 +25391,17 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   with square_diamond / octagon_square, each in a CHILD process (tests/empty-region-child.mjs; a synchronous loop in the
   test worker could never time out) with a 20 s timeout: 0 wall pieces, returned. FAILS 4/18 on main by timeout; 18/18
   after (4 s). Fill / engine suites (44 files) 644/644. spawnSync's timeout ends the child (checked: no spinner left).
+### Stones at life size (3 / 4 / 8 in) -- measured; nothing to fix at 3 in, 4 - 8 in pinned (seat E / 61, 2026-10-08)
+- MEASURED, engine level (generateBricks; a White rocks wall in a White rocks / Grey stone ring, single soldier, every
+  template x 7x9 / 9x12 at 3 / 4 / 8 in: 228 lays; the two ring sets lay identically -- both ring with fieldstone): no two
+  pieces overlap and no piece lies off the outline in ANY lay. Bare (tests/bare-ground.js), worst lay per size: 3 in
+  largest patch 0.79 sq in (T12 9x12), 4 in 1.40 (T7 7x9), 8 in 8.82 (T19 7x9: an 8 in stone is wider than half the board).
+- CUTS (T1 / T10 / T18; brush X as wall exclusions, a grout cut across the wall and one across the ring; extra bare over
+  the plain lay in a window): 3 in -- grout cuts 0.12 - 0.18 sq in, one fragment under the fieldstone floor (0.14 at 3 in),
+  the declared rule; 4 in -- the brush X reads 2.2 - 3.6 sq in, but the shot (shots/seatE/stones/x4_cut_4.png) shows the
+  stones wrapping the stroke with one joint: at 4 in the joint is 0.29 in and the 0.75-joint window counts the seam -- no
+  stone missing. (The engine harness has no crossing split and lets a stroke run off the board; the app does both.)
+- PINNED: tests/bricks-stone-life-size.test.js -- overlaps 0, off the outline 0, bare capped per size at today (STONE_CAPS,
+  may only fall). FAST 3 lays, STONE_LIFE_FULL=1 114 (22 s), all pass. Mutation: a 30 x piece floor fails 2/3 of FAST.
+- Ring on bogus ground (the wall-outside note): not seen -- the rings at 3 - 4 in lay on the band, the lays above have
+  no overlap and nothing off the board.
