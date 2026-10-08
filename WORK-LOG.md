@@ -24795,3 +24795,13 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   stock likely already computed by the ops before it). n=1 per arm, toolpaths not yet compared op for op -> next: one
   more sample each after a Fusion restart, with every op's toolpath summary recorded; a declared toolpath_gen change only
   if it holds.
+- CONFIRMING PAIR (fresh Fusion 27252 after a restart, same recipe, every op's toolpath read back with
+  cam.getMachiningTime(op, 1, 500, 0)):
+  - OP-FIRST (03:11:19 -> 03:14:02, 2 min 43 s): pass 1 left 4 of 5 B-spline ops EMPTY (0.3 s each), deloge 22.0 s,
+    Frame 65.0 s; pass 2 made 7/7. So op-first does NOT remove the empty first generation -- sample 1 was the outlier.
+  - CONTROL (03:28:05 -> 03:30:47, 2 min 42 s): pass 1 Back 0.3 s, Top 24.1 s (invalid), Frame 66.6 s; pass 2 made 7/7.
+  - Toolpaths: IDENTICAL op for op in both arms (machining time / feed / rapid distance, 7 ops; e.g. Back pocket
+    760.68 s / 4711.492 cm / 215.59 cm, Frame pocket 472.33 s / 9686.545 / 823.943).
+- VERDICT: op-first does not hold (same total time, the symptom stays). No toolpath_gen change. The one real effect
+  is the doomed pass-1 tries get cheaper (~20 s of Top in sample 2/4), and pass 2's op-by-op time absorbs it.
+  Holder back to none; scratch docs closed by handle; Fred's Untitled untouched.
