@@ -24596,3 +24596,16 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - FLAKE 2 (brick-matrix-ports "expected 10, got 0"): dropStaleProfiles read the live Chrome list, a PowerShell call that
   timed out under the gate's load (20 s) -- an unknown list removes nothing, by design. The list is now a parameter (default
   the live one); the test passes its own empty set (it ran 20 s, now 0.2 s).
+
+### 2026-10-08 (seat A): Send speed (user pick 1) -- measured, stopped (no result-changing cut; the declared timing merged)
+- Fresh Fusion (80172, main c94444b with send-timing), one real T1 7x9 Send, [SEND TIMING]: Clean STEP import 2.8 s,
+  Stamped STEP import 28.5 s, colour decal 0.0 s, Bricks sketch 2.1 s, frame 12.4 s -> ~46 s. The 2026-10-07 21:28
+  Send took 90 s on a grown Fusion (Bricks ~33 s there): Sends slow down as Fusion's memory grows (the memory line's
+  restart prompt also restores speed).
+- The Stamped import is Fusion's work on the grooved B-spline itself (scratch doc, the Send's own STEP files): Stamped
+  first 29.1 s / Clean second 3.0 s (content, not order); the stamped top surface alone 30.6 s, the stamped solid alone
+  27.3 s, the clean surface alone 3.2 s. No identical-result cut; surface density already follows the user's export
+  resolution (advisor: Fred controls that trade-off).
+- Frame 12.4 s: sketches 5.6 s (bbox <1, outline ~3, enclosure ~2 incl. solving) + solid 5.9 s (4 bars ~0.7 s each,
+  the trim cut through the stamped panel ~3 s, appearance 0.2 s). Every part is a Fusion modelling op of 0.7-3 s: no
+  single big target. Stopped here per the advisor (46 s fresh + the memory bar is the state).
