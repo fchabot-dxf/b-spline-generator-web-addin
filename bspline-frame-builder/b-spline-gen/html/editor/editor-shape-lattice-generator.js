@@ -1929,12 +1929,9 @@ function _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth
   // seed-jittered one still sitting at its default. Same fraction units
   // `PATTERN.shape.params` itself stores (0-1, not the `hw`-scaled real-
   // unit values computed just above).
-  // F12: every declared param, the derived ones (waistRadius, the two corners) included.
+  // F12: every declared param, the derived ones (waistRadius, the two corners) included. (T3: frame-only params
+  // are dropped unless set -- SILHOUETTE_SOLVERS' frameOnlyWhenSet, applied by generateSilhouette.)
   const resolvedParams = { ...resolvedAll };
-  // T3 TAPERED HOURGLASS: a frame-only param is reported only when the caller set it, so a Shape Lattice
-  // pattern's (and Template 1's) resolved params -- what a handle seeds from and what the Fusion manifest
-  // walks -- are exactly what they were before it existed.
-  for (const k of FRAME_ONLY_PARAM_KEYS) if (!params || params[k] == null) delete resolvedParams[k];
 
   return { keypoints, segments, cx: cxWorld, params: resolvedParams, hasUserSegments, ...(mirror ? { mirror } : {}) };
 }
@@ -2065,12 +2062,9 @@ function _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth = 
   const { segments, hasUserSegments } = _mergeSegments(fresh, segmentsOverride);
 
   // T59: see _solveHourglass's own doc comment on why this is returned.
-  // F12: every declared param, the derived bodyRadius included.
+  // F12: every declared param, the derived bodyRadius included. (F30 item 3: taperAngle, bottle's frame-only
+  // param, is dropped unless set -- SILHOUETTE_SOLVERS' frameOnlyWhenSet, applied by generateSilhouette.)
   const resolvedParams = { ...resolvedAll };
-  // F30 item 3: taperAngle is bottle's own first frame-only param (see _solveHourglass's own doc comment on
-  // this exact loop, T3) -- reported only when the caller set it, so a Shape Lattice pattern's (and Template 2's)
-  // resolved params stay exactly what they were before it existed.
-  for (const k of FRAME_ONLY_PARAM_KEYS) if (!params || params[k] == null) delete resolvedParams[k];
 
   return { keypoints, segments, cx: cx0, params: resolvedParams, hasUserSegments };
 }
@@ -2536,8 +2530,7 @@ function _solveDiamondTopHourglassPinch(region, params, segmentsOverride, seed, 
   // centreline and self-maps; every other piece i pairs with 12-i (which also gives 6 -> 6).
   const mirror = fresh.map((_, i) => 12 - i);
 
-  const resolvedParams = { ...resolvedAll };
-  for (const k of FRAME_ONLY_PARAM_KEYS) if (!params || params[k] == null) delete resolvedParams[k];
+  const resolvedParams = { ...resolvedAll }; // frame-only params dropped unless set: SILHOUETTE_SOLVERS
 
   return { keypoints, segments, cx: cx0, params: resolvedParams, hasUserSegments, mirror };
 }
@@ -2982,6 +2975,45 @@ function _solveFlask(region, params, segmentsOverride, seed, strokeHalfWidth = 0
 }
 
 /**
+ * generateSilhouette's solver per preset (any other preset solves -- and resolves its params -- as the hourglass).
+ * `frameOnlyWhenSet`: the solved params report a frame-only param (FRAME_ONLY_PARAM_KEYS) only when the caller set
+ * it (T3 / F30 item 3: a Shape Lattice pattern's resolved params, what a handle seeds from and what the Fusion
+ * manifest walks, stay exactly what they were before those params existed).
+ */
+const SILHOUETTE_SOLVERS = {
+  hourglass: { solve: _solveHourglass, frameOnlyWhenSet: true },
+  bottle: { solve: _solveBottle, frameOnlyWhenSet: true },
+  tabTop: { solve: _solveTabTop }, // T6 TAB TOP (a frame-only preset)
+  dippedLeftWave: { solve: _solveDippedLeftWave }, // T8 DIPPED TOP + LEFT-ONLY WAVE (a frame-only preset)
+  iShape: { solve: _solveIShape }, // T9 I SHAPE (a frame-only preset)
+  diamondTopHourglass: { solve: _solveDiamondTopHourglass }, // T7 DIAMOND-TOP HOURGLASS (a frame-only preset)
+  diamondTopHourglassPinch: { solve: _solveDiamondTopHourglassPinch, frameOnlyWhenSet: true }, // T11 HOURGLASS ROOF
+  archedFunnel: { solve: _solveArchedFunnel }, // T84 item 3, T16 ARCHED FUNNEL (a frame-only preset)
+  tulip: { solve: _solveTulip }, // T84 item 3, T17 TULIP (a frame-only preset)
+  sandTimer: { solve: _solveSandTimer }, // T84 item 5, T14 SAND TIMER (a frame-only preset)
+  flask: { solve: _solveFlask }, // F31 item 2b, T15 FLASK (a frame-only preset)
+};
+
+function _reportedParams(solver, resolved, callerParams) {
+  const out = { ...resolved };
+  if (solver.frameOnlyWhenSet) for (const k of FRAME_ONLY_PARAM_KEYS) if (!callerParams || callerParams[k] == null) delete out[k];
+  return out;
+}
+
+/**
+ * generateSilhouette(region, shape, strokeHalfWidth).params WITHOUT building the outline (2026-10-08: frame
+ * Generate's draw needs only the resolved params at each step): every solver's params are its own _resolveParams
+ * draw, reported the same way (_reportedParams). tests/silhouette-params.test.js pins it to generateSilhouette's.
+ */
+export function silhouetteParams(region, shape, strokeHalfWidth = 0) {
+  const preset = (shape && shape.preset) || 'hourglass';
+  const seed = ((shape && shape.seed) || 42) >>> 0;
+  const params = (shape && shape.params) || {};
+  const key = SILHOUETTE_SOLVERS[preset] ? preset : 'hourglass';
+  return _reportedParams(SILHOUETTE_SOLVERS[key], _resolveParams(key, region, params, seed, strokeHalfWidth), params);
+}
+
+/**
  * `region: {x,y,w,h}` (SE14 §3, Q5 ruling) + `shape` ->
  * `{ keypoints, segments, primitives, cx, params }`. `shape.preset`
  * selects `'hourglass'` (default) or `'bottle'`; `shape.params` overrides
@@ -3010,28 +3042,8 @@ export function generateSilhouette(region, shape, strokeHalfWidth = 0) {
   const params = (shape && shape.params) || {};
   const segmentsOverride = shape && shape.segments;
 
-  const solved =
-    preset === 'bottle'
-      ? _solveBottle(region, params, segmentsOverride, seed, strokeHalfWidth)
-      : preset === 'tabTop' // T6 TAB TOP (a frame-only preset)
-        ? _solveTabTop(region, params, segmentsOverride, seed, strokeHalfWidth)
-        : preset === 'dippedLeftWave' // T8 DIPPED TOP + LEFT-ONLY WAVE (a frame-only preset)
-          ? _solveDippedLeftWave(region, params, segmentsOverride, seed, strokeHalfWidth)
-          : preset === 'iShape' // T9 I SHAPE (a frame-only preset)
-            ? _solveIShape(region, params, segmentsOverride, seed, strokeHalfWidth)
-            : preset === 'diamondTopHourglass' // T7 DIAMOND-TOP HOURGLASS (a frame-only preset)
-              ? _solveDiamondTopHourglass(region, params, segmentsOverride, seed, strokeHalfWidth)
-              : preset === 'diamondTopHourglassPinch' // T11 HOURGLASS ROOF (a frame-only preset)
-                ? _solveDiamondTopHourglassPinch(region, params, segmentsOverride, seed, strokeHalfWidth)
-                : preset === 'archedFunnel' // T84 item 3, T16 ARCHED FUNNEL (a frame-only preset)
-                  ? _solveArchedFunnel(region, params, segmentsOverride, seed, strokeHalfWidth)
-                  : preset === 'tulip' // T84 item 3, T17 TULIP (a frame-only preset)
-                    ? _solveTulip(region, params, segmentsOverride, seed, strokeHalfWidth)
-                    : preset === 'sandTimer' // T84 item 5, T14 SAND TIMER (a frame-only preset)
-                      ? _solveSandTimer(region, params, segmentsOverride, seed, strokeHalfWidth)
-                      : preset === 'flask' // F31 item 2b, T15 FLASK (a frame-only preset)
-                        ? _solveFlask(region, params, segmentsOverride, seed, strokeHalfWidth)
-                        : _solveHourglass(region, params, segmentsOverride, seed, strokeHalfWidth);
+  const solver = SILHOUETTE_SOLVERS[preset] || SILHOUETTE_SOLVERS.hourglass;
+  const solved = solver.solve(region, params, segmentsOverride, seed, strokeHalfWidth);
 
   const { keypoints, segments, cx, params: resolvedParams, hasUserSegments, mirror } = solved;
   const n = keypoints.length;
@@ -3042,7 +3054,7 @@ export function generateSilhouette(region, shape, strokeHalfWidth = 0) {
 
   // T5 HOURGLASS DIPPED TOP: a dipped outline says which segment mirrors which (topDipMirrorIndex); absent
   // (every other outline): the plain mirrorSegmentIndex rule holds.
-  return { preset, keypoints, segments, primitives, cx, params: resolvedParams, hasUserSegments, ...(mirror ? { mirror } : {}) };
+  return { preset, keypoints, segments, primitives, cx, params: _reportedParams(solver, resolvedParams, params), hasUserSegments, ...(mirror ? { mirror } : {}) };
 }
 
 /**

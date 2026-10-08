@@ -15,7 +15,7 @@
  */
 import { computeParamHandles } from './editor-shape-lattice-interaction.js';
 import {
-  PARAM_ORDER, feasibleParamRanges, generateSilhouette, paramsFromShapeModel, seededUnit,
+  PARAM_ORDER, feasibleParamRanges, generateSilhouette, silhouetteParams, paramsFromShapeModel, seededUnit,
   MIN_ARC_RADIUS_IN, topDipDepthForRadius, HORN_MIN_OF_HALF_HEIGHT, TOP_DIP_MIN_WIDTH, hourglassConstruction,
 } from './editor-shape-lattice-generator.js';
 
@@ -413,7 +413,7 @@ export function generateFrameSeeds(tpl, region, seed, t = _templateThickness(tpl
   const seeds = {};
   PARAM_ORDER[preset].forEach((key, i) => {
     if (!seeded.has(key)) return;
-    const resolved = generateSilhouette(region, { preset, params }).params;
+    const resolved = silhouetteParams(region, { preset, params });
     let r = frameParamRanges(tpl, region, resolved, t, key)[key];
     const gen = table.find((h) => h.key === key)?.generateRange;
     if (gen) r = { min: Math.max(r.min, gen.min ?? r.min), max: Math.min(r.max, gen.max ?? r.max) };
