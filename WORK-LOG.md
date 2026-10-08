@@ -25375,7 +25375,6 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   T18 9x12 (1.257 -> 1.267). GAP_CAPS updated, the 4 rising ones raised with the reason (advisor's yes).
 - NOT done (advisor: too risky for the 3 in preset alone): T18 7x9's neck patch (3.0 sq in) is facing sides closer than
   two rows -- a narrowest-gap trigger.
-EOF
-echo staged- PROOF: 1,368 lays hashed (every template x 7x9 / 9x12 x every preset at 0.75 - 1.5 in + single soldier 2 - 8 in): exactly 13
+- PROOF: 1,368 lays hashed (every template x 7x9 / 9x12 x every preset at 0.75 - 1.5 in + single soldier 2 - 8 in): exactly 13
   change (3 in 6, 4 in 7); 0.75 - 2 in and 8 in byte-identical to main. GAP_SWEEP_FULL 760/760; the FAST set fails on main
   (T18 9x12 3 in: 1.80 faces vs the default 0.05); band / ribbon / engine suites (106 files) 2381/2381.
