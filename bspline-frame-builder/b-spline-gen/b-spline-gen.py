@@ -201,6 +201,7 @@ _ADDIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ADDIN_ROOT not in sys.path:
     sys.path.insert(0, _ADDIN_ROOT)
 from fb_shared import palette_stages  # noqa: E402
+from fb_shared import fusion_memory  # noqa: E402  (detection only: Fusion's own memory before each Send)
 
 # A declared data module shared with the palette (html/data/*.js): the ONE parser, fb_shared.palette_stages.
 _read_declared_json = palette_stages.read_declared_json
@@ -294,6 +295,53 @@ def _palette_url(html_path, host_file=None):
 last_imported_occurrences = []
 current_import_group      = None
 custom_graphics_group     = None
+
+
+def _drop_stale_import_refs(closing_doc=None):
+    """A closed doc's occurrences stayed referenced here as invalid proxies (MEASURED 2026-10-07: 3 of them, the only
+    closed-doc objects this add-in held). Dropping them freed no memory (Fusion keeps its own, fb_shared.fusion_memory)
+    -- hygiene: the import state only ever names occurrences of open documents. MEASURED live the same day: at
+    documentClosing AND documentClosed the closing doc's occurrences still read isValid True (they turn invalid after),
+    so the ones dropped are those whose document IS the closing one (`==` identifies it there: True for the closing
+    doc, False for another); an already-invalid one goes too."""
+    global last_imported_occurrences, current_import_group
+
+    def _keep(o):
+        try:
+            if not (o and o.isValid):
+                return False
+            return closing_doc is None or not (o.component.parentDesign.parentDocument == closing_doc)
+        except Exception:
+            return False
+    if current_import_group is not None and not _keep(current_import_group):
+        current_import_group = None
+    last_imported_occurrences = [o for o in last_imported_occurrences if _keep(o)]
+
+
+def _document_closed_handler():
+    """Built at registration (run), not at import: the module's test stubs carry no DocumentEventHandler."""
+    class DocumentClosedHandler(adsk.core.DocumentEventHandler):
+        def notify(self, args):
+            try:
+                _drop_stale_import_refs(args.document)
+            except Exception:
+                _log('documentClosing: dropping stale import refs failed')
+    return DocumentClosedHandler()
+
+
+_doc_closed_handler = None
+
+
+def install_session_handlers():
+    """The application-level handlers this module keeps while the add-in runs (stop() removes them). Called by the
+    PARENT add-in right after it loads this module (bspline-frame-builder.py) -- MEASURED live 2026-10-07: the parent
+    never calls this module's run(), so a registration placed there never happened. Idempotent."""
+    global _doc_closed_handler
+    if _doc_closed_handler is not None:
+        return
+    _doc_closed_handler = _document_closed_handler()
+    app.documentClosing.add(_doc_closed_handler)
+    handlers.append(_doc_closed_handler)
 
 # Globals for the chunked-transfer + polling handshake
 importing_done = False
@@ -418,6 +466,15 @@ def _is_surface_body_name(bn):
     if bn.startswith('surface (') and bn.endswith(')'):
         return True
     return False
+
+
+def _post_fusion_memory(where):
+    """Detection only: Fusion's own memory (fb_shared.fusion_memory), logged + one palette line above the declared
+    threshold. Never raises, never blocks a Send."""
+    try:
+        _post_to_palette('fusion_memory', fusion_memory.read_signal(_log, where))
+    except Exception:
+        _log('fusion_memory: reading not posted')
 
 
 def _post_to_palette(action, payload):
@@ -1832,6 +1889,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if not is_preview:
                 importing_done = False
                 _send_stage('fusionPrepare')
+                _post_fusion_memory('Send')
                 _send_progress("Preparing Geometry...")
 
             _log(f'_handle_generate: isPreview={is_preview}, payload keys={list(data.keys())}')
@@ -2660,6 +2718,8 @@ def run(context):
         handlers.append(onCommandCreated)
         _log('CommandCreatedHandler wired')
 
+        install_session_handlers()
+
 
         # Find workspace → tab → panel (three-level fallback)
         ws = ui.workspaces.itemById('FusionSolidEnvironment')
@@ -2720,6 +2780,14 @@ def stop(context):
         global ui
         _log("--- SESSION STOPPED ---")
         _log('--- stop() start ---')
+
+        global _doc_closed_handler
+        if _doc_closed_handler is not None:
+            try:
+                app.documentClosing.remove(_doc_closed_handler)
+            except Exception:
+                pass
+            _doc_closed_handler = None
 
         # 1. Remove any leftover preview geometry only. Keep final imported bodies.
         _clear_custom_graphics()

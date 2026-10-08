@@ -24437,6 +24437,35 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   empty), so "touching" the ops before the first generation fixes the Pockets, not the Spirals.
 - One sample per variant = an observation, not a rule; no fix declared. The later passes (MAX_GENERATION_PASSES = 4)
   stay the answer. Next if wanted: B again (repeatability), then B + a Spiral-only pre-generation.
+
+### 2026-10-07 (seat A): a detection-only Fusion memory signal before each Send / BUILD (+ stale import refs dropped on close)
+- Pick 2's measurement (read-only, Fusion 65140): one Send+BUILD+APPLY doc closed by handle left +2.6 GB private (3.1 ->
+  5.74). Our 75 modules' globals hold only app/ui/CustomEvents; the only closed-doc objects were 3 invalid Occurrence
+  proxies in b-spline-gen.py's current_import_group / last_imported_occurrences (that module is spec-loaded, NOT in
+  sys.modules -- a sys.modules scan misses it; found via gc). Dropping them + gc.collect: 5.74 -> 5.75 GB, no effect.
+  The retention is inside Fusion; the advisor read today's sessions as additive (3.3 -> 9.0; 3.2 -> 5.8 -> 8.5).
+- fb_shared/fusion_memory.py, declared once: FUSION_RESTART_SOFT_GB = 12, FUSION_RESTART_HARD_GB = 24; private_gb()
+  (ctypes GetProcessMemoryInfo PrivateUsage of the add-in's own process = Fusion); memory_signal(gb) pure ->
+  {gb, level ok|soft|hard, text}; read_signal(log, where) logs "[MEMORY] <where>: Fusion private N GB (level)".
+- Read + posted ('fusion_memory') before each real Send (b-spline-gen _handle_generate, not previews) and each BUILD
+  (cam-builder _do_generate, before the engine loads; cam-builder's fb_shared loader generalised to _fb_shared(name)).
+  Nothing is blocked.
+- core/fusion-memory-line.js paintFusionMemory: one bar at the bottom of both palettes (styles/fusion-memory.css),
+  hidden when ok, amber soft, red hard, the add-in's own words. B-Spline palette: main.js; CAM palette: the shared module
+  through window.
+- Hygiene (advisor): b-spline-gen DocumentClosedHandler -> _drop_stale_import_refs (only live occurrences stay);
+  registered in run(), removed in stop().
+- Tests: fb_shared/test_fusion_memory.py 5 (edges 11.9/12/23.9/24, unknown -> no line, the log line, a real reading,
+  Send+BUILD wiring); tests/fusion-memory-line.test.js 5. With the wiring stashed: 1 + 2 fail.
+- Shots: shots/seatA/fusion_memory/fusion_memory_strip.png (both palettes, 13.4 GB amber / 26.1 GB red, painted
+  headless). Live Fusion check (the reading inside Fusion, the close handler) pending a slot.
+- Follow-up, caught by the add-in suites before any push of a claim: (1) the DocumentClosedHandler class defined at
+  import broke all 16 b-spline-gen test files (their adsk stubs carry no DocumentEventHandler) -- now built at
+  registration (_document_closed_handler() in run). (2) The Send reading could raise under stubs and turned a Send into
+  "The Send failed" (2 tests) -- both add-ins now post through a never-raising _post_fusion_memory(where). (3) CAM's
+  deferred-build harness (test_cam_stages.TestTheDeferredBuild, also run by test_build_then_apply / test_tpgen_card)
+  asserts the build's own step sequence; it now stubs the detection-only reading. Suites: b-spline-gen 180/180,
+  CAM-builder 85/85, fb_shared 10/10, fusion-memory-line 5/5.
 ### Pick 2 -- Continuous strokes in the crossing rule; the window surround runs through (seat E / 61, 2026-10-08)
 - MEASURED: a Continuous stroke has no ribbon outline (bricksAlongPath lays one unbroken piece per corner-bounded run), so
   strokeCrossings never saw it -- it neither ran through nor stopped; a brick stroke crossed it with an overlap and it
@@ -24491,3 +24520,15 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - ALSO: a declared frameFor(k) step both strokes runners use (a single soldier frame when a case says frame: true, none
   otherwise) -- the rows no longer depend on which runner ran first (the new runner had left the frame off and broke the
   band crossing row: gap null). strokes group 14 rows, 0 FAIL.
+- LIVE (Fusion 65140, 6abf8ad deployed): the reading inside Fusion = 5.8 GB (the OS: 5.75 GB private) -- the reader is
+  right. But the documentClosed handler was NOT registered: the parent add-in (bspline-frame-builder.py) loads
+  b-spline-gen and calls its stop(), never its run() -- my registration in run() was dead code (the stubbed suites
+  could not see it). Now a declared install_session_handlers() in b-spline-gen (idempotent), called by the parent right
+  after it loads the module; b-spline-gen's stop() still removes it. Pinned (fb_shared/test_fusion_memory.py).
+- LIVE, second finding: with the handler registered, the stale refs were STILL there after closing the doc. MEASURED
+  with a scratch handler on a throwaway doc: at documentClosing AND documentClosed the closing doc's occurrence reads
+  isValid True (invalid only after the events) -- an isValid test in the handler can never drop it. Measured the same
+  way: at documentClosing, occurrence.component.parentDesign.parentDocument == args.document is True for the closing
+  doc and False for another. Now a documentClosing handler drops the import refs whose document IS the closing one
+  (+ any already invalid). b-spline-gen/test_stale_import_refs.py 3 (the old isValid-only rule fails 1/3).
+  Suites: b-spline-gen 183/183, CAM-builder 88/88, fb_shared 11/11.

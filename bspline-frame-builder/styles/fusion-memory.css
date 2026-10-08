@@ -1,0 +1,20 @@
+/* The Fusion memory line (core/fusion-memory-line.js): one bar along the bottom of a palette, above everything, never
+   blocking input. Amber = the declared soft threshold (fb_shared/fusion_memory.py), red = the hard one. Shared by the
+   B-Spline and CAM palettes. */
+.fusion-memory-line {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10002;
+  pointer-events: none;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  color: #1a1a1a;
+  background: #ffb300;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.25);
+}
+.fusion-memory-line[hidden] { display: none; }
+.fusion-memory-line[data-level="hard"] { color: #fff; background: #c62828; }

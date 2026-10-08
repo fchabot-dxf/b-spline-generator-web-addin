@@ -222,6 +222,10 @@ def _bootstrap():
     _fb_sketch.frame_engine = _engine
     _fb_solid.frame_engine  = _engine
     _bs.frame_engine        = _engine  # FB-APP S5: the web app's [Send frame]
+    try:  # b-spline-gen's app-level handlers (its run() is never called from here); its stop() removes them
+        _bs.install_session_handlers()
+    except Exception:
+        _log_error('b-spline-gen install_session_handlers failed' + chr(10) + traceback.format_exc())
 
     # --- Consolidated former-standalone add-ins ---
     # These three modules used to install as separate Fusion add-ins. They now
