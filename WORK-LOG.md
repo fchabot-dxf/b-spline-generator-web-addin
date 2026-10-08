@@ -24438,3 +24438,23 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - TESTS brush-crossings (+5, 21): brick X / T over an earlier Continuous, Continuous X / T over an earlier brick stroke: no
   overlap, the cut a joint (+-10 %) off -- measured exactly 1.000 J in all five; the surround ring case. On brush-crossings-5's
   code the four Continuous cases fail (4/21). Matrix rows: not run yet (heavy -- after your clear).
+
+### 2026-10-07 (seat A): the CAM setup cards show the doc's real state -- advisor pick 1, (a) + (b)
+- Corrected premise (told the advisor): the B-spline cards only changed on a palette BUILD report ({name, ok} ->
+  "ok"/"fail"); my "pending after toolpaths" shot came from driving BUILD through engine.run. Real gaps: (a) after
+  APPLY a card read "ok" (= built) whatever its toolpaths; (b) a palette opened on an already-built doc read "pending"
+  on every card (init_result never touches the B-spline cards).
+- One declared source, cam_engine/toolpath_gen.py setup_states(cam): read-only [{name, ok, ops, toolpaths}], a toolpath
+  counted only when VALID (_valid: hasToolpath and isToolpathValid). Sent by (a) the final TPGen report ('setups') and
+  (b) a new read-only 'get_setup_states' action the B-spline tab sends when it boots (no workspace switch; no CAM
+  product -> []).
+- One declared map, ui/html/cam-setup-state.js setupCardState: no entry -> pending; ok false -> failed; no counts (a
+  BUILD report) -> built; 0 ops -> built · no operations; all valid -> toolpaths n/n (green); else
+  toolpaths k/n · m missing (red). The palette's classic script reads every source through showSetupEntry.
+- Tests: CAM-builder/test_setup_states.py 3 (fails 3/3 pre-change); tests/cam-setup-state.test.js 4 (the map; the
+  wiring pin fails 1/4 against the old palette). CAM-builder pytest 88/88. Live Fusion confirmation pending (holder).
+- LIVE (Fusion 65140, cam-setup-states ad6ad8c deployed and loaded, then main b98cd0f redeployed): fresh T1 7x9 Send;
+  the palette opened on it read "pending" (no CAM); one real BUILD SETUPS click (BUILD + its APPLY + TPGen, post-audit
+  ok=7 missing=0, 0 [ERROR]) -> Stock "built · no operations", B-spline Back "toolpaths 2/2", B-spline Top
+  "toolpaths 3/3", Frame "toolpaths 2/2", all green; the palette deleteMe'd and reopened (a fresh page) -> the same
+  states from get_setup_states alone. Shots: shots/seatA/cam_cards/cam_cards_strip.png.
