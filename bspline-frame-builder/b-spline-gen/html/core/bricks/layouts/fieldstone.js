@@ -95,7 +95,7 @@
  * anywhere real geometric room exists, with only a gentle large-scale tendency left over.
  */
 import {
-  pointInPolygon, clipToHalfPlane, clipPolygonToBoard, roundPolygonCorners, signedArea, polygonDifference, isSimplePolygon,
+  pointInPolygon, polygonPointTester, clipToHalfPlane, clipPolygonToBoard, roundPolygonCorners, signedArea, polygonDifference, isSimplePolygon,
 } from '../geometry.js';
 import { mulberry32, seedFor, hashedRandom } from '../rng.js';
 import { MIN_PIECE_FRACTION } from '../library.js';
@@ -300,6 +300,7 @@ function poissonDiscSample(polygon, spacing, seed, existingPoints, gate) {
   if (w < 1e-6 || h < 1e-6 || spacing < 1e-6) return [];
 
   const myRadius = spacing / 2;
+  const inPolygon = polygonPointTester(polygon); // the same answer as pointInPolygon, built once (geometry.js)
   const rng = mulberry32(seedFor(seed, 'fieldstone-poisson', 0));
   const cellSize = spacing / Math.SQRT2;
   const gw = Math.max(1, Math.ceil(w / cellSize)), gh = Math.max(1, Math.ceil(h / cellSize));
@@ -365,7 +366,7 @@ function poissonDiscSample(polygon, spacing, seed, existingPoints, gate) {
     let first = null;
     for (let tries = 0; tries < 400 && !first; tries++) {
       const cand = { x: minX + rng() * w, y: minY + rng() * h };
-      if (!pointInPolygon(cand.x, cand.y, polygon)) continue;
+      if (!inPolygon(cand.x, cand.y)) continue;
       if (gate && !gate(cand.x, cand.y, rng)) continue;
       if (!farEnough(cand, myRadius)) continue;
       first = cand;
@@ -384,7 +385,7 @@ function poissonDiscSample(polygon, spacing, seed, existingPoints, gate) {
         const angle = rng() * Math.PI * 2;
         const cand = { x: p.x + Math.cos(angle) * r, y: p.y + Math.sin(angle) * r };
         if (cand.x < minX || cand.x > maxX || cand.y < minY || cand.y > maxY) continue;
-        if (!pointInPolygon(cand.x, cand.y, polygon)) continue;
+        if (!inPolygon(cand.x, cand.y)) continue;
         if (gate && !gate(cand.x, cand.y, rng)) continue;
         if (!farEnough(cand, myRadius)) continue;
         place({ ...cand, radius: myRadius });

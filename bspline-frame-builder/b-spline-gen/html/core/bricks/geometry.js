@@ -55,6 +55,40 @@ export function pointInPolygon(x, y, polygon) {
   return inside;
 }
 
+/** pointInPolygon for MANY points against ONE polygon -- the same answer (2026-10-08: fieldstone's Poisson sampling
+ *  tested every candidate against every board edge; 9.6 s of a 13.8 s phone tap). Edges are bucketed by y-band: an
+ *  edge can only report "on edge" (within ON_EDGE_EPS_SQ) when the point is within 1e-9 of its y-range, and only
+ *  toggles the parity when (yi > y) !== (yj > y), i.e. y within its y-range -- so y's band lists every edge that can
+ *  matter, each tested with the SAME expressions, and "any edge on" / the parity do not depend on the order. */
+export function polygonPointTester(polygon) {
+  const n = polygon.length;
+  if (n < 3) return (x, y) => pointInPolygon(x, y, polygon);
+  const PAD = 1e-9; // sqrt(ON_EDGE_EPS_SQ)
+  let y0 = Infinity, y1 = -Infinity;
+  for (const p of polygon) { if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y; }
+  y0 -= PAD; y1 += PAD;
+  const bands = Math.max(1, Math.ceil(n / 4)), h = (y1 - y0) / bands || 1;
+  const band = (y) => Math.min(bands - 1, Math.max(0, Math.floor((y - y0) / h)));
+  const lists = Array.from({ length: bands }, () => []);
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const lo = Math.min(polygon[i].y, polygon[j].y) - PAD, hi = Math.max(polygon[i].y, polygon[j].y) + PAD;
+    for (let k = band(lo); k <= band(hi); k++) lists[k].push(i, j);
+  }
+  return (x, y) => {
+    if (!(y >= y0 && y <= y1)) return false; // no edge is within reach of y
+    const l = lists[band(y)];
+    let inside = false;
+    for (let m = 0; m < l.length; m += 2) {
+      const pi = polygon[l[m]], pj = polygon[l[m + 1]];
+      if (distSqToSegment(x, y, pj, pi) <= ON_EDGE_EPS_SQ) return true;
+      const xi = pi.x, yi = pi.y, xj = pj.x, yj = pj.y;
+      const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  };
+}
+
 /** Plain average of a polygon's own corner points -- good enough for the near-rectangular cells
  *  every layout here produces (never a true area-weighted centroid, not needed at this shape). */
 export function polygonCentroid(polygon) {
