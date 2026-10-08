@@ -54,7 +54,7 @@ import { commitEdit } from './editor-commit.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, frameHasFan, FAN_CENTRES, FAN_CENTRE_DEFAULT, fanGroups, applyGroutCuts } from '../core/bricks/index.js';
+import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, frameHasFan, FAN_CENTRES, FAN_CENTRE_DEFAULT, fanGroups, applyGroutCuts, LAID_BY_COURSES } from '../core/bricks/index.js';
 import FRAME_DEFS from '../data/frame-defs.js';
 import { frameContourSilhouette } from './contour-from-frame.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
@@ -1998,7 +1998,7 @@ export function regenerateOwnedBrickElements(editor) {
       const settings = chain.cycleIndex == null
         ? chain.settings
         : settingsVariantForCycle(chain.settings, chain.cycleIndex, stripeCycle);
-      const bricks = applyGroutCuts(laid.bricks, groutCuts, resolvedSetFor(settings), scaleFor(settings));
+      const bricks = applyGroutCuts(laid.bricks, groutCuts, resolvedSetFor(settings), scaleFor(settings), LAID_BY_COURSES);
       if (bricks.length) for (const outer of laid.outlines) region.push({ outer, holes: [] });
       const ownerId = `${elementId}:${chainIdx}`;
       const layer = strokeLayer.get(elementId);

@@ -7,27 +7,28 @@
  *   crosses (geometry.js polygonDifference: the whole stroke as one swept band -- sweptBand below -- or, for a dab or a
  *   stroke that crosses itself, one capsule per segment). A brick it does not touch comes back as it was
  *   (the same object). A cut brick becomes its pieces, each keeping the brick's own fields (sample, flip, texture
- *   offset, heightOffset ...) with ids `<id>.<k>`; a piece under `minPieceArea` (the caller passes the quarter-brick
- *   floor, library.js MIN_PIECE_FRACTION x one brick) drops into the joint. What the cut removes simply has no brick,
+ *   offset, heightOffset ...) with ids `<id>.<k>`; a piece under `minPieceArea` (the caller passes the layout's own
+ *   floor, piece-floor.js minPieceAreaOf) drops into the joint. What the cut removes simply has no brick,
  *   so the height map shows grout there. A cut that never reaches a brick's edge (a dab inside one brick) cannot
  *   open a joint in it: that brick stays whole. Applied AFTER a lay, so the app keeps each cut as its own element and
  *   re-applies the list after any rebuild.
  */
 import { polygonDifference, signedArea, isSimplePolygon } from './geometry.js';
-import { scaledSet, MIN_PIECE_FRACTION } from './library.js';
+import { scaledSet } from './library.js';
+import { minPieceAreaOf } from './piece-floor.js';
 
 /** T86 item 10: the declared grout cuts -- each { polyline: [{x, y}, ...], widthIn? } with at least one point. */
 export const groutCutsOf = (list) => (Array.isArray(list) ? list.filter((c) => c && Array.isArray(c.polyline) && c.polyline.length) : []);
 
 /** T86 item 10, THE cut step every element runs (the Wall / Frame / window surround in generateBricks, each Brush stroke
  *  in the app): `pieces` laid with `set` at `scale` are cut by every cut in turn, at the set's own joint unless the cut
- *  declares a width; a piece under the quarter-brick floor of that set (library.js MIN_PIECE_FRACTION x one scaled
- *  brick) drops into the joint. No cut, or no pieces = `pieces` itself. */
-export function applyGroutCuts(pieces, cuts, set, scale = 1) {
+ *  declares a width; a piece under the floor of the layout that laid it (`laidBy`, default the set's own; piece-floor.js
+ *  minPieceAreaOf of the scaled set: a quarter brick, or a fieldstone wall's / stone ring's smallest stone) drops into the joint. No cut, or no pieces = `pieces` itself. */
+export function applyGroutCuts(pieces, cuts, set, scale = 1, laidBy = set.layout) {
   const list = groutCutsOf(cuts);
   if (!list.length || !pieces || !pieces.length) return pieces;
   const eff = scaledSet(set, scale);
-  const minPieceArea = MIN_PIECE_FRACTION * eff.brickLengthIn * eff.brickHeightIn;
+  const minPieceArea = minPieceAreaOf(eff, laidBy); // the laying layout's own floor (piece-floor.js: fieldstone's smallest stone's)
   return list.reduce((acc, c) => bricksGroutCut(acc, c.polyline, { widthIn: c.widthIn ?? eff.grout.widthIn, minPieceArea }), pieces);
 }
 
