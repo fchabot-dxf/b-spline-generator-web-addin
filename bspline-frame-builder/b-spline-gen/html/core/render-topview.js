@@ -38,9 +38,9 @@ function bilinearSample(data, nx, nz, u, v) {
  * H20 item 1 (Fred, screenshots: the editor backdrop showed Anatomical ribs
  * at TOP / the chest V at BOTTOM, the OPPOSITE of the real 3D TOP view,
  * ground truth): this loop used to write canvas row `py` straight from
- * heightmap row `j=py`. `top-view.js`'s own (already-correct, via
- * COORD_SYSTEM.rasterYToGridRow) renderTopView flips this ("canvas py=0 is
- * at the Back (j=nz-1)"), so this reuses that SAME central utility instead
+ * heightmap row `j=py`. COORD_SYSTEM.rasterYToGridRow (core/coords.js) holds
+ * the flip ("canvas py=0 is at the Back (j=nz-1)"), so this reuses that
+ * SAME central utility instead
  * of re-deriving the flip. All neighbour sampling below stays entirely in
  * heightmap-array (j) space — only the FINAL pixel write target changes —
  * so the lighting/gradient math is untouched.

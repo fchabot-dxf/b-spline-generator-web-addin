@@ -15,8 +15,8 @@
  * grid's own high-j half — the same "a whole band, not a point" shape as
  * the real bug report's ribs), read back from the computed RGBA buffer, and
  * asserted to render in the SAME half of the canvas as it occupies in the
- * grid — i.e. matching terrain.js's own row order (top-view.js's "canvas
- * py=0 is at the Back (j=nz-1)" convention).
+ * grid — i.e. matching terrain.js's own row order (COORD_SYSTEM.rasterYToGridRow's
+ * "canvas py=0 is at the Back (j=nz-1)" convention, core/coords.js).
  *
  * (An early draft of this test used a small flat plateau as the "bump" —
  * it measured no signal at all, passing vacuously either way. Traced (by
@@ -57,7 +57,7 @@ describe('H20 item 1: editor backdrop row order matches the 3D TOP view (terrain
   it('a raised region at HIGH j (the back of the board) renders in the TOP half of the canvas', () => {
     const data = computeTopViewPixels(stepHeightmap('high'), NX, NZ, 'none');
     const { topHalfSum, bottomHalfSum } = halfSums(data);
-    // Ground truth (top-view.js's own documented convention): j=nz-1 (back)
+    // Ground truth (COORD_SYSTEM.rasterYToGridRow's convention): j=nz-1 (back)
     // must land near canvas py=0 (top of the image the user sees).
     expect(topHalfSum, `top-half sum ${topHalfSum} vs bottom-half ${bottomHalfSum}`).toBeGreaterThan(bottomHalfSum);
   });

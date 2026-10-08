@@ -13,7 +13,6 @@
  *   goHome()                 — reset orbit to home isometric view
  *   animateTo(theta,phi)     — orbit to a specific heading (ViewCube)
  *   setGroundGridVisible(v)  — toggle the reference grid
- *   updateTopView(...)       — render 2D heightmap to a canvas
  *   buildDrapeTexture(svg,w,h) — SE11: rasterize a drape SVG string (see
  *                              drape-svg.js's buildDrapeSvg) to a
  *                              transparent-background THREE.CanvasTexture,
@@ -42,7 +41,6 @@ import { applyFrameToPanel, frameLoopsWorld, pointInPolygon } from './frame-mesh
 import { ADAPTIVE_DISPLAY, adaptiveGridIndices } from './adaptive-mesh.js';
 import { OrbitController, HOME_BUTTON_TITLE } from './orbit-controller.js';
 import { SculptController } from './sculpt-controller.js';
-import { renderTopView } from './top-view.js';
 import {
   buildHeightField,
   buildLiveBrushColours,
@@ -534,10 +532,6 @@ export class TerrainPreview {
     if (this._drapeMesh) this._drapeMesh.visible = !visible;
     if (this._curves)    this._curves.visible    =  visible;
     this._needsRender = true;
-  }
-
-  updateTopView(heights, nx, nz, canvasId = 'svgEditorTopView', shadingIntensity = 0.25) {
-    renderTopView(canvasId, heights, nx, nz, shadingIntensity);
   }
 
   /** PNG data URL of the current scene at a custom resolution. */
