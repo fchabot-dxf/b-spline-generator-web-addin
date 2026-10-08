@@ -25271,3 +25271,39 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - TESTS: svg-download +2 (the size in inches = the viewBox -- fails on main's export; the cutter rules over the export);
   matrix lay's grey SVG row also requires inches + 0 open / degenerate paths; layout's board-follows row reads inches
   (BOARD_FOLLOWS.dpi removed, unused). lay 16/0, layout 80/0.
+### 2026-10-08 (seat D): pick 3 -- FAST-set blind spots, by REPLAY (each past fix's pre-fix engine, FULL vs FAST)
+- TOOL: tools/repro/replay_fast_vs_full.sh -- per fix commit, its PRE-fix core/ under today's sweep tests, every sweep
+  with a FULL mode (overlap / gap / seam / tip-fill-fans), FAST then FULL, behind the heavy-run guard. A fix whose FULL
+  fails while FAST passes = a gap. Replayed: 1e65704, dd98654, 8b38324, 2c32648, 6802fef, a96e521, 4aff8fa (56 runs).
+- RESULT: gap + seam + tip-fill-fans: whenever FULL failed, FAST failed too (no gap). OVERLAP: 2 gaps -- before dd98654
+  and before 6802fef the full sweep failed T16 / T17 9x12 at 8 in (29 / 27 fan x fan pairs, cap 0) while FAST passed 5/5
+  (the 8 in shared-side fan class seat E fixed in 1e65704; E's FAST extra covered T1 7x9 / T5 9x12 8 in only).
+- FIX: FAST_SET.extra + template_16: [8] (both boards). FAST 6/6 in 8.6 s (was 8.4 s). PROOF: the new FAST set on
+  dd98654^ and 6802fef^ cores now FAILS (T16 9x12 8 in, 29 pairs); on main 6/6.
+- Note: a replay FAIL is not always "the bug that fix fixed" (today's caps can be tighter than that day's engine);
+  the gap test only needs FULL vs FAST to disagree on the same source.
+### 2026-10-08 (seat A): "no 3D while editing" -- one declared table for every in-editor change outside the editor's onChange
+- AUDIT (browser, phone 4x CPU, editor open; preview.update / refreshFrame wrapped and timed, every editor control kind
+  driven): Frame tab -- every frame-record write (Generate, template, thickness, inset window on/off, window size, frame
+  undo) re-applied the hidden 3D frame via syncFramePanel -> preview.refreshFrame, 211 - 357 ms each (handle DRAGS: once,
+  on release); Photo relief height -- applyParam('carveZ') -> a full rebuild per slider step (~1 s wall); Brick Generate /
+  contour-from-frame: no hidden 3D (already right).
+- DECLARED: core/in-editor-3d.js IN_EDITOR_3D { photo, relief, frame: { inEditor, closed } } + inEditor3dAction(kind);
+  PHOTO_CHANGE folded in (its own module: app-init imports frame-panel, so frame-panel could not import app-init).
+  frame: editor open -> 'profile' (syncFramePanel still draws the 2D cut profile + board outline, skips refreshFrame);
+  relief: editor open -> applyParam(..., { rebuild: false }) + the backdrop (the top view shades by carveZ: terrain.js
+  scales heights by it); closed -> as before.
+- applyParam(key, value, { rebuild }) (default true): false writes + syncs the param, schedules no rebuild.
+- editorSessionFingerprint now includes P.carveZ: a relief-only session would otherwise close "unchanged" on [3D] and
+  leave the 3D stale (the frame and photo were already in it).
+- Frame-handle drag moves: brick-panel's frameRecordChanged listener syncs the control requirements once per
+  animation frame (syncControlRequiresSoon); the other callers stay synchronous. Browser: 10 record writes 526 -> 72 ms,
+  the end state of the 251 brick/frame controls (disabled + title) hash-identical to main's (f26db2ca8483). Not unit-
+  tested (module-private, DOM-driven) -- the brick / frame test files pass unchanged.
+- RESULT (browser): Frame tab 0 hidden 3D refreshes (was 1 each), relief 0 rebuilds (was 1 per step). After Generate +
+  thickness in the editor then Apply, the 3D frame meshes hash-identical to main's (e61ab192ac8d); while editing they
+  stay as they were (main updated them live, hidden).
+- TESTS: tests/in-editor-3d.test.js 5 (table rows; syncFramePanel open/closed; applyParam rebuild:false; relief wiring;
+  a relief-only session takes Apply on [3D] with the real fingerprint) + editor-session-fingerprint's relief case.
+  Mutations: unconditional refreshFrame fails 1; no relief in the fingerprint fails 2; applyParam ignoring the option
+  fails 1. Full suite 402 files, 6014/6014. Known failures: none.

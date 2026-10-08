@@ -52,6 +52,7 @@ export function editorSessionFingerprint() {
   return JSON.stringify({
     svg: P.editorSvg ?? null, frame: P.frame ?? null, bricks: P.brickSettings ?? null,
     photo: [P.photoImageDataUrl ?? null, P.photoEdits ?? []],
+    relief: P.carveZ ?? null, // in-editor-3d.js 'relief': its slider builds no 3D in the editor, so [3D] must see it
   });
 }
 
@@ -124,17 +125,8 @@ export const CHANGE_PIPELINE_IN_EDITOR = {
     tooling: ['serialize', 'persist'],
 };
 
-/**
- * The same rule for the Photo tab (2026-10-08): its panel calls back on EVERY slider step and every button, not through
- * the editor's onChange, so it had bypassed CHANGE_PIPELINE_IN_EDITOR -- MEASURED (phone, 4x CPU): each straighten step
- * rebuilt the hidden 3D, 2.2 s a step, 1.6 s of it the 3D view (the frame mesh 1.4 s); a drag 4.9 - 8.5 s (seat D).
- * With the editor open a photo edit repaints the editor's backdrop (its live feedback there) and builds no 3D; the 3D
- * is built when the session ends -- Apply, Cancel, or the 3D toggle (Apply's way; the session fingerprint includes
- * the photo). With the editor closed: the full rebuild, as before.
- */
-export const PHOTO_CHANGE = Object.freeze({ inEditor: 'backdrop', closed: 'rebuild' });
-/** What a photo change does now: PHOTO_CHANGE's row for whether the editor is open. */
-export const photoChangeAction = () => PHOTO_CHANGE[isEditorOpen() ? 'inEditor' : 'closed'];
+// The same rule for the changes that do not come through the editor's onChange (the Photo tab, its relief height,
+// the Frame tab's record writes): core/in-editor-3d.js IN_EDITOR_3D, one row per kind.
 
 /** PERF category timing — off by default (core/debug.js's own gate), so
  *  this costs nothing until switched on. Goes through THREE channels when

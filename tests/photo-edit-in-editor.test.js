@@ -2,7 +2,7 @@
  * 2026-10-08 (seat A; seat D measured the Photo straighten drag at 4.9 - 8.5 s a drag, phone 4x CPU). Two causes:
  *  1. The Photo tab (inside the editor) called back on every slider step straight into a FULL rebuild -- the 3D the
  *     editor hides (F35 item 18 (4), "no 3D while editing"; the frame mesh alone 1.4 s of a 2.2 s step). Now
- *     app-init.js PHOTO_CHANGE: editor open -> repaint the editor's backdrop only (render-topview.js
+ *     core/in-editor-3d.js IN_EDITOR_3D 'photo': editor open -> repaint the editor's backdrop only (render-topview.js
  *     refreshEditorTopView, at most once per animation frame); closed -> the full rebuild.
  *  2. The photo cache (core/photo/state.js) built its string key -- url + JSON of the edits -- for every SAMPLED
  *     PIXEL: 1.1 s of one 384-wide backdrop paint. Now the same url / edits objects skip it.
@@ -12,7 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { PHOTO_CHANGE, photoChangeAction } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
+import { IN_EDITOR_3D, inEditor3dAction } from '../bspline-frame-builder/b-spline-gen/html/core/in-editor-3d.js';
 import { updateEditorTopView, refreshEditorTopView, flushEditorTopView } from '../bspline-frame-builder/b-spline-gen/html/core/render-topview.js';
 import { ensurePhotoDecoded, getProcessedPhotoImage, _resetPhotoStateForTests } from '../bspline-frame-builder/b-spline-gen/html/core/photo/state.js';
 import * as ops from '../bspline-frame-builder/b-spline-gen/html/core/photo/ops.js';
@@ -47,19 +47,19 @@ beforeEach(() => {
 afterEach(() => { document.getElementById = realGetById; modal.style.display = 'none'; delete globalThis.requestAnimationFrame; });
 
 describe('a photo change made in the editor reaches its backdrop, not the 3D (F35 item 18 (4))', () => {
-  it('PHOTO_CHANGE: editor open -> the backdrop; closed -> the full rebuild', () => {
-    expect(PHOTO_CHANGE).toEqual({ inEditor: 'backdrop', closed: 'rebuild' });
+  it("IN_EDITOR_3D 'photo': editor open -> the backdrop; closed -> the full rebuild", () => {
+    expect(IN_EDITOR_3D.photo).toEqual({ inEditor: 'backdrop', closed: 'rebuild' });
     modal.style.display = 'flex';
-    expect(photoChangeAction()).toBe('backdrop');
+    expect(inEditor3dAction('photo')).toBe('backdrop');
     modal.style.display = 'none';
-    expect(photoChangeAction()).toBe('rebuild');
+    expect(inEditor3dAction('photo')).toBe('rebuild');
   });
 
   it("main.js's photo callback reads it: the backdrop refresh, else the rebuild", () => {
     const src = readFileSync('bspline-frame-builder/b-spline-gen/html/main/main.js', 'utf8');
     const at = src.indexOf('initPhotoPanel({');
     const block = src.slice(at, src.indexOf('});', at));
-    expect(block).toMatch(/photoChangeAction\(\) === 'backdrop'\s*\?\s*refreshEditorTopView\(\)\s*:\s*scheduleRebuild\(/);
+    expect(block).toMatch(/inEditor3dAction\('photo'\) === 'backdrop'\s*\?\s*refreshEditorTopView\(\)\s*:\s*scheduleRebuild\(/);
   });
 
   it('the backdrop refresh paints once per animation frame, with the latest params', () => {
