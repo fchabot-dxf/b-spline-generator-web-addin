@@ -24806,3 +24806,24 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   (the seam at T15 y = 3 / 4.2 and T9's two seams is one joint; main: 4/4 fail, 0.088). The 57 files touching the
   narrowing / bands 1728/1728; full suite (npm run test:full) 5966/5966. Known failures: none.
 - Shots: shots/seatD/a15/tips_main.png (before; red = bare) | tips_after.png.
+
+### 2026-10-08 (seat D): pick 2 -- the Art editor on Fred's phone, MEASURED (no app change; a touch-size decision is the advisor's)
+- TOOL: tools/repro/art_phone_audit.mjs -- real Chrome, 390 x 844, touch, CPU 4x, REAL touch input (CDP
+  Input.dispatchTouchEvent), the matrix's own serve root (bspline-frame-builder: a first run served the html folder and
+  lost the stylesheets -- every reach number from it was wrong, discarded). Per action: response (touch -> the end of
+  the last long task), longest task, blind time (long tasks with no loading card), and the EFFECT (the drawing's element
+  count + the editor mode before / after: a gesture that lands nowhere is not "fast"). Reach, per Art tab: every visible
+  control in the Artwork panel + top bar scrolled into view -- in the viewport, the element under its own centre, its
+  smaller side.
+- SPEED (27 actions: the 6 tabs, freehand / line / rect / circle, undo / redo, select / fit / delete, Lattice Generate,
+  Shape Generate + its undo, layer add / visibility): nothing is slow. Longest single task 199 ms (Shape Generate),
+  Lattice Generate 165, a freehand stroke 186 (its 1.2 s response is the drag itself); no action needs the loading card.
+  (My select tap missed the stroke, so that Delete removed nothing -- the script's aim, not the app.)
+- REACH: 349 control views over the 6 tabs, every one on screen and under its own centre (the 1 px native colour input
+  under its own toggle is by design). Under 24 px (WCAG 2.5.8's minimum): ~33 segmented buttons at 22 px (fill mode,
+  grid / snap, the Lattice + Shape Lattice orient / anchor / ties / colour switches), Add layer 22, the auto-nodes checkbox
+  14, contour-from-frame 16, and Delete layer 18 px beside three 24 px toggles (undoable in one step: H20 item 4 removed
+  its confirm, removeLayer pushes the undo state).
+- NOT a bug: General shows no stroke width while the Text tool is armed -- TOOLBAR_GROUPS.editorStrokeGroup hides it in
+  text mode by declaration (text uses fill), and General leaves the tool as it is.
+- Shots / data: shots/seatD/aart/art_phone_open.png (the drawer layout), art_phone_end.png, art_phone_audit.json.
