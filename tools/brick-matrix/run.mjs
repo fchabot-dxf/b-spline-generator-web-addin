@@ -22,6 +22,7 @@ import path from 'node:path';
 import { GROUPS, GROUP_OF, RUNNER_ORDER, bindGroups, runGroup, CLEAR_MENU, EDIT_PASSWORD_TEST, BRICK_CONTROLS, REQUIRES_SOURCE, GROUP_SETUP } from './groups/index.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 import { portBusy, dropStaleProfiles } from './ports.mjs';
+import { registerRun, makeStop, readRuns, classifyOrphans, processTable } from './run-registry.mjs';
 import { bootRetry } from './boot.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -84,6 +85,10 @@ if (flag('parallel')) {
   // (ports.mjs: Fusion's adexmtsv.exe held 9891, strokes' DevTools port, and dropped HTTP -- the old fetch read it as free)
   const dropped = dropStaleProfiles();
   if (dropped) console.log(`brick-matrix: removed ${dropped} leftover Chrome profile dir(s) no Chrome was using`);
+  // run-registry.mjs: report (never kill) what dead matrix runs left running -- their owner clears them with orphans.mjs
+  const procs = processTable();
+  const left = procs ? classifyOrphans(readRuns(), procs).filter((o) => o.pids.length) : [];
+  if (left.length) console.log(`brick-matrix: ${left.length} dead matrix run(s) left ${left.reduce((t, o) => t + o.pids.length, 0)} process(es) running -- node tools/brick-matrix/orphans.mjs`);
   let base = PORT;
   for (let tries = 0; tries < 5; tries++) {
     const ports = GROUPS.flatMap((_, i) => [base + 10 * (i + 1), base + 10 * (i + 1) + 1]);
@@ -149,8 +154,13 @@ if (await fetch(`http://127.0.0.1:${HTTP}/`).then(() => true, () => false)) {
 const server = spawn('python', [path.join(HERE, 'serve.py'), String(HTTP)], { cwd: ROOT, stdio: 'ignore' });
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${profile}`, '--no-first-run',
   '--no-default-browser-check', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank'], { stdio: 'ignore' });
-const stop = () => { try { chrome.kill(); } catch {} try { server.kill(); } catch {} };
+// run-registry.mjs: this run's Chrome and server on record, stopped (Chrome with its renderers) on EVERY exit path --
+// the finally below, a signal (a timeout / task stop / Ctrl+C), process exit; a hard kill leaves the record for orphans.mjs
+const runFile = registerRun({ runPid: process.pid, chromePid: chrome.pid, serverPid: server.pid, profile, port: PORT, http: HTTP, root: ROOT, startedAt: Date.now() });
+const stop = makeStop({ chrome, server, file: runFile });
 const dropProfile = () => { try { rmSync(profile, { recursive: true, force: true }); } catch {} };
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) process.on(sig, () => { stop(); dropProfile(); process.exit(130); });
+process.on('exit', stop);
 // The served app must BE --root (37, turn 207: a run whose HTTP port was already held by another seat's server
 // silently drove that other build -- 329 baseline bricks instead of 204, rows "not in this build"). http.server
 // failing to bind exits quietly, so compare one served file byte-for-byte with the same file under ROOT.
