@@ -84,11 +84,21 @@ export const TOUCH_TARGETS = {
   skip: 'input[type="range"], #editorColor, input[type="hidden"], input[type="color"]',
 };
 
+// ---- callouts never eat canvas gestures (seat D 2026-10-08, phone pinch audit): an overlay laid over the Art canvas
+// (the one-time "Try EXPAND" tip, BUG-06) passed touches to the browser (touch-action auto -> pointercancel), so a
+// pinch or stroke that started on it did nothing. Each callout lets gestures through to the canvas; only its own
+// `live` controls take a tap. Real CDP touch input on a coarse-pointer phone, the callout shown by the app's own call.
+export const CALLOUT_GESTURES = {
+  viewport: { name: 'phone 390x844', width: 390, height: 844 },
+  callouts: [{ id: 'editorExpandCallout', show: 'maybeShowExpandCallout', storageKey: 'bspline.editor.expandCalloutDismissed', live: 'editorExpandCalloutDismiss' }],
+  minZoom: 1.2, // the pinch spreads the fingers 60 -> 180 px: the view must zoom in at least this much
+};
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runCalloutGestures(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -320,6 +330,63 @@ async function runTouchTargets() {
       const opened = (await click('editorTabPhoto', 900)) === 'ok' && (await click(`photoTab_${tab}`, 600)) === 'ok' && (await click(`photoTool_${tool}`, 900)) === 'ok';
       await touchRow(vp, `Photo ${tab} / ${tool}`, opened, EDITOR_ROOT);
     }
+  }
+  await send('Emulation.setEmulatedMedia', { features: [] });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
+}
+
+// ---------------------------------------------------------------- callouts pass canvas gestures through (phone)
+const touchPts = (pts) => pts.map(([x, y], id) => ({ x, y, id, radiusX: 4, radiusY: 4, force: 1 }));
+async function touchGesture(frames) {
+  await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touchPts(frames[0]) });
+  for (const f of frames.slice(1)) { await sleep(25); await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touchPts(f) }); }
+  await sleep(25); await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(600);
+}
+// the callout shown by the app's own call (its dismissal key cleared first), the Art Draw tool armed, the view fitted.
+// The gestures start where the callout lies over the drawing itself (the svg covers the board, not the grid around it):
+// x0..x1 = that overlap, at y = between the callout's top and its button.
+function SHOW_CALLOUT(c) { return `(async () => { try { localStorage.removeItem(${JSON.stringify(c.storageKey)}); } catch (_) {}
+  document.getElementById('toolFit')?.click(); await new Promise((r) => setTimeout(r, 300));
+  let err = null; try { (await import('./editor/editor-ui.js'))[${JSON.stringify(c.show)}](window.svgEditor); } catch (e) { err = String(e); } await new Promise((r) => setTimeout(r, 300));
+  const el = document.getElementById(${JSON.stringify(c.id)}); const r = el.getBoundingClientRect(), live = document.getElementById(${JSON.stringify(c.live)}).getBoundingClientRect();
+  const sv = window.svgEditor._draw.node.getBoundingClientRect(), x0 = Math.max(r.left, sv.left), x1 = Math.min(r.right, sv.right);
+  return JSON.stringify({ shown: getComputedStyle(el).display !== 'none' && r.width > 0 && x1 - x0 >= 120, x: (x0 + x1) / 2, y: (r.top + live.top) / 2, x0, x1,
+    live: [(live.left + live.right) / 2, (live.top + live.bottom) / 2], err }); })()`; }
+const CANVAS_STATE = `JSON.stringify({ page: visualViewport.scale, vbW: window.svgEditor._draw.viewbox().width, sketch: window.svgEditor._sketchLayer.node.querySelectorAll('path,line,polyline,polygon').length })`;
+async function runCalloutGestures() {
+  const C = CALLOUT_GESTURES, vp = C.viewport;
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'any-pointer', value: 'coarse' }] });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await send('Emulation.setDeviceMetricsOverride', { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: true });
+  await send('Page.reload', {}); await waitApp();
+  await openBrickTab(); // opens the editor
+  const armed = (await click('editorTabArtwork', 900)) === 'ok' && (await click('artTab_draw', 600)) === 'ok' && (await click('toolDraw', 600)) === 'ok';
+  for (const c of C.callouts) {
+    // a pinch that starts on the callout zooms the canvas
+    let p = await jsJSON(SHOW_CALLOUT(c)), a = await jsJSON(CANVAS_STATE);
+    await touchGesture(Array.from({ length: 11 }, (_, k) => { const d = 30 + 6 * k; return [[p.x - d, p.y], [p.x + d, p.y]]; }));
+    let b = await jsJSON(CANVAS_STATE); const zoom = a.vbW / b.vbW;
+    // MEASURED on 102eb01: the browser took the pinch (pointercancel) and zoomed the whole PAGE x2.94, not the canvas
+    let ok = armed && p.shown && zoom >= C.minZoom && b.page === 1 && b.sketch === a.sketch;
+    checkRow('layout', `Callout ${c.id} (${vp.name}, touch): a pinch starting on it zooms the canvas (not the page), draws nothing`, ok,
+      `${armed ? '' : 'Draw tool not armed; '}${p.shown ? '' : `callout not shown over the drawing (overlap ${Math.round(p.x1 - p.x0)} px)${p.err ? ` (${p.err})` : ''}; `}canvas zoom x${zoom.toFixed(2)} (>= ${C.minZoom}), page zoom x${(+b.page).toFixed(2)} (1 expected), strokes ${b.sketch - a.sketch}`);
+    if (!ok) await shot(`FAIL_callout_pinch_${c.id}`);
+    await send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 }); // the rows below start from an unzoomed page either way
+    // a one-finger stroke that starts on it draws
+    p = await jsJSON(SHOW_CALLOUT(c)); a = await jsJSON(CANVAS_STATE);
+    await touchGesture(Array.from({ length: 11 }, (_, k) => [[p.x0 + 10 + (p.x1 - p.x0 - 20) * k / 10, p.y]]));
+    b = await jsJSON(CANVAS_STATE); ok = armed && p.shown && b.sketch === a.sketch + 1;
+    checkRow('layout', `Callout ${c.id} (${vp.name}, touch): a one-finger stroke starting on it draws`, ok,
+      `${armed ? '' : 'Draw tool not armed; '}${p.shown ? '' : 'callout not shown; '}strokes ${b.sketch - a.sketch} (1 expected)`);
+    if (!ok) await shot(`FAIL_callout_stroke_${c.id}`);
+    // its own control still takes a tap
+    p = await jsJSON(SHOW_CALLOUT(c)); a = await jsJSON(CANVAS_STATE);
+    await touchGesture([[p.live]]);
+    const gone = await js(`getComputedStyle(document.getElementById(${JSON.stringify(c.id)})).display === 'none'`);
+    b = await jsJSON(CANVAS_STATE); ok = p.shown && gone === true && b.sketch === a.sketch;
+    checkRow('layout', `Callout ${c.id} (${vp.name}, touch): its ${c.live} still takes a tap`, ok,
+      `${p.shown ? '' : 'callout not shown; '}hidden after the tap ${gone}, strokes ${b.sketch - a.sketch}`);
+    if (!ok) await shot(`FAIL_callout_live_${c.id}`);
   }
   await send('Emulation.setEmulatedMedia', { features: [] });
   await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });

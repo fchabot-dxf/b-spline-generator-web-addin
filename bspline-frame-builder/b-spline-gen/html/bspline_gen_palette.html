@@ -2070,20 +2070,23 @@
             dismiss it or when they enter Expand mode. Persisted via
             localStorage ("bspline.editor.expandCalloutDismissed"). See
             BUG-06.
+            It never eats a canvas gesture (seat D 2026-10-08, phone audit): a pinch or stroke starting on it went to
+            the browser (a page zoom x2.94, nothing drawn), so the callout passes pointers through to the canvas and
+            only its "Got it" button takes a tap (tools/brick-matrix CALLOUT_GESTURES).
           -->
           <div id="editorExpandCallout"
                style="display:none; position:absolute; left:54px; top:60px; z-index:6;
                       background:#fffae0; color:#3a2a00; border:1px solid #d8a900;
                       border-radius:6px; padding:8px 10px 8px 12px; font-size:11px;
                       max-width:230px; box-shadow:0 4px 12px rgba(0,0,0,0.18);
-                      font-family:'Segoe UI', sans-serif; line-height:1.4;">
+                      font-family:'Segoe UI', sans-serif; line-height:1.4; pointer-events:none;">
             <div style="font-weight:700; margin-bottom:4px; display:flex; align-items:center; gap:6px;">
               <span style="font-size:14px;">💡</span> Try EXPAND
             </div>
             <div>Tap the <span style="font-weight:700; color:#b58300;">⤢</span> tool in the toolbar
               to offset/outline your paths for CNC carving.</div>
             <button type="button" id="editorExpandCalloutDismiss"
-                    style="margin-top:6px; background:#d8a900; color:#fff; border:none;
+                    style="pointer-events:auto; margin-top:6px; background:#d8a900; color:#fff; border:none;
                            border-radius:3px; padding:3px 10px; cursor:pointer; font-size:10px;
                            font-weight:700;">Got it</button>
             <!-- Arrow pointing to the toolExpand button -->
