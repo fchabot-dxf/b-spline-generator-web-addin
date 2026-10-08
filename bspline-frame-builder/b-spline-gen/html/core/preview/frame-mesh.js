@@ -76,6 +76,33 @@ export function pointInPolygon(x, y, poly) {
   return inside;
 }
 
+/** pointInPolygon for MANY points against one polygon -- the same answer, measured byte-identical (frame-clip-identical
+ *  test): an edge toggles only when min(a.y, b.y) <= y < max(a.y, b.y), so each y-band lists every edge that can
+ *  toggle there, and the per-edge test is the same expression (parity does not depend on order). The clip's slowest
+ *  step was this test against the whole outline for every panel vertex. */
+export function polygonPointTester(poly) {
+  const n = poly.length;
+  let y0 = Infinity, y1 = -Infinity;
+  for (const p of poly) { if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y; }
+  const bands = Math.max(1, Math.ceil(n / 4)), h = (y1 - y0) / bands || 1;
+  const band = (y) => Math.min(bands - 1, Math.max(0, Math.floor((y - y0) / h)));
+  const lists = Array.from({ length: bands }, () => []);
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const lo = Math.min(poly[i].y, poly[j].y), hi = Math.max(poly[i].y, poly[j].y);
+    for (let k = band(lo); k <= band(hi); k++) lists[k].push(i, j);
+  }
+  return (x, y) => {
+    if (!(y >= y0 && y < y1)) return false; // no edge can straddle y
+    const l = lists[band(y)];
+    let inside = false;
+    for (let m = 0; m < l.length; m += 2) {
+      const a = poly[l[m]], b = poly[l[m + 1]];
+      if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+    }
+    return inside;
+  };
+}
+
 /**
  * The DRAWN panel surface at (x, y): every panel triangle above/below that
  * point (bucketed by grid cell), `lo` = the lowest (the underside, or the
@@ -319,7 +346,8 @@ function _polyMinusRect(poly, rect) {
 export function clipPanelToOutline(positions, index, poly, attrs = {}, cell = 0.1) {
   const P = positions, n = poly.length;
   const inside = new Int8Array(P.length / 3).fill(-1);
-  const isIn = (v) => (inside[v] < 0 ? (inside[v] = pointInPolygon(P[v * 3], P[v * 3 + 1], poly) ? 1 : 0) : inside[v]) === 1;
+  const inPoly = polygonPointTester(poly);
+  const isIn = (v) => (inside[v] < 0 ? (inside[v] = inPoly(P[v * 3], P[v * 3 + 1]) ? 1 : 0) : inside[v]) === 1;
   // outline segments bucketed by cell, to find the triangles the outline crosses
   const segs = new Map(), key = (i, j) => i * 1048576 + j, cx = (x) => Math.floor(x / cell);
   for (let k = 0; k < n; k++) {
@@ -352,13 +380,13 @@ export function clipPanelToOutline(positions, index, poly, attrs = {}, cell = 0.
     if (!hitsOutline) { if (isIn(ia) && isIn(ib) && isIn(ic)) kept.push(ia, ib, ic); continue; }
     const s2 = _area2([a, b, c]);
     if (Math.abs(s2) < 1e-14) {
-      if (pointInPolygon((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3, poly)) kept.push(ia, ib, ic);
+      if (inPoly((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3)) kept.push(ia, ib, ic);
       continue;
     }
     const tri = s2 > 0 ? [a, b, c] : [a, c, b];
     let pieces = _trianglePolygonPieces(tri, subjectCCW);
     if (!pieces) { // nothing crosses it: wholly in or out, decided at a strictly interior point
-      if (pointInPolygon((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3, poly)) kept.push(ia, ib, ic);
+      if (inPoly((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3)) kept.push(ia, ib, ic);
       continue;
     }
     for (const piece of pieces) {
