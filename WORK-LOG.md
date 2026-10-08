@@ -25040,3 +25040,19 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   f559a91f).
 - TESTS: editor-topview-lazy.test.js +3 (restored -> repaint on read / at once when showing; lost at read -> repaint).
   Fail 3/3 on main's file; dropping the isContextLost check fails 1. Full suite: 397 files, 5984/5984. Known failures: none.
+
+### 2026-10-08 (seat A): Frame Generate's validity rule declared once -- the test's hand copy is gone
+- generateFrame's isValid closure (inner defects -> outer defects -> piece length >= t -> undercut -> miter collide /
+  margin, + T10's realSeedsFor archRise) moved VERBATIM to editor-frame-profile.js frameGenerateIsValid(defs, rec,
+  board, tpl, region, t), with its item-21/23/39/59 history comments and primLength (moved from frame-panel, where it
+  had no other user). generateFrame calls it; frame-panel's unused paramsFromShapeModel import removed.
+- tests/frame-gen.test.js: the expected shape read a PARTIAL copy (no outer-defect / undercut / miter checks) that
+  diverged for 37 of 1,500 seeds (seat D had pinned press seed 4242 around it). It now reads the declared rule and
+  presses seed 27 too (MEASURED: seeds 27, 119, 135, 175, 221 diverge under the old copy at T1 7x9). Old copy back ->
+  "seed 27: expected ... to deeply equal" fails.
+- The 69 test files importing frame-panel / editor-frame-profile: 1917/1917 (2 workers; full suite after DDCS).
+- NOT changed, flagged: (1) tests/frame-no-hooked-miters.test.js realIsValid is also a stale partial copy, but that
+  sweep's logic depends on "real = pre-existing chain + margin" (its memoized pre/real split) -- swapping in the full
+  rule would count seeds failing the newer checks as item-39 regressions; it needs its own redesign. (2) frame-panel
+  ~line 508-530 holds a third copy of the same checks for a warning (frameHasIssue-style) -- a candidate to read
+  frameGenerateIsValid. (3) T7/T10/T11/T12-13 tests' isValid copies are deliberately partial (one property each).
