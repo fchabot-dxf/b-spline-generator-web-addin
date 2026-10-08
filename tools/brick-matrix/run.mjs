@@ -19,7 +19,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { GROUPS, GROUP_OF, RUNNER_ORDER, bindGroups, runGroup, CLEAR_MENU, EDIT_PASSWORD_TEST, BRICK_CONTROLS, REQUIRES_SOURCE, GROUP_SETUP } from './groups/index.mjs';
+import { GROUPS, SEQUENTIAL_GROUPS, GROUP_OF, RUNNER_ORDER, bindGroups, runGroup, CLEAR_MENU, EDIT_PASSWORD_TEST, BRICK_CONTROLS, REQUIRES_SOURCE, GROUP_SETUP } from './groups/index.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 import { portBusy, dropStaleProfiles } from './ports.mjs';
 import { registerRun, makeStop, readRuns, classifyOrphans, processTable } from './run-registry.mjs';
@@ -102,15 +102,19 @@ if (flag('parallel')) {
     console.log(`ports ${base + 10}..${base + 10 * GROUPS.length + 1} in use (another run?) -- trying ${base + 1000}`);
     base += 1000;
   }
-  const kids = GROUPS.map((g, i) => new Promise(async (resolve) => {
-    await sleep(10000 * i); // staggered: N apps booting at once starve each other (measured: 2 of 4 never came up)
+  // a SEQUENTIAL group (its timings must not share the machine: groups/blind.mjs) runs alone, after the parallel ones
+  const spawnGroup = (g, i, delay) => new Promise(async (resolve) => {
+    await sleep(delay); // staggered: N apps booting at once starve each other (measured: 2 of 4 never came up)
     const out = path.join(OUT, g);
     const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--group', g, '--port', String(base + 10 * (i + 1)), '--out', out, '--root', ROOT, ...(REAL_CLOUD ? ['--real-cloud'] : [])], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, [HEAVY_RUN_CHILD_ENV]: '1' } });
     child.stdout.on('data', (d) => process.stdout.write(String(d).split('\n').filter(Boolean).map((l) => `[${g}] ${l}`).join('\n') + '\n'));
     child.stderr.on('data', (d) => process.stderr.write(`[${g}] ${d}`));
     child.on('exit', (code) => resolve({ g, code, out }));
-  }));
+  });
+  const parallelGroups = GROUPS.filter((g) => !SEQUENTIAL_GROUPS.includes(g));
+  const kids = parallelGroups.map((g, k) => spawnGroup(g, GROUPS.indexOf(g), 10000 * k));
   const done = await Promise.all(kids);
+  for (const g of SEQUENTIAL_GROUPS) done.push(await spawnGroup(g, GROUPS.indexOf(g), 0));
   const rows = [], pageErrors = [], perGroup = new Map();
   for (const k of done) {
     try {
