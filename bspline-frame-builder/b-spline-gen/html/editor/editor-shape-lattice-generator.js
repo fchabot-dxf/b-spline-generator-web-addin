@@ -1343,13 +1343,16 @@ function _flaskRange(key, region, stroke, v) {
   return _range(0.021, 0.16);
 }
 
-export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0) {
+/** `onlyKey` (2026-10-08, frame Generate's draw reads one key per step): just that key's range -- the keys before
+ *  it still fill their declared defaults (all a range reads of them), their own ranges are never computed. */
+export function feasibleParamRanges(preset, region, params, strokeHalfWidth = 0, onlyKey = null) {
   const fn = _rangeFn(preset);
   const derived = DERIVED_PARAM_DEFAULTS[preset];
   const v = { ...params };
   const out = {};
   for (const key of PARAM_ORDER[preset]) {
-    out[key] = _withArcFloor(preset, key, region, strokeHalfWidth, v, fn(key, region, strokeHalfWidth, v));
+    if (onlyKey == null || key === onlyKey) out[key] = _withArcFloor(preset, key, region, strokeHalfWidth, v, fn(key, region, strokeHalfWidth, v));
+    if (key === onlyKey) break;
     if (v[key] == null && derived[key]) v[key] = derived[key](v); // a later range reads the declared default
   }
   return out;
