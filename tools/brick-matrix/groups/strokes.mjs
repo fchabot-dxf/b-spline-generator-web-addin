@@ -13,7 +13,7 @@ export const STROKE_CLEAR = {
 // ---- the runner. Its page / CDP helpers are run.mjs's own, bound once by groups/index.mjs bindGroups(ctx).
 let js, jsJSON, exists, editorOpen, apply, checkRow, openEditorTab, sleep;
 export function bind(ctx) { ({ js, jsJSON, exists, editorOpen, apply, checkRow, openEditorTab, sleep } = ctx); }
-export async function run() { await runStrokesClear(); await runBrushCrossings(); }
+export async function run() { await runStrokesClear(); await runWallAroundCrossings(); await runBrushCrossings(); }
 
 // Load-proofing (seat D, 2026-10-07: the gate's parallel run got "DevTools Runtime.evaluate got no reply in 60s" here,
 // 0 rows; alone the old ONE evaluate took 8.9 s -- 6.5 s of fixed in-page sleeps around a Generate and a stroke, 1.9 s
@@ -86,6 +86,14 @@ export const CROSSINGS = {
   // the Brush profile buttons (a case's `profiles[k]` picks one before stroke k; absent = as it is)
   profileButton: { stripped: 'brickBtnProfileStripped', continuous: 'brickBtnProfileContinuous' },
 };
+// a case's frame: laid (single soldier) when it says frame: true, none otherwise
+async function frameFor(k) {
+  const n = await js(`document.querySelectorAll('[data-brick-gen="1"][data-brick="frame"]').length`);
+  if (!!k.frame === n > 0) return;
+  await js(`(document.getElementById('brickTool_frame').click(), 1)`); await sleep(400);
+  await js(`(document.getElementById(${JSON.stringify(k.frame ? 'brickFramePreset_single_soldier' : 'brickFramePreset_none')}).click(), 1)`); await sleep(2500);
+  if (k.frame && (await js(`document.querySelectorAll('[data-brick-gen="1"][data-brick="frame"]').length`)) === 0) { await js(`(document.getElementById('brickGenerate').click(), 1)`); await piecesSettled('frame'); }
+}
 const CLEAR_STROKES = `import('./editor/editor-brick-tool.js').then((T)=>{ const ed=window.svgEditor;
   ed._sketchLayer.node.querySelectorAll('[data-brick="brush-spine"]').forEach((n)=>n.remove());
   T.forceRegenerateOwnedBrickElements(ed); return 1; })`;
@@ -95,10 +103,7 @@ async function runBrushCrossings() {
   if (!(await exists(C.tool))) { checkRow('strokes', 'Crossings', false, '', C.introducedBy); return; }
   for (const k of C.cases) {
     await js(CLEAR_STROKES);
-    if (!k.frame && (await js(`document.querySelectorAll('[data-brick-gen="1"][data-brick="frame"]').length`)) > 0) {
-      await js(`(document.getElementById('brickTool_frame').click(), 1)`); await sleep(400);
-      await js(`(document.getElementById('brickFramePreset_none').click(), 1)`); await sleep(2500);
-    }
+    await frameFor(k);
     await js(`(document.getElementById(${JSON.stringify(C.tool)}).click(), 1)`);
     await sleep(400);
     for (const [si, pts] of k.strokes.entries()) {
@@ -132,4 +137,60 @@ async function runBrushCrossings() {
   await js(CLEAR_STROKES);
   await js(`(document.getElementById(${JSON.stringify(C.profileButton.stripped)})?.click(), 1)`); // back to the default profile
   if (await editorOpen()) await apply();
+}
+
+// ---- T86 item 5 follow-up (advisor: "a hole in the wall where a cut stroke stops would be Fred-visible"): the Wall flows
+// round the strokes (item 13: every laid brush brick is a wall exclusion, read off the canvas), so after a crossing it must
+// follow the cut strokes' actual PARTS -- no wall piece over a stroke, and no more bare board at the junction than along a
+// plain stretch of the same strokes. Bare = board farther than bareJoints joints from every piece, sampled every grid in,
+// in a win-in square round the junction vs round a plain point; the band case first (on STROKE_CLEAR's frame).
+export const WALL_AROUND = {
+  tool: 'brickTool_brush', wallTool: 'brickTool_wall', introducedBy: 'T86 item 5 (pick 3)', grid: 0.02, win: 1.4, bareJoints: 1.5, slackSqIn: 0.01,
+  cases: [
+    { name: 'band', strokes: [[[0, 1.5], [0, 'top']]], junction: [0, 'band'], plain: [0, 1.5], frame: true },
+    { name: 'T', strokes: [[[-2.5, 0], [2.5, 0]], [[0, -2.2], [0, 0]]], junction: [0, 0], plain: [0, -1.4] },
+    { name: 'X', strokes: [[[-2.5, 0], [2.5, 0]], [[0, -2.2], [0, 2.2]]], junction: [0, 0], plain: [0, -1.4] },
+    { name: 'end-touch', strokes: [[[0, -2.2], [0, 0]], [[-2.5, 0], [2.5, 0]]], junction: [0, 0], plain: [0, -1.4] },
+  ],
+};
+async function runWallAroundCrossings() {
+  const C = WALL_AROUND;
+  await openEditorTab('editorTabBrick');
+  if (!(await exists(C.tool)) || !(await exists(C.wallTool))) { checkRow('strokes', 'Wall round cut strokes', false, '', C.introducedBy); return; }
+  for (const k of C.cases) {
+    await js(CLEAR_STROKES);
+    await frameFor(k);
+    await js(`(document.getElementById(${JSON.stringify(C.tool)}).click(), 1)`); await sleep(400);
+    for (const pts of k.strokes) {
+      await js(`import('./editor/editor-brick-tool.js').then((T)=>{ const ed=window.svgEditor, pts=${JSON.stringify(pts)}, cx=ed._mW/2, cy=ed._mH/2;
+        const at=([x,y])=>({ x: cx + x, y: y === 'top' ? 0.15 : cy + y });
+        T.brickBrushHandler.start(ed, at(pts[0])); for (const p of pts.slice(1)) T.brickBrushHandler.update(ed, at(p)); T.brickBrushHandler.finish(ed); return 1; })`);
+      await piecesSettled('brush');
+    }
+    // the wall laid again, round the strokes as they now are
+    await js(`(document.getElementById(${JSON.stringify(C.wallTool)}).click(), 1)`); await sleep(400);
+    await js(`(document.getElementById('brickGenerate').click(), 1)`);
+    await piecesSettled('wall');
+    const r = await jsJSON(`(async()=>{ const C=${JSON.stringify(C)}, k=${JSON.stringify(k)}; const T=await import('./editor/editor-brick-tool.js'); const { P }=await import('./core/state.js');
+      const { polygonIntersection, signedArea, pointInPolygon }=await import('./core/bricks/geometry.js');
+      const ed=window.svgEditor, J=T.elementGroutWidth(P.brickSettings, 'brush'), cx=ed._mW/2, cy=ed._mH/2;
+      const poly=(n)=>n.getAttribute('points').trim().split(/\\s+/).map((s)=>{ const [x,y]=s.split(',').map(Number); return {x,y}; });
+      const of=(kind)=>[...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick="'+kind+'"]')].map(poly);
+      const wall=of('wall'), brush=of('brush'), frame=of('frame'), all=[...wall, ...brush, ...frame];
+      const area=(p)=>p.length>=3?Math.abs(signedArea(p)):0;
+      let overlaps=0; for (const w of wall) for (const b of brush) if (area(polygonIntersection(w,b))>1e-4) overlaps++;
+      const sd=(p,a,b)=>{ const ex=b.x-a.x, ey=b.y-a.y, l=ex*ex+ey*ey||1e-12, t=Math.max(0,Math.min(1,((p.x-a.x)*ex+(p.y-a.y)*ey)/l)); return Math.hypot(a.x+t*ex-p.x,a.y+t*ey-p.y); };
+      const far=(p,Q)=>{ if (pointInPolygon(p.x,p.y,Q)) return false; for (let i=0;i<Q.length;i++) if (sd(p,Q[i],Q[(i+1)%Q.length])<=C.bareJoints*J) return false; return true; };
+      // the band's inner edge: the deepest frame point below the stroke's top, along the stroke's column
+      const bandY = frame.length ? Math.max(...frame.flatMap((q)=>q.filter((p)=>Math.abs(p.x-cx)<0.6 && p.y<cy).map((p)=>p.y))) : 0;
+      const centre=([x,y])=>({ x: cx + x, y: y === 'band' ? bandY : cy + y });
+      const bare=(c)=>{ const h=C.grid, near=all.filter((q)=>q.some((p)=>Math.abs(p.x-c.x)<C.win && Math.abs(p.y-c.y)<C.win)); let n=0;
+        for (let x=c.x-C.win/2; x<c.x+C.win/2; x+=h) for (let y=c.y-C.win/2; y<c.y+C.win/2; y+=h) { const p={x,y}; if (near.every((q)=>far(p,q))) n++; }
+        return +(n*h*h).toFixed(4); };
+      return JSON.stringify({ wall: wall.length, brush: brush.length, overlaps, junctionBare: bare(centre(k.junction)), plainBare: bare(centre(k.plain)), J }); })()`);
+    const ok = r.wall > 0 && r.brush > 0 && r.overlaps === 0 && r.junctionBare <= r.plainBare + C.slackSqIn;
+    checkRow('strokes', `Wall round cut strokes: ${k.name} -- no wall over a stroke, no hole at the junction`, ok,
+      `${r.wall} wall / ${r.brush} stroke pieces, wall x stroke overlaps ${r.overlaps}, bare at the junction ${r.junctionBare} sq in vs a plain stretch ${r.plainBare}`);
+  }
+  await js(CLEAR_STROKES);
 }
