@@ -37,6 +37,8 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { computeMirrorDimRects } from '../core/photo/mirror-dim.js';
 import { registerTweaksTarget, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { applyParam } from './param-manager.js';
+import { inEditor3dAction } from '../core/in-editor-3d.js';
+import { refreshEditorTopView } from '../core/render-topview.js';
 import { setEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
@@ -222,7 +224,11 @@ const clampReliefIn = (v) => Math.min(MAX_PHOTO_RELIEF_IN, Math.max(0.01, v));
 // presented here with photo-appropriate bounds/default instead of the
 // generic Skeleton tab's 0.1-20in Carve Depth slider.
 function setReliefHeight(v) {
-  applyParam('carveZ', clampReliefIn(v));
+  // core/in-editor-3d.js 'relief': with the editor open the value lands without a rebuild, the backdrop shows it
+  if (inEditor3dAction('relief') === 'backdrop') {
+    applyParam('carveZ', clampReliefIn(v), { rebuild: false });
+    refreshEditorTopView();
+  } else applyParam('carveZ', clampReliefIn(v));
 }
 
 function syncReliefHeightDisplay() {

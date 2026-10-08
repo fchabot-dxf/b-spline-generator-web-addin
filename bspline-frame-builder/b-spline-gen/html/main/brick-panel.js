@@ -1420,6 +1420,17 @@ function fanFacts(editor) {
   return has === null ? {} : { [FAN_FACT]: has };
 }
 
+/** frameRecordChanged fires on EVERY frame-handle drag move (MEASURED 2026-10-08: the corner facts 35 - 57 ms each at
+ *  4x CPU): its control requirements are synced once per animation frame, from the record as it is then -- the same
+ *  end state as a sync per move. */
+let _requiresQueued = false;
+function syncControlRequiresSoon() {
+  if (_requiresQueued) return;
+  _requiresQueued = true;
+  const run = () => { _requiresQueued = false; syncControlRequires(); };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run); else setTimeout(run, 0);
+}
+
 /** Audit (88's matrix): grey out every control whose declared requirement is unmet
  *  (main/brick-control-requires.js) -- disabled, with the reason as its tooltip. */
 function syncControlRequires() {
@@ -3049,7 +3060,7 @@ export function initBrickPanel() {
   document.getElementById('brickGenerate')?.addEventListener('click', () => generateNow()); // item 39: a new seed, every element
   onPageEvent('editorCommit', 'editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); syncWallAreaHint(); });
   onPageEvent('controlRequires', 'bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
-  onPageEvent('controlRequiresFrame', 'frameRecordChanged', () => syncControlRequires()); // item 74b: a new outline, new corner facts
+  onPageEvent('controlRequiresFrame', 'frameRecordChanged', () => syncControlRequiresSoon()); // item 74b: a new outline, new corner facts
   // the frame changed (template, shape): re-lay once it settles (item 27 -- the editor too; a template with no
   // contour clears the Frame). Wired ONCE per page (onPageEvent): it RE-LAYS, so a second copy would re-lay twice
   onPageEvent('frameRelay', 'frameRecordChanged', (e) => _scheduleFrameRelay(!!(e && e.detail && e.detail.restored)));

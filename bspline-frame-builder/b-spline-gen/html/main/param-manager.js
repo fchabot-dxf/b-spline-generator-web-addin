@@ -62,7 +62,9 @@ export function updateSculptToolButtons() {
 const STOCK_MIN_IN = 0.1;
 const STOCK_MAX_IN = 96;
 
-export function applyParam(key, value) {
+/** `opts.rebuild` (default true): false writes + syncs the param but schedules no rebuild -- a caller whose change
+ *  builds no 3D right now (core/in-editor-3d.js, e.g. the Photo tab's relief height while the editor is open). */
+export function applyParam(key, value, { rebuild: wantRebuild = true } = {}) {
   console.log(`[DEBUG] applyParam called: key=${key}, value=${value}`);
 
   // Clamp stock dimensions BEFORE writing P / echoing UI. Doing this
@@ -129,7 +131,7 @@ export function applyParam(key, value) {
   if (key === 'exportSpacing' || key === 'sameAsDisplayResolution') return;
 
   const delay = immediateRebuildParams.includes(key) ? 0 : 200;
-  if (!AppState.isInitializing) {
+  if (wantRebuild && !AppState.isInitializing) {
     const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
     const gridChanged = nx !== AppState.lastNx || nz !== AppState.lastNz;
     if (gridChanged || stampMaskParams.includes(key)) {
