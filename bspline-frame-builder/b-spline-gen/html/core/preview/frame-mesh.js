@@ -565,24 +565,25 @@ export function creasedNormals(positions, index, creaseDeg = FRAME_CREASE_ANGLE_
   const fill = rowStart.slice(0, nv), corners = new Int32Array(nc);
   for (let k = 0; k < nc; k++) corners[fill[index[k]]++] = k;
   const outIndex = new Array(nc), outPos = [], outN = [], source = [];
+  const made = []; // this vertex's new vertices so far: [nx, ny, nz, newVertex] flat, `nm` of them
   for (let v = 0; v < nv; v++) {
     const r0 = rowStart[v], r1 = rowStart[v + 1];
-    const made = []; // [nx, ny, nz, newVertex] for this vertex
+    let nm = 0;
     for (let r = r0; r < r1; r++) {
-      const f = (corners[r] / 3) | 0;
+      const f = (corners[r] / 3) | 0, fx = fn[3 * f], fy = fn[3 * f + 1], fz = fn[3 * f + 2];
       let x = 0, y = 0, z = 0;
       for (let q = r0; q < r1; q++) {
         const g = (corners[q] / 3) | 0;
-        if (g !== f && fn[3 * f] * fn[3 * g] + fn[3 * f + 1] * fn[3 * g + 1] + fn[3 * f + 2] * fn[3 * g + 2] < cosMax) continue;
+        if (g !== f && fx * fn[3 * g] + fy * fn[3 * g + 1] + fz * fn[3 * g + 2] < cosMax) continue;
         x += fn[3 * g] * fa[g]; y += fn[3 * g + 1] * fa[g]; z += fn[3 * g + 2] * fa[g];
       }
       const len = Math.hypot(x, y, z) || 1;
       x /= len; y /= len; z /= len;
       let id = -1;
-      for (const m of made) if (Math.abs(m[0] - x) < 1e-9 && Math.abs(m[1] - y) < 1e-9 && Math.abs(m[2] - z) < 1e-9) { id = m[3]; break; }
+      for (let m = 0; m < nm; m++) if (Math.abs(made[4 * m] - x) < 1e-9 && Math.abs(made[4 * m + 1] - y) < 1e-9 && Math.abs(made[4 * m + 2] - z) < 1e-9) { id = made[4 * m + 3]; break; }
       if (id < 0) {
         id = source.length;
-        made.push([x, y, z, id]);
+        made[4 * nm] = x; made[4 * nm + 1] = y; made[4 * nm + 2] = z; made[4 * nm + 3] = id; nm++;
         outPos.push(positions[3 * v], positions[3 * v + 1], positions[3 * v + 2]);
         outN.push(x, y, z);
         source.push(v);
