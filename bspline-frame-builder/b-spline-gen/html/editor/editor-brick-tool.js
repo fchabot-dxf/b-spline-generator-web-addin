@@ -51,6 +51,7 @@
  */
 import { ensureActiveLayer, BRICKS_LAYER_NAME, isBricksLayer, bricksLayerOf, applyLayerStateTo, BRICK_RECORD_ATTR, BRICK_ELEMENT_ATTR, BRICK_OWNER_ATTR, brickElementNodes, brickKindLayer, LOCKED_ATTR } from './layers.js';
 import { commitEdit } from './editor-commit.js';
+import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
@@ -1643,8 +1644,7 @@ export const brickBrushHandler = {
     const points = editor._points || [];
     editor._currentPath = null;
     editor._points = [];
-    if (preview) preview.remove(); // the live-feedback stroke, never the committed result
-    if (points.length < 2) return; // a tap, not a stroke -- nothing to bake
+    if (points.length < 2) { if (preview) preview.remove(); return; } // a tap, not a stroke -- nothing to bake
 
     // F35 item 16 (turn 201): a brush VARIANT (the Raised brush) adds its own per-stroke fields --
     // `levelIn` (laid proud by that much) and `strokeMode` -- through editor._brickStrokeOverrides (a
@@ -1652,44 +1652,57 @@ export const brickBrushHandler = {
     // frozen into THIS stroke's own settings snapshot like every other brush setting.
     const overrides = typeof editor._brickStrokeOverrides === 'function' ? editor._brickStrokeOverrides() : null;
     const settings = editor._brickSettings ? { ...editor._brickSettings, ...(overrides || {}) } : null;
-    if (!settings) return;
-    const layer = brickKindLayer(editor, 'brush') || activeLayerOf(editor); // item 64: a new stroke goes on the Brush layer
-    applyBrickLayerTooling(layer, settings);
-
-    // F35 item 3: draw the SPINE (real, persistent, plain <line> segments --
-    // already isCuttable with zero changes to editor-cut-tool.js), not the
-    // bricks directly. commitEdit() below dispatches 'editorCommit' BEFORE
-    // the undo snapshot, so the module-level listener's own
-    // regenerateOwnedBrickElements(editor) call runs synchronously and
-    // draws the actual bricks from this spine + its settings snapshot --
-    // the SAME path a later cut/stripe/move re-triggers, so there is only
-    // ONE brick-generating code path for Brush, not two to keep in sync.
-    //
-    // Simplified FIRST (the SAME ramerDouglasPeucker the plain pencil tool's
-    // own finishDrawing already applies, reused rather than re-derived) --
-    // MEASURED why this matters: one segment per raw drag-point sample (a
-    // typical mouse drag is a dozen+ points) means Stripe's own "the one
-    // cuttable element under the tap" finds just ONE tiny raw segment, not
-    // the user's whole visible stroke (a live test striped only 2 of a
-    // 4-stroke's own inches before this fix). Simplifying first collapses a
-    // straight or gently-curved drag down to a handful of real segments, so
-    // a tap anywhere lands on a piece that actually spans a meaningful
-    // length of the stroke -- Scissors is unaffected either way (cutAt's own
-    // point is exact, not snapped to a segment's own endpoints).
-    const simplified = ramerDouglasPeucker(points, 0.05);
-    const elementId = newBrickElementId();
-    const settingsJson = JSON.stringify(settings);
-    for (let i = 0; i < simplified.length - 1; i++) {
-      drawSpineSegment(
-        editor, layer, elementId, settingsJson,
-        { x: simplified[i][0], y: simplified[i][1] },
-        { x: simplified[i + 1][0], y: simplified[i + 1][1] },
-      );
-    }
-    commitEdit(editor);
-    notifyBricksGenerated(settings);
+    if (!settings) { if (preview) preview.remove(); return; }
+    // Seat D 2026-10-08 (phone audit, tools/repro/art_phone_audit.mjs SURFACE=brick, 390 px, CPU x4): the bake below ran
+    // inside the finger-up handler, ~100 ms frozen with no card before the 'bricks' stage of the follow-up lay painted
+    // (Brush, Raised brush and Grout cut alike; the Area brush already showed its card first). The stroke and its
+    // settings are taken NOW; the bake runs once the 'bricks' card is on screen, the live stroke line kept until then.
+    // (Returns the stage's promise; the pointer path ignores it, tests/brick-stroke-loading-stage.test.js awaits it.)
+    return withLoadingStageShownFirst('bricks', () => {
+      if (preview) preview.remove(); // the live-feedback stroke, never the committed result
+      _bakeBrushStroke(editor, points, settings);
+    });
   },
 };
+
+/** The Brush stroke's bake (brickBrushHandler.finish, once the 'bricks' card is shown): its spine + one commit. */
+function _bakeBrushStroke(editor, points, settings) {
+  const layer = brickKindLayer(editor, 'brush') || activeLayerOf(editor); // item 64: a new stroke goes on the Brush layer
+  applyBrickLayerTooling(layer, settings);
+
+  // F35 item 3: draw the SPINE (real, persistent, plain <line> segments --
+  // already isCuttable with zero changes to editor-cut-tool.js), not the
+  // bricks directly. commitEdit() below dispatches 'editorCommit' BEFORE
+  // the undo snapshot, so the module-level listener's own
+  // regenerateOwnedBrickElements(editor) call runs synchronously and
+  // draws the actual bricks from this spine + its settings snapshot --
+  // the SAME path a later cut/stripe/move re-triggers, so there is only
+  // ONE brick-generating code path for Brush, not two to keep in sync.
+  //
+  // Simplified FIRST (the SAME ramerDouglasPeucker the plain pencil tool's
+  // own finishDrawing already applies, reused rather than re-derived) --
+  // MEASURED why this matters: one segment per raw drag-point sample (a
+  // typical mouse drag is a dozen+ points) means Stripe's own "the one
+  // cuttable element under the tap" finds just ONE tiny raw segment, not
+  // the user's whole visible stroke (a live test striped only 2 of a
+  // 4-stroke's own inches before this fix). Simplifying first collapses a
+  // straight or gently-curved drag down to a handful of real segments, so
+  // a tap anywhere lands on a piece that actually spans a meaningful
+  // length of the stroke -- Scissors is unaffected either way (cutAt's own
+  // point is exact, not snapped to a segment's own endpoints).
+  const simplified = ramerDouglasPeucker(points, 0.05);
+  const elementId = newBrickElementId();
+  const settingsJson = JSON.stringify(settings);
+  for (let i = 0; i < simplified.length - 1; i++) {
+    drawSpineSegment(
+      editor, layer, elementId, settingsJson,
+      { x: simplified[i][0], y: simplified[i][1] },
+      { x: simplified[i + 1][0], y: simplified[i + 1][1] },
+    );
+  }
+  commitEdit(editor);
+  notifyBricksGenerated(settings);
+}
 
 /** F35 item 22 slice 2, the AREA brush (editor._currentMode === 'brickWallArea'): a drag paints a round brush of
  *  editor._brickAreaWidthIn (a translucent preview while dragging); on release the simplified stroke goes to

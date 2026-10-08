@@ -28,6 +28,7 @@ const SURFACES = {
   art: { tab: 'editorTabArtwork', panel: 'editorLayersPanel', strip: 'artTabStrip' },
   frame: { tab: 'editorTabFrame', panel: 'editorFramePanel', strip: null },
   photo: { tab: 'editorTabPhoto', panel: 'editorPhotoPanel', strip: 'photoTabStrip' },
+  brick: { tab: 'editorTabBrick', panel: 'editorBrickPanel', strip: null },
 };
 const SURFACE = process.env.SURFACE || 'art';
 const SURF = SURFACES[SURFACE];
@@ -49,10 +50,11 @@ for (let i = 0; i < 50 && !wsUrl; i++) {
 if (!wsUrl) { console.log('NO CDP'); stop(); process.exit(1); }
 const ws = new WebSocket(wsUrl);
 await new Promise((r) => ws.addEventListener('open', r));
-let id = 0; const pending = new Map(); const errors = [];
+let id = 0; const pending = new Map(); const errors = [], cssFails = [];
 ws.addEventListener('message', (ev) => {
   const msg = JSON.parse(ev.data);
   if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); return; }
+  if (msg.method === 'Network.responseReceived' && msg.params.response.status >= 400 && /[.]css([?#]|$)/.test(msg.params.response.url)) cssFails.push(`${msg.params.response.status} ${msg.params.response.url}`);
   if (msg.method === 'Runtime.exceptionThrown') errors.push((msg.params.exceptionDetails.exception?.description || msg.params.exceptionDetails.text).split('\n')[0]);
 });
 const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
@@ -78,11 +80,19 @@ try {
   await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('btnStampEdit').click();
     for (let i = 0; i < 80 && !window.svgEditor?._draw; i++) await new Promise((r) => setTimeout(r, 250));
     document.getElementById(${JSON.stringify(SURF.tab)})?.click(); await new Promise((r) => setTimeout(r, 1500)); return 1; })()`);
+  // the app's stylesheets really load (advisor 2026-10-08, seat A's finding: a probe serving only b-spline-gen/html 404s
+  // ../../styles/*.css, #previewCanvas then grows every frame and inflates every phone timing). No timing without them.
+  const styled = await js(`getComputedStyle(document.getElementById('previewCanvas')).position`);
+  console.log('styles', JSON.stringify({ previewCanvasPosition: styled, cssFails }));
+  if (styled !== 'absolute' || cssFails.length) { console.log('STYLES NOT SERVED: no audit'); stop(); process.exit(1); }
   // the page-side recorders
   await js(`(() => {
     const el = document.getElementById('loading-stage');
     window.__vis = () => !!el && !el.hidden && el.getClientRects().length > 0;
-    window.__ov = []; window.__long = [];
+    window.__ov = []; window.__long = []; window.__shown = [];
+    // the card ON SCREEN: a frame callback that sees it visible (a long task's own vis flag is read when its entry is
+    // DELIVERED, after the task -- a card set at the end of a blind task read as shown; MEASURED 2026-10-08)
+    { let was = false; const tick = () => { const v = window.__vis(); if (v && !was) window.__shown.push(performance.now()); was = v; requestAnimationFrame(tick); }; requestAnimationFrame(tick); }
     if (el) new MutationObserver(() => { if (window.__vis()) window.__ov.push({ t: performance.now(), txt: (el.textContent || '').trim().slice(0, 60) }); })
       .observe(el, { attributes: true, childList: true, characterData: true, subtree: true });
     new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__long.push({ start: e.startTime, dur: e.duration, vis: window.__vis() }); }).observe({ entryTypes: ['longtask'] });
@@ -92,8 +102,12 @@ try {
       const tasks = window.__long.filter((e) => e.start >= t0 - 5);
       const end = tasks.reduce((m, e) => Math.max(m, e.start + e.dur), t0);
       return JSON.stringify({ responseMs: Math.round(end - t0), longestMs: Math.round(tasks.reduce((m, e) => Math.max(m, e.dur), 0)),
-        busyMs: Math.round(tasks.reduce((s, e) => s + e.dur, 0)), blindMs: Math.round(tasks.filter((e) => !e.vis).reduce((s, e) => s + e.dur, 0)),
-        overlay: [...new Set(window.__ov.filter((o) => o.t >= t0 - 5).map((o) => o.txt))] }); };
+        busyMs: Math.round(tasks.reduce((s, e) => s + e.dur, 0)),
+        // long-task time before the card was first on screen after t0 (all of it when it never showed)
+        blindMs: (() => { const shown = window.__shown.find((t) => t >= t0 - 5) ?? Infinity; return Math.round(tasks.reduce((s, e) => s + Math.max(0, Math.min(e.start + e.dur, shown) - e.start), 0)); })(),
+        cardMs: (() => { const shown = window.__shown.find((t) => t >= t0 - 5); return shown == null ? null : Math.round(shown - t0); })(),
+        overlay: [...new Set(window.__ov.filter((o) => o.t >= t0 - 5).map((o) => o.txt))],
+        tasks: tasks.map((e) => [Math.round(e.start - t0), Math.round(e.dur)]) }); };
     window.__centre = (sel) => { const e = typeof sel === 'string' ? document.querySelector(sel) : sel; if (!e) return null;
       e.scrollIntoView({ block: 'center', inline: 'center' }); const r = e.getBoundingClientRect();
       return r.width && r.height ? { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height } : null; };
@@ -106,9 +120,10 @@ try {
   console.log('canvas', await js('JSON.stringify(window.__canvas())'));
   await send('Emulation.setCPUThrottlingRate', { rate: CPU });
 
-  const touch = async (points, stepMs = 30) => { // points: [[x, y], ...]: start, moves, end
+  const touch = async (points, stepMs = 30, beforeUp = null) => { // points: [[x, y], ...]: start, moves, end
     await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: points[0][0], y: points[0][1] }] });
     for (const p of points.slice(1)) { await sleep(stepMs); await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: p[0], y: p[1] }] }); }
+    if (beforeUp) await beforeUp(); // e.g. what the finger sees while still down
     await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
   const results = [];
@@ -207,6 +222,99 @@ try {
     await act('Photo: Relief tab', () => tapTab('relief'));
     await act('Photo: relief carved', () => tapSel('#photoBtnReliefCarved'));
     await act('Photo: relief raised', () => tapSel('#photoBtnReliefRaised'));
+  } else if (SURFACE === 'brick') {
+    // The Brick tab's drag gestures (advisor pick 2): a real touch stroke in board fractions, per tool. Per stroke, on top
+    // of the timing: firstBrickMs (touch -> the first change to a brick element: feedback), strokeMs (touch -> finger up),
+    // and LANDING -- where the recorded result sits vs the finger and vs the aim ring the app draws markerOffsetPx above it
+    // (the app's own applyTouchMarkerOffset): centroid offsets in screen px (+y = below).
+    const brickState = () => js(`(async () => { const ed = window.svgEditor, L = ed._sketchLayer.node;
+      const bt = await import('./editor/editor-brick-tool.js');
+      const pieces = [...L.querySelectorAll('[data-brick-gen="1"]')].map((n) => n.getAttribute('data-brick') + '|' + (n.getAttribute('points') || n.getAttribute('d') || ''));
+      const spines = [...L.querySelectorAll('[data-brick="brush-spine"]')].map((n) => n.outerHTML.length + ':' + (n.getAttribute('points') || [n.getAttribute('x1'), n.getAttribute('y1'), n.getAttribute('x2'), n.getAttribute('y2')].join(',')));
+      const cuts = typeof bt.groutCutPolylines === 'function' ? bt.groutCutPolylines(ed).map((c) => c.polyline) : [];
+      return JSON.stringify({ pieces, spines, cuts, undo: ed._undoStack.length }); })()`).then(JSON.parse);
+    const toScreen = (ptsIn) => js(`JSON.stringify((() => { const m = window.svgEditor._sketchLayer.node.getScreenCTM(); return ${JSON.stringify(ptsIn)}.map(([x, y]) => [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f]); })())`).then(JSON.parse);
+    const boardFrac = (fx, fy) => js(`JSON.stringify([window.svgEditor._mW * ${fx}, window.svgEditor._mH * ${fy}])`).then(JSON.parse);
+    const centroid = (ps) => ps.length ? [ps.reduce((s, p) => s + p[0], 0) / ps.length, ps.reduce((s, p) => s + p[1], 0) / ps.length] : null;
+    const parsePts = (s) => (s.split('|')[1] || '').trim().split(/[\s,]+/).map(Number).reduce((a, v, i, arr) => (i % 2 ? a : [...a, [v, arr[i + 1]]]), []).filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+    const tapId = (id) => tapSel('#' + id);
+    // one stroke: finger path in board fractions, touch events timed in page time; records feedback + landing
+    const brickStroke = async (name, path, steps = 12) => {
+      const fingerIn = []; for (const [fx, fy] of path) fingerIn.push(await boardFrac(fx, fy));
+      const pts = []; for (let i = 1; i < fingerIn.length; i++) for (let k = i === 1 ? 0 : 1; k <= steps; k++) pts.push([fingerIn[i - 1][0] + (fingerIn[i][0] - fingerIn[i - 1][0]) * k / steps, fingerIn[i - 1][1] + (fingerIn[i][1] - fingerIn[i - 1][1]) * k / steps]);
+      const finger = await toScreen(pts);
+      const before = await brickState();
+      await js(`(() => { window.__fb = null; const t0 = performance.now(); window.__fbT0 = t0; const root = window.svgEditor._draw.node;
+        window.__fbObs?.disconnect(); window.__fbObs = new MutationObserver((ms) => { if (window.__fb != null) return;
+          for (const m of ms) { const t = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+            if (t?.closest?.('[data-brick]') || [...m.addedNodes, ...m.removedNodes].some((n) => n.nodeType === 1 && (n.hasAttribute('data-brick') || n.querySelector?.('[data-brick]')))) { window.__fb = performance.now(); return; } } });
+        window.__fbObs.observe(root, { subtree: true, childList: true, attributes: true }); return 1; })()`);
+      let tEnd = 0, tUp = 0, midFb = null;
+      await act(name, async () => {
+        await js('window.__fbT0 = performance.now(), 1');
+        await touch(finger, 30, async () => {
+          await sleep(300); midFb = await js('window.__fb'); // a brick change while the finger is still down = live feedback
+          const sh = await send('Page.captureScreenshot', { format: 'png' });
+          if (sh.result?.data) writeFileSync(`${OUT_DIR}/mid_${name.replace(/[^A-Za-z0-9]+/g, '_')}.png`, Buffer.from(sh.result.data, 'base64'));
+          tUp = await js('performance.now()');
+        });
+        tEnd = await js('performance.now()');
+        return true;
+      });
+      const fb = JSON.parse(await js(`JSON.stringify({ first: window.__fb, t0: window.__fbT0 })`));
+      const after = await brickState();
+      const newPieces = after.pieces.filter((p) => !before.pieces.includes(p));
+      const newSpines = after.spines.filter((p) => !before.spines.includes(p));
+      const newCuts = after.cuts.slice(before.cuts.length).flat().map((p) => [p.x, p.y]);
+      const areaIn = JSON.parse(await js(`JSON.stringify((() => { const n = window.svgEditor._sketchLayer.node; const recs = [...n.querySelectorAll('[data-brick-record="wall-area"]')].map((r) => r.getAttribute('data-brick-element'));
+        const id = recs[recs.length - 1]; if (!id || ${before.pieces.length} === 0) return [];
+        return [...n.querySelectorAll('[data-brick="wall"]')].filter((e) => e.getAttribute('data-brick-owner') === id).map((e) => e.getAttribute('points') || ''); })())`));
+      const isArea = /^Area/.test(name) && areaIn.length;
+      const recIn = newCuts.length ? newCuts : isArea ? areaIn.map((p) => centroid(parsePts('x|' + p))).filter(Boolean) : newPieces.map((p) => centroid(parsePts(p))).filter(Boolean);
+      const rec = recIn.length ? centroid(await toScreen(recIn)) : null;
+      const aimIn = await js(`(async () => { const g = await import('./editor/editor-grid.js'); const ed = window.svgEditor; const was = ed._pointerType; ed._pointerType = 'touch';
+        const out = ${JSON.stringify(pts)}.map(([x, y]) => { const q = g.applyTouchMarkerOffset(ed, { x, y }); return [q.x, q.y]; }); ed._pointerType = was; return JSON.stringify(out); })()`).then(JSON.parse);
+      const aim = centroid(await toScreen(aimIn)), fing = centroid(finger);
+      const r = results[results.length - 1];
+      Object.assign(r, {
+        firstBrickMs: fb.first == null ? null : Math.round(fb.first - fb.t0), strokeMs: Math.round(tEnd - fb.t0),
+        liveWhileDown: midFb != null, afterUpMs: fb.first == null ? null : Math.round(Math.max(0, fb.first - tUp)), upHandlerMs: Math.round(tEnd - tUp),
+        newPieces: newPieces.length, removedPieces: before.pieces.filter((p) => !after.pieces.includes(p)).length, newSpines: newSpines.length, newCutPts: newCuts.length, undoSteps: after.undo - before.undo,
+        landing: rec ? { vsFingerPx: [Math.round(rec[0] - fing[0]), Math.round(rec[1] - fing[1])], vsAimPx: [Math.round(rec[0] - aim[0]), Math.round(rec[1] - aim[1])], aimAboveFingerPx: Math.round(fing[1] - aim[1]), from: newCuts.length ? 'recorded cut line' : isArea ? `the area's ${areaIn.length} bricks` : 'new pieces' } : null,
+      });
+      console.log('  ->', JSON.stringify({ liveWhileDown: r.liveWhileDown, afterUpMs: r.afterUpMs, upHandlerMs: r.upHandlerMs, firstBrickMs: r.firstBrickMs, strokeMs: r.strokeMs, newPieces: r.newPieces, removed: r.removedPieces, spines: r.newSpines, cutPts: r.newCutPts, undo: r.undoSteps, landing: r.landing }));
+    };
+    await act('Wall: tool', () => tapId('brickTool_wall'));
+    await act('Wall: Generate', () => tapId('brickGenerate'));
+    await act('Brush: tool', () => tapId('brickTool_brush'));
+    await brickStroke('Brush: stroke', [[0.22, 0.45], [0.78, 0.5]]);
+    await act('Raised brush: tool', () => tapId('brickTool_raisedBrush'));
+    await act('Raised brush: Bricks mode', () => tapId('brickRaisedMode_bricks'));
+    await brickStroke('Raised brush: stroke', [[0.22, 0.62], [0.78, 0.64]]);
+    await act('Raised brush: Grout mode', () => tapId('brickRaisedMode_grout'));
+    await brickStroke('Grout cut: stroke', [[0.3, 0.2], [0.7, 0.75]]);
+    await act('Raised brush: back to Bricks', () => tapId('brickRaisedMode_bricks'));
+    await act('Wall: tool (areas)', () => tapId('brickTool_wall'));
+    await act('Wall: Area sub-tool', () => tapId('brickSubTool_wall_area'));
+    await act('Area: width 2', () => tapId('brickWallAreaWidth_2'));
+    await brickStroke('Area brush: stroke', [[0.3, 0.3], [0.62, 0.38]]);
+    // scissors on the Brush stroke: press below it and drag so the AIM (above the finger) sits on the spine, release,
+    // then tap the green check
+    await act('Scissors: tool', () => tapId('brickTool_scissors'));
+    const [sx, sy] = await boardFrac(0.5, 0.475);
+    const aimUp = await js(`(async () => { const g = await import('./editor/editor-grid.js'); const ed = window.svgEditor; const was = ed._pointerType; ed._pointerType = 'touch';
+      const q = g.applyTouchMarkerOffset(ed, { x: 0, y: 0 }); ed._pointerType = was; return -q.y; })()`);
+    const sPath = []; for (let k = 0; k <= 8; k++) sPath.push([sx - 0.6 + 0.075 * k, sy + aimUp]);
+    const sScreen = await toScreen(sPath);
+    const sBefore = await brickState();
+    await act('Scissors: aim drag', async () => { await touch(sScreen, 30); return true; });
+    const okBtn = await js(`JSON.stringify((() => { const c = document.querySelector('#touch-confirm circle[fill="#2e7d32"]'); if (!c) return null; const r = c.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })())`).then(JSON.parse);
+    console.log('  -> confirm check', JSON.stringify(okBtn));
+    await act('Scissors: tap the check', async () => { if (!okBtn) return false; await touch([okBtn]); return true; });
+    const sAfter = await brickState();
+    console.log('  -> scissors', JSON.stringify({ spines: `${sBefore.spines.length} -> ${sAfter.spines.length}`, undo: sAfter.undo - sBefore.undo }));
+    const shotB = await send('Page.captureScreenshot', { format: 'png' });
+    if (shotB.result?.data) writeFileSync(`${OUT_DIR}/brick_after_strokes.png`, Buffer.from(shotB.result.data, 'base64'));
   }
 
   // ---- reach, per tab (each tab shows its own tools and its tool's settings): every visible control in the audited
