@@ -658,13 +658,25 @@ export function mitersCollide(miters, t) {
  *  own finding: a bar segment shorter than frame_thickness causes a "wing" artifact). */
 const primLength = (p) => (p.type === 'L' ? Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y) : Math.abs(p.rx * p.dTheta));
 
+/** [Generate]'s checks, in the order they run (frameGenerateFailure names the first that fails). */
+export const FRAME_GENERATE_CHECKS = Object.freeze(['innerDefects', 'outerDefects', 'pieceLength', 'undercut', 'mitersCollide', 'miterMargin']);
+
 /**
  * [Generate]'s validity rule (frame-panel.js generateFrame): a drawn seed set is kept only if this passes -- the ONE
  * declaration of it (2026-10-08: tests hand-copied parts of it and drifted -- 37 of 1,500 seeds picked different
  * shapes). `tpl` / `region` / `t` are the caller's (frameCutProfile's region, frame_thickness). Returns isValid(seeds).
- * The history of each check, as it stood in generateFrame:
  */
 export function frameGenerateIsValid(defs, rec, board, tpl, region, t) {
+  const failure = frameGenerateFailure(defs, rec, board, tpl, region, t);
+  return (s) => failure(s) === null;
+}
+
+/**
+ * The same rule, saying WHICH check (FRAME_GENERATE_CHECKS) a seed set fails first, or null -- so a test can ask
+ * "is the miter margin the only thing in the way" from one evaluation (tests/frame-no-hooked-miters.test.js).
+ * The history of each check, as it stood in generateFrame:
+ */
+export function frameGenerateFailure(defs, rec, board, tpl, region, t) {
   // Generate must never produce a broken frame (Fred): checked against the real inner profile, not just the
   // bare outline every seed's own ranges already guarantee (frame-handles.js generateValidFrameSeeds). H23
   // item 21: ALSO checked against every OUTER piece staying at least frame_thickness long (Template 7's own
@@ -696,7 +708,7 @@ export function frameGenerateIsValid(defs, rec, board, tpl, region, t) {
   // gate makes it fatal, so Generate retries around it here rather than the exception being removed.
   return (s) => {
     const inner = frameInnerProfile(defs, { ...rec, seeds: s }, board);
-    if (inner && inner.defects.length > 0) return false;
+    if (inner && inner.defects.length > 0) return 'innerDefects';
     const outer = frameCutProfile(defs, { ...rec, seeds: realSeedsFor(s) }, board);
     // H23 item 59 (Arched + taper): a high archRise combined with a large taper can shift the shoulder's own
     // tangent point far enough around the waist circle that hourglassConstruction's own waistMajor shortcut
@@ -707,9 +719,9 @@ export function frameGenerateIsValid(defs, rec, board, tpl, region, t) {
     // SAME check `frameCutProfile` already computes (outlineDefects, tangency included by default) -- Generate
     // rejects and redraws here, the same declared pattern items 21/23/39 already established for their own
     // measured defect classes, rather than hand-deriving a narrower range for this one combination.
-    if (outer.defects.length > 0) return false;
-    if (!outer.primitives.every((p) => primLength(p) >= t)) return false;
-    if (outlineHasUndercut(outer.primitives)) return false;
+    if (outer.defects.length > 0) return 'outerDefects';
+    if (!outer.primitives.every((p) => primLength(p) >= t)) return 'pieceLength';
+    if (outlineHasUndercut(outer.primitives)) return 'undercut';
     // H23 item 39 (Fred-approved guard -- his own correction: "a hooked tip is SHORT GRAIN, fibres
     // across a thin tip snap -- size the margin so a tip is never thin, not just 'miter inside the
     // wood'"): every miter's own straight line (its outer corner to its matching inner corner) must
@@ -725,6 +737,7 @@ export function frameGenerateIsValid(defs, rec, board, tpl, region, t) {
     // of the 0.04t floor) -- see editor-frame-profile.js's own MIN_MITER_MARGIN_T_FRAC comment and
     // WORK-LOG for the full numbers, including T7's own measured low per-draw pass rate.
     const miters = frameMiters(outer.primitives, inner.primitives);
-    return !mitersCollide(miters, t) && miterStaysInsideWood(outer.primitives, miters, t);
+    if (mitersCollide(miters, t)) return 'mitersCollide';
+    return miterStaysInsideWood(outer.primitives, miters, t) ? null : 'miterMargin';
   };
 }
