@@ -57,6 +57,9 @@ try {
   await send('Network.setBlockedURLs', { urls: ['*workers.dev*'] });
   await send('Emulation.setDeviceMetricsOverride', { ...VIEW, deviceScaleFactor: 1, mobile: true });
   await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  // the phone's own CSS: (pointer: coarse) rules (SA-MOBILE-4's 44 px tool buttons, ...) apply only with it (a first reach
+  // pass without it measured the desktop sizes)
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'any-pointer', value: 'coarse' }] });
   await send('Page.navigate', { url: `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html` });
   for (let i = 0; i < 120 && !(await js('!!document.getElementById("btnStampEdit")')); i++) await sleep(500);
   await sleep(4000);
