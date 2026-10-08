@@ -32,6 +32,20 @@ def _valid(op):
     return bool(op.hasToolpath and op.isToolpathValid)
 
 
+def setup_states(cam):
+    """Read-only, light: each setup of `cam` as the palette's setup cards show it (ui/html/cam-setup-state.js) --
+    [{'name', 'ok': True, 'ops': n, 'toolpaths': n with a valid toolpath}]. [] with no CAM product. One source for
+    the final TPGen report (after the toolpaths) and the palette's open (get_setup_states)."""
+    out = []
+    if not cam:
+        return out
+    for i in range(cam.setups.count):
+        s = cam.setups.item(i)
+        ops = _ops(s)
+        out.append({'name': s.name, 'ok': True, 'ops': len(ops), 'toolpaths': sum(1 for op in ops if _valid(op))})
+    return out
+
+
 def why_empty(op):
     """What Fusion itself says about an op left without a toolpath: the first line of its error and of its warning,
     '' when it says nothing (H23 item 98 -- after a long session the empty ops' op.error read 'Out of memory.' while

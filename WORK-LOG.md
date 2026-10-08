@@ -24338,3 +24338,18 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Single files: loading-steps-list 18/18, loading-signal 21/21, fusion-send-stages 5/5. The full suite was NOT clean:
   run at 3.9 GB free during the advisor's gate (Fred: 1.6 GB free, CPU 100%); 15 failures in unrelated files
   (timeouts / benchmarks under that load). To re-run when the advisor clears heavy runs.
+
+### 2026-10-07 (seat A): the CAM setup cards show the doc's real state -- advisor pick 1, (a) + (b)
+- Corrected premise (told the advisor): the B-spline cards only changed on a palette BUILD report ({name, ok} ->
+  "ok"/"fail"); my "pending after toolpaths" shot came from driving BUILD through engine.run. Real gaps: (a) after
+  APPLY a card read "ok" (= built) whatever its toolpaths; (b) a palette opened on an already-built doc read "pending"
+  on every card (init_result never touches the B-spline cards).
+- One declared source, cam_engine/toolpath_gen.py setup_states(cam): read-only [{name, ok, ops, toolpaths}], a toolpath
+  counted only when VALID (_valid: hasToolpath and isToolpathValid). Sent by (a) the final TPGen report ('setups') and
+  (b) a new read-only 'get_setup_states' action the B-spline tab sends when it boots (no workspace switch; no CAM
+  product -> []).
+- One declared map, ui/html/cam-setup-state.js setupCardState: no entry -> pending; ok false -> failed; no counts (a
+  BUILD report) -> built; 0 ops -> built · no operations; all valid -> toolpaths n/n (green); else
+  toolpaths k/n · m missing (red). The palette's classic script reads every source through showSetupEntry.
+- Tests: CAM-builder/test_setup_states.py 3 (fails 3/3 pre-change); tests/cam-setup-state.test.js 4 (the map; the
+  wiring pin fails 1/4 against the old palette). CAM-builder pytest 88/88. Live Fusion confirmation pending (holder).
