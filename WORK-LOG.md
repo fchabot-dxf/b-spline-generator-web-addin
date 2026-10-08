@@ -24761,3 +24761,30 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   declaration of PATCH_MAX_FACE); the coverage matrix reads it, 79/79, its reference-scan equality pins unchanged.
 - Full suite (npm run test:full, after merging main with seat A's narrowestGapCached): 5956/5956. Known failures: none.
 - Shots: shots/seatD/a16c/t11_hole_main.png (before; red = bare) | t11_after_fix.png.
+
+### 2026-10-08 (seat D): T86 21b measured closed; the 1.5 in narrowed-band seams (T15 / T9) are one joint
+- 21b (three-band corner overlap), MEASURED, no code: three_band frame lays, 19 templates x 0.75-1.5 in, fit rule on:
+  7x9 / 9x12 0 pairs > 1e-3 sq in; 12x16 0 in 76 lays (6 keep all three bands); 18x24 0 in 76 (35 keep all three).
+  The row-seam defect (12 pairs ~100% contained) was fixed by 44f375e (fc un-todo'd its repro). With bandFit:false
+  (icons only) 7x9 overlaps 3.6 sq in in 12 lays, all deep-stack fan-on-fan (item 30's class); skipped per the advisor.
+- PICK 1, MEASURED: T15 7x9 at 1.5 in had a bare line 2.9 in long down the centre (largest patch 0.118 sq in, 0.195 of a
+  face), T9 1.5 in two 3.6 in lines (0.075 each). Not missing bricks: the seam between a NARROWED band (T86 item 30 b',
+  narrowSingleBand) and its facing row was 0.088 in = 2.6 joints. Arithmetic, read back exactly: the line between two
+  lines drops when its run at the row edge is < MIN_LINE_RUN_IN (0.02); narrowing took that cliff "less a joint", and
+  each row stops half a joint short -- seam = 0.02 + 2 J. (bricks-band-narrow's own bare check counts ground past 1.5
+  joints, so a 2.6-joint seam passed it.)
+- FIX (a general rule): the narrowed band stops where the dropping line's run at its row edge is ONE JOINT
+  (lineBetweenLinesDropsAt / lineLiveAtDepth take an optional run floor, default MIN_LINE_RUN_IN unchanged); at a neck
+  that run IS the seam between the two facing rows. The wall boundary keeps the cliff depth (the caller already takes
+  the deeper of it and the band edge + half a joint).
+- MEASURED vs main 955a71e (19 templates x 8 presets x 0.75-1.5 in, full lay, sha1 of every polygon): 7x9 596 / 608
+  byte-identical -- the 12 changed are exactly T9 + T15 at 1.5 in (6 course presets each), bare 0.15 / 0.18 -> 0, overlap
+  0 -> 0 (T9 butt / double course lay 84 -> 80 frame pieces); 9x12 608 / 608 identical. Lays over the 0.05-face bar 18 -> 6
+  (all T16 1.5 in).
+- T16 1.5 in NOT changed: its wall region pinches at the neck; the upper lobe's tip is 39 deg, under TIP_FILL_MIN_DEG 60
+  (the advisor's no-needle ruling) and its sliver (~0.045 sq in, 7.5 % of a face) under the wall's piece floor -- bare by
+  two declared rules. Kept as the one PATCH_KNOWN (0.08, measured 0.072) pending the advisor's call.
+- TESTS: bricks-wall-coverage-matrix PATCH_KNOWN T15 / T9 removed (main: those 2 fail, 0.195 / 0.240); bricks-band-narrow +4
+  (the seam at T15 y = 3 / 4.2 and T9's two seams is one joint; main: 4/4 fail, 0.088). The 57 files touching the
+  narrowing / bands 1728/1728; full suite (npm run test:full) 5966/5966. Known failures: none.
+- Shots: shots/seatD/a15/tips_main.png (before; red = bare) | tips_after.png.
