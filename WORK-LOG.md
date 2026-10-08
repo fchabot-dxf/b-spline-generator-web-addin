@@ -25059,3 +25059,17 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - CORRECTION to (2) above: frame-panel's _frameRecordBreaksNoHookRule is NOT a copy of Generate's rule -- it is the
   drag-stop rule (H23 items 39/63), deliberately different (raw drawn geometry, no archRise pin, inner-profile
   defects ignored so the drag-stop never fights them). Not a candidate.
+
+### 2026-10-08 (seat A): frame-no-hooked-miters reads Generate's declared rule (advisor pick; on frame-validity-rule)
+- editor-frame-profile.js: FRAME_GENERATE_CHECKS (innerDefects, outerDefects, pieceLength, undercut, mitersCollide,
+  miterMargin -- the rule's checks in the order they run) + frameGenerateFailure (the first failing check, or null).
+  frameGenerateIsValid = "no failure": the same checks, order and short-circuits as before.
+- tests/frame-no-hooked-miters.test.js: realIsValid / preExistingIsValid (hand copies, drifted -- no outer-defect,
+  undercut or miter-collision checks; pre used the older reflex-arc test) removed. The item-39 split stays
+  meaningful as "is the miter margin the ONLY thing in the way": one memoized failure evaluation per draw; real = null,
+  pre-existing = null or 'miterMargin' (the last check). MUTATION 1: T7 raw seed 2 @ 7x9 fails exactly on
+  'miterMargin' (MEASURED); MUTATION 2 reads frameGenerateIsValid. Orphans removed: primLength,
+  paramsFromShapeModel import.
+- Mutation: the rule no longer reporting the margin (return null) -> MUTATION 1 fails.
+- Test files importing frame-panel / editor-frame-profile: 69 files 1917/1917 (2 workers). Full suite after DDCS.
+- Must merge AFTER frame-validity-rule (this branch is built on it).
