@@ -20,6 +20,7 @@
 import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange } from '../core/frame-record.js';
 import { P, isFusionMode } from '../core/state.js';
 import { takeSnapshot, ensureUndoBaseline } from '../core/history.js';
+import { inEditor3dAction } from '../core/in-editor-3d.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
 import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
@@ -351,7 +352,9 @@ export function syncFramePanel() {
     joinInfo.textContent = lines.join(' ');
   }
   if (typeof window !== 'undefined' && window.svgEditor) drawFrameProfile(window.svgEditor);
-  AppState.preview?.refreshFrame?.(); // F7: the 3D trimmed panel + wood bars, live
+  // F7: the 3D trimmed panel + wood bars, live -- not while the editor is open (core/in-editor-3d.js 'frame': the
+  // 2D profile above is its live view there; the 3D frame is applied when the session ends)
+  if (inEditor3dAction('frame') === 'refresh3D') AppState.preview?.refreshFrame?.();
 }
 
 /**
