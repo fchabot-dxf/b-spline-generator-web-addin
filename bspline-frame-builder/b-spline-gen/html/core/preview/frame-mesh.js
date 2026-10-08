@@ -114,23 +114,30 @@ export function polygonPointTester(poly) {
 export function panelSurface(positions, index, W, H, nx, nz) {
   const cw = W / Math.max(1, nx - 1), ch = H / Math.max(1, nz - 1);
   const ci = (x) => Math.floor((x + W / 2) / cw), cj = (y) => Math.floor((y + H / 2) / ch);
-  const buckets = new Map();
-  const P = positions, E = 1e-9;
-  for (let t = 0; t < index.length; t += 3) {
+  const P = positions, E = 1e-9, nt = index.length / 3;
+  // each triangle's cell box, then the cells' triangle lists as one flat array (count, then fill in triangle order)
+  const box = new Int32Array(nt * 4);
+  let gi0 = Infinity, gi1 = -Infinity, gj0 = Infinity, gj1 = -Infinity;
+  for (let f = 0, t = 0; f < nt; f++, t += 3) {
     const a = index[t] * 3, b = index[t + 1] * 3, c = index[t + 2] * 3;
     const i0 = ci(Math.min(P[a], P[b], P[c]) - E), i1 = ci(Math.max(P[a], P[b], P[c]) + E);
     const j0 = cj(Math.min(P[a + 1], P[b + 1], P[c + 1]) - E), j1 = cj(Math.max(P[a + 1], P[b + 1], P[c + 1]) + E);
-    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
-      const k = i * 1048576 + j;
-      let list = buckets.get(k);
-      if (!list) buckets.set(k, (list = []));
-      list.push(t);
-    }
+    box[4 * f] = i0; box[4 * f + 1] = i1; box[4 * f + 2] = j0; box[4 * f + 3] = j1;
+    if (i0 < gi0) gi0 = i0; if (i1 > gi1) gi1 = i1; if (j0 < gj0) gj0 = j0; if (j1 > gj1) gj1 = j1;
   }
+  const gw = nt ? gi1 - gi0 + 1 : 0, gh = nt ? gj1 - gj0 + 1 : 0;
+  const start = new Int32Array(gw * gh + 1);
+  for (let f = 0; f < nt; f++) for (let i = box[4 * f]; i <= box[4 * f + 1]; i++) for (let j = box[4 * f + 2]; j <= box[4 * f + 3]; j++) start[(i - gi0) * gh + (j - gj0) + 1]++;
+  for (let k = 0; k < gw * gh; k++) start[k + 1] += start[k];
+  const fill = start.slice(0, gw * gh), tris = new Int32Array(start[gw * gh]);
+  for (let f = 0; f < nt; f++) for (let i = box[4 * f]; i <= box[4 * f + 1]; i++) for (let j = box[4 * f + 2]; j <= box[4 * f + 3]; j++) tris[fill[(i - gi0) * gh + (j - gj0)]++] = 3 * f;
   return {
     at(x, y) {
       let lo = null, hi = null;
-      for (const t of buckets.get(ci(x) * 1048576 + cj(y)) || []) {
+      const i = ci(x) - gi0, j = cj(y) - gj0;
+      if (!(i >= 0 && i < gw && j >= 0 && j < gh)) return null;
+      for (let r = start[i * gh + j], r1 = start[i * gh + j + 1]; r < r1; r++) {
+        const t = tris[r];
         const h = baryHit(P, index, t, x, y);
         if (!h) continue;
         if (!lo || h.z < lo.z) lo = h;
