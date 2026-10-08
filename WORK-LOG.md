@@ -25064,3 +25064,19 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Noticed, not changed: tests/frame-gen.test.js's isValid is a PARTIAL hand copy of generateFrame's rule (its own
   comment: 37 of 1,500 seeds pick different shapes). Declaring the rule once (an exported predicate both use) would
   end the drift -- a separate pick.
+
+### 2026-10-08 (seat A): Frame Generate's draw reads resolved params without the outline build (pick 2; on frame-seeds-r1)
+- READ all 11 solvers: each one's .params is its own _resolveParams(preset or 'hourglass', ...) result copied; the
+  hourglass, bottle and diamondTopHourglassPinch solvers also drop unset FRAME_ONLY_PARAM_KEYS. Nothing in the file
+  writes to the resolved object afterwards; constructions never reached by the .params path.
+- DECLARED: generateSilhouette's 11-way ternary is now SILHOUETTE_SOLVERS { preset: { solve, frameOnlyWhenSet } }
+  (any other preset -> hourglass, as before); the drop moved from the three solvers into _reportedParams, which
+  generateSilhouette and the new silhouetteParams both use -- one declaration of what .params is.
+- generateFrameSeeds: generateSilhouette(region, {preset, params}).params -> silhouetteParams(region, {preset, params}).
+- IDENTITY: seeds sweep 95/95 identical to the original baseline (5 boards x 19 templates x 30 seeds + full-mode
+  ranges at every draw step). tests/silhouette-params.test.js: JSON-equal (key order included) for every template x 3
+  boards along each draw (3 seeds + no params), every Shape Lattice preset x 3 seeds, an unknown preset.
+- SPEED (profile, 3 pairs): generateFrameSeeds 264 - 281 -> 199 - 215 ms (-24%), the retry loop 582 - 595 -> 516 - 527
+  (-11%). With pick (a) this morning: the draw 541 - 586 -> ~205 ms (-63%), the loop 893 - 962 -> ~520 ms (-44%).
+- MUTATIONS: silhouetteParams without the reporting step fails 4/4; without the hourglass fallback fails 1/4.
+- Full suite (locks clear): 399 files, 5991/5991. Known failures: none. Must merge after frame-seeds-r1.
