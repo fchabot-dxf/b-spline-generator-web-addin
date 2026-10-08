@@ -24827,3 +24827,28 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - NOT a bug: General shows no stroke width while the Text tool is armed -- TOOLBAR_GROUPS.editorStrokeGroup hides it in
   text mode by declaration (text uses fill), and General leaves the tool as it is.
 - Shots / data: shots/seatD/aart/art_phone_open.png (the drawer layout), art_phone_end.png, art_phone_audit.json.
+
+### Pick 1: stones across templates and sizes -- measured, nothing to fix (seat E / 61, 2026-10-08)
+- ENGINE (generateBricks + the app's bricksForBrushStroke, T1 / T10 / T18 7x9, White rocks wall in a White rocks or
+  Grey stone ring, 0.75 / 1 / 1.25 in; brush X, brush T, a grout cut across the wall, one across the ring): 72 rows,
+  0 overlaps (wall x wall / wall x frame / frame x frame / wall x stroke), extra bare over the plain lay <= 0.08 sq in
+  (T18 brush X at 1.25 in), none over the matrix slack 0.1. A first count read 36 rows "overlapping": the harness's own
+  stroke x stroke (the engine has no crossing split; the app does) and stroke x ring (the app cuts strokes at the frame).
+- IN APP (the strokes group's STONE_CUTS cases, temporarily looped over T10 / T18 at 0.75 / 1 in and T1 at 0.75 in;
+  T1 at 1.25 in is the permanent row): 25 rows, 0 FAIL, 0 overlaps, junction bare 0 - 0.033 sq in (widest 3.1 joints,
+  T18 grout cut across the ring at 1 in). T18's "plain stretch" reads ~0.18 at every size: its plain point (4.6, 6.6)
+  sits at T18's board edge and the window counts off-board points -- a harness reading, not a hole.
+- No code change; the temporary loop was not committed (strokes.mjs restored).
+
+### Pick 3: Continuous strokes + Raised dabs over stones -- measured, nothing to fix (seat E / 61, 2026-10-08)
+- IN APP (template_1, White rocks wall in a Grey stone ring, 1.25 in; the strokes group's STONE_CUTS measure, a
+  temporary probe, not committed): Continuous X on the wall -- junction bare 0.0024 sq in, 0 overlaps; a Continuous
+  stroke into the ring 0.0136; a Raised-bricks stroke across the wall 0; all vs a plain stretch of 0.
+- DABS, aimed at the biggest stone's centroid near the board's centre: a Raised-bricks dab (one 0.33 in piece) inside a
+  0.45 sq in stone -- the stone is split by a joint-wide seam along the dab and wraps it (fill-shape.js splitRound, live):
+  bare 0, overlaps 0 (shot: shots/seatE/stones/dab_raised_zoom2.png). A grout dab inside a 1.26 sq in stone leaves the
+  stone whole, as grout-cut.js declares (a cut that never reaches a brick's edge opens no joint): bare 0.
+- TRAP for the next probe: the probe's Generate after the strokes RE-SEEDS the wall, so a dab aimed at one lay's stone
+  lands somewhere else in the next (the first dab run sat on a joint and proved nothing). A dab case must measure the
+  lay it was aimed at (no second Generate).
+- No code change.
