@@ -40,7 +40,12 @@ function checkRubble(bricks, region) {
   const maxCourse = STONE.brickHeightIn * (1 + COURSED_RUBBLE.courseJitter);
   const tall = B.filter((q) => q.y1 - q.y0 > maxCourse + 1e-9).length;
   const tooTall = B.filter((q) => q.y1 - q.y0 > 2 * maxCourse + STONE.grout.widthIn + 1e-9).length;
-  const tooLong = B.filter((q) => q.x1 - q.x0 > STONE.brickLengthIn * COURSED_RUBBLE.lengthRange[1] + 1e-9).length;
+  // a stone at the region's EDGE may run past the length range: it took the sliver the edge cut (layouts/coursed-rubble.js,
+  // seat E 2026-10-08) -- a sliver under the floor, so under a third of a stone plus a joint longer
+  const sd = (v, a, b) => { const ex = b.x - a.x, ey = b.y - a.y, l = ex * ex + ey * ey || 1e-12, u = Math.max(0, Math.min(1, ((v.x - a.x) * ex + (v.y - a.y) * ey) / l)); return Math.hypot(a.x + u * ex - v.x, a.y + u * ey - v.y); };
+  const atEdge = (p) => p.some((v) => region.some((a, k) => sd(v, a, region[(k + 1) % region.length]) < STONE.grout.widthIn));
+  const maxLen = STONE.brickLengthIn * COURSED_RUBBLE.lengthRange[1];
+  const tooLong = bricks.filter((b, i) => B[i].x1 - B[i].x0 > (atEdge(b.polygon) ? maxLen + STONE.brickLengthIn / 3 + STONE.grout.widthIn : maxLen) + 1e-9).length;
   let inside = 0, covered = 0;
   for (let x = 0.05; x < W; x += 0.1) for (let y = 0.05; y < H; y += 0.1) {
     if (!pointInPolygon(x, y, region)) continue;

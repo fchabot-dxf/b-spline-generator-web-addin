@@ -25429,3 +25429,25 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   fails 3/4 on main; PATTERN_SWEEP_FULL=1 2,736/2,736 (284 s). Gap / overlap / tip-fill FULL sweeps pass; affected suites
   (74 files) 965/965.
 - FOUND on the way (shipped alone first, empty-region): T9 7x9 1.5 in with the octagon-dot tiles froze (an empty region).
+
+### Wall sets at Fred's sizes (pick 2) + coursed rubble runs to its region's edge (seat E / 61, 2026-10-08)
+- MEASURED (sets 2 / 3 / 4 / 5 as wall + frame, every template x 7x9 / 9x12 x 0.75 - 1.5 in x single soldier / three-band,
+  1,216 lays): no overlap and nothing off the outline anywhere. Grey brick (4) and White rocks (3) clean. Set 2 ("Brick 2",
+  layout 'grid') lays NO wall -- 'grid' is a declared P2 placeholder never implemented; the Wall offers only bond sets
+  (BRICK_SET_IDS) and set 2 is not band-capable, so Fred cannot pick it (noted, not changed). Set 5 (Grey stone, coursed
+  rubble) left bare in every lay (median largest patch 0.31 sq in): (a) dots where four rounded stones meet -- the declared
+  cornerRound look, left alone; (b) STRIPS 1.5 - 2 joints wide where the rubble stopped short of its region (bottom row,
+  slanted sides, beside a tall stone) -- advisor: a defect under Fred's joint rule, fix it (shot shots/seatE/gaps/cr_T1_1in.png).
+- CAUSE: courses and stones are laid across the region's bounding box and clipped at the end; an edge piece the clip cuts
+  under the floor (a quarter stone) dropped: a thin last course along the bottom, a sliver stone up a side.
+- FIX (layouts/coursed-rubble.js, declared COURSED_RUBBLE.edgeCourseShare 0.5): a last course thinner than half a course
+  joins the one before it (no tall stone reaches into that merged course: it would pass two courses); each course is
+  planned first and a stone the region cuts to a sliver under the floor joins its neighbour in the course (a tall neighbour
+  too, its blocked stretch in the next course grown with it); every other stone keeps its exact random draws.
+- TRIED and dropped: laying each course within the region's own x-extent at that height (spanAt) -- at a narrowing waist the
+  widest extent placed edge stones the narrow part then clipped: new gaps (T5 9x12 0.75 in largest 0.26 -> 0.54).
+- RESULT (all 304 set-5 lays): bare 370.78 -> 196.67 sq in, 297 better, none worse; T1 7x9 1 in 0.603 -> 0.317, T18 7x9 1.25
+  in 1.160 -> 0.139, T10 7x9 1 in 0.573 -> 0.267. Shots shots/seatE/gaps/cr_fix4_* / cr_fix2_*.
+- TESTS: tests/bricks-coursed-rubble-edges.test.js (FAST 3 fails 3/3 on main; RUBBLE_EDGE_FULL=1 304/304, 142 s).
+  tests/bricks-grey-sets.test.js tooLong now exempts a stone at the region's edge by at most a third of a stone plus a joint
+  (the sliver it took) -- mutation: a 2.5-stone max length still fails it (9 too long). Affected suites (48 files) 660/660.
