@@ -355,21 +355,24 @@ export function clipPanelToOutline(positions, index, poly, attrs = {}, cell = 0.
   const inside = new Int8Array(P.length / 3).fill(-1);
   const inPoly = polygonPointTester(poly);
   const isIn = (v) => (inside[v] < 0 ? (inside[v] = inPoly(P[v * 3], P[v * 3 + 1]) ? 1 : 0) : inside[v]) === 1;
-  // outline segments bucketed by cell, to find the triangles the outline crosses
-  const segs = new Map(), key = (i, j) => i * 1048576 + j, cx = (x) => Math.floor(x / cell);
-  for (let k = 0; k < n; k++) {
+  // outline segments bucketed by cell (one flat grid over the outline's cells), to find the triangles it crosses
+  const cx = (x) => Math.floor(x / cell);
+  let gi0 = Infinity, gi1 = -Infinity, gj0 = Infinity, gj1 = -Infinity;
+  for (const p of poly) { gi0 = Math.min(gi0, cx(p.x)); gi1 = Math.max(gi1, cx(p.x)); gj0 = Math.min(gj0, cx(p.y)); gj1 = Math.max(gj1, cx(p.y)); }
+  const gw = n ? gi1 - gi0 + 1 : 0, gh = n ? gj1 - gj0 + 1 : 0;
+  const segCells = (k, each) => {
     const a = poly[k], b = poly[(k + 1) % n];
-    for (let i = cx(Math.min(a.x, b.x)); i <= cx(Math.max(a.x, b.x)); i++) {
-      for (let j = cx(Math.min(a.y, b.y)); j <= cx(Math.max(a.y, b.y)); j++) {
-        let l = segs.get(key(i, j));
-        if (!l) segs.set(key(i, j), (l = []));
-        l.push(k);
-      }
-    }
-  }
+    for (let i = cx(Math.min(a.x, b.x)); i <= cx(Math.max(a.x, b.x)); i++) for (let j = cx(Math.min(a.y, b.y)); j <= cx(Math.max(a.y, b.y)); j++) each((i - gi0) * gh + (j - gj0));
+  };
+  const start = new Int32Array(gw * gh + 1);
+  for (let k = 0; k < n; k++) segCells(k, (c) => start[c + 1]++);
+  for (let c = 0; c < gw * gh; c++) start[c + 1] += start[c];
+  const fill = start.slice(0, gw * gh), segs = new Int32Array(start[gw * gh]);
+  for (let k = 0; k < n; k++) segCells(k, (c) => { segs[fill[c]++] = k; });
   const crossed = (x0, x1, y0, y1) => {
-    for (let i = cx(x0); i <= cx(x1); i++) for (let j = cx(y0); j <= cx(y1); j++) {
-      for (const k of segs.get(key(i, j)) || []) {
+    for (let i = Math.max(cx(x0), gi0), ie = Math.min(cx(x1), gi1); i <= ie; i++) for (let j = Math.max(cx(y0), gj0), je = Math.min(cx(y1), gj1); j <= je; j++) {
+      for (let r = start[(i - gi0) * gh + (j - gj0)], r1 = start[(i - gi0) * gh + (j - gj0) + 1]; r < r1; r++) {
+        const k = segs[r];
         const a = poly[k], b = poly[(k + 1) % n];
         if (Math.max(a.x, b.x) >= x0 && Math.min(a.x, b.x) <= x1 && Math.max(a.y, b.y) >= y0 && Math.min(a.y, b.y) <= y1) return true;
       }
