@@ -24338,3 +24338,20 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Single files: loading-steps-list 18/18, loading-signal 21/21, fusion-send-stages 5/5. The full suite was NOT clean:
   run at 3.9 GB free during the advisor's gate (Fred: 1.6 GB free, CPU 100%); 15 failures in unrelated files
   (timeouts / benchmarks under that load). To re-run when the advisor clears heavy runs.
+## Matrix Chrome hygiene -- runs on record, stopped on every exit path; orphans found and cleared by their owner (seat E / 61, 2026-10-08)
+- WHY: 167 Chromes on Fred's PC (1.6 GB free of 32); run.mjs stopped its Chrome + serve.py only in its finally block.
+- BUILT (47dbbd5, merged): tools/brick-matrix/run-registry.mjs -- a run writes %TEMP%/brick-matrix-runs/<pid>.json (Chrome /
+  server PIDs, profile, ports, root) and removes it on stop; the stop (idempotent) kills Chrome with its renderers (taskkill
+  /T) from finally, SIGINT / SIGTERM / SIGHUP / SIGBREAK and process exit. tools/brick-matrix/orphans.mjs: report only by
+  default; --kill --root <worktree> kills only that worktree's orphans, each PID re-checked against its record.
+- LIVE PROOF (after the gate cleared): (1) run.mjs HARD-killed mid-run (Stop-Process -Force, its Chrome + 2 serve.py + 8
+  renderers up): Windows took its children down with it -- only the record stayed; orphans.mjs reported it "nothing left
+  running" and removed the stale record. So a killed run does NOT orphan its Chrome here (on the 10-07 stop the parent SHELL
+  died and run.mjs itself kept running). (2) a TRUE orphan (a Chrome + serve.py spawned detached and recorded, the recording
+  process exited): reported with both PIDs; --kill --root <another worktree> killed nothing; --kill --root <mine> killed
+  both, 0 left, record gone. (3) a run that finishes: no record, no Chrome after.
+- TWO BUGS the live proof found (fixed here, matrix-chrome-hygiene-2): (a) taskkill /T exits non-zero when a renderer is
+  already ending while the browser does go -> the kill read as failed and the Chrome was not reported killed; killTree now
+  judges by the process being GONE (polled 5 s). (b) a shell whose command line merely MENTIONED a matrix profile was listed
+  as an unregistered matrix Chrome (and would have passed the PID-reuse check): both checks now require the executable to be
+  a Chrome. Tests: brick-matrix-registry +2 cases (10); the text-only match -> 2 fail.

@@ -31,10 +31,14 @@ export function readRuns(dir = REGISTRY_DIR) {
 }
 
 const norm = (s) => String(s || '').replace(/\\/g, '/').toLowerCase();
+/** The program a command line runs (its first token's file name): only a Chrome is a matrix Chrome -- MEASURED (seat E's
+ *  live proof): a shell whose command line merely MENTIONED a matrix profile was listed as one. */
+const exeOf = (cmd) => { const m = String(cmd || '').trim().match(/^"([^"]+)"|^(\S+)/); return m ? path.basename(norm(m[1] || m[2])) : ''; };
+const isChrome = (cmd) => /^(chrome|chrome\.exe|google-chrome|chromium|chromium-browser)$/.test(exeOf(cmd));
 /** Is `cmd` (a live process's command line) still the process the record started? (a PID can be reused) */
 export function matchesRecord(kind, cmd, run) {
   const c = norm(cmd);
-  if (kind === 'chrome') return c.includes('chrome') && c.includes(norm(run.profile));
+  if (kind === 'chrome') return isChrome(cmd) && c.includes(norm(run.profile));
   if (kind === 'server') return c.includes('serve.py') && new RegExp(`serve\\.py"?\\s+${run.http}(\\s|$)`).test(c);
   return false;
 }
@@ -62,7 +66,7 @@ export function unregisteredMatrixChromes(runs, procs) {
   const out = [];
   for (const [pid, cmd] of procs) {
     const c = norm(cmd);
-    if (!c.includes('chrome') || c.includes('--type=') || !c.includes(PROFILE_PREFIX)) continue; // browser processes only
+    if (!isChrome(cmd) || c.includes('--type=') || !c.includes(PROFILE_PREFIX)) continue; // Chrome browser processes only
     const m = c.match(/--user-data-dir=("([^"]+)"|(\S+))/);
     const dir = m ? (m[2] || m[3]) : '';
     if (![...known].some((k) => dir && (dir.includes(k) || k.includes(dir)))) out.push({ pid, profile: dir });
@@ -86,13 +90,17 @@ export function processTable() {
     return new Map(text.split('\n').filter(Boolean).map((l) => { const m = l.trim().match(/^(\d+)\s+(.*)$/); return [Number(m[1]), m[2]]; }));
   } catch { return null; }
 }
-/** Kill one process and its children (Chrome's renderers), owner-checked by the caller. */
-export function killTree(pid) {
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+/** Kill one process and its children (Chrome's renderers), owner-checked by the caller. Judged by the process being GONE,
+ *  not by taskkill's exit code -- MEASURED (seat E's live proof): with /T, a renderer already ending makes taskkill report
+ *  an error while the browser does go, so a successful kill read as a failure. */
+export function killTree(pid, waitMs = 5000) {
   try {
     if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore', timeout: 20000 });
     else process.kill(pid, 'SIGKILL');
-    return true;
-  } catch { return false; }
+  } catch {}
+  for (const t0 = Date.now(); Date.now() - t0 < waitMs;) { if (!alive(pid)) return true; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200); }
+  return !alive(pid);
 }
 
 /** A run's stop: kill its Chrome (with its renderers) and its server, remove its record -- once, from any exit path. */
