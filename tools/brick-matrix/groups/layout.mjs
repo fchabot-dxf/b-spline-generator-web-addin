@@ -66,7 +66,7 @@ export const BRICK_SECTIONS_LAYOUT = {
 // editor follows the new board in place (app-init _resyncEditorToStock): its own board, and the SVG download's size.
 export const BOARD_FOLLOWS = {
   viewport: { name: 'phone 390x844', width: 390, height: 844, mobile: true },
-  from: [7, 9], to: [9, 12], dpi: 96,
+  from: [7, 9], to: [9, 12],
 };
 
 // ---- touch targets (Fred, 2026-10-08, "yes, all controls"; seat D): on a phone (coarse pointer) every shown control -- the
@@ -263,9 +263,9 @@ async function runBoardFollows() {
     const wholeBoard = vb.x <= g.x + t && vb.y <= g.y + t && vb.x + vb.width >= g.x + g.w - t && vb.y + vb.height >= g.y + g.h - t;
     return JSON.stringify({ open: !!(m && m.style.display !== 'none'), mW: ed._mW, mH: ed._mH, wholeBoard, fitted: view.isFittedView(ed),
       vb: [vb.x, vb.y, vb.width, vb.height].map((n) => +n.toFixed(3)),
-      w: +(head.match(/ width="([^"]+)"/) || [])[1], h: +(head.match(/ height="([^"]+)"/) || [])[1], dlvb: (head.match(/viewBox="([^"]+)"/) || [])[1] }); })()`);
+      w: (head.match(/ width="([^"]+)"/) || [])[1], h: (head.match(/ height="([^"]+)"/) || [])[1], dlvb: (head.match(/viewBox="([^"]+)"/) || [])[1] }); })()`);
   const [W, H] = B.to;
-  const ok = r.open && r.mW === W && r.mH === H && r.w === W * B.dpi && r.h === H * B.dpi && r.dlvb === `0 0 ${W} ${H}` && r.wholeBoard && r.fitted;
+  const ok = r.open && r.mW === W && r.mH === H && r.w === `${W}in` && r.h === `${H}in` && r.dlvb === `0 0 ${W} ${H}` && r.wholeBoard && r.fitted;
   checkRow('layout', `Board change with the editor open (${B.viewport.name}): the editor, its view (whole board, fitted) and the SVG download follow ${B.from.join('x')} -> ${W}x${H}`, ok,
     `editor open ${r.open}, editor board ${r.mW}x${r.mH}, view ${r.vb.join(' ')} (whole board ${r.wholeBoard}, fitted ${r.fitted}), download ${r.w}x${r.h} viewBox ${r.dlvb}`);
   if (!ok) await shot('FAIL_board_follows_phone');

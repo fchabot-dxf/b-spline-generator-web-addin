@@ -78,6 +78,42 @@ describe('declared: the styles and the groups', () => {
   });
 });
 
+describe('a cutter imports it as drawn (seat D 2026-10-08: stdlib-XML cutter rules over live downloads, T1 / T18 / no frame, 7x9 + 9x12)', () => {
+  it('real size in INCHES (a bare px width read at 72 dpi came in 1.33x too big); 1 viewBox unit = 1 in', async () => {
+    const ed = laidBoard();
+    const root = parse(await saveSvgDownload(ed));
+    expect(root.getAttribute('width')).toBe(`${ed._mW}in`);
+    expect(root.getAttribute('height')).toBe(`${ed._mH}in`);
+    expect(root.getAttribute('viewBox')).toBe(`0 0 ${ed._mW} ${ed._mH}`);
+  });
+  it('every top group a named layer; every brick + grout path closed and non-degenerate; bricks flat greys, no stroke; grout even-odd; ids unique; nothing embedded', async () => {
+    const svg = await saveSvgDownload(laidBoard());
+    const root = parse(svg);
+    const tops = [...root.children].filter((c) => c.tagName === 'g');
+    for (const g of tops) { expect(g.getAttribute('inkscape:groupmode'), g.id).toBe('layer'); expect(g.getAttribute('inkscape:label'), g.id).toBeTruthy(); }
+    const area = (pts) => Math.abs(pts.reduce((t, p, i) => { const q = pts[(i + 1) % pts.length]; return t + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
+    const paths = [...root.querySelectorAll('g[id^="bricks:"] path, g[id^="grout:"] path')];
+    expect(paths.length).toBeGreaterThan(10);
+    for (const p of paths) {
+      const subs = p.getAttribute('d').split('M').filter(Boolean);
+      for (const sub of subs) {
+        expect(sub.trim().endsWith('Z'), `${p.id}: closed`).toBe(true);
+        const pts = sub.replace(/Z/g, '').split('L').map((q) => q.split(',').map(Number));
+        expect(pts.length, `${p.id}: points`).toBeGreaterThanOrEqual(3);
+        expect(area(pts), `${p.id}: area`).toBeGreaterThan(1e-6);
+      }
+    }
+    for (const p of root.querySelectorAll('g[id^="bricks:"] path')) {
+      expect(p.getAttribute('fill'), p.id).toMatch(/^#([0-9a-f]{2})\1\1$/i);
+      expect(p.getAttribute('stroke'), p.id).toBeNull();
+    }
+    for (const p of root.querySelectorAll('g[id^="grout:"] path')) expect(p.getAttribute('fill-rule')).toBe('evenodd');
+    const ids = [...root.querySelectorAll('[id]')].map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(svg).not.toMatch(/url\(#|<pattern|<image/);
+  });
+});
+
 describe('the download: one file, named groups, flat bricks', () => {
   it('top-level groups stack as the Layers panel: each layer’s art, then its elements’ bricks + grout; each a named Inkscape layer', async () => {
     const ed = laidBoard();

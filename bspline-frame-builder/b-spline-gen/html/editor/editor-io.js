@@ -695,8 +695,10 @@ export async function saveSvgDownload(editor, { style = SVG_BRICK_EXPORT.default
     }
     const styleBlock = fontCss.length ? `<defs><style type="text/css">${fontCss.join('\n')}</style></defs>` : '';
     const textContent = textCopies.length ? `<defs class="editor-metadata">${textCopies.join('')}</defs>` : '';
-    const wPx = editor._mW * dpi, hPx = editor._mH * dpi;
-    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="${INKSCAPE_NS}" width="${wPx}" height="${hPx}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${styleBlock}${svgDownloadGroups(editor, style)}${textContent}</svg>`;
+    // seat D 2026-10-08 (a cutter-style import check of the download): the size in INCHES, not unitless px -- Inkscape
+    // reads a bare number as 96 dpi px, but Illustrator and several cutter apps read it at 72 dpi (a 7 x 9 in board came
+    // in at 9.33 x 12 in). One viewBox unit = 1 in either way; `dpi` stays declared (data-export-dpi) for a raster consumer.
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="${INKSCAPE_NS}" width="${editor._mW}in" height="${editor._mH}in" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="${dpi}">${styleBlock}${svgDownloadGroups(editor, style)}${textContent}</svg>`;
 }
 
 /**

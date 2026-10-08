@@ -25258,3 +25258,16 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   6008/6008. Known failures: none.
 - Overlap note: D's frame-photo-loading also touches photo loading (photo-panel.js); this branch does not edit
   photo-panel.js.
+
+### 2026-10-08 (seat D): the SVG download through a cutter-style import -- size in inches (was unitless px)
+- CHECK (tools/repro/svg_cutter_check.py, stdlib XML: no Inkscape / lxml on this PC) over live downloads: T1 7x9 (wall +
+  frame + Course-band accents + a Raised-brush stroke), T18 9x12 (grout colour + 0.03 in edge), no frame 7x9, T1 7x9:
+  parses; every top group a named Inkscape layer; 147-165 brick + 2-3 grout paths per file, every subpath CLOSED, 3+
+  points, non-zero area; bricks flat greys, no stroke; grout even-odd; ids unique; no url() / <pattern> / <image>. All
+  pass. ONE finding: width / height were UNITLESS px (672 x 864 @ 96 dpi) -- Inkscape reads 96 dpi, but Illustrator and
+  several cutter apps read a bare number at 72 dpi: the 7 x 9 in board would import at 9.33 x 12 in.
+- FIX: editor-io.js saveSvgDownload writes width="<W>in" height="<H>in" (the viewBox unchanged: 1 unit = 1 in;
+  data-export-dpi kept as metadata). Only the Download reads this file (Fusion's SVGs are the other two writers).
+- TESTS: svg-download +2 (the size in inches = the viewBox -- fails on main's export; the cutter rules over the export);
+  matrix lay's grey SVG row also requires inches + 0 open / degenerate paths; layout's board-follows row reads inches
+  (BOARD_FOLLOWS.dpi removed, unused). lay 16/0, layout 80/0.

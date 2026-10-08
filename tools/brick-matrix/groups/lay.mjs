@@ -268,11 +268,15 @@ async function runGreyByHeight() {
     const acc = fills.filter(([id]) => accented.has(id)).map(([, f]) => lvl(f)), plain = fills.filter(([id]) => wallIds.has(id) && !accented.has(id)).map(([, f]) => lvl(f)).sort((x, y) => x - y);
     const ms = performance.getEntriesByName('brick-height-greys').map((e) => e.duration);
     const grout = [...doc.querySelectorAll('g[id^="grout:"] path')].map((p) => lvl(p.getAttribute('fill')));
+    // a cutter's import (seat D): the size in inches = the board; every brick / grout subpath closed, 3+ points
+    const top = doc.documentElement, inches = top.getAttribute('width') === ed._mW + 'in' && top.getAttribute('height') === ed._mH + 'in';
+    const open = [...doc.querySelectorAll('g[id^="bricks:"] path, g[id^="grout:"] path')].filter((p) => (p.getAttribute('d') || '').split('M').filter(Boolean)
+      .some((sub) => !sub.trim().endsWith('Z') || sub.split('L').length < 3)).length;
     return JSON.stringify({ n: fills.length, notGrey: fills.filter(([, f]) => lvl(f) == null).length, urls: svg.split('url(#').length - 1, acc: acc.length, accMin: Math.min(...acc), plainMedian: plain[Math.floor(plain.length / 2)],
-      repaints: ms.length, repaintMaxMs: ms.length ? Math.round(Math.max(...ms)) : null, grout: grout.length, groutNotGrey: grout.filter((v) => v == null).length, groutMax: Math.max(...grout) }); })()`);
+      repaints: ms.length, repaintMaxMs: ms.length ? Math.round(Math.max(...ms)) : null, grout: grout.length, groutNotGrey: grout.filter((v) => v == null).length, groutMax: Math.max(...grout), inches, open, size: top.getAttribute('width') + ' x ' + top.getAttribute('height') }); })()`);
   checkRow('lay', 'Grey by height: the SVG download is one flat grey per brick, the raised accents lighter than the plain wall, the grout its own darker grey',
-    d.n > 0 && d.notGrey === 0 && d.urls === 0 && d.acc > 0 && d.accMin > d.plainMedian && d.grout > 0 && d.groutNotGrey === 0 && d.groutMax < d.plainMedian,
-    `${d.n} brick paths, ${d.notGrey} not grey, url refs ${d.urls}; ${d.acc} accented, plain median ${d.plainMedian} < darkest accent ${d.accMin}; ${d.grout} grout paths (not grey ${d.groutNotGrey}), lightest ${d.groutMax}`);
+    d.n > 0 && d.notGrey === 0 && d.urls === 0 && d.acc > 0 && d.accMin > d.plainMedian && d.grout > 0 && d.groutNotGrey === 0 && d.groutMax < d.plainMedian && d.inches && d.open === 0,
+    `${d.n} brick paths, ${d.notGrey} not grey, url refs ${d.urls}; ${d.acc} accented, plain median ${d.plainMedian} < darkest accent ${d.accMin}; ${d.grout} grout paths (not grey ${d.groutNotGrey}), lightest ${d.groutMax}; ${d.size}, open / degenerate paths ${d.open}`);
   checkRow('lay', `Grey by height: the repaint on a mask update stays under ${G.repaintBudgetMs} ms`, d.repaints > 0 && d.repaintMaxMs <= G.repaintBudgetMs,
     `${d.repaints} repaints, slowest ${d.repaintMaxMs} ms`);
 }
