@@ -24395,3 +24395,19 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   judges by the process being GONE (polled 5 s). (b) a shell whose command line merely MENTIONED a matrix profile was listed
   as an unregistered matrix Chrome (and would have passed the PID-reuse check): both checks now require the executable to be
   a Chrome. Tests: brick-matrix-registry +2 cases (10); the text-only match -> 2 fail.
+
+### 2026-10-07 (seat A): a declared heavy-run guard (tools/heavy-run-guard.mjs) -- advisor pick 3
+- Why: Fred's PC crawled (1.6 GB free of 32, CPU 100%, 167 Chromes) while the gate ran and seats started full runs
+  beside it; I had printed my free-RAM figure and run anyway. A rule a person reads is not a guard.
+- tools/heavy-run-guard.mjs, the one place: refuses (exit 3, reason printed) while ~/.bspline-status/gate_running
+  exists or free RAM < MIN_FREE_GB = 4 (os.freemem -- measured 9.78 vs WMI FreePhysicalMemory 9.68 GB, same source).
+  The gate's OWN runs pass: gate.sh writes "<pid> <HH:MM> <args>"; a process whose BSPLINE_GATE_LOCK_OWNER equals that
+  pid is the gate's (advisor: otherwise the gate blocks itself). Not an ancestor-pid check: gate.sh's $$ is an MSYS
+  pid, not the Windows pid node sees. NEEDS one line in the advisor's gate.sh after the lock write:
+  export BSPLINE_GATE_LOCK_OWNER=$$
+- Wired: tools/brick-matrix/run.mjs guards every top-level run AFTER the free --only-if-changed check; --parallel marks
+  its own group children (BSPLINE_HEAVY_RUN_CHILD=1) so they are not re-judged mid-run. npm run test:full = guard &&
+  vitest run; plain npm test / vitest run <file> stay unguarded (single files are fine any time).
+- tests/heavy-run-guard.test.js 8: every verdict path, the CLI end to end against a temporary home (exit 3 with a lock,
+  0 for its owner), and the wiring pins. Mutation (owner pass removed): 2 fail. The matrix/boot/serve/ports neighbours
+  22/22 with it. Full suite not run (heavy runs are E's and D's slots now).
