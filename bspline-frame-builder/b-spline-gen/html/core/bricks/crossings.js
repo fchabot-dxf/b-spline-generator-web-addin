@@ -128,15 +128,23 @@ export function splitAtCrossings(points, regions, dims) {
   const cum = [0];
   for (let i = 1; i < points.length; i++) cum.push(cum[i - 1] + Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y));
   const total = cum[cum.length - 1];
-  // every place the centreline crosses a region's edge: its arc length and that edge
+  // every place the stroke's CENTRELINE or either of its EDGES (offset by halfWidth) crosses a region's edge: its arc length
+  // and that edge -- MEASURED (the gate's strokes run, a Grey stone frame): a stroke's side met one stone before its
+  // centreline entered another; cut on the centreline's stone, the end piece overlapped the first and was dropped (a 1 in gap)
+  const h = dims.halfWidth, offsets = [0, h, -h];
+  const at = (i, side) => { const a = points[i - 1], b = points[i], l = Math.hypot(b.x - a.x, b.y - a.y) || EPS, nx = -(b.y - a.y) / l, ny = (b.x - a.x) / l; return [{ x: a.x + nx * side, y: a.y + ny * side }, { x: b.x + nx * side, y: b.y + ny * side }]; };
   const events = [];
-  for (let i = 1; i < points.length; i++) for (const r of live) for (let k = 0; k < r.length; k++) {
-    const c = r[k], d = r[(k + 1) % r.length], x = segSeg(points[i - 1], points[i], c, d);
-    if (x) events.push({ s: cum[i - 1] + x.t * (cum[i] - cum[i - 1]), edge: [c, d] });
+  for (let i = 1; i < points.length; i++) for (const side of offsets) {
+    const [a, b] = at(i, side);
+    for (const r of live) for (let k = 0; k < r.length; k++) {
+      const c = r[k], d = r[(k + 1) % r.length], x = segSeg(a, b, c, d);
+      if (x) events.push({ s: cum[i - 1] + x.t * (cum[i] - cum[i - 1]), edge: [c, d] });
+    }
   }
-  if (!events.length && !live.some((r) => pointInPolygon(points[0].x, points[0].y, r))) return [{ points, start: null, end: null }];
+  const inAny = (p) => live.some((r) => pointInPolygon(p.x, p.y, r));
+  const blocked = (s) => { const { p, t } = along(points, cum, s); return offsets.some((side) => inAny({ x: p.x - t.y * side, y: p.y + t.x * side })); };
+  if (!events.length && !blocked(0)) return [{ points, start: null, end: null }];
   events.sort((a, b) => a.s - b.s);
-  const blocked = (s) => { const { p } = along(points, cum, s); return live.some((r) => pointInPolygon(p.x, p.y, r)); };
   const cuts = [{ s: 0, edge: null }, ...events, { s: total, edge: null }];
   const parts = [];
   for (let k = 0; k + 1 < cuts.length; k++) {
@@ -145,9 +153,10 @@ export function splitAtCrossings(points, regions, dims) {
     const cutAt = (ev, sign) => {
       if (!ev.edge) return { cut: null, reach: 0 };
       const [c, d] = ev.edge, el = Math.hypot(d.x - c.x, d.y - c.y) || EPS, dir = { x: (d.x - c.x) / el, y: (d.y - c.y) / el };
-      const { p, t } = along(points, cum, ev.s), sin = Math.abs(t.x * dir.y - t.y * dir.x), cos = Math.abs(t.x * dir.x + t.y * dir.y);
-      const reach = Math.min(MAX_REACH_HALF_WIDTHS * dims.halfWidth, (dims.halfWidth * cos) / Math.max(sin, EPS)) + dims.halfWidth * 0.05;
-      return { cut: { point: p, dirX: dir.x, dirY: dir.y }, reach: sign * reach };
+      const { t } = along(points, cum, ev.s), sin = Math.abs(t.x * dir.y - t.y * dir.x), cos = Math.abs(t.x * dir.x + t.y * dir.y);
+      // the event may be either edge's contact: the far edge reaches the cut line a full width later
+      const reach = Math.min(MAX_REACH_HALF_WIDTHS * h, (2 * h * cos) / Math.max(sin, EPS)) + h * 0.05;
+      return { cut: { point: c, dirX: dir.x, dirY: dir.y }, reach: sign * reach }; // the cut line IS the edge hit
     };
     const s = cutAt(a, -1), e = cutAt(b, 1);
     const clear = (r) => (r ? 2 * Math.abs(r) + dims.halfWidth : 0);
