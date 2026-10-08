@@ -26,9 +26,8 @@ import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameF
 import { setEditorTab as switchEditorTab, getEditorTab } from './editor-tabs.js';
 import { AppState } from './app-state.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../editor/frame-handles.js';
-import { paramsFromShapeModel } from '../editor/editor-shape-lattice-generator.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
-import { frameCutProfile, frameInnerProfile, frameMiters, miterStaysInsideWood, outlineHasUndercut, mitersCollide, blankWidthIn, formatBlankWidthIn } from '../editor/editor-frame-profile.js';
+import { frameCutProfile, frameGenerateIsValid, frameInnerProfile, frameMiters, miterStaysInsideWood, outlineHasUndercut, mitersCollide, blankWidthIn, formatBlankWidthIn } from '../editor/editor-frame-profile.js';
 import { setHandleCursor, paramHandleCursorAxis } from '../editor/editor-transform-handles.js';
 import { hitTestArcGrip } from '../editor/editor-shape-lattice-interaction.js';
 import { inputProfileFor } from '../editor/editor-input.js';
@@ -92,10 +91,6 @@ export function editFrameNow(patch) {
 }
 function _syncUndo() { if ($('editorFrameUndo')) $('editorFrameUndo').disabled = _frameHistory.length === 0; }
 
-/** A primitive's own length (line: chord; arc: this generator's own circular arcs, rx === ry). Same formula
- *  tests/frame-template-*.test.js's own `primLength` already uses for the "no wing risk" check (Template 7's
- *  own finding: a bar segment shorter than frame_thickness causes a "wing" artifact). */
-const _primLength = (p) => (p.type === 'L' ? Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y) : Math.abs(p.rx * p.dTheta));
 
 /** F13 [Generate]: a new seeded random frame shape, written as the handles' seeds. */
 export function generateFrame(seed = nextSeed()) {
@@ -107,68 +102,8 @@ function _generateFrameNow(seed) {
   if (!tpl) return null;
   const region = frameCutProfile(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn }).region;
   const t = frameParam(FRAME_DEFS, rec, 'frame_thickness');
-  // Generate must never produce a broken frame (Fred): checked against the real inner profile, not just the
-  // bare outline every seed's own ranges already guarantee (frame-handles.js generateValidFrameSeeds). H23
-  // item 21: ALSO checked against every OUTER piece staying at least frame_thickness long (Template 7's own
-  // "no wing" finding, generalized) -- a template whose handle table doesn't expose every param that shapes a
-  // piece's own length can draw a bare outline with 0 defects whose own horn piece is still too short for
-  // Fusion's real inward offset -- MEASURED live: addOffset2 fails on topology, 2 of 4 bars never get built.
-  // T10's own archRise needs one more correction here: MEASURED live (a default build and a bad-seed build
-  // produced BIT-IDENTICAL top_edge geometry), archRise is never actually seeded to Fusion for the arch
-  // itself -- p02_12_arch_rebuild.py's own formula always builds it at the template's own FITTED default,
-  // regardless of what's drawn/dragged. Validating against the DRAWN archRise checks the wrong (app-preview-
-  // only) geometry for the horn piece specifically, so the outer profile used here is built with archRise
-  // pinned to that same fitted default -- what Fusion will really build -- not whatever this draw's own
-  // archRise happens to be. Same "retry against the real check" declared pattern as the inner-profile rule
-  // above (frame-handles.js's own comment on generateValidFrameSeeds), not a hand-derived range.
-  const realSeedsFor = tpl.shapeModel?.features?.archRise
-    ? (s) => ({ ...s, archRise: paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region).archRise })
-    : (s) => s;
-  // H23 item 23: ALSO checked against every outer arc staying under a half-turn, matching Fusion's own build-
-  // time gate (fb_engine/diagnostics.py's assert_no_reflex_arcs, >= 180 deg is always a wrong-branch defect,
-  // never intended -- H23 item 15) exactly. A template whose handle table doesn't re-fit every radius to the
-  // waist it just generated (T10 seeds only waistCenterY/waistReach/archRise; waistRadius/cornerRadius stay at
-  // the shape model's own fixed default, unlike T1/T3/T4/T5's own full handle set, which always re-derives
-  // waistRadius from its OWN generated waistReach and so can never hit this via Generate) can draw a waistReach
-  // deep enough, against those FIXED radii, that hourglassConstruction's own waistMajor condition (Rs+Rw < d,
-  // the shared tangency algebra -- see its own F8 comment) trips: MEASURED live, T10 6x9, Rs+Rw=1.328 < d=1.562,
-  // the resulting waist arc sweeps 200.3 deg, and Fusion's hard gate crashes the Shape Outline build before the
-  // frame-enclosure sketch -- 0 bars. A major arc is NOT always wrong (F8's own exception is real, and T1 can
-  // legitimately need one at some board sizes from its own fitted/default shape) -- only Fusion's build-time
-  // gate makes it fatal, so Generate retries around it here rather than the exception being removed.
-  const seeds = generateValidFrameSeeds(tpl, region, seed, t, (s) => {
-    const inner = frameInnerProfile(FRAME_DEFS, { ...rec, seeds: s }, { widthIn: P.widthIn, heightIn: P.heightIn });
-    if (inner && inner.defects.length > 0) return false;
-    const outer = frameCutProfile(FRAME_DEFS, { ...rec, seeds: realSeedsFor(s) }, { widthIn: P.widthIn, heightIn: P.heightIn });
-    // H23 item 59 (Arched + taper): a high archRise combined with a large taper can shift the shoulder's own
-    // tangent point far enough around the waist circle that hourglassConstruction's own waistMajor shortcut
-    // (closed-form, correct only for the untapered angular relationship) no longer matches the ACTUAL arc
-    // Fusion would need to stay tangent at the shoulder/waist and waist/hip joints -- MEASURED live: a drawn
-    // seed with this exact combination produced a real notTangent defect (dot product 0.9983, a ~3.3 deg
-    // mismatch) that neither the piece-length nor reflex-arc check below ever looks at. `outer.defects` is the
-    // SAME check `frameCutProfile` already computes (outlineDefects, tangency included by default) -- Generate
-    // rejects and redraws here, the same declared pattern items 21/23/39 already established for their own
-    // measured defect classes, rather than hand-deriving a narrower range for this one combination.
-    if (outer.defects.length > 0) return false;
-    if (!outer.primitives.every((p) => _primLength(p) >= t)) return false;
-    if (outlineHasUndercut(outer.primitives)) return false;
-    // H23 item 39 (Fred-approved guard -- his own correction: "a hooked tip is SHORT GRAIN, fibres
-    // across a thin tip snap -- size the margin so a tip is never thin, not just 'miter inside the
-    // wood'"): every miter's own straight line (its outer corner to its matching inner corner) must
-    // keep real clearance from the rest of the outer boundary along its whole length, not merely
-    // never cross it outright. One declared rule for every template (not a T7 patch): item 38 found
-    // that an exactly-correct miter line can still re-approach the outline it started from -- an
-    // angle-dependent property of a line meeting an arc at a cusp-like corner (T7's own eave),
-    // present even when the arc's radius exceeds frame_thickness, so NOT the same thing as item 28's
-    // radius-vs-thickness rule. Reuses the app's own existing miter geometry (frameMiters) rather
-    // than re-deriving corner points here. MEASURED (H23 item 39 sweep, all 13 templates): every
-    // template's own default clears this with real margin; T7's eave is the one structurally tight
-    // case (its own default margin is the tightest of any template, 0.0604t at 7x9, still well clear
-    // of the 0.04t floor) -- see editor-frame-profile.js's own MIN_MITER_MARGIN_T_FRAC comment and
-    // WORK-LOG for the full numbers, including T7's own measured low per-draw pass rate.
-    const miters = frameMiters(outer.primitives, inner.primitives);
-    return !mitersCollide(miters, t) && miterStaysInsideWood(outer.primitives, miters, t);
-  });
+  // Generate must never produce a broken frame (Fred): editor-frame-profile.js frameGenerateIsValid, the declared rule.
+  const seeds = generateValidFrameSeeds(tpl, region, seed, t, frameGenerateIsValid(FRAME_DEFS, rec, { widthIn: P.widthIn, heightIn: P.heightIn }, tpl, region, t));
   pushFrameHistory();
   setFrameRecord({ seeds, genSeed: seed });
   syncFramePanel();

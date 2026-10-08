@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
 import { P, persistableP, setIsFusionMode } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { normalizeFrameRecord, getFrameRecord, setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
-import { frameCutProfile, frameInnerProfile } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { frameCutProfile, frameInnerProfile, frameGenerateIsValid } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import {
   generateFrameSeeds, generateValidFrameSeeds, frameHandleTable, frameSeedGeometry, frameHandles, frameParamRanges,
   FRAME_GEN_BAND, FRAME_MIN_OPENING_IN,
@@ -171,29 +171,23 @@ describe('Frame tab: Generate, tweak, save/reload, Undo', () => {
     .dispatchEvent(new MouseEvent(type, { clientX: x * ed.PX, clientY: y * ed.PX, bubbles: true, cancelable: true }));
 
   it('Generate writes the seeds + the seed, the drawn handles sit on the generated shape', () => {
-    // seat D (2026-10-07): the button draws its seed from Math.random (editor-lattice-pattern.js nextSeed), and the
-    // isValid below is a PARTIAL copy of generateFrame's own (no outer-defect / undercut / mitre-margin checks) --
-    // MEASURED: for 37 of 1,500 seeds the two retry loops pick different shapes (the gate's "different random shape",
-    // vitest-20261007-185613.log). The press's seed is declared (GENERATE_PRESS_SEED, one where both agree), so the
-    // comparison is deterministic: it passes every run, or fails every run once generateFrame's rule moves.
-    const GENERATE_PRESS_SEED = 4242;
-    const rnd = vi.spyOn(Math, 'random').mockReturnValueOnce((GENERATE_PRESS_SEED + 0.5) / 1_000_000);
-    document.getElementById('editorFrameGenerate').click();
-    rnd.mockRestore();
-    const rec = getFrameRecord();
-    expect(rec.genSeed).toBe(GENERATE_PRESS_SEED);
-    // H23 item 21: [Generate] (frame-panel.js's own generateFrame) retries a bad draw against the real inner
-    // profile AND every outer piece staying >= frame_thickness (the "no wing" rule, generalized from T10's own
-    // finding) -- the bare generateFrameSeeds() (no retry) is no longer guaranteed to match its first attempt.
+    // The button draws its seed from Math.random (editor-lattice-pattern.js nextSeed); each press's seed is declared.
+    // H23 item 21: [Generate] retries a bad draw until generateFrame's validity rule passes -- the bare
+    // generateFrameSeeds() (no retry) is not guaranteed to match. The expected shape reads that SAME declared rule
+    // (editor-frame-profile.js frameGenerateIsValid). 2026-10-08: it used to be a PARTIAL hand copy here (no
+    // outer-defect / undercut / mitre checks) that picked a different shape for 37 of 1,500 seeds (seat D, the
+    // gate's "different random shape"); seed 27 is one of them (MEASURED), so it is pressed too.
     const region = regionOf('template_1'), tpl = tplOf('template_1'), t = 0.75;
-    const isValid = (s) => {
-      const inner = frameInnerProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: 'template_1', seeds: s }), BOARD);
-      if (inner && inner.defects.length > 0) return false;
-      const outer = frameCutProfile(FRAME_DEFS, normalizeFrameRecord({ templateId: 'template_1', seeds: s }), BOARD);
-      return outer.primitives.every((p) => (p.type === 'L' ? Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y) : Math.abs(p.rx * p.dTheta)) >= t);
-    };
-    expect(rec.seeds).toEqual(generateValidFrameSeeds(tpl, region, rec.genSeed, t, isValid));
-    expect(ed._frameProfile.params.waistReach).toBeCloseTo(rec.seeds.waistReach, 9); // what is drawn IS the record
+    const isValid = frameGenerateIsValid(FRAME_DEFS, normalizeFrameRecord({ templateId: 'template_1' }), BOARD, tpl, region, t);
+    for (const GENERATE_PRESS_SEED of [4242, 27]) {
+      const rnd = vi.spyOn(Math, 'random').mockReturnValueOnce((GENERATE_PRESS_SEED + 0.5) / 1_000_000);
+      document.getElementById('editorFrameGenerate').click();
+      rnd.mockRestore();
+      const rec = getFrameRecord();
+      expect(rec.genSeed).toBe(GENERATE_PRESS_SEED);
+      expect(rec.seeds, `seed ${GENERATE_PRESS_SEED}`).toEqual(generateValidFrameSeeds(tpl, region, rec.genSeed, t, isValid));
+      expect(ed._frameProfile.params.waistReach).toBeCloseTo(rec.seeds.waistReach, 9); // what is drawn IS the record
+    }
     expect(document.getElementById('editorFrameUndo').disabled).toBe(false);
   });
 

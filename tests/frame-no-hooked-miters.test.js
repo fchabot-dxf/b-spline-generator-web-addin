@@ -15,49 +15,21 @@ import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-de
 import { normalizeFrameRecord, frameParam } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import {
   frameCutProfile, frameInnerProfile, frameMiters, miterTipMargin, miterStaysInsideWood,
-  MITER_CORNER_EXCLUDE_T_FRAC, MIN_MITER_MARGIN_T_FRAC,
+  MITER_CORNER_EXCLUDE_T_FRAC, MIN_MITER_MARGIN_T_FRAC, frameGenerateFailure, frameGenerateIsValid,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { generateFrameSeeds, generateValidFrameSeeds } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-handles.js';
-import { paramsFromShapeModel } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
 vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const board = (W, H) => ({ widthIn: W, heightIn: H });
-const primLength = (p) => (p.type === 'L' ? Math.hypot(p.p1.x - p.p0.x, p.p1.y - p.p0.y) : Math.abs(p.rx * p.dTheta));
 const BOARDS = [[6, 9], [7, 9], [9, 12]];
 
-// frame-panel.js's own generateFrame() isValid, reproduced exactly (same checks, same order) so this test
-// exercises the REAL production logic rather than a reconstruction -- matches tests/frame-template-10.test.js's
-// own established pattern.
-function realIsValid(tpl, rec, b, region, t, s) {
-  const inner = frameInnerProfile(FRAME_DEFS, { ...rec, seeds: s }, b);
-  if (inner && inner.defects.length > 0) return false;
-  const realSeedsFor = tpl.shapeModel?.features?.archRise
-    ? (ss) => ({ ...ss, archRise: paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region).archRise })
-    : (ss) => ss;
-  const outer = frameCutProfile(FRAME_DEFS, { ...rec, seeds: realSeedsFor(s) }, b);
-  if (!outer.primitives.every((p) => primLength(p) >= t)) return false;
-  if (!outer.primitives.every((p) => p.type !== 'A' || Math.abs(p.dTheta) < Math.PI)) return false;
-  return miterStaysInsideWood(outer.primitives, frameMiters(outer.primitives, inner.primitives), t);
-}
-
-// The SAME chain, minus the item-39 margin check -- i.e. exactly what generateFrame()'s isValid looked like
-// before this item. Used only to tell apart a genuine item-39 regression (this passes, the margin check is
-// the one thing standing between it and a pass) from a PRE-EXISTING, unrelated gap in an earlier check
-// (this ALSO fails, so item 39 isn't the reason the sweep below couldn't find a valid seed) -- MEASURED:
-// template_8's own dippedLeftWave preset already fails the plain piece-length check for a majority of
-// external seeds at 6x9, with or without the margin rule (no seed regression here; a pre-existing gap,
-// same category as T7's own item-21 "no wing" fix and T10's own item-23 reflex fix, just never closed for
-// T8 -- out of this item's own scope, flagged in WORK-LOG, not fixed here).
-function preExistingIsValid(tpl, rec, b, region, t, s) {
-  const inner = frameInnerProfile(FRAME_DEFS, { ...rec, seeds: s }, b);
-  if (inner && inner.defects.length > 0) return false;
-  const realSeedsFor = tpl.shapeModel?.features?.archRise
-    ? (ss) => ({ ...ss, archRise: paramsFromShapeModel(tpl.silhouettePreset, tpl.shapeModel, region).archRise })
-    : (ss) => ss;
-  const outer = frameCutProfile(FRAME_DEFS, { ...rec, seeds: realSeedsFor(s) }, b);
-  if (!outer.primitives.every((p) => primLength(p) >= t)) return false;
-  return outer.primitives.every((p) => p.type !== 'A' || Math.abs(p.dTheta) < Math.PI);
-}
+// generateFrame()'s own rule, read from its ONE declaration (editor-frame-profile.js frameGenerateFailure /
+// FRAME_GENERATE_CHECKS). 2026-10-08: this file used to reproduce it by hand, and the copy had drifted (no outer-
+// defect / undercut / miter-collision checks). The PRE-EXISTING chain the sweep below compares against is that same
+// rule minus its last check, the item-39 miter margin: a seed whose only failure is 'miterMargin' is one the pre-
+// item-39 chain would have accepted. MEASURED (WORK-LOG item 39): template_8's own dippedLeftWave preset fails an
+// earlier check for a majority of external seeds at 6x9, with or without the margin rule -- a pre-existing gap, not
+// an item-39 regression, which is exactly what the split tells apart.
 
 describe('miterTipMargin / miterStaysInsideWood: the geometric mechanism, isolated', () => {
   it('an ordinary 90deg box corner has ample margin (the corner\'s own 2 bordering primitives never count ' +
@@ -149,42 +121,37 @@ describe('H23 item 39: T7\'s own eave -- the captured case item 38 found, confir
 });
 
 // Load-proofing (seat D, 2026-10-07): the sweep below asked two questions per rejected seed with two retry loops --
-// realIsValid, then preExistingIsValid -- and both loops walk the SAME draws (generateFrameSeeds is seeded: seed +
+// the real rule, then the pre-existing chain -- and both loops walk the SAME draws (generateFrameSeeds is seeded: seed +
 // attempt * GENERATE_RETRY_SALT). Now the shipped loop runs once and records its draws; the pre-existing question is
-// answered on that record. realIsValid is preExistingIsValid's three checks, in the same order, then the margin check,
-// so real(s) === pre(s) && realIsValid(s): one evaluation per draw, memoized per test case, both verdicts unchanged.
+// answered on that record. Both verdicts come from ONE evaluation of the declared rule (the first failing check):
+// real = none fails, pre = none, or only the miter margin (the last check). Memoized per test case.
 // MEASURED before: template_8 6x9 draws cost 2.2 s of generation + 0.8 s of checks per 500 (one rejected seed's loop),
 // and the sweep ran that twice; 12 parallel runs of 3 heavy files timed it out (30-46 s a case) in 9 of 12.
 function memoizedChecks(tpl, rec, b, region, t) {
+  const failure = frameGenerateFailure(FRAME_DEFS, rec, b, tpl, region, t);
   const memo = new Map();
   const at = (s) => {
     const k = JSON.stringify(s);
-    let m = memo.get(k);
-    if (!m) { m = { pre: preExistingIsValid(tpl, rec, b, region, t, s) }; memo.set(k, m); }
-    return m;
+    if (!memo.has(k)) memo.set(k, failure(s));
+    return memo.get(k);
   };
   return {
-    pre: (s) => at(s).pre,
-    real: (s) => {
-      const m = at(s);
-      if (!m.pre) return false;
-      if (m.real === undefined) m.real = realIsValid(tpl, rec, b, region, t, s);
-      return m.real;
-    },
+    pre: (s) => { const f = at(s); return f === null || f === 'miterMargin'; },
+    real: (s) => at(s) === null,
   };
 }
 
 describe('H23 item 39: generateFrame()\'s own real isValid logic, swept over every template', () => {
   // 50, not T10's own 500 (tests/frame-template-10.test.js): this sweep runs the retry loop TWICE per seed
   // that fails (once real, once pre-existing-only, to tell a regression apart from a pre-existing gap --
-  // see preExistingIsValid's own comment), and template_8's own pre-existing gap (MEASURED: ~99.5% of raw
+  // see the declared rule's note above), and template_8's own pre-existing gap (MEASURED: ~99.5% of raw
   // seeds at 6x9) makes every one of its seeds pay that double cost at the full attempts budget. 50 keeps
   // the whole 13-template sweep well under a minute; the dedicated item-39 measurement (WORK-LOG) already
   // swept up to 2000 seeds per template/board once, off the regression path.
   const N_SEEDS = 50;
   // A seed that STILL fails after the real (margin-included) retry loop is only an item-39 regression if the
   // SAME retry loop, using the pre-item-39 chain (no margin check), would have found a pass -- otherwise it's
-  // a pre-existing gap in an earlier check (unrelated to this item: see preExistingIsValid's own comment
+  // a pre-existing gap in an earlier check (unrelated to this item: see the declared rule's note
   // above, and WORK-LOG for template_8's own measured case) and this sweep must not fail over it.
   // item 67 (test infra): one test per template x board x SEED_CHUNK seeds (was one test per template, all 3
   // boards x 50 seeds: template_8 took 47 s in a full run -- its pre-existing gap pays the double retry on every
@@ -224,16 +191,16 @@ describe('H23 item 39: generateFrame()\'s own real isValid logic, swept over eve
 });
 
 describe('H23 item 39: mutation tests -- proving the sweep above is not vacuous', () => {
-  it('MUTATION 1 (remove the margin check): T7 raw seed 2 @ 7x9 passes inner defects, piece length, and the ' +
-    'reflex-arc rule -- exactly what generateFrame() looked like before this item -- yet still hooks', () => {
+  it('MUTATION 1 (remove the margin check): T7 raw seed 2 @ 7x9 passes every check of the declared rule before ' +
+    'the miter margin -- what generateFrame() accepted before this item -- yet still hooks', () => {
     const tpl = FRAME_DEFS.templates.find((x) => x.id === 'template_7');
     const b = board(7, 9);
     const baseRec = normalizeFrameRecord({ templateId: 'template_7', seeds: {} });
     const region = frameCutProfile(FRAME_DEFS, baseRec, b).region;
     const t = frameParam(FRAME_DEFS, baseRec, 'frame_thickness');
     const seeds = generateFrameSeeds(tpl, region, 2, t);
-    expect(preExistingIsValid(tpl, baseRec, b, region, t, seeds), 'the old isValid accepts this raw draw').toBe(true);
-    expect(realIsValid(tpl, baseRec, b, region, t, seeds), 'the real (new) isValid correctly rejects it').toBe(false);
+    // the declared rule's first failure for this raw draw is the margin itself: every pre-item-39 check passes
+    expect(frameGenerateFailure(FRAME_DEFS, baseRec, b, tpl, region, t)(seeds), 'only the miter margin rejects it').toBe('miterMargin');
   });
 
   it('MUTATION 2 (an attempts budget below the measured worst case still fails for some external seeds): ' +
@@ -256,7 +223,7 @@ describe('H23 item 39: mutation tests -- proving the sweep above is not vacuous'
       const baseRec = normalizeFrameRecord({ templateId: 'template_7', seeds: {} });
       const region = frameCutProfile(FRAME_DEFS, baseRec, b).region;
       const t = frameParam(FRAME_DEFS, baseRec, 'frame_thickness');
-      const isValid = (s) => realIsValid(tpl, baseRec, b, region, t, s);
+      const isValid = frameGenerateIsValid(FRAME_DEFS, baseRec, b, tpl, region, t);
       let sawAFailureAtOldBudget = false;
       for (let seed = 1; seed <= 400 && !sawAFailureAtOldBudget; seed++) {
         const seeds = genValidWithBudget(region, seed, t, isValid, OLD_BUDGET);

@@ -25187,3 +25187,35 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   (-11%). With pick (a) this morning: the draw 541 - 586 -> ~205 ms (-63%), the loop 893 - 962 -> ~520 ms (-44%).
 - MUTATIONS: silhouetteParams without the reporting step fails 4/4; without the hourglass fallback fails 1/4.
 - Full suite (locks clear): 399 files, 5991/5991. Known failures: none. Must merge after frame-seeds-r1.
+### 2026-10-08 (seat A): Frame Generate's validity rule declared once -- the test's hand copy is gone
+- generateFrame's isValid closure (inner defects -> outer defects -> piece length >= t -> undercut -> miter collide /
+  margin, + T10's realSeedsFor archRise) moved VERBATIM to editor-frame-profile.js frameGenerateIsValid(defs, rec,
+  board, tpl, region, t), with its item-21/23/39/59 history comments and primLength (moved from frame-panel, where it
+  had no other user). generateFrame calls it; frame-panel's unused paramsFromShapeModel import removed.
+- tests/frame-gen.test.js: the expected shape read a PARTIAL copy (no outer-defect / undercut / miter checks) that
+  diverged for 37 of 1,500 seeds (seat D had pinned press seed 4242 around it). It now reads the declared rule and
+  presses seed 27 too (MEASURED: seeds 27, 119, 135, 175, 221 diverge under the old copy at T1 7x9). Old copy back ->
+  "seed 27: expected ... to deeply equal" fails.
+- The 69 test files importing frame-panel / editor-frame-profile: 1917/1917 (2 workers; full suite after DDCS).
+- NOT changed, flagged: (1) tests/frame-no-hooked-miters.test.js realIsValid is also a stale partial copy, but that
+  sweep's logic depends on "real = pre-existing chain + margin" (its memoized pre/real split) -- swapping in the full
+  rule would count seeds failing the newer checks as item-39 regressions; it needs its own redesign. (2) frame-panel
+  ~line 508-530 holds a third copy of the same checks for a warning (frameHasIssue-style) -- a candidate to read
+  frameGenerateIsValid. (3) T7/T10/T11/T12-13 tests' isValid copies are deliberately partial (one property each).
+- CORRECTION to (2) above: frame-panel's _frameRecordBreaksNoHookRule is NOT a copy of Generate's rule -- it is the
+  drag-stop rule (H23 items 39/63), deliberately different (raw drawn geometry, no archRise pin, inner-profile
+  defects ignored so the drag-stop never fights them). Not a candidate.
+
+### 2026-10-08 (seat A): frame-no-hooked-miters reads Generate's declared rule (advisor pick; on frame-validity-rule)
+- editor-frame-profile.js: FRAME_GENERATE_CHECKS (innerDefects, outerDefects, pieceLength, undercut, mitersCollide,
+  miterMargin -- the rule's checks in the order they run) + frameGenerateFailure (the first failing check, or null).
+  frameGenerateIsValid = "no failure": the same checks, order and short-circuits as before.
+- tests/frame-no-hooked-miters.test.js: realIsValid / preExistingIsValid (hand copies, drifted -- no outer-defect,
+  undercut or miter-collision checks; pre used the older reflex-arc test) removed. The item-39 split stays
+  meaningful as "is the miter margin the ONLY thing in the way": one memoized failure evaluation per draw; real = null,
+  pre-existing = null or 'miterMargin' (the last check). MUTATION 1: T7 raw seed 2 @ 7x9 fails exactly on
+  'miterMargin' (MEASURED); MUTATION 2 reads frameGenerateIsValid. Orphans removed: primLength,
+  paramsFromShapeModel import.
+- Mutation: the rule no longer reporting the margin (return null) -> MUTATION 1 fails.
+- Test files importing frame-panel / editor-frame-profile: 69 files 1917/1917 (2 workers). Full suite after DDCS.
+- Must merge AFTER frame-validity-rule (this branch is built on it).
