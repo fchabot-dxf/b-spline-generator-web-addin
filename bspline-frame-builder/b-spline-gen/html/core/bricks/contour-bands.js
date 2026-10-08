@@ -619,6 +619,21 @@ export const BAND_FIT_STEPS = Object.freeze(['row', 'course', 'drop']);
  *     notch lip read down the board's side to the next edge 0.05-0.35 (T1 T3 T4 T5 T8 T10-T13).
  *  `source[k]` = the primitive that boundary vertex k (and edge k -> k+1) belongs to; omitted, every edge is its own. */
 export const WAIST_CLEARANCE_SHARE = 0.9;
+/** narrowestGap, remembered per exact board (the outline's coordinates and sources, keyed by content). It is a pure
+ *  O(n^2) function of the board, and every lay AND each of the panel's corner / fan checks recomputed it for the same
+ *  board -- MEASURED 2026-10-08 (phone, 4x CPU): 300 ms of a 470-620 ms Brick-tap lay, 81-90 ms of its checks. */
+export const GAP_MEMO_MAX = 16;
+const _gapMemo = new Map();
+export function narrowestGapCached(board, source = board.map((_, k) => k)) {
+  const key = board.map((p) => `${p.x},${p.y}`).join(';') + '|' + source.join(',');
+  if (_gapMemo.has(key)) return _gapMemo.get(key);
+  const gap = narrowestGap(board, source);
+  if (_gapMemo.size >= GAP_MEMO_MAX) _gapMemo.delete(_gapMemo.keys().next().value);
+  _gapMemo.set(key, gap);
+  return gap;
+}
+export const gapMemoSize = () => _gapMemo.size; // tests
+export const clearGapMemo = () => _gapMemo.clear(); // tests
 export function narrowestGap(board, source = board.map((_, k) => k)) {
   const n = board.length, m = Math.max(...source) + 1;
   // signedArea is NEGATIVE for a counter-clockwise loop (x right, y up; measured on a unit square), whose inside is
@@ -759,7 +774,7 @@ export function bricksContourBands(primitives, bands, opts) {
   const fitBoard = closed && !opts.centered ? tessellate(primitives, BOARD_CLIP_ARC_STEPS) : null;
   const fitBoardSource = fitBoard ? primitives.flatMap((prim, k) => (prim.type === 'arc' ? Array(BOARD_CLIP_ARC_STEPS).fill(k) : [k])) : null;
   // opts.bandFit === false: a schematic on a tiny board (the band-preset / corner icons), drawn as requested
-  const fit = fitBoard && opts.bandFit !== false ? fitBandStack(bands, plannedBands, narrowestGap(fitBoard, fitBoardSource), L, H) : null;
+  const fit = fitBoard && opts.bandFit !== false ? fitBandStack(bands, plannedBands, narrowestGapCached(fitBoard, fitBoardSource), L, H) : null;
   if (fit) { bands = fit.bands; plannedBands = planBands(bands, L, H, set, closed); }
   // T86 item 30: a single band (as requested, or what item 28 left) too deep for a feature narrows to fit it
   let narrowNote = null, narrowWallDepth = 0;
