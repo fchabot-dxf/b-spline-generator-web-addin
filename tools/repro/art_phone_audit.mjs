@@ -54,9 +54,13 @@ const js = async (expr) => {
 
 try {
   await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
+  await send('Network.setCacheDisabled', { cacheDisabled: true }); // a reused profile must not serve a stale stylesheet
   await send('Network.setBlockedURLs', { urls: ['*workers.dev*'] });
   await send('Emulation.setDeviceMetricsOverride', { ...VIEW, deviceScaleFactor: 1, mobile: true });
   await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  // the phone's own CSS: (pointer: coarse) rules (SA-MOBILE-4's 44 px tool buttons, ...) apply only with it (a first reach
+  // pass without it measured the desktop sizes)
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'any-pointer', value: 'coarse' }] });
   await send('Page.navigate', { url: `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html` });
   for (let i = 0; i < 120 && !(await js('!!document.getElementById("btnStampEdit")')); i++) await sleep(500);
   await sleep(4000);
@@ -162,7 +166,8 @@ try {
         if (seen.has(e)) continue; seen.add(e);
         if (!e.getClientRects().length || getComputedStyle(e).visibility === 'hidden' || e.type === 'hidden') continue;
         e.scrollIntoView({ block: 'center', inline: 'center' });
-        const r = e.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        // a checkbox's target is its label row (the matrix's layout 'Touch targets' rows measure it the same way)
+        const r = ((e.type === 'checkbox' && e.closest('label')) || e).getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
         const inView = cx >= 0 && cx <= innerWidth && cy >= 0 && cy <= innerHeight;
         const hit = inView ? document.elementFromPoint(cx, cy) : null;
         out.push({ id: e.id || e.getAttribute('aria-label') || e.title || e.textContent.trim().slice(0, 20), inView,

@@ -69,11 +69,23 @@ export const BOARD_FOLLOWS = {
   from: [7, 9], to: [9, 12], dpi: 96,
 };
 
+// ---- touch targets (Fred, 2026-10-08, "yes, all controls"; seat D): on a phone (coarse pointer) every shown control in the
+// editor -- the Art tabs and the Brick tabs -- has its smaller side >= minPx (styles/editor.css --touch-target-min). A
+// checkbox counts by its label (the label row is the target); `skip` = not a tap target of its own (a range slider's
+// thumb is; the colour input sits under its own toggle). One row per tab.
+export const TOUCH_TARGETS = {
+  viewport: { name: 'phone 390x844', width: 390, height: 844, mobile: true },
+  minPx: 28,
+  artTabs: ['general', 'draw', 'lattice', 'shape', 'text', 'edit'],
+  brickTabs: ['brickTab_general', 'brickTool_wall', 'brickTool_frame', 'brickTool_brush', 'brickTool_raisedBrush', 'brickTool_scissors'],
+  skip: 'input[type="range"], #editorColor, input[type="hidden"]',
+};
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -258,3 +270,34 @@ async function runBoardFollows() {
   await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
 }
 
+
+// ---------------------------------------------------------------- touch targets (phone, coarse pointer)
+function TOUCH_PROBE(minPx, skip) { return `JSON.stringify((() => { const m = document.getElementById('svgEditorModal'); const small = [];
+  for (const e of m.querySelectorAll('button, input, select, [role="tab"]')) {
+    if (e.matches(${JSON.stringify(skip)}) || !e.getClientRects().length || getComputedStyle(e).visibility === 'hidden') continue;
+    const t = (e.type === 'checkbox' && e.closest('label')) || e, r = t.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    const px = Math.round(Math.min(r.width, r.height) * 10) / 10;
+    if (px < ${minPx}) small.push((e.id || e.getAttribute('aria-label') || e.title || e.textContent.trim().slice(0, 16) || e.className) + ' ' + px + 'px');
+  }
+  return { coarse: matchMedia('(pointer: coarse)').matches, small: [...new Set(small)] }; })())`; }
+async function runTouchTargets() {
+  const T = TOUCH_TARGETS, vp = T.viewport;
+  await send('Emulation.setDeviceMetricsOverride', { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: true });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'any-pointer', value: 'coarse' }] });
+  await send('Page.reload', {}); await waitApp(); await openBrickTab();
+  const tabs = [...T.brickTabs.map((id) => ({ name: id.replace(/^brick(Tab|Tool)_/, 'Brick '), open: [id] })),
+    ...T.artTabs.map((t) => ({ name: `Art ${t}`, open: ['editorTabArtwork', `artTab_${t}`] }))];
+  for (const tab of tabs) {
+    let opened = true;
+    for (const id of tab.open) opened = (await click(id, 900)) === 'ok' && opened;
+    const r = await jsJSON(TOUCH_PROBE(T.minPx, T.skip));
+    const ok = opened && r.coarse && r.small.length === 0;
+    checkRow('layout', `Touch targets ${vp.name} (coarse pointer): ${tab.name} -- every control >= ${T.minPx} px`, ok,
+      `${opened ? '' : 'tab did not open; '}${r.coarse ? '' : 'coarse pointer NOT emulated; '}${r.small.length ? `under ${T.minPx} px: ${r.small.join(', ')}` : 'none under'}`);
+    if (!ok) await shot(`FAIL_touch_${tab.name.replace(/\s+/g, '_')}`);
+  }
+  await send('Emulation.setEmulatedMedia', { features: [] });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
+}

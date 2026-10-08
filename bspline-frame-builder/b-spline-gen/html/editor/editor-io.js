@@ -17,6 +17,7 @@ import { clearSnapCursor, clearGridHover } from './editor-grid.js';
 import { dbg } from '../core/debug.js';
 import { OUTLINE_KINDS } from './editor-outline-preview.js';
 import { drawFrameProfile } from './editor-frame-profile.js';
+import { flushEditorTopView } from '../core/render-topview.js';
 import { repaintBricks, migrateBrickRecords } from './editor-brick-tool.js';
 import { svgDownloadGroups, SVG_BRICK_EXPORT, INKSCAPE_NS } from './svg-export.js';
 
@@ -1037,6 +1038,7 @@ export function open(editor, svgString, w, h) {
 }
 
 export function sync3DBackground(editor) {
+    flushEditorTopView(); // a rebuild made while the editor was closed left its top view to be drawn now
     const topViewCanvas = document.getElementById('svgEditorTopView');
     if (topViewCanvas && editor._draw) {
         editor._bgLayer.clear();

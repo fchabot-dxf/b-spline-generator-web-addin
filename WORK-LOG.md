@@ -24920,6 +24920,40 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - VERDICT: op-first does not hold (same total time, the symptom stays). No toolpath_gen change. The one real effect
   is the doomed pass-1 tries get cheaper (~20 s of Top in sample 2/4), and pass 2's op-by-op time absorbs it.
   Holder back to none; scratch docs closed by handle; Fred's Untitled untouched.
+### 2026-10-08 (seat D): touch targets >= 28 px on a phone (Fred: "yes, all controls")
+- DECLARED (styles/editor.css, under the (pointer: coarse) signal SA-MOBILE-4 already uses): --touch-target-min 28px, a
+  floor on every control's SMALLER side -- the shared classes (.editor-fillmode-btn, .layers-add-btn, .layer-delete,
+  .panel-color-swatch, .brick-accent-icon, .cad-btn, .relief-toggle-btn, the 2D / 3D toggle), every button in the Art
+  panel and the lattice panels, the editor's selects / text / number inputs and checkbox label rows, and the steppers
+  through their own declared --cad-stepper-btn-width; + a 6 px gap before the layer delete x. !important because several
+  controls size themselves inline (the accent Custom min-height 22, the grid-spacing select height 24, the Shape
+  randomize 26x26) and the editor header forces min-width 0 from an id selector. Desktop (fine pointer) untouched.
+- Found while building (each read back from computed styles, not guessed): the first, class-only rule missed the
+  steppers (44 px tall but 22-24 wide), inline-sized controls, the layer toggles' min-width 24, the header buttons;
+  a re-probe once read a STALE stylesheet from a reused Chrome profile -- the audit tool and probes now disable the cache.
+- TEST: matrix layout group, TOUCH_TARGETS (declared in groups/layout.mjs): 390 x 844, touch + coarse pointer, one row
+  per Brick tab (6) + Art tab (6): every shown control in the editor has its smaller side >= 28 px (a checkbox by its
+  label; range sliders and the colour input under its toggle skipped). Layout group 48 rows 0 FAIL; on the pre-change
+  editor.css the 12 new rows FAIL 12/12 (mode tabs 21 px, header buttons, ...); the desktop / narrow rows still pass.
+- ACCEPTANCE (tools/repro/art_phone_audit.mjs, coarse pointer now emulated, a checkbox measured by its label):
+  349 control views, 0 under 28 px, 0 unreachable (the colour input under its own toggle is by design); 26 actions,
+  longest task 163 ms. Full suite (npm run test:full) 5970/5970. Known failures: none.
+- Shots: shots/seatD/atouch/touch_targets_built_390.png (main vs built, the real app at 390 px, coarse pointer);
+  the sheet Fred picked from: shots/seatD/aart/touch_targets_A_before_after.png.
+
+### 2026-10-08 (seat A): why pass 1 leaves B-spline ops empty -- Fusion says nothing (report only, no code change)
+- Fresh Fusion 76880, main b780560 deployed. T1 7x9 3-band wall payload, Send 34.4 s -> BUILD 29.4 s -> templates
+  (2/3/2 ops), the add-in's REAL deferred TPGen with toolpath_gen.generate_setups UNCHANGED, wrapped for one run so
+  that right after pass 1 (when pass 2 starts) every op's state was read: valid / hasToolpath / why_empty (Fusion's own
+  op.error + op.warning) / isGenerating / generatingProgress / isSuppressed / isProtected.
+- Pass 1: Back 0.3 s, Top 23.0 s, Frame 60.6 s. After it: B-spline Back pocket + spiral and B-spline Top pocket +
+  spiral had NO toolpath at all (has False), were NOT generating, not suppressed / protected, and op.error and
+  op.warning were both EMPTY. Top's last op (deloge) and both Frame ops were valid. Pass 2 (op by op) made all 4 in
+  10.8 + 3.4 + 10.6 + 4.4 s (+ deloge redone 36.2 s); post-audit ok=7.
+- Reading: Fusion silently skips those ops in the setup-level generateToolpath(setup) on a fresh doc -- no error to
+  read, so why_empty cannot name a cause, and there is no message-driven fix. The empty set matches every earlier
+  sample (the first ops of each B-spline setup; Back's both). pass 2's op-by-op retry stays the working answer.
+  Snapshot: scratchpad why1_after_pass1.json. Holder back to none; scratch doc closed by handle.
 
 ### Fan stacking (pick 1): the 2-4 in stacking was already gone; 8 in shared-side fans split after the yield (seat E / 61, 2026-10-08)
 - MEASURED (full overlap sweep, MEASURE_OVERLAPS=1, main 9827654): no fan x fan overlap at 2 / 3 / 4 in anywhere -- the
@@ -24944,6 +24978,28 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   After: overlap FAST 5/5 + FULL 19/19, gap FAST + FULL 760/760, tip-fill-fans FULL 608/608, band / engine suites
   (70 files) 1023/1023.
 - Seat D copied (FYI, no action) on the interaction with 7eb3df7.
+
+### 2026-10-08 (seat A): lazy editor top view (advisor go, pick 2)
+- MEASURED: updateEditorTopView ran on every rebuild: its own 384-wide noise heightmap (33 ms desktop) + shading
+  (3 ms) + sync3DBackground's toDataURL into the editor's backdrop -- the backdrop is its ONLY reader. On this PC
+  (4x CPU, phone width) that toDataURL stalled 5.2 - 14.0 s on a fresh canvas (12 - 185 ms on repeats): the
+  "14 - 21 s toDataURL" in today's slow phone Generate profiles.
+- CHANGE: with the editor modal hidden, updateEditorTopView stores (heights, nx, nz) and returns; sync3DBackground
+  (editor open, and every other backdrop refresh) calls flushEditorTopView() first, which paints the latest stored
+  inputs once. Editor showing: eager as before. P / preDelta are read at paint time; both change only through a
+  rebuild, which re-stores.
+- Loading rule: opening runs inside the existing declared 'openEditor' stage (openEditorOn); the probe saw it on every
+  open, both arms. The paint moved there: 157 - 237 ms at 4x CPU.
+- Identity: backdrop data URL SHA-256 identical main vs lazy on matched seeded runs (3 pairs). One main-arm run
+  showed a near-empty 7.6 k-char backdrop (main's eager path, not reproduced; noted only).
+- Phone Generate (2nd tap, same seed): main 7.7 / 8.6 / 7.7 / 6.8 s, lazy 3.9 / 8.1 / 4.1 s -- GPU-noisy on this PC
+  today, but the multi-second toDataURL is gone from closed-editor Generates by construction.
+- TESTS: tests/editor-topview-lazy.test.js (fake canvas recording putImageData bytes): closed rebuild paints nothing;
+  open-time flush == eager bytes; last closed rebuild wins and paints once; showing -> paints + syncs. Fails 2/4 on
+  main's eager file; first-rebuild-wins mutation fails 1. Full suite: 397 files, 5980/5980. Known failures: none.
+- Possible follow-up, NOT done: getContext('2d', { willReadFrequently: true }) keeps the canvas CPU-side (no GPU
+  readback on toDataURL), but the reticle's antialiasing may differ, so it is not identical by construction --
+  measure first if wanted.
 
 ### Wall bricks outside the outline at 2 - 8 in -> 0 (advisor: its own item after fan stacking) (seat E / 61, 2026-10-08)
 - MEASURED (the gap sweep's new count, 18 single-soldier lays at 2 - 8 in, T14 7x9 3 in 10 pieces): the wall's region
