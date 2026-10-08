@@ -25219,3 +25219,15 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Mutation: the rule no longer reporting the margin (return null) -> MUTATION 1 fails.
 - Test files importing frame-panel / editor-frame-profile: 69 files 1917/1917 (2 workers). Full suite after DDCS.
 - Must merge AFTER frame-validity-rule (this branch is built on it).
+
+### 2026-10-08 (seat A): phone boot re-measured (pick 3) -- ready -15%, editor first open +95 ms (the lazy top view)
+- Probe: bootprof2.mjs (fresh profile, 390x844, 4x CPU, Math.random seeded), alternating single loads, GPU quiet
+  (Fusion closed), after our gate and DDCS's lock cleared; arms: main 5322738 vs f0c3eaa (this morning, before
+  frame-mesh r3 / the lazy top view / today's other merges).
+- Round 2 (4 loads each, quiet): ready main 4.52 - 4.73 s (median ~4.66) vs 5.28 - 5.78 s (median ~5.52) -- about
+  -0.85 s (-15%); DOMContentLoaded equal (~1.5 s); editor FIRST open main 340 - 471 ms (median ~389) vs 125 - 378 ms
+  (median ~295) -- about +95 ms, the deferred top-view paint landing there as designed (inside the 'openEditor' stage);
+  Brick tab ~200 - 320 ms both.
+- Round 1 (2+2 loads each, right after the gate): noisy, both arms' first loads cold (main ready 9.1 / 7.2 s) -- not
+  used for the comparison; listed in the probe output only.
+- Nothing to fix from this.
