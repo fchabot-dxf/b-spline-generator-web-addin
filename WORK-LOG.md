@@ -25334,3 +25334,19 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - TESTS: loading-signal.test.js -- the card text and its closing when the lay ends fail 2/22 on the old declaration;
   the idle-timeout test now uses newSeed (its only multi-step-left case was generate); loading-steps-list.test.js --
   generate moved out of the multi-step sweep, its one-step card pinned. Full suite 402 files, 6018/6018.
+### 2026-10-08 (seat A): APPLY's "deloge generated twice" -- measured, no toolpath_gen change (a shared first-generation cost)
+- The suspicion: pass 1 generates the whole 'B-spline Top' setup (~23 s) and only deloge (rest-machined from the pocket)
+  comes out valid; pass 2 regenerates the empty pocket, which invalidates deloge, so deloge is generated AGAIN (~36 s).
+- VARIANT (scratch swap of toolpath_gen.generate_setups, the add-in's real TPGen event): pass 1 runs the B-spline
+  setups op by op and SKIPS an op while an earlier op of its setup has no valid toolpath (a later op may be rest-
+  machined from an earlier one); other setups whole; passes 2.. as the original. Deloge is then generated ONCE.
+- RESULT (T1 7x9 3-band wall payload; per-op machining time / feed / rapid identical 7/7 in every run):
+  variant  dep1 2:44 (B-spline 74.5 s, Frame 87.6 s), dep2 2:26 (B-spline 65.1 s, Frame 78.6 s);
+  control  ctl1 2:33 (B-spline 91.5 s, Frame 59.4 s) + this morning's 2:42 / 2:42 (Frame 60.6 / 66.6 s).
+  The variant saves ~22 s of B-spline work, and Frame then takes ~20 s longer, every time -- the totals come out even.
+- READING: a shared first-generation cost (plausibly the shared bottom-aligned stock, item 82): in the original the
+  doomed 23 s Top try pays it before Frame; in the variant Frame pays it. The "waste" is not real time.
+- DECISION (advisor): no toolpath_gen change; the second control skipped (3 controls vs 2 variants, Frame +20 s every
+  time is enough). Fusion sessions 61560 / 14752 hit the 8 GB line after ~1.5 cycles each (send +3.4 GB).
+- Process slip, owned: once two fusion_execute calls in one message (summary + close) -- ran in order, no effect.
+- Holder back to none; scratch docs closed by handle; Fred's Untitled untouched.
