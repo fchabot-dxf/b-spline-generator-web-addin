@@ -1172,6 +1172,15 @@ def _palette_stages():
     return _fb_shared('palette_stages')
 
 
+def _post_fusion_memory(where):
+    """Detection only: Fusion's own memory (fb_shared.fusion_memory), logged + one palette line above the declared
+    threshold. Never raises, never blocks."""
+    try:
+        _send_to_html('fusion_memory', _fb_shared('fusion_memory').read_signal(_log, where))
+    except Exception:
+        _log_error('fusion_memory' + chr(10) + traceback.format_exc())
+
+
 def _post_cam_stage(stage_id, grow=None):
     """Tell the CAM palette which declared step Fusion is on now; never an undeclared id (logged instead).
     `grow` (Fred, 2026-10-07: the card's step list may grow live) = a change for the palette's list before the step
@@ -1277,10 +1286,7 @@ def _do_generate(confirmed=False):
     Engine is reloaded on every generate so iterative edits to
     cam_engine.* pick up without an addin Stop/Start.
     """
-    try:  # detection only: Fusion's own memory, logged + one palette line above the declared threshold
-        _send_to_html('fusion_memory', _fb_shared('fusion_memory').read_signal(_log, 'BUILD'))
-    except Exception:
-        _log_error("fusion_memory\n" + traceback.format_exc())
+    _post_fusion_memory('BUILD')
     try:
         _load_engine()
     except Exception:

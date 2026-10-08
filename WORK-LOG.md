@@ -24448,3 +24448,10 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   Send+BUILD wiring); tests/fusion-memory-line.test.js 5. With the wiring stashed: 1 + 2 fail.
 - Shots: shots/seatA/fusion_memory/fusion_memory_strip.png (both palettes, 13.4 GB amber / 26.1 GB red, painted
   headless). Live Fusion check (the reading inside Fusion, the close handler) pending a slot.
+- Follow-up, caught by the add-in suites before any push of a claim: (1) the DocumentClosedHandler class defined at
+  import broke all 16 b-spline-gen test files (their adsk stubs carry no DocumentEventHandler) -- now built at
+  registration (_document_closed_handler() in run). (2) The Send reading could raise under stubs and turned a Send into
+  "The Send failed" (2 tests) -- both add-ins now post through a never-raising _post_fusion_memory(where). (3) CAM's
+  deferred-build harness (test_cam_stages.TestTheDeferredBuild, also run by test_build_then_apply / test_tpgen_card)
+  asserts the build's own step sequence; it now stubs the detection-only reading. Suites: b-spline-gen 180/180,
+  CAM-builder 85/85, fb_shared 10/10, fusion-memory-line 5/5.

@@ -40,8 +40,9 @@ def test_this_process_can_be_read_on_windows():
 def test_send_and_build_both_read_it_before_they_start():
     bsg = open(os.path.join(_ROOT, 'b-spline-gen', 'b-spline-gen.py'), encoding='utf-8').read()
     cam = open(os.path.join(_ROOT, 'CAM-builder', 'cam-builder.py'), encoding='utf-8').read()
-    assert "_post_to_palette('fusion_memory', fusion_memory.read_signal(_log, 'Send'))" in bsg
-    assert "_send_to_html('fusion_memory', _fb_shared('fusion_memory').read_signal(_log, 'BUILD'))" in cam
+    assert "_post_to_palette('fusion_memory', fusion_memory.read_signal(_log, where))" in bsg
+    assert "_post_fusion_memory('Send')" in bsg
+    assert "_send_to_html('fusion_memory', _fb_shared('fusion_memory').read_signal(_log, where))" in cam
     # the BUILD reading comes before the engine loads (the start of _do_generate)
     gen = cam[cam.index('def _do_generate('):]
-    assert gen.index("read_signal(_log, 'BUILD')") < gen.index('_load_engine()')
+    assert gen.index("_post_fusion_memory('BUILD')") < gen.index('_load_engine()')

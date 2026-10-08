@@ -116,6 +116,8 @@ class TestTheDeferredBuild:
         monkeypatch.setattr(cb, '_setups_with_operations', lambda: [])
         monkeypatch.setattr(cb, '_post_cam_stage', lambda sid: events.append(('stage', sid)))
         monkeypatch.setattr(cb, '_send_to_html', lambda action, payload: events.append((action, payload.get('msg'))))
+        # the build's own steps only: the detection-only memory reading before BUILD is fb_shared/test_fusion_memory.py's
+        monkeypatch.setattr(cb, '_post_fusion_memory', lambda where: None)
         self.delays = []
         test = self
 

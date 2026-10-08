@@ -313,12 +313,15 @@ def _drop_stale_import_refs():
     last_imported_occurrences = [o for o in last_imported_occurrences if _alive(o)]
 
 
-class DocumentClosedHandler(adsk.core.DocumentEventHandler):
-    def notify(self, args):
-        try:
-            _drop_stale_import_refs()
-        except Exception:
-            _log('documentClosed: dropping stale import refs failed')
+def _document_closed_handler():
+    """Built at registration (run), not at import: the module's test stubs carry no DocumentEventHandler."""
+    class DocumentClosedHandler(adsk.core.DocumentEventHandler):
+        def notify(self, args):
+            try:
+                _drop_stale_import_refs()
+            except Exception:
+                _log('documentClosed: dropping stale import refs failed')
+    return DocumentClosedHandler()
 
 
 _doc_closed_handler = None
@@ -446,6 +449,15 @@ def _is_surface_body_name(bn):
     if bn.startswith('surface (') and bn.endswith(')'):
         return True
     return False
+
+
+def _post_fusion_memory(where):
+    """Detection only: Fusion's own memory (fb_shared.fusion_memory), logged + one palette line above the declared
+    threshold. Never raises, never blocks a Send."""
+    try:
+        _post_to_palette('fusion_memory', fusion_memory.read_signal(_log, where))
+    except Exception:
+        _log('fusion_memory: reading not posted')
 
 
 def _post_to_palette(action, payload):
@@ -1860,7 +1872,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if not is_preview:
                 importing_done = False
                 _send_stage('fusionPrepare')
-                _post_to_palette('fusion_memory', fusion_memory.read_signal(_log, 'Send'))
+                _post_fusion_memory('Send')
                 _send_progress("Preparing Geometry...")
 
             _log(f'_handle_generate: isPreview={is_preview}, payload keys={list(data.keys())}')
@@ -2690,7 +2702,7 @@ def run(context):
         _log('CommandCreatedHandler wired')
 
         global _doc_closed_handler
-        _doc_closed_handler = DocumentClosedHandler()
+        _doc_closed_handler = _document_closed_handler()
         app.documentClosed.add(_doc_closed_handler)
         handlers.append(_doc_closed_handler)
 
