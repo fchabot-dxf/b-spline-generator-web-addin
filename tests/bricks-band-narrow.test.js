@@ -81,3 +81,22 @@ describe('a single band too deep for a feature narrows to fit it (T86 item 30)',
     });
   }
 });
+
+describe('a narrowed band meets its facing row one joint apart (seat D, 2026-10-08)', () => {
+  // MEASURED before: narrowSingleBand stopped "the cliff less a joint", so at a neck the two facing rows sat the drop
+  // floor + 2 joints apart -- 0.088 in (2.6 joints) on T15 / T9 7x9 at 1.5 in, a bare line down the board (wall coverage
+  // matrix 0.195 / 0.240 of a face). The band now stops where the dropping line's run is one joint.
+  // [template, the axis the scan line runs along, its position, the seam's centre on the other axis]
+  it.each([['template_15', 'y', 3, 3.5], ['template_15', 'y', 4.2, 3.5], ['template_9', 'x', 3, 1.74], ['template_9', 'x', 3, 7.26]])('%s 7x9 at 1.5 in, %s = %s: the seam is one joint', (tpl, ax, v, centre) => {
+    const sil = frameContourSilhouette({ defs: FRAME_DEFS, record: normalizeFrameRecord({ templateId: tpl }), board: { widthIn: 7, heightIn: 9 } }, 0, 0);
+    const r = lay(buildRibbonPrimitives(sil.primitives), 'single_soldier', 1.5);
+    expect(r.bandsReduced && r.bandsReduced.steps.some((s) => s.step === 'narrow'), 'the band narrowed').toBe(true);
+    const o = ax === 'y' ? 'x' : 'y', hits = [];
+    for (const b of r.bricks) for (let i = 0; i < b.polygon.length; i++) {
+      const a = b.polygon[i], c = b.polygon[(i + 1) % b.polygon.length];
+      if ((a[ax] - v) * (c[ax] - v) < 0) hits.push(a[o] + ((v - a[ax]) / (c[ax] - a[ax])) * (c[o] - a[o]));
+    }
+    const below = Math.max(...hits.filter((h) => h <= centre)), above = Math.min(...hits.filter((h) => h >= centre));
+    expect(above - below).toBeCloseTo(SET.grout.widthIn, 3);
+  });
+});

@@ -31,9 +31,11 @@ const COVER_MIN_RATIO = 0.98, REGION_MIN_SQIN = 1, BARE_MAX_SQIN = 0.3;
 const BOARD = { W, H };
 /** where the single soldier band covers the board and no wall interior remains (measured) */
 const NO_WALL_ROOM = new Set(['template_9 1.5']);
-/** T86 item 16(d): the largest single bare patch is <= PATCH_MAX_FACE of one brick face (tests/bare-ground.js). The 1.5 in
- *  wall tips are item 16f's parked class and are capped at today's measure instead (PATCH_KNOWN, a face share each). */
-const PATCH_KNOWN = { 'template_15 1.5': 0.2, 'template_16 1.5': 0.08, 'template_9 1.5': 0.25 }; // measured 0.195 / 0.072 / 0.240
+/** T86 item 16(d): the largest single bare patch is <= PATCH_MAX_FACE of one brick face (tests/bare-ground.js). T15 / T9 at
+ *  1.5 in (a 2.6-joint seam where a narrowed band met its facing row) are fixed (contour-bands narrowSingleBand: the run
+ *  at the row edge is one joint). T16 1.5 in: the wall's 39 deg tip at the neck, narrower than TIP_FILL_MIN_DEG (no
+ *  needles) and under the wall's piece floor -- bare by declared rule, capped at today's measure (a face share). */
+const PATCH_KNOWN = { 'template_16 1.5': 0.08 }; // measured 0.072
 
 const area = (p) => (p && p.length >= 3 ? Math.abs(signedArea(p)) : 0);
 const bareSqInScan = (contour, bricks, J) => bareGroundScan(contour, bricks, J, BOARD);
