@@ -134,3 +134,23 @@ describe('Continuous strokes and the window surround in the crossing rule', () =
     expect(g).toBeLessThan(1.1 * J);
   });
 });
+
+// the gate's strokes run (2026-10-08, a Grey stone frame): a stroke's SIDE met one stone before its centreline entered
+// another; cut on the centreline's stone only, the end piece overlapped the first and was dropped -- a 1 in gap. The split
+// now follows the centreline and both edges: the stroke stops a joint short of whatever it meets first.
+describe('a stroke whose edge meets an obstacle its centreline misses', () => {
+  const A = [{ x: 4.05, y: 1.6 }, { x: 4.6, y: 1.6 }, { x: 4.6, y: 2.0 }, { x: 4.05, y: 2.0 }]; // only the stroke's right half reaches it
+  const B = [{ x: 3, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 1 }, { x: 3, y: 1 }]; // the band it runs into
+  it('stops a joint short of the block, resumes past it, and stops a joint short of the band -- no overlap, no lost piece', () => {
+    const [res] = strokeBricksWithCrossings([{ points: [{ x: 4, y: 4.5 }, { x: 4, y: 0.3 }], settings: { ...S0 } }], [A, B]);
+    for (const b of res.bricks) for (const f of [A, B]) expect(area(polygonIntersection(b.polygon, f))).toBeLessThan(1e-4);
+    for (const f of [A, B]) {
+      const g = Math.min(...res.bricks.map((b) => gap(b.polygon, f)));
+      expect(g).toBeGreaterThan(0.9 * J);
+      expect(g).toBeLessThan(1.1 * J);
+    }
+    // pieces both above the block and between the block and the band
+    expect(res.bricks.some((b) => b.polygon.every((p) => p.y > 2.0))).toBe(true);
+    expect(res.bricks.some((b) => b.polygon.every((p) => p.y < 1.6 && p.y > 1.0))).toBe(true);
+  });
+});

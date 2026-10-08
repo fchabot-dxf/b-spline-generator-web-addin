@@ -54,7 +54,9 @@ describe('dropStaleProfiles: a capped, oldest-first cleanup of real dirs', () =>
       const n = PROFILE_DROP_MAX + 3, t = Date.now() / 1000 - PROFILE_MIN_AGE_MS / 1000 - 60;
       for (let i = 0; i < n; i++) { const d = path.join(tmp, `${PROFILE_PREFIX}99${i}-x`); mkdirSync(d); writeFileSync(path.join(d, 'f'), 'x'); utimesSync(d, t - i * 60, t - i * 60); }
       mkdirSync(path.join(tmp, `${PROFILE_PREFIX}9999-fresh`));
-      expect(dropStaleProfiles(tmp)).toBe(PROFILE_DROP_MAX);
+      // its own Chrome list (none running on this temp root): the live list is a PowerShell call that timed out under the
+      // gate's load (20 s) -- an unknown list removes nothing, which read as a failure ("expected 10, got 0", 2026-10-08)
+      expect(dropStaleProfiles(tmp, PROFILE_DROP_MAX, new Set())).toBe(PROFILE_DROP_MAX);
       const left = readdirSync(tmp).sort();
       expect(left).toContain(`${PROFILE_PREFIX}9999-fresh`);
       expect(left).toContain(`${PROFILE_PREFIX}990-x`); // the newest old ones are the ones left
