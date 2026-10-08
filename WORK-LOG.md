@@ -24478,3 +24478,18 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   BUILT with no ops yet). The palette's showSetupList feeds the cards AND the header from every source (the doc on
   open, BUILD and TPGen reports); the initial text is an ellipsis until the add-in answers.
 - tests/cam-setup-state.test.js 6 (+2 header, pins updated); 3 fail against the pre-change palette + map.
+
+### 2026-10-07 (seat A): gate wall time (pick 3) -- measured, PARKED by the advisor (no code change)
+- brick-discrete-controls-regen (~32 s in the gate): an in-test profile (node:inspector around the setups) -- 38% GC,
+  41% initBrickPanel; inside it renderFrameBandPatternList 28% -> renderAccentRowFor 24% (every accent button's icon
+  SVG re-parsed through innerHTML on every render; brick-panel.js renderAccentRowFor / renderAccentList /
+  the user-pattern tiles). The heap churns 108 -> 800 -> 240 MB between setups: allocation churn, not a leak.
+  REAL APP COST worth knowing if the phone Brick panel ever feels slow: each render rebuilds every accent row's SVG
+  polygons (the strings are cached in editor-brick-tool.js accentIconSvg; the DOM is not).
+- Tried: parse each distinct icon once into a <template> and clone it (identical DOM). MEASURED no gain in happy-dom
+  (test time 10.1 / 9.1 s vs main 9.6 / 11.0 s, noise): cloning the polygon-heavy SVG costs about what parsing it does.
+  Reverted. The lever is the number of SVG nodes x renders per change (fewer re-renders), a behaviour change.
+- frame-no-hooked-miters (~47 s in the gate, 15 s CPU alone): hourglassConstruction (editor-shape-lattice-generator.js)
+  is 42% self time, outlineDefects 7%. Line-level ticks from inside vitest don't map (the module is transformed); the
+  next step, if ever resumed, is a plain-node profile of the same seeds and a check whether the sweep calls the pure
+  construction repeatedly with identical inputs (a memo would be byte-identical).
