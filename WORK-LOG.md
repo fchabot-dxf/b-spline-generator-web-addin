@@ -24650,3 +24650,18 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Frame 12.4 s: sketches 5.6 s (bbox <1, outline ~3, enclosure ~2 incl. solving) + solid 5.9 s (4 bars ~0.7 s each,
   the trim cut through the stamped panel ~3 s, appearance 0.2 s). Every part is a Fusion modelling op of 0.7-3 s: no
   single big target. Stopped here per the advisor (46 s fresh + the memory bar is the state).
+
+### 2026-10-08 (seat A): phone Brick taps -- narrowestGap remembered per board (byte-identical) -- pick "phone taps"
+- Measure first (advisor's candidate was the accent-row re-render): Chrome 390 px, 4x CPU, each tap profiled, every
+  sample assigned to the OUTERMOST bucket on its stack: panel render 1-30 ms (NOT the cost); the lay 347-648 ms; the
+  requires check (corner / fan plans) 86-203 ms. Inside both: core/bricks/contour-bands.js narrowestGap -- 300 ms of a
+  470-620 ms lay, 81-90 ms of the checks: the band-fit rule's O(n^2) gap (every edge ray against every edge + every
+  reflex junction against every edge), recomputed for the SAME board by every lay and each check plan.
+- Fix: narrowestGapCached(board, source) -- the same pure function, remembered per exact board content (coordinates +
+  sources as the key; at most GAP_MEMO_MAX = 16 boards). bricksContourBands reads the gap through it.
+- Tests: tests/narrowest-gap-cache.test.js 3 (the cached value === narrowestGap on first and remembered calls; bounded;
+  a lay on a warm cache byte-identical to a cold one on T1 / T10 / T14, one entry per board). Mutation (the call site
+  back to the uncached gap): the lay test fails. frame-corner-effect + frame-corner-checks-lay-nothing: pass (24/24).
+- AFTER (same probe, same taps): frame band preset 0.47 / 0.68 / 0.84 -> 0.13 / 0.15 / 0.33 s; band pattern 0.74 ->
+  0.30 s; accent pick 0.33 -> 0.16 s; the lay 71-235 ms, the checks 15-32 ms.
+- No recent branch touches contour-bands.js (checked the last 20 remote branches) -- no overlap with E.
