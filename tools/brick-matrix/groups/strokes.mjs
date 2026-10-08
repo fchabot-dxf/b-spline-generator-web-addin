@@ -77,8 +77,14 @@ export const CROSSINGS = {
     { name: 'curved X', strokes: [[[-2.5, 0], [2.5, 0]], [[-2.4, 1.2], [-1.2, -0.6], [0, -1], [1.2, -0.6], [2.4, 1.2]]], cut: 1 },
     { name: 'T', strokes: [[[-2.5, 0], [2.5, 0]], [[0, -2.2], [0, 0]]], cut: 1 },
     { name: 'end-touch (the earlier ends on the later)', strokes: [[[0, -2.2], [0, 0]], [[-2.5, 0], [2.5, 0]]], cut: 0 },
+    // pick 2: a Continuous stroke (one unbroken piece per run) runs through and stops by the same rule
+    { name: 'brick X over an earlier Continuous', strokes: [[[-2.5, 0], [2.5, 0]], [[0, -2.2], [0, 2.2]]], profiles: ['continuous', 'stripped'], cut: 1 },
+    { name: 'Continuous X over an earlier brick stroke', strokes: [[[-2.5, 0], [2.5, 0]], [[0, -2.2], [0, 2.2]]], profiles: ['stripped', 'continuous'], cut: 1 },
+    { name: 'Continuous T ending on an earlier brick stroke', strokes: [[[-2.5, 0], [2.5, 0]], [[0, -2.2], [0, 0]]], profiles: ['stripped', 'continuous'], cut: 1 },
   ],
   gapTolerance: 0.1,
+  // the Brush profile buttons (a case's `profiles[k]` picks one before stroke k; absent = as it is)
+  profileButton: { stripped: 'brickBtnProfileStripped', continuous: 'brickBtnProfileContinuous' },
 };
 const CLEAR_STROKES = `import('./editor/editor-brick-tool.js').then((T)=>{ const ed=window.svgEditor;
   ed._sketchLayer.node.querySelectorAll('[data-brick="brush-spine"]').forEach((n)=>n.remove());
@@ -95,7 +101,9 @@ async function runBrushCrossings() {
     }
     await js(`(document.getElementById(${JSON.stringify(C.tool)}).click(), 1)`);
     await sleep(400);
-    for (const pts of k.strokes) {
+    for (const [si, pts] of k.strokes.entries()) {
+      const prof = k.profiles && k.profiles[si];
+      if (prof) { await js(`(document.getElementById(${JSON.stringify(C.profileButton[prof])})?.click(), 1)`); await sleep(300); }
       await js(`import('./editor/editor-brick-tool.js').then((T)=>{ const ed=window.svgEditor, pts=${JSON.stringify(pts)}, cx=ed._mW/2, cy=ed._mH/2;
         const at=([x,y])=>({ x: cx + x, y: y === 'top' ? 0.15 : cy + y });
         T.brickBrushHandler.start(ed, at(pts[0])); for (const p of pts.slice(1)) T.brickBrushHandler.update(ed, at(p)); T.brickBrushHandler.finish(ed); return 1; })`);
@@ -122,5 +130,6 @@ async function runBrushCrossings() {
       `${r.strokes} strokes, ${r.pieces} pieces (${r.mine} on the cut one), overlaps ${r.overlaps}, gap at the cut ${r.gap} in (joint ${r.J})`);
   }
   await js(CLEAR_STROKES);
+  await js(`(document.getElementById(${JSON.stringify(C.profileButton.stripped)})?.click(), 1)`); // back to the default profile
   if (await editorOpen()) await apply();
 }

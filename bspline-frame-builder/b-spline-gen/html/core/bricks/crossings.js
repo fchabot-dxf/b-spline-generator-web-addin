@@ -55,7 +55,8 @@ const near = (p, poly, d) => pointInPolygon(p.x, p.y, poly) || poly.some((a, i) 
 
 /**
  * Per stroke, the strokes it is CUT by (CROSSING_RULE). `strokes`: in creation order, each { points (its centreline),
- * outline (its ribbon outline) }. A pair whose outlines do not meet (a joint apart) has no junction.
+ * regions (the polygons it covers: a brick stroke's ribbon outline; a Continuous run's pieces) } -- or { outline } for one
+ * polygon. A pair whose regions do not meet (a joint apart) has no junction.
  * @returns {number[][]} cutBy[i] = indices of the strokes stroke i is cut against
  */
 export function strokeCrossings(strokes, joint) {
@@ -63,11 +64,14 @@ export function strokeCrossings(strokes, joint) {
   const ends = (s) => [s.points[0], s.points[s.points.length - 1]];
   // edges within a joint (crossing edges are 0 apart) or one inside the other -- MEASURED: two 4-vertex outlines in an X
   // have no vertex inside each other, so a vertex test alone missed every plain X
-  const meets = (a, b) => a.outline && b.outline && (outlinesWithin(a.outline, b.outline, joint) || near(a.outline[0], b.outline, joint) || near(b.outline[0], a.outline, joint));
+  const regionsOf = (s) => (s.regions || (s.outline ? [s.outline] : [])).filter((r) => r && r.length >= 3);
+  const polysMeet = (A, B) => outlinesWithin(A, B, joint) || near(A[0], B, joint) || near(B[0], A, joint);
+  const meets = (a, b) => regionsOf(a).some((A) => regionsOf(b).some((B) => polysMeet(A, B)));
+  const endsOn = (s, t) => ends(s).some((p) => regionsOf(t).some((R) => near(p, R, joint)));
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
     const a = strokes[i], b = strokes[j];
     if (!meets(a, b)) continue;
-    const bEndsOnA = ends(b).some((p) => near(p, a.outline, joint)), aEndsOnB = ends(a).some((p) => near(p, b.outline, joint));
+    const bEndsOnA = endsOn(b, a), aEndsOnB = endsOn(a, b);
     if (CROSSING_RULE.endingStrokeStops && aEndsOnB && !bEndsOnA) cutBy[i].push(j); // the earlier one ends on the later: it stops
     else cutBy[j].push(i); // a T (the later ends on the earlier), an X, or both ending at each other: the earlier runs through
   }

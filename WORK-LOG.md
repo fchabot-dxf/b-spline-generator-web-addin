@@ -24426,3 +24426,15 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   empty), so "touching" the ops before the first generation fixes the Pockets, not the Spirals.
 - One sample per variant = an observation, not a rule; no fix declared. The later passes (MAX_GENERATION_PASSES = 4)
   stay the answer. Next if wanted: B again (repeatability), then B + a Spiral-only pre-generation.
+### Pick 2 -- Continuous strokes in the crossing rule; the window surround runs through (seat E / 61, 2026-10-08)
+- MEASURED: a Continuous stroke has no ribbon outline (bricksAlongPath lays one unbroken piece per corner-bounded run), so
+  strokeCrossings never saw it -- it neither ran through nor stopped; a brick stroke crossed it with an overlap and it
+  crossed brick strokes the same way (4 cases, all overlapping on brush-crossings-5).
+- BUILT: a stroke's REGIONS = its ribbon outline, or (Continuous) its own pieces; strokeCrossings reads any number of
+  region polygons per stroke (meets / ends-on over all of them); a through Continuous stroke cuts the others with its pieces
+  grown by a joint; a cut Continuous stroke is still CUT as one piece (bricksClearOf), as before.
+- Window surround: laid into the frame's pieces (editor-brick-tool.js: frameBricks + surroundBricks, drawn as frame), so a
+  stroke already runs into it like the frame -- now pinned by a test (it passed before; a pin, not a fix).
+- TESTS brush-crossings (+5, 21): brick X / T over an earlier Continuous, Continuous X / T over an earlier brick stroke: no
+  overlap, the cut a joint (+-10 %) off -- measured exactly 1.000 J in all five; the surround ring case. On brush-crossings-5's
+  code the four Continuous cases fail (4/21). Matrix rows: not run yet (heavy -- after your clear).
