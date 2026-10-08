@@ -154,8 +154,15 @@ function _render() {
  *  CAM BUILD). */
 function _renderSteps(el, surface, top) {
   let list = el.querySelector('.loading-stage-steps');
+  // Fred (2026-10-07: "make the spinner on the working item"): with a list, the card's ONE spinner sits on the current
+  // step's line (in place of its dot) and the headline keeps its text alone; without a list it is back at the start
+  const spinner = el.querySelector('.loading-stage-spinner');
   const seq = _sequence && _sequence.stages.includes(top.id) ? _sequence : null;
-  if (surface !== 'card' || !seq || seq.stages.length < 2) { if (list) list.hidden = true; return; }
+  if (surface !== 'card' || !seq || seq.stages.length < 2) {
+    if (list) list.hidden = true;
+    if (spinner && spinner.parentElement !== el) el.insertBefore(spinner, el.firstChild);
+    return;
+  }
   if (!list) {
     if (typeof document === 'undefined') return;
     list = document.createElement('ol');
@@ -170,6 +177,7 @@ function _renderSteps(el, surface, top) {
     li.dataset.stage = step.id;
     li.dataset.state = step.state;
     li.textContent = step.label;
+    if (step.state === 'current' && spinner) { li.dataset.spinner = ''; li.prepend(spinner); }
     list.appendChild(li);
   }
 }
