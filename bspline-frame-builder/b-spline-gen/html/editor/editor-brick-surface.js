@@ -4,12 +4,12 @@
  * own header is explicit that this is the adapter's job: core/bricks/ stays
  * zero-canvas/zero-DOM, and takes an OPTIONAL `sampleDetailAt(x,y,brick)`
  * callback returning a de-lit, normalised [-1,1] value. Two consumers share the
- * same loaded-image cache here:
+ * loaded-image cache here:
  *   - sampleDetailAtFor(setId): feeds engine.js's sampleHeight (see
  *     editor-brick-height-mask.js), the terrain HEIGHT side.
- *   - brickFillPaint(...): an SVG <pattern> paint for drawBrick's own 2D fill,
- *     the visible COLOUR side.
- * Both map a brick's own declared sampleId/flip (already on every brick
+ * (The 2D canvas no longer shows the photos: Fred 2026-10-08, "grey only" -- bricks read in greys from their carve
+ * height, editor/brick-height-grey.js; the photo detail still shapes that height here.)
+ * It maps a brick's own declared sampleId/flip (already on every brick
  * core/bricks/ generates -- nothing new there) into the brick's own LOCAL
  * frame and CENTRE-CROP the sample to the set's nominal brickLengthIn:
  * brickHeightIn aspect, per the dispatch's own "never stretched -- centre-crop
@@ -20,7 +20,6 @@ import { brickSetById } from '../core/bricks/index.js';
 const IMAGE_CACHE = new Map(); // url -> Promise<HTMLImageElement>
 const DETAIL_PROMISE_CACHE = new Map(); // `${setId}:${sampleId}` -> Promise
 const DETAIL_RESOLVED = new Map(); // `${setId}:${sampleId}` -> {w,h,data:Float32Array} | null
-const PATTERN_IDS = new Map(); // `${setId}:${sampleId}:${flip}` -> pattern element id
 
 const DETAIL_GRID = 48; // working resolution for the de-lit detail field -- a subtle surface
 // bump needs far less resolution than the sample photo's own native size.
@@ -233,67 +232,4 @@ export function sampleDetailAtFor(setId) {
     const { u, v } = brickLocalUV(brick.polygon, x, y, brick.flip);
     return sampleGrid(grid, u, v);
   };
-}
-
-const SVG_NS = 'http://www.w3.org/2000/svg';
-const XLINK_NS = 'http://www.w3.org/1999/xlink';
-let patternCounter = 0;
-
-/** Ensures a shared <pattern> exists in the sketch SVG's own <defs> and
- *  returns its paint-url string, or null when there's no real sample to show
- *  (caller falls back to the existing flat SET_COLORS fill). `patternUnits=
- *  "objectBoundingBox"` means ONE pattern per (set,sample,flip) serves every
- *  brick using it regardless of that brick's own size; `preserveAspectRatio=
- *  "xMidYMid slice"` on the nested <image> gives "centre-crop, never
- *  stretched" for free from the SVG spec -- no manual crop maths needed for
- *  the visible fill (unlike the height-detail grid above, which computes its
- *  own crop since it isn't SVG-rendered). */
-//
-// T86 item 16(b) (reopened: "the wall drops bricks at 1.25 in+"): the pattern tile is the brick's bounding box
-// (patternUnits objectBoundingBox) but the <image> inside it is sized in the CONTENT units, which default to user
-// space -- inches. A 1x1 image is a 1-inch square: it covers a 3/4 in brick, but a 1.5 x 0.4 in brick only for
-// its first inch, and the board shows through the rest. MEASURED with every laid polygon drawn over the editor
-// shot (T1, 1.5 in, single soldier): every grey patch lies INSIDE a wall or frame polygon. So the image square
-// is `span` inches, the brick's longest side rounded UP to a quarter inch, never under 1 -- every brick up to
-// 1 in keeps exactly today's pattern (id and look); larger bricks get their own, big enough to cover them.
-function paintSpanIn(sizeIn) {
-  return Math.max(1, Math.ceil((Number(sizeIn) || 0) * 4 - 1e-9) / 4);
-}
-
-export function brickFillPaint(editor, setId, sampleId, flip, sizeIn = 1) {
-  const set = brickSetById(setId);
-  const sample = set && set.samples && set.samples.find((s) => s.id === sampleId);
-  if (!sample || typeof document === 'undefined') return null;
-
-  const span = paintSpanIn(sizeIn);
-  const key = span === 1 ? `${setId}:${sampleId}:${flip ? 1 : 0}` : `${setId}:${sampleId}:${flip ? 1 : 0}:${span}`;
-  const svgRoot = editor._sketchLayer.node.ownerSVGElement || editor._sketchLayer.node.closest('svg');
-  if (!svgRoot) return null;
-
-  const existingId = PATTERN_IDS.get(key);
-  if (existingId && svgRoot.querySelector(`#${existingId}`)) return `url(#${existingId})`;
-
-  const id = `brickfill-${key.replace(/[^a-zA-Z0-9]/g, '_')}-${patternCounter++}`;
-  let defs = svgRoot.querySelector('defs[data-brick-defs]');
-  if (!defs) {
-    defs = document.createElementNS(SVG_NS, 'defs');
-    defs.setAttribute('data-brick-defs', '1');
-    svgRoot.insertBefore(defs, svgRoot.firstChild);
-  }
-  const pattern = document.createElementNS(SVG_NS, 'pattern');
-  pattern.setAttribute('id', id);
-  pattern.setAttribute('patternUnits', 'objectBoundingBox');
-  pattern.setAttribute('width', '1');
-  pattern.setAttribute('height', '1');
-  const image = document.createElementNS(SVG_NS, 'image');
-  image.setAttribute('width', String(span));
-  image.setAttribute('height', String(span));
-  image.setAttribute('preserveAspectRatio', 'xMidYMid slice');
-  image.setAttributeNS(XLINK_NS, 'href', sample.image);
-  image.setAttribute('href', sample.image);
-  if (flip) image.setAttribute('transform', `translate(${span},0) scale(-1,1)`);
-  pattern.appendChild(image);
-  defs.appendChild(pattern);
-  PATTERN_IDS.set(key, id);
-  return `url(#${id})`;
 }

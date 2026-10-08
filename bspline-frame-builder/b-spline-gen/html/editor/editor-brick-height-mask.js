@@ -81,6 +81,8 @@ function collectLiveBrickGroups(editor, layer, levels = {}) {
       row: Number(n.getAttribute('data-brick-row')) || 0,
       piece: Number(n.getAttribute('data-brick-piece')) || 0,
       owner: n.getAttribute('data-brick-owner') || null,
+      // the piece's id in the SVG download (svg-export.js: `<owner or kind>:<data-brick-id>`), for `faces` below
+      pieceKey: `${n.getAttribute('data-brick-owner') || n.getAttribute(BRICK_ATTR)}:${n.getAttribute('data-brick-id') || ''}`,
       // item 31b: the engine's cut mark (a Wall tile at 1/2 or 1/4 brick)
       ...(n.hasAttribute(ACCENT_MARK_ATTR) ? { accentMarked: n.getAttribute(ACCENT_MARK_ATTR) === '1' } : {}),
     });
@@ -147,16 +149,20 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
     for (const b of all) if (b.kind === 'brush') { const k = b.owner || 'stroke'; if (!strokes.has(k)) strokes.set(k, []); strokes.get(k).push(b); }
     for (const bricks of strokes.values()) runAccent(bricks, opts.brushAccent);
   }
-  if (!groups.length) return { body, fillet, isStamped, metrics: null, ...(flat ? { flatTop: { brickOf, count: 0 } } : {}) };
+  if (!groups.length) return { body, fillet, isStamped, metrics: null, nx, nz, faces: {}, ...(flat ? { flatTop: { brickOf, count: 0 } } : {}) };
 
   await Promise.all(groups.map((g) => preloadSetDetail(g.setId)));
 
   const style = styleAtWear(surfaceStyleById(opts.surfaceStyle), opts.surfaceWear); // F35 item 18: the Wear slider
   let brickCount = 0;
+  const faces = {};
   const built = groups.map((g) => {
     const librarySet = brickSetById(g.setId) || brickSetById(1);
     const set = styledSet(g.relief ? { ...librarySet, reliefIn: g.relief } : librarySet, style);
     for (const b of g.bricks) b.heightOffset += styleTopJitter(style, g.seed, b.id);
+    // Fred 2026-10-08 (grey by height): each piece's FACE, every lift applied (Level, accents, style jitter) -- the SVG
+    // download's one flat grey per brick reads it from here, the same level this mask carves
+    for (const b of g.bricks) faces[b.pieceKey] = brickFaceHeight(b, set);
     const cellSizeIn = Math.max(set.brickLengthIn || 1, set.brickHeightIn || 1) * 2;
     const base = brickCount;
     brickCount += g.bricks.length;
@@ -225,5 +231,9 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
       }
     }
   }
-  return { body, fillet, isStamped, metrics: null, ...(flat ? { flatTop: { brickOf, count: brickCount } } : {}) };
+  // the JOINTS' height (the SVG download's grout grey): a recess sits jointDepthIn below the ground; a flush joint fills up
+  // to the lowest face it touches -- the lowest face on the layer stands for them all (one flat grey per grout)
+  const faceList = Object.values(faces);
+  const jointIn = jointDepthIn > 0 ? -jointDepthIn : (faceList.length ? Math.min(...faceList) : null);
+  return { body, fillet, isStamped, metrics: null, nx, nz, faces, jointIn, ...(flat ? { flatTop: { brickOf, count: brickCount } } : {}) };
 }

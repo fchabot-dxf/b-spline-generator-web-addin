@@ -25041,6 +25041,68 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - TESTS: editor-topview-lazy.test.js +3 (restored -> repaint on read / at once when showing; lost at read -> repaint).
   Fail 3/3 on main's file; dropping the isContextLost check fails 1. Full suite: 397 files, 5984/5984. Known failures: none.
 
+### 2026-10-08 (seat D): grey by height -- the 2D editor and the SVG download in greys from the carve height (Fred: "Yes, grey only")
+- DECLARED once: core/bricks/height-grey.js HEIGHT_GREY_RAMP (-0.06 in -> 40, 0.22 in -> 235; neutralIn 0.12), greyOfHeight,
+  NEUTRAL_BRICK_GREY, NEUTRAL_GROUT_GREY (the ramp's low end), heightGreyPixels (mask -> RGBA, row 0 = board top).
+- EDITOR (editor/brick-height-grey.js): per point, from each editor layer's cached brick mask (the carve's own data):
+  one <pattern> per layer (userSpaceOnUse over the board) holding the mask as a grey image; the layer's bricks and a grout
+  with no colour of its own fill with it. Repainted from main/stamp-mask-manager.js updateStampMasks (every caller: a
+  refresh, a rebuild) on the latest generation only -- never per paint; the image re-encoded only when a layer's mask
+  object changed. Before a layer has a mask (just after a lay) its bricks are NEUTRAL_BRICK_GREY (drawBrick, repaintBricks).
+  The masks gained nx / nz, `faces` (each piece's face height under its download id, every lift applied) and `jointIn`.
+- SVG (editor/svg-export.js): the 'flat' set-colour style REMOVED; 'grey' is the default and only exposed style: each
+  brick ONE flat grey of its face height (the mask's `faces`, signed by Raised / Carved; neutral before any mask); a grout
+  keeps a user colour, else its own grey at the joints' height (Fred: "different greys for grout and brick": the mask's
+  `jointIn`, recessed -depth / flush the lowest face); a canvas url never leaks into the file.
+- REMOVAL SWEEP (the old colour paths): SVG_BRICK_EXPORT 'flat' + its default / exposed; FACE_COLORS; the editor's
+  SET_COLORS / DEFAULT_BRICK_COLOR; the photo-texture painter brickFillPaint (+ PATTERN_IDS, paintSpanIn, its defs) and its
+  test (brick-fill-paint-span.test.js, deleted: it guarded the removed feature); `faceColor` on all 5 BRICK_SETS (no reader
+  left; svg-download now asserts the ABSENCE); the brickFillPaint stubs in 6 test mocks; comments. KEPT: each set's sample
+  photos -- the 3D height detail still reads them (editor-brick-surface.js sampleDetailAtFor). Set colours: NOTHING reads
+  one any more. Visible consequence: a Stripe run cycling sets now differs by height only, not by colour.
+- MEASURED: mask-update repaint 6-16 ms unthrottled (matrix), 16-155 ms at 4x CPU (390 / 1366 probe) vs the whole mask
+  update it rides on 1.8-3.4 s at 4x. Raster 141 x 181 on 7x9 (~0.05 in / point): diagonal edges show slight steps at 1366.
+- TESTS: brick-height-grey.test.js (6: the ramp, the pixel flip -- a row-flip mutation fails it --, per-layer patterns,
+  neutral without a mask, encode once per mask, a lost mask back to neutral, no canvas); brick-accents + `faces` / `jointIn`;
+  svg-download (grey default, no faceColor, per-height greys, Carved sign, grout grey); brick-repaint (neutral). Matrix lay
+  GREY_BY_HEIGHT 4 rows (neutral-or-grey right after a lay; every brick on its layer's greys once masks land; the SVG greys,
+  accents lighter, grout darker; repaint under 250 ms): lay group 16 rows 0 FAIL. On main the rows cannot pass (no
+  height-grey module; the bricks are photo patterns). Full suite (npm run test:full) 5989/5989. Known failures: none.
+- Shots: shots/seatD/agrey/grey_by_height_built.png (main vs built, 1366 / 390 / SVG, the real app both sides);
+  the mock Fred picked from: grey_by_height_mock.png.
+### 2026-10-08 (seat D): pick 2 -- Frame + Photo on the phone, MEASURED; the two blind spots get their loading stage
+- TOOL: tools/repro/art_phone_audit.mjs SURFACE art | frame | photo (each tab's actions + reach; effect = the drawing's
+  markup / the photo preview's pixels; Photo per tool + its Relief tab). 390 px, touch, coarse, CPU 4x, real touch.
+- FRAME (before): every action BLIND (no card / pill): template change 2.2 s (one 2.15 s task), Generate 0.7-1.1 s,
+  thickness 0.9, undo 0.9, inset-window edits ~0.5. Reach: 24 controls, all reachable. CPU profile (4x, after
+  frame-mesh-r3 c4ff8a0): Generate 1581 ms = generateValidFrameSeeds 528 + applyFrameToPanel (frame-mesh) 521 + the Brick
+  panel's syncControlRequires / cornerFacts 315 (narrowestGapCached 246: a new frame = a miss) + frameCutProfile 239;
+  template change 526 = applyFrameToPanel 364. Handed to seat A (the frame-mesh owner) as numbers; A passes the ringArrays
+  cost (286 ms) to the advisor as a candidate.
+- PHOTO (before): the card shows for every rebuild; a PATTERN pick blind ~1.2 s on its decode first (5 ms timeline: a
+  920 ms task at 100 ms, the first card at 1442 ms). Straighten drag 4.9-8.5 s (card up), relief carved / raised ok.
+  Reach: 208-216 control views, all reachable; under 24 px only sliders + the file input (touch-targets-app covers it).
+- FIX (advisor + seat A: yes; loading-signal.js is nobody's): two DECLARED stages, LOADING_STAGES frame ('building the
+  frame', pill) + photo ('loading the photo', pill). frame-panel.js editFrame / generateFrame run in
+  withLoadingStageShownFirst('frame') (every Frame-tab edit goes through editFrame), the Undo button + Ctrl+Z too
+  (undoFrame stays sync: its true / false is read); photo-panel.js loadImage's decode + its follow-through run in
+  withLoadingStage('photo') (on screen first, held until the decode is done; the rebuild's card follows).
+- AFTER (5 ms timeline + a frame-accurate rAF check, 4x): template stage painted at 11 ms before its 0.6-3.2 s task,
+  Generate 31-66 ms, every Frame tap blind 0; a pattern pick painted at 77-207 ms (one 186 ms sync task first: the click's
+  own state writes), was 1442. One earlier cold run read the first Generate at 1.8 s by the 5 ms poll (a starved timer,
+  no rAF check then) -- not reproduced with the frame-accurate check.
+- TESTS: frame-photo-loading-stage.test.js 2 (the declared rows; a pattern pick: stage first, held through the decode,
+  gone after); frame-gen +1 (Generate / template / Undo: the stage up, the record unchanged until the paint, done
+  after). On main's source the 3 fail. Known failures: none (full suite below).
+- Shots / data: shots/seatD/afp/frame_phone_*.png, photo_phone_*.png, *_phone_audit.json.
+- GATE FIX (the advisor's gate, matrix clear "Clear All: one undo restores all" -- not restored: frame, photo): REAL,
+  not timing. The Clear menu's frame clear went through the now-deferred editFrame, and Clear records synchronously the
+  Frame steps it pushed + the frame it left (editor-clear-menu.js) -> 0 steps and the old frame -> undoLastClear refused
+  ("changed since"), so neither the frame nor the photo came back. Same trap in deleteFrame (its global snapshot read the
+  frame right after). editFrameNow = the synchronous edit (exported); editFrame = the 'frame' stage around it (the
+  Frame-tab controls); the clear handler and deleteFrame call editFrameNow; the Delete button's click carries the stage.
+  Test (frame-gen): with the paint deferred, the clear and Delete frame act at once (mutation: the handler back on
+  editFrame -> fails). Matrix clear group 11/11 (was 1 FAIL).
 ### 2026-10-08 (seat D): matrix grout "Cut edge: no low band" (74n) -- a flaky bar, reframed as a share of the interior
 - The advisor's gate failed the 1 / 1.25 in rows alone (0.65 vs 0.82). MEASURED: plain main x2 PASS but band / interior
   swing 0.91-1.12; with generate-first-tap merged x2: PASS, then FAIL at 1.25 in (0.60 vs 0.81). The row takes the
@@ -25086,3 +25148,86 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   abort the group).
 - Full suite (npm run test:full, started at 11.7 GB free) 5976/5976. Known failures: none.
 - Shots: shots/seatD/atouch/touch_targets_sidebar_390.png (main vs built, real stylesheets both sides).
+### 2026-10-08 (seat A): Frame Generate's draw computes only the range it draws (advisor pick (a), byte-identical)
+- MEASURED (D's phone profile: generateValidFrameSeeds 528 ms of a 1.58 s Frame Generate; my node bench, 19 templates
+  x 20 seeds): the retry loop's time was the DRAW (generateFrameSeeds 550 of 916 ms), and in it frameParamRanges
+  (314 ms) -- each draw step computed every key's range to read one. The validity checks: inner 244 / outer 121 ms.
+- CHANGE: feasibleParamRanges(..., onlyKey) computes only that key (earlier keys still fill their declared defaults,
+  the only thing a later range reads of them); frameParamRanges(..., onlyKey) gates each narrowing rule on want(key)
+  and reads presence through has(key) -- the preset's declared keys in one-key mode, exactly the old `R.k` test in
+  full mode (every computed range is an object). The coupled rules found on the way: T5 and T8's dip block (width +
+  depth under one `R.topDipWidth` test), T18's topInset (needs archRise present), T4's waistReachLeft.
+- IDENTITY: scratch seedsweep.mjs (5 boards incl. 12x6 and 5x5 x 19 templates x 30 seeds; sha of every generated seed
+  set + every full-mode frameParamRanges at each draw step): 95/95 identical.
+- SPEED (profile shares, load-robust; wall/CPU times were noisy with DDCS's gate running): frameParamRanges 310 - 334
+  -> ~100 ms, generateFrameSeeds 541 - 586 -> 348 - 357 (-36%), the whole retry loop 893 - 962 -> 730 - 752 (-20%).
+- TESTS: tests/frame-param-ranges-onekey.test.js (3 boards; one-key == full entry, every template / key / draw step,
+  >1000 checks each). Passes trivially on the old code (onlyKey ignored there) -- it pins the invariant; mutations
+  bite: T5 depth gated on the width key fails 3/3, old-style R.topInset && R.archRise presence fails 2/3.
+  The 40 test files importing these modules: 1600/1600 (2 workers). Full suite NOT run (DDCS's gate until ~10:00).
+- Left alone: generateSilhouette (~390 ms, each draw step resolves params through a full solve) -- skipping the solve
+  needs each of the 11 solvers read to prove .params is the resolver's output untouched; not identical by
+  construction without that.
+- Noticed, not changed: tests/frame-gen.test.js's isValid is a PARTIAL hand copy of generateFrame's rule (its own
+  comment: 37 of 1,500 seeds pick different shapes). Declaring the rule once (an exported predicate both use) would
+  end the drift -- a separate pick.
+
+### 2026-10-08 (seat A): Frame Generate's draw reads resolved params without the outline build (pick 2; on frame-seeds-r1)
+- READ all 11 solvers: each one's .params is its own _resolveParams(preset or 'hourglass', ...) result copied; the
+  hourglass, bottle and diamondTopHourglassPinch solvers also drop unset FRAME_ONLY_PARAM_KEYS. Nothing in the file
+  writes to the resolved object afterwards; constructions never reached by the .params path.
+- DECLARED: generateSilhouette's 11-way ternary is now SILHOUETTE_SOLVERS { preset: { solve, frameOnlyWhenSet } }
+  (any other preset -> hourglass, as before); the drop moved from the three solvers into _reportedParams, which
+  generateSilhouette and the new silhouetteParams both use -- one declaration of what .params is.
+- generateFrameSeeds: generateSilhouette(region, {preset, params}).params -> silhouetteParams(region, {preset, params}).
+- IDENTITY: seeds sweep 95/95 identical to the original baseline (5 boards x 19 templates x 30 seeds + full-mode
+  ranges at every draw step). tests/silhouette-params.test.js: JSON-equal (key order included) for every template x 3
+  boards along each draw (3 seeds + no params), every Shape Lattice preset x 3 seeds, an unknown preset.
+- SPEED (profile, 3 pairs): generateFrameSeeds 264 - 281 -> 199 - 215 ms (-24%), the retry loop 582 - 595 -> 516 - 527
+  (-11%). With pick (a) this morning: the draw 541 - 586 -> ~205 ms (-63%), the loop 893 - 962 -> ~520 ms (-44%).
+- MUTATIONS: silhouetteParams without the reporting step fails 4/4; without the hourglass fallback fails 1/4.
+- Full suite (locks clear): 399 files, 5991/5991. Known failures: none. Must merge after frame-seeds-r1.
+### 2026-10-08 (seat A): Frame Generate's validity rule declared once -- the test's hand copy is gone
+- generateFrame's isValid closure (inner defects -> outer defects -> piece length >= t -> undercut -> miter collide /
+  margin, + T10's realSeedsFor archRise) moved VERBATIM to editor-frame-profile.js frameGenerateIsValid(defs, rec,
+  board, tpl, region, t), with its item-21/23/39/59 history comments and primLength (moved from frame-panel, where it
+  had no other user). generateFrame calls it; frame-panel's unused paramsFromShapeModel import removed.
+- tests/frame-gen.test.js: the expected shape read a PARTIAL copy (no outer-defect / undercut / miter checks) that
+  diverged for 37 of 1,500 seeds (seat D had pinned press seed 4242 around it). It now reads the declared rule and
+  presses seed 27 too (MEASURED: seeds 27, 119, 135, 175, 221 diverge under the old copy at T1 7x9). Old copy back ->
+  "seed 27: expected ... to deeply equal" fails.
+- The 69 test files importing frame-panel / editor-frame-profile: 1917/1917 (2 workers; full suite after DDCS).
+- NOT changed, flagged: (1) tests/frame-no-hooked-miters.test.js realIsValid is also a stale partial copy, but that
+  sweep's logic depends on "real = pre-existing chain + margin" (its memoized pre/real split) -- swapping in the full
+  rule would count seeds failing the newer checks as item-39 regressions; it needs its own redesign. (2) frame-panel
+  ~line 508-530 holds a third copy of the same checks for a warning (frameHasIssue-style) -- a candidate to read
+  frameGenerateIsValid. (3) T7/T10/T11/T12-13 tests' isValid copies are deliberately partial (one property each).
+- CORRECTION to (2) above: frame-panel's _frameRecordBreaksNoHookRule is NOT a copy of Generate's rule -- it is the
+  drag-stop rule (H23 items 39/63), deliberately different (raw drawn geometry, no archRise pin, inner-profile
+  defects ignored so the drag-stop never fights them). Not a candidate.
+
+### 2026-10-08 (seat A): frame-no-hooked-miters reads Generate's declared rule (advisor pick; on frame-validity-rule)
+- editor-frame-profile.js: FRAME_GENERATE_CHECKS (innerDefects, outerDefects, pieceLength, undercut, mitersCollide,
+  miterMargin -- the rule's checks in the order they run) + frameGenerateFailure (the first failing check, or null).
+  frameGenerateIsValid = "no failure": the same checks, order and short-circuits as before.
+- tests/frame-no-hooked-miters.test.js: realIsValid / preExistingIsValid (hand copies, drifted -- no outer-defect,
+  undercut or miter-collision checks; pre used the older reflex-arc test) removed. The item-39 split stays
+  meaningful as "is the miter margin the ONLY thing in the way": one memoized failure evaluation per draw; real = null,
+  pre-existing = null or 'miterMargin' (the last check). MUTATION 1: T7 raw seed 2 @ 7x9 fails exactly on
+  'miterMargin' (MEASURED); MUTATION 2 reads frameGenerateIsValid. Orphans removed: primLength,
+  paramsFromShapeModel import.
+- Mutation: the rule no longer reporting the margin (return null) -> MUTATION 1 fails.
+- Test files importing frame-panel / editor-frame-profile: 69 files 1917/1917 (2 workers). Full suite after DDCS.
+- Must merge AFTER frame-validity-rule (this branch is built on it).
+
+### 2026-10-08 (seat A): phone boot re-measured (pick 3) -- ready -15%, editor first open +95 ms (the lazy top view)
+- Probe: bootprof2.mjs (fresh profile, 390x844, 4x CPU, Math.random seeded), alternating single loads, GPU quiet
+  (Fusion closed), after our gate and DDCS's lock cleared; arms: main 5322738 vs f0c3eaa (this morning, before
+  frame-mesh r3 / the lazy top view / today's other merges).
+- Round 2 (4 loads each, quiet): ready main 4.52 - 4.73 s (median ~4.66) vs 5.28 - 5.78 s (median ~5.52) -- about
+  -0.85 s (-15%); DOMContentLoaded equal (~1.5 s); editor FIRST open main 340 - 471 ms (median ~389) vs 125 - 378 ms
+  (median ~295) -- about +95 ms, the deferred top-view paint landing there as designed (inside the 'openEditor' stage);
+  Brick tab ~200 - 320 ms both.
+- Round 1 (2+2 loads each, right after the gate): noisy, both arms' first loads cold (main ready 9.1 / 7.2 s) -- not
+  used for the comparison; listed in the probe output only.
+- Nothing to fix from this.

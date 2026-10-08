@@ -33,6 +33,7 @@ import {
 } from '../core/photo/patterns.js';
 import { fileToDataUrl, downscalePhotoDataUrl } from '../core/photo/codec.js';
 import { ensurePhotoDecoded, getRawPhotoImage, isPhotoReady } from '../core/photo/state.js';
+import { withLoadingStage } from '../core/loading-signal.js';
 import { computeMirrorDimRects } from '../core/photo/mirror-dim.js';
 import { registerTweaksTarget, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { applyParam } from './param-manager.js';
@@ -287,10 +288,12 @@ function loadImage(urlOrDataUrl, edits, tweaks, reliefIn = DEFAULT_PHOTO_RELIEF_
   setReliefHeight(reliefIn);
   syncControlsFromState();
   syncSaveButtonState();
-  ensurePhotoDecoded(urlOrDataUrl).then(() => {
+  // the 'photo' stage on screen first and up until the decode is done (MEASURED, a phone at CPU x4: the decode blocked
+  // ~1 s with nothing on screen before the rebuild's own card came up); the rebuild's card follows on
+  withLoadingStage('photo', () => ensurePhotoDecoded(urlOrDataUrl).then(() => {
     drawPreview();
     notifyChange();
-  });
+  }));
   notifyChange();
   photoStep(); // a new photo (a file or a pattern) is one step
 }

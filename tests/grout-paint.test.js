@@ -12,7 +12,6 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js', () => ({ commitEdit: vi.fn() }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-surface.js', () => ({
-  brickFillPaint: vi.fn(() => null),
   preloadSetDetail: vi.fn(async () => {}),
   sampleDetailAtFor: vi.fn(() => undefined),
 }));

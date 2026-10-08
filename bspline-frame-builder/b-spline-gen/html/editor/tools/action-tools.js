@@ -24,7 +24,7 @@ export function registerActionTools(editor) {
   // It supersedes H20 item 3's tab-scoped Clear.
 
   bind('editorDownload', async () => {
-    const svgText = await editor.saveSvgDownload(); // F35 item 56: named groups, flat brick colours
+    const svgText = await editor.saveSvgDownload(); // F35 item 56: named groups; bricks one flat grey each by height (Fred 2026-10-08)
     if (!svgText) return;
     const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
     const now = new Date();

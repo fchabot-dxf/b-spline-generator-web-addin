@@ -31,6 +31,8 @@ export async function run() { await runFrameUi(); }
 // frameCornerOf, core FRAME_PRESETS) -- never copied numbers.
 function frameUiState() {
   return `(async()=>{ const T=await import('./editor/editor-brick-tool.js'); const { P } = await import('./core/state.js'); const L=await import('./core/bricks/library.js');
+    const G=await import('./core/bricks/height-grey.js').catch(()=>null);
+    const greyOf=(n)=>'url(#brick-height-grey-'+String(n.getAttribute('data-layer')).replace(/[^A-Za-z0-9_-]/g,'_')+')';
     const list=document.getElementById('brickFrameCornerList'); const s=P.brickSettings||{};
     const frames=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')];
     return JSON.stringify({ corners: T.FRAME_CORNERS.map((c)=>c.id), folded: T.FOLDED_FRAME_PRESETS,
@@ -39,7 +41,7 @@ function frameUiState() {
       listShown: !!list && list.offsetParent !== null && getComputedStyle(list).display !== 'none',
       buttons: list ? list.querySelectorAll('[id^="brickFrameCorner_"]').length : 0,
       active: list ? [...list.querySelectorAll('[id^="brickFrameCorner_"].active')].map((b)=>b.id.replace('brickFrameCorner_','')) : [],
-      frames: frames.length, flat: frames.filter((n)=>!String(n.getAttribute('fill')||'').startsWith('url(')).length }); })()`;
+      frames: frames.length, notGrey: G ? frames.filter((n)=>{ const f=n.getAttribute('fill'); return f!==G.NEUTRAL_BRICK_GREY && f!==greyOf(n); }).length : frames.length }); })()`;
 }
 async function frameUiRead() { return jsJSON(frameUiState()); }
 async function relaid(before) { return (await canvasSettled(before)) !== before; }
@@ -62,8 +64,10 @@ async function runFrameUi() {
     const moved = await relaid(before);
     const s2 = await frameUiRead();
     checkRow('frame-ui', `Corners: ${id} re-lays the frame at once`, moved && s2.active[0] === id && s2.frames > 0,
-      `re-laid ${moved}, active ${s2.active.join(',')}, ${s2.frames} frame bricks${id === 'block' ? `, ${s2.flat} without a texture` : ''}`);
-    if (id === 'block') checkRow('frame-ui', 'Corners: quoin blocks wear the frame texture', s2.flat === 0, `${s2.flat} of ${s2.frames} frame bricks drawn flat (quoin-element-set)`);
+      `re-laid ${moved}, active ${s2.active.join(',')}, ${s2.frames} frame bricks${id === 'block' ? `, ${s2.notGrey} not grey` : ''}`);
+    // grey by height (Fred 2026-10-08, "grey only"): the quoin blocks (their own element set) read like every frame brick --
+    // their layer's height greys, or the neutral grey until its mask lands; never a set colour or a photo
+    if (id === 'block') checkRow('frame-ui', 'Corners: quoin blocks wear the frame’s height greys', s2.notGrey === 0, `${s2.notGrey} of ${s2.frames} frame bricks neither their layer's greys nor neutral (quoin-element-set)`);
   }
   // 3. a preset with its own corner: picking it shows that corner; a pick is dropped on a preset change
   const twoBand = Object.entries(st.presetCorners).find(([k, c]) => c !== 'mitre' && !(k in st.folded) && k !== 'none');
