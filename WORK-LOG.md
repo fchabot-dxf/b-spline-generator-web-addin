@@ -25056,3 +25056,6 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   rule would count seeds failing the newer checks as item-39 regressions; it needs its own redesign. (2) frame-panel
   ~line 508-530 holds a third copy of the same checks for a warning (frameHasIssue-style) -- a candidate to read
   frameGenerateIsValid. (3) T7/T10/T11/T12-13 tests' isValid copies are deliberately partial (one property each).
+- CORRECTION to (2) above: frame-panel's _frameRecordBreaksNoHookRule is NOT a copy of Generate's rule -- it is the
+  drag-stop rule (H23 items 39/63), deliberately different (raw drawn geometry, no archRise pin, inner-profile
+  defects ignored so the drag-stop never fights them). Not a candidate.
