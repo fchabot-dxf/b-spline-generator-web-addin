@@ -25258,3 +25258,29 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   6008/6008. Known failures: none.
 - Overlap note: D's frame-photo-loading also touches photo loading (photo-panel.js); this branch does not edit
   photo-panel.js.
+
+### 2026-10-08 (seat A): "no 3D while editing" -- one declared table for every in-editor change outside the editor's onChange
+- AUDIT (browser, phone 4x CPU, editor open; preview.update / refreshFrame wrapped and timed, every editor control kind
+  driven): Frame tab -- every frame-record write (Generate, template, thickness, inset window on/off, window size, frame
+  undo) re-applied the hidden 3D frame via syncFramePanel -> preview.refreshFrame, 211 - 357 ms each (handle DRAGS: once,
+  on release); Photo relief height -- applyParam('carveZ') -> a full rebuild per slider step (~1 s wall); Brick Generate /
+  contour-from-frame: no hidden 3D (already right).
+- DECLARED: core/in-editor-3d.js IN_EDITOR_3D { photo, relief, frame: { inEditor, closed } } + inEditor3dAction(kind);
+  PHOTO_CHANGE folded in (its own module: app-init imports frame-panel, so frame-panel could not import app-init).
+  frame: editor open -> 'profile' (syncFramePanel still draws the 2D cut profile + board outline, skips refreshFrame);
+  relief: editor open -> applyParam(..., { rebuild: false }) + the backdrop (the top view shades by carveZ: terrain.js
+  scales heights by it); closed -> as before.
+- applyParam(key, value, { rebuild }) (default true): false writes + syncs the param, schedules no rebuild.
+- editorSessionFingerprint now includes P.carveZ: a relief-only session would otherwise close "unchanged" on [3D] and
+  leave the 3D stale (the frame and photo were already in it).
+- Frame-handle drag moves: brick-panel's frameRecordChanged listener syncs the control requirements once per
+  animation frame (syncControlRequiresSoon); the other callers stay synchronous. Browser: 10 record writes 526 -> 72 ms,
+  the end state of the 251 brick/frame controls (disabled + title) hash-identical to main's (f26db2ca8483). Not unit-
+  tested (module-private, DOM-driven) -- the brick / frame test files pass unchanged.
+- RESULT (browser): Frame tab 0 hidden 3D refreshes (was 1 each), relief 0 rebuilds (was 1 per step). After Generate +
+  thickness in the editor then Apply, the 3D frame meshes hash-identical to main's (e61ab192ac8d); while editing they
+  stay as they were (main updated them live, hidden).
+- TESTS: tests/in-editor-3d.test.js 5 (table rows; syncFramePanel open/closed; applyParam rebuild:false; relief wiring;
+  a relief-only session takes Apply on [3D] with the real fingerprint) + editor-session-fingerprint's relief case.
+  Mutations: unconditional refreshFrame fails 1; no relief in the fingerprint fails 2; applyParam ignoring the option
+  fails 1. Full suite 402 files, 6014/6014. Known failures: none.
