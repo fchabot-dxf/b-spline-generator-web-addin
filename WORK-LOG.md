@@ -25040,3 +25040,33 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   f559a91f).
 - TESTS: editor-topview-lazy.test.js +3 (restored -> repaint on read / at once when showing; lost at read -> repaint).
   Fail 3/3 on main's file; dropping the isContextLost check fails 1. Full suite: 397 files, 5984/5984. Known failures: none.
+
+### 2026-10-08 (seat D): grey by height -- the 2D editor and the SVG download in greys from the carve height (Fred: "Yes, grey only")
+- DECLARED once: core/bricks/height-grey.js HEIGHT_GREY_RAMP (-0.06 in -> 40, 0.22 in -> 235; neutralIn 0.12), greyOfHeight,
+  NEUTRAL_BRICK_GREY, NEUTRAL_GROUT_GREY (the ramp's low end), heightGreyPixels (mask -> RGBA, row 0 = board top).
+- EDITOR (editor/brick-height-grey.js): per point, from each editor layer's cached brick mask (the carve's own data):
+  one <pattern> per layer (userSpaceOnUse over the board) holding the mask as a grey image; the layer's bricks and a grout
+  with no colour of its own fill with it. Repainted from main/stamp-mask-manager.js updateStampMasks (every caller: a
+  refresh, a rebuild) on the latest generation only -- never per paint; the image re-encoded only when a layer's mask
+  object changed. Before a layer has a mask (just after a lay) its bricks are NEUTRAL_BRICK_GREY (drawBrick, repaintBricks).
+  The masks gained nx / nz, `faces` (each piece's face height under its download id, every lift applied) and `jointIn`.
+- SVG (editor/svg-export.js): the 'flat' set-colour style REMOVED; 'grey' is the default and only exposed style: each
+  brick ONE flat grey of its face height (the mask's `faces`, signed by Raised / Carved; neutral before any mask); a grout
+  keeps a user colour, else its own grey at the joints' height (Fred: "different greys for grout and brick": the mask's
+  `jointIn`, recessed -depth / flush the lowest face); a canvas url never leaks into the file.
+- REMOVAL SWEEP (the old colour paths): SVG_BRICK_EXPORT 'flat' + its default / exposed; FACE_COLORS; the editor's
+  SET_COLORS / DEFAULT_BRICK_COLOR; the photo-texture painter brickFillPaint (+ PATTERN_IDS, paintSpanIn, its defs) and its
+  test (brick-fill-paint-span.test.js, deleted: it guarded the removed feature); `faceColor` on all 5 BRICK_SETS (no reader
+  left; svg-download now asserts the ABSENCE); the brickFillPaint stubs in 6 test mocks; comments. KEPT: each set's sample
+  photos -- the 3D height detail still reads them (editor-brick-surface.js sampleDetailAtFor). Set colours: NOTHING reads
+  one any more. Visible consequence: a Stripe run cycling sets now differs by height only, not by colour.
+- MEASURED: mask-update repaint 6-16 ms unthrottled (matrix), 16-155 ms at 4x CPU (390 / 1366 probe) vs the whole mask
+  update it rides on 1.8-3.4 s at 4x. Raster 141 x 181 on 7x9 (~0.05 in / point): diagonal edges show slight steps at 1366.
+- TESTS: brick-height-grey.test.js (6: the ramp, the pixel flip -- a row-flip mutation fails it --, per-layer patterns,
+  neutral without a mask, encode once per mask, a lost mask back to neutral, no canvas); brick-accents + `faces` / `jointIn`;
+  svg-download (grey default, no faceColor, per-height greys, Carved sign, grout grey); brick-repaint (neutral). Matrix lay
+  GREY_BY_HEIGHT 4 rows (neutral-or-grey right after a lay; every brick on its layer's greys once masks land; the SVG greys,
+  accents lighter, grout darker; repaint under 250 ms): lay group 16 rows 0 FAIL. On main the rows cannot pass (no
+  height-grey module; the bricks are photo patterns). Full suite (npm run test:full) 5989/5989. Known failures: none.
+- Shots: shots/seatD/agrey/grey_by_height_built.png (main vs built, 1366 / 390 / SVG, the real app both sides);
+  the mock Fred picked from: grey_by_height_mock.png.
