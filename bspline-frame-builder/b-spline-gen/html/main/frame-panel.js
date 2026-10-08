@@ -78,9 +78,12 @@ export const frameHistoryDepth = () => _frameHistory.length;
  *  Thickness / Trim offset / Wood / Bottom Z / Panel lip used to write with no step (a Frame Undo then reverted
  *  them together with the previous handle drag, or couldn't undo them at all). */
 export function editFrame(patch) {
-  pushFrameHistory();
-  setFrameRecord(patch);
-  syncFramePanel();
+  // the 'frame' stage on screen first (core/loading-signal.js): a frame edit blocks up to ~2 s on a phone
+  return withLoadingStageShownFirst('frame', () => {
+    pushFrameHistory();
+    setFrameRecord(patch);
+    syncFramePanel();
+  });
 }
 function _syncUndo() { if ($('editorFrameUndo')) $('editorFrameUndo').disabled = _frameHistory.length === 0; }
 
@@ -91,6 +94,9 @@ const _primLength = (p) => (p.type === 'L' ? Math.hypot(p.p1.x - p.p0.x, p.p1.y 
 
 /** F13 [Generate]: a new seeded random frame shape, written as the handles' seeds. */
 export function generateFrame(seed = nextSeed()) {
+  return withLoadingStageShownFirst('frame', () => _generateFrameNow(seed)); // the 'frame' stage on screen first
+}
+function _generateFrameNow(seed) {
   const rec = getFrameRecord();
   const tpl = findFrameTemplate(FRAME_DEFS, rec.templateId);
   if (!tpl) return null;
@@ -871,14 +877,14 @@ export function initFramePanel() {
   $('editorFrameTemplate')?.addEventListener('change', (e) => editFrame({ templateId: e.target.value || null, params: {} }));
   $('editorFrameGenerate')?.addEventListener('click', () => generateFrame());
   $('btnDeleteFrame')?.addEventListener('click', () => deleteFrame()); // F26 item 2 (b)
-  $('editorFrameUndo')?.addEventListener('click', () => undoFrame());
+  $('editorFrameUndo')?.addEventListener('click', () => withLoadingStageShownFirst('frame', () => undoFrame()));
   // Ctrl/Cmd+Z in the Frame tab undoes the FRAME (the artwork's undo is locked there, F8)
   if (!_undoKeyWired) { // once per page (initFramePanel may run again, e.g. in tests)
     _undoKeyWired = true;
     window.addEventListener('keydown', (e) => {
       if (getEditorTab() !== 'frame' || !(e.ctrlKey || e.metaKey) || e.shiftKey || (e.key !== 'z' && e.key !== 'Z')) return;
       e.preventDefault();
-      undoFrame();
+      withLoadingStageShownFirst('frame', () => undoFrame());
     });
   }
   _syncUndo();

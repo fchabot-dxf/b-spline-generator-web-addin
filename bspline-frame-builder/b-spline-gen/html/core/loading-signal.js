@@ -32,6 +32,10 @@ export const LOADING_STAGES = {
   patternEdit: { group: 'computing', label: 'updating the pattern', surface: 'pill' },
   openEditor: { group: 'refreshing', label: 'opening the editor', surface: 'pill' },
   openBuilder: { group: 'refreshing', label: 'opening the pattern builder', surface: 'pill' },
+  // seat D 2026-10-08 (phone audit, 390 px, CPU x4, a real tap): the Frame tab's edits blocked 0.5-2.2 s with nothing
+  // on screen (a template 2.2 s, Generate 0.6-1.1 s); a photo pattern 1.2 s before the rebuild's card came up
+  frame: { group: 'computing', label: 'building the frame', surface: 'pill' },
+  photo: { group: 'computing', label: 'loading the photo', surface: 'pill' },
   heightMask: { group: 'computing', label: 'carving relief', surface: 'card', gestureSurface: 'pill' },
   rebuild: { group: 'refreshing', label: (ctx) => `building surface${ctx?.spacing != null ? ` ${ctx.spacing}″` : ''}`, surface: 'card', gestureSurface: 'pill' },
   restore: { group: 'refreshing', label: 'restoring the board', surface: 'card' },

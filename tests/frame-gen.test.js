@@ -17,6 +17,7 @@ import { feasibleParamRanges } from '../bspline-frame-builder/b-spline-gen/html/
 import {
   initFramePanel, setEditorTab, generateFrame, undoFrame, frameHistoryDepth, sendFrame,
 } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
+import { currentLoadingStage, resetLoadingSignal, setPaintScheduler } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 const BOARD = { widthIn: 7, heightIn: 9 };
 const tplOf = (id) => FRAME_DEFS.templates.find((t) => t.id === id);
@@ -193,6 +194,32 @@ describe('Frame tab: Generate, tweak, save/reload, Undo', () => {
     expect(rec.seeds).toEqual(generateValidFrameSeeds(tpl, region, rec.genSeed, t, isValid));
     expect(ed._frameProfile.params.waistReach).toBeCloseTo(rec.seeds.waistReach, 9); // what is drawn IS the record
     expect(document.getElementById('editorFrameUndo').disabled).toBe(false);
+  });
+
+  it("seat D 2026-10-08: Generate, a template change and Undo show the 'frame' stage FIRST, then do the work (a phone blocked 0.5-2.2 s blind)", () => {
+    const stage = document.createElement('div');
+    stage.id = 'loading-stage'; stage.hidden = true; stage.innerHTML = '<span class="loading-stage-text"></span>';
+    root.appendChild(stage);
+    const frames = [];
+    vi.stubGlobal('requestAnimationFrame', (cb) => { frames.push(cb); return frames.length; });
+    setPaintScheduler(null); // the real paint step (the suite's is immediate)
+    resetLoadingSignal();
+    try {
+      const steps = [
+        ['Generate', () => document.getElementById('editorFrameGenerate').click()],
+        ['a template change', () => { const sel = document.getElementById('editorFrameTemplate'); sel.value = 'template_2'; sel.dispatchEvent(new Event('change')); }],
+        ['Undo', () => document.getElementById('editorFrameUndo').click()],
+      ];
+      for (const [name, act] of steps) {
+        const before = JSON.stringify(getFrameRecord());
+        act();
+        expect(currentLoadingStage()?.id, name).toBe('frame');
+        expect(JSON.stringify(getFrameRecord()), `${name}: not yet, the stage paints first`).toBe(before);
+        while (frames.length) frames.shift()();
+        expect(JSON.stringify(getFrameRecord()), `${name}: done after the paint`).not.toBe(before);
+        resetLoadingSignal();
+      }
+    } finally { setPaintScheduler((cb) => cb()); vi.unstubAllGlobals(); resetLoadingSignal(); }
   });
 
   it('a tweak persists through save -> reload; Undo steps back: tweak, then generate', () => {
