@@ -30,7 +30,9 @@ const cases = Object.values(BRICK_SETS).flatMap((set) => Object.values(FRAME_PRE
 describe('the corner / fan checks lay no stones', () => {
   it('a full lay fills an area band somewhere in the sweep (the case the checks must skip exists)', () => {
     fills.n = 0;
-    for (const c of cases) bricksContourBands(prims, c.bands, c.opts);
+    // one filling case is all this needs: stop at the first (the whole sweep of full lays timed out at 30 s in the
+    // loaded gate, 2026-10-08 -- the checks' own sweep below stays whole, it lays nothing)
+    for (const c of cases) { bricksContourBands(prims, c.bands, c.opts); if (fills.n > 0) break; }
     expect(fills.n).toBeGreaterThan(0);
   });
   it('frameCornerEffect and frameHasFan never fill one, on any set x preset', () => {
