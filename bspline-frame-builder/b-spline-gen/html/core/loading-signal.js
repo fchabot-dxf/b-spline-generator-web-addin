@@ -52,7 +52,10 @@ export const LOADING_STAGES = {
 /** Multi-step actions: the stages they run, in order. A stage the action skips (no bricks = no carving) just
  *  leaves its step number unused. */
 export const LOADING_SEQUENCES = {
-  generate: { stages: ['bricks', 'heightMask', 'rebuild'], surface: 'card' },
+  // Brick Generate: its button lives only in the editor, where the carve + build wait for Apply (core/in-editor-3d.js,
+  // "no 3D while editing"; Apply's own sequence shows them). MEASURED 2026-10-08 (phone 4x): declared with them, the card
+  // read "step 1 of 3" and stayed ~1.2 s after the lay, waiting out SEQUENCE_IDLE_MS for steps that never came.
+  generate: { stages: ['bricks'], surface: 'card' },
   apply: { stages: ['heightMask', 'rebuild'] },
   newSeed: { stages: ['heightMask', 'rebuild'] },
   projectLoad: { stages: ['cloudLoad', 'restore', 'heightMask', 'rebuild'] },

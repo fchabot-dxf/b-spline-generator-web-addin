@@ -159,22 +159,33 @@ describe('sequences: declared up front, each stage reads its step', () => {
     expect(currentLoadingStage()).toBe(null); // the last step left: the sequence is done
   });
 
-  it('a sequence surface wins over the stage surface (Generate: its lay shows as the card)', async () => {
+  it('a sequence surface wins over the stage surface (Generate: its lay shows as the card); one step reads plainly', async () => {
     beginLoadingSequence('generate');
     const p = withLoadingStage('bricks', () => currentLoadingStage());
     runFrames();
-    expect(await p).toEqual({ id: 'bricks', text: 'Computing - laying bricks, step 1 of 3', surface: 'card' });
+    expect(await p).toEqual({ id: 'bricks', text: 'Computing - laying bricks', surface: 'card' }); // no "step 1 of 1"
   });
 
-  it('a sequence whose remaining steps never come closes after SEQUENCE_IDLE_MS', async () => {
+  it("Brick Generate's card closes when its lay ends (its only step; the carve + build wait for the editor's Apply)", async () => {
+    expect(LOADING_SEQUENCES.generate.stages).toEqual(['bricks']);
     beginLoadingSequence('generate');
     const p = withLoadingStage('bricks', () => {});
     runFrames(); await p;
-    await vi.advanceTimersByTimeAsync(SEQUENCE_IDLE_MS + MIN_VISIBLE_MS);
+    await vi.advanceTimersByTimeAsync(MIN_VISIBLE_MS + HIDE_GRACE_MS); // well short of SEQUENCE_IDLE_MS
     expect(currentLoadingStage()).toBe(null);
-    const q = withLoadingStage('bricks', () => currentLoadingStage());
+  });
+
+  it('a sequence whose remaining steps never come closes after SEQUENCE_IDLE_MS', async () => {
+    beginLoadingSequence('newSeed'); // heightMask, rebuild -- only its first step runs here
+    const p = withLoadingStage('heightMask', () => {});
+    runFrames(); await p;
+    await vi.advanceTimersByTimeAsync(MIN_VISIBLE_MS + HIDE_GRACE_MS);
+    expect(currentLoadingStage()).not.toBe(null); // still waiting for its next step
+    await vi.advanceTimersByTimeAsync(SEQUENCE_IDLE_MS);
+    expect(currentLoadingStage()).toBe(null);
+    const q = withLoadingStage('heightMask', () => currentLoadingStage());
     runFrames();
-    expect((await q).text).toBe('Computing - laying bricks'); // a later lay is a plain one again
+    expect((await q).text).toBe('Computing - carving relief'); // a later carve is a plain one again
   });
 });
 
