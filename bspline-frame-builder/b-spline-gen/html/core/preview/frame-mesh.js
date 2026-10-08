@@ -177,7 +177,7 @@ const _area2 = (pts) => { let s = 0; for (let i = 0; i < pts.length; i++) { cons
  * Returns simple CCW loops (one per separate piece; a concave outline can
  * enter one triangle twice). No crossing: the whole triangle or nothing.
  */
-function _trianglePolygonPieces(tri, poly) {
+function _trianglePolygonPieces(tri, poly, cand) {
   const n = poly.length;
   const planes = [0, 1, 2].map((e) => ({ A: tri[e], B: tri[(e + 1) % 3] }));
   const side = (pl, X) => (pl.B.x - pl.A.x) * (X.y - pl.A.y) - (pl.B.y - pl.A.y) * (X.x - pl.A.x);
@@ -199,10 +199,15 @@ function _trianglePolygonPieces(tri, poly) {
   // while an exitAtStart chain is open: that rule reads a start point on an edge's LINE, which may lie off the box.
   const bx0 = Math.min(tri[0].x, tri[1].x, tri[2].x), bx1 = Math.max(tri[0].x, tri[1].x, tri[2].x);
   const by0 = Math.min(tri[0].y, tri[1].y, tri[2].y), by1 = Math.max(tri[0].y, tri[1].y, tri[2].y);
+  // `cand` (optional): the segments that may touch the triangle's box (a superset of the ones the skip lets
+  // through). The plain walk visits only those, in walk order -- every other one the skip would have passed over.
+  const order = cand ? cand.map((k) => (k - start + n) % n).sort((p, q) => p - q) : null;
   const walk = (exitAtStart) => {
     const chains = [];
     let cur = null;
-    for (let m = 0; m < n; m++) {
+    const ms = order && !exitAtStart ? order : null;
+    for (let s = 0, sn = ms ? ms.length : n; s < sn; s++) {
+      const m = ms ? ms[s] : s;
       const P = poly[(start + m) % n], Q = poly[(start + m + 1) % n];
       if (!(exitAtStart && cur) && ((P.x < bx0 && Q.x < bx0) || (P.x > bx1 && Q.x > bx1) || (P.y < by0 && Q.y < by0) || (P.y > by1 && Q.y > by1))) continue;
       const d = { x: Q.x - P.x, y: Q.y - P.y };
@@ -355,13 +360,15 @@ export function clipPanelToOutline(positions, index, poly, attrs = {}, cell = 0.
   const inside = new Int8Array(P.length / 3).fill(-1);
   const inPoly = polygonPointTester(poly);
   const isIn = (v) => (inside[v] < 0 ? (inside[v] = inPoly(P[v * 3], P[v * 3 + 1]) ? 1 : 0) : inside[v]) === 1;
-  // outline segments bucketed by cell (one flat grid over the outline's cells), to find the triangles it crosses
+  const subjectCCW = _area2(poly) > 0 ? poly : poly.slice().reverse(), S = subjectCCW;
+  // the outline's segments (of the CCW subject the walk reads) bucketed by cell, one flat grid over the outline's
+  // cells: finds the triangles it crosses, and the segments each crossed triangle's walk needs to look at
   const cx = (x) => Math.floor(x / cell);
   let gi0 = Infinity, gi1 = -Infinity, gj0 = Infinity, gj1 = -Infinity;
   for (const p of poly) { gi0 = Math.min(gi0, cx(p.x)); gi1 = Math.max(gi1, cx(p.x)); gj0 = Math.min(gj0, cx(p.y)); gj1 = Math.max(gj1, cx(p.y)); }
   const gw = n ? gi1 - gi0 + 1 : 0, gh = n ? gj1 - gj0 + 1 : 0;
   const segCells = (k, each) => {
-    const a = poly[k], b = poly[(k + 1) % n];
+    const a = S[k], b = S[(k + 1) % n];
     for (let i = cx(Math.min(a.x, b.x)); i <= cx(Math.max(a.x, b.x)); i++) for (let j = cx(Math.min(a.y, b.y)); j <= cx(Math.max(a.y, b.y)); j++) each((i - gi0) * gh + (j - gj0));
   };
   const start = new Int32Array(gw * gh + 1);
@@ -373,16 +380,26 @@ export function clipPanelToOutline(positions, index, poly, attrs = {}, cell = 0.
     for (let i = Math.max(cx(x0), gi0), ie = Math.min(cx(x1), gi1); i <= ie; i++) for (let j = Math.max(cx(y0), gj0), je = Math.min(cx(y1), gj1); j <= je; j++) {
       for (let r = start[(i - gi0) * gh + (j - gj0)], r1 = start[(i - gi0) * gh + (j - gj0) + 1]; r < r1; r++) {
         const k = segs[r];
-        const a = poly[k], b = poly[(k + 1) % n];
+        const a = S[k], b = S[(k + 1) % n];
         if (Math.max(a.x, b.x) >= x0 && Math.min(a.x, b.x) <= x1 && Math.max(a.y, b.y) >= y0 && Math.min(a.y, b.y) <= y1) return true;
       }
     }
     return false;
   };
+  // every segment sharing a cell with the box (each once): a superset of the ones whose own box touches it
+  const seen = new Int32Array(n).fill(-1);
+  const candidates = (x0, x1, y0, y1, stamp) => {
+    const out = [];
+    for (let i = Math.max(cx(x0), gi0), ie = Math.min(cx(x1), gi1); i <= ie; i++) for (let j = Math.max(cx(y0), gj0), je = Math.min(cx(y1), gj1); j <= je; j++) {
+      for (let r = start[(i - gi0) * gh + (j - gj0)], r1 = start[(i - gi0) * gh + (j - gj0) + 1]; r < r1; r++) {
+        if (seen[segs[r]] !== stamp) { seen[segs[r]] = stamp; out.push(segs[r]); }
+      }
+    }
+    return out;
+  };
   const kept = [], rim = { position: [], index: [] };
   const names = Object.keys(attrs);
   for (const nm of names) rim[nm] = [];
-  const subjectCCW = _area2(poly) > 0 ? poly : poly.slice().reverse();
   for (let t = 0; t < index.length; t += 3) {
     const ia = index[t], ib = index[t + 1], ic = index[t + 2];
     const a = { x: P[ia * 3], y: P[ia * 3 + 1] }, b = { x: P[ib * 3], y: P[ib * 3 + 1] }, c = { x: P[ic * 3], y: P[ic * 3 + 1] };
@@ -394,7 +411,8 @@ export function clipPanelToOutline(positions, index, poly, attrs = {}, cell = 0.
       continue;
     }
     const tri = s2 > 0 ? [a, b, c] : [a, c, b];
-    let pieces = _trianglePolygonPieces(tri, subjectCCW);
+    let pieces = _trianglePolygonPieces(tri, subjectCCW,
+      candidates(Math.min(a.x, b.x, c.x), Math.max(a.x, b.x, c.x), Math.min(a.y, b.y, c.y), Math.max(a.y, b.y, c.y), t));
     if (!pieces) { // nothing crosses it: wholly in or out, decided at a strictly interior point
       if (inPoly((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3)) kept.push(ia, ib, ic);
       continue;
