@@ -486,6 +486,42 @@ function checkedDifference(piece, cutter) {
 const sameFanCorner = (a, b) => !a.sides || !b.sides || (a.sides[0] === b.sides[0] && a.sides[1] === b.sides[1])
   || a.sides.some((s) => b.sides.includes(s)); // a shared side: not split (see above)
 const fanKey = (o) => o.sides[0] * 1e6 + o.sides[1]; // the tie order between two corners' fans (seed-stable)
+/** Two corners either side of ONE edge whose fans STILL overlap after the yield are split after all (seat E, 2026-10-08).
+ *  The exemption above holds while the edge between them is dead, but a band narrowed to where that edge's run is one
+ *  joint (narrowSingleBand, 7eb3df7) keeps the edge alive and the two fans apart -- MEASURED at 8 in: T1 7x9 2 pairs (0.61
+ *  sq in each), T5 9x12 6 pairs (up to 1.08 sq in, a slice 93 % covered); T16 / T17 9x12 8 in 29 / 27 pairs. Only a pair
+ *  still overlapping more than this share of its smaller slice once the yield is done is split (a post-pass): splitting
+ *  every shared-side pair the yield sees (MEASURED) opened 0.3 - 3 sq in wedges on 12 lays (T1 / T10 / T12 7x9 4 in --
+ *  item 30's own wedge cases -- whose overlap the runs' yield already resolves). The split goes by each corner's OTHER
+ *  side (the shared one ties): a point is the fan's whose own side is nearer, each side half a joint short of the line. */
+export const SHARED_SIDE_SPLIT_SHARE = 0.05;
+const sharedSideOf = (a, b) => (a && b && a.sides && b.sides && !(a.sides[0] === b.sides[0] && a.sides[1] === b.sides[1])
+  ? a.sides.find((s) => b.sides.includes(s)) : undefined);
+function splitSharedSideFans(bricks, originOf, primitives, set) {
+  const areaOf = (p) => (p.length < 3 ? 0 : Math.abs(signedArea(p)));
+  const fans = bricks.map((b, k) => ({ b, k, o: originOf.get(b.id) })).filter((f) => f.b.fan && f.o && f.o.sides);
+  const pairs = [];
+  for (let x = 0; x < fans.length; x++) for (let y = x + 1; y < fans.length; y++) {
+    const s = sharedSideOf(fans[x].o, fans[y].o);
+    if (s === undefined) continue;
+    const lens = polygonIntersection(fans[x].b.polygon, fans[y].b.polygon);
+    if (areaOf(lens) > SHARED_SIDE_SPLIT_SHARE * Math.min(areaOf(fans[x].b.polygon), areaOf(fans[y].b.polygon))) pairs.push([fans[x], fans[y], s]);
+  }
+  if (!pairs.length) return bricks;
+  const depth = primitives.map(sourceDepth), setback = set.grout.widthIn / 2, poly = bricks.map((b) => b.polygon);
+  const own = (o, s) => depth[o.sides[0] === s ? o.sides[1] : o.sides[0]];
+  const largest = (ps) => ps.reduce((best, q) => (areaOf(q) > areaOf(best) ? q : best), []);
+  for (const [i, j, s] of pairs) {
+    const gi = offsetPathInward(poly[i.k], 2 * setback, -inwardSignFor(poly[i.k])), gj = offsetPathInward(poly[j.k], 2 * setback, -inwardSignFor(poly[j.k]));
+    const di = own(i.o, s), dj = own(j.o, s), iFirst = fanKey(i.o) > fanKey(j.o);
+    const takenByJ = clipToField(gj, (p) => medialDistance(dj, di, p) - setback, !iFirst);
+    const takenByI = clipToField(gi, (p) => medialDistance(di, dj, p) - setback, iFirst);
+    const ni = takenByJ.length >= 3 ? largest(checkedDifference(poly[i.k], takenByJ)) : poly[i.k];
+    const nj = takenByI.length >= 3 ? largest(checkedDifference(poly[j.k], takenByI)) : poly[j.k];
+    poly[i.k] = ni; poly[j.k] = nj;
+  }
+  return bricks.map((b, k) => (poly[k] === b.polygon ? b : { ...b, polygon: poly[k] })).filter((b) => b.polygon.length >= 3);
+}
 function yieldAtMedialLine(bricks, origins, primitives, set, minArea) {
   const box = (p) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const q of p) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); } return [x0, y0, x1, y1]; };
   const boxes = bricks.map((b) => box(b.polygon));
@@ -892,7 +928,8 @@ export function bricksContourBands(primitives, bands, opts) {
   // the smallest piece the yield / the board clip may leave: the floor of the layout that laid the stack (piece-floor.js --
   // a stone ring's is its smallest stone's, not a quarter brick; every band of a set with a band pattern lays with it)
   const minArea = minPieceAreaOf(set, setBandPattern(opts.set, closed) || LAID_BY_COURSES);
-  const split = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set, minArea) : bricks;
+  const yielded = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set, minArea) : bricks;
+  const split = yielded === bricks ? bricks : splitSharedSideFans(yielded, new Map(bricks.map((b, k) => [b.id, origins[k]])), enriched, set);
   const laid = fitBoard ? clipBandPiecesToBoard(split, fitBoard, minArea) : bricks;
   // the wall keeps half its own joint from the band (grout is one global width, so band + wall = one joint)
   const wallDepth = Math.max(bands.length ? depthSoFar + halfJoint : depthSoFar, narrowWallDepth);

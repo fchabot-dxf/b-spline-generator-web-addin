@@ -24920,3 +24920,27 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - VERDICT: op-first does not hold (same total time, the symptom stays). No toolpath_gen change. The one real effect
   is the doomed pass-1 tries get cheaper (~20 s of Top in sample 2/4), and pass 2's op-by-op time absorbs it.
   Holder back to none; scratch docs closed by handle; Fred's Untitled untouched.
+
+### Fan stacking (pick 1): the 2-4 in stacking was already gone; 8 in shared-side fans split after the yield (seat E / 61, 2026-10-08)
+- MEASURED (full overlap sweep, MEASURE_OVERLAPS=1, main 9827654): no fan x fan overlap at 2 / 3 / 4 in anywhere -- the
+  FAN_CAPS there (T19 39 pairs ...) were stale. At 8 in, besides T16 / T17 9x12 (29 / 27 pairs, capped), two NEW lays:
+  T1 7x9 2 pairs 1.22 sq in, T5 9x12 6 pairs (a slice 93 % covered) -- the full sweep red on main; the gate's FAST set had
+  no 8 in case. BISECTED (git archive trees in the worktree's scratch, the same lay): 0 up to 7eb3df7^, 2 + 6 at 7eb3df7
+  (seat D's wall tips: a narrowed band stops where the dropping line's run is one joint).
+- CAUSE: every pair is SHARED-SIDE (two corners either side of one edge). Item 30 exempts those from the medial split
+  (the edge is dead, the two corners one fan); a band stopped at a one-joint run keeps the edge alive and the fans apart.
+- FIX (advisor's (a)): contour-bands.js splitSharedSideFans, a POST-PASS after the yield -- a shared-side fan pair still
+  overlapping more than SHARED_SIDE_SPLIT_SHARE (0.05) of its smaller slice is split by each corner's OTHER side (the
+  shared one ties), half a joint short of the line, the largest part kept. TRIED FIRST and dropped: the same test inside
+  the yield's conflict loop opened 0.3 - 3 sq in wedges on 12 lays (T1 / T10 / T12 7x9 4 in: item 30's own wedge cases,
+  whose overlap the runs' yield resolves anyway). Also tried keeping every split part (to fill T16's triangle): 4 lays
+  over the gap caps; dropped.
+- RESULT: fan x fan at 8 in -> 0 everywhere but T5 9x12 (1 pair, 0.22 sq in, share 0.05); T16 / T17 9x12 32.6 / 27.7 sq in
+  of stacking -> 0. Cost (advisor's yes): T16 9x12 8 in bare 9.46 -> 11.30 sq in (a bottom-centre triangle), T17 9x12 8 in
+  largest patch 1.13 -> 1.27 faces and bare 19.28 -> 22.50 sq in -- GAP_CAPS raised with the reason. Shots:
+  shots/seatE/fans/fan_{before,after}_template_{16_9x12,17_9x12,1_7x9}_8.png (60 % opaque: stacking reads darker).
+- TESTS: FAN_CAPS lowered (2 - 4 in -> 0, T16 / T17 9x12 8 -> 0, T5 9x12 8 [1, 0.05, 0.219]); the FAST set gains
+  T1 / T5 at 8 in (FAST_SET.extra) -- fails 2/5 on main's contour-bands.js (T1 7x9 8: 2 pairs vs 0; T5 9x12 8: 6 vs 1).
+  After: overlap FAST 5/5 + FULL 19/19, gap FAST + FULL 760/760, tip-fill-fans FULL 608/608, band / engine suites
+  (70 files) 1023/1023.
+- Seat D copied (FYI, no action) on the interaction with 7eb3df7.
