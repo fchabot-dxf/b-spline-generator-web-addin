@@ -51,7 +51,7 @@ async function runStrokesClear() {
     T.brickBrushHandler.finish(ed); return 1; })`);
   await piecesSettled('brush');
   const r = await jsJSON(`(async()=>{ const K=${JSON.stringify(K)}; const { pointInPolygon }=await import('./core/bricks/index.js'); const ed=window.svgEditor;
-    const box=(n)=>{ const p=n.getAttribute('points').trim().split(/\s+/).map((s)=>{ const [x,y]=s.split(',').map(Number); return {x,y}; });
+    const box=(n)=>{ const p=n.getAttribute('points').trim().split(/\\s+/).map((s)=>{ const [x,y]=s.split(',').map(Number); return {x,y}; });
       return { p, x0:Math.min(...p.map((q)=>q.x)), x1:Math.max(...p.map((q)=>q.x)), y0:Math.min(...p.map((q)=>q.y)), y1:Math.max(...p.map((q)=>q.y)) }; };
     const of=(k)=>[...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick="'+k+'"]')].map(box);
     const brush=of('brush'), frame=of('frame'); let pairs=0, area=0;
