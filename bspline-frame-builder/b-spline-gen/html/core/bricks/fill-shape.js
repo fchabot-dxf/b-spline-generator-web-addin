@@ -256,6 +256,10 @@ function rotatedFill(polygon, holes, opts) {
 }
 
 export function bricksFillShape(polygon, holes, opts) {
+  // no region, no wall (seat E, 2026-10-08, MEASURED: T9 7x9 1.5 in -- the band covers the board, generateBricks hands an
+  // EMPTY interiorOutline -- and the octagon-dot tiles read its bounding box as +-Infinity: an endless grid loop, the app
+  // frozen; the bond laid 0 pieces from it by luck). Every layout reads a polygon of at least 3 points.
+  if (!polygon || polygon.length < 3) return { bricks: [] };
   if (opts.rotationDeg) return rotatedFill(polygon, holes, opts);
   const { seed } = opts;
   const set = scaledSet(opts.set, opts.scale);

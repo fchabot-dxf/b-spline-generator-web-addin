@@ -25378,3 +25378,16 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - PROOF: 1,368 lays hashed (every template x 7x9 / 9x12 x every preset at 0.75 - 1.5 in + single soldier 2 - 8 in): exactly 13
   change (3 in 6, 4 in 7); 0.75 - 2 in and 8 in byte-identical to main. GAP_SWEEP_FULL 760/760; the FAST set fails on main
   (T18 9x12 3 in: 1.80 faces vs the default 0.05); band / ribbon / engine suites (106 files) 2381/2381.
+
+### LIVE FREEZE fixed: an empty wall region froze the octagon-dot tiles (seat E / 61, 2026-10-08; advisor: ship alone, first)
+- FOUND by the pattern sweep: T9 7x9 at 1.5 in with square_diamond (octagonDotLayout; octagon_square too) never returned -- the
+  sweep worker ran ~3000 s of CPU; a per-lay progress log put it on that lay (every other lay < 0.1 s). CAUSE: the soldier band
+  covers T9 at 1.5 in, generateBricks hands bricksFillShape an EMPTY interiorOutline, and octagonDotLayout reads its bounding
+  box as +-Infinity: n = Infinity cells, an endless loop, the page frozen. The bond laid 0 pieces from it by luck. NOT from
+  wall-outside: an exported tree of 1e65704 (before it) gives the same empty region.
+- FIX (advisor: a hang fix, not an input guard): fill-shape.js bricksFillShape returns no pieces for a region of fewer than 3
+  points -- "no region, no wall", at the one entry every layout goes through.
+- TEST: tests/bricks-empty-region.test.js -- every layout (bond + every tile2d pattern) on an empty region, and T9 7x9 1.5 in
+  with square_diamond / octagon_square, each in a CHILD process (tests/empty-region-child.mjs; a synchronous loop in the
+  test worker could never time out) with a 20 s timeout: 0 wall pieces, returned. FAILS 4/18 on main by timeout; 18/18
+  after (4 s). Fill / engine suites (44 files) 644/644. spawnSync's timeout ends the child (checked: no spinner left).
