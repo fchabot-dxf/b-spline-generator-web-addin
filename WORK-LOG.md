@@ -24682,3 +24682,31 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   corner checks 2, grey sets 6 -- all pass.
 - Phone stone-set tap (4x, 390 px, the 24 s sequence): 2.9 s (after the corner fix) -> 1.32 s.
 - No recent branch (last 20) touches geometry.js / fieldstone.js -- no overlap with E.
+
+### 2026-10-08 (seat D): T86 16(c) part 2 measured closed; 16f's tip fill gave up the corner fan's ground (T11) -- fixed
+- 16(c) part 2 (band rows overlapping at necks), MEASURED, no code: 19 templates x 8 presets x 0.75-1.5 in, 7x9 and 9x12
+  = 1,216 frame lays through generateBricks: 0 band-on-band pairs > 1e-3 sq in (88's 10-04 baseline 135.5 sq in). The
+  probe is not blind: T16 7x9 at 8 in reads 24.4 sq in / 17 pairs. Closed by item 28's fit rule (it trims the stack in
+  290 of the 608 7x9 lays) + the medial yield.
+- NEW, found by the 16(d) per-patch bar run over every preset (full lay, wall + frame): T11 butt_frame / double_course
+  left bare corners at Fred's sizes -- 0.166 sq in (1.1 brick faces) at 0.75 in, 0.112 at 1 in (both bottom corners);
+  single soldier clean. MECHANISM (temporary logging, reverted): tip-fill.js bareTips judges a wall tip bare against
+  the WALL only, but the corner fan already held it (skipWallFill = no hole); fillTips lengthened the side run's pieces
+  46-48 into the zone (0.147 -> 0.29-0.35 sq in); yieldAtMedialLine cut the fan slices against them (fan 41 gone, 40/42
+  shrunk) AND trimmed the extensions back to 0.147 -- both sides gave the ground up.
+- FIX (advisor: option A): fillTips treats the frame's own fan slices near a tip as blockers, grown by a joint like the
+  wall's (fanBlockers per zone). An extension takes only ground no piece holds.
+- MEASURED vs main 6322962 (same 1,216 lays, full lay, sha1 digest of every polygon): 7x9 600 / 608 byte-identical,
+  9x12 598 / 608. Changed: the 4 T11 lays (bare 0.168 -> 0.005, 0.222 -> 0.006) and 14 lays (T1 7x9 0.75 x 4 presets,
+  T3 9x12 1 x 4, T10 9x12 1.5 x 6) where ONE run piece's
+  extension now stays a joint off its neighbouring fan (T1: 0.0688 -> 0.0687 sq in; bare and counts unchanged).
+  Frame overlap grew in 0 lays, bare grew in 0. Lays over the 0.05-face patch bar 7x9: 22 -> 18 (left: the 1.5 in wall
+  tips, PATCH_KNOWN). At 0.75 / 1 in every preset on both boards is now <= 0.029 of a face.
+- PIN: tests/bricks-tip-fill-fans.test.js -- FAST default (T11 butt_frame 0.75, double_course 1, + T1 / T3 / T10 lays
+  where a fan sits beside a tip): 5 cases, 5.8 s test time; pre-fix contour-bands: the 2 T11 cases fail (1.17 / 0.37 of a
+  face), the other 3 pin today's lays. FULL: TIP_FAN_SWEEP_FULL=1 = every preset x template, 0.75 / 1 in, 7x9 + 9x12,
+  608 lays, 77 s, 608/608. Bar + overlap: largest bare patch <= PATCH_MAX_FACE, no frame pair > 1e-3 sq in.
+- tests/bare-ground.js: the bare-ground scan + the patch bar moved out of bricks-wall-coverage-matrix (now shared, one
+  declaration of PATCH_MAX_FACE); the coverage matrix reads it, 79/79, its reference-scan equality pins unchanged.
+- Full suite (npm run test:full, after merging main with seat A's narrowestGapCached): 5956/5956. Known failures: none.
+- Shots: shots/seatD/a16c/t11_hole_main.png (before; red = bare) | t11_after_fix.png.
