@@ -11,8 +11,8 @@
  */
 import { bricksFillShape } from './fill-shape.js';
 import { strokesToRegion, WALL_REGION_PICK } from './region.js';
-import { bricksContourBands, setBandPattern } from './contour-bands.js';
-import { frameLaidBy } from './piece-floor.js';
+import { bricksContourBands, setBandPattern, clipPiecesToBoard } from './contour-bands.js';
+import { frameLaidBy, minPieceAreaOf } from './piece-floor.js';
 import { pointInPolygon } from './geometry.js';
 import { brickTopHeight } from './height-profile.js';
 import { suppressBricks } from './suppression.js';
@@ -73,6 +73,7 @@ export function generateBricks(input) {
   const { boardOutline, set, frame, seed, scale } = input;
 
   let interiorOutline = boardOutline;
+  let frameBoard = null; // the frame's own board outline (contour-bands `board`): the wall is clipped to it below
   let frameBricks = [];
   let bandsReduced; // T86 item 28: contour-bands' fit-rule note, when the requested stack did not fit
   let frameLay = null; // T86 item 16f: how the frame was laid, to lay it again into the wall's bare tips
@@ -103,6 +104,7 @@ export function generateBricks(input) {
     // wall's bare tips (item 16f) when it has any. The inner path is the plan's own (contour-bands opts.planOnly).
     const plan = bricksContourBands(frame.primitives, frame.bands || [], { set: frameSet, seed, scale, bandFit: input.bandFit, planOnly: true });
     interiorOutline = plan.innerPath;
+    frameBoard = plan.board || null;
     bandsReduced = plan.bandsReduced;
     frameLay = { frameSet, bands: frame.bands || [] };
   }
@@ -111,7 +113,7 @@ export function generateBricks(input) {
   const wallExclusions = surround ? [...(input.exclusions || []), { polygon: surround.outer }] : input.exclusions;
 
   const region = wallRegionOf(input.wallRegion, set);
-  const bricks = input.skipWallFill ? [] : bricksFillShape(interiorOutline, null, {
+  const laidWall = input.skipWallFill ? [] : bricksFillShape(interiorOutline, null, {
     set, seed, scale,
     suppression: input.suppression ?? 0,
     topBias: input.topBias ?? 0.8,
@@ -125,6 +127,10 @@ export function generateBricks(input) {
     exclusions: wallExclusions,
     region,
   }).bricks;
+  // the wall is never laid off the board (seat E, 2026-10-08, the gap sweep): its region is clipped to the board
+  // (primitive-ribbon.js wallRegionAtDepth), and its pieces are cut to the board by the band's own step, dropping under the
+  // wall set's floor -- a region inverted at 2 - 8 in can still hand the fill a zero-width bridge it lays whole bricks across
+  const bricks = frameBoard && laidWall.length ? clipPiecesToBoard(laidWall, frameBoard, minPieceAreaOf(scaledSet(set, scale))) : laidWall;
   // T86 item 10 (the Raised brush's Grout mode): each cut polyline opens a joint through the laid pieces AFTER the lay --
   // the wall at the wall set's joint, the frame (and the window surround) at the frame set's, unless the cut declares
   // its own width; a piece under the quarter-brick floor of its element drops into the joint. No cut = as before.

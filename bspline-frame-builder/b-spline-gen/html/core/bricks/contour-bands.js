@@ -35,7 +35,7 @@
  */
 import { isSimplePolygon, dedupePolygon, inwardSignFor, pointInPolygon, dropSpikes, cumulativeLengths, pointAtArcLength, polygonIntersection, signedArea, clipToField, polygonDifference, offsetPathInward, clipToHalfPlane } from './geometry.js';
 import { radialSignAt } from './arc-voussoir.js';
-import { ribbonPieces, ribbonJoints, boundaryAtDepth, lineBetweenLinesDropsAt } from './primitive-ribbon.js';
+import { ribbonPieces, ribbonJoints, boundaryAtDepth, wallRegionAtDepth, lineBetweenLinesDropsAt } from './primitive-ribbon.js';
 import { openRibbonOutline } from './ribbon-outline.js'; // F35 item 55 (seat E): a Brush stroke's grout region
 import { scaledSet, BRICK_PATTERNS } from './library.js';
 import { minPieceAreaOf, LAID_BY_COURSES } from './piece-floor.js';
@@ -234,14 +234,15 @@ function buildAreaBandBricks(enriched, d0, d1, band, patternName, set, seed, ban
  *   Wall-starting inner edge to give it).
  */
 /** T86 (advisor, size sheet v3: T1 7x9 three_band at 1.25 in, the middle band fanned out past the board): no band
- *  piece is laid outside the board -- item 19's wall invariant, extended to bands. A piece with real area outside
+ *  piece is laid outside the board -- item 19's wall invariant, extended to bands. Exported: the engine runs the WALL's
+ *  pieces through it too (seat E, 2026-10-08: a wall region inverted at 2 - 8 in laid whole wall bricks off the board). A piece with real area outside
  *  the outline (more than BOARD_CLIP_TOLERANCE_SQIN) is cut to it (geometry polygonIntersection); what is left under
  *  `minArea` (the stack's floor, piece-floor.js: a quarter brick, a stone ring's smallest stone) drops. A piece inside the board is kept exactly as built. WHY it reaches out:
  *  a band deeper than the board's medial line (half the waist) inverts the offset ring -- a waist arc's offset circle
  *  grows past the far side and meets its neighbours outside the board; the fit rule for that is T86 item 28. */
 const BOARD_CLIP_TOLERANCE_SQIN = 1e-3; // above the fine tessellation's own chord error on a piece
 const BOARD_CLIP_ARC_STEPS = 128; // per arc: a chord sags < 1e-4 in on the templates' fillets
-function clipBandPiecesToBoard(bricks, board, minArea) {
+export function clipPiecesToBoard(bricks, board, minArea) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const p of board) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
   const out = [];
@@ -930,10 +931,13 @@ export function bricksContourBands(primitives, bands, opts) {
   const minArea = minPieceAreaOf(set, setBandPattern(opts.set, closed) || LAID_BY_COURSES);
   const yielded = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set, minArea) : bricks;
   const split = yielded === bricks ? bricks : splitSharedSideFans(yielded, new Map(bricks.map((b, k) => [b.id, origins[k]])), enriched, set);
-  const laid = fitBoard ? clipBandPiecesToBoard(split, fitBoard, minArea) : bricks;
+  const laid = fitBoard ? clipPiecesToBoard(split, fitBoard, minArea) : bricks;
   // the wall keeps half its own joint from the band (grout is one global width, so band + wall = one joint)
   const wallDepth = Math.max(bands.length ? depthSoFar + halfJoint : depthSoFar, narrowWallDepth);
-  return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, wallDepth) : [], ...(narrowNote ? { bandsReduced: narrowNote } : fit ? { bandsReduced: fit.note } : {}),
+  // the wall's region, never off the board (primitive-ribbon.js wallRegionAtDepth)
+  return { bricks: laid, innerPath: closed ? wallRegionAtDepth(enriched, wallDepth) : [], ...(narrowNote ? { bandsReduced: narrowNote } : fit ? { bandsReduced: fit.note } : {}),
+    // the board's own outline as the band clip reads it (fine tessellation), additive: the engine clips the wall to it
+    ...(fitBoard ? { board: fitBoard } : {}),
     // F35 item 55 (seat E): an open centred ribbon's outline (a Brush stroke's grout region), additive
     ...(!closed && opts.centered ? { ribbonOutline: openRibbonOutline(enriched, ribbonStartDepth, depthSoFar) } : {}) };
 }

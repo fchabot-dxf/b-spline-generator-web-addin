@@ -24944,3 +24944,26 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   After: overlap FAST 5/5 + FULL 19/19, gap FAST + FULL 760/760, tip-fill-fans FULL 608/608, band / engine suites
   (70 files) 1023/1023.
 - Seat D copied (FYI, no action) on the interaction with 7eb3df7.
+
+### Wall bricks outside the outline at 2 - 8 in -> 0 (advisor: its own item after fan stacking) (seat E / 61, 2026-10-08)
+- MEASURED (the gap sweep's new count, 18 single-soldier lays at 2 - 8 in, T14 7x9 3 in 10 pieces): the wall's region
+  (contour-bands innerPath = boundaryAtDepth at the wall depth) was itself off the board -- where the band is deeper than
+  half the board the offset ring inverts and untangles into lobes wound like the board but lying across the band / off
+  it (T14 7x9 3 in: 2 lobes, 2 vertices each outside; T19 7x9 3 in: one lobe wholly below the board; T16 9x12 3 in: the
+  real region with 11 of 24 vertices outside). Shots: shots/seatE/gaps/wo_template_{14,17,19}_*.png (cyan = the region).
+- TRIED and dropped: (1) keep a lobe only if every vertex is inside the board and >= depth in -- dropped the whole wall
+  on T6 2 - 8 in and T16 / T17 9x12 3 in (up to 9.5 faces bare): a real region touches the contour where a side's band
+  is dropped (T6 7x9 2 in: min in-distance 0, nothing outside), and one lobe can be part real (T16). (2) drop lobes
+  narrower than a brick -- measured 102 of 1458 lobes under one brick height, incl. real ones at 1.5 in (T17 7x9 0.33 H).
+- FIX, two declarations, one rule ("the wall is never laid off the board"):
+  - primitive-ribbon.js wallRegionAtDepth: boundaryAtDepth with each lobe clipped to the board's contour (depth 0),
+    then bridged as before -- 13 of the 18 lays to 0;
+  - engine.js: the wall's pieces go through the band's own board clip (contour-bands.js clipPiecesToBoard, was
+    clipBandPiecesToBoard, now exported; the plan returns its \`board\`), dropping under the wall set's floor -- the 5 left
+    (T14 2 - 4 in, T6 9x12 8 in) were whole bricks laid across the zero-width bridge between two clipped lobes
+    (shots/seatE/gaps/wo2_template_14_7x9_4.png: the region is fully inside, the yellow bricks 1.4 - 3.8 in outside it).
+- RESULT: 1368 lays hashed (every template x 7x9 / 9x12 x every preset at 0.75 - 1.5 in + single soldier at 2 - 8 in):
+  exactly 18 change, all at >= 2 in; Fred's sizes byte-identical. GAP_CAPS wall-outside -> 0 everywhere (FAST fails on
+  main: T14 7x9 3 in 10 vs 0); GAP_SWEEP_FULL 760/760; band / engine / ribbon suites (71 files) 1036/1036.
+- NOT changed: boundaryAtDepth's other callers (the area band's ring: contour-bands buildAreaBandBricks, line ~199 / ~985)
+  can untangle the same off-board lobes at 3 - 8 in; the band clip already cuts their pieces to the board. Noted only.
