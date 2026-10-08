@@ -25320,3 +25320,17 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   1.83 - 2.58 s, mean ~2.13; main 1.95 - 2.28 s, mean ~2.17). Not measurably faster -> reverted, not committed.
 - Nothing identical-and-faster left in the backdrop paint that I can see; the remaining cost is the 384-wide heightmap
   itself (the photo + seed field sampled per pixel).
+
+### 2026-10-08 (seat A): Brick Generate in the editor -- fast code, a card that lingered; the sequence declared to its one step
+- PROFILE (phone 4x, editor open, a wall + three_band frame laid: 230 SVG nodes): a Generate re-lay is ~150 ms of JS (the
+  lay 127, polygonIntersection / clipPiecesToBoard ~60; syncControlRequires 40) -- nothing byte-identical worth taking.
+  On a board with no brick elements Generate lays nothing (only the sequence).
+- FOUND: the loading card read "laying bricks, step 1 of 3" from 27 ms to 1.43 s: LOADING_SEQUENCES.generate =
+  [bricks, heightMask, rebuild] (item 41) predates F35 item 18 (4); its only caller (brickGenerate) lives in the
+  editor, where the carve + build wait for Apply, so the sequence waited SEQUENCE_IDLE_MS for steps that never came.
+- CHANGE (advisor go): generate = ['bricks'], with a pointer to core/in-editor-3d.js. A one-step sequence shows no
+  "step 1 of 1" (stageText adds the count only for > 1 stage) and no checklist. Browser: card 24 - 33 ms -> 392 -
+  445 ms (min visible + hide grace), text "Computing - laying bricks".
+- TESTS: loading-signal.test.js -- the card text and its closing when the lay ends fail 2/22 on the old declaration;
+  the idle-timeout test now uses newSeed (its only multi-step-left case was generate); loading-steps-list.test.js --
+  generate moved out of the multi-step sweep, its one-step card pinned. Full suite 402 files, 6018/6018.
