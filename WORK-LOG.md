@@ -24852,3 +24852,29 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   lands somewhere else in the next (the first dab run sat on a joint and proved nothing). A dab case must measure the
   lay it was aimed at (no second Generate).
 - No code change.
+
+### 2026-10-08 (seat A): frame-mesh round 3 -- five steps, every one byte-identical, apply -34%
+- Rule (advisor): keep a step only if byte-identical AND measurably faster; the walk last. Safety net per step: the
+  747-apply hash sweep (every template x 5 boards x 3 frame bottoms x 3 sculpts, sha1 of every mesh + the panel's
+  re-index) vs the round's baseline, tests/frame-clip-identical (pinned digests) + a mutation that must fail it,
+  and an A/B by file copies (the whole-sweep CPU was too noisy on this PC today, so each step also has an isolated
+  benchmark running both versions in one process, alternating).
+- 1 surface lookup per loop point (the walls read zBot + zTop of both segments at each point: 6.96 M lookups):
+  memo by the point object. Profiled apply 13.5 -> 12.6 s over the sweep.
+- 2 panelSurface's buckets as one flat grid, filled in triangle order (lo/hi ties unchanged): build + 20 k lookups
+  11.2 -> 7.8 ms.
+- 3 the outline's segment buckets as one flat grid: 19-template clip 330 -> 260 ms.
+- 4 creasedNormals: face normal hoisted, one reused scratch, same sums in the same order: 54.5 -> 48 ms.
+- 5 THE WALK: it still scanned the whole outline per crossed triangle (the box skip discarded nearly all of it).
+  clipPanelToOutline now passes the segments sharing a cell with the triangle (a superset of the ones the skip lets
+  through; a skipped one never touched the walk's state). Clip 450 -> 192 ms. The exitAtStart re-walk (36
+  triangles in the sweep) keeps its full scan: letting it use the candidates too changed no hash and no test, so
+  nothing can guard that choice -- it stays on the original code as the safe side.
+- Whole sweep, round start vs end, alternating x3: 19.6 -> 12.9 ms per apply. 747/747 identical at every step.
+  Mutations: steps 1-4 each fail frame-clip-identical; step 5 dropping one candidate fails 25 of 834.
+- Full suite: 395 files, 5970/5970. Known failures: none.
+- FOUND ON THE WAY, NOT FIXED (phone Generate probe, 390 px, 4x CPU, same seed as yesterday's): a Generate tap now
+  paints in 8 - 26 s (yesterday 1.2 s). 14.4 s of the profile is getProgramInfoLog (WebGL shader compiles blocking
+  the main thread), 2.8 s toDataURL; frame-mesh is ~0.2 s (walk + apply ~160 ms before this round, ~35 after).
+  Not yet known whether it is main's code or this PC's GPU/headless state today: next step would be the same
+  probe at yesterday's main.
