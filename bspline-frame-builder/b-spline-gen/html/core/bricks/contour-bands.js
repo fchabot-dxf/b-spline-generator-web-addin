@@ -37,7 +37,8 @@ import { isSimplePolygon, dedupePolygon, inwardSignFor, pointInPolygon, dropSpik
 import { radialSignAt } from './arc-voussoir.js';
 import { ribbonPieces, ribbonJoints, boundaryAtDepth, lineBetweenLinesDropsAt } from './primitive-ribbon.js';
 import { openRibbonOutline } from './ribbon-outline.js'; // F35 item 55 (seat E): a Brush stroke's grout region
-import { scaledSet, BRICK_PATTERNS, MIN_PIECE_FRACTION } from './library.js';
+import { scaledSet, BRICK_PATTERNS } from './library.js';
+import { minPieceAreaOf, LAID_BY_COURSES } from './piece-floor.js';
 import { bricksFillShape } from './fill-shape.js';
 import { axisLen, courseHeightFor } from './layouts/bond.js';
 
@@ -235,13 +236,12 @@ function buildAreaBandBricks(enriched, d0, d1, band, patternName, set, seed, ban
 /** T86 (advisor, size sheet v3: T1 7x9 three_band at 1.25 in, the middle band fanned out past the board): no band
  *  piece is laid outside the board -- item 19's wall invariant, extended to bands. A piece with real area outside
  *  the outline (more than BOARD_CLIP_TOLERANCE_SQIN) is cut to it (geometry polygonIntersection); what is left under
- *  library.js MIN_PIECE_FRACTION of a brick drops. A piece inside the board is kept exactly as built. WHY it reaches out:
+ *  `minArea` (the stack's floor, piece-floor.js: a quarter brick, a stone ring's smallest stone) drops. A piece inside the board is kept exactly as built. WHY it reaches out:
  *  a band deeper than the board's medial line (half the waist) inverts the offset ring -- a waist arc's offset circle
  *  grows past the far side and meets its neighbours outside the board; the fit rule for that is T86 item 28. */
 const BOARD_CLIP_TOLERANCE_SQIN = 1e-3; // above the fine tessellation's own chord error on a piece
 const BOARD_CLIP_ARC_STEPS = 128; // per arc: a chord sags < 1e-4 in on the templates' fillets
-function clipBandPiecesToBoard(bricks, board, set) {
-  const minArea = MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
+function clipBandPiecesToBoard(bricks, board, minArea) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const p of board) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
   const out = [];
@@ -486,7 +486,7 @@ function checkedDifference(piece, cutter) {
 const sameFanCorner = (a, b) => !a.sides || !b.sides || (a.sides[0] === b.sides[0] && a.sides[1] === b.sides[1])
   || a.sides.some((s) => b.sides.includes(s)); // a shared side: not split (see above)
 const fanKey = (o) => o.sides[0] * 1e6 + o.sides[1]; // the tie order between two corners' fans (seed-stable)
-function yieldAtMedialLine(bricks, origins, primitives, set) {
+function yieldAtMedialLine(bricks, origins, primitives, set, minArea) {
   const box = (p) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const q of p) { x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); } return [x0, y0, x1, y1]; };
   const boxes = bricks.map((b) => box(b.polygon));
   const conflicts = bricks.map(() => []);
@@ -514,7 +514,6 @@ function yieldAtMedialLine(bricks, origins, primitives, set) {
   const depth = primitives.map(sourceDepth);
   // T86 item 30: a fan's depth at p = its corner's nearer side (the fan fills between the two)
   const fanDepth = (o) => (p) => Math.min(depth[o.sides[0]](p), depth[o.sides[1]](p));
-  const minArea = MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
   const setback = set.grout.widthIn / 2; // each side stops half the band's joint short of the medial line
   const grown = bricks.map((b, i) => (conflicts[i].length ? offsetPathInward(b.polygon, 2 * setback, -inwardSignFor(b.polygon)) : b.polygon));
   const cutOne = (i, dropped) => {
@@ -561,7 +560,7 @@ function yieldAtMedialLine(bricks, origins, primitives, set) {
     });
     return left;
   };
-  // A piece the cut leaves under MIN_PIECE_FRACTION drops, one at a time, smallest first, and the cuts are redone
+  // A piece the cut leaves under `minArea` (the stack's floor, piece-floor.js) drops, one at a time, smallest first, and the cuts are redone
   // without it so its ground goes to the piece across the line. A drop that would open a hole (the re-cut pieces do
   // not cover the dropped piece's ground -- T14's X: a kite's tip beside the X is its own side's, nobody else's) is
   // undone and the piece stays, under-size: a small piece beats a hole. A sliver whose drop opens
@@ -883,8 +882,11 @@ export function bricksContourBands(primitives, bands, opts) {
   // 2 s per lay). Not narrowestGap: its normal rays read T14's X corners as a gap narrower than a 1.25 in band.
   const boardWidth = fitBoard ? Math.min(...['x', 'y'].map((k) => Math.max(...fitBoard.map((p) => p[k])) - Math.min(...fitBoard.map((p) => p[k])))) : 0;
   if (tipRow) fillTips(bricks, tipRow, tipZones, set, enriched, tipReach);
-  const split = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set) : bricks;
-  const laid = fitBoard ? clipBandPiecesToBoard(split, fitBoard, set) : bricks;
+  // the smallest piece the yield / the board clip may leave: the floor of the layout that laid the stack (piece-floor.js --
+  // a stone ring's is its smallest stone's, not a quarter brick; every band of a set with a band pattern lays with it)
+  const minArea = minPieceAreaOf(set, setBandPattern(opts.set, closed) || LAID_BY_COURSES);
+  const split = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set, minArea) : bricks;
+  const laid = fitBoard ? clipBandPiecesToBoard(split, fitBoard, minArea) : bricks;
   // the wall keeps half its own joint from the band (grout is one global width, so band + wall = one joint)
   const wallDepth = Math.max(bands.length ? depthSoFar + halfJoint : depthSoFar, narrowWallDepth);
   return { bricks: laid, innerPath: closed ? boundaryAtDepth(enriched, wallDepth) : [], ...(narrowNote ? { bandsReduced: narrowNote } : fit ? { bandsReduced: fit.note } : {}),
