@@ -24792,3 +24792,16 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   T18 grout cut across the ring at 1 in). T18's "plain stretch" reads ~0.18 at every size: its plain point (4.6, 6.6)
   sits at T18's board edge and the window counts off-board points -- a harness reading, not a hole.
 - No code change; the temporary loop was not committed (strokes.mjs restored).
+
+### Pick 3: Continuous strokes + Raised dabs over stones -- measured, nothing to fix (seat E / 61, 2026-10-08)
+- IN APP (template_1, White rocks wall in a Grey stone ring, 1.25 in; the strokes group's STONE_CUTS measure, a
+  temporary probe, not committed): Continuous X on the wall -- junction bare 0.0024 sq in, 0 overlaps; a Continuous
+  stroke into the ring 0.0136; a Raised-bricks stroke across the wall 0; all vs a plain stretch of 0.
+- DABS, aimed at the biggest stone's centroid near the board's centre: a Raised-bricks dab (one 0.33 in piece) inside a
+  0.45 sq in stone -- the stone is split by a joint-wide seam along the dab and wraps it (fill-shape.js splitRound, live):
+  bare 0, overlaps 0 (shot: shots/seatE/stones/dab_raised_zoom2.png). A grout dab inside a 1.26 sq in stone leaves the
+  stone whole, as grout-cut.js declares (a cut that never reaches a brick's edge opens no joint): bare 0.
+- TRAP for the next probe: the probe's Generate after the strokes RE-SEEDS the wall, so a dab aimed at one lay's stone
+  lands somewhere else in the next (the first dab run sat on a joint and proved nothing). A dab case must measure the
+  lay it was aimed at (no second Generate).
+- No code change.
