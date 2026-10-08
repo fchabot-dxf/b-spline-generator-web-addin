@@ -114,23 +114,30 @@ export function polygonPointTester(poly) {
 export function panelSurface(positions, index, W, H, nx, nz) {
   const cw = W / Math.max(1, nx - 1), ch = H / Math.max(1, nz - 1);
   const ci = (x) => Math.floor((x + W / 2) / cw), cj = (y) => Math.floor((y + H / 2) / ch);
-  const buckets = new Map();
-  const P = positions, E = 1e-9;
-  for (let t = 0; t < index.length; t += 3) {
+  const P = positions, E = 1e-9, nt = index.length / 3;
+  // each triangle's cell box, then the cells' triangle lists as one flat array (count, then fill in triangle order)
+  const box = new Int32Array(nt * 4);
+  let gi0 = Infinity, gi1 = -Infinity, gj0 = Infinity, gj1 = -Infinity;
+  for (let f = 0, t = 0; f < nt; f++, t += 3) {
     const a = index[t] * 3, b = index[t + 1] * 3, c = index[t + 2] * 3;
     const i0 = ci(Math.min(P[a], P[b], P[c]) - E), i1 = ci(Math.max(P[a], P[b], P[c]) + E);
     const j0 = cj(Math.min(P[a + 1], P[b + 1], P[c + 1]) - E), j1 = cj(Math.max(P[a + 1], P[b + 1], P[c + 1]) + E);
-    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
-      const k = i * 1048576 + j;
-      let list = buckets.get(k);
-      if (!list) buckets.set(k, (list = []));
-      list.push(t);
-    }
+    box[4 * f] = i0; box[4 * f + 1] = i1; box[4 * f + 2] = j0; box[4 * f + 3] = j1;
+    if (i0 < gi0) gi0 = i0; if (i1 > gi1) gi1 = i1; if (j0 < gj0) gj0 = j0; if (j1 > gj1) gj1 = j1;
   }
+  const gw = nt ? gi1 - gi0 + 1 : 0, gh = nt ? gj1 - gj0 + 1 : 0;
+  const start = new Int32Array(gw * gh + 1);
+  for (let f = 0; f < nt; f++) for (let i = box[4 * f]; i <= box[4 * f + 1]; i++) for (let j = box[4 * f + 2]; j <= box[4 * f + 3]; j++) start[(i - gi0) * gh + (j - gj0) + 1]++;
+  for (let k = 0; k < gw * gh; k++) start[k + 1] += start[k];
+  const fill = start.slice(0, gw * gh), tris = new Int32Array(start[gw * gh]);
+  for (let f = 0; f < nt; f++) for (let i = box[4 * f]; i <= box[4 * f + 1]; i++) for (let j = box[4 * f + 2]; j <= box[4 * f + 3]; j++) tris[fill[(i - gi0) * gh + (j - gj0)]++] = 3 * f;
   return {
     at(x, y) {
       let lo = null, hi = null;
-      for (const t of buckets.get(ci(x) * 1048576 + cj(y)) || []) {
+      const i = ci(x) - gi0, j = cj(y) - gj0;
+      if (!(i >= 0 && i < gw && j >= 0 && j < gh)) return null;
+      for (let r = start[i * gh + j], r1 = start[i * gh + j + 1]; r < r1; r++) {
+        const t = tris[r];
         const h = baryHit(P, index, t, x, y);
         if (!h) continue;
         if (!lo || h.z < lo.z) lo = h;
@@ -170,7 +177,7 @@ const _area2 = (pts) => { let s = 0; for (let i = 0; i < pts.length; i++) { cons
  * Returns simple CCW loops (one per separate piece; a concave outline can
  * enter one triangle twice). No crossing: the whole triangle or nothing.
  */
-function _trianglePolygonPieces(tri, poly) {
+function _trianglePolygonPieces(tri, poly, cand) {
   const n = poly.length;
   const planes = [0, 1, 2].map((e) => ({ A: tri[e], B: tri[(e + 1) % 3] }));
   const side = (pl, X) => (pl.B.x - pl.A.x) * (X.y - pl.A.y) - (pl.B.y - pl.A.y) * (X.x - pl.A.x);
@@ -192,10 +199,15 @@ function _trianglePolygonPieces(tri, poly) {
   // while an exitAtStart chain is open: that rule reads a start point on an edge's LINE, which may lie off the box.
   const bx0 = Math.min(tri[0].x, tri[1].x, tri[2].x), bx1 = Math.max(tri[0].x, tri[1].x, tri[2].x);
   const by0 = Math.min(tri[0].y, tri[1].y, tri[2].y), by1 = Math.max(tri[0].y, tri[1].y, tri[2].y);
+  // `cand` (optional): the segments that may touch the triangle's box (a superset of the ones the skip lets
+  // through). The plain walk visits only those, in walk order -- every other one the skip would have passed over.
+  const order = cand ? cand.map((k) => (k - start + n) % n).sort((p, q) => p - q) : null;
   const walk = (exitAtStart) => {
     const chains = [];
     let cur = null;
-    for (let m = 0; m < n; m++) {
+    const ms = order && !exitAtStart ? order : null;
+    for (let s = 0, sn = ms ? ms.length : n; s < sn; s++) {
+      const m = ms ? ms[s] : s;
       const P = poly[(start + m) % n], Q = poly[(start + m + 1) % n];
       if (!(exitAtStart && cur) && ((P.x < bx0 && Q.x < bx0) || (P.x > bx1 && Q.x > bx1) || (P.y < by0 && Q.y < by0) || (P.y > by1 && Q.y > by1))) continue;
       const d = { x: Q.x - P.x, y: Q.y - P.y };
@@ -348,31 +360,46 @@ export function clipPanelToOutline(positions, index, poly, attrs = {}, cell = 0.
   const inside = new Int8Array(P.length / 3).fill(-1);
   const inPoly = polygonPointTester(poly);
   const isIn = (v) => (inside[v] < 0 ? (inside[v] = inPoly(P[v * 3], P[v * 3 + 1]) ? 1 : 0) : inside[v]) === 1;
-  // outline segments bucketed by cell, to find the triangles the outline crosses
-  const segs = new Map(), key = (i, j) => i * 1048576 + j, cx = (x) => Math.floor(x / cell);
-  for (let k = 0; k < n; k++) {
-    const a = poly[k], b = poly[(k + 1) % n];
-    for (let i = cx(Math.min(a.x, b.x)); i <= cx(Math.max(a.x, b.x)); i++) {
-      for (let j = cx(Math.min(a.y, b.y)); j <= cx(Math.max(a.y, b.y)); j++) {
-        let l = segs.get(key(i, j));
-        if (!l) segs.set(key(i, j), (l = []));
-        l.push(k);
-      }
-    }
-  }
+  const subjectCCW = _area2(poly) > 0 ? poly : poly.slice().reverse(), S = subjectCCW;
+  // the outline's segments (of the CCW subject the walk reads) bucketed by cell, one flat grid over the outline's
+  // cells: finds the triangles it crosses, and the segments each crossed triangle's walk needs to look at
+  const cx = (x) => Math.floor(x / cell);
+  let gi0 = Infinity, gi1 = -Infinity, gj0 = Infinity, gj1 = -Infinity;
+  for (const p of poly) { gi0 = Math.min(gi0, cx(p.x)); gi1 = Math.max(gi1, cx(p.x)); gj0 = Math.min(gj0, cx(p.y)); gj1 = Math.max(gj1, cx(p.y)); }
+  const gw = n ? gi1 - gi0 + 1 : 0, gh = n ? gj1 - gj0 + 1 : 0;
+  const segCells = (k, each) => {
+    const a = S[k], b = S[(k + 1) % n];
+    for (let i = cx(Math.min(a.x, b.x)); i <= cx(Math.max(a.x, b.x)); i++) for (let j = cx(Math.min(a.y, b.y)); j <= cx(Math.max(a.y, b.y)); j++) each((i - gi0) * gh + (j - gj0));
+  };
+  const start = new Int32Array(gw * gh + 1);
+  for (let k = 0; k < n; k++) segCells(k, (c) => start[c + 1]++);
+  for (let c = 0; c < gw * gh; c++) start[c + 1] += start[c];
+  const fill = start.slice(0, gw * gh), segs = new Int32Array(start[gw * gh]);
+  for (let k = 0; k < n; k++) segCells(k, (c) => { segs[fill[c]++] = k; });
   const crossed = (x0, x1, y0, y1) => {
-    for (let i = cx(x0); i <= cx(x1); i++) for (let j = cx(y0); j <= cx(y1); j++) {
-      for (const k of segs.get(key(i, j)) || []) {
-        const a = poly[k], b = poly[(k + 1) % n];
+    for (let i = Math.max(cx(x0), gi0), ie = Math.min(cx(x1), gi1); i <= ie; i++) for (let j = Math.max(cx(y0), gj0), je = Math.min(cx(y1), gj1); j <= je; j++) {
+      for (let r = start[(i - gi0) * gh + (j - gj0)], r1 = start[(i - gi0) * gh + (j - gj0) + 1]; r < r1; r++) {
+        const k = segs[r];
+        const a = S[k], b = S[(k + 1) % n];
         if (Math.max(a.x, b.x) >= x0 && Math.min(a.x, b.x) <= x1 && Math.max(a.y, b.y) >= y0 && Math.min(a.y, b.y) <= y1) return true;
       }
     }
     return false;
   };
+  // every segment sharing a cell with the box (each once): a superset of the ones whose own box touches it
+  const seen = new Int32Array(n).fill(-1);
+  const candidates = (x0, x1, y0, y1, stamp) => {
+    const out = [];
+    for (let i = Math.max(cx(x0), gi0), ie = Math.min(cx(x1), gi1); i <= ie; i++) for (let j = Math.max(cx(y0), gj0), je = Math.min(cx(y1), gj1); j <= je; j++) {
+      for (let r = start[(i - gi0) * gh + (j - gj0)], r1 = start[(i - gi0) * gh + (j - gj0) + 1]; r < r1; r++) {
+        if (seen[segs[r]] !== stamp) { seen[segs[r]] = stamp; out.push(segs[r]); }
+      }
+    }
+    return out;
+  };
   const kept = [], rim = { position: [], index: [] };
   const names = Object.keys(attrs);
   for (const nm of names) rim[nm] = [];
-  const subjectCCW = _area2(poly) > 0 ? poly : poly.slice().reverse();
   for (let t = 0; t < index.length; t += 3) {
     const ia = index[t], ib = index[t + 1], ic = index[t + 2];
     const a = { x: P[ia * 3], y: P[ia * 3 + 1] }, b = { x: P[ib * 3], y: P[ib * 3 + 1] }, c = { x: P[ic * 3], y: P[ic * 3 + 1] };
@@ -384,7 +411,8 @@ export function clipPanelToOutline(positions, index, poly, attrs = {}, cell = 0.
       continue;
     }
     const tri = s2 > 0 ? [a, b, c] : [a, c, b];
-    let pieces = _trianglePolygonPieces(tri, subjectCCW);
+    let pieces = _trianglePolygonPieces(tri, subjectCCW,
+      candidates(Math.min(a.x, b.x, c.x), Math.max(a.x, b.x, c.x), Math.min(a.y, b.y, c.y), Math.max(a.y, b.y, c.y), t));
     if (!pieces) { // nothing crosses it: wholly in or out, decided at a strictly interior point
       if (inPoly((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3)) kept.push(ia, ib, ic);
       continue;
@@ -555,24 +583,25 @@ export function creasedNormals(positions, index, creaseDeg = FRAME_CREASE_ANGLE_
   const fill = rowStart.slice(0, nv), corners = new Int32Array(nc);
   for (let k = 0; k < nc; k++) corners[fill[index[k]]++] = k;
   const outIndex = new Array(nc), outPos = [], outN = [], source = [];
+  const made = []; // this vertex's new vertices so far: [nx, ny, nz, newVertex] flat, `nm` of them
   for (let v = 0; v < nv; v++) {
     const r0 = rowStart[v], r1 = rowStart[v + 1];
-    const made = []; // [nx, ny, nz, newVertex] for this vertex
+    let nm = 0;
     for (let r = r0; r < r1; r++) {
-      const f = (corners[r] / 3) | 0;
+      const f = (corners[r] / 3) | 0, fx = fn[3 * f], fy = fn[3 * f + 1], fz = fn[3 * f + 2];
       let x = 0, y = 0, z = 0;
       for (let q = r0; q < r1; q++) {
         const g = (corners[q] / 3) | 0;
-        if (g !== f && fn[3 * f] * fn[3 * g] + fn[3 * f + 1] * fn[3 * g + 1] + fn[3 * f + 2] * fn[3 * g + 2] < cosMax) continue;
+        if (g !== f && fx * fn[3 * g] + fy * fn[3 * g + 1] + fz * fn[3 * g + 2] < cosMax) continue;
         x += fn[3 * g] * fa[g]; y += fn[3 * g + 1] * fa[g]; z += fn[3 * g + 2] * fa[g];
       }
       const len = Math.hypot(x, y, z) || 1;
       x /= len; y /= len; z /= len;
       let id = -1;
-      for (const m of made) if (Math.abs(m[0] - x) < 1e-9 && Math.abs(m[1] - y) < 1e-9 && Math.abs(m[2] - z) < 1e-9) { id = m[3]; break; }
+      for (let m = 0; m < nm; m++) if (Math.abs(made[4 * m] - x) < 1e-9 && Math.abs(made[4 * m + 1] - y) < 1e-9 && Math.abs(made[4 * m + 2] - z) < 1e-9) { id = made[4 * m + 3]; break; }
       if (id < 0) {
         id = source.length;
-        made.push([x, y, z, id]);
+        made[4 * nm] = x; made[4 * nm + 1] = y; made[4 * nm + 2] = z; made[4 * nm + 3] = id; nm++;
         outPos.push(positions[3 * v], positions[3 * v + 1], positions[3 * v + 2]);
         outN.push(x, y, z);
         source.push(v);
@@ -685,8 +714,11 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec, edgeSampler) {
   }
   if (botPos) { // a solid panel (thickened): the outline wall and the bars
     const surf = panelSurface(pos, full, W, H, nx, nz);
-    const top = (p) => surf.at(p.x, p.y).hi.z;
-    const bot = (p) => surf.at(p.x, p.y).lo.z;
+    // the walls read every loop point 4x (zBot + zTop of both its segments): one lookup per point object
+    const hits = new Map();
+    const at = (p) => { let h = hits.get(p); if (h === undefined) hits.set(p, (h = surf.at(p.x, p.y))); return h; };
+    const top = (p) => at(p).hi.z;
+    const bot = (p) => at(p).lo.z;
     const wallMat = panelMesh.material.clone();
     wallMat.side = THREE.DoubleSide;
     // H23 item 67b: a finer, colour-only sampling of the SAME boundary `panel` traces (its own
@@ -700,7 +732,7 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec, edgeSampler) {
     // as before this item (wallMat.vertexColors only reads true when the panel material has it,
     // which `useColours` in terrain-mesh.js already gates on that same data existing).
     const edgeColor = (p) => {
-      const hit = surf.at(p.x, p.y).hi;
+      const hit = at(p).hi;
       if (edgeSampler && attrs.uv) {
         const [u, v] = lerpAttr(attrs.uv.array, 2, full, hit);
         const c = edgeSampler(u, v);
