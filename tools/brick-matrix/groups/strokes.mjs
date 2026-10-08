@@ -86,13 +86,17 @@ export const CROSSINGS = {
   // the Brush profile buttons (a case's `profiles[k]` picks one before stroke k; absent = as it is)
   profileButton: { stripped: 'brickBtnProfileStripped', continuous: 'brickBtnProfileContinuous' },
 };
-// a case's frame: laid (single soldier) when it says frame: true, none otherwise
+// a case's frame: a frame: true case gets the DECLARED frame laid fresh (FRAME_CASE: a single soldier band of set 1, the
+// red brick -- MEASURED 2026-10-08: the band row kept STROKE_CLEAR's Grey stone ring, its stones laid differently on every
+// fresh load, and failed alone in one gate run); every other case gets none
+export const FRAME_CASE = { setId: 1, preset: 'brickFramePreset_single_soldier' };
 async function frameFor(k) {
   const n = await js(`document.querySelectorAll('[data-brick-gen="1"][data-brick="frame"]').length`);
-  if (!!k.frame === n > 0) return;
+  if (!k.frame && n === 0) return;
+  if (k.frame) await js(`import('./core/state.js').then((S)=>{ S.P.brickSettings.setIds={ ...S.P.brickSettings.setIds, frame: ${FRAME_CASE.setId} }; S.P.brickSettings.frameBandPatterns=[]; return 1; })`);
   await js(`(document.getElementById('brickTool_frame').click(), 1)`); await sleep(400);
-  await js(`(document.getElementById(${JSON.stringify(k.frame ? 'brickFramePreset_single_soldier' : 'brickFramePreset_none')}).click(), 1)`); await sleep(2500);
-  if (k.frame && (await js(`document.querySelectorAll('[data-brick-gen="1"][data-brick="frame"]').length`)) === 0) { await js(`(document.getElementById('brickGenerate').click(), 1)`); await piecesSettled('frame'); }
+  await js(`(document.getElementById(${JSON.stringify(k.frame ? FRAME_CASE.preset : 'brickFramePreset_none')}).click(), 1)`); await sleep(1500);
+  if (k.frame) { await js(`(document.getElementById('brickGenerate').click(), 1)`); await piecesSettled('frame'); }
 }
 const CLEAR_STROKES = `import('./editor/editor-brick-tool.js').then((T)=>{ const ed=window.svgEditor;
   ed._sketchLayer.node.querySelectorAll('[data-brick="brush-spine"]').forEach((n)=>n.remove());
