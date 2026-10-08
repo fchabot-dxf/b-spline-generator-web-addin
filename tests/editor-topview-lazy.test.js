@@ -16,8 +16,10 @@ const ctx = {
   createImageData: (w, h) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
   putImageData: (img) => painted.push(Uint8ClampedArray.from(img.data)),
   beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, arc() {}, fill() {},
+  lost: false, isContextLost() { return this.lost; },
 };
-const canvas = { width: 0, height: 0, getContext: () => ctx };
+const listeners = {};
+const canvas = { width: 0, height: 0, getContext: () => ctx, addEventListener: (ev, fn) => { listeners[ev] = fn; } };
 const modal = { style: { display: 'none' } };
 let syncs = 0;
 
@@ -61,6 +63,43 @@ describe('the editor top view paints when the editor reads it, with the same pix
       P.seed = 101;
       expect(Buffer.from(eager()).equals(Buffer.from(got))).toBe(false); // the seed really changes the pixels
     } finally { P.seed = seed; }
+  });
+
+  it('a canvas Chrome restored (cleared) is painted again with the last board: on the next read when closed', () => {
+    updateEditorTopView(null, 0, 0);
+    window.svgEditor.sync3DBackground();
+    const first = painted.pop();
+    expect(typeof listeners.contextrestored).toBe('function');
+    listeners.contextrestored(); // editor closed: nothing painted yet
+    expect(painted).toHaveLength(0);
+    window.svgEditor.sync3DBackground();
+    expect(painted).toHaveLength(1);
+    expect(Buffer.from(painted[0]).equals(Buffer.from(first))).toBe(true);
+  });
+
+  it('... and at once (with the backdrop refreshed) when the editor is showing', () => {
+    updateEditorTopView(null, 0, 0);
+    window.svgEditor.sync3DBackground();
+    painted.length = 0; syncs = 0;
+    modal.style.display = 'flex';
+    try {
+      listeners.contextrestored();
+      expect(painted).toHaveLength(1);
+      expect(syncs).toBe(1);
+    } finally { modal.style.display = 'none'; }
+  });
+
+  it('a read that finds the context lost paints the last board again instead of reading it as it is', () => {
+    updateEditorTopView(null, 0, 0);
+    window.svgEditor.sync3DBackground();
+    painted.length = 0;
+    window.svgEditor.sync3DBackground(); // intact canvas: nothing to paint
+    expect(painted).toHaveLength(0);
+    ctx.lost = true;
+    try {
+      window.svgEditor.sync3DBackground();
+      expect(painted).toHaveLength(1);
+    } finally { ctx.lost = false; }
   });
 
   it('with the editor showing, a rebuild paints at once and refreshes the backdrop', () => {
