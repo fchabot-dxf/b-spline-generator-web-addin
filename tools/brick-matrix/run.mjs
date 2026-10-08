@@ -263,9 +263,8 @@ const exists = (elId) => js(`!!document.getElementById(${JSON.stringify(elId)})`
 const CANVAS = `(()=>{ const ed=window.svgEditor; if(!ed?._sketchLayer) return 'none';
   const SKIP=new Set(['id','class','data-brick-element','data-brick-owner','data-brick-band','data-brick-row','data-brick-piece']); // editor-only, stripped at bake
   const ns=[...ed._sketchLayer.node.querySelectorAll('[data-brick]')];
-  // fill-pattern ids carry a global creation counter (editor-brick-surface.js brickfill-<sample>-<N>): drop it
-  const norm=(v)=>v.replace(/(url[(]#brickfill-[^)]*?)-[0-9]+[)]/g,'$1)'); // no backslashes: this is inside a template literal
-  const s=ns.map(n=>n.tagName+'{'+[...n.attributes].filter(a=>!SKIP.has(a.name)).map(a=>a.name+'='+norm(a.value)).sort().join(';')+'}').join('|');
+  // a brick's fill is DISPLAY only (grey by height: neutral, then its layer's greys once the mask lands -- async): not layout
+  const s=ns.map(n=>n.tagName+'{'+[...n.attributes].filter(a=>!SKIP.has(a.name) && !(a.name==='fill' && n.hasAttribute('data-brick-set'))).map(a=>a.name+'='+a.value).sort().join(';')+'}').join('|');
   let x=2166136261; for (let i=0;i<s.length;i++){ x^=s.charCodeAt(i); x=Math.imul(x,16777619);} return ns.length+'#'+(x>>>0).toString(36); })()`;
 const BRUSH = CANVAS.replace("'[data-brick]'", `'[data-brick="brush"]'`).replace("'data-brick-owner'", "'data-brick-owner','data-brick-id'");
 // 3D: the live terrain heightmap (core/state.js lastResult.heights), quantised to 1e-5 in.
@@ -541,7 +540,7 @@ async function openBrickTab() {
 // One fingerprint per kind: { empty, hash }. Bricks and art are told apart the app's own way: since F35 item 22 slice 3
 // (37, fb-app bb9e664) bricks sit on any layer beside art, and editor/layers.js isBrickToolNode says which nodes are
 // the brick tools' (the same test Send and Clear use); a build before slice 3 has no isBrickToolNode and told them
-// apart by the Bricks layer (isBricksLayer). brickfill-<N> pattern ids are stripped (a counter).
+// apart by the Bricks layer (isBricksLayer). A brick's height-grey fill is display only (async after a mask update): dropped.
 function clearProbe() { return `(async()=>{ const { P } = await import('./core/state.js'); const L = await import('./editor/layers.js'); const ed = window.svgEditor;
   const bricksLayers = (ed._layers || []).filter(L.isBricksLayer); const ids = new Set(bricksLayers.map((l) => String(l.id)));
   const kids = [...ed._sketchLayer.node.children];
@@ -549,7 +548,10 @@ function clearProbe() { return `(async()=>{ const { P } = await import('./core/s
   const h = (str) => { let x = 5381; for (let i = 0; i < str.length; i++) x = ((x * 33) ^ str.charCodeAt(i)) >>> 0; return x.toString(36); };
   // display-state classes are not content: svg-selected, and inactive-layer (slice 3: Clear Artwork changes the
   // active layer, which re-classes the bricks' layer -- measured, the record's attributes otherwise identical)
-  const canon = (ns) => ns.map((n) => n.outerHTML.replace(/brickfill-[0-9]+/g, '').replace(/ ?(svg-selected|inactive-layer)/g, '').replace(/ class=""/g, '')).join('|');
+  const G = await import('./core/bricks/height-grey.js').catch(() => null);
+  const greyFill = (n) => n.hasAttribute('data-brick-set') && G && (n.getAttribute('fill') === G.NEUTRAL_BRICK_GREY || String(n.getAttribute('fill') || '').startsWith('url(#brick-height-grey-'));
+  const canon = (ns) => ns.map((n) => { const c = greyFill(n) ? n.cloneNode(true) : n; if (c !== n) c.removeAttribute('fill');
+    return c.outerHTML.replace(/ ?(svg-selected|inactive-layer)/g, '').replace(/ class=""/g, ''); }).join('|');
   const records = [...ed._sketchLayer.node.querySelectorAll('[data-brick-record]')]; // item 22: hidden <g> records, never art
   const art = kids.filter((n) => !onBricks(n) && !n.hasAttribute('data-brick-record')), gen = [...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"]')];
   return JSON.stringify({
