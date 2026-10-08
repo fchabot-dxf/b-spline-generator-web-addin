@@ -1,7 +1,7 @@
 /**
  * No band piece is laid outside the board (advisor, size sheet v3: T1 7x9 Soldier/Stretcher/Soldier at 1.25 in --
  * the middle band fanned out past the frame outline). T86 item 19's wall invariant, extended to bands
- * (contour-bands.js clipBandPiecesToBoard). Real template geometry (the same frameContourSilhouette +
+ * (contour-bands.js clipPiecesToBoard). Real template geometry (the same frameContourSilhouette +
  * buildRibbonPrimitives chokepoint the Brick tab uses), every size on the size sheet, both stacks. Measured before
  * the clip: up to 26.6 sq in of band outside the board (T1 1.25 in three_band, 100 pieces).
  */

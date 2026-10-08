@@ -24955,6 +24955,74 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   sample (the first ops of each B-spline setup; Back's both). pass 2's op-by-op retry stays the working answer.
   Snapshot: scratchpad why1_after_pass1.json. Holder back to none; scratch doc closed by handle.
 
+### Fan stacking (pick 1): the 2-4 in stacking was already gone; 8 in shared-side fans split after the yield (seat E / 61, 2026-10-08)
+- MEASURED (full overlap sweep, MEASURE_OVERLAPS=1, main 9827654): no fan x fan overlap at 2 / 3 / 4 in anywhere -- the
+  FAN_CAPS there (T19 39 pairs ...) were stale. At 8 in, besides T16 / T17 9x12 (29 / 27 pairs, capped), two NEW lays:
+  T1 7x9 2 pairs 1.22 sq in, T5 9x12 6 pairs (a slice 93 % covered) -- the full sweep red on main; the gate's FAST set had
+  no 8 in case. BISECTED (git archive trees in the worktree's scratch, the same lay): 0 up to 7eb3df7^, 2 + 6 at 7eb3df7
+  (seat D's wall tips: a narrowed band stops where the dropping line's run is one joint).
+- CAUSE: every pair is SHARED-SIDE (two corners either side of one edge). Item 30 exempts those from the medial split
+  (the edge is dead, the two corners one fan); a band stopped at a one-joint run keeps the edge alive and the fans apart.
+- FIX (advisor's (a)): contour-bands.js splitSharedSideFans, a POST-PASS after the yield -- a shared-side fan pair still
+  overlapping more than SHARED_SIDE_SPLIT_SHARE (0.05) of its smaller slice is split by each corner's OTHER side (the
+  shared one ties), half a joint short of the line, the largest part kept. TRIED FIRST and dropped: the same test inside
+  the yield's conflict loop opened 0.3 - 3 sq in wedges on 12 lays (T1 / T10 / T12 7x9 4 in: item 30's own wedge cases,
+  whose overlap the runs' yield resolves anyway). Also tried keeping every split part (to fill T16's triangle): 4 lays
+  over the gap caps; dropped.
+- RESULT: fan x fan at 8 in -> 0 everywhere but T5 9x12 (1 pair, 0.22 sq in, share 0.05); T16 / T17 9x12 32.6 / 27.7 sq in
+  of stacking -> 0. Cost (advisor's yes): T16 9x12 8 in bare 9.46 -> 11.30 sq in (a bottom-centre triangle), T17 9x12 8 in
+  largest patch 1.13 -> 1.27 faces and bare 19.28 -> 22.50 sq in -- GAP_CAPS raised with the reason. Shots:
+  shots/seatE/fans/fan_{before,after}_template_{16_9x12,17_9x12,1_7x9}_8.png (60 % opaque: stacking reads darker).
+- TESTS: FAN_CAPS lowered (2 - 4 in -> 0, T16 / T17 9x12 8 -> 0, T5 9x12 8 [1, 0.05, 0.219]); the FAST set gains
+  T1 / T5 at 8 in (FAST_SET.extra) -- fails 2/5 on main's contour-bands.js (T1 7x9 8: 2 pairs vs 0; T5 9x12 8: 6 vs 1).
+  After: overlap FAST 5/5 + FULL 19/19, gap FAST + FULL 760/760, tip-fill-fans FULL 608/608, band / engine suites
+  (70 files) 1023/1023.
+- Seat D copied (FYI, no action) on the interaction with 7eb3df7.
+
+### 2026-10-08 (seat A): lazy editor top view (advisor go, pick 2)
+- MEASURED: updateEditorTopView ran on every rebuild: its own 384-wide noise heightmap (33 ms desktop) + shading
+  (3 ms) + sync3DBackground's toDataURL into the editor's backdrop -- the backdrop is its ONLY reader. On this PC
+  (4x CPU, phone width) that toDataURL stalled 5.2 - 14.0 s on a fresh canvas (12 - 185 ms on repeats): the
+  "14 - 21 s toDataURL" in today's slow phone Generate profiles.
+- CHANGE: with the editor modal hidden, updateEditorTopView stores (heights, nx, nz) and returns; sync3DBackground
+  (editor open, and every other backdrop refresh) calls flushEditorTopView() first, which paints the latest stored
+  inputs once. Editor showing: eager as before. P / preDelta are read at paint time; both change only through a
+  rebuild, which re-stores.
+- Loading rule: opening runs inside the existing declared 'openEditor' stage (openEditorOn); the probe saw it on every
+  open, both arms. The paint moved there: 157 - 237 ms at 4x CPU.
+- Identity: backdrop data URL SHA-256 identical main vs lazy on matched seeded runs (3 pairs). One main-arm run
+  showed a near-empty 7.6 k-char backdrop (main's eager path, not reproduced; noted only).
+- Phone Generate (2nd tap, same seed): main 7.7 / 8.6 / 7.7 / 6.8 s, lazy 3.9 / 8.1 / 4.1 s -- GPU-noisy on this PC
+  today, but the multi-second toDataURL is gone from closed-editor Generates by construction.
+- TESTS: tests/editor-topview-lazy.test.js (fake canvas recording putImageData bytes): closed rebuild paints nothing;
+  open-time flush == eager bytes; last closed rebuild wins and paints once; showing -> paints + syncs. Fails 2/4 on
+  main's eager file; first-rebuild-wins mutation fails 1. Full suite: 397 files, 5980/5980. Known failures: none.
+- Possible follow-up, NOT done: getContext('2d', { willReadFrequently: true }) keeps the canvas CPU-side (no GPU
+  readback on toDataURL), but the reticle's antialiasing may differ, so it is not identical by construction --
+  measure first if wanted.
+
+### Wall bricks outside the outline at 2 - 8 in -> 0 (advisor: its own item after fan stacking) (seat E / 61, 2026-10-08)
+- MEASURED (the gap sweep's new count, 18 single-soldier lays at 2 - 8 in, T14 7x9 3 in 10 pieces): the wall's region
+  (contour-bands innerPath = boundaryAtDepth at the wall depth) was itself off the board -- where the band is deeper than
+  half the board the offset ring inverts and untangles into lobes wound like the board but lying across the band / off
+  it (T14 7x9 3 in: 2 lobes, 2 vertices each outside; T19 7x9 3 in: one lobe wholly below the board; T16 9x12 3 in: the
+  real region with 11 of 24 vertices outside). Shots: shots/seatE/gaps/wo_template_{14,17,19}_*.png (cyan = the region).
+- TRIED and dropped: (1) keep a lobe only if every vertex is inside the board and >= depth in -- dropped the whole wall
+  on T6 2 - 8 in and T16 / T17 9x12 3 in (up to 9.5 faces bare): a real region touches the contour where a side's band
+  is dropped (T6 7x9 2 in: min in-distance 0, nothing outside), and one lobe can be part real (T16). (2) drop lobes
+  narrower than a brick -- measured 102 of 1458 lobes under one brick height, incl. real ones at 1.5 in (T17 7x9 0.33 H).
+- FIX, two declarations, one rule ("the wall is never laid off the board"):
+  - primitive-ribbon.js wallRegionAtDepth: boundaryAtDepth with each lobe clipped to the board's contour (depth 0),
+    then bridged as before -- 13 of the 18 lays to 0;
+  - engine.js: the wall's pieces go through the band's own board clip (contour-bands.js clipPiecesToBoard, was
+    clipBandPiecesToBoard, now exported; the plan returns its `board`), dropping under the wall set's floor -- the 5 left
+    (T14 2 - 4 in, T6 9x12 8 in) were whole bricks laid across the zero-width bridge between two clipped lobes
+    (shots/seatE/gaps/wo2_template_14_7x9_4.png: the region is fully inside, the yellow bricks 1.4 - 3.8 in outside it).
+- RESULT: 1368 lays hashed (every template x 7x9 / 9x12 x every preset at 0.75 - 1.5 in + single soldier at 2 - 8 in):
+  exactly 18 change, all at >= 2 in; Fred's sizes byte-identical. GAP_CAPS wall-outside -> 0 everywhere (FAST fails on
+  main: T14 7x9 3 in 10 vs 0); GAP_SWEEP_FULL 760/760; band / engine / ribbon suites (71 files) 1036/1036.
+- NOT changed: boundaryAtDepth's other callers (the area band's ring: contour-bands buildAreaBandBricks, line ~199 / ~985)
+  can untangle the same off-board lobes at 3 - 8 in; the band clip already cuts their pieces to the board. Noted only.
 ### 2026-10-08 (seat D): touch targets app-wide -- the main sidebar + the editor's Frame / Photo tabs (pick 1)
 - MEASURED on main at 390 and 360 px, coarse pointer, every sidebar panel opened (a first pass left them collapsed and
   measured only their headers): the panel pins 12 px (12 of them), checkbox rows 16-19 (Inset window, Isolate

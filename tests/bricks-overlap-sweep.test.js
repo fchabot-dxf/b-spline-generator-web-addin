@@ -24,22 +24,20 @@ vi.setConfig({ testTimeout: 600000 });
 const SET = BRICK_SETS[0];
 const FULL = !!process.env.OVERLAP_SWEEP_FULL, MEASURE = !!process.env.MEASURE_OVERLAPS;
 const BOARDS = [[7, 9], [9, 12]];
-/** the default run's subset: item 12's run-run cases (T1 / T10 9x12) and item 30's fan cases (T18 / T19) */
-const FAST_SET = { templates: ['template_1', 'template_10', 'template_18', 'template_19'], sizes: [3, 4] };
-const SIZES = FULL ? [0.75, 1, 1.25, 1.5, 2, 3, 4, 8] : FAST_SET.sizes;
-const TEMPLATES = FULL ? FRAME_DEFS.templates.map((t) => t.id).filter((k) => /^template_\d+$/.test(k)) : FAST_SET.templates;
+/** the default run's subset: item 12's run-run cases (T1 / T10 9x12) and item 30's fan cases (T18 / T19) at 3 / 4 in, plus
+ *  (`extra`) the 8 in lays where two shared-side corners' fans stacked after 7eb3df7 -- the gate's fast run had no 8 in
+ *  case, so the full sweep went red unseen (seat E, 2026-10-08) */
+const FAST_SET = { templates: ['template_1', 'template_10', 'template_18', 'template_19'], sizes: [3, 4], extra: { template_1: [8], template_5: [8] } };
+const SIZES_ALL = [0.75, 1, 1.25, 1.5, 2, 3, 4, 8];
+const sizesFor = (tpl) => (FULL ? SIZES_ALL : [...(FAST_SET.templates.includes(tpl) ? FAST_SET.sizes : []), ...(FAST_SET.extra[tpl] || [])]);
+const TEMPLATES = FULL ? FRAME_DEFS.templates.map((t) => t.id).filter((k) => /^template_\d+$/.test(k)) : [...new Set([...FAST_SET.templates, ...Object.keys(FAST_SET.extra)])];
 const OVERLAP_SQIN = 1e-4;
-/** today's fan x fan overlaps per template -> board -> size: [pairs, widest share of the smaller piece, total sq in] (measured
- *  2026-10-08 on main e549b84, the full sweep; MEASURE_OVERLAPS=1 re-measures) -- a cap, not a goal */
+/** today's fan x fan overlaps per template -> board -> size: [pairs, widest share of the smaller piece, total sq in] -- a cap,
+ *  not a goal. Re-measured on fan-stacking (seat E, 2026-10-08; MEASURE_OVERLAPS=1 re-measures): 0 at 2 - 4 in everywhere
+ *  (the old T18 / T19 / T7 / T5 caps were stale); at 8 in the shared-side split (contour-bands.js splitSharedSideFans)
+ *  takes T16 / T17 9x12 from 29 / 27 pairs to 0 and T1 7x9 / T5 9x12 (stacked since 7eb3df7) to 0 / 1. */
 const FAN_CAPS = {
-  template_16: {'7x9':{8:[14,0.44,15.234]},'9x12':{8:[29,0.49,32.578]}},
-  template_17: {'7x9':{8:[6,0.39,8.127]},'9x12':{8:[27,0.4,27.663]}},
-  template_18: {'7x9':{3:[9,0.59,0.815],4:[4,0.78,1.309],8:[4,0.69,1.309]},'9x12':{4:[16,0.67,1.757],8:[4,0.79,2.638]}},
-  template_19: {'7x9':{2:[42,0.56,2.171],3:[39,0.91,4.56],4:[36,0.77,5.773],8:[7,0.79,6.303]},'9x12':{3:[44,0.77,3.952],4:[54,0.78,8.998],8:[10,0.61,7.297]}},
-  template_4: {'7x9':{3:[14,0.01,0.025],4:[15,0.03,0.379],8:[11,0.03,0.443]},'9x12':{4:[11,0,0.037],8:[7,0.02,0.428]}},
-  template_5: {'9x12':{4:[25,0.82,6.58]}},
-  template_7: {'7x9':{3:[38,0.69,1.165]},'9x12':{4:[43,0.82,1.568],8:[22,0.7,5.888]}},
-  template_8: {'9x12':{4:[2,0.09,0.211]}},
+  template_5: {'9x12':{8:[1,0.05,0.219]}},
 };
 
 const area = (p) => (p && p.length >= 3 ? Math.abs(signedArea(p)) : 0);
@@ -69,7 +67,7 @@ describe('life-size overlap sweep: no run piece overlaps; fan slices capped at t
       const pts = prims.flatMap((p) => (p.type === 'line' ? [p.p0, p.p1] : Array.from({ length: 33 }, (_, k) => { const t = p.theta1 + ((p.theta2 - p.theta1) * k) / 32; return { x: p.cx + p.r * Math.cos(t), y: p.cy + p.r * Math.sin(t) }; })));
       const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
       const boardWidth = Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
-      for (const L of SIZES) {
+      for (const L of sizesFor(tpl)) {
         const r = bricksContourBands(prims, FRAME_PRESETS.single_soldier, { set: SET, seed: 1, scale: L / SET.brickLengthIn });
         const narrowed = r.bandsReduced && (r.bandsReduced.steps || []).find((s) => s.step === 'narrow');
         const depth = narrowed ? narrowed.toIn : L;

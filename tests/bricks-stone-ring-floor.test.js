@@ -1,5 +1,5 @@
 // A stone ring keeps its stones where the board clip and the medial-line yield trim them (seat E, 2026-10-08). Both
-// steps (contour-bands.js clipBandPiecesToBoard / yieldAtMedialLine) dropped every piece under a QUARTER BRICK; a stone
+// steps (contour-bands.js clipPiecesToBoard / yieldAtMedialLine) dropped every piece under a QUARTER BRICK; a stone
 // ring's "brick" is the stone spacing, so at 3 in that was 2.25 sq in and whole sections of the ring went. MEASURED on
 // every template 7x9, White rocks + Grey stone, 0.75 / 1 / 1.25 / 2 / 3 in: 32 of 190 lays laid more stone with the
 // ring's own floor (+76.6 sq in in all, none lost), worst T5 White rocks at 3 in, 13 -> 17 stones, +7.1 sq in.

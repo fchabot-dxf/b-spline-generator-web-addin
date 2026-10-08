@@ -42,7 +42,7 @@
  * (preserving build-order == walk-order, which other code relies on).
  */
 import { curveIntersection, lineLineIntersection, lineCircleIntersections } from './curve-intersect.js';
-import { clipToHalfPlane, signedArea } from './geometry.js';
+import { clipToHalfPlane, signedArea, polygonIntersection } from './geometry.js';
 import { planCornerRun, mergeSlivers, pickSample } from './piece-plan.js';
 import { isArcFeasible, voussoirPieces } from './arc-voussoir.js';
 import { FILL_FRACTIONS, brickSetById } from './library.js';
@@ -1360,18 +1360,19 @@ function bridgeLobes(lobes) {
 
 /** `points` (a closed polyline that may cross itself) -> one weakly-simple polygon of the regions wound like
  *  `sign` (+1 counter-clockwise, -1 clockwise), or [] when none is left. */
-function untangleBoundary(points, sign) {
+function untangleBoundary(points, sign, shape = (lobe) => lobe) {
   let p = points.slice();
   const lobes = [];
   for (let guard = 0; guard < 4 * points.length && p.length >= 3; guard++) {
     const cut = smallestCrossingLoop(p);
     if (!cut) break;
     const a = polyArea(cut.loop);
-    if (Math.sign(a) === sign && Math.abs(a) > PINCH_MIN_AREA) lobes.push(cut.loop);
+    if (Math.sign(a) === sign && Math.abs(a) > PINCH_MIN_AREA) lobes.push(shape(cut.loop));
     p = cut.rest;
   }
   const a = polyArea(p);
-  if (p.length >= 3 && Math.sign(a) === sign && Math.abs(a) > PINCH_MIN_AREA) lobes.push(p);
+  if (p.length >= 3 && Math.sign(a) === sign && Math.abs(a) > PINCH_MIN_AREA) lobes.push(shape(p));
+  for (let k = lobes.length - 1; k >= 0; k--) if (!(lobes[k].length >= 3 && Math.abs(polyArea(lobes[k])) > PINCH_MIN_AREA)) lobes.splice(k, 1);
   if (!lobes.length) return [];
   return lobes.length === 1 ? lobes[0] : bridgeLobes(lobes);
 }
@@ -1382,6 +1383,25 @@ export function boundaryAtDepth(primitives, depth) {
   // the contour's own winding (depth 0 never crosses itself) says which loops are real interior
   const sign = Math.sign(polyArea(rawBoundaryAtDepth(primitives, 0))) || 1;
   return untangleBoundary(points, sign);
+}
+
+/** The WALL's region at `depth`: boundaryAtDepth with each lobe clipped to the board's own contour (depth 0) -- the wall
+ *  is never laid off the board. MEASURED (seat E, 2026-10-08, the gap sweep): where the band is deeper than half the
+ *  board (3 - 8 in bricks) the offset ring inverts and untangles into lobes wound like the board that run off it (T14 7x9
+ *  3 in: 2 lobes with 2 vertices each outside; T19 7x9 3 in: one 4-vertex lobe wholly below the board; T16 9x12 3 in: the
+ *  real wall region with 11 of its 24 vertices outside) -- the wall filled them, 18 lays with wall bricks outside the
+ *  outline. Dropping such lobes whole (tried first) also dropped real wall: a lobe can be part real (T16) and a real
+ *  region can touch the contour where a side's band is dropped (T6 7x9 2 in) -- clipping keeps exactly the board part.
+ *  Each lobe is clipped on its own (polygonIntersection keeps one piece per call), then bridged as before. */
+export function wallRegionAtDepth(primitives, depth) {
+  const points = rawBoundaryAtDepth(primitives, depth);
+  if (points.length < 3 || !(depth > 0)) return points;
+  const contour = rawBoundaryAtDepth(primitives, 0);
+  const sign = Math.sign(polyArea(contour)) || 1;
+  return untangleBoundary(points, sign, (lobe) => {
+    const kept = polygonIntersection(lobe, contour);
+    return kept.length >= 3 && Math.sign(polyArea(kept)) !== sign ? kept.slice().reverse() : kept;
+  });
 }
 
 function rawBoundaryAtDepth(primitives, depth) {
