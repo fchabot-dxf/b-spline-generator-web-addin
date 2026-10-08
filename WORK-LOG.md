@@ -25023,3 +25023,16 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   main: T14 7x9 3 in 10 vs 0); GAP_SWEEP_FULL 760/760; band / engine / ribbon suites (71 files) 1036/1036.
 - NOT changed: boundaryAtDepth's other callers (the area band's ring: contour-bands buildAreaBandBricks, line ~199 / ~985)
   can untangle the same off-board lobes at 3 - 8 in; the band clip already cuts their pieces to the board. Noted only.
+
+### 2026-10-08 (seat A): the first Generate tap is NOT a no-op (measured); orphaned updateTopView removed
+- Suspicion (today's probes): the first Generate tap after load "finished" in 31 - 50 ms every run.
+- MEASURED (seeded phone runs, 390 px, 4x CPU, 2 loads x 3 taps, polling every 5 ms: seed before/after, first loading
+  stage, rebuild start/end, idle): every tap changes the seed (first tap 52946 -> 61324 in both loads), runs the
+  'rebuild' stage and a real rebuild (first tap 600 - 680 ms), idle at 880 - 950 ms. Later taps: stage at 16 - 27 ms,
+  rebuild 450 - 900 ms. The 31 - 50 ms was the PROBE: its wait polled at 25 ms and quit before the first tap's stage
+  existed (that tap's rebuild then landed in the 2nd tap's measurement).
+- Real, small: on the FIRST tap the loading signal appears only at 95 - 98 ms (beginLoadingSequence('newSeed') only
+  records the sequence; nothing shows until the rebuild stage enters). Reported, not changed.
+- updateTopView: TerrainPreview.updateTopView had no caller in app, tests or tools; removing it orphaned
+  renderTopView / core/preview/top-view.js (its only user) -- all removed. The "canvas py=0 is the Back" comments now
+  name COORD_SYSTEM.rasterYToGridRow (core/coords.js), the convention's real holder. Affected tests 5 files 148/148.
