@@ -24780,3 +24780,15 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   in -- the ring's own corner wedges, measured 0 - 0.33 -- and no overlap). Fails 4/4 on main's contour-bands.js (8.3 /
   4.4 / 5.9 / 3.9 sq in bare). Band / stone / engine suites (82 files): 1126/1126. Matrix strokes group alone: 19 rows, 0 FAIL.
 - Merged origin/main (3f3800d, D's tip-fill-fans) first; my contour-bands change re-applied cleanly. fillTips untouched.
+
+### Pick 1: stones across templates and sizes -- measured, nothing to fix (seat E / 61, 2026-10-08)
+- ENGINE (generateBricks + the app's bricksForBrushStroke, T1 / T10 / T18 7x9, White rocks wall in a White rocks or
+  Grey stone ring, 0.75 / 1 / 1.25 in; brush X, brush T, a grout cut across the wall, one across the ring): 72 rows,
+  0 overlaps (wall x wall / wall x frame / frame x frame / wall x stroke), extra bare over the plain lay <= 0.08 sq in
+  (T18 brush X at 1.25 in), none over the matrix slack 0.1. A first count read 36 rows "overlapping": the harness's own
+  stroke x stroke (the engine has no crossing split; the app does) and stroke x ring (the app cuts strokes at the frame).
+- IN APP (the strokes group's STONE_CUTS cases, temporarily looped over T10 / T18 at 0.75 / 1 in and T1 at 0.75 in;
+  T1 at 1.25 in is the permanent row): 25 rows, 0 FAIL, 0 overlaps, junction bare 0 - 0.033 sq in (widest 3.1 joints,
+  T18 grout cut across the ring at 1 in). T18's "plain stretch" reads ~0.18 at every size: its plain point (4.6, 6.6)
+  sits at T18's board edge and the window counts off-board points -- a harness reading, not a hole.
+- No code change; the temporary loop was not committed (strokes.mjs restored).
