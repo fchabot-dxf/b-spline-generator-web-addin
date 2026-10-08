@@ -685,8 +685,11 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec, edgeSampler) {
   }
   if (botPos) { // a solid panel (thickened): the outline wall and the bars
     const surf = panelSurface(pos, full, W, H, nx, nz);
-    const top = (p) => surf.at(p.x, p.y).hi.z;
-    const bot = (p) => surf.at(p.x, p.y).lo.z;
+    // the walls read every loop point 4x (zBot + zTop of both its segments): one lookup per point object
+    const hits = new Map();
+    const at = (p) => { let h = hits.get(p); if (h === undefined) hits.set(p, (h = surf.at(p.x, p.y))); return h; };
+    const top = (p) => at(p).hi.z;
+    const bot = (p) => at(p).lo.z;
     const wallMat = panelMesh.material.clone();
     wallMat.side = THREE.DoubleSide;
     // H23 item 67b: a finer, colour-only sampling of the SAME boundary `panel` traces (its own
@@ -700,7 +703,7 @@ export function applyFrameToPanel(THREE, panelMesh, grid, spec, edgeSampler) {
     // as before this item (wallMat.vertexColors only reads true when the panel material has it,
     // which `useColours` in terrain-mesh.js already gates on that same data existing).
     const edgeColor = (p) => {
-      const hit = surf.at(p.x, p.y).hi;
+      const hit = at(p).hi;
       if (edgeSampler && attrs.uv) {
         const [u, v] = lerpAttr(attrs.uv.array, 2, full, hit);
         const c = edgeSampler(u, v);
