@@ -19,4 +19,19 @@ export function setupCardState(entry) {
     : { state: 'ok', text: `toolpaths ${entry.ops}/${entry.ops}` };
 }
 
-if (typeof window !== 'undefined') window.camSetupCardState = setupCardState; // the palette's classic script
+/** The B-spline tab's header line from the same entries (it was static text: "3 MMs · 4 SETUPS · READY" on a doc
+ *  with no CAM at all). [] -> NO CAM YET; counts -> the toolpaths over every op; no counts (a BUILD report) -> BUILT. */
+export function headerSummary(entries) {
+  const list = entries || [];
+  if (!list.length) return 'NO CAM YET';
+  const n = `${list.length} SETUP${list.length === 1 ? '' : 'S'}`;
+  if (list.some((e) => e.ok === false)) return `${n} · BUILD FAILED`;
+  if (list.some((e) => e.ops == null)) return `${n} · BUILT`;
+  const ops = list.reduce((s, e) => s + e.ops, 0), done = list.reduce((s, e) => s + (e.toolpaths || 0), 0);
+  return ops ? `${n} · TOOLPATHS ${done}/${ops}` : `${n} · BUILT`;
+}
+
+if (typeof window !== 'undefined') { // the palette's classic script
+  window.camSetupCardState = setupCardState;
+  window.camSetupHeader = headerSummary;
+}
