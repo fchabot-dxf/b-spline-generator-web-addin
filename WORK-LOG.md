@@ -24478,3 +24478,16 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   BUILT with no ops yet). The palette's showSetupList feeds the cards AND the header from every source (the doc on
   open, BUILD and TPGen reports); the initial text is an ellipsis until the add-in answers.
 - tests/cam-setup-state.test.js 6 (+2 header, pins updated); 3 fail against the pre-change palette + map.
+### Pick 3 -- the Wall round cut strokes: measured in the real app, no hole; 4 matrix rows pin it (seat E / 61, 2026-10-08)
+- QUESTION (advisor): does the Wall leave a hole where a cut stroke stops? The Wall's exclusions are read off the canvas
+  (brushExclusions: every laid brush brick), so it follows the cut strokes' actual PARTS -- no stale outline exists.
+- MEASURED (strokes group, live): band / T / X / end-touch, the wall laid again after the strokes: wall x stroke overlaps 0;
+  bare board (> 1.5 joints from every piece, 0.02 in grid, a 1.4 in square) at the junction 0.0024 (band) / 0 / 0 / 0 sq in,
+  the same as a plain stretch of the same strokes. Shots shots/seatE/t86_5/wall_*.png. A first plain point (-1.6, 0) sat in
+  T1's waist notch, OFF the board (0.078 "bare") -- the plain points now sit on the vertical stroke, clear of edges.
+- ROWS tools/brick-matrix/groups/strokes.mjs WALL_AROUND (4): no wall over a stroke, junction bare <= plain + 0.01 sq in.
+  PROOF: the wall pieces within 0.35 in of the junction removed before measuring -> T and end-touch FAIL (0.317 sq in);
+  the X case keeps no wall piece that close to its junction (the strokes cover it), so the plant removed nothing there.
+- ALSO: a declared frameFor(k) step both strokes runners use (a single soldier frame when a case says frame: true, none
+  otherwise) -- the rows no longer depend on which runner ran first (the new runner had left the frame off and broke the
+  band crossing row: gap null). strokes group 14 rows, 0 FAIL.
