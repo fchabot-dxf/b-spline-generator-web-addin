@@ -2,15 +2,14 @@
  * F35 item 56 (seat E): the SVG DOWNLOAD -- ONE file, top-level groups frame / art (per layer) / bricks (per element) /
  * grout (per element), each named for Illustrator / Inkscape (id + inkscape:label + groupmode layer), stacked as the
  * Layers panel is (advisor: frame at the bottom, then each layer's art, bricks, grout, bottom to top); bricks as FLAT
- * vector colours (each a path filled with its set's declared faceColor, its face inset by its element's Edge), piece ids
- * kept; no fill points at a pattern the file lacks (seat C's measurement: 151 fills -> 0 embedded patterns).
+ * vector GREYS (Fred 2026-10-08, "Yes, grey only": each a path filled with the grey of its face height -- its layer's
+ * cached mask faces, core/bricks/height-grey.js -- its face inset by its element's Edge), piece ids kept; no fill points
+ * at a pattern the file lacks (seat C's measurement: 151 fills -> 0 embedded patterns).
  */
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js', () => ({ commitEdit: vi.fn() }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-surface.js', () => ({
-  // the canvas paints each brick with its photo PATTERN (a url(#brickfill-...) whose <pattern> lives outside the drawing)
-  brickFillPaint: vi.fn((editor, setId, sampleId) => `url(#brickfill-${sampleId}-1)`),
   preloadSetDetail: vi.fn(async () => {}),
   sampleDetailAtFor: vi.fn(() => undefined),
 }));
@@ -19,6 +18,7 @@ import { runBricks, repaintGrout, frameBandsOf, brickRecordNode } from '../bspli
 import { saveSvgDownload } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-io.js';
 import { SVG_BRICK_EXPORT, SVG_EXPORT_GROUPS, svgDownloadGroups, INKSCAPE_NS } from '../bspline-frame-builder/b-spline-gen/html/editor/svg-export.js';
 import { BRICK_SETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { greyOfHeight, greyLevel, HEIGHT_GREY_RAMP, NEUTRAL_BRICK_GREY, NEUTRAL_GROUT_GREY } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/height-grey.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 function fakeEditor() {
@@ -67,14 +67,50 @@ const label = (g) => g.getAttribute('inkscape:label');
 const bbox = (pts) => { const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]); return { w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }; };
 
 describe('declared: the styles and the groups', () => {
-  it('flat is the default and the only style exposed; textured is declared, not built', () => {
-    expect(SVG_BRICK_EXPORT.default).toBe('flat');
-    expect(SVG_BRICK_EXPORT.exposed).toEqual(['flat']);
-    expect(Object.keys(SVG_BRICK_EXPORT.styles).sort()).toEqual(['flat', 'outline', 'textured']);
+  it('grey is the default and the only style exposed; the set-colour style is gone; textured is declared, not built', () => {
+    expect(SVG_BRICK_EXPORT.default).toBe('grey');
+    expect(SVG_BRICK_EXPORT.exposed).toEqual(['grey']);
+    expect(Object.keys(SVG_BRICK_EXPORT.styles).sort()).toEqual(['grey', 'outline', 'textured']);
     expect(() => svgDownloadGroups(fakeEditor(), 'textured')).toThrow(/not available/);
   });
-  it('every brick set declares its face colour', () => {
-    for (const s of BRICK_SETS) expect(s.faceColor).toMatch(/^#[0-9a-f]{6}$/i);
+  it('no brick set declares a face colour any more (grey only: nothing reads one)', () => {
+    for (const s of BRICK_SETS) expect(s.faceColor).toBeUndefined();
+  });
+});
+
+describe('a cutter imports it as drawn (seat D 2026-10-08: stdlib-XML cutter rules over live downloads, T1 / T18 / no frame, 7x9 + 9x12)', () => {
+  it('real size in INCHES (a bare px width read at 72 dpi came in 1.33x too big); 1 viewBox unit = 1 in', async () => {
+    const ed = laidBoard();
+    const root = parse(await saveSvgDownload(ed));
+    expect(root.getAttribute('width')).toBe(`${ed._mW}in`);
+    expect(root.getAttribute('height')).toBe(`${ed._mH}in`);
+    expect(root.getAttribute('viewBox')).toBe(`0 0 ${ed._mW} ${ed._mH}`);
+  });
+  it('every top group a named layer; every brick + grout path closed and non-degenerate; bricks flat greys, no stroke; grout even-odd; ids unique; nothing embedded', async () => {
+    const svg = await saveSvgDownload(laidBoard());
+    const root = parse(svg);
+    const tops = [...root.children].filter((c) => c.tagName === 'g');
+    for (const g of tops) { expect(g.getAttribute('inkscape:groupmode'), g.id).toBe('layer'); expect(g.getAttribute('inkscape:label'), g.id).toBeTruthy(); }
+    const area = (pts) => Math.abs(pts.reduce((t, p, i) => { const q = pts[(i + 1) % pts.length]; return t + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
+    const paths = [...root.querySelectorAll('g[id^="bricks:"] path, g[id^="grout:"] path')];
+    expect(paths.length).toBeGreaterThan(10);
+    for (const p of paths) {
+      const subs = p.getAttribute('d').split('M').filter(Boolean);
+      for (const sub of subs) {
+        expect(sub.trim().endsWith('Z'), `${p.id}: closed`).toBe(true);
+        const pts = sub.replace(/Z/g, '').split('L').map((q) => q.split(',').map(Number));
+        expect(pts.length, `${p.id}: points`).toBeGreaterThanOrEqual(3);
+        expect(area(pts), `${p.id}: area`).toBeGreaterThan(1e-6);
+      }
+    }
+    for (const p of root.querySelectorAll('g[id^="bricks:"] path')) {
+      expect(p.getAttribute('fill'), p.id).toMatch(/^#([0-9a-f]{2})\1\1$/i);
+      expect(p.getAttribute('stroke'), p.id).toBeNull();
+    }
+    for (const p of root.querySelectorAll('g[id^="grout:"] path')) expect(p.getAttribute('fill-rule')).toBe('evenodd');
+    const ids = [...root.querySelectorAll('[id]')].map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(svg).not.toMatch(/url\(#|<pattern|<image/);
   });
 });
 
@@ -101,7 +137,7 @@ describe('the download: one file, named groups, flat bricks', () => {
     expect(top.indexOf(`bricks:${brickRecordNode(ed, 'wall').getAttribute('data-brick-element')}`)).toBeLessThan(top.indexOf('art:0'));
   });
 
-  it('every laid brick is ONE path in its element’s group, filled with its set’s faceColor; ids kept and unique; no url(#...) anywhere', async () => {
+  it('every laid brick is ONE path in its element’s group, neutral grey before any mask; ids kept and unique; no url(#...) anywhere', async () => {
     const ed = laidBoard();
     const svg = await saveSvgDownload(ed);
     expect(svg).not.toContain('url(#');
@@ -111,11 +147,29 @@ describe('the download: one file, named groups, flat bricks', () => {
     expect(paths).toHaveLength(laid.length);
     const ids = paths.map((p) => p.id);
     expect(new Set(ids).size).toBe(ids.length);
-    const red = BRICK_SETS.find((s) => s.id === 1).faceColor;
-    expect(paths.every((p) => p.getAttribute('fill') === red)).toBe(true);
+    expect(paths.every((p) => p.getAttribute('fill') === NEUTRAL_BRICK_GREY)).toBe(true);
     const wallRec = brickRecordNode(ed, 'wall').getAttribute('data-brick-element');
     const wall0 = laid.find((n) => n.getAttribute('data-brick') === 'wall');
     expect(ids).toContain(`${wallRec}:${wall0.getAttribute('data-brick-id')}`);
+  });
+
+  it('each brick is the grey of its face height (its layer’s cached mask faces): higher = lighter; Carved flips the sign; a grout url never leaks', async () => {
+    const ed = laidBoard();
+    const walls = [...ed._sketchLayer.node.querySelectorAll('[data-brick="wall"]')];
+    const key = (n) => `${n.getAttribute('data-brick-owner') || 'wall'}:${n.getAttribute('data-brick-id')}`;
+    const faces = Object.fromEntries(walls.map((n, i) => [key(n), i === 0 ? 0.19 : 0.12]));
+    const wallLayer = ed._layers.find((l) => l.brickKind === 'wall');
+    wallLayer._brickMask = { faces };
+    wallLayer._brickDepth = 0.125;
+    for (const g of ed._sketchLayer.node.querySelectorAll('[data-brick="grout"]')) g.setAttribute('fill', 'url(#brick-height-grey-x)');
+    const svg = await saveSvgDownload(ed);
+    expect(svg).not.toContain('url(#');
+    const fillOf = (n) => [...parse(svg).querySelectorAll('path')].find((p) => p.id === key(n)).getAttribute('fill');
+    expect(fillOf(walls[0])).toBe(greyOfHeight(0.19));
+    expect(fillOf(walls[1])).toBe(greyOfHeight(0.12));
+    expect(parseInt(fillOf(walls[0]).slice(1, 3), 16)).toBeGreaterThan(parseInt(fillOf(walls[1]).slice(1, 3), 16));
+    wallLayer._brickDepth = -0.125; // Carved: the face is cut DOWN
+    expect([...parse(await saveSvgDownload(ed)).querySelectorAll('path')].find((p) => p.id === key(walls[0])).getAttribute('fill')).toBe(greyOfHeight(-0.19));
   });
 
   it('the Edge insets each painted face (the joint = joint + 2 x Edge); the drawing’s own polygons are untouched', async () => {
@@ -132,14 +186,18 @@ describe('the download: one file, named groups, flat bricks', () => {
     expect([...ed._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].map((n) => n.getAttribute('points'))).toEqual(before);
   });
 
-  it('grout: one group per element, the path `<element>:grout` with its colour; None = no fill', async () => {
+  it('grout: one group per element, the path `<element>:grout` with its colour; None = the grey of its joints (Fred: different greys for grout and brick)', async () => {
     const ed = laidBoard();
     const root = parse(await saveSvgDownload(ed));
     const grout = [...root.querySelectorAll('g[id^="grout:"] path')];
     expect(grout.map((p) => p.id).sort()).toEqual(['frame', 'wall'].map((k) => `${brickRecordNode(ed, k).getAttribute('data-brick-element')}:grout`).sort());
     expect(grout.every((p) => p.getAttribute('fill') === '#cfc6b4' && p.getAttribute('fill-rule') === 'evenodd')).toBe(true);
-    const none = parse(await saveSvgDownload(laidBoard({ color: null, paintInsetIn: 0 })));
-    expect([...none.querySelectorAll('g[id^="grout:"] path')].every((p) => p.getAttribute('fill') === 'none')).toBe(true);
+    const noneEd = laidBoard({ color: null, paintInsetIn: 0 });
+    const groutFills = async () => [...parse(await saveSvgDownload(noneEd)).querySelectorAll('g[id^="grout:"] path')].map((p) => p.getAttribute('fill'));
+    expect((await groutFills()).every((f) => f === NEUTRAL_GROUT_GREY)).toBe(true); // no mask yet: the ramp's low end
+    for (const l of noneEd._layers) { l._brickMask = { faces: {}, jointIn: -0.05 }; l._brickDepth = 0.125; }
+    expect((await groutFills()).every((f) => f === greyOfHeight(-0.05))).toBe(true); // a recess 0.05 in deep
+    expect(greyLevel(-0.05)).toBeLessThan(greyLevel(HEIGHT_GREY_RAMP.neutralIn)); // darker than a plain brick
   });
 
   it('art: one group per layer holding art, hidden layers included; no brick, no record in it', async () => {

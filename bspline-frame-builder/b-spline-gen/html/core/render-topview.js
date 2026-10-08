@@ -38,9 +38,9 @@ function bilinearSample(data, nx, nz, u, v) {
  * H20 item 1 (Fred, screenshots: the editor backdrop showed Anatomical ribs
  * at TOP / the chest V at BOTTOM, the OPPOSITE of the real 3D TOP view,
  * ground truth): this loop used to write canvas row `py` straight from
- * heightmap row `j=py`. `top-view.js`'s own (already-correct, via
- * COORD_SYSTEM.rasterYToGridRow) renderTopView flips this ("canvas py=0 is
- * at the Back (j=nz-1)"), so this reuses that SAME central utility instead
+ * heightmap row `j=py`. COORD_SYSTEM.rasterYToGridRow (core/coords.js) holds
+ * the flip ("canvas py=0 is at the Back (j=nz-1)"), so this reuses that
+ * SAME central utility instead
  * of re-deriving the flip. All neighbour sampling below stays entirely in
  * heightmap-array (j) space — only the FINAL pixel write target changes —
  * so the lighting/gradient math is untouched.
@@ -110,6 +110,7 @@ export function computeTopViewPixels(heights, nx, nz, symmetry) {
  * canvas (editor open). Same inputs, same pixels -- only when they are drawn moves.
  */
 let _pendingTopView = null;
+let _lastTopView = null, _watchedCanvas = null; // the latest inputs (a lost canvas repaints them) / the canvas watched
 
 /** The editor modal is showing (the same test core/history.js isEditorOpen makes). */
 function _editorShowing() {
@@ -125,25 +126,64 @@ function _editorShowing() {
  * @param {number} nzLow - Grid depth
  */
 export function updateEditorTopView(heightsLow, nxLow, nzLow) {
-    if (!_editorShowing()) { _pendingTopView = [heightsLow, nxLow, nzLow]; return; }
+    _lastTopView = [heightsLow, nxLow, nzLow];
+    if (!_editorShowing()) { _pendingTopView = _lastTopView; return; }
     _pendingTopView = null;
     if (!_paintTopView(heightsLow, nxLow, nzLow)) return;
+    _syncBackdrop();
+}
+
+/** Repaint the backdrop from the last rebuild's inputs with the CURRENT params -- for a change the editor's backdrop
+ *  must show but that builds no 3D (a Photo-tab edit while the editor is open: core/in-editor-3d.js). At
+ *  most once per animation frame, like the editor's own 'live' changes: a drag's steps that land while one paints
+ *  are drawn once, with the latest value (the paint reads the params when it runs). */
+let _refreshQueued = false;
+export function refreshEditorTopView() {
+    if (_refreshQueued) return;
+    _refreshQueued = true;
+    const run = () => { _refreshQueued = false; if (_lastTopView) updateEditorTopView(..._lastTopView); };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run); else setTimeout(run, 0);
+}
+
+function _syncBackdrop() {
     if (window.svgEditor && typeof window.svgEditor.sync3DBackground === 'function') {
         window.svgEditor.sync3DBackground();
     }
 }
 
-/** Paint a deferred top view into its canvas, if one is waiting (the backdrop calls this before reading it). */
+/**
+ * Paint a deferred top view into its canvas, if one is waiting (the backdrop calls this before reading it) -- or the
+ * last one again when the canvas lost its content. MEASURED 2026-10-08 (phone width, GPU under load): Chrome dropped
+ * this hidden canvas's GPU backing once in 6 runs -- the editor's backdrop read back fully transparent at the right
+ * size. A lost context reads isContextLost(); a restored one is CLEARED and fires 'contextrestored' (_watchCanvas).
+ */
 export function flushEditorTopView() {
+    if (!_pendingTopView && _lastTopView) {
+        const canvas = document.getElementById('svgEditorTopView');
+        if (canvas && canvas.getContext('2d').isContextLost?.()) _pendingTopView = _lastTopView;
+    }
     if (!_pendingTopView) return;
     const args = _pendingTopView;
     _pendingTopView = null;
     _paintTopView(...args);
 }
 
+/** A restored canvas comes back blank: paint the last top view again (now when the editor shows it, else on read). */
+function _watchCanvas(canvas) {
+    if (_watchedCanvas === canvas) return;
+    _watchedCanvas = canvas;
+    canvas.addEventListener('contextrestored', () => {
+        if (!_lastTopView) return;
+        if (!_editorShowing()) { _pendingTopView = _lastTopView; return; }
+        _pendingTopView = null;
+        if (_paintTopView(..._lastTopView)) _syncBackdrop();
+    });
+}
+
 function _paintTopView(heightsLow, nxLow, nzLow) {
     const canvas = document.getElementById('svgEditorTopView');
     if (!canvas) return false;
+    _watchCanvas(canvas);
 
     const ctx = canvas.getContext('2d');
     const aspect = P.widthIn / P.heightIn;

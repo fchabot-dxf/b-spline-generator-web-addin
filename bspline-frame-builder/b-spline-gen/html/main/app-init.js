@@ -52,6 +52,7 @@ export function editorSessionFingerprint() {
   return JSON.stringify({
     svg: P.editorSvg ?? null, frame: P.frame ?? null, bricks: P.brickSettings ?? null,
     photo: [P.photoImageDataUrl ?? null, P.photoEdits ?? []],
+    relief: P.carveZ ?? null, // in-editor-3d.js 'relief': its slider builds no 3D in the editor, so [3D] must see it
   });
 }
 
@@ -123,6 +124,9 @@ export const CHANGE_PIPELINE_IN_EDITOR = {
     commit: ['serialize', 'persist'],
     tooling: ['serialize', 'persist'],
 };
+
+// The same rule for the changes that do not come through the editor's onChange (the Photo tab, its relief height,
+// the Frame tab's record writes): core/in-editor-3d.js IN_EDITOR_3D, one row per kind.
 
 /** PERF category timing — off by default (core/debug.js's own gate), so
  *  this costs nothing until switched on. Goes through THREE channels when

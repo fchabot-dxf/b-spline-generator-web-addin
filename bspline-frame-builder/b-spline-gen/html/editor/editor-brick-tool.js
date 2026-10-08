@@ -61,7 +61,8 @@ import { frameContourSilhouette } from './contour-from-frame.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
 import { rectToPrimitives } from '../core/inset-window.js';
 import { SURROUND_CORNERS } from '../core/bricks/inset-surround.js';
-import { brickFillPaint } from './editor-brick-surface.js';
+import { NEUTRAL_BRICK_GREY } from '../core/bricks/height-grey.js';
+import { applyBrickHeightGreys, heightGreyPaintFor } from './brick-height-grey.js';
 import { cumulativeLengths, pointAtArcLength, inwardSignFor } from '../core/bricks/geometry.js';
 import { radialSignAt } from '../core/bricks/arc-voussoir.js';
 import { accentedBrickIndices, accentedRunIndices, accentLayInput, ACCENT_MARK_ATTR } from './brick-accents.js';
@@ -150,16 +151,6 @@ function applyBrickLayerTooling(layer, settings) {
   // Generate must not silently undo.
 }
 
-/** F35 item 4 (a): a declared flat colour per SET, so White Rocks (and a
- *  Stripe run cycling SET, see settingsVariantForCycle) actually reads as a
- *  different material -- this app has no per-sample photo-texture rendering
- *  for bricks yet (every brick is one flat-filled polygon), so a
- *  representative colour per set is the honest, achievable stand-in: Set
- *  1's own red-brick photos read red-brown; Set 3's own fieldstone photos
- *  read pale warm grey. */
-const SET_COLORS = Object.freeze(Object.fromEntries(BRICK_SETS.map((s) => [s.id, s.faceColor]))); // F35 item 56: each set's declared faceColor (library.js)
-const DEFAULT_BRICK_COLOR = SET_COLORS[1];
-
 /** Draws one `{id, polygon:{x,y}[], sampleId, flip, heightOffset}` brick as a
  *  filled polygon on `layer`, tagged per this file's own header convention.
  *  No stroke (a stroke would draw a visible line INSIDE the joint gaps
@@ -167,10 +158,8 @@ const DEFAULT_BRICK_COLOR = SET_COLORS[1];
  *  via its own grout.widthIn -- adding our own outline would just redraw
  *  over that).
  *
- *  F35 item 5: the fill is the brick's own real sample photo
- *  (editor-brick-surface.js's brickFillPaint, an SVG <pattern>) when one
- *  resolves, falling back to the flat SET_COLORS stand-in otherwise (no
- *  sample -- e.g. the parked 'mc' engine -- or the pattern can't be built).
+ *  Fred 2026-10-08 ("Yes, grey only"): a brick is drawn NEUTRAL grey; its height greys (brick-height-grey.js, from
+ *  the carve's own mask) replace that once the layer's mask lands -- no photo texture, no set colour on the canvas.
  *  The extra `data-brick-*` attributes are this brick's own height-relevant
  *  state, read back by editor-brick-height-mask.js's own rasterizer -- the
  *  DOM is that rasterizer's sole source of truth (see its header), so every
@@ -186,18 +175,10 @@ function onBricksLayer(editor, layer, el) {
   return el;
 }
 
-/** A brick's longest side, inches -- the size its fill pattern must cover (editor-brick-surface.js brickFillPaint). */
-function brickSpanIn(polygon) {
-  if (!polygon || !polygon.length) return 1;
-  const xs = polygon.map((p) => p.x), ys = polygon.map((p) => p.y);
-  return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
-}
-
 function drawBrick(editor, layer, brick, kind, setId, seed, reliefIn) {
   const pts = brick.polygon.map((p) => `${p.x},${p.y}`).join(' ');
-  const paint = brickFillPaint(editor, setId, brick.sampleId, brick.flip, brickSpanIn(brick.polygon)) || SET_COLORS[setId] || DEFAULT_BRICK_COLOR;
   const el = onBricksLayer(editor, layer, editor._sketchLayer.polygon(pts))
-    .fill(paint)
+    .fill(NEUTRAL_BRICK_GREY)
     .stroke('none')
     .attr(BRICK_ATTR, kind)
     .attr(BRICK_GEN_ATTR, '1')
@@ -219,23 +200,15 @@ function stampRunPlace(el, brick, fallbackPiece) {
   return el;
 }
 
-/** Audit v2 N1: a brick's FILL is derived from its own declared attributes (set, sample, flip -- written by
- *  drawBrick above), but the <pattern> it points at lives in the editor's outer <defs>, OUTSIDE the saved
- *  document. A reload or a project load restored the polygons with fills pointing at patterns that no
- *  longer existed: every brick drew nothing. editor-io.js open() calls this on every load, so each brick's
- *  fill is re-derived (and its pattern re-created) from its attributes. Returns how many were repainted. */
+/** Audit v2 N1 (a reload / project load restores the polygons, not their paint): every brick back to NEUTRAL grey, then
+ *  each layer's height greys from its mask when it already has one (brick-height-grey.js). editor-io.js open() calls
+ *  this on every load. Returns how many bricks were repainted. */
 export function repaintBricks(editor) {
   const node = editor && editor._sketchLayer && editor._sketchLayer.node;
   if (!node || !node.querySelectorAll) return 0;
   const nodes = node.querySelectorAll(`[${BRICK_GEN_ATTR}="1"][data-brick-set]`);
-  nodes.forEach((el) => {
-    const setId = Number(el.getAttribute('data-brick-set'));
-    const nums = (el.getAttribute('points') || '').trim().split(/[ ,]+/).map(Number);
-    const poly = []; for (let i = 0; i + 1 < nums.length; i += 2) poly.push({ x: nums[i], y: nums[i + 1] });
-    const paint = brickFillPaint(editor, setId, el.getAttribute('data-brick-sample') || null, el.getAttribute('data-brick-flip') === '1', brickSpanIn(poly))
-      || SET_COLORS[setId] || DEFAULT_BRICK_COLOR;
-    el.setAttribute('fill', paint);
-  });
+  nodes.forEach((el) => el.setAttribute('fill', NEUTRAL_BRICK_GREY));
+  applyBrickHeightGreys(editor);
   return nodes.length;
 }
 
@@ -296,7 +269,8 @@ function _paintGroutNode(editor, n, settings) {
   const shape = groutShapeOf({ id, region, faces: _ownedBrickPolys(editor, id), cutouts: _groutCutouts(editor, kind, id), insetIn: paint.paintInsetIn });
   n.setAttribute('d', shape ? shape.d : '');
   n.setAttribute('id', groutIdOf(id));
-  n.setAttribute('fill', paint.color || 'none');
+  // no colour of its own: the joint shows its depth (the layer's height greys, brick-height-grey.js) once known
+  n.setAttribute('fill', paint.color || heightGreyPaintFor(editor, n.getAttribute('data-layer')) || 'none');
   n.setAttribute('fill-rule', 'evenodd');
   n.setAttribute(GROUT_INSET_ATTR, String(paint.paintInsetIn));
   return shape;

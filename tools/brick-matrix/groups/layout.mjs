@@ -66,26 +66,45 @@ export const BRICK_SECTIONS_LAYOUT = {
 // editor follows the new board in place (app-init _resyncEditorToStock): its own board, and the SVG download's size.
 export const BOARD_FOLLOWS = {
   viewport: { name: 'phone 390x844', width: 390, height: 844, mobile: true },
-  from: [7, 9], to: [9, 12], dpi: 96,
+  from: [7, 9], to: [9, 12],
 };
 
-// ---- touch targets (Fred, 2026-10-08, "yes, all controls"; seat D): on a phone (coarse pointer) every shown control in the
-// editor -- the Art tabs and the Brick tabs -- has its smaller side >= minPx (styles/editor.css --touch-target-min). A
-// checkbox counts by its label (the label row is the target); `skip` = not a tap target of its own (a range slider's
-// thumb is; the colour input sits under its own toggle). One row per tab.
+// ---- touch targets (Fred, 2026-10-08, "yes, all controls"; seat D): on a phone (coarse pointer) every shown control -- the
+// main sidebar's tabs (their collapsed panels opened), the editor's Brick / Art / Frame / Photo tabs -- has its smaller side
+// >= minPx (styles/editor.css --touch-target-min) and lies on screen (the bigger targets push nothing past the right
+// edge; advisor: the narrow phone too). A checkbox counts by its label (the label row is the target); `skip` = not a tap
+// target of its own (a range slider's thumb is; the colour input sits under its own toggle). One row per viewport x tab.
 export const TOUCH_TARGETS = {
-  viewport: { name: 'phone 390x844', width: 390, height: 844, mobile: true },
+  viewports: [{ name: 'phone 390x844', width: 390, height: 844 }, { name: 'narrow phone 360x780', width: 360, height: 780 }],
   minPx: 28,
-  artTabs: ['general', 'draw', 'lattice', 'shape', 'text', 'edit'],
+  sidebarTabs: ['board', 'surface', 'decor', 'output'],
   brickTabs: ['brickTab_general', 'brickTool_wall', 'brickTool_frame', 'brickTool_brush', 'brickTool_raisedBrush', 'brickTool_scissors'],
-  skip: 'input[type="range"], #editorColor, input[type="hidden"]',
+  artTabs: ['general', 'draw', 'lattice', 'shape', 'text', 'edit'],
+  photoTools: [['source', 'crop'], ['source', 'straighten'], ['source', 'rotateFlip'], ['adjust', 'levels'], ['adjust', 'blur']],
+  skip: 'input[type="range"], #editorColor, input[type="hidden"], input[type="color"]',
 };
+
+// ---- the page never pinch-zooms; only the drawing does (Fred 2026-10-08, "stop page zoom"; seat D). MEASURED on
+// 102eb01: a pinch that started off the drawing (on the old Expand tip) was the browser's -- the whole app page zoomed
+// x2.94. One row per piece of app chrome (page scale stays 1) plus the drawing itself (its view zooms, the page not).
+// Real CDP touch on a coarse-pointer phone. `editor`: the chrome lives in the open editor (else the editor is closed).
+export const PAGE_ZOOM = {
+  viewport: { name: 'phone 390x844', width: 390, height: 844 },
+  chrome: [{ name: 'sidebar', sel: '.cad-sidebar', editor: false }, { name: 'editor toolbar', sel: '#editorToolbarTop', editor: true },
+    { name: 'drawer', sel: '#editorMobileDrawer', editor: true }],
+  minZoom: 1.2, // the drawing's pinch spreads the fingers ~1:3: its view must zoom in at least this much
+};
+// ---- the Expand tip is gone (Fred 2026-10-08, "remove it completely"): it covered a third of the phone's drawing and ate
+// the gestures that started on it. After a first stroke no tip shows; a pinch where it sat (formerArea, px in
+// #editorCanvasContainer) zooms the drawing. legacyKey: its old "seen" flag, cleared so a pre-removal build would show it.
+export const NO_EXPAND_TIP = { text: 'Try EXPAND', ids: ['editorExpandCallout', 'editorExpandCalloutDismiss'],
+  legacyKey: 'bspline.editor.expandCalloutDismissed', formerArea: { left: 54, top: 60, width: 230, height: 98 } };
 
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runPageZoom(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -260,9 +279,9 @@ async function runBoardFollows() {
     const wholeBoard = vb.x <= g.x + t && vb.y <= g.y + t && vb.x + vb.width >= g.x + g.w - t && vb.y + vb.height >= g.y + g.h - t;
     return JSON.stringify({ open: !!(m && m.style.display !== 'none'), mW: ed._mW, mH: ed._mH, wholeBoard, fitted: view.isFittedView(ed),
       vb: [vb.x, vb.y, vb.width, vb.height].map((n) => +n.toFixed(3)),
-      w: +(head.match(/ width="([^"]+)"/) || [])[1], h: +(head.match(/ height="([^"]+)"/) || [])[1], dlvb: (head.match(/viewBox="([^"]+)"/) || [])[1] }); })()`);
+      w: (head.match(/ width="([^"]+)"/) || [])[1], h: (head.match(/ height="([^"]+)"/) || [])[1], dlvb: (head.match(/viewBox="([^"]+)"/) || [])[1] }); })()`);
   const [W, H] = B.to;
-  const ok = r.open && r.mW === W && r.mH === H && r.w === W * B.dpi && r.h === H * B.dpi && r.dlvb === `0 0 ${W} ${H}` && r.wholeBoard && r.fitted;
+  const ok = r.open && r.mW === W && r.mH === H && r.w === `${W}in` && r.h === `${H}in` && r.dlvb === `0 0 ${W} ${H}` && r.wholeBoard && r.fitted;
   checkRow('layout', `Board change with the editor open (${B.viewport.name}): the editor, its view (whole board, fitted) and the SVG download follow ${B.from.join('x')} -> ${W}x${H}`, ok,
     `editor open ${r.open}, editor board ${r.mW}x${r.mH}, view ${r.vb.join(' ')} (whole board ${r.wholeBoard}, fitted ${r.fitted}), download ${r.w}x${r.h} viewBox ${r.dlvb}`);
   if (!ok) await shot('FAIL_board_follows_phone');
@@ -272,32 +291,112 @@ async function runBoardFollows() {
 
 
 // ---------------------------------------------------------------- touch targets (phone, coarse pointer)
-function TOUCH_PROBE(minPx, skip) { return `JSON.stringify((() => { const m = document.getElementById('svgEditorModal'); const small = [];
-  for (const e of m.querySelectorAll('button, input, select, [role="tab"]')) {
+function TOUCH_PROBE(rootExpr, minPx, skip) { return `JSON.stringify((() => { const root = ${rootExpr}; if (!root) return { missing: true }; const small = [], off = [];
+  for (const e of root.querySelectorAll('button, input, select, [role="tab"]')) {
     if (e.matches(${JSON.stringify(skip)}) || !e.getClientRects().length || getComputedStyle(e).visibility === 'hidden') continue;
-    const t = (e.type === 'checkbox' && e.closest('label')) || e, r = t.getBoundingClientRect();
+    const t = (e.type === 'checkbox' && e.closest('label')) || e; t.scrollIntoView({ block: 'center', inline: 'nearest' });
+    const r = t.getBoundingClientRect();
     if (!r.width || !r.height) continue;
+    const name = e.id || e.getAttribute('aria-label') || e.title || e.textContent.trim().slice(0, 16) || e.className;
     const px = Math.round(Math.min(r.width, r.height) * 10) / 10;
-    if (px < ${minPx}) small.push((e.id || e.getAttribute('aria-label') || e.title || e.textContent.trim().slice(0, 16) || e.className) + ' ' + px + 'px');
+    if (px < ${minPx}) small.push(name + ' ' + px + 'px');
+    if (r.right > innerWidth + 0.5 || r.left < -0.5) off.push(name + ' right ' + Math.round(r.right));
   }
-  return { coarse: matchMedia('(pointer: coarse)').matches, small: [...new Set(small)] }; })())`; }
+  return { coarse: matchMedia('(pointer: coarse)').matches, small: [...new Set(small)], off: [...new Set(off)], pageW: document.documentElement.scrollWidth, innerW: innerWidth }; })())`; }
+const SIDEBAR_ROOT = `document.getElementById('sidebarTabs')?.closest('.cad-sidebar')`;
+const EDITOR_ROOT = `document.getElementById('svgEditorModal')`;
+async function touchRow(vp, name, opened, rootExpr) {
+  const T = TOUCH_TARGETS, r = await jsJSON(TOUCH_PROBE(rootExpr, T.minPx, T.skip));
+  const ok = opened && !r.missing && r.coarse && r.small.length === 0 && r.off.length === 0 && r.pageW <= r.innerW;
+  checkRow('layout', `Touch targets ${vp.name} (coarse pointer): ${name} -- every control >= ${T.minPx} px, on screen`, ok,
+    r.missing ? 'no root' : `${opened ? '' : 'tab did not open; '}${r.coarse ? '' : 'coarse pointer NOT emulated; '}${r.small.length ? `under ${T.minPx} px: ${r.small.join(', ')}; ` : ''}${r.off.length ? `off screen: ${r.off.join(', ')}; ` : ''}page ${r.pageW} / ${r.innerW} px`);
+  if (!ok) await shot(`FAIL_touch_${vp.width}_${name.replace(/[^A-Za-z0-9]+/g, '_')}`); // a file name: no '/' ("Photo source / crop")
+}
 async function runTouchTargets() {
-  const T = TOUCH_TARGETS, vp = T.viewport;
-  await send('Emulation.setDeviceMetricsOverride', { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: true });
-  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  const T = TOUCH_TARGETS;
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'any-pointer', value: 'coarse' }] });
-  await send('Page.reload', {}); await waitApp(); await openBrickTab();
-  const tabs = [...T.brickTabs.map((id) => ({ name: id.replace(/^brick(Tab|Tool)_/, 'Brick '), open: [id] })),
-    ...T.artTabs.map((t) => ({ name: `Art ${t}`, open: ['editorTabArtwork', `artTab_${t}`] }))];
-  for (const tab of tabs) {
-    let opened = true;
-    for (const id of tab.open) opened = (await click(id, 900)) === 'ok' && opened;
-    const r = await jsJSON(TOUCH_PROBE(T.minPx, T.skip));
-    const ok = opened && r.coarse && r.small.length === 0;
-    checkRow('layout', `Touch targets ${vp.name} (coarse pointer): ${tab.name} -- every control >= ${T.minPx} px`, ok,
-      `${opened ? '' : 'tab did not open; '}${r.coarse ? '' : 'coarse pointer NOT emulated; '}${r.small.length ? `under ${T.minPx} px: ${r.small.join(', ')}` : 'none under'}`);
-    if (!ok) await shot(`FAIL_touch_${tab.name.replace(/\s+/g, '_')}`);
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  for (const vp of T.viewports) {
+    await send('Emulation.setDeviceMetricsOverride', { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: true });
+    await send('Page.reload', {}); await waitApp();
+    // the main sidebar, the editor closed: each tab with its collapsed panels opened (as a finger does)
+    for (const t of T.sidebarTabs) {
+      const opened = (await click(`sidebarTab_${t}`, 600)) === 'ok';
+      await js(`(async () => { const root = ${SIDEBAR_ROOT}; if (!root) return 0; for (const h of root.querySelectorAll('.panel-header.collapsed')) { if (h.getClientRects().length) { h.click(); await new Promise((r) => setTimeout(r, 120)); } } await new Promise((r) => setTimeout(r, 500)); return 1; })()`);
+      await touchRow(vp, `sidebar ${t}`, opened, SIDEBAR_ROOT);
+    }
+    await openBrickTab();
+    for (const id of T.brickTabs) await touchRow(vp, id.replace(/^brick(Tab|Tool)_/, 'Brick '), (await click(id, 900)) === 'ok', EDITOR_ROOT);
+    for (const t of T.artTabs) {
+      const opened = (await click('editorTabArtwork', 600)) === 'ok' && (await click(`artTab_${t}`, 900)) === 'ok';
+      await touchRow(vp, `Art ${t}`, opened, EDITOR_ROOT);
+    }
+    await touchRow(vp, 'Frame', (await click('editorTabFrame', 1200)) === 'ok', EDITOR_ROOT);
+    for (const [tab, tool] of T.photoTools) {
+      const opened = (await click('editorTabPhoto', 900)) === 'ok' && (await click(`photoTab_${tab}`, 600)) === 'ok' && (await click(`photoTool_${tool}`, 900)) === 'ok';
+      await touchRow(vp, `Photo ${tab} / ${tool}`, opened, EDITOR_ROOT);
+    }
   }
+  await send('Emulation.setEmulatedMedia', { features: [] });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
+}
+
+// ---------------------------------------------------------------- page zoom + the Expand tip (phone, touch)
+const touchPts = (pts) => pts.map(([x, y], id) => ({ x, y, id, radiusX: 4, radiusY: 4, force: 1 }));
+async function touchGesture(frames) {
+  await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touchPts(frames[0]) });
+  for (const f of frames.slice(1)) { await sleep(25); await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touchPts(f) }); }
+  await sleep(25); await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(600);
+}
+const pinchAt = (x, y, half) => Array.from({ length: 11 }, (_, k) => { const d = half * (0.33 + 0.067 * k); return [[x - d, y], [x + d, y]]; });
+const VIEW_STATE = `JSON.stringify({ page: visualViewport.scale, vbW: window.svgEditor?._draw?.viewbox().width ?? 0, sketch: window.svgEditor?._sketchLayer?.node.querySelectorAll('path,line,polyline,polygon').length ?? 0 })`;
+// a rect's on-screen part (the drawing: also above the drawer; `area`: also inside that box of the canvas container),
+// its centre, and whether that centre hits the element
+function AIM(sel, overDrawing, area) { return `(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return JSON.stringify({ missing: true });
+  const r = el.getBoundingClientRect(), box = { l: r.left, t: r.top, r: r.right, b: r.bottom };
+  ${area ? `const c = document.getElementById('editorCanvasContainer').getBoundingClientRect(), A = ${JSON.stringify(area)};
+  Object.assign(box, { l: Math.max(box.l, c.left + A.left), t: Math.max(box.t, c.top + A.top), r: Math.min(box.r, c.left + A.left + A.width), b: Math.min(box.b, c.top + A.top + A.height) });` : ''}
+  const d = document.getElementById('editorMobileDrawer'); const dTop = ${overDrawing} && d && d.getClientRects().length ? d.getBoundingClientRect().top : innerHeight;
+  box.l = Math.max(box.l, 0); box.t = Math.max(box.t, 0); box.r = Math.min(box.r, innerWidth); box.b = Math.min(box.b, innerHeight, dTop);
+  const x = (box.l + box.r) / 2, y = (box.t + box.b) / 2, hit = document.elementFromPoint(x, y);
+  return JSON.stringify({ x, y, w: box.r - box.l, h: box.b - box.t, hits: !!hit && el.contains(hit), hit: hit ? hit.tagName + '#' + hit.id : 'none' }); })()`; }
+async function pinchRow(name, sel, { drawing = false, area = null } = {}) {
+  const P = PAGE_ZOOM, a0 = await jsJSON(AIM(sel, drawing, area));
+  if (a0.missing || a0.w < 60 || a0.h < 8) {
+    checkRow('layout', `Page zoom (${P.viewport.name}, touch): ${name}`, false, `${sel} ${a0.missing ? 'missing' : `not on screen (${Math.round(a0.w)} x ${Math.round(a0.h)} px)`}`);
+    return;
+  }
+  const a = await jsJSON(VIEW_STATE);
+  await touchGesture(pinchAt(a0.x, a0.y, Math.min(90, a0.w / 2 - 4)));
+  const b = await jsJSON(VIEW_STATE), zoom = b.vbW ? a.vbW / b.vbW : 1;
+  const ok = a0.hits && b.page === 1 && b.sketch === a.sketch && (!drawing || zoom >= P.minZoom);
+  checkRow('layout', `Page zoom (${P.viewport.name}, touch): ${name}`, ok,
+    `${a0.hits ? '' : `the pinch lands on ${a0.hit}, not ${sel}; `}page zoom x${(+b.page).toFixed(2)} (1 expected)${drawing ? `, drawing zoom x${zoom.toFixed(2)} (>= ${P.minZoom})` : ''}, strokes ${b.sketch - a.sketch}`);
+  if (!ok) await shot(`FAIL_pagezoom_${name.replace(/[^A-Za-z0-9]+/g, '_')}`);
+  await send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 }); // the next row starts from an unzoomed page either way
+}
+async function runPageZoom() {
+  const P = PAGE_ZOOM, T = NO_EXPAND_TIP, vp = P.viewport;
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'any-pointer', value: 'coarse' }] });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await send('Emulation.setDeviceMetricsOverride', { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: true });
+  await send('Page.reload', {}); await waitApp();
+  for (const c of P.chrome.filter((c) => !c.editor)) await pinchRow(`a pinch on the ${c.name} leaves the page unzoomed`, c.sel);
+  await openBrickTab(); // opens the editor
+  const armed = (await click('editorTabArtwork', 900)) === 'ok' && (await click('artTab_draw', 600)) === 'ok' && (await click('toolDraw', 600)) === 'ok';
+  for (const c of P.chrome.filter((c) => c.editor)) await pinchRow(`a pinch on the ${c.name} leaves the page unzoomed`, c.sel);
+  await js(`(async () => { try { localStorage.removeItem(${JSON.stringify(T.legacyKey)}); } catch (_) {} document.getElementById('toolFit')?.click(); await new Promise((r) => setTimeout(r, 300)); return 1; })()`);
+  await pinchRow('a pinch on the drawing zooms the drawing, not the page', '#editorSVGContainer', { drawing: true });
+  // the first stroke: no Expand tip shows
+  const c0 = await jsJSON(AIM('#editorSVGContainer', true, null)), s0 = await jsJSON(VIEW_STATE);
+  await touchGesture(Array.from({ length: 11 }, (_, k) => [[c0.x - 60 + 12 * k, c0.y]]));
+  const tip = await jsJSON(`JSON.stringify({ text: document.body.innerText.includes(${JSON.stringify(T.text)}), ids: ${JSON.stringify(T.ids)}.filter((id) => document.getElementById(id)) })`);
+  const s1 = await jsJSON(VIEW_STATE), drew = s1.sketch - s0.sketch;
+  const ok = armed && drew === 1 && !tip.text && tip.ids.length === 0;
+  checkRow('layout', `Expand tip removed (${vp.name}, touch): no tip after the first stroke`, ok,
+    `${armed ? '' : 'Draw tool not armed; '}strokes ${drew} (1 expected), "${T.text}" shown ${tip.text}, its elements ${tip.ids.join(', ') || 'none'}`);
+  if (!ok) await shot('FAIL_expand_tip_after_stroke');
+  await pinchRow('a pinch where the Expand tip sat zooms the drawing, not the page', '#editorSVGContainer', { drawing: true, area: T.formerArea });
   await send('Emulation.setEmulatedMedia', { features: [] });
   await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
 }

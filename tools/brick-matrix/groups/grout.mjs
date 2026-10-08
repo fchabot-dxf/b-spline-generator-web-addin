@@ -16,9 +16,14 @@ export const GROUT_JOINTS = {
 // ---- item 74n (seat D): the panel's CUT EDGE -- the grid points within `bandIn` inside the panel outline stand at brick
 // height as often as the interior does (no low band = no teeth along the edge). Measured on main bc49c4a, T1 basketweave:
 // band 0.07 / 0.08 / 0.13 vs interior 0.71 / 0.75 / 0.79 at 0.75 / 1 / 1.25 in; with the edge ring 0.81 / 0.85 / 0.87.
+// The bar is a SHARE of the interior (seat D 2026-10-08, the advisor's gate failed it alone at 1.25 in): the scene is the
+// page's fresh start (random terrain / seed) and a basketweave lays different bricks along the 0.025 in band each run --
+// MEASURED band / interior over 6 healthy runs x 3 sizes (main x2, generate-first-tap x2, the gate, 74n's own): 0.74-1.12; the
+// defect (the edge copy off, 74n's mutation): 0.05-0.16 vs 0.72-0.81 = at most 0.21. The old "within 0.15" bar sat in the
+// scene's own noise; half the interior's share fails the teeth (<= 0.21) and passes the worst healthy run (0.74) with room.
 export const EDGE_BAND = {
   template: 'template_1', wallTool: 'brickTool_wall', pattern: 'brickPattern_basketweave', sizes: [0.75, 1, 1.25],
-  bandIn: 0.025, interiorFromIn: 0.1, maxBelowInterior: 0.15, marker: 'panelTrimOutline', introducedBy: 'item74n',
+  bandIn: 0.025, interiorFromIn: 0.1, minShareOfInterior: 0.5, marker: 'panelTrimOutline', introducedBy: 'item74n',
 };
 
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
@@ -52,8 +57,8 @@ async function runEdgeBand() {
     const g0 = await js(`import('./core/state.js').then((m) => m.lastResultGeneration)`);
     await apply(); await heightsSettled(null, 60000, 1500, g0); // settled AND rebuilt since this lay's Apply
     const m = await jsJSON(edgeBandProbe(E));
-    const ok = m.band != null && m.interior != null && m.band >= m.interior - E.maxBelowInterior;
-    checkRow('grout', name, ok, `edge band (${E.bandIn} in) raised ${m.band?.toFixed(2)} vs interior ${m.interior?.toFixed(2)} over ${m.bandPoints} band points`);
+    const ok = m.band != null && m.interior > 0 && m.band >= E.minShareOfInterior * m.interior;
+    checkRow('grout', name, ok, `edge band (${E.bandIn} in) raised ${m.band?.toFixed(2)} vs interior ${m.interior?.toFixed(2)} (share ${m.interior > 0 ? (m.band / m.interior).toFixed(2) : '-'}, bar ${E.minShareOfInterior}) over ${m.bandPoints} band points`);
   }
 }
 

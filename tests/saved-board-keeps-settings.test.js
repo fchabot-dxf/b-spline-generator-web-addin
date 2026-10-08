@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // the brick photo detail is fetched over the network; these tests read heights only
-vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-surface.js', () => ({ preloadSetDetail: vi.fn(async () => {}), sampleDetailAtFor: vi.fn(() => undefined), brickFillPaint: vi.fn(() => null) }));
+vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-surface.js', () => ({ preloadSetDetail: vi.fn(async () => {}), sampleDetailAtFor: vi.fn(() => undefined) }));
 import { readFileSync } from 'node:fs';
 import { P, DEFAULT, loadLastSession } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { runMigrations } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';

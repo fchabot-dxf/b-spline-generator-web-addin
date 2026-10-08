@@ -26,6 +26,9 @@ let _decodePromise = null;
 
 let _processed = null;     // { data: Float32Array, w, h } | null
 let _processedKey = null;
+// The inputs _processedKey was last checked against, by reference (getProcessedPhotoImage's per-pixel fast path).
+const _UNCHECKED = {};
+let _checkedUrl = _UNCHECKED, _checkedEdits = _UNCHECKED;
 
 /** True once the CURRENT P.photoImageDataUrl has finished decoding (or
  * there is none to decode). False while a decode is in flight. */
@@ -46,6 +49,7 @@ export function ensurePhotoDecoded(dataUrl) {
     _rawBase = raw;
     _rawBaseSourceUrl = dataUrl;
     _processedKey = null; // force re-processing on next sample
+    _checkedUrl = _checkedEdits = _UNCHECKED;
     return raw;
   });
   _decodePromise = { url: dataUrl, promise };
@@ -60,10 +64,18 @@ export function ensurePhotoDecoded(dataUrl) {
 export function getProcessedPhotoImage(params) {
   const { photoImageDataUrl, photoEdits } = params || {};
   if (!photoImageDataUrl || _rawBaseSourceUrl !== photoImageDataUrl) return null;
-  const key = photoImageDataUrl + '|' + JSON.stringify(photoEdits || []);
-  if (_processedKey !== key) {
-    _processed = applyPhotoEdits(_rawBase, photoEdits || []);
-    _processedKey = key;
+  // The sampler calls this for EVERY pixel, so the cache check must be cheap: the same url and edits OBJECTS as the
+  // last check are the same key (every writer of P.photoEdits -- main/photo-panel.js -- assigns a new array, never
+  // edits one in place); only a different object builds the string key. MEASURED 2026-10-08: building it per pixel
+  // was 1.1 s of one 384-wide editor-backdrop paint at 4x CPU.
+  if (photoEdits !== _checkedEdits || photoImageDataUrl !== _checkedUrl) {
+    const key = photoImageDataUrl + '|' + JSON.stringify(photoEdits || []);
+    if (_processedKey !== key) {
+      _processed = applyPhotoEdits(_rawBase, photoEdits || []);
+      _processedKey = key;
+    }
+    _checkedUrl = photoImageDataUrl;
+    _checkedEdits = photoEdits;
   }
   return _processed;
 }
@@ -82,4 +94,5 @@ export function _resetPhotoStateForTests() {
   _decodePromise = null;
   _processed = null;
   _processedKey = null;
+  _checkedUrl = _checkedEdits = _UNCHECKED;
 }

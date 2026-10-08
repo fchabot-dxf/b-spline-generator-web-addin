@@ -25024,6 +25024,333 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - NOT changed: boundaryAtDepth's other callers (the area band's ring: contour-bands buildAreaBandBricks, line ~199 / ~985)
   can untangle the same off-board lobes at 3 - 8 in; the band clip already cuts their pieces to the board. Noted only.
 
+### 2026-10-08 (seat A): the blank editor backdrop -- Chrome dropped the hidden top-view canvas; safety net added
+- FOUND (blank-backdrop probe, seeded phone runs, main vs lazy): main once (1 of 6 runs, while Fusion loaded the GPU)
+  left the top-view canvas FULLY transparent at its right size (384x494, every pixel 0,0,0,0, reticle gone) -> the
+  near-empty 7.6 k backdrop. No code clears it (_paintTopView is its only writer; the editor only stores the id): the
+  signature of Chrome's 2D context loss on a hidden GPU-backed canvas. 0 of 5 after Fusion closed; lazy 0 of 5.
+- Also measured: with Fusion closed main's 2nd Generate tap is 0.87 - 1.08 s (2.9 - 8.6 s while it was open) --
+  today's slow phone Generate was GPU contention on this PC.
+- willReadFrequently (CPU-backed canvas), measured first: NOT identical -- 135 pixels differ, all in the reticle at
+  the centre, max 9/255; terrain identical; sync times equal with a quiet GPU (31 - 49 ms). Not taken (advisor's rule:
+  only if pixel-identical); the call is the advisor's / Fred's.
+- SAFETY NET (advisor go): render-topview keeps the latest inputs; flushEditorTopView (before every backdrop read)
+  repaints them when ctx.isContextLost(); a 'contextrestored' canvas (Chrome clears it) repaints now when the editor
+  shows (+ backdrop refresh), else on the next read. Browser: backdrop PNG + pixels identical to main (8148b17a /
+  f559a91f).
+- TESTS: editor-topview-lazy.test.js +3 (restored -> repaint on read / at once when showing; lost at read -> repaint).
+  Fail 3/3 on main's file; dropping the isContextLost check fails 1. Full suite: 397 files, 5984/5984. Known failures: none.
+
+### 2026-10-08 (seat D): grey by height -- the 2D editor and the SVG download in greys from the carve height (Fred: "Yes, grey only")
+- DECLARED once: core/bricks/height-grey.js HEIGHT_GREY_RAMP (-0.06 in -> 40, 0.22 in -> 235; neutralIn 0.12), greyOfHeight,
+  NEUTRAL_BRICK_GREY, NEUTRAL_GROUT_GREY (the ramp's low end), heightGreyPixels (mask -> RGBA, row 0 = board top).
+- EDITOR (editor/brick-height-grey.js): per point, from each editor layer's cached brick mask (the carve's own data):
+  one <pattern> per layer (userSpaceOnUse over the board) holding the mask as a grey image; the layer's bricks and a grout
+  with no colour of its own fill with it. Repainted from main/stamp-mask-manager.js updateStampMasks (every caller: a
+  refresh, a rebuild) on the latest generation only -- never per paint; the image re-encoded only when a layer's mask
+  object changed. Before a layer has a mask (just after a lay) its bricks are NEUTRAL_BRICK_GREY (drawBrick, repaintBricks).
+  The masks gained nx / nz, `faces` (each piece's face height under its download id, every lift applied) and `jointIn`.
+- SVG (editor/svg-export.js): the 'flat' set-colour style REMOVED; 'grey' is the default and only exposed style: each
+  brick ONE flat grey of its face height (the mask's `faces`, signed by Raised / Carved; neutral before any mask); a grout
+  keeps a user colour, else its own grey at the joints' height (Fred: "different greys for grout and brick": the mask's
+  `jointIn`, recessed -depth / flush the lowest face); a canvas url never leaks into the file.
+- REMOVAL SWEEP (the old colour paths): SVG_BRICK_EXPORT 'flat' + its default / exposed; FACE_COLORS; the editor's
+  SET_COLORS / DEFAULT_BRICK_COLOR; the photo-texture painter brickFillPaint (+ PATTERN_IDS, paintSpanIn, its defs) and its
+  test (brick-fill-paint-span.test.js, deleted: it guarded the removed feature); `faceColor` on all 5 BRICK_SETS (no reader
+  left; svg-download now asserts the ABSENCE); the brickFillPaint stubs in 6 test mocks; comments. KEPT: each set's sample
+  photos -- the 3D height detail still reads them (editor-brick-surface.js sampleDetailAtFor). Set colours: NOTHING reads
+  one any more. Visible consequence: a Stripe run cycling sets now differs by height only, not by colour.
+- MEASURED: mask-update repaint 6-16 ms unthrottled (matrix), 16-155 ms at 4x CPU (390 / 1366 probe) vs the whole mask
+  update it rides on 1.8-3.4 s at 4x. Raster 141 x 181 on 7x9 (~0.05 in / point): diagonal edges show slight steps at 1366.
+- TESTS: brick-height-grey.test.js (6: the ramp, the pixel flip -- a row-flip mutation fails it --, per-layer patterns,
+  neutral without a mask, encode once per mask, a lost mask back to neutral, no canvas); brick-accents + `faces` / `jointIn`;
+  svg-download (grey default, no faceColor, per-height greys, Carved sign, grout grey); brick-repaint (neutral). Matrix lay
+  GREY_BY_HEIGHT 4 rows (neutral-or-grey right after a lay; every brick on its layer's greys once masks land; the SVG greys,
+  accents lighter, grout darker; repaint under 250 ms): lay group 16 rows 0 FAIL. On main the rows cannot pass (no
+  height-grey module; the bricks are photo patterns). Full suite (npm run test:full) 5989/5989. Known failures: none.
+- Shots: shots/seatD/agrey/grey_by_height_built.png (main vs built, 1366 / 390 / SVG, the real app both sides);
+  the mock Fred picked from: grey_by_height_mock.png.
+### 2026-10-08 (seat D): pick 2 -- Frame + Photo on the phone, MEASURED; the two blind spots get their loading stage
+- TOOL: tools/repro/art_phone_audit.mjs SURFACE art | frame | photo (each tab's actions + reach; effect = the drawing's
+  markup / the photo preview's pixels; Photo per tool + its Relief tab). 390 px, touch, coarse, CPU 4x, real touch.
+- FRAME (before): every action BLIND (no card / pill): template change 2.2 s (one 2.15 s task), Generate 0.7-1.1 s,
+  thickness 0.9, undo 0.9, inset-window edits ~0.5. Reach: 24 controls, all reachable. CPU profile (4x, after
+  frame-mesh-r3 c4ff8a0): Generate 1581 ms = generateValidFrameSeeds 528 + applyFrameToPanel (frame-mesh) 521 + the Brick
+  panel's syncControlRequires / cornerFacts 315 (narrowestGapCached 246: a new frame = a miss) + frameCutProfile 239;
+  template change 526 = applyFrameToPanel 364. Handed to seat A (the frame-mesh owner) as numbers; A passes the ringArrays
+  cost (286 ms) to the advisor as a candidate.
+- PHOTO (before): the card shows for every rebuild; a PATTERN pick blind ~1.2 s on its decode first (5 ms timeline: a
+  920 ms task at 100 ms, the first card at 1442 ms). Straighten drag 4.9-8.5 s (card up), relief carved / raised ok.
+  Reach: 208-216 control views, all reachable; under 24 px only sliders + the file input (touch-targets-app covers it).
+- FIX (advisor + seat A: yes; loading-signal.js is nobody's): two DECLARED stages, LOADING_STAGES frame ('building the
+  frame', pill) + photo ('loading the photo', pill). frame-panel.js editFrame / generateFrame run in
+  withLoadingStageShownFirst('frame') (every Frame-tab edit goes through editFrame), the Undo button + Ctrl+Z too
+  (undoFrame stays sync: its true / false is read); photo-panel.js loadImage's decode + its follow-through run in
+  withLoadingStage('photo') (on screen first, held until the decode is done; the rebuild's card follows).
+- AFTER (5 ms timeline + a frame-accurate rAF check, 4x): template stage painted at 11 ms before its 0.6-3.2 s task,
+  Generate 31-66 ms, every Frame tap blind 0; a pattern pick painted at 77-207 ms (one 186 ms sync task first: the click's
+  own state writes), was 1442. One earlier cold run read the first Generate at 1.8 s by the 5 ms poll (a starved timer,
+  no rAF check then) -- not reproduced with the frame-accurate check.
+- TESTS: frame-photo-loading-stage.test.js 2 (the declared rows; a pattern pick: stage first, held through the decode,
+  gone after); frame-gen +1 (Generate / template / Undo: the stage up, the record unchanged until the paint, done
+  after). On main's source the 3 fail. Known failures: none (full suite below).
+- Shots / data: shots/seatD/afp/frame_phone_*.png, photo_phone_*.png, *_phone_audit.json.
+- GATE FIX (the advisor's gate, matrix clear "Clear All: one undo restores all" -- not restored: frame, photo): REAL,
+  not timing. The Clear menu's frame clear went through the now-deferred editFrame, and Clear records synchronously the
+  Frame steps it pushed + the frame it left (editor-clear-menu.js) -> 0 steps and the old frame -> undoLastClear refused
+  ("changed since"), so neither the frame nor the photo came back. Same trap in deleteFrame (its global snapshot read the
+  frame right after). editFrameNow = the synchronous edit (exported); editFrame = the 'frame' stage around it (the
+  Frame-tab controls); the clear handler and deleteFrame call editFrameNow; the Delete button's click carries the stage.
+  Test (frame-gen): with the paint deferred, the clear and Delete frame act at once (mutation: the handler back on
+  editFrame -> fails). Matrix clear group 11/11 (was 1 FAIL).
+### 2026-10-08 (seat D): matrix grout "Cut edge: no low band" (74n) -- a flaky bar, reframed as a share of the interior
+- The advisor's gate failed the 1 / 1.25 in rows alone (0.65 vs 0.82). MEASURED: plain main x2 PASS but band / interior
+  swing 0.91-1.12; with generate-first-tap merged x2: PASS, then FAIL at 1.25 in (0.60 vs 0.81). The row takes the
+  page's fresh start (random terrain / seed) and a basketweave lays different bricks along the 0.025 in band each run;
+  the mask-edge path does not read top-view.js / renderTopView (the row reads lastResult.heights).
+- The real defect (the edge copy off: BRICK_MASK_EDGE_RING_CELLS 0, 74n's mutation): share 0.11 / 0.17 / 0.21 (74n's own
+  0.05-0.12 vs 0.72-0.81). Healthy: 0.74-1.12 over 6 runs x 3 sizes. The old "within 0.15 below the interior" sat in the
+  scene's noise; DECLARED EDGE_BAND.minShareOfInterior 0.5 (the row prints the share). No scene pinning (advisor).
+- PROOF: as-is 3/3 pass (1.04 / 1.03 / 1.03); ring 0 3/3 FAIL (0.11 / 0.17 / 0.21). Matrix-only change: no vitest reads it.
+### 2026-10-08 (seat A): the first Generate tap is NOT a no-op (measured); orphaned updateTopView removed
+- Suspicion (today's probes): the first Generate tap after load "finished" in 31 - 50 ms every run.
+- MEASURED (seeded phone runs, 390 px, 4x CPU, 2 loads x 3 taps, polling every 5 ms: seed before/after, first loading
+  stage, rebuild start/end, idle): every tap changes the seed (first tap 52946 -> 61324 in both loads), runs the
+  'rebuild' stage and a real rebuild (first tap 600 - 680 ms), idle at 880 - 950 ms. Later taps: stage at 16 - 27 ms,
+  rebuild 450 - 900 ms. The 31 - 50 ms was the PROBE: its wait polled at 25 ms and quit before the first tap's stage
+  existed (that tap's rebuild then landed in the 2nd tap's measurement).
+- Real, small: on the FIRST tap the loading signal appears only at 95 - 98 ms (beginLoadingSequence('newSeed') only
+  records the sequence; nothing shows until the rebuild stage enters). Reported, not changed.
+- updateTopView: TerrainPreview.updateTopView had no caller in app, tests or tools; removing it orphaned
+  renderTopView / core/preview/top-view.js (its only user) -- all removed. The "canvas py=0 is the Back" comments now
+  name COORD_SYSTEM.rasterYToGridRow (core/coords.js), the convention's real holder. Affected tests 5 files 148/148.
+### 2026-10-08 (seat A): heavy-run guard -- declared lock list incl. DDCS Studio's gate (advisor ask)
+- tools/heavy-run-guard.mjs: GATE_LOCKS = [ours ~/.bspline-status/gate_running (ownerPasses: the gate's own run,
+  BSPLINE_GATE_LOCK_OWNER == the lock's first field, now a Windows pid), DDCS Studio's ~/.ddcs-status/gate_running
+  (ownerPasses false: always refuses, prints its line)]. A new project's lock is a new row. GATE_LOCK stays (= row 0).
+- heavyRunVerdict takes lockTexts (aligned with GATE_LOCKS); an owned lock no longer short-circuits past the others.
+- Live: refused with "DDCS Studio's gate ... is running (...: \"ddcs-studio-project-5f 07:37 full gate ... est. end
+  10:00\")", exit 3.
+- TESTS 11/11; fail 6 on main's guard; DDCS-owner-pass mutation fails 2. Full suite NOT run: DDCS's gate holds the PC
+  until ~10:00 (the advisor's gate will run it).
+### 2026-10-08 (seat D): touch targets app-wide -- the main sidebar + the editor's Frame / Photo tabs (pick 1)
+- MEASURED on main at 390 and 360 px, coarse pointer, every sidebar panel opened (a first pass left them collapsed and
+  measured only their headers): the panel pins 12 px (12 of them), checkbox rows 16-19 (Inset window, Isolate
+  skeleton), slider readout boxes 24 (symmetry / stamp offsets), the Edit Filter "Reset all" 20 and the per-slider
+  resets 22, Photo's file input 18. Frame tab: clean. Nothing off-screen, page width = viewport at both widths.
+- FIX: the SAME declaration (styles/editor.css --touch-target-min), no new rule: + .panel-pin, .filter-tweaks-reset,
+  .tweak-reset, input[type=file]; selects, text / number inputs and checkbox label rows now app-wide (were scoped to the
+  editor). Re-probed at 390 + 360: 0 under 28 px, nothing off-screen, page width = viewport.
+- TEST: matrix layout TOUCH_TARGETS now per viewport (390 + 360) x every sidebar tab (collapsed panels opened) + Brick /
+  Art / Frame / Photo-tool tab: smaller side >= 28 px AND on screen AND page width <= viewport. Layout group 80 rows 0
+  FAIL; on main's editor.css exactly the 14 new sidebar / Photo-source rows FAIL (both widths). A first proof run crashed
+  on a failure-shot file name with '/' ("Photo source / crop") -- the shot name is now sanitised (a red row must not
+  abort the group).
+- Full suite (npm run test:full, started at 11.7 GB free) 5976/5976. Known failures: none.
+- Shots: shots/seatD/atouch/touch_targets_sidebar_390.png (main vs built, real stylesheets both sides).
+### 2026-10-08 (seat A): Frame Generate's draw computes only the range it draws (advisor pick (a), byte-identical)
+- MEASURED (D's phone profile: generateValidFrameSeeds 528 ms of a 1.58 s Frame Generate; my node bench, 19 templates
+  x 20 seeds): the retry loop's time was the DRAW (generateFrameSeeds 550 of 916 ms), and in it frameParamRanges
+  (314 ms) -- each draw step computed every key's range to read one. The validity checks: inner 244 / outer 121 ms.
+- CHANGE: feasibleParamRanges(..., onlyKey) computes only that key (earlier keys still fill their declared defaults,
+  the only thing a later range reads of them); frameParamRanges(..., onlyKey) gates each narrowing rule on want(key)
+  and reads presence through has(key) -- the preset's declared keys in one-key mode, exactly the old `R.k` test in
+  full mode (every computed range is an object). The coupled rules found on the way: T5 and T8's dip block (width +
+  depth under one `R.topDipWidth` test), T18's topInset (needs archRise present), T4's waistReachLeft.
+- IDENTITY: scratch seedsweep.mjs (5 boards incl. 12x6 and 5x5 x 19 templates x 30 seeds; sha of every generated seed
+  set + every full-mode frameParamRanges at each draw step): 95/95 identical.
+- SPEED (profile shares, load-robust; wall/CPU times were noisy with DDCS's gate running): frameParamRanges 310 - 334
+  -> ~100 ms, generateFrameSeeds 541 - 586 -> 348 - 357 (-36%), the whole retry loop 893 - 962 -> 730 - 752 (-20%).
+- TESTS: tests/frame-param-ranges-onekey.test.js (3 boards; one-key == full entry, every template / key / draw step,
+  >1000 checks each). Passes trivially on the old code (onlyKey ignored there) -- it pins the invariant; mutations
+  bite: T5 depth gated on the width key fails 3/3, old-style R.topInset && R.archRise presence fails 2/3.
+  The 40 test files importing these modules: 1600/1600 (2 workers). Full suite NOT run (DDCS's gate until ~10:00).
+- Left alone: generateSilhouette (~390 ms, each draw step resolves params through a full solve) -- skipping the solve
+  needs each of the 11 solvers read to prove .params is the resolver's output untouched; not identical by
+  construction without that.
+- Noticed, not changed: tests/frame-gen.test.js's isValid is a PARTIAL hand copy of generateFrame's rule (its own
+  comment: 37 of 1,500 seeds pick different shapes). Declaring the rule once (an exported predicate both use) would
+  end the drift -- a separate pick.
+
+### 2026-10-08 (seat A): Frame Generate's draw reads resolved params without the outline build (pick 2; on frame-seeds-r1)
+- READ all 11 solvers: each one's .params is its own _resolveParams(preset or 'hourglass', ...) result copied; the
+  hourglass, bottle and diamondTopHourglassPinch solvers also drop unset FRAME_ONLY_PARAM_KEYS. Nothing in the file
+  writes to the resolved object afterwards; constructions never reached by the .params path.
+- DECLARED: generateSilhouette's 11-way ternary is now SILHOUETTE_SOLVERS { preset: { solve, frameOnlyWhenSet } }
+  (any other preset -> hourglass, as before); the drop moved from the three solvers into _reportedParams, which
+  generateSilhouette and the new silhouetteParams both use -- one declaration of what .params is.
+- generateFrameSeeds: generateSilhouette(region, {preset, params}).params -> silhouetteParams(region, {preset, params}).
+- IDENTITY: seeds sweep 95/95 identical to the original baseline (5 boards x 19 templates x 30 seeds + full-mode
+  ranges at every draw step). tests/silhouette-params.test.js: JSON-equal (key order included) for every template x 3
+  boards along each draw (3 seeds + no params), every Shape Lattice preset x 3 seeds, an unknown preset.
+- SPEED (profile, 3 pairs): generateFrameSeeds 264 - 281 -> 199 - 215 ms (-24%), the retry loop 582 - 595 -> 516 - 527
+  (-11%). With pick (a) this morning: the draw 541 - 586 -> ~205 ms (-63%), the loop 893 - 962 -> ~520 ms (-44%).
+- MUTATIONS: silhouetteParams without the reporting step fails 4/4; without the hourglass fallback fails 1/4.
+- Full suite (locks clear): 399 files, 5991/5991. Known failures: none. Must merge after frame-seeds-r1.
+### 2026-10-08 (seat A): Frame Generate's validity rule declared once -- the test's hand copy is gone
+- generateFrame's isValid closure (inner defects -> outer defects -> piece length >= t -> undercut -> miter collide /
+  margin, + T10's realSeedsFor archRise) moved VERBATIM to editor-frame-profile.js frameGenerateIsValid(defs, rec,
+  board, tpl, region, t), with its item-21/23/39/59 history comments and primLength (moved from frame-panel, where it
+  had no other user). generateFrame calls it; frame-panel's unused paramsFromShapeModel import removed.
+- tests/frame-gen.test.js: the expected shape read a PARTIAL copy (no outer-defect / undercut / miter checks) that
+  diverged for 37 of 1,500 seeds (seat D had pinned press seed 4242 around it). It now reads the declared rule and
+  presses seed 27 too (MEASURED: seeds 27, 119, 135, 175, 221 diverge under the old copy at T1 7x9). Old copy back ->
+  "seed 27: expected ... to deeply equal" fails.
+- The 69 test files importing frame-panel / editor-frame-profile: 1917/1917 (2 workers; full suite after DDCS).
+- NOT changed, flagged: (1) tests/frame-no-hooked-miters.test.js realIsValid is also a stale partial copy, but that
+  sweep's logic depends on "real = pre-existing chain + margin" (its memoized pre/real split) -- swapping in the full
+  rule would count seeds failing the newer checks as item-39 regressions; it needs its own redesign. (2) frame-panel
+  ~line 508-530 holds a third copy of the same checks for a warning (frameHasIssue-style) -- a candidate to read
+  frameGenerateIsValid. (3) T7/T10/T11/T12-13 tests' isValid copies are deliberately partial (one property each).
+- CORRECTION to (2) above: frame-panel's _frameRecordBreaksNoHookRule is NOT a copy of Generate's rule -- it is the
+  drag-stop rule (H23 items 39/63), deliberately different (raw drawn geometry, no archRise pin, inner-profile
+  defects ignored so the drag-stop never fights them). Not a candidate.
+
+### 2026-10-08 (seat A): frame-no-hooked-miters reads Generate's declared rule (advisor pick; on frame-validity-rule)
+- editor-frame-profile.js: FRAME_GENERATE_CHECKS (innerDefects, outerDefects, pieceLength, undercut, mitersCollide,
+  miterMargin -- the rule's checks in the order they run) + frameGenerateFailure (the first failing check, or null).
+  frameGenerateIsValid = "no failure": the same checks, order and short-circuits as before.
+- tests/frame-no-hooked-miters.test.js: realIsValid / preExistingIsValid (hand copies, drifted -- no outer-defect,
+  undercut or miter-collision checks; pre used the older reflex-arc test) removed. The item-39 split stays
+  meaningful as "is the miter margin the ONLY thing in the way": one memoized failure evaluation per draw; real = null,
+  pre-existing = null or 'miterMargin' (the last check). MUTATION 1: T7 raw seed 2 @ 7x9 fails exactly on
+  'miterMargin' (MEASURED); MUTATION 2 reads frameGenerateIsValid. Orphans removed: primLength,
+  paramsFromShapeModel import.
+- Mutation: the rule no longer reporting the margin (return null) -> MUTATION 1 fails.
+- Test files importing frame-panel / editor-frame-profile: 69 files 1917/1917 (2 workers). Full suite after DDCS.
+- Must merge AFTER frame-validity-rule (this branch is built on it).
+
+### 2026-10-08 (seat A): phone boot re-measured (pick 3) -- ready -15%, editor first open +95 ms (the lazy top view)
+- Probe: bootprof2.mjs (fresh profile, 390x844, 4x CPU, Math.random seeded), alternating single loads, GPU quiet
+  (Fusion closed), after our gate and DDCS's lock cleared; arms: main 5322738 vs f0c3eaa (this morning, before
+  frame-mesh r3 / the lazy top view / today's other merges).
+- Round 2 (4 loads each, quiet): ready main 4.52 - 4.73 s (median ~4.66) vs 5.28 - 5.78 s (median ~5.52) -- about
+  -0.85 s (-15%); DOMContentLoaded equal (~1.5 s); editor FIRST open main 340 - 471 ms (median ~389) vs 125 - 378 ms
+  (median ~295) -- about +95 ms, the deferred top-view paint landing there as designed (inside the 'openEditor' stage);
+  Brick tab ~200 - 320 ms both.
+- Round 1 (2+2 loads each, right after the gate): noisy, both arms' first loads cold (main ready 9.1 / 7.2 s) -- not
+  used for the comparison; listed in the probe output only.
+- Nothing to fix from this.
+
+### 2026-10-08 (seat A): Photo straighten drag -- photo edits in the editor reach its backdrop, not the hidden 3D (advisor go)
+- MEASURED (seeded phone, 4x CPU, main 5322738, a pattern loaded, a scripted 10-step drag at 60 ms + release): every
+  'input' ran setStraighten -> notifyChange -> main.js onChange -> scheduleRebuild(rebuild, 0): a FULL rebuild a step
+  (2.2 s; the 3D preview update 1.6 s of it, the frame mesh 1.4 s). The Photo tab lives ONLY in the editor, and
+  F35 item 18 (4) ("no 3D while editing", CHANGE_PIPELINE_IN_EDITOR) says an in-editor edit builds no 3D -- the photo
+  panel's own callback had bypassed it.
+- CHANGE 1 (declared): app-init.js PHOTO_CHANGE { inEditor: 'backdrop', closed: 'rebuild' } + photoChangeAction();
+  main.js's photo callback reads it. 'backdrop' = render-topview.js refreshEditorTopView: repaint from the last
+  rebuild's inputs with the current params, at most once per animation frame (the latest value). The 3D is built when
+  the session ends -- Apply, Cancel (both remask), the 3D toggle (Apply's way; editorSessionFingerprint includes the
+  photo, so a photo-only session is "changed"). The editor has no 3D view of its own (currentViewMode = editor open ?
+  2d : 3d), so the advisor's "3D showing -> rebuild on release" case cannot arise; the release still makes the one undo
+  step (photoStep), unchanged.
+- CHANGE 2: core/photo/state.js getProcessedPhotoImage -- the sampler calls it for EVERY pixel and each call built
+  url + JSON(edits) as the key: 1.1 s self of one 384-wide backdrop paint (profile). The same url / edits OBJECTS as the
+  last check now skip it (every P.photoEdits writer in photo-panel.js assigns a new array -- grepped, 8 writers); a
+  re-decode resets the check (a unique sentinel).
+- RESULT (browser, editor open, alternating x2, 10-step drag): main 4.1 - 5.5 s to idle with 1 - 2 rebuilds, release ->
+  idle 0.8 - 0.96 s; branch 2.1 - 2.4 s, 0 rebuilds, release -> idle 0.33 s. The backdrop after every drag is
+  byte-identical to a forced full rebuild's AND to main's (8/8 drags, sha a623a676 / fb46a410).
+- TESTS: tests/photo-edit-in-editor.test.js 5 (PHOTO_CHANGE rows; main.js wiring; one paint per frame with the latest
+  params; key built once over 1000 samples; same-content array reuses, new content / re-decode re-process). Old
+  state.js fails 1; no reset on re-decode fails 1; no frame coalescing fails 1. Full suite (main merged): 401 files,
+  6008/6008. Known failures: none.
+- Overlap note: D's frame-photo-loading also touches photo loading (photo-panel.js); this branch does not edit
+  photo-panel.js.
+
+### 2026-10-08 (seat D): the SVG download through a cutter-style import -- size in inches (was unitless px)
+- CHECK (tools/repro/svg_cutter_check.py, stdlib XML: no Inkscape / lxml on this PC) over live downloads: T1 7x9 (wall +
+  frame + Course-band accents + a Raised-brush stroke), T18 9x12 (grout colour + 0.03 in edge), no frame 7x9, T1 7x9:
+  parses; every top group a named Inkscape layer; 147-165 brick + 2-3 grout paths per file, every subpath CLOSED, 3+
+  points, non-zero area; bricks flat greys, no stroke; grout even-odd; ids unique; no url() / <pattern> / <image>. All
+  pass. ONE finding: width / height were UNITLESS px (672 x 864 @ 96 dpi) -- Inkscape reads 96 dpi, but Illustrator and
+  several cutter apps read a bare number at 72 dpi: the 7 x 9 in board would import at 9.33 x 12 in.
+- FIX: editor-io.js saveSvgDownload writes width="<W>in" height="<H>in" (the viewBox unchanged: 1 unit = 1 in;
+  data-export-dpi kept as metadata). Only the Download reads this file (Fusion's SVGs are the other two writers).
+- TESTS: svg-download +2 (the size in inches = the viewBox -- fails on main's export; the cutter rules over the export);
+  matrix lay's grey SVG row also requires inches + 0 open / degenerate paths; layout's board-follows row reads inches
+  (BOARD_FOLLOWS.dpi removed, unused). lay 16/0, layout 80/0.
+### 2026-10-08 (seat D): pick 3 -- FAST-set blind spots, by REPLAY (each past fix's pre-fix engine, FULL vs FAST)
+- TOOL: tools/repro/replay_fast_vs_full.sh -- per fix commit, its PRE-fix core/ under today's sweep tests, every sweep
+  with a FULL mode (overlap / gap / seam / tip-fill-fans), FAST then FULL, behind the heavy-run guard. A fix whose FULL
+  fails while FAST passes = a gap. Replayed: 1e65704, dd98654, 8b38324, 2c32648, 6802fef, a96e521, 4aff8fa (56 runs).
+- RESULT: gap + seam + tip-fill-fans: whenever FULL failed, FAST failed too (no gap). OVERLAP: 2 gaps -- before dd98654
+  and before 6802fef the full sweep failed T16 / T17 9x12 at 8 in (29 / 27 fan x fan pairs, cap 0) while FAST passed 5/5
+  (the 8 in shared-side fan class seat E fixed in 1e65704; E's FAST extra covered T1 7x9 / T5 9x12 8 in only).
+- FIX: FAST_SET.extra + template_16: [8] (both boards). FAST 6/6 in 8.6 s (was 8.4 s). PROOF: the new FAST set on
+  dd98654^ and 6802fef^ cores now FAILS (T16 9x12 8 in, 29 pairs); on main 6/6.
+- Note: a replay FAIL is not always "the bug that fix fixed" (today's caps can be tighter than that day's engine);
+  the gap test only needs FULL vs FAST to disagree on the same source.
+### 2026-10-08 (seat A): "no 3D while editing" -- one declared table for every in-editor change outside the editor's onChange
+- AUDIT (browser, phone 4x CPU, editor open; preview.update / refreshFrame wrapped and timed, every editor control kind
+  driven): Frame tab -- every frame-record write (Generate, template, thickness, inset window on/off, window size, frame
+  undo) re-applied the hidden 3D frame via syncFramePanel -> preview.refreshFrame, 211 - 357 ms each (handle DRAGS: once,
+  on release); Photo relief height -- applyParam('carveZ') -> a full rebuild per slider step (~1 s wall); Brick Generate /
+  contour-from-frame: no hidden 3D (already right).
+- DECLARED: core/in-editor-3d.js IN_EDITOR_3D { photo, relief, frame: { inEditor, closed } } + inEditor3dAction(kind);
+  PHOTO_CHANGE folded in (its own module: app-init imports frame-panel, so frame-panel could not import app-init).
+  frame: editor open -> 'profile' (syncFramePanel still draws the 2D cut profile + board outline, skips refreshFrame);
+  relief: editor open -> applyParam(..., { rebuild: false }) + the backdrop (the top view shades by carveZ: terrain.js
+  scales heights by it); closed -> as before.
+- applyParam(key, value, { rebuild }) (default true): false writes + syncs the param, schedules no rebuild.
+- editorSessionFingerprint now includes P.carveZ: a relief-only session would otherwise close "unchanged" on [3D] and
+  leave the 3D stale (the frame and photo were already in it).
+- Frame-handle drag moves: brick-panel's frameRecordChanged listener syncs the control requirements once per
+  animation frame (syncControlRequiresSoon); the other callers stay synchronous. Browser: 10 record writes 526 -> 72 ms,
+  the end state of the 251 brick/frame controls (disabled + title) hash-identical to main's (f26db2ca8483). Not unit-
+  tested (module-private, DOM-driven) -- the brick / frame test files pass unchanged.
+- RESULT (browser): Frame tab 0 hidden 3D refreshes (was 1 each), relief 0 rebuilds (was 1 per step). After Generate +
+  thickness in the editor then Apply, the 3D frame meshes hash-identical to main's (e61ab192ac8d); while editing they
+  stay as they were (main updated them live, hidden).
+- TESTS: tests/in-editor-3d.test.js 5 (table rows; syncFramePanel open/closed; applyParam rebuild:false; relief wiring;
+  a relief-only session takes Apply on [3D] with the real fingerprint) + editor-session-fingerprint's relief case.
+  Mutations: unconditional refreshFrame fails 1; no relief in the fingerprint fails 2; applyParam ignoring the option
+  fails 1. Full suite 402 files, 6014/6014. Known failures: none.
+
+### 2026-10-08 (seat A): the editor backdrop's paint cost (pick 2) -- measured, nothing taken
+- PROFILE (phone 4x CPU, quiet GPU, main with the lazy top view + photo cache fix, a 10-step photo straighten drag in
+  the editor): backdrop refreshes 1813 ms inclusive -- generateHeightmap at 384 wide 996 (photo sampling 458; the
+  coarse seed field, perlin sample 286 + fbm 278), sync3DBackground 479 (toDataURL 394 self), computeTopViewPixels 141.
+- The coarse seed field is NOT skippable for photo: photo.js cMultiplier = 2.5, the coarse field shapes the photo's
+  heights (terrain.js Pass 2) -- a real input, not waste.
+- TRIED canvas.toBlob instead of toDataURL (the same PNG, encoded off the main thread; the image showing the previous
+  picture until the blob lands; superseded blobs dropped): decoded backdrop pixels identical to main's (sha of
+  getImageData, 4/4 drags), toDataURL gone from the profile -- but the drag's time to idle did not move (branch
+  1.83 - 2.58 s, mean ~2.13; main 1.95 - 2.28 s, mean ~2.17). Not measurably faster -> reverted, not committed.
+- Nothing identical-and-faster left in the backdrop paint that I can see; the remaining cost is the 384-wide heightmap
+  itself (the photo + seed field sampled per pixel).
+
+### 2026-10-08 (seat A): Brick Generate in the editor -- fast code, a card that lingered; the sequence declared to its one step
+- PROFILE (phone 4x, editor open, a wall + three_band frame laid: 230 SVG nodes): a Generate re-lay is ~150 ms of JS (the
+  lay 127, polygonIntersection / clipPiecesToBoard ~60; syncControlRequires 40) -- nothing byte-identical worth taking.
+  On a board with no brick elements Generate lays nothing (only the sequence).
+- FOUND: the loading card read "laying bricks, step 1 of 3" from 27 ms to 1.43 s: LOADING_SEQUENCES.generate =
+  [bricks, heightMask, rebuild] (item 41) predates F35 item 18 (4); its only caller (brickGenerate) lives in the
+  editor, where the carve + build wait for Apply, so the sequence waited SEQUENCE_IDLE_MS for steps that never came.
+- CHANGE (advisor go): generate = ['bricks'], with a pointer to core/in-editor-3d.js. A one-step sequence shows no
+  "step 1 of 1" (stageText adds the count only for > 1 stage) and no checklist. Browser: card 24 - 33 ms -> 392 -
+  445 ms (min visible + hide grace), text "Computing - laying bricks".
+- TESTS: loading-signal.test.js -- the card text and its closing when the lay ends fail 2/22 on the old declaration;
+  the idle-timeout test now uses newSeed (its only multi-step-left case was generate); loading-steps-list.test.js --
+  generate moved out of the multi-step sweep, its one-step card pinned. Full suite 402 files, 6018/6018.
+### 2026-10-08 (seat A): APPLY's "deloge generated twice" -- measured, no toolpath_gen change (a shared first-generation cost)
+- The suspicion: pass 1 generates the whole 'B-spline Top' setup (~23 s) and only deloge (rest-machined from the pocket)
+  comes out valid; pass 2 regenerates the empty pocket, which invalidates deloge, so deloge is generated AGAIN (~36 s).
+- VARIANT (scratch swap of toolpath_gen.generate_setups, the add-in's real TPGen event): pass 1 runs the B-spline
+  setups op by op and SKIPS an op while an earlier op of its setup has no valid toolpath (a later op may be rest-
+  machined from an earlier one); other setups whole; passes 2.. as the original. Deloge is then generated ONCE.
+- RESULT (T1 7x9 3-band wall payload; per-op machining time / feed / rapid identical 7/7 in every run):
+  variant  dep1 2:44 (B-spline 74.5 s, Frame 87.6 s), dep2 2:26 (B-spline 65.1 s, Frame 78.6 s);
+  control  ctl1 2:33 (B-spline 91.5 s, Frame 59.4 s) + this morning's 2:42 / 2:42 (Frame 60.6 / 66.6 s).
+  The variant saves ~22 s of B-spline work, and Frame then takes ~20 s longer, every time -- the totals come out even.
+- READING: a shared first-generation cost (plausibly the shared bottom-aligned stock, item 82): in the original the
+  doomed 23 s Top try pays it before Frame; in the variant Frame pays it. The "waste" is not real time.
+- DECISION (advisor): no toolpath_gen change; the second control skipped (3 controls vs 2 variants, Frame +20 s every
+  time is enough). Fusion sessions 61560 / 14752 hit the 8 GB line after ~1.5 cycles each (send +3.4 GB).
+- Process slip, owned: once two fusion_execute calls in one message (summary + close) -- ran in order, no effect.
+- Holder back to none; scratch docs closed by handle; Fred's Untitled untouched.
+
 ### The 3 in preset's bare ground: a band >= 3 in deep also narrows where a long arc dies (seat E / 61, 2026-10-08)
 - MEASURED (single soldier, 3 in, every template x 7x9 / 9x12; shots shots/seatE/gaps/g3_*): T18 7x9 8.8 sq in bare (neck
   3.15, head DOME 2.05 -- its arc laid nothing --, shoulder wedges 2 x 1.13), T18 9x12 4.4 (one neck patch), T19 7x9 4.7.

@@ -8,7 +8,6 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-surface.js', () => ({
   preloadSetDetail: vi.fn(async () => {}),
   sampleDetailAtFor: vi.fn(() => undefined),
-  brickFillPaint: vi.fn(() => null),
 }));
 
 import {
@@ -158,6 +157,18 @@ describe('the height mask lifts exactly the accented Wall bricks by the accent L
     const acc = await run({ accent: { preset: 'custom', levelIn: 0.0625, clicks: [{ x: 2, y: 2 }] } });
     expect((acc.body[K(2, 2)] - flat.body[K(2, 2)]) * 0.125).toBeCloseTo(0.0625, 6);
     expect(acc.body[K(6, 2)]).toBe(flat.body[K(6, 2)]);
+  });
+  it('the mask also returns each piece’s FACE height under its download id (the SVG’s grey): the clicked brick by levelIn', async () => {
+    const flat = await run({});
+    const acc = await run({ accent: { preset: 'custom', levelIn: 0.0625, clicks: [{ x: 2, y: 2 }] } });
+    expect([flat.nx, flat.nz]).toEqual([NX, NZ]);
+    expect(Object.keys(acc.faces).sort()).toEqual(['wall:left', 'wall:right']);
+    expect(acc.faces['wall:left'] - flat.faces['wall:left']).toBeCloseTo(0.0625, 9);
+    expect(acc.faces['wall:right']).toBe(flat.faces['wall:right']);
+    // the joints' height (the SVG grout grey): Flush (the default) fills up to the lowest face
+    expect(flat.jointIn).toBe(Math.min(...Object.values(flat.faces)));
+    const rec = await run({ groutProfile: 'recessed', groutDepthIn: 0.05 });
+    expect(rec.jointIn).toBeCloseTo(-0.05, 9);
   });
   it("preset 'none' (and a saved session without the key) is byte-identical", async () => {
     const a = await run({});

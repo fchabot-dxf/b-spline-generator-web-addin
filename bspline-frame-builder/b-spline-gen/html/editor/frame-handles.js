@@ -15,7 +15,7 @@
  */
 import { computeParamHandles } from './editor-shape-lattice-interaction.js';
 import {
-  PARAM_ORDER, feasibleParamRanges, generateSilhouette, paramsFromShapeModel, seededUnit,
+  PARAM_ORDER, feasibleParamRanges, generateSilhouette, silhouetteParams, paramsFromShapeModel, seededUnit,
   MIN_ARC_RADIUS_IN, topDipDepthForRadius, HORN_MIN_OF_HALF_HEIGHT, TOP_DIP_MIN_WIDTH, hourglassConstruction,
 } from './editor-shape-lattice-generator.js';
 
@@ -93,11 +93,17 @@ function _sideRoomDippedLeftWave(region, resolved) {
   });
 }
 
-/** The silhouette's feasible ranges narrowed by the frame opening rule (frame thickness `t`, inches). */
-export function frameParamRanges(tpl, region, resolved, t = _templateThickness(tpl)) {
-  const R = feasibleParamRanges(tpl.silhouettePreset, region, resolved);
+/** The silhouette's feasible ranges narrowed by the frame opening rule (frame thickness `t`, inches). `onlyKey`
+ *  (2026-10-08, generateFrameSeeds reads one key per draw step): just that key's range. Each rule below narrows
+ *  only its own key; `has(k)` is "this preset carries k" (in full mode exactly the old `R.k` presence test --
+ *  every computed range is an object) and `want(k)` is "k is being asked for" (always, in full mode). */
+export function frameParamRanges(tpl, region, resolved, t = _templateThickness(tpl), onlyKey = null) {
+  const R = feasibleParamRanges(tpl.silhouettePreset, region, resolved, 0, onlyKey);
+  const keys = PARAM_ORDER[tpl.silhouettePreset];
+  const has = onlyKey == null ? (k) => !!R[k] : (k) => keys.includes(k);
+  const want = (k) => onlyKey == null || onlyKey === k;
   const hw = region.w / 2, half = FRAME_MIN_OPENING_IN / 2;
-  if (tpl.silhouettePreset === 'bottle') R.neckWidth = _narrow(R.neckWidth, (t + half) / hw, Infinity);
+  if (tpl.silhouettePreset === 'bottle') { if (want('neckWidth')) R.neckWidth = _narrow(R.neckWidth, (t + half) / hw, Infinity); }
   else if (tpl.silhouettePreset === 'tabTop') {
     // T6 TAB TOP (Fred: no bar thinner than the frame thickness, no tab side shorter than ~2 x the thickness).
     // Every piece is a bar t wide, so "thinner than t" = a bar shorter than t along the outline:
@@ -105,8 +111,8 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     //     bar (hw - a long, a parallelogram) >= t;
     //   tab height h: each tab side >= 2t, and the body's opening below the shoulders (2hh - h - 2t) >= t.
     const hh = region.h / 2;
-    R.tabWidth = _narrow(R.tabWidth, (t + Math.max(half, t / 2)) / hw, (hw - t) / hw);
-    R.tabHeight = _narrow(R.tabHeight, (2 * t) / hh, (2 * hh - 3 * t) / hh);
+    if (want('tabWidth')) R.tabWidth = _narrow(R.tabWidth, (t + Math.max(half, t / 2)) / hw, (hw - t) / hw);
+    if (want('tabHeight')) R.tabHeight = _narrow(R.tabHeight, (2 * t) / hh, (2 * hh - 3 * t) / hh);
   } else if (tpl.silhouettePreset === 'iShape') {
     // T9 I SHAPE (Fred: no bar thinner than the frame thickness, no flange side shorter than ~2 x the thickness --
     // Template 6's own tab rule, applied at all 4 notches). Every piece is a bar t wide, so "thinner than t" = a
@@ -123,15 +129,15 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     // self-intersection, but still a bar whose inner edge pinches to a point). The small 0.05 in margin below
     // keeps that inner length a real, strictly positive remnant instead of landing exactly on the boundary.
     const hh = region.h / 2;
-    R.stemWidth = _narrow(R.stemWidth, (t + Math.max(half, t / 2)) / hw, (hw - t) / hw);
-    R.flangeHeight = _narrow(R.flangeHeight, (2 * t + 0.05) / hh, (2 * hh - 3 * t) / (2 * hh));
+    if (want('stemWidth')) R.stemWidth = _narrow(R.stemWidth, (t + Math.max(half, t / 2)) / hw, (hw - t) / hw);
+    if (want('flangeHeight')) R.flangeHeight = _narrow(R.flangeHeight, (2 * t + 0.05) / hh, (2 * hh - 3 * t) / (2 * hh));
   } else if (tpl.silhouettePreset === 'diamondTopHourglass') {
     // T7 DIAMOND-TOP HOURGLASS: the opening rule at the neck (the silhouette's own narrowest point, by
     // construction) -- its inner edge (offset in by t on each side) must clear the minimum opening across the
     // centreline. FIRST CUT (not yet visually/live verified, see LIVE_CHECK.md): narrows `gableNeckWidth`'s own
     // floor so `2 * (gableNeckWidth * hw) - 2t >= FRAME_MIN_OPENING_IN`, the same shape the hourglass waist/T6
     // tab rules already use for "the inner edges cross if the pinch is too tight".
-    R.gableNeckWidth = _narrow(R.gableNeckWidth, (t + half) / hw, Infinity);
+    if (want('gableNeckWidth')) R.gableNeckWidth = _narrow(R.gableNeckWidth, (t + half) / hw, Infinity);
   } else if (tpl.silhouettePreset === 'archedFunnel' || tpl.silhouettePreset === 'tulip') {
     // T84 item 3: unlike every branch above, `_archedTimerRange`'s own bounds (editor-shape-
     // lattice-generator.js) are ALREADY thickness-aware -- they were MEASURED directly against
@@ -164,13 +170,13 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     // Template-1-named keys at all).
   } else if (tpl.silhouettePreset === 'dippedLeftWave') {
     // T8: the wave's own opening rule (Template 1's waistReach rule, same formula: this preset's only pinch).
-    R.waveReach = _narrow(R.waveReach, -Infinity, 1 - (t + half) / hw);
+    if (want('waveReach')) R.waveReach = _narrow(R.waveReach, -Infinity, 1 - (t + half) / hw);
     // The dip's own opening rule: its inner edge must stay clear of BOTH the plain right side (a fixed vertical
     // line, its own inner edge always exactly `t` in from hw, so height never matters there) and the wave (the
     // SAME curved-side check T5's own dip uses, `_sideRoom`, fed the wave's own params). `pos` shifts the dip's
     // own reach on each side unevenly (the right stub reaches `a + pos` from centre, the left one `a - pos`), so
     // each side's own room is checked against its OWN reach, not a single shared `a`.
-    if (R.topDipWidth && Number.isFinite(resolved.topDipWidth)) {
+    if (has('topDipWidth') && Number.isFinite(resolved.topDipWidth) && (want('topDipWidth') || want('topDipDepth'))) {
       const hh = region.h / 2, cx0 = region.x + hw, top = region.y;
       const { sideX, yInside } = _sideRoomDippedLeftWave(region, resolved);
       const pos = hw * (resolved.topDipPosition ?? 0);
@@ -181,19 +187,19 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
       // than collapsing negative: the dip's own existence outranks the opening-rule's safety margin here.
       const rightMax = hw - t - half - pos;
       const leftMax = sideX(top + HORN_MIN_OF_HALF_HEIGHT * hh + 2 * t) - t - half + pos - cx0;
-      R.topDipWidth = _narrow(R.topDipWidth, -Infinity, Math.max(TOP_DIP_MIN_WIDTH, Math.min(rightMax, leftMax) / hw));
+      if (want('topDipWidth')) R.topDipWidth = _narrow(R.topDipWidth, -Infinity, Math.max(TOP_DIP_MIN_WIDTH, Math.min(rightMax, leftMax) / hw));
       const a = hw * resolved.topDipWidth;
       // depth ceiling: the plain right side never narrows with depth (a fixed vertical line); only the wave does.
       // Floored the same way as the width, for the same reason.
       const needLeft = cx0 - (a - pos) - t - half;
       const dRoomLeft = yInside(2 * cx0 - needLeft) - top - 2 * t; // yInside's own "mirrored onto the right" input
-      R.topDipDepth = _narrow(R.topDipDepth, -Infinity,
+      if (want('topDipDepth')) R.topDipDepth = _narrow(R.topDipDepth, -Infinity,
         Math.max(HORN_MIN_OF_HALF_HEIGHT, Math.min(dRoomLeft, topDipDepthForRadius(a, t + MIN_ARC_RADIUS_IN)) / hh));
     }
   } else {
-    R.waistReach = _narrow(R.waistReach, -Infinity, 1 - (t + half) / hw); // the pinch: hw - depth - t >= half
+    if (want('waistReach')) R.waistReach = _narrow(R.waistReach, -Infinity, 1 - (t + half) / hw); // the pinch: hw - depth - t >= half
     // T4 OFFSET HOURGLASS: the left pinch obeys the same rule on its own side.
-    if (R.waistReachLeft) R.waistReachLeft = _narrow(R.waistReachLeft, -Infinity, 1 - (t + half) / hw);
+    if (has('waistReachLeft') && want('waistReachLeft')) R.waistReachLeft = _narrow(R.waistReachLeft, -Infinity, 1 - (t + half) / hw);
     // T10 ARCHED HOURGLASS (H23 item 21): archRise eats into the horn's own length (hourglassConstruction's
     // "eating into the horn, never adding height above it" rule) -- its shape-only range (_hourglassRange)
     // only keeps the horn above HORN_MIN_OF_HALF_HEIGHT * hh, a tiny geometric-validity margin, not aware of
@@ -202,7 +208,7 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     // inward offset at that corner has nowhere to go, `addOffset2` fails on topology, and the frame_top/
     // frame_right bars never get built. Narrow the ceiling so the horn keeps at least t remaining, same
     // "opening rule" shape every other pinch/corner check above already uses.
-    if (R.archRise) {
+    if (has('archRise') && want('archRise')) {
       const hh = region.h / 2;
       const g = hourglassConstruction(region, { ...resolved, archRise: undefined });
       const hornLen = Math.min(hh + g.shoulderY, g.left ? hh + g.left.shoulderY : Infinity);
@@ -215,7 +221,7 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     // "never narrower than the waist") has no idea an arch sits above it -- MEASURED live: a narrow
     // enough head combined with the arch breaks the build (see TOP_INSET_ARCH_MAX_OF_HW's own doc
     // comment). Only engages when BOTH keys are present (T3's own topInset has no archRise at all).
-    if (R.topInset && R.archRise) {
+    if (has('topInset') && has('archRise') && want('topInset')) {
       R.topInset = _narrow(R.topInset, -Infinity, TOP_INSET_ARCH_MAX_OF_HW);
     }
     // T5 HOURGLASS DIPPED TOP (only a frame whose outline has the dip: its resolved params carry it). The dip's
@@ -226,14 +232,14 @@ export function frameParamRanges(tpl, region, resolved, t = _templateThickness(t
     // start) at least half the opening long, the square corner and its miter clean. The width reads it at the
     // smallest depth (so the depth range is never empty), the depth at the resolved width. And the top
     // shoulders' inner offset (radius r - t) keeps MIN_ARC_RADIUS_IN, so it never collapses.
-    if (R.topDipWidth && Number.isFinite(resolved.topDipWidth)) {
+    if (has('topDipWidth') && Number.isFinite(resolved.topDipWidth) && (want('topDipWidth') || want('topDipDepth'))) {
       const hh = region.h / 2, cx0 = region.x + hw, top = region.y, { sideX, yInside } = _sideRoom(region, resolved);
-      R.topDipWidth = _narrow(R.topDipWidth, -Infinity,
+      if (want('topDipWidth')) R.topDipWidth = _narrow(R.topDipWidth, -Infinity,
         (Math.min(cx0 + hw - t - half, sideX(top + HORN_MIN_OF_HALF_HEIGHT * hh + 2 * t) - t - half) - cx0) / hw);
       const a = hw * resolved.topDipWidth, need = cx0 + a + t + half;
       // the highest side point closer in than `need` stops the dip's inner edge 2t above it
       const dRoom = yInside(need) - top - 2 * t;
-      R.topDipDepth = _narrow(R.topDipDepth, -Infinity, Math.min(dRoom, topDipDepthForRadius(a, t + MIN_ARC_RADIUS_IN)) / hh);
+      if (want('topDipDepth')) R.topDipDepth = _narrow(R.topDipDepth, -Infinity, Math.min(dRoom, topDipDepthForRadius(a, t + MIN_ARC_RADIUS_IN)) / hh);
     }
   }
   return R;
@@ -407,8 +413,8 @@ export function generateFrameSeeds(tpl, region, seed, t = _templateThickness(tpl
   const seeds = {};
   PARAM_ORDER[preset].forEach((key, i) => {
     if (!seeded.has(key)) return;
-    const resolved = generateSilhouette(region, { preset, params }).params;
-    let r = frameParamRanges(tpl, region, resolved, t)[key];
+    const resolved = silhouetteParams(region, { preset, params });
+    let r = frameParamRanges(tpl, region, resolved, t, key)[key];
     const gen = table.find((h) => h.key === key)?.generateRange;
     if (gen) r = { min: Math.max(r.min, gen.min ?? r.min), max: Math.min(r.max, gen.max ?? r.max) };
     const u = FRAME_GEN_BAND[0] + (FRAME_GEN_BAND[1] - FRAME_GEN_BAND[0]) * seededUnit(seed, FRAME_GEN_SALT + i);

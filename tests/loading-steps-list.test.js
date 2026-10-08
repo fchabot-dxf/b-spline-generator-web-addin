@@ -18,7 +18,7 @@ beforeAll(async () => {
 afterEach(() => resetLoadingSignal());
 
 describe('every declared sequence lists its steps on a card', () => {
-  for (const seqId of ['generate', 'apply', 'newSeed', 'projectLoad', 'sessionRestore', 'export', 'send', 'camBuild', 'camApply']) {
+  for (const seqId of ['apply', 'newSeed', 'projectLoad', 'sessionRestore', 'export', 'send', 'camBuild', 'camApply']) {
     it(`${seqId}: each step in turn -- earlier ones done, this one current, the rest pending`, async () => {
       const stages = LOADING_SEQUENCES[seqId].stages;
       expect(stages.length).toBeGreaterThan(1);
@@ -33,6 +33,13 @@ describe('every declared sequence lists its steps on a card', () => {
       }
     });
   }
+  it('generate (Brick Generate, one step since the carve + build wait for the editor Apply): its card, no step list', async () => {
+    expect(LOADING_SEQUENCES.generate.stages).toEqual(['bricks']);
+    beginLoadingSequence('generate');
+    await holdLoadingStage('bricks');
+    expect(currentLoadingStage()).toMatchObject({ id: 'bricks', text: 'Computing - laying bricks', surface: 'card' });
+    expect(currentLoadingSteps()).toBe(null);
+  });
   it('CAM BUILD runs APPLY as its own 5th step (H23 item 101), the toolpaths after it', async () => {
     expect(CAM_STAGES.sequences.camBuild).toEqual(['camWcs', 'camCleanup', 'camModels', 'camSetups', 'camBuildApply', 'camTpgen']);
     beginLoadingSequence('camBuild');

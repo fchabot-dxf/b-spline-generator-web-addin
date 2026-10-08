@@ -56,6 +56,15 @@ export const CARVE_UNDER_FLAT = {
   introducedBy: 'F35 item 44',
 };
 
+// ---- grey by height (Fred 2026-10-08, "Yes, grey only"; seat D): on T1 with a Wall (Course-band raised accents) and a
+// Frame, every brick is never a set colour or photo -- neutral grey right after a lay, its layer's height greys once the
+// mask lands (core/bricks/height-grey.js, editor/brick-height-grey.js); the SVG download is flat greys, the accented
+// pieces lighter; the repaint (the 'brick-height-greys' performance measure) stays inside `repaintBudgetMs`.
+export const GREY_BY_HEIGHT = {
+  template: 'template_1', accent: 'brickAccent_courseBand', wallTool: 'brickTool_wall', frameTool: 'brickTool_frame', generate: 'brickGenerate',
+  repaintBudgetMs: 250, // MEASURED unthrottled at 1366 on the mock (3 layers, 141 x 181): 24-187 ms with a full re-encode
+};
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, click, exists, heightsSettled, editorOpen, apply, rows, waitApp, checkRow, wallCount, openEditorTab, reloadWithStorage;
@@ -68,7 +77,7 @@ export const STROKES_FOLLOW = {
 };
 
 export function bind(ctx) { ({ sleep, send, js, jsJSON, click, exists, heightsSettled, editorOpen, apply, rows, waitApp, checkRow, wallCount, openEditorTab, reloadWithStorage } = ctx); }
-export async function run() { await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); await runQuickFrameLays(); await runCarveUnderFlat(); await runStrokesFollow(); }
+export async function run() { await runGreyByHeight(); await runLayWarnings(); await runBandsNote(); await runWallNoFrame(); await runQuickFrameLays(); await runCarveUnderFlat(); await runStrokesFollow(); }
 
 async function noteState(id) {
   return (await jsJSON(`JSON.stringify((()=>{ const n=document.getElementById(${JSON.stringify(id)}); if(!n) return { missing: true }; return { shown: n.offsetParent !== null && getComputedStyle(n).display !== 'none', text: (n.textContent||'').trim() }; })())`));
@@ -225,4 +234,49 @@ async function runStrokesFollow() {
   checkRow('lay', 'A6: the quick Set (apply to all) reaches a stroke', c.setId === F.setId && c.sets.length === 1 && c.sets[0] === String(F.setId),
     `stroke set ${b.setId} -> ${c.setId}, pieces' sets ${JSON.stringify(c.sets)}`);
   if (await editorOpen()) await apply();
+}
+
+// ---------------------------------------------------------------- grey by height
+const GREY_FILLS = `(async () => { const g = await import('./core/bricks/height-grey.js'); const ed = window.svgEditor; const root = ed._sketchLayer.node.ownerSVGElement;
+  const bricks = [...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick-set]')];
+  const own = (n) => 'url(#brick-height-grey-' + String(n.getAttribute('data-layer')).replace(/[^A-Za-z0-9_-]/g, '_') + ')';
+  const neutral = bricks.filter((n) => n.getAttribute('fill') === g.NEUTRAL_BRICK_GREY).length, grey = bricks.filter((n) => n.getAttribute('fill') === own(n)).length;
+  const imgsOk = bricks.filter((n) => n.getAttribute('fill') === own(n)).every((n) => { const id = own(n).slice(5, -1); const im = root.querySelector('#' + id + ' image'); return !!im && (im.getAttribute('href') || '').startsWith('data:image/png'); });
+  return JSON.stringify({ n: bricks.length, neutral, grey, other: bricks.length - neutral - grey, imgsOk, textures: root.querySelectorAll('[id^="brickfill-"]').length }); })()`;
+async function runGreyByHeight() {
+  const G = GREY_BY_HEIGHT;
+  await reloadWithStorage({});
+  await openEditorTab('editorTabFrame');
+  await js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); s.value=${JSON.stringify(G.template)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,1500)); return 1; })()`);
+  await openEditorTab('editorTabBrick');
+  await click(G.wallTool, 900); await click(G.generate, 2500); await click(G.accent, 1200);
+  await click(G.frameTool, 900); await click(G.generate, 2500);
+  const a = await jsJSON(GREY_FILLS);
+  checkRow('lay', 'Grey by height: right after a lay every brick is neutral grey or its own layer’s greys -- never a set colour or a photo', a.n > 0 && a.other === 0 && a.textures === 0,
+    `${a.n} bricks: ${a.neutral} neutral, ${a.grey} height greys, ${a.other} other; photo patterns ${a.textures}`);
+  await js(`(performance.clearMeasures && performance.clearMeasures('brick-height-greys'), 1)`);
+  await apply(); await heightsSettled(null);
+  let b = await jsJSON(GREY_FILLS);
+  for (let t = 0; t < 30 && b.grey < b.n; t++) { await sleep(1000); b = await jsJSON(GREY_FILLS); }
+  checkRow('lay', 'Grey by height: once the masks land every brick shows its own layer’s height greys (a real image)', b.n > 0 && b.grey === b.n && b.imgsOk && b.textures === 0,
+    `${b.grey}/${b.n} bricks on their layer's greys; images ok ${b.imgsOk}; photo patterns ${b.textures}`);
+  const d = await jsJSON(`(async () => { const ed = window.svgEditor; const svg = await ed.saveSvgDownload(); const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    const fills = [...doc.querySelectorAll('g[id^="bricks:"] path')].map((p) => [p.id, p.getAttribute('fill')]);
+    const lvl = (f) => { const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(f || ''); return m && m[1] === m[2] && m[2] === m[3] ? parseInt(m[1], 16) : null; };
+    const accented = new Set([...ed._sketchLayer.node.querySelectorAll('[data-brick="wall"][data-brick-accent="1"]')].map((n) => (n.getAttribute('data-brick-owner') || 'wall') + ':' + n.getAttribute('data-brick-id')));
+    const wallIds = new Set([...ed._sketchLayer.node.querySelectorAll('[data-brick="wall"]')].map((n) => (n.getAttribute('data-brick-owner') || 'wall') + ':' + n.getAttribute('data-brick-id')));
+    const acc = fills.filter(([id]) => accented.has(id)).map(([, f]) => lvl(f)), plain = fills.filter(([id]) => wallIds.has(id) && !accented.has(id)).map(([, f]) => lvl(f)).sort((x, y) => x - y);
+    const ms = performance.getEntriesByName('brick-height-greys').map((e) => e.duration);
+    const grout = [...doc.querySelectorAll('g[id^="grout:"] path')].map((p) => lvl(p.getAttribute('fill')));
+    // a cutter's import (seat D): the size in inches = the board; every brick / grout subpath closed, 3+ points
+    const top = doc.documentElement, inches = top.getAttribute('width') === ed._mW + 'in' && top.getAttribute('height') === ed._mH + 'in';
+    const open = [...doc.querySelectorAll('g[id^="bricks:"] path, g[id^="grout:"] path')].filter((p) => (p.getAttribute('d') || '').split('M').filter(Boolean)
+      .some((sub) => !sub.trim().endsWith('Z') || sub.split('L').length < 3)).length;
+    return JSON.stringify({ n: fills.length, notGrey: fills.filter(([, f]) => lvl(f) == null).length, urls: svg.split('url(#').length - 1, acc: acc.length, accMin: Math.min(...acc), plainMedian: plain[Math.floor(plain.length / 2)],
+      repaints: ms.length, repaintMaxMs: ms.length ? Math.round(Math.max(...ms)) : null, grout: grout.length, groutNotGrey: grout.filter((v) => v == null).length, groutMax: Math.max(...grout), inches, open, size: top.getAttribute('width') + ' x ' + top.getAttribute('height') }); })()`);
+  checkRow('lay', 'Grey by height: the SVG download is one flat grey per brick, the raised accents lighter than the plain wall, the grout its own darker grey',
+    d.n > 0 && d.notGrey === 0 && d.urls === 0 && d.acc > 0 && d.accMin > d.plainMedian && d.grout > 0 && d.groutNotGrey === 0 && d.groutMax < d.plainMedian && d.inches && d.open === 0,
+    `${d.n} brick paths, ${d.notGrey} not grey, url refs ${d.urls}; ${d.acc} accented, plain median ${d.plainMedian} < darkest accent ${d.accMin}; ${d.grout} grout paths (not grey ${d.groutNotGrey}), lightest ${d.groutMax}; ${d.size}, open / degenerate paths ${d.open}`);
+  checkRow('lay', `Grey by height: the repaint on a mask update stays under ${G.repaintBudgetMs} ms`, d.repaints > 0 && d.repaintMaxMs <= G.repaintBudgetMs,
+    `${d.repaints} repaints, slowest ${d.repaintMaxMs} ms`);
 }

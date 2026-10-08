@@ -1,4 +1,5 @@
 import { P } from '../core/state.js';
+import { applyBrickHeightGreys } from '../editor/brick-height-grey.js';
 import { rasterizeSvg } from '../core/stamp.js';
 import { applyLayerTransform } from '../core/stamp/transform.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
@@ -214,7 +215,23 @@ export async function updateStampMasks(nx, nz) {
     layer._brickDepth = bDepth;
   });
   await Promise.all(promises);
-  return myGeneration === _refreshGeneration;
+  const latest = myGeneration === _refreshGeneration;
+  // Fred 2026-10-08 (grey by height): the 2D bricks repaint from the fresh masks -- on a mask update only (every
+  // caller of this function: a refresh, a rebuild), never per paint
+  if (latest) paintBrickHeightGreys();
+  return latest;
+}
+
+/** The editor's brick height greys (editor/brick-height-grey.js) from the masks just set; timed as the
+ *  'brick-height-greys' performance measure (the phone repaint cost, read by the matrix / probes). */
+function paintBrickHeightGreys() {
+  const editor = typeof window !== 'undefined' ? window.svgEditor : null;
+  if (!editor) return;
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  applyBrickHeightGreys(editor);
+  if (typeof performance !== 'undefined' && performance.measure) {
+    try { performance.measure('brick-height-greys', { start: t0, end: performance.now() }); } catch { /* an old engine: no measure */ }
+  }
 }
 
 export async function refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode) {
