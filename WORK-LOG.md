@@ -24491,3 +24491,20 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - ALSO: a declared frameFor(k) step both strokes runners use (a single soldier frame when a case says frame: true, none
   otherwise) -- the rows no longer depend on which runner ran first (the new runner had left the frame off and broke the
   band crossing row: gap null). strokes group 14 rows, 0 FAIL.
+### Pick 1 -- life-size overlap sweep; + the two gate flakes in seat E's area (seat E / 61, 2026-10-08)
+- SWEEP tests/bricks-overlap-sweep.test.js: every template x 7x9 / 9x12 x 0.75..8 in, a single soldier band as laid: run x
+  run and run x fan overlaps pinned at 0 (item 12); fan x fan (item 30, seat D) capped per template x board x size at today's
+  [pairs, widest share, total sq in] (main e549b84) -- it can only go down; a band as deep as the board is wide exempt
+  (item 28). FAST_SET (T1 / T10 / T18 / T19 at 3 and 4 in) in the default run, 7.5 s; OVERLAP_SWEEP_FULL=1 19/19 in 165 s.
+  Fails on the old cut check (CUT_CHECK_SHARE 0): T1 + T10. A first full run failed T14 / T16 / T17 at 8 in on 7x9: the
+  exemption read the board's width from each arc's whole circle (T14's big arcs) -- now from the arcs as drawn.
+- FLAKE 1 (the gate's strokes run alone: "Crossing: into the frame band" gap 1.006 in): the band case kept STROKE_CLEAR's
+  Grey stone ring, laid differently on each fresh load; a stroke's SIDE met one stone before its centreline entered another,
+  the split cut on the centreline's stone only, and the end piece overlapping the first was dropped (the 1 in gap). FIXED
+  in the engine: splitAtCrossings follows the centreline and both edges (events + the blocked test); the cut line is the
+  edge hit; the reach past it is the full width x cot. Test: a block only the stroke's right half reaches (old split: a
+  1.25 in gap). And the row: a frame case lays its DECLARED frame fresh (FRAME_CASE: single soldier, red brick). strokes
+  group alone, twice: 14 rows, 0 FAIL each.
+- FLAKE 2 (brick-matrix-ports "expected 10, got 0"): dropStaleProfiles read the live Chrome list, a PowerShell call that
+  timed out under the gate's load (20 s) -- an unknown list removes nothing, by design. The list is now a parameter (default
+  the live one); the test passes its own empty set (it ran 20 s, now 0.2 s).

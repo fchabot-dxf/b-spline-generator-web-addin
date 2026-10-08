@@ -65,7 +65,9 @@ describe('life-size overlap sweep: no run piece overlaps; fan slices capped at t
       const sil = frameContourSilhouette({ defs: FRAME_DEFS, record: normalizeFrameRecord({ templateId: tpl }), board: { widthIn: W, heightIn: H } }, 0, 0);
       if (!sil || !sil.primitives) continue;
       const prims = buildRibbonPrimitives(sil.primitives);
-      const xs = prims.flatMap((p) => (p.type === 'line' ? [p.p0.x, p.p1.x] : [p.cx - p.r, p.cx + p.r])), ys = prims.flatMap((p) => (p.type === 'line' ? [p.p0.y, p.p1.y] : [p.cy - p.r, p.cy + p.r]));
+      // the board's own extent (arcs sampled along their span -- a whole circle's box read T14's big arcs as a wider board)
+      const pts = prims.flatMap((p) => (p.type === 'line' ? [p.p0, p.p1] : Array.from({ length: 33 }, (_, k) => { const t = p.theta1 + ((p.theta2 - p.theta1) * k) / 32; return { x: p.cx + p.r * Math.cos(t), y: p.cy + p.r * Math.sin(t) }; })));
+      const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
       const boardWidth = Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
       for (const L of SIZES) {
         const r = bricksContourBands(prims, FRAME_PRESETS.single_soldier, { set: SET, seed: 1, scale: L / SET.brickLengthIn });
