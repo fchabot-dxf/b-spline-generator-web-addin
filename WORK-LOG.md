@@ -24561,3 +24561,21 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   is 42% self time, outlineDefects 7%. Line-level ticks from inside vitest don't map (the module is transformed); the
   next step, if ever resumed, is a plain-node profile of the same seeds and a check whether the sweep calls the pure
   construction repeatedly with identical inputs (a memo would be byte-identical).
+
+### 2026-10-07 (seat A): a phone Brick tap no longer re-lays the stone ring 4x to grey the corner controls -- user pick 3
+- MEASURED (real Chrome, 390 px, 4x CPU throttle = Fred's phone acceptance; main e549b84; each tap = click -> two
+  frames): frame band preset 0.71 / 0.85 / 1.19 s, band pattern 0.79 s, accent pick 1.18 s, brick set 0.86 / 1.09 s --
+  and once 24.1 s (15.5 s longest task), after single soldier -> stretcher band -> checker accent -> set 3.
+- Reproduced under Chrome's own profiler: set 3 = 13.8 s to paint. Two paths of ~9 s each: the lay itself
+  (fieldstoneLayout -> poissonDiscSample -> pointInPolygon / distSqToSegment), AND syncControlRequires -> cornerFacts /
+  fanFacts -> frameCornerEffect / frameHasFan -> bricksContourBands(opts.cornerCutsOnly) -> buildAreaBandBricks ->
+  bricksFillShape -> fieldstoneLayout: the "joints only, no pieces" plan still laid an AREA band's whole stone fill
+  (its branch ran before the cornerCutsOnly check), 4 times per tap (3 corner styles + the fan).
+- Fix (core/bricks/contour-bands.js): under cornerCutsOnly an area band's stones are not laid (that mode returns the
+  rows' joint counts only; the stones never add to them; depthSoFar advances the same). planOnly untouched (it
+  returns the laid bricks).
+- MEASURED equivalence: frameCornerEffect + frameHasFan on 720 cases (T1/T5/T10/T18 x 7x9/9x12 x every set x every
+  frame preset x 0.75/1.25 in): identical answers; CPU 472.5 -> 30.7 ms per check (15x).
+- tests/frame-corner-checks-lay-nothing.test.js 2 (a spy on bricksFillShape: the checks never fill, a full lay does);
+  the check one fails pre-change. frame-corner-effect + bricks-fan-centre + it: 39/39.
+- The tap latency re-measure is pending a free gate slot (the guard refused twice).

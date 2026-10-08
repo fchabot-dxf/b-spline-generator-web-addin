@@ -779,11 +779,16 @@ export function bricksContourBands(primitives, bands, opts) {
     // pieces (same role every other pattern already gives it), not a per-piece length.
     const { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows, isAreaBand } = plannedBands[bandIndex];
     if (isAreaBand) {
-      const [a0, a1] = rowDepths(depthSoFar, depthSoFar + band.widthIn);
-      const { pieces, nextId: afterId } = buildAreaBandBricks(enriched, a0, a1, band, patternName, set, seed, bandIndex, nextId);
-      bricks.push(...pieces);
-      for (let i = 0; i < pieces.length; i++) origins.push({ src: -3 }); // an area band's stones
-      nextId = afterId;
+      // opts.cornerCutsOnly counts the ROWS' joints only (below); an area band's stones never add to them, and this
+      // mode returns the counts alone -- so its stones are not laid (MEASURED 2026-10-07: the panel's corner / fan
+      // checks laid a stone ring's whole fieldstone fill 4x per Brick tap, 9 of a 13.8 s phone tap at 4x throttle)
+      if (!opts.cornerCutsOnly) {
+        const [a0, a1] = rowDepths(depthSoFar, depthSoFar + band.widthIn);
+        const { pieces, nextId: afterId } = buildAreaBandBricks(enriched, a0, a1, band, patternName, set, seed, bandIndex, nextId);
+        bricks.push(...pieces);
+        for (let i = 0; i < pieces.length; i++) origins.push({ src: -3 }); // an area band's stones
+        nextId = afterId;
+      }
       depthSoFar += naturalWidth * rows;
       return; // forEach callback -- next band
     }
