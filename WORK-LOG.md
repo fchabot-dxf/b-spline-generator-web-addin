@@ -25430,6 +25430,25 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   (74 files) 965/965.
 - FOUND on the way (shipped alone first, empty-region): T9 7x9 1.5 in with the octagon-dot tiles froze (an empty region).
 
+### 2026-10-08 (seat A): seat D's 6 s spacing / adaptiveDisplay task = the "Show mesh" iso-curves; evalBSplineSurface local
+- REPRODUCED with D's own tool (tools/repro/art_phone_audit.mjs SURFACE=sidebar, styles served, phone 4x CPU, a scratch
+  copy profiling the spacing step): longest task 6040 ms. Board at that moment: 8x10, sculptural, symmetry y,
+  isolateSkeleton, smooth radius 7.2, thicken OFF, and "Show mesh" (showMesh) ON -- the one that matters.
+  My own minimal tries (fresh board, + 8x10, + thicken, + inset window, even under SwiftShader) all stayed <= ~1 s:
+  none had Show mesh on.
+- CAUSE: preview.update -> buildIsoCurves (Show mesh) -> evalBSplineSurface, which de-Boor-evaluated EVERY row of the
+  control grid per point (334 rows of 268 at 0.03 in on 8x10, ~3,400 points) while the outer de Boor reads only rows
+  s-3..s of v's span: ~5.6 s of the 6 s task.
+- FIX (byte-identical by construction): evaluate only rows s-3..s, by the same code, into the same slots of a length-nz
+  array. tests/bspline-surface-local.test.js: >10,000 points over 40 random grids, Object.is-equal to the old full
+  evaluation; one row too few fails it.
+- RESULT (D's replay, same board): spacing longest 6040 -> 733 ms (response 6878 -> 1304); adaptiveDisplay 5940 ->
+  698; Show mesh tap 1209 -> 159; evalBSplineSurface 1788 -> 21 ms, preview.update 5885 -> 386 ms. What is left is
+  buildHeights' box filter (653 ms at smooth radius 7.2), already its own step between yields -- no chunking needed.
+  The solid wireframe (thicken wireframe mode) uses the same function and gains the same way.
+- Full suite 407 files, 6049/6049. Known failures: none. (A stray `git checkout origin/main --` had detached the
+  worktree mid-task; the change was carried to this branch from current main before the suite + commit.)
+
 ### Wall sets at Fred's sizes (pick 2) + coursed rubble runs to its region's edge (seat E / 61, 2026-10-08)
 - MEASURED (sets 2 / 3 / 4 / 5 as wall + frame, every template x 7x9 / 9x12 x 0.75 - 1.5 in x single soldier / three-band,
   1,216 lays): no overlap and nothing off the outline anywhere. Grey brick (4) and White rocks (3) clean. Set 2 ("Brick 2",

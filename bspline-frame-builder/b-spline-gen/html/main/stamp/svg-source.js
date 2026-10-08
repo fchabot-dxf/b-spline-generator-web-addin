@@ -7,6 +7,7 @@ import { P } from '../../core/state.js';
 import { openingMode } from '../../editor/editor-ui.js';
 import { SvgEditorSnapshot, editorRestoreSvg, editorSessionFingerprint } from '../app-init.js';
 import { addLayer, setActiveLayer, setLayerVisible } from '../../editor/layers.js';
+import { withLoadingStageShownFirst } from '../../core/loading-signal.js';
 
 /**
  * Lightweight SVG validation: parses the upload and checks that the
@@ -108,20 +109,24 @@ export function initSvgSource(ctx, layerModule) {
         return;
       }
       const targetId = String(currentLayer.id);
-      if (typeof editor._deselect === 'function') editor._deselect();
-      const sketchNode = editor._sketchLayer.node;
-      Array.from(sketchNode.children).forEach((ch) => {
-        if (ch.getAttribute('data-layer') === targetId) ch.remove();
-      });
-      if (typeof editor.pushState === 'function') { try { editor.pushState(); } catch (_) {} }
-      if (typeof editor._onChange === 'function') { try { editor._onChange(); } catch (_) {} }
+      // Seat D 2026-10-08 (matrix BLIND_BUDGET, tools/brick-matrix/groups/blind.mjs: 390 px, real touch, CPU x4): the clear (session save,
+      // layer visibility, change pipeline) ran 61-83 ms before the remask's card; its 'carving relief' card is up first now
+      withLoadingStageShownFirst('heightMask', () => {
+        if (typeof editor._deselect === 'function') editor._deselect();
+        const sketchNode = editor._sketchLayer.node;
+        Array.from(sketchNode.children).forEach((ch) => {
+          if (ch.getAttribute('data-layer') === targetId) ch.remove();
+        });
+        if (typeof editor.pushState === 'function') { try { editor.pushState(); } catch (_) {} }
+        if (typeof editor._onChange === 'function') { try { editor._onChange(); } catch (_) {} }
 
-      // SE5a: writes `visible` on the editor layer (single tooling store)
-      // — see the Browse-import branch above for the same transitional
-      // note re: export-flow.js until slice (b).
-      setLayerVisible(editor, targetId, false);
-      if (layerModule && layerModule.syncEnabled) layerModule.syncEnabled();
-      if (fileNameSpan) fileNameSpan.textContent = 'No file chosen';
+        // SE5a: writes `visible` on the editor layer (single tooling store)
+        // — see the Browse-import branch above for the same transitional
+        // note re: export-flow.js until slice (b).
+        setLayerVisible(editor, targetId, false);
+        if (layerModule && layerModule.syncEnabled) layerModule.syncEnabled();
+        if (fileNameSpan) fileNameSpan.textContent = 'No file chosen';
+      });
     });
   }
 
