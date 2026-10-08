@@ -89,11 +89,16 @@ export function deBoor(k, knots, coeff, t) {
  * @returns {{x, y, z}}
  */
 export function evalBSplineSurface(ctrl, nx, nz, U, V, u, v) {
-    const temp = [];
-    for (let j = 0; j < nz; j++) {
+    // The outer de Boor (below) reads only the 4 rows s-3..s of v's span (local support), so only those are
+    // evaluated -- by the same code, into the same slots of a length-nz array: the same arithmetic, the same result.
+    // MEASURED 2026-10-08 (phone 4x, "Show mesh" on, 0.03 in spacing on an 8x10 board): evaluating all nz rows per
+    // point was most of one unbroken 6 s task (buildIsoCurves, ~3,400 points x 334 rows of 268).
+    const s = findSpan(nz - 1, 3, v, V);
+    const temp = new Array(nz);
+    for (let j = s - 3; j <= s; j++) {
         const row = [];
         for (let i = 0; i < nx; i++) row.push(ctrl[i][j]);
-        temp.push(deBoor(3, U, row, u));
+        temp[j] = deBoor(3, U, row, u);
     }
     return deBoor(3, V, temp, v);
 }
