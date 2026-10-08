@@ -24458,3 +24458,12 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   ok=7 missing=0, 0 [ERROR]) -> Stock "built · no operations", B-spline Back "toolpaths 2/2", B-spline Top
   "toolpaths 3/3", Frame "toolpaths 2/2", all green; the palette deleteMe'd and reopened (a fresh page) -> the same
   states from get_setup_states alone. Shots: shots/seatA/cam_cards/cam_cards_strip.png.
+
+### 2026-10-07 (seat A): the CAM palette header from the doc's setup states (stacked on cam-setup-states) -- pick 1
+- The B-spline tab's header was static HTML ("3 MMs · 4 SETUPS · READY", cam_builder_palette.html:372): it read that
+  on a doc with no CAM at all (shots/seatA/cam_cards/00_open_no_cam.png).
+- cam-setup-state.js headerSummary(entries), the same entries as the cards: [] -> NO CAM YET; a BUILD report (no
+  counts) -> N SETUPS · BUILT; a failed build -> N SETUPS · BUILD FAILED; counts -> N SETUPS · TOOLPATHS done/ops (or
+  BUILT with no ops yet). The palette's showSetupList feeds the cards AND the header from every source (the doc on
+  open, BUILD and TPGen reports); the initial text is an ellipsis until the add-in answers.
+- tests/cam-setup-state.test.js 6 (+2 header, pins updated); 3 fail against the pre-change palette + map.
