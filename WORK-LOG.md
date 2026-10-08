@@ -25405,3 +25405,27 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   may only fall). FAST 3 lays, STONE_LIFE_FULL=1 114 (22 s), all pass. Mutation: a 30 x piece floor fails 2/3 of FAST.
 - Ring on bogus ground (the wall-outside note): not seen -- the rings at 3 - 4 in lay on the band, the lays above have
   no overlap and nothing off the board.
+
+### Pattern gaps at Fred's sizes: the tile layouts clip a bridged wall region lobe by lobe (seat E / 61, 2026-10-08)
+- PROBE (every wall pattern x T1 / T10 / T18 7x9 at 1 in): T18 left bare tips the gap sweep never saw -- it lays only the
+  default bond: hexagon 1.22 faces, square_diamond 1.24, basketweave 0.67 (shots/seatE/gaps/pat_main_*).
+- CAUSE (measured, step by step): T18 7x9 1 in's wall region is two lobes joined by a zero-width corridor (primitive-ribbon.js
+  bridgeLobes) rising from the neck tip's apex; a tile over that tip crosses the corridor and the whole-region
+  polygonIntersection returned it EMPTY. The tip is 44.8 deg, under TIP_FILL_MIN_DEG, so the band does not fill it either;
+  the bond's thin courses rarely straddle the apex. The same corridor made 35 tile-pattern lays come back with a wall piece
+  ACROSS it, overlapping another piece.
+- FIX: geometry.js clipPolygonToRegion -- a bridged region (separate lobes, each wound like the whole) clipped lobe by lobe,
+  the largest piece kept; used by the tile2d layouts (tiles, sheet patterns, herringbone, basketweave). lobesOf moves from
+  tip-fill.js to geometry.js (one declaration). The bond / coursed rubble / fieldstone keep clipPolygonToBoard.
+- TRIED and narrowed (measured): the lobe clip in clipPolygonToBoard for EVERY layout also changed 168 default-bond lays and
+  broke item 16f's tests (the wall laid its own tip pieces, the band no longer filled them; a T16 1 in seam 2.3 joints) --
+  the bond's tips are the band's, so it stays as it was. A slit ring (a hole drawn with a slit: the fieldstone band's) is
+  NOT split: a lobe wound against the whole is a hole (stones 0.22 sq in into T18's ring hole otherwise).
+- RESULT (18 patterns x every template x 7x9 / 9x12 x 0.75 - 1.5 in, 2,736 lays): 215 better, 26 worse (small, mostly T14:
+  a cell across its slit keeps one lobe's piece); 29.29 sq in of bare removed, 1.23 added; lays over 0.05 face 214 -> 95;
+  wall-piece overlaps 35 -> 0; T18 7x9 1 in hexagon / square_diamond / basketweave -> 0.012 face
+  (shots/seatE/gaps/T18_hexagon_1in_before_after.png). Default bond: 1,368 lays hashed, 0 changed.
+- PINNED: tests/bricks-pattern-gaps.test.js (overlaps 0, off the outline 0, bare <= PATCH_MAX_FACE or PATTERN_CAPS: 95). FAST 4
+  fails 3/4 on main; PATTERN_SWEEP_FULL=1 2,736/2,736 (284 s). Gap / overlap / tip-fill FULL sweeps pass; affected suites
+  (74 files) 965/965.
+- FOUND on the way (shipped alone first, empty-region): T9 7x9 1.5 in with the octagon-dot tiles froze (an empty region).

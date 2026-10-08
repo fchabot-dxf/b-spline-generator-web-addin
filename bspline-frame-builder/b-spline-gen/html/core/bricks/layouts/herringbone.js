@@ -22,7 +22,7 @@
  * pairs, the construction above already leaves exactly `grout` between every adjacent brick; an
  * extra shrink would double the joint.
  */
-import { clipPolygonToBoard, rectPolygon } from '../geometry.js';
+import { clipPolygonToRegion, rectPolygon } from '../geometry.js';
 
 const ROTATION_DEG = 45; // the "classic" chevron look; see this file's own header
 
@@ -68,7 +68,7 @@ export function herringboneLayout(boardOutline, set, _zones) {
         const wcx = ct * cx - st * cy, wcy = st * cx + ct * cy;
         const wdx = ct * dx - st * dy, wdy = st * dx + ct * dy;
         const poly = rectPolygon(wcx, wcy, L / 2, W / 2, wdx, wdy);
-        const clipped = clipPolygonToBoard(poly, boardOutline, { x: wcx, y: wcy });
+        const clipped = clipPolygonToRegion(poly, boardOutline, { x: wcx, y: wcy });
         if (clipped.length >= 3) cells.push({ id: nextId++, polygon: clipped, courseIndex: k, cx: wcx, cy: wcy, neighbors: {} });
       }
     }

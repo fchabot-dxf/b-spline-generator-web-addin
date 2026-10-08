@@ -656,6 +656,28 @@ export function polygonDifference(subject, clip) {
  * edge and the Wall's own fill, de's own finding). See `polygonIntersection`'s own header for why
  * this is a direct polygon-vs-polygon clip rather than a triangulate-and-recombine approach.
  */
+/** A region whose lobes touch (a wall region bridged by a zero-width corridor: primitive-ribbon.js bridgeLobes; T14 at
+ *  1.5 in: two halves joined by a slit along the centre line) split at its repeated vertices into simple lobes; a piece
+ *  of no more than `minArea` (the slit itself) is dropped. Read by tip-fill.js bareTips and clipPolygonToBoard. */
+export function lobesOf(P, minArea = 0) {
+  for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
+    if (Math.hypot(P[i].x - P[j].x, P[i].y - P[j].y) > 1e-7) continue;
+    const a = P.slice(i, j), b = [...P.slice(j), ...P.slice(0, i)];
+    return [...lobesOf(a, minArea), ...lobesOf(b, minArea)];
+  }
+  return P.length >= 3 && Math.abs(signedArea(P)) > minArea ? [P] : [];
+}
+const LOBES = new WeakMap(); // outline -> its lobes (null: one lobe), per outline array -- every layout clips each cell
+const lobesCached = (outline) => {
+  if (!LOBES.has(outline)) {
+    // separate PARTS only: a lobe wound against the whole is a HOLE drawn with a slit (contour-bands.js buildAreaBandBricks's
+    // ring) -- clipping to the other lobe would ignore it (MEASURED: T18 fieldstone band stones 0.22 sq in into the hole)
+    const l = lobesOf(outline, 1e-6), sign = Math.sign(signedArea(outline));
+    LOBES.set(outline, l.length > 1 && l.every((q) => Math.sign(signedArea(q)) === sign) ? l : null);
+  }
+  return LOBES.get(outline);
+};
+
 export function clipPolygonToBoard(poly, boardOutline, cellRefPoint) {
   if (isConvex(boardOutline)) {
     const interior = polygonCentroid(boardOutline);
@@ -669,6 +691,20 @@ export function clipPolygonToBoard(poly, boardOutline, cellRefPoint) {
     return out;
   }
   return polygonIntersection(poly, boardOutline);
+}
+
+/** clipPolygonToBoard for the TILE2D layouts (tiles / sheet patterns / herringbone / basketweave): a bridged region (separate
+ *  lobes touching at repeated vertices) is clipped lobe by lobe, the largest piece kept (the one-polygon contract). MEASURED
+ *  (seat E, 2026-10-08, every pattern x template x 0.75 - 1.5 in): a cell across the bridge's zero-width corridor came back
+ *  EMPTY (T18 7x9 1 in hexagon / square_diamond / basketweave: a 1.2-face bare tip) or across the corridor (35 lays with a
+ *  wall piece overlapping another). The bond keeps clipPolygonToBoard: its tips are the band's (tip-fill.js, item 16f). */
+export function clipPolygonToRegion(poly, region, cellRefPoint) {
+  if (isConvex(region)) return clipPolygonToBoard(poly, region, cellRefPoint);
+  const lobes = lobesCached(region);
+  if (!lobes) return polygonIntersection(poly, region);
+  let best = [], bestArea = 0;
+  for (const lobe of lobes) { const q = polygonIntersection(poly, lobe), a = q.length >= 3 ? Math.abs(signedArea(q)) : 0; if (a > bestArea) { best = q; bestArea = a; } }
+  return best;
 }
 
 /**

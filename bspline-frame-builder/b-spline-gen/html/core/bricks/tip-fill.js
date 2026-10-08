@@ -9,7 +9,7 @@
  * TIP_FILL_MIN_DEG wide: a narrower V would end each half in a needle (Fred: no short-grain sharp tips) -- it stays a
  * bare joint (advisor, 2026-10-07).
  */
-import { polygonIntersection, signedArea, clipToHalfPlane, pointInPolygon, offsetPathInward, inwardSignFor } from './geometry.js';
+import { polygonIntersection, signedArea, clipToHalfPlane, pointInPolygon, offsetPathInward, inwardSignFor, lobesOf as lobesOfRegion } from './geometry.js';
 
 /** The narrowest tip the band fills (degrees); each half then ends at >= half of it. */
 export const TIP_FILL_MIN_DEG = 60;
@@ -49,16 +49,9 @@ function widthAcross(P, p, dir) {
   return Math.min(...above) - Math.max(...below);
 }
 
-/** A region whose lobes touch (T14 at 1.5 in: the two halves joined by a zero-width slit along the centre line) split at
- *  its repeated vertices into simple lobes; a zero-area piece (the slit itself) is dropped. */
-function lobesOf(P) {
-  for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
-    if (Math.hypot(P[i].x - P[j].x, P[i].y - P[j].y) > 1e-7) continue;
-    const a = P.slice(i, j), b = [...P.slice(j), ...P.slice(0, i)];
-    return [...lobesOf(a), ...lobesOf(b)];
-  }
-  return P.length >= 3 && area(P) > MIN_ZONE_SQIN ? [P] : [];
-}
+/** A region whose lobes touch, split into simple lobes (geometry.js lobesOf, shared with the cells' board clip); a piece
+ *  no bigger than MIN_ZONE_SQIN (the slit itself) is dropped. */
+const lobesOf = (P) => lobesOfRegion(P, MIN_ZONE_SQIN);
 
 /**
  * The region's convex corners at least TIP_FILL_MIN_DEG wide whose zone -- from the apex to where the region is one course
