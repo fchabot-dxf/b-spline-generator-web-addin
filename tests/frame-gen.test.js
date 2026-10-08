@@ -217,6 +217,28 @@ describe('Frame tab: Generate, tweak, save/reload, Undo', () => {
     } finally { setPaintScheduler((cb) => cb()); vi.unstubAllGlobals(); resetLoadingSignal(); }
   });
 
+  it("seat D 2026-10-08: a board width / height change shows the 'frame' stage FIRST, then re-syncs the frame (a phone froze ~300 ms blind)", () => {
+    const stage = document.createElement('div');
+    stage.id = 'loading-stage'; stage.hidden = true; stage.innerHTML = '<span class="loading-stage-text"></span>';
+    root.appendChild(stage);
+    const frames = [];
+    vi.stubGlobal('requestAnimationFrame', (cb) => { frames.push(cb); return frames.length; });
+    setPaintScheduler(null); // the real paint step (the suite's is immediate)
+    resetLoadingSignal();
+    try {
+      for (const id of ['widthIn', 'heightIn']) {
+        const sel = document.getElementById('frameTemplate');
+        sel.value = ''; // what the sync writes back from the record
+        document.getElementById(id).dispatchEvent(new Event('change'));
+        expect(currentLoadingStage()?.id, id).toBe('frame');
+        expect(sel.value, `${id}: not yet, the stage paints first`).toBe('');
+        while (frames.length) frames.shift()();
+        expect(sel.value, `${id}: synced after the paint`).toBe('template_1');
+        resetLoadingSignal();
+      }
+    } finally { setPaintScheduler((cb) => cb()); vi.unstubAllGlobals(); resetLoadingSignal(); }
+  });
+
   it('the Clear menu’s frame clear and Delete frame act NOW, even with the paint deferred (a Clear records the steps + the frame it left)', () => {
     // MEASURED (the gate's clear row): through the deferred editFrame, Clear All's one undo restored neither the frame
     // nor the photo -- it recorded 0 frame steps and the old frame, then refused as "changed since"

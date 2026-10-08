@@ -29,6 +29,7 @@ const SURFACES = {
   frame: { tab: 'editorTabFrame', panel: 'editorFramePanel', strip: null },
   photo: { tab: 'editorTabPhoto', panel: 'editorPhotoPanel', strip: 'photoTabStrip' },
   brick: { tab: 'editorTabBrick', panel: 'editorBrickPanel', strip: null },
+  sidebar: { tab: null, panelSel: '.cad-sidebar', strip: null }, // the editor stays CLOSED
 };
 const SURFACE = process.env.SURFACE || 'art';
 const SURF = SURFACES[SURFACE];
@@ -77,7 +78,7 @@ try {
   for (let i = 0; i < 120 && !(await js('!!document.getElementById("btnStampEdit")')); i++) await sleep(500);
   await sleep(4000);
   // open the editor on the audited tab (setup, unthrottled)
-  await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('btnStampEdit').click();
+  if (SURF.tab) await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('btnStampEdit').click();
     for (let i = 0; i < 80 && !window.svgEditor?._draw; i++) await new Promise((r) => setTimeout(r, 250));
     document.getElementById(${JSON.stringify(SURF.tab)})?.click(); await new Promise((r) => setTimeout(r, 1500)); return 1; })()`);
   // the app's stylesheets really load (advisor 2026-10-08, seat A's finding: a probe serving only b-spline-gen/html 404s
@@ -315,6 +316,48 @@ try {
     console.log('  -> scissors', JSON.stringify({ spines: `${sBefore.spines.length} -> ${sAfter.spines.length}`, undo: sAfter.undo - sBefore.undo }));
     const shotB = await send('Page.captureScreenshot', { format: 'png' });
     if (shotB.result?.data) writeFileSync(`${OUT_DIR}/brick_after_strokes.png`, Buffer.from(shotB.result.data, 'base64'));
+  } else if (SURFACE === 'sidebar') {
+    // The main sidebar with the editor CLOSED (advisor pick, 2026-10-08: the last surface Fred uses on the phone that was
+    // never timed): per sidebar tab, its collapsed panels opened, every visible control acted on the way a finger
+    // leaves it -- a slider dragged (its number twin skipped), a select stepped, a checkbox / button tapped, a lone
+    // number box nudged by one step. SIDEBAR_SKIP: what leaves the page or the sidebar (the editor, a file picker, a
+    // download, the cloud, a delete).
+    const SIDEBAR_SKIP = /StampEdit|EditBricks|EditFrameShape|Upload|Choose|DeleteFrame|Download|Cloud|Save|Login|SignIn|Password|Project|Share/i;
+    const tabs = JSON.parse(await js(`JSON.stringify([...document.querySelectorAll('[id^="sidebarTab_"]')].map((b) => b.id))`) || '[]');
+    console.log('sidebar tabs', JSON.stringify(tabs));
+    const done = new Set(), skipped = [];
+    for (const tab of tabs) {
+      await act(`tab: ${tab.replace('sidebarTab_', '')}`, () => tapSel('#' + tab));
+      await js(`(async () => { const root = document.querySelector(${JSON.stringify(SURF.panelSel)}); if (!root) return 0; for (const h of root.querySelectorAll('.panel-header.collapsed')) { if (h.getClientRects().length) { h.click(); await new Promise((r) => setTimeout(r, 150)); } } await new Promise((r) => setTimeout(r, 600)); return 1; })()`);
+      const controls = JSON.parse(await js(`JSON.stringify((() => { const root = document.querySelector(${JSON.stringify(SURF.panelSel)}); if (!root) return [];
+        return [...root.querySelectorAll('button[id], input[id], select[id]')].filter((e) => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && !e.disabled && e.type !== 'hidden' && e.type !== 'file')
+          .map((e) => ({ id: e.id, tag: e.tagName.toLowerCase(), type: e.type || '', twin: e.tagName === 'INPUT' && e.type !== 'range' && !!document.getElementById(e.id + 'Slider'),
+            min: e.min, max: e.max, step: e.step, value: e.value })); })())`) || '[]');
+      for (const c of controls) {
+        if (done.has(c.id) || c.id.startsWith('sidebarTab_')) continue;
+        done.add(c.id);
+        if (SIDEBAR_SKIP.test(c.id)) { skipped.push(c.id); continue; }
+        if (c.twin) continue; // its slider is the finger's control
+        const name = `${tab.replace('sidebarTab_', '')}: ${c.id}`;
+        if (c.type === 'range') {
+          const lo = +c.min || 0, hi = c.max === '' ? 1 : +c.max, v = +c.value;
+          const to = v + (hi - lo) * (v - lo < (hi - lo) / 2 ? 0.3 : -0.3);
+          await act(`${name} (drag)`, () => drag(c.id, [1, 2, 3, 4].map((k) => v + (to - v) * k / 4)));
+        } else if (c.tag === 'select') {
+          await act(`${name} (next)`, () => nextOption(c.id));
+        } else if (c.type === 'number' || c.type === 'text') {
+          const v = parseFloat(c.value); if (!Number.isFinite(v)) { skipped.push(c.id + ' (no number)'); continue; }
+          const st = parseFloat(c.step) || (Math.abs(v) >= 1 ? 1 : 0.01);
+          await act(`${name} (nudge)`, () => setValue(c.id, +(v + st).toFixed(6)));
+        } else {
+          await act(`${name} (tap)`, () => tapSel(`[id="${c.id}"]`));
+        }
+      }
+    }
+    console.log('skipped', JSON.stringify(skipped));
+    const worst = results.filter((r) => !r.skipped).sort((a, b) => (b.blindMs - a.blindMs) || (b.longestMs - a.longestMs)).slice(0, 12);
+    console.log('WORST (blind, then longest):');
+    for (const r of worst) console.log('  ', r.name.padEnd(44), JSON.stringify({ blindMs: r.blindMs, cardMs: r.cardMs, longestMs: r.longestMs, responseMs: r.responseMs, busyMs: r.busyMs }));
   }
 
   // ---- reach, per tab (each tab shows its own tools and its tool's settings): every visible control in the audited
@@ -326,7 +369,7 @@ try {
   for (const [tab, tool] of views) {
     await tapTab(tab); if (tool) await tapSel(`#photoTool_${tool}`); await sleep(800);
     const rows = JSON.parse(await js(`JSON.stringify((() => {
-      const roots = [document.getElementById(${JSON.stringify(SURF.panel)}), document.querySelector('#svgEditorModal .editor-topbar, #svgEditorModal header, #editorTopBar, #editorToolbarTop')].filter(Boolean);
+      const roots = [document.querySelector(${JSON.stringify(SURF.panelSel || '#' + SURF.panel)}), document.querySelector('#svgEditorModal .editor-topbar, #svgEditorModal header, #editorTopBar, #editorToolbarTop')].filter(Boolean);
       const out = [], seen = new Set();
       for (const root of roots) for (const e of root.querySelectorAll('button, input, select, [role="tab"]')) {
         if (seen.has(e)) continue; seen.add(e);

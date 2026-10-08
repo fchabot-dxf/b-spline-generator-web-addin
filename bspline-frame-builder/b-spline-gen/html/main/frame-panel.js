@@ -879,7 +879,9 @@ export function initFramePanel() {
   for (const { id, tab } of OPEN_EDITOR_BUTTONS) $(id)?.addEventListener('click', () => openEditorOn(tab));
   _wireHandleDrag();
   _wireWindowDrag();
-  // The fit warning (and the editor's profile) depend on the board size.
-  for (const id of ['widthIn', 'heightIn']) $(id)?.addEventListener('change', () => syncFramePanel());
+  // The fit warning (and the editor's profile) depend on the board size. Seat D 2026-10-08 (sidebar phone audit, CPU x4):
+  // this sync re-meshes the 3D frame (refreshFrame -> applyFrameToPanel, 265-272 ms) -- run in the change handler it froze
+  // a board width / height change ~300 ms with no card; the 'frame' stage is on screen first now.
+  for (const id of ['widthIn', 'heightIn']) $(id)?.addEventListener('change', () => withLoadingStageShownFirst('frame', () => syncFramePanel()));
   syncFramePanel();
 }
