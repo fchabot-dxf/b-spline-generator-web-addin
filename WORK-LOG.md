@@ -25040,3 +25040,27 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   f559a91f).
 - TESTS: editor-topview-lazy.test.js +3 (restored -> repaint on read / at once when showing; lost at read -> repaint).
   Fail 3/3 on main's file; dropping the isContextLost check fails 1. Full suite: 397 files, 5984/5984. Known failures: none.
+
+### 2026-10-08 (seat A): Frame Generate's draw computes only the range it draws (advisor pick (a), byte-identical)
+- MEASURED (D's phone profile: generateValidFrameSeeds 528 ms of a 1.58 s Frame Generate; my node bench, 19 templates
+  x 20 seeds): the retry loop's time was the DRAW (generateFrameSeeds 550 of 916 ms), and in it frameParamRanges
+  (314 ms) -- each draw step computed every key's range to read one. The validity checks: inner 244 / outer 121 ms.
+- CHANGE: feasibleParamRanges(..., onlyKey) computes only that key (earlier keys still fill their declared defaults,
+  the only thing a later range reads of them); frameParamRanges(..., onlyKey) gates each narrowing rule on want(key)
+  and reads presence through has(key) -- the preset's declared keys in one-key mode, exactly the old `R.k` test in
+  full mode (every computed range is an object). The coupled rules found on the way: T5 and T8's dip block (width +
+  depth under one `R.topDipWidth` test), T18's topInset (needs archRise present), T4's waistReachLeft.
+- IDENTITY: scratch seedsweep.mjs (5 boards incl. 12x6 and 5x5 x 19 templates x 30 seeds; sha of every generated seed
+  set + every full-mode frameParamRanges at each draw step): 95/95 identical.
+- SPEED (profile shares, load-robust; wall/CPU times were noisy with DDCS's gate running): frameParamRanges 310 - 334
+  -> ~100 ms, generateFrameSeeds 541 - 586 -> 348 - 357 (-36%), the whole retry loop 893 - 962 -> 730 - 752 (-20%).
+- TESTS: tests/frame-param-ranges-onekey.test.js (3 boards; one-key == full entry, every template / key / draw step,
+  >1000 checks each). Passes trivially on the old code (onlyKey ignored there) -- it pins the invariant; mutations
+  bite: T5 depth gated on the width key fails 3/3, old-style R.topInset && R.archRise presence fails 2/3.
+  The 40 test files importing these modules: 1600/1600 (2 workers). Full suite NOT run (DDCS's gate until ~10:00).
+- Left alone: generateSilhouette (~390 ms, each draw step resolves params through a full solve) -- skipping the solve
+  needs each of the 11 solvers read to prove .params is the resolver's output untouched; not identical by
+  construction without that.
+- Noticed, not changed: tests/frame-gen.test.js's isValid is a PARTIAL hand copy of generateFrame's rule (its own
+  comment: 37 of 1,500 seeds pick different shapes). Declaring the rule once (an exported predicate both use) would
+  end the drift -- a separate pick.
