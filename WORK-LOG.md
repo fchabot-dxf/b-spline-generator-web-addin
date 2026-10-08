@@ -24356,3 +24356,9 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   backslash) -> the page gets /s+/, every point parses to NaN, the overlap count is always 0 -- the row cannot fail.
 - SHOTS shots/seatE/t86_5/: crossings_real.png (the six cases, laid by the real code, today | new);
   live_before_after.png (the real app, main vs this branch); crossings_mock_zoom.png (Fred's mock).
+### Matrix strokes: STROKE_CLEAR could not fail -- the in-page parser's backslash doubled (seat E / 61, 2026-10-08)
+- FOUND during item 5: STROKE_CLEAR (seat D's item 60 row) parsed points with split(/\s+/) inside a template literal; a single
+  backslash hands the page /s+/, every point parses to NaN, the overlap count is always 0. Fixed: split(/\s+/) (eaba4f0).
+- PROOF (strokes group, live, one run each, after the gate cleared): (a) fixed row, this branch: pass, 0 overlaps; (b) fixed
+  row + a PLANTED overlap (strokes told to ignore the frame): FAIL, 4 stroke x frame overlaps, 0.3678 sq in; (c) the OLD row,
+  the same planted overlap: pass, 0 -- it could not fail; (d) fixed row on main's engine + app: pass, 0.
