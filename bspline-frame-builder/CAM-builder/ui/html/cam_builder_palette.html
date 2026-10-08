@@ -7,6 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="../../../styles/base.css">
   <link rel="stylesheet" href="../../../styles/loading-stage.css"> <!-- item 70: the shared loading card -->
+  <link rel="stylesheet" href="../../../styles/fusion-memory.css"> <!-- the Fusion memory line, shared -->
   <style>
     body { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #fff; }
     .hidden { display: none !important; }
@@ -704,6 +705,8 @@
 
 <div id="loading-stage" class="loading-stage" hidden role="status" aria-live="polite"><span class="loading-stage-spinner"></span><span class="loading-stage-text"></span></div>
 <script type="module" src="./cam-loading.js"></script>
+<script type="module" src="../../../b-spline-gen/html/core/fusion-memory-line.js"></script>
+<div id="fusion-memory-line" class="fusion-memory-line" hidden role="status" aria-live="polite"></div>
 <script type="module" src="./cam-setup-state.js"></script>
 <script>
   /* ── Mode tabs (CAM1a) ──────────────────────────────────────────────────
@@ -810,11 +813,28 @@
     const head = document.getElementById('status-summary-bspline');
     if (head && window.camSetupHeader) head.textContent = window.camSetupHeader(list || []);
   }
+  // the card's missing toolpaths, one line each (op + Fusion's own reason), under its status row; hidden when none
+  function showMissing(key, lines) {
+    const state = document.getElementById('state-' + key);
+    if (!state) return;
+    let box = document.getElementById('missing-' + key);
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'missing-' + key;
+      box.className = 'cam-missing';
+      box.style.cssText = 'font-size:10px; color:#b00020; margin:2px 0 0; line-height:1.4;';
+      state.closest('.cam-status-row').parentElement.after(box);
+    }
+    box.textContent = '';
+    for (const l of lines) { const d = document.createElement('div'); d.textContent = l; box.appendChild(d); }
+    box.hidden = !lines.length;
+  }
   function showSetupEntry(s) {
     const key = setupKeyFor(s.name);
     if (!key) return;
     const card = window.camSetupCardState ? window.camSetupCardState(s) : { state: s.ok ? 'ok' : 'fail' };
     setSetupState(key, card.state, card.text);
+    showMissing(key, window.camSetupMissing ? window.camSetupMissing(s) : []);
   }
 
   function runPreview() {
@@ -1542,6 +1562,7 @@
 
         if (action === 'build_confirm') { if (window.camLoading) window.camLoading.end(); confirmBuild(payload.setups || []); return; }
         // item 70: the add-in's step reports (cam-stages.js ids), held on the card until the next one or the report
+        if (action === 'fusion_memory') { if (window.paintFusionMemory) window.paintFusionMemory(payload); return; } // detection only
         if (action === 'setup_states') { showSetupList(payload.setups); return; }
         if (action === 'cam_stage') { if (window.camLoading && payload.id) window.camLoading.stage(payload.id, payload.grow); return; }
 
