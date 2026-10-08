@@ -28,6 +28,8 @@ describe('the registry: a run on record', () => {
     expect(matchesRecord('chrome', CHROME_CMD, RUN)).toBe(true);
     expect(matchesRecord('chrome', 'C:\\Windows\\notepad.exe', RUN)).toBe(false);
     expect(matchesRecord('chrome', CHROME_CMD.replace('abc123', 'zzz999'), RUN)).toBe(false);
+    // a shell whose command line only MENTIONS the profile is not the Chrome (measured live: a PowerShell query matched)
+    expect(matchesRecord('chrome', `powershell -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '${PROFILE}' } # chrome"`, RUN)).toBe(false);
     expect(matchesRecord('server', SERVER_CMD, RUN)).toBe(true);
     expect(matchesRecord('server', SERVER_CMD.replace('9802', '98021'), RUN)).toBe(false);
   });
@@ -51,6 +53,7 @@ describe('orphans: a dead run whose Chrome / server still runs', () => {
       [210, `chrome.exe --type=renderer --user-data-dir=${stray}`], // a renderer
       [220, `chrome.exe --headless=new --user-data-dir=${stray}`], // an unregistered matrix browser
       [230, 'chrome.exe --user-data-dir=C:\\Users\\fred\\Chrome\\Default'], // Fred's own Chrome
+      [240, 'bash -c "procs | grep brick-matrix-chrome-9711 # chrome"'], // a shell that mentions a matrix profile
     ]);
     expect(unregisteredMatrixChromes([RUN], list).map((u) => u.pid)).toEqual([220]);
   });
