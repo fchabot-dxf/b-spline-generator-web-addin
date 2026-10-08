@@ -25070,3 +25070,48 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   height-grey module; the bricks are photo patterns). Full suite (npm run test:full) 5989/5989. Known failures: none.
 - Shots: shots/seatD/agrey/grey_by_height_built.png (main vs built, 1366 / 390 / SVG, the real app both sides);
   the mock Fred picked from: grey_by_height_mock.png.
+### 2026-10-08 (seat D): matrix grout "Cut edge: no low band" (74n) -- a flaky bar, reframed as a share of the interior
+- The advisor's gate failed the 1 / 1.25 in rows alone (0.65 vs 0.82). MEASURED: plain main x2 PASS but band / interior
+  swing 0.91-1.12; with generate-first-tap merged x2: PASS, then FAIL at 1.25 in (0.60 vs 0.81). The row takes the
+  page's fresh start (random terrain / seed) and a basketweave lays different bricks along the 0.025 in band each run;
+  the mask-edge path does not read top-view.js / renderTopView (the row reads lastResult.heights).
+- The real defect (the edge copy off: BRICK_MASK_EDGE_RING_CELLS 0, 74n's mutation): share 0.11 / 0.17 / 0.21 (74n's own
+  0.05-0.12 vs 0.72-0.81). Healthy: 0.74-1.12 over 6 runs x 3 sizes. The old "within 0.15 below the interior" sat in the
+  scene's noise; DECLARED EDGE_BAND.minShareOfInterior 0.5 (the row prints the share). No scene pinning (advisor).
+- PROOF: as-is 3/3 pass (1.04 / 1.03 / 1.03); ring 0 3/3 FAIL (0.11 / 0.17 / 0.21). Matrix-only change: no vitest reads it.
+### 2026-10-08 (seat A): the first Generate tap is NOT a no-op (measured); orphaned updateTopView removed
+- Suspicion (today's probes): the first Generate tap after load "finished" in 31 - 50 ms every run.
+- MEASURED (seeded phone runs, 390 px, 4x CPU, 2 loads x 3 taps, polling every 5 ms: seed before/after, first loading
+  stage, rebuild start/end, idle): every tap changes the seed (first tap 52946 -> 61324 in both loads), runs the
+  'rebuild' stage and a real rebuild (first tap 600 - 680 ms), idle at 880 - 950 ms. Later taps: stage at 16 - 27 ms,
+  rebuild 450 - 900 ms. The 31 - 50 ms was the PROBE: its wait polled at 25 ms and quit before the first tap's stage
+  existed (that tap's rebuild then landed in the 2nd tap's measurement).
+- Real, small: on the FIRST tap the loading signal appears only at 95 - 98 ms (beginLoadingSequence('newSeed') only
+  records the sequence; nothing shows until the rebuild stage enters). Reported, not changed.
+- updateTopView: TerrainPreview.updateTopView had no caller in app, tests or tools; removing it orphaned
+  renderTopView / core/preview/top-view.js (its only user) -- all removed. The "canvas py=0 is the Back" comments now
+  name COORD_SYSTEM.rasterYToGridRow (core/coords.js), the convention's real holder. Affected tests 5 files 148/148.
+### 2026-10-08 (seat A): heavy-run guard -- declared lock list incl. DDCS Studio's gate (advisor ask)
+- tools/heavy-run-guard.mjs: GATE_LOCKS = [ours ~/.bspline-status/gate_running (ownerPasses: the gate's own run,
+  BSPLINE_GATE_LOCK_OWNER == the lock's first field, now a Windows pid), DDCS Studio's ~/.ddcs-status/gate_running
+  (ownerPasses false: always refuses, prints its line)]. A new project's lock is a new row. GATE_LOCK stays (= row 0).
+- heavyRunVerdict takes lockTexts (aligned with GATE_LOCKS); an owned lock no longer short-circuits past the others.
+- Live: refused with "DDCS Studio's gate ... is running (...: \"ddcs-studio-project-5f 07:37 full gate ... est. end
+  10:00\")", exit 3.
+- TESTS 11/11; fail 6 on main's guard; DDCS-owner-pass mutation fails 2. Full suite NOT run: DDCS's gate holds the PC
+  until ~10:00 (the advisor's gate will run it).
+### 2026-10-08 (seat D): touch targets app-wide -- the main sidebar + the editor's Frame / Photo tabs (pick 1)
+- MEASURED on main at 390 and 360 px, coarse pointer, every sidebar panel opened (a first pass left them collapsed and
+  measured only their headers): the panel pins 12 px (12 of them), checkbox rows 16-19 (Inset window, Isolate
+  skeleton), slider readout boxes 24 (symmetry / stamp offsets), the Edit Filter "Reset all" 20 and the per-slider
+  resets 22, Photo's file input 18. Frame tab: clean. Nothing off-screen, page width = viewport at both widths.
+- FIX: the SAME declaration (styles/editor.css --touch-target-min), no new rule: + .panel-pin, .filter-tweaks-reset,
+  .tweak-reset, input[type=file]; selects, text / number inputs and checkbox label rows now app-wide (were scoped to the
+  editor). Re-probed at 390 + 360: 0 under 28 px, nothing off-screen, page width = viewport.
+- TEST: matrix layout TOUCH_TARGETS now per viewport (390 + 360) x every sidebar tab (collapsed panels opened) + Brick /
+  Art / Frame / Photo-tool tab: smaller side >= 28 px AND on screen AND page width <= viewport. Layout group 80 rows 0
+  FAIL; on main's editor.css exactly the 14 new sidebar / Photo-source rows FAIL (both widths). A first proof run crashed
+  on a failure-shot file name with '/' ("Photo source / crop") -- the shot name is now sanitised (a red row must not
+  abort the group).
+- Full suite (npm run test:full, started at 11.7 GB free) 5976/5976. Known failures: none.
+- Shots: shots/seatD/atouch/touch_targets_sidebar_390.png (main vs built, real stylesheets both sides).

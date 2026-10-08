@@ -2014,8 +2014,9 @@
    at least --touch-target-min. MEASURED before (tools/repro/art_phone_audit.mjs, 390 px, coarse
    pointer): segmented buttons 21-24 px, Add layer 22, colour swatches 22, accent icons 20, the layer
    delete x 18 px beside the 24 px row toggles, stepper -/+ 22-24 px wide, selects / text inputs 24-26,
-   the 2D / 3D and relief toggles 27, checkbox label rows 24-26. The same (pointer: coarse) signal
-   SA-MOBILE-4 uses above; a mouse keeps today's sizes. !important: several of these set their own
+   the 2D / 3D and relief toggles 27, checkbox label rows 24-26; the main sidebar (seat D, same day, 390
+   and 360 px): the panel pins 12, checkbox rows 16-19, slider readouts 24, tweak resets 20-22,
+   Photo's file input 18. The same (pointer: coarse) signal SA-MOBILE-4 uses above; a mouse keeps today's sizes. !important: several of these set their own
    height / min-height inline (the floor must still hold). Not listed: range sliders (the thumb is the
    target) and the colour input hidden under its own toggle. */
 @media (pointer: coarse) {
@@ -2033,11 +2034,14 @@
     .view-mode-toggle button,
     #editorLayersPanel button,
     .editor-lattice-panel button,
-    #editorLayersPanel select,
-    #svgEditorModal select,
-    #svgEditorModal input[type="text"],
-    #svgEditorModal input[type="number"],
-    #svgEditorModal label:has(> input[type="checkbox"]) {
+    .panel-pin,
+    .filter-tweaks-reset,
+    .tweak-reset,
+    select,
+    input[type="text"],
+    input[type="number"],
+    input[type="file"],
+    label:has(input[type="checkbox"]) {
         min-height: var(--touch-target-min) !important;
     }
     .editor-fillmode-btn,
@@ -2050,6 +2054,9 @@
     .view-mode-toggle button,
     #editorLayersPanel button,
     .editor-lattice-panel button,
+    .panel-pin,
+    .filter-tweaks-reset,
+    .tweak-reset,
     #svgEditorHeader > div:last-child > button.cad-btn {
         min-width: var(--touch-target-min) !important;
     }
