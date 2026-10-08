@@ -105,3 +105,32 @@ describe('the six crossing cases, laid', () => {
     lines.forEach((pts, i) => expect(res[i].bricks).toEqual(bricksForStroke(pts, { ...S0 })));
   });
 });
+
+// pick 2 (seat E): a Continuous run covers its own pieces (it has no ribbon outline), so it runs through and stops by the
+// same rule as any stroke; the inset window's surround is laid into the frame's pieces, so it runs through like the frame
+describe('Continuous strokes and the window surround in the crossing rule', () => {
+  const CONT = { ...S0, profile: 'continuous' };
+  const two = (a, b) => [a, b];
+  const V2 = [{ x: 4, y: 1.2 }, { x: 4, y: 6.8 }], VT2 = [{ x: 4, y: 1.2 }, { x: 4, y: 4 }], H2 = [{ x: 0.5, y: 4 }, { x: 7.5, y: 4 }];
+  it.each([
+    ['a brick stroke across an EARLIER Continuous one', two({ points: H2, settings: CONT }, { points: V2, settings: { ...S0 } })],
+    ['a Continuous stroke across an earlier brick one', two({ points: H2, settings: { ...S0 } }, { points: V2, settings: CONT })],
+    ['a brick stroke ending on an earlier Continuous one', two({ points: H2, settings: CONT }, { points: VT2, settings: { ...S0 } })],
+    ['a Continuous stroke ending on an earlier brick one', two({ points: H2, settings: { ...S0 } }, { points: VT2, settings: CONT })],
+  ])('%s: the later is cut a joint off the earlier, no overlap', (_, strokes) => {
+    const res = strokeBricksWithCrossings(strokes, []);
+    for (const a of res[0].bricks) for (const b of res[1].bricks) expect(area(polygonIntersection(a.polygon, b.polygon))).toBeLessThan(1e-4);
+    const g = Math.min(...res[1].bricks.flatMap((b) => res[0].bricks.map((o) => gap(b.polygon, o.polygon))));
+    expect(g).toBeGreaterThan(0.9 * J);
+    expect(g).toBeLessThan(1.1 * J);
+  });
+  it('a stroke across the inset window surround ring is cut a joint off it, no overlap', async () => {
+    const { laySurround } = await import('../bspline-frame-builder/b-spline-gen/html/core/bricks/inset-surround.js');
+    const ring = laySurround({ rect: { x1: 2.5, y1: 3, x2: 4.5, y2: 6 }, preset: 'single_soldier', corner: 'mitre' }, { set: BRICK_SETS[0], seed: 1, scale: scaleFor(S0) }).bricks.map((b) => b.polygon);
+    const [res] = strokeBricksWithCrossings([{ points: [{ x: 1, y: 4.5 }, { x: 7, y: 4.5 }], settings: { ...S0 } }], ring);
+    for (const b of res.bricks) for (const f of ring) expect(area(polygonIntersection(b.polygon, f))).toBeLessThan(1e-4);
+    const g = Math.min(...res.bricks.flatMap((b) => ring.map((f) => gap(b.polygon, f))));
+    expect(g).toBeGreaterThan(0.9 * J);
+    expect(g).toBeLessThan(1.1 * J);
+  });
+});
