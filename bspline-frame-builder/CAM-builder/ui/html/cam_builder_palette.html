@@ -7,6 +7,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="../../../styles/base.css">
   <link rel="stylesheet" href="../../../styles/loading-stage.css"> <!-- item 70: the shared loading card -->
+  <link rel="stylesheet" href="../../../styles/fusion-memory.css"> <!-- the Fusion memory line, shared -->
   <style>
     body { margin: 0; padding: 0; height: 100vh; overflow: hidden; background: #fff; }
     .hidden { display: none !important; }
@@ -704,6 +705,8 @@
 
 <div id="loading-stage" class="loading-stage" hidden role="status" aria-live="polite"><span class="loading-stage-spinner"></span><span class="loading-stage-text"></span></div>
 <script type="module" src="./cam-loading.js"></script>
+<script type="module" src="../../../b-spline-gen/html/core/fusion-memory-line.js"></script>
+<div id="fusion-memory-line" class="fusion-memory-line" hidden role="status" aria-live="polite"></div>
 <script>
   /* ── Mode tabs (CAM1a) ──────────────────────────────────────────────────
      One shared shell, one dispatcher on the Python side. Each tab keeps its
@@ -1526,6 +1529,7 @@
 
         if (action === 'build_confirm') { if (window.camLoading) window.camLoading.end(); confirmBuild(payload.setups || []); return; }
         // item 70: the add-in's step reports (cam-stages.js ids), held on the card until the next one or the report
+        if (action === 'fusion_memory') { if (window.paintFusionMemory) window.paintFusionMemory(payload); return; } // detection only
         if (action === 'cam_stage') { if (window.camLoading && payload.id) window.camLoading.stage(payload.id, payload.grow); return; }
 
         // ── report: BOTH tabs' operations complete via this one event

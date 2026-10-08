@@ -24426,3 +24426,25 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   empty), so "touching" the ops before the first generation fixes the Pockets, not the Spirals.
 - One sample per variant = an observation, not a rule; no fix declared. The later passes (MAX_GENERATION_PASSES = 4)
   stay the answer. Next if wanted: B again (repeatability), then B + a Spiral-only pre-generation.
+
+### 2026-10-07 (seat A): a detection-only Fusion memory signal before each Send / BUILD (+ stale import refs dropped on close)
+- Pick 2's measurement (read-only, Fusion 65140): one Send+BUILD+APPLY doc closed by handle left +2.6 GB private (3.1 ->
+  5.74). Our 75 modules' globals hold only app/ui/CustomEvents; the only closed-doc objects were 3 invalid Occurrence
+  proxies in b-spline-gen.py's current_import_group / last_imported_occurrences (that module is spec-loaded, NOT in
+  sys.modules -- a sys.modules scan misses it; found via gc). Dropping them + gc.collect: 5.74 -> 5.75 GB, no effect.
+  The retention is inside Fusion; the advisor read today's sessions as additive (3.3 -> 9.0; 3.2 -> 5.8 -> 8.5).
+- fb_shared/fusion_memory.py, declared once: FUSION_RESTART_SOFT_GB = 12, FUSION_RESTART_HARD_GB = 24; private_gb()
+  (ctypes GetProcessMemoryInfo PrivateUsage of the add-in's own process = Fusion); memory_signal(gb) pure ->
+  {gb, level ok|soft|hard, text}; read_signal(log, where) logs "[MEMORY] <where>: Fusion private N GB (level)".
+- Read + posted ('fusion_memory') before each real Send (b-spline-gen _handle_generate, not previews) and each BUILD
+  (cam-builder _do_generate, before the engine loads; cam-builder's fb_shared loader generalised to _fb_shared(name)).
+  Nothing is blocked.
+- core/fusion-memory-line.js paintFusionMemory: one bar at the bottom of both palettes (styles/fusion-memory.css),
+  hidden when ok, amber soft, red hard, the add-in's own words. B-Spline palette: main.js; CAM palette: the shared module
+  through window.
+- Hygiene (advisor): b-spline-gen DocumentClosedHandler -> _drop_stale_import_refs (only live occurrences stay);
+  registered in run(), removed in stop().
+- Tests: fb_shared/test_fusion_memory.py 5 (edges 11.9/12/23.9/24, unknown -> no line, the log line, a real reading,
+  Send+BUILD wiring); tests/fusion-memory-line.test.js 5. With the wiring stashed: 1 + 2 fail.
+- Shots: shots/seatA/fusion_memory/fusion_memory_strip.png (both palettes, 13.4 GB amber / 26.1 GB red, painted
+  headless). Live Fusion check (the reading inside Fusion, the close handler) pending a slot.

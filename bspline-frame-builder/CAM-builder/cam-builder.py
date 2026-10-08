@@ -1155,8 +1155,9 @@ CAM_STAGES_FILE = os.path.join(_addin_dir, 'ui', 'html', 'cam-stages.js')
 _cam_stage_ids_cache = None
 
 
-def _palette_stages():
-    import os as _os, sys as _sys
+def _fb_shared(name):
+    """A module of the add-in root's fb_shared package (palette_stages, fusion_memory)."""
+    import os as _os, sys as _sys, importlib as _il
     _root = _addin_dir
     for _ in range(6):  # walk up to the dir holding fb_shared (= add-in root), as _build_info_payload does
         if _os.path.isdir(_os.path.join(_root, 'fb_shared')):
@@ -1164,8 +1165,11 @@ def _palette_stages():
         _root = _os.path.dirname(_root)
     if _root not in _sys.path:
         _sys.path.insert(0, _root)
-    from fb_shared import palette_stages
-    return palette_stages
+    return _il.import_module('fb_shared.' + name)
+
+
+def _palette_stages():
+    return _fb_shared('palette_stages')
 
 
 def _post_cam_stage(stage_id, grow=None):
@@ -1273,6 +1277,10 @@ def _do_generate(confirmed=False):
     Engine is reloaded on every generate so iterative edits to
     cam_engine.* pick up without an addin Stop/Start.
     """
+    try:  # detection only: Fusion's own memory, logged + one palette line above the declared threshold
+        _send_to_html('fusion_memory', _fb_shared('fusion_memory').read_signal(_log, 'BUILD'))
+    except Exception:
+        _log_error("fusion_memory\n" + traceback.format_exc())
     try:
         _load_engine()
     except Exception:

@@ -17,6 +17,7 @@
  * handshake (sync_board / import_ready / reset_ui) into applyParam.
  */
 import { initResizer, resizeApp, setupMobileViewportHandling } from '../core/ui-utils.js';
+import { paintFusionMemory } from '../core/fusion-memory-line.js';
 import { initMobilePreviewResizer } from './mobile-resizer.js';
 import { initSidebarLayout } from './sidebar-layout.js';
 import { initSidebarTabs } from './sidebar-tabs.js';
@@ -261,6 +262,12 @@ function handleFusionHandshake(ev) {
     if (action === 'edit_password') {
         let d = {}; try { d = JSON.parse(ev.detail.data || '{}'); } catch (e) {}
         receiveEditPasswordFromFusion(d.password || null);
+        return;
+    }
+
+    // the add-in's Fusion memory reading before each Send (fb_shared/fusion_memory.py): one line, detection only
+    if (action === 'fusion_memory') {
+        try { paintFusionMemory(JSON.parse(ev.detail.data || '{}')); } catch (e) { fusLog(`fusion_memory parse failed: ${e.message}`); }
         return;
     }
 
