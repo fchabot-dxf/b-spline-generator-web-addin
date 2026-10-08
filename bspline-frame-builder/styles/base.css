@@ -83,7 +83,14 @@ body {
      #resizer             the sidebar/preview drag handle — custom
                            pointer-drag resize (core/ui-utils.js).
    Everything else is native-pinch-zoomable again, per the comment's own
-   stated intent. No JS pinch handling added here — that's SE7m. */
+   stated intent. No JS pinch handling added here — that's SE7m.
+   2026-10-08 (Fred, "stop page zoom"): the page no longer pinch-zooms at all -- the root allows scrolling but no pinch
+   (the iOS half of the declaration; the viewport meta in bspline_gen_palette.html is the other half). The surfaces
+   below keep `none`: they pan/zoom themselves. */
+html {
+    touch-action: pan-x pan-y;
+}
+
 #previewCanvas,
 #editorSVGContainer,
 #resizer {

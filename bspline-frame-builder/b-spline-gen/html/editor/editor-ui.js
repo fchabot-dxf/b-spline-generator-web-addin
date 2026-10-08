@@ -99,50 +99,6 @@ document.addEventListener('editorSelectionChanged', (e) => {
   }
 });
 
-// ─── Expand onboarding callout (BUG-06) ────────────────────────────────
-//
-// Shows a one-time pointer at the Expand tool after the user finishes
-// drawing their first shape. Dismissal (either explicit via the "Got it"
-// button OR implicit when the user enters Expand mode) is persisted in
-// localStorage so it never re-appears for that browser profile.
-
-const EXPAND_CALLOUT_KEY = 'bspline.editor.expandCalloutDismissed';
-
-function _isExpandCalloutDismissed() {
-  try { return localStorage.getItem(EXPAND_CALLOUT_KEY) === '1'; }
-  catch (_) { return false; }
-}
-
-function _markExpandCalloutDismissed() {
-  try { localStorage.setItem(EXPAND_CALLOUT_KEY, '1'); } catch (_) {}
-}
-
-/** Hide the Expand-tool onboarding callout, optionally persisting the
- *  dismissal so it won't show again in future sessions. */
-function dismissExpandCallout({ persist = true } = {}) {
-  const el = document.getElementById('editorExpandCallout');
-  if (el) el.style.display = 'none';
-  if (persist) _markExpandCalloutDismissed();
-}
-
-/** Show the Expand-tool onboarding callout once, after the user finishes
- *  their first stroke. No-op if the user has dismissed it before, or if
- *  they're already in expand mode (where it would just be redundant). */
-export function maybeShowExpandCallout(editor) {
-  if (_isExpandCalloutDismissed()) return;
-  if (editor && editor._currentMode === 'expand') return;
-  const el = document.getElementById('editorExpandCallout');
-  if (!el) return;
-  el.style.display = 'block';
-  // Wire dismiss button once (idempotent — we re-look-up the button
-  // each call but only attach the listener the first time via a marker).
-  const btn = document.getElementById('editorExpandCalloutDismiss');
-  if (btn && !btn.dataset.wired) {
-    btn.dataset.wired = '1';
-    btn.addEventListener('click', () => dismissExpandCallout({ persist: true }));
-  }
-}
-
 /** Set the editor status-hint text. Called by setMode + anchor-mode helpers. */
 export function setEditorStatusHint(text) {
   const hint = document.getElementById('editorStatusHint');
@@ -243,11 +199,6 @@ export function setMode(editor, mode) {
     // Update the floating status hint at the bottom of the canvas so users
     // can see what the current tool does without hunting for tooltips.
     setEditorStatusHint(_modeHint(editor, mode));
-
-    // If the user just entered Expand mode, the Expand-discovery callout
-    // (BUG-06) has served its purpose — hide it and persist the dismissal
-    // so we don't shove it back at them next time they draw a shape.
-    if (mode === 'expand') dismissExpandCallout({ persist: true });
 }
 
 /**

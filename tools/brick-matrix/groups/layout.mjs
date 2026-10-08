@@ -84,11 +84,27 @@ export const TOUCH_TARGETS = {
   skip: 'input[type="range"], #editorColor, input[type="hidden"], input[type="color"]',
 };
 
+// ---- the page never pinch-zooms; only the drawing does (Fred 2026-10-08, "stop page zoom"; seat D). MEASURED on
+// 102eb01: a pinch that started off the drawing (on the old Expand tip) was the browser's -- the whole app page zoomed
+// x2.94. One row per piece of app chrome (page scale stays 1) plus the drawing itself (its view zooms, the page not).
+// Real CDP touch on a coarse-pointer phone. `editor`: the chrome lives in the open editor (else the editor is closed).
+export const PAGE_ZOOM = {
+  viewport: { name: 'phone 390x844', width: 390, height: 844 },
+  chrome: [{ name: 'sidebar', sel: '.cad-sidebar', editor: false }, { name: 'editor toolbar', sel: '#editorToolbarTop', editor: true },
+    { name: 'drawer', sel: '#editorMobileDrawer', editor: true }],
+  minZoom: 1.2, // the drawing's pinch spreads the fingers ~1:3: its view must zoom in at least this much
+};
+// ---- the Expand tip is gone (Fred 2026-10-08, "remove it completely"): it covered a third of the phone's drawing and ate
+// the gestures that started on it. After a first stroke no tip shows; a pinch where it sat (formerArea, px in
+// #editorCanvasContainer) zooms the drawing. legacyKey: its old "seen" flag, cleared so a pre-removal build would show it.
+export const NO_EXPAND_TIP = { text: 'Try EXPAND', ids: ['editorExpandCallout', 'editorExpandCalloutDismiss'],
+  legacyKey: 'bspline.editor.expandCalloutDismissed', formerArea: { left: 54, top: 60, width: 230, height: 98 } };
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runPageZoom(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -321,6 +337,66 @@ async function runTouchTargets() {
       await touchRow(vp, `Photo ${tab} / ${tool}`, opened, EDITOR_ROOT);
     }
   }
+  await send('Emulation.setEmulatedMedia', { features: [] });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
+}
+
+// ---------------------------------------------------------------- page zoom + the Expand tip (phone, touch)
+const touchPts = (pts) => pts.map(([x, y], id) => ({ x, y, id, radiusX: 4, radiusY: 4, force: 1 }));
+async function touchGesture(frames) {
+  await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touchPts(frames[0]) });
+  for (const f of frames.slice(1)) { await sleep(25); await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touchPts(f) }); }
+  await sleep(25); await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(600);
+}
+const pinchAt = (x, y, half) => Array.from({ length: 11 }, (_, k) => { const d = half * (0.33 + 0.067 * k); return [[x - d, y], [x + d, y]]; });
+const VIEW_STATE = `JSON.stringify({ page: visualViewport.scale, vbW: window.svgEditor?._draw?.viewbox().width ?? 0, sketch: window.svgEditor?._sketchLayer?.node.querySelectorAll('path,line,polyline,polygon').length ?? 0 })`;
+// a rect's on-screen part (the drawing: also above the drawer; `area`: also inside that box of the canvas container),
+// its centre, and whether that centre hits the element
+function AIM(sel, overDrawing, area) { return `(() => { const el = document.querySelector(${JSON.stringify(sel)}); if (!el) return JSON.stringify({ missing: true });
+  const r = el.getBoundingClientRect(), box = { l: r.left, t: r.top, r: r.right, b: r.bottom };
+  ${area ? `const c = document.getElementById('editorCanvasContainer').getBoundingClientRect(), A = ${JSON.stringify(area)};
+  Object.assign(box, { l: Math.max(box.l, c.left + A.left), t: Math.max(box.t, c.top + A.top), r: Math.min(box.r, c.left + A.left + A.width), b: Math.min(box.b, c.top + A.top + A.height) });` : ''}
+  const d = document.getElementById('editorMobileDrawer'); const dTop = ${overDrawing} && d && d.getClientRects().length ? d.getBoundingClientRect().top : innerHeight;
+  box.l = Math.max(box.l, 0); box.t = Math.max(box.t, 0); box.r = Math.min(box.r, innerWidth); box.b = Math.min(box.b, innerHeight, dTop);
+  const x = (box.l + box.r) / 2, y = (box.t + box.b) / 2, hit = document.elementFromPoint(x, y);
+  return JSON.stringify({ x, y, w: box.r - box.l, h: box.b - box.t, hits: !!hit && el.contains(hit), hit: hit ? hit.tagName + '#' + hit.id : 'none' }); })()`; }
+async function pinchRow(name, sel, { drawing = false, area = null } = {}) {
+  const P = PAGE_ZOOM, a0 = await jsJSON(AIM(sel, drawing, area));
+  if (a0.missing || a0.w < 60 || a0.h < 8) {
+    checkRow('layout', `Page zoom (${P.viewport.name}, touch): ${name}`, false, `${sel} ${a0.missing ? 'missing' : `not on screen (${Math.round(a0.w)} x ${Math.round(a0.h)} px)`}`);
+    return;
+  }
+  const a = await jsJSON(VIEW_STATE);
+  await touchGesture(pinchAt(a0.x, a0.y, Math.min(90, a0.w / 2 - 4)));
+  const b = await jsJSON(VIEW_STATE), zoom = b.vbW ? a.vbW / b.vbW : 1;
+  const ok = a0.hits && b.page === 1 && b.sketch === a.sketch && (!drawing || zoom >= P.minZoom);
+  checkRow('layout', `Page zoom (${P.viewport.name}, touch): ${name}`, ok,
+    `${a0.hits ? '' : `the pinch lands on ${a0.hit}, not ${sel}; `}page zoom x${(+b.page).toFixed(2)} (1 expected)${drawing ? `, drawing zoom x${zoom.toFixed(2)} (>= ${P.minZoom})` : ''}, strokes ${b.sketch - a.sketch}`);
+  if (!ok) await shot(`FAIL_pagezoom_${name.replace(/[^A-Za-z0-9]+/g, '_')}`);
+  await send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 }); // the next row starts from an unzoomed page either way
+}
+async function runPageZoom() {
+  const P = PAGE_ZOOM, T = NO_EXPAND_TIP, vp = P.viewport;
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'any-pointer', value: 'coarse' }] });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await send('Emulation.setDeviceMetricsOverride', { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: true });
+  await send('Page.reload', {}); await waitApp();
+  for (const c of P.chrome.filter((c) => !c.editor)) await pinchRow(`a pinch on the ${c.name} leaves the page unzoomed`, c.sel);
+  await openBrickTab(); // opens the editor
+  const armed = (await click('editorTabArtwork', 900)) === 'ok' && (await click('artTab_draw', 600)) === 'ok' && (await click('toolDraw', 600)) === 'ok';
+  for (const c of P.chrome.filter((c) => c.editor)) await pinchRow(`a pinch on the ${c.name} leaves the page unzoomed`, c.sel);
+  await js(`(async () => { try { localStorage.removeItem(${JSON.stringify(T.legacyKey)}); } catch (_) {} document.getElementById('toolFit')?.click(); await new Promise((r) => setTimeout(r, 300)); return 1; })()`);
+  await pinchRow('a pinch on the drawing zooms the drawing, not the page', '#editorSVGContainer', { drawing: true });
+  // the first stroke: no Expand tip shows
+  const c0 = await jsJSON(AIM('#editorSVGContainer', true, null)), s0 = await jsJSON(VIEW_STATE);
+  await touchGesture(Array.from({ length: 11 }, (_, k) => [[c0.x - 60 + 12 * k, c0.y]]));
+  const tip = await jsJSON(`JSON.stringify({ text: document.body.innerText.includes(${JSON.stringify(T.text)}), ids: ${JSON.stringify(T.ids)}.filter((id) => document.getElementById(id)) })`);
+  const s1 = await jsJSON(VIEW_STATE), drew = s1.sketch - s0.sketch;
+  const ok = armed && drew === 1 && !tip.text && tip.ids.length === 0;
+  checkRow('layout', `Expand tip removed (${vp.name}, touch): no tip after the first stroke`, ok,
+    `${armed ? '' : 'Draw tool not armed; '}strokes ${drew} (1 expected), "${T.text}" shown ${tip.text}, its elements ${tip.ids.join(', ') || 'none'}`);
+  if (!ok) await shot('FAIL_expand_tip_after_stroke');
+  await pinchRow('a pinch where the Expand tip sat zooms the drawing, not the page', '#editorSVGContainer', { drawing: true, area: T.formerArea });
   await send('Emulation.setEmulatedMedia', { features: [] });
   await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
 }
