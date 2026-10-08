@@ -33,7 +33,7 @@ import {
 } from '../core/photo/patterns.js';
 import { fileToDataUrl, downscalePhotoDataUrl } from '../core/photo/codec.js';
 import { ensurePhotoDecoded, getRawPhotoImage, isPhotoReady } from '../core/photo/state.js';
-import { withLoadingStage } from '../core/loading-signal.js';
+import { withLoadingStage, withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { computeMirrorDimRects } from '../core/photo/mirror-dim.js';
 import { registerTweaksTarget, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { applyParam } from './param-manager.js';
@@ -300,8 +300,13 @@ function loadImage(urlOrDataUrl, edits, tweaks, reliefIn = DEFAULT_PHOTO_RELIEF_
     drawPreview();
     notifyChange();
   }));
-  notifyChange();
-  photoStep(); // a new photo (a file or a pattern) is one step
+  // Seat D 2026-10-08 (matrix BLIND_BUDGET, 390 px, real touch, CPU x4): this commit (the step, and the brick panel's
+  // control-requires sync it triggers -- the corner facts, ~70 ms cold) ran in the tap before the 'photo' card could
+  // paint: 59-166 ms blind. It runs once the card is on screen now.
+  withLoadingStageShownFirst('photo', () => {
+    notifyChange();
+    photoStep(); // a new photo (a file or a pattern) is one step
+  });
 }
 
 /** Item 74a: a photo that came back from a SAVE (the session restore, a project load, a global undo) -- nothing else

@@ -6,6 +6,7 @@ import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { updateStampMasks, refreshAllStampMasks } from './stamp-mask-manager.js';
 import { AppState } from './app-state.js';
+import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 
 const immediateRebuildParams = [
   'widthIn', 'heightIn', 'spacing', 'seed', 'noiseType',
@@ -105,7 +106,9 @@ export function applyParam(key, value, { rebuild: wantRebuild = true } = {}) {
   }
 
   if (key === 'colourEdges') {
-    AppState.preview?.setColourEdges(value);
+    // Seat D 2026-10-08 (matrix BLIND_BUDGET, tools/brick-matrix/groups/blind.mjs: 390 px, real touch, CPU x4): the toggle re-meshes the 3D frame
+    // (setColourEdges -> refreshFrame, ~270 ms) -- 208-292 ms frozen with no card; the 'frame' stage is up first now
+    withLoadingStageShownFirst('frame', () => AppState.preview?.setColourEdges(value));
   }
 
   if (key === 'thickenEnabled') {

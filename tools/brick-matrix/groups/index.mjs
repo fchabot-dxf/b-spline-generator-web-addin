@@ -21,6 +21,7 @@ import * as persistence from './persistence.mjs';
 import * as grout from './grout.mjs';
 import * as handedit from './handedit.mjs';
 import * as strokes from './strokes.mjs';
+import * as blind from './blind.mjs';
 
 const MODULES = {
   wall: wall,
@@ -42,9 +43,12 @@ const MODULES = {
   grout: grout,
   handedit: handedit,
   strokes: strokes,
+  blind: blind,
 };
 
 export const GROUPS = Object.keys(MODULES);
+// a group whose rows are TIMINGS (its `sequential` flag, e.g. blind.mjs): --parallel runs it alone, after the others
+export const SEQUENTIAL_GROUPS = GROUPS.filter((g) => MODULES[g].sequential);
 // every declared row, group by group (the row order inside a group is the order its rows run in)
 export const BRICK_CONTROLS = GROUPS.flatMap((g) => MODULES[g].rows || []);
 // a row's group is the file it lives in; an explicit `group` on a row (a Wall-tool row that needs the frame group's

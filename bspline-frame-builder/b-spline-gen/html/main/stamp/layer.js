@@ -24,6 +24,7 @@
  */
 import { updateP } from '../../core/state.js';
 import { addLayer, setActiveLayer } from '../../editor/layers.js';
+import { withLoadingStageShownFirst } from '../../core/loading-signal.js';
 
 export function initLayer(ctx) {
   const fileNameSpan = document.getElementById('stampFileName');
@@ -89,8 +90,12 @@ export function initLayer(ctx) {
     addBtn.addEventListener('click', () => {
       const editor = (typeof window !== 'undefined') ? window.svgEditor : null;
       if (!editor) return;
-      const layer = addLayer(editor);
-      setActiveLayer(editor, layer.id);
+      // Seat D 2026-10-08 (matrix BLIND_BUDGET, tools/brick-matrix/groups/blind.mjs: 390 px, real touch, CPU x4): the add (layer panel,
+      // session save, change pipeline) ran 59-81 ms before the remask's card; its 'carving relief' card is up first now
+      withLoadingStageShownFirst('heightMask', () => {
+        const layer = addLayer(editor);
+        setActiveLayer(editor, layer.id);
+      });
     });
   }
 
