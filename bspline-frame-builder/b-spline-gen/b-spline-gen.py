@@ -468,6 +468,16 @@ def _is_surface_body_name(bn):
     return False
 
 
+def _send_timed(step, fn, *args, **kwargs):
+    """One Send step, run and logged as '[SEND TIMING] <step>: N s' (2026-10-07: a Send took ~90 s and only some
+    steps logged their own times -- the declared per-step timing makes every Send its own measurement)."""
+    t0 = time.time()
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        _log(f'[SEND TIMING] {step}: {time.time() - t0:.1f} s')
+
+
 def _post_fusion_memory(where):
     """Detection only: Fusion's own memory (fb_shared.fusion_memory), logged + one palette line above the declared
     threshold. Never raises, never blocks a Send."""
@@ -1844,7 +1854,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             from fb_engine.template_resolver import resolve_template
             from fb_utils.fb_logger import DebugLogger
             design = _active_design()
-            result = fb_send.send_frame(
+            result = _send_timed('frame', fb_send.send_frame,
                 design, payload, lambda: _find_bspline_core_body(design), DebugLogger(_frame_builder_dir()),
                 resolve_template=resolve_template,
                 build_sketch=frame_engine.build_sketch_logic_v3,
@@ -1988,7 +1998,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     _send_stage('fusionImportStep', is_preview)
                     _send_progress(f"Importing {v_name}...")
                     try:
-                        ok = import_mgr.importToTarget(step_options, import_target_comp)
+                        ok = _send_timed(f'STEP import {v_name}', import_mgr.importToTarget, step_options, import_target_comp)
                         if not ok:
                             raise RuntimeError('importToTarget returned False')
 
@@ -2076,7 +2086,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 _send_stage('fusionImportStep', is_preview)
                 _send_progress("Importing to Fusion...")
                 try:
-                    ok = import_mgr.importToTarget(step_options, import_target_comp)
+                    ok = _send_timed('STEP import (single)', import_mgr.importToTarget, step_options, import_target_comp)
                     if not ok:
                         raise RuntimeError('importToTarget returned False')
 
@@ -2239,7 +2249,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                         'root': current_import_group.component if _in_active_design(des, current_import_group) else root_comp,
                     }
                     _send_progress('Projecting SVG Artwork...')
-                    self._import_all_svg_layers(sketch_targets, body_target, stamp_data, orientation, params, des)
+                    _send_timed('SVG art layers', self._import_all_svg_layers, sketch_targets, body_target, stamp_data, orientation, params, des)
                 except Exception as e:
                     _log(f'SVG Stamp Import/Project failed: {e}')
 
@@ -2249,7 +2259,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             # enabled flag. Send only (never a live preview): a decal costs ~1s+ (item 68's own
             # measurement), not worth paying on every preview rebuild.
             if not is_preview:
-                _apply_colour_decal(current_import_group, stamp_data, params)
+                _send_timed('colour decal', _apply_colour_decal, current_import_group, stamp_data, params)
 
             # ── Bricks sketch (F35 item 11) ──────────────────────────────────────
             # SAME independence from stamp_data.enabled as the decal above, for the SAME reason --
@@ -2258,7 +2268,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             # a completely separate concern from "does this Send carry exportable art-layer SVG".
             if not is_preview:
                 _send_stage('fusionBricks')
-                self._apply_bricks_sketch(current_import_group, stamp_data, params, orientation)
+                _send_timed('Bricks sketch', self._apply_bricks_sketch, current_import_group, stamp_data, params, orientation)
 
             # ── Finalise ─────────────────────────────────────────────────────────
             _send_stage('fusionCleanup', is_preview)
