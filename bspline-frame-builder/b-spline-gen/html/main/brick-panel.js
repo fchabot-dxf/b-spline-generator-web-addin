@@ -1257,7 +1257,7 @@ let _relayQueued = null; // the queued lay's options
 function _relayStaged(opts = {}) {
   if (_relayQueued) { _relayQueued = { amend: _relayQueued.amend || opts.amend || null }; return; }
   _relayQueued = { amend: opts.amend || null };
-  withLoadingStageShownFirst('bricks', () => { const o = _relayQueued; _relayQueued = null; generateBricks(o); });
+  withLoadingStageShownFirst('bricks', () => { const o = _relayQueued; _relayQueued = null; generateBricks(o); flushControlRequires(); });
 }
 function _relayOnRelease() { _relayStaged(); }
 const BRICK_COMMIT = {
@@ -1406,6 +1406,20 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease', str
   const relayCommits = strokesMoved > 0 && _kindsToLay(editor, resolveFrameGeom(editor)).length > 0;
   (BRICK_COMMIT[commit] || BRICK_COMMIT.generate)[phase]();
   if (strokesMoved && !relayCommits) commitEdit(editor);
+  // Seat D 2026-10-08 (phone profile, CPU x4): this sync's corner facts run a full contour-band pass (~55 ms cold);
+  // inline, it held the staged lay's card back -- the first Generate froze 81-101 ms with no card. With a lay staged
+  // it now runs inside that lay's stage (after the lay, before the card clears); a press before then flushes it first
+  // (flushControlRequires), so no tap lands on a control that should already be greyed.
+  if (_relayQueued) _requiresPending = true; else syncControlRequires();
+}
+
+/** A requires sync deferred into the staged lay (commitBrickSetting): run it now if still pending. Called by the
+ *  staged lay and, capture-phase, by any press or key on the page -- a press comes before its click, so a control
+ *  that should be greyed is disabled before it could take one. */
+let _requiresPending = false, _requiresFlushBound = false;
+export function flushControlRequires() {
+  if (!_requiresPending) return;
+  _requiresPending = false;
   syncControlRequires();
 }
 
@@ -1434,6 +1448,7 @@ function syncControlRequiresSoon() {
 /** Audit (88's matrix): grey out every control whose declared requirement is unmet
  *  (main/brick-control-requires.js) -- disabled, with the reason as its tooltip. */
 function syncControlRequires() {
+  _requiresPending = false; // this sync covers a deferred one (a lay's own sync, after it: the staged flush is then a no-op)
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   // item 63: a frame contour to lay bands along (none only for an outline that can't carry one); unknown without an editor
   const ctx = { engineOptions: ENGINE_OPTIONS, facts: { bricksLaid: _bricksLaid(), ...(editor ? { frameContour: !!frameBandContour(editor), ...cornerFacts(editor), ...fanFacts(editor) } : {}) } };
@@ -3058,6 +3073,10 @@ export function initBrickPanel() {
   });
   document.getElementById('brickBtnRandomSeed')?.addEventListener('click', () => setSeed(newBrickSeed()));
   document.getElementById('brickGenerate')?.addEventListener('click', () => generateNow()); // item 39: a new seed, every element
+  if (!_requiresFlushBound) { // once per page (a document listener per init re-ran every handler)
+    _requiresFlushBound = true;
+    for (const type of ['pointerdown', 'keydown']) document.addEventListener(type, flushControlRequires, true); // commitBrickSetting's deferred sync
+  }
   onPageEvent('editorCommit', 'editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); syncWallAreaHint(); });
   onPageEvent('controlRequires', 'bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
   onPageEvent('controlRequiresFrame', 'frameRecordChanged', () => syncControlRequiresSoon()); // item 74b: a new outline, new corner facts

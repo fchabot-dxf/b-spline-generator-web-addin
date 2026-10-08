@@ -15,7 +15,8 @@ import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js', async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, runBricks: vi.fn(), runBricksPreview: vi.fn(), runBricksOutlinePreview: vi.fn(), buildRibbonPrimitives: vi.fn(() => []) };
+  return { ...actual, runBricks: vi.fn(), runBricksPreview: vi.fn(), runBricksOutlinePreview: vi.fn(), buildRibbonPrimitives: vi.fn(() => []),
+    frameCornerEffectFor: vi.fn(actual.frameCornerEffectFor) }; // the real one; a test can say a corner style changes nothing
 });
 // A usable frame for the Frame tool (resolveFrameGeom needs a frame context + a valid silhouette).
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/toast.js', () => ({ showToast: vi.fn() }));
@@ -42,7 +43,7 @@ import {
   initBrickPanel, setWallPattern, setFrameBandPreset, selectSet, setBrickSize, setInvert, setSeed, generateBricks,
   setBrickTopMode, setSurfaceStyle, setStripeStyle, setRaisedMode,
 } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
-import { runBricks, runBricksPreview, buildRibbonPrimitives, elementSetId } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { runBricks, runBricksPreview, buildRibbonPrimitives, elementSetId, frameCornerEffectFor } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { frameContext } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
@@ -89,6 +90,7 @@ const FIXTURE = `
   <input id="brickSuppressionSlider" type="range"><input id="brickSuppression">
   <input id="brickClumpingSlider" type="range"><input id="brickClumping">
   <input id="brickSeed"><button id="brickBtnRandomSeed"></button>
+  <div id="brickFrameCornerList"></div>
 `;
 
 const $ = (id) => document.getElementById(id);
@@ -1190,3 +1192,47 @@ describe('item 67: the panel wires its page (document) listeners once per page',
     add.mockRestore();
   });
 });
+
+/** Seat D 2026-10-08 (phone profile, CPU x4): Generate's control-requires sync (the corner facts: a full contour-band pass,
+ *  ~55 ms cold) ran in the tap handler, before the staged lay's card could paint -- the first Generate froze 81-101 ms with
+ *  no card. It now runs inside the lay's stage, before the card clears; a press in the gap flushes it first (advisor's
+ *  condition: no tap may land on a control that should already be greyed). */
+describe('Generate: the control-requires sync runs under the bricks card, never behind a stale tap', async () => {
+  const { setPaintScheduler, currentLoadingStage, resetLoadingSignal } = await import('../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js');
+  let frames;
+  const butt = () => $('brickFrameCorner_butt');
+  beforeEach(() => {
+    setup('frame');
+    root.insertAdjacentHTML('beforeend', '<div id="loading-stage" hidden><span class="loading-stage-text"></span></div>');
+    frames = [];
+    vi.stubGlobal('requestAnimationFrame', (cb) => { frames.push(cb); return frames.length; });
+    setPaintScheduler(null); // the real two-frame paint (the suite's is immediate)
+    resetLoadingSignal();
+    frameCornerEffectFor.mockReturnValue({ butt: false, block: true, lapped: true }); // a butt corner changes nothing here
+  });
+  afterEach(() => { setPaintScheduler((cb) => cb()); resetLoadingSignal(); frameCornerEffectFor.mockReset(); });
+
+  it('the corner rule greys its control only after the card is up, and while it is still up', () => {
+    expect(butt()).not.toBeNull();
+    expect(butt().disabled).toBe(false);
+    $('brickGenerate').click();
+    expect(currentLoadingStage()?.id).toBe('bricks');
+    expect(butt().disabled).toBe(false); // not in the tap: the card paints first
+    while (frames.length) frames.shift()();
+    expect(butt().disabled).toBe(true); // greyed by the staged lay ...
+    expect(currentLoadingStage()).not.toBeNull(); // ... while its card is still on screen (Generate's sequence keeps it up)
+  });
+
+  it('a press in the gap greys the control before its click: the stale tap does nothing', () => {
+    const before = JSON.stringify(P.brickSettings);
+    $('brickGenerate').click();
+    expect(butt().disabled).toBe(false); // still the old state, the lay not run yet
+    butt().dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(butt().disabled).toBe(true); // the press flushed the deferred sync first
+    butt().click(); // a disabled button gets no click
+    expect(JSON.stringify(P.brickSettings)).toBe(before.replace(/"seed":[^,}]+/, `"seed":${JSON.stringify(P.brickSettings.seed)}`)); // only Generate's new seed
+    while (frames.length) frames.shift()();
+    expect(butt().disabled).toBe(true);
+  });
+});
+
