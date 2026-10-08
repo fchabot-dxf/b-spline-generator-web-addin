@@ -24761,3 +24761,22 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   declaration of PATCH_MAX_FACE); the coverage matrix reads it, 79/79, its reference-scan equality pins unchanged.
 - Full suite (npm run test:full, after merging main with seat A's narrowestGapCached): 5956/5956. Known failures: none.
 - Shots: shots/seatD/a16c/t11_hole_main.png (before; red = bare) | t11_after_fix.png.
+
+### Pick 2: a stone ring's band clip / medial yield read the ring's own floor (seat E / 61, 2026-10-08)
+- MEASURED first (A/B: every template 7x9, White rocks + Grey stone rings, single soldier, 0.75 / 1 / 1.25 / 2 / 3 in;
+  contour-bands.js as on main vs with the stack's own floor): 32 of 190 lays change, +76.6 sq in of stone in all, no lay
+  loses any. Mostly 2-3 in (26 of 32); at 0.75-1.25 in six lays gain one stone each (T5 / T11, +0.11 - 0.25 sq in).
+  Worst: T5 White rocks at 3 in, 13 -> 17 stones, +7.1 sq in -- on main whole sides of the ring were missing.
+  Shots: shots/seatE/stones/ring_T5_rocks_3in.png, ring_T19_grey_3in.png, ring_T11_rocks_1p25in.png (main left).
+- CAUSE: clipBandPiecesToBoard and yieldAtMedialLine dropped pieces under a QUARTER BRICK; a stone ring's "brick" is
+  the stone spacing (3 in -> 2.25 sq in floor, stones of 1.5 - 2.3 sq in dropped). FIX (declared, piece-floor.js as
+  item stone-crossings): bricksContourBands computes the stack's floor once, minPieceAreaOf(set, setBandPattern(set,
+  closed) || LAID_BY_COURSES), and passes it to both steps. Brick sets and open strokes read the one-brick floor as
+  before (byte-identical). The yield's own hole guard (MEDIAL_HOLE_SQIN) is unchanged.
+- NOT this floor, found on the way: T11 White rocks at 3 in still leaves ~0.9 sq in bare. Traced: the fit rule narrows
+  the band to 0.75 in, the yield and the clip drop nothing (13 laid, 13 kept); the fieldstone ring layout seeds no stone
+  on the top-right diagonal. A ring-layout question (3 in stones in a 0.75 in ring), not the floor; reported, not fixed.
+- TESTS: tests/bricks-stone-ring-floor.test.js 4 (T5 / T10 White rocks, T19 / T18 Grey stone, 3 in: ring bare <= 0.5 sq
+  in -- the ring's own corner wedges, measured 0 - 0.33 -- and no overlap). Fails 4/4 on main's contour-bands.js (8.3 /
+  4.4 / 5.9 / 3.9 sq in bare). Band / stone / engine suites (82 files): 1126/1126. Matrix strokes group alone: 19 rows, 0 FAIL.
+- Merged origin/main (3f3800d, D's tip-fill-fans) first; my contour-bands change re-applied cleanly. fillTips untouched.
