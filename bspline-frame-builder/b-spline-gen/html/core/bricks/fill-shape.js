@@ -25,9 +25,10 @@ import { squareGridLayout, octagonDotLayout, hexagonLayout, lozengeLayout, frame
 import { assignPieces } from './pieces.js';
 import { computeSuppressedCells } from './suppression.js';
 import { assignSamples } from './samples.js';
-import { pointInPolygon, polygonIntersection, polygonDifference, polygonCentroid, signedArea, offsetPathInward, inwardSignFor } from './geometry.js';
-import { PIECE_CATALOGUE, enabledPieces, scaledSet, MIN_PIECE_FRACTION, BRICK_PATTERNS, RUSTIC } from './library.js';
+import { pointInPolygon, polygonIntersection, polygonDifference, polygonCentroid, signedArea, offsetPathInward, inwardSignFor, clipToHalfPlane } from './geometry.js';
+import { PIECE_CATALOGUE, enabledPieces, scaledSet, BRICK_PATTERNS, RUSTIC } from './library.js';
 import { WALL_REGION_PICK } from './region.js';
+import { minPieceAreaOf } from './piece-floor.js';
 import { hashedRandom } from './rng.js';
 
 // F35 item 7: herringbone/basketweave are 'tile2d' BRICK_PATTERNS (library.js) promoted to full
@@ -75,8 +76,8 @@ const LAYOUTS = Object.freeze({
  * editor-brick-tool.js's brushExclusions) grown by one grout width is a HOLE in the wall fill. Each cell is cut by
  * every exclusion it overlaps (geometry.js polygonDifference); a cut that leaves several pieces makes several
  * cells (fresh ids, no neighbours: pieces.js then treats each as a lone 'single'); pieces under
- * library.js MIN_PIECE_FRACTION of a brick (brickLengthIn x brickHeightIn) drop; a cell with an exclusion wholly inside it is covered by the
- * stroke and drops. Neighbour links to a cut cell are cleared so no piece chain reaches a cell that is gone.
+ * the layout's own floor (piece-floor.js minPieceAreaOf) drop; a cell with an exclusion wholly inside it is split round it
+ * by a joint-wide seam (splitRound). Neighbour links to a cut cell are cleared so no piece chain reaches a cell that is gone.
  */
 const bboxOf = (poly) => {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -87,10 +88,10 @@ const boxesOverlap = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0
 
 /** Shared by the exclusion cut (item 13) and the region clip (item 18): `cut(polygon)` returns null (the cell stays
  *  as laid) or the pieces left of it ([] = gone). A cut cell becomes one cell per piece (fresh ids, no neighbours:
- *  pieces.js then treats each as a lone 'single'); a piece under library.js MIN_PIECE_FRACTION of a brick drops;
+ *  pieces.js then treats each as a lone 'single'); a piece under the layout's own floor (piece-floor.js) drops;
  *  neighbour links to a cut cell are cleared so no piece chain reaches a cell that is gone. */
 function recutCells(cells, set, cut) {
-  const minArea = MIN_PIECE_FRACTION * set.brickLengthIn * set.brickHeightIn;
+  const minArea = minPieceAreaOf(set); // the layout's own floor (piece-floor.js: a fieldstone wall's is its smallest stone's)
   let nextId = cells.reduce((m, c) => Math.max(m, typeof c.id === 'number' ? c.id : 0), 0) + 1;
   const out = [];
   const gone = new Set();
@@ -129,16 +130,26 @@ function exclusionHoles(exclusions, set) {
 const touchesDrop = (polygon, box, drops) =>
   drops.some((h) => boxesOverlap(box, h.box) && Math.abs(signedArea(polygonIntersection(polygon, h.polygon))) > DROP_TOUCH_SQIN);
 
-/** The cut holes taken out of one polygon: its pieces, [] when a hole lies wholly inside it, [polygon] untouched. */
-function cutPieces(polygon, box, cuts) {
+/** A hole wholly inside a piece (a simple polygon cannot hold it): the piece is split by a joint-wide seam along the
+ *  hole's long axis, then each half is cut round the hole -- the piece wraps the hole and the seam reads as a joint.
+ *  MEASURED (seat E, 2026-10-08): the rule had been "drop the piece, the stroke covers it", true for a bond brick but not
+ *  for a fieldstone stone, which wholly holds a stroke brick -- the whole stone went (a stone-sized hole by the stroke). */
+function splitRound(piece, hole, joint) {
+  let best = null;
+  hole.forEach((a, i) => { const b = hole[(i + 1) % hole.length], l = Math.hypot(b.x - a.x, b.y - a.y); if (!best || l > best.l) best = { l, d: { x: (b.x - a.x) / l, y: (b.y - a.y) / l } }; });
+  const c = polygonCentroid(hole), n = { x: -best.d.y, y: best.d.x }, half = joint / 2;
+  const sideOf = (sgn) => clipToHalfPlane(piece, { point: { x: c.x + n.x * half * sgn, y: c.y + n.y * half * sgn }, dirX: best.d.x, dirY: best.d.y }, { x: c.x + n.x * sgn, y: c.y + n.y * sgn });
+  return [sideOf(1), sideOf(-1)].filter((q) => q.length >= 3).flatMap((q) => { const left = polygonDifference(q, hole); return left.holeIgnored ? [] : left; });
+}
+/** The cut holes taken out of one polygon: its pieces, or [polygon] untouched. */
+function cutPieces(polygon, box, cuts, joint) {
   let pieces = [polygon];
   for (const h of cuts) {
     if (!boxesOverlap(box, h.box)) continue;
     const next = [];
     for (const piece of pieces) {
       const cut = polygonDifference(piece, h.polygon);
-      if (cut.holeIgnored) return []; // a stroke wholly inside the brick: the stroke covers it
-      next.push(...cut);
+      next.push(...(cut.holeIgnored ? splitRound(piece, h.polygon, joint) : cut));
     }
     pieces = next;
   }
@@ -151,7 +162,7 @@ function cutExclusions(cells, exclusions, set) {
   return recutCells(cells, set, (polygon) => {
     const box = bboxOf(polygon);
     if (touchesDrop(polygon, box, drops)) return [];
-    const pieces = cutPieces(polygon, box, cuts);
+    const pieces = cutPieces(polygon, box, cuts, set.grout.widthIn);
     return pieces.length === 1 && pieces[0] === polygon ? null : pieces;
   });
 }
@@ -167,7 +178,7 @@ export function bricksClearOf(bricks, exclusions, set) {
   return bricks.flatMap((b) => {
     const box = bboxOf(b.polygon);
     if (touchesDrop(b.polygon, box, drops)) return [];
-    const pieces = cutPieces(b.polygon, box, cuts);
+    const pieces = cutPieces(b.polygon, box, cuts, set.grout.widthIn);
     return pieces.length === 1 && pieces[0] === b.polygon ? [b] : pieces.map((polygon, k) => ({ ...b, id: `${b.id}~${k}`, polygon }));
   });
 }

@@ -507,6 +507,15 @@ function powerCell(point, allPoints, boxPoly, pointShrink) {
  *   its outer and inner edges). See fencePoints: mirrored phantom seeds.
  * @returns {{cells: Array}} cells[i] = { id, polygon, courseIndex, cx, cy, neighbors:{} }
  */
+/** Each size tier's seed spacing for a (scaled) set: its fraction of the main spacing, floored at GROUT_CLEARANCE_FACTOR
+ *  joints. Read by the layout and by fieldstoneMinPieceArea (the floor a cut may leave: piece-floor.js). */
+export function fieldstoneTierSpacings(set) {
+  const grout = set.grout?.widthIn ?? 0;
+  return SIZE_TIERS.map((tier) => Math.max(set.brickLengthIn * tier.fraction, GROUT_CLEARANCE_FACTOR * grout));
+}
+/** The smallest piece this layout lays: MIN_PIECE_FLOOR_FRACTION of its smallest tier's grout-free stone. */
+export const fieldstoneMinPieceArea = (set) => MIN_PIECE_FLOOR_FRACTION * Math.min(...fieldstoneTierSpacings(set)) ** 2;
+
 export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones, fences) {
   const spacing = set.brickLengthIn;
   const shrink = (set.grout?.widthIn ?? 0) / 2;
@@ -514,8 +523,8 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones, f
   const seedBase = seed ?? 0;
   const gateShares = gateAreaSharesFor(largeStones);
 
-  const tierSpacings = SIZE_TIERS.map((tier) => Math.max(spacing * tier.fraction, GROUT_CLEARANCE_FACTOR * grout));
-  const maxSpacing = Math.max(...tierSpacings), minSpacing = Math.min(...tierSpacings);
+  const tierSpacings = fieldstoneTierSpacings(set);
+  const maxSpacing = Math.max(...tierSpacings);
   // T86 item 6 (MEASURED: with the main set's own FULL grout shrink applied uniformly, a quarter-
   // scale small stone loses ~38% of its own area to that one fixed-width joint, vs ~9% for a
   // full-size one -- disabling shrink entirely confirmed generation itself already reaches ~99%
@@ -551,7 +560,7 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones, f
     { x: minX - margin, y: minY - margin }, { x: maxX + margin, y: minY - margin },
     { x: maxX + margin, y: maxY + margin }, { x: minX - margin, y: maxY + margin },
   ];
-  const minPieceArea = MIN_PIECE_FLOOR_FRACTION * minSpacing ** 2;
+  const minPieceArea = fieldstoneMinPieceArea(set);
   const phantoms = fencePoints(fences, points, maxSpacing * FENCE_REACH_FACTOR, boardOutline);
   // only over SIMPLE fences: a band deeper than a neck pinches its inner edge to zero width (MEASURED T18 / T19, a 1 in
   // ring at 0.75 in stones), and cutting that hole out made one stone run through the pinch over its neighbours

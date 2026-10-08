@@ -24596,3 +24596,34 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - FLAKE 2 (brick-matrix-ports "expected 10, got 0"): dropStaleProfiles read the live Chrome list, a PowerShell call that
   timed out under the gate's load (20 s) -- an unknown list removes nothing, by design. The list is now a parameter (default
   the live one); the test passes its own empty set (it ran 20 s, now 0.2 s).
+
+### Stones: grout cuts + brush crossings on a fieldstone wall and a Grey stone ring (seat E / 61, 2026-10-08)
+- MEASURED first, live (template_1, Grey stone ring, fieldstone wall, 1.25 in): no overlap anywhere, but holes at every
+  junction -- brush X 0.389 sq in bare (widest 8.8 joints), T 0.206, grout cut across the wall 0.285, a stroke into the
+  ring 0.502, a grout cut across the ring 0.746 (11 joints); plain stretches 0. Shots: shots/seatE/stones/before/.
+- CAUSE 1, the floor: the wall's exclusion cut (fill-shape.js recutCells) and the grout cut (applyGroutCuts) dropped
+  every fragment under library.js MIN_PIECE_FRACTION x ONE BRICK. A fieldstone "brick" is the stone spacing (White rocks
+  1.1 in -> 1.83 x 1.83 at 1.25 in): a 0.84 sq in floor, 16 x the layout's own (its smallest size tier). DECLARED:
+  piece-floor.js PIECE_FLOOR_BY_LAYOUT { fieldstone: fieldstoneMinPieceArea } (fieldstone.js, sharing
+  fieldstoneTierSpacings with the layout itself, so the two cannot drift); any other layout keeps the one-brick floor.
+- CAUSE 2, the drop: a stroke brick wholly inside a stone (polygonDifference holeIgnored) dropped the whole stone ("the
+  stroke covers it" -- true of a bond brick, not of a 1.8 in stone). Now splitRound: a joint-wide seam along the hole's
+  long axis, each half cut round the hole; the seam reads as a joint.
+- CAUSE 3, the ring: the floor must follow the layout that LAID the pieces, not the set's own. Grey stone is
+  coursed_rubble but its frame bands lay fieldstone (bandLayout) -- the engine's frame / surround cut now passes
+  frameLaidBy(set, setBandPattern) (fieldstone, else LAID_BY_COURSES = one brick). The app's brush-stroke cut passes
+  LAID_BY_COURSES explicitly: a stroke lays courses whatever its set, so its floor is unchanged (it would otherwise have
+  moved to fieldstone's for a White rocks stroke).
+- AFTER, live: X 0.036 (widest 2.9 J), T 0.009, grout cut across the wall 0.006, stroke into the ring 0.0004, grout cut
+  across the ring 0.008; 0 overlaps. Shots: shots/seatE/stones/probe_*.png (+ x_zoom_before/after.png). The fresh-start
+  seed varies the lay per load: an earlier after-run read X 0.002. What is left is a corner sliver under the stone floor
+  (0.052 sq in at 1.25 in), up to ~3 joints wide at an X -- the layout's own floor, not chased further.
+- TESTS: tests/bricks-stone-cuts.test.js 5 -- fails 3/5 on the pre-fix code (bare 1.68 round a stroke, 2.07 along a cut,
+  +0.405 over the plain ring lay; the declaration rows need piece-floor.js, absent before). Affected suites (100 files that
+  import the cut / fill / engine modules): 1649/1649. Matrix: strokes group gains 5 "Stones:" rows (STONE_CUTS: overlaps 0
+  and junction bare <= plain + 0.1 sq in, two slivers; before, every case was 0.21 - 0.75); strokes group alone: 19 rows,
+  0 FAIL (Stones 0.012 / 0 / 0.030 / 0.024 / 0.004). The rows restore the template,
+  set ids and band patterns they changed.
+- NOT changed, noted: contour-bands.js (lines ~244 and ~510) still floors band pieces at one brick when it clips / yields
+  a stone ring's pieces; not measured as a hole here, left alone. One slip: the first 40-file run went while the gate lock
+  was present (not the full suite).

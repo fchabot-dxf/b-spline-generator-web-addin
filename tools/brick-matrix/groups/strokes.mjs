@@ -13,7 +13,7 @@ export const STROKE_CLEAR = {
 // ---- the runner. Its page / CDP helpers are run.mjs's own, bound once by groups/index.mjs bindGroups(ctx).
 let js, jsJSON, exists, editorOpen, apply, checkRow, openEditorTab, sleep;
 export function bind(ctx) { ({ js, jsJSON, exists, editorOpen, apply, checkRow, openEditorTab, sleep } = ctx); }
-export async function run() { await runStrokesClear(); await runWallAroundCrossings(); await runBrushCrossings(); }
+export async function run() { await runStrokesClear(); await runWallAroundCrossings(); await runBrushCrossings(); await runStoneCuts(); }
 
 // Load-proofing (seat D, 2026-10-07: the gate's parallel run got "DevTools Runtime.evaluate got no reply in 60s" here,
 // 0 rows; alone the old ONE evaluate took 8.9 s -- 6.5 s of fixed in-page sleeps around a Generate and a stroke, 1.9 s
@@ -197,4 +197,76 @@ async function runWallAroundCrossings() {
       `${r.wall} wall / ${r.brush} stroke pieces, wall x stroke overlaps ${r.overlaps}, bare at the junction ${r.junctionBare} sq in vs a plain stretch ${r.plainBare}`);
   }
   await js(CLEAR_STROKES);
+}
+
+// ---- Stones (advisor, 2026-10-08: "stones are the weak spot"): a fieldstone wall inside a Grey stone ring (its bands lay
+// fieldstone, library.js bandLayout), brush crossings and grout cuts through both, laid in the real app. At each junction:
+// no two pieces overlap, and no more bare board than a plain stretch of the same lay plus slackSqIn. Bare = board farther
+// than 3/4 of the widest joint from every piece, sampled every grid in, in a win-in square. MEASURED before the fix
+// (piece-floor.js + fill-shape.js splitRound): 0.21 - 0.75 sq in at the junctions (holes several stones wide); after
+// 0.0004 - 0.036 -- what is left is a corner sliver under the stone floor (0.052 sq in at 1.25 in), so the slack is two.
+export const STONE_CUTS = {
+  introducedBy: 'seat E stones (piece-floor.js)', template: 'template_1', ringSet: 5, wallPattern: 'brickPattern_fieldstone', grid: 0.02, win: 1.2, slackSqIn: 0.1,
+  cases: [
+    { name: 'brush X on the fieldstone wall', tool: 'brickTool_brush', strokes: [[[2.0, 2.7], [5.0, 2.7]], [[3.5, 1.7], [3.5, 3.7]]], junction: [3.5, 2.7], plain: [4.6, 6.6] },
+    { name: 'brush T on the fieldstone wall', tool: 'brickTool_brush', strokes: [[[2.0, 2.7], [5.0, 2.7]], [[3.5, 1.7], [3.5, 2.7]]], junction: [3.5, 2.7], plain: [4.6, 6.6] },
+    { name: 'grout cut across the fieldstone wall', tool: 'brickTool_raisedBrush', mode: 'grout', strokes: [[[1.6, 6.6], [5.4, 6.6]]], junction: [3.5, 6.6], plain: [3.5, 2.4] },
+    { name: 'brush stroke into the stone ring', tool: 'brickTool_brush', strokes: [[[3.5, 2.7], [3.5, 0.15]]], junction: [3.5, 1.3], plain: [4.6, 6.6] },
+    { name: 'grout cut across the stone ring', tool: 'brickTool_raisedBrush', mode: 'grout', strokes: [[[3.5, 6.4], [3.5, 8.95]]], junction: [3.5, 8.2], plain: [4.6, 2.6] },
+  ],
+};
+async function runStoneCuts() {
+  const C = STONE_CUTS;
+  await openEditorTab('editorTabBrick');
+  if (!(await exists(C.wallPattern)) || !(await exists('brickRaisedMode_grout'))) { checkRow('strokes', 'Stones', false, '', C.introducedBy); return; }
+  // the template + the set ids as they were, put back after (the rows lay their own)
+  const was = await jsJSON(`import('./core/state.js').then((S)=>JSON.stringify({ template: document.getElementById('editorFrameTemplate')?.value ?? null, setIds: S.P.brickSettings.setIds, bands: S.P.brickSettings.frameBandPatterns }))`);
+  const pickTemplate = (t) => (t == null ? 0 : js(`(async()=>{ const s=document.getElementById('editorFrameTemplate'); if(!s) return 0; s.value=${JSON.stringify(t)}; s.dispatchEvent(new Event('change')); await new Promise(r=>setTimeout(r,2000)); return 1; })()`));
+  await pickTemplate(C.template);
+  for (const k of C.cases) {
+    await js(CLEAR_STROKES);
+    // the stone ring + the fieldstone wall, laid fresh
+    await js(`import('./core/state.js').then((S)=>{ S.P.brickSettings.setIds={ ...S.P.brickSettings.setIds, frame: ${C.ringSet} }; S.P.brickSettings.frameBandPatterns=[]; return 1; })`);
+    await js(`(document.getElementById('brickTool_frame').click(), 1)`); await sleep(400);
+    await js(`(document.getElementById('brickFramePreset_single_soldier').click(), 1)`); await sleep(1500);
+    await js(`(document.getElementById('brickGenerate').click(), 1)`); await piecesSettled('frame');
+    await js(`(document.getElementById('brickTool_wall').click(), 1)`); await sleep(400);
+    await js(`(document.getElementById(${JSON.stringify(C.wallPattern)}).click(), 1)`); await sleep(1500);
+    await js(`(document.getElementById(${JSON.stringify(k.tool)}).click(), 1)`); await sleep(400);
+    if (k.mode) { await js(`(document.getElementById('brickRaisedMode_${k.mode}').click(), 1)`); await sleep(400); }
+    for (const pts of k.strokes) {
+      await js(`import('./editor/editor-brick-tool.js').then((T)=>{ const ed=window.svgEditor, pts=${JSON.stringify(pts)};
+        T.brickBrushHandler.start(ed, { x: pts[0][0], y: pts[0][1] }); for (const p of pts.slice(1)) T.brickBrushHandler.update(ed, { x: p[0], y: p[1] }); T.brickBrushHandler.finish(ed); return 1; })`);
+      await sleep(2500);
+    }
+    if (k.mode) { await js(`(document.getElementById('brickRaisedMode_bricks').click(), 1)`); await sleep(300); }
+    // the wall (and the frame) laid again with the strokes / cuts in place
+    await js(`(document.getElementById('brickTool_wall').click(), 1)`); await sleep(400);
+    await js(`(document.getElementById('brickGenerate').click(), 1)`); await piecesSettled('wall');
+    await js(`(document.getElementById('brickTool_frame').click(), 1)`); await sleep(400);
+    await js(`(document.getElementById('brickGenerate').click(), 1)`); await piecesSettled('frame');
+    const r = await jsJSON(`(async()=>{ const C=${JSON.stringify(C)}, k=${JSON.stringify(k)}; const T=await import('./editor/editor-brick-tool.js'); const { P }=await import('./core/state.js');
+      const { polygonIntersection, signedArea, pointInPolygon }=await import('./core/bricks/geometry.js');
+      const ed=window.svgEditor;
+      const J={ wall: T.elementGroutWidth(P.brickSettings,'wall'), frame: T.elementGroutWidth(P.brickSettings,'frame'), brush: T.elementGroutWidth(P.brickSettings,'brush') };
+      const poly=(n)=>n.getAttribute('points').trim().split(/\\s+/).map((s)=>{ const [x,y]=s.split(',').map(Number); return {x,y}; });
+      const of=(kind)=>[...ed._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick="'+kind+'"]')].map((n)=>({ kind, p: poly(n) }));
+      const all=[...of('wall'), ...of('frame'), ...of('brush')];
+      const area=(p)=>p.length>=3?Math.abs(signedArea(p)):0;
+      const box=(p)=>p.reduce((b,q)=>[Math.min(b[0],q.x),Math.min(b[1],q.y),Math.max(b[2],q.x),Math.max(b[3],q.y)],[1e9,1e9,-1e9,-1e9]);
+      const near=(c)=>all.filter((a)=>{ const b=box(a.p); return b[2]>c.x-C.win && b[0]<c.x+C.win && b[3]>c.y-C.win && b[1]<c.y+C.win; });
+      const sd=(p,a,b)=>{ const ex=b.x-a.x, ey=b.y-a.y, l=ex*ex+ey*ey||1e-12, t=Math.max(0,Math.min(1,((p.x-a.x)*ex+(p.y-a.y)*ey)/l)); return Math.hypot(a.x+t*ex-p.x,a.y+t*ey-p.y); };
+      const dist=(p,Q)=>pointInPolygon(p.x,p.y,Q)?0:Math.min(...Q.map((a,i)=>sd(p,a,Q[(i+1)%Q.length])));
+      const measureAt=(c)=>{ const N=near(c); let ov=0, ovArea=0; for (let i=0;i<N.length;i++) for (let j=i+1;j<N.length;j++){ const o=area(polygonIntersection(N[i].p,N[j].p)); if (o>1e-4){ ov++; ovArea+=o; } }
+        const Jw=Math.max(J.wall,J.frame,J.brush); let gap=0, n=0, widest=0;
+        for (let x=c.x-C.win/2;x<c.x+C.win/2;x+=C.grid) for (let y=c.y-C.win/2;y<c.y+C.win/2;y+=C.grid) { n++; const d=Math.min(...N.map((a)=>dist({x,y},a.p))); if (d>0.75*Jw) { gap++; widest=Math.max(widest,d); } }
+        return { pieces: N.length, overlaps: ov, overlapSqIn: +ovArea.toFixed(4), gapSqIn: +(gap*C.grid*C.grid).toFixed(4), widestGapJ: +(2*widest/Jw).toFixed(2) }; };
+      return JSON.stringify({ J, junction: measureAt({x:k.junction[0],y:k.junction[1]}), plain: measureAt({x:k.plain[0],y:k.plain[1]}) }); })()`);
+    const ok = r.junction.pieces > 0 && r.junction.overlaps === 0 && r.junction.gapSqIn <= r.plain.gapSqIn + C.slackSqIn;
+    checkRow('strokes', `Stones: ${k.name} -- no overlap, no hole`, ok,
+      `${r.junction.pieces} pieces, overlaps ${r.junction.overlaps}; bare at the junction ${r.junction.gapSqIn} sq in (widest ${r.junction.widestGapJ} joints) vs a plain stretch ${r.plain.gapSqIn}`);
+  }
+  await js(CLEAR_STROKES);
+  await js(`import('./core/state.js').then((S)=>{ const w=${JSON.stringify(was)}; S.P.brickSettings.setIds=w.setIds; S.P.brickSettings.frameBandPatterns=w.bands; return 1; })`);
+  await pickTemplate(was.template);
 }

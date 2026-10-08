@@ -11,7 +11,8 @@
  */
 import { bricksFillShape } from './fill-shape.js';
 import { strokesToRegion, WALL_REGION_PICK } from './region.js';
-import { bricksContourBands } from './contour-bands.js';
+import { bricksContourBands, setBandPattern } from './contour-bands.js';
+import { frameLaidBy } from './piece-floor.js';
 import { pointInPolygon } from './geometry.js';
 import { brickTopHeight } from './height-profile.js';
 import { suppressBricks } from './suppression.js';
@@ -128,10 +129,11 @@ export function generateBricks(input) {
   // the wall at the wall set's joint, the frame (and the window surround) at the frame set's, unless the cut declares
   // its own width; a piece under the quarter-brick floor of its element drops into the joint. No cut = as before.
   const cuts = groutCutsOf(input.groutCut);
-  const cutAll = (pieces, s) => applyGroutCuts(pieces, cuts, s, scale); // the one shared cut step (grout-cut.js)
+  const cutAll = (pieces, s, laidBy) => applyGroutCuts(pieces, cuts, s, scale, laidBy); // the one shared cut step (grout-cut.js)
   const wallBricks = cutAll(bricks, set);
   const frameSetUsed = (frame && frame.set) || set;
-  const surroundBricks = surround ? cutAll(surround.bricks, frameSetUsed) : null;
+  // the bands' pieces drop under the floor of the layout that laid them (a Grey stone ring: fieldstone; piece-floor.js)
+  const surroundBricks = surround ? cutAll(surround.bricks, frameSetUsed, frameLaidBy(frameSetUsed, setBandPattern)) : null;
   // T86 item 16f (B1): the wall region's acute tips (>= TIP_FILL_MIN_DEG) the wall leaves bare are the band's -- the frame's
   // innermost row reaches into what the wall leaves uncovered (a joint off every wall brick; the wall itself is untouched)
   const tips = frameLay && frameLay.bands.length && bricks.length ? bareTips(interiorOutline, bricks, scaledSet(set, scale)) : [];
@@ -144,7 +146,7 @@ export function generateBricks(input) {
   }
   // T86 item 10: the grout cuts on the frame's ONE lay (after the tip re-lay and the fan centre, before the crumble, so the
   // crumble picks among the cut pieces)
-  if (frameLay) frameBricks = cutAll(frameBricks, frameLay.frameSet);
+  if (frameLay) frameBricks = cutAll(frameBricks, frameLay.frameSet, frameLaidBy(frameLay.frameSet, setBandPattern));
   // T86 item 29: the frame crumbles by the SAME rule as the wall (whole pieces, top-weighted, exact count, clumping);
   // off (absent / false / 0) = no call, the lay byte-identical
   if (frameLay && input.suppressFrame && input.frameSuppression > 0) {
