@@ -25148,3 +25148,42 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   abort the group).
 - Full suite (npm run test:full, started at 11.7 GB free) 5976/5976. Known failures: none.
 - Shots: shots/seatD/atouch/touch_targets_sidebar_390.png (main vs built, real stylesheets both sides).
+### 2026-10-08 (seat A): Frame Generate's draw computes only the range it draws (advisor pick (a), byte-identical)
+- MEASURED (D's phone profile: generateValidFrameSeeds 528 ms of a 1.58 s Frame Generate; my node bench, 19 templates
+  x 20 seeds): the retry loop's time was the DRAW (generateFrameSeeds 550 of 916 ms), and in it frameParamRanges
+  (314 ms) -- each draw step computed every key's range to read one. The validity checks: inner 244 / outer 121 ms.
+- CHANGE: feasibleParamRanges(..., onlyKey) computes only that key (earlier keys still fill their declared defaults,
+  the only thing a later range reads of them); frameParamRanges(..., onlyKey) gates each narrowing rule on want(key)
+  and reads presence through has(key) -- the preset's declared keys in one-key mode, exactly the old `R.k` test in
+  full mode (every computed range is an object). The coupled rules found on the way: T5 and T8's dip block (width +
+  depth under one `R.topDipWidth` test), T18's topInset (needs archRise present), T4's waistReachLeft.
+- IDENTITY: scratch seedsweep.mjs (5 boards incl. 12x6 and 5x5 x 19 templates x 30 seeds; sha of every generated seed
+  set + every full-mode frameParamRanges at each draw step): 95/95 identical.
+- SPEED (profile shares, load-robust; wall/CPU times were noisy with DDCS's gate running): frameParamRanges 310 - 334
+  -> ~100 ms, generateFrameSeeds 541 - 586 -> 348 - 357 (-36%), the whole retry loop 893 - 962 -> 730 - 752 (-20%).
+- TESTS: tests/frame-param-ranges-onekey.test.js (3 boards; one-key == full entry, every template / key / draw step,
+  >1000 checks each). Passes trivially on the old code (onlyKey ignored there) -- it pins the invariant; mutations
+  bite: T5 depth gated on the width key fails 3/3, old-style R.topInset && R.archRise presence fails 2/3.
+  The 40 test files importing these modules: 1600/1600 (2 workers). Full suite NOT run (DDCS's gate until ~10:00).
+- Left alone: generateSilhouette (~390 ms, each draw step resolves params through a full solve) -- skipping the solve
+  needs each of the 11 solvers read to prove .params is the resolver's output untouched; not identical by
+  construction without that.
+- Noticed, not changed: tests/frame-gen.test.js's isValid is a PARTIAL hand copy of generateFrame's rule (its own
+  comment: 37 of 1,500 seeds pick different shapes). Declaring the rule once (an exported predicate both use) would
+  end the drift -- a separate pick.
+
+### 2026-10-08 (seat A): Frame Generate's draw reads resolved params without the outline build (pick 2; on frame-seeds-r1)
+- READ all 11 solvers: each one's .params is its own _resolveParams(preset or 'hourglass', ...) result copied; the
+  hourglass, bottle and diamondTopHourglassPinch solvers also drop unset FRAME_ONLY_PARAM_KEYS. Nothing in the file
+  writes to the resolved object afterwards; constructions never reached by the .params path.
+- DECLARED: generateSilhouette's 11-way ternary is now SILHOUETTE_SOLVERS { preset: { solve, frameOnlyWhenSet } }
+  (any other preset -> hourglass, as before); the drop moved from the three solvers into _reportedParams, which
+  generateSilhouette and the new silhouetteParams both use -- one declaration of what .params is.
+- generateFrameSeeds: generateSilhouette(region, {preset, params}).params -> silhouetteParams(region, {preset, params}).
+- IDENTITY: seeds sweep 95/95 identical to the original baseline (5 boards x 19 templates x 30 seeds + full-mode
+  ranges at every draw step). tests/silhouette-params.test.js: JSON-equal (key order included) for every template x 3
+  boards along each draw (3 seeds + no params), every Shape Lattice preset x 3 seeds, an unknown preset.
+- SPEED (profile, 3 pairs): generateFrameSeeds 264 - 281 -> 199 - 215 ms (-24%), the retry loop 582 - 595 -> 516 - 527
+  (-11%). With pick (a) this morning: the draw 541 - 586 -> ~205 ms (-63%), the loop 893 - 962 -> ~520 ms (-44%).
+- MUTATIONS: silhouetteParams without the reporting step fails 4/4; without the hourglass fallback fails 1/4.
+- Full suite (locks clear): 399 files, 5991/5991. Known failures: none. Must merge after frame-seeds-r1.
