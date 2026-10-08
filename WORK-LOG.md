@@ -24338,3 +24338,14 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Single files: loading-steps-list 18/18, loading-signal 21/21, fusion-send-stages 5/5. The full suite was NOT clean:
   run at 3.9 GB free during the advisor's gate (Fred: 1.6 GB free, CPU 100%); 15 failures in unrelated files
   (timeouts / benchmarks under that load). To re-run when the advisor clears heavy runs.
+
+### 2026-10-07 (seat A): frame clip -- a y-banded point-in-polygon (byte-identical, advisor pick 2, step 1)
+- Profile on main b98cd0f (frame-clip-skip in): pointInPolygon 13% (every panel vertex against the WHOLE outline),
+  the clip walk 11%, crossed 6.9%, creasedNormals 6.2%, GC 5.4%.
+- frame-mesh.js polygonPointTester(poly), built once per clipPanelToOutline: edges bucketed by y-band; an edge toggles
+  only when min(a.y,b.y) <= y < max(a.y,b.y), so y's band lists every edge that can, the per-edge test is the same
+  expression and parity is order-free -> the same boolean. Used for the vertex isIn and both centroid tests; the
+  exported pointInPolygon is unchanged.
+- MEASURED: all 747 frame-3d-sweep applies hash identical to the pre-skip baseline. Back-to-back CPU: main 28.2 ->
+  23.7 ms per apply (-16%; run-to-run noise seen: 19.3-23.7 for the same code). frame-clip-identical (pinned
+  digests) + frame-mesh-normals + frame-bartop-drawn 35/35, frame-3d + frame-3d-sweep 133/133.
