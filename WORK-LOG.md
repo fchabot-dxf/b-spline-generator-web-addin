@@ -25023,3 +25023,20 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   main: T14 7x9 3 in 10 vs 0); GAP_SWEEP_FULL 760/760; band / engine / ribbon suites (71 files) 1036/1036.
 - NOT changed: boundaryAtDepth's other callers (the area band's ring: contour-bands buildAreaBandBricks, line ~199 / ~985)
   can untangle the same off-board lobes at 3 - 8 in; the band clip already cuts their pieces to the board. Noted only.
+
+### 2026-10-08 (seat A): the blank editor backdrop -- Chrome dropped the hidden top-view canvas; safety net added
+- FOUND (blank-backdrop probe, seeded phone runs, main vs lazy): main once (1 of 6 runs, while Fusion loaded the GPU)
+  left the top-view canvas FULLY transparent at its right size (384x494, every pixel 0,0,0,0, reticle gone) -> the
+  near-empty 7.6 k backdrop. No code clears it (_paintTopView is its only writer; the editor only stores the id): the
+  signature of Chrome's 2D context loss on a hidden GPU-backed canvas. 0 of 5 after Fusion closed; lazy 0 of 5.
+- Also measured: with Fusion closed main's 2nd Generate tap is 0.87 - 1.08 s (2.9 - 8.6 s while it was open) --
+  today's slow phone Generate was GPU contention on this PC.
+- willReadFrequently (CPU-backed canvas), measured first: NOT identical -- 135 pixels differ, all in the reticle at
+  the centre, max 9/255; terrain identical; sync times equal with a quiet GPU (31 - 49 ms). Not taken (advisor's rule:
+  only if pixel-identical); the call is the advisor's / Fred's.
+- SAFETY NET (advisor go): render-topview keeps the latest inputs; flushEditorTopView (before every backdrop read)
+  repaints them when ctx.isContextLost(); a 'contextrestored' canvas (Chrome clears it) repaints now when the editor
+  shows (+ backdrop refresh), else on the next read. Browser: backdrop PNG + pixels identical to main (8148b17a /
+  f559a91f).
+- TESTS: editor-topview-lazy.test.js +3 (restored -> repaint on read / at once when showing; lost at read -> repaint).
+  Fail 3/3 on main's file; dropping the isContextLost check fails 1. Full suite: 397 files, 5984/5984. Known failures: none.
