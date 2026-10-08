@@ -24353,3 +24353,8 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   toolpaths k/n · m missing (red). The palette's classic script reads every source through showSetupEntry.
 - Tests: CAM-builder/test_setup_states.py 3 (fails 3/3 pre-change); tests/cam-setup-state.test.js 4 (the map; the
   wiring pin fails 1/4 against the old palette). CAM-builder pytest 88/88. Live Fusion confirmation pending (holder).
+- LIVE (Fusion 65140, cam-setup-states ad6ad8c deployed and loaded, then main b98cd0f redeployed): fresh T1 7x9 Send;
+  the palette opened on it read "pending" (no CAM); one real BUILD SETUPS click (BUILD + its APPLY + TPGen, post-audit
+  ok=7 missing=0, 0 [ERROR]) -> Stock "built · no operations", B-spline Back "toolpaths 2/2", B-spline Top
+  "toolpaths 3/3", Frame "toolpaths 2/2", all green; the palette deleteMe'd and reopened (a fresh page) -> the same
+  states from get_setup_states alone. Shots: shots/seatA/cam_cards/cam_cards_strip.png.
