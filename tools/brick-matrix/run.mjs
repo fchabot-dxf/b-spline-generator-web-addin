@@ -24,6 +24,7 @@ import { touchesBrickMatrix } from './gate-paths.mjs';
 import { portBusy, dropStaleProfiles } from './ports.mjs';
 import { registerRun, makeStop, readRuns, classifyOrphans, processTable } from './run-registry.mjs';
 import { bootRetry } from './boot.mjs';
+import { guardHeavyRun, HEAVY_RUN_CHILD_ENV } from '../heavy-run-guard.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const arg = (name, dflt) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : dflt; };
@@ -78,6 +79,10 @@ if (arg('only-if-changed')) {
   }
 }
 
+// a heavy run from here on (--only-if-changed above may skip it for free): refused while the gate holds its lock
+// (its own runs pass) or free RAM is under the floor -- tools/heavy-run-guard.mjs
+guardHeavyRun('brick matrix');
+
 if (flag('parallel')) {
   const t0 = Date.now();
   // MEASURED: two gates at once (the advisor's and a seat's) -- one group's served-root check found its port taken
@@ -100,7 +105,7 @@ if (flag('parallel')) {
   const kids = GROUPS.map((g, i) => new Promise(async (resolve) => {
     await sleep(10000 * i); // staggered: N apps booting at once starve each other (measured: 2 of 4 never came up)
     const out = path.join(OUT, g);
-    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--group', g, '--port', String(base + 10 * (i + 1)), '--out', out, '--root', ROOT, ...(REAL_CLOUD ? ['--real-cloud'] : [])], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--group', g, '--port', String(base + 10 * (i + 1)), '--out', out, '--root', ROOT, ...(REAL_CLOUD ? ['--real-cloud'] : [])], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, [HEAVY_RUN_CHILD_ENV]: '1' } });
     child.stdout.on('data', (d) => process.stdout.write(String(d).split('\n').filter(Boolean).map((l) => `[${g}] ${l}`).join('\n') + '\n'));
     child.stderr.on('data', (d) => process.stderr.write(`[${g}] ${d}`));
     child.on('exit', (code) => resolve({ g, code, out }));
