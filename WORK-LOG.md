@@ -24322,6 +24322,22 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   board: two boards took 34 s under load.
 - Full vitest: 378 files / 5858 tests passed, 0 failed (a first run lost a worker -- 357 files -- with one
   frame-no-hooked-miters flake that passed alone and in the re-run).
+
+### 2026-10-07 (seat A): the loading card's spinner sits on the working step (Fred: "make the spinner on the working item")
+- core/loading-signal.js _renderSteps (the one card renderer: app refresh, Fusion Send, CAM BUILD/APPLY): on a card
+  with a step list, the card's ONE existing .loading-stage-spinner element moves into the current step's line
+  (li[data-spinner]), in place of its dot; the headline keeps its text alone. A pill or a list-less card puts it back
+  at the start of the card. styles/loading-stage.css: no dot on li[data-spinner], the spinner sized/placed in the
+  marker column (12 px); the group tint (waiting amber / refreshing green) still applies (descendant selectors).
+  Pills unchanged.
+- Tests (tests/loading-steps-list.test.js +2): one spinner, inside the current li at every step, headline text intact,
+  done/pending lines keep their marks; pill and no-list card keep it first. Pre-change: 1 of the 2 fails (the other
+  pins the unchanged spinner place); with the move-back line removed it fails too.
+- Shots (shots/seatA/step_spinner/step_spinner_strip.png): phone 390 + desktop 1400, Fusion Send held at step 6 of 12,
+  before (main) / after; the probe read the spinner's parent: DIV before, LI after.
+- Single files: loading-steps-list 18/18, loading-signal 21/21, fusion-send-stages 5/5. The full suite was NOT clean:
+  run at 3.9 GB free during the advisor's gate (Fred: 1.6 GB free, CPU 100%); 15 failures in unrelated files
+  (timeouts / benchmarks under that load). To re-run when the advisor clears heavy runs.
 ## T86 item 5 -- brush crossings: one runs through, the other is cut straight along its edge, one joint off (seat E / 61, 2026-10-07)
 - Fred's picks on the mock: end-touch 5b (the ENDING stroke stops, whatever the order); X: the EARLIER stroke runs
   through (creation order = the spines' document order, declared); the wall keeps flowing around strokes (item 13).
