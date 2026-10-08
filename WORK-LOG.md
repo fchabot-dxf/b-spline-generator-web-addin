@@ -24831,3 +24831,21 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   (the seam at T15 y = 3 / 4.2 and T9's two seams is one joint; main: 4/4 fail, 0.088). The 57 files touching the
   narrowing / bands 1728/1728; full suite (npm run test:full) 5966/5966. Known failures: none.
 - Shots: shots/seatD/a15/tips_main.png (before; red = bare) | tips_after.png.
+
+### The gap sweep (advisor's order 2 -> 1 -> 3: pick 2 first) -- measured; Fred's sizes clean, 2 - 8 in capped (seat E / 61, 2026-10-08)
+- MEASURE: D's tests/bare-ground.js (bareGround, largest connected patch / one brick face vs PATCH_MAX_FACE 0.05), over
+  what no test pinned: every preset x template x 7x9 / 9x12 at 1.25 / 1.5 in (tip-fill-fans pins 0.75 / 1 in, the
+  coverage matrix the single soldier 7x9), and single soldier + three-band at 2 / 3 / 4 / 8 in. Plus a new count: wall /
+  frame pieces with a vertex more than a joint OUTSIDE the outline.
+- FRED'S SIZES (608 lays): only T16 7x9 1.5 in over (0.072 of a face, identical under all presets -- the wall's 39 deg
+  neck tip, already D's known patch); 0 pieces outside the outline. Nothing to fix.
+- 2 - 8 in (304 lays; three-band identical to single soldier in every lay -- the fit rule leaves one band): 110 over the
+  face share, worst T18 9x12 3 in (one 4.3 sq in patch, 1.8 faces), T18 7x9 3 in 1.3, T18 9x12 4 in 1.26, T17 9x12 8 in
+  1.13, T5 7x9 8 in 0.95. AND 18 lays (single soldier) lay WALL pieces outside the outline: T14 7x9 3 in 10, T14 7x9 4 in
+  7, T16 9x12 3 in 6, T17 9x12 3 in 6, T19 at 3 / 4 / 8 in 3-5. Never a frame piece. Listed and capped, not fixed
+  (advisor: 2 - 8 in list and cap). Shots: shots/seatE/gaps/ (T18 9x12 3 in, T17 7x9 4 in -- the wall bricks past the
+  left edge, T5 7x9 8 in).
+- DECLARED: tests/bare-ground.js PATCH_KNOWN (moved from the coverage matrix, keyed template + board + size, one
+  declaration for both tests). tests/bricks-gap-sweep.test.js: Fred's sizes <= PATCH_MAX_FACE / PATCH_KNOWN and 0 pieces
+  outside; 2 - 8 in GAP_CAPS [face, sq in, wall pieces outside], may only fall. FAST 6 lays by default, GAP_SWEEP_FULL=1 760
+  lays in 85 s (all pass). Mutation: the band clip dropping at 20 x its floor fails 2/6 of FAST (T18 9x12 3 in, T5 8 in).
