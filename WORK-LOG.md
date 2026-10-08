@@ -24954,3 +24954,19 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   read, so why_empty cannot name a cause, and there is no message-driven fix. The empty set matches every earlier
   sample (the first ops of each B-spline setup; Back's both). pass 2's op-by-op retry stays the working answer.
   Snapshot: scratchpad why1_after_pass1.json. Holder back to none; scratch doc closed by handle.
+
+### 2026-10-08 (seat D): touch targets app-wide -- the main sidebar + the editor's Frame / Photo tabs (pick 1)
+- MEASURED on main at 390 and 360 px, coarse pointer, every sidebar panel opened (a first pass left them collapsed and
+  measured only their headers): the panel pins 12 px (12 of them), checkbox rows 16-19 (Inset window, Isolate
+  skeleton), slider readout boxes 24 (symmetry / stamp offsets), the Edit Filter "Reset all" 20 and the per-slider
+  resets 22, Photo's file input 18. Frame tab: clean. Nothing off-screen, page width = viewport at both widths.
+- FIX: the SAME declaration (styles/editor.css --touch-target-min), no new rule: + .panel-pin, .filter-tweaks-reset,
+  .tweak-reset, input[type=file]; selects, text / number inputs and checkbox label rows now app-wide (were scoped to the
+  editor). Re-probed at 390 + 360: 0 under 28 px, nothing off-screen, page width = viewport.
+- TEST: matrix layout TOUCH_TARGETS now per viewport (390 + 360) x every sidebar tab (collapsed panels opened) + Brick /
+  Art / Frame / Photo-tool tab: smaller side >= 28 px AND on screen AND page width <= viewport. Layout group 80 rows 0
+  FAIL; on main's editor.css exactly the 14 new sidebar / Photo-source rows FAIL (both widths). A first proof run crashed
+  on a failure-shot file name with '/' ("Photo source / crop") -- the shot name is now sanitised (a red row must not
+  abort the group).
+- Full suite (npm run test:full, started at 11.7 GB free) 5976/5976. Known failures: none.
+- Shots: shots/seatD/atouch/touch_targets_sidebar_390.png (main vs built, real stylesheets both sides).
