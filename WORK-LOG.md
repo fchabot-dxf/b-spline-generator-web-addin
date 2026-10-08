@@ -24338,3 +24338,18 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Single files: loading-steps-list 18/18, loading-signal 21/21, fusion-send-stages 5/5. The full suite was NOT clean:
   run at 3.9 GB free during the advisor's gate (Fred: 1.6 GB free, CPU 100%); 15 failures in unrelated files
   (timeouts / benchmarks under that load). To re-run when the advisor clears heavy runs.
+
+### 2026-10-07 (seat A): (2) the empty first toolpath pass -- two warm-up variants, one fresh doc each (no code change)
+- Fresh Fusion 47276, main ebde06c, T1 7x9 Send -> BUILD (engine.run) -> the engine's own template apply -> variant
+  -> the add-in's own deferred TPGen event. Control: the 19:34 APPLY click (Fusion 21188): pass 1 left all 5 B-spline
+  ops invalid (Back 0.3 s; Top 30.8 s yet invalid), Frame valid; pass 2 -> 7/7.
+- A (settle). Designed: pump events 10 s, then fire. NOT run as designed -- I sent the prep and fire calls in parallel
+  (against the serial rule); the fire ran inside the prep's event pump. Measured instead from the log: templates done
+  20:16:03, generation started 20:16:36 = >= 33 s of settling with events pumping. Pass 1: all 5 B-spline ops invalid
+  (Back ran 15.7 s this time, not 0.3 s), Frame valid; passes 2-3 -> 7/7. So more settle time does not help.
+- B (lazy references): activate every setup and read all 3193 op parameters (244 CAD-object refs, 11 contour
+  selections, all empty) before firing. Pass 1: the 3 Pockets VALID, only the 2 Morphed Spirals invalid; in pass 2
+  both Spirals again empty in 0.3 s; pass 3 -> 7/7. Same shape as item 95's one-op warm-up (Pockets fine, both Spirals
+  empty), so "touching" the ops before the first generation fixes the Pockets, not the Spirals.
+- One sample per variant = an observation, not a rule; no fix declared. The later passes (MAX_GENERATION_PASSES = 4)
+  stay the answer. Next if wanted: B again (repeatability), then B + a Spiral-only pre-generation.
