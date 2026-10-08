@@ -14,6 +14,11 @@ export const GRID_IN = 0.04;
  *  0.75-1.5 in; T11 butt_frame 0.75 in's given-up fan slice (before the tip-fill fan blockers) 1.1 faces. Main is
  *  <= 0.03 of a face at 0.75-1 in over every preset, 7x9 and 9x12 (seat D, 2026-10-08). */
 export const PATCH_MAX_FACE = 0.05;
+/** the lays allowed a larger patch than PATCH_MAX_FACE, `<template> <W>x<H> <L>` -> face share (read by the coverage
+ *  matrix and the gap sweep). T16 7x9 1.5 in: the wall's 39 deg tip at the neck, narrower than TIP_FILL_MIN_DEG (no
+ *  needles) and under the wall's piece floor -- bare by declared rule, capped at today's measure (0.072); the gap sweep
+ *  measured the same patch under every frame preset (it is the wall's, not the band's). */
+export const PATCH_KNOWN = Object.freeze({ 'template_16 7x9 1.5': 0.08 });
 
 export const tess = (prims) => prims.flatMap((p) => (p.type === 'arc'
   ? Array.from({ length: 32 }, (_, k) => { const t = p.theta1 + ((p.theta2 - p.theta1) * k) / 32; return { x: p.cx + p.r * Math.cos(t), y: p.cy + p.r * Math.sin(t) }; })

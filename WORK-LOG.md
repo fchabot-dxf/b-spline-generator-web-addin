@@ -24853,6 +24853,73 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   lay it was aimed at (no second Generate).
 - No code change.
 
+### The gap sweep (advisor's order 2 -> 1 -> 3: pick 2 first) -- measured; Fred's sizes clean, 2 - 8 in capped (seat E / 61, 2026-10-08)
+- MEASURE: D's tests/bare-ground.js (bareGround, largest connected patch / one brick face vs PATCH_MAX_FACE 0.05), over
+  what no test pinned: every preset x template x 7x9 / 9x12 at 1.25 / 1.5 in (tip-fill-fans pins 0.75 / 1 in, the
+  coverage matrix the single soldier 7x9), and single soldier + three-band at 2 / 3 / 4 / 8 in. Plus a new count: wall /
+  frame pieces with a vertex more than a joint OUTSIDE the outline.
+- FRED'S SIZES (608 lays): only T16 7x9 1.5 in over (0.072 of a face, identical under all presets -- the wall's 39 deg
+  neck tip, already D's known patch); 0 pieces outside the outline. Nothing to fix.
+- 2 - 8 in (304 lays; three-band identical to single soldier in every lay -- the fit rule leaves one band): 110 over the
+  face share, worst T18 9x12 3 in (one 4.3 sq in patch, 1.8 faces), T18 7x9 3 in 1.3, T18 9x12 4 in 1.26, T17 9x12 8 in
+  1.13, T5 7x9 8 in 0.95. AND 18 lays (single soldier) lay WALL pieces outside the outline: T14 7x9 3 in 10, T14 7x9 4 in
+  7, T16 9x12 3 in 6, T17 9x12 3 in 6, T19 at 3 / 4 / 8 in 3-5. Never a frame piece. Listed and capped, not fixed
+  (advisor: 2 - 8 in list and cap). Shots: shots/seatE/gaps/ (T18 9x12 3 in, T17 7x9 4 in -- the wall bricks past the
+  left edge, T5 7x9 8 in).
+- DECLARED: tests/bare-ground.js PATCH_KNOWN (moved from the coverage matrix, keyed template + board + size, one
+  declaration for both tests). tests/bricks-gap-sweep.test.js: Fred's sizes <= PATCH_MAX_FACE / PATCH_KNOWN and 0 pieces
+  outside; 2 - 8 in GAP_CAPS [face, sq in, wall pieces outside], may only fall. FAST 6 lays by default, GAP_SWEEP_FULL=1 760
+  lays in 85 s (all pass). Mutation: the band clip dropping at 20 x its floor fails 2/6 of FAST (T18 9x12 3 in, T5 8 in).
+### 2026-10-08 (seat A): frame-mesh round 3 -- five steps, every one byte-identical, apply -34%
+- Rule (advisor): keep a step only if byte-identical AND measurably faster; the walk last. Safety net per step: the
+  747-apply hash sweep (every template x 5 boards x 3 frame bottoms x 3 sculpts, sha1 of every mesh + the panel's
+  re-index) vs the round's baseline, tests/frame-clip-identical (pinned digests) + a mutation that must fail it,
+  and an A/B by file copies (the whole-sweep CPU was too noisy on this PC today, so each step also has an isolated
+  benchmark running both versions in one process, alternating).
+- 1 surface lookup per loop point (the walls read zBot + zTop of both segments at each point: 6.96 M lookups):
+  memo by the point object. Profiled apply 13.5 -> 12.6 s over the sweep.
+- 2 panelSurface's buckets as one flat grid, filled in triangle order (lo/hi ties unchanged): build + 20 k lookups
+  11.2 -> 7.8 ms.
+- 3 the outline's segment buckets as one flat grid: 19-template clip 330 -> 260 ms.
+- 4 creasedNormals: face normal hoisted, one reused scratch, same sums in the same order: 54.5 -> 48 ms.
+- 5 THE WALK: it still scanned the whole outline per crossed triangle (the box skip discarded nearly all of it).
+  clipPanelToOutline now passes the segments sharing a cell with the triangle (a superset of the ones the skip lets
+  through; a skipped one never touched the walk's state). Clip 450 -> 192 ms. The exitAtStart re-walk (36
+  triangles in the sweep) keeps its full scan: letting it use the candidates too changed no hash and no test, so
+  nothing can guard that choice -- it stays on the original code as the safe side.
+- Whole sweep, round start vs end, alternating x3: 19.6 -> 12.9 ms per apply. 747/747 identical at every step.
+  Mutations: steps 1-4 each fail frame-clip-identical; step 5 dropping one candidate fails 25 of 834.
+- Full suite: 395 files, 5970/5970. Known failures: none.
+- FOUND ON THE WAY, NOT FIXED (phone Generate probe, 390 px, 4x CPU, same seed as yesterday's): a Generate tap now
+  paints in 8 - 26 s (yesterday 1.2 s). 14.4 s of the profile is getProgramInfoLog (WebGL shader compiles blocking
+  the main thread), 2.8 s toDataURL; frame-mesh is ~0.2 s (walk + apply ~160 ms before this round, ~35 after).
+  Not yet known whether it is main's code or this PC's GPU/headless state today: next step would be the same
+  probe at yesterday's main.
+
+### 2026-10-08 (seat A): Fusion APPLY -- generating the B-spline setups OP BY OP in pass 1 (measured, n=1 each, no code change)
+- Today's APPLYs: pass 1 generated the WHOLE 'B-spline Top' setup for 30.8 / 273 / 53 s and it still came back invalid
+  ('B-spline Back' empty in 0.3 s); the later passes made 7/7. Pick: the COST of that doomed first try.
+- Method (scratch-only, e3_opfirst.py): the add-in's REAL deferred TPGen event (warmup, tool numbers, table attach as an
+  APPLY), with toolpath_gen.generate_setups swapped for one run (restores itself): pass 1 = B-spline setups op by op,
+  Frame whole. Same Fusion session (41896), fresh doc each, T1 7x9 Send -> BUILD -> template apply (2/3/2 ops).
+- OP-FIRST (02:25): ALL 7 valid in pass 1 (no later pass); Back 51.3 + 9.9 s, Top 20.1 + 11.4 + 97.4 s, Frame 6.1 s;
+  generation 3 min 16 s.
+- CONTROL, original (02:54): pass 1 Back 0.3 s / Top 23.2 s -> 4 B-spline ops empty, Frame 65.3 s; pass 2 + pass 3
+  (Back's Spiral + Top's deloge redone); generation 3 min 45 s.
+- Reading: op-first removed the empty-first-generation symptom in this sample and was ~13% faster (Frame 65 -> 6 s: its
+  stock likely already computed by the ops before it). n=1 per arm, toolpaths not yet compared op for op -> next: one
+  more sample each after a Fusion restart, with every op's toolpath summary recorded; a declared toolpath_gen change only
+  if it holds.
+- CONFIRMING PAIR (fresh Fusion 27252 after a restart, same recipe, every op's toolpath read back with
+  cam.getMachiningTime(op, 1, 500, 0)):
+  - OP-FIRST (03:11:19 -> 03:14:02, 2 min 43 s): pass 1 left 4 of 5 B-spline ops EMPTY (0.3 s each), deloge 22.0 s,
+    Frame 65.0 s; pass 2 made 7/7. So op-first does NOT remove the empty first generation -- sample 1 was the outlier.
+  - CONTROL (03:28:05 -> 03:30:47, 2 min 42 s): pass 1 Back 0.3 s, Top 24.1 s (invalid), Frame 66.6 s; pass 2 made 7/7.
+  - Toolpaths: IDENTICAL op for op in both arms (machining time / feed / rapid distance, 7 ops; e.g. Back pocket
+    760.68 s / 4711.492 cm / 215.59 cm, Frame pocket 472.33 s / 9686.545 / 823.943).
+- VERDICT: op-first does not hold (same total time, the symptom stays). No toolpath_gen change. The one real effect
+  is the doomed pass-1 tries get cheaper (~20 s of Top in sample 2/4), and pass 2's op-by-op time absorbs it.
+  Holder back to none; scratch docs closed by handle; Fred's Untitled untouched.
 ### 2026-10-08 (seat D): touch targets >= 28 px on a phone (Fred: "yes, all controls")
 - DECLARED (styles/editor.css, under the (pointer: coarse) signal SA-MOBILE-4 already uses): --touch-target-min 28px, a
   floor on every control's SMALLER side -- the shared classes (.editor-fillmode-btn, .layers-add-btn, .layer-delete,

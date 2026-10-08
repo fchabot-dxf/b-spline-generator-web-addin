@@ -18,7 +18,7 @@ import { generateBricks } from '../bspline-frame-builder/b-spline-gen/html/core/
 import { signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { BRICK_SETS, FRAME_PRESETS, scaledSet } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
-import { tess, bareGroundScan, bareGround as bareGroundOf, PATCH_MAX_FACE } from './bare-ground.js';
+import { tess, bareGroundScan, bareGround as bareGroundOf, PATCH_MAX_FACE, PATCH_KNOWN } from './bare-ground.js';
 
 vi.setConfig({ testTimeout: HEAVY_TEST_MS });
 
@@ -33,9 +33,7 @@ const BOARD = { W, H };
 const NO_WALL_ROOM = new Set(['template_9 1.5']);
 /** T86 item 16(d): the largest single bare patch is <= PATCH_MAX_FACE of one brick face (tests/bare-ground.js). T15 / T9 at
  *  1.5 in (a 2.6-joint seam where a narrowed band met its facing row) are fixed (contour-bands narrowSingleBand: the run
- *  at the row edge is one joint). T16 1.5 in: the wall's 39 deg tip at the neck, narrower than TIP_FILL_MIN_DEG (no
- *  needles) and under the wall's piece floor -- bare by declared rule, capped at today's measure (a face share). */
-const PATCH_KNOWN = { 'template_16 1.5': 0.08 }; // measured 0.072
+ *  at the row edge is one joint). The known larger patches: bare-ground.js PATCH_KNOWN (T16 1.5 in). */
 
 const area = (p) => (p && p.length >= 3 ? Math.abs(signedArea(p)) : 0);
 const bareSqInScan = (contour, bricks, J) => bareGroundScan(contour, bricks, J, BOARD);
@@ -69,7 +67,7 @@ describe('T86 item 16b-REOPENED: the wall covers its region at every size; no ba
     const bare = bareGround(contour, [...r.frameBricks, ...r.bricks], J);
     expect(bare.sqIn, `${tag}: bare ground sq in`).toBeLessThanOrEqual(BARE_MAX_SQIN);
     const face = s.brickLengthIn * s.brickHeightIn;
-    expect(bare.largestSqIn / face, `${tag}: largest bare patch, share of one brick face`).toBeLessThanOrEqual(PATCH_KNOWN[tag] ?? PATCH_MAX_FACE);
+    expect(bare.largestSqIn / face, `${tag}: largest bare patch, share of one brick face`).toBeLessThanOrEqual(PATCH_KNOWN[`${tpl} ${W}x${H} ${L}`] ?? PATCH_MAX_FACE);
   });
   // the bucketed count IS the reference scan's (a curved waist, a template with no wall room, and a lay with a hole
   // punched in it so the bare count is not 0)
