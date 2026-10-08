@@ -56,6 +56,7 @@ import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
 import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, frameHasFan, FAN_CENTRES, FAN_CENTRE_DEFAULT, fanGroups, applyGroutCuts } from '../core/bricks/index.js';
 import FRAME_DEFS from '../data/frame-defs.js';
+import BRICK_ICONS from '../data/brick-icons.js';
 import { frameContourSilhouette } from './contour-from-frame.js';
 import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
 import { rectToPrimitives } from '../core/inset-window.js';
@@ -752,12 +753,35 @@ export function wallLayoutFor(settings) {
  *  own brick size -- drawn as one polygon per brick over the grout colour. A new BRICK_PATTERNS entry gets its
  *  icon for free. Cached per pattern; null if the engine can't lay it. */
 export const PATTERN_ICON_BOARD = Object.freeze({ widthIn: 1.8, heightIn: 1.2 }); // ~3 bricks across: the bond reads at icon size
+/** The picker icons are DECLARED data (2026-10-08, MEASURED: laying them at boot was 2.4 of a 7 s phone first load at
+ *  4x CPU): data/brick-icons.js, written by tools/gen_brick_icons.mjs from these very functions, at the sizes the panel
+ *  asks for (BRICK_ICON_SIZES; ids from their own lists). Each icon cache starts from that data; an icon missing from it
+ *  is laid at once as before (the fallback) and recorded (brickIconFallbacks). tests/brick-icons-fresh.test.js fails
+ *  on stale data, so an engine change that alters an icon forces a regen. */
+export const BRICK_ICON_SIZES = Object.freeze({ pattern: [30, 24, 22], preset: [30, 24], corner: [30], fan: [30], accent: [30, 22, 16] });
+const _iconFallbacks = [];
+/** A declared icon's drawing at the asked size: the data holds ONE drawing per icon (its viewBox and polygons do not
+ *  depend on the size, only the <svg> tag's width / height do -- the freshness test checks every declared size); undefined
+ *  when the data has no such icon (then it is laid, the fallback). */
+let _useDeclared = true;
+function _declaredIcon(kind, base, widthPx, heightPx) {
+  const table = _useDeclared && BRICK_ICONS && BRICK_ICONS[kind];
+  if (!table || !Object.prototype.hasOwnProperty.call(table, base)) return undefined;
+  return sizedIconSvg(table[base], widthPx, heightPx);
+}
+/** An icon's drawing at another size: only the <svg> tag's width / height change. */
+export const sizedIconSvg = (svg, widthPx, heightPx) => (svg == null ? null : svg.replace(/ width="[^"]*" height="[^"]*"/, ` width="${widthPx}" height="${heightPx}"`));
+/** tools/gen_brick_icons.mjs: lay every icon fresh, ignoring the declared data. */
+export function setBrickIconDeclared(on) { _useDeclared = !!on; }
 const _patternIcons = new Map();
 export function wallPatternIconSvg(patternId, heightPx = 30) {
   const key = `${patternId}:${heightPx}`;
   if (_patternIcons.has(key)) return _patternIcons.get(key);
   const { widthIn: w, heightIn: h } = PATTERN_ICON_BOARD;
   const widthPx = Math.round((heightPx * w) / h);
+  const declared = _declaredIcon('pattern', patternId, widthPx, heightPx);
+  if (declared !== undefined) { _patternIcons.set(key, declared); return declared; }
+  _iconFallbacks.push(`pattern ${key}`);
   const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${widthPx}" height="${heightPx}" viewBox="0 0 ${w} ${h}" aria-hidden="true">`
     + `<rect width="${w}" height="${h}" fill="#efe6da"/>`;
   let svg = null;
@@ -872,7 +896,17 @@ function _miniFrameSvg({ bricks, crop: c }, heightPx) {
 /** A corner style's picker icon: two soldier bands with that `cornerStyle`. */
 const _cornerBands = (cornerId) => { const band = { widthIn: 0.75, pattern: 'soldier', cornerStyle: cornerId }; return [band, band]; };
 export const frameCornerBricks = (cornerId) => _miniFrame(`corner:${cornerId}`, _cornerBands(cornerId)).bricks;
-export const frameCornerIconSvg = (cornerId, heightPx = 26) => _miniFrameSvg(_miniFrame(`corner:${cornerId}`, _cornerBands(cornerId)), heightPx);
+const _cornerIcons = new Map();
+export function frameCornerIconSvg(cornerId, heightPx = 26) {
+  const key = `${cornerId}:${heightPx}`;
+  if (_cornerIcons.has(key)) return _cornerIcons.get(key);
+  const declared = _declaredIcon('corner', cornerId, heightPx, heightPx);
+  if (declared !== undefined) { _cornerIcons.set(key, declared); return declared; }
+  _iconFallbacks.push(`corner ${key}`);
+  const svg = _miniFrameSvg(_miniFrame(`corner:${cornerId}`, _cornerBands(cornerId)), heightPx);
+  _cornerIcons.set(key, svg);
+  return svg;
+}
 /** T86 item 16e: the fan centre picker's icons -- a corner fan of a declared template, laid by the real engine with each
  *  choice and cropped to its biggest fan, apex at the centre (the fan Fred picked from: T18's 12-slice base fan at 1.25 in,
  *  a slightly heavier joint so it reads at 30 px). A new FAN_CENTRES entry gets its icon free. */
@@ -884,6 +918,9 @@ const _fanCentreIcons = new Map();
 export function fanCentreIconSvg(styleId, heightPx = 26) {
   const key = `${styleId}:${heightPx}`;
   if (_fanCentreIcons.has(key)) return _fanCentreIcons.get(key);
+  const declared = _declaredIcon('fan', styleId, heightPx, heightPx);
+  if (declared !== undefined) { _fanCentreIcons.set(key, declared); return declared; }
+  _iconFallbacks.push(`fan ${key}`);
   let svg = null;
   try {
     const { templateId, board, halfIn, brick: s } = FAN_CENTRE_ICON;
@@ -918,8 +955,16 @@ export function framePresetIconSvg(presetId, heightPx = 26) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 1 1" aria-hidden="true">`
       + `<rect width="1" height="1" fill="#efe6da"/><line x1="0.15" y1="0.85" x2="0.85" y2="0.15" stroke="#8a8078" stroke-width="0.06"/></svg>`;
   }
-  return _miniFrameSvg(_miniFrame(`preset:${PRESET_ICON_STYLE}:${presetId}`, bands, PRESET_ICON_STYLES[PRESET_ICON_STYLE]), heightPx);
+  const key = `${presetId}:${heightPx}`;
+  if (_presetIcons.has(key)) return _presetIcons.get(key);
+  const declared = _declaredIcon('preset', presetId, heightPx, heightPx);
+  if (declared !== undefined) { _presetIcons.set(key, declared); return declared; }
+  _iconFallbacks.push(`preset ${key}`);
+  const svg = _miniFrameSvg(_miniFrame(`preset:${PRESET_ICON_STYLE}:${presetId}`, bands, PRESET_ICON_STYLES[PRESET_ICON_STYLE]), heightPx);
+  _presetIcons.set(key, svg);
+  return svg;
 }
+const _presetIcons = new Map();
 // one argument only: it is passed straight to .map(), whose index must never reach the markup (a second
 // `attrs` parameter once turned every pattern icon into `<polygon0 ...>` -- drawn as nothing, measured live)
 const _iconPolygon = (b) => `<polygon points="${b.polygon.map((p) => `${+p.x.toFixed(3)},${+p.y.toFixed(3)}`).join(' ')}"/>`;
@@ -937,6 +982,11 @@ export function accentIconSvg(presetId, heightPx = 26, { sunk = false, bond = 's
   if (_accentIcons.has(key)) return _accentIcons.get(key);
   const { widthIn: w, heightIn: h } = ACCENT_ICON_BOARD;
   const widthPx = Math.round((heightPx * w) / h);
+  if (typeof presetId === 'string') { // a built-in preset: declared (a user tile is laid)
+    const declared = _declaredIcon('accent', `${presetId}:${sunk ? 's' : 'r'}:${bond}`, widthPx, heightPx);
+    if (declared !== undefined) { _accentIcons.set(key, declared); return declared; }
+  }
+  _iconFallbacks.push(`accent ${key}`);
   let svg = null;
   try {
     const accent = presetId && typeof presetId === 'object' && presetId.preset ? presetId : { preset: presetId };
@@ -2030,4 +2080,12 @@ if (typeof document !== 'undefined') {
   document.addEventListener('editorCommit', (e) => {
     regenerateOwnedBrickElements(e.detail && e.detail.editor);
   });
+}
+
+/** The picker icons laid at run time because data/brick-icons.js did not hold them (the fallback), as 'kind key'. */
+export const brickIconFallbacks = () => [..._iconFallbacks];
+/** Forget every icon (declared or laid): the next call lays it fresh -- tools/gen_brick_icons.mjs regenerates from this. */
+export function clearBrickIconCaches() {
+  for (const m of [_patternIcons, _cornerIcons, _fanCentreIcons, _presetIcons, _accentIcons, _miniFrames]) m.clear();
+  _iconFallbacks.length = 0;
 }
