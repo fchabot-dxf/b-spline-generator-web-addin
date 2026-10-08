@@ -50,14 +50,16 @@ export function staleProfiles(entries, inUse, now = Date.now()) {
     && !inUse.has(path.resolve(e.dir).toLowerCase()) && now - e.mtimeMs >= PROFILE_MIN_AGE_MS);
 }
 
-/** Remove up to `max` stale ones under `tmp`, oldest first; returns how many went. */
-export function dropStaleProfiles(tmp = os.tmpdir(), max = PROFILE_DROP_MAX) {
+/** Remove up to `max` stale ones under `tmp`, oldest first; returns how many went. `inUse` (the running Chromes' profile
+ *  dirs) defaults to the live list -- a caller may pass its own (a test: the live list is a PowerShell call that timed out
+ *  under the gate's load, 20 s, and an unknown list removes nothing -- measured 2026-10-08, "expected 10, got 0"). */
+export function dropStaleProfiles(tmp = os.tmpdir(), max = PROFILE_DROP_MAX, inUse = undefined) {
   let names = [];
   try { names = readdirSync(tmp).filter((n) => n.startsWith(PROFILE_PREFIX)); } catch { return 0; }
   if (!names.length) return 0;
   const entries = names.map((n) => { try { return { dir: path.join(tmp, n), mtimeMs: statSync(path.join(tmp, n)).mtimeMs }; } catch { return null; } }).filter(Boolean);
   let n = 0;
-  const stale = staleProfiles(entries, chromeProfilesInUse()).sort((a, b) => a.mtimeMs - b.mtimeMs).slice(0, max);
+  const stale = staleProfiles(entries, inUse === undefined ? chromeProfilesInUse() : inUse).sort((a, b) => a.mtimeMs - b.mtimeMs).slice(0, max);
   for (const e of stale) { try { rmSync(e.dir, { recursive: true, force: true }); n++; } catch {} }
   return n;
 }
