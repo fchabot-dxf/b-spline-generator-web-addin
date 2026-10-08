@@ -25015,7 +25015,7 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   - primitive-ribbon.js wallRegionAtDepth: boundaryAtDepth with each lobe clipped to the board's contour (depth 0),
     then bridged as before -- 13 of the 18 lays to 0;
   - engine.js: the wall's pieces go through the band's own board clip (contour-bands.js clipPiecesToBoard, was
-    clipBandPiecesToBoard, now exported; the plan returns its \`board\`), dropping under the wall set's floor -- the 5 left
+    clipBandPiecesToBoard, now exported; the plan returns its `board`), dropping under the wall set's floor -- the 5 left
     (T14 2 - 4 in, T6 9x12 8 in) were whole bricks laid across the zero-width bridge between two clipped lobes
     (shots/seatE/gaps/wo2_template_14_7x9_4.png: the region is fully inside, the yellow bricks 1.4 - 3.8 in outside it).
 - RESULT: 1368 lays hashed (every template x 7x9 / 9x12 x every preset at 0.75 - 1.5 in + single soldier at 2 - 8 in):
