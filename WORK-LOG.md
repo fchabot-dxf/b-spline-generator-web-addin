@@ -25448,3 +25448,26 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   The solid wireframe (thicken wireframe mode) uses the same function and gains the same way.
 - Full suite 407 files, 6049/6049. Known failures: none. (A stray `git checkout origin/main --` had detached the
   worktree mid-task; the change was carried to this branch from current main before the suite + commit.)
+
+### 2026-10-09 (seat E): thin-stone-bands -- every stone frame ring is a course of stones (Fred's pick (A))
+- PROBLEM (measured, sets 3 / 5 x 5 presets x every template x 7x9 / 9x12 x 0.75 - 1.5 in, 1,520 lays): a stone ring is
+  noise-seeded like a wall, and a ring narrower than the stone spacing gets seedless stretches -- widest gap (2 x the farthest
+  ground point from any piece / joint) single soldier 1.5 in median 5.7, worst 11 joints; T6 9x12 1.5 in mixed bands 10.9;
+  the T1 7x9 1 in right-waist sliver in the (A) mock. Rings are thin everywhere: a single soldier ring is 0.71 in at every
+  size (0.32 - 0.64 of the spacing), stacked bands 0.05 - 0.07.
+- FIX (layouts/fieldstone.js): THIN_RING { maxWidthShare 1, courseSpacingWidths 1.5, minLengthJoints 4 } + ringWidthOf
+  (area between the fences / mean perimeter). A thin ring's set spacing becomes max(1.5 x ring width, 4 joints) -- so the
+  floor and joints follow the ring (the first prototype kept the full-stone floor and left thin rings EMPTY) -- and its
+  seeds are midlineSeeds: every spacing along the outer fence, half way to the inner fence. Threshold: 0.5 / 0.25 were
+  tried first to keep single rings fieldstone, but single rings on main gap 3 - 11 joints too; advisor confirmed 1.0.
+- RESULT: widest gap median 5.7 -> 2.1, worst 11 -> 3.8 (lays over 3 joints 24-76 per row -> 2, all T9: a wall-corner
+  spot under the stem). Overlaps 0, off the outline 0 in all 1,520. T1 right-waist sliver ~2 joints (gone).
+- NEEDLES (Fred's short-grain rule): sharpest stone corner, the angle at each outline vertex between the points 2 joints
+  along the outline either way. Main down to 20 deg (T16 9x12 1.5 mixed), 29 (T5); after >= 46 on every case measured,
+  >= 40 in all FULL lays. A first metric (thin the outline to 2-joint chords) was an artifact: chords cut short stone
+  sides and snake ends and read 4 - 15 deg -- dropped. The arm metric misses gradual tapers (main's T7 cusp spike: 41).
+- PINNED: tests/bricks-thin-stone-rings.test.js (gap <= 4 joints, overlaps 0, off-outline 0, corner >= 40 deg). FAST 4:
+  fails 3/4 on main (gap 10.9 / 5.5 / 8.3); with the gap cap lifted the corner pin fails alone on main (T16 20 deg).
+  FULL=1 1,524/1,524 (584 s). Stone suites (11 files incl. brick-icons-fresh) 76/76; icons unchanged.
+- SHOTS: shots/seatE/stones/ba_{main,after}_* (T1 7x9 1 / T9 7x9 1 single soldier, T6 9x12 1.5 mixed; red = wider than
+  1.5 joints), needle_{main,thin1}_* (T14 / T7 zoom, orange = flagged), thin_stone_bands_mock.png (Fred's pick).

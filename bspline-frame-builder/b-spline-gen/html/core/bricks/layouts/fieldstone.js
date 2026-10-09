@@ -517,7 +517,51 @@ export function fieldstoneTierSpacings(set) {
 /** The smallest piece this layout lays: MIN_PIECE_FLOOR_FRACTION of its smallest tier's grout-free stone. */
 export const fieldstoneMinPieceArea = (set) => MIN_PIECE_FLOOR_FRACTION * Math.min(...fieldstoneTierSpacings(set)) ** 2;
 
+/** A THIN stone ring -- a band much narrower than the stone spacing (the header / stretcher / flemish bands of a stacked
+ *  stone frame) -- is laid as a COURSE of stones along the band: seeds on the ring's mid-line, the stones sized by the band,
+ *  not by the area noise tiers (Fred's pick (A), 2026-10-08). MEASURED (seat E): noise-seeded, a 0.4 in ring of 2.2 in
+ *  stones left whole stretches and corners with no seed and no stone -- T6 9x12 1.5 in mixed bands: a 10.9-joint gap.
+ *   - maxWidthShare: a ring is thin when its mean width is under this share of the stone spacing. MEASURED (the ring's own
+ *     width does not grow with the stones): a single soldier ring is 0.71 in wide at every size -- 0.64 / 0.48 / 0.32 of the
+ *     stone spacing at 0.75 / 1 / 1.5 in; the stacked frames' 0.2 in bands are 0.05 - 0.07, T6's wide band 0.30. Every
+ *     one is under 1, and noise-seeded every one left gaps (single soldier 1.5 in: median 5.7, worst 11 joints), so every
+ *     stone ring at these sizes is a course (1,520-lay sweep after: median 2.1, worst 3.8 -- the T9 wall corner);
+ *   - courseSpacingWidths: the stones' spacing along the ring, in ring widths;
+ *   - minLengthJoints: never shorter than this many joints (no needle stones). */
+export const THIN_RING = Object.freeze({ maxWidthShare: 1, courseSpacingWidths: 1.5, minLengthJoints: 4 });
+const perimOf = (P) => P.reduce((t, p, i) => t + Math.hypot(P[(i + 1) % P.length].x - p.x, P[(i + 1) % P.length].y - p.y), 0);
+/** a ring's mean width: the area between its two fences over their mean perimeter (Infinity when it is not a ring) */
+export const ringWidthOf = (fences) => (fences && fences.length >= 2 && fences[0] && fences[1] && fences[0].length >= 3 && fences[1].length >= 3
+  ? (Math.abs(signedArea(fences[0])) - Math.abs(signedArea(fences[1]))) / ((perimOf(fences[0]) + perimOf(fences[1])) / 2) : Infinity);
+/** the course's seeds: every `step` along the outer fence, half way to the nearest point of the inner fence */
+function midlineSeeds(fences, step, region) {
+  const [outer, inner] = fences, seeds = [];
+  const nearestOn = (p, Q) => {
+    let best = Q[0], bd = Infinity;
+    for (let i = 0; i < Q.length; i++) {
+      const a = Q[i], b = Q[(i + 1) % Q.length], ex = b.x - a.x, ey = b.y - a.y, l = ex * ex + ey * ey || 1e-12;
+      const t = Math.max(0, Math.min(1, ((p.x - a.x) * ex + (p.y - a.y) * ey) / l)), q = { x: a.x + t * ex, y: a.y + t * ey }, d = Math.hypot(q.x - p.x, q.y - p.y);
+      if (d < bd) { bd = d; best = q; }
+    }
+    return best;
+  };
+  let along = step / 2; // distance to the next seed along the outer fence
+  for (let i = 0; i < outer.length; i++) {
+    const a = outer[i], b = outer[(i + 1) % outer.length], len = Math.hypot(b.x - a.x, b.y - a.y);
+    while (along <= len) {
+      const p = { x: a.x + ((b.x - a.x) * along) / len, y: a.y + ((b.y - a.y) * along) / len }, q = nearestOn(p, inner), m = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+      if (pointInPolygon(m.x, m.y, region) && !seeds.some((o) => Math.hypot(o.x - m.x, o.y - m.y) < 0.6 * step)) seeds.push({ x: m.x, y: m.y, radius: step / 2, tierIndex: 0 });
+      along += step;
+    }
+    along -= len;
+  }
+  return seeds;
+}
+
 export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones, fences) {
+  const ringW = ringWidthOf(fences), thin = ringW < THIN_RING.maxWidthShare * set.brickLengthIn;
+  // a thin ring's stones, floor and joints follow the ring: the set's spacing becomes the course's
+  if (thin) set = { ...set, brickLengthIn: Math.max(THIN_RING.courseSpacingWidths * ringW, THIN_RING.minLengthJoints * (set.grout?.widthIn ?? 0)) };
   const spacing = set.brickLengthIn;
   const shrink = (set.grout?.widthIn ?? 0) / 2;
   const grout = set.grout?.widthIn ?? 0;
@@ -552,6 +596,7 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones, f
     const found = poissonDiscSample(boardOutline, tierSpacing, seedFor(seedBase, 'fieldstone-tier', i), points, gate);
     for (const p of found) points.push({ ...p, tierIndex: i });
   }
+  if (thin) points = midlineSeeds(fences, spacing, boardOutline);
   if (!points.length) return { cells: [] };
 
   const xs = boardOutline.map((p) => p.x), ys = boardOutline.map((p) => p.y);
