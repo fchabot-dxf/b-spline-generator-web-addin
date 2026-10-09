@@ -1,3 +1,8 @@
+/** The cube's size per primary pointer (Fred 2026-10-09): on a phone the 160 px cube covered ~28% of the 3D view
+ *  (seat D's measure, 390 px wide) -- a coarse pointer gets a smaller one; taps still snap the view. A mouse keeps 160. */
+export const VIEW_CUBE_PX = Object.freeze({ fine: 160, coarse: 96 });
+export const viewCubePx = () => VIEW_CUBE_PX[typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine'];
+
 class ViewCube {
   constructor(parent, onNavigate) {
     const THREE = window.THREE;
@@ -5,7 +10,7 @@ class ViewCube {
     this._onNavigate = onNavigate;
 
     // Renderer — expanded canvas to leave room for axis indicators around the cube
-    this._size = 160;
+    this._size = viewCubePx(); // VIEW_CUBE_PX above
     this._canvas = document.createElement('canvas');
     Object.assign(this._canvas.style, {
       position: 'absolute', top: '10px', right: '10px',
