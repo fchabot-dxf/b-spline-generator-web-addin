@@ -12,7 +12,7 @@
  * The inset window's opening needs none: its bricks are not cut there and its edge runs on grid lines (measured: 88% of
  * the points within 0.025 in of the hole raised, as inside; no teeth in the close-up).
  */
-import { pointInPolygon } from './geometry.js';
+import { polygonPointTester } from './geometry.js';
 
 /** How far past the outline (grid points) the bricks' edge height is carried: one covers every crossed triangle; two
  *  covers a trim loop sampled a little outside its true curve. */
@@ -31,9 +31,12 @@ export function maskEdgeSource(outline, nx, nz, widthIn, heightIn, cells = BRICK
   if (!outline || outline.length < 3 || !(cells > 0) || !(nx > 1) || !(nz > 1)) return null;
   const iSpan = nx - 1, jSpan = nz - 1;
   const inside = new Uint8Array(nx * nz);
+  // polygonPointTester: pointInPolygon's own answer, the outline's edges bucketed by y (MEASURED 2026-10-08, phone 4x, a
+  // laid board: testing every grid point against every outline edge was 2.2 s of a 0.03 in spacing change)
+  const inOutline = polygonPointTester(outline);
   for (let j = 0; j < nz; j++) {
     const y = heightIn * (1 - j / jSpan);
-    for (let i = 0; i < nx; i++) inside[j * nx + i] = pointInPolygon((i / iSpan) * widthIn, y, outline) ? 1 : 0;
+    for (let i = 0; i < nx; i++) inside[j * nx + i] = inOutline((i / iSpan) * widthIn, y) ? 1 : 0;
   }
   // deep = inside with no outside point within `ring` grid points (the sources); the ring inside is a target too
   const deep = new Uint8Array(nx * nz);
