@@ -34,6 +34,9 @@ export const BLIND_BUDGET = {
     { name: 'Area brush stroke', pre: ['brickTool_wall', 'brickSubTool_wall_area', 'brickWallAreaWidth_2'], act: { stroke: [[0.3, 0.3], [0.62, 0.38]] } },
     { name: 'Frame tab Generate', pre: ['editorTabFrame'], act: { tap: 'editorFrameGenerate' } },
     { name: 'Photo pattern pick', pre: ['editorTabPhoto', 'photoTab_source'], act: { tapSel: '#photoPatternRow button' } },
+    // the editor's backdrop repaint after a Photo change (seat D 2026-10-09: ~340 ms, no card) -- the 'backdrop' stage
+    { name: 'Photo: blur slider release (editor open)', pre: ['photoTab_adjust', 'photoTool_blur'], act: { set: 'photoBlurSlider', value: 3 } },
+    { name: 'Photo: Rotate 90 (editor open)', pre: ['photoTab_source', 'photoTool_rotateFlip'], act: { tap: 'photoBtnRotate' } },
     // the sidebar's quick settings on a board WITH bricks (seat D 2026-10-09, feedback audit on seat A's loaded board:
     // a pick re-rendered the Brick panel before its stage could paint, 53-79 ms frozen with no card)
     { name: 'Sidebar quick: brick set (bricks laid)', closeEditor: true, sidebar: 'decor', act: { tap: 'brickQuick_set_4' } },

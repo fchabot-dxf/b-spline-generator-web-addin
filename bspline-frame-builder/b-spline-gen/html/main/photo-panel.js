@@ -137,7 +137,12 @@ function notifyChange(opts) {
 const photoUndoState = () => ({ ...photoState(), reliefIn: P.carveZ ?? null });
 const samePhoto = (a, b) => !!a && !!b && a.url === b.url && a.patternId === b.patternId && a.reliefIn === b.reliefIn
   && JSON.stringify(a.edits) === JSON.stringify(b.edits);
+/** Seat D 2026-10-09: the step's commit (the editor's commit pipeline, ~100 ms on a phone at 4x CPU) runs behind the
+ *  'backdrop' stage too -- a slider release or a rotate tap shows the pill first, then commits and repaints under it. */
 function photoStep() {
+  return withLoadingStageShownFirst('backdrop', photoStepNow);
+}
+function photoStepNow() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (!editor || !Array.isArray(editor._undoStack)) return;
   const top = editor._undoStack[editor._undoStack.length - 1];
