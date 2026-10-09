@@ -223,7 +223,7 @@ export const CREATIONS = [
       { frame: { template: 'template_8' } },
       { filter: { id: 'carved' } },
       { params: { carveZ: 1.4, symmetry: 'none' } },
-      { trellis: { layer: { name: 'Net', depth: 0.1, profile: 'ballnose' }, distance: 0.9, rails: 5, brace: 1.3, width: 0.08, hang: 7.5, color: '#795548' } },
+      { trellis: { layer: { name: 'Net', depth: 0.1, profile: 'ballnose' }, distance: 0.8, rails: 5, brace: 1.3, width: 0.08, hang: 7.8, ragged: 1.3, color: '#795548' } },
     ],
     view: FRONT,
   },

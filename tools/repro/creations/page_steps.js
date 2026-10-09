@@ -134,7 +134,7 @@
      *  waist and flare at the bulbs), crossed by diagonal braces between neighbouring slats every `brace` in (a diamond
      *  trellis), plus the contour itself. Optional `vine`: a hand-drawn vine (window.__art, the recipe file's own seeded
      *  sketch) climbing slat `vine.rail`, weaving `vine.amp` either side of it, on its own layer. */
-    async trellis({ layer, distance = 1, rails = 6, brace = 0.7, width = 0.08, color = '#6d4c41', vine, hang = null }) {
+    async trellis({ layer, distance = 1, rails = 6, brace = 0.7, width = 0.08, color = '#6d4c41', vine, hang = null, ragged = 0 }) {
       const frame = { defs: M.FR.FRAME_DEFS, record: M.FR.getFrameRecord(), board: { widthIn: M.P.widthIn, heightIn: M.P.heightIn } };
       const sil = M.CFF.frameContourSilhouette(frame, distance, width);
       if (sil.error) throw new Error('trellis: ' + sil.error);
@@ -149,8 +149,10 @@
       const bot = hang != null ? Math.min(top + hang, Math.max(...ys) - width) : Math.max(...ys) - width;
       const railX = (i, y) => { const s = span(y); return s ? s[0] + (s[1] - s[0]) * i / rails : null; };
       const f = (v) => +v.toFixed(3), paths = hang != null ? [] : [{ d, width, color }];
-      for (let i = 1; i < rails; i++) { const pts = []; for (let y = top; y <= bot; y += 0.05) { const x = railX(i, y); if (x != null) pts.push(`${f(x)} ${f(y)}`); } paths.push({ d: 'M ' + pts.join(' L '), width, color }); }
-      for (let i = 0; i < rails; i++) for (let y = top + brace * ((i % 2) ? 0.5 : 0); y + brace <= bot; y += brace) {
+      // `ragged`: each slat of a hanging net stops up to this much short of `bot` (a fixed golden-ratio spread, no randomness)
+      const railBot = (i) => bot - ragged * ((i * 0.618034) % 1);
+      for (let i = 1; i < rails; i++) { const pts = []; for (let y = top; y <= railBot(i); y += 0.05) { const x = railX(i, y); if (x != null) pts.push(`${f(x)} ${f(y)}`); } paths.push({ d: 'M ' + pts.join(' L '), width, color }); }
+      for (let i = 0; i < rails; i++) for (let y = top + brace * ((i % 2) ? 0.5 : 0); y + brace <= Math.min(railBot(i), railBot(i + 1)); y += brace) {
         const a = [railX(i, y), y], b = [railX(i + 1, y + brace), y + brace], c = [railX(i + 1, y), y], e = [railX(i, y + brace), y + brace];
         if ([a, b, c, e].some((q) => q[0] == null)) continue;
         paths.push({ d: `M ${f(a[0])} ${f(a[1])} L ${f(b[0])} ${f(b[1])} M ${f(c[0])} ${f(c[1])} L ${f(e[0])} ${f(e[1])}`, width: width * 0.8, color });
