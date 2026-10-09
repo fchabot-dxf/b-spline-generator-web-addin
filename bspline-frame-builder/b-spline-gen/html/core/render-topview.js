@@ -8,24 +8,31 @@ import { generateHeightmap } from './terrain.js';
 import { COORD_SYSTEM } from './coords.js';
 
 /**
- * Smoothly interpolates values from a grid.
+ * Add the low-res sculpt deltas to a high-res heightmap, bilinear -- the old per-pixel bilinearSample, byte-identical (same
+ * u / v, same formula and order; tests/topview-sculpt-blend.test.js pins it against that loop). Seat D 2026-10-08
+ * (phone, Photo blur drag, CPU x4: every tick repaints this backdrop; _paintTopView's own loop was 72 ms of each
+ * ~185 ms tick): the per-pixel modulo / floor / two divisions and the live-binding read are once per column / row now.
  */
-function bilinearSample(data, nx, nz, u, v) {
-    const x = u * (nx - 1);
-    const z = v * (nz - 1);
-    const x0 = Math.floor(x), x1 = Math.min(nx - 1, x0 + 1);
-    const z0 = Math.floor(z), z1 = Math.min(nz - 1, z0 + 1);
-    const dx = x - x0, dy = z - z0;
-
-    const v00 = data[z0 * nx + x0];
-    const v10 = data[z0 * nx + x1];
-    const v01 = data[z1 * nx + x0];
-    const v11 = data[z1 * nx + x1];
-
-    return v00 * (1 - dx) * (1 - dy) +
-           v10 * dx * (1 - dy) +
-           v01 * (1 - dx) * dy +
-           v11 * dx * dy;
+export function addSculptDeltas(heights, nx, nz, pre, nxLow, nzLow) {
+    const x0s = new Int32Array(nx), x1s = new Int32Array(nx), dxs = new Float64Array(nx);
+    for (let px = 0; px < nx; px++) {
+        const x = (px / (nx - 1)) * (nxLow - 1);
+        const x0 = Math.floor(x);
+        x0s[px] = x0; x1s[px] = Math.min(nxLow - 1, x0 + 1); dxs[px] = x - x0;
+    }
+    for (let pz = 0; pz < nz; pz++) {
+        const z = (pz / (nz - 1)) * (nzLow - 1);
+        const z0 = Math.floor(z), z1 = Math.min(nzLow - 1, z0 + 1);
+        const dy = z - z0, r0 = z0 * nxLow, r1 = z1 * nxLow, row = pz * nx;
+        for (let px = 0; px < nx; px++) {
+            const x0 = x0s[px], x1 = x1s[px], dx = dxs[px];
+            heights[row + px] += pre[r0 + x0] * (1 - dx) * (1 - dy) +
+                                 pre[r0 + x1] * dx * (1 - dy) +
+                                 pre[r1 + x0] * (1 - dx) * dy +
+                                 pre[r1 + x1] * dx * dy;
+        }
+    }
+    return heights;
 }
 
 /**
@@ -203,17 +210,7 @@ function _paintTopView(heightsLow, nxLow, nzLow) {
     const heights = new Float32Array(heightsBase);
 
     // 2. Blend Low-Res Sculpting (Bilinear)
-    if (heightsLow && nxLow > 0) {
-        for (let k = 0; k < nx * nz; k++) {
-            const u = (k % nx) / (nx - 1);
-            const v = Math.floor(k / nx) / (nz - 1);
-
-            // Add Sculpting deltas if available
-            if (preDelta) {
-                heights[k] += bilinearSample(preDelta, nxLow, nzLow, u, v);
-            }
-        }
-    }
+    if (heightsLow && nxLow > 0 && preDelta) addSculptDeltas(heights, nx, nz, preDelta, nxLow, nzLow);
 
     const imgData = ctx.createImageData(nx, nz);
     imgData.data.set(computeTopViewPixels(heights, nx, nz, P.symmetry));
