@@ -41,6 +41,9 @@ export const LOADING_STAGES = {
   undo: { group: 'refreshing', label: 'undoing', surface: 'pill' },
   redo: { group: 'refreshing', label: 'redoing', surface: 'pill' },
   latticeGenerate: { group: 'computing', label: 'generating the lattice', surface: 'pill' },
+  // seat D 2026-10-09 (advisor, Fred's standing rule): the editor's backdrop repaint after a Photo-tab change -- a 384-wide
+  // heightmap + shading + PNG encode, ~340 ms on a phone at 4x CPU, with nothing on screen (core/render-topview.js)
+  backdrop: { group: 'refreshing', label: 'updating the preview', surface: 'pill' },
   heightMask: { group: 'computing', label: 'carving relief', surface: 'card', gestureSurface: 'pill' },
   rebuild: { group: 'refreshing', label: (ctx) => `building surface${ctx?.spacing != null ? ` ${ctx.spacing}″` : ''}`, surface: 'card', gestureSurface: 'pill' },
   restore: { group: 'refreshing', label: 'restoring the board', surface: 'card' },

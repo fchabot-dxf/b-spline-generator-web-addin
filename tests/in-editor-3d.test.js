@@ -38,14 +38,18 @@ afterEach(() => { document.body.innerHTML = ''; });
 describe('IN_EDITOR_3D: one row per kind of change, the editor open vs closed', () => {
   it('declared: photo / relief -> the backdrop in the editor, the rebuild when closed; frame -> its 2D profile vs + the 3D', () => {
     expect(IN_EDITOR_3D).toEqual({
-      photo: { inEditor: 'backdrop', closed: 'rebuild' },
-      relief: { inEditor: 'backdrop', closed: 'rebuild' },
+      // inEditorDrag (Fred 2026-10-09): a Photo slider's drag tick repaints nothing; its release repaints once
+      photo: { inEditor: 'backdrop', inEditorDrag: 'none', closed: 'rebuild' },
+      relief: { inEditor: 'backdrop', inEditorDrag: 'none', closed: 'rebuild' },
       frame: { inEditor: 'profile', closed: 'refresh3D' },
     });
+    const at = (kind, opts) => inEditor3dAction(kind, opts);
     modal.style.display = 'flex';
-    expect(['photo', 'relief', 'frame'].map(inEditor3dAction)).toEqual(['backdrop', 'backdrop', 'profile']);
+    expect(['photo', 'relief', 'frame'].map((k) => at(k))).toEqual(['backdrop', 'backdrop', 'profile']);
+    expect(['photo', 'relief', 'frame'].map((k) => at(k, { drag: true }))).toEqual(['none', 'none', 'profile']); // frame: no drag row
     modal.style.display = 'none';
-    expect(['photo', 'relief', 'frame'].map(inEditor3dAction)).toEqual(['rebuild', 'rebuild', 'refresh3D']);
+    expect(['photo', 'relief', 'frame'].map((k) => at(k))).toEqual(['rebuild', 'rebuild', 'refresh3D']);
+    expect(['photo', 'relief', 'frame'].map((k) => at(k, { drag: true }))).toEqual(['rebuild', 'rebuild', 'refresh3D']); // closed: as before
   });
 });
 
@@ -77,14 +81,15 @@ describe('the Photo relief height: written without a rebuild in the editor', () 
   });
   it("photo-panel's relief slider reads the table: in the editor no rebuild + the backdrop; else applyParam as before", () => {
     const src = readFileSync('bspline-frame-builder/b-spline-gen/html/main/photo-panel.js', 'utf8');
-    const at = src.indexOf('function setReliefHeight(v, { raw = false } = {}) {');
+    const at = src.indexOf('function setReliefHeight(v, { raw = false, drag = false } = {}) {');
     expect(at).toBeGreaterThan(-1);
     const body = src.slice(at, src.indexOf('\n}', at));
     // a user's value is clamped to the photo relief range; an undo (raw) puts the saved value back as it was (seat D 2026-10-08)
     expect(body).toMatch(/const z = raw \? v : clampReliefIn\(v\);/);
-    expect(body).toMatch(/inEditor3dAction\('relief'\) === 'backdrop'/);
-    expect(body).toMatch(/applyParam\('carveZ', z, \{ rebuild: false \}\);\s*refreshEditorTopView\(\);/);
-    expect(body).toMatch(/else applyParam\('carveZ', z\);/);
+    // the table's action, a drag tick included (inEditorDrag 'none': no repaint until the release)
+    expect(body).toMatch(/const action = inEditor3dAction\('relief', \{ drag \}\);/);
+    expect(body).toMatch(/if \(action === 'rebuild'\) applyParam\('carveZ', z\);/);
+    expect(body).toMatch(/applyParam\('carveZ', z, \{ rebuild: false \}\);\s*if \(action === 'backdrop'\) refreshEditorTopView\(\);/);
   });
   it('a relief-only editor session is a change: [3D] takes the Apply way (the rebuild), not the plain close', () => {
     const was = P.carveZ;
