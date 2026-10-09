@@ -48,7 +48,15 @@ await send('Network.setBlockedURLs', { urls: ['*workers.dev*'] }); // never the 
 const VIEWPORT = { width: 1600, height: 1000 };
 
 let stubId = null;
+// a page whose module graph lost a request (a refused/failed fetch under load, item 74k) never recovers: reload it
 async function freshPage(seed) {
+  for (let attempt = 1; ; attempt++) {
+    try { await freshPageOnce(seed); if (await evalJS('window.__creations.idle().then(() => true)')) return; } catch (e) { console.log('page load failed:', e.message); }
+    if (attempt >= 3) throw new Error('page never loaded cleanly');
+    console.log('reloading the page (attempt ' + (attempt + 1) + ')'); await sleep(3000);
+  }
+}
+async function freshPageOnce(seed) {
   if (stubId) await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: stubId });
   stubId = (await send('Page.addScriptToEvaluateOnNewDocument', { source: fusionStubSource(seed, { clearStorage: true }) })).result.identifier;
   await send('Emulation.setDeviceMetricsOverride', { ...VIEWPORT, deviceScaleFactor: 1, mobile: false });
@@ -58,7 +66,6 @@ async function freshPage(seed) {
   const styled = await evalJS(`getComputedStyle(document.getElementById('previewCanvas')).position`);
   if (styled !== 'absolute') throw new Error('app styles not served (previewCanvas position ' + styled + ')');
   await evalJS(PAGE_STEPS);
-  await evalJS('window.__creations.idle()');
 }
 
 const SAME_KEYS = ['board', 'template', 'filter', 'carveZ', 'terrainSeed', 'insetWindow', 'photo', 'lattice'];
