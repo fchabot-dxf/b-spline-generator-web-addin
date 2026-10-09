@@ -146,7 +146,7 @@ function photoStep() {
 function restorePhotoUndo(state) {
   if (!state || samePhoto(state, photoUndoState())) return; // an Undo of something else: the photo stays, no rebuild
   restorePhoto(state);
-  if (state.reliefIn != null && state.reliefIn !== P.carveZ) { setReliefHeight(state.reliefIn); syncReliefHeightDisplay(); }
+  if (state.reliefIn != null && state.reliefIn !== P.carveZ) { setReliefHeight(state.reliefIn, { raw: true }); syncReliefHeightDisplay(); }
 }
 
 /** The params of the LAST step of `opName` in P.photoEdits, merged onto
@@ -223,12 +223,15 @@ const clampReliefIn = (v) => Math.min(MAX_PHOTO_RELIEF_IN, Math.max(0.01, v));
 // every other filter already uses downstream (Send/thicken/CAM) -- just
 // presented here with photo-appropriate bounds/default instead of the
 // generic Skeleton tab's 0.1-20in Carve Depth slider.
-function setReliefHeight(v) {
+/** `raw`: an UNDO puts the saved value back as it was (seat D 2026-10-08, undo map: P.carveZ is the board's own carve
+ *  depth too -- 1.5 in on a fresh board -- and the photo clamp turned an undo of a pattern pick into 0.25). */
+function setReliefHeight(v, { raw = false } = {}) {
+  const z = raw ? v : clampReliefIn(v);
   // core/in-editor-3d.js 'relief': with the editor open the value lands without a rebuild, the backdrop shows it
   if (inEditor3dAction('relief') === 'backdrop') {
-    applyParam('carveZ', clampReliefIn(v), { rebuild: false });
+    applyParam('carveZ', z, { rebuild: false });
     refreshEditorTopView();
-  } else applyParam('carveZ', clampReliefIn(v));
+  } else applyParam('carveZ', z);
 }
 
 function syncReliefHeightDisplay() {

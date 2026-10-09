@@ -60,6 +60,17 @@ describe('item 74f: a photo edit is ONE editor undo step', () => {
     expect(Number(document.getElementById('photoBrightness').value)).toBe(0);
   });
 
+  it("Undo puts the board's own carve depth back EXACTLY, even above the photo relief's max (seat D undo map: 1.5 came back as 0.25)", () => {
+    P.carveZ = 1.5; // a fresh board's carve depth, deeper than any photo relief
+    ed._undoStack.length = 0; ed.pushState(); // the opening entry at 1.5
+    const box = document.getElementById('photoReliefHeight');
+    box.value = '0.1'; box.dispatchEvent(new Event('input')); box.dispatchEvent(new Event('change')); // input applies, change is the step
+    expect(P.carveZ).toBeCloseTo(0.1, 9);
+    expect(ed._undoStack.length).toBe(2);
+    undo();
+    expect(P.carveZ).toBe(1.5);
+  });
+
   it('relief Carved: one step; Undo -> Raised again', () => {
     document.getElementById('photoBtnReliefCarved').click();
     expect(ed._undoStack.length).toBe(2);
