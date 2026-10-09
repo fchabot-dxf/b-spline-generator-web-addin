@@ -429,6 +429,9 @@ function _toggleJoinMarker(jm) {
 // "a mode/tab switch invalidates a stale hover" rule editor-ui.js's setMode
 // already applies to its own snap/grid hover state.
 let _frameHoverKey = null;
+// Seat D 2026-10-08 (phone, real touch): the finger dragging the inset window, so the shape-handle listener (which runs
+// first) never starts a handle drag with a pinch's SECOND finger -- it did, when that finger landed near a handle.
+let _windowDragPointerId = null;
 // F31 item 2c: the same "live while this tab is open" idle-hover state as _frameHoverKey above,
 // for the joinable-joint markers (a separate id-space -- joint ids, not handle keys -- so it is
 // its own variable, not folded into _frameHoverKey).
@@ -545,7 +548,9 @@ function _wireHandleDrag() {
   };
   surface.addEventListener('pointerdown', (e) => {
     if (!inFrameTab()) return;
+    if (_windowDragPointerId != null && e.pointerId !== _windowDragPointerId) return; // a pinch over a window drag: _wireWindowDrag ends it
     if (dragKey && e.pointerId !== dragPointerId) {
+      e._frameDragEnded = true; // the window listener after this one must not start a drag with this finger either
       // A second finger during a handle drag = a pinch: put the frame back, end the drag, and
       // let this press through to the editor with the first finger registered, so it zooms.
       const ed = editor();
@@ -706,13 +711,16 @@ function _wireWindowDrag() {
   const CORNER_PX = 20;
   let mode = null; // null | 'body' | 'x1y1' | 'x2y1' | 'x1y2' | 'x2y2'
   let dragPointerId = null, dragStartPt = null, dragStartRect = null, dragStartRecord = null;
+  let dragLastPt = null; // the dragging finger's last client point, handed to the editor if a pinch takes over
   let hoverKey = null; // the SAME hover/press bookkeeping _wireHandleDrag uses for its own handles
   const corners = (r) => ({ x1y1: { x: r.x1, y: r.y1 }, x2y1: { x: r.x2, y: r.y1 }, x1y2: { x: r.x1, y: r.y2 }, x2y2: { x: r.x2, y: r.y2 } });
-  const hit = (ed, clientX, clientY) => {
+  // Seat D 2026-10-08 (phone, real touch): a finger's corner reach is the pointer's own -- the shape handles'
+  // _frameHandleHitPx (touch ~25 px); a fixed 20 px missed a finger 22 px off. A mouse keeps CORNER_PX.
+  const hit = (ed, clientX, clientY, pointerType = 'mouse') => {
     const rec = getFrameRecord();
     if (!rec.insetWindow?.enabled) return null;
     const pt = ed._getMousePoint({ clientX, clientY });
-    const edge = ed._getMousePoint({ clientX: clientX + CORNER_PX, clientY });
+    const edge = ed._getMousePoint({ clientX: clientX + Math.max(CORNER_PX, _frameHandleHitPx(ed, pointerType)), clientY });
     const tol = Math.abs(edge.x - pt.x) || 0.1;
     const r = _winRect(rec.insetWindow);
     for (const [k, c] of Object.entries(corners(r))) if (Math.hypot(c.x - pt.x, c.y - pt.y) <= tol) return { mode: k, r };
@@ -729,15 +737,36 @@ function _wireWindowDrag() {
   };
   surface.addEventListener('pointerdown', (e) => {
     if (getEditorTab() !== 'frame') return;
+    if (e._frameDragEnded) return; // this finger just turned a shape-handle drag into a pinch
     const ed = editor();
+    if (mode && e.pointerId !== dragPointerId) {
+      // Seat D 2026-10-08 (phone, real touch): a second finger during a window drag = a pinch -- the same rule as the
+      // shape handles (Fred: "Zooming shouldn't move geometry inadvertently"). MEASURED before: the window stayed
+      // moved (and kept following the first finger) with an undo step. Put the frame back, end the drag, and let this
+      // press through to the editor with the first finger registered, so it zooms.
+      setFrameRecord(dragStartRecord);
+      const wasCorner = mode !== 'body';
+      mode = null;
+      if (ed) {
+        if (wasCorner) ed._windowHandleDrag = null;
+        if (ed._activePointers && dragLastPt) ed._activePointers.set(dragPointerId, dragLastPt);
+        if (ed._frameProfile) drawFrameProfile(ed);
+      }
+      dragPointerId = null;
+      _windowDragPointerId = null;
+      syncFramePanel();
+      return;
+    }
     if (!ed || ed._frameHandleDrag) return; // a shape-handle drag already owns this press
-    const h = hit(ed, e.clientX, e.clientY);
+    const h = hit(ed, e.clientX, e.clientY, e.pointerType);
     if (!h) return;
     mode = h.mode;
     dragPointerId = e.pointerId;
+    _windowDragPointerId = e.pointerId;
     dragStartPt = ed._getMousePoint(e);
     dragStartRect = { ...getFrameRecord().insetWindow }; // {cx, cy, w, h} at drag start
     dragStartRecord = JSON.parse(JSON.stringify(getFrameRecord()));
+    dragLastPt = { x: e.clientX, y: e.clientY };
     if (mode !== 'body') { ed._windowHandleDrag = mode; if (ed._frameProfile) drawFrameProfile(ed); }
     if (surface.setPointerCapture && e.pointerId != null) { try { surface.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ } }
     e.preventDefault();
@@ -746,11 +775,12 @@ function _wireWindowDrag() {
   surface.addEventListener('pointermove', (e) => {
     const ed = editor();
     if (!mode) {
-      const h = getEditorTab() === 'frame' && ed && ed._frameProfile ? hit(ed, e.clientX, e.clientY) : null;
+      const h = getEditorTab() === 'frame' && ed && ed._frameProfile ? hit(ed, e.clientX, e.clientY, e.pointerType) : null;
       setHover(ed, h && h.mode !== 'body' ? h.mode : null);
       return;
     }
     if (e.pointerId !== dragPointerId) return;
+    dragLastPt = { x: e.clientX, y: e.clientY };
     const pt = ed._getMousePoint(e);
     const dx = pt.x - dragStartPt.x, dy = pt.y - dragStartPt.y;
     let next;
@@ -779,7 +809,7 @@ function _wireWindowDrag() {
       _syncUndo();
     }
     const wasCorner = mode !== 'body';
-    mode = null; dragPointerId = null;
+    mode = null; dragPointerId = null; _windowDragPointerId = null;
     const ed = editor();
     if (wasCorner && ed) { ed._windowHandleDrag = null; if (ed._frameProfile) drawFrameProfile(ed); }
     e.stopPropagation();
