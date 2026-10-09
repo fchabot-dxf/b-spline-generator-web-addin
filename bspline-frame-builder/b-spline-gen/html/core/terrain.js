@@ -49,6 +49,14 @@ export function generateHeightmap(params, stampParams = null) {
   // means "use schema defaults" — behavior identical to pre-tweaks.
   const tweaks = (params.filterTweaks && params.filterTweaks[noiseType]) || {};
   const modeParams = { ...params, tweaks };
+  // Skeleton-isolation mode bypasses the filter with a flat 0.5, so downstream macro/gate/fade/smooth produce the pure
+  // skeleton shape with no filter character mixed in. Picked ONCE, and one noiseRefs object (rawU/rawV set per sample)
+  // -- seat D 2026-10-08: both were built per sample (~190k per 384-wide editor backdrop, repainted on every Photo-tab
+  // drag tick); the output is unchanged (tests/heightmap-golden.test.js).
+  const modeFunc = params.isolateSkeleton
+      ? () => 0.5
+      : (NoiseModes[noiseType] || NoiseModes['simplex']);
+  const noiseRefs = { noiseFine, noiseWarp, noiseCoarse, rawU: 0, rawV: 0 };
 
   // ── Pass 1 + 2: fine detail & coarse redistribution ───────────────────────
   for (let j = 0; j < nz; j++) {
@@ -89,14 +97,8 @@ export function generateHeightmap(params, stampParams = null) {
         if (symmetry === 'x' || symmetry === 'radial') su = Math.abs(zu - mx) * 2;
         if (symmetry === 'y' || symmetry === 'radial') sv = Math.abs(zv - my) * 2;
 
-        // ── Pass 1: Fine Detail (Strategy Pattern) ──
-        // Skeleton-isolation mode bypasses the filter with a flat 0.5,
-        // so downstream macro/gate/fade/smooth produce the pure skeleton
-        // shape with no filter character mixed in.
-        const modeFunc = params.isolateSkeleton
-            ? () => 0.5
-            : (NoiseModes[noiseType] || NoiseModes['simplex']);
-        const noiseRefs = { noiseFine, noiseWarp, noiseCoarse, rawU: u, rawV: v };
+        // ── Pass 1: Fine Detail (Strategy Pattern; modeFunc / noiseRefs above the loop) ──
+        noiseRefs.rawU = u; noiseRefs.rawV = v;
         let fine = modeFunc(su, sv, aspect, modeParams, noiseRefs);
 
         // ── Detail Modulation (Spatial Density) ──

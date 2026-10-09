@@ -74,17 +74,35 @@ export const tweaks = [
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const wrap01 = (v) => ((v % 1) + 1) % 1;
 
+// The sample-independent values of one heightmap (one params object, one processed image, one aspect): read once,
+// not per sample -- seat D 2026-10-08 (phone, Photo blur drag: this sampler was about half of each 384-wide backdrop
+// heightmap). The same values in the same arithmetic, so the output is unchanged (tests/heightmap-golden.test.js).
+let _k = null;
+function constantsFor(params, img, aspect) {
+  if (_k && _k.params === params && _k.img === img && _k.aspect === aspect) return _k;
+  const t = params.tweaks ?? {};
+  const rotation = (t.rotation ?? 0) * Math.PI / 180;
+  _k = {
+    params, img, aspect,
+    depth: t.depth ?? 1.0,
+    scale: t.scale || 1.0, // guard against 0 from a stray override (would divide by zero below)
+    offsetX: t.offsetX ?? 0,
+    offsetY: t.offsetY ?? 0,
+    rotation,
+    cs: Math.cos(-rotation), sn: Math.sin(-rotation),
+    repeat: (t.repeat ?? 0) >= 0.5,
+    // COVER: the one uniform units-per-pixel scale that makes the image fill the whole board without separate x/y
+    // stretch -- the larger of the two per-axis requirements wins (same logic as CSS background-size: cover).
+    unitsPerPixel: Math.max(aspect / img.w, 1 / img.h),
+  };
+  return _k;
+}
+
 export const fn = (su, sv, aspect, params) => {
   const img = getProcessedPhotoImage(params);
   if (!img || !img.w || !img.h) return 0.5; // no photo loaded (or still decoding): flat, neutral
 
-  const t = params.tweaks ?? {};
-  const depth = t.depth ?? 1.0;
-  const scale = t.scale || 1.0; // guard against 0 from a stray override (would divide by zero below)
-  const offsetX = t.offsetX ?? 0;
-  const offsetY = t.offsetY ?? 0;
-  const rotation = (t.rotation ?? 0) * Math.PI / 180;
-  const repeat = (t.repeat ?? 0) >= 0.5;
+  const { depth, scale, offsetX, offsetY, rotation, cs, sn, repeat, unitsPerPixel } = constantsFor(params, img, aspect);
 
   // Isotropic board-unit space: the board spans [-aspect/2, aspect/2] x
   // [-0.5, 0.5] here, so one unit is the SAME physical distance in both
@@ -96,7 +114,6 @@ export const fn = (su, sv, aspect, params) => {
     // photo itself appears to turn by +rotation (standard "rotate the
     // lookup, not the content" trick -- same reasoning terrain.js's own
     // seedRotation uses for the coarse field, Pass 2).
-    const cs = Math.cos(-rotation), sn = Math.sin(-rotation);
     const rbx = bx * cs - by * sn;
     const rby = bx * sn + by * cs;
     bx = rbx; by = rby;
@@ -104,10 +121,6 @@ export const fn = (su, sv, aspect, params) => {
   bx = bx / scale + offsetX * aspect;
   by = by / scale + offsetY;
 
-  // COVER: the one uniform units-per-pixel scale that makes the image fill
-  // the whole board without separate x/y stretch -- the larger of the two
-  // per-axis requirements wins (same logic as CSS background-size: cover).
-  const unitsPerPixel = Math.max(aspect / img.w, 1 / img.h);
   let u = 0.5 + bx / unitsPerPixel / img.w;
   let v = 0.5 + by / unitsPerPixel / img.h;
   u = repeat ? wrap01(u) : clamp01(u);
