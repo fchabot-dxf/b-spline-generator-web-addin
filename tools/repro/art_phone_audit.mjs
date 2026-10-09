@@ -107,7 +107,9 @@ try {
   }
   // open the editor on the audited tab (setup, unthrottled)
   if (SURF.tab) await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('btnStampEdit').click();
-    for (let i = 0; i < 80 && !window.svgEditor?._draw; i++) await new Promise((r) => setTimeout(r, 250));
+    // the modal SHOWN (it opens behind the 'openEditor' stage, a few frames after the click) -- svgEditor._draw exists from
+    // the page's start, so waiting on it alone measured a hidden editor (seat D 2026-10-09: every undo-map row "could not act")
+    for (let i = 0; i < 80 && !(window.svgEditor?._draw && m && getComputedStyle(m).display !== 'none'); i++) await new Promise((r) => setTimeout(r, 250));
     document.getElementById(${JSON.stringify(SURF.tab)})?.click(); await new Promise((r) => setTimeout(r, 1500)); return 1; })()`);
   // the app's stylesheets really load (advisor 2026-10-08, seat A's finding: a probe serving only b-spline-gen/html 404s
   // ../../styles/*.css, #previewCanvas then grows every frame and inflates every phone timing). No timing without them.
