@@ -129,6 +129,39 @@
       });
       await STEPS.art({ layer, paths: [...ds, ...paths] });
     },
+    /** a trellis that FOLLOWS the frame: the app's own frame-offset contour (as the Shape Lattice's offset-from-frame
+     *  draws it) sampled to a polygon; `rails` slats warped to the contour's width at every height (they pinch at a
+     *  waist and flare at the bulbs), crossed by diagonal braces between neighbouring slats every `brace` in (a diamond
+     *  trellis), plus the contour itself. Optional `vine`: a hand-drawn vine (window.__art, the recipe file's own seeded
+     *  sketch) climbing slat `vine.rail`, weaving `vine.amp` either side of it, on its own layer. */
+    async trellis({ layer, distance = 1, rails = 6, brace = 0.7, width = 0.08, color = '#6d4c41', vine }) {
+      const frame = { defs: M.FR.FRAME_DEFS, record: M.FR.getFrameRecord(), board: { widthIn: M.P.widthIn, heightIn: M.P.heightIn } };
+      const sil = M.CFF.frameContourSilhouette(frame, distance, width);
+      if (sil.error) throw new Error('trellis: ' + sil.error);
+      const d = M.SLG.primitivesToPathD(sil.primitives);
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); const pe = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pe.setAttribute('d', d); svg.appendChild(pe); document.body.appendChild(svg);
+      const L = pe.getTotalLength(), poly = []; for (let k = 0; k <= 600; k++) { const q = pe.getPointAtLength(L * k / 600); poly.push([q.x, q.y]); }
+      svg.remove();
+      const span = (y) => { const xs = []; for (let i = 1; i < poly.length; i++) { const [x0, y0] = poly[i - 1], [x1, y1] = poly[i]; if ((y0 - y) * (y1 - y) <= 0 && y0 !== y1) xs.push(x0 + (x1 - x0) * (y - y0) / (y1 - y0)); } return xs.length >= 2 ? [Math.min(...xs), Math.max(...xs)] : null; };
+      const ys = poly.map((q) => q[1]), top = Math.min(...ys) + width, bot = Math.max(...ys) - width;
+      const railX = (i, y) => { const s = span(y); return s ? s[0] + (s[1] - s[0]) * i / rails : null; };
+      const f = (v) => +v.toFixed(3), paths = [{ d, width, color }];
+      for (let i = 1; i < rails; i++) { const pts = []; for (let y = top; y <= bot; y += 0.05) { const x = railX(i, y); if (x != null) pts.push(`${f(x)} ${f(y)}`); } paths.push({ d: 'M ' + pts.join(' L '), width, color }); }
+      for (let i = 0; i < rails; i++) for (let y = top + brace * ((i % 2) ? 0.5 : 0); y + brace <= bot; y += brace) {
+        const a = [railX(i, y), y], b = [railX(i + 1, y + brace), y + brace], c = [railX(i + 1, y), y], e = [railX(i, y + brace), y + brace];
+        if ([a, b, c, e].some((q) => q[0] == null)) continue;
+        paths.push({ d: `M ${f(a[0])} ${f(a[1])} L ${f(b[0])} ${f(b[1])} M ${f(c[0])} ${f(c[1])} L ${f(e[0])} ${f(e[1])}`, width: width * 0.8, color });
+      }
+      await STEPS.art({ layer, paths });
+      if (vine) {
+        const guide = []; for (let y = bot - 0.1, k = 0; y >= top + 0.2; y -= 0.05, k++) { const x = railX(vine.rail, y); if (x != null) guide.push([x + vine.amp * Math.sin((bot - y) / vine.wave * 2 * Math.PI), y]); }
+        const A = window.__art;
+        await STEPS.art({ layer: vine.layer, paths: [
+          { d: A.sketch(guide, A.rng(vine.seed)), width: vine.width || 0.09, color: '#2e7d32' },
+          { d: A.leaves(guide, A.rng(vine.seed + 1), vine.leaves || {}), width: (vine.width || 0.09) * 0.7, color: '#43a047' } ] });
+      }
+    },
     async art({ layer, paths }) {
       await openEditor('artwork');
       const e = ed();

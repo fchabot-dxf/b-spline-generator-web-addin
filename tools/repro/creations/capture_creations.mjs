@@ -14,7 +14,7 @@ import { writeFileSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchChrome, connectPage, fusionStubSource, payloadFromSends, sleep } from '../cdp_capture_lib.mjs';
-import { CREATIONS } from './recipes.mjs';
+import { CREATIONS, f3, along, rng, sketch, leaves } from './recipes.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = path.resolve(HERE, '../../../bspline-frame-builder');
@@ -24,7 +24,10 @@ const opt = (k, d) => { const a = process.argv.find((x) => x.startsWith(`--${k}=
 const HTTP = Number(opt('http', 8793)), CDP = Number(opt('cdp', 9783)), REUSE = process.argv.includes('--reuse');
 const QUICK = process.argv.includes('--quick'); // build + 3D shot only (iterating on a piece's look)
 const ONLY = opt('only', '') ? opt('only', '').split(',').map(Number) : null;
-const PAGE_STEPS = readFileSync(path.join(HERE, 'page_steps.js'), 'utf8');
+// the recipe file's own art helpers, handed to the page as source (page steps that compute geometry in the page --
+// e.g. a vine on a contour-following trellis -- draw with the SAME seeded hand, not a copy)
+const ART_HELPERS = `window.__art = (() => { const f3 = ${f3}; const along = ${along}; const rng = ${rng}; ${sketch} ${leaves} return { rng, sketch, leaves }; })();`;
+const PAGE_STEPS = ART_HELPERS + String.fromCharCode(10) + readFileSync(path.join(HERE, 'page_steps.js'), 'utf8');
 const URL = `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html`;
 mkdirSync(OUT, { recursive: true });
 

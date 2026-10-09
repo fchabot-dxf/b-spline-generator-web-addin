@@ -6,7 +6,7 @@
 // many small exact repeats (dots, petals, chevrons) -- never one big perfect shape.
 
 // ---- composed motifs (pure geometry -> point lists / SVG path data) ----
-const f3 = (v) => +v.toFixed(3);
+export const f3 = (v) => +v.toFixed(3);
 /** a seeded PRNG (mulberry32): the same seed redraws the same hand */
 export const rng = (seed) => () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 /** an arc of a circle from angle a0 to a1 (radians; y down, so +angle turns clockwise on screen) */
@@ -22,7 +22,7 @@ export const spiral = (cx, cy, r0, r1, a0, a1, n = 160) => Array.from({ length: 
 /** a point list as SVG path data */
 export const pathOf = (pts) => 'M ' + pts.map(([x, y]) => `${f3(x)} ${f3(y)}`).join(' L ');
 /** a polyline by arc length: the point and unit tangent at distance s */
-const along = (pts) => {
+export const along = (pts) => {
   const cum = [0]; for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
   const at = (s) => { let i = 1; while (i < pts.length - 1 && cum[i] < s) i++; const L = cum[i] - cum[i - 1] || 1, u = Math.max(0, Math.min(1, (s - cum[i - 1]) / L));
     const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]; return { x: x0 + (x1 - x0) * u, y: y0 + (y1 - y0) * u, tx: (x1 - x0) / L, ty: (y1 - y0) / L }; };
@@ -88,34 +88,30 @@ const ARCH = gothicArch(2.7, 5.3, 4.3, 10.0);
 export const CREATIONS = [
   {
     title: 'Hourglass Garden',
-    concept: 'Harmony: a garden trellis -- a Shape Lattice whose contour follows the hourglass outline in from the frame -- with a hand-drawn vine (many short jittered strokes, leaves alternating) climbing it, inside a weathered grey fieldstone ring: stone, timber and a growing line, all garden.',
+    concept: 'Harmony: a garden trellis that follows the hourglass -- its slats pinch at the waist and flare into the bulbs, braced into diamonds, all built on the frame-offset contour (the Shape Lattice offset-from-frame) -- with a hand-drawn vine (many short jittered strokes, alternating leaves) climbing one slat, inside a weathered grey fieldstone ring.',
     template: 'template_1', board: [7, 9], seed: 111,
     steps: [
       { frame: { template: 'template_1' } },
       { filter: { id: 'simplex' } },
       { params: { carveZ: 0.12, symmetry: 'none' } },
       { bricks: { size: 1, frameSet: 5, framePreset: 'single_soldier', frame: true, surface: 'weathered', wear: 0.6 } },
-      { lattice: { kind: 'shape', orientation: 'vertical', fromFrame: true, distance: 1.05, clicks: ['shapeLatticeTiesSpanModeRails'],
-        set: { shapeLatticeRailsSpacing: 0.75 }, colors: WOOD,
-        layers: { Rails: { carve: true, depth: 0.1 }, Contour: { carve: true, depth: 0.1 }, Ties: { carve: true, depth: 0.1 }, Nodes: { carve: true, depth: 0.12 } } } },
-      { art: { layer: { name: 'Vine', depth: 0.2, profile: 'ballnose' }, paths: [
-        { d: sketch(VINE, rng(11)), width: 0.09, color: '#2e7d32' },
-        { d: leaves(VINE, rng(12), { every: 0.45, size: 0.38 }), width: 0.06, color: '#43a047' } ] } },
+      { trellis: { layer: { name: 'Trellis', depth: 0.1, profile: 'vbit' }, distance: 1.05, rails: 5, brace: 0.95, width: 0.1, color: '#6d4c41',
+        vine: { rail: 3, amp: 0.35, wave: 1.6, seed: 11, width: 0.09, layer: { name: 'Vine', depth: 0.2, profile: 'ballnose' }, leaves: { every: 0.45, size: 0.36 } } } },
     ],
     view: FRONT,
   },
   {
     title: 'Sand Timer',
-    concept: 'Contrast: masonry against flow -- crisp running-bond bricks fill the upper bulb of a tapered hourglass, and below the waist a thin sculpted stream of sand falls onto a smooth sculpted pile in the lower bulb.',
+    concept: 'Contrast: masonry against flow -- crisp running-bond red bricks fill the upper bulb of a tapered hourglass, and below the waist a narrow raised stream of sand falls onto a V-bit cone pile with a crisp apex, all inside a weathered grey fieldstone ring.',
     template: 'template_3', board: [8, 10], seed: 222,
     steps: [
       { frame: { template: 'template_3' } },
       { filter: { id: 'simplex' } },
       { params: { carveZ: 0.12, symmetry: 'none' } },
-      { sculpt: { mode: 'draw', radius: 0.3, strength: 0.01, strokes: [{ pts: [[4, 4.9], [4, 7.9]], dy: -2, step: 0.08 }] } },
-      { sculpt: { mode: 'inflate', radius: 2.2, strength: 0.007, strokes: [{ pts: ring(4, 8.4, 0.15, 24), dy: -2, step: 0.05 }] } },
-      { bricks: { size: 1, wallSet: 1, wallPattern: 'stretcher', wall: true } },
+      { bricks: { size: 1, frameSet: 5, framePreset: 'single_soldier', frame: true, wallSet: 1, wallPattern: 'stretcher', wall: true, surface: 'weathered', wear: 0.4 } },
       { areas: { width: 2, list: [{ pattern: 'stretcher', points: [[0.6, 1.0], [7.4, 1.0]] }, { pattern: 'stretcher', points: [[0.6, 2.4], [7.4, 2.4]] }, { pattern: 'stretcher', points: [[0.6, 3.7], [7.4, 3.7]] }] } },
+      { art: { layer: { name: 'Stream', depth: 0.12, profile: 'vbit', angle: 90 }, paths: [{ d: 'M 4 4.7 L 4 7.0', width: 0.12, color: '#c9a227' }] } },
+      { art: { layer: { name: 'Pile', depth: 0.6, profile: 'vbit', angle: 120 }, paths: [{ d: pathOf(ring(4, 7.9, 1.0, 96)) + ' Z', width: 0.02, fill: '#c9a227', color: '#c9a227' }] } },
     ],
     view: FRONT,
   },
@@ -140,7 +136,7 @@ export const CREATIONS = [
       { frame: { template: 'template_12' } },
       { filter: { id: 'silk' } },
       { params: { carveZ: 0.15, spacing: '0.03' } },
-      { art: { layer: { name: 'Quarries', depth: 0.07, profile: 'vbit' }, paths: [
+      { art: { layer: { name: 'Quarries', depth: 0.1, profile: 'vbit' }, paths: [
         { d: diamondField(ARCH.inside, 2.7, 5.3, 1.9, 10.0, 0.34, 0.24, 0.14, 0.1), width: 0.01, fill: '#90a4ae', color: '#90a4ae' } ] } },
       { art: { layer: { name: 'Arch', depth: 0.1, profile: 'vbit' }, paths: [{ d: pathOf(ARCH.outline), width: 0.1, color: '#455a64' }] } },
       { bricks: { size: 1, frameSet: 5, framePreset: 'single_soldier', frame: true, surface: 'weathered', wear: 0.5 } },
