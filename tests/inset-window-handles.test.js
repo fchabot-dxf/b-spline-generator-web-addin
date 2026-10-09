@@ -161,6 +161,71 @@ describe('inset window: visible corner handles + Position/Size steppers', () => 
     expect(w.h).toBeCloseTo(0.6, 9);
   });
 
+  // seat D 2026-10-08 (phone, real touch): the shape handles' two touch rules, now the window's too
+  const firePtr = (type, x, y, id, pointerType = 'touch') => {
+    const ev = new MouseEvent(type, { clientX: x * ed.PX, clientY: y * ed.PX, bubbles: true, cancelable: true });
+    Object.defineProperty(ev, 'pointerId', { value: id }); Object.defineProperty(ev, 'pointerType', { value: pointerType });
+    document.getElementById('editorFrameShield').dispatchEvent(ev);
+  };
+  it("a second finger during a window drag (a pinch) puts the frame back and ends the drag; the editor gets the first finger (Fred: \"Zooming shouldn't move geometry inadvertently\")", () => {
+    setFrameRecord({ insetWindow: { enabled: true, cx: -3, cy: 4, w: 0.6, h: 0.6 } });
+    setEditorTab('frame');
+    ed._activePointers = new Map();
+    const before = JSON.stringify(getFrameRecord());
+    firePtr('pointerdown', 0.5, 0.5, 1);
+    firePtr('pointermove', 1.0, 1.0, 1);
+    expect(JSON.stringify(getFrameRecord())).not.toBe(before); // non-vacuous: the drag really moved it
+    firePtr('pointerdown', 3, 3, 2); // a second finger lands: a pinch
+    expect(JSON.stringify(getFrameRecord())).toBe(before);
+    expect(ed._activePointers.has(1)).toBe(true); // the editor's pinch gets the first finger too
+    firePtr('pointermove', 1.5, 1.5, 1);
+    firePtr('pointerup', 1.5, 1.5, 1);
+    expect(JSON.stringify(getFrameRecord())).toBe(before); // the pinch never drags the window
+  });
+  // MEASURED live (real touch): the pinch's second finger landed near a SHAPE handle, whose listener (it runs first)
+  // started a handle drag with it -- a frame parameter moved and an undo step was pushed. Both directions:
+  it('a pinch over a window drag: the second finger on a shape handle starts no handle drag', () => {
+    setFrameRecord({ insetWindow: { enabled: true, cx: -3, cy: 4, w: 0.6, h: 0.6 } });
+    setEditorTab('frame');
+    ed._activePointers = new Map();
+    const before = JSON.stringify(getFrameRecord());
+    const h = ed._frameHandles.find((q) => q.key === 'waistReach');
+    firePtr('pointerdown', 0.5, 0.5, 1);
+    firePtr('pointermove', 0.8, 0.8, 1);
+    firePtr('pointerdown', h.anchor.x, h.anchor.y, 2); // the second finger, ON a shape handle
+    expect(ed._frameHandleDrag ?? null).toBeNull();
+    firePtr('pointermove', h.anchor.x - 0.5, h.anchor.y, 2);
+    firePtr('pointerup', h.anchor.x - 0.5, h.anchor.y, 2);
+    firePtr('pointerup', 0.8, 0.8, 1);
+    expect(JSON.stringify(getFrameRecord())).toBe(before);
+  });
+  it('a pinch over a shape-handle drag: the second finger on the window starts no window drag', () => {
+    setFrameRecord({ insetWindow: { enabled: true, cx: -3, cy: 4, w: 0.6, h: 0.6 } });
+    setEditorTab('frame');
+    ed._activePointers = new Map();
+    const before = JSON.stringify(getFrameRecord());
+    const h = ed._frameHandles.find((q) => q.key === 'waistReach');
+    firePtr('pointerdown', h.anchor.x, h.anchor.y, 1);
+    firePtr('pointermove', h.anchor.x - 0.3, h.anchor.y, 1);
+    expect(JSON.stringify(getFrameRecord())).not.toBe(before); // non-vacuous
+    firePtr('pointerdown', 0.5, 0.5, 2); // the second finger, ON the window body
+    expect(ed._windowHandleDrag ?? null).toBeNull();
+    firePtr('pointermove', 1.5, 1.5, 2);
+    firePtr('pointerup', 1.5, 1.5, 2);
+    firePtr('pointerup', h.anchor.x - 0.3, h.anchor.y, 1);
+    expect(JSON.stringify(getFrameRecord())).toBe(before);
+  });
+  it("a finger's corner reach is the pointer's own (22 px off grabs on touch; a mouse keeps its 20 px)", () => {
+    setEditorTab('frame');
+    const off = 22 / ed.PX; // 22 px right of the x2y2 corner (board-local 5, 6)
+    firePtr('pointerdown', 5 + off, 6, 1, 'mouse');
+    expect(ed._windowHandleDrag).toBeFalsy();
+    firePtr('pointerup', 5 + off, 6, 1, 'mouse');
+    firePtr('pointerdown', 5 + off, 6, 2, 'touch');
+    expect(ed._windowHandleDrag).toBe('x2y2');
+    firePtr('pointerup', 5 + off, 6, 2, 'touch');
+  });
+
   it('Position X/Y steppers move the centre (size unchanged); Size W/H steppers resize directly (the centre unchanged)', () => {
     $('frameWindowPosX').value = '1'; $('frameWindowPosX').dispatchEvent(new Event('change'));
     expect(getFrameRecord().insetWindow).toMatchObject({ cx: 1, cy: 0, w: 3, h: 3 });
