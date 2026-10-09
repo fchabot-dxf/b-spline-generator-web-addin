@@ -82,7 +82,7 @@ let _lastBuiltDigest = null;
 /** P keys the heights stage never reads (tests/heights-inert-keys.test.js scans that code for every one of them). */
 export const HEIGHTS_INERT_KEYS = new Set([
     'adaptiveDisplay', 'showMesh', 'flatShading', 'colourEdges', 'showLeaders', // the display
-    'thickenEnabled', 'thickenDir', 'thickenMode', 'thickenWireframe', 'thickenYellowOffset', 'includeSurface',
+    'thickness', 'thickenEnabled', 'thickenDir', 'thickenMode', 'thickenWireframe', 'thickenYellowOffset', 'includeSurface',
     'includeUnstampedSolid', 'bottomSmoothRadius', 'extraThickenThin', 'extraThickenThinFalloff', // the thicken step
     'decalEnabled', 'decalResolution', 'decalLayerIds',
     'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',

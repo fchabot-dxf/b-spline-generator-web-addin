@@ -20,7 +20,58 @@ import { TerrainPreview } from '../bspline-frame-builder/b-spline-gen/html/core/
 
 const HTML = 'bspline-frame-builder/b-spline-gen/html';
 const read = (rel) => readFileSync(path.join(HTML, rel), 'utf8');
-const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+/**
+ * The code only: comments, string text and regex literals blanked -- EXCEPT a string literal used as a property name in
+ * code (obj['x'], 'x' in obj): it stays as "x", so a key read by literal still counts as a read. Template literals keep
+ * their ${...} code. (A tweak's description text naming a key is not a read; obj['key'] is.)
+ */
+function codeOnly(src) {
+  let out = '', prev = '';
+  const n = src.length;
+  const emit = (s) => { out += s; const t = s.trim(); if (t) prev = t[t.length - 1]; };
+  const regexMayStart = () => !prev || '(,=:[!&|?{};+-*%<>~^'.includes(prev);
+  function template(i) { // i: just after the opening backtick
+    while (i < n) {
+      if (src[i] === '\\') { i += 2; continue; }
+      if (src[i] === '`') return i + 1;
+      if (src[i] === '$' && src[i + 1] === '{') { emit(' ${ '); i = code(i + 2, true); emit(' } '); continue; }
+      i++;
+    }
+    return n;
+  }
+  function code(i, untilBrace) {
+    let depth = 0;
+    while (i < n) {
+      const c = src[i], d = src[i + 1];
+      if (c === '/' && d === '/') { while (i < n && src[i] !== '\n') i++; continue; }
+      if (c === '/' && d === '*') { const e = src.indexOf('*/', i + 2); i = e < 0 ? n : e + 2; out += ' '; continue; }
+      if (c === '/' && regexMayStart()) {
+        let j = i + 1, inClass = false;
+        while (j < n && src[j] !== '\n') {
+          if (src[j] === '\\') { j += 2; continue; }
+          if (src[j] === '[') inClass = true; else if (src[j] === ']') inClass = false; else if (src[j] === '/' && !inClass) break;
+          j++;
+        }
+        i = j + 1; while (i < n && /[a-z]/.test(src[i])) i++;
+        emit(' /re/ '); continue;
+      }
+      if (c === "'" || c === '"') {
+        let j = i + 1; while (j < n && src[j] !== c) { if (src[j] === '\\') j++; j++; }
+        const text = src.slice(i + 1, j), next = src.slice(j + 1, j + 40).match(/^\s*(\]|in\b)/);
+        const asKey = next && (next[1] === 'in' || prev === '[');
+        emit(asKey ? ` "${text}" ` : ' "" ');
+        i = j + 1; continue;
+      }
+      if (c === '`') { emit(' `` '); i = template(i + 1); continue; }
+      if (c === '{') depth++;
+      if (c === '}') { if (untilBrace && depth === 0) return i + 1; depth--; }
+      emit(c); i++;
+    }
+    return n;
+  }
+  code(0, false);
+  return out;
+}
 
 /** The heights stage's source: rebuild.js's own two functions + every module terrain.js / apply-stamp-layers.js import. */
 function heightsStageSource() {
@@ -33,7 +84,7 @@ function heightsStageSource() {
     for (const m of read(f).matchAll(/(?:import|export)\s[^'"]*?from\s*['"](\.[^'"]+)['"]|import\(\s*['"](\.[^'"]+)['"]\s*\)/g))
       queue.push(path.posix.normalize(path.posix.join(path.posix.dirname(f), m[1] || m[2])));
   }
-  return { files, code: [rb.slice(a, b), ...[...files].map(read)].map(stripComments).join('\n') };
+  return { files, code: [rb.slice(a, b), ...[...files].map(read)].map(codeOnly).join('\n') };
 }
 
 describe('HEIGHTS_INERT_KEYS: completeness, from the heights stage code', () => {
@@ -53,7 +104,19 @@ describe('HEIGHTS_INERT_KEYS: completeness, from the heights stage code', () => 
   });
 
   it('the heights stage never reads its params / P by a computed name (the scan could not see that key)', () => {
-    expect(code.match(/\b(params|modeParams|P|opts|options|tweaks)\s*\[\s*(?!['"`])/g)).toBe(null);
+    expect(code.match(/\b(params|modeParams|P|opts|options|tweaks)\s*\[(?!\s*['"`])/g)).toBe(null);
+  });
+
+  it('the code-only scan keeps literal key reads and drops only text (its own cases + a tripwire on the real code)', () => {
+    const c = codeOnly("const a = params['kA']; const b = P[ \"kB\" ]; if ('kC' in p) {} const r = /['\"]kR/g;\n" +
+      "const s = { desc: 'kD text' }; // kE\n const t = `kF ${params.kG + `kH`} kI`; /* kJ */ const u = x / 2; const w = 'kK';");
+    for (const k of ['kA', 'kB', 'kC', 'kG', 'w', 'u']) expect(c, k).toMatch(new RegExp(`\\b${k}\\b`));
+    for (const k of ['kR', 'kD', 'kE', 'kF', 'kH', 'kI', 'kJ', 'kK']) expect(c, k).not.toMatch(new RegExp(`\\b${k}\\b`));
+    // Tripwire: dropping string text frees exactly these P keys beyond a comments-only strip. A scanner bug that blanked
+    // real code would free more.
+    const commentsOnly = [...files].map((f) => read(f).replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1')).join('\n');
+    const freed = Object.keys(DEFAULT).filter((k) => new RegExp(`\\b${k}\\b`).test(commentsOnly) && !new RegExp(`\\b${k}\\b`).test(code));
+    expect(freed).toEqual(['thickness']); // core/noise/chest.js: a tweak's description text ('flesh thickness')
   });
 });
 

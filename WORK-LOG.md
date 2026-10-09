@@ -25552,3 +25552,17 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   (0.30), longest 828 -> 260; decalEnabled 0.37; thickenEnabled 0.62; colourEdges 0.69; exportOrientation 0.61; spacing
   0.97 and the thickness drag 1.16 unchanged (heights inputs). Total over 58 actions 0.966 (the rest are heights inputs).
 - Full suite 414 files, 6110/6110. Known failures: none.
+### 2026-10-09 (seat A): heights reuse, follow-up -- thickness freed, the scan reads code only (advisor's synthesis)
+- core/noise/chest.js: the local `thickness` -> `ribThick` (internal; heightmap-golden + noise-chest 32/32 unchanged).
+  The tweak's description text ('Overall flesh thickness ...') is untouched (Fred-visible).
+- tests/heights-inert-keys.test.js: the scan is a small tokenizer (codeOnly) -- comments, string text and regex
+  literals blanked, template ${...} code kept, and a string literal used as a key (obj['x'], 'x' in obj) KEPT as a read.
+  Own cases pin each rule; a tripwire pins the keys that dropping string text frees beyond a comments-only strip to
+  exactly ['thickness'] (a scanner bug that blanked real code would free more). The computed-read check now looks past
+  whitespace ([(?!\s*['"`])).
+- HEIGHTS_INERT_KEYS += thickness (36 keys). Mutations: terrain.js reading params['thickness'] by literal -> 2 fail;
+  chest.js's local back to `thickness` -> 2 fail; params.flatShading -> 1 fails.
+- PHONE (same rig, old/new/new/old, 17 min): adaptiveDisplay 0.21, colourEdges 0.32, thickenEnabled 0.23, decalEnabled
+  0.62; the thickness drag busy 3072 -> 1096 (0.36) but its old passes were 4894 / 1250 ms (noise), new 886 / 1305 --
+  read it as "longest task 481 -> 322 ms", not as a 3x.
+- Full suite 414 files, 6112/6112. Known failures: none.
