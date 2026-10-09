@@ -2766,22 +2766,24 @@ const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).filter((id) => !FOLDED_FRAM
 // elements at once. `mixed` (BRICK audit A5): the text shown when NO choice is current (the elements differ, after a
 // per-element pick in the editor) -- the row says so instead of showing nothing active; `when` = it applies (the
 // elements' sets really differ: an all-rock board shows no brick set active without being mixed). `columns` (A9): an icon grid of
-// that many columns (the Wall pattern's 21 icons took 11 rows).
+// that many columns (the Wall pattern's 21 icons took 11 rows). `stage` (seat D 2026-10-09, phone feedback audit on seat
+// A's loaded board): the loading stage a pick shows FIRST -- the pick re-renders the Brick panel (~73 ms at 4x CPU) before
+// its own re-lay / re-mask stage could paint: 53-79 ms frozen with no card. The stage named is the work it starts.
 const BRICK_QUICK_SETTINGS = [
-  { id: 'set', label: 'Set', choices: () => BRICK_SET_IDS.map((id) => ({ id, label: _setLabel(id) })),
+  { id: 'set', label: 'Set', stage: 'bricks', choices: () => BRICK_SET_IDS.map((id) => ({ id, label: _setLabel(id) })),
     mixed: { label: 'Mixed', title: 'The elements use different sets (picked per element in the Brick tab); a pick here applies to every element',
       when: () => new Set(SET_KINDS().map((k) => elementSetId(P.brickSettings, k))).size > 1 },
     isCurrent: (c) => SET_KINDS().every((k) => elementSetId(P.brickSettings, k) === c.id), apply: (c) => selectSet(c.id, 'auto', SET_KINDS(), { strokes: true }) }, // A6: applies to every element, strokes too
-  { id: 'size', label: 'Brick size', choices: () => BRICK_SIZE_PRESETS,
+  { id: 'size', label: 'Brick size', stage: 'bricks', choices: () => BRICK_SIZE_PRESETS,
     isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
-  { id: 'pattern', label: 'Wall pattern', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternIconSvg(c.id, 24), columns: 4,
+  { id: 'pattern', label: 'Wall pattern', stage: 'bricks', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternIconSvg(c.id, 24), columns: 4,
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
   // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
   // (`lays`), or re-lays it; greyed while the board has no frame contour (BRICK_CONTROL_REQUIRES 'frameContour')
-  { id: 'frameBands', label: 'Frame bands', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetIconSvg(c.id, 24),
+  { id: 'frameBands', label: 'Frame bands', stage: 'bricks', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetIconSvg(c.id, 24),
     lays: 'frame', isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
   // F35 item 55: the board-wide grout colour (paint only, nothing re-lays); any other hex from the Brick tab's picker
-  { id: 'groutColor', label: 'Grout colour', choices: () => GROUT_COLOR_CHOICES, iconFor: _groutSwatchSvg,
+  { id: 'groutColor', label: 'Grout colour', stage: 'heightMask', choices: () => GROUT_COLOR_CHOICES, // paint only: the re-mask iconFor: _groutSwatchSvg,
     isCurrent: (c) => c.color === ((P.brickSettings.groutPaint || {}).color ?? null), apply: (c) => setGroutPaint({ color: c.color }, null) },
 ];
 const quickButtonId = (row, choice) => `brickQuick_${row.id}_${choice.id}`;
@@ -2825,7 +2827,7 @@ function renderQuickSettings(container) {
       else btn.textContent = choice.label;
       if (row.columns) btn.style.minWidth = '0'; // A9: a grid cell, not .cad-btn's 75 px floor (4 x 75 overflowed the sidebar)
       // item 71: one global undo step per pick (core/history.js recordBoardStep: the settings AND the laid bricks)
-      btn.addEventListener('click', () => recordBoardStep(`Bricks: ${row.label}`, () => { if (row.lays) requestLay(row.lays); row.apply(choice); }));
+      btn.addEventListener('click', () => withLoadingStageShownFirst(row.stage, () => recordBoardStep(`Bricks: ${row.label}`, () => { if (row.lays) requestLay(row.lays); row.apply(choice); })));
       list.appendChild(btn);
     }
     if (row.mixed) { // A5: shown by syncQuickSettings while no choice is current and the row's `when` holds
