@@ -244,8 +244,8 @@ dialog#lb.down figure{animation:lbDown .17s ease-in forwards}
 @media(prefers-reduced-motion:reduce){dialog#lb.down figure{animation-duration:1ms}}
 .nav.p{left:4px} .nav.n{right:4px} #lbInk{position:absolute;display:none;touch-action:none;cursor:crosshair} .mk{position:absolute;top:6px;left:6px;display:flex;gap:6px} .mk button{background:rgba(0,0,0,.55);color:#fff;border:0;font-size:19px;width:40px;height:40px;border-radius:50%;cursor:pointer} .mk .mko{display:none} .mk.on .mko{display:inline-block} .mk.on #mkPen{background:#d32f2f} .x{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:0;font-size:20px;width:40px;height:40px;border-radius:50%;cursor:pointer}
 .x{z-index:3} .x.g{right:52px;font-size:22px}
-#lbMosaic{position:absolute;inset:0;display:none;overflow-y:auto;background:rgba(10,12,16,.96);padding:54px 8px 8px;column-width:140px;column-gap:6px;touch-action:pan-y;z-index:2}
-#lbMosaic.on{display:block} #lbMosaic img{display:block;width:100%;height:auto;margin:0 0 6px;break-inside:avoid;border-radius:6px;cursor:pointer;background:#222}
+#lbMosaic{position:absolute;inset:0;display:none;overflow-y:auto;background:rgba(10,12,16,.96);padding:54px 6px 6px;column-count:4;column-gap:4px;overflow-x:hidden;touch-action:pan-y;z-index:2} @media(min-width:700px){#lbMosaic{column-count:auto;column-width:150px}}
+#lbMosaic.on{display:block} #lbMosaic img[data-src]{aspect-ratio:4/3} #lbMosaic img{display:block;width:100%;height:auto;margin:0 0 4px;break-inside:avoid;border-radius:6px;cursor:pointer;background:#222}
 #lbMosaic img.cur{outline:3px solid #1d6fd8;outline-offset:-3px}
 .pal{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);display:none;gap:8px;align-items:center;background:rgba(0,0,0,.6);padding:6px 10px;border-radius:24px} .mk.on~.pal{display:flex}
 .pal button{width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,.4);padding:0;cursor:pointer;background:transparent;display:inline-flex;align-items:center;justify-content:center}
@@ -378,12 +378,19 @@ document.getElementById('mkCopy').addEventListener('click',()=>{
 // viewer switcher (Fred 2026-10-09: "a mosaic browser inside the carousel"): the grid button flips between the single
 // image and a mosaic of the whole set; a tap on a tile opens that shot
 const mos=document.getElementById('lbMosaic'), gridBtn=document.getElementById('lbGrid');
+// tiles load small JPEG thumbnails (data-thumb, else the image) through an observer on the mosaic's own scroller:
+// native loading=lazy inside the dialog's overflow box stopped after ~5 tiles on Fred's phone (2026-10-09)
+let mosObs=null;
 function mosaicOpen(){ if(drawOn) setDraw(false); zr();
-  mos.innerHTML=set.map((t,i)=>'<img loading="lazy" data-i="'+i+'" src="'+t.src+'" alt="'+(t.alt||'').replace(/"/g,'&quot;')+'">').join('');
+  mos.innerHTML=set.map((t,i)=>'<img data-i="'+i+'" data-src="'+(t.dataset.thumb||t.src)+'" width="4" height="3" alt="'+(t.alt||'').replace(/"/g,'&quot;')+'">').join('');
+  if(mosObs) mosObs.disconnect();
+  const load=im=>{ if(im.dataset.src){ im.src=im.dataset.src; im.removeAttribute('data-src'); im.removeAttribute('width'); im.removeAttribute('height'); } };
+  if('IntersectionObserver' in window){ mosObs=new IntersectionObserver(es=>es.forEach(e=>{ if(e.isIntersecting){ load(e.target); mosObs.unobserve(e.target); } }),{root:mos,rootMargin:'600px 0px'});
+    mos.querySelectorAll('img').forEach(im=>mosObs.observe(im)); } else mos.querySelectorAll('img').forEach(load);
   const c=mos.querySelectorAll('img')[idx]; if(c) c.classList.add('cur'); mos.classList.add('on');
   gridBtn.innerHTML='&#9635;'; gridBtn.title='Single image'; cap.textContent=set.length+' shots';
   requestAnimationFrame(()=>{ if(c) c.scrollIntoView({block:'center'}); }); }
-function mosaicClose(){ mos.classList.remove('on'); mos.innerHTML=''; gridBtn.innerHTML='&#9638;'; gridBtn.title='All shots'; }
+function mosaicClose(){ if(mosObs){ mosObs.disconnect(); mosObs=null; } mos.classList.remove('on'); mos.innerHTML=''; gridBtn.innerHTML='&#9638;'; gridBtn.title='All shots'; }
 gridBtn.addEventListener('click',ev=>{ ev.stopPropagation(); if(mos.classList.contains('on')){ mosaicClose(); show(); } else mosaicOpen(); });
 mos.addEventListener('click',ev=>{ ev.stopPropagation(); const t=ev.target.closest('img'); if(!t) return; idx=+t.dataset.i; mosaicClose(); show(); });
 lb.addEventListener('close',mosaicClose);
@@ -444,7 +451,7 @@ document.querySelector('.chips').addEventListener('click',ev=>{{ const b=ev.targ
 </script></body></html>"""
 
 
-def render(seats, commits, roadmap, history=()):
+def render(seats, commits, roadmap, thumbs=None):
     md = ["# B-Spline — progress", ""]
     for s in seats:
         md += [f"## {s['name']} ({s['branch']}) — turn {s['turn']}, ball: {s['who']}", f"Task: {_bar(s['done'], s['total'])}",
@@ -465,7 +472,7 @@ def render(seats, commits, roadmap, history=()):
         f'<p class="ball {"w" if "worker" in s["who"] else "a"}">{e(s["who"])}</p>'
         f'{hbar(s["done"], s["total"], "task")}<p>{e(s["note"])}</p>'
         f'<p class="t">updated {e(s["updated"])}</p>'
-        + ('<div class="shots">' + "".join(f'<img class="thumb{" more" if i >= SHOTS_THUMBS else ""}" src="shots/{e(s["key"])}/{e(x)}" alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for i, x in enumerate(s["shots"]))
+        + ('<div class="shots">' + "".join(f'<img class="thumb{" more" if i >= SHOTS_THUMBS else ""}" src="shots/{e(s["key"])}/{e(x)}"{f' data-thumb="t/{e(x)}.jpg"' if x in (thumbs or {}) else ""} alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for i, x in enumerate(s["shots"]))
            + (f'<span class="morec">+{len(s["shots"]) - SHOTS_THUMBS} more, swipe in the viewer</span>' if len(s["shots"]) > SHOTS_THUMBS else "") + "</div>" if s["shots"] else "")
         + '</section>')
     cards = "".join(f'<h2 class="station">{e(STATIONS.get(st, st))}</h2><div class="grid">'
@@ -539,7 +546,7 @@ def _sync(want, sub):
 
 def once(last_hash=None):
     seats, commits, roadmap, history = collect()
-    md, page = render(seats, commits, roadmap)
+    md, _ = render(seats, commits, roadmap)
     h = hashlib.sha1((md + "\n".join(r for _m, r in history)).encode()).hexdigest()   # content only (not the timestamp)
     if h == last_hash:
         return h
@@ -547,14 +554,16 @@ def once(last_hash=None):
     _sync({st["key"] + "/" + x: os.path.join(SHOTS_DIR, x) for st in seats for x in st["shots"]}, "shots")
     _sync({rel: os.path.join(SHOTS_DIR, rel) for _m, rel in history}, "h")
     thumbs = {}
-    for _m, rel in history:
-        size = _thumb(rel)
-        if size:
-            thumbs[rel] = size
+    for rel in [r for _m, r in history] + [x for st in seats for x in st["shots"]]:   # cards' too: the mosaic viewer
+        if rel not in thumbs:
+            size = _thumb(rel)
+            if size:
+                thumbs[rel] = size
+    _md, page = render(seats, commits, roadmap, thumbs)
     _sync({rel + ".jpg": os.path.join(OUT, "t", rel + ".jpg") for rel in thumbs}, "t")
     open(os.path.join(OUT, "PROGRESS.md"), "w", encoding="utf-8").write(md)
     open(os.path.join(OUT, "index.html"), "w", encoding="utf-8").write(page)
-    open(os.path.join(OUT, "history.html"), "w", encoding="utf-8").write(render_history(history, thumbs))
+    open(os.path.join(OUT, "history.html"), "w", encoding="utf-8").write(render_history(history, {r: thumbs[r] for _m, r in history if r in thumbs}))
     return h if deploy() else last_hash
 
 
