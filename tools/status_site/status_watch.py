@@ -244,7 +244,10 @@ dialog#lb.down figure{animation:lbDown .17s ease-in forwards}
 @media(prefers-reduced-motion:reduce){dialog#lb.down figure{animation-duration:1ms}}
 .nav.p{left:4px} .nav.n{right:4px} #lbInk{position:absolute;display:none;touch-action:none;cursor:crosshair} .mk{position:absolute;top:6px;left:6px;display:flex;gap:6px} .mk button{background:rgba(0,0,0,.55);color:#fff;border:0;font-size:19px;width:40px;height:40px;border-radius:50%;cursor:pointer} .mk .mko{display:none} .mk.on .mko{display:inline-block} .mk.on #mkPen{background:#d32f2f} .x{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:0;font-size:20px;width:40px;height:40px;border-radius:50%;cursor:pointer}
 .x{z-index:3} .x.g{right:52px;font-size:22px}
-#lbMosaic{position:absolute;inset:0;display:none;overflow-y:auto;background:rgba(10,12,16,.96);padding:54px 6px 6px;column-count:4;column-gap:4px;overflow-x:hidden;touch-action:pan-y;z-index:2} @media(min-width:700px){#lbMosaic{column-count:auto;column-width:150px}}
+#lbMosaic{position:absolute;inset:0;display:none;overflow-y:auto;background:rgba(10,12,16,.96);padding:54px 6px 6px;overflow-x:hidden;touch-action:pan-y;z-index:2}
+/* the columns live on an inner box of auto height: on the fixed-height scroller itself they filled its height and ran on
+   SIDEWAYS into columns hidden by overflow-x -- nothing to scroll down to (STATUS-MOSAIC-SCROLL, 2026-10-09) */
+#lbMosaic>.cols{column-count:4;column-gap:4px} @media(min-width:700px){#lbMosaic>.cols{column-count:auto;column-width:150px}}
 #lbMosaic.on{display:block} #lbMosaic img[data-src]{aspect-ratio:4/3} #lbMosaic img{display:block;width:100%;height:auto;margin:0 0 4px;break-inside:avoid;border-radius:6px;cursor:pointer;background:#222}
 #lbMosaic img.cur{outline:3px solid #1d6fd8;outline-offset:-3px}
 .pal{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);display:none;gap:8px;align-items:center;background:rgba(0,0,0,.6);padding:6px 10px;border-radius:24px} .mk.on~.pal{display:flex}
@@ -382,7 +385,7 @@ const mos=document.getElementById('lbMosaic'), gridBtn=document.getElementById('
 // native loading=lazy inside the dialog's overflow box stopped after ~5 tiles on Fred's phone (2026-10-09)
 let mosObs=null;
 function mosaicOpen(){ if(drawOn) setDraw(false); zr();
-  mos.innerHTML=set.map((t,i)=>'<img data-i="'+i+'" data-src="'+(t.dataset.thumb||t.src)+'" width="4" height="3" alt="'+(t.alt||'').replace(/"/g,'&quot;')+'">').join('');
+  mos.innerHTML='<div class="cols">'+set.map((t,i)=>'<img data-i="'+i+'" data-src="'+(t.dataset.thumb||t.src)+'" width="4" height="3" alt="'+(t.alt||'').replace(/"/g,'&quot;')+'">').join('')+'</div>';
   if(mosObs) mosObs.disconnect();
   const load=im=>{ if(im.dataset.src){ im.src=im.dataset.src; im.removeAttribute('data-src'); im.removeAttribute('width'); im.removeAttribute('height'); } };
   if('IntersectionObserver' in window){ mosObs=new IntersectionObserver(es=>es.forEach(e=>{ if(e.isIntersecting){ load(e.target); mosObs.unobserve(e.target); } }),{root:mos,rootMargin:'600px 0px'});
