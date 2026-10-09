@@ -117,14 +117,14 @@ export const CREATIONS = [
   },
   {
     title: 'Tide Pool',
-    concept: 'Harmony: a small dipped-top board as a rock pool -- a gently sculpted basin at its heart and four ripple rings spreading out to the edge, each a true offset of the frame contour (the Shape Lattice offset-from-frame), so the water answers the frame.',
+    concept: 'Harmony: a small dipped-top board as a rock pool -- a gently sculpted basin at its heart and four ripple rings spreading out to the edge, each a true offset of the frame contour (the Shape Lattice offset-from-frame), so the water answers the frame; a reef floor (tube worms softened) stays rocky texture under rings raised high enough to read all the way round.',
     template: 'template_5', board: [5, 7], seed: 333,
     steps: [
       { frame: { template: 'template_5' } },
-      { filter: { id: 'reef' } },
-      { params: { carveZ: 1.2, symmetry: 'none', spacing: '0.03' } },
+      { filter: { id: 'reef', tweaks: { tubeStrength: 0.3 } } },
+      { params: { carveZ: 0.8, symmetry: 'none', spacing: '0.03' } },
       { sculpt: { mode: 'draw', radius: 1.2, strength: 0.01, strokes: [{ pts: ring(2.5, 3.7, 0.2, 24), dy: 2, step: 0.08 }] } },
-      { echo: { layer: { name: 'Ripples', depth: 0.08, profile: 'ballnose' }, offsets: [0.7, 0.9, 1.1, 1.3], width: 0.08, color: '#1e88e5' } },
+      { echo: { layer: { name: 'Ripples', depth: 0.12, profile: 'ballnose' }, offsets: [0.7, 0.9, 1.1, 1.3], width: 0.08, color: '#1e88e5' } },
     ],
     view: FRONT,
   },
