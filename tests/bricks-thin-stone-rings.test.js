@@ -13,10 +13,10 @@ import { pointInPolygon, polygonIntersection, signedArea } from '../bspline-fram
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { tess } from './bare-ground.js';
 
-/** the caps: widest gap in joints (2 x the farthest ground point from any piece / joint; T9's wall-corner spot under
- *  the stem measures 3.79), and the sharpest stone corner -- the angle at each outline vertex between the points
+/** the caps: widest gap in joints (2 x the farthest ground point from any piece / joint; worst 2.77, T5 9x12 double
+ *  course -- T9's 3.79 pocket at the wall's corner under the stem closed by fieldstone's CORNER_ROUNDING), and the sharpest stone corner -- the angle at each outline vertex between the points
  *  cornerArmJoints joints along the outline either way (main: T16 9x12 1.5 in mixed bands 20 deg; after: 46 deg and up) */
-const CAPS = Object.freeze({ widestGapJoints: 4, minCornerDeg: 40, cornerArmJoints: 2 });
+const CAPS = Object.freeze({ widestGapJoints: 3, minCornerDeg: 40, cornerArmJoints: 2 });
 const FAST = [
   ['template_6', 9, 12, 1.5, 'mixed_bands', 3],
   ['template_1', 7, 9, 1, 'single_soldier', 3],

@@ -25529,3 +25529,21 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   longest task >= 500 ms 84 -> 4; spacing 3349 -> 554 ms; stamp depth drag 2571 -> < 500; heightIn / widthIn /
   frameThickness nudges 909 / 806 / 807 -> < 500; adaptiveDisplay 1007 -> 606. (Index fix alone: 81 left; the two stack.)
 - Full suite 408 files, 6051/6051. Known failures: none.
+
+### 2026-10-09 (seat E): t9-wall-corner -- an acute stone corner is rounded back no further than a right angle
+- MEASURED what left T9's constant 3.79-joint gap (7x9, every size, both stone sets, 4 presets): not the wall's last course
+  nor the clip -- the wall's corner under the stem is a clean right angle a joint off the band. It is the BAND's: the course
+  turns the corner, the two stones meeting at the seam have 45 deg corners, and fieldstone rounds each with the full fillet
+  (0.24 x the spacing, ~0.26 in), which cuts a 45 deg corner back r (1/sin 22.5 - 1) = 1.6 r vs 0.41 r for a right angle:
+  a 0.31 in pocket. Rounding factor 0.12 / 0.06 / 0 -> 3.88 / 2.73 / 1.61 joints (shots/seatE/stones/
+  t9_corner_gap_zoom_before.png / _after.png).
+- RULE (geometry.js roundPolygonCorners opts.acuteSetbackOfRightAngle; fieldstone.js CORNER_ROUNDING): an acute corner's
+  fillet radius shrinks so it is cut back no further than a right angle of the same radius; right angles and blunter
+  corners are unchanged. Opt-in: coursed-rubble (rectangles) does not pass it. Every fieldstone stone (wall and rings).
+- RESULT (1,520-lay thin-ring sweep): widest gap median 2.12 -> 1.98, worst 3.79 -> 2.77 (T5 9x12 double course); lays
+  over 3 joints 40 -> 0; 693 better, 0 worse; overlaps 0, off-outline 0. Icons: only pattern.fieldstone changed (1 of 58),
+  regenerated.
+- PINNED: tests/bricks-thin-stone-rings.test.js gap cap 4 -> 3 (T9 7x9 1 in single soldier fails on main: 3.79);
+  tests/bricks-geometry.test.js acute setback = right angle's (main 1.61 r vs 0.41 r), right angle / hexagon unchanged.
+  Fail-before: 2 fail on main's sources. Every FULL sweep: thin rings 1524/1524, gap 760, overlap 19, pattern gaps 2736,
+  seam 19, stone life 114, tip fans 608, rubble edges 304 -- all pass. Affected suites 14 files 99/99.
