@@ -134,7 +134,7 @@
      *  waist and flare at the bulbs), crossed by diagonal braces between neighbouring slats every `brace` in (a diamond
      *  trellis), plus the contour itself. Optional `vine`: a hand-drawn vine (window.__art, the recipe file's own seeded
      *  sketch) climbing slat `vine.rail`, weaving `vine.amp` either side of it, on its own layer. */
-    async trellis({ layer, distance = 1, rails = 6, brace = 0.7, width = 0.08, color = '#6d4c41', vine }) {
+    async trellis({ layer, distance = 1, rails = 6, brace = 0.7, width = 0.08, color = '#6d4c41', vine, hang = null }) {
       const frame = { defs: M.FR.FRAME_DEFS, record: M.FR.getFrameRecord(), board: { widthIn: M.P.widthIn, heightIn: M.P.heightIn } };
       const sil = M.CFF.frameContourSilhouette(frame, distance, width);
       if (sil.error) throw new Error('trellis: ' + sil.error);
@@ -144,9 +144,11 @@
       const L = pe.getTotalLength(), poly = []; for (let k = 0; k <= 600; k++) { const q = pe.getPointAtLength(L * k / 600); poly.push([q.x, q.y]); }
       svg.remove();
       const span = (y) => { const xs = []; for (let i = 1; i < poly.length; i++) { const [x0, y0] = poly[i - 1], [x1, y1] = poly[i]; if ((y0 - y) * (y1 - y) <= 0 && y0 !== y1) xs.push(x0 + (x1 - x0) * (y - y0) / (y1 - y0)); } return xs.length >= 2 ? [Math.min(...xs), Math.max(...xs)] : null; };
-      const ys = poly.map((q) => q[1]), top = Math.min(...ys) + width, bot = Math.max(...ys) - width;
+      const ys = poly.map((q) => q[1]), top = Math.min(...ys) + width;
+      // `hang`: the net hangs this far down from the top and stops (no contour drawn); null = the whole contour
+      const bot = hang != null ? Math.min(top + hang, Math.max(...ys) - width) : Math.max(...ys) - width;
       const railX = (i, y) => { const s = span(y); return s ? s[0] + (s[1] - s[0]) * i / rails : null; };
-      const f = (v) => +v.toFixed(3), paths = [{ d, width, color }];
+      const f = (v) => +v.toFixed(3), paths = hang != null ? [] : [{ d, width, color }];
       for (let i = 1; i < rails; i++) { const pts = []; for (let y = top; y <= bot; y += 0.05) { const x = railX(i, y); if (x != null) pts.push(`${f(x)} ${f(y)}`); } paths.push({ d: 'M ' + pts.join(' L '), width, color }); }
       for (let i = 0; i < rails; i++) for (let y = top + brace * ((i % 2) ? 0.5 : 0); y + brace <= bot; y += brace) {
         const a = [railX(i, y), y], b = [railX(i + 1, y + brace), y + brace], c = [railX(i + 1, y), y], e = [railX(i, y + brace), y + brace];

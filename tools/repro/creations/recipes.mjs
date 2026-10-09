@@ -94,6 +94,20 @@ export const rain = (x0, x1, y0, y1, px, py, len, angDeg) => {
   return out.join(' ');
 };
 
+/** PRECISE rain streaks: `count` long slanted lines, seeded length/position, kept out of a clear circle (the splash) */
+export const rainStreaks = (rand, x0, x1, y0, y1, count, lenMin, lenMax, angDeg, clear = null) => {
+  const a = angDeg * Math.PI / 180, out = [];
+  for (let k = 0, tries = 0; k < count && tries < count * 30; tries++) {
+    const x = x0 + (x1 - x0) * rand(), y = y0 + (y1 - y0) * rand(), L = lenMin + (lenMax - lenMin) * rand();
+    const e = [x + Math.cos(a) * L, y + Math.sin(a) * L];
+    if (clear && [[x, y], e, [(x + e[0]) / 2, (y + e[1]) / 2]].some(([px, py]) => Math.hypot(px - clear[0], py - clear[1]) < clear[2])) continue;
+    out.push(`M ${f3(x)} ${f3(y)} L ${f3(e[0])} ${f3(e[1])}`); k++;
+  }
+  return out.join(' ');
+};
+/** PRECISE splashes: small exact concentric rings at each landing point */
+export const splashes = (pts, radii) => pts.map(([cx, cy, s]) => radii.map((r) => pathOf(ring(cx, cy, r * s, 48))).join(' ')).join(' ');
+
 const FRONT = { theta: 0.15, phi: 0.6 };
 /** the vine's guide: a sinuous climb up the trellis, bottom to top */
 const climb = (x, y0, y1, amp, periods, n = 120) => Array.from({ length: n + 1 }, (_, k) => {
@@ -190,25 +204,26 @@ export const CREATIONS = [
   },
   {
     n: 13, title: 'First Rain',
-    concept: 'Contrast: precise rain on dry ground -- hundreds of identical short slanted dashes carved in a staggered field, falling across a cracked-earth terrain in a narrow-necked panel.',
+    concept: 'Contrast: the first rain on dry ground -- long slanted streaks of varied length and spacing carved across a cracked-earth terrain, and in one clearing the drops landing as small precise concentric splash rings: the focal point.',
     template: 'template_2', board: [7, 10], seed: 1313,
     steps: [
       { frame: { template: 'template_2' } },
       { filter: { id: 'cracked' } },
       { params: { carveZ: 1.5, symmetry: 'none' } },
-      { art: { layer: { name: 'Rain', depth: -0.12, profile: 'vbit' }, paths: [{ d: rain(0.9, 6.2, 0.9, 9.2, 0.45, 0.55, 0.38, 70), width: 0.06, color: '#1565c0' }] } },
+      { art: { layer: { name: 'Rain', depth: -0.1, profile: 'vbit' }, paths: [{ d: rainStreaks(rng(1313), 0.6, 6.0, 0.6, 8.6, 34, 0.6, 1.7, 68, [4.4, 7.3, 1.25]), width: 0.06, color: '#1565c0' }] } },
+      { art: { layer: { name: 'Splashes', depth: 0.08, profile: 'ballnose' }, paths: [{ d: splashes([[4.4, 7.3, 1], [3.6, 7.9, 0.7], [5.0, 8.1, 0.55]], [0.14, 0.3, 0.46]), width: 0.05, color: '#90caf9' }] } },
     ],
     view: FRONT,
   },
   {
     n: 14, title: 'Fishing Net',
-    concept: 'Harmony: a net cast along the shore -- a diamond-meshed net whose cords follow the frame contour, swelling with the wave on the left edge and narrowing at the dip, over a carved terrain of rolling wave ridges.',
+    concept: 'Harmony: a net cast along the shore -- a wide-meshed net hangs from the top of the frame halfway down the board, its cords following the frame contour so it swells with the wavy left edge; below and between the cords the carved wave ridges of the sea show through.',
     template: 'template_8', board: [10, 14], seed: 1414,
     steps: [
       { frame: { template: 'template_8' } },
       { filter: { id: 'carved' } },
       { params: { carveZ: 1.4, symmetry: 'none' } },
-      { trellis: { layer: { name: 'Net', depth: 0.1, profile: 'ballnose' }, distance: 0.9, rails: 8, brace: 0.85, width: 0.07, color: '#795548' } },
+      { trellis: { layer: { name: 'Net', depth: 0.1, profile: 'ballnose' }, distance: 0.9, rails: 5, brace: 1.3, width: 0.08, hang: 7.5, color: '#795548' } },
     ],
     view: FRONT,
   },
