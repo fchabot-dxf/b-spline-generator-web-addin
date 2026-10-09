@@ -2769,7 +2769,7 @@ const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).filter((id) => !FOLDED_FRAM
 // that many columns (the Wall pattern's 21 icons took 11 rows). `stage` (seat D 2026-10-09, phone feedback audit on seat
 // A's loaded board): the loading stage a pick shows FIRST -- the pick re-renders the Brick panel (~73 ms at 4x CPU) before
 // its own re-lay / re-mask stage could paint: 53-79 ms frozen with no card. The stage named is the work it starts.
-const BRICK_QUICK_SETTINGS = [
+export const BRICK_QUICK_SETTINGS = [
   { id: 'set', label: 'Set', stage: 'bricks', choices: () => BRICK_SET_IDS.map((id) => ({ id, label: _setLabel(id) })),
     mixed: { label: 'Mixed', title: 'The elements use different sets (picked per element in the Brick tab); a pick here applies to every element',
       when: () => new Set(SET_KINDS().map((k) => elementSetId(P.brickSettings, k))).size > 1 },
@@ -2783,7 +2783,7 @@ const BRICK_QUICK_SETTINGS = [
   { id: 'frameBands', label: 'Frame bands', stage: 'bricks', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetIconSvg(c.id, 24),
     lays: 'frame', isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
   // F35 item 55: the board-wide grout colour (paint only, nothing re-lays); any other hex from the Brick tab's picker
-  { id: 'groutColor', label: 'Grout colour', stage: 'heightMask', choices: () => GROUT_COLOR_CHOICES, // paint only: the re-mask iconFor: _groutSwatchSvg,
+  { id: 'groutColor', label: 'Grout colour', stage: 'heightMask', choices: () => GROUT_COLOR_CHOICES, iconFor: _groutSwatchSvg, // paint only: the re-mask
     isCurrent: (c) => c.color === ((P.brickSettings.groutPaint || {}).color ?? null), apply: (c) => setGroutPaint({ color: c.color }, null) },
 ];
 const quickButtonId = (row, choice) => `brickQuick_${row.id}_${choice.id}`;

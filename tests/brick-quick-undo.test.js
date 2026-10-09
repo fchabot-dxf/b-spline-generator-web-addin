@@ -145,3 +145,28 @@ describe('item 71: every sidebar quick Brick pick is one global step', () => {
     expect(step.restore.editorSvg.before).toBe('<svg>laid</svg>');
   });
 });
+
+// Seat D 2026-10-09 (the advisor's review of 96372dc): a comment typed into the grout row's declaration swallowed its
+// `iconFor` -- the grout chips lost their swatches and nothing caught it. Every row that declares an icon renders one
+// in EVERY chip; the grout colour row is pinned to declare one (its swatches are the only way to tell the chips apart).
+describe('the sidebar quick settings render their declared icons', () => {
+  afterEach(() => { root?.remove(); window.svgEditor = null; vi.unstubAllGlobals(); });
+  it('every iconFor row shows an svg in each chip; the grout colour chips show their swatches', async () => {
+    const { BRICK_QUICK_SETTINGS, GROUT_COLOR_CHOICES } = await import('../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js');
+    setup();
+    const grout = BRICK_QUICK_SETTINGS.find((r) => r.id === 'groutColor');
+    expect(typeof grout.iconFor).toBe('function');
+    const iconRows = BRICK_QUICK_SETTINGS.filter((r) => typeof r.iconFor === 'function');
+    expect(iconRows.map((r) => r.id)).toEqual(expect.arrayContaining(['pattern', 'frameBands', 'groutColor']));
+    for (const row of iconRows) {
+      const chips = [...document.querySelectorAll(`[id^="brickQuick_${row.id}_"]`)];
+      expect(chips.length, row.id).toBe(row.choices().length);
+      for (const c of chips) expect(c.querySelector('svg'), c.id).not.toBeNull();
+    }
+    for (const choice of GROUT_COLOR_CHOICES) {
+      const rect = $(`brickQuick_groutColor_${choice.id}`).querySelector('svg rect');
+      expect(rect.getAttribute('fill'), choice.id).toBe(choice.color || '#ffffff');
+    }
+  });
+});
+
