@@ -83,6 +83,7 @@ export function applyView(editor) {
  *  apply it immediately. */
 export function fitView(editor) {
     editor._view = fittedView(editor);
+    editor._fitSnapshot = { ...editor._view }; // what "still fitted" means (isFittedView), whatever the layout does next
     applyView(editor);
 }
 
@@ -126,10 +127,15 @@ export function fittedView(editor) {
     return f < 1 ? { ...base, zoom: base.zoom * f } : base;
 }
 
-/** Is the live view still the fitted one (the user has not zoomed or panned)? */
+/** Is the live view still the fitted one (the user has not zoomed or panned)? Seat D 2026-10-09: the coarse-pointer
+ *  fit reads the svg's on-screen box (FIT_EDGE_MARGIN_PX), which moves while the layout settles (the drawer, a rotation)
+ *  -- so the view fitView last set, unchanged since, IS fitted, even when a fit computed now would differ by a hair. */
 export function isFittedView(editor, eps = 1e-6) {
-    const v = editor && editor._view, f = fittedView(editor);
+    const v = editor && editor._view;
     if (!v) return true;
+    const s = editor._fitSnapshot;
+    if (s && v.zoom === s.zoom && v.cx === s.cx && v.cy === s.cy) return true;
+    const f = fittedView(editor);
     return Math.abs(v.zoom - f.zoom) <= eps * Math.max(1, f.zoom) && Math.abs(v.cx - f.cx) <= eps * editor._mW
         && Math.abs(v.cy - f.cy) <= eps * editor._mH;
 }

@@ -4,8 +4,8 @@
  * fitted region's left / right edges FIT_EDGE_MARGIN_PX.coarse inside the visible canvas; a mouse keeps today's Fit.
  * editor-view.js edgeMarginZoom is the pure part (the live part is the matrix's layout row on the real page).
  */
-import { describe, it, expect } from 'vitest';
-import { edgeMarginZoom, FIT_EDGE_MARGIN_PX, viewboxFor, viewScale } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-view.js';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { edgeMarginZoom, FIT_EDGE_MARGIN_PX, viewboxFor, viewScale, fitView, isFittedView, fittedView } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-view.js';
 
 // the screen x of a model x under a view, in an svg box `el` ("meet": uniform scale, centred)
 const screenX = (view, mW, mH, el, x) => {
@@ -44,3 +44,31 @@ describe('FIT_EDGE_MARGIN_PX: a coarse pointer fits inside the edge-gesture zone
     expect(screenX(v, 7, 9, el, 6)).toBeCloseTo(390 - 28, 6);
   });
 });
+
+// the matrix's board-change row caught it: the coarse fit reads the svg's on-screen box, which moves while the layout
+// settles, so "is the view still fitted?" must not re-derive the fit from a box that has since moved
+describe('isFittedView with the coarse-pointer fit: the view fitView set stays "fitted" until the user moves it', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+  const editorWith = (box) => ({ _mW: 7, _mH: 9, _view: null, _draw: { node: { getBoundingClientRect: () => ({ ...box, right: box.left + box.width }) }, viewbox() {} } });
+  it('fitted after the svg box moves (the drawer settling); not fitted after a pan', () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true })); // a coarse pointer
+    vi.stubGlobal('innerWidth', 390);
+    const box = { left: -11, top: 98, width: 412, height: 2000 };
+    const ed = editorWith(box);
+    fitView(ed);
+    expect(ed._view.zoom).toBeLessThan(1); // the margin applied
+    box.height = 400; // the layout moves after the fit: a fit computed now differs
+    expect(fittedView(ed).zoom).not.toBeCloseTo(ed._view.zoom, 6);
+    expect(isFittedView(ed)).toBe(true);
+    ed._view.cx -= 0.5; // a pan (in place, as the editor's pan does)
+    expect(isFittedView(ed)).toBe(false);
+  });
+  it("a mouse: today's fit (zoom 1, the whole board)", () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const ed = editorWith({ left: 0, top: 0, width: 400, height: 500 });
+    fitView(ed);
+    expect(ed._view).toEqual({ zoom: 1, cx: 3.5, cy: 4.5 });
+    expect(isFittedView(ed)).toBe(true);
+  });
+});
+
