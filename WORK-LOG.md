@@ -25529,3 +25529,17 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   longest task >= 500 ms 84 -> 4; spacing 3349 -> 554 ms; stamp depth drag 2571 -> < 500; heightIn / widthIn /
   frameThickness nudges 909 / 806 / 807 -> < 500; adaptiveDisplay 1007 -> 606. (Index fix alone: 81 left; the two stack.)
 - Full suite 408 files, 6051/6051. Known failures: none.
+
+### 2026-10-09 (seat E): STATUS-MOSAIC-SCROLL -- the lightbox mosaic had nothing to scroll: its columns ran sideways
+- CHECK FIRST: tools/status_site/mosaic_scroll_check.mjs (430 px mobile + touch emulation, headless Chrome over CDP, on a
+  LOCAL render). A control drag on the page itself must scroll it (it does: 435 px), so the harness can pan; then the same
+  drag on the open mosaic must move scrollTop, and no tile may sit off the side. Red on main: scrollTop 0 after the drag.
+- CAUSE (measured, not the touch listeners nor the top layer nor the ink): scrollHeight 900 = clientHeight 900 -- nothing
+  to scroll -- while scrollWidth was 747 - 1063 in a 430 px box, the 60th tile at x 956. #lbMosaic is position:absolute
+  inset:0 (a fixed height) AND column-count:4: a height-constrained multi-column box fills each column to its height and
+  then makes MORE columns to the side, which overflow-x:hidden hid. touch-action could not help: there was no vertical
+  overflow. (The earlier "lazy loading stopped after ~5 tiles" fits the same cause: the rest sat in hidden columns.)
+- FIX (status_watch.py): the columns move to an inner <div class="cols"> of auto height; #lbMosaic only scrolls.
+- PROOF: re-rendered locally -- scrollHeight 2030, scrollWidth 430, the finger drag moves scrollTop 0 -> 485, the check exits
+  0; the old render exits 1. A tile tap still closes the mosaic and opens that shot (8 / 60). The live watcher is the
+  advisor's to redeploy (not restarted here).

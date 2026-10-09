@@ -141,6 +141,11 @@ def _roadmap():
 
 
 
+# a folder holding one of these is a browser profile (a probe's --user-data-dir), not screenshots: its extension and
+# web-app icons filled the history's newest tiles (2026-10-09)
+_PROFILE_MARKERS = {"Local State", "First Run"}
+
+
 def _seat_shots(folders):
     """Newest SHOTS_PER_SEAT images under the seat's declared folders (seats.json 'shots'), RECURSIVE, as
     paths relative to SHOTS_DIR ('seat37/f35item28_clear_menu.png', 'seatB/rockband/after_T1.png'). Fred
@@ -149,7 +154,10 @@ def _seat_shots(folders):
     found = []
     for folder in folders:
         base = os.path.join(SHOTS_DIR, folder)
-        for dirpath, _dirs, files in os.walk(base):
+        for dirpath, dirs, files in os.walk(base):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]   # hidden dirs: probe Chrome profiles' icon PNGs
+            if _PROFILE_MARKERS & set(files):
+                dirs[:] = []                       # its top-level images stay; its subfolders are the profile
             for f in files:
                 if f.lower().endswith((".png", ".jpg", ".jpeg")):
                     full = os.path.join(dirpath, f)
@@ -169,9 +177,11 @@ def _history_shots():
             entries = list(os.scandir(d))
         except OSError:
             continue
+        profile = any(en.name in _PROFILE_MARKERS for en in entries)
         for en in entries:
             if en.is_dir():
-                stack.append(en.path)
+                if not en.name.startswith(".") and not profile:   # hidden dirs / a profile's own subfolders: icon PNGs
+                    stack.append(en.path)
             elif en.name.lower().endswith((".png", ".jpg", ".jpeg")):
                 per_dir.setdefault(d, []).append((en.stat().st_mtime, os.path.relpath(en.path, SHOTS_DIR).replace(os.sep, "/")))
     found = []
@@ -233,10 +243,17 @@ dialog#lb figure{margin:0;position:relative;width:100%;height:100%;display:flex;
 dialog#lb.down figure{animation:lbDown .17s ease-in forwards}
 @media(prefers-reduced-motion:reduce){dialog#lb.down figure{animation-duration:1ms}}
 .nav.p{left:4px} .nav.n{right:4px} #lbInk{position:absolute;display:none;touch-action:none;cursor:crosshair} .mk{position:absolute;top:6px;left:6px;display:flex;gap:6px} .mk button{background:rgba(0,0,0,.55);color:#fff;border:0;font-size:19px;width:40px;height:40px;border-radius:50%;cursor:pointer} .mk .mko{display:none} .mk.on .mko{display:inline-block} .mk.on #mkPen{background:#d32f2f} .x{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:0;font-size:20px;width:40px;height:40px;border-radius:50%;cursor:pointer}
+.x{z-index:3} .x.g{right:52px;font-size:22px}
+#lbMosaic{position:absolute;inset:0;display:none;overflow-y:auto;background:rgba(10,12,16,.96);padding:54px 6px 6px;overflow-x:hidden;touch-action:pan-y;z-index:2}
+/* the columns live on an inner box of auto height: on the fixed-height scroller itself they filled its height and ran on
+   SIDEWAYS into columns hidden by overflow-x -- nothing to scroll down to (STATUS-MOSAIC-SCROLL, 2026-10-09) */
+#lbMosaic>.cols{column-count:4;column-gap:4px} @media(min-width:700px){#lbMosaic>.cols{column-count:auto;column-width:150px}}
+#lbMosaic.on{display:block} #lbMosaic img[data-src]{aspect-ratio:4/3} #lbMosaic img{display:block;width:100%;height:auto;margin:0 0 4px;break-inside:avoid;border-radius:6px;cursor:pointer;background:#222}
+#lbMosaic img.cur{outline:3px solid #1d6fd8;outline-offset:-3px}
 .pal{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);display:none;gap:8px;align-items:center;background:rgba(0,0,0,.6);padding:6px 10px;border-radius:24px} .mk.on~.pal{display:flex}
 .pal button{width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,.4);padding:0;cursor:pointer;background:transparent;display:inline-flex;align-items:center;justify-content:center}
 .pal button.sel{box-shadow:0 0 0 2px #000,0 0 0 4px #fff} .pal .sz i{display:block;border-radius:50%} .pal .sep{width:1px;height:24px;background:rgba(255,255,255,.35)}"""
-LIGHTBOX_HTML = r"""<dialog id="lb"><figure><img id="lbImg" alt=""><button class="x" id="lbClose" aria-label="Close">&#10005;</button><canvas id="lbInk"></canvas><div class="mk" id="lbMk"><button id="mkPen" aria-label="Draw" title="Draw">&#9998;</button><button id="mkUndo" class="mko" aria-label="Undo" title="Undo">&#8630;</button><button id="mkClear" class="mko" aria-label="Clear" title="Clear">&#128465;</button><button id="mkCopy" class="mko" aria-label="Copy image" title="Copy image">&#128203;</button><button id="mkSave" aria-label="Save image" title="Save image">&#128190;</button></div><div class="pal" id="lbPal"></div><figcaption id="lbCap"></figcaption></figure></dialog>"""
+LIGHTBOX_HTML = r"""<dialog id="lb"><figure><img id="lbImg" alt=""><button class="x" id="lbClose" aria-label="Close">&#10005;</button><button class="x g" id="lbGrid" aria-label="All shots" title="All shots">&#9638;</button><div id="lbMosaic"></div><canvas id="lbInk"></canvas><div class="mk" id="lbMk"><button id="mkPen" aria-label="Draw" title="Draw">&#9998;</button><button id="mkUndo" class="mko" aria-label="Undo" title="Undo">&#8630;</button><button id="mkClear" class="mko" aria-label="Clear" title="Clear">&#128465;</button><button id="mkCopy" class="mko" aria-label="Copy image" title="Copy image">&#128203;</button><button id="mkSave" aria-label="Save image" title="Save image">&#128190;</button></div><div class="pal" id="lbPal"></div><figcaption id="lbCap"></figcaption></figure></dialog>"""
 LIGHTBOX_JS = r"""const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');
 let set=[], idx=0;
 const fullOf=t=>t.dataset.full||t.src;   // history thumbnails carry their full image in data-full
@@ -269,7 +286,7 @@ let tapT=null, tapP=null;
 function tapAt(x,y){ if(tapT && Math.hypot(x-tapP.x,y-tapP.y)<40){ clearTimeout(tapT); tapT=null;
     if(zs>1) zr(); else zoomAt(2.5,x,y); return; }
   tapP={x,y}; tapT=setTimeout(()=>{ tapT=null; if(zs===1) step(x<innerWidth/2?-1:1); },280); }
-document.addEventListener('keydown',ev=>{ if(lb.open){ if(ev.key==='ArrowRight'){step(1);ev.preventDefault();} else if(ev.key==='ArrowLeft'){step(-1);ev.preventDefault();} return; }
+document.addEventListener('keydown',ev=>{ if(lb.open){ if(mos.classList.contains('on')) return; if(ev.key==='ArrowRight'){step(1);ev.preventDefault();} else if(ev.key==='ArrowLeft'){step(-1);ev.preventDefault();} return; }
   const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){ev.preventDefault();openShot(t);} });
 // zoom + pan: pinch + one-finger pan (touch), wheel + drag (mouse); double tap / double click toggles 2.5x zoom (Fred, reversing the earlier no-double-tap); swipe changes image only at 1x; swipe changes image only at 1x
 let zs=1, zx=0, zy=0, moved=false, x0=null, y0=null, pd=0, ps=1, drag=null;
@@ -284,23 +301,24 @@ const mid=t=>({x:(t[0].clientX+t[1].clientX)/2,y:(t[0].clientY+t[1].clientY)/2})
 let m0=null, zx0=0, zy0=0, C0=null;
 function twoFinger(t){ const m=mid(t), ns=Math.max(1,Math.min(6,ps*dist(t)/pd));
   const ux=(m0.x-C0.x-zx0)/ps, uy=(m0.y-C0.y-zy0)/ps; zs=ns; zx=m.x-C0.x-ns*ux; zy=m.y-C0.y-ns*uy; za(); }
-lb.addEventListener('touchstart',ev=>{ if(drawOn && ev.touches.length<2) return; moved=false;
+const inMos=ev=>mos.classList.contains('on');
+lb.addEventListener('touchstart',ev=>{ if(inMos(ev)) return; if(drawOn && ev.touches.length<2) return; moved=false;
   if(ev.touches.length===2){ pd=dist(ev.touches); ps=zs; x0=null; m0=mid(ev.touches); zx0=zx; zy0=zy;
     const r=im.getBoundingClientRect(); C0={x:r.left+r.width/2-zx, y:r.top+r.height/2-zy}; return; }
   x0=ev.touches[0].clientX; y0=ev.touches[0].clientY; drag={x:zx,y:zy}; },{passive:true});
-lb.addEventListener('touchmove',ev=>{ if(drawOn && !(ev.touches.length===2 && pd)) return;
+lb.addEventListener('touchmove',ev=>{ if(inMos(ev)) return; if(drawOn && !(ev.touches.length===2 && pd)) return;
   if(ev.touches.length===2&&pd&&m0){ twoFinger(ev.touches); moved=true; ev.preventDefault(); return; }
   if(zs===1&&x0!==null&&ev.touches.length===1){ const ddy=ev.touches[0].clientY-y0, ddx=ev.touches[0].clientX-x0; if(ddy>0&&ddy>Math.abs(ddx)){ fig.style.transform='translateY('+ddy+'px)'; moved=true; ev.preventDefault(); return; }
     if(Math.abs(ddx)>Math.abs(ddy)&&!stepping){ fig.style.transform='translateX('+ddx+'px)'; moved=true; ev.preventDefault(); return; } }
   if(zs>1&&x0!==null&&drag){ zx=drag.x+ev.touches[0].clientX-x0; zy=drag.y+ev.touches[0].clientY-y0; za(); moved=true; ev.preventDefault(); } },{passive:false});
-lb.addEventListener('touchend',ev=>{ if(drawOn && !pd) return;
+lb.addEventListener('touchend',ev=>{ if(inMos(ev)) return; if(drawOn && !pd) return;
   if(ev.touches.length>0) return; setTimeout(()=>{moved=false;},350); if(pd){ pd=0; m0=null; x0=null; return; }
   if(x0===null) return; const dx=ev.changedTouches[0].clientX-x0, dy=ev.changedTouches[0].clientY-y0; x0=null;
   if(zs===1 && dy>90 && dy>Math.abs(dx)){ moved=true; slideClose(dy); return; }
   if(zs===1 && Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)){ step(dx<0?1:-1,dx); moved=true; ev.preventDefault(); return; }
   fig.style.transform='';
   });
-lb.addEventListener('wheel',ev=>{ ev.preventDefault(); zoomAt(zs*(ev.deltaY<0?1.2:1/1.2),ev.clientX,ev.clientY); },{passive:false});
+lb.addEventListener('wheel',ev=>{ if(inMos(ev)) return; ev.preventDefault(); zoomAt(zs*(ev.deltaY<0?1.2:1/1.2),ev.clientX,ev.clientY); },{passive:false});
 im.addEventListener('mousedown',ev=>{ if(drawOn||zs===1) return; ev.preventDefault(); moved=false; drag={mx:ev.clientX,my:ev.clientY,x:zx,y:zy};
   const mv=e=>{ zx=drag.x+e.clientX-drag.mx; zy=drag.y+e.clientY-drag.my; if(Math.abs(e.clientX-drag.mx)+Math.abs(e.clientY-drag.my)>3) moved=true; za(); };
   const up=()=>{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); setTimeout(()=>{moved=false;},0); };
@@ -360,6 +378,25 @@ document.getElementById('mkCopy').addEventListener('click',()=>{
   if(navigator.clipboard&&window.ClipboardItem){
     navigator.clipboard.write([new ClipboardItem({'image/png':blobP})]).then(()=>note('Copied ✓'),viaShare);
   } else viaShare(); });
+// viewer switcher (Fred 2026-10-09: "a mosaic browser inside the carousel"): the grid button flips between the single
+// image and a mosaic of the whole set; a tap on a tile opens that shot
+const mos=document.getElementById('lbMosaic'), gridBtn=document.getElementById('lbGrid');
+// tiles load small JPEG thumbnails (data-thumb, else the image) through an observer on the mosaic's own scroller:
+// native loading=lazy inside the dialog's overflow box stopped after ~5 tiles on Fred's phone (2026-10-09)
+let mosObs=null;
+function mosaicOpen(){ if(drawOn) setDraw(false); zr();
+  mos.innerHTML='<div class="cols">'+set.map((t,i)=>'<img data-i="'+i+'" data-src="'+(t.dataset.thumb||t.src)+'" width="4" height="3" alt="'+(t.alt||'').replace(/"/g,'&quot;')+'">').join('')+'</div>';
+  if(mosObs) mosObs.disconnect();
+  const load=im=>{ if(im.dataset.src){ im.src=im.dataset.src; im.removeAttribute('data-src'); im.removeAttribute('width'); im.removeAttribute('height'); } };
+  if('IntersectionObserver' in window){ mosObs=new IntersectionObserver(es=>es.forEach(e=>{ if(e.isIntersecting){ load(e.target); mosObs.unobserve(e.target); } }),{root:mos,rootMargin:'600px 0px'});
+    mos.querySelectorAll('img').forEach(im=>mosObs.observe(im)); } else mos.querySelectorAll('img').forEach(load);
+  const c=mos.querySelectorAll('img')[idx]; if(c) c.classList.add('cur'); mos.classList.add('on');
+  gridBtn.innerHTML='&#9635;'; gridBtn.title='Single image'; cap.textContent=set.length+' shots';
+  requestAnimationFrame(()=>{ if(c) c.scrollIntoView({block:'center'}); }); }
+function mosaicClose(){ if(mosObs){ mosObs.disconnect(); mosObs=null; } mos.classList.remove('on'); mos.innerHTML=''; gridBtn.innerHTML='&#9638;'; gridBtn.title='All shots'; }
+gridBtn.addEventListener('click',ev=>{ ev.stopPropagation(); if(mos.classList.contains('on')){ mosaicClose(); show(); } else mosaicOpen(); });
+mos.addEventListener('click',ev=>{ ev.stopPropagation(); const t=ev.target.closest('img'); if(!t) return; idx=+t.dataset.i; mosaicClose(); show(); });
+lb.addEventListener('close',mosaicClose);
 addEventListener('resize',()=>{ if(drawOn) inkFit(); });
 lb.addEventListener('close',()=>setDraw(false));
 """
@@ -417,7 +454,7 @@ document.querySelector('.chips').addEventListener('click',ev=>{{ const b=ev.targ
 </script></body></html>"""
 
 
-def render(seats, commits, roadmap, history=()):
+def render(seats, commits, roadmap, thumbs=None):
     md = ["# B-Spline — progress", ""]
     for s in seats:
         md += [f"## {s['name']} ({s['branch']}) — turn {s['turn']}, ball: {s['who']}", f"Task: {_bar(s['done'], s['total'])}",
@@ -438,7 +475,7 @@ def render(seats, commits, roadmap, history=()):
         f'<p class="ball {"w" if "worker" in s["who"] else "a"}">{e(s["who"])}</p>'
         f'{hbar(s["done"], s["total"], "task")}<p>{e(s["note"])}</p>'
         f'<p class="t">updated {e(s["updated"])}</p>'
-        + ('<div class="shots">' + "".join(f'<img class="thumb{" more" if i >= SHOTS_THUMBS else ""}" src="shots/{e(s["key"])}/{e(x)}" alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for i, x in enumerate(s["shots"]))
+        + ('<div class="shots">' + "".join(f'<img class="thumb{" more" if i >= SHOTS_THUMBS else ""}" src="shots/{e(s["key"])}/{e(x)}"{f' data-thumb="t/{e(x)}.jpg"' if x in (thumbs or {}) else ""} alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for i, x in enumerate(s["shots"]))
            + (f'<span class="morec">+{len(s["shots"]) - SHOTS_THUMBS} more, swipe in the viewer</span>' if len(s["shots"]) > SHOTS_THUMBS else "") + "</div>" if s["shots"] else "")
         + '</section>')
     cards = "".join(f'<h2 class="station">{e(STATIONS.get(st, st))}</h2><div class="grid">'
@@ -512,7 +549,7 @@ def _sync(want, sub):
 
 def once(last_hash=None):
     seats, commits, roadmap, history = collect()
-    md, page = render(seats, commits, roadmap)
+    md, _ = render(seats, commits, roadmap)
     h = hashlib.sha1((md + "\n".join(r for _m, r in history)).encode()).hexdigest()   # content only (not the timestamp)
     if h == last_hash:
         return h
@@ -520,14 +557,16 @@ def once(last_hash=None):
     _sync({st["key"] + "/" + x: os.path.join(SHOTS_DIR, x) for st in seats for x in st["shots"]}, "shots")
     _sync({rel: os.path.join(SHOTS_DIR, rel) for _m, rel in history}, "h")
     thumbs = {}
-    for _m, rel in history:
-        size = _thumb(rel)
-        if size:
-            thumbs[rel] = size
+    for rel in [r for _m, r in history] + [x for st in seats for x in st["shots"]]:   # cards' too: the mosaic viewer
+        if rel not in thumbs:
+            size = _thumb(rel)
+            if size:
+                thumbs[rel] = size
+    _md, page = render(seats, commits, roadmap, thumbs)
     _sync({rel + ".jpg": os.path.join(OUT, "t", rel + ".jpg") for rel in thumbs}, "t")
     open(os.path.join(OUT, "PROGRESS.md"), "w", encoding="utf-8").write(md)
     open(os.path.join(OUT, "index.html"), "w", encoding="utf-8").write(page)
-    open(os.path.join(OUT, "history.html"), "w", encoding="utf-8").write(render_history(history, thumbs))
+    open(os.path.join(OUT, "history.html"), "w", encoding="utf-8").write(render_history(history, {r: thumbs[r] for _m, r in history if r in thumbs}))
     return h if deploy() else last_hash
 
 
