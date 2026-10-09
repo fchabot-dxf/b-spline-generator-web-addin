@@ -48,9 +48,10 @@ afterEach(() => { document.getElementById = realGetById; modal.style.display = '
 
 describe('a photo change made in the editor reaches its backdrop, not the 3D (F35 item 18 (4))', () => {
   it("IN_EDITOR_3D 'photo': editor open -> the backdrop; closed -> the full rebuild", () => {
-    expect(IN_EDITOR_3D.photo).toEqual({ inEditor: 'backdrop', closed: 'rebuild' });
+    expect(IN_EDITOR_3D.photo).toEqual({ inEditor: 'backdrop', inEditorDrag: 'none', closed: 'rebuild' });
     modal.style.display = 'flex';
     expect(inEditor3dAction('photo')).toBe('backdrop');
+    expect(inEditor3dAction('photo', { drag: true })).toBe('none'); // Fred 2026-10-09: a drag tick repaints on release
     modal.style.display = 'none';
     expect(inEditor3dAction('photo')).toBe('rebuild');
   });
@@ -59,7 +60,8 @@ describe('a photo change made in the editor reaches its backdrop, not the 3D (F3
     const src = readFileSync('bspline-frame-builder/b-spline-gen/html/main/main.js', 'utf8');
     const at = src.indexOf('initPhotoPanel({');
     const block = src.slice(at, src.indexOf('});', at));
-    expect(block).toMatch(/inEditor3dAction\('photo'\) === 'backdrop'\s*\?\s*refreshEditorTopView\(\)\s*:\s*scheduleRebuild\(/);
+    expect(block).toMatch(/const action = inEditor3dAction\('photo', opts\);/);
+    expect(block).toMatch(/if \(action === 'backdrop'\) refreshEditorTopView\(\);\s*else if \(action === 'rebuild'\) scheduleRebuild\(/);
   });
 
   it('the backdrop refresh paints once per animation frame, with the latest params', () => {

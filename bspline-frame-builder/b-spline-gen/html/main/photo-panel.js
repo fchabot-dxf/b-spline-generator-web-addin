@@ -122,9 +122,10 @@ export function deselectPhotoTool() {
   if (editor && typeof editor.setMode === 'function') editor.setMode('select');
 }
 
-function notifyChange() {
+/** `opts.drag`: a slider's drag tick (core/in-editor-3d.js inEditorDrag); its release calls this again without it. */
+function notifyChange(opts) {
   saveLastSession();
-  if (_onChange) _onChange();
+  if (_onChange) _onChange(opts);
 }
 
 /** Item 74f (advisor; seat D's Photo audit, measured: crop / levels / brightness / blur / relief changed the 3D but the
@@ -160,7 +161,7 @@ function currentOpParams(opName, fallback) {
   return { ...fallback };
 }
 
-function setAdjustableOp(opName, params) {
+function setAdjustableOp(opName, params, opts) {
   const steps = (P.photoEdits || []).slice();
   if (steps.length && steps[steps.length - 1].op === opName) {
     steps[steps.length - 1] = { op: opName, params };
@@ -168,21 +169,21 @@ function setAdjustableOp(opName, params) {
     steps.push({ op: opName, params });
   }
   P.photoEdits = steps;
-  notifyChange();
+  notifyChange(opts);
 }
 
 // Straighten is declared to always come FIRST (advisor/Fred: "edit order:
 // straighten -> crop -> the rest") -- unlike the other adjustable ops
 // (setAdjustableOp above), re-adjusting it must find and update its own
 // step WHEREVER it sits, never append a second one after crop.
-function setStraighten(degrees) {
+function setStraighten(degrees, opts) {
   const steps = (P.photoEdits || []).slice();
   const idx = steps.findIndex((s) => s.op === 'straighten');
   const step = { op: 'straighten', params: { degrees } };
   if (idx >= 0) steps[idx] = step;
   else steps.unshift(step);
   P.photoEdits = steps;
-  notifyChange();
+  notifyChange(opts);
 }
 
 function appendDiscreteOp(opName, params) {
@@ -225,13 +226,16 @@ const clampReliefIn = (v) => Math.min(MAX_PHOTO_RELIEF_IN, Math.max(0.01, v));
 // generic Skeleton tab's 0.1-20in Carve Depth slider.
 /** `raw`: an UNDO puts the saved value back as it was (seat D 2026-10-08, undo map: P.carveZ is the board's own carve
  *  depth too -- 1.5 in on a fresh board -- and the photo clamp turned an undo of a pattern pick into 0.25). */
-function setReliefHeight(v, { raw = false } = {}) {
+function setReliefHeight(v, { raw = false, drag = false } = {}) {
   const z = raw ? v : clampReliefIn(v);
-  // core/in-editor-3d.js 'relief': with the editor open the value lands without a rebuild, the backdrop shows it
-  if (inEditor3dAction('relief') === 'backdrop') {
+  // core/in-editor-3d.js 'relief': with the editor open the value lands without a rebuild, the backdrop shows it (a drag
+  // tick: not yet -- its release repaints)
+  const action = inEditor3dAction('relief', { drag });
+  if (action === 'rebuild') applyParam('carveZ', z);
+  else {
     applyParam('carveZ', z, { rebuild: false });
-    refreshEditorTopView();
-  } else applyParam('carveZ', z);
+    if (action === 'backdrop') refreshEditorTopView();
+  }
 }
 
 function syncReliefHeightDisplay() {
@@ -463,18 +467,18 @@ function drawPreview() {
 function bindSlider(sliderId, numberId, opName, paramKey, fallback) {
   const slider = document.getElementById(sliderId);
   const number = document.getElementById(numberId);
-  const apply = (raw) => {
+  const apply = (raw, opts) => {
     const v = parseFloat(raw);
     if (!Number.isFinite(v)) return;
     if (slider) slider.value = String(v);
     if (number) number.value = String(v);
     const params = currentOpParams(opName, fallback);
     params[paramKey] = v;
-    setAdjustableOp(opName, params);
+    setAdjustableOp(opName, params, opts);
   };
-  slider?.addEventListener('input', (e) => apply(e.target.value));
+  slider?.addEventListener('input', (e) => apply(e.target.value, { drag: true }));
   number?.addEventListener('input', (e) => apply(e.target.value));
-  slider?.addEventListener('change', photoStep); // item 74f: a drag is one step, on release
+  slider?.addEventListener('change', () => { notifyChange(); photoStep(); }); // the drag's one repaint + item 74f: one step, on release
   number?.addEventListener('change', photoStep);
 }
 
@@ -528,16 +532,16 @@ export function initPhotoPanel({ onChange }) {
 
   const straightenSlider = document.getElementById('photoStraightenSlider');
   const straightenNumber = document.getElementById('photoStraighten');
-  const applyStraighten = (raw) => {
+  const applyStraighten = (raw, opts) => {
     const v = parseFloat(raw);
     if (!Number.isFinite(v)) return;
     if (straightenSlider) straightenSlider.value = String(v);
     if (straightenNumber) straightenNumber.value = String(v);
-    setStraighten(v);
+    setStraighten(v, opts);
   };
-  straightenSlider?.addEventListener('input', (e) => applyStraighten(e.target.value));
+  straightenSlider?.addEventListener('input', (e) => applyStraighten(e.target.value, { drag: true }));
   straightenNumber?.addEventListener('input', (e) => applyStraighten(e.target.value));
-  straightenSlider?.addEventListener('change', photoStep);
+  straightenSlider?.addEventListener('change', () => { notifyChange(); photoStep(); }); // the drag's one repaint
   straightenNumber?.addEventListener('change', photoStep);
 
   bindSlider('photoLevelsBlackSlider', 'photoLevelsBlack', 'levels', 'black', { black: 0, white: 1, mid: 1 });
@@ -549,15 +553,15 @@ export function initPhotoPanel({ onChange }) {
 
   const reliefSlider = document.getElementById('photoReliefHeightSlider');
   const reliefNumber = document.getElementById('photoReliefHeight');
-  const applyRelief = (raw) => {
+  const applyRelief = (raw, opts) => {
     const v = parseFloat(raw);
     if (!Number.isFinite(v)) return;
-    setReliefHeight(v);
+    setReliefHeight(v, opts);
     syncReliefHeightDisplay();
   };
-  reliefSlider?.addEventListener('input', (e) => applyRelief(e.target.value));
+  reliefSlider?.addEventListener('input', (e) => applyRelief(e.target.value, { drag: true }));
   reliefNumber?.addEventListener('input', (e) => applyRelief(e.target.value));
-  reliefSlider?.addEventListener('change', photoStep);
+  reliefSlider?.addEventListener('change', (e) => { applyRelief(e.target.value); photoStep(); }); // the drag's one repaint
   reliefNumber?.addEventListener('change', photoStep);
 
   document.getElementById('photoBtnSaveToPattern')?.addEventListener('click', saveSettingsToCurrentPattern);
