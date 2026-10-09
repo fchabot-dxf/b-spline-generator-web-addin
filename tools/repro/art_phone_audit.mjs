@@ -30,6 +30,7 @@ const SURFACES = {
   photo: { tab: 'editorTabPhoto', panel: 'editorPhotoPanel', strip: 'photoTabStrip' },
   brick: { tab: 'editorTabBrick', panel: 'editorBrickPanel', strip: null },
   sidebar: { tab: null, panelSel: '.cad-sidebar', strip: null }, // the editor stays CLOSED
+  undo: { tab: 'editorTabArtwork', panel: 'editorLayersPanel', strip: null }, // the undo coverage map: every editor tab
 };
 const SURFACE = process.env.SURFACE || 'art';
 const SURF = SURFACES[SURFACE];
@@ -316,6 +317,84 @@ try {
     console.log('  -> scissors', JSON.stringify({ spines: `${sBefore.spines.length} -> ${sAfter.spines.length}`, undo: sAfter.undo - sBefore.undo }));
     const shotB = await send('Page.captureScreenshot', { format: 'png' });
     if (shotB.result?.data) writeFileSync(`${OUT_DIR}/brick_after_strokes.png`, Buffer.from(shotB.result.data, 'base64'));
+  } else if (SURFACE === 'undo') {
+      // The UNDO coverage map (seat D 2026-10-08, advisor pick 3): each action the way a finger does it, then ONE press of
+      // that tab's own Undo control (the Frame tab has its own history); which parts of the board came back. Verdicts:
+      // one step + fully undone | NO UNDO STEP | N STEPS | PARTIAL (what stayed) | UNDO ALSO MOVED (what it touched).
+    await send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    const UST = `(async () => { const S = await import('./core/state.js'); const R = await import('./core/frame-record.js'); const F = await import('./main/frame-panel.js');
+      const ed = window.svgEditor; const stable = (o) => JSON.stringify(o, (k, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((q) => [q, v[q]])) : v)); const h = (str) => { let x = 5381; for (let i = 0; i < str.length; i++) x = ((x * 33) ^ str.charCodeAt(i)) >>> 0; return x.toString(36); };
+      const c = ed._sketchLayer.node.cloneNode(true);
+      for (const n of c.querySelectorAll('[data-brick-gen="1"], [data-brick-set]')) n.removeAttribute('fill'); // display-only greys (async)
+      const canvas = h(c.innerHTML.replace(/ ?(svg-selected|inactive-layer)/g, '').replace(/ class=""/g, ''));
+      return JSON.stringify({ canvas, bricks: h(stable(S.P.brickSettings)), frame: h(stable(R.getFrameRecord())),
+        photo: h(JSON.stringify({ u: String(S.P.photoImageDataUrl || '').slice(-80), e: S.P.photoEdits, p: S.P.photoPatternId, z: S.P.carveZ })),
+        layers: h(JSON.stringify((ed._layers || []).map((l) => [l.id, l.name, l.visible !== false]))),
+        parts: h(stable(await import('./editor/undo-parts.js').then((U) => U.takeUndoParts()))), depth: ed._undoStack.length, fdepth: F.frameHistoryDepth() }); })()`;
+    const PARTS = ['canvas', 'bricks', 'frame', 'photo', 'layers', 'parts'];
+    const tabOf = { art: 'editorTabArtwork', brick: 'editorTabBrick', frame: 'editorTabFrame', photo: 'editorTabPhoto' };
+    const undoOf = { art: '#editorUndo', brick: '#editorUndo', frame: '#editorFrameUndo', photo: '#editorUndo' };
+    const pick = (id) => tapSel('#' + id);
+    const canvasStroke = (fx0, fy0, fx1, fy1) => canvasDrag(fx0, fy0, fx1, fy1, 10);
+    const boardStroke = async (fracs) => { const pts = JSON.parse(await js(`JSON.stringify((() => { const ed = window.svgEditor, m = ed._sketchLayer.node.getScreenCTM(); const P = ${JSON.stringify(fracs)}.map(([fx, fy]) => [ed._mW * fx, ed._mH * fy]);
+        const out = []; for (let i = 1; i < P.length; i++) for (let k = i === 1 ? 0 : 1; k <= 12; k++) { const x = P[i - 1][0] + (P[i][0] - P[i - 1][0]) * k / 12, y = P[i - 1][1] + (P[i][1] - P[i - 1][1]) * k / 12; out.push([m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f]); } return out; })())`));
+      await touch(pts); return true; };
+    const ACTIONS = [
+      // Art
+      ['art', 'Draw: freehand stroke', ['artTab_draw', 'toolDraw'], () => canvasStroke(0.25, 0.3, 0.7, 0.42)],
+      ['art', 'Draw: line', ['toolLine'], () => canvasStroke(0.25, 0.55, 0.7, 0.6)],
+      ['art', 'Draw: rect', ['toolRect'], () => canvasStroke(0.3, 0.65, 0.6, 0.78)],
+      ['art', 'Draw (kept: the next row deletes it)', ['artTab_draw', 'toolDraw'], () => canvasStroke(0.25, 0.3, 0.7, 0.42), true],
+      ['art', 'Edit: select + Delete', ['artTab_edit', 'toolSelect'], async () => (await canvasDrag(0.47, 0.36, 0.47, 0.36, 1)) && (await sleep(400), pick('toolDelete'))],
+      ['art', 'General: stroke width +', ['artTab_general'], () => pick('editorStrokeWidthPlus')],
+      ['art', 'Lattice: Generate', ['artTab_lattice'], () => pick('latticeGenerate')],
+      ['art', 'Shape: Generate', ['artTab_shape'], () => pick('shapeLatticeGenerate')],
+      ['art', 'Layers: add a layer', [], () => pick('editorAddLayer')],
+      // Brick
+      ['brick', 'Wall: Generate', ['brickTool_wall'], () => pick('brickGenerate')],
+      ['brick', 'Wall: pattern Herringbone', ['brickTool_wall'], () => pick('brickPattern_herringbone')],
+      ['brick', 'Wall: Generate again (new seed)', ['brickTool_wall'], () => pick('brickGenerate')],
+      ['brick', 'Brush: stroke', ['brickTool_brush'], () => boardStroke([[0.22, 0.45], [0.78, 0.5]])],
+      ['brick', 'Raised brush: stroke', ['brickTool_raisedBrush', 'brickRaisedMode_bricks'], () => boardStroke([[0.22, 0.62], [0.78, 0.64]])],
+      ['brick', 'Grout cut: stroke', ['brickTool_raisedBrush', 'brickRaisedMode_grout'], () => boardStroke([[0.3, 0.2], [0.7, 0.75]])],
+      ['brick', 'Area brush: stroke', ['brickRaisedMode_bricks', 'brickTool_wall', 'brickSubTool_wall_area', 'brickWallAreaWidth_2'], () => boardStroke([[0.3, 0.3], [0.62, 0.38]])],
+      ['brick', 'Frame tool: Generate', ['brickTool_frame'], () => pick('brickGenerate')],
+      // Frame
+      ['frame', 'Template: next', [], () => nextOption('editorFrameTemplate')],
+      ['frame', 'Generate', [], () => pick('editorFrameGenerate')],
+      ['frame', 'Thickness 1.25', [], () => setValue('editorFrameThickness', 1.25)],
+      ['frame', 'Inset window on', [], () => pick('editorFrameInsetWindowToggle')],
+      // Photo
+      ['photo', 'Load a pattern', ['photoTab_source'], () => tapSel('#photoPatternRow button')],
+      ['photo', 'Rotate 90', ['photoTool_rotateFlip'], () => pick('photoBtnRotate')],
+      ['photo', 'Flip H', ['photoTool_rotateFlip'], () => pick('photoBtnFlipH')],
+      ['photo', 'Crop W 0.8 + Apply', ['photoTool_crop'], async () => (await setValue('photoCropW', 0.8)) && pick('photoBtnApplyCrop')],
+      ['photo', 'Brightness drag', ['photoTab_adjust', 'photoTool_levels'], () => drag('photoBrightnessSlider', [5, 10, 15, 20])],
+      ['photo', 'Relief: carved', ['photoTab_relief'], () => pick('photoBtnReliefCarved')],
+    ];
+    const map = [];
+    let curTab = null;
+    for (const [tab, name, pre, act, keep] of ACTIONS) {
+      if (tab !== curTab) { await pick(tabOf[tab]); await sleep(1800); curTab = tab; }
+      for (const id of pre) { await pick(id); await sleep(600); }
+      await sleep(1500);
+      const a = JSON.parse(await js(UST));
+      const did = await act();
+      await sleep(3000);
+      const b = JSON.parse(await js(UST));
+      const changed = PARTS.filter((p) => a[p] !== b[p]);
+      const steps = (b.depth - a.depth) + (b.fdepth - a.fdepth);
+      if (keep) { console.log(JSON.stringify({ tab, name, setup: true, steps })); continue; } // a setup row: kept, not undone
+      await tapSel(undoOf[tab]); await sleep(3500);
+      const u = JSON.parse(await js(UST));
+      const notBack = changed.filter((p) => u[p] !== a[p]);
+      const alsoMoved = PARTS.filter((p) => !changed.includes(p) && u[p] !== a[p]); // undo touched something the action had not
+      const verdict = did === false ? 'COULD NOT ACT' : !changed.length ? 'no change (setup?)' : steps === 0 ? 'NO UNDO STEP' : steps > 1 ? `${steps} STEPS` : notBack.length ? `PARTIAL: ${notBack.join('+')} not back` : alsoMoved.length ? `UNDO ALSO MOVED ${alsoMoved.join('+')}` : 'ok: one step, fully undone';
+      const r = { tab, name, changed, steps, verdict };
+      map.push(r); console.log(JSON.stringify(r));
+      // redo nothing: the next action starts from the undone board (each row stands alone)
+    }
+    writeFileSync(`${OUT_DIR}/undo_map.json`, JSON.stringify(map, null, 1));
   } else if (SURFACE === 'sidebar') {
     // The main sidebar with the editor CLOSED (advisor pick, 2026-10-08: the last surface Fred uses on the phone that was
     // never timed): per sidebar tab, its collapsed panels opened, every visible control acted on the way a finger
