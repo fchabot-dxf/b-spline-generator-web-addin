@@ -86,6 +86,18 @@ INTERVAL_S = 60
 SHOTS_DIR = os.path.join(os.path.expanduser("~"), ".bspline-status", "shots")
 SHOTS_PER_SEAT = 60   # published per seat (newest first); the lightbox swipes through all of them
 SHOTS_THUMBS = 6      # thumbnails shown in the seat card grid
+# history.html (Fred 2026-10-09: "a mosaic style screenshot history to browse older images"): the newest HISTORY_MAX
+# images under EVERY shots folder, at most HISTORY_PER_FOLDER per folder (a matrix run drops hundreds into one), shown
+# as HISTORY_THUMB_PX JPEG thumbnails grouped by day; a tap opens the full image in the same lightbox as the cards
+HISTORY_MAX = 900
+HISTORY_PER_FOLDER = 8
+# and at most HISTORY_PER_SEAT_DAY per top folder (seat) per day: measured 2026-10-09, seat D's matrix runs spread over
+# many folders filled 799 of the newest 800 with one afternoon
+HISTORY_PER_SEAT_DAY = 30
+HISTORY_THUMB_PX = 360
+# lightbox markup choices (Fred: "a markup color and stroke size"); stroke px are screen pixels at the drawn zoom
+MARKUP_COLORS = ["#e53935", "#fdd835", "#43a047", "#1e88e5", "#ffffff", "#111111"]
+MARKUP_SIZES = [{"id": "S", "px": 3}, {"id": "M", "px": 6}, {"id": "L", "px": 12}]
 
 
 def _env():
@@ -129,6 +141,11 @@ def _roadmap():
 
 
 
+# a folder holding one of these is a browser profile (a probe's --user-data-dir), not screenshots: its extension and
+# web-app icons filled the history's newest tiles (2026-10-09)
+_PROFILE_MARKERS = {"Local State", "First Run"}
+
+
 def _seat_shots(folders):
     """Newest SHOTS_PER_SEAT images under the seat's declared folders (seats.json 'shots'), RECURSIVE, as
     paths relative to SHOTS_DIR ('seat37/f35item28_clear_menu.png', 'seatB/rockband/after_T1.png'). Fred
@@ -137,13 +154,65 @@ def _seat_shots(folders):
     found = []
     for folder in folders:
         base = os.path.join(SHOTS_DIR, folder)
-        for dirpath, _dirs, files in os.walk(base):
+        for dirpath, dirs, files in os.walk(base):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]   # hidden dirs: probe Chrome profiles' icon PNGs
+            if _PROFILE_MARKERS & set(files):
+                dirs[:] = []                       # its top-level images stay; its subfolders are the profile
             for f in files:
                 if f.lower().endswith((".png", ".jpg", ".jpeg")):
                     full = os.path.join(dirpath, f)
                     found.append((os.path.getmtime(full), os.path.relpath(full, SHOTS_DIR).replace(os.sep, "/")))
     found.sort(reverse=True)
     return [rel for _m, rel in found[:SHOTS_PER_SEAT]]
+
+
+def _history_shots():
+    """[(mtime, rel)] newest first for history.html: every image under SHOTS_DIR, HISTORY_PER_FOLDER per folder,
+    HISTORY_MAX in all."""
+    per_dir = {}
+    stack = [SHOTS_DIR]
+    while stack:
+        d = stack.pop()
+        try:
+            entries = list(os.scandir(d))
+        except OSError:
+            continue
+        profile = any(en.name in _PROFILE_MARKERS for en in entries)
+        for en in entries:
+            if en.is_dir():
+                if not en.name.startswith(".") and not profile:   # hidden dirs / a profile's own subfolders: icon PNGs
+                    stack.append(en.path)
+            elif en.name.lower().endswith((".png", ".jpg", ".jpeg")):
+                per_dir.setdefault(d, []).append((en.stat().st_mtime, os.path.relpath(en.path, SHOTS_DIR).replace(os.sep, "/")))
+    found = []
+    for items in per_dir.values():
+        items.sort(reverse=True)
+        found += items[:HISTORY_PER_FOLDER]
+    found.sort(reverse=True)
+    out, per_seat_day = [], {}
+    for mtime, rel in found:
+        k = (rel.split("/", 1)[0], datetime.fromtimestamp(mtime).date())
+        if per_seat_day.get(k, 0) < HISTORY_PER_SEAT_DAY:
+            per_seat_day[k] = per_seat_day.get(k, 0) + 1
+            out.append((mtime, rel))
+    return out[:HISTORY_MAX]
+
+
+def _thumb(rel):
+    """out/t/<rel>.jpg, made once per source change; returns (w, h) of the thumbnail or None."""
+    from PIL import Image
+    src, dst = os.path.join(SHOTS_DIR, rel), os.path.join(OUT, "t", rel + ".jpg")
+    try:
+        if not (os.path.exists(dst) and os.path.getmtime(dst) >= os.path.getmtime(src)):
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            with Image.open(src) as im:
+                im = im.convert("RGB")
+                im.thumbnail((HISTORY_THUMB_PX, HISTORY_THUMB_PX * 3))
+                im.save(dst, "JPEG", quality=80)
+        with Image.open(dst) as t:
+            return t.size
+    except Exception:
+        return None
 
 def collect():
     _git(ROOT, "fetch", "-q", "origin")
@@ -163,10 +232,226 @@ def collect():
         seats.append({**s, "url": _session_url(s), "turn": h.get("turn", "?"), "who": who, "note": h.get("note", ""),
                       "updated": h.get("updated", ""), "done": d, "total": t, "shots": shots})
     commits = {b: _git(ROOT, "log", "--format=%h|%cr|%s", "-8", "origin/" + b).strip().splitlines() for b in ("main", "lane-b", "fb-app")}
-    return seats, commits, _roadmap()
+    return seats, commits, _roadmap(), _history_shots()
 
 
-def render(seats, commits, roadmap):
+# The screenshot lightbox (zoom, swipe, markup, copy, save), shared by index.html and history.html. Plain strings,
+# not f-strings: the page templates insert them whole.
+LIGHTBOX_CSS = r"""img.thumb{cursor:pointer} dialog#lb{border:0;padding:0;margin:0;background:transparent;width:100vw;height:100vh;max-width:100vw;max-height:100vh;overflow:hidden} dialog#lb::backdrop{background:rgba(0,0,0,.8)}
+dialog#lb img{max-width:96vw;max-height:88vh;display:block;border-radius:6px;cursor:pointer} dialog#lb figcaption{color:#ddd;font-size:12px;text-align:center;padding-top:4px}
+dialog#lb figure{margin:0;position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none} .nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.45);color:#fff;border:0;font-size:28px;width:44px;height:64px;border-radius:8px;cursor:pointer} @keyframes lbDown{from{transform:translateY(var(--dy,0px))}to{transform:translateY(100vh)}}
+dialog#lb.down figure{animation:lbDown .17s ease-in forwards}
+@media(prefers-reduced-motion:reduce){dialog#lb.down figure{animation-duration:1ms}}
+.nav.p{left:4px} .nav.n{right:4px} #lbInk{position:absolute;display:none;touch-action:none;cursor:crosshair} .mk{position:absolute;top:6px;left:6px;display:flex;gap:6px} .mk button{background:rgba(0,0,0,.55);color:#fff;border:0;font-size:19px;width:40px;height:40px;border-radius:50%;cursor:pointer} .mk .mko{display:none} .mk.on .mko{display:inline-block} .mk.on #mkPen{background:#d32f2f} .x{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:0;font-size:20px;width:40px;height:40px;border-radius:50%;cursor:pointer}
+.x{z-index:3} .x.g{right:52px;font-size:22px}
+#lbMosaic{position:absolute;inset:0;display:none;overflow-y:auto;background:rgba(10,12,16,.96);padding:54px 6px 6px;column-count:4;column-gap:4px;overflow-x:hidden;touch-action:pan-y;z-index:2} @media(min-width:700px){#lbMosaic{column-count:auto;column-width:150px}}
+#lbMosaic.on{display:block} #lbMosaic img[data-src]{aspect-ratio:4/3} #lbMosaic img{display:block;width:100%;height:auto;margin:0 0 4px;break-inside:avoid;border-radius:6px;cursor:pointer;background:#222}
+#lbMosaic img.cur{outline:3px solid #1d6fd8;outline-offset:-3px}
+.pal{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);display:none;gap:8px;align-items:center;background:rgba(0,0,0,.6);padding:6px 10px;border-radius:24px} .mk.on~.pal{display:flex}
+.pal button{width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,.4);padding:0;cursor:pointer;background:transparent;display:inline-flex;align-items:center;justify-content:center}
+.pal button.sel{box-shadow:0 0 0 2px #000,0 0 0 4px #fff} .pal .sz i{display:block;border-radius:50%} .pal .sep{width:1px;height:24px;background:rgba(255,255,255,.35)}"""
+LIGHTBOX_HTML = r"""<dialog id="lb"><figure><img id="lbImg" alt=""><button class="x" id="lbClose" aria-label="Close">&#10005;</button><button class="x g" id="lbGrid" aria-label="All shots" title="All shots">&#9638;</button><div id="lbMosaic"></div><canvas id="lbInk"></canvas><div class="mk" id="lbMk"><button id="mkPen" aria-label="Draw" title="Draw">&#9998;</button><button id="mkUndo" class="mko" aria-label="Undo" title="Undo">&#8630;</button><button id="mkClear" class="mko" aria-label="Clear" title="Clear">&#128465;</button><button id="mkCopy" class="mko" aria-label="Copy image" title="Copy image">&#128203;</button><button id="mkSave" aria-label="Save image" title="Save image">&#128190;</button></div><div class="pal" id="lbPal"></div><figcaption id="lbCap"></figcaption></figure></dialog>"""
+LIGHTBOX_JS = r"""const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');
+let set=[], idx=0;
+const fullOf=t=>t.dataset.full||t.src;   // history thumbnails carry their full image in data-full
+function show(){ zr(); if(typeof inkReset==='function') inkReset(); const t=set[idx]; im.src=fullOf(t); cap.textContent=(idx+1)+' / '+set.length+'  ·  '+t.alt; }
+function openShot(t){ set=[...(t.closest('.shots')||document).querySelectorAll('img.thumb')].filter(x=>!x.closest('.hide')); idx=set.indexOf(t); lb.classList.remove('down');
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches, pre=new Image(); pre.src=fullOf(t);
+  const go=()=>{ show(); fig.style.transform=''; lb.showModal(); lb.scrollTop=0;
+    if(!reduce) fig.animate([{transform:'translateY(100vh)'},{transform:'translateY(0)'}],{duration:190,easing:'cubic-bezier(.2,.8,.2,1)'}); };
+  (pre.decode?pre.decode():Promise.resolve()).then(go,go); }
+const fig=lb.querySelector('figure');
+function slideClose(dy){ if(!lb.open||lb.classList.contains('down')) return; fig.style.setProperty('--dy',(dy||0)+'px'); fig.style.transform=''; lb.classList.add('down');
+  const done=()=>{ lb.classList.remove('down'); fig.style.removeProperty('--dy'); lb.close(); }; fig.addEventListener('animationend',done,{once:true}); setTimeout(()=>{ if(lb.open) done(); },300); }
+let lastPtr='mouse'; document.addEventListener('pointerdown',ev=>{ lastPtr=ev.pointerType||'mouse'; },true);
+let stepping=false;
+function step(d,fromX){ if(!set.length||stepping) return; const f=lb.querySelector('figure'); const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const swap=()=>{ idx=(idx+d+set.length)%set.length; show(); };
+  if(reduce||!f.animate){ f.style.transform=''; swap(); return; }
+  stepping=true; const w=innerWidth, x0=fromX||0;
+  f.style.transform=''; f.animate([{transform:'translateX('+x0+'px)'},{transform:'translateX('+(-d*w)+'px)'}],{duration:150,easing:'ease-in',fill:'forwards'});
+  setTimeout(()=>{ f.getAnimations().forEach(a=>a.cancel()); swap();     // timer-driven, never waits on animation events
+    f.animate([{transform:'translateX('+(d*w)+'px)'},{transform:'translateX(0)'}],{duration:170,easing:'cubic-bezier(.2,.8,.2,1)'});
+    setTimeout(()=>{ stepping=false; },180); },150); }
+document.getElementById('lbClose').addEventListener('click',ev=>{ev.stopPropagation();slideClose(0);});
+document.addEventListener('click',ev=>{ if(drawOn && ev.target.closest('dialog')) return; const t=ev.target.closest('img.thumb'); if(t){ openShot(t); } else if(lb.open && ev.target.closest('dialog') && !ev.target.closest('#lbClose') && !moved){
+    if(lastPtr==='mouse' && ev.target!==im){ slideClose(0); }           // mouse: click outside the image closes
+    else { tapAt(ev.clientX, ev.clientY); } } });
+// double tap / double click zooms in (2.5x at that spot) or back out (Fred); a single tap still steps images at 1x,
+// delayed by the double-tap window so the first tap of a double never steps
+let tapT=null, tapP=null;
+function tapAt(x,y){ if(tapT && Math.hypot(x-tapP.x,y-tapP.y)<40){ clearTimeout(tapT); tapT=null;
+    if(zs>1) zr(); else zoomAt(2.5,x,y); return; }
+  tapP={x,y}; tapT=setTimeout(()=>{ tapT=null; if(zs===1) step(x<innerWidth/2?-1:1); },280); }
+document.addEventListener('keydown',ev=>{ if(lb.open){ if(mos.classList.contains('on')) return; if(ev.key==='ArrowRight'){step(1);ev.preventDefault();} else if(ev.key==='ArrowLeft'){step(-1);ev.preventDefault();} return; }
+  const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){ev.preventDefault();openShot(t);} });
+// zoom + pan: pinch + one-finger pan (touch), wheel + drag (mouse); double tap / double click toggles 2.5x zoom (Fred, reversing the earlier no-double-tap); swipe changes image only at 1x; swipe changes image only at 1x
+let zs=1, zx=0, zy=0, moved=false, x0=null, y0=null, pd=0, ps=1, drag=null;
+function za(){ const tf='translate('+zx+'px,'+zy+'px) scale('+zs+')'; im.style.transform=tf; if(typeof ink!=='undefined') ink.style.transform=tf; im.style.cursor=zs>1?'grab':''; }
+function zr(){ zs=1; zx=0; zy=0; za(); }
+im.style.transformOrigin='center center'; im.style.transition='none';
+function zoomAt(ns,cx,cy){ const r=im.getBoundingClientRect(), ox=cx-(r.left+r.width/2), oy=cy-(r.top+r.height/2);
+  ns=Math.max(1,Math.min(6,ns)); const k=ns/zs; zx=zx*k-ox*(k-1); zy=zy*k-oy*(k-1); zs=ns; if(zs===1){zx=0;zy=0;} za(); }
+const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+const mid=t=>({x:(t[0].clientX+t[1].clientX)/2,y:(t[0].clientY+t[1].clientY)/2});
+// two fingers = pinch AND pan, in normal and markup mode (Fred): the image point under the fingers' start midpoint stays under their current midpoint
+let m0=null, zx0=0, zy0=0, C0=null;
+function twoFinger(t){ const m=mid(t), ns=Math.max(1,Math.min(6,ps*dist(t)/pd));
+  const ux=(m0.x-C0.x-zx0)/ps, uy=(m0.y-C0.y-zy0)/ps; zs=ns; zx=m.x-C0.x-ns*ux; zy=m.y-C0.y-ns*uy; za(); }
+const inMos=ev=>mos.classList.contains('on');
+lb.addEventListener('touchstart',ev=>{ if(inMos(ev)) return; if(drawOn && ev.touches.length<2) return; moved=false;
+  if(ev.touches.length===2){ pd=dist(ev.touches); ps=zs; x0=null; m0=mid(ev.touches); zx0=zx; zy0=zy;
+    const r=im.getBoundingClientRect(); C0={x:r.left+r.width/2-zx, y:r.top+r.height/2-zy}; return; }
+  x0=ev.touches[0].clientX; y0=ev.touches[0].clientY; drag={x:zx,y:zy}; },{passive:true});
+lb.addEventListener('touchmove',ev=>{ if(inMos(ev)) return; if(drawOn && !(ev.touches.length===2 && pd)) return;
+  if(ev.touches.length===2&&pd&&m0){ twoFinger(ev.touches); moved=true; ev.preventDefault(); return; }
+  if(zs===1&&x0!==null&&ev.touches.length===1){ const ddy=ev.touches[0].clientY-y0, ddx=ev.touches[0].clientX-x0; if(ddy>0&&ddy>Math.abs(ddx)){ fig.style.transform='translateY('+ddy+'px)'; moved=true; ev.preventDefault(); return; }
+    if(Math.abs(ddx)>Math.abs(ddy)&&!stepping){ fig.style.transform='translateX('+ddx+'px)'; moved=true; ev.preventDefault(); return; } }
+  if(zs>1&&x0!==null&&drag){ zx=drag.x+ev.touches[0].clientX-x0; zy=drag.y+ev.touches[0].clientY-y0; za(); moved=true; ev.preventDefault(); } },{passive:false});
+lb.addEventListener('touchend',ev=>{ if(inMos(ev)) return; if(drawOn && !pd) return;
+  if(ev.touches.length>0) return; setTimeout(()=>{moved=false;},350); if(pd){ pd=0; m0=null; x0=null; return; }
+  if(x0===null) return; const dx=ev.changedTouches[0].clientX-x0, dy=ev.changedTouches[0].clientY-y0; x0=null;
+  if(zs===1 && dy>90 && dy>Math.abs(dx)){ moved=true; slideClose(dy); return; }
+  if(zs===1 && Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)){ step(dx<0?1:-1,dx); moved=true; ev.preventDefault(); return; }
+  fig.style.transform='';
+  });
+lb.addEventListener('wheel',ev=>{ if(inMos(ev)) return; ev.preventDefault(); zoomAt(zs*(ev.deltaY<0?1.2:1/1.2),ev.clientX,ev.clientY); },{passive:false});
+im.addEventListener('mousedown',ev=>{ if(drawOn||zs===1) return; ev.preventDefault(); moved=false; drag={mx:ev.clientX,my:ev.clientY,x:zx,y:zy};
+  const mv=e=>{ zx=drag.x+e.clientX-drag.mx; zy=drag.y+e.clientY-drag.my; if(Math.abs(e.clientX-drag.mx)+Math.abs(e.clientY-drag.my)>3) moved=true; za(); };
+  const up=()=>{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); setTimeout(()=>{moved=false;},0); };
+  document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up); });
+lb.addEventListener('close',zr);
+// markup: draw strokes (colour + size from MK_COLORS / MK_SIZES) over the screenshot, undo / clear, copy or save the
+// composite at full resolution
+let drawOn=false, strokes=[], cur=null;
+let mkColor=MK_COLORS[0], mkSize=MK_SIZES[1].px;
+try{ const s=JSON.parse(localStorage.getItem('mk')||'{}'); if(MK_COLORS.includes(s.c)) mkColor=s.c; if(MK_SIZES.some(z=>z.px===s.w)) mkSize=s.w; }catch(e){}
+const pal=document.getElementById('lbPal');
+function palRender(){ pal.innerHTML=MK_COLORS.map(c=>'<button class="sw'+(c===mkColor?' sel':'')+'" data-c="'+c+'" style="background:'+c+'" aria-label="Colour '+c+'"></button>').join('')
+  +'<span class="sep"></span>'+MK_SIZES.map(z=>'<button class="sz'+(z.px===mkSize?' sel':'')+'" data-w="'+z.px+'" aria-label="Stroke '+z.id+'" title="'+z.id+'"><i style="width:'+(z.px+3)+'px;height:'+(z.px+3)+'px;background:'+mkColor+'"></i></button>').join(''); }
+pal.addEventListener('click',ev=>{ ev.stopPropagation(); const b=ev.target.closest('button'); if(!b) return;
+  if(b.dataset.c) mkColor=b.dataset.c; if(b.dataset.w) mkSize=+b.dataset.w;
+  try{ localStorage.setItem('mk',JSON.stringify({c:mkColor,w:mkSize})); }catch(e){} palRender(); });
+palRender();
+const ink=document.getElementById('lbInk'), mk=document.getElementById('lbMk'), ictx=ink.getContext('2d');
+function inkFit(){ const w=im.offsetWidth, h=im.offsetHeight;
+  ink.style.left=im.offsetLeft+'px'; ink.style.top=im.offsetTop+'px'; ink.style.width=w+'px'; ink.style.height=h+'px'; ink.style.transformOrigin='center center';
+  ink.width=Math.round(w*devicePixelRatio*2); ink.height=Math.round(h*devicePixelRatio*2); za(); inkDraw(); }
+function nat(ev){ const r=ink.getBoundingClientRect(); return [(ev.clientX-r.left)*im.naturalWidth/r.width,(ev.clientY-r.top)*im.naturalHeight/r.height]; }
+function paint(ctx,scale){ ctx.lineCap='round'; ctx.lineJoin='round';
+  for(const s of strokes){ ctx.strokeStyle=s.c; ctx.lineWidth=s.w*scale; ctx.beginPath(); s.p.forEach((q,i)=>i?ctx.lineTo(q[0]*scale,q[1]*scale):ctx.moveTo(q[0]*scale,q[1]*scale)); if(s.p.length===1) ctx.lineTo(s.p[0][0]*scale+0.1,s.p[0][1]*scale); ctx.stroke(); } }
+function inkDraw(){ ictx.clearRect(0,0,ink.width,ink.height); paint(ictx, ink.width/(im.naturalWidth||1)); }
+function inkReset(){ strokes=[]; cur=null; if(drawOn) inkDraw(); }
+function setDraw(on){ drawOn=on; mk.classList.toggle('on',on); ink.style.display=on?'block':'none'; if(on){ zr(); inkFit(); requestAnimationFrame(inkFit); } }
+im.addEventListener('load',()=>{ if(drawOn) inkFit(); });
+const downs=new Set();
+ink.addEventListener('pointerdown',ev=>{ ev.preventDefault(); downs.add(ev.pointerId);
+  if(downs.size>1){ if(cur){ strokes.splice(strokes.indexOf(cur),1); cur=null; inkDraw(); } return; }
+  ev.stopPropagation(); try{ ink.setPointerCapture(ev.pointerId); }catch(e){}
+  const r=ink.getBoundingClientRect(); cur={c:mkColor, w:mkSize*im.naturalWidth/r.width, p:[nat(ev)]}; strokes.push(cur); inkDraw(); });
+ink.addEventListener('pointermove',ev=>{ if(!cur) return; ev.preventDefault(); cur.p.push(nat(ev)); inkDraw(); });
+['pointerup','pointercancel'].forEach(t=>ink.addEventListener(t,ev=>{ downs.delete(ev.pointerId); cur=null; }));
+ink.addEventListener('click',ev=>ev.stopPropagation());
+['touchstart','touchmove','touchend'].forEach(t=>ink.addEventListener(t,ev=>{ if(ev.touches.length<2 && !pd) ev.stopPropagation(); },{passive:true}));
+mk.addEventListener('click',ev=>ev.stopPropagation());
+document.getElementById('mkPen').addEventListener('click',()=>setDraw(!drawOn));
+document.getElementById('mkUndo').addEventListener('click',()=>{ strokes.pop(); inkDraw(); });
+document.getElementById('mkClear').addEventListener('click',()=>{ strokes=[]; inkDraw(); });
+function composite(){ const c=document.createElement('canvas'); c.width=im.naturalWidth; c.height=im.naturalHeight; const x=c.getContext('2d');
+  x.drawImage(im,0,0); paint(x,1); return new Promise(res=>c.toBlob(res,'image/png')); }
+const note=t=>{ const old=cap.textContent; cap.textContent=t; setTimeout(()=>{ cap.textContent=old; },1600); };
+// Save (Fred 2026-10-09): the shown image with its markup as a PNG file; a phone gets the share sheet (Save Image),
+// a desktop a download
+document.getElementById('mkSave').addEventListener('click',async()=>{
+  const blob=await composite(), base=(set[idx].alt.split(' · ')[0].split('/').pop()||'shot').replace(/\.(png|jpe?g)$/i,'');
+  const name=base+(strokes.length?'_marked':'')+'.png', f=new File([blob],name,{type:'image/png'});
+  if(lastPtr!=='mouse'&&navigator.canShare&&navigator.canShare({files:[f]})){ try{ await navigator.share({files:[f]}); }catch(e){} return; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000); note('Saved ✓'); });
+document.getElementById('mkCopy').addEventListener('click',()=>{
+  const blobP=composite();
+  const viaShare=async()=>{ const blob=await blobP; const f=new File([blob],'marked.png',{type:'image/png'});
+    if(navigator.canShare&&navigator.canShare({files:[f]})){ try{ await navigator.share({files:[f]}); }catch(e){} } else note('Copy not supported here'); };
+  if(navigator.clipboard&&window.ClipboardItem){
+    navigator.clipboard.write([new ClipboardItem({'image/png':blobP})]).then(()=>note('Copied ✓'),viaShare);
+  } else viaShare(); });
+// viewer switcher (Fred 2026-10-09: "a mosaic browser inside the carousel"): the grid button flips between the single
+// image and a mosaic of the whole set; a tap on a tile opens that shot
+const mos=document.getElementById('lbMosaic'), gridBtn=document.getElementById('lbGrid');
+// tiles load small JPEG thumbnails (data-thumb, else the image) through an observer on the mosaic's own scroller:
+// native loading=lazy inside the dialog's overflow box stopped after ~5 tiles on Fred's phone (2026-10-09)
+let mosObs=null;
+function mosaicOpen(){ if(drawOn) setDraw(false); zr();
+  mos.innerHTML=set.map((t,i)=>'<img data-i="'+i+'" data-src="'+(t.dataset.thumb||t.src)+'" width="4" height="3" alt="'+(t.alt||'').replace(/"/g,'&quot;')+'">').join('');
+  if(mosObs) mosObs.disconnect();
+  const load=im=>{ if(im.dataset.src){ im.src=im.dataset.src; im.removeAttribute('data-src'); im.removeAttribute('width'); im.removeAttribute('height'); } };
+  if('IntersectionObserver' in window){ mosObs=new IntersectionObserver(es=>es.forEach(e=>{ if(e.isIntersecting){ load(e.target); mosObs.unobserve(e.target); } }),{root:mos,rootMargin:'600px 0px'});
+    mos.querySelectorAll('img').forEach(im=>mosObs.observe(im)); } else mos.querySelectorAll('img').forEach(load);
+  const c=mos.querySelectorAll('img')[idx]; if(c) c.classList.add('cur'); mos.classList.add('on');
+  gridBtn.innerHTML='&#9635;'; gridBtn.title='Single image'; cap.textContent=set.length+' shots';
+  requestAnimationFrame(()=>{ if(c) c.scrollIntoView({block:'center'}); }); }
+function mosaicClose(){ if(mosObs){ mosObs.disconnect(); mosObs=null; } mos.classList.remove('on'); mos.innerHTML=''; gridBtn.innerHTML='&#9638;'; gridBtn.title='All shots'; }
+gridBtn.addEventListener('click',ev=>{ ev.stopPropagation(); if(mos.classList.contains('on')){ mosaicClose(); show(); } else mosaicOpen(); });
+mos.addEventListener('click',ev=>{ ev.stopPropagation(); const t=ev.target.closest('img'); if(!t) return; idx=+t.dataset.i; mosaicClose(); show(); });
+lb.addEventListener('close',mosaicClose);
+addEventListener('resize',()=>{ if(drawOn) inkFit(); });
+lb.addEventListener('close',()=>setDraw(false));
+"""
+# the page-level CSS both pages share (plain string, see LIGHTBOX_CSS)
+BASE_CSS = r""":root{--bg:#f6f7f9;--fg:#1c2330;--mut:#667085;--card:#fff;--w:#1d6fd8;--a:#b86a00;--line:#e3e6eb}
+@media(prefers-color-scheme:dark){:root{--bg:#12151b;--fg:#e6e9ef;--mut:#98a2b3;--card:#1b2029;--line:#2a313c}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,sans-serif;padding:16px;max-width:900px;margin-inline:auto}
+h1{font-size:20px;margin:4px 0 14px} h2{font-size:15px;margin:18px 0 6px} small,.t,span,em{color:var(--mut);font-size:12px;font-style:normal}
+a.hl{font-size:14px;font-weight:600;color:var(--w);text-decoration:none;white-space:nowrap}"""
+
+
+def _lightbox_script():
+    return f"const MK_COLORS={json.dumps(MARKUP_COLORS)}, MK_SIZES={json.dumps(MARKUP_SIZES)};\n" + LIGHTBOX_JS
+
+
+def render_history(history, thumbs):
+    """history.html: a masonry mosaic of thumbnails, newest first, one block per day, with folder chips to filter."""
+    e = html.escape
+    days, chips = [], {}
+    for mtime, rel in history:
+        if rel not in thumbs:
+            continue
+        top = rel.split("/", 1)[0]
+        chips[top] = chips.get(top, 0) + 1
+        dt = datetime.fromtimestamp(mtime)
+        day = dt.strftime("%a %d %b")
+        if not days or days[-1][0] != day:
+            days.append((day, []))
+        w, h = thumbs[rel]
+        days[-1][1].append(f'<img class="thumb" src="t/{e(rel)}.jpg" data-full="h/{e(rel)}" data-seat="{e(top)}" width="{w}" height="{h}"'
+                           f' alt="{e(rel)} · {dt:%d %b %H:%M}" title="{e(rel)}" loading="lazy" tabindex="0">')
+    chip_html = '<button class="chip on" data-seat="">All</button>' + "".join(
+        f'<button class="chip" data-seat="{e(k)}">{e(k)} <span>{n}</span></button>' for k, n in sorted(chips.items()))
+    body = "".join(f'<section class="day"><h2>{e(d)} <span>{len(items)}</span></h2><div class="mosaic">{"".join(items)}</div></section>'
+                   for d, items in days)
+    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Screenshot history</title><style>
+{BASE_CSS}
+body{{max-width:1400px}}
+.chips{{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 6px}} .chip{{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:16px;padding:5px 12px;min-height:32px;cursor:pointer}}
+.chip.on{{background:var(--w);border-color:var(--w);color:#fff}} .chip.on span{{color:#dde}}
+.mosaic{{column-width:160px;column-gap:6px}} .mosaic img{{display:block;width:100%;height:auto;margin:0 0 6px;break-inside:avoid;border-radius:6px;border:1px solid var(--line);background:var(--line)}}
+.hide{{display:none!important}}
+{LIGHTBOX_CSS}
+</style></head><body><h1>Screenshot history <small>newest {len(history)} · up to {HISTORY_PER_FOLDER} per folder · {datetime.now():%Y-%m-%d %H:%M}</small> <a class="hl" href="index.html">‹ Progress</a></h1>
+<div class="chips">{chip_html}</div>
+{body}
+{LIGHTBOX_HTML}
+<script>{_lightbox_script()}
+// folder chips: show one seat's folder (or All); hidden thumbnails drop out of the lightbox's swipe set
+document.querySelector('.chips').addEventListener('click',ev=>{{ const b=ev.target.closest('.chip'); if(!b) return;
+  document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c===b)); const s=b.dataset.seat;
+  document.querySelectorAll('.mosaic img').forEach(i=>i.classList.toggle('hide',!!s&&i.dataset.seat!==s));
+  document.querySelectorAll('.day').forEach(d=>d.classList.toggle('hide',!d.querySelector('img:not(.hide)'))); }});
+</script></body></html>"""
+
+
+def render(seats, commits, roadmap, thumbs=None):
     md = ["# B-Spline — progress", ""]
     for s in seats:
         md += [f"## {s['name']} ({s['branch']}) — turn {s['turn']}, ball: {s['who']}", f"Task: {_bar(s['done'], s['total'])}",
@@ -187,7 +472,7 @@ def render(seats, commits, roadmap):
         f'<p class="ball {"w" if "worker" in s["who"] else "a"}">{e(s["who"])}</p>'
         f'{hbar(s["done"], s["total"], "task")}<p>{e(s["note"])}</p>'
         f'<p class="t">updated {e(s["updated"])}</p>'
-        + ('<div class="shots">' + "".join(f'<img class="thumb{" more" if i >= SHOTS_THUMBS else ""}" src="shots/{e(s["key"])}/{e(x)}" alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for i, x in enumerate(s["shots"]))
+        + ('<div class="shots">' + "".join(f'<img class="thumb{" more" if i >= SHOTS_THUMBS else ""}" src="shots/{e(s["key"])}/{e(x)}"{f' data-thumb="t/{e(x)}.jpg"' if x in (thumbs or {}) else ""} alt="{e(x)}" title="{e(x)}" loading="lazy" tabindex="0">' for i, x in enumerate(s["shots"]))
            + (f'<span class="morec">+{len(s["shots"]) - SHOTS_THUMBS} more, swipe in the viewer</span>' if len(s["shots"]) > SHOTS_THUMBS else "") + "</div>" if s["shots"] else "")
         + '</section>')
     cards = "".join(f'<h2 class="station">{e(STATIONS.get(st, st))}</h2><div class="grid">'
@@ -200,136 +485,21 @@ def render(seats, commits, roadmap):
         for c in cs if c.count("|") >= 2) + "</ul></details>" for b, cs in commits.items())
     page = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>B-Spline progress</title><style>
-:root{{--bg:#f6f7f9;--fg:#1c2330;--mut:#667085;--card:#fff;--w:#1d6fd8;--a:#b86a00;--line:#e3e6eb}}
-@media(prefers-color-scheme:dark){{:root{{--bg:#12151b;--fg:#e6e9ef;--mut:#98a2b3;--card:#1b2029;--line:#2a313c}}}}
-body{{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,sans-serif;padding:16px;max-width:900px;margin-inline:auto}}
-h1{{font-size:20px;margin:4px 0 14px}} h2{{font-size:15px;margin:18px 0 6px}} small,.t,span,em{{color:var(--mut);font-size:12px;font-style:normal}}
+{BASE_CSS}
 .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}}
 .seat{{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}} .seat h2{{margin-top:0}}
 .ball{{font-weight:700;margin:4px 0}} .ball.w{{color:var(--w)}} .ball.a{{color:var(--a)}}
 .bar{{margin:8px 0}} .track{{height:8px;background:var(--line);border-radius:4px;overflow:hidden}}
 .fill{{height:100%;background:var(--w)}} .lbl{{font-size:12px;color:var(--mut)}}
-img.thumb{{cursor:pointer}} dialog#lb{{border:0;padding:0;margin:0;background:transparent;width:100vw;height:100vh;max-width:100vw;max-height:100vh;overflow:hidden}} dialog#lb::backdrop{{background:rgba(0,0,0,.8)}}
-dialog#lb img{{max-width:96vw;max-height:88vh;display:block;border-radius:6px;cursor:pointer}} dialog#lb figcaption{{color:#ddd;font-size:12px;text-align:center;padding-top:4px}}
-dialog#lb figure{{margin:0;position:relative;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;touch-action:none}} .nav{{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.45);color:#fff;border:0;font-size:28px;width:44px;height:64px;border-radius:8px;cursor:pointer}} @keyframes lbDown{{from{{transform:translateY(var(--dy,0px))}}to{{transform:translateY(100vh)}}}}
-dialog#lb.down figure{{animation:lbDown .17s ease-in forwards}}
-@media(prefers-reduced-motion:reduce){{dialog#lb.down figure{{animation-duration:1ms}}}}
-.nav.p{{left:4px}} .nav.n{{right:4px}} #lbInk{{position:absolute;display:none;touch-action:none;cursor:crosshair}} .mk{{position:absolute;top:6px;left:6px;display:flex;gap:6px}} .mk button{{background:rgba(0,0,0,.55);color:#fff;border:0;font-size:19px;width:40px;height:40px;border-radius:50%;cursor:pointer}} .mk .mko{{display:none}} .mk.on .mko{{display:inline-block}} .mk.on #mkPen{{background:#d32f2f}} .x{{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);color:#fff;border:0;font-size:20px;width:40px;height:40px;border-radius:50%;cursor:pointer}}
+{LIGHTBOX_CSS}
 .shots img.more{{display:none}} .morec{{grid-column:1/-1;font-size:12px;color:var(--mut)}}
 .shots{{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}} .shots img{{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;border:1px solid var(--line)}}
 details{{margin:14px 0}} summary{{font-weight:700;cursor:pointer}}
 ul{{padding-left:18px;margin:4px 0}} li{{margin:3px 0}} li.d{{color:var(--mut)}} code{{font-size:12px}}
-</style></head><body><h1>B-Spline generator — progress <small>generated {datetime.now():%Y-%m-%d %H:%M}</small></h1>
+</style></head><body><h1>B-Spline generator — progress <small>generated {datetime.now():%Y-%m-%d %H:%M}</small> <a class="hl" href="history.html">Screenshot history ›</a></h1>
 {cards}{com}
-<dialog id="lb"><figure><img id="lbImg" alt=""><button class="x" id="lbClose" aria-label="Close">&#10005;</button><canvas id="lbInk"></canvas><div class="mk" id="lbMk"><button id="mkPen" aria-label="Draw" title="Draw">&#9998;</button><button id="mkUndo" class="mko" aria-label="Undo" title="Undo">&#8630;</button><button id="mkClear" class="mko" aria-label="Clear" title="Clear">&#128465;</button><button id="mkSave" class="mko" aria-label="Copy image" title="Copy image">&#128203;</button></div><figcaption id="lbCap"></figcaption></figure></dialog>
-<script>
-const lb=document.getElementById('lb'), im=document.getElementById('lbImg'), cap=document.getElementById('lbCap');
-let set=[], idx=0;
-function show(){{ zr(); if(typeof inkReset==='function') inkReset(); const t=set[idx]; im.src=t.src; cap.textContent=(idx+1)+' / '+set.length+'  ·  '+t.alt; }}
-function openShot(t){{ set=[...t.closest('.shots').querySelectorAll('img.thumb')]; idx=set.indexOf(t); lb.classList.remove('down');
-  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches, pre=new Image(); pre.src=t.src;
-  const go=()=>{{ show(); fig.style.transform=''; lb.showModal(); lb.scrollTop=0;
-    if(!reduce) fig.animate([{{transform:'translateY(100vh)'}},{{transform:'translateY(0)'}}],{{duration:190,easing:'cubic-bezier(.2,.8,.2,1)'}}); }};
-  (pre.decode?pre.decode():Promise.resolve()).then(go,go); }}
-const fig=lb.querySelector('figure');
-function slideClose(dy){{ if(!lb.open||lb.classList.contains('down')) return; fig.style.setProperty('--dy',(dy||0)+'px'); fig.style.transform=''; lb.classList.add('down');
-  const done=()=>{{ lb.classList.remove('down'); fig.style.removeProperty('--dy'); lb.close(); }}; fig.addEventListener('animationend',done,{{once:true}}); setTimeout(()=>{{ if(lb.open) done(); }},300); }}
-let lastPtr='mouse'; document.addEventListener('pointerdown',ev=>{{ lastPtr=ev.pointerType||'mouse'; }},true);
-let stepping=false;
-function step(d,fromX){{ if(!set.length||stepping) return; const f=lb.querySelector('figure'); const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const swap=()=>{{ idx=(idx+d+set.length)%set.length; show(); }};
-  if(reduce||!f.animate){{ f.style.transform=''; swap(); return; }}
-  stepping=true; const w=innerWidth, x0=fromX||0;
-  f.style.transform=''; f.animate([{{transform:'translateX('+x0+'px)'}},{{transform:'translateX('+(-d*w)+'px)'}}],{{duration:150,easing:'ease-in',fill:'forwards'}});
-  setTimeout(()=>{{ f.getAnimations().forEach(a=>a.cancel()); swap();     // timer-driven, never waits on animation events
-    f.animate([{{transform:'translateX('+(d*w)+'px)'}},{{transform:'translateX(0)'}}],{{duration:170,easing:'cubic-bezier(.2,.8,.2,1)'}});
-    setTimeout(()=>{{ stepping=false; }},180); }},150); }}
-document.getElementById('lbClose').addEventListener('click',ev=>{{ev.stopPropagation();slideClose(0);}});
-document.addEventListener('click',ev=>{{ if(drawOn && ev.target.closest('dialog')) return; const t=ev.target.closest('img.thumb'); if(t){{ openShot(t); }} else if(lb.open && ev.target.closest('dialog') && !ev.target.closest('#lbClose') && !moved){{
-    if(lastPtr==='mouse' && ev.target!==im){{ slideClose(0); }}           // mouse: click outside the image closes
-    else {{ tapAt(ev.clientX, ev.clientY); }} }} }});
-// double tap / double click zooms in (2.5x at that spot) or back out (Fred); a single tap still steps images at 1x,
-// delayed by the double-tap window so the first tap of a double never steps
-let tapT=null, tapP=null;
-function tapAt(x,y){{ if(tapT && Math.hypot(x-tapP.x,y-tapP.y)<40){{ clearTimeout(tapT); tapT=null;
-    if(zs>1) zr(); else zoomAt(2.5,x,y); return; }}
-  tapP={{x,y}}; tapT=setTimeout(()=>{{ tapT=null; if(zs===1) step(x<innerWidth/2?-1:1); }},280); }}
-document.addEventListener('keydown',ev=>{{ if(lb.open){{ if(ev.key==='ArrowRight'){{step(1);ev.preventDefault();}} else if(ev.key==='ArrowLeft'){{step(-1);ev.preventDefault();}} return; }}
-  const t=ev.target.closest&&ev.target.closest('img.thumb'); if(t&&(ev.key==='Enter'||ev.key===' ')){{ev.preventDefault();openShot(t);}} }});
-// zoom + pan: pinch + one-finger pan (touch), wheel + drag (mouse); double tap / double click toggles 2.5x zoom (Fred, reversing the earlier no-double-tap); swipe changes image only at 1x; swipe changes image only at 1x
-let zs=1, zx=0, zy=0, moved=false, x0=null, y0=null, pd=0, ps=1, drag=null;
-function za(){{ const tf='translate('+zx+'px,'+zy+'px) scale('+zs+')'; im.style.transform=tf; if(typeof ink!=='undefined') ink.style.transform=tf; im.style.cursor=zs>1?'grab':''; }}
-function zr(){{ zs=1; zx=0; zy=0; za(); }}
-im.style.transformOrigin='center center'; im.style.transition='none';
-function zoomAt(ns,cx,cy){{ const r=im.getBoundingClientRect(), ox=cx-(r.left+r.width/2), oy=cy-(r.top+r.height/2);
-  ns=Math.max(1,Math.min(6,ns)); const k=ns/zs; zx=zx*k-ox*(k-1); zy=zy*k-oy*(k-1); zs=ns; if(zs===1){{zx=0;zy=0;}} za(); }}
-const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
-const mid=t=>({{x:(t[0].clientX+t[1].clientX)/2,y:(t[0].clientY+t[1].clientY)/2}});
-// two fingers = pinch AND pan, in normal and markup mode (Fred): the image point under the fingers' start midpoint stays under their current midpoint
-let m0=null, zx0=0, zy0=0, C0=null;
-function twoFinger(t){{ const m=mid(t), ns=Math.max(1,Math.min(6,ps*dist(t)/pd));
-  const ux=(m0.x-C0.x-zx0)/ps, uy=(m0.y-C0.y-zy0)/ps; zs=ns; zx=m.x-C0.x-ns*ux; zy=m.y-C0.y-ns*uy; za(); }}
-lb.addEventListener('touchstart',ev=>{{ if(drawOn && ev.touches.length<2) return; moved=false;
-  if(ev.touches.length===2){{ pd=dist(ev.touches); ps=zs; x0=null; m0=mid(ev.touches); zx0=zx; zy0=zy;
-    const r=im.getBoundingClientRect(); C0={{x:r.left+r.width/2-zx, y:r.top+r.height/2-zy}}; return; }}
-  x0=ev.touches[0].clientX; y0=ev.touches[0].clientY; drag={{x:zx,y:zy}}; }},{{passive:true}});
-lb.addEventListener('touchmove',ev=>{{ if(drawOn && !(ev.touches.length===2 && pd)) return;
-  if(ev.touches.length===2&&pd&&m0){{ twoFinger(ev.touches); moved=true; ev.preventDefault(); return; }}
-  if(zs===1&&x0!==null&&ev.touches.length===1){{ const ddy=ev.touches[0].clientY-y0, ddx=ev.touches[0].clientX-x0; if(ddy>0&&ddy>Math.abs(ddx)){{ fig.style.transform='translateY('+ddy+'px)'; moved=true; ev.preventDefault(); return; }}
-    if(Math.abs(ddx)>Math.abs(ddy)&&!stepping){{ fig.style.transform='translateX('+ddx+'px)'; moved=true; ev.preventDefault(); return; }} }}
-  if(zs>1&&x0!==null&&drag){{ zx=drag.x+ev.touches[0].clientX-x0; zy=drag.y+ev.touches[0].clientY-y0; za(); moved=true; ev.preventDefault(); }} }},{{passive:false}});
-lb.addEventListener('touchend',ev=>{{ if(drawOn && !pd) return;
-  if(ev.touches.length>0) return; setTimeout(()=>{{moved=false;}},350); if(pd){{ pd=0; m0=null; x0=null; return; }}
-  if(x0===null) return; const dx=ev.changedTouches[0].clientX-x0, dy=ev.changedTouches[0].clientY-y0; x0=null;
-  if(zs===1 && dy>90 && dy>Math.abs(dx)){{ moved=true; slideClose(dy); return; }}
-  if(zs===1 && Math.abs(dx)>70 && Math.abs(dx)>Math.abs(dy)){{ step(dx<0?1:-1,dx); moved=true; ev.preventDefault(); return; }}
-  fig.style.transform='';
-  }});
-lb.addEventListener('wheel',ev=>{{ ev.preventDefault(); zoomAt(zs*(ev.deltaY<0?1.2:1/1.2),ev.clientX,ev.clientY); }},{{passive:false}});
-im.addEventListener('mousedown',ev=>{{ if(drawOn||zs===1) return; ev.preventDefault(); moved=false; drag={{mx:ev.clientX,my:ev.clientY,x:zx,y:zy}};
-  const mv=e=>{{ zx=drag.x+e.clientX-drag.mx; zy=drag.y+e.clientY-drag.my; if(Math.abs(e.clientX-drag.mx)+Math.abs(e.clientY-drag.my)>3) moved=true; za(); }};
-  const up=()=>{{ document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); setTimeout(()=>{{moved=false;}},0); }};
-  document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up); }});
-lb.addEventListener('close',zr);
-// markup: draw red strokes over the screenshot, undo / clear, save the composite at full resolution
-let drawOn=false, strokes=[], cur=null;
-const ink=document.getElementById('lbInk'), mk=document.getElementById('lbMk'), ictx=ink.getContext('2d');
-function inkFit(){{ const w=im.offsetWidth, h=im.offsetHeight;
-  ink.style.left=im.offsetLeft+'px'; ink.style.top=im.offsetTop+'px'; ink.style.width=w+'px'; ink.style.height=h+'px'; ink.style.transformOrigin='center center';
-  ink.width=Math.round(w*devicePixelRatio*2); ink.height=Math.round(h*devicePixelRatio*2); za(); inkDraw(); }}
-function nat(ev){{ const r=ink.getBoundingClientRect(); return [(ev.clientX-r.left)*im.naturalWidth/r.width,(ev.clientY-r.top)*im.naturalHeight/r.height]; }}
-function paint(ctx,scale){{ ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#e53935';
-  for(const s of strokes){{ ctx.lineWidth=s.w*scale; ctx.beginPath(); s.p.forEach((q,i)=>i?ctx.lineTo(q[0]*scale,q[1]*scale):ctx.moveTo(q[0]*scale,q[1]*scale)); if(s.p.length===1) ctx.lineTo(s.p[0][0]*scale+0.1,s.p[0][1]*scale); ctx.stroke(); }} }}
-function inkDraw(){{ ictx.clearRect(0,0,ink.width,ink.height); paint(ictx, ink.width/(im.naturalWidth||1)); }}
-function inkReset(){{ strokes=[]; cur=null; if(drawOn) inkDraw(); }}
-function setDraw(on){{ drawOn=on; mk.classList.toggle('on',on); ink.style.display=on?'block':'none'; if(on){{ zr(); inkFit(); requestAnimationFrame(inkFit); }} }}
-im.addEventListener('load',()=>{{ if(drawOn) inkFit(); }});
-const downs=new Set();
-ink.addEventListener('pointerdown',ev=>{{ ev.preventDefault(); downs.add(ev.pointerId);
-  if(downs.size>1){{ if(cur){{ strokes.splice(strokes.indexOf(cur),1); cur=null; inkDraw(); }} return; }}
-  ev.stopPropagation(); try{{ ink.setPointerCapture(ev.pointerId); }}catch(e){{}}
-  const r=ink.getBoundingClientRect(); cur={{w:5*im.naturalWidth/r.width, p:[nat(ev)]}}; strokes.push(cur); inkDraw(); }});
-ink.addEventListener('pointermove',ev=>{{ if(!cur) return; ev.preventDefault(); cur.p.push(nat(ev)); inkDraw(); }});
-['pointerup','pointercancel'].forEach(t=>ink.addEventListener(t,ev=>{{ downs.delete(ev.pointerId); cur=null; }}));
-ink.addEventListener('click',ev=>ev.stopPropagation());
-['touchstart','touchmove','touchend'].forEach(t=>ink.addEventListener(t,ev=>{{ if(ev.touches.length<2 && !pd) ev.stopPropagation(); }},{{passive:true}}));
-mk.addEventListener('click',ev=>ev.stopPropagation());
-document.getElementById('mkPen').addEventListener('click',()=>setDraw(!drawOn));
-document.getElementById('mkUndo').addEventListener('click',()=>{{ strokes.pop(); inkDraw(); }});
-document.getElementById('mkClear').addEventListener('click',()=>{{ strokes=[]; inkDraw(); }});
-document.getElementById('mkSave').addEventListener('click',()=>{{
-  const c=document.createElement('canvas'); c.width=im.naturalWidth; c.height=im.naturalHeight; const x=c.getContext('2d');
-  x.drawImage(im,0,0); paint(x,1);
-  const blobP=new Promise(res=>c.toBlob(res,'image/png'));
-  const note=t=>{{ const old=cap.textContent; cap.textContent=t; setTimeout(()=>{{ cap.textContent=old; }},1600); }};
-  const viaShare=async()=>{{ const blob=await blobP; const f=new File([blob],'marked.png',{{type:'image/png'}});
-    if(navigator.canShare&&navigator.canShare({{files:[f]}})){{ try{{ await navigator.share({{files:[f]}}); }}catch(e){{}} }} else note('Copy not supported here'); }};
-  if(navigator.clipboard&&window.ClipboardItem){{
-    navigator.clipboard.write([new ClipboardItem({{'image/png':blobP}})]).then(()=>note('Copied ✓'),viaShare);
-  }} else viaShare(); }});
-addEventListener('resize',()=>{{ if(drawOn) inkFit(); }});
-lb.addEventListener('close',()=>setDraw(false));
-
+{LIGHTBOX_HTML}
+<script>{_lightbox_script()}
 setInterval(()=>{{ if(!lb.open) location.reload(); }}, 60000);
 </script></body></html>"""
     return body, page
@@ -357,20 +527,43 @@ def deploy():
     return ok
 
 
+def _sync(want, sub):
+    """Make OUT/<sub> hold exactly `want` ({published rel: source path}): copy new or changed files, delete the rest
+    (the history keeps ~800 full images; re-copying them all every minute was the old rmtree's way)."""
+    root = os.path.join(OUT, sub)
+    for rel, src in want.items():
+        dst = os.path.join(root, rel)
+        if not (os.path.exists(dst) and os.path.getmtime(dst) == os.path.getmtime(src) and os.path.getsize(dst) == os.path.getsize(src)):
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(src, dst)
+    keep = {os.path.normcase(os.path.join(root, r)) for r in want}
+    for dirpath, _dirs, files in os.walk(root):
+        for f in files:
+            p = os.path.join(dirpath, f)
+            if os.path.normcase(p) not in keep:
+                os.remove(p)
+
+
 def once(last_hash=None):
-    seats, commits, roadmap = collect()
-    md, page = render(seats, commits, roadmap)
-    h = hashlib.sha1((md).encode()).hexdigest()   # content only (not the timestamp)
+    seats, commits, roadmap, history = collect()
+    md, _ = render(seats, commits, roadmap)
+    h = hashlib.sha1((md + "\n".join(r for _m, r in history)).encode()).hexdigest()   # content only (not the timestamp)
     if h == last_hash:
         return h
     os.makedirs(OUT, exist_ok=True)
-    shutil.rmtree(os.path.join(OUT, "shots"), ignore_errors=True)
-    for st in seats:
-        for x in st["shots"]:
-            dst = os.path.join(OUT, "shots", st["key"], x); os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copy2(os.path.join(SHOTS_DIR, x), dst)
+    _sync({st["key"] + "/" + x: os.path.join(SHOTS_DIR, x) for st in seats for x in st["shots"]}, "shots")
+    _sync({rel: os.path.join(SHOTS_DIR, rel) for _m, rel in history}, "h")
+    thumbs = {}
+    for rel in [r for _m, r in history] + [x for st in seats for x in st["shots"]]:   # cards' too: the mosaic viewer
+        if rel not in thumbs:
+            size = _thumb(rel)
+            if size:
+                thumbs[rel] = size
+    _md, page = render(seats, commits, roadmap, thumbs)
+    _sync({rel + ".jpg": os.path.join(OUT, "t", rel + ".jpg") for rel in thumbs}, "t")
     open(os.path.join(OUT, "PROGRESS.md"), "w", encoding="utf-8").write(md)
     open(os.path.join(OUT, "index.html"), "w", encoding="utf-8").write(page)
+    open(os.path.join(OUT, "history.html"), "w", encoding="utf-8").write(render_history(history, {r: thumbs[r] for _m, r in history if r in thumbs}))
     return h if deploy() else last_hash
 
 
