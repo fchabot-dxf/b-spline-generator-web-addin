@@ -7,7 +7,7 @@
 // Fred's phone rig -- 390x844, coarse pointer, REAL CDP touch, CPU throttled (`cpu`) for the measured action only --
 // and its BLIND time: long-task ms before the card's first visible animation frame (sampled per frame; a long task's
 // own entry is delivered after it ends, so a card set at the end of a blind task would read as shown -- MEASURED).
-// A row fails over its budget. `sidebar`: that sidebar tab, its collapsed panels opened (the editor closed); `open`: the
+// A row fails over its budget. `closeEditor`: Apply first (the editor closes, its board kept); `sidebar`: that sidebar tab, its collapsed panels opened (the editor closed); `open`: the
 // editor, on that tab; `pre`: taps (unthrottled) that set the action up; `act`: { tap } an element id,
 // { tapSel } a selector, { set, value } a field's input + change, { stroke } a touch drag in board fractions.
 // A SEQUENTIAL group (index.mjs): --parallel runs it alone after the others, so no other group's load is in its timing.
@@ -34,6 +34,10 @@ export const BLIND_BUDGET = {
     { name: 'Area brush stroke', pre: ['brickTool_wall', 'brickSubTool_wall_area', 'brickWallAreaWidth_2'], act: { stroke: [[0.3, 0.3], [0.62, 0.38]] } },
     { name: 'Frame tab Generate', pre: ['editorTabFrame'], act: { tap: 'editorFrameGenerate' } },
     { name: 'Photo pattern pick', pre: ['editorTabPhoto', 'photoTab_source'], act: { tapSel: '#photoPatternRow button' } },
+    // the sidebar's quick settings on a board WITH bricks (seat D 2026-10-09, feedback audit on seat A's loaded board:
+    // a pick re-rendered the Brick panel before its stage could paint, 53-79 ms frozen with no card)
+    { name: 'Sidebar quick: brick set (bricks laid)', closeEditor: true, sidebar: 'decor', act: { tap: 'brickQuick_set_4' } },
+    { name: 'Sidebar quick: grout colour None (bricks laid)', sidebar: 'decor', act: { tap: 'brickQuick_groutColor_none' } },
   ],
 };
 export const sequential = true; // index.mjs: --parallel runs it alone, after the parallel groups
@@ -98,6 +102,7 @@ async function runBlindBudget() {
   try {
     for (const row of B.rows) {
       const budget = row.budgetMs ?? B.budgetMs, name = `No blind freeze (phone, CPU x${B.cpu}): ${row.name} -- under ${budget} ms before its card`;
+      if (row.closeEditor) { await tap('#editorApply'); await sleep(4000); }
       if (row.sidebar) {
         await tap('#sidebarTab_' + row.sidebar); await sleep(800);
         await js(`(async () => { const root = document.querySelector('.cad-sidebar'); if (!root) return 0; for (const h of root.querySelectorAll('.panel-header.collapsed')) { if (h.getClientRects().length) { h.click(); await new Promise((r) => setTimeout(r, 150)); } } return 1; })()`);
