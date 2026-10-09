@@ -185,20 +185,34 @@ export function wallRegionOf(wallRegion, set) {
 /** A simple grid-bucket spatial index over a brick list, so repeated point queries (a terrain
  *  sampler calls this once per grid point) don't linear-scan every brick. */
 export function buildSpatialIndex(bricks, cellSizeIn) {
+  // query(x, y): the bricks that can contain (x, y) -- its bucket's bricks, in order, whose box padded by more than
+  // pointInPolygon's on-edge distance (1e-9 in) holds the point. Every caller tests containment (first match), and a
+  // point outside that box is neither inside nor on an edge, so the answers are the same. MEASURED 2026-10-08 (phone
+  // 4x, a laid wall + frame band): the brick height mask's per-point pointInPolygon rejections were most of each
+  // rebuild (0.7 - 3.3 s); numeric bucket keys too (a string per query).
+  const PAD = 1e-8;
   const buckets = new Map();
-  const key = (bx, by) => `${bx},${by}`;
+  const key = (bx, by) => (bx + 32768) * 65536 + (by + 32768);
   for (const b of bricks) {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const p of b.polygon) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); }
+    const entry = { b, x0: minX - PAD, x1: maxX + PAD, y0: minY - PAD, y1: maxY + PAD };
     const bx0 = Math.floor(minX / cellSizeIn), bx1 = Math.floor(maxX / cellSizeIn);
     const by0 = Math.floor(minY / cellSizeIn), by1 = Math.floor(maxY / cellSizeIn);
     for (let bx = bx0; bx <= bx1; bx++) for (let by = by0; by <= by1; by++) {
       const k = key(bx, by);
       if (!buckets.has(k)) buckets.set(k, []);
-      buckets.get(k).push(b);
+      buckets.get(k).push(entry);
     }
   }
-  return { query: (x, y) => buckets.get(key(Math.floor(x / cellSizeIn), Math.floor(y / cellSizeIn))) || [] };
+  return {
+    query: (x, y) => {
+      const list = buckets.get(key(Math.floor(x / cellSizeIn), Math.floor(y / cellSizeIn)));
+      const out = [];
+      if (list) for (const e of list) if (x >= e.x0 && x <= e.x1 && y >= e.y0 && y <= e.y1) out.push(e.b);
+      return out;
+    },
+  };
 }
 
 /**
