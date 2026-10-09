@@ -25448,3 +25448,17 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   The solid wireframe (thicken wireframe mode) uses the same function and gains the same way.
 - Full suite 407 files, 6049/6049. Known failures: none. (A stray `git checkout origin/main --` had detached the
   worktree mid-task; the change was carried to this branch from current main before the suite + commit.)
+
+### 2026-10-09 (seat A): the loaded board's next item -- maskEdgeSource's per-point outline test (84 -> 4 slow actions)
+- PROFILE (the phone map rerun on mask-index, loaded board): spacing 2.2 s and heightIn ~1 s were both mostly
+  stamp-mask-manager brickEdgeSource -> core/bricks/mask-edge.js maskEdgeSource (item 74n): pointInPolygon for EVERY grid
+  point against EVERY edge of the panel's trim loop (hundreds of edges), on every brick re-mask.
+- FIX (byte-identical by construction): polygonPointTester(outline) -- pointInPolygon's own answer with the edges
+  bucketed by y (geometry.js, tests/polygon-point-tester.test.js; already used by fieldstone + frame-mesh).
+- TEST: tests/mask-edge-tester.test.js -- the whole maskEdgeSource output equals the per-point pointInPolygon one
+  (switched in through a geometry.js mock) on every frame template trim loop (7x9, 9x12 x 0.1, 0.05 in) and 20 random
+  star polygons (20 - 320 vertices); narrowing the tester's bands (PAD -1e-3) fails it.
+- RESULT (phone, D's tool, styles, 4x, loaded board; this fix alone, mask-index not in the branch): actions with a
+  longest task >= 500 ms 84 -> 4; spacing 3349 -> 554 ms; stamp depth drag 2571 -> < 500; heightIn / widthIn /
+  frameThickness nudges 909 / 806 / 807 -> < 500; adaptiveDisplay 1007 -> 606. (Index fix alone: 81 left; the two stack.)
+- Full suite 408 files, 6051/6051. Known failures: none.
