@@ -92,8 +92,8 @@ export const CREATIONS = [
     template: 'template_1', board: [7, 9], seed: 111,
     steps: [
       { frame: { template: 'template_1' } },
-      { filter: { id: 'simplex' } },
-      { params: { carveZ: 0.12, symmetry: 'none' } },
+      { filter: { id: 'mycelium' } },
+      { params: { carveZ: 0.9, symmetry: 'none' } },
       { bricks: { size: 1, frameSet: 5, framePreset: 'single_soldier', frame: true, surface: 'weathered', wear: 0.6 } },
       { trellis: { layer: { name: 'Trellis', depth: 0.1, profile: 'vbit' }, distance: 1.05, rails: 5, brace: 0.95, width: 0.1, color: '#6d4c41',
         vine: { rail: 3, amp: 0.35, wave: 1.6, seed: 11, width: 0.09, layer: { name: 'Vine', depth: 0.2, profile: 'ballnose' }, leaves: { every: 0.45, size: 0.36 } } } },
@@ -106,8 +106,8 @@ export const CREATIONS = [
     template: 'template_3', board: [8, 10], seed: 222,
     steps: [
       { frame: { template: 'template_3' } },
-      { filter: { id: 'simplex' } },
-      { params: { carveZ: 0.12, symmetry: 'none' } },
+      { filter: { id: 'dunes' } },
+      { params: { carveZ: 1.0, symmetry: 'none' } },
       { bricks: { size: 1, frameSet: 5, framePreset: 'single_soldier', frame: true, wallSet: 1, wallPattern: 'stretcher', wall: true, surface: 'weathered', wear: 0.4 } },
       { areas: { width: 2, list: [{ pattern: 'stretcher', points: [[0.6, 1.0], [7.4, 1.0]] }, { pattern: 'stretcher', points: [[0.6, 2.4], [7.4, 2.4]] }, { pattern: 'stretcher', points: [[0.6, 3.7], [7.4, 3.7]] }] } },
       { art: { layer: { name: 'Stream', depth: 0.12, profile: 'vbit', angle: 90 }, paths: [{ d: 'M 4 4.7 L 4 7.0', width: 0.12, color: '#c9a227' }] } },
@@ -121,8 +121,8 @@ export const CREATIONS = [
     template: 'template_5', board: [5, 7], seed: 333,
     steps: [
       { frame: { template: 'template_5' } },
-      { filter: { id: 'silk' } },
-      { params: { carveZ: 0.35, symmetry: 'none', spacing: '0.03' } },
+      { filter: { id: 'reef' } },
+      { params: { carveZ: 1.2, symmetry: 'none', spacing: '0.03' } },
       { sculpt: { mode: 'draw', radius: 1.2, strength: 0.01, strokes: [{ pts: ring(2.5, 3.7, 0.2, 24), dy: 2, step: 0.08 }] } },
       { echo: { layer: { name: 'Ripples', depth: 0.08, profile: 'ballnose' }, offsets: [0.7, 0.9, 1.1, 1.3], width: 0.08, color: '#1e88e5' } },
     ],
@@ -134,8 +134,8 @@ export const CREATIONS = [
     template: 'template_12', board: [8, 12], seed: 444,
     steps: [
       { frame: { template: 'template_12' } },
-      { filter: { id: 'silk' } },
-      { params: { carveZ: 0.15, spacing: '0.03' } },
+      { filter: { id: 'sandstone' } },
+      { params: { carveZ: 0.5, spacing: '0.03' } },
       { art: { layer: { name: 'Quarries', depth: 0.1, profile: 'vbit' }, paths: [
         { d: diamondField(ARCH.inside, 2.7, 5.3, 1.9, 10.0, 0.34, 0.24, 0.14, 0.1), width: 0.01, fill: '#90a4ae', color: '#90a4ae' } ] } },
       { art: { layer: { name: 'Arch', depth: 0.1, profile: 'vbit' }, paths: [{ d: pathOf(ARCH.outline), width: 0.1, color: '#455a64' }] } },
