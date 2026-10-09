@@ -27,7 +27,7 @@
 //          carving stroke (carve on, the editor's own Apply bakes the masks). Also writes <out>.app.json (the app's
 //          own piece counts by kind, areas, layers) and <out>.png (the editor view).
 // Serve with tools/serve_app.py so the CSS loads.
-import { spawn } from 'node:child_process';
+import { launchChrome, connectPage, fusionStubSource, payloadFromSends, sleep } from './cdp_capture_lib.mjs';
 import { writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { dirname } from 'node:path';
@@ -71,7 +71,6 @@ const BRICK_E2E = {
 };
 const [OUT, URL, SCENARIO = 'shape-lattice', PORTARG] = ARGS;
 const PORT = Number(PORTARG || 9395);
-const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PROFILE = `${dirname(OUT)}/chrome-capture-${PORT}`;
 rmSync(PROFILE, { recursive: true, force: true }); // a reused profile restores the previous run's board (item 83)
 mkdirSync(PROFILE, { recursive: true });
@@ -86,37 +85,15 @@ if (ROOT) {
   }
   console.log(`served app == --root (${files.length} files checked)`);
 }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${PROFILE}`,
-  '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: 'ignore' });
-let wsUrl = null;
-for (let i = 0; i < 50 && !wsUrl; i++) {
-  await sleep(200);
-  try { const list = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json(); wsUrl = list.find((t) => t.type === 'page')?.webSocketDebuggerUrl; } catch (_) { /* not up yet */ }
-}
-if (!wsUrl) { console.log('NO CDP'); chrome.kill(); process.exit(1); }
-const ws = new WebSocket(wsUrl);
-await new Promise((r) => ws.addEventListener('open', r));
-let id = 0; const pending = new Map();
-ws.addEventListener('message', (ev) => {
-  const msg = JSON.parse(ev.data);
-  if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
-  if (msg.method === 'Runtime.exceptionThrown') console.log('PAGE ERROR:', msg.params.exceptionDetails?.exception?.description?.split('\n')[0]);
-});
-const send = (method, params = {}) => new Promise((r) => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
-const evalJS = async (expr) => {
-  const r = (await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true })).result;
-  if (r?.exceptionDetails) console.log('PAGE EVAL ERROR:', String(r.exceptionDetails.exception?.description || r.exceptionDetails.text).split(/\r?\n/)[0]);
-  return r?.result?.value;
-};
+const chrome = launchChrome(PORT, PROFILE);
+const page = await connectPage(PORT);
+if (!page) { console.log('NO CDP'); chrome.kill(); process.exit(1); }
+const { ws, send, evalJS } = page;
 
 await send('Runtime.enable'); await send('Page.enable');
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
 // The stub: the app detects Fusion mode through window.adsk; every send is recorded, nothing answers.
-await send('Page.addScriptToEvaluateOnNewDocument', { source: `
-  ${SEED ? `{ let s = ${Number(SEED)} >>> 0; Math.random = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; }` : ''}
-  window.__sends = [];
-  window.adsk = { fusionSendData(action, data) { window.__sends.push([action, data, performance.now()]); return ''; } };` });
+await send('Page.addScriptToEvaluateOnNewDocument', { source: fusionStubSource(SEED) });
 await send('Page.navigate', { url: URL }); await sleep(9000);
 
 const steps = {
@@ -317,10 +294,7 @@ const sends = await evalJS('window.__sends');
     chunks: ch.length, generate_finish: at('generate_finish') })); }
 const actions = (sends || []).map((s) => s[0]);
 console.log('sends:', [...new Set(actions)].join(', '), '| total', actions.length);
-const chunks = (sends || []).filter((s) => s[0] === 'generate_chunk').map((s) => JSON.parse(s[1]))
-  .sort((a, b) => a.index - b.index).map((c) => c.data);
-const single = (sends || []).find((s) => s[0] === 'generate');
-const payload = chunks.length ? chunks.join('') : single?.[1];
+const payload = payloadFromSends(sends);
 if (!payload) { console.log('NO PAYLOAD captured'); chrome.kill(); process.exit(2); }
 writeFileSync(OUT, payload);
 if (SCENARIO === 'shape-lattice-frame') { // F21: the [Send frame] payload, the panel's own sendFrame()

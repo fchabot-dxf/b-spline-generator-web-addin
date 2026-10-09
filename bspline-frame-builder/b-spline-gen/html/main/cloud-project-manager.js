@@ -71,7 +71,7 @@ function captureThumbnail(preview, w = 256, h = 192, quality = 0.7) {
   }
 }
 
-function buildSnapshot() {
+export function buildSnapshot() {
   const cleanP = persistableP();
   if (cleanP.points && Array.isArray(cleanP.points)) {
     cleanP.points = cleanP.points.map((pt) => {
