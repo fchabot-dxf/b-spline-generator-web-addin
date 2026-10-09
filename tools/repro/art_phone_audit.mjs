@@ -75,9 +75,36 @@ try {
   // the phone's own CSS: (pointer: coarse) rules (SA-MOBILE-4's 44 px tool buttons, ...) apply only with it (a first reach
   // pass without it measured the desktop sizes)
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'any-pointer', value: 'coarse' }] });
+  // Env BOARD (seat A's phone map, 2026-10-09: the board states its slow actions were ranked on): fresh (default) |
+  // loaded (template_1, Wall + the three-band frame, the inset window, the 3D built, mesh shown) | photo (a photo
+  // pattern applied). Any BOARD starts from a fresh page with Math.random seeded (the same fresh-start board every run).
+  const BOARD = process.env.BOARD || 'fresh';
+  if (BOARD !== 'fresh') await send('Page.addScriptToEvaluateOnNewDocument', { source: `try { localStorage.clear(); } catch (e) {}
+    (() => { let a = 0x2f6b9d1; Math.random = () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();` });
   await send('Page.navigate', { url: `http://127.0.0.1:${HTTP}/b-spline-gen/html/bspline_gen_palette.html` });
   for (let i = 0; i < 120 && !(await js('!!document.getElementById("btnStampEdit")')); i++) await sleep(500);
   await sleep(4000);
+  if (BOARD !== 'fresh') { // seat A's recipe (shots/seatA/phone_map/README.md), unthrottled, before the audit
+    console.log('BOARD', await js(`(async () => { try {
+      const L = await import('./core/loading-signal.js'); const RB = await import('./core/engine/rebuild.js'); const SC = await import('./core/engine/scheduler.js');
+      const busy = () => !!(RB.rebuild.isRebuilding || RB.rebuild.pendingRebuild || SC.isRebuildScheduled() || L.currentLoadingStage());
+      const idle = async (min = 500) => { const t = performance.now(); for (let i = 0; i < 9000; i++) { await new Promise((r) => setTimeout(r, 10)); if (!busy() && performance.now() - t > min) return; } };
+      const F = await import('./main/frame-panel.js'); const PM = await import('./main/param-manager.js'); const { P } = await import('./core/state.js');
+      if (${JSON.stringify(BOARD)} === 'loaded') {
+        F.openEditorOn('brick'); await idle(1000);
+        const B = await import('./main/brick-panel.js'); B.setFrameBandPreset('three_band'); await idle(800);
+        document.getElementById('brickTool_wall')?.click(); await idle(300); document.getElementById('brickGenerate').click(); await idle(1500);
+        document.getElementById('editorApply').click(); await idle(2000);
+        const t = document.getElementById('frameInsetWindowToggle'); if (t && !t.checked) t.click(); await idle(1000);
+      } else if (${JSON.stringify(BOARD)} === 'photo') {
+        F.openEditorOn('photo'); await idle(1000);
+        document.querySelector('#photoPatternRow button')?.click(); await idle(2000);
+        document.getElementById('editorApply').click(); await idle(2000);
+      }
+      PM.applyParam('showMesh', true); await idle(1000);
+      return JSON.stringify({ board: ${JSON.stringify(BOARD)}, svgNodes: window.svgEditor?._draw?.node?.querySelectorAll('*').length || 0, frame: P.frame?.templateId || null, window: !!P.frame?.insetWindow?.enabled, showMesh: P.showMesh });
+    } catch (e) { return 'SETUP ERR ' + e.message; } })()`));
+  }
   // open the editor on the audited tab (setup, unthrottled)
   if (SURF.tab) await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('btnStampEdit').click();
     for (let i = 0; i < 80 && !window.svgEditor?._draw; i++) await new Promise((r) => setTimeout(r, 250));
@@ -471,7 +498,14 @@ try {
   for (const r of bad) console.log('  UNREACHABLE', JSON.stringify(r));
   const smallIds = [...new Set(small.map((r) => `${r.id} ${r.minPx}px`))];
   console.log('  under 24 px:', smallIds.join(' | '));
-  writeFileSync(`${OUT_DIR}/${SURFACE}_phone_audit.json`, JSON.stringify({ cpu: CPU, view: VIEW, results, reach, errors }, null, 1));
+  writeFileSync(`${OUT_DIR}/${SURFACE}_${BOARD}_phone_audit.json`, JSON.stringify({ cpu: CPU, view: VIEW, board: BOARD, results, reach, errors }, null, 1));
+  // Fred's rule (a card or pill before every long computation): each action with a long task >= LONG_MS -- NO FEEDBACK
+  // when no card showed at all, BLIND when the card came only after >= BLIND_MS of long tasks
+  const LONG_MS = Number(process.env.LONG_MS || 500), BLIND_MS = 50;
+  for (const r of results.filter((x) => !x.skipped && x.longestMs >= LONG_MS)) {
+    const verdict = r.cardMs == null ? 'NO FEEDBACK' : r.blindMs >= BLIND_MS ? 'BLIND ' + r.blindMs + ' ms' : 'ok';
+    console.log('LONG', JSON.stringify({ surface: SURFACE, board: BOARD, name: r.name, longestMs: r.longestMs, cardMs: r.cardMs, blindMs: r.blindMs, verdict }));
+  }
   const shot = await send('Page.captureScreenshot', { format: 'png' });
   if (shot.result?.data) writeFileSync(`${OUT_DIR}/${SURFACE}_phone_end.png`, Buffer.from(shot.result.data, 'base64'));
   console.log('errors', errors.length, JSON.stringify(errors.slice(0, 5)));
