@@ -25470,3 +25470,27 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - TESTS: tests/bricks-coursed-rubble-edges.test.js (FAST 3 fails 3/3 on main; RUBBLE_EDGE_FULL=1 304/304, 142 s).
   tests/bricks-grey-sets.test.js tooLong now exempts a stone at the region's edge by at most a third of a stone plus a joint
   (the sliver it took) -- mutation: a 2.5-stone max length still fails it (9 too long). Affected suites (48 files) 660/660.
+### 2026-10-08 (seat A): the phone map (D's audits profiled, 3 board states) + its top item -- the brick spatial index
+- MAP: a scratch copy of seat D's tools/repro/art_phone_audit.mjs (styles served, phone 4x CPU, real touch) with a CPU
+  profile on every action and a BOARD setup: fresh (the tool's own), loaded (Wall + three_band frame bricks laid and
+  applied, inset window, Show mesh on), photo (a photo pattern + Show mesh). 12 runs: 5 surfaces x fresh / loaded, + photo
+  for sidebar and Photo. 87 actions with a longest task >= 500 ms, nearly all on the LOADED board: spacing 3349 ms,
+  stamp depth / fillet / scale / Tx drags 2571 / 1911 / 933 / 810, brick relief 1018, adaptiveDisplay 1007, every brick
+  pattern tap ~0.8 - 0.9 s, frame nudges ~0.75 s. Top self functions every time: distSqToSegment + pointInPolygon
+  (core/bricks/geometry.js) + distanceToNearestEdge (height-profile.js) -- the brick height mask's per-grid-point work.
+  Top non-brick item: Photo blur drag 774 ms (computeTopViewPixels + bilinear sampling).
+- CAUSE: editor-brick-height-mask.js samples every grid point (and up to 8 joint probes) through
+  engine.js buildSpatialIndex: a string-keyed bucket, then pointInPolygon on each bucket brick until one contains the
+  point -- most calls are rejections, each running the on-edge distSqToSegment for every edge.
+- FIX (byte-identical by construction): the index stores each brick's box padded past pointInPolygon's 1e-9 in on-edge
+  rule; query(x, y) returns only the bucket's bricks whose box holds the point, in order; numeric bucket keys. Every
+  caller tests containment (first match), and a point outside that box is neither inside nor on an edge.
+- IDENTITY: the live mask (rasterizeBrickHeightMask on the laid board) hashed on 16 variants (spacing 0.05 / 0.03 x
+  organic / flat tops x recessed / flush grout x clean / weathered): body, fillet, isStamped, brickOf identical; the face
+  heights identical value for value (their piece-key prefix is a per-run id, differing between two main runs too).
+  tests/brick-spatial-index.test.js: index == scan of every brick, >10,000 points incl. edges, corners, overlaps; passes
+  on the old index too (pins the invariant); a shrunk box fails it.
+- SPEED: rasterize 192 -> 98 ms (0.05) / 446 -> 281 ms (0.03); phone, D's tool, loaded board: stamp depth drag 2571 ->
+  536, fillet 1911 -> 517, spacing 3349 -> 2185, brick relief 1018 -> 556, adaptiveDisplay 1007 -> 609, stamp scale /
+  Tx 933 / 810 -> 520 / 509, pattern taps ~850 -> ~700, widthIn 806 -> 531.
+- Full suite 408 files, 6050/6050. Known failures: none.
