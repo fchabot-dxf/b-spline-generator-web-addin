@@ -1188,3 +1188,12 @@ only the rail's true OUTER ends stretch — otherwise end-stretch would silently
 GOAL (Fred: "different colour per segment is the goal, that should not break it"): acceptance includes cutting a rail,
 giving EVERY segment a different colour (and one a different width), then re-running the same drags → identical
 coordinates to the uncoloured cut rail; colours stay on their segments through every drag and undo/redo. After SE14b/SE15b (same "one piece → segments" idea).
+
+## Queued (advisor) — STATUS-MOSAIC-SCROLL: the lightbox mosaic can't be scrolled with a finger (Fred 2026-10-09)
+The status page's viewer switcher (tools/status_site/status_watch.py, b245c6c / 146644f) opens a mosaic of the set,
+but on Fred's phone it "can't see past what's on screen". Measured headless (430 px, CDP touch drag on #lbMosaic):
+scrollTop stays 0 on the live page; programmatic scrollBy works and all 60 thumbnails load, so it is the finger
+pan, not loading. Tried and NOT enough: touch-action pan-y on the figure while the mosaic is open (+ overscroll
+contain) -- still 0. Suspects next: the lightbox's own touchstart/touchmove listeners (passive:false touchmove on
+the dialog), dialog#lb overflow:hidden with a showModal top layer, the ink canvas. Proof row: the CDP touch-drag
+test (scratch lbtest.mjs) must read scrollTop > 0, red on b245c6c first. Paused for the showcase (Fred: "backlog it").
