@@ -44,6 +44,7 @@ import { inputProfileFor } from './editor-input.js';
 import { mountSelectedPiecePanel } from './lattice-piece-panel.js';
 import { latticeScope, attachLatticeFormulaFields } from './lattice-formula-fields.js';
 import { commitEdit } from './editor-commit.js';
+import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 
 // T59: the event this module dispatches after ANY programmatic change to
 // `p.shape` from OUTSIDE the panel's own field handlers (a param-handle
@@ -1593,7 +1594,7 @@ export function initShapeLatticeProperties(editor) {
     if (toolBtn) on(toolBtn, 'click', syncFieldsFromPattern);
     initAnchorGrey(editor, 'shapeLattice'); // item 74h
 
-    on(generateBtn, 'click', async () => {
+    on(generateBtn, 'click', () => withLoadingStageShownFirst('latticeGenerate', async () => {
         if (fillSeedEl) fillSeedEl.value = nextSeed();
         const p = readFieldsIntoPattern();
         // Defensive/idempotent: make sure the linked silhouette matches
@@ -1604,7 +1605,7 @@ export function initShapeLatticeProperties(editor) {
         await generatePattern(editor, p);
         syncGenerateLabel();
         _refreshSegmentList(p);
-    });
+    }));
 
     wireColorSwatch(colorRailsEl, 'rails');
     wireColorSwatch(colorTiesEl, 'ties');

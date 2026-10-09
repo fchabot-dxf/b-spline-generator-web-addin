@@ -36,6 +36,11 @@ export const LOADING_STAGES = {
   // on screen (a template 2.2 s, Generate 0.6-1.1 s); a photo pattern 1.2 s before the rebuild's card came up
   frame: { group: 'computing', label: 'building the frame', surface: 'pill' },
   photo: { group: 'computing', label: 'loading the photo', surface: 'pill' },
+  // seat A's re-time 2026-10-09 (phone, CPU x4): the Art tab's Undo / Redo and a lattice Generate froze 0.56-0.9 s with
+  // nothing on screen
+  undo: { group: 'refreshing', label: 'undoing', surface: 'pill' },
+  redo: { group: 'refreshing', label: 'redoing', surface: 'pill' },
+  latticeGenerate: { group: 'computing', label: 'generating the lattice', surface: 'pill' },
   heightMask: { group: 'computing', label: 'carving relief', surface: 'card', gestureSurface: 'pill' },
   rebuild: { group: 'refreshing', label: (ctx) => `building surface${ctx?.spacing != null ? ` ${ctx.spacing}″` : ''}`, surface: 'card', gestureSurface: 'pill' },
   restore: { group: 'refreshing', label: 'restoring the board', surface: 'card' },
@@ -337,12 +342,16 @@ export async function withLoadingStage(stageId, fn, ctx) {
   }
 }
 
-/** For a SYNCHRONOUS job whose caller does not await it (a re-lay): show the stage, let it paint, run `fn` in the
- *  paint step itself (no extra microtask: with the tests' immediate paint step it runs inside this call). */
+/** For a job whose caller does not await it (a re-lay): show the stage, let it paint, run `fn` in the paint step
+ *  itself (no extra microtask: with the tests' immediate paint step its synchronous part runs inside this call). An
+ *  async `fn` (a lattice Generate awaits inside) keeps the stage up until its promise settles. */
 export function withLoadingStageShownFirst(stageId, fn, ctx) {
   if (!LOADING_STAGES[stageId]) return Promise.resolve(fn());
   const entry = _enter(stageId, ctx);
   return new Promise((resolve, reject) => _afterPaint(() => {
-    try { resolve(fn()); } catch (e) { reject(e); } finally { _leave(entry); }
+    let out;
+    try { out = fn(); } catch (e) { _leave(entry); reject(e); return; }
+    if (out && typeof out.then === 'function') out.then((v) => { _leave(entry); resolve(v); }, (e) => { _leave(entry); reject(e); });
+    else { _leave(entry); resolve(out); }
   }));
 }

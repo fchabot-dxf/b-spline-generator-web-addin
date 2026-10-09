@@ -38,6 +38,13 @@ export const BLIND_BUDGET = {
     // a pick re-rendered the Brick panel before its stage could paint, 53-79 ms frozen with no card)
     { name: 'Sidebar quick: brick set (bricks laid)', closeEditor: true, sidebar: 'decor', act: { tap: 'brickQuick_set_4' } },
     { name: 'Sidebar quick: grout colour None (bricks laid)', sidebar: 'decor', act: { tap: 'brickQuick_groutColor_none' } },
+    // the Art tab (seat A's re-time 2026-10-09, main e6c4f35: 0.56-0.9 s with no feedback at all) -- in order, each on
+    // the last one's board: a Generate, its Undo, the Redo, a Shape Generate, its Undo
+    { name: 'Art: Lattice Generate', open: 'editorTabArtwork', pre: ['artTab_lattice'], act: { tap: 'latticeGenerate' } },
+    { name: 'Art: Undo after a Generate', act: { tap: 'editorUndo' } },
+    { name: 'Art: Redo', act: { tap: 'editorRedo' } },
+    { name: 'Art: Shape Generate', pre: ['artTab_shape'], act: { tap: 'shapeLatticeGenerate' } },
+    { name: 'Art: Undo after a Shape Generate', act: { tap: 'editorUndo' } },
   ],
 };
 export const sequential = true; // index.mjs: --parallel runs it alone, after the parallel groups
