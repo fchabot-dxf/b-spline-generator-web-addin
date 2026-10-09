@@ -87,7 +87,7 @@
     },
     async openEditor({ tab }) { await openEditor(tab); },
     async apply() { await apply(); },
-    async lattice({ kind = 'shape', orientation, spacing, fromFrame, distance, generateSeed, clicks = [], set = {}, layers = {} }) {
+    async lattice({ kind = 'shape', orientation, spacing, fromFrame, distance, generateSeed, clicks = [], set = {}, colors = {}, layers = {} }) {
       await openEditor('artwork');
       const pre = kind === 'shape' ? 'shapeLattice' : 'lattice';
       click(kind === 'shape' ? 'toolShapeLattice' : 'toolLattice'); await W(900);
@@ -100,6 +100,15 @@
       if (kind === 'shape' && fromFrame) {
         setCheck('shapeLatticeContourFromFrame', true); await idle(2000);
         if (distance != null) { setInput('shapeLatticeContourFromFrameDistance', distance); await idle(2000); }
+      }
+      // per-kind colour (the piece-override recolour the panel's own per-piece colour uses): { rail: '#hex', tie, node, contour }
+      if (Object.keys(colors).length) {
+        const O = await import('./editor/editor-piece-override.js');
+        const plural = { rail: 'rails', tie: 'ties', node: 'nodes', contour: 'contour' };
+        for (const el of ed()._sketchLayer.children().toArray()) {
+          const k = el.node.getAttribute('data-lattice');
+          if (k && colors[k] && el.node.hasAttribute('data-lattice-gen')) O.applyColorOverride(el, plural[k] || k, colors[k]);
+        }
       }
       // per-layer tooling: { Rails: { carve, depth, profile, angle }, ... }
       for (const [name, t] of Object.entries(layers)) {
