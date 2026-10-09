@@ -94,6 +94,14 @@ export const PAGE_ZOOM = {
     { name: 'drawer', sel: '#editorMobileDrawer', editor: true }],
   minZoom: 1.2, // the drawing's pinch spreads the fingers ~1:3: its view must zoom in at least this much
 };
+// ---- the 3D preview under real fingers (seat D 2026-10-08, page zoom off): a pinch zooms the model, a two-finger drag
+// pans it, one finger orbits -- read from the preview's own orbit target (window.__preview). MEASURED on 9b10ecc: no
+// pinch or pan worked near the middle -- the view cube's 160 px canvas over the top-right corner took the second
+// finger's touchstart, so the preview never began the pinch. The pinch row puts its second finger ON the cube.
+// maxJumpDeg: lifting one finger of a pinch -- the other one then moved a few px orbits only a little (the stale start of
+// the first finger used to jump the view, the 2D editor's old release jump).
+export const PREVIEW_3D = { sel: '#previewCanvas', maxZoomRatio: 0.8, minPan: 0.05, minOrbitDeg: 10, maxJumpDeg: 5 };
+
 // ---- the Expand tip is gone (Fred 2026-10-08, "remove it completely"): it covered a third of the phone's drawing and ate
 // the gestures that started on it. After a first stroke no tip shows; a pinch where it sat (formerArea, px in
 // #editorCanvasContainer) zooms the drawing. legacyKey: its old "seen" flag, cleared so a pre-removal build would show it.
@@ -375,6 +383,47 @@ async function pinchRow(name, sel, { drawing = false, area = null } = {}) {
   if (!ok) await shot(`FAIL_pagezoom_${name.replace(/[^A-Za-z0-9]+/g, '_')}`);
   await send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 }); // the next row starts from an unzoomed page either way
 }
+const ORBIT = `JSON.stringify((() => { const o = window.__preview?._orbit?._targetOrb; if (!o) return null;
+  return { r: o.r, q: [o.q.x, o.q.y, o.q.z, o.q.w], t: [o.target.x, o.target.y, o.target.z], page: visualViewport.scale }; })())`;
+async function previewRows(vp) {
+  const D = PREVIEW_3D;
+  await js('window.scrollTo(0, 0), 1'); await sleep(400);
+  const box = await jsJSON(`JSON.stringify((() => { const c = document.querySelector(${JSON.stringify(D.sel)}).getBoundingClientRect(); const v = window.__preview?._viewCube?._canvas?.getBoundingClientRect();
+    const y0 = Math.max(c.top, 0), y1 = Math.min(c.bottom, innerHeight);
+    return { x0: c.left, x1: c.right, y0, y1, cube: v ? { x0: v.left, y0: v.top, x1: v.right, y1: v.bottom } : null }; })())`);
+  const before = async (frames) => { const a = await jsJSON(ORBIT); await touchGesture(frames); const b = await jsJSON(ORBIT); return { a, b }; };
+  const row = (name, ok, detail) => { checkRow('layout', `3D preview (${vp.name}, touch): ${name}`, ok, detail); };
+  if (!box.cube || !(await jsJSON(ORBIT))) { row('the preview and its view cube are there', false, JSON.stringify(box)); return; }
+  // a pinch whose SECOND finger starts on the view cube (the measured failure), the first on the preview left of it
+  const y = (box.cube.y0 + box.cube.y1) / 2, xa = box.cube.x0 - 70, xb = box.cube.x0 + 20;
+  let { a, b } = await before(Array.from({ length: 11 }, (_, k) => [[xa - 5 * k, y], [xb + 5 * k, y]]));
+  const zoom = b.r / a.r;
+  row('a pinch (second finger on the view cube) zooms the model, not the page', zoom <= D.maxZoomRatio && b.page === 1,
+    `distance x${zoom.toFixed(3)} (<= ${D.maxZoomRatio}), page x${b.page}`);
+  await send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+  // a two-finger drag, both on the preview below the cube
+  const yp = Math.min(box.y1 - 20, box.cube.y1 + 20), xm = (box.x0 + box.cube.x0) / 2;
+  ({ a, b } = await before(Array.from({ length: 11 }, (_, k) => [[xm - 40 + 4 * k, yp - 4 * k], [xm + 40 + 4 * k, yp - 4 * k]])));
+  const pan = Math.hypot(...a.t.map((v, i) => b.t[i] - v));
+  row('a two-finger drag pans the model', pan >= D.minPan && b.page === 1, `target moved ${pan.toFixed(3)} (>= ${D.minPan}), page x${b.page}`);
+  // one finger orbits
+  ({ a, b } = await before(Array.from({ length: 11 }, (_, k) => [[xm - 50 + 10 * k, yp - 3 * k]])));
+  const deg = 2 * Math.acos(Math.min(1, Math.abs(a.q.reduce((s, v, i) => s + v * b.q[i], 0)))) * 180 / Math.PI;
+  row('one finger orbits the model', deg >= D.minOrbitDeg, `${deg.toFixed(1)} deg (>= ${D.minOrbitDeg})`);
+  // a pinch that spreads 120 px, then the left finger lifts and the right one moves 6 px: no jump. (MEASURED, CDP: a
+  // touchMove that omits a point keeps it DOWN; a touchEnd releases exactly the points it lists.)
+  const send2 = (type, pts) => send('Input.dispatchTouchEvent', { type, touchPoints: touchPts(pts) });
+  await send2('touchStart', [[xm - 30, yp], [xm + 30, yp]]);
+  for (let k = 1; k <= 10; k++) { await sleep(25); await send2('touchMove', [[xm - 30 - 6 * k, yp], [xm + 30 + 6 * k, yp]]); }
+  const right = (x) => [{ x, y: yp, id: 1, radiusX: 4, radiusY: 4, force: 1 }];
+  await sleep(150); const j0 = await jsJSON(ORBIT); // the view as the pinch left it
+  await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ x: xm - 90, y: yp, id: 0, radiusX: 4, radiusY: 4, force: 1 }] }); // the left finger lifts
+  for (let k = 1; k <= 3; k++) { await sleep(25); await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: right(xm + 90 + 2 * k) }); }
+  await sleep(150); const j1 = await jsJSON(ORBIT);
+  await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(600);
+  const jump = 2 * Math.acos(Math.min(1, Math.abs(j0.q.reduce((s, v, i) => s + v * j1.q[i], 0)))) * 180 / Math.PI;
+  row('lifting one finger of a pinch: the other does not jump the view', jump <= D.maxJumpDeg, `${jump.toFixed(1)} deg across the lift + a 6 px move (<= ${D.maxJumpDeg})`);
+}
 async function runPageZoom() {
   const P = PAGE_ZOOM, T = NO_EXPAND_TIP, vp = P.viewport;
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'any-pointer', value: 'coarse' }] });
@@ -382,6 +431,7 @@ async function runPageZoom() {
   await send('Emulation.setDeviceMetricsOverride', { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: true });
   await send('Page.reload', {}); await waitApp();
   for (const c of P.chrome.filter((c) => !c.editor)) await pinchRow(`a pinch on the ${c.name} leaves the page unzoomed`, c.sel);
+  await previewRows(vp);
   await openBrickTab(); // opens the editor
   const armed = (await click('editorTabArtwork', 900)) === 'ok' && (await click('artTab_draw', 600)) === 'ok' && (await click('toolDraw', 600)) === 'ok';
   for (const c of P.chrome.filter((c) => c.editor)) await pinchRow(`a pinch on the ${c.name} leaves the page unzoomed`, c.sel);
