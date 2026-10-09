@@ -72,7 +72,7 @@ const SAME_KEYS = ['board', 'template', 'filter', 'carveZ', 'terrainSeed', 'inse
 const summary = [];
 try {
   for (const [i, c] of CREATIONS.entries()) {
-    const n = i + 1;
+    const n = c.n ?? i + 1; // a recipe may declare its own piece number (claude <n>)
     if (ONLY && !ONLY.includes(n)) continue;
     const base = path.join(OUT, `claude_${n}`);
     console.log(`\n== ${n}. ${c.title} (${c.template}, ${c.board.join('x')}, seed ${c.seed})`);

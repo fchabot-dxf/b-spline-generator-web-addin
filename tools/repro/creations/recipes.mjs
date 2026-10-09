@@ -76,6 +76,24 @@ export const diamondField = (inside, x0, x1, y0, y1, px, py, hx, hy) => {
   return out.join(' ');
 };
 
+/** PRECISE: bubbles -- small exact circles, seeded positions in a box, smaller and denser toward the top */
+export const bubbles = (rand, x0, x1, y0, y1, count, rMin, rMax) => {
+  const out = [], placed = [];
+  for (let k = 0, tries = 0; k < count && tries < count * 40; tries++) {
+    const t = Math.pow(rand(), 0.8), y = y0 + (y1 - y0) * t, x = x0 + (x1 - x0) * rand(), r = rMin + (rMax - rMin) * t * (0.6 + 0.4 * rand());
+    if (placed.some(([px, py, pr]) => Math.hypot(px - x, py - y) < pr + r + 0.06)) continue;
+    placed.push([x, y, r]); k++;
+    out.push(`M ${f3(x - r)} ${f3(y)} A ${f3(r)} ${f3(r)} 0 1 0 ${f3(x + r)} ${f3(y)} A ${f3(r)} ${f3(r)} 0 1 0 ${f3(x - r)} ${f3(y)} Z`);
+  }
+  return out.join(' ');
+};
+/** PRECISE: rain -- short slanted dashes on a staggered grid */
+export const rain = (x0, x1, y0, y1, px, py, len, angDeg) => {
+  const a = angDeg * Math.PI / 180, dx = Math.cos(a) * len / 2, dy = Math.sin(a) * len / 2, out = [];
+  for (let r = 0, y = y0; y <= y1; r++, y += py) for (let x = x0 + (r % 2 ? px / 2 : 0); x <= x1; x += px) out.push(`M ${f3(x - dx)} ${f3(y - dy)} L ${f3(x + dx)} ${f3(y + dy)}`);
+  return out.join(' ');
+};
+
 const FRONT = { theta: 0.15, phi: 0.6 };
 /** the vine's guide: a sinuous climb up the trellis, bottom to top */
 const climb = (x, y0, y1, amp, periods, n = 120) => Array.from({ length: n + 1 }, (_, k) => {
@@ -87,7 +105,7 @@ const ARCH = gothicArch(2.7, 5.3, 4.3, 10.0);
 
 export const CREATIONS = [
   {
-    title: 'Hourglass Garden',
+    n: 1, title: 'Hourglass Garden',
     concept: 'Harmony: a garden trellis that follows the hourglass -- its slats pinch at the waist and flare into the bulbs, braced into diamonds, all built on the frame-offset contour (the Shape Lattice offset-from-frame) -- with a hand-drawn vine (many short jittered strokes, alternating leaves) climbing one slat, inside a weathered grey fieldstone ring.',
     template: 'template_1', board: [7, 9], seed: 111,
     steps: [
@@ -101,7 +119,7 @@ export const CREATIONS = [
     view: FRONT,
   },
   {
-    title: 'Sand Timer',
+    n: 2, title: 'Sand Timer',
     concept: 'Contrast: masonry against flow -- crisp running-bond red bricks fill the upper bulb of a tapered hourglass, and below the waist a narrow raised stream of sand falls onto a V-bit cone pile with a crisp apex, all inside a weathered grey fieldstone ring.',
     template: 'template_3', board: [8, 10], seed: 222,
     steps: [
@@ -116,7 +134,7 @@ export const CREATIONS = [
     view: FRONT,
   },
   {
-    title: 'Tide Pool',
+    n: 3, title: 'Tide Pool',
     concept: 'Harmony: a small dipped-top board as a rock pool -- a gently sculpted basin at its heart and four ripple rings spreading out to the edge, each a true offset of the frame contour (the Shape Lattice offset-from-frame), so the water answers the frame; a reef floor (tube worms softened) stays rocky texture under rings raised high enough to read all the way round.',
     template: 'template_5', board: [5, 7], seed: 333,
     steps: [
@@ -129,7 +147,7 @@ export const CREATIONS = [
     view: FRONT,
   },
   {
-    title: 'Tracery',
+    n: 4, title: 'Tracery',
     concept: 'Contrast: precise against rugged -- a gothic window of quarry glazing, hundreds of small exact raised diamonds filling a pointed arch, set in a quiet smooth panel inside a weathered grey fieldstone ring.',
     template: 'template_12', board: [8, 12], seed: 444,
     steps: [
@@ -140,6 +158,57 @@ export const CREATIONS = [
         { d: diamondField(ARCH.inside, 2.7, 5.3, 1.9, 10.0, 0.34, 0.24, 0.14, 0.1), width: 0.01, fill: '#90a4ae', color: '#90a4ae' } ] } },
       { art: { layer: { name: 'Arch', depth: 0.1, profile: 'vbit' }, paths: [{ d: pathOf(ARCH.outline), width: 0.1, color: '#455a64' }] } },
       { bricks: { size: 1, frameSet: 5, framePreset: 'single_soldier', frame: true, surface: 'weathered', wear: 0.5 } },
+    ],
+    view: FRONT,
+  },
+  // ---- batch 2 (pieces 11-14) ----
+  {
+    n: 11, title: "Alchemist's Flask",
+    concept: 'Harmony: a flask of something alive -- a field of small precise bubbles rising through the bulb, smaller and denser toward the neck, over a molten, bubbling magma surface, with one raised ring tracing the glass wall just inside the frame.',
+    template: 'template_15', board: [9, 12], seed: 1111,
+    steps: [
+      { frame: { template: 'template_15' } },
+      { filter: { id: 'magma' } },
+      { params: { carveZ: 0.9, symmetry: 'none' } },
+      { echo: { layer: { name: 'Glass', depth: 0.1, profile: 'ballnose' }, offsets: [1.0], width: 0.1, color: '#90caf9' } },
+      { art: { layer: { name: 'Bubbles', depth: 0.14, profile: 'ballnose' }, paths: [{ d: bubbles(rng(1111), 2.2, 6.8, 4.2, 10.3, 70, 0.07, 0.24), width: 0.01, fill: '#e3f2fd', color: '#e3f2fd' }] } },
+    ],
+    view: FRONT,
+  },
+  {
+    n: 12, title: 'Causeway',
+    concept: 'Harmony: a Giant Causeway -- a crisp path of grey hexagon pavers laid as a painted wall area, crossing the offset hourglass from notch to notch over a bold basalt terrain whose columns the hexagons echo.',
+    template: 'template_4', board: [8, 10], seed: 1212,
+    steps: [
+      { frame: { template: 'template_4' } },
+      { filter: { id: 'basalt' } },
+      { params: { carveZ: 1.3, symmetry: 'none' } },
+      { bricks: { size: 0.75, wallSet: 4, wallPattern: 'hexagon', wall: true } },
+      { areas: { width: 2, list: [{ pattern: 'hexagon', points: [[1.0, 8.6], [3.0, 6.4], [5.0, 3.6], [7.0, 1.4]] }] } },
+    ],
+    view: FRONT,
+  },
+  {
+    n: 13, title: 'First Rain',
+    concept: 'Contrast: precise rain on dry ground -- hundreds of identical short slanted dashes carved in a staggered field, falling across a cracked-earth terrain in a narrow-necked panel.',
+    template: 'template_2', board: [7, 10], seed: 1313,
+    steps: [
+      { frame: { template: 'template_2' } },
+      { filter: { id: 'cracked' } },
+      { params: { carveZ: 1.5, symmetry: 'none' } },
+      { art: { layer: { name: 'Rain', depth: -0.12, profile: 'vbit' }, paths: [{ d: rain(0.9, 6.2, 0.9, 9.2, 0.45, 0.55, 0.38, 70), width: 0.06, color: '#1565c0' }] } },
+    ],
+    view: FRONT,
+  },
+  {
+    n: 14, title: 'Fishing Net',
+    concept: 'Harmony: a net cast along the shore -- a diamond-meshed net whose cords follow the frame contour, swelling with the wave on the left edge and narrowing at the dip, over a carved terrain of rolling wave ridges.',
+    template: 'template_8', board: [10, 14], seed: 1414,
+    steps: [
+      { frame: { template: 'template_8' } },
+      { filter: { id: 'carved' } },
+      { params: { carveZ: 1.4, symmetry: 'none' } },
+      { trellis: { layer: { name: 'Net', depth: 0.1, profile: 'ballnose' }, distance: 0.9, rails: 8, brace: 0.85, width: 0.07, color: '#795548' } },
     ],
     view: FRONT,
   },
