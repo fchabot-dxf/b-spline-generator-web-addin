@@ -781,6 +781,11 @@ export class TerrainPreview {
         this._orbit.handleTouchOrbitMove(e.touches[0]);
       } else if (e.touches.length === 2) {
         e.preventDefault();
+        // Seat D 2026-10-08 (phone, real touch): a second finger that lands OFF this canvas -- on the view cube's own
+        // 160 px canvas over the top-right corner (a quarter of a phone's 3D view) -- fires its touchstart there, never
+        // here, so the pinch never began and every pinch near the middle did nothing. The moves of both fingers do
+        // come here (a touch's events go to the target its FIRST finger started on): begin the pinch on the first.
+        if (!this._orbit._touchPan) this._orbit.beginTouchPinch(e.touches[0], e.touches[1]);
         this._orbit.handleTouchPinchMove(e.touches[0], e.touches[1]);
       }
     }, { passive: false });
@@ -789,6 +794,11 @@ export class TerrainPreview {
       if (e.touches.length === 0) {
         this._sculpt.handleTouchend();
         this._orbit.endTouch();
+      } else if (e.touches.length === 1 && this._orbit._touchPan) {
+        // one finger of a pinch lifted: the other one orbits from HERE, not from where it first touched (the stale
+        // start jumped the view -- the same release jump the 2D editor had)
+        this._orbit.endTouch();
+        this._orbit.beginTouchOrbit(e.touches[0]);
       }
     });
   }
