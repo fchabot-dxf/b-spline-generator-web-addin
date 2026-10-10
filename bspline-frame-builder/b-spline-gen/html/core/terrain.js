@@ -12,7 +12,7 @@ import { SeedTypes } from './seed/index.js';
 // -> sample mapping generateHeightmap uses (Map Zoom + Map Offset, then the Symmetry fold), exported ONCE so both read
 // it instead of a copy. Its constants are cached on the params object (a heightmap passes the same one throughout).
 let _fold = null;
-function foldSpecOf(params) {
+export function foldSpecOf(params) {
   if (_fold && _fold.params === params) return _fold;
   const { mapZoom = 1, seedOffsetX = 0, seedOffsetY = 0, symmetry = 'none', symOffsetX = 0, symOffsetY = 0 } = params;
   _fold = { params, mapZoom, seedOffsetX, seedOffsetY, mx: 0.5 + symOffsetX, my: 0.5 + symOffsetY,

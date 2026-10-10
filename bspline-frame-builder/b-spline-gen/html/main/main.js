@@ -29,7 +29,8 @@ import { fusLog, pollMode, stopFusionPolling, setFusionActionState, FUSION_IDLE_
 import { TerrainPreview } from '../core/preview.js';
 import { populateNoiseDropdown } from '../core/noise/index.js';
 import { bindTweaksUI, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
-import { initPhotoPanel, syncPhotoPanel } from './photo-panel.js';
+import { initPhotoPanel, syncPhotoPanel, commitPhotoPlacement } from './photo-panel.js';
+import { initPhotoFootprint } from './photo-footprint.js';
 import { renderPhotoLayerSection, bindPhotoLayerSection } from './photo-layer-section.js';
 import { initBrickPanel } from './brick-panel.js';
 import { AppState } from './app-state.js';
@@ -138,6 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     bindPhotoLayerSection(); // its mirrored image edits go through the Photo tab's own steps (photo-panel.js photoEditApi)
     syncPhotoPanel();
+    initPhotoFootprint({ commit: commitPhotoPlacement }); // the photo's footprint on the board, on the Photo tab
 
     // F35 item 1: the Brick tab (set picker + declared tool list + common
     // controls). Output lands on the editor's own layers -- rebuilds happen

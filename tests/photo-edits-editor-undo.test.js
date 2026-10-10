@@ -17,7 +17,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/photo/state.js', async 
 });
 
 import { P, DEFAULT } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { initPhotoPanel } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
+import { initPhotoPanel, commitPhotoPlacement } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
 import { renderPhotoLayerSection } from '../bspline-frame-builder/b-spline-gen/html/main/photo-layer-section.js';
 import { takeUndoParts, restoreUndoParts } from '../bspline-frame-builder/b-spline-gen/html/editor/undo-parts.js';
 
@@ -44,6 +44,19 @@ beforeEach(() => {
 });
 
 describe('item 74f: a photo edit is ONE editor undo step', () => {
+  it('2026-10-10: a footprint drag (the photo placement) is one step; Undo puts the placement back, Redo-able keys only', () => {
+    P.filterTweaks = { photo: { depth: 1.4, scale: 0.8 } };
+    ed._undoStack.length = 0; ed.pushState();
+    commitPhotoPlacement({ scale: 1.25, offsetX: 0.1, offsetY: -0.05, rotation: 90 });
+    expect(P.filterTweaks.photo).toEqual({ depth: 1.4, scale: 1.25, offsetX: 0.1, offsetY: -0.05, rotation: 90 });
+    expect(ed._undoStack.length).toBe(2);
+    expect(onChange).toHaveBeenCalled(); // the release repaints
+    commitPhotoPlacement({ scale: 1.25, offsetX: 0.1, offsetY: -0.05, rotation: 90 });
+    expect(ed._undoStack.length).toBe(2); // nothing new: no step
+    undo();
+    expect(P.filterTweaks.photo).toEqual({ depth: 1.4, scale: 0.8 }); // depth is not placement: untouched
+  });
+
   it('Rotate: one step; Undo takes the edit back', () => {
     document.getElementById('photoBtnRotate').click();
     expect(ed._undoStack.length).toBe(2);

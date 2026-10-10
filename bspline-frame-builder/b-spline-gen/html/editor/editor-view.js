@@ -77,6 +77,8 @@ export function applyView(editor) {
     if (!editor._draw) return;
     const vb = viewboxFor(editor._view, editor._mW, editor._mH);
     editor._draw.viewbox(vb.x, vb.y, vb.w, vb.h);
+    // overlays sized in screen px (main/photo-footprint.js's handles) redraw at the new scale
+    if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('editorViewChanged', { detail: { editor } }));
 }
 
 /** Reset to the fitted view (zoom 1, centered on the whole board) and
@@ -110,10 +112,20 @@ export function edgeMarginZoom(base, mW, mH, el, visible, marginPx, xLo = 0, xHi
     return Math.max(f, 0.05);
 }
 
+/** Pure: the fit region (`r`, null = the whole board) grown to hold `editor._fitExtraRegion` ({x, y, w, h}, model units)
+ *  when an overlay declares one -- the photo footprint on the Photo tab (Fred: its handles show past the board edge). */
+export function withFitExtra(r, editor) {
+    const e = editor && editor._fitExtraRegion;
+    if (!e) return r;
+    const b = r || { x: 0, y: 0, w: editor._mW, h: editor._mH };
+    const x = Math.min(b.x, e.x), y = Math.min(b.y, e.y);
+    return { x, y, w: Math.max(b.x + b.w, e.x + e.w) - x, h: Math.max(b.y + b.h, e.y + e.h) - y };
+}
+
 /** Pure: the view fitView would set now -- FB-APP F7: with a frame, its cut profile's region, else the whole board;
  *  on a coarse pointer zoomed out to FIT_EDGE_MARGIN_PX (the svg's own on-screen box, read here). */
 export function fittedView(editor) {
-    const r = frameFitRegion(editor);
+    const r = withFitExtra(frameFitRegion(editor), editor);
     const base = r
         ? { zoom: Math.min(editor._mW / r.w, editor._mH / r.h), cx: r.x + r.w / 2, cy: r.y + r.h / 2 }
         : { zoom: 1, cx: editor._mW / 2, cy: editor._mH / 2 };

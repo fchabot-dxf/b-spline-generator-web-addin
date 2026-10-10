@@ -44,6 +44,7 @@ import { renderTabStrip } from '../editor/tab-strip.js';
 import { photoToolIconSvg } from '../editor/photo-tool-icons.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
 import { commitEdit } from '../editor/editor-commit.js';
+import { PLACEMENT_KEYS, syncPhotoFootprint } from './photo-footprint.js';
 
 /** F35 item 10 (advisor, Fred's own reasoning: "each tab uses a completely different toolbar"):
  *  Photo's own left-rail toolbar, moved here from the old sidebar panel's single always-visible
@@ -100,6 +101,7 @@ function syncPhotoToolButtons() {
   if (preview) { preview.style.touchAction = cropBoxShown() ? 'none' : ''; drawPreview(); }
   const caption = document.getElementById('photoPreviewCaption');
   if (caption) caption.textContent = PREVIEW_CAPTION[cropBoxShown() ? 'crop' : 'mirror'];
+  syncPhotoFootprint(); // the footprint on the board comes and goes with the Photo tab (main/photo-footprint.js)
 }
 /** What the preview's dimming means, per what it shows (the crop box dims the outside of the crop). */
 export const PREVIEW_CAPTION = Object.freeze({
@@ -135,6 +137,7 @@ export function deselectPhotoTool() {
 function notifyChange(opts) {
   saveLastSession();
   if (_onChange) _onChange(opts);
+  syncPhotoFootprint();
 }
 
 /** Item 74f (advisor; seat D's Photo audit, measured: crop / levels / brightness / blur / relief changed the 3D but the
@@ -145,9 +148,30 @@ function notifyChange(opts) {
  *  The panel's own Undo button keeps working as before (and is a step too). */
 // 2026-10-10: the photo LAYER's on/off rides in the step too -- a pattern pick turns the layer on, and its Undo turns it
 // back off with the photo it took back.
-const photoUndoState = () => ({ ...photoState(), reliefIn: P.carveZ ?? null, layer: !!P.photoLayer });
+// 2026-10-10: + the photo's PLACEMENT (scale / offsets / rotation): the on-board footprint (main/photo-footprint.js) edits it
+// inside the editor, where the global undo is off -- so a footprint drag is an editor step like any photo gesture.
+const placementState = () => {
+  const t = (P.filterTweaks && P.filterTweaks.photo) || {};
+  return Object.fromEntries(PLACEMENT_KEYS.filter((k) => t[k] !== undefined).map((k) => [k, t[k]]));
+};
+const photoUndoState = () => ({ ...photoState(), reliefIn: P.carveZ ?? null, layer: !!P.photoLayer, placement: placementState() });
+const samePlacement = (a, b) => !a || !b || PLACEMENT_KEYS.every((k) => a[k] === b[k]); // an entry without one: not compared
 const samePhoto = (a, b) => !!a && !!b && a.url === b.url && a.patternId === b.patternId && a.reliefIn === b.reliefIn
-  && !!a.layer === !!b.layer && JSON.stringify(a.edits) === JSON.stringify(b.edits);
+  && !!a.layer === !!b.layer && JSON.stringify(a.edits) === JSON.stringify(b.edits) && samePlacement(a.placement, b.placement);
+/** Put a placement back: the keys it has, the others back to their defaults (removed). */
+function writePlacement(placement) {
+  if (!P.filterTweaks) P.filterTweaks = {};
+  const t = { ...(P.filterTweaks.photo || {}) };
+  for (const k of PLACEMENT_KEYS) { if (placement[k] === undefined) delete t[k]; else t[k] = placement[k]; }
+  P.filterTweaks.photo = t;
+}
+/** A footprint drag's release (main/photo-footprint.js): the placement written, one repaint, one editor undo step. */
+export function commitPhotoPlacement(placement) {
+  writePlacement(placement);
+  if (_syncMirrors) _syncMirrors();
+  notifyChange();
+  photoStep();
+}
 /** Seat D 2026-10-09: the step's commit (the editor's commit pipeline, ~100 ms on a phone at 4x CPU) runs behind the
  *  'backdrop' stage too -- a slider release or a rotate tap shows the pill first, then commits and repaints under it. */
 function photoStep() {
@@ -163,6 +187,7 @@ function photoStepNow() {
 function restorePhotoUndo(state) {
   if (!state || samePhoto(state, photoUndoState())) return; // an Undo of something else: the photo stays, no rebuild
   if (state.layer !== undefined && !!state.layer !== !!P.photoLayer) applyParam('photoLayer', !!state.layer, { rebuild: false });
+  if (state.placement && !samePlacement(state.placement, placementState())) { writePlacement(state.placement); if (_syncMirrors) _syncMirrors(); }
   restorePhoto(state);
   if (state.reliefIn != null && state.reliefIn !== P.carveZ) { setReliefHeight(state.reliefIn, { raw: true }); syncReliefHeightDisplay(); }
 }
