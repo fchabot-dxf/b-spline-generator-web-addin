@@ -288,7 +288,8 @@ def test_a_window_less_build_is_unaffected(tid):
 
 
 def test_window_cut_feature_is_a_cut_through_all_from_the_sketch_plane():
-    assert WINDOW_CUT_FEATURE["op"] == "cut" and WINDOW_CUT_FEATURE["extent"] == "throughAll"
+    # BOTH sides of the plane (2026-10-09): the panel's underside can lie below it -- a hole through the whole panel
+    assert WINDOW_CUT_FEATURE["op"] == "cut" and WINDOW_CUT_FEATURE["extent"] == "throughAllBothSides"
     assert WINDOW_CUT_FEATURE["start"] == "0 in"  # the same sketch plane the main TRIM_CUT starts at
 
 

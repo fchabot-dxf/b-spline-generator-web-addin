@@ -126,7 +126,7 @@ class ExtrusionEngine:
                         "start": start_offset_expr, "extent": ("toFace", end_offset_expr), "taper": "0 deg"}
             else:
                 plan = {"kind": "SURROUND", "name": None, "start": "0 in",
-                        "extent": ("throughAll",), "taper": "0 deg"}
+                        "extent": ("throughAllBothSides",), "taper": "0 deg"}  # as the declared trim
             candidates.append((prof, plan, i))
 
         # SURROUND is the trim cut -- must run last so the bars exist
@@ -170,9 +170,11 @@ class ExtrusionEngine:
                 ext_in.participantBodies = []
 
             # The start comes from the plan: the bars start at the frame
-            # offset height; the trim cut ALWAYS starts at the profile plane
-            # (declared "0 in") so it trims the full height — core panel +
-            # bars — no matter the offset. A zero start keeps Fusion's
+            # offset height; the trim cut starts at the profile plane
+            # (declared "0 in") and goes through all on BOTH sides of it
+            # (throughAllBothSides below) -- the panel's underside can lie
+            # below that plane, so one side alone did NOT trim the full
+            # height (measured 2026-10-09). A zero start keeps Fusion's
             # default profile-plane start.
             start = (plan["start"] or "0 in").strip()
             if start not in _ZERO_OFFSET_SPELLINGS:
@@ -181,12 +183,18 @@ class ExtrusionEngine:
 
             positive_dir = adsk.fusion.ExtentDirections.PositiveExtentDirection
             taper = adsk.core.ValueInput.createByString(plan["taper"])
-            if plan["extent"][0] == "toFace":
-                extent_def = adsk.fusion.ToEntityExtentDefinition.create(
-                    to_face, True, adsk.core.ValueInput.createByString(plan["extent"][1]))
+            if plan["extent"][0] == "throughAllBothSides":
+                # the trim / window cut (frame_definition): through all on BOTH sides of the sketch plane -- the
+                # panel's underside can dip below it (measured 2026-10-09), and a one-sided cut left that part
+                ext_in.setTwoSidesExtent(adsk.fusion.ThroughAllExtentDefinition.create(),
+                                         adsk.fusion.ThroughAllExtentDefinition.create(), taper, taper)
             else:
-                extent_def = adsk.fusion.ThroughAllExtentDefinition.create()
-            ext_in.setOneSideExtent(extent_def, positive_dir, taper)
+                if plan["extent"][0] == "toFace":
+                    extent_def = adsk.fusion.ToEntityExtentDefinition.create(
+                        to_face, True, adsk.core.ValueInput.createByString(plan["extent"][1]))
+                else:
+                    extent_def = adsk.fusion.ThroughAllExtentDefinition.create()
+                ext_in.setOneSideExtent(extent_def, positive_dir, taper)
 
             feat = extrudes.add(ext_in)
             self.log.log(
