@@ -98,7 +98,14 @@ function syncPhotoToolButtons() {
   // the crop box comes and goes with the Crop tab: the preview redraws, and a finger drag on it is the box's, not a scroll
   const preview = document.getElementById('photoPreviewCanvas');
   if (preview) { preview.style.touchAction = cropBoxShown() ? 'none' : ''; drawPreview(); }
+  const caption = document.getElementById('photoPreviewCaption');
+  if (caption) caption.textContent = PREVIEW_CAPTION[cropBoxShown() ? 'crop' : 'mirror'];
 }
+/** What the preview's dimming means, per what it shows (the crop box dims the outside of the crop). */
+export const PREVIEW_CAPTION = Object.freeze({
+  mirror: 'dimmed = mirrored by Symmetry, not sampled directly',
+  crop: 'dimmed = outside the crop',
+});
 
 function selectPhotoTool(id) {
   _activePhotoTool = id;
