@@ -25795,3 +25795,27 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - PINNED: tests/bricks-board-clip.test.js (an L board: inside kept as the same object, crossing cut, a piece in the notch
   dropped, one along the outline kept whole). Mutations: dropping the shortcut's inside check fails the notch case; a
   shortcut taken for every piece fails the crossing + notch cases. Affected suites 38 files 526/526.
+
+### 2026-10-10 (seat A): a board size change is ONE 3D build -- the rebuild hold
+- PROFILED (phone rig, loaded board, one heightIn nudge, stacks of every preview.update / scheduleRebuild / editor
+  onChange): 3-4 full builds per nudge -- applyParam's own (new size, OLD masks), the editor resync's commit remask
+  (stockSizeChanged -> 350 ms debounce -> _resyncEditorToStock), the brick re-lay's commit (editorBoardResized ->
+  _scheduleFrameRelay -> generateBricks) and its remask. Only the last was the board asked for; the input digest could
+  not skip the others (their masks really differ).
+- FIX (declared): STOCK_CHANGE_STAGES next to CHANGE_PIPELINE ('editor-resync', 'brick-relay', 'change-pipeline'). The
+  stockSizeChanged listener opens a hold (core/engine/scheduler.js openRebuildHold) and puts the 'rebuild' card up for
+  it; each stage joins (joinRebuildHold) and closes on every exit (resync early returns, no-lay relay, pipeline finally);
+  scheduleRebuild only records the latest fn meanwhile and it runs once at the release; a 3 s backstop releases a stage
+  that never closes. isRebuildScheduled counts a held build, so whenRebuildIdle (Send / export) still waits for it.
+  Undo / redo of a size dispatches the same event -> same hold. The 350 ms debounce is unchanged (advisor).
+- RESULT, CPU 1 digest A/B/B/A by file copies (final preview.update inputs FNV-hashed in-page): loaded board 3-4 builds
+  -> 1 (final 25759ea6 both), photo board 2 -> 1 (91b0d33d both), Undo of the nudge 3 -> 1 (aaf990df both); the nudge
+  is still ONE global undo step. CPU 4 busy A/B/B/A: main 5157 / 5124 ms, branch 3201 / 3719 (0.68x); response 5.8 ->
+  3.8-4.4 s; card at 9-18 ms, blind 0. Matrix blind group 23/23 (Board width change, bricks laid: card at 17 ms, 0 blind).
+- What is left of the floor (branch, 4x): the frame panel's own refreshFrame on syncFramePanel (~0.6 s, frame-panel.js
+  915) + the one build (~0.9 s) + the resync (~0.6 s). Not touched.
+- TESTS: tests/rebuild-hold.test.js (scheduler hold, backstop, a timer already pending, the app-init stages, every joined
+  stage declared and every declared stage joined); brick-element-laid-key-panel.test.js (the relay stage closes after a
+  lay and with no lay). Fail on the pre-change tree; mutations caught 6/6 (no hold in scheduleRebuild; resync never
+  closes; no-lay never closes; lay never closes; pipeline never joins; isRebuildScheduled ignores the hold).
+- Full suite 425 files, 6170/6170. Known failures: none.
