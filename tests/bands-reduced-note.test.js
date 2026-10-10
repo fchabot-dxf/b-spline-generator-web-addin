@@ -105,16 +105,21 @@ describe('F35 item 35: the bands-reduced note', () => {
     expect(bandsReducedText({ requested: 1, kept: 1, steps: [{ band: 0, step: 'narrow', toIn: 0.87 }], fits: true }))
       .toBe('Bands reduced to fit the board: 1 of 1 laid; band 1 narrowed; bricks cut to the row depth.');
   });
-  it('a reduced stack that FITS: the Frame note line, no empty-wall warning; band 3 greyed with why', () => {
+  it('a reduced stack that FITS: the Frame note line, no empty-wall warning; band 3 HIDDEN (Fred: "unused band should just be hidden")', () => {
     setup('frame');
     lay({ wallCount: 12, frameCount: 200, bandsReduced: NOTE_DROP });
     expect(shown('brickFrameBandsNote')).toBe(true);
     expect($('brickFrameBandsNote').textContent).toBe('Bands reduced to fit the board: 2 of 3 laid.');
     expect(shown('brickLayWarnings')).toBe(false);
-    const b3 = $('brickFrameBandPattern_2_header');
-    expect(b3.disabled).toBe(true);
-    expect(b3.title).toMatch(/dropped to fit the board/);
-    expect($('brickFrameBandPattern_1_header').disabled).toBe(false);
+    expect($('brickFrameBandPattern_2_header')).toBe(null); // band 3's pattern row: not there at all
+    expect(document.querySelectorAll('[id^="brickFrameBandPattern_2_"]').length).toBe(0);
+    expect(document.querySelector('[data-accent-for="band2"]')).toBe(null); // and its accent block
+    expect($('brickFrameBandPattern_1_header').disabled).toBe(false); // the laid bands as before
+    // and it comes back when a lay fits it again
+    lay({ wallCount: 12, frameCount: 200, bandsReduced: null });
+    expect($('brickFrameBandPattern_2_header')).not.toBe(null);
+    expect($('brickFrameBandPattern_2_header').disabled).toBe(false);
+    expect(document.querySelector('[data-accent-for="band2"]')).not.toBe(null);
   });
   it('even with an empty wall, a stack that FITS says the note, not the warning; one that still does NOT fit keeps the warning', () => {
     setup('frame');
