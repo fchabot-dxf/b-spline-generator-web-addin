@@ -83,14 +83,22 @@ describe('item 9: the Window surround block (Frame tab)', () => {
     expect(shown('brickSurroundHint')).toBe(true);
     expect(shown('brickSurroundRows')).toBe(false);
   });
-  it('window on: the rows -- every listed frame preset once (None = the empty preset), the corners only with a preset', () => {
+  it('window on: the rows -- "Same as frame" first, then every listed frame preset once (None = the empty preset), the corners only with a preset', () => {
+    P.brickSettings.windowSurround = { preset: 'follow' }; // a new board (core/state.js)
     setFrameRecord({ insetWindow: { enabled: true, cx: 0, cy: 0, w: 2, h: 3 } });
     expect(shown('brickSurroundHint')).toBe(false);
     expect(shown('brickSurroundRows')).toBe(true);
     const ids = [...$('brickSurroundPresetList').querySelectorAll('button')].map((b) => b.id);
     expect(new Set(ids).size).toBe(ids.length);
-    for (const id of ids) expect(FRAME_PRESETS[id.replace('brickSurroundPreset_', '')]).toBeDefined();
-    expect($('brickSurroundPreset_none').classList.contains('active')).toBe(true);
+    expect(ids[0]).toBe('brickSurroundPreset_follow');
+    for (const id of ids.slice(1)) expect(FRAME_PRESETS[id.replace('brickSurroundPreset_', '')]).toBeDefined();
+    // Fred 2026-10-10: a new board's surround follows the Frame -- "Same as frame" active, its corner row shown
+    expect($('brickSurroundPreset_follow').classList.contains('active')).toBe(true);
+    expect($('brickSurroundPreset_none').classList.contains('active')).toBe(false);
+    expect(shown('brickSurroundCornerList')).toBe(true);
+    $('brickSurroundPreset_none').click(); // an explicit None
+    expect(P.brickSettings.windowSurround.preset).toBe('none');
+    expect($('brickSurroundPreset_follow').classList.contains('active')).toBe(false);
     expect(shown('brickSurroundCornerList')).toBe(false);
     $('brickSurroundPreset_single_soldier').click();
     expect(P.brickSettings.windowSurround).toEqual({ preset: 'single_soldier', corner: 'mitre' });
@@ -101,6 +109,9 @@ describe('item 9: the Window surround block (Frame tab)', () => {
     $('brickSurroundPreset_none').click();
     expect(P.brickSettings.windowSurround.preset).toBe('none');
     expect(shown('brickSurroundCornerList')).toBe(false);
+    $('brickSurroundPreset_follow').click(); // back to following
+    expect(P.brickSettings.windowSurround).toEqual({ preset: 'follow' });
+    expect($('brickSurroundPreset_follow').classList.contains('active')).toBe(true);
     setFrameRecord({ insetWindow: { ...getFrameRecord().insetWindow, enabled: false } });
   });
 });

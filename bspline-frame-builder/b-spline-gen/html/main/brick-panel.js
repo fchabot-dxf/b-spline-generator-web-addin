@@ -29,7 +29,7 @@ import {
   BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
-  FRAME_CORNERS, FOLDED_FRAME_PRESETS, topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_CORNER_LIST, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
+  FRAME_CORNERS, FOLDED_FRAME_PRESETS, topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_FOLLOW, SURROUND_CORNER_LIST, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
   FRAME_FAN_CENTRES, frameFanCentreOf, fanCentreIconSvg, frameHasFanFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
   brushStrokeSettings, restyleBrushStroke, groutCutPolylines, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
@@ -2118,6 +2118,9 @@ function renderWindowSurround() {
   const corners = document.getElementById('brickSurroundCornerList');
   if (presets) {
     presets.innerHTML = '';
+    // Fred 2026-10-10: "Same as frame" first -- the surround lays the Frame's own bands + corner (SURROUND_FOLLOW)
+    presets.appendChild(_iconButton(`brickSurroundPreset_${SURROUND_FOLLOW}`, 'Same as frame', "Same as frame: the window's surround lays the Frame's own bands and corner",
+      '<span style="font-size:10px; line-height:30px; padding:0 6px;">Same as frame</span>', () => setWindowSurround({ preset: SURROUND_FOLLOW })));
     for (const c of SURROUND_CHOICES()) {
       presets.appendChild(_iconButton(`brickSurroundPreset_${c.id}`, c.label, c.id === SURROUND_NONE ? 'No surround' : c.label, framePresetIconSvg(c.id, 30),
         () => setWindowSurround({ preset: c.id })));
@@ -2140,12 +2143,16 @@ function syncWindowSurround() {
   const w = windowSurroundOf(P.brickSettings);
   show('brickSurroundCornerLabel', w.preset !== SURROUND_NONE);
   show('brickSurroundCornerList', w.preset !== SURROUND_NONE);
-  for (const c of SURROUND_CHOICES()) document.getElementById(`brickSurroundPreset_${c.id}`)?.classList.toggle('active', c.id === w.preset);
+  document.getElementById(`brickSurroundPreset_${SURROUND_FOLLOW}`)?.classList.toggle('active', !!w.follows);
+  for (const c of SURROUND_CHOICES()) document.getElementById(`brickSurroundPreset_${c.id}`)?.classList.toggle('active', !w.follows && c.id === w.preset);
   for (const c of SURROUND_CORNER_LIST) document.getElementById(`brickSurroundCorner_${c.id}`)?.classList.toggle('active', c.id === w.corner);
 }
 /** Item 9: a surround pick (`patch`: preset and/or corner) -- re-lays at once, one undo step. */
 export function setWindowSurround(patch, commit = 'generate') {
-  P.brickSettings.windowSurround = { ...windowSurroundOf(P.brickSettings), ...patch };
+  // "Same as frame" stores just that; any other pick stores an explicit preset + corner (a corner picked while following
+  // keeps the frame's preset it was showing, now its own)
+  const cur = windowSurroundOf(P.brickSettings);
+  P.brickSettings.windowSurround = patch.preset === SURROUND_FOLLOW ? { preset: SURROUND_FOLLOW } : { preset: cur.preset, corner: cur.corner, ...patch };
   syncWindowSurround();
   commitBrickSetting(commit);
 }
