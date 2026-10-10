@@ -161,3 +161,39 @@ describe('slice 2: the Area sub-tool', () => {
     expect(MIGRATION.neutralNewFields.wallAreaWidthIn).toBe(1);
   });
 });
+
+// Fred 2026-10-09 (seat D's undo map: the width pick was no step, so undoing a painted area reverted the width too): the
+// width pick is its own undo step -- Undo after painting removes the paint and the chip stays; a second Undo reverts it.
+describe('the Area brush width: an undo step of its own', () => {
+  it('width 2, paint, Undo -> the area gone, still 2; Undo -> width 1 (the chip and the brush follow)', async () => {
+    const { takeUndoParts, restoreUndoParts } = await import('../bspline-frame-builder/b-spline-gen/html/editor/undo-parts.js');
+    engineOpts.extra = ['wallRegion'];
+    setup();
+    $('brickSubTool_wall_area').click();
+    const e = ed(), node = e._sketchLayer.node;
+    e.pushState = () => { e._undoStack.push({ svg: node.innerHTML, parts: takeUndoParts() }); };
+    const undo = () => { e._undoStack.pop(); const top = e._undoStack[e._undoStack.length - 1]; node.innerHTML = top.svg; restoreUndoParts(top.parts); };
+    e.pushState(); // the opening entry: width 1, no area
+    const active = () => [...$('brickWallAreaRow').querySelectorAll('button.active')].map((b) => b.id);
+    setWallAreaWidth(2);
+    await Promise.resolve();
+    expect(e._undoStack.length).toBe(2); // the pick: one step
+    setWallAreaWidth(2);
+    await Promise.resolve();
+    expect(e._undoStack.length).toBe(2); // the same chip again: no step
+    paintWallArea(pts(3));
+    await Promise.resolve();
+    expect(wallAreaRecords(e).length).toBe(1);
+    e.pushState(); // the paint's step (here runBricks is a mock: the real lay's commit pushes it)
+    expect(e._undoStack.length).toBe(3);
+    undo();
+    expect(wallAreaRecords(e).length).toBe(0); // the paint gone ...
+    expect(P.brickSettings.wallAreaWidthIn).toBe(2); // ... the width stays
+    expect(active()).toEqual(['brickWallAreaWidth_2']);
+    undo();
+    expect(P.brickSettings.wallAreaWidthIn).toBe(1);
+    expect(active()).toEqual(['brickWallAreaWidth_1']);
+    expect(e._brickAreaWidthIn).toBe(1);
+  });
+});
+

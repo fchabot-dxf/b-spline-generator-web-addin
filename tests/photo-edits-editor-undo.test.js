@@ -95,3 +95,26 @@ describe('item 74f: a photo edit is ONE editor undo step', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+// Fred 2026-10-09 (seat D's phone measure: a blur drag repainted the editor backdrop on every tick, ~160 ms each at 4x CPU):
+// a slider's drag ticks notify as DRAG ticks (core/in-editor-3d.js inEditorDrag 'none': no backdrop repaint), its release
+// notifies once more as a plain change (the one repaint) and is the one undo step.
+describe('a Photo slider drag: drag ticks, then one plain change on release', () => {
+  it('blur: every input tick is a drag tick; the release is a plain change + one step', () => {
+    const slider = document.getElementById('photoBlurSlider');
+    onChange.mockClear();
+    for (const v of ['1', '2', '3']) { slider.value = v; slider.dispatchEvent(new Event('input')); }
+    expect(onChange.mock.calls.map((c) => c[0])).toEqual([{ drag: true }, { drag: true }, { drag: true }]);
+    slider.dispatchEvent(new Event('change'));
+    expect(onChange).toHaveBeenCalledTimes(4);
+    expect(onChange.mock.calls[3][0]?.drag).toBeFalsy(); // the release: the backdrop's one repaint
+    expect(ed._undoStack.length).toBe(2);
+  });
+  it('a typed number is no drag: it notifies as a plain change', () => {
+    const box = document.getElementById('photoBlur');
+    onChange.mockClear();
+    box.value = '2'; box.dispatchEvent(new Event('input'));
+    expect(onChange.mock.calls[0][0]?.drag).toBeFalsy();
+  });
+});
+

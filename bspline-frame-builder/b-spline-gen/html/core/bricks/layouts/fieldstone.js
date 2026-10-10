@@ -112,6 +112,11 @@ const NEIGHBOR_RADIUS_FACTOR = 3; // a Voronoi cell's true neighbours are typica
 // margin without the wasted O(n) candidate-filtering a larger factor costs for no geometric gain.
 const CORNER_RADIUS_FACTOR = 0.12; // "slightly rounded" -- a declared layout-internal constant (not a per-set
 // tunable; the task only called out grout/Poisson/Voronoi/shrink as set-level concerns)
+/** An acute stone corner is rounded back no further than a right angle (geometry.js roundPolygonCorners
+ *  acuteSetbackOfRightAngle). MEASURED (seat E, 2026-10-09): where a ring's course turns a corner, the two stones meeting at
+ *  the seam have 45 deg corners, and full fillets cut each back 0.42 in -- T9 7x9 a 3.88-joint pocket at the wall's corner
+ *  under the stem, at every size (rounding off: 1.61). */
+const CORNER_ROUNDING = Object.freeze({ acuteSetbackOfRightAngle: true });
 
 // T86 item 6 rework (advisor, after the overlap finding + Fred: "shouldn't the spacing be irregular,
 // so medium stones can be in the centre too"): three declared SIZE TIERS, each a fraction of the
@@ -649,7 +654,7 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones, f
     if (poly.length < 3) return null;
     poly = annulus ? clipToAnnulus(poly, point) : clipPolygonToBoard(poly, boardOutline, point);
     if (poly.length < 3) return null;
-    poly = roundPolygonCorners(poly, point.radius * 2 * CORNER_RADIUS_FACTOR);
+    poly = roundPolygonCorners(poly, point.radius * 2 * CORNER_RADIUS_FACTOR, undefined, CORNER_ROUNDING);
     if (poly.length < 3) return null;
     if (Math.abs(signedArea(poly)) < minPieceArea) return null;
     return poly;

@@ -16,6 +16,7 @@ import { IN_EDITOR_3D, inEditor3dAction } from '../bspline-frame-builder/b-splin
 import { updateEditorTopView, refreshEditorTopView, flushEditorTopView } from '../bspline-frame-builder/b-spline-gen/html/core/render-topview.js';
 import { ensurePhotoDecoded, getProcessedPhotoImage, _resetPhotoStateForTests } from '../bspline-frame-builder/b-spline-gen/html/core/photo/state.js';
 import * as ops from '../bspline-frame-builder/b-spline-gen/html/core/photo/ops.js';
+import { currentLoadingStage, resetLoadingSignal, HIDE_GRACE_MS, MIN_VISIBLE_MS } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/photo/codec.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -48,9 +49,10 @@ afterEach(() => { document.getElementById = realGetById; modal.style.display = '
 
 describe('a photo change made in the editor reaches its backdrop, not the 3D (F35 item 18 (4))', () => {
   it("IN_EDITOR_3D 'photo': editor open -> the backdrop; closed -> the full rebuild", () => {
-    expect(IN_EDITOR_3D.photo).toEqual({ inEditor: 'backdrop', closed: 'rebuild' });
+    expect(IN_EDITOR_3D.photo).toEqual({ inEditor: 'backdrop', inEditorDrag: 'none', closed: 'rebuild' });
     modal.style.display = 'flex';
     expect(inEditor3dAction('photo')).toBe('backdrop');
+    expect(inEditor3dAction('photo', { drag: true })).toBe('none'); // Fred 2026-10-09: a drag tick repaints on release
     modal.style.display = 'none';
     expect(inEditor3dAction('photo')).toBe('rebuild');
   });
@@ -59,26 +61,36 @@ describe('a photo change made in the editor reaches its backdrop, not the 3D (F3
     const src = readFileSync('bspline-frame-builder/b-spline-gen/html/main/main.js', 'utf8');
     const at = src.indexOf('initPhotoPanel({');
     const block = src.slice(at, src.indexOf('});', at));
-    expect(block).toMatch(/inEditor3dAction\('photo'\) === 'backdrop'\s*\?\s*refreshEditorTopView\(\)\s*:\s*scheduleRebuild\(/);
+    expect(block).toMatch(/const action = inEditor3dAction\('photo', opts\);/);
+    expect(block).toMatch(/if \(action === 'backdrop'\) refreshEditorTopView\(\);\s*else if \(action === 'rebuild'\) scheduleRebuild\(/);
   });
 
-  it('the backdrop refresh paints once per animation frame, with the latest params', () => {
+  it('the backdrop refresh paints once per animation frame, with the latest params -- its stage on screen first, until drawn', async () => {
     modal.style.display = 'flex';
     const seed = P.seed;
+    const stage = document.createElement('div');
+    stage.id = 'loading-stage'; stage.hidden = true; stage.innerHTML = '<span class="loading-stage-text"></span>';
+    document.body.appendChild(stage);
+    const ticks = async () => { for (let i = 0; i < 4; i++) await Promise.resolve(); };
     try {
       updateEditorTopView(null, 0, 0); // a rebuild's inputs (the editor open: painted at once)
       painted.length = 0;
       P.seed = 101; refreshEditorTopView();
       P.seed = 202; refreshEditorTopView();
       P.seed = 303; refreshEditorTopView(); // three steps of one drag inside one frame
+      await ticks(); // the stage's paint step (the suite's is immediate), then the one frame is queued
+      expect(currentLoadingStage()?.id).toBe('backdrop'); // seat D 2026-10-09: on screen before the repaint
       expect(painted).toHaveLength(0);
       expect(frames).toHaveLength(1);
       frames.shift()();
       expect(painted).toHaveLength(1);
+      await ticks();
+      await new Promise((r) => setTimeout(r, Math.max(HIDE_GRACE_MS, MIN_VISIBLE_MS) + 50)); // the pill's own anti-flicker hold
+      expect(currentLoadingStage()).toBeFalsy(); // ... and gone once it is drawn
       const got = painted.pop();
       updateEditorTopView(null, 0, 0); // P.seed 303 painted directly
       expect(Buffer.from(got).equals(Buffer.from(painted.pop()))).toBe(true);
-    } finally { P.seed = seed; }
+    } finally { P.seed = seed; stage.remove(); resetLoadingSignal(); }
   });
 });
 

@@ -21,6 +21,7 @@ import {
 import { PATTERN_DEFAULTS, CONTOUR_SEG_INDEX_ATTR, BOUNDARY_REF_ATTR, stampBoundaryRef } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
 import { primitiveFromContourD, splitContourPrimitive } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-contour-cut.js';
 import { primitiveToPathD } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-shape-lattice-generator.js';
+import { setPaintScheduler, currentLoadingStage } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 function makeMockEditor() {
   let elements = [];
@@ -382,6 +383,27 @@ describe('initShapeLatticeProperties: Segments section', () => {
 });
 
 describe('initShapeLatticeProperties: Fill + Generate', () => {
+  // seat A's re-time 2026-10-09 (phone, CPU x4): Generate froze 0.56-0.9 s with nothing on screen
+  it("Generate's 'latticeGenerate' pill is on screen BEFORE the generate runs; the fill still lands", async () => {
+    initShapeLatticeProperties(editor);
+    const stage = document.createElement('div');
+    stage.id = 'loading-stage'; stage.hidden = true; stage.innerHTML = '<span class="loading-stage-text"></span>';
+    document.body.appendChild(stage);
+    let paint = null;
+    setPaintScheduler((cb) => { paint = cb; });
+    try {
+      const seedField = document.getElementById('shapeLatticeSeed');
+      const before = seedField.value;
+      document.getElementById('shapeLatticeGenerate').click();
+      expect(currentLoadingStage()?.id).toBe('latticeGenerate');
+      expect(seedField.value).toBe(before); // nothing ran yet: the pill paints first
+      paint();
+      expect(seedField.value).not.toBe(before);
+      await flush();
+      expect(editor._sketchLayer.children().find((e) => e.attr('data-lattice') === 'rail')).toBeDefined();
+    } finally { stage.remove(); }
+  });
+
   it('pressing Generate (bottom button) fills rails/ties INSIDE the generated boundary, non-vacuously', async () => {
     initShapeLatticeProperties(editor);
     document.getElementById('shapeLatticeGenerate').click();

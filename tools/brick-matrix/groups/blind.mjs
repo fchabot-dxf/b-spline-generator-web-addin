@@ -9,7 +9,8 @@
 // own entry is delivered after it ends, so a card set at the end of a blind task would read as shown -- MEASURED).
 // A row fails over its budget. `closeEditor`: Apply first (the editor closes, its board kept); `sidebar`: that sidebar tab, its collapsed panels opened (the editor closed); `open`: the
 // editor, on that tab; `pre`: taps (unthrottled) that set the action up; `act`: { tap } an element id,
-// { tapSel } a selector, { set, value } a field's input + change, { stroke } a touch drag in board fractions.
+// { tapSel } a selector, { set, value } a field's input + change, { stroke } a touch drag in board fractions,
+// { drag, values } a slider's input ticks then its release.
 // A SEQUENTIAL group (index.mjs): --parallel runs it alone after the others, so no other group's load is in its timing.
 export const BLIND_BUDGET = {
   viewport: { width: 390, height: 844 },
@@ -35,6 +36,9 @@ export const BLIND_BUDGET = {
     // MEASURED: no task at all on one run, one 57 ms task (no rebuild, no card) on another -- the long-task floor, left as
     // the Scissors check's 53 ms was (advisor); pinned here against a real regression
     { name: 'Surface: Reset tweaks', sidebar: 'surface', act: { tap: 'filterTweaksReset' }, budgetMs: 100 },
+    // seat A's re-time 2026-10-09 (smoothRadius 1944 ms "blind" on the photo board): the drag's rebuild starts after the
+    // drag + its debounce, ~0.85 s past t0 -- a settle counting quiet from t0 ended the row before it (seat D, MEASURED)
+    { name: 'Surface: smoothing slider drag', sidebar: 'surface', act: { drag: 'smoothRadiusSlider', values: [2, 3, 4, 5] } },
     { name: 'Wall Generate, the first lay', open: 'editorTabBrick', pre: ['brickTool_wall'], act: { tap: 'brickGenerate' }, fixedBy: '200ad4c' },
     { name: 'Brush stroke', pre: ['brickTool_brush'], act: { stroke: [[0.22, 0.45], [0.78, 0.5]] }, fixedBy: '12718cf' },
     { name: 'Raised brush stroke', pre: ['brickTool_raisedBrush', 'brickRaisedMode_bricks'], act: { stroke: [[0.22, 0.62], [0.78, 0.64]] }, fixedBy: '12718cf' },
@@ -42,10 +46,20 @@ export const BLIND_BUDGET = {
     { name: 'Area brush stroke', pre: ['brickTool_wall', 'brickSubTool_wall_area', 'brickWallAreaWidth_2'], act: { stroke: [[0.3, 0.3], [0.62, 0.38]] } },
     { name: 'Frame tab Generate', pre: ['editorTabFrame'], act: { tap: 'editorFrameGenerate' } },
     { name: 'Photo pattern pick', pre: ['editorTabPhoto', 'photoTab_source'], act: { tapSel: '#photoPatternRow button' } },
+    // the editor's backdrop repaint after a Photo change (seat D 2026-10-09: ~340 ms, no card) -- the 'backdrop' stage
+    { name: 'Photo: blur slider release (editor open)', pre: ['photoTab_adjust', 'photoTool_blur'], act: { set: 'photoBlurSlider', value: 3 } },
+    { name: 'Photo: Rotate 90 (editor open)', pre: ['photoTab_source', 'photoTool_rotateFlip'], act: { tap: 'photoBtnRotate' } },
     // the sidebar's quick settings on a board WITH bricks (seat D 2026-10-09, feedback audit on seat A's loaded board:
     // a pick re-rendered the Brick panel before its stage could paint, 53-79 ms frozen with no card)
     { name: 'Sidebar quick: brick set (bricks laid)', closeEditor: true, sidebar: 'decor', act: { tap: 'brickQuick_set_4' } },
     { name: 'Sidebar quick: grout colour None (bricks laid)', sidebar: 'decor', act: { tap: 'brickQuick_groutColor_none' } },
+    // the Art tab (seat A's re-time 2026-10-09, main e6c4f35: 0.56-0.9 s with no feedback at all) -- in order, each on
+    // the last one's board: a Generate, its Undo, the Redo, a Shape Generate, its Undo
+    { name: 'Art: Lattice Generate', open: 'editorTabArtwork', pre: ['artTab_lattice'], act: { tap: 'latticeGenerate' } },
+    { name: 'Art: Undo after a Generate', act: { tap: 'editorUndo' } },
+    { name: 'Art: Redo', act: { tap: 'editorRedo' } },
+    { name: 'Art: Shape Generate', pre: ['artTab_shape'], act: { tap: 'shapeLatticeGenerate' } },
+    { name: 'Art: Undo after a Shape Generate', act: { tap: 'editorUndo' } },
   ],
 };
 export const sequential = true; // index.mjs: --parallel runs it alone, after the parallel groups
@@ -81,9 +95,11 @@ const RECORDERS = `(() => { if (window.__blindRec) return 1; window.__blindRec =
   window.__long = []; window.__shown = [];
   new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__long.push({ start: e.startTime, dur: e.duration }); }).observe({ entryTypes: ['longtask'] });
   { let was = false; const tick = () => { const v = window.__vis(); if (v && !was) window.__shown.push(performance.now()); was = v; requestAnimationFrame(tick); }; requestAnimationFrame(tick); }
-  window.__blind = async (t0, quiet) => { const W = (ms) => new Promise((r) => setTimeout(r, ms)); const tEnd = performance.now() + 30000;
-    for (;;) { await W(100); const last = window.__long.filter((e) => e.start >= t0 - 5).reduce((m, e) => Math.max(m, e.start + e.dur), t0);
-      if (performance.now() - last >= quiet || performance.now() > tEnd) break; }
+  // settled = QUIET ms with no long task since the action ENDED (this is called right after it) and no stage on screen
+  // (seat D 2026-10-09: quiet counted from t0 could end a row before its own debounced rebuild began)
+  window.__blind = async (t0, quiet) => { const W = (ms) => new Promise((r) => setTimeout(r, ms)); const t1 = performance.now(), tEnd = t1 + 30000;
+    for (;;) { await W(100); const last = window.__long.filter((e) => e.start >= t0 - 5).reduce((m, e) => Math.max(m, e.start + e.dur), t1);
+      if ((performance.now() - last >= quiet && !window.__vis()) || performance.now() > tEnd) break; }
     const tasks = window.__long.filter((e) => e.start >= t0 - 5), shown = window.__shown.find((t) => t >= t0 - 5);
     const cut = shown ?? Infinity;
     return JSON.stringify({ blindMs: Math.round(tasks.reduce((s, e) => s + Math.max(0, Math.min(e.start + e.dur, cut) - e.start), 0)),
@@ -111,6 +127,13 @@ async function doAct(a) {
   if (a.set) return js(`(() => { const e = document.getElementById(${JSON.stringify(a.set)}); if (!e) return false; e.value = String(${JSON.stringify(a.value)});
     e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
   if (a.stroke) return strokeIn(a.stroke);
+  if (a.drag) { // a slider dragged: an input per value, 120 ms apart, then the release's change
+    for (const v of a.values) {
+      if (!(await js(`(() => { const e = document.getElementById(${JSON.stringify(a.drag)}); if (!e) return false; e.value = String(${v}); e.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`))) return false;
+      await sleep(120);
+    }
+    return js(`(() => { document.getElementById(${JSON.stringify(a.drag)}).dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+  }
   return false;
 }
 
@@ -147,7 +170,7 @@ async function runBlindBudget() {
       await send('Emulation.setCPUThrottlingRate', { rate: 1 });
       const ok = !!m && m.blindMs <= budget;
       const load = ok || !m ? '' : ` -- ${loadNote(await calibrate())}`; // detection only: the verdict above is final
-      checkRow('blind', name, ok, m ? `blind ${m.blindMs} ms, card at ${m.cardMs ?? 'never'} ms, longest task ${m.longestMs} ms, tasks ${JSON.stringify(m.tasks.slice(0, 6))}${load}` : 'the action could not be done');
+      checkRow('blind', name, ok, m ? `blind ${m.blindMs} ms, card at ${m.cardMs ?? 'never'} ms, longest task ${m.longestMs} ms, ${m.tasks.length} tasks to ${m.tasks.reduce((e, [s, d]) => Math.max(e, s + d), 0)} ms, first ${JSON.stringify(m.tasks.slice(0, 6))}${load}` : 'the action could not be done');
       if (!ok) await shot(`FAIL_blind_${row.name.replace(/[^A-Za-z0-9]+/g, '_')}`);
       for (const id of row.post || []) { await tap('#' + id); await sleep(500); }
     }

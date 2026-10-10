@@ -168,3 +168,20 @@ describe('roundPolygonCorners', () => {
     expect(rounded.some((p) => Math.abs(p.x - 5) < 1e-6 && Math.abs(p.y - 0) < 1e-6)).toBe(true);
   });
 });
+
+describe('roundPolygonCorners acuteSetbackOfRightAngle (fieldstone, 2026-10-09)', () => {
+  // the setback: how far the rounded outline sits back from the sharp vertex (its nearest point to it)
+  const setback = (poly, v) => Math.min(...poly.map((p) => Math.hypot(p.x - v.x, p.y - v.y)));
+  const r = 1, rightAngle = r * (Math.SQRT2 - 1);
+  // a 45 deg corner at the origin (long edges, so the 45%-of-edge clamp stays out of it)
+  const WEDGE = [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 20 }];
+  it('an acute corner is cut back no further than a right angle of the same radius', () => {
+    expect(setback(roundPolygonCorners(WEDGE, r, 16), WEDGE[0])).toBeCloseTo(r * (1 / Math.sin(Math.PI / 8) - 1), 2); // 1.61: the full fillet
+    expect(setback(roundPolygonCorners(WEDGE, r, 16, { acuteSetbackOfRightAngle: true }), WEDGE[0])).toBeCloseTo(rightAngle, 2);
+  });
+  it('a right angle and blunter corners are rounded as before', () => {
+    expect(roundPolygonCorners(SQUARE, r, 4, { acuteSetbackOfRightAngle: true })).toEqual(roundPolygonCorners(SQUARE, r, 4));
+    const hexagon = Array.from({ length: 6 }, (_, k) => ({ x: 10 * Math.cos((k * Math.PI) / 3), y: 10 * Math.sin((k * Math.PI) / 3) })); // 120 deg corners
+    expect(roundPolygonCorners(hexagon, r, 4, { acuteSetbackOfRightAngle: true })).toEqual(roundPolygonCorners(hexagon, r, 4));
+  });
+});
