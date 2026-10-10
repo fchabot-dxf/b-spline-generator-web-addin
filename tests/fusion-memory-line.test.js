@@ -17,13 +17,17 @@ describe('the line', () => {
     expect(line().hidden).toBe(true);
   });
   it('above the soft threshold: shown, amber, the add-in\'s own words', () => {
-    paintFusionMemory({ gb: 13.4, level: 'soft', text: 'Fusion is using 13 GB: save and restart Fusion soon' });
+    paintFusionMemory({ gb: 13.4, level: 'soft', text: 'Fusion is using 13 GB: save and restart Fusion soon (closing documents does not free memory)' });
     expect(line().hidden).toBe(false);
     expect(line().dataset.level).toBe('soft');
-    expect(line().textContent).toBe('Fusion is using 13 GB: save and restart Fusion soon');
+    expect(line().textContent).toBe('Fusion is using 13 GB: save and restart Fusion soon (closing documents does not free memory)');
+  });
+  it('without the add-in\'s text, the same words (2026-10-09: closing documents does not free Fusion\'s memory, measured)', () => {
+    paintFusionMemory({ gb: 13.4, level: 'soft' });
+    expect(line().textContent).toBe('Fusion is using 13.4 GB: save and restart Fusion soon (closing documents does not free memory)');
   });
   it('above the hard threshold: red; back under it: hidden again', () => {
-    paintFusionMemory({ gb: 30, level: 'hard', text: 'Fusion is using 30 GB: save and restart Fusion soon' });
+    paintFusionMemory({ gb: 30, level: 'hard', text: 'Fusion is using 30 GB: save and restart Fusion soon (closing documents does not free memory)' });
     expect(line().dataset.level).toBe('hard');
     paintFusionMemory({ gb: 4, level: 'ok', text: '' });
     expect(line().hidden).toBe(true);

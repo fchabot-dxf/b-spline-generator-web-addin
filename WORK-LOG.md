@@ -25717,3 +25717,19 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   claude_10 close edge after: flush with the frame, the scalloped top = the rim stones, as in the app).
 - NOT changed: "stone bands barely visible" -- they ARE in the STEP (Stamped - Clean -0.22..+0.26 in over 31% of the
   grid); likely the flat green Fusion shading; a close top shot after the fix is still to take (memory stop hit).
+### 2026-10-09 (seat A): the Fusion memory line says why to restart (advisor decision (a))
+- MEASURED (two arms, tracemalloc + gc + in-process private bytes, fresh Fusions): the add-in's Python retains nothing
+  (heap < 0.6 MB, gc / adsk counts flat); Fusion itself grows ~0.55 GB per Send in one doc, and a document CLOSE adds
+  ~0.6 GB at once, ~0.4-0.5 GB still held 60 s later (+1.4 GB for a doc that took 3 Sends). Closing never frees.
+- CHANGE (wording of the existing warning, no new guard): fb_shared/fusion_memory.memory_signal's text and the palette's
+  fallback copy (fusion-memory-line.js) now read "... save and restart Fusion soon (closing documents does not free
+  memory)". Pinned: test_fusion_memory.py (the add-in's text), tests/fusion-memory-line.test.js (the add-in's words
+  shown as sent + a new pin on the fallback). Against main's text: 1 Python + 1 JS test fail.
+- Full suite 420 files, 6144/6144. Known failures: none.
+### 2026-10-09 (seat A): the Fusion memory line turns amber at 10 GB (was 12) -- advisor decision, detection only
+- fb_shared/fusion_memory.FUSION_RESTART_SOFT_GB 12 -> 10 (red stays 24). Why: seats already stop at 10 for probes;
+  Fusion hung at 18.6 GB with gate Chromes on the PC; it keeps ~0.55 GB per Send + ~0.5 GB per closed document
+  (measured today), so amber at 10 leaves room to save + restart. Wording only -- nothing is blocked.
+- Pinned in test_fusion_memory.py: (10, 24), 9.9 ok, 10.0 / 11.9 soft (11.9 was ok under 12). Fails at 12.
+  The palette's line has no threshold of its own (it paints the add-in's level): fusion-memory-line.test.js unchanged.
+- Stacked on memory-warning-why (same two files). Python fb_shared + b-spline-gen green; full suite 420 / 6144.
