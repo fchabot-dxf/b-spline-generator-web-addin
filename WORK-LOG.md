@@ -25543,6 +25543,100 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - PROOF: re-rendered locally -- scrollHeight 2030, scrollWidth 430, the finger drag moves scrollTop 0 -> 485, the check exits
   0; the old render exits 1. A tile tap still closes the mosaic and opens that shot (8 / 60). The live watcher is the
   advisor's to redeploy (not restarted here).
+### 2026-10-09 (seat E): t9-wall-corner -- an acute stone corner is rounded back no further than a right angle
+- MEASURED what left T9's constant 3.79-joint gap (7x9, every size, both stone sets, 4 presets): not the wall's last course
+  nor the clip -- the wall's corner under the stem is a clean right angle a joint off the band. It is the BAND's: the course
+  turns the corner, the two stones meeting at the seam have 45 deg corners, and fieldstone rounds each with the full fillet
+  (0.24 x the spacing, ~0.26 in), which cuts a 45 deg corner back r (1/sin 22.5 - 1) = 1.6 r vs 0.41 r for a right angle:
+  a 0.31 in pocket. Rounding factor 0.12 / 0.06 / 0 -> 3.88 / 2.73 / 1.61 joints (shots/seatE/stones/
+  t9_corner_gap_zoom_before.png / _after.png).
+- RULE (geometry.js roundPolygonCorners opts.acuteSetbackOfRightAngle; fieldstone.js CORNER_ROUNDING): an acute corner's
+  fillet radius shrinks so it is cut back no further than a right angle of the same radius; right angles and blunter
+  corners are unchanged. Opt-in: coursed-rubble (rectangles) does not pass it. Every fieldstone stone (wall and rings).
+- RESULT (1,520-lay thin-ring sweep): widest gap median 2.12 -> 1.98, worst 3.79 -> 2.77 (T5 9x12 double course); lays
+  over 3 joints 40 -> 0; 693 better, 0 worse; overlaps 0, off-outline 0. Icons: only pattern.fieldstone changed (1 of 58),
+  regenerated.
+- PINNED: tests/bricks-thin-stone-rings.test.js gap cap 4 -> 3 (T9 7x9 1 in single soldier fails on main: 3.79);
+  tests/bricks-geometry.test.js acute setback = right angle's (main 1.61 r vs 0.41 r), right angle / hexagon unchanged.
+  Fail-before: 2 fail on main's sources. Every FULL sweep: thin rings 1524/1524, gap 760, overlap 19, pattern gaps 2736,
+  seam 19, stone life 114, tip fans 608, rubble edges 304 -- all pass. Affected suites 14 files 99/99.
+### 2026-10-09 (seat A): the photo board's drag rebuild -- terrain boxFilter, byte-identical (a small gain, reported as such)
+- PROFILE (photo board, phone map): boxFilter (core/terrain.js Pass 3 smoothing) was the top self time, ~4 s over 30
+  slow actions, beside creasedNormals ~4 s.
+- FIX (bit-identical): boxFilter's X pass skips the edge clamp for interior cells; its Y pass sums whole rows into a
+  Float64 accumulator offset by offset instead of striding a column per cell. Every cell is still 0 + its window in
+  ascending order, / (2r + 1): the same doubles, the same Float32 store. A sliding-window sum would be faster but NOT
+  byte-identical (rounding), so it was not taken.
+- TEST: tests/terrain-boxfilter-identical.test.js -- generateHeightmap({ ...P, ... }) digests for 3 boards x 5 radii x
+  2 intensity/symmetry, pinned on origin/main's terrain.js (fixtures/terrain-boxfilter-digests.json); all 30 must
+  differ (a flat terrain cannot pass). My first pin used bare params -> an all-zero heightmap -> vacuous (a Float32
+  accumulator mutation passed); with the app's P defaults the same mutation FAILS it.
+- RESULT, measured honestly: desktop Node, 40 interleaved reps, the whole heightmap (141 x 181): r 1.2 25.5 -> 23.2 ms
+  (0.91), r 0.36 33.4 -> 26.5 (0.79), r 7.2 83.2 -> 70.5 (0.85); smoothing off 10.7 ms. Phone (D's tool, styles, 4x,
+  photo board, old/new/new/old in one 16-min window beside the advisor's capture Chrome): total busy over 52 actions
+  69.1 -> 65.3 s (0.945), longest-sum 0.968; the two OLD passes alone differ by up to 2x per action, so the phone
+  gain is inside the noise. The ~4 s profiler figure overstated what the box can give.
+- Full suite 414 files, 6071/6071. Known failures: none.
+### 2026-10-09 (seat A): the heights stage gets its own declared inputs -- display / thicken changes reuse the heights
+- WHY (advisor pick (b)): the photo board's Adaptive display / Colour edges / thicken / decal taps re-ran the whole
+  heightmap (noise, smoothing, stamps) though only the thicken + preview steps read those keys.
+- DECLARED: core/engine/rebuild.js HEIGHTS_INERT_KEYS (35 P keys) + heightsInputDigest (grid, photo decode state, P
+  minus both inert sets, preDelta, the editor layers + mask ids); buildHeightsReusing hands out COPIES of the cached
+  result (aliasing kept: baseHeights IS generated.heights), so a downstream in-place write can never reach the cache.
+  Item 69's whole-build skip is untouched; this sits inside the build it lets through.
+- Spacing: listed -- the heights read the grid (nx, nz, already an input), never P.spacing, so it split cleanly: a
+  spacing step that changes the grid still rebuilds (phone: spacing 0.97, as expected).
+- NOT listed, on purpose: thickness (the thicken offset drag). The strict scan finds the word in core/noise/chest.js (a
+  local variable + a tweak description), so it counts as read. Freeing it = rename that local + reword the desc, or a
+  real parser; left for a decision.
+- TESTS tests/heights-inert-keys.test.js (40): (1) completeness from the code -- the import closure of terrain.js +
+  apply-stamp-layers.js is FOLLOWED (not listed) plus rebuild.js's buildHeights/_collectStampPasses; no listed key is
+  named there (comments stripped), and no computed params[...] read exists; (2) identity -- for each of the 35 keys:
+  the change keeps heightsInputDigest (the reuse path runs) and the reused build equals a full build to the byte: the
+  REAL TerrainPreview.update on a mock this (three mocked), args + mesh position/index/colour/uv/bottom + iso curves;
+  (3) a heights input (seed) still rebuilds. Mutations: seed listed -> 3 fail; terrain.js reading params.flatShading ->
+  the scan fails; reuse ignoring the digest -> 2 fail.
+- PHONE (D's tool, styles, 4x, photo board, old/new/new/old in one 17-min window): adaptiveDisplay busy 1382 -> 415 ms
+  (0.30), longest 828 -> 260; decalEnabled 0.37; thickenEnabled 0.62; colourEdges 0.69; exportOrientation 0.61; spacing
+  0.97 and the thickness drag 1.16 unchanged (heights inputs). Total over 58 actions 0.966 (the rest are heights inputs).
+- Full suite 414 files, 6110/6110. Known failures: none.
+### 2026-10-09 (seat A): heights reuse, follow-up -- thickness freed, the scan reads code only (advisor's synthesis)
+- core/noise/chest.js: the local `thickness` -> `ribThick` (internal; heightmap-golden + noise-chest 32/32 unchanged).
+  The tweak's description text ('Overall flesh thickness ...') is untouched (Fred-visible).
+- tests/heights-inert-keys.test.js: the scan is a small tokenizer (codeOnly) -- comments, string text and regex
+  literals blanked, template ${...} code kept, and a string literal used as a key (obj['x'], 'x' in obj) KEPT as a read.
+  Own cases pin each rule; a tripwire pins the keys that dropping string text frees beyond a comments-only strip to
+  exactly ['thickness'] (a scanner bug that blanked real code would free more). The computed-read check now looks past
+  whitespace ([(?!\s*['"`])).
+- HEIGHTS_INERT_KEYS += thickness (36 keys). Mutations: terrain.js reading params['thickness'] by literal -> 2 fail;
+  chest.js's local back to `thickness` -> 2 fail; params.flatShading -> 1 fails.
+- PHONE (same rig, old/new/new/old, 17 min): adaptiveDisplay 0.21, colourEdges 0.32, thickenEnabled 0.23, decalEnabled
+  0.62; the thickness drag busy 3072 -> 1096 (0.36) but its old passes were 4894 / 1250 ms (noise), new 886 / 1305 --
+  read it as "longest task 481 -> 322 ms", not as a 3x.
+- Full suite 414 files, 6112/6112. Known failures: none.
+### 2026-10-09 (seat A): the frame step -- creasedNormals + the panel surface lookups, byte-identical (advisor (2))
+- MEASURED FIRST (in-page performance.now counters, uncommitted, restored): on the photo board the frame step
+  (applyFrameToPanel) was 29.4 of 71.4 s busy; creasedNormals only 4.6 s of it. Stages: clipPanelToOutline 11.8,
+  bars 8.5, panelSurface 2.4, fullIndex 2.1, wall 2.0, window bars 1.8, window clip 1.7.
+- NOT BUILT (advisor: skip): an x/y cut cache. My "the cut never reads z" premise was wrong for a thickened board:
+  the bottom (offsetPts) moves in x/y by up to 0.15 in with the terrain (measured, adaptive and uniform), so only a
+  per-triangle cache would be exact, worth ~40% of the clip (top-cap triangles).
+- creasedNormals: preallocated typed outputs (positions/normals Float64Array, source Int32Array, subarrays; index
+  stays an Array -- three's setIndex treats a typed array differently), and a corner whose averaged-face set equals
+  an earlier corner's (same vertex) takes that corner's new vertex: same faces, same order = the same normal, which
+  the dedupe would have matched to the same vertex (its earlier entries did not match then either).
+- panelSurface.at: candidates compared as numbers (_baryInto = baryHit's one arithmetic, baryHit now wraps it); only
+  the winning lo / hi become objects, the same object when one hit is both (as before).
+- TEST tests/creased-normals-identical.test.js, digests pinned on origin/main's frame-mesh.js: creasedNormals on the
+  bars ring + outline wall for 19 templates x 2 boards x 2 terrains, plus the inset window's bars + hole wall; and
+  panelSurface.at over a 201x201 lattice on the solid and the top-only panel (t/u/v/w/z of lo + hi, lo === hi).
+  Mutations: mask reuse ignoring the face set, Float32 outputs, hi ties (>=), never sharing lo/hi -- each FAILS.
+  (A first run of the last two passed vacuously: my test edit had not landed, and on a solid lo is never hi -- hence
+  the top-only panel.)
+- RESULT: in-process interleaved (both versions loaded, 30 reps): creasedNormals 0.73-0.77x, panelSurface + 20k
+  lookups 0.84-0.85x. Allocation-only changes elsewhere measured nothing (V8) and were reverted. Phone (same rig,
+  main/new/new/main): total busy over 49 actions 0.934 (pass totals 48.6 / 45.6 s main, 44.1 / 44.0 s new).
+- Full suite 414 files, 6071/6071. Known failures: none.
 
 ### 2026-10-09 (seat E): a windowed project loaded onto a smaller page lost every brick -- the 3D frame waits for the restore's rebuild
 - REPRODUCED (CDP, fresh profile): a 9x12 board, inset window (0, 3.6) 2.0 x 2.6, Wall + Frame laid (240 bricks), P

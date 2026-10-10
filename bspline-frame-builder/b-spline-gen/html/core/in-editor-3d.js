@@ -11,7 +11,13 @@
  *
  * Actions: 'backdrop' -- repaint the editor's backdrop (core/render-topview.js refreshEditorTopView), the change's live
  * feedback in the editor; 'rebuild' -- the full rebuild; 'profile' -- the editor's own 2D drawing only (the frame's cut
- * profile and the board outline, drawn by the caller) ; 'refresh3D' -- that plus the 3D frame (preview.refreshFrame).
+ * profile and the board outline, drawn by the caller) ; 'refresh3D' -- that plus the 3D frame (preview.refreshFrame);
+ * 'none' -- nothing now.
+ *
+ * `inEditorDrag` (Fred 2026-10-09, seat D's phone measure: a Photo blur drag repainted the backdrop on every tick, ~160 ms
+ * each at 4x CPU): a SLIDER's drag tick with the editor open does nothing to the backdrop -- the Photo panel's own preview
+ * stays live -- and the slider's release repaints it once (the panel notifies again without `drag`). A row without it
+ * acts the same on every tick. Same idea as the brick sliders' declared slow-drag rule.
  *
  * `restoring`: what the change does while applySnapshot restores P (a project load, a global undo), editor open or not.
  * The restore ends in its own rebuild, which meshes the 3D frame on the RESTORED board (preview update -> _applyFrame).
@@ -23,15 +29,16 @@
 import { isEditorOpen, isRestoring } from './history.js';
 
 export const IN_EDITOR_3D = Object.freeze({
-  photo: Object.freeze({ inEditor: 'backdrop', closed: 'rebuild' }), // the Photo tab's edits (main/photo-panel.js)
-  relief: Object.freeze({ inEditor: 'backdrop', closed: 'rebuild' }), // its relief height (P.carveZ: the backdrop shades by it)
+  photo: Object.freeze({ inEditor: 'backdrop', inEditorDrag: 'none', closed: 'rebuild' }), // the Photo tab's edits (main/photo-panel.js)
+  relief: Object.freeze({ inEditor: 'backdrop', inEditorDrag: 'none', closed: 'rebuild' }), // its relief height (P.carveZ: the backdrop shades by it)
   frame: Object.freeze({ inEditor: 'profile', closed: 'refresh3D', restoring: 'profile' }), // a frame-record write (main/frame-panel.js)
 });
 
 /** What a change of `kind` does now: its row's action during a restore (when it declares one), else for whether the
- *  editor is open. */
-export function inEditor3dAction(kind) {
+ *  editor is open (`drag`: a slider's drag tick). */
+export function inEditor3dAction(kind, { drag = false } = {}) {
   const row = IN_EDITOR_3D[kind];
   if (row.restoring && isRestoring()) return row.restoring;
-  return row[isEditorOpen() ? 'inEditor' : 'closed'];
+  if (!isEditorOpen()) return row.closed;
+  return drag && row.inEditorDrag ? row.inEditorDrag : row.inEditor;
 }

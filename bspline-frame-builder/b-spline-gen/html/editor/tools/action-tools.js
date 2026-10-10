@@ -1,4 +1,4 @@
-import { beginLoadingSequence } from '../../core/loading-signal.js';
+import { beginLoadingSequence, withLoadingStageShownFirst } from '../../core/loading-signal.js';
 import { bindClick } from '../dom.js';
 import { endEditorSession } from '../editor-text-session.js';
 import { isUnexpandable, unexpand } from '../editor-expand-commit.js';
@@ -8,8 +8,8 @@ export function registerActionTools(editor) {
   const bind = (id, fn) => bindClick(id, fn);
 
   bind('toolDelete', () => editor.deleteSelected());
-  bind('editorUndo', () => editor.undo());
-  bind('editorRedo', () => editor.redo());
+  bind('editorUndo', () => withLoadingStageShownFirst('undo', () => editor.undo()));
+  bind('editorRedo', () => withLoadingStageShownFirst('redo', () => editor.redo()));
 
   // SE2: reset zoom/pan to fit the whole board.
   bind('toolFit', () => editor.fitView());
