@@ -226,6 +226,14 @@ export function bootBuildOwner() {
  */
 export const MIGRATIONS = [
   {
+    id: 'photo-orientation',
+    // 2026-10-10 (seat A, measured; advisor: the photoMirrorMode precedent): new boards get the photo upright; a board
+    // saved with a photo before keeps its (flipped) heights byte-identical. Decided after the save is merged, like
+    // 'photo-mirror-mode' below.
+    when: (p) => p.photoOrientation == null,
+    apply: (p) => { p.photoOrientation = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'legacy-flipped' : 'upright'; },
+  },
+  {
     id: 'photo-mirror-mode',
     // 2026-10-10 (Fred): new boards mirror the photo unsqueezed; a board saved with a photo before that keeps the squeeze
     // it was made with (its heights byte-identical). Runs after the save is merged: an absent key reads as null here

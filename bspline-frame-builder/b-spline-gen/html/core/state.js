@@ -90,6 +90,11 @@ export const DEFAULT = {
     // board did it before). null = undecided: main/app-init.js MIGRATIONS 'photo-mirror-mode' decides on load -- a board
     // that already has a photo stays 'squeeze' (byte-identical), any other (a fresh one too) gets 'mirror'.
     photoMirrorMode: null,
+    // 2026-10-10 (seat A, MEASURED): the photo sat upside-down on the board (core/noise/photo.js upright). 'upright' =
+    // the photo's top at the board's top; 'legacy-flipped' = how every board did it before. null = undecided:
+    // MIGRATIONS 'photo-orientation' -- a board that already has a photo stays 'legacy-flipped' (byte-identical), any
+    // other (a fresh one too) gets 'upright'.
+    photoOrientation: null,
     // F35 item 1: the Brick tab's own common settings (core/bricks/library.js's
     // BRICK_SETS is the declared source for defaults per set -- these are the
     // user's CURRENT overrides, shared by all three tools (Brush/Wall/Frame)).
