@@ -372,4 +372,8 @@ def send_frame(design, payload, find_core_body, logger, *, resolve_template, bui
     except SendFrameError as e:
         result["error"] = str(e)
         log(f"SEND FRAME refused: {e}", "WARNING")
+    finally:
+        sync = getattr(logger, "sync", None)  # the session's one disk sync (fb_logger.DebugLogger.sync)
+        if sync:
+            sync()
     return result

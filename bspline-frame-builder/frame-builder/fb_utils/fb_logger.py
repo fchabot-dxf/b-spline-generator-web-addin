@@ -59,13 +59,21 @@ class DebugLogger:
         
         for path in self.log_paths:
             try:
-                # Open with 'a' for append, then immediately flush/sync
+                # Append + flush per line: a Python crash never loses a line. The disk sync (fsync) is once per
+                # session (sync() below) -- 2026-10-09, measured in a profiled Send: an fsync per line per path was
+                # 1,100-1,800 fsyncs, 1.2-1.9 s of every Send; it only guards against an OS crash / power loss.
                 with open(path, "a", encoding="utf-8") as f:
                     f.write(entry)
                     f.flush()
-                    try:
-                        os.fsync(f.fileno())
-                    except Exception: pass
+            except Exception:
+                pass
+
+    def sync(self):
+        """Force the log files to disk: once at the end of a session (send_frame's finally), not per line."""
+        for path in self.log_paths:
+            try:
+                with open(path, "a", encoding="utf-8") as f:
+                    os.fsync(f.fileno())
             except Exception:
                 pass
 
