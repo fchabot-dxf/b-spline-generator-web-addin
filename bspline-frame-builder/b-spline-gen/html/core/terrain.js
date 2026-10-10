@@ -46,9 +46,28 @@ export function unfoldUV(su, sv, params, sx = 1, sy = 1, mirror = false) {
   const zv = f.fy ? f.my + sy * (mirror ? sv - f.my : sv / 2) : sv;
   return { u: 0.5 + (zu - 0.5) * f.mapZoom - f.seedOffsetX, v: 0.5 + (zv - 0.5) * f.mapZoom - f.seedOffsetY };
 }
-/** The photo layer's mirror mode as the sampler reads it: 'mirror' only when declared so; anything else (an older
- *  board, a params object without the key) is the legacy 'squeeze' (core/state.js photoMirrorMode). */
-export const photoMirrors = (params) => params.photoMirrorMode === 'mirror';
+/** The photo layer under Symmetry, one row per P.photoMirrorMode (core/state.js):
+ *  `coords` -- which fold the photo samples: 'fold' (su / sv, the x2 fold) or 'mirror' (mu / mv, the true mirror);
+ *  `halfAspect` -- the photo is cover-fitted to the SOURCE half (its own proportions), not to the whole board.
+ *  'squeeze': the whole photo squeezed into each half (every board before 2026-10-10; byte-identical).
+ *  'mirror': the photo placed over the whole board, its source half kept and mirrored (boards saved 2026-10-10).
+ *  'whole' (Fred, 2026-10-10: "the symmetry should still sample the whole image ... it would simply extend toward the
+ *  axis side with the mirror"): the WHOLE photo, unsqueezed, on the source half; the mirror reflects it across the axis.
+ *  A params object without the key (or an unknown value) reads as 'squeeze'. */
+export const PHOTO_MIRROR_MODES = Object.freeze({
+  squeeze: Object.freeze({ coords: 'fold', halfAspect: false }),
+  mirror: Object.freeze({ coords: 'mirror', halfAspect: false }),
+  whole: Object.freeze({ coords: 'fold', halfAspect: true }),
+});
+export const photoMirrorModeOf = (params) => PHOTO_MIRROR_MODES[params.photoMirrorMode] || PHOTO_MIRROR_MODES.squeeze;
+/** True when the photo samples the true-mirror coordinates (mu / mv). */
+export const photoMirrors = (params) => photoMirrorModeOf(params).coords === 'mirror';
+/** The aspect the photo's sample space has: the board's, or the source half's ('whole': a fold spans half an axis). */
+export function photoSampleAspect(params, aspect) {
+  if (!photoMirrorModeOf(params).halfAspect) return aspect;
+  const f = foldSpecOf(params);
+  return aspect * (f.fx ? 0.5 : 1) / (f.fy ? 0.5 : 1);
+}
 
 /**
  * Generate a flat Float32Array[nz × nx] of heights in inches.
@@ -114,6 +133,7 @@ export function generateHeightmap(params, stampParams = null) {
 
   const folded = { zu: 0, zv: 0, su: 0, sv: 0, mu: 0, mv: 0 }; // foldUV's output, one object for the whole heightmap
   const photoMirror = photoLayer && photoMirrors(params); // the photo's true mirror (no squeeze), when declared
+  const photoAspect = photoLayer ? photoSampleAspect(params, aspect) : aspect; // 'whole': the source half's own proportions
 
   // ── Pass 1 + 2: fine detail & coarse redistribution ───────────────────────
   for (let j = 0; j < nz; j++) {
@@ -153,7 +173,7 @@ export function generateHeightmap(params, stampParams = null) {
         noiseRefs.rawU = u; noiseRefs.rawV = v;
         let fine;
         if (photoLayer) {
-            fine = photoMirror ? NoiseModes.photo(folded.mu, folded.mv, aspect, photoParams, noiseRefs) : NoiseModes.photo(su, sv, aspect, photoParams, noiseRefs);
+            fine = photoMirror ? NoiseModes.photo(folded.mu, folded.mv, photoAspect, photoParams, noiseRefs) : NoiseModes.photo(su, sv, photoAspect, photoParams, noiseRefs);
             if (filterShare > 0) fine += ((modeFunc(su, sv, aspect, modeParams, noiseRefs) - rangeLo) / rangeSpan - 0.5) * filterShare;
         } else {
             fine = modeFunc(su, sv, aspect, modeParams, noiseRefs);

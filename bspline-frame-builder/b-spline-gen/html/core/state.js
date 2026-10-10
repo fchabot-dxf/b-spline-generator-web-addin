@@ -85,10 +85,10 @@ export const DEFAULT = {
     // migrated to the layer: main/app-init.js MIGRATIONS 'photo-filter-to-layer'). Heights inputs: core/terrain.js.
     photoLayer: false,
     photoFilterAmount: 0,
-    // 2026-10-10 (Fred: "the photo shouldn't be squeezed by default"): with Symmetry on, 'mirror' = the photo keeps its
-    // proportions and the far side is its true mirror; 'squeeze' = the whole photo fitted into each half (how every
-    // board did it before). null = undecided: main/app-init.js MIGRATIONS 'photo-mirror-mode' decides on load -- a board
-    // that already has a photo stays 'squeeze' (byte-identical), any other (a fresh one too) gets 'mirror'.
+    // 2026-10-10 (Fred): the photo under Symmetry -- core/terrain.js PHOTO_MIRROR_MODES: 'whole' (new boards: the whole
+    // photo, unsqueezed, on the source half, mirrored across the axis), 'mirror' (boards saved with it that day),
+    // 'squeeze' (every board before). null = undecided: main/app-init.js MIGRATIONS 'photo-mirror-mode' decides on load --
+    // a board that already has a photo stays 'squeeze' (byte-identical), any other (a fresh one too) gets 'whole'.
     photoMirrorMode: null,
     // 2026-10-10 (seat A, MEASURED): the photo sat upside-down on the board (core/noise/photo.js upright). 'upright' =
     // the photo's top at the board's top; 'legacy-flipped' = how every board did it before. null = undecided:

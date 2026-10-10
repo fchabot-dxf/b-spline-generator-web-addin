@@ -239,7 +239,8 @@ export const MIGRATIONS = [
     // it was made with (its heights byte-identical). Runs after the save is merged: an absent key reads as null here
     // (core/state.js DEFAULT), so `photo` is judged on the merged board.
     when: (p) => p.photoMirrorMode == null,
-    apply: (p) => { p.photoMirrorMode = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'squeeze' : 'mirror'; },
+    // 'whole' since Fred's second pick (2026-10-10); a board saved with 'mirror' keeps it (the key is set, so `when` skips it)
+    apply: (p) => { p.photoMirrorMode = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'squeeze' : 'whole'; },
   },
   {
     id: 'photo-filter-to-layer',
