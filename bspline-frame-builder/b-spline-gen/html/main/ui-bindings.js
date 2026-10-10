@@ -11,6 +11,14 @@ import { scheduleUndoSnapshot } from '../core/history.js';
 import { attachSliderScrollGuard } from './slider-scroll-guard.js';
 import { attachFormulaFields } from './formula-fields.js';
 import { initDecalSettingsUI } from './decal-settings-ui.js';
+import { withLoadingStageShownFirst } from '../core/loading-signal.js';
+
+/** A sidebar param whose apply does heavy sync work in the gesture itself: its declared loading stage is on screen
+ *  first, then the apply runs (core/loading-signal.js). Seat A's re-time 2026-10-09 + seat D's phone audit (390 px,
+ *  CPU x4, a board with bricks laid): a board width / height nudge ran its apply -- the grid change starts the mask
+ *  refresh, which serialises every carved layer's SVG -- 55-85 ms in the tap, before the 'frame' card. A field being
+ *  typed in is never written back (syncUItoParam skips the focused input), so the deferred apply cannot fight typing. */
+export const PARAM_STAGES = Object.freeze({ widthIn: 'frame', heightIn: 'frame' });
 
 export function bindControls(preview) {
   // UX-UNDO: the layer row's 👁/3D/palette toggles (editor/layers.js —
@@ -37,7 +45,8 @@ export function bindControls(preview) {
     if (el.type === 'checkbox') type = 'checkbox';
     if (el.type === 'text') type = 'string';
 
-    bind(inputId, type, v => applyParam(key, v));
+    const stage = PARAM_STAGES[key];
+    bind(inputId, type, stage ? (v => withLoadingStageShownFirst(stage, () => applyParam(key, v))) : (v => applyParam(key, v)));
   });
 
   Object.keys(SLIDER_PAIRS).forEach(key => {

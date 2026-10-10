@@ -38,6 +38,9 @@ export const BLIND_BUDGET = {
     // a pick re-rendered the Brick panel before its stage could paint, 53-79 ms frozen with no card)
     { name: 'Sidebar quick: brick set (bricks laid)', closeEditor: true, sidebar: 'decor', act: { tap: 'brickQuick_set_4' } },
     { name: 'Sidebar quick: grout colour None (bricks laid)', sidebar: 'decor', act: { tap: 'brickQuick_groutColor_none' } },
+    // seat A's re-time 2026-10-09 (loaded board): the size nudge's apply serialised every carved layer in the tap, 55-85 ms
+    // before the 'frame' card -- main/ui-bindings.js PARAM_STAGES
+    { name: 'Board width change (bricks laid)', sidebar: 'board', act: { set: 'widthIn', value: 7.5 } },
   ],
 };
 export const sequential = true; // index.mjs: --parallel runs it alone, after the parallel groups
