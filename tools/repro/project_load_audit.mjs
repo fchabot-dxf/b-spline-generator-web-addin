@@ -37,12 +37,15 @@ let ws;
 for (let i = 0; i < 50 && !ws; i++) { await sleep(200); try { const u = (await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json()).find((t) => t.type === 'page')?.webSocketDebuggerUrl; if (u) ws = new WebSocket(u); } catch { /* not up */ } }
 if (!ws) { console.log('NO CDP'); stop(); process.exit(1); }
 await new Promise((r) => ws.addEventListener('open', r));
-let id = 0; const pend = new Map(), errors = [], cssFails = [];
+let id = 0; const pend = new Map(), errors = [], cssFails = [], dialogs = [];
 ws.addEventListener('message', (ev) => {
   const m = JSON.parse(ev.data);
   if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); return; }
   if (m.method === 'Runtime.exceptionThrown') errors.push((m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text).split('\n')[0]);
   if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') errors.push('console.error: ' + m.params.args.map((a) => a.value ?? a.description ?? '').join(' ').split('\n')[0].slice(0, 200));
+  // the app's unsaved-changes prompt (beforeunload) after an edited project: a fresh page's navigation must not sit on
+  // it (MEASURED 2026-10-10: the 2nd project's load hung the whole run -- every evaluate waits behind an open dialog)
+  if (m.method === 'Page.javascriptDialogOpening') { dialogs.push(m.params.type); send('Page.handleJavaScriptDialog', { accept: true }); }
   if (m.method === 'Network.responseReceived' && m.params.response.status >= 400 && /[.]css([?#]|$)/.test(m.params.response.url)) cssFails.push(m.params.response.url);
 });
 const send = (method, params = {}) => new Promise((r) => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
@@ -141,6 +144,9 @@ const CHECK = `(async () => {
     template: St.P.frame?.templateId || null, size: St.P.widthIn + 'x' + St.P.heightIn, filter: St.P.noiseType, z: St.P.carveZ }); })()`;
 
 const rows = [];
+// a step that never returns (a hung page) shows WHERE: each step announces itself first (stderr, unbuffered)
+const progress = (name, step) => process.stderr.write(`  ... ${name}: ${step} ${new Date().toISOString().slice(11, 19)}
+`);
 try {
   await send('Runtime.enable'); await send('Page.enable'); await send('Network.enable');
   await send('Network.setCacheDisabled', { cacheDisabled: true });
@@ -155,17 +161,22 @@ try {
     try {
       if (MODE === 'fresh') await bootPage();
       await js(`window.__snapText = ${JSON.stringify(text)}; 1`);
+      progress(name, 'load');
       const load = await measure(() => js(LOAD));
+      progress(name, 'check');
       const check = await jsJSON(CHECK);
       const shot = await send('Page.captureScreenshot', { format: 'png' });
       if (shot.result?.data) writeFileSync(`${OUT}/${MODE}_${name}.png`, Buffer.from(shot.result.data, 'base64'));
       // the first edits: open the editor, one Generate, Apply
       const kind = check.bricks[0] > 0 ? 'brick' : check.lattice[0] > 0 ? 'lattice' : 'frame';
+      progress(name, 'open');
       const open = await measure(() => tap('#viewMode_2d')); // the phone's way in: the 2D / 3D toggle on the preview
       await sleep(500);
       const pre = { brick: ['#editorTabBrick'], lattice: ['#editorTabArtwork', '#artTab_lattice'], frame: ['#editorTabFrame'] }[kind];
       for (const s of pre) { await tap(s); await sleep(900); }
+      progress(name, 'generate ' + kind);
       const gen = await measure(() => tap({ brick: '#brickGenerate', lattice: '#latticeGenerate', frame: '#editorFrameGenerate' }[kind]));
+      progress(name, 'apply');
       const apply = await measure(() => tap('#viewMode_3d_editor')); // back to 3D: the Apply way when anything changed
       const row = { name, mode: MODE, bytes: text.length, load, check, kind, open, gen, apply };
       rows.push(row); writeFileSync(`${OUT}/${MODE}.jsonl`, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
@@ -176,5 +187,6 @@ try {
     } catch (e) { console.log(`${name.padEnd(10)} ERROR ${e.message}`); rows.push({ name, mode: MODE, error: e.message }); }
   }
 } finally { stop(); }
+console.log('dialogs accepted', dialogs.length, JSON.stringify([...new Set(dialogs)]));
 console.log('page errors', errors.length, JSON.stringify([...new Set(errors)].slice(0, 12)));
 process.exit(0);
