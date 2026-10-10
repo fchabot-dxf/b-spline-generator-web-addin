@@ -2958,7 +2958,7 @@
             </div>
 
             <canvas id="photoPreviewCanvas" width="220" height="160" class="photo-preview-canvas"></canvas>
-            <div style="font-size:10px; opacity:0.6; text-align:center; margin:-4px 0 12px;">dimmed = mirrored by Symmetry, not sampled directly</div>
+            <div id="photoPreviewCaption" style="font-size:10px; opacity:0.6; text-align:center; margin:-4px 0 12px;">dimmed = mirrored by Symmetry, not sampled directly</div>
 
             <div id="photoToolSection_crop" style="display:none;">
               <label class="cad-label">Crop (%)</label>
@@ -2968,7 +2968,7 @@
                 <input type="number" id="photoCropW" value="100" min="1" max="100" step="1" title="Width">
                 <input type="number" id="photoCropH" value="100" min="1" max="100" step="1" title="Height">
               </div>
-              <button type="button" id="photoBtnApplyCrop" class="cad-btn" style="width:100%; margin-bottom:14px;">Apply Crop</button>
+              <button type="button" id="photoBtnResetCrop" class="cad-btn" style="width:100%; margin-bottom:14px;" title="Back to the whole photo (the original is always kept)">Reset crop (full image)</button>
             </div>
 
             <div id="photoToolSection_straighten" style="display:none;">
