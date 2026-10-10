@@ -794,3 +794,4 @@ aside {
 .photo-layer-group-note { font-weight: 400; opacity: 0.8; }
 .photo-layer-buttons { display: flex; gap: 6px; margin-bottom: 10px; }
 .photo-layer-buttons .cad-btn { flex: 1; min-height: 32px; }
+.photo-layer-needs-on { opacity: 0.45; } /* the layer is off: photo-only controls greyed (photo-layer-section.js needsLayer) */
