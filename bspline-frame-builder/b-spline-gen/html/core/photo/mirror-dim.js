@@ -12,7 +12,7 @@
  * exact arithmetic the sampler reads with), and a cell of the photo is "used" when any board point lands in it.
  */
 import { photoPixelAt } from '../noise/photo.js';
-import { foldUV, photoMirrors } from '../terrain.js';
+import { foldUV, photoMirrors, photoSampleAspect } from '../terrain.js';
 
 /** Pure: a cellsW x cellsH grid over the (processed) photo `img`, 1 where the terrain samples it, 0 where no board
  *  point lands. `params` = the sampler's own ({ ...P, tweaks: P.filterTweaks.photo }: the fold's Symmetry / Map Zoom /
@@ -28,11 +28,12 @@ export function photoUsedCells(img, params, aspect, cellsW, cellsH) {
   const nu = Math.max(2, Math.round(n * Math.max(1, aspect))), nv = Math.max(2, Math.round(n / Math.min(1, aspect)));
   const f = {};
   const mirror = photoMirrors(params); // seat A / Fred 2026-10-10: a new board's photo is a TRUE mirror (mu, mv), an old one squeezed (su, sv)
+  const pa = photoSampleAspect(params, aspect); // the photo's own sample aspect, as terrain.js reads it ('whole': the source half)
   for (let j = 0; j < nv; j++) {
     const v = j / (nv - 1); // the board grid as terrain.js walks it: its EDGES included (an offset photo clamps them)
     for (let i = 0; i < nu; i++) {
       foldUV(i / (nu - 1), v, params, f);
-      const k = mirror ? photoPixelAt(f.mu, f.mv, aspect, params, img) : photoPixelAt(f.su, f.sv, aspect, params, img);
+      const k = mirror ? photoPixelAt(f.mu, f.mv, pa, params, img) : photoPixelAt(f.su, f.sv, pa, params, img);
       if (k < 0) continue;
       const x = k % img.w, y = (k - x) / img.w;
       cells[Math.floor((y * cellsH) / img.h) * cellsW + Math.floor((x * cellsW) / img.w)] = 1;
@@ -49,6 +50,7 @@ export function photoAxisLines(img, params, aspect, steps = 64) {
   if (!img || !img.w || !img.h) return [];
   const sym = params?.symmetry || 'none';
   const mirror = photoMirrors(params);
+  const pa = photoSampleAspect(params, aspect);
   const zoom = params?.mapZoom || 1;
   const boardAt = (axisFrac, off) => (axisFrac - 0.5) * zoom + 0.5 - (off || 0); // the board fraction whose zu / zv is the axis
   const lines = [];
@@ -58,7 +60,7 @@ export function photoAxisLines(img, params, aspect, steps = 64) {
     for (let k = 0; k <= steps; k++) {
       const t = k / steps;
       foldUV(axis === 'x' ? ux : t, axis === 'x' ? t : vy, params, f);
-      const idx = mirror ? photoPixelAt(f.mu, f.mv, aspect, params, img) : photoPixelAt(f.su, f.sv, aspect, params, img);
+      const idx = mirror ? photoPixelAt(f.mu, f.mv, pa, params, img) : photoPixelAt(f.su, f.sv, pa, params, img);
       if (idx < 0) continue;
       const x = idx % img.w;
       pts.push([x + 0.5, (idx - x) / img.w + 0.5]);

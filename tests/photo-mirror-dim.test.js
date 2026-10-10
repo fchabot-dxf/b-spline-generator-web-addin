@@ -53,6 +53,12 @@ const CASES = {
   'mirror mode, radial': { symmetry: 'radial', photoMirrorMode: 'mirror' },
   'mirror mode, X, axis +0.15': { symmetry: 'x', symOffsetX: 0.15, photoMirrorMode: 'mirror' },
   'mirror mode, X, rotation 30': { symmetry: 'x', photoMirrorMode: 'mirror', tweaks: { rotation: 30 } },
+  // 'whole' (seat A / Fred): the whole photo, unsqueezed, on the source half -- sampled at the half's own aspect
+  // (terrain.js photoSampleAspect)
+  'whole mode, X': { symmetry: 'x', photoMirrorMode: 'whole' },
+  'whole mode, Y': { symmetry: 'y', photoMirrorMode: 'whole' },
+  'whole mode, radial': { symmetry: 'radial', photoMirrorMode: 'whole' },
+  'whole mode, X, axis +0.15': { symmetry: 'x', symOffsetX: 0.15, photoMirrorMode: 'whole' },
 };
 
 describe('photoUsedCells: dims exactly what the terrain never samples (vs the real generator)', () => {
