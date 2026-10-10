@@ -16,10 +16,11 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.
 });
 
 import {
-  scheduleRebuild, isRebuildScheduled, openRebuildHold, joinRebuildHold, isRebuildHeld, REBUILD_HOLD_BACKSTOP_MS,
+  scheduleRebuild, isRebuildScheduled, openRebuildHold, joinRebuildHold, isRebuildHeld, deferToHold, REBUILD_HOLD_BACKSTOP_MS,
 } from '../bspline-frame-builder/b-spline-gen/html/core/engine/scheduler.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { STOCK_CHANGE_STAGES } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
+import { STOCK_CHANGE_STAGES, STOCK_CHANGE_DEFERS } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
+import { refreshAllStampMasks } from '../bspline-frame-builder/b-spline-gen/html/main/stamp-mask-manager.js';
 
 const HTML = join(__dirname, '../bspline-frame-builder/b-spline-gen/html');
 
@@ -90,6 +91,78 @@ describe('the rebuild hold (scheduler)', () => {
     closeC();
     vi.advanceTimersByTime(REBUILD_HOLD_BACKSTOP_MS + 100);
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('declared deferred work: only the LATEST fn per key runs, once, at the release, then the build owed', async () => {
+    const order = [];
+    const build = vi.fn(() => order.push('build'));
+    openRebuildHold(['a'], { defers: ['masks'] });
+    const close = joinRebuildHold('a');
+    expect(deferToHold('masks', () => order.push('masks 1'))).toBe(true);
+    scheduleRebuild(build, 0);
+    // async, as the real pass is (rasterizing): the build owed must wait for it, or the nudge builds twice
+    expect(deferToHold('masks', async () => { await new Promise((r) => setTimeout(r, 30)); order.push('masks 2'); scheduleRebuild(build, 50); })).toBe(true);
+    expect(deferToHold('not-declared', () => order.push('x'))).toBe(false);
+    expect(isRebuildScheduled()).toBe(true);
+    vi.advanceTimersByTime(500);
+    expect(order).toEqual([]);
+    close();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(order).toEqual(['masks 2', 'build']); // one build: the masks' own and the owed one collapse
+    expect(isRebuildScheduled()).toBe(false);
+  });
+
+  it('supersededByBuild work is DROPPED when the hold ends in a build (the build redoes it) ...', async () => {
+    const frame = vi.fn(), build = vi.fn();
+    openRebuildHold(['a'], { defers: ['masks', 'frame'] });
+    const close = joinRebuildHold('a');
+    deferToHold('frame', frame, { supersededByBuild: true });
+    deferToHold('masks', () => scheduleRebuild(build, 50)); // the masks pass schedules the build
+    close();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(build).toHaveBeenCalledTimes(1);
+    expect(frame).not.toHaveBeenCalled();
+  });
+
+  it('... and RUN when no build follows', () => {
+    const frame = vi.fn();
+    openRebuildHold(['a'], { defers: ['frame'] });
+    const close = joinRebuildHold('a');
+    deferToHold('frame', frame, { supersededByBuild: true });
+    close();
+    expect(frame).toHaveBeenCalledTimes(1);
+  });
+
+  it('deferred work alone counts as a build to come (whenRebuildIdle: Send / export wait for it), until it has run', async () => {
+    openRebuildHold(['a'], { defers: ['masks'] });
+    const close = joinRebuildHold('a');
+    expect(isRebuildScheduled()).toBe(false);
+    deferToHold('masks', async () => { await new Promise((r) => setTimeout(r, 30)); });
+    expect(isRebuildScheduled()).toBe(true);
+    close();
+    expect(isRebuildScheduled()).toBe(true); // released, its work still running
+    await vi.advanceTimersByTimeAsync(100);
+    expect(isRebuildScheduled()).toBe(false);
+  });
+
+  it('the stamp masks: a refresh while a size change holds the 3D waits for its end (main/stamp-mask-manager.js)', async () => {
+    window.svgEditor = null; // no layers: the pass itself is instant, its 'stampMaskUpdated' says it ran
+    const ran = vi.fn();
+    document.addEventListener('stampMaskUpdated', ran);
+    try {
+      openRebuildHold(['a'], { defers: STOCK_CHANGE_DEFERS });
+      const close = joinRebuildHold('a');
+      await refreshAllStampMasks(4, 4, null, () => {});
+      await refreshAllStampMasks(4, 4, null, () => {});
+      expect(ran).not.toHaveBeenCalled();
+      close();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(ran).toHaveBeenCalledTimes(1);
+    } finally { document.removeEventListener('stampMaskUpdated', ran); }
+  });
+
+  it('no hold: deferToHold refuses, the caller runs the work now', () => {
+    expect(deferToHold('masks', () => {})).toBe(false);
   });
 
   it('no hold, or a stage the hold did not declare: join is a no-op and builds run as before', () => {
@@ -176,5 +249,8 @@ describe('a board size change holds the 3D (main/app-init.js)', () => {
     const joined = new Set();
     for (const f of files) for (const m of readFileSync(f, 'utf8').matchAll(/joinRebuildHold\('([^']+)'\)/g)) joined.add(m[1]);
     expect([...joined].sort()).toEqual([...STOCK_CHANGE_STAGES].sort());
+    const deferred = new Set();
+    for (const f of files) for (const m of readFileSync(f, 'utf8').matchAll(/deferToHold\('([^']+)'/g)) deferred.add(m[1]);
+    expect([...deferred].sort()).toEqual([...STOCK_CHANGE_DEFERS].sort());
   });
 });
