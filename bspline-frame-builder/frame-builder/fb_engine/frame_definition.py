@@ -103,8 +103,11 @@ COMMON_FRAME_FEATURES = (
      "start": FRAME_BOTTOM_PARAM, "extent": {"toFace": "core.underside", "offset": "0 in"},
      "taper": "0 deg",
      "bodyNames": ["frame_top", "frame_right", "frame_bottom", "frame_left"]},
+    # 2026-10-09 (seat A, measured live: Fred's "edge not good"): the thickened panel's underside dips BELOW the
+    # sketch plane (z 0) -- a one-sided through-all left every bit of panel under it outside the outline (a deck over
+    # the waist notch, a lip over the frame, claude_10's sawtooth). Both sides: nothing outside survives.
     {"id": "trim", "op": "cut", "region": "surround-minus-outline", "start": "0 in",
-     "extent": "throughAll", "taper": "0 deg"},
+     "extent": "throughAllBothSides", "taper": "0 deg"},
 )
 
 # T82 item 6: the inset window's own bars + hole cut (fb_engine/inset_window.py). Appended UNCONDITIONALLY
@@ -119,7 +122,7 @@ WINDOW_BARS_FEATURE = {
 }
 WINDOW_CUT_FEATURE = {
     "id": "window_cut", "op": "cut", "region": "window-hole", "start": "0 in",
-    "extent": "throughAll", "taper": "0 deg",
+    "extent": "throughAllBothSides", "taper": "0 deg",  # the same reason as the trim: a hole THROUGH the panel
 }
 
 

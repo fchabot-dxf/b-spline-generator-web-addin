@@ -11,7 +11,7 @@ import { renderTabStrip } from '../editor/tab-strip.js';
 
 export const SIDEBAR_TABS = Object.freeze([
   Object.freeze({ id: 'board', label: 'Board', sections: Object.freeze(['panel-stock', 'panel-frame']) }),
-  Object.freeze({ id: 'surface', label: 'Surface', sections: Object.freeze(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-thicken', 'panel-sculpt-bot']) }),
+  Object.freeze({ id: 'surface', label: 'Surface', sections: Object.freeze(['panel-skeleton', 'panel-filter', 'panel-photo', 'panel-sculpt-top', 'panel-thicken', 'panel-sculpt-bot']) }),
   Object.freeze({ id: 'decor', label: 'Decor', sections: Object.freeze(['panel-brick', 'panel-stamp']) }),
   Object.freeze({ id: 'output', label: 'Output', sections: Object.freeze(['panel-view', 'panel-export', 'panel-resolution']) }),
 ]);

@@ -21,6 +21,9 @@
 export const id = 'silk';
 export const label = 'Draped Silk';
 export const cMultiplier = 2.5;
+// the photo layer's "Filter shows through" normalises this filter's output by its declared span (core/terrain.js):
+// MEASURED 2026-10-10 (seat A), default tweaks, 8 seeds x 7x9 / 9x12 / 12x9 boards, the 0.5 / 99.5 percentiles.
+export const nominalRange = [0.19, 0.63];
 
 export const tweaks = [
   { key: 'foldSpacing', label: 'Fold Spacing', default: 1.0,  min: 0.5, max: 2.5, step: 0.05, desc: 'Higher = folds spaced farther apart' },

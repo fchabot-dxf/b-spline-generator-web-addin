@@ -1,3 +1,4 @@
+import { shaderChecksOn } from '../render-debug.js';
 /** The cube's size per primary pointer (Fred 2026-10-09): on a phone the 160 px cube covered ~28% of the 3D view
  *  (seat D's measure, 390 px wide) -- a coarse pointer gets a smaller one; taps still snap the view. A mouse keeps 160. */
 export const VIEW_CUBE_PX = Object.freeze({ fine: 160, coarse: 96 });
@@ -24,6 +25,7 @@ class ViewCube {
       antialias: true,
       alpha: true
     });
+    this._renderer.debug.checkShaderErrors = shaderChecksOn(); // dev hosts / ?debug only (core/render-debug.js)
     this._renderer.setPixelRatio(window.devicePixelRatio);
     this._renderer.setSize(this._size, this._size);
 

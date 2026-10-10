@@ -5,6 +5,9 @@
 export const id = 'hetero';
 export const label = 'Fibrous Grain';
 export const cMultiplier = 3.7;
+// the photo layer's "Filter shows through" normalises this filter's output by its declared span (core/terrain.js):
+// MEASURED 2026-10-10 (seat A), default tweaks, 8 seeds x 7x9 / 9x12 / 12x9 boards, the 0.5 / 99.5 percentiles.
+export const nominalRange = [0.2, 0.66];
 
 export const tweaks = [
   { key: 'patchThreshold', label: 'Patch Threshold', default: 0.45, min: 0.20, max: 0.70,  step: 0.01, desc: 'Higher = sparser detail patches' },

@@ -26,6 +26,7 @@ import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
 import { setEditorTab as switchEditorTab, getEditorTab } from './editor-tabs.js';
 import { AppState } from './app-state.js';
+import { deferToHold } from '../core/engine/scheduler.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../editor/frame-handles.js';
 import { nextSeed } from '../editor/editor-lattice-pattern.js';
 import { frameCutProfile, frameGenerateIsValid, frameInnerProfile, frameMiters, miterStaysInsideWood, outlineHasUndercut, mitersCollide, blankWidthIn, formatBlankWidthIn } from '../editor/editor-frame-profile.js';
@@ -354,7 +355,11 @@ export function syncFramePanel() {
   if (typeof window !== 'undefined' && window.svgEditor) drawFrameProfile(window.svgEditor);
   // F7: the 3D trimmed panel + wood bars, live -- not while the editor is open (core/in-editor-3d.js 'frame': the
   // 2D profile above is its live view there; the 3D frame is applied when the session ends)
-  if (inEditor3dAction('frame') === 'refresh3D') AppState.preview?.refreshFrame?.();
+  if (inEditor3dAction('frame') === 'refresh3D') {
+    // a board size change holding the 3D (main/app-init.js STOCK_CHANGE_DEFERS): its build applies the frame itself
+    const refresh = () => AppState.preview?.refreshFrame?.();
+    if (!deferToHold('frame-3d', refresh, { supersededByBuild: true })) refresh();
+  }
 }
 
 /**

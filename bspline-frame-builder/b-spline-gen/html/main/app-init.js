@@ -4,7 +4,8 @@ import { NoiseModes } from '../core/noise/index.js';
 import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { rebuild, whenRebuildIdle } from '../core/engine.js';
-import { beginLoadingSequence } from '../core/loading-signal.js';
+import { beginLoadingSequence, withLoadingStage } from '../core/loading-signal.js';
+import { openRebuildHold, joinRebuildHold, isRebuildHeld, deferToHold } from '../core/engine/scheduler.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateGlobalButtons, takeSnapshot, globalHistoryLog, setUndoRestoring, isEditorOpen, ensureUndoBaseline } from '../core/history.js';
 import { AppState } from './app-state.js';
@@ -110,6 +111,19 @@ export const CHANGE_PIPELINE = {
     tooling: ['serialize', 'persist'],
 };
 
+/** 2026-10-10 (seat A, advisor: one correct update behind the loading stage, never a wrong intermediate one): a board
+ *  size change (the sidebar, or an undo / redo of it) is ONE 3D build. Its stages, declared once -- each joins the
+ *  rebuild hold (core/engine/scheduler.js) when it starts and closes when done; the build runs after the last:
+ *  'editor-resync' (_resyncEditorToStock, below), 'brick-relay' (main/brick-panel.js, the re-lay on the new board),
+ *  'change-pipeline' (every editor onChange that runs meanwhile, its remask included). */
+export const STOCK_CHANGE_STAGES = ['editor-resync', 'brick-relay', 'change-pipeline'];
+/** ...and the work it postpones to its end (deferToHold). MEASURED (phone rig, CPU 4, loaded board):
+ *  'stamp-masks': three mask passes per nudge -- the param's own on the OLD editor (2.1 s wall), the resync's, the
+ *  re-lay's -- and only the last one's masks reach the build; deferred, the latest pass runs once, on the final editor.
+ *  'frame-3d': the Frame panel's sync re-meshed the 3D frame on the OLD terrain (~0.6 s) before the build applies the
+ *  frame again on the new one -- dropped when the hold ends in a build (supersededByBuild). */
+export const STOCK_CHANGE_DEFERS = ['stamp-masks', 'frame-3d'];
+
 /**
  * F35 item 18 (4), the editor's STATIC backdrop (Fred: the editor loads fast, Apply builds the 3D):
  * the SAME table for a change made while the SVG editor is OPEN (core/history.js isEditorOpen) -- no
@@ -211,6 +225,20 @@ export function bootBuildOwner() {
  * applySnapshot too) is a no-op once a migration's own `when` stops matching.
  */
 export const MIGRATIONS = [
+  {
+    id: 'photo-filter-to-layer',
+    // 2026-10-10 (Fred: the photo as its own LAYER on top of the chosen filter): a save on the old Photo FILTER becomes
+    // the photo layer over a plain filter, showing through at 0 % -- the SAME heights: at 0 % the fine value is the
+    // photo's own (core/terrain.js), and 'simplex' has the photo's coarse multiplier (2.5). A save that hid the filter
+    // texture showed no photo at all (isolateSkeleton flattened it): its layer stays off. The photo's own settings
+    // (photoImageDataUrl, photoEdits, filterTweaks.photo) stay where they are.
+    when: (p) => p.noiseType === 'photo',
+    apply: (p) => {
+      p.noiseType = 'simplex';
+      p.photoLayer = !p.isolateSkeleton;
+      p.photoFilterAmount = 0;
+    },
+  },
   {
     id: 'removed-noise-type-to-default',
     // T78 item 10 (Fred: "Remove the filter"): the Biomechanical filter was
@@ -722,6 +750,7 @@ export async function refreshDrape(preview) {
  * Debounced: a stepper burst resyncs once. With the editor open, its own open/Apply handles it.
  */
 let _stockResyncTimer = null;
+let _resyncHoldClose = null; // the 'editor-resync' stage's close while a resync is pending
 /** The editor follows the board (stockSizeChanged). 2026-10-07 (seat A, measured): at phone width the sidebar's board
  *  size stays reachable WHILE the editor is open -- this used to skip the open editor, which then kept the old board
  *  (outline, grid, the SVG download's size, the Shape Lattice's extent, the bricks' board) until it was reopened. An
@@ -730,11 +759,27 @@ let _stockResyncTimer = null;
  *  -- what else depends on the board inside the editor follows THAT (the Brick re-lay, main/brick-panel.js), so it
  *  always runs on the new size. */
 function _resyncEditorToStock() {
-  const ed = window.svgEditor;
-  if (!ed || !ed._draw) return;
-  if (ed._mW === P.widthIn && ed._mH === P.heightIn) return;
+  const close = _resyncHoldClose;
+  _resyncHoldClose = null;
+  try { _resyncEditorToStockNow(); } finally { if (close) close(); } // every exit closes the stage
+}
+const _editorModalOpen = () => {
   const modal = document.getElementById('svgEditorModal');
-  const editorOpen = !!(modal && modal.style.display && modal.style.display !== 'none');
+  return !!(modal && modal.style.display && modal.style.display !== 'none');
+};
+/** The resync will change the editor: it is drawn, on another board, and open or holding a drawing. One test for both
+ *  the resync and the hold below. 2026-10-10 (MEASURED, phone rig, CPU 1): a global undo dispatches stockSizeChanged on
+ *  EVERY undo, and the hold opened for each one -- an undo of Offset X built 428 ms after the tap, waiting out the 350 ms
+ *  debounce of a resync that had nothing to do. */
+function _resyncWillChange() {
+  const ed = window.svgEditor;
+  if (!ed || !ed._draw || (ed._mW === P.widthIn && ed._mH === P.heightIn)) return false;
+  return _editorModalOpen() || !!P.editorSvg;
+}
+function _resyncEditorToStockNow() {
+  if (!_resyncWillChange()) return;
+  const ed = window.svgEditor;
+  const editorOpen = _editorModalOpen();
   if (editorOpen) {
     // the WHOLE new board in view, as a fresh open shows it -- unless the user had zoomed / panned on purpose: their
     // view stays. The fit runs AFTER the frame profile is redrawn (a framed board fits its frame's region).
@@ -744,15 +789,23 @@ function _resyncEditorToStock() {
     drawFrameProfile(ed);
     if (wasFitted || !userView) ed.fitView();
     else { ed._view = userView; applyView(ed); }
-  } else if (P.editorSvg) {
+  } else {
     ed.open(editorRestoreSvg(), P.widthIn, P.heightIn);
     drawFrameProfile(ed);
-  } else return;
+  }
   if (typeof ed._notifyChange === 'function') ed._notifyChange('commit');
   document.dispatchEvent(new CustomEvent('editorBoardResized', { detail: { w: P.widthIn, h: P.heightIn, editorOpen } }));
 }
 if (typeof document !== 'undefined') {
   document.addEventListener('stockSizeChanged', () => {
+    // the card is up for the whole hold (a burst keeps the first one's); no hold when the resync has nothing to change
+    // (an undo of anything but the size: the event comes with every global undo)
+    if (_resyncWillChange()) {
+      const holdSpec = { defers: STOCK_CHANGE_DEFERS };
+      if (!isRebuildHeld()) { const held = openRebuildHold(STOCK_CHANGE_STAGES, holdSpec); withLoadingStage('rebuild', () => held, { spacing: P.spacing }); }
+      else openRebuildHold(STOCK_CHANGE_STAGES, holdSpec);
+      if (!_resyncHoldClose) _resyncHoldClose = joinRebuildHold('editor-resync');
+    }
     clearTimeout(_stockResyncTimer);
     _stockResyncTimer = setTimeout(_resyncEditorToStock, 350);
   });
@@ -781,25 +834,35 @@ export function initSvgEditor(preview) {
       // Save audit (race): two quick edits serialize concurrently (font embedding is async) -- only the LATEST
       // one may write P.editorSvg, so an older one finishing last can't put back a stale drawing
       const seq = ++_serializeSeq;
-      await runChangePipeline(kind, {
-        serialize: async () => {
-          const svg = await window.svgEditor.saveForRasterization();
-          // Step 3 unification: the editor's full document is the source
-          // of truth. Persist to P.editorSvg so a page reload restores it.
-          if (svg && seq === _serializeSeq) P.editorSvg = svg;
-          return svg;
-        },
-        persist: saveLastSession,
-        remask: async () => {
-          const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-          await refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
-          // SE11: commit-only — 'kind' is this callback's own closure
-          // variable from the enclosing (kind = 'commit') => {...}, so a
-          // 'live' drag frame (which also runs this same remask step)
-          // never rebuilds the drape texture mid-gesture.
-          if (kind === 'commit') await refreshDrape(preview);
-        },
-      }, isEditorOpen() ? CHANGE_PIPELINE_IN_EDITOR : CHANGE_PIPELINE); // F35 item 18 (4): no 3D while editing
+      const closeHoldStage = joinRebuildHold('change-pipeline'); // a no-op unless a board size change is holding the 3D
+      try {
+        await runChangePipeline(kind, {
+          serialize: async () => {
+            const svg = await window.svgEditor.saveForRasterization();
+            // Step 3 unification: the editor's full document is the source
+            // of truth. Persist to P.editorSvg so a page reload restores it.
+            if (svg && seq === _serializeSeq) P.editorSvg = svg;
+            return svg;
+          },
+          persist: saveLastSession,
+          remask: async () => {
+            const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
+            const remaskNow = async () => {
+              await refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
+              // SE11: commit-only — 'kind' is this callback's own closure
+              // variable from the enclosing (kind = 'commit') => {...}, so a
+              // 'live' drag frame (which also runs this same remask step)
+              // never rebuilds the drape texture mid-gesture.
+              if (kind === 'commit') await refreshDrape(preview);
+            };
+            // a board size change holding the 3D defers the masks -- and the drape with them: it renders the editor's
+            // SVG, whose brick height greys the masks paint (MEASURED: a drape drawn before the deferred masks left the
+            // frame walls, which sample it, in the old greys)
+            if (deferToHold('stamp-masks', remaskNow)) return;
+            await remaskNow();
+          },
+        }, isEditorOpen() ? CHANGE_PIPELINE_IN_EDITOR : CHANGE_PIPELINE); // F35 item 18 (4): no 3D while editing
+      } finally { closeHoldStage(); }
     },
     // onCommit — fires from Apply (svg=truthy) or Cancel (svg=null).
     // Apply: rebuild with font-embedded SVG and close.

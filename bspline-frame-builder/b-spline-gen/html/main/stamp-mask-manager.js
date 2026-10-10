@@ -3,6 +3,7 @@ import { applyBrickHeightGreys } from '../editor/brick-height-grey.js';
 import { rasterizeSvg } from '../core/stamp.js';
 import { applyLayerTransform } from '../core/stamp/transform.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
+import { deferToHold } from '../core/engine/scheduler.js';
 import { getLayerSvg } from '../editor/editor-io.js';
 import { isCarved } from '../editor/layers.js';
 import { frameContext, frameSolidSpec } from '../editor/editor-frame-profile.js';
@@ -235,6 +236,8 @@ function paintBrickHeightGreys() {
 }
 
 export async function refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode) {
+  // a board size change holding the 3D (main/app-init.js STOCK_CHANGE_DEFERS): the latest pass runs once, at its end
+  if (deferToHold('stamp-masks', () => refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode))) return;
   try {
     const isLatest = await updateStampMasks(nx, nz);
     if (!isLatest) return;

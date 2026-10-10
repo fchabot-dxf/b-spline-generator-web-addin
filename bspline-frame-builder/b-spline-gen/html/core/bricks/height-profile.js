@@ -44,6 +44,27 @@ function maxInteriorDistance(polygon) {
   return distanceToNearestEdge(cx, cy, polygon) || 1e-6;
 }
 
+// 2026-10-10 (seat A; the phone map, loaded board: distanceToNearestEdge 12.3 s of self time over 44 slow actions):
+// brickTopHeight runs per SAMPLE POINT, but maxInteriorDistance and the chip draw are per-BRICK constants -- computed
+// once per polygon / brick + seed now (polygons are never edited in place: a changed shape is a new array). Same
+// arithmetic, same heights (tests/brick-height-cache-identical.test.js).
+const _maxInteriorByPolygon = new WeakMap();
+function maxInteriorDistanceOf(polygon) {
+  let d = _maxInteriorByPolygon.get(polygon);
+  if (d === undefined) { d = maxInteriorDistance(polygon); _maxInteriorByPolygon.set(polygon, d); }
+  return d;
+}
+const _chipByBrick = new WeakMap(); // brick -> { seed, chipRate, polygon, corner (null = no chip) }
+function chipCornerOf(brick, seed, chipRate) {
+  const c = _chipByBrick.get(brick);
+  if (c && c.seed === seed && c.chipRate === chipRate && c.polygon === brick.polygon && c.id === brick.id) return c.corner;
+  const cellId = hashId(brick.id);
+  const hasChip = mulberry32(seedFor(seed, 'chip', cellId))() < chipRate;
+  const corner = hasChip ? brick.polygon[Math.floor(mulberry32(seedFor(seed, 'chip-corner', cellId))() * brick.polygon.length)] : null;
+  _chipByBrick.set(brick, { seed, chipRate, polygon: brick.polygon, id: brick.id, corner });
+  return corner;
+}
+
 /** Hash an id (brick ids are a mix of numbers and formatted strings, e.g. 'frame-12') to a plain
  *  integer, for seedFor's own cellId slot. */
 function hashId(id) {
@@ -97,7 +118,7 @@ export function brickTopHeight(x, y, brick, set, seed, sampleDetailAt) {
   // shoulder was already at its own max, which is most of a brick's own interior once past
   // edgeRadiusIn, defeating "a slight dome" entirely). 0 at the edge, `crown` (a small fraction,
   // the advisor's own declared 0-0.2 range) extra at the brick's own centre.
-  const maxDist = maxInteriorDistance(brick.polygon);
+  const maxDist = maxInteriorDistanceOf(brick.polygon);
   const dome = crown * sineEase(dist / maxDist);
 
   let height = reliefIn * (1 - surfaceShare) * shoulder + reliefIn * dome;
@@ -122,10 +143,8 @@ export function brickTopHeight(x, y, brick, set, seed, sampleDetailAt) {
   // which corner are both seeded per brick (deterministic for a given seed), independent of the
   // query point so repeated queries into the same brick agree.
   if (chipRate > 0 && chipSizeIn > 0) {
-    const cellId = hashId(brick.id);
-    const hasChip = mulberry32(seedFor(seed, 'chip', cellId))() < chipRate;
-    if (hasChip) {
-      const corner = brick.polygon[Math.floor(mulberry32(seedFor(seed, 'chip-corner', cellId))() * brick.polygon.length)];
+    const corner = chipCornerOf(brick, seed, chipRate);
+    if (corner) {
       const dCorner = Math.hypot(x - corner.x, y - corner.y);
       if (dCorner < chipSizeIn) {
         // a sine-eased DIP: 0 height right at the corner tip, ramping back up to full height at chipSizeIn away

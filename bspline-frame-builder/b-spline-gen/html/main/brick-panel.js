@@ -20,6 +20,7 @@
 import { P, saveLastSession, RESOLUTIONS, effectiveExportSpacing } from '../core/state.js';
 import { withLoadingStageShownFirst, beginLoadingSequence } from '../core/loading-signal.js';
 import { recordBoardStep } from '../core/history.js';
+import { joinRebuildHold } from '../core/engine/scheduler.js';
 import { showToast } from '../core/toast.js';
 import {
   runBricks, runBricksPreview, runBricksOutlinePreview, buildRibbonPrimitives, layerOfElement, BRICK_KINDS,
@@ -1257,7 +1258,10 @@ let _relayQueued = null; // the queued lay's options
 function _relayStaged(opts = {}) {
   if (_relayQueued) { _relayQueued = { amend: _relayQueued.amend || opts.amend || null }; return; }
   _relayQueued = { amend: opts.amend || null };
-  withLoadingStageShownFirst('bricks', () => { const o = _relayQueued; _relayQueued = null; generateBricks(o); flushControlRequires(); });
+  const closeHoldStage = _takeBoardRelayHold(); // a board-size re-lay: its stage closes once the lay has committed
+  withLoadingStageShownFirst('bricks', () => {
+    try { const o = _relayQueued; _relayQueued = null; generateBricks(o); flushControlRequires(); } finally { closeHoldStage(); }
+  });
 }
 function _relayOnRelease() { _relayStaged(); }
 const BRICK_COMMIT = {
@@ -1615,16 +1619,24 @@ function _scheduleFrameRelay(restored = false) {
   _frameRelayAmend = restored && stack ? stack[stack.length - 1] : null;
   _frameRelayTimer = setTimeout(_relayIfFrameChanged, FRAME_RELAY_SETTLE_MS);
 }
+// the board-size change's 'brick-relay' stage (main/app-init.js STOCK_CHANGE_STAGES): joined when the editor reports the
+// new board, closed by the lay it causes -- or at once when nothing needs re-laying
+let _boardRelayHoldClose = null;
+function _takeBoardRelayHold() { const close = _boardRelayHoldClose || (() => {}); _boardRelayHoldClose = null; return close; }
 function _relayIfFrameChanged() {
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
-  if (!editor || !_presentKinds(editor).length) return;
-  if (editor._frameHandleDrag) { _frameRelayTimer = setTimeout(_relayIfFrameChanged, FRAME_RELAY_SETTLE_MS); return; } // still dragging: wait for the release
+  if (editor && editor._frameHandleDrag) { _frameRelayTimer = setTimeout(_relayIfFrameChanged, FRAME_RELAY_SETTLE_MS); return; } // still dragging: wait for the release
+  if (!_relayIfFrameChangedNow(editor)) _takeBoardRelayHold()(); // no lay: the stage is over
+}
+function _relayIfFrameChangedNow(editor) {
+  if (!editor || !_presentKinds(editor).length) return false;
   // item 22 step 3: per element -- re-lay when ANY element on the board was laid on another frame
   const frameKey = _frameKey();
-  if (_presentKinds(editor).every((kind) => _framePartOf(_laidKeyOf(editor, kind)) === frameKey)) return;
+  if (_presentKinds(editor).every((kind) => _framePartOf(_laidKeyOf(editor, kind)) === frameKey)) return false;
   const amend = _frameRelayAmend;
   _frameRelayAmend = null;
   _relayStaged({ amend });
+  return true;
 }
 
 /** Lay the given element kinds with the current settings, stamping their key on the Bricks layer. */
@@ -3090,7 +3102,10 @@ export function initBrickPanel() {
   // contour clears the Frame). Wired ONCE per page (onPageEvent): it RE-LAYS, so a second copy would re-lay twice
   onPageEvent('frameRelay', 'frameRecordChanged', (e) => _scheduleFrameRelay(!!(e && e.detail && e.detail.restored)));
   // 2026-10-07: the board size is part of the frame key (_frameKey) -- a new board re-lays too, once the editor has it
-  onPageEvent('frameRelayBoard', 'editorBoardResized', () => _scheduleFrameRelay());
+  onPageEvent('frameRelayBoard', 'editorBoardResized', () => {
+    if (!_boardRelayHoldClose) _boardRelayHoldClose = joinRebuildHold('brick-relay');
+    _scheduleFrameRelay();
+  });
   // Audit B1 + v2 N2: P.brickSettings was replaced (Cancel, session restore, project load, global undo --
   // app-init.js announceBrickSettingsRestored). A load swaps in a NEW object: an armed Brush keeps
   // reading the editor's own reference, so it is re-pointed too.

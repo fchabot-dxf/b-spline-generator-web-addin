@@ -23,6 +23,9 @@
 export const id = 'venus';
 export const label = 'Venus Surface';
 export const cMultiplier = 3.0;
+// the photo layer's "Filter shows through" normalises this filter's output by its declared span (core/terrain.js):
+// MEASURED 2026-10-10 (seat A), default tweaks, 8 seeds x 7x9 / 9x12 / 12x9 boards, the 0.5 / 99.5 percentiles.
+export const nominalRange = [0.07, 0.46];
 
 export const tweaks = [
   { key: 'plainsHeight',  label: 'Plains Relief',   default: 0.30, min: 0.05, max: 0.80, step: 0.02, desc: 'Volcanic plains amplitude' },

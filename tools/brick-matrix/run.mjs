@@ -19,7 +19,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { GROUPS, SEQUENTIAL_GROUPS, GROUP_OF, RUNNER_ORDER, bindGroups, runGroup, CLEAR_MENU, EDIT_PASSWORD_TEST, BRICK_CONTROLS, REQUIRES_SOURCE, GROUP_SETUP } from './groups/index.mjs';
+import { GROUPS, SEQUENTIAL_GROUPS, SPAWN_ORDER, GROUP_OF, RUNNER_ORDER, bindGroups, runGroup, CLEAR_MENU, EDIT_PASSWORD_TEST, BRICK_CONTROLS, REQUIRES_SOURCE, GROUP_SETUP } from './groups/index.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 import { portBusy, dropStaleProfiles } from './ports.mjs';
 import { registerRun, makeStop, readRuns, classifyOrphans, processTable } from './run-registry.mjs';
@@ -111,7 +111,7 @@ if (flag('parallel')) {
     child.stderr.on('data', (d) => process.stderr.write(`[${g}] ${d}`));
     child.on('exit', (code) => resolve({ g, code, out }));
   });
-  const parallelGroups = GROUPS.filter((g) => !SEQUENTIAL_GROUPS.includes(g));
+  const parallelGroups = SPAWN_ORDER; // longest first (groups/index.mjs GROUP_MEASURED_S)
   const kids = parallelGroups.map((g, k) => spawnGroup(g, GROUPS.indexOf(g), 10000 * k));
   const done = await Promise.all(kids);
   for (const g of SEQUENTIAL_GROUPS) done.push(await spawnGroup(g, GROUPS.indexOf(g), 0));
@@ -325,7 +325,16 @@ async function openBrickTool(tool) {
 const apply = () => click('editorApply', 2000);
 
 // ---------------------------------------------------------------- run
+// every row's own wall time, stamped as it is recorded: the time since the previous row was (the first row of a group
+// includes the group's boot + baseline). In the report (elapsedMs) and the log, to find the rows a gate waits on.
 const rows = [];
+let rowT0 = Date.now();
+rows.push = function (...items) {
+  const now = Date.now();
+  for (const r of items) { r.elapsedMs = now - rowT0; console.log(`      time ${(r.elapsedMs / 1000).toFixed(1)}s  ${r.name}`); }
+  rowT0 = now;
+  return Array.prototype.push.apply(this, items);
+};
 let Z = null; // the heightmap after the last commit
 const verdict = (observed, expected) => (expected === null ? 'n/a' : observed === expected ? 'PASS' : 'FAIL');
 async function record(c, obs) {

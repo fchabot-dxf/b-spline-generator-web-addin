@@ -35,6 +35,7 @@ import { fusLog } from '../fusion-bridge.js';
 import { sanitizeSvgForRaster, prepareSvgForRaster, renderSvgNative } from '../stamp/render-svg.js';
 import { DRAPE_TEXTURE_FLIPY } from './drape-svg.js';
 import { ViewCube } from './view-cube.js';
+import { shaderChecksOn } from '../render-debug.js';
 import { GroundGrid } from './ground-grid.js';
 import { LeaderLineOverlay } from './leader-lines.js';
 import { applyFrameToPanel, frameLoopsWorld, pointInPolygon } from './frame-mesh.js';
@@ -109,6 +110,7 @@ export class TerrainPreview {
 
     // Renderer + scene + camera + lights.
     this._renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this._renderer.debug.checkShaderErrors = shaderChecksOn(); // dev hosts / ?debug only (core/render-debug.js)
     this._renderer.setPixelRatio(window.devicePixelRatio);
     this._renderer.setClearColor(0xffffff, 1);
     canvas.style.touchAction = 'none';
