@@ -31,7 +31,7 @@ export const PHOTO_CONTROLS = Object.freeze([
   { id: 'layer', home: '3d', kind: 'param-check', param: 'photoLayer', label: 'Photo layer on' },
   { id: 'source', home: '3d', kind: 'source' },
   { id: 'filterAmount', home: '3d', kind: 'param-slider', param: 'photoFilterAmount', slider: 'photoFilterAmountSlider',
-    label: 'Filter shows through', min: 0, max: 100, step: 1, unit: '%',
+    label: 'Filter shows through (%)', min: 0, max: 100, step: 1,
     note: '0% = the photo only; the Filter section\'s terrain adds its relief on top' },
   { id: 'relief', home: 'both', group: 'relief', kind: 'relief', label: 'Relief',
     ids2d: ['photoBtnReliefRaised', 'photoBtnReliefCarved'], ids3d: ['photo3dReliefRaised', 'photo3dReliefCarved'] },
@@ -74,7 +74,9 @@ function sliderRow(sliderId, numberId, c, like) {
   const range = (k) => String(like?.getAttribute(k) ?? c[k]);
   const s = el('input', { type: 'range', id: sliderId, class: 'cad-slider', min: range('min'), max: range('max'), step: range('step') });
   const n = el('input', { type: 'number', id: numberId, min: range('min'), max: range('max'), step: range('step') });
-  const stepper = el('div', { class: 'cad-stepper', style: 'width:66px;' }, [n, c.unit ? el('span', { class: 'photo-layer-unit', text: c.unit }) : null]);
+  // the unit is in the label ("Filter shows through (%)", "Max Height (the board's Z, in)"): inside the stepper it sat
+  // cramped against its + button on the phone
+  const stepper = el('div', { class: 'cad-stepper', style: 'width:66px;' }, [n]);
   return el('div', { class: 'cad-slider-row', style: 'margin-bottom:10px;' }, [s, stepper]);
 }
 const checkRow = (id, text) => el('label', { class: 'cad-label photo-layer-check' }, [el('input', { type: 'checkbox', id }), el('span', { text })]);
@@ -108,7 +110,7 @@ const RENDER = {
     return el('div', {}, [host, steps]);
   },
   'tweak-check': (c) => checkRow(`photoLayerTweak_${c.tweak}`, c.label),
-  'relief-height': (c) => el('div', {}, [label(c.label), sliderRow(c.ids3d[0], c.ids3d[1], { min: 0.01, max: 0.25, step: 0.005, unit: 'in' })]),
+  'relief-height': (c) => el('div', {}, [label(c.label), sliderRow(c.ids3d[0], c.ids3d[1], { min: 0.01, max: 0.25, step: 0.005 })]),
   flip: (c) => el('div', { class: 'photo-layer-buttons' }, [
     el('button', { type: 'button', class: 'cad-btn cad-btn-secondary', id: c.ids3d[0], text: '⇋ Flip H' }),
     el('button', { type: 'button', class: 'cad-btn cad-btn-secondary', id: c.ids3d[1], text: '⇵ Flip V' }),

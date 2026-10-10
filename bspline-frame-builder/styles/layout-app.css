@@ -794,4 +794,3 @@ aside {
 .photo-layer-group-note { font-weight: 400; opacity: 0.8; }
 .photo-layer-buttons { display: flex; gap: 6px; margin-bottom: 10px; }
 .photo-layer-buttons .cad-btn { flex: 1; min-height: 32px; }
-.photo-layer-unit { font-size: 10px; opacity: 0.6; margin-left: 2px; }
