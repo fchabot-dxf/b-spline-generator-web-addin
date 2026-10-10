@@ -22,6 +22,7 @@ import * as grout from './grout.mjs';
 import * as handedit from './handedit.mjs';
 import * as strokes from './strokes.mjs';
 import * as blind from './blind.mjs';
+import * as photoLayer from './photo-layer.mjs';
 
 const MODULES = {
   wall: wall,
@@ -44,6 +45,7 @@ const MODULES = {
   handedit: handedit,
   strokes: strokes,
   blind: blind,
+  'photo-layer': photoLayer,
 };
 
 export const GROUPS = Object.keys(MODULES);
@@ -109,3 +111,4 @@ export { PATTERN_PARAM_PERSIST, PERSIST_BOARD, GENERATE_AFTER_RESTORE } from './
 export { GROUT_JOINTS } from './grout.mjs';
 export { HAND_EDIT } from './handedit.mjs';
 export { STROKE_CLEAR } from './strokes.mjs';
+export { PHOTO_LAYER } from './photo-layer.mjs';
