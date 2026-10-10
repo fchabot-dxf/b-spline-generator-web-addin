@@ -180,13 +180,13 @@ describe('the crop BOX on the preview canvas (advisor + Fred, option 2): exact i
 });
 
 describe("the preview's caption says what its dimming means", () => {
-  it('the crop box: "outside the crop"; another tab: the Symmetry mirror', async () => {
+  it('the crop box: "outside the crop"; another tab: the part not on the board', async () => {
     const { setPhotoTab, PREVIEW_CAPTION } = await import('../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js');
     setPhotoTab('source');
     expect(field('photoPreviewCaption').textContent).toBe(PREVIEW_CAPTION.crop);
     expect(PREVIEW_CAPTION.crop).toBe('dimmed = outside the crop');
     setPhotoTab('adjust');
-    expect(field('photoPreviewCaption').textContent).toBe(PREVIEW_CAPTION.mirror);
+    expect(field('photoPreviewCaption').textContent).toBe(PREVIEW_CAPTION.unused);
     setPhotoTab('source');
   });
 });
