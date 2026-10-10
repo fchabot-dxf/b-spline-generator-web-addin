@@ -112,8 +112,17 @@ if (flag('parallel')) {
     child.on('exit', (code) => resolve({ g, code, out }));
   });
   const parallelGroups = SPAWN_ORDER; // longest first (groups/index.mjs GROUP_MEASURED_S)
-  const kids = parallelGroups.map((g, k) => spawnGroup(g, GROUPS.indexOf(g), 10000 * k));
-  const done = await Promise.all(kids);
+  // --max-parallel N: at most N groups (N Chromes) at once -- a pool taking the groups longest first, the next one starting
+  // when one finishes; the first N staggered as before. Default: every group at once (MEASURED seat E 2026-10-10: that
+  // gate's peak left 211 MB free -- 221 Chrome processes, 15.6 GB; one group's Chrome peaks about 0.9 GB).
+  const cap = Math.max(1, Math.min(parallelGroups.length, Number(arg('max-parallel', parallelGroups.length)) || parallelGroups.length));
+  const done = [];
+  let nextGroup = 0;
+  const worker = async (w) => {
+    await sleep(10000 * w);
+    while (nextGroup < parallelGroups.length) { const g = parallelGroups[nextGroup++]; done.push(await spawnGroup(g, GROUPS.indexOf(g), 0)); }
+  };
+  await Promise.all(Array.from({ length: cap }, (_, w) => worker(w)));
   for (const g of SEQUENTIAL_GROUPS) done.push(await spawnGroup(g, GROUPS.indexOf(g), 0));
   const rows = [], pageErrors = [], perGroup = new Map();
   for (const k of done) {
@@ -436,8 +445,12 @@ try {
       const setsOk = !!sets && Object.entries(c.expect.sets).every(([k, id]) => sets[k] && sets[k].length === 1 && sets[k][0] === String(id));
       const g0 = await js(GEN);
       await apply();
+      const tz = Date.now();
       const z1 = await heightsSettled(Z, 30000, c.expect.threeD === true ? THREE_D_EXPECTED_CHANGE_MS : THREE_D_CHANGE_MS, g0);
-      await record(c, { result, pending: p, canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1 }, sets, setsOk, reads, readsOk });
+      // diagnostics only (no verdict reads them): the rebuild generation before Apply and after the settle, and the settle's
+      // own wait -- to tell a row that waits out maxMs from one that waits on a real rebuild
+      const gens = { g0, g1: await js(GEN), settleMs: Date.now() - tz };
+      await record(c, { result, pending: p, canvas: c0 !== c1, threeD: z1 !== Z, hashes: { c0, c1, z0: Z, z1, gens }, sets, setsOk, reads, readsOk });
       Z = z1;
     } else if (c.kind === 'relay') {
       // Generate = "re-lay now": take one brick of the tool's kind off the canvas by hand, then Generate must

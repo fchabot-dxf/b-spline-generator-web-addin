@@ -25872,3 +25872,17 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   1.0 / 0.0 / 0.7 / 0.7 s; 5/5 pass.
 - NEXT (advisor: decide with the gate's PEAK memory): splitting wall (after "Wall rotation 0 (back)": the second half starts
   from the baseline's plain Stretcher at 0 deg) and layout (between its independent runners).
+
+### 2026-10-10 (seat E): the brick matrix's memory -- a --max-parallel cap (off by default), measured; expectsNoRebuild dropped
+- GATE PEAK (sampler, 5 s, the d002ad3 gate): 211 MB free at 13:23, under 4 GB for ~3.5 min; 221 Chrome processes, 15.6 GB.
+- ANATOMY (lay alone): one group's Chrome peaks ~0.9 GB in 8 processes -- the SwiftShader GPU process 418 MB, 3 renderers
+  447 MB; no leaked tabs. Contention, not memory per se, is the cost: lay alone 234 s vs 514 s in the gate.
+- run.mjs --max-parallel N: a pool, longest first, the next group starting as one finishes (default: every group at once).
+  Quiet window (A / D holding, Fusion idle 3.3 GB), the matrix's own Chrome measured apart:
+    uncapped (gate) 917 s, ~15 GB, min free 211 MB | N=10 783 s, 8.7 GB, min free 2.73 GB | N=6 802 s, 5.1 GB, min free 4.35 GB
+  Row sets identical to the gate's (379). In each capped run one BLIND timing row failed (a different one each time); blind
+  alone 23/23 -- the PC is still loaded right after the pool: next, a declared quiet wait before the sequential group.
+- expectsNoRebuild DROPPED: the GEN diagnostic (each editor row's generation before Apply / after the settle, settleMs,
+  diagnostics only) shows the two wall tool switches DO rebuild after Apply (GEN 18 -> 19, 19 -> 20, settle 6.4 s); their
+  ~23 s is canvasSettled's 10 s + the tool + Apply + the settle -- no maxMs wait to cut (a fail-on-rebuild rule would have
+  failed them falsely).
