@@ -25760,3 +25760,22 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   608, rubble edges 304 -- all pass. Affected suites 12 files 95/95, icons unchanged.
 - SHOTS: shots/seatE/stones/corner_variety_before_after.png (T9 / T6 7x9 1 in single, seeds 1 + 2, before / after;
   T9: seed 1 wraps 1 step, seed 2 wraps 3); lwrap_variety_seed{1,2,3}_* (an earlier version), needle2_* (the found cases).
+### 2026-10-10 (seat A): brick heights + UVs -- per-brick constants computed once; shader checks dev-only
+- MAP (fresh phone map of main dfca7a2, loaded board, 4x): 43 of 145 sidebar actions with a task > 500 ms, led by the
+  brick pattern taps (774-914 ms, ~5 s busy). Self time over the slow actions: distanceToNearestEdge 12.3 s,
+  brickLocalUV 6.3 s, getProgramInfoLog + getShaderInfoLog ~4.7 s.
+- brickTopHeight (core/bricks/height-profile.js) runs per SAMPLE POINT but recomputed two per-BRICK constants at every
+  point: maxInteriorDistance (2 reduce passes + an extra distanceToNearestEdge) and the chip draw (hashId + 2 seeded
+  rngs). Now a WeakMap per polygon / per brick (+ seed, chipRate, polygon, id checked). Polygons are never edited in
+  place (fan-centre replaces .polygon with a new array; no in-place point writes in core/bricks). brickLocalUV
+  (editor/editor-brick-surface.js): its centroid / longest-edge axis / half-extents likewise once per polygon.
+- TESTS: tests/brick-height-cache-identical.test.js (sampleHeight over a 0.05 in lattice, every set x 2 seeds x a
+  weathered variant x a detail callback, 24 digests) and tests/brick-local-uv-cache-identical.test.js (every brick on a
+  0.03 in lattice, flipped and not), both pinned on main's code, re-verified on main 95a9181 with main's old files swapped
+  in; mutations (one cached value for every polygon; chip always corner 0; one UV frame for every polygon) each FAIL.
+- render-debug.js: three.js's per-compile shader check (renderer.debug.checkShaderErrors) on for localhost /
+  127.0.0.1 / ?debug, off on the live site and in the Fusion palette (advisor); both renderers read it; pinned.
+- RESULT: brickTopHeight 0.54-0.64x in-process. Phone (loaded board, main 95a9181 vs the branch, A/B/B/A, 33 min):
+  total busy 220 -> 178 s (0.81); brick pattern taps 0.55-0.68x busy, longest 774-914 -> 389-467 ms (under 500);
+  surface style 'clean' 4.7 -> 0.9 s (longest 1970 -> 219 ms); stamp sliders 0.35-0.61x; terrain drags unchanged.
+- Full suite 423 files, 6157/6157. Known failures: none.
