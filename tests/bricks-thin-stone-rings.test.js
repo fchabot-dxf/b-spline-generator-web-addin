@@ -10,7 +10,7 @@ import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { generateBricks } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/engine.js';
 import { BRICK_SETS, FRAME_PRESETS, scaledSet } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
-import { pointInPolygon, polygonIntersection, signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { pointInPolygon, polygonPointTester, polygonIntersection, signedArea } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { tess } from './bare-ground.js';
 
@@ -71,11 +71,19 @@ function measure([tpl, W, H, L, preset, id, seed]) {
   const offOutline = P.filter((Q) => Q.some((p) => !pointInPolygon(p.x, p.y, C) && Math.min(...C.map((a, i) => segDist(p.x, p.y, a, C[(i + 1) % C.length]))) > J)).length;
   const R = 1, B = 0.5, buckets = new Map(), key = (i, j) => i * 10007 + j;
   P.forEach((Q, k) => { const b = bb[k]; for (let i = Math.floor((b[0] - R) / B); i <= Math.floor((b[2] + R) / B); i++) for (let j = Math.floor((b[1] - R) / B); j <= Math.floor((b[3] + R) / B); j++) { const kk = key(i, j); if (!buckets.has(kk)) buckets.set(kk, []); buckets.get(kk).push(k); } });
-  let widest = 0; const h = 0.04;
+  // the widest gap: the largest distance from a ground point (0.04 in grid) to its nearest piece. EXACT shortcuts (2026-10-10,
+  // the gate's FULL ran 80% here): the outline test is polygonPointTester (pointInPolygon's own answer, for many points);
+  // a point stops as soon as its distance is no more than the widest so far (it can only shrink: it cannot raise the max),
+  // and the piece nearest the previous point is tried first
+  let widest = 0, last = -1; const h = 0.04, inOutline = polygonPointTester(C);
+  const distTo = (x, y, k, stop) => { const Q = P[k]; if (pointInPolygon(x, y, Q)) return 0; let d = Infinity; for (let i = 0; i < Q.length && d > stop; i++) d = Math.min(d, segDist(x, y, Q[i], Q[(i + 1) % Q.length])); return d; };
   for (let y = h / 2; y < H; y += h) for (let x = h / 2; x < W; x += h) {
-    if (!pointInPolygon(x, y, C)) continue;
-    let d = R;
-    for (const k of buckets.get(key(Math.floor(x / B), Math.floor(y / B))) || []) { const Q = P[k]; if (pointInPolygon(x, y, Q)) { d = 0; break; } for (let i = 0; i < Q.length; i++) d = Math.min(d, segDist(x, y, Q[i], Q[(i + 1) % Q.length])); }
+    if (!inOutline(x, y)) continue;
+    const near = buckets.get(key(Math.floor(x / B), Math.floor(y / B))) || [];
+    let d = R, best = -1;
+    if (last >= 0 && near.includes(last)) { const e = distTo(x, y, last, widest); if (e < d) { d = e; best = last; } }
+    for (const k of near) { if (d <= widest) break; if (k === last) continue; const e = distTo(x, y, k, widest); if (e < d) { d = e; best = k; } }
+    if (best >= 0) last = best;
     widest = Math.max(widest, d);
   }
   return { gapJ: (2 * widest) / J, overlaps, offOutline, cornerDeg: Math.min(...r.frameBricks.map((b) => sharpest(b.polygon, CAPS.cornerArmJoints * J))) };

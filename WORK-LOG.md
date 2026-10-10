@@ -25820,6 +25820,14 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   closes; no-lay never closes; lay never closes; pipeline never joins; isRebuildScheduled ignores the hold).
 - Full suite 425 files, 6170/6170. Known failures: none.
 
+### 2026-10-10 (seat E): the gate's thin-ring FULL 33 -> 8 min, every lay's verdict identical
+- MEASURED (243 FULL lays, stage timers): the test's own widest-gap scan 80% (223 ms / lay), Generate 18% (51 ms / lay after
+  stone-frame-speed), overlaps + off-outline + corners ~2%.
+- EXACT shortcuts in tests/bricks-thin-stone-rings.test.js's scan: the outline test is geometry.js polygonPointTester
+  (pointInPolygon's own answer for many points); a point stops as soon as its distance is no more than the widest so far
+  (a distance only shrinks, so it can't raise the max); the piece nearest the previous point is tried first.
+- PROOF: old and new scans, FULL at seeds 1,2,3: 4,560 lays, gapJ / overlaps / off-outline / sharpest corner compared with
+  Object.is -- 0 differ. Time 2,008 s -> 472 s. FAST 10/10.
 ### 2026-10-10 (seat A): the hold's backstop counts from progress; masks, drape and frame deferred into it
 - BACKSTOP (branch hold-backstop-progress 1419082): at CPU 4 the size chain runs ~3.2 s (resync +1.7, re-lay +2.8, its
   remask +3.2), so a 3 s backstop counted from the OPEN released before the last stage and the nudge built twice (main
@@ -25841,3 +25849,26 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   work counts as scheduled, the stamp-masks refresh defers, every deferToHold key declared). Mutations 8/8 caught (the
   masks-not-deferred and isRebuildScheduled ones only after adding behavioural tests -- the declaration test alone missed
   them). NOT unit-tested: the remask step deferring the drape with the masks -- the in-page scene digest is its proof.
+
+### 2026-10-10 (seat E): pattern-gaps FULL 242 -> 170 s (and every bareGround sweep), every lay identical
+- MEASURED (432 FULL lays, stage timers): bareGround 58%, Generate 23%, the overlap pairs 18%, off-outline < 1%.
+- EXACT: tests/bare-ground.js bareGround's contour test is polygonPointTester (pointInPolygon's own answer for many points;
+  shared by 7 sweep tests); pattern-gaps' overlap loop skips pairs whose boxes are apart (an empty intersection either way).
+- PROOF: old and new (the old helper imported from a scratch copy), PATTERN_SWEEP_FULL: 2,736 lays, the overlap list /
+  off-outline count / bare sq in / largest patch compared exactly -- 0 differ. 242 -> 170 s (the main it ran on already
+  had stone-frame-speed's faster Generate). The 7 bareGround users FAST: 110/110.
+
+### 2026-10-10 (seat E): the brick matrix spawns longest-first and logs each row's time
+- PROFILED the gate's --parallel matrix (bm.matrix.log 11:16, 379 rows, 953 s; a group's start = its 10 s stagger slot,
+  its end = its report's mtime): wall 786 s (0 -> 786) is the critical path, then the sequential blind group 165 s alone;
+  layout 727 (50 -> 777); strokes 484 started LAST (180 s) and finished third. A group's time is mostly settle windows
+  (heightsSettled: 3 stable 700 ms reads, >= 6 s when the 3D does not change, up to 20 s for an expected change;
+  canvasSettled up to 10 s) -- not touched (coverage).
+- DECLARED: groups/index.mjs GROUP_MEASURED_S (that gate's per-group seconds) and SPAWN_ORDER (the parallel groups
+  longest first; an unmeasured group spawns last and still runs); run.mjs --parallel spawns in SPAWN_ORDER (ports still by
+  GROUPS index). tests/brick-matrix-spawn-order.test.js: a permutation of the parallel groups, sorted, wall first.
+- PER-ROW TIME: run.mjs's rows recorder stamps each row's elapsedMs (since the previous row; a group's first row includes
+  its boot) into the report and prints "time <s>s <row>" -- measured on the select group: 27.8 s (boot + baseline), then
+  1.0 / 0.0 / 0.7 / 0.7 s; 5/5 pass.
+- NEXT (advisor: decide with the gate's PEAK memory): splitting wall (after "Wall rotation 0 (back)": the second half starts
+  from the baseline's plain Stretcher at 0 deg) and layout (between its independent runners).
