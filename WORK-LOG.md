@@ -25733,3 +25733,30 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Pinned in test_fusion_memory.py: (10, 24), 9.9 ok, 10.0 / 11.9 soft (11.9 was ok under 12). Fails at 12.
   The palette's line has no threshold of its own (it paints the add-in's level): fusion-memory-line.test.js unchanged.
 - Stacked on memory-warning-why (same two files). Python fb_shared + b-spline-gen green; full suite 420 / 6144.
+
+### 2026-10-10 (seat E): STEP_CORNER_VARIETY -- each course corner splits or wraps, drawn from the seed (Fred: "Both are good, ideally a variation")
+- RULE (layouts/fieldstone.js): at each corner of a thin ring's course (outer fence turning > 30 deg) the lay draws, from its
+  own stream ('fieldstone-corners'), SPLIT (a joint on the bisector) or WRAP (one corner stone: an L at a concave step, a
+  corner stone on a convex corner), splitShare 0.5. Every run is spaced as if both corners split; a wrap swaps only the
+  two seeds flanking its corner for one on it -- nothing else moves. A board rebuilds identically; another seed varies it.
+- HOW IT GOT THERE (each version measured on the 1,520-lay stone-frame sweep):
+  1. wraps re-spacing their whole runs: 25 mixed-band lays under 40 deg (T15 9x12 a 14 deg tail where a band narrows -- a
+     course stone far along a wrapped run, not the corner's own; T7 the frame's own sharp tip 32 deg); at seed 2 T19 7x9 a
+     3.18-joint pocket on the wall's arc (seeds 2 / 4 of 1 - 5; no corner there -- a joint landing where a run moved it).
+  2. LOCALIZED wraps (advisor yes): every needle / pocket above gone, guards fired 0 times at seeds 1 - 3 -- except T14
+     7x9 seed 1: a SPLIT at its sharp concave waist makes both flanking stones 39 / 41 deg (wrapped, its corner stone 89).
+  3. the needle guard both ways: a stone under the floor in a run ending at a wrap splits it; otherwise the nearer end
+     corner of its run wraps. A split whose corner pocket (2 x the largest empty circle within 3 joints of its inner-fence
+     point, over the joint) is over 3 joints wraps. The needle floor wins; corners only move toward a forced state, so it
+     ends. (A "one-seed run" theory for T14 was tried and disproved by the data -- dropped.)
+- RESULT (seeds 1 / 2 / 3, 1,520 lays each): gap median 1.99, worst 2.48 / 2.41 / 2.41 (base 2.77), none over 3; sharpest
+  stone corner 42 / 46 / 46 deg (base 41); overlaps 0, off-outline 0; concave Ls 352 / 640 / 640 (base 320, always the same
+  places). Guards fired: a forced wrap on T14 7x9 at seed 1 only (64); needle-splits 0; both-fail 0.
+- PINNED (tests/bricks-thin-stone-rings.test.js): a seed column; FULL runs every lay at FULL_SEEDS (default 1,2,3) --
+  4,570/4,570; FAST + T15 9x12 mixed, T7 7x9 mixed, T19 7x9 0.75 single at seed 2, T14 7x9 single at seed 1 (each fails on
+  the version before its fix: 13.8 / 31.5 deg, 3.19 joints, 39.2 deg); a board rebuilds identically; seeds 1 - 4 differ
+  (fails on the base: every seed the same). geometry.js sharpestCornerDeg (the floor's measure, arms along the outline).
+- Every FULL sweep: thin rings 4,570 (3 seeds), gap 760, overlap 19, pattern gaps 2,736, seam 19, stone life 114, tip fans
+  608, rubble edges 304 -- all pass. Affected suites 12 files 95/95, icons unchanged.
+- SHOTS: shots/seatE/stones/corner_variety_before_after.png (T9 / T6 7x9 1 in single, seeds 1 + 2, before / after;
+  T9: seed 1 wraps 1 step, seed 2 wraps 3); lwrap_variety_seed{1,2,3}_* (an earlier version), needle2_* (the found cases).

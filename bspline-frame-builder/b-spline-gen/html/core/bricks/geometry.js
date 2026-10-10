@@ -723,6 +723,28 @@ export function clipPolygonToRegion(poly, region, cellRefPoint) {
  * angle's of the same radius (r (sqrt 2 - 1) from the sharp point) -- a full fillet on a 45 deg corner cuts it back
  * r (1 / sin 22.5 - 1), 3.9x as far, and where two such corners meet at a seam it leaves a pocket (fieldstone, below).
  */
+/** A polygon's sharpest corner (deg): at each vertex the angle between the points `arm` along its outline either way --
+ *  measured over a span, so a rounded tip reads as the tip it rounds, not as its many near-straight chords (the frame
+ *  stones' needle floor, tests/bricks-thin-stone-rings.test.js; fieldstone's STEP_CORNER_VARIETY) */
+export function sharpestCornerDeg(poly, arm) {
+  const n = poly.length;
+  const walk = (i, s, dir) => {
+    let a = poly[i], k = i;
+    for (let m = 0; m < n; m++) {
+      const b = poly[(k + dir + n) % n], l = Math.hypot(b.x - a.x, b.y - a.y);
+      if (l >= s) return { x: a.x + ((b.x - a.x) * s) / l, y: a.y + ((b.y - a.y) * s) / l };
+      s -= l; a = b; k = (k + dir + n) % n;
+    }
+    return a;
+  };
+  let min = 180;
+  for (let i = 0; i < n; i++) {
+    const v = poly[i], a = walk(i, arm, -1), c = walk(i, arm, 1), ux = a.x - v.x, uy = a.y - v.y, wx = c.x - v.x, wy = c.y - v.y;
+    min = Math.min(min, (Math.acos(Math.max(-1, Math.min(1, (ux * wx + uy * wy) / (Math.hypot(ux, uy) * Math.hypot(wx, wy) || 1)))) * 180) / Math.PI);
+  }
+  return min;
+}
+
 export function roundPolygonCorners(poly, radius, segments = 4, opts = {}) {
   if (!(radius > 0) || poly.length < 3) return poly;
   const n = poly.length;
