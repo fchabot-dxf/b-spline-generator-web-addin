@@ -25614,3 +25614,26 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   0.62; the thickness drag busy 3072 -> 1096 (0.36) but its old passes were 4894 / 1250 ms (noise), new 886 / 1305 --
   read it as "longest task 481 -> 322 ms", not as a 3x.
 - Full suite 414 files, 6112/6112. Known failures: none.
+### 2026-10-09 (seat A): the frame step -- creasedNormals + the panel surface lookups, byte-identical (advisor (2))
+- MEASURED FIRST (in-page performance.now counters, uncommitted, restored): on the photo board the frame step
+  (applyFrameToPanel) was 29.4 of 71.4 s busy; creasedNormals only 4.6 s of it. Stages: clipPanelToOutline 11.8,
+  bars 8.5, panelSurface 2.4, fullIndex 2.1, wall 2.0, window bars 1.8, window clip 1.7.
+- NOT BUILT (advisor: skip): an x/y cut cache. My "the cut never reads z" premise was wrong for a thickened board:
+  the bottom (offsetPts) moves in x/y by up to 0.15 in with the terrain (measured, adaptive and uniform), so only a
+  per-triangle cache would be exact, worth ~40% of the clip (top-cap triangles).
+- creasedNormals: preallocated typed outputs (positions/normals Float64Array, source Int32Array, subarrays; index
+  stays an Array -- three's setIndex treats a typed array differently), and a corner whose averaged-face set equals
+  an earlier corner's (same vertex) takes that corner's new vertex: same faces, same order = the same normal, which
+  the dedupe would have matched to the same vertex (its earlier entries did not match then either).
+- panelSurface.at: candidates compared as numbers (_baryInto = baryHit's one arithmetic, baryHit now wraps it); only
+  the winning lo / hi become objects, the same object when one hit is both (as before).
+- TEST tests/creased-normals-identical.test.js, digests pinned on origin/main's frame-mesh.js: creasedNormals on the
+  bars ring + outline wall for 19 templates x 2 boards x 2 terrains, plus the inset window's bars + hole wall; and
+  panelSurface.at over a 201x201 lattice on the solid and the top-only panel (t/u/v/w/z of lo + hi, lo === hi).
+  Mutations: mask reuse ignoring the face set, Float32 outputs, hi ties (>=), never sharing lo/hi -- each FAILS.
+  (A first run of the last two passed vacuously: my test edit had not landed, and on a solid lo is never hi -- hence
+  the top-only panel.)
+- RESULT: in-process interleaved (both versions loaded, 30 reps): creasedNormals 0.73-0.77x, panelSurface + 20k
+  lookups 0.84-0.85x. Allocation-only changes elsewhere measured nothing (V8) and were reverted. Phone (same rig,
+  main/new/new/main): total busy over 49 actions 0.934 (pass totals 48.6 / 45.6 s main, 44.1 / 44.0 s new).
+- Full suite 414 files, 6071/6071. Known failures: none.
