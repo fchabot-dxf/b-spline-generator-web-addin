@@ -19,7 +19,7 @@
  */
 import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange } from '../core/frame-record.js';
 import { P, isFusionMode } from '../core/state.js';
-import { takeSnapshot, ensureUndoBaseline } from '../core/history.js';
+import { recordStep } from '../core/history.js';
 import { inEditor3dAction } from '../core/in-editor-3d.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
 import { withLoadingStageShownFirst } from '../core/loading-signal.js';
@@ -78,18 +78,23 @@ export const frameHistoryDepth = () => _frameHistory.length;
 /** Audit (batch 3): THE way a Frame-tab control edits the frame -- one undo step, the write, the panel sync.
  *  Thickness / Trim offset / Wood / Bottom Z / Panel lip used to write with no step (a Frame Undo then reverted
  *  them together with the previous handle drag, or couldn't undo them at all). */
-export function editFrame(patch) {
+export function editFrame(patch, label) {
   // the 'frame' stage on screen first (core/loading-signal.js): a frame edit blocks up to ~2 s on a phone
-  return withLoadingStageShownFirst('frame', () => editFrameNow(patch));
+  return withLoadingStageShownFirst('frame', () => editFrameNow(patch, label));
 }
 /** The same edit, NOW (no stage): for a caller that reads the result in the same breath -- a Clear records the steps
  *  and the frame it left (editor-clear-menu.js undoLastClear compares them), Delete frame snapshots the frame after.
  *  MEASURED (the gate's clear row): through the deferred editFrame, Clear All's one undo restored neither the frame
  *  nor the photo (it recorded 0 frame steps and the old frame, then refused as "changed since"). */
-export function editFrameNow(patch) {
-  pushFrameHistory();
-  setFrameRecord(patch);
-  syncFramePanel();
+/** In the sidebar it is also ONE global step carrying the frame transition (core/history.js recordStep), so the main
+ *  Undo / Ctrl+Z puts the frame back (Fred: "changing wood frame doesn't make an undo step"); inside the editor only the
+ *  Frame tab's own undo records it. */
+export function editFrameNow(patch, label = 'Frame change') {
+  recordStep(label, ['frame'], () => {
+    pushFrameHistory();
+    setFrameRecord(patch);
+    syncFramePanel();
+  });
 }
 function _syncUndo() { if ($('editorFrameUndo')) $('editorFrameUndo').disabled = _frameHistory.length === 0; }
 
@@ -241,12 +246,9 @@ export function sendFrame() {
  *  add-in to delete the frame Send built ('delete_frame': only the frames fb_engine/send_frame.py tagged, the same
  *  ones a Send replaces); no confirm dialog. */
 export function deleteFrame() {
-  const before = _clone(getFrameRecord());
-  ensureUndoBaseline('Before delete frame'); // the step undoes to exactly this board, not an older snapshot's
-  editFrameNow({ templateId: null, params: {} }); // NOW: the snapshot below reads the frame after
   // item 69 (seat E, measured: the sidebar Undo left the frame deleted): its own GLOBAL undo step, carrying the
-  // frame transition -- the sidebar's Undo restores the frame (and the 3D follows its re-lay)
-  takeSnapshot('Delete frame', { restore: { frame: { before, after: _clone(getFrameRecord()) } } });
+  // frame transition (editFrameNow) -- the sidebar's Undo restores the frame (and the 3D follows its re-lay)
+  editFrameNow({ templateId: null, params: {} }, 'Delete frame');
   if (isFusionMode) {
     try {
       adsk.fusionSendData('delete_frame', '{}');
