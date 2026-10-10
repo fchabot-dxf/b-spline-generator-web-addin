@@ -15,6 +15,8 @@ export function scheduleRebuild(rebuildFnOrDelay, delayMs = 50) {
     delay = 50;
   }
 
+  if (_hold) { rebuildTimer = null; _hold.pending = true; return; } // held: the latest fn runs once, at the release
+
   rebuildTimer = setTimeout(() => {
     rebuildTimer = null;
     if (typeof lastRebuildFn === 'function') {
@@ -23,5 +25,56 @@ export function scheduleRebuild(rebuildFnOrDelay, delayMs = 50) {
   }, delay);
 }
 
-/** A rebuild is waiting on its timer (item 37: rebuild.js whenRebuildIdle reads it). */
-export function isRebuildScheduled() { return rebuildTimer !== null; }
+/** A rebuild is waiting on its timer, or on a hold's release (item 37: rebuild.js whenRebuildIdle reads it). */
+export function isRebuildScheduled() { return rebuildTimer !== null || !!(_hold && _hold.pending); }
+
+// 2026-10-10 (seat A, the phone profile of a board-size nudge, loaded board): one nudge built the 3D FOUR times -- the
+// param's own rebuild (new size, old masks), the editor's resync commit, the brick re-lay's commit and its remask --
+// and only the last was the board the user asked for. A REBUILD HOLD makes a known multi-stage change one build: the
+// caller opens it with its DECLARED stages (main/app-init.js STOCK_CHANGE_STAGES); each stage that will run joins and
+// closes when done; scheduleRebuild only records the latest fn meanwhile, and it runs once when the last stage closes.
+// A stage that never closes cannot freeze the 3D: the backstop releases the hold.
+export const REBUILD_HOLD_BACKSTOP_MS = 3000;
+let _hold = null; // { stages: Set (declared), open: number, pending: boolean, timer, resolve, done: Promise }
+
+function _releaseHold(hold) {
+  if (_hold !== hold) return;
+  clearTimeout(hold.timer);
+  _hold = null;
+  if (hold.pending) scheduleRebuild(0);
+  hold.resolve();
+}
+
+/** Open a hold over `stages` (a declared list). A hold already open (a stepper burst) is kept: the new stages join its
+ *  list and its backstop restarts. Returns a promise that settles at the release. */
+export function openRebuildHold(stages, backstopMs = REBUILD_HOLD_BACKSTOP_MS) {
+  if (!_hold) {
+    let resolve;
+    const done = new Promise((r) => { resolve = r; });
+    _hold = { stages: new Set(), open: 0, pending: rebuildTimer !== null, timer: null, resolve, done };
+    clearTimeout(rebuildTimer); rebuildTimer = null; // a build already on its timer waits for the release too
+  }
+  const hold = _hold;
+  for (const s of stages) hold.stages.add(s);
+  clearTimeout(hold.timer);
+  hold.timer = setTimeout(() => _releaseHold(hold), backstopMs);
+  return hold.done;
+}
+
+/** A declared stage of the open hold starts: returns its close (idempotent). No hold open, or a stage the hold did not
+ *  declare: a no-op close, so callers join unconditionally. The hold releases when its last joined stage closes. */
+export function joinRebuildHold(stage) {
+  const hold = _hold;
+  if (!hold || !hold.stages.has(stage)) return () => {};
+  hold.open++;
+  let closed = false;
+  return () => {
+    if (closed) return;
+    closed = true;
+    hold.open--;
+    if (hold.open <= 0) _releaseHold(hold);
+  };
+}
+
+/** A hold is open (tests, probes). */
+export function isRebuildHeld() { return _hold !== null; }
