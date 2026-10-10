@@ -16,7 +16,7 @@ def test_the_declared_thresholds_and_their_edges():
     assert fm.memory_signal(12.0)['level'] == 'soft'
     assert fm.memory_signal(23.9)['level'] == 'soft'
     assert fm.memory_signal(24.0)['level'] == 'hard'
-    assert fm.memory_signal(13.4) == {'gb': 13.4, 'level': 'soft', 'text': 'Fusion is using 13 GB: save and restart Fusion soon'}
+    assert fm.memory_signal(13.4) == {'gb': 13.4, 'level': 'soft', 'text': 'Fusion is using 13 GB: save and restart Fusion soon (closing documents does not free memory)'}
 
 
 def test_an_unknown_reading_never_shows_a_line():

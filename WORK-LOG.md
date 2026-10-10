@@ -25694,3 +25694,12 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   frame-builder 1051 passed / 24 skipped.
 - LIVE re-check after it lands (advisor): claude_7 L3 identity + time; measure the frame's dimension_step (and apply
   the same order there only with a gain and identity).
+### 2026-10-09 (seat A): the Fusion memory line says why to restart (advisor decision (a))
+- MEASURED (two arms, tracemalloc + gc + in-process private bytes, fresh Fusions): the add-in's Python retains nothing
+  (heap < 0.6 MB, gc / adsk counts flat); Fusion itself grows ~0.55 GB per Send in one doc, and a document CLOSE adds
+  ~0.6 GB at once, ~0.4-0.5 GB still held 60 s later (+1.4 GB for a doc that took 3 Sends). Closing never frees.
+- CHANGE (wording of the existing warning, no new guard): fb_shared/fusion_memory.memory_signal's text and the palette's
+  fallback copy (fusion-memory-line.js) now read "... save and restart Fusion soon (closing documents does not free
+  memory)". Pinned: test_fusion_memory.py (the add-in's text), tests/fusion-memory-line.test.js (the add-in's words
+  shown as sent + a new pin on the fallback). Against main's text: 1 Python + 1 JS test fail.
+- Full suite 420 files, 6144/6144. Known failures: none.
