@@ -25903,3 +25903,16 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   a fitting lay -- fails on main (band 3's button exists). The brick-matrix lay row now asserts the unlaid bands' controls
   are absent (its old "disabled count 0" would have passed vacuously with them gone) and band 1's are there.
 - Related suites 20 files 251/251.
+
+### 2026-10-10 (seat E): "Offset from frame" is back as a distance (Fred; item 66's removal reversed for the distance)
+- Frame section: an "Offset from frame (in)" number input (#brickFrameOffsetDistance, min-height 28 px), its range declared
+  (brick-panel.js FRAME_OFFSET_RANGE: 0 - 1 in, step 1/16, set on the input; no code clamp -- a guard would need a yes).
+  setFrameOffset writes the key frameBandContour already reads (frameOffset { on, distance }; a legacy OFF board keeps
+  its OFF) and commits through commitBrickSetting('generate') (one re-lay, one step); synced from state on every restore.
+  The ON/OFF box stays retired. Untouched, a board writes nothing and lays at 0 exactly as before.
+- tests/brick-discrete-controls-regen.test.js: item 66's "no control" test inverted (the control is in the page, no ON/OFF
+  box; untouched = silhouette at 0, nothing written) + a change to 0.25 writes { on: true, distance: 0.25 }, one re-lay,
+  the silhouette at 0.25 -- both fail on main. The legacy reads (0.3; OFF = the board rectangle) unchanged.
+- tests/frame-offset-distance.test.js (the real silhouette, T1 7x9 + T9 9x12): at 0.25 every point inside the 0 contour, at
+  least 0.25 in (less chord error), at most 0.25 x sqrt 2 (a mitred reflex corner, MEASURED 0.354), median 0.25 -- a pin of
+  the silhouette's existing offset. Brick-panel suites 41 files 478/478.
