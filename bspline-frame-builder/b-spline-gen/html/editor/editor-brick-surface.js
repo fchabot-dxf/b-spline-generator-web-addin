@@ -164,14 +164,14 @@ export function preloadSetDetail(setId) {
   return Promise.all(jobs);
 }
 
-/** A point's own LOCAL (u,v) in [0,1]^2 within `polygon` -- origin at the
- *  polygon's own centroid, u-axis along its own LONGEST edge (the brick's
- *  length axis whatever its rotation -- works for a mitred triangle/pentagon
- *  too, not just a plain axis-aligned rect), half-extents from the polygon's
- *  own real vertices (a cut/mitred piece gets a correspondingly smaller
- *  window, not a fixed full-brick one -- never stretched). `flip` mirrors u,
- *  core/bricks' own declared per-brick flip. */
-export function brickLocalUV(polygon, x, y, flip) {
+/** brickLocalUV's per-POLYGON frame (centroid, longest-edge axis, half-extents) -- 2026-10-10 (seat A; the phone map,
+ *  loaded board: brickLocalUV 6.3 s of self time) computed once per polygon, not at every sample point (polygons are
+ *  never edited in place: a changed shape is a new array). Same arithmetic as before (tests/brick-local-uv-cache-
+ *  identical.test.js). */
+const _uvFrameByPolygon = new WeakMap();
+function uvFrameOf(polygon) {
+  let f = _uvFrameByPolygon.get(polygon);
+  if (f) return f;
   const n = polygon.length;
   let cx = 0, cy = 0;
   for (const p of polygon) { cx += p.x; cy += p.y; }
@@ -192,7 +192,20 @@ export function brickLocalUV(polygon, x, y, flip) {
     halfU = Math.max(halfU, Math.abs(dx * ux + dy * uy));
     halfV = Math.max(halfV, Math.abs(dx * vx + dy * vy));
   }
+  f = { cx, cy, ux, uy, vx, vy, halfU, halfV };
+  _uvFrameByPolygon.set(polygon, f);
+  return f;
+}
 
+/** A point's own LOCAL (u,v) in [0,1]^2 within `polygon` -- origin at the
+ *  polygon's own centroid, u-axis along its own LONGEST edge (the brick's
+ *  length axis whatever its rotation -- works for a mitred triangle/pentagon
+ *  too, not just a plain axis-aligned rect), half-extents from the polygon's
+ *  own real vertices (a cut/mitred piece gets a correspondingly smaller
+ *  window, not a fixed full-brick one -- never stretched). `flip` mirrors u,
+ *  core/bricks' own declared per-brick flip. */
+export function brickLocalUV(polygon, x, y, flip) {
+  const { cx, cy, ux, uy, vx, vy, halfU, halfV } = uvFrameOf(polygon);
   const dx = x - cx, dy = y - cy;
   let u = ((dx * ux + dy * uy) / halfU + 1) / 2;
   const v = ((dx * vx + dy * vy) / halfV + 1) / 2;

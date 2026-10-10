@@ -71,7 +71,7 @@ export default {
     "rule": "2 * frame_thickness < min(widthIn, heightIn) - 2 * boundingboxoffset"
   },
   "frameDefsVersion": 1,
-  "sourceHash": "267bf28c420a0d943ec1a02e29e833e27b1d775e323198b1bcc0055a8c25a3e3",
+  "sourceHash": "bc92e2ac96130f64fe302bf6107bbe912e3ba908eca6a061df62c929e0553c3b",
   "templates": [
     {
       "features": [
@@ -94,7 +94,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -1691,7 +1691,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -3395,7 +3395,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -4615,7 +4615,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -6230,7 +6230,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -7417,7 +7417,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -8904,7 +8904,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -10091,7 +10091,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -11302,7 +11302,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -12846,7 +12846,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -14545,7 +14545,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -16248,7 +16248,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -17420,7 +17420,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -19050,7 +19050,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -20689,7 +20689,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -22572,7 +22572,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -23620,7 +23620,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -25049,7 +25049,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",
@@ -26498,7 +26498,7 @@ export default {
           "taper": "0 deg"
         },
         {
-          "extent": "throughAll",
+          "extent": "throughAllBothSides",
           "id": "trim",
           "op": "cut",
           "region": "surround-minus-outline",

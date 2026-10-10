@@ -315,6 +315,23 @@ export function holdLoadingStage(stageId, ctx) {
 }
 export const releaseHeldStage = () => holdLoadingStage(null);
 
+/** 2026-10-10 (Fred: "the saving to cloud modal spinner is over the password modal"): while the app waits on the USER
+ *  (a prompt or confirm is open -- the edit password asked in the middle of a save), the overlay steps back: nothing
+ *  is running then, and the card sits above every dialog (z-index). The stages and sequences are untouched (only the
+ *  element's visibility), so the card comes back as it was once the answer is in. Nested prompts count. */
+let _askingUser = 0;
+function _applyAskingUser() {
+  const el = _el();
+  if (!el) return;
+  el.style.visibility = _askingUser ? 'hidden' : '';
+  if (_askingUser) el.dataset.askingUser = '1'; else delete el.dataset.askingUser;
+}
+export async function whileAskingUser(fn) {
+  _askingUser++;
+  _applyAskingUser();
+  try { return await fn(); } finally { _askingUser--; _applyAskingUser(); }
+}
+
 /** Drop every stage and sequence and hide the overlay at once (tests: the state is module-wide). */
 export function resetLoadingSignal() {
   _stack.length = 0;
@@ -323,6 +340,7 @@ export function resetLoadingSignal() {
   _sequence = null;
   clearTimeout(_hideTimer); _hideTimer = null;
   _gestureOn = false; _gestureUntil = 0; _gestureLook = false;
+  _askingUser = 0; _applyAskingUser();
   const el = _el();
   if (el) { el.hidden = true; delete el.dataset.stage; }
 }

@@ -21,6 +21,9 @@
 export const id = 'magma';
 export const label = 'Molten Crust';
 export const cMultiplier = 2.6;
+// the photo layer's "Filter shows through" normalises this filter's output by its declared span (core/terrain.js):
+// MEASURED 2026-10-10 (seat A), default tweaks, 8 seeds x 7x9 / 9x12 / 12x9 boards, the 0.5 / 99.5 percentiles.
+export const nominalRange = [0.04, 0.53];
 
 export const tweaks = [
   { key: 'crackBrightness', label: 'Crack Brightness', default: 0.55, min: 0.10, max: 1.00, step: 0.05, desc: 'Primary lava-vein height' },

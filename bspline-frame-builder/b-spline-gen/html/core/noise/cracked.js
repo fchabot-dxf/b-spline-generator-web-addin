@@ -5,6 +5,9 @@
 export const id = 'cracked';
 export const label = 'Cracked Earth';
 export const cMultiplier = 2.5;
+// the photo layer's "Filter shows through" normalises this filter's output by its declared span (core/terrain.js):
+// MEASURED 2026-10-10 (seat A), default tweaks, 8 seeds x 7x9 / 9x12 / 12x9 boards, the 0.5 / 99.5 percentiles.
+export const nominalRange = [0.1, 0.32];
 
 export const tweaks = [
   { key: 'crackSharpness',  label: 'Crack Sharpness',  default: 0.15, min: 0.05, max: 0.60, step: 0.01, desc: 'Lower = thinner, sharper fissures' },

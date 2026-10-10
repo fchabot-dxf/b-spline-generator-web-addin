@@ -934,6 +934,13 @@
         </div>
       </div>
 
+      <!-- 2026-10-10 (Fred: the photo as its own LAYER on top of the chosen filter): every 3D setting of the photo, plus
+           some image edits mirrored with the editor's Photo tab. Rendered from main/photo-layer-section.js PHOTO_CONTROLS. -->
+      <div class="panel panel-photo">
+        <div class="panel-header collapsed" onclick="togglePanel(this)">📷 PHOTO</div>
+        <div class="panel-body hidden" id="photoLayerBody"></div>
+      </div>
+
       <!-- F35 item 18 (3), the Brick SIDEBAR SPLIT (since F35 item 27 both the editor and the sidebar apply
            at once): the main sidebar holds the brick 3D settings (each lives ONLY here) plus a few
            QUICK settings that mirror the editor Brick tab's own (same P.brickSettings, two entry points),
@@ -3039,23 +3046,8 @@
               </button>
             </div>
 
-            <!-- F34 item 3 (Fred: "height wouldn't ever be more than 1/4 for
-                 now"): the PHYSICAL carve depth (same real P.carveZ every other
-                 filter uses), just scoped here to a photo-appropriate range --
-                 distinct from the "Depth" effect param below, which is a
-                 unitless relief-strength multiplier, not a real dimension. -->
-            <label class="cad-label">Max Height (in)</label>
-            <div class="cad-slider-row" style="margin-bottom:12px;">
-              <input type="range" id="photoReliefHeightSlider" class="cad-slider" min="0.01" max="0.25" step="0.005" value="0.125">
-              <div class="cad-stepper" style="width:60px;"><input type="number" id="photoReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
-            </div>
-
-            <label class="cad-label" style="font-weight:600; opacity:0.75; margin:8px 0 4px;">Effect params</label>
-            <div id="photoTweaksBody">
-              <!-- Populated at runtime by core/noise/tweaks-ui.js → renderTweaksPanel() --
-                   a SECOND render target for the SAME schema/state the Filter panel's own
-                   "⚙️ Edit Filter" panel uses (registerTweaksTarget), not a copy. -->
-            </div>
+            <!-- 2026-10-10: Max Height and the effect params (depth / scale / offset / rotation / repeat) moved to
+                 Surface > Photo (main/photo-layer-section.js PHOTO_CONTROLS): this tab edits the image. -->
             </div>
 
             <!-- F34 item 3: writes the live edits+tweaks+Max Height back into

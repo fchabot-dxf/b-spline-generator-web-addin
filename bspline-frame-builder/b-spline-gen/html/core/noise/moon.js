@@ -43,6 +43,9 @@ import { craterField } from './craterField.js';
 export const id = 'moon';
 export const label = 'Moon Surface';
 export const cMultiplier = 3.0;
+// the photo layer's "Filter shows through" normalises this filter's output by its declared span (core/terrain.js):
+// MEASURED 2026-10-10 (seat A), default tweaks, 8 seeds x 7x9 / 9x12 / 12x9 boards, the 0.5 / 99.5 percentiles.
+export const nominalRange = [-0.67, 0.27];
 
 export const tweaks = [
   { key: 'highlandHeight', label: 'Highland Height', default: 0.45, min: 0.10, max: 1.00, step: 0.05, desc: 'Highland vs maria amplitude' },

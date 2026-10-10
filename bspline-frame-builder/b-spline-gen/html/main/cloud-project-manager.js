@@ -22,7 +22,7 @@ import { confirmDialog } from '../core/confirm-dialog.js';
 import { showToast } from '../core/toast.js';
 import { FRAME_DEFS, findFrameTemplate } from '../core/frame-record.js';
 import { editFetch, bindEditPasswordSettings } from './edit-password.js';
-import { withLoadingStage, beginLoadingSequence } from '../core/loading-signal.js';
+import { withLoadingStage, beginLoadingSequence, whileAskingUser } from '../core/loading-signal.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 function getApiUrl() {
@@ -1480,6 +1480,9 @@ async function safeJson(r) { try { return await r.json(); } catch { return {}; }
  * Enter = OK, Esc = cancel. Auto-focuses + selects the input.
  */
 function promptForName(title, defaultValue = '', placeholder = '') {
+  return whileAskingUser(() => _promptForName(title, defaultValue, placeholder)); // the loading card steps back meanwhile
+}
+function _promptForName(title, defaultValue, placeholder) {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'pm-prompt-overlay';

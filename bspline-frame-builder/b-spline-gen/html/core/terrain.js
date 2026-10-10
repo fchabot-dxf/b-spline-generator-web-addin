@@ -57,6 +57,18 @@ export function generateHeightmap(params, stampParams = null) {
       ? () => 0.5
       : (NoiseModes[noiseType] || NoiseModes['simplex']);
   const noiseRefs = { noiseFine, noiseWarp, noiseCoarse, rawU: 0, rawV: 0 };
+  // 2026-10-10 (Fred: the photo as its own LAYER on top of the chosen filter, "how much of the filter transpires"): with
+  // P.photoLayer on, the fine value is the PHOTO, plus the board's filter normalised by its declared span
+  // (NoiseMetadata nominalRange, about 0..1 like the photo) around its middle, times "Filter shows through"
+  // (photoFilterAmount, 0..100 %). At 0 % the filter is not sampled at all: the fine value is the photo's own -- exactly
+  // what a board on the old Photo filter gave. Everything after (detail, the coarse pass, carve depth) is as before.
+  // "Hide filter texture" (isolateSkeleton) hides the FILTER -- with the photo layer, no filter share at all (its flat
+  // 0.5 would still add a constant offset once normalised); the photo layer stays.
+  const photoLayer = !!params.photoLayer;
+  const photoParams = photoLayer ? { ...params, tweaks: (params.filterTweaks && params.filterTweaks.photo) || {} } : null;
+  const filterShare = (photoLayer && !params.isolateSkeleton) ? Math.max(0, Math.min(100, Number(params.photoFilterAmount) || 0)) / 100 : 0;
+  const [rangeLo, rangeHi] = (NoiseMetadata[noiseType] || NoiseMetadata['simplex']).nominalRange || [0, 1];
+  const rangeSpan = (rangeHi - rangeLo) || 1;
 
   // ── Pass 1 + 2: fine detail & coarse redistribution ───────────────────────
   for (let j = 0; j < nz; j++) {
@@ -99,7 +111,13 @@ export function generateHeightmap(params, stampParams = null) {
 
         // ── Pass 1: Fine Detail (Strategy Pattern; modeFunc / noiseRefs above the loop) ──
         noiseRefs.rawU = u; noiseRefs.rawV = v;
-        let fine = modeFunc(su, sv, aspect, modeParams, noiseRefs);
+        let fine;
+        if (photoLayer) {
+            fine = NoiseModes.photo(su, sv, aspect, photoParams, noiseRefs);
+            if (filterShare > 0) fine += ((modeFunc(su, sv, aspect, modeParams, noiseRefs) - rangeLo) / rangeSpan - 0.5) * filterShare;
+        } else {
+            fine = modeFunc(su, sv, aspect, modeParams, noiseRefs);
+        }
 
         // ── Detail Modulation (Spatial Density) ──
         //   detailDensity   (0..1) spatial mask: 1 = full detail everywhere,

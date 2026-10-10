@@ -25,6 +25,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 import { initBrickPanel } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { runBricks, BRICK_RECORD_KINDS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
+import { openRebuildHold, isRebuildHeld } from '../bspline-frame-builder/b-spline-gen/html/core/engine/scheduler.js';
 vi.setConfig({ testTimeout: HEAVY_TEST_MS }); // the declared heavy-test timeout: timed out at 5 s under the fleet's load (turns 261-265)
 
 const FIXTURE = `
@@ -141,6 +142,29 @@ describe('item 22 step 3: the panel reads each ELEMENT\'s own laid key', () => {
       document.dispatchEvent(new CustomEvent('editorBoardResized'));
       vi.advanceTimersByTime(400);
       expect(runBricks).not.toHaveBeenCalled();
+    } finally {
+      P.widthIn = w; P.heightIn = h;
+    }
+  });
+
+  it('a board-size change\'s rebuild hold (2026-10-10): the re-lay stage closes after its lay -- or at once when nothing needs one', () => {
+    setup();
+    vi.useFakeTimers();
+    const [w, h] = [P.widthIn, P.heightIn];
+    try {
+      P.widthIn = 9; P.heightIn = 12;
+      openRebuildHold(['brick-relay']);
+      document.dispatchEvent(new CustomEvent('editorBoardResized'));
+      expect(isRebuildHeld()).toBe(true);
+      vi.advanceTimersByTime(400);
+      expect(runBricks).toHaveBeenCalledTimes(1);
+      expect(isRebuildHeld()).toBe(false); // the lay committed: its stage closed (the backstop is 3 s away)
+      runBricks.mockClear();
+      openRebuildHold(['brick-relay']);
+      document.dispatchEvent(new CustomEvent('editorBoardResized')); // the same board: no lay
+      vi.advanceTimersByTime(400);
+      expect(runBricks).not.toHaveBeenCalled();
+      expect(isRebuildHeld()).toBe(false);
     } finally {
       P.widthIn = w; P.heightIn = h;
     }

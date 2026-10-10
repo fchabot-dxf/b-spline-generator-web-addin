@@ -25,6 +25,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/main/stamp-mask-manager.js', () => ({
   updateStampMasks: vi.fn(async () => true),
+  refreshAllStampMasks: vi.fn(async () => {}),
 }));
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/engine.js', () => ({
   scheduleRebuild: vi.fn(),
@@ -53,7 +54,8 @@ import { renderLayersPanel } from '../bspline-frame-builder/b-spline-gen/html/ed
 import { getFrameRecord, setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import * as appInit from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
-import { updateStampMasks } from '../bspline-frame-builder/b-spline-gen/html/main/stamp-mask-manager.js';
+import { updateStampMasks, refreshAllStampMasks } from '../bspline-frame-builder/b-spline-gen/html/main/stamp-mask-manager.js';
+import { openRebuildHold, joinRebuildHold } from '../bspline-frame-builder/b-spline-gen/html/core/engine/scheduler.js';
 import { currentLoadingStage, resetLoadingSignal } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 function mockEditor() {
@@ -252,5 +254,25 @@ describe("applySnapshot (undo): item 69 -- the layer rows follow the restored to
     expect(editor.open).toHaveBeenCalledWith('<svg>before</svg>', P.widthIn, P.heightIn);
     await applySnapshot({ P: {} }, null, { source: 'undo' });
     expect(editor.open).toHaveBeenCalledTimes(1); // no declared drawing: the drawing is left alone
+  });
+});
+
+// 2026-10-10: an undo of the board SIZE holds the 3D (main/app-init.js STOCK_CHANGE_DEFERS): its mask pass waits for
+// the hold's one pass on the final editor (MEASURED, phone rig: a size undo ran 2 mask passes, now 1, the same 3D)
+describe('applySnapshot: an undo inside a board-size hold defers its masks to the hold', () => {
+  beforeEach(() => { vi.clearAllMocks(); window.svgEditor = null; });
+  it('a hold declaring stamp-masks: no mask pass now; the hold runs ONE at its release', async () => {
+    openRebuildHold(['editor-resync'], { defers: ['stamp-masks'] });
+    const close = joinRebuildHold('editor-resync');
+    await applySnapshot({ P: {} }, null, { source: 'undo' });
+    expect(updateStampMasks).not.toHaveBeenCalled();
+    expect(refreshAllStampMasks).not.toHaveBeenCalled();
+    close();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(refreshAllStampMasks).toHaveBeenCalledTimes(1);
+  });
+  it('no hold: the masks run now, as before', async () => {
+    await applySnapshot({ P: {} }, null, { source: 'undo' });
+    expect(updateStampMasks).toHaveBeenCalledTimes(1);
   });
 });

@@ -14,6 +14,9 @@ import { mirrorSeam } from './mirror-seam.js';
 export const id = 'carved';
 export const label = 'Hand-Carved';
 export const cMultiplier = 2.5;
+// the photo layer's "Filter shows through" normalises this filter's output by its declared span (core/terrain.js):
+// MEASURED 2026-10-10 (seat A), default tweaks, 8 seeds x 7x9 / 9x12 / 12x9 boards, the 0.5 / 99.5 percentiles.
+export const nominalRange = [0.26, 0.61];
 
 const APPROVED_SALT = 4;
 const MIRROR_BAND = 0.04; // su

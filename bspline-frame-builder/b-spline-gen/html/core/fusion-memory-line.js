@@ -10,7 +10,7 @@ export function paintFusionMemory(payload, doc = typeof document !== 'undefined'
   const level = payload && payload.level;
   if (level !== 'soft' && level !== 'hard') { el.hidden = true; delete el.dataset.level; el.textContent = ''; return; }
   el.dataset.level = level;
-  el.textContent = payload.text || `Fusion is using ${payload.gb} GB: save and restart Fusion soon`;
+  el.textContent = payload.text || `Fusion is using ${payload.gb} GB: save and restart Fusion soon (closing documents does not free memory)`; // fb_shared/fusion_memory.py's own words
   el.hidden = false;
 }
 

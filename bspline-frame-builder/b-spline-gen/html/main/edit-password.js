@@ -10,6 +10,7 @@
 
 import { isFusionMode } from '../core/state.js';
 import { showToast } from '../core/toast.js';
+import { whileAskingUser } from '../core/loading-signal.js';
 
 export const EDIT_PASSWORD = Object.freeze({
   storageKey: 'bspline.editPassword',
@@ -48,7 +49,7 @@ export function receiveEditPasswordFromFusion(password) {
 
 /** A password prompt (the Project Manager's dialog style); resolves the text, or null when cancelled. */
 export function askPassword(title) {
-  return new Promise((resolve) => {
+  return whileAskingUser(() => new Promise((resolve) => { // the save's card steps back while it is open
     const overlay = document.createElement('div');
     overlay.className = 'pm-prompt-overlay';
     overlay.innerHTML = `
@@ -71,7 +72,7 @@ export function askPassword(title) {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(null); }
     });
     setTimeout(() => input.focus(), 0);
-  });
+  }));
 }
 
 const _cancelled = () => new Response(JSON.stringify({ error: EDIT_PASSWORD.cancelledError }), { status: 401, headers: { 'Content-Type': 'application/json' } });

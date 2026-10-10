@@ -139,8 +139,13 @@ describe('every wall pattern at Fred\'s sizes: no overlap, nothing off the board
     const input = { boardOutline: [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }], set, scale, seed: 1, suppression: 0, clumping: 0, frame: { primitives: prims, bands: FRAME_PRESETS.single_soldier } };
     if (BRICK_PATTERNS[pattern].kind === 'tile2d') input.set = { ...set, layout: pattern }; else input.zones = [{ pattern }];
     const r = generateBricks(input), Wb = r.bricks.map((b) => b.polygon), P = [...Wb, ...r.frameBricks.map((b) => b.polygon)], tag = `${tpl} ${W}x${H} ${L} ${pattern}`;
-    const over = [];
-    for (let i = 0; i < Wb.length; i++) for (let j = i + 1; j < P.length; j++) { const o = Math.abs(signedArea(polygonIntersection(Wb[i], P[j])) || 0); if (o > 1e-3) over.push(+o.toFixed(4)); }
+    // pairs whose boxes are apart cannot overlap: skipped (their intersection is empty -- the same list)
+    const over = [], bx = P.map((Q) => [Math.min(...Q.map((p) => p.x)), Math.min(...Q.map((p) => p.y)), Math.max(...Q.map((p) => p.x)), Math.max(...Q.map((p) => p.y))]);
+    for (let i = 0; i < Wb.length; i++) for (let j = i + 1; j < P.length; j++) {
+      const a = bx[i], b = bx[j];
+      if (a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]) continue;
+      const o = Math.abs(signedArea(polygonIntersection(Wb[i], P[j])) || 0); if (o > 1e-3) over.push(+o.toFixed(4));
+    }
     expect(over, `${tag}: wall pieces overlapping (sq in)`).toEqual([]);
     expect(Wb.filter((Q) => Q.some((p) => !pointInPolygon(p.x, p.y, C) && Math.min(...C.map((a, i) => segDist(p, a, C[(i + 1) % C.length]))) > J)).length, `${tag}: wall pieces off the outline`).toBe(0);
     const bare = bareGround(C, [...r.bricks, ...r.frameBricks], J, { W, H }), face = bare.largestSqIn / (s.brickLengthIn * s.brickHeightIn), cap = PATTERN_CAPS[tag];

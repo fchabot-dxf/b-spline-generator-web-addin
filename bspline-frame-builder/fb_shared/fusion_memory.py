@@ -9,7 +9,9 @@ Thresholds are declared once, here.
 """
 import sys
 
-FUSION_RESTART_SOFT_GB = 12
+# soft 12 -> 10 (2026-10-09, advisor): seats already stop at 10 for probes; Fusion hung at 18.6 with gate Chromes on the
+# PC, and it retains ~0.55 GB per Send + ~0.5 GB per closed document, so the amber line now leaves room to save + restart
+FUSION_RESTART_SOFT_GB = 10
 FUSION_RESTART_HARD_GB = 24
 
 
@@ -47,7 +49,9 @@ def memory_signal(gb):
     if gb is None:
         return {'gb': None, 'level': 'ok', 'text': ''}
     level = 'hard' if gb >= FUSION_RESTART_HARD_GB else 'soft' if gb >= FUSION_RESTART_SOFT_GB else 'ok'
-    text = f'Fusion is using {gb:.0f} GB: save and restart Fusion soon' if level != 'ok' else ''
+    # the reason, measured 2026-10-09 (seat A): Fusion's own memory grows ~0.55 GB per Send and a document CLOSE adds
+    # ~0.5 GB more -- only a restart frees it
+    text = f'Fusion is using {gb:.0f} GB: save and restart Fusion soon (closing documents does not free memory)' if level != 'ok' else ''
     return {'gb': round(gb, 1), 'level': level, 'text': text}
 
 
