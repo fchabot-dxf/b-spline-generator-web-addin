@@ -10,6 +10,7 @@ import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
 import { applySnapshot } from './snapshot-manager.js';
 import { _isTypingTarget } from '../editor/dom.js';
+import { routedUndo, routedRedo } from '../editor/editor-ui.js';
 import { getEditorTab, EDITOR_TABS } from './editor-tabs.js';
 import { deselectTool as deselectBrickTool } from './brick-panel.js';
 import { deselectPhotoTool } from './photo-panel.js';
@@ -54,18 +55,18 @@ export function wireGlobalEvents(preview) {
         // (window.svgEditor.undo/redo) — unifiedUndo/Redo already
         // early-out via isEditorOpen() so they don't double-fire.
         const editorOpen = isEditorOpen();
-        // FB-APP F8: in the editor's Frame tab the artwork is read-only, so its undo stack is too.
-        if (editorOpen && window.svgEditor?._artworkLocked) return;
+        // FB-APP F8: in the editor's Frame tab the artwork is read-only -- its keys go to the tab's own stack
+        // (editor-ui.js routedUndo / routedRedo, the same route the toolbar buttons take)
 
         if (e.key === 'z' && !e.shiftKey) {
             e.preventDefault();
-            if (editorOpen) window.svgEditor?.undo();
+            if (editorOpen) routedUndo(() => window.svgEditor?.undo());
             else unifiedUndo((snap, restore) => applySnapshot(snap, preview, { source: 'undo', restore }));
             return;
         }
         if (e.key === 'y' || (e.key === 'Z' && e.shiftKey) || (e.key === 'z' && e.shiftKey)) {
             e.preventDefault();
-            if (editorOpen) window.svgEditor?.redo();
+            if (editorOpen) routedRedo(() => window.svgEditor?.redo());
             else unifiedRedo((snap, restore) => applySnapshot(snap, preview, { source: 'undo', restore }));
             return;
         }

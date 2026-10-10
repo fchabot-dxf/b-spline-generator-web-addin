@@ -79,3 +79,64 @@ describe('a sidebar frame edit is ONE global undo step', () => {
   });
 });
 
+
+// Seat D measured on main: in the editor's Frame tab the toolbar Undo ran editor.undo() -- the ARTWORK stack -- so the
+// visible arrow left a frame change in place and silently undid art instead. One route (editor-ui.js routedUndo, the
+// tab's declared EDITOR_TABS `undo`) for the buttons and Ctrl+Z.
+describe('the editor Frame tab: Undo / Redo act on the frame stack', () => {
+  const setup = async () => {
+    const { registerActionTools } = await import('../bspline-frame-builder/b-spline-gen/html/editor/tools/action-tools.js');
+    const { setEditorTab } = await import('../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js');
+    const { wireGlobalEvents } = await import('../bspline-frame-builder/b-spline-gen/html/main/global-events.js');
+    document.body.insertAdjacentHTML('beforeend', '<button id="editorUndo"></button><button id="editorRedo"></button>');
+    document.getElementById('svgEditorModal').style.display = 'block';
+    const art = [];
+    const ed = { _undoStack: ['a', 'b'], _redoStack: ['c'], undo: () => art.push('undo'), redo: () => art.push('redo') };
+    window.svgEditor = ed;
+    registerActionTools(ed);
+    if (!globalThis.__geWired) { wireGlobalEvents({}); globalThis.__geWired = true; }
+    setEditorTab('frame');
+    return { art, setEditorTab };
+  };
+  const changeWood = async () => {
+    const el = document.getElementById('frameAppearance');
+    el.value = otherOption(el); el.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+  };
+
+  it('the toolbar Undo undoes the frame change; the art (an art step on its stack) is untouched', async () => {
+    const { art } = await setup();
+    const before = frameJson();
+    await changeWood();
+    expect(frameJson()).not.toBe(before);
+    expect(document.getElementById('editorUndo').disabled).toBe(false);
+    document.getElementById('editorUndo').click();
+    await settle();
+    expect(frameJson()).toBe(before);
+    expect(art).toEqual([]);
+  });
+
+  it('Ctrl+Z takes the same route', async () => {
+    const { art } = await setup();
+    const before = frameJson();
+    await changeWood();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+    await settle();
+    expect(frameJson()).toBe(before);
+    expect(art).toEqual([]);
+  });
+
+  it('Redo is disabled on the Frame tab (the frame has no redo) and never redoes art; Artwork tab: the art stack again', async () => {
+    const { art, setEditorTab } = await setup();
+    await changeWood();
+    expect(document.getElementById('editorRedo').disabled).toBe(true);
+    document.getElementById('editorRedo').click();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'y', ctrlKey: true, bubbles: true, cancelable: true }));
+    await settle();
+    expect(art).toEqual([]);
+    setEditorTab('artwork');
+    document.getElementById('editorUndo').click();
+    await settle();
+    expect(art).toEqual(['undo']);
+  });
+});

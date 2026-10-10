@@ -22,8 +22,10 @@ import { TOOLBAR_GROUPS } from '../editor/editor-ui.js';
 // `clears` (F35 item 28): what the editor header's Clear menu clears for this tab -- a main/editor-clear-menu.js
 // CLEAR_KINDS key. A new tab that declares one gets its own Clear entry.
 export const EDITOR_TABS = [
+  // `undo`: the stack the editor's Undo / Redo (buttons and Ctrl+Z) act on in this tab -- a main/frame-panel.js
+  // EDITOR_UNDO_STACKS key; absent = the editor's own (the artwork) stack
   { id: 'frame', clears: 'frame', label: 'Frame', buttonId: 'editorTabFrame', panelId: 'editorFramePanel', toolbarId: 'editorToolbarFrame',
-    modes: ['select'] },
+    modes: ['select'], undo: 'frame' },
   { id: 'artwork', clears: 'artwork', label: 'Artwork', buttonId: 'editorTabArtwork', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
     modes: ['select', 'node', 'text', 'draw', 'line', 'rect', 'circle', 'erase', 'lattice', 'shapeLattice', 'cut', 'stripe'],
     // the Art tabs (mockup v2): General holds the shared stroke / colour / style groups (main/art-tabs.js

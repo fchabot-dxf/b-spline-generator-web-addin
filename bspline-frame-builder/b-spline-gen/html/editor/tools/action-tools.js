@@ -3,13 +3,15 @@ import { bindClick } from '../dom.js';
 import { endEditorSession } from '../editor-text-session.js';
 import { isUnexpandable, unexpand } from '../editor-expand-commit.js';
 import { confirmDialog } from '../../core/confirm-dialog.js';
+import { routedUndo, routedRedo } from '../editor-ui.js';
 
 export function registerActionTools(editor) {
   const bind = (id, fn) => bindClick(id, fn);
 
   bind('toolDelete', () => editor.deleteSelected());
-  bind('editorUndo', () => withLoadingStageShownFirst('undo', () => editor.undo()));
-  bind('editorRedo', () => withLoadingStageShownFirst('redo', () => editor.redo()));
+  // the active tab's own stack when it declares one (editor-ui.js routedUndo: the Frame tab undoes the frame)
+  bind('editorUndo', () => routedUndo(() => withLoadingStageShownFirst('undo', () => editor.undo())));
+  bind('editorRedo', () => routedRedo(() => withLoadingStageShownFirst('redo', () => editor.redo())));
 
   // SE2: reset zoom/pan to fit the whole board.
   bind('toolFit', () => editor.fitView());

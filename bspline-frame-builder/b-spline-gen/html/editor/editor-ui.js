@@ -278,9 +278,19 @@ export function applyToolbarGroups(rawMode, el, currentMode) {
 export function updateHistoryButtons(editor) {
   const undoBtn = getEl('editorUndo');
   const redoBtn = getEl('editorRedo');
-  if (undoBtn) undoBtn.disabled = !(editor._undoStack && editor._undoStack.length >= 2);
-  if (redoBtn) redoBtn.disabled = !(editor._redoStack && editor._redoStack.length);
+  const route = _historyRoute();
+  if (undoBtn) undoBtn.disabled = route ? !route.canUndo() : !(editor._undoStack && editor._undoStack.length >= 2);
+  if (redoBtn) redoBtn.disabled = route ? !(route.redo && route.canRedo()) : !(editor._redoStack && editor._redoStack.length);
 }
+
+/** Fred ("changing wood frame doesn't make an undo step"; seat D measured: on the Frame tab the toolbar Undo ran the
+ *  ARTWORK stack): the stack the editor's Undo / Redo -- the buttons AND Ctrl+Z -- act on, when the active tab declares
+ *  its own (main/editor-tabs.js EDITOR_TABS `undo`, the stacks in main/frame-panel.js EDITOR_UNDO_STACKS):
+ *  { undo, canUndo, redo, canRedo } (redo null = none: the button is disabled, nothing runs), or null = the editor's. */
+let _historyRoute = () => null;
+export function setHistoryRoute(fn) { _historyRoute = fn; }
+export function routedUndo(ownUndo) { const r = _historyRoute(); return r ? r.undo() : ownUndo(); }
+export function routedRedo(ownRedo) { const r = _historyRoute(); return r ? (r.redo ? r.redo() : undefined) : ownRedo(); }
 
 export function updateToolbarVisibility(editor, mode, el) {
     // SE7a: some callers (e.g. _afterSelectionChange below) call this
