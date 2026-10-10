@@ -75,6 +75,58 @@ export function rebuildInputDigest(preview, nx, nz) {
 }
 let _lastBuiltDigest = null;
 
+// 2026-10-09 (seat A; the phone map, photo board: Adaptive display / Colour edges / thicken toggles re-ran the whole
+// heightmap -- smoothing, noise, stamps -- for a change only the thicken + display steps read): the HEIGHTS stage
+// (buildHeights below: terrain.js, the stamp layers and everything they import) has its own declared inputs, and a
+// build whose heights inputs equal the last one's reuses copies of those heights. Byte-identical by construction.
+/** P keys the heights stage never reads (tests/heights-inert-keys.test.js scans that code for every one of them). */
+export const HEIGHTS_INERT_KEYS = new Set([
+    'adaptiveDisplay', 'showMesh', 'flatShading', 'colourEdges', 'showLeaders', // the display
+    'thickness', 'thickenEnabled', 'thickenDir', 'thickenMode', 'thickenWireframe', 'thickenYellowOffset', 'includeSurface',
+    'includeUnstampedSolid', 'bottomSmoothRadius', 'extraThickenThin', 'extraThickenThinFalloff', // the thicken step
+    'decalEnabled', 'decalResolution', 'decalLayerIds',
+    'sculptTopRespectSymmetry', 'sculptBotRespectSymmetry',
+    'spacing', 'exportSpacing', 'sameAsDisplayResolution', 'exportOrientation', // the grid (nx, nz) is its own input
+    // the stamp / brick / frame / photo-pattern settings reach the heights only through the editor layers' masks
+    // and P.photoImageDataUrl, both inputs below
+    'stampSmoothingRadius', 'stampFilletPower', 'stampVBitAngle', 'stampBlur', 'stampTextureSuppression',
+    'brickSettings', 'frame', 'photoPatternId', 'stampLayers', 'activeLayerIdx', 'editorSvg',
+]);
+/** The heights stage's declared inputs as one digest (null = unreadable: the heights are rebuilt). */
+export function heightsInputDigest(nx, nz) {
+    try {
+        let h = 2166136261;
+        h = _fnv(h, `${nx}x${nz}|${isPhotoReady(P.photoImageDataUrl)}`);
+        h = _fnv(h, JSON.stringify(P, (k, v) => (REBUILD_INERT_KEYS.has(k) || HEIGHTS_INERT_KEYS.has(k) ? undefined : v)));
+        h = _fnvArray(h, preDelta);
+        const layers = (typeof window !== 'undefined' && window.svgEditor && Array.isArray(window.svgEditor._layers)) ? window.svgEditor._layers : [];
+        for (const l of layers) {
+            h = _fnv(h, JSON.stringify(l, (k, v) => (k && (k[0] === '_' || (v && typeof v === 'object' && 'nodeType' in v)) ? undefined : v)));
+            h = _fnv(h, `|${_idOf(l._mask)}|${_idOf(l._brickMask)}|${l._brickDepth}`);
+        }
+        return (h >>> 0).toString(36);
+    } catch (_) { return null; }
+}
+let _heightsCache = null; // { digest, built } -- built holds private copies; every reuse hands out fresh ones
+/** Fresh copies of a buildHeights result, keeping which arrays are the same array (baseHeights IS generated.heights). */
+function _copyBuilt(b) {
+    const seen = new Map();
+    const c = (a) => { if (!ArrayBuffer.isView(a)) return a; if (!seen.has(a)) seen.set(a, a.slice()); return seen.get(a); };
+    const generated = {};
+    for (const [k, v] of Object.entries(b.generated)) generated[k] = c(v);
+    return { heights: c(b.heights), cleanHeights: c(b.cleanHeights), baseHeights: c(b.baseHeights), generated };
+}
+function buildHeightsReusing(nx, nz) {
+    const digest = heightsInputDigest(nx, nz);
+    if (digest !== null && _heightsCache && _heightsCache.digest === digest) return _copyBuilt(_heightsCache.built);
+    _heightsCache = null;
+    const built = buildHeights(nx, nz);
+    if (digest !== null) _heightsCache = { digest, built: _copyBuilt(built) };
+    return built;
+}
+/** Tests: forget the reusable heights (the next build computes them). */
+export function _forgetHeights() { _heightsCache = null; }
+
 export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode) {
     if (rebuild.isRebuilding) {
         rebuild.pendingRebuild = () => rebuild(preview, refreshStampMask, updatePreviewSculptMode);
@@ -109,7 +161,7 @@ export async function rebuild(preview, refreshStampMask, updatePreviewSculptMode
         _lastBuiltDigest = null; // a build that throws leaves no digest: the next one runs
         await withLoadingStage('rebuild', async () => {
             await yieldToMain();
-            const { heights, cleanHeights, baseHeights, generated } = buildHeights(nx, nz);
+            const { heights, cleanHeights, baseHeights, generated } = buildHeightsReusing(nx, nz);
             setLastResult({ ...generated, heights, cleanHeights, baseHeights, nx, nz });
 
             await yieldToMain();

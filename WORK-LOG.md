@@ -25577,3 +25577,40 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   69.1 -> 65.3 s (0.945), longest-sum 0.968; the two OLD passes alone differ by up to 2x per action, so the phone
   gain is inside the noise. The ~4 s profiler figure overstated what the box can give.
 - Full suite 414 files, 6071/6071. Known failures: none.
+### 2026-10-09 (seat A): the heights stage gets its own declared inputs -- display / thicken changes reuse the heights
+- WHY (advisor pick (b)): the photo board's Adaptive display / Colour edges / thicken / decal taps re-ran the whole
+  heightmap (noise, smoothing, stamps) though only the thicken + preview steps read those keys.
+- DECLARED: core/engine/rebuild.js HEIGHTS_INERT_KEYS (35 P keys) + heightsInputDigest (grid, photo decode state, P
+  minus both inert sets, preDelta, the editor layers + mask ids); buildHeightsReusing hands out COPIES of the cached
+  result (aliasing kept: baseHeights IS generated.heights), so a downstream in-place write can never reach the cache.
+  Item 69's whole-build skip is untouched; this sits inside the build it lets through.
+- Spacing: listed -- the heights read the grid (nx, nz, already an input), never P.spacing, so it split cleanly: a
+  spacing step that changes the grid still rebuilds (phone: spacing 0.97, as expected).
+- NOT listed, on purpose: thickness (the thicken offset drag). The strict scan finds the word in core/noise/chest.js (a
+  local variable + a tweak description), so it counts as read. Freeing it = rename that local + reword the desc, or a
+  real parser; left for a decision.
+- TESTS tests/heights-inert-keys.test.js (40): (1) completeness from the code -- the import closure of terrain.js +
+  apply-stamp-layers.js is FOLLOWED (not listed) plus rebuild.js's buildHeights/_collectStampPasses; no listed key is
+  named there (comments stripped), and no computed params[...] read exists; (2) identity -- for each of the 35 keys:
+  the change keeps heightsInputDigest (the reuse path runs) and the reused build equals a full build to the byte: the
+  REAL TerrainPreview.update on a mock this (three mocked), args + mesh position/index/colour/uv/bottom + iso curves;
+  (3) a heights input (seed) still rebuilds. Mutations: seed listed -> 3 fail; terrain.js reading params.flatShading ->
+  the scan fails; reuse ignoring the digest -> 2 fail.
+- PHONE (D's tool, styles, 4x, photo board, old/new/new/old in one 17-min window): adaptiveDisplay busy 1382 -> 415 ms
+  (0.30), longest 828 -> 260; decalEnabled 0.37; thickenEnabled 0.62; colourEdges 0.69; exportOrientation 0.61; spacing
+  0.97 and the thickness drag 1.16 unchanged (heights inputs). Total over 58 actions 0.966 (the rest are heights inputs).
+- Full suite 414 files, 6110/6110. Known failures: none.
+### 2026-10-09 (seat A): heights reuse, follow-up -- thickness freed, the scan reads code only (advisor's synthesis)
+- core/noise/chest.js: the local `thickness` -> `ribThick` (internal; heightmap-golden + noise-chest 32/32 unchanged).
+  The tweak's description text ('Overall flesh thickness ...') is untouched (Fred-visible).
+- tests/heights-inert-keys.test.js: the scan is a small tokenizer (codeOnly) -- comments, string text and regex
+  literals blanked, template ${...} code kept, and a string literal used as a key (obj['x'], 'x' in obj) KEPT as a read.
+  Own cases pin each rule; a tripwire pins the keys that dropping string text frees beyond a comments-only strip to
+  exactly ['thickness'] (a scanner bug that blanked real code would free more). The computed-read check now looks past
+  whitespace ([(?!\s*['"`])).
+- HEIGHTS_INERT_KEYS += thickness (36 keys). Mutations: terrain.js reading params['thickness'] by literal -> 2 fail;
+  chest.js's local back to `thickness` -> 2 fail; params.flatShading -> 1 fails.
+- PHONE (same rig, old/new/new/old, 17 min): adaptiveDisplay 0.21, colourEdges 0.32, thickenEnabled 0.23, decalEnabled
+  0.62; the thickness drag busy 3072 -> 1096 (0.36) but its old passes were 4894 / 1250 ms (noise), new 886 / 1305 --
+  read it as "longest task 481 -> 322 ms", not as a 3x.
+- Full suite 414 files, 6112/6112. Known failures: none.
