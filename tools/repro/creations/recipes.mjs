@@ -179,7 +179,7 @@ export const CREATIONS = [
   // ---- batch 2 (pieces 11-14) ----
   {
     n: 11, title: "Alchemist's Flask",
-    concept: 'Harmony: a flask of something alive -- a field of small precise bubbles rising through the bulb, smaller and denser toward the neck, over a molten, bubbling magma surface, with one raised ring tracing the glass wall just inside the frame.',
+    concept: 'Harmony: a flask of something alive -- a field of small precise bubbles rising through the bulb, smaller and denser toward the neck, over a molten, bubbling magma surface, with one raised ring tracing the glass wall just inside the frame, edged quietly by a single thin, low course of red header bricks.',
     template: 'template_15', board: [9, 12], seed: 1111,
     steps: [
       { frame: { template: 'template_15' } },
@@ -187,18 +187,19 @@ export const CREATIONS = [
       { params: { carveZ: 0.9, symmetry: 'none' } },
       { echo: { layer: { name: 'Glass', depth: 0.1, profile: 'ballnose' }, offsets: [1.0], width: 0.1, color: '#90caf9' } },
       { art: { layer: { name: 'Bubbles', depth: 0.14, profile: 'ballnose' }, paths: [{ d: bubbles(rng(1111), 2.2, 6.8, 4.2, 10.3, 70, 0.07, 0.24), width: 0.01, fill: '#e3f2fd', color: '#e3f2fd' }] } },
+      { bricks: { size: 0.6, frameSet: 1, framePreset: 'header_band', relief: 0.06, frame: true } },
     ],
     view: FRONT,
   },
   {
     n: 12, title: 'Causeway',
-    concept: 'Harmony: a Giant Causeway -- a crisp path of grey hexagon pavers laid as a painted wall area, crossing the offset hourglass from notch to notch over a bold basalt terrain whose columns the hexagons echo, all held in a grey rubble-stone border that matches the pavers.',
+    concept: 'Harmony: a Giant Causeway -- a crisp path of grey hexagon pavers laid as a painted wall area, crossing the offset hourglass from notch to notch over a bold basalt terrain whose columns the hexagons echo, all held in a two-course grey rubble-stone border that matches the pavers.',
     template: 'template_4', board: [8, 10], seed: 1212,
     steps: [
       { frame: { template: 'template_4' } },
       { filter: { id: 'basalt' } },
       { params: { carveZ: 1.3, symmetry: 'none' } },
-      { bricks: { size: 0.75, frameSet: 5, framePreset: 'single_soldier', frame: true, wallSet: 4, wallPattern: 'hexagon', wall: true } },
+      { bricks: { size: 0.75, frameSet: 5, framePreset: 'soldier_stretcher', frame: true, wallSet: 4, wallPattern: 'hexagon', wall: true } },
       { areas: { width: 2, list: [{ pattern: 'hexagon', points: [[1.0, 8.6], [3.0, 6.4], [5.0, 3.6], [7.0, 1.4]] }] } },
     ],
     view: FRONT,
@@ -219,13 +220,14 @@ export const CREATIONS = [
   },
   {
     n: 14, title: 'Fishing Net',
-    concept: 'Harmony: a net cast along the shore -- a wide-meshed net hangs from the top of the frame halfway down the board, its cords following the frame contour so it swells with the wavy left edge; below and between the cords the carved wave ridges of the sea show through.',
+    concept: 'Harmony: a net cast along the shore -- a wide-meshed net hangs from the top of the frame halfway down the board, its cords following the frame contour so it swells with the wavy left edge; below and between the cords the carved wave ridges of the sea show through; two thin courses of warm brick edge the board like a harbour wall.',
     template: 'template_8', board: [10, 14], seed: 1414,
     steps: [
       { frame: { template: 'template_8' } },
       { filter: { id: 'carved' } },
       { params: { carveZ: 1.4, symmetry: 'none' } },
-      { trellis: { layer: { name: 'Net', depth: 0.1, profile: 'ballnose' }, distance: 0.8, rails: 5, brace: 1.3, width: 0.08, hang: 7.8, ragged: 1.3, color: '#795548' } },
+      { trellis: { layer: { name: 'Net', depth: 0.1, profile: 'ballnose' }, distance: 1.05, rails: 5, brace: 1.3, width: 0.08, hang: 7.8, ragged: 1.3, color: '#795548' } },
+      { bricks: { size: 0.6, frameSet: 2, framePreset: 'soldier_stretcher', relief: 0.06, frame: true } },
     ],
     view: FRONT,
   },
