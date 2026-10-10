@@ -72,6 +72,6 @@ describe('foldUV / unfoldUV: the board -> sample step, and back per mirror copy'
   it('fills a given out object (the heightmap reuses one)', () => {
     const out = {};
     expect(foldUV(0.2, 0.3, {}, out)).toBe(out);
-    expect(out).toEqual({ zu: 0.2, zv: 0.3, su: 0.2, sv: 0.3 });
+    expect(out).toEqual({ zu: 0.2, zv: 0.3, su: 0.2, sv: 0.3, mu: 0.2, mv: 0.3 });
   });
 });
