@@ -394,6 +394,17 @@ async function previewRows(vp) {
   const before = async (frames) => { const a = await jsJSON(ORBIT); await touchGesture(frames); const b = await jsJSON(ORBIT); return { a, b }; };
   const row = (name, ok, detail) => { checkRow('layout', `3D preview (${vp.name}, touch): ${name}`, ok, detail); };
   if (!box.cube || !(await jsJSON(ORBIT))) { row('the preview and its view cube are there', false, JSON.stringify(box)); return; }
+  // Fred 2026-10-09: the cube is smaller on a coarse pointer (core/preview/view-cube.js VIEW_CUBE_PX), taps still snap
+  const cubeSize = await jsJSON(`import('./core/preview/view-cube.js').then((m) => JSON.stringify({ want: m.VIEW_CUBE_PX ? m.VIEW_CUBE_PX.coarse : null,
+    got: Math.round(window.__preview._viewCube._canvas.getBoundingClientRect().width), coarse: matchMedia('(pointer: coarse)').matches }))`);
+  row('the view cube is its declared coarse-pointer size', cubeSize.coarse && cubeSize.want != null && cubeSize.got === cubeSize.want,
+    `${cubeSize.got} px (VIEW_CUBE_PX.coarse ${cubeSize.want}), coarse pointer ${cubeSize.coarse}`);
+  // and a tap on it still snaps the view (its centre: the front face)
+  { const a = await jsJSON(ORBIT); const c = [(box.cube.x0 + box.cube.x1) / 2, (box.cube.y0 + box.cube.y1) / 2];
+    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touchPts([c]) }); await sleep(60);
+    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(1500);
+    const b = await jsJSON(ORBIT); const moved = 2 * Math.acos(Math.min(1, Math.abs(a.q.reduce((s, v, i) => s + v * b.q[i], 0)))) * 180 / Math.PI;
+    row('a tap on the view cube snaps the view', moved > 1, `${moved.toFixed(1)} deg`); }
   // a pinch whose SECOND finger starts on the view cube (the measured failure), the first on the preview left of it
   const y = (box.cube.y0 + box.cube.y1) / 2, xa = box.cube.x0 - 70, xb = box.cube.x0 + 20;
   let { a, b } = await before(Array.from({ length: 11 }, (_, k) => [[xa - 5 * k, y], [xb + 5 * k, y]]));
