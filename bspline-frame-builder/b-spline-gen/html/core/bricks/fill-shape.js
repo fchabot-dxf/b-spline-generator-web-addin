@@ -20,6 +20,7 @@ import { fieldstoneLayout } from './layouts/fieldstone.js';
 import { herringboneLayout } from './layouts/herringbone.js';
 import { basketweaveLayout } from './layouts/basketweave.js';
 import { coursedRubbleLayout } from './layouts/coursed-rubble.js';
+import { coursedAshlarLayout } from './layouts/coursed-ashlar.js';
 import { stackedHorizontalLayout, chevronLayout, stackedVariationLayout, basketweaveVariationLayout, basketweaveStackedLayout } from './layouts/sheet-patterns.js';
 import { squareGridLayout, octagonDotLayout, hexagonLayout, lozengeLayout, framedSquareLayout } from './layouts/tiles.js';
 import { assignPieces } from './pieces.js';
@@ -37,6 +38,7 @@ import { hashedRandom } from './rng.js';
 const LAYOUTS = Object.freeze({
   bond: bondLayout, fieldstone: fieldstoneLayout, herringbone: herringboneLayout, basketweave: basketweaveLayout,
   coursed_rubble: coursedRubbleLayout, // T86 item 25
+  coursed_ashlar: coursedAshlarLayout, // Rough ashlar (Fred picked mock E, 2026-10-10)
   // F35 item 13: Fred's sheet (layouts/sheet-patterns.js)
   stacked_horizontal: stackedHorizontalLayout, chevron: chevronLayout, stacked_variation: stackedVariationLayout,
   basketweave_variation: basketweaveVariationLayout, basketweave_stacked: basketweaveStackedLayout,
