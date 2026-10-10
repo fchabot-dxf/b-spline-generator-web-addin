@@ -1177,6 +1177,7 @@ function syncControlsFromState() {
   syncBrickSizePresetButtons();
   syncGroutWidthBox();
   syncGroutPaintRow(); // item 55
+  syncFrameOffsetControl();
   document.getElementById('brickGroutDepth').value = s.grout.depthIn;
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', s.grout.profile === 'recessed');
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', s.grout.profile === 'flush');
@@ -2910,6 +2911,25 @@ const BRUSH_PRESET_LIST = [
  *  with it keeps laying as before (OFF = the board rectangle, a distance = the edge offset by it). null = a template whose
  *  outline cannot carry a contour (FRAME_NEEDS_A_FRAME). */
 const LEGACY_FRAME_OFFSET = Object.freeze({ on: true, distance: 0 });
+/** Fred 2026-10-10 (item 66's removal reversed for the distance; his shot: the outer bricks spiky right at the board edge):
+ *  the Frame section's "Offset from frame" -- the bands' distance in from the frame's outer edge, the input's range. It
+ *  writes the key frameBandContour already reads (frameOffset), only when changed: a board that never sets it lays at 0. */
+export const FRAME_OFFSET_RANGE = Object.freeze({ min: 0, max: 1, step: 0.0625 });
+export function setFrameOffset(distance, commit = 'generate') {
+  const d = Number(distance);
+  if (!Number.isFinite(d)) { syncFrameOffsetControl(); return; }
+  const cur = P.brickSettings.frameOffset || LEGACY_FRAME_OFFSET;
+  P.brickSettings.frameOffset = { on: cur.on !== false, distance: d }; // a legacy OFF board keeps its OFF
+  syncFrameOffsetControl();
+  commitBrickSetting(commit);
+}
+function syncFrameOffsetControl() {
+  const el = document.getElementById('brickFrameOffsetDistance');
+  if (!el) return;
+  const R = FRAME_OFFSET_RANGE;
+  el.min = R.min; el.max = R.max; el.step = R.step;
+  if (document.activeElement !== el) el.value = (P.brickSettings.frameOffset || LEGACY_FRAME_OFFSET).distance || 0;
+}
 function frameBandContour(editor) {
   const off = P.brickSettings.frameOffset || LEGACY_FRAME_OFFSET;
   const rect = () => rectToPrimitives({ x1: 0, y1: 0, x2: editor._mW, y2: editor._mH });
@@ -3009,6 +3029,8 @@ export function initBrickPanel() {
   renderFramePresetList(document.getElementById('brickFramePresetList'));
   renderFrameCornerList(document.getElementById('brickFrameCornerList'));
   renderFrameFanCentreList(document.getElementById('brickFrameFanCentreList')); // T86 item 16e
+  document.getElementById('brickFrameOffsetDistance')?.addEventListener('change', (e) => setFrameOffset(e.target.value));
+  syncFrameOffsetControl();
   syncFramePresetButtons();
   renderBrushPresetList(document.getElementById('brickBrushPresetList'));
   syncBrushPresetButtons();
