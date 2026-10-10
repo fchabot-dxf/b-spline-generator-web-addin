@@ -25694,3 +25694,26 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   frame-builder 1051 passed / 24 skipped.
 - LIVE re-check after it lands (advisor): claude_7 L3 identity + time; measure the frame's dimension_step (and apply
   the same order there only with a gain and identity).
+### 2026-10-10 (seat A): Fred's "edge not good" -- the frame's trim + window cut now cut BOTH sides of the sketch plane
+- CAUSE (measured in Fusion, claude_1 + claude_10): t*_TRIM_CUT (and t*_WINDOW_CUT) cut the right region (the frame
+  enclosure minus the frame outline, notches included) but THROUGH ALL ON ONE SIDE (+Z) of their sketch plane at z 0.
+  The thickened panel's underside dips below z 0 (claude_1 -0.22, claude_10 -0.121), so every bit of panel under the
+  plane outside the outline survived: the deck spanning claude_1's left waist notch, the lip over the frame, claude_10's
+  sawtooth (remnants under the low grout between rim stones), and claude_5's window bars with no hole (main's one-sided
+  window cut cannot even rebuild there: EXTRUDE_ZERO_DISTANCE_ERROR). extrusion_engine's own comment claimed the trim
+  "trims the full height" -- false whenever the underside is under the plane; corrected.
+- FIX (declared): frame_definition's trim + window_cut extent "throughAllBothSides"; declared_profiles maps it;
+  extrusion_engine builds it with setTwoSidesExtent(ThroughAll, ThroughAll, taper, taper); the bounding-box path's
+  SURROUND uses it too. frame-defs.json/.js regenerated (tools/gen_frame_defs.py).
+- TESTS: fb_engine/test_cut_both_sides.py (5: the declarations, the trim + window cut built two-sided, the bars still
+  one-sided to the underside, the bounding-box path) + the two existing extent pins updated; 6 red on main (the bars pin
+  passes on both, a guard). frame-builder 1060 passed / 24 skipped, b-spline-gen 185, full suite 420 / 6143.
+- LIVE (branch deploy 2026.10.09-6; per board: Send, measure every body / sketch / timeline, flip the trim to main's
+  one-sided, measure, flip back): claude_1 T1 7x9, claude_5 T6 9x12 + window, claude_12 T4 8x10 brick (CONTROL: panel
+  above z 0, one == two, no body differs), claude_9 T14 5x7, claude_19 T13 10x14 + window (Clean-only), claude_10 T16
+  12x16 mars (vs main's run: 9 of 10 bodies identical). Every time: the Stamped (or Clean-only) panel == the frame's xy
+  extent exactly, ONLY that panel changes, frame bars / window bars / Clean / surfaces / sketches identical, timeline
+  healthy; both windows are through-holes. Shots: ~/.bspline-status/shots/seatA/edge/ (claude_1 top before / after,
+  claude_10 close edge after: flush with the frame, the scalloped top = the rim stones, as in the app).
+- NOT changed: "stone bands barely visible" -- they ARE in the STEP (Stamped - Clean -0.22..+0.26 in over 31% of the
+  grid); likely the flat green Fusion shading; a close top shot after the fix is still to take (memory stop hit).
