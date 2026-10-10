@@ -73,6 +73,25 @@ describe('the rebuild hold (scheduler)', () => {
     expect(isRebuildHeld()).toBe(false);
   });
 
+  it('a chain LONGER than the backstop whose stages keep progressing builds ONCE (phone CPU 4: the size chain runs ~3.2 s)', () => {
+    const fn = vi.fn();
+    openRebuildHold(['a', 'b', 'c']);
+    const closeA = joinRebuildHold('a');
+    scheduleRebuild(fn, 0);
+    vi.advanceTimersByTime(1700); // the resync, behind the old editor's mask pass
+    const closeB = joinRebuildHold('b');
+    closeA();
+    vi.advanceTimersByTime(1100); // the re-lay
+    const closeC = joinRebuildHold('c');
+    closeB();
+    vi.advanceTimersByTime(400); // its remask: 3.2 s since the open
+    scheduleRebuild(fn, 50);
+    expect(fn).not.toHaveBeenCalled();
+    closeC();
+    vi.advanceTimersByTime(REBUILD_HOLD_BACKSTOP_MS + 100);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
   it('no hold, or a stage the hold did not declare: join is a no-op and builds run as before', () => {
     const fn = vi.fn();
     joinRebuildHold('a')();
