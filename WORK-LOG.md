@@ -25560,3 +25560,20 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   tests/bricks-geometry.test.js acute setback = right angle's (main 1.61 r vs 0.41 r), right angle / hexagon unchanged.
   Fail-before: 2 fail on main's sources. Every FULL sweep: thin rings 1524/1524, gap 760, overlap 19, pattern gaps 2736,
   seam 19, stone life 114, tip fans 608, rubble edges 304 -- all pass. Affected suites 14 files 99/99.
+### 2026-10-09 (seat A): the photo board's drag rebuild -- terrain boxFilter, byte-identical (a small gain, reported as such)
+- PROFILE (photo board, phone map): boxFilter (core/terrain.js Pass 3 smoothing) was the top self time, ~4 s over 30
+  slow actions, beside creasedNormals ~4 s.
+- FIX (bit-identical): boxFilter's X pass skips the edge clamp for interior cells; its Y pass sums whole rows into a
+  Float64 accumulator offset by offset instead of striding a column per cell. Every cell is still 0 + its window in
+  ascending order, / (2r + 1): the same doubles, the same Float32 store. A sliding-window sum would be faster but NOT
+  byte-identical (rounding), so it was not taken.
+- TEST: tests/terrain-boxfilter-identical.test.js -- generateHeightmap({ ...P, ... }) digests for 3 boards x 5 radii x
+  2 intensity/symmetry, pinned on origin/main's terrain.js (fixtures/terrain-boxfilter-digests.json); all 30 must
+  differ (a flat terrain cannot pass). My first pin used bare params -> an all-zero heightmap -> vacuous (a Float32
+  accumulator mutation passed); with the app's P defaults the same mutation FAILS it.
+- RESULT, measured honestly: desktop Node, 40 interleaved reps, the whole heightmap (141 x 181): r 1.2 25.5 -> 23.2 ms
+  (0.91), r 0.36 33.4 -> 26.5 (0.79), r 7.2 83.2 -> 70.5 (0.85); smoothing off 10.7 ms. Phone (D's tool, styles, 4x,
+  photo board, old/new/new/old in one 16-min window beside the advisor's capture Chrome): total busy over 52 actions
+  69.1 -> 65.3 s (0.945), longest-sum 0.968; the two OLD passes alone differ by up to 2x per action, so the phone
+  gain is inside the noise. The ~4 s profiler figure overstated what the box can give.
+- Full suite 414 files, 6071/6071. Known failures: none.
