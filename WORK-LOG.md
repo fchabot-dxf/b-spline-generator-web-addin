@@ -25674,3 +25674,23 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   one fsync per path; send_frame syncs exactly once on success / refusal / a crashing solid build; a sync-less logger
   works. Against main's code 3/4 fail (the 4th is a regression guard). frame-builder pytest 1055 passed / 24 skipped,
   b-spline-gen 183 passed. JS untouched (no vitest reads these files).
+### 2026-10-09 (seat A): constrained-sketch dimensions -- create all, name all, drive all (advisor decision (1))
+- PROBE (live, claude_7's 4 art layers + Stamped, no frame; each run a fresh doc): the L3 ballnose layer's 74 node
+  diameters cost A (as shipped) 24.9 / 16.7 / 15.1 s; B (+ isComputeDeferred) 16.9 s -- no gain, because
+  build_constrained_sketch ALREADY opens a deferred window around _apply_declared_dimensions; C (every dimension
+  created, then every one named, then every one driven) 9.3 / 8.8 s. All 6 solved sketches identical to the bit
+  (89 curves, max coord diff 0; 74 dims name / expression / value; 124 constraints; fully constrained; 260 profiles).
+  Alone (no L1/L2/boundary) the layer is 3 s -- its constraints need the others: the cost is the coupled solve.
+  The 74 dims already share ONE user parameter (node_diameter) -- the "shared parameter" idea exists already.
+- CODE: fb_engine/dimensions.py declares DIMENSION_PHASES = (create, name, drive) and splits dimension_step into
+  create_dimension_step (returns the pending dim; same DIM SKIPPED / MISS / NODIM / CRASH logs), name_dimensions
+  (a failed rename is retried + logged DIM NAME FAIL by the drive, as before) and drive_dimension (_apply_expression
+  under the same DIM CRASH guard). dimension_step = create + drive per dimension: the frame's path is unchanged.
+  sketch_manifest_builder._apply_declared_dimensions runs the phases for all its dimensions (DIM WRAP FAIL kept per
+  dimension); its now-unused dimension_step import removed.
+- TEST b-spline-gen/test_dimension_phases.py (2, the builder's own fakes + a logging parameter, 3 node diameters):
+  every dim created before any named, every one named before any driven, names / expressions as before; fails against
+  main's builder (create at 34 after a name at 29) and with the naming pass removed. b-spline-gen pytest 185 passed,
+  frame-builder 1051 passed / 24 skipped.
+- LIVE re-check after it lands (advisor): claude_7 L3 identity + time; measure the frame's dimension_step (and apply
+  the same order there only with a gain and identity).
