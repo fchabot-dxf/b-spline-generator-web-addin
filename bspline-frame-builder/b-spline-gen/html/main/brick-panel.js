@@ -2195,7 +2195,7 @@ const WALL_PATTERN_LABELS = {
   // F35 item 14: the tiles (named by what the sheet draws; the sheet has no captions)
   square_grid: 'Square grid', square_diamond: 'Square + diamond inserts', octagon_square: 'Octagon + small square',
   hexagon: 'Hexagon', lozenge: 'Lozenge', framed_square: 'Framed square',
-  fieldstone: 'Fieldstone', coursed_rubble: 'Coursed rubble',
+  fieldstone: 'Fieldstone', coursed_rubble: 'Coursed rubble', coursed_ashlar: 'Rough ashlar',
 };
 // item 23: what a ROCK wall becomes when a brick set is picked for it
 const DEFAULT_WALL_PATTERN = 'stretcher';
