@@ -25779,3 +25779,19 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   total busy 220 -> 178 s (0.81); brick pattern taps 0.55-0.68x busy, longest 774-914 -> 389-467 ms (under 500);
   surface style 'clean' 4.7 -> 0.9 s (longest 1970 -> 219 ms); stamp sliders 0.35-0.61x; terrain drags unchanged.
 - Full suite 423 files, 6157/6157. Known failures: none.
+
+### 2026-10-10 (seat E): stone-frame Generate 3 - 14x faster on the phone rig, byte-identical
+- PROFILED (node --cpu-prof, T1 9x12 0.75 in White rocks soldier_stretcher, 202 ms / lay on desktop): the suspect, fieldstone
+  buildCells' all-pairs power cells, was only 6.7%. The time was (1) contour-bands clipPiecesToBoard 52%: a full
+  polygonIntersection per frame piece, almost all of them wholly inside the board and then kept exactly as built; (2)
+  fieldstone poissonDiscSample 28.5%: a thin ring ran the area tiers' Poisson pass and threw the seeds away for its course.
+- FIX: (1) a piece clear of the outline (no edge of it meets an outline edge -- the board's edges bucketed on a 0.25 in grid
+  -- within 1e-6 in) with a vertex inside is kept without the clip; anything nearer takes the full clip as before. (2) a thin
+  ring skips the Poisson pass (each tier draws from its own seeded stream: skipping changes nothing else).
+- RESULT: desktop 202 -> 75 ms (T1), 132 -> 38 (T6 9x12 1.5 mixed), 66 -> 10 (T9 7x9 1 single), 81 -> 27 (T14 three_band).
+  Phone rig (the app page, headless Chrome at 4x CPU, median of 5): T1 3233 -> 997 ms, T6 2665 -> 695, T9 1457 -> 101.
+- BYTE-IDENTICAL: 10,944 lays (all 5 sets x 8 presets x 19 templates x 7x9 / 9x12 x 0.75 - 1.5 in at seed 1, the stone sets
+  at seeds 2 and 3 too; wall + frame hashed) -- 0 differ (the sweep itself 1,498 -> 555 s).
+- PINNED: tests/bricks-board-clip.test.js (an L board: inside kept as the same object, crossing cut, a piece in the notch
+  dropped, one along the outline kept whole). Mutations: dropping the shortcut's inside check fails the notch case; a
+  shortcut taken for every piece fails the crossing + notch cases. Affected suites 38 files 526/526.

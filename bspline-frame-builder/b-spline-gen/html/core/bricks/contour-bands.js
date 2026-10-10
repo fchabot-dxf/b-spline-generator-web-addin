@@ -242,11 +242,50 @@ function buildAreaBandBricks(enriched, d0, d1, band, patternName, set, seed, ban
  *  grows past the far side and meets its neighbours outside the board; the fit rule for that is T86 item 28. */
 const BOARD_CLIP_TOLERANCE_SQIN = 1e-3; // above the fine tessellation's own chord error on a piece
 const BOARD_CLIP_ARC_STEPS = 128; // per arc: a chord sags < 1e-4 in on the templates' fillets
+/** board edges bucketed on a grid (BOARD_EDGE_CELL_IN): a piece meets the board's outline only if one of its edges meets an
+ *  edge in a cell its box covers */
+const BOARD_EDGE_CELL_IN = 0.25;
+function boardEdgeIndex(board) {
+  const cells = new Map(), key = (i, j) => i * 100003 + j, C = BOARD_EDGE_CELL_IN;
+  for (let k = 0; k < board.length; k++) {
+    const a = board[k], b = board[(k + 1) % board.length];
+    for (let i = Math.floor(Math.min(a.x, b.x) / C); i <= Math.floor(Math.max(a.x, b.x) / C); i++) for (let j = Math.floor(Math.min(a.y, b.y) / C); j <= Math.floor(Math.max(a.y, b.y) / C); j++) {
+      const kk = key(i, j); if (!cells.has(kk)) cells.set(kk, []); cells.get(kk).push(k);
+    }
+  }
+  return (x0, y0, x1, y1) => {
+    const found = new Set();
+    for (let i = Math.floor(x0 / C); i <= Math.floor(x1 / C); i++) for (let j = Math.floor(y0 / C); j <= Math.floor(y1 / C); j++) for (const k of cells.get(key(i, j)) || []) found.add(k);
+    return found;
+  };
+}
+const segDist = (p, a, b) => { const ex = b.x - a.x, ey = b.y - a.y, l = ex * ex + ey * ey || 1e-18, t = Math.max(0, Math.min(1, ((p.x - a.x) * ex + (p.y - a.y) * ey) / l)); return Math.hypot(a.x + t * ex - p.x, a.y + t * ey - p.y); };
+const segsMeet = (a, b, c, d, eps) => {
+  const o = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x), d1 = o(a, b, c), d2 = o(a, b, d), d3 = o(c, d, a), d4 = o(c, d, b);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+  return segDist(c, a, b) <= eps || segDist(d, a, b) <= eps || segDist(a, c, d) <= eps || segDist(b, c, d) <= eps;
+};
+const BOARD_CLEAR_EPS_IN = 1e-6; // a piece nearer the outline than this takes the full clip
 export function clipPiecesToBoard(bricks, board, minArea) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const p of board) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+  const edgesNear = boardEdgeIndex(board);
   const out = [];
   for (const b of bricks) {
+    // a piece clear of the outline (no edge of it meets an outline edge) with a vertex inside lies wholly inside: kept
+    // exactly as built, as the clip below keeps it -- without the clip (MEASURED, seat E 2026-10-10: 52% of a T1 9x12 0.75 in
+    // stone-frame Generate was this loop's polygonIntersection, almost all of it on pieces wholly inside)
+    const P = b.polygon;
+    let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+    for (const p of P) { bx0 = Math.min(bx0, p.x); by0 = Math.min(by0, p.y); bx1 = Math.max(bx1, p.x); by1 = Math.max(by1, p.y); }
+    const near = edgesNear(bx0 - BOARD_CLEAR_EPS_IN, by0 - BOARD_CLEAR_EPS_IN, bx1 + BOARD_CLEAR_EPS_IN, by1 + BOARD_CLEAR_EPS_IN);
+    let clear = true;
+    for (const k of near) {
+      const c = board[k], d = board[(k + 1) % board.length];
+      for (let i = 0; clear && i < P.length; i++) if (segsMeet(P[i], P[(i + 1) % P.length], c, d, BOARD_CLEAR_EPS_IN)) clear = false;
+      if (!clear) break;
+    }
+    if (clear && pointInPolygon(P[0].x, P[0].y, board)) { out.push(b); continue; }
     const area = Math.abs(signedArea(b.polygon));
     const inside = polygonIntersection(b.polygon, board);
     const kept = inside.length >= 3 ? Math.abs(signedArea(inside)) : 0;

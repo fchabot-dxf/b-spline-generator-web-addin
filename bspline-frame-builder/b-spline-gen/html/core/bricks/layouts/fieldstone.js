@@ -667,8 +667,11 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones, f
   // belongs (see `poissonDiscSample`'s own header), and reject too-close to EVERY earlier tier's own
   // points. This only decides WHERE each seed goes; the power diagram below (built over every tier's
   // points TOGETHER, in one shot) is what actually guarantees no two cells can ever overlap.
+  // a thin ring's seeds are its course (midlineSeeds): the area tiers' Poisson pass is not run for it (MEASURED, seat E
+  // 2026-10-10: 28% of a T1 9x12 0.75 in stone-frame Generate went to seeds thrown away; each tier draws from its own
+  // seeded stream, so skipping it changes nothing else)
   let points = [];
-  for (let i = 0; i < SIZE_TIERS.length; i++) {
+  for (let i = 0; !thin && i < SIZE_TIERS.length; i++) {
     const tier = SIZE_TIERS[i];
     const tierSpacing = tierSpacings[i];
     const gate = (x, y, rng) => tierAt(x, y, noiseCellSize, seedBase, rng, gateShares) === tier;
