@@ -63,7 +63,7 @@ describe('the declared tables', () => {
     expect(stageText('cloudSave')).toBe('Waiting - saving to the cloud');
     expect(stageText('rebuild', { spacing: 0.015 })).toBe('Refreshing - building surface 0.015″');
     expect(stageText('rebuild', {})).toBe('Refreshing - building surface');
-    expect(stageText('rebuild', { spacing: 0.05 }, LOADING_SEQUENCES.apply)).toBe('Refreshing - building surface 0.05″, step 2 of 2');
+    expect(stageText('rebuild', { spacing: 0.05 }, LOADING_SEQUENCES.apply)).toBe('Refreshing - building surface 0.05″, step 3 of 3');
     expect(stageText('cloudLoad', null, { stages: ['cloudLoad', 'restore', 'heightMask', 'rebuild'] })).toBe('Waiting - loading from the cloud, step 1 of 4');
     expect(stageText('notARealStage')).toBe(null);
   });
@@ -145,16 +145,18 @@ describe('withLoadingStage: the stage paints BEFORE the work starts', () => {
 });
 
 describe('sequences: declared up front, each stage reads its step', () => {
-  it('Apply: "step 1 of 2" then "step 2 of 2"; the overlay stays up between the steps; closes after the last', async () => {
+  it('Apply: "step 1 of 3" (saving the drawing) then the carve and the build; the overlay stays up between the steps; closes after the last', async () => {
     beginLoadingSequence('apply');
     const texts = [];
+    const s = withLoadingStage('applyEdits', () => { texts.push(currentLoadingStage().text); });
+    runFrames(); await s;
     const a = withLoadingStage('heightMask', () => { texts.push(currentLoadingStage().text); });
     runFrames(); await a;
     await vi.advanceTimersByTimeAsync(MIN_VISIBLE_MS + 50); // a gap before the rebuild starts (it runs from a timer)
     expect(currentLoadingStage()).not.toBe(null); // the sequence is not over: no flicker between the steps
     const b = withLoadingStage('rebuild', () => { texts.push(currentLoadingStage().text); }, { spacing: 0.05 });
     runFrames(); await b;
-    expect(texts).toEqual(['Computing - carving relief, step 1 of 2', 'Refreshing - building surface 0.05″, step 2 of 2']);
+    expect(texts).toEqual(['Computing - saving the drawing, step 1 of 3', 'Computing - carving relief, step 2 of 3', 'Refreshing - building surface 0.05″, step 3 of 3']);
     await vi.advanceTimersByTimeAsync(MIN_VISIBLE_MS);
     expect(currentLoadingStage()).toBe(null); // the last step left: the sequence is done
   });

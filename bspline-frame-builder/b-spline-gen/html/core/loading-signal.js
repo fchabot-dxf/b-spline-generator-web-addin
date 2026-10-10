@@ -52,6 +52,8 @@ export const LOADING_STAGES = {
   stepExport: { group: 'computing', label: 'writing the files', surface: 'card' },
   // item 70: a Send from the Fusion palette -- the palette's own steps, then Fusion's (data/fusion-send-stages.js,
   // the add-in reports each as 'import_stage' {id}); all cards
+  // Apply's first step: the editor's commit (the drawing saved, the session written) before the carve + build
+  applyEdits: { group: 'computing', label: 'saving the drawing', surface: 'card' },
   stepBuild: { group: 'computing', label: 'building the STEP files', surface: 'card' },
   transfer: { group: 'waiting', label: 'sending to Fusion', surface: 'card' },
   ...Object.fromEntries(FUSION_SEND_STAGES.stages.map((st) => [st.id, { group: 'waiting', label: `Fusion: ${st.label}`, surface: 'card' }])),
@@ -64,7 +66,7 @@ export const LOADING_SEQUENCES = {
   // "no 3D while editing"; Apply's own sequence shows them). MEASURED 2026-10-08 (phone 4x): declared with them, the card
   // read "step 1 of 3" and stayed ~1.2 s after the lay, waiting out SEQUENCE_IDLE_MS for steps that never came.
   generate: { stages: ['bricks'], surface: 'card' },
-  apply: { stages: ['heightMask', 'rebuild'] },
+  apply: { stages: ['applyEdits', 'heightMask', 'rebuild'] },
   newSeed: { stages: ['heightMask', 'rebuild'] },
   projectLoad: { stages: ['cloudLoad', 'restore', 'heightMask', 'rebuild'] },
   sessionRestore: { stages: ['heightMask', 'rebuild'], surface: 'card' }, // item 37: a page load's restore, one build
