@@ -1,3 +1,4 @@
+import os from 'node:os';
 // Brick matrix group 'blind': no freeze without its card (Fred's rule: a loading signal before every long computation).
 // Declared rows / constants for this group live HERE; run.mjs only drives them (tools/brick-matrix/groups/index.mjs).
 
@@ -19,14 +20,14 @@ export const BLIND_BUDGET = {
   // a long task is only REPORTED from 50 ms, so any real freeze before the card reads >= ~50: 25 catches every one (MEASURED
   // broken: 52-281 ms; fixed: 0, once 1 ms -- a task overlapping the card's first frame); raised per row only with a reason
   budgetMs: 25,
-  // LOAD CALIBRATION -- DETECTION ONLY (advisor 2026-10-09: it must never pass a row on its own). On a FAIL the page
-  // runs a fixed workload under the same CPU throttle, `runs` times, and its median is set against `quietMs`, the
-  // same workload's median on a quiet PC: the FAIL's detail then says how loaded the machine was at that moment
-  // ("machine loaded x2.4" from `loadedAt`), so a gate reader can tell a load-inflated FAIL from a real one. The verdict
-  // never changes. quietMs: MEASURED 2026-10-09 (seat D, right after a gate, nothing else heavy: the app page at 390 px,
-  // CPU x4, 2 probes x 7 runs -> medians 331 / 342 ms, single runs 280-373): a load factor under ~1.15 is noise, so a
-  // loaded verdict starts at 1.5.
-  calibration: { iterations: 3e6, runs: 3, quietMs: 336, loadedAt: 1.5 },
+  // LOAD DETECTION -- DETECTION ONLY (advisor 2026-10-09: it must never pass a row on its own). On a FAIL, over
+  // `sampleMs`: the WHOLE machine's CPU busy % (os.cpus() deltas -- the other seats' sweeps, Fusion) and the page's
+  // animation-frame interval (the rendering pipeline's own slowness); either at or past its line reads "machine loaded
+  // -- this FAIL may be load; re-run quiet", else "a real FAIL". The verdict never changes.
+  // Replaces a throttled JS workload (MEASURED 2026-10-09: at 100% system CPU it read x0.87 of quiet, once x0.4 --
+  // a single-threaded loop still gets a core while the multi-threaded software GPU starves). The `quiet` values are
+  // printed for comparison: null until measured in a quiet window (seat D).
+  loadDetect: { sampleMs: 1000, busyAtPct: 60, frameAtMs: 33, quiet: { busyPct: null, frameMs: null } },
   rows: [
     { name: 'Board width change (sidebar, editor closed)', sidebar: 'board', act: { set: 'widthIn', value: 7.25 }, fixedBy: '497e30d' },
     // the sidebar phone audit's small ones (advisor: the budget pins them)
@@ -72,20 +73,25 @@ let sleep, send, js, jsJSON, shot, checkRow, waitApp;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, checkRow, waitApp } = ctx); }
 export async function run() { await runBlindBudget(); }
 
-/** Pure: the calibration's words for a FAIL's detail -- never a verdict. `medianMs` = this moment's workload median. */
-export function loadNote(medianMs, cal = BLIND_BUDGET.calibration) {
-  if (!Number.isFinite(medianMs)) return 'calibration: not measured';
-  if (!cal.quietMs) return `calibration ${Math.round(medianMs)} ms (no quiet baseline declared)`;
-  const x = medianMs / cal.quietMs, r = Math.round(x * 10) / 10;
-  return `calibration ${Math.round(medianMs)} ms vs quiet ${cal.quietMs} ms: ${x >= cal.loadedAt ? `machine loaded x${r} -- this FAIL may be load; re-run quiet` : `machine not loaded (x${r}) -- a real FAIL`}`;
+/** Pure: the load words for a FAIL's detail -- never a verdict. `s` = { busyPct, frameMs } sampled at the FAIL. */
+export function loadNote(s, d = BLIND_BUDGET.loadDetect) {
+  if (!s || !Number.isFinite(s.busyPct) || !Number.isFinite(s.frameMs)) return 'load: not measured';
+  const q = (v, unit) => (v == null ? '' : ` (quiet ${v}${unit})`);
+  const loaded = s.busyPct >= d.busyAtPct || s.frameMs >= d.frameAtMs;
+  return `machine CPU ${Math.round(s.busyPct)}%${q(d.quiet.busyPct, '%')}, frames ${Math.round(s.frameMs)} ms${q(d.quiet.frameMs, ' ms')}: `
+    + (loaded ? 'machine loaded -- this FAIL may be load; re-run quiet' : 'machine not loaded -- a real FAIL');
 }
-// the fixed workload (integer + sqrt math, no allocation); returns its time in ms
-const CALIBRATE = (n) => `(() => { const t = performance.now(); let s = 0; for (let i = 0; i < ${n}; i++) s = (s + Math.sqrt(i ^ (s & 1023))) % 1e9; return performance.now() - t + (s < 0 ? 1 : 0); })()`;
-async function calibrate(cal = BLIND_BUDGET.calibration) {
-  await send('Emulation.setCPUThrottlingRate', { rate: BLIND_BUDGET.cpu });
-  const t = [];
-  try { for (let i = 0; i < cal.runs; i++) t.push(await js(CALIBRATE(cal.iterations))); } finally { await send('Emulation.setCPUThrottlingRate', { rate: 1 }); }
-  return t.sort((a, b) => a - b)[Math.floor(t.length / 2)];
+/** Pure: the whole machine's busy % between two os.cpus() readings. */
+export function busyPct(a, b) {
+  const sum = (cpus) => cpus.reduce((acc, c) => { const t = c.times; acc.busy += t.user + t.nice + t.sys + t.irq; acc.all += t.user + t.nice + t.sys + t.irq + t.idle; return acc; }, { busy: 0, all: 0 });
+  const x = sum(a), y = sum(b);
+  return (100 * (y.busy - x.busy)) / Math.max(1, y.all - x.all);
+}
+// the page's mean animation-frame interval over `ms`, unthrottled, while node samples the machine
+async function sampleLoad(d = BLIND_BUDGET.loadDetect) {
+  const c0 = os.cpus();
+  const frameMs = await js(`new Promise((done) => { const t0 = performance.now(); let n = 0; const tick = () => { n++; if (performance.now() - t0 < ${d.sampleMs}) requestAnimationFrame(tick); else done((performance.now() - t0) / n); }; requestAnimationFrame(tick); })`);
+  return { busyPct: busyPct(c0, os.cpus()), frameMs };
 }
 
 // a fresh page, as Fred opens it: storage cleared, Math.random seeded (a fresh start picks a random frame and terrain --
@@ -172,7 +178,7 @@ async function runBlindBudget() {
       const m = did ? await jsJSON(`window.__blind(${t0}, ${B.quietMs})`) : null;
       await send('Emulation.setCPUThrottlingRate', { rate: 1 });
       const ok = !!m && m.blindMs <= budget;
-      const load = ok || !m ? '' : ` -- ${loadNote(await calibrate())}`; // detection only: the verdict above is final
+      const load = ok || !m ? '' : ` -- ${loadNote(await sampleLoad())}`; // detection only: the verdict above is final
       checkRow('blind', name, ok, m ? `blind ${m.blindMs} ms, card at ${m.cardMs ?? 'never'} ms, longest task ${m.longestMs} ms, ${m.tasks.length} tasks to ${m.tasks.reduce((e, [s, d]) => Math.max(e, s + d), 0)} ms, first ${JSON.stringify(m.tasks.slice(0, 6))}${load}` : 'the action could not be done');
       if (!ok) await shot(`FAIL_blind_${row.name.replace(/[^A-Za-z0-9]+/g, '_')}`);
       for (const id of row.post || []) { await tap('#' + id); await sleep(500); }
