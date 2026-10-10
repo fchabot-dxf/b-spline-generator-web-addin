@@ -95,6 +95,12 @@ function constantsFor(params, img, aspect) {
     rotation,
     cs: Math.cos(-rotation), sn: Math.sin(-rotation),
     repeat: (t.repeat ?? 0) >= 0.5,
+    // 2026-10-10 (seat A, MEASURED with a marker photo): the heightmap's row 0 is the board's FRONT (core/coords.js
+    // COORD_SYSTEM: the bottom of the drawing; the art's masks and the 2D backdrop agree), but the image's row 0 is its
+    // TOP -- so the photo sat upside-down on the board, in 2D, 3D and the STEP alike. 'upright' samples the board in a
+    // y-down frame (sv -> 1 - sv); anything else (an older board, params without the key) is the legacy flip, its
+    // heights byte-identical (core/state.js photoOrientation, main/app-init.js MIGRATIONS 'photo-orientation').
+    upright: params.photoOrientation === 'upright',
     // COVER: the one uniform units-per-pixel scale that makes the image fill the whole board without separate x/y
     // stretch -- the larger of the two per-axis requirements wins (same logic as CSS background-size: cover).
     unitsPerPixel: Math.max(aspect / img.w, 1 / img.h),
@@ -110,7 +116,8 @@ function constantsFor(params, img, aspect) {
  */
 export function photoPixelAt(su, sv, aspect, params, img) {
   if (!img || !img.w || !img.h) return -1;
-  const { scale, offsetX, offsetY, rotation, cs, sn, repeat, unitsPerPixel } = constantsFor(params, img, aspect);
+  const { scale, offsetX, offsetY, rotation, cs, sn, repeat, unitsPerPixel, upright } = constantsFor(params, img, aspect);
+  if (upright) sv = 1 - sv;
 
   // Isotropic board-unit space: the board spans [-aspect/2, aspect/2] x
   // [-0.5, 0.5] here, so one unit is the SAME physical distance in both
@@ -143,13 +150,13 @@ export function photoPixelAt(su, sv, aspect, params, img) {
  *  processed (cropped) image, -> the sample point (su, sv) it lands on. The same constants, the steps undone in
  *  reverse order. For the on-board footprint (its corners: u, v in {0, 1}). */
 export function photoSampleOf(u, v, aspect, params, img) {
-  const { scale, offsetX, offsetY, rotation, cs, sn, unitsPerPixel } = constantsFor(params, img, aspect);
+  const { scale, offsetX, offsetY, rotation, cs, sn, unitsPerPixel, upright } = constantsFor(params, img, aspect);
   const rx = ((u - 0.5) * unitsPerPixel * img.w - offsetX * aspect) * scale;
   const ry = ((v - 0.5) * unitsPerPixel * img.h - offsetY) * scale;
   // the forward rotation is [cs -sn; sn cs] (cs = cos(-rotation), sn = sin(-rotation)); its inverse is the transpose
   const bx = rotation !== 0 ? rx * cs + ry * sn : rx;
   const by = rotation !== 0 ? -rx * sn + ry * cs : ry;
-  return { su: 0.5 + bx / aspect, sv: 0.5 + by };
+  return { su: 0.5 + bx / aspect, sv: upright ? 0.5 - by : 0.5 + by };
 }
 
 export const fn = (su, sv, aspect, params) => {

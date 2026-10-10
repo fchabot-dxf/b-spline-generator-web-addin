@@ -1,6 +1,6 @@
 /**
  * core/in-editor-3d.js (2026-10-08): F35 item 18 (4)'s "no 3D while editing" for the changes that do not come
- * through the editor's own onChange -- one declared table (photo, relief, frame). MEASURED with the editor open
+ * through the editor's own onChange -- one declared table (photo, frame; 'relief' retired 2026-10-10). MEASURED with the editor open
  * (phone width, 4x CPU): every Frame-tab write re-applied the hidden 3D frame (226 - 357 ms); a relief-height slider
  * step ran a full rebuild (~1 s). The 2D cut profile and board outline stay live; the 3D waits for the session's end,
  * which the session fingerprint must therefore see (the relief height included).
@@ -37,20 +37,19 @@ beforeEach(() => {
 afterEach(() => { document.body.innerHTML = ''; });
 
 describe('IN_EDITOR_3D: one row per kind of change, the editor open vs closed', () => {
-  it('declared: photo / relief -> the backdrop in the editor, the rebuild when closed; frame -> its 2D profile vs + the 3D', () => {
+  it('declared: photo -> the backdrop in the editor, the rebuild when closed; frame -> its 2D profile vs + the 3D', () => {
     expect(IN_EDITOR_3D).toEqual({
       // inEditorDrag (Fred 2026-10-09): a Photo slider's drag tick repaints nothing; its release repaints once
       photo: { inEditor: 'backdrop', inEditorDrag: 'none', closed: 'rebuild' },
-      relief: { inEditor: 'backdrop', inEditorDrag: 'none', closed: 'rebuild' },
       frame: { inEditor: 'profile', closed: 'refresh3D', restoring: 'profile' },
     });
     const at = (kind, opts) => inEditor3dAction(kind, opts);
     modal.style.display = 'flex';
-    expect(['photo', 'relief', 'frame'].map((k) => at(k))).toEqual(['backdrop', 'backdrop', 'profile']);
-    expect(['photo', 'relief', 'frame'].map((k) => at(k, { drag: true }))).toEqual(['none', 'none', 'profile']); // frame: no drag row
+    expect(['photo', 'frame'].map((k) => at(k))).toEqual(['backdrop', 'profile']);
+    expect(['photo', 'frame'].map((k) => at(k, { drag: true }))).toEqual(['none', 'profile']); // frame: no drag row
     modal.style.display = 'none';
-    expect(['photo', 'relief', 'frame'].map((k) => at(k))).toEqual(['rebuild', 'rebuild', 'refresh3D']);
-    expect(['photo', 'relief', 'frame'].map((k) => at(k, { drag: true }))).toEqual(['rebuild', 'rebuild', 'refresh3D']); // closed: as before
+    expect(['photo', 'frame'].map((k) => at(k))).toEqual(['rebuild', 'refresh3D']);
+    expect(['photo', 'frame'].map((k) => at(k, { drag: true }))).toEqual(['rebuild', 'refresh3D']); // closed: as before
   });
 });
 
@@ -77,7 +76,7 @@ describe('a restore (applySnapshot) leaves the 3D frame to its own rebuild (2026
     try {
       for (const shown of ['none', 'flex']) {
         modal.style.display = shown;
-        expect(['photo', 'relief', 'frame'].map((k) => inEditor3dAction(k))).toEqual(shown === 'flex' ? ['backdrop', 'backdrop', 'profile'] : ['rebuild', 'rebuild', 'profile']);
+        expect(['photo', 'frame'].map((k) => inEditor3dAction(k))).toEqual(shown === 'flex' ? ['backdrop', 'profile'] : ['rebuild', 'profile']);
       }
     } finally { setUndoRestoring(false); }
   });
@@ -95,7 +94,7 @@ describe('a restore (applySnapshot) leaves the 3D frame to its own rebuild (2026
   });
 });
 
-describe('the Photo relief height: written without a rebuild in the editor', () => {
+describe('the board Z while the editor is open (once the Photo relief height; Board > Carve Depth since 2026-10-10)', () => {
   it('applyParam(key, value, { rebuild: false }) writes the param and starts no rebuild; the default still does', () => {
     const was = P.carveZ;
     try {
@@ -106,26 +105,22 @@ describe('the Photo relief height: written without a rebuild in the editor', () 
       expect(sched.calls).toBe(1);
     } finally { P.carveZ = was; }
   });
-  it("photo-panel's relief slider reads the table: in the editor no rebuild + the backdrop; else applyParam as before", () => {
+  // 2026-10-10 (Fred): no Max Height in the photo panels and a pattern pick no longer sets the board Z -- the relief
+  // slider this used to pin is gone with its setReliefHeight; inverted: nothing in the photo panel writes P.carveZ
+  it('the photo panel writes no board Z (no relief slider, no setReliefHeight, no carveZ write)', () => {
     const src = readFileSync('bspline-frame-builder/b-spline-gen/html/main/photo-panel.js', 'utf8');
-    const at = src.indexOf('function setReliefHeight(v, { raw = false, drag = false } = {}) {');
-    expect(at).toBeGreaterThan(-1);
-    const body = src.slice(at, src.indexOf('\n}', at));
-    // a user's value is clamped to the photo relief range; an undo (raw) puts the saved value back as it was (seat D 2026-10-08)
-    expect(body).toMatch(/const z = raw \? v : clampReliefIn\(v\);/);
-    // the table's action, a drag tick included (inEditorDrag 'none': no repaint until the release)
-    expect(body).toMatch(/const action = inEditor3dAction\('relief', \{ drag \}\);/);
-    expect(body).toMatch(/if \(action === 'rebuild'\) applyParam\('carveZ', z\);/);
-    expect(body).toMatch(/applyParam\('carveZ', z, \{ rebuild: false \}\);\s*if \(action === 'backdrop'\) refreshEditorTopView\(\);/);
+    expect(src).not.toMatch(/function setReliefHeight/);
+    expect(src).not.toMatch(/applyParam\('carveZ'/);
+    expect(src).not.toMatch(/inEditor3dAction\('relief'/);
   });
-  it('a relief-only editor session is a change: [3D] takes the Apply way (the rebuild), not the plain close', () => {
+  it('a Z-only editor session is a change: [3D] takes the Apply way (the rebuild), not the plain close', () => {
     const was = P.carveZ;
     let applied = 0;
     document.getElementById('editorApply').addEventListener('click', () => { applied++; });
     try {
       modal.style.display = 'flex'; // the editor is open
       SvgEditorSnapshot.fingerprint = editorSessionFingerprint(); // as the session opened
-      P.carveZ = (P.carveZ ?? 0.125) + 0.05; // only the relief height moves (its slider builds no 3D in the editor)
+      P.carveZ = (P.carveZ ?? 0.125) + 0.05; // only the board Z moves (Board > Carve Depth, reachable with the editor open)
       expect(setViewMode('3d')).toBe('apply');
       expect(applied).toBe(1);
     } finally { P.carveZ = was; SvgEditorSnapshot.fingerprint = null; }
