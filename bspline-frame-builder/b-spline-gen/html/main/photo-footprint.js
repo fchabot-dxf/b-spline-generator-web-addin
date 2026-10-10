@@ -187,7 +187,12 @@ export function syncPhotoFootprint() {
   const ed = editor();
   const host = ed && ed._sketchLayer && ed._sketchLayer.node && ed._sketchLayer.node.parentNode;
   const img = host ? shownImage() : null;
+  // the footprint appearing / going (the Photo tab entered or left, the photo loaded or cleared): a view still at Fit
+  // re-fits, to hold it (or the board again); a view the user zoomed or panned is left alone. A drag never re-fits (the
+  // view would jump under the finger).
+  const refit = !!ed && !!ed._draw && !!ed._fitExtraRegion !== !!img && isFittedView(ed);
   if (ed) ed._fitExtraRegion = img ? fitRegionOf(photoFootprint(P, placementOf(), img)) : null;
+  if (refit && typeof ed.fitView === 'function') ed.fitView(); // its editorViewChanged redraws the footprint
   if (!img) { if (_g) _g.style.display = 'none'; return; }
   if (!_g || _g.parentNode !== host) {
     if (_g) _g.remove();
@@ -235,14 +240,6 @@ function onUp(e) {
 /** Wire the footprint (main.js, after the Photo tab): `commit(placement)` writes a drag's result as one step. */
 export function initPhotoFootprint({ commit }) {
   _commit = commit;
-  for (const ev of ['editorBoardResized', 'editorViewChanged']) document.addEventListener(ev, () => syncPhotoFootprint());
-  // entering / leaving the Photo tab: a view still at Fit re-fits, to hold the footprint (or the board again); a view the
-  // user zoomed or panned is left alone. A drag never re-fits (the view would jump under the finger).
-  document.addEventListener('editorTabChanged', () => {
-    const ed = editor();
-    const fitted = !!(ed && ed._draw && isFittedView(ed));
-    syncPhotoFootprint();
-    if (fitted && typeof ed.fitView === 'function') ed.fitView();
-  });
+  for (const ev of ['editorTabChanged', 'editorBoardResized', 'editorViewChanged']) document.addEventListener(ev, () => syncPhotoFootprint());
   syncPhotoFootprint();
 }
