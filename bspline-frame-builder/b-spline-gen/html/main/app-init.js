@@ -228,6 +228,14 @@ export function bootBuildOwner() {
  */
 export const MIGRATIONS = [
   {
+    id: 'photo-mirror-mode',
+    // 2026-10-10 (Fred): new boards mirror the photo unsqueezed; a board saved with a photo before that keeps the squeeze
+    // it was made with (its heights byte-identical). Runs after the save is merged: an absent key reads as null here
+    // (core/state.js DEFAULT), so `photo` is judged on the merged board.
+    when: (p) => p.photoMirrorMode == null,
+    apply: (p) => { p.photoMirrorMode = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'squeeze' : 'mirror'; },
+  },
+  {
     id: 'photo-filter-to-layer',
     // 2026-10-10 (Fred: the photo as its own LAYER on top of the chosen filter): a save on the old Photo FILTER becomes
     // the photo layer over a plain filter, showing through at 0 % -- the SAME heights: at 0 % the fine value is the

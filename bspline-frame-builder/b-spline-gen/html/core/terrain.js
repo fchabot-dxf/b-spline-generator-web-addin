@@ -8,6 +8,48 @@ import { PerlinNoise } from './noise.js';
 import { NoiseModes, NoiseMetadata } from './noise/index.js';
 import { SeedTypes } from './seed/index.js';
 
+// 2026-10-10 (seat A + seat D: the on-board photo footprint and the photo preview's "not sampled" overlay): the board
+// -> sample mapping generateHeightmap uses (Map Zoom + Map Offset, then the Symmetry fold), exported ONCE so both read
+// it instead of a copy. Its constants are cached on the params object (a heightmap passes the same one throughout).
+let _fold = null;
+function foldSpecOf(params) {
+  if (_fold && _fold.params === params) return _fold;
+  const { mapZoom = 1, seedOffsetX = 0, seedOffsetY = 0, symmetry = 'none', symOffsetX = 0, symOffsetY = 0 } = params;
+  _fold = { params, mapZoom, seedOffsetX, seedOffsetY, mx: 0.5 + symOffsetX, my: 0.5 + symOffsetY,
+    fx: symmetry === 'x' || symmetry === 'radial', fy: symmetry === 'y' || symmetry === 'radial' };
+  return _fold;
+}
+/** Board fraction (u, v) -> { zu, zv } (zoomed + panned) and { su, sv } (folded by Symmetry): what the filters sample.
+ *  `out` is filled and returned (the heightmap loop reuses one; omitted, a new object). */
+export function foldUV(u, v, params, out = {}) {
+  const f = foldSpecOf(params);
+  // H17 items 1-3: zoom about the board centre, the pan added BEFORE the zoom divide (see generateHeightmap's loop)
+  const zu = 0.5 + (u - 0.5 + f.seedOffsetX) / f.mapZoom;
+  const zv = 0.5 + (v - 0.5 + f.seedOffsetY) / f.mapZoom;
+  out.zu = zu; out.zv = zv;
+  // the mirror axis shifted by symOffsetX/Y; the fold scaled by 2 keeps the noise frequency of the un-offset case
+  out.su = f.fx ? Math.abs(zu - f.mx) * 2 : zu;
+  out.sv = f.fy ? Math.abs(zv - f.my) * 2 : zv;
+  // 2026-10-10 (Fred: "the photo shouldn't be squeezed by default"): the TRUE mirror -- no x2, the far side reflected
+  // onto the source side (past the axis), like a mirror held to the print. The photo layer samples this in its 'mirror'
+  // mode (P.photoMirrorMode); procedural filters keep su / sv.
+  out.mu = f.fx ? f.mx + Math.abs(zu - f.mx) : zu;
+  out.mv = f.fy ? f.my + Math.abs(zv - f.my) : zv;
+  return out;
+}
+/** The inverse, per mirror copy: a sample point (su, sv) -> the board fraction (u, v) it shows at. `sx` / `sy` (+1 / -1)
+ *  pick the copy on a folded axis (+1 = the source side, past the mirror axis); unfolded axes ignore them.
+ *  `mirror` true: (su, sv) are the true-mirror coordinates (mu, mv) instead. */
+export function unfoldUV(su, sv, params, sx = 1, sy = 1, mirror = false) {
+  const f = foldSpecOf(params);
+  const zu = f.fx ? f.mx + sx * (mirror ? su - f.mx : su / 2) : su;
+  const zv = f.fy ? f.my + sy * (mirror ? sv - f.my : sv / 2) : sv;
+  return { u: 0.5 + (zu - 0.5) * f.mapZoom - f.seedOffsetX, v: 0.5 + (zv - 0.5) * f.mapZoom - f.seedOffsetY };
+}
+/** The photo layer's mirror mode as the sampler reads it: 'mirror' only when declared so; anything else (an older
+ *  board, a params object without the key) is the legacy 'squeeze' (core/state.js photoMirrorMode). */
+export const photoMirrors = (params) => params.photoMirrorMode === 'mirror';
+
 /**
  * Generate a flat Float32Array[nz × nx] of heights in inches.
  * Index: heights[j * nx + i]  i=col/U/X  j=row/V/Z
@@ -70,6 +112,9 @@ export function generateHeightmap(params, stampParams = null) {
   const [rangeLo, rangeHi] = (NoiseMetadata[noiseType] || NoiseMetadata['simplex']).nominalRange || [0, 1];
   const rangeSpan = (rangeHi - rangeLo) || 1;
 
+  const folded = { zu: 0, zv: 0, su: 0, sv: 0, mu: 0, mv: 0 }; // foldUV's output, one object for the whole heightmap
+  const photoMirror = photoLayer && photoMirrors(params); // the photo's true mirror (no squeeze), when declared
+
   // ── Pass 1 + 2: fine detail & coarse redistribution ───────────────────────
   for (let j = 0; j < nz; j++) {
     for (let i = 0; i < nx; i++) {
@@ -97,23 +142,18 @@ export function generateHeightmap(params, stampParams = null) {
         // at zoom 2 an offset of 0.5 was already panning a full (zoomed)
         // screen instead of half one. Added inside the division, "1 unit of
         // offset" is always exactly one board-width at the CURRENT zoom.
-        const zu = 0.5 + (u - 0.5 + seedOffsetX) / mapZoom;
-        const zv = 0.5 + (v - 0.5 + seedOffsetY) / mapZoom;
-
         // Mirror axis can be shifted by symOffsetX/Y. Default 0 = mirror
         // through center (legacy behavior). The fold output is scaled by 2
         // so the noise frequency stays consistent with the un-offset case.
-        let su = zu, sv = zv;
-        const mx = 0.5 + symOffsetX;
-        const my = 0.5 + symOffsetY;
-        if (symmetry === 'x' || symmetry === 'radial') su = Math.abs(zu - mx) * 2;
-        if (symmetry === 'y' || symmetry === 'radial') sv = Math.abs(zv - my) * 2;
+        // 2026-10-10: both steps are foldUV (above), the ONE copy the photo footprint / overlay read too.
+        foldUV(u, v, params, folded);
+        const zu = folded.zu, zv = folded.zv, su = folded.su, sv = folded.sv;
 
         // ── Pass 1: Fine Detail (Strategy Pattern; modeFunc / noiseRefs above the loop) ──
         noiseRefs.rawU = u; noiseRefs.rawV = v;
         let fine;
         if (photoLayer) {
-            fine = NoiseModes.photo(su, sv, aspect, photoParams, noiseRefs);
+            fine = photoMirror ? NoiseModes.photo(folded.mu, folded.mv, aspect, photoParams, noiseRefs) : NoiseModes.photo(su, sv, aspect, photoParams, noiseRefs);
             if (filterShare > 0) fine += ((modeFunc(su, sv, aspect, modeParams, noiseRefs) - rangeLo) / rangeSpan - 0.5) * filterShare;
         } else {
             fine = modeFunc(su, sv, aspect, modeParams, noiseRefs);
