@@ -242,6 +242,17 @@ describe('a board size change holds the 3D (main/app-init.js)', () => {
     expect(build).toHaveBeenCalledTimes(1);
   });
 
+  it('an event with nothing to change (every global undo dispatches it) opens NO hold: the build is not held back', () => {
+    window.svgEditor = Object.assign(editor(), { _mW: 9, _mH: 12 });
+    const build = vi.fn();
+    P.widthIn = 9; P.heightIn = 12;
+    document.dispatchEvent(new CustomEvent('stockSizeChanged'));
+    expect(isRebuildHeld()).toBe(false);
+    scheduleRebuild(build, 0);
+    vi.advanceTimersByTime(1); // not the 350 ms resync debounce (MEASURED: an undo of Offset X built 428 ms late)
+    expect(build).toHaveBeenCalledTimes(1);
+  });
+
   it('every joinRebuildHold stage in the app is a declared STOCK_CHANGE_STAGES entry, and every entry is joined', () => {
     const files = [];
     const walk = (d) => { for (const n of readdirSync(d)) { const p = join(d, n); if (statSync(p).isDirectory()) walk(p); else if (n.endsWith('.js')) files.push(p); } };

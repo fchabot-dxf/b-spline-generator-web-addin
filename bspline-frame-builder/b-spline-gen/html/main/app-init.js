@@ -749,12 +749,23 @@ function _resyncEditorToStock() {
   _resyncHoldClose = null;
   try { _resyncEditorToStockNow(); } finally { if (close) close(); } // every exit closes the stage
 }
-function _resyncEditorToStockNow() {
-  const ed = window.svgEditor;
-  if (!ed || !ed._draw) return;
-  if (ed._mW === P.widthIn && ed._mH === P.heightIn) return;
+const _editorModalOpen = () => {
   const modal = document.getElementById('svgEditorModal');
-  const editorOpen = !!(modal && modal.style.display && modal.style.display !== 'none');
+  return !!(modal && modal.style.display && modal.style.display !== 'none');
+};
+/** The resync will change the editor: it is drawn, on another board, and open or holding a drawing. One test for both
+ *  the resync and the hold below. 2026-10-10 (MEASURED, phone rig, CPU 1): a global undo dispatches stockSizeChanged on
+ *  EVERY undo, and the hold opened for each one -- an undo of Offset X built 428 ms after the tap, waiting out the 350 ms
+ *  debounce of a resync that had nothing to do. */
+function _resyncWillChange() {
+  const ed = window.svgEditor;
+  if (!ed || !ed._draw || (ed._mW === P.widthIn && ed._mH === P.heightIn)) return false;
+  return _editorModalOpen() || !!P.editorSvg;
+}
+function _resyncEditorToStockNow() {
+  if (!_resyncWillChange()) return;
+  const ed = window.svgEditor;
+  const editorOpen = _editorModalOpen();
   if (editorOpen) {
     // the WHOLE new board in view, as a fresh open shows it -- unless the user had zoomed / panned on purpose: their
     // view stays. The fit runs AFTER the frame profile is redrawn (a framed board fits its frame's region).
@@ -764,20 +775,23 @@ function _resyncEditorToStockNow() {
     drawFrameProfile(ed);
     if (wasFitted || !userView) ed.fitView();
     else { ed._view = userView; applyView(ed); }
-  } else if (P.editorSvg) {
+  } else {
     ed.open(editorRestoreSvg(), P.widthIn, P.heightIn);
     drawFrameProfile(ed);
-  } else return;
+  }
   if (typeof ed._notifyChange === 'function') ed._notifyChange('commit');
   document.dispatchEvent(new CustomEvent('editorBoardResized', { detail: { w: P.widthIn, h: P.heightIn, editorOpen } }));
 }
 if (typeof document !== 'undefined') {
   document.addEventListener('stockSizeChanged', () => {
-    // the card is up for the whole hold (a burst keeps the first one's)
-    const holdSpec = { defers: STOCK_CHANGE_DEFERS };
-    if (!isRebuildHeld()) { const held = openRebuildHold(STOCK_CHANGE_STAGES, holdSpec); withLoadingStage('rebuild', () => held, { spacing: P.spacing }); }
-    else openRebuildHold(STOCK_CHANGE_STAGES, holdSpec);
-    if (!_resyncHoldClose) _resyncHoldClose = joinRebuildHold('editor-resync');
+    // the card is up for the whole hold (a burst keeps the first one's); no hold when the resync has nothing to change
+    // (an undo of anything but the size: the event comes with every global undo)
+    if (_resyncWillChange()) {
+      const holdSpec = { defers: STOCK_CHANGE_DEFERS };
+      if (!isRebuildHeld()) { const held = openRebuildHold(STOCK_CHANGE_STAGES, holdSpec); withLoadingStage('rebuild', () => held, { spacing: P.spacing }); }
+      else openRebuildHold(STOCK_CHANGE_STAGES, holdSpec);
+      if (!_resyncHoldClose) _resyncHoldClose = joinRebuildHold('editor-resync');
+    }
     clearTimeout(_stockResyncTimer);
     _stockResyncTimer = setTimeout(_resyncEditorToStock, 350);
   });
