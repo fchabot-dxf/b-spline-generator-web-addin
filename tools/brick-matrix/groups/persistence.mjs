@@ -73,28 +73,34 @@ export const WINDOWED_LOAD = {
 // step and the boot draws the drape before its own mask pass -- so a STALE live drape matched it and the correct one did
 // not); the reload's hash is logged in the detail only.
 export const SIZE_NUDGE_SCENE = {
-  name: 'A board width nudge on a laid board gives the same 3D scene as recomputing that board (masks, drape, frame)',
+  name: 'A board width nudge on a laid board gives the same 3D scene as a reload of that board',
   field: 'widthIn', stepIn: 0.25, wallTool: 'brickTool_wall', frameTool: 'brickTool_frame', generate: 'brickGenerate',
 };
 // page side: the scene hash (no regex in here -- a backslash in this template literal would have to be doubled)
 const SCENE_HASH = `(async () => {
   const { AppState } = await import('./main/app-state.js');
   const pv = AppState.preview; if (!pv || !pv._scene) return 'no-preview';
-  let h = 0x811c9dc5, n = 0;
+  let h = 0x811c9dc5;
   const mix = (b) => { h ^= b; h = Math.imul(h, 16777619) >>> 0; };
   const f64 = new Float64Array(1), u8 = new Uint8Array(f64.buffer);
   const num = (x) => { f64[0] = x; for (let i = 0; i < 8; i++) mix(u8[i]); };
   const bytes = (a) => { const b = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); for (let i = 0; i < b.length; i++) mix(b[i]); };
+  const str = (t) => { for (let i = 0; i < t.length; i++) mix(t.charCodeAt(i) & 255); };
+  // ORDER-FREE (MEASURED: a frame re-apply or a drape refresh re-adds its meshes at the end of the scene -- the same
+  // content in another order): each mesh hashed on its own, the sorted list hashed
+  const each = [];
   pv._scene.updateMatrixWorld(true);
   pv._scene.traverse((o) => {
     if (!o.isMesh && !o.isLine && !o.isPoints) return;
-    n++; for (const c of o.type) mix(c.charCodeAt(0)); mix(o.visible ? 1 : 2);
+    h = 0x811c9dc5;
+    str(o.type); str(o.name || ''); mix(o.visible ? 1 : 2);
     for (const e of o.matrixWorld.elements) num(e);
-    const g = o.geometry; if (!g) return;
-    for (const k of Object.keys(g.attributes).sort()) { for (const c of k) mix(c.charCodeAt(0)); bytes(g.attributes[k].array); }
-    if (g.index) bytes(g.index.array);
+    const g = o.geometry;
+    if (g) { for (const k of Object.keys(g.attributes).sort()) { str(k); bytes(g.attributes[k].array); } if (g.index) bytes(g.index.array); }
+    each.push(h.toString(16).padStart(8, '0'));
   });
-  return n + ' meshes ' + h.toString(16);
+  each.sort(); h = 0x811c9dc5; str(each.join(','));
+  return each.length + ' meshes ' + h.toString(16);
 })()`;
 // page side: resolves once no hold is open and no build is running or owed (main without the hold: just the build)
 // page side: recompute the final board's masks, then its drape, then re-apply the frame (the walls sample the drape)
@@ -306,6 +312,6 @@ async function runSizeNudgeScene() {
   await send('Page.reload', {}); await waitApp(); // information only (see SIZE_NUDGE_SCENE)
   await js(SIZE_SETTLED); await heightsSettled(null, 40000); await sleep(1500);
   const back = await js(SCENE_HASH);
-  checkRow('persistence', Z.name, w1 === w0 + Z.stepIn && live !== 'no-preview' && live === again,
-    `${Z.field} ${w0} -> ${w1}; scene after the nudge ${live} vs recomputed ${again} (after a reload: ${back})`);
+  checkRow('persistence', Z.name, w1 === w0 + Z.stepIn && live !== 'no-preview' && live === back,
+    `${Z.field} ${w0} -> ${w1}; scene after the nudge ${live} vs after a reload ${back} (recomputed in-page: ${again})`);
 }
