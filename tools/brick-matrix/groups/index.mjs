@@ -62,8 +62,9 @@ export const GROUP_MEASURED_S = Object.freeze({
 /** before a SEQUENTIAL (timing) group starts in --parallel: none of the run's Chromes left and the CPU at or under maxCpuBusyPct
  *  for stableSamples samples in a row (sampleMs apart), or timeoutMs -- then it logs and goes on (never hangs). MEASURED (seat E,
  *  2026-10-10): after a capped pool blind failed one timing row in each of 3 runs (a different row each time), alone it is
- *  23/23 -- the PC was still busy as it started. maxCpuBusyPct: a candidate, set from the validation run's logged samples. */
-export const QUIET_BEFORE_SEQUENTIAL = Object.freeze({ maxCpuBusyPct: 30, stableSamples: 3, sampleMs: 1000, timeoutMs: 180000 });
+ *  23/23 -- the PC was still busy as it started. MEASURED after a gate ended: 90 - 100% CPU for ~45 s, then 18 - 32% (Fusion,
+ *  editors, idle seats; 24 cores) -- maxCpuBusyPct 40 = that settled level plus a margin; re-checked in the validation run. */
+export const QUIET_BEFORE_SEQUENTIAL = Object.freeze({ maxCpuBusyPct: 40, stableSamples: 3, sampleMs: 1000, timeoutMs: 180000 });
 export const SPAWN_ORDER = GROUPS.filter((g) => !SEQUENTIAL_GROUPS.includes(g))
   .map((g, i) => ({ g, i, s: GROUP_MEASURED_S[g] ?? -1 })).sort((a, b) => b.s - a.s || a.i - b.i).map((o) => o.g);
 // every declared row, group by group (the row order inside a group is the order its rows run in)
