@@ -25760,6 +25760,25 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   608, rubble edges 304 -- all pass. Affected suites 12 files 95/95, icons unchanged.
 - SHOTS: shots/seatE/stones/corner_variety_before_after.png (T9 / T6 7x9 1 in single, seeds 1 + 2, before / after;
   T9: seed 1 wraps 1 step, seed 2 wraps 3); lwrap_variety_seed{1,2,3}_* (an earlier version), needle2_* (the found cases).
+### 2026-10-10 (seat A): brick heights + UVs -- per-brick constants computed once; shader checks dev-only
+- MAP (fresh phone map of main dfca7a2, loaded board, 4x): 43 of 145 sidebar actions with a task > 500 ms, led by the
+  brick pattern taps (774-914 ms, ~5 s busy). Self time over the slow actions: distanceToNearestEdge 12.3 s,
+  brickLocalUV 6.3 s, getProgramInfoLog + getShaderInfoLog ~4.7 s.
+- brickTopHeight (core/bricks/height-profile.js) runs per SAMPLE POINT but recomputed two per-BRICK constants at every
+  point: maxInteriorDistance (2 reduce passes + an extra distanceToNearestEdge) and the chip draw (hashId + 2 seeded
+  rngs). Now a WeakMap per polygon / per brick (+ seed, chipRate, polygon, id checked). Polygons are never edited in
+  place (fan-centre replaces .polygon with a new array; no in-place point writes in core/bricks). brickLocalUV
+  (editor/editor-brick-surface.js): its centroid / longest-edge axis / half-extents likewise once per polygon.
+- TESTS: tests/brick-height-cache-identical.test.js (sampleHeight over a 0.05 in lattice, every set x 2 seeds x a
+  weathered variant x a detail callback, 24 digests) and tests/brick-local-uv-cache-identical.test.js (every brick on a
+  0.03 in lattice, flipped and not), both pinned on main's code, re-verified on main 95a9181 with main's old files swapped
+  in; mutations (one cached value for every polygon; chip always corner 0; one UV frame for every polygon) each FAIL.
+- render-debug.js: three.js's per-compile shader check (renderer.debug.checkShaderErrors) on for localhost /
+  127.0.0.1 / ?debug, off on the live site and in the Fusion palette (advisor); both renderers read it; pinned.
+- RESULT: brickTopHeight 0.54-0.64x in-process. Phone (loaded board, main 95a9181 vs the branch, A/B/B/A, 33 min):
+  total busy 220 -> 178 s (0.81); brick pattern taps 0.55-0.68x busy, longest 774-914 -> 389-467 ms (under 500);
+  surface style 'clean' 4.7 -> 0.9 s (longest 1970 -> 219 ms); stamp sliders 0.35-0.61x; terrain drags unchanged.
+- Full suite 423 files, 6157/6157. Known failures: none.
 
 ### 2026-10-10 (seat E): stone-frame Generate 3 - 14x faster on the phone rig, byte-identical
 - PROFILED (node --cpu-prof, T1 9x12 0.75 in White rocks soldier_stretcher, 202 ms / lay on desktop): the suspect, fieldstone
@@ -25776,6 +25795,30 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - PINNED: tests/bricks-board-clip.test.js (an L board: inside kept as the same object, crossing cut, a piece in the notch
   dropped, one along the outline kept whole). Mutations: dropping the shortcut's inside check fails the notch case; a
   shortcut taken for every piece fails the crossing + notch cases. Affected suites 38 files 526/526.
+
+### 2026-10-10 (seat A): a board size change is ONE 3D build -- the rebuild hold
+- PROFILED (phone rig, loaded board, one heightIn nudge, stacks of every preview.update / scheduleRebuild / editor
+  onChange): 3-4 full builds per nudge -- applyParam's own (new size, OLD masks), the editor resync's commit remask
+  (stockSizeChanged -> 350 ms debounce -> _resyncEditorToStock), the brick re-lay's commit (editorBoardResized ->
+  _scheduleFrameRelay -> generateBricks) and its remask. Only the last was the board asked for; the input digest could
+  not skip the others (their masks really differ).
+- FIX (declared): STOCK_CHANGE_STAGES next to CHANGE_PIPELINE ('editor-resync', 'brick-relay', 'change-pipeline'). The
+  stockSizeChanged listener opens a hold (core/engine/scheduler.js openRebuildHold) and puts the 'rebuild' card up for
+  it; each stage joins (joinRebuildHold) and closes on every exit (resync early returns, no-lay relay, pipeline finally);
+  scheduleRebuild only records the latest fn meanwhile and it runs once at the release; a 3 s backstop releases a stage
+  that never closes. isRebuildScheduled counts a held build, so whenRebuildIdle (Send / export) still waits for it.
+  Undo / redo of a size dispatches the same event -> same hold. The 350 ms debounce is unchanged (advisor).
+- RESULT, CPU 1 digest A/B/B/A by file copies (final preview.update inputs FNV-hashed in-page): loaded board 3-4 builds
+  -> 1 (final 25759ea6 both), photo board 2 -> 1 (91b0d33d both), Undo of the nudge 3 -> 1 (aaf990df both); the nudge
+  is still ONE global undo step. CPU 4 busy A/B/B/A: main 5157 / 5124 ms, branch 3201 / 3719 (0.68x); response 5.8 ->
+  3.8-4.4 s; card at 9-18 ms, blind 0. Matrix blind group 23/23 (Board width change, bricks laid: card at 17 ms, 0 blind).
+- What is left of the floor (branch, 4x): the frame panel's own refreshFrame on syncFramePanel (~0.6 s, frame-panel.js
+  915) + the one build (~0.9 s) + the resync (~0.6 s). Not touched.
+- TESTS: tests/rebuild-hold.test.js (scheduler hold, backstop, a timer already pending, the app-init stages, every joined
+  stage declared and every declared stage joined); brick-element-laid-key-panel.test.js (the relay stage closes after a
+  lay and with no lay). Fail on the pre-change tree; mutations caught 6/6 (no hold in scheduleRebuild; resync never
+  closes; no-lay never closes; lay never closes; pipeline never joins; isRebuildScheduled ignores the hold).
+- Full suite 425 files, 6170/6170. Known failures: none.
 
 ### 2026-10-10 (seat E): the gate's thin-ring FULL 33 -> 8 min, every lay's verdict identical
 - MEASURED (243 FULL lays, stage timers): the test's own widest-gap scan 80% (223 ms / lay), Generate 18% (51 ms / lay after
