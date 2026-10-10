@@ -25543,3 +25543,28 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - PROOF: re-rendered locally -- scrollHeight 2030, scrollWidth 430, the finger drag moves scrollTop 0 -> 485, the check exits
   0; the old render exits 1. A tile tap still closes the mosaic and opens that shot (8 / 60). The live watcher is the
   advisor's to redeploy (not restarted here).
+
+### 2026-10-09 (seat E): a windowed project loaded onto a smaller page lost every brick -- the 3D frame waits for the restore's rebuild
+- REPRODUCED (CDP, fresh profile): a 9x12 board, inset window (0, 3.6) 2.0 x 2.6, Wall + Frame laid (240 bricks), P
+  captured; a fresh 7x9 page (storage cleared at the document's start -- clearing before the reload is saved back by the old
+  page); applySnapshot(load) threw "Cannot read properties of null (reading 'lo')" and the canvas held 0 of 240 bricks
+  (P.editorSvg still had all 240: the throw came before the editor reopened).
+- CAUSE (ORDER): applySnapshot's syncFramePanel (snapshot-manager.js, right after the P restore) ends in
+  inEditor3dAction('frame') === 'refresh3D' -> preview.refreshFrame, which meshes the frame on the preview's CURRENT panel
+  -- the previous 7x9 board's (_lastGrid). The window's bars reach y 4.9, past its 4.5: frame-mesh.js bot() finds no
+  surface. The restore's own rebuild (scheduleRebuild at its end -> preview update -> _applyFrame) meshes the frame on
+  the restored board anyway, so the mid-restore re-mesh was both premature and redundant.
+- FIX (declared, core/in-editor-3d.js): the frame row gets a third context, restoring: 'profile' -- while applySnapshot
+  restores P (core/history.js isRestoring(), the flag setUndoRestoring already brackets the P loop + syncFramePanel) a
+  frame-record sync draws its 2D profile only; the 3D frame comes from the restore's rebuild. No null-skip in frame-mesh.
+- PINNED: tests/in-editor-3d.test.js (the row + syncFramePanel during a restore: no refreshFrame; after it: one) -- 3/7
+  fail on main's sources. Matrix persistence row WINDOWED_LOAD (Save As on 9x12 -> fresh 7x9 -> Project Manager Load):
+  main "back: 9x12, 0 bricks" FAIL; fixed 240/240 PASS, the group 25 rows 0 FAIL, page errors 0. After the load the 3D
+  frame meshes are there (frame-bars, frame-window-bars, frame-window-wall). A project whose colourEdges differs from the
+  page also loads clean (probed).
+- OTHER RESTORE STEPS checked for the same pattern (read, not all measured): the board size -> stockSizeChanged is held
+  by AppState.isInitializing during a load; brickSettingsRestored only re-syncs controls (no re-lay); the photo's
+  follow-through runs after its async decode; the editor (bricks, lattice) reopens on the restored board (open(svg,
+  P.widthIn, P.heightIn)); a global undo's frame restore schedules its brick re-lay, which runs after the restore has
+  reopened the editor (not measured). No second instance found.
+- Affected suites 27 files 935/935.

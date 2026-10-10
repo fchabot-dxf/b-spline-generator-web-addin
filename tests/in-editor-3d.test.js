@@ -26,6 +26,7 @@ import { syncFramePanel } from '../bspline-frame-builder/b-spline-gen/html/main/
 import { AppState } from '../bspline-frame-builder/b-spline-gen/html/main/app-state.js';
 import { SvgEditorSnapshot, editorSessionFingerprint } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 import { setViewMode } from '../bspline-frame-builder/b-spline-gen/html/main/view-mode-toggle.js';
+import { setUndoRestoring } from '../bspline-frame-builder/b-spline-gen/html/core/history.js';
 
 let modal;
 beforeEach(() => {
@@ -40,7 +41,7 @@ describe('IN_EDITOR_3D: one row per kind of change, the editor open vs closed', 
     expect(IN_EDITOR_3D).toEqual({
       photo: { inEditor: 'backdrop', closed: 'rebuild' },
       relief: { inEditor: 'backdrop', closed: 'rebuild' },
-      frame: { inEditor: 'profile', closed: 'refresh3D' },
+      frame: { inEditor: 'profile', closed: 'refresh3D', restoring: 'profile' },
     });
     modal.style.display = 'flex';
     expect(['photo', 'relief', 'frame'].map(inEditor3dAction)).toEqual(['backdrop', 'backdrop', 'profile']);
@@ -61,6 +62,32 @@ describe('the Frame tab: its record writes reach the 3D frame only with the edit
       syncFramePanel();
       expect(AppState.preview.refreshFrame).toHaveBeenCalledTimes(1);
     } finally { AppState.preview = prev; }
+  });
+});
+
+describe('a restore (applySnapshot) leaves the 3D frame to its own rebuild (2026-10-09)', () => {
+  // MEASURED: a 9x12 project with an inset window loaded into a fresh 7x9 page re-meshed the frame mid-restore on the
+  // previous board's panel (frame-mesh.js: null.lo) and the throw left 0 of 240 bricks on the canvas
+  it('the frame row reads restoring while applySnapshot restores, editor open or closed; the other rows as before', () => {
+    setUndoRestoring(true);
+    try {
+      for (const shown of ['none', 'flex']) {
+        modal.style.display = shown;
+        expect(['photo', 'relief', 'frame'].map(inEditor3dAction)).toEqual(shown === 'flex' ? ['backdrop', 'backdrop', 'profile'] : ['rebuild', 'rebuild', 'profile']);
+      }
+    } finally { setUndoRestoring(false); }
+  });
+  it('syncFramePanel during a restore: no 3D frame refresh; after it, one', () => {
+    const prev = AppState.preview;
+    AppState.preview = { refreshFrame: vi.fn() };
+    try {
+      setUndoRestoring(true);
+      syncFramePanel();
+      expect(AppState.preview.refreshFrame).not.toHaveBeenCalled();
+      setUndoRestoring(false);
+      syncFramePanel();
+      expect(AppState.preview.refreshFrame).toHaveBeenCalledTimes(1);
+    } finally { setUndoRestoring(false); AppState.preview = prev; }
   });
 });
 

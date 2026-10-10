@@ -12,16 +12,26 @@
  * Actions: 'backdrop' -- repaint the editor's backdrop (core/render-topview.js refreshEditorTopView), the change's live
  * feedback in the editor; 'rebuild' -- the full rebuild; 'profile' -- the editor's own 2D drawing only (the frame's cut
  * profile and the board outline, drawn by the caller) ; 'refresh3D' -- that plus the 3D frame (preview.refreshFrame).
+ *
+ * `restoring`: what the change does while applySnapshot restores P (a project load, a global undo), editor open or not.
+ * The restore ends in its own rebuild, which meshes the 3D frame on the RESTORED board (preview update -> _applyFrame).
+ * MEASURED 2026-10-09 (seat E): a 9x12 project with an inset window at (0, 3.6) 2.0 x 2.6, loaded into a fresh 7x9 page,
+ * re-meshed the frame mid-restore on the PREVIOUS board's panel -- the window's bars reach y 4.9, past that panel's 4.5,
+ * found no surface (frame-mesh.js bot: null.lo) and the throw aborted the restore before the drawing reopened: 0 of 240
+ * bricks back.
  */
-import { isEditorOpen } from './history.js';
+import { isEditorOpen, isRestoring } from './history.js';
 
 export const IN_EDITOR_3D = Object.freeze({
   photo: Object.freeze({ inEditor: 'backdrop', closed: 'rebuild' }), // the Photo tab's edits (main/photo-panel.js)
   relief: Object.freeze({ inEditor: 'backdrop', closed: 'rebuild' }), // its relief height (P.carveZ: the backdrop shades by it)
-  frame: Object.freeze({ inEditor: 'profile', closed: 'refresh3D' }), // a frame-record write (main/frame-panel.js)
+  frame: Object.freeze({ inEditor: 'profile', closed: 'refresh3D', restoring: 'profile' }), // a frame-record write (main/frame-panel.js)
 });
 
-/** What a change of `kind` does now: its row's action for whether the editor is open. */
+/** What a change of `kind` does now: its row's action during a restore (when it declares one), else for whether the
+ *  editor is open. */
 export function inEditor3dAction(kind) {
-  return IN_EDITOR_3D[kind][isEditorOpen() ? 'inEditor' : 'closed'];
+  const row = IN_EDITOR_3D[kind];
+  if (row.restoring && isRestoring()) return row.restoring;
+  return row[isEditorOpen() ? 'inEditor' : 'closed'];
 }
