@@ -11,9 +11,10 @@ from fb_shared import fusion_memory as fm  # noqa: E402
 
 
 def test_the_declared_thresholds_and_their_edges():
-    assert (fm.FUSION_RESTART_SOFT_GB, fm.FUSION_RESTART_HARD_GB) == (12, 24)
-    assert fm.memory_signal(11.9)['level'] == 'ok' and fm.memory_signal(11.9)['text'] == ''
-    assert fm.memory_signal(12.0)['level'] == 'soft'
+    assert (fm.FUSION_RESTART_SOFT_GB, fm.FUSION_RESTART_HARD_GB) == (10, 24)
+    assert fm.memory_signal(9.9)['level'] == 'ok' and fm.memory_signal(9.9)['text'] == ''
+    assert fm.memory_signal(10.0)['level'] == 'soft'
+    assert fm.memory_signal(11.9)['level'] == 'soft'  # amber from 10 now (was ok under the old 12)
     assert fm.memory_signal(23.9)['level'] == 'soft'
     assert fm.memory_signal(24.0)['level'] == 'hard'
     assert fm.memory_signal(13.4) == {'gb': 13.4, 'level': 'soft', 'text': 'Fusion is using 13 GB: save and restart Fusion soon (closing documents does not free memory)'}

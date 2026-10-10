@@ -9,7 +9,9 @@ Thresholds are declared once, here.
 """
 import sys
 
-FUSION_RESTART_SOFT_GB = 12
+# soft 12 -> 10 (2026-10-09, advisor): seats already stop at 10 for probes; Fusion hung at 18.6 with gate Chromes on the
+# PC, and it retains ~0.55 GB per Send + ~0.5 GB per closed document, so the amber line now leaves room to save + restart
+FUSION_RESTART_SOFT_GB = 10
 FUSION_RESTART_HARD_GB = 24
 
 
