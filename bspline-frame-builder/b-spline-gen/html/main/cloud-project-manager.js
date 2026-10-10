@@ -23,6 +23,7 @@ import { showToast } from '../core/toast.js';
 import { FRAME_DEFS, findFrameTemplate } from '../core/frame-record.js';
 import { editFetch, bindEditPasswordSettings } from './edit-password.js';
 import { withLoadingStage, beginLoadingSequence, whileAskingUser } from '../core/loading-signal.js';
+import { renderPmToolbar, syncPmToolbar } from './pm-toolbar.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 function getApiUrl() {
@@ -220,6 +221,7 @@ function openModal() {
   _modal.style.display = 'flex';
   _modal.setAttribute('aria-hidden', 'false');
 
+  renderPmToolbar(document.getElementById('fmToolbarActions')); // the one declared toolbar (main/pm-toolbar.js), once
   grabDomRefs();
   wireModalListeners();
   applyViewModeToToggle();
@@ -803,13 +805,9 @@ function selectProject(name) {
 }
 
 function updateButtons() {
-  const isProject = _selectedKind === 'project';
-  // Load only makes sense for projects, not folders
-  if (_btnLoad)   _btnLoad.disabled   = !isProject;
-  // Rename + Delete work on either projects or folders
-  const has = !!_selected;
-  if (_btnRename) _btnRename.disabled = !has;
-  if (_btnDelete) _btnDelete.disabled = !has;
+  // each selection button declares what it needs (main/pm-toolbar.js PM_TOOLBAR needsSelection): Load a project,
+  // Rename / Delete a project or a folder
+  syncPmToolbar(_selected ? _selectedKind : null);
 }
 
 function setSelbarInfo() {

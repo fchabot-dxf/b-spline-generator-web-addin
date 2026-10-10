@@ -17,7 +17,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/photo/state.js', async 
 });
 
 import { P, DEFAULT } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { initPhotoPanel } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
+import { initPhotoPanel, commitPhotoPlacement } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
 import { renderPhotoLayerSection } from '../bspline-frame-builder/b-spline-gen/html/main/photo-layer-section.js';
 import { takeUndoParts, restoreUndoParts } from '../bspline-frame-builder/b-spline-gen/html/editor/undo-parts.js';
 
@@ -31,7 +31,7 @@ const undo = () => { ed._redoStack.push(ed._undoStack.pop()); restoreUndoParts(e
 beforeEach(() => {
   localStorage.clear();
   Object.assign(P, DEFAULT, { photoImageDataUrl: SMALL, photoEdits: [], photoPatternId: null, carveZ: 0.125 });
-  // 2026-10-10: Max Height (photoReliefHeight) lives in Surface > Photo now, rendered from PHOTO_CONTROLS
+  // 2026-10-10: Surface > Photo, rendered from PHOTO_CONTROLS (its mirrored edits share these steps)
   document.body.innerHTML = PANEL + '<div id="editorToolbarPhoto"></div><div id="photoLayerBody"></div>';
   renderPhotoLayerSection(document.getElementById('photoLayerBody'));
   ed = { _undoStack: [], _redoStack: [], _notifyChange: () => {} };
@@ -44,6 +44,19 @@ beforeEach(() => {
 });
 
 describe('item 74f: a photo edit is ONE editor undo step', () => {
+  it('2026-10-10: a footprint drag (the photo placement) is one step; Undo puts the placement back, Redo-able keys only', () => {
+    P.filterTweaks = { photo: { depth: 1.4, scale: 0.8 } };
+    ed._undoStack.length = 0; ed.pushState();
+    commitPhotoPlacement({ scale: 1.25, offsetX: 0.1, offsetY: -0.05, rotation: 90 });
+    expect(P.filterTweaks.photo).toEqual({ depth: 1.4, scale: 1.25, offsetX: 0.1, offsetY: -0.05, rotation: 90 });
+    expect(ed._undoStack.length).toBe(2);
+    expect(onChange).toHaveBeenCalled(); // the release repaints
+    commitPhotoPlacement({ scale: 1.25, offsetX: 0.1, offsetY: -0.05, rotation: 90 });
+    expect(ed._undoStack.length).toBe(2); // nothing new: no step
+    undo();
+    expect(P.filterTweaks.photo).toEqual({ depth: 1.4, scale: 0.8 }); // depth is not placement: untouched
+  });
+
   it('Rotate: one step; Undo takes the edit back', () => {
     document.getElementById('photoBtnRotate').click();
     expect(ed._undoStack.length).toBe(2);
@@ -61,17 +74,6 @@ describe('item 74f: a photo edit is ONE editor undo step', () => {
     undo();
     expect(P.photoEdits).toEqual([]);
     expect(Number(document.getElementById('photoBrightness').value)).toBe(0);
-  });
-
-  it("Undo puts the board's own carve depth back EXACTLY, even above the photo relief's max (seat D undo map: 1.5 came back as 0.25)", () => {
-    P.carveZ = 1.5; // a fresh board's carve depth, deeper than any photo relief
-    ed._undoStack.length = 0; ed.pushState(); // the opening entry at 1.5
-    const box = document.getElementById('photoReliefHeight');
-    box.value = '0.1'; box.dispatchEvent(new Event('input')); box.dispatchEvent(new Event('change')); // input applies, change is the step
-    expect(P.carveZ).toBeCloseTo(0.1, 9);
-    expect(ed._undoStack.length).toBe(2);
-    undo();
-    expect(P.carveZ).toBe(1.5);
   });
 
   it('relief Carved: one step; Undo -> Raised again', () => {

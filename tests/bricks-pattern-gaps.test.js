@@ -24,7 +24,9 @@ import { tess, bareGround, PATCH_MAX_FACE } from './bare-ground.js';
 
 vi.setConfig({ testTimeout: HEAVY_TEST_MS });
 
-const PATTERNS = Object.entries(BRICK_PATTERNS).filter(([k, v]) => v.kind !== 'none' && k !== 'fieldstone' && k !== 'coursed_rubble').map(([k]) => k);
+// the stone patterns lay their own set (fieldstone, coursed_rubble, coursed_ashlar: each has its own coverage test --
+// tests/bricks-coursed-ashlar.test.js for the ashlar), not Red brick
+const PATTERNS = Object.entries(BRICK_PATTERNS).filter(([k, v]) => v.kind !== 'none' && k !== 'fieldstone' && k !== 'coursed_rubble' && k !== 'coursed_ashlar').map(([k]) => k);
 /** '<template> <W>x<H> <size> <pattern>' -> [largest patch face share, bare sq in] (measured with the lobe clip) -- a cap */
 const PATTERN_CAPS = {
   'template_1 7x9 1.5 stacked_variation': [0.096, 0.0688],

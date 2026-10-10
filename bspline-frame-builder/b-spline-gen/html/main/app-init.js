@@ -117,6 +117,8 @@ export const CHANGE_PIPELINE = {
  *  'editor-resync' (_resyncEditorToStock, below), 'brick-relay' (main/brick-panel.js, the re-lay on the new board),
  *  'change-pipeline' (every editor onChange that runs meanwhile, its remask included). */
 export const STOCK_CHANGE_STAGES = ['editor-resync', 'brick-relay', 'change-pipeline'];
+/** The boot's restore (initSvgEditor): its one build waits for the drape, which follows the mask pass (see there). */
+export const BOOT_RESTORE_STAGES = ['boot-drape'];
 /** ...and the work it postpones to its end (deferToHold). MEASURED (phone rig, CPU 4, loaded board):
  *  'stamp-masks': three mask passes per nudge -- the param's own on the OLD editor (2.1 s wall), the resync's, the
  *  re-lay's -- and only the last one's masks reach the build; deferred, the latest pass runs once, on the final editor.
@@ -226,12 +228,21 @@ export function bootBuildOwner() {
  */
 export const MIGRATIONS = [
   {
+    id: 'photo-orientation',
+    // 2026-10-10 (seat A, measured; advisor: the photoMirrorMode precedent): new boards get the photo upright; a board
+    // saved with a photo before keeps its (flipped) heights byte-identical. Decided after the save is merged, like
+    // 'photo-mirror-mode' below.
+    when: (p) => p.photoOrientation == null,
+    apply: (p) => { p.photoOrientation = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'legacy-flipped' : 'upright'; },
+  },
+  {
     id: 'photo-mirror-mode',
     // 2026-10-10 (Fred): new boards mirror the photo unsqueezed; a board saved with a photo before that keeps the squeeze
     // it was made with (its heights byte-identical). Runs after the save is merged: an absent key reads as null here
     // (core/state.js DEFAULT), so `photo` is judged on the merged board.
     when: (p) => p.photoMirrorMode == null,
-    apply: (p) => { p.photoMirrorMode = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'squeeze' : 'mirror'; },
+    // 'whole' since Fred's second pick (2026-10-10); a board saved with 'mirror' keeps it (the key is set, so `when` skips it)
+    apply: (p) => { p.photoMirrorMode = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'squeeze' : 'whole'; },
   },
   {
     id: 'photo-filter-to-layer',
@@ -575,6 +586,14 @@ export const MIGRATIONS = [
       delete p.brickSettings.scale;
       delete p.brickSettings.frameBrickLengthIn;
     },
+  },
+  {
+    id: 'window-surround-legacy-none',
+    // Fred 2026-10-10: a new board's window surround follows the Frame (core/state.js windowSurround 'follow'). A board
+    // saved before that has no key (a load replaces brickSettings whole, so it never takes the new default) and laid no
+    // surround: it says so explicitly, None, and keeps laying exactly as before.
+    when: (p) => p.brickSettings && !p.brickSettings.windowSurround,
+    apply: (p) => { p.brickSettings.windowSurround = { preset: 'none' }; },
   },
   {
     id: 'brick-set-per-element',
@@ -947,11 +966,19 @@ export function initSvgEditor(preview) {
       // Not awaited (initSvgEditor itself isn't async). Item 37: this is the boot build's owner (bootBuildOwner) --
       // the loading card covers it end to end, and its landed build is the declared restore end (bootRestore).
       beginLoadingSequence('sessionRestore');
-      refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode).then(whenRebuildIdle).then(markBootRestoreComplete);
       // SE11b: a restored drawing's colours should drape immediately, not
       // only after the next edit — "editor only... survives save/reopen"
       // (SE9) means drape survives reopen too.
-      refreshDrape(preview);
+      // 2026-10-10 (seat A, MEASURED with the order-free scene digest: a reload's frame walls came back in the colours
+      // of the drape BEFORE the boot's mask pass -- the drape renders the editor SVG, whose brick greys that pass paints,
+      // and the build's frame pass samples the drape): the drape follows the masks, and the boot's one build waits for
+      // it -- BOOT_RESTORE_STAGES, the same rebuild hold a board size change uses.
+      openRebuildHold(BOOT_RESTORE_STAGES);
+      const closeBootDrape = joinRebuildHold('boot-drape');
+      refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode)
+        .then(() => refreshDrape(preview))
+        .finally(closeBootDrape)
+        .then(whenRebuildIdle).then(markBootRestoreComplete);
     }
   } catch (e) {
     console.warn('[initSvgEditor] editor SVG restore failed:', e);

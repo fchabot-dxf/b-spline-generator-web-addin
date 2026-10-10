@@ -39,8 +39,12 @@ export const rows = [
   { name: 'Crumble frame too: off', kind: 'editor', tool: 'frame', do: click('brickSuppressFrame'), expect: LAYOUT, introducedBy: 'item9' },
   { name: 'Frame crumble amount while off (greyed)', kind: 'editor', tool: 'frame', do: set('brickFrameSuppression', 0.4), expect: LAYOUT, introducedBy: 'item9' },
   { name: 'Inset window on (for the surround)', kind: 'editor', tool: 'frame', do: click('editorFrameInsetWindowToggle'), expect: E(false, null, null), introducedBy: 'item9' },
+  // Fred 2026-10-10: a new board's surround FOLLOWS the Frame (Soldier, its mitre) the moment the window is on -- so the
+  // first explicit pick is None (a change), then Soldier, Butt, "Same as frame" back (Soldier + mitre), None again
+  { name: 'Window surround: None (from Same as frame)', kind: 'editor', tool: 'frame', do: click('brickSurroundPreset_none'), expect: LAYOUT, introducedBy: 'item9' },
   { name: 'Window surround: Soldier', kind: 'editor', tool: 'frame', do: click('brickSurroundPreset_single_soldier'), expect: LAYOUT, introducedBy: 'item9' },
   { name: 'Window surround corners: Butt', kind: 'editor', tool: 'frame', do: click('brickSurroundCorner_butt'), expect: LAYOUT, introducedBy: 'item9' },
+  { name: 'Window surround: Same as frame', kind: 'editor', tool: 'frame', do: click('brickSurroundPreset_follow'), expect: LAYOUT, introducedBy: 'follow' },
   { name: 'Window surround: None', kind: 'editor', tool: 'frame', do: click('brickSurroundPreset_none'), expect: LAYOUT, introducedBy: 'item9' },
   { name: 'Inset window off', kind: 'editor', tool: 'frame', do: click('editorFrameInsetWindowToggle'), expect: E(false, null, null), introducedBy: 'item9' },
 ];

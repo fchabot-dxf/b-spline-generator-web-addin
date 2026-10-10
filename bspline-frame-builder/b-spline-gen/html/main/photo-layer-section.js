@@ -8,8 +8,8 @@
  *
  * State, one source per setting (no new copies): the layer on/off and "Filter shows through" are P keys (bound the
  * generic way, ui-bindings.js); the photo's effect params are P.filterTweaks.photo (the same rows as any filter's
- * Edit-Filter panel, core/noise/tweaks-ui.js buildRow); Max Height is the board's own P.carveZ (the Photo tab's
- * existing control, moved here with its ids); the image edits are P.photoEdits.
+ * Edit-Filter panel, core/noise/tweaks-ui.js buildRow); the image edits are P.photoEdits. No Max Height here (Fred,
+ * 2026-10-10): it is the board's Z, edited in Board > Carve Depth only.
  */
 import { P } from '../core/state.js';
 import { NoiseTweaks } from '../core/noise/index.js';
@@ -25,30 +25,27 @@ export const PHOTO_GROUPS = Object.freeze([
 ]);
 
 /** Every photo control, once. kind: what renders it here (none for a '2d' one). Fred's picks (2026-10-10): Rotation is
- *  ONE slider here with -90 / +90 steps (the image-edit Rotate 90 stays in the Photo tab); Max Height shows here as the
- *  board's Z; mirrored: flip, brightness, contrast, blur, relief raised / carved; levels, straighten and crop stay 2D. */
+ *  ONE slider here with -90 / +90 steps (the image-edit Rotate 90 stays in the Photo tab); mirrored: flip, brightness, contrast, blur, relief raised / carved; levels, straighten and crop stay 2D. */
 export const PHOTO_CONTROLS = Object.freeze([
   { id: 'layer', home: '3d', kind: 'param-check', param: 'photoLayer', label: 'Photo layer on' },
   { id: 'source', home: '3d', kind: 'source' },
-  { id: 'filterAmount', home: '3d', kind: 'param-slider', param: 'photoFilterAmount', slider: 'photoFilterAmountSlider',
+  { id: 'filterAmount', needsLayer: true, home: '3d', kind: 'param-slider', param: 'photoFilterAmount', slider: 'photoFilterAmountSlider',
     label: 'Filter shows through (%)', min: 0, max: 100, step: 1,
     note: '0% = the photo only; the Filter section\'s terrain adds its relief on top' },
-  { id: 'relief', home: 'both', group: 'relief', kind: 'relief', label: 'Relief',
+  { id: 'relief', needsLayer: true, home: 'both', group: 'relief', kind: 'relief', label: 'Relief',
     ids2d: ['photoBtnReliefRaised', 'photoBtnReliefCarved'], ids3d: ['photo3dReliefRaised', 'photo3dReliefCarved'] },
-  { id: 'depth', home: '3d', group: 'relief', kind: 'tweak', tweak: 'depth' },
-  { id: 'maxHeight', home: '3d', group: 'relief', kind: 'relief-height', label: 'Max Height (the board\'s Z, in)',
-    ids3d: ['photoReliefHeightSlider', 'photoReliefHeight'] },
-  { id: 'scale', home: '3d', group: 'placement', kind: 'tweak', tweak: 'scale' },
-  { id: 'offsetX', home: '3d', group: 'placement', kind: 'tweak', tweak: 'offsetX' },
-  { id: 'offsetY', home: '3d', group: 'placement', kind: 'tweak', tweak: 'offsetY' },
-  { id: 'rotation', home: '3d', group: 'placement', kind: 'tweak', tweak: 'rotation', steps: [-90, 90] },
-  { id: 'repeat', home: '3d', group: 'placement', kind: 'tweak-check', tweak: 'repeat', label: 'Repeat (tile the photo)' },
-  { id: 'flip', home: 'both', group: 'image', kind: 'flip', ids2d: ['photoBtnFlipH', 'photoBtnFlipV'], ids3d: ['photo3dFlipH', 'photo3dFlipV'] },
-  { id: 'blur', home: 'both', group: 'image', kind: 'edit-slider', label: 'Blur', op: 'blur', key: 'radius', fallback: { radius: 0 },
+  { id: 'depth', needsLayer: true, home: '3d', group: 'relief', kind: 'tweak', tweak: 'depth' },
+  { id: 'scale', needsLayer: true, home: '3d', group: 'placement', kind: 'tweak', tweak: 'scale' },
+  { id: 'offsetX', needsLayer: true, home: '3d', group: 'placement', kind: 'tweak', tweak: 'offsetX' },
+  { id: 'offsetY', needsLayer: true, home: '3d', group: 'placement', kind: 'tweak', tweak: 'offsetY' },
+  { id: 'rotation', needsLayer: true, home: '3d', group: 'placement', kind: 'tweak', tweak: 'rotation', steps: [-90, 90] },
+  { id: 'repeat', needsLayer: true, home: '3d', group: 'placement', kind: 'tweak-check', tweak: 'repeat', label: 'Repeat (tile the photo)' },
+  { id: 'flip', needsLayer: true, home: 'both', group: 'image', kind: 'flip', ids2d: ['photoBtnFlipH', 'photoBtnFlipV'], ids3d: ['photo3dFlipH', 'photo3dFlipV'] },
+  { id: 'blur', needsLayer: true, home: 'both', group: 'image', kind: 'edit-slider', label: 'Blur', op: 'blur', key: 'radius', fallback: { radius: 0 },
     ids2d: ['photoBlurSlider', 'photoBlur'], ids3d: ['photo3dBlurSlider', 'photo3dBlur'] },
-  { id: 'brightness', home: 'both', group: 'image', kind: 'edit-slider', label: 'Brightness', op: 'brightnessContrast', key: 'brightness',
+  { id: 'brightness', needsLayer: true, home: 'both', group: 'image', kind: 'edit-slider', label: 'Brightness', op: 'brightnessContrast', key: 'brightness',
     fallback: { brightness: 0, contrast: 0 }, ids2d: ['photoBrightnessSlider', 'photoBrightness'], ids3d: ['photo3dBrightnessSlider', 'photo3dBrightness'] },
-  { id: 'contrast', home: 'both', group: 'image', kind: 'edit-slider', label: 'Contrast', op: 'brightnessContrast', key: 'contrast',
+  { id: 'contrast', needsLayer: true, home: 'both', group: 'image', kind: 'edit-slider', label: 'Contrast', op: 'brightnessContrast', key: 'contrast',
     fallback: { brightness: 0, contrast: 0 }, ids2d: ['photoContrastSlider', 'photoContrast'], ids3d: ['photo3dContrastSlider', 'photo3dContrast'] },
   // the Photo tab only
   { id: 'source2d', home: '2d', ids2d: ['photoPatternRow', 'photoFileInput'] },
@@ -74,7 +71,7 @@ function sliderRow(sliderId, numberId, c, like) {
   const range = (k) => String(like?.getAttribute(k) ?? c[k]);
   const s = el('input', { type: 'range', id: sliderId, class: 'cad-slider', min: range('min'), max: range('max'), step: range('step') });
   const n = el('input', { type: 'number', id: numberId, min: range('min'), max: range('max'), step: range('step') });
-  // the unit is in the label ("Filter shows through (%)", "Max Height (the board's Z, in)"): inside the stepper it sat
+  // the unit is in the label ("Filter shows through (%)"): inside the stepper it sat
   // cramped against its + button on the phone
   const stepper = el('div', { class: 'cad-stepper', style: 'width:66px;' }, [n]);
   return el('div', { class: 'cad-slider-row', style: 'margin-bottom:10px;' }, [s, stepper]);
@@ -110,7 +107,6 @@ const RENDER = {
     return el('div', {}, [host, steps]);
   },
   'tweak-check': (c) => checkRow(`photoLayerTweak_${c.tweak}`, c.label),
-  'relief-height': (c) => el('div', {}, [label(c.label), sliderRow(c.ids3d[0], c.ids3d[1], { min: 0.01, max: 0.25, step: 0.005 })]),
   flip: (c) => el('div', { class: 'photo-layer-buttons' }, [
     el('button', { type: 'button', class: 'cad-btn cad-btn-secondary', id: c.ids3d[0], text: '⇋ Flip H' }),
     el('button', { type: 'button', class: 'cad-btn cad-btn-secondary', id: c.ids3d[1], text: '⇵ Flip V' }),
@@ -124,13 +120,16 @@ export function renderPhotoLayerSection(body) {
   body.innerHTML = '';
   _tweakHosts.clear();
   const shown = PHOTO_CONTROLS.filter((c) => c.home !== '2d');
-  for (const c of shown.filter((x) => !x.group)) body.appendChild(RENDER[c.kind](c));
+  const add = (c) => { const n = RENDER[c.kind](c); if (c.needsLayer) n.setAttribute('data-needs-layer', '1'); body.appendChild(n); };
+  for (const c of shown.filter((x) => !x.group)) add(c);
+  // the line that says why the rest is greyed while the layer is off
+  body.appendChild(el('div', { id: 'photoLayerOffNote', class: 'photo-layer-note', text: 'Turn the photo layer on to use these settings.' }));
   for (const g of PHOTO_GROUPS) {
     const mine = shown.filter((c) => c.group === g.id);
     if (!mine.length) continue;
     body.appendChild(el('label', { class: 'cad-label photo-layer-group' }, [
       el('span', { text: g.label }), g.note ? el('span', { class: 'photo-layer-group-note', text: ` ${g.note}` }) : null]));
-    for (const c of mine) body.appendChild(RENDER[c.kind](c));
+    for (const c of mine) add(c);
   }
 }
 
@@ -152,6 +151,15 @@ export function syncPhotoLayerSection() {
       if (box) box.checked = (t[c.tweak] ?? 0) >= 0.5;
     }
   }
+  // 2026-10-10 (Fred: with the layer off, "Filter shows through" at 99 % looked live and did nothing -- MEASURED: the
+  // heights equal a board that never had a photo): every photo-only control (needsLayer) is greyed while the layer is off
+  const off = !P.photoLayer;
+  for (const n of document.querySelectorAll('#photoLayerBody [data-needs-layer]')) {
+    n.classList.toggle('photo-layer-needs-on', off);
+    for (const x of n.querySelectorAll('input, button')) x.disabled = off;
+  }
+  const note = byId('photoLayerOffNote');
+  if (note) note.hidden = !off;
   const name = byId('photoLayerSourceName');
   if (name) name.textContent = !P.photoImageDataUrl ? 'No photo yet' : (P.photoPatternId ? `Pattern: ${P.photoPatternId.replace(/_/g, ' ')}` : 'Your photo');
 }
@@ -159,6 +167,8 @@ export function syncPhotoLayerSection() {
 /** Wire the section (main.js, after the Photo tab's own wiring): the mirrored edits through the tab's own steps. */
 export function bindPhotoLayerSection() {
   onPhotoControlsSynced(syncPhotoLayerSection);
+  // the layer switch greys / ungreys the rest -- after the generic binder (ui-bindings.js) has written P.photoLayer
+  byId('photoLayer')?.addEventListener('change', () => queueMicrotask(syncPhotoLayerSection));
   byId('photoLayerEditImage')?.addEventListener('click', () => openEditorOn('photo'));
   for (const c of PHOTO_CONTROLS) {
     if (c.kind === 'relief') {

@@ -62,6 +62,66 @@ export const WINDOWED_LOAD = {
   lay: ['brickTool_wall', 'brickTool_frame'], generate: 'brickGenerate',
 };
 
+// ---- a board SIZE change gives the same 3D SCENE as a full rebuild of that board (2026-10-10, seat A; advisor). A size
+// change holds the 3D and defers its masks, the drape and the frame re-mesh to one pass at its end (core/engine/
+// scheduler.js, main/app-init.js STOCK_CHANGE_STAGES / STOCK_CHANGE_DEFERS). MEASURED on the way: a deferral that left
+// the drape behind changed only the frame walls' vertex colours (they sample the drape; the drape renders the editor's
+// SVG, whose brick greys the masks paint) -- invisible to the heights hash. So the whole scene is hashed (every mesh's
+// geometry attributes + world matrix + visibility) after a width nudge on a laid board; it must equal the app's own
+// in-page recompute of that board (masks, then drape, then frame) AND a reload (the saved board built from scratch --
+// MEASURED: before the boot's drape followed its mask pass, a reload rebuilt the walls from the stale drape, the same
+// state a deferral that left the drape behind produced live). ORDER-FREE (MEASURED: a frame re-apply or a drape refresh
+// re-adds its meshes at the end of the scene, the same content in another order).
+export const SIZE_NUDGE_SCENE = {
+  name: 'A board width nudge on a laid board: the same 3D scene as the app recomputing it, and as a reload of it',
+  field: 'widthIn', stepIn: 0.25, wallTool: 'brickTool_wall', frameTool: 'brickTool_frame', generate: 'brickGenerate',
+};
+// page side: the scene hash (no regex in here -- a backslash in this template literal would have to be doubled)
+const SCENE_HASH = `(async () => {
+  const { AppState } = await import('./main/app-state.js');
+  const pv = AppState.preview; if (!pv || !pv._scene) return 'no-preview';
+  let h = 0x811c9dc5;
+  const mix = (b) => { h ^= b; h = Math.imul(h, 16777619) >>> 0; };
+  const f64 = new Float64Array(1), u8 = new Uint8Array(f64.buffer);
+  const num = (x) => { f64[0] = x; for (let i = 0; i < 8; i++) mix(u8[i]); };
+  const bytes = (a) => { const b = new Uint8Array(a.buffer, a.byteOffset, a.byteLength); for (let i = 0; i < b.length; i++) mix(b[i]); };
+  const str = (t) => { for (let i = 0; i < t.length; i++) mix(t.charCodeAt(i) & 255); };
+  // ORDER-FREE (MEASURED: a frame re-apply or a drape refresh re-adds its meshes at the end of the scene -- the same
+  // content in another order): each mesh hashed on its own, the sorted list hashed
+  const each = [];
+  pv._scene.updateMatrixWorld(true);
+  pv._scene.traverse((o) => {
+    if (!o.isMesh && !o.isLine && !o.isPoints) return;
+    h = 0x811c9dc5;
+    str(o.type); str(o.name || ''); mix(o.visible ? 1 : 2);
+    for (const e of o.matrixWorld.elements) num(e);
+    const g = o.geometry;
+    if (g) { for (const k of Object.keys(g.attributes).sort()) { str(k); bytes(g.attributes[k].array); } if (g.index) bytes(g.index.array); }
+    each.push(h.toString(16).padStart(8, '0'));
+  });
+  each.sort(); h = 0x811c9dc5; str(each.join(','));
+  return each.length + ' meshes ' + h.toString(16);
+})()`;
+// page side: resolves once no hold is open and no build is running or owed (main without the hold: just the build)
+// page side: recompute the final board's masks, then its drape, then re-apply the frame (the walls sample the drape)
+const RECOMPUTE_FINAL = `(async () => {
+  const { P } = await import('./core/state.js'), { resolveGrid } = await import('./core/terrain.js');
+  const { AppState } = await import('./main/app-state.js'), eng = await import('./core/engine.js');
+  const smm = await import('./main/stamp-mask-manager.js'), ai = await import('./main/app-init.js');
+  const { updatePreviewSculptMode } = await import('./core/sculpt-interaction.js');
+  const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
+  await smm.refreshAllStampMasks(nx, nz, AppState.preview, updatePreviewSculptMode);
+  await ai.refreshDrape(AppState.preview);
+  await eng.whenRebuildIdle();
+  AppState.preview.refreshFrame();
+  return 1;
+})()`;
+const SIZE_SETTLED = `(async () => {
+  const sch = await import('./core/engine/scheduler.js'), eng = await import('./core/engine.js');
+  for (let i = 0; i < 600 && sch.isRebuildHeld && sch.isRebuildHeld(); i++) await new Promise((r) => setTimeout(r, 100));
+  await eng.whenRebuildIdle(); return 1;
+})()`;
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, act, exists, CANVAS, heightsSettled, canvasSettled, editorOpen, openBrickTool, apply, rows, verdict, waitApp, openBrickTab, checkRow, openEditorTab, reloadWithStorage, drag;
@@ -76,7 +136,7 @@ export const FRESH_VS_RESTORED = {
 };
 
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, act, exists, CANVAS, heightsSettled, canvasSettled, editorOpen, openBrickTool, apply, rows, verdict, waitApp, openBrickTab, checkRow, openEditorTab, reloadWithStorage, drag } = ctx); }
-export async function run() { await runPersistence(); await runPatternParamPersist(); await runFreshVsRestored(); await runWindowedLoad(); }
+export async function run() { await runPersistence(); await runPatternParamPersist(); await runFreshVsRestored(); await runSizeNudgeScene(); await runWindowedLoad(); }
 
 // a page reload: run after every other group in an all-groups run (it always ran last)
 export const runsLast = true;
@@ -232,4 +292,26 @@ async function runFreshVsRestored() {
   await send('Page.reload', {}); await waitApp();
   const back = await heightsSettled(null, 40000);
   checkRow('persistence', F.name, !!live && live !== 'none' && live === back, `live ${live} vs restored ${back}`);
+}
+
+// SIZE_NUDGE_SCENE above: lay Wall + Frame on a fresh board, Apply, nudge the width through its field, hash the scene;
+// reload (the same saved board, built from scratch) and hash again
+async function runSizeNudgeScene() {
+  const Z = SIZE_NUDGE_SCENE;
+  await reloadWithStorage({});
+  await openEditorTab('editorTabBrick'); await click(Z.wallTool, 800); await click(Z.generate, 2500);
+  await click(Z.frameTool, 800); await click(Z.generate, 2500);
+  await apply(); await heightsSettled(null, 40000);
+  const w0 = await js(`import('./core/state.js').then(({ P }) => P[${JSON.stringify(Z.field)}])`);
+  await js(`(()=>{ const e=document.getElementById(${JSON.stringify(Z.field)}); e.value=String(${w0} + ${Z.stepIn}); e.dispatchEvent(new Event('input')); e.dispatchEvent(new Event('change')); return 1; })()`);
+  await sleep(1000); await js(SIZE_SETTLED); await heightsSettled(null, 40000); await sleep(1500);
+  const w1 = await js(`import('./core/state.js').then(({ P }) => P[${JSON.stringify(Z.field)}])`);
+  const live = await js(SCENE_HASH);
+  await js(RECOMPUTE_FINAL); await sleep(1500);
+  const again = await js(SCENE_HASH);
+  await send('Page.reload', {}); await waitApp(); // information only (see SIZE_NUDGE_SCENE)
+  await js(SIZE_SETTLED); await heightsSettled(null, 40000); await sleep(1500);
+  const back = await js(SCENE_HASH);
+  checkRow('persistence', Z.name, w1 === w0 + Z.stepIn && live !== 'no-preview' && live === again && back === live,
+    `${Z.field} ${w0} -> ${w1}; scene after the nudge ${live}, recomputed in-page ${again}, after a reload ${back}`);
 }

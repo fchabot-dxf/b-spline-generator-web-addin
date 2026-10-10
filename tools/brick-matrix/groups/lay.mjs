@@ -33,7 +33,9 @@ export const QUICK_FRAME_LAYS = {
 // at the 1.25 in default, 3-band keeps 1 band -- the wall stays, the note says so, the dropped bands' rows are disabled.
 export const BANDS_NOTE = {
   template: 'template_1', tooDeep: 'brickFramePreset_three_band', fits: 'brickFramePreset_single_soldier',
-  note: 'brickFrameBandsNote', text: 'Bands reduced to fit the board: 1 of 3 laid.', dropped: '[data-band-dropped="1"]',
+  note: 'brickFrameBandsNote', text: 'Bands reduced to fit the board: 1 of 3 laid.',
+  // Fred 2026-10-10 ("unused band should just be hidden"): the bands not laid (2 and 3) have no controls; band 1 keeps its own
+  unlaid: '[id^="brickFrameBandPattern_1_"], [id^="brickFrameBandPattern_2_"]', laid: '[id^="brickFrameBandPattern_0_"]',
   emptyWarning: 'brickEditorLayWarnings', introducedBy: '21a1ffd',
 };
 
@@ -200,18 +202,18 @@ async function runBandsNote() {
   await openEditorTab('editorTabBrick');
   await click('brickTool_wall', 800); await click('brickGenerate', 2000);
   await click('brickTool_frame', 900); await click('brickGenerate', 2000);
-  if (!(await exists(W.note))) { checkRow('lay', `${W.template}: 3-band reduced to fit -> note, wall kept`, false, '', W.introducedBy); return; }
+  if (!(await exists(W.note))) { checkRow('lay', `${W.template}: 3-band reduced to fit -> note, wall kept, the unlaid bands hidden`, false, '', W.introducedBy); return; }
   const read = () => jsJSON(`JSON.stringify({ note: (()=>{ const e=document.getElementById(${JSON.stringify(W.note)}); return e && e.offsetParent!==null ? e.textContent.trim() : null; })(),
-    dropped: document.querySelectorAll(${JSON.stringify(W.dropped)}).length,
-    disabled: [...document.querySelectorAll('[id^="brickFrameBandPattern_1_"], [id^="brickFrameBandPattern_2_"]')].filter((b)=>!b.disabled).length,
+    unlaid: document.querySelectorAll(${JSON.stringify(W.unlaid)}).length,
+    laid: document.querySelectorAll(${JSON.stringify(W.laid)}).length,
     empty: (()=>{ const e=document.getElementById(${JSON.stringify(W.emptyWarning)}); return !!e && e.offsetParent!==null && getComputedStyle(e).display!=='none'; })() })`);
   await click(W.tooDeep, 2500);
   const a = await read(), wa = await wallCount();
-  checkRow('lay', `${W.template}: 3-band reduced to fit -> note, wall kept`, wa > 0 && a.note === W.text && a.dropped === 2 && a.disabled === 0 && !a.empty,
-    `wall ${wa}, note ${a.note === null ? 'HIDDEN' : `"${a.note}"`}, ${a.dropped} dropped band rows (${a.disabled} of their buttons still enabled), empty-wall warning ${a.empty ? 'SHOWN' : 'hidden'}`);
+  checkRow('lay', `${W.template}: 3-band reduced to fit -> note, wall kept, the unlaid bands hidden`, wa > 0 && a.note === W.text && a.unlaid === 0 && a.laid > 0 && !a.empty,
+    `wall ${wa}, note ${a.note === null ? 'HIDDEN' : `"${a.note}"`}, unlaid bands' controls ${a.unlaid} (0 = hidden), band 1's ${a.laid}, empty-wall warning ${a.empty ? 'SHOWN' : 'hidden'}`);
   await click(W.fits, 2500);
   const b = await read();
-  checkRow('lay', `${W.template}: a stack that fits -> no note, no dropped rows`, b.note === null && b.dropped === 0, `note ${b.note === null ? 'hidden' : `"${b.note}"`}, ${b.dropped} dropped rows`);
+  checkRow('lay', `${W.template}: a stack that fits -> no note, its band shown`, b.note === null && b.laid > 0, `note ${b.note === null ? 'hidden' : `"${b.note}"`}, band 1's controls ${b.laid}`);
   if (await editorOpen()) await apply();
 }
 
