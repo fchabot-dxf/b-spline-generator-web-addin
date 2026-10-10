@@ -19,6 +19,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/photo/state.js', async 
 });
 
 import { initPhotoPanel } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
+import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { LOADING_STAGES, currentLoadingStage, resetLoadingSignal, setPaintScheduler } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
@@ -56,5 +57,20 @@ describe('a photo pattern pick shows the photo stage first, until its decode is 
     expect(currentLoadingStage()?.id).toBe('photo'); // the decode is still running
     resolveDecode();
     await vi.waitFor(() => expect(currentLoadingStage()?.id).not.toBe('photo'), { timeout: 2000 });
+  });
+
+  // seat D 2026-10-09 (matrix BLIND_BUDGET, on main too): the pick's own sync work (the filter switch, the relief, the
+  // controls) was ~50 ms in the tap with bricks laid -- 0 or 50-80 ms blind by run
+  it('the tap itself only puts the stage up: the pick (the filter switch, the pattern id) runs in the paint step', async () => {
+    const was = { id: P.photoPatternId, noise: P.noiseType };
+    try {
+      P.photoPatternId = null;
+      document.querySelector('#photoPatternRow button').click();
+      expect(currentLoadingStage()?.id).toBe('photo');
+      expect(P.photoPatternId).toBe(null); // nothing of the pick ran in the tap
+      while (frames.length) frames.shift()();
+      expect(P.photoPatternId).toBe('p1');
+      resolveDecode?.();
+    } finally { P.photoPatternId = was.id; P.noiseType = was.noise; }
   });
 });
