@@ -20,13 +20,29 @@ def dimension_step(ctx, sketch, s_name, dim, is_snap_only=False):
     is_snap_only : bool — if True, create the dimension to seed the solver,
                    then immediately delete it (soft-seed pattern).
     """
+    pending = create_dimension_step(ctx, sketch, s_name, dim)
+    if pending:
+        drive_dimension(ctx, sketch, s_name, pending, is_snap_only)
+
+
+# 2026-10-09 (seat A, measured live: claude_7's 74-node ballnose layer spent 15-25 s driving its dimensions one at a
+# time): a dimension is CREATED, then NAMED, then DRIVEN -- dimension_step above does the three per dimension; a
+# caller with many dimensions in one sketch (sketch_manifest_builder._apply_declared_dimensions) runs each phase for
+# all of them before the next (8.8-9.3 s, the solved sketch identical to the bit). The phases, declared:
+DIMENSION_PHASES = ("create", "name", "drive")
+
+
+def create_dimension_step(ctx, sketch, s_name, dim):
+    """dimension_step's CREATE phase: the dimension, not yet named or driven. Returns the pending
+    (d, dim_name, dim_target, expr, tgt) to name + drive, or None (skipped / missing / no expression / failed --
+    each logged here exactly as dimension_step always logged it)."""
     dim_name = dim.get("Name", "?")
     dim_target = dim.get("Target", "?")
 
     # 0. Check UI toggle (EnabledParam)
     if _is_disabled(ctx, dim):
         ctx.logger.log(f"DIM SKIPPED: {dim_name} ('{dim.get('EnabledParam')}' is OFF)")
-        return
+        return None
 
     g_map = ctx.entity_map[s_name]
 
@@ -50,17 +66,42 @@ def dimension_step(ctx, sketch, s_name, dim, is_snap_only=False):
         # VALIDATION: Check if we have enough geometry to proceed
         if not tgt:
             ctx.logger.log(f"DIM MISS: Target '{dim_target}' not found in {s_name}", "WARNING")
-            return
+            return None
 
         expr = dim.get("Expression") or dim.get("Name") or dim.get("Value")
         text_pt = _compute_text_point(ctx, dim, tgt, src)
         d = _create_dimension(ctx, sketch, s_name, dim, tgt, text_pt)
 
         if d and expr:
-            _apply_expression(ctx, sketch, d, dim_name, dim_target, expr, tgt, is_snap_only)
-        elif not d:
+            return (d, dim_name, dim_target, expr, tgt)
+        if not d:
             ctx.logger.log(f"DIM NODIM: {dim_name} on '{dim_target}' — no dimension created", "WARNING")
+        return None
 
+    except Exception as e:
+        ctx.logger.log(f"DIM CRASH: {dim_name} on '{dim_target}': {e}", "ERROR")
+        _log_constraint_diagnostics(ctx, sketch, s_name, dim_target)
+        return None
+
+
+def name_dimensions(pending):
+    """The NAME phase for many pending dimensions at once: each parameter gets its semantic name. A rename that fails
+    here is left to the drive phase, which retries it and logs DIM NAME FAIL exactly as before."""
+    for d, dim_name, _target, _expr, _tgt in pending:
+        if dim_name and dim_name != "?":
+            try:
+                if d.parameter.name != dim_name:
+                    d.parameter.name = dim_name
+            except Exception:
+                pass
+
+
+def drive_dimension(ctx, sketch, s_name, pending, is_snap_only=False):
+    """The DRIVE phase: name (if still needed), expression, tag -- _apply_expression, under dimension_step's own
+    DIM CRASH guard."""
+    d, dim_name, dim_target, expr, tgt = pending
+    try:
+        _apply_expression(ctx, sketch, d, dim_name, dim_target, expr, tgt, is_snap_only)
     except Exception as e:
         ctx.logger.log(f"DIM CRASH: {dim_name} on '{dim_target}': {e}", "ERROR")
         _log_constraint_diagnostics(ctx, sketch, s_name, dim_target)

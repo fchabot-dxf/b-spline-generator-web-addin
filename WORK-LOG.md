@@ -25637,3 +25637,60 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   lookups 0.84-0.85x. Allocation-only changes elsewhere measured nothing (V8) and were reverted. Phone (same rig,
   main/new/new/main): total busy over 49 actions 0.934 (pass totals 48.6 / 45.6 s main, 44.1 / 44.0 s new).
 - Full suite 414 files, 6071/6071. Known failures: none.
+
+### 2026-10-09 (seat E): a windowed project loaded onto a smaller page lost every brick -- the 3D frame waits for the restore's rebuild
+- REPRODUCED (CDP, fresh profile): a 9x12 board, inset window (0, 3.6) 2.0 x 2.6, Wall + Frame laid (240 bricks), P
+  captured; a fresh 7x9 page (storage cleared at the document's start -- clearing before the reload is saved back by the old
+  page); applySnapshot(load) threw "Cannot read properties of null (reading 'lo')" and the canvas held 0 of 240 bricks
+  (P.editorSvg still had all 240: the throw came before the editor reopened).
+- CAUSE (ORDER): applySnapshot's syncFramePanel (snapshot-manager.js, right after the P restore) ends in
+  inEditor3dAction('frame') === 'refresh3D' -> preview.refreshFrame, which meshes the frame on the preview's CURRENT panel
+  -- the previous 7x9 board's (_lastGrid). The window's bars reach y 4.9, past its 4.5: frame-mesh.js bot() finds no
+  surface. The restore's own rebuild (scheduleRebuild at its end -> preview update -> _applyFrame) meshes the frame on
+  the restored board anyway, so the mid-restore re-mesh was both premature and redundant.
+- FIX (declared, core/in-editor-3d.js): the frame row gets a third context, restoring: 'profile' -- while applySnapshot
+  restores P (core/history.js isRestoring(), the flag setUndoRestoring already brackets the P loop + syncFramePanel) a
+  frame-record sync draws its 2D profile only; the 3D frame comes from the restore's rebuild. No null-skip in frame-mesh.
+- PINNED: tests/in-editor-3d.test.js (the row + syncFramePanel during a restore: no refreshFrame; after it: one) -- 3/7
+  fail on main's sources. Matrix persistence row WINDOWED_LOAD (Save As on 9x12 -> fresh 7x9 -> Project Manager Load):
+  main "back: 9x12, 0 bricks" FAIL; fixed 240/240 PASS, the group 25 rows 0 FAIL, page errors 0. After the load the 3D
+  frame meshes are there (frame-bars, frame-window-bars, frame-window-wall). A project whose colourEdges differs from the
+  page also loads clean (probed).
+- OTHER RESTORE STEPS checked for the same pattern (read, not all measured): the board size -> stockSizeChanged is held
+  by AppState.isInitializing during a load; brickSettingsRestored only re-syncs controls (no re-lay); the photo's
+  follow-through runs after its async decode; the editor (bricks, lattice) reopens on the restored board (open(svg,
+  P.widthIn, P.heightIn)); a global undo's frame restore schedules its brick re-lay, which runs after the restore has
+  reopened the editor (not measured). No second instance found.
+- Affected suites 27 files 935/935.
+### 2026-10-09 (seat A): the frame logger syncs to disk once per Send, not per line (advisor decision (4))
+- MEASURED (profiled replays of claude_1 / 7 / 10 in Fusion): fb_utils/fb_logger.DebugLogger.log opened, wrote, flushed
+  AND fsync'd every line on every log path (deployed folder + workspace) -- 563-901 lines -> 1,126-1,802 fsyncs,
+  1.2-1.9 s per Send (2.4-2.7 s with the per-line opens).
+- CHANGE: log() appends + flushes per line (a Python crash still loses nothing; the advisor kept that); the disk sync is
+  DebugLogger.sync(), once per path, called from send_frame's new finally (success, refusal, or a crashing build).
+  A logger without sync() (test fakes) still works (getattr guard). Only an OS crash / power loss can now lose the
+  current Send's unsynced lines.
+- TESTS fb_engine/test_logger_sync.py (4): a line is readable at once with zero fsyncs (50 lines, 2 paths); sync() =
+  one fsync per path; send_frame syncs exactly once on success / refusal / a crashing solid build; a sync-less logger
+  works. Against main's code 3/4 fail (the 4th is a regression guard). frame-builder pytest 1055 passed / 24 skipped,
+  b-spline-gen 183 passed. JS untouched (no vitest reads these files).
+### 2026-10-09 (seat A): constrained-sketch dimensions -- create all, name all, drive all (advisor decision (1))
+- PROBE (live, claude_7's 4 art layers + Stamped, no frame; each run a fresh doc): the L3 ballnose layer's 74 node
+  diameters cost A (as shipped) 24.9 / 16.7 / 15.1 s; B (+ isComputeDeferred) 16.9 s -- no gain, because
+  build_constrained_sketch ALREADY opens a deferred window around _apply_declared_dimensions; C (every dimension
+  created, then every one named, then every one driven) 9.3 / 8.8 s. All 6 solved sketches identical to the bit
+  (89 curves, max coord diff 0; 74 dims name / expression / value; 124 constraints; fully constrained; 260 profiles).
+  Alone (no L1/L2/boundary) the layer is 3 s -- its constraints need the others: the cost is the coupled solve.
+  The 74 dims already share ONE user parameter (node_diameter) -- the "shared parameter" idea exists already.
+- CODE: fb_engine/dimensions.py declares DIMENSION_PHASES = (create, name, drive) and splits dimension_step into
+  create_dimension_step (returns the pending dim; same DIM SKIPPED / MISS / NODIM / CRASH logs), name_dimensions
+  (a failed rename is retried + logged DIM NAME FAIL by the drive, as before) and drive_dimension (_apply_expression
+  under the same DIM CRASH guard). dimension_step = create + drive per dimension: the frame's path is unchanged.
+  sketch_manifest_builder._apply_declared_dimensions runs the phases for all its dimensions (DIM WRAP FAIL kept per
+  dimension); its now-unused dimension_step import removed.
+- TEST b-spline-gen/test_dimension_phases.py (2, the builder's own fakes + a logging parameter, 3 node diameters):
+  every dim created before any named, every one named before any driven, names / expressions as before; fails against
+  main's builder (create at 34 after a name at 29) and with the naming pass removed. b-spline-gen pytest 185 passed,
+  frame-builder 1051 passed / 24 skipped.
+- LIVE re-check after it lands (advisor): claude_7 L3 identity + time; measure the frame's dimension_step (and apply
+  the same order there only with a gain and identity).
