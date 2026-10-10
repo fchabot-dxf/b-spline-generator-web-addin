@@ -65,6 +65,8 @@ let _pendingUndoTimer = null;
 // every other file here respects), so this is its own dedicated flag.
 let _isRestoring = false;
 export function setUndoRestoring(flag) { _isRestoring = !!flag; }
+/** true while applySnapshot restores P (a project load, a global undo): read by core/in-editor-3d.js's 'restoring' rows */
+export function isRestoring() { return _isRestoring; }
 
 /**
  * Returns true if the SVG Editor modal is currently visible.

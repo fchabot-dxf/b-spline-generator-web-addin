@@ -18,6 +18,7 @@ import { initAnchorGrey } from './lattice-anchor-grey.js';
 import { mountSelectedPiecePanel } from './lattice-piece-panel.js';
 import { latticeScope, attachLatticeFormulaFields } from './lattice-formula-fields.js';
 import { commitEdit } from './editor-commit.js';
+import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 
 /** SE7i: Pattern settings live ON THE ACTIVE LAYER now (`layer.pattern`),
  *  not once per file — Generate/Regenerate write into whichever layer is
@@ -587,7 +588,7 @@ export function initLatticeProperties(editor) {
     on(toolBtn, 'click', syncFieldsFromPattern);
     initAnchorGrey(editor, 'lattice'); // item 74h
 
-    on(generateBtn, 'click', async () => {
+    on(generateBtn, 'click', () => withLoadingStageShownFirst('latticeGenerate', async () => {
         // SE7g (Fred: "the generate button needs to automatically use a
         // new seed"): roll BEFORE reading fields, so the fresh value is
         // what readFieldsIntoPattern picks up and what generatePattern
@@ -598,7 +599,7 @@ export function initLatticeProperties(editor) {
         const p = readFieldsIntoPattern();
         await generatePattern(editor, p); // T49: generatePattern is now async (boundary mode's own shapeToPrimitives)
         syncGenerateLabel();
-    });
+    }));
 
     wireColorSwatch(colorRailsEl, 'rails');
     wireColorSwatch(colorTiesEl, 'ties');

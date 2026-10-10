@@ -51,6 +51,17 @@ export const GENERATE_AFTER_RESTORE = {
   marker: "import('./main/brick-panel.js').then((m) => !!m.generateNow)",
 };
 
+// ---- a project loaded onto a SMALLER board (2026-10-09, the advisor's showcase agent): a 9x12 project with an inset
+// window near its top, Saved As, then Loaded into a fresh 7x9 page, must bring back every brick it laid. MEASURED on main:
+// the restore re-meshed the 3D frame on the previous board's panel (the window's bars reach y 4.9, past its 4.5), threw
+// (frame-mesh.js: null.lo) and left 0 of 240 bricks on the canvas (core/in-editor-3d.js 'restoring').
+export const WINDOWED_LOAD = {
+  name: 'A 9x12 project with an inset window loads into a fresh 7x9 page: every brick back',
+  project: 'brick-matrix-window-load', board: { widthIn: 9, heightIn: 12 }, fresh: '7x9',
+  insetWindow: { enabled: true, cx: 0, cy: 3.6, w: 2, h: 2.6 },
+  lay: ['brickTool_wall', 'brickTool_frame'], generate: 'brickGenerate',
+};
+
 // ---- the runner, moved verbatim from run.mjs. Its page / CDP helpers are run.mjs's own, bound once by
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, act, exists, CANVAS, heightsSettled, canvasSettled, editorOpen, openBrickTool, apply, rows, verdict, waitApp, openBrickTab, checkRow, openEditorTab, reloadWithStorage, drag;
@@ -65,7 +76,7 @@ export const FRESH_VS_RESTORED = {
 };
 
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, act, exists, CANVAS, heightsSettled, canvasSettled, editorOpen, openBrickTool, apply, rows, verdict, waitApp, openBrickTab, checkRow, openEditorTab, reloadWithStorage, drag } = ctx); }
-export async function run() { await runPersistence(); await runPatternParamPersist(); await runFreshVsRestored(); }
+export async function run() { await runPersistence(); await runPatternParamPersist(); await runFreshVsRestored(); await runWindowedLoad(); }
 
 // a page reload: run after every other group in an all-groups run (it always ran last)
 export const runsLast = true;
@@ -182,6 +193,32 @@ async function checkPersisted(phase) {
 function persistRow(name, ok, detail) {
   rows.push({ name, kind: 'persist', result: 'ok', observed: { detail }, verdict: { pending: 'n/a', canvas: 'n/a', threeD: 'n/a', persists: ok ? 'PASS' : 'FAIL' } });
   console.log(`${ok ? 'pass' : 'FAIL'}  ${name.padEnd(48)} ${detail}`);
+}
+
+// WINDOWED_LOAD above: lay + Save As on the declared board, a fresh page, Load through the Project Manager
+async function runWindowedLoad() {
+  const Wl = WINDOWED_LOAD, pw = { [EDIT_PASSWORD_TEST.storageKey]: EDIT_PASSWORD_TEST.password };
+  await reloadWithStorage(pw);
+  for (const [id, v] of Object.entries(Wl.board)) await js(`(()=>{ const e=document.getElementById(${JSON.stringify(id)}); e.value=${JSON.stringify(String(v))}; e.dispatchEvent(new Event('change')); return 1; })()`);
+  await heightsSettled(null);
+  await js(`import('./core/frame-record.js').then((m) => (m.setFrameRecord({ insetWindow: ${JSON.stringify(Wl.insetWindow)} }), 1))`);
+  await openEditorTab('editorTabBrick');
+  for (const tool of Wl.lay) { await click(tool, 800); await click(Wl.generate, 2500); }
+  const laid = await js(`window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick]').length`);
+  await apply(); await heightsSettled(null);
+  await click('btnOpenProjectManager', 1500);
+  await click('fmBtnSaveAs', 1200);
+  await js(`(async()=>{ const i=document.querySelector('.pm-prompt-input'); if(!i) return 'no prompt'; i.value=${JSON.stringify(Wl.project)}; document.querySelector('.pm-prompt-ok').click(); await new Promise(r=>setTimeout(r,4000)); return 'ok'; })()`);
+  const keep = await js(`localStorage.getItem('brickMatrixCloudStandIn')`);
+  await reloadWithStorage({ ...pw, ...(keep ? { brickMatrixCloudStandIn: keep } : {}) });
+  const fresh = await js(`import('./core/state.js').then(({ P }) => P.widthIn + 'x' + P.heightIn)`);
+  await click('btnOpenProjectManager', 2500);
+  const picked = await js(`(async()=>{ const it=[...document.querySelectorAll('#fmProjectList [data-name]')].find(e=>e.getAttribute('data-name')===${JSON.stringify(Wl.project)}); if(!it) return 'not listed'; it.click(); await new Promise(r=>setTimeout(r,500)); document.getElementById('fmBtnLoad').click(); await new Promise(r=>setTimeout(r,6000)); return 'loaded'; })()`);
+  await heightsSettled(null);
+  const back = await jsJSON(`import('./core/state.js').then(({ P }) => JSON.stringify({ board: P.widthIn + 'x' + P.heightIn, bricks: window.svgEditor?._sketchLayer?.node.querySelectorAll('[data-brick]').length || 0 }))`);
+  const board = `${Wl.board.widthIn}x${Wl.board.heightIn}`;
+  checkRow('persistence', Wl.name, fresh === Wl.fresh && picked === 'loaded' && laid > 0 && back.board === board && back.bricks === laid,
+    `laid ${laid} on ${board}; fresh page ${fresh}; load ${picked}; back: ${back.board}, ${back.bricks} bricks`);
 }
 
 // F35 item 37 (FRESH_VS_RESTORED above)

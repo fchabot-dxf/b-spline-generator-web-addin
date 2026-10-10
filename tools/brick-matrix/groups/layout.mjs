@@ -102,6 +102,11 @@ export const PAGE_ZOOM = {
 // the first finger used to jump the view, the 2D editor's old release jump).
 export const PREVIEW_3D = { sel: '#previewCanvas', maxZoomRatio: 0.8, minPan: 0.05, minOrbitDeg: 10, maxJumpDeg: 5 };
 
+// ---- frame handles clear of the OS edge-gesture zone (Fred 2026-10-09, (a)): at Fit on a coarse pointer every template's
+// frame and inset-window handles sit more than zonePx from the screen's left / right edge (editor/editor-view.js
+// FIT_EDGE_MARGIN_PX). MEASURED before (seat D): 11 of 19 templates had handles inside 24 px, two at 3 px.
+export const FIT_EDGE_HANDLES = { viewports: [{ name: 'phone 390x844', width: 390, height: 844 }, { name: 'narrow phone 360x780', width: 360, height: 780 }], zonePx: 24 };
+
 // ---- the Expand tip is gone (Fred 2026-10-08, "remove it completely"): it covered a third of the phone's drawing and ate
 // the gestures that started on it. After a first stroke no tip shows; a pinch where it sat (formerArea, px in
 // #editorCanvasContainer) zooms the drawing. legacyKey: its old "seen" flag, cleared so a pre-removal build would show it.
@@ -112,7 +117,7 @@ export const NO_EXPAND_TIP = { text: 'Try EXPAND', ids: ['editorExpandCallout', 
 // groups/index.mjs bindGroups(ctx) before the first runner runs.
 let sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow;
 export function bind(ctx) { ({ sleep, send, js, jsJSON, shot, click, rows, verdict, waitApp, openBrickTab, key, checkRow } = ctx); }
-export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runPageZoom(); }
+export async function run() { await runLayout(); await runPanelFit(); await runAnchorGrey(); await runFollowsFrame(); await runBrickSections(); await runBoardFollows(); await runTouchTargets(); await runPageZoom(); await runFitEdgeHandles(); }
 
 // ---------------------------------------------------------------- layout (hoisted)
 // Layout rows judge only a SETTLED page (the advisor's loaded --parallel gate measured mid-boot and mid-re-snap):
@@ -394,6 +399,17 @@ async function previewRows(vp) {
   const before = async (frames) => { const a = await jsJSON(ORBIT); await touchGesture(frames); const b = await jsJSON(ORBIT); return { a, b }; };
   const row = (name, ok, detail) => { checkRow('layout', `3D preview (${vp.name}, touch): ${name}`, ok, detail); };
   if (!box.cube || !(await jsJSON(ORBIT))) { row('the preview and its view cube are there', false, JSON.stringify(box)); return; }
+  // Fred 2026-10-09: the cube is smaller on a coarse pointer (core/preview/view-cube.js VIEW_CUBE_PX), taps still snap
+  const cubeSize = await jsJSON(`import('./core/preview/view-cube.js').then((m) => JSON.stringify({ want: m.VIEW_CUBE_PX ? m.VIEW_CUBE_PX.coarse : null,
+    got: Math.round(window.__preview._viewCube._canvas.getBoundingClientRect().width), coarse: matchMedia('(pointer: coarse)').matches }))`);
+  row('the view cube is its declared coarse-pointer size', cubeSize.coarse && cubeSize.want != null && cubeSize.got === cubeSize.want,
+    `${cubeSize.got} px (VIEW_CUBE_PX.coarse ${cubeSize.want}), coarse pointer ${cubeSize.coarse}`);
+  // and a tap on it still snaps the view (its centre: the front face)
+  { const a = await jsJSON(ORBIT); const c = [(box.cube.x0 + box.cube.x1) / 2, (box.cube.y0 + box.cube.y1) / 2];
+    await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touchPts([c]) }); await sleep(60);
+    await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await sleep(1500);
+    const b = await jsJSON(ORBIT); const moved = 2 * Math.acos(Math.min(1, Math.abs(a.q.reduce((s, v, i) => s + v * b.q[i], 0)))) * 180 / Math.PI;
+    row('a tap on the view cube snaps the view', moved > 1, `${moved.toFixed(1)} deg`); }
   // a pinch whose SECOND finger starts on the view cube (the measured failure), the first on the preview left of it
   const y = (box.cube.y0 + box.cube.y1) / 2, xa = box.cube.x0 - 70, xb = box.cube.x0 + 20;
   let { a, b } = await before(Array.from({ length: 11 }, (_, k) => [[xa - 5 * k, y], [xb + 5 * k, y]]));
@@ -450,3 +466,45 @@ async function runPageZoom() {
   await send('Emulation.setEmulatedMedia', { features: [] });
   await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
 }
+
+// ---------------------------------------------------------------- frame handles clear of the screen edges (coarse pointer)
+async function runFitEdgeHandles() {
+  const E = FIT_EDGE_HANDLES;
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'pointer', value: 'coarse' }, { name: 'any-pointer', value: 'coarse' }] });
+  await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  try {
+    for (const vp of E.viewports) {
+      await send('Emulation.setDeviceMetricsOverride', { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: true });
+      // the drawer as a fresh tab has it (at peek: the canvas at its tallest -- the view that ran the board past the screen);
+      // its height persists per tab (sessionStorage), so the earlier rows' open drawer would otherwise carry over
+      await js(`(() => { try { sessionStorage.removeItem('bspline.editor.drawerHeightPx'); } catch (_) {} return 1; })()`);
+      await send('Page.reload', {}); await waitApp();
+      // the editor opened straight onto the Frame tab (the route that measured the overflow: through the Brick tab first
+      // the board fitted inside the screen even before the change -- the row then proved nothing)
+      await js(`(async () => { const m = document.getElementById('svgEditorModal'); document.getElementById('btnStampEdit').click();
+        for (let i = 0; i < 80 && !(window.svgEditor?._draw && m && getComputedStyle(m).display !== 'none'); i++) await new Promise((r) => setTimeout(r, 250));
+        return 1; })()`);
+      await click('editorTabFrame', 1500);
+      const r = await jsJSON(`(async () => { const sel = document.getElementById('editorFrameTemplate'); if (!sel) return JSON.stringify({ missing: true });
+        const tpls = [...sel.options].map((o) => o.value).filter((v) => v && v !== 'none'); const near = []; let seen = 0;
+        for (const t of tpls) {
+          sel.value = t; sel.dispatchEvent(new Event('change')); await new Promise((r) => setTimeout(r, 1500));
+          document.getElementById('toolFit')?.click(); await new Promise((r) => setTimeout(r, 500));
+          for (const n of document.querySelectorAll('.frame-handle[data-key], .inset-window-handle[data-key]')) {
+            const b = n.getBoundingClientRect(); if (!b.width) continue; seen++;
+            const x = b.left + b.width / 2, d = Math.min(x, innerWidth - x);
+            if (d < ${E.zonePx}) near.push(t + ' ' + n.getAttribute('data-key') + ' ' + Math.round(d) + 'px');
+          }
+        }
+        const ed = window.svgEditor, m = ed._sketchLayer.node.getScreenCTM();
+        return JSON.stringify({ templates: tpls.length, handles: seen, near, boardLeft: Math.round(m.e), boardRight: Math.round(innerWidth - (m.a * ed._mW + m.e)) }); })()`);
+      checkRow('layout', `Frame handles at Fit (${vp.name}, coarse pointer): none within ${E.zonePx} px of a screen edge, every template`,
+        !r.missing && r.templates > 0 && r.handles >= r.templates && r.near.length === 0, // handles really measured (never a vacuous pass)
+        r.missing ? 'no template select' : `${r.templates} templates, ${r.handles} handles measured, the last board ${r.boardLeft} / ${r.boardRight} px from the edges; in the zone: ${r.near.length ? r.near.slice(0, 8).join(', ') + (r.near.length > 8 ? ` (+${r.near.length - 8})` : '') : 'none'}`);
+    }
+  } finally {
+    await send('Emulation.setEmulatedMedia', { features: [] });
+    await send('Emulation.setTouchEmulationEnabled', { enabled: false, maxTouchPoints: 1 });
+  }
+}
+

@@ -25530,6 +25530,19 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   frameThickness nudges 909 / 806 / 807 -> < 500; adaptiveDisplay 1007 -> 606. (Index fix alone: 81 left; the two stack.)
 - Full suite 408 files, 6051/6051. Known failures: none.
 
+### 2026-10-09 (seat E): STATUS-MOSAIC-SCROLL -- the lightbox mosaic had nothing to scroll: its columns ran sideways
+- CHECK FIRST: tools/status_site/mosaic_scroll_check.mjs (430 px mobile + touch emulation, headless Chrome over CDP, on a
+  LOCAL render). A control drag on the page itself must scroll it (it does: 435 px), so the harness can pan; then the same
+  drag on the open mosaic must move scrollTop, and no tile may sit off the side. Red on main: scrollTop 0 after the drag.
+- CAUSE (measured, not the touch listeners nor the top layer nor the ink): scrollHeight 900 = clientHeight 900 -- nothing
+  to scroll -- while scrollWidth was 747 - 1063 in a 430 px box, the 60th tile at x 956. #lbMosaic is position:absolute
+  inset:0 (a fixed height) AND column-count:4: a height-constrained multi-column box fills each column to its height and
+  then makes MORE columns to the side, which overflow-x:hidden hid. touch-action could not help: there was no vertical
+  overflow. (The earlier "lazy loading stopped after ~5 tiles" fits the same cause: the rest sat in hidden columns.)
+- FIX (status_watch.py): the columns move to an inner <div class="cols"> of auto height; #lbMosaic only scrolls.
+- PROOF: re-rendered locally -- scrollHeight 2030, scrollWidth 430, the finger drag moves scrollTop 0 -> 485, the check exits
+  0; the old render exits 1. A tile tap still closes the mosaic and opens that shot (8 / 60). The live watcher is the
+  advisor's to redeploy (not restarted here).
 ### 2026-10-09 (seat E): t9-wall-corner -- an acute stone corner is rounded back no further than a right angle
 - MEASURED what left T9's constant 3.79-joint gap (7x9, every size, both stone sets, 4 presets): not the wall's last course
   nor the clip -- the wall's corner under the stem is a clean right angle a joint off the band. It is the BAND's: the course
@@ -25547,6 +25560,179 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   tests/bricks-geometry.test.js acute setback = right angle's (main 1.61 r vs 0.41 r), right angle / hexagon unchanged.
   Fail-before: 2 fail on main's sources. Every FULL sweep: thin rings 1524/1524, gap 760, overlap 19, pattern gaps 2736,
   seam 19, stone life 114, tip fans 608, rubble edges 304 -- all pass. Affected suites 14 files 99/99.
+### 2026-10-09 (seat A): the photo board's drag rebuild -- terrain boxFilter, byte-identical (a small gain, reported as such)
+- PROFILE (photo board, phone map): boxFilter (core/terrain.js Pass 3 smoothing) was the top self time, ~4 s over 30
+  slow actions, beside creasedNormals ~4 s.
+- FIX (bit-identical): boxFilter's X pass skips the edge clamp for interior cells; its Y pass sums whole rows into a
+  Float64 accumulator offset by offset instead of striding a column per cell. Every cell is still 0 + its window in
+  ascending order, / (2r + 1): the same doubles, the same Float32 store. A sliding-window sum would be faster but NOT
+  byte-identical (rounding), so it was not taken.
+- TEST: tests/terrain-boxfilter-identical.test.js -- generateHeightmap({ ...P, ... }) digests for 3 boards x 5 radii x
+  2 intensity/symmetry, pinned on origin/main's terrain.js (fixtures/terrain-boxfilter-digests.json); all 30 must
+  differ (a flat terrain cannot pass). My first pin used bare params -> an all-zero heightmap -> vacuous (a Float32
+  accumulator mutation passed); with the app's P defaults the same mutation FAILS it.
+- RESULT, measured honestly: desktop Node, 40 interleaved reps, the whole heightmap (141 x 181): r 1.2 25.5 -> 23.2 ms
+  (0.91), r 0.36 33.4 -> 26.5 (0.79), r 7.2 83.2 -> 70.5 (0.85); smoothing off 10.7 ms. Phone (D's tool, styles, 4x,
+  photo board, old/new/new/old in one 16-min window beside the advisor's capture Chrome): total busy over 52 actions
+  69.1 -> 65.3 s (0.945), longest-sum 0.968; the two OLD passes alone differ by up to 2x per action, so the phone
+  gain is inside the noise. The ~4 s profiler figure overstated what the box can give.
+- Full suite 414 files, 6071/6071. Known failures: none.
+### 2026-10-09 (seat A): the heights stage gets its own declared inputs -- display / thicken changes reuse the heights
+- WHY (advisor pick (b)): the photo board's Adaptive display / Colour edges / thicken / decal taps re-ran the whole
+  heightmap (noise, smoothing, stamps) though only the thicken + preview steps read those keys.
+- DECLARED: core/engine/rebuild.js HEIGHTS_INERT_KEYS (35 P keys) + heightsInputDigest (grid, photo decode state, P
+  minus both inert sets, preDelta, the editor layers + mask ids); buildHeightsReusing hands out COPIES of the cached
+  result (aliasing kept: baseHeights IS generated.heights), so a downstream in-place write can never reach the cache.
+  Item 69's whole-build skip is untouched; this sits inside the build it lets through.
+- Spacing: listed -- the heights read the grid (nx, nz, already an input), never P.spacing, so it split cleanly: a
+  spacing step that changes the grid still rebuilds (phone: spacing 0.97, as expected).
+- NOT listed, on purpose: thickness (the thicken offset drag). The strict scan finds the word in core/noise/chest.js (a
+  local variable + a tweak description), so it counts as read. Freeing it = rename that local + reword the desc, or a
+  real parser; left for a decision.
+- TESTS tests/heights-inert-keys.test.js (40): (1) completeness from the code -- the import closure of terrain.js +
+  apply-stamp-layers.js is FOLLOWED (not listed) plus rebuild.js's buildHeights/_collectStampPasses; no listed key is
+  named there (comments stripped), and no computed params[...] read exists; (2) identity -- for each of the 35 keys:
+  the change keeps heightsInputDigest (the reuse path runs) and the reused build equals a full build to the byte: the
+  REAL TerrainPreview.update on a mock this (three mocked), args + mesh position/index/colour/uv/bottom + iso curves;
+  (3) a heights input (seed) still rebuilds. Mutations: seed listed -> 3 fail; terrain.js reading params.flatShading ->
+  the scan fails; reuse ignoring the digest -> 2 fail.
+- PHONE (D's tool, styles, 4x, photo board, old/new/new/old in one 17-min window): adaptiveDisplay busy 1382 -> 415 ms
+  (0.30), longest 828 -> 260; decalEnabled 0.37; thickenEnabled 0.62; colourEdges 0.69; exportOrientation 0.61; spacing
+  0.97 and the thickness drag 1.16 unchanged (heights inputs). Total over 58 actions 0.966 (the rest are heights inputs).
+- Full suite 414 files, 6110/6110. Known failures: none.
+### 2026-10-09 (seat A): heights reuse, follow-up -- thickness freed, the scan reads code only (advisor's synthesis)
+- core/noise/chest.js: the local `thickness` -> `ribThick` (internal; heightmap-golden + noise-chest 32/32 unchanged).
+  The tweak's description text ('Overall flesh thickness ...') is untouched (Fred-visible).
+- tests/heights-inert-keys.test.js: the scan is a small tokenizer (codeOnly) -- comments, string text and regex
+  literals blanked, template ${...} code kept, and a string literal used as a key (obj['x'], 'x' in obj) KEPT as a read.
+  Own cases pin each rule; a tripwire pins the keys that dropping string text frees beyond a comments-only strip to
+  exactly ['thickness'] (a scanner bug that blanked real code would free more). The computed-read check now looks past
+  whitespace ([(?!\s*['"`])).
+- HEIGHTS_INERT_KEYS += thickness (36 keys). Mutations: terrain.js reading params['thickness'] by literal -> 2 fail;
+  chest.js's local back to `thickness` -> 2 fail; params.flatShading -> 1 fails.
+- PHONE (same rig, old/new/new/old, 17 min): adaptiveDisplay 0.21, colourEdges 0.32, thickenEnabled 0.23, decalEnabled
+  0.62; the thickness drag busy 3072 -> 1096 (0.36) but its old passes were 4894 / 1250 ms (noise), new 886 / 1305 --
+  read it as "longest task 481 -> 322 ms", not as a 3x.
+- Full suite 414 files, 6112/6112. Known failures: none.
+### 2026-10-09 (seat A): the frame step -- creasedNormals + the panel surface lookups, byte-identical (advisor (2))
+- MEASURED FIRST (in-page performance.now counters, uncommitted, restored): on the photo board the frame step
+  (applyFrameToPanel) was 29.4 of 71.4 s busy; creasedNormals only 4.6 s of it. Stages: clipPanelToOutline 11.8,
+  bars 8.5, panelSurface 2.4, fullIndex 2.1, wall 2.0, window bars 1.8, window clip 1.7.
+- NOT BUILT (advisor: skip): an x/y cut cache. My "the cut never reads z" premise was wrong for a thickened board:
+  the bottom (offsetPts) moves in x/y by up to 0.15 in with the terrain (measured, adaptive and uniform), so only a
+  per-triangle cache would be exact, worth ~40% of the clip (top-cap triangles).
+- creasedNormals: preallocated typed outputs (positions/normals Float64Array, source Int32Array, subarrays; index
+  stays an Array -- three's setIndex treats a typed array differently), and a corner whose averaged-face set equals
+  an earlier corner's (same vertex) takes that corner's new vertex: same faces, same order = the same normal, which
+  the dedupe would have matched to the same vertex (its earlier entries did not match then either).
+- panelSurface.at: candidates compared as numbers (_baryInto = baryHit's one arithmetic, baryHit now wraps it); only
+  the winning lo / hi become objects, the same object when one hit is both (as before).
+- TEST tests/creased-normals-identical.test.js, digests pinned on origin/main's frame-mesh.js: creasedNormals on the
+  bars ring + outline wall for 19 templates x 2 boards x 2 terrains, plus the inset window's bars + hole wall; and
+  panelSurface.at over a 201x201 lattice on the solid and the top-only panel (t/u/v/w/z of lo + hi, lo === hi).
+  Mutations: mask reuse ignoring the face set, Float32 outputs, hi ties (>=), never sharing lo/hi -- each FAILS.
+  (A first run of the last two passed vacuously: my test edit had not landed, and on a solid lo is never hi -- hence
+  the top-only panel.)
+- RESULT: in-process interleaved (both versions loaded, 30 reps): creasedNormals 0.73-0.77x, panelSurface + 20k
+  lookups 0.84-0.85x. Allocation-only changes elsewhere measured nothing (V8) and were reverted. Phone (same rig,
+  main/new/new/main): total busy over 49 actions 0.934 (pass totals 48.6 / 45.6 s main, 44.1 / 44.0 s new).
+- Full suite 414 files, 6071/6071. Known failures: none.
+
+### 2026-10-09 (seat E): a windowed project loaded onto a smaller page lost every brick -- the 3D frame waits for the restore's rebuild
+- REPRODUCED (CDP, fresh profile): a 9x12 board, inset window (0, 3.6) 2.0 x 2.6, Wall + Frame laid (240 bricks), P
+  captured; a fresh 7x9 page (storage cleared at the document's start -- clearing before the reload is saved back by the old
+  page); applySnapshot(load) threw "Cannot read properties of null (reading 'lo')" and the canvas held 0 of 240 bricks
+  (P.editorSvg still had all 240: the throw came before the editor reopened).
+- CAUSE (ORDER): applySnapshot's syncFramePanel (snapshot-manager.js, right after the P restore) ends in
+  inEditor3dAction('frame') === 'refresh3D' -> preview.refreshFrame, which meshes the frame on the preview's CURRENT panel
+  -- the previous 7x9 board's (_lastGrid). The window's bars reach y 4.9, past its 4.5: frame-mesh.js bot() finds no
+  surface. The restore's own rebuild (scheduleRebuild at its end -> preview update -> _applyFrame) meshes the frame on
+  the restored board anyway, so the mid-restore re-mesh was both premature and redundant.
+- FIX (declared, core/in-editor-3d.js): the frame row gets a third context, restoring: 'profile' -- while applySnapshot
+  restores P (core/history.js isRestoring(), the flag setUndoRestoring already brackets the P loop + syncFramePanel) a
+  frame-record sync draws its 2D profile only; the 3D frame comes from the restore's rebuild. No null-skip in frame-mesh.
+- PINNED: tests/in-editor-3d.test.js (the row + syncFramePanel during a restore: no refreshFrame; after it: one) -- 3/7
+  fail on main's sources. Matrix persistence row WINDOWED_LOAD (Save As on 9x12 -> fresh 7x9 -> Project Manager Load):
+  main "back: 9x12, 0 bricks" FAIL; fixed 240/240 PASS, the group 25 rows 0 FAIL, page errors 0. After the load the 3D
+  frame meshes are there (frame-bars, frame-window-bars, frame-window-wall). A project whose colourEdges differs from the
+  page also loads clean (probed).
+- OTHER RESTORE STEPS checked for the same pattern (read, not all measured): the board size -> stockSizeChanged is held
+  by AppState.isInitializing during a load; brickSettingsRestored only re-syncs controls (no re-lay); the photo's
+  follow-through runs after its async decode; the editor (bricks, lattice) reopens on the restored board (open(svg,
+  P.widthIn, P.heightIn)); a global undo's frame restore schedules its brick re-lay, which runs after the restore has
+  reopened the editor (not measured). No second instance found.
+- Affected suites 27 files 935/935.
+### 2026-10-09 (seat A): the frame logger syncs to disk once per Send, not per line (advisor decision (4))
+- MEASURED (profiled replays of claude_1 / 7 / 10 in Fusion): fb_utils/fb_logger.DebugLogger.log opened, wrote, flushed
+  AND fsync'd every line on every log path (deployed folder + workspace) -- 563-901 lines -> 1,126-1,802 fsyncs,
+  1.2-1.9 s per Send (2.4-2.7 s with the per-line opens).
+- CHANGE: log() appends + flushes per line (a Python crash still loses nothing; the advisor kept that); the disk sync is
+  DebugLogger.sync(), once per path, called from send_frame's new finally (success, refusal, or a crashing build).
+  A logger without sync() (test fakes) still works (getattr guard). Only an OS crash / power loss can now lose the
+  current Send's unsynced lines.
+- TESTS fb_engine/test_logger_sync.py (4): a line is readable at once with zero fsyncs (50 lines, 2 paths); sync() =
+  one fsync per path; send_frame syncs exactly once on success / refusal / a crashing solid build; a sync-less logger
+  works. Against main's code 3/4 fail (the 4th is a regression guard). frame-builder pytest 1055 passed / 24 skipped,
+  b-spline-gen 183 passed. JS untouched (no vitest reads these files).
+### 2026-10-09 (seat A): constrained-sketch dimensions -- create all, name all, drive all (advisor decision (1))
+- PROBE (live, claude_7's 4 art layers + Stamped, no frame; each run a fresh doc): the L3 ballnose layer's 74 node
+  diameters cost A (as shipped) 24.9 / 16.7 / 15.1 s; B (+ isComputeDeferred) 16.9 s -- no gain, because
+  build_constrained_sketch ALREADY opens a deferred window around _apply_declared_dimensions; C (every dimension
+  created, then every one named, then every one driven) 9.3 / 8.8 s. All 6 solved sketches identical to the bit
+  (89 curves, max coord diff 0; 74 dims name / expression / value; 124 constraints; fully constrained; 260 profiles).
+  Alone (no L1/L2/boundary) the layer is 3 s -- its constraints need the others: the cost is the coupled solve.
+  The 74 dims already share ONE user parameter (node_diameter) -- the "shared parameter" idea exists already.
+- CODE: fb_engine/dimensions.py declares DIMENSION_PHASES = (create, name, drive) and splits dimension_step into
+  create_dimension_step (returns the pending dim; same DIM SKIPPED / MISS / NODIM / CRASH logs), name_dimensions
+  (a failed rename is retried + logged DIM NAME FAIL by the drive, as before) and drive_dimension (_apply_expression
+  under the same DIM CRASH guard). dimension_step = create + drive per dimension: the frame's path is unchanged.
+  sketch_manifest_builder._apply_declared_dimensions runs the phases for all its dimensions (DIM WRAP FAIL kept per
+  dimension); its now-unused dimension_step import removed.
+- TEST b-spline-gen/test_dimension_phases.py (2, the builder's own fakes + a logging parameter, 3 node diameters):
+  every dim created before any named, every one named before any driven, names / expressions as before; fails against
+  main's builder (create at 34 after a name at 29) and with the naming pass removed. b-spline-gen pytest 185 passed,
+  frame-builder 1051 passed / 24 skipped.
+- LIVE re-check after it lands (advisor): claude_7 L3 identity + time; measure the frame's dimension_step (and apply
+  the same order there only with a gain and identity).
+### 2026-10-10 (seat A): Fred's "edge not good" -- the frame's trim + window cut now cut BOTH sides of the sketch plane
+- CAUSE (measured in Fusion, claude_1 + claude_10): t*_TRIM_CUT (and t*_WINDOW_CUT) cut the right region (the frame
+  enclosure minus the frame outline, notches included) but THROUGH ALL ON ONE SIDE (+Z) of their sketch plane at z 0.
+  The thickened panel's underside dips below z 0 (claude_1 -0.22, claude_10 -0.121), so every bit of panel under the
+  plane outside the outline survived: the deck spanning claude_1's left waist notch, the lip over the frame, claude_10's
+  sawtooth (remnants under the low grout between rim stones), and claude_5's window bars with no hole (main's one-sided
+  window cut cannot even rebuild there: EXTRUDE_ZERO_DISTANCE_ERROR). extrusion_engine's own comment claimed the trim
+  "trims the full height" -- false whenever the underside is under the plane; corrected.
+- FIX (declared): frame_definition's trim + window_cut extent "throughAllBothSides"; declared_profiles maps it;
+  extrusion_engine builds it with setTwoSidesExtent(ThroughAll, ThroughAll, taper, taper); the bounding-box path's
+  SURROUND uses it too. frame-defs.json/.js regenerated (tools/gen_frame_defs.py).
+- TESTS: fb_engine/test_cut_both_sides.py (5: the declarations, the trim + window cut built two-sided, the bars still
+  one-sided to the underside, the bounding-box path) + the two existing extent pins updated; 6 red on main (the bars pin
+  passes on both, a guard). frame-builder 1060 passed / 24 skipped, b-spline-gen 185, full suite 420 / 6143.
+- LIVE (branch deploy 2026.10.09-6; per board: Send, measure every body / sketch / timeline, flip the trim to main's
+  one-sided, measure, flip back): claude_1 T1 7x9, claude_5 T6 9x12 + window, claude_12 T4 8x10 brick (CONTROL: panel
+  above z 0, one == two, no body differs), claude_9 T14 5x7, claude_19 T13 10x14 + window (Clean-only), claude_10 T16
+  12x16 mars (vs main's run: 9 of 10 bodies identical). Every time: the Stamped (or Clean-only) panel == the frame's xy
+  extent exactly, ONLY that panel changes, frame bars / window bars / Clean / surfaces / sketches identical, timeline
+  healthy; both windows are through-holes. Shots: ~/.bspline-status/shots/seatA/edge/ (claude_1 top before / after,
+  claude_10 close edge after: flush with the frame, the scalloped top = the rim stones, as in the app).
+- NOT changed: "stone bands barely visible" -- they ARE in the STEP (Stamped - Clean -0.22..+0.26 in over 31% of the
+  grid); likely the flat green Fusion shading; a close top shot after the fix is still to take (memory stop hit).
+### 2026-10-09 (seat A): the Fusion memory line says why to restart (advisor decision (a))
+- MEASURED (two arms, tracemalloc + gc + in-process private bytes, fresh Fusions): the add-in's Python retains nothing
+  (heap < 0.6 MB, gc / adsk counts flat); Fusion itself grows ~0.55 GB per Send in one doc, and a document CLOSE adds
+  ~0.6 GB at once, ~0.4-0.5 GB still held 60 s later (+1.4 GB for a doc that took 3 Sends). Closing never frees.
+- CHANGE (wording of the existing warning, no new guard): fb_shared/fusion_memory.memory_signal's text and the palette's
+  fallback copy (fusion-memory-line.js) now read "... save and restart Fusion soon (closing documents does not free
+  memory)". Pinned: test_fusion_memory.py (the add-in's text), tests/fusion-memory-line.test.js (the add-in's words
+  shown as sent + a new pin on the fallback). Against main's text: 1 Python + 1 JS test fail.
+- Full suite 420 files, 6144/6144. Known failures: none.
+### 2026-10-09 (seat A): the Fusion memory line turns amber at 10 GB (was 12) -- advisor decision, detection only
+- fb_shared/fusion_memory.FUSION_RESTART_SOFT_GB 12 -> 10 (red stays 24). Why: seats already stop at 10 for probes;
+  Fusion hung at 18.6 GB with gate Chromes on the PC; it keeps ~0.55 GB per Send + ~0.5 GB per closed document
+  (measured today), so amber at 10 leaves room to save + restart. Wording only -- nothing is blocked.
+- Pinned in test_fusion_memory.py: (10, 24), 9.9 ok, 10.0 / 11.9 soft (11.9 was ok under 12). Fails at 12.
+  The palette's line has no threshold of its own (it paints the add-in's level): fusion-memory-line.test.js unchanged.
+- Stacked on memory-warning-why (same two files). Python fb_shared + b-spline-gen green; full suite 420 / 6144.
 
 ### 2026-10-10 (seat E): STEP_CORNER_VARIETY -- each course corner splits or wraps, drawn from the seed (Fred: "Both are good, ideally a variation")
 - RULE (layouts/fieldstone.js): at each corner of a thin ring's course (outer fence turning > 30 deg) the lay draws, from its

@@ -66,7 +66,7 @@ _ensure_fb_engine_importable()
 
 from fb_engine.build_context import BuildContext  # noqa: E402
 from fb_engine.constraints import constraint_step  # noqa: E402
-from fb_engine.dimensions import dimension_step  # noqa: E402
+from fb_engine.dimensions import create_dimension_step, name_dimensions, drive_dimension  # noqa: E402
 
 
 class _Logger:
@@ -547,6 +547,7 @@ def _apply_declared_dimensions(ctx, sketch, s_name, dimensions):
     dimension_step itself has NO "SlotWidth" DimType branch, and a slot's
     own width dimension is a side effect of `addCenterToCenterSlot`, not a
     standalone dimension_step call the way Radial/Distance are."""
+    pending = []
     for d in dimensions or []:
         dtype = d.get("type")
         if dtype == "Radial":
@@ -570,7 +571,18 @@ def _apply_declared_dimensions(ctx, sketch, s_name, dimensions):
         else:
             continue
         try:
-            dimension_step(ctx, sketch, s_name, dim_spec)
+            p = create_dimension_step(ctx, sketch, s_name, dim_spec)
+            if p:
+                pending.append((target, p))
+        except Exception as e:
+            ctx.logger.log(f"DIM WRAP FAIL: {target}: {e}", "ERROR")
+    # 2026-10-09: fb_engine's DIMENSION_PHASES for all of them at once -- every dimension created (above), then every
+    # one named, then every one driven, not the three per dimension (claude_7's 74 node diameters: 15-25 s -> 9 s,
+    # the solved sketch identical to the bit, measured live).
+    name_dimensions([p for _t, p in pending])
+    for target, p in pending:
+        try:
+            drive_dimension(ctx, sketch, s_name, p)
         except Exception as e:
             ctx.logger.log(f"DIM WRAP FAIL: {target}: {e}", "ERROR")
 

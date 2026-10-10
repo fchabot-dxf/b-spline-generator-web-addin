@@ -132,9 +132,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // own, crop/rotate/flip/levels/brightness/contrast/blur/invert, undo).
     // core/in-editor-3d.js 'photo': with the editor open a photo edit repaints its backdrop only (no 3D while editing)
     initPhotoPanel({
-        onChange: () => (inEditor3dAction('photo') === 'backdrop'
-            ? refreshEditorTopView()
-            : scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0)),
+        onChange: (opts) => {
+            const action = inEditor3dAction('photo', opts); // opts.drag: a slider's drag tick (its release notifies again)
+            if (action === 'backdrop') refreshEditorTopView();
+            else if (action === 'rebuild') scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0);
+        },
     });
 
     // F35 item 1: the Brick tab (set picker + declared tool list + common

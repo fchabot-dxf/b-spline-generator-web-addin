@@ -14,6 +14,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { initLatticeProperties } from '../bspline-frame-builder/b-spline-gen/html/editor/properties-lattice.js';
 import { PATTERN_DEFAULTS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-lattice-pattern.js';
+import { setPaintScheduler, currentLoadingStage } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 function makeMockEditor() {
   let elements = [];
@@ -125,6 +126,25 @@ describe('initLatticeProperties (SE7g): Generate rolls a new seed every press', 
     document.getElementById('latticeGenerate').click();
     expect(seedField.value).not.toBe(before);
     expect(activeLayerPattern(editor).seed).toBe(Number(seedField.value));
+  });
+
+  // seat A's re-time 2026-10-09 (phone, CPU x4): Generate froze 0.56-0.9 s with nothing on screen
+  it("Generate's 'latticeGenerate' pill is on screen BEFORE the generate runs", () => {
+    initLatticeProperties(editor);
+    const stage = document.createElement('div');
+    stage.id = 'loading-stage'; stage.hidden = true; stage.innerHTML = '<span class="loading-stage-text"></span>';
+    document.body.appendChild(stage);
+    let paint = null;
+    setPaintScheduler((cb) => { paint = cb; });
+    try {
+      const seedField = document.getElementById('latticeSeed');
+      const before = seedField.value;
+      document.getElementById('latticeGenerate').click();
+      expect(currentLoadingStage()?.id).toBe('latticeGenerate');
+      expect(seedField.value).toBe(before); // nothing ran yet: the pill paints first
+      paint();
+      expect(seedField.value).not.toBe(before);
+    } finally { stage.remove(); }
   });
 
   it('non-vacuous: two Generate presses roll two DIFFERENT seeds (not a fixed re-read of the same field)', () => {
