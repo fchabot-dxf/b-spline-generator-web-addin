@@ -243,7 +243,7 @@ try {
     await act('Photo: Source tab', () => tapTab('source'));
     await act('Photo: load a pattern', () => tapSel('#photoPatternRow button, #photoPatternRow [role="button"], #photoPatternRow > *'));
     await act('Photo: crop tool', () => tapSel('#photoTool_crop'));
-    await act('Photo: crop W + Apply', async () => (await setValue('photoCropW', 0.8)) && tapSel('#photoBtnApplyCrop'));
+    await act('Photo: crop W 80% (live)', () => setValue('photoCropW', 80));
     await act('Photo: straighten tool', () => tapSel('#photoTool_straighten'));
     await act('Photo: straighten drag', () => drag('photoStraightenSlider', [1, 2, 3, 4, 5]));
     await act('Photo: rotate/flip tool', () => tapSel('#photoTool_rotateFlip'));
@@ -403,7 +403,7 @@ try {
       ['photo', 'Load a pattern', ['photoTab_source'], () => tapSel('#photoPatternRow button')],
       ['photo', 'Rotate 90', ['photoTool_rotateFlip'], () => pick('photoBtnRotate')],
       ['photo', 'Flip H', ['photoTool_rotateFlip'], () => pick('photoBtnFlipH')],
-      ['photo', 'Crop W 0.8 + Apply', ['photoTool_crop'], async () => (await setValue('photoCropW', 0.8)) && pick('photoBtnApplyCrop')],
+      ['photo', 'Crop W 80% (live)', ['photoTool_crop'], () => setValue('photoCropW', 80)],
       ['photo', 'Brightness drag', ['photoTab_adjust', 'photoTool_levels'], () => drag('photoBrightnessSlider', [5, 10, 15, 20])],
       ['photo', 'Relief: carved', ['photoTab_relief'], () => pick('photoBtnReliefCarved')],
     ];

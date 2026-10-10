@@ -37,22 +37,47 @@ export const INACTIVE_LAYER_OPACITY = 0.4;
 /** F9: the frame shape handles' drawn radius (board inches). */
 export const FRAME_HANDLE_RADIUS = 0.09;
 
+/** Fred 2026-10-10 ("in brick tab the artwork is still 100 opacity"; he picked the fade): the ART -- the drawing's
+ *  nodes that are not bricks -- at this opacity in the Brick and Photo tabs, so the bricks / the photo read. */
+export const ART_FADE_OPACITY = 0.35;
+/** The editor's per-tab focus (design §3.1, F8's symmetric rule, + the art fade): what each tab draws faded.
+ *  `drawing`: the whole drawing layer (art AND bricks); `art`: its non-brick nodes on top of that; `frameProfile`:
+ *  the frame profile group. DISPLAY ONLY: opacity on the layer / the group / a style rule (styles/editor.css,
+ *  #sketch-layer[data-focus-art-fade]), never on the drawing's own nodes -- the saved drawing, the export, Send and
+ *  the carve read the layer's children, never its own attributes. */
+export const EDITOR_TAB_FOCUS = Object.freeze({
+  frame: Object.freeze({ drawing: INACTIVE_LAYER_OPACITY, art: 1, frameProfile: 1 }),
+  artwork: Object.freeze({ drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY }),
+  photo: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY }),
+  brick: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY }),
+});
+/** The focus of `editor`'s current tab (before any setEditorFocus: its frame / artwork mode; a tab not declared reads
+ *  as Artwork). */
+export const editorFocusOf = (editor) => EDITOR_TAB_FOCUS[editor?._focusTab ?? editor?._editorTab] || EDITOR_TAB_FOCUS.artwork;
+
 /**
- * The editor's two modes (design §3.1). 'frame': the frame is edited, the
+ * The editor's modes (design §3.1). 'frame': the frame is edited, the
  * artwork is a faded, LOCKED background (editor._artworkLocked: no selection,
  * no shortcut reaches it; drawn from the same layer, never modified).
- * 'artwork': the artwork is edited, the frame profile is the faded background.
- * Display only: opacity lives on the layer / group, never on the drawing.
+ * Any other tab: the artwork is editable, the frame profile is the faded background; the Brick and Photo tabs
+ * also fade the art (EDITOR_TAB_FOCUS).
  */
 export function setEditorFocus(editor, tab) {
   if (!editor) return;
   const frame = tab === 'frame';
   editor._editorTab = frame ? 'frame' : 'artwork';
+  editor._focusTab = tab;
   editor._artworkLocked = frame;
   if (frame && typeof editor._deselect === 'function') editor._deselect();
-  if (editor._sketchLayer) editor._sketchLayer.attr('opacity', frame ? INACTIVE_LAYER_OPACITY : null);
+  const focus = editorFocusOf(editor);
+  if (editor._sketchLayer) {
+    editor._sketchLayer.attr('opacity', focus.drawing === 1 ? null : focus.drawing);
+    const node = editor._sketchLayer.node;
+    if (node && focus.art === 1) { node.removeAttribute('data-focus-art-fade'); node.style.removeProperty('--focus-art-opacity'); }
+    else if (node) { node.setAttribute('data-focus-art-fade', ''); node.style.setProperty('--focus-art-opacity', String(focus.art)); }
+  }
   const g = editor._bgLayer?.findOne ? editor._bgLayer.findOne('#' + FRAME_PROFILE_GROUP_ID) : null;
-  if (g) g.attr('opacity', frame ? null : INACTIVE_LAYER_OPACITY);
+  if (g) g.attr('opacity', focus.frameProfile === 1 ? null : focus.frameProfile);
 }
 
 /** The declared fit rule (frame-defs `fit`, frame_definition.FRAME_FIT in
@@ -497,7 +522,8 @@ function _drawFrameProfile(editor) {
   cut.path(`M0 0 H${W} V${H} H0 Z ${prof.pathD}`)
     .fill({ color: '#1f2933', opacity: 0.6 }).attr('fill-rule', 'evenodd').addClass('frame-cutaway');
   const g = editor._bgLayer.group().id(FRAME_PROFILE_GROUP_ID).attr('pointer-events', 'none');
-  if (editor._editorTab !== 'frame') g.attr('opacity', INACTIVE_LAYER_OPACITY); // the focus rule (setEditorFocus)
+  const fp = editorFocusOf(editor).frameProfile;
+  if (fp !== 1) g.attr('opacity', fp); // the focus rule (setEditorFocus, EDITOR_TAB_FOCUS)
   // The frame itself: the band between the outline and its inner edge (the
   // frame thickness), tinted in the chosen wood, plus the inner edge and the
   // 4 miter lines. Same inner loop the 3D bars use (frameInnerProfile).
