@@ -34,7 +34,7 @@ describe('PHOTO_CONTROLS against the real markup', () => {
       if (c.home !== '2d') expect(c.kind, c.id).toBeTruthy();
       if (c.home === 'both') expect((c.ids2d || []).length && (c.ids3d || []).length, c.id).toBeTruthy();
     }
-    const own = PHOTO_CONTROLS.filter((c) => c.home !== '2d' && c.kind !== 'relief-height').flatMap((c) => c.ids3d || []);
+    const own = PHOTO_CONTROLS.filter((c) => c.home !== '2d').flatMap((c) => c.ids3d || []);
     for (const id of own) expect(doc.getElementById(id), id).toBeNull();
     expect(doc.querySelector('.cad-sidebar .panel-photo #photoLayerBody')).not.toBeNull();
     for (const c of PHOTO_CONTROLS.filter((x) => x.group)) expect(PHOTO_GROUPS.some((g) => g.id === c.group), c.id).toBe(true);
@@ -65,7 +65,7 @@ describe('the mirrored image edits: one state, one undo step, both views follow'
   let ed;
   beforeEach(() => {
     localStorage.clear();
-    Object.assign(P, DEFAULT, { photoImageDataUrl: 'data:image/png;base64,X', photoEdits: [], photoPatternId: null, carveZ: 0.125, filterTweaks: {} });
+    Object.assign(P, DEFAULT, { photoImageDataUrl: 'data:image/png;base64,X', photoEdits: [], photoPatternId: null, carveZ: 0.125, filterTweaks: {}, photoLayer: true });
     document.body.innerHTML = PANEL + '<div id="editorToolbarPhoto"></div><div id="photoLayerBody"></div>';
     renderPhotoLayerSection(document.getElementById('photoLayerBody'));
     ed = { _undoStack: [], _redoStack: [], _notifyChange: () => {} };
@@ -126,9 +126,32 @@ describe('the mirrored image edits: one state, one undo step, both views follow'
     ed._redoStack.push(ed._undoStack.pop()); restoreUndoParts(ed._undoStack[ed._undoStack.length - 1].parts);
     expect(P.photoLayer).toBe(false);
   });
-  it('Max Height here is the board\'s own Z (P.carveZ), one step', () => {
-    drag('photoReliefHeightSlider', 0.2);
-    expect(P.carveZ).toBeCloseTo(0.2, 9);
-    expect(ed._undoStack.length).toBe(2);
+  it('no Max Height in either photo panel (Fred, 2026-10-10: it is the board\'s Z, edited in Board only)', () => {
+    expect(PHOTO_CONTROLS.some((c) => /height/i.test(c.id + ' ' + (c.label || '')))).toBe(false);
+    expect(document.getElementById('photoReliefHeightSlider')).toBeNull();
+    expect(document.getElementById('photoReliefHeight')).toBeNull();
+  });
+  it('a pattern pick sets the board Z from the pattern, UNCLAMPED; its Undo puts the old Z back exactly', async () => {
+    P.carveZ = 1.5; P.photoLayer = false; ed._undoStack.length = 0; ed.pushState();
+    await new Promise((r) => setTimeout(r, 0));
+    document.querySelector('#photoPatternRow button').click();
+    expect(P.carveZ).toBe(0.125); // the mocked pattern has no relief: the declared default
+    ed._redoStack.push(ed._undoStack.pop()); restoreUndoParts(ed._undoStack[ed._undoStack.length - 1].parts);
+    expect(P.carveZ).toBe(1.5);
+  });
+  it('the layer OFF greys every photo-only control (the switch and Edit image stay live) and says why; ON ungreys', async () => {
+    const box = $('photoLayer');
+    P.photoLayer = false; box.checked = false; box.dispatchEvent(new Event('change'));
+    await new Promise((r) => queueMicrotask(r));
+    for (const id of ['photoFilterAmount', 'photoFilterAmountSlider', 'photo3dReliefCarved', 'photo3dFlipH', 'photo3dBlurSlider', 'photoLayerTweak_repeat']) expect($(id).disabled, id).toBe(true);
+    expect([...document.querySelectorAll('#photoLayerBody .tweak-row input')].every((e) => e.disabled)).toBe(true);
+    expect($('photoLayer').disabled).toBe(false);
+    expect($('photoLayerEditImage').disabled).toBe(false);
+    expect($('photoLayerOffNote').hidden).toBe(false);
+    P.photoLayer = true; box.checked = true; box.dispatchEvent(new Event('change'));
+    await new Promise((r) => queueMicrotask(r));
+    expect($('photoFilterAmount').disabled).toBe(false);
+    expect([...document.querySelectorAll('#photoLayerBody .tweak-row input')].some((e) => e.disabled)).toBe(false);
+    expect($('photoLayerOffNote').hidden).toBe(true);
   });
 });

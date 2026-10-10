@@ -28,7 +28,7 @@
 import { P, saveLastSession } from '../core/state.js';
 import {
   loadPhotoPatterns, settingsToPhotoEdits, settingsToTweaks, settingsToRelief, editsToSettings,
-  DEFAULT_PHOTO_RELIEF_IN, MAX_PHOTO_RELIEF_IN,
+  DEFAULT_PHOTO_RELIEF_IN,
 } from '../core/photo/patterns.js';
 import { fileToDataUrl, downscalePhotoDataUrl } from '../core/photo/codec.js';
 import { ensurePhotoDecoded, getRawPhotoImage, isPhotoReady } from '../core/photo/state.js';
@@ -164,7 +164,7 @@ function restorePhotoUndo(state) {
   if (!state || samePhoto(state, photoUndoState())) return; // an Undo of something else: the photo stays, no rebuild
   if (state.layer !== undefined && !!state.layer !== !!P.photoLayer) applyParam('photoLayer', !!state.layer, { rebuild: false });
   restorePhoto(state);
-  if (state.reliefIn != null && state.reliefIn !== P.carveZ) { setReliefHeight(state.reliefIn, { raw: true }); syncReliefHeightDisplay(); }
+  if (state.reliefIn != null && state.reliefIn !== P.carveZ) setReliefHeight(state.reliefIn);
 }
 
 // 2026-10-10: Surface > Photo (main/photo-layer-section.js) mirrors some of this tab's image edits -- the SAME state and
@@ -398,17 +398,11 @@ function syncReliefToggle() {
   if (_syncMirrors) _syncMirrors();
 }
 
-const clampReliefIn = (v) => Math.min(MAX_PHOTO_RELIEF_IN, Math.max(0.01, v));
-
-// F34 item 3 (Fred: "height wouldn't ever be more than 1/4 for now"): the
-// Photo tab's own Max Height control, bound to the SAME real `carveZ` param
-// every other filter already uses downstream (Send/thicken/CAM) -- just
-// presented here with photo-appropriate bounds/default instead of the
-// generic Skeleton tab's 0.1-20in Carve Depth slider.
-/** `raw`: an UNDO puts the saved value back as it was (seat D 2026-10-08, undo map: P.carveZ is the board's own carve
- *  depth too -- 1.5 in on a fresh board -- and the photo clamp turned an undo of a pattern pick into 0.25). */
-function setReliefHeight(v, { raw = false, drag = false } = {}) {
-  const z = raw ? v : clampReliefIn(v);
+// A pattern's relief sets the board's carve depth (P.carveZ, Board > Carve Depth Z) -- 2026-10-10 (Fred): no Max Height
+// control in the photo panels any more (it IS the board's Z, edited in Board only) and no 0.25 in photo clamp on it:
+// the value lands as given, and an undo puts the saved one back as it was.
+function setReliefHeight(v, { drag = false } = {}) {
+  const z = v;
   // core/in-editor-3d.js 'relief': with the editor open the value lands without a rebuild, the backdrop shows it (a drag
   // tick: not yet -- its release repaints)
   const action = inEditor3dAction('relief', { drag });
@@ -419,9 +413,6 @@ function setReliefHeight(v, { raw = false, drag = false } = {}) {
   }
 }
 
-function syncReliefHeightDisplay() {
-  setPair('photoReliefHeightSlider', 'photoReliefHeight', clampReliefIn(P.carveZ ?? DEFAULT_PHOTO_RELIEF_IN));
-}
 
 function undo() {
   const steps = P.photoEdits || [];
@@ -456,7 +447,6 @@ function syncControlsFromState() {
   setPair('photoBlurSlider', 'photoBlur', blur.radius);
   syncCropFields();
   syncReliefToggle();
-  syncReliefHeightDisplay();
   if (_syncMirrors) _syncMirrors();
 }
 
@@ -737,19 +727,6 @@ export function initPhotoPanel({ onChange }) {
   bindSlider('photoBrightnessSlider', 'photoBrightness', 'brightnessContrast', 'brightness', { brightness: 0, contrast: 0 });
   bindSlider('photoContrastSlider', 'photoContrast', 'brightnessContrast', 'contrast', { brightness: 0, contrast: 0 });
   bindSlider('photoBlurSlider', 'photoBlur', 'blur', 'radius', { radius: 0 });
-
-  const reliefSlider = document.getElementById('photoReliefHeightSlider');
-  const reliefNumber = document.getElementById('photoReliefHeight');
-  const applyRelief = (raw, opts) => {
-    const v = parseFloat(raw);
-    if (!Number.isFinite(v)) return;
-    setReliefHeight(v, opts);
-    syncReliefHeightDisplay();
-  };
-  reliefSlider?.addEventListener('input', (e) => applyRelief(e.target.value, { drag: true }));
-  reliefNumber?.addEventListener('input', (e) => applyRelief(e.target.value));
-  reliefSlider?.addEventListener('change', (e) => { applyRelief(e.target.value); photoStep(); }); // the drag's one repaint
-  reliefNumber?.addEventListener('change', photoStep);
 
   document.getElementById('photoBtnSaveToPattern')?.addEventListener('click', saveSettingsToCurrentPattern);
   syncSaveButtonState();
