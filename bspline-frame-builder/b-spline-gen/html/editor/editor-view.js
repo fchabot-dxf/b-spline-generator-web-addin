@@ -83,21 +83,59 @@ export function applyView(editor) {
  *  apply it immediately. */
 export function fitView(editor) {
     editor._view = fittedView(editor);
+    editor._fitSnapshot = { ...editor._view }; // what "still fitted" means (isFittedView), whatever the layout does next
     applyView(editor);
 }
 
-/** Pure: the view fitView would set now -- FB-APP F7: with a frame, its cut profile's region, else the whole board. */
-export function fittedView(editor) {
-    const r = frameFitRegion(editor);
-    return r
-        ? { zoom: Math.min(editor._mW / r.w, editor._mH / r.h), cx: r.x + r.w / 2, cy: r.y + r.h / 2 }
-        : { zoom: 1, cx: editor._mW / 2, cy: editor._mH / 2 };
+/** Fred 2026-10-09 (seat D's phone measure: at Fit the board ran 11 px past BOTH screen edges and 11 of 19 templates put a
+ *  frame handle inside the OS edge-gesture zone, two of them 3 px from the edge): on a coarse pointer Fit keeps the board's
+ *  left and right edges this far inside the visible canvas -- the zone where Android's back gesture and iOS Safari's swipes
+ *  start. A mouse keeps today's Fit (0). Per primary pointer, like core/preview/view-cube.js VIEW_CUBE_PX. */
+export const FIT_EDGE_MARGIN_PX = Object.freeze({ fine: 0, coarse: 28 });
+const fitEdgeMarginPx = () => FIT_EDGE_MARGIN_PX[typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine'];
+
+/** Pure: the factor (<= 1) a fitted `base` view's zoom is scaled by so the fitted region's left / right edges (model x
+ *  `xLo` / `xHi`: the frame's region, else the board) land at least `marginPx` inside `visible` ({left, right}, screen
+ *  px) -- `el` is the svg element's box ({left, width, height}); the view is drawn under viewScale's uniform "meet"
+ *  scale, centred in it, and a zoom scales it about that centre. */
+export function edgeMarginZoom(base, mW, mH, el, visible, marginPx, xLo = 0, xHi = mW) {
+    if (!(marginPx > 0) || !(el.width > 0) || !(el.height > 0)) return 1;
+    const vb = viewboxFor(base, mW, mH);
+    const s = viewScale(vb, el.width, el.height);
+    const C = el.left + el.width / 2; // the screen x of the view's centre (cx)
+    const dL = (xLo - base.cx) * s, dR = (xHi - base.cx) * s; // the region's left / right edge, relative to it
+    let f = 1;
+    if (dL < 0) f = Math.min(f, (C - visible.left - marginPx) / -dL);
+    if (dR > 0) f = Math.min(f, (visible.right - marginPx - C) / dR);
+    return Math.max(f, 0.05);
 }
 
-/** Is the live view still the fitted one (the user has not zoomed or panned)? */
+/** Pure: the view fitView would set now -- FB-APP F7: with a frame, its cut profile's region, else the whole board;
+ *  on a coarse pointer zoomed out to FIT_EDGE_MARGIN_PX (the svg's own on-screen box, read here). */
+export function fittedView(editor) {
+    const r = frameFitRegion(editor);
+    const base = r
+        ? { zoom: Math.min(editor._mW / r.w, editor._mH / r.h), cx: r.x + r.w / 2, cy: r.y + r.h / 2 }
+        : { zoom: 1, cx: editor._mW / 2, cy: editor._mH / 2 };
+    const margin = fitEdgeMarginPx();
+    const node = editor._draw && editor._draw.node;
+    if (!(margin > 0) || !node || typeof node.getBoundingClientRect !== 'function' || typeof innerWidth !== 'number') return base;
+    const b = node.getBoundingClientRect();
+    const visible = { left: Math.max(b.left, 0), right: Math.min(b.right, innerWidth) };
+    const f = edgeMarginZoom(base, editor._mW, editor._mH, { left: b.left, width: b.width, height: b.height }, visible, margin,
+        r ? r.x : 0, r ? r.x + r.w : editor._mW);
+    return f < 1 ? { ...base, zoom: base.zoom * f } : base;
+}
+
+/** Is the live view still the fitted one (the user has not zoomed or panned)? Seat D 2026-10-09: the coarse-pointer
+ *  fit reads the svg's on-screen box (FIT_EDGE_MARGIN_PX), which moves while the layout settles (the drawer, a rotation)
+ *  -- so the view fitView last set, unchanged since, IS fitted, even when a fit computed now would differ by a hair. */
 export function isFittedView(editor, eps = 1e-6) {
-    const v = editor && editor._view, f = fittedView(editor);
+    const v = editor && editor._view;
     if (!v) return true;
+    const s = editor._fitSnapshot;
+    if (s && v.zoom === s.zoom && v.cx === s.cx && v.cy === s.cy) return true;
+    const f = fittedView(editor);
     return Math.abs(v.zoom - f.zoom) <= eps * Math.max(1, f.zoom) && Math.abs(v.cx - f.cx) <= eps * editor._mW
         && Math.abs(v.cy - f.cy) <= eps * editor._mH;
 }

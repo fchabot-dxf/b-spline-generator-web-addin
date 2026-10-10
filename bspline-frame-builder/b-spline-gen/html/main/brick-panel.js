@@ -2506,13 +2506,17 @@ function renderWallAreaRow() {
   clear.addEventListener('click', () => clearAllWallAreas());
   row.appendChild(clear);
 }
-/** The Area brush width (a WALL_AREA_WIDTHS value) -- for the next strokes; nothing re-lays. */
+/** The Area brush width (a WALL_AREA_WIDTHS value) -- for the next strokes; nothing re-lays. Fred 2026-10-09 (seat D's
+ *  undo map: the pick was no step, so undoing a painted area also reverted the width): a CHANGED width is an undo step of
+ *  its own -- the 'settings' commit, like every next-stroke setting (item 68) and Art's (74d). */
 export function setWallAreaWidth(w) {
   if (!WALL_AREA_WIDTHS.includes(w)) return;
+  const changed = P.brickSettings.wallAreaWidthIn !== w;
   P.brickSettings.wallAreaWidthIn = w;
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
   if (editor) editor._brickAreaWidthIn = w;
   saveLastSession();
+  if (changed) commitBrickSetting('settings'); // a repeat tap on the same chip is no step
   renderWallAreaRow();
 }
 /** One painted stroke (board points): onto the selected area, else a new area with the section's settings; the
@@ -3094,6 +3098,9 @@ export function initBrickPanel() {
     _jointSets = _currentJointSets(); // a replaced P.brickSettings: its sets are the new baseline, not a set change
     const editor = typeof window !== 'undefined' ? window.svgEditor : null;
     if (editor && editor._brickSettings) editor._brickSettings = P.brickSettings;
+    // the Area brush width (its own undo step, seat D 2026-10-09): the brush's live width and its chips follow too
+    if (editor) editor._brickAreaWidthIn = Number(P.brickSettings.wallAreaWidthIn) || 1;
+    renderWallAreaRow();
     syncControlsFromState();
   });
 

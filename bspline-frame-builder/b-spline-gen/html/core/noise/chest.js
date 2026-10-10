@@ -239,8 +239,8 @@ function layout(noiseFine, ribAngleSet, aspect = 7 / 9) {
   let acc = 0;
   for (let i = 0; i <= ribCount; i++) {
     acc += gaps[i];
-    const thickness = 1 + sizeTrend * stackPos(i) + 0.08 * v('ribThickness', i);
-    const width = usable * (gaps[i] / gapTotal) * ribSize * thickness;
+    const ribThick = 1 + sizeTrend * stackPos(i) + 0.08 * v('ribThickness', i);
+    const width = usable * (gaps[i] / gapTotal) * ribSize * ribThick;
     ribs.push({
       y0: ribStart + usable * (acc - 0.3 * gaps[i]) / gapTotal,
       width,

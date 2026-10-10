@@ -6,6 +6,7 @@
 import { P, preDelta } from './state.js';
 import { generateHeightmap } from './terrain.js';
 import { COORD_SYSTEM } from './coords.js';
+import { withLoadingStage } from './loading-signal.js';
 
 /**
  * Add the low-res sculpt deltas to a high-res heightmap, bilinear -- the old per-pixel bilinearSample, byte-identical (same
@@ -143,13 +144,15 @@ export function updateEditorTopView(heightsLow, nxLow, nzLow) {
 /** Repaint the backdrop from the last rebuild's inputs with the CURRENT params -- for a change the editor's backdrop
  *  must show but that builds no 3D (a Photo-tab edit while the editor is open: core/in-editor-3d.js). At
  *  most once per animation frame, like the editor's own 'live' changes: a drag's steps that land while one paints
- *  are drawn once, with the latest value (the paint reads the params when it runs). */
+ *  are drawn once, with the latest value (the paint reads the params when it runs). Seat D 2026-10-09: behind the
+ *  'backdrop' stage (core/loading-signal.js) -- on screen before the repaint, up until it is drawn. */
 let _refreshQueued = false;
 export function refreshEditorTopView() {
     if (_refreshQueued) return;
     _refreshQueued = true;
     const run = () => { _refreshQueued = false; if (_lastTopView) updateEditorTopView(..._lastTopView); };
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run); else setTimeout(run, 0);
+    const nextFrame = (f) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(f) : setTimeout(f, 0));
+    return withLoadingStage('backdrop', () => new Promise((resolve) => nextFrame(() => { try { run(); } finally { resolve(); } })));
 }
 
 function _syncBackdrop() {

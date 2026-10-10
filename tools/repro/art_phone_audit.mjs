@@ -33,6 +33,8 @@ const SURFACES = {
   undo: { tab: 'editorTabArtwork', panel: 'editorLayersPanel', strip: null }, // the undo coverage map: every editor tab
 };
 const SURFACE = process.env.SURFACE || 'art';
+// Env ONLY: a regex -- only the sidebar controls whose row name matches it are acted on (a re-time of named rows)
+const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
 const SURF = SURFACES[SURFACE];
 if (!SURF) { console.log('SURFACE must be one of', Object.keys(SURFACES).join(' / ')); process.exit(1); }
 const PROFILE = `${OUT_DIR}/.chrome-artphone-${PORT}`;
@@ -107,7 +109,9 @@ try {
   }
   // open the editor on the audited tab (setup, unthrottled)
   if (SURF.tab) await js(`(async () => { const m = document.getElementById('svgEditorModal'); if (!m || m.style.display === 'none') document.getElementById('btnStampEdit').click();
-    for (let i = 0; i < 80 && !window.svgEditor?._draw; i++) await new Promise((r) => setTimeout(r, 250));
+    // the modal SHOWN (it opens behind the 'openEditor' stage, a few frames after the click) -- svgEditor._draw exists from
+    // the page's start, so waiting on it alone measured a hidden editor (seat D 2026-10-09: every undo-map row "could not act")
+    for (let i = 0; i < 80 && !(window.svgEditor?._draw && m && getComputedStyle(m).display !== 'none'); i++) await new Promise((r) => setTimeout(r, 250));
     document.getElementById(${JSON.stringify(SURF.tab)})?.click(); await new Promise((r) => setTimeout(r, 1500)); return 1; })()`);
   // the app's stylesheets really load (advisor 2026-10-08, seat A's finding: a probe serving only b-spline-gen/html 404s
   // ../../styles/*.css, #previewCanvas then grows every frame and inflates every phone timing). No timing without them.
@@ -125,9 +129,13 @@ try {
     if (el) new MutationObserver(() => { if (window.__vis()) window.__ov.push({ t: performance.now(), txt: (el.textContent || '').trim().slice(0, 60) }); })
       .observe(el, { attributes: true, childList: true, characterData: true, subtree: true });
     new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__long.push({ start: e.startTime, dur: e.duration, vis: window.__vis() }); }).observe({ entryTypes: ['longtask'] });
-    window.__settle = async (t0, quiet) => { const W = (ms) => new Promise((r) => setTimeout(r, ms)); const tEnd = performance.now() + 60000;
-      for (;;) { await W(100); const last = window.__long.filter((e) => e.start >= t0 - 5).reduce((m, e) => Math.max(m, e.start + e.dur), t0);
-        if (performance.now() - last >= quiet || performance.now() > tEnd) break; }
+    // settled = QUIET ms with no long task since the action ENDED (called right after it) and no stage on screen. MEASURED
+    // 2026-10-09 (seat D, A's photo-board re-time): quiet counted from the action's START ended a slider drag's row
+    // before its own debounced rebuild began -- that rebuild then ran under the NEXT row, its card already up at t0, and
+    // read as ~900 ms "blind" there.
+    window.__settle = async (t0, quiet) => { const W = (ms) => new Promise((r) => setTimeout(r, ms)); const t1 = performance.now(), tEnd = t1 + 60000;
+      for (;;) { await W(100); const last = window.__long.filter((e) => e.start >= t0 - 5).reduce((m, e) => Math.max(m, e.start + e.dur), t1);
+        if ((performance.now() - last >= quiet && !window.__vis()) || performance.now() > tEnd) break; }
       const tasks = window.__long.filter((e) => e.start >= t0 - 5);
       const end = tasks.reduce((m, e) => Math.max(m, e.start + e.dur), t0);
       return JSON.stringify({ responseMs: Math.round(end - t0), longestMs: Math.round(tasks.reduce((m, e) => Math.max(m, e.dur), 0)),
@@ -435,6 +443,9 @@ try {
     for (const tab of tabs) {
       await act(`tab: ${tab.replace('sidebarTab_', '')}`, () => tapSel('#' + tab));
       await js(`(async () => { const root = document.querySelector(${JSON.stringify(SURF.panelSel)}); if (!root) return 0; for (const h of root.querySelectorAll('.panel-header.collapsed')) { if (h.getClientRects().length) { h.click(); await new Promise((r) => setTimeout(r, 150)); } } await new Promise((r) => setTimeout(r, 600)); return 1; })()`);
+      // what opening the panels set off settles before the next row (MEASURED 2026-10-09: it ran ~0.7 s later, under
+      // the next tab tap's row, as 0.2-1.5 s "blind"; a tab tap after an idle runs no long task at all)
+      await js(`window.__settle(performance.now(), ${QUIET_MS})`);
       const controls = JSON.parse(await js(`JSON.stringify((() => { const root = document.querySelector(${JSON.stringify(SURF.panelSel)}); if (!root) return [];
         return [...root.querySelectorAll('button[id], input[id], select[id]')].filter((e) => e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && !e.disabled && e.type !== 'hidden' && e.type !== 'file')
           .map((e) => ({ id: e.id, tag: e.tagName.toLowerCase(), type: e.type || '', twin: e.tagName === 'INPUT' && e.type !== 'range' && !!document.getElementById(e.id + 'Slider'),
@@ -445,6 +456,7 @@ try {
         if (SIDEBAR_SKIP.test(c.id)) { skipped.push(c.id); continue; }
         if (c.twin) continue; // its slider is the finger's control
         const name = `${tab.replace('sidebarTab_', '')}: ${c.id}`;
+        if (ONLY && !ONLY.test(name)) continue;
         if (c.type === 'range') {
           const lo = +c.min || 0, hi = c.max === '' ? 1 : +c.max, v = +c.value;
           const to = v + (hi - lo) * (v - lo < (hi - lo) / 2 ? 0.3 : -0.3);
