@@ -25857,3 +25857,18 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - PROOF: old and new (the old helper imported from a scratch copy), PATTERN_SWEEP_FULL: 2,736 lays, the overlap list /
   off-outline count / bare sq in / largest patch compared exactly -- 0 differ. 242 -> 170 s (the main it ran on already
   had stone-frame-speed's faster Generate). The 7 bareGround users FAST: 110/110.
+
+### 2026-10-10 (seat E): the brick matrix spawns longest-first and logs each row's time
+- PROFILED the gate's --parallel matrix (bm.matrix.log 11:16, 379 rows, 953 s; a group's start = its 10 s stagger slot,
+  its end = its report's mtime): wall 786 s (0 -> 786) is the critical path, then the sequential blind group 165 s alone;
+  layout 727 (50 -> 777); strokes 484 started LAST (180 s) and finished third. A group's time is mostly settle windows
+  (heightsSettled: 3 stable 700 ms reads, >= 6 s when the 3D does not change, up to 20 s for an expected change;
+  canvasSettled up to 10 s) -- not touched (coverage).
+- DECLARED: groups/index.mjs GROUP_MEASURED_S (that gate's per-group seconds) and SPAWN_ORDER (the parallel groups
+  longest first; an unmeasured group spawns last and still runs); run.mjs --parallel spawns in SPAWN_ORDER (ports still by
+  GROUPS index). tests/brick-matrix-spawn-order.test.js: a permutation of the parallel groups, sorted, wall first.
+- PER-ROW TIME: run.mjs's rows recorder stamps each row's elapsedMs (since the previous row; a group's first row includes
+  its boot) into the report and prints "time <s>s <row>" -- measured on the select group: 27.8 s (boot + baseline), then
+  1.0 / 0.0 / 0.7 / 0.7 s; 5/5 pass.
+- NEXT (advisor: decide with the gate's PEAK memory): splitting wall (after "Wall rotation 0 (back)": the second half starts
+  from the baseline's plain Stretcher at 0 deg) and layout (between its independent runners).
