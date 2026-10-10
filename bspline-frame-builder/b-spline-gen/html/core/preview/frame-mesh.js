@@ -132,32 +132,42 @@ export function panelSurface(positions, index, W, H, nx, nz) {
   const fill = start.slice(0, gw * gh), tris = new Int32Array(start[gw * gh]);
   for (let f = 0; f < nt; f++) for (let i = box[4 * f]; i <= box[4 * f + 1]; i++) for (let j = box[4 * f + 2]; j <= box[4 * f + 3]; j++) tris[fill[(i - gi0) * gh + (j - gj0)]++] = 3 * f;
   return {
+    // 2026-10-09 (seat A): the frame bars ask this ~16k times a rebuild; the candidates' hits are compared as
+    // numbers and only the winning lo / hi become objects (the same object when one hit is both, as before).
     at(x, y) {
-      let lo = null, hi = null;
+      let loT = -1, loU = 0, loV = 0, loW = 0, loZ = 0, hiT = -1, hiU = 0, hiV = 0, hiW = 0, hiZ = 0;
       const i = ci(x) - gi0, j = cj(y) - gj0;
       if (!(i >= 0 && i < gw && j >= 0 && j < gh)) return null;
       for (let r = start[i * gh + j], r1 = start[i * gh + j + 1]; r < r1; r++) {
         const t = tris[r];
-        const h = baryHit(P, index, t, x, y);
-        if (!h) continue;
-        if (!lo || h.z < lo.z) lo = h;
-        if (!hi || h.z > hi.z) hi = h;
+        if (!_baryInto(P, index, t, x, y, 1e-7, _hit)) continue;
+        if (loT < 0 || _hit.z < loZ) { loT = t; loU = _hit.u; loV = _hit.v; loW = _hit.w; loZ = _hit.z; }
+        if (hiT < 0 || _hit.z > hiZ) { hiT = t; hiU = _hit.u; hiV = _hit.v; hiW = _hit.w; hiZ = _hit.z; }
       }
-      return lo ? { lo, hi } : null;
+      if (loT < 0) return null;
+      const lo = { t: loT, u: loU, v: loV, w: loW, z: loZ };
+      return { lo, hi: hiT === loT ? lo : { t: hiT, u: hiU, v: hiV, w: hiW, z: hiZ } };
     },
   };
 }
 
-/** Barycentric hit of triangle `t` (offset into `index`) at (x, y), with its z; null if outside or zero-area. */
-export function baryHit(P, index, t, x, y, tol = 1e-7) {
+/** baryHit's arithmetic, written into `out` ({u, v, w, z}); false if outside or zero-area. */
+function _baryInto(P, index, t, x, y, tol, out) {
   const a = index[t] * 3, b = index[t + 1] * 3, c = index[t + 2] * 3;
   const d = (P[b + 1] - P[c + 1]) * (P[a] - P[c]) + (P[c] - P[b]) * (P[a + 1] - P[c + 1]);
-  if (Math.abs(d) < 1e-14) return null;
+  if (Math.abs(d) < 1e-14) return false;
   const u = ((P[b + 1] - P[c + 1]) * (x - P[c]) + (P[c] - P[b]) * (y - P[c + 1])) / d;
   const v = ((P[c + 1] - P[a + 1]) * (x - P[c]) + (P[a] - P[c]) * (y - P[c + 1])) / d;
   const w = 1 - u - v;
-  if (u < -tol || v < -tol || w < -tol) return null;
-  return { t, u, v, w, z: u * P[a + 2] + v * P[b + 2] + w * P[c + 2] };
+  if (u < -tol || v < -tol || w < -tol) return false;
+  out.u = u; out.v = v; out.w = w; out.z = u * P[a + 2] + v * P[b + 2] + w * P[c + 2];
+  return true;
+}
+const _hit = { u: 0, v: 0, w: 0, z: 0 };
+
+/** Barycentric hit of triangle `t` (offset into `index`) at (x, y), with its z; null if outside or zero-area. */
+export function baryHit(P, index, t, x, y, tol = 1e-7) {
+  return _baryInto(P, index, t, x, y, tol, _hit) ? { t, u: _hit.u, v: _hit.v, w: _hit.w, z: _hit.z } : null;
 }
 
 /** Attribute `arr` (itemSize n) of `index`'s triangle at a hit's barycentric weights. */
@@ -582,34 +592,46 @@ export function creasedNormals(positions, index, creaseDeg = FRAME_CREASE_ANGLE_
   for (let v = 0; v < nv; v++) rowStart[v + 1] += rowStart[v];
   const fill = rowStart.slice(0, nv), corners = new Int32Array(nc);
   for (let k = 0; k < nc; k++) corners[fill[index[k]]++] = k;
-  const outIndex = new Array(nc), outPos = [], outN = [], source = [];
+  // 2026-10-09 (seat A; the phone map: the frame bars' normals were ~10 ms a rebuild on desktop, x4 on the phone):
+  // outputs preallocated (at most one new vertex per corner), and a corner whose set of averaged faces equals an
+  // earlier corner's of the same vertex takes that corner's new vertex -- the same faces summed in the same order
+  // are the same normal, which the dedupe below would have matched to the same vertex. tests/creased-normals-
+  // identical.test.js pins the output to the previous code's.
+  const outIndex = new Array(nc), outPos = new Float64Array(nc * 3), outN = new Float64Array(nc * 3), source = new Int32Array(nc);
+  let nOut = 0;
   const made = []; // this vertex's new vertices so far: [nx, ny, nz, newVertex] flat, `nm` of them
+  const seenMask = new Int32Array(32), seenId = new Int32Array(32); // this vertex's corner face-sets so far
   for (let v = 0; v < nv; v++) {
-    const r0 = rowStart[v], r1 = rowStart[v + 1];
-    let nm = 0;
+    const r0 = rowStart[v], r1 = rowStart[v + 1], masks = r1 - r0 <= 31; // a face-set as bits (31 corners at most)
+    let nm = 0, ns = 0;
     for (let r = r0; r < r1; r++) {
       const f = (corners[r] / 3) | 0, fx = fn[3 * f], fy = fn[3 * f + 1], fz = fn[3 * f + 2];
-      let x = 0, y = 0, z = 0;
+      let x = 0, y = 0, z = 0, mask = 0;
       for (let q = r0; q < r1; q++) {
         const g = (corners[q] / 3) | 0;
         if (g !== f && fx * fn[3 * g] + fy * fn[3 * g + 1] + fz * fn[3 * g + 2] < cosMax) continue;
         x += fn[3 * g] * fa[g]; y += fn[3 * g + 1] * fa[g]; z += fn[3 * g + 2] * fa[g];
+        if (masks) mask |= 1 << (q - r0);
       }
-      const len = Math.hypot(x, y, z) || 1;
-      x /= len; y /= len; z /= len;
       let id = -1;
-      for (let m = 0; m < nm; m++) if (Math.abs(made[4 * m] - x) < 1e-9 && Math.abs(made[4 * m + 1] - y) < 1e-9 && Math.abs(made[4 * m + 2] - z) < 1e-9) { id = made[4 * m + 3]; break; }
+      if (masks) for (let s = 0; s < ns; s++) if (seenMask[s] === mask) { id = seenId[s]; break; }
       if (id < 0) {
-        id = source.length;
-        made[4 * nm] = x; made[4 * nm + 1] = y; made[4 * nm + 2] = z; made[4 * nm + 3] = id; nm++;
-        outPos.push(positions[3 * v], positions[3 * v + 1], positions[3 * v + 2]);
-        outN.push(x, y, z);
-        source.push(v);
+        const len = Math.hypot(x, y, z) || 1;
+        x /= len; y /= len; z /= len;
+        for (let m = 0; m < nm; m++) if (Math.abs(made[4 * m] - x) < 1e-9 && Math.abs(made[4 * m + 1] - y) < 1e-9 && Math.abs(made[4 * m + 2] - z) < 1e-9) { id = made[4 * m + 3]; break; }
+        if (id < 0) {
+          id = nOut++;
+          made[4 * nm] = x; made[4 * nm + 1] = y; made[4 * nm + 2] = z; made[4 * nm + 3] = id; nm++;
+          outPos[3 * id] = positions[3 * v]; outPos[3 * id + 1] = positions[3 * v + 1]; outPos[3 * id + 2] = positions[3 * v + 2];
+          outN[3 * id] = x; outN[3 * id + 1] = y; outN[3 * id + 2] = z;
+          source[id] = v;
+        }
+        if (masks) { seenMask[ns] = mask; seenId[ns] = id; ns++; }
       }
       outIndex[corners[r]] = id;
     }
   }
-  return { positions: outPos, index: outIndex, normals: outN, source };
+  return { positions: outPos.subarray(0, 3 * nOut), index: outIndex, normals: outN.subarray(0, 3 * nOut), source: source.subarray(0, nOut) };
 }
 
 /** A mesh with CREASED normals (hard edges stay hard). `attrs` = extra per-input-vertex attributes
