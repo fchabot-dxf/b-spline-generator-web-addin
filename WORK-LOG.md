@@ -25828,3 +25828,24 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   (a distance only shrinks, so it can't raise the max); the piece nearest the previous point is tried first.
 - PROOF: old and new scans, FULL at seeds 1,2,3: 4,560 lays, gapJ / overlaps / off-outline / sharpest corner compared with
   Object.is -- 0 differ. Time 2,008 s -> 472 s. FAST 10/10.
+### 2026-10-10 (seat A): the hold's backstop counts from progress; masks, drape and frame deferred into it
+- BACKSTOP (branch hold-backstop-progress 1419082): at CPU 4 the size chain runs ~3.2 s (resync +1.7, re-lay +2.8, its
+  remask +3.2), so a 3 s backstop counted from the OPEN released before the last stage and the nudge built twice (main
+  4624cf0 is never worse than before -- the final 3D is right, 2 builds vs 3-4). Now it restarts on every join / close.
+  Test: a >3 s chain that keeps progressing builds once -- fails on 4624cf0's timer.
+- DEFERRED WORK (hold-defer-masks 469350a): STOCK_CHANGE_DEFERS = ['stamp-masks', 'frame-3d']; deferToHold keeps the
+  latest fn per key and runs it once at the release, before the build. 'frame-3d' (the Frame panel sync's refreshFrame
+  on the OLD terrain, ~0.6 s at 4x) is supersededByBuild: dropped when a build follows (update() applies the frame).
+- CAUGHT ON THE WAY: deferring only the masks left the frame WALL colours different (only those two meshes' vertex
+  colours): the walls sample the drape, the drape renders the editor SVG, and the SVG's brick greys are painted by the
+  masks pass -- a drape drawn mid-hold used the old greys. The pipeline's remask step now defers masks + drape as one.
+  The build-input digest could not see it (the drape is not a build input); a whole-SCENE digest (every mesh's attributes
+  + world matrix) did. That scene digest also re-proves the merged hold: pre-hold main 63c7e02, hold, and deferral give
+  the same scene -- loaded 1f885c21, photo e4943612, undo of the nudge 27916cd5.
+- CPU 4 (loaded board, interleaved x4, the gate was running -- relative only): busy pre 2.6-4.0 s (2-3 builds), hold
+  2.3-2.7 s (1), deferral 1.5-1.7 s (1 build, 1 mask pass, 1 frame pass); response 3.2-4.7 / 2.7-3.2 / 2.5-2.6 s; card
+  7-17 ms, blind 0 throughout.
+- TESTS: rebuild-hold.test.js +7 (deferral latest-wins + waits for async work, supersededByBuild dropped / run, deferred
+  work counts as scheduled, the stamp-masks refresh defers, every deferToHold key declared). Mutations 8/8 caught (the
+  masks-not-deferred and isRebuildScheduled ones only after adding behavioural tests -- the declaration test alone missed
+  them). NOT unit-tested: the remask step deferring the drape with the masks -- the in-page scene digest is its proof.

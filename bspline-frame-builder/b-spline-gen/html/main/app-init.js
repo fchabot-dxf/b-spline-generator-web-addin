@@ -5,7 +5,7 @@ import { syncUItoParam, updateSpacingLabels } from '../core/ui-utils.js';
 import { resolveGrid } from '../core/terrain.js';
 import { rebuild, whenRebuildIdle } from '../core/engine.js';
 import { beginLoadingSequence, withLoadingStage } from '../core/loading-signal.js';
-import { openRebuildHold, joinRebuildHold, isRebuildHeld } from '../core/engine/scheduler.js';
+import { openRebuildHold, joinRebuildHold, isRebuildHeld, deferToHold } from '../core/engine/scheduler.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { updateGlobalButtons, takeSnapshot, globalHistoryLog, setUndoRestoring, isEditorOpen, ensureUndoBaseline } from '../core/history.js';
 import { AppState } from './app-state.js';
@@ -117,6 +117,12 @@ export const CHANGE_PIPELINE = {
  *  'editor-resync' (_resyncEditorToStock, below), 'brick-relay' (main/brick-panel.js, the re-lay on the new board),
  *  'change-pipeline' (every editor onChange that runs meanwhile, its remask included). */
 export const STOCK_CHANGE_STAGES = ['editor-resync', 'brick-relay', 'change-pipeline'];
+/** ...and the work it postpones to its end (deferToHold). MEASURED (phone rig, CPU 4, loaded board):
+ *  'stamp-masks': three mask passes per nudge -- the param's own on the OLD editor (2.1 s wall), the resync's, the
+ *  re-lay's -- and only the last one's masks reach the build; deferred, the latest pass runs once, on the final editor.
+ *  'frame-3d': the Frame panel's sync re-meshed the 3D frame on the OLD terrain (~0.6 s) before the build applies the
+ *  frame again on the new one -- dropped when the hold ends in a build (supersededByBuild). */
+export const STOCK_CHANGE_DEFERS = ['stamp-masks', 'frame-3d'];
 
 /**
  * F35 item 18 (4), the editor's STATIC backdrop (Fred: the editor loads fast, Apply builds the 3D):
@@ -768,8 +774,9 @@ function _resyncEditorToStockNow() {
 if (typeof document !== 'undefined') {
   document.addEventListener('stockSizeChanged', () => {
     // the card is up for the whole hold (a burst keeps the first one's)
-    if (!isRebuildHeld()) { const held = openRebuildHold(STOCK_CHANGE_STAGES); withLoadingStage('rebuild', () => held, { spacing: P.spacing }); }
-    else openRebuildHold(STOCK_CHANGE_STAGES);
+    const holdSpec = { defers: STOCK_CHANGE_DEFERS };
+    if (!isRebuildHeld()) { const held = openRebuildHold(STOCK_CHANGE_STAGES, holdSpec); withLoadingStage('rebuild', () => held, { spacing: P.spacing }); }
+    else openRebuildHold(STOCK_CHANGE_STAGES, holdSpec);
     if (!_resyncHoldClose) _resyncHoldClose = joinRebuildHold('editor-resync');
     clearTimeout(_stockResyncTimer);
     _stockResyncTimer = setTimeout(_resyncEditorToStock, 350);
@@ -812,12 +819,19 @@ export function initSvgEditor(preview) {
           persist: saveLastSession,
           remask: async () => {
             const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
-            await refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
-            // SE11: commit-only — 'kind' is this callback's own closure
-            // variable from the enclosing (kind = 'commit') => {...}, so a
-            // 'live' drag frame (which also runs this same remask step)
-            // never rebuilds the drape texture mid-gesture.
-            if (kind === 'commit') await refreshDrape(preview);
+            const remaskNow = async () => {
+              await refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
+              // SE11: commit-only — 'kind' is this callback's own closure
+              // variable from the enclosing (kind = 'commit') => {...}, so a
+              // 'live' drag frame (which also runs this same remask step)
+              // never rebuilds the drape texture mid-gesture.
+              if (kind === 'commit') await refreshDrape(preview);
+            };
+            // a board size change holding the 3D defers the masks -- and the drape with them: it renders the editor's
+            // SVG, whose brick height greys the masks paint (MEASURED: a drape drawn before the deferred masks left the
+            // frame walls, which sample it, in the old greys)
+            if (deferToHold('stamp-masks', remaskNow)) return;
+            await remaskNow();
           },
         }, isEditorOpen() ? CHANGE_PIPELINE_IN_EDITOR : CHANGE_PIPELINE); // F35 item 18 (4): no 3D while editing
       } finally { closeHoldStage(); }
