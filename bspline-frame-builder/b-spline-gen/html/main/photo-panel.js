@@ -279,8 +279,20 @@ function setCrop(rect, opts) {
 export const CROP_BOX = Object.freeze({
   handlePx: Object.freeze({ fine: 16, coarse: 28 }), // the grab target's side, CSS px (>= 28 for a finger)
   minFrac: 0.02, // the smallest crop side, as a fraction of the photo
-  dim: 'rgba(0,0,0,0.55)', stroke: '#ffd54f',
 });
+/** The box's LOOK (Fred 2026-10-10: "not very visible") -- it reads on a light AND a dark photo: a yellow frame inside a
+ *  dark outline, solid handles with a dark border, a strong dim outside, rule-of-thirds lines while dragging. Sizes in
+ *  CSS px (scaled to the canvas). The grab size stays CROP_BOX.handlePx. */
+export const CROP_BOX_STYLE = Object.freeze({
+  framePx: 2.5, frame: '#ffd54f',
+  outlinePx: 1, outline: 'rgba(0,0,0,0.85)', // just outside the frame, so it reads on a light photo
+  handleDrawPx: 12, handleFill: '#ffd54f', handleBorderPx: 1.5, handleBorder: '#1a1a1a',
+  dim: 'rgba(0,0,0,0.58)',
+  thirds: 'rgba(255,255,255,0.65)', thirdsPx: 1, // while dragging
+});
+/** Fred 2026-10-10 (desktop: "there's no cursor"): the cursor per zone -- keyed by what cropHit returns, so the cursor
+ *  always names what a drag there would do (no zone = the default). */
+export const CROP_BOX_CURSOR = Object.freeze({ nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', move: 'move' });
 const cropHandlePx = () => CROP_BOX.handlePx[typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine'];
 const clampTo = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -317,21 +329,38 @@ function straightenedPhoto(raw) {
   return _straightened.img;
 }
 
-/** The box over the preview: the outside dimmed, the frame, the 4 corner handles (drawn at the grab size). */
+let _cropDragging = false; // the thirds show while a box drag is under way
+/** The box over the preview (CROP_BOX_STYLE): the outside dimmed, the frame in its dark outline, thirds while dragging, the
+ *  4 solid corner handles. */
 function drawCropBox(ctx, canvas) {
+  const st = CROP_BOX_STYLE;
   const r = editableCrop(P.photoEdits || []);
   const W = canvas.width, H = canvas.height;
   const bx = r.x * W, by = r.y * H, bw = r.w * W, bh = r.h * H;
-  ctx.fillStyle = CROP_BOX.dim;
-  ctx.fillRect(0, 0, W, by); ctx.fillRect(0, by + bh, W, H - by - bh);
-  ctx.fillRect(0, by, bx, bh); ctx.fillRect(bx + bw, by, W - bx - bw, bh);
-  ctx.strokeStyle = CROP_BOX.stroke; ctx.lineWidth = 2;
-  ctx.strokeRect(bx, by, bw, bh);
   const box = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : null;
   const s = box && box.width ? W / box.width : 1; // canvas px per CSS px
-  const hs = cropHandlePx() * s * 0.5;
-  ctx.fillStyle = CROP_BOX.stroke;
-  for (const [cx, cy] of [[bx, by], [bx + bw, by], [bx, by + bh], [bx + bw, by + bh]]) ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+  ctx.fillStyle = st.dim;
+  ctx.fillRect(0, 0, W, by); ctx.fillRect(0, by + bh, W, H - by - bh);
+  ctx.fillRect(0, by, bx, bh); ctx.fillRect(bx + bw, by, W - bx - bw, bh);
+  if (_cropDragging) {
+    ctx.strokeStyle = st.thirds; ctx.lineWidth = st.thirdsPx * s;
+    ctx.beginPath();
+    for (const k of [1, 2]) { ctx.moveTo(bx + (bw * k) / 3, by); ctx.lineTo(bx + (bw * k) / 3, by + bh); ctx.moveTo(bx, by + (bh * k) / 3); ctx.lineTo(bx + bw, by + (bh * k) / 3); }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = st.outline; ctx.lineWidth = (st.framePx + 2 * st.outlinePx) * s; // the dark edge around the frame
+  ctx.strokeRect(bx, by, bw, bh);
+  ctx.strokeStyle = st.frame; ctx.lineWidth = st.framePx * s;
+  ctx.strokeRect(bx, by, bw, bh);
+  const hs = st.handleDrawPx * s;
+  for (const [cx, cy] of [[bx, by], [bx + bw, by], [bx, by + bh], [bx + bw, by + bh]]) {
+    ctx.fillStyle = st.handleFill; ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+    ctx.strokeStyle = st.handleBorder; ctx.lineWidth = st.handleBorderPx * s; ctx.strokeRect(cx - hs / 2, cy - hs / 2, hs, hs);
+  }
+}
+/** The cursor for a pointer at (u, v) over the box (CROP_BOX_CURSOR by cropHit's zone; '' = the default). */
+export function cropCursorAt(rect, u, v, hu, hv) {
+  return CROP_BOX_CURSOR[cropHit(rect, u, v, hu, hv)] || '';
 }
 
 /** The box's pointer gestures on the preview canvas: a grab (a corner or the body), drag ticks (the box and the fields
@@ -347,11 +376,18 @@ function bindCropBox(canvas) {
     const part = cropHit(rect0, u, v, cropHandlePx() / 2 / b.width, cropHandlePx() / 2 / b.height);
     if (!part) return;
     grab = { part, rect0, u0: u, v0: v, id: e.pointerId };
+    _cropDragging = true;
     canvas.setPointerCapture?.(e.pointerId);
     e.preventDefault();
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (!grab || e.pointerId !== grab.id) return;
+    if (!grab) { // a hover (desktop): the cursor names what a drag there would do
+      const shown = cropBoxShown() && !!P.photoImageDataUrl;
+      const { u, v, b } = at(e);
+      canvas.style.cursor = shown ? cropCursorAt(editableCrop(P.photoEdits || []), u, v, cropHandlePx() / 2 / b.width, cropHandlePx() / 2 / b.height) : '';
+      return;
+    }
+    if (e.pointerId !== grab.id) return;
     const { u, v } = at(e);
     setCrop(cropDrag(grab.rect0, grab.part, u - grab.u0, v - grab.v0), { drag: true });
     syncCropFields();
@@ -359,6 +395,7 @@ function bindCropBox(canvas) {
   const release = (e) => {
     if (!grab || e.pointerId !== grab.id) return;
     grab = null;
+    _cropDragging = false;
     notifyChange(); // the drag's one repaint of the board
     photoStep(); // ONE step
   };

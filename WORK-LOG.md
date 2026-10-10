@@ -25894,6 +25894,16 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   phone 390 px: only native checkboxes / slider tracks under 28 px, as in every section. Shots: shots/seatA/photo-layer/.
 - Full suite 429 files, 6210/6210. Known failures: none. The brick matrix's photo rows were NOT run here (the gate runs them).
 
+### 2026-10-10 (seat E): an unlaid frame band is HIDDEN (Fred: "unused band should just be hidden")
+- When the last lay reduced the stack to fit (bandsReduced.kept < the preset's bands), the bands not laid are not rendered at
+  all -- neither the pattern row nor the accent block (they were greyed + disabled, F35 item 35). The "Bands reduced to fit
+  the board: N of M laid" note stays; a lay that fits re-renders the list and the band is back. The Corners row keeps its
+  own "grey + explain" rule (Fred's earlier, a different rule).
+- tests/bands-reduced-note.test.js: band 3's pattern buttons and its accent block absent (band 2's enabled), and back after
+  a fitting lay -- fails on main (band 3's button exists). The brick-matrix lay row now asserts the unlaid bands' controls
+  are absent (its old "disabled count 0" would have passed vacuously with them gone) and band 1's are there.
+- Related suites 20 files 251/251.
+
 ### 2026-10-10 (seat E): "Offset from frame" is back as a distance (Fred; item 66's removal reversed for the distance)
 - Frame section: an "Offset from frame (in)" number input (#brickFrameOffsetDistance, min-height 28 px), its range declared
   (brick-panel.js FRAME_OFFSET_RANGE: 0 - 1 in, step 1/16, set on the input; no code clamp -- a guard would need a yes).

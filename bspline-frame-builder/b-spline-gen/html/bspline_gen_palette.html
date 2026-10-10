@@ -3560,7 +3560,7 @@
     .pm-crumb-sep { color: #aaa; user-select: none; padding: 0 2px; }
     .pm-crumb-current { color: #333; font-weight: 600; cursor: default; }
     .pm-crumb-current:hover { background: none; }
-    .pm-toolbar-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .pm-toolbar-actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
     .pm-toolbar-btn {
       background: #fff; border: 1px solid #d0d0d0; color: #333;
       padding: 6px 12px; border-radius: 5px; cursor: pointer;
@@ -3573,6 +3573,11 @@
       background: #4f8ef7; border-color: #3a7de0; color: #fff; font-weight: 600;
     }
     .pm-toolbar-btn-primary:hover { background: #3a7de0; border-color: #2a6dd0; }
+    .pm-toolbar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pm-toolbar-btn:disabled:hover { background: #fff; border-color: #d0d0d0; }
+    .pm-toolbar-btn-danger { color: #c00; border-color: #f0c0c0; margin-left: 10px; } /* set apart from Rename */
+    .pm-toolbar-btn-danger:hover:not(:disabled) { background: #ffe0e0; border-color: #e0a0a0; }
+    .pm-toolbar-divider { width: 1px; align-self: stretch; background: #d8d8d8; margin: 0 4px; }
 
     /* Content area — dominant */
     .pm-content {
@@ -3679,22 +3684,6 @@
     }
     .pm-selbar-info-name { color: #333; font-weight: 600; }
     .pm-selbar-info-meta { color: #888; }
-    .pm-selbar-actions { display: flex; gap: 6px; flex-shrink: 0; }
-    .pm-selbar-btn {
-      background: #fff; border: 1px solid #d0d0d0; color: #555;
-      padding: 6px 10px; border-radius: 5px; cursor: pointer;
-      font-size: 12px; font-family: inherit;
-      display: flex; align-items: center; gap: 4px;
-      transition: background 0.1s;
-    }
-    .pm-selbar-btn:hover:not(:disabled) { background: #f0f0f0; }
-    .pm-selbar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .pm-selbar-btn-danger { color: #c00; border-color: #f0c0c0; }
-    .pm-selbar-btn-danger:hover:not(:disabled) { background: #ffe0e0; }
-    .pm-selbar-btn-primary {
-      background: #4f8ef7; border-color: #3a7de0; color: #fff; font-weight: 600;
-    }
-    .pm-selbar-btn-primary:hover:not(:disabled) { background: #3a7de0; }
 
     /* Status bar */
     .pm-status-bar {
@@ -3760,6 +3749,9 @@
       .pm-current-file { order: 10; margin-left: 0; flex: 1 0 100%; }
       .pm-current-file.pm-current-unsaved { flex: 1 0 100%; background: none; border: none; padding: 0; color: #f5b35c; }
       .pm-toolbar { flex-wrap: wrap; }
+      /* the toolbar's own full row; the divider becomes a row break: Load / Rename / Delete on a second line */
+      .pm-toolbar-actions { flex: 1 1 100%; justify-content: flex-start; row-gap: 6px; }
+      .pm-toolbar-divider { flex-basis: 100%; height: 0; width: auto; margin: 0; background: none; }
       .pm-tile-grid {
         grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
         gap: 8px; padding: 10px;
@@ -3799,27 +3791,9 @@
         <div id="fmBreadcrumb" class="pm-breadcrumb" aria-label="Folder path">
           <span class="pm-crumb pm-crumb-current" data-path="">📁</span>
         </div>
-        <div class="pm-toolbar-actions">
-          <button id="fmBtnNewFolder" class="pm-toolbar-btn" title="Create a new (virtual) folder here">
-            <span class="material-symbols-outlined" style="font-size:14px;">create_new_folder</span>
-            New Folder
-          </button>
-          <button id="fmBtnNew" class="pm-toolbar-btn"
-                  title="New project: empty drawing, keeps the stock size and frame">
-            <span class="material-symbols-outlined" style="font-size:14px;">note_add</span>
-            <span>New</span>
-          </button>
-          <button id="fmBtnSaveAs" class="pm-toolbar-btn"
-                  title="Save current state under a new name (Save As…)">
-            <span class="material-symbols-outlined" style="font-size:14px;">save_as</span>
-            <span>Save As…</span>
-          </button>
-          <button id="fmBtnSave" class="pm-toolbar-btn pm-toolbar-btn-primary"
-                  title="Save current state — prompts for a name">
-            <span class="material-symbols-outlined" style="font-size:14px;">save</span>
-            <span class="pm-save-label">Save…</span>
-          </button>
-        </div>
+        <!-- 2026-10-10 (Fred): the manager's ONE toolbar -- New Folder, New, Save As, Save | Load, Rename, Delete --
+             rendered from main/pm-toolbar.js PM_TOOLBAR (the ids unchanged) -->
+        <div class="pm-toolbar-actions" id="fmToolbarActions"></div>
       </div>
 
       <!-- Content area — tiles or list (renderer chooses) -->
@@ -3830,25 +3804,9 @@
         </div>
       </div>
 
-      <!-- Bottom selection bar -->
+      <!-- Bottom: the selected project's info line (its actions are in the toolbar above) -->
       <div class="pm-selbar">
         <div id="fmSelbarInfo" class="pm-selbar-info">No selection</div>
-        <div class="pm-selbar-actions">
-          <button id="fmBtnLoad" class="pm-selbar-btn pm-selbar-btn-primary" disabled
-                  title="Load the selected project (or double-click)">
-            <span style="font-size:14px;">📁</span>
-            Load
-          </button>
-          <button id="fmBtnRename" class="pm-selbar-btn" disabled title="Rename selected">
-            <span class="material-symbols-outlined" style="font-size:14px;">edit</span>
-            Rename
-          </button>
-          <button id="fmBtnDelete" class="pm-selbar-btn pm-selbar-btn-danger" disabled
-                  title="Delete selected (no undo)">
-            <span class="material-symbols-outlined" style="font-size:14px;">delete</span>
-            Delete
-          </button>
-        </div>
       </div>
 
       <!-- Status bar -->
