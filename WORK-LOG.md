@@ -25776,3 +25776,12 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - PINNED: tests/bricks-board-clip.test.js (an L board: inside kept as the same object, crossing cut, a piece in the notch
   dropped, one along the outline kept whole). Mutations: dropping the shortcut's inside check fails the notch case; a
   shortcut taken for every piece fails the crossing + notch cases. Affected suites 38 files 526/526.
+
+### 2026-10-10 (seat E): the gate's thin-ring FULL 33 -> 8 min, every lay's verdict identical
+- MEASURED (243 FULL lays, stage timers): the test's own widest-gap scan 80% (223 ms / lay), Generate 18% (51 ms / lay after
+  stone-frame-speed), overlaps + off-outline + corners ~2%.
+- EXACT shortcuts in tests/bricks-thin-stone-rings.test.js's scan: the outline test is geometry.js polygonPointTester
+  (pointInPolygon's own answer for many points); a point stops as soon as its distance is no more than the widest so far
+  (a distance only shrinks, so it can't raise the max); the piece nearest the previous point is tried first.
+- PROOF: old and new scans, FULL at seeds 1,2,3: 4,560 lays, gapJ / overlaps / off-outline / sharpest corner compared with
+  Object.is -- 0 differ. Time 2,008 s -> 472 s. FAST 10/10.
