@@ -102,11 +102,15 @@ function constantsFor(params, img, aspect) {
   return _k;
 }
 
-export const fn = (su, sv, aspect, params) => {
-  const img = getProcessedPhotoImage(params);
-  if (!img || !img.w || !img.h) return 0.5; // no photo loaded (or still decoding): flat, neutral
-
-  const { depth, scale, offsetX, offsetY, rotation, cs, sn, repeat, unitsPerPixel } = constantsFor(params, img, aspect);
+/**
+ * 2026-10-10 (seat A + seat D: the on-board footprint gizmo and the preview's "not sampled" overlay): the ONE mapping
+ * fn samples with, exported -- the pixel fn reads for sample point (su, sv), or -1 with no image. `params` as the
+ * sampler gets them: P with `tweaks` = P.filterTweaks.photo (core/terrain.js photoParams). Cheap per call: the
+ * per-heightmap constants are cached on (params, img, aspect), as for fn.
+ */
+export function photoPixelAt(su, sv, aspect, params, img) {
+  if (!img || !img.w || !img.h) return -1;
+  const { scale, offsetX, offsetY, rotation, cs, sn, repeat, unitsPerPixel } = constantsFor(params, img, aspect);
 
   // Isotropic board-unit space: the board spans [-aspect/2, aspect/2] x
   // [-0.5, 0.5] here, so one unit is the SAME physical distance in both
@@ -132,6 +136,25 @@ export const fn = (su, sv, aspect, params) => {
 
   const x = Math.min(img.w - 1, Math.max(0, Math.floor(u * img.w)));
   const y = Math.min(img.h - 1, Math.max(0, Math.floor(v * img.h)));
-  const raw = img.data[y * img.w + x];
-  return clamp01(0.5 + (raw - 0.5) * depth);
+  return y * img.w + x;
+}
+
+/** The inverse of photoPixelAt's continuous part (before repeat / clamp): an IMAGE point (u, v), 0..1 over the
+ *  processed (cropped) image, -> the sample point (su, sv) it lands on. The same constants, the steps undone in
+ *  reverse order. For the on-board footprint (its corners: u, v in {0, 1}). */
+export function photoSampleOf(u, v, aspect, params, img) {
+  const { scale, offsetX, offsetY, rotation, cs, sn, unitsPerPixel } = constantsFor(params, img, aspect);
+  const rx = ((u - 0.5) * unitsPerPixel * img.w - offsetX * aspect) * scale;
+  const ry = ((v - 0.5) * unitsPerPixel * img.h - offsetY) * scale;
+  // the forward rotation is [cs -sn; sn cs] (cs = cos(-rotation), sn = sin(-rotation)); its inverse is the transpose
+  const bx = rotation !== 0 ? rx * cs + ry * sn : rx;
+  const by = rotation !== 0 ? -rx * sn + ry * cs : ry;
+  return { su: 0.5 + bx / aspect, sv: 0.5 + by };
+}
+
+export const fn = (su, sv, aspect, params) => {
+  const img = getProcessedPhotoImage(params);
+  if (!img || !img.w || !img.h) return 0.5; // no photo loaded (or still decoding): flat, neutral
+  const raw = img.data[photoPixelAt(su, sv, aspect, params, img)];
+  return clamp01(0.5 + (raw - 0.5) * constantsFor(params, img, aspect).depth);
 };
