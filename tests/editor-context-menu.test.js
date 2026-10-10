@@ -342,7 +342,8 @@ describe('desktop right-click', () => {
     bindContextMenu(editor, svgNode);
     svgNode._fire('contextmenu', { clientX: 10, clientY: 10, preventDefault: () => {} });
     const labels = [...document.querySelectorAll('.context-menu-row-label')].map((n) => n.textContent);
-    expect(labels).toEqual(expect.arrayContaining(['Select all', 'Fit view']));
+    // Fred 2026-10-10: "Select all" is named by the open tab (the Artwork tab by default), + the current layer only
+    expect(labels).toEqual(expect.arrayContaining(['Select all artwork', 'Select all in current layer', 'Fit view']));
   });
 });
 

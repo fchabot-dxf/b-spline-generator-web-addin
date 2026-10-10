@@ -9,6 +9,7 @@
  *     filtered to the active layer.
  */
 import { isEditableByLayer, isOnVisibleLayer } from './layers.js';
+import { isSelectableInTab } from './editor-tab-selectable.js';
 import { worldPoint, worldBbox } from './editor-coords.js';
 import { viewScale } from './editor-view.js';
 import { PATH_LAYOUT, endPoint } from './path-layout.js';
@@ -222,6 +223,7 @@ export function getNearbyElement(editor, pt, tol = 0.1, opts = {}) {
 
     editor._sketchLayer.children().toArray().forEach(el => {
         if (!editableCheck(editor, el)) return;
+        if (!isSelectableInTab(editor, el)) return; // Fred: no brick picked in Artwork, no art in Brick (EDITOR_TAB_SELECTABLE)
 
         const b = worldBbox(el);
         const sw = parseFloat(el.attr('stroke-width')) || editor._strokeWidth || 0.01;

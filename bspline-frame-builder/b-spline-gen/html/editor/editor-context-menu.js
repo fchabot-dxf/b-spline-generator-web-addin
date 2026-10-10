@@ -61,9 +61,10 @@ import { pieceKindOf, applyColorOverride } from './editor-piece-override.js';
 import { CONTOUR_SEG_INDEX_ATTR } from './editor-lattice-pattern.js';
 import { openColorMosaic } from './editor-color.js';
 import { cutAt, join, cutIntent } from './editor-cut-tool.js';
-import { copySelection, pasteClipboard, selectAllVisible } from './editor-interaction.js';
+import { copySelection, pasteClipboard, selectAllVisible, selectAllInActiveLayer } from './editor-interaction.js';
 import { applyLayerState, addLayer, brickElementNodes } from './layers.js';
 import { haptic } from '../core/haptics.js';
+import { selectAllLabelFor } from './editor-tab-selectable.js';
 import { commitEdit } from './editor-commit.js';
 
 const LATTICE_OWNED_KINDS = new Set(['rails', 'ties', 'nodes', 'contour']);
@@ -187,11 +188,19 @@ export const CONTEXT_MENU_ITEMS = [
   },
   {
     id: 'select-all',
-    label: 'Select all',
+    label: (target, editor) => selectAllLabelFor(editor), // Fred: named by the open tab (EDITOR_TAB_SELECTABLE)
     icon: '▦',
     appliesTo: (kind) => kind === 'empty',
     when: () => true,
     run(editor) { selectAllVisible(editor); },
+  },
+  {
+    id: 'select-all-layer', // Fred 2026-10-10: the current layer only (its shown, unlocked pieces the open tab owns)
+    label: 'Select all in current layer',
+    icon: '▤',
+    appliesTo: (kind) => kind === 'empty',
+    when: () => true,
+    run(editor) { selectAllInActiveLayer(editor); },
   },
   {
     id: 'fit-view',
@@ -307,7 +316,7 @@ export function openContextMenu(editor, target, clientX, clientY, suppressDismis
   if (items.length === 0) return null;
 
   const rows = items.map((item) => ({
-    label: typeof item.label === 'function' ? item.label(target) : item.label,
+    label: typeof item.label === 'function' ? item.label(target, editor) : item.label,
     icon: item.icon,
     hasSubmenu: typeof item.submenu === 'function',
     onSelect(rowEl) {

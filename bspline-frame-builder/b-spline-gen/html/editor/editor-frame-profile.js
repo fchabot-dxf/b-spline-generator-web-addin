@@ -21,6 +21,8 @@ import { handleKindVisual, handleHoverVisual, drawParamHandle, drawSegmentHighli
 import { controlledSegments } from './editor-shape-lattice-interaction.js';
 import { distToPrimitive, footOnPrimitive } from './editor-primitives.js';
 
+import { isSelectableInTab } from './editor-tab-selectable.js';
+
 export const FRAME_PROFILE_GROUP_ID = 'frame-profile';
 /** The darkened "outside the frame" (board minus the cut profile): its own group, NOT inside the frame
  *  profile group, so the focus rule's fade (setEditorFocus: the frame at INACTIVE_LAYER_OPACITY in the
@@ -69,6 +71,9 @@ export function setEditorFocus(editor, tab) {
   editor._focusTab = tab;
   editor._artworkLocked = frame;
   if (frame && typeof editor._deselect === 'function') editor._deselect();
+  // Fred 2026-10-10 (EDITOR_TAB_SELECTABLE): what the new tab can't own leaves the selection
+  const sel = editor._selectedElements || [];
+  if (sel.some((el) => !isSelectableInTab(editor, el)) && typeof editor._selectMany === 'function') editor._selectMany(sel.filter((el) => isSelectableInTab(editor, el)));
   const focus = editorFocusOf(editor);
   if (editor._sketchLayer) {
     editor._sketchLayer.attr('opacity', focus.drawing === 1 ? null : focus.drawing);

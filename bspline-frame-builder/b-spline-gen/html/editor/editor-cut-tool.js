@@ -43,6 +43,7 @@ import {
 import { isOnVisibleLayer } from './layers.js';
 import { haptic } from '../core/haptics.js';
 import { commitEdit } from './editor-commit.js';
+import { isSelectableInTab } from './editor-tab-selectable.js';
 import { HANDLE_HOVER_FILL, drawSegmentHighlight } from './editor-transform-handles.js';
 
 /** The floor for a piece with no stroke width of its own (see `minPieceLength` below): only there so a
@@ -478,7 +479,7 @@ function _lineUnder(editor, pt) {
   const endR = getDynamicTolerance(editor, 3, 'clickThresholdPx');
   let best = null, bestScore = Infinity;
   for (const el of editor._sketchLayer.children().toArray()) {
-    if (!isCuttable(el) || !isOnVisibleLayer(editor, el)) continue;
+    if (!isCuttable(el) || !isOnVisibleLayer(editor, el) || !isSelectableInTab(editor, el)) continue; // the tab's own kind only
     let a, b, q;
     if (isContourPath(el)) {
       const prim = contourPrim(el);
