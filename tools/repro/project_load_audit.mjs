@@ -13,6 +13,7 @@
 // Usage: MODE=fresh node tools/repro/project_load_audit.mjs <outDir> <project.json ...> [-- cdpPort httpPort]
 import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -82,14 +83,17 @@ async function tap(sel) {
   const c = await jsJSON(`JSON.stringify((() => { const e = document.querySelector(${JSON.stringify(sel)}); if (!e) return null; e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(); return r.width && r.height ? [r.left + r.width / 2, r.top + r.height / 2] : null; })())`);
   if (!c) return false; await touch(c[0], c[1]); return true;
 }
+// the whole machine's CPU busy % between two os.cpus() readings (other seats' load shows up here, not in the page)
+const cpuTimes = () => os.cpus().reduce((a, c) => { const t = c.times; a.busy += t.user + t.nice + t.sys + t.irq; a.all += t.user + t.nice + t.sys + t.irq + t.idle; return a; }, { busy: 0, all: 0 });
+const busyPct = (a, b) => Math.round(100 * (b.busy - a.busy) / Math.max(1, b.all - a.all));
 // one measured step: CPU throttled, then settled
 async function measure(how) {
   await send('Emulation.setCPUThrottlingRate', { rate: CPU });
-  const t0 = await js('performance.now()'); const e0 = errors.length;
+  const t0 = await js('performance.now()'); const e0 = errors.length, c0 = cpuTimes();
   const did = await how();
   const m = did === false ? { skipped: true } : await jsJSON(`window.__settle(${t0}, ${QUIET_MS})`);
   await send('Emulation.setCPUThrottlingRate', { rate: 1 });
-  return { ...m, errors: errors.slice(e0) };
+  return { ...m, cpuBusy: busyPct(c0, cpuTimes()), errors: errors.slice(e0) };
 }
 async function bootPage() {
   const added = await send('Page.addScriptToEvaluateOnNewDocument', { source: SEEDED });
@@ -165,7 +169,7 @@ try {
       const apply = await measure(() => tap('#viewMode_3d_editor')); // back to 3D: the Apply way when anything changed
       const row = { name, mode: MODE, bytes: text.length, load, check, kind, open, gen, apply };
       rows.push(row); writeFileSync(`${OUT}/${MODE}.jsonl`, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
-      const fm = (m) => (m.skipped ? 'skip' : `${m.ms}ms card ${m.cardMs ?? 'never'} blind ${m.blindMs} gap ${m.gapMs}${m.errors.length ? ` ERR ${m.errors.length}` : ''}`);
+      const fm = (m) => (m.skipped ? 'skip' : `${m.ms}ms card ${m.cardMs ?? 'never'} blind ${m.blindMs} gap ${m.gapMs} cpu ${m.cpuBusy}%${m.errors.length ? ` ERR ${m.errors.length}` : ''}`);
       const mism = [check.pKeysDiffer.length ? `P:${check.pKeysDiffer.join(',')}` : '', check.layers[0] !== check.layers[1] ? `layers ${check.layers}` : '',
         check.bricks[0] !== check.bricks[1] ? `bricks ${check.bricks}` : '', check.lattice[0] !== check.lattice[1] ? `lattice ${check.lattice}` : '', check.grid3d !== 'ok' ? `3d ${check.grid3d}` : ''].filter(Boolean).join(' ');
       console.log(`${name.padEnd(10)} LOAD ${fm(load)} | ${mism || 'restored OK'} | open ${fm(open)} | ${kind} gen ${fm(gen)} | apply ${fm(apply)}`);
