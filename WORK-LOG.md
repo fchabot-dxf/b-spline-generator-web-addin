@@ -25893,3 +25893,21 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Live (77-ph, real Chrome): pattern pick -> layer on, filter dropdown without Photo, Silk 40 % renders, 0 page errors;
   phone 390 px: only native checkboxes / slider tracks under 28 px, as in every section. Shots: shots/seatA/photo-layer/.
 - Full suite 429 files, 6210/6210. Known failures: none. The brick matrix's photo rows were NOT run here (the gate runs them).
+
+### 2026-10-10 (seat E): the inset window's surround follows the Frame by default ("Same as frame"; Fred)
+- Fred: "when I have an inset window there should be a brick frame on it too" / "should be able to choose a frame separately".
+- editor-brick-tool.js SURROUND_FOLLOW ('follow'): windowSurroundOf resolves it to the Frame's own bands (frameBandPreset;
+  none when it lays none) and corner (frameCornerOf; the surround's first corner when the Frame's is not one it lays),
+  with follows: true. The engine input stays { rect, preset, corner } (lays byte-identical for every explicit pick).
+- core/state.js: a new board's windowSurround is { preset: 'follow' }. A board saved before has no key -- a load replaces
+  brickSettings whole, so it never takes the new default -- and main/app-init.js MIGRATIONS 'window-surround-legacy-none'
+  writes it explicitly as None (it laid no surround; it lays none now).
+- The Window surround row: a "Same as frame" chip first, active while following; an explicit pick (None included) is kept;
+  a corner picked while following becomes an explicit pick (the preset it was showing + that corner).
+- Tests (tests/item9-lay-input.test.js, tests/item9-frame-crumble-surround-panel.test.js): a new board follows (preset +
+  corner, the lay input); a Frame preset change moves a following surround, not an explicit one; explicit None stays
+  None; the legacy migration writes None once and leaves a new board alone; the row's chip -- 3 fail on main. The other
+  item-9 tests read an explicit None now (their base). tests/brick-element-set.test.js: the migration's field added to
+  its all-migrations expectation. Related suites 127 files 1384/1384 (with that fix).
+- Matrix frame group rows reordered: a new board follows (Soldier + mitre) once the window is on, so the first explicit
+  pick is None, then Soldier, Butt, "Same as frame", None -- each a real change (to run on the branch).

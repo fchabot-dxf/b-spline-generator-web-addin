@@ -64,7 +64,7 @@ describe("migration 'brick-set-per-element'", () => {
   });
   it('a board already per element is left alone', () => {
     const b = migrate({ setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 }, pattern: 'stack' });
-    // (the later 'grout-per-element' migration adds its own field; this one changes nothing)
-    expect(b).toEqual({ setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 }, pattern: 'stack', groutByElement: { wall: null, frame: null, brush: null } });
+    // (the later 'grout-per-element' and 'window-surround-legacy-none' migrations add their own fields; this one changes nothing)
+    expect(b).toEqual({ setIds: { wall: 1, frame: 1, brush: 1, raisedBrush: 1 }, pattern: 'stack', groutByElement: { wall: null, frame: null, brush: null }, windowSurround: { preset: 'none' } });
   });
 });

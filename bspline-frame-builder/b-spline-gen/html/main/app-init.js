@@ -569,6 +569,14 @@ export const MIGRATIONS = [
     },
   },
   {
+    id: 'window-surround-legacy-none',
+    // Fred 2026-10-10: a new board's window surround follows the Frame (core/state.js windowSurround 'follow'). A board
+    // saved before that has no key (a load replaces brickSettings whole, so it never takes the new default) and laid no
+    // surround: it says so explicitly, None, and keeps laying exactly as before.
+    when: (p) => p.brickSettings && !p.brickSettings.windowSurround,
+    apply: (p) => { p.brickSettings.windowSurround = { preset: 'none' }; },
+  },
+  {
     id: 'brick-set-per-element',
     // F35 item 23: one board-wide `setId` -> a set per element (`setIds`). A board that was on the ROCK set
     // (White Rocks, which leaves the Set row) becomes the Fieldstone pattern on its Wall and fieldstone bands on
