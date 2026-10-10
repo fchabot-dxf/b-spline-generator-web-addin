@@ -27,8 +27,7 @@
  */
 import { P, saveLastSession } from '../core/state.js';
 import {
-  loadPhotoPatterns, settingsToPhotoEdits, settingsToTweaks, settingsToRelief, editsToSettings,
-  DEFAULT_PHOTO_RELIEF_IN, MAX_PHOTO_RELIEF_IN,
+  loadPhotoPatterns, settingsToPhotoEdits, settingsToTweaks, editsToSettings,
 } from '../core/photo/patterns.js';
 import { fileToDataUrl, downscalePhotoDataUrl } from '../core/photo/codec.js';
 import { ensurePhotoDecoded, getRawPhotoImage, isPhotoReady } from '../core/photo/state.js';
@@ -36,8 +35,6 @@ import { applyPhotoEdits } from '../core/photo/ops.js';
 import { withLoadingStage, withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { computeMirrorDimRects } from '../core/photo/mirror-dim.js';
 import { applyParam } from './param-manager.js';
-import { inEditor3dAction } from '../core/in-editor-3d.js';
-import { refreshEditorTopView } from '../core/render-topview.js';
 import { setEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
@@ -145,8 +142,8 @@ function notifyChange(opts) {
  *  The panel's own Undo button keeps working as before (and is a step too). */
 // 2026-10-10: the photo LAYER's on/off rides in the step too -- a pattern pick turns the layer on, and its Undo turns it
 // back off with the photo it took back.
-const photoUndoState = () => ({ ...photoState(), reliefIn: P.carveZ ?? null, layer: !!P.photoLayer });
-const samePhoto = (a, b) => !!a && !!b && a.url === b.url && a.patternId === b.patternId && a.reliefIn === b.reliefIn
+const photoUndoState = () => ({ ...photoState(), layer: !!P.photoLayer }); // the board Z is not the photo's (Fred, 2026-10-10)
+const samePhoto = (a, b) => !!a && !!b && a.url === b.url && a.patternId === b.patternId
   && !!a.layer === !!b.layer && JSON.stringify(a.edits) === JSON.stringify(b.edits);
 /** Seat D 2026-10-09: the step's commit (the editor's commit pipeline, ~100 ms on a phone at 4x CPU) runs behind the
  *  'backdrop' stage too -- a slider release or a rotate tap shows the pill first, then commits and repaints under it. */
@@ -164,7 +161,6 @@ function restorePhotoUndo(state) {
   if (!state || samePhoto(state, photoUndoState())) return; // an Undo of something else: the photo stays, no rebuild
   if (state.layer !== undefined && !!state.layer !== !!P.photoLayer) applyParam('photoLayer', !!state.layer, { rebuild: false });
   restorePhoto(state);
-  if (state.reliefIn != null && state.reliefIn !== P.carveZ) { setReliefHeight(state.reliefIn, { raw: true }); syncReliefHeightDisplay(); }
 }
 
 // 2026-10-10: Surface > Photo (main/photo-layer-section.js) mirrors some of this tab's image edits -- the SAME state and
@@ -435,30 +431,10 @@ function syncReliefToggle() {
   if (_syncMirrors) _syncMirrors();
 }
 
-const clampReliefIn = (v) => Math.min(MAX_PHOTO_RELIEF_IN, Math.max(0.01, v));
+// 2026-10-10 (Fred): a pattern pick no longer touches the board's Z (P.carveZ, Board > Carve Depth) -- it squashed
+// the filter under the photo (MEASURED: 1.5 -> 0.125 in, the filter's relief 0.66 -> 0.055 in). Saved boards keep their
+// stored Z; a pattern's own `relief` setting is legacy data, read by nothing now.
 
-// F34 item 3 (Fred: "height wouldn't ever be more than 1/4 for now"): the
-// Photo tab's own Max Height control, bound to the SAME real `carveZ` param
-// every other filter already uses downstream (Send/thicken/CAM) -- just
-// presented here with photo-appropriate bounds/default instead of the
-// generic Skeleton tab's 0.1-20in Carve Depth slider.
-/** `raw`: an UNDO puts the saved value back as it was (seat D 2026-10-08, undo map: P.carveZ is the board's own carve
- *  depth too -- 1.5 in on a fresh board -- and the photo clamp turned an undo of a pattern pick into 0.25). */
-function setReliefHeight(v, { raw = false, drag = false } = {}) {
-  const z = raw ? v : clampReliefIn(v);
-  // core/in-editor-3d.js 'relief': with the editor open the value lands without a rebuild, the backdrop shows it (a drag
-  // tick: not yet -- its release repaints)
-  const action = inEditor3dAction('relief', { drag });
-  if (action === 'rebuild') applyParam('carveZ', z);
-  else {
-    applyParam('carveZ', z, { rebuild: false });
-    if (action === 'backdrop') refreshEditorTopView();
-  }
-}
-
-function syncReliefHeightDisplay() {
-  setPair('photoReliefHeightSlider', 'photoReliefHeight', clampReliefIn(P.carveZ ?? DEFAULT_PHOTO_RELIEF_IN));
-}
 
 function undo() {
   const steps = P.photoEdits || [];
@@ -493,7 +469,6 @@ function syncControlsFromState() {
   setPair('photoBlurSlider', 'photoBlur', blur.radius);
   syncCropFields();
   syncReliefToggle();
-  syncReliefHeightDisplay();
   if (_syncMirrors) _syncMirrors();
 }
 
@@ -504,13 +479,12 @@ function switchOnPhotoLayer() {
   if (!P.photoLayer) applyParam('photoLayer', true, { rebuild: false });
 }
 
-function loadImage(urlOrDataUrl, edits, tweaks, reliefIn = DEFAULT_PHOTO_RELIEF_IN) {
+function loadImage(urlOrDataUrl, edits, tweaks) {
   switchOnPhotoLayer();
   P.photoImageDataUrl = urlOrDataUrl;
   P.photoEdits = edits;
   if (!P.filterTweaks) P.filterTweaks = {};
   P.filterTweaks.photo = { ...tweaks };
-  setReliefHeight(reliefIn);
   syncControlsFromState();
   syncSaveButtonState();
   // the 'photo' stage on screen first and up until the decode is done (MEASURED, a phone at CPU x4: the decode blocked
@@ -588,7 +562,7 @@ function syncSaveButtonState() {
 
 function saveSettingsToCurrentPattern() {
   if (!P.photoPatternId) return; // nothing to save into -- button is disabled in this state too
-  const settings = editsToSettings(P.photoEdits, P.filterTweaks?.photo, P.carveZ);
+  const settings = editsToSettings(P.photoEdits, P.filterTweaks?.photo); // no relief: a pick no longer sets the board Z
   _patterns = _patterns.map((p) => (p.id === P.photoPatternId ? { ...p, settings } : p));
   const text = JSON.stringify(_patterns, null, 2);
   downloadTextFile(text, 'photo-patterns.json');
@@ -634,7 +608,6 @@ function renderPatternRow(container) {
         pattern.image,
         settingsToPhotoEdits(pattern.settings),
         settingsToTweaks(pattern.settings),
-        settingsToRelief(pattern.settings),
       );
       syncSaveButtonState();
     }));
@@ -774,19 +747,6 @@ export function initPhotoPanel({ onChange }) {
   bindSlider('photoBrightnessSlider', 'photoBrightness', 'brightnessContrast', 'brightness', { brightness: 0, contrast: 0 });
   bindSlider('photoContrastSlider', 'photoContrast', 'brightnessContrast', 'contrast', { brightness: 0, contrast: 0 });
   bindSlider('photoBlurSlider', 'photoBlur', 'blur', 'radius', { radius: 0 });
-
-  const reliefSlider = document.getElementById('photoReliefHeightSlider');
-  const reliefNumber = document.getElementById('photoReliefHeight');
-  const applyRelief = (raw, opts) => {
-    const v = parseFloat(raw);
-    if (!Number.isFinite(v)) return;
-    setReliefHeight(v, opts);
-    syncReliefHeightDisplay();
-  };
-  reliefSlider?.addEventListener('input', (e) => applyRelief(e.target.value, { drag: true }));
-  reliefNumber?.addEventListener('input', (e) => applyRelief(e.target.value));
-  reliefSlider?.addEventListener('change', (e) => { applyRelief(e.target.value); photoStep(); }); // the drag's one repaint
-  reliefNumber?.addEventListener('change', photoStep);
 
   document.getElementById('photoBtnSaveToPattern')?.addEventListener('click', saveSettingsToCurrentPattern);
   syncSaveButtonState();
