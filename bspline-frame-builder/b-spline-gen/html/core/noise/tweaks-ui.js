@@ -62,6 +62,13 @@ function writeOverride(filterId, key, value) {
   if (_onChange) _onChange();
 }
 
+/** 2026-10-10 (the photo layer's own section, main/photo-layer-section.js): a control that is not a slider row (the
+ *  photo's Repeat checkbox, its -90 / +90 rotation steps) writes a tweak the same way a row does -- one undo step. */
+export function setTweak(filterId, key, value) {
+  writeOverride(filterId, key, value);
+  scheduleUndoSnapshot(`filterTweak:${filterId}:${key}`);
+}
+
 /** Drop a single key (revert to schema default). */
 export function resetOneTweak(filterId, key) {
   const bucket = P.filterTweaks && P.filterTweaks[filterId];
@@ -101,7 +108,7 @@ export function resetAllTweaks(filterId) {
  * Build a single tweak row: [label] [range slider] [number input] [↺]
  * Each control writes back to P.filterTweaks via writeOverride().
  */
-function buildRow(filterId, schema) {
+export function buildRow(filterId, schema) {
   const { key, label, default: def, min, max, step, desc } = schema;
   const cur = readOverride(filterId, key);
   const value = (typeof cur === 'number') ? cur : def;

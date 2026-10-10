@@ -226,6 +226,20 @@ export function bootBuildOwner() {
  */
 export const MIGRATIONS = [
   {
+    id: 'photo-filter-to-layer',
+    // 2026-10-10 (Fred: the photo as its own LAYER on top of the chosen filter): a save on the old Photo FILTER becomes
+    // the photo layer over a plain filter, showing through at 0 % -- the SAME heights: at 0 % the fine value is the
+    // photo's own (core/terrain.js), and 'simplex' has the photo's coarse multiplier (2.5). A save that hid the filter
+    // texture showed no photo at all (isolateSkeleton flattened it): its layer stays off. The photo's own settings
+    // (photoImageDataUrl, photoEdits, filterTweaks.photo) stay where they are.
+    when: (p) => p.noiseType === 'photo',
+    apply: (p) => {
+      p.noiseType = 'simplex';
+      p.photoLayer = !p.isolateSkeleton;
+      p.photoFilterAmount = 0;
+    },
+  },
+  {
     id: 'removed-noise-type-to-default',
     // T78 item 10 (Fred: "Remove the filter"): the Biomechanical filter was
     // removed after two rejected reworks. A save naming a filter that is no

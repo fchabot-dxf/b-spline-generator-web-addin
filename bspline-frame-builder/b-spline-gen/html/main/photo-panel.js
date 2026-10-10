@@ -4,15 +4,14 @@
  * contrast/blur/invert + undo) -- Fred: its own tab next to Filter etc.,
  * not nested inside Filter, and ALWAYS visible/clickable (unlike the old
  * Filter-nested sub-panel it replaced). Picking a built-in pattern or
- * loading your own photo here switches noiseType to 'photo' itself
- * (switchToPhotoFilter() below), the same as picking "Photo" from the
- * Filter panel's own dropdown would.
+ * loading your own photo here turns the photo LAYER on (2026-10-10, Fred: the
+ * photo is its own layer over the board's filter -- switchOnPhotoLayer()).
  *
- * The filter's own EFFECT params (depth/scale/offsetX/offsetY/rotation/
- * repeat) need NO custom UI here -- they're declared via the generic
- * `tweaks` schema (core/noise/photo.js), so the EXISTING Edit-Filter panel
- * (inside the Filter tab, shared by every filter) already renders sliders
- * for them; this tab is only the image + its own prepare/edit steps.
+ * This tab EDITS THE IMAGE; every 3D setting of the photo (its effect params
+ * depth/scale/offset/rotation/repeat, the layer on/off, "Filter shows
+ * through", Max Height) lives in Surface > Photo, declared in
+ * main/photo-layer-section.js's PHOTO_CONTROLS -- which also mirrors some of
+ * this tab's edits (photoEditApi below: the same state, the same steps).
  *
  * Edit-step bookkeeping rule (undo-able, ordered list, per the dispatch):
  * crop/rotate90/flip/invert are DISCRETE actions -- each click always
@@ -36,7 +35,6 @@ import { ensurePhotoDecoded, getRawPhotoImage, isPhotoReady } from '../core/phot
 import { applyPhotoEdits } from '../core/photo/ops.js';
 import { withLoadingStage, withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { computeMirrorDimRects } from '../core/photo/mirror-dim.js';
-import { registerTweaksTarget, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { applyParam } from './param-manager.js';
 import { inEditor3dAction } from '../core/in-editor-3d.js';
 import { refreshEditorTopView } from '../core/render-topview.js';
@@ -138,9 +136,11 @@ function notifyChange(opts) {
  *  step -- a slider on release ('change'), a button on click, a load / pattern / clear when it lands. Once the photo is in
  *  every entry, every photo change must be a step, or an Undo of something else would take the photo back with it.
  *  The panel's own Undo button keeps working as before (and is a step too). */
-const photoUndoState = () => ({ ...photoState(), reliefIn: P.carveZ ?? null });
+// 2026-10-10: the photo LAYER's on/off rides in the step too -- a pattern pick turns the layer on, and its Undo turns it
+// back off with the photo it took back.
+const photoUndoState = () => ({ ...photoState(), reliefIn: P.carveZ ?? null, layer: !!P.photoLayer });
 const samePhoto = (a, b) => !!a && !!b && a.url === b.url && a.patternId === b.patternId && a.reliefIn === b.reliefIn
-  && JSON.stringify(a.edits) === JSON.stringify(b.edits);
+  && !!a.layer === !!b.layer && JSON.stringify(a.edits) === JSON.stringify(b.edits);
 /** Seat D 2026-10-09: the step's commit (the editor's commit pipeline, ~100 ms on a phone at 4x CPU) runs behind the
  *  'backdrop' stage too -- a slider release or a rotate tap shows the pill first, then commits and repaints under it. */
 function photoStep() {
@@ -155,9 +155,28 @@ function photoStepNow() {
 }
 function restorePhotoUndo(state) {
   if (!state || samePhoto(state, photoUndoState())) return; // an Undo of something else: the photo stays, no rebuild
+  if (state.layer !== undefined && !!state.layer !== !!P.photoLayer) applyParam('photoLayer', !!state.layer, { rebuild: false });
   restorePhoto(state);
   if (state.reliefIn != null && state.reliefIn !== P.carveZ) { setReliefHeight(state.reliefIn, { raw: true }); syncReliefHeightDisplay(); }
 }
+
+// 2026-10-10: Surface > Photo (main/photo-layer-section.js) mirrors some of this tab's image edits -- the SAME state and
+// the SAME steps (one undo step per change); both views follow each other through this hook.
+let _syncMirrors = null;
+export function onPhotoControlsSynced(fn) { _syncMirrors = fn; }
+export const photoEditApi = Object.freeze({
+  flip: (axis) => appendDiscreteOp('flip', { axis }),
+  setInvert: (on) => setInvert(on),
+  isInverted: () => isInverted(),
+  opValue: (opName, key, fallback) => currentOpParams(opName, fallback)[key],
+  setOpValue: (opName, key, value, fallback, opts) => {
+    const params = currentOpParams(opName, fallback);
+    params[key] = value;
+    setAdjustableOp(opName, params, opts);
+    syncControlsFromState();
+  },
+  release: () => { notifyChange(); photoStep(); }, // a slider's release: the drag's one repaint + its one undo step
+});
 
 /** The params of the LAST step of `opName` in P.photoEdits, merged onto
  * `fallback` -- so touching one slider (e.g. levels black) doesn't clobber
@@ -178,6 +197,7 @@ function setAdjustableOp(opName, params, opts) {
     steps.push({ op: opName, params });
   }
   P.photoEdits = steps;
+  if (_syncMirrors) _syncMirrors();
   notifyChange(opts);
 }
 
@@ -368,6 +388,7 @@ function syncReliefToggle() {
   const inverted = isInverted();
   raised?.classList.toggle('active', !inverted);
   carved?.classList.toggle('active', inverted);
+  if (_syncMirrors) _syncMirrors();
 }
 
 const clampReliefIn = (v) => Math.min(MAX_PHOTO_RELIEF_IN, Math.max(0.01, v));
@@ -429,25 +450,18 @@ function syncControlsFromState() {
   syncCropFields();
   syncReliefToggle();
   syncReliefHeightDisplay();
+  if (_syncMirrors) _syncMirrors();
 }
 
-// Picking a pattern or loading your own photo IS choosing the Photo filter
-// -- the Photo tab is its own top-level tab now (not nested inside Filter),
-// so there is no other moment where the user "selects Photo" first. Mirrors
-// exactly what the Filter panel's own #noiseType <select> change already
-// does (dispatching a real 'change' event, not calling internals directly,
-// so every existing listener -- applyParam's rebuild, renderTweaksPanel,
-// this module's own) fires the normal way, once.
-function switchToPhotoFilter() {
-  const select = document.getElementById('noiseType');
-  if (select && select.value !== 'photo') {
-    select.value = 'photo';
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  }
+// Picking a pattern or loading your own photo turns the photo LAYER on (2026-10-10, Fred: the photo is its own layer over
+// the board's filter, which stays as it was -- it used to switch the filter to 'photo'). Its checkbox (Surface > Photo)
+// follows through applyParam; the rebuild comes with the photo's own change below.
+function switchOnPhotoLayer() {
+  if (!P.photoLayer) applyParam('photoLayer', true, { rebuild: false });
 }
 
 function loadImage(urlOrDataUrl, edits, tweaks, reliefIn = DEFAULT_PHOTO_RELIEF_IN) {
-  switchToPhotoFilter();
+  switchOnPhotoLayer();
   P.photoImageDataUrl = urlOrDataUrl;
   P.photoEdits = edits;
   if (!P.filterTweaks) P.filterTweaks = {};
@@ -660,15 +674,8 @@ export function initPhotoPanel({ onChange }) {
   bindCropBox(document.getElementById('photoPreviewCanvas'));
   syncPhotoToolButtons();
 
-  // F34 item 1 (Fred: "show the photo's effect params inside the Photo tab
-  // too ... reuse the same generic Edit Filter control rendering, not a
-  // copy"): a second render target for the SAME tweaks schema/state the
-  // Filter panel's own "Edit Filter" panel uses.
-  const photoTweaksBody = document.getElementById('photoTweaksBody');
-  if (photoTweaksBody) {
-    registerTweaksTarget(null, photoTweaksBody);
-    renderTweaksPanel(document.getElementById('noiseType')?.value || 'simplex');
-  }
+  // 2026-10-10: the photo's effect params (depth / scale / offset / rotation / repeat) moved to Surface > Photo
+  // (main/photo-layer-section.js, PHOTO_CONTROLS): every 3D setting there, this tab edits the image.
 
   loadPhotoPatterns().then((patterns) => {
     _patterns = patterns;
@@ -753,14 +760,10 @@ export function initPhotoPanel({ onChange }) {
   }
 }
 
-/** The Photo tab is ALWAYS visible now (its own top-level tab, not a
- * Filter-nested sub-panel that hides for other filters) -- this just
- * re-syncs the controls/preview when switching TO photo, so stale values
- * from whatever filter was active before don't linger. Called once on init
- * and on every noiseType change (main.js), same call sites core/noise/
- * tweaks-ui.js's own renderTweaksPanel uses. */
-export function syncPhotoPanel(noiseType) {
-  if (noiseType === 'photo') {
+/** The Photo tab is ALWAYS visible now (its own top-level tab) -- this re-syncs the controls/preview when the photo
+ * layer is on, so stale values don't linger. Called once on init (main.js). */
+export function syncPhotoPanel() {
+  if (P.photoLayer) {
     syncControlsFromState();
     drawPreview();
   }

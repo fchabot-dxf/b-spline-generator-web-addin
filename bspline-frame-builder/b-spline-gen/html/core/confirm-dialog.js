@@ -4,7 +4,10 @@
  * styles. `opts.okLabel` / `opts.cancelLabel` name the buttons; `opts.zIndex` lifts it above a modal (the SVG
  * editor's is 9999). Resolves true (OK) or false (Cancel, Escape, a tap outside).
  */
-export function confirmDialog(message, opts = {}) {
+import { whileAskingUser } from './loading-signal.js';
+// the loading card steps back while it is open (core/loading-signal.js whileAskingUser)
+export function confirmDialog(message, opts = {}) { return whileAskingUser(() => _confirmDialog(message, opts)); }
+function _confirmDialog(message, opts = {}) {
   const { okLabel = 'OK', cancelLabel = 'Cancel', zIndex = null } = opts;
   return new Promise((resolve) => {
     const overlay = document.createElement('div');

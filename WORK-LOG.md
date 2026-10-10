@@ -25857,3 +25857,39 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - PROOF: old and new (the old helper imported from a scratch copy), PATTERN_SWEEP_FULL: 2,736 lays, the overlap list /
   off-outline count / bare sq in / largest patch compared exactly -- 0 differ. 242 -> 170 s (the main it ran on already
   had stone-frame-speed's faster Generate). The 7 bareGround users FAST: 110/110.
+
+### 2026-10-10 (seat E): the brick matrix spawns longest-first and logs each row's time
+- PROFILED the gate's --parallel matrix (bm.matrix.log 11:16, 379 rows, 953 s; a group's start = its 10 s stagger slot,
+  its end = its report's mtime): wall 786 s (0 -> 786) is the critical path, then the sequential blind group 165 s alone;
+  layout 727 (50 -> 777); strokes 484 started LAST (180 s) and finished third. A group's time is mostly settle windows
+  (heightsSettled: 3 stable 700 ms reads, >= 6 s when the 3D does not change, up to 20 s for an expected change;
+  canvasSettled up to 10 s) -- not touched (coverage).
+- DECLARED: groups/index.mjs GROUP_MEASURED_S (that gate's per-group seconds) and SPAWN_ORDER (the parallel groups
+  longest first; an unmeasured group spawns last and still runs); run.mjs --parallel spawns in SPAWN_ORDER (ports still by
+  GROUPS index). tests/brick-matrix-spawn-order.test.js: a permutation of the parallel groups, sorted, wall first.
+- PER-ROW TIME: run.mjs's rows recorder stamps each row's elapsedMs (since the previous row; a group's first row includes
+  its boot) into the report and prints "time <s>s <row>" -- measured on the select group: 27.8 s (boot + baseline), then
+  1.0 / 0.0 / 0.7 / 0.7 s; 5/5 pass.
+- NEXT (advisor: decide with the gate's PEAK memory): splitting wall (after "Wall rotation 0 (back)": the second half starts
+  from the baseline's plain Stretcher at 0 deg) and layout (between its independent runners).
+
+### 2026-10-10 (seat A): the photo as its own LAYER over the chosen filter (Fred, priority)
+- MODEL: P.noiseType stays the board's filter; P.photoLayer + P.photoFilterAmount (%). fine = photo + (filter
+  normalised by its declared nominalRange - 0.5) x share; everything after unchanged. 0 % never samples the filter;
+  "Hide filter texture" drops the filter share. Blend picked by Fred off the render sheet (plain normalised add, no
+  smoothing machinery; he lowers fine detail by hand).
+- nominalRange on all 22 filters, MEASURED (scratch measure_ranges.mjs: default tweaks, 8 seeds x 7x9 / 9x12 / 12x9,
+  0.5 / 99.5 percentiles): spans run from mycelium 0.05..0.20 to moon -0.67..0.27, so a raw add would mean a different
+  thing per filter. Pinned both ways (within the span; fills at least half -- the second half was added when a widened
+  range survived the first test).
+- UI: Surface > Photo from PHOTO_CONTROLS (home 2d / 3d / both, Fred's picks: rotation option B, Max Height = the board's
+  Z, mirrored flip / blur / brightness / contrast / relief). The Photo tab's own widgets stay its markup; the 3D section
+  reuses its setters (photoEditApi) and both views sync through one hook. Max Height MOVED with its ids (no twin).
+- LEGACY: MIGRATIONS 'photo-filter-to-layer'; the four old photo goldens bit-identical after migration; a save with
+  "Hide filter texture" on showed no photo -> layer off (identical). Not checked against real cloud saves (none in the
+  repo's fixtures carry noiseType photo).
+- Mutations 10/10 caught on file copies (an earlier round applied them cumulatively because my restore step never wrote
+  the files back -- reversed by hand and re-run one at a time; no mutation left in the tree: the suite and diff checked).
+- Live (77-ph, real Chrome): pattern pick -> layer on, filter dropdown without Photo, Silk 40 % renders, 0 page errors;
+  phone 390 px: only native checkboxes / slider tracks under 28 px, as in every section. Shots: shots/seatA/photo-layer/.
+- Full suite 429 files, 6210/6210. Known failures: none. The brick matrix's photo rows were NOT run here (the gate runs them).
