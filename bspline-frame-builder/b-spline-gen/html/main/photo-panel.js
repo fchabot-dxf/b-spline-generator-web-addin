@@ -33,6 +33,7 @@ import {
 } from '../core/photo/patterns.js';
 import { fileToDataUrl, downscalePhotoDataUrl } from '../core/photo/codec.js';
 import { ensurePhotoDecoded, getRawPhotoImage, isPhotoReady } from '../core/photo/state.js';
+import { applyPhotoEdits } from '../core/photo/ops.js';
 import { withLoadingStage, withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { computeMirrorDimRects } from '../core/photo/mirror-dim.js';
 import { registerTweaksTarget, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
@@ -96,6 +97,9 @@ function syncPhotoToolButtons() {
     for (const id of t.blocks) { const el = document.getElementById(id); if (el) el.style.display = t === tab ? 'flex' : 'none'; }
   }
   if (_syncPhotoTabs) _syncPhotoTabs(_photoTab);
+  // the crop box comes and goes with the Crop tab: the preview redraws, and a finger drag on it is the box's, not a scroll
+  const preview = document.getElementById('photoPreviewCanvas');
+  if (preview) { preview.style.touchAction = cropBoxShown() ? 'none' : ''; drawPreview(); }
 }
 
 function selectPhotoTool(id) {
@@ -233,10 +237,106 @@ function syncCropFields() {
   const set = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = String(Math.round(v * 1000) / 10); };
   set('photoCropX', r.x); set('photoCropY', r.y); set('photoCropW', r.w); set('photoCropH', r.h);
 }
-/** The crop -> the state, previewed at once (the editor's backdrop); the gesture's end commits it (photoStep). */
+/** The crop -> the state, previewed at once (the box on the preview canvas; the editor's backdrop, except per drag tick
+ *  -- core/in-editor-3d.js inEditorDrag); the gesture's end commits it (photoStep). */
 function setCrop(rect, opts) {
   P.photoEdits = withCrop(P.photoEdits || [], rect);
+  drawPreview();
   notifyChange(opts);
+}
+
+// The CROP BOX (advisor + Fred 2026-10-10, option 2): on the Photo panel's own preview canvas, while the tab that holds
+// Crop is open, the photo is shown UNCROPPED (only straightened -- the crop's own frame) with the crop as a box over it:
+// 4 corner handles + the body to move, finger-sized on a coarse pointer. It drives the same setCrop as the fields
+// (synced both ways); a drag's ticks redraw the box only, its release is ONE step.
+export const CROP_BOX = Object.freeze({
+  handlePx: Object.freeze({ fine: 16, coarse: 28 }), // the grab target's side, CSS px (>= 28 for a finger)
+  minFrac: 0.02, // the smallest crop side, as a fraction of the photo
+  dim: 'rgba(0,0,0,0.55)', stroke: '#ffd54f',
+});
+const cropHandlePx = () => CROP_BOX.handlePx[typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine'];
+const clampTo = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+/** Pure: what a pointer at (u, v) -- fractions of the photo -- grabs on `rect`: a corner ('nw' | 'ne' | 'sw' | 'se')
+ *  within (hu, hv) of it (corners win), 'move' inside the box, null outside. */
+export function cropHit(rect, u, v, hu, hv) {
+  const x1 = rect.x + rect.w, y1 = rect.y + rect.h;
+  const near = (a, b, h) => Math.abs(a - b) <= h;
+  for (const [id, cx, cy] of [['nw', rect.x, rect.y], ['ne', x1, rect.y], ['sw', rect.x, y1], ['se', x1, y1]]) {
+    if (near(u, cx, hu) && near(v, cy, hv)) return id;
+  }
+  return u >= rect.x && u <= x1 && v >= rect.y && v <= y1 ? 'move' : null;
+}
+
+/** Pure: the rect after the grab `part` (from cropHit) of `r` moved by (du, dv) fractions -- inside the photo, each side
+ *  at least `min`; a corner moves only its own two edges, 'move' keeps the size. */
+export function cropDrag(r, part, du, dv, min = CROP_BOX.minFrac) {
+  if (part === 'move') return { x: clampTo(r.x + du, 0, 1 - r.w), y: clampTo(r.y + dv, 0, 1 - r.h), w: r.w, h: r.h };
+  let x0 = r.x, y0 = r.y, x1 = r.x + r.w, y1 = r.y + r.h;
+  if (part === 'nw' || part === 'sw') x0 = clampTo(x0 + du, 0, x1 - min); else x1 = clampTo(x1 + du, x0 + min, 1);
+  if (part === 'nw' || part === 'ne') y0 = clampTo(y0 + dv, 0, y1 - min); else y1 = clampTo(y1 + dv, y0 + min, 1);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+/** The box is shown while the Photo tab that holds Crop is open. */
+const cropBoxShown = () => (PHOTO_TABS.find((t) => t.id === _photoTab)?.tools || []).includes('crop');
+
+let _straightened = null; // { raw, degrees, img }: the preview's photo in the crop's own frame, computed once per change
+function straightenedPhoto(raw) {
+  const st = (P.photoEdits || []).filter((s) => s.op === 'straighten');
+  const degrees = st.length ? st[st.length - 1].params?.degrees || 0 : 0;
+  if (!degrees) return raw;
+  if (!_straightened || _straightened.raw !== raw || _straightened.degrees !== degrees) _straightened = { raw, degrees, img: applyPhotoEdits(raw, st) };
+  return _straightened.img;
+}
+
+/** The box over the preview: the outside dimmed, the frame, the 4 corner handles (drawn at the grab size). */
+function drawCropBox(ctx, canvas) {
+  const r = editableCrop(P.photoEdits || []);
+  const W = canvas.width, H = canvas.height;
+  const bx = r.x * W, by = r.y * H, bw = r.w * W, bh = r.h * H;
+  ctx.fillStyle = CROP_BOX.dim;
+  ctx.fillRect(0, 0, W, by); ctx.fillRect(0, by + bh, W, H - by - bh);
+  ctx.fillRect(0, by, bx, bh); ctx.fillRect(bx + bw, by, W - bx - bw, bh);
+  ctx.strokeStyle = CROP_BOX.stroke; ctx.lineWidth = 2;
+  ctx.strokeRect(bx, by, bw, bh);
+  const box = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : null;
+  const s = box && box.width ? W / box.width : 1; // canvas px per CSS px
+  const hs = cropHandlePx() * s * 0.5;
+  ctx.fillStyle = CROP_BOX.stroke;
+  for (const [cx, cy] of [[bx, by], [bx + bw, by], [bx, by + bh], [bx + bw, by + bh]]) ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+}
+
+/** The box's pointer gestures on the preview canvas: a grab (a corner or the body), drag ticks (the box and the fields
+ *  follow; the board waits), the release = one step. */
+function bindCropBox(canvas) {
+  if (!canvas || !canvas.addEventListener) return;
+  let grab = null; // { part, rect0, u0, v0, id }
+  const at = (e) => { const b = canvas.getBoundingClientRect(); return { u: (e.clientX - b.left) / b.width, v: (e.clientY - b.top) / b.height, b }; };
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!cropBoxShown() || !P.photoImageDataUrl) return;
+    const { u, v, b } = at(e);
+    const rect0 = editableCrop(P.photoEdits || []);
+    const part = cropHit(rect0, u, v, cropHandlePx() / 2 / b.width, cropHandlePx() / 2 / b.height);
+    if (!part) return;
+    grab = { part, rect0, u0: u, v0: v, id: e.pointerId };
+    canvas.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!grab || e.pointerId !== grab.id) return;
+    const { u, v } = at(e);
+    setCrop(cropDrag(grab.rect0, grab.part, u - grab.u0, v - grab.v0), { drag: true });
+    syncCropFields();
+  });
+  const release = (e) => {
+    if (!grab || e.pointerId !== grab.id) return;
+    grab = null;
+    notifyChange(); // the drag's one repaint of the board
+    photoStep(); // ONE step
+  };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
 }
 
 function appendDiscreteOp(opName, params) {
@@ -484,7 +584,27 @@ function renderPatternRow(container) {
   }
 }
 
-/** Draws the RAW (unedited) source image plus the mirror-dim overlay --
+// one native-size grey bitmap per photo image (a crop drag redraws the preview every tick)
+let _bitmap = null;
+function previewBitmap(img) {
+  if (_bitmap && _bitmap.img === img) return _bitmap.canvas;
+  if (typeof document === 'undefined') return null;
+  const off = document.createElement('canvas');
+  off.width = img.w; off.height = img.h;
+  const octx = off.getContext && off.getContext('2d');
+  if (!octx) return null;
+  const imageData = octx.createImageData(img.w, img.h);
+  for (let k = 0; k < img.w * img.h; k++) {
+    const v = Math.max(0, Math.min(255, Math.round(img.data[k] * 255)));
+    imageData.data[k * 4] = v; imageData.data[k * 4 + 1] = v; imageData.data[k * 4 + 2] = v; imageData.data[k * 4 + 3] = 255;
+  }
+  octx.putImageData(imageData, 0, 0); // putImageData can't be scaled -- native size offscreen, then blit scaled
+  _bitmap = { img, canvas: off };
+  return off;
+}
+
+/** Draws the RAW (unedited) source image plus the mirror-dim overlay -- or, while the Crop tab is open, the crop box
+ *  over the photo in the crop's own frame (CROP_BOX) --
  * this canvas's one declared job (Fred: "show which half/quadrant ... is
  * used"), not a live preview of crop/levels/etc. (the 3D terrain preview,
  * already wired via notifyChange -> onChange -> scheduleRebuild, is the
@@ -497,22 +617,13 @@ function drawPreview() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   const raw = getRawPhotoImage(P.photoImageDataUrl);
-  if (raw && raw.w && raw.h) {
-    const imageData = ctx.createImageData(raw.w, raw.h);
-    for (let k = 0; k < raw.w * raw.h; k++) {
-      const v = Math.max(0, Math.min(255, Math.round(raw.data[k] * 255)));
-      imageData.data[k * 4] = v;
-      imageData.data[k * 4 + 1] = v;
-      imageData.data[k * 4 + 2] = v;
-      imageData.data[k * 4 + 3] = 255;
-    }
-    // putImageData can't be scaled directly -- render native-size offscreen, then blit scaled.
-    const off = document.createElement('canvas');
-    off.width = raw.w;
-    off.height = raw.h;
-    off.getContext('2d').putImageData(imageData, 0, 0);
-    ctx.drawImage(off, 0, 0, raw.w, raw.h, 0, 0, canvas.width, canvas.height);
+  const cropping = cropBoxShown() && !!(raw && raw.w && raw.h);
+  const img = cropping ? straightenedPhoto(raw) : raw; // the crop box: the photo in the crop's own frame, uncropped
+  if (img && img.w && img.h) {
+    const off = previewBitmap(img);
+    if (off) ctx.drawImage(off, 0, 0, img.w, img.h, 0, 0, canvas.width, canvas.height);
   }
+  if (cropping) { drawCropBox(ctx, canvas); return; }
 
   const rects = computeMirrorDimRects(P.symmetry, P.symOffsetX, P.symOffsetY);
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -546,6 +657,7 @@ export function initPhotoPanel({ onChange }) {
   document.getElementById('editorTabPhoto')?.addEventListener('click', () => setEditorTab('photo'));
   renderPhotoToolbar(document.getElementById('editorToolbarPhoto'));
   _syncPhotoTabs = renderTabStrip(document.getElementById('photoTabStrip'), PHOTO_TABS, setPhotoTab, { idPrefix: 'photoTab_' });
+  bindCropBox(document.getElementById('photoPreviewCanvas'));
   syncPhotoToolButtons();
 
   // F34 item 1 (Fred: "show the photo's effect params inside the Photo tab

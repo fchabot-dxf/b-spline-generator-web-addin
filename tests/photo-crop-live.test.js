@@ -18,7 +18,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/photo/state.js', async 
 });
 
 import { P, DEFAULT, persistableP } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { initPhotoPanel, editableCrop, withCrop, CROP_FULL } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
+import { initPhotoPanel, editableCrop, withCrop, CROP_FULL, CROP_BOX, cropHit, cropDrag } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
 import { takeUndoParts, restoreUndoParts } from '../bspline-frame-builder/b-spline-gen/html/editor/undo-parts.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
@@ -114,5 +114,67 @@ describe('non-destructive: the original photo is kept; a save / reload can uncro
     expect(Number(field('photoCropX').value)).toBe(75); // shown as the one composed crop
     type('photoCropW', 20); commit('photoCropW');
     expect(crops()).toHaveLength(1);
+  });
+});
+
+describe('the crop BOX on the preview canvas (advisor + Fred, option 2): exact in photo fractions', () => {
+  it('declared: finger-sized grabs on a coarse pointer (>= 28 px), a minimum crop side', () => {
+    expect(CROP_BOX.handlePx).toEqual({ fine: 16, coarse: 28 });
+    expect(CROP_BOX.minFrac).toBe(0.02);
+  });
+  it('cropHit: corners win within the grab size, the body moves, outside is nothing', () => {
+    const r = { x: 0.2, y: 0.2, w: 0.5, h: 0.5 };
+    expect(cropHit(r, 0.21, 0.19, 0.05, 0.05)).toBe('nw');
+    expect(cropHit(r, 0.7, 0.7, 0.05, 0.05)).toBe('se');
+    expect(cropHit(r, 0.45, 0.45, 0.05, 0.05)).toBe('move');
+    expect(cropHit(r, 0.05, 0.9, 0.05, 0.05)).toBe(null);
+  });
+  it('cropDrag: a corner moves only its two edges; move keeps the size; all inside the photo, never under the minimum', () => {
+    const r = { x: 0.2, y: 0.2, w: 0.5, h: 0.5 };
+    const se = cropDrag(r, 'se', 0.1, -0.1);
+    expect(se.x).toBe(0.2); expect(se.y).toBe(0.2); expect(se.w).toBeCloseTo(0.6, 9); expect(se.h).toBeCloseTo(0.4, 9);
+    expect(cropDrag(r, 'move', 0.5, -0.5)).toEqual({ x: 0.5, y: 0, w: 0.5, h: 0.5 }); // clamped inside
+    const nw = cropDrag(r, 'nw', 0.9, 0.9); // past the opposite corner
+    expect(nw.w).toBeCloseTo(0.02, 9); expect(nw.h).toBeCloseTo(0.02, 9);
+  });
+
+  const canvasAt = () => {
+    const c = field('photoPreviewCanvas');
+    c.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100 });
+    return c;
+  };
+  const pointer = (c, type, x, y) => c.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+
+  it('a corner drag: the box and the fields follow each tick (no step); the release is ONE step', () => {
+    const c = canvasAt();
+    pointer(c, 'pointerdown', 199, 99); // the bottom-right corner of the full photo
+    pointer(c, 'pointermove', 150, 80);
+    pointer(c, 'pointermove', 100, 50);
+    expect(ed._undoStack.length).toBe(1); // ticks: no step
+    expect(Number(field('photoCropW').value)).toBeCloseTo(50.5, 0);
+    expect(Number(field('photoCropH').value)).toBeCloseTo(51, 0);
+    pointer(c, 'pointerup', 100, 50);
+    expect(ed._undoStack.length).toBe(2);
+    expect(crops()).toHaveLength(1);
+    undo();
+    expect(crops()).toHaveLength(0);
+  });
+  it('fields -> box: a typed crop is where the box starts; moving the body keeps that size', () => {
+    type('photoCropW', 50); type('photoCropH', 50); commit('photoCropH');
+    const c = canvasAt();
+    pointer(c, 'pointerdown', 50, 25); // inside the 0..100 x 0..50 px box
+    pointer(c, 'pointermove', 100, 50);
+    pointer(c, 'pointerup', 100, 50);
+    expect(crops()[0].params).toEqual({ x: 0.25, y: 0.25, w: 0.5, h: 0.5 });
+    expect(Number(field('photoCropX').value)).toBe(25);
+  });
+  it('outside the Crop tab the canvas is no box: a drag on it does nothing', async () => {
+    const { setPhotoTab } = await import('../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js');
+    setPhotoTab('adjust');
+    const c = canvasAt();
+    pointer(c, 'pointerdown', 199, 99); pointer(c, 'pointermove', 100, 50); pointer(c, 'pointerup', 100, 50);
+    expect(crops()).toHaveLength(0);
+    expect(ed._undoStack.length).toBe(1);
+    setPhotoTab('source');
   });
 });
