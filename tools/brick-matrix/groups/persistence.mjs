@@ -67,11 +67,10 @@ export const WINDOWED_LOAD = {
 // scheduler.js, main/app-init.js STOCK_CHANGE_STAGES / STOCK_CHANGE_DEFERS). MEASURED on the way: a deferral that left
 // the drape behind changed only the frame walls' vertex colours (they sample the drape; the drape renders the editor's
 // SVG, whose brick greys the masks paint) -- invisible to the heights hash. So the whole scene is hashed (every mesh's
-// geometry attributes + world matrix + visibility, in scene order) after a width nudge on a laid board, and again after
-// the app recomputes that final board itself: the masks, then the drape, then the frame (the walls re-sample it).
-// NOT a reload (MEASURED: a reload's walls lag the masks by a pass -- the session's SVG is serialized before the remask
-// step and the boot draws the drape before its own mask pass -- so a STALE live drape matched it and the correct one did
-// not); the reload's hash is logged in the detail only.
+// geometry attributes + world matrix + visibility) after a width nudge on a laid board, and again after a reload, which
+// builds the same saved board from scratch. ORDER-FREE (MEASURED: a frame re-apply or a drape refresh re-adds its meshes
+// at the end of the scene, the same content in another order -- an order-sensitive hash read that as a change). The
+// app's own in-page recompute (masks, drape, frame) is logged in the detail too.
 export const SIZE_NUDGE_SCENE = {
   name: 'A board width nudge on a laid board gives the same 3D scene as a reload of that board',
   field: 'widthIn', stepIn: 0.25, wallTool: 'brickTool_wall', frameTool: 'brickTool_frame', generate: 'brickGenerate',
