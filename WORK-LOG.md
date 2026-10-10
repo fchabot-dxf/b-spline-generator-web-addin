@@ -25662,3 +25662,15 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   P.widthIn, P.heightIn)); a global undo's frame restore schedules its brick re-lay, which runs after the restore has
   reopened the editor (not measured). No second instance found.
 - Affected suites 27 files 935/935.
+### 2026-10-09 (seat A): the frame logger syncs to disk once per Send, not per line (advisor decision (4))
+- MEASURED (profiled replays of claude_1 / 7 / 10 in Fusion): fb_utils/fb_logger.DebugLogger.log opened, wrote, flushed
+  AND fsync'd every line on every log path (deployed folder + workspace) -- 563-901 lines -> 1,126-1,802 fsyncs,
+  1.2-1.9 s per Send (2.4-2.7 s with the per-line opens).
+- CHANGE: log() appends + flushes per line (a Python crash still loses nothing; the advisor kept that); the disk sync is
+  DebugLogger.sync(), once per path, called from send_frame's new finally (success, refusal, or a crashing build).
+  A logger without sync() (test fakes) still works (getattr guard). Only an OS crash / power loss can now lose the
+  current Send's unsynced lines.
+- TESTS fb_engine/test_logger_sync.py (4): a line is readable at once with zero fsyncs (50 lines, 2 paths); sync() =
+  one fsync per path; send_frame syncs exactly once on success / refusal / a crashing solid build; a sync-less logger
+  works. Against main's code 3/4 fail (the 4th is a regression guard). frame-builder pytest 1055 passed / 24 skipped,
+  b-spline-gen 183 passed. JS untouched (no vitest reads these files).
