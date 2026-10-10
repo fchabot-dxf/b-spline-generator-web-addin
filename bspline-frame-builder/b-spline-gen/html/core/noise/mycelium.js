@@ -15,6 +15,9 @@
 export const id = 'mycelium';
 export const label = 'Mycelial Web';
 export const cMultiplier = 2.4;
+// the photo layer's "Filter shows through" normalises this filter's output by its declared span (core/terrain.js):
+// MEASURED 2026-10-10 (seat A), default tweaks, 8 seeds x 7x9 / 9x12 / 12x9 boards, the 0.5 / 99.5 percentiles.
+export const nominalRange = [0.05, 0.2];
 
 export const tweaks = [
   { key: 'tendrilStrength', label: 'Tendril Strength', default: 0.45, min: 0.00, max: 1.00, step: 0.05, desc: 'Main branch raised height' },

@@ -15,6 +15,9 @@
 export const id = 'glacier';
 export const label = 'Glacier Ice';
 export const cMultiplier = 2.4;
+// the photo layer's "Filter shows through" normalises this filter's output by its declared span (core/terrain.js):
+// MEASURED 2026-10-10 (seat A), default tweaks, 8 seeds x 7x9 / 9x12 / 12x9 boards, the 0.5 / 99.5 percentiles.
+export const nominalRange = [-0.21, 0.11];
 
 export const tweaks = [
   { key: 'crackDepth',  label: 'Crack Depth',     default: 0.30, min: 0.05, max: 0.80, step: 0.01, desc: 'Subtractive fracture depth' },

@@ -4,7 +4,8 @@ import { renderLayersPanel } from '../editor/layers.js';
 import { syncUItoParam } from '../core/ui-utils.js';
 import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring } from '../core/history.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
-import { updateStampMasks } from './stamp-mask-manager.js';
+import { updateStampMasks, refreshAllStampMasks } from './stamp-mask-manager.js';
+import { deferToHold } from '../core/engine/scheduler.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
 import { resolveGrid } from '../core/terrain.js';
 import { AppState } from './app-state.js';
@@ -161,7 +162,9 @@ async function _applySnapshot(snap, preview, { source, restore } = {}) {
   // rasterize time, so the mask still needs a refresh regardless.
   const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
   try {
-    await updateStampMasks(nx, nz);
+    // 2026-10-10: an undo of the board SIZE holds the 3D (main/app-init.js STOCK_CHANGE_DEFERS) -- its masks wait for the
+    // hold's one pass on the final editor, like every other mask pass in it; otherwise they run now, as before
+    if (!deferToHold('stamp-masks', () => refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode))) await updateStampMasks(nx, nz);
   } catch (e) {
     console.warn('[applySnapshot] stamp mask regen failed:', e);
   }

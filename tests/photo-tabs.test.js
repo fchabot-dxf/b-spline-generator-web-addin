@@ -32,10 +32,13 @@ describe('Photo tabs: the declaration against the real markup', () => {
     expect(panel.firstElementChild.firstElementChild.id).toBe('photoTabStrip');
     expect(doc.querySelector('aside.editor-sidebar #editorToolbarPhoto')).not.toBeNull();
   });
-  it('the blocks: Patterns + Load in Source, Relief / Max Height / Effect params in Relief; preview + Save in none', () => {
+  // 2026-10-10 (Fred: this tab edits the image): Max Height and the effect params moved to Surface > Photo
+  // (main/photo-layer-section.js PHOTO_CONTROLS, rendered there); the Relief tab keeps Raised / Carved
+  it('the blocks: Patterns + Load in Source, Raised / Carved in Relief (Max Height + effect params: Surface > Photo); preview + Save in none', () => {
     expect(doc.getElementById('photoSourceBlock').querySelector('#photoPatternRow')).not.toBeNull();
     expect(doc.getElementById('photoSourceBlock').querySelector('#photoFileInput')).not.toBeNull();
-    for (const id of ['photoReliefToggle', 'photoReliefHeight', 'photoTweaksBody']) expect(doc.getElementById('photoReliefBlock').querySelector(`#${id}`), id).not.toBeNull();
+    expect(doc.getElementById('photoReliefBlock').querySelector('#photoReliefToggle')).not.toBeNull();
+    for (const id of ['photoReliefHeight', 'photoTweaksBody']) expect(doc.getElementById('editorPhotoPanel').querySelector(`#${id}`), id).toBeNull();
     for (const id of ['photoPreviewCanvas', 'photoBtnSaveToPattern']) expect(doc.getElementById(id).closest('#photoSourceBlock, #photoReliefBlock'), id).toBeNull();
   });
 });

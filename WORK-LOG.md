@@ -25694,3 +25694,202 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   frame-builder 1051 passed / 24 skipped.
 - LIVE re-check after it lands (advisor): claude_7 L3 identity + time; measure the frame's dimension_step (and apply
   the same order there only with a gain and identity).
+### 2026-10-10 (seat A): Fred's "edge not good" -- the frame's trim + window cut now cut BOTH sides of the sketch plane
+- CAUSE (measured in Fusion, claude_1 + claude_10): t*_TRIM_CUT (and t*_WINDOW_CUT) cut the right region (the frame
+  enclosure minus the frame outline, notches included) but THROUGH ALL ON ONE SIDE (+Z) of their sketch plane at z 0.
+  The thickened panel's underside dips below z 0 (claude_1 -0.22, claude_10 -0.121), so every bit of panel under the
+  plane outside the outline survived: the deck spanning claude_1's left waist notch, the lip over the frame, claude_10's
+  sawtooth (remnants under the low grout between rim stones), and claude_5's window bars with no hole (main's one-sided
+  window cut cannot even rebuild there: EXTRUDE_ZERO_DISTANCE_ERROR). extrusion_engine's own comment claimed the trim
+  "trims the full height" -- false whenever the underside is under the plane; corrected.
+- FIX (declared): frame_definition's trim + window_cut extent "throughAllBothSides"; declared_profiles maps it;
+  extrusion_engine builds it with setTwoSidesExtent(ThroughAll, ThroughAll, taper, taper); the bounding-box path's
+  SURROUND uses it too. frame-defs.json/.js regenerated (tools/gen_frame_defs.py).
+- TESTS: fb_engine/test_cut_both_sides.py (5: the declarations, the trim + window cut built two-sided, the bars still
+  one-sided to the underside, the bounding-box path) + the two existing extent pins updated; 6 red on main (the bars pin
+  passes on both, a guard). frame-builder 1060 passed / 24 skipped, b-spline-gen 185, full suite 420 / 6143.
+- LIVE (branch deploy 2026.10.09-6; per board: Send, measure every body / sketch / timeline, flip the trim to main's
+  one-sided, measure, flip back): claude_1 T1 7x9, claude_5 T6 9x12 + window, claude_12 T4 8x10 brick (CONTROL: panel
+  above z 0, one == two, no body differs), claude_9 T14 5x7, claude_19 T13 10x14 + window (Clean-only), claude_10 T16
+  12x16 mars (vs main's run: 9 of 10 bodies identical). Every time: the Stamped (or Clean-only) panel == the frame's xy
+  extent exactly, ONLY that panel changes, frame bars / window bars / Clean / surfaces / sketches identical, timeline
+  healthy; both windows are through-holes. Shots: ~/.bspline-status/shots/seatA/edge/ (claude_1 top before / after,
+  claude_10 close edge after: flush with the frame, the scalloped top = the rim stones, as in the app).
+- NOT changed: "stone bands barely visible" -- they ARE in the STEP (Stamped - Clean -0.22..+0.26 in over 31% of the
+  grid); likely the flat green Fusion shading; a close top shot after the fix is still to take (memory stop hit).
+### 2026-10-09 (seat A): the Fusion memory line says why to restart (advisor decision (a))
+- MEASURED (two arms, tracemalloc + gc + in-process private bytes, fresh Fusions): the add-in's Python retains nothing
+  (heap < 0.6 MB, gc / adsk counts flat); Fusion itself grows ~0.55 GB per Send in one doc, and a document CLOSE adds
+  ~0.6 GB at once, ~0.4-0.5 GB still held 60 s later (+1.4 GB for a doc that took 3 Sends). Closing never frees.
+- CHANGE (wording of the existing warning, no new guard): fb_shared/fusion_memory.memory_signal's text and the palette's
+  fallback copy (fusion-memory-line.js) now read "... save and restart Fusion soon (closing documents does not free
+  memory)". Pinned: test_fusion_memory.py (the add-in's text), tests/fusion-memory-line.test.js (the add-in's words
+  shown as sent + a new pin on the fallback). Against main's text: 1 Python + 1 JS test fail.
+- Full suite 420 files, 6144/6144. Known failures: none.
+### 2026-10-09 (seat A): the Fusion memory line turns amber at 10 GB (was 12) -- advisor decision, detection only
+- fb_shared/fusion_memory.FUSION_RESTART_SOFT_GB 12 -> 10 (red stays 24). Why: seats already stop at 10 for probes;
+  Fusion hung at 18.6 GB with gate Chromes on the PC; it keeps ~0.55 GB per Send + ~0.5 GB per closed document
+  (measured today), so amber at 10 leaves room to save + restart. Wording only -- nothing is blocked.
+- Pinned in test_fusion_memory.py: (10, 24), 9.9 ok, 10.0 / 11.9 soft (11.9 was ok under 12). Fails at 12.
+  The palette's line has no threshold of its own (it paints the add-in's level): fusion-memory-line.test.js unchanged.
+- Stacked on memory-warning-why (same two files). Python fb_shared + b-spline-gen green; full suite 420 / 6144.
+
+### 2026-10-10 (seat E): STEP_CORNER_VARIETY -- each course corner splits or wraps, drawn from the seed (Fred: "Both are good, ideally a variation")
+- RULE (layouts/fieldstone.js): at each corner of a thin ring's course (outer fence turning > 30 deg) the lay draws, from its
+  own stream ('fieldstone-corners'), SPLIT (a joint on the bisector) or WRAP (one corner stone: an L at a concave step, a
+  corner stone on a convex corner), splitShare 0.5. Every run is spaced as if both corners split; a wrap swaps only the
+  two seeds flanking its corner for one on it -- nothing else moves. A board rebuilds identically; another seed varies it.
+- HOW IT GOT THERE (each version measured on the 1,520-lay stone-frame sweep):
+  1. wraps re-spacing their whole runs: 25 mixed-band lays under 40 deg (T15 9x12 a 14 deg tail where a band narrows -- a
+     course stone far along a wrapped run, not the corner's own; T7 the frame's own sharp tip 32 deg); at seed 2 T19 7x9 a
+     3.18-joint pocket on the wall's arc (seeds 2 / 4 of 1 - 5; no corner there -- a joint landing where a run moved it).
+  2. LOCALIZED wraps (advisor yes): every needle / pocket above gone, guards fired 0 times at seeds 1 - 3 -- except T14
+     7x9 seed 1: a SPLIT at its sharp concave waist makes both flanking stones 39 / 41 deg (wrapped, its corner stone 89).
+  3. the needle guard both ways: a stone under the floor in a run ending at a wrap splits it; otherwise the nearer end
+     corner of its run wraps. A split whose corner pocket (2 x the largest empty circle within 3 joints of its inner-fence
+     point, over the joint) is over 3 joints wraps. The needle floor wins; corners only move toward a forced state, so it
+     ends. (A "one-seed run" theory for T14 was tried and disproved by the data -- dropped.)
+- RESULT (seeds 1 / 2 / 3, 1,520 lays each): gap median 1.99, worst 2.48 / 2.41 / 2.41 (base 2.77), none over 3; sharpest
+  stone corner 42 / 46 / 46 deg (base 41); overlaps 0, off-outline 0; concave Ls 352 / 640 / 640 (base 320, always the same
+  places). Guards fired: a forced wrap on T14 7x9 at seed 1 only (64); needle-splits 0; both-fail 0.
+- PINNED (tests/bricks-thin-stone-rings.test.js): a seed column; FULL runs every lay at FULL_SEEDS (default 1,2,3) --
+  4,570/4,570; FAST + T15 9x12 mixed, T7 7x9 mixed, T19 7x9 0.75 single at seed 2, T14 7x9 single at seed 1 (each fails on
+  the version before its fix: 13.8 / 31.5 deg, 3.19 joints, 39.2 deg); a board rebuilds identically; seeds 1 - 4 differ
+  (fails on the base: every seed the same). geometry.js sharpestCornerDeg (the floor's measure, arms along the outline).
+- Every FULL sweep: thin rings 4,570 (3 seeds), gap 760, overlap 19, pattern gaps 2,736, seam 19, stone life 114, tip fans
+  608, rubble edges 304 -- all pass. Affected suites 12 files 95/95, icons unchanged.
+- SHOTS: shots/seatE/stones/corner_variety_before_after.png (T9 / T6 7x9 1 in single, seeds 1 + 2, before / after;
+  T9: seed 1 wraps 1 step, seed 2 wraps 3); lwrap_variety_seed{1,2,3}_* (an earlier version), needle2_* (the found cases).
+### 2026-10-10 (seat A): brick heights + UVs -- per-brick constants computed once; shader checks dev-only
+- MAP (fresh phone map of main dfca7a2, loaded board, 4x): 43 of 145 sidebar actions with a task > 500 ms, led by the
+  brick pattern taps (774-914 ms, ~5 s busy). Self time over the slow actions: distanceToNearestEdge 12.3 s,
+  brickLocalUV 6.3 s, getProgramInfoLog + getShaderInfoLog ~4.7 s.
+- brickTopHeight (core/bricks/height-profile.js) runs per SAMPLE POINT but recomputed two per-BRICK constants at every
+  point: maxInteriorDistance (2 reduce passes + an extra distanceToNearestEdge) and the chip draw (hashId + 2 seeded
+  rngs). Now a WeakMap per polygon / per brick (+ seed, chipRate, polygon, id checked). Polygons are never edited in
+  place (fan-centre replaces .polygon with a new array; no in-place point writes in core/bricks). brickLocalUV
+  (editor/editor-brick-surface.js): its centroid / longest-edge axis / half-extents likewise once per polygon.
+- TESTS: tests/brick-height-cache-identical.test.js (sampleHeight over a 0.05 in lattice, every set x 2 seeds x a
+  weathered variant x a detail callback, 24 digests) and tests/brick-local-uv-cache-identical.test.js (every brick on a
+  0.03 in lattice, flipped and not), both pinned on main's code, re-verified on main 95a9181 with main's old files swapped
+  in; mutations (one cached value for every polygon; chip always corner 0; one UV frame for every polygon) each FAIL.
+- render-debug.js: three.js's per-compile shader check (renderer.debug.checkShaderErrors) on for localhost /
+  127.0.0.1 / ?debug, off on the live site and in the Fusion palette (advisor); both renderers read it; pinned.
+- RESULT: brickTopHeight 0.54-0.64x in-process. Phone (loaded board, main 95a9181 vs the branch, A/B/B/A, 33 min):
+  total busy 220 -> 178 s (0.81); brick pattern taps 0.55-0.68x busy, longest 774-914 -> 389-467 ms (under 500);
+  surface style 'clean' 4.7 -> 0.9 s (longest 1970 -> 219 ms); stamp sliders 0.35-0.61x; terrain drags unchanged.
+- Full suite 423 files, 6157/6157. Known failures: none.
+
+### 2026-10-10 (seat E): stone-frame Generate 3 - 14x faster on the phone rig, byte-identical
+- PROFILED (node --cpu-prof, T1 9x12 0.75 in White rocks soldier_stretcher, 202 ms / lay on desktop): the suspect, fieldstone
+  buildCells' all-pairs power cells, was only 6.7%. The time was (1) contour-bands clipPiecesToBoard 52%: a full
+  polygonIntersection per frame piece, almost all of them wholly inside the board and then kept exactly as built; (2)
+  fieldstone poissonDiscSample 28.5%: a thin ring ran the area tiers' Poisson pass and threw the seeds away for its course.
+- FIX: (1) a piece clear of the outline (no edge of it meets an outline edge -- the board's edges bucketed on a 0.25 in grid
+  -- within 1e-6 in) with a vertex inside is kept without the clip; anything nearer takes the full clip as before. (2) a thin
+  ring skips the Poisson pass (each tier draws from its own seeded stream: skipping changes nothing else).
+- RESULT: desktop 202 -> 75 ms (T1), 132 -> 38 (T6 9x12 1.5 mixed), 66 -> 10 (T9 7x9 1 single), 81 -> 27 (T14 three_band).
+  Phone rig (the app page, headless Chrome at 4x CPU, median of 5): T1 3233 -> 997 ms, T6 2665 -> 695, T9 1457 -> 101.
+- BYTE-IDENTICAL: 10,944 lays (all 5 sets x 8 presets x 19 templates x 7x9 / 9x12 x 0.75 - 1.5 in at seed 1, the stone sets
+  at seeds 2 and 3 too; wall + frame hashed) -- 0 differ (the sweep itself 1,498 -> 555 s).
+- PINNED: tests/bricks-board-clip.test.js (an L board: inside kept as the same object, crossing cut, a piece in the notch
+  dropped, one along the outline kept whole). Mutations: dropping the shortcut's inside check fails the notch case; a
+  shortcut taken for every piece fails the crossing + notch cases. Affected suites 38 files 526/526.
+
+### 2026-10-10 (seat A): a board size change is ONE 3D build -- the rebuild hold
+- PROFILED (phone rig, loaded board, one heightIn nudge, stacks of every preview.update / scheduleRebuild / editor
+  onChange): 3-4 full builds per nudge -- applyParam's own (new size, OLD masks), the editor resync's commit remask
+  (stockSizeChanged -> 350 ms debounce -> _resyncEditorToStock), the brick re-lay's commit (editorBoardResized ->
+  _scheduleFrameRelay -> generateBricks) and its remask. Only the last was the board asked for; the input digest could
+  not skip the others (their masks really differ).
+- FIX (declared): STOCK_CHANGE_STAGES next to CHANGE_PIPELINE ('editor-resync', 'brick-relay', 'change-pipeline'). The
+  stockSizeChanged listener opens a hold (core/engine/scheduler.js openRebuildHold) and puts the 'rebuild' card up for
+  it; each stage joins (joinRebuildHold) and closes on every exit (resync early returns, no-lay relay, pipeline finally);
+  scheduleRebuild only records the latest fn meanwhile and it runs once at the release; a 3 s backstop releases a stage
+  that never closes. isRebuildScheduled counts a held build, so whenRebuildIdle (Send / export) still waits for it.
+  Undo / redo of a size dispatches the same event -> same hold. The 350 ms debounce is unchanged (advisor).
+- RESULT, CPU 1 digest A/B/B/A by file copies (final preview.update inputs FNV-hashed in-page): loaded board 3-4 builds
+  -> 1 (final 25759ea6 both), photo board 2 -> 1 (91b0d33d both), Undo of the nudge 3 -> 1 (aaf990df both); the nudge
+  is still ONE global undo step. CPU 4 busy A/B/B/A: main 5157 / 5124 ms, branch 3201 / 3719 (0.68x); response 5.8 ->
+  3.8-4.4 s; card at 9-18 ms, blind 0. Matrix blind group 23/23 (Board width change, bricks laid: card at 17 ms, 0 blind).
+- What is left of the floor (branch, 4x): the frame panel's own refreshFrame on syncFramePanel (~0.6 s, frame-panel.js
+  915) + the one build (~0.9 s) + the resync (~0.6 s). Not touched.
+- TESTS: tests/rebuild-hold.test.js (scheduler hold, backstop, a timer already pending, the app-init stages, every joined
+  stage declared and every declared stage joined); brick-element-laid-key-panel.test.js (the relay stage closes after a
+  lay and with no lay). Fail on the pre-change tree; mutations caught 6/6 (no hold in scheduleRebuild; resync never
+  closes; no-lay never closes; lay never closes; pipeline never joins; isRebuildScheduled ignores the hold).
+- Full suite 425 files, 6170/6170. Known failures: none.
+
+### 2026-10-10 (seat E): the gate's thin-ring FULL 33 -> 8 min, every lay's verdict identical
+- MEASURED (243 FULL lays, stage timers): the test's own widest-gap scan 80% (223 ms / lay), Generate 18% (51 ms / lay after
+  stone-frame-speed), overlaps + off-outline + corners ~2%.
+- EXACT shortcuts in tests/bricks-thin-stone-rings.test.js's scan: the outline test is geometry.js polygonPointTester
+  (pointInPolygon's own answer for many points); a point stops as soon as its distance is no more than the widest so far
+  (a distance only shrinks, so it can't raise the max); the piece nearest the previous point is tried first.
+- PROOF: old and new scans, FULL at seeds 1,2,3: 4,560 lays, gapJ / overlaps / off-outline / sharpest corner compared with
+  Object.is -- 0 differ. Time 2,008 s -> 472 s. FAST 10/10.
+### 2026-10-10 (seat A): the hold's backstop counts from progress; masks, drape and frame deferred into it
+- BACKSTOP (branch hold-backstop-progress 1419082): at CPU 4 the size chain runs ~3.2 s (resync +1.7, re-lay +2.8, its
+  remask +3.2), so a 3 s backstop counted from the OPEN released before the last stage and the nudge built twice (main
+  4624cf0 is never worse than before -- the final 3D is right, 2 builds vs 3-4). Now it restarts on every join / close.
+  Test: a >3 s chain that keeps progressing builds once -- fails on 4624cf0's timer.
+- DEFERRED WORK (hold-defer-masks 469350a): STOCK_CHANGE_DEFERS = ['stamp-masks', 'frame-3d']; deferToHold keeps the
+  latest fn per key and runs it once at the release, before the build. 'frame-3d' (the Frame panel sync's refreshFrame
+  on the OLD terrain, ~0.6 s at 4x) is supersededByBuild: dropped when a build follows (update() applies the frame).
+- CAUGHT ON THE WAY: deferring only the masks left the frame WALL colours different (only those two meshes' vertex
+  colours): the walls sample the drape, the drape renders the editor SVG, and the SVG's brick greys are painted by the
+  masks pass -- a drape drawn mid-hold used the old greys. The pipeline's remask step now defers masks + drape as one.
+  The build-input digest could not see it (the drape is not a build input); a whole-SCENE digest (every mesh's attributes
+  + world matrix) did. That scene digest also re-proves the merged hold: pre-hold main 63c7e02, hold, and deferral give
+  the same scene -- loaded 1f885c21, photo e4943612, undo of the nudge 27916cd5.
+- CPU 4 (loaded board, interleaved x4, the gate was running -- relative only): busy pre 2.6-4.0 s (2-3 builds), hold
+  2.3-2.7 s (1), deferral 1.5-1.7 s (1 build, 1 mask pass, 1 frame pass); response 3.2-4.7 / 2.7-3.2 / 2.5-2.6 s; card
+  7-17 ms, blind 0 throughout.
+- TESTS: rebuild-hold.test.js +7 (deferral latest-wins + waits for async work, supersededByBuild dropped / run, deferred
+  work counts as scheduled, the stamp-masks refresh defers, every deferToHold key declared). Mutations 8/8 caught (the
+  masks-not-deferred and isRebuildScheduled ones only after adding behavioural tests -- the declaration test alone missed
+  them). NOT unit-tested: the remask step deferring the drape with the masks -- the in-page scene digest is its proof.
+
+### 2026-10-10 (seat E): pattern-gaps FULL 242 -> 170 s (and every bareGround sweep), every lay identical
+- MEASURED (432 FULL lays, stage timers): bareGround 58%, Generate 23%, the overlap pairs 18%, off-outline < 1%.
+- EXACT: tests/bare-ground.js bareGround's contour test is polygonPointTester (pointInPolygon's own answer for many points;
+  shared by 7 sweep tests); pattern-gaps' overlap loop skips pairs whose boxes are apart (an empty intersection either way).
+- PROOF: old and new (the old helper imported from a scratch copy), PATTERN_SWEEP_FULL: 2,736 lays, the overlap list /
+  off-outline count / bare sq in / largest patch compared exactly -- 0 differ. 242 -> 170 s (the main it ran on already
+  had stone-frame-speed's faster Generate). The 7 bareGround users FAST: 110/110.
+
+### 2026-10-10 (seat E): the brick matrix spawns longest-first and logs each row's time
+- PROFILED the gate's --parallel matrix (bm.matrix.log 11:16, 379 rows, 953 s; a group's start = its 10 s stagger slot,
+  its end = its report's mtime): wall 786 s (0 -> 786) is the critical path, then the sequential blind group 165 s alone;
+  layout 727 (50 -> 777); strokes 484 started LAST (180 s) and finished third. A group's time is mostly settle windows
+  (heightsSettled: 3 stable 700 ms reads, >= 6 s when the 3D does not change, up to 20 s for an expected change;
+  canvasSettled up to 10 s) -- not touched (coverage).
+- DECLARED: groups/index.mjs GROUP_MEASURED_S (that gate's per-group seconds) and SPAWN_ORDER (the parallel groups
+  longest first; an unmeasured group spawns last and still runs); run.mjs --parallel spawns in SPAWN_ORDER (ports still by
+  GROUPS index). tests/brick-matrix-spawn-order.test.js: a permutation of the parallel groups, sorted, wall first.
+- PER-ROW TIME: run.mjs's rows recorder stamps each row's elapsedMs (since the previous row; a group's first row includes
+  its boot) into the report and prints "time <s>s <row>" -- measured on the select group: 27.8 s (boot + baseline), then
+  1.0 / 0.0 / 0.7 / 0.7 s; 5/5 pass.
+- NEXT (advisor: decide with the gate's PEAK memory): splitting wall (after "Wall rotation 0 (back)": the second half starts
+  from the baseline's plain Stretcher at 0 deg) and layout (between its independent runners).
+
+### 2026-10-10 (seat A): the photo as its own LAYER over the chosen filter (Fred, priority)
+- MODEL: P.noiseType stays the board's filter; P.photoLayer + P.photoFilterAmount (%). fine = photo + (filter
+  normalised by its declared nominalRange - 0.5) x share; everything after unchanged. 0 % never samples the filter;
+  "Hide filter texture" drops the filter share. Blend picked by Fred off the render sheet (plain normalised add, no
+  smoothing machinery; he lowers fine detail by hand).
+- nominalRange on all 22 filters, MEASURED (scratch measure_ranges.mjs: default tweaks, 8 seeds x 7x9 / 9x12 / 12x9,
+  0.5 / 99.5 percentiles): spans run from mycelium 0.05..0.20 to moon -0.67..0.27, so a raw add would mean a different
+  thing per filter. Pinned both ways (within the span; fills at least half -- the second half was added when a widened
+  range survived the first test).
+- UI: Surface > Photo from PHOTO_CONTROLS (home 2d / 3d / both, Fred's picks: rotation option B, Max Height = the board's
+  Z, mirrored flip / blur / brightness / contrast / relief). The Photo tab's own widgets stay its markup; the 3D section
+  reuses its setters (photoEditApi) and both views sync through one hook. Max Height MOVED with its ids (no twin).
+- LEGACY: MIGRATIONS 'photo-filter-to-layer'; the four old photo goldens bit-identical after migration; a save with
+  "Hide filter texture" on showed no photo -> layer off (identical). Not checked against real cloud saves (none in the
+  repo's fixtures carry noiseType photo).
+- Mutations 10/10 caught on file copies (an earlier round applied them cumulatively because my restore step never wrote
+  the files back -- reversed by hand and re-run one at a time; no mutation left in the tree: the suite and diff checked).
+- Live (77-ph, real Chrome): pattern pick -> layer on, filter dropdown without Photo, Silk 40 % renders, 0 page errors;
+  phone 390 px: only native checkboxes / slider tracks under 28 px, as in every section. Shots: shots/seatA/photo-layer/.
+- Full suite 429 files, 6210/6210. Known failures: none. The brick matrix's photo rows were NOT run here (the gate runs them).

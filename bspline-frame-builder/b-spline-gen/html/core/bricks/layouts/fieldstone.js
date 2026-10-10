@@ -95,7 +95,7 @@
  * anywhere real geometric room exists, with only a gentle large-scale tendency left over.
  */
 import {
-  pointInPolygon, polygonPointTester, clipToHalfPlane, clipPolygonToBoard, roundPolygonCorners, signedArea, polygonDifference, isSimplePolygon,
+  pointInPolygon, polygonPointTester, clipToHalfPlane, clipPolygonToBoard, roundPolygonCorners, signedArea, polygonDifference, isSimplePolygon, sharpestCornerDeg,
 } from '../geometry.js';
 import { mulberry32, seedFor, hashedRandom } from '../rng.js';
 import { MIN_PIECE_FRACTION } from '../library.js';
@@ -538,8 +538,29 @@ const perimOf = (P) => P.reduce((t, p, i) => t + Math.hypot(P[(i + 1) % P.length
 /** a ring's mean width: the area between its two fences over their mean perimeter (Infinity when it is not a ring) */
 export const ringWidthOf = (fences) => (fences && fences.length >= 2 && fences[0] && fences[1] && fences[0].length >= 3 && fences[1].length >= 3
   ? (Math.abs(signedArea(fences[0])) - Math.abs(signedArea(fences[1]))) / ((perimOf(fences[0]) + perimOf(fences[1])) / 2) : Infinity);
-/** the course's seeds: every `step` along the outer fence, half way to the nearest point of the inner fence */
-function midlineSeeds(fences, step, region) {
+/** At each corner of a thin ring's course (its outer fence turning more than minTurnDeg), the course either SPLITS -- a
+ *  joint on the corner's bisector, a stone either side -- or WRAPS it: one stone centred on the corner, an L round a
+ *  concave step, a corner stone on a convex corner. Fred (2026-10-09, shown both on T9): "Both are good, ideally a
+ *  variation." Each corner draws its own choice from the lay's seeded stream ('fieldstone-corners'), splitShare of
+ *  them split, so a board rebuilds identically and another seed varies it.
+ *  A drawn wrap that would break the frame stones' needle floor (Fred's short-grain rule: no corner under
+ *  wrapMinCornerDeg, measured with arms cornerArmJoints joints along the outline -- the floor pinned by
+ *  tests/bricks-thin-stone-rings.test.js) is laid split: a wrap moves every seed of the two runs it ends, so a stone of
+ *  either run under the floor splits that run's wrapped ends. Every corner's draw is still consumed, so the others keep
+ *  theirs. MEASURED (seat E, seed 1, 1,520 lays): without it 25 mixed-band lays went under 40 deg -- T15 9x12 a 14 deg
+ *  tail where a band narrows (a course stone of a wrapped run, not the corner's own), T7 the frame's own sharp tip.
+ *  A drawn SPLIT whose joint opens a pocket at the corner wider than splitMaxPocketJoints (the pinned gap cap: 2 x the
+ *  largest empty circle within pocketReachJoints of the corner's point on the inner fence, over the joint) is laid
+ *  wrapped, and so is a drawn split whose own flanking stones break the needle floor (a sharp concave waist split, T14
+ *  7x9: 39 deg either side; wrapped, 89); the needle floor wins where a corner fails both. MEASURED (seed 2, a version
+ *  whose wraps re-spaced whole runs): T19 7x9 a split joint on the wall's arc left a 0.25 in (3.18-joint) pocket. */
+export const STEP_CORNER_VARIETY = Object.freeze({ splitShare: 0.5, minTurnDeg: 30, wrapMinCornerDeg: 40, cornerArmJoints: 2,
+  splitMaxPocketJoints: 3, pocketReachJoints: 3 });
+
+/** the course's seeds, half way from the outer fence to the inner: between two corners evenly spaced about `step`
+ *  apart from half a gap off each corner, a wrapped corner's two flanking seeds replaced by one on it; a ring with no
+ *  corner every `step` along the outer fence */
+function midlineSeeds(fences, step, region, seed, forceSplit = null, forceWrap = null) {
   const [outer, inner] = fences, seeds = [];
   const nearestOn = (p, Q) => {
     let best = Q[0], bd = Infinity;
@@ -550,16 +571,69 @@ function midlineSeeds(fences, step, region) {
     }
     return best;
   };
-  let along = step / 2; // distance to the next seed along the outer fence
-  for (let i = 0; i < outer.length; i++) {
-    const a = outer[i], b = outer[(i + 1) % outer.length], len = Math.hypot(b.x - a.x, b.y - a.y);
-    while (along <= len) {
-      const p = { x: a.x + ((b.x - a.x) * along) / len, y: a.y + ((b.y - a.y) * along) / len }, q = nearestOn(p, inner), m = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
-      if (pointInPolygon(m.x, m.y, region) && !seeds.some((o) => Math.hypot(o.x - m.x, o.y - m.y) < 0.6 * step)) seeds.push({ x: m.x, y: m.y, radius: step / 2, tierIndex: 0 });
-      along += step;
+  const put = (p, tag) => {
+    const q = nearestOn(p, inner), m = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+    if (pointInPolygon(m.x, m.y, region) && !seeds.some((o) => Math.hypot(o.x - m.x, o.y - m.y) < 0.6 * step)) seeds.push({ x: m.x, y: m.y, radius: step / 2, tierIndex: 0, ...tag });
+  };
+  const n = outer.length, minTurn = (STEP_CORNER_VARIETY.minTurnDeg * Math.PI) / 180;
+  const turnAt = (i) => {
+    const p = outer[(i - 1 + n) % n], v = outer[i], q = outer[(i + 1) % n];
+    let d = Math.atan2(q.y - v.y, q.x - v.x) - Math.atan2(v.y - p.y, v.x - p.x);
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d < -Math.PI) d += 2 * Math.PI;
+    return Math.abs(d);
+  };
+  const corners = [];
+  for (let i = 0; i < n; i++) if (turnAt(i) > minTurn) corners.push(i);
+  if (!corners.length) {
+    let along = step / 2; // distance to the next seed along the outer fence
+    for (let i = 0; i < n; i++) {
+      const a = outer[i], b = outer[(i + 1) % n], len = Math.hypot(b.x - a.x, b.y - a.y);
+      while (along <= len) { put({ x: a.x + ((b.x - a.x) * along) / len, y: a.y + ((b.y - a.y) * along) / len }); along += step; }
+      along -= len;
     }
-    along -= len;
+    return seeds;
   }
+  const rng = mulberry32(seedFor(seed, 'fieldstone-corners', 0));
+  const split = corners.map((_, c) => {
+    const r = rng(); // every corner's draw is consumed, whatever decides it
+    if (forceSplit && forceSplit.has(c)) return true;
+    if (forceWrap && forceWrap.has(c)) return false;
+    return r < STEP_CORNER_VARIETY.splitShare;
+  });
+  seeds.wrappedCorners = new Set(corners.map((_, c) => c).filter((c) => !split[c]));
+  seeds.cornerCount = corners.length;
+  seeds.innerCornerAt = corners.map((i) => nearestOn(outer[i], inner)); // where a split corner's joint meets the inner fence
+  seeds.cornerAt = corners.map((i) => outer[i]);
+  // every run (corner c to corner c + 1) is spaced as if both its corners split: seeds evenly about `step` apart, half a gap
+  // from each corner. A WRAPPED corner then swaps only the two seeds flanking it for one seed on the corner (a corner stone
+  // about two gaps long) -- nothing else moves, so a corner's choice never re-spaces its runs (MEASURED, the first
+  // version: a wrap shifting a whole run laid T15's 14 deg tail and T19's 3.18-joint pocket inches away from the corner)
+  const nc = corners.length, runs = [];
+  for (let c = 0; c < nc; c++) {
+    const i0 = corners[c], i1 = corners[(c + 1) % nc], run = [];
+    for (let i = i0; ; i = (i + 1) % n) {
+      const a = outer[i], b = outer[(i + 1) % n];
+      run.push({ a, b, len: Math.hypot(b.x - a.x, b.y - a.y) });
+      if ((i + 1) % n === i1) break;
+    }
+    const Lr = run.reduce((t, r) => t + r.len, 0), count = Math.max(1, Math.round(Lr / step)), g = Lr / count, at = [];
+    let k = 0, acc = 0;
+    for (let j = 0; j < count; j++) {
+      const d = (j + 0.5) * g;
+      while (k < run.length - 1 && d > acc + run[k].len) { acc += run[k].len; k++; }
+      const r = run[k], t = r.len ? Math.min(1, (d - acc) / r.len) : 0;
+      at.push({ p: { x: r.a.x + (r.b.x - r.a.x) * t, y: r.a.y + (r.b.y - r.a.y) * t }, tag: { run: c } });
+    }
+    runs.push(at);
+  }
+  for (let c = 0; c < nc; c++) {
+    if (split[c]) continue;
+    runs[(c - 1 + nc) % nc].pop(); // the seed half a gap before the corner
+    runs[c].shift(); // and the one half a gap after it
+    runs[c].unshift({ p: outer[corners[c]], tag: { run: c, cornerIndex: c } });
+  }
+  for (const at of runs) for (const { p, tag } of at) put(p, tag);
   return seeds;
 }
 
@@ -593,15 +667,18 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones, f
   // belongs (see `poissonDiscSample`'s own header), and reject too-close to EVERY earlier tier's own
   // points. This only decides WHERE each seed goes; the power diagram below (built over every tier's
   // points TOGETHER, in one shot) is what actually guarantees no two cells can ever overlap.
+  // a thin ring's seeds are its course (midlineSeeds): the area tiers' Poisson pass is not run for it (MEASURED, seat E
+  // 2026-10-10: 28% of a T1 9x12 0.75 in stone-frame Generate went to seeds thrown away; each tier draws from its own
+  // seeded stream, so skipping it changes nothing else)
   let points = [];
-  for (let i = 0; i < SIZE_TIERS.length; i++) {
+  for (let i = 0; !thin && i < SIZE_TIERS.length; i++) {
     const tier = SIZE_TIERS[i];
     const tierSpacing = tierSpacings[i];
     const gate = (x, y, rng) => tierAt(x, y, noiseCellSize, seedBase, rng, gateShares) === tier;
     const found = poissonDiscSample(boardOutline, tierSpacing, seedFor(seedBase, 'fieldstone-tier', i), points, gate);
     for (const p of found) points.push({ ...p, tierIndex: i });
   }
-  if (thin) points = midlineSeeds(fences, spacing, boardOutline);
+  if (thin) points = midlineSeeds(fences, spacing, boardOutline, seed);
   if (!points.length) return { cells: [] };
 
   const xs = boardOutline.map((p) => p.x), ys = boardOutline.map((p) => p.y);
@@ -612,7 +689,7 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones, f
     { x: maxX + margin, y: maxY + margin }, { x: minX - margin, y: maxY + margin },
   ];
   const minPieceArea = fieldstoneMinPieceArea(set);
-  const phantoms = fencePoints(fences, points, maxSpacing * FENCE_REACH_FACTOR, boardOutline);
+  let phantoms = fencePoints(fences, points, maxSpacing * FENCE_REACH_FACTOR, boardOutline);
   // only over SIMPLE fences: a band deeper than a neck pinches its inner edge to zero width (MEASURED T18 / T19, a 1 in
   // ring at 0.75 in stones), and cutting that hole out made one stone run through the pinch over its neighbours
   // (0.15 sq in) -- such a ring keeps the slit-polygon clip
@@ -660,13 +737,70 @@ export function fieldstoneLayout(boardOutline, set, _zones, seed, largeStones, f
     return poly;
   });
 
-  let activePoints = points;
-  let polys = buildCells(activePoints);
-  for (let iter = 0; iter < 4 && activePoints.length; iter++) {
-    const survivors = activePoints.filter((_, i) => polys[i]);
-    if (survivors.length === activePoints.length) break; // nothing dropped this round -- stable
-    activePoints = survivors;
-    polys = buildCells(activePoints);
+  const lay = (pts) => {
+    phantoms = fencePoints(fences, pts, maxSpacing * FENCE_REACH_FACTOR, boardOutline);
+    let active = pts, cellPolys = buildCells(active);
+    for (let iter = 0; iter < 4 && active.length; iter++) {
+      const survivors = active.filter((_, i) => cellPolys[i]);
+      if (survivors.length === active.length) break; // nothing dropped this round -- stable
+      active = survivors;
+      cellPolys = buildCells(active);
+    }
+    return { active, cellPolys };
+  };
+  let { active: activePoints, cellPolys: polys } = lay(points);
+  // STEP_CORNER_VARIETY's two fallbacks: a stone under the needle floor in a run that ends at a drawn wrap splits that wrap;
+  // a drawn split whose corner pocket is over the gap cap wraps -- unless the needle floor split it (it wins). A corner
+  // turns at most wrap -> split by the floor, or split -> wrap -> split, so this ends within two passes per corner.
+  if (thin && points.cornerCount) {
+    const V = STEP_CORNER_VARIETY, forceSplit = new Set(), forceWrap = new Set(), arm = V.cornerArmJoints * grout, nc = points.cornerCount;
+    const reach = V.pocketReachJoints * grout, sampleStep = grout / 4, [outerFence, innerFence] = fences;
+    const bboxOf = (q) => q.reduce((b, p) => [Math.min(b[0], p.x), Math.min(b[1], p.y), Math.max(b[2], p.x), Math.max(b[3], p.y)], [Infinity, Infinity, -Infinity, -Infinity]);
+    // the largest empty circle (radius) in the ring within `reach` of point c: the farthest ring point from every stone
+    const pocketAt = (c, stones) => {
+      const near = stones.filter((q) => { const b = bboxOf(q); return b[0] - reach <= c.x + reach && b[2] + reach >= c.x - reach && b[1] - reach <= c.y + reach && b[3] + reach >= c.y - reach; });
+      let widest = 0;
+      for (let y = c.y - reach; y <= c.y + reach; y += sampleStep) for (let x = c.x - reach; x <= c.x + reach; x += sampleStep) {
+        if (Math.hypot(x - c.x, y - c.y) > reach || !pointInPolygon(x, y, outerFence) || pointInPolygon(x, y, innerFence)) continue;
+        let d = reach;
+        for (const q of near) {
+          if (pointInPolygon(x, y, q)) { d = 0; break; }
+          for (let k = 0; k < q.length; k++) {
+            const a = q[k], b = q[(k + 1) % q.length], ex = b.x - a.x, ey = b.y - a.y, l = ex * ex + ey * ey || 1e-12;
+            const t = Math.max(0, Math.min(1, ((x - a.x) * ex + (y - a.y) * ey) / l));
+            d = Math.min(d, Math.hypot(a.x + t * ex - x, a.y + t * ey - y));
+          }
+        }
+        widest = Math.max(widest, d);
+      }
+      return widest;
+    };
+    let seeds = points;
+    for (;;) {
+      let changed = false;
+      activePoints.forEach((p, i) => {
+        if (p.run === undefined || !polys[i] || sharpestCornerDeg(polys[i], arm) >= V.wrapMinCornerDeg) return;
+        const ends = [p.run, (p.run + 1) % nc], wrappedEnds = ends.filter((c) => seeds.wrappedCorners.has(c));
+        if (wrappedEnds.length) {
+          for (const c of wrappedEnds) if (!forceSplit.has(c)) { forceSplit.add(c); forceWrap.delete(c); changed = true; }
+          return;
+        }
+        // no wrap at its run's ends: the needle is a SPLIT's (MEASURED: T14 7x9's sharp waist split, 39 deg either side;
+        // wrapped, its corner stone 89 deg) -- the nearer end corner wraps, unless the floor already split it
+        const near = ends.reduce((a, b) => (Math.hypot(seeds.cornerAt[a].x - p.x, seeds.cornerAt[a].y - p.y) <= Math.hypot(seeds.cornerAt[b].x - p.x, seeds.cornerAt[b].y - p.y) ? a : b));
+        if (!forceSplit.has(near) && !forceWrap.has(near)) { forceWrap.add(near); changed = true; }
+      });
+      if (!changed) {
+        const stones = polys.filter(Boolean);
+        for (let c = 0; c < nc; c++) {
+          if (seeds.wrappedCorners.has(c) || forceSplit.has(c) || forceWrap.has(c)) continue;
+          if ((2 * pocketAt(seeds.innerCornerAt[c], stones)) / grout > V.splitMaxPocketJoints) { forceWrap.add(c); changed = true; }
+        }
+      }
+      if (!changed) break;
+      seeds = midlineSeeds(fences, spacing, boardOutline, seed, forceSplit, forceWrap);
+      ({ active: activePoints, cellPolys: polys } = lay(seeds));
+    }
   }
 
   const cells = [];

@@ -186,7 +186,7 @@ def extrude_plan(feature, body_name, start_param_expr):
         "kind": "SURROUND" if feature["op"] == "cut" else "BAR",
         "name": body_name,
         "start": start_param_expr if start == FRAME_BOTTOM_PARAM else start,
-        "extent": ("throughAll",) if extent == "throughAll" else ("toFace", extent.get("offset", "0 in")),
+        "extent": (extent,) if extent in ("throughAll", "throughAllBothSides") else ("toFace", extent.get("offset", "0 in")),
         "taper": feature.get("taper", "0 deg"),
         "order": feature["id"],
     }

@@ -5,6 +5,9 @@
 export const id = 'simplex';
 export const label = 'Smooth Hills';
 export const cMultiplier = 2.5;
+// the photo layer's "Filter shows through" normalises this filter's output by its declared span (core/terrain.js):
+// MEASURED 2026-10-10 (seat A), default tweaks, 8 seeds x 7x9 / 9x12 / 12x9 boards, the 0.5 / 99.5 percentiles.
+export const nominalRange = [0.3, 0.7];
 
 export const tweaks = [
   { key: 'warpFreq',     label: 'Warp Frequency', default: 0.45, min: 0.10, max: 2.00, step: 0.05, desc: 'Higher = tighter warp swirls' },

@@ -49,6 +49,18 @@ const MODULES = {
 export const GROUPS = Object.keys(MODULES);
 // a group whose rows are TIMINGS (its `sequential` flag, e.g. blind.mjs): --parallel runs it alone, after the others
 export const SEQUENTIAL_GROUPS = GROUPS.filter((g) => MODULES[g].sequential);
+/** each group's wall time in a --parallel gate, seconds -- MEASURED (seat E, the 2026-10-10 11:16 gate, 379 rows, 953 s:
+ *  a group's start = its 10 s stagger slot, its end = its report's mtime). Read for SPAWN_ORDER; refresh from a gate's
+ *  per-row "time" lines when groups change. A group not listed spawns last (and still runs). */
+export const GROUP_MEASURED_S = Object.freeze({
+  wall: 786, layout: 727, frame: 548, lay: 531, clear: 523, migration: 489, strokes: 484, persistence: 472, layers: 435,
+  'frame-ui': 392, undo: 336, areas: 328, brush: 316, grout: 284, 'sidebar-3d': 252, 'sidebar-quick': 216, handedit: 210,
+  password: 205, select: 164, blind: 165,
+});
+/** --parallel's spawn order: the parallel groups longest first, so a long group never waits out a late stagger slot (that
+ *  gate: strokes, 484 s, started last at 180 s and finished third) */
+export const SPAWN_ORDER = GROUPS.filter((g) => !SEQUENTIAL_GROUPS.includes(g))
+  .map((g, i) => ({ g, i, s: GROUP_MEASURED_S[g] ?? -1 })).sort((a, b) => b.s - a.s || a.i - b.i).map((o) => o.g);
 // every declared row, group by group (the row order inside a group is the order its rows run in)
 export const BRICK_CONTROLS = GROUPS.flatMap((g) => MODULES[g].rows || []);
 // a row's group is the file it lives in; an explicit `group` on a row (a Wall-tool row that needs the frame group's
