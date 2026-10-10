@@ -209,6 +209,17 @@ export function scheduleUndoSnapshot(id, label) {
     }, UNDO_COALESCE_MS);
 }
 
+/** Seat D measured (main, 2026-10-10: a fresh 7 in board, load an 8 in project, width 8.5, Undo -> 7 -- the board BEFORE
+ *  the load, with the loaded frame and drawing kept: a mix of two projects): a load never touched the history. THE load
+ *  path's own history step (snapshot-manager.js applySnapshot, source 'load': a project load, New project): the
+ *  history starts over at the loaded board -- one baseline, no redo, no pending step -- so an undo never crosses a load. */
+export function startHistoryAt(label) {
+    if (_pendingUndoTimer) { clearTimeout(_pendingUndoTimer); _pendingUndoTimer = null; }
+    globalHistoryLog.length = 0;
+    globalRedoLog.length = 0;
+    takeSnapshot(label);
+}
+
 /**
  * Routes the global undo request.
  */

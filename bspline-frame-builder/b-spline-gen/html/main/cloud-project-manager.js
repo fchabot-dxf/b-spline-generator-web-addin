@@ -919,7 +919,7 @@ export async function newProject() {
   const snapP = JSON.parse(JSON.stringify(persistableP()));
   snapP.editorSvg = null;
   snapP.seed = Math.floor(Math.random() * 99999);
-  await applySnapshot({ P: snapP }, _preview, { source: 'load' }); // no deltas in the snapshot: sculpt cleared
+  await applySnapshot({ P: snapP }, _preview, { source: 'load', historyLabel: 'New project' }); // no deltas in the snapshot: sculpt cleared
   setCurrentFile(null);
   markClean();
   showToast('✓ New project');
@@ -1178,7 +1178,7 @@ async function _loadFrom(name) {
     // #9: the cloud save time this load is based on (the list's, else a fresh look)
     const listed = _projects.find((p) => p.name === name);
     _rememberSavedAt(name, (listed && listed.savedAt) || await _cloudSavedAt(name) || Date.now());
-    await applySnapshot(unpackPoints(snap), _preview, { source: 'load' });
+    await applySnapshot(unpackPoints(snap), _preview, { source: 'load', historyLabel: `Loaded "${name}"` });
     // Establish file association — subsequent quick-saves overwrite this.
     setCurrentFile(name);
     markClean();
