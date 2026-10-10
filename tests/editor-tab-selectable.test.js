@@ -104,3 +104,15 @@ describe('the empty menu: "Select all <tab>" and "Select all in current layer"',
     expect(ed._selectedElements).toEqual([]);
   });
 });
+
+describe('the eraser honours the tab too (MEASURED on main: one Artwork swipe across a stone frame erased 15 bricks)', () => {
+  it('its element loop skips what the open tab cannot own, right after the locked-node skip', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('bspline-frame-builder/b-spline-gen/html/editor/editor-eraser.js', 'utf8');
+    const locked = src.indexOf("if (isLockedNode(el)) continue;");
+    const tab = src.indexOf('if (!isSelectableInTab(editor, el)) continue;');
+    expect(locked).toBeGreaterThan(-1);
+    expect(tab).toBeGreaterThan(locked);
+    expect(src.slice(locked, tab).split('\n').length).toBeLessThan(6); // the same loop, the next guard
+  });
+});

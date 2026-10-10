@@ -34,6 +34,7 @@ import {
     multiPolygonToPathData,
 } from './editor-expand-union.js';
 import { applyLayerState, isLockedNode } from './layers.js';
+import { isSelectableInTab } from './editor-tab-selectable.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { transformPoint } from './editor-coords.js';
 import { dbg } from '../core/debug.js';
@@ -126,6 +127,9 @@ export async function finishEraserStroke(editor) {
         const cls = el.node.getAttribute('class') || '';
         if (cls.includes('layer-hidden')) continue;
         if (isLockedNode(el)) continue; // item 55: the grout shape is the Brick tab's
+        // Fred 2026-10-10 (EDITOR_TAB_SELECTABLE): the eraser acts on the open tab's own kind only -- MEASURED on main: one
+        // swipe in Artwork across a stone frame erased 15 frame bricks
+        if (!isSelectableInTab(editor, el)) continue;
 
         try {
             const changed = await _eraseElement(editor, el, eraserRing, eraserMulti, clipper);

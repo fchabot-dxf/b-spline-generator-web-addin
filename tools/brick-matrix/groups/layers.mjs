@@ -49,10 +49,14 @@ async function layersRead() {
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
   return jsJSON(layersState());
 }
-// The context menu acts on the SELECTION (editor-context-menu.js bindContextMenu): pick the brick with the Artwork
-// Select tool, then right-click it.
+// The context menu acts on the SELECTION (editor-context-menu.js bindContextMenu): pick the brick with plain Select IN
+// THE BRICK TAB, then right-click it. Fred 2026-10-10 (EDITOR_TAB_SELECTABLE): a brick is selected only in the Brick
+// tab -- this used to pick it with the Artwork tab's Select tool, which the rule now refuses. Esc is the user's way back
+// to plain Select in any tab (global-events.js returnToSelect).
 async function rightClickBrick(kind) {
-  await click(BRICK_LAYERS.artworkTab, 800); await click(BRICK_LAYERS.selectTool, 500);
+  await openEditorTab('editorTabBrick');
+  for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await sleep(500);
   // F35 item 64: bricks sit on their kind's own layer, usually NOT the active one, and an inactive layer takes no art-tool
   // pointer events (.inactive-layer) -- so, like a user, activate the brick's layer first (its row in the Layers list)
   await js(`(()=>{ const n=window.svgEditor._sketchLayer.node.querySelector('[data-brick="${kind}"]'); const id=n&&n.getAttribute('data-layer'); const row=id&&document.querySelector('#editorLayersList [data-layer-id="'+id+'"]'); if(row) row.click(); return !!row; })()`);
