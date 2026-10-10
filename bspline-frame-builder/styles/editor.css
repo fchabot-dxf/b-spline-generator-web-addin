@@ -1915,6 +1915,15 @@
     pointer-events: none;
 }
 
+/* EDITOR_TAB_FOCUS (editor/editor-frame-profile.js, Fred 2026-10-10): in the Brick and Photo tabs the ART -- the
+   drawing's nodes that are not bricks (data-brick) or brick records -- is faded so the bricks / the photo read.
+   setEditorFocus sets the attribute and the opacity on #sketch-layer itself; display only (the saved drawing, the
+   export and the carve read the layer's children, never its own attributes). Only while a tab fades: an element's
+   own opacity is untouched in every other tab. */
+#editorSVGContainer #sketch-layer[data-focus-art-fade] > :not([data-brick]):not([data-brick-record]) {
+    opacity: var(--focus-art-opacity, 1);
+}
+
 /* SE10 AMEND 5: showColor off — one neutral color, applied as a display-
    only override (this class alone; applyLayerState in editor/layers.js
    adds/removes it, never touching the element's own stored stroke/fill
