@@ -34,7 +34,7 @@ import { fileToDataUrl, downscalePhotoDataUrl } from '../core/photo/codec.js';
 import { ensurePhotoDecoded, getRawPhotoImage, getProcessedPhotoImage, isPhotoReady } from '../core/photo/state.js';
 import { applyPhotoEdits } from '../core/photo/ops.js';
 import { withLoadingStage, withLoadingStageShownFirst } from '../core/loading-signal.js';
-import { photoUsedCells } from '../core/photo/mirror-dim.js';
+import { photoUsedCells, photoAxisLines } from '../core/photo/mirror-dim.js';
 import { applyParam } from './param-manager.js';
 import { inEditor3dAction } from '../core/in-editor-3d.js';
 import { refreshEditorTopView } from '../core/render-topview.js';
@@ -671,7 +671,22 @@ function drawPreview() {
       x += run - 1;
     }
   }
+  // Fred (via seat A): the mirror axis, where the board's mirror line samples the photo (follows rotation / clamp)
+  const lines = photoAxisLines(img, params, (P.widthIn || 1) / (P.heightIn || 1));
+  if (lines.length) {
+    ctx.save();
+    ctx.strokeStyle = PREVIEW_AXIS.stroke; ctx.lineWidth = PREVIEW_AXIS.px; ctx.setLineDash(PREVIEW_AXIS.dash);
+    const kx = canvas.width / img.w, ky = canvas.height / img.h;
+    for (const { pts } of lines) {
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * kx, y * ky) : ctx.moveTo(x * kx, y * ky)));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 }
+/** The mirror axis on the preview. */
+export const PREVIEW_AXIS = Object.freeze({ stroke: '#4fc3f7', px: 1.5, dash: Object.freeze([4, 3]) });
 /** The dim over the part of the photo that never reaches the board. */
 export const PREVIEW_UNUSED_DIM = 'rgba(0,0,0,0.55)';
 

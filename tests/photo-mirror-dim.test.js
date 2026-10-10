@@ -13,12 +13,12 @@ const data = new Proxy(new Float32Array(W * H).fill(0.5), { get(t, k) { if (type
 const IMG = { data, w: W, h: H };
 vi.mock('../bspline-frame-builder/b-spline-gen/html/core/photo/state.js', async (importOriginal) => ({ ...(await importOriginal()), getProcessedPhotoImage: () => IMG }));
 const { generateHeightmap } = await import('../bspline-frame-builder/b-spline-gen/html/core/terrain.js');
-const { photoUsedCells } = await import('../bspline-frame-builder/b-spline-gen/html/core/photo/mirror-dim.js');
+const { photoUsedCells, photoAxisLines } = await import('../bspline-frame-builder/b-spline-gen/html/core/photo/mirror-dim.js');
 
 const CW = 40, CH = 30; // the overlay's cells
-function compare({ symmetry = 'none', symOffsetX = 0, symOffsetY = 0, widthIn = 7, heightIn = 9, tweaks = {} }) {
+function compare({ symmetry = 'none', symOffsetX = 0, symOffsetY = 0, widthIn = 7, heightIn = 9, tweaks = {}, photoMirrorMode = 'squeeze' }) {
   read.fill(0);
-  const params = { widthIn, heightIn, symmetry, symOffsetX, symOffsetY, nx: 300, nz: 300, photoLayer: true, photoFilterAmount: 0, filterTweaks: { photo: tweaks } };
+  const params = { widthIn, heightIn, symmetry, symOffsetX, symOffsetY, nx: 300, nz: 300, photoLayer: true, photoFilterAmount: 0, filterTweaks: { photo: tweaks }, photoMirrorMode };
   generateHeightmap(params); // the terrain's own sampling, recorded
   const truth = new Uint8Array(CW * CH);
   for (let k = 0; k < W * H; k++) if (read[k]) { const x = k % W, y = (k - x) / W; truth[Math.floor((y * CH) / H) * CW + Math.floor((x * CW) / W)] = 1; }
@@ -48,6 +48,11 @@ const CASES = {
   'X, rotation 30': { symmetry: 'x', tweaks: { rotation: 30 } },
   'scale 0.5 + repeat': { tweaks: { scale: 0.5, repeat: 1 } },
   'landscape 9 x 7': { widthIn: 9, heightIn: 7 },
+  // a new board's photo (seat A / Fred): a TRUE mirror under Symmetry, no squeeze
+  'mirror mode, X': { symmetry: 'x', photoMirrorMode: 'mirror' },
+  'mirror mode, radial': { symmetry: 'radial', photoMirrorMode: 'mirror' },
+  'mirror mode, X, axis +0.15': { symmetry: 'x', symOffsetX: 0.15, photoMirrorMode: 'mirror' },
+  'mirror mode, X, rotation 30': { symmetry: 'x', photoMirrorMode: 'mirror', tweaks: { rotation: 30 } },
 };
 
 describe('photoUsedCells: dims exactly what the terrain never samples (vs the real generator)', () => {
@@ -60,7 +65,7 @@ describe('photoUsedCells: dims exactly what the terrain never samples (vs the re
       expect(r.extraBright, 'a cell left bright that the terrain never reads (edges of the used region only)').toBeLessThanOrEqual(Math.ceil(0.03 * CW * CH));
     });
   }
-  it('the old errors are gone: under symmetry X the LEFT half is used (the fold squeezes the whole photo into each half)', () => {
+  it('the old errors are gone: under symmetry X the LEFT half is used (squeeze mode: the fold squeezes the whole photo into each half)', () => {
     const { cells } = compare({ symmetry: 'x' });
     let leftUsed = 0; for (let y = 0; y < CH; y++) for (let x = 0; x < CW / 2; x++) leftUsed += cells[y * CW + x];
     expect(leftUsed).toBeGreaterThan(0.25 * (CW / 2) * CH);
@@ -68,5 +73,31 @@ describe('photoUsedCells: dims exactly what the terrain never samples (vs the re
   it('the cover-fit: a 4:3 photo on a 7:9 board leaves its sides unused even with no symmetry', () => {
     const { usedFrac } = compare({});
     expect(usedFrac).toBeGreaterThan(0.5); expect(usedFrac).toBeLessThan(0.7);
+  });
+});
+
+describe('mirror mode (a new board): only the source side of the axis is sampled', () => {
+  it('symmetry X, mirror: the photo LEFT of the axis is not on the board (the mirror reflects the right side)', () => {
+    const { cells } = compare({ symmetry: 'x', photoMirrorMode: 'mirror' });
+    let left = 0, right = 0; for (let y = 0; y < CH; y++) for (let x = 0; x < CW; x++) { if (x < CW / 2 - 1) left += cells[y * CW + x]; if (x > CW / 2) right += cells[y * CW + x]; }
+    expect(left).toBe(0);
+    expect(right).toBeGreaterThan(0);
+  });
+});
+
+describe('photoAxisLines: the mirror axis on the preview, from the same mapping', () => {
+  const base = { widthIn: 7, heightIn: 9, photoLayer: true, filterTweaks: { photo: {} }, tweaks: {} };
+  const xs = (lines) => lines[0].pts.map(([x]) => x / W);
+  it('mirror mode, X: the axis samples the photo where the board axis lands -- mid-photo for a centred photo', () => {
+    const lines = photoAxisLines(IMG, { ...base, symmetry: 'x', photoMirrorMode: 'mirror' }, 7 / 9);
+    expect(lines.map((l) => l.axis)).toEqual(['x']);
+    for (const x of xs(lines)) expect(x).toBeCloseTo(0.5, 1);
+  });
+  it('squeeze mode, X: the axis samples su = 0 -- the used region\'s left edge (the cover-fit\'s 0.2)', () => {
+    for (const x of xs(photoAxisLines(IMG, { ...base, symmetry: 'x', photoMirrorMode: 'squeeze' }, 7 / 9))) expect(x).toBeCloseTo(0.2, 1);
+  });
+  it('radial: two lines; no symmetry: none', () => {
+    expect(photoAxisLines(IMG, { ...base, symmetry: 'radial', photoMirrorMode: 'mirror' }, 7 / 9).map((l) => l.axis)).toEqual(['x', 'y']);
+    expect(photoAxisLines(IMG, { ...base, symmetry: 'none' }, 7 / 9)).toEqual([]);
   });
 });
