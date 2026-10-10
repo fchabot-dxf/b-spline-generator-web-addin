@@ -418,7 +418,10 @@ function renderPatternRow(container) {
     img.src = pattern.thumb || pattern.image;
     img.alt = pattern.name;
     btn.appendChild(img);
-    btn.addEventListener('click', () => {
+    // seat D 2026-10-09 (matrix BLIND_BUDGET, MEASURED on main too): the pick's own sync work (the Photo filter switch, the
+    // relief height, the controls sync) is ~50 ms in the tap with bricks laid -- at the long-task floor, so the row read
+    // 0 or 50-80 ms blind by run. The 'photo' stage is on screen first now.
+    btn.addEventListener('click', () => withLoadingStageShownFirst('photo', () => {
       P.photoPatternId = pattern.id;
       loadImage(
         pattern.image,
@@ -427,7 +430,7 @@ function renderPatternRow(container) {
         settingsToRelief(pattern.settings),
       );
       syncSaveButtonState();
-    });
+    }));
     container.appendChild(btn);
   }
 }
