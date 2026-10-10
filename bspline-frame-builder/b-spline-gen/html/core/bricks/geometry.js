@@ -719,8 +719,11 @@ export function clipPolygonToRegion(poly, region, cellRefPoint) {
  * cell's own rounding can never eat past its neighbouring vertex (shrinking the EFFECTIVE radius
  * there instead of corrupting the shape) -- the same "declared floor/clamp, not a blow-up" pattern
  * `offsetPathInward`'s own `cos` floor already uses.
+ * `opts.acuteSetbackOfRightAngle`: an ACUTE corner's fillet is shrunk so it cuts the corner back no further than a right
+ * angle's of the same radius (r (sqrt 2 - 1) from the sharp point) -- a full fillet on a 45 deg corner cuts it back
+ * r (1 / sin 22.5 - 1), 3.9x as far, and where two such corners meet at a seam it leaves a pocket (fieldstone, below).
  */
-export function roundPolygonCorners(poly, radius, segments = 4) {
+export function roundPolygonCorners(poly, radius, segments = 4, opts = {}) {
   if (!(radius > 0) || poly.length < 3) return poly;
   const n = poly.length;
   const out = [];
@@ -744,8 +747,9 @@ export function roundPolygonCorners(poly, radius, segments = 4) {
     const theta = Math.acos(cosTheta);
     if (theta > Math.PI - 1e-3 || theta < 1e-3) { out.push(v); continue; } // ~straight or ~zero -- no real corner
     const half = theta / 2;
+    const r = opts.acuteSetbackOfRightAngle && theta < Math.PI / 2 ? (radius * (Math.SQRT2 - 1)) / (1 / Math.sin(half) - 1) : radius;
     const maxTangent = 0.45 * Math.min(len1, len2);
-    const tangent = Math.min(radius / Math.tan(half), maxTangent);
+    const tangent = Math.min(r / Math.tan(half), maxTangent);
     const actualRadius = tangent * Math.tan(half);
     const t1 = { x: v.x + n1x * tangent, y: v.y + n1y * tangent };
     const t2 = { x: v.x + n2x * tangent, y: v.y + n2y * tangent };
