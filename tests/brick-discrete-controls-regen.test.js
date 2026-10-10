@@ -50,7 +50,7 @@ import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/
 import { setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
-import { deselectTool } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
+import { deselectTool, BRICK_GENERAL_TAB } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
 
 const FIXTURE = `
@@ -454,7 +454,9 @@ describe('Generate visibility, no pending badge, and a hidden Bricks layer', () 
   const slotShown = () => $('brickGenerate').style.display !== 'none';
   const badged = (id) => $(id).hasAttribute('data-brick-pending');
 
-  it('C9: Generate shows for Wall and Frame (and General: it re-lays every element), hides for Brush, Scissors and Stripe; the strip stays', () => {
+  // Fred 2026-10-10: "in the General tab the Generate button has no purpose" -- BRICK_GENERAL_TAB.generates: false
+  it('C9: Generate shows for Wall and Frame, hides for General, Brush, Scissors and Stripe; the strip stays', () => {
+    expect(BRICK_GENERAL_TAB.generates).toBe(false);
     setup('wall');
     expect(slotShown()).toBe(true);
     for (const t of ['brush', 'scissors']) { $(`brickTool_${t}`).click(); expect(slotShown(), t).toBe(false); }
@@ -462,9 +464,11 @@ describe('Generate visibility, no pending badge, and a hidden Bricks layer', () 
     expect(slotShown(), 'stripe').toBe(false);
     expect($('editorToolbarBrick').closest('.sticky-actions').style.display).not.toBe('none');
     $('brickTab_general').click();
-    expect(slotShown(), 'general').toBe(true);
+    expect(slotShown(), 'general').toBe(false);
     $('brickTool_frame').click();
     expect(slotShown()).toBe(true);
+    $('brickTab_general').click(); // and back from an element that generates
+    expect(slotShown(), 'general after frame').toBe(false);
   });
 
   it('item 27: no pending badge anywhere -- the Brick tab button -- after a change, with or without a tool', () => {
