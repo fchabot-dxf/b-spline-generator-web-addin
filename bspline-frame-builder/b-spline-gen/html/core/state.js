@@ -80,6 +80,11 @@ export const DEFAULT = {
     // (not a module-local var) so it survives a reload via the existing
     // generic session save/load, same as photoImageDataUrl/photoEdits above.
     photoPatternId: null,
+    // 2026-10-10 (Fred: the photo as its own LAYER on top of the chosen filter): the photo layer on/off and "Filter shows
+    // through" in percent (0 = the photo alone). Absent in an older save = off / 0 (a save on the old Photo FILTER is
+    // migrated to the layer: main/app-init.js MIGRATIONS 'photo-filter-to-layer'). Heights inputs: core/terrain.js.
+    photoLayer: false,
+    photoFilterAmount: 0,
     // F35 item 1: the Brick tab's own common settings (core/bricks/library.js's
     // BRICK_SETS is the declared source for defaults per set -- these are the
     // user's CURRENT overrides, shared by all three tools (Brush/Wall/Frame)).
@@ -338,6 +343,7 @@ export const SLIDER_PAIRS = {
     macroScale: 'macroSlider',
     // H17 item 1: new -- Filter's "Map" group.
     mapZoom: 'mapZoomSlider',
+    photoFilterAmount: 'photoFilterAmountSlider', // 2026-10-10: Surface > Photo, "Filter shows through"
     carveZ: 'carveZSlider',
     smoothIntensity: 'smoothIntensitySlider',
     smoothRadius: 'smoothRadiusSlider',
@@ -549,7 +555,7 @@ export function updateP(key, value) {
         'detailDensityRespectSymmetry', 'smoothRespectSymmetry',
         'isolateSkeleton',
         'includeUnstampedSolid', 'thickenWireframe', 'flatShading', 'colourEdges', 'decalEnabled', 'adaptiveDisplay',
-        'sameAsDisplayResolution',
+        'sameAsDisplayResolution', 'photoLayer',
     ];
 
     if (key === 'widthIn' || key === 'heightIn') {

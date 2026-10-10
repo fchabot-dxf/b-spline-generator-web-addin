@@ -18,6 +18,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/photo/state.js', async 
 
 import { P, DEFAULT } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { initPhotoPanel } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
+import { renderPhotoLayerSection } from '../bspline-frame-builder/b-spline-gen/html/main/photo-layer-section.js';
 import { takeUndoParts, restoreUndoParts } from '../bspline-frame-builder/b-spline-gen/html/editor/undo-parts.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
@@ -30,7 +31,9 @@ const undo = () => { ed._redoStack.push(ed._undoStack.pop()); restoreUndoParts(e
 beforeEach(() => {
   localStorage.clear();
   Object.assign(P, DEFAULT, { photoImageDataUrl: SMALL, photoEdits: [], photoPatternId: null, carveZ: 0.125 });
-  document.body.innerHTML = PANEL + '<div id="editorToolbarPhoto"></div>';
+  // 2026-10-10: Max Height (photoReliefHeight) lives in Surface > Photo now, rendered from PHOTO_CONTROLS
+  document.body.innerHTML = PANEL + '<div id="editorToolbarPhoto"></div><div id="photoLayerBody"></div>';
+  renderPhotoLayerSection(document.getElementById('photoLayerBody'));
   ed = { _undoStack: [], _redoStack: [], _notifyChange: () => {} };
   ed._snapshotState = () => ({ svg: '', parts: takeUndoParts() });
   ed.pushState = () => { ed._undoStack.push(ed._snapshotState()); };

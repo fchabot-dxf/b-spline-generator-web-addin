@@ -25873,6 +25873,27 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - NEXT (advisor: decide with the gate's PEAK memory): splitting wall (after "Wall rotation 0 (back)": the second half starts
   from the baseline's plain Stretcher at 0 deg) and layout (between its independent runners).
 
+### 2026-10-10 (seat A): the photo as its own LAYER over the chosen filter (Fred, priority)
+- MODEL: P.noiseType stays the board's filter; P.photoLayer + P.photoFilterAmount (%). fine = photo + (filter
+  normalised by its declared nominalRange - 0.5) x share; everything after unchanged. 0 % never samples the filter;
+  "Hide filter texture" drops the filter share. Blend picked by Fred off the render sheet (plain normalised add, no
+  smoothing machinery; he lowers fine detail by hand).
+- nominalRange on all 22 filters, MEASURED (scratch measure_ranges.mjs: default tweaks, 8 seeds x 7x9 / 9x12 / 12x9,
+  0.5 / 99.5 percentiles): spans run from mycelium 0.05..0.20 to moon -0.67..0.27, so a raw add would mean a different
+  thing per filter. Pinned both ways (within the span; fills at least half -- the second half was added when a widened
+  range survived the first test).
+- UI: Surface > Photo from PHOTO_CONTROLS (home 2d / 3d / both, Fred's picks: rotation option B, Max Height = the board's
+  Z, mirrored flip / blur / brightness / contrast / relief). The Photo tab's own widgets stay its markup; the 3D section
+  reuses its setters (photoEditApi) and both views sync through one hook. Max Height MOVED with its ids (no twin).
+- LEGACY: MIGRATIONS 'photo-filter-to-layer'; the four old photo goldens bit-identical after migration; a save with
+  "Hide filter texture" on showed no photo -> layer off (identical). Not checked against real cloud saves (none in the
+  repo's fixtures carry noiseType photo).
+- Mutations 10/10 caught on file copies (an earlier round applied them cumulatively because my restore step never wrote
+  the files back -- reversed by hand and re-run one at a time; no mutation left in the tree: the suite and diff checked).
+- Live (77-ph, real Chrome): pattern pick -> layer on, filter dropdown without Photo, Silk 40 % renders, 0 page errors;
+  phone 390 px: only native checkboxes / slider tracks under 28 px, as in every section. Shots: shots/seatA/photo-layer/.
+- Full suite 429 files, 6210/6210. Known failures: none. The brick matrix's photo rows were NOT run here (the gate runs them).
+
 ### 2026-10-10 (seat E): the brick matrix's memory -- a --max-parallel cap (off by default), measured; expectsNoRebuild dropped
 - GATE PEAK (sampler, 5 s, the d002ad3 gate): 211 MB free at 13:23, under 4 GB for ~3.5 min; 221 Chrome processes, 15.6 GB.
 - ANATOMY (lay alone): one group's Chrome peaks ~0.9 GB in 8 processes -- the SwiftShader GPU process 418 MB, 3 renderers

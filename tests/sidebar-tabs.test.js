@@ -42,7 +42,7 @@ describe('items 48 + 47: the main sidebar tabs and pins', () => {
     initSidebarTabs();
     expect(shown()).toEqual(SIDEBAR_TABS.find((t) => t.id === SIDEBAR_DEFAULT_TAB).sections);
     document.getElementById('sidebarTab_surface').click();
-    expect(shown()).toEqual(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-thicken', 'panel-sculpt-bot']);
+    expect(shown()).toEqual(['panel-skeleton', 'panel-filter', 'panel-photo', 'panel-sculpt-top', 'panel-thicken', 'panel-sculpt-bot']);
     expect(document.getElementById('sidebarTab_surface').classList.contains('active')).toBe(true);
     expect(JSON.parse(localStorage.getItem(SIDEBAR_TAB_STORAGE_KEY))).toBe('surface');
     document.body.innerHTML = SIDEBAR;

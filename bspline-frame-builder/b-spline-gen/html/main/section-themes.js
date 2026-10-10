@@ -25,7 +25,7 @@ export const SECTION_THEMES = Object.freeze({
   view: { hue: 195 },
   export: { hue: 90 },
   resolution: { hue: 235 },
-  // editor-only
+  // the editor's Photo tab, and Surface > Photo (2026-10-10, the photo layer's own sidebar section)
   photo: { hue: 345 },
 });
 
