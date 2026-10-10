@@ -21,6 +21,8 @@ from constrained_sketch_log import format_constrained_sketch_log
 # STALE-PARAMS R4 item 4: the Bspline-group cleanup pass — a sibling module,
 # same sys.path story as sketch_manifest_builder above.
 from param_ownership import compute_stale_params
+# 2026-10-10: the panel's matte per-component finish (Fred) -- declared in panel_finish.py, a sibling module too.
+from panel_finish import apply_panel_finish
 
 # imports check: removed diagnostic
 
@@ -2217,6 +2219,15 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                             best, stamped_with_panel = _apply_send_visibility(consolidated)
                             if best:
                                 primary_imported_occurrence = best
+
+                            # Fred 2026-10-10: the green / red stay, MATTE and a shade darker (panel_finish.py)
+                            try:
+                                _lib = app.materialLibraries.itemByName('Fusion Appearance Library')
+                                _done = apply_panel_finish(consolidated, des, _lib,
+                                                           lambda r, g, b: adsk.core.Color.create(r, g, b, 255), _log)
+                                _log(f'[FINISH] matte panel finish: {_done}')
+                            except Exception as e:
+                                _log(f'[FINISH] skipped: {e}')
 
                             if stamped_with_panel is not None:
                                 _log('[VISIBILITY] Stamped panel is primary; Clean occurrence hidden. Surfaces hidden.')
