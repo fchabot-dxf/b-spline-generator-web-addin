@@ -55,7 +55,7 @@ const _all = [
 ];
 
 export const NoiseModes    = Object.fromEntries(_all.map(m => [m.id, m.fn]));
-export const NoiseMetadata = Object.fromEntries(_all.map(m => [m.id, { cMultiplier: m.cMultiplier }]));
+export const NoiseMetadata = Object.fromEntries(_all.map(m => [m.id, { cMultiplier: m.cMultiplier, nominalRange: m.nominalRange || null }]));
 export const NoiseLabels   = Object.fromEntries(_all.map(m => [m.id, m.label]));
 export const NoiseList     = _all.map(m => ({ id: m.id, label: m.label }));
 
@@ -87,6 +87,7 @@ export function populateNoiseDropdown(selectEl, selectedId) {
   const want = selectedId ?? selectEl.value ?? selectEl.dataset.default ?? _all[0].id;
   selectEl.innerHTML = '';
   for (const m of _all) {
+    if (m.layerOnly) continue; // the photo: a layer over the filter (its own Surface section), not a filter choice
     const opt = document.createElement('option');
     opt.value = m.id;
     opt.textContent = m.label;

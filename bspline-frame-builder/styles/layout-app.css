@@ -782,3 +782,16 @@ aside {
 #photoTabsHead > #photoTabStrip {
     margin: -12px -14px 0;
 }
+
+/* 2026-10-10: Surface > Photo, the photo layer's own section (main/photo-layer-section.js PHOTO_CONTROLS) */
+.photo-layer-check { display: flex; flex-direction: row; align-items: center; gap: 8px; margin: 0 0 10px; min-height: 28px; }
+.photo-layer-check input { width: auto; margin: 0; flex: 0 0 auto; }
+.photo-layer-source { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.photo-layer-source-name { flex: 1; font-size: 11px; opacity: 0.8; }
+.photo-layer-source .cad-btn { min-height: 32px; flex: 0 0 auto; }
+.photo-layer-note { font-size: 10px; opacity: 0.65; margin: -6px 0 8px; }
+.photo-layer-group { font-weight: 600; opacity: 0.75; margin: 10px 0 4px; }
+.photo-layer-group-note { font-weight: 400; opacity: 0.8; }
+.photo-layer-buttons { display: flex; gap: 6px; margin-bottom: 10px; }
+.photo-layer-buttons .cad-btn { flex: 1; min-height: 32px; }
+.photo-layer-unit { font-size: 10px; opacity: 0.6; margin-left: 2px; }

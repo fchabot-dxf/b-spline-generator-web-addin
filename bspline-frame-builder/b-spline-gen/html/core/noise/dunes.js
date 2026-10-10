@@ -27,6 +27,9 @@
 export const id = 'dunes';
 export const label = 'Wind Dunes';
 export const cMultiplier = 2.0;
+// the photo layer's "Filter shows through" normalises this filter's output by its declared span (core/terrain.js):
+// MEASURED 2026-10-10 (seat A), default tweaks, 8 seeds x 7x9 / 9x12 / 12x9 boards, the 0.5 / 99.5 percentiles.
+export const nominalRange = [0.02, 0.66];
 
 export const tweaks = [
   { key: 'crestSharpness',  label: 'Crest Sharpness',  default: 1.8, min: 0.8, max: 4.0, step: 0.1, desc: 'Higher = pointier dune crests' },

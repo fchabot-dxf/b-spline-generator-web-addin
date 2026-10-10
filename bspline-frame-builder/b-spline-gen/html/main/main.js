@@ -30,6 +30,7 @@ import { TerrainPreview } from '../core/preview.js';
 import { populateNoiseDropdown } from '../core/noise/index.js';
 import { bindTweaksUI, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
 import { initPhotoPanel, syncPhotoPanel } from './photo-panel.js';
+import { renderPhotoLayerSection, bindPhotoLayerSection } from './photo-layer-section.js';
 import { initBrickPanel } from './brick-panel.js';
 import { AppState } from './app-state.js';
 import { saveLastSession, isFusionMode } from '../core/state.js';
@@ -120,17 +121,14 @@ document.addEventListener('DOMContentLoaded', () => {
         ),
     });
     renderTweaksPanel(noiseSelect?.value || 'simplex');
-    syncPhotoPanel(noiseSelect?.value || 'simplex');
-    if (noiseSelect) {
-        noiseSelect.addEventListener('change', (e) => {
-            renderTweaksPanel(e.target.value);
-            syncPhotoPanel(e.target.value);
-        });
-    }
+    if (noiseSelect) noiseSelect.addEventListener('change', (e) => renderTweaksPanel(e.target.value));
 
     // F34 item 1: the Photo filter's own small editor (pattern row, load-my-
     // own, crop/rotate/flip/levels/brightness/contrast/blur/invert, undo).
     // core/in-editor-3d.js 'photo': with the editor open a photo edit repaints its backdrop only (no 3D while editing)
+    // 2026-10-10: Surface > Photo, rendered from its declared PHOTO_CONTROLS BEFORE the Photo tab binds (Max Height moved
+    // there with its ids) and before bindControls (the layer's own P-key controls bind the generic way)
+    renderPhotoLayerSection(document.getElementById('photoLayerBody'));
     initPhotoPanel({
         onChange: (opts) => {
             const action = inEditor3dAction('photo', opts); // opts.drag: a slider's drag tick (its release notifies again)
@@ -138,6 +136,8 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (action === 'rebuild') scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0);
         },
     });
+    bindPhotoLayerSection(); // its mirrored image edits go through the Photo tab's own steps (photo-panel.js photoEditApi)
+    syncPhotoPanel();
 
     // F35 item 1: the Brick tab (set picker + declared tool list + common
     // controls). Output lands on the editor's own layers -- rebuilds happen

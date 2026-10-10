@@ -61,6 +61,10 @@ export const label = 'Photo';
 // INDEPENDENT coarse-redistribution pass (terrain.js Pass 2), not this
 // function's own output, so there is no photo-specific reason to differ.
 export const cMultiplier = 2.5;
+// 2026-10-10 (Fred: the photo as its own LAYER on top of the chosen filter): not a filter choice any more -- the board's
+// filter (P.noiseType) stays selectable and the photo samples on top of it (core/terrain.js photoLayer). Registered here
+// still: the layer samples this fn, and a save from before the layer (noiseType 'photo') is migrated (app-init.js).
+export const layerOnly = true;
 
 export const tweaks = [
   { key: 'depth', label: 'Depth', default: 1.0, min: 0.3, max: 2.0, step: 0.05, desc: 'Relief strength around mid-grey (1 = unchanged)' },
