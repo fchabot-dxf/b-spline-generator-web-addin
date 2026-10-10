@@ -1086,6 +1086,11 @@ def _remove_named_decal(component, name):
 # BRICKS_SKETCH_NAME is how re-Send finds and replaces its own earlier sketch (never duplicates,
 # never leaves a stale one behind when bricks are removed) -- the SAME DECAL_NAME convention above.
 BRICKS_SKETCH_NAME = 'Bricks'
+# 2026-10-10 (Fred, via the advisor): the brick OUTLINE sketches beside it -- export-flow.js BRICK_OUTLINE_SKETCHES
+# declares the rows (the region each brick element was laid into: 'Wall outline' one profile, 'Frame outline' its outer
+# and inner loops). The add-in replaces / removes only a sketch named here (a Send can never delete another sketch by
+# naming it); tests check this list against the JS declaration.
+BRICK_OUTLINE_SKETCH_NAMES = ('Wall outline', 'Frame outline')
 
 
 def _remove_named_sketch(component, name):
@@ -2280,6 +2285,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             if not is_preview:
                 _send_stage('fusionBricks')
                 _send_timed('Bricks sketch', self._apply_bricks_sketch, current_import_group, stamp_data, params, orientation)
+                _send_timed('Brick outline sketches', self._apply_brick_outline_sketches, current_import_group, stamp_data, params, orientation)
 
             # ── Finalise ─────────────────────────────────────────────────────────
             _send_stage('fusionCleanup', is_preview)
@@ -2581,6 +2587,28 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             _log(f'[STAMP] Error in layer {sketch_name}: {e}')
 
     def _apply_bricks_sketch(self, current_import_group, stamp_data, params, orientation='z-up'):
+        """F35 item 11: the Bricks sketch, `stamp_data['bricks']` (see _apply_brick_svg_sketch). MUST NEVER RAISE."""
+        # through the class: a caller's handler-like `self` (test_sketch_targets.py _Recorder) needs only the import hooks
+        PaletteHTMLEventHandler._apply_brick_svg_sketch(self, current_import_group, (stamp_data or {}).get('bricks'), BRICKS_SKETCH_NAME, 'BRICKS', params, orientation)
+
+    def _apply_brick_outline_sketches(self, current_import_group, stamp_data, params, orientation='z-up'):
+        """2026-10-10: the brick OUTLINE sketches, `stamp_data['brickOutlines']` = [{name, enabled, carve, svg}] (export-flow.js
+        BRICK_OUTLINE_SKETCHES), each row the same tri-state and home rule as the Bricks sketch. None = no instruction
+        (append). A row whose name is not in BRICK_OUTLINE_SKETCH_NAMES is skipped. MUST NEVER RAISE."""
+        try:
+            rows = (stamp_data or {}).get('brickOutlines')
+            if not isinstance(rows, list):
+                return
+            for row in rows:
+                name = (row or {}).get('name')
+                if name not in BRICK_OUTLINE_SKETCH_NAMES:
+                    _log(f'[OUTLINES] skipped an undeclared sketch name: {name!r}')
+                    continue
+                PaletteHTMLEventHandler._apply_brick_svg_sketch(self, current_import_group, row, name, 'OUTLINES', params, orientation)
+        except Exception as e:
+            _log(f'[OUTLINES] apply FAILED (Send unaffected): {e}')
+
+    def _apply_brick_svg_sketch(self, current_import_group, bricks_data, sketch_name, tag, params, orientation='z-up'):
         """F35 item 11 (Fred: "SEND BRICKS WITH THE B-SPLINE... no lock button, no line-by-line API
         drawing"): import the Bricks editor layer's own baked SVG (export-flow.js's
         _bricksLayerSvg + bakeSvgForCarving -- the SAME carve-transform pipeline every art-layer
@@ -2593,7 +2621,6 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         'svg': ...}` -> replace it with this. MUST NEVER RAISE -- a failure here must never fail
         the Send (callers rely on this, same as _apply_colour_decal)."""
         try:
-            bricks_data = (stamp_data or {}).get('bricks')
             if bricks_data is None:
                 return  # no instruction at all (append) -- leave it alone
             # turn 193 (Fred): a CARVING Bricks layer's sketch -> the Stamped (Carved) component; a
@@ -2604,23 +2631,23 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             root = getattr(current_import_group, 'component', None)  # the Send's own top, as the art layers' 'root'
             homes = [c for c in (carved, root) if c is not None]
             if not bricks_data.get('enabled'):
-                n = sum(_remove_named_sketch(c, BRICKS_SKETCH_NAME) for c in homes)
+                n = sum(_remove_named_sketch(c, sketch_name) for c in homes)
                 if n:
-                    _log(f'[BRICKS] removed {n} existing "{BRICKS_SKETCH_NAME}" sketch(es) (no bricks this Send)')
+                    _log(f'[{tag}] removed {n} existing "{sketch_name}" sketch(es) (no bricks this Send)')
                 return
             sketch_target = carved if bricks_data.get('carve', True) else root
             if not sketch_target:
-                _log('[BRICKS] enabled but no ' + ('Stamped (Carved) component' if bricks_data.get('carve', True) else 'root component') + ' in this Send -- skipped')
+                _log(f'[{tag}] enabled but no ' + ('Stamped (Carved) component' if bricks_data.get('carve', True) else 'root component') + ' in this Send -- skipped')
                 return
             for c in homes:
                 if c is not sketch_target:
-                    _remove_named_sketch(c, BRICKS_SKETCH_NAME)
+                    _remove_named_sketch(c, sketch_name)
             svg_text = bricks_data.get('svg') or ''
             if not svg_text:
-                _log('[BRICKS] enabled but no svg data -- skipped')
+                _log(f'[{tag}] enabled but no svg data -- skipped')
                 return
 
-            _remove_named_sketch(sketch_target, BRICKS_SKETCH_NAME)  # dedupe BEFORE adding -- same fix as the decal
+            _remove_named_sketch(sketch_target, sketch_name)  # dedupe BEFORE adding -- same fix as the decal
 
             top_face = None
             try:
@@ -2628,11 +2655,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 top_face = _largest_area_face(body) if body else None
             except Exception:
                 top_face = None
-            plane = self._compute_artwork_plane(sketch_target, BRICKS_SKETCH_NAME, top_face, orientation)
-            self._import_single_layer_svg(sketch_target, svg_text, plane, BRICKS_SKETCH_NAME, params, full_name=BRICKS_SKETCH_NAME)
-            _log(f'[BRICKS] imported "{BRICKS_SKETCH_NAME}" sketch into {sketch_target.name}')
+            plane = self._compute_artwork_plane(sketch_target, sketch_name, top_face, orientation)
+            self._import_single_layer_svg(sketch_target, svg_text, plane, sketch_name, params, full_name=sketch_name)
+            _log(f'[{tag}] imported "{sketch_name}" sketch into {sketch_target.name}')
         except Exception as e:
-            _log(f'[BRICKS] apply FAILED (Send unaffected): {e}')
+            _log(f'[{tag}] apply FAILED (Send unaffected): {e}')
 
 # ── Command constants ─────────────────────────────────────────────────────────
 COMMAND_ID      = 'fusionHybridCommand'

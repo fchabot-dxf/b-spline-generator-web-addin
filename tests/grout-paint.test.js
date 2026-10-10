@@ -27,7 +27,7 @@ import {
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { rasterizeBrickHeightMask } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-height-mask.js';
 import { isEditableByLayer, isOnVisibleLayer, isLockedNode, BRICK_SEND_SKIP, EDITOR_ONLY_STYLE } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
-import { _bricksLayerSvg } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
+import { _bricksLayerSvg, _brickOutlineSvgs } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 const sq = (x0, y0, x1, y1) => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
@@ -181,6 +181,20 @@ describe('the lay draws one LOCKED grout node per Wall / Frame element', () => {
     // a re-lay replaces them (no duplicates)
     runBricks(ed, settings, frameGeom());
     expect(q(ed, '[data-brick="grout"]')).toHaveLength(2);
+  });
+
+  // 2026-10-10 (Fred, via the advisor): Send's Wall / Frame OUTLINE sketches read these regions (export-flow.js
+  // BRICK_OUTLINE_SKETCHES) -- from a real lay: the wall 1 loop, the frame ring 2 (its contour + the wall's edge)
+  it('the outline sketches of a real lay: Wall = 1 closed loop, Frame = its contour + the inner loop the wall fills', () => {
+    const ed = fakeEditor();
+    runBricks(ed, { ...P.brickSettings, seed: 3 }, frameGeom());
+    const [wall, frame] = _brickOutlineSvgs(ed);
+    const loops = (svg) => [...svg.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1]);
+    expect(loops(wall.svg)).toHaveLength(1);
+    expect(loops(frame.svg)).toHaveLength(2);
+    expect(loops(frame.svg)[0]).toBe('M 0 0 L 7 0 L 7 9 L 0 9 Z'); // the contour the bands follow (here the board)
+    expect(loops(frame.svg)[1]).toBe(loops(wall.svg)[0]); // the ring's inner loop IS the wall's boundary: no gap
+    for (const d of [...loops(wall.svg), ...loops(frame.svg)]) expect(d.endsWith(' Z')).toBe(true);
   });
 
   it('a paint change repaints only: the brick polygons and the height mask are byte-identical', async () => {

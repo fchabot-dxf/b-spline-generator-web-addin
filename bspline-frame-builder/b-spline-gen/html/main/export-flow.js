@@ -44,7 +44,7 @@ import { latticeOwnedElementsOnLayer, _ownedOnLayer, resolvePatternLayer, _findB
 import { primitiveFromContourD } from '../editor/editor-contour-cut.js';
 import { buildArtworkDecalPng } from '../core/stamp/decal-png.js';
 import { showToast } from '../core/toast.js';
-import { brickPieceLayers, BRICK_GEN_ATTR } from '../editor/editor-brick-tool.js';
+import { brickPieceLayers, BRICK_GEN_ATTR, groutNodes, GROUT_REGION_ATTR } from '../editor/editor-brick-tool.js';
 
 // ── Stamp-layer helpers ──────────────────────────────────────────────────
 //
@@ -172,6 +172,40 @@ export async function _bricksLayerSvg(editor) {
     }
     if (!root || kept === 0) return '';
     return new XMLSerializer().serializeToString(root);
+}
+
+/** 2026-10-10 (Fred, via the advisor): beside the Bricks sketch, one OUTLINE sketch per brick element kind -- the region
+ *  the engine laid that element into, as its grout node keeps it (editor-brick-tool.js GROUT_REGION_ATTR: the region
+ *  itself, not a union of bricks, no grout joints). Fred's pick (a): each its own sketch. `loops`: 'outer' = each
+ *  region's outer boundary (the Wall: one closed profile); 'all' = its outer and inner loops (the Frame's band ring: 2
+ *  profiles, the ring and the opening inside it). A new outline is a new row; the add-in imports any row it is sent
+ *  (b-spline-gen.py BRICK_OUTLINE_SKETCH_NAMES lists the names it may replace). */
+export const BRICK_OUTLINE_SKETCHES = Object.freeze([
+    Object.freeze({ kind: 'wall', name: 'Wall outline', loops: 'outer' }),
+    Object.freeze({ kind: 'frame', name: 'Frame outline', loops: 'all' }),
+]);
+
+/** Each BRICK_OUTLINE_SKETCHES row's SVG (board inches, the layer SVG frame getLayerSvg uses), '' when no element of
+ *  that kind is laid on a brick layer. One closed path per loop. */
+export function _brickOutlineSvgs(editor) {
+    const layers = new Set(brickPieceLayers(editor).map((l) => String(l.id)));
+    const nodes = groutNodes(editor).filter((g) => layers.has(String(g.node.getAttribute('data-layer'))));
+    const loopD = (pts) => `M ${pts.map((p) => `${p.x} ${p.y}`).join(' L ')} Z`;
+    return BRICK_OUTLINE_SKETCHES.map((row) => {
+        const loops = [];
+        for (const g of nodes.filter((n) => n.kind === row.kind)) {
+            let region = [];
+            try { region = JSON.parse(g.node.getAttribute(GROUT_REGION_ATTR) || '[]'); } catch { region = []; }
+            for (const r of region) {
+                if (r && r.outer && r.outer.length >= 3) loops.push(r.outer);
+                if (row.loops === 'all') for (const h of (r && r.holes) || []) if (h.length >= 3) loops.push(h);
+            }
+        }
+        if (!loops.length || !editor._mW || !editor._mH) return { name: row.name, svg: '' };
+        const paths = loops.map((pts) => `<path d="${loopD(pts)}" fill="none" stroke="#000000" stroke-width="0.01"/>`).join('');
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${editor._mW * 96}" height="${editor._mH * 96}" viewBox="0 0 ${editor._mW} ${editor._mH}" preserveAspectRatio="none" data-export-dpi="96">${paths}</svg>`;
+        return { name: row.name, svg };
+    });
 }
 
 /** T62 (SE15): a layer's own SE15 sketch manifest, or `null` when the
@@ -663,6 +697,23 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
             if (typeof fusLog === 'function') fusLog('[EXPORT] Bricks SVG failed: ' + (e && e.message));
         }
     }
+    // 2026-10-10: the brick OUTLINE sketches (BRICK_OUTLINE_SKETCHES), the same tri-state per row as `bricks` and in its
+    // home (Carved when the bricks carve); null = no instruction (append, or a failure: never an incorrect removal)
+    let brickOutlines = null;
+    if (!isAppend) {
+        try {
+            const carve = brickPieceLayers(editor).some((l) => isCarved(l));
+            brickOutlines = [];
+            for (const o of _brickOutlineSvgs(editor)) {
+                brickOutlines.push(o.svg
+                    ? { name: o.name, enabled: true, carve, svg: await bakeSvgForCarving(o.svg, P.widthIn, P.heightIn, 96) }
+                    : { name: o.name, enabled: false });
+            }
+        } catch (e) {
+            brickOutlines = null;
+            if (typeof fusLog === 'function') fusLog('[EXPORT] Brick outlines failed: ' + (e && e.message));
+        }
+    }
     const payload = JSON.stringify({
         params: { ...P },
         stepVariants,
@@ -679,6 +730,7 @@ async function sendToFusion({ shared, heights, offsetPts, unstamped, options, la
             dpi: 96,
             decal,
             bricks,
+            brickOutlines,
         },
     });
     if (typeof fusLog === 'function') {

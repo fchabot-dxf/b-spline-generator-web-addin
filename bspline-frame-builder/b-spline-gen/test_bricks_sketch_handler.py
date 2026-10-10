@@ -284,3 +284,72 @@ class TestApplyBricksSketch:
         _handler()._apply_bricks_sketch(group, {'bricks': {'enabled': True, 'svg': _SVG}}, _PARAMS)  # must not raise, must not touch Clean
 
         assert not hasattr(clean_body.parentComponent, 'sketches') or len(getattr(clean_body.parentComponent, 'sketches', [])) == 0
+
+
+class TestApplyBrickOutlineSketches:
+    """2026-10-10 (Fred, via the advisor): the 'Wall outline' / 'Frame outline' sketches beside 'Bricks' -- one row each
+    (export-flow.js BRICK_OUTLINE_SKETCHES), the same tri-state and home rule; the Bricks sketch untouched."""
+
+    def _rows(self, wall=True, frame=True):
+        row = lambda name, on: {'name': name, 'enabled': True, 'carve': True, 'svg': _SVG} if on else {'name': name, 'enabled': False}
+        return {'brickOutlines': [row('Wall outline', wall), row('Frame outline', frame)]}
+
+    def test_the_names_match_the_js_declaration(self):
+        import pathlib
+        import re
+        js = (pathlib.Path(__file__).parent / 'html' / 'main' / 'export-flow.js').read_text(encoding='utf-8')
+        block = js[js.index('export const BRICK_OUTLINE_SKETCHES'):]
+        block = block[:block.index(']);')]
+        assert tuple(re.findall(r"name: '([^']+)'", block)) == bsg.BRICK_OUTLINE_SKETCH_NAMES
+
+    def test_each_row_its_own_sketch_beside_bricks(self, _fake_import_manager):
+        body = _FakeBody(faces=[_face_with_bounding_box(10)])
+        occ, comp = _bricks_component(body)
+        group = _import_group([occ])
+        payload = {'bricks': {'enabled': True, 'svg': _SVG}, **self._rows()}
+        h = _handler()
+        h._apply_bricks_sketch(group, payload, _PARAMS)
+        h._apply_brick_outline_sketches(group, payload, _PARAMS)
+        assert sorted(s.name for s in comp.sketches) == ['Bricks', 'Frame outline', 'Wall outline']
+        h._apply_brick_outline_sketches(group, payload, _PARAMS)  # re-Send: replaced, never duplicated
+        assert sorted(s.name for s in comp.sketches) == ['Bricks', 'Frame outline', 'Wall outline']
+
+    def test_a_disabled_row_removes_only_its_own_sketch(self, _fake_import_manager):
+        body = _FakeBody(faces=[_face_with_bounding_box(10)])
+        occ, comp = _bricks_component(body)
+        group = _import_group([occ])
+        h = _handler()
+        h._apply_bricks_sketch(group, {'bricks': {'enabled': True, 'svg': _SVG}}, _PARAMS)
+        h._apply_brick_outline_sketches(group, self._rows(), _PARAMS)
+        h._apply_brick_outline_sketches(group, self._rows(frame=False), _PARAMS)  # the frame was cleared
+        assert sorted(s.name for s in comp.sketches if not s.deleted) == ['Bricks', 'Wall outline']
+
+    def test_no_instruction_leaves_them_alone(self, _fake_import_manager):
+        body = _FakeBody(faces=[_face_with_bounding_box(10)])
+        occ, comp = _bricks_component(body)
+        group = _import_group([occ])
+        h = _handler()
+        h._apply_brick_outline_sketches(group, self._rows(), _PARAMS)
+        for payload in ({}, {'brickOutlines': None}):  # append: no instruction
+            h._apply_brick_outline_sketches(group, payload, _PARAMS)
+        assert sorted(s.name for s in comp.sketches) == ['Frame outline', 'Wall outline']
+
+    def test_an_undeclared_name_never_replaces_or_removes_a_sketch(self, _fake_import_manager):
+        body = _FakeBody(faces=[_face_with_bounding_box(10)])
+        occ, comp = _bricks_component(body)
+        group = _import_group([occ])
+        h = _handler()
+        h._apply_bricks_sketch(group, {'bricks': {'enabled': True, 'svg': _SVG}}, _PARAMS)
+        h._apply_brick_outline_sketches(group, {'brickOutlines': [{'name': 'Bricks', 'enabled': False}]}, _PARAMS)
+        assert [s.name for s in comp.sketches if not s.deleted] == ['Bricks']
+
+    def test_a_crash_never_propagates(self, monkeypatch):
+        body = _FakeBody(faces=[_face_with_bounding_box(10)])
+        occ, comp = _bricks_component(body)
+        group = _import_group([occ])
+
+        def boom(*a, **kw):
+            raise RuntimeError('sketches.add exploded')
+        monkeypatch.setattr(comp.sketches, 'add', boom)
+        _handler()._apply_brick_outline_sketches(group, self._rows(), _PARAMS)  # must not raise
+        _handler()._apply_brick_outline_sketches(group, {'brickOutlines': 'garbage'}, _PARAMS)

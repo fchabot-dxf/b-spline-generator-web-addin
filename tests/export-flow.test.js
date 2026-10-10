@@ -21,7 +21,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { activeStampLayers, exportableStampLayers, _reportDeclinedOutlines, _fusionLayerManifest, _boundarySketchManifests, _bricksLayerSvg } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
+import { activeStampLayers, exportableStampLayers, _reportDeclinedOutlines, _fusionLayerManifest, _boundarySketchManifests, _bricksLayerSvg, _brickOutlineSvgs, BRICK_OUTLINE_SKETCHES } from '../bspline-frame-builder/b-spline-gen/html/main/export-flow.js';
 import { setLayerVisible } from '../bspline-frame-builder/b-spline-gen/html/editor/layers.js';
 // F17 (P1): the lattice manifest is built from the owned pieces AS DRAWN, so the mocks carry real geometry
 import { drawnFromPattern, ownedStores } from './helpers/drawn-lattice.js';
@@ -577,5 +577,46 @@ describe('export-flow: _bricksLayerSvg (F35 item 11 -- Send bricks with the B-sp
     const pts = [...svg.matchAll(/points="([^"]+)"/g)].map((m) => m[1]);
     expect(pts).toEqual(['0,0 1,0 1,0.3 0,0.3', '5,5 6,5 6,6']); // roster order: b1 then a
     expect(svg).not.toContain('<rect');
+  });
+});
+
+/** 2026-10-10 (Fred, via the advisor): the brick OUTLINE sketches -- each Wall / Frame element's laid region (its grout
+ *  node's data-grout-region, editor-brick-tool.js), not its bricks: the Wall's outer boundary, the Frame's outer + inner. */
+describe('export-flow: _brickOutlineSvgs (the Wall / Frame outline sketches)', () => {
+  const sq = (x0, y0, x1, y1) => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+  const grout = (kind, owner, region, layer = 'b1') =>
+    `<path d="M0,0" data-layer="${layer}" data-brick="grout" data-brick-gen="1" data-brick-grout-of="${kind}" data-brick-owner="${owner}" data-grout-region='${JSON.stringify(region)}'/>`;
+  const brick = (kind, layer = 'b1') => `<polygon points="1,1 2,1 2,2" data-layer="${layer}" data-brick="${kind}" data-brick-gen="1" data-brick-owner="${kind}1"/>`;
+  function editorOf(innerHTML, layers = [{ id: 'b1', name: 'Bricks', holdsBricks: true }]) {
+    const doc = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${innerHTML}</svg>`, 'image/svg+xml');
+    const node = { innerHTML, querySelector: (sel) => doc.querySelector(sel), querySelectorAll: (sel) => doc.querySelectorAll(sel) };
+    return { _draw: {}, _sketchLayer: { node }, _mW: 7, _mH: 9, _layers: layers, _activeLayer: null };
+  }
+  const loops = (svg) => [...svg.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1]);
+  const FRAME = [{ outer: sq(0, 0, 7, 9), holes: [sq(0.8, 0.8, 6.2, 8.2)] }];
+  const WALL = [{ outer: sq(0.8, 0.8, 6.2, 8.2), holes: [] }];
+
+  it('declares the two sketches, in order (Fred: each its own sketch)', () => {
+    expect(BRICK_OUTLINE_SKETCHES.map((r) => [r.kind, r.name, r.loops])).toEqual([['wall', 'Wall outline', 'outer'], ['frame', 'Frame outline', 'all']]);
+  });
+  it('Wall outline = the wall region outer (1 loop); Frame outline = the ring outer + inner (2 loops); closed paths, board inches', () => {
+    const [wall, frame] = _brickOutlineSvgs(editorOf(brick('wall') + brick('frame') + grout('wall', 'w1', WALL) + grout('frame', 'f1', FRAME)));
+    expect([wall.name, frame.name]).toEqual(['Wall outline', 'Frame outline']);
+    expect(loops(wall.svg)).toEqual(['M 0.8 0.8 L 6.2 0.8 L 6.2 8.2 L 0.8 8.2 Z']);
+    expect(loops(frame.svg)).toEqual(['M 0 0 L 7 0 L 7 9 L 0 9 Z', 'M 0.8 0.8 L 6.2 0.8 L 6.2 8.2 L 0.8 8.2 Z']);
+    expect(wall.svg).toContain('viewBox="0 0 7 9"');
+  });
+  it('the wall: outer boundaries only (a hole is not drawn); several painted areas: one loop each', () => {
+    const area = (x) => [{ outer: sq(x, 1, x + 1, 2), holes: [sq(x + 0.4, 1.4, x + 0.6, 1.6)] }];
+    const [wall] = _brickOutlineSvgs(editorOf(brick('wall') + grout('wall', 'a1', area(1)) + grout('wall', 'a2', area(3))));
+    expect(loops(wall.svg)).toHaveLength(2);
+  });
+  it('nothing laid of a kind -> its row empty (the add-in then removes that sketch); brush grout is not an outline', () => {
+    const [wall, frame] = _brickOutlineSvgs(editorOf(brick('brush') + grout('brush', 's1', WALL)));
+    expect([wall.svg, frame.svg]).toEqual(['', '']);
+  });
+  it('a grout node on a layer that holds no laid pieces is not sent', () => {
+    const [wall] = _brickOutlineSvgs(editorOf(brick('wall') + grout('wall', 'w1', WALL, 'other')));
+    expect(wall.svg).toBe('');
   });
 });
