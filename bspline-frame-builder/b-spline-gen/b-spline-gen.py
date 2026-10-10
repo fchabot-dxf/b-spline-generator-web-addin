@@ -21,6 +21,8 @@ from constrained_sketch_log import format_constrained_sketch_log
 # STALE-PARAMS R4 item 4: the Bspline-group cleanup pass — a sibling module,
 # same sys.path story as sketch_manifest_builder above.
 from param_ownership import compute_stale_params
+# 2026-10-09: the Send transport (plain or gzip-b64 JSON) -- declared in send_transport.py, a sibling module too.
+from send_transport import transport_info, encoding_of, decode_payload
 
 # imports check: removed diagnostic
 
@@ -346,6 +348,7 @@ def install_session_handlers():
 # Globals for the chunked-transfer + polling handshake
 importing_done = False
 chunk_buffer   = []
+chunk_start    = None  # the Send's 'generate_start' data: its declared encoding (send_transport.py)
 
 
 def _apply_send_visibility(consolidated):
@@ -1551,7 +1554,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
         super().__init__()
 
     def notify(self, args):
-        global last_imported_occurrences, importing_done, chunk_buffer
+        global last_imported_occurrences, importing_done, chunk_buffer, chunk_start
         try:
             htmlArgs = adsk.core.HTMLEventArgs.cast(args)
             action   = htmlArgs.action
@@ -1604,6 +1607,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     # handshake reply so the header badge fills in at open.
                     _send_build_info(pal)
                     _send_edit_password(pal)  # F35 item 34
+                    pal.sendInfoToHTML('send_transport', json.dumps(transport_info()))  # the encodings this add-in reads
                 return
 
             if action == 'store_edit_password':
@@ -1620,6 +1624,7 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
             # ── Chunked transfer ──────────────────────────────────────────────
             if action == 'generate_start':
                 chunk_buffer   = []
+                chunk_start    = json.loads(htmlArgs.data) if htmlArgs.data else None
                 importing_done = False
                 _log('Chunked transfer started...')
                 _log(_transfer_timer.start())
@@ -1639,6 +1644,11 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                 _log(f'Chunked transfer complete — received {len(payload_json)} chars across {num_chunks} chunks')
                 _log(_transfer_timer.finish())
                 try:
+                    encoding = encoding_of(chunk_start)
+                    if encoding != 'plain':
+                        sent_chars = len(payload_json)
+                        payload_json = decode_payload(payload_json, encoding)
+                        _log(f'[XFER] {encoding}: {sent_chars} chars sent -> {len(payload_json)} chars of JSON')
                     payload = json.loads(payload_json)
                     self._handle_generate(payload)
                     _log(_transfer_timer.handled())

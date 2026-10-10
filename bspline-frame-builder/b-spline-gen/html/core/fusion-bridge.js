@@ -75,17 +75,57 @@ export function sendFusionMeshPreview(preview) {
 }
 
 /**
+ * 2026-10-09 (seat A; Fred's showcase Sends were 5-44 MB of JSON, two full STEP texts, ~170 chunks): the Send's
+ * transport, declared once. The add-in announces the encodings it reads ('send_transport', send_transport.py); the
+ * palette uses the first of `encodings` both sides know, and declares it in 'generate_start'. 'gzip-b64' = the JSON
+ * text gzipped (CompressionStream) and base64'd; the add-in decodes it back to the exact text before json.loads.
+ * Plain whenever the add-in did not announce gzip (an older add-in), CompressionStream is missing, or compressing
+ * fails -- a Send never fails over its transport.
+ */
+export const SEND_TRANSPORT = Object.freeze({ version: 1, encodings: Object.freeze(['gzip-b64', 'plain']) });
+let _addinEncodings = ['plain']; // until the add-in says otherwise
+
+/** The add-in's 'send_transport' handshake: {version, encodings}. */
+export function setAddinSendTransport(info) {
+    const enc = info && Array.isArray(info.encodings) ? info.encodings.filter((e) => typeof e === 'string') : [];
+    _addinEncodings = enc.length ? enc : ['plain'];
+}
+
+/** base64 of bytes, in pieces a multiple of 3 bytes long (so the pieces' base64 concatenates). */
+function _base64(bytes) {
+    let out = '';
+    for (let i = 0; i < bytes.length; i += 3 * 16384) out += btoa(String.fromCharCode.apply(null, bytes.subarray(i, i + 3 * 16384)));
+    return out;
+}
+
+/** The payload as it travels: { encoding, data }. Never throws (plain on any trouble). */
+export async function encodeSendPayload(payloadString, addinEncodings = _addinEncodings) {
+    const encoding = SEND_TRANSPORT.encodings.find((e) => addinEncodings.includes(e)) || 'plain';
+    if (encoding === 'gzip-b64' && typeof CompressionStream === 'function') {
+        try {
+            const stream = new Blob([payloadString]).stream().pipeThrough(new CompressionStream('gzip'));
+            const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+            return { encoding, data: _base64(bytes) };
+        } catch (e) {
+            fusLog(`[COORD_STD] gzip failed, sending plain: ${e.message}`);
+        }
+    }
+    return { encoding: 'plain', data: payloadString };
+}
+
+/**
  * Streams large payloads in 256KB chunks to bypass Fusion-web bridge limits.
  */
 export async function sendFusionPayloadChunked(payloadString, { beforeFinish } = {}) {
     const CHUNK_SIZE = 256 * 1024;
-    const totalChunks = Math.ceil(payloadString.length / CHUNK_SIZE);
+    const { encoding, data } = await encodeSendPayload(payloadString);
+    const totalChunks = Math.ceil(data.length / CHUNK_SIZE);
 
-    fusLog(`[COORD_STD] sendFusionPayloadChunked: starting chunked send (${payloadString.length} chars, ${totalChunks} chunks)`);
+    fusLog(`[COORD_STD] sendFusionPayloadChunked: starting chunked send (${payloadString.length} chars as ${encoding}: ${data.length} chars, ${totalChunks} chunks)`);
     try {
-        adsk.fusionSendData('generate_start', JSON.stringify({ totalChunks }));
+        adsk.fusionSendData('generate_start', JSON.stringify({ totalChunks, encoding, version: SEND_TRANSPORT.version }));
         for (let i = 0; i < totalChunks; i++) {
-            const chunk = payloadString.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+            const chunk = data.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
             const progress = Math.round(((i + 1) / totalChunks) * 100);
             fusLog(`[COORD_STD] Sending chunk ${i + 1}/${totalChunks} (${progress}%)...`);
             adsk.fusionSendData('generate_chunk', JSON.stringify({ index: i, data: chunk }));

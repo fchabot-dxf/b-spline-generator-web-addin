@@ -25543,3 +25543,20 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - PROOF: re-rendered locally -- scrollHeight 2030, scrollWidth 430, the finger drag moves scrollTop 0 -> 485, the check exits
   0; the old render exits 1. A tile tap still closes the mosaic and opens that shot (8 / 60). The live watcher is the
   advisor's to redeploy (not restarted here).
+### 2026-10-09 (seat A): Send payload P1 -- gzip transport BUILT + proven identical, but measured NOT worth merging
+- BUILT (branch send-gzip): send_transport.py (declared SEND_ENCODINGS, encoding_of, decode_payload; pure) wired into
+  b-spline-gen.py (generate_start's declared encoding, decode before json.loads, the 'send_transport' handshake next to
+  build_info); fusion-bridge.js SEND_TRANSPORT + encodeSendPayload (CompressionStream gzip + base64, plain when the
+  add-in did not announce gzip-b64 -- the palette is served from the website and may be newer than the add-in --, when
+  CompressionStream is missing, or on any error) + setAddinSendTransport; main.js routes the handshake.
+- TESTS: tests/send-transport.test.js (7: contract, exact round trip of a real STEP payload, plain for old/unknown
+  add-ins, plain without / with a failing CompressionStream, the chunked envelope + join, the plain Send unchanged,
+  the cross-language fixture); test_send_transport.py (4: contract, the JS-encoded fixture decodes exactly, the real
+  notify() path gzip == plain, Fred's 20 showcase payloads round-trip). One-off: all 20 showcase payloads encoded by
+  the REAL encodeSendPayload and decoded by send_transport.py: 20/20 identical; 326 -> 87 MB; claude_4 167 -> 43 chunks.
+- WHY NOT MERGE (measured after building): CompressionStream gzip takes ~2.0-2.3 s for claude_4's 43.5 MB (base64 only
+  0.15 s), while the add-in log's own [XFER] lines show the bridge moves 10.42 MB / 40 chunks in 0.40-0.50 s
+  (~21-26 MB/s) -- claude_4's transfer is ~2 s. And a real 98 s Send (2026-10-06 09:11): transfer 0.4 s, STEP imports
+  2 + 4 s, stamp-layer constrained sketches ~61 s (one ballnose layer 24 s, CONSTRAINT FAIL retries), frame 29 s.
+  Payload size touches ~6.5 s of 98. Reported to the advisor; not proposed for the gate.
+- Full suite: not run (not proposed for merge). Known failures: none in the touched tests (vitest 12/12, pytest 8/8).

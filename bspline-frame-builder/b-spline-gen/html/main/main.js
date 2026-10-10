@@ -25,7 +25,7 @@ import { initArtTabs } from './art-tabs.js';
 import { applySectionThemes } from './section-themes.js';
 import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
-import { fusLog, pollMode, stopFusionPolling, setFusionActionState, FUSION_IDLE_LABEL, requestDesignParams, setFusionStatus } from '../core/fusion-bridge.js';
+import { fusLog, pollMode, stopFusionPolling, setFusionActionState, FUSION_IDLE_LABEL, requestDesignParams, setFusionStatus, setAddinSendTransport } from '../core/fusion-bridge.js';
 import { TerrainPreview } from '../core/preview.js';
 import { populateNoiseDropdown } from '../core/noise/index.js';
 import { bindTweaksUI, renderTweaksPanel } from '../core/noise/tweaks-ui.js';
@@ -264,6 +264,12 @@ function handleFusionHandshake(ev) {
     if (action === 'edit_password') {
         let d = {}; try { d = JSON.parse(ev.detail.data || '{}'); } catch (e) {}
         receiveEditPasswordFromFusion(d.password || null);
+        return;
+    }
+
+    // the encodings the add-in reads for a Send (send_transport.py; fusion-bridge.js SEND_TRANSPORT), at startup
+    if (action === 'send_transport') {
+        try { setAddinSendTransport(JSON.parse(ev.detail.data || '{}')); } catch (e) { fusLog(`send_transport parse failed: ${e.message}`); }
         return;
     }
 
