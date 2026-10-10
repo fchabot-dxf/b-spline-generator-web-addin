@@ -121,7 +121,9 @@ const BRICK_TOOLS = [
 /** F35 item 43: the Brick panel's TAB STRIP = General (not a tool: the board-wide settings; picking it leaves the
  *  active tool as it is) + one tab per BRICK_TOOLS entry that declares `tab`, in its declared order. A tab's button
  *  keeps the tool's `buttonId`, so a click on it is a click on the tool. */
-export const BRICK_GENERAL_TAB = Object.freeze({ id: 'general', buttonId: 'brickTab_general', label: 'General',
+// `generates: false` (Fred 2026-10-10: "in the General tab the Generate button has no purpose"): General holds only the
+// board-wide settings; each element's tab keeps its own Generate (BRICK_TOOLS' `generates`)
+export const BRICK_GENERAL_TAB = Object.freeze({ id: 'general', buttonId: 'brickTab_general', label: 'General', generates: false,
   iconSvg: () => brickToolIconSvg('general'), title: 'General -- the board-wide brick settings (every element)' });
 export const brickTabs = () => [BRICK_GENERAL_TAB, ...BRICK_TOOLS.filter((t) => t.tab).sort((a, b) => a.tab.order - b.tab.order)
   .map((t) => ({ id: t.id, buttonId: t.buttonId, label: t.tab.label, iconSvg: t.iconSvg, title: `${t.label} -- ${t.hint}` }))];
@@ -1877,13 +1879,15 @@ function syncToolButtons() {
   syncGenerateVisibility();
 }
 
-/** Audit C9: the pinned Generate shows only for a tool it applies to (BRICK_TOOLS' `generates`). */
+/** Audit C9: the pinned Generate shows only where it applies -- the active tab's declared `generates` (General's own,
+ *  else the tool's in BRICK_TOOLS; no tool picked = the General tab). */
 function syncGenerateVisibility() {
-  // item 43: the button only -- the tab strip shares its pinned block; General's Generate re-lays every element
+  // item 43: the button only -- the tab strip shares its pinned block
   const button = document.getElementById('brickGenerate');
   if (!button) return;
   const tool = BRICK_TOOLS.find((t) => t.id === _activeTool);
-  button.style.display = !tool || tool.generates || activeBrickTab() === BRICK_GENERAL_TAB.id ? '' : 'none';
+  const shown = activeBrickTab() === BRICK_GENERAL_TAB.id ? BRICK_GENERAL_TAB.generates : !!tool?.generates;
+  button.style.display = shown ? '' : 'none';
 }
 
 /** F35 item 16 follow-up (Fred, live use: "don't see the layers"): with no Brick tool picked yet,
