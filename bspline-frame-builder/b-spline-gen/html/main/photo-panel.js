@@ -191,6 +191,54 @@ function setStraighten(degrees, opts) {
   notifyChange(opts);
 }
 
+// Fred 2026-10-10 (live crop; "keep the original so we can uncrop"): crop is ONE op at its declared place in the edit
+// order (straighten -> crop -> the rest), upserted -- never appended (each "Apply crop" used to add one more, so crops
+// compounded). The stored photo is always the ORIGINAL; the crop is only a step of the pipeline, so it can be widened
+// back to the full image. A saved project is never rewritten on load (a legacy list of appended crops renders exactly
+// as before); only an EDIT replaces its crops with the one op.
+export const CROP_FULL = Object.freeze({ x: 0, y: 0, w: 1, h: 1 });
+const CROP_GEOMETRY_OPS = new Set(['rotate90', 'flip']); // a crop after one of these is in a turned / mirrored frame
+const clamp01 = (v) => Math.max(0, Math.min(1, Number(v) || 0));
+const cropRect = (p = {}) => ({ x: clamp01(p.x ?? 0), y: clamp01(p.y ?? 0), w: clamp01(p.w ?? 1), h: clamp01(p.h ?? 1) });
+export const isFullCrop = (r) => r.x <= 0 && r.y <= 0 && r.w >= 1 && r.h >= 1;
+
+/** Pure: the crop the panel edits, as fractions of the (straightened) original. One crop op: its rect. A legacy list of
+ *  appended crops: composed exactly (each crops the previous result) when no rotate / flip comes before any of them;
+ *  otherwise the full image (an edit then starts from the whole photo). */
+export function editableCrop(steps = []) {
+  let r = { ...CROP_FULL }, turned = false;
+  for (const s of steps) {
+    if (CROP_GEOMETRY_OPS.has(s.op)) turned = true;
+    if (s.op !== 'crop') continue;
+    if (turned) return { ...CROP_FULL };
+    const c = cropRect(s.params);
+    r = { x: r.x + c.x * r.w, y: r.y + c.y * r.h, w: c.w * r.w, h: c.h * r.h };
+  }
+  return r;
+}
+
+/** Pure: `steps` with ONE crop `rect` at its declared place (right after straighten, else first), every other crop op
+ *  removed; the full image = no crop op at all. */
+export function withCrop(steps = [], rect) {
+  const rest = steps.filter((s) => s.op !== 'crop');
+  const r = cropRect(rect);
+  if (isFullCrop(r)) return rest;
+  const at = rest.findIndex((s) => s.op === 'straighten') + 1; // 0 when there is no straighten
+  return [...rest.slice(0, at), { op: 'crop', params: r }, ...rest.slice(at)];
+}
+
+/** The crop fields (in %) <- the state. */
+function syncCropFields() {
+  const r = editableCrop(P.photoEdits || []);
+  const set = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = String(Math.round(v * 1000) / 10); };
+  set('photoCropX', r.x); set('photoCropY', r.y); set('photoCropW', r.w); set('photoCropH', r.h);
+}
+/** The crop -> the state, previewed at once (the editor's backdrop); the gesture's end commits it (photoStep). */
+function setCrop(rect, opts) {
+  P.photoEdits = withCrop(P.photoEdits || [], rect);
+  notifyChange(opts);
+}
+
 function appendDiscreteOp(opName, params) {
   P.photoEdits = [...(P.photoEdits || []), { op: opName, params }];
   notifyChange();
@@ -278,6 +326,7 @@ function syncControlsFromState() {
   setPair('photoBrightnessSlider', 'photoBrightness', bc.brightness);
   setPair('photoContrastSlider', 'photoContrast', bc.contrast);
   setPair('photoBlurSlider', 'photoBlur', blur.radius);
+  syncCropFields();
   syncReliefToggle();
   syncReliefHeightDisplay();
 }
@@ -530,13 +579,17 @@ export function initPhotoPanel({ onChange }) {
   document.getElementById('photoBtnReliefCarved')?.addEventListener('click', () => setInvert(true));
   document.getElementById('photoBtnUndo')?.addEventListener('click', undo);
 
-  document.getElementById('photoBtnApplyCrop')?.addEventListener('click', () => {
+  // the crop is LIVE (Fred 2026-10-10: no Apply): a field's input previews it, its change (or a Reset) is one step
+  const CROP_FIELDS = ['photoCropX', 'photoCropY', 'photoCropW', 'photoCropH'];
+  const cropFromFields = () => {
     const pct = (id) => Math.max(0, Math.min(100, parseFloat(document.getElementById(id)?.value) || 0)) / 100;
-    appendDiscreteOp('crop', {
-      x: pct('photoCropX'), y: pct('photoCropY'),
-      w: Math.max(0.01, pct('photoCropW')), h: Math.max(0.01, pct('photoCropH')),
-    });
-  });
+    return { x: pct('photoCropX'), y: pct('photoCropY'), w: Math.max(0.01, pct('photoCropW')), h: Math.max(0.01, pct('photoCropH')) };
+  };
+  for (const id of CROP_FIELDS) {
+    document.getElementById(id)?.addEventListener('input', () => setCrop(cropFromFields()));
+    document.getElementById(id)?.addEventListener('change', photoStep);
+  }
+  document.getElementById('photoBtnResetCrop')?.addEventListener('click', () => { setCrop(CROP_FULL); syncCropFields(); photoStep(); });
 
   const straightenSlider = document.getElementById('photoStraightenSlider');
   const straightenNumber = document.getElementById('photoStraighten');
