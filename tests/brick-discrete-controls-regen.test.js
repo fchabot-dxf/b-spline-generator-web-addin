@@ -83,6 +83,7 @@ const FIXTURE = `
   <div id="stripeColorPresets"></div><div id="stripeColorSwatches"></div><div id="stripeBrickStyles" style="display:none;"></div>
   <div id="stripeTargetHint">Tap a rail, a contour segment or a line.</div>
   <input id="brickLevel_wall" value="0"><input id="brickLevel_frame" value="0">
+  <input type="number" id="brickFrameOffsetDistance" value="0">
   <div id="brickSidebarNoBricks" style="display:none;"></div><div id="brickStartHint" style="display:none;"></div>
   <div id="brickAccentList"></div><button id="brickAccentClick">Click bricks</button>
   <div id="brickAccentLevelRow" style="display:none;"><input id="brickAccentLevel" value="0.0625"></div>
@@ -562,14 +563,22 @@ describe('F35 item 16 + 66: the band contour (the retired Offset-from-frame is a
     window.svgEditor._notifyChange = notify;
     window.svgEditor._mW = 7; window.svgEditor._mH = 9;
   });
-  it('item 66: no Offset-from-frame control; the bands follow the frame\'s OUTER edge (distance 0); nothing is written', () => {
-    expect(document.getElementById('brickFrameOffsetOn')).toBeNull();
-    expect(document.getElementById('brickFrameOffsetDistance')).toBeNull();
+  it('Fred 2026-10-10: Offset from frame is back (a distance only); untouched, the bands follow the OUTER edge (0) and nothing is written', () => {
+    const html = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf-8');
+    expect(html).toMatch(/id="brickFrameOffsetDistance"/);
+    expect(html).not.toMatch(/id="brickFrameOffsetOn"/); // the ON/OFF box stays retired
+    expect($('brickFrameOffsetDistance').value).toBe('0');
     $('brickGenerate').click();
     expect(frameContourSilhouette.mock.calls.at(-1)[1]).toBe(0);
     expect(P.brickSettings).not.toHaveProperty('frameOffset');
-    const html = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf-8');
-    expect(html).not.toMatch(/id="brickFrameOffset(On|Distance)"/);
+  });
+  it('a distance change writes frameOffset { on: true, distance } and re-lays once at it (one commit)', () => {
+    const calls = runBricks.mock.calls.length;
+    fire('brickFrameOffsetDistance', 0.25, 'change');
+    expect(P.brickSettings.frameOffset).toEqual({ on: true, distance: 0.25 });
+    expect(runBricks.mock.calls.length - calls).toBe(1);
+    expect(frameContourSilhouette.mock.calls.at(-1)[1]).toBe(0.25);
+    expect(pending()).toBe(false);
   });
   it('legacy read: a board saved with a distance keeps laying at it (byte-identical to before item 66)', () => {
     P.brickSettings.frameOffset = { on: true, distance: 0.3 };
