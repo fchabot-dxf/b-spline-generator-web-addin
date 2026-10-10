@@ -5,7 +5,7 @@
  *  - bareGround: the same verdict per point with the boxes bucketed (load-proofing), plus the largest CONNECTED bare patch
  *    (4-neighbour grid points) -- one dropped brick, or a fan slice given up, is one patch (T86 item 16(d)).
  */
-import { pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { pointInPolygon, polygonPointTester } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 
 /** the scan's grid step (in) */
 export const GRID_IN = 0.04;
@@ -57,10 +57,12 @@ export function bareGround(contour, bricks, J, { W, H }) {
       buckets.get(k).push(b);
     }
   }
-  const bare = new Set(), cols = Math.ceil(W / GRID_IN) + 1;
+  // the contour test is polygonPointTester: pointInPolygon's own answer for many points (seat E 2026-10-10, MEASURED: this
+  // scan was 58% of the pattern-gaps FULL, most of it a per-point pointInPolygon on the several-hundred-point contour)
+  const bare = new Set(), cols = Math.ceil(W / GRID_IN) + 1, inContour = polygonPointTester(contour);
   let row = 0;
   for (let y = GRID_IN / 2; y < H; y += GRID_IN, row++) for (let x = GRID_IN / 2, col = 0; x < W; x += GRID_IN, col++) {
-    if (!pointInPolygon(x, y, contour)) continue;
+    if (!inContour(x, y)) continue;
     if (!(buckets.get(cell(y) * nx + cell(x)) || []).some((b) => nearBox(b, x, y, J))) bare.add(row * cols + col);
   }
   // T86 item 16(d): the largest CONNECTED bare patch (4-neighbour grid points) -- one dropped wall brick is one patch

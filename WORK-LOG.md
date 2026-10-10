@@ -25828,3 +25828,11 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   (a distance only shrinks, so it can't raise the max); the piece nearest the previous point is tried first.
 - PROOF: old and new scans, FULL at seeds 1,2,3: 4,560 lays, gapJ / overlaps / off-outline / sharpest corner compared with
   Object.is -- 0 differ. Time 2,008 s -> 472 s. FAST 10/10.
+
+### 2026-10-10 (seat E): pattern-gaps FULL 242 -> 170 s (and every bareGround sweep), every lay identical
+- MEASURED (432 FULL lays, stage timers): bareGround 58%, Generate 23%, the overlap pairs 18%, off-outline < 1%.
+- EXACT: tests/bare-ground.js bareGround's contour test is polygonPointTester (pointInPolygon's own answer for many points;
+  shared by 7 sweep tests); pattern-gaps' overlap loop skips pairs whose boxes are apart (an empty intersection either way).
+- PROOF: old and new (the old helper imported from a scratch copy), PATTERN_SWEEP_FULL: 2,736 lays, the overlap list /
+  off-outline count / bare sq in / largest patch compared exactly -- 0 differ. 242 -> 170 s (the main it ran on already
+  had stone-frame-speed's faster Generate). The 7 bareGround users FAST: 110/110.
