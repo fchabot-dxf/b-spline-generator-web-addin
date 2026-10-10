@@ -67,12 +67,13 @@ export const WINDOWED_LOAD = {
 // scheduler.js, main/app-init.js STOCK_CHANGE_STAGES / STOCK_CHANGE_DEFERS). MEASURED on the way: a deferral that left
 // the drape behind changed only the frame walls' vertex colours (they sample the drape; the drape renders the editor's
 // SVG, whose brick greys the masks paint) -- invisible to the heights hash. So the whole scene is hashed (every mesh's
-// geometry attributes + world matrix + visibility) after a width nudge on a laid board, and again after a reload, which
-// builds the same saved board from scratch. ORDER-FREE (MEASURED: a frame re-apply or a drape refresh re-adds its meshes
-// at the end of the scene, the same content in another order -- an order-sensitive hash read that as a change). The
-// app's own in-page recompute (masks, drape, frame) is logged in the detail too.
+// geometry attributes + world matrix + visibility) after a width nudge on a laid board; it must equal the app's own
+// in-page recompute of that board (masks, then drape, then frame) AND a reload (the saved board built from scratch --
+// MEASURED: before the boot's drape followed its mask pass, a reload rebuilt the walls from the stale drape, the same
+// state a deferral that left the drape behind produced live). ORDER-FREE (MEASURED: a frame re-apply or a drape refresh
+// re-adds its meshes at the end of the scene, the same content in another order).
 export const SIZE_NUDGE_SCENE = {
-  name: 'A board width nudge on a laid board gives the same 3D scene as a reload of that board',
+  name: 'A board width nudge on a laid board: the same 3D scene as the app recomputing it, and as a reload of it',
   field: 'widthIn', stepIn: 0.25, wallTool: 'brickTool_wall', frameTool: 'brickTool_frame', generate: 'brickGenerate',
 };
 // page side: the scene hash (no regex in here -- a backslash in this template literal would have to be doubled)
@@ -311,6 +312,6 @@ async function runSizeNudgeScene() {
   await send('Page.reload', {}); await waitApp(); // information only (see SIZE_NUDGE_SCENE)
   await js(SIZE_SETTLED); await heightsSettled(null, 40000); await sleep(1500);
   const back = await js(SCENE_HASH);
-  checkRow('persistence', Z.name, w1 === w0 + Z.stepIn && live !== 'no-preview' && live === back,
-    `${Z.field} ${w0} -> ${w1}; scene after the nudge ${live} vs after a reload ${back} (recomputed in-page: ${again})`);
+  checkRow('persistence', Z.name, w1 === w0 + Z.stepIn && live !== 'no-preview' && live === again && back === live,
+    `${Z.field} ${w0} -> ${w1}; scene after the nudge ${live}, recomputed in-page ${again}, after a reload ${back}`);
 }
