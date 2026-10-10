@@ -491,7 +491,8 @@ describe('runMigrations: removed-noise-type-to-default (T78 item 10: Biomechanic
     const P = { noiseType: 'chest', filterTweaks: { chest: { ribAngle: 5 } } };
     runMigrations(P);
     runMigrations(P);
-    expect(P).toEqual({ noiseType: 'chest', filterTweaks: { chest: { ribAngle: 5 } } });
+    // (2026-10-10: 'photo-mirror-mode' decides the photo mirror mode of any board that has none: no photo -> 'mirror')
+    expect(P).toEqual({ noiseType: 'chest', filterTweaks: { chest: { ribAngle: 5 } }, photoMirrorMode: 'mirror' });
   });
 });
 

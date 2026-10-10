@@ -2391,17 +2391,15 @@ function renderFrameBandPatternList(container) {
   // F35 item 46 (Fred: "these can't be changed back after clicking"): a band row ALWAYS lists every pattern a band can
   // lay, whatever the frame's set -- item 23 listed only Fieldstone on a rock frame, and the user was trapped there.
   // What a pick does to the set is setFrameBandPattern's rule below.
-  // F35 item 35: a band the last lay dropped to fit the board (bandsReduced.kept) greys out, with why
+  // A band the last lay dropped to fit the board (bandsReduced.kept) is HIDDEN -- its pattern row and its accent block (Fred
+  // 2026-10-10: "unused band should just be hidden"; it was greyed, F35 item 35). The Frame note still says "Bands reduced
+  // to fit the board: N of M laid"; the band comes back when a lay fits it again (this list re-renders on every lay's note).
+  // Not the Corners row's rule ("grey + explain"): that one stays.
   const keptBands = _bandsReduced ? _bandsReduced.kept : bands.length;
   bands.forEach((band, i) => {
-    const dropped = i >= keptBands;
+    if (i >= keptBands) return;
     const row = document.createElement('div');
     row.style.cssText = 'display:flex; gap:4px; margin-bottom:4px; flex-wrap:wrap; align-items:center;';
-    if (dropped) {
-      row.dataset.bandDropped = '1';
-      row.title = `Band ${i + 1} was dropped to fit the board (Bands reduced to fit) -- fewer bands or smaller bricks bring it back`;
-      row.style.opacity = '0.4';
-    }
     const label = document.createElement('span');
     label.textContent = `Band ${i + 1}`;
     label.style.cssText = 'font-size:10px; opacity:0.65; width:44px; flex:0 0 auto;';
@@ -2426,13 +2424,8 @@ function renderFrameBandPatternList(container) {
       }
       row.appendChild(btn);
     }
-    if (dropped) for (const b of row.querySelectorAll('button')) { b.disabled = true; b.title = row.title; }
     container.appendChild(row);
     renderAccentRowFor(container, { kind: 'frameBand', band: i }, 16); // per-band accent (advisor)
-    if (dropped) {
-      const acc = container.lastElementChild;
-      if (acc) { acc.style.opacity = '0.4'; acc.title = row.title; for (const b of acc.querySelectorAll('button, input')) b.disabled = true; }
-    }
   });
 }
 
