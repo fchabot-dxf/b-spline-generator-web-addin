@@ -17,6 +17,7 @@ import { photoSampleOf, tweaks as PHOTO_TWEAKS } from '../core/noise/photo.js';
 import { foldSpecOf, unfoldUV, photoSampleAspect, photoMirrors } from '../core/terrain.js';
 import { getEditorTab } from './editor-tabs.js';
 import { isFittedView } from '../editor/editor-view.js';
+import { clearSnapCursor, clearGridHover } from '../editor/editor-grid.js';
 
 /** The tweaks the footprint edits (one editor undo step carries them: photo-panel.js photoUndoState). */
 export const PLACEMENT_KEYS = Object.freeze(['scale', 'offsetX', 'offsetY', 'rotation']);
@@ -216,6 +217,8 @@ function onDown(e) {
   if (!img) return;
   e.stopPropagation(); e.preventDefault(); // the gizmo's, not the editor's select / marquee
   _g.setPointerCapture(e.pointerId);
+  // the editor's hover cursor would stay frozen at the grab point (its moves are the gizmo's now): cleared as on leave
+  clearSnapCursor(editor()); clearGridHover(editor());
   const t0 = placementOf();
   _drag = { part, p0, t0, t: t0, img, id: e.pointerId };
 }
