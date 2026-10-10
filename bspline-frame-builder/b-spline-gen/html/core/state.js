@@ -85,6 +85,11 @@ export const DEFAULT = {
     // migrated to the layer: main/app-init.js MIGRATIONS 'photo-filter-to-layer'). Heights inputs: core/terrain.js.
     photoLayer: false,
     photoFilterAmount: 0,
+    // 2026-10-10 (Fred: "the photo shouldn't be squeezed by default"): with Symmetry on, 'mirror' = the photo keeps its
+    // proportions and the far side is its true mirror; 'squeeze' = the whole photo fitted into each half (how every
+    // board did it before). null = undecided: main/app-init.js MIGRATIONS 'photo-mirror-mode' decides on load -- a board
+    // that already has a photo stays 'squeeze' (byte-identical), any other (a fresh one too) gets 'mirror'.
+    photoMirrorMode: null,
     // F35 item 1: the Brick tab's own common settings (core/bricks/library.js's
     // BRICK_SETS is the declared source for defaults per set -- these are the
     // user's CURRENT overrides, shared by all three tools (Brush/Wall/Frame)).
