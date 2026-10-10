@@ -86,15 +86,14 @@ export function settingsToTweaks(settings) {
 // pattern's flat `settings` shape, so the UI (main/photo-panel.js) and the
 // save-back action share the same bounds/default rather than each guessing.
 export const DEFAULT_PHOTO_RELIEF_IN = 0.125;
-export const MAX_PHOTO_RELIEF_IN = 0.25;
 
 /** A flat `settings` object -> the carveZ value (inches) to apply when this
  * pattern loads. Missing/invalid -> the declared default, same "absent means
- * default" convention as settingsToTweaks. Always clamped to the declared
- * max, even if a hand-edited pattern entry sets something larger. */
+ * default" convention as settingsToTweaks. 2026-10-10 (Fred): no 0.25 in photo
+ * clamp -- carveZ is the board's own Z (Board > Carve Depth), its range the board's. */
 export function settingsToRelief(settings) {
   const r = settings?.relief;
-  return (typeof r === 'number' && r > 0) ? Math.min(r, MAX_PHOTO_RELIEF_IN) : DEFAULT_PHOTO_RELIEF_IN;
+  return (typeof r === 'number' && r > 0) ? r : DEFAULT_PHOTO_RELIEF_IN;
 }
 
 /** The inverse of settingsToPhotoEdits()/settingsToTweaks(): collapses the
@@ -157,7 +156,7 @@ export function editsToSettings(photoEdits, tweaks, reliefIn) {
     if (tweaks && tweaks[key] !== undefined) settings[key] = tweaks[key];
   }
 
-  if (typeof reliefIn === 'number' && reliefIn > 0) settings.relief = Math.min(reliefIn, MAX_PHOTO_RELIEF_IN);
+  if (typeof reliefIn === 'number' && reliefIn > 0) settings.relief = reliefIn;
 
   return settings;
 }

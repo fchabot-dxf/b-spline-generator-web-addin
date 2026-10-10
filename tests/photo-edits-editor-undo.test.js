@@ -31,7 +31,7 @@ const undo = () => { ed._redoStack.push(ed._undoStack.pop()); restoreUndoParts(e
 beforeEach(() => {
   localStorage.clear();
   Object.assign(P, DEFAULT, { photoImageDataUrl: SMALL, photoEdits: [], photoPatternId: null, carveZ: 0.125 });
-  // 2026-10-10: Max Height (photoReliefHeight) lives in Surface > Photo now, rendered from PHOTO_CONTROLS
+  // 2026-10-10: Surface > Photo, rendered from PHOTO_CONTROLS (its mirrored edits share these steps)
   document.body.innerHTML = PANEL + '<div id="editorToolbarPhoto"></div><div id="photoLayerBody"></div>';
   renderPhotoLayerSection(document.getElementById('photoLayerBody'));
   ed = { _undoStack: [], _redoStack: [], _notifyChange: () => {} };
@@ -74,17 +74,6 @@ describe('item 74f: a photo edit is ONE editor undo step', () => {
     undo();
     expect(P.photoEdits).toEqual([]);
     expect(Number(document.getElementById('photoBrightness').value)).toBe(0);
-  });
-
-  it("Undo puts the board's own carve depth back EXACTLY, even above the photo relief's max (seat D undo map: 1.5 came back as 0.25)", () => {
-    P.carveZ = 1.5; // a fresh board's carve depth, deeper than any photo relief
-    ed._undoStack.length = 0; ed.pushState(); // the opening entry at 1.5
-    const box = document.getElementById('photoReliefHeight');
-    box.value = '0.1'; box.dispatchEvent(new Event('input')); box.dispatchEvent(new Event('change')); // input applies, change is the step
-    expect(P.carveZ).toBeCloseTo(0.1, 9);
-    expect(ed._undoStack.length).toBe(2);
-    undo();
-    expect(P.carveZ).toBe(1.5);
   });
 
   it('relief Carved: one step; Undo -> Raised again', () => {
