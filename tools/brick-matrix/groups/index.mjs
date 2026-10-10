@@ -59,6 +59,11 @@ export const GROUP_MEASURED_S = Object.freeze({
 });
 /** --parallel's spawn order: the parallel groups longest first, so a long group never waits out a late stagger slot (that
  *  gate: strokes, 484 s, started last at 180 s and finished third) */
+/** before a SEQUENTIAL (timing) group starts in --parallel: none of the run's Chromes left and the CPU at or under maxCpuBusyPct
+ *  for stableSamples samples in a row (sampleMs apart), or timeoutMs -- then it logs and goes on (never hangs). MEASURED (seat E,
+ *  2026-10-10): after a capped pool blind failed one timing row in each of 3 runs (a different row each time), alone it is
+ *  23/23 -- the PC was still busy as it started. maxCpuBusyPct: a candidate, set from the validation run's logged samples. */
+export const QUIET_BEFORE_SEQUENTIAL = Object.freeze({ maxCpuBusyPct: 30, stableSamples: 3, sampleMs: 1000, timeoutMs: 180000 });
 export const SPAWN_ORDER = GROUPS.filter((g) => !SEQUENTIAL_GROUPS.includes(g))
   .map((g, i) => ({ g, i, s: GROUP_MEASURED_S[g] ?? -1 })).sort((a, b) => b.s - a.s || a.i - b.i).map((o) => o.g);
 // every declared row, group by group (the row order inside a group is the order its rows run in)

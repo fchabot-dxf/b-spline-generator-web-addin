@@ -25907,3 +25907,7 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   diagnostics only) shows the two wall tool switches DO rebuild after Apply (GEN 18 -> 19, 19 -> 20, settle 6.4 s); their
   ~23 s is canvasSettled's 10 s + the tool + Apply + the settle -- no maxMs wait to cut (a fail-on-rebuild rule would have
   failed them falsely).
+- QUIET WAIT before a sequential (timing) group (groups/index.mjs QUIET_BEFORE_SEQUENTIAL, run.mjs quietBeforeSequential):
+  none of the run's group Chromes left + CPU <= maxCpuBusyPct for 3 one-second samples, timeout 180 s (logs, goes on; never
+  hangs); logs its wait and samples. MEASURED after a gate ended: CPU 90 - 100% for ~45 s, then 18 - 32% -> threshold 40.
+  To validate in a quiet window: N=6 + the wait, blind must be 23/23; then N=6 becomes the gate's default.

@@ -19,7 +19,7 @@ import { writeFileSync, mkdirSync, mkdtempSync, rmSync, readFileSync } from 'nod
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { GROUPS, SEQUENTIAL_GROUPS, SPAWN_ORDER, GROUP_OF, RUNNER_ORDER, bindGroups, runGroup, CLEAR_MENU, EDIT_PASSWORD_TEST, BRICK_CONTROLS, REQUIRES_SOURCE, GROUP_SETUP } from './groups/index.mjs';
+import { GROUPS, SEQUENTIAL_GROUPS, SPAWN_ORDER, QUIET_BEFORE_SEQUENTIAL, GROUP_OF, RUNNER_ORDER, bindGroups, runGroup, CLEAR_MENU, EDIT_PASSWORD_TEST, BRICK_CONTROLS, REQUIRES_SOURCE, GROUP_SETUP } from './groups/index.mjs';
 import { touchesBrickMatrix } from './gate-paths.mjs';
 import { portBusy, dropStaleProfiles } from './ports.mjs';
 import { registerRun, makeStop, readRuns, classifyOrphans, processTable } from './run-registry.mjs';
@@ -83,6 +83,22 @@ if (arg('only-if-changed')) {
 // (its own runs pass) or free RAM is under the floor -- tools/heavy-run-guard.mjs
 guardHeavyRun('brick matrix');
 
+/** groups/index.mjs QUIET_BEFORE_SEQUENTIAL: wait until none of this run's group Chromes (their ports' profile dirs) is left and the
+ *  CPU has been calm; log how long and the CPU samples; on the timeout log and go on */
+async function quietBeforeSequential(ports) {
+  const Q = QUIET_BEFORE_SEQUENTIAL, t0 = Date.now(), cpu = [];
+  const snap = () => os.cpus().reduce((a, c) => { const t = Object.values(c.times).reduce((x, y) => x + y, 0); return { busy: a.busy + t - c.times.idle, total: a.total + t }; }, { busy: 0, total: 0 });
+  let prev = snap(), calm = 0, chromesLeft = true, left = -1;
+  while (Date.now() - t0 < Q.timeoutMs) {
+    await sleep(Q.sampleMs);
+    if (chromesLeft) { const procs = processTable(); left = procs ? [...procs.values()].filter((c) => /chrome/i.test(c) && ports.some((p) => c.includes(`brick-matrix-chrome-${p}-`))).length : 0; chromesLeft = left > 0; }
+    const s = snap(), busy = Math.round((100 * (s.busy - prev.busy)) / Math.max(1, s.total - prev.total)); prev = s; cpu.push(busy);
+    calm = !chromesLeft && busy <= Q.maxCpuBusyPct ? calm + 1 : 0;
+    if (calm >= Q.stableSamples) { console.log(`quiet before the sequential group(s): ${Math.round((Date.now() - t0) / 1000)} s, cpu % ${cpu.join(' ')}`); return; }
+  }
+  console.log(`quiet before the sequential group(s): TIMEOUT after ${Math.round(Q.timeoutMs / 1000)} s (group Chromes left ${left}), going on -- cpu % ${cpu.slice(-20).join(' ')}`);
+}
+
 if (flag('parallel')) {
   const t0 = Date.now();
   // MEASURED: two gates at once (the advisor's and a seat's) -- one group's served-root check found its port taken
@@ -123,6 +139,7 @@ if (flag('parallel')) {
     while (nextGroup < parallelGroups.length) { const g = parallelGroups[nextGroup++]; done.push(await spawnGroup(g, GROUPS.indexOf(g), 0)); }
   };
   await Promise.all(Array.from({ length: cap }, (_, w) => worker(w)));
+  if (SEQUENTIAL_GROUPS.length) await quietBeforeSequential(parallelGroups.map((g) => base + 10 * (GROUPS.indexOf(g) + 1)));
   for (const g of SEQUENTIAL_GROUPS) done.push(await spawnGroup(g, GROUPS.indexOf(g), 0));
   const rows = [], pageErrors = [], perGroup = new Map();
   for (const k of done) {

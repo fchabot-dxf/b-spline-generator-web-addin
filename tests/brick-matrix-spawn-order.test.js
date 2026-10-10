@@ -17,3 +17,15 @@ describe('the matrix spawn order: longest first, every parallel group exactly on
     expect(SPAWN_ORDER[0]).toBe('wall');
   });
 });
+
+import { QUIET_BEFORE_SEQUENTIAL } from '../tools/brick-matrix/groups/index.mjs';
+describe('the quiet wait before a sequential (timing) group', () => {
+  it('is declared, bounded (a timeout: it can never hang), and asks for calm samples in a row', () => {
+    const Q = QUIET_BEFORE_SEQUENTIAL;
+    expect(Q.maxCpuBusyPct).toBeGreaterThan(0);
+    expect(Q.maxCpuBusyPct).toBeLessThan(100);
+    expect(Q.stableSamples).toBeGreaterThanOrEqual(2);
+    expect(Q.timeoutMs).toBeGreaterThan(Q.sampleMs * Q.stableSamples);
+    expect(Number.isFinite(Q.timeoutMs)).toBe(true);
+  });
+});
