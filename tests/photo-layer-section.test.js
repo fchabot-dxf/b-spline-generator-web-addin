@@ -131,13 +131,15 @@ describe('the mirrored image edits: one state, one undo step, both views follow'
     expect(document.getElementById('photoReliefHeightSlider')).toBeNull();
     expect(document.getElementById('photoReliefHeight')).toBeNull();
   });
-  it('a pattern pick sets the board Z from the pattern, UNCLAMPED; its Undo puts the old Z back exactly', async () => {
+  it('a pattern pick leaves the board Z alone (Fred, 2026-10-10: it squashed the filter), and so does its Undo', async () => {
     P.carveZ = 1.5; P.photoLayer = false; ed._undoStack.length = 0; ed.pushState();
     await new Promise((r) => setTimeout(r, 0));
     document.querySelector('#photoPatternRow button').click();
-    expect(P.carveZ).toBe(0.125); // the mocked pattern has no relief: the declared default
+    expect(P.carveZ).toBe(1.5);
+    expect(P.photoLayer).toBe(true);
     ed._redoStack.push(ed._undoStack.pop()); restoreUndoParts(ed._undoStack[ed._undoStack.length - 1].parts);
     expect(P.carveZ).toBe(1.5);
+    expect(P.photoLayer).toBe(false);
   });
   it('the layer OFF greys every photo-only control (the switch and Edit image stay live) and says why; ON ungreys', async () => {
     const box = $('photoLayer');
