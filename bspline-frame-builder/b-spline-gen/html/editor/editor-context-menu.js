@@ -425,6 +425,10 @@ export function cancelContextMenuHold() {
 export function bindContextMenu(editor, svgNode) {
   svgNode.addEventListener('contextmenu', (e) => {
     e.preventDefault();
+    // Fred 2026-10-10 (Android Chrome: "long-press ... just a haptic pulse, no menu"): a touch long-press ALSO fires the
+    // platform's own contextmenu event -- answered here, it reopened a second, unprotected menu over the hold's own
+    // (armContextMenuHold), which the touch's trailing compat mousedown then closed. On touch the hold owns the menu.
+    if (e.pointerType === 'touch' || editor._pointerType === 'touch' || _awaitingHoldRelease || _armed) return;
     const sel = editor._selectedElements || [];
     const primary = sel.length ? sel[sel.length - 1] : null;
     const point = editor._getMousePoint(e);

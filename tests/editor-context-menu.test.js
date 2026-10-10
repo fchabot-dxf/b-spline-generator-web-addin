@@ -345,3 +345,41 @@ describe('desktop right-click', () => {
     expect(labels).toEqual(expect.arrayContaining(['Select all', 'Fit view']));
   });
 });
+
+// Fred 2026-10-10 (Android Chrome, live: "long-press doesn't do anything, it just does a haptic pulse, no menu"): a touch
+// long-press also fires the platform's own contextmenu event. The canvas's right-click listener answered it with a SECOND,
+// unprotected menu over the hold's own; the touch's trailing compat mousedown then closed it -- nothing left on screen.
+describe("a touch long-press: the hold's menu survives Android's own contextmenu event and the release", () => {
+  const fakeSvgNode = () => { const listeners = {}; return { addEventListener: (type, fn) => { listeners[type] = fn; }, _fire(type, e) { listeners[type](e); } }; };
+  const androidHold = (kind, el = null) => {
+    const editor = makeEditor('touch');
+    const svgNode = fakeSvgNode();
+    bindContextMenu(editor, svgNode);
+    armContextMenuHold(editor, target({ editor, kind, el }), { clientX: 40, clientY: 40 });
+    vi.advanceTimersByTime(600); // a 600 ms still touch: the hold fires (the menu + its haptic)
+    const first = document.querySelector('.context-menu-popover');
+    svgNode._fire('contextmenu', { clientX: 40, clientY: 40, pointerType: 'touch', preventDefault: () => {} }); // Android
+    cancelContextMenuHold(); // the finger lifts (pointerup)
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); // the touch's compat mousedown
+    return { first, now: document.querySelectorAll('.context-menu-popover') };
+  };
+  it('on EMPTY canvas: the same menu is still open after the release', () => {
+    const { first, now } = androidHold('empty');
+    expect(first).not.toBeNull();
+    expect(now.length).toBe(1);
+    expect(now[0]).toBe(first);
+  });
+  it('on a PIECE: the same', () => {
+    const { first, now } = androidHold('line', { node: {} });
+    expect(first).not.toBeNull();
+    expect(now.length).toBe(1);
+    expect(now[0]).toBe(first);
+  });
+  it('a mouse right-click still opens the menu (desktop unchanged)', () => {
+    const editor = makeEditor('mouse');
+    const svgNode = fakeSvgNode();
+    bindContextMenu(editor, svgNode);
+    svgNode._fire('contextmenu', { clientX: 10, clientY: 10, pointerType: 'mouse', preventDefault: () => {} });
+    expect(document.querySelector('.context-menu-popover')).not.toBeNull();
+  });
+});
