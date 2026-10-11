@@ -20,6 +20,7 @@ import { BRICK_TAB_SECTIONS } from '../bspline-frame-builder/b-spline-gen/html/m
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { setFrameRecord, getFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
 import { FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { FRAME_LABELS } from '../bspline-frame-builder/b-spline-gen/html/core/frame-labels.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
 const BODY = HTML.slice(HTML.indexOf('<body'), HTML.indexOf('</body>') + 7).replace(/<script[\s\S]*?<\/script>/g, '');
@@ -79,7 +80,7 @@ describe('item 9: the Window surround block (Frame tab)', () => {
   it('while the inset window is off: the hint, no rows', () => {
     setFrameRecord({ insetWindow: { ...getFrameRecord().insetWindow, enabled: false } });
     expect($('brickFrameSection').contains($('brickSurroundHint'))).toBe(true);
-    expect($('brickSurroundHint').textContent).toBe('Turn on the inset window in the Frame panel');
+    expect($('brickSurroundHint').textContent).toBe(`Turn on the inset window in the ${FRAME_LABELS.wood} panel`);
     expect(shown('brickSurroundHint')).toBe(true);
     expect(shown('brickSurroundRows')).toBe(false);
   });

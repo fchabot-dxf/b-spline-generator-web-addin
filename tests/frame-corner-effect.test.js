@@ -52,11 +52,14 @@ describe('frameCornerEffect is the lay: effective exactly when that corner lays 
   });
 });
 
-describe('the Corners row: declared rules', () => {
+// Fred 2026-10-11: the Corners row is retired; its grey + explain moved onto the preset chips of that corner
+describe('the preset chips: declared corner rules', () => {
   const rules = BRICK_CONTROL_REQUIRES.filter((r) => r.why === CORNER_NOT_LONG_ENOUGH);
-  it('one rule per cutting style, on its own button; the mitre has none', () => {
-    expect(rules.map((r) => r.controls)).toEqual(CORNER_CUT_STYLES.map((s) => [`brickFrameCorner_${s}`]));
-    expect(BRICK_CONTROL_REQUIRES.some((r) => r.controls.includes('brickFrameCorner_mitre'))).toBe(false);
+  const cornered = (style) => Object.keys(FRAME_PRESETS).filter((id) => FRAME_PRESETS[id][0] && FRAME_PRESETS[id][0].cornerStyle === style);
+  it('one rule per cutting style, on every preset chip (Frame tab + sidebar) whose corner it is; mitre presets have none', () => {
+    expect(rules.map((r) => r.controls)).toEqual(CORNER_CUT_STYLES.map((s) => cornered(s).flatMap((id) => [`brickFramePreset_${id}`, `brickQuick_frameBands_${id}`])));
+    expect(rules.find((r) => r.controls.includes('brickFramePreset_mixed_bands_quoin'))).toBeTruthy();
+    expect(rules.some((r) => r.controls.includes('brickFramePreset_mixed_bands'))).toBe(false);
   });
   it('greyed while its fact is false, live when true or unknown (no frame contour = no facts)', () => {
     const rule = rules[0];

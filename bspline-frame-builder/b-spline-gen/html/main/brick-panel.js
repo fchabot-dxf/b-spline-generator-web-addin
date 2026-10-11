@@ -29,7 +29,7 @@ import {
   BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
-  FRAME_CORNERS, FOLDED_FRAME_PRESETS, topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_FOLLOW, SURROUND_CORNER_LIST, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
+  topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_FOLLOW, SURROUND_CORNER_LIST, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, framePresetTileSvg, wallPatternTileSvg, frameCornerEffectFor,
   FRAME_FAN_CENTRES, frameFanCentreOf, fanCentreIconSvg, frameHasFanFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
   brushStrokeSettings, restyleBrushStroke, groutCutPolylines, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
@@ -50,12 +50,14 @@ import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.js';
 import { rectToPrimitives, insetWindowOuterRect } from '../core/inset-window.js';
 import { getFrameRecord } from '../core/frame-record.js';
-import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
+import { FRAME_PRESETS, QUOIN_VARIANT_OF, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
 import { brickToolIconSvg } from '../editor/brick-tool-icons.js';
 import { applyBrickTabSections, brickTabOfControl } from './brick-tab-sections.js';
+import { FRAME_LABELS } from '../core/frame-labels.js';
+import { mountIconSelect, refreshIconSelect, PICKER_TILE } from './icon-select.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -97,8 +99,8 @@ const BRICK_TOOLS = [
     tab: { order: 1, label: 'Wall' },
     subTools: ['select', 'area'],
     hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Change a setting to lay it; Generate re-lays.' },
-  { id: 'frame', buttonId: 'brickTool_frame', iconSvg: () => brickToolIconSvg('frame'), label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
-    tab: { order: 2, label: 'Frame' },
+  { id: 'frame', buttonId: 'brickTool_frame', iconSvg: () => brickToolIconSvg('frame'), label: FRAME_LABELS.brick, icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
+    tab: { order: 2, label: FRAME_LABELS.brick },
     subTools: ['select'],
     hint: 'Bands of bricks along the frame\'s outer edge (the board\'s edge when no frame template is picked). Change a setting to lay them; Generate re-lays.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
@@ -1516,8 +1518,15 @@ export function flushControlRequires() {
 }
 
 /** Item 74b: per cutting corner style, whether it changes the frame these settings lay (no facts = met: never greyed) */
+/** The corner facts' bands when the frame lays none (preset None): the corner-variant chips are a way INTO a frame, so they are
+ *  judged on a plain one -- MEASURED (matrix frame-ui, 2026-10-11): on None every style "cut nothing" over zero bands and greyed
+ *  every corner chip, so no quoin / butt / lapped frame could be picked from None. */
+const CORNER_FACT_BANDS_WHEN_NONE = 'single_soldier';
 function cornerFacts(editor) {
-  const effect = frameCornerEffectFor(editor, P.brickSettings, resolveFrameGeom(editor));
+  const bandless = !(FRAME_PRESETS[P.brickSettings.frameBandPreset] || []).length;
+  const settings = bandless ? { ...P.brickSettings, frameBandPreset: CORNER_FACT_BANDS_WHEN_NONE, frameBandPatterns: [] } : P.brickSettings;
+  const geom = resolveFrameGeom(editor);
+  const effect = frameCornerEffectFor(editor, settings, geom && bandless ? { ...geom, bands: frameBandsOf(settings) } : geom);
   return effect ? Object.fromEntries(Object.keys(effect).map((style) => [cornerFact(style), effect[style]])) : {};
 }
 /** T86 item 16e: whether the frame these settings lay has a corner fan (no facts = met: never greyed) */
@@ -1753,6 +1762,9 @@ export const BRICK_LAY_WARNINGS = Object.freeze([
       && !(c.bandsReduced && c.bandsReduced.fits && !(c.bandsReduced.steps || []).some((st) => st.step === 'narrow')) },
   { id: 'bandsReduced', where: 'frame', text: (c) => bandsReducedText(c.bandsReduced),
     when: (c) => !!c.bandsReduced },
+  // 2026-10-11: the Frame preset's arch (Arch + keystone) found no place in this frame -- detection only, nothing changes
+  { id: 'archTooNarrow', where: 'frame', text: 'The arch does not fit inside this frame at this brick size: try a smaller brick size or a larger board.',
+    when: (c) => c.archFit === 'archTooNarrow' },
 ]);
 // F35 item 35: the last lay's band-fit note (the Frame section greys out the bands it dropped)
 let _bandsReduced = null;
@@ -2042,7 +2054,7 @@ export function setFrameRock(rock, commit = 'generate') {
   P.brickSettings.frameBandPatterns = rock ? bands.map(() => 'fieldstone') : [];
   renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
   syncFrameBandPatternButtons();
-  syncFrameCornerButtons();
+  syncFrameFanCentreRow();
   syncSetPicker();
   commitBrickSetting(commit);
 }
@@ -2056,7 +2068,7 @@ export function setFrameBandPattern(i, patternId, commit = 'generate') {
   if (!P.brickSettings.frameBandPatterns) P.brickSettings.frameBandPatterns = [];
   P.brickSettings.frameBandPatterns[i] = patternId;
   syncFrameBandPatternButtons();
-  syncFrameCornerButtons();
+  syncFrameFanCentreRow();
   syncSetPicker();
   commitBrickSetting(commit);
 }
@@ -2086,42 +2098,16 @@ function syncFramePresetButtons() {
   for (const preset of FRAME_PRESET_LIST) {
     document.getElementById(`brickFramePreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.frameBandPreset);
   }
-  syncFrameCornerButtons();
+  syncFrameFanCentreRow();
   syncQuickSettings();
 }
 
-/** Item 33: the Frame element's CORNERS row -- one engine-drawn mini corner per FRAME_CORNERS entry (the name
- *  + what it does as the tooltip). The active one = frameCornerOf (the element's pick, else its preset's own). */
-function renderFrameCornerList(container) {
-  if (!container) return;
-  container.innerHTML = '';
-  for (const corner of FRAME_CORNERS) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon'; // the same small icon button as the Accent row
-    btn.id = `brickFrameCorner_${corner.id}`;
-    btn.title = corner.title;
-    btn.setAttribute('aria-label', corner.label);
-    btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
-    btn.innerHTML = frameCornerIconSvg(corner.id, 30) || corner.label;
-    btn.addEventListener('click', () => setFrameCorner(corner.id));
-    container.appendChild(btn);
-  }
-  syncFrameCornerButtons();
-}
-/** The corners row shows for a brick frame with bands (a rock frame is one fieldstone ring: no corner joints). */
-function syncFrameCornerButtons() {
+/* Item 33's CORNERS row (renderFrameCornerList / setFrameCorner, the brickFrameCorner_* chips) is RETIRED (Fred
+ * 2026-10-11: a preset bundles its corner -- the corner is the preset chip's own, library.js QUOIN_VARIANT_OF). */
+/** The fan-centre row shows for a brick frame with bands (a rock frame is one fieldstone ring: no corner joints). */
+function syncFrameFanCentreRow() {
   const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || [];
-  const show = bands.length > 0 && !isRockFrame(P.brickSettings);
-  for (const id of ['brickFrameCornerLabel', 'brickFrameCornerList']) {
-    const el = document.getElementById(id);
-    if (el) el.style.display = show ? '' : 'none';
-  }
-  const active = frameCornerOf(P.brickSettings);
-  for (const corner of FRAME_CORNERS) {
-    document.getElementById(`brickFrameCorner_${corner.id}`)?.classList.toggle('active', corner.id === active);
-  }
-  syncFrameFanCentreButtons(show);
+  syncFrameFanCentreButtons(bands.length > 0 && !isRockFrame(P.brickSettings));
 }
 /** T86 item 16e: the Frame element's FAN CENTRE row -- one engine-drawn fan per FRAME_FAN_CENTRES entry (the name + what
  *  it does as the tooltip). The active one = frameFanCentreOf (the element's pick, else the Needle). */
@@ -2131,7 +2117,7 @@ function renderFrameFanCentreList(container) {
   for (const centre of FRAME_FAN_CENTRES) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon'; // the Corners row's own small icon button
+    btn.className = 'cad-btn brick-accent-icon'; // the small icon button (as the Accent row)
     btn.id = `brickFrameFanCentre_${centre.id}`;
     btn.title = centre.title;
     btn.setAttribute('aria-label', centre.label);
@@ -2140,9 +2126,9 @@ function renderFrameFanCentreList(container) {
     btn.addEventListener('click', () => setFrameFanCentre(centre.id));
     container.appendChild(btn);
   }
-  syncFrameCornerButtons();
+  syncFrameFanCentreRow();
 }
-/** Shown with the Corners row (a brick frame with bands). */
+/** Shown for a brick frame with bands (syncFrameFanCentreRow). */
 function syncFrameFanCentreButtons(show) {
   for (const id of ['brickFrameFanCentreLabel', 'brickFrameFanCentreList']) {
     const el = document.getElementById(id);
@@ -2157,14 +2143,7 @@ function syncFrameFanCentreButtons(show) {
 export function setFrameFanCentre(centreId, commit = 'generate') {
   if (!FRAME_FAN_CENTRES.some((c) => c.id === centreId)) return;
   P.brickSettings.frameFanCentre = centreId;
-  syncFrameCornerButtons();
-  commitBrickSetting(commit);
-}
-/** Item 33: pick the Frame element's corner -- re-lays at once. */
-export function setFrameCorner(cornerId, commit = 'generate') {
-  if (!FRAME_CORNERS.some((c) => c.id === cornerId)) return;
-  P.brickSettings.frameCorner = cornerId;
-  syncFrameCornerButtons();
+  syncFrameFanCentreRow();
   commitBrickSetting(commit);
 }
 
@@ -2487,7 +2466,7 @@ function renderFrameBandPatternList(container) {
   // A band the last lay dropped to fit the board (bandsReduced.kept) is HIDDEN -- its pattern row and its accent block (Fred
   // 2026-10-10: "unused band should just be hidden"; it was greyed, F35 item 35). The Frame note still says "Bands reduced
   // to fit the board: N of M laid"; the band comes back when a lay fits it again (this list re-renders on every lay's note).
-  // Not the Corners row's rule ("grey + explain"): that one stays.
+  // Not the preset chips' rule ("grey + explain", a corner that cuts nothing here): that one stays.
   const keptBands = _bandsReduced ? _bandsReduced.kept : bands.length;
   bands.forEach((band, i) => {
     if (i >= keptBands) return;
@@ -2642,7 +2621,7 @@ export function clearAllWallAreas() {
   _relayStaged();
   return true;
 }
-const ELEMENT_LABELS = { wall: 'Wall', frame: 'Frame', brush: 'stroke', raisedBrush: 'raised stroke' };
+const ELEMENT_LABELS = { wall: 'Wall', frame: FRAME_LABELS.brick, brush: 'stroke', raisedBrush: 'raised stroke' };
 /** F35 item 36: what a selected STROKE's snapshot means in the section -- [panel field, snapshot field] ('{kind}' =
  *  the stroke's tool). Loading a stroke copies these into P.brickSettings; any edit writes the stroke back as the
  *  Brush tool freezes a new one ({ ...P.brickSettings, ...its strokeOverrides }). */
@@ -2856,8 +2835,11 @@ const FRAME_PRESET_LABELS = {
   single_soldier: 'Soldier',
   soldier_stretcher: 'Soldier + Stretcher',
   three_band: 'Soldier / Stretcher / Soldier',
-  // item 33: butt_frame / quoin_corners are folded into Soldier + the Corners row (FOLDED_FRAME_PRESETS)
-  double_course: 'Soldier x2',
+  // Fred 2026-10-11: a preset bundles its corner -- the corner variants are presets again ("<look> · <corner>"); the
+  // quoin variants of QUOIN_VARIANT_OF are named from their base below
+  butt_frame: 'Soldier · butt',
+  quoin_corners: 'Soldier · quoin',
+  double_course: 'Soldier x2 · lapped',
   header_band: 'Header',
   mixed_bands: 'Header / Flemish / Soldier',
   // frame motifs phase 1 (library.js BAND_MOTIFS; recommended size FRAME_PRESET_SIZES)
@@ -2867,9 +2849,10 @@ const FRAME_PRESET_LABELS = {
   diaper_lattice: 'Diaper lattice',
   soldier_string: 'Soldier string course',
   dentil_cornice: 'Dentil cornice',
+  arch_keystone: 'Arch + keystone',
 };
-const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).filter((id) => !FOLDED_FRAME_PRESETS[id])
-  .map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
+for (const id of QUOIN_VARIANT_OF) FRAME_PRESET_LABELS[`${id}_quoin`] = `${FRAME_PRESET_LABELS[id] || id} · quoin`;
+const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
 
 /** F35 item 18 (3), the sidebar's QUICK settings (#brickQuickSettings, main sidebar 🧱 BRICK): a few
  *  2D settings mirrored from the editor's Brick tab -- the SAME P.brickSettings and the SAME setters,
@@ -2882,6 +2865,11 @@ const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).filter((id) => !FOLDED_FRAM
 // that many columns (the Wall pattern's 21 icons took 11 rows). `stage` (seat D 2026-10-09, phone feedback audit on seat
 // A's loaded board): the loading stage a pick shows FIRST -- the pick re-renders the Brick panel (~73 ms at 4x CPU) before
 // its own re-lay / re-mask stage could paint: 53-79 ms frozen with no card. The stage named is the work it starts.
+/** Fred (2026-10-11, the redesign's phase 1): a long visual row (`picker: true`) is ONE chip -- the current pick's icon
+ *  + its name -- that opens a grid to pick from: THE wood frame's picker (main/icon-select.js mountIconSelect, Board >
+ *  Frame's template; its tile size is that module's PICKER_TILE), not a copy. `iconFor` draws the TILE icons (a bigger
+ *  wall patch; a frame corner + a run of band). */
+const PICKER_ICON_PX = PICKER_TILE.tilePx - 8; // the icon inside the tile's 2 px padding + border
 export const BRICK_QUICK_SETTINGS = [
   { id: 'set', label: 'Set', stage: 'bricks', choices: () => BRICK_SET_IDS.map((id) => ({ id, label: _setLabel(id) })),
     mixed: { label: 'Mixed', title: 'The elements use different sets (picked per element in the Brick tab); a pick here applies to every element',
@@ -2889,11 +2877,11 @@ export const BRICK_QUICK_SETTINGS = [
     isCurrent: (c) => SET_KINDS().every((k) => elementSetId(P.brickSettings, k) === c.id), apply: (c) => selectSet(c.id, 'auto', SET_KINDS(), { strokes: true }) }, // A6: applies to every element, strokes too
   { id: 'size', label: 'Brick size', stage: 'bricks', choices: () => BRICK_SIZE_PRESETS,
     isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
-  { id: 'pattern', label: 'Wall pattern', stage: 'bricks', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternIconSvg(c.id, 24), columns: 4,
+  { id: 'pattern', label: 'Wall pattern', stage: 'bricks', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternTileSvg(c.id, PICKER_ICON_PX), picker: true,
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
   // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
   // (`lays`), or re-lays it; greyed while the board has no frame contour (BRICK_CONTROL_REQUIRES 'frameContour')
-  { id: 'frameBands', label: 'Frame bands', stage: 'bricks', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetIconSvg(c.id, 24),
+  { id: 'frameBands', label: FRAME_LABELS.brick, stage: 'bricks', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetTileSvg(c.id, PICKER_ICON_PX), picker: true,
     lays: 'frame', isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
   // F35 item 55: the board-wide grout colour (paint only, nothing re-lays); any other hex from the Brick tab's picker
   { id: 'groutColor', label: 'Grout colour', stage: 'heightMask', choices: () => GROUT_COLOR_CHOICES, iconFor: _groutSwatchSvg, // paint only: the re-mask
@@ -2902,6 +2890,7 @@ export const BRICK_QUICK_SETTINGS = [
 const quickButtonId = (row, choice) => `brickQuick_${row.id}_${choice.id}`;
 const quickRowId = (row) => `brickQuickRow_${row.id}`;
 const quickMixedId = (row) => `brickQuickMixed_${row.id}`; // its own namespace: never a choice's (brickQuick_<row>_<choice>)
+const quickSelectId = (row) => `brickQuickSelect_${row.id}`; // a picker row's <select> (its value = the current pick)
 /** F35 item 55: the sidebar's grout colours, declared -- None (the board shows through) + a few mortar shades. */
 export const GROUT_COLOR_CHOICES = Object.freeze([
   { id: 'none', label: 'None (the board shows through)', color: null },
@@ -2926,9 +2915,23 @@ function renderQuickSettings(container) {
     container.appendChild(label);
     const list = document.createElement('div');
     list.id = quickRowId(row);
-    list.style.cssText = row.columns
-      ? `display:grid; grid-template-columns:repeat(${row.columns}, minmax(0, 1fr)); gap:4px; margin-bottom:10px;`
-      : 'display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;';
+    list.style.cssText = 'display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; align-items:center;';
+    // item 71: one global undo step per pick (core/history.js recordBoardStep: the settings AND the laid bricks)
+    const pick = (choice) => withLoadingStageShownFirst(row.stage, () => recordBoardStep(`Bricks: ${row.label}`, () => { if (row.lays) requestLay(row.lays); row.apply(choice); }));
+    if (row.picker) {
+      // the shared picker over a <select>; its grid items keep the chip ids (brickQuick_<row>_<choice>: the matrix, the
+      // control-requires greying and the active sync address them), a pick of the current one still applies (a lay)
+      const choices = row.choices();
+      const sel = document.createElement('select');
+      sel.id = quickSelectId(row);
+      for (const c of choices) { const o = document.createElement('option'); o.value = c.id; o.textContent = c.label; sel.appendChild(o); }
+      sel.addEventListener('change', () => { const c = choices.find((x) => x.id === sel.value); if (c) pick(c); });
+      list.appendChild(sel);
+      mountIconSelect(sel, { label: row.label, iconFor: (v) => { const c = choices.find((x) => x.id === v); return c ? row.iconFor(c) : null; },
+        optionId: (v) => quickButtonId(row, { id: v }), pickSame: true });
+      container.appendChild(list);
+      continue;
+    }
     for (const choice of row.choices()) {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -2938,9 +2941,7 @@ function renderQuickSettings(container) {
       const icon = row.iconFor && row.iconFor(choice);
       if (icon) { btn.innerHTML = icon; btn.title = choice.label; btn.setAttribute('aria-label', choice.label); btn.style.padding = '2px'; }
       else btn.textContent = choice.label;
-      if (row.columns) btn.style.minWidth = '0'; // A9: a grid cell, not .cad-btn's 75 px floor (4 x 75 overflowed the sidebar)
-      // item 71: one global undo step per pick (core/history.js recordBoardStep: the settings AND the laid bricks)
-      btn.addEventListener('click', () => withLoadingStageShownFirst(row.stage, () => recordBoardStep(`Bricks: ${row.label}`, () => { if (row.lays) requestLay(row.lays); row.apply(choice); })));
+      btn.addEventListener('click', () => pick(choice));
       list.appendChild(btn);
     }
     if (row.mixed) { // A5: shown by syncQuickSettings while no choice is current and the row's `when` holds
@@ -2964,6 +2965,11 @@ function syncQuickSettings() {
       const on = row.isCurrent(choice);
       any = any || on;
       document.getElementById(quickButtonId(row, choice))?.classList.toggle('active', on);
+    }
+    if (row.picker) {
+      const sel = document.getElementById(quickSelectId(row));
+      const cur = row.choices().find((c) => row.isCurrent(c));
+      if (sel && cur && sel.value !== cur.id) { sel.value = cur.id; refreshIconSelect(sel); }
     }
     const mixed = row.mixed ? document.getElementById(quickMixedId(row)) : null;
     if (mixed) mixed.style.display = !any && row.mixed.when() ? '' : 'none';
@@ -3044,7 +3050,8 @@ function resolveFrameGeom(editor) {
   const contour = frameBandContour(editor);
   if (!contour) return null;
   const primitives = buildRibbonPrimitives(contour);
-  // item 33: + the element's corner (frameBandsOf -- the preset's own unless the Corners row picked one)
+  // item 33: + the element's corner (frameBandsOf -- the preset's own; a board saved with an explicit frameCorner from
+  // the retired Corners row keeps it, tests/frame-corner-legacy-pin.test.js)
   // item 9: + the inset window's outer rect while it is on (the Window surround lays around it)
   return { primitives, bands: frameBandsOf(P.brickSettings), insetRect: _insetWindowRect(editor) };
 }
@@ -3120,7 +3127,6 @@ export function initBrickPanel() {
   renderToolList(document.getElementById('editorToolbarBrick'));
   syncToolButtons();
   renderFramePresetList(document.getElementById('brickFramePresetList'));
-  renderFrameCornerList(document.getElementById('brickFrameCornerList'));
   renderFrameFanCentreList(document.getElementById('brickFrameFanCentreList')); // T86 item 16e
   document.getElementById('brickFrameOffsetDistance')?.addEventListener('change', (e) => setFrameOffset(e.target.value));
   syncFrameOffsetControl();

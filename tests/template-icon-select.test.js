@@ -96,3 +96,38 @@ describe('turn 207: a select inside a .cad-nested-input (the sidebar) mounts its
     root.remove();
   });
 });
+
+// Redesign phase 1 (Fred): the sidebar Brick rows reuse THIS picker with three declared options.
+describe('mountIconSelect options: optionId, pickSame, tilePx / columns', () => {
+  const make = (opts) => {
+    document.body.innerHTML = '<select id="s"><option value="a">A</option><option value="b">B</option><option value="c">C</option></select>';
+    const sel = document.getElementById('s');
+    const picks = [];
+    sel.addEventListener('change', () => picks.push(sel.value));
+    const wrap = mountIconSelect(sel, { iconFor: () => '<svg></svg>', label: 'L', ...opts });
+    return { sel, picks, wrap, grid: wrap.querySelector('.icon-select-grid'), button: wrap.querySelector('.icon-select-button') };
+  };
+  it('optionId: the grid is built at mount, its items carry the ids, and stay the same elements across opens', () => {
+    const { grid, button } = make({ optionId: (v) => 'opt_' + v });
+    expect([...grid.children].map((b) => b.id)).toEqual(['opt_a', 'opt_b', 'opt_c']);
+    const first = document.getElementById('opt_b');
+    button.click(); button.click();
+    expect(document.getElementById('opt_b')).toBe(first); // kept, so state set on it by id survives
+  });
+  it('pickSame: picking the current option still dispatches change (without it, it does not)', () => {
+    const a = make({ optionId: (v) => 'opt_' + v, pickSame: true });
+    document.getElementById('opt_a').click();
+    expect(a.picks).toEqual(['a']);
+    const b = make({ optionId: (v) => 'opt_' + v });
+    document.getElementById('opt_a').click();
+    expect(b.picks).toEqual([]);
+  });
+  it('tilePx / columns { phone, desktop }: the grid takes the declared size and the column count for the viewport', () => {
+    const { grid, button } = make({ tilePx: 80, columns: { phone: 3, desktop: 4 } });
+    window.innerWidth = 390; button.click();
+    expect(grid.style.gridTemplateColumns).toBe('repeat(3, 80px)');
+    expect(parseFloat(grid.children[0].style.width)).toBe(80);
+    button.click(); window.innerWidth = 1280; button.click();
+    expect(grid.style.gridTemplateColumns).toBe('repeat(4, 80px)');
+  });
+});

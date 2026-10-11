@@ -26010,3 +26010,68 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
      (T6 9x12 1 in recessed_panel: the slot's band-3 remnants pooled to 0.065 sq in under the 0.067 floor; the slot's cap
      above takes them). Step 4 widens the advisor's "same band" merge -- APPROVED by the advisor 2026-10-11 (Fred's
      no-voids preference).
+
+### 2026-10-11 (seat E): a frame PRESET bundles its corner -- the Corners picker retired (Fred; advisor-approved plan)
+- Fred: a preset bundles its bands + its corner + its best size; the separate Corners picker goes (Offset from frame and
+  the window-surround pick stay); more presets are fine. Variant list (advisor + Fred): 3 back + 4 new chips --
+  "Soldier · butt" (butt_frame), "Soldier · quoin" (quoin_corners), "Soldier x2 · lapped" (double_course, was listed as
+  "Soldier x2"), and the quoin variants of library.js QUOIN_VARIANT_OF: soldier_stretcher / three_band / mixed_bands
+  (Armor's look) / recessed_panel -> `<id>_quoin` (the same bands, cornerStyle 'block' on each, the base's bestSize),
+  declared through `cornered()` / `withQuoinVariants` and listed right after their base. Labels: the base's + " · quoin".
+- PIN FIRST (06b0f3f, before any change): tests/frame-corner-legacy-pin.test.js -- 48 digests of boards saved with an
+  explicit brickSettings.frameCorner (mitre / butt / block / lapped x single_soldier / mixed_bands / three_band x T1 / T3
+  x 0.75 / 1.25 in, through frameBandsOf) lay byte-identical after it. The read stays: frameCornerOf / frameBandsOf.
+- The removal sweep, link by link:
+  - REMOVED: #brickFrameCornerRow / Label / List (palette HTML); renderFrameCornerList, setFrameCorner (exported; no
+    importer left) and the corner half of syncFrameCornerButtons (now syncFrameFanCentreRow: the fan-centre row's show /
+    hide only); the 'corners' section's brickFrameCornerRow (the section renamed below); item 33's FOLDED_FRAME_PRESETS
+    (editor-brick-tool.js) and its migration 'frame-corner-presets' (app-init.js) -- with both presets listed again it
+    would turn a board saved on "Soldier · quoin" into Soldier + a hidden corner; a board it already migrated keeps its
+    explicit frameCorner (pinned); one it never saw lays from its own bands (frame-presets-unchanged pins those); the
+    brickFrameCorner_* control-requires rule; the matrix's Corners-row rows (frame-ui.mjs).
+  - MOVED (advisor: Fred's 10-06 grey + explain precedent): the corner rule now greys the PRESET chips whose declared
+    corner is butt / block / lapped (Frame tab + the sidebar's Frame bands row), same fact (frameCornerEffect over the
+    current bands), same words (CORNER_NOT_LONG_ENOUGH). brick-control-requires.js gains ONE import (library.js
+    FRAME_PRESETS, DOM-free data) -- its "no imports" test is now "imports only that".
+  - RENAMED: the section 'corners' "Corners" -> 'fanCentre' "Fan centre" (it holds the fan-centre row alone; theme key
+    brick-corners -> brick-fan-centre). Told D (the redesign trees reference sections).
+  - KEPT, with reason: FRAME_CORNERS (frameCornerOf validates a legacy value; the surround's SURROUND_CORNER_LIST is
+    built from it); frameCornerIconSvg (the surround's corner chips, the preset icons); frameCornerOf / frameBandsOf's
+    explicit-corner read (legacy boards); core/state.js frameCorner: null (the legacy key, written by nothing now --
+    FRAME_PRESET_DROPS still clears it on a preset pick); frameCornerEffect / cornerFacts (the moved grey rule);
+    matrix migration.mjs's neutral frameCorner: null.
+  - TESTS: frame-corners-panel (the Corners-row tests -> the preset-corner tests: no picker even with the old container
+    present, the variant chips and labels, a preset pick drops a legacy corner), frame-corners (the fold/migration test ->
+    "presets again, no migration"), frame-corner-effect (rules on the preset chips), brick-control-requires (imports;
+    its id check now allows an underscore inside a rendered choice id: brickFramePreset_butt_frame), brick-discrete-
+    controls-regen (the grey's control is the butt preset chip), brick-tab-sections (Fan centre), bricks-library (19
+    presets + the variants). Fail-before on origin/frame-motifs: 10 failed (each new / changed assertion).
+- brick-icons.js regenerated (the four new chips).
+- Matrix frame-ui caught a real bug in the move: on a frame with NO bands (preset None) the corner fact is computed over
+  zero bands, every style "cuts nothing", and every corner-variant chip was greyed -- no quoin / butt / lapped frame could be
+  picked from None (the old Corners row was hidden with no bands, so it never met this). cornerFacts (brick-panel.js) judges
+  a bandless frame on a plain one: CORNER_FACT_BANDS_WHEN_NONE = 'single_soldier'. Test: brick-discrete-controls-regen
+  "the corner-variant preset chips stay live on a frame with no bands" (fails before: quoin_corners disabled).
+- The frame-ui matrix row now re-lays each corner chip from None (two variants the fit rule reduces to one band laid the
+  same frame on T1 9x12 at 1.25 in -- the second click changed nothing).
+
+### 2026-10-11 (seat E): the motifs in 3D -- the 2D/3D bug measured (not a lay mismatch), relief 1/8 in, zigzag / diaper tiles
+- Fred: "the 2D pattern isn't the same in 3D". MEASURED in the app (scratchpad mask_probe.mjs; shots/seatE/mask): the brick
+  layer's live height mask (layer._brickMask, what the 3D carves) overlaid top-down on the editor's 2D pieces, dentil_corbel
+  and zigzag_band on a 7x10 rectangle and T1: 0 piece interiors without mask height (of 2944 - 4646 points), 0 - 39 edge
+  points of 4300+ with height outside every piece. The 3D IS the 2D pieces. What did not read: (1) a motif's 2D look is a
+  tint, 3D has only its relief, and 1/16 in was buried in each brick's own crown / photo detail (measured: raised faces
+  0.061 in above flush); (2) the zigzag tile itself read as noise even drawn by relief alone (period 4, its course-to-course
+  steps touching at corners). Pinned: tests/brick-mask-pieces-pin.test.js -- the mask covers each laid piece with that piece
+  and nothing else, raised faces RELIEF_LEVELS.raised above flush (mutation-checked: drop the height offsets -> the relief
+  case fails; skip one piece -> the coverage case fails).
+- RELIEF_LEVELS raised 1/8 (Fred), recessed -1/8 (Fred overrode the advisor's -3/32: "allow it, it's my responsibility" -- a
+  recessed top AT the ground is accepted; the "reliefIn + recessed > 0" pin was a guard he declined -> the declared values
+  are pinned instead). MEASURED after (zigzag, rect 7x10, 1.25 in): raised faces 0.125 in above flush (0.2353 vs 0.110);
+  their tops 0.118 above -- the reliefMaxIn 1/4 cap trims the crown flat over ~25% of a raised brick's area (0.007 in);
+  reported, cap unchanged (raising it is Fred's call).
+- Tiles: the diaper is hollow diamonds 2 cells thick touching side to side (period 6; the old single-cell lattice met
+  only at corners); the zigzag a SYMMETRIC V, period 6, arms 2 cells wide (a lopsided down-3 / up-2 version read as a
+  broken wave -- compared, shots/seatE/relief/zigzag_tiles_compared_top.png). Tests (bricks-band-motif): each grid tile,
+  repeated, is ONE edge-joined figure; the zigzag mirror-symmetric with 2-wide arms; the relief values -- 3 / 3 fail on
+  main. brick-icons.js regenerated (the motif preset icons).

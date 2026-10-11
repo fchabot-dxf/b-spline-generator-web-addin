@@ -41,11 +41,25 @@ describe('BRICK audit layout items', () => {
     selectSet(a, 'auto', ['wall', 'frame', 'brush', 'raisedBrush']);
     expect($('brickQuickMixed_set').style.display).toBe('none');
   });
-  it('A9: the Wall pattern icons sit in a 4-column grid', () => {
-    expect($('brickQuickRow_pattern').style.display).toBe('grid');
-    expect($('brickQuickRow_pattern').style.gridTemplateColumns).toMatch(/^repeat\(4,/);
-    // the cells, not .cad-btn's 75 px floor: four of them overflowed the 232 px sidebar (measured live)
-    for (const b of $('brickQuickRow_pattern').querySelectorAll('button')) expect(parseFloat(b.style.minWidth)).toBe(0);
+  // Fred (2026-10-11, redesign phase 1) replaced A9's 4-column tile grid in the sidebar: the Wall pattern and the Frame
+  // bands are ONE chip each -- the wood frame's picker (icon-select), its grid at QUICK_PICKER's size -- with the name
+  it('phase 1: Wall pattern and Frame bands are the shared picker (one chip + its name; the grid keeps the chip ids)', async () => {
+    const { PICKER_TILE: QUICK_PICKER } = await import('../bspline-frame-builder/b-spline-gen/html/main/icon-select.js');
+    for (const row of ['pattern', 'frameBands']) {
+      const line = $(`brickQuickRow_${row}`);
+      expect(line.querySelectorAll('.icon-select-button').length).toBe(1); // one chip
+      expect($(`brickQuickSelect_${row}`).style.display).toBe('none'); // the select stays the source of truth, hidden
+      const grid = line.querySelector('.icon-select-grid');
+      expect(grid.style.display).toBe('none'); // closed until the chip is clicked
+      const items = [...grid.querySelectorAll('.icon-select-option')];
+      expect(items.length).toBeGreaterThan(3);
+      for (const b of items) expect(b.id).toMatch(new RegExp(`^brickQuick_${row}_`)); // the old chip ids, kept
+      expect(parseFloat(items[0].style.width)).toBe(QUICK_PICKER.tilePx);
+      expect(line.querySelector('.icon-select-name').textContent.length).toBeGreaterThan(0); // the chosen pick, named
+    }
+    expect(QUICK_PICKER).toEqual({ tilePx: 80, columns: { phone: 3, desktop: 4 }, chipPx: 40 });
+    // the sidebar no longer carries the "Quick settings" title / hint
+    expect(document.body.textContent).not.toContain('Quick settings');
   });
   it('A7: "Grout" labels the Recessed / Flush toggle, which sits above the depth', () => {
     const toggle = $('brickGroutProfileToggle');

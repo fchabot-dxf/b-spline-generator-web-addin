@@ -7,9 +7,11 @@ import { readFileSync } from 'node:fs';
 import { BRICK_CONTROL_REQUIRES, requirementMet } from '../bspline-frame-builder/b-spline-gen/html/main/brick-control-requires.js';
 
 describe('BRICK_CONTROL_REQUIRES', () => {
-  it('has no imports (Node-importable)', () => {
+  // Fred 2026-10-11: one import -- library.js's declared FRAME_PRESETS (which presets declare which corner; DOM-free data)
+  it('imports only DOM-free declared data (Node-importable)', () => {
     const src = readFileSync('bspline-frame-builder/b-spline-gen/html/main/brick-control-requires.js', 'utf8');
-    expect(src).not.toMatch(/^\s*import\s/m);
+    const imports = src.split(/\r?\n/).filter((l) => /^\s*import\s/.test(l));
+    expect(imports).toEqual(["import { FRAME_PRESETS } from '../core/bricks/library.js';"]);
   });
   it('every id is a real palette control, every satisfied form is supported', () => {
     const html = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
@@ -21,7 +23,9 @@ describe('BRICK_CONTROL_REQUIRES', () => {
       // ...or an element tool's sub-tool button (F35 item 22): `brickSubTool_${tool.id}_${sid}` (BRICK_TOOLS subTools)
       const subTool = (id) => /^brickSubTool_[a-z]+_[a-z]+$/.test(id) && panel.includes('`brickSubTool_${tool.id}_${sid}`')
         && panel.includes(`subTools: [`) && panel.includes(`'${id.split('_')[2]}'`);
-      const exists = (id) => html.includes(`id="${id}"`) || panel.includes(`\`${id.slice(0, id.lastIndexOf('_') + 1)}\${`) || quick(id) || subTool(id);
+      // a rendered id's choice may hold underscores itself (brickFramePreset_butt_frame): any underscore may start it
+      const rendered = (id) => [...id].some((c, i) => c === '_' && panel.includes(`\`${id.slice(0, i + 1)}\${`));
+      const exists = (id) => html.includes(`id="${id}"`) || rendered(id) || quick(id) || subTool(id);
       const members = r.requires.anyOf || [r.requires]; // item 9: an anyOf rule's members are each a rule of their own
       for (const id of [...r.controls, ...(r.within || []), ...members.map((m) => m.control)].filter(Boolean)) expect(exists(id), id).toBe(true);
       for (const m of members) {

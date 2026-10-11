@@ -8,6 +8,7 @@ import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 import { initFramePanel, NO_FRAME_CHOICE } from '../bspline-frame-builder/b-spline-gen/html/main/frame-panel.js';
 import { boardOutlineIconSvg, templateIconSvg } from '../bspline-frame-builder/b-spline-gen/html/editor/frame-template-icon.js';
 import FRAME_DEFS from '../bspline-frame-builder/b-spline-gen/html/data/frame-defs.js';
+import { FRAME_LABELS } from '../bspline-frame-builder/b-spline-gen/html/core/frame-labels.js';
 
 const FIXTURE = `
   <input id="widthIn" value="7"><input id="heightIn" value="9">
@@ -50,7 +51,7 @@ describe("the no-frame choice is 'Rectangle' with an outline icon", () => {
     expect(svg).toMatch(/<rect [^>]*fill="none"/);
     const button = root.querySelector('.icon-select-button');
     expect(button.querySelector('svg rect')).not.toBeNull(); // no frame picked -> the button shows the outline
-    expect(button.title).toBe('Frame template: Rectangle');
+    expect(button.title).toBe(`${FRAME_LABELS.wood} template: Rectangle`);
     expect(templateIconSvg(FRAME_DEFS, '')).toBe(null); // the template drawer itself is unchanged
   });
   it("the sidebar FRAME header names it too ('— Rectangle', not '— none')", () => {

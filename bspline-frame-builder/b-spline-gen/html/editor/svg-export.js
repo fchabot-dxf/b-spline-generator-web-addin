@@ -28,6 +28,7 @@ import { insetFace } from '../core/bricks/grout-shape.js';
 import { greyOfHeight, NEUTRAL_BRICK_GREY, NEUTRAL_GROUT_GREY } from '../core/bricks/height-grey.js';
 import { frameVectorParts } from './editor-frame-profile.js';
 import { stripSvgjsAttributes } from '../core/svg-utils.js';
+import { FRAME_LABELS } from '../core/frame-labels.js';
 
 /** The brick styles a download can take. `available: false` = declared, not built yet. */
 export const SVG_BRICK_EXPORT = Object.freeze({
@@ -44,7 +45,7 @@ export const SVG_BRICK_EXPORT = Object.freeze({
 /** The file's group kinds. `place`: 'bottom' = once, under everything; 'layer' = at its layer's position in the roster
  *  (editor._layers, bottom to top), in this order within a layer. `per`: one group per layer / per brick element. */
 export const SVG_EXPORT_GROUPS = Object.freeze([
-  Object.freeze({ id: 'frame', label: 'Frame', place: 'bottom' }),
+  Object.freeze({ id: 'frame', label: FRAME_LABELS.wood, place: 'bottom' }),
   Object.freeze({ id: 'art', label: 'Art', place: 'layer', per: 'layer' }),
   Object.freeze({ id: 'bricks', label: 'Bricks', place: 'layer', per: 'element' }),
   Object.freeze({ id: 'grout', label: 'Grout', place: 'layer', per: 'element' }),
@@ -94,9 +95,9 @@ export function brickElementsOf(editor) {
   const counts = {};
   const isArea = (id) => !!root.querySelector(`[${BRICK_RECORD_ATTR}="wall-area"][${BRICK_ELEMENT_ATTR}="${id}"]`);
   return [...byId.values()].filter((e) => e.bricks.length).map((e) => {
-    const base = e.kind === 'wall' ? (isArea(e.id) ? 'Wall area' : 'Wall') : e.kind === 'frame' ? 'Frame' : 'Brush stroke';
+    const base = e.kind === 'wall' ? (isArea(e.id) ? 'Wall area' : 'Wall') : e.kind === 'frame' ? FRAME_LABELS.brick : 'Brush stroke';
     counts[base] = (counts[base] || 0) + 1;
-    return { ...e, label: base === 'Wall' || base === 'Frame' ? base : `${base} ${counts[base]}` };
+    return { ...e, label: base === 'Wall' || base === FRAME_LABELS.brick ? base : `${base} ${counts[base]}` };
   });
 }
 

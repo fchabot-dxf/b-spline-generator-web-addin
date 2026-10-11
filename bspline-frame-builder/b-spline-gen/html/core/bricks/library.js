@@ -447,8 +447,26 @@ export const BRICK_PATTERNS = Object.freeze({
 function withBestSize(bestSize, bands) {
   return Object.defineProperty(bands, 'bestSize', { value: bestSize, enumerable: false });
 }
+/** 2026-10-11 (Fred approved the advisor's mock "Rowlock arch + keystone"): a preset's optional `arch` -- a blind arch
+ *  inside the frame (core/bricks/arch-surround.js ARCH_SPECS id), laid with the Frame element; the wall is cut around
+ *  it and fills its opening. Non-enumerable like bestSize: every reader of the bands sees the list it always did. */
+function withArch(arch, bands) {
+  return Object.defineProperty(bands, 'arch', { value: arch, enumerable: false });
+}
 
-export const FRAME_PRESETS = Object.freeze({
+/** Fred 2026-10-11: a frame PRESET bundles its bands, its CORNER (each band's `cornerStyle`) and its best size -- the
+ *  separate Corners picker is retired. A look that needs another corner is a VARIANT preset, declared here: these presets
+ *  each get a quoin variant `<id>_quoin` (the same bands, every corner a quoin block -- the inner bands wrap it with an L,
+ *  contour-bands.js QUOIN_INNER_WRAP -- and the same best size), listed right after them. */
+export const QUOIN_VARIANT_OF = Object.freeze(['soldier_stretcher', 'three_band', 'mixed_bands', 'recessed_panel']);
+const cornered = (bands, cornerStyle) => {
+  const v = bands.map((b) => ({ ...b, cornerStyle }));
+  return bands.bestSize ? withBestSize(bands.bestSize, v) : v;
+};
+const withQuoinVariants = (presets) => Object.fromEntries(Object.entries(presets).flatMap(([id, bands]) =>
+  [[id, bands], ...(QUOIN_VARIANT_OF.includes(id) ? [[`${id}_quoin`, cornered(bands, 'block')]] : [])]));
+
+export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
   // F35 item 12 follow-up (Fred): the Frame band preset's own OFF switch -- an EMPTY band list,
   // not a special case anywhere downstream: zero bands means `bricksContourBands` has nothing to
   // shrink by, so its own `innerPath` comes back as the frame contour unchanged -- Wall fills
@@ -536,7 +554,10 @@ export const FRAME_PRESETS = Object.freeze({
     { widthIn: 0.3, rows: 1, pattern: 'stretcher', motif: 'cornice_dentil' },
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
   ]),
-});
+  // 2026-10-11 (Fred, the mock's board 1; then "the large blocks should touch the edge of the frame directly"): no band of
+  // its own -- the arch (withArch) is the frame, its hood and rings the outermost rows, its stones from the frame's edge
+  arch_keystone: withBestSize(1, withArch('rowlock_keystone', [])),
+}));
 
 /** Frame motifs phase 1: each motif preset's RECOMMENDED brick size (in) -- the biggest that still shows its structure,
  *  read off the approved mockups (shots/advisor/frames/mock_ref1-3.png). */
@@ -549,7 +570,10 @@ export const FRAME_PRESET_SIZES = Object.freeze(Object.fromEntries(
  * heightOffset, so the app's height mask and engine.js sampleHeight read it with no further change; sampleHeight still clamps
  * the top to [0, reliefMaxIn]).
  */
-export const RELIEF_LEVELS = Object.freeze({ raised: 0.0625, flush: 0, recessed: -0.0625 });
+// Fred 2026-10-11 (the motifs did not read in 3D: their 2D look is a tint, 3D has only this): raised 1/8 in -- a raised top
+// reaches reliefIn + 1/8 = reliefMaxIn (the clamp keeps its crown at the cap); recessed -1/8 (Fred: "allow it, it's my
+// responsibility" -- a recessed top sits AT the ground, level with the joints; he declined the guard that kept it above).
+export const RELIEF_LEVELS = Object.freeze({ raised: 0.125, flush: 0, recessed: -0.125 });
 /** A motif tile's cell characters (BAND_MOTIFS grid tiles). */
 export const RELIEF_CHARS = Object.freeze({ R: 'raised', '.': 'flush', S: 'recessed' });
 
@@ -583,10 +607,14 @@ export const BAND_MOTIFS = Object.freeze({
   ], ends: 'raised' },
   // the cornice's dentils: half-brick dentils a course and a half deep, the gaps between them recessed (Ref 3)
   cornice_dentil: { unit: 'L', rowDepth: 1.5, rows: [{ seq: [[0.5, 'raised'], [0.25, 'recessed']] }], ends: 'raised' },
-  // header grid, raised zigzag 2 squares thick through 4 courses; diamond corner blocks (Ref 2)
-  zigzag: { unit: 'H', grid: { tile: ['R...', 'RR.R', '.RRR', '..R.'], corner: ['.RR.', 'RRRR', 'RRRR', '.RR.'] } },
-  // header grid, raised diamond lattice through 5 courses; diamond corners (Ref 2)
-  diaper: { unit: 'H', grid: { tile: ['..R.', '.R.R', 'R...', '.R.R', '..R.'], corner: ['..R..', '.RRR.', 'RRRRR', '.RRR.', '..R..'] } },
+  // header grid, raised zigzag 2 squares thick through 4 courses; diamond corner blocks (Ref 2). Fred 2026-10-11 ("looks
+  // like scattered light squares"): the period-4 tile read as noise even drawn by relief alone -- now a SYMMETRIC V, period 6
+  // (down 3 courses, up 3), its arms 2 cells thick, each course's cells overlapping the next course's (one continuous
+  // figure); compared in shots/seatE/relief (before / a lopsided 6 / this)
+  zigzag: { unit: 'H', grid: { tile: ['RR...R', '.RR.RR', '..RRR.', '...R..'], corner: ['.RR.', 'RRRR', 'RRRR', '.RR.'] } },
+  // header grid, raised diamond lattice through 5 courses; diamond corners (Ref 2). 2026-10-11 (the zigzag's fault: lines
+  // of single cells met only at corners) -- period 6, hollow diamonds 2 cells thick, touching side to side
+  diaper: { unit: 'H', grid: { tile: ['..RR..', '.RRRR.', 'RR..RR', '.RRRR.', '..RR..'], corner: ['..R..', '.RRR.', 'RRRRR', '.RRR.', '..R..'] } },
 });
 
 /**
