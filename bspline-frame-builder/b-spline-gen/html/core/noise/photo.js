@@ -146,6 +146,23 @@ export function photoPixelAt(su, sv, aspect, params, img) {
   return y * img.w + x;
 }
 
+/** 2026-10-10 (Fred: no stretched edge stripes): how much the photo covers sample point (su, sv) -- 1 inside the image,
+ *  0 outside it, rising linearly over `fadeUnits` (sample units) just inside its edge. 1 everywhere with Repeat on (the
+ *  photo tiles) or no fade. The same mapping as photoPixelAt, before its clamp. */
+export function photoCoverAt(su, sv, aspect, params, img, fadeUnits) {
+  if (!img || !img.w || !img.h || !(fadeUnits > 0)) return 1;
+  const { scale, offsetX, offsetY, rotation, cs, sn, repeat, unitsPerPixel, upright } = constantsFor(params, img, aspect);
+  if (repeat) return 1;
+  if (upright) sv = 1 - sv;
+  let bx = (su - 0.5) * aspect, by = sv - 0.5;
+  if (rotation !== 0) { const rbx = bx * cs - by * sn; by = bx * sn + by * cs; bx = rbx; }
+  bx = bx / scale + offsetX * aspect;
+  by = by / scale + offsetY;
+  // how far inside the image rectangle (its half extents in this space), back in sample units (x scale)
+  const inside = Math.min(0.5 * img.w * unitsPerPixel - Math.abs(bx), 0.5 * img.h * unitsPerPixel - Math.abs(by)) * scale;
+  return Math.max(0, Math.min(1, inside / fadeUnits));
+}
+
 /** The inverse of photoPixelAt's continuous part (before repeat / clamp): an IMAGE point (u, v), 0..1 over the
  *  processed (cropped) image, -> the sample point (su, sv) it lands on. The same constants, the steps undone in
  *  reverse order. For the on-board footprint (its corners: u, v in {0, 1}). */
