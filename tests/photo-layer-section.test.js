@@ -20,6 +20,7 @@ import { initPhotoPanel } from '../bspline-frame-builder/b-spline-gen/html/main/
 import { PHOTO_CONTROLS, PHOTO_GROUPS, renderPhotoLayerSection, bindPhotoLayerSection } from '../bspline-frame-builder/b-spline-gen/html/main/photo-layer-section.js';
 import { takeUndoParts, restoreUndoParts } from '../bspline-frame-builder/b-spline-gen/html/editor/undo-parts.js';
 import { NoiseTweaks } from '../bspline-frame-builder/b-spline-gen/html/core/noise/index.js';
+import { setPaintScheduler } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
 const BODY = HTML.slice(HTML.indexOf('<body'), HTML.indexOf('</body>') + 7).replace(/<script[\s\S]*?<\/script>/g, '');
@@ -143,15 +144,21 @@ describe('the mirrored image edits: one state, one undo step, both views follow'
   });
   it('the layer OFF greys every photo-only control (the switch and Edit image stay live) and says why; ON ungreys', async () => {
     const box = $('photoLayer');
+    // the greying waits for the switch's PARAM_STAGES stage to paint (main/ui-bindings.js), never in the tap
+    let paints = [];
+    setPaintScheduler((cb) => { paints.push(cb); });
+    const paint = () => { const ps = paints; paints = []; ps.forEach((p) => p()); };
     P.photoLayer = false; box.checked = false; box.dispatchEvent(new Event('change'));
-    await new Promise((r) => queueMicrotask(r));
+    expect($('photoFilterAmount').disabled).toBe(false); // nothing in the gesture
+    paint();
     for (const id of ['photoFilterAmount', 'photoFilterAmountSlider', 'photo3dReliefCarved', 'photo3dFlipH', 'photo3dBlurSlider', 'photoLayerTweak_repeat']) expect($(id).disabled, id).toBe(true);
     expect([...document.querySelectorAll('#photoLayerBody .tweak-row input')].every((e) => e.disabled)).toBe(true);
     expect($('photoLayer').disabled).toBe(false);
     expect($('photoLayerEditImage').disabled).toBe(false);
     expect($('photoLayerOffNote').hidden).toBe(false);
     P.photoLayer = true; box.checked = true; box.dispatchEvent(new Event('change'));
-    await new Promise((r) => queueMicrotask(r));
+    paint();
+    setPaintScheduler(null);
     expect($('photoFilterAmount').disabled).toBe(false);
     expect([...document.querySelectorAll('#photoLayerBody .tweak-row input')].some((e) => e.disabled)).toBe(false);
     expect($('photoLayerOffNote').hidden).toBe(true);

@@ -36,7 +36,7 @@ import { startEraserStroke, updateEraserStroke, finishEraserStroke } from './edi
 import { viewboxFor, zoomAbout, applyView, screenToModelDelta } from './editor-view.js';
 import { updateSnapCursor, clearSnapCursor, applyTouchMarkerOffset, updateGridHover, clearGridHover, snapToGrid, SNAP_POLICY } from './editor-grid.js';
 import { getDynamicTolerance, pastClickThreshold } from './editor-hit.js';
-import { nearestGeometrySnap, geometrySnapTargets, GEOMETRY_SNAP_TOL_PX } from './editor-snap-resolver.js';
+import { nearestGeometrySnap, geometrySnapTargets, GEOMETRY_SNAP_TOL_PX, beginSnapGesture, endSnapGesture } from './editor-snap-resolver.js';
 import {
     toLattice, toLatticeFractional, fromLattice, constrainToKind, latticeCrossings,
     emitSegment, emitNode, LATTICE_ATTR, nearestRailRow, orient,
@@ -177,6 +177,7 @@ function handlePointerDown(editor, e) {
     // hold, so it can never cancel itself.
     cancelMultiSelectHold();
     cancelContextMenuHold(); // H6: same reasoning, own timer — see its own doc comment.
+    if (!editor._snapGesture) beginSnapGesture(editor); // the press's snap targets, built once (editor-snap-resolver.js)
     editor._pointerType = e.pointerType || 'mouse';
     editor._activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     try { e.target.setPointerCapture(e.pointerId); } catch (_) { /* defensive: capture can fail on some UAs/synthetic events */ }
@@ -390,6 +391,7 @@ function handlePointerUp(editor, e) {
     cancelMultiSelectHold();
     cancelContextMenuHold(); // H6: a release before the hold time is just a quick tap, no menu.
     editor._activePointers.delete(e.pointerId);
+    if (!editor._activePointers.size) endSnapGesture(editor);
     try { e.target.releasePointerCapture(e.pointerId); } catch (_) {}
     const count = editor._activePointers.size;
 
