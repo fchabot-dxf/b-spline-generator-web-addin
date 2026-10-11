@@ -488,6 +488,7 @@ function wrapInnerQuoins(bricks, ribbons, joint) {
       if (d < 1.5 * size && d < best) { best = d; outer = o; } // a deep band puts its corner up to ~1.4 sizes in (T5 9x12 1 in)
     }
     if (!outer) continue;
+    q.wrapped = true;
     const grown = offsetPathInward(outer.square, joint, -inwardSignFor(outer.square));
     const pieces = polygonDifference(q.square, grown);
     const L = (pieces || []).filter((p) => p && p.length >= 3).sort((a, b) => Math.abs(signedArea(b)) - Math.abs(signedArea(a)))[0];
@@ -598,6 +599,10 @@ function cornersThatCannotWrap(bricks, ribbons) {
   const all = ribbons.flat(), off = new Map();
   for (let r = 1; r < ribbons.length; r++) for (const q of ribbons[r]) {
     if (q.corner == null) continue;
+    // a CURVED block exists only as the L of an outer band's curved corner (Fred 2026-10-11: it matches the square quoins):
+    // an inner band's own kink -- an offset of the contour, no corner outside it -- keeps the mitre (MEASURED T3 7x10
+    // 0.75 in three_band: band 2's waist offset turns 56 deg; the matched block reached into the wall as a pentagon)
+    if (q.curved && !q.wrapped) { if (!off.has(q.key)) off.set(q.key, new Set()); off.get(q.key).add(q.corner); continue; }
     const p = bricks[q.at].polygon, pb = boxOfPoly(p);
     if (!all.some((o) => o.at !== q.at && boxesMeet(pb, boxOfPoly(bricks[o.at].polygon)) && overlapArea(p, bricks[o.at].polygon) > MEDIAL_OVERLAP_SQIN)) continue;
     if (!off.has(q.key)) off.set(q.key, new Set());
@@ -1131,7 +1136,7 @@ export function bricksContourBands(primitives, bands, opts) {
       // T86 item 16d: a corner's fan slice is declared as such (`fan: true`, additive; the drawing never reads it) -- the
       // seam sweep (tests/bricks-seam-sweep.test.js) measures the fan-to-run joints by it
       const ribbonQuoins = [];
-      sources.forEach((src, i) => { if (src === QUOIN) ribbonQuoins.push({ at: bricks.length + i, square: pieces[i].polygon, corner: fanSides[i] ? fanSides[i][1] : null, key: ribbonKey }); });
+      sources.forEach((src, i) => { if (src === QUOIN) ribbonQuoins.push({ at: bricks.length + i, square: pieces[i].polygon, corner: fanSides[i] ? fanSides[i][1] : null, key: ribbonKey, curved: !!pieces[i].curved }); });
       if (ribbonQuoins.length) quoinRibbons.push(ribbonQuoins);
       bricks.push(...pieces.map((piece, i) => (sources[i] === FAN ? { ...piece, fan: true } : piece)));
       // T86 item 30: a fan slice also records its corner (the two primitives it sits between), for the fan-vs-fan split

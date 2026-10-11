@@ -528,7 +528,10 @@ const CURVE_QUOIN_TURN_DEG = Object.freeze({ min: 20, max: 60 });
 // the block's two curved faces, drawn as polylines: a step about this long, at most this many -- a step shorter than a
 // joint folds over when the block is grown by one (MEASURED T18 7x9 1 in: 16 fixed steps on a short inner arc made
 // the grown block self-intersect at its inner corner; band 2's L came out non-simple and a wall sliver lay under it)
-const CURVE_QUOIN_ARC = Object.freeze({ stepIn: 0.1, maxSteps: 16 });
+// areaOfSquare (Fred 2026-10-11: the curved block MATCHES the square quoins, not a slab -- reaching a full block along
+// the arc too, T10's measured 1.92 sq in against the straight corner's 1.21): its reach along the arc is solved so its
+// area is this share of the square quoin at the same stack (block x depth); the side keeps the full block
+const CURVE_QUOIN_ARC = Object.freeze({ stepIn: 0.1, maxSteps: 16, areaOfSquare: 1 });
 /**
  * The CURVED block (the mockup's option A, shots/seatE/grout/curve_quoin_mock_*.png): the stack's ring at the corner
  * between a face square to the side (`blockSize` along it from the corner `o`) and a face along the arc's radius
@@ -560,7 +563,7 @@ function buildCurveBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1, 
   // the block spans the whole row (MEASURED T10 9x12 at 1.5 in: a row deeper than the 1.1 in block left the strip past its
   // inner face along the side to no run -- the arc run is cut along the radius; a square block's other run covers it)
   const depth = Math.max(s, d1 - d0);
-  const rIn = rO - arc.radialSign * depth, thB = thO + (arcSign * s) / rO;
+  const rIn = rO - arc.radialSign * depth;
   if (!(rIn > nominalJoint)) return null; // a row as deep as the arc's radius: no inner arc -- the mitre
   const at = (r, th) => ({ x: c.x + r * Math.cos(th), y: c.y + r * Math.sin(th) });
   const innerStart = stepFrom(o, n, depth);
@@ -572,14 +575,25 @@ function buildCurveBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1, 
   let thX = Math.atan2(X.y - c.y, X.x - c.x);
   while ((thX - thO) * arcSign < -Math.PI) thX += 2 * Math.PI * arcSign;
   while ((thX - thO) * arcSign > Math.PI) thX -= 2 * Math.PI * arcSign;
-  if (along > s || (thX - thO) * arcSign > (thB - thO) * arcSign) return null;
   const arcPts = (r, a0, a1) => {
     const n = Math.max(1, Math.min(CURVE_QUOIN_ARC.maxSteps, Math.round((Math.abs(a1 - a0) * r) / CURVE_QUOIN_ARC.stepIn)));
     return Array.from({ length: n + 1 }, (_, i) => at(r, a0 + ((a1 - a0) * i) / n));
   };
   const pL = stepFrom(o, lineAway, s);
   // o -> the arc face -> the radial face -> the inner arc back to X -> the side's inner offset line -> its square face
-  const blockPolygon = [...arcPts(rO, thO, thB), ...arcPts(rIn, thB, thX), stepFrom(pL, n, depth), pL];
+  const polygonTo = (th) => [...arcPts(rO, thO, th), ...arcPts(rIn, th, thX), stepFrom(pL, n, depth), pL];
+  // the arc reach: the block's area = CURVE_QUOIN_ARC.areaOfSquare x the square quoin (s x depth), between the inner
+  // corner X (+ a joint, so the inner arc is never a fold) and a full block; bisected -- the area grows with the reach
+  const thAt = (reach) => thO + (arcSign * reach) / rO;
+  const lo = Math.max(J, ((thX - thO) * arcSign) * rO + (J * rO) / rIn), target = CURVE_QUOIN_ARC.areaOfSquare * s * depth;
+  if (along > s || lo > s) return null;
+  let a = lo, b = s;
+  if (Math.abs(signedArea(polygonTo(thAt(a)))) >= target) b = a;
+  else if (Math.abs(signedArea(polygonTo(thAt(b)))) > target) {
+    for (let i = 0; i < 40; i++) { const m = (a + b) / 2; if (Math.abs(signedArea(polygonTo(thAt(m)))) > target) b = m; else a = m; }
+  }
+  const thB = thAt(b);
+  const blockPolygon = polygonTo(thB);
   // the cuts, one joint off the two faces
   const lineCut = stepFrom(o, lineAway, s + J), lineKeep = stepFrom(lineCut, lineAway, 1);
   const forLine = { point: lineCut, q: lineCut, dirX: n.x, dirY: n.y, keepRefAsStart: lineKeep, keepRefAsEnd: lineKeep, trustO: true };
@@ -589,7 +603,7 @@ function buildCurveBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1, 
   const qHits = lineCircleIntersections(arcCut, radial, c, rD1) || [];
   const arcQ = qHits.reduce((b, p) => (!b || Math.hypot(p.x - arcCut.x, p.y - arcCut.y) < Math.hypot(b.x - arcCut.x, b.y - arcCut.y) ? p : b), null) || arcCut;
   const forArc = { point: arcCut, q: arcQ, dirX: radial.x, dirY: radial.y, keepRefAsStart: arcKeep, keepRefAsEnd: arcKeep, trustO: true };
-  return { isBlock: true, prevIdx, curIdx, forPrev: line === prevPrim ? forLine : forArc, forCur: line === prevPrim ? forArc : forLine, blockPolygon };
+  return { isBlock: true, curved: true, prevIdx, curIdx, forPrev: line === prevPrim ? forLine : forArc, forCur: line === prevPrim ? forArc : forLine, blockPolygon };
 }
 
 /** A monotonically-increasing position along `prim` (line: tangential projection from `p0`; arc:
@@ -1344,7 +1358,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
     if (rawJointEnd && rawJointEnd.isBlock && rawJointEnd.blockPolygon) {
       const { sampleId, flip } = pickSample(set, seed, 'bricks-block', nextId);
       const heightOffset = (mulberry32(seedFor(seed, 'bricks-block-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
-      pieces.push({ id: `${pieceId}-${nextId}`, polygon: rawJointEnd.blockPolygon, pieceId, sampleId, flip, heightOffset });
+      pieces.push({ id: `${pieceId}-${nextId}`, polygon: rawJointEnd.blockPolygon, pieceId, sampleId, flip, heightOffset, ...(rawJointEnd.curved ? { curved: true } : {}) });
       sources.push(-2);
       fanSides.push([idx, liveIndices[(k + 1) % m]]); // a quoin's corner too (its `blockOff` index is the second)
       nextId++;

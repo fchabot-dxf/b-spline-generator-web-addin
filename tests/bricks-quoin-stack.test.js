@@ -82,10 +82,13 @@ describe('Quoin on a stack of bands: one square per corner, an L for each furthe
   });
   // seat E 2026-10-11 (Fred picked the curved block): a straight side meeting an arc at a kink inside
   // CURVE_QUOIN_TURN_DEG (T10's arched top, 150 deg inside; T18's, 137) takes a block whose arc face follows the curve --
-  // one per such corner, in the outermost band (a curved outline; at an obtuse corner it is larger than the 1.1 in square: T10 1.9 sq in)
+  // one per such corner, in the outermost band. Fred 2026-10-11: it MATCHES the square quoins (it was a 1.92 sq in slab on
+  // T10 against the straight corner's 1.21) -- its area within CURVE_QUOIN_ARC.areaOfSquare of the same lay's square
   it.each([['template_10', 7, 9, 1, 'single_soldier'], ['template_18', 7, 9, 1, 'mixed_bands'], ['template_10', 9, 12, 0.75, 'soldier_stretcher']])('%s %ix%i %s in %s: the arched top\'s two corners take the curved block', (tpl, W, H, L, preset) => {
     const { r } = lay(tpl, W, H, L, preset);
-    const curved = r.frameBricks.filter((b) => b.bandIndex === 0 && b.polygon.length > 8 && Math.abs(signedArea(b.polygon)) > 1.0 && Math.abs(signedArea(b.polygon)) < 2.5);
+    const band0 = r.frameBricks.filter((b) => b.bandIndex === 0), area = (b) => Math.abs(signedArea(b.polygon));
+    const square = Math.max(...band0.filter((b) => b.polygon.length === 4).map(area)); // the straight corners' quoin
+    const curved = band0.filter((b) => b.polygon.length > 5 && Math.abs(area(b) / square - 1) < 0.12);
     expect(curved.length).toBe(2);
   });
   it('a one-band quoin lays its plain squares (4 corners, no L)', () => {
