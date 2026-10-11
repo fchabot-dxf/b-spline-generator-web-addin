@@ -2,7 +2,7 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache, layerToolingChanged, saveLastSession } from '../core/state.js';
 import { renderLayersPanel } from '../editor/layers.js';
 import { syncUItoParam } from '../core/ui-utils.js';
-import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring } from '../core/history.js';
+import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring, startHistoryAt } from '../core/history.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { updateStampMasks, refreshAllStampMasks } from './stamp-mask-manager.js';
 import { deferToHold } from '../core/engine/scheduler.js';
@@ -33,7 +33,7 @@ export function applySnapshot(snap, preview, opts = {}) {
   return withLoadingStage('restore', () => _applySnapshot(snap, preview, opts));
 }
 
-async function _applySnapshot(snap, preview, { source, restore } = {}) {
+async function _applySnapshot(snap, preview, { source, restore, historyLabel = 'Loaded project' } = {}) {
   const frame = restore ? restore.frame : undefined;
   const restoredSvg = source === 'undo' && restore && typeof restore.editorSvg === 'string' ? restore.editorSvg : null;
   if (source !== 'undo' && source !== 'load') {
@@ -188,6 +188,9 @@ async function _applySnapshot(snap, preview, { source, restore } = {}) {
   // a redundant full-mask refresh on top of the load.
   AppState.lastNx = nx;
   AppState.lastNz = nz;
+
+  // a load starts the global history over at the loaded board (core/history.js startHistoryAt): undo never crosses it
+  if (source === 'load') startHistoryAt(historyLabel);
 
   scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0);
 }

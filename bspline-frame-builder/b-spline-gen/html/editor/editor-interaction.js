@@ -20,7 +20,7 @@ import { stripeHandler } from './editor-stripe-tool.js'; // F27 item 3
 import { brickBrushHandler, brickAccentClickHandler, brickElementSelectHandler, brickWallAreaHandler } from './editor-brick-tool.js'; // F35 item 1, item 15, item 22
 import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTieJoints, tieEndNodes, minPieceLength } from './editor-lattice-chains.js'; // SE16
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
-import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer, isOnVisibleLayer } from './layers.js';
+import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer, isOnVisibleLayer, isEditableByLayer } from './layers.js';
 import { worldBbox, toLocal, worldPoint } from './editor-coords.js';
 import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, updateHistoryButtons } from './editor-ui.js';
 import { on, el, _isTypingTarget } from './dom.js';
@@ -81,6 +81,7 @@ import {
 import { commitEdit } from './editor-commit.js';
 import { SELECTION_COLOR, APP_HANDLE_STROKE } from './editor-transform-handles.js';
 import { distToSegment as _distToSegment } from './editor-primitives.js'; // audit tidy-up: the one copy
+import { isSelectableInTab } from './editor-tab-selectable.js';
 
 function _strokeLog(msg) {
     dbg('STROKE', msg);
@@ -549,6 +550,16 @@ export function selectAllVisible(editor) {
     editor._selectMany(all);
 }
 
+/** Fred 2026-10-10: the empty-canvas menu's "Select all in current layer" -- the ACTIVE layer's pieces that are shown and
+ *  unlocked (isEditableByLayer; a hidden layer selects nothing), of the kinds the open tab owns (the selection writers
+ *  apply EDITOR_TAB_SELECTABLE). An empty layer selects nothing. */
+export function selectAllInActiveLayer(editor) {
+    if (!editor._sketchLayer) return;
+    const all = editor._sketchLayer.children().toArray().filter((el) => el && el.node
+        && isEditableByLayer(editor, el) && !(el.node.getAttribute('class') || '').includes('layer-hidden'));
+    editor._selectMany(all);
+}
+
 /** Cancel an in-progress pen/anchor path WITHOUT committing it — the
  *  on-screen equivalent of Esc (SA-MOBILE-10), which has no touch
  *  keyboard to press. No-op when nothing is being drawn. */
@@ -840,7 +851,8 @@ function _pickSelectable(editor, pt) {
     // piece this precise re-check also found must still lose to a contour/boundary genuinely closer by
     // visible edge (rails are drawn reaching the contour's own edge, so one is ALWAYS "found" near it).
     const seg = near.el ? _boundaryNear(editor, pt) : null;
-    return _contourWinsPick(seg, near) ? seg.el : (near.el || hit || null);
+    const picked = _contourWinsPick(seg, near) ? seg.el : (near.el || hit || null);
+    return picked && isSelectableInTab(editor, picked) ? picked : null; // the tab's own kind only (EDITOR_TAB_SELECTABLE)
 }
 
 // ─── aim-select (touch) ────────────────────────────────────────────────────
