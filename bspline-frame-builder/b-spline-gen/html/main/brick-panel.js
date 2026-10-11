@@ -29,7 +29,7 @@ import {
   BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
-  FRAME_CORNERS, FOLDED_FRAME_PRESETS, topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_FOLLOW, SURROUND_CORNER_LIST, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
+  FRAME_CORNERS, FOLDED_FRAME_PRESETS, topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_FOLLOW, SURROUND_CORNER_LIST, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, framePresetTileSvg, wallPatternTileSvg, frameCornerEffectFor,
   FRAME_FAN_CENTRES, frameFanCentreOf, fanCentreIconSvg, frameHasFanFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
   brushStrokeSettings, restyleBrushStroke, groutCutPolylines, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
@@ -56,6 +56,7 @@ import { renderTabStrip } from '../editor/tab-strip.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
 import { brickToolIconSvg } from '../editor/brick-tool-icons.js';
 import { applyBrickTabSections, brickTabOfControl } from './brick-tab-sections.js';
+import { mountIconSelect, refreshIconSelect, PICKER_TILE } from './icon-select.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -2886,6 +2887,11 @@ const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).filter((id) => !FOLDED_FRAM
 // that many columns (the Wall pattern's 21 icons took 11 rows). `stage` (seat D 2026-10-09, phone feedback audit on seat
 // A's loaded board): the loading stage a pick shows FIRST -- the pick re-renders the Brick panel (~73 ms at 4x CPU) before
 // its own re-lay / re-mask stage could paint: 53-79 ms frozen with no card. The stage named is the work it starts.
+/** Fred (2026-10-11, the redesign's phase 1): a long visual row (`picker: true`) is ONE chip -- the current pick's icon
+ *  + its name -- that opens a grid to pick from: THE wood frame's picker (main/icon-select.js mountIconSelect, Board >
+ *  Frame's template; its tile size is that module's PICKER_TILE), not a copy. `iconFor` draws the TILE icons (a bigger
+ *  wall patch; a frame corner + a run of band). */
+const PICKER_ICON_PX = PICKER_TILE.tilePx - 8; // the icon inside the tile's 2 px padding + border
 export const BRICK_QUICK_SETTINGS = [
   { id: 'set', label: 'Set', stage: 'bricks', choices: () => BRICK_SET_IDS.map((id) => ({ id, label: _setLabel(id) })),
     mixed: { label: 'Mixed', title: 'The elements use different sets (picked per element in the Brick tab); a pick here applies to every element',
@@ -2893,11 +2899,11 @@ export const BRICK_QUICK_SETTINGS = [
     isCurrent: (c) => SET_KINDS().every((k) => elementSetId(P.brickSettings, k) === c.id), apply: (c) => selectSet(c.id, 'auto', SET_KINDS(), { strokes: true }) }, // A6: applies to every element, strokes too
   { id: 'size', label: 'Brick size', stage: 'bricks', choices: () => BRICK_SIZE_PRESETS,
     isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
-  { id: 'pattern', label: 'Wall pattern', stage: 'bricks', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternIconSvg(c.id, 24), columns: 4,
+  { id: 'pattern', label: 'Wall pattern', stage: 'bricks', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternTileSvg(c.id, PICKER_ICON_PX), picker: true,
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
   // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
   // (`lays`), or re-lays it; greyed while the board has no frame contour (BRICK_CONTROL_REQUIRES 'frameContour')
-  { id: 'frameBands', label: 'Frame bands', stage: 'bricks', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetIconSvg(c.id, 24),
+  { id: 'frameBands', label: 'Frame bands', stage: 'bricks', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetTileSvg(c.id, PICKER_ICON_PX), picker: true,
     lays: 'frame', isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
   // F35 item 55: the board-wide grout colour (paint only, nothing re-lays); any other hex from the Brick tab's picker
   { id: 'groutColor', label: 'Grout colour', stage: 'heightMask', choices: () => GROUT_COLOR_CHOICES, iconFor: _groutSwatchSvg, // paint only: the re-mask
@@ -2906,6 +2912,7 @@ export const BRICK_QUICK_SETTINGS = [
 const quickButtonId = (row, choice) => `brickQuick_${row.id}_${choice.id}`;
 const quickRowId = (row) => `brickQuickRow_${row.id}`;
 const quickMixedId = (row) => `brickQuickMixed_${row.id}`; // its own namespace: never a choice's (brickQuick_<row>_<choice>)
+const quickSelectId = (row) => `brickQuickSelect_${row.id}`; // a picker row's <select> (its value = the current pick)
 /** F35 item 55: the sidebar's grout colours, declared -- None (the board shows through) + a few mortar shades. */
 export const GROUT_COLOR_CHOICES = Object.freeze([
   { id: 'none', label: 'None (the board shows through)', color: null },
@@ -2930,9 +2937,23 @@ function renderQuickSettings(container) {
     container.appendChild(label);
     const list = document.createElement('div');
     list.id = quickRowId(row);
-    list.style.cssText = row.columns
-      ? `display:grid; grid-template-columns:repeat(${row.columns}, minmax(0, 1fr)); gap:4px; margin-bottom:10px;`
-      : 'display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;';
+    list.style.cssText = 'display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; align-items:center;';
+    // item 71: one global undo step per pick (core/history.js recordBoardStep: the settings AND the laid bricks)
+    const pick = (choice) => withLoadingStageShownFirst(row.stage, () => recordBoardStep(`Bricks: ${row.label}`, () => { if (row.lays) requestLay(row.lays); row.apply(choice); }));
+    if (row.picker) {
+      // the shared picker over a <select>; its grid items keep the chip ids (brickQuick_<row>_<choice>: the matrix, the
+      // control-requires greying and the active sync address them), a pick of the current one still applies (a lay)
+      const choices = row.choices();
+      const sel = document.createElement('select');
+      sel.id = quickSelectId(row);
+      for (const c of choices) { const o = document.createElement('option'); o.value = c.id; o.textContent = c.label; sel.appendChild(o); }
+      sel.addEventListener('change', () => { const c = choices.find((x) => x.id === sel.value); if (c) pick(c); });
+      list.appendChild(sel);
+      mountIconSelect(sel, { label: row.label, iconFor: (v) => { const c = choices.find((x) => x.id === v); return c ? row.iconFor(c) : null; },
+        optionId: (v) => quickButtonId(row, { id: v }), pickSame: true });
+      container.appendChild(list);
+      continue;
+    }
     for (const choice of row.choices()) {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -2942,9 +2963,7 @@ function renderQuickSettings(container) {
       const icon = row.iconFor && row.iconFor(choice);
       if (icon) { btn.innerHTML = icon; btn.title = choice.label; btn.setAttribute('aria-label', choice.label); btn.style.padding = '2px'; }
       else btn.textContent = choice.label;
-      if (row.columns) btn.style.minWidth = '0'; // A9: a grid cell, not .cad-btn's 75 px floor (4 x 75 overflowed the sidebar)
-      // item 71: one global undo step per pick (core/history.js recordBoardStep: the settings AND the laid bricks)
-      btn.addEventListener('click', () => withLoadingStageShownFirst(row.stage, () => recordBoardStep(`Bricks: ${row.label}`, () => { if (row.lays) requestLay(row.lays); row.apply(choice); })));
+      btn.addEventListener('click', () => pick(choice));
       list.appendChild(btn);
     }
     if (row.mixed) { // A5: shown by syncQuickSettings while no choice is current and the row's `when` holds
@@ -2968,6 +2987,11 @@ function syncQuickSettings() {
       const on = row.isCurrent(choice);
       any = any || on;
       document.getElementById(quickButtonId(row, choice))?.classList.toggle('active', on);
+    }
+    if (row.picker) {
+      const sel = document.getElementById(quickSelectId(row));
+      const cur = row.choices().find((c) => row.isCurrent(c));
+      if (sel && cur && sel.value !== cur.id) { sel.value = cur.id; refreshIconSelect(sel); }
     }
     const mixed = row.mixed ? document.getElementById(quickMixedId(row)) : null;
     if (mixed) mixed.style.display = !any && row.mixed.when() ? '' : 'none';
