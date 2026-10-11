@@ -168,6 +168,40 @@ index when it is missing or older than `INDEX_MAX_AGE_HOURS` (6). A key written 
 on the next rebuild -- or delete `__index::presets` to rebuild at once. Local probes never reach this worker
 (`bspline_gen_palette.html`: a loopback-served page points at a dead address unless `?realCloud=1`).
 
+**Page views live in D1, not KV (2026-10-11).** `/views/*` used 2 KV writes per counted view + 1 per dropped hit,
+and list() on every stats read, against the account-wide 1,000 writes / 1,000 list() a day. They now use the D1
+database `PAGE_VIEWS_DB` (schema `migrations/0001_page_views.sql`): zero KV writes, zero KV list(). The old KV
+totals (`PAGE_VIEWS`, kept read-only) are folded into D1 once, by the first `/views` request after deploy
+(`foldLegacyKv` in `src/pageviews-route.js`: 2 list() + one read per key, additive, marked done in the same D1
+transaction; a failed fold retries at most once an hour). The Pen Plotter listing (`GET /projects|/palettes` with
+`X-API-Key`) also reads one index key per kind (`__index::projects`, `__index::palettes`) instead of list().
+
+## Deploy steps for the owner (page views -> D1)
+
+From `cloud/preset-worker/`, logged in (`npx wrangler login`):
+
+1. Create the database (once):
+   ```
+   npx wrangler d1 create page-views
+   ```
+2. Paste the printed `database_id` into `wrangler.toml`, replacing `REPLACE_WITH_D1_DATABASE_ID`.
+3. Create the tables on the real database:
+   ```
+   npx wrangler d1 migrations apply page-views --remote
+   ```
+4. Deploy (or merge to main: `.github/workflows/deploy-worker.yml` deploys every push to main that touches this folder):
+   ```
+   npx wrangler deploy
+   ```
+5. Check: open `https://<worker>/views/<site>` once -- it folds the old KV totals in and should show the same
+   totals as before the deploy. `npx wrangler d1 execute page-views --remote --command "SELECT * FROM pv_meta"`
+   shows `done:<time>` once the fold ran.
+
+Do steps 1-3 BEFORE the deploy / the merge to main: with the placeholder id the deploy should fail (the old worker
+keeps running), and with the database but no tables every `/views` request errors until step 3.
+
+Local: `npx wrangler d1 execute PAGE_VIEWS_DB --local --file migrations/0001_page_views.sql`, then `npx wrangler dev`.
+
 ## What's NOT implemented yet
 
 Listed roughly in order of when you'd add them:

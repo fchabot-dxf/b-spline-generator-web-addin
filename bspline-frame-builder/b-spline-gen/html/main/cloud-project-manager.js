@@ -14,7 +14,7 @@
 // 'splineGenPresets' (old local preset store), offers to upload them to cloud.
 // Marks completion with 'splineGenProjectsMigrated' so the prompt never repeats.
 
-import { P, preDelta, postDelta, extraThickenThinMask, persistableP, isFusionMode } from '../core/state.js';
+import { P, preDelta, postDelta, extraThickenThinMask, persistableP, isFusionMode, flushSessionSave } from '../core/state.js';
 import { COORD_SYSTEM } from '../core/coords.js';
 import { applySnapshot } from './snapshot-manager.js';
 import { isDirty, markClean, onDirtyChange } from '../core/dirty.js';
@@ -1025,6 +1025,7 @@ async function _cloudSavedAt(name) {
 }
 
 async function _saveTo(fullName) {
+  flushSessionSave(); // Save / Save As / quick save: the session copy is current first (state.js SESSION_SAVE)
   if (!_API_URL) { setMsg('No cloud API configured.', 'warn'); return; }
 
   const known = _knownSavedAt(fullName);

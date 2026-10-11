@@ -26055,6 +26055,27 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - The frame-ui matrix row now re-lays each corner chip from None (two variants the fit rule reduces to one band laid the
   same frame on T1 9x12 at 1.25 in -- the second click changed nothing).
 
+### 2026-10-11 (seat E): the motifs in 3D -- the 2D/3D bug measured (not a lay mismatch), relief 1/8 in, zigzag / diaper tiles
+- Fred: "the 2D pattern isn't the same in 3D". MEASURED in the app (scratchpad mask_probe.mjs; shots/seatE/mask): the brick
+  layer's live height mask (layer._brickMask, what the 3D carves) overlaid top-down on the editor's 2D pieces, dentil_corbel
+  and zigzag_band on a 7x10 rectangle and T1: 0 piece interiors without mask height (of 2944 - 4646 points), 0 - 39 edge
+  points of 4300+ with height outside every piece. The 3D IS the 2D pieces. What did not read: (1) a motif's 2D look is a
+  tint, 3D has only its relief, and 1/16 in was buried in each brick's own crown / photo detail (measured: raised faces
+  0.061 in above flush); (2) the zigzag tile itself read as noise even drawn by relief alone (period 4, its course-to-course
+  steps touching at corners). Pinned: tests/brick-mask-pieces-pin.test.js -- the mask covers each laid piece with that piece
+  and nothing else, raised faces RELIEF_LEVELS.raised above flush (mutation-checked: drop the height offsets -> the relief
+  case fails; skip one piece -> the coverage case fails).
+- RELIEF_LEVELS raised 1/8 (Fred), recessed -1/8 (Fred overrode the advisor's -3/32: "allow it, it's my responsibility" -- a
+  recessed top AT the ground is accepted; the "reliefIn + recessed > 0" pin was a guard he declined -> the declared values
+  are pinned instead). MEASURED after (zigzag, rect 7x10, 1.25 in): raised faces 0.125 in above flush (0.2353 vs 0.110);
+  their tops 0.118 above -- the reliefMaxIn 1/4 cap trims the crown flat over ~25% of a raised brick's area (0.007 in);
+  reported, cap unchanged (raising it is Fred's call).
+- Tiles: the diaper is hollow diamonds 2 cells thick touching side to side (period 6; the old single-cell lattice met
+  only at corners); the zigzag a SYMMETRIC V, period 6, arms 2 cells wide (a lopsided down-3 / up-2 version read as a
+  broken wave -- compared, shots/seatE/relief/zigzag_tiles_compared_top.png). Tests (bricks-band-motif): each grid tile,
+  repeated, is ONE edge-joined figure; the zigzag mirror-symmetric with 2-wide arms; the relief values -- 3 / 3 fail on
+  main. brick-icons.js regenerated (the motif preset icons).
+
 ### 2026-10-11 (seat E): the CURVED block -- a quoin where a straight side meets an arc (Fred picked mockup A)
 - Where: MEASURED every template at its defaults + Fred's Armor record: only T10 Arched Hourglass (the arched top meets the
   tapered sides, a 30 deg turn = 150 inside) and T18 Arched Head (43 deg = 137 inside) have a non-tangent line/arc corner;

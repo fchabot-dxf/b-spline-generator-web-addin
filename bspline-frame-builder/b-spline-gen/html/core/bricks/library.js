@@ -570,7 +570,10 @@ export const FRAME_PRESET_SIZES = Object.freeze(Object.fromEntries(
  * heightOffset, so the app's height mask and engine.js sampleHeight read it with no further change; sampleHeight still clamps
  * the top to [0, reliefMaxIn]).
  */
-export const RELIEF_LEVELS = Object.freeze({ raised: 0.0625, flush: 0, recessed: -0.0625 });
+// Fred 2026-10-11 (the motifs did not read in 3D: their 2D look is a tint, 3D has only this): raised 1/8 in -- a raised top
+// reaches reliefIn + 1/8 = reliefMaxIn (the clamp keeps its crown at the cap); recessed -1/8 (Fred: "allow it, it's my
+// responsibility" -- a recessed top sits AT the ground, level with the joints; he declined the guard that kept it above).
+export const RELIEF_LEVELS = Object.freeze({ raised: 0.125, flush: 0, recessed: -0.125 });
 /** A motif tile's cell characters (BAND_MOTIFS grid tiles). */
 export const RELIEF_CHARS = Object.freeze({ R: 'raised', '.': 'flush', S: 'recessed' });
 
@@ -604,10 +607,14 @@ export const BAND_MOTIFS = Object.freeze({
   ], ends: 'raised' },
   // the cornice's dentils: half-brick dentils a course and a half deep, the gaps between them recessed (Ref 3)
   cornice_dentil: { unit: 'L', rowDepth: 1.5, rows: [{ seq: [[0.5, 'raised'], [0.25, 'recessed']] }], ends: 'raised' },
-  // header grid, raised zigzag 2 squares thick through 4 courses; diamond corner blocks (Ref 2)
-  zigzag: { unit: 'H', grid: { tile: ['R...', 'RR.R', '.RRR', '..R.'], corner: ['.RR.', 'RRRR', 'RRRR', '.RR.'] } },
-  // header grid, raised diamond lattice through 5 courses; diamond corners (Ref 2)
-  diaper: { unit: 'H', grid: { tile: ['..R.', '.R.R', 'R...', '.R.R', '..R.'], corner: ['..R..', '.RRR.', 'RRRRR', '.RRR.', '..R..'] } },
+  // header grid, raised zigzag 2 squares thick through 4 courses; diamond corner blocks (Ref 2). Fred 2026-10-11 ("looks
+  // like scattered light squares"): the period-4 tile read as noise even drawn by relief alone -- now a SYMMETRIC V, period 6
+  // (down 3 courses, up 3), its arms 2 cells thick, each course's cells overlapping the next course's (one continuous
+  // figure); compared in shots/seatE/relief (before / a lopsided 6 / this)
+  zigzag: { unit: 'H', grid: { tile: ['RR...R', '.RR.RR', '..RRR.', '...R..'], corner: ['.RR.', 'RRRR', 'RRRR', '.RR.'] } },
+  // header grid, raised diamond lattice through 5 courses; diamond corners (Ref 2). 2026-10-11 (the zigzag's fault: lines
+  // of single cells met only at corners) -- period 6, hollow diamonds 2 cells thick, touching side to side
+  diaper: { unit: 'H', grid: { tile: ['..RR..', '.RRRR.', 'RR..RR', '.RRRR.', '..RR..'], corner: ['..R..', '.RRR.', 'RRRRR', '.RRR.', '..R..'] } },
 });
 
 /**

@@ -22,6 +22,7 @@ export function selectKindOf(node) {
  *  nothing on the canvas. */
 export const EDITOR_TAB_SELECTABLE = Object.freeze({
   artwork: Object.freeze({ kinds: Object.freeze(['art']), selectAllLabel: 'Select all artwork' }),
+  lattice: Object.freeze({ kinds: Object.freeze(['art']), selectAllLabel: 'Select all artwork' }), // redesign phase 2: lattice pieces are art
   brick: Object.freeze({ kinds: Object.freeze(['brick']), selectAllLabel: 'Select all bricks' }),
   frame: Object.freeze({ kinds: Object.freeze([]), selectAllLabel: 'Select all' }),
   photo: Object.freeze({ kinds: Object.freeze([]), selectAllLabel: 'Select all' }),

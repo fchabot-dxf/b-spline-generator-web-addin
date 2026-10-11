@@ -10,10 +10,19 @@
  *   GET  /views/:site         all pages        -> { site, pages: [...], totals, dropped }
  *   GET  /views/:site/:page   one page         -> { page, views, uniques, views90, ... }
  *
- * KV (binding: PAGE_VIEWS)
- *   pv::stats::<site>::<page>          { views, uniques, firstSeen, lastSeen, days:{ 'YYYY-MM-DD': {v,u} } }
- *   pv::seen::<site>::<page>::<hash>   dedupe marker, 2-day TTL
- *   pv::drops::<site>::<date>          { reason: count }  — what got excluded, and why
+ * Storage: D1 (binding PAGE_VIEWS_DB, schema in migrations/0001_page_views.sql)
+ *   pv_pages (site, page)          running views / uniques / first_seen / last_seen
+ *   pv_days  (site, page, day)     daily buckets, DAY_RETENTION days
+ *   pv_seen  (visitor)             dedupe hash, purged once older than today
+ *   pv_drops (site, day, reason)   what got excluded, and why
+ * Until 2026-10-11 this lived in KV (2 writes per counted view + 1 per drop, against the free tier's shared
+ * 1,000 writes a day, plus list() on every stats read). Page views now do ZERO KV writes and ZERO KV list()
+ * after the one-time legacy fold below.
+ *
+ * Legacy KV (binding PAGE_VIEWS, READ-ONLY now): pv::stats::<site>::<page> and pv::drops::<site>::<date>
+ * are folded into D1 ONCE, by the first /views request after deploy (foldLegacyKv): 2 list() sequences +
+ * one get per key, additive upserts, and the 'done' mark in the same D1 transaction. A failed fold is
+ * retried at most once per LEGACY_RETRY_MS. pv::seen markers are not carried over (they expire in 48 h).
  *
  * Privacy: no IP and no user-agent is ever stored. The dedupe marker is a
  * SHA-256 of (date + IP + UA + page), so it rotates every midnight UTC and
@@ -21,9 +30,9 @@
  */
 
 const DAY_RETENTION = 120;                 // daily buckets kept (>= the 90-day window)
-const SEEN_TTL = 60 * 60 * 48;             // dedupe marker lifetime, seconds
-const DROPS_TTL = 60 * 60 * 24 * DAY_RETENTION;
 const MAX_BODY_BYTES = 4096;               // a hit payload is a few hundred bytes
+export const LEGACY_KEY = 'legacy-kv-import';  // pv_meta row of the one-time KV fold
+export const LEGACY_RETRY_MS = 3600 * 1000;    // a claimed-but-unfinished fold is retaken after this
 
 // Origins allowed to report hits. Everything else — a preview deploy, someone
 // else's site embedding the beacon, curl with no Origin — is dropped.
@@ -75,14 +84,8 @@ function blankStats() {
   return { views: 0, uniques: 0, firstSeen: null, lastSeen: null, days: {} };
 }
 
-/** Drops day buckets older than DAY_RETENTION so the doc can't grow forever. */
-function pruneDays(days) {
-  const cutoff = new Date(Date.now() - DAY_RETENTION * 86400000).toISOString().slice(0, 10);
-  for (const date of Object.keys(days)) {
-    if (date < cutoff) delete days[date];
-  }
-  return days;
-}
+/** 'YYYY-MM-DD' of `n` days ago (UTC): day buckets / drops older than DAY_RETENTION are purged and never served. */
+const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
 
 /** Sums the day buckets inside a trailing window. */
 function windowTotals(days, windowDays) {
@@ -115,13 +118,131 @@ function summarize(page, stats) {
 }
 
 /** Best-effort tally of what we refused to count, so exclusions stay visible. */
-async function recordDrop(env, site, reason) {
-  const key = `pv::drops::${site}::${today()}`;
+async function recordDrop(db, site, reason) {
   try {
-    const drops = (await env.PAGE_VIEWS.get(key, 'json')) || {};
-    drops[reason] = (drops[reason] || 0) + 1;
-    await env.PAGE_VIEWS.put(key, JSON.stringify(drops), { expirationTtl: DROPS_TTL });
+    await db.prepare(
+      `INSERT INTO pv_drops (site, day, reason, n) VALUES (?, ?, ?, 1)
+       ON CONFLICT (site, day, reason) DO UPDATE SET n = n + 1`,
+    ).bind(site, today(), reason).run();
   } catch { /* a dropped hit is never worth a 500 */ }
+}
+
+/** One page's running totals (0/0 when it was never counted). */
+async function pageTotals(db, site, page) {
+  const row = await db.prepare('SELECT views, uniques FROM pv_pages WHERE site = ? AND page = ?').bind(site, page).first();
+  return { views: row ? row.views : 0, uniques: row ? row.uniques : 0 };
+}
+
+/**
+ * Stats documents in the legacy KV shape ({ views, uniques, firstSeen, lastSeen, days:{date:{v,u}} }), keyed by
+ * page, for one site (or one page of it). Two D1 reads in one round trip.
+ */
+async function readStats(db, site, page) {
+  const one = page !== undefined;
+  const [pages, days] = await db.batch([
+    db.prepare(`SELECT page, views, uniques, first_seen, last_seen FROM pv_pages WHERE site = ?${one ? ' AND page = ?' : ''} ORDER BY page`)
+      .bind(...(one ? [site, page] : [site])),
+    db.prepare(`SELECT page, day, views, uniques FROM pv_days WHERE site = ?${one ? ' AND page = ?' : ''} AND day >= ? ORDER BY page, day`)
+      .bind(...(one ? [site, page] : [site]), daysAgo(DAY_RETENTION)),
+  ]);
+  const out = new Map();
+  for (const r of pages.results) {
+    out.set(r.page, { views: r.views, uniques: r.uniques, firstSeen: r.first_seen, lastSeen: r.last_seen, days: {} });
+  }
+  for (const r of days.results) {
+    const stats = out.get(r.page);
+    if (stats) stats.days[r.day] = { v: r.views, u: r.uniques };
+  }
+  return out;
+}
+
+// ── One-time fold of the legacy KV counters into D1 ─────────────────────────
+
+const folded = new WeakSet();   // D1 bindings already seen 'done' in this isolate: no further check
+
+async function listAll(kv, prefix) {
+  const names = [];
+  let cursor;
+  do {
+    const page = await kv.list(cursor ? { prefix, cursor } : { prefix });
+    for (const k of page.keys) names.push(k.name);
+    cursor = page.list_complete === false ? page.cursor : undefined;
+  } while (cursor);
+  return names;
+}
+
+/** Reads every legacy pv::stats / pv::drops key (KV reads + 2 list() sequences; no KV write). */
+export async function readLegacyKv(kv) {
+  const keep = daysAgo(DAY_RETENTION);
+  const pages = [], days = [], drops = [];
+  const statsNames = await listAll(kv, 'pv::stats::');
+  const dropNames = (await listAll(kv, 'pv::drops::')).filter((n) => n.slice(-10) >= keep);
+  const [statsDocs, dropDocs] = await Promise.all([
+    Promise.all(statsNames.map((n) => kv.get(n, 'json'))),
+    Promise.all(dropNames.map((n) => kv.get(n, 'json'))),
+  ]);
+  statsNames.forEach((name, i) => {
+    const s = statsDocs[i];
+    const [site, page] = name.slice('pv::stats::'.length).split('::');
+    if (!s || !site || !page) return;
+    pages.push({ site, page, views: Number(s.views) || 0, uniques: Number(s.uniques) || 0, first: s.firstSeen || null, last: s.lastSeen || null });
+    for (const [day, b] of Object.entries(s.days || {})) {
+      if (day >= keep) days.push({ site, page, day, v: Number(b && b.v) || 0, u: Number(b && b.u) || 0 });
+    }
+  });
+  dropNames.forEach((name, i) => {
+    const rest = name.slice('pv::drops::'.length);        // <site>::<date>
+    const site = rest.slice(0, -12), day = rest.slice(-10);
+    for (const [reason, n] of Object.entries(dropDocs[i] || {})) drops.push({ site, day, reason, n: Number(n) || 0 });
+  });
+  return { pages, days, drops };
+}
+
+/**
+ * Folds the legacy KV totals into D1 exactly once (additive, so hits D1 counted before the fold are kept).
+ * Claim -> read KV -> one D1 batch (the three upserts + the 'done' mark, atomic). Concurrent requests see the
+ * claim and skip; a fold that died or failed is retaken after LEGACY_RETRY_MS, so a persistent KV error costs
+ * at most ~2 list() an hour, never one per request.
+ */
+export async function foldLegacyKv(env) {
+  const db = env.PAGE_VIEWS_DB;
+  if (folded.has(db) || !env.PAGE_VIEWS) return;
+  const row = await db.prepare('SELECT value FROM pv_meta WHERE key = ?').bind(LEGACY_KEY).first();
+  if (row && String(row.value).startsWith('done:')) { folded.add(db); return; }
+
+  const now = Date.now();
+  const claim = await db.prepare(
+    `INSERT INTO pv_meta (key, value) VALUES (?, ?)
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value
+     WHERE pv_meta.value LIKE 'running:%' AND CAST(substr(pv_meta.value, 9) AS INTEGER) < ?`,
+  ).bind(LEGACY_KEY, `running:${now}`, now - LEGACY_RETRY_MS).run();
+  if (!claim.meta || !claim.meta.changes) return;      // someone else is folding (or a recent attempt failed)
+
+  const { pages, days, drops } = await readLegacyKv(env.PAGE_VIEWS);
+  const f = (field) => `json_extract(value, '$.${field}')`;
+  await db.batch([
+    db.prepare(
+      `INSERT INTO pv_pages (site, page, views, uniques, first_seen, last_seen)
+       SELECT ${f('site')}, ${f('page')}, ${f('views')}, ${f('uniques')}, ${f('first')}, ${f('last')} FROM json_each(?) WHERE true
+       ON CONFLICT (site, page) DO UPDATE SET
+         views = views + excluded.views,
+         uniques = uniques + excluded.uniques,
+         first_seen = min(COALESCE(first_seen, excluded.first_seen), COALESCE(excluded.first_seen, first_seen)),
+         last_seen  = max(COALESCE(last_seen, excluded.last_seen), COALESCE(excluded.last_seen, last_seen))`,
+    ).bind(JSON.stringify(pages)),
+    db.prepare(
+      `INSERT INTO pv_days (site, page, day, views, uniques)
+       SELECT ${f('site')}, ${f('page')}, ${f('day')}, ${f('v')}, ${f('u')} FROM json_each(?) WHERE true
+       ON CONFLICT (site, page, day) DO UPDATE SET views = views + excluded.views, uniques = uniques + excluded.uniques`,
+    ).bind(JSON.stringify(days)),
+    db.prepare(
+      `INSERT INTO pv_drops (site, day, reason, n)
+       SELECT ${f('site')}, ${f('day')}, ${f('reason')}, ${f('n')} FROM json_each(?) WHERE true
+       ON CONFLICT (site, day, reason) DO UPDATE SET n = n + excluded.n`,
+    ).bind(JSON.stringify(drops)),
+    db.prepare('UPDATE pv_meta SET value = ? WHERE key = ?').bind(`done:${Date.now()}`, LEGACY_KEY),
+  ]);
+  folded.add(db);
 }
 
 /**
@@ -164,9 +285,10 @@ async function handleRecord(request, env, site, page) {
     return json({ counted: false, reason: 'invalid-json' }, 400);
   }
 
+  const db = env.PAGE_VIEWS_DB;
   const reason = screen(request, body);
   if (reason) {
-    await recordDrop(env, site, reason);
+    await recordDrop(db, site, reason);
     return json({ counted: false, reason });
   }
 
@@ -176,48 +298,41 @@ async function handleRecord(request, env, site, page) {
   const ua = request.headers.get('User-Agent') || '';
   const date = today();
   const visitor = await sha256Hex(`${date}|${site}|${page}|${ip}|${ua}`);
-  const seenKey = `pv::seen::${site}::${page}::${visitor}`;
 
-  const statsKey = `pv::stats::${site}::${page}`;
-  const [seen, stored] = await Promise.all([
-    env.PAGE_VIEWS.get(seenKey),
-    env.PAGE_VIEWS.get(statsKey, 'json'),
-  ]);
-  const stats = stored || blankStats();
-
-  if (seen) {
-    await recordDrop(env, site, 'repeat-visit');
-    return json({ counted: false, reason: 'repeat-visit', views: stats.views || 0, uniques: stats.uniques || 0 });
+  // The insert IS the check: a second hit from the same visitor-page-day changes no row.
+  const seen = await db.prepare('INSERT INTO pv_seen (visitor, day) VALUES (?, ?) ON CONFLICT (visitor) DO NOTHING')
+    .bind(visitor, date).run();
+  if (!seen.meta.changes) {
+    await recordDrop(db, site, 'repeat-visit');
+    return json({ counted: false, reason: 'repeat-visit', ...(await pageTotals(db, site, page)) });
   }
 
-  const bucket = stats.days[date] || { v: 0, u: 0 };
-  bucket.v += 1;
-  bucket.u += 1;                       // deduped above, so every counted hit is a unique-of-the-day
-  stats.days[date] = bucket;
-  stats.days = pruneDays(stats.days);
-  stats.views = (stats.views || 0) + 1;
-  stats.uniques = (stats.uniques || 0) + 1;
-  stats.firstSeen = stats.firstSeen || new Date().toISOString();
-  stats.lastSeen = new Date().toISOString();
-
-  await Promise.all([
-    env.PAGE_VIEWS.put(statsKey, JSON.stringify(stats), {
-      metadata: { savedAt: Date.now(), views: stats.views },
-    }),
-    env.PAGE_VIEWS.put(seenKey, '1', { expirationTtl: SEEN_TTL }),
+  // deduped above, so every counted hit is a unique-of-the-day. One transaction: both counters + the purges.
+  const now = new Date().toISOString();
+  const keep = daysAgo(DAY_RETENTION);
+  const [, totals] = await db.batch([
+    db.prepare(
+      `INSERT INTO pv_days (site, page, day, views, uniques) VALUES (?, ?, ?, 1, 1)
+       ON CONFLICT (site, page, day) DO UPDATE SET views = views + 1, uniques = uniques + 1`,
+    ).bind(site, page, date),
+    db.prepare(
+      `INSERT INTO pv_pages (site, page, views, uniques, first_seen, last_seen) VALUES (?, ?, 1, 1, ?, ?)
+       ON CONFLICT (site, page) DO UPDATE SET views = views + 1, uniques = uniques + 1,
+         first_seen = COALESCE(first_seen, excluded.first_seen), last_seen = excluded.last_seen
+       RETURNING views, uniques`,
+    ).bind(site, page, now, now),
+    db.prepare('DELETE FROM pv_seen WHERE day < ?').bind(date),
+    db.prepare('DELETE FROM pv_days WHERE day < ?').bind(keep),
+    db.prepare('DELETE FROM pv_drops WHERE day < ?').bind(keep),
   ]);
-
-  return json({ counted: true, reason: 'ok', views: stats.views, uniques: stats.uniques });
+  const row = totals.results[0];
+  return json({ counted: true, reason: 'ok', views: row.views, uniques: row.uniques });
 }
 
 async function handleSite(env, site) {
-  const prefix = `pv::stats::${site}::`;
-  const listed = await env.PAGE_VIEWS.list({ prefix });
+  const db = env.PAGE_VIEWS_DB;
   const pages = [];
-  for (const key of listed.keys) {
-    const stats = await env.PAGE_VIEWS.get(key.name, 'json');
-    if (stats) pages.push(summarize(key.name.slice(prefix.length), stats));
-  }
+  for (const [page, stats] of await readStats(db, site)) pages.push(summarize(page, stats));
   pages.sort((a, b) => b.views - a.views);
 
   const totals = pages.reduce((acc, p) => ({
@@ -232,13 +347,9 @@ async function handleSite(env, site) {
   // Last 90 days of exclusions, so the dev/agent traffic that was filtered out
   // is auditable rather than invisible.
   const dropped = {};
-  const dropDays = await env.PAGE_VIEWS.list({ prefix: `pv::drops::${site}::` });
-  const cutoff = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
-  for (const key of dropDays.keys) {
-    if (key.name.slice(-10) < cutoff) continue;
-    const day = await env.PAGE_VIEWS.get(key.name, 'json');
-    for (const [reason, n] of Object.entries(day || {})) dropped[reason] = (dropped[reason] || 0) + n;
-  }
+  const drops = await db.prepare('SELECT reason, SUM(n) AS n FROM pv_drops WHERE site = ? AND day >= ? GROUP BY reason')
+    .bind(site, daysAgo(90)).all();
+  for (const r of drops.results) dropped[r.reason] = r.n;
 
   return json({ site, generatedAt: new Date().toISOString(), window: 90, pages, totals, dropped });
 }
@@ -247,7 +358,7 @@ async function handleSite(env, site) {
  * Entry point. Returns null when the path isn't ours, so the caller can fall
  * through to its existing routes.
  * @param {Request} request
- * @param {{PAGE_VIEWS: KVNamespace}} env
+ * @param {{PAGE_VIEWS_DB: D1Database, PAGE_VIEWS?: KVNamespace}} env  PAGE_VIEWS = legacy, read once by foldLegacyKv
  * @param {URL} url
  * @returns {Promise<Response|null>}
  */
@@ -256,11 +367,15 @@ export async function handlePageViews(request, env, url) {
   if (parts[0] !== 'views') return null;
 
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders() });
-  if (!env.PAGE_VIEWS) return json({ error: 'PAGE_VIEWS KV binding missing' }, 500);
+  if (!env.PAGE_VIEWS_DB) return json({ error: 'PAGE_VIEWS_DB D1 binding missing' }, 500);
 
   const [, site, page] = parts;
   if (!site || !SLUG.test(site)) return json({ error: 'bad site' }, 400);
   if (page !== undefined && !SLUG.test(page)) return json({ error: 'bad page' }, 400);
+
+  if (request.method === 'POST' || request.method === 'GET') {
+    try { await foldLegacyKv(env); } catch { /* retried after LEGACY_RETRY_MS; a hit or a read never fails on it */ }
+  }
 
   if (request.method === 'POST') {
     if (!page) return json({ error: 'POST needs /views/:site/:page' }, 400);
@@ -269,7 +384,7 @@ export async function handlePageViews(request, env, url) {
 
   if (request.method === 'GET') {
     if (!page) return handleSite(env, site);
-    const stats = await env.PAGE_VIEWS.get(`pv::stats::${site}::${page}`, 'json');
+    const stats = (await readStats(env.PAGE_VIEWS_DB, site, page)).get(page);
     return json(summarize(page, stats || blankStats()));
   }
 

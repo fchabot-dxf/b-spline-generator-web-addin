@@ -69,6 +69,24 @@ function _segmentIntersection(a1, a2, b1, b2) {
  */
 export function geometrySnapTargets(editor, excludeEl = null) {
   if (!editor._sketchLayer) return [];
+  const g = editor._snapGesture && editor._sketchLayer.node ? editor._snapGesture : null; // no DOM node: never cached
+  const kids = g ? [...editor._sketchLayer.node.children] : null;
+  if (g && g.targets && g.excludeEl === excludeEl && g.kids.length === kids.length && g.kids.every((k, i) => k === kids[i])) return g.targets;
+  const targets = _buildSnapTargets(editor, excludeEl);
+  if (g) Object.assign(g, { excludeEl, kids, targets });
+  return targets;
+}
+
+/** The SNAP GESTURE cache (seat A 2026-10-11, matrix blind row "Brush stroke": 390 px, CPU x4, 62-217 ms frozen
+ *  before its card; the profile named this function -- getNodes over every sketch element through svg.js, ~40 ms
+ *  on the pointerdown AND on each pointermove). One press = one gesture (editor-interaction.js: the first pointer
+ *  down begins it, the last pointer up / cancel ends it); inside it the targets are built once and reused, per
+ *  `excludeEl` and while the sketch layer holds the same elements (one added or removed mid-gesture rebuilds), so
+ *  every snap answers as before. Outside a gesture nothing is cached. */
+export function beginSnapGesture(editor) { editor._snapGesture = { excludeEl: undefined, kids: [], targets: null }; }
+export function endSnapGesture(editor) { editor._snapGesture = null; }
+
+function _buildSnapTargets(editor, excludeEl) {
   const targets = [];
   const lines = [];
 

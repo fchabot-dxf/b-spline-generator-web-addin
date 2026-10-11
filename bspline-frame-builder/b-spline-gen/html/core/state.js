@@ -487,7 +487,23 @@ export function persistableP(p = P) {
     return { ...p, stampLayers: (p.stampLayers || []).map((L) => ({ ...L })) };
 }
 
+/** SESSION_SAVE (seat A 2026-10-11, advisor's pick; matrix blind row "Surface: photo layer Filter shows through drag",
+ *  58 ms frozen: updateP saved the WHOLE session -- the photo's data URL, the sculpt deltas, a JSON.stringify and a
+ *  localStorage write -- on every slider input tick). A per-input write asks for a save (scheduleSessionSave): ONE
+ *  trailing save after `trailingMs` of quiet. saveLastSession() still writes at once (a discrete action) and takes a
+ *  pending save with it; flushSessionSave() writes a pending one now -- leaving or hiding the page, and before Save,
+ *  Send, a project load / New, so a reload never misses the last edit. */
+export const SESSION_SAVE = Object.freeze({ trailingMs: 250 });
+let _sessionSaveTimer = null;
+export function scheduleSessionSave() {
+    if (_sessionSaveTimer) clearTimeout(_sessionSaveTimer);
+    _sessionSaveTimer = setTimeout(() => { _sessionSaveTimer = null; saveLastSession(); }, SESSION_SAVE.trailingMs);
+}
+export function flushSessionSave() { if (_sessionSaveTimer) saveLastSession(); }
+export const sessionSavePending = () => _sessionSaveTimer !== null;
+
 export function saveLastSession() {
+    if (_sessionSaveTimer) { clearTimeout(_sessionSaveTimer); _sessionSaveTimer = null; }
     try {
         // Convert all geometry points in P to physical units if present
         const P_physical = { ...P };
@@ -627,5 +643,5 @@ export function updateP(key, value) {
         } catch (_) { /* defensive: state.js must not crash on editor access */ }
     }
 
-    saveLastSession();
+    scheduleSessionSave(); // a slider drag writes P on every tick: one trailing session save (SESSION_SAVE)
 }
