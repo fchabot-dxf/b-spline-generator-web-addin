@@ -26075,3 +26075,22 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   broken wave -- compared, shots/seatE/relief/zigzag_tiles_compared_top.png). Tests (bricks-band-motif): each grid tile,
   repeated, is ONE edge-joined figure; the zigzag mirror-symmetric with 2-wide arms; the relief values -- 3 / 3 fail on
   main. brick-icons.js regenerated (the motif preset icons).
+
+## Motif ridge -- flat raised tops, joined raised cells, Fred "yes, build it" (seat E / 61, 2026-10-11)
+
+- Fred saw the ridge mock (shots/seatE/ridge, ridge2): build it. DECLARED on the motif, not hand-rolled per preset:
+  BAND_MOTIFS zigzag / diaper gain `raisedTop: 'flat'` + `joinRaised: true`. tagMotifRow copies them onto the RAISED pieces
+  only (topFlat / joinRaised); drawBrick writes data-brick-top-flat / data-brick-join-raised (exported constants); the
+  height mask reads both.
+- Flat top: height-profile.js brickTopHeight returns reliefIn + heightOffset for a topFlat piece (no shoulder, crown,
+  detail or chips); brickFaceHeight gives it share 0 (its face IS its plateau). The mock first dropped heightOffset --
+  the plateau sat at reliefIn; fixed before the shots.
+- Join: a joint point whose 4 probes reach ONLY joinRaised pieces, 2 or more distinct, fills to the lower of their faces;
+  it runs before the recessed / flush branches. Matters with recessed grout (flush grout already filled to the lowest face).
+- MEASURED (7x10, 1.25 in, relief_probe): zigzag raised top 0.246 (cap 0.25), flush 0.130, 47% of raised area at the cap;
+  diaper 0.247 / 0.131 / 50%. Before: raised top 0.118, ~22% at the cap.
+- Tests (tests/brick-motif-ridge.test.js, 8): the declaration (only zigzag / diaper); the lay carries it on exactly the
+  raised pieces; every mask point inside a raised piece = min(cap, reliefIn + offset); every joint between raised
+  neighbours = the lower face and every joint touching a non-raised piece = the recess; the other four motif presets'
+  lay + mask hashes equal goldens taken on the pre-change tree. 8 / 8 fail on the pre-change tree (files swapped from
+  copies, restored, cmp'd). Tolerance 1e-6: the body is a Float32Array (1e-9 flagged float noise only).

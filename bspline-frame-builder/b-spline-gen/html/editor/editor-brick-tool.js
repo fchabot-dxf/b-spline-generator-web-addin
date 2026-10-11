@@ -191,8 +191,14 @@ function drawBrick(editor, layer, brick, kind, setId, seed, reliefIn) {
     .attr('data-brick-id', String(brick.id))
     .attr('data-brick-height-offset', brick.heightOffset || 0);
   if (typeof brick.accentMarked === 'boolean') el.attr(ACCENT_MARK_ATTR, brick.accentMarked ? '1' : '0'); // item 31b: the engine's cut mark
+  // 2026-10-11: a motif's raised look (band-motif.js): a flat-topped plateau, joined to its raised neighbours (the height mask)
+  if (brick.topFlat) el.attr(BRICK_TOP_FLAT_ATTR, '1');
+  if (brick.joinRaised) el.attr(BRICK_JOIN_RAISED_ATTR, '1');
   return el;
 }
+/** 2026-10-11 (a motif's raisedTop 'flat' / joinRaised): the attributes the height mask reads (editor-brick-height-mask.js) */
+export const BRICK_TOP_FLAT_ATTR = 'data-brick-top-flat';
+export const BRICK_JOIN_RAISED_ATTR = 'data-brick-join-raised';
 /** Per-element run accents: a band / stroke brick's place on its run's grid (the engine's band/row/piece). */
 function stampRunPlace(el, brick, fallbackPiece) {
   if (Number.isInteger(brick.bandIndex)) el.attr('data-brick-band', brick.bandIndex);

@@ -617,16 +617,19 @@ export const BAND_MOTIFS = Object.freeze({
   // like scattered light squares"): the period-4 tile read as noise even drawn by relief alone -- now a SYMMETRIC V, period 6
   // (down 3 courses, up 3), its arms 2 cells thick, each course's cells overlapping the next course's (one continuous
   // figure); compared in shots/seatE/relief (before / a lopsided 6 / this)
-  zigzag: { unit: 'H', grid: { tile: ['RR...R', '.RR.RR', '..RRR.', '...R..'], corner: ['.RR.', 'RRRR', 'RRRR', '.RR.'] } },
+  // raisedTop / joinRaised (Fred 2026-10-11, the 3D read): its raised pieces are flat-topped plateaus and the joints between
+  // two raised neighbours are filled up to them -- a V arm reads as ONE ridge (band-motif.js tagMotifRow; the height mask)
+  zigzag: { unit: 'H', raisedTop: 'flat', joinRaised: true, grid: { tile: ['RR...R', '.RR.RR', '..RRR.', '...R..'], corner: ['.RR.', 'RRRR', 'RRRR', '.RR.'] } },
   // header grid, raised diamond lattice through 5 courses; diamond corners (Ref 2). 2026-10-11 (the zigzag's fault: lines
   // of single cells met only at corners) -- period 6, hollow diamonds 2 cells thick, touching side to side
-  diaper: { unit: 'H', grid: { tile: ['..RR..', '.RRRR.', 'RR..RR', '.RRRR.', '..RR..'], corner: ['..R..', '.RRR.', 'RRRRR', '.RRR.', '..R..'] } },
+  diaper: { unit: 'H', raisedTop: 'flat', joinRaised: true, grid: { tile: ['..RR..', '.RRRR.', 'RR..RR', '.RRRR.', '..RR..'], corner: ['..R..', '.RRR.', 'RRRRR', '.RRR.', '..R..'] } },
   // Greek key MOSAIC (Fred 2026-10-11, shots/advisor/frames/ref5_greek_key_mosaic.jpg: "one more frame with this spiral
   // mosaic", "so much smaller tiles"): square tiles, green = raised, white = flush. Rows 3-8 are the photo's meander read
   // cell by cell (period 6: a top bar, a spiral hook hanging from it, a full-height stem, the solid baseline); a white /
   // green / white strip either side of it. Corner: the strips turn as an L; the key's corner is a concentric square (ring +
-  // 2x2 centre), symmetric about the diagonal (both runs read it).
-  greek_key: { unit: 'H', grid: {
+  // 2x2 centre), symmetric about the diagonal (both runs read it). Flat raised tops with the joints between raised neighbours
+  // filled (as the zigzag / diaper): the key reads as continuous strokes, not a scatter of green tiles.
+  greek_key: { unit: 'H', raisedTop: 'flat', joinRaised: true, grid: {
     tile: ['......', 'RRRRRR', '......', 'RRRR.R', '...R.R', '.R.R.R', '.RRR.R', '.....R', 'RRRRRR', '......', 'RRRRRR', '......'],
     corner: [
       '............',
