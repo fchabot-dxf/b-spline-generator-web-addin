@@ -463,6 +463,108 @@ function mergeAcrossSeam(piece, ext, onSeam) {
 const MEDIAL_OVERLAP_SQIN = 1e-4;
 const FAN = -1; // origins src of a joint's fan slice (primitive-ribbon kiteFan)
 const QUOIN = -2; // a block corner's quoin (a declared corner owner); -3 is an area band's stone, never cut here
+/** Fred 2026-10-10 (his board "Armor": a Quoin frame with 2 bands laid; a joint missing at a corner, dark squares with a
+ *  grout colour): every band's ribbon laid its OWN quoin square (QUOIN_SET's unit, 1.1 in) at its own corner, so an inner
+ *  band's square lay over the outer one (T3 7x10 1 in mixed: 2.67 sq in overlap; the even-odd grout painted it). The
+ *  rule: the outermost ribbon at a corner keeps the square; each further ribbon's corner piece is an L -- its own square
+ *  minus the square of the ribbon just outside it grown by one joint -- that wraps that square's inner corner, its arms
+ *  along that square's inner faces. The ribbon's runs already stop one joint off its own square's far faces, which are
+ *  the L's ends. A corner where the outer ribbon laid no square (its corner fell back to the mitre) keeps the inner
+ *  square as before. */
+const QUOIN_INNER_WRAP = 'L';
+/** QUOIN_INNER_WRAP: each later ribbon's quoin (by the corner it sits at: its square's corner vertex, within 1.5 blocks
+ *  of the outer one's) becomes its square minus the outer square grown by `joint` (geometry polygonDifference) */
+function wrapInnerQuoins(bricks, ribbons, joint) {
+  for (let r = 1; r < ribbons.length; r++) for (const q of ribbons[r]) {
+    let outer = null, best = Infinity;
+    for (let k = r - 1; k >= 0 && !outer; k--) for (const o of ribbons[k]) {
+      const d = Math.hypot(o.square[0].x - q.square[0].x, o.square[0].y - q.square[0].y), size = Math.hypot(o.square[1].x - o.square[0].x, o.square[1].y - o.square[0].y);
+      if (d < 1.5 * size && d < best) { best = d; outer = o; } // a deep band puts its corner up to ~1.4 sizes in (T5 9x12 1 in)
+    }
+    if (!outer) continue;
+    const grown = offsetPathInward(outer.square, joint, -inwardSignFor(outer.square));
+    const pieces = polygonDifference(q.square, grown);
+    const L = (pieces || []).filter((p) => p && p.length >= 3).sort((a, b) => Math.abs(signedArea(b)) - Math.abs(signedArea(a)))[0];
+    if (L && !(pieces && pieces.holeIgnored)) bricks[q.at] = { ...bricks[q.at], polygon: L };
+  }
+}
+/** Nothing lays under a quoin (Fred: "a joint all round every piece, no overlaps"): a band whose own corner could not take
+ *  a square or an L (its run too short for a block, an arc or a reflex corner: the mitre / fan fallback) laid its corner
+ *  pieces inside the quoin of a band outside it (MEASURED T5 9x12 0.75 in three_band: 28 overlaps, 1.05 sq in). Each such
+ *  piece that OVERLAPS a quoin (more than MEDIAL_OVERLAP_SQIN of the quoin itself) has it, grown by one joint, cut out of
+ *  it (the largest part kept); under the stack's floor it drops. A piece only within a joint of a quoin is not under it
+ *  and lays as before (MEASURED T5 9x12 1.5 in mixed_bands: testing the grown quoin dropped an outer run piece that sits
+ *  0.01 in off band 2's L, a 0.149 sq in bare patch main never had). A part left under the floor MERGES into its
+ *  row neighbour (advisor 2026-10-10, as rubble / ashlar grow a block over a sliver): the neighbour becomes the hull of
+ *  both, the quoins (grown by a joint) cut out again, when that meets no other piece; with no such neighbour it drops.
+ *  Returns the kept indices (bricks and their origins stay in step). */
+const boxOfPoly = (p) => [Math.min(...p.map((v) => v.x)), Math.min(...p.map((v) => v.y)), Math.max(...p.map((v) => v.x)), Math.max(...p.map((v) => v.y))];
+const boxesMeet = (a, b) => !(a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]);
+const overlapArea = (a, b) => Math.abs(signedArea(polygonIntersection(a, b)) || 0);
+const largestOf = (parts) => (parts || []).filter((p) => p && p.length >= 3).sort((a, c) => Math.abs(signedArea(c)) - Math.abs(signedArea(a)))[0] || null;
+/** A piece's under-floor remnant merged into a neighbour (seat E 2026-10-10, the advisor's rule: as rubble / ashlar grow a
+ *  block over a sliver): for each candidate index `j` in order, the hull of the remnant and `pieces[j]`, `clear`ed again
+ *  (the cutter that left the remnant, grown by its joint) and every other laid piece it meets (`live(k)`), grown by
+ *  `joint`, cut out of it (MEASURED T11 7x9 1.5 in: a gable triangle's hull bulged 0.001 sq in past the joint), taken
+ *  when it is no smaller than the neighbour and overlaps nothing. Returns { j, polygon } or null (the remnant drops).
+ *  cutUnderQuoins' remnants. */
+function mergeRemnant(remnant, pieces, candidates, clear, live, joint) {
+  const meets = (p, k, j) => k !== j && live(k) && boxesMeet(boxOfPoly(p), boxOfPoly(pieces[k].polygon)) && overlapArea(p, pieces[k].polygon) > MEDIAL_OVERLAP_SQIN;
+  for (const j of candidates) {
+    let merged = clear(convexHull([...remnant, ...pieces[j].polygon]));
+    for (let k = 0; k < pieces.length && merged; k++) {
+      if (meets(merged, k, j)) merged = largestOf(polygonDifference(merged, offsetPathInward(pieces[k].polygon, joint, -inwardSignFor(pieces[k].polygon))));
+    }
+    if (!merged || merged.length < 3 || Math.abs(signedArea(merged)) < Math.abs(signedArea(pieces[j].polygon)) - 1e-9) continue;
+    if (!pieces.some((b, k) => meets(merged, k, j))) return { j, polygon: merged };
+  }
+  return null;
+}
+function cutUnderQuoins(bricks, ribbons, joint, minArea, wallZone) {
+  const quoins = new Set(ribbons.flat().map((q) => q.at));
+  const own = [...quoins].map((at) => bricks[at].polygon);
+  const grown = own.map((p) => offsetPathInward(p, joint, -inwardSignFor(p)));
+  const gBox = grown.map(boxOfPoly), keep = [], dropped = new Set();
+  const clearOfQuoins = (poly) => {
+    for (let k = 0; k < grown.length && poly; k++) {
+      if (!boxesMeet(boxOfPoly(poly), gBox[k]) || overlapArea(poly, own[k]) <= MEDIAL_OVERLAP_SQIN) continue;
+      poly = largestOf(polygonDifference(poly, grown[k]));
+    }
+    return poly;
+  };
+  // the remnant's row neighbour (same band and row, next in build order, not a quoin; a fan slice takes a fan's remnant) taking it in
+  const mergeIntoNeighbour = (i, remnant) => {
+    const { bandIndex, rowIndex, pieceIndex } = bricks[i];
+    const cands = bricks.map((b, j) => j).filter((j) => j !== i && !quoins.has(j) && !dropped.has(j)
+      && bricks[j].bandIndex === bandIndex && bricks[j].rowIndex === rowIndex && Math.abs(bricks[j].pieceIndex - pieceIndex) === 1);
+    const clear = (p) => { const q = clearOfQuoins(p); return q && wallZone ? largestOf(polygonDifference(q, wallZone)) : q; };
+    const got = mergeRemnant(remnant, bricks, cands, clear, (k) => k !== i && !dropped.has(k), joint);
+    if (got) bricks[got.j] = { ...bricks[got.j], polygon: got.polygon };
+    return !!got;
+  };
+  for (let i = 0; i < bricks.length; i++) {
+    if (quoins.has(i)) { keep.push(i); continue; }
+    const before = bricks[i].polygon, poly = clearOfQuoins(before);
+    if (poly === before) { keep.push(i); continue; }
+    if (poly && Math.abs(signedArea(poly)) >= minArea) { bricks[i] = { ...bricks[i], polygon: poly }; keep.push(i); continue; }
+    dropped.add(i);
+    if (poly) mergeIntoNeighbour(i, poly);
+  }
+  return keep.filter((i) => !dropped.has(i));
+}
+/** QUOIN_INNER_WRAP: the inner ribbons' corners whose piece (an L by now) still overlaps another quoin -- per ribbon key
+ *  (`band:row`), the corner indices `ribbonPieces` lays as the mitre instead (its `blockOff`) */
+function cornersThatCannotWrap(bricks, ribbons) {
+  const all = ribbons.flat(), off = new Map();
+  for (let r = 1; r < ribbons.length; r++) for (const q of ribbons[r]) {
+    if (q.corner == null) continue;
+    const p = bricks[q.at].polygon, pb = boxOfPoly(p);
+    if (!all.some((o) => o.at !== q.at && boxesMeet(pb, boxOfPoly(bricks[o.at].polygon)) && overlapArea(p, bricks[o.at].polygon) > MEDIAL_OVERLAP_SQIN)) continue;
+    if (!off.has(q.key)) off.set(q.key, new Set());
+    off.get(q.key).add(q.corner);
+  }
+  return off;
+}
 const MEDIAL_HOLE_SQIN = 0.002; // a drop opening less than this (a grout-wide fleck, 0.034 x 0.06 in) is not a hole
 const MEDIAL_DROP_PASSES = 16; // a bound on the one-at-a-time drop trials below (T14's X takes 4)
 function sourceDepth(prim) {
@@ -864,6 +966,7 @@ export function frameHasFan(primitives, bands, opts) {
 
 export function bricksContourBands(primitives, bands, opts) {
   const { seed } = opts;
+  const requestedBands = bands; // as passed (the fit rule below may reduce `bands`): a second lay starts from these
   const closed = opts.closed !== false;
   const set = scaledSet(opts.set, opts.scale); // scaled ONCE here; the inner ribbonPieces calls
   // below get this already-scaled set directly (no opts.scale passed to them) so it's never applied twice.
@@ -872,6 +975,7 @@ export function bricksContourBands(primitives, bands, opts) {
 
   const bricks = [];
   const origins = []; // per brick, for yieldAtMedialLine: { src } (-1 a fan, -2 a quoin, -3 an area band's stone)
+  const quoinRibbons = []; // per ribbon (band row) that laid quoins: [{ at, square }] (QUOIN_INNER_WRAP)
   const L = set.brickLengthIn, H = set.brickHeightIn;
   let plannedBands = planBands(bands, L, H, set, closed);
   // T86 item 28: a closed, outer stack (the frame) obeys the fit rule; centred and open ones (brush ribbons) have no board
@@ -966,10 +1070,12 @@ export function bricksContourBands(primitives, bands, opts) {
         fanCorners += joints.filter((j) => j && j.q && j.kiteFan && j.kiteFan.length).length;
         continue;
       }
+      const ribbonKey = `${bandIndex}:${row}`;
       const { pieces: laidPieces, nextId: afterId, sources: laidSources, fanSides: laidFanSides } = ribbonPieces(
         enriched, d0, d1, set, patternName, pitch, set.grout.widthIn,
         seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
         rowSequence, forcedFStart, closed, row, closed ? null : opts.cutEnds || null, // T86 item 5: an open stroke's cut ends
+        (opts.blockOff && opts.blockOff.get(ribbonKey)) || null, // an inner L that cannot fit: that corner's mitre (wrapInnerQuoins)
       );
       // frame motifs: each piece of a motif band carries its relief (band-motif.js tagMotifRow)
       // a motif-cut row drops a run piece under its own floor (band-motif.js motifFloorKeep: an end closer the mitre left a
@@ -984,6 +1090,9 @@ export function bricksContourBands(primitives, bands, opts) {
       if (tipReach && bandIndex === lastCourseBand && row === rows - 1) tipRow = { start: bricks.length, count: pieces.length, sources, d1 };
       // T86 item 16d: a corner's fan slice is declared as such (`fan: true`, additive; the drawing never reads it) -- the
       // seam sweep (tests/bricks-seam-sweep.test.js) measures the fan-to-run joints by it
+      const ribbonQuoins = [];
+      sources.forEach((src, i) => { if (src === QUOIN) ribbonQuoins.push({ at: bricks.length + i, square: pieces[i].polygon, corner: fanSides[i] ? fanSides[i][1] : null, key: ribbonKey }); });
+      if (ribbonQuoins.length) quoinRibbons.push(ribbonQuoins);
       bricks.push(...pieces.map((piece, i) => (sources[i] === FAN ? { ...piece, fan: true } : piece)));
       // T86 item 30: a fan slice also records its corner (the two primitives it sits between), for the fan-vs-fan split
       sources.forEach((src, i) => origins.push(src === FAN && fanSides && fanSides[i] ? { src, sides: fanSides[i] } : { src }));
@@ -992,6 +1101,17 @@ export function bricksContourBands(primitives, bands, opts) {
     depthSoFar += naturalWidth * rows;
   });
   if (opts.cornerCutsOnly) return { cornerCuts, fanCorners };
+  if (QUOIN_INNER_WRAP === 'L' && quoinRibbons.length > 1) {
+    wrapInnerQuoins(bricks, quoinRibbons, set.grout.widthIn);
+    // an inner L that cannot fit (it still meets another quoin: two corners closer than its arms, a notch's short
+    // straight) -- that corner of that ribbon is laid again as the mitre (advisor 2026-10-10, Fred's "always mitre"),
+    // once: the second lay's mitred corner pieces are cut clear of the quoins like any other (cutUnderQuoins)
+    if (!opts.blockOff) {
+      const blockOff = cornersThatCannotWrap(bricks, quoinRibbons);
+      // + `quoinsMitred` (additive): how many corners fell back (the sweep reports it)
+      if (blockOff.size) return { ...bricksContourBands(primitives, requestedBands, { ...opts, blockOff }), quoinsMitred: [...blockOff.values()].reduce((n, s) => n + s.size, 0) };
+    }
+  }
 
   // centred bands straddle the path by design, and an open path has no board: only a closed outer stack is clipped
   // a band at least as deep as the board is wide (its bounding box's shorter side) has no medial line to split at --
@@ -1003,15 +1123,30 @@ export function bricksContourBands(primitives, bands, opts) {
   // the smallest piece the yield / the board clip may leave: the floor of the layout that laid the stack (piece-floor.js --
   // a stone ring's is its smallest stone's, not a quarter brick; every band of a set with a band pattern lays with it)
   const minArea = minPieceAreaOf(set, setBandPattern(opts.set, closed) || LAID_BY_COURSES);
-  const yielded = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set, minArea) : bricks;
-  const split = yielded === bricks ? bricks : splitSharedSideFans(yielded, new Map(bricks.map((b, k) => [b.id, origins[k]])), enriched, set);
-  const laid = fitBoard ? clipPiecesToBoard(split, fitBoard, minArea) : bricks;
+  const quoinIds = new Set(quoinRibbons.flat().map((q) => bricks[q.at].id)); // the result's `quoins` (below)
+  // nothing lays under a quoin (cutUnderQuoins) -- a stack of 2+ quoin ribbons only: a one-band quoin lays as before.
+  // A second lay (opts.blockOff) is a multi-band stack whose inner ribbons may have mitred every corner: still cut
+  // (MEASURED T15 7x9 0.75 soldier_stretcher: the inner band's mitred corner under the outer square, 5 overlaps)
   // the wall keeps half its own joint from the band (grout is one global width, so band + wall = one joint)
   const wallDepth = Math.max(bands.length ? depthSoFar + halfJoint : depthSoFar, narrowWallDepth);
   // the wall's region, never off the board (primitive-ribbon.js wallRegionAtDepth)
-  return { bricks: laid, innerPath: closed ? wallRegionAtDepth(enriched, wallDepth) : [], ...(narrowNote ? { bandsReduced: narrowNote } : fit ? { bandsReduced: fit.note } : {}),
+  const innerPath = closed ? wallRegionAtDepth(enriched, wallDepth) : [];
+  if (QUOIN_INNER_WRAP === 'L' && (quoinRibbons.length > 1 || (opts.blockOff && quoinRibbons.length))) {
+    // a merged remnant stays out of the wall's region by the band's half of the joint (MEASURED T5 9x12 1 in
+    // soldier_stretcher: an arc piece's hull took the chord across its curved inner edge, 0.02 sq in into the wall)
+    const wallZone = innerPath.length >= 3 ? offsetPathInward(innerPath, halfJoint, -inwardSignFor(innerPath)) : null;
+    const keep = cutUnderQuoins(bricks, quoinRibbons, set.grout.widthIn, minArea, wallZone);
+    if (keep.length !== bricks.length) { const b = keep.map((i) => bricks[i]), o = keep.map((i) => origins[i]); bricks.length = 0; bricks.push(...b); origins.length = 0; origins.push(...o); }
+  }
+  const yielded = depthSoFar < boardWidth ? yieldAtMedialLine(bricks, origins, enriched, set, minArea) : bricks;
+  const split = yielded === bricks ? bricks : splitSharedSideFans(yielded, new Map(bricks.map((b, k) => [b.id, origins[k]])), enriched, set);
+  const laid = fitBoard ? clipPiecesToBoard(split, fitBoard, minArea) : bricks;
+  return { bricks: laid, innerPath, ...(narrowNote ? { bandsReduced: narrowNote } : fit ? { bandsReduced: fit.note } : {}),
     // the board's own outline as the band clip reads it (fine tessellation), additive: the engine clips the wall to it
     ...(fitBoard ? { board: fitBoard } : {}),
+    // seat E 2026-10-10: the laid quoins' polygons, additive -- the engine clears the wall from any that reach past the
+    // stack into the wall's region (a 1.1 in block on a thinner stack) and leaves them out of that region
+    ...(quoinIds.size ? { quoins: laid.filter((b) => quoinIds.has(b.id)).map((b) => b.polygon) } : {}),
     // F35 item 55 (seat E): an open centred ribbon's outline (a Brush stroke's grout region), additive
     ...(!closed && opts.centered ? { ribbonOutline: openRibbonOutline(enriched, ribbonStartDepth, depthSoFar) } : {}) };
 }

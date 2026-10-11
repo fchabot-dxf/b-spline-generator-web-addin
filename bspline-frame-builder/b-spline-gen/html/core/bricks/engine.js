@@ -9,11 +9,13 @@
  * Primary output is VECTOR SHAPES (Fred: "bricks are more like vectors"); the height-field
  * sampler below is a SECOND, DERIVED output built from that same brick list.
  */
-import { bricksFillShape } from './fill-shape.js';
+import { bricksFillShape, bricksClearOf } from './fill-shape.js';
 import { strokesToRegion, WALL_REGION_PICK } from './region.js';
 import { bricksContourBands, setBandPattern, clipPiecesToBoard } from './contour-bands.js';
 import { frameLaidBy, minPieceAreaOf } from './piece-floor.js';
-import { pointInPolygon } from './geometry.js';
+import { pointInPolygon, polygonIntersection, polygonDifference, signedArea, offsetPathInward, inwardSignFor } from './geometry.js';
+/** a quoin reaches into the wall's region past this much overlap (sq in; contour-bands' own MEDIAL_OVERLAP_SQIN) */
+const QUOIN_REACH_SQIN = 1e-4;
 import { brickTopHeight } from './height-profile.js';
 import { suppressBricks } from './suppression.js';
 import { laySurround } from './inset-surround.js';
@@ -140,7 +142,8 @@ export function generateBricks(input) {
   const cutWall = cutAll(bricks, set);
   // frame motifs (the recessed panel): a frame band may declare the wall inside it raised / recessed (`insideRelief`); none = as before
   const insideRelief = frameLay ? insideReliefOf(frameLay.bands) : null;
-  const wallBricks = insideRelief ? tagInsideRelief(cutWall, insideRelief) : cutWall;
+  // (let: the quoins that reach into the wall clear it below -- bricksClearOf keeps each piece's tags)
+  let wallBricks = insideRelief ? tagInsideRelief(cutWall, insideRelief) : cutWall;
   const frameSetUsed = (frame && frame.set) || set;
   // the bands' pieces drop under the floor of the layout that laid them (a Grey stone ring: fieldstone; piece-floor.js)
   const surroundBricks = surround ? cutAll(surround.bricks, frameSetUsed, frameLaidBy(frameSetUsed, setBandPattern)) : null;
@@ -148,7 +151,24 @@ export function generateBricks(input) {
   // innermost row reaches into what the wall leaves uncovered (a joint off every wall brick; the wall itself is untouched)
   const tips = frameLay && frameLay.bands.length && bricks.length ? bareTips(interiorOutline, bricks, scaledSet(set, scale)) : [];
   if (frameLay) {
-    frameBricks = bricksContourBands(frame.primitives, frameLay.bands, { set: frameLay.frameSet, seed, scale, bandFit: input.bandFit, ...(tips.length ? { tipZones: tips } : {}) }).bricks;
+    const laidFrame = bricksContourBands(frame.primitives, frameLay.bands, { set: frameLay.frameSet, seed, scale, bandFit: input.bandFit, ...(tips.length ? { tipZones: tips } : {}) });
+    frameBricks = laidFrame.bricks;
+    // seat E 2026-10-10 (Fred's "Armor"; advisor's pick A): a quoin is a 1.1 in block, deeper than a thin band stack (two
+    // stretcher bands at 1 in: 0.55 in), so it reaches past the stack into the wall's region -- the wall was laid under it
+    // and the frame's grout (its hole = this region) painted it dark. The quoins that reach in come out of the region
+    // (grown by the wall's joint) -- ONE source, interiorOutline, which the grout reads -- and the wall is cut clear of
+    // them by its own exclusion rule (fill-shape.js bricksClearOf, a joint off), every cut piece kept as the fill keeps
+    // a piece cut at any region edge (bond.js: no area floor there). MEASURED alternatives, both worse: a floor on the
+    // cut pieces with their remnants merged into a neighbour made ragged pieces (a two-brick M across a gable top, T11
+    // 9x12 3/4 in); filling the wall again into the new outline re-aligned every course and dropped a gable's flank
+    // triangle (0.038 sq in bare). A quoin inside the stack changes nothing.
+    const reaching = (laidFrame.quoins || []).filter((q) => Math.abs(signedArea(polygonIntersection(q, interiorOutline)) || 0) > QUOIN_REACH_SQIN);
+    if (reaching.length) {
+      const J = scaledSet(set, scale).grout.widthIn;
+      const largest = (parts) => (parts && !parts.holeIgnored ? parts : []).filter((p) => p && p.length >= 3).sort((a, b) => Math.abs(signedArea(b)) - Math.abs(signedArea(a)))[0] || null;
+      for (const q of reaching) interiorOutline = largest(polygonDifference(interiorOutline, offsetPathInward(q, J, -inwardSignFor(q)))) || interiorOutline;
+      wallBricks = bricksClearOf(wallBricks, reaching.map((polygon) => ({ polygon })), scaledSet(set, scale));
+    }
   }
   // T86 item 16e: the fan centre (fan-centre.js), on the frame as finally laid; absent / needle = no call, the lay byte-identical
   if (frameLay && input.fanCentre && input.fanCentre !== FAN_CENTRE_DEFAULT) {

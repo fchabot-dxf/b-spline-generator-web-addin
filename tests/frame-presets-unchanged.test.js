@@ -3,6 +3,8 @@
  * frame preset that existed before them lays EXACTLY as on origin/main 82520dd, frame pieces AND the wall inside them.
  * Pinned against digests taken from that code BEFORE the change (fixtures/frame-presets-main-digests.json): each old preset
  * on a 7x10 rectangle, template_1 (hourglass), template_18 and template_5 (7x10), at 0.75 and 1.25 in. PIN=1 re-pins.
+ * Re-pinned 2026-10-11 (seat E) on origin/main edd4f68: quoin-l-blocks clears the wall from a quoin that reaches into it
+ * -- the four quoin_corners 0.75 in digests changed in their WALL half only (frame halves identical).
  */
 import { describe, it, expect, vi } from 'vitest';
 import { createHash } from 'node:crypto';
