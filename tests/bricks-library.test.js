@@ -102,6 +102,8 @@ describe('FRAME_PRESETS', () => {
     expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['butt_frame', 'double_course', 'header_band', 'mixed_bands', 'none', 'quoin_corners', 'single_soldier', 'soldier_stretcher', 'three_band',
       // frame motifs phase 1 (tests/bricks-band-motif.test.js)
       'dentil_corbel', 'recessed_panel', 'zigzag_band', 'diaper_lattice', 'soldier_string', 'dentil_cornice', 'arch_keystone',
+      // 2026-10-11 (Fred, ref5): the Greek key mosaic (tests/bricks-band-motif.test.js)
+      'greek_key_mosaic',
       // Fred 2026-10-11 (a preset bundles its corner): the quoin variants (library.js QUOIN_VARIANT_OF)
       'soldier_stretcher_quoin', 'three_band_quoin', 'mixed_bands_quoin', 'recessed_panel_quoin'].sort());
     expect(FRAME_PRESETS.none).toEqual([]);

@@ -2850,6 +2850,7 @@ const FRAME_PRESET_LABELS = {
   soldier_string: 'Soldier string course',
   dentil_cornice: 'Dentil cornice',
   arch_keystone: 'Arch + keystone',
+  greek_key_mosaic: 'Greek key mosaic',
 };
 for (const id of QUOIN_VARIANT_OF) FRAME_PRESET_LABELS[`${id}_quoin`] = `${FRAME_PRESET_LABELS[id] || id} · quoin`;
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
