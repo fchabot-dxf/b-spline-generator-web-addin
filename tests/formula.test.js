@@ -409,7 +409,7 @@ describe('declared formula fields (R1 item 5 + R2 item 2)', () => {
       else expect(pKeyFor(id), `${id} has no P key`).toBeTruthy();
       // every FRAME field, thickness included, lives in the sidebar FRAME section (Fred: they show in the 3D preview)
       const hdr = el.closest('.panel')?.querySelector('.panel-header')?.textContent || '';
-      expect(hdr, id).toContain(section);
+      expect(hdr.toUpperCase(), id).toContain(section); // the panel headers show upper-cased (CSS); FRAME = 'Wood frame' (core/frame-labels.js)
     }
   });
   it('never declares the excluded fields (seed id, lattice/editor panels); F15 covers the rest', () => {

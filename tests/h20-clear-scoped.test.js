@@ -40,6 +40,7 @@ import { undoFrame } from '../bspline-frame-builder/b-spline-gen/html/main/frame
 import { commitEdit } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-commit.js';
 import { CLEAR_KINDS, clearOptions, runClear, initClearMenu, undoLastClear } from '../bspline-frame-builder/b-spline-gen/html/main/editor-clear-menu.js';
 import { setFrameClearHandler } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
+import { FRAME_LABELS } from '../bspline-frame-builder/b-spline-gen/html/core/frame-labels.js';
 
 /** A minimal SVG.js-like child element: enough for pushState's `.svg()`
  *  read, _restoreState's `.svg(str)` write + reconstruction, and
@@ -169,7 +170,7 @@ describe('F35 item 28: the Clear menu (All / Frame / Artwork / Photo / Bricks)',
   afterEach(() => setFrameClearHandler(null));
 
   it('the options come from the tab registry: All first, then one per tab that declares `clears`', () => {
-    expect(clearOptions().map((o) => [o.id, o.label])).toEqual([['all', 'All'], ['frame', 'Frame'], ['artwork', 'Artwork'], ['photo', 'Photo'], ['bricks', 'Bricks']]);
+    expect(clearOptions().map((o) => [o.id, o.label])).toEqual([['all', 'All'], ['frame', FRAME_LABELS.wood], ['artwork', 'Artwork'], ['photo', 'Photo'], ['bricks', 'Bricks']]);
     expect(clearOptions()[0].kinds).toEqual(['frame', 'artwork', 'photo', 'bricks']);
     expect(Object.keys(CLEAR_KINDS)).toEqual(['frame', 'artwork', 'photo', 'bricks']);
   });

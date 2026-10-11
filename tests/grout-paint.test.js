@@ -185,6 +185,20 @@ describe('the lay draws one LOCKED grout node per Wall / Frame element', () => {
 
   // 2026-10-10 (Fred, via the advisor): Send's Wall / Frame OUTLINE sketches read these regions (export-flow.js
   // BRICK_OUTLINE_SKETCHES) -- from a real lay: the wall 1 loop, the frame ring 2 (its contour + the wall's edge)
+  it("2026-10-11: with the Arch + keystone preset (no band of its own) -- no Frame outline, the arch its own (the frame edge + opening), the wall its opening", () => {
+    const ed = fakeEditor();
+    const settings = { ...P.brickSettings, seed: 3, frameBandPreset: 'arch_keystone', brickLengthIn: 1 };
+    runBricks(ed, settings, { primitives: RECT, bands: frameBandsOf(settings) });
+    const [wall, frame, arch] = _brickOutlineSvgs(ed);
+    const loops = (svg) => [...svg.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1]);
+    expect(arch.name).toBe('Arch outline');
+    expect([loops(wall.svg).length, frame.svg, loops(arch.svg).length]).toEqual([1, '', 2]);
+    expect(loops(wall.svg)[0]).toBe(loops(arch.svg)[1]); // the wall fills exactly the arch's opening (no wall outside it)
+    expect(loops(arch.svg)[0]).toBe('M 0 0 L 7 0 L 7 9 L 0 9 Z'); // and the arch starts AT the frame's edge (the RECT board)
+    // the stone pieces are drawn in their own set (a piece's setId over the element's)
+    expect(q(ed, '[data-brick-arch="keystone"], [data-brick-arch="springer"], [data-brick-arch="sillBlock"]').map((n) => n.getAttribute('data-brick-set'))).toEqual(['6', '6', '6', '6', '6']);
+    expect(q(ed, '[data-brick-arch="ring"]').every((n) => n.getAttribute('data-brick-set') === String(settings.setId ?? 1))).toBe(true);
+  });
   it('the outline sketches of a real lay: Wall = 1 closed loop, Frame = its contour + the inner loop the wall fills', () => {
     const ed = fakeEditor();
     runBricks(ed, { ...P.brickSettings, seed: 3 }, frameGeom());

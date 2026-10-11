@@ -447,8 +447,26 @@ export const BRICK_PATTERNS = Object.freeze({
 function withBestSize(bestSize, bands) {
   return Object.defineProperty(bands, 'bestSize', { value: bestSize, enumerable: false });
 }
+/** 2026-10-11 (Fred approved the advisor's mock "Rowlock arch + keystone"): a preset's optional `arch` -- a blind arch
+ *  inside the frame (core/bricks/arch-surround.js ARCH_SPECS id), laid with the Frame element; the wall is cut around
+ *  it and fills its opening. Non-enumerable like bestSize: every reader of the bands sees the list it always did. */
+function withArch(arch, bands) {
+  return Object.defineProperty(bands, 'arch', { value: arch, enumerable: false });
+}
 
-export const FRAME_PRESETS = Object.freeze({
+/** Fred 2026-10-11: a frame PRESET bundles its bands, its CORNER (each band's `cornerStyle`) and its best size -- the
+ *  separate Corners picker is retired. A look that needs another corner is a VARIANT preset, declared here: these presets
+ *  each get a quoin variant `<id>_quoin` (the same bands, every corner a quoin block -- the inner bands wrap it with an L,
+ *  contour-bands.js QUOIN_INNER_WRAP -- and the same best size), listed right after them. */
+export const QUOIN_VARIANT_OF = Object.freeze(['soldier_stretcher', 'three_band', 'mixed_bands', 'recessed_panel']);
+const cornered = (bands, cornerStyle) => {
+  const v = bands.map((b) => ({ ...b, cornerStyle }));
+  return bands.bestSize ? withBestSize(bands.bestSize, v) : v;
+};
+const withQuoinVariants = (presets) => Object.fromEntries(Object.entries(presets).flatMap(([id, bands]) =>
+  [[id, bands], ...(QUOIN_VARIANT_OF.includes(id) ? [[`${id}_quoin`, cornered(bands, 'block')]] : [])]));
+
+export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
   // F35 item 12 follow-up (Fred): the Frame band preset's own OFF switch -- an EMPTY band list,
   // not a special case anywhere downstream: zero bands means `bricksContourBands` has nothing to
   // shrink by, so its own `innerPath` comes back as the frame contour unchanged -- Wall fills
@@ -536,7 +554,10 @@ export const FRAME_PRESETS = Object.freeze({
     { widthIn: 0.3, rows: 1, pattern: 'stretcher', motif: 'cornice_dentil' },
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
   ]),
-});
+  // 2026-10-11 (Fred, the mock's board 1; then "the large blocks should touch the edge of the frame directly"): no band of
+  // its own -- the arch (withArch) is the frame, its hood and rings the outermost rows, its stones from the frame's edge
+  arch_keystone: withBestSize(1, withArch('rowlock_keystone', [])),
+}));
 
 /** Frame motifs phase 1: each motif preset's RECOMMENDED brick size (in) -- the biggest that still shows its structure,
  *  read off the approved mockups (shots/advisor/frames/mock_ref1-3.png). */

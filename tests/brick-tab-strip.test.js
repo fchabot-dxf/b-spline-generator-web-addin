@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { brickTabs, BRICK_GENERAL_TAB, BRICK_ROW_SCOPES, BRICK_SUB_TOOLS } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { BRICK_TAB_SECTIONS } from '../bspline-frame-builder/b-spline-gen/html/main/brick-tab-sections.js';
 import { EDITOR_TABS } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
+import { FRAME_LABELS } from '../bspline-frame-builder/b-spline-gen/html/core/frame-labels.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
 // the <body> only, without its scripts (markup checks; the head's web fonts would be fetched)
@@ -18,7 +19,7 @@ const $ = (id) => doc.getElementById(id);
 
 describe('item 43: the Brick tab strip', () => {
   it('declared tabs: General, Wall, Frame, Brush, Raised, Scissors -- no Stripe tab; each keeps its tool button id', () => {
-    expect(brickTabs().map((t) => t.label)).toEqual(['General', 'Wall', 'Frame', 'Brush', 'Raised', 'Scissors']);
+    expect(brickTabs().map((t) => t.label)).toEqual(['General', 'Wall', FRAME_LABELS.brick, 'Brush', 'Raised', 'Scissors']);
     expect(brickTabs()[0]).toMatchObject({ id: BRICK_GENERAL_TAB.id, buttonId: 'brickTab_general' });
     expect(brickTabs().find((t) => t.id === 'wall').buttonId).toBe('brickTool_wall');
     expect(brickTabs().some((t) => t.id === 'stripe')).toBe(false);

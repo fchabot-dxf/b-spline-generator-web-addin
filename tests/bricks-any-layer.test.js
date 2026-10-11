@@ -31,6 +31,7 @@ import { CONTEXT_MENU_ITEMS } from '../bspline-frame-builder/b-spline-gen/html/e
 import { updateStampMasks } from '../bspline-frame-builder/b-spline-gen/html/main/stamp-mask-manager.js';
 import { _collectStampPasses } from '../bspline-frame-builder/b-spline-gen/html/core/engine/rebuild.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
+import { FRAME_LABELS } from '../bspline-frame-builder/b-spline-gen/html/core/frame-labels.js';
 
 /** An SVG.js-shaped sketch layer over a real DOM node; the ACTIVE layer is the art layer '0', no brick layer. */
 function fakeEditor({ kindOn0 = null } = {}) {
@@ -70,7 +71,7 @@ describe('item 64: a new element goes on its KIND\u2019s own layer and stays on 
   it('a Wall + Frame lay creates the "Wall" and "Frame" layers (not the active one); records too; a second lay reuses them', () => {
     const ed = fakeEditor();
     runBricks(ed, P.brickSettings, null);
-    expect(ed._layers.map((l) => l.name)).toEqual(['Layer 1', 'Layer 2', 'Wall', 'Frame']);
+    expect(ed._layers.map((l) => l.name)).toEqual(['Layer 1', 'Layer 2', 'Wall', FRAME_LABELS.brick]);
     for (const kind of ['wall', 'frame']) {
       const id = kindLayer(ed, kind).id;
       expect(q(ed, `[data-brick="${kind}"]`).every((n) => n.getAttribute('data-layer') === id)).toBe(true);
@@ -217,7 +218,7 @@ describe('item 22 slice 3: Clear finds bricks on any layer', () => {
     expect(q(ed, 'rect')).toHaveLength(0);
     expect(q(ed, '[data-brick-gen="1"]').length).toBeGreaterThan(0);
     // item 64: the bricks are on the Wall / Frame layers (kept); both art layers held art only (gone)
-    expect(ed._layers.map((l) => l.name)).toEqual(['Wall', 'Frame']);
+    expect(ed._layers.map((l) => l.name)).toEqual(['Wall', FRAME_LABELS.brick]);
   });
   it('audit v3 #1: a kept plain layer holding bricks becomes the active one -- no second "Layer 1"', () => {
     const ed = fakeEditor();
@@ -225,7 +226,7 @@ describe('item 22 slice 3: Clear finds bricks on any layer', () => {
     runBricks(ed, P.brickSettings, null);
     clearArtworkLayers(ed);
     // item 64: the kept layers are the kind layers; one of them becomes the active one -- still no new "Layer 1"
-    expect(ed._layers.map((l) => l.name)).toEqual(['Wall', 'Frame']);
+    expect(ed._layers.map((l) => l.name)).toEqual(['Wall', FRAME_LABELS.brick]);
     expect(ed._layers.map((l) => l.id)).toContain(ed._activeLayer);
   });
 });
