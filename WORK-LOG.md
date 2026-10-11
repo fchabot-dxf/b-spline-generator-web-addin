@@ -25933,3 +25933,54 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   its all-migrations expectation. Related suites 127 files 1384/1384 (with that fix).
 - Matrix frame group rows reordered: a new board follows (Soldier + mitre) once the window is on, so the first explicit
   pick is None, then Soldier, Butt, "Same as frame", None -- each a real change (to run on the branch).
+
+### 2026-10-10 (seat E): Quoin on a stack of bands -- one square, an L per further band, nothing under a quoin (Fred's "Armor")
+- Fred's board "Armor" (T3, mixed_bands, Quoin; loaded read-only, applied as a load, never saved): a corner joint missing in
+  3D and dark squares with a grout colour. TWO causes, measured:
+  1. every band's ribbon laid its OWN 1.1 in quoin square (QUOIN_SET) at its own corner, the inner over the outer -- the
+     even-odd grout painted the overlap (sweep: 203 of 912 multi/single-band lays with overlapping frame pieces);
+  2. a 1.1 in block is deeper than a thin stack (Armor's two stretcher bands at 1 in: 0.55 in), so it reached past the
+     bands into the wall's region: the wall was laid UNDER it (432 of 912 lays, single-band at 3/4 in too) and the frame
+     grout's hole (the wall's region) left it painted dark. My first check missed cause 2 twice: the test used the
+     board as the grout region (the app uses the frame outline with the wall's region as a hole), and it sampled each
+     face at its vertex mean, which for an L lies in its notch. Both fixed in the test.
+- Fred's rule + the advisor's picks (A / c / merge), contour-bands.js:
+  - QUOIN_INNER_WRAP 'L' (wrapInnerQuoins): the outermost ribbon at a corner keeps the square; each further ribbon's corner
+    piece is its square minus the one outside it grown by a joint (an L wrapping it).
+  - an L that cannot fit (it still meets another quoin: two corners closer than its arms -- T2/T6/T9/T13/T15 notches)
+    is laid again as the MITRE at that corner of that ribbon (cornersThatCannotWrap -> opts.blockOff -> ribbonPieces /
+    ribbonJoints `blockOff`, a Set of corner indices; absent = byte-identical). One second lay, counted in the
+    additive `quoinsMitred` note. primitive-ribbon.js also records a quoin's corner in fanSides (read only for fans before).
+  - cutUnderQuoins: a piece OVERLAPPING a quoin (more than MEDIAL_OVERLAP_SQIN of the quoin itself -- a piece merely within
+    a joint of it is not under it: testing the grown quoin dropped an outer run piece on T5 1.5 in, a 0.149 sq in patch)
+    has the quoin grown by a joint cut out; a part under the floor MERGES into its row neighbour (mergeRemnant: the hull
+    of both, re-cut clear of the quoins, of every piece it meets grown by a joint, and of the wall's region grown by the
+    band's half joint -- an arc piece's hull took the chord across its curved edge into the wall on T5 9x12 1 in), else
+    drops. Also run on a second lay with one quoin ribbon left (T15: the mitred inner corner under the outer square).
+  - the result reports the laid quoins (`quoins`, additive).
+- engine.js (advisor's pick A, one source): the quoins that reach into the wall's region (QUOIN_REACH_SQIN) come out of
+  interiorOutline (grown by the wall's joint) -- the grout reads it -- and the wall is cut clear of them by its own
+  exclusion rule (fill-shape.js bricksClearOf, a joint off), every cut piece KEPT as the fill keeps a piece cut at any
+  region edge (bond.js clips cells to the region with no area floor). Two alternatives MEASURED and dropped: a floor
+  on the cut pieces with the remnants merged into neighbours (bare-free, but a two-brick M across a gable top, T11 9x12
+  3/4 in, and a floor that first dropped the wall's own legit mid-board edge pieces); filling the wall again into the
+  reshaped outline (every course re-aligned, a gable flank triangle dropped: 0.038 sq in bare, the tip-fill sweep red).
+- Single-band Quoin: every frame piece byte-identical to main (304 / 304 lays); the WALL differs on 120 of them, all
+  where main laid wall bricks under the quoin (3 - 13 overlaps per board) -- the fix, not a regression.
+- tests/bricks-quoin-stack.test.js: no frame overlap, no wall piece under a frame piece, no face painted as grout (the
+  app's real region, sampled inside each face), largest bare patch <= BARE_PATCH_TOL_SQIN 0.05 (main's own worst over the
+  sweep is 0.043); FAST 9 boards (9 / 9 fail on main), QUOIN_FULL every template x 7x9 / 9x12 x 0.75 - 1.5 x every
+  multi-band preset + the one-band ones.
+- Verification (merged with main 75443e9): the scratch sweep, every template x 7x9 / 9x12 x 0.75 - 1.5 in x every
+  multi-band preset + single_soldier / quoin_corners = 912 lays -- rows with overlapping frame pieces 0 (main 203); rows
+  with a wall piece under a frame piece 0 (main 432); single-band frames byte-identical 304 / 304 (the wall differs on
+  120, all the cleared quoins); largest bare patch 0.043 sq in = main's own worst (one row +0.008 over main); 88 corners
+  in 23 lays fell back to the mitre (an L that cannot fit). QUOIN_FULL 922 / 922; the brick / grout / frame / primitive /
+  contour / engine suites 134 files 2579 / 2579; every *_FULL sweep green (thin-stone-rings FULL+FULL_SEEDS 1530, gap 760,
+  overlap 19, pattern-gaps 2736, rubble-edges 304, seam 19, stone-life 114, tip-fill-fans 608).
+- Shots (shots/seatE/grout): quoin_{before,after}_armor_2d.png, quoin_{before,after}_hourglass_2d.png (T1 7x9 mixed_bands
+  1 in, charcoal grout: main's four dark corner rings, now a square + an L each), quoin_armor_corner_closeup.png and
+  quoin_hourglass_corner_closeup.png (top-down, the app's own dumped paint, before | after).
+- Gate (advisor): tests/brick-icons-fresh.test.js failed on the merged head -- the quoin rule changes the Quoin / mixed
+  band preset icons' layout output and I had not regenerated them (memory: a layout-output change needs
+  node tools/gen_brick_icons.mjs). Regenerated; brick-icons-fresh passes.
