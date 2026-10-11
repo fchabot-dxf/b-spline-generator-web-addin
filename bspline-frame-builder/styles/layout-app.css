@@ -504,6 +504,7 @@ aside {
 }
 .cad-sidebar-sections .panel {
     break-inside: avoid;
+    scroll-margin-top: 64px; /* a section scrolled to (the decor alias) clears the sticky seed bar */
 }
 
 .cad-resizer {
@@ -784,6 +785,24 @@ aside {
 }
 .sidebar-branch-body[hidden] {
     display: none;
+}
+/* a group inside a branch (SIDEBAR_TABS groups: Surface's "2D editor"): a quiet sub-heading over its sections */
+.sidebar-group[hidden] {
+    display: none;
+}
+.sidebar-group-head {
+    margin: 10px 0 4px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid var(--cad-border-standard);
+    color: var(--cad-text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    break-after: avoid;
+}
+.sidebar-group {
+    scroll-margin-top: 64px; /* the decor alias scrolls here, clear of the sticky seed bar */
 }
 /* item 43: the Brick panel's strip heads its pinned block, edge to edge, Generate under it */
 #editorBrickPanel > .sticky-actions > #editorToolbarBrick {

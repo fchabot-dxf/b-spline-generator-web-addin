@@ -1,6 +1,6 @@
 /**
  * sidebar-tabs.js -- the main sidebar's TREE (redesign phase 5, seat D's mockups shots/seatD/redesign/mock_Sidebar_*):
- * the four former tabs are BRANCHES of one collapse tree (▾ BOARD, its sections under it, then ▾ SURFACE ...), each
+ * the former tabs are BRANCHES of one collapse tree (▾ BOARD, its sections under it, then ▾ SURFACE ...), each
  * folding on its own, Generate New Seed pinned above them. Before it (F35 item 48) they were tabs, one shown at a time.
  * Item 47's PIN stays: a pinned section sits at the top, under the seed bar, whatever is folded.
  *
@@ -10,14 +10,25 @@
  * folds / unfolds. Which branches are open and the pinned set persist per device (localStorage, try/catch: blocked
  * storage starts on SIDEBAR_DEFAULT_OPEN with nothing pinned).
  */
+// A branch's ORDER on screen is declared, never the page's markup order: its own `sections`, then each of its `groups`
+// (a sub-heading inside the branch with its own sections). Fred 2026-10-11 (final): three branches; Surface holds the
+// sections edited in place, then a "2D editor" group with the ones that open the 2D editor (Photo, Brick, Vector
+// stamping -- Decor's two joined Photo there).
 export const SIDEBAR_TABS = Object.freeze([
   Object.freeze({ id: 'board', label: 'Board', sections: Object.freeze(['panel-stock', 'panel-frame']) }),
-  Object.freeze({ id: 'surface', label: 'Surface', sections: Object.freeze(['panel-skeleton', 'panel-filter', 'panel-photo', 'panel-sculpt-top', 'panel-thicken', 'panel-sculpt-bot']) }),
-  Object.freeze({ id: 'decor', label: 'Decor', sections: Object.freeze(['panel-brick', 'panel-stamp']) }),
+  Object.freeze({ id: 'surface', label: 'Surface', sections: Object.freeze(['panel-skeleton', 'panel-filter', 'panel-sculpt-top', 'panel-thicken', 'panel-sculpt-bot']),
+    groups: Object.freeze([Object.freeze({ id: 'editor', label: '2D editor', sections: Object.freeze(['panel-photo', 'panel-brick', 'panel-stamp']) })]) }),
   Object.freeze({ id: 'output', label: 'Output', sections: Object.freeze(['panel-view', 'panel-export', 'panel-resolution']) }),
 ]);
-export const SIDEBAR_UNLISTED_TAB = 'decor';
-// the mockup's first look: Board and Surface open, Decor and Output folded
+/** Pure: every section of a branch in its order on screen (its own, then each group's). */
+export const branchSections = (t) => [...t.sections, ...(t.groups || []).flatMap((g) => g.sections)];
+/** Pure: the group (within its branch) a section key sits in, or null. */
+export const groupOfSection = (key) => SIDEBAR_TABS.flatMap((t) => t.groups || []).find((g) => g.sections.includes(key)) || null;
+// a retired branch id -> where it lives now (setSidebarTab, a device's saved open set, the old tab key): Decor is
+// Surface, scrolled to its 2D editor group
+export const SIDEBAR_TAB_ALIASES = Object.freeze({ decor: Object.freeze({ tab: 'surface', group: 'editor' }) });
+export const SIDEBAR_UNLISTED_TAB = 'surface';
+// the mockup's first look: Board and Surface open, Output folded
 export const SIDEBAR_DEFAULT_OPEN = Object.freeze(['board', 'surface']);
 export const SIDEBAR_OPEN_STORAGE_KEY = 'bspline.main.sidebarOpen';
 export const SIDEBAR_PINNED_STORAGE_KEY = 'bspline.main.sidebarPinned';
@@ -33,7 +44,7 @@ export function sectionKey(classList) {
 
 /** Pure: the branch a section key belongs to (declared, else SIDEBAR_UNLISTED_TAB). */
 export function tabOfSection(key) {
-  const tab = SIDEBAR_TABS.find((t) => t.sections.includes(key));
+  const tab = SIDEBAR_TABS.find((t) => branchSections(t).includes(key));
   return tab ? tab.id : SIDEBAR_UNLISTED_TAB;
 }
 
@@ -42,11 +53,25 @@ export function isSectionShown(key, open, pinned) {
   return pinned.includes(key) || open.includes(tabOfSection(key));
 }
 
-/** Pure: the open branches a device starts with -- its saved set, else the default plus the tab it last had. */
+/** Pure: a branch id as it is now (a retired one through SIDEBAR_TAB_ALIASES). */
+export const branchOf = (id) => (SIDEBAR_TAB_ALIASES[id] ? SIDEBAR_TAB_ALIASES[id].tab : id);
+
+/** Pure: the open branches a device starts with -- its saved set, else the default plus the tab it last had (a retired
+ *  id in either read as the branch it became). */
 export function initialOpenBranches(saved, legacyTab) {
   const ids = SIDEBAR_TABS.map((t) => t.id);
-  if (Array.isArray(saved)) return ids.filter((id) => saved.includes(id));
-  return ids.filter((id) => SIDEBAR_DEFAULT_OPEN.includes(id) || id === legacyTab);
+  if (Array.isArray(saved)) { const now = saved.map(branchOf); return ids.filter((id) => now.includes(id)); }
+  return ids.filter((id) => SIDEBAR_DEFAULT_OPEN.includes(id) || id === branchOf(legacyTab));
+}
+
+/** Pure: the sections' order on screen -- each branch's declared `sections`, branch by branch; a section none lists
+ *  after its branch's declared ones, in `pageOrder`. */
+export function declaredSectionOrder(keys) {
+  const rank = (k) => {
+    const b = SIDEBAR_TABS.findIndex((t) => t.id === tabOfSection(k)), i = branchSections(SIDEBAR_TABS[b]).indexOf(k);
+    return b * 1000 + (i < 0 ? 999 : i);
+  };
+  return keys.map((k, n) => [k, n]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([k]) => k);
 }
 
 const read = (k, fallback) => { try { const v = localStorage.getItem(k); return v == null ? fallback : JSON.parse(v); } catch (_) { return fallback; } };
@@ -91,9 +116,21 @@ export function initSidebarTabs(doc = document) {
     const body = doc.createElement('div');
     body.className = 'sidebar-branch-body';
     body.id = `sidebarBranch_${t.id}`;
+    // each group: its heading, then its sections (placed by apply), after the branch's own sections
+    const groups = new Map();
+    for (const g of t.groups || []) {
+      const box = doc.createElement('div');
+      box.className = 'sidebar-group';
+      box.id = `sidebarGroup_${g.id}`;
+      const gh = doc.createElement('div');
+      gh.className = 'sidebar-group-head';
+      gh.textContent = g.label;
+      box.append(gh);
+      groups.set(g.id, box);
+    }
     branch.append(head, body);
     sections.appendChild(branch);
-    _state.branches.set(t.id, { branch, head, caret, label, body });
+    _state.branches.set(t.id, { branch, head, caret, label, body, groups });
   }
 
   for (const p of panels) {
@@ -117,11 +154,13 @@ export function initSidebarTabs(doc = document) {
 
 function apply() {
   const s = _state;
-  // every section in its place, in the page's panel order (pinned at the top, the rest in their branch)
-  for (const p of s.panels) {
-    const key = sectionKey(p.classList);
+  // every section in its place, in the declared order (pinned at the top, the rest in their branch)
+  const byKey = new Map(s.panels.map((p) => [sectionKey(p.classList), p]));
+  for (const key of declaredSectionOrder([...byKey.keys()])) {
+    const p = byKey.get(key);
     const pinned = s.pinned.includes(key);
-    (pinned ? s.pinnedBox : s.branches.get(tabOfSection(key)).body).appendChild(p);
+    const b = s.branches.get(tabOfSection(key)), g = groupOfSection(key);
+    (pinned ? s.pinnedBox : g ? b.groups.get(g.id) : b.body).appendChild(p);
     const pin = p.querySelector(':scope > .panel-header > .panel-pin');
     if (pin) {
       pin.classList.toggle('pinned', pinned);
@@ -131,6 +170,8 @@ function apply() {
   }
   for (const t of SIDEBAR_TABS) {
     const b = s.branches.get(t.id), open = s.open.includes(t.id);
+    // a group after the branch's own sections; shown while it holds a section (all pinned away: its heading goes too)
+    for (const box of b.groups.values()) { b.body.appendChild(box); box.hidden = box.children.length < 2; }
     b.body.hidden = !open;
     b.branch.classList.toggle('open', open);
     b.caret.textContent = open ? BRANCH_CARET.open : BRANCH_CARET.folded;
@@ -153,12 +194,16 @@ export function toggleSidebarBranch(id) {
   setOpen(id, !_state.open.includes(id));
 }
 
-/** A branch's label (the former tab, sidebarTab_<id>): that branch opens -- never folds -- and scrolls into view. */
+/** A branch's label (the former tab, sidebarTab_<id>): that branch opens -- never folds -- and scrolls into view. A
+ *  retired id (SIDEBAR_TAB_ALIASES) opens the branch it became and scrolls to its group. */
 export function setSidebarTab(id) {
-  if (!_state || !_state.branches.has(id)) return;
-  if (!_state.open.includes(id)) setOpen(id, true);
-  const head = _state.branches.get(id).head;
-  if (typeof head.scrollIntoView === 'function') head.scrollIntoView({ block: 'start' });
+  const alias = SIDEBAR_TAB_ALIASES[id], tab = branchOf(id);
+  if (!_state || !_state.branches.has(tab)) return;
+  if (!_state.open.includes(tab)) setOpen(tab, true);
+  const b = _state.branches.get(tab);
+  const group = alias && alias.group && b.groups.get(alias.group);
+  const target = (group && !group.hidden && group) || b.head;
+  if (typeof target.scrollIntoView === 'function') target.scrollIntoView({ block: 'start' });
 }
 
 export function toggleSidebarPin(key) {
