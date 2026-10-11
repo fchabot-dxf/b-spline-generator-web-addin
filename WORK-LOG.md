@@ -25984,3 +25984,22 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Gate (advisor): tests/brick-icons-fresh.test.js failed on the merged head -- the quoin rule changes the Quoin / mixed
   band preset icons' layout output and I had not regenerated them (memory: a layout-output change needs
   node tools/gen_brick_icons.mjs). Regenerated; brick-icons-fresh passes.
+### 2026-10-11 (seat D): the no-blank-pause sweep (Fred: "no blank pause anywhere"), measured with the corpus audit
+- Tool (tools/repro/project_load_audit.mjs, this branch): PROFILE=step,... names the app call chains in every blind window
+  (CDP sampler; the clock anchored by a named 20 ms marker -- assuming the profile starts at t0 mapped no samples); the
+  Brick tab opens on General, so the Wall tool is picked before Generate (Generate was skipped on every board before);
+  the restore check names object sub-keys and reports the app's declared migrations (window-surround-legacy-none,
+  photo-filter-to-layer) as migrated, not mismatched.
+- Editor open: 0 ms blind on all boards now (fixed upstream since 2026-10-10).
+- Apply (apply-stage: the 'applyEdits' stage shown first, then heightMask, rebuild): 0 ms on 19/20 fresh and 19/20 chained.
+  claude_4 is RENDER-BOUND (123 fresh / 311 chained): before its card the profile is 0.5-1.4 s of (idle) / (program) /
+  getBoundingClientRect with almost no app code -- the commit runs INSIDE the stage, after its paint callback, but its
+  frame (the heaviest drawing of the corpus) takes ~1 s to present in the headless SwiftShader rig. Not a declaration
+  gap; no claude_4-specific work (advisor).
+- 3D controls (mask-stage, merged): the 62-control sweep (claude_1, 900 px, CPU x4) found 8 Decor controls blind 51-261 ms
+  -- the mask pass (refreshAllStampMasks -> updateStampMasks -> getLayerSvg / rasterizeSvg) and a brick surface release's
+  save / undo push ran before any stage. Fixed by declaring the stage on refreshAllStampMasks and BRICK_COMMIT.surface.
+- FOLLOW-UPS (advisor: later, not now):
+  - brick Generate 50-138 ms blind on claude_4 / 10 / 11 / 16 (the Generate step of the audit; not Apply);
+  - the Photo preview canvas is landscape: a portrait photo is drawn stretched in it (pre-existing).
+  - (claude_7's 918 ms Generate blind = the tool's own overlap: the Wall pick's lay still running; ignored.)
