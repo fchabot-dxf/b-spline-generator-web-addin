@@ -58,10 +58,11 @@ export const BLIND_BUDGET = {
     { name: 'Board width change (bricks laid)', sidebar: 'board', act: { set: 'widthIn', value: 7.5 } },
     // the Art tab (seat A's re-time 2026-10-09, main e6c4f35: 0.56-0.9 s with no feedback at all) -- in order, each on
     // the last one's board: a Generate, its Undo, the Redo, a Shape Generate, its Undo
-    { name: 'Art: Lattice Generate', open: 'editorTabArtwork', pre: ['artTab_lattice'], act: { tap: 'latticeGenerate' } },
+    // redesign phase 2: the lattices are the top-level Lattice tab's (a real tap reaches its own Art tabs, not Draw's)
+    { name: 'Art: Lattice Generate', open: 'editorTabArtwork', pre: ['editorTabLattice', 'artTab_lattice'], act: { tap: 'latticeGenerate' } },
     { name: 'Art: Undo after a Generate', act: { tap: 'editorUndo' } },
     { name: 'Art: Redo', act: { tap: 'editorRedo' } },
-    { name: 'Art: Shape Generate', pre: ['artTab_shape'], act: { tap: 'shapeLatticeGenerate' } },
+    { name: 'Art: Shape Generate', pre: ['editorTabLattice', 'artTab_shape'], act: { tap: 'shapeLatticeGenerate' } },
     { name: 'Art: Undo after a Shape Generate', act: { tap: 'editorUndo' } },
     // seat D 2026-10-09 (Fred's projects: 3D after a Generate ~120 ms blind): the phone's 3D toggle = Apply; its first
     // step 'saving the drawing' is on screen before the commit
