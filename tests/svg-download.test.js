@@ -20,6 +20,7 @@ import { SVG_BRICK_EXPORT, SVG_EXPORT_GROUPS, svgDownloadGroups, INKSCAPE_NS } f
 import { BRICK_SETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { greyOfHeight, greyLevel, HEIGHT_GREY_RAMP, NEUTRAL_BRICK_GREY, NEUTRAL_GROUT_GREY } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/height-grey.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
+import { FRAME_LABELS } from '../bspline-frame-builder/b-spline-gen/html/core/frame-labels.js';
 
 function fakeEditor() {
   const node = document.createElement('div');
@@ -123,7 +124,7 @@ describe('the download: one file, named groups, flat bricks', () => {
     const rec = (k) => brickRecordNode(ed, k).getAttribute('data-brick-element');
     // roster bottom -> top: Layer 1, Hidden art, then the Wall and Frame kind layers (item 64); no frame template here
     expect(top.map((g) => g.id)).toEqual(['art:0', 'art:9', `bricks:${rec('wall')}`, `grout:${rec('wall')}`, `bricks:${rec('frame')}`, `grout:${rec('frame')}`]);
-    expect(top.map(label)).toEqual(['Layer 1', 'Hidden art', 'Wall', 'Wall grout', 'Frame', 'Frame grout']);
+    expect(top.map(label)).toEqual(['Layer 1', 'Hidden art', 'Wall', 'Wall grout', FRAME_LABELS.brick, `${FRAME_LABELS.brick} grout`]);
     expect(SVG_EXPORT_GROUPS.map((g) => [g.id, g.place])).toEqual([['frame', 'bottom'], ['art', 'layer'], ['bricks', 'layer'], ['grout', 'layer']]);
     for (const g of top) expect(g.getAttribute('inkscape:groupmode')).toBe('layer');
     expect(root.getAttribute('xmlns:inkscape')).toBe(INKSCAPE_NS);

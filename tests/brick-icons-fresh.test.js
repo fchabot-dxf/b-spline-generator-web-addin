@@ -27,10 +27,10 @@ const wAccent = (px) => Math.round((px * ACCENT_ICON_BOARD.widthIn) / ACCENT_ICO
 /** Every declared icon: [kind, base key, sizes, (px) -> width, (px) -> the icon laid fresh at that size]. */
 const ICONS = [
   ...Object.keys(BRICK_PATTERNS).map((id) => ['pattern', id, S.pattern, wPattern, (px) => wallPatternIconSvg(id, px)]),
-  ...Object.entries(FRAME_PRESETS).filter(([, b]) => b.length).map(([id]) => ['preset', id, S.preset, (px) => px, (px) => framePresetIconSvg(id, px)]),
+  ...Object.entries(FRAME_PRESETS).filter(([, b]) => b.length || b.arch).map(([id]) => ['preset', id, S.preset, (px) => px, (px) => framePresetIconSvg(id, px)]),
   // redesign phase 1: the pickers' bigger TILE icons (a wall patch; a frame corner + band run)
   ...Object.keys(BRICK_PATTERNS).map((id) => ['patternTile', id, S.patternTile, wPatternTile, (px) => wallPatternTileSvg(id, px)]),
-  ...Object.entries(FRAME_PRESETS).filter(([, b]) => b.length).map(([id]) => ['presetTile', id, S.presetTile, (px) => px, (px) => framePresetTileSvg(id, px)]),
+  ...Object.entries(FRAME_PRESETS).filter(([, b]) => b.length || b.arch).map(([id]) => ['presetTile', id, S.presetTile, (px) => px, (px) => framePresetTileSvg(id, px)]),
   ...FRAME_CORNERS.map(({ id }) => ['corner', id, S.corner, (px) => px, (px) => frameCornerIconSvg(id, px)]),
   ...FAN_CENTRES.map(({ id }) => ['fan', id, S.fan, (px) => px, (px) => fanCentreIconSvg(id, px)]),
   ...['none', ...ACCENT_PRESETS.map((a) => a.id)].flatMap((id) => [false, true].map((sunk) =>

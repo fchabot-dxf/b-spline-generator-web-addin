@@ -32,6 +32,7 @@ import {
 import {
   runBricks, brickElementAt, showElementSelection, BRICK_RECORD_KINDS, ELEMENT_SELECT_OUTLINE,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { FRAME_LABELS } from '../bspline-frame-builder/b-spline-gen/html/core/frame-labels.js';
 
 const FIXTURE = `
   <div class="sticky-actions"><button id="brickGenerate">Generate</button></div>
@@ -154,7 +155,7 @@ describe('item 22 step 4: Select in the panel', () => {
     window.svgEditor._brickElementSelect({ x: 5.5, y: 0.1 });
     expect(selectedBrickElement()).toEqual({ id: IDS.frame, kind: 'frame' });
     expect($('brickTool_frame').classList.contains('active')).toBe(true);
-    expect($('brickElementLabel_frame').textContent).toBe('Editing: this Frame');
+    expect($('brickElementLabel_frame').textContent).toBe(`Editing: this ${FRAME_LABELS.brick}`);
     expect(window.svgEditor._highlightLayer.added.filter((e) => !e.removed).map((e) => e.pts)).toEqual([SQ.frame]);
   });
 

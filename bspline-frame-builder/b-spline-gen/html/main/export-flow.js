@@ -183,6 +183,9 @@ export async function _bricksLayerSvg(editor) {
 export const BRICK_OUTLINE_SKETCHES = Object.freeze([
     Object.freeze({ kind: 'wall', name: 'Wall outline', loops: 'outer' }),
     Object.freeze({ kind: 'frame', name: 'Frame outline', loops: 'all' }),
+    // 2026-10-11: the Frame preset's arch (Arch + keystone) -- its region entry is tagged `part: 'arch'` (editor-brick-tool.js
+    // _generateAndDraw): its own sketch, the arch's outer loop + its opening (2 profiles), the Frame outline as before
+    Object.freeze({ kind: 'frame', part: 'arch', name: 'Arch outline', loops: 'all' }),
 ]);
 
 /** Each BRICK_OUTLINE_SKETCHES row's SVG (board inches, the layer SVG frame getLayerSvg uses), '' when no element of
@@ -197,6 +200,7 @@ export function _brickOutlineSvgs(editor) {
             let region = [];
             try { region = JSON.parse(g.node.getAttribute(GROUT_REGION_ATTR) || '[]'); } catch { region = []; }
             for (const r of region) {
+                if ((r && r.part ? r.part : null) !== (row.part || null)) continue; // a part's entries go to its own row
                 if (r && r.outer && r.outer.length >= 3) loops.push(r.outer);
                 if (row.loops === 'all') for (const h of (r && r.holes) || []) if (h.length >= 3) loops.push(h);
             }
