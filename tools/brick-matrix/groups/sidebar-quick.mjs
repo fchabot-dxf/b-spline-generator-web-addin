@@ -3,6 +3,10 @@
 
 import { E, AUTO, click } from './_shared.mjs';
 
+// the frame's size, declared (2026-10-11: the size is per element and the quick Size row sets the WALL's, Fred) -- the
+// 3-band row needs a frame its three bands fit (T1 7x9 at 3/4 in, as when the one global size reached the frame)
+export const setup = [{ brickSizes: { frame: 0.75 }, why: 'Quick frame bands: 3-band fits at 3/4 in (the quick Size sets the Wall)' }];
+
 export const rows = [
   // ---- main sidebar
   // (item 23: the quick Set row lists the brick sets only -- one choice today, nothing to change)

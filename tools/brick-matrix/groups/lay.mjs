@@ -143,8 +143,8 @@ async function runLayWarnings() {
   await apply(); await heightsSettled(null);
   await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
   if (!(await exists(W.tooMany))) { checkRow('lay', `${W.template}: too many bands -> no wall + notes`, false, '', W.introducedBy); return; }
-  const size = async (id) => { // the Wall tool's brick size, then back to the sidebar
-    await openEditorTab('editorTabBrick'); await click('brickTool_wall', 900); await click(id, 2500);
+  const size = async (id) => { // the Brick frame's size (the bands fit by it; per element since 2026-10-11), then the sidebar
+    await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900); await click(id, 2500);
     await apply(); await heightsSettled(null);
     await js(`import('./main/sidebar-tabs.js').then((m) => (m.revealSidebarSection('panel-brick'), 1))`);
   };
