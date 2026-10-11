@@ -12,7 +12,7 @@ import BRICK_ICONS from '../bspline-frame-builder/b-spline-gen/html/data/brick-i
 import {
   BRICK_ICON_SIZES, FRAME_CORNERS, wallPatternIconSvg, framePresetIconSvg, frameCornerIconSvg, fanCentreIconSvg, accentIconSvg,
   clearBrickIconCaches, setBrickIconDeclared, sizedIconSvg, PATTERN_ICON_BOARD, ACCENT_ICON_BOARD,
-  wallPatternTileSvg, framePresetTileSvg, PATTERN_TILE_BOARD,
+  wallPatternTileSvg, PATTERN_TILE_BOARD,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { BRICK_PATTERNS, FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { FAN_CENTRES } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/fan-centre.js';
@@ -30,7 +30,6 @@ const ICONS = [
   ...Object.entries(FRAME_PRESETS).filter(([, b]) => b.length || b.arch).map(([id]) => ['preset', id, S.preset, (px) => px, (px) => framePresetIconSvg(id, px)]),
   // redesign phase 1: the pickers' bigger TILE icons (a wall patch; a frame corner + band run)
   ...Object.keys(BRICK_PATTERNS).map((id) => ['patternTile', id, S.patternTile, wPatternTile, (px) => wallPatternTileSvg(id, px)]),
-  ...Object.entries(FRAME_PRESETS).filter(([, b]) => b.length || b.arch).map(([id]) => ['presetTile', id, S.presetTile, (px) => px, (px) => framePresetTileSvg(id, px)]),
   ...FRAME_CORNERS.map(({ id }) => ['corner', id, S.corner, (px) => px, (px) => frameCornerIconSvg(id, px)]),
   ...FAN_CENTRES.map(({ id }) => ['fan', id, S.fan, (px) => px, (px) => fanCentreIconSvg(id, px)]),
   ...['none', ...ACCENT_PRESETS.map((a) => a.id)].flatMap((id) => [false, true].map((sunk) =>
@@ -42,7 +41,7 @@ export function layAllIcons() {
   setBrickIconDeclared(false);
   clearBrickIconCaches();
   try {
-    const data = { pattern: {}, preset: {}, corner: {}, fan: {}, accent: {}, patternTile: {}, presetTile: {} }, sized = [];
+    const data = { pattern: {}, preset: {}, corner: {}, fan: {}, accent: {}, patternTile: {} }, sized = [];
     for (const [kind, base, sizes, width, lay] of ICONS) {
       data[kind][base] = lay(sizes[0]); // ONE drawing per icon, at its first size
       for (const px of sizes) sized.push([kind, base, px, width(px), lay(px)]);
