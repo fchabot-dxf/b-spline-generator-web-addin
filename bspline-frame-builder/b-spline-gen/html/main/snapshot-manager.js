@@ -1,5 +1,5 @@
 import { withLoadingStage } from '../core/loading-signal.js';
-import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache, layerToolingChanged, saveLastSession } from '../core/state.js';
+import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache, layerToolingChanged, saveLastSession, flushSessionSave } from '../core/state.js';
 import { renderLayersPanel } from '../editor/layers.js';
 import { syncUItoParam } from '../core/ui-utils.js';
 import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring, startHistoryAt, UNDO_KEEPS } from '../core/history.js';
@@ -30,6 +30,7 @@ import { updateSculptToolButtons } from './param-manager.js';
 /** F35 item 41: a restore (a project load, a global undo) is a declared loading stage -- painted before it runs. */
 export function applySnapshot(snap, preview, opts = {}) {
   if (!snap) return Promise.resolve();
+  flushSessionSave(); // the board being left: its last edit is in the session copy first (state.js SESSION_SAVE)
   return withLoadingStage('restore', () => _applySnapshot(snap, preview, opts));
 }
 

@@ -35,7 +35,7 @@ import { initPhotoFootprint } from './photo-footprint.js';
 import { renderPhotoLayerSection, bindPhotoLayerSection } from './photo-layer-section.js';
 import { initBrickPanel } from './brick-panel.js';
 import { AppState } from './app-state.js';
-import { saveLastSession, isFusionMode } from '../core/state.js';
+import { saveLastSession, flushSessionSave, isFusionMode } from '../core/state.js';
 import { isDirty } from '../core/dirty.js';
 import { applyParam } from './param-manager.js';
 import { updateStampMasks } from './stamp-mask-manager.js';
@@ -80,6 +80,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Leaving the page: keep the session copy current (a phone can evict the tab without another chance), and in a
     // browser warn when there are changes not saved to the cloud (not inside Fusion: a palette reload must not block).
     window.addEventListener('pagehide', () => saveLastSession());
+    // a phone backgrounding the tab may never fire pagehide: a pending coalesced save is written as it hides
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSessionSave(); });
     window.addEventListener('beforeunload', (e) => {
         if (isFusionMode || !isDirty()) return;
         e.preventDefault();

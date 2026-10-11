@@ -37,7 +37,17 @@ import { handlePageViews } from './pageviews-route.js';
 import { handleBus } from './bus-route.js';
 import { readBoundedBody } from './body.js';
 import { checkEditGate, isGateKey } from './edit-gate.js';
-import { listItems, indexUpsert, indexRemove, rememberIfMissing } from './presets-index.js';
+import { INDEX_KEY, defineIndex, listItems, indexUpsert, indexRemove, rememberIfMissing } from './presets-index.js';
+
+// The KV listings served from one index key instead of list() (presets-index.js).
+const PRESETS_INDEX = defineIndex({ key: INDEX_KEY, hidden: isGateKey });
+const ppIndex = (kind) => defineIndex({
+  key: `__index::${kind}`,
+  prefix: `${kind}/`,
+  item: (name, meta) => ({ id: name.slice(kind.length + 1), customMeta: { name: meta.name || '' }, savedAt: meta.savedAt || null }),
+  keyOf: (i) => `${kind}/${i.id}`,
+});
+const PP_INDEX ={ projects: ppIndex('projects'), palettes: ppIndex('palettes') };
 
 export default {
   async fetch(request, env) {
@@ -103,6 +113,7 @@ async function handlePenplotter(request, env, method) {
       }
       if (method === 'DELETE') {
         await env.PENPLOTTER.delete(kind + '/' + id);
+        await indexRemove(env.PENPLOTTER, PP_INDEX[kind], kind + '/' + id);
         return ppJson({ ok: true });
       }
     }
@@ -112,24 +123,17 @@ async function handlePenplotter(request, env, method) {
   return ppNotFound();
 }
 
+// One KV read (the PP_INDEX doc), not list(); key order, as list() returned it.
 async function ppList(kv, kind) {
-  const out = [];
-  let cursor;
-  do {
-    const page = await kv.list({ prefix: kind + '/', cursor, limit: 1000 });
-    for (const k of page.keys) {
-      const meta = k.metadata || {};
-      out.push({ id: k.name.slice(kind.length + 1), customMeta: { name: meta.name || '' }, savedAt: meta.savedAt || null });
-    }
-    cursor = page.list_complete ? undefined : page.cursor;
-  } while (cursor);
-  return out;
+  const items = await listItems(kv, PP_INDEX[kind]);
+  return items.slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 async function ppCreate(kv, kind, body) {
   const id   = crypto.randomUUID();
   const meta = { name: String(body.name || 'untitled').slice(0, 100), savedAt: new Date().toISOString() };
   await kv.put(kind + '/' + id, JSON.stringify(body), { metadata: meta });
+  await indexUpsert(kv, PP_INDEX[kind], kind + '/' + id, meta);
   return { id, name: meta.name };
 }
 
@@ -141,12 +145,14 @@ async function ppUpdate(kv, kind, id, body) {
   const meta     = { name: String(body.name || oldMeta.name || 'untitled').slice(0, 100), savedAt: new Date().toISOString() };
   const value    = body[dataKey] !== undefined ? JSON.stringify(body) : existing.value;
   await kv.put(kind + '/' + id, value, { metadata: meta });
+  await indexUpsert(kv, PP_INDEX[kind], kind + '/' + id, meta);
   return { id, name: meta.name };
 }
 
 async function ppGet(kv, kind, id) {
-  const raw = await kv.get(kind + '/' + id);
+  const { value: raw, metadata } = await kv.getWithMetadata(kind + '/' + id);
   if (raw == null) return null;
+  await rememberIfMissing(kv, PP_INDEX[kind], kind + '/' + id, metadata || {}); // self-heal a lost index update
   try { return JSON.parse(raw); } catch { return null; }
 }
 
@@ -218,7 +224,7 @@ async function handleBspline(request, env, method) {
   if ((path === '/projects' || path === '/presets') && method === 'GET') {
     try {
       // one KV read (presets-index.js), not list(): the free tier's 1,000 list() a day ran out (2026-10-06)
-      const items = await listItems(env.PRESETS, isGateKey);
+      const items = await listItems(env.PRESETS, PRESETS_INDEX);
       return json({ names: items.map((i) => i.name), items });
     } catch (e) {
       return json({ error: 'list failed', detail: String(e) }, 500);
@@ -235,7 +241,7 @@ async function handleBspline(request, env, method) {
     if (method === 'GET') {
       const { value, metadata } = await env.PRESETS.getWithMetadata(name);
       if (value === null) return json({ error: 'not found' }, 404);
-      await rememberIfMissing(env.PRESETS, name, metadata || {}); // self-heal a lost index update
+      await rememberIfMissing(env.PRESETS, PRESETS_INDEX, name, metadata || {}); // self-heal a lost index update
       return new Response(value, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
     }
     if (method === 'PUT') {
@@ -244,12 +250,12 @@ async function handleBspline(request, env, method) {
       const savedAt = Date.now();
       const meta = { savedAt, size: body.length };
       await env.PRESETS.put(name, body, { metadata: meta });
-      await indexUpsert(env.PRESETS, name, meta);
+      await indexUpsert(env.PRESETS, PRESETS_INDEX, name, meta);
       return json({ ok: true, name, savedAt });
     }
     if (method === 'DELETE') {
       await env.PRESETS.delete(name);
-      await indexRemove(env.PRESETS, name);
+      await indexRemove(env.PRESETS, PRESETS_INDEX, name);
       return json({ ok: true, name });
     }
     return json({ error: 'method not allowed' }, 405);
@@ -260,7 +266,7 @@ async function handleBspline(request, env, method) {
 
   if (path === '/cam-profiles' && method === 'GET') {
     try {
-      const items = (await listItems(env.PRESETS, isGateKey)).filter((i) => i.name.startsWith(CAM_PREFIX))
+      const items = (await listItems(env.PRESETS, PRESETS_INDEX)).filter((i) => i.name.startsWith(CAM_PREFIX))
         .map((i) => ({ ...i, name: i.name.slice(CAM_PREFIX.length) }));
       return json({ names: items.map((i) => i.name), items });
     } catch (e) {
@@ -278,7 +284,7 @@ async function handleBspline(request, env, method) {
     if (method === 'GET') {
       const { value, metadata } = await env.PRESETS.getWithMetadata(key);
       if (value === null) return json({ error: 'not found' }, 404);
-      await rememberIfMissing(env.PRESETS, key, metadata || {});
+      await rememberIfMissing(env.PRESETS, PRESETS_INDEX, key, metadata || {});
       return new Response(value, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders() } });
     }
     if (method === 'PUT') {
@@ -287,12 +293,12 @@ async function handleBspline(request, env, method) {
       const savedAt = Date.now();
       const meta = { savedAt, size: body.length };
       await env.PRESETS.put(key, body, { metadata: meta });
-      await indexUpsert(env.PRESETS, key, meta);
+      await indexUpsert(env.PRESETS, PRESETS_INDEX, key, meta);
       return json({ ok: true, name, savedAt });
     }
     if (method === 'DELETE') {
       await env.PRESETS.delete(key);
-      await indexRemove(env.PRESETS, key);
+      await indexRemove(env.PRESETS, PRESETS_INDEX, key);
       return json({ ok: true, name });
     }
     return json({ error: 'method not allowed' }, 405);

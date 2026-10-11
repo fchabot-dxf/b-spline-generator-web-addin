@@ -1,5 +1,6 @@
 // Brick matrix group 'layout': Generate fully visible at drawer PEEK height.
 // Declared rows / constants for this group live HERE; run.mjs only drives them (tools/brick-matrix/groups/index.mjs).
+import { SIDEBAR_TABS } from '../../../bspline-frame-builder/b-spline-gen/html/main/sidebar-tabs.js';
 
 // ---- layout (Fred, live: "Wall is missing the generate button"): in the drawer layout (phone, or a Fusion
 // palette docked narrower than editor/breakpoints.js MOBILE_MAX_PX) the drawer opens at PEEK height; the
@@ -77,7 +78,7 @@ export const BOARD_FOLLOWS = {
 export const TOUCH_TARGETS = {
   viewports: [{ name: 'phone 390x844', width: 390, height: 844 }, { name: 'narrow phone 360x780', width: 360, height: 780 }],
   minPx: 28,
-  sidebarTabs: ['board', 'surface', 'decor', 'output'],
+  sidebarTabs: SIDEBAR_TABS.map((t) => t.id), // the sidebar tree's branches, read from the app's own declaration
   brickTabs: ['brickTab_general', 'brickTool_wall', 'brickTool_frame', 'brickTool_brush', 'brickTool_raisedBrush', 'brickTool_scissors'],
   artTabs: ['general', 'draw', 'lattice', 'shape', 'text', 'edit'],
   photoTools: [['source', 'crop'], ['source', 'straighten'], ['source', 'rotateFlip'], ['adjust', 'levels'], ['adjust', 'blur']],
@@ -316,7 +317,7 @@ function TOUCH_PROBE(rootExpr, minPx, skip) { return `JSON.stringify((() => { co
     if (r.right > innerWidth + 0.5 || r.left < -0.5) off.push(name + ' right ' + Math.round(r.right));
   }
   return { coarse: matchMedia('(pointer: coarse)').matches, small: [...new Set(small)], off: [...new Set(off)], pageW: document.documentElement.scrollWidth, innerW: innerWidth }; })())`; }
-const SIDEBAR_ROOT = `document.getElementById('sidebarTabs')?.closest('.cad-sidebar')`;
+const SIDEBAR_ROOT = `document.querySelector('.cad-sidebar')`;
 const EDITOR_ROOT = `document.getElementById('svgEditorModal')`;
 async function touchRow(vp, name, opened, rootExpr) {
   const T = TOUCH_TARGETS, r = await jsJSON(TOUCH_PROBE(rootExpr, T.minPx, T.skip));

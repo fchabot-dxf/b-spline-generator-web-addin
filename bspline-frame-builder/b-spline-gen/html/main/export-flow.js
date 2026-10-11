@@ -13,7 +13,7 @@
  *   closeWizard()         dismiss the wizard modal.
  */
 
-import { P, lastResult, isFusionMode, RESOLUTIONS } from '../core/state.js';
+import { P, lastResult, isFusionMode, RESOLUTIONS, flushSessionSave } from '../core/state.js';
 import { resolveGrid } from '../core/terrain.js';
 import { frameSendPayload } from './frame-panel.js';
 import { confirmDialog } from '../core/confirm-dialog.js';
@@ -577,6 +577,7 @@ export async function executeExport(preview, options = null, isAppend = false, f
 }
 
 async function sendToFusion({ shared, heights, offsetPts, unstamped, options, layersToExport, isAppend, filename_hint, btn }) {
+    flushSessionSave(); // a Send: the session copy is current first (state.js SESSION_SAVE)
     // Per-base STEP files. Each PRODUCT in its own file → Fusion's multi-
     // PRODUCT auto-wrapper never triggers, so each variant imports as a
     // single component directly under B-Spline Set with both panel and

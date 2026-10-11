@@ -2044,6 +2044,8 @@
     #editorLayersPanel button,
     .editor-lattice-panel button,
     .panel-pin,
+    .sidebar-branch-caret,
+    .sidebar-branch-label,
     .filter-tweaks-reset,
     .tweak-reset,
     select,
@@ -2064,6 +2066,8 @@
     #editorLayersPanel button,
     .editor-lattice-panel button,
     .panel-pin,
+    .sidebar-branch-caret,
+    .sidebar-branch-label,
     .filter-tweaks-reset,
     .tweak-reset,
     #svgEditorHeader > div:last-child > button.cad-btn {
