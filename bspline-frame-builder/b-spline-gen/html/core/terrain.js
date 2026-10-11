@@ -6,6 +6,8 @@
 
 import { PerlinNoise } from './noise.js';
 import { NoiseModes, NoiseMetadata } from './noise/index.js';
+import { photoCoverAt } from './noise/photo.js';
+import { getProcessedPhotoImage } from './photo/state.js';
 import { SeedTypes } from './seed/index.js';
 
 // 2026-10-10 (seat A + seat D: the on-board photo footprint and the photo preview's "not sampled" overlay): the board
@@ -59,6 +61,24 @@ export const PHOTO_MIRROR_MODES = Object.freeze({
   mirror: Object.freeze({ coords: 'mirror', halfAspect: false }),
   whole: Object.freeze({ coords: 'fold', halfAspect: true }),
 });
+/** 2026-10-10 (Fred: "outside the footprint the photo layer contributes nothing"): what the photo layer gives where
+ *  the photo does not reach (P.photoEdge, core/state.js). `fadeIn`: the soft edge, in board inches, just inside the photo
+ *  -- outside it the plain filter shows, as with the layer off. null: 'clamp', the edge pixels stretched outward (every
+ *  board before; byte-identical). Repeat on tiles the photo, so nothing is outside it in either mode. A params object
+ *  without the key reads as 'clamp'. */
+export const PHOTO_EDGE_MODES = Object.freeze({
+  clamp: Object.freeze({ fadeIn: null }),
+  fade: Object.freeze({ fadeIn: 0.1 }),
+});
+/** The fade in the photo's sample units (0 = none): its vertical sample unit spans the board's height times Map Zoom,
+ *  half that on a y fold sampled in fold coordinates (x2). */
+export function photoEdgeFadeUnits(params) {
+  const fadeIn = (PHOTO_EDGE_MODES[params.photoEdge] || PHOTO_EDGE_MODES.clamp).fadeIn;
+  if (!(fadeIn > 0)) return 0;
+  const f = foldSpecOf(params);
+  const inchesPerUnit = (params.heightIn || 9) * f.mapZoom * (f.fy && !photoMirrors(params) ? 0.5 : 1);
+  return fadeIn / inchesPerUnit;
+}
 export const photoMirrorModeOf = (params) => PHOTO_MIRROR_MODES[params.photoMirrorMode] || PHOTO_MIRROR_MODES.squeeze;
 /** True when the photo samples the true-mirror coordinates (mu / mv). */
 export const photoMirrors = (params) => photoMirrorModeOf(params).coords === 'mirror';
@@ -134,6 +154,9 @@ export function generateHeightmap(params, stampParams = null) {
   const folded = { zu: 0, zv: 0, su: 0, sv: 0, mu: 0, mv: 0 }; // foldUV's output, one object for the whole heightmap
   const photoMirror = photoLayer && photoMirrors(params); // the photo's true mirror (no squeeze), when declared
   const photoAspect = photoLayer ? photoSampleAspect(params, aspect) : aspect; // 'whole': the source half's own proportions
+  // 'fade' (PHOTO_EDGE_MODES): outside the photo the plain filter, through a soft edge; 0 = 'clamp' (untouched)
+  const photoFade = photoLayer ? photoEdgeFadeUnits(params) : 0;
+  const photoImg = photoFade > 0 ? getProcessedPhotoImage(photoParams) : null;
 
   // ── Pass 1 + 2: fine detail & coarse redistribution ───────────────────────
   for (let j = 0; j < nz; j++) {
@@ -175,6 +198,10 @@ export function generateHeightmap(params, stampParams = null) {
         if (photoLayer) {
             fine = photoMirror ? NoiseModes.photo(folded.mu, folded.mv, photoAspect, photoParams, noiseRefs) : NoiseModes.photo(su, sv, photoAspect, photoParams, noiseRefs);
             if (filterShare > 0) fine += ((modeFunc(su, sv, aspect, modeParams, noiseRefs) - rangeLo) / rangeSpan - 0.5) * filterShare;
+            if (photoImg) {
+                const w = photoMirror ? photoCoverAt(folded.mu, folded.mv, photoAspect, photoParams, photoImg, photoFade) : photoCoverAt(su, sv, photoAspect, photoParams, photoImg, photoFade);
+                if (w < 1) fine = w * fine + (1 - w) * modeFunc(su, sv, aspect, modeParams, noiseRefs); // outside: the layer off
+            }
         } else {
             fine = modeFunc(su, sv, aspect, modeParams, noiseRefs);
         }
