@@ -26,6 +26,7 @@ describe('EDITOR_TAB_FOCUS: what each editor tab fades (display only)', () => {
     expect(EDITOR_TAB_FOCUS).toEqual({
       frame: { drawing: INACTIVE_LAYER_OPACITY, art: 1, frameProfile: 1 },
       artwork: { drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY },
+      lattice: { drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY }, // redesign phase 2: Draw's focus
       photo: { drawing: 1, art: 0.35, frameProfile: INACTIVE_LAYER_OPACITY },
       brick: { drawing: 1, art: 0.35, frameProfile: INACTIVE_LAYER_OPACITY },
     });
