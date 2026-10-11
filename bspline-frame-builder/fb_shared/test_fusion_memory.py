@@ -43,6 +43,11 @@ def test_send_and_build_both_read_it_before_they_start():
     cam = open(os.path.join(_ROOT, 'CAM-builder', 'cam-builder.py'), encoding='utf-8').read()
     assert "_post_to_palette('fusion_memory', fusion_memory.read_signal(_log, where))" in bsg
     assert "_post_fusion_memory('Send')" in bsg
+    # 2026-10-10 (Fred, via the advisor): also on panel open (the first handshake) and after each Send's success
+    opened = bsg[bsg.index("if action == 'get_design_params':"):]
+    assert opened.index("_post_fusion_memory('panel open')") < opened.index('return')
+    gen = bsg[bsg.index("if _post_to_palette('import_success', {}):"):]
+    assert gen.index("_post_fusion_memory('after Send')") < gen.index('except Exception')
     assert "_send_to_html('fusion_memory', _fb_shared('fusion_memory').read_signal(_log, where))" in cam
     # the BUILD reading comes before the engine loads (the start of _do_generate)
     gen = cam[cam.index('def _do_generate('):]

@@ -80,6 +80,16 @@ export function getProcessedPhotoImage(params) {
   return _processed;
 }
 
+/** The processed image ONLY if it is already processed for these params -- never runs the edit pipeline (null when the
+ *  edits changed since). For a caller on a tap's synchronous path (main/photo-footprint.js on a photo edit): the
+ *  pipeline (a blur at 4x CPU: ~60 ms) then runs in the backdrop repaint, behind its loading card. */
+export function peekProcessedPhotoImage(params) {
+  const { photoImageDataUrl, photoEdits } = params || {};
+  if (!photoImageDataUrl || _rawBaseSourceUrl !== photoImageDataUrl) return null;
+  if (photoEdits === _checkedEdits && photoImageDataUrl === _checkedUrl) return _processed;
+  return _processedKey === photoImageDataUrl + '|' + JSON.stringify(photoEdits || []) ? _processed : null;
+}
+
 /** The raw (pre-edit) decoded image, for the editor's own preview/crop UI
  * (which needs to show the UNEDITED photo plus a live preview of the
  * edits, not just the final sampled result). null if not decoded yet. */

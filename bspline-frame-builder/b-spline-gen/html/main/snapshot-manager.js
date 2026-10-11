@@ -2,7 +2,7 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache, layerToolingChanged, saveLastSession } from '../core/state.js';
 import { renderLayersPanel } from '../editor/layers.js';
 import { syncUItoParam } from '../core/ui-utils.js';
-import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring } from '../core/history.js';
+import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring, startHistoryAt, UNDO_KEEPS } from '../core/history.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { updateStampMasks, refreshAllStampMasks } from './stamp-mask-manager.js';
 import { deferToHold } from '../core/engine/scheduler.js';
@@ -33,7 +33,7 @@ export function applySnapshot(snap, preview, opts = {}) {
   return withLoadingStage('restore', () => _applySnapshot(snap, preview, opts));
 }
 
-async function _applySnapshot(snap, preview, { source, restore } = {}) {
+async function _applySnapshot(snap, preview, { source, restore, historyLabel = 'Loaded project' } = {}) {
   const frame = restore ? restore.frame : undefined;
   const restoredSvg = source === 'undo' && restore && typeof restore.editorSvg === 'string' ? restore.editorSvg : null;
   if (source !== 'undo' && source !== 'load') {
@@ -47,8 +47,7 @@ async function _applySnapshot(snap, preview, { source, restore } = {}) {
   // ANOTHER one as a side effect of the restore itself.
   setUndoRestoring(true);
   // Save audit #1: the drawing (editorSvg) and the frame have their OWN undo -- a global (terrain/slider) undo
-  // restoring them from an older snapshot wiped the drawing's saved copy (and put back an old frame).
-  const UNDO_KEEPS = new Set(['editorSvg', 'frame']);
+  // restoring them from an older snapshot wiped the drawing's saved copy (and put back an old frame): core/history.js UNDO_KEEPS
   // Save audit #5: a load REPLACES the project -- a key the saved project lacks (an older save: no editorSvg,
   // no frame, a param added since) reads as its default, never as the current session's value.
   if (source === 'load') {
@@ -61,7 +60,7 @@ async function _applySnapshot(snap, preview, { source, restore } = {}) {
   // Fred: the Sculpt tool is never active after opening/loading a project (and an undo never switches it on/off)
   Object.keys(snap.P).forEach(k => {
     if (k === 'activeSculptLayer') return;
-    if (source === 'undo' && UNDO_KEEPS.has(k)) return;
+    if (source === 'undo' && UNDO_KEEPS.includes(k)) return;
     P[k] = snap.P[k];
     syncUItoParam(k, P[k]);
   });
@@ -188,6 +187,9 @@ async function _applySnapshot(snap, preview, { source, restore } = {}) {
   // a redundant full-mask refresh on top of the load.
   AppState.lastNx = nx;
   AppState.lastNz = nz;
+
+  // a load starts the global history over at the loaded board (core/history.js startHistoryAt): undo never crosses it
+  if (source === 'load') startHistoryAt(historyLabel);
 
   scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0);
 }

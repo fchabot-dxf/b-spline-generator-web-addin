@@ -850,6 +850,10 @@ export function _migrateLegacyPatternOntoLayers(editor, legacyPattern) {
  * Frame-side (a completely separate record, `core/frame-record.js`).
  */
 export function resetArtworkToFresh(editor) {
+    // Seat D measured (2026-10-10, claude_17 loaded on claude_16): a frame-linked lattice regenerate started on the OLD
+    // drawing awaited its boundary, then wrote its rails into the NEW one. The document epoch names "this drawing": every
+    // open / Clear starts a new one, and async work started on an older epoch writes nothing (generatePattern).
+    editor._docEpoch = (editor._docEpoch || 0) + 1;
     editor._sketchLayer.clear();
     // T8: the wiped sketch layer's old selection (if any) would otherwise
     // leave its highlight halo / transform handles ghosted on screen — they

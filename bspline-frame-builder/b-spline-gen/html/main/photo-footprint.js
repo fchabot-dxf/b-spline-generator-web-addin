@@ -12,7 +12,7 @@
  * visible even outside board"): only the carve is limited to the board.
  */
 import { P } from '../core/state.js';
-import { getProcessedPhotoImage } from '../core/photo/state.js';
+import { getProcessedPhotoImage, peekProcessedPhotoImage } from '../core/photo/state.js';
 import { photoSampleOf, tweaks as PHOTO_TWEAKS } from '../core/noise/photo.js';
 import { foldSpecOf, unfoldUV, photoSampleAspect, photoMirrors } from '../core/terrain.js';
 import { getEditorTab } from './editor-tabs.js';
@@ -115,9 +115,13 @@ const editor = () => (typeof window !== 'undefined' ? window.svgEditor : null);
 const handlePx = () => PHOTO_GIZMO.handlePx[typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine'];
 
 /** The image the footprint is for: the photo layer's processed photo, while the editor's Photo tab shows. */
-function shownImage() {
-  if (getEditorTab() !== 'photo' || !P.photoLayer || !P.photoImageDataUrl) return null;
-  return getProcessedPhotoImage({ ...P, tweaks: (P.filterTweaks && P.filterTweaks.photo) || {} });
+const footprintShown = () => getEditorTab() === 'photo' && !!P.photoLayer && !!P.photoImageDataUrl;
+/** `process` false: the processed image only if it is ready (photo/state.js peekProcessedPhotoImage) -- never the edit
+ *  pipeline on a tap's synchronous path. */
+function shownImage(process = true) {
+  if (!footprintShown()) return null;
+  const params = { ...P, tweaks: (P.filterTweaks && P.filterTweaks.photo) || {} };
+  return process ? getProcessedPhotoImage(params) : peekProcessedPhotoImage(params);
 }
 
 function el(tag, attrs, parent) {
@@ -184,10 +188,14 @@ export function fitRegionOf(fp) {
 }
 
 /** Show / hide / redraw the footprint from the state (a photo change, a tab change, the board or the view changed). */
-export function syncPhotoFootprint() {
+export function syncPhotoFootprint({ process = true } = {}) {
   const ed = editor();
   const host = ed && ed._sketchLayer && ed._sketchLayer.node && ed._sketchLayer.node.parentNode;
-  const img = host ? shownImage() : null;
+  const img = host ? shownImage(process) : null;
+  // 2026-10-10 (the blind gate, MEASURED on main: a blur release / Rotate 90 froze 63-67 ms before its card): on a photo
+  // edit the image is not processed yet -- keep the outline drawn as it is; the backdrop repaint processes it behind
+  // its card and announces it (editorTopViewUpdated), and the footprint redraws then
+  if (!img && !process && host && footprintShown()) return;
   // the footprint appearing / going (the Photo tab entered or left, the photo loaded or cleared): a view still at Fit
   // re-fits, to hold it (or the board again); a view the user zoomed or panned is left alone. A drag never re-fits (the
   // view would jump under the finger).
@@ -243,6 +251,6 @@ function onUp(e) {
 /** Wire the footprint (main.js, after the Photo tab): `commit(placement)` writes a drag's result as one step. */
 export function initPhotoFootprint({ commit }) {
   _commit = commit;
-  for (const ev of ['editorTabChanged', 'editorBoardResized', 'editorViewChanged']) document.addEventListener(ev, () => syncPhotoFootprint());
+  for (const ev of ['editorTabChanged', 'editorBoardResized', 'editorViewChanged', 'editorTopViewUpdated']) document.addEventListener(ev, () => syncPhotoFootprint());
   syncPhotoFootprint();
 }

@@ -134,7 +134,7 @@ export function deselectPhotoTool() {
 function notifyChange(opts) {
   saveLastSession();
   if (_onChange) _onChange(opts);
-  syncPhotoFootprint();
+  syncPhotoFootprint({ process: false }); // never the edit pipeline before the stage's card (photo-footprint.js)
 }
 
 /** Item 74f (advisor; seat D's Photo audit, measured: crop / levels / brightness / blur / relief changed the 3D but the

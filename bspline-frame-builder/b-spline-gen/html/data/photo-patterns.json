@@ -206,5 +206,31 @@
       "rotation": 0,
       "repeat": 0
     }
+  },
+  {
+    "id": "corrugated_wall",
+    "name": "Corrugated wall",
+    "image": "data/photo-patterns/corrugated_wall.jpg",
+    "thumb": "data/photo-patterns/corrugated_wall_thumb.jpg",
+    "settings": {
+      "straighten": 0,
+      "crop": null,
+      "rotate": 0,
+      "flip": {
+        "h": false,
+        "v": false
+      },
+      "levels": null,
+      "brightness": 0,
+      "contrast": 0,
+      "blur": 0,
+      "invert": false,
+      "depth": 1.0,
+      "scale": 1.0,
+      "offsetX": 0.0,
+      "offsetY": 0.0,
+      "rotation": 0,
+      "repeat": 0
+    }
   }
 ]

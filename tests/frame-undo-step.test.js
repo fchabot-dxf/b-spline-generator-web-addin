@@ -140,3 +140,30 @@ describe('the editor Frame tab: Undo / Redo act on the frame stack', () => {
     expect(art).toEqual(['undo']);
   });
 });
+
+// Seat D measured live (claude_15): after a frame change + the main Undo, the brick re-lay rewrote editorSvg -- the ONLY
+// difference from the newest snapshot -- so the next change recorded a "Before ..." baseline whose undo changed nothing on
+// screen (a global undo never restores editorSvg). core/history.js UNDO_KEEPS is read by the baseline check too.
+describe('UNDO_KEEPS: a key the global undo never restores never makes a baseline', () => {
+  it('frame change, Undo, the re-lay rewrites the drawing, the next change: no extra baseline', async () => {
+    const H = await import('../bspline-frame-builder/b-spline-gen/html/core/history.js');
+    const el = document.getElementById('frameAppearance');
+    el.value = otherOption(el); el.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    H.unifiedUndo(() => {});
+    P.editorSvg = '<svg><g data-brick-piece="1"/></svg>'; // what the re-lay after the undone frame writes
+    const n = globalHistoryLog.length;
+    el.value = otherOption(el); el.dispatchEvent(new Event('change', { bubbles: true }));
+    await settle();
+    expect(globalHistoryLog.slice(n).map((s) => s.label)).toEqual(['Frame change']);
+  });
+
+  it('one declaration: the restore and the baseline read core/history.js UNDO_KEEPS', async () => {
+    const H = await import('../bspline-frame-builder/b-spline-gen/html/core/history.js');
+    expect(H.UNDO_KEEPS).toEqual(['editorSvg', 'frame']);
+    const { readFileSync } = await import('node:fs');
+    const sm = readFileSync('bspline-frame-builder/b-spline-gen/html/main/snapshot-manager.js', 'utf-8');
+    expect(sm).toMatch(/import \{[^}]*UNDO_KEEPS[^}]*\} from '\.\.\/core\/history\.js'/);
+    expect(sm).not.toMatch(/const UNDO_KEEPS/);
+  });
+});

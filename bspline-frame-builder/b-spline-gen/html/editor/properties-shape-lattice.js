@@ -484,7 +484,9 @@ export async function refreshFrameLinkedContours(editor) {
     const frame = frameContext(editor);
     const linked = editor._layers.map((l) => l && l.pattern)
         .filter((p) => p && hasGeneratedSilhouette(p) && contourFromFrameOf(p).on && p.boundary && p.boundary.shapeId);
+    const startEpoch = editor._docEpoch; // a load / Clear replaces the drawing mid-loop: the old patterns stop there
     for (const p of linked) {
+        if (editor._docEpoch !== startEpoch) break;
         const widths = { ...PATTERN_DEFAULTS.widths, ...(p.widths || {}) };
         const contour = { ...PATTERN_DEFAULTS.contour, ...(p.contour || {}) };
         const cw = contour.width != null ? contour.width : widths.rails;
@@ -508,7 +510,7 @@ export async function refreshFrameLinkedContours(editor) {
             await generatePattern(editor, p, { amendUndo: top ? { restored: top } : false });
         } finally {
             _frameLinkRunning = false;
-            if (active != null && editor._activeLayer !== active) setActiveLayer(editor, active);
+            if (active != null && editor._activeLayer !== active && editor._docEpoch === startEpoch) setActiveLayer(editor, active);
         }
     }
 }

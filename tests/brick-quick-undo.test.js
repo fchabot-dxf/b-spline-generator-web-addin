@@ -110,7 +110,9 @@ describe('item 71: recordBoardStep -- a sidebar board change is one global step 
     const seen = [];
     unifiedUndo((snap, restore) => seen.push(['undo', snap.label, restore]));
     unifiedRedo((snap, restore) => seen.push(['redo', snap.label, restore]));
-    expect(seen).toEqual([['undo', 'Before Bricks: test', { editorSvg: '<svg>before</svg>' }], ['redo', 'Bricks: test', { editorSvg: '<svg>after</svg>' }]]);
+    // only the drawing differed from Initial -- a key the global undo never restores (core/history.js UNDO_KEEPS): no
+    // baseline; the step's own restore carries the drawing
+    expect(seen).toEqual([['undo', 'Initial', { editorSvg: '<svg>before</svg>' }], ['redo', 'Bricks: test', { editorSvg: '<svg>after</svg>' }]]);
   });
 
   it('records the current board first when the newest snapshot no longer matches it', () => {
