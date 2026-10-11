@@ -13,11 +13,12 @@
 import { themeBrickSection } from './section-themes.js';
 
 const sec = (id, title, kind, rows, extra = {}) => Object.freeze({ id, title, kind, rows: Object.freeze(rows), ...extra });
-const JOINT = ['brickGroutWidthRow', 'brickGroutSpacingHint'];
+// Fred 2026-10-11 (per-pattern defaults): an element's size and joint (width, depth, profile) -- its pattern's defaults
+// unless overridden there (main/brick-panel.js ELEMENT_LOOK_RESETS)
+const JOINT = ['brickSizeBlock', 'brickGroutWidthRow', 'brickGroutDepthRow', 'brickGroutSpacingHint'];
 
 export const BRICK_TAB_SECTIONS = Object.freeze({
   general: Object.freeze({ host: 'brickSharedLayout', after: null, sections: Object.freeze([
-    sec('size', 'Brick size (in)', 'brick-size', ['brickSizeBlock'], { titleOf: 'brickSizeLabel' }),
     sec('look', 'Look · every element', 'brick-look', ['brickGroutPaintRow']),
     sec('crumble', 'Crumble', 'brick-crumble', ['brickSuppressionRow', 'brickClumpingRow', 'brickTopBiasRow']),
     sec('random', 'Randomness', 'brick-random', ['brickSeedRow']),
@@ -27,7 +28,7 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
     sec('pattern', 'Pattern', 'brick-pattern', ['brickWallPatternRow', 'brickWallRotationRow', 'brickLargeStonesRow'], { titleOf: 'brickWallPatternLabel' }),
     sec('accent', 'Accent relief', 'brick-accent', ['brickWallAccentRow', 'brickAccentActionsRow', 'brickPatternBuilder', 'brickAccentLevelRow'], { titleOf: 'brickWallAccentLabel' }),
     sec('height', 'Height', 'brick-height', ['brickRusticRow_wall', 'brickLevelRow_wall']),
-    sec('joint', 'Joint', 'brick-joint', JOINT),
+    sec('joint', 'Size & joint', 'brick-joint', JOINT),
   ]) }),
   frame: Object.freeze({ host: 'brickFrameSection', after: 'brickElementLabel_frame', sections: Object.freeze([
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
@@ -38,20 +39,20 @@ export const BRICK_TAB_SECTIONS = Object.freeze({
     // item 9 (Fred: the frame crumbles by the wall's rule; the inset window's brick surround)
     sec('crumble', 'Crumble', 'brick-crumble', ['brickFrameCrumbleRow']),
     sec('surround', 'Window surround', 'brick-surround', ['brickWindowSurroundRow'], { titleOf: 'brickSurroundLabel' }),
-    sec('joint', 'Joint', 'brick-joint', JOINT),
+    sec('joint', 'Size & joint', 'brick-joint', JOINT),
   ]) }),
   brush: Object.freeze({ host: 'brickBrushSection', after: 'brickElementLabel_brush', sections: Object.freeze([
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
     sec('stroke', 'Stroke', 'brick-pattern', ['brickBrushProfileRow', 'brickBrushOrientationRow', 'brickBrushPresetRow']),
     sec('accent', 'Accent relief', 'brick-accent', ['brickBrushAccentRow']),
     sec('height', 'Height', 'brick-height', ['brickRusticRow_brush']),
-    sec('joint', 'Joint', 'brick-joint', JOINT),
+    sec('joint', 'Size & joint', 'brick-joint', JOINT),
   ]) }),
   raisedBrush: Object.freeze({ host: 'brickRaisedSection', after: 'brickElementLabel_raisedBrush', sections: Object.freeze([
     sec('bricks', 'Bricks', 'brick-bricks', ['brickSharedSet']),
     sec('mode', 'Mode', 'brick-pattern', ['brickRaisedModeRow'], { titleOf: 'brickRaisedModeLabel' }),
     sec('height', 'Height', 'brick-height', ['brickRaisedLevelRow']),
-    sec('joint', 'Joint', 'brick-joint', JOINT),
+    sec('joint', 'Size & joint', 'brick-joint', JOINT),
   ]) }),
 });
 

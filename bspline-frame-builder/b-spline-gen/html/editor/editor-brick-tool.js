@@ -59,7 +59,7 @@ import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, EN
 import FRAME_DEFS from '../data/frame-defs.js';
 import BRICK_ICONS from '../data/brick-icons.js';
 import { frameContourSilhouette } from './contour-from-frame.js';
-import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet } from '../core/bricks/library.js';
+import { brickSetById, BRICK_PATTERNS, BRUSH_PRESETS, FRAME_PRESETS, BRICK_SETS, scaledSet, ELEMENT_PATTERN, patternDefaultsOf } from '../core/bricks/library.js';
 import { rectToPrimitives } from '../core/inset-window.js';
 import { SURROUND_CORNERS } from '../core/bricks/inset-surround.js';
 import { NEUTRAL_BRICK_GREY } from '../core/bricks/height-grey.js';
@@ -696,16 +696,48 @@ export function elementSetId(settings, kind) {
  *  the user's own joint; null / missing = the element's CURRENT set's declared joint (Red 0.034, the rock set its
  *  wider one) -- so a set change falls back to the new set's joint (main/brick-panel.js clears the override). */
 export const JOINT_ELEMENT = Object.freeze({ wall: 'wall', frame: 'frame', brush: 'brush', raisedBrush: 'brush' });
+/** Fred 2026-10-11 (per-pattern defaults): the element's pattern's declared defaults (library.js patternDefaultsOf) --
+ *  the Wall's pattern, the Brick frame's preset, the Brush's preset (the Raised brush paints the Brush's). */
+export function elementPatternDefaults(settings, kind) {
+  const k = JOINT_ELEMENT[kind] || kind, spec = ELEMENT_PATTERN[k];
+  return patternDefaultsOf(k, settings && spec ? settings[spec.key] : null);
+}
+/** The user's own value for an element in one of the per-element maps (null / missing = none: the pattern's default). */
+export function elementOverride(settings, map, kind) {
+  const v = settings && settings[map] && settings[map][JOINT_ELEMENT[kind] || kind];
+  return v == null ? null : v;
+}
+/** The per-element values the Size & joint section edits, each `override ?? the pattern's default`. */
+export const ELEMENT_LOOK_MAPS = Object.freeze({
+  size: 'sizeByElement', groutWidth: 'groutByElement', groutDepth: 'groutDepthByElement', groutProfile: 'groutProfileByElement',
+});
+export const GROUT_PROFILES = Object.freeze(['recessed', 'flush']);
+export function elementSize(settings, kind) {
+  const v = elementOverride(settings, ELEMENT_LOOK_MAPS.size, kind);
+  return Number.isFinite(v) && v > 0 ? v : elementPatternDefaults(settings, kind).sizeIn;
+}
 export function elementGroutWidth(settings, kind) {
-  const v = settings && settings.groutByElement && settings.groutByElement[JOINT_ELEMENT[kind] || kind];
+  const v = elementOverride(settings, ELEMENT_LOOK_MAPS.groutWidth, kind);
   if (Number.isFinite(v)) return v;
+  const declared = elementPatternDefaults(settings, kind).groutWidthIn;
+  if (Number.isFinite(declared)) return declared;
   const set = setForId(elementSetId(settings || {}, kind));
   return (set && set.grout && set.grout.widthIn) ?? 0.034;
 }
+export function elementGroutDepth(settings, kind) {
+  const v = elementOverride(settings, ELEMENT_LOOK_MAPS.groutDepth, kind);
+  return Number.isFinite(v) && v >= 0 ? v : elementPatternDefaults(settings, kind).groutDepthIn;
+}
+export function elementGroutProfile(settings, kind) {
+  const v = elementOverride(settings, ELEMENT_LOOK_MAPS.groutProfile, kind);
+  return GROUT_PROFILES.includes(v) ? v : elementPatternDefaults(settings, kind).groutProfile;
+}
+/** The settings an element is laid with: the shared ones, with that element's own set, size and joint. */
 export const elementSettings = (settings, kind) => ({
   ...settings,
   setId: elementSetId(settings, kind),
-  grout: { ...(settings.grout || {}), widthIn: elementGroutWidth(settings, kind) },
+  brickLengthIn: elementSize(settings, kind),
+  grout: { ...(settings.grout || {}), widthIn: elementGroutWidth(settings, kind), depthIn: elementGroutDepth(settings, kind), profile: elementGroutProfile(settings, kind) },
 });
 
 /** F35 item 29 (a): a RUNNING bond -- a coursed pattern whose courses stagger (BRICK_PATTERNS staggerFrac > 0:
@@ -1242,10 +1274,11 @@ export function restyleBrushStroke(editor, id, settings) {
   return true;
 }
 
-/** A6 (3D-panel audit; Fred: "single size"): the GLOBAL settings every drawn Brush / Raised stroke follows -- written
+/** A6 (3D-panel audit; Fred: "single size"): the settings every drawn Brush / Raised stroke follows -- written
  *  into each stroke's snapshot when they change; its other settings stay its own. Its bricks regenerate on the next
  *  commit (the snapshot is in regenerateOwnedBrickElements' fingerprint). Returns how many spines changed (no commit).
- *  Seat E (advisor ruling, the per-element model): the SIZE is global (Fred: single size), so every stroke follows it; the
+ *  Seat E (advisor ruling, the per-element model): the SIZE -- since 2026-10-11 the BRUSH element's (per-pattern
+ *  defaults; the caller passes it as brickLengthIn) -- every stroke follows; the
  *  SET is per element, so a stroke keeps its own -- except through the sidebar's quick Set, which applies to ALL elements
  *  (STROKE_FOLLOWS_QUICK_SET, passed as `keys` by that one control). Drafted by seat D (bb), A6_tool.diff. */
 export const STROKE_FOLLOWS_GLOBAL = Object.freeze(['brickLengthIn']);

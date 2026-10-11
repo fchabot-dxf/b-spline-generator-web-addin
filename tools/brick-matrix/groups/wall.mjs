@@ -1,7 +1,7 @@
 // Brick matrix group 'wall': the Wall tool's editor rows (+ its Generate re-lay row).
 // Declared rows / constants for this group live HERE; run.mjs only drives them (tools/brick-matrix/groups/index.mjs).
 
-import { E, RED_SET, ROCK_SET, AT_ONCE, LAYOUT, LEVEL, SURFACE, click, NEEDS_SUPPRESSION, set } from './_shared.mjs';
+import { E, RED_SET, ROCK_SET, AT_ONCE, LAYOUT, LEVEL, SURFACE, click, NEEDS_SUPPRESSION, set, NEEDS_RECESSED } from './_shared.mjs';
 
 export const rows = [
   // ---- editor, Wall tool
@@ -42,6 +42,12 @@ export const rows = [
   { name: 'Raised accents: Course bands', kind: 'editor3d', tool: 'wall', do: click('brickAccent_courseBand'), expect: SURFACE, introducedBy: '82f3755' },
   { name: 'Accent level -1/16', kind: 'editor3d', tool: 'wall', do: set('brickAccentLevel', -0.0625), expect: SURFACE, introducedBy: '82f3755' },
   { name: 'Raised accents: None', kind: 'editor3d', tool: 'wall', do: click('brickAccent_none'), expect: SURFACE, introducedBy: '82f3755' },
+  // Fred 2026-10-11 (per-pattern defaults): the joint profile + depth are the Wall's own now (its Size & joint section;
+  // were the sidebar's board-wide 3D rows) -- 3D-only, a re-mask
+  { name: 'Joint: Flush (Wall)', kind: 'editor3d', tool: 'wall', do: click('brickBtnGroutFlush'), expect: SURFACE },
+  { name: 'Joint depth 0.05 (Wall, Flush)', kind: 'editor3d', tool: 'wall', do: set('brickGroutDepth', 0.05), expect: SURFACE, requires: NEEDS_RECESSED },
+  { name: 'Joint: Recessed (Wall)', kind: 'editor3d', tool: 'wall', do: click('brickBtnGroutRecessed'), expect: SURFACE },
+  { name: 'Joint depth 0.1 (Wall, Recessed)', kind: 'editor3d', tool: 'wall', do: set('brickGroutDepth', 0.1), expect: SURFACE, requires: NEEDS_RECESSED },
   // F35 items 31b + 31e (seat C 02): the pattern builder -- open it (nothing laid yet: an empty tile), Checker's tile at
   // unit 1 (3D only), switch to 1/2 (the engine CUTS the bricks at the tile's cells: a re-lay), base Custom (a blank
   // custom bond: every cell its own half-brick piece), offset course 1 (the marks travel with it), then back to the

@@ -994,17 +994,8 @@
           <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickReliefHeight" value="0.125" min="0.01" max="0.25" step="0.005"></div>
         </div>
 
-        <!-- BRICK audit A7 + A11: "Grout" labels the Recessed / Flush toggle, above its depth; the depth in the compact
-             stepper style (its label on the same row, like the other steppers' width), not a full-width box -->
-        <label class="cad-label">Grout</label>
-        <div class="relief-toggle" id="brickGroutProfileToggle" style="margin-bottom:8px;">
-          <button type="button" class="relief-toggle-btn" id="brickBtnGroutRecessed" title="Joints carved below the surrounding surface by the grout depth"><span>Recessed</span></button>
-          <button type="button" class="relief-toggle-btn active" id="brickBtnGroutFlush" title="Joints sit flush with the base surface"><span>Flush</span></button>
-        </div>
-        <div class="cad-slider-row" style="justify-content:space-between; margin-bottom:12px;">
-          <label class="cad-label" for="brickGroutDepth" style="margin:0;">Grout depth (in)</label>
-          <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickGroutDepth" value="0.05" min="0" max="0.25" step="0.005"></div>
-        </div>
+        <!-- Fred 2026-10-11 (per-pattern defaults): the joint depth + Recessed / Flush are per element now -- each element
+             tab's Size & joint section in the Brick editor (#brickGroutDepthRow), no longer here -->
         </div>
       </div>
 
@@ -3304,8 +3295,20 @@
 
             <div id="brickGroutWidthRow" style="display:flex; gap:4px; margin-bottom:6px;">
               <div style="flex:1;">
-                <label class="cad-label" style="font-size:10px;">Width (in)</label>
+                <label id="brickGroutWidthLabel" class="cad-label" style="font-size:10px;">Joint width (in)</label>
                 <input type="number" id="brickGroutWidth" value="0.06" min="0" max="0.5" step="0.005" style="width:100%;">
+              </div>
+            </div>
+            <!-- Fred 2026-10-11 (per-pattern defaults): the joint DEPTH + profile, per element (was the sidebar's 3D block).
+                 BRICK audit A7 + A11's layout kept: the Recessed / Flush toggle, then the depth in the compact stepper. -->
+            <div id="brickGroutDepthRow">
+              <div class="relief-toggle" id="brickGroutProfileToggle" style="margin-bottom:8px;">
+                <button type="button" class="relief-toggle-btn" id="brickBtnGroutRecessed" title="Joints carved below the surrounding surface by the joint depth"><span>Recessed</span></button>
+                <button type="button" class="relief-toggle-btn active" id="brickBtnGroutFlush" title="Joints sit flush with the base surface"><span>Flush</span></button>
+              </div>
+              <div class="cad-slider-row" style="justify-content:space-between; margin-bottom:12px;">
+                <label id="brickGroutDepthLabel" class="cad-label" for="brickGroutDepth" style="margin:0;">Joint depth (in)</label>
+                <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickGroutDepth" value="0.05" min="0" max="0.25" step="0.005"></div>
               </div>
             </div>
             <!-- F35 item 55: the grout PAINT (main/brick-panel.js setGroutPaint): colour (None = the board shows through) +

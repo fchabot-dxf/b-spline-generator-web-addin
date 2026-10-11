@@ -28,7 +28,7 @@ import { syncFramePanel } from './frame-panel.js';
 import { adoptStoredPhoto } from './photo-panel.js';
 import { endEditorSession } from '../editor/editor-text-session.js';
 import { brickSetById, FRAME_PRESETS } from '../core/bricks/library.js';
-import { ROCK_SET_ID, BRICK_SET_IDS } from '../editor/editor-brick-tool.js';
+import { ROCK_SET_ID, BRICK_SET_IDS, elementSetId } from '../editor/editor-brick-tool.js';
 
 /** The frame a fresh start opens on (data/frame-defs: "Template 1 - Hourglass"). */
 const FRESH_START_FRAME_TEMPLATE = 'template_1';
@@ -632,6 +632,33 @@ export const MIGRATIONS = [
       const w = b.grout && Number.isFinite(b.grout.widthIn) ? b.grout.widthIn : null;
       b.groutByElement = { wall: w, frame: w, brush: w };
       if (b.grout) delete b.grout.widthIn;
+    },
+  },
+  {
+    id: 'brick-size-per-element',
+    // Fred 2026-10-11 (per-pattern defaults): the one board-wide brick size and joint depth / profile -> per element, each
+    // null = the element's pattern's declared default. A saved board copies its OWN values into every element as the
+    // user's overrides, so it lays byte-identical; a new board starts on the defaults (its brickSettings carry the maps).
+    // A save with no size key laid at scale 1 -- each element at its own set's length -- and keeps exactly that.
+    when: (p) => p.brickSettings && !p.brickSettings.sizeByElement,
+    apply: (p) => {
+      const b = p.brickSettings;
+      const L = Number.isFinite(b.brickLengthIn) && b.brickLengthIn > 0 ? b.brickLengthIn : null;
+      const own = (kind) => (brickSetById(elementSetId(b, kind)) || brickSetById(1)).brickLengthIn;
+      b.sizeByElement = { wall: L ?? own('wall'), frame: L ?? own('frame'), brush: L ?? own('brush') };
+      delete b.brickLengthIn;
+      const g = b.grout || (b.grout = {});
+      const d = Number.isFinite(g.depthIn) ? g.depthIn : null;
+      const pr = g.profile === 'recessed' || g.profile === 'flush' ? g.profile : null;
+      b.groutDepthByElement = { wall: d, frame: d, brush: d };
+      b.groutProfileByElement = { wall: pr, frame: pr, brush: pr };
+      delete g.depthIn;
+      delete g.profile;
+      // a surface style's remembered profile (setSurfaceStyle): one per element now
+      if (typeof b.groutProfileBeforeStyle === 'string') {
+        const was = b.groutProfileBeforeStyle;
+        b.groutProfileBeforeStyle = { wall: was, frame: was, brush: was };
+      }
     },
   },
   // 'frame-corner-presets' (item 33: a board on butt_frame / quoin_corners became Soldier + a Corners-row pick) is

@@ -29,6 +29,7 @@ import {
   BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
+  elementSize, elementGroutDepth, elementGroutProfile, elementOverride, elementPatternDefaults, ELEMENT_LOOK_MAPS, GROUT_PROFILES,
   topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_FOLLOW, SURROUND_CORNER_LIST, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, framePresetTileSvg, wallPatternTileSvg, frameCornerEffectFor,
   FRAME_FAN_CENTRES, frameFanCentreOf, fanCentreIconSvg, frameHasFanFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
@@ -135,7 +136,7 @@ export const brickTabs = () => [BRICK_GENERAL_TAB, ...BRICK_TOOLS.filter((t) => 
  *  own "Look" section and Suppression .. Seed its Crumble / Randomness sections (main/brick-tab-sections.js), so the
  *  Grout and Scatter blocks -- the only 'both' and the other 'global' scope -- are gone. */
 export const BRICK_ROW_SCOPES = Object.freeze({
-  brickSharedSet: 'element', brickSizeBlock: 'global', brickGroutWidthRow: 'element',
+  brickSharedSet: 'element', brickSizeBlock: 'element', brickGroutWidthRow: 'element', brickGroutDepthRow: 'element', // Fred 2026-10-11: size + joint per element
 });
 
 let _activeTool = null;
@@ -231,12 +232,9 @@ function syncSetPicker() {
  *  0.12in vs Set 1's measured 0.06in) -- otherwise the slider would silently
  *  keep showing/using the PREVIOUS set's own width after a switch, which
  *  `toBrickOpts` always applies verbatim regardless of which set is active.
- *  F35 item 16: brickLengthIn is now a GLOBAL, absolute real-world size --
- *  deliberately NOT reset here (unlike the old Frame-only frameBrickLengthIn
- *  it replaced, which WAS force-synced to the new set on every switch): a
- *  user who picked "2 inch bricks" means 2 inches regardless of which photo
- *  texture is applied, the same way Wall/Brush's own old relative Scale
- *  multiplier never needed a reset either. */
+ *  The SIZE (per element since 2026-10-11: sizeByElement, absolute inches) is
+ *  deliberately NOT reset here: a user who picked "2 inch bricks" means 2
+ *  inches regardless of which photo texture is applied. */
 export function selectSet(setId, commit = 'generate', kinds = [_setKind()], { strokes = false } = {}) {
   const set = brickSetById(setId);
   if (!set || !kinds.every((k) => setsOfferedFor(k).includes(setId))) return;
@@ -280,84 +278,76 @@ const BRICK_SIZE_PRESETS = [
 const BRICK_SIZE_MIN_IN = 0.375;
 const BRICK_SIZE_MAX_IN = 8;
 
-/** UX refine (Fred, 2026-10-10): a Frame preset's declared `bestSize` (core/bricks/library.js FRAME_PRESETS) is a
- *  SUGGESTION -- a "best" mark on that Size chip wherever the chips appear, and a one-line hint with a Use-it button
- *  under each frame picker. Only the button changes the size (brick size is one global value). Declared: the words,
- *  where the chips are, where the hints go and how each one commits (as its own chips do). */
-export const BEST_SIZE_HINT = Object.freeze({
-  text: 'Reads best at {size}',
-  button: 'Use it',
-  mark: 'best',
-  markTitle: 'The frame preset reads best at this size',
-  undoLabel: 'Bricks: Brick size',
-});
-const BEST_SIZE_CHIP_IDS = Object.freeze([
-  (chip) => `brickSizePreset_${chip.id}`, // the Brick editor (renderBrickSizePresetList)
-  (chip) => `brickQuick_size_${chip.id}`, // the sidebar quick settings (BRICK_QUICK_SETTINGS 'size')
+/** Fred 2026-10-11 (per-pattern defaults): every pattern declares its default size and joint (core/bricks/library.js
+ *  patternDefaultsOf; a frame preset's bestSize is its default size) and an element lays at them unless the user overrides
+ *  a value in its Size & joint section. The Size chip equal to the element's default carries a mark (a dot,
+ *  CSS .pattern-default) wherever the chips are -- the editor's for the active element, the sidebar quick row's for the
+ *  Wall (QUICK_SIZE_ELEMENT). The old Best-size hint and its [Use it] are retired: a default applies itself. */
+export const PATTERN_DEFAULT_MARK = Object.freeze({ cls: 'pattern-default', title: "This element's pattern default" });
+export const QUICK_SIZE_ELEMENT = 'wall'; // Fred 2026-10-11: the sidebar quick Size row sets the Wall's size
+const SIZE_CHIP_HOSTS = Object.freeze([
+  { idOf: (chip) => `brickSizePreset_${chip.id}`, kind: () => _jointKind() }, // the Brick editor (renderBrickSizePresetList)
+  { idOf: (chip) => `brickQuick_size_${chip.id}`, kind: () => QUICK_SIZE_ELEMENT }, // the sidebar quick settings
 ]);
-const BEST_SIZE_HINT_HOSTS = Object.freeze([
-  { id: 'editor', anchor: 'brickFramePresetList', commit: 'generate', stage: null },
-  { id: 'quick', anchor: 'brickQuickRow_frameBands', commit: 'auto', stage: 'bricks' },
-]);
-export const bestSizeHintId = (hostId) => `brickBestSizeHint_${hostId}`;
-
-/** The Size chip the current Frame preset reads best at, or null: none declared, not a chip, or already the size. */
-export function suggestedBrickSize(settings) {
-  const best = FRAME_PRESETS[settings && settings.frameBandPreset]?.bestSize;
-  const chip = BRICK_SIZE_PRESETS.find((p) => p.lengthIn === best);
-  return chip && chip.lengthIn !== settings.brickLengthIn ? chip : null;
-}
-
-/** [Use it]: the suggested size, as ONE undo step (the sidebar: a global step; in the editor, the editor's own). */
-function useSuggestedBrickSize(host) {
-  const chip = suggestedBrickSize(P.brickSettings);
-  if (!chip) return;
-  const run = () => recordBoardStep(BEST_SIZE_HINT.undoLabel, () => setBrickSize(chip.lengthIn, host.commit));
-  if (host.stage) withLoadingStageShownFirst(host.stage, run); else run();
-}
-
-function _bestSizeHintEl(host) {
-  const anchor = document.getElementById(host.anchor);
-  if (!anchor || !anchor.parentNode) return null;
-  let el = document.getElementById(bestSizeHintId(host.id));
-  if (el && el.previousElementSibling === anchor) return el;
-  el?.remove();
-  el = document.createElement('div');
-  el.id = bestSizeHintId(host.id);
-  el.className = 'brick-best-size-hint';
-  el.style.cssText = 'display:none; align-items:center; gap:8px; margin:-4px 0 10px; font-size:11px;';
-  const text = document.createElement('span');
-  text.className = 'brick-best-size-text';
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'cad-btn';
-  btn.id = `brickBestSizeUse_${host.id}`;
-  btn.textContent = BEST_SIZE_HINT.button;
-  btn.style.cssText = 'min-width:0; height:auto; padding:2px 10px; white-space:nowrap; flex:none;';
-  btn.addEventListener('click', () => useSuggestedBrickSize(host));
-  el.append(text, btn);
-  anchor.after(el);
-  return el;
-}
-
-/** The "best" marks on the Size chips and the hints under the frame pickers, from suggestedBrickSize. */
-function syncBestSize() {
-  const best = suggestedBrickSize(P.brickSettings);
-  for (const chip of BRICK_SIZE_PRESETS) {
-    for (const idOf of BEST_SIZE_CHIP_IDS) {
-      const el = document.getElementById(idOf(chip));
+function syncPatternDefaultChips() {
+  for (const host of SIZE_CHIP_HOSTS) {
+    const def = elementPatternDefaults(P.brickSettings, host.kind()).sizeIn;
+    for (const chip of BRICK_SIZE_PRESETS) {
+      const el = document.getElementById(host.idOf(chip));
       if (!el) continue;
-      const on = chip === best;
-      el.classList.toggle('best-size', on);
-      if (on) { el.dataset.best = BEST_SIZE_HINT.mark; el.title = BEST_SIZE_HINT.markTitle; }
-      else if (el.dataset.best) { delete el.dataset.best; el.removeAttribute('title'); }
+      const on = chip.lengthIn === def;
+      el.classList.toggle(PATTERN_DEFAULT_MARK.cls, on);
+      if (on) el.title = PATTERN_DEFAULT_MARK.title;
+      else if (el.title === PATTERN_DEFAULT_MARK.title) el.removeAttribute('title');
     }
   }
-  for (const host of BEST_SIZE_HINT_HOSTS) {
-    const el = best ? _bestSizeHintEl(host) : document.getElementById(bestSizeHintId(host.id));
-    if (!el) continue;
-    el.style.display = best ? 'flex' : 'none';
-    if (best) el.querySelector('.brick-best-size-text').textContent = BEST_SIZE_HINT.text.replace('{size}', best.label);
+}
+/** The Size & joint section's resets (Fred: an icon only, the tweak rows' own ↺): each shown only while the active
+ *  element overrides one of its values, placed after its row's label; a click clears those overrides (the element is
+ *  back on its pattern's defaults) and commits as the row's own control does. */
+export const ELEMENT_LOOK_RESETS = Object.freeze([
+  Object.freeze({ id: 'brickLookReset_size', after: 'brickSizeLabel', looks: Object.freeze(['size']), commit: 'generate' }),
+  Object.freeze({ id: 'brickLookReset_groutWidth', after: 'brickGroutWidthLabel', looks: Object.freeze(['groutWidth']), commit: 'generate' }),
+  Object.freeze({ id: 'brickLookReset_groutDepth', after: 'brickGroutDepthLabel', looks: Object.freeze(['groutDepth', 'groutProfile']), commit: 'surface' }),
+]);
+export const LOOK_RESET_TITLE = 'Reset to pattern default';
+/** Writes the active element's value (null = back to the pattern's default) into a per-element map. */
+function _setElementLook(look, value, kind = _jointKind()) {
+  const map = ELEMENT_LOOK_MAPS[look];
+  P.brickSettings[map] = { ...(P.brickSettings[map] || {}), [JOINT_ELEMENT[kind] || kind]: value };
+}
+function _renderLookResets() {
+  for (const r of ELEMENT_LOOK_RESETS) {
+    if (document.getElementById(r.id)) continue;
+    const anchor = document.getElementById(r.after);
+    if (!anchor) continue;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = r.id;
+    btn.className = 'tweak-reset';
+    btn.textContent = '↺';
+    btn.title = LOOK_RESET_TITLE;
+    btn.setAttribute('aria-label', LOOK_RESET_TITLE);
+    btn.addEventListener('click', () => {
+      for (const look of r.looks) _setElementLook(look, null);
+      syncElementLook();
+      commitBrickSetting(r.commit);
+    });
+    anchor.after(btn);
+  }
+}
+/** The active element's size and joint shown in its section, the default chip marked, each reset shown iff overridden. */
+function syncElementLook() {
+  const s = P.brickSettings, kind = _jointKind();
+  syncBrickSizeControls(elementSize(s, kind));
+  syncBrickSizePresetButtons();
+  syncGroutWidthBox();
+  const depth = document.getElementById('brickGroutDepth');
+  if (depth) depth.value = String(elementGroutDepth(s, kind));
+  _syncGroutProfileToggle(elementGroutProfile(s, kind));
+  for (const r of ELEMENT_LOOK_RESETS) {
+    const btn = document.getElementById(r.id);
+    if (btn) btn.style.display = r.looks.some((look) => elementOverride(s, ELEMENT_LOOK_MAPS[look], kind) != null) ? '' : 'none';
   }
 }
 
@@ -393,17 +383,18 @@ function renderBrickSizePresetList(container) {
 }
 
 function syncBrickSizePresetButtons() {
+  const size = elementSize(P.brickSettings, _jointKind());
   for (const preset of BRICK_SIZE_PRESETS) {
-    document.getElementById(`brickSizePreset_${preset.id}`)?.classList.toggle('active', preset.lengthIn === P.brickSettings.brickLengthIn);
+    document.getElementById(`brickSizePreset_${preset.id}`)?.classList.toggle('active', preset.lengthIn === size);
   }
   syncQuickSettings();
 }
 
-export function setBrickSize(lengthIn, commit = 'generate') {
+/** An element's size (Fred 2026-10-11: per element, its override; `kind` the active element unless given). */
+export function setBrickSize(lengthIn, commit = 'generate', kind = _jointKind()) {
   const v = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, lengthIn));
-  P.brickSettings.brickLengthIn = v;
-  syncBrickSizeControls(v);
-  syncBrickSizePresetButtons();
+  _setElementLook('size', v, kind);
+  syncElementLook();
   commitBrickSetting(commit);
 }
 
@@ -417,13 +408,20 @@ function syncBrickSizeControls(v) {
   if (number) number.value = String(v);
 }
 
-function _writeGroutProfile(profile) {
-  P.brickSettings.grout.profile = profile;
+function _syncGroutProfileToggle(profile) {
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', profile === 'recessed');
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', profile === 'flush');
 }
+/** An element's joint profile (Fred 2026-10-11: per element); the active element's unless `kind` is given. */
+function _writeGroutProfile(profile, kind = _jointKind()) {
+  _setElementLook('groutProfile', profile, kind);
+  if ((JOINT_ELEMENT[kind] || kind) === (JOINT_ELEMENT[_jointKind()] || _jointKind())) _syncGroutProfileToggle(profile);
+  syncElementLook();
+}
 
-export function setGroutProfile(profile, commit = 'surface') { // F35 item 18: height-only (the joint recess)
+/** The per-element looks' elements (the Raised brush shares the Brush's). */
+const GROUT_LOOK_KINDS = Object.freeze(['wall', 'frame', 'brush']);
+export function setGroutProfile(profile, commit = 'surface') { // F35 item 18: height-only (the joint recess); the active element's
   _writeGroutProfile(profile);
   delete P.brickSettings.groutProfileBeforeStyle; // the user's own pick wins over a style's restore
   commitBrickSetting(commit);
@@ -1110,13 +1108,14 @@ export function setSurfaceStyle(styleId, commit = 'surface') {
   P.brickSettings.surfaceStyle = style.id;
   // the style's declared grout profile (Weathered -> Recessed); a style without one restores what it replaced
   const s = P.brickSettings;
+  // per element since 2026-10-11: each element's own value (its override, null = its pattern's default) is remembered
   if (style.groutProfile) {
-    if (s.grout.profile !== style.groutProfile) {
-      if (s.groutProfileBeforeStyle == null) s.groutProfileBeforeStyle = s.grout.profile;
-      _writeGroutProfile(style.groutProfile);
+    if (GROUT_LOOK_KINDS.some((k) => elementGroutProfile(s, k) !== style.groutProfile)) {
+      if (s.groutProfileBeforeStyle == null) s.groutProfileBeforeStyle = Object.fromEntries(GROUT_LOOK_KINDS.map((k) => [k, elementOverride(s, ELEMENT_LOOK_MAPS.groutProfile, k)]));
+      for (const k of GROUT_LOOK_KINDS) _writeGroutProfile(style.groutProfile, k);
     }
   } else if (s.groutProfileBeforeStyle != null) {
-    _writeGroutProfile(s.groutProfileBeforeStyle);
+    for (const k of GROUT_LOOK_KINDS) _writeGroutProfile(s.groutProfileBeforeStyle[k] ?? null, k);
     delete s.groutProfileBeforeStyle;
   }
   syncSurfaceStyleToggle();
@@ -1256,14 +1255,9 @@ function syncControlsFromState() {
   syncWallPatternButtons();
   renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
   syncFrameBandPatternButtons();
-  syncBrickSizeControls(s.brickLengthIn);
-  syncBrickSizePresetButtons();
-  syncGroutWidthBox();
+  syncElementLook(); // the active element's size + joint, its default chip, its resets
   syncGroutPaintRow(); // item 55
   syncFrameOffsetControl();
-  document.getElementById('brickGroutDepth').value = s.grout.depthIn;
-  document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', s.grout.profile === 'recessed');
-  document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', s.grout.profile === 'flush');
   syncReliefToggle();
   syncControlRequires();
   syncRaisedSection();
@@ -1484,7 +1478,7 @@ function _resetJointsOnSetChange() {
     }
   }
   _jointSets = now;
-  syncGroutWidthBox();
+  syncElementLook();
 }
 
 /** The one entry point every brick-setting control calls after writing P.brickSettings. */
@@ -1496,7 +1490,8 @@ export function commitBrickSetting(commit = 'generate', phase = 'onRelease', str
   // with no Wall / Frame on the board to re-lay, their own one
   const editor = phase === 'onRelease' && typeof window !== 'undefined' ? window.svgEditor : null;
   const strokeKeys = [...STROKE_FOLLOWS_GLOBAL, ...Object.keys(strokeValues || {})];
-  const strokesMoved = editor ? strokesFollowGlobals(editor, { ...P.brickSettings, ...(strokeValues || {}) }, strokeKeys) : 0;
+  // the size a stroke follows is the BRUSH element's (per-pattern defaults: override ?? the brush preset's default)
+  const strokesMoved = editor ? strokesFollowGlobals(editor, { ...P.brickSettings, brickLengthIn: elementSize(P.brickSettings, 'brush'), ...(strokeValues || {}) }, strokeKeys) : 0;
   const relayCommits = strokesMoved > 0 && _kindsToLay(editor, resolveFrameGeom(editor)).length > 0;
   (BRICK_COMMIT[commit] || BRICK_COMMIT.generate)[phase]();
   if (strokesMoved && !relayCommits) commitEdit(editor);
@@ -1593,7 +1588,7 @@ const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 's
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
 // (Level, elementLevelIn, left this list for audit v2 N6: an editor Level change re-lays like a layout setting)
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent'];
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent', 'groutDepthByElement', 'groutProfileByElement'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 /** F35 item 55: the grout PAINT -- 2D + the drape only, never a layout (repaintGrout, no re-lay). */
@@ -1930,7 +1925,7 @@ function bindBrickSizeControls(commit = 'generate') {
     const clamped = Math.min(BRICK_SIZE_MAX_IN, Math.max(BRICK_SIZE_MIN_IN, v));
     if (slider) slider.value = String(brickSizeToSliderPos(clamped));
     if (number) number.value = String(clamped);
-    P.brickSettings.brickLengthIn = clamped;
+    _setElementLook('size', clamped);
     return true;
   };
   const drag = (v) => { if (apply(v)) commitBrickSetting(commit, 'onDrag'); };
@@ -1941,11 +1936,13 @@ function bindBrickSizeControls(commit = 'generate') {
   number?.addEventListener('change', (e) => release(parseFloat(e.target.value)));
 }
 
-function bindGroutField(id, key, commit = 'generate') {
+/** A per-element look's number field (the joint depth): the active element's value (ELEMENT_LOOK_MAPS[look]). */
+function bindGroutField(id, look, commit = 'generate') {
   const write = (e, phase) => {
     const v = parseFloat(e.target.value);
     if (!Number.isFinite(v)) return;
-    P.brickSettings.grout[key] = v;
+    _setElementLook(look, v);
+    if (phase === 'onRelease') syncElementLook();
     commitBrickSetting(commit, phase);
   };
   const settle = settleAfterTyping(commit);
@@ -2779,7 +2776,7 @@ function selectTool(id, { keepSelection = false } = {}) {
   _generalTab = false; // item 43: a tool pick (a tab, a sub-tool or Select on the canvas) shows that tool's tab
   if (id === 'stripe') _subTool = 'stripe';
   syncToolButtons();
-  syncGroutWidthBox(); // the Grout box follows the active element's joint
+  syncElementLook(); // the Size & joint section follows the active element (its size, joint, default mark, resets)
   syncGroutPaintRow();
   syncSetPicker(); // item 61: the Set row shows the active element's own sets (the Frame: every band-capable one)
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
@@ -2792,6 +2789,7 @@ function selectTool(id, { keepSelection = false } = {}) {
     editor._brickSettings = P.brickSettings; // same object, mutated in place -- see header
     // turn 201: a variant's own stroke fields; item 23: + the tool's own set, frozen into each stroke
     editor._brickStrokeOverrides = () => ({ setId: elementSetId(P.brickSettings, tool.id), rustic: _rustic('brush'),
+      brickLengthIn: elementSize(P.brickSettings, tool.id), // the Brush's size (it follows it: STROKE_FOLLOWS_GLOBAL)
       grout: { ...P.brickSettings.grout, widthIn: elementGroutWidth(P.brickSettings, tool.id) }, // its own joint, frozen
       ...(tool.strokeOverrides ? tool.strokeOverrides() : {}) });
     editor.setMode('brickBrush');
@@ -2876,7 +2874,7 @@ export const BRICK_QUICK_SETTINGS = [
       when: () => new Set(SET_KINDS().map((k) => elementSetId(P.brickSettings, k))).size > 1 },
     isCurrent: (c) => SET_KINDS().every((k) => elementSetId(P.brickSettings, k) === c.id), apply: (c) => selectSet(c.id, 'auto', SET_KINDS(), { strokes: true }) }, // A6: applies to every element, strokes too
   { id: 'size', label: 'Brick size', stage: 'bricks', choices: () => BRICK_SIZE_PRESETS,
-    isCurrent: (c) => c.lengthIn === P.brickSettings.brickLengthIn, apply: (c) => setBrickSize(c.lengthIn, 'auto') },
+    isCurrent: (c) => c.lengthIn === elementSize(P.brickSettings, QUICK_SIZE_ELEMENT), apply: (c) => setBrickSize(c.lengthIn, 'auto', QUICK_SIZE_ELEMENT) },
   { id: 'pattern', label: 'Wall pattern', stage: 'bricks', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternTileSvg(c.id, PICKER_ICON_PX), picker: true,
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
   // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
@@ -2974,7 +2972,7 @@ function syncQuickSettings() {
     const mixed = row.mixed ? document.getElementById(quickMixedId(row)) : null;
     if (mixed) mixed.style.display = !any && row.mixed.when() ? '' : 'none';
   }
-  syncBestSize(); // both chip sets + both hints (every size or frame-preset sync ends here)
+  syncPatternDefaultChips(); // both chip sets' default marks (every size or pattern sync ends here)
 }
 
 /** T86 item 7: labels for core/bricks/library.js's own declared BRUSH_PRESETS keys (the 3
@@ -3081,7 +3079,7 @@ const BRICK_HINT_MAX_SIZE_IN = 1.5;
 function updateSpacingHint(groutWidthIn) {
   const gw = groutWidthIn ?? Math.min(...BRICK_KINDS.map((k) => elementGroutWidth(P.brickSettings, k)));
   const bricksExist = document.querySelectorAll('[data-brick-gen="1"]').length > 0;
-  const smallEnoughToHelp = P.brickSettings.brickLengthIn <= BRICK_HINT_MAX_SIZE_IN;
+  const smallEnoughToHelp = Math.min(...BRICK_KINDS.map((k) => elementSize(P.brickSettings, k))) <= BRICK_HINT_MAX_SIZE_IN;
   const targetSpacing = gw > 0 ? gw / GROUT_SAMPLES_ACROSS : null;
   const exportSpacing = effectiveExportSpacing();
   const show = bricksExist && smallEnoughToHelp && targetSpacing != null && exportSpacing > targetSpacing;
@@ -3161,7 +3159,8 @@ export function initBrickPanel() {
   document.getElementById('brickGroutColorNone')?.addEventListener('click', () => setGroutPaint({ color: null }));
   document.getElementById('brickGroutEdge')?.addEventListener('change', (e) => setGroutPaint({ paintInsetIn: e.target.value }));
   syncGroutPaintRow();
-  bindGroutField('brickGroutDepth', 'depthIn', 'surface'); // F35 item 18: the joint recess depth, height-only
+  bindGroutField('brickGroutDepth', 'groutDepth', 'surface'); // F35 item 18: the joint recess depth, height-only (per element)
+  _renderLookResets(); // the Size & joint section's ↺ (ELEMENT_LOOK_RESETS)
   document.getElementById('brickBtnGroutRecessed')?.addEventListener('click', () => setGroutProfile('recessed'));
   document.getElementById('brickBtnGroutFlush')?.addEventListener('click', () => setGroutProfile('flush'));
   // F35 item 18 (3): Relief + Max Height moved to the main sidebar -- 'auto' there (re-lay at once)

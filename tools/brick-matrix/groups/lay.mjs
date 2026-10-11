@@ -228,7 +228,7 @@ async function runStrokesFollow() {
   const a = await read();
   await click(F.sizePreset, 2500);
   const b = await read();
-  checkRow('lay', 'A6: a stroke follows the global Brick size (no Wall / Frame on the board)', a.pieces > 0 && b.size === F.sizeIn && b.pieces !== a.pieces,
+  checkRow('lay', 'A6: a stroke follows the Brush\'s size (no Wall / Frame on the board)', a.pieces > 0 && b.size === F.sizeIn && b.pieces !== a.pieces,
     `pieces ${a.pieces} -> ${b.pieces}, snapshot size ${a.size} -> ${b.size}`);
   await click(F.wallTool, 800); await click(F.generate, 2500);
   await click(F.quickSet, 2500);

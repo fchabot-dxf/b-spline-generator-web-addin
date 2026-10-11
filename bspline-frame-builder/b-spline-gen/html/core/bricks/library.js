@@ -438,9 +438,9 @@ export const BRICK_PATTERNS = Object.freeze({
  */
 /**
  * UX refine (Fred, 2026-10-10): a preset's optional `bestSize` -- the brick size (inches, one of the Size chips:
- * 0.375 / 0.75 / 1 / 1.25 / 1.5 / 3 / 8) it reads best at. The app only SUGGESTS it (a "best" mark on that chip and a
- * "Reads best at ..." hint with a Use-it button, main/brick-panel.js); brick size stays one global value and nothing
- * changes it on its own. Absent = no suggestion. It rides on the band list as a NON-enumerable property, so every
+ * 0.375 / 0.75 / 1 / 1.25 / 1.5 / 3 / 8) it reads best at. Since 2026-10-11 (Fred: per-pattern defaults) it IS the
+ * preset's DEFAULT size (patternDefaultsOf below): the Brick frame lays at it unless the user overrides the frame's
+ * size. Absent = BRICK_PATTERN_DEFAULTS' size. It rides on the band list as a NON-enumerable property, so every
  * reader of the bands (iteration, spread, map, JSON, the engine) sees exactly the list it always did -- read it as
  * `FRAME_PRESETS[id].bestSize`.
  */
@@ -637,6 +637,36 @@ export const BRUSH_PRESETS = Object.freeze({
     { widthIn: 0.2, pattern: 'flemish' },
   ],
 });
+
+/**
+ * PATTERN DEFAULTS (Fred 2026-10-11: "patterns aren't all bricks" -- pavers, blocks, mosaics): every pattern declares its
+ * default SIZE (in, the absolute size the element lays at: scaleFor = size / its set's own length) and GROUT (joint width,
+ * depth, profile). An element (Wall / Brick frame / Brush) lays at its pattern's defaults unless the user overrides a value
+ * in that element's Size & joint section (brickSettings.sizeByElement / groutByElement / groutDepthByElement /
+ * groutProfileByElement, null = the default). BRICK_PATTERN_DEFAULTS is the fallback every pattern starts from; each table
+ * below lists only what a pattern changes. groutWidthIn null = the element's brick set's own declared joint.
+ */
+// size: Fred 2026-10-05's new-board 1 1/4 in; the joint depth is Set 1's own declared one (audit C4: never a second guess);
+// a new board's joints are Recessed (Fred, turn 207)
+export const BRICK_PATTERN_DEFAULTS = Object.freeze({ sizeIn: 1.25, groutWidthIn: null, groutDepthIn: BRICK_SETS.find((x) => x.id === 1).grout.depthIn, groutProfile: 'recessed' });
+/** the Wall's patterns (BRICK_PATTERNS ids): none differs yet (non-brick defaults come as rows, Fred 2026-10-11) */
+export const WALL_PATTERN_DEFAULTS = Object.freeze({});
+/** the Brick frame's presets: their size is the preset's bestSize (withBestSize, above); other values per preset here */
+export const FRAME_PRESET_DEFAULTS = Object.freeze({});
+/** the Brush's presets (BRUSH_PRESETS ids): none differs yet */
+export const BRUSH_PRESET_DEFAULTS = Object.freeze({});
+/** Which pattern registry an element reads, and which brickSettings key holds its pick (raisedBrush paints the Brush's). */
+export const ELEMENT_PATTERN = Object.freeze({
+  wall: Object.freeze({ key: 'pattern', table: WALL_PATTERN_DEFAULTS }),
+  frame: Object.freeze({ key: 'frameBandPreset', table: FRAME_PRESET_DEFAULTS }),
+  brush: Object.freeze({ key: 'brushBandPreset', table: BRUSH_PRESET_DEFAULTS }),
+});
+/** A pattern's defaults: the fallback, its bestSize (a frame preset), then its own table row. `kind` wall | frame | brush. */
+export function patternDefaultsOf(kind, id) {
+  const spec = ELEMENT_PATTERN[kind];
+  const best = kind === 'frame' && FRAME_PRESETS[id] && FRAME_PRESETS[id].bestSize;
+  return { ...BRICK_PATTERN_DEFAULTS, ...(best ? { sizeIn: best } : {}), ...((spec && spec.table[id]) || {}) };
+}
 
 export function brickSetById(id) {
   return BRICK_SETS.find((s) => s.id === id) || null;

@@ -55,4 +55,4 @@ export const rows = [
 // into a fixture, the same class as MIGRATION's neutral set. Applied when the group runs on its own (--parallel = the
 // gate); an all-groups run shares one baseline with the wall group's own size rows, so it is left as is.
 export const setup =
-  [{ set: 'brickSize', value: 1, event: 'change', why: 'the frame rows were measured at 1 in' }];
+  [{ brickSizes: { wall: 1, frame: 1, brush: 1 }, why: 'the frame rows were measured at 1 in (every element: the size is per element since 2026-10-11)' }];

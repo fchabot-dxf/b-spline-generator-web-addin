@@ -61,16 +61,17 @@ describe('BRICK audit layout items', () => {
     // the sidebar no longer carries the "Quick settings" title / hint
     expect(document.body.textContent).not.toContain('Quick settings');
   });
-  it('A7: "Grout" labels the Recessed / Flush toggle, which sits above the depth', () => {
+  it('A7: the Recessed / Flush toggle sits above the depth -- per element since 2026-10-11, in the editor, not the sidebar', () => {
     const toggle = $('brickGroutProfileToggle');
-    expect(toggle.previousElementSibling.textContent.trim()).toBe('Grout');
     expect(toggle.compareDocumentPosition($('brickGroutDepth')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(toggle.closest('#brickGroutDepthRow')).not.toBeNull(); // the element's Size & joint section names it
+    expect(toggle.closest('.panel-brick')).toBeNull(); // no longer the sidebar's board-wide 3D block
   });
   it('A11: the grout depth is a compact stepper with its label on its row (not a full-width box)', () => {
     const input = $('brickGroutDepth');
     expect(input.closest('.cad-stepper').classList.contains('cad-stepper-wide')).toBe(true);
     expect(input.style.width).toBe('');
-    expect(input.closest('.cad-slider-row').querySelector('label').textContent).toBe('Grout depth (in)');
+    expect(input.closest('.cad-slider-row').querySelector('label').textContent).toBe('Joint depth (in)');
   });
   it('A8 + A10: "Hide filter texture" sits in FILTER (not BRICK), its box beside its text', () => {
     const box = $('isolateSkeleton');
