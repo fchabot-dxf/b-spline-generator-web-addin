@@ -25981,3 +25981,6 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Shots (shots/seatE/grout): quoin_{before,after}_armor_2d.png, quoin_{before,after}_hourglass_2d.png (T1 7x9 mixed_bands
   1 in, charcoal grout: main's four dark corner rings, now a square + an L each), quoin_armor_corner_closeup.png and
   quoin_hourglass_corner_closeup.png (top-down, the app's own dumped paint, before | after).
+- Gate (advisor): tests/brick-icons-fresh.test.js failed on the merged head -- the quoin rule changes the Quoin / mixed
+  band preset icons' layout output and I had not regenerated them (memory: a layout-output change needs
+  node tools/gen_brick_icons.mjs). Regenerated; brick-icons-fresh passes.
