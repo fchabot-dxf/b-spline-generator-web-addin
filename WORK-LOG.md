@@ -25981,3 +25981,26 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Shots (shots/seatE/grout): quoin_{before,after}_armor_2d.png, quoin_{before,after}_hourglass_2d.png (T1 7x9 mixed_bands
   1 in, charcoal grout: main's four dark corner rings, now a square + an L each), quoin_armor_corner_closeup.png and
   quoin_hourglass_corner_closeup.png (top-down, the app's own dumped paint, before | after).
+
+### 2026-10-11 (seat E): the CURVED block -- a quoin where a straight side meets an arc (Fred picked mockup A)
+- Where: MEASURED every template at its defaults + Fred's Armor record: only T10 Arched Hourglass (the arched top meets the
+  tapered sides, a 30 deg turn = 150 inside) and T18 Arched Head (43 deg = 137 inside) have a non-tangent line/arc corner;
+  the hourglass waists meet their arcs tangentially (no corner). Today they took the mitre (a fan) -- buildBlockJoint is
+  line-line only, BUTT_SQUARE_WINDOW_DEG 15 of square.
+- primitive-ribbon.js buildCurveBlockJoint, tried after buildBlockJoint at a line/arc corner (cornerStyle 'block', same
+  blockOff): CURVE_QUOIN_TURN_DEG { min: 20, max: 60 } (data; outside it, a concave corner, a run shorter than the block +
+  a joint, or an inner line that misses the inner arc = the mitre as before -- a fallback, not a clamp, advisor). The block:
+  the ring between a face square to the side (QUOIN_SET's 1.1 in along it) and a face along the arc's radius (1.1 in of
+  arc), 1.1 in deep -- the arc face follows the curve, the inner face the curve's offset (r -/+ 1.1) and the side's
+  offset line, meeting at one point. The side's run is cut square one joint past its face; the arc's run is cut PARALLEL
+  to the radial face one joint off (an even joint, not a radial line that opens with depth). Its polygon starts at the
+  corner (wrapInnerQuoins finds a corner by a block's first vertex).
+- contour-bands.js wrapInnerQuoins measured a block's size by its first edge -- a square's side, but one arc step on a
+  curved block, so band 2's block never matched band 1's, stayed whole, overlapped, and fell back to the mitre (no L).
+  Now the side of a square of its area (identical for a square).
+- The block's arcs: a step about 0.1 in, at most 16 (CURVE_QUOIN_ARC). 16 fixed steps on a short inner arc made the block
+  self-intersect when grown by a joint (a swallowtail at its inner corner): band 2's L came out non-simple and a wall
+  sliver (0.002 sq in) lay under it (T18 7x9 1 in mixed_bands). tests/bricks-quoin-stack.test.js now also pins every frame
+  piece simple.
+- Tests: bricks-quoin-stack.test.js + T10 / T18 cases (FAST) and a pin that the arched top's two corners take the curved
+  block (3 boards).

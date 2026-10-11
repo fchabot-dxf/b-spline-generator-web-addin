@@ -468,7 +468,8 @@ function wrapInnerQuoins(bricks, ribbons, joint) {
   for (let r = 1; r < ribbons.length; r++) for (const q of ribbons[r]) {
     let outer = null, best = Infinity;
     for (let k = r - 1; k >= 0 && !outer; k--) for (const o of ribbons[k]) {
-      const d = Math.hypot(o.square[0].x - q.square[0].x, o.square[0].y - q.square[0].y), size = Math.hypot(o.square[1].x - o.square[0].x, o.square[1].y - o.square[0].y);
+      // its size: the side of a square of its area (a square's own side; a curved block's first edge is one arc step)
+      const d = Math.hypot(o.square[0].x - q.square[0].x, o.square[0].y - q.square[0].y), size = Math.sqrt(Math.abs(signedArea(o.square)));
       if (d < 1.5 * size && d < best) { best = d; outer = o; } // a deep band puts its corner up to ~1.4 sizes in (T5 9x12 1 in)
     }
     if (!outer) continue;

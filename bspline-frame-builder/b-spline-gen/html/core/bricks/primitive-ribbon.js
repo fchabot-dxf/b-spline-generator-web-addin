@@ -520,6 +520,74 @@ function buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1) {
   return { isBlock: true, prevIdx, curIdx, forPrev, forCur, blockPolygon };
 }
 
+/** seat E 2026-10-11 (Fred picked the CURVED block, advisor): a quoin where a straight side meets an arc at a kink --
+ *  the turn between the two tangents, in degrees, inside this window (MEASURED, every template at its defaults + Fred's
+ *  Armor: only T10's arched top, 30 deg = 150 inside, and T18's, 43 deg = 137 inside, have one; the hourglass waists
+ *  meet their arcs tangentially). Outside it the corner stays the mitre, as before: a fallback, not a clamp. */
+const CURVE_QUOIN_TURN_DEG = Object.freeze({ min: 20, max: 60 });
+// the block's two curved faces, drawn as polylines: a step about this long, at most this many -- a step shorter than a
+// joint folds over when the block is grown by one (MEASURED T18 7x9 1 in: 16 fixed steps on a short inner arc made
+// the grown block self-intersect at its inner corner; band 2's L came out non-simple and a wall sliver lay under it)
+const CURVE_QUOIN_ARC = Object.freeze({ stepIn: 0.1, maxSteps: 16 });
+/**
+ * The CURVED block (the mockup's option A, shots/seatE/grout/curve_quoin_mock_*.png): the stack's ring at the corner
+ * between a face square to the side (`blockSize` along it from the corner `o`) and a face along the arc's radius
+ * (`blockSize` of arc from `o`), `blockSize` deep -- its arc face follows the curve, its inner face the curve's offset
+ * (radius r -/+ blockSize) and the side's offset line, which meet at one point. The line's run is cut square to it one
+ * joint past the block's face (as buildBlockJoint's square case); the arc's run is cut PARALLEL to the block's radial
+ * face, one joint off it (a joint of even width, not a radial line that would open or close with depth). The polygon
+ * starts at `o` (contour-bands.js wrapInnerQuoins finds a corner by its block's first vertex: a further band's block
+ * becomes its L). null -- the mitre -- outside CURVE_QUOIN_TURN_DEG, at a concave corner, when either run is shorter
+ * than the block and a joint, or when the inner line misses the inner arc.
+ */
+function buildCurveBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1) {
+  const prevPrim = primitives[prevIdx], curPrim = primitives[curIdx];
+  const line = prevPrim.type === 'line' ? prevPrim : curPrim, arc = line === prevPrim ? curPrim : prevPrim;
+  if (line.type !== 'line' || arc.type !== 'arc') return null;
+  const tPrev = tangentAt(prevPrim, o), tCur = tangentAt(curPrim, o);
+  const turnDeg = (Math.acos(Math.max(-1, Math.min(1, tPrev.x * tCur.x + tPrev.y * tCur.y))) * 180) / Math.PI;
+  if (turnDeg < CURVE_QUOIN_TURN_DEG.min || turnDeg > CURVE_QUOIN_TURN_DEG.max) return null;
+  const n = { x: line.nx, y: line.ny }; // the side's inward normal
+  // convex: the run after the corner turns toward the inside (as buildBlockJoint), read against the side's normal
+  const convex = line === prevPrim ? tCur.x * n.x + tCur.y * n.y > 0 : -(tPrev.x * n.x + tPrev.y * n.y) > 0;
+  if (!convex) return null;
+  const s = QUOIN_SET.brickLengthIn, J = nominalJoint;
+  const c = { x: arc.cx, y: arc.cy }, rO = Math.hypot(o.x - c.x, o.y - c.y), thO = Math.atan2(o.y - c.y, o.x - c.x);
+  const lineLen = Math.hypot(line.p1.x - line.p0.x, line.p1.y - line.p0.y), arcLen = Math.abs(arc.theta2 - arc.theta1) * rO;
+  if (Math.min(lineLen, arcLen) < s + J + MIN_LINE_RUN_IN) return null;
+  const lineAway = line === prevPrim ? { x: -tPrev.x, y: -tPrev.y } : tCur; // along the side, away from the corner
+  const arcSign = (Math.sign(arc.theta2 - arc.theta1) || 1) * (line === prevPrim ? 1 : -1); // angle step away from it
+  const rIn = rO - arc.radialSign * s, thB = thO + (arcSign * s) / rO;
+  const at = (r, th) => ({ x: c.x + r * Math.cos(th), y: c.y + r * Math.sin(th) });
+  const innerStart = stepFrom(o, n, s);
+  const hits = lineCircleIntersections(innerStart, lineAway, c, rIn) || [];
+  const X = hits.reduce((b, p) => (!b || Math.hypot(p.x - innerStart.x, p.y - innerStart.y) < Math.hypot(b.x - innerStart.x, b.y - innerStart.y) ? p : b), null);
+  if (!X) return null;
+  // X lies on the inner line no further than the side's face, and between the corner and the radial face on the arc
+  const along = (X.x - innerStart.x) * lineAway.x + (X.y - innerStart.y) * lineAway.y;
+  let thX = Math.atan2(X.y - c.y, X.x - c.x);
+  while ((thX - thO) * arcSign < -Math.PI) thX += 2 * Math.PI * arcSign;
+  while ((thX - thO) * arcSign > Math.PI) thX -= 2 * Math.PI * arcSign;
+  if (along > s || (thX - thO) * arcSign > (thB - thO) * arcSign) return null;
+  const arcPts = (r, a0, a1) => {
+    const n = Math.max(1, Math.min(CURVE_QUOIN_ARC.maxSteps, Math.round((Math.abs(a1 - a0) * r) / CURVE_QUOIN_ARC.stepIn)));
+    return Array.from({ length: n + 1 }, (_, i) => at(r, a0 + ((a1 - a0) * i) / n));
+  };
+  const pL = stepFrom(o, lineAway, s);
+  // o -> the arc face -> the radial face -> the inner arc back to X -> the side's inner offset line -> its square face
+  const blockPolygon = [...arcPts(rO, thO, thB), ...arcPts(rIn, thB, thX), stepFrom(pL, n, s), pL];
+  // the cuts, one joint off the two faces
+  const lineCut = stepFrom(o, lineAway, s + J), lineKeep = stepFrom(lineCut, lineAway, 1);
+  const forLine = { point: lineCut, q: lineCut, dirX: n.x, dirY: n.y, keepRefAsStart: lineKeep, keepRefAsEnd: lineKeep, trustO: true };
+  const tAway = { x: -Math.sin(thB) * arcSign, y: Math.cos(thB) * arcSign }, radial = { x: Math.cos(thB), y: Math.sin(thB) };
+  const arcCut = stepFrom(at(rO, thB), tAway, J), arcKeep = stepFrom(arcCut, tAway, 0.05);
+  const rD1 = arc.r - arc.radialSign * d1;
+  const qHits = lineCircleIntersections(arcCut, radial, c, rD1) || [];
+  const arcQ = qHits.reduce((b, p) => (!b || Math.hypot(p.x - arcCut.x, p.y - arcCut.y) < Math.hypot(b.x - arcCut.x, b.y - arcCut.y) ? p : b), null) || arcCut;
+  const forArc = { point: arcCut, q: arcQ, dirX: radial.x, dirY: radial.y, keepRefAsStart: arcKeep, keepRefAsEnd: arcKeep, trustO: true };
+  return { isBlock: true, prevIdx, curIdx, forPrev: line === prevPrim ? forLine : forArc, forCur: line === prevPrim ? forArc : forLine, blockPolygon };
+}
+
 /** A monotonically-increasing position along `prim` (line: tangential projection from `p0`; arc:
  *  unwrapped angle from `theta1` in its own declared direction, the SAME unwrap `buildPatch` below
  *  already uses) -- lets two points be ordered "near/far" along a primitive regardless of which
@@ -1127,6 +1195,12 @@ export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyl
     if (cornerStyle === 'block' && droppedIdx === null && !(blockOff && blockOff.has(curIdx))
         && primitives[prevIdx].type === 'line' && primitives[curIdx].type === 'line') {
       const block = buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1);
+      if (block) return block;
+    }
+    // seat E 2026-10-11: a straight side meeting an arc at a kink takes the CURVED block (buildCurveBlockJoint)
+    if (cornerStyle === 'block' && droppedIdx === null && !(blockOff && blockOff.has(curIdx))
+        && primitives[prevIdx].type !== primitives[curIdx].type) {
+      const block = buildCurveBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1);
       if (block) return block;
     }
     // the SAME joint, approached by its own two DIFFERENT primitives, must keep OPPOSITE sides of

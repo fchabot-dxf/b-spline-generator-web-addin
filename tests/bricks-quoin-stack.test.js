@@ -20,7 +20,7 @@ import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { generateBricks } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/engine.js';
 import { BRICK_SETS, FRAME_PRESETS, scaledSet } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
-import { polygonIntersection, signedArea, pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { polygonIntersection, signedArea, pointInPolygon, isSimplePolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { groutShapeOf, pointOnGrout, primitivesOutline } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/grout-shape.js';
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { tess, bareGround } from './bare-ground.js';
@@ -30,7 +30,9 @@ const BARE_PATCH_TOL_SQIN = 0.05;
 const MULTI = Object.keys(FRAME_PRESETS).filter((p) => FRAME_PRESETS[p].length > 1);
 const FAST = [['template_3', 7, 10, 1, 'mixed_bands'], ['template_5', 9, 12, 0.75, 'three_band'], ['template_1', 7, 9, 1, 'mixed_bands'], ['template_5', 9, 12, 1, 'three_band'],
   ['template_15', 7, 9, 0.75, 'soldier_stretcher'], ['template_6', 7, 9, 1.25, 'mixed_bands'], ['template_11', 7, 9, 1.5, 'mixed_bands'], ['template_5', 9, 12, 1, 'soldier_stretcher'],
-  ['template_1', 7, 9, 0.75, 'single_soldier']];
+  ['template_1', 7, 9, 0.75, 'single_soldier'],
+  // the CURVED block (primitive-ribbon.js buildCurveBlockJoint): T10 / T18, a straight side meeting the arched top
+  ['template_10', 7, 9, 1, 'mixed_bands'], ['template_18', 7, 9, 1, 'mixed_bands'], ['template_10', 7, 9, 1, 'single_soldier'], ['template_18', 9, 12, 0.75, 'three_band']];
 const TEMPLATES = FRAME_DEFS.templates.map((t) => t.id).filter((k) => /^template_\d+$/.test(k));
 const FULL = process.env.QUOIN_FULL ? TEMPLATES.flatMap((tpl) => [[7, 9], [9, 12]].flatMap(([W, H]) => [0.75, 1, 1.25, 1.5].flatMap((L) => [...MULTI, 'single_soldier', 'quoin_corners'].map((p) => [tpl, W, H, L, p])))) : [];
 const box = (p) => [Math.min(...p.map((q) => q.x)), Math.min(...p.map((q) => q.y)), Math.max(...p.map((q) => q.x)), Math.max(...p.map((q) => q.y))];
@@ -67,6 +69,7 @@ describe('Quoin on a stack of bands: one square per corner, an L for each furthe
     const laid = lay(tpl, W, H, L, preset);
     if (!laid) return;
     const { P, J, r } = laid, F = r.frameBricks.map((b) => b.polygon), Wb = r.bricks.map((b) => b.polygon);
+    expect(F.filter((p) => !isSimplePolygon(p)).length, 'frame pieces that cross themselves').toBe(0);
     expect(overlaps(F), 'frame pieces overlapping (sq in)').toEqual([]);
     expect(overlaps(F, Wb), 'wall pieces under a frame piece (sq in)').toEqual([]);
     // the grout as the editor paints it (editor-brick-tool.js: the frame outline, the wall's region a hole, even-odd with
@@ -76,6 +79,14 @@ describe('Quoin on a stack of bands: one square per corner, an L for each furthe
     const painted = F.filter((f) => { const pts = insidePoints(f); return pts.length && pts.filter((p) => pointOnGrout(shape, p.x, p.y)).length > pts.length / 4; });
     expect(painted.length, 'faces painted as grout').toBe(0);
     expect(bareGround(tess(P), [...r.bricks, ...r.frameBricks], J, { W, H }).largestSqIn, 'largest bare patch (sq in)').toBeLessThanOrEqual(BARE_PATCH_TOL_SQIN);
+  });
+  // seat E 2026-10-11 (Fred picked the curved block): a straight side meeting an arc at a kink inside
+  // CURVE_QUOIN_TURN_DEG (T10's arched top, 150 deg inside; T18's, 137) takes a block whose arc face follows the curve --
+  // one per such corner, in the outermost band (a curved outline; at an obtuse corner it is larger than the 1.1 in square: T10 1.9 sq in)
+  it.each([['template_10', 7, 9, 1, 'single_soldier'], ['template_18', 7, 9, 1, 'mixed_bands'], ['template_10', 9, 12, 0.75, 'soldier_stretcher']])('%s %ix%i %s in %s: the arched top\'s two corners take the curved block', (tpl, W, H, L, preset) => {
+    const { r } = lay(tpl, W, H, L, preset);
+    const curved = r.frameBricks.filter((b) => b.bandIndex === 0 && b.polygon.length > 8 && Math.abs(signedArea(b.polygon)) > 1.0 && Math.abs(signedArea(b.polygon)) < 2.5);
+    expect(curved.length).toBe(2);
   });
   it('a one-band quoin lays its plain squares (4 corners, no L)', () => {
     const { r } = lay('template_3', 7, 10, 1, 'single_soldier');
