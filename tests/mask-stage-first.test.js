@@ -30,3 +30,21 @@ describe('refreshAllStampMasks: the heightMask stage paints before the mask pass
     expect(reads.length).toBeGreaterThan(0); // the pass ran (updateStampMasks read the editor's layers)
   });
 });
+
+// The brick side: a 3D-only brick setting's release (BRICK_COMMIT.surface: Surface wear, Grout depth ...) saved the
+// session, pushed its undo step and ran the change pipeline's serialize before any card (100-125 ms blind, profiled).
+describe('a brick surface setting release: the heightMask stage first', () => {
+  it('the release (its undo push and re-mask) runs in the paint step, behind the stage', async () => {
+    const { commitBrickSetting } = await import('../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js');
+    document.body.innerHTML = '<div id="loading-stage" hidden><span class="loading-stage-text"></span></div>';
+    const pushes = [];
+    window.svgEditor = { pushState: () => pushes.push(1), _notifyChange: () => {}, _undoStack: [], _layers: [] };
+    let paint = null;
+    setPaintScheduler((cb) => { paint = cb; });
+    commitBrickSetting('surface', 'onRelease');
+    expect(currentLoadingStage()?.id).toBe('heightMask');
+    expect(pushes).toEqual([]); // _remaskSurface (commitEdit -> pushState) waits for the paint
+    while (paint) { const p = paint; paint = null; p(); await Promise.resolve(); }
+    expect(pushes.length).toBeGreaterThan(0);
+  });
+});
