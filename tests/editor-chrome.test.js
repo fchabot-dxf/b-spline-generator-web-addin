@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { SELECTION_BAR, CANVAS_CORNER, GRID_POPOVER, TOUCH_ROW, initEditorChrome, syncSelectionBar, syncTouchRow } from '../bspline-frame-builder/b-spline-gen/html/main/editor-chrome.js';
+import { SELECTION_BAR, SELECTION_BAR_MODES, CANVAS_CORNER, GRID_POPOVER, TOUCH_ROW, initEditorChrome, syncSelectionBar, syncTouchRow } from '../bspline-frame-builder/b-spline-gen/html/main/editor-chrome.js';
 import { CONTEXT_MENU_ITEMS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-context-menu.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
@@ -17,7 +17,7 @@ const rect = (l, t, r, b) => ({ left: l, top: t, right: r, bottom: b, width: r -
 describe('the editor chrome: tools-only rows', () => {
   beforeEach(() => {
     document.body.innerHTML = BODY;
-    window.svgEditor = { _selectedElements: [], _isDrawing: false };
+    window.svgEditor = { _selectedElements: [], _isDrawing: false, _currentMode: 'select' };
     window.requestAnimationFrame = (cb) => cb();
     initEditorChrome();
   });
@@ -39,6 +39,11 @@ describe('the editor chrome: tools-only rows', () => {
     expect(bar.style.display).toBe('flex');
     expect(parseFloat(bar.style.top)).toBeLessThan(300); // above the selection
     expect(parseFloat(bar.style.left)).toBeGreaterThanOrEqual(4);
+    window.svgEditor._currentMode = 'draw'; // a drawing tool: the stroke just drawn is selected, the canvas stays clear
+    document.dispatchEvent(new CustomEvent('editorModeChanged'));
+    expect(bar.style.display).toBe('none');
+    expect(SELECTION_BAR_MODES).toEqual(['select', 'node', 'brickElementSelect']);
+    window.svgEditor._currentMode = 'select';
     window.svgEditor._selectedElements = [];
     document.dispatchEvent(new CustomEvent('editorSelectionChanged'));
     expect(bar.style.display).toBe('none');

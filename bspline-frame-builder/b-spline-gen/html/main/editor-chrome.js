@@ -10,6 +10,10 @@
  *                    long-press menu's (editor-context-menu.js CONTEXT_MENU_ITEMS 'paste' / 'select-all').
  */
 export const SELECTION_BAR = Object.freeze(['toolDelete', 'toolResetTransform', 'toolFlattenTransform', 'editorTouchCopy', 'editorTouchLock']);
+/** The modes whose subject IS the selection: only there does the bar show. In a drawing tool the stroke just drawn is
+ *  selected too, and a bar over the canvas covered where the user draws and pinches (measured: the layout group's
+ *  pinch at the former Expand tip landed on the bar). */
+export const SELECTION_BAR_MODES = Object.freeze(['select', 'node', 'brickElementSelect']);
 export const CANVAS_CORNER = Object.freeze(['toolFit']);
 export const GRID_POPOVER = Object.freeze({
   group: 'editorGridGroup',
@@ -42,7 +46,8 @@ export function syncSelectionBar() {
   const bar = $('editorSelectionBar');
   const host = bar && bar.parentElement;
   if (!bar || !host) return;
-  const box = selectionScreenBox();
+  const ed = editor();
+  const box = ed && SELECTION_BAR_MODES.includes(ed._currentMode) ? selectionScreenBox(ed) : null;
   if (!box) { bar.style.display = 'none'; return; }
   bar.style.display = 'flex';
   const h = host.getBoundingClientRect(), b = bar.getBoundingClientRect();
@@ -109,7 +114,7 @@ export function initEditorChrome() {
   host.appendChild(corner);
   _buildGridPopover();
   for (const id of TOUCH_ROW.menuOnly) { const b = $(id); if (b) b.style.display = 'none'; }
-  for (const ev of ['editorSelectionChanged', 'editorViewChanged', 'editorCommit', 'editorTabChanged']) document.addEventListener(ev, () => { syncSelectionBar(); syncTouchRow(); });
+  for (const ev of ['editorSelectionChanged', 'editorViewChanged', 'editorCommit', 'editorTabChanged', 'editorModeChanged']) document.addEventListener(ev, () => { syncSelectionBar(); syncTouchRow(); });
   host.addEventListener('pointerup', () => requestAnimationFrame(() => { syncSelectionBar(); syncTouchRow(); }), true);
   host.addEventListener('pointerdown', () => requestAnimationFrame(syncTouchRow), true);
   syncSelectionBar();
