@@ -57,7 +57,7 @@ import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-
 import { brickToolIconSvg } from '../editor/brick-tool-icons.js';
 import { applyBrickTabSections, brickTabOfControl } from './brick-tab-sections.js';
 import { FRAME_LABELS } from '../core/frame-labels.js';
-import { mountIconSelect, refreshIconSelect, PICKER_TILE } from './icon-select.js';
+import { mountIconSelect, refreshIconSelect, mountIconGrid, PICKER_TILE } from './icon-select.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -483,6 +483,7 @@ function renderAccentList(container) {
     btn.addEventListener('click', () => setAccentPreset(choice.id));
     container.appendChild(btn);
   }
+  mountIconGrid(container, { label: 'Accent' }); // Fred: one chip + its name, tap opens the grid (main/icon-select.js)
 }
 
 function syncAccentControls() {
@@ -879,6 +880,8 @@ function renderAccentRowFor(container, target, iconPx) {
   label.textContent = 'Accent';
   label.style.cssText = 'font-size:10px; opacity:0.65; width:44px; flex:0 0 auto;';
   row.appendChild(label);
+  const holder = document.createElement('div'); // the accent buttons: the picker's grid (Click and the level stay in the row)
+  row.appendChild(holder);
   for (const choice of ACCENT_CHOICES) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -889,7 +892,7 @@ function renderAccentRowFor(container, target, iconPx) {
     btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = choice.id === 'none' ? '<span style="font-size:9px; line-height:16px; padding:0 3px;">None</span>' : (accentIconSvg(choice.id, iconPx, { sunk: a.levelIn < 0 }) || choice.label);
     btn.addEventListener('click', () => setElementAccent(target, { preset: choice.id }));
-    row.appendChild(btn);
+    holder.appendChild(btn);
   }
   const click = document.createElement('button');
   click.type = 'button';
@@ -910,6 +913,7 @@ function renderAccentRowFor(container, target, iconPx) {
     row.appendChild(level);
   }
   container.appendChild(row);
+  mountIconGrid(holder, { label: 'Accent' });
 }
 /** Re-render every non-Wall element's Accent row (the Frame bands' + the Brush's). */
 function renderElementAccentRows() {
@@ -2045,6 +2049,7 @@ function renderFramePresetList(container) {
     btn.addEventListener('click', () => setFrameBandPreset(preset.id));
     container.appendChild(btn);
   }
+  mountIconGrid(container, { label: `${FRAME_LABELS.brick} preset` }); // Fred: one chip + its name, tap opens the grid
 }
 
 /** F35 item 23: the frame's rock state -- every band of the current preset fieldstone (rock), or back to the
@@ -2243,6 +2248,7 @@ function renderBrushPresetList(container) {
     });
     container.appendChild(btn);
   }
+  mountIconGrid(container, { label: 'Brush preset' }); // Fred: one chip + its name, tap opens the grid
 }
 
 function syncBrushPresetButtons() {
@@ -2337,6 +2343,7 @@ function renderWallPatternList(container) {
     btn.addEventListener('click', () => applyUserPattern(u.id));
     container.appendChild(btn);
   }
+  mountIconGrid(container, { label: 'Wall pattern' }); // Fred: one chip + its name, tap opens the grid
 }
 
 export function setWallPattern(patternId, commit = 'generate') {
@@ -2476,6 +2483,8 @@ function renderFrameBandPatternList(container) {
     label.textContent = `Band ${i + 1}`;
     label.style.cssText = 'font-size:10px; opacity:0.65; width:44px; flex:0 0 auto;';
     row.appendChild(label);
+    const holder = document.createElement('div'); // the band's pattern buttons: the picker's grid (mounted below)
+    row.appendChild(holder);
     for (const pattern of WALL_PATTERN_LIST) {
       const def = BRICK_PATTERNS[pattern.id];
       if (!bandCanLay(def)) continue; // advisor (turn 261): a band lists only what a band can lay; the rest is absent
@@ -2494,9 +2503,10 @@ function renderFrameBandPatternList(container) {
       } else {
         btn.addEventListener('click', () => setFrameBandPattern(i, pattern.id));
       }
-      row.appendChild(btn);
+      holder.appendChild(btn);
     }
     container.appendChild(row);
+    mountIconGrid(holder, { label: `Band ${i + 1}` });
     renderAccentRowFor(container, { kind: 'frameBand', band: i }, 16); // per-band accent (advisor)
   });
 }

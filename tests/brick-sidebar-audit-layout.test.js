@@ -61,6 +61,22 @@ describe('BRICK audit layout items', () => {
     // the sidebar no longer carries the "Quick settings" title / hint
     expect(document.body.textContent).not.toContain('Quick settings');
   });
+  // Fred (the editor's Brick tabs on a phone): every inline icon grid of the Brick editor is the picker (one chip + its
+  // name, tapped open), its buttons kept with their ids (main/icon-select.js mountIconGrid)
+  it('the editor grids are pickers: Brick frame presets, each band\'s patterns, Wall pattern, Brush presets, the accents', () => {
+    const pickerOf = (el) => el && el.closest('.icon-grid-picker');
+    for (const id of ['brickFramePresetList', 'brickPatternList', 'brickBrushPresetList', 'brickAccentList']) {
+      const grid = $(id);
+      expect(pickerOf(grid), id).not.toBeNull();
+      expect(grid.style.display, id).toBe('none'); // closed until its chip is tapped
+      expect(pickerOf(grid).querySelectorAll('.icon-select-button').length, id).toBe(1);
+    }
+    expect(pickerOf($('brickPattern_stretcher'))).not.toBeNull();
+    const bandButtons = [...document.querySelectorAll('#brickFrameBandPatternList button[id^=brickFrameBandPattern_0_]')];
+    expect(bandButtons.length).toBeGreaterThan(1);
+    for (const b of bandButtons) expect(pickerOf(b)).not.toBeNull();
+    expect(pickerOf(document.querySelector('#brickFrameBandPatternList [id^=brickAccent_]'))).not.toBeNull();
+  });
   it('A7: "Grout" labels the Recessed / Flush toggle, which sits above the depth', () => {
     const toggle = $('brickGroutProfileToggle');
     expect(toggle.previousElementSibling.textContent.trim()).toBe('Grout');

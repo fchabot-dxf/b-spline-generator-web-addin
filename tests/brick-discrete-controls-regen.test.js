@@ -221,7 +221,7 @@ describe('Editor Brick tab (Frame tool)', () => {
     $('brickFramePreset_soldier_stretcher').click();
     expectReLaidAtOnce((c) => expect(c[2].bands.length).toBe(2));
   });
-  it('a per-band pattern button', () => { firstInactive('#brickFrameBandPatternList button').click(); expectReLaidAtOnce(); });
+  it('a per-band pattern button', () => { firstInactive('#brickFrameBandPatternList button[id^=brickFrameBandPattern_]') /* the options, not the picker's chip */.click(); expectReLaidAtOnce(); });
 });
 
 describe('Generate with nothing to re-lay', () => {
