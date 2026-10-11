@@ -551,6 +551,7 @@ export function applyTransformDrag(editor, state, pt, modifiers) {
         }
         state.moved = true;
         editor._updateSelectionHighlight();
+        editor._updateHandles?.(); // the box follows the drag (Fred: "the bounding box doesn't follow the scale"), as a move's does
         editor._notifyChange('live');
         return;
     }
@@ -606,6 +607,10 @@ export function applyTransformDrag(editor, state, pt, modifiers) {
     state.moved = true;
 
     editor._updateSelectionHighlight();
+    // Fred 2026-10-10 ("the bounding box doesn't follow the scale"): the box + its handles are redrawn from the CURRENT
+    // transformed geometry every tick (updateHandles: the union of worldBbox), as a move's already are -- they used to
+    // wait for the release (MEASURED: during a scale x1.4 the box stayed at the start rect while the pieces grew)
+    editor._updateHandles?.();
     // SE8b / SA-UNDO-1: was the REAL _onChange() per mousemove — see
     // editor-interaction.js's dragNode for the full explanation. handleEnd
     // fires the one 'commit' per gesture.

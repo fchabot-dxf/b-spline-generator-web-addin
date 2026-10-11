@@ -228,12 +228,21 @@ export function bootBuildOwner() {
  */
 export const MIGRATIONS = [
   {
+    id: 'photo-orientation',
+    // 2026-10-10 (seat A, measured; advisor: the photoMirrorMode precedent): new boards get the photo upright; a board
+    // saved with a photo before keeps its (flipped) heights byte-identical. Decided after the save is merged, like
+    // 'photo-mirror-mode' below.
+    when: (p) => p.photoOrientation == null,
+    apply: (p) => { p.photoOrientation = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'legacy-flipped' : 'upright'; },
+  },
+  {
     id: 'photo-mirror-mode',
     // 2026-10-10 (Fred): new boards mirror the photo unsqueezed; a board saved with a photo before that keeps the squeeze
     // it was made with (its heights byte-identical). Runs after the save is merged: an absent key reads as null here
     // (core/state.js DEFAULT), so `photo` is judged on the merged board.
     when: (p) => p.photoMirrorMode == null,
-    apply: (p) => { p.photoMirrorMode = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'squeeze' : 'mirror'; },
+    // 'whole' since Fred's second pick (2026-10-10); a board saved with 'mirror' keeps it (the key is set, so `when` skips it)
+    apply: (p) => { p.photoMirrorMode = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'squeeze' : 'whole'; },
   },
   {
     id: 'photo-filter-to-layer',
@@ -577,6 +586,14 @@ export const MIGRATIONS = [
       delete p.brickSettings.scale;
       delete p.brickSettings.frameBrickLengthIn;
     },
+  },
+  {
+    id: 'window-surround-legacy-none',
+    // Fred 2026-10-10: a new board's window surround follows the Frame (core/state.js windowSurround 'follow'). A board
+    // saved before that has no key (a load replaces brickSettings whole, so it never takes the new default) and laid no
+    // surround: it says so explicitly, None, and keeps laying exactly as before.
+    when: (p) => p.brickSettings && !p.brickSettings.windowSurround,
+    apply: (p) => { p.brickSettings.windowSurround = { preset: 'none' }; },
   },
   {
     id: 'brick-set-per-element',

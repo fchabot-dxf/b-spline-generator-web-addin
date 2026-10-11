@@ -37,7 +37,7 @@ describe('the mode a board gets (MIGRATIONS photo-mirror-mode)', () => {
     expect(DEFAULT.photoMirrorMode).toBe(null);
     expect(migrate({ photoImageDataUrl: PHOTO }).photoMirrorMode).toBe('squeeze');
     expect(migrate({ noiseType: 'photo' }).photoMirrorMode).toBe('squeeze'); // the old Photo filter
-    expect(migrate({ noiseType: 'mars' }).photoMirrorMode).toBe('mirror'); // a fresh / photo-less board
+    expect(migrate({ noiseType: 'mars' }).photoMirrorMode).toBe('whole'); // a fresh / photo-less board (Fred's second pick)
     expect(migrate({ photoImageDataUrl: PHOTO, photoMirrorMode: 'mirror' }).photoMirrorMode).toBe('mirror');
   });
   it('LEGACY: a symmetric board on the old Photo filter loads byte-identical (the pre-change golden)', () => {
