@@ -16,7 +16,9 @@ const PORT = Number(PORTARG || 9493);
 const PROFILE = mkdtempSync(path.join(os.tmpdir(), 'chrome-motifs-'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const BOARDS = (process.env.ONLY ? process.env.ONLY.split(',') : null);
-// [file tag, preset, template ('' = the plain rectangle), brick size in]
+// [file tag, preset, template ('' = the plain rectangle), brick size in, look?]; look.tint = the 2D fills [raised, flush] (the
+// photo's colours), look.top = [x, y, r] a top-down 3D close-up (the height map read straight down)
+const GREEK = { tint: ['#3f8f72', '#f2efe6'], top: [-2.75, -4.25, 2.6] };
 const SHOTS = [
   ['dentil_corbel', 'dentil_corbel', '', 1],
   ['recessed_panel', 'recessed_panel', '', 1.25],
@@ -25,6 +27,9 @@ const SHOTS = [
   ['soldier_string', 'soldier_string', '', 1.25],
   ['dentil_cornice', 'dentil_cornice', '', 1],
   ['hourglass_dentil_corbel', 'dentil_corbel', 'template_1', 1],
+  ['greek_key_mosaic', 'greek_key_mosaic', '', 0.375, GREEK],
+  ['hourglass_greek_key_mosaic', 'greek_key_mosaic', 'template_1', 0.375, GREEK],
+  ['greek_key_mosaic_075', 'greek_key_mosaic', '', 0.75, GREEK], // the next chip up, to compare (a 2.4 in band)
 ].filter((s) => !BOARDS || BOARDS.includes(s[0]));
 
 const chrome = spawn('C:/Program Files/Google/Chrome/Application/chrome.exe', ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${PROFILE}`,
@@ -68,7 +73,7 @@ await setValue('widthIn', 7); await setValue('heightIn', 10); await settle();
 if (process.env.DEBUG) console.error('board', Date.now() - T0, await js(`JSON.stringify({ boot: 0, splash: document.getElementById('app-splash')?.className ?? 'gone', modal: getComputedStyle(document.getElementById('svgEditorModal')).display, ed: !!window.svgEditor, w: document.getElementById('widthIn')?.value })`));
 const report = [];
 try {
-for (const [tag, preset, template, size] of SHOTS) {
+for (const [tag, preset, template, size, look = {}] of SHOTS) {
   await splashGone();
   if (!(await editorOpen())) await click('btnStampEdit', 3000);
   for (let i = 0; i < 30 && !(await js('!!window.svgEditor?._sketchLayer')); i++) await sleep(1000);
@@ -100,12 +105,14 @@ for (const [tag, preset, template, size] of SHOTS) {
   await snap(`${OUT}/app_${tag}_3d.png`);
   await view(0.95, 0.6, 6, -2.2, -3.6); // one corner, raking light across the relief
   await snap(`${OUT}/app_${tag}_3d_corner.png`);
+  if (look.top) { await view(0, 0, look.top[2], look.top[0], look.top[1]); await snap(`${OUT}/app_${tag}_3d_top.png`); }
   // 2D: the editor's canvas, the whole board fitted, each laid piece tinted by its relief (data-brick-height-offset:
   // lighter = raised, darker = recessed -- the mockups' convention; display only, this throwaway session is never saved)
   await send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 1700, deviceScaleFactor: 1, mobile: false }); await sleep(1500);
   await splashGone(); await click('btnStampEdit', 3000); await click('editorTabBrick', 1500); await sleep(2500);
+  const [up, flat] = look.tint || ['#e2a07c', null];
   await js(`(()=>{ window.svgEditor.fitView(); const ns = window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick-gen="1"][data-brick-set]');
-    ns.forEach((n) => { const h = +n.getAttribute('data-brick-height-offset') || 0; n.setAttribute('fill', h > 0.04 ? '#e2a07c' : h < -0.04 ? '#5e2a1c' : n.getAttribute('data-brick') === 'wall' ? '#94503a' : '#a9583e'); }); return ns.length; })()`);
+    ns.forEach((n) => { const h = +n.getAttribute('data-brick-height-offset') || 0; n.setAttribute('fill', h > 0.04 ? '${up}' : h < -0.04 ? '#5e2a1c' : n.getAttribute('data-brick') === 'wall' ? '#94503a' : '${flat || '#a9583e'}'); }); return ns.length; })()`);
   await sleep(800);
   const box = JSON.parse(await js(`(()=>{ const svg=window.svgEditor._sketchLayer.node.ownerSVGElement || window.svgEditor._sketchLayer.node.closest('svg'); const c=svg.parentElement.getBoundingClientRect(), r=svg.getBoundingClientRect();
     const x=Math.max(c.x,r.x), y=Math.max(c.y,r.y); return JSON.stringify({x, y, w: Math.min(c.right,r.right)-x, h: Math.min(c.bottom,r.bottom)-y}); })()`));
