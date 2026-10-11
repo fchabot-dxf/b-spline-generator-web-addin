@@ -23,6 +23,9 @@ const argv = process.argv.slice(2), dash = argv.indexOf('--');
 const [OUT, ...FILES] = dash < 0 ? argv : argv.slice(0, dash);
 const [PORT, HTTP] = (dash < 0 ? [9685, 9686] : argv.slice(dash + 1)).map(Number);
 const MODE = process.env.MODE || 'fresh', CPU = 4, QUIET_MS = 800;
+// PROFILE=open,apply,...: those steps run under the CDP sampling profiler, and each BLIND moment (before the first card,
+// and every gap) names the app functions that ran in it -- what to declare a stage around
+const PROFILE = new Set((process.env.PROFILE || '').split(',').filter(Boolean));
 if (!OUT || !FILES.length) { console.log('usage: MODE=fresh|chain node tools/repro/project_load_audit.mjs <outDir> <project.json ...> [-- cdpPort httpPort]'); process.exit(1); }
 mkdirSync(`${OUT}/prof`, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -58,6 +61,8 @@ const jsJSON = async (e) => { const v = await js(e); try { return JSON.parse(v);
 
 // page-side recorders: long tasks, the stage's on/off per animation frame, the stage texts
 const RECORDERS = `(() => { if (window.__rec) return 1; window.__rec = 1;
+  // the profiler's clock anchor: a named 20 ms busy wait that returns its own performance.now() (blame finds its samples)
+  window.__profMark = function __profMark() { const t = performance.now(), e = t + 20; while (performance.now() < e); return t; };
   const el = () => document.getElementById('loading-stage');
   window.__vis = () => { const e = el(); return !!e && !e.hidden && e.getClientRects().length > 0; };
   window.__long = []; window.__flips = [[performance.now(), window.__vis()]]; window.__texts = [];
@@ -90,13 +95,40 @@ async function tap(sel) {
 const cpuTimes = () => os.cpus().reduce((a, c) => { const t = c.times; a.busy += t.user + t.nice + t.sys + t.irq; a.all += t.user + t.nice + t.sys + t.irq + t.idle; return a; }, { busy: 0, all: 0 });
 const busyPct = (a, b) => Math.round(100 * (b.busy - a.busy) / Math.max(1, b.all - a.all));
 // one measured step: CPU throttled, then settled
-async function measure(how) {
+async function measure(how, step) {
   await send('Emulation.setCPUThrottlingRate', { rate: CPU });
+  const prof = PROFILE.has(step);
+  let markT = null;
+  if (prof) { await send('Profiler.enable'); await send('Profiler.setSamplingInterval', { interval: 500 }); await send('Profiler.start'); markT = await js('window.__profMark()'); }
   const t0 = await js('performance.now()'); const e0 = errors.length, c0 = cpuTimes();
   const did = await how();
   const m = did === false ? { skipped: true } : await jsJSON(`window.__settle(${t0}, ${QUIET_MS})`);
+  if (prof) { const p = (await send('Profiler.stop')).result?.profile; if (p && m && !m.skipped) m.blame = blame(p, t0, m, markT); }
   await send('Emulation.setCPUThrottlingRate', { rate: 1 });
   return { ...m, cpuBusy: busyPct(c0, cpuTimes()), errors: errors.slice(e0) };
+}
+// the profile's samples inside each blind window -> the app call chains that ran there (leaf-most 4 app frames), in ms.
+// The profile's clock is mapped to performance.now() by the anchor: the first sample inside __profMark is its returned time.
+// (MEASURED 2026-10-11: assuming the profile starts at t0 put every blind window outside the samples -- empty blames.)
+function blame(p, t0, m, markT) {
+  const byId = new Map(p.nodes.map((n) => [n.id, n])), parent = new Map();
+  for (const n of p.nodes) for (const c of n.children || []) parent.set(c, n.id);
+  const app = (n) => n.callFrame.url.includes('/html/') ? `${n.callFrame.functionName || '(anon)'}@${n.callFrame.url.split('/html/').pop()}:${n.callFrame.lineNumber + 1}` : null;
+  const chain = (id) => { const out = []; for (let k = id; k != null && out.length < (globalThis.BLAME_DEPTH || 4); k = parent.get(k)) { const a = app(byId.get(k)); if (a) out.push(a); } return out.join(' <- ') || '(no app frame: ' + (byId.get(id)?.callFrame.functionName || 'native') + ')'; };
+  const windows = [];
+  if (m.blindMs > 0) windows.push(['before card', t0, t0 + (m.cardMs ?? m.ms)]);
+  for (const [s, d] of m.gaps || []) windows.push([`gap @${s}`, t0 + s, t0 + s + d]);
+  if (!windows.length) return [];
+  const res = windows.map(([w]) => ({ w, ms: {} }));
+  let off = t0, acc = 0;
+  for (let i = 0; i < p.samples.length; i++) { acc += p.timeDeltas[i] / 1000; if (markT != null && byId.get(p.samples[i])?.callFrame.functionName === '__profMark') { off = markT - acc; break; } }
+  let t = 0;
+  for (let i = 0; i < p.samples.length; i++) {
+    t += p.timeDeltas[i] / 1000; const at = off + t;
+    const k = windows.findIndex(([, a, b]) => at >= a && at < b); if (k < 0) continue;
+    const c = chain(p.samples[i]); res[k].ms[c] = (res[k].ms[c] || 0) + (p.timeDeltas[i + 1] || p.timeDeltas[i]) / 1000;
+  }
+  return res.map(({ w, ms }) => ({ w, top: Object.entries(ms).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([c, v]) => [Math.round(v), c]) }));
 }
 async function bootPage() {
   const added = await send('Page.addScriptToEvaluateOnNewDocument', { source: SEEDED });
@@ -123,7 +155,22 @@ const CHECK = `(async () => {
   const St = await import('./core/state.js'); const { resolveGrid } = await import('./core/terrain.js');
   const snapP = JSON.parse(window.__snapText).P; const now = St.persistableP();
   const SKIP = new Set(['activeSculptLayer', 'points', 'editorSvg']);
-  const keys = Object.keys(snapP).filter((k) => !SKIP.has(k) && JSON.stringify(now[k]) !== JSON.stringify(snapP[k]));
+  // an object-valued key names its own differing sub-keys (brickSettings{groutColor,...}): what to look for, not just where
+  const sub = (a, b) => [...new Set([...Object.keys(a || {}), ...Object.keys(b || {})])].filter((q) => JSON.stringify((a || {})[q]) !== JSON.stringify((b || {})[q]));
+  // the app's DECLARED migrations rewrite a key on load on purpose (geometry kept): reported as migrated, not as a
+  // mismatch -- each with the condition under which the migration applies to the saved value
+  const MIGRATED = [
+    { key: 'brickSettings', sub: 'windowSurround', id: 'window-surround-legacy-none', applies: (saved) => saved === undefined },
+    { key: 'noiseType', id: 'photo-filter-to-layer', applies: (saved) => saved === 'photo' },
+  ];
+  const migrated = [];
+  const isMigrated = (k, q) => { const m = MIGRATED.find((x) => x.key === k && x.sub === q); if (m && m.applies(q ? (snapP[k] || {})[q] : snapP[k])) { migrated.push(m.id); return true; } return false; };
+  const keys = Object.keys(snapP).filter((k) => !SKIP.has(k) && JSON.stringify(now[k]) !== JSON.stringify(snapP[k]))
+    .map((k) => {
+      if (!(snapP[k] && typeof snapP[k] === 'object' && !Array.isArray(snapP[k]))) return isMigrated(k, undefined) ? null : k;
+      const left = sub(snapP[k], now[k]).filter((q) => !isMigrated(k, q));
+      return left.length ? k + '{' + left.slice(0, 6).join(',') + '}' : null;
+    }).filter(Boolean);
   const count = (svg, re) => (svg.match(re) || []).length;
   // the drawing: the editor re-serialises it on open, so the TEXT differs; compare its structure -- every data-*
   // attribute's count and every element tag's count -- and name what moved
@@ -136,7 +183,7 @@ const CHECK = `(async () => {
   const live = (sel) => (node ? node.querySelectorAll(sel).length : -1);
   let savedLayers = 0; try { savedLayers = JSON.parse((saved.match(/data-editor-layers="([^"]*)"/)?.[1] || '[]').replace(/&quot;/g, '"').replace(/&amp;/g, '&')).length; } catch { savedLayers = -1; }
   const g = resolveGrid(St.P.widthIn, St.P.heightIn, St.P.spacing), r = St.lastResult;
-  return JSON.stringify({ pKeysDiffer: keys,
+  return JSON.stringify({ pKeysDiffer: keys, migrated: [...new Set(migrated)],
     layers: [savedLayers, Array.isArray(ed?._layers) ? ed._layers.length : -1],
     bricks: [count(saved, / data-brick-piece=/g), live('[data-brick-piece]')],
     lattice: [count(saved, / data-lattice=/g), live('[data-lattice]')],
@@ -162,7 +209,7 @@ try {
       if (MODE === 'fresh') await bootPage();
       await js(`window.__snapText = ${JSON.stringify(text)}; 1`);
       progress(name, 'load');
-      const load = await measure(() => js(LOAD));
+      const load = await measure(() => js(LOAD), 'load');
       progress(name, 'check');
       const check = await jsJSON(CHECK);
       const shot = await send('Page.captureScreenshot', { format: 'png' });
@@ -170,19 +217,21 @@ try {
       // the first edits: open the editor, one Generate, Apply
       const kind = check.bricks[0] > 0 ? 'brick' : check.lattice[0] > 0 ? 'lattice' : 'frame';
       progress(name, 'open');
-      const open = await measure(() => tap('#viewMode_2d')); // the phone's way in: the 2D / 3D toggle on the preview
+      const open = await measure(() => tap('#viewMode_2d'), 'open'); // the phone's way in: the 2D / 3D toggle on the preview
       await sleep(500);
-      const pre = { brick: ['#editorTabBrick'], lattice: ['#editorTabArtwork', '#artTab_lattice'], frame: ['#editorTabFrame'] }[kind];
+      // the Brick tab opens on General (no Generate there since 2026-10-10): the Wall tool first
+      const pre = { brick: ['#editorTabBrick', '#brickTool_wall'], lattice: ['#editorTabArtwork', '#artTab_lattice'], frame: ['#editorTabFrame'] }[kind];
       for (const s of pre) { await tap(s); await sleep(900); }
       progress(name, 'generate ' + kind);
-      const gen = await measure(() => tap({ brick: '#brickGenerate', lattice: '#latticeGenerate', frame: '#editorFrameGenerate' }[kind]));
+      const gen = await measure(() => tap({ brick: '#brickGenerate', lattice: '#latticeGenerate', frame: '#editorFrameGenerate' }[kind]), 'gen');
       progress(name, 'apply');
-      const apply = await measure(() => tap('#viewMode_3d_editor')); // back to 3D: the Apply way when anything changed
+      const apply = await measure(() => tap('#viewMode_3d_editor'), 'apply'); // back to 3D: the Apply way when anything changed
       const row = { name, mode: MODE, bytes: text.length, load, check, kind, open, gen, apply };
       rows.push(row); writeFileSync(`${OUT}/${MODE}.jsonl`, rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
       const fm = (m) => (m.skipped ? 'skip' : `${m.ms}ms card ${m.cardMs ?? 'never'} blind ${m.blindMs} gap ${m.gapMs} cpu ${m.cpuBusy}%${m.errors.length ? ` ERR ${m.errors.length}` : ''}`);
       const mism = [check.pKeysDiffer.length ? `P:${check.pKeysDiffer.join(',')}` : '', check.layers[0] !== check.layers[1] ? `layers ${check.layers}` : '',
-        check.bricks[0] !== check.bricks[1] ? `bricks ${check.bricks}` : '', check.lattice[0] !== check.lattice[1] ? `lattice ${check.lattice}` : '', check.grid3d !== 'ok' ? `3d ${check.grid3d}` : ''].filter(Boolean).join(' ');
+        check.bricks[0] !== check.bricks[1] ? `bricks ${check.bricks}` : '', check.lattice[0] !== check.lattice[1] ? `lattice ${check.lattice}` : '', check.grid3d !== 'ok' ? `3d ${check.grid3d}` : ''].filter(Boolean).join(' ') + (check.migrated && check.migrated.length ? ` (migrated: ${check.migrated.join(', ')})` : '');
+      for (const [st, mm] of Object.entries({ load, open, gen, apply })) for (const b of mm.blame || []) console.log(`   blame ${st} ${b.w}: ${b.top.map(([ms, c]) => ms + 'ms ' + c).join(' | ')}`);
       console.log(`${name.padEnd(10)} LOAD ${fm(load)} | ${mism || 'restored OK'} | open ${fm(open)} | ${kind} gen ${fm(gen)} | apply ${fm(apply)}`);
     } catch (e) { console.log(`${name.padEnd(10)} ERROR ${e.message}`); rows.push({ name, mode: MODE, error: e.message }); }
   }
