@@ -17,6 +17,7 @@ const rect = (l, t, r, b) => ({ left: l, top: t, right: r, bottom: b, width: r -
 describe('the editor chrome: tools-only rows', () => {
   beforeEach(() => {
     document.body.innerHTML = BODY;
+    for (const id of ['toolDelete', 'toolResetTransform', 'toolFit']) document.getElementById(id).style.display = 'none'; // as the Art tabs leave them before the move
     window.svgEditor = { _selectedElements: [], _isDrawing: false, _currentMode: 'select' };
     window.requestAnimationFrame = (cb) => cb();
     initEditorChrome();
@@ -28,6 +29,8 @@ describe('the editor chrome: tools-only rows', () => {
     expect([...bar.children].map((b) => b.id)).toEqual([...SELECTION_BAR]);
     expect(bar.style.display).toBe('none');
     expect($('editorToolbarArtwork').contains($('toolDelete'))).toBe(false);
+    for (const id of SELECTION_BAR) expect($(id).style.display, id).toBe(''); // a moved button is shown in the bar
+    expect($('toolFit').style.display).toBe('');
   });
 
   it('a selection shows the bar, placed above it inside the canvas host; deselecting hides it', () => {

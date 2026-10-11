@@ -104,13 +104,15 @@ export function initEditorChrome() {
   bar.className = 'editor-selection-bar';
   bar.style.cssText = 'display:none; position:absolute; z-index:30; gap:2px; padding:4px; background:#fff; border:1px solid #cfd6de;'
     + ' border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.22);';
-  for (const id of SELECTION_BAR) { const b = $(id); if (b) bar.appendChild(b); }
+  // a moved button sheds the display the old row gave it (the Art tabs hid the actions outside their Edit tab --
+  // measured: the bar showed Copy and Lock only)
+  for (const id of SELECTION_BAR) { const b = $(id); if (b) { bar.appendChild(b); b.style.display = ''; } }
   host.appendChild(bar);
   // the canvas corner: Fit
   const corner = document.createElement('div');
   corner.id = 'editorCanvasCorner';
   corner.style.cssText = 'position:absolute; right:10px; bottom:10px; z-index:30; display:flex; gap:6px;';
-  for (const id of CANVAS_CORNER) { const b = $(id); if (b) corner.appendChild(b); }
+  for (const id of CANVAS_CORNER) { const b = $(id); if (b) { corner.appendChild(b); b.style.display = ''; } }
   host.appendChild(corner);
   _buildGridPopover();
   for (const id of TOUCH_ROW.menuOnly) { const b = $(id); if (b) b.style.display = 'none'; }
