@@ -63,6 +63,9 @@ export const BLIND_BUDGET = {
     { name: 'Art: Redo', act: { tap: 'editorRedo' } },
     { name: 'Art: Shape Generate', pre: ['artTab_shape'], act: { tap: 'shapeLatticeGenerate' } },
     { name: 'Art: Undo after a Shape Generate', act: { tap: 'editorUndo' } },
+    // seat D 2026-10-09 (Fred's projects: 3D after a Generate ~120 ms blind): the phone's 3D toggle = Apply; its first
+    // step 'saving the drawing' is on screen before the commit
+    { name: '3D (Apply) after the edits', act: { tap: 'viewMode_3d_editor' } },
   ],
 };
 export const sequential = true; // index.mjs: --parallel runs it alone, after the parallel groups

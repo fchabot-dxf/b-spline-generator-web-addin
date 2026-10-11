@@ -423,9 +423,10 @@ export function cancelText(editor) {
  * `commit: true` (Apply) -> commitText() first, then `_onCommit(save())`.
  * `commit: false` (Cancel) -> cancelText() first — drop the in-progress
  * edit, do NOT commit it — then `_onCommit(null)`.
+ * Returns `_onCommit`'s result (the Apply's async commit), so a caller can hold a stage until it is done.
  */
 export function endEditorSession(editor, { commit }) {
     if (commit) commitText(editor);
     else cancelText(editor);
-    if (editor._onCommit) editor._onCommit(commit ? editor.save() : null);
+    if (editor._onCommit) return editor._onCommit(commit ? editor.save() : null);
 }
