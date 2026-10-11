@@ -150,7 +150,12 @@ let _refreshQueued = false;
 export function refreshEditorTopView() {
     if (_refreshQueued) return;
     _refreshQueued = true;
-    const run = () => { _refreshQueued = false; if (_lastTopView) updateEditorTopView(..._lastTopView); };
+    const run = () => {
+        _refreshQueued = false;
+        if (_lastTopView) updateEditorTopView(..._lastTopView);
+        // the photo is processed now (its edits ran in this repaint): overlays that wait on it redraw (photo-footprint.js)
+        if (typeof document !== 'undefined') document.dispatchEvent(new CustomEvent('editorTopViewUpdated'));
+    };
     const nextFrame = (f) => (typeof requestAnimationFrame === 'function' ? requestAnimationFrame(f) : setTimeout(f, 0));
     return withLoadingStage('backdrop', () => new Promise((resolve) => nextFrame(() => { try { run(); } finally { resolve(); } })));
 }

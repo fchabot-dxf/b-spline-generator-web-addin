@@ -245,6 +245,13 @@ export const MIGRATIONS = [
     apply: (p) => { p.photoMirrorMode = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'squeeze' : 'whole'; },
   },
   {
+    id: 'photo-edge',
+    // 2026-10-10 (Fred): outside the photo, new boards show the plain filter (a short fade at the edge); a board saved
+    // with a photo before keeps its stretched edge pixels, byte-identical. Decided after the merge, like the two above.
+    when: (p) => p.photoEdge == null,
+    apply: (p) => { p.photoEdge = (p.photoImageDataUrl || p.noiseType === 'photo') ? 'clamp' : 'fade'; },
+  },
+  {
     id: 'photo-filter-to-layer',
     // 2026-10-10 (Fred: the photo as its own LAYER on top of the chosen filter): a save on the old Photo FILTER becomes
     // the photo layer over a plain filter, showing through at 0 % -- the SAME heights: at 0 % the fine value is the
