@@ -502,7 +502,7 @@ aside {
     column-gap: 0;
     column-rule: 1px solid var(--cad-border-standard);
 }
-.cad-sidebar-sections > .panel {
+.cad-sidebar-sections .panel {
     break-inside: avoid;
 }
 
@@ -749,9 +749,41 @@ aside {
 #sidebarPinned:empty {
     display: none;
 }
-/* item 48: the sidebar's strip heads the pinned actions block (.sticky-actions), edge to edge, Generate New Seed under it */
-.cad-sidebar > .sticky-actions > #sidebarTabs {
-    margin: -12px -14px 10px;
+/* redesign phase 5: the sidebar TREE (main/sidebar-tabs.js) -- a branch per former tab: its caret folds it, its label
+   (sidebarTab_<id>) opens it and scrolls to it, clear of the sticky seed bar; its sections indented under it */
+.sidebar-branch-head {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin: 6px 0 2px;
+    scroll-margin-top: 64px;
+    break-after: avoid;
+}
+.sidebar-branch-caret,
+.sidebar-branch-label {
+    background: none;
+    border: none;
+    padding: 4px 6px;
+    cursor: pointer;
+    color: var(--cad-accent);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+.sidebar-branch-caret {
+    color: var(--cad-text-muted);
+    font-size: 11px;
+}
+.sidebar-branch-label {
+    text-transform: uppercase;
+    font-size: 13px;
+    flex: 1;
+    text-align: left;
+}
+.sidebar-branch-body {
+    padding-left: 12px;
+}
+.sidebar-branch-body[hidden] {
+    display: none;
 }
 /* item 43: the Brick panel's strip heads its pinned block, edge to edge, Generate under it */
 #editorBrickPanel > .sticky-actions > #editorToolbarBrick {

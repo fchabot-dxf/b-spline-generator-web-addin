@@ -316,7 +316,7 @@ function TOUCH_PROBE(rootExpr, minPx, skip) { return `JSON.stringify((() => { co
     if (r.right > innerWidth + 0.5 || r.left < -0.5) off.push(name + ' right ' + Math.round(r.right));
   }
   return { coarse: matchMedia('(pointer: coarse)').matches, small: [...new Set(small)], off: [...new Set(off)], pageW: document.documentElement.scrollWidth, innerW: innerWidth }; })())`; }
-const SIDEBAR_ROOT = `document.getElementById('sidebarTabs')?.closest('.cad-sidebar')`;
+const SIDEBAR_ROOT = `document.querySelector('.cad-sidebar')`;
 const EDITOR_ROOT = `document.getElementById('svgEditorModal')`;
 async function touchRow(vp, name, opened, rootExpr) {
   const T = TOUCH_TARGETS, r = await jsJSON(TOUCH_PROBE(rootExpr, T.minPx, T.skip));
