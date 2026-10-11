@@ -133,6 +133,9 @@ describe('initLatticeSideColumn', () => {
   let editor;
 
   beforeEach(() => {
+    // redesign phase 2: the lattice tools and their panels are the LATTICE tab's (TOOL_PANEL_MOUNTS tabs) -- set BEFORE the
+    // fixture is built, so earlier tests' listeners act on the old DOM, not this one
+    document.dispatchEvent(new CustomEvent('editorTabChanged', { detail: { tab: 'lattice' } }));
     buildFixture();
     setDesktop(true);
     // UI3 AMEND 1: initLatticeSideColumn now reads editor._lattice.drawKind
@@ -142,6 +145,7 @@ describe('initLatticeSideColumn', () => {
     // defensively handle an impossible-in-practice bare `{}`.
     editor = { _lattice: { drawKind: 'select' } };
   });
+  afterEach(() => document.dispatchEvent(new CustomEvent('editorTabChanged', { detail: { tab: 'artwork' } })));
 
   afterEach(() => {
     document.body.innerHTML = '';
@@ -323,7 +327,7 @@ describe('initLatticeSideColumn', () => {
 // #editorLayersPanel while no brick tool is picked, and the editor mode can stay 'shapeLattice'
 // across the tab switch -- so the pinned lattice Generate sat exactly where the Brick tab's own
 // Generate appears. A lattice mount is scoped to its declared tab (TOOL_PANEL_MOUNTS[mode].tab).
-describe('lattice mounts are scoped to the Artwork tab', () => {
+describe('lattice mounts are scoped to the Lattice tab (redesign phase 2; it was Artwork)', () => {
   let editor;
   const fireTab = (tab) => document.dispatchEvent(new CustomEvent('editorTabChanged', { detail: { tab } }));
   beforeEach(() => {
@@ -331,13 +335,14 @@ describe('lattice mounts are scoped to the Artwork tab', () => {
     setDesktop(true);
     editor = { _lattice: { drawKind: 'select' } };
     initLatticeSideColumn(editor);
+    fireTab('lattice');
   });
   afterEach(() => {
     fireTab('artwork'); // module-level tab state: leave it at the default for every other test
     document.body.innerHTML = '';
   });
 
-  it.each(['lattice', 'shapeLattice'])('%s: leaving Artwork unmounts its Generate from #editorLayersPanel and hides its own panel', (mode) => {
+  it.each(['lattice', 'shapeLattice'])('%s: leaving Lattice unmounts its Generate from #editorLayersPanel and hides its own panel', (mode) => {
     const generateId = mode === 'lattice' ? 'latticeGenerate' : 'shapeLatticeGenerate';
     const panelId = mode === 'lattice' ? 'editorLatticePanel' : 'editorShapeLatticePanel';
     fireModeChanged(editor, mode);
@@ -359,10 +364,10 @@ describe('lattice mounts are scoped to the Artwork tab', () => {
     expect(document.getElementById('editorShapeLatticePanel').style.display).toBe('none');
   });
 
-  it('returning to Artwork re-mounts the pinned Generate (Artwork unchanged)', () => {
+  it('returning to Lattice re-mounts the pinned Generate', () => {
     fireModeChanged(editor, 'shapeLattice');
     fireTab('brick');
-    fireTab('artwork');
+    fireTab('lattice');
     const gen = document.getElementById('shapeLatticeGenerate');
     expect(document.getElementById('editorLayersPanel').contains(gen)).toBe(true);
     expect(gen.parentElement.className).toBe('lattice-side-column-pinned-slot sticky-actions');
@@ -371,22 +376,22 @@ describe('lattice mounts are scoped to the Artwork tab', () => {
 
   // Fred (phone, Frame tab): "if I'm in frame the panel should show the frame settings not the vectors" -- carried by the
   // drawer's tab pair until the Art tabs retired it; the mount keeps it on every viewport (was editor-drawer.test.js)
-  it.each([true, false])('Frame tab (desktop %s): the tool panel is hidden and nothing is mounted; back in Artwork it returns', (desk) => {
+  it.each([true, false])('Frame tab (desktop %s): the tool panel is hidden and nothing is mounted; back in Lattice it returns', (desk) => {
     setDesktop(desk);
     fireModeChanged(editor, 'shapeLattice');
     fireTab('frame');
     const layersPanel = document.getElementById('editorLayersPanel');
     expect(layersPanel.contains(document.getElementById('editorShapeLatticePanelBody'))).toBe(false);
     expect(document.getElementById('editorShapeLatticePanel').style.display).toBe('none');
-    fireTab('artwork');
+    fireTab('lattice');
     expect(layersPanel.contains(document.getElementById('editorShapeLatticePanelBody'))).toBe(true);
   });
 
-  it('back in Artwork in a non-lattice mode, the lattice panels get no inline override (editor-ui.js decides)', () => {
+  it('back in Lattice in a non-lattice mode, the lattice panels get no inline override (editor-ui.js decides)', () => {
     fireModeChanged(editor, 'shapeLattice');
     fireTab('brick');
     fireModeChanged(editor, 'select');
-    fireTab('artwork');
+    fireTab('lattice');
     expect(document.getElementById('editorShapeLatticePanel').style.display).toBe('');
     expect(document.getElementById('editorLatticePanel').style.display).toBe('');
   });
@@ -678,9 +683,15 @@ describe('Artwork Stripe mounts under Layers; the Brick tab keeps its hosted bod
   it.each([['lattice', 'editorLatticePanelBody'], ['shapeLattice', 'editorShapeLatticePanelBody'], ['stripe', 'editorStripePanelBody']])(
     'PHONE: %s opens its settings under Layers (the only place the drawer shows)', (mode, body) => {
       setDesktop(false);
+      fireTab(mode === 'stripe' ? 'artwork' : 'lattice'); // phase 2: lattice tools in the Lattice tab; Stripe in both
       fireModeChanged(editor, mode);
       expect(document.getElementById('editorLayersPanel').contains(document.getElementById(body))).toBe(true);
     });
+  it('Lattice + stripe too (the shared tool set): the body sits under Layers', () => {
+    fireTab('lattice');
+    fireModeChanged(editor, 'stripe');
+    expect(document.getElementById('editorLayersPanel').contains(document.getElementById('editorStripePanelBody'))).toBe(true);
+  });
   it('Artwork + stripe: the body sits under Layers, the panel is hidden', () => {
     fireModeChanged(editor, 'stripe');
     expect(document.getElementById('editorLayersPanel').contains(document.getElementById('editorStripePanelBody'))).toBe(true);

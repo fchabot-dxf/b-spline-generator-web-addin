@@ -27,8 +27,12 @@ export const EDITOR_TABS = [
   // EDITOR_UNDO_STACKS key; absent = the editor's own (the artwork) stack
   { id: 'frame', clears: 'frame', label: FRAME_LABELS.wood, buttonId: 'editorTabFrame', panelId: 'editorFramePanel', toolbarId: 'editorToolbarFrame',
     modes: ['select'], undo: 'frame' },
-  { id: 'artwork', clears: 'artwork', label: 'Artwork', buttonId: 'editorTabArtwork', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
-    modes: ['select', 'node', 'text', 'draw', 'line', 'rect', 'circle', 'erase', 'lattice', 'shapeLattice', 'cut', 'stripe'],
+  // Redesign phase 2 (Fred): the Artwork tab is DRAW, and the lattices have their own top-level LATTICE tab. Both edit
+  // the same drawing: they share the art panel and its tool row (panelId / toolbarId), and `artTabs` says which of
+  // main/art-tabs.js ART_TABS each shows. The ids stay (editorTabArtwork, 'artwork'): the matrix, saved state, tests.
+  { id: 'artwork', clears: 'artwork', label: 'Draw', buttonId: 'editorTabArtwork', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
+    modes: ['select', 'node', 'text', 'draw', 'line', 'rect', 'circle', 'erase', 'cut', 'stripe'],
+    artTabs: ['general', 'draw', 'text', 'edit'], artDefault: 'edit',
     // the Art tabs (mockup v2): General holds the shared stroke / colour / style groups (main/art-tabs.js
     // ART_GENERAL_GROUPS); on any other editor tab they are back in the top bar (hidden there by TOOLBAR_TOP_GROUPS_BY_TAB)
     panelHosts: [
@@ -36,6 +40,9 @@ export const EDITOR_TABS = [
       { content: 'editorColorGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
       { content: 'editorFillModeGroup', host: 'artGeneralBody', panel: 'editorToolbarTop' },
     ] },
+  { id: 'lattice', label: 'Lattice', buttonId: 'editorTabLattice', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
+    modes: ['select', 'lattice', 'shapeLattice', 'cut', 'erase', 'stripe'],
+    artTabs: ['lattice', 'shape'], artDefault: 'lattice' },
   { id: 'photo', clears: 'photo', label: 'Photo', buttonId: 'editorTabPhoto', panelId: 'editorPhotoPanel', toolbarId: 'editorToolbarPhoto',
     modes: ['select'] },
   // F35 item 43: no left rail -- the Brick tools are the tab strip at the top of its own panel (#editorToolbarBrick)
@@ -112,13 +119,14 @@ const TOOLBAR_TOP_GROUPS_BY_TAB = {
 export function setEditorTab(tab) {
   const match = EDITOR_TABS.find((t) => t.id === tab);
   _editorTab = match ? match.id : 'artwork';
+  // a panel / tool row is shown when the ACTIVE tab uses it (Draw and Lattice share theirs)
+  const on = EDITOR_TABS.find((t) => t.id === _editorTab);
   for (const t of EDITOR_TABS) {
-    const active = t.id === _editorTab;
-    document.getElementById(t.buttonId)?.classList.toggle('active', active);
+    document.getElementById(t.buttonId)?.classList.toggle('active', t.id === _editorTab);
     const panel = document.getElementById(t.panelId);
-    if (panel) panel.style.display = active ? '' : 'none';
+    if (panel) panel.style.display = t.panelId === on.panelId ? '' : 'none';
     const toolbar = document.getElementById(t.toolbarId);
-    if (toolbar) toolbar.style.display = active ? 'flex' : 'none';
+    if (toolbar) toolbar.style.display = t.toolbarId && t.toolbarId === on.toolbarId ? 'flex' : 'none';
   }
   // Mobile: the editor's bottom drawer gets the active tab's declared peek essentials (editor/ never imports main/, so as data on
   // the drawer element; editor-drawer.js re-measures its peek floor on 'editorTabChanged' below).

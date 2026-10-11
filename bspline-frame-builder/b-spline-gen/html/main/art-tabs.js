@@ -12,6 +12,7 @@
  * (a shortcut, Esc = Select) brings its tab up.
  */
 import { renderTabStrip } from '../editor/tab-strip.js';
+import { EDITOR_TABS, getEditorTab, setEditorTab } from './editor-tabs.js';
 
 export const ART_TABS = Object.freeze([
   Object.freeze({ id: 'general', label: 'General', tools: Object.freeze([]) }),
@@ -35,14 +36,31 @@ export function artTabOfMode(mode) {
   return tab ? tab.id : null;
 }
 
+/** Redesign phase 2: the top-level editor tab (EDITOR_TABS) whose `artTabs` hold an Art tab -- Draw or Lattice. */
+export const topTabOfArtTab = (id) => (EDITOR_TABS.find((t) => (t.artTabs || []).includes(id)) || {}).id || null;
+/** The strip shows the active top tab's own Art tabs only. */
+function _showStripFor(top) {
+  const own = (EDITOR_TABS.find((t) => t.id === top) || {}).artTabs;
+  if (!own) return;
+  for (const t of ART_TABS) { const b = document.getElementById(`artTab_${t.id}`); if (b) b.style.display = own.includes(t.id) ? '' : 'none'; }
+}
+
 let _tab = ART_DEFAULT_TAB;
 let _sync = null;
+let _switching = false; // setArtTab is switching the top tab itself
 export const activeArtTab = () => _tab;
 
 export function setArtTab(id, { arm = true } = {}) {
   const tab = ART_TABS.find((t) => t.id === id);
   if (!tab || typeof document === 'undefined') return;
+  // an Art tab of the OTHER top tab (artTab_lattice picked from Draw -- the matrix's and a shortcut's way in): that
+  // top tab first, then this Art tab
+  const top = topTabOfArtTab(id);
+  // (from Draw / Lattice, or an explicit pick; a mode change seen from the Brick or Photo tab leaves the tab alone)
+  const onArtTop = EDITOR_TABS.some((t) => t.id === getEditorTab() && t.artTabs);
+  if (top && getEditorTab() !== top && (onArtTop || arm)) { _switching = true; try { setEditorTab(top); } finally { _switching = false; } }
   _tab = id;
+  _showStripFor(top || getEditorTab());
   const tools = document.getElementById('editorToolbarArtwork');
   if (tools) {
     for (const el of tools.children) el.style.display = tab.tools.includes(el.id) ? '' : 'none'; // dividers: none
@@ -61,6 +79,13 @@ export function initArtTabs() {
   const strip = typeof document !== 'undefined' ? document.getElementById('artTabStrip') : null;
   if (!strip) return;
   _sync = renderTabStrip(strip, ART_TABS, (id) => setArtTab(id), { idPrefix: 'artTab_' });
+  // a top tab with Art tabs shows its own; entering one leaves the other's Art tab (its declared default)
+  document.addEventListener('editorTabChanged', (e) => {
+    const top = EDITOR_TABS.find((t) => t.id === (e.detail && e.detail.tab));
+    if (!top || !top.artTabs || _switching) return;
+    _showStripFor(top.id);
+    if (!top.artTabs.includes(_tab)) setArtTab(top.artDefault || top.artTabs[0], { arm: false });
+  });
   document.addEventListener('editorModeChanged', (e) => {
     const t = artTabOfMode(e.detail && e.detail.mode);
     if (t && t !== _tab) setArtTab(t, { arm: false });

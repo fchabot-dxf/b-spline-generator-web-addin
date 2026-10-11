@@ -50,6 +50,7 @@ export const ART_FADE_OPACITY = 0.35;
 export const EDITOR_TAB_FOCUS = Object.freeze({
   frame: Object.freeze({ drawing: INACTIVE_LAYER_OPACITY, art: 1, frameProfile: 1 }),
   artwork: Object.freeze({ drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY }),
+  lattice: Object.freeze({ drawing: 1, art: 1, frameProfile: INACTIVE_LAYER_OPACITY }), // redesign phase 2: the art, in focus
   photo: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY }),
   brick: Object.freeze({ drawing: 1, art: ART_FADE_OPACITY, frameProfile: INACTIVE_LAYER_OPACITY }),
 });

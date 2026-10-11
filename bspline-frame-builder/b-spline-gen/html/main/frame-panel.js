@@ -885,6 +885,7 @@ export function initFramePanel() {
   }
   $('editorTabFrame')?.addEventListener('click', () => setEditorTab('frame'));
   $('editorTabArtwork')?.addEventListener('click', () => setEditorTab('artwork'));
+  $('editorTabLattice')?.addEventListener('click', () => setEditorTab('lattice')); // redesign phase 2
   // Two doors, one room: "Edit frame shape" opens the editor on the Frame tab,
   // "Open SVG Editor" (the same button) on the Artwork tab.
   $('btnStampEdit')?.addEventListener('click', () => { setEditorTab(_openEditorOn || 'artwork'); _openEditorOn = null; });
