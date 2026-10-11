@@ -34,12 +34,14 @@ const lay = (prims, preset, L, W, H) => generateBricks({ boardOutline: [{ x: 0, 
   scale: L / SET.brickLengthIn, suppression: 0, clumping: 0, frame: { primitives: prims, bands: FRAME_PRESETS[preset] } });
 
 describe('BAND_MOTIFS / the motif presets are declared data', () => {
-  it('relief levels: raised up, flush 0, recessed down, all inside the relief budget', () => {
+  it('relief levels: raised up, flush 0, recessed down; raised within the cap; the declared 1/8 in both ways', () => {
     expect(RELIEF_LEVELS.raised).toBeGreaterThan(0);
     expect(RELIEF_LEVELS.flush).toBe(0);
     expect(RELIEF_LEVELS.recessed).toBeLessThan(0);
     expect(SET.reliefIn + RELIEF_LEVELS.raised).toBeLessThanOrEqual(SET.reliefMaxIn);
-    expect(SET.reliefIn + RELIEF_LEVELS.recessed).toBeGreaterThan(0);
+    // Fred 2026-10-11: bolder, 1/8 in both ways -- a recessed top AT the ground is accepted ("allow it, it's my
+    // responsibility"); the old pin "reliefIn + recessed > 0" was a guard he declined, so the declared values are pinned
+    expect(RELIEF_LEVELS).toEqual({ raised: 0.125, flush: 0, recessed: -0.125 });
   });
   it('every motif is a fill, 1D rows or a grid whose tiles use only relief characters, corner tile R x R', () => {
     for (const [id, m] of Object.entries(BAND_MOTIFS)) {
@@ -192,5 +194,31 @@ describe(`the motif presets lay cleanly (${FULL ? 'full sweep' : 'fast set'})`, 
     expect(r.frameBricks.filter(outside).length, 'frame pieces outside the outline').toBe(0);
     const bare = bareGround(contour, [...r.frameBricks, ...r.bricks], J, { W, H });
     expect(bare.largestSqIn / (s.brickLengthIn * s.brickHeightIn), 'largest bare patch, share of one brick face').toBeLessThanOrEqual(PATCH_MAX_FACE);
+  });
+});
+
+// Fred 2026-10-11 (the zigzag "looks like scattered light squares"): a grid motif must READ -- its raised cells, the tile
+// repeated along the band, are ONE shape joined edge to edge (4-neighbours), never a scatter of cells touching only at
+// their corners (the old period-4 zigzag and the single-cell diaper both were)
+describe('a grid motif reads as one continuous figure', () => {
+  const components = (tile, repeats = 3) => {
+    const R = tile.length, C = tile[0].length * repeats, on = (r, c) => r >= 0 && r < R && c >= 0 && c < C && tile[r][c % tile[0].length] === 'R';
+    const seen = new Set(); let n = 0;
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+      if (!on(r, c) || seen.has(`${r},${c}`)) continue;
+      n++;
+      for (const st = [[r, c]]; st.length;) { const [a, b] = st.pop(); if (seen.has(`${a},${b}`)) continue; seen.add(`${a},${b}`);
+        for (const [da, db] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (on(a + da, b + db)) st.push([a + da, b + db]); }
+    }
+    return n;
+  };
+  it.each(['zigzag', 'diaper'])('%s: its tile, repeated, is one edge-joined figure', (id) => {
+    expect(components(BAND_MOTIFS[id].grid.tile)).toBe(1);
+  });
+  it('the zigzag is a symmetric V: every course mirror-symmetric about the peak column, its arms 2 cells wide', () => {
+    const { tile } = BAND_MOTIFS.zigzag.grid, n = tile[0].length;
+    for (const row of tile) for (let k = 0; k < n; k++) expect(row[k], `${row} column ${k}`).toBe(row[(n - k) % n]);
+    // the arms (every course but the valley's) carry 2+ raised cells on each side
+    for (const row of tile.slice(0, -1)) expect([...row].filter((c) => c === 'R').length, row).toBeGreaterThanOrEqual(3);
   });
 });
