@@ -107,3 +107,23 @@ describe('photoAxisLines: the mirror axis on the preview, from the same mapping'
     expect(photoAxisLines(IMG, { ...base, symmetry: 'none' }, 7 / 9)).toEqual([]);
   });
 });
+
+// Seat D's live shots (claude_18, a squeeze -> mirror -> whole switch): the preview's cell cache keyed on a hand-listed
+// set of params that lacked photoMirrorMode, so the mirror / whole views reused squeeze's cells -- nothing dimmed.
+// main/photo-panel.js USED_CELLS_INPUTS declares what the cells depend on; the cache key is built from it.
+describe('the preview cell cache follows every sampler input', () => {
+  it('squeeze then mirror on the same image: the mirror cells, not the cached squeeze ones', async () => {
+    const { usedCellsFor } = await import('../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js');
+    const base = { symmetry: 'x', widthIn: 6, heightIn: 8, tweaks: { scale: 1 } };
+    const sum = (c) => c.reduce((s, v) => s + v, 0);
+    const squeeze = sum(usedCellsFor(IMG, { ...base, photoMirrorMode: 'squeeze' }, 0.75, 40, 30));
+    const mirror = sum(usedCellsFor(IMG, { ...base, photoMirrorMode: 'mirror' }, 0.75, 40, 30));
+    expect(mirror).toBe(sum(photoUsedCells(IMG, { ...base, photoMirrorMode: 'mirror' }, 0.75, 40, 30)));
+    expect(mirror).not.toBe(squeeze); // the two modes really differ here (non-vacuous)
+  });
+
+  it('declared: the key lists the mirror mode and the orientation the sampler reads', async () => {
+    const { USED_CELLS_INPUTS } = await import('../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js');
+    expect(USED_CELLS_INPUTS.p).toEqual(expect.arrayContaining(['symmetry', 'photoMirrorMode', 'photoOrientation', 'mapZoom']));
+  });
+});

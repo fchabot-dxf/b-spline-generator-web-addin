@@ -664,9 +664,16 @@ function previewBitmap(img) {
 const samplerParams = () => ({ ...P, tweaks: (P.filterTweaks && P.filterTweaks.photo) || {} });
 /** The used-cells grid over the photo at the preview's resolution (half the canvas px), cached on what it depends on. */
 let _usedCache = null;
-function usedCellsFor(img, params, aspect, cw, ch) {
+/** What the used cells depend on -- every P key and photo tweak the sampler reads (core/terrain.js foldUV /
+ *  photoSampleAspect / photoMirrors, core/noise/photo.js constantsFor). MEASURED (seat D, live shots): the mirror MODE
+ *  was missing from a hand-listed key, so a squeeze -> mirror switch reused squeeze's cells (nothing dimmed). */
+export const USED_CELLS_INPUTS = Object.freeze({
+  p: Object.freeze(['symmetry', 'symOffsetX', 'symOffsetY', 'mapZoom', 'seedOffsetX', 'seedOffsetY', 'photoMirrorMode', 'photoOrientation']),
+  tweaks: Object.freeze(['scale', 'offsetX', 'offsetY', 'rotation', 'repeat']),
+});
+export function usedCellsFor(img, params, aspect, cw, ch) {
   const t = params.tweaks || {};
-  const key = JSON.stringify([params.symmetry, params.symOffsetX, params.symOffsetY, params.mapZoom, params.seedOffsetX, params.seedOffsetY, t.scale, t.offsetX, t.offsetY, t.rotation, t.repeat, aspect, cw, ch]);
+  const key = JSON.stringify([...USED_CELLS_INPUTS.p.map((k) => params[k]), ...USED_CELLS_INPUTS.tweaks.map((k) => t[k]), aspect, cw, ch]);
   if (!_usedCache || _usedCache.img !== img || _usedCache.key !== key) _usedCache = { img, key, cells: photoUsedCells(img, params, aspect, cw, ch) };
   return _usedCache.cells;
 }
