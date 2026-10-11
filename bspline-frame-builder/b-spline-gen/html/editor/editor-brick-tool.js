@@ -743,7 +743,7 @@ export const PATTERN_ICON_BOARD = Object.freeze({ widthIn: 1.8, heightIn: 1.2 })
  *  asks for (BRICK_ICON_SIZES; ids from their own lists). Each icon cache starts from that data; an icon missing from it
  *  is laid at once as before (the fallback) and recorded (brickIconFallbacks). tests/brick-icons-fresh.test.js fails
  *  on stale data, so an engine change that alters an icon forces a regen. */
-export const BRICK_ICON_SIZES = Object.freeze({ pattern: [30, 24, 22], preset: [30, 24], corner: [30], fan: [30], accent: [30, 22, 16] });
+export const BRICK_ICON_SIZES = Object.freeze({ pattern: [30, 24, 22], preset: [30, 24], corner: [30], fan: [30], accent: [30, 22, 16], patternTile: [72], presetTile: [72] });
 const _iconFallbacks = [];
 /** A declared icon's drawing at the asked size: the data holds ONE drawing per icon (its viewBox and polygons do not
  *  depend on the size, only the <svg> tag's width / height do -- the freshness test checks every declared size); undefined
@@ -759,19 +759,24 @@ export const sizedIconSvg = (svg, widthPx, heightPx) => (svg == null ? null : sv
 /** tools/gen_brick_icons.mjs: lay every icon fresh, ignoring the declared data. */
 export function setBrickIconDeclared(on) { _useDeclared = !!on; }
 const _patternIcons = new Map();
-export function wallPatternIconSvg(patternId, heightPx = 30) {
-  const key = `${patternId}:${heightPx}`;
+export function wallPatternIconSvg(patternId, heightPx = 30) { return _wallPatternSvg('pattern', PATTERN_ICON_BOARD, patternId, heightPx); }
+/** Redesign phase 1 (Fred: the sidebar / editor pickers' tiles are bigger and must show more): a Wall pattern's TILE --
+ *  a bigger, square patch of the pattern (PATTERN_TILE_BOARD), laid the same way. */
+export const PATTERN_TILE_BOARD = Object.freeze({ widthIn: 2.4, heightIn: 2.4 });
+export function wallPatternTileSvg(patternId, heightPx = 72) { return _wallPatternSvg('patternTile', PATTERN_TILE_BOARD, patternId, heightPx); }
+function _wallPatternSvg(kind, board, patternId, heightPx) {
+  const key = `${kind}:${patternId}:${heightPx}`;
   if (_patternIcons.has(key)) return _patternIcons.get(key);
-  const { widthIn: w, heightIn: h } = PATTERN_ICON_BOARD;
+  const { widthIn: w, heightIn: h } = board;
   const widthPx = Math.round((heightPx * w) / h);
-  const declared = _declaredIcon('pattern', patternId, widthPx, heightPx);
+  const declared = _declaredIcon(kind, patternId, widthPx, heightPx);
   if (declared !== undefined) { _patternIcons.set(key, declared); return declared; }
-  _iconFallbacks.push(`pattern ${key}`);
+  _iconFallbacks.push(`${kind} ${key}`);
   const open = `<svg xmlns="http://www.w3.org/2000/svg" width="${widthPx}" height="${heightPx}" viewBox="0 0 ${w} ${h}" aria-hidden="true">`
     + `<rect width="${w}" height="${h}" fill="#efe6da"/>`;
   let svg = null;
   try {
-    const bricks = _iconBricks(PATTERN_ICON_BOARD, patternId, 0.6, 0.05);
+    const bricks = _iconBricks(board, patternId, 0.6, 0.05);
     const polys = bricks.map(_iconPolygon).join('');
     svg = bricks.length
       ? `${open}<g fill="#b5533c" stroke="#efe6da" stroke-width="0.025">${polys}</g></svg>`
@@ -849,14 +854,18 @@ const MINI_FRAME = Object.freeze({ marginIn: 0.4 });
 export const PRESET_ICON_STYLES = Object.freeze({
   ring: Object.freeze({ whole: true, innerShare: 0.5, innerMinIn: 0.5 }),
   corner: Object.freeze({ whole: false }),
+  // redesign phase 1 (Fred: the preset list may double with corner variants; the corner and the motif must read in the
+  // bigger picker tile): ONE corner plus a run of the band on both arms (marginIn of board past the stack)
+  cornerRun: Object.freeze({ whole: false, marginIn: 1.4 }),
 });
 export const PRESET_ICON_STYLE = 'ring';
 const _miniFrames = new Map();
 function _miniFrame(key, bands, style = PRESET_ICON_STYLES.corner) {
   if (_miniFrames.has(key)) return _miniFrames.get(key);
   const depth = bands.reduce((a, b) => a + b.widthIn, 0);
-  const w = style.whole ? 2 * depth + Math.max(style.innerMinIn, depth * style.innerShare) : 2 * depth + MINI_FRAME.marginIn;
-  const crop = style.whole ? w : depth + MINI_FRAME.marginIn;
+  const margin = style.marginIn ?? MINI_FRAME.marginIn;
+  const w = style.whole ? 2 * depth + Math.max(style.innerMinIn, depth * style.innerShare) : 2 * depth + margin;
+  const crop = style.whole ? w : depth + margin;
   let bricks = [];
   try {
     const s = TOOL_MINI_BRICK;
@@ -950,6 +959,21 @@ export function framePresetIconSvg(presetId, heightPx = 26) {
   return svg;
 }
 const _presetIcons = new Map();
+/** Redesign phase 1: a band preset's TILE for the bigger picker -- PRESET_ICON_STYLES.cornerRun (one corner + a run of
+ *  band), so the corner treatment (quoin / butt / lapped / mitre) and the motif read; None = the struck-through tile. */
+export function framePresetTileSvg(presetId, heightPx = 72) {
+  const bands = FRAME_PRESETS[presetId];
+  if (!bands) return null;
+  if (!bands.length) return framePresetIconSvg(presetId, heightPx);
+  const key = `tile:${presetId}:${heightPx}`;
+  if (_presetIcons.has(key)) return _presetIcons.get(key);
+  const declared = _declaredIcon('presetTile', presetId, heightPx, heightPx);
+  if (declared !== undefined) { _presetIcons.set(key, declared); return declared; }
+  _iconFallbacks.push(`presetTile ${key}`);
+  const svg = _miniFrameSvg(_miniFrame(`presetTile:${presetId}`, bands, PRESET_ICON_STYLES.cornerRun), heightPx);
+  _presetIcons.set(key, svg);
+  return svg;
+}
 // one argument only: it is passed straight to .map(), whose index must never reach the markup (a second
 // `attrs` parameter once turned every pattern icon into `<polygon0 ...>` -- drawn as nothing, measured live)
 const _iconPolygon = (b) => `<polygon points="${b.polygon.map((p) => `${+p.x.toFixed(3)},${+p.y.toFixed(3)}`).join(' ')}"/>`;

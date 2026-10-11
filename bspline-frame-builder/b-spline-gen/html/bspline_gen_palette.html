@@ -953,8 +953,8 @@
           <!-- turn 207 (Fred): opens the editor on the Brick tab -- main/frame-panel.js OPEN_EDITOR_BUTTONS,
                the same mechanism and look as the FRAME section's "Edit frame" -->
           <button type="button" id="btnEditBricks" class="cad-btn cad-btn-secondary" style="width:100%; height:34px; font-size:13px; margin-bottom:12px;">Brick editor 🧱</button>
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Quick settings</label>
-          <div style="font-size:10px; opacity:0.65; margin:0 0 8px;">Every other layout setting is in the editor's Brick tab.</div>
+          <!-- Fred (2026-10-11, redesign phase 1): plain rows, no "Quick settings" title / hint; the Wall pattern and the
+               Frame bands are one chip each, the wood frame's picker (main/brick-panel.js QUICK_PICKER) -->
           <!-- audit v2 N5: shown while the board has no Wall/Frame bricks (main/brick-panel.js syncControlRequires) -->
           <div id="brickSidebarNoBricks" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);">No bricks on this board yet. Open the editor's Brick tab, pick Wall or Frame and press Generate -- these settings then apply at once.</div>
           <div id="brickQuickSettings"></div>
