@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { SELECTION_BAR, SELECTION_BAR_MODES, CANVAS_CORNER, GRID_POPOVER, TOUCH_ROW, initEditorChrome, syncSelectionBar, syncTouchRow } from '../bspline-frame-builder/b-spline-gen/html/main/editor-chrome.js';
+import { SELECTION_BAR, SELECTION_BAR_MODES, CANVAS_CORNER, GRID_POPOVER, TOUCH_ROW, initEditorChrome, syncSelectionBar, syncTouchRow, syncCanvasCorner } from '../bspline-frame-builder/b-spline-gen/html/main/editor-chrome.js';
 import { CONTEXT_MENU_ITEMS } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-context-menu.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
@@ -57,6 +57,18 @@ describe('the editor chrome: tools-only rows', () => {
     expect(CONTEXT_MENU_ITEMS.some((i) => i.id === 'fit-view')).toBe(true);
   });
 
+  it('the corner sits in the VISIBLE canvas: inside #editorSVGContainer, above the phone drawer\x27s top', () => {
+    const corner = $('editorCanvasCorner'), host = corner.parentElement;
+    host.getBoundingClientRect = () => rect(0, 100, 390, 844);
+    $('editorSVGContainer').getBoundingClientRect = () => rect(0, 130, 360, 844); // a side panel takes the right 30 px
+    corner.getBoundingClientRect = () => rect(0, 0, 34, 34);
+    const drawer = $('editorMobileDrawer');
+    drawer.getClientRects = () => [1]; drawer.getBoundingClientRect = () => rect(0, 748, 390, 844);
+    syncCanvasCorner();
+    const left = parseFloat(corner.style.left), top = parseFloat(corner.style.top);
+    expect(left + 34).toBeLessThanOrEqual(360);  // inside the canvas, not under the panel
+    expect(100 + top + 34).toBeLessThanOrEqual(748); // above the drawer
+  });
   it('the grid settings are one "Grid ▾" button + a popover holding the same controls', () => {
     const group = $(GRID_POPOVER.group), pop = $('editorGridPopover');
     expect($('editorGridButton').textContent).toBe('Grid ▾');

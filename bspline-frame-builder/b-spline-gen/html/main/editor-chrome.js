@@ -58,6 +58,21 @@ export function syncSelectionBar() {
   bar.style.top = `${Math.round(Math.max(4, top))}px`;
 }
 
+/** The canvas corner sits in the VISIBLE canvas's bottom-right: #editorSVGContainer's box, cut at the phone drawer's top
+ *  (measured: pinned to the host's corner, Fit sat under the drawer on a phone and under the side panel on a desktop). */
+export function syncCanvasCorner() {
+  const corner = $('editorCanvasCorner'), canvas = $('editorSVGContainer');
+  const host = corner && corner.parentElement;
+  if (!corner || !canvas || !host) return;
+  const c = canvas.getBoundingClientRect(), h = host.getBoundingClientRect(), k = corner.getBoundingClientRect();
+  const drawer = $('editorMobileDrawer');
+  const dTop = drawer && drawer.getClientRects().length ? drawer.getBoundingClientRect().top : Infinity;
+  const bottom = Math.min(c.bottom, dTop > c.top + 80 ? dTop : c.bottom);
+  corner.style.right = 'auto'; corner.style.bottom = 'auto';
+  corner.style.left = `${Math.round(Math.max(4, c.right - h.left - k.width - 10))}px`;
+  corner.style.top = `${Math.round(Math.max(4, bottom - h.top - k.height - 10))}px`;
+}
+
 /** Shows the touch row's Cancel only while a pen path is being drawn. */
 export function syncTouchRow() {
   const drawing = !!(editor() && editor()._isDrawing);
@@ -106,7 +121,8 @@ export function initEditorChrome() {
     + ' border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.22);';
   // a moved button sheds the display the old row gave it (the Art tabs hid the actions outside their Edit tab --
   // measured: the bar showed Copy and Lock only)
-  for (const id of SELECTION_BAR) { const b = $(id); if (b) { bar.appendChild(b); b.style.display = ''; } }
+  // one look in the bar: the touch row's small Copy / Lock take the tool buttons' 40 px box
+  for (const id of SELECTION_BAR) { const b = $(id); if (b) { bar.appendChild(b); Object.assign(b.style, { display: '', width: '40px', minWidth: '40px', height: '40px', fontSize: '16px' }); } }
   host.appendChild(bar);
   // the canvas corner: Fit
   const corner = document.createElement('div');
@@ -116,9 +132,14 @@ export function initEditorChrome() {
   host.appendChild(corner);
   _buildGridPopover();
   for (const id of TOUCH_ROW.menuOnly) { const b = $(id); if (b) b.style.display = 'none'; }
-  for (const ev of ['editorSelectionChanged', 'editorViewChanged', 'editorCommit', 'editorTabChanged', 'editorModeChanged']) document.addEventListener(ev, () => { syncSelectionBar(); syncTouchRow(); });
+  const syncAll = () => { syncSelectionBar(); syncTouchRow(); syncCanvasCorner(); };
+  for (const ev of ['editorSelectionChanged', 'editorViewChanged', 'editorCommit', 'editorTabChanged', 'editorModeChanged', 'editorBoardResized']) document.addEventListener(ev, syncAll);
+  window.addEventListener('resize', syncAll);
+  // the phone drawer moves (a drag, a tab's peek height): the corner follows its top
+  const drawer = $('editorMobileDrawer');
+  if (drawer && typeof ResizeObserver === 'function') new ResizeObserver(() => syncCanvasCorner()).observe(drawer);
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => syncCanvasCorner()).observe($('editorSVGContainer'));
   host.addEventListener('pointerup', () => requestAnimationFrame(() => { syncSelectionBar(); syncTouchRow(); }), true);
   host.addEventListener('pointerdown', () => requestAnimationFrame(syncTouchRow), true);
-  syncSelectionBar();
-  syncTouchRow();
+  syncAll();
 }
