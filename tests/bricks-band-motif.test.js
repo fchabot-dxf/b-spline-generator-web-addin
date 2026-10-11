@@ -60,7 +60,7 @@ describe('BAND_MOTIFS / the motif presets are declared data', () => {
   });
   it('the motif presets each declare a recommended size and name known motifs; every band declares its rows', () => {
     expect(MOTIF_PRESETS.sort()).toEqual(['dentil_corbel', 'dentil_cornice', 'diaper_lattice', 'greek_key_mosaic', 'recessed_panel', 'soldier_string', 'zigzag_band']);
-    expect(FRAME_PRESET_SIZES).toMatchObject({ dentil_corbel: 1, dentil_cornice: 1, recessed_panel: 1.25, zigzag_band: 1.25, diaper_lattice: 1.25, soldier_string: 1.25, greek_key_mosaic: 0.375 });
+    expect(FRAME_PRESET_SIZES).toMatchObject({ dentil_corbel: 1, dentil_cornice: 1, recessed_panel: 1.25, zigzag_band: 1.25, diaper_lattice: 1.25, soldier_string: 1.25, greek_key_mosaic: 0.75 });
     for (const id of MOTIF_PRESETS) for (const b of FRAME_PRESETS[id]) {
       expect(b.rows, id).toBeGreaterThan(0);
       if (b.motif) expect(BAND_MOTIFS[b.motif], `${id} ${b.motif}`).toBeTruthy();
@@ -154,10 +154,9 @@ describe('the motif lays as declared (7x10 rectangle)', () => {
 
 const FULL = process.env.MOTIF_SWEEP_FULL === '1';
 const TEMPLATES = FULL ? ['rect', ...FRAME_DEFS.templates.map((t) => t.id).filter((k) => /^template_\d+$/.test(k))] : ['rect', 'template_1', 'template_18'];
-// the full sweep's sizes; a preset declared for the small chips sweeps those (the Greek key's 12 rows are 4 in deep at 1.25 in)
-const FULL_SIZES = { greek_key_mosaic: [0.375] };
+// the Greek key mosaic has its own sweep below (tile-face thresholds, its measured exceptions declared there)
 const CASES = TEMPLATES.flatMap((tpl) => (FULL ? [[7, 10], [9, 12]] : [[7, 10]]).flatMap(([W, H]) =>
-  MOTIF_PRESETS.flatMap((p) => (FULL ? FULL_SIZES[p] || [1, 1.25] : [FRAME_PRESET_SIZES[p]]).map((L) => [tpl, W, H, L, p]))));
+  MOTIF_PRESETS.filter((p) => p !== 'greek_key_mosaic').flatMap((p) => (FULL ? [1, 1.25] : [FRAME_PRESET_SIZES[p]]).map((L) => [tpl, W, H, L, p]))));
 
 describe(`the motif presets lay cleanly (${FULL ? 'full sweep' : 'fast set'})`, () => {
   it.each(CASES)('%s %sx%s at %s in, %s', (tpl, W, H, L, preset) => {
@@ -234,9 +233,9 @@ describe('the Greek key mosaic', () => {
   const PHOTO_KEY = ['GGGG.GGGGG.G', '...G.G...G.G', '.G.G.G.G.G.G', '.GGG.G.GGG.G', '.....G.....G', 'GGGGGGGGGGGG'];
   const PHOTO_STRIPS = { above: ['.', 'G', '.'], below: ['.', 'G', '.'] }; // white / green / white either side of the key
 
-  it('the preset is declared: one 12-row header band of the greek_key grid, best at the 0.375 in chip', () => {
+  it('the preset is declared: one 12-row header band of the greek_key grid, best at the 0.75 in chip', () => {
     expect([...FRAME_PRESETS.greek_key_mosaic]).toEqual([{ widthIn: 2.4, rows: 12, pattern: 'header', motif: 'greek_key' }]);
-    expect(FRAME_PRESETS.greek_key_mosaic.bestSize).toBe(0.375);
+    expect(FRAME_PRESETS.greek_key_mosaic.bestSize).toBe(0.75);
     expect(BAND_MOTIFS.greek_key.unit).toBe('H'); // square cells, one brick height
     expect(tile.length).toBe(12);
     expect(new Set(tile.map((l) => l.length))).toEqual(new Set([6]));
@@ -267,12 +266,12 @@ describe('the Greek key mosaic', () => {
     expect(corner.slice(4, 8).map((l) => l.slice(3, 9))).toEqual(['R....R', 'R.RR.R', 'R.RR.R', 'R....R']);
   });
 
-  it('laid on the 7x10 rectangle at 0.375 in: the tiles square (0.066 in), the top side reads the tile and the corner', () => {
-    const W = 7, H = 10, L = 0.375, s = scaledSet(SET, L / SET.brickLengthIn), J = s.grout.widthIn, r = lay(primitivesOf('rect', W, H), 'greek_key_mosaic', L, W, H);
+  it('laid on the 7x10 rectangle at 0.75 in: the tiles square (0.166 in), the top side reads the tile and the corner', () => {
+    const W = 7, H = 10, L = 0.75, s = scaledSet(SET, L / SET.brickLengthIn), J = s.grout.widthIn, r = lay(primitivesOf('rect', W, H), 'greek_key_mosaic', L, W, H);
     const top = (row) => r.frameBricks.filter((b) => { const c = centroid(b.polygon); return b.rowIndex === row && c.y < c.x && c.y < W - c.x; })
       .sort((a, b) => centroid(a.polygon).x - centroid(b.polygon).x);
     for (let row = 0; row < 12; row++) {
-      const run = top(row), n = run.length;
+      const run = top(row);
       // the middle tiles are squares, one tile edge = a brick height less a joint; the outer row is half a joint deeper (the
       // shared joint rule: the stack's own outer edge, the board, has no joint)
       for (const b of run.slice(1, -1)) {
@@ -280,26 +279,35 @@ describe('the Greek key mosaic', () => {
         expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(s.brickHeightIn - J, 6);
         expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(s.brickHeightIn - (row ? J : J / 2), 6);
       }
-      // the start piece spans the mitre's cell and the next (column row + 1); every piece reads the declared cell
-      run.forEach((b, j) => {
-        const c = row + 1 + j, cEnd = row + 1 + (n - 1 - j);
+      // a piece's lattice column: the cell its end next to the run's middle sits in (the start piece spans the mitre's cell
+      // and the next -- how many depends on the size's closer floor); read from both ends of the run
+      run.forEach((b) => {
+        const xs = b.polygon.map((p) => p.x), cell = s.brickHeightIn;
+        const c = Math.round((Math.max(...xs) + J) / cell) - 1, cEnd = Math.round((W - Math.min(...xs) + J) / cell) - 1;
         const want = c < 12 ? corner[row][c] : cEnd < 12 ? corner[row][cEnd] : tile[row][c % 6];
         expect(b.relief, `row ${row} column ${c}`).toBe(RELIEF_CHARS[want]);
       });
     }
-    expect(s.brickHeightIn - J).toBeCloseTo(0.066, 6);
+    expect(s.brickHeightIn - J).toBeCloseTo(0.166, 6);
   });
 });
 
-// the Greek key's clean lay at its own size on the rectangle and the two curved templates the brief names; a tile is the
-// unit here (a bare patch is measured against ONE TILE face, not a brick's). GK_KNOWN: measured exceptions --
-//  - floor: template_1 9x12 and template_10 9x12, row 7 at the waist arcs' line junctions: 4 pieces at 0.63 / 0.58 of the
-//    floor (a plain 12-row header band lays the same four, and more -- the junction cut, not the motif);
-//  - bare: the line / arc junctions of template_1 9x12 and template_10 7x10 leave a two-scan-point joint triangle (0.0032
-//    sq in, 0.32 of a 0.1 in tile face; one scan point is 0.16 of it). A plain 12-row header band leaves it too.
-const GK_KNOWN = { floor: { 'template_1 9x12': 0.62, 'template_10 9x12': 0.57 }, bare: { 'template_1 9x12': 0.33, 'template_10 7x10': 0.33 } };
-const GK_CASES = ['rect', 'template_1', 'template_10'].flatMap((tpl) => [[7, 10], [9, 12]].map(([W, H]) => [tpl, W, H]));
-describe('the Greek key mosaic lays cleanly at 0.375 in', () => {
+// the Greek key's clean lay at its own size on the rectangle and the two curved templates the brief names, + template_18
+// 7x10 (the generic sweep's third board); a tile is the unit here (a bare patch is measured against ONE TILE face, not a
+// brick's). GK_KNOWN: measured exceptions at 0.75 in (Fred's pick: the 2.4 in band on a 7 in board leaves a 2.2 in wall, or
+// none) -- the 9x12 boards and the rectangles are clean:
+//  - template_1 7x10: the band's rows meet down the waist (13 wall bricks left): pieces at the medial line down to 0.154 of
+//    the floor, a bare patch of 0.44 of a tile face there;
+//  - template_10 7x10: a 0.20-tile bare patch (a line / arc junction);
+//  - template_18 7x10: the band fills the board (no wall); its rows meet at the medial line in flecks (0.001 of the floor),
+//    two of them past a joint outside the outline (0.036 / 0.042 in).
+const GK_KNOWN = {
+  floor: { 'template_1 7x10': 0.15, 'template_18 7x10': 0.0005 },
+  bare: { 'template_1 7x10': 0.45, 'template_10 7x10': 0.21 },
+  outside: { 'template_18 7x10': 2 },
+};
+const GK_CASES = [...['rect', 'template_1', 'template_10'].flatMap((tpl) => [[7, 10], [9, 12]].map(([W, H]) => [tpl, W, H])), ['template_18', 7, 10]];
+describe('the Greek key mosaic lays cleanly at its best size (0.75 in)', () => {
   it.each(GK_CASES)('%s %sx%s', (tpl, W, H) => {
     const L = FRAME_PRESETS.greek_key_mosaic.bestSize, prims = primitivesOf(tpl, W, H);
     const r = lay(prims, 'greek_key_mosaic', L, W, H), s = scaledSet(SET, L / SET.brickLengthIn), J = s.grout.widthIn, contour = tess(prims);
@@ -316,6 +324,9 @@ describe('the Greek key mosaic lays cleanly at 0.375 in', () => {
     }
     expect(bad, 'tiles overlapping').toEqual([]);
     const smallest = Math.min(...fb.map((b) => area(b.polygon)));
+    const segDist = (p, a, b) => { const ex = b.x - a.x, ey = b.y - a.y, l = ex * ex + ey * ey || 1e-12, t = Math.max(0, Math.min(1, ((p.x - a.x) * ex + (p.y - a.y) * ey) / l)); return Math.hypot(a.x + t * ex - p.x, a.y + t * ey - p.y); };
+    const outside = fb.filter((b) => b.polygon.some((p) => !pointInPolygon(p.x, p.y, contour) && Math.min(...contour.map((a, i) => segDist(p, a, contour[(i + 1) % contour.length]))) > J)).length;
+    expect(outside, 'tiles past a joint outside the outline').toBeLessThanOrEqual(GK_KNOWN.outside[key] ?? 0);
     expect(smallest / floor, 'smallest piece, share of the floor (a quarter tile face)').toBeGreaterThanOrEqual(GK_KNOWN.floor[key] ?? 1 - 1e-9);
     const bare = bareGround(contour, [...fb, ...r.bricks], J, { W, H });
     expect(bare.largestSqIn / (cell * cell), 'largest bare patch, share of one tile face').toBeLessThanOrEqual(GK_KNOWN.bare[key] ?? PATCH_MAX_FACE);

@@ -27,9 +27,8 @@ const SHOTS = [
   ['soldier_string', 'soldier_string', '', 1.25],
   ['dentil_cornice', 'dentil_cornice', '', 1],
   ['hourglass_dentil_corbel', 'dentil_corbel', 'template_1', 1],
-  ['greek_key_mosaic', 'greek_key_mosaic', '', 0.375, GREEK],
-  ['hourglass_greek_key_mosaic', 'greek_key_mosaic', 'template_1', 0.375, GREEK],
-  ['greek_key_mosaic_075', 'greek_key_mosaic', '', 0.75, GREEK], // the next chip up, to compare (a 2.4 in band)
+  ['greek_key_mosaic', 'greek_key_mosaic', '', 0.75, GREEK],
+  ['hourglass_greek_key_mosaic', 'greek_key_mosaic', 'template_1', 0.75, GREEK],
 ].filter((s) => !BOARDS || BOARDS.includes(s[0]));
 
 const chrome = spawn('C:/Program Files/Google/Chrome/Application/chrome.exe', ['--headless=new', `--remote-debugging-port=${PORT}`, `--user-data-dir=${PROFILE}`,

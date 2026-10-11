@@ -558,9 +558,9 @@ export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
   // its own -- the arch (withArch) is the frame, its hood and rings the outermost rows, its stones from the frame's edge
   arch_keystone: withBestSize(1, withArch('rowlock_keystone', [])),
   // 2026-10-11 (Fred, ref5): a mosaic -- ONE band of 12 square-tile rows (BAND_MOTIFS.greek_key), every tile the same size
-  // (one brick height); widthIn = 12 rows at Set 1's own size. Best at the smallest chip: a 0.1 in tile pitch, the band
-  // 1.2 in deep (MEASURED 7x10: at 0.75 in the 2.4 in band left the hourglass 13 wall bricks)
-  greek_key_mosaic: withBestSize(0.375, [
+  // (one brick height); widthIn = 12 rows at Set 1's own size. Best at the 0.75 in chip (Fred 2026-10-11 picked it): a 0.2
+  // in tile pitch (0.166 in tiles), the band 2.4 in deep (at 0.375 in the 0.066 in tiles were a third grout)
+  greek_key_mosaic: withBestSize(0.75, [
     { widthIn: 2.4, rows: 12, pattern: 'header', motif: 'greek_key' },
   ]),
 }));
