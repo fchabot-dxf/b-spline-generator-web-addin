@@ -1,13 +1,15 @@
 // Brick matrix group 'select': picking a Wall / Frame element.
 // Declared rows / constants for this group live HERE; run.mjs only drives them (tools/brick-matrix/groups/index.mjs).
 
+import { FRAME_LABELS } from '../../../bspline-frame-builder/b-spline-gen/html/core/frame-labels.js';
+
 // ---- Select (item 22 slice 1, seat 37 fb-app 2482482): picking a Wall/Frame element in the Brick tab.
 export const SELECT_ELEMENT = {
   wallTool: 'brickTool_wall',
   selectMode: 'brickElementSelect',
   wallSelect: 'brickSubTool_wall_select', wallArea: 'brickSubTool_wall_area', // area is hidden until 'wallRegion'
   frameTool: 'brickTool_frame',
-  frameLabel: { id: 'brickElementLabel_frame', text: 'Editing: this Frame' },
+  frameLabel: { id: 'brickElementLabel_frame', text: `Editing: this ${FRAME_LABELS.brick}` }, // the one label table (Fred's rename)
   introducedBy: '2482482',
 };
 

@@ -47,7 +47,9 @@ export function registerActionTools(editor) {
   // SE8a / SA-TEXT-1: both go through the ONE editor-close contract now —
   // Cancel used to skip text-session teardown entirely (see
   // endEditorSession's own comment for the leaked-listener failure mode).
-  bind('editorApply',  () => { beginLoadingSequence('apply'); endEditorSession(editor, { commit: true }); }); // item 41
+  // item 41; seat D 2026-10-09 (Fred's projects on the phone rig: 3D after a Generate was ~120 ms blind -- the commit,
+  // the drawing's save and the session write ran in the tap): the sequence's first step is on screen first, until done
+  bind('editorApply',  () => { beginLoadingSequence('apply'); withLoadingStageShownFirst('applyEdits', () => endEditorSession(editor, { commit: true })); });
   // workflow audit #5: Cancel sits next to Apply and used to drop every edit without a word -- it asks first when
   // there is anything to lose (the editor's own undo stack holds only the opening state otherwise)
   bind('editorCancel', async () => {

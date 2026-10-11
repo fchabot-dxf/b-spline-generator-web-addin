@@ -631,7 +631,7 @@
            are filled from data/frame-defs.js by main/frame-panel.js (never
            typed here). With template "none" it stays collapsed to one line. -->
       <div class="panel panel-frame">
-        <div class="panel-header collapsed" id="framePanelHeader" onclick="togglePanel(this)">🖼 FRAME <span id="frameSummary" style="font-weight:400; opacity:0.7;">— none</span></div>
+        <div class="panel-header collapsed" id="framePanelHeader" onclick="togglePanel(this)">🖼 <span data-frame-label="wood" style="text-transform:uppercase;">Wood frame</span> <span id="frameSummary" style="font-weight:400; opacity:0.7;">— none</span></div>
         <div class="panel-body hidden">
           <!-- Fred: "I'd still want the editor door even if no frame yet exists" -- outside #frameSettings (which
                hides with template "None"), so the editor's Frame tab (template picker + Generate) is always reachable.
@@ -953,8 +953,8 @@
           <!-- turn 207 (Fred): opens the editor on the Brick tab -- main/frame-panel.js OPEN_EDITOR_BUTTONS,
                the same mechanism and look as the FRAME section's "Edit frame" -->
           <button type="button" id="btnEditBricks" class="cad-btn cad-btn-secondary" style="width:100%; height:34px; font-size:13px; margin-bottom:12px;">Brick editor 🧱</button>
-          <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Quick settings</label>
-          <div style="font-size:10px; opacity:0.65; margin:0 0 8px;">Every other layout setting is in the editor's Brick tab.</div>
+          <!-- Fred (2026-10-11, redesign phase 1): plain rows, no "Quick settings" title / hint; the Wall pattern and the
+               Frame bands are one chip each, the wood frame's picker (main/brick-panel.js QUICK_PICKER) -->
           <!-- audit v2 N5: shown while the board has no Wall/Frame bricks (main/brick-panel.js syncControlRequires) -->
           <div id="brickSidebarNoBricks" style="display:none; font-size:11px; margin:0 0 8px; padding:6px 8px; border-radius:4px; background:rgba(255,198,26,0.15);">No bricks on this board yet. Open the editor's Brick tab, pick Wall or Frame and press Generate -- these settings then apply at once.</div>
           <div id="brickQuickSettings"></div>
@@ -1847,7 +1847,7 @@
                profile; Artwork = the general draw tools; Photo/Brick = their own former sidebar
                sections, moved here (Fred: each uses a completely different toolbar). -->
           <div id="editorModeTabs" role="tablist" style="display:flex; border:1px solid #ccc; border-radius:3px; overflow:hidden;">
-            <button type="button" id="editorTabFrame" role="tab" data-editor-tab="frame" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Frame</button>
+            <button type="button" id="editorTabFrame" role="tab" data-editor-tab="frame" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;"><span data-frame-label="wood">Wood frame</span></button>
             <button type="button" id="editorTabArtwork" role="tab" data-editor-tab="artwork" class="editor-fillmode-btn active" style="font-size:11px; padding:3px 12px; border:none;">Artwork</button>
             <button type="button" id="editorTabPhoto" role="tab" data-editor-tab="photo" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Photo</button>
             <button type="button" id="editorTabBrick" role="tab" data-editor-tab="brick" class="editor-fillmode-btn" style="font-size:11px; padding:3px 12px; border:none;">Brick</button>
@@ -2553,7 +2553,7 @@
               <label class="no-stepper" style="display:flex; flex-direction:column; gap:2px; max-width:120px;">distance from outer edge (in, +in/-out)
                 <input id="shapeLatticeContourFromFrameDistance" type="number" step="0.05" value="0" style="height:26px; font-size:11px; border:1px solid #ccc; border-radius:3px; outline:none; width:100%;">
               </label>
-              <span id="shapeLatticeContourFromFrameHint" style="display:none; font-size:11px; color:#777;">Choose a frame first (Frame panel).</span>
+              <span id="shapeLatticeContourFromFrameHint" style="display:none; font-size:11px; color:#777;">Choose a wood frame first (<span data-frame-label="wood">Wood frame</span> panel).</span>
               <!-- item 74i: why the Size / Shape / Segments blocks below are dim while the toggle is on (text: properties-shape-lattice.js) -->
               <span id="shapeLatticeFollowsFrameNote" style="display:none; font-size:11px; color:#777;"></span>
               <!-- F12 (Fred: "shape goes in contour", "segment too"): the silhouette's preset + sliders,
@@ -2887,7 +2887,7 @@
              thickness and the window do) -- H23 item 5's own prior removal of thickness from this panel is
              superseded by this item, not still in effect. -->
         <aside class="editor-layers-panel" id="editorFramePanel" style="display:none;">
-          <div class="layers-header"><span>Frame</span></div>
+          <div class="layers-header"><span data-frame-label="wood">Wood frame</span></div>
           <div style="padding:10px; display:flex; flex-direction:column; gap:10px; font-size:11px;">
             <label>Template
               <select id="editorFrameTemplate" style="width:100%; margin-top:4px;"></select>
@@ -2958,7 +2958,7 @@
             </div>
 
             <canvas id="photoPreviewCanvas" width="220" height="160" class="photo-preview-canvas"></canvas>
-            <div id="photoPreviewCaption" style="font-size:10px; opacity:0.6; text-align:center; margin:-4px 0 12px;">dimmed = mirrored by Symmetry, not sampled directly</div>
+            <div id="photoPreviewCaption" style="font-size:10px; opacity:0.6; text-align:center; margin:-4px 0 12px;">dimmed = not on the board (outside where the photo lands)</div>
 
             <div id="photoToolSection_crop" style="display:none;">
               <label class="cad-label">Crop (%)</label>
@@ -3220,17 +3220,13 @@
               <div id="brickSubTools_frame" style="display:flex; gap:6px; margin-bottom:4px; flex-wrap:wrap;"></div>
               <div id="brickElementLabel_frame" style="font-size:10px; opacity:0.65; margin:0 0 10px;"></div>
               <div id="brickFramePresetRow">
-              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Frame band preset</label>
+              <label class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;"><span data-frame-label="brick">Brick frame</span> preset</label>
               <div id="brickFramePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
                 <!-- Populated at runtime by main/brick-panel.js's declared FRAME_PRESET_LIST. -->
               </div>
               </div>
 
-              <!-- item 33: the Frame element's corner (main/brick-panel.js renderFrameCornerList, FRAME_CORNERS) -->
-              <div id="brickFrameCornerRow">
-              <label id="brickFrameCornerLabel" class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Corners</label>
-              <div id="brickFrameCornerList" style="display:flex; gap:4px; margin-bottom:12px; flex-wrap:wrap;"></div>
-              </div>
+              <!-- item 33's Corners row is retired (Fred 2026-10-11: a frame preset bundles its corner) -->
               <!-- T86 item 16e: how the corner fans end (main/brick-panel.js renderFrameFanCentreList, FRAME_FAN_CENTRES) -->
               <div id="brickFrameFanCentreRow">
               <label id="brickFrameFanCentreLabel" class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Fan centre</label>
@@ -3275,7 +3271,7 @@
                    renderWindowSurround: None + the frame band presets, then the engine's SURROUND_CORNERS) -->
               <div id="brickWindowSurroundRow">
               <label id="brickSurroundLabel" class="cad-label" style="font-weight:600; opacity:0.75; margin-bottom:4px;">Window surround</label>
-              <div id="brickSurroundHint" style="font-size:11px; opacity:0.7; margin-bottom:12px;">Turn on the inset window in the Frame panel</div>
+              <div id="brickSurroundHint" style="font-size:11px; opacity:0.7; margin-bottom:12px;">Turn on the inset window in the <span data-frame-label="wood">Wood frame</span> panel</div>
               <div id="brickSurroundRows">
                 <div id="brickSurroundPresetList" style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;"></div>
                 <label id="brickSurroundCornerLabel" class="cad-label" style="font-size:10px; margin-bottom:4px;">Corners</label>

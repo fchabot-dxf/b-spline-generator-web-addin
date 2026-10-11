@@ -52,6 +52,7 @@ import { FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/b
 import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
 import { deselectTool, BRICK_GENERAL_TAB } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
+import { FRAME_LABELS } from '../bspline-frame-builder/b-spline-gen/html/core/frame-labels.js';
 
 const FIXTURE = `
   <div class="sticky-actions"><div id="editorToolbarBrick"></div><button id="brickGenerate">Generate</button></div>
@@ -91,7 +92,7 @@ const FIXTURE = `
   <input id="brickSuppressionSlider" type="range"><input id="brickSuppression">
   <input id="brickClumpingSlider" type="range"><input id="brickClumping">
   <input id="brickSeed"><button id="brickBtnRandomSeed"></button>
-  <div id="brickFrameCornerList"></div>
+  <!-- item 33's #brickFrameCornerList is retired (2026-10-11: a preset bundles its corner) -->
 `;
 
 const $ = (id) => document.getElementById(id);
@@ -383,7 +384,7 @@ describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + 
   });
   it('one quick row per declared setting, a button per choice, the current one active', () => {
     const rows = [...$('brickQuickSettings').querySelectorAll('label')].map((l) => l.textContent);
-    expect(rows).toEqual(['Set', 'Brick size', 'Wall pattern', 'Frame bands', 'Grout colour']); // + F35 item 55
+    expect(rows).toEqual(['Set', 'Brick size', 'Wall pattern', FRAME_LABELS.brick, 'Grout colour']); // + F35 item 55
     expect($('brickQuick_set_1').classList.contains('active')).toBe(true);
     expect($('brickQuick_pattern_stretcher').classList.contains('active')).toBe(true);
     expect($('brickQuick_frameBands_single_soldier').classList.contains('active')).toBe(true);
@@ -1014,7 +1015,7 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
     deselectTool();
     expect(shown('brickStartHint')).toBe(true);
     expect($('brickStartHint').textContent).toMatch(/Wall/);
-    expect($('brickStartHint').textContent).toMatch(/Frame/);
+    expect($('brickStartHint').textContent).toContain(FRAME_LABELS.brick);
     expect($('brickStartHint').textContent).toMatch(/Brush/);
     $('brickTool_wall').click();
     expect(shown('brickStartHint')).toBe(false);
@@ -1213,7 +1214,7 @@ describe('item 67: the panel wires its page (document) listeners once per page',
 describe('Generate: the control-requires sync runs under the bricks card, never behind a stale tap', async () => {
   const { setPaintScheduler, currentLoadingStage, resetLoadingSignal } = await import('../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js');
   let frames;
-  const butt = () => $('brickFrameCorner_butt');
+  const butt = () => $('brickFramePreset_butt_frame'); // the corner rule's control: the preset whose corner is butt (2026-10-11)
   beforeEach(() => {
     setup('frame');
     root.insertAdjacentHTML('beforeend', '<div id="loading-stage" hidden><span class="loading-stage-text"></span></div>');
@@ -1249,3 +1250,24 @@ describe('Generate: the control-requires sync runs under the bricks card, never 
   });
 });
 
+
+// 2026-10-11 (a preset bundles its corner): the corner grey moved onto the preset chips -- on a frame with NO bands (None)
+// every style "cut nothing" over zero bands and greyed every corner chip (MEASURED, matrix frame-ui): the chips that lead
+// INTO a quoin / butt / lapped frame were dead. They are judged on a plain frame then (CORNER_FACT_BANDS_WHEN_NONE).
+describe('the corner-variant preset chips stay live on a frame with no bands', async () => {
+  const { setPaintScheduler, resetLoadingSignal } = await import('../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js');
+  beforeEach(() => {
+    setup('frame');
+    setPaintScheduler((cb) => cb()); resetLoadingSignal();
+    // the engine's answer, by the bands it is asked about: zero bands cut nothing, a real stack cuts every style
+    frameCornerEffectFor.mockImplementation((ed, s, geom) => ((geom && geom.bands && geom.bands.length) ? { butt: true, block: true, lapped: true } : { butt: false, block: false, lapped: false }));
+  });
+  afterEach(() => { frameCornerEffectFor.mockReset(); });
+  it('None: Soldier · quoin / · butt / Soldier x2 · lapped live after the sync; picking one lays its frame', () => {
+    $('brickFramePreset_none').click();
+    $('brickGenerate').click();
+    for (const id of ['quoin_corners', 'butt_frame', 'double_course']) expect($(`brickFramePreset_${id}`).disabled, id).toBe(false);
+    $('brickFramePreset_quoin_corners').click();
+    expect(P.brickSettings.frameBandPreset).toBe('quoin_corners');
+  });
+});

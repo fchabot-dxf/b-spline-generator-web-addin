@@ -58,6 +58,7 @@ import { el, on } from './dom.js';
 import { refreshOutlinePreview } from './editor-outline-preview.js';
 import { dbg } from '../core/debug.js';
 import { commitEdit } from './editor-commit.js';
+import { FRAME_LABELS } from '../core/frame-labels.js';
 
 /**
  * SE12 T36: which geometry a layer's Fusion export uses — an EXPLICIT
@@ -855,7 +856,7 @@ export function bakeBrickTransforms(editor) {
  *  strokes share Brush (BRICK_KIND_LAYER_OF). */
 export const BRICK_KIND_LAYERS = Object.freeze({
   wall: Object.freeze({ name: 'Wall', tint: '#c0503a' }),
-  frame: Object.freeze({ name: 'Frame', tint: '#8a6a44' }),
+  frame: Object.freeze({ name: FRAME_LABELS.brick, tint: '#8a6a44' }),
   brush: Object.freeze({ name: 'Brush', tint: '#d9963a' }),
 });
 export const BRICK_KIND_LAYER_OF = Object.freeze({ wall: 'wall', frame: 'frame', brush: 'brush', raisedBrush: 'brush' });

@@ -51,6 +51,7 @@ import { bindHeaderAndSettings } from './header-controls.js';
 import { paintBuildInfo } from './build-badge.js';
 import { wireGlobalEvents } from './global-events.js';
 import { installGestureWatch, holdLoadingStage, releaseHeldStage } from '../core/loading-signal.js';
+import { applyFrameLabels } from '../core/frame-labels.js';
 import {
     onGenerate, onFusionApply, executeExport, closeWizard,
 } from './export-flow.js';
@@ -160,6 +161,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     if (window.initBsplineTheme) window.initBsplineTheme();
 
+    // Fred: the wood frame and the brick frame named from ONE table (core/frame-labels.js) in the page's static text
+    applyFrameLabels();
     // FB-APP S2 (F6): the sidebar FRAME section + the editor's cut-profile provider.
     initFramePanel();
     // F35 item 28: the editor header's Clear menu (All / one entry per tab that declares `clears`)

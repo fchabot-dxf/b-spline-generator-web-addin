@@ -19,10 +19,12 @@ const QUOIN_REACH_SQIN = 1e-4;
 import { brickTopHeight } from './height-profile.js';
 import { suppressBricks } from './suppression.js';
 import { laySurround } from './inset-surround.js';
+import { layArch } from './arch-surround.js';
 import { bareTips } from './tip-fill.js';
 import { scaledSet } from './library.js';
 import { applyGroutCuts, groutCutsOf } from './grout-cut.js';
 import { applyFanCentre, FAN_CENTRE_DEFAULT } from './fan-centre.js';
+import { insideReliefOf, tagInsideRelief } from './band-motif.js'; // frame motifs: a band's relief for the wall inside it
 
 /**
  * @param {object} input
@@ -68,6 +70,7 @@ export const ENGINE_OPTIONS = Object.freeze([
   'suppressFrame', 'frameSuppression', // T86 item 29 (lane-b): the frame bands crumble by the wall's rule (suppression.js suppressBricks)
   'insetSurround', // T86 item 29 (lane-b): { rect, preset, corner?, set? } -- a band stack around the inset window (inset-surround.js)
   'groutCut', // T86 item 10: [{ polyline, widthIn? }] -- grout joints cut through the laid pieces (grout-cut.js), after the lay
+  'arch', // 2026-10-11: { spec } -- a blind arch conforming to the frame (arch-surround.js layArch): the wall is cleared off it and fills its opening
   'fanCentre', // T86 item 16e: how a frame corner's fan ends at its centre (fan-centre.js FAN_CENTRES); absent = needle
 ]);
 
@@ -112,10 +115,14 @@ export function generateBricks(input) {
   }
   // T86 item 29: the inset window's surround (its own field); the wall is cut around it (its outer rect, one joint off)
   const surround = input.insetSurround ? laySurround(input.insetSurround, { set: (frame && frame.set) || set, seed, scale }) : null;
+  // 2026-10-11: the arch (a frame preset's `arch`): an inner band stack on the frame's own contour, inside its bands (Fred:
+  // it always conforms to the frame); the wall is cleared off it and fills its opening (below). Absent = the lay byte-identical
+  const archLay = input.arch && frameLay ? layArch(input.arch.spec, frame.primitives, frameLay.bands, { set: frameLay.frameSet, seed, scale }) : null;
+  const arch = archLay && !archLay.fit ? archLay : null;
   const wallExclusions = surround ? [...(input.exclusions || []), { polygon: surround.outer }] : input.exclusions;
 
   const region = wallRegionOf(input.wallRegion, set);
-  const laidWall = input.skipWallFill ? [] : bricksFillShape(interiorOutline, null, {
+  let laidWall = input.skipWallFill ? [] : bricksFillShape(interiorOutline, null, {
     set, seed, scale,
     suppression: input.suppression ?? 0,
     topBias: input.topBias ?? 0.8,
@@ -129,6 +136,16 @@ export function generateBricks(input) {
     exclusions: wallExclusions,
     region,
   }).bricks;
+  // the arch starts at the frame's inner edge (Fred: no inward offset), so no wall is left outside it: the wall is laid
+  // inside its opening only (its own courses, as a blind arch is built)
+  if (arch) laidWall = [];
+  // ... cleared off the arch's own pieces (a band's corner pieces can reach past its nominal depth at a tight concave
+  // turn: T5's dip, MEASURED) by the quoin rule -- a joint off, every cut piece kept (fill-shape.js bricksClearOf)
+  const openingWall = arch && !input.skipWallFill ? bricksClearOf(bricksFillShape(arch.opening, null, {
+    set, seed, scale, suppression: input.suppression ?? 0, topBias: input.topBias ?? 0.8, clumping: input.clumping ?? 0.3,
+    rotationDeg: input.rotationDeg, rustic: input.rustic, customBond: input.customBond, exclusions: input.exclusions,
+  }).bricks, arch.pieces.map((b) => ({ polygon: b.polygon })), scaledSet(set, scale)) : [];
+  if (openingWall.length) laidWall = [...laidWall, ...openingWall];
   // the wall is never laid off the board (seat E, 2026-10-08, the gap sweep): its region is clipped to the board
   // (primitive-ribbon.js wallRegionAtDepth), and its pieces are cut to the board by the band's own step, dropping under the
   // wall set's floor -- a region inverted at 2 - 8 in can still hand the fill a zero-width bridge it lays whole bricks across
@@ -138,10 +155,15 @@ export function generateBricks(input) {
   // its own width; a piece under the quarter-brick floor of its element drops into the joint. No cut = as before.
   const cuts = groutCutsOf(input.groutCut);
   const cutAll = (pieces, s, laidBy) => applyGroutCuts(pieces, cuts, s, scale, laidBy); // the one shared cut step (grout-cut.js)
-  let wallBricks = cutAll(bricks, set);
+  const cutWall = cutAll(bricks, set);
+  // frame motifs (the recessed panel): a frame band may declare the wall inside it raised / recessed (`insideRelief`); none = as before
+  const insideRelief = frameLay ? insideReliefOf(frameLay.bands) : null;
+  // (let: the quoins that reach into the wall clear it below -- bricksClearOf keeps each piece's tags)
+  let wallBricks = insideRelief ? tagInsideRelief(cutWall, insideRelief) : cutWall;
   const frameSetUsed = (frame && frame.set) || set;
   // the bands' pieces drop under the floor of the layout that laid them (a Grey stone ring: fieldstone; piece-floor.js)
   const surroundBricks = surround ? cutAll(surround.bricks, frameSetUsed, frameLaidBy(frameSetUsed, setBandPattern)) : null;
+  const archBricks = arch ? cutAll(arch.pieces, frameSetUsed) : null;
   // T86 item 16f (B1): the wall region's acute tips (>= TIP_FILL_MIN_DEG) the wall leaves bare are the band's -- the frame's
   // innermost row reaches into what the wall leaves uncovered (a joint off every wall brick; the wall itself is untouched)
   const tips = frameLay && frameLay.bands.length && bricks.length ? bareTips(interiorOutline, bricks, scaledSet(set, scale)) : [];
@@ -180,6 +202,7 @@ export function generateBricks(input) {
   }
   // T86 item 13: the app's own stub (editor-brick-tool.js dropExcludedWallBricks) stands down when this is set
   const notes = { ...(bandsReduced ? { bandsReduced } : {}), ...(input.wallRegion ? { wallRegionApplied: true } : {}), ...(surround ? { surroundBricks } : {}),
+    ...(arch ? { archBricks, archRegion: arch.region, archOpening: arch.opening, archStep: arch.step } : {}), ...(archLay && archLay.fit ? { archFit: archLay.fit } : {}),
     ...(cuts.length ? { groutCutApplied: cuts.length } : {}) };
   // F35 item 55: + `interiorOutline` (the wall's fill outline: the frame's innerPath, else the board) -- additive, read by
   // the grout shape (grout-shape.js); every other field is as before
