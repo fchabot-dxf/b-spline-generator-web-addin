@@ -9,7 +9,7 @@
  * Primary output is VECTOR SHAPES (Fred: "bricks are more like vectors"); the height-field
  * sampler below is a SECOND, DERIVED output built from that same brick list.
  */
-import { bricksFillShape } from './fill-shape.js';
+import { bricksFillShape, bricksClearOf } from './fill-shape.js';
 import { strokesToRegion, WALL_REGION_PICK } from './region.js';
 import { bricksContourBands, setBandPattern, clipPiecesToBoard } from './contour-bands.js';
 import { frameLaidBy, minPieceAreaOf } from './piece-floor.js';
@@ -116,12 +116,11 @@ export function generateBricks(input) {
   // and fills its opening (a second fill below); absent / not fitting = no arch, the lay byte-identical
   const archLay = input.arch ? layArch(input.arch.spec, interiorOutline, { set: (frame && frame.set) || set, seed, scale }) : null;
   const arch = archLay && !archLay.fit ? archLay : null;
-  const outerExclusions = [...(surround ? [{ polygon: surround.outer }] : []), ...(arch ? [{ polygon: arch.outer }] : [])];
-  const wallExclusions = outerExclusions.length ? [...(input.exclusions || []), ...outerExclusions] : input.exclusions;
+  const wallExclusions = surround ? [...(input.exclusions || []), { polygon: surround.outer }] : input.exclusions;
 
   const region = wallRegionOf(input.wallRegion, set);
   const bondOriginX = arch ? arch.placement.cx : undefined; // the arch centres the wall's bond on itself (bond.js originX)
-  const laidWall = input.skipWallFill ? [] : bricksFillShape(interiorOutline, null, {
+  let laidWall = input.skipWallFill ? [] : bricksFillShape(interiorOutline, null, {
     set, seed, scale, ...(arch ? { bondOriginX } : {}),
     suppression: input.suppression ?? 0,
     topBias: input.topBias ?? 0.8,
@@ -135,12 +134,16 @@ export function generateBricks(input) {
     exclusions: wallExclusions,
     region,
   }).bricks;
-  // the arch's opening: the same wall, laid again inside it (its own courses, as a blind arch is built)
-  const openingWall = arch && !input.skipWallFill ? bricksFillShape(arch.opening, null, {
+  // the arch (Fred, via the advisor, 2026-10-11: no voids along the hood): the wall is cleared off its outer outline by the
+  // rule seat E set for the quoins (fill-shape.js bricksClearOf, a joint off) -- every cut piece KEPT, as a piece cut at
+  // any region edge; the exclusion rule's quarter-brick floor left dark voids along the hood's curve. Then the same wall
+  // is laid again inside the opening (its own courses, as a blind arch is built), cleared off the keystone the same way.
+  if (arch && laidWall.length) laidWall = bricksClearOf(laidWall, [{ polygon: arch.outer }], scaledSet(set, scale));
+  const openingWall = arch && !input.skipWallFill ? bricksClearOf(bricksFillShape(arch.opening, null, {
     set, seed, scale, bondOriginX, suppression: input.suppression ?? 0, topBias: input.topBias ?? 0.8, clumping: input.clumping ?? 0.3,
-    rotationDeg: input.rotationDeg, rustic: input.rustic, customBond: input.customBond, exclusions: [...(input.exclusions || []), { polygon: arch.keystone }],
-  }).bricks : [];
-  if (openingWall.length) laidWall.push(...openingWall);
+    rotationDeg: input.rotationDeg, rustic: input.rustic, customBond: input.customBond, exclusions: input.exclusions,
+  }).bricks, [{ polygon: arch.keystone }], scaledSet(set, scale)) : [];
+  if (openingWall.length) laidWall = [...laidWall, ...openingWall];
   // the wall is never laid off the board (seat E, 2026-10-08, the gap sweep): its region is clipped to the board
   // (primitive-ribbon.js wallRegionAtDepth), and its pieces are cut to the board by the band's own step, dropping under the
   // wall set's floor -- a region inverted at 2 - 8 in can still hand the fill a zero-width bridge it lays whole bricks across

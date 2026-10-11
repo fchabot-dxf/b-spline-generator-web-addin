@@ -24,6 +24,7 @@ export const ARCH_SPECS = Object.freeze({
     ringDepthL: 0.5,
     hoodDepthH: 0.5, // the hood ring outside the rings, hoodDepthH x H deep, pieces about one brick long
     hoodLevelIn: 0.04, // the hood stands proud of the bricks (a per-piece height offset, the height mask's own channel)
+    keystoneLevelIn: 0.04, // and the keystone, like the hood (Fred, 2026-10-11)
     keystoneHalfIn: 0.32, // the keystone's half width at the intrados (its half angle there = keystoneHalfIn / r)
     keystoneFlare: 1.25, // its half angle at the hood, x the intrados one (a wedge)
     keystoneDropIn: 0.08, // it hangs this far below the intrados and stands this far + 0.02 past the hood
@@ -155,7 +156,7 @@ export function layArch(specOrId, interior, opts) {
   {
     const r0 = ri - spec.keystoneDropIn, r1 = rh + spec.keystoneDropIn + 0.02;
     const a0 = ksAt(ri), a1 = ksAt(rh);
-    push([...arcPts(cx, yc, r0, -PI / 2 - a0, -PI / 2 + a0), ...arcPts(cx, yc, r1, -PI / 2 + a1, -PI / 2 - a1)], 'keystone', true);
+    push([...arcPts(cx, yc, r0, -PI / 2 - a0, -PI / 2 + a0), ...arcPts(cx, yc, r1, -PI / 2 + a1, -PI / 2 - a1)], 'keystone', true, spec.keystoneLevelIn);
   }
   // springers (stone): sectors at both arch ends, intrados to hood
   for (const [t0, t1] of [[-PI, -PI + sp], [-sp, 0]]) {

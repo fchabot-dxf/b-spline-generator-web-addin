@@ -12,6 +12,7 @@ import { layArch, archPlacement, run, ARCH_SPECS } from '../bspline-frame-builde
 import { generateBricks } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/engine.js';
 import { FRAME_PRESETS, brickSetById, scaledSet } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
+import { minPieceAreaOf } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/piece-floor.js';
 import { polygonsOverlap, buildRibbonPrimitives, frameArchOf, brickLayInput } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
 const RED = brickSetById(1);
@@ -53,9 +54,10 @@ describe('the arch on a 7 x 10 board (the mock)', () => {
     for (const p of ['ring', 'hood', 'jamb', 'sill']) expect(counts[p]).toBeGreaterThan(3);
     for (const b of pieces) expect(b.setId).toBe(['keystone', 'springer', 'sillBlock'].includes(b.part) ? 6 : undefined);
   });
-  it('the hood stands proud (its declared level); the rest at the brick height', () => {
+  it('the hood and the keystone stand proud (their declared levels; Fred: the keystone raised like the hood); the rest at the brick height', () => {
     const lvl = ARCH_SPECS.rowlock_keystone.hoodLevelIn;
     for (const b of parts('hood')) expect(b.heightOffset).toBeCloseTo(lvl, 1);
+    for (const b of parts('keystone')) expect(b.heightOffset).toBeCloseTo(ARCH_SPECS.rowlock_keystone.keystoneLevelIn, 1);
     for (const b of parts('ring')) expect(Math.abs(b.heightOffset)).toBeLessThan(lvl / 2);
   });
   it('no two arch pieces overlap; none is inside the opening; all inside the outer outline', () => {
@@ -79,6 +81,12 @@ describe('the arch on a 7 x 10 board (the mock)', () => {
     // MEASURED (seed 3, 7 x 10): 0.785 / 0.807 as built; the bond on the interior's own edge 0.732 on the left (a sliver
     // column dropped); the jambs off the head joints 0.760 both -- the joints alone leave ~0.8 of a running-bond strip
     for (const c of cover) expect(c).toBeGreaterThan(0.77);
+  });
+  it('no voids along the hood: the wall is cleared off the arch keeping every cut piece (seat E’s quoin rule, bricksClearOf)', () => {
+    const floor = minPieceAreaOf(scaledSet(RED, SCALE));
+    const area = (poly) => Math.abs(poly.reduce((acc, p, i) => { const q = poly[(i + 1) % poly.length]; return acc + p.x * q.y - q.x * p.y; }, 0) / 2);
+    const slivers = res.bricks.filter((w) => area(w.polygon) < floor && String(w.id).includes('~'));
+    expect(slivers.length).toBeGreaterThan(0); // the exclusion rule dropped every one of these (its quarter-brick floor)
   });
   it('the wall: around the arch (no overlap) and laid again in its opening', () => {
     for (const w of res.bricks) for (const a of pieces) expect(polygonsOverlap(w.polygon, a.polygon)).toBe(false);
