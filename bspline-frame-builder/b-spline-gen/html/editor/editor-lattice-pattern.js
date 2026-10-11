@@ -2559,6 +2559,7 @@ function _reapplyProtectedRail(el, pr) {
 
 export async function generatePattern(editor, PATTERN, { amendUndo = false } = {}) {
   if (!editor || !editor._sketchLayer) return null;
+  const docEpoch = editor._docEpoch; // the drawing this run started on (editor-io.js resetArtworkToFresh)
   if (!PATTERN.id) PATTERN.id = `lattice-${Date.now().toString(36)}`;
 
   // T76 (SE17): rails/ties/nodes each draw onto their OWN kind-layer now
@@ -2621,6 +2622,8 @@ export async function generatePattern(editor, PATTERN, { amendUndo = false } = {
   } else {
     extent = _resolveExtent(editor, PATTERN);
   }
+  // the drawing was replaced (a project load / Clear) while the boundary resolved: nothing of the old one lands in it
+  if (editor._docEpoch !== docEpoch) return null;
   // H20 item 6: a removed kind's id is absent from kindLayerIds (see
   // _ensureKindLayers) — filtered here so a deleted Ties/Nodes layer's old
   // (now-gone) id, or an entry that was never created, is never matched
