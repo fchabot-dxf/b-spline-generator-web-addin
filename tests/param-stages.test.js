@@ -14,6 +14,8 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/main/param-manager.js', asyn
 import { PARAM_STAGES, bindControls } from '../bspline-frame-builder/b-spline-gen/html/main/ui-bindings.js';
 import { applyParam } from '../bspline-frame-builder/b-spline-gen/html/main/param-manager.js';
 import { LOADING_STAGES, setPaintScheduler, currentLoadingStage } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
+import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
+import { renderPhotoLayerSection, bindPhotoLayerSection } from '../bspline-frame-builder/b-spline-gen/html/main/photo-layer-section.js';
 
 beforeEach(() => {
   document.body.innerHTML = '<div id="loading-stage" hidden><span class="loading-stage-text"></span></div>'
@@ -25,7 +27,7 @@ afterEach(() => { document.body.innerHTML = ''; });
 
 describe('PARAM_STAGES: a heavy sidebar param shows its stage before its apply', () => {
   it('declared: the board width and height -> the frame stage', () => {
-    expect(PARAM_STAGES).toEqual({ widthIn: 'frame', heightIn: 'frame' });
+    expect(PARAM_STAGES).toEqual({ widthIn: 'frame', heightIn: 'frame', photoLayer: 'rebuild' });
     for (const s of Object.values(PARAM_STAGES)) expect(LOADING_STAGES[s]).toBeTruthy();
   });
 
@@ -40,6 +42,27 @@ describe('PARAM_STAGES: a heavy sidebar param shows its stage before its apply',
     expect(applyParam.mock.calls.filter(([k]) => k === 'widthIn')).toEqual([]); // nothing ran in the gesture
     paints.forEach((p) => p()); paints = [];
     expect(applyParam.mock.calls.filter(([k]) => k === 'widthIn')).toEqual([['widthIn', 7.25], ['widthIn', 7.25]]);
+  });
+
+  // seat A 2026-10-11 (matrix blind row "Surface: photo layer toggle (off)", 53-92 ms blind): the switch's apply AND
+  // Surface > Photo's greying (photo-layer-section.js) both wait for the stage; the greying reads the applied value
+  it('the Photo layer switch: the rebuild stage first; the apply, then the greying, in its paint step', () => {
+    P.photoLayer = true;
+    document.body.innerHTML += '<div id="photoLayerBody"></div>';
+    renderPhotoLayerSection(document.getElementById('photoLayerBody'));
+    try { bindControls(null); } catch { /* the rest of the sidebar is not in this page */ }
+    bindPhotoLayerSection();
+    applyParam.mockImplementation((k, v) => { P[k] = v; });
+    let paints = [];
+    setPaintScheduler((cb) => { paints.push(cb); });
+    const box = document.getElementById('photoLayer'), amount = document.getElementById('photoFilterAmount');
+    box.checked = false; box.dispatchEvent(new Event('input', { bubbles: true })); box.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(currentLoadingStage()?.id).toBe('rebuild');
+    expect([applyParam.mock.calls.filter(([k]) => k === 'photoLayer'), amount.disabled]).toEqual([[], false]); // nothing in the tap
+    paints.forEach((p) => p()); paints = [];
+    expect(applyParam.mock.calls.filter(([k]) => k === 'photoLayer')).toEqual([['photoLayer', false]]);
+    expect(amount.disabled).toBe(true);
+    applyParam.mockReset();
   });
 
   it('an undeclared param applies at once, as before', () => {
