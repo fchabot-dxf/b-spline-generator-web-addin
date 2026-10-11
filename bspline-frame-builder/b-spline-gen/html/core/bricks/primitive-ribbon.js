@@ -540,7 +540,7 @@ const CURVE_QUOIN_ARC = Object.freeze({ stepIn: 0.1, maxSteps: 16 });
  * becomes its L). null -- the mitre -- outside CURVE_QUOIN_TURN_DEG, at a concave corner, when either run is shorter
  * than the block and a joint, or when the inner line misses the inner arc.
  */
-function buildCurveBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1) {
+function buildCurveBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1, d0 = 0) {
   const prevPrim = primitives[prevIdx], curPrim = primitives[curIdx];
   const line = prevPrim.type === 'line' ? prevPrim : curPrim, arc = line === prevPrim ? curPrim : prevPrim;
   if (line.type !== 'line' || arc.type !== 'arc') return null;
@@ -557,9 +557,13 @@ function buildCurveBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1) 
   if (Math.min(lineLen, arcLen) < s + J + MIN_LINE_RUN_IN) return null;
   const lineAway = line === prevPrim ? { x: -tPrev.x, y: -tPrev.y } : tCur; // along the side, away from the corner
   const arcSign = (Math.sign(arc.theta2 - arc.theta1) || 1) * (line === prevPrim ? 1 : -1); // angle step away from it
-  const rIn = rO - arc.radialSign * s, thB = thO + (arcSign * s) / rO;
+  // the block spans the whole row (MEASURED T10 9x12 at 1.5 in: a row deeper than the 1.1 in block left the strip past its
+  // inner face along the side to no run -- the arc run is cut along the radius; a square block's other run covers it)
+  const depth = Math.max(s, d1 - d0);
+  const rIn = rO - arc.radialSign * depth, thB = thO + (arcSign * s) / rO;
+  if (!(rIn > nominalJoint)) return null; // a row as deep as the arc's radius: no inner arc -- the mitre
   const at = (r, th) => ({ x: c.x + r * Math.cos(th), y: c.y + r * Math.sin(th) });
-  const innerStart = stepFrom(o, n, s);
+  const innerStart = stepFrom(o, n, depth);
   const hits = lineCircleIntersections(innerStart, lineAway, c, rIn) || [];
   const X = hits.reduce((b, p) => (!b || Math.hypot(p.x - innerStart.x, p.y - innerStart.y) < Math.hypot(b.x - innerStart.x, b.y - innerStart.y) ? p : b), null);
   if (!X) return null;
@@ -575,7 +579,7 @@ function buildCurveBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1) 
   };
   const pL = stepFrom(o, lineAway, s);
   // o -> the arc face -> the radial face -> the inner arc back to X -> the side's inner offset line -> its square face
-  const blockPolygon = [...arcPts(rO, thO, thB), ...arcPts(rIn, thB, thX), stepFrom(pL, n, s), pL];
+  const blockPolygon = [...arcPts(rO, thO, thB), ...arcPts(rIn, thB, thX), stepFrom(pL, n, depth), pL];
   // the cuts, one joint off the two faces
   const lineCut = stepFrom(o, lineAway, s + J), lineKeep = stepFrom(lineCut, lineAway, 1);
   const forLine = { point: lineCut, q: lineCut, dirX: n.x, dirY: n.y, keepRefAsStart: lineKeep, keepRefAsEnd: lineKeep, trustO: true };
@@ -1200,7 +1204,7 @@ export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyl
     // seat E 2026-10-11: a straight side meeting an arc at a kink takes the CURVED block (buildCurveBlockJoint)
     if (cornerStyle === 'block' && droppedIdx === null && !(blockOff && blockOff.has(curIdx))
         && primitives[prevIdx].type !== primitives[curIdx].type) {
-      const block = buildCurveBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1);
+      const block = buildCurveBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1, d0);
       if (block) return block;
     }
     // the SAME joint, approached by its own two DIFFERENT primitives, must keep OPPOSITE sides of

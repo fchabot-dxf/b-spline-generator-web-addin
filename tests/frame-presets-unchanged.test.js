@@ -5,6 +5,7 @@
  * on a 7x10 rectangle, template_1 (hourglass), template_18 and template_5 (7x10), at 0.75 and 1.25 in. PIN=1 re-pins.
  * Re-pinned 2026-10-11 (seat E) on origin/main edd4f68: quoin-l-blocks clears the wall from a quoin that reaches into it
  * -- the four quoin_corners 0.75 in digests changed in their WALL half only (frame halves identical).
+ * Re-pinned again (seat E, curve-quoin): T18 quoin_corners 0.75 / 1.25 only -- its arched top now takes the curved block.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { createHash } from 'node:crypto';

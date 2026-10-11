@@ -1171,7 +1171,11 @@ export function bricksContourBands(primitives, bands, opts) {
   const wallDepth = Math.max(bands.length ? depthSoFar + halfJoint : depthSoFar, narrowWallDepth);
   // the wall's region, never off the board (primitive-ribbon.js wallRegionAtDepth)
   const innerPath = closed ? wallRegionAtDepth(enriched, wallDepth) : [];
-  if (QUOIN_INNER_WRAP === 'L' && (quoinRibbons.length > 1 || (opts.blockOff && quoinRibbons.length))) {
+  // A curved block (primitive-ribbon.js buildCurveBlockJoint) needs it on ONE quoin ribbon too: it spans the whole row and
+  // its faces meet the runs at the corner's own angle (MEASURED: T10 7x9 1.25 in, a short side's last piece 0.003 sq in under
+  // it; T16 9x12 0.75 in, band 2's mitred corner under band 1's block). It cuts only a piece truly over a quoin -- a square
+  // quoin's lay has none, so its pieces stay byte-identical
+  if (QUOIN_INNER_WRAP === 'L' && quoinRibbons.length >= 1) {
     // a merged remnant stays out of the wall's region by the band's half of the joint (MEASURED T5 9x12 1 in
     // soldier_stretcher: an arc piece's hull took the chord across its curved inner edge, 0.02 sq in into the wall)
     const wallZone = innerPath.length >= 3 ? offsetPathInward(innerPath, halfJoint, -inwardSignFor(innerPath)) : null;

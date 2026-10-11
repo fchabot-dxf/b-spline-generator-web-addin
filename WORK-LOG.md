@@ -26077,3 +26077,17 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   piece simple.
 - Tests: bricks-quoin-stack.test.js + T10 / T18 cases (FAST) and a pin that the arched top's two corners take the curved
   block (3 boards).
+- The full sweep (2432 lays: every template x 7x9 / 9x12 x 0.75 - 1.5 x every multi-band preset + the quoin variants + the
+  one-band ones) caught three faults, all fixed:
+  1. a row DEEPER than the 1.1 in block (T10 9x12 at 1.5 in) left the strip past the block's inner face along the side to no
+     run -- the arc's run is cut along the radius, so (unlike a square block's) the other run does not cover it: 0.438 sq in
+     bare. The curved block now spans the whole row: depth max(1.1 in, the row's depth); a row as deep as the arc's radius
+     (no inner arc) takes the mitre.
+  2. cutUnderQuoins ran only for 2+ quoin ribbons; a curved block needs it on ONE (T10 7x9 1.25 in: the short side's last
+     piece 0.003 sq in under it; T16 9x12 0.75 in: band 2's mitred corner under band 1's block). It cuts only a piece truly
+     over a quoin -- a square quoin's lay has none, so it stays byte-identical (the sweep's frame hashes).
+  3. the window catches more corners at other boards / sizes than my census (7x9 defaults): T3, T16, T19 also take it.
+  After: frame overlaps 0 rows, wall under frame 0, non-simple pieces 0, largest bare patch 0.043 = main's.
+- Expected changes: frame-corner-effect's T18 at 1.25 in case -- Block now cuts its arched top (live), Butt / Lapped still
+  greyed; frame-presets-unchanged re-pinned on this code -- exactly T18 quoin_corners 0.75 / 1.25 changed.
+- Main's own failures, not this branch's: GAP_SWEEP_FULL 14 + TIP_FAN_SWEEP_FULL 1 arch_keystone rows fail on origin/main too.
