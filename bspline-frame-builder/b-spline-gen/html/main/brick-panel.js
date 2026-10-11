@@ -1516,8 +1516,15 @@ export function flushControlRequires() {
 }
 
 /** Item 74b: per cutting corner style, whether it changes the frame these settings lay (no facts = met: never greyed) */
+/** The corner facts' bands when the frame lays none (preset None): the corner-variant chips are a way INTO a frame, so they are
+ *  judged on a plain one -- MEASURED (matrix frame-ui, 2026-10-11): on None every style "cut nothing" over zero bands and greyed
+ *  every corner chip, so no quoin / butt / lapped frame could be picked from None. */
+const CORNER_FACT_BANDS_WHEN_NONE = 'single_soldier';
 function cornerFacts(editor) {
-  const effect = frameCornerEffectFor(editor, P.brickSettings, resolveFrameGeom(editor));
+  const bandless = !(FRAME_PRESETS[P.brickSettings.frameBandPreset] || []).length;
+  const settings = bandless ? { ...P.brickSettings, frameBandPreset: CORNER_FACT_BANDS_WHEN_NONE, frameBandPatterns: [] } : P.brickSettings;
+  const geom = resolveFrameGeom(editor);
+  const effect = frameCornerEffectFor(editor, settings, geom && bandless ? { ...geom, bands: frameBandsOf(settings) } : geom);
   return effect ? Object.fromEntries(Object.keys(effect).map((style) => [cornerFact(style), effect[style]])) : {};
 }
 /** T86 item 16e: whether the frame these settings lay has a corner fan (no facts = met: never greyed) */

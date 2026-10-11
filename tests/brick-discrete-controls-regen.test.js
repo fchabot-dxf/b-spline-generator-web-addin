@@ -1249,3 +1249,24 @@ describe('Generate: the control-requires sync runs under the bricks card, never 
   });
 });
 
+
+// 2026-10-11 (a preset bundles its corner): the corner grey moved onto the preset chips -- on a frame with NO bands (None)
+// every style "cut nothing" over zero bands and greyed every corner chip (MEASURED, matrix frame-ui): the chips that lead
+// INTO a quoin / butt / lapped frame were dead. They are judged on a plain frame then (CORNER_FACT_BANDS_WHEN_NONE).
+describe('the corner-variant preset chips stay live on a frame with no bands', async () => {
+  const { setPaintScheduler, resetLoadingSignal } = await import('../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js');
+  beforeEach(() => {
+    setup('frame');
+    setPaintScheduler((cb) => cb()); resetLoadingSignal();
+    // the engine's answer, by the bands it is asked about: zero bands cut nothing, a real stack cuts every style
+    frameCornerEffectFor.mockImplementation((ed, s, geom) => ((geom && geom.bands && geom.bands.length) ? { butt: true, block: true, lapped: true } : { butt: false, block: false, lapped: false }));
+  });
+  afterEach(() => { frameCornerEffectFor.mockReset(); });
+  it('None: Soldier · quoin / · butt / Soldier x2 · lapped live after the sync; picking one lays its frame', () => {
+    $('brickFramePreset_none').click();
+    $('brickGenerate').click();
+    for (const id of ['quoin_corners', 'butt_frame', 'double_course']) expect($(`brickFramePreset_${id}`).disabled, id).toBe(false);
+    $('brickFramePreset_quoin_corners').click();
+    expect(P.brickSettings.frameBandPreset).toBe('quoin_corners');
+  });
+});

@@ -59,6 +59,9 @@ async function runFrameUi() {
     `${st.cornerButtons} corner buttons, corner variants ${cornered.filter((k) => st.chips.includes(k)).length}/${cornered.length} listed`);
   // 2. each corner variant re-lays the frame at once and is the active chip; its corner is its own (no pick)
   for (const id of cornered) {
+    // from None each time: two variants the fit rule reduces to the same stack lay the same frame (MEASURED: T1 9x12 at
+    // 1.25 in keeps one band of soldier_stretcher_quoin and of three_band_quoin -- the second click changed nothing)
+    await click('brickFramePreset_none', 1500);
     const before = await js(CANVAS);
     await click(`brickFramePreset_${id}`, 400);
     const moved = await relaid(before);

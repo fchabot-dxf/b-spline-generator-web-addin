@@ -26047,3 +26047,10 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
     controls-regen (the grey's control is the butt preset chip), brick-tab-sections (Fan centre), bricks-library (19
     presets + the variants). Fail-before on origin/frame-motifs: 10 failed (each new / changed assertion).
 - brick-icons.js regenerated (the four new chips).
+- Matrix frame-ui caught a real bug in the move: on a frame with NO bands (preset None) the corner fact is computed over
+  zero bands, every style "cuts nothing", and every corner-variant chip was greyed -- no quoin / butt / lapped frame could be
+  picked from None (the old Corners row was hidden with no bands, so it never met this). cornerFacts (brick-panel.js) judges
+  a bandless frame on a plain one: CORNER_FACT_BANDS_WHEN_NONE = 'single_soldier'. Test: brick-discrete-controls-regen
+  "the corner-variant preset chips stay live on a frame with no bands" (fails before: quoin_corners disabled).
+- The frame-ui matrix row now re-lays each corner chip from None (two variants the fit rule reduces to one band laid the
+  same frame on T1 9x12 at 1.25 in -- the second click changed nothing).
