@@ -185,15 +185,16 @@ describe('the lay draws one LOCKED grout node per Wall / Frame element', () => {
 
   // 2026-10-10 (Fred, via the advisor): Send's Wall / Frame OUTLINE sketches read these regions (export-flow.js
   // BRICK_OUTLINE_SKETCHES) -- from a real lay: the wall 1 loop, the frame ring 2 (its contour + the wall's edge)
-  it("2026-10-11: with the Arch + keystone preset -- Frame outline as before (2), the arch its own (outer + opening), the wall 2 (around it + in its opening)", () => {
+  it("2026-10-11: with the Arch + keystone preset -- Frame outline as before (2), the arch its own (outer + opening), the wall its opening (1)", () => {
     const ed = fakeEditor();
     const settings = { ...P.brickSettings, seed: 3, frameBandPreset: 'arch_keystone', brickLengthIn: 1 };
     runBricks(ed, settings, { primitives: RECT, bands: frameBandsOf(settings) });
     const [wall, frame, arch] = _brickOutlineSvgs(ed);
     const loops = (svg) => [...svg.matchAll(/<path d="([^"]+)"/g)].map((m) => m[1]);
     expect(arch.name).toBe('Arch outline');
-    expect([loops(wall.svg).length, loops(frame.svg).length, loops(arch.svg).length]).toEqual([2, 2, 2]);
-    expect(loops(wall.svg)[1]).toBe(loops(arch.svg)[1]); // the wall in the opening fills exactly the arch's opening
+    expect([loops(wall.svg).length, loops(frame.svg).length, loops(arch.svg).length]).toEqual([1, 2, 2]);
+    expect(loops(wall.svg)[0]).toBe(loops(arch.svg)[1]); // the wall fills exactly the arch's opening (no wall outside it)
+    expect(loops(arch.svg)[0]).toBe(loops(frame.svg)[1]); // and the arch starts at the frame's inner edge (no pier)
     // the stone pieces are drawn in their own set (a piece's setId over the element's)
     expect(q(ed, '[data-brick-arch="keystone"], [data-brick-arch="springer"], [data-brick-arch="sillBlock"]').map((n) => n.getAttribute('data-brick-set'))).toEqual(['6', '6', '6', '6', '6']);
     expect(q(ed, '[data-brick-arch="ring"]').every((n) => n.getAttribute('data-brick-set') === String(settings.setId ?? 1))).toBe(true);

@@ -67,7 +67,7 @@ export const ENGINE_OPTIONS = Object.freeze([
   'suppressFrame', 'frameSuppression', // T86 item 29 (lane-b): the frame bands crumble by the wall's rule (suppression.js suppressBricks)
   'insetSurround', // T86 item 29 (lane-b): { rect, preset, corner?, set? } -- a band stack around the inset window (inset-surround.js)
   'groutCut', // T86 item 10: [{ polyline, widthIn? }] -- grout joints cut through the laid pieces (grout-cut.js), after the lay
-  'arch', // 2026-10-11: { spec } -- a blind arch inside the frame (arch-surround.js layArch): the wall is cut around it and fills its opening
+  'arch', // 2026-10-11: { spec } -- a blind arch conforming to the frame (arch-surround.js layArch): the wall is cleared off it and fills its opening
   'fanCentre', // T86 item 16e: how a frame corner's fan ends at its centre (fan-centre.js FAN_CENTRES); absent = needle
 ]);
 
@@ -112,16 +112,15 @@ export function generateBricks(input) {
   }
   // T86 item 29: the inset window's surround (its own field); the wall is cut around it (its outer rect, one joint off)
   const surround = input.insetSurround ? laySurround(input.insetSurround, { set: (frame && frame.set) || set, seed, scale }) : null;
-  // 2026-10-11: the arch (a frame preset's `arch`), placed in the wall's interior; the wall is cut around its outer outline
-  // and fills its opening (a second fill below); absent / not fitting = no arch, the lay byte-identical
-  const archLay = input.arch ? layArch(input.arch.spec, interiorOutline, { set: (frame && frame.set) || set, seed, scale }) : null;
+  // 2026-10-11: the arch (a frame preset's `arch`): an inner band stack on the frame's own contour, inside its bands (Fred:
+  // it always conforms to the frame); the wall is cleared off it and fills its opening (below). Absent = the lay byte-identical
+  const archLay = input.arch && frameLay ? layArch(input.arch.spec, frame.primitives, frameLay.bands, { set: frameLay.frameSet, seed, scale }) : null;
   const arch = archLay && !archLay.fit ? archLay : null;
   const wallExclusions = surround ? [...(input.exclusions || []), { polygon: surround.outer }] : input.exclusions;
 
   const region = wallRegionOf(input.wallRegion, set);
-  const bondOriginX = arch ? arch.placement.cx : undefined; // the arch centres the wall's bond on itself (bond.js originX)
   let laidWall = input.skipWallFill ? [] : bricksFillShape(interiorOutline, null, {
-    set, seed, scale, ...(arch ? { bondOriginX } : {}),
+    set, seed, scale,
     suppression: input.suppression ?? 0,
     topBias: input.topBias ?? 0.8,
     clumping: input.clumping ?? 0.3,
@@ -134,15 +133,15 @@ export function generateBricks(input) {
     exclusions: wallExclusions,
     region,
   }).bricks;
-  // the arch (Fred, via the advisor, 2026-10-11: no voids along the hood): the wall is cleared off its outer outline by the
-  // rule seat E set for the quoins (fill-shape.js bricksClearOf, a joint off) -- every cut piece KEPT, as a piece cut at
-  // any region edge; the exclusion rule's quarter-brick floor left dark voids along the hood's curve. Then the same wall
-  // is laid again inside the opening (its own courses, as a blind arch is built), cleared off the keystone the same way.
-  if (arch && laidWall.length) laidWall = bricksClearOf(laidWall, [{ polygon: arch.outer }], scaledSet(set, scale));
+  // the arch starts at the frame's inner edge (Fred: no inward offset), so no wall is left outside it: the wall is laid
+  // inside its opening only (its own courses, as a blind arch is built)
+  if (arch) laidWall = [];
+  // ... cleared off the arch's own pieces (a band's corner pieces can reach past its nominal depth at a tight concave
+  // turn: T5's dip, MEASURED) by the quoin rule -- a joint off, every cut piece kept (fill-shape.js bricksClearOf)
   const openingWall = arch && !input.skipWallFill ? bricksClearOf(bricksFillShape(arch.opening, null, {
-    set, seed, scale, bondOriginX, suppression: input.suppression ?? 0, topBias: input.topBias ?? 0.8, clumping: input.clumping ?? 0.3,
+    set, seed, scale, suppression: input.suppression ?? 0, topBias: input.topBias ?? 0.8, clumping: input.clumping ?? 0.3,
     rotationDeg: input.rotationDeg, rustic: input.rustic, customBond: input.customBond, exclusions: input.exclusions,
-  }).bricks, [{ polygon: arch.keystone }], scaledSet(set, scale)) : [];
+  }).bricks, arch.pieces.map((b) => ({ polygon: b.polygon })), scaledSet(set, scale)) : [];
   if (openingWall.length) laidWall = [...laidWall, ...openingWall];
   // the wall is never laid off the board (seat E, 2026-10-08, the gap sweep): its region is clipped to the board
   // (primitive-ribbon.js wallRegionAtDepth), and its pieces are cut to the board by the band's own step, dropping under the
@@ -179,7 +178,7 @@ export function generateBricks(input) {
   }
   // T86 item 13: the app's own stub (editor-brick-tool.js dropExcludedWallBricks) stands down when this is set
   const notes = { ...(bandsReduced ? { bandsReduced } : {}), ...(input.wallRegion ? { wallRegionApplied: true } : {}), ...(surround ? { surroundBricks } : {}),
-    ...(arch ? { archBricks, archOuter: arch.outer, archOpening: arch.opening } : {}), ...(archLay && archLay.fit ? { archFit: archLay.fit } : {}),
+    ...(arch ? { archBricks, archRegion: arch.region, archOpening: arch.opening, archStep: arch.step } : {}), ...(archLay && archLay.fit ? { archFit: archLay.fit } : {}),
     ...(cuts.length ? { groutCutApplied: cuts.length } : {}) };
   // F35 item 55: + `interiorOutline` (the wall's fill outline: the frame's innerPath, else the board) -- additive, read by
   // the grout shape (grout-shape.js); every other field is as before

@@ -1405,7 +1405,8 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const surroundBricks = result.surroundBricks || [];
   const archBricks = result.archBricks || []; // 2026-10-11: the arch's pieces are frame pieces too
   const frameBricks = surroundBricks.length || archBricks.length ? [...result.frameBricks, ...surroundBricks, ...archBricks] : result.frameBricks;
-  const archRegion = result.archOuter ? { outer: result.archOuter, holes: [result.archOpening], part: 'arch' } : null; // the arch's footprint
+  // the arch's footprint (arch-surround.js region: the rings' band round the opening + the hood's span), tagged 'arch'
+  const archRegion = result.archRegion ? result.archRegion.map((r) => ({ ...r, part: 'arch' })) : null;
   const ring = surroundBricks.length ? surroundRing(surroundBricks, input.insetSurround.rect) : null;
   const areaLays = [];
   for (let i = areas.length - 1; i >= 0; i--) {
@@ -1433,10 +1434,11 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const interior = result.interiorOutline && result.interiorOutline.length >= 3 ? result.interiorOutline : boardPolygon(editor);
   if (lays('frame') && frameBricks.length && frameGeom && frameGeom.primitives && frameGeom.primitives.length) {
     const outer = primitivesOutline(frameGeom.primitives);
-    drawElementGrout(editor, layerOf.frame, 'frame', owner('frame'), [{ outer, holes: [interior] }, ...(ring ? [ring] : []), ...(archRegion ? [archRegion] : [])], settings);
+    drawElementGrout(editor, layerOf.frame, 'frame', owner('frame'), [{ outer, holes: [interior] }, ...(ring ? [ring] : []), ...(archRegion || [])], settings);
   }
   // the wall around the arch, and the wall in its opening
-  if (lays('wall') && !areas.length && bricks.length) drawElementGrout(editor, layerOf.wall, 'wall', owner('wall'), [{ outer: interior, holes: [...(ring ? [ring.outer] : []), ...(archRegion ? [archRegion.outer] : [])] }, ...(archRegion ? [{ outer: archRegion.holes[0], holes: [] }] : [])], settings);
+  // with the Frame's arch the wall is its opening only (the arch fills the rest of the interior)
+  if (lays('wall') && !areas.length && bricks.length) drawElementGrout(editor, layerOf.wall, 'wall', owner('wall'), result.archOpening ? [{ outer: result.archOpening, holes: [] }] : [{ outer: interior, holes: ring ? [ring.outer] : [] }], settings);
   areas.forEach((area, i) => {
     const lay = areaLays.find((l) => l.area === area);
     if (!lay || !lay.bricks.length) return;

@@ -1,212 +1,241 @@
 /**
- * core/bricks/arch-surround.js — PORTABLE (see rng.js). 2026-10-11 (Fred approved the "Rowlock arch + keystone" frame,
- * the advisor's mock board 1): a BLIND arch on the wall, inside the frame -- a semicircle on two straight jambs, the
- * opening filled with wall like the rest (the board is not cut; the Fusion frame template is untouched).
+ * core/bricks/arch-surround.js — PORTABLE (see rng.js). 2026-10-11 (Fred approved the "Rowlock arch + keystone" frame;
+ * then: "the arch must ALWAYS CONFORM to the wood frame's shape" -- "If I want a semicircle I'll form the frame into
+ * one" -- and "no inward offset"): a BLIND arch, laid as an INNER BAND STACK on the frame's own contour, directly inside the
+ * frame's bands (one joint off, no wall between them). So it follows the frame by construction: a flat top gives a flat (jack) arch, an arched top curved voussoirs, a
+ * pointed top a pointed arch; the jambs follow the sides (waists included) and the sill the bottom.
  *
- *   two rowlock rings of radial headers (arc-voussoir.js voussoirPieces, free arcs) carried down the jambs as two
- *   staggered header columns; a thin hood ring outside them (raised); a stone KEYSTONE at the crown and stone SPRINGERS
- *   at both ends of the arch; a sill of two staggered header courses between the jambs with a stone block under each.
+ *   the stack: [the frame's bands] + the hood (one thin row, raised, all round: with no wall outside the arch, a hood
+ *   over the top only would leave a hood-deep strip down the sides) + two rowlock rings (soldier rows, half a brick deep). Stones are SLABS of the hood + rings
+ *   band between two lines normal to the contour, measured along it: the keystone at the top centre, a springer at each
+ *   end of the top span (where the top meets the sides), a sill block at each end of the bottom span.
  *
- * Every size is declared in ARCH_SPECS, in units of the frame set's own (scaled) brick: L = length, H = height, J = the
- * grout joint -- numbers from the approved mock (frame_mock.mjs rowlockArch). Board inches, y DOWN (the crown of the
- * arch is at angle -PI/2 about its centre). layArch returns the pieces (each tagged with its `part`, a stone piece with
- * its own `setId`), the arch's OUTER outline (the wall is cut around it) and its OPENING (the wall fills it again).
+ * The top (bottom) span is the frame primitive the centre line meets first from above (below); its two ends are the
+ * springing points (the sill's corners). Every size is declared in ARCH_SPECS. A frame too narrow for the stack (its
+ * opening splits into lobes, the rings collide, the stones meet) is fitted by Fred's ladder -- the full stack, then no
+ * hood, then one ring -- and skipped (fit note 'archTooNarrow') when even that does not fit. The wall fills the opening.
  */
 import { mulberry32, seedFor } from './rng.js';
 import { scaledSet, brickSetById } from './library.js';
-import { voussoirPieces } from './arc-voussoir.js';
+import { bricksContourBands } from './contour-bands.js';
 import { pickSample } from './piece-plan.js';
+import { polygonIntersection, polygonDifference, lobesOf, signedArea, offsetPathInward, inwardSignFor } from './geometry.js';
 
-/** The arches a frame preset can carry (library.js FRAME_PRESETS `arch`). */
+/** The arches a frame preset can carry (library.js FRAME_PRESETS `arch`). Lengths in inches unless named by brick
+ *  unit (L = length, H = height of the frame's scaled set). */
 export const ARCH_SPECS = Object.freeze({
   rowlock_keystone: Object.freeze({
-    rings: 2, // rowlock rings, each ringDepthL x L deep, headers on end (their face, H, along the arc)
+    hoodDepthH: 0.5, // the hood: one row this x H deep, all round, directly inside the frame's bands
+    rings: 2, // rowlock rings: soldier rows (pitch H along the contour), each ringDepthL x L deep
     ringDepthL: 0.5,
-    hoodDepthH: 0.5, // the hood ring outside the rings, hoodDepthH x H deep, pieces about one brick long
     hoodLevelIn: 0.04, // the hood stands proud of the bricks (a per-piece height offset, the height mask's own channel)
     keystoneLevelIn: 0.04, // and the keystone, like the hood (Fred, 2026-10-11)
-    keystoneHalfIn: 0.32, // the keystone's half width at the intrados (its half angle there = keystoneHalfIn / r)
-    keystoneFlare: 1.25, // its half angle at the hood, x the intrados one (a wedge)
-    keystoneDropIn: 0.08, // it hangs this far below the intrados and stands this far + 0.02 past the hood
-    springerIn: 0.6, // each springer's length along the intrados (its angle = springerIn / r)
-    pierIn: 0.5, // the wall left between the frame's inner path and each jamb
-    apexCourses: 2, // the hood's apex sits this many wall courses below the interior's top
+    keystoneHalfIn: 0.32, // the keystone: this far each way along the contour from the top centre
+    springerTopIn: 0.6, // a springer: this far along the top span from its end ...
+    springerSideIn: 0.3, // ... and this far down the side
+    sillBlockHalfIn: 0.5, // a sill block: this far each way along the contour from the bottom span's end
     stoneSetId: 6, // the keystone, springers and sill blocks: Grey ashlar
-    minOpeningL: 2, // the smallest opening, x L: when not even that fits, the arch is not laid (fit note 'archTooNarrow')
+    // Fred's "shrink to fit, skip with a hint": the stacks tried in order, the first that fits is laid
+    ladder: Object.freeze([Object.freeze({ hood: true, rings: 2 }), Object.freeze({ hood: false, rings: 2 }), Object.freeze({ hood: false, rings: 1 })]),
   }),
 });
 
-const PI = Math.PI;
+const OVERLAP_SQIN = 1e-4; // two pieces sharing more than this are a collision (the rings meeting in a narrow neck)
 
-/** Pure: the interior's horizontal span through x = cx at height y (the nearest boundary crossings left and right of cx),
- *  or null when cx is outside the interior there. */
-export function spanAt(poly, cx, y) {
-  let left = -Infinity, right = Infinity, crossings = 0;
-  for (let i = 0; i < poly.length; i++) {
-    const a = poly[i], b = poly[(i + 1) % poly.length];
-    if ((a.y > y) === (b.y > y)) continue;
-    const x = a.x + ((y - a.y) / (b.y - a.y)) * (b.x - a.x);
-    if (x < cx) { left = Math.max(left, x); crossings++; } else right = Math.min(right, x);
-  }
-  return crossings % 2 === 1 && Number.isFinite(left) && Number.isFinite(right) ? { left, right } : null;
-}
+/** A one-row band of exactly `d` inches (contour-bands.js's own one-row-of-a-declared-depth band, `narrowedTo`). */
+const row = (pattern, d) => ({ pattern, widthIn: d, narrowedTo: d });
 
-/** Pure: where the arch goes in `interior` (a polygon, board inches, y down) for `spec` and the scaled set `s`. Centred,
- *  its sill on the bottom. Its hood's apex is tried from `apexCourses` courses below the top downward, one wall course at
- *  a time; at each, the LARGEST intrados whose real outline (the hood's circle above the springing line, the jambs'
- *  outer faces below it) keeps a pier from the interior's edge at every height (the hood may stand into the pier), with jambs at least one course tall (a
- *  bisection: a bigger arch is wider and springs lower). The placement kept is the one with the largest opening (area);
- *  on a plain rectangle that is the top one -- the mock's -- and on a shaped frame (an hourglass waist, a notched top) the
- *  arch moves down below what it cannot cross. { cx, yc, ri, D, t, rh, yBot, yFloor, L, H, J } or
- *  { fit: 'archTooNarrow' } (no arch with a minOpeningL opening fits anywhere). */
-export function archPlacement(interior, spec, s) {
-  const L = s.brickLengthIn, H = s.brickHeightIn, J = s.grout.widthIn;
-  const xs = interior.map((p) => p.x), ys = interior.map((p) => p.y);
-  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, top = Math.min(...ys), bot = Math.max(...ys);
-  const D = spec.rings * spec.ringDepthL * L, t = spec.hoodDepthH * H;
-  const yFloor = bot - J / 2; // the sill's underside: half a joint off the wall's edge
-  const yBot = yFloor - D; // the jambs stand on the sill blocks (D x D) and the sill courses (D deep)
-  const lo0 = (spec.minOpeningL * L) / 2;
-  const fitsAt = (apex, ri) => {
-    const rh = ri + D + J + t, yc = apex + rh;
-    if (yBot - yc < H) return false; // jambs at least one course
-    for (let k = 0; k <= 96; k++) {
-      const y = apex + ((yFloor - apex) * k) / 96;
-      // the pier is measured from the rings / jambs (as in the mock); the hood stands into it, inside the interior
-      const chord = (r) => Math.sqrt(Math.max(0, r * r - (yc - y) ** 2));
-      const need = y < yc ? Math.max(chord(ri + D) + spec.pierIn, chord(rh) + J / 2) : ri + D + spec.pierIn;
-      const sp = spanAt(interior, cx, y);
-      if (!sp || cx - sp.left < need || sp.right - cx < need) return false;
-    }
-    return true;
+/** Pure: a closed polyline's arclength helpers -- the point + unit tangent at s, and the s of the nearest point. */
+function polyParam(M) {
+  const cum = [0];
+  for (let i = 1; i <= M.length; i++) { const a = M[i - 1], c = M[i % M.length]; cum.push(cum[i - 1] + Math.hypot(c.x - a.x, c.y - a.y)); }
+  const per = cum[M.length];
+  const wrap = (v) => ((v % per) + per) % per;
+  const at = (sv) => {
+    sv = wrap(sv);
+    let i = 0;
+    while (i < M.length - 1 && cum[i + 1] < sv) i++;
+    const a = M[i], c = M[(i + 1) % M.length], l = cum[i + 1] - cum[i] || 1, f = (sv - cum[i]) / l;
+    return { p: { x: a.x + (c.x - a.x) * f, y: a.y + (c.y - a.y) * f }, t: { x: (c.x - a.x) / l, y: (c.y - a.y) / l } };
   };
-  let best = null;
-  for (let k = spec.apexCourses; ; k++) {
-    const apex = top + J / 2 + k * (H + J);
-    if (apex + lo0 + D + J + t + H > yBot) break; // not even the smallest arch fits below here
-    if (!fitsAt(apex, lo0)) continue;
-    let lo = lo0, hi = (Math.max(...xs) - Math.min(...xs)) / 2;
-    for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; if (fitsAt(apex, mid)) lo = mid; else hi = mid; }
-    const rh = lo + D + J + t, yc = apex + rh;
-    const area = 2 * lo * (yBot - yc) + (PI * lo * lo) / 2; // the opening
-    if (!best || area > best.area * (1 + 1e-9)) best = { area, ri: lo, apex };
-  }
-  if (!best) return { fit: 'archTooNarrow' };
-  // the jambs' outer faces on head joints of the wall's bond, which the engine centres on the arch (bondOriginX = cx):
-  // a half-brick step from the centre, so the piers are whole and half bricks, never slivers (seat A's live shot: a
-  // 0.5 in pier on the bond's own phase dropped its slivers, dark voids down one side). The opening only ever shrinks.
-  const h = (L + J) / 2, m = Math.floor((best.ri + D + J) / h + 1e-9), snapped = m * h - D - J;
-  const ri = snapped >= lo0 ? snapped : best.ri;
-  const rh = ri + D + J + t;
-  return { cx, yc: best.apex + rh, ri, D, t, rh, yBot, yFloor, L, H, J };
+  const nearest = (pt) => {
+    let best = Infinity, bs = 0;
+    for (let i = 0; i < M.length; i++) {
+      const a = M[i], c = M[(i + 1) % M.length], dx = c.x - a.x, dy = c.y - a.y, l2 = dx * dx + dy * dy || 1;
+      const f = Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / l2));
+      const d = Math.hypot(a.x + dx * f - pt.x, a.y + dy * f - pt.y);
+      if (d < best) { best = d; bs = cum[i] + f * Math.sqrt(l2); }
+    }
+    return bs;
+  };
+  /** The polyline from arclength a to b (forward, wrapping), its vertices included. */
+  const sub = (a, b) => {
+    a = wrap(a); const len = wrap(b - a), pts = [at(a).p];
+    for (let k = 0; k < M.length; k++) { const d = wrap(cum[k] - a); if (d > 1e-9 && d < len - 1e-9) pts.push({ d, p: M[k] }); }
+    const inner = pts.slice(1).sort((x, y) => x.d - y.d).map((x) => x.p);
+    return [pts[0], ...inner, at(a + len).p];
+  };
+  return { per, wrap, at, nearest, sub };
 }
 
-const arcPts = (cx, cy, r, t0, t1, maxStep = (5 * PI) / 180) => {
-  const n = Math.max(2, Math.ceil(Math.abs(t1 - t0) / maxStep));
-  return Array.from({ length: n + 1 }, (_, k) => { const t = t0 + ((t1 - t0) * k) / n; return { x: cx + r * Math.cos(t), y: cy + r * Math.sin(t) }; });
-};
-const rect = (x0, y0, x1, y1) => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+/** Pure: a frame primitive's two end points (a line's, an arc's). */
+const endsOf = (pr) => (pr.type === 'line' ? [pr.p0, pr.p1]
+  : [{ x: pr.cx + pr.r * Math.cos(pr.theta1), y: pr.cy + pr.r * Math.sin(pr.theta1) }, { x: pr.cx + pr.r * Math.cos(pr.theta2), y: pr.cy + pr.r * Math.sin(pr.theta2) }]);
 
-/** Pure: pieces of about `pitch` filling [a, b] with joints of J between them -- whole pieces, or (`stagger`) shifted
- *  half a piece so the run starts and ends with a half piece (a header column / course over its neighbour's joints).
- *  [{ a, b }], each piece's own extent (the joints excluded). */
-export function run(a, b, pitch, J, stagger) {
-  const len = b - a, n = Math.max(1, Math.round((len + J) / (pitch + J)));
-  const step = (len + J) / n; // one piece + one joint
-  const centres = []; // the joints' centre lines
-  for (let i = 1; i < n; i++) centres.push(a + i * step - J / 2);
-  const cuts = stagger ? [...centres.map((c) => c - step / 2), centres.length ? centres[centres.length - 1] + step / 2 : a + step / 2 - J / 2] : centres;
-  const bounds = [a, ...cuts.filter((c) => c > a + J && c < b - J), b];
-  const out = [];
-  for (let i = 0; i < bounds.length - 1; i++) {
-    const s0 = i === 0 ? bounds[i] : bounds[i] + J / 2, s1 = i === bounds.length - 2 ? bounds[i + 1] : bounds[i + 1] - J / 2;
-    if (s1 - s0 > J) out.push({ a: s0, b: s1 });
+/** Pure: the frame's top and bottom primitives -- the ones the vertical centre line (x = cx) crosses first from above and
+ *  from below -- as the two ends of each span (spanEnds) and the top crossing point (each primitive sampled densely; a
+ *  crossing interpolated between samples). */
+export function topAndBottom(primitives, cx) {
+  const hits = [];
+  primitives.forEach((pr, k) => {
+    const pts = Array.from({ length: 65 }, (_, j) => {
+      const f = j / 64;
+      if (pr.type === 'line') return { x: pr.p0.x + (pr.p1.x - pr.p0.x) * f, y: pr.p0.y + (pr.p1.y - pr.p0.y) * f };
+      const th = pr.theta1 + (pr.theta2 - pr.theta1) * f;
+      return { x: pr.cx + pr.r * Math.cos(th), y: pr.cy + pr.r * Math.sin(th) };
+    });
+    for (let j = 0; j < pts.length - 1; j++) {
+      const a = pts[j], b = pts[j + 1];
+      if ((a.x - cx) * (b.x - cx) > 0 || a.x === b.x) continue;
+      hits.push({ x: cx, y: a.y + ((cx - a.x) / (b.x - a.x)) * (b.y - a.y), k });
+    }
+  });
+  if (!hits.length) return null;
+  const top = hits.reduce((a, p) => (p.y < a.y ? p : a)), bot = hits.reduce((a, p) => (p.y > a.y ? p : a));
+  return { topEnds: spanEnds(primitives, top), bottomEnds: spanEnds(primitives, bot), topPoint: top };
+}
+/** Pure: the two ends of the span the centre line crosses at `hit` -- its primitive's ends; when it crosses at a vertex
+ *  (a pointed top: two primitives meet on the centre line), the far ends of the two primitives meeting there. */
+function spanEnds(primitives, hit) {
+  const EPS = 1e-6, same = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) < EPS;
+  const ends = endsOf(primitives[hit.k]);
+  const at = ends.findIndex((e) => same(e, hit));
+  if (at < 0) return ends;
+  const other = primitives.findIndex((pr, k) => k !== hit.k && endsOf(pr).some((e) => same(e, hit)));
+  if (other < 0) return ends;
+  return [ends[1 - at], endsOf(primitives[other]).find((e) => !same(e, hit))];
+}
+
+/** Does any pair of `polys` overlap (more than OVERLAP_SQIN)? Bounding boxes first. */
+function anyOverlap(polys) {
+  const boxes = polys.map((p) => { const xs = p.map((q) => q.x), ys = p.map((q) => q.y); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; });
+  for (let i = 0; i < polys.length; i++) for (let j = i + 1; j < polys.length; j++) {
+    const a = boxes[i], b = boxes[j];
+    if (a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]) continue;
+    const inter = polygonIntersection(polys[i], polys[j]);
+    if (inter.length >= 3 && Math.abs(signedArea(inter)) > OVERLAP_SQIN) return true;
   }
-  return out;
+  return false;
 }
 
 /**
- * Lay the arch of `spec` (an ARCH_SPECS id, or a spec) in `interior`. opts: { set (the frame's set, unscaled), scale,
- * seed }. Returns { pieces, outer, opening, placement } or { fit } when it does not fit.
- * A piece: { id, polygon, pieceId, sampleId, flip, heightOffset, part, setId? } (setId only on stone pieces).
+ * Lay the arch of `specOrId` (an ARCH_SPECS id, or a spec) on the frame contour `primitives` inside the frame's
+ * `frameBands`. opts: { set (the frame's set, unscaled), scale, seed }.
+ * Returns { pieces, region, opening, step } or { fit: 'archTooNarrow', pieces: [] }:
+ *   pieces -- the hood / ring / stone pieces, each tagged `part` (hood, ring, keystone, springer, sillBlock); a stone
+ *             carries its own `setId`; the hood and keystone their raised level in heightOffset;
+ *   region -- the arch's footprint as grout region entries [{ outer, holes }] (the frame's inner edge, the opening its hole);
+ *   opening -- the wall laid again inside it; step -- the ladder step laid (0 = the full stack).
  */
-export function layArch(specOrId, interior, opts) {
+export function layArch(specOrId, primitives, frameBands, opts) {
   const spec = typeof specOrId === 'string' ? ARCH_SPECS[specOrId] : specOrId;
-  if (!spec || !interior || interior.length < 3) return null;
+  if (!spec || !primitives || !primitives.length) return null;
   const s = scaledSet(opts.set, opts.scale || 1);
-  const pl = archPlacement(interior, spec, s);
-  if (pl.fit) return { fit: pl.fit, pieces: [] };
-  const { cx, yc, ri, D, rh, yBot, yFloor, H, J, L } = pl;
-  const stone = scaledSet(brickSetById(spec.stoneSetId), 1);
-  const seed = opts.seed;
-  const pieces = [];
-  let nextId = 0;
-  const jitter = (id) => (mulberry32(seedFor(seed, 'arch-jitter', id))() * 2 - 1) * (s.heightJitterIn || 0);
-  const push = (polygon, part, isStone = false, extraLevel = 0) => {
-    const id = nextId++;
-    const { sampleId, flip } = pickSample(isStone ? stone : s, seed, 'arch', id);
-    pieces.push({ id: `arch-${id}`, polygon, pieceId: 'arch', sampleId, flip, heightOffset: jitter(id) + extraLevel, part, ...(isStone ? { setId: spec.stoneSetId } : {}) });
+  const layOpts = { set: opts.set, seed: opts.seed, scale: opts.scale, bandFit: false };
+  const plan = (bands) => bricksContourBands(primitives, bands, { ...layOpts, planOnly: true }).innerPath;
+  const fb = [...(frameBands || [])];
+  const interior = plan(fb);
+  if (!interior || interior.length < 3) return { fit: 'archTooNarrow', pieces: [] };
+  const xs = interior.map((p) => p.x), cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const tb = topAndBottom(primitives, cx);
+  if (!tb) return { fit: 'archTooNarrow', pieces: [] };
+  for (let step = 0; step < spec.ladder.length; step++) {
+    const res = tryStack(spec, spec.ladder[step], { primitives, fb, plan, layOpts, s, tb, seed: opts.seed });
+    if (res) return { ...res, step };
+  }
+  return { fit: 'archTooNarrow', pieces: [] };
+}
+
+function tryStack(spec, rung, { primitives, fb, plan, layOpts, s, tb, seed }) {
+  const L = s.brickLengthIn, H = s.brickHeightIn, J = s.grout.widthIn;
+  const hood = row('stretcher', spec.hoodDepthH * H), ring = row('soldier', spec.ringDepthL * L);
+  const head = [...fb, ...(rung.hood ? [hood] : [])];
+  const stack = [...head, ...Array.from({ length: rung.rings }, () => ring)];
+  const archOuter = plan(fb), opening = plan(stack); // the arch starts at the frame's inner edge
+  // too narrow: the opening split into lobes (a neck the stack closes) or next to nothing left of it
+  if (!opening || opening.length < 3 || lobesOf(opening, 1e-4).length !== 1 || Math.abs(signedArea(opening)) < L * L) return null;
+  const laid = bricksContourBands(primitives, stack, layOpts).bricks;
+  const nf = fb.length;
+  let hoodPieces = rung.hood ? laid.filter((b) => b.bandIndex === nf) : [];
+  let ringPieces = laid.filter((b) => b.bandIndex >= nf + (rung.hood ? 1 : 0));
+  if (!ringPieces.length || anyOverlap(ringPieces.map((b) => b.polygon))) return null; // the rings collide
+  // the rings' mid line: every slab is measured along it
+  const M = plan([...head, row('soldier', (spec.ringDepthL * L * rung.rings) / 2)]);
+  const P = polyParam(M);
+  const band = archOuter; // the stones span the hood + rings ...
+  const openingEdge = offsetPathInward(opening, J, -inwardSignFor(opening)); // ... to a joint off the opening, as the rings stop
+  // a stone is the stretch of the band between two points of its mid line: the matching stretches of its outer and inner
+  // edges (their corners included), joined -- robust on concave curves, where normals would cross inside the band
+  const Po = polyParam(band), Pi = polyParam(openingEdge);
+  // the edge's stretch between the points nearest the span's two ends: of its two ways round, the one about as long as
+  // the span (a stone is short; the other way is the rest of the edge)
+  const lenOf = (pts) => pts.reduce((acc, p, i) => (i ? acc + Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) : 0), 0);
+  const stretch = (Q, s0, s1) => {
+    const a = Q.nearest(P.at(s0).p), b = Q.nearest(P.at(s1).p), want = Math.abs(s1 - s0);
+    const fwd = Q.sub(a, b), back = Q.sub(b, a).reverse();
+    return Math.abs(lenOf(fwd) - want) <= Math.abs(lenOf(back) - want) ? fwd : back;
   };
-  const ks = spec.keystoneHalfIn / ri, sp = spec.springerIn / ri;
-  const ksAt = (r) => ks * (1 + (spec.keystoneFlare - 1) * Math.min(1, Math.max(0, (r - ri) / (rh - ri))));
-  // the half joint either side of the keystone / springers, as an angle at radius r
-  const gapAt = (r) => J / 2 / r;
-
-  // keystone (stone): a wedge from below the intrados to past the hood
-  {
-    const r0 = ri - spec.keystoneDropIn, r1 = rh + spec.keystoneDropIn + 0.02;
-    const a0 = ksAt(ri), a1 = ksAt(rh);
-    push([...arcPts(cx, yc, r0, -PI / 2 - a0, -PI / 2 + a0), ...arcPts(cx, yc, r1, -PI / 2 + a1, -PI / 2 - a1)], 'keystone', true, spec.keystoneLevelIn);
+  const depth = spec.ringDepthL * L * rung.rings + (rung.hood ? spec.hoodDepthH * H : 0);
+  const slab = (s0, s1) => {
+    const outer = stretch(Po, s0, s1), inner = stretch(Pi, s0, s1);
+    const q = [...outer, ...inner.reverse()], a = Math.abs(signedArea(q));
+    // a stone in the band only: not larger than its span, not into the opening (otherwise none: the rung fails below)
+    const intoOpening = polygonIntersection(q, opening);
+    if (intoOpening.length >= 3 && Math.abs(signedArea(intoOpening)) > OVERLAP_SQIN) return [];
+    return q.length >= 3 && a > OVERLAP_SQIN && a < 3 * depth * (Math.abs(s1 - s0) + 2 * depth) ? [q] : [];
+  };
+  const sTop = P.nearest(tb.topPoint);
+  const [ta, tz] = tb.topEnds.map((e) => P.nearest(e));
+  // the top span: from one end to the other, the way through the top centre
+  const [spanA, spanLen] = P.wrap(sTop - ta) <= P.wrap(tz - ta) ? [ta, P.wrap(tz - ta)] : [tz, P.wrap(ta - tz)];
+  const stones = [];
+  for (const q of slab(sTop - spec.keystoneHalfIn, sTop + spec.keystoneHalfIn)) stones.push({ polygon: q, part: 'keystone' });
+  // a springer at each end of the top span: springerTopIn along the top, springerSideIn down the side
+  for (const [a, b] of [[spanA - spec.springerSideIn, spanA + spec.springerTopIn], [spanA + spanLen - spec.springerTopIn, spanA + spanLen + spec.springerSideIn]]) {
+    for (const q of slab(a, b)) stones.push({ polygon: q, part: 'springer' });
   }
-  // springers (stone): sectors at both arch ends, intrados to hood
-  for (const [t0, t1] of [[-PI, -PI + sp], [-sp, 0]]) {
-    push([...arcPts(cx, yc, ri, t0, t1), ...arcPts(cx, yc, rh, t1, t0)], 'springer', true);
+  for (const e of tb.bottomEnds) {
+    const sJ = P.nearest(e);
+    for (const q of slab(sJ - spec.sillBlockHalfIn, sJ + spec.sillBlockHalfIn)) stones.push({ polygon: q, part: 'sillBlock' });
   }
-  // the rings, then the hood: voussoirs between the springers and the keystone, a half joint off each
-  const radii = [];
-  for (let k = 0; k < spec.rings; k++) {
-    const r0 = ri + k * (D / spec.rings) + (k ? J / 2 : 0), r1 = ri + (k + 1) * (D / spec.rings) - (k < spec.rings - 1 ? J / 2 : 0);
-    radii.push({ r0, r1, pitch: H, part: 'ring', level: 0 });
-  }
-  radii.push({ r0: ri + D + J, r1: rh, pitch: L, part: 'hood', level: spec.hoodLevelIn });
-  for (const { r0, r1, pitch, part, level } of radii) {
-    const r = (r0 + r1) / 2, half = (r1 - r0) / 2;
-    // the keystone flares outward: clear its widest angle across this ring (at the ring's outer radius), plus a joint
-    const kEdge = ksAt(r1) + J / r0;
-    const left = [-PI + sp + gapAt(r), -PI / 2 - kEdge], right = [-PI / 2 + kEdge, -sp - gapAt(r)];
-    for (const [t0, t1] of [left, right]) {
-      const res = voussoirPieces(cx, yc, r, t0, t1, half, 1, pitch, J, s, seed, `arch-${part}`, nextId);
-      for (const p of res.pieces) push(p.polygon, part, false, level);
-    }
-  }
-  // the jambs: the rings carried down as two staggered header columns, from below the springers to the sill blocks
-  const yJ0 = yc + J, yJ1 = yBot - J / 2; // a full joint under the springers (their underside is the springing line)
-  for (const side of [-1, 1]) {
-    for (let k = 0; k < spec.rings; k++) {
-      const xa = cx + side * (ri + k * (D / spec.rings) + (k ? J / 2 : 0)), xb = cx + side * (ri + (k + 1) * (D / spec.rings) - (k < spec.rings - 1 ? J / 2 : 0));
-      for (const seg of run(yJ0, yJ1, H, J, k % 2 === 1)) push(rect(Math.min(xa, xb), seg.a, Math.max(xa, xb), seg.b), 'jamb');
-    }
-    // the sill block under the jamb (stone)
-    const x0 = cx + side * ri, x1 = cx + side * (ri + D);
-    push(rect(Math.min(x0, x1) + (side > 0 ? J / 2 : 0), yBot + J / 2, Math.max(x0, x1) - (side < 0 ? J / 2 : 0), yFloor), 'sillBlock', true); // a half joint off the sill
-  }
-  // the sill: two staggered header courses between the jambs
-  for (let k = 0; k < spec.rings; k++) {
-    const y0 = yBot + J / 2 + k * (D / spec.rings) + (k ? J / 2 : 0), y1 = yBot + J / 2 + (k + 1) * (D / spec.rings) - (k < spec.rings - 1 ? J / 2 : 0);
-    for (const seg of run(cx - ri + J / 2, cx + ri - J / 2, H, J, k % 2 === 1)) push(rect(seg.a, y0, seg.b, Math.min(y1, yFloor)), 'sill');
-  }
-
-  // the outer outline (the wall is cut around it): the hood over the top -- with the keystone's head standing past it --
-  // and the jambs' outer faces down to the floor
-  const kOut = rh + spec.keystoneDropIn + 0.02, kA = ksAt(rh);
-  const outer = [
-    ...arcPts(cx, yc, rh, -PI, -PI / 2 - kA), ...arcPts(cx, yc, kOut, -PI / 2 - kA, -PI / 2 + kA), ...arcPts(cx, yc, rh, -PI / 2 + kA, 0),
-    { x: cx + ri + D, y: yc }, { x: cx + ri + D, y: yFloor }, { x: cx - ri - D, y: yFloor }, { x: cx - ri - D, y: yc },
+  // every stone or none: a keystone, two springers, two sill blocks -- a stack that cannot place them all (a top too short,
+  // a corner its band cannot turn) is not laid; the ladder tries the next
+  const count = (part) => stones.filter((x) => x.part === part).length;
+  if (count('keystone') !== 1 || count('springer') !== 2 || count('sillBlock') !== 2 || anyOverlap(stones.map((x) => x.polygon))) return null;
+  // the bricks are cleared off the stones, a joint off -- every cut piece kept (fill-shape.js bricksClearOf's rule)
+  const holes = stones.map((st) => offsetPathInward(st.polygon, J, -inwardSignFor(st.polygon)));
+  const clear = (pieces) => pieces.flatMap((b) => {
+    let parts = [b.polygon];
+    for (const h of holes) parts = parts.flatMap((q) => { const d = polygonDifference(q, h); return d.holeIgnored ? [q] : d; });
+    parts = parts.filter((q) => q.length >= 3);
+    return parts.length === 1 && parts[0] === b.polygon ? [b] : parts.map((polygon, k) => ({ ...b, id: `${b.id}~${k}`, polygon }));
+  });
+  ringPieces = clear(ringPieces);
+  hoodPieces = clear(hoodPieces);
+  const stone = scaledSet(brickSetById(spec.stoneSetId), 1);
+  const jitter = (id) => (mulberry32(seedFor(seed, 'arch-jitter', id))() * 2 - 1) * (s.heightJitterIn || 0);
+  const pieces = [
+    ...hoodPieces.map((b) => ({ ...b, id: `arch-${b.id}`, part: 'hood', heightOffset: (b.heightOffset || 0) + spec.hoodLevelIn })),
+    ...ringPieces.map((b) => ({ ...b, id: `arch-${b.id}`, part: 'ring' })),
+    ...stones.map((st, id) => {
+      const { sampleId, flip } = pickSample(stone, seed, 'arch-stone', id);
+      return { id: `arch-stone-${id}`, polygon: st.polygon, pieceId: 'arch', sampleId, flip, part: st.part, setId: spec.stoneSetId,
+        heightOffset: jitter(id) + (st.part === 'keystone' ? spec.keystoneLevelIn : 0) };
+    }),
   ];
-  // the opening (the wall fills it): the intrados over the top, the jambs' inner faces down to the sill -- half a joint in
-  // (the wall's own edge rule: its pieces keep half a joint off the line they fill to; the keystone's drop is cut around)
-  const ro = ri - J / 2;
-  const opening = [...arcPts(cx, yc, ro, -PI, 0), { x: cx + ro, y: yBot }, { x: cx - ro, y: yBot }];
-  const keystone = pieces.find((p) => p.part === 'keystone').polygon; // it hangs into the opening: the opening's wall is cut around it
-  return { pieces, outer, opening, keystone, placement: pl };
+  return {
+    pieces,
+    region: [{ outer: archOuter, holes: [opening] }],
+    opening,
+  };
 }
