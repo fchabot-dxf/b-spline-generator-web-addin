@@ -117,7 +117,9 @@ describe('F35 item 26: the page and the CSS read the declaration', () => {
   });
   it('two columns never split a section; grids auto-fit the declared cell; both desktop-scoped', () => {
     expect(css).toMatch(/\.cad-sidebar\.sidebar-two-col \.cad-sidebar-sections\s*\{[^}]*column-count:\s*2/);
-    expect(css).toMatch(/\.cad-sidebar-sections > \.panel\s*\{[^}]*break-inside:\s*avoid/);
+    // the tree (phase 5): a section sits inside its branch, at any depth; a branch head never ends a column
+    expect(css).toMatch(/\.cad-sidebar-sections \.panel\s*\{[^}]*break-inside:\s*avoid/);
+    expect(css).toMatch(/\.sidebar-branch-head\s*\{[^}]*break-after:\s*avoid/);
   });
   it('a tool group is 1, 2 or 4 per row, never 3 + 1: the cell switches between 25% / 50% / 100% at 4 / 2 declared cells', () => {
     const rule = css.slice(css.indexOf('.cad-sidebar.sidebar-desktop .cad-tool-group {'));

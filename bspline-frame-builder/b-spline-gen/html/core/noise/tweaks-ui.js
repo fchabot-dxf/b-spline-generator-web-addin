@@ -22,7 +22,7 @@
  */
 
 import { NoiseTweaks } from './index.js';
-import { P, DEFAULT, saveLastSession, updateP } from '../state.js';
+import { P, DEFAULT, saveLastSession, scheduleSessionSave, updateP } from '../state.js';
 import { syncUItoParam } from '../ui-utils.js';
 import { scheduleUndoSnapshot } from '../history.js';
 
@@ -50,15 +50,16 @@ function readOverride(filterId, key) {
   return bucket ? bucket[key] : undefined;
 }
 
-/** Write a value into the live state and notify the host. The
- *  saveLastSession() call mirrors what updateP() does for top-level
- *  params — without it, filter tweaks would only survive as long as
- *  the current process. */
+/** Write a value into the live state and notify the host. The session
+ *  save mirrors what updateP() does for top-level params -- without it,
+ *  filter tweaks would only survive as long as the current process; a
+ *  slider row writes on every tick, so it is the coalesced one
+ *  (state.js SESSION_SAVE). */
 function writeOverride(filterId, key, value) {
   if (!P.filterTweaks) P.filterTweaks = {};
   if (!P.filterTweaks[filterId]) P.filterTweaks[filterId] = {};
   P.filterTweaks[filterId][key] = value;
-  saveLastSession();
+  scheduleSessionSave();
   if (_onChange) _onChange();
 }
 

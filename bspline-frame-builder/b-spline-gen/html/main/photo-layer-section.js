@@ -16,6 +16,8 @@ import { NoiseTweaks } from '../core/noise/index.js';
 import { buildRow, setTweak } from '../core/noise/tweaks-ui.js';
 import { photoEditApi, onPhotoControlsSynced } from './photo-panel.js';
 import { openEditorOn } from './frame-panel.js';
+import { PARAM_STAGES } from './ui-bindings.js';
+import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 
 /** The section's groups, in order (a control with no group sits above them). */
 export const PHOTO_GROUPS = Object.freeze([
@@ -167,8 +169,10 @@ export function syncPhotoLayerSection() {
 /** Wire the section (main.js, after the Photo tab's own wiring): the mirrored edits through the tab's own steps. */
 export function bindPhotoLayerSection() {
   onPhotoControlsSynced(syncPhotoLayerSection);
-  // the layer switch greys / ungreys the rest -- after the generic binder (ui-bindings.js) has written P.photoLayer
-  byId('photoLayer')?.addEventListener('change', () => queueMicrotask(syncPhotoLayerSection));
+  // the layer switch greys / ungreys the rest -- after the generic binder (ui-bindings.js) has written P.photoLayer: that
+  // apply waits for its PARAM_STAGES stage to paint (its 'input' handler queued first), so the greying (a re-render + its
+  // layout) is queued behind it, in the same paint step, never in the tap
+  byId('photoLayer')?.addEventListener('change', () => withLoadingStageShownFirst(PARAM_STAGES.photoLayer, syncPhotoLayerSection));
   byId('photoLayerEditImage')?.addEventListener('click', () => openEditorOn('photo'));
   for (const c of PHOTO_CONTROLS) {
     if (c.kind === 'relief') {

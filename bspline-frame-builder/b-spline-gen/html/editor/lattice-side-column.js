@@ -182,9 +182,10 @@ function _hideSectionByTitle(bodyEl, title) {
 // mode can stay 'lattice'/'shapeLattice' across a tab switch -- so a mount is scoped by tab too, or
 // the lattice Generate sits pinned where the Brick tab's own Generate appears (Fred, 2026-10-04:
 // "Generate in the Brick tab makes a lattice").
+// Redesign phase 2: `tabs` -- the lattice panels are the LATTICE tab's; Stripe (the shared tool set) is in both art tabs.
 const TOOL_PANEL_MOUNTS = {
   lattice: {
-    tab: 'artwork',
+    tabs: ['lattice'],
     panelId: 'editorLatticePanel',
     bodyId: 'editorLatticePanelBody',
     footerId: 'editorLatticePanelFooter',
@@ -192,7 +193,7 @@ const TOOL_PANEL_MOUNTS = {
     unprotectAllId: 'latticeUnprotectAll',
   },
   shapeLattice: {
-    tab: 'artwork',
+    tabs: ['lattice'],
     panelId: 'editorShapeLatticePanel',
     bodyId: 'editorShapeLatticePanelBody',
     footerId: 'editorShapeLatticePanelFooter',
@@ -201,7 +202,7 @@ const TOOL_PANEL_MOUNTS = {
   },
   // the Art tabs: Artwork's Stripe settings join the column too (no Generate, no footer)
   stripe: {
-    tab: 'artwork',
+    tabs: ['artwork', 'lattice'],
     panelId: 'editorStripePanel',
     bodyId: 'editorStripePanelBody',
     footerId: null,
@@ -306,7 +307,7 @@ function _syncMount(mode) {
   const layersPanelEl = el('editorLayersPanel');
   if (!layersPanelEl) return;
   const cfg = TOOL_PANEL_MOUNTS[mode];
-  const wanted = !!cfg && cfg.tab === _activeTab; // every viewport (the drawer's tab pair is retired)
+  const wanted = !!cfg && cfg.tabs.includes(_activeTab); // every viewport (the drawer's tab pair is retired)
   // mounted but its body is elsewhere (a tab switch's modeHosts moved it home): mount it again
   const intact = !!cfg && _mountedMode === mode && layersPanelEl.contains(el(cfg.bodyId));
   if (_mountedMode && (_mountedMode !== mode || !wanted || !intact)) {
@@ -321,7 +322,7 @@ function _syncMount(mode) {
   for (const [key, c] of Object.entries(TOOL_PANEL_MOUNTS)) {
     const panelEl = el(c.panelId);
     if (!panelEl) continue;
-    if (c.tab !== _activeTab) panelEl.style.display = 'none';
+    if (!c.tabs.includes(_activeTab)) panelEl.style.display = 'none';
     else if (_mountedMode !== key) panelEl.style.display = '';
   }
 }

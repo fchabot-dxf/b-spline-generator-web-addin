@@ -31,8 +31,8 @@ export const BLIND_BUDGET = {
     { name: 'Board width change (sidebar, editor closed)', sidebar: 'board', act: { set: 'widthIn', value: 7.25 }, fixedBy: '497e30d' },
     // the sidebar phone audit's small ones (advisor: the budget pins them)
     { name: 'Output: Colour edges', sidebar: 'output', act: { tap: 'colourEdges' } },
-    { name: 'Decor: add a stamp layer', sidebar: 'decor', act: { tap: 'stampAddLayer' } },
-    { name: 'Decor: stamp Clear', sidebar: 'decor', act: { tap: 'btnStampClear' } },
+    { name: 'Decor: add a stamp layer', sidebar: 'surface', act: { tap: 'stampAddLayer' } },
+    { name: 'Decor: stamp Clear', sidebar: 'surface', act: { tap: 'btnStampClear' } },
     // MEASURED: no task at all on one run, one 57 ms task (no rebuild, no card) on another -- the long-task floor, left as
     // the Scissors check's 53 ms was (advisor); pinned here against a real regression
     { name: 'Surface: Reset tweaks', sidebar: 'surface', act: { tap: 'filterTweaksReset' }, budgetMs: 100 },
@@ -49,19 +49,26 @@ export const BLIND_BUDGET = {
     // the editor's backdrop repaint after a Photo change (seat D 2026-10-09: ~340 ms, no card) -- the 'backdrop' stage
     { name: 'Photo: blur slider release (editor open)', pre: ['photoTab_adjust', 'photoTool_blur'], act: { set: 'photoBlurSlider', value: 3 } },
     { name: 'Photo: Rotate 90 (editor open)', pre: ['photoTab_source', 'photoTool_rotateFlip'], act: { tap: 'photoBtnRotate' } },
+    // 2026-10-11 (seat A): the photo footprint's release -- one placement step + the backdrop repaint (main/photo-footprint.js);
+    // the board's middle is inside the footprint at scale 1, so the touch drag moves the photo
+    { name: 'Photo: footprint drag release (editor open)', act: { stroke: [[0.5, 0.5], [0.58, 0.55]] } },
     // the sidebar's quick settings on a board WITH bricks (seat D 2026-10-09, feedback audit on seat A's loaded board:
     // a pick re-rendered the Brick panel before its stage could paint, 53-79 ms frozen with no card)
-    { name: 'Sidebar quick: brick set (bricks laid)', closeEditor: true, sidebar: 'decor', act: { tap: 'brickQuick_set_4' } },
-    { name: 'Sidebar quick: grout colour None (bricks laid)', sidebar: 'decor', act: { tap: 'brickQuick_groutColor_none' } },
+    { name: 'Sidebar quick: brick set (bricks laid)', closeEditor: true, sidebar: 'surface', act: { tap: 'brickQuick_set_4' } },
+    { name: 'Sidebar quick: grout colour None (bricks laid)', sidebar: 'surface', act: { tap: 'brickQuick_groutColor_none' } },
     // seat A's re-time 2026-10-09 (loaded board): the size nudge's apply serialised every carved layer in the tap, 55-85 ms
     // before the 'frame' card -- main/ui-bindings.js PARAM_STAGES
     { name: 'Board width change (bricks laid)', sidebar: 'board', act: { set: 'widthIn', value: 7.5 } },
+    // 2026-10-11 (seat A): the photo layer's own sidebar controls (Surface > Photo) -- the toggle and the share drag rebuild the 3D
+    { name: 'Surface: photo layer "Filter shows through" drag', sidebar: 'surface', act: { drag: 'photoFilterAmountSlider', values: [10, 20, 30, 40] } },
+    { name: 'Surface: photo layer toggle (off)', sidebar: 'surface', act: { tap: 'photoLayer' } }, // last: off greys the share slider
     // the Art tab (seat A's re-time 2026-10-09, main e6c4f35: 0.56-0.9 s with no feedback at all) -- in order, each on
     // the last one's board: a Generate, its Undo, the Redo, a Shape Generate, its Undo
-    { name: 'Art: Lattice Generate', open: 'editorTabArtwork', pre: ['artTab_lattice'], act: { tap: 'latticeGenerate' } },
+    // redesign phase 2: the lattices are the top-level Lattice tab's (a real tap reaches its own Art tabs, not Draw's)
+    { name: 'Art: Lattice Generate', open: 'editorTabArtwork', pre: ['editorTabLattice', 'artTab_lattice'], act: { tap: 'latticeGenerate' } },
     { name: 'Art: Undo after a Generate', act: { tap: 'editorUndo' } },
     { name: 'Art: Redo', act: { tap: 'editorRedo' } },
-    { name: 'Art: Shape Generate', pre: ['artTab_shape'], act: { tap: 'shapeLatticeGenerate' } },
+    { name: 'Art: Shape Generate', pre: ['editorTabLattice', 'artTab_shape'], act: { tap: 'shapeLatticeGenerate' } },
     { name: 'Art: Undo after a Shape Generate', act: { tap: 'editorUndo' } },
     // seat D 2026-10-09 (Fred's projects: 3D after a Generate ~120 ms blind): the phone's 3D toggle = Apply; its first
     // step 'saving the drawing' is on screen before the commit

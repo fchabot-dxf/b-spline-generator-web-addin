@@ -39,7 +39,7 @@ function editorOn(tab, els = []) {
 describe('EDITOR_TAB_SELECTABLE: declared per tab', () => {
   it('Artwork = art, Brick = bricks, Frame / Photo = nothing on the canvas; "Select all" named per tab', () => {
     expect(Object.fromEntries(Object.entries(EDITOR_TAB_SELECTABLE).map(([t, d]) => [t, d.kinds]))).toEqual({
-      artwork: ['art'], brick: ['brick'], frame: [], photo: [],
+      artwork: ['art'], lattice: ['art'], brick: ['brick'], frame: [], photo: [], // redesign phase 2: the Lattice tab = art
     });
     expect(selectAllLabelFor({ _focusTab: 'artwork' })).toBe('Select all artwork');
     expect(selectAllLabelFor({ _focusTab: 'brick' })).toBe('Select all bricks');

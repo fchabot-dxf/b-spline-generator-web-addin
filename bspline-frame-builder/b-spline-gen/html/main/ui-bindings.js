@@ -17,8 +17,11 @@ import { withLoadingStageShownFirst } from '../core/loading-signal.js';
  *  first, then the apply runs (core/loading-signal.js). Seat A's re-time 2026-10-09 + seat D's phone audit (390 px,
  *  CPU x4, a board with bricks laid): a board width / height nudge ran its apply -- the grid change starts the mask
  *  refresh, which serialises every carved layer's SVG -- 55-85 ms in the tap, before the 'frame' card. A field being
- *  typed in is never written back (syncUItoParam skips the focused input), so the deferred apply cannot fight typing. */
-export const PARAM_STAGES = Object.freeze({ widthIn: 'frame', heightIn: 'frame' });
+ *  typed in is never written back (syncUItoParam skips the focused input), so the deferred apply cannot fight typing.
+ *  Seat A 2026-10-11 (matrix blind row "Surface: photo layer toggle (off)", 53-92 ms blind, 3 runs; CPU profile: the
+ *  session save + Surface > Photo's greying / tweak rows re-rendered, then their style + layout, all in the tap):
+ *  the Photo layer switch -> the surface rebuild it starts. */
+export const PARAM_STAGES = Object.freeze({ widthIn: 'frame', heightIn: 'frame', photoLayer: 'rebuild' });
 
 export function bindControls(preview) {
   // UX-UNDO: the layer row's 👁/3D/palette toggles (editor/layers.js —
