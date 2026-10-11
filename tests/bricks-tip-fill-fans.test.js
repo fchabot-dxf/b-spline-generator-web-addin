@@ -18,6 +18,7 @@ import { polygonIntersection, signedArea } from '../bspline-frame-builder/b-spli
 import { BRICK_SETS, FRAME_PRESETS, scaledSet } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { tess, bareGround, PATCH_MAX_FACE } from './bare-ground.js';
+import { presetFrameInput, framePiecesOf } from './preset-lay.js';
 
 vi.setConfig({ testTimeout: HEAVY_TEST_MS });
 
@@ -42,11 +43,13 @@ describe(`tip fill keeps the corner fan's ground (${FULL ? 'full sweep' : 'fast 
     const sil = frameContourSilhouette({ defs: FRAME_DEFS, record: normalizeFrameRecord({ templateId: tpl }), board: { widthIn: W, heightIn: H } }, 0, 0);
     const prims = buildRibbonPrimitives(sil.primitives);
     const r = generateBricks({ boardOutline: [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }], set: SET, seed: 1, scale: L / SET.brickLengthIn,
-      suppression: 0, clumping: 0, frame: { primitives: prims, bands: FRAME_PRESETS[preset] } });
+      suppression: 0, clumping: 0, ...presetFrameInput(prims, preset) }); // the preset as the app lays it (its arch too)
+    const fb = framePiecesOf(r);
+    if (!fb.length && r.archFit) return; // no frame laid (an arch that does not fit): the 'none' lay, left out here
     const s = scaledSet(SET, L / SET.brickLengthIn);
-    const bare = bareGround(tess(prims), [...r.frameBricks, ...r.bricks], s.grout.widthIn, { W, H });
+    const bare = bareGround(tess(prims), [...fb, ...r.bricks], s.grout.widthIn, { W, H });
     expect(bare.largestSqIn / (s.brickLengthIn * s.brickHeightIn), 'largest bare patch, share of one brick face').toBeLessThanOrEqual(PATCH_MAX_FACE);
-    const fb = r.frameBricks, bx = fb.map((b) => boxOf(b.polygon)), bad = [];
+    const bx = fb.map((b) => boxOf(b.polygon)), bad = [];
     for (let i = 0; i < fb.length; i++) for (let j = i + 1; j < fb.length; j++) {
       const a = bx[i], b = bx[j];
       if (a[1] < b[0] || b[1] < a[0] || a[3] < b[2] || b[3] < a[2]) continue;

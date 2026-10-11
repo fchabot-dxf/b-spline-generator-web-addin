@@ -21,6 +21,7 @@ import { pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/
 import { BRICK_SETS, FRAME_PRESETS, scaledSet } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { buildRibbonPrimitives } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { tess, bareGround, PATCH_MAX_FACE, PATCH_KNOWN } from './bare-ground.js';
+import { presetFrameInput, framePiecesOf } from './preset-lay.js';
 
 vi.setConfig({ testTimeout: HEAVY_TEST_MS });
 
@@ -55,6 +56,9 @@ const GAP_CAPS = {
 const FAST = [
   ['template_16', 7, 9, 1.5, 'single_soldier'], ['template_10', 9, 12, 1.25, 'butt_frame'], ['template_1', 9, 12, 1.5, 'mixed_bands'],
   ['template_18', 9, 12, 3, 'single_soldier'], ['template_14', 7, 9, 3, 'single_soldier'], ['template_5', 7, 9, 8, 'single_soldier'],
+  // the arch preset laid WITH its arch (preset-lay.js): T11's pointed top read 0.19 of a face bare before the stone outlines
+  // lost their sub-joint edges (arch-surround.js STONE_EDGE_MIN_JOINTS)
+  ['template_11', 7, 9, 1.25, 'arch_keystone'],
 ];
 const TEMPLATES = FRAME_DEFS.templates.map((t) => t.id).filter((k) => /^template_\d+$/.test(k));
 const CASES = process.env.GAP_SWEEP_FULL === '1'
@@ -71,13 +75,17 @@ describe('the gap sweep: no bare patch over a brick face share; 2 - 8 in capped 
     if (!sil || !sil.primitives) return;
     const prims = buildRibbonPrimitives(sil.primitives), contour = tess(prims);
     const r = generateBricks({ boardOutline: [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }], set: SET, seed: 1, scale: L / SET.brickLengthIn,
-      suppression: 0, clumping: 0, frame: { primitives: prims, bands: FRAME_PRESETS[preset] } });
+      suppression: 0, clumping: 0, ...presetFrameInput(prims, preset) }); // the preset as the app lays it (its arch too)
+    const frame = framePiecesOf(r);
+    // no frame laid at all (an arch preset whose arch does not fit -- Fred's ladder skips it with a note): the 'none' lay,
+    // which this sweep leaves out
+    if (!frame.length && r.archFit) return;
     const s = scaledSet(SET, L / SET.brickLengthIn), J = s.grout.widthIn;
-    const bare = bareGround(contour, [...r.frameBricks, ...r.bricks], J, { W, H });
+    const bare = bareGround(contour, [...frame, ...r.bricks], J, { W, H });
     const face = bare.largestSqIn / (s.brickLengthIn * s.brickHeightIn);
     const outside = (b) => b.polygon.some((p) => !pointInPolygon(p.x, p.y, contour) && Math.min(...contour.map((a, i) => segDist(p, a, contour[(i + 1) % contour.length]))) > J);
     const tag = `${tpl} ${W}x${H} ${L}`;
-    expect(r.frameBricks.filter(outside).length, `${tag}: frame pieces outside the outline`).toBe(0);
+    expect(frame.filter(outside).length, `${tag}: frame pieces outside the outline`).toBe(0);
     const cap = L >= 2 ? (((GAP_CAPS[tpl] || {})[`${W}x${H}`] || {})[L]) : null;
     if (!cap) {
       expect(face, `${tag}: largest bare patch, share of one brick face`).toBeLessThanOrEqual(PATCH_KNOWN[tag] ?? PATCH_MAX_FACE);
