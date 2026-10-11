@@ -447,6 +447,12 @@ export const BRICK_PATTERNS = Object.freeze({
 function withBestSize(bestSize, bands) {
   return Object.defineProperty(bands, 'bestSize', { value: bestSize, enumerable: false });
 }
+/** 2026-10-11 (Fred approved the advisor's mock "Rowlock arch + keystone"): a preset's optional `arch` -- a blind arch
+ *  inside the frame (core/bricks/arch-surround.js ARCH_SPECS id), laid with the Frame element; the wall is cut around
+ *  it and fills its opening. Non-enumerable like bestSize: every reader of the bands sees the list it always did. */
+function withArch(arch, bands) {
+  return Object.defineProperty(bands, 'arch', { value: arch, enumerable: false });
+}
 
 export const FRAME_PRESETS = Object.freeze({
   // F35 item 12 follow-up (Fred): the Frame band preset's own OFF switch -- an EMPTY band list,
@@ -497,6 +503,8 @@ export const FRAME_PRESETS = Object.freeze({
     // `courseHeightFor`: 'course-alternating' always resolves to H, confirmed, not re-derived).
     { widthIn: 0.75, pattern: 'soldier' },
   ]),
+  // 2026-10-11 (Fred, the mock's board 1): one mitred stretcher course at the border; inside it the arch (withArch)
+  arch_keystone: withBestSize(1, withArch('rowlock_keystone', [{ widthIn: 0.2, pattern: 'stretcher' }])),
 });
 
 /**

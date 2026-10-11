@@ -277,7 +277,7 @@ export function bricksFillShape(polygon, holes, opts) {
   const layoutSet = def && (def.params || def.fixed) ? { ...set, layoutParams: {
     ...Object.fromEntries(Object.entries(def.params || {}).filter(([, p]) => p && 'default' in p).map(([k, p]) => [k, p.default])),
     ...(set.layoutParams || {}), ...(def.fixed || {}) } } : set;
-  const { cells: allCells } = layoutFn(polygon, layoutSet, opts.zones, seed, opts.largeStones, opts.fences, { rustic: opts.rustic, accentCuts: opts.accentCuts, customBond: opts.customBond });
+  const { cells: allCells } = layoutFn(polygon, layoutSet, opts.zones, seed, opts.largeStones, opts.fences, { rustic: opts.rustic, accentCuts: opts.accentCuts, customBond: opts.customBond, ...(Number.isFinite(opts.bondOriginX) ? { originX: opts.bondOriginX } : {}) });
   let cells = (holes && holes.length)
     ? allCells.filter((c) => !holes.some((h) => pointInPolygon(c.cx, c.cy, h)))
     : allCells;

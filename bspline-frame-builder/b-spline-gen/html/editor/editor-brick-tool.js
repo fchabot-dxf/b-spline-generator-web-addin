@@ -213,9 +213,14 @@ export function repaintBricks(editor) {
   return nodes.length;
 }
 
+/** 2026-10-11: which part of the frame's arch a piece is (core/bricks/arch-surround.js: keystone, springer, ring, hood,
+ *  jamb, sill, sillBlock) -- absent on every other piece. */
+export const ARCH_PART_ATTR = 'data-brick-arch';
 function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn, ownerId = null) {
   for (const [i, b] of bricks.entries()) {
-    const el = drawBrick(editor, layer, b, kind, setId, seed, reliefIn);
+    // a piece may carry its own set (the arch's stone keystone / springers / sill blocks); every other piece the element's
+    const el = drawBrick(editor, layer, b, kind, b.setId ?? setId, seed, reliefIn);
+    if (b.part) el.attr(ARCH_PART_ATTR, b.part);
     if (kind === 'frame') stampRunPlace(el, b, i); // per-band accents read it
     if (ownerId) el.attr(BRICK_OWNER_ATTR, ownerId); // item 22: which element (record) laid it
   }
@@ -279,6 +284,7 @@ function _paintGroutNode(editor, n, settings) {
 const _roundRegion = (region) => region.map((r) => ({
   outer: r.outer.map((p) => ({ x: +p.x.toFixed(4), y: +p.y.toFixed(4) })),
   holes: (r.holes || []).map((h) => h.map((p) => ({ x: +p.x.toFixed(4), y: +p.y.toFixed(4) }))),
+  ...(r.part ? { part: r.part } : {}), // 2026-10-11: which part of the element an entry is ('arch': its own outline sketch)
 }));
 /** Draws (or re-draws) the grout of element `elementId` (kind wall | frame) over `region`, on `layer`. */
 export function drawElementGrout(editor, layer, kind, elementId, region, settings) {
@@ -660,6 +666,8 @@ export function frameCornerOf(settings) {
 }
 /** The bands a Frame element lays: its preset's, each band's own pattern pick (`frameBandPatterns[i]`) and the
  *  element's corner applied (a NEW array -- FRAME_PRESETS' frozen entries are never touched). */
+/** 2026-10-11: the arch the board's Frame preset carries (library.js withArch: an arch-surround.js ARCH_SPECS id), or null. */
+export const frameArchOf = (settings) => (FRAME_PRESETS[settings && settings.frameBandPreset] || {}).arch || null;
 export function frameBandsOf(settings) {
   const base = FRAME_PRESETS[settings && settings.frameBandPreset] || FRAME_PRESETS.single_soldier;
   const overrides = (settings && settings.frameBandPatterns) || [];
@@ -1308,6 +1316,10 @@ function _layInput(editor, settings, frameGeom) {
   if (settings.suppressFrame) Object.assign(input, { suppressFrame: true, frameSuppression: frameSuppressionOf(settings) });
   const surround = windowSurroundOf(settings);
   if (frameGeom && frameGeom.insetRect && surround.preset !== SURROUND_NONE) input.insetSurround = { rect: frameGeom.insetRect, preset: surround.preset, corner: surround.corner };
+  // 2026-10-11: the frame preset's arch (library.js withArch) -- part of the Frame element, like the surround: no Frame
+  // element (frameGeomForLay emptied its bands), no arch; a preset without one = absent, the lay byte-identical
+  const arch = frameArchOf(settings);
+  if (arch && frameGeom && frameGeom.bands && frameGeom.bands.length) input.arch = { spec: arch };
   // the engine applies ONE `scale` (the Wall's) to the frame's set too -- so the frame's set goes in pre-scaled
   // by its own scale over the Wall's (the engine's own scaledSet): its bricks / stones keep the global size
   if (frameGeom) input.frame = { ...frameGeom, set: scaledSet(resolvedSetFor(frameSettings), scaleFor(frameSettings) / input.scale) };
@@ -1391,7 +1403,9 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const bricks = result.exclusionsApplied ? result.bricks : dropExcludedWallBricks(result.bricks, exclusions);
   // item 9: the window surround's pieces are FRAME pieces (its layer, record, mask, select); `ring` = its footprint
   const surroundBricks = result.surroundBricks || [];
-  const frameBricks = surroundBricks.length ? [...result.frameBricks, ...surroundBricks] : result.frameBricks;
+  const archBricks = result.archBricks || []; // 2026-10-11: the arch's pieces are frame pieces too
+  const frameBricks = surroundBricks.length || archBricks.length ? [...result.frameBricks, ...surroundBricks, ...archBricks] : result.frameBricks;
+  const archRegion = result.archOuter ? { outer: result.archOuter, holes: [result.archOpening], part: 'arch' } : null; // the arch's footprint
   const ring = surroundBricks.length ? surroundRing(surroundBricks, input.insetSurround.rect) : null;
   const areaLays = [];
   for (let i = areas.length - 1; i >= 0; i--) {
@@ -1419,9 +1433,10 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const interior = result.interiorOutline && result.interiorOutline.length >= 3 ? result.interiorOutline : boardPolygon(editor);
   if (lays('frame') && frameBricks.length && frameGeom && frameGeom.primitives && frameGeom.primitives.length) {
     const outer = primitivesOutline(frameGeom.primitives);
-    drawElementGrout(editor, layerOf.frame, 'frame', owner('frame'), [{ outer, holes: [interior] }, ...(ring ? [ring] : [])], settings);
+    drawElementGrout(editor, layerOf.frame, 'frame', owner('frame'), [{ outer, holes: [interior] }, ...(ring ? [ring] : []), ...(archRegion ? [archRegion] : [])], settings);
   }
-  if (lays('wall') && !areas.length && bricks.length) drawElementGrout(editor, layerOf.wall, 'wall', owner('wall'), [{ outer: interior, holes: ring ? [ring.outer] : [] }], settings);
+  // the wall around the arch, and the wall in its opening
+  if (lays('wall') && !areas.length && bricks.length) drawElementGrout(editor, layerOf.wall, 'wall', owner('wall'), [{ outer: interior, holes: [...(ring ? [ring.outer] : []), ...(archRegion ? [archRegion.outer] : [])] }, ...(archRegion ? [{ outer: archRegion.holes[0], holes: [] }] : [])], settings);
   areas.forEach((area, i) => {
     const lay = areaLays.find((l) => l.area === area);
     if (!lay || !lay.bricks.length) return;
@@ -1433,7 +1448,7 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   // F35 item 35: the engine's band-fit note (T86 item 28) when the Frame's stack was reduced to fit the board
   const wallCount = !lays('wall') ? 0 : areas.length ? areaLays.reduce((n, l) => n + l.bricks.length, 0) : bricks.length;
   return { wallCount, frameCount: lays('frame') ? frameBricks.length : 0,
-    bandsReduced: lays('frame') ? (result.bandsReduced || null) : null };
+    bandsReduced: lays('frame') ? (result.bandsReduced || null) : null, ...(lays('frame') && result.archFit ? { archFit: result.archFit } : {}) };
 }
 
 /** `laidKey` (audit B1-B3): the caller's key for the settings this run lays. Item 22 step 3: it is stamped on

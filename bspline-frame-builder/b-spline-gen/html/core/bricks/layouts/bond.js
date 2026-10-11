@@ -251,13 +251,18 @@ function applyAccentCuts(courses, accentCuts, minX, L, J) {
   });
 }
 
-export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fences, { rustic = 0, accentCuts, customBond } = {}) {
+export function bondLayout(boardOutline, set, zones, seed = 0, _largeStones, _fences, { rustic = 0, accentCuts, customBond, originX } = {}) {
   let below = []; // T86 item 22: the previous rustic course's joints
   const custom = customBond && Array.isArray(customBond.courses) && customBond.courses.length ? customBond : null;
   const xs = boardOutline.map((p) => p.x), ys = boardOutline.map((p) => p.y);
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
 
   const L = set.brickLengthIn, H = set.brickHeightIn, J = set.grout.widthIn;
+  // 2026-10-11 (the arch, arch-surround.js): `originX` -- a course's bricks start on it (whole brick pitches from it), not on
+  // the outline's left edge: the arch centres the bond on itself so its jamb faces fall on head joints. Absent = the
+  // outline's left edge, the lay byte-identical. The rows below take it as their start (cells left of the outline clip away).
+  const left = Math.min(...xs);
+  const minX = Number.isFinite(originX) ? originX - Math.ceil((originX - left) / (L + J) + 1e-9) * (L + J) : left;
   const maxDim = Math.max(L, H);
 
   const resolvedZones = resolveZones(set, zones, maxY - minY);

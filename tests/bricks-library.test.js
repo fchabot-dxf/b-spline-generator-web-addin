@@ -97,7 +97,8 @@ describe('FRAME_PRESETS', () => {
     // T86 item 2: mixed_bands (header/flemish/soldier) joins as the declared sequence-based preview combo.
     // F35 item 12 follow-up: 'none' joins as the Frame band preset's own OFF switch -- an empty band
     // list is its ENTIRE point (no frame bands at all), not a bug this test should flag.
-    expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['butt_frame', 'double_course', 'header_band', 'mixed_bands', 'none', 'quoin_corners', 'single_soldier', 'soldier_stretcher', 'three_band'].sort());
+    // 2026-10-11: arch_keystone (Fred) -- a mitred stretcher course + the arch (arch-surround.js), read via FRAME_PRESETS[id].arch.
+    expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['arch_keystone', 'butt_frame', 'double_course', 'header_band', 'mixed_bands', 'none', 'quoin_corners', 'single_soldier', 'soldier_stretcher', 'three_band'].sort());
     expect(FRAME_PRESETS.none).toEqual([]);
     for (const [name, bands] of Object.entries(FRAME_PRESETS)) {
       if (name === 'none') continue;
