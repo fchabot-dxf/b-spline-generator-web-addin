@@ -516,6 +516,9 @@ function mergeRemnant(remnant, pieces, candidates, clear, live, joint) {
       if (meets(merged, k, j)) merged = largestOf(polygonDifference(merged, offsetPathInward(pieces[k].polygon, joint, -inwardSignFor(pieces[k].polygon))));
     }
     if (!merged || merged.length < 3 || Math.abs(signedArea(merged)) < Math.abs(signedArea(pieces[j].polygon)) - 1e-9) continue;
+    // it must hold the remnant (a neighbour beyond the quoin: the cut kept the neighbour's side and lost the remnant --
+    // MEASURED T6 7x9 1 in recessed_panel, the tab slot's band-2 piece "merged" into the run past the block)
+    if (overlapArea(merged, remnant) < 0.9 * Math.abs(signedArea(remnant))) continue;
     if (!pieces.some((b, k) => meets(merged, k, j))) return { j, polygon: merged };
   }
   return null;
@@ -532,25 +535,56 @@ function cutUnderQuoins(bricks, ribbons, joint, minArea, wallZone) {
     }
     return poly;
   };
-  // the remnant's row neighbour (same band and row, next in build order, not a quoin; a fan slice takes a fan's remnant) taking it in
-  const mergeIntoNeighbour = (i, remnant) => {
-    const { bandIndex, rowIndex, pieceIndex } = bricks[i];
-    const cands = bricks.map((b, j) => j).filter((j) => j !== i && !quoins.has(j) && !dropped.has(j)
-      && bricks[j].bandIndex === bandIndex && bricks[j].rowIndex === rowIndex && Math.abs(bricks[j].pieceIndex - pieceIndex) === 1);
-    const clear = (p) => { const q = clearOfQuoins(p); return q && wallZone ? largestOf(polygonDifference(q, wallZone)) : q; };
-    const got = mergeRemnant(remnant, bricks, cands, clear, (k) => k !== i && !dropped.has(k), joint);
-    if (got) bricks[got.j] = { ...bricks[got.j], polygon: got.polygon };
-    return !!got;
-  };
+  // every piece is cut first, then the remnants are placed -- a remnant used to merge into its neighbour's UNCUT outline
+  // (the size check against it failed when the neighbour was cut too) and then that neighbour's own remnant had no one
+  // left: both dropped (MEASURED frame-motifs recessed_panel with quoin corners, T6 7x9 1 in: the two band-2 pieces in
+  // the tab's slot, 0.037 sq in each, a 0.086 sq in bare patch)
+  const remnants = new Map(); // brick index -> its under-floor part
   for (let i = 0; i < bricks.length; i++) {
     if (quoins.has(i)) { keep.push(i); continue; }
     const before = bricks[i].polygon, poly = clearOfQuoins(before);
     if (poly === before) { keep.push(i); continue; }
     if (poly && Math.abs(signedArea(poly)) >= minArea) { bricks[i] = { ...bricks[i], polygon: poly }; keep.push(i); continue; }
     dropped.add(i);
-    if (poly) mergeIntoNeighbour(i, poly);
+    if (poly) remnants.set(i, poly);
   }
-  return keep.filter((i) => !dropped.has(i));
+  // a remnant's row neighbours: same band and row, next in build order, not a quoin (a fan slice takes a fan's remnant);
+  // a neighbour that merged into another piece stands for that piece (MEASURED frame-motifs zigzag_band, T8 9x12 1.5 in:
+  // the remnant beside one that had joined its own neighbour found no one left, 0.083 sq in bare)
+  const absorbed = new Map(); // remnant index -> the piece it joined
+  const resolve = (j) => { while (absorbed.has(j)) j = absorbed.get(j); return j; };
+  const rowNeighbours = (i, ok) => [...new Set(bricks.map((b, j) => j).filter((j) => j !== i && !quoins.has(j)
+    && bricks[j].bandIndex === bricks[i].bandIndex && bricks[j].rowIndex === bricks[i].rowIndex && Math.abs(bricks[j].pieceIndex - bricks[i].pieceIndex) === 1).map(resolve))].filter((j) => j !== i && ok(j));
+  const clear = (p) => { const q = clearOfQuoins(p); return q && wallZone ? largestOf(polygonDifference(q, wallZone)) : q; };
+  const laid = (j) => !dropped.has(j) && !remnants.has(j);
+  const intoLaid = () => {
+    for (const [i, poly] of [...remnants]) {
+      const got = mergeRemnant(poly, bricks, rowNeighbours(i, laid), clear, (k) => k !== i && laid(k), joint);
+      if (got) { bricks[got.j] = { ...bricks[got.j], polygon: got.polygon }; remnants.delete(i); absorbed.set(i, got.j); }
+    }
+  };
+  // 1. into a laid neighbour
+  intoLaid();
+  // 2. what none took: remnants side by side become one piece (laid when it clears the floor)
+  for (const [i, poly] of [...remnants]) {
+    if (!remnants.has(i)) continue;
+    const pieces = bricks.map((b, k) => (remnants.has(k) ? { ...b, polygon: remnants.get(k) } : b));
+    const got = mergeRemnant(poly, pieces, rowNeighbours(i, (j) => remnants.has(j)), clear, (k) => k !== i && (!dropped.has(k) || remnants.has(k)), joint);
+    if (got) { remnants.set(got.j, got.polygon); remnants.delete(i); absorbed.set(i, got.j); }
+  }
+  for (const [i, poly] of [...remnants]) if (Math.abs(signedArea(poly)) >= minArea) { bricks[i] = { ...bricks[i], polygon: poly }; dropped.delete(i); keep.push(i); remnants.delete(i); }
+  // 3. what is still under the floor: a laid neighbour once more (one grown in step 1 or 2)
+  intoLaid();
+  // 4. last: any laid frame piece it touches, the band outside included (MEASURED frame-motifs recessed_panel with quoin
+  // corners, T6 9x12 1 in: two quoins' Ls leave a slot whose band-3 remnants pool to 0.065 sq in, under the 0.067 floor,
+  // with no row neighbour left -- the slot's cap above takes it); else it drops
+  for (const [i, poly] of [...remnants]) {
+    const pb = boxOfPoly(poly), gapTo = (b) => Math.max(0, b[0] - pb[2], pb[0] - b[2]) + Math.max(0, b[1] - pb[3], pb[1] - b[3]);
+    const near = bricks.map((b, j) => [j, gapTo(boxOfPoly(b.polygon))]).filter(([j, g]) => j !== i && !quoins.has(j) && laid(j) && g <= 2 * joint).sort((a, b) => a[1] - b[1]).map(([j]) => j);
+    const got = mergeRemnant(poly, bricks, near, clear, (k) => k !== i && laid(k), joint);
+    if (got) { bricks[got.j] = { ...bricks[got.j], polygon: got.polygon }; remnants.delete(i); absorbed.set(i, got.j); }
+  }
+  return keep.filter((i) => !dropped.has(i)).sort((a, b) => a - b);
 }
 /** QUOIN_INNER_WRAP: the inner ribbons' corners whose piece (an L by now) still overlaps another quoin -- per ribbon key
  *  (`band:row`), the corner indices `ribbonPieces` lays as the mitre instead (its `blockOff`) */
