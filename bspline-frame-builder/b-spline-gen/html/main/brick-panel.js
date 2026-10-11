@@ -303,12 +303,12 @@ function syncPatternDefaultChips() {
   }
 }
 /** The Size & joint section's resets (Fred: an icon only, the tweak rows' own ↺): each shown only while the active
- *  element overrides one of its values, placed after its row's label; a click clears those overrides (the element is
- *  back on its pattern's defaults) and commits as the row's own control does. */
+ *  element overrides one of its values, beside its row's label; a click clears those overrides (the
+ *  element is back on its pattern's defaults) and commits as the row's own control does. */
 export const ELEMENT_LOOK_RESETS = Object.freeze([
-  Object.freeze({ id: 'brickLookReset_size', after: 'brickSizeLabel', looks: Object.freeze(['size']), commit: 'generate' }),
-  Object.freeze({ id: 'brickLookReset_groutWidth', after: 'brickGroutWidthLabel', looks: Object.freeze(['groutWidth']), commit: 'generate' }),
-  Object.freeze({ id: 'brickLookReset_groutDepth', after: 'brickGroutDepthLabel', looks: Object.freeze(['groutDepth', 'groutProfile']), commit: 'surface' }),
+  Object.freeze({ id: 'brickLookReset_size', label: 'brickSizeLabel', looks: Object.freeze(['size']), commit: 'generate' }),
+  Object.freeze({ id: 'brickLookReset_groutWidth', label: 'brickGroutWidthLabel', looks: Object.freeze(['groutWidth']), commit: 'generate' }),
+  Object.freeze({ id: 'brickLookReset_groutDepth', label: 'brickGroutDepthLabel', looks: Object.freeze(['groutDepth', 'groutProfile']), commit: 'surface' }),
 ]);
 export const LOOK_RESET_TITLE = 'Reset to pattern default';
 /** Writes the active element's value (null = back to the pattern's default) into a per-element map. */
@@ -319,7 +319,7 @@ function _setElementLook(look, value, kind = _jointKind()) {
 function _renderLookResets() {
   for (const r of ELEMENT_LOOK_RESETS) {
     if (document.getElementById(r.id)) continue;
-    const anchor = document.getElementById(r.after);
+    const anchor = document.getElementById(r.label);
     if (!anchor) continue;
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -333,7 +333,13 @@ function _renderLookResets() {
       syncElementLook();
       commitBrickSetting(r.commit);
     });
-    anchor.after(btn);
+    // a label row: the label, then its ↺ beside it (.cad-label is a column flex box -- inside it the icon would stack
+    // under the text, MEASURED); the row takes the label's place, so a label beside a stepper keeps its layout
+    const row = document.createElement('div');
+    row.className = 'brick-look-label-row';
+    row.style.cssText = 'display:flex; align-items:center; gap:6px;';
+    anchor.replaceWith(row);
+    row.append(anchor, btn);
   }
 }
 /** The active element's size and joint shown in its section, the default chip marked, each reset shown iff overridden. */
@@ -347,7 +353,8 @@ function syncElementLook() {
   _syncGroutProfileToggle(elementGroutProfile(s, kind));
   for (const r of ELEMENT_LOOK_RESETS) {
     const btn = document.getElementById(r.id);
-    if (btn) btn.style.display = r.looks.some((look) => elementOverride(s, ELEMENT_LOOK_MAPS[look], kind) != null) ? '' : 'none';
+    // inline-flex: the tweak-reset class is a flex box, which would put it on a line of its own inside the label
+    if (btn) btn.style.display = r.looks.some((look) => elementOverride(s, ELEMENT_LOOK_MAPS[look], kind) != null) ? 'inline-flex' : 'none';
   }
 }
 
