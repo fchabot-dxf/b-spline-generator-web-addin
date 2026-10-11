@@ -1,6 +1,7 @@
 /**
  * main/brick-control-requires.js -- which Brick controls only work while ANOTHER control is in some
- * state (audit, agreed with 88 for tools/brick-matrix). Pure data, no imports: main/brick-panel.js greys
+ * state (audit, agreed with 88 for tools/brick-matrix). Pure data -- one import, library.js's declared FRAME_PRESETS (which
+ * presets declare which corner; DOM-free): main/brick-panel.js greys
  * each id in `controls` out (disabled, title = why) while `requires` is unmet, and the control-matrix
  * test (Node, no DOM) reads the SAME declaration instead of keeping its own copy.
  * `satisfied` forms: { gt: n } on a number input's value, { active: bool } on a button's .active class,
@@ -14,6 +15,8 @@
  * (looked up by id: ctx.elementOf, else the document); a member whose control is missing is left out, none left = met.
  * A control under several rules is greyed while ANY of them is unmet.
  */
+import { FRAME_PRESETS } from '../core/bricks/library.js';
+
 /** A frame lay with no contour to follow (the frame's outline can't carry bands): the toast's words, and the
  *  sidebar Frame bands row's reason while it is greyed (item 63). No template is the board rectangle (item 66). */
 export const FRAME_NEEDS_A_FRAME = "This frame's outline can't carry brick bands -- pick another frame template.";
@@ -23,6 +26,8 @@ export const FRAME_NEEDS_A_FRAME = "This frame's outline can't carry brick bands
  *  when the size allows; the mitre is never greyed. The fact is the engine's (frameCornerEffect), not a clamp. */
 export const CORNER_NOT_LONG_ENOUGH = 'No square corner here is long enough at this brick size';
 export const cornerFact = (style) => `cornerTakes_${style}`;
+/** The frame presets that declare corner `style` (their first band's -- a preset's bands share one corner) */
+const presetsCornered = (style) => Object.keys(FRAME_PRESETS).filter((id) => FRAME_PRESETS[id][0] && FRAME_PRESETS[id][0].cornerStyle === style);
 /** T86 item 16e (74b's grey + explain): a fan centre other than the Needle on a frame with no corner fan would re-lay the
  *  identical frame. The fact is the engine's (frameHasFan). */
 export const FAN_CENTRE_NO_FAN = 'This frame has no fan corner at this brick size';
@@ -59,7 +64,10 @@ export const BRICK_CONTROL_REQUIRES = [
   // F35 item 63: the sidebar's Frame bands pick lays the frame along its contour -- none for an outline that can't carry one
   { controls: [], within: ['brickQuickRow_frameBands'], requires: { fact: 'frameContour' }, why: FRAME_NEEDS_A_FRAME },
   // item 74b: one rule per cutting corner style (core/bricks CORNER_CUT_STYLES)
-  ...['butt', 'block', 'lapped'].map((style) => ({ controls: [`brickFrameCorner_${style}`], requires: { fact: cornerFact(style) }, why: CORNER_NOT_LONG_ENOUGH })),
+  // Fred 2026-10-11 (a preset bundles its corner; the Corners row is retired): the rule moved onto the preset chips --
+  // every preset whose declared corner is that style, in the Frame tab and the sidebar's Frame bands row
+  ...['butt', 'block', 'lapped'].map((style) => ({ controls: presetsCornered(style).flatMap((id) => [`brickFramePreset_${id}`, `brickQuick_frameBands_${id}`]),
+    requires: { fact: cornerFact(style) }, why: CORNER_NOT_LONG_ENOUGH })),
   // T86 item 16e: Eye / Stone act on a frame's corner fans only (the Needle is never greyed)
   { controls: ['brickFrameFanCentre_eye', 'brickFrameFanCentre_stone'], requires: { fact: FAN_FACT }, why: FAN_CENTRE_NO_FAN },
 ];

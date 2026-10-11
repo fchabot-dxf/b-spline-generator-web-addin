@@ -67,7 +67,7 @@ describe('the declaration', () => {
   it('the accent sections are titled "Accent relief" (Fred); item 9\'s Frame Crumble + Window surround are Frame sections', () => {
     for (const tab of ['wall', 'brush']) expect(BRICK_TAB_SECTIONS[tab].sections.find((s) => s.kind === 'brick-accent').title).toBe('Accent relief');
     const frame = BRICK_TAB_SECTIONS.frame.sections;
-    expect(frame.map((s) => s.title)).toEqual(['Bricks', 'Bands', 'Corners', 'Height', 'Crumble', 'Window surround', 'Joint']);
+    expect(frame.map((s) => s.title)).toEqual(['Bricks', 'Bands', 'Fan centre', 'Height', 'Crumble', 'Window surround', 'Joint']); // Corners -> Fan centre (2026-10-11)
     expect(frame.find((s) => s.id === 'crumble').kind).toBe(BRICK_TAB_SECTIONS.general.sections.find((s) => s.id === 'crumble').kind);
   });
 });
@@ -96,16 +96,17 @@ describe('in the panel', () => {
     expect(shownSections('wall')).toEqual([]);
     expect(shownSections('frame')).toContain('joint');
   });
-  it('a section whose rows are all hidden hides too (Corners on a band-less frame), and comes back with bands', () => {
+  // 2026-10-11: the Corners picker is retired (a preset bundles its corner); the section holds the fan-centre row alone
+  it('a section whose rows are all hidden hides too (Fan centre on a band-less frame), and comes back with bands', () => {
     // the app re-decides on every row show/hide (a MutationObserver); happy-dom delivers those late under a full-suite
     // load, so the rule itself is checked here through the same sync, called directly (the live shots cover the observer)
     $('brickFramePreset_none').click();
-    expect($('brickFrameCornerList').style.display).toBe('none');
+    expect($('brickFrameFanCentreList').style.display).toBe('none');
     syncBrickSectionVisibility();
-    expect(shellShown('frame', 'corners')).toBe(false);
+    expect(shellShown('frame', 'fanCentre')).toBe(false);
     $('brickFramePreset_single_soldier').click();
     syncBrickSectionVisibility();
-    expect(shellShown('frame', 'corners')).toBe(true);
+    expect(shellShown('frame', 'fanCentre')).toBe(true);
   });
   it('General shows Brick size / Look / Crumble / Randomness and no element section; the paint row lives there only', () => {
     $('brickTab_general').click();

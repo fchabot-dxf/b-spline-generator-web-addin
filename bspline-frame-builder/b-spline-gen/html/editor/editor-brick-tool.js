@@ -615,13 +615,9 @@ export const FRAME_CORNERS = Object.freeze([
   { id: 'block', label: 'Quoin', title: 'Quoin: a square corner block, the bands stop against it' },
   { id: 'lapped', label: 'Lapped', title: 'Lapped: butt corners alternating band by band, laced together' },
 ]);
-/** Item 33: the old corner VARIANT presets, folded into a preset + a corner choice (the picker). Their
- *  FRAME_PRESETS entries stay (the engine's own data); the app lists the folded ones no more, and a saved board on
- *  one maps to the same result (main/app-init.js migration 'frame-corner-presets'). */
-export const FOLDED_FRAME_PRESETS = Object.freeze({
-  butt_frame: { preset: 'single_soldier', corner: 'butt' },
-  quoin_corners: { preset: 'single_soldier', corner: 'block' },
-});
+/* Item 33's FOLDED_FRAME_PRESETS (butt_frame / quoin_corners folded into Soldier + the Corners picker) is RETIRED with
+ * the picker (Fred 2026-10-11: a preset bundles its corner): both are listed presets again, and their migration
+ * ('frame-corner-presets', main/app-init.js) went too -- a board saved on one lays from its own bands, the same lay. */
 
 /** Item 9 (T86 item 29's engine keys): the crumble's TOP BIAS, one board-wide value for the wall and the frame crumble
  *  (Fred: 0.8 for every board, new and old) -- an absent field reads TOP_BIAS_DEFAULT, the engine's own default. */

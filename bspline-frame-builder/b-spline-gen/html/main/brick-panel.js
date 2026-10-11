@@ -29,7 +29,7 @@ import {
   BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
-  FRAME_CORNERS, FOLDED_FRAME_PRESETS, topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_FOLLOW, SURROUND_CORNER_LIST, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
+  topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_FOLLOW, SURROUND_CORNER_LIST, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
   FRAME_FAN_CENTRES, frameFanCentreOf, fanCentreIconSvg, frameHasFanFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
   brushStrokeSettings, restyleBrushStroke, groutCutPolylines, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
@@ -50,7 +50,7 @@ import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.js';
 import { rectToPrimitives, insetWindowOuterRect } from '../core/inset-window.js';
 import { getFrameRecord } from '../core/frame-record.js';
-import { FRAME_PRESETS, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
+import { FRAME_PRESETS, QUOIN_VARIANT_OF, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
@@ -2042,7 +2042,7 @@ export function setFrameRock(rock, commit = 'generate') {
   P.brickSettings.frameBandPatterns = rock ? bands.map(() => 'fieldstone') : [];
   renderFrameBandPatternList(document.getElementById('brickFrameBandPatternList'));
   syncFrameBandPatternButtons();
-  syncFrameCornerButtons();
+  syncFrameFanCentreRow();
   syncSetPicker();
   commitBrickSetting(commit);
 }
@@ -2056,7 +2056,7 @@ export function setFrameBandPattern(i, patternId, commit = 'generate') {
   if (!P.brickSettings.frameBandPatterns) P.brickSettings.frameBandPatterns = [];
   P.brickSettings.frameBandPatterns[i] = patternId;
   syncFrameBandPatternButtons();
-  syncFrameCornerButtons();
+  syncFrameFanCentreRow();
   syncSetPicker();
   commitBrickSetting(commit);
 }
@@ -2086,42 +2086,16 @@ function syncFramePresetButtons() {
   for (const preset of FRAME_PRESET_LIST) {
     document.getElementById(`brickFramePreset_${preset.id}`)?.classList.toggle('active', preset.id === P.brickSettings.frameBandPreset);
   }
-  syncFrameCornerButtons();
+  syncFrameFanCentreRow();
   syncQuickSettings();
 }
 
-/** Item 33: the Frame element's CORNERS row -- one engine-drawn mini corner per FRAME_CORNERS entry (the name
- *  + what it does as the tooltip). The active one = frameCornerOf (the element's pick, else its preset's own). */
-function renderFrameCornerList(container) {
-  if (!container) return;
-  container.innerHTML = '';
-  for (const corner of FRAME_CORNERS) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon'; // the same small icon button as the Accent row
-    btn.id = `brickFrameCorner_${corner.id}`;
-    btn.title = corner.title;
-    btn.setAttribute('aria-label', corner.label);
-    btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
-    btn.innerHTML = frameCornerIconSvg(corner.id, 30) || corner.label;
-    btn.addEventListener('click', () => setFrameCorner(corner.id));
-    container.appendChild(btn);
-  }
-  syncFrameCornerButtons();
-}
-/** The corners row shows for a brick frame with bands (a rock frame is one fieldstone ring: no corner joints). */
-function syncFrameCornerButtons() {
+/* Item 33's CORNERS row (renderFrameCornerList / setFrameCorner, the brickFrameCorner_* chips) is RETIRED (Fred
+ * 2026-10-11: a preset bundles its corner -- the corner is the preset chip's own, library.js QUOIN_VARIANT_OF). */
+/** The fan-centre row shows for a brick frame with bands (a rock frame is one fieldstone ring: no corner joints). */
+function syncFrameFanCentreRow() {
   const bands = FRAME_PRESETS[P.brickSettings.frameBandPreset] || [];
-  const show = bands.length > 0 && !isRockFrame(P.brickSettings);
-  for (const id of ['brickFrameCornerLabel', 'brickFrameCornerList']) {
-    const el = document.getElementById(id);
-    if (el) el.style.display = show ? '' : 'none';
-  }
-  const active = frameCornerOf(P.brickSettings);
-  for (const corner of FRAME_CORNERS) {
-    document.getElementById(`brickFrameCorner_${corner.id}`)?.classList.toggle('active', corner.id === active);
-  }
-  syncFrameFanCentreButtons(show);
+  syncFrameFanCentreButtons(bands.length > 0 && !isRockFrame(P.brickSettings));
 }
 /** T86 item 16e: the Frame element's FAN CENTRE row -- one engine-drawn fan per FRAME_FAN_CENTRES entry (the name + what
  *  it does as the tooltip). The active one = frameFanCentreOf (the element's pick, else the Needle). */
@@ -2131,7 +2105,7 @@ function renderFrameFanCentreList(container) {
   for (const centre of FRAME_FAN_CENTRES) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon'; // the Corners row's own small icon button
+    btn.className = 'cad-btn brick-accent-icon'; // the small icon button (as the Accent row)
     btn.id = `brickFrameFanCentre_${centre.id}`;
     btn.title = centre.title;
     btn.setAttribute('aria-label', centre.label);
@@ -2140,9 +2114,9 @@ function renderFrameFanCentreList(container) {
     btn.addEventListener('click', () => setFrameFanCentre(centre.id));
     container.appendChild(btn);
   }
-  syncFrameCornerButtons();
+  syncFrameFanCentreRow();
 }
-/** Shown with the Corners row (a brick frame with bands). */
+/** Shown for a brick frame with bands (syncFrameFanCentreRow). */
 function syncFrameFanCentreButtons(show) {
   for (const id of ['brickFrameFanCentreLabel', 'brickFrameFanCentreList']) {
     const el = document.getElementById(id);
@@ -2157,14 +2131,7 @@ function syncFrameFanCentreButtons(show) {
 export function setFrameFanCentre(centreId, commit = 'generate') {
   if (!FRAME_FAN_CENTRES.some((c) => c.id === centreId)) return;
   P.brickSettings.frameFanCentre = centreId;
-  syncFrameCornerButtons();
-  commitBrickSetting(commit);
-}
-/** Item 33: pick the Frame element's corner -- re-lays at once. */
-export function setFrameCorner(cornerId, commit = 'generate') {
-  if (!FRAME_CORNERS.some((c) => c.id === cornerId)) return;
-  P.brickSettings.frameCorner = cornerId;
-  syncFrameCornerButtons();
+  syncFrameFanCentreRow();
   commitBrickSetting(commit);
 }
 
@@ -2487,7 +2454,7 @@ function renderFrameBandPatternList(container) {
   // A band the last lay dropped to fit the board (bandsReduced.kept) is HIDDEN -- its pattern row and its accent block (Fred
   // 2026-10-10: "unused band should just be hidden"; it was greyed, F35 item 35). The Frame note still says "Bands reduced
   // to fit the board: N of M laid"; the band comes back when a lay fits it again (this list re-renders on every lay's note).
-  // Not the Corners row's rule ("grey + explain"): that one stays.
+  // Not the preset chips' rule ("grey + explain", a corner that cuts nothing here): that one stays.
   const keptBands = _bandsReduced ? _bandsReduced.kept : bands.length;
   bands.forEach((band, i) => {
     if (i >= keptBands) return;
@@ -2856,8 +2823,11 @@ const FRAME_PRESET_LABELS = {
   single_soldier: 'Soldier',
   soldier_stretcher: 'Soldier + Stretcher',
   three_band: 'Soldier / Stretcher / Soldier',
-  // item 33: butt_frame / quoin_corners are folded into Soldier + the Corners row (FOLDED_FRAME_PRESETS)
-  double_course: 'Soldier x2',
+  // Fred 2026-10-11: a preset bundles its corner -- the corner variants are presets again ("<look> · <corner>"); the
+  // quoin variants of QUOIN_VARIANT_OF are named from their base below
+  butt_frame: 'Soldier · butt',
+  quoin_corners: 'Soldier · quoin',
+  double_course: 'Soldier x2 · lapped',
   header_band: 'Header',
   mixed_bands: 'Header / Flemish / Soldier',
   // frame motifs phase 1 (library.js BAND_MOTIFS; recommended size FRAME_PRESET_SIZES)
@@ -2868,8 +2838,8 @@ const FRAME_PRESET_LABELS = {
   soldier_string: 'Soldier string course',
   dentil_cornice: 'Dentil cornice',
 };
-const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).filter((id) => !FOLDED_FRAME_PRESETS[id])
-  .map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
+for (const id of QUOIN_VARIANT_OF) FRAME_PRESET_LABELS[`${id}_quoin`] = `${FRAME_PRESET_LABELS[id] || id} · quoin`;
+const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
 
 /** F35 item 18 (3), the sidebar's QUICK settings (#brickQuickSettings, main sidebar 🧱 BRICK): a few
  *  2D settings mirrored from the editor's Brick tab -- the SAME P.brickSettings and the SAME setters,
@@ -3044,7 +3014,8 @@ function resolveFrameGeom(editor) {
   const contour = frameBandContour(editor);
   if (!contour) return null;
   const primitives = buildRibbonPrimitives(contour);
-  // item 33: + the element's corner (frameBandsOf -- the preset's own unless the Corners row picked one)
+  // item 33: + the element's corner (frameBandsOf -- the preset's own; a board saved with an explicit frameCorner from
+  // the retired Corners row keeps it, tests/frame-corner-legacy-pin.test.js)
   // item 9: + the inset window's outer rect while it is on (the Window surround lays around it)
   return { primitives, bands: frameBandsOf(P.brickSettings), insetRect: _insetWindowRect(editor) };
 }
@@ -3120,7 +3091,6 @@ export function initBrickPanel() {
   renderToolList(document.getElementById('editorToolbarBrick'));
   syncToolButtons();
   renderFramePresetList(document.getElementById('brickFramePresetList'));
-  renderFrameCornerList(document.getElementById('brickFrameCornerList'));
   renderFrameFanCentreList(document.getElementById('brickFrameFanCentreList')); // T86 item 16e
   document.getElementById('brickFrameOffsetDistance')?.addEventListener('change', (e) => setFrameOffset(e.target.value));
   syncFrameOffsetControl();

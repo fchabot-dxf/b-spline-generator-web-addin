@@ -91,7 +91,7 @@ const FIXTURE = `
   <input id="brickSuppressionSlider" type="range"><input id="brickSuppression">
   <input id="brickClumpingSlider" type="range"><input id="brickClumping">
   <input id="brickSeed"><button id="brickBtnRandomSeed"></button>
-  <div id="brickFrameCornerList"></div>
+  <!-- item 33's #brickFrameCornerList is retired (2026-10-11: a preset bundles its corner) -->
 `;
 
 const $ = (id) => document.getElementById(id);
@@ -1213,7 +1213,7 @@ describe('item 67: the panel wires its page (document) listeners once per page',
 describe('Generate: the control-requires sync runs under the bricks card, never behind a stale tap', async () => {
   const { setPaintScheduler, currentLoadingStage, resetLoadingSignal } = await import('../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js');
   let frames;
-  const butt = () => $('brickFrameCorner_butt');
+  const butt = () => $('brickFramePreset_butt_frame'); // the corner rule's control: the preset whose corner is butt (2026-10-11)
   beforeEach(() => {
     setup('frame');
     root.insertAdjacentHTML('beforeend', '<div id="loading-stage" hidden><span class="loading-stage-text"></span></div>');
