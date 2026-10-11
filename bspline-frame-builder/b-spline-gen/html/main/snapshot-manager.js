@@ -2,7 +2,7 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache, layerToolingChanged, saveLastSession } from '../core/state.js';
 import { renderLayersPanel } from '../editor/layers.js';
 import { syncUItoParam } from '../core/ui-utils.js';
-import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring, startHistoryAt } from '../core/history.js';
+import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring, startHistoryAt, UNDO_KEEPS } from '../core/history.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { updateStampMasks, refreshAllStampMasks } from './stamp-mask-manager.js';
 import { deferToHold } from '../core/engine/scheduler.js';
@@ -47,8 +47,7 @@ async function _applySnapshot(snap, preview, { source, restore, historyLabel = '
   // ANOTHER one as a side effect of the restore itself.
   setUndoRestoring(true);
   // Save audit #1: the drawing (editorSvg) and the frame have their OWN undo -- a global (terrain/slider) undo
-  // restoring them from an older snapshot wiped the drawing's saved copy (and put back an old frame).
-  const UNDO_KEEPS = new Set(['editorSvg', 'frame']);
+  // restoring them from an older snapshot wiped the drawing's saved copy (and put back an old frame): core/history.js UNDO_KEEPS
   // Save audit #5: a load REPLACES the project -- a key the saved project lacks (an older save: no editorSvg,
   // no frame, a param added since) reads as its default, never as the current session's value.
   if (source === 'load') {
@@ -61,7 +60,7 @@ async function _applySnapshot(snap, preview, { source, restore, historyLabel = '
   // Fred: the Sculpt tool is never active after opening/loading a project (and an undo never switches it on/off)
   Object.keys(snap.P).forEach(k => {
     if (k === 'activeSculptLayer') return;
-    if (source === 'undo' && UNDO_KEEPS.has(k)) return;
+    if (source === 'undo' && UNDO_KEEPS.includes(k)) return;
     P[k] = snap.P[k];
     syncUItoParam(k, P[k]);
   });

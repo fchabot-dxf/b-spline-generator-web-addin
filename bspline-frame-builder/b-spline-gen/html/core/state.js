@@ -95,6 +95,11 @@ export const DEFAULT = {
     // MIGRATIONS 'photo-orientation' -- a board that already has a photo stays 'legacy-flipped' (byte-identical), any
     // other (a fresh one too) gets 'upright'.
     photoOrientation: null,
+    // 2026-10-10 (Fred): what the photo layer gives OUTSIDE the photo (core/terrain.js PHOTO_EDGE_MODES): 'fade' (new
+    // boards: nothing -- the plain filter shows there, after a short fade at the photo's edge), 'clamp' (every board
+    // before: the edge pixels stretched outward). null = undecided: MIGRATIONS 'photo-edge' -- a board that already has a
+    // photo stays 'clamp' (byte-identical), any other (a fresh one too) gets 'fade'. Repeat on tiles either way.
+    photoEdge: null,
     // F35 item 1: the Brick tab's own common settings (core/bricks/library.js's
     // BRICK_SETS is the declared source for defaults per set -- these are the
     // user's CURRENT overrides, shared by all three tools (Brush/Wall/Frame)).

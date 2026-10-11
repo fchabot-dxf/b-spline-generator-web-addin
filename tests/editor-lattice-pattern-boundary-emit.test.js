@@ -414,3 +414,36 @@ describe('generatePattern: T50 -- which stroke width the fill\'s own inner-strok
     expect(centerRail.b.i).toBeCloseTo(cx + (r - 0.2), 9);
   });
 });
+
+// Seat D measured (2026-10-10, phone rig): claude_17 loaded ON TOP OF claude_16 carried 9 of claude_16's rails. A
+// frame-linked Shape Lattice regenerate (properties-shape-lattice.js refreshFrameLinkedContours) started on the OLD
+// drawing, awaited its boundary, and wrote into the NEW one (it shares a layer id). editor-io.js resetArtworkToFresh
+// (every open / Clear) starts a new document epoch; a generate started on an older one writes nothing.
+describe('generatePattern: the drawing replaced while the boundary resolves', () => {
+  const rails = (ed) => ed._sketchLayer.children().filter((c) => c.node.getAttribute('data-lattice') === 'rail').length;
+  const boundaryPattern = (ed) => ({
+    ...PATTERN_DEFAULTS, seed: 3, rails: { every: 2, offset: 0 }, extent: { mode: 'boundary' },
+    boundary: { ...PATTERN_DEFAULTS.boundary, shapeId: stampBoundaryRef(ed._addBoundaryRect(0, 0, 10, 8)), endRule: 'on-boundary' },
+  });
+
+  it('control: the same generate on an unchanged drawing lays its rails', async () => {
+    const ed = _makeMockEditor();
+    await generatePattern(ed, boundaryPattern(ed));
+    expect(rails(ed)).toBeGreaterThan(0);
+  });
+
+  it('a new document epoch mid-run (a load / Clear): nothing is written, the run returns null', async () => {
+    const ed = _makeMockEditor();
+    const run = generatePattern(ed, boundaryPattern(ed));
+    ed._docEpoch = (ed._docEpoch || 0) + 1; // what resetArtworkToFresh does on open / Clear, while the boundary resolves
+    expect(await run).toBeNull();
+    expect(rails(ed)).toBe(0);
+  });
+
+  it('declared where the drawing is replaced: resetArtworkToFresh starts a new epoch', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('bspline-frame-builder/b-spline-gen/html/editor/editor-io.js', 'utf-8');
+    const body = src.slice(src.indexOf('export function resetArtworkToFresh'), src.indexOf('export function open('));
+    expect(body).toMatch(/editor\._docEpoch = \(editor\._docEpoch \|\| 0\) \+ 1;/);
+  });
+});
