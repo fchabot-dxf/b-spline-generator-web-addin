@@ -41,6 +41,7 @@ import { scaledSet, BRICK_PATTERNS } from './library.js';
 import { minPieceAreaOf, LAID_BY_COURSES } from './piece-floor.js';
 import { bricksFillShape } from './fill-shape.js';
 import { axisLen, courseHeightFor } from './layouts/bond.js';
+import { motifOf, motifCutsRows, motifRowCount, motifRowDepth, motifRowPlan, tagMotifRow, motifFloorKeep } from './band-motif.js'; // frame motifs
 
 const ARC_TESS_STEPS = 16; // only for inwardSignFor's own tessellation -- a smoothness floor for
 // deciding which way is "inward", never a correctness requirement (ribbonPieces itself never
@@ -120,6 +121,15 @@ function planBands(bands, L, H, set, closed) {
     const rows = isAreaBand ? 1 : Math.max(1, Math.round(band.widthIn / naturalWidth));
     // T86 item 30: a band narrowed to fit (narrowSingleBand) is ONE row of the declared depth; its bricks are cut to it
     if (band.narrowedTo > 0) return { patternName, cornerStyle, naturalWidth: band.narrowedTo, pitch, sequence, staggerFrac, rows: 1, isAreaBand };
+    // frame motifs (band-motif.js): a band's declared `rows` (and a row-cutting motif's own row depth / row count) win over
+    // the widthIn snap -- a motif's courses are its structure at every brick size. A band with neither is as before.
+    const motif = isAreaBand ? null : motifOf(band);
+    if (motif || band.rows > 0) {
+      const motifRows = motifCutsRows(motif) ? motifRowCount(motif) : null;
+      const declaredRows = band.rows > 0 ? band.rows : motifRows || rows;
+      return { patternName, cornerStyle, naturalWidth: motifCutsRows(motif) ? motifRowDepth(motif, H) : naturalWidth, pitch, sequence, staggerFrac,
+        rows: declaredRows, isAreaBand, motif };
+    }
     return { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows, isAreaBand };
   });
 }
@@ -506,6 +516,9 @@ function mergeRemnant(remnant, pieces, candidates, clear, live, joint) {
       if (meets(merged, k, j)) merged = largestOf(polygonDifference(merged, offsetPathInward(pieces[k].polygon, joint, -inwardSignFor(pieces[k].polygon))));
     }
     if (!merged || merged.length < 3 || Math.abs(signedArea(merged)) < Math.abs(signedArea(pieces[j].polygon)) - 1e-9) continue;
+    // it must hold the remnant (a neighbour beyond the quoin: the cut kept the neighbour's side and lost the remnant --
+    // MEASURED T6 7x9 1 in recessed_panel, the tab slot's band-2 piece "merged" into the run past the block)
+    if (overlapArea(merged, remnant) < 0.9 * Math.abs(signedArea(remnant))) continue;
     if (!pieces.some((b, k) => meets(merged, k, j))) return { j, polygon: merged };
   }
   return null;
@@ -522,25 +535,56 @@ function cutUnderQuoins(bricks, ribbons, joint, minArea, wallZone) {
     }
     return poly;
   };
-  // the remnant's row neighbour (same band and row, next in build order, not a quoin; a fan slice takes a fan's remnant) taking it in
-  const mergeIntoNeighbour = (i, remnant) => {
-    const { bandIndex, rowIndex, pieceIndex } = bricks[i];
-    const cands = bricks.map((b, j) => j).filter((j) => j !== i && !quoins.has(j) && !dropped.has(j)
-      && bricks[j].bandIndex === bandIndex && bricks[j].rowIndex === rowIndex && Math.abs(bricks[j].pieceIndex - pieceIndex) === 1);
-    const clear = (p) => { const q = clearOfQuoins(p); return q && wallZone ? largestOf(polygonDifference(q, wallZone)) : q; };
-    const got = mergeRemnant(remnant, bricks, cands, clear, (k) => k !== i && !dropped.has(k), joint);
-    if (got) bricks[got.j] = { ...bricks[got.j], polygon: got.polygon };
-    return !!got;
-  };
+  // every piece is cut first, then the remnants are placed -- a remnant used to merge into its neighbour's UNCUT outline
+  // (the size check against it failed when the neighbour was cut too) and then that neighbour's own remnant had no one
+  // left: both dropped (MEASURED frame-motifs recessed_panel with quoin corners, T6 7x9 1 in: the two band-2 pieces in
+  // the tab's slot, 0.037 sq in each, a 0.086 sq in bare patch)
+  const remnants = new Map(); // brick index -> its under-floor part
   for (let i = 0; i < bricks.length; i++) {
     if (quoins.has(i)) { keep.push(i); continue; }
     const before = bricks[i].polygon, poly = clearOfQuoins(before);
     if (poly === before) { keep.push(i); continue; }
     if (poly && Math.abs(signedArea(poly)) >= minArea) { bricks[i] = { ...bricks[i], polygon: poly }; keep.push(i); continue; }
     dropped.add(i);
-    if (poly) mergeIntoNeighbour(i, poly);
+    if (poly) remnants.set(i, poly);
   }
-  return keep.filter((i) => !dropped.has(i));
+  // a remnant's row neighbours: same band and row, next in build order, not a quoin (a fan slice takes a fan's remnant);
+  // a neighbour that merged into another piece stands for that piece (MEASURED frame-motifs zigzag_band, T8 9x12 1.5 in:
+  // the remnant beside one that had joined its own neighbour found no one left, 0.083 sq in bare)
+  const absorbed = new Map(); // remnant index -> the piece it joined
+  const resolve = (j) => { while (absorbed.has(j)) j = absorbed.get(j); return j; };
+  const rowNeighbours = (i, ok) => [...new Set(bricks.map((b, j) => j).filter((j) => j !== i && !quoins.has(j)
+    && bricks[j].bandIndex === bricks[i].bandIndex && bricks[j].rowIndex === bricks[i].rowIndex && Math.abs(bricks[j].pieceIndex - bricks[i].pieceIndex) === 1).map(resolve))].filter((j) => j !== i && ok(j));
+  const clear = (p) => { const q = clearOfQuoins(p); return q && wallZone ? largestOf(polygonDifference(q, wallZone)) : q; };
+  const laid = (j) => !dropped.has(j) && !remnants.has(j);
+  const intoLaid = () => {
+    for (const [i, poly] of [...remnants]) {
+      const got = mergeRemnant(poly, bricks, rowNeighbours(i, laid), clear, (k) => k !== i && laid(k), joint);
+      if (got) { bricks[got.j] = { ...bricks[got.j], polygon: got.polygon }; remnants.delete(i); absorbed.set(i, got.j); }
+    }
+  };
+  // 1. into a laid neighbour
+  intoLaid();
+  // 2. what none took: remnants side by side become one piece (laid when it clears the floor)
+  for (const [i, poly] of [...remnants]) {
+    if (!remnants.has(i)) continue;
+    const pieces = bricks.map((b, k) => (remnants.has(k) ? { ...b, polygon: remnants.get(k) } : b));
+    const got = mergeRemnant(poly, pieces, rowNeighbours(i, (j) => remnants.has(j)), clear, (k) => k !== i && (!dropped.has(k) || remnants.has(k)), joint);
+    if (got) { remnants.set(got.j, got.polygon); remnants.delete(i); absorbed.set(i, got.j); }
+  }
+  for (const [i, poly] of [...remnants]) if (Math.abs(signedArea(poly)) >= minArea) { bricks[i] = { ...bricks[i], polygon: poly }; dropped.delete(i); keep.push(i); remnants.delete(i); }
+  // 3. what is still under the floor: a laid neighbour once more (one grown in step 1 or 2)
+  intoLaid();
+  // 4. last: any laid frame piece it touches, the band outside included (MEASURED frame-motifs recessed_panel with quoin
+  // corners, T6 9x12 1 in: two quoins' Ls leave a slot whose band-3 remnants pool to 0.065 sq in, under the 0.067 floor,
+  // with no row neighbour left -- the slot's cap above takes it); else it drops
+  for (const [i, poly] of [...remnants]) {
+    const pb = boxOfPoly(poly), gapTo = (b) => Math.max(0, b[0] - pb[2], pb[0] - b[2]) + Math.max(0, b[1] - pb[3], pb[1] - b[3]);
+    const near = bricks.map((b, j) => [j, gapTo(boxOfPoly(b.polygon))]).filter(([j, g]) => j !== i && !quoins.has(j) && laid(j) && g <= 2 * joint).sort((a, b) => a[1] - b[1]).map(([j]) => j);
+    const got = mergeRemnant(poly, bricks, near, clear, (k) => k !== i && laid(k), joint);
+    if (got) { bricks[got.j] = { ...bricks[got.j], polygon: got.polygon }; remnants.delete(i); absorbed.set(i, got.j); }
+  }
+  return keep.filter((i) => !dropped.has(i)).sort((a, b) => a - b);
 }
 /** QUOIN_INNER_WRAP: the inner ribbons' corners whose piece (an L by now) still overlaps another quoin -- per ribbon key
  *  (`band:row`), the corner indices `ribbonPieces` lays as the mitre instead (its `blockOff`) */
@@ -890,7 +934,8 @@ function fitBandStack(bands, planned, gap, L, H) {
     else { kept.pop(); steps.push({ band: i, step: 'drop' }); }
   }
   if (!steps.length) return null; // a single band: laid as requested (today's lay and its warning)
-  const fitted = kept.map((p, i) => ({ ...bands[i], widthIn: p.naturalWidth * p.rows }));
+  // a band that declares its rows (frame motifs) keeps the rows the fit left it
+  const fitted = kept.map((p, i) => ({ ...bands[i], widthIn: p.naturalWidth * p.rows, ...(p.motif || bands[i].rows > 0 ? { rows: p.rows } : {}) }));
   return { bands: fitted, note: { requested: bands.length, kept: fitted.length, steps, gapIn: gap, limitIn: limit, requestedDepthIn: requested, depthIn: depthOf(kept), fits: depthOf(kept) <= limit } };
 }
 
@@ -1020,7 +1065,7 @@ export function bricksContourBands(primitives, bands, opts) {
     // flemish ('course-alternating') has no single pitch at all -- its own `sequence` (below)
     // carries [L,H] instead, and `pitch` here is only the FILL-FRACTION base for its own end
     // pieces (same role every other pattern already gives it), not a per-piece length.
-    const { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows, isAreaBand } = plannedBands[bandIndex];
+    const { patternName, cornerStyle, naturalWidth, pitch: patternPitch, sequence, staggerFrac, rows, isAreaBand, motif } = plannedBands[bandIndex];
     if (isAreaBand) {
       // opts.cornerCutsOnly counts the ROWS' joints only (below); an area band's stones never add to them, and this
       // mode returns the counts alone -- so its stones are not laid (MEASURED 2026-10-07: the panel's corner / fan
@@ -1046,8 +1091,12 @@ export function bricksContourBands(primitives, bands, opts) {
       // stretcher's own 0.5 = a real half-brick running-bond offset) -- `forcedFStart` is already
       // one of `FILL_FRACTIONS`' own declared values, never a new kind of cut (see
       // `planCornerRun`'s own header).
-      const rowSequence = sequence && odd ? [sequence[1], sequence[0]] : sequence;
-      const forcedFStart = !sequence && staggerFrac > 0 && odd ? staggerFrac : undefined;
+      // frame motifs: a row-cutting motif sets the row's cut itself (band-motif.js motifRowPlan); every other band as before
+      const motifPlan = motifCutsRows(motif)
+        ? motifRowPlan(motif, { row, d0, d1, bandStart: depthSoFar, L, H, J: set.grout.widthIn }) : null;
+      const pitch = motifPlan ? motifPlan.pitch : patternPitch;
+      const rowSequence = motifPlan ? motifPlan.sequence : sequence && odd ? [sequence[1], sequence[0]] : sequence;
+      const forcedFStart = motifPlan ? motifPlan.forcedFStart : !sequence && staggerFrac > 0 && odd ? staggerFrac : undefined;
       if (opts.planOnly) continue; // T86 (seat E): the plan only -- the bands, the fit rule and the wall's inner path, no pieces
       if (opts.cornerCutsOnly) { // item 74b (frameCornerEffect): this row's joints only, no pieces
         const { joints } = ribbonJoints(enriched, d0, d1, pitch, set.grout.widthIn, cornerStyle, bandIndex, rowSequence, forcedFStart, closed);
@@ -1056,12 +1105,21 @@ export function bricksContourBands(primitives, bands, opts) {
         continue;
       }
       const ribbonKey = `${bandIndex}:${row}`;
-      const { pieces, nextId: afterId, sources, fanSides } = ribbonPieces(
+      const { pieces: laidPieces, nextId: afterId, sources: laidSources, fanSides: laidFanSides } = ribbonPieces(
         enriched, d0, d1, set, patternName, pitch, set.grout.widthIn,
         seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
         rowSequence, forcedFStart, closed, row, closed ? null : opts.cutEnds || null, // T86 item 5: an open stroke's cut ends
         (opts.blockOff && opts.blockOff.get(ribbonKey)) || null, // an inner L that cannot fit: that corner's mitre (wrapInnerQuoins)
       );
+      // frame motifs: each piece of a motif band carries its relief (band-motif.js tagMotifRow)
+      // a motif-cut row drops a run piece under its own floor (band-motif.js motifFloorKeep: an end closer the mitre left a
+      // sliver, which the merge could not take) -- it reads as a slightly wider joint, as a leftover under the quarter brick does
+      const keep = motifPlan ? motifFloorKeep(laidPieces, laidSources, motifPlan, d1 - d0) : null;
+      const sources = keep ? laidSources.filter((_, i) => keep[i]) : laidSources;
+      const fanSides = keep && laidFanSides ? laidFanSides.filter((_, i) => keep[i]) : laidFanSides;
+      // tagged before the drop: a run's place (its piece j of n) is the laid run's
+      const tagged = motif ? tagMotifRow(laidPieces, laidSources, enriched, motif, motifPlan, row, rows) : laidPieces;
+      const pieces = keep ? tagged.filter((_, i) => keep[i]) : tagged;
       // T86 item 16f (B1): the innermost course row's pieces may reach into the bare tips (tipZones; fillTips, below)
       if (tipReach && bandIndex === lastCourseBand && row === rows - 1) tipRow = { start: bricks.length, count: pieces.length, sources, d1 };
       // T86 item 16d: a corner's fan slice is declared as such (`fan: true`, additive; the drawing never reads it) -- the

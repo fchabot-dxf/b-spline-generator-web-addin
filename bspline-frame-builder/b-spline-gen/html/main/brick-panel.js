@@ -2861,6 +2861,13 @@ const FRAME_PRESET_LABELS = {
   double_course: 'Soldier x2',
   header_band: 'Header',
   mixed_bands: 'Header / Flemish / Soldier',
+  // frame motifs phase 1 (library.js BAND_MOTIFS; recommended size FRAME_PRESET_SIZES)
+  dentil_corbel: 'Dentil + corbel table',
+  recessed_panel: 'Recessed panel',
+  zigzag_band: 'Zigzag band',
+  diaper_lattice: 'Diaper lattice',
+  soldier_string: 'Soldier string course',
+  dentil_cornice: 'Dentil cornice',
 };
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).filter((id) => !FOLDED_FRAME_PRESETS[id])
   .map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));

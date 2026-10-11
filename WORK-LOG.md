@@ -25984,3 +25984,29 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
 - Gate (advisor): tests/brick-icons-fresh.test.js failed on the merged head -- the quoin rule changes the Quoin / mixed
   band preset icons' layout output and I had not regenerated them (memory: a layout-output change needs
   node tools/gen_brick_icons.mjs). Regenerated; brick-icons-fresh passes.
+
+### 2026-10-11 (seat E, advisor): origin/main edd4f68 (quoin-l-blocks) merged into frame-motifs
+- contour-bands.js: frame-motifs renamed the row's laid pieces / sources / fanSides (motifFloorKeep filters them) and
+  quoin-l-blocks added the ribbon key + `blockOff` to the same ribbonPieces call -- kept both: the call passes blockOff,
+  and the quoin collection reads the FILTERED sources / fanSides / pieces (the same indices the bricks get).
+- engine.js: frame-motifs' insideRelief tagging of the wall kept; `wallBricks` is a `let` (the quoins that reach into the
+  wall clear it after the frame lay -- bricksClearOf spreads each piece, so the relief tags survive).
+- brick-icons.js regenerated (node tools/gen_brick_icons.mjs).
+- tests/fixtures/frame-presets-main-digests.json RE-PINNED on origin/main edd4f68's own code (a scratch worktree at
+  origin/main, PIN=1, the fixture copied back): quoin-l-blocks changed the four quoin_corners 0.75 in digests in their
+  WALL half only (frame halves identical) -- the test still means "every old preset lays exactly as on main".
+- Node_modules junction added to this worktree (link to wt/_deps/node_modules): delete the LINK before removing it.
+- QUOIN_FULL here (its multi-band list includes the 6 motif presets, quoin corners forced) failed 6 / 1834 on bare ground,
+  0.058 - 0.086 sq in, all at a notch where two quoins' Ls leave a narrow slot (T6's tab top, T15's neck, T8's dipped
+  top). Each preset with its own (mitre) corners: 0 bare before and after. Three faults in cutUnderQuoins' remnant merge
+  (contour-bands.js), all fixed:
+  1. a remnant merged into its neighbour's UNCUT outline (the size check failed when that neighbour was cut too), and the
+     neighbour's own remnant then had no one left -- now every piece is cut first, then the remnants are placed;
+  2. mergeRemnant took a "merge" that did not hold the remnant (the neighbour lay beyond the quoin: the cut kept its side)
+     -- it must now cover 90% of the remnant;
+  3. a remnant whose neighbour had itself merged away found no one -- a merged remnant stands for the piece it joined
+     (absorbed), and the order is: a laid row neighbour, then the remnants side by side as one piece (laid over the
+     floor), then a laid neighbour again, then -- last -- any laid frame piece it touches, the band outside included
+     (T6 9x12 1 in recessed_panel: the slot's band-3 remnants pooled to 0.065 sq in under the 0.067 floor; the slot's cap
+     above takes them). Step 4 widens the advisor's "same band" merge -- APPROVED by the advisor 2026-10-11 (Fred's
+     no-voids preference).
