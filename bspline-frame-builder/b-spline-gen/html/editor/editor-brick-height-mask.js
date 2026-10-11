@@ -20,7 +20,7 @@
  */
 import { buildSpatialIndex, sampleHeight, brickSetById, pointInPolygon } from '../core/bricks/index.js';
 import { preloadSetDetail, sampleDetailAtFor } from './editor-brick-surface.js';
-import { BRICK_GEN_ATTR, BRICK_ATTR } from './editor-brick-tool.js';
+import { BRICK_GEN_ATTR, BRICK_ATTR, BRICK_TOP_FLAT_ATTR, BRICK_JOIN_RAISED_ATTR } from './editor-brick-tool.js';
 import { accentedBrickIndices, accentedRunIndices, clampAccentLevel, ACCENT_MARK_ATTR } from './brick-accents.js';
 import { surfaceStyleById, styledSet, styledDetail, styleTopJitter, styleAtWear } from './brick-surface-styles.js';
 
@@ -39,7 +39,8 @@ const YIELD_EVERY_N_ROWS = 32;
  *  offset (Level, accent, style jitter) -- no crown dome, photo detail or chip, which ride on the face. Clamped
  *  like sampleHeight. Flush grout fills a joint up to here (item 62). */
 export function brickFaceHeight(brick, set) {
-  const share = Math.max(0, Math.min(1, (set.heightProfile && set.heightProfile.surfaceShare) || 0));
+  // a flat-topped piece (a motif's raisedTop 'flat') has no detail share: its face IS its plateau (height-profile.js)
+  const share = brick.topFlat ? 0 : Math.max(0, Math.min(1, (set.heightProfile && set.heightProfile.surfaceShare) || 0));
   const face = (set.reliefIn ?? 0.125) * (1 - share) + (brick.heightOffset || 0);
   return Math.max(0, Math.min(set.reliefMaxIn ?? 0.25, face));
 }
@@ -76,6 +77,10 @@ function collectLiveBrickGroups(editor, layer, levels = {}) {
       // F35 item 16: + the element's LEVEL (opts.levels, keyed by its kind: wall | frame | brush ...)
       heightOffset: (Number(n.getAttribute('data-brick-height-offset')) || 0) + (Number(levels[n.getAttribute(BRICK_ATTR)]) || 0),
       kind: n.getAttribute(BRICK_ATTR),
+      // a motif's raised look (2026-10-11): a flat-topped plateau (height-profile.js brickTopHeight), joined to its raised
+      // neighbours (the joint fill below)
+      topFlat: n.getAttribute(BRICK_TOP_FLAT_ATTR) === '1',
+      joinRaised: n.getAttribute(BRICK_JOIN_RAISED_ATTR) === '1',
       // per-element accents on runs: the band / stroke it belongs to + its place on that run's own grid
       band: n.hasAttribute('data-brick-band') ? Number(n.getAttribute('data-brick-band')) : null,
       row: Number(n.getAttribute('data-brick-row')) || 0,
@@ -193,6 +198,20 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
     }
     return low;
   };
+  // 2026-10-11 (a motif's joinRaised): a joint point whose probes reach only joinRaised pieces -- two or more of them -- is
+  // FILLED up to the lowest of their faces, so neighbouring raised cells read as one ridge (any other joint as before)
+  const joinedBody = (x, y) => {
+    const hit = new Set(); let low = Infinity;
+    for (const [px, py] of [[x + reach, y], [x - reach, y], [x, y + reach], [x, y - reach]]) {
+      for (const g of built) {
+        const b = g.index.query(px, py).find((c) => pointInPolygon(px, py, c.polygon));
+        if (!b) continue;
+        if (!b.joinRaised) return null;
+        hit.add(b); low = Math.min(low, brickFaceHeight(b, g.set) / (g.set.reliefIn || 1));
+      }
+    }
+    return hit.size >= 2 ? low : null;
+  };
   // body is normalised by the depth the compositor multiplies it by (layer.depth), so the recess is
   // jointDepthIn DOWN for Raised and Carved alike
   const depthNorm = Number.isFinite(layer.depth) && Math.abs(layer.depth) > 1e-6 ? layer.depth : (built[0].set.reliefIn || 0.125);
@@ -222,7 +241,11 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
           break;
         }
       }
-      if (jointDepthIn > 0 && !isStamped[k] && isJoint(x, y)) {
+      const joined = !isStamped[k] ? joinedBody(x, y) : null;
+      if (joined !== null) {
+        body[k] = joined;
+        isStamped[k] = 1;
+      } else if (jointDepthIn > 0 && !isStamped[k] && isJoint(x, y)) {
         body[k] = -jointDepthIn / depthNorm;
         isStamped[k] = 1;
       } else if (flush && !isStamped[k]) {

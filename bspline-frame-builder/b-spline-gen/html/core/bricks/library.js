@@ -611,10 +611,12 @@ export const BAND_MOTIFS = Object.freeze({
   // like scattered light squares"): the period-4 tile read as noise even drawn by relief alone -- now a SYMMETRIC V, period 6
   // (down 3 courses, up 3), its arms 2 cells thick, each course's cells overlapping the next course's (one continuous
   // figure); compared in shots/seatE/relief (before / a lopsided 6 / this)
-  zigzag: { unit: 'H', grid: { tile: ['RR...R', '.RR.RR', '..RRR.', '...R..'], corner: ['.RR.', 'RRRR', 'RRRR', '.RR.'] } },
+  // raisedTop / joinRaised (Fred 2026-10-11, the 3D read): its raised pieces are flat-topped plateaus and the joints between
+  // two raised neighbours are filled up to them -- a V arm reads as ONE ridge (band-motif.js tagMotifRow; the height mask)
+  zigzag: { unit: 'H', raisedTop: 'flat', joinRaised: true, grid: { tile: ['RR...R', '.RR.RR', '..RRR.', '...R..'], corner: ['.RR.', 'RRRR', 'RRRR', '.RR.'] } },
   // header grid, raised diamond lattice through 5 courses; diamond corners (Ref 2). 2026-10-11 (the zigzag's fault: lines
   // of single cells met only at corners) -- period 6, hollow diamonds 2 cells thick, touching side to side
-  diaper: { unit: 'H', grid: { tile: ['..RR..', '.RRRR.', 'RR..RR', '.RRRR.', '..RR..'], corner: ['..R..', '.RRR.', 'RRRRR', '.RRR.', '..R..'] } },
+  diaper: { unit: 'H', raisedTop: 'flat', joinRaised: true, grid: { tile: ['..RR..', '.RRRR.', 'RR..RR', '.RRRR.', '..RR..'], corner: ['..R..', '.RRR.', 'RRRRR', '.RRR.', '..R..'] } },
 });
 
 /**
