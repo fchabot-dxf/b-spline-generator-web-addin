@@ -120,7 +120,12 @@ function planBands(bands, L, H, set, closed) {
     const staggerFrac = patternDef.staggerFrac || 0;
     const rows = isAreaBand ? 1 : Math.max(1, Math.round(band.widthIn / naturalWidth));
     // T86 item 30: a band narrowed to fit (narrowSingleBand) is ONE row of the declared depth; its bricks are cut to it
-    if (band.narrowedTo > 0) return { patternName, cornerStyle, naturalWidth: band.narrowedTo, pitch, sequence, staggerFrac, rows: 1, isAreaBand };
+    // 2026-10-11 (the arch's hood, arch-surround.js): a one-row band of a declared depth keeps a FILL motif's relief tag (a
+    // row-cutting motif sets its own depth, so it never pairs with narrowedTo); no band paired them before -- unchanged
+    if (band.narrowedTo > 0) {
+      const fillMotif = !isAreaBand && motifOf(band) && !motifCutsRows(motifOf(band)) ? motifOf(band) : null;
+      return { patternName, cornerStyle, naturalWidth: band.narrowedTo, pitch, sequence, staggerFrac, rows: 1, isAreaBand, ...(fillMotif ? { motif: fillMotif } : {}) };
+    }
     // frame motifs (band-motif.js): a band's declared `rows` (and a row-cutting motif's own row depth / row count) win over
     // the widthIn snap -- a motif's courses are its structure at every brick size. A band with neither is as before.
     const motif = isAreaBand ? null : motifOf(band);

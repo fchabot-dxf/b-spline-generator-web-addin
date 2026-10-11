@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  FRAME_CORNERS, FOLDED_FRAME_PRESETS, frameCornerOf, frameBandsOf, frameCornerBricks, frameCornerIconSvg, framePresetIconSvg,
+  FRAME_CORNERS, frameCornerOf, frameBandsOf, frameCornerBricks, frameCornerIconSvg, framePresetIconSvg,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { runMigrations } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
@@ -37,7 +37,7 @@ describe('item 33: the corner styles', () => {
 
 describe('item 33 (audit N10): the band-preset icons', () => {
   it('every listed preset has an engine-drawn icon of its band stack, all different; None is a struck tile', () => {
-    const listed = Object.keys(FRAME_PRESETS).filter((id) => !FOLDED_FRAME_PRESETS[id] && id !== 'none');
+    const listed = Object.keys(FRAME_PRESETS).filter((id) => id !== 'none'); // every preset is listed (2026-10-11: no folded variants)
     const icons = listed.map((id) => framePresetIconSvg(id, 26));
     for (const [i, svg] of icons.entries()) expect(svg, listed[i]).toMatch(/<polygon /);
     expect(new Set(icons).size).toBe(listed.length);
@@ -45,19 +45,16 @@ describe('item 33 (audit N10): the band-preset icons', () => {
   });
 });
 
-describe('item 33: the corner-variant presets fold into Soldier + a corner', () => {
-  it('a saved board on a folded preset migrates to the SAME bands it laid before', () => {
-    for (const [old, f] of Object.entries(FOLDED_FRAME_PRESETS)) {
+// Fred 2026-10-11: a preset bundles its corner -- item 33's fold (butt_frame / quoin_corners -> Soldier + a Corners-row
+// pick) and its migration ('frame-corner-presets') are retired: such a board stays on its preset and lays from its own bands
+describe('the corner-variant presets are presets again (no fold, no migration)', () => {
+  it('a board saved on butt_frame / quoin_corners keeps its preset and lays its own bands', () => {
+    for (const old of ['butt_frame', 'quoin_corners']) {
       const p = { brickSettings: { frameBandPreset: old, frameBandPatterns: [], setIds: {}, groutByElement: {} } };
       runMigrations(p);
-      expect(p.brickSettings, old).toMatchObject({ frameBandPreset: f.preset, frameCorner: f.corner });
+      expect(p.brickSettings.frameBandPreset, old).toBe(old);
+      expect(p.brickSettings.frameCorner, old).toBeUndefined();
       expect(frameBandsOf(p.brickSettings), old).toEqual(FRAME_PRESETS[old]);
     }
-  });
-  it('a board on any other preset is untouched', () => {
-    const p = { brickSettings: { frameBandPreset: 'double_course', frameBandPatterns: [], setIds: {}, groutByElement: {} } };
-    runMigrations(p);
-    expect(p.brickSettings.frameBandPreset).toBe('double_course');
-    expect(p.brickSettings.frameCorner).toBeUndefined();
   });
 });

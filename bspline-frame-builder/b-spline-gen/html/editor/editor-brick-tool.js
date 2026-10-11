@@ -213,9 +213,14 @@ export function repaintBricks(editor) {
   return nodes.length;
 }
 
+/** 2026-10-11: which part of the frame's arch a piece is (core/bricks/arch-surround.js: keystone, springer, ring, hood,
+ *  jamb, sill, sillBlock) -- absent on every other piece. */
+export const ARCH_PART_ATTR = 'data-brick-arch';
 function drawBricks(editor, layer, bricks, kind, setId, seed, reliefIn, ownerId = null) {
   for (const [i, b] of bricks.entries()) {
-    const el = drawBrick(editor, layer, b, kind, setId, seed, reliefIn);
+    // a piece may carry its own set (the arch's stone keystone / springers / sill blocks); every other piece the element's
+    const el = drawBrick(editor, layer, b, kind, b.setId ?? setId, seed, reliefIn);
+    if (b.part) el.attr(ARCH_PART_ATTR, b.part);
     if (kind === 'frame') stampRunPlace(el, b, i); // per-band accents read it
     if (ownerId) el.attr(BRICK_OWNER_ATTR, ownerId); // item 22: which element (record) laid it
   }
@@ -279,6 +284,7 @@ function _paintGroutNode(editor, n, settings) {
 const _roundRegion = (region) => region.map((r) => ({
   outer: r.outer.map((p) => ({ x: +p.x.toFixed(4), y: +p.y.toFixed(4) })),
   holes: (r.holes || []).map((h) => h.map((p) => ({ x: +p.x.toFixed(4), y: +p.y.toFixed(4) }))),
+  ...(r.part ? { part: r.part } : {}), // 2026-10-11: which part of the element an entry is ('arch': its own outline sketch)
 }));
 /** Draws (or re-draws) the grout of element `elementId` (kind wall | frame) over `region`, on `layer`. */
 export function drawElementGrout(editor, layer, kind, elementId, region, settings) {
@@ -615,13 +621,9 @@ export const FRAME_CORNERS = Object.freeze([
   { id: 'block', label: 'Quoin', title: 'Quoin: a square corner block, the bands stop against it' },
   { id: 'lapped', label: 'Lapped', title: 'Lapped: butt corners alternating band by band, laced together' },
 ]);
-/** Item 33: the old corner VARIANT presets, folded into a preset + a corner choice (the picker). Their
- *  FRAME_PRESETS entries stay (the engine's own data); the app lists the folded ones no more, and a saved board on
- *  one maps to the same result (main/app-init.js migration 'frame-corner-presets'). */
-export const FOLDED_FRAME_PRESETS = Object.freeze({
-  butt_frame: { preset: 'single_soldier', corner: 'butt' },
-  quoin_corners: { preset: 'single_soldier', corner: 'block' },
-});
+/* Item 33's FOLDED_FRAME_PRESETS (butt_frame / quoin_corners folded into Soldier + the Corners picker) is RETIRED with
+ * the picker (Fred 2026-10-11: a preset bundles its corner): both are listed presets again, and their migration
+ * ('frame-corner-presets', main/app-init.js) went too -- a board saved on one lays from its own bands, the same lay. */
 
 /** Item 9 (T86 item 29's engine keys): the crumble's TOP BIAS, one board-wide value for the wall and the frame crumble
  *  (Fred: 0.8 for every board, new and old) -- an absent field reads TOP_BIAS_DEFAULT, the engine's own default. */
@@ -660,6 +662,8 @@ export function frameCornerOf(settings) {
 }
 /** The bands a Frame element lays: its preset's, each band's own pattern pick (`frameBandPatterns[i]`) and the
  *  element's corner applied (a NEW array -- FRAME_PRESETS' frozen entries are never touched). */
+/** 2026-10-11: the arch the board's Frame preset carries (library.js withArch: an arch-surround.js ARCH_SPECS id), or null. */
+export const frameArchOf = (settings) => (FRAME_PRESETS[settings && settings.frameBandPreset] || {}).arch || null;
 export function frameBandsOf(settings) {
   const base = FRAME_PRESETS[settings && settings.frameBandPreset] || FRAME_PRESETS.single_soldier;
   const overrides = (settings && settings.frameBandPatterns) || [];
@@ -857,6 +861,10 @@ export const PRESET_ICON_STYLES = Object.freeze({
   // redesign phase 1 (Fred: the preset list may double with corner variants; the corner and the motif must read in the
   // bigger picker tile): ONE corner plus a run of the band on both arms (marginIn of board past the stack)
   cornerRun: Object.freeze({ whole: false, marginIn: 1.4 }),
+  // a preset that carries an ARCH (library.js withArch): a corner shows no arch, and the arch follows the frame's shape
+  // (a rectangle reads as one more band), so its icon and tile are a whole board of an arched template laid with that
+  // arch by the real engine (the wall left out, so the arch reads)
+  arch: Object.freeze({ templateId: 'template_10', board: Object.freeze({ widthIn: 7, heightIn: 10 }) }),
 });
 export const PRESET_ICON_STYLE = 'ring';
 const _miniFrames = new Map();
@@ -881,19 +889,42 @@ function _miniFrame(key, bands, style = PRESET_ICON_STYLES.corner) {
   _miniFrames.set(key, out);
   return out;
 }
+/** A preset's arch on PRESET_ICON_STYLES.arch's board: its frame bands and arch pieces, the whole board in view. */
+function _miniArch(presetId) {
+  const key = `arch:${presetId}`;
+  if (_miniFrames.has(key)) return _miniFrames.get(key);
+  const { templateId, board } = PRESET_ICON_STYLES.arch, { widthIn: w, heightIn: h } = board;
+  let bricks = [];
+  try {
+    const s = TOOL_MINI_BRICK;
+    const sil = frameContourSilhouette({ defs: FRAME_DEFS, record: { templateId }, board }, 0, 0);
+    const r = generateBricks({
+      boardOutline: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }],
+      set: resolvedSetFor(s), scale: scaleFor(s), suppression: 0, clumping: 0, seed: s.seed, skipWallFill: true, bandFit: false,
+      frame: { primitives: buildRibbonPrimitives(sil.primitives), bands: FRAME_PRESETS[presetId] },
+      arch: { spec: FRAME_PRESETS[presetId].arch },
+    });
+    bricks = [...r.frameBricks, ...(r.archBricks || [])];
+  } catch (_) {
+    bricks = [];
+  }
+  const out = { bricks, crop: w, cropH: h };
+  _miniFrames.set(key, out);
+  return out;
+}
 /** Frame motifs: a motif piece's relief in the icons (lighter = raised, as the mockups); a piece with no relief (every
  *  pre-motif preset) keeps the one brick colour, so those icons are unchanged. */
 const ICON_RELIEF_FILL = Object.freeze({ raised: '#e08a62', recessed: '#6a2a1a' });
-function _miniFrameSvg({ bricks, crop: c }, heightPx) {
-  const shown = bricks.filter((b) => b.polygon.some((p) => p.x < c && p.y < c));
+function _miniFrameSvg({ bricks, crop: c, cropH: ch = c }, heightPx) {
+  const shown = bricks.filter((b) => b.polygon.some((p) => p.x < c && p.y < ch));
   const polys = shown.filter((b) => !ICON_RELIEF_FILL[b.relief]).map((b) => _iconPolygon(b)).join('');
   const relief = Object.entries(ICON_RELIEF_FILL).map(([k, fill]) => {
     const ps = shown.filter((b) => b.relief === k).map((b) => _iconPolygon(b)).join('');
     return ps ? `<g fill="${fill}">${ps}</g>` : '';
   }).join('');
   if (!polys && !relief) return null;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 ${+c.toFixed(3)} ${+c.toFixed(3)}" aria-hidden="true">`
-    + `<rect width="${c}" height="${c}" fill="#efe6da"/><g fill="#b5533c" stroke="#efe6da" stroke-width="0.04">${polys}${relief}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 ${+c.toFixed(3)} ${+ch.toFixed(3)}" aria-hidden="true">`
+    + `<rect width="${c}" height="${ch}" fill="#efe6da"/><g fill="#b5533c" stroke="#efe6da" stroke-width="0.04">${polys}${relief}</g></svg>`;
 }
 /** A corner style's picker icon: two soldier bands with that `cornerStyle`. */
 const _cornerBands = (cornerId) => { const band = { widthIn: 0.75, pattern: 'soldier', cornerStyle: cornerId }; return [band, band]; };
@@ -953,7 +984,7 @@ export function fanCentreIconSvg(styleId, heightPx = 26) {
 export function framePresetIconSvg(presetId, heightPx = 26) {
   const bands = FRAME_PRESETS[presetId];
   if (!bands) return null;
-  if (!bands.length) {
+  if (!bands.length && !bands.arch) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 1 1" aria-hidden="true">`
       + `<rect width="1" height="1" fill="#efe6da"/><line x1="0.15" y1="0.85" x2="0.85" y2="0.15" stroke="#8a8078" stroke-width="0.06"/></svg>`;
   }
@@ -962,7 +993,7 @@ export function framePresetIconSvg(presetId, heightPx = 26) {
   const declared = _declaredIcon('preset', presetId, heightPx, heightPx);
   if (declared !== undefined) { _presetIcons.set(key, declared); return declared; }
   _iconFallbacks.push(`preset ${key}`);
-  const svg = _miniFrameSvg(_miniFrame(`preset:${PRESET_ICON_STYLE}:${presetId}`, bands, PRESET_ICON_STYLES[PRESET_ICON_STYLE]), heightPx);
+  const svg = bands.arch ? _miniFrameSvg(_miniArch(presetId), heightPx) : _miniFrameSvg(_miniFrame(`preset:${PRESET_ICON_STYLE}:${presetId}`, bands, PRESET_ICON_STYLES[PRESET_ICON_STYLE]), heightPx);
   _presetIcons.set(key, svg);
   return svg;
 }
@@ -972,13 +1003,13 @@ const _presetIcons = new Map();
 export function framePresetTileSvg(presetId, heightPx = 72) {
   const bands = FRAME_PRESETS[presetId];
   if (!bands) return null;
-  if (!bands.length) return framePresetIconSvg(presetId, heightPx);
+  if (!bands.length && !bands.arch) return framePresetIconSvg(presetId, heightPx);
   const key = `tile:${presetId}:${heightPx}`;
   if (_presetIcons.has(key)) return _presetIcons.get(key);
   const declared = _declaredIcon('presetTile', presetId, heightPx, heightPx);
   if (declared !== undefined) { _presetIcons.set(key, declared); return declared; }
   _iconFallbacks.push(`presetTile ${key}`);
-  const svg = _miniFrameSvg(_miniFrame(`presetTile:${presetId}`, bands, PRESET_ICON_STYLES.cornerRun), heightPx);
+  const svg = bands.arch ? _miniFrameSvg(_miniArch(presetId), heightPx) : _miniFrameSvg(_miniFrame(`presetTile:${presetId}`, bands, PRESET_ICON_STYLES.cornerRun), heightPx);
   _presetIcons.set(key, svg);
   return svg;
 }
@@ -1340,6 +1371,10 @@ function _layInput(editor, settings, frameGeom) {
   if (settings.suppressFrame) Object.assign(input, { suppressFrame: true, frameSuppression: frameSuppressionOf(settings) });
   const surround = windowSurroundOf(settings);
   if (frameGeom && frameGeom.insetRect && surround.preset !== SURROUND_NONE) input.insetSurround = { rect: frameGeom.insetRect, preset: surround.preset, corner: surround.corner };
+  // 2026-10-11: the frame preset's arch (library.js withArch) -- part of the Frame element, like the surround: no Frame
+  // element (frameGeomForLay emptied its bands), no arch; a preset without one = absent, the lay byte-identical
+  const arch = frameArchOf(settings);
+  if (arch && frameGeom && frameGeom.primitives && !frameGeom.noFrameElement) input.arch = { spec: arch };
   // the engine applies ONE `scale` (the Wall's) to the frame's set too -- so the frame's set goes in pre-scaled
   // by its own scale over the Wall's (the engine's own scaledSet): its bricks / stones keep the global size
   if (frameGeom) input.frame = { ...frameGeom, set: scaledSet(resolvedSetFor(frameSettings), scaleFor(frameSettings) / input.scale) };
@@ -1396,7 +1431,8 @@ export function frameGeomForLay(editor, frameGeom, kinds = BRICK_KINDS) {
   if (!frameGeom) return frameGeom;
   const frameElement = kinds.includes('frame') || !!brickRecordNode(editor, 'frame');
   // item 9: the window surround is part of the Frame element too -- no Frame, no surround (and no wall cut around it)
-  return frameElement ? frameGeom : { ...frameGeom, bands: [], insetRect: null };
+  // `noFrameElement`: said, not inferred from the bands -- a preset may have no bands of its own (Arch + keystone)
+  return frameElement ? frameGeom : { ...frameGeom, bands: [], insetRect: null, noFrameElement: true };
 }
 
 function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
@@ -1423,7 +1459,10 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const bricks = result.exclusionsApplied ? result.bricks : dropExcludedWallBricks(result.bricks, exclusions);
   // item 9: the window surround's pieces are FRAME pieces (its layer, record, mask, select); `ring` = its footprint
   const surroundBricks = result.surroundBricks || [];
-  const frameBricks = surroundBricks.length ? [...result.frameBricks, ...surroundBricks] : result.frameBricks;
+  const archBricks = result.archBricks || []; // 2026-10-11: the arch's pieces are frame pieces too
+  const frameBricks = surroundBricks.length || archBricks.length ? [...result.frameBricks, ...surroundBricks, ...archBricks] : result.frameBricks;
+  // the arch's footprint (arch-surround.js region: the rings' band round the opening + the hood's span), tagged 'arch'
+  const archRegion = result.archRegion ? result.archRegion.map((r) => ({ ...r, part: 'arch' })) : null;
   const ring = surroundBricks.length ? surroundRing(surroundBricks, input.insetSurround.rect) : null;
   const areaLays = [];
   for (let i = areas.length - 1; i >= 0; i--) {
@@ -1451,9 +1490,13 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const interior = result.interiorOutline && result.interiorOutline.length >= 3 ? result.interiorOutline : boardPolygon(editor);
   if (lays('frame') && frameBricks.length && frameGeom && frameGeom.primitives && frameGeom.primitives.length) {
     const outer = primitivesOutline(frameGeom.primitives);
-    drawElementGrout(editor, layerOf.frame, 'frame', owner('frame'), [{ outer, holes: [interior] }, ...(ring ? [ring] : [])], settings);
+    // the band ring only when there are bands (Arch + keystone has none: the arch starts at the frame's edge)
+    const bandRing = frameGeom.bands && frameGeom.bands.length ? [{ outer, holes: [interior] }] : [];
+    drawElementGrout(editor, layerOf.frame, 'frame', owner('frame'), [...bandRing, ...(ring ? [ring] : []), ...(archRegion || [])], settings);
   }
-  if (lays('wall') && !areas.length && bricks.length) drawElementGrout(editor, layerOf.wall, 'wall', owner('wall'), [{ outer: interior, holes: ring ? [ring.outer] : [] }], settings);
+  // the wall around the arch, and the wall in its opening
+  // with the Frame's arch the wall is its opening only (the arch fills the rest of the interior)
+  if (lays('wall') && !areas.length && bricks.length) drawElementGrout(editor, layerOf.wall, 'wall', owner('wall'), result.archOpening ? [{ outer: result.archOpening, holes: [] }] : [{ outer: interior, holes: ring ? [ring.outer] : [] }], settings);
   areas.forEach((area, i) => {
     const lay = areaLays.find((l) => l.area === area);
     if (!lay || !lay.bricks.length) return;
@@ -1465,7 +1508,7 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   // F35 item 35: the engine's band-fit note (T86 item 28) when the Frame's stack was reduced to fit the board
   const wallCount = !lays('wall') ? 0 : areas.length ? areaLays.reduce((n, l) => n + l.bricks.length, 0) : bricks.length;
   return { wallCount, frameCount: lays('frame') ? frameBricks.length : 0,
-    bandsReduced: lays('frame') ? (result.bandsReduced || null) : null };
+    bandsReduced: lays('frame') ? (result.bandsReduced || null) : null, ...(lays('frame') && result.archFit ? { archFit: result.archFit } : {}) };
 }
 
 /** `laidKey` (audit B1-B3): the caller's key for the settings this run lays. Item 22 step 3: it is stamped on

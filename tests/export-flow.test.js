@@ -597,7 +597,8 @@ describe('export-flow: _brickOutlineSvgs (the Wall / Frame outline sketches)', (
   const WALL = [{ outer: sq(0.8, 0.8, 6.2, 8.2), holes: [] }];
 
   it('declares the two sketches, in order (Fred: each its own sketch)', () => {
-    expect(BRICK_OUTLINE_SKETCHES.map((r) => [r.kind, r.name, r.loops])).toEqual([['wall', 'Wall outline', 'outer'], ['frame', 'Frame outline', 'all']]);
+    expect(BRICK_OUTLINE_SKETCHES.map((r) => [r.kind, r.part || null, r.name, r.loops])).toEqual([
+      ['wall', null, 'Wall outline', 'outer'], ['frame', null, 'Frame outline', 'all'], ['frame', 'arch', 'Arch outline', 'all']]);
   });
   it('Wall outline = the wall region outer (1 loop); Frame outline = the ring outer + inner (2 loops); closed paths, board inches', () => {
     const [wall, frame] = _brickOutlineSvgs(editorOf(brick('wall') + brick('frame') + grout('wall', 'w1', WALL) + grout('frame', 'f1', FRAME)));

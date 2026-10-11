@@ -1,9 +1,11 @@
 /**
- * Item 33: the Frame element's CORNERS row (panel side): an engine-drawn mini corner per FRAME_CORNERS entry, the
- * preset's own corner active by default, a pick re-lays at once, the old corner-variant presets no longer listed.
+ * Item 33's CORNERS row is RETIRED (Fred 2026-10-11): a frame preset bundles its corner -- the corner variants are presets
+ * ("<look> · <corner>": Soldier · butt / · quoin, Soldier x2 · lapped, the quoin variants of library.js QUOIN_VARIANT_OF),
+ * there is no corner picker, and a preset pick drops a legacy explicit corner (the preset's own corner from then on).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { HEAVY_TEST_MS } from './heavy-test-timeout.js';
+import { readFileSync } from 'node:fs';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
 
 vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js', async (importOriginal) => {
@@ -28,7 +30,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js
 import { setPaintScheduler } from '../bspline-frame-builder/b-spline-gen/html/core/loading-signal.js';
 import { WALL_AREA_HINT } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { initBrickPanel, setFrameRock } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
-import { runBricks, FRAME_CORNERS, FRAME_FAN_CENTRES } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
+import { runBricks, FRAME_FAN_CENTRES } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import { frameContext } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/main/brick-control-requires.js';
@@ -43,7 +45,7 @@ const FIXTURE = `
     <div id="brickBrushProfileToggle"><button id="brickBtnProfileStripped" class="active"></button><button id="brickBtnProfileContinuous"></button></div>
     <div id="brickBrushOrientationToggle"><button id="brickBtnOrientationStretcher" class="active"></button><button id="brickBtnOrientationSoldier"></button></div>
   </div>
-  <div id="brickFramePresetList"></div><label id="brickFrameCornerLabel">Corners</label><div id="brickFrameCornerList"></div><label id="brickFrameFanCentreLabel">Fan centre</label><div id="brickFrameFanCentreList"></div>
+  <div id="brickFramePresetList"></div><label id="brickFrameFanCentreLabel">Fan centre</label><div id="brickFrameFanCentreList"></div>
   <div id="brickBrushPresetList"></div>
   <div id="brickPatternList"></div><div id="brickRusticRow_wall" style="display:none;"><input type="range" id="brickRusticSlider_wall"><input id="brickRustic_wall"></div><div id="brickRusticRow_brush" style="display:none;"><input type="range" id="brickRusticSlider_brush"><input id="brickRustic_brush"></div>
   <label id="brickFrameBandPatternLabel">Band patterns</label><div id="brickFrameBandPatternList"></div>
@@ -94,34 +96,33 @@ const shown = (id) => $(id).style.display !== 'none';
 
 
 
-const activeCorner = () => [...document.querySelectorAll('[id^=brickFrameCorner_]')].filter((b) => b.classList.contains('active')).map((b) => b.id);
-
-describe('item 33: the Corners row in the Frame section', () => {
+describe('Fred 2026-10-11: a frame preset bundles its corner (the Corners row is retired)', () => {
   beforeEach(() => { P.brickSettings.frameBandPreset = 'single_soldier'; P.brickSettings.frameCorner = null; P.brickSettings.frameBandPatterns = []; });
-  it('one button per corner style, each with its tooltip; plain Soldier shows Mitre active', () => {
+  it('no corner picker: no corner buttons are rendered (even into the old row’s container), none in the palette', () => {
+    const old = document.createElement('div'); old.id = 'brickFrameCornerList'; document.body.appendChild(old); // the retired row's slot
     setup('frame');
-    for (const c of FRAME_CORNERS) expect($(`brickFrameCorner_${c.id}`).title, c.id).toBe(c.title);
-    expect(activeCorner()).toEqual(['brickFrameCorner_mitre']);
-    expect(shown('brickFrameCornerList')).toBe(true);
+    expect(document.querySelectorAll('[id^=brickFrameCorner_]').length).toBe(0);
+    old.remove();
+    expect(readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8')).not.toMatch(/id="brickFrameCorner(Row|Label|List)"/);
   });
-  it('the folded variants are gone from the preset list; Soldier x2 stays (its own corner: lapped)', () => {
+  it('the corner variants are listed presets, named "<look> · <corner>"', () => {
     setup('frame');
-    expect($('brickFramePreset_butt_frame')).toBeNull();
-    expect($('brickFramePreset_quoin_corners')).toBeNull();
-    expect($('brickFramePreset_double_course').title).toBe('Soldier x2');
-    $('brickFramePreset_double_course').click();
-    expect(activeCorner()).toEqual(['brickFrameCorner_lapped']);
+    expect($('brickFramePreset_butt_frame').title).toBe('Soldier · butt');
+    expect($('brickFramePreset_quoin_corners').title).toBe('Soldier · quoin');
+    expect($('brickFramePreset_double_course').title).toBe('Soldier x2 · lapped');
+    expect($('brickFramePreset_three_band_quoin').title).toBe('Soldier / Stretcher / Soldier · quoin');
+    expect($('brickFramePreset_mixed_bands_quoin').title).toBe('Header / Flemish / Soldier · quoin');
+    expect($('brickFramePreset_soldier_stretcher_quoin').title).toBe('Soldier + Stretcher · quoin');
+    expect($('brickFramePreset_recessed_panel_quoin').title).toBe('Recessed panel · quoin');
   });
-  it('a pick sets the element\u2019s corner and re-lays at once; a new preset starts on its own corner again', () => {
+  it('a board saved with an explicit corner: a preset pick drops it and re-lays at once (the preset’s own corner)', () => {
+    P.brickSettings.frameCorner = 'block'; // the retired row's pick, still read (tests/frame-corner-legacy-pin.test.js)
     setup('frame');
     runBricks.mockClear();
-    $('brickFrameCorner_block').click();
-    expect(P.brickSettings.frameCorner).toBe('block');
-    expect(activeCorner()).toEqual(['brickFrameCorner_block']);
-    expect(runBricks).toHaveBeenCalled();
-    $('brickFramePreset_three_band').click();
+    $('brickFramePreset_mixed_bands_quoin').click();
+    expect(P.brickSettings.frameBandPreset).toBe('mixed_bands_quoin');
     expect(P.brickSettings.frameCorner).toBeNull();
-    expect(activeCorner()).toEqual(['brickFrameCorner_mitre']);
+    expect(runBricks).toHaveBeenCalled();
   });
   // F35 item 58 follow-up (advisor, item 33's precedent): band accents are stored by band NUMBER, so a new preset
   // drops them (levels included); a pattern change on one band keeps that band's accent
@@ -139,16 +140,6 @@ describe('item 33: the Corners row in the Frame section', () => {
     expect($('brickAccent_band0_none').classList.contains('active')).toBe(true);
     expect($('brickAccentLevel_band0')).toBeNull();
   });
-  it('hidden for no bands (None) and for a rock frame', () => {
-    setup('frame');
-    $('brickFramePreset_none').click();
-    expect(shown('brickFrameCornerList')).toBe(false);
-    $('brickFramePreset_single_soldier').click();
-    expect(shown('brickFrameCornerList')).toBe(true);
-    setFrameRock(true);
-    expect(shown('brickFrameCornerList')).toBe(false);
-    setFrameRock(false);
-  });
   it('audit N10: the preset buttons and every band’s pattern buttons carry their name as the tooltip', () => {
     setup('frame');
     $('brickFramePreset_three_band').click();
@@ -162,7 +153,7 @@ describe('item 33: the Corners row in the Frame section', () => {
 
 const activeFanCentre = () => [...document.querySelectorAll('[id^=brickFrameFanCentre_]')].filter((b) => b.classList.contains('active')).map((b) => b.id);
 
-// T86 item 16e (Fred on the fan mock: "I like them all, add a choice"): the Fan centre row, in the Corners section
+// T86 item 16e (Fred on the fan mock: "I like them all, add a choice"): the Fan centre row, its own section (was Corners)
 describe('item 16e: the Fan centre row', () => {
   beforeEach(() => { P.brickSettings.frameBandPreset = 'single_soldier'; P.brickSettings.frameCorner = null; P.brickSettings.frameFanCentre = null; P.brickSettings.frameBandPatterns = []; });
   it('one button per fan centre, each with its tooltip; an absent pick shows Needle active', () => {
@@ -183,7 +174,7 @@ describe('item 16e: the Fan centre row', () => {
     expect(P.brickSettings.frameFanCentre).toBe('stone');
     expect(activeFanCentre()).toEqual(['brickFrameFanCentre_stone']);
   });
-  it('hidden with the Corners row: no bands (None), a rock frame', () => {
+  it('hidden for no bands (None) and for a rock frame', () => {
     setup('frame');
     $('brickFramePreset_none').click();
     expect(shown('brickFrameFanCentreList')).toBe(false);

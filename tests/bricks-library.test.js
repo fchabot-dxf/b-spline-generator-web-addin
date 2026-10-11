@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  PIECE_CATALOGUE, BRICK_SETS, FRAME_PRESETS, brickSetById, enabledPieces,
+  PIECE_CATALOGUE, BRICK_SETS, FRAME_PRESETS, QUOIN_VARIANT_OF, brickSetById, enabledPieces,
 } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { bandCourseBricks } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/band-course.js';
 import { inwardSignFor } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
@@ -91,18 +91,23 @@ describe('BRICK_SETS', () => {
 });
 
 describe('FRAME_PRESETS', () => {
-  it('declares exactly the 15 named presets, each (except the declared-empty "none") a non-empty band list with widthIn > 0', () => {
+  it('declares exactly the 20 named presets, each (except the declared-empty "none" and the arch, its own frame) a non-empty band list with widthIn > 0', () => {
     // T86 item 1: butt_frame, quoin_corners, double_course and header_band join the 3 original
     // mitre-only presets -- the dispatch's own full 6 corner-style/pattern presets plus the original 3.
     // T86 item 2: mixed_bands (header/flemish/soldier) joins as the declared sequence-based preview combo.
     // F35 item 12 follow-up: 'none' joins as the Frame band preset's own OFF switch -- an empty band
     // list is its ENTIRE point (no frame bands at all), not a bug this test should flag.
+    // 2026-10-11: arch_keystone (Fred) -- the arch (arch-surround.js, FRAME_PRESETS[id].arch) and no band of its own (Fred:
+    // "the large blocks should touch the edge of the frame directly"): its arch is the frame.
     expect(Object.keys(FRAME_PRESETS).sort()).toEqual(['butt_frame', 'double_course', 'header_band', 'mixed_bands', 'none', 'quoin_corners', 'single_soldier', 'soldier_stretcher', 'three_band',
       // frame motifs phase 1 (tests/bricks-band-motif.test.js)
-      'dentil_corbel', 'recessed_panel', 'zigzag_band', 'diaper_lattice', 'soldier_string', 'dentil_cornice'].sort());
+      'dentil_corbel', 'recessed_panel', 'zigzag_band', 'diaper_lattice', 'soldier_string', 'dentil_cornice', 'arch_keystone',
+      // Fred 2026-10-11 (a preset bundles its corner): the quoin variants (library.js QUOIN_VARIANT_OF)
+      'soldier_stretcher_quoin', 'three_band_quoin', 'mixed_bands_quoin', 'recessed_panel_quoin'].sort());
     expect(FRAME_PRESETS.none).toEqual([]);
+    expect([...FRAME_PRESETS.arch_keystone]).toEqual([]);
     for (const [name, bands] of Object.entries(FRAME_PRESETS)) {
-      if (name === 'none') continue;
+      if (name === 'none' || bands.arch) continue;
       expect(bands.length).toBeGreaterThan(0);
       for (const b of bands) expect(b.widthIn).toBeGreaterThan(0);
     }
@@ -155,5 +160,19 @@ describe('bundled sample assets (H23 item 73(b))', () => {
     // stays within the item 73(b) budget: re-encoded from ~10MB (PNG) to JPEG q85/480px long side.
     const totalBytes = readdirSync(dataDir).reduce((sum, f) => sum + statSync(dataDir + f).size, 0);
     expect(totalBytes, `data/bricks/ total size (${(totalBytes / 1024 / 1024).toFixed(2)}MB)`).toBeLessThanOrEqual(3 * 1024 * 1024);
+  });
+});
+
+describe('Fred 2026-10-11: a frame preset bundles its corner -- the quoin variants', () => {
+  it('each QUOIN_VARIANT_OF preset has a <id>_quoin variant: its bands, every corner a quoin block, its best size', () => {
+    for (const id of QUOIN_VARIANT_OF) {
+      const base = FRAME_PRESETS[id], v = FRAME_PRESETS[`${id}_quoin`];
+      expect(v.map(({ cornerStyle, ...b }) => b), id).toEqual(base.map(({ cornerStyle, ...b }) => b));
+      expect(v.every((b) => b.cornerStyle === 'block'), id).toBe(true);
+      expect(v.bestSize, id).toBe(base.bestSize);
+    }
+    // listed right after their base (the chips' order is the declaration's)
+    const keys = Object.keys(FRAME_PRESETS);
+    for (const id of QUOIN_VARIANT_OF) expect(keys.indexOf(`${id}_quoin`)).toBe(keys.indexOf(id) + 1);
   });
 });

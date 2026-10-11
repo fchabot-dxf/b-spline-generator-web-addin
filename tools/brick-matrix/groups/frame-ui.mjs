@@ -1,4 +1,4 @@
-// Brick matrix group 'frame-ui': frame corners + per-element accents.
+// Brick matrix group 'frame-ui': the frame presets' corners (a preset bundles its corner) + per-element accents.
 // Declared rows / constants for this group live HERE; run.mjs only drives them (tools/brick-matrix/groups/index.mjs).
 
 import path from 'node:path';
@@ -26,21 +26,21 @@ let HERE, sleep, send, js, jsJSON, click, setValue, exists, CANVAS, heightsSettl
 export function bind(ctx) { ({ HERE, sleep, send, js, jsJSON, click, setValue, exists, CANVAS, heightsSettled, canvasSettled, editorOpen, apply, waitApp, checkRow, openEditorTab, reloadWithSession, drag } = ctx); }
 export async function run() { await runFrameUi(); }
 
-// Seat 37: item 33 (fb-app f0e3728, the Frame's Corners row) and per-element accents (ed618f3). Expected values are
-// read from the app's OWN declarations in the page (editor-brick-tool.js FRAME_CORNERS / FOLDED_FRAME_PRESETS /
-// frameCornerOf, core FRAME_PRESETS) -- never copied numbers.
+// Seat 37: item 33 (fb-app f0e3728) and per-element accents (ed618f3). Fred 2026-10-11: a frame PRESET bundles its corner
+// -- item 33's Corners row is retired, the corner variants are preset chips (library.js QUOIN_VARIANT_OF + butt_frame /
+// quoin_corners / double_course). Expected values are read from the app's OWN declarations in the page (core
+// FRAME_PRESETS' declared corners, editor-brick-tool.js frameCornerOf) -- never copied numbers.
 function frameUiState() {
   return `(async()=>{ const T=await import('./editor/editor-brick-tool.js'); const { P } = await import('./core/state.js'); const L=await import('./core/bricks/library.js');
     const G=await import('./core/bricks/height-grey.js').catch(()=>null);
     const greyOf=(n)=>'url(#brick-height-grey-'+String(n.getAttribute('data-layer')).replace(/[^A-Za-z0-9_-]/g,'_')+')';
-    const list=document.getElementById('brickFrameCornerList'); const s=P.brickSettings||{};
+    const s=P.brickSettings||{};
     const frames=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')];
-    return JSON.stringify({ corners: T.FRAME_CORNERS.map((c)=>c.id), folded: T.FOLDED_FRAME_PRESETS,
-      ownCorner: T.frameCornerOf(s), preset: s.frameBandPreset, pick: s.frameCorner ?? null,
+    return JSON.stringify({ ownCorner: T.frameCornerOf(s), preset: s.frameBandPreset, pick: s.frameCorner ?? null,
       presetCorners: Object.fromEntries(Object.entries(L.FRAME_PRESETS).map(([k,b])=>[k,(b[0]&&b[0].cornerStyle)||'mitre'])),
-      listShown: !!list && list.offsetParent !== null && getComputedStyle(list).display !== 'none',
-      buttons: list ? list.querySelectorAll('[id^="brickFrameCorner_"]').length : 0,
-      active: list ? [...list.querySelectorAll('[id^="brickFrameCorner_"].active')].map((b)=>b.id.replace('brickFrameCorner_','')) : [],
+      cornerButtons: document.querySelectorAll('[id^="brickFrameCorner"]').length,
+      chips: [...document.querySelectorAll('[id^="brickFramePreset_"]')].map((b)=>b.id.replace('brickFramePreset_','')),
+      activeChip: [...document.querySelectorAll('[id^="brickFramePreset_"].active')].map((b)=>b.id.replace('brickFramePreset_','')),
       frames: frames.length, notGrey: G ? frames.filter((n)=>{ const f=n.getAttribute('fill'); return f!==G.NEUTRAL_BRICK_GREY && f!==greyOf(n); }).length : frames.length }); })()`;
 }
 async function frameUiRead() { return jsJSON(frameUiState()); }
@@ -51,44 +51,35 @@ async function runFrameUi() {
   await openEditorTab('editorTabBrick');
   await click('brickTool_wall', 800); await click('brickGenerate', 2000);
   await click('brickTool_frame', 900);
-  if (!(await exists('brickFrameCornerList'))) { checkRow('frame-ui', 'Corners row', false, '', 'f0e3728'); return; }
   await click('brickFramePreset_single_soldier', 2000);
-  // 1. Soldier: the row shows every declared corner, the preset's own (Mitre) active
+  // 1. no corner picker; every preset is a chip, the corner variants included
   let st = await frameUiRead();
-  checkRow('frame-ui', 'Corners: Soldier shows every corner, its own active', st.listShown && st.buttons === st.corners.length && st.active.length === 1 && st.active[0] === st.presetCorners.single_soldier,
-    `shown ${st.listShown}, ${st.buttons}/${st.corners.length} buttons, active ${st.active.join(',')} (preset's own: ${st.presetCorners.single_soldier})`);
-  // 2. each other corner re-lays the frame at once and becomes the active one
-  for (const id of st.corners.filter((c) => c !== st.presetCorners.single_soldier)) {
+  const cornered = Object.keys(st.presetCorners).filter((k) => st.presetCorners[k] !== 'mitre');
+  checkRow('frame-ui', 'Presets: no corner picker; every corner variant is a preset chip', st.cornerButtons === 0 && cornered.length > 0 && cornered.every((k) => st.chips.includes(k)),
+    `${st.cornerButtons} corner buttons, corner variants ${cornered.filter((k) => st.chips.includes(k)).length}/${cornered.length} listed`);
+  // 2. each corner variant re-lays the frame at once and is the active chip; its corner is its own (no pick)
+  for (const id of cornered) {
+    // from None each time: two variants the fit rule reduces to the same stack lay the same frame (MEASURED: T1 9x12 at
+    // 1.25 in keeps one band of soldier_stretcher_quoin and of three_band_quoin -- the second click changed nothing)
+    await click('brickFramePreset_none', 1500);
     const before = await js(CANVAS);
-    await click(`brickFrameCorner_${id}`, 400);
+    await click(`brickFramePreset_${id}`, 400);
     const moved = await relaid(before);
     const s2 = await frameUiRead();
-    checkRow('frame-ui', `Corners: ${id} re-lays the frame at once`, moved && s2.active[0] === id && s2.frames > 0,
-      `re-laid ${moved}, active ${s2.active.join(',')}, ${s2.frames} frame bricks${id === 'block' ? `, ${s2.notGrey} not grey` : ''}`);
+    checkRow('frame-ui', `Presets: ${id} re-lays the frame at once with its own corner (${st.presetCorners[id]})`, moved && s2.activeChip.join() === id && s2.ownCorner === st.presetCorners[id] && s2.pick === null && s2.frames > 0,
+      `re-laid ${moved}, active ${s2.activeChip.join(',')}, corner ${s2.ownCorner}, pick ${s2.pick}, ${s2.frames} frame bricks${st.presetCorners[id] === 'block' ? `, ${s2.notGrey} not grey` : ''}`);
     // grey by height (Fred 2026-10-08, "grey only"): the quoin blocks (their own element set) read like every frame brick --
     // their layer's height greys, or the neutral grey until its mask lands; never a set colour or a photo
-    if (id === 'block') checkRow('frame-ui', 'Corners: quoin blocks wear the frame’s height greys', s2.notGrey === 0, `${s2.notGrey} of ${s2.frames} frame bricks neither their layer's greys nor neutral (quoin-element-set)`);
+    if (id === 'quoin_corners') checkRow('frame-ui', 'Presets: quoin blocks wear the frame’s height greys', s2.notGrey === 0, `${s2.notGrey} of ${s2.frames} frame bricks neither their layer's greys nor neutral (quoin-element-set)`);
   }
-  // 3. a preset with its own corner: picking it shows that corner; a pick is dropped on a preset change
-  const twoBand = Object.entries(st.presetCorners).find(([k, c]) => c !== 'mitre' && !(k in st.folded) && k !== 'none');
-  if (twoBand) {
-    await click(`brickFramePreset_${twoBand[0]}`, 2000);
-    const s3 = await frameUiRead();
-    checkRow('frame-ui', `Corners: ${twoBand[0]} shows its own corner`, s3.active[0] === twoBand[1], `active ${s3.active.join(',')}, preset's own ${twoBand[1]}`);
-  }
-  await click('brickFrameCorner_butt', 1500);
-  await click('brickFramePreset_single_soldier', 2000);
+  // 3. a board with an explicit (legacy) corner: a preset pick drops it -- the preset's own corner from then on
+  await js(`(async()=>{ const { P } = await import('./core/state.js'); P.brickSettings.frameCorner = 'butt'; return 1; })()`);
+  await click('brickFramePreset_three_band', 2000);
   const s4 = await frameUiRead();
-  checkRow('frame-ui', 'Corners: a preset change returns to the preset\'s own corner', s4.active[0] === s4.presetCorners.single_soldier && s4.pick === null,
-    `after Butt then Soldier: active ${s4.active.join(',')}, pick ${s4.pick}`);
-  // 4. no bands, or a rock frame: no corners row
-  await click('brickFramePreset_none', 2000);
-  const s5 = await frameUiRead();
-  checkRow('frame-ui', 'Corners: hidden with no bands', !s5.listShown, `row ${s5.listShown ? 'SHOWN' : 'hidden'}`);
+  checkRow('frame-ui', 'Presets: a preset pick drops a legacy explicit corner', s4.pick === null && s4.ownCorner === s4.presetCorners.three_band,
+    `pick ${s4.pick}, corner ${s4.ownCorner} (preset's own ${s4.presetCorners.three_band})`);
   await click('brickFramePreset_single_soldier', 2000);
   await click('brickFrameBandPattern_0_fieldstone', 2000);
-  const s6 = await frameUiRead();
-  checkRow('frame-ui', 'Corners: hidden on a rock frame', !s6.listShown, `row ${s6.listShown ? 'SHOWN' : 'hidden'}`);
   // 5. per-element accents (ed618f3): a band's own accent marks only that band; its level moves the relief
   if (await editorOpen()) await apply();
   let Z = await heightsSettled(null);
@@ -129,17 +120,17 @@ async function runFrameUi() {
     checkRow('frame-ui', 'Accents: brush checker outlines brush bricks', br.n > 0 && br.marked > 0, `${br.marked}/${br.n} brush bricks outlined`);
   }
   if (await editorOpen()) await apply();
-  // 7. a board saved on a retired corner preset (butt_frame / quoin_corners) restores as its folded preset + corner:
-  //    the migration fixture's own session with its preset rewritten, one per FOLDED_FRAME_PRESETS entry
-  const folded = await jsJSON(`(async()=>{ const T=await import('./editor/editor-brick-tool.js'); return JSON.stringify(T.FOLDED_FRAME_PRESETS); })()`);
+  // 7. a board saved on butt_frame / quoin_corners (item 33 folded them; 2026-10-11 they are presets again, the fold's
+  //    migration retired) restores on its OWN preset and corner: the migration fixture's session with its preset rewritten
   const session = JSON.parse(readFileSync(path.join(HERE, MIGRATION.fixture), 'utf8'));
-  for (const [old, want] of Object.entries(folded)) {
+  for (const old of ['butt_frame', 'quoin_corners']) {
     session.P.brickSettings.frameBandPreset = old;
+    delete session.P.brickSettings.frameCorner;
     await reloadWithSession(MIGRATION.sessionKey, JSON.stringify(session));
     await openEditorTab('editorTabBrick'); await click('brickTool_frame', 900);
     const st = await frameUiRead();
-    checkRow('frame-ui', `Corners: a board saved on ${old} restores as ${want.preset} + ${want.corner}`, st.preset === want.preset && st.ownCorner === want.corner && st.active[0] === want.corner,
-      `preset ${st.preset}, corner ${st.ownCorner}, active ${st.active.join(',')}`);
+    checkRow('frame-ui', `Presets: a board saved on ${old} restores on its own preset and corner`, st.preset === old && st.pick === null && st.ownCorner === st.presetCorners[old] && st.activeChip.join() === old,
+      `preset ${st.preset}, corner ${st.ownCorner} (its own ${st.presetCorners[old]}), pick ${st.pick}, active ${st.activeChip.join(',')}`);
     if (await editorOpen()) await apply();
   }
   await runCornerEffect();
@@ -148,8 +139,10 @@ async function runFrameUi() {
 
 // ---- item 74b (Fred: grey + explain): a corner choice is greyed exactly where it would re-lay the identical frame. On the
 // declared board some are greyed (measured: T18 7x9 at 1.25 in, square corners only on 1.11 in stubs); each corner is laid
-// through the app's own generateBricks with P.brickSettings.frameCorner set directly (a greyed button can't be clicked),
-// and its frame compared with the mitre's: greyed <=> identical. The mitre is never greyed.
+// through the app's own generateBricks with P.brickSettings.frameCorner set directly (the read a legacy board still has;
+// a greyed chip can't be clicked), and its frame compared with the mitre's: greyed <=> identical. 2026-10-11: the grey
+// lives on the preset chips whose declared corner it is (CORNER_CHIP: one per cutting style); a mitre preset is never greyed.
+const CORNER_CHIP = { butt: 'butt_frame', block: 'quoin_corners', lapped: 'double_course' };
 export const CORNER_EFFECT_BOARD = { templateId: 'template_18', widthIn: 7, heightIn: 9, brickLengthIn: 1.25 };
 async function runCornerEffect() {
   const B = CORNER_EFFECT_BOARD;
@@ -161,19 +154,20 @@ async function runCornerEffect() {
   await click('brickFramePreset_single_soldier', 2000);
   const r = await jsJSON(`(async()=>{ const { P }=await import('./core/state.js'); const BP=await import('./main/brick-panel.js'); const W=(ms)=>new Promise((r)=>setTimeout(r,ms));
     const hash=()=>{ const s=[...window.svgEditor._sketchLayer.node.querySelectorAll('[data-brick="frame"]')].map((n)=>n.getAttribute('points')).sort().join('|'); let x=2166136261; for (let i=0;i<s.length;i++){ x^=s.charCodeAt(i); x=Math.imul(x,16777619);} return (x>>>0).toString(36)+'/'+s.split('|').length; };
-    const grey=Object.fromEntries(['mitre','butt','block','lapped'].map((c)=>[c, !!document.getElementById('brickFrameCorner_'+c)?.disabled]));
+    const chip=${JSON.stringify({ mitre: 'single_soldier', ...CORNER_CHIP })};
+    const grey=Object.fromEntries(Object.entries(chip).map(([c,id])=>[c, !!document.getElementById('brickFramePreset_'+id)?.disabled]));
     const lay=async(c)=>{ P.brickSettings.frameCorner=c; BP.generateBricks(); await W(2500); return hash(); };
     const laid={}; for (const c of ['mitre','butt','block','lapped']) laid[c]=await lay(c);
     P.brickSettings.frameCorner=null; BP.generateBricks(); await W(2000);
-    return JSON.stringify({ grey, laid, title: document.getElementById('brickFrameCorner_butt')?.title || '' }); })()`);
+    return JSON.stringify({ grey, laid, title: document.getElementById('brickFramePreset_'+chip.butt)?.title || '' }); })()`);
   const cut = ['butt', 'block', 'lapped'];
   const agree = cut.every((c) => r.grey[c] === (r.laid[c] === r.laid.mitre));
-  checkRow('frame-ui', 'Corners: greyed exactly where the corner re-lays the identical frame (T18 7x9, 1.25 in)',
+  checkRow('frame-ui', 'Presets: a corner chip is greyed exactly where its corner re-lays the identical frame (T18 7x9, 1.25 in)',
     agree && !r.grey.mitre && cut.some((c) => r.grey[c]),
     cut.map((c) => `${c} ${r.grey[c] ? 'greyed' : 'live'}, lay ${r.laid[c] === r.laid.mitre ? 'identical' : 'differs'}`).join('; ') + ` (mitre ${r.grey.mitre ? 'GREYED' : 'live'}; tooltip "${r.title}")`);
 }
 
-// ---- T86 item 16e (Fred on the fan mock: "I like them all, add a choice"): the Fan centre row in the Corners section, on
+// ---- T86 item 16e (Fred on the fan mock: "I like them all, add a choice"): the Fan centre row (its own section), on
 // CORNER_EFFECT_BOARD (T18 7x9 at 1.25 in: 4 corner fans). Each choice re-lays the frame at once (Stone adds one stone per
 // fan), a pick is ONE undo step (Undo puts the canvas and the active choice back, Redo forward), and on a frame with no
 // fan corner (noFanTemplate) Eye / Stone are greyed with the declared reason, the Needle never.
@@ -182,10 +176,10 @@ const FRAME_HASH = `(()=>{ const n=[...window.svgEditor._sketchLayer.node.queryS
 async function fanState() {
   const f = await jsJSON(FRAME_HASH);
   return { ...f, ...(await jsJSON(`(async()=>{ const { P }=await import('./core/state.js'); const R=await import('./main/brick-control-requires.js');
-    const list=document.getElementById('brickFrameFanCentreList'), row=document.getElementById('brickFrameFanCentreRow'), corners=document.getElementById('brickFrameCornerRow');
+    const list=document.getElementById('brickFrameFanCentreList'), row=document.getElementById('brickFrameFanCentreRow');
     const btn=(id)=>document.getElementById('brickFrameFanCentre_'+id);
     return JSON.stringify({ pick: P.brickSettings.frameFanCentre ?? null, buttons: list ? list.querySelectorAll('button').length : 0,
-      shown: !!list && list.offsetParent !== null, sameSection: !!row && !!corners && row.parentElement === corners.parentElement,
+      shown: !!list && list.offsetParent !== null, ownSection: !!row && !document.getElementById('brickFrameCornerRow'),
       active: ['needle','eye','stone'].filter((id)=>btn(id)?.classList.contains('active')),
       grey: Object.fromEntries(['needle','eye','stone'].map((id)=>[id, !!btn(id)?.disabled])), why: R.FAN_CENTRE_NO_FAN, eyeTitle: btn('eye')?.title || '' }); })()`)) };
 }
@@ -193,8 +187,8 @@ async function runFanCentre() {
   const R = FAN_CENTRE_ROWS;
   if (!(await exists('brickFrameFanCentreList'))) { checkRow('frame-ui', 'Fan centre row', false, '', 'T86 16e'); return; }
   const s0 = await fanState();
-  checkRow('frame-ui', 'Fan centre: in the Corners section, Needle | Eye | Stone, Needle active', s0.shown && s0.sameSection && s0.buttons === 3 && s0.active.join() === 'needle' && s0.pick === null,
-    `shown ${s0.shown}, same section as Corners ${s0.sameSection}, ${s0.buttons} buttons, active ${s0.active.join(',')}, pick ${s0.pick}`);
+  checkRow('frame-ui', 'Fan centre: its own section (Corners retired), Needle | Eye | Stone, Needle active', s0.shown && s0.ownSection && s0.buttons === 3 && s0.active.join() === 'needle' && s0.pick === null,
+    `shown ${s0.shown}, own section ${s0.ownSection}, ${s0.buttons} buttons, active ${s0.active.join(',')}, pick ${s0.pick}`);
   await click('brickFrameFanCentre_eye', 400); await sleep(2500);
   const s1 = await fanState();
   checkRow('frame-ui', 'Fan centre: Eye re-lays the frame at once', s1.hash !== s0.hash && s1.active.join() === 'eye' && s1.count === s0.count,

@@ -1090,7 +1090,7 @@ BRICKS_SKETCH_NAME = 'Bricks'
 # declares the rows (the region each brick element was laid into: 'Wall outline' one profile, 'Frame outline' its outer
 # and inner loops). The add-in replaces / removes only a sketch named here (a Send can never delete another sketch by
 # naming it); tests check this list against the JS declaration.
-BRICK_OUTLINE_SKETCH_NAMES = ('Wall outline', 'Frame outline')
+BRICK_OUTLINE_SKETCH_NAMES = ('Wall outline', 'Frame outline', 'Arch outline')
 
 
 def _remove_named_sketch(component, name):

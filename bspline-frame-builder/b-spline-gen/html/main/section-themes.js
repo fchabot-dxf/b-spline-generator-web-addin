@@ -51,7 +51,7 @@ export const BRICK_SECTION_THEMES = Object.freeze({
   'brick-bricks': { hue: 6 },
   'brick-pattern': { hue: 28 },
   'brick-accent': { hue: 330 },
-  'brick-corners': { hue: 48 },
+  'brick-fan-centre': { hue: 48 }, // was brick-corners (the Corners picker, retired 2026-10-11)
   'brick-height': { hue: 285 },
   'brick-joint': { hue: 185 },
   'brick-surround': { hue: 115 },
