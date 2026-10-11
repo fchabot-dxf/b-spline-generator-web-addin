@@ -26,15 +26,19 @@ const tplPrims = (id, W, H) => buildRibbonPrimitives(frameContourSilhouette({ de
 const lay = (primitives, W = 7, H = 10) => generateBricks({ boardOutline: rectPoly(0, 0, W, H), set: RED, scale: SCALE, seed: 3,
   frame: { primitives, bands: [...FRAME_PRESETS.arch_keystone] }, arch: { spec: FRAME_PRESETS.arch_keystone.arch } });
 const noOverlap = (P) => { for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) expect(polygonsOverlap(P[i].polygon, P[j].polygon)).toBe(false); };
+/** Inside the polygon, or within a hair of its line: with no band the arch's outer rows hug the frame's own curve, and a chord
+ *  tessellation of a concave curve lies a hair inside it (MEASURED: two hood pieces at T10's waist, outside by < 0.01 in). */
+const insideOrOn = (c, poly, tol = 0.02) => pointInPolygon(c.x, c.y, poly) || poly.some((a, i) => { const b = poly[(i + 1) % poly.length], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+  const f = Math.max(0, Math.min(1, ((c.x - a.x) * dx + (c.y - a.y) * dy) / l2)); return Math.hypot(a.x + dx * f - c.x, a.y + dy * f - c.y) < tol; });
 /** The opening's top y at x (its topmost crossing), and its width at height y. */
 const topAt = (poly, x) => { const ys = []; poly.forEach((a, i) => { const b = poly[(i + 1) % poly.length]; if ((a.x > x) !== (b.x > x)) ys.push(a.y + ((x - a.x) / (b.x - a.x)) * (b.y - a.y)); }); return Math.min(...ys); };
 const widthAt = (poly, y) => { const xs = []; poly.forEach((a, i) => { const b = poly[(i + 1) % poly.length]; if ((a.y > y) !== (b.y > y)) xs.push(a.x + ((y - a.y) / (b.y - a.y)) * (b.x - a.x)); }); return Math.max(...xs) - Math.min(...xs); };
 
 describe('the declaration', () => {
-  it("'arch_keystone': one mitred stretcher course, the arch, best at 1 in -- the band list itself unchanged", () => {
-    expect([...FRAME_PRESETS.arch_keystone]).toEqual([{ widthIn: 0.2, rows: 1, pattern: 'stretcher' }]);
+  it("'arch_keystone': no band of its own (Fred: the large blocks touch the frame's edge), the arch, best at 1 in", () => {
+    expect([...FRAME_PRESETS.arch_keystone]).toEqual([]);
     expect([FRAME_PRESETS.arch_keystone.arch, FRAME_PRESETS.arch_keystone.bestSize]).toEqual(['rowlock_keystone', 1]);
-    expect(JSON.stringify(FRAME_PRESETS.arch_keystone)).toBe('[{"widthIn":0.2,"rows":1,"pattern":"stretcher"}]');
+    expect(JSON.stringify(FRAME_PRESETS.arch_keystone)).toBe('[]');
     expect(frameArchOf({ frameBandPreset: 'arch_keystone' })).toBe('rowlock_keystone');
     expect(frameArchOf({ frameBandPreset: 'single_soldier' })).toBe(null);
   });
@@ -62,8 +66,12 @@ describe('on a 7 x 10 rectangle (the mock board): a flat (jack) arch directly in
     for (const b of [...parts('hood'), ...parts('keystone')]) { expect(b.relief).toBe('raised'); expect(b.heightOffset).toBeCloseTo(RELIEF_LEVELS.raised, 1); }
     for (const b of parts('ring')) { expect(b.relief).toBeUndefined(); expect(Math.abs(b.heightOffset)).toBeLessThan(RELIEF_LEVELS.raised / 2); }
   });
-  it('the arch starts at the frame\'s inner edge: its region\'s outer IS the wall interior the frame leaves (no pier)', () => {
+  it("the arch starts AT the frame's edge (no band, no pier): its region's outer is the board's edge, a stone touches it", () => {
     expect(res.archRegion[0].outer).toEqual(res.interiorOutline);
+    const xs = res.interiorOutline.map((p) => p.x), ys = res.interiorOutline.map((p) => p.y);
+    expect([Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)].map((v) => +v.toFixed(6))).toEqual([0, 0, 7, 10]);
+    expect(Math.min(...parts('keystone')[0].polygon.map((p) => p.y))).toBeCloseTo(0, 6);
+    expect(res.frameBricks).toEqual([]); // no frame band pieces
   });
   it('the opening follows the flat top: flat across', () => {
     expect(topAt(res.archOpening, 3.5)).toBeCloseTo(topAt(res.archOpening, 2.5), 6);
@@ -87,13 +95,13 @@ describe('it conforms to the frame (any template)', () => {
     expect(topAt(o, 3.5 + 1) - topAt(o, 3.5)).toBeGreaterThan(0.1); // curved: lower off the centre
     expect(widthAt(o, top + 0.45 * (bot - top))).toBeLessThan(widthAt(o, bot - 0.5) - 1); // the waist
     noOverlap(res.archBricks);
-    for (const b of res.archBricks) { const c = centroid(b.polygon); expect(pointInPolygon(c.x, c.y, res.interiorOutline)).toBe(true); }
+    for (const b of res.archBricks) expect(insideOrOn(centroid(b.polygon), res.interiorOutline)).toBe(true);
   });
   it('T1 hourglass 7 x 9: a flat top over a waist -- the rings follow it, no overlaps, all inside the interior', () => {
     const res = lay(tplPrims('template_1', 7, 9), 7, 9);
     expect(res.archFit).toBeUndefined();
     noOverlap(res.archBricks);
-    for (const b of res.archBricks) { const c = centroid(b.polygon); expect(pointInPolygon(c.x, c.y, res.interiorOutline)).toBe(true); }
+    for (const b of res.archBricks) expect(insideOrOn(centroid(b.polygon), res.interiorOutline)).toBe(true);
   });
   it("a neck or a peak too tight for the full stack: the ladder shrinks it or skips it ('archTooNarrow') -- never colliding pieces", () => {
     for (const [id, W, H] of [['template_18', 7, 10], ['template_7', 9, 12]]) {
@@ -149,10 +157,10 @@ describe('it conforms to the frame (any template)', () => {
 describe('the editor sends the arch only with the Frame element', () => {
   const editor = { _mW: 7, _mH: 10, _sketchLayer: { node: { querySelectorAll: () => [], querySelector: () => null } }, _layers: [] };
   const geom = (bands) => ({ primitives: rectPrims(7, 10), bands, insetRect: null });
-  it('arch_keystone with its bands -> input.arch; no bands (no Frame element) or another preset -> absent', () => {
+  it('arch_keystone (no bands of its own) -> input.arch; no Frame element (frameGeomForLay says so) or another preset -> absent', () => {
     const settings = { frameBandPreset: 'arch_keystone', seed: 1, setId: 1, brickLengthIn: 1 };
     expect(brickLayInput(editor, settings, geom([...FRAME_PRESETS.arch_keystone])).arch).toEqual({ spec: 'rowlock_keystone' });
-    expect(brickLayInput(editor, settings, geom([])).arch).toBeUndefined();
+    expect(brickLayInput(editor, settings, { ...geom([]), noFrameElement: true }).arch).toBeUndefined();
     expect(brickLayInput(editor, { ...settings, frameBandPreset: 'single_soldier' }, geom([...FRAME_PRESETS.single_soldier])).arch).toBeUndefined();
   });
 });

@@ -1327,7 +1327,7 @@ function _layInput(editor, settings, frameGeom) {
   // 2026-10-11: the frame preset's arch (library.js withArch) -- part of the Frame element, like the surround: no Frame
   // element (frameGeomForLay emptied its bands), no arch; a preset without one = absent, the lay byte-identical
   const arch = frameArchOf(settings);
-  if (arch && frameGeom && frameGeom.bands && frameGeom.bands.length) input.arch = { spec: arch };
+  if (arch && frameGeom && frameGeom.primitives && !frameGeom.noFrameElement) input.arch = { spec: arch };
   // the engine applies ONE `scale` (the Wall's) to the frame's set too -- so the frame's set goes in pre-scaled
   // by its own scale over the Wall's (the engine's own scaledSet): its bricks / stones keep the global size
   if (frameGeom) input.frame = { ...frameGeom, set: scaledSet(resolvedSetFor(frameSettings), scaleFor(frameSettings) / input.scale) };
@@ -1384,7 +1384,8 @@ export function frameGeomForLay(editor, frameGeom, kinds = BRICK_KINDS) {
   if (!frameGeom) return frameGeom;
   const frameElement = kinds.includes('frame') || !!brickRecordNode(editor, 'frame');
   // item 9: the window surround is part of the Frame element too -- no Frame, no surround (and no wall cut around it)
-  return frameElement ? frameGeom : { ...frameGeom, bands: [], insetRect: null };
+  // `noFrameElement`: said, not inferred from the bands -- a preset may have no bands of its own (Arch + keystone)
+  return frameElement ? frameGeom : { ...frameGeom, bands: [], insetRect: null, noFrameElement: true };
 }
 
 function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
@@ -1442,7 +1443,9 @@ function _generateAndDraw(editor, settings, frameGeom, kinds = BRICK_KINDS) {
   const interior = result.interiorOutline && result.interiorOutline.length >= 3 ? result.interiorOutline : boardPolygon(editor);
   if (lays('frame') && frameBricks.length && frameGeom && frameGeom.primitives && frameGeom.primitives.length) {
     const outer = primitivesOutline(frameGeom.primitives);
-    drawElementGrout(editor, layerOf.frame, 'frame', owner('frame'), [{ outer, holes: [interior] }, ...(ring ? [ring] : []), ...(archRegion || [])], settings);
+    // the band ring only when there are bands (Arch + keystone has none: the arch starts at the frame's edge)
+    const bandRing = frameGeom.bands && frameGeom.bands.length ? [{ outer, holes: [interior] }] : [];
+    drawElementGrout(editor, layerOf.frame, 'frame', owner('frame'), [...bandRing, ...(ring ? [ring] : []), ...(archRegion || [])], settings);
   }
   // the wall around the arch, and the wall in its opening
   // with the Frame's arch the wall is its opening only (the arch fills the rest of the interior)

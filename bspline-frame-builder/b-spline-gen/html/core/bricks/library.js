@@ -542,8 +542,9 @@ export const FRAME_PRESETS = Object.freeze({
     { widthIn: 0.3, rows: 1, pattern: 'stretcher', motif: 'cornice_dentil' },
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
   ]),
-  // 2026-10-11 (Fred, the mock's board 1): one mitred stretcher course at the border; inside it the arch (withArch)
-  arch_keystone: withBestSize(1, withArch('rowlock_keystone', [{ widthIn: 0.2, rows: 1, pattern: 'stretcher' }])),
+  // 2026-10-11 (Fred, the mock's board 1; then "the large blocks should touch the edge of the frame directly"): no band of
+  // its own -- the arch (withArch) is the frame, its hood and rings the outermost rows, its stones from the frame's edge
+  arch_keystone: withBestSize(1, withArch('rowlock_keystone', [])),
 });
 
 /** Frame motifs phase 1: each motif preset's RECOMMENDED brick size (in) -- the biggest that still shows its structure,
