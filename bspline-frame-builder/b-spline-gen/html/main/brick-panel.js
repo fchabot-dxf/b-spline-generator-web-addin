@@ -1357,9 +1357,10 @@ const BRICK_COMMIT = {
   // a drag tick only saves; the re-mask (the expensive height pass) runs once on release
   // seat D 2026-10-11 (the 3D-controls sweep, claude_1, 900 px, CPU x4: Surface wear / Grout depth 100-125 ms blind
   // before their card -- the release's session save, undo push and the change pipeline's serialize ran first): the
-  // release runs behind its 'heightMask' stage, painted first, like 'generate' behind 'bricks'
+  // release runs behind its 'heightMask' stage, painted first, like 'generate' behind 'bricks'. A drag tick restyles the
+  // strokes only: its session save (~50 ms at CPU x4, every tick, before any card) waits for the release, which saves.
   surface: {
-    onDrag: () => { notifyChange(); },
+    onDrag: () => { _scheduleStrokeRestyle(); },
     onRelease: () => withLoadingStageShownFirst('heightMask', () => { notifyChange(); _remaskSurface(); }),
   },
   // item 68 (advisor, item 38's precedent): a setting for the NEXT stroke (Brush profile / orientation / preset /
