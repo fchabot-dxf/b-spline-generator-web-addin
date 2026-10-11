@@ -9,6 +9,7 @@
  */
 import { BAND_MOTIFS, RELIEF_LEVELS, RELIEF_CHARS } from './library.js';
 import { MIN_CLOSER_FRACTION } from './piece-plan.js';
+import { signedArea } from './geometry.js';
 
 /** The band's motif (BAND_MOTIFS entry), or null. */
 export function motifOf(band) {
@@ -39,9 +40,12 @@ function rowSlots(motif, row) {
 export function motifRowPlan(motif, { row, d0, d1, bandStart, L, H, J }) {
   const unit = unitOf(motif, L, H);
   const { offset, slots } = rowSlots(motif, row);
-  const pitch = unit - J;
+  // the run's pitch (the closers' and the run merge's base) is one MODULE, joint included: an end closer the mitre cuts to a
+  // sliver then merges into its neighbour under the 1.2 ceiling (MEASURED 9x12 at 1 in: on a one-cell pitch the merge was
+  // refused at 1.23 and the sliver stayed, 0.17 of a cell)
+  const pitch = unit;
   const from = d0 - bandStart;
-  const minEnd = from + J + MIN_CLOSER_FRACTION * pitch + (d1 - d0) / 2;
+  const minEnd = from + J + MIN_CLOSER_FRACTION * (unit - J) + (d1 - d0) / 2;
   const period = slots.reduce((s, x) => s + x.len, 0) * unit;
   // the boundary at the start of slot 0 of the period just before minEnd, then forward slot by slot
   let b = offset * unit + Math.floor((minEnd - offset * unit) / period - 1) * period, i = 0;
@@ -55,6 +59,20 @@ export function motifRowPlan(motif, { row, d0, d1, bandStart, L, H, J }) {
     slots,
     startColumn: Math.round(b / unit) - 1,
   };
+}
+
+/** A piece under the floor smaller than this (sq in) drops -- the yield's MEDIAL_HOLE_SQIN, a grout-wide fleck. */
+export const MOTIF_FLECK_SQIN = 0.002;
+/** The FLOOR of a motif-cut row: a quarter of its smallest slot piece x the row's depth (the run merge's own floor rule,
+ *  piece-plan.js mergeSlivers, on the motif's module). `keep[k]` = piece k stays: a run piece under the floor AND under
+ *  MOTIF_FLECK_SQIN does not; a bigger one stays (a small piece beats a hole -- MEASURED T15 7x10 1.25 in: dropping a
+ *  sub-floor end closer left a 0.054-face bare patch). A corner's fan slice and a quoin always stay. The pitch of one module
+ *  (motifRowPlan) is what keeps end slivers rare: the run merge takes them. null when every piece stays. */
+export function motifFloorKeep(pieces, sources, plan, depth) {
+  const floor = MIN_CLOSER_FRACTION * Math.min(plan.pitch, ...plan.sequence) * depth;
+  // a small piece beats a hole (contour-bands.js yieldAtMedialLine's own rule): only a fleck that reads as joint drops
+  const keep = pieces.map((p, k) => { const a = Math.abs(signedArea(p.polygon)); return !(sources[k] >= 0) || a >= floor || a >= MOTIF_FLECK_SQIN; });
+  return keep.every(Boolean) ? null : keep;
 }
 
 /** A tile cell's relief: tile[row][col] as RELIEF_CHARS (outside the tile: flush). */

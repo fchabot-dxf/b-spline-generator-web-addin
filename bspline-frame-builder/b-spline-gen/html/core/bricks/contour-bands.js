@@ -41,7 +41,7 @@ import { scaledSet, BRICK_PATTERNS } from './library.js';
 import { minPieceAreaOf, LAID_BY_COURSES } from './piece-floor.js';
 import { bricksFillShape } from './fill-shape.js';
 import { axisLen, courseHeightFor } from './layouts/bond.js';
-import { motifOf, motifCutsRows, motifRowCount, motifRowDepth, motifRowPlan, tagMotifRow } from './band-motif.js'; // frame motifs
+import { motifOf, motifCutsRows, motifRowCount, motifRowDepth, motifRowPlan, tagMotifRow, motifFloorKeep } from './band-motif.js'; // frame motifs
 
 const ARC_TESS_STEPS = 16; // only for inwardSignFor's own tessellation -- a smoothness floor for
 // deciding which way is "inward", never a correctness requirement (ribbonPieces itself never
@@ -966,13 +966,20 @@ export function bricksContourBands(primitives, bands, opts) {
         fanCorners += joints.filter((j) => j && j.q && j.kiteFan && j.kiteFan.length).length;
         continue;
       }
-      const { pieces: laidPieces, nextId: afterId, sources, fanSides } = ribbonPieces(
+      const { pieces: laidPieces, nextId: afterId, sources: laidSources, fanSides: laidFanSides } = ribbonPieces(
         enriched, d0, d1, set, patternName, pitch, set.grout.widthIn,
         seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
         rowSequence, forcedFStart, closed, row, closed ? null : opts.cutEnds || null, // T86 item 5: an open stroke's cut ends
       );
       // frame motifs: each piece of a motif band carries its relief (band-motif.js tagMotifRow)
-      const pieces = motif ? tagMotifRow(laidPieces, sources, enriched, motif, motifPlan, row, rows) : laidPieces;
+      // a motif-cut row drops a run piece under its own floor (band-motif.js motifFloorKeep: an end closer the mitre left a
+      // sliver, which the merge could not take) -- it reads as a slightly wider joint, as a leftover under the quarter brick does
+      const keep = motifPlan ? motifFloorKeep(laidPieces, laidSources, motifPlan, d1 - d0) : null;
+      const sources = keep ? laidSources.filter((_, i) => keep[i]) : laidSources;
+      const fanSides = keep && laidFanSides ? laidFanSides.filter((_, i) => keep[i]) : laidFanSides;
+      // tagged before the drop: a run's place (its piece j of n) is the laid run's
+      const tagged = motif ? tagMotifRow(laidPieces, laidSources, enriched, motif, motifPlan, row, rows) : laidPieces;
+      const pieces = keep ? tagged.filter((_, i) => keep[i]) : tagged;
       // T86 item 16f (B1): the innermost course row's pieces may reach into the bare tips (tipZones; fillTips, below)
       if (tipReach && bandIndex === lastCourseBand && row === rows - 1) tipRow = { start: bricks.length, count: pieces.length, sources, d1 };
       // T86 item 16d: a corner's fan slice is declared as such (`fan: true`, additive; the drawing never reads it) -- the

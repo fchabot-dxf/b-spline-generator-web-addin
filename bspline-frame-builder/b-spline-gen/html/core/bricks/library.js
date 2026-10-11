@@ -484,7 +484,11 @@ export const FRAME_PRESETS = Object.freeze({
     { widthIn: 0.8, rows: 4, pattern: 'header', motif: 'zigzag' },
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
   ],
+  // an outer plain course (the mockup had none): a stack of two obeys the fit rule (contour-bands.js fitBandStack: the lattice
+  // loses rows on a narrow board); a lone 5-course band was narrowed to ONE deep row instead (narrowSingleBand -- MEASURED on
+  // T6 / T11 / T14 / T15 / T16 / T17: the lattice gone, bare patches up to 0.13 of a brick face)
   diaper_lattice: [
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
     { widthIn: 1, rows: 5, pattern: 'header', motif: 'diaper' },
   ],
   soldier_string: [
