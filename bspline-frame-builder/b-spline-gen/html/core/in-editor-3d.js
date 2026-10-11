@@ -30,7 +30,8 @@ import { isEditorOpen, isRestoring } from './history.js';
 
 export const IN_EDITOR_3D = Object.freeze({
   photo: Object.freeze({ inEditor: 'backdrop', inEditorDrag: 'none', closed: 'rebuild' }), // the Photo tab's edits (main/photo-panel.js)
-  relief: Object.freeze({ inEditor: 'backdrop', inEditorDrag: 'none', closed: 'rebuild' }), // its relief height (P.carveZ: the backdrop shades by it)
+  // (no 'relief' row since 2026-10-10: Fred moved the photo's Max Height out -- the board Z is edited in Board only, and
+  // a pattern pick no longer writes it; nothing in the photo panel writes P.carveZ any more)
   frame: Object.freeze({ inEditor: 'profile', closed: 'refresh3D', restoring: 'profile' }), // a frame-record write (main/frame-panel.js)
 });
 

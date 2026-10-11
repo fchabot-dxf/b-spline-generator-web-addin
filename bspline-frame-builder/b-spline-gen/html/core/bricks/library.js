@@ -294,6 +294,25 @@ export const BRICK_SETS = Object.freeze([
     heightProfile: { edgeRadiusIn: 0.05, crown: 0.1, chipRate: 0.1, chipSizeIn: 0.07, surfaceShare: 0.35, wearWholeFace: true }, // T86 item 23
     samples: Array.from({ length: 64 }, (_, i) => `gs_${String(i + 1).padStart(2, '0')}`).map((id) => ({ id, image: `data/bricks/${id}.jpg` })),
   },
+  // Rough ashlar (Fred picked mock E, 2026-10-10; layouts/coursed-ashlar.js): broken-course grey blocks. The Rough ashlar
+  // PATTERN picks this set (editor-brick-tool.js patternSetId), as Coursed rubble picks Grey stone. brickHeightIn is the
+  // base course height H every block length is declared in (COURSED_ASHLAR); L = H, so the brick size control sets H.
+  // Faces: the ashlar-photo grey stones (gs_28..64, cut from grey_stone_ashlar_2048.png); no new images.
+  {
+    id: 6,
+    name: 'Grey ashlar',
+    engine: 'masonry',
+    shape: 'irregular',
+    layout: 'coursed_ashlar',
+    brickLengthIn: 1.0,
+    brickHeightIn: 1.0,
+    grout: { widthIn: 0.05, depthIn: 0.06, profile: 'recessed' },
+    reliefIn: 0.125,
+    reliefMaxIn: 0.25,
+    heightJitterIn: 0.02,
+    heightProfile: { edgeRadiusIn: 0.05, crown: 0.1, chipRate: 0.1, chipSizeIn: 0.07, surfaceShare: 0.35, wearWholeFace: true },
+    samples: Array.from({ length: 37 }, (_, i) => `gs_${String(i + 28).padStart(2, '0')}`).map((id) => ({ id, image: `data/bricks/${id}.jpg` })),
+  },
 ]);
 
 /**
@@ -389,6 +408,8 @@ export const BRICK_PATTERNS = Object.freeze({
   // 37 (F35, grey-sets T86 item 25): Set 5's coursed rubble as a Wall pattern -- it picks that set the way Fieldstone
   // picks Set 3 (editor-brick-tool.js patternSetId: the set whose layout IS the pattern). Wall only: not band-capable.
   coursed_rubble: { kind: 'tile2d', family: 'fieldstone' },
+  // Rough ashlar (Fred picked mock E, 2026-10-10): picks Set 6 (Grey ashlar) the same way. Wall only: not band-capable.
+  coursed_ashlar: { kind: 'tile2d', family: 'fieldstone' },
 });
 
 /**
@@ -415,6 +436,18 @@ export const BRICK_PATTERNS = Object.freeze({
  * declared "White rocks" set, `BRICK_SETS[2]`, regardless of the band's own set) at the same
  * corners instead -- `quoin_corners` below.
  */
+/**
+ * UX refine (Fred, 2026-10-10): a preset's optional `bestSize` -- the brick size (inches, one of the Size chips:
+ * 0.375 / 0.75 / 1 / 1.25 / 1.5 / 3 / 8) it reads best at. The app only SUGGESTS it (a "best" mark on that chip and a
+ * "Reads best at ..." hint with a Use-it button, main/brick-panel.js); brick size stays one global value and nothing
+ * changes it on its own. Absent = no suggestion. It rides on the band list as a NON-enumerable property, so every
+ * reader of the bands (iteration, spread, map, JSON, the engine) sees exactly the list it always did -- read it as
+ * `FRAME_PRESETS[id].bestSize`.
+ */
+function withBestSize(bestSize, bands) {
+  return Object.defineProperty(bands, 'bestSize', { value: bestSize, enumerable: false });
+}
+
 export const FRAME_PRESETS = Object.freeze({
   // F35 item 12 follow-up (Fred): the Frame band preset's own OFF switch -- an EMPTY band list,
   // not a special case anywhere downstream: zero bands means `bricksContourBands` has nothing to
@@ -455,13 +488,15 @@ export const FRAME_PRESETS = Object.freeze({
   // T86 item 2: the dispatch's own preview combination -- header (outer, a tight decorative band),
   // flemish (middle, the alternating stretcher/header look), soldier (inner) -- in ONE frame,
   // demonstrating 3 different pattern kinds (course/course-alternating/course) stacking cleanly.
-  mixed_bands: [
+  // UX refine (2026-10-10): `bestSize` (withBestSize, above) -- its two outer bands are ONE course each,
+  // the shallowest of any preset (0.2 of a brick length), so they read best a size up from the 1 1/4 in default.
+  mixed_bands: withBestSize(1.5, [
     { widthIn: 0.2, pattern: 'header' }, // one course, brickHeightIn deep (courseHeightFor: header too)
     { widthIn: 0.2, pattern: 'flemish' }, // one flemish COURSE is also brickHeightIn deep -- the
     // [L,H] along-run ALTERNATION is a separate axis from the row's own cross-depth (bond.js's own
     // `courseHeightFor`: 'course-alternating' always resolves to H, confirmed, not re-derived).
     { widthIn: 0.75, pattern: 'soldier' },
-  ],
+  ]),
 });
 
 /**

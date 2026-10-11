@@ -19,7 +19,7 @@ import {
   scheduleRebuild, isRebuildScheduled, openRebuildHold, joinRebuildHold, isRebuildHeld, deferToHold, REBUILD_HOLD_BACKSTOP_MS,
 } from '../bspline-frame-builder/b-spline-gen/html/core/engine/scheduler.js';
 import { P } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { STOCK_CHANGE_STAGES, STOCK_CHANGE_DEFERS } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
+import { STOCK_CHANGE_STAGES, STOCK_CHANGE_DEFERS, BOOT_RESTORE_STAGES } from '../bspline-frame-builder/b-spline-gen/html/main/app-init.js';
 import { refreshAllStampMasks } from '../bspline-frame-builder/b-spline-gen/html/main/stamp-mask-manager.js';
 
 const HTML = join(__dirname, '../bspline-frame-builder/b-spline-gen/html');
@@ -253,13 +253,13 @@ describe('a board size change holds the 3D (main/app-init.js)', () => {
     expect(build).toHaveBeenCalledTimes(1);
   });
 
-  it('every joinRebuildHold stage in the app is a declared STOCK_CHANGE_STAGES entry, and every entry is joined', () => {
+  it('every joinRebuildHold stage in the app is declared (STOCK_CHANGE_STAGES / BOOT_RESTORE_STAGES), and every entry is joined', () => {
     const files = [];
     const walk = (d) => { for (const n of readdirSync(d)) { const p = join(d, n); if (statSync(p).isDirectory()) walk(p); else if (n.endsWith('.js')) files.push(p); } };
     walk(HTML);
     const joined = new Set();
     for (const f of files) for (const m of readFileSync(f, 'utf8').matchAll(/joinRebuildHold\('([^']+)'\)/g)) joined.add(m[1]);
-    expect([...joined].sort()).toEqual([...STOCK_CHANGE_STAGES].sort());
+    expect([...joined].sort()).toEqual([...STOCK_CHANGE_STAGES, ...BOOT_RESTORE_STAGES].sort());
     const deferred = new Set();
     for (const f of files) for (const m of readFileSync(f, 'utf8').matchAll(/deferToHold\('([^']+)'/g)) deferred.add(m[1]);
     expect([...deferred].sort()).toEqual([...STOCK_CHANGE_DEFERS].sort());

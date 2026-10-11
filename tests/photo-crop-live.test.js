@@ -18,7 +18,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/core/photo/state.js', async 
 });
 
 import { P, DEFAULT, persistableP } from '../bspline-frame-builder/b-spline-gen/html/core/state.js';
-import { initPhotoPanel, editableCrop, withCrop, CROP_FULL, CROP_BOX, cropHit, cropDrag } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
+import { initPhotoPanel, editableCrop, withCrop, CROP_FULL, CROP_BOX, CROP_BOX_STYLE, CROP_BOX_CURSOR, cropCursorAt, cropHit, cropDrag } from '../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js';
 import { takeUndoParts, restoreUndoParts } from '../bspline-frame-builder/b-spline-gen/html/editor/undo-parts.js';
 
 const HTML = readFileSync('bspline-frame-builder/b-spline-gen/html/bspline_gen_palette.html', 'utf8');
@@ -187,6 +187,38 @@ describe("the preview's caption says what its dimming means", () => {
     expect(PREVIEW_CAPTION.crop).toBe('dimmed = outside the crop');
     setPhotoTab('adjust');
     expect(field('photoPreviewCaption').textContent).toBe(PREVIEW_CAPTION.mirror);
+    setPhotoTab('source');
+  });
+});
+
+// Fred 2026-10-10: "not very visible" + (desktop) "there's no cursor"
+describe('the crop box: a visible look (declared) and a cursor per zone', () => {
+  it('CROP_BOX_STYLE: a yellow frame in a dark outline, solid bordered handles, a strong dim, thirds while dragging', () => {
+    expect(CROP_BOX_STYLE).toMatchObject({ framePx: 2.5, outlinePx: 1, handleDrawPx: 12, handleBorderPx: 1.5, dim: 'rgba(0,0,0,0.58)' });
+    expect(CROP_BOX_STYLE.thirds).toBeTruthy();
+    expect(CROP_BOX.handlePx.coarse).toBeGreaterThanOrEqual(28); // the grab stays finger-sized
+  });
+  it('the cursor per zone comes from the same hit test a drag uses', () => {
+    const r = { x: 0.2, y: 0.2, w: 0.5, h: 0.5 }, h = 0.05;
+    expect(cropCursorAt(r, 0.2, 0.2, h, h)).toBe('nwse-resize'); // nw
+    expect(cropCursorAt(r, 0.7, 0.7, h, h)).toBe('nwse-resize'); // se
+    expect(cropCursorAt(r, 0.7, 0.2, h, h)).toBe('nesw-resize'); // ne
+    expect(cropCursorAt(r, 0.2, 0.7, h, h)).toBe('nesw-resize'); // sw
+    expect(cropCursorAt(r, 0.45, 0.45, h, h)).toBe('move');
+    expect(cropCursorAt(r, 0.05, 0.9, h, h)).toBe('');
+    for (const zone of ['nw', 'ne', 'sw', 'se', 'move']) expect(CROP_BOX_CURSOR[zone], zone).toBeTruthy(); // every zone cropHit returns
+  });
+  it('a desktop hover over the box sets the canvas cursor; outside the Crop tab it is the default', async () => {
+    const c = field('photoPreviewCanvas');
+    c.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100 });
+    c.dispatchEvent(new MouseEvent('pointermove', { clientX: 100, clientY: 50, bubbles: true }));
+    expect(c.style.cursor).toBe('move');
+    c.dispatchEvent(new MouseEvent('pointermove', { clientX: 199, clientY: 99, bubbles: true }));
+    expect(c.style.cursor).toBe('nwse-resize');
+    const { setPhotoTab } = await import('../bspline-frame-builder/b-spline-gen/html/main/photo-panel.js');
+    setPhotoTab('adjust');
+    c.dispatchEvent(new MouseEvent('pointermove', { clientX: 100, clientY: 50, bubbles: true }));
+    expect(c.style.cursor).toBe('');
     setPhotoTab('source');
   });
 });

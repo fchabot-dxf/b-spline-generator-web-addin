@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   settingsToPhotoEdits, settingsToTweaks, TWEAK_KEYS, loadPhotoPatterns,
-  settingsToRelief, editsToSettings, DEFAULT_PHOTO_RELIEF_IN, MAX_PHOTO_RELIEF_IN,
+  settingsToRelief, editsToSettings, DEFAULT_PHOTO_RELIEF_IN,
 } from '../bspline-frame-builder/b-spline-gen/html/core/photo/patterns.js';
 import * as photo from '../bspline-frame-builder/b-spline-gen/html/core/noise/photo.js';
 import { applyPhotoEdits } from '../bspline-frame-builder/b-spline-gen/html/core/photo/ops.js';
@@ -125,7 +125,7 @@ describe('settingsToTweaks: only the declared effect-param keys, only when actua
   });
 });
 
-describe('settingsToRelief: F34 item 3, max 0.25in, default 0.125in', () => {
+describe('settingsToRelief: F34 item 3, default 0.125in (2026-10-10: no 0.25 in clamp -- carveZ is the board Z)', () => {
   it('missing/invalid relief -> the declared default', () => {
     expect(settingsToRelief({})).toBe(DEFAULT_PHOTO_RELIEF_IN);
     expect(settingsToRelief(undefined)).toBe(DEFAULT_PHOTO_RELIEF_IN);
@@ -137,8 +137,8 @@ describe('settingsToRelief: F34 item 3, max 0.25in, default 0.125in', () => {
     expect(settingsToRelief({ relief: 0.2 })).toBe(0.2);
   });
 
-  it('a hand-edited pattern above the max is clamped down, never allowed through', () => {
-    expect(settingsToRelief({ relief: 5 })).toBe(MAX_PHOTO_RELIEF_IN);
+  it('a pattern deeper than the old 0.25 in photo max passes through unclamped (Fred: Z is the board Z, its own range)', () => {
+    expect(settingsToRelief({ relief: 5 })).toBe(5);
   });
 });
 

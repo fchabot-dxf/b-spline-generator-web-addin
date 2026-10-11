@@ -23,6 +23,7 @@ import { showToast } from '../core/toast.js';
 import { FRAME_DEFS, findFrameTemplate } from '../core/frame-record.js';
 import { editFetch, bindEditPasswordSettings } from './edit-password.js';
 import { withLoadingStage, beginLoadingSequence, whileAskingUser } from '../core/loading-signal.js';
+import { renderPmToolbar, syncPmToolbar } from './pm-toolbar.js';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 function getApiUrl() {
@@ -220,6 +221,7 @@ function openModal() {
   _modal.style.display = 'flex';
   _modal.setAttribute('aria-hidden', 'false');
 
+  renderPmToolbar(document.getElementById('fmToolbarActions')); // the one declared toolbar (main/pm-toolbar.js), once
   grabDomRefs();
   wireModalListeners();
   applyViewModeToToggle();
@@ -803,13 +805,9 @@ function selectProject(name) {
 }
 
 function updateButtons() {
-  const isProject = _selectedKind === 'project';
-  // Load only makes sense for projects, not folders
-  if (_btnLoad)   _btnLoad.disabled   = !isProject;
-  // Rename + Delete work on either projects or folders
-  const has = !!_selected;
-  if (_btnRename) _btnRename.disabled = !has;
-  if (_btnDelete) _btnDelete.disabled = !has;
+  // each selection button declares what it needs (main/pm-toolbar.js PM_TOOLBAR needsSelection): Load a project,
+  // Rename / Delete a project or a folder
+  syncPmToolbar(_selected ? _selectedKind : null);
 }
 
 function setSelbarInfo() {
@@ -921,7 +919,7 @@ export async function newProject() {
   const snapP = JSON.parse(JSON.stringify(persistableP()));
   snapP.editorSvg = null;
   snapP.seed = Math.floor(Math.random() * 99999);
-  await applySnapshot({ P: snapP }, _preview, { source: 'load' }); // no deltas in the snapshot: sculpt cleared
+  await applySnapshot({ P: snapP }, _preview, { source: 'load', historyLabel: 'New project' }); // no deltas in the snapshot: sculpt cleared
   setCurrentFile(null);
   markClean();
   showToast('✓ New project');
@@ -1180,7 +1178,7 @@ async function _loadFrom(name) {
     // #9: the cloud save time this load is based on (the list's, else a fresh look)
     const listed = _projects.find((p) => p.name === name);
     _rememberSavedAt(name, (listed && listed.savedAt) || await _cloudSavedAt(name) || Date.now());
-    await applySnapshot(unpackPoints(snap), _preview, { source: 'load' });
+    await applySnapshot(unpackPoints(snap), _preview, { source: 'load', historyLabel: `Loaded "${name}"` });
     // Establish file association — subsequent quick-saves overwrite this.
     setCurrentFile(name);
     markClean();

@@ -2,7 +2,7 @@ import { withLoadingStage } from '../core/loading-signal.js';
 import { P, DEFAULT, setPreDelta, setPostDelta, setExtraThickenThinMask, setStrokeCache, layerToolingChanged, saveLastSession } from '../core/state.js';
 import { renderLayersPanel } from '../editor/layers.js';
 import { syncUItoParam } from '../core/ui-utils.js';
-import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring } from '../core/history.js';
+import { updateGlobalButtons, restoreLayerTooling, setUndoRestoring, startHistoryAt } from '../core/history.js';
 import { scheduleRebuild, rebuild } from '../core/engine.js';
 import { updateStampMasks, refreshAllStampMasks } from './stamp-mask-manager.js';
 import { deferToHold } from '../core/engine/scheduler.js';
@@ -12,6 +12,7 @@ import { AppState } from './app-state.js';
 import { runMigrations, editorRestoreSvg, refreshDrape, announceBrickSettingsRestored } from './app-init.js';
 import { syncFramePanel } from './frame-panel.js';
 import { adoptStoredPhoto } from './photo-panel.js';
+import { syncPhotoLayerSection } from './photo-layer-section.js';
 import { setFrameRecord } from '../core/frame-record.js';
 import { updateSculptToolButtons } from './param-manager.js';
 
@@ -32,7 +33,7 @@ export function applySnapshot(snap, preview, opts = {}) {
   return withLoadingStage('restore', () => _applySnapshot(snap, preview, opts));
 }
 
-async function _applySnapshot(snap, preview, { source, restore } = {}) {
+async function _applySnapshot(snap, preview, { source, restore, historyLabel = 'Loaded project' } = {}) {
   const frame = restore ? restore.frame : undefined;
   const restoredSvg = source === 'undo' && restore && typeof restore.editorSvg === 'string' ? restore.editorSvg : null;
   if (source !== 'undo' && source !== 'load') {
@@ -70,6 +71,7 @@ async function _applySnapshot(snap, preview, { source, restore } = {}) {
   if (source === 'undo' && frame !== undefined) setFrameRecord(frame, { restored: true });
   syncFramePanel();
   adoptStoredPhoto(); // item 74a: a loaded / undone photo is decoded (and a full-size one downscaled)
+  syncPhotoLayerSection(); // Surface > Photo: the restored tweaks / layer switch (its rows re-render; greyed when off)
   announceBrickSettingsRestored(); // audit v2 N2: a load / global undo replaced P.brickSettings
   setUndoRestoring(false);
   // a global undo/redo of the stock size: the drawing follows the board (app-init _resyncEditorToStock -- a no-op
@@ -186,6 +188,9 @@ async function _applySnapshot(snap, preview, { source, restore } = {}) {
   // a redundant full-mask refresh on top of the load.
   AppState.lastNx = nx;
   AppState.lastNz = nz;
+
+  // a load starts the global history over at the loaded board (core/history.js startHistoryAt): undo never crosses it
+  if (source === 'load') startHistoryAt(historyLabel);
 
   scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode), 0);
 }

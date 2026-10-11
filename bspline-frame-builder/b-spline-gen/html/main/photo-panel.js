@@ -27,8 +27,7 @@
  */
 import { P, saveLastSession } from '../core/state.js';
 import {
-  loadPhotoPatterns, settingsToPhotoEdits, settingsToTweaks, settingsToRelief, editsToSettings,
-  DEFAULT_PHOTO_RELIEF_IN, MAX_PHOTO_RELIEF_IN,
+  loadPhotoPatterns, settingsToPhotoEdits, settingsToTweaks, editsToSettings,
 } from '../core/photo/patterns.js';
 import { fileToDataUrl, downscalePhotoDataUrl } from '../core/photo/codec.js';
 import { ensurePhotoDecoded, getRawPhotoImage, isPhotoReady } from '../core/photo/state.js';
@@ -36,14 +35,13 @@ import { applyPhotoEdits } from '../core/photo/ops.js';
 import { withLoadingStage, withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { computeMirrorDimRects } from '../core/photo/mirror-dim.js';
 import { applyParam } from './param-manager.js';
-import { inEditor3dAction } from '../core/in-editor-3d.js';
-import { refreshEditorTopView } from '../core/render-topview.js';
 import { setEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
 import { photoToolIconSvg } from '../editor/photo-tool-icons.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
 import { commitEdit } from '../editor/editor-commit.js';
+import { PLACEMENT_KEYS, syncPhotoFootprint } from './photo-footprint.js';
 
 /** F35 item 10 (advisor, Fred's own reasoning: "each tab uses a completely different toolbar"):
  *  Photo's own left-rail toolbar, moved here from the old sidebar panel's single always-visible
@@ -100,6 +98,7 @@ function syncPhotoToolButtons() {
   if (preview) { preview.style.touchAction = cropBoxShown() ? 'none' : ''; drawPreview(); }
   const caption = document.getElementById('photoPreviewCaption');
   if (caption) caption.textContent = PREVIEW_CAPTION[cropBoxShown() ? 'crop' : 'mirror'];
+  syncPhotoFootprint(); // the footprint on the board comes and goes with the Photo tab (main/photo-footprint.js)
 }
 /** What the preview's dimming means, per what it shows (the crop box dims the outside of the crop). */
 export const PREVIEW_CAPTION = Object.freeze({
@@ -135,6 +134,7 @@ export function deselectPhotoTool() {
 function notifyChange(opts) {
   saveLastSession();
   if (_onChange) _onChange(opts);
+  syncPhotoFootprint();
 }
 
 /** Item 74f (advisor; seat D's Photo audit, measured: crop / levels / brightness / blur / relief changed the 3D but the
@@ -145,9 +145,31 @@ function notifyChange(opts) {
  *  The panel's own Undo button keeps working as before (and is a step too). */
 // 2026-10-10: the photo LAYER's on/off rides in the step too -- a pattern pick turns the layer on, and its Undo turns it
 // back off with the photo it took back.
-const photoUndoState = () => ({ ...photoState(), reliefIn: P.carveZ ?? null, layer: !!P.photoLayer });
-const samePhoto = (a, b) => !!a && !!b && a.url === b.url && a.patternId === b.patternId && a.reliefIn === b.reliefIn
-  && !!a.layer === !!b.layer && JSON.stringify(a.edits) === JSON.stringify(b.edits);
+// 2026-10-10: + the photo's PLACEMENT (scale / offsets / rotation): the on-board footprint (main/photo-footprint.js) edits it
+// inside the editor, where the global undo is off -- so a footprint drag is an editor step like any photo gesture.
+const placementState = () => {
+  const t = (P.filterTweaks && P.filterTweaks.photo) || {};
+  return Object.fromEntries(PLACEMENT_KEYS.filter((k) => t[k] !== undefined).map((k) => [k, t[k]]));
+};
+// the board Z is not the photo's (Fred, 2026-10-10)
+const photoUndoState = () => ({ ...photoState(), layer: !!P.photoLayer, placement: placementState() });
+const samePlacement = (a, b) => !a || !b || PLACEMENT_KEYS.every((k) => a[k] === b[k]); // an entry without one: not compared
+const samePhoto = (a, b) => !!a && !!b && a.url === b.url && a.patternId === b.patternId
+  && !!a.layer === !!b.layer && JSON.stringify(a.edits) === JSON.stringify(b.edits) && samePlacement(a.placement, b.placement);
+/** Put a placement back: the keys it has, the others back to their defaults (removed). */
+function writePlacement(placement) {
+  if (!P.filterTweaks) P.filterTweaks = {};
+  const t = { ...(P.filterTweaks.photo || {}) };
+  for (const k of PLACEMENT_KEYS) { if (placement[k] === undefined) delete t[k]; else t[k] = placement[k]; }
+  P.filterTweaks.photo = t;
+}
+/** A footprint drag's release (main/photo-footprint.js): the placement written, one repaint, one editor undo step. */
+export function commitPhotoPlacement(placement) {
+  writePlacement(placement);
+  if (_syncMirrors) _syncMirrors();
+  notifyChange();
+  photoStep();
+}
 /** Seat D 2026-10-09: the step's commit (the editor's commit pipeline, ~100 ms on a phone at 4x CPU) runs behind the
  *  'backdrop' stage too -- a slider release or a rotate tap shows the pill first, then commits and repaints under it. */
 function photoStep() {
@@ -163,8 +185,8 @@ function photoStepNow() {
 function restorePhotoUndo(state) {
   if (!state || samePhoto(state, photoUndoState())) return; // an Undo of something else: the photo stays, no rebuild
   if (state.layer !== undefined && !!state.layer !== !!P.photoLayer) applyParam('photoLayer', !!state.layer, { rebuild: false });
+  if (state.placement && !samePlacement(state.placement, placementState())) { writePlacement(state.placement); if (_syncMirrors) _syncMirrors(); }
   restorePhoto(state);
-  if (state.reliefIn != null && state.reliefIn !== P.carveZ) { setReliefHeight(state.reliefIn, { raw: true }); syncReliefHeightDisplay(); }
 }
 
 // 2026-10-10: Surface > Photo (main/photo-layer-section.js) mirrors some of this tab's image edits -- the SAME state and
@@ -279,8 +301,20 @@ function setCrop(rect, opts) {
 export const CROP_BOX = Object.freeze({
   handlePx: Object.freeze({ fine: 16, coarse: 28 }), // the grab target's side, CSS px (>= 28 for a finger)
   minFrac: 0.02, // the smallest crop side, as a fraction of the photo
-  dim: 'rgba(0,0,0,0.55)', stroke: '#ffd54f',
 });
+/** The box's LOOK (Fred 2026-10-10: "not very visible") -- it reads on a light AND a dark photo: a yellow frame inside a
+ *  dark outline, solid handles with a dark border, a strong dim outside, rule-of-thirds lines while dragging. Sizes in
+ *  CSS px (scaled to the canvas). The grab size stays CROP_BOX.handlePx. */
+export const CROP_BOX_STYLE = Object.freeze({
+  framePx: 2.5, frame: '#ffd54f',
+  outlinePx: 1, outline: 'rgba(0,0,0,0.85)', // just outside the frame, so it reads on a light photo
+  handleDrawPx: 12, handleFill: '#ffd54f', handleBorderPx: 1.5, handleBorder: '#1a1a1a',
+  dim: 'rgba(0,0,0,0.58)',
+  thirds: 'rgba(255,255,255,0.65)', thirdsPx: 1, // while dragging
+});
+/** Fred 2026-10-10 (desktop: "there's no cursor"): the cursor per zone -- keyed by what cropHit returns, so the cursor
+ *  always names what a drag there would do (no zone = the default). */
+export const CROP_BOX_CURSOR = Object.freeze({ nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', move: 'move' });
 const cropHandlePx = () => CROP_BOX.handlePx[typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? 'coarse' : 'fine'];
 const clampTo = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -317,21 +351,38 @@ function straightenedPhoto(raw) {
   return _straightened.img;
 }
 
-/** The box over the preview: the outside dimmed, the frame, the 4 corner handles (drawn at the grab size). */
+let _cropDragging = false; // the thirds show while a box drag is under way
+/** The box over the preview (CROP_BOX_STYLE): the outside dimmed, the frame in its dark outline, thirds while dragging, the
+ *  4 solid corner handles. */
 function drawCropBox(ctx, canvas) {
+  const st = CROP_BOX_STYLE;
   const r = editableCrop(P.photoEdits || []);
   const W = canvas.width, H = canvas.height;
   const bx = r.x * W, by = r.y * H, bw = r.w * W, bh = r.h * H;
-  ctx.fillStyle = CROP_BOX.dim;
-  ctx.fillRect(0, 0, W, by); ctx.fillRect(0, by + bh, W, H - by - bh);
-  ctx.fillRect(0, by, bx, bh); ctx.fillRect(bx + bw, by, W - bx - bw, bh);
-  ctx.strokeStyle = CROP_BOX.stroke; ctx.lineWidth = 2;
-  ctx.strokeRect(bx, by, bw, bh);
   const box = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : null;
   const s = box && box.width ? W / box.width : 1; // canvas px per CSS px
-  const hs = cropHandlePx() * s * 0.5;
-  ctx.fillStyle = CROP_BOX.stroke;
-  for (const [cx, cy] of [[bx, by], [bx + bw, by], [bx, by + bh], [bx + bw, by + bh]]) ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+  ctx.fillStyle = st.dim;
+  ctx.fillRect(0, 0, W, by); ctx.fillRect(0, by + bh, W, H - by - bh);
+  ctx.fillRect(0, by, bx, bh); ctx.fillRect(bx + bw, by, W - bx - bw, bh);
+  if (_cropDragging) {
+    ctx.strokeStyle = st.thirds; ctx.lineWidth = st.thirdsPx * s;
+    ctx.beginPath();
+    for (const k of [1, 2]) { ctx.moveTo(bx + (bw * k) / 3, by); ctx.lineTo(bx + (bw * k) / 3, by + bh); ctx.moveTo(bx, by + (bh * k) / 3); ctx.lineTo(bx + bw, by + (bh * k) / 3); }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = st.outline; ctx.lineWidth = (st.framePx + 2 * st.outlinePx) * s; // the dark edge around the frame
+  ctx.strokeRect(bx, by, bw, bh);
+  ctx.strokeStyle = st.frame; ctx.lineWidth = st.framePx * s;
+  ctx.strokeRect(bx, by, bw, bh);
+  const hs = st.handleDrawPx * s;
+  for (const [cx, cy] of [[bx, by], [bx + bw, by], [bx, by + bh], [bx + bw, by + bh]]) {
+    ctx.fillStyle = st.handleFill; ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs);
+    ctx.strokeStyle = st.handleBorder; ctx.lineWidth = st.handleBorderPx * s; ctx.strokeRect(cx - hs / 2, cy - hs / 2, hs, hs);
+  }
+}
+/** The cursor for a pointer at (u, v) over the box (CROP_BOX_CURSOR by cropHit's zone; '' = the default). */
+export function cropCursorAt(rect, u, v, hu, hv) {
+  return CROP_BOX_CURSOR[cropHit(rect, u, v, hu, hv)] || '';
 }
 
 /** The box's pointer gestures on the preview canvas: a grab (a corner or the body), drag ticks (the box and the fields
@@ -347,11 +398,18 @@ function bindCropBox(canvas) {
     const part = cropHit(rect0, u, v, cropHandlePx() / 2 / b.width, cropHandlePx() / 2 / b.height);
     if (!part) return;
     grab = { part, rect0, u0: u, v0: v, id: e.pointerId };
+    _cropDragging = true;
     canvas.setPointerCapture?.(e.pointerId);
     e.preventDefault();
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (!grab || e.pointerId !== grab.id) return;
+    if (!grab) { // a hover (desktop): the cursor names what a drag there would do
+      const shown = cropBoxShown() && !!P.photoImageDataUrl;
+      const { u, v, b } = at(e);
+      canvas.style.cursor = shown ? cropCursorAt(editableCrop(P.photoEdits || []), u, v, cropHandlePx() / 2 / b.width, cropHandlePx() / 2 / b.height) : '';
+      return;
+    }
+    if (e.pointerId !== grab.id) return;
     const { u, v } = at(e);
     setCrop(cropDrag(grab.rect0, grab.part, u - grab.u0, v - grab.v0), { drag: true });
     syncCropFields();
@@ -359,6 +417,7 @@ function bindCropBox(canvas) {
   const release = (e) => {
     if (!grab || e.pointerId !== grab.id) return;
     grab = null;
+    _cropDragging = false;
     notifyChange(); // the drag's one repaint of the board
     photoStep(); // ONE step
   };
@@ -398,30 +457,10 @@ function syncReliefToggle() {
   if (_syncMirrors) _syncMirrors();
 }
 
-const clampReliefIn = (v) => Math.min(MAX_PHOTO_RELIEF_IN, Math.max(0.01, v));
+// 2026-10-10 (Fred): a pattern pick no longer touches the board's Z (P.carveZ, Board > Carve Depth) -- it squashed
+// the filter under the photo (MEASURED: 1.5 -> 0.125 in, the filter's relief 0.66 -> 0.055 in). Saved boards keep their
+// stored Z; a pattern's own `relief` setting is legacy data, read by nothing now.
 
-// F34 item 3 (Fred: "height wouldn't ever be more than 1/4 for now"): the
-// Photo tab's own Max Height control, bound to the SAME real `carveZ` param
-// every other filter already uses downstream (Send/thicken/CAM) -- just
-// presented here with photo-appropriate bounds/default instead of the
-// generic Skeleton tab's 0.1-20in Carve Depth slider.
-/** `raw`: an UNDO puts the saved value back as it was (seat D 2026-10-08, undo map: P.carveZ is the board's own carve
- *  depth too -- 1.5 in on a fresh board -- and the photo clamp turned an undo of a pattern pick into 0.25). */
-function setReliefHeight(v, { raw = false, drag = false } = {}) {
-  const z = raw ? v : clampReliefIn(v);
-  // core/in-editor-3d.js 'relief': with the editor open the value lands without a rebuild, the backdrop shows it (a drag
-  // tick: not yet -- its release repaints)
-  const action = inEditor3dAction('relief', { drag });
-  if (action === 'rebuild') applyParam('carveZ', z);
-  else {
-    applyParam('carveZ', z, { rebuild: false });
-    if (action === 'backdrop') refreshEditorTopView();
-  }
-}
-
-function syncReliefHeightDisplay() {
-  setPair('photoReliefHeightSlider', 'photoReliefHeight', clampReliefIn(P.carveZ ?? DEFAULT_PHOTO_RELIEF_IN));
-}
 
 function undo() {
   const steps = P.photoEdits || [];
@@ -456,7 +495,6 @@ function syncControlsFromState() {
   setPair('photoBlurSlider', 'photoBlur', blur.radius);
   syncCropFields();
   syncReliefToggle();
-  syncReliefHeightDisplay();
   if (_syncMirrors) _syncMirrors();
 }
 
@@ -467,13 +505,12 @@ function switchOnPhotoLayer() {
   if (!P.photoLayer) applyParam('photoLayer', true, { rebuild: false });
 }
 
-function loadImage(urlOrDataUrl, edits, tweaks, reliefIn = DEFAULT_PHOTO_RELIEF_IN) {
+function loadImage(urlOrDataUrl, edits, tweaks) {
   switchOnPhotoLayer();
   P.photoImageDataUrl = urlOrDataUrl;
   P.photoEdits = edits;
   if (!P.filterTweaks) P.filterTweaks = {};
   P.filterTweaks.photo = { ...tweaks };
-  setReliefHeight(reliefIn);
   syncControlsFromState();
   syncSaveButtonState();
   // the 'photo' stage on screen first and up until the decode is done (MEASURED, a phone at CPU x4: the decode blocked
@@ -551,7 +588,7 @@ function syncSaveButtonState() {
 
 function saveSettingsToCurrentPattern() {
   if (!P.photoPatternId) return; // nothing to save into -- button is disabled in this state too
-  const settings = editsToSettings(P.photoEdits, P.filterTweaks?.photo, P.carveZ);
+  const settings = editsToSettings(P.photoEdits, P.filterTweaks?.photo); // no relief: a pick no longer sets the board Z
   _patterns = _patterns.map((p) => (p.id === P.photoPatternId ? { ...p, settings } : p));
   const text = JSON.stringify(_patterns, null, 2);
   downloadTextFile(text, 'photo-patterns.json');
@@ -597,7 +634,6 @@ function renderPatternRow(container) {
         pattern.image,
         settingsToPhotoEdits(pattern.settings),
         settingsToTweaks(pattern.settings),
-        settingsToRelief(pattern.settings),
       );
       syncSaveButtonState();
     }));
@@ -737,19 +773,6 @@ export function initPhotoPanel({ onChange }) {
   bindSlider('photoBrightnessSlider', 'photoBrightness', 'brightnessContrast', 'brightness', { brightness: 0, contrast: 0 });
   bindSlider('photoContrastSlider', 'photoContrast', 'brightnessContrast', 'contrast', { brightness: 0, contrast: 0 });
   bindSlider('photoBlurSlider', 'photoBlur', 'blur', 'radius', { radius: 0 });
-
-  const reliefSlider = document.getElementById('photoReliefHeightSlider');
-  const reliefNumber = document.getElementById('photoReliefHeight');
-  const applyRelief = (raw, opts) => {
-    const v = parseFloat(raw);
-    if (!Number.isFinite(v)) return;
-    setReliefHeight(v, opts);
-    syncReliefHeightDisplay();
-  };
-  reliefSlider?.addEventListener('input', (e) => applyRelief(e.target.value, { drag: true }));
-  reliefNumber?.addEventListener('input', (e) => applyRelief(e.target.value));
-  reliefSlider?.addEventListener('change', (e) => { applyRelief(e.target.value); photoStep(); }); // the drag's one repaint
-  reliefNumber?.addEventListener('change', photoStep);
 
   document.getElementById('photoBtnSaveToPattern')?.addEventListener('click', saveSettingsToCurrentPattern);
   syncSaveButtonState();

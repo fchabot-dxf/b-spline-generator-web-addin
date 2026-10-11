@@ -636,8 +636,18 @@ export const frameSuppressionOf = (settings) =>
  *  engine's SURROUND_CORNERS (the Frame's own corner list, filtered). Absent / 'none' = no surround (unsent). */
 export const SURROUND_NONE = 'none'; // FRAME_PRESETS' own empty preset (the Frame row's "None")
 export const SURROUND_CORNER_LIST = Object.freeze(FRAME_CORNERS.filter((c) => SURROUND_CORNERS.includes(c.id)));
+/** Fred 2026-10-10 ("when I have an inset window there should be a brick frame on it too", "should be able to choose a
+ *  frame separately"): 'follow' = the surround lays the board's own Frame bands (frameBandPreset) and corner (frameCornerOf;
+ *  the surround's first corner when the frame's is not one it can lay); `follows: true` says so (the "Same as frame" chip).
+ *  A new board starts on it (core/state.js); an explicit pick, None included, is kept. A board saved without the key
+ *  reads None (main/app-init.js MIGRATIONS 'window-surround-legacy-none' writes it). */
+export const SURROUND_FOLLOW = 'follow';
 export function windowSurroundOf(settings) {
   const w = (settings && settings.windowSurround) || {};
+  if (w.preset === SURROUND_FOLLOW) {
+    const fp = settings.frameBandPreset, fc = frameCornerOf(settings);
+    return { preset: FRAME_PRESETS[fp] && FRAME_PRESETS[fp].length ? fp : SURROUND_NONE, corner: SURROUND_CORNERS.includes(fc) ? fc : SURROUND_CORNERS[0], follows: true };
+  }
   const preset = FRAME_PRESETS[w.preset] && FRAME_PRESETS[w.preset].length ? w.preset : SURROUND_NONE;
   return { preset, corner: SURROUND_CORNERS.includes(w.corner) ? w.corner : SURROUND_CORNERS[0] };
 }
@@ -1297,7 +1307,7 @@ function _layInput(editor, settings, frameGeom) {
   // item 9: the frame's crumble and the inset window's surround -- sent only while on (off = the lay byte-identical)
   if (settings.suppressFrame) Object.assign(input, { suppressFrame: true, frameSuppression: frameSuppressionOf(settings) });
   const surround = windowSurroundOf(settings);
-  if (frameGeom && frameGeom.insetRect && surround.preset !== SURROUND_NONE) input.insetSurround = { rect: frameGeom.insetRect, ...surround };
+  if (frameGeom && frameGeom.insetRect && surround.preset !== SURROUND_NONE) input.insetSurround = { rect: frameGeom.insetRect, preset: surround.preset, corner: surround.corner };
   // the engine applies ONE `scale` (the Wall's) to the frame's set too -- so the frame's set goes in pre-scaled
   // by its own scale over the Wall's (the engine's own scaledSet): its bricks / stones keep the global size
   if (frameGeom) input.frame = { ...frameGeom, set: scaledSet(resolvedSetFor(frameSettings), scaleFor(frameSettings) / input.scale) };

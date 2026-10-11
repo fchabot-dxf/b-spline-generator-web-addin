@@ -7,6 +7,7 @@ import { el as getEl, queryAll, query } from './dom.js';
 import { worldBbox } from './editor-coords.js';
 import { fusLog } from '../core/fusion-bridge.js';
 import { getElementLayer, setActiveLayer as _setActiveLayer, isLockedNode } from './layers.js';
+import { isSelectableInTab } from './editor-tab-selectable.js';
 import { SNAP_POLICY, clearSnapCursor, clearGridHover } from './editor-grid.js';
 import { syncColorToggleSwatch } from './properties-shape.js';
 import { setHandleCursor } from './editor-transform-handles.js';
@@ -278,9 +279,19 @@ export function applyToolbarGroups(rawMode, el, currentMode) {
 export function updateHistoryButtons(editor) {
   const undoBtn = getEl('editorUndo');
   const redoBtn = getEl('editorRedo');
-  if (undoBtn) undoBtn.disabled = !(editor._undoStack && editor._undoStack.length >= 2);
-  if (redoBtn) redoBtn.disabled = !(editor._redoStack && editor._redoStack.length);
+  const route = _historyRoute();
+  if (undoBtn) undoBtn.disabled = route ? !route.canUndo() : !(editor._undoStack && editor._undoStack.length >= 2);
+  if (redoBtn) redoBtn.disabled = route ? !(route.redo && route.canRedo()) : !(editor._redoStack && editor._redoStack.length);
 }
+
+/** Fred ("changing wood frame doesn't make an undo step"; seat D measured: on the Frame tab the toolbar Undo ran the
+ *  ARTWORK stack): the stack the editor's Undo / Redo -- the buttons AND Ctrl+Z -- act on, when the active tab declares
+ *  its own (main/editor-tabs.js EDITOR_TABS `undo`, the stacks in main/frame-panel.js EDITOR_UNDO_STACKS):
+ *  { undo, canUndo, redo, canRedo } (redo null = none: the button is disabled, nothing runs), or null = the editor's. */
+let _historyRoute = () => null;
+export function setHistoryRoute(fn) { _historyRoute = fn; }
+export function routedUndo(ownUndo) { const r = _historyRoute(); return r ? r.undo() : ownUndo(); }
+export function routedRedo(ownRedo) { const r = _historyRoute(); return r ? (r.redo ? r.redo() : undefined) : ownRedo(); }
 
 export function updateToolbarVisibility(editor, mode, el) {
     // SE7a: some callers (e.g. _afterSelectionChange below) call this
@@ -409,6 +420,7 @@ export function updateSelectionHighlight(editor) {
 
 export function select(editor, selectedEl) {
     if (!selectedEl || isLockedNode(selectedEl)) return; // item 55: a locked node (the grout) is never selected
+    if (!isSelectableInTab(editor, selectedEl)) return; // Fred: no brick selected in Artwork, no art in Brick
     const cur = editor._selectedElements || [];
     if (cur.length === 1 && cur[0] === selectedEl) return;  // idempotent
     editor._deselect();
@@ -421,7 +433,7 @@ export function select(editor, selectedEl) {
  *  treated as the primary — toolbar inputs read from it per the
  *  user's "last clicked wins" preference. */
 export function selectAdd(editor, el) {
-    if (!el || isLockedNode(el)) return;
+    if (!el || isLockedNode(el) || !isSelectableInTab(editor, el)) return;
     const cur = (editor._selectedElements || []).slice();
     const idx = cur.indexOf(el);
     if (idx >= 0) {
@@ -439,7 +451,7 @@ export function selectAdd(editor, el) {
 /** Replace the selection with a fresh set (marquee finalize). */
 export function selectMany(editor, els) {
     editor._deselect();
-    const arr = (els || []).filter((el) => el && !isLockedNode(el));
+    const arr = (els || []).filter((el) => el && !isLockedNode(el) && isSelectableInTab(editor, el));
     editor._selectedElements = arr;
     _afterSelectionChange(editor, arr[arr.length - 1] || null);
 }

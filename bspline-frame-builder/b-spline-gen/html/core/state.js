@@ -85,6 +85,16 @@ export const DEFAULT = {
     // migrated to the layer: main/app-init.js MIGRATIONS 'photo-filter-to-layer'). Heights inputs: core/terrain.js.
     photoLayer: false,
     photoFilterAmount: 0,
+    // 2026-10-10 (Fred): the photo under Symmetry -- core/terrain.js PHOTO_MIRROR_MODES: 'whole' (new boards: the whole
+    // photo, unsqueezed, on the source half, mirrored across the axis), 'mirror' (boards saved with it that day),
+    // 'squeeze' (every board before). null = undecided: main/app-init.js MIGRATIONS 'photo-mirror-mode' decides on load --
+    // a board that already has a photo stays 'squeeze' (byte-identical), any other (a fresh one too) gets 'whole'.
+    photoMirrorMode: null,
+    // 2026-10-10 (seat A, MEASURED): the photo sat upside-down on the board (core/noise/photo.js upright). 'upright' =
+    // the photo's top at the board's top; 'legacy-flipped' = how every board did it before. null = undecided:
+    // MIGRATIONS 'photo-orientation' -- a board that already has a photo stays 'legacy-flipped' (byte-identical), any
+    // other (a fresh one too) gets 'upright'.
+    photoOrientation: null,
     // F35 item 1: the Brick tab's own common settings (core/bricks/library.js's
     // BRICK_SETS is the declared source for defaults per set -- these are the
     // user's CURRENT overrides, shared by all three tools (Brush/Wall/Frame)).
@@ -179,6 +189,9 @@ export const DEFAULT = {
       frameBandPreset: 'single_soldier',
       // item 33: the Frame element's corner (editor-brick-tool.js FRAME_CORNERS id); null = the preset's own
       frameCorner: null,
+      // Fred 2026-10-10: a new board's inset-window surround follows the Frame's bands + corner (editor-brick-tool.js
+      // SURROUND_FOLLOW); a saved board without the key reads None (main/app-init.js 'window-surround-legacy-none')
+      windowSurround: { preset: 'follow' },
       // T86 item 16e: how the Frame's corner fans end (editor-brick-tool.js FRAME_FAN_CENTRES id); null = Needle (today)
       frameFanCentre: null,
       // F35 item 7: the Wall pattern picker's own choice -- any core/bricks/library.js

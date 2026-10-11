@@ -257,7 +257,7 @@ describe('Frame tab: Generate, tweak, save/reload, Undo', () => {
     } finally { setPaintScheduler((cb) => cb()); vi.unstubAllGlobals(); resetLoadingSignal(); }
   });
 
-  it('a tweak persists through save -> reload; Undo steps back: tweak, then generate', () => {
+  it('a tweak persists through save -> reload; Undo steps back: tweak, then generate', async () => {
     const before = JSON.parse(JSON.stringify(getFrameRecord()));
     generateFrame(4242);
     const generated = JSON.parse(JSON.stringify(getFrameRecord()));
@@ -273,7 +273,11 @@ describe('Frame tab: Generate, tweak, save/reload, Undo', () => {
     expect(getFrameRecord()).toEqual(tweaked);
     expect(undoFrame()).toBe(true);
     expect(getFrameRecord()).toEqual(generated);
-    // Ctrl+Z in the Frame tab is the frame's undo
+    // Ctrl+Z in the Frame tab is the frame's undo -- the app's one key route (global-events.js -> editor-ui.js routedUndo
+    // -> frame-panel.js EDITOR_UNDO_STACKS.frame), with the editor open as it is in the app
+    root.insertAdjacentHTML('beforeend', '<div id="svgEditorModal" style="display:flex"></div>');
+    const { wireGlobalEvents } = await import('../bspline-frame-builder/b-spline-gen/html/main/global-events.js');
+    if (!globalThis.__frameGenKeysWired) { wireGlobalEvents({}); globalThis.__frameGenKeysWired = true; }
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }));
     expect(getFrameRecord()).toEqual(before);
     expect(undoFrame()).toBe(false);
