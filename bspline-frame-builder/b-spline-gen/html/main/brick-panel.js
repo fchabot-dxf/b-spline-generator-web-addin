@@ -1355,9 +1355,13 @@ const BRICK_COMMIT = {
   // so nothing to re-lay and nothing pending: just re-mask the heights through the editor's own
   // change pipeline (main/app-init.js onChange -> refreshAllStampMasks), from either entry point.
   // a drag tick only saves; the re-mask (the expensive height pass) runs once on release
+  // seat D 2026-10-11 (the 3D-controls sweep, claude_1, 900 px, CPU x4: Surface wear / Grout depth 100-125 ms blind
+  // before their card -- the release's session save, undo push and the change pipeline's serialize ran first): the
+  // release runs behind its 'heightMask' stage, painted first, like 'generate' behind 'bricks'. A drag tick restyles the
+  // strokes only: its session save (~50 ms at CPU x4, every tick, before any card) waits for the release, which saves.
   surface: {
-    onDrag: () => { notifyChange(); },
-    onRelease: () => { notifyChange(); _remaskSurface(); },
+    onDrag: () => { _scheduleStrokeRestyle(); },
+    onRelease: () => withLoadingStageShownFirst('heightMask', () => { notifyChange(); _remaskSurface(); }),
   },
   // item 68 (advisor, item 38's precedent): a setting for the NEXT stroke (Brush profile / orientation / preset /
   // rustic, Raised level / mode) changes no canvas, but it is still an undo step of its own -- before, Undo right after
