@@ -28,7 +28,7 @@ import {
   accentIconSvg, syncAccentHighlight, wallBrickPolygons,
   BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
-  elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
+  elementGroutWidth, elementEdgeRadius, JOINT_ELEMENT, patternParamsFor,
   topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_FOLLOW, SURROUND_CORNER_LIST, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, framePresetTileSvg, wallPatternTileSvg, frameCornerEffectFor,
   FRAME_FAN_CENTRES, frameFanCentreOf, fanCentreIconSvg, frameHasFanFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
@@ -50,7 +50,7 @@ import { frameContext } from '../editor/editor-frame-profile.js';
 import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.js';
 import { rectToPrimitives, insetWindowOuterRect } from '../core/inset-window.js';
 import { getFrameRecord } from '../core/frame-record.js';
-import { FRAME_PRESETS, QUOIN_VARIANT_OF, BRICK_PATTERNS, brickSetById } from '../core/bricks/library.js';
+import { FRAME_PRESETS, QUOIN_VARIANT_OF, BRICK_PATTERNS, brickSetById, EDGE_TAPER } from '../core/bricks/library.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
@@ -1259,6 +1259,7 @@ function syncControlsFromState() {
   syncBrickSizeControls(s.brickLengthIn);
   syncBrickSizePresetButtons();
   syncGroutWidthBox();
+  syncEdgeTaperRow();
   syncGroutPaintRow(); // item 55
   syncFrameOffsetControl();
   document.getElementById('brickGroutDepth').value = s.grout.depthIn;
@@ -1422,6 +1423,18 @@ function syncGroutWidthBox() {
   const box = document.getElementById('brickGroutWidth');
   if (box) box.value = String(+elementGroutWidth(P.brickSettings, _jointKind()).toFixed(4));
 }
+/** Fred 2026-10-11 (EDGE TAPER): the Edge taper row shows + edits the ACTIVE element's shoulder width, as the Grout box
+ *  its joint (core/bricks/library.js EDGE_TAPER; untouched = the element's set's own). 3D only: a re-mask, no re-lay. */
+function syncEdgeTaperRow() {
+  setPair('brickEdgeTaperSlider', 'brickEdgeTaper', +elementEdgeRadius(P.brickSettings, _jointKind()).toFixed(4));
+}
+export function setElementEdge(kind, edgeIn, phase = 'onRelease') {
+  const v = Number(edgeIn);
+  if (!Number.isFinite(v) || v < 0) return;
+  P.brickSettings.edgeByElement = { ...(P.brickSettings.edgeByElement || {}), [JOINT_ELEMENT[kind] || kind]: v };
+  syncEdgeTaperRow();
+  commitBrickSetting('surface', phase);
+}
 export function setElementGrout(kind, widthIn, phase = 'onRelease') {
   const v = Number(widthIn);
   if (!Number.isFinite(v) || v < 0) return;
@@ -1485,6 +1498,7 @@ function _resetJointsOnSetChange() {
   }
   _jointSets = now;
   syncGroutWidthBox();
+  syncEdgeTaperRow(); // an untouched taper follows the new set's own
 }
 
 /** The one entry point every brick-setting control calls after writing P.brickSettings. */
@@ -1593,7 +1607,7 @@ const BRUSH_ONLY_SETTING_KEYS = ['brushBandPreset', 'profile', 'orientation', 's
 /** F35 item 18: keys only the 3D height pass reads (main/stamp-mask-manager.js), never a 2D layout --
  *  changing them never makes the Wall/Frame layout pending either. Committed with 'surface'. */
 // (Level, elementLevelIn, left this list for audit v2 N6: an editor Level change re-lays like a layout setting)
-const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent'];
+const SURFACE_ONLY_SETTING_KEYS = ['brickTopMode', 'surfaceStyle', 'surfaceWear', 'groutProfileBeforeStyle', 'accent', 'edgeByElement'];
 /** The same, inside the grout group: only the joint recess reads them (turn 181); grout WIDTH stays layout. */
 const SURFACE_ONLY_GROUT_KEYS = ['profile', 'depthIn'];
 /** F35 item 55: the grout PAINT -- 2D + the drape only, never a layout (repaintGrout, no re-lay). */
@@ -2780,6 +2794,7 @@ function selectTool(id, { keepSelection = false } = {}) {
   if (id === 'stripe') _subTool = 'stripe';
   syncToolButtons();
   syncGroutWidthBox(); // the Grout box follows the active element's joint
+  syncEdgeTaperRow(); // the Edge taper row, the active element's shoulder
   syncGroutPaintRow();
   syncSetPicker(); // item 61: the Set row shows the active element's own sets (the Frame: every band-capable one)
   const editor = typeof window !== 'undefined' ? window.svgEditor : null;
@@ -3183,6 +3198,17 @@ export function initBrickPanel() {
   document.getElementById('stripeThree')?.addEventListener('change', () => { syncStripeBrickStyles(); });
   onPageEvent('stripeContext', 'editorTabChanged', () => syncStripePanelContext());
   bindSlider('brickSurfaceWearSlider', 'brickSurfaceWear', 'surfaceWear', (v) => Math.max(0, Math.min(1, parseFloat(v))), 'surface');
+  // Fred 2026-10-11 (EDGE TAPER): the active element's shoulder width, its range from the declaration
+  for (const id of ['brickEdgeTaperSlider', 'brickEdgeTaper']) {
+    const el = document.getElementById(id);
+    if (el) Object.assign(el, { min: String(EDGE_TAPER.minIn), max: String(EDGE_TAPER.maxIn), step: String(EDGE_TAPER.stepIn) });
+  }
+  const edgeSettle = settleAfterTyping('surface');
+  document.getElementById('brickEdgeTaperSlider')?.addEventListener('input', (e) => setElementEdge(_jointKind(), e.target.value, 'onDrag'));
+  document.getElementById('brickEdgeTaperSlider')?.addEventListener('change', (e) => setElementEdge(_jointKind(), e.target.value, 'onRelease'));
+  document.getElementById('brickEdgeTaper')?.addEventListener('input', (e) => { setElementEdge(_jointKind(), e.target.value, 'onDrag'); edgeSettle(); });
+  document.getElementById('brickEdgeTaper')?.addEventListener('change', (e) => setElementEdge(_jointKind(), e.target.value, 'onRelease'));
+  syncEdgeTaperRow();
   for (const kind of BRICK_KINDS) {
     document.getElementById(`brickLevel_${kind}`)?.addEventListener('change', (e) => setElementLevel(kind, e.target.value));
   }

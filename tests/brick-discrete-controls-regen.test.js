@@ -48,7 +48,7 @@ import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/ht
 import { frameContext } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-frame-profile.js';
 import { FRAME_NEEDS_A_FRAME } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { setFrameRecord } from '../bspline-frame-builder/b-spline-gen/html/core/frame-record.js';
-import { FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { FRAME_PRESETS, EDGE_TAPER, brickSetById } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
 import { deselectTool, BRICK_GENERAL_TAB } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
@@ -84,6 +84,7 @@ const FIXTURE = `
   <div id="stripeColorPresets"></div><div id="stripeColorSwatches"></div><div id="stripeBrickStyles" style="display:none;"></div>
   <div id="stripeTargetHint">Tap a rail, a contour segment or a line.</div>
   <input id="brickLevel_wall" value="0"><input id="brickLevel_frame" value="0">
+  <div id="brickEdgeTaperRow"><input type="range" id="brickEdgeTaperSlider"><input id="brickEdgeTaper"></div>
   <input type="number" id="brickFrameOffsetDistance" value="0">
   <div id="brickSidebarNoBricks" style="display:none;"></div><div id="brickStartHint" style="display:none;"></div>
   <div id="brickAccentList"></div><button id="brickAccentClick">Click bricks</button>
@@ -1269,5 +1270,38 @@ describe('the corner-variant preset chips stay live on a frame with no bands', a
     for (const id of ['quoin_corners', 'butt_frame', 'double_course']) expect($(`brickFramePreset_${id}`).disabled, id).toBe(false);
     $('brickFramePreset_quoin_corners').click();
     expect(P.brickSettings.frameBandPreset).toBe('quoin_corners');
+  });
+});
+
+describe("Fred 2026-10-11: EDGE TAPER per element -- the active element's shoulder, 3D only", () => {
+  let notify;
+  beforeEach(() => {
+    P.brickSettings.edgeByElement = { wall: null, frame: null, brush: null };
+    setup('frame');
+    notify = vi.fn();
+    window.svgEditor._notifyChange = notify;
+  });
+  const ownEdge = (kind) => brickSetById(elementSetId(P.brickSettings, kind)).heightProfile.edgeRadiusIn;
+  it("untouched: the row shows the element's set's own shoulder, its range from the declaration, nothing written", () => {
+    expect(Number($('brickEdgeTaper').value)).toBe(ownEdge('frame'));
+    expect([$('brickEdgeTaperSlider').min, $('brickEdgeTaperSlider').max, $('brickEdgeTaperSlider').step]).toEqual(
+      [String(EDGE_TAPER.minIn), String(EDGE_TAPER.maxIn), String(EDGE_TAPER.stepIn)]);
+    expect(P.brickSettings.edgeByElement).toEqual({ wall: null, frame: null, brush: null });
+  });
+  it('a drag writes the ACTIVE element only; the release re-masks once; never re-lays, never pending', () => {
+    fire('brickEdgeTaperSlider', 0.06, 'input');
+    expect(P.brickSettings.edgeByElement).toEqual({ wall: null, frame: 0.06, brush: null });
+    expect(notify).not.toHaveBeenCalled();
+    fire('brickEdgeTaperSlider', 0.06, 'change');
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(runBricks).not.toHaveBeenCalled();
+    expect(pending()).toBe(false);
+  });
+  it("another element's tab shows ITS shoulder (the Wall untouched = its set's own)", () => {
+    fire('brickEdgeTaperSlider', 0, 'change');
+    $('brickTool_wall').click();
+    expect(Number($('brickEdgeTaper').value)).toBe(ownEdge('wall'));
+    $('brickTool_frame').click();
+    expect(Number($('brickEdgeTaper').value)).toBe(0);
   });
 });
