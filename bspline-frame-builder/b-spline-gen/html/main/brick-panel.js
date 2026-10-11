@@ -29,7 +29,7 @@ import {
   BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
-  FRAME_CORNERS, FOLDED_FRAME_PRESETS, topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_CORNER_LIST, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
+  FRAME_CORNERS, FOLDED_FRAME_PRESETS, topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_FOLLOW, SURROUND_CORNER_LIST, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
   FRAME_FAN_CENTRES, frameFanCentreOf, fanCentreIconSvg, frameHasFanFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
   brushStrokeSettings, restyleBrushStroke, groutCutPolylines, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
@@ -277,6 +277,87 @@ const BRICK_SIZE_PRESETS = [
 ];
 const BRICK_SIZE_MIN_IN = 0.375;
 const BRICK_SIZE_MAX_IN = 8;
+
+/** UX refine (Fred, 2026-10-10): a Frame preset's declared `bestSize` (core/bricks/library.js FRAME_PRESETS) is a
+ *  SUGGESTION -- a "best" mark on that Size chip wherever the chips appear, and a one-line hint with a Use-it button
+ *  under each frame picker. Only the button changes the size (brick size is one global value). Declared: the words,
+ *  where the chips are, where the hints go and how each one commits (as its own chips do). */
+export const BEST_SIZE_HINT = Object.freeze({
+  text: 'Reads best at {size}',
+  button: 'Use it',
+  mark: 'best',
+  markTitle: 'The frame preset reads best at this size',
+  undoLabel: 'Bricks: Brick size',
+});
+const BEST_SIZE_CHIP_IDS = Object.freeze([
+  (chip) => `brickSizePreset_${chip.id}`, // the Brick editor (renderBrickSizePresetList)
+  (chip) => `brickQuick_size_${chip.id}`, // the sidebar quick settings (BRICK_QUICK_SETTINGS 'size')
+]);
+const BEST_SIZE_HINT_HOSTS = Object.freeze([
+  { id: 'editor', anchor: 'brickFramePresetList', commit: 'generate', stage: null },
+  { id: 'quick', anchor: 'brickQuickRow_frameBands', commit: 'auto', stage: 'bricks' },
+]);
+export const bestSizeHintId = (hostId) => `brickBestSizeHint_${hostId}`;
+
+/** The Size chip the current Frame preset reads best at, or null: none declared, not a chip, or already the size. */
+export function suggestedBrickSize(settings) {
+  const best = FRAME_PRESETS[settings && settings.frameBandPreset]?.bestSize;
+  const chip = BRICK_SIZE_PRESETS.find((p) => p.lengthIn === best);
+  return chip && chip.lengthIn !== settings.brickLengthIn ? chip : null;
+}
+
+/** [Use it]: the suggested size, as ONE undo step (the sidebar: a global step; in the editor, the editor's own). */
+function useSuggestedBrickSize(host) {
+  const chip = suggestedBrickSize(P.brickSettings);
+  if (!chip) return;
+  const run = () => recordBoardStep(BEST_SIZE_HINT.undoLabel, () => setBrickSize(chip.lengthIn, host.commit));
+  if (host.stage) withLoadingStageShownFirst(host.stage, run); else run();
+}
+
+function _bestSizeHintEl(host) {
+  const anchor = document.getElementById(host.anchor);
+  if (!anchor || !anchor.parentNode) return null;
+  let el = document.getElementById(bestSizeHintId(host.id));
+  if (el && el.previousElementSibling === anchor) return el;
+  el?.remove();
+  el = document.createElement('div');
+  el.id = bestSizeHintId(host.id);
+  el.className = 'brick-best-size-hint';
+  el.style.cssText = 'display:none; align-items:center; gap:8px; margin:-4px 0 10px; font-size:11px;';
+  const text = document.createElement('span');
+  text.className = 'brick-best-size-text';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'cad-btn';
+  btn.id = `brickBestSizeUse_${host.id}`;
+  btn.textContent = BEST_SIZE_HINT.button;
+  btn.style.cssText = 'min-width:0; height:auto; padding:2px 10px; white-space:nowrap; flex:none;';
+  btn.addEventListener('click', () => useSuggestedBrickSize(host));
+  el.append(text, btn);
+  anchor.after(el);
+  return el;
+}
+
+/** The "best" marks on the Size chips and the hints under the frame pickers, from suggestedBrickSize. */
+function syncBestSize() {
+  const best = suggestedBrickSize(P.brickSettings);
+  for (const chip of BRICK_SIZE_PRESETS) {
+    for (const idOf of BEST_SIZE_CHIP_IDS) {
+      const el = document.getElementById(idOf(chip));
+      if (!el) continue;
+      const on = chip === best;
+      el.classList.toggle('best-size', on);
+      if (on) { el.dataset.best = BEST_SIZE_HINT.mark; el.title = BEST_SIZE_HINT.markTitle; }
+      else if (el.dataset.best) { delete el.dataset.best; el.removeAttribute('title'); }
+    }
+  }
+  for (const host of BEST_SIZE_HINT_HOSTS) {
+    const el = best ? _bestSizeHintEl(host) : document.getElementById(bestSizeHintId(host.id));
+    if (!el) continue;
+    el.style.display = best ? 'flex' : 'none';
+    if (best) el.querySelector('.brick-best-size-text').textContent = BEST_SIZE_HINT.text.replace('{size}', best.label);
+  }
+}
 
 /** The range input's OWN raw value is a LOG position (0..BRICK_SIZE_SLIDER_STEPS), never the real
  *  inches value -- a plain linear 0.375-8in slider put every everyday size (0.375-1.5in) in the
@@ -1177,6 +1258,7 @@ function syncControlsFromState() {
   syncBrickSizePresetButtons();
   syncGroutWidthBox();
   syncGroutPaintRow(); // item 55
+  syncFrameOffsetControl();
   document.getElementById('brickGroutDepth').value = s.grout.depthIn;
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', s.grout.profile === 'recessed');
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', s.grout.profile === 'flush');
@@ -2117,6 +2199,9 @@ function renderWindowSurround() {
   const corners = document.getElementById('brickSurroundCornerList');
   if (presets) {
     presets.innerHTML = '';
+    // Fred 2026-10-10: "Same as frame" first -- the surround lays the Frame's own bands + corner (SURROUND_FOLLOW)
+    presets.appendChild(_iconButton(`brickSurroundPreset_${SURROUND_FOLLOW}`, 'Same as frame', "Same as frame: the window's surround lays the Frame's own bands and corner",
+      '<span style="font-size:10px; line-height:30px; padding:0 6px;">Same as frame</span>', () => setWindowSurround({ preset: SURROUND_FOLLOW })));
     for (const c of SURROUND_CHOICES()) {
       presets.appendChild(_iconButton(`brickSurroundPreset_${c.id}`, c.label, c.id === SURROUND_NONE ? 'No surround' : c.label, framePresetIconSvg(c.id, 30),
         () => setWindowSurround({ preset: c.id })));
@@ -2139,12 +2224,16 @@ function syncWindowSurround() {
   const w = windowSurroundOf(P.brickSettings);
   show('brickSurroundCornerLabel', w.preset !== SURROUND_NONE);
   show('brickSurroundCornerList', w.preset !== SURROUND_NONE);
-  for (const c of SURROUND_CHOICES()) document.getElementById(`brickSurroundPreset_${c.id}`)?.classList.toggle('active', c.id === w.preset);
+  document.getElementById(`brickSurroundPreset_${SURROUND_FOLLOW}`)?.classList.toggle('active', !!w.follows);
+  for (const c of SURROUND_CHOICES()) document.getElementById(`brickSurroundPreset_${c.id}`)?.classList.toggle('active', !w.follows && c.id === w.preset);
   for (const c of SURROUND_CORNER_LIST) document.getElementById(`brickSurroundCorner_${c.id}`)?.classList.toggle('active', c.id === w.corner);
 }
 /** Item 9: a surround pick (`patch`: preset and/or corner) -- re-lays at once, one undo step. */
 export function setWindowSurround(patch, commit = 'generate') {
-  P.brickSettings.windowSurround = { ...windowSurroundOf(P.brickSettings), ...patch };
+  // "Same as frame" stores just that; any other pick stores an explicit preset + corner (a corner picked while following
+  // keeps the frame's preset it was showing, now its own)
+  const cur = windowSurroundOf(P.brickSettings);
+  P.brickSettings.windowSurround = patch.preset === SURROUND_FOLLOW ? { preset: SURROUND_FOLLOW } : { preset: cur.preset, corner: cur.corner, ...patch };
   syncWindowSurround();
   commitBrickSetting(commit);
 }
@@ -2195,7 +2284,7 @@ const WALL_PATTERN_LABELS = {
   // F35 item 14: the tiles (named by what the sheet draws; the sheet has no captions)
   square_grid: 'Square grid', square_diamond: 'Square + diamond inserts', octagon_square: 'Octagon + small square',
   hexagon: 'Hexagon', lozenge: 'Lozenge', framed_square: 'Framed square',
-  fieldstone: 'Fieldstone', coursed_rubble: 'Coursed rubble',
+  fieldstone: 'Fieldstone', coursed_rubble: 'Coursed rubble', coursed_ashlar: 'Rough ashlar',
 };
 // item 23: what a ROCK wall becomes when a brick set is picked for it
 const DEFAULT_WALL_PATTERN = 'stretcher';
@@ -2875,6 +2964,7 @@ function syncQuickSettings() {
     const mixed = row.mixed ? document.getElementById(quickMixedId(row)) : null;
     if (mixed) mixed.style.display = !any && row.mixed.when() ? '' : 'none';
   }
+  syncBestSize(); // both chip sets + both hints (every size or frame-preset sync ends here)
 }
 
 /** T86 item 7: labels for core/bricks/library.js's own declared BRUSH_PRESETS keys (the 3
@@ -2910,6 +3000,25 @@ const BRUSH_PRESET_LIST = [
  *  with it keeps laying as before (OFF = the board rectangle, a distance = the edge offset by it). null = a template whose
  *  outline cannot carry a contour (FRAME_NEEDS_A_FRAME). */
 const LEGACY_FRAME_OFFSET = Object.freeze({ on: true, distance: 0 });
+/** Fred 2026-10-10 (item 66's removal reversed for the distance; his shot: the outer bricks spiky right at the board edge):
+ *  the Frame section's "Offset from frame" -- the bands' distance in from the frame's outer edge, the input's range. It
+ *  writes the key frameBandContour already reads (frameOffset), only when changed: a board that never sets it lays at 0. */
+export const FRAME_OFFSET_RANGE = Object.freeze({ min: 0, max: 1, step: 0.0625 });
+export function setFrameOffset(distance, commit = 'generate') {
+  const d = Number(distance);
+  if (!Number.isFinite(d)) { syncFrameOffsetControl(); return; }
+  const cur = P.brickSettings.frameOffset || LEGACY_FRAME_OFFSET;
+  P.brickSettings.frameOffset = { on: cur.on !== false, distance: d }; // a legacy OFF board keeps its OFF
+  syncFrameOffsetControl();
+  commitBrickSetting(commit);
+}
+function syncFrameOffsetControl() {
+  const el = document.getElementById('brickFrameOffsetDistance');
+  if (!el) return;
+  const R = FRAME_OFFSET_RANGE;
+  el.min = R.min; el.max = R.max; el.step = R.step;
+  if (document.activeElement !== el) el.value = (P.brickSettings.frameOffset || LEGACY_FRAME_OFFSET).distance || 0;
+}
 function frameBandContour(editor) {
   const off = P.brickSettings.frameOffset || LEGACY_FRAME_OFFSET;
   const rect = () => rectToPrimitives({ x1: 0, y1: 0, x2: editor._mW, y2: editor._mH });
@@ -3009,6 +3118,8 @@ export function initBrickPanel() {
   renderFramePresetList(document.getElementById('brickFramePresetList'));
   renderFrameCornerList(document.getElementById('brickFrameCornerList'));
   renderFrameFanCentreList(document.getElementById('brickFrameFanCentreList')); // T86 item 16e
+  document.getElementById('brickFrameOffsetDistance')?.addEventListener('change', (e) => setFrameOffset(e.target.value));
+  syncFrameOffsetControl();
   syncFramePresetButtons();
   renderBrushPresetList(document.getElementById('brickBrushPresetList'));
   syncBrushPresetButtons();

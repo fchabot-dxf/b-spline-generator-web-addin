@@ -44,8 +44,8 @@ describe('PIECE_CATALOGUE', () => {
 });
 
 describe('BRICK_SETS', () => {
-  it('has the declared sets, ids 1..5 in order (T86 items 24/25 added Grey brick and Grey stone)', () => {
-    expect(BRICK_SETS.map((s) => s.id)).toEqual([1, 2, 3, 4, 5]);
+  it('has the declared sets, ids 1..6 in order (T86 items 24/25 added Grey brick and Grey stone; Rough ashlar Grey ashlar)', () => {
+    expect(BRICK_SETS.map((s) => s.id)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
   it('every declared sample image is on disk (data/bricks)', async () => {

@@ -276,3 +276,32 @@ describe('applySnapshot: an undo inside a board-size hold defers its masks to th
     expect(updateStampMasks).toHaveBeenCalledTimes(1);
   });
 });
+
+// Seat D measured on main: a fresh 7 in board, load an 8 in project, width 8.5, Undo -> 7 (the board BEFORE the load,
+// with the loaded frame and drawing kept). A load starts the global history over at the loaded board.
+describe('a project load starts the global history over at the loaded board', () => {
+  it('load, change, Undo -> the LOADED board, never the one before the load; redo cleared; one baseline', async () => {
+    const H = await import('../bspline-frame-builder/b-spline-gen/html/core/history.js');
+    window.svgEditor = null;
+    H.globalHistoryLog.length = 0; H.globalRedoLog.length = 0;
+    P.widthIn = 7; H.takeSnapshot('Initial');
+    P.widthIn = 7.5; H.takeSnapshot('widthIn'); // an older step of the previous board
+    H.unifiedUndo(() => {}); // ... with something on the redo side
+    await applySnapshot({ P: { widthIn: 8 } }, null, { source: 'load', historyLabel: 'Loaded "claude_15"' });
+    expect(H.globalHistoryLog.map((s) => s.label)).toEqual(['Loaded "claude_15"']);
+    expect(H.globalRedoLog.length).toBe(0);
+    P.widthIn = 8.5; H.takeSnapshot('widthIn');
+    const applied = [];
+    H.unifiedUndo((snap) => applied.push(snap.P.widthIn));
+    expect(applied).toEqual([8]);
+    H.unifiedUndo((snap) => applied.push(snap.P.widthIn)); // nothing before the load
+    expect(applied).toEqual([8]);
+  });
+
+  it('the load path declares it (New project and a file load name their step)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('bspline-frame-builder/b-spline-gen/html/main/cloud-project-manager.js', 'utf-8');
+    expect(src).toMatch(/source: 'load', historyLabel: 'New project'/);
+    expect(src).toMatch(/source: 'load', historyLabel: `Loaded "\$\{name\}"`/);
+  });
+});

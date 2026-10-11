@@ -61,14 +61,14 @@ describe('F26 item 2 (b): Delete frame', () => {
     P.brickSettings = { ...(P.brickSettings || {}), seed: 777 }; // a change that took no snapshot (a brick lay)
     deleteFrame();
     const labels = globalHistoryLog.map((x) => x.label);
-    expect(labels).toEqual(['Initial', 'Before delete frame', 'Delete frame']);
+    expect(labels).toEqual(['Initial', 'Before Delete frame', 'Delete frame']);
     const step = globalHistoryLog[globalHistoryLog.length - 1];
     expect(step.restore.frame.before.templateId).toBe('template_1');
     expect(step.restore.frame.after.templateId).toBeNull();
     const applied = [];
     unifiedUndo((snap, restore) => applied.push(['undo', snap.label, restore && restore.frame.templateId]));
     unifiedRedo((snap, restore) => applied.push(['redo', snap.label, restore && restore.frame.templateId]));
-    expect(applied).toEqual([['undo', 'Before delete frame', 'template_1'], ['redo', 'Delete frame', null]]);
+    expect(applied).toEqual([['undo', 'Before Delete frame', 'template_1'], ['redo', 'Delete frame', null]]);
   });
 
   it('ensureUndoBaseline records the board only when the newest snapshot no longer matches it', () => {

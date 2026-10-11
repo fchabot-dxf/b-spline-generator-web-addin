@@ -294,6 +294,25 @@ export const BRICK_SETS = Object.freeze([
     heightProfile: { edgeRadiusIn: 0.05, crown: 0.1, chipRate: 0.1, chipSizeIn: 0.07, surfaceShare: 0.35, wearWholeFace: true }, // T86 item 23
     samples: Array.from({ length: 64 }, (_, i) => `gs_${String(i + 1).padStart(2, '0')}`).map((id) => ({ id, image: `data/bricks/${id}.jpg` })),
   },
+  // Rough ashlar (Fred picked mock E, 2026-10-10; layouts/coursed-ashlar.js): broken-course grey blocks. The Rough ashlar
+  // PATTERN picks this set (editor-brick-tool.js patternSetId), as Coursed rubble picks Grey stone. brickHeightIn is the
+  // base course height H every block length is declared in (COURSED_ASHLAR); L = H, so the brick size control sets H.
+  // Faces: the ashlar-photo grey stones (gs_28..64, cut from grey_stone_ashlar_2048.png); no new images.
+  {
+    id: 6,
+    name: 'Grey ashlar',
+    engine: 'masonry',
+    shape: 'irregular',
+    layout: 'coursed_ashlar',
+    brickLengthIn: 1.0,
+    brickHeightIn: 1.0,
+    grout: { widthIn: 0.05, depthIn: 0.06, profile: 'recessed' },
+    reliefIn: 0.125,
+    reliefMaxIn: 0.25,
+    heightJitterIn: 0.02,
+    heightProfile: { edgeRadiusIn: 0.05, crown: 0.1, chipRate: 0.1, chipSizeIn: 0.07, surfaceShare: 0.35, wearWholeFace: true },
+    samples: Array.from({ length: 37 }, (_, i) => `gs_${String(i + 28).padStart(2, '0')}`).map((id) => ({ id, image: `data/bricks/${id}.jpg` })),
+  },
 ]);
 
 /**
@@ -389,6 +408,8 @@ export const BRICK_PATTERNS = Object.freeze({
   // 37 (F35, grey-sets T86 item 25): Set 5's coursed rubble as a Wall pattern -- it picks that set the way Fieldstone
   // picks Set 3 (editor-brick-tool.js patternSetId: the set whose layout IS the pattern). Wall only: not band-capable.
   coursed_rubble: { kind: 'tile2d', family: 'fieldstone' },
+  // Rough ashlar (Fred picked mock E, 2026-10-10): picks Set 6 (Grey ashlar) the same way. Wall only: not band-capable.
+  coursed_ashlar: { kind: 'tile2d', family: 'fieldstone' },
 });
 
 /**
@@ -415,6 +436,18 @@ export const BRICK_PATTERNS = Object.freeze({
  * declared "White rocks" set, `BRICK_SETS[2]`, regardless of the band's own set) at the same
  * corners instead -- `quoin_corners` below.
  */
+/**
+ * UX refine (Fred, 2026-10-10): a preset's optional `bestSize` -- the brick size (inches, one of the Size chips:
+ * 0.375 / 0.75 / 1 / 1.25 / 1.5 / 3 / 8) it reads best at. The app only SUGGESTS it (a "best" mark on that chip and a
+ * "Reads best at ..." hint with a Use-it button, main/brick-panel.js); brick size stays one global value and nothing
+ * changes it on its own. Absent = no suggestion. It rides on the band list as a NON-enumerable property, so every
+ * reader of the bands (iteration, spread, map, JSON, the engine) sees exactly the list it always did -- read it as
+ * `FRAME_PRESETS[id].bestSize`.
+ */
+function withBestSize(bestSize, bands) {
+  return Object.defineProperty(bands, 'bestSize', { value: bestSize, enumerable: false });
+}
+
 export const FRAME_PRESETS = Object.freeze({
   // F35 item 12 follow-up (Fred): the Frame band preset's own OFF switch -- an EMPTY band list,
   // not a special case anywhere downstream: zero bands means `bricksContourBands` has nothing to
@@ -455,59 +488,60 @@ export const FRAME_PRESETS = Object.freeze({
   // T86 item 2: the dispatch's own preview combination -- header (outer, a tight decorative band),
   // flemish (middle, the alternating stretcher/header look), soldier (inner) -- in ONE frame,
   // demonstrating 3 different pattern kinds (course/course-alternating/course) stacking cleanly.
-  mixed_bands: [
+  // UX refine (2026-10-10): `bestSize` (withBestSize, above) -- its two outer bands are ONE course each,
+  // the shallowest of any preset (0.2 of a brick length), so they read best a size up from the 1 1/4 in default.
+  mixed_bands: withBestSize(1.5, [
     { widthIn: 0.2, pattern: 'header' }, // one course, brickHeightIn deep (courseHeightFor: header too)
     { widthIn: 0.2, pattern: 'flemish' }, // one flemish COURSE is also brickHeightIn deep -- the
     // [L,H] along-run ALTERNATION is a separate axis from the row's own cross-depth (bond.js's own
     // `courseHeightFor`: 'course-alternating' always resolves to H, confirmed, not re-derived).
     { widthIn: 0.75, pattern: 'soldier' },
-  ],
+  ]),
   // Frame motifs phase 1 (BAND_MOTIFS above): `rows` = the band's declared course count at every brick size (a plain band
   // without it snaps widthIn to rows, which changes with the size); widthIn = that depth at Set 1's own size (the icons).
-  // Every joint is a mitre. Recommended brick size: FRAME_PRESET_SIZES below.
-  dentil_corbel: [
+  // Every joint is a mitre. Recommended brick size: withBestSize (the UI hint reads it); FRAME_PRESET_SIZES lists the six.
+  dentil_corbel: withBestSize(1, [
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
     { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'dentil' },
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
     { widthIn: 0.4, rows: 2, pattern: 'stretcher', motif: 'corbel_table' },
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
-  ],
+  ]),
   // the border, two plain courses before the ring, the raised ring; the wall inside it recessed (`insideRelief`). The ring's
   // notched corners are NOT laid (phase 2: they need a path off the contour, not a band motif)
-  recessed_panel: [
+  recessed_panel: withBestSize(1.25, [
     { widthIn: 0.4, rows: 2, pattern: 'stretcher' },
     { widthIn: 0.4, rows: 2, pattern: 'stretcher' },
     { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'raised', insideRelief: 'recessed' },
-  ],
-  zigzag_band: [
+  ]),
+  zigzag_band: withBestSize(1.25, [
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
     { widthIn: 0.8, rows: 4, pattern: 'header', motif: 'zigzag' },
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
-  ],
+  ]),
   // an outer plain course (the mockup had none): a stack of two obeys the fit rule (contour-bands.js fitBandStack: the lattice
   // loses rows on a narrow board); a lone 5-course band was narrowed to ONE deep row instead (narrowSingleBand -- MEASURED on
   // T6 / T11 / T14 / T15 / T16 / T17: the lattice gone, bare patches up to 0.13 of a brick face)
-  diaper_lattice: [
+  diaper_lattice: withBestSize(1.25, [
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
     { widthIn: 1, rows: 5, pattern: 'header', motif: 'diaper' },
-  ],
-  soldier_string: [
+  ]),
+  soldier_string: withBestSize(1.25, [
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
     { widthIn: 0.75, rows: 1, pattern: 'soldier', motif: 'raised' },
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
-  ],
-  dentil_cornice: [
+  ]),
+  dentil_cornice: withBestSize(1, [
     { widthIn: 0.4, rows: 2, pattern: 'stretcher', motif: 'raised' },
     { widthIn: 0.3, rows: 1, pattern: 'stretcher', motif: 'cornice_dentil' },
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
-  ],
+  ]),
 });
 
 /** Frame motifs phase 1: each motif preset's RECOMMENDED brick size (in) -- the biggest that still shows its structure,
  *  read off the approved mockups (shots/advisor/frames/mock_ref1-3.png). */
-export const FRAME_PRESET_SIZES = Object.freeze({
-  dentil_corbel: 1, recessed_panel: 1.25, zigzag_band: 1.25, diaper_lattice: 1.25, soldier_string: 1.25, dentil_cornice: 1,
-});
+export const FRAME_PRESET_SIZES = Object.freeze(Object.fromEntries(
+  ['dentil_corbel', 'recessed_panel', 'zigzag_band', 'diaper_lattice', 'soldier_string', 'dentil_cornice'].map((id) => [id, FRAME_PRESETS[id].bestSize])));
 
 /**
  * Frame motifs phase 1 (2026-10-10, Fred's approved mockups shots/advisor/frames/mock_ref1-3.png, lighter = raised): every

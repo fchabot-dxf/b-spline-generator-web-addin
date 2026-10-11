@@ -25903,3 +25903,33 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   a fitting lay -- fails on main (band 3's button exists). The brick-matrix lay row now asserts the unlaid bands' controls
   are absent (its old "disabled count 0" would have passed vacuously with them gone) and band 1's are there.
 - Related suites 20 files 251/251.
+
+### 2026-10-10 (seat E): "Offset from frame" is back as a distance (Fred; item 66's removal reversed for the distance)
+- Frame section: an "Offset from frame (in)" number input (#brickFrameOffsetDistance, min-height 28 px), its range declared
+  (brick-panel.js FRAME_OFFSET_RANGE: 0 - 1 in, step 1/16, set on the input; no code clamp -- a guard would need a yes).
+  setFrameOffset writes the key frameBandContour already reads (frameOffset { on, distance }; a legacy OFF board keeps
+  its OFF) and commits through commitBrickSetting('generate') (one re-lay, one step); synced from state on every restore.
+  The ON/OFF box stays retired. Untouched, a board writes nothing and lays at 0 exactly as before.
+- tests/brick-discrete-controls-regen.test.js: item 66's "no control" test inverted (the control is in the page, no ON/OFF
+  box; untouched = silhouette at 0, nothing written) + a change to 0.25 writes { on: true, distance: 0.25 }, one re-lay,
+  the silhouette at 0.25 -- both fail on main. The legacy reads (0.3; OFF = the board rectangle) unchanged.
+- tests/frame-offset-distance.test.js (the real silhouette, T1 7x9 + T9 9x12): at 0.25 every point inside the 0 contour, at
+  least 0.25 in (less chord error), at most 0.25 x sqrt 2 (a mitred reflex corner, MEASURED 0.354), median 0.25 -- a pin of
+  the silhouette's existing offset. Brick-panel suites 41 files 478/478.
+### 2026-10-10 (seat E): the inset window's surround follows the Frame by default ("Same as frame"; Fred)
+- Fred: "when I have an inset window there should be a brick frame on it too" / "should be able to choose a frame separately".
+- editor-brick-tool.js SURROUND_FOLLOW ('follow'): windowSurroundOf resolves it to the Frame's own bands (frameBandPreset;
+  none when it lays none) and corner (frameCornerOf; the surround's first corner when the Frame's is not one it lays),
+  with follows: true. The engine input stays { rect, preset, corner } (lays byte-identical for every explicit pick).
+- core/state.js: a new board's windowSurround is { preset: 'follow' }. A board saved before has no key -- a load replaces
+  brickSettings whole, so it never takes the new default -- and main/app-init.js MIGRATIONS 'window-surround-legacy-none'
+  writes it explicitly as None (it laid no surround; it lays none now).
+- The Window surround row: a "Same as frame" chip first, active while following; an explicit pick (None included) is kept;
+  a corner picked while following becomes an explicit pick (the preset it was showing + that corner).
+- Tests (tests/item9-lay-input.test.js, tests/item9-frame-crumble-surround-panel.test.js): a new board follows (preset +
+  corner, the lay input); a Frame preset change moves a following surround, not an explicit one; explicit None stays
+  None; the legacy migration writes None once and leaves a new board alone; the row's chip -- 3 fail on main. The other
+  item-9 tests read an explicit None now (their base). tests/brick-element-set.test.js: the migration's field added to
+  its all-migrations expectation. Related suites 127 files 1384/1384 (with that fix).
+- Matrix frame group rows reordered: a new board follows (Soldier + mitre) once the window is on, so the first explicit
+  pick is None, then Soldier, Butt, "Same as frame", None -- each a real change (to run on the branch).

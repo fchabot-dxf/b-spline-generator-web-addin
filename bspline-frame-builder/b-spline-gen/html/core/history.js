@@ -6,6 +6,7 @@ import {
     P, preDelta, postDelta, extraThickenThinMask, persistableP
 } from './state.js';
 import { markDirty } from './dirty.js';
+import { getFrameRecord } from './frame-record.js';
 import { TOOLING_DEFAULTS } from '../editor/layers.js';
 
 const GLOBAL_MAX_HISTORY = 40; // Increased capacity for complex sculpting
@@ -118,13 +119,14 @@ export function restoreLayerTooling(layers, layerTooling) {
  * Captures a complete system snapshot.
  */
 /** Items 69 / 71: what a global step may RESTORE beyond P -- the keys a global undo otherwise never puts back
- *  (snapshot-manager.js UNDO_KEEPS: the frame and the drawing have their own undo). A step declares its own transition
+ *  (UNDO_KEEPS below: the frame and the drawing have their own undo). A step declares its own transition
  *  of them, `extra.restore = { frame: { before, after }, editorSvg: { before, after } }`, and only that step's undo /
- *  redo applies it (Delete frame, frame-panel.js; a sidebar board change, recordBoardStep). An `after` left out is
- *  taken from the live state when the step is undone. */
+ *  redo applies it (a sidebar frame edit, frame-panel.js editFrameNow; a sidebar board change, recordBoardStep).
+ *  `read` = the live value; `afterAt` = when the step's `after` is read: 'step' right after the change (a synchronous
+ *  write), 'undo' when the step is undone (an async result). */
 export const UNDO_STEP_RESTORES = Object.freeze({
-    frame: () => null, // filled by the step (frame-panel.js deleteFrame records both sides)
-    editorSvg: () => P.editorSvg, // the drawing a board change produced, read when it is undone (the re-lay is async)
+    frame: { read: () => JSON.parse(JSON.stringify(getFrameRecord())), afterAt: 'step' }, // setFrameRecord writes now
+    editorSvg: { read: () => P.editorSvg, afterAt: 'undo' }, // the drawing a board change produced (the re-lay is async)
 });
 const _restoreSide = (restore, side) => (restore ? Object.fromEntries(Object.entries(restore).map(([k, t]) => [k, t[side]])) : undefined);
 
@@ -152,9 +154,17 @@ export function takeSnapshot(label = "Action", extra = {}) {
 /** Item 69 (seat E, measured: the history held only Initial / widthIn / heightIn after a brick lay, so undoing the
  *  next step also reverted brickSettings): before a step that must undo to EXACTLY the current board, record the
  *  current board first when the newest snapshot no longer matches it. */
+/** Save audit #1: the P keys a global undo / redo never puts back from an older snapshot -- the drawing and the frame have
+ *  their own undo (a step that changes them declares its own transition, UNDO_STEP_RESTORES). Read by the restore
+ *  (main/snapshot-manager.js) AND by ensureUndoBaseline: seat D measured (2026-10-10) a frame change + Undo, then the
+ *  brick re-lay rewriting editorSvg -- the only difference -- so the next change recorded a baseline whose undo changed
+ *  nothing on screen. */
+export const UNDO_KEEPS = Object.freeze(['editorSvg', 'frame']);
+const _undoComparable = (p) => JSON.stringify(Object.fromEntries(Object.entries(p).filter(([k]) => !UNDO_KEEPS.includes(k))));
+
 export function ensureUndoBaseline(label = 'Before change') {
     const top = globalHistoryLog[globalHistoryLog.length - 1];
-    if (top && JSON.stringify(top.P) === JSON.stringify(persistableP())) return false;
+    if (top && _undoComparable(top.P) === _undoComparable(persistableP())) return false;
     takeSnapshot(label);
     return true;
 }
@@ -164,11 +174,20 @@ export function ensureUndoBaseline(label = 'Before change') {
  *  re-lays the board becomes ONE global step -- the board before it as the baseline, the drawing before it as the
  *  step's own restore. Inside the editor the editor's own undo owns the change (no global step). */
 export function recordBoardStep(label, change) {
+    return recordStep(label, ['editorSvg'], change);
+}
+
+/** Fred ("changing wood frame doesn't make an undo step"; seat D measured: 0 / 8 sidebar frame edits came back on the
+ *  main Undo): THE way a sidebar change becomes ONE global step -- the board before it as the baseline, plus the
+ *  UNDO_STEP_RESTORES keys it changes (`restores`) as the step's own transition. Inside the editor the editor's own
+ *  undo owns the change (no global step). */
+export function recordStep(label, restores, change) {
     if (_isRestoring || isEditorOpen()) return change();
     ensureUndoBaseline('Before ' + label);
-    const before = P.editorSvg;
+    const restore = Object.fromEntries(restores.map((k) => [k, { before: UNDO_STEP_RESTORES[k].read() }]));
     const out = change();
-    takeSnapshot(label, { restore: { editorSvg: { before } } });
+    for (const k of restores) if (UNDO_STEP_RESTORES[k].afterAt === 'step') restore[k].after = UNDO_STEP_RESTORES[k].read();
+    takeSnapshot(label, { restore });
     return out;
 }
 
@@ -198,6 +217,17 @@ export function scheduleUndoSnapshot(id, label) {
     }, UNDO_COALESCE_MS);
 }
 
+/** Seat D measured (main, 2026-10-10: a fresh 7 in board, load an 8 in project, width 8.5, Undo -> 7 -- the board BEFORE
+ *  the load, with the loaded frame and drawing kept: a mix of two projects): a load never touched the history. THE load
+ *  path's own history step (snapshot-manager.js applySnapshot, source 'load': a project load, New project): the
+ *  history starts over at the loaded board -- one baseline, no redo, no pending step -- so an undo never crosses a load. */
+export function startHistoryAt(label) {
+    if (_pendingUndoTimer) { clearTimeout(_pendingUndoTimer); _pendingUndoTimer = null; }
+    globalHistoryLog.length = 0;
+    globalRedoLog.length = 0;
+    takeSnapshot(label);
+}
+
 /**
  * Routes the global undo request.
  */
@@ -209,7 +239,7 @@ export function unifiedUndo(applySnapshot) {
     globalRedoLog.push(current);
     const previous = globalHistoryLog[globalHistoryLog.length - 1];
     if (current.restore) {
-        for (const [k, t] of Object.entries(current.restore)) if (t.after === undefined) t.after = UNDO_STEP_RESTORES[k]();
+        for (const [k, t] of Object.entries(current.restore)) if (t.after === undefined) t.after = UNDO_STEP_RESTORES[k].read();
     }
     applySnapshot(previous, _restoreSide(current.restore, 'before')); // items 69 / 71: the undone step's own restores
     updateGlobalButtons();

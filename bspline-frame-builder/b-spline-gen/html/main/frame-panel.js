@@ -19,12 +19,13 @@
  */
 import { FRAME_DEFS, findFrameTemplate, getFrameRecord, setFrameRecord, frameParam, framePayload, panelLipRange } from '../core/frame-record.js';
 import { P, isFusionMode } from '../core/state.js';
-import { takeSnapshot, ensureUndoBaseline } from '../core/history.js';
+import { recordStep } from '../core/history.js';
 import { inEditor3dAction } from '../core/in-editor-3d.js';
 import { setFusionStatus } from '../core/fusion-bridge.js';
 import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { setFrameProfileProvider, setFrameClearHandler, drawFrameProfile, frameFit, frameSolidSpec, setEditorFocus } from '../editor/editor-frame-profile.js';
-import { setEditorTab as switchEditorTab, getEditorTab } from './editor-tabs.js';
+import { setEditorTab as switchEditorTab, getEditorTab, EDITOR_TABS } from './editor-tabs.js';
+import { setHistoryRoute, updateHistoryButtons } from '../editor/editor-ui.js';
 import { AppState } from './app-state.js';
 import { deferToHold } from '../core/engine/scheduler.js';
 import { handleDragPatch, frameSeedGeometry, generateFrameSeeds, generateValidFrameSeeds } from '../editor/frame-handles.js';
@@ -55,7 +56,6 @@ function _frameHandleHitPx(ed, pointerType) {
 // are each one step). The editor's artwork undo is locked in the Frame tab (F8),
 // so the frame's steps never mix with the artwork's.
 const _frameHistory = [];
-let _undoKeyWired = false;
 const _clone = (r) => JSON.parse(JSON.stringify(r));
 
 /** Remember the current frame record as one undoable step. */
@@ -78,20 +78,41 @@ export const frameHistoryDepth = () => _frameHistory.length;
 /** Audit (batch 3): THE way a Frame-tab control edits the frame -- one undo step, the write, the panel sync.
  *  Thickness / Trim offset / Wood / Bottom Z / Panel lip used to write with no step (a Frame Undo then reverted
  *  them together with the previous handle drag, or couldn't undo them at all). */
-export function editFrame(patch) {
+export function editFrame(patch, label) {
   // the 'frame' stage on screen first (core/loading-signal.js): a frame edit blocks up to ~2 s on a phone
-  return withLoadingStageShownFirst('frame', () => editFrameNow(patch));
+  return withLoadingStageShownFirst('frame', () => editFrameNow(patch, label));
 }
 /** The same edit, NOW (no stage): for a caller that reads the result in the same breath -- a Clear records the steps
  *  and the frame it left (editor-clear-menu.js undoLastClear compares them), Delete frame snapshots the frame after.
  *  MEASURED (the gate's clear row): through the deferred editFrame, Clear All's one undo restored neither the frame
  *  nor the photo (it recorded 0 frame steps and the old frame, then refused as "changed since"). */
-export function editFrameNow(patch) {
-  pushFrameHistory();
-  setFrameRecord(patch);
-  syncFramePanel();
+/** In the sidebar it is also ONE global step carrying the frame transition (core/history.js recordStep), so the main
+ *  Undo / Ctrl+Z puts the frame back (Fred: "changing wood frame doesn't make an undo step"); inside the editor only the
+ *  Frame tab's own undo records it. */
+export function editFrameNow(patch, label = 'Frame change') {
+  recordStep(label, ['frame'], () => {
+    pushFrameHistory();
+    setFrameRecord(patch);
+    syncFramePanel();
+  });
 }
-function _syncUndo() { if ($('editorFrameUndo')) $('editorFrameUndo').disabled = _frameHistory.length === 0; }
+function _syncUndo() {
+  if ($('editorFrameUndo')) $('editorFrameUndo').disabled = _frameHistory.length === 0;
+  if (typeof window !== 'undefined' && window.svgEditor) updateHistoryButtons(window.svgEditor); // the toolbar arrows, on the Frame tab
+}
+
+/** The editor undo stacks a tab may declare instead of the artwork's (main/editor-tabs.js EDITOR_TABS `undo`), read by
+ *  the toolbar Undo / Redo and Ctrl+Z alike (editor/editor-ui.js routedUndo). The frame has no redo: Redo is disabled
+ *  on the Frame tab, so it never redoes artwork there. */
+export const EDITOR_UNDO_STACKS = Object.freeze({
+  frame: {
+    undo: () => withLoadingStageShownFirst('frame', () => undoFrame()),
+    canUndo: () => _frameHistory.length > 0,
+    redo: null,
+    canRedo: () => false,
+  },
+});
+const _activeUndoStack = () => EDITOR_UNDO_STACKS[EDITOR_TABS.find((t) => t.id === getEditorTab())?.undo] || null;
 
 
 /** F13 [Generate]: a new seeded random frame shape, written as the handles' seeds. */
@@ -241,12 +262,9 @@ export function sendFrame() {
  *  add-in to delete the frame Send built ('delete_frame': only the frames fb_engine/send_frame.py tagged, the same
  *  ones a Send replaces); no confirm dialog. */
 export function deleteFrame() {
-  const before = _clone(getFrameRecord());
-  ensureUndoBaseline('Before delete frame'); // the step undoes to exactly this board, not an older snapshot's
-  editFrameNow({ templateId: null, params: {} }); // NOW: the snapshot below reads the frame after
   // item 69 (seat E, measured: the sidebar Undo left the frame deleted): its own GLOBAL undo step, carrying the
-  // frame transition -- the sidebar's Undo restores the frame (and the 3D follows its re-lay)
-  takeSnapshot('Delete frame', { restore: { frame: { before, after: _clone(getFrameRecord()) } } });
+  // frame transition (editFrameNow) -- the sidebar's Undo restores the frame (and the 3D follows its re-lay)
+  editFrameNow({ templateId: null, params: {} }, 'Delete frame');
   if (isFusionMode) {
     try {
       adsk.fusionSendData('delete_frame', '{}');
@@ -856,15 +874,10 @@ export function initFramePanel() {
   $('editorFrameGenerate')?.addEventListener('click', () => generateFrame());
   $('btnDeleteFrame')?.addEventListener('click', () => withLoadingStageShownFirst('frame', () => deleteFrame())); // F26 item 2 (b)
   $('editorFrameUndo')?.addEventListener('click', () => withLoadingStageShownFirst('frame', () => undoFrame()));
-  // Ctrl/Cmd+Z in the Frame tab undoes the FRAME (the artwork's undo is locked there, F8)
-  if (!_undoKeyWired) { // once per page (initFramePanel may run again, e.g. in tests)
-    _undoKeyWired = true;
-    window.addEventListener('keydown', (e) => {
-      if (getEditorTab() !== 'frame' || !(e.ctrlKey || e.metaKey) || e.shiftKey || (e.key !== 'z' && e.key !== 'Z')) return;
-      e.preventDefault();
-      withLoadingStageShownFirst('frame', () => undoFrame());
-    });
-  }
+  // the editor's Undo / Redo (toolbar and Ctrl/Cmd+Z, main/global-events.js) act on the active tab's declared stack:
+  // the Frame tab undoes the FRAME (the artwork is locked there, F8)
+  setHistoryRoute(_activeUndoStack);
+  document.addEventListener('editorTabChanged', () => _syncUndo());
   _syncUndo();
   for (const f of FRAME_PARAM_FIELDS) {
     $(f.id)?.addEventListener('change', (e) => editFrame({ params: { ...getFrameRecord().params, [f.param]: parseFloat(e.target.value) } }));
