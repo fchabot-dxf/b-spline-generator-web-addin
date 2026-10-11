@@ -1755,6 +1755,9 @@ export const BRICK_LAY_WARNINGS = Object.freeze([
       && !(c.bandsReduced && c.bandsReduced.fits && !(c.bandsReduced.steps || []).some((st) => st.step === 'narrow')) },
   { id: 'bandsReduced', where: 'frame', text: (c) => bandsReducedText(c.bandsReduced),
     when: (c) => !!c.bandsReduced },
+  // 2026-10-11: the Frame preset's arch (Arch + keystone) found no place in this frame -- detection only, nothing changes
+  { id: 'archTooNarrow', where: 'frame', text: 'The arch does not fit inside this frame at this brick size: try a smaller brick size or a larger board.',
+    when: (c) => c.archFit === 'archTooNarrow' },
 ]);
 // F35 item 35: the last lay's band-fit note (the Frame section greys out the bands it dropped)
 let _bandsReduced = null;
@@ -2869,6 +2872,7 @@ const FRAME_PRESET_LABELS = {
   diaper_lattice: 'Diaper lattice',
   soldier_string: 'Soldier string course',
   dentil_cornice: 'Dentil cornice',
+  arch_keystone: 'Arch + keystone',
 };
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).filter((id) => !FOLDED_FRAME_PRESETS[id])
   .map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));

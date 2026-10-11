@@ -447,6 +447,12 @@ export const BRICK_PATTERNS = Object.freeze({
 function withBestSize(bestSize, bands) {
   return Object.defineProperty(bands, 'bestSize', { value: bestSize, enumerable: false });
 }
+/** 2026-10-11 (Fred approved the advisor's mock "Rowlock arch + keystone"): a preset's optional `arch` -- a blind arch
+ *  inside the frame (core/bricks/arch-surround.js ARCH_SPECS id), laid with the Frame element; the wall is cut around
+ *  it and fills its opening. Non-enumerable like bestSize: every reader of the bands sees the list it always did. */
+function withArch(arch, bands) {
+  return Object.defineProperty(bands, 'arch', { value: arch, enumerable: false });
+}
 
 export const FRAME_PRESETS = Object.freeze({
   // F35 item 12 follow-up (Fred): the Frame band preset's own OFF switch -- an EMPTY band list,
@@ -536,6 +542,9 @@ export const FRAME_PRESETS = Object.freeze({
     { widthIn: 0.3, rows: 1, pattern: 'stretcher', motif: 'cornice_dentil' },
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
   ]),
+  // 2026-10-11 (Fred, the mock's board 1; then "the large blocks should touch the edge of the frame directly"): no band of
+  // its own -- the arch (withArch) is the frame, its hood and rings the outermost rows, its stones from the frame's edge
+  arch_keystone: withBestSize(1, withArch('rowlock_keystone', [])),
 });
 
 /** Frame motifs phase 1: each motif preset's RECOMMENDED brick size (in) -- the biggest that still shows its structure,
