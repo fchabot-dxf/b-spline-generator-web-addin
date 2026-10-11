@@ -3193,6 +3193,15 @@
                 <label class="cad-label">Level (in)</label>
                 <input type="number" id="brickLevel_wall" value="0" min="-0.25" max="0.25" step="0.015625" style="width:100%;" title="+ sits proud of the other bricks, - sits recessed (3D only)">
               </div>
+              <!-- Fred 2026-10-11 (EDGE TAPER): the active element's shoulder width -- one row the Wall / Frame / Brush Height
+                   sections share (main/brick-tab-sections.js); range from core/bricks/library.js EDGE_TAPER, 3D only -->
+              <div id="brickEdgeTaperRow">
+                <label class="cad-label">Edge taper (in) <span style="opacity:0.65; font-weight:400;">(0 = sharp, more = softer)</span></label>
+                <div class="cad-slider-row" style="margin-bottom:12px;">
+                  <input type="range" id="brickEdgeTaperSlider" class="cad-slider" min="0" max="0.1" step="0.005" value="0.035" title="How wide each brick's rounded shoulder is (3D only)">
+                  <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickEdgeTaper" value="0.035" min="0" max="0.1" step="0.005"></div>
+                </div>
+              </div>
             </div>
 
             <!-- F35 item 16 follow-up: shown only while Frame is the active tool (syncFrameSection). -->

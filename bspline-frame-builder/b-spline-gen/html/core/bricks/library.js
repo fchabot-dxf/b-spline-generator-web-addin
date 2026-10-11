@@ -642,6 +642,15 @@ export function brickSetById(id) {
   return BRICK_SETS.find((s) => s.id === id) || null;
 }
 
+/** Fred 2026-10-11 (EDGE TAPER: "the current ones seem particularly tapered, fine, but I want to control it"): the
+ *  per-element override of a set's heightProfile.edgeRadiusIn (the shoulder's reach), 0 = a sharp edge up to
+ *  `maxFactor` x the widest set default. Untouched = the element's set's own (P.brickSettings.edgeByElement null). */
+export const EDGE_TAPER = Object.freeze((() => {
+  const maxFactor = 2, stepIn = 0.005;
+  const widest = Math.max(...BRICK_SETS.map((s) => (s.heightProfile && s.heightProfile.edgeRadiusIn) || 0));
+  return { minIn: 0, maxIn: Math.ceil((maxFactor * widest) / stepIn) * stepIn, stepIn, maxFactor };
+})());
+
 export function enabledPieces(catalogue = PIECE_CATALOGUE) {
   return catalogue.filter((p) => p.enabled !== false);
 }

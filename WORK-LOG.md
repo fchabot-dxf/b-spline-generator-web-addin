@@ -26075,3 +26075,23 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
   broken wave -- compared, shots/seatE/relief/zigzag_tiles_compared_top.png). Tests (bricks-band-motif): each grid tile,
   repeated, is ONE edge-joined figure; the zigzag mirror-symmetric with 2-wide arms; the relief values -- 3 / 3 fail on
   main. brick-icons.js regenerated (the motif preset icons).
+
+## Edge taper -- a shoulder width per element, Wall / Brick frame / Brush (seat E / 61, 2026-10-11)
+
+- Fred: "the current ones seem particularly tapered, fine, but I want to control it" -- per element (his pick). DECLARED:
+  core/bricks/library.js EDGE_TAPER (0 = sharp .. maxFactor 2 x the widest set default, derived -> 0.1 in; step 0.005);
+  P.brickSettings.edgeByElement { wall, frame, brush } (null = the element's set's own heightProfile.edgeRadiusIn, the
+  groutByElement precedent; the Raised brush shares the Brush's via JOINT_ELEMENT); editor-brick-tool.js
+  elementEdgeRadius reads it.
+- The mask applies it in the SET's place (a group per element override; the set's heightProfile.edgeRadiusIn replaced
+  before styledSet), so Weathered's 1.8x shoulder scale still applies -- applying it after the style would jump the
+  shoulder the first time the slider moves (mutation-checked: the Weathered test fails with it after the style).
+- UI: one shared row (brickEdgeTaperRow, slider + number, its range from EDGE_TAPER) in the Wall / Frame / Brush Height
+  sections, editing the ACTIVE element (as the Grout box); commit 'surface' (3D only: a re-mask, never a re-lay or
+  pending; edgeByElement is in SURFACE_ONLY_SETTING_KEYS). Choices to confirm: the Brush value is one per element, not
+  frozen per stroke (grout width is per stroke); a set change keeps a user's taper (grout width resets to the new set's).
+- Tests: tests/brick-edge-taper.test.js (6) + 3 in brick-discrete-controls-regen -- 8 / 9 fail on the pre-change tree;
+  the untouched pin passes on both by design (golden 663944943522f2be = the pre-change mask, byte-identical). The
+  shared-rows pin in brick-tab-sections gains the row. Full vitest 6531 / 6531.
+- MEASURED live (7x10, single_soldier, 1.25 in, Frame): mean height 0.01 in from a piece's edge: sharp 0.109, own 0.016,
+  wide 0.007; the plateau (0.12) reached by ~0.01 / ~0.04 / ~0.1 in. Shots: shots/seatE/taper (taper_compare_zoom.png).

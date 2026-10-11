@@ -56,7 +56,7 @@ function parsePoints(pointsAttr) {
  *  ({id, polygon, sampleId, flip, heightOffset}) for buildSpatialIndex/
  *  sampleHeight to consume -- see this file's own header for why the DOM,
  *  not a parallel cache, is the source of truth here. */
-function collectLiveBrickGroups(editor, layer, levels = {}) {
+function collectLiveBrickGroups(editor, layer, levels = {}, edges = {}) {
   const nodes = editor._sketchLayer.node.querySelectorAll(
     `[data-layer="${layer.id}"][${BRICK_GEN_ATTR}="1"]`,
   );
@@ -66,8 +66,11 @@ function collectLiveBrickGroups(editor, layer, levels = {}) {
     if (!Number.isFinite(setId)) return;
     const seed = Number(n.getAttribute('data-brick-seed')) || 1;
     const relief = Number(n.getAttribute('data-brick-relief')) || null;
-    const key = `${setId}:${seed}:${relief}`;
-    if (!groups.has(key)) groups.set(key, { setId, seed, relief, bricks: [] });
+    // Fred 2026-10-11 (EDGE TAPER): an element's own shoulder width (opts.edges, keyed by its kind) is its set's
+    // edgeRadiusIn -- a group of its own; untouched (null / absent) = the set's own, the group exactly as before
+    const edgeIn = Number.isFinite(edges && edges[n.getAttribute(BRICK_ATTR)]) ? edges[n.getAttribute(BRICK_ATTR)] : null;
+    const key = edgeIn === null ? `${setId}:${seed}:${relief}` : `${setId}:${seed}:${relief}:edge${edgeIn}`;
+    if (!groups.has(key)) groups.set(key, { setId, seed, relief, edgeIn, bricks: [] });
     groups.get(key).bricks.push({
       id: n.getAttribute('data-brick-id') || `${key}-${groups.get(key).bricks.length}`,
       polygon: parsePoints(n.getAttribute('points')),
@@ -125,7 +128,7 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
   const isStamped = new Uint8Array(nx * nz);
   const flat = opts.topMode === 'flat';
   const brickOf = flat ? new Int32Array(nx * nz).fill(-1) : null;
-  const groups = collectLiveBrickGroups(editor, layer, opts.levels);
+  const groups = collectLiveBrickGroups(editor, layer, opts.levels, opts.edges);
   // F35 item 15: the raised ACCENT lifts its Wall bricks by its Level (brick-accents.js, the same rule the
   // 2D highlight shows), over the WHOLE wall (its zone is measured on the wall's own extent)
   const accent = opts.accent;
@@ -158,7 +161,9 @@ export async function rasterizeBrickHeightMask(editor, layer, nx, nz, widthIn, h
   const faces = {};
   const built = groups.map((g) => {
     const librarySet = brickSetById(g.setId) || brickSetById(1);
-    const set = styledSet(g.relief ? { ...librarySet, reliefIn: g.relief } : librarySet, style);
+    const ownSet = g.edgeIn === null ? librarySet
+      : { ...librarySet, heightProfile: { ...(librarySet.heightProfile || {}), edgeRadiusIn: g.edgeIn } }; // EDGE TAPER
+    const set = styledSet(g.relief ? { ...ownSet, reliefIn: g.relief } : ownSet, style);
     for (const b of g.bricks) b.heightOffset += styleTopJitter(style, g.seed, b.id);
     // Fred 2026-10-08 (grey by height): each piece's FACE, every lift applied (Level, accents, style jitter) -- the SVG
     // download's one flat grey per brick reads it from here, the same level this mask carves

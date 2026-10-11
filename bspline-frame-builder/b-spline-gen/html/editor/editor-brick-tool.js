@@ -702,6 +702,15 @@ export function elementGroutWidth(settings, kind) {
   const set = setForId(elementSetId(settings || {}, kind));
   return (set && set.grout && set.grout.widthIn) ?? 0.034;
 }
+/** Fred 2026-10-11 (EDGE TAPER): an element's shoulder width, `settings.edgeByElement = { wall, frame, brush }` (the
+ *  Raised brush shares the Brush's) -- a number = the user's own; null / missing = the element's set's own
+ *  heightProfile.edgeRadiusIn. The height mask applies it in the set's place (a surface style still scales it). */
+export function elementEdgeRadius(settings, kind) {
+  const v = settings && settings.edgeByElement && settings.edgeByElement[JOINT_ELEMENT[kind] || kind];
+  if (Number.isFinite(v)) return v;
+  const set = setForId(elementSetId(settings || {}, kind));
+  return (set && set.heightProfile && set.heightProfile.edgeRadiusIn) ?? 0;
+}
 export const elementSettings = (settings, kind) => ({
   ...settings,
   setId: elementSetId(settings, kind),
