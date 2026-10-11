@@ -1047,8 +1047,10 @@ function linePieces(prim, d0, d1, jointStart, jointEnd, pitch, nominalJoint, set
 /** Item 74b: one row's JOINTS alone -- the first, cheap half of `ribbonPieces` (moved here unchanged, so a lay is
  *  byte-identical), exported so a caller can ask which corner cuts a style takes without laying the row's pieces
  *  (contour-bands.js frameCornerEffect). `joints[k]` is the joint before `liveIndices[k]`: a butt/lapped corner's
- *  carries `isButt`, a block's `isBlock`; a mitre, a fan or no joint at all carries neither. */
-export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true) {
+ *  carries `isButt`, a block's `isBlock`; a mitre, a fan or no joint at all carries neither. `blockOff` (a Set of corner
+ *  indices, the corner before primitive `curIdx`): a 'block' row lays those corners as the mitre (contour-bands.js: an
+ *  inner band's L that cannot fit, seat E 2026-10-10); absent = every corner as before. */
+export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true, blockOff = null) {
   const n = primitives.length;
   const liveIndices = [];
   for (let i = 0; i < n; i++) if (primitiveLiveAtDepth(primitives, i, d1, closed)) liveIndices.push(i);
@@ -1122,7 +1124,7 @@ export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyl
       const butt = buildButtJoint(primitives, prevIdx, curIdx, o, d1, nominalJoint, flipThrough);
       if (butt) return butt;
     }
-    if (cornerStyle === 'block' && droppedIdx === null
+    if (cornerStyle === 'block' && droppedIdx === null && !(blockOff && blockOff.has(curIdx))
         && primitives[prevIdx].type === 'line' && primitives[curIdx].type === 'line') {
       const block = buildBlockJoint(primitives, prevIdx, curIdx, o, nominalJoint, d1);
       if (block) return block;
@@ -1189,10 +1191,11 @@ export function ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyl
  * @param {number} [forcedFStart] — T86 item 2: ditto, passed straight through to `planCornerRun` --
  *   the caller already resolved whether THIS row is staggered (odd row, `staggerFrac>0`) into a
  *   concrete fraction (or `undefined` for an unstaggered row) before calling.
+ * @param {Set<number>} [blockOff] — 'block' corners laid as the mitre (ribbonJoints)
  * @returns {{ pieces: Array, nextId: number }}
  */
-export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true, rowIndex = 0, cutEnds = null) {
-  const { liveIndices, joints: jointBefore } = ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyle, bandIndex, sequence, forcedFStart, closed);
+export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nominalJoint, seed, pieceId, startId, cornerStyle = 'mitre', bandIndex = 0, sequence, forcedFStart, closed = true, rowIndex = 0, cutEnds = null, blockOff = null) {
+  const { liveIndices, joints: jointBefore } = ribbonJoints(primitives, d0, d1, pitch, nominalJoint, cornerStyle, bandIndex, sequence, forcedFStart, closed, blockOff);
   if (liveIndices.length === 0) return { pieces: [], nextId: startId };
   const m = liveIndices.length;
 
@@ -1265,7 +1268,7 @@ export function ribbonPieces(primitives, d0, d1, set, orientation, pitch, nomina
       const heightOffset = (mulberry32(seedFor(seed, 'bricks-block-jitter', nextId))() * 2 - 1) * (set.heightJitterIn || 0);
       pieces.push({ id: `${pieceId}-${nextId}`, polygon: rawJointEnd.blockPolygon, pieceId, sampleId, flip, heightOffset });
       sources.push(-2);
-      fanSides.push(null);
+      fanSides.push([idx, liveIndices[(k + 1) % m]]); // a quoin's corner too (its `blockOff` index is the second)
       nextId++;
     }
   }

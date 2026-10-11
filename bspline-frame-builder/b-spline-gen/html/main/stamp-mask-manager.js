@@ -239,7 +239,11 @@ export async function refreshAllStampMasks(nx, nz, preview, updatePreviewSculptM
   // a board size change holding the 3D (main/app-init.js STOCK_CHANGE_DEFERS): the latest pass runs once, at its end
   if (deferToHold('stamp-masks', () => refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode))) return;
   try {
-    const isLatest = await updateStampMasks(nx, nz);
+    // seat D 2026-10-11 (Fred: "3D canvas also has some setting that refresh the geometry without spinner"; the 3D-controls
+    // sweep, claude_1, 900 px, CPU x4): a Decor slider / brick setting serialised and rasterised every carved layer here
+    // BEFORE its 'carving relief' card painted -- 59-261 ms blind (profiled: updateStampMasks -> getLayerSvg ->
+    // _parseLayerContent, rasterizeSvg). The whole pass is the declared 'heightMask' stage, painted first.
+    const isLatest = await withLoadingStage('heightMask', () => updateStampMasks(nx, nz));
     if (!isLatest) return;
     scheduleRebuild(() => rebuild(preview, updateStampMasks, updatePreviewSculptMode));
     // Notify any UI that wants to read the per-layer mask.metrics now

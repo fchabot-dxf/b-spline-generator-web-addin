@@ -30,10 +30,10 @@ import {
   loadPhotoPatterns, settingsToPhotoEdits, settingsToTweaks, editsToSettings,
 } from '../core/photo/patterns.js';
 import { fileToDataUrl, downscalePhotoDataUrl } from '../core/photo/codec.js';
-import { ensurePhotoDecoded, getRawPhotoImage, isPhotoReady } from '../core/photo/state.js';
+import { ensurePhotoDecoded, getRawPhotoImage, getProcessedPhotoImage, isPhotoReady } from '../core/photo/state.js';
 import { applyPhotoEdits } from '../core/photo/ops.js';
 import { withLoadingStage, withLoadingStageShownFirst } from '../core/loading-signal.js';
-import { computeMirrorDimRects } from '../core/photo/mirror-dim.js';
+import { photoUsedCells, photoAxisLines } from '../core/photo/mirror-dim.js';
 import { applyParam } from './param-manager.js';
 import { setEditorTab } from './editor-tabs.js';
 import { renderToolRegistry, syncToolRegistryButtons } from '../editor/editor-tool-registry.js';
@@ -97,12 +97,12 @@ function syncPhotoToolButtons() {
   const preview = document.getElementById('photoPreviewCanvas');
   if (preview) { preview.style.touchAction = cropBoxShown() ? 'none' : ''; drawPreview(); }
   const caption = document.getElementById('photoPreviewCaption');
-  if (caption) caption.textContent = PREVIEW_CAPTION[cropBoxShown() ? 'crop' : 'mirror'];
+  if (caption) caption.textContent = PREVIEW_CAPTION[cropBoxShown() ? 'crop' : 'unused'];
   syncPhotoFootprint(); // the footprint on the board comes and goes with the Photo tab (main/photo-footprint.js)
 }
 /** What the preview's dimming means, per what it shows (the crop box dims the outside of the crop). */
 export const PREVIEW_CAPTION = Object.freeze({
-  mirror: 'dimmed = mirrored by Symmetry, not sampled directly',
+  unused: 'dimmed = not on the board (outside where the photo lands)', // seat D 2026-10-10: from the sampler itself
   crop: 'dimmed = outside the crop',
 });
 
@@ -660,12 +660,27 @@ function previewBitmap(img) {
   return off;
 }
 
-/** Draws the RAW (unedited) source image plus the mirror-dim overlay -- or, while the Crop tab is open, the crop box
- *  over the photo in the crop's own frame (CROP_BOX) --
- * this canvas's one declared job (Fred: "show which half/quadrant ... is
- * used"), not a live preview of crop/levels/etc. (the 3D terrain preview,
- * already wired via notifyChange -> onChange -> scheduleRebuild, is the
- * "live" feedback for the EDITS themselves). */
+/** The sampler's own params ({ ...P, tweaks }: as core/terrain.js hands them to the photo filter) and the board aspect. */
+const samplerParams = () => ({ ...P, tweaks: (P.filterTweaks && P.filterTweaks.photo) || {} });
+/** The used-cells grid over the photo at the preview's resolution (half the canvas px), cached on what it depends on. */
+let _usedCache = null;
+/** What the used cells depend on -- every P key and photo tweak the sampler reads (core/terrain.js foldUV /
+ *  photoSampleAspect / photoMirrors, core/noise/photo.js constantsFor). MEASURED (seat D, live shots): the mirror MODE
+ *  was missing from a hand-listed key, so a squeeze -> mirror switch reused squeeze's cells (nothing dimmed). */
+export const USED_CELLS_INPUTS = Object.freeze({
+  p: Object.freeze(['symmetry', 'symOffsetX', 'symOffsetY', 'mapZoom', 'seedOffsetX', 'seedOffsetY', 'photoMirrorMode', 'photoOrientation']),
+  tweaks: Object.freeze(['scale', 'offsetX', 'offsetY', 'rotation', 'repeat']),
+});
+export function usedCellsFor(img, params, aspect, cw, ch) {
+  const t = params.tweaks || {};
+  const key = JSON.stringify([...USED_CELLS_INPUTS.p.map((k) => params[k]), ...USED_CELLS_INPUTS.tweaks.map((k) => t[k]), aspect, cw, ch]);
+  if (!_usedCache || _usedCache.img !== img || _usedCache.key !== key) _usedCache = { img, key, cells: photoUsedCells(img, params, aspect, cw, ch) };
+  return _usedCache.cells;
+}
+
+/** Draws the photo the terrain samples (the PROCESSED image: its edits applied) with the part that never reaches the
+ *  board dimmed -- computed from the sampler itself (core/photo/mirror-dim.js photoUsedCells) -- or, while the Crop tab
+ *  is open, the crop box over the photo in the crop's own frame (CROP_BOX). */
 function drawPreview() {
   const canvas = document.getElementById('photoPreviewCanvas');
   const ctx = canvas && canvas.getContext && canvas.getContext('2d');
@@ -675,19 +690,48 @@ function drawPreview() {
 
   const raw = getRawPhotoImage(P.photoImageDataUrl);
   const cropping = cropBoxShown() && !!(raw && raw.w && raw.h);
-  const img = cropping ? straightenedPhoto(raw) : raw; // the crop box: the photo in the crop's own frame, uncropped
+  const params = cropping ? null : samplerParams();
+  // the crop box: the photo in the crop's own frame, uncropped; otherwise the image the terrain actually reads
+  const img = cropping ? straightenedPhoto(raw) : (getProcessedPhotoImage(params) || raw);
   if (img && img.w && img.h) {
     const off = previewBitmap(img);
     if (off) ctx.drawImage(off, 0, 0, img.w, img.h, 0, 0, canvas.width, canvas.height);
   }
   if (cropping) { drawCropBox(ctx, canvas); return; }
+  if (!img || !img.w || !img.h) return;
 
-  const rects = computeMirrorDimRects(P.symmetry, P.symOffsetX, P.symOffsetY);
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  for (const r of rects) {
-    ctx.fillRect(r.x * canvas.width, r.y * canvas.height, r.w * canvas.width, r.h * canvas.height);
+  // Fred 2026-10-10 ("why is it dimmed in the middle"): dim exactly the cells no board point samples
+  const cw = Math.max(1, Math.round(canvas.width / 2)), ch = Math.max(1, Math.round(canvas.height / 2));
+  const cells = usedCellsFor(img, params, (P.widthIn || 1) / (P.heightIn || 1), cw, ch);
+  ctx.fillStyle = PREVIEW_UNUSED_DIM;
+  const sx = canvas.width / cw, sy = canvas.height / ch;
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      if (cells[y * cw + x]) continue;
+      let run = 1; // one rect per horizontal run of unused cells
+      while (x + run < cw && !cells[y * cw + x + run]) run++;
+      ctx.fillRect(x * sx, y * sy, run * sx, sy);
+      x += run - 1;
+    }
+  }
+  // Fred (via seat A): the mirror axis, where the board's mirror line samples the photo (follows rotation / clamp)
+  const lines = photoAxisLines(img, params, (P.widthIn || 1) / (P.heightIn || 1));
+  if (lines.length) {
+    ctx.save();
+    ctx.strokeStyle = PREVIEW_AXIS.stroke; ctx.lineWidth = PREVIEW_AXIS.px; ctx.setLineDash(PREVIEW_AXIS.dash);
+    const kx = canvas.width / img.w, ky = canvas.height / img.h;
+    for (const { pts } of lines) {
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * kx, y * ky) : ctx.moveTo(x * kx, y * ky)));
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 }
+/** The mirror axis on the preview. */
+export const PREVIEW_AXIS = Object.freeze({ stroke: '#4fc3f7', px: 1.5, dash: Object.freeze([4, 3]) });
+/** The dim over the part of the photo that never reaches the board. */
+export const PREVIEW_UNUSED_DIM = 'rgba(0,0,0,0.55)';
 
 function bindSlider(sliderId, numberId, opName, paramKey, fallback) {
   const slider = document.getElementById(sliderId);
