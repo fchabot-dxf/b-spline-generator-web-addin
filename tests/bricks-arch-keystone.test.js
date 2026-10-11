@@ -12,7 +12,7 @@ import { normalizeFrameRecord } from '../bspline-frame-builder/b-spline-gen/html
 import { frameContourSilhouette } from '../bspline-frame-builder/b-spline-gen/html/editor/contour-from-frame.js';
 import * as ARCH from '../bspline-frame-builder/b-spline-gen/html/core/bricks/arch-surround.js';
 import { generateBricks } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/engine.js';
-import { FRAME_PRESETS, brickSetById } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
+import { FRAME_PRESETS, brickSetById, RELIEF_LEVELS } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/library.js';
 import { pointInPolygon } from '../bspline-frame-builder/b-spline-gen/html/core/bricks/geometry.js';
 import { polygonsOverlap, buildRibbonPrimitives, frameArchOf, brickLayInput } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 
@@ -32,9 +32,9 @@ const widthAt = (poly, y) => { const xs = []; poly.forEach((a, i) => { const b =
 
 describe('the declaration', () => {
   it("'arch_keystone': one mitred stretcher course, the arch, best at 1 in -- the band list itself unchanged", () => {
-    expect([...FRAME_PRESETS.arch_keystone]).toEqual([{ widthIn: 0.2, pattern: 'stretcher' }]);
+    expect([...FRAME_PRESETS.arch_keystone]).toEqual([{ widthIn: 0.2, rows: 1, pattern: 'stretcher' }]);
     expect([FRAME_PRESETS.arch_keystone.arch, FRAME_PRESETS.arch_keystone.bestSize]).toEqual(['rowlock_keystone', 1]);
-    expect(JSON.stringify(FRAME_PRESETS.arch_keystone)).toBe('[{"widthIn":0.2,"pattern":"stretcher"}]');
+    expect(JSON.stringify(FRAME_PRESETS.arch_keystone)).toBe('[{"widthIn":0.2,"rows":1,"pattern":"stretcher"}]');
     expect(frameArchOf({ frameBandPreset: 'arch_keystone' })).toBe('rowlock_keystone');
     expect(frameArchOf({ frameBandPreset: 'single_soldier' })).toBe(null);
   });
@@ -57,10 +57,10 @@ describe('on a 7 x 10 rectangle (the mock board): a flat (jack) arch directly in
     for (const p of ['ring', 'hood']) expect(counts[p]).toBeGreaterThan(3);
     for (const b of pieces) expect(b.setId).toBe(['keystone', 'springer', 'sillBlock'].includes(b.part) ? 6 : undefined);
   });
-  it('the hood and the keystone stand proud (their declared levels; Fred: the keystone like the hood)', () => {
-    for (const b of parts('hood')) expect(b.heightOffset).toBeCloseTo(ARCH_SPECS.rowlock_keystone.hoodLevelIn, 1);
-    for (const b of parts('keystone')) expect(b.heightOffset).toBeCloseTo(ARCH_SPECS.rowlock_keystone.keystoneLevelIn, 1);
-    for (const b of parts('ring')) expect(Math.abs(b.heightOffset)).toBeLessThan(ARCH_SPECS.rowlock_keystone.hoodLevelIn / 2);
+  it("the hood and the keystone carry the frame motifs' RAISED tag (RELIEF_LEVELS; Fred: the keystone like the hood); the rings none", () => {
+    expect([ARCH_SPECS.rowlock_keystone.hoodRelief, ARCH_SPECS.rowlock_keystone.keystoneRelief]).toEqual(['raised', 'raised']);
+    for (const b of [...parts('hood'), ...parts('keystone')]) { expect(b.relief).toBe('raised'); expect(b.heightOffset).toBeCloseTo(RELIEF_LEVELS.raised, 1); }
+    for (const b of parts('ring')) { expect(b.relief).toBeUndefined(); expect(Math.abs(b.heightOffset)).toBeLessThan(RELIEF_LEVELS.raised / 2); }
   });
   it('the arch starts at the frame\'s inner edge: its region\'s outer IS the wall interior the frame leaves (no pier)', () => {
     expect(res.archRegion[0].outer).toEqual(res.interiorOutline);

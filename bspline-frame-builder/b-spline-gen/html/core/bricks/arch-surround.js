@@ -16,7 +16,7 @@
  * hood, then one ring -- and skipped (fit note 'archTooNarrow') when even that does not fit. The wall fills the opening.
  */
 import { mulberry32, seedFor } from './rng.js';
-import { scaledSet, brickSetById } from './library.js';
+import { scaledSet, brickSetById, RELIEF_LEVELS } from './library.js';
 import { bricksContourBands } from './contour-bands.js';
 import { pickSample } from './piece-plan.js';
 import { polygonIntersection, polygonDifference, lobesOf, signedArea, offsetPathInward, inwardSignFor } from './geometry.js';
@@ -28,8 +28,10 @@ export const ARCH_SPECS = Object.freeze({
     hoodDepthH: 0.5, // the hood: one row this x H deep, all round, directly inside the frame's bands
     rings: 2, // rowlock rings: soldier rows (pitch H along the contour), each ringDepthL x L deep
     ringDepthL: 0.5,
-    hoodLevelIn: 0.04, // the hood stands proud of the bricks (a per-piece height offset, the height mask's own channel)
-    keystoneLevelIn: 0.04, // and the keystone, like the hood (Fred, 2026-10-11)
+    // the frame motifs' RELIEF tags (library.js RELIEF_LEVELS): the hood row names the fill motif (band-motif.js tags its
+    // pieces), the keystone takes the same tag (Fred, 2026-10-11: raised like the hood)
+    hoodRelief: 'raised',
+    keystoneRelief: 'raised',
     keystoneHalfIn: 0.32, // the keystone: this far each way along the contour from the top centre
     springerTopIn: 0.6, // a springer: this far along the top span from its end ...
     springerSideIn: 0.3, // ... and this far down the side
@@ -133,7 +135,7 @@ function anyOverlap(polys) {
  * `frameBands`. opts: { set (the frame's set, unscaled), scale, seed }.
  * Returns { pieces, region, opening, step } or { fit: 'archTooNarrow', pieces: [] }:
  *   pieces -- the hood / ring / stone pieces, each tagged `part` (hood, ring, keystone, springer, sillBlock); a stone
- *             carries its own `setId`; the hood and keystone their raised level in heightOffset;
+ *             carries its own `setId`; the hood and keystone their RELIEF tag (relief + its level in heightOffset);
  *   region -- the arch's footprint as grout region entries [{ outer, holes }] (the frame's inner edge, the opening its hole);
  *   opening -- the wall laid again inside it; step -- the ladder step laid (0 = the full stack).
  */
@@ -158,7 +160,7 @@ export function layArch(specOrId, primitives, frameBands, opts) {
 
 function tryStack(spec, rung, { primitives, fb, plan, layOpts, s, tb, seed }) {
   const L = s.brickLengthIn, H = s.brickHeightIn, J = s.grout.widthIn;
-  const hood = row('stretcher', spec.hoodDepthH * H), ring = row('soldier', spec.ringDepthL * L);
+  const hood = { ...row('stretcher', spec.hoodDepthH * H), motif: spec.hoodRelief }, ring = row('soldier', spec.ringDepthL * L);
   const head = [...fb, ...(rung.hood ? [hood] : [])];
   const stack = [...head, ...Array.from({ length: rung.rings }, () => ring)];
   const archOuter = plan(fb), opening = plan(stack); // the arch starts at the frame's inner edge
@@ -225,12 +227,13 @@ function tryStack(spec, rung, { primitives, fb, plan, layOpts, s, tb, seed }) {
   const stone = scaledSet(brickSetById(spec.stoneSetId), 1);
   const jitter = (id) => (mulberry32(seedFor(seed, 'arch-jitter', id))() * 2 - 1) * (s.heightJitterIn || 0);
   const pieces = [
-    ...hoodPieces.map((b) => ({ ...b, id: `arch-${b.id}`, part: 'hood', heightOffset: (b.heightOffset || 0) + spec.hoodLevelIn })),
+    ...hoodPieces.map((b) => ({ ...b, id: `arch-${b.id}`, part: 'hood' })), // tagged by its motif (relief + level)
     ...ringPieces.map((b) => ({ ...b, id: `arch-${b.id}`, part: 'ring' })),
     ...stones.map((st, id) => {
       const { sampleId, flip } = pickSample(stone, seed, 'arch-stone', id);
       return { id: `arch-stone-${id}`, polygon: st.polygon, pieceId: 'arch', sampleId, flip, part: st.part, setId: spec.stoneSetId,
-        heightOffset: jitter(id) + (st.part === 'keystone' ? spec.keystoneLevelIn : 0) };
+        ...(st.part === 'keystone' ? { relief: spec.keystoneRelief } : {}),
+        heightOffset: jitter(id) + (st.part === 'keystone' ? RELIEF_LEVELS[spec.keystoneRelief] || 0 : 0) };
     }),
   ];
   return {

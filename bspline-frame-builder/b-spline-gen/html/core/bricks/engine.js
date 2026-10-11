@@ -24,6 +24,7 @@ import { bareTips } from './tip-fill.js';
 import { scaledSet } from './library.js';
 import { applyGroutCuts, groutCutsOf } from './grout-cut.js';
 import { applyFanCentre, FAN_CENTRE_DEFAULT } from './fan-centre.js';
+import { insideReliefOf, tagInsideRelief } from './band-motif.js'; // frame motifs: a band's relief for the wall inside it
 
 /**
  * @param {object} input
@@ -154,7 +155,11 @@ export function generateBricks(input) {
   // its own width; a piece under the quarter-brick floor of its element drops into the joint. No cut = as before.
   const cuts = groutCutsOf(input.groutCut);
   const cutAll = (pieces, s, laidBy) => applyGroutCuts(pieces, cuts, s, scale, laidBy); // the one shared cut step (grout-cut.js)
-  let wallBricks = cutAll(bricks, set);
+  const cutWall = cutAll(bricks, set);
+  // frame motifs (the recessed panel): a frame band may declare the wall inside it raised / recessed (`insideRelief`); none = as before
+  const insideRelief = frameLay ? insideReliefOf(frameLay.bands) : null;
+  // (let: the quoins that reach into the wall clear it below -- bricksClearOf keeps each piece's tags)
+  let wallBricks = insideRelief ? tagInsideRelief(cutWall, insideRelief) : cutWall;
   const frameSetUsed = (frame && frame.set) || set;
   // the bands' pieces drop under the floor of the layout that laid them (a Grey stone ring: fieldstone; piece-floor.js)
   const surroundBricks = surround ? cutAll(surround.bricks, frameSetUsed, frameLaidBy(frameSetUsed, setBandPattern)) : null;
