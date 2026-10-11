@@ -865,6 +865,10 @@ export const PRESET_ICON_STYLES = Object.freeze({
   // redesign phase 1 (Fred: the preset list may double with corner variants; the corner and the motif must read in the
   // bigger picker tile): ONE corner plus a run of the band on both arms (marginIn of board past the stack)
   cornerRun: Object.freeze({ whole: false, marginIn: 1.4 }),
+  // a preset that carries an ARCH (library.js withArch): a corner shows no arch, and the arch follows the frame's shape
+  // (a rectangle reads as one more band), so its icon and tile are a whole board of an arched template laid with that
+  // arch by the real engine (the wall left out, so the arch reads)
+  arch: Object.freeze({ templateId: 'template_10', board: Object.freeze({ widthIn: 7, heightIn: 10 }) }),
 });
 export const PRESET_ICON_STYLE = 'ring';
 const _miniFrames = new Map();
@@ -889,19 +893,42 @@ function _miniFrame(key, bands, style = PRESET_ICON_STYLES.corner) {
   _miniFrames.set(key, out);
   return out;
 }
+/** A preset's arch on PRESET_ICON_STYLES.arch's board: its frame bands and arch pieces, the whole board in view. */
+function _miniArch(presetId) {
+  const key = `arch:${presetId}`;
+  if (_miniFrames.has(key)) return _miniFrames.get(key);
+  const { templateId, board } = PRESET_ICON_STYLES.arch, { widthIn: w, heightIn: h } = board;
+  let bricks = [];
+  try {
+    const s = TOOL_MINI_BRICK;
+    const sil = frameContourSilhouette({ defs: FRAME_DEFS, record: { templateId }, board }, 0, 0);
+    const r = generateBricks({
+      boardOutline: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }],
+      set: resolvedSetFor(s), scale: scaleFor(s), suppression: 0, clumping: 0, seed: s.seed, skipWallFill: true, bandFit: false,
+      frame: { primitives: buildRibbonPrimitives(sil.primitives), bands: FRAME_PRESETS[presetId] },
+      arch: { spec: FRAME_PRESETS[presetId].arch },
+    });
+    bricks = [...r.frameBricks, ...(r.archBricks || [])];
+  } catch (_) {
+    bricks = [];
+  }
+  const out = { bricks, crop: w, cropH: h };
+  _miniFrames.set(key, out);
+  return out;
+}
 /** Frame motifs: a motif piece's relief in the icons (lighter = raised, as the mockups); a piece with no relief (every
  *  pre-motif preset) keeps the one brick colour, so those icons are unchanged. */
 const ICON_RELIEF_FILL = Object.freeze({ raised: '#e08a62', recessed: '#6a2a1a' });
-function _miniFrameSvg({ bricks, crop: c }, heightPx) {
-  const shown = bricks.filter((b) => b.polygon.some((p) => p.x < c && p.y < c));
+function _miniFrameSvg({ bricks, crop: c, cropH: ch = c }, heightPx) {
+  const shown = bricks.filter((b) => b.polygon.some((p) => p.x < c && p.y < ch));
   const polys = shown.filter((b) => !ICON_RELIEF_FILL[b.relief]).map((b) => _iconPolygon(b)).join('');
   const relief = Object.entries(ICON_RELIEF_FILL).map(([k, fill]) => {
     const ps = shown.filter((b) => b.relief === k).map((b) => _iconPolygon(b)).join('');
     return ps ? `<g fill="${fill}">${ps}</g>` : '';
   }).join('');
   if (!polys && !relief) return null;
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 ${+c.toFixed(3)} ${+c.toFixed(3)}" aria-hidden="true">`
-    + `<rect width="${c}" height="${c}" fill="#efe6da"/><g fill="#b5533c" stroke="#efe6da" stroke-width="0.04">${polys}${relief}</g></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 ${+c.toFixed(3)} ${+ch.toFixed(3)}" aria-hidden="true">`
+    + `<rect width="${c}" height="${ch}" fill="#efe6da"/><g fill="#b5533c" stroke="#efe6da" stroke-width="0.04">${polys}${relief}</g></svg>`;
 }
 /** A corner style's picker icon: two soldier bands with that `cornerStyle`. */
 const _cornerBands = (cornerId) => { const band = { widthIn: 0.75, pattern: 'soldier', cornerStyle: cornerId }; return [band, band]; };
@@ -961,7 +988,7 @@ export function fanCentreIconSvg(styleId, heightPx = 26) {
 export function framePresetIconSvg(presetId, heightPx = 26) {
   const bands = FRAME_PRESETS[presetId];
   if (!bands) return null;
-  if (!bands.length) {
+  if (!bands.length && !bands.arch) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 1 1" aria-hidden="true">`
       + `<rect width="1" height="1" fill="#efe6da"/><line x1="0.15" y1="0.85" x2="0.85" y2="0.15" stroke="#8a8078" stroke-width="0.06"/></svg>`;
   }
@@ -970,7 +997,7 @@ export function framePresetIconSvg(presetId, heightPx = 26) {
   const declared = _declaredIcon('preset', presetId, heightPx, heightPx);
   if (declared !== undefined) { _presetIcons.set(key, declared); return declared; }
   _iconFallbacks.push(`preset ${key}`);
-  const svg = _miniFrameSvg(_miniFrame(`preset:${PRESET_ICON_STYLE}:${presetId}`, bands, PRESET_ICON_STYLES[PRESET_ICON_STYLE]), heightPx);
+  const svg = bands.arch ? _miniFrameSvg(_miniArch(presetId), heightPx) : _miniFrameSvg(_miniFrame(`preset:${PRESET_ICON_STYLE}:${presetId}`, bands, PRESET_ICON_STYLES[PRESET_ICON_STYLE]), heightPx);
   _presetIcons.set(key, svg);
   return svg;
 }
@@ -980,13 +1007,13 @@ const _presetIcons = new Map();
 export function framePresetTileSvg(presetId, heightPx = 72) {
   const bands = FRAME_PRESETS[presetId];
   if (!bands) return null;
-  if (!bands.length) return framePresetIconSvg(presetId, heightPx);
+  if (!bands.length && !bands.arch) return framePresetIconSvg(presetId, heightPx);
   const key = `tile:${presetId}:${heightPx}`;
   if (_presetIcons.has(key)) return _presetIcons.get(key);
   const declared = _declaredIcon('presetTile', presetId, heightPx, heightPx);
   if (declared !== undefined) { _presetIcons.set(key, declared); return declared; }
   _iconFallbacks.push(`presetTile ${key}`);
-  const svg = _miniFrameSvg(_miniFrame(`presetTile:${presetId}`, bands, PRESET_ICON_STYLES.cornerRun), heightPx);
+  const svg = bands.arch ? _miniFrameSvg(_miniArch(presetId), heightPx) : _miniFrameSvg(_miniFrame(`presetTile:${presetId}`, bands, PRESET_ICON_STYLES.cornerRun), heightPx);
   _presetIcons.set(key, svg);
   return svg;
 }
