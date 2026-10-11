@@ -862,11 +862,19 @@ function _miniFrame(key, bands, style = PRESET_ICON_STYLES.corner) {
   _miniFrames.set(key, out);
   return out;
 }
+/** Frame motifs: a motif piece's relief in the icons (lighter = raised, as the mockups); a piece with no relief (every
+ *  pre-motif preset) keeps the one brick colour, so those icons are unchanged. */
+const ICON_RELIEF_FILL = Object.freeze({ raised: '#e08a62', recessed: '#6a2a1a' });
 function _miniFrameSvg({ bricks, crop: c }, heightPx) {
-  const polys = bricks.filter((b) => b.polygon.some((p) => p.x < c && p.y < c)).map((b) => _iconPolygon(b)).join('');
-  if (!polys) return null;
+  const shown = bricks.filter((b) => b.polygon.some((p) => p.x < c && p.y < c));
+  const polys = shown.filter((b) => !ICON_RELIEF_FILL[b.relief]).map((b) => _iconPolygon(b)).join('');
+  const relief = Object.entries(ICON_RELIEF_FILL).map(([k, fill]) => {
+    const ps = shown.filter((b) => b.relief === k).map((b) => _iconPolygon(b)).join('');
+    return ps ? `<g fill="${fill}">${ps}</g>` : '';
+  }).join('');
+  if (!polys && !relief) return null;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${heightPx}" height="${heightPx}" viewBox="0 0 ${+c.toFixed(3)} ${+c.toFixed(3)}" aria-hidden="true">`
-    + `<rect width="${c}" height="${c}" fill="#efe6da"/><g fill="#b5533c" stroke="#efe6da" stroke-width="0.04">${polys}</g></svg>`;
+    + `<rect width="${c}" height="${c}" fill="#efe6da"/><g fill="#b5533c" stroke="#efe6da" stroke-width="0.04">${polys}${relief}</g></svg>`;
 }
 /** A corner style's picker icon: two soldier bands with that `cornerStyle`. */
 const _cornerBands = (cornerId) => { const band = { widthIn: 0.75, pattern: 'soldier', cornerStyle: cornerId }; return [band, band]; };

@@ -41,6 +41,7 @@ import { scaledSet, BRICK_PATTERNS } from './library.js';
 import { minPieceAreaOf, LAID_BY_COURSES } from './piece-floor.js';
 import { bricksFillShape } from './fill-shape.js';
 import { axisLen, courseHeightFor } from './layouts/bond.js';
+import { motifOf, motifCutsRows, motifRowCount, motifRowDepth, motifRowPlan, tagMotifRow } from './band-motif.js'; // frame motifs
 
 const ARC_TESS_STEPS = 16; // only for inwardSignFor's own tessellation -- a smoothness floor for
 // deciding which way is "inward", never a correctness requirement (ribbonPieces itself never
@@ -120,6 +121,15 @@ function planBands(bands, L, H, set, closed) {
     const rows = isAreaBand ? 1 : Math.max(1, Math.round(band.widthIn / naturalWidth));
     // T86 item 30: a band narrowed to fit (narrowSingleBand) is ONE row of the declared depth; its bricks are cut to it
     if (band.narrowedTo > 0) return { patternName, cornerStyle, naturalWidth: band.narrowedTo, pitch, sequence, staggerFrac, rows: 1, isAreaBand };
+    // frame motifs (band-motif.js): a band's declared `rows` (and a row-cutting motif's own row depth / row count) win over
+    // the widthIn snap -- a motif's courses are its structure at every brick size. A band with neither is as before.
+    const motif = isAreaBand ? null : motifOf(band);
+    if (motif || band.rows > 0) {
+      const motifRows = motifCutsRows(motif) ? motifRowCount(motif) : null;
+      const declaredRows = band.rows > 0 ? band.rows : motifRows || rows;
+      return { patternName, cornerStyle, naturalWidth: motifCutsRows(motif) ? motifRowDepth(motif, H) : naturalWidth, pitch, sequence, staggerFrac,
+        rows: declaredRows, isAreaBand, motif };
+    }
     return { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows, isAreaBand };
   });
 }
@@ -788,7 +798,8 @@ function fitBandStack(bands, planned, gap, L, H) {
     else { kept.pop(); steps.push({ band: i, step: 'drop' }); }
   }
   if (!steps.length) return null; // a single band: laid as requested (today's lay and its warning)
-  const fitted = kept.map((p, i) => ({ ...bands[i], widthIn: p.naturalWidth * p.rows }));
+  // a band that declares its rows (frame motifs) keeps the rows the fit left it
+  const fitted = kept.map((p, i) => ({ ...bands[i], widthIn: p.naturalWidth * p.rows, ...(p.motif || bands[i].rows > 0 ? { rows: p.rows } : {}) }));
   return { bands: fitted, note: { requested: bands.length, kept: fitted.length, steps, gapIn: gap, limitIn: limit, requestedDepthIn: requested, depthIn: depthOf(kept), fits: depthOf(kept) <= limit } };
 }
 
@@ -916,7 +927,7 @@ export function bricksContourBands(primitives, bands, opts) {
     // flemish ('course-alternating') has no single pitch at all -- its own `sequence` (below)
     // carries [L,H] instead, and `pitch` here is only the FILL-FRACTION base for its own end
     // pieces (same role every other pattern already gives it), not a per-piece length.
-    const { patternName, cornerStyle, naturalWidth, pitch, sequence, staggerFrac, rows, isAreaBand } = plannedBands[bandIndex];
+    const { patternName, cornerStyle, naturalWidth, pitch: patternPitch, sequence, staggerFrac, rows, isAreaBand, motif } = plannedBands[bandIndex];
     if (isAreaBand) {
       // opts.cornerCutsOnly counts the ROWS' joints only (below); an area band's stones never add to them, and this
       // mode returns the counts alone -- so its stones are not laid (MEASURED 2026-10-07: the panel's corner / fan
@@ -942,8 +953,12 @@ export function bricksContourBands(primitives, bands, opts) {
       // stretcher's own 0.5 = a real half-brick running-bond offset) -- `forcedFStart` is already
       // one of `FILL_FRACTIONS`' own declared values, never a new kind of cut (see
       // `planCornerRun`'s own header).
-      const rowSequence = sequence && odd ? [sequence[1], sequence[0]] : sequence;
-      const forcedFStart = !sequence && staggerFrac > 0 && odd ? staggerFrac : undefined;
+      // frame motifs: a row-cutting motif sets the row's cut itself (band-motif.js motifRowPlan); every other band as before
+      const motifPlan = motifCutsRows(motif)
+        ? motifRowPlan(motif, { row, d0, d1, bandStart: depthSoFar, L, H, J: set.grout.widthIn }) : null;
+      const pitch = motifPlan ? motifPlan.pitch : patternPitch;
+      const rowSequence = motifPlan ? motifPlan.sequence : sequence && odd ? [sequence[1], sequence[0]] : sequence;
+      const forcedFStart = motifPlan ? motifPlan.forcedFStart : !sequence && staggerFrac > 0 && odd ? staggerFrac : undefined;
       if (opts.planOnly) continue; // T86 (seat E): the plan only -- the bands, the fit rule and the wall's inner path, no pieces
       if (opts.cornerCutsOnly) { // item 74b (frameCornerEffect): this row's joints only, no pieces
         const { joints } = ribbonJoints(enriched, d0, d1, pitch, set.grout.widthIn, cornerStyle, bandIndex, rowSequence, forcedFStart, closed);
@@ -951,11 +966,13 @@ export function bricksContourBands(primitives, bands, opts) {
         fanCorners += joints.filter((j) => j && j.q && j.kiteFan && j.kiteFan.length).length;
         continue;
       }
-      const { pieces, nextId: afterId, sources, fanSides } = ribbonPieces(
+      const { pieces: laidPieces, nextId: afterId, sources, fanSides } = ribbonPieces(
         enriched, d0, d1, set, patternName, pitch, set.grout.widthIn,
         seed ^ (bandIndex * 0x1000193) ^ (row * 0x01000000), 'frame', nextId, cornerStyle, bandIndex,
         rowSequence, forcedFStart, closed, row, closed ? null : opts.cutEnds || null, // T86 item 5: an open stroke's cut ends
       );
+      // frame motifs: each piece of a motif band carries its relief (band-motif.js tagMotifRow)
+      const pieces = motif ? tagMotifRow(laidPieces, sources, enriched, motif, motifPlan, row, rows) : laidPieces;
       // T86 item 16f (B1): the innermost course row's pieces may reach into the bare tips (tipZones; fillTips, below)
       if (tipReach && bandIndex === lastCourseBand && row === rows - 1) tipRow = { start: bricks.length, count: pieces.length, sources, d1 };
       // T86 item 16d: a corner's fan slice is declared as such (`fan: true`, additive; the drawing never reads it) -- the

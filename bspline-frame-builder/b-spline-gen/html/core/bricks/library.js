@@ -462,6 +462,93 @@ export const FRAME_PRESETS = Object.freeze({
     // `courseHeightFor`: 'course-alternating' always resolves to H, confirmed, not re-derived).
     { widthIn: 0.75, pattern: 'soldier' },
   ],
+  // Frame motifs phase 1 (BAND_MOTIFS above): `rows` = the band's declared course count at every brick size (a plain band
+  // without it snaps widthIn to rows, which changes with the size); widthIn = that depth at Set 1's own size (the icons).
+  // Every joint is a mitre. Recommended brick size: FRAME_PRESET_SIZES below.
+  dentil_corbel: [
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'dentil' },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+    { widthIn: 0.4, rows: 2, pattern: 'stretcher', motif: 'corbel_table' },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+  ],
+  // the border, two plain courses before the ring, the raised ring; the wall inside it recessed (`insideRelief`). The ring's
+  // notched corners are NOT laid (phase 2: they need a path off the contour, not a band motif)
+  recessed_panel: [
+    { widthIn: 0.4, rows: 2, pattern: 'stretcher' },
+    { widthIn: 0.4, rows: 2, pattern: 'stretcher' },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'raised', insideRelief: 'recessed' },
+  ],
+  zigzag_band: [
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+    { widthIn: 0.8, rows: 4, pattern: 'header', motif: 'zigzag' },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+  ],
+  diaper_lattice: [
+    { widthIn: 1, rows: 5, pattern: 'header', motif: 'diaper' },
+  ],
+  soldier_string: [
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+    { widthIn: 0.75, rows: 1, pattern: 'soldier', motif: 'raised' },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+  ],
+  dentil_cornice: [
+    { widthIn: 0.4, rows: 2, pattern: 'stretcher', motif: 'raised' },
+    { widthIn: 0.3, rows: 1, pattern: 'stretcher', motif: 'cornice_dentil' },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+  ],
+});
+
+/** Frame motifs phase 1: each motif preset's RECOMMENDED brick size (in) -- the biggest that still shows its structure,
+ *  read off the approved mockups (shots/advisor/frames/mock_ref1-3.png). */
+export const FRAME_PRESET_SIZES = Object.freeze({
+  dentil_corbel: 1, recessed_panel: 1.25, zigzag_band: 1.25, diaper_lattice: 1.25, soldier_string: 1.25, dentil_cornice: 1,
+});
+
+/**
+ * Frame motifs phase 1 (2026-10-10, Fred's approved mockups shots/advisor/frames/mock_ref1-3.png, lighter = raised): every
+ * laid piece of a motif band carries a RELIEF tag and the height map lifts or sinks it by the declared amount (added to its
+ * heightOffset, so the app's height mask and engine.js sampleHeight read it with no further change; sampleHeight still clamps
+ * the top to [0, reliefMaxIn]).
+ */
+export const RELIEF_LEVELS = Object.freeze({ raised: 0.0625, flush: 0, recessed: -0.0625 });
+/** A motif tile's cell characters (BAND_MOTIFS grid tiles). */
+export const RELIEF_CHARS = Object.freeze({ R: 'raised', '.': 'flush', S: 'recessed' });
+
+/**
+ * The band MOTIF: a repeating sequence (or 2D on/off pattern) of RAISED / FLUSH / RECESSED pieces along a band's run -- one
+ * shared mechanism (core/bricks/band-motif.js), each motif pure data. A FRAME_PRESETS band names one as `motif`.
+ *   fill            -- every piece of the band (all rows, corner pieces included) takes this relief; the band's own pattern
+ *                      lays the pieces as before.
+ *   unit            -- 'L' or 'H': the module lengths below are in brick lengths or brick heights (of the scaled set).
+ *   rowDepth        -- one row's depth, in brick heights (default 1 = a course).
+ *   rows            -- 1D runs, one entry per row (outer -> inner): `seq` = the cycled [modules, relief] slots, `offset` = the
+ *                      phase of the seq (modules) from the band's corner line, so rows of one band line up (the corbel's
+ *                      header sits centred under its stretcher). A MODULE includes one joint: a slot of m modules lays a
+ *                      piece m x unit - joint long, so the lattice is exact. Each run's first and last piece (the mitred
+ *                      corner pieces, and a run's end closer) take `ends`.
+ *   grid            -- 2D on/off on square cells (unit 'H', one cell per module per row): `tile` rows (outer -> inner) of
+ *                      RELIEF_CHARS, repeated along the run from its start corner; `corner` = an R x R tile for the cells of
+ *                      the corner square (column < R from either end of a run, R = the band's rows), e.g. a diamond.
+ * The lattice is anchored at the band's corner line at a right-angle mitre (each deeper row starts one row-depth further
+ * along). On a curve (an arc run) a 1D sequence still runs along the arc; a grid cannot (its columns do not line up row to
+ * row on a curve) and is laid FLUSH there, as are a corner's fan slices and a quoin.
+ */
+export const BAND_MOTIFS = Object.freeze({
+  raised: { fill: 'raised' },
+  // dentil course: header ends (half a brick) raised, spaced half a brick apart (Ref 1)
+  dentil: { unit: 'L', rows: [{ seq: [[0.5, 'raised'], [0.5, 'flush']] }], ends: 'raised' },
+  // corbel table: inverted T -- a raised stretcher (outer row) over a raised header centred under it (inner row) (Ref 1)
+  corbel_table: { unit: 'L', rows: [
+    { seq: [[1, 'raised'], [0.75, 'flush']] },
+    { offset: 0.25, seq: [[0.5, 'raised'], [1.25, 'flush']] },
+  ], ends: 'raised' },
+  // the cornice's dentils: half-brick dentils a course and a half deep, the gaps between them recessed (Ref 3)
+  cornice_dentil: { unit: 'L', rowDepth: 1.5, rows: [{ seq: [[0.5, 'raised'], [0.25, 'recessed']] }], ends: 'raised' },
+  // header grid, raised zigzag 2 squares thick through 4 courses; diamond corner blocks (Ref 2)
+  zigzag: { unit: 'H', grid: { tile: ['R...', 'RR.R', '.RRR', '..R.'], corner: ['.RR.', 'RRRR', 'RRRR', '.RR.'] } },
+  // header grid, raised diamond lattice through 5 courses; diamond corners (Ref 2)
+  diaper: { unit: 'H', grid: { tile: ['..R.', '.R.R', 'R...', '.R.R', '..R.'], corner: ['..R..', '.RRR.', 'RRRRR', '.RRR.', '..R..'] } },
 });
 
 /**
