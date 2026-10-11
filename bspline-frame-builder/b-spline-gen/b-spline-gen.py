@@ -1611,6 +1611,8 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
                     # handshake reply so the header badge fills in at open.
                     _send_build_info(pal)
                     _send_edit_password(pal)  # F35 item 34
+                    # 2026-10-10 (Fred, via the advisor): the memory line also on panel open, not only at the next Send
+                    _post_fusion_memory('panel open')
                 return
 
             if action == 'store_edit_password':
@@ -2331,6 +2333,10 @@ class PaletteHTMLEventHandler(adsk.core.HTMLEventHandler):
 
             if _post_to_palette('import_success', {}):  # painted at once; hidden no sooner than IMPORT_SUCCESS_SHOW_S
                 _import_success_at = time.monotonic()
+            if not is_preview:
+                # 2026-10-10 (Fred, via the advisor): and after it -- a Send leaves ~0.55 GB inside Fusion, so the line the
+                # user sees next is the reading this Send left behind, not the one before it
+                _post_fusion_memory('after Send')
 
         except Exception:
             tb = traceback.format_exc()

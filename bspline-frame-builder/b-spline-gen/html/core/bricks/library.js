@@ -436,6 +436,18 @@ export const BRICK_PATTERNS = Object.freeze({
  * declared "White rocks" set, `BRICK_SETS[2]`, regardless of the band's own set) at the same
  * corners instead -- `quoin_corners` below.
  */
+/**
+ * UX refine (Fred, 2026-10-10): a preset's optional `bestSize` -- the brick size (inches, one of the Size chips:
+ * 0.375 / 0.75 / 1 / 1.25 / 1.5 / 3 / 8) it reads best at. The app only SUGGESTS it (a "best" mark on that chip and a
+ * "Reads best at ..." hint with a Use-it button, main/brick-panel.js); brick size stays one global value and nothing
+ * changes it on its own. Absent = no suggestion. It rides on the band list as a NON-enumerable property, so every
+ * reader of the bands (iteration, spread, map, JSON, the engine) sees exactly the list it always did -- read it as
+ * `FRAME_PRESETS[id].bestSize`.
+ */
+function withBestSize(bestSize, bands) {
+  return Object.defineProperty(bands, 'bestSize', { value: bestSize, enumerable: false });
+}
+
 export const FRAME_PRESETS = Object.freeze({
   // F35 item 12 follow-up (Fred): the Frame band preset's own OFF switch -- an EMPTY band list,
   // not a special case anywhere downstream: zero bands means `bricksContourBands` has nothing to
@@ -476,13 +488,15 @@ export const FRAME_PRESETS = Object.freeze({
   // T86 item 2: the dispatch's own preview combination -- header (outer, a tight decorative band),
   // flemish (middle, the alternating stretcher/header look), soldier (inner) -- in ONE frame,
   // demonstrating 3 different pattern kinds (course/course-alternating/course) stacking cleanly.
-  mixed_bands: [
+  // UX refine (2026-10-10): `bestSize` (withBestSize, above) -- its two outer bands are ONE course each,
+  // the shallowest of any preset (0.2 of a brick length), so they read best a size up from the 1 1/4 in default.
+  mixed_bands: withBestSize(1.5, [
     { widthIn: 0.2, pattern: 'header' }, // one course, brickHeightIn deep (courseHeightFor: header too)
     { widthIn: 0.2, pattern: 'flemish' }, // one flemish COURSE is also brickHeightIn deep -- the
     // [L,H] along-run ALTERNATION is a separate axis from the row's own cross-depth (bond.js's own
     // `courseHeightFor`: 'course-alternating' always resolves to H, confirmed, not re-derived).
     { widthIn: 0.75, pattern: 'soldier' },
-  ],
+  ]),
 });
 
 /**

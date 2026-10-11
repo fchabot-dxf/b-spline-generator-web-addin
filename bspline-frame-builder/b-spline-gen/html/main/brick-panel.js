@@ -278,6 +278,87 @@ const BRICK_SIZE_PRESETS = [
 const BRICK_SIZE_MIN_IN = 0.375;
 const BRICK_SIZE_MAX_IN = 8;
 
+/** UX refine (Fred, 2026-10-10): a Frame preset's declared `bestSize` (core/bricks/library.js FRAME_PRESETS) is a
+ *  SUGGESTION -- a "best" mark on that Size chip wherever the chips appear, and a one-line hint with a Use-it button
+ *  under each frame picker. Only the button changes the size (brick size is one global value). Declared: the words,
+ *  where the chips are, where the hints go and how each one commits (as its own chips do). */
+export const BEST_SIZE_HINT = Object.freeze({
+  text: 'Reads best at {size}',
+  button: 'Use it',
+  mark: 'best',
+  markTitle: 'The frame preset reads best at this size',
+  undoLabel: 'Bricks: Brick size',
+});
+const BEST_SIZE_CHIP_IDS = Object.freeze([
+  (chip) => `brickSizePreset_${chip.id}`, // the Brick editor (renderBrickSizePresetList)
+  (chip) => `brickQuick_size_${chip.id}`, // the sidebar quick settings (BRICK_QUICK_SETTINGS 'size')
+]);
+const BEST_SIZE_HINT_HOSTS = Object.freeze([
+  { id: 'editor', anchor: 'brickFramePresetList', commit: 'generate', stage: null },
+  { id: 'quick', anchor: 'brickQuickRow_frameBands', commit: 'auto', stage: 'bricks' },
+]);
+export const bestSizeHintId = (hostId) => `brickBestSizeHint_${hostId}`;
+
+/** The Size chip the current Frame preset reads best at, or null: none declared, not a chip, or already the size. */
+export function suggestedBrickSize(settings) {
+  const best = FRAME_PRESETS[settings && settings.frameBandPreset]?.bestSize;
+  const chip = BRICK_SIZE_PRESETS.find((p) => p.lengthIn === best);
+  return chip && chip.lengthIn !== settings.brickLengthIn ? chip : null;
+}
+
+/** [Use it]: the suggested size, as ONE undo step (the sidebar: a global step; in the editor, the editor's own). */
+function useSuggestedBrickSize(host) {
+  const chip = suggestedBrickSize(P.brickSettings);
+  if (!chip) return;
+  const run = () => recordBoardStep(BEST_SIZE_HINT.undoLabel, () => setBrickSize(chip.lengthIn, host.commit));
+  if (host.stage) withLoadingStageShownFirst(host.stage, run); else run();
+}
+
+function _bestSizeHintEl(host) {
+  const anchor = document.getElementById(host.anchor);
+  if (!anchor || !anchor.parentNode) return null;
+  let el = document.getElementById(bestSizeHintId(host.id));
+  if (el && el.previousElementSibling === anchor) return el;
+  el?.remove();
+  el = document.createElement('div');
+  el.id = bestSizeHintId(host.id);
+  el.className = 'brick-best-size-hint';
+  el.style.cssText = 'display:none; align-items:center; gap:8px; margin:-4px 0 10px; font-size:11px;';
+  const text = document.createElement('span');
+  text.className = 'brick-best-size-text';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'cad-btn';
+  btn.id = `brickBestSizeUse_${host.id}`;
+  btn.textContent = BEST_SIZE_HINT.button;
+  btn.style.cssText = 'min-width:0; height:auto; padding:2px 10px; white-space:nowrap; flex:none;';
+  btn.addEventListener('click', () => useSuggestedBrickSize(host));
+  el.append(text, btn);
+  anchor.after(el);
+  return el;
+}
+
+/** The "best" marks on the Size chips and the hints under the frame pickers, from suggestedBrickSize. */
+function syncBestSize() {
+  const best = suggestedBrickSize(P.brickSettings);
+  for (const chip of BRICK_SIZE_PRESETS) {
+    for (const idOf of BEST_SIZE_CHIP_IDS) {
+      const el = document.getElementById(idOf(chip));
+      if (!el) continue;
+      const on = chip === best;
+      el.classList.toggle('best-size', on);
+      if (on) { el.dataset.best = BEST_SIZE_HINT.mark; el.title = BEST_SIZE_HINT.markTitle; }
+      else if (el.dataset.best) { delete el.dataset.best; el.removeAttribute('title'); }
+    }
+  }
+  for (const host of BEST_SIZE_HINT_HOSTS) {
+    const el = best ? _bestSizeHintEl(host) : document.getElementById(bestSizeHintId(host.id));
+    if (!el) continue;
+    el.style.display = best ? 'flex' : 'none';
+    if (best) el.querySelector('.brick-best-size-text').textContent = BEST_SIZE_HINT.text.replace('{size}', best.label);
+  }
+}
+
 /** The range input's OWN raw value is a LOG position (0..BRICK_SIZE_SLIDER_STEPS), never the real
  *  inches value -- a plain linear 0.375-8in slider put every everyday size (0.375-1.5in) in the
  *  first ~15% of the handle's travel, since 8in is >20x the minimum (Fred's own "is scale easy?"
@@ -2876,6 +2957,7 @@ function syncQuickSettings() {
     const mixed = row.mixed ? document.getElementById(quickMixedId(row)) : null;
     if (mixed) mixed.style.display = !any && row.mixed.when() ? '' : 'none';
   }
+  syncBestSize(); // both chip sets + both hints (every size or frame-preset sync ends here)
 }
 
 /** T86 item 7: labels for core/bricks/library.js's own declared BRUSH_PRESETS keys (the 3
