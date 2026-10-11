@@ -39,7 +39,7 @@ describe('brick heights with the per-brick constants cached: identical to the pr
     }
     if (process.env.PIN === '1') writeFileSync(PINNED, JSON.stringify(got, null, 1) + '\n');
     const pinned = JSON.parse(readFileSync(PINNED, 'utf8'));
-    expect(Object.keys(got).length).toBe(24);
+    expect(Object.keys(got).length).toBe(28); // 6 sets + the weathered one, x 2 seeds x detail (set 6, Rough ashlar: its keys added, the rest unchanged)
     expect(new Set(Object.values(got)).size).toBeGreaterThan(16); // real, distinct terrains of bricks (not all flat)
     expect(got).toEqual(pinned);
   }, 120000);

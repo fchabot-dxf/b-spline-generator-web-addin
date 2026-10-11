@@ -29,7 +29,7 @@ import {
   BRICK_SET_IDS, FRAME_SET_IDS, setsOfferedFor, frameModeOfSet, elementSetId, isRockFrame, brickRecordNode, BRICK_LAID_ATTR, brickElementAt, showElementSelection, isRunningBond,
   syncRunAccentHighlight,
   elementGroutWidth, JOINT_ELEMENT, patternParamsFor,
-  FRAME_CORNERS, FOLDED_FRAME_PRESETS, topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_CORNER_LIST, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
+  FRAME_CORNERS, FOLDED_FRAME_PRESETS, topBiasOf, frameSuppressionOf, windowSurroundOf, SURROUND_NONE, SURROUND_FOLLOW, SURROUND_CORNER_LIST, frameCornerOf, frameBandsOf, frameCornerIconSvg, framePresetIconSvg, frameCornerEffectFor,
   FRAME_FAN_CENTRES, frameFanCentreOf, fanCentreIconSvg, frameHasFanFor,
   addWallAreaStroke, clearWallAreas, wallAreaRecords, withWallFields, patternSetId,
   brushStrokeSettings, restyleBrushStroke, groutCutPolylines, strokesFollowGlobals, STROKE_FOLLOWS_GLOBAL, STROKE_FOLLOWS_QUICK_SET,
@@ -1177,6 +1177,7 @@ function syncControlsFromState() {
   syncBrickSizePresetButtons();
   syncGroutWidthBox();
   syncGroutPaintRow(); // item 55
+  syncFrameOffsetControl();
   document.getElementById('brickGroutDepth').value = s.grout.depthIn;
   document.getElementById('brickBtnGroutRecessed')?.classList.toggle('active', s.grout.profile === 'recessed');
   document.getElementById('brickBtnGroutFlush')?.classList.toggle('active', s.grout.profile === 'flush');
@@ -2117,6 +2118,9 @@ function renderWindowSurround() {
   const corners = document.getElementById('brickSurroundCornerList');
   if (presets) {
     presets.innerHTML = '';
+    // Fred 2026-10-10: "Same as frame" first -- the surround lays the Frame's own bands + corner (SURROUND_FOLLOW)
+    presets.appendChild(_iconButton(`brickSurroundPreset_${SURROUND_FOLLOW}`, 'Same as frame', "Same as frame: the window's surround lays the Frame's own bands and corner",
+      '<span style="font-size:10px; line-height:30px; padding:0 6px;">Same as frame</span>', () => setWindowSurround({ preset: SURROUND_FOLLOW })));
     for (const c of SURROUND_CHOICES()) {
       presets.appendChild(_iconButton(`brickSurroundPreset_${c.id}`, c.label, c.id === SURROUND_NONE ? 'No surround' : c.label, framePresetIconSvg(c.id, 30),
         () => setWindowSurround({ preset: c.id })));
@@ -2139,12 +2143,16 @@ function syncWindowSurround() {
   const w = windowSurroundOf(P.brickSettings);
   show('brickSurroundCornerLabel', w.preset !== SURROUND_NONE);
   show('brickSurroundCornerList', w.preset !== SURROUND_NONE);
-  for (const c of SURROUND_CHOICES()) document.getElementById(`brickSurroundPreset_${c.id}`)?.classList.toggle('active', c.id === w.preset);
+  document.getElementById(`brickSurroundPreset_${SURROUND_FOLLOW}`)?.classList.toggle('active', !!w.follows);
+  for (const c of SURROUND_CHOICES()) document.getElementById(`brickSurroundPreset_${c.id}`)?.classList.toggle('active', !w.follows && c.id === w.preset);
   for (const c of SURROUND_CORNER_LIST) document.getElementById(`brickSurroundCorner_${c.id}`)?.classList.toggle('active', c.id === w.corner);
 }
 /** Item 9: a surround pick (`patch`: preset and/or corner) -- re-lays at once, one undo step. */
 export function setWindowSurround(patch, commit = 'generate') {
-  P.brickSettings.windowSurround = { ...windowSurroundOf(P.brickSettings), ...patch };
+  // "Same as frame" stores just that; any other pick stores an explicit preset + corner (a corner picked while following
+  // keeps the frame's preset it was showing, now its own)
+  const cur = windowSurroundOf(P.brickSettings);
+  P.brickSettings.windowSurround = patch.preset === SURROUND_FOLLOW ? { preset: SURROUND_FOLLOW } : { preset: cur.preset, corner: cur.corner, ...patch };
   syncWindowSurround();
   commitBrickSetting(commit);
 }
@@ -2195,7 +2203,7 @@ const WALL_PATTERN_LABELS = {
   // F35 item 14: the tiles (named by what the sheet draws; the sheet has no captions)
   square_grid: 'Square grid', square_diamond: 'Square + diamond inserts', octagon_square: 'Octagon + small square',
   hexagon: 'Hexagon', lozenge: 'Lozenge', framed_square: 'Framed square',
-  fieldstone: 'Fieldstone', coursed_rubble: 'Coursed rubble',
+  fieldstone: 'Fieldstone', coursed_rubble: 'Coursed rubble', coursed_ashlar: 'Rough ashlar',
 };
 // item 23: what a ROCK wall becomes when a brick set is picked for it
 const DEFAULT_WALL_PATTERN = 'stretcher';
@@ -2903,6 +2911,25 @@ const BRUSH_PRESET_LIST = [
  *  with it keeps laying as before (OFF = the board rectangle, a distance = the edge offset by it). null = a template whose
  *  outline cannot carry a contour (FRAME_NEEDS_A_FRAME). */
 const LEGACY_FRAME_OFFSET = Object.freeze({ on: true, distance: 0 });
+/** Fred 2026-10-10 (item 66's removal reversed for the distance; his shot: the outer bricks spiky right at the board edge):
+ *  the Frame section's "Offset from frame" -- the bands' distance in from the frame's outer edge, the input's range. It
+ *  writes the key frameBandContour already reads (frameOffset), only when changed: a board that never sets it lays at 0. */
+export const FRAME_OFFSET_RANGE = Object.freeze({ min: 0, max: 1, step: 0.0625 });
+export function setFrameOffset(distance, commit = 'generate') {
+  const d = Number(distance);
+  if (!Number.isFinite(d)) { syncFrameOffsetControl(); return; }
+  const cur = P.brickSettings.frameOffset || LEGACY_FRAME_OFFSET;
+  P.brickSettings.frameOffset = { on: cur.on !== false, distance: d }; // a legacy OFF board keeps its OFF
+  syncFrameOffsetControl();
+  commitBrickSetting(commit);
+}
+function syncFrameOffsetControl() {
+  const el = document.getElementById('brickFrameOffsetDistance');
+  if (!el) return;
+  const R = FRAME_OFFSET_RANGE;
+  el.min = R.min; el.max = R.max; el.step = R.step;
+  if (document.activeElement !== el) el.value = (P.brickSettings.frameOffset || LEGACY_FRAME_OFFSET).distance || 0;
+}
 function frameBandContour(editor) {
   const off = P.brickSettings.frameOffset || LEGACY_FRAME_OFFSET;
   const rect = () => rectToPrimitives({ x1: 0, y1: 0, x2: editor._mW, y2: editor._mH });
@@ -3002,6 +3029,8 @@ export function initBrickPanel() {
   renderFramePresetList(document.getElementById('brickFramePresetList'));
   renderFrameCornerList(document.getElementById('brickFrameCornerList'));
   renderFrameFanCentreList(document.getElementById('brickFrameFanCentreList')); // T86 item 16e
+  document.getElementById('brickFrameOffsetDistance')?.addEventListener('change', (e) => setFrameOffset(e.target.value));
+  syncFrameOffsetControl();
   syncFramePresetButtons();
   renderBrushPresetList(document.getElementById('brickBrushPresetList'));
   syncBrushPresetButtons();
