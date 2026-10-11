@@ -132,14 +132,18 @@ export function initEditorChrome() {
   host.appendChild(corner);
   _buildGridPopover();
   for (const id of TOUCH_ROW.menuOnly) { const b = $(id); if (b) b.style.display = 'none'; }
-  const syncAll = () => { syncSelectionBar(); syncTouchRow(); syncCanvasCorner(); };
-  for (const ev of ['editorSelectionChanged', 'editorViewChanged', 'editorCommit', 'editorTabChanged', 'editorModeChanged', 'editorBoardResized']) document.addEventListener(ev, syncAll);
-  window.addEventListener('resize', syncAll);
+  // each sync on the events that can move it ONLY: a layout read on every commit (the corner) ran inside a brush
+  // stroke's commit before its card painted (the blind group, MEASURED: Brush stroke 106 ms blind)
+  const syncBar = () => { syncSelectionBar(); syncTouchRow(); };
+  for (const ev of ['editorSelectionChanged', 'editorViewChanged', 'editorCommit', 'editorModeChanged']) document.addEventListener(ev, syncBar);
+  for (const ev of ['editorTabChanged', 'editorBoardResized']) document.addEventListener(ev, () => { syncBar(); syncCanvasCorner(); });
+  window.addEventListener('resize', () => { syncBar(); syncCanvasCorner(); });
   // the phone drawer moves (a drag, a tab's peek height): the corner follows its top
   const drawer = $('editorMobileDrawer');
   if (drawer && typeof ResizeObserver === 'function') new ResizeObserver(() => syncCanvasCorner()).observe(drawer);
   if (typeof ResizeObserver === 'function') new ResizeObserver(() => syncCanvasCorner()).observe($('editorSVGContainer'));
   host.addEventListener('pointerup', () => requestAnimationFrame(() => { syncSelectionBar(); syncTouchRow(); }), true);
   host.addEventListener('pointerdown', () => requestAnimationFrame(syncTouchRow), true);
-  syncAll();
+  syncBar();
+  syncCanvasCorner();
 }
