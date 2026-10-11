@@ -38,6 +38,7 @@ import { FRAME_HANDLE_RADIUS } from '../editor/editor-frame-profile.js';
 import { insetWindowGeometry, insetWindowOuterRect } from '../core/inset-window.js';
 import { mountIconSelect, refreshIconSelect } from './icon-select.js';
 import { templateIconSvg, boardOutlineIconSvg } from '../editor/frame-template-icon.js';
+import { FRAME_LABELS } from '../core/frame-labels.js';
 
 /** Fred (turn 207): the template picker's no-frame choice -- the board's own rectangle (value '' = no frame
  *  shape, unchanged underneath), labelled and drawn as such instead of a 'None' text cell. */
@@ -868,7 +869,7 @@ export function initFramePanel() {
   // advisor turn 203 (Fred's rule): the template list is a long VISUAL list -> an icon dropdown, icons drawn
   // by the frame engine from each template's own outline (editor/frame-template-icon.js), the name as tooltip.
   for (const sel of [tplSel, $('editorFrameTemplate')].filter(Boolean)) {
-    mountIconSelect(sel, { iconFor: (v) => (v === NO_FRAME_CHOICE.value ? boardOutlineIconSvg() : templateIconSvg(FRAME_DEFS, v)), label: 'Frame template' });
+    mountIconSelect(sel, { iconFor: (v) => (v === NO_FRAME_CHOICE.value ? boardOutlineIconSvg() : templateIconSvg(FRAME_DEFS, v)), label: `${FRAME_LABELS.wood} template` });
   }
   $('editorFrameTemplate')?.addEventListener('change', (e) => editFrame({ templateId: e.target.value || null, params: {} }));
   $('editorFrameGenerate')?.addEventListener('click', () => generateFrame());

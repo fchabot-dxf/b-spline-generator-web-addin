@@ -52,6 +52,7 @@ import { FRAME_PRESETS } from '../bspline-frame-builder/b-spline-gen/html/core/b
 import { showToast } from '../bspline-frame-builder/b-spline-gen/html/core/toast.js';
 import { deselectTool, BRICK_GENERAL_TAB } from '../bspline-frame-builder/b-spline-gen/html/main/brick-panel.js';
 import { setEditorTab } from '../bspline-frame-builder/b-spline-gen/html/main/editor-tabs.js';
+import { FRAME_LABELS } from '../bspline-frame-builder/b-spline-gen/html/core/frame-labels.js';
 
 const FIXTURE = `
   <div class="sticky-actions"><div id="editorToolbarBrick"></div><button id="brickGenerate">Generate</button></div>
@@ -383,7 +384,7 @@ describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + 
   });
   it('one quick row per declared setting, a button per choice, the current one active', () => {
     const rows = [...$('brickQuickSettings').querySelectorAll('label')].map((l) => l.textContent);
-    expect(rows).toEqual(['Set', 'Brick size', 'Wall pattern', 'Frame bands', 'Grout colour']); // + F35 item 55
+    expect(rows).toEqual(['Set', 'Brick size', 'Wall pattern', FRAME_LABELS.brick, 'Grout colour']); // + F35 item 55
     expect($('brickQuick_set_1').classList.contains('active')).toBe(true);
     expect($('brickQuick_pattern_stretcher').classList.contains('active')).toBe(true);
     expect($('brickQuick_frameBands_single_soldier').classList.contains('active')).toBe(true);
@@ -1014,7 +1015,7 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
     deselectTool();
     expect(shown('brickStartHint')).toBe(true);
     expect($('brickStartHint').textContent).toMatch(/Wall/);
-    expect($('brickStartHint').textContent).toMatch(/Frame/);
+    expect($('brickStartHint').textContent).toContain(FRAME_LABELS.brick);
     expect($('brickStartHint').textContent).toMatch(/Brush/);
     $('brickTool_wall').click();
     expect(shown('brickStartHint')).toBe(false);

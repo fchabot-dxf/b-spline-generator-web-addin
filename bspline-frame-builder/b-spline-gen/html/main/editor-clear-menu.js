@@ -27,10 +27,11 @@ import { clearFrame } from '../editor/editor-frame-profile.js';
 import { refreshGuides } from '../editor/editor-guides.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { confirmDialog } from '../core/confirm-dialog.js';
+import { FRAME_LABELS } from '../core/frame-labels.js';
 
 /** kind -> { label, editor: true when it changes the drawing (shares the one commit), run(editor) } */
 export const CLEAR_KINDS = Object.freeze({
-  frame: { label: 'Frame', editor: false, run: () => clearFrame() },
+  frame: { label: FRAME_LABELS.wood, editor: false, run: () => clearFrame() },
   artwork: { label: 'Artwork', editor: true, run: (editor) => clearArtworkLayers(editor) },
   photo: { label: 'Photo', editor: false, run: () => clearPhoto() },
   bricks: { label: 'Bricks', editor: true, run: (editor) => clearBrickElements(editor) },

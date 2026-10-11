@@ -56,6 +56,7 @@ import { renderTabStrip } from '../editor/tab-strip.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
 import { brickToolIconSvg } from '../editor/brick-tool-icons.js';
 import { applyBrickTabSections, brickTabOfControl } from './brick-tab-sections.js';
+import { FRAME_LABELS } from '../core/frame-labels.js';
 
 /** The declared tool list (Fred's own UI lock: "a declared tool list
  * [{id,label,icon,settingsSection,engineEntry}]... more tools added as data
@@ -97,8 +98,8 @@ const BRICK_TOOLS = [
     tab: { order: 1, label: 'Wall' },
     subTools: ['select', 'area'],
     hint: 'Fills the frame\'s interior with bricks (the whole board when there is no frame). Change a setting to lay it; Generate re-lays.' },
-  { id: 'frame', buttonId: 'brickTool_frame', iconSvg: () => brickToolIconSvg('frame'), label: 'Frame', icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
-    tab: { order: 2, label: 'Frame' },
+  { id: 'frame', buttonId: 'brickTool_frame', iconSvg: () => brickToolIconSvg('frame'), label: FRAME_LABELS.brick, icon: '⬚', settingsSection: 'brickFrameSection', generates: true, lays: 'frame', ownsSet: true,
+    tab: { order: 2, label: FRAME_LABELS.brick },
     subTools: ['select'],
     hint: 'Bands of bricks along the frame\'s outer edge (the board\'s edge when no frame template is picked). Change a setting to lay them; Generate re-lays.' },
   // F35 item 3: arm the EXISTING, unmodified editor cut/stripe modes --
@@ -2642,7 +2643,7 @@ export function clearAllWallAreas() {
   _relayStaged();
   return true;
 }
-const ELEMENT_LABELS = { wall: 'Wall', frame: 'Frame', brush: 'stroke', raisedBrush: 'raised stroke' };
+const ELEMENT_LABELS = { wall: 'Wall', frame: FRAME_LABELS.brick, brush: 'stroke', raisedBrush: 'raised stroke' };
 /** F35 item 36: what a selected STROKE's snapshot means in the section -- [panel field, snapshot field] ('{kind}' =
  *  the stroke's tool). Loading a stroke copies these into P.brickSettings; any edit writes the stroke back as the
  *  Brush tool freezes a new one ({ ...P.brickSettings, ...its strokeOverrides }). */
@@ -2893,7 +2894,7 @@ export const BRICK_QUICK_SETTINGS = [
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
   // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
   // (`lays`), or re-lays it; greyed while the board has no frame contour (BRICK_CONTROL_REQUIRES 'frameContour')
-  { id: 'frameBands', label: 'Frame bands', stage: 'bricks', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetIconSvg(c.id, 24),
+  { id: 'frameBands', label: FRAME_LABELS.brick, stage: 'bricks', choices: () => FRAME_PRESET_LIST, iconFor: (c) => framePresetIconSvg(c.id, 24),
     lays: 'frame', isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
   // F35 item 55: the board-wide grout colour (paint only, nothing re-lays); any other hex from the Brick tab's picker
   { id: 'groutColor', label: 'Grout colour', stage: 'heightMask', choices: () => GROUT_COLOR_CHOICES, iconFor: _groutSwatchSvg, // paint only: the re-mask
