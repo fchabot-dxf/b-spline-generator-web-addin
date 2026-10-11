@@ -102,6 +102,41 @@ describe('it conforms to the frame (any template)', () => {
       noOverlap(res.archBricks.filter((b) => b.part === 'ring'));
     }
   });
+  it('every laid arch has all its stones: one keystone, two springers, two sill blocks (or the rung is not laid)', () => {
+    for (const [id, W, H] of [['template_18', 7, 10], ['template_11', 7, 10], ['template_5', 7, 10], ['template_6', 7, 10]]) {
+      const res = lay(tplPrims(id, W, H), W, H);
+      if (res.archFit) continue;
+      const n = (p) => res.archBricks.filter((b) => b.part === p).length;
+      expect([id, n('keystone'), n('springer'), n('sillBlock')]).toEqual([id, 1, 2, 2]);
+    }
+  });
+  it('a pointed gable (T7 9 x 12): laid, its keystone at the apex on the centre line (the top span = the two sides meeting there)', () => {
+    const res = lay(tplPrims('template_7', 9, 12), 9, 12);
+    expect(res.archFit).toBeUndefined();
+    const k = centroid(res.archBricks.find((b) => b.part === 'keystone').polygon);
+    expect(k.x).toBeCloseTo(4.5, 1);
+    for (const sp of res.archBricks.filter((b) => b.part === 'springer')) expect(centroid(sp.polygon).y).toBeGreaterThan(k.y + 1);
+  });
+  it('T18 Arched Head 7 x 10: its neck takes the ladder down (no hood), laid all the same', () => {
+    const res = lay(tplPrims('template_18', 7, 10));
+    expect(res.archFit).toBeUndefined();
+    expect(res.archStep).toBeGreaterThan(0);
+    expect(res.archBricks.filter((b) => b.part === 'hood')).toHaveLength(0);
+  });
+  // MEASURED (the full sweep with each check removed): an opening split into lobes laid overlapping pieces on T14 / T16; a
+  // stone reaching into the opening on T11 / T5 -- these boards pin both checks
+  it.each([['template_14', 7, 10, 0.75], ['template_16', 9, 12, 1], ['template_11', 7, 10, 1], ['template_5', 7, 10, 1.25]])('%s %d x %d at %d in: no two arch pieces overlap, nor wall and arch', (id, W, H, size) => {
+    const res = generateBricks({ boardOutline: rectPoly(0, 0, W, H), set: RED, scale: size / 0.75, seed: 3,
+      frame: { primitives: tplPrims(id, W, H), bands: [...FRAME_PRESETS.arch_keystone] }, arch: { spec: 'rowlock_keystone' } });
+    if (!res.archBricks) return;
+    noOverlap(res.archBricks);
+    for (const w of res.bricks) for (const a of res.archBricks) expect(polygonsOverlap(w.polygon, a.polygon)).toBe(false);
+  });
+  it("T5's concave dip at 1.25 in: the opening's wall clear of the arch's corner pieces", () => {
+    const res = generateBricks({ boardOutline: rectPoly(0, 0, 7, 10), set: RED, scale: 1.25 / 0.75, seed: 3,
+      frame: { primitives: tplPrims('template_5', 7, 10), bands: [...FRAME_PRESETS.arch_keystone] }, arch: { spec: 'rowlock_keystone' } });
+    for (const w of res.bricks) for (const a of res.archBricks || []) expect(polygonsOverlap(w.polygon, a.polygon)).toBe(false);
+  });
   it("too narrow for even one ring: no arch ('archTooNarrow'), the wall as without it", () => {
     const narrow = rectPrims(1.6, 10);
     const res = lay(narrow, 1.6, 10);

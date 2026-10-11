@@ -168,7 +168,7 @@ function tryStack(spec, rung, { primitives, fb, plan, layOpts, s, tb, seed }) {
   const nf = fb.length;
   let hoodPieces = rung.hood ? laid.filter((b) => b.bandIndex === nf) : [];
   let ringPieces = laid.filter((b) => b.bandIndex >= nf + (rung.hood ? 1 : 0));
-  if (!ringPieces.length || anyOverlap(ringPieces.map((b) => b.polygon))) return null; // the rings collide
+  if (!ringPieces.length) return null;
   // the rings' mid line: every slab is measured along it
   const M = plan([...head, row('soldier', (spec.ringDepthL * L * rung.rings) / 2)]);
   const P = polyParam(M);
