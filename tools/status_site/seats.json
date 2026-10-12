@@ -25,7 +25,7 @@
       "station": "home-pc",
       "branch": "editor-pickers",
       "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "-wt\\bb",
+      "checkout": "-wt\\bb-pk",
       "session": "b-spline-generator-web-addin-bb",
       "shots": [
         "seatD",
