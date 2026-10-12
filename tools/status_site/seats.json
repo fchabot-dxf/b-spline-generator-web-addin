@@ -14,9 +14,7 @@
       "checkout": "-wt\\77-pd",
       "session": "b-spline-generator-web-addin-77",
       "shots": [
-        "seatA",
-        "advisor",
-        "fred"
+        "seatA"
       ]
     },
     {
