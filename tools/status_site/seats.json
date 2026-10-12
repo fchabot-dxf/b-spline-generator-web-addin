@@ -11,7 +11,7 @@
       "station": "home-pc",
       "branch": "pattern-defaults",
       "task": "NEXT-SESSION.md",
-      "checkout": "-wt?-pd",
+      "checkout": "-wt\\77-pd",
       "session": "b-spline-generator-web-addin-77",
       "shots": [
         "seatA",
@@ -25,7 +25,7 @@
       "station": "home-pc",
       "branch": "editor-pickers",
       "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "-wt\bb",
+      "checkout": "-wt\\bb",
       "session": "b-spline-generator-web-addin-bb",
       "shots": [
         "seatD",
@@ -38,7 +38,7 @@
       "station": "home-pc",
       "branch": "curve-quoin",
       "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "-wt1",
+      "checkout": "-wt\\61",
       "session": "b-spline-generator-web-addin-61",
       "shots": [
         "seatE"
