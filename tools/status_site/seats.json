@@ -38,7 +38,7 @@
       "station": "home-pc",
       "branch": "curve-quoin",
       "task": "NEXT-SESSION-fb-app.md",
-      "checkout": "-wt\\61",
+      "checkout": "-wt\\61-cq",
       "session": "b-spline-generator-web-addin-61",
       "shots": [
         "seatE"
