@@ -22,6 +22,7 @@ import { initMobilePreviewResizer } from './mobile-resizer.js';
 import { initSidebarLayout } from './sidebar-layout.js';
 import { initSidebarTabs } from './sidebar-tabs.js';
 import { initArtTabs } from './art-tabs.js';
+import { initEditorChrome } from './editor-chrome.js';
 import { applySectionThemes } from './section-themes.js';
 import { rebuild, scheduleRebuild } from '../core/engine.js';
 import { updatePreviewSculptMode } from '../core/sculpt-interaction.js';
@@ -151,6 +152,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // onChange callback of its own.
     initBrickPanel();
     initArtTabs(); // the Artwork editor's tabs (mockup v2)
+    initEditorChrome(); // redesign phase 3: the selection bar, Fit in the canvas corner, the Grid popover (tools-only rows)
 
     // 5. Sidebar / header / theme / project manager.
     bindControls(preview);
