@@ -78,6 +78,36 @@ export const WOOD_FRAME_FAMILIES = Object.freeze({
     ]),
     defaultPreset: 'arch_keystone',
   }),
+  family_3_gables: Object.freeze({
+    id: 'family_3_gables',
+    label: 'Pointed & Dipped Gables',
+    templates: Object.freeze([
+      'template_5',
+      'template_7',
+      'template_8',
+      'template_11',
+      'template_14',
+    ]),
+    segmentTypes: Object.freeze({
+      top: 'peaked_or_dipped',
+      bottom: 'straight_or_inverted_peak',
+      corners: 'ridge_apex_and_eaves',
+      sides: 'hourglass_or_flank',
+    }),
+    conformingPresetIds: Object.freeze([
+      'none',
+      'single_soldier',
+      'soldier_stretcher',
+      'three_band',
+      'double_soldier',
+      'header_band',
+      'mixed_bands',
+      'craftsman_apron',
+      'corbelled_cornice',
+      'zigzag_band',
+    ]),
+    defaultPreset: 'soldier_stretcher',
+  }),
 });
 
 /** Find the declared wood frame family for a template ID. */
