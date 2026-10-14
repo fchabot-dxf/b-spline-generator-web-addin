@@ -91,7 +91,7 @@ describe('BRICK_SETS', () => {
 });
 
 describe('FRAME_PRESETS', () => {
-  it('declares exactly the 20 named presets, each (except the declared-empty "none" and the arch, its own frame) a non-empty band list with widthIn > 0', () => {
+  it('declares exactly the named presets, each (except the declared-empty "none" and the arch, its own frame) a non-empty band list with widthIn > 0', () => {
     // T86 item 1: butt_frame, quoin_corners, double_course and header_band join the 3 original
     // mitre-only presets -- the dispatch's own full 6 corner-style/pattern presets plus the original 3.
     // T86 item 2: mixed_bands (header/flemish/soldier) joins as the declared sequence-based preview combo.

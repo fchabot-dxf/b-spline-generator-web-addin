@@ -35,8 +35,9 @@ beforeEach(() => {
 afterEach(() => root.remove());
 
 describe('the sidebar open-the-editor buttons', () => {
-  it('declared: Edit frame -> Frame tab, Brick editor -> Brick tab', () => {
-    expect(OPEN_EDITOR_BUTTONS).toEqual([{ id: 'btnEditFrameShape', tab: 'frame' }, { id: 'btnEditBricks', tab: 'brick' }]);
+  it('declared: Edit frame -> Frame tab, Brick editor -> Brick tab, Layers panel Open Editor -> Artwork', () => {
+    // c64a466 (2026-10-14): the main sidebar's permanent Layers panel opens the editor on the Artwork tab
+    expect(OPEN_EDITOR_BUTTONS).toEqual([{ id: 'btnEditFrameShape', tab: 'frame' }, { id: 'btnEditBricks', tab: 'brick' }, { id: 'btnMainLayersOpenEditor', tab: 'artwork' }]);
   });
   it('Brick editor opens the editor through btnStampEdit, on the Brick tab', async () => {
     const open = vi.fn();
