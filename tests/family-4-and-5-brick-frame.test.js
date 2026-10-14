@@ -45,6 +45,8 @@ describe('Family 4 & 5 Brick Frame Adaptation', () => {
     it('includes stepped_fret and excludes arch_keystone and quoin_corners', () => {
       for (const tid of family4Templates) {
         expect(isPresetConforming(tid, 'stepped_fret')).toBe(true);
+        expect(isPresetConforming(tid, 'crenellated_battlement')).toBe(true);
+        expect(isPresetConforming(tid, 'art_deco_stepped')).toBe(true);
         expect(isPresetConforming(tid, 'single_soldier')).toBe(true);
         expect(isPresetConforming(tid, 'soldier_stretcher')).toBe(true);
         expect(isPresetConforming(tid, 'arch_keystone')).toBe(false);
@@ -101,6 +103,8 @@ describe('Family 4 & 5 Brick Frame Adaptation', () => {
         expect(isPresetConforming(tid, 'single_soldier')).toBe(true);
         expect(isPresetConforming(tid, 'soldier_stretcher')).toBe(true);
         expect(isPresetConforming(tid, 'corbelled_cornice')).toBe(true);
+        expect(isPresetConforming(tid, 'florentine_architrave')).toBe(true);
+        expect(isPresetConforming(tid, 'venetian_dentil')).toBe(true);
         expect(isPresetConforming(tid, 'arch_keystone')).toBe(false);
         expect(isPresetConforming(tid, 'quoin_corners')).toBe(false);
         expect(isPresetConforming(tid, 'butt_frame')).toBe(false);

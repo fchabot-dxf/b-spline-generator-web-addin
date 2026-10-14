@@ -605,6 +605,26 @@ export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
     { widthIn: 0.75, rows: 1, pattern: 'soldier', motif: 'raised', insideRelief: 'recessed' },
   ]),
+  crenellated_battlement: withBestSize(1.25, [
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'dentil' },
+    { widthIn: 0.2, rows: 1, pattern: 'header' },
+  ]),
+  art_deco_stepped: withBestSize(1.25, [
+    { widthIn: 0.2, rows: 1, pattern: 'header' },
+    { widthIn: 0.4, rows: 2, pattern: 'stretcher', motif: 'raised' },
+    { widthIn: 0.75, rows: 1, pattern: 'soldier' },
+  ]),
+  florentine_architrave: withBestSize(1.25, [
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+    { widthIn: 0.2, rows: 1, pattern: 'header' },
+    { widthIn: 0.75, rows: 1, pattern: 'soldier', motif: 'raised' },
+  ]),
+  venetian_dentil: withBestSize(1, [
+    { widthIn: 0.4, rows: 2, pattern: 'stretcher' },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher', motif: 'dentil' },
+    { widthIn: 0.2, rows: 1, pattern: 'header' },
+  ]),
 }));
 
 /** Frame motifs phase 1: each motif preset's RECOMMENDED brick size (in) -- the biggest that still shows its structure,

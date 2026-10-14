@@ -3216,6 +3216,10 @@ const FRAME_PRESET_LABELS = {
   corbelled_cornice: 'Corbelled cornice',
   flemish_architrave: 'Flemish architrave',
   chicago_dentil: 'Chicago dentil apron',
+  crenellated_battlement: 'Crenellated battlement',
+  art_deco_stepped: 'Art Deco stepped',
+  florentine_architrave: 'Florentine architrave',
+  venetian_dentil: 'Venetian dentil',
 };
 for (const id of QUOIN_VARIANT_OF) FRAME_PRESET_LABELS[`${id}_quoin`] = `${FRAME_PRESET_LABELS[id] || id} · quoin`;
 const FRAME_PRESET_LIST = Object.keys(FRAME_PRESETS).map((id) => ({ id, label: FRAME_PRESET_LABELS[id] || id }));
