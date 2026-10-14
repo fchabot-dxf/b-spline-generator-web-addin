@@ -32,6 +32,12 @@ const NEW_PRESETS = [
   'stepped_fret',
   'craftsman_apron_quoin',
   'double_soldier_quoin',
+  'tudor_frieze',
+  'corbelled_cornice',
+  'flemish_architrave',
+  'chicago_dentil',
+  'tudor_frieze_quoin',
+  'corbelled_cornice_quoin',
 ];
 
 const TEMPLATES = [

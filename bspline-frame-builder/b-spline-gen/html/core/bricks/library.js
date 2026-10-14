@@ -465,6 +465,7 @@ function withArch(arch, bands) {
 export const QUOIN_VARIANT_OF = Object.freeze([
   'soldier_stretcher', 'three_band', 'mixed_bands', 'recessed_panel',
   'craftsman_apron', 'double_soldier',
+  'tudor_frieze', 'corbelled_cornice',
 ]);
 const cornered = (bands, cornerStyle) => {
   const v = bands.map((b) => ({ ...b, cornerStyle }));
@@ -583,6 +584,26 @@ export const FRAME_PRESETS = Object.freeze(withQuoinVariants({
     { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
     { widthIn: 0.4, rows: 2, pattern: 'stretcher', motif: 'raised' },
     { widthIn: 0.2, rows: 1, pattern: 'header' },
+  ]),
+  tudor_frieze: withBestSize(1.25, [
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+    { widthIn: 0.8, rows: 4, pattern: 'header', motif: 'diaper' },
+    { widthIn: 0.75, rows: 1, pattern: 'soldier', motif: 'raised', insideRelief: 'recessed' },
+  ]),
+  corbelled_cornice: withBestSize(1, [
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+    { widthIn: 0.4, rows: 2, pattern: 'stretcher', motif: 'corbel_table' },
+    { widthIn: 0.2, rows: 1, pattern: 'header', insideRelief: 'recessed' },
+  ]),
+  flemish_architrave: withBestSize(1.25, [
+    { widthIn: 0.2, rows: 1, pattern: 'header' },
+    { widthIn: 0.4, rows: 2, pattern: 'flemish' },
+    { widthIn: 0.75, rows: 1, pattern: 'soldier', insideRelief: 'recessed' },
+  ]),
+  chicago_dentil: withBestSize(1.25, [
+    { widthIn: 0.3, rows: 1, pattern: 'stretcher', motif: 'dentil' },
+    { widthIn: 0.2, rows: 1, pattern: 'stretcher' },
+    { widthIn: 0.75, rows: 1, pattern: 'soldier', motif: 'raised', insideRelief: 'recessed' },
   ]),
 }));
 

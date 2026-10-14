@@ -104,9 +104,11 @@ describe('FRAME_PRESETS', () => {
       'dentil_corbel', 'recessed_panel', 'zigzag_band', 'diaper_lattice', 'soldier_string', 'dentil_cornice', 'arch_keystone',
       // architectural apron & bond presets
       'craftsman_apron', 'double_soldier', 'english_frame', 'stepped_fret',
+      'tudor_frieze', 'corbelled_cornice', 'flemish_architrave', 'chicago_dentil',
       // Fred 2026-10-11 (a preset bundles its corner): the quoin variants (library.js QUOIN_VARIANT_OF)
       'soldier_stretcher_quoin', 'three_band_quoin', 'mixed_bands_quoin', 'recessed_panel_quoin',
-      'craftsman_apron_quoin', 'double_soldier_quoin'].sort());
+      'craftsman_apron_quoin', 'double_soldier_quoin',
+      'tudor_frieze_quoin', 'corbelled_cornice_quoin'].sort());
     expect(FRAME_PRESETS.none).toEqual([]);
     expect([...FRAME_PRESETS.arch_keystone]).toEqual([]);
     for (const [name, bands] of Object.entries(FRAME_PRESETS)) {
