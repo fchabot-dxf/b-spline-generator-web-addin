@@ -40,7 +40,7 @@ import {
   ACCENT_PRESETS, ACCENT_CUSTOM, DEFAULT_ACCENT, toggleAccentClick, ACCENT_LEVEL_RANGE, clampAccentLevel, ACCENT_TILE,
   ACCENT_TILE_LIMITS, ACCENT_TILE_UNITS, PATTERN_BUILDER_SCOPE, makeTile, tileOf, userPatternFrom, accentOfUserPattern,
   accentLayInput, BOND_CUSTOM, isCustomBondTile, blankBond, resizeBond, pieceOfCells, bondTogglePiece, bondJoin, bondSplit,
-  bondShift, wallPatternOfBase, accentPresetsForPattern,
+  bondShift, wallPatternOfBase, accentPresetsForPattern, accentPresetById,
 } from '../editor/brick-accents.js';
 import { commitEdit } from '../editor/editor-commit.js';
 import { registerUndoPart } from '../editor/undo-parts.js';
@@ -470,13 +470,21 @@ export const accentChoicesForPattern = (patternId) => [
   ...accentPresetsForPattern(patternId || (P && P.brickSettings && P.brickSettings.pattern)),
 ];
 const ACCENT_CHOICES = [{ id: 'none', label: 'None' }, ...ACCENT_PRESETS];
+/** The Wall grid's choices: the pattern's own (0b04ee2), PLUS the board's saved preset when the pattern no longer offers
+ *  it (advisor 2026-10-14: a saved Stretcher Course bands still lays -- accentPresetById -- so the grid shows it, active,
+ *  instead of a chip with no name). Custom / tile / none are not presets: never appended. */
+export const wallAccentChoices = (patternId, presetId) => {
+  const own = accentChoicesForPattern(patternId);
+  const saved = typeof presetId === 'string' && !own.some((c) => c.id === presetId) ? accentPresetById(presetId) : null;
+  return saved ? [...own, saved] : own;
+};
 let _accentClickArmed = false;
 
 export function renderAccentList(container) {
   if (!container) return;
   container.innerHTML = '';
   const pattern = (P && P.brickSettings && P.brickSettings.pattern) || 'stretcher';
-  const choices = accentChoicesForPattern(pattern);
+  const choices = wallAccentChoices(pattern, _accent().preset);
 
   for (const choice of choices) {
     const btn = document.createElement('button');
@@ -498,7 +506,7 @@ export function renderAccentList(container) {
 export function syncAccentControls() {
   const a = _accent();
   const pattern = (P && P.brickSettings && P.brickSettings.pattern) || 'stretcher';
-  const choices = accentChoicesForPattern(pattern);
+  const choices = wallAccentChoices(pattern, a.preset);
   for (const choice of choices) document.getElementById(`brickAccent_${choice.id}`)?.classList.toggle('active', a.preset === choice.id);
   document.getElementById('brickAccentClick')?.classList.toggle('active', a.preset === ACCENT_CUSTOM.id && _accentClickArmed && _accentClickTarget.kind === 'wall');
   const row = document.getElementById('brickAccentLevelRow');
