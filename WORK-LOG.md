@@ -26135,8 +26135,10 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
     - Selecting an option updates the active pattern, closes the mosaic, and syncs the chip icon + label.
     - Preserved original icon dimensions (`wallPatternIconSvg`, 30px height, 45px width for bonds; 26px for custom accent tiles) without distortion or stretching.
     - Preserved DOM IDs (`brickPattern_${id}`) on options so discrete controls and external tests address them directly.
-  - Added test suite `tests/brick-pattern-dropdown.test.js` (3 tests passed).
 - **Verification:**
+  - Ran `tests/canvas-total-heights.test.js` (3/3 passed) and `tests/brick-pattern-dropdown.test.js` (3/3 passed).
+  - Verified full test suite (463 test files, 6,551 tests passed).
+
 ## Turn 210: LATTICE-NODE-FOLLOW-TIE — nodes follow ties during manipulation (Antigravity / AGY, 2026-10-14)
 - **Problem & Root Cause Analysis:**
   - In Lattice and Shape Lattice modes, moving or stretching ties could leave attached nodes behind:
@@ -26181,6 +26183,10 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
     - Verified `updateSnapTargetHighlight` and `clearSnapTargetHighlight` properly manage `_highlightLayer` and `_handleLayer`.
     - Verified full selection drag flow: snapping to an endpoint activates reticle and target highlight, and releasing cleans up the highlight while committing the snapped coordinates.
   - Full test suite run: **465 test files passed (465/465), 6,556 tests passed (6,556/6,556)**, 0 failures.
+- **Release:**
+  - Staged and committed changes in commit `e4735a8` ("Turn 209-211: heights HUD, brick pattern popover, tie-node follow, and select snap feedback").
+  - Pushed to `origin/main` (`92bccb4..e4735a8`).
 - Signed: Antigravity (AGY)
+
 
 
