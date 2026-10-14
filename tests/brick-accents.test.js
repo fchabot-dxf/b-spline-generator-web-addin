@@ -12,6 +12,7 @@ vi.mock('../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-surface.
 
 import {
   ACCENT_PRESETS, ACCENT_MOTIFS, ACCENT_ZONES, accentGrid, accentedBrickIndices, toggleAccentClick,
+  accentPresetsForPattern, PATTERN_ACCENT_PRESETS,
 } from '../bspline-frame-builder/b-spline-gen/html/editor/brick-accents.js';
 import { accentIconSvg, BRICK_GEN_ATTR } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-tool.js';
 import { rasterizeBrickHeightMask } from '../bspline-frame-builder/b-spline-gen/html/editor/editor-brick-height-mask.js';
@@ -54,12 +55,12 @@ describe('the course/column grid, derived from brick positions', () => {
   });
 });
 
-describe('the 10 presets', () => {
+describe('the presets', () => {
   const bricks = wall();
   const up = upIn(bricks);
-  it('10 presets, unique ids, each naming a declared motif', () => {
-    expect(ACCENT_PRESETS).toHaveLength(10);
-    expect(new Set(ACCENT_PRESETS.map((p) => p.id)).size).toBe(10);
+  it('14 presets, unique ids, each naming a declared motif', () => {
+    expect(ACCENT_PRESETS).toHaveLength(14);
+    expect(new Set(ACCENT_PRESETS.map((p) => p.id)).size).toBe(14);
     for (const p of ACCENT_PRESETS) expect(ACCENT_MOTIFS[p.motif], p.id).toBeTypeOf('function');
   });
   it.each(ACCENT_PRESETS.map((p) => [p.id]))('%s raises some bricks, all inside its zone', (id) => {
@@ -77,7 +78,7 @@ describe('the 10 presets', () => {
   });
   it('every preset raises a different set of bricks', () => {
     const sets = ACCENT_PRESETS.map((p) => [...accentedBrickIndices(bricks, { preset: p.id }, { seed: 1 })].join(','));
-    expect(new Set(sets).size).toBe(10);
+    expect(new Set(sets).size).toBe(14);
   });
   it('Course bands raise WHOLE courses: every brick of course 0, none of course 1', () => {
     const grid = accentGrid(bricks);
@@ -131,7 +132,7 @@ describe('picker icons, drawn by the real engine', () => {
       expect(doc.querySelectorAll('g[fill="#d07a5c"] > polygon').length).toBeGreaterThan(10);
       expect(doc.querySelectorAll('g[fill="#8e2f1c"] > polygon').length).toBeGreaterThan(0);
     }
-    expect(new Set(icons).size).toBe(10);
+    expect(new Set(icons).size).toBe(14);
     expect(accentIconSvg('none')).toMatch(/<g fill="#8e2f1c"><\/g>/);
   });
 });
@@ -174,5 +175,38 @@ describe('the height mask lifts exactly the accented Wall bricks by the accent L
     const a = await run({});
     const b = await run({ accent: { preset: 'none', levelIn: 0.0625, clicks: [] } });
     expect(Array.from(b.body)).toEqual(Array.from(a.body));
+  });
+});
+
+describe('Per-pattern accent presets', () => {
+  const PATTERNS_TO_TEST = [
+    'stretcher', 'stack', 'soldier', 'header', 'flemish',
+    'english', 'monk', 'herringbone', 'double_herringbone',
+    'basketweave', 'windmill', 'fieldstone', 'stacked_horizontal',
+  ];
+
+  it.each(PATTERNS_TO_TEST)('%s has 4 tailored presets with unique IDs', (pat) => {
+    const presets = accentPresetsForPattern(pat);
+    expect(presets.length).toBeGreaterThanOrEqual(4);
+    const ids = presets.map((p) => p.id);
+    expect(new Set(ids).size).toBe(presets.length);
+  });
+
+  it.each(PATTERNS_TO_TEST)('%s presets each raise bricks on its layout', (pat) => {
+    const isTile2d = ['herringbone', 'double_herringbone', 'basketweave', 'windmill', 'fieldstone', 'stacked_horizontal'].includes(pat);
+    const set = isTile2d ? { ...brickSetById(1), layout: pat } : brickSetById(1);
+    const zones = isTile2d ? undefined : [{ pattern: pat }];
+    const res = generateBricks({
+      boardOutline: [{ x: 0, y: 0 }, { x: W, y: 0 }, { x: W, y: H }, { x: 0, y: H }],
+      set, scale: 1, suppression: 0, clumping: 0, seed: 1, ...(zones ? { zones } : {}),
+    });
+    const bricks = res.bricks;
+    expect(bricks.length, `${pat} should have generated bricks`).toBeGreaterThan(10);
+    const presets = accentPresetsForPattern(pat);
+    for (const p of presets) {
+      const raised = accentedBrickIndices(bricks, { preset: p.id }, { seed: 1 });
+      expect(raised.size, `${pat} preset ${p.id} should raise bricks`).toBeGreaterThan(0);
+      expect(raised.size, `${pat} preset ${p.id} should not raise all bricks`).toBeLessThan(bricks.length);
+    }
   });
 });

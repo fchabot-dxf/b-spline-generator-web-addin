@@ -55,7 +55,7 @@ import { withLoadingStageShownFirst } from '../core/loading-signal.js';
 import { ramerDouglasPeucker } from './editor-curves.js';
 import { pieceEnds } from './editor-cut-tool.js';
 import { STRIPE_ATTR } from './editor-stripe-tool.js';
-import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, frameHasFan, FAN_CENTRES, FAN_CENTRE_DEFAULT, fanGroups, applyGroutCuts, LAID_BY_COURSES } from '../core/bricks/index.js';
+import { bricksAlongPath, bricksContourBands, generateBricks, pointInPolygon, ENGINE_OPTIONS, bricksClearOf, frameCornerEffect, frameHasFan, FAN_CENTRES, FAN_CENTRE_DEFAULT, fanGroups, applyGroutCuts, LAID_BY_COURSES, familyForTemplate } from '../core/bricks/index.js';
 import FRAME_DEFS from '../data/frame-defs.js';
 import BRICK_ICONS from '../data/brick-icons.js';
 import { frameContourSilhouette } from './contour-from-frame.js';
@@ -191,8 +191,14 @@ function drawBrick(editor, layer, brick, kind, setId, seed, reliefIn) {
     .attr('data-brick-id', String(brick.id))
     .attr('data-brick-height-offset', brick.heightOffset || 0);
   if (typeof brick.accentMarked === 'boolean') el.attr(ACCENT_MARK_ATTR, brick.accentMarked ? '1' : '0'); // item 31b: the engine's cut mark
+  // 2026-10-11: a motif's raised look (band-motif.js): a flat-topped plateau, joined to its raised neighbours (the height mask)
+  if (brick.topFlat) el.attr(BRICK_TOP_FLAT_ATTR, '1');
+  if (brick.joinRaised) el.attr(BRICK_JOIN_RAISED_ATTR, '1');
   return el;
 }
+/** 2026-10-11 (a motif's raisedTop 'flat' / joinRaised): the attributes the height mask reads (editor-brick-height-mask.js) */
+export const BRICK_TOP_FLAT_ATTR = 'data-brick-top-flat';
+export const BRICK_JOIN_RAISED_ATTR = 'data-brick-join-raised';
 /** Per-element run accents: a band / stroke brick's place on its run's grid (the engine's band/row/piece). */
 function stampRunPlace(el, brick, fallbackPiece) {
   if (Number.isInteger(brick.bandIndex)) el.attr('data-brick-band', brick.bandIndex);
@@ -663,9 +669,21 @@ export function frameCornerOf(settings) {
 /** The bands a Frame element lays: its preset's, each band's own pattern pick (`frameBandPatterns[i]`) and the
  *  element's corner applied (a NEW array -- FRAME_PRESETS' frozen entries are never touched). */
 /** 2026-10-11: the arch the board's Frame preset carries (library.js withArch: an arch-surround.js ARCH_SPECS id), or null. */
-export const frameArchOf = (settings) => (FRAME_PRESETS[settings && settings.frameBandPreset] || {}).arch || null;
-export function frameBandsOf(settings) {
-  const base = FRAME_PRESETS[settings && settings.frameBandPreset] || FRAME_PRESETS.single_soldier;
+export const frameArchOf = (settings, templateId = null) => {
+  const preset = settings && settings.frameBandPreset;
+  if (!preset) return null;
+  if ((FRAME_PRESETS[preset] || {}).arch) return FRAME_PRESETS[preset].arch;
+  if (preset === 'quoin_corners' && familyForTemplate(templateId)?.id === 'family_2_arched') {
+    return 'soldier_quoin';
+  }
+  return null;
+};
+export function frameBandsOf(settings, templateId = null) {
+  const preset = settings && settings.frameBandPreset;
+  if (preset === 'quoin_corners' && familyForTemplate(templateId)?.id === 'family_2_arched') {
+    return [];
+  }
+  const base = FRAME_PRESETS[preset] || FRAME_PRESETS.single_soldier;
   const overrides = (settings && settings.frameBandPatterns) || [];
   const corner = settings && settings.frameCorner ? frameCornerOf(settings) : null;
   return base.map((band, i) => ({
@@ -731,6 +749,15 @@ export function elementGroutDepth(settings, kind) {
 export function elementGroutProfile(settings, kind) {
   const v = elementOverride(settings, ELEMENT_LOOK_MAPS.groutProfile, kind);
   return GROUT_PROFILES.includes(v) ? v : elementPatternDefaults(settings, kind).groutProfile;
+}
+/** Fred 2026-10-11 (EDGE TAPER): an element's shoulder width, `settings.edgeByElement = { wall, frame, brush }` (the
+ *  Raised brush shares the Brush's) -- a number = the user's own; null / missing = the element's set's own
+ *  heightProfile.edgeRadiusIn. The height mask applies it in the set's place (a surface style still scales it). */
+export function elementEdgeRadius(settings, kind) {
+  const v = settings && settings.edgeByElement && settings.edgeByElement[JOINT_ELEMENT[kind] || kind];
+  if (Number.isFinite(v)) return v;
+  const set = setForId(elementSetId(settings || {}, kind));
+  return (set && set.heightProfile && set.heightProfile.edgeRadiusIn) ?? 0;
 }
 /** The settings an element is laid with: the shared ones, with that element's own set, size and joint. */
 export const elementSettings = (settings, kind) => ({
@@ -1404,11 +1431,18 @@ function _layInput(editor, settings, frameGeom) {
   if (frameGeom && frameGeom.insetRect && surround.preset !== SURROUND_NONE) input.insetSurround = { rect: frameGeom.insetRect, preset: surround.preset, corner: surround.corner };
   // 2026-10-11: the frame preset's arch (library.js withArch) -- part of the Frame element, like the surround: no Frame
   // element (frameGeomForLay emptied its bands), no arch; a preset without one = absent, the lay byte-identical
-  const arch = frameArchOf(settings);
+  const tplId = (frameGeom && frameGeom.templateId) || (editor && (editor._templateId || (editor.frame && editor.frame.templateId))) || null;
+  const arch = frameArchOf(settings, tplId);
   if (arch && frameGeom && frameGeom.primitives && !frameGeom.noFrameElement) input.arch = { spec: arch };
   // the engine applies ONE `scale` (the Wall's) to the frame's set too -- so the frame's set goes in pre-scaled
   // by its own scale over the Wall's (the engine's own scaledSet): its bricks / stones keep the global size
-  if (frameGeom) input.frame = { ...frameGeom, set: scaledSet(resolvedSetFor(frameSettings), scaleFor(frameSettings) / input.scale) };
+  if (frameGeom) {
+    input.frame = {
+      ...frameGeom,
+      ...(arch ? { bands: [] } : {}),
+      set: scaledSet(resolvedSetFor(frameSettings), scaleFor(frameSettings) / input.scale),
+    };
+  }
   // T86 item 16e: the frame's fan centre -- sent only off the default (Needle = absent = the lay byte-identical)
   if (frameGeom && frameFanCentreOf(settings) !== FAN_CENTRE_DEFAULT) input.fanCentre = frameFanCentreOf(settings);
   applyWallPattern(input, wallSettings);

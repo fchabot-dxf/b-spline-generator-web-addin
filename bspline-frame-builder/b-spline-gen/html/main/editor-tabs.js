@@ -22,6 +22,9 @@ import { FRAME_LABELS } from '../core/frame-labels.js';
 
 // `clears` (F35 item 28): what the editor header's Clear menu clears for this tab -- a main/editor-clear-menu.js
 // CLEAR_KINDS key. A new tab that declares one gets its own Clear entry.
+/** Redesign phase 3 (Fred): the permanent tool row holds TOOLS only -- this shared set first, in this order, on Draw and
+ *  Lattice alike; then the tab's own (EDITOR_TABS `tools`). The actions moved out (main/editor-chrome.js). */
+export const SHARED_ART_TOOLS = Object.freeze(['toolSelect', 'toolCut', 'toolErase', 'toolStripe']);
 export const EDITOR_TABS = [
   // `undo`: the stack the editor's Undo / Redo (buttons and Ctrl+Z) act on in this tab -- a main/frame-panel.js
   // EDITOR_UNDO_STACKS key; absent = the editor's own (the artwork) stack
@@ -33,6 +36,7 @@ export const EDITOR_TABS = [
   { id: 'artwork', clears: 'artwork', label: 'Draw', buttonId: 'editorTabArtwork', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
     modes: ['select', 'node', 'text', 'draw', 'line', 'rect', 'circle', 'erase', 'cut', 'stripe'],
     artTabs: ['general', 'draw', 'text', 'edit'], artDefault: 'edit',
+    tools: [...SHARED_ART_TOOLS, 'toolNode', 'toolDraw', 'toolLine', 'toolRect', 'toolCircle', 'toolExpand', 'toolText'],
     // the Art tabs (mockup v2): General holds the shared stroke / colour / style groups (main/art-tabs.js
     // ART_GENERAL_GROUPS); on any other editor tab they are back in the top bar (hidden there by TOOLBAR_TOP_GROUPS_BY_TAB)
     panelHosts: [
@@ -42,7 +46,8 @@ export const EDITOR_TABS = [
     ] },
   { id: 'lattice', label: 'Lattice', buttonId: 'editorTabLattice', panelId: 'editorLayersPanel', toolbarId: 'editorToolbarArtwork',
     modes: ['select', 'lattice', 'shapeLattice', 'cut', 'erase', 'stripe'],
-    artTabs: ['lattice', 'shape'], artDefault: 'lattice' },
+    artTabs: ['lattice', 'shape'], artDefault: 'lattice',
+    tools: [...SHARED_ART_TOOLS, 'toolLattice', 'toolShapeLattice'] },
   { id: 'photo', clears: 'photo', label: 'Photo', buttonId: 'editorTabPhoto', panelId: 'editorPhotoPanel', toolbarId: 'editorToolbarPhoto',
     modes: ['select'] },
   // F35 item 43: no left rail -- the Brick tools are the tab strip at the top of its own panel (#editorToolbarBrick)

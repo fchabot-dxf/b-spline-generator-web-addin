@@ -170,3 +170,20 @@ export function pollMode(onFusionReady, onWebMode) {
     };
     check();
 }
+
+/**
+ * Asks Python to extract the active or latest sketch from Fusion and send back its curves.
+ */
+export function pullSketchFromFusion() {
+    if (typeof adsk !== 'undefined' && adsk.fusionSendData) {
+        setFusionStatus('Pulling sketch from Fusion...', 'busy');
+        adsk.fusionSendData('pull_sketch_from_fusion', '{}');
+        fusLog('pull_sketch_from_fusion sent to Python');
+    } else {
+        fusLog('pull_sketch_from_fusion skipped: not in Fusion environment');
+        import('./toast.js').then(({ showToast }) => {
+            showToast('Pull from Fusion is available when running inside Autodesk Fusion 360.', 'warn');
+        }).catch(() => {});
+    }
+}
+

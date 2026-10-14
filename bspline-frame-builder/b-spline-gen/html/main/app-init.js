@@ -931,16 +931,24 @@ export function initSvgEditor(preview) {
         if (fontEmbeddedSvg) {
           // Step 3 unification: editor is source of truth.
           _serializeSeq++; // Apply's own copy is the latest -- an in-flight change save must not overwrite it
+          const previousSvg = SvgEditorSnapshot.editorSvg ?? '';
+          if (previousSvg !== fontEmbeddedSvg) {
+            ensureUndoBaseline('Before 2D edits');
+          }
           P.editorSvg = fontEmbeddedSvg;
           saveLastSession();
           const { nx, nz } = resolveGrid(P.widthIn, P.heightIn, P.spacing);
           refreshAllStampMasks(nx, nz, preview, updatePreviewSculptMode);
           await refreshDrape(preview);
           showToast('✓ Applied'); // workflow audit #12: Apply used to close with no confirmation
-          // item 69 (seat E, measured: after a brick lay + Apply the global history's newest snapshot predated the lay,
-          // so a sidebar step undone next -- a layer's carve toggle, Delete frame -- restored an older board, or nothing
-          // for a layer the lay created): the applied board is the global history's baseline
-          ensureUndoBaseline('Apply');
+          if (previousSvg !== fontEmbeddedSvg) {
+            takeSnapshot('2D Edits', { restore: { editorSvg: { before: previousSvg, after: fontEmbeddedSvg } } });
+          } else {
+            ensureUndoBaseline('Apply');
+          }
+          SvgEditorSnapshot.editorSvg = fontEmbeddedSvg;
+          SvgEditorSnapshot.fingerprint = editorSessionFingerprint();
+          updateGlobalButtons();
         }
       } else if (SvgEditorSnapshot.active) {
         // Cancel path — restore the pre-edit DOCUMENT (onChange already

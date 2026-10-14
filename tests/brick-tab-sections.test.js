@@ -54,8 +54,8 @@ describe('the declaration', () => {
       for (const r of rows) tabsOf.set(r, [...(tabsOf.get(r) || []), tab]);
     }
     for (const [r, tabs] of tabsOf) if (tabs.length > 1) expect(SHARED_ROWS, r).toContain(r);
-    // Fred 2026-10-11: + the size and the joint depth (per element, the Size & joint section)
-    expect([...SHARED_ROWS].sort()).toEqual(['brickGroutDepthRow', 'brickGroutSpacingHint', 'brickGroutWidthRow', 'brickSharedSet', 'brickSizeBlock']);
+    // Fred 2026-10-11: + the size and the joint depth (per element, the Size & joint section), + Edge taper
+    expect([...SHARED_ROWS].sort()).toEqual(['brickEdgeTaperRow', 'brickGroutDepthRow', 'brickGroutSpacingHint', 'brickGroutWidthRow', 'brickSharedSet', 'brickSizeBlock']);
     expect(tabsOf.get('brickSharedSet')).not.toContain('general');
   });
   it('Fred\'s placements: grout Colour / Edge only in General (Look); widths in each element tab; crumble + top bias in General', () => {

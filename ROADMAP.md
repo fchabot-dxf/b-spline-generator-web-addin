@@ -1197,3 +1197,69 @@ pan, not loading. Tried and NOT enough: touch-action pan-y on the figure while t
 contain) -- still 0. Suspects next: the lightbox's own touchstart/touchmove listeners (passive:false touchmove on
 the dialog), dialog#lb overflow:hidden with a showModal top layer, the ink canvas. Proof row: the CDP touch-drag
 test (scratch lbtest.mjs) must read scrollTop > 0, red on b245c6c first. Paused for the showcase (Fred: "backlog it").
+
+## Done (turn 209) — CANVAS-HEIGHTS: live total height readouts on canvas (Fred 2026-10-14)
+Show live total height metrics on the canvas / UI:
+1. Total height of the model before any vector stamping and sculpting (base terrain / board thickness): `Base H`.
+2. Total height of the model including vector stamping, relief, and sculpting deltas (maximum cumulative peak-to-base Z): `Total H`.
+Implemented in `html/core/engine/rebuild.js` (`updateCanvasHeights`), `html/bspline_gen_palette.html` (`#canvasTotalHeights` on 3D viewport, `#editorCanvasTotalHeights` on 2D editor canvas, `#heightInspector` rows), reactive across rebuild and sculpt stroke fast-path. Verified in `tests/canvas-total-heights.test.js`.
+
+## Done (turn 209) — BRICK-PATTERN-DROPDOWN: single-chip at rest, mosaic on pick (Fred 2026-10-14)
+Wall pattern grid in the Brick tab collapses to the main sidebar's established styling:
+At rest, show only ONE active chip (current icon + name label, `#brickPatternTrigger` / `#brickPatternTriggerName`). Tapping/clicking the chip opens the floating mosaic grid of icons (`#brickPatternList`) to choose another pattern.
+Once picked (or on dismiss / outside click), the mosaic closes and the newly selected pattern is displayed as the single active chip. Preserves original icon sizes (`wallPatternIconSvg`, 30px height, 45px width) and DOM button IDs (`brickPattern_${id}`). Verified in `tests/brick-pattern-dropdown.test.js` and full 111-test suite `tests/brick-discrete-controls-regen.test.js`.
+
+## Queued — RECT-FRAME-PATTERN: rectangular frame pattern lays a frame (Fred 2026-10-14)
+The rectangular frame pattern preset must generate and lay a full frame contour / structure (matching the other frame presets' capability) rather than acting as a plain un-framed geometry.
+
+## Done (turn 210) — LATTICE-NODE-FOLLOW-TIE: nodes follow ties during manipulation (Fred 2026-10-14)
+When dragging, moving, or stretching ties in the editor (Lattice and Shape Lattice tools), all attached nodes (both endpoint nodes AND mid-span / crossing nodes) follow the tie rigidly and stay attached:
+1. `editor-interaction.js`: Modified tie body move (`_beginLatticeMove`) to collect all nodes along the tie segment using `_distToSegment(c.world, aWorld, bWorld) < 1e-3` rather than only checking endpoints with overly strict 1e-6 epsilon.
+2. `editor-interaction.js`: Updated tie end-stretch (`mode: 'stretch'`) and node-initiated tie stretch/move to use model tolerance (`1e-3`) so fractional contour-clipped endpoints in Shape Lattice do not drop attached nodes due to sub-micron floating point noise. Bakes leftover transforms on carried nodes with `_bakeLatticeTransform(n.el, 'node')`.
+3. `editor-lattice-chains.js`: Updated `nodesAt` to support tolerance, added `nodesOnSegments`, and updated `_chainMove` to collect all nodes on any segment of a cut tie chain.
+4. Verified with new test file `tests/lattice-node-follow-tie.test.js` (3/3 passed) and full test suite regression sweep (464 test files, 6,554 tests passing).
+
+## Queued — FUSION-CLEAN-TRIM: Clean body trimmed by frame aperture (Fred 2026-10-13)
+In Fusion add-in / Send: When a frame is present, the Clean panel body must be trimmed by the frame profile in the same manner as the Stamped panel body (preventing untrimmed Clean body geometry from protruding beneath the frame or mismatching CAM bounding boxes).
+
+## Done (turn 211) — SELECT-GEOMETRY-SNAP-FEEDBACK: snap highlights target geometry with feedback in normal select (Fred 2026-10-14)
+In normal Select mode, moving a selection with geometry snapping enabled:
+1. Visibly highlights the target geometry element with a cyan outline halo (`_snapTargetHighlight` on `_highlightLayer`).
+2. Draws a distinct snap reticle marker (`_snapTargetMarker` on `_handleLayer`) right at the snapped target point `(t.x, t.y)`.
+3. Fires haptic feedback (`hapticSnap(true)` / `haptic('snap')` on release) and displays status hints (`Snapped to endpoint`, `Snapped to midpoint`, `Snapped to intersection`, `Snapped to center`).
+4. Moving away or releasing the drag clears the highlight and reticle cleanly.
+5. In `editor-snap-resolver.js`, snap target metadata (`el`, `kind`) is attached via non-enumerable properties so existing deep-equality expectations across tests (`snap-gesture-cache.test.js`, `editor-grid.test.js`) remain cleanly satisfied.
+## Done (turn 212) — BRICK-DROPDOWNS-EXPANSION: Wall accent, Frame preset, and Brush accent converted to single-chip dropdowns (Fred 2026-10-14)
+Converted remaining static icon grids across the Brick panel to the single-chip at rest + popover mosaic dropdown design:
+1. **Wall Accent Relief (`#brickAccentList`):** Single-chip trigger (`#brickWallAccentTriggerWrap`) showing active accent icon and label; opens 3-column floating popover on click; clicking option sets accent and closes popover.
+2. **Brick Frame Preset (`#brickFramePresetList`):** Single-chip trigger (`#brickFramePresetTriggerWrap`) showing active preset icon and label; opens 24-preset floating popover on click; clicking preset sets frame band preset and closes popover.
+3. **Brush & Band Accent Relief (`renderAccentRowFor`):** Single-chip trigger (`#brickAccentTriggerWrap_${key}`) showing active accent icon and label; opens floating popover on click; clicking option sets element accent and closes popover.
+4. **Shared popover lifecycle:** Unified `_togglePopover` and `_wirePopoverGlobal` with click-outside and scroll dismiss across all brick popovers.
+5. **Verification:** Verified with `tests/brick-accent-and-frame-dropdowns.test.js` (3/3 passed) and full vitest suite (466 test files, 6,559 tests passing).
+
+## Done (turn 213) — BRICK-EXPANSION-PRESETS: 4 new brick frame presets and wood families 4 & 5 (Fred 2026-10-14)
+Expanded brick frame architectural library with 4 new presets and 2 wood frame families:
+1. **New Frame Presets:** Added `crenellated_battlement` (Family 4), `art_deco_stepped` (Family 4), `venetian_dentil` (Family 5), and `florentine_architrave` (Family 5).
+2. **Wood Families 4 & 5:** Added `ashlar` (Family 4: Ashlar Block) and `classical` (Family 5: Classical & Renaissance Stone) to `frame-families.js` with defined band widths, bevel ratios, and profile bounds.
+3. **Registry & UI:** Registered presets in `core/bricks/library.js` and wired single-chip dropdown triggers in `main/brick-panel.js`.
+4. **Verification:** Verified in `tests/family-4-and-5-brick-frame.test.js` (4/4 passed).
+
+## Done (turn 213) — MAIN-PERMANENT-LAYERS: Permanent layers panel in main sidebar below stock dimensions (Fred 2026-10-14)
+Added a permanent, collapsible Layers panel in the main sidebar positioned directly below Stock Dimensions and before Frame:
+1. **Markup & Structure:** `<div class="panel panel-layers">` in `bspline_gen_palette.html` matching main panel styling, with live summary count `#mainLayersSummary` (`— N layers`), quick `#mainAddLayer` button, compact layer list container `#mainLayersList`, and `#btnMainLayersOpenEditor` linking directly to the Artwork editor tab.
+2. **Rendering & Sync:** Updated `renderLayersPanel(editor)` in `editor/layers.js` to render `#mainLayersList` using compact layout (`renderLayerList(..., { compact: true })`) and keep `#mainLayersSummary` in sync with active layer counts.
+3. **Editor Tab Routing:** Added `#btnMainLayersOpenEditor` to `OPEN_EDITOR_BUTTONS` in `main/frame-panel.js` to open and activate the Artwork tab seamlessly.
+4. **Verification:** Verified in `tests/editor-layer-list.test.js` (compact list creation, summary text, and add layer click dispatch).
+
+## Done (turn 213) — FUSION-SKETCH-PULL: Pull constrained sketch curves from Fusion to render with 3D visuals (Fred 2026-10-14)
+Implemented bidirectional round-trip workflow allowing users to add geometric/dimensional constraints to sketch curves in Fusion 360 and pull the evaluated geometry back into the Add-in to render realistic wood materials, relief depths, and 3D preview:
+1. **Python Sketch Extractor (`b-spline-gen.py`):** Added `_handle_pull_sketch` to `PaletteHTMLEventHandler`. Automatically targets the active edit sketch (`app.activeEditObject`), selected sketch, or latest sketch matching keywords (`se15`, `carved`, `artwork`, `drawing`, `lattice`, `slot`, `track`). Extracts solved lines, circles, arcs (with midpoint-evaluated SVG sweep and large-arc flags), and fitted splines (sampled across parameter extents). Converts internal Fusion cm centered at `(0, 0)` to board-relative inches with top-left origin: `x_in = (x_cm / 2.54) + (widthIn / 2.0)`, `y_in = (heightIn / 2.0) - (y_cm / 2.54)`.
+2. **Bridge & UI Triggers:** Added `pullSketchFromFusion()` in `core/fusion-bridge.js`. Added `#btnPullFromFusion` (`🔄 From Fusion`) in top header and `#btnMainLayersPullFusion` (`Pull Fusion 🔄`) in the permanent Layers panel, wired in `main/header-controls.js`.
+3. **Artwork Integration & Re-render (`main.js`):** On `sketch_pulled`, synchronizes board dimensions if altered, allocates or clears the dedicated `'Fusion Sketch'` layer, inserts extracted SVG path elements, commits to undo history (`pushState`), and fires change commit to recompute heightmasks and update the 3D relief canvas `#previewCanvas`.
+4. **Verification:** Verified in `tests/pull-sketch-from-fusion.test.js` (3/3 passed: handshake, curve population, and clean replacement on second pull).
+
+## Queued — BRICK-FRAME-ACCENT-AUDIT: Restrict accent relief options per brick frame preset (Fred 2026-10-14)
+Audit frame presets against accent relief options. Certain structural frame profiles (e.g. arched voussoir, heavy quoins, dentils) clash visually when arbitrary accent patterns are applied. Constrain the accent relief selector dynamically based on the active frame preset — allowing only compatible accents or defaulting to the single authentic architectural option where appropriate.
+
+## Queued — MAIN-LAYERS-VECTOR-ART-RECONCILIATION: Streamline or consolidate Vector Art layer controls with main permanent layers panel (Fred 2026-10-14)
+With the permanent Layers panel positioned directly under Stock Dimensions in the main sidebar, decide whether to prune the redundant layer list inside the Vector Art panel or refocus Vector Art specifically on stamping tools and vector assets while keeping layer management unified in the permanent panel.

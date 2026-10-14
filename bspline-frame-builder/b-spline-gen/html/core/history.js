@@ -233,6 +233,7 @@ export function startHistoryAt(label) {
  */
 export function unifiedUndo(applySnapshot) {
     if (isEditorOpen()) return;
+    if (_pendingUndoTimer) { clearTimeout(_pendingUndoTimer); _pendingUndoTimer = null; }
     if (globalHistoryLog.length <= 1) return;
 
     const current = globalHistoryLog.pop();
@@ -250,6 +251,7 @@ export function unifiedUndo(applySnapshot) {
  */
 export function unifiedRedo(applySnapshot) {
     if (isEditorOpen()) return;
+    if (_pendingUndoTimer) { clearTimeout(_pendingUndoTimer); _pendingUndoTimer = null; }
     if (globalRedoLog.length === 0) return;
 
     const snap = globalRedoLog.pop();
