@@ -196,6 +196,7 @@ export function openEditorOn(tab) {
 export const OPEN_EDITOR_BUTTONS = Object.freeze([
   { id: 'btnEditFrameShape', tab: 'frame' },
   { id: 'btnEditBricks', tab: 'brick' },
+  { id: 'btnMainLayersOpenEditor', tab: 'artwork' },
 ]);
 
 /** A frame template's name as shown: numbered (Fred: "Number the other frames too") -- "Template 1 - Hourglass"

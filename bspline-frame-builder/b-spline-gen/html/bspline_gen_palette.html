@@ -626,6 +626,19 @@
         </div>
       </div>
 
+      <!-- 2a. Layers Panel (Permanent sidebar layers panel) -->
+      <div class="panel panel-layers">
+        <div class="panel-header" id="mainLayersPanelHeader" onclick="togglePanel(this)">📑 LAYERS <span id="mainLayersSummary" style="font-weight:400; opacity:0.7;">— 1 layer</span></div>
+        <div class="panel-body">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+            <label class="cad-label" style="margin-bottom:0;">Layers</label>
+            <button id="mainAddLayer" type="button" class="layers-add-btn" title="Add Layer">+</button>
+          </div>
+          <div id="mainLayersList" style="margin-bottom:8px;"></div>
+          <button type="button" id="btnMainLayersOpenEditor" class="cad-btn cad-btn-secondary" style="width:100%; height:30px; font-size:12px; margin-top:4px;">Open Editor ✎</button>
+        </div>
+      </div>
+
       <!-- 2b. Frame (FB-APP S2, Fred F3 AMEND 4-6): the frame's SOLID-EXTRUSION
            settings + template choice, second after Stock Dimensions. Options
            are filled from data/frame-defs.js by main/frame-panel.js (never
