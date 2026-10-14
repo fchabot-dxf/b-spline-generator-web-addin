@@ -26212,15 +26212,31 @@ not reused; the palette rule on loopback / ?realCloud=1 / https / file://). Bric
       - Kept `Click` button and `level` input alongside the trigger chip.
     - Unified `renderWallPatternList` to use the shared `_togglePopover` and `_wirePopoverGlobal` helpers.
     - Preserved all element IDs, titles, SVG icon dimensions, and click handlers.
-- **Verification:**
-  - Created test suite `tests/brick-accent-and-frame-dropdowns.test.js`:
-    - Verified Wall accent relief single-chip trigger, popover open, selection update, and close.
-    - Verified Brick frame preset single-chip trigger, popover open, selection update, and close.
-    - Verified Brush accent relief single-chip trigger, popover open, selection update, and close.
-  - Ran `tests/brick-pattern-dropdown.test.js` (3/3 passed).
-  - Ran `tests/element-accents.test.js` (5/5 passed).
-  - Ran `tests/brick-discrete-controls-regen.test.js` (111/111 passed).
-  - Full test suite run: **466 test files passed (466/466), 6,559 tests passed (6,559/6,559)**, 0 failures.
+- **Verification & Test Details:**
+  - Created test suite `tests/brick-accent-and-frame-dropdowns.test.js` (3 tests, all passed):
+    1. *Wall accent relief dropdown test:*
+       - Asserts `#brickWallAccentTriggerWrap`, `#brickWallAccentTrigger`, and `#brickWallAccentTriggerName` are mounted before `#brickAccentList`.
+       - Asserts at-rest state: trigger button displays `'None'`, trigger label is `'None'`, and `#brickAccentList` popover is hidden (`style.display = 'none'`).
+       - Asserts interactive toggle: clicking trigger wrap opens `#brickAccentList` with `style.display = 'grid'`.
+       - Asserts choice interaction: clicking `#brickAccent_pyramid` updates `P.brickSettings.accent.preset` to `'pyramid'`, updates trigger name to `'Pyramid'`, and automatically closes `#brickAccentList` (`style.display = 'none'`).
+    2. *Brick frame preset dropdown test:*
+       - Asserts `#brickFramePresetTriggerWrap`, `#brickFramePresetTrigger`, and `#brickFramePresetTriggerName` are mounted before `#brickFramePresetList`.
+       - Asserts at-rest state: trigger button displays `'Soldier'`, trigger label is `'Soldier'`, and `#brickFramePresetList` popover is hidden (`style.display = 'none'`).
+       - Asserts interactive toggle: clicking trigger wrap opens `#brickFramePresetList` with `style.display = 'flex'`.
+       - Asserts preset interaction: clicking `#brickFramePreset_three_band` updates `P.brickSettings.frameBandPreset` to `'three_band'`, updates trigger name to `'Soldier / Stretcher / Soldier'`, and automatically closes `#brickFramePresetList` (`style.display = 'none'`).
+    3. *Brush accent relief dropdown test:*
+       - Asserts inline trigger chip `#brickAccentTriggerWrap_brush`, button `#brickAccentTrigger_brush`, and name `#brickAccentTriggerName_brush` are rendered alongside `Click` and level input.
+       - Asserts at-rest state: trigger name displays `'None'` and `#brickAccentPopover_brush` is hidden (`style.display = 'none'`).
+       - Asserts interactive toggle: clicking trigger wrap opens popover with `style.display = 'flex'`.
+       - Asserts choice interaction: clicking `#brickAccent_brush_checker` updates `P.brickSettings.brushAccent.preset` to `'checker'` and automatically closes popover.
+  - Regression test suites executed:
+    - `tests/brick-pattern-dropdown.test.js` (3/3 passed): Wall pattern single-chip at rest, popover toggle, preset selection, and outside dismiss.
+    - `tests/element-accents.test.js` (5/5 passed): per-element accents for Frame bands and Brush strokes, custom click arming, and signed level range validation.
+    - `tests/brick-discrete-controls-regen.test.js` (111/111 passed): full regression suite across all discrete brick controls, button active-state classes, DOM IDs, and re-lay triggers.
+  - Full test suite run: **466 test files passed (466/466), 6,559 tests passed (6,559/6,559)**, 0 failures. Run duration ~109s.
+- **Release:**
+  - Committed in `5778033` ("Turn 212: convert Wall accent, Frame preset, and Brush accent to single-chip dropdowns").
+  - Pushed to `origin/main` (`dc961b8..5778033`).
 - Signed: Antigravity (AGY)
 
 
