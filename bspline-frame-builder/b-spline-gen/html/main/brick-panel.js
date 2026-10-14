@@ -667,6 +667,8 @@ export function applyUserPattern(id) {
   _disarmAccentClick();
   P.brickSettings.accent = { ...accentOfUserPattern(u), clicks: _accent().clicks || [] };
   P.brickSettings.pattern = wallPatternOfBase(P.brickSettings.accent.tile.base); // 31e: a custom bond on the stretcher grid
+  const list = document.getElementById('brickPatternList');
+  if (list) list.style.display = 'none';
   syncWallPatternButtons();
   syncSetPicker();
   _accentChanged('generate');
@@ -2311,13 +2313,107 @@ function wallPatternFamilies() {
 }
 const _patternLabel = (id) => WALL_PATTERN_LABELS[id] || id;
 
-function renderWallPatternList(container) {
+let _mosaicGlobalWired = false;
+
+function syncWallPatternTrigger() {
+  const triggerBtn = document.getElementById('brickPatternTrigger');
+  const triggerName = document.getElementById('brickPatternTriggerName');
+  if (!triggerBtn || !triggerName) return;
+  const a = _accent();
+  if (a.preset === ACCENT_TILE.id && a.tile && a.tile.userId) {
+    const u = _userPatterns().find((x) => x.id === a.tile.userId);
+    if (u) {
+      triggerBtn.innerHTML = accentIconSvg(accentOfUserPattern(u), 26, { sunk: u.level < 0, bond: u.bond.builtin }) || u.label;
+      triggerName.textContent = u.label;
+      triggerBtn.title = `Wall pattern: ${u.label}`;
+      return;
+    }
+  }
+  const id = P.brickSettings.pattern || DEFAULT_WALL_PATTERN;
+  const label = _patternLabel(id);
+  triggerBtn.innerHTML = wallPatternIconSvg(id, 30) || label;
+  triggerName.textContent = label;
+  triggerBtn.title = `Wall pattern: ${label}`;
+}
+
+export function renderWallPatternList(container) {
   if (!container) return;
+  const parent = container.parentElement;
+  let triggerWrap = document.getElementById('brickPatternTriggerWrap');
+  if (!triggerWrap && parent) {
+    triggerWrap = document.createElement('div');
+    triggerWrap.id = 'brickPatternTriggerWrap';
+    triggerWrap.className = 'icon-select';
+    triggerWrap.style.cssText = 'position:relative; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-bottom:8px; cursor:pointer;';
+
+    const triggerBtn = document.createElement('button');
+    triggerBtn.type = 'button';
+    triggerBtn.id = 'brickPatternTrigger';
+    triggerBtn.className = 'cad-btn icon-select-button';
+    triggerBtn.style.cssText = 'display:flex; align-items:center; justify-content:center; min-width:48px; height:34px; padding:2px; overflow:hidden;';
+
+    const triggerName = document.createElement('span');
+    triggerName.id = 'brickPatternTriggerName';
+    triggerName.className = 'icon-select-name';
+    triggerName.style.cssText = 'flex:1 1 110px; min-width:0; font-size:12px; opacity:0.85; font-weight:500;';
+
+    triggerWrap.append(triggerBtn, triggerName);
+    parent.insertBefore(triggerWrap, container);
+
+    const toggleOpen = (e) => {
+      e.stopPropagation();
+      const open = container.style.display !== 'none';
+      if (open) {
+        container.style.display = 'none';
+      } else {
+        container.style.display = 'flex';
+        const r = triggerBtn.getBoundingClientRect();
+        const w = 320;
+        const maxW = window.innerWidth || 320;
+        const left = Math.max(4, Math.min(r.left, maxW - w - 4));
+        container.style.left = `${left}px`;
+        container.style.top = `${r.bottom + 4}px`;
+        container.style.maxHeight = `${Math.max(120, (window.innerHeight || 800) - r.bottom - 12)}px`;
+      }
+    };
+    triggerWrap.addEventListener('click', toggleOpen);
+
+    if (!_mosaicGlobalWired && typeof document !== 'undefined') {
+      _mosaicGlobalWired = true;
+      document.addEventListener('click', (e) => {
+        const wrap = document.getElementById('brickPatternTriggerWrap');
+        const list = document.getElementById('brickPatternList');
+        if (list && list.style.display !== 'none' && wrap && !wrap.contains(e.target) && !list.contains(e.target)) {
+          list.style.display = 'none';
+        }
+      });
+      window.addEventListener('scroll', (e) => {
+        const list = document.getElementById('brickPatternList');
+        if (list && list.style.display !== 'none' && !list.contains(e.target)) {
+          list.style.display = 'none';
+        }
+      }, true);
+    }
+  }
+
   container.innerHTML = '';
   // F35 item 13: an engine-drawn ICON grid, icons only (the name is the tooltip). Flattened (advisor): ONE grid
   // in the declared family ORDER (WALL_PATTERN_FAMILIES), no family sub-headings.
+  container.className = 'icon-select-grid brick-pattern-mosaic';
+  container.style.display = 'none';
+  container.style.position = 'fixed';
+  container.style.zIndex = '10001';
+  container.style.background = '#fff';
+  container.style.border = '1px solid #ccc';
+  container.style.borderRadius = '4px';
+  container.style.padding = '8px';
+  container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.18)';
   container.style.flexDirection = 'row';
   container.style.flexWrap = 'wrap';
+  container.style.gap = '4px';
+  container.style.maxWidth = '320px';
+  container.style.overflowY = 'auto';
+
   for (const fam of wallPatternFamilies()) for (const id of fam.patterns) {
     if (fam.heading && id === fam.patterns[0]) { // F35 item 14: a family that declares a heading starts a labelled row
       const h = document.createElement('div');
@@ -2351,6 +2447,7 @@ function renderWallPatternList(container) {
     btn.addEventListener('click', () => applyUserPattern(u.id));
     container.appendChild(btn);
   }
+  syncWallPatternTrigger();
 }
 
 export function setWallPattern(patternId, commit = 'generate') {
@@ -2363,6 +2460,8 @@ export function setWallPattern(patternId, commit = 'generate') {
     renderPatternBuilder();
   }
   P.brickSettings.pattern = patternId;
+  const list = document.getElementById('brickPatternList');
+  if (list) list.style.display = 'none';
   syncWallPatternButtons();
   syncSetPicker(); // item 23: Fieldstone makes the wall rock (no brick set active), another pattern gives it back
   commitBrickSetting(commit);
@@ -2372,6 +2471,7 @@ function syncWallPatternButtons() {
   for (const pattern of WALL_PATTERN_LIST) {
     document.getElementById(`brickPattern_${pattern.id}`)?.classList.toggle('active', pattern.id === P.brickSettings.pattern);
   }
+  syncWallPatternTrigger();
   syncQuickSettings();
   syncLargeStonesRow();
   syncRusticRows();

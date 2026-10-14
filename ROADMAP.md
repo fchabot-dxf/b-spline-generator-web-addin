@@ -1197,3 +1197,37 @@ pan, not loading. Tried and NOT enough: touch-action pan-y on the figure while t
 contain) -- still 0. Suspects next: the lightbox's own touchstart/touchmove listeners (passive:false touchmove on
 the dialog), dialog#lb overflow:hidden with a showModal top layer, the ink canvas. Proof row: the CDP touch-drag
 test (scratch lbtest.mjs) must read scrollTop > 0, red on b245c6c first. Paused for the showcase (Fred: "backlog it").
+
+## Done (turn 209) — CANVAS-HEIGHTS: live total height readouts on canvas (Fred 2026-10-14)
+Show live total height metrics on the canvas / UI:
+1. Total height of the model before any vector stamping and sculpting (base terrain / board thickness): `Base H`.
+2. Total height of the model including vector stamping, relief, and sculpting deltas (maximum cumulative peak-to-base Z): `Total H`.
+Implemented in `html/core/engine/rebuild.js` (`updateCanvasHeights`), `html/bspline_gen_palette.html` (`#canvasTotalHeights` on 3D viewport, `#editorCanvasTotalHeights` on 2D editor canvas, `#heightInspector` rows), reactive across rebuild and sculpt stroke fast-path. Verified in `tests/canvas-total-heights.test.js`.
+
+## Done (turn 209) — BRICK-PATTERN-DROPDOWN: single-chip at rest, mosaic on pick (Fred 2026-10-14)
+Wall pattern grid in the Brick tab collapses to the main sidebar's established styling:
+At rest, show only ONE active chip (current icon + name label, `#brickPatternTrigger` / `#brickPatternTriggerName`). Tapping/clicking the chip opens the floating mosaic grid of icons (`#brickPatternList`) to choose another pattern.
+Once picked (or on dismiss / outside click), the mosaic closes and the newly selected pattern is displayed as the single active chip. Preserves original icon sizes (`wallPatternIconSvg`, 30px height, 45px width) and DOM button IDs (`brickPattern_${id}`). Verified in `tests/brick-pattern-dropdown.test.js` and full 111-test suite `tests/brick-discrete-controls-regen.test.js`.
+
+## Queued — RECT-FRAME-PATTERN: rectangular frame pattern lays a frame (Fred 2026-10-14)
+The rectangular frame pattern preset must generate and lay a full frame contour / structure (matching the other frame presets' capability) rather than acting as a plain un-framed geometry.
+
+## Done (turn 210) — LATTICE-NODE-FOLLOW-TIE: nodes follow ties during manipulation (Fred 2026-10-14)
+When dragging, moving, or stretching ties in the editor (Lattice and Shape Lattice tools), all attached nodes (both endpoint nodes AND mid-span / crossing nodes) follow the tie rigidly and stay attached:
+1. `editor-interaction.js`: Modified tie body move (`_beginLatticeMove`) to collect all nodes along the tie segment using `_distToSegment(c.world, aWorld, bWorld) < 1e-3` rather than only checking endpoints with overly strict 1e-6 epsilon.
+2. `editor-interaction.js`: Updated tie end-stretch (`mode: 'stretch'`) and node-initiated tie stretch/move to use model tolerance (`1e-3`) so fractional contour-clipped endpoints in Shape Lattice do not drop attached nodes due to sub-micron floating point noise. Bakes leftover transforms on carried nodes with `_bakeLatticeTransform(n.el, 'node')`.
+3. `editor-lattice-chains.js`: Updated `nodesAt` to support tolerance, added `nodesOnSegments`, and updated `_chainMove` to collect all nodes on any segment of a cut tie chain.
+4. Verified with new test file `tests/lattice-node-follow-tie.test.js` (3/3 passed) and full test suite regression sweep (464 test files, 6,554 tests passing).
+
+## Queued — FUSION-CLEAN-TRIM: Clean body trimmed by frame aperture (Fred 2026-10-13)
+In Fusion add-in / Send: When a frame is present, the Clean panel body must be trimmed by the frame profile in the same manner as the Stamped panel body (preventing untrimmed Clean body geometry from protruding beneath the frame or mismatching CAM bounding boxes).
+
+## Done (turn 211) — SELECT-GEOMETRY-SNAP-FEEDBACK: snap highlights target geometry with feedback in normal select (Fred 2026-10-14)
+In normal Select mode, moving a selection with geometry snapping enabled:
+1. Visibly highlights the target geometry element with a cyan outline halo (`_snapTargetHighlight` on `_highlightLayer`).
+2. Draws a distinct snap reticle marker (`_snapTargetMarker` on `_handleLayer`) right at the snapped target point `(t.x, t.y)`.
+3. Fires haptic feedback (`hapticSnap(true)` / `haptic('snap')` on release) and displays status hints (`Snapped to endpoint`, `Snapped to midpoint`, `Snapped to intersection`, `Snapped to center`).
+4. Moving away or releasing the drag clears the highlight and reticle cleanly.
+5. In `editor-snap-resolver.js`, snap target metadata (`el`, `kind`) is attached via non-enumerable properties so existing deep-equality expectations across tests (`snap-gesture-cache.test.js`, `editor-grid.test.js`) remain cleanly satisfied.
+6. Verified with `tests/select-geometry-snap-feedback.test.js` (2/2 passed) and full test suite (465 test files, 6,556 tests passing).
+

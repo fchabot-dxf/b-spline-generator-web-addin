@@ -22,11 +22,11 @@ import { withChain, writeChainRow, writeChainTranslate, updateJointSlide, pushTi
 import { startTextAt, beginTextEdit } from './editor-text-session.js';
 import { getActiveLayer, ensureActiveLayer, applyLayerState, getElementLayer, setActiveLayer, isOnVisibleLayer, isEditableByLayer } from './layers.js';
 import { worldBbox, toLocal, worldPoint } from './editor-coords.js';
-import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, updateHistoryButtons } from './editor-ui.js';
+import { setEditorStatusHint, restoreModeHint, ANCHOR_HINT, updateHistoryButtons, updateSnapTargetHighlight, clearSnapTargetHighlight } from './editor-ui.js';
 import { on, el, _isTypingTarget } from './dom.js';
 import { dbg } from './debug.js';
 import { fusLog } from '../core/fusion-bridge.js';
-import { haptic, resetHapticSnap } from '../core/haptics.js';
+import { haptic, resetHapticSnap, hapticSnap } from '../core/haptics.js';
 import {
     renderTransformHandles, hitTestHandle,
     beginTransform, applyTransformDrag, setHandleCursor, paramHandleCursorAxis,
@@ -737,7 +737,7 @@ function _panBy(editor, dxClient, dyClient) {
     applyView(editor);
 }
 
-function handleEnd(editor, e) {
+export function handleEnd(editor, e) {
     if (editor._isPanning) {
         resetPanState(editor);
         return;
@@ -751,7 +751,7 @@ function handleEnd(editor, e) {
     }
     if (editor._isDragging) {
         editor._isDragging = false;
-        editor._selMove = null;
+        const lastSnap = editor._selMove?.lastSnap;
         editor._grabAtFinger = false;
         const wasNodeDrag  = editor._dragNodeIndex !== -1;
         const wasTransform = !!editor._transformState;
@@ -808,6 +808,14 @@ function handleEnd(editor, e) {
             // 'live' frame happened to leave queued.
             editor._notifyChange('commit');
         }
+        if (lastSnap) {
+            haptic('snap');
+            const kind = lastSnap.target?.kind || 'geometry';
+            setEditorStatusHint(`Snapped to ${kind}.`);
+        }
+        clearSnapTargetHighlight(editor);
+        resetHapticSnap();
+        editor._selMove = null;
         editor._dragMoved = false;
         if (wasTransform) editor._updateHandles();
     }
@@ -1467,7 +1475,7 @@ function _collectLatticeElements(editor, spacing, excludeEl = null) {
  *  (a false miss — confirmed live, T73's own contour-anchored ties). 1e-6
  *  matches this file's own established float-compare tolerance elsewhere
  *  (_clampStretchToContour's span check, etc). */
-function _sameWorldPoint(p1, p2, tol = 1e-6) {
+function _sameWorldPoint(p1, p2, tol = 1e-3) {
     return Math.abs(p1.x - p2.x) < tol && Math.abs(p1.y - p2.y) < tol;
 }
 
@@ -1534,7 +1542,7 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation, grabPt =
             // (aWorld/bWorld), not the on-grid-gated canonical point — see
             // _sameWorldPoint's own doc comment.
             const endWorld = end === 'a' ? aWorld : bWorld;
-            const endNodeMatch = candidates.find((c) => c.kind === 'node' && _sameWorldPoint(c.world, endWorld));
+            const endNodeMatch = candidates.find((c) => c.kind === 'node' && _sameWorldPoint(c.world, endWorld, 1e-3));
             return {
                 kind, mode: 'stretch', el: hit, orientation, spacing, startAttrs,
                 pieceCanon, end, endNode: endNodeMatch ? endNodeMatch.el : null,
@@ -1570,25 +1578,15 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation, grabPt =
             return { kind, mode: 'move', el: hit, orientation, spacing, startAttrs, railCanon: pieceCanon, ties, nodes };
         }
 
-        // kind === 'tie', body grab -> MOVE (whole tie slides, free in
-        // BOTH axes — SE7j's constrainToIAxis is retired: that redirect
-        // only ever existed to force node-grabs into an axis-locked tie
-        // move, and nodes no longer redirect into a tie move at all).
+        // kind === 'tie', body grab -> MOVE (whole tie slides, carrying
+        // every attached node along its full length: both endpoints and
+        // all crossing/mid-span nodes).
         const startCanon = orient(toLattice(pt, spacing), orientation);
         const candidates = _collectLatticeElements(editor, spacing, hit);
-        // UI5 item 5: match against the tie's own REAL ends (aWorld/
-        // bWorld), not the on-grid-gated canonical point — a node sitting
-        // exactly at a contour-anchored (fractional) tie end used to be
-        // silently excluded here (onGrid false for a non-integer point),
-        // so it was left behind, DETACHED, when the tie's body was
-        // dragged. The OUTPUT point is fractional too (toLatticeFractional,
-        // not the rounded c.point) — _updateLatticeMove's own per-frame
-        // `node.point.i + di` just adds an integer delta, so a rounded
-        // starting point here would silently drift the node a fraction of
-        // a cell off its own true attachment on every subsequent move.
         const nodes = candidates
-            .filter((c) => c.kind === 'node' && (_sameWorldPoint(c.world, aWorld) || _sameWorldPoint(c.world, bWorld)))
+            .filter((c) => c.kind === 'node' && _distToSegment(c.world, aWorld, bWorld) < 1e-3)
             .map((c) => ({ el: c.el, point: orient(toLatticeFractional(c.world, spacing), orientation) }));
+        for (const n of nodes) _bakeLatticeTransform(n.el, 'node');
         return { kind, mode: 'move', el: hit, orientation, spacing, startAttrs, tieCanon: pieceCanon, startCanon, nodes };
     }
 
@@ -1620,15 +1618,15 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation, grabPt =
         // grabbing its own end-node fell through to "standalone node" —
         // detaching it from the tie instead of stretching the tie's end.
         const tieCanon = { a: orient(toLatticeFractional(c.aWorld, spacing), orientation), b: orient(toLatticeFractional(c.bWorld, spacing), orientation) };
-        if (Math.abs(tieCanon.a.i - nodeCanon.i) > 1e-6) continue; // must be the tie's own column
+        if (Math.abs(tieCanon.a.i - nodeCanon.i) > 1e-3) continue; // must be the tie's own column
         const jMin = Math.min(tieCanon.a.j, tieCanon.b.j), jMax = Math.max(tieCanon.a.j, tieCanon.b.j);
-        if (nodeCanon.j < jMin - 1e-6 || nodeCanon.j > jMax + 1e-6) continue;
+        if (nodeCanon.j < jMin - 1e-3 || nodeCanon.j > jMax + 1e-3) continue;
 
         const tieStartAttrs = { x1: c.el.attr('x1'), y1: c.el.attr('y1'), x2: c.el.attr('x2'), y2: c.el.attr('y2') };
-        if (_sameWorldPoint(nodeWorld, c.aWorld)) {
+        if (_sameWorldPoint(nodeWorld, c.aWorld, 1e-3)) {
             return { kind: 'tie', mode: 'stretch', el: c.el, orientation, spacing, startAttrs: tieStartAttrs, pieceCanon: tieCanon, end: 'a', endNode: hit };
         }
-        if (_sameWorldPoint(nodeWorld, c.bWorld)) {
+        if (_sameWorldPoint(nodeWorld, c.bWorld, 1e-3)) {
             return { kind: 'tie', mode: 'stretch', el: c.el, orientation, spacing, startAttrs: tieStartAttrs, pieceCanon: tieCanon, end: 'b', endNode: hit };
         }
         // Mid-span crossing -> MOVE the whole tie, carrying every node
@@ -1638,9 +1636,9 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation, grabPt =
         // rounded `point`/`onGrid` fields) — same reasoning as the column/
         // range check just above.
         const nodes = candidates
-            .filter((cc) => cc.kind === 'node')
-            .map((cc) => ({ el: cc.el, point: orient(toLatticeFractional(cc.world, spacing), orientation) }))
-            .filter((n) => Math.abs(n.point.i - tieCanon.a.i) < 1e-6 && n.point.j >= jMin - 1e-6 && n.point.j <= jMax + 1e-6);
+            .filter((cc) => cc.kind === 'node' && _distToSegment(cc.world, c.aWorld, c.bWorld) < 1e-3)
+            .map((cc) => ({ el: cc.el, point: orient(toLatticeFractional(cc.world, spacing), orientation) }));
+        for (const n of nodes) _bakeLatticeTransform(n.el, 'node');
         return { kind: 'tie', mode: 'move', el: c.el, orientation, spacing, startAttrs: tieStartAttrs, tieCanon, startCanon: nodeCanon, nodes };
     }
 
@@ -1649,7 +1647,7 @@ function _beginLatticeMove(editor, hit, kind, pt, spacing, orientation, grabPt =
         // UI5 item 5: same real-world-end match as the tie loop above.
         const railCanon = { a: orient(toLatticeFractional(c.aWorld, spacing), orientation), b: orient(toLatticeFractional(c.bWorld, spacing), orientation) };
         for (const end of ['a', 'b']) {
-            if (_sameWorldPoint(nodeWorld, end === 'a' ? c.aWorld : c.bWorld)) {
+            if (_sameWorldPoint(nodeWorld, end === 'a' ? c.aWorld : c.bWorld, 1e-3)) {
                 const railStartAttrs = { x1: c.el.attr('x1'), y1: c.el.attr('y1'), x2: c.el.attr('x2'), y2: c.el.attr('y2') };
                 return { kind: 'rail', mode: 'stretch', el: c.el, orientation, spacing, startAttrs: railStartAttrs, pieceCanon: railCanon, end, endNode: hit };
             }
@@ -3050,10 +3048,14 @@ function _selectionMoveDelta(editor, pt, raw, bypass) {
             const ax = a.x + rx, ay = a.y + ry;
             for (const t of ms.targets) {
                 const d = (t.x - ax) ** 2 + (t.y - ay) ** 2;
-                if (d <= bestD) { bestD = d; best = { x: t.x - a.x, y: t.y - a.y }; }
+                if (d <= bestD) { bestD = d; best = { x: t.x - a.x, y: t.y - a.y, target: t, anchor: a }; }
             }
         }
-        if (best) return best;
+        if (best) {
+            ms.lastSnap = best;
+            return best;
+        }
+        ms.lastSnap = null;
     }
     // Audit (batch 3): no end snapped -> the FINGER's own travel, in whole grid steps when the grid snaps. It used
     // to be snap(pointer now) - snap(pointer at grab): both ends pulled to (different) geometry, so a 0.54 in
@@ -3063,7 +3065,7 @@ function _selectionMoveDelta(editor, pt, raw, bypass) {
     return (policy !== 'none' && !bypass) || policy === 'always' ? snapToGrid(d, editor._grid, false) : d;
 }
 
-function translateSelection(editor, pt, raw = null, bypass = false) {
+export function translateSelection(editor, pt, raw = null, bypass = false) {
     const want = _selectionMoveDelta(editor, pt, raw, bypass);
     const ms = editor._selMove;
     const dx = want.x - ms.applied.x;
@@ -3072,6 +3074,20 @@ function translateSelection(editor, pt, raw = null, bypass = false) {
     if (dx !== 0 || dy !== 0) editor._dragMoved = true;
     for (const el of (editor._selectedElements || [])) {
         el.translate(dx, dy);
+    }
+    if (ms && ms.lastSnap) {
+        hapticSnap(true);
+        updateSnapTargetHighlight(editor, ms.lastSnap.target);
+        const kindLabel = ms.lastSnap.target.kind === 'endpoint' ? 'endpoint'
+            : ms.lastSnap.target.kind === 'midpoint' ? 'midpoint'
+            : ms.lastSnap.target.kind === 'intersection' ? 'intersection'
+            : ms.lastSnap.target.kind === 'center' ? 'center'
+            : 'geometry';
+        setEditorStatusHint(`Snapped to ${kindLabel}`);
+    } else {
+        hapticSnap(false);
+        clearSnapTargetHighlight(editor);
+        restoreModeHint(editor);
     }
     editor._updateHandles();
     editor._updateSelectionHighlight();

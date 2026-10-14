@@ -1525,6 +1525,12 @@
     <section class="cad-viewport">
       <div id="previewArea">
         <canvas id="previewCanvas"></canvas>
+        <div id="canvasTotalHeights"
+          style="position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.75); color: #fff; padding: 6px 10px; border-radius: 6px; font-family: 'Cascadia Code', monospace; font-size: 11px; pointer-events: none; z-index: 100; border: 1px solid rgba(255,255,255,0.2); line-height: 1.4;">
+          <div style="color: #aaa; margin-bottom: 2px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Model Heights</div>
+          <div>Base H: <span id="canvasBaseHeight" style="color: #4488ff; font-weight: bold;">0.000</span>"</div>
+          <div>Total H: <span id="canvasTotalHeight" style="color: #ffcc00; font-weight: bold;">0.000</span>"</div>
+        </div>
         <div id="heightInspector"
           style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.75); color: #fff; padding: 8px 12px; border-radius: 6px; font-family: 'Cascadia Code', monospace; font-size: 11px; pointer-events: none; display: none; z-index: 100; border: 1px solid rgba(255,255,255,0.2); line-height: 1.4;">
           <div
@@ -1538,6 +1544,10 @@
               style="color: #00ff88;">0.000</span>"</div>
           <div id="inspectorWarnRow" style="display: none; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,59,48,0.4); color: #ff3b30; font-weight: bold;">
             &#9888; BIT BELOW STOCK
+          </div>
+          <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.1);">
+            <div>Base H: <span id="inspectorBaseHeight" style="color: #4488ff;">0.000</span>"</div>
+            <div>Total H: <span id="inspectorTotalHeight" style="color: #ffcc00;">0.000</span>"</div>
           </div>
         </div>
       </div>
@@ -2054,6 +2064,12 @@
         <!-- Canvas -->
         <div style="flex:1; background:#ececec; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center;" id="editorCanvasContainer">
           <div class="canvas-grid" style="position:absolute; top:0; left:0; right:0; bottom:0; background-image: radial-gradient(circle, #ccc 1.2px, transparent 1.2px); background-size: 20px 20px; opacity:0.7;"></div>
+          <div id="editorCanvasTotalHeights"
+            style="position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.75); color: #fff; padding: 6px 10px; border-radius: 6px; font-family: 'Cascadia Code', monospace; font-size: 11px; pointer-events: none; z-index: 10; border: 1px solid rgba(255,255,255,0.2); line-height: 1.4;">
+            <div style="color: #aaa; margin-bottom: 2px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Model Heights</div>
+            <div>Base H: <span id="editorCanvasBaseHeight" style="color: #4488ff; font-weight: bold;">0.000</span>"</div>
+            <div>Total H: <span id="editorCanvasTotalHeight" style="color: #ffcc00; font-weight: bold;">0.000</span>"</div>
+          </div>
           <div id="editorSVGContainer" style="position:relative; z-index:2; width:100%; height:100%;"></div>
           <!-- FB-APP F8: in the Frame tab the artwork is view-only (no tool reaches it). F18: the shield is inert
                (pointer-events:none); the frame panel takes handle drags on the container, the editor pans/zooms. -->
