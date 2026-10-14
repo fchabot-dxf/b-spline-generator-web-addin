@@ -58,12 +58,13 @@ export const CARVE_UNDER_FLAT = {
   introducedBy: 'F35 item 44',
 };
 
-// ---- grey by height (Fred 2026-10-08, "Yes, grey only"; seat D): on T1 with a Wall (Course-band raised accents) and a
+// ---- grey by height (Fred 2026-10-08, "Yes, grey only"; seat D): on T1 with a Wall (Checkerboard raised accents) and a
 // Frame, every brick is never a set colour or photo -- neutral grey right after a lay, its layer's height greys once the
 // mask lands (core/bricks/height-grey.js, editor/brick-height-grey.js); the SVG download is flat greys, the accented
 // pieces lighter; the repaint (the 'brick-height-greys' performance measure) stays inside `repaintBudgetMs`.
 export const GREY_BY_HEIGHT = {
-  template: 'template_1', accent: 'brickAccent_courseBand', wallTool: 'brickTool_wall', frameTool: 'brickTool_frame', generate: 'brickGenerate',
+  // accent: Checkerboard, a Stretcher wall's own preset (0b04ee2: a pattern offers its own; Course bands is not one)
+  template: 'template_1', accent: 'brickAccent_checker', wallTool: 'brickTool_wall', frameTool: 'brickTool_frame', generate: 'brickGenerate',
   repaintBudgetMs: 250, // MEASURED unthrottled at 1366 on the mock (3 layers, 141 x 181): 24-187 ms with a full re-encode
 };
 

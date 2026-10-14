@@ -39,7 +39,9 @@ export const rows = [
   { name: 'Wall Level +1/8', kind: 'editor', tool: 'wall', do: set('brickLevel_wall', 0.125), expect: LEVEL, introducedBy: '90a1483' },
   { name: 'Wall Level 0', kind: 'editor', tool: 'wall', do: set('brickLevel_wall', 0), expect: LEVEL, introducedBy: '90a1483' },
   // F35 item 15 (seat 37): raised accents on the Wall -- 3D-only (never pending); the 2D shows an outline only
-  { name: 'Raised accents: Course bands', kind: 'editor3d', tool: 'wall', do: click('brickAccent_courseBand'), expect: SURFACE, introducedBy: '82f3755' },
+  // 0b04ee2: a pattern offers its OWN presets (Stretcher has no Course bands -- the row was skipped as "not in this build"
+  // and the two rows after it saw no accent): Checkerboard is Stretcher's, the same legacy preset a saved board keeps
+  { name: 'Raised accents: Checkerboard', kind: 'editor3d', tool: 'wall', do: click('brickAccent_checker'), expect: SURFACE, introducedBy: '82f3755' },
   { name: 'Accent level -1/16', kind: 'editor3d', tool: 'wall', do: set('brickAccentLevel', -0.0625), expect: SURFACE, introducedBy: '82f3755' },
   { name: 'Raised accents: None', kind: 'editor3d', tool: 'wall', do: click('brickAccent_none'), expect: SURFACE, introducedBy: '82f3755' },
   // Fred 2026-10-11 (per-pattern defaults): the joint profile + depth are the Wall's own now (its Size & joint section;

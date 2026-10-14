@@ -52,7 +52,7 @@ import { frameContourSilhouette, hasFrame } from '../editor/contour-from-frame.j
 import { rectToPrimitives, insetWindowOuterRect } from '../core/inset-window.js';
 import { getFrameRecord } from '../core/frame-record.js';
 import { FRAME_PRESETS, QUOIN_VARIANT_OF, BRICK_PATTERNS, brickSetById, EDGE_TAPER } from '../core/bricks/library.js';
-import { framePresetsForTemplate, isPresetConforming, familyForTemplate } from '../core/bricks/frame-families.js';
+import { framePresetsForTemplate, FITS_FRAME_LABEL } from '../core/bricks/frame-families.js';
 import { setEditorTab, getEditorTab } from './editor-tabs.js';
 import { renderTabStrip } from '../editor/tab-strip.js';
 import { BRICK_SURFACE_STYLES, surfaceStyleById } from '../editor/brick-surface-styles.js';
@@ -2310,15 +2310,27 @@ export function renderFramePresetList(container) {
   _wirePopoverGlobal();
 
   const tplId = P.frame && P.frame.templateId;
+  // Fred 2026-10-14 ("suggest, don't hide"): EVERY preset, the frame's family's first under "Fits this frame"
   const presets = framePresetsForTemplate(tplId, FRAME_PRESET_LIST);
+  const heading = (text, id) => {
+    const h = document.createElement('div');
+    h.id = id;
+    h.className = 'brick-preset-group';
+    h.textContent = text;
+    h.style.cssText = 'flex:1 0 100%; font-size:10px; font-weight:600; opacity:0.65; margin:2px 0 0;';
+    container.appendChild(h);
+  };
+  if (presets.some((p) => p.fits)) heading(FITS_FRAME_LABEL[0].toUpperCase() + FITS_FRAME_LABEL.slice(1), 'brickFramePresetGroup_fits');
 
-  for (const preset of presets) {
+  presets.forEach((preset, i) => {
+    if (i > 0 && presets[i - 1].fits && !preset.fits) heading('Other presets', 'brickFramePresetGroup_other');
+    const label = preset.fits ? `${preset.label} · ${FITS_FRAME_LABEL}` : preset.label;
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'cad-btn brick-accent-icon'; // item 33 (audit N10): the band stack as an icon, the name as the tooltip
+    btn.className = 'cad-btn brick-accent-icon' + (preset.fits ? ' fits-frame' : ''); // item 33 (audit N10): the band stack as an icon, the name as the tooltip
     btn.id = `brickFramePreset_${preset.id}`;
-    btn.title = preset.label;
-    btn.setAttribute('aria-label', preset.label);
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
     btn.style.cssText = 'padding:1px; min-width:0; height:auto; line-height:0;';
     btn.innerHTML = framePresetIconSvg(preset.id, 30) || preset.label;
     btn.addEventListener('click', () => {
@@ -2326,7 +2338,7 @@ export function renderFramePresetList(container) {
       container.style.display = 'none';
     });
     container.appendChild(btn);
-  }
+  });
 }
 
 /** F35 item 23: the frame's rock state -- every band of the current preset fieldstone (rock), or back to the
@@ -3298,7 +3310,8 @@ export const BRICK_QUICK_SETTINGS = [
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
   // F35 item 63 (Fred: the pick "does nothing" with no Frame element on the board): a pick LAYS the frame
   // (`lays`), or re-lays it; greyed while the board has no frame contour (BRICK_CONTROL_REQUIRES 'frameContour')
-  { id: 'frameBands', label: FRAME_LABELS.brick, stage: 'bricks', choices: () => framePresetsForTemplate(P.frame && P.frame.templateId, FRAME_PRESET_LIST), iconFor: (c) => framePresetTileSvg(c.id, PICKER_ICON_PX), picker: true,
+  { id: 'frameBands', label: FRAME_LABELS.brick, stage: 'bricks', choices: () => framePresetsForTemplate(P.frame && P.frame.templateId, FRAME_PRESET_LIST) // every preset, its family's first
+    .map((c) => (c.fits ? { ...c, label: `${c.label} · ${FITS_FRAME_LABEL}` } : c)), iconFor: (c) => framePresetTileSvg(c.id, PICKER_ICON_PX), picker: true,
     lays: 'frame', isCurrent: (c) => c.id === P.brickSettings.frameBandPreset, apply: (c) => setFrameBandPreset(c.id, 'auto') },
   // F35 item 55: the board-wide grout colour (paint only, nothing re-lays); any other hex from the Brick tab's picker
   { id: 'groutColor', label: 'Grout colour', stage: 'heightMask', choices: () => GROUT_COLOR_CHOICES, iconFor: _groutSwatchSvg, // paint only: the re-mask
@@ -3480,8 +3493,10 @@ function resolveFrameGeom(editor) {
   const contour = frameBandContour(editor);
   if (!contour) return null;
   const primitives = buildRibbonPrimitives(contour);
-  const tplId = P.frame && P.frame.templateId;
-  return { primitives, bands: frameBandsOf(P.brickSettings, tplId), insetRect: _insetWindowRect(editor), templateId: tplId };
+  // item 33: + the element's corner (frameBandsOf -- the preset's own; a board saved with an explicit frameCorner from
+  // the retired Corners row keeps it, tests/frame-corner-legacy-pin.test.js)
+  // item 9: + the inset window's outer rect while it is on (the Window surround lays around it)
+  return { primitives, bands: frameBandsOf(P.brickSettings), insetRect: _insetWindowRect(editor) };
 }
 
 // F35 (Fred: "resolution is his own responsibility via the resolution panel" -- REVERSING the
@@ -3663,13 +3678,9 @@ export function initBrickPanel() {
   onPageEvent('editorCommit', 'editorCommit', () => { _relayIfBrushChanged(); syncControlRequires(); syncStartHint(); syncWallAreaHint(); });
   onPageEvent('controlRequires', 'bricksGenerated', () => syncControlRequires()); // audit v2 N5: bricks now laid
   onPageEvent('controlRequiresFrame', 'frameRecordChanged', () => syncControlRequiresSoon()); // item 74b: a new outline, new corner facts
+  // Fred 2026-10-14 ("suggest, don't hide"): a new template re-ORDERS the preset list (its family's first) -- it never
+  // changes the board's own preset (it used to rewrite frameBandPreset to the family default, on load too)
   onPageEvent('frameFamilyCheck', 'frameRecordChanged', () => {
-    const tplId = P.frame && P.frame.templateId;
-    if (tplId && !isPresetConforming(tplId, P.brickSettings.frameBandPreset)) {
-      const family = familyForTemplate(tplId);
-      const fallback = (family && family.defaultPreset) || 'soldier_stretcher';
-      P.brickSettings.frameBandPreset = fallback;
-    }
     const container = document.getElementById('brickFramePresetList');
     if (container) renderFramePresetList(container);
     syncFramePresetButtons();
