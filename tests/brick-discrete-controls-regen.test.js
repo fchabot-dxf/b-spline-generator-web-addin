@@ -98,6 +98,7 @@ const FIXTURE = `
 
 const $ = (id) => document.getElementById(id);
 const fire = (id, value, type) => { $(id).value = String(value); $(id).dispatchEvent(new Event(type)); };
+const pickSize = (selId, id) => { const s = document.getElementById(selId); s.value = id; s.dispatchEvent(new Event('change')); };
 const firstInactive = (sel) => [...document.querySelectorAll(sel)].find((b) => !b.disabled && !b.classList.contains('active'));
 const pending = () => $('brickGenerate').classList.contains('pending');
 
@@ -167,7 +168,7 @@ describe('Editor Brick tab (Wall tool): item 27 -- a setting change re-lays at o
     expectReLaidAtOnce((call) => expect(call[1].pattern).toBe('herringbone'));
   });
   it('the set picker (item 23: the Wall element\'s set)', () => { $('brickSet_1').click(); expectReLaidAtOnce((c) => expect(c[1].setIds.wall).toBe(1)); });
-  it('a brick-size preset button', () => { firstInactive('[id^=brickSizePreset_]').click(); expectReLaidAtOnce(); });
+  it('a brick-size dropdown pick', () => { pickSize('brickSizeSelect', 'three'); expectReLaidAtOnce(); });
   it('the brick-size stepper, drag and release', () => {
     fire('brickSize', 1.5, 'input'); fire('brickSize', 1.5, 'change');
     expectReLaidAtOnce((c) => expect(elementSize(c[1], 'wall')).toBe(1.5)); // the Wall's own size
@@ -414,10 +415,10 @@ describe('F35 item 18 (3): the main sidebar 🧱 BRICK section -- 3D controls + 
     expect(runBricks).toHaveBeenCalledTimes(1);
   });
   it('quick brick size re-lays at once', () => {
-    $('brickQuick_size_three').click();
+    pickSize('brickQuickSelect_size', 'three');
     expect(elementSize(P.brickSettings, 'wall')).toBe(3); // the sidebar quick row sets the Wall's size (Fred 2026-10-11)
     expect(runBricks).toHaveBeenCalledTimes(1);
-    expect($('brickQuick_size_three').classList.contains('active')).toBe(true);
+    expect($('brickQuickSelect_size').value).toBe('three');
   });
 });
 
@@ -964,7 +965,7 @@ describe('audit v2 (AUDIT-BRICK-TAB-v2.md): N2 N3 N4 N5 N7 N9 N11', () => {
 
   it('N4: a brush-only board never shows a Generate dot (nothing for Generate to re-lay)', () => {
     setup('brush');
-    firstInactive('[id^=brickSizePreset_]').click();
+    pickSize('brickSizeSelect', 'three');
     $('brickSet_1').click();
     expect(pending()).toBe(false);
     expect($('editorTabBrick').hasAttribute('data-brick-pending')).toBe(false);

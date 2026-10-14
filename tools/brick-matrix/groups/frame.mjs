@@ -8,7 +8,7 @@ export const rows = [
   // item 28: a 3-band stack is reduced to what fits the board; at the 1 in default it keeps only its outer band on
   // T1 7x9 (= the Soldier the frame already has, nothing to see), at 3/4 in it keeps two
   // the FRAME's size (per element since 2026-10-11): the bands fit by it
-  { name: 'Brick size 3/4 (frame group: 3-band fits T1 7x9 from here)', kind: 'editor', tool: 'frame', group: 'frame', do: click('brickSizePreset_quarter3'), expect: LAYOUT },
+  { name: 'Brick size 3/4 (frame group: 3-band fits T1 7x9 from here)', kind: 'editor', tool: 'frame', group: 'frame', do: set('brickSizeSelect', 'quarter3'), expect: LAYOUT },
   { name: 'Frame preset: 3-band', kind: 'editor', tool: 'frame', do: click('brickFramePreset_three_band'), expect: LAYOUT },
   { name: 'Band 1 pattern: Header', kind: 'editor', tool: 'frame', do: click('brickFrameBandPattern_0_header'), expect: LAYOUT },
   // item 23: a Fieldstone band makes the whole frame rock (every band); then the per-element rule -- the Frame

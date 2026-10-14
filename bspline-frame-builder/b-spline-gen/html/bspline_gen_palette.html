@@ -3330,12 +3330,14 @@
             <!-- F35 item 43: each block's scope is declared in main/brick-panel.js BRICK_ROW_SCOPES (global = General tab) -->
             <div id="brickSizeBlock">
             <label id="brickSizeLabel" class="cad-label">Brick size (in)</label>
-            <div class="cad-slider-row" style="margin-bottom:6px;">
+            <!-- Fred 2026-10-14: a dropdown (BRICK_SIZE_PRESETS + Custom...) over the log slider and the typed field (range:
+                 BRICK_SIZE_FIELD); the editor's side panel is too narrow for the dropdown and the stepper on one line -->
+            <div id="brickSizePresetList" style="margin-bottom:6px;">
+              <!-- Populated at runtime by main/brick-panel.js's declared BRICK_SIZE_PRESETS. -->
+            </div>
+            <div class="cad-slider-row" style="margin-bottom:12px;">
               <input type="range" id="brickSizeSlider" class="cad-slider" min="0" max="1000" step="1" value="226">
               <div class="cad-stepper cad-stepper-wide"><input type="number" id="brickSize" value="0.75" min="0.375" max="8" step="0.025"></div>
-            </div>
-            <div id="brickSizePresetList" style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
-              <!-- Populated at runtime by main/brick-panel.js's declared BRICK_SIZE_PRESETS. -->
             </div>
             </div>
 

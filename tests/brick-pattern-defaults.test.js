@@ -72,6 +72,7 @@ function setup({ preset = 'single_soldier', sizes = { wall: null, frame: null, b
 }
 afterEach(() => { root?.remove(); window.svgEditor = null; vi.unstubAllGlobals(); });
 
+const pickSize = (selId, id) => { const s = document.getElementById(selId); s.value = id; s.dispatchEvent(new Event('change')); };
 const marked = () => [...document.querySelectorAll(`.${PATTERN_DEFAULT_MARK.cls}`)].map((b) => b.id).sort();
 const resetShown = (id) => !!$(id) && $(id).style.display !== 'none';
 const declared = Object.entries(FRAME_PRESETS).filter(([, b]) => b.bestSize != null);
@@ -111,11 +112,12 @@ describe('patternDefaultsOf: the fallback, a frame preset\u2019s bestSize, then 
 describe('Size & joint: each element on its pattern\u2019s defaults unless overridden', () => {
   const [bestId, bestBands] = declared[0];
 
-  it('a new board: every element at its pattern\u2019s default; the default chip is dotted; no ↺', () => {
+  it('a new board: every element at its pattern\u2019s default; both size dropdowns say and mark it; no ↺', () => {
     setup();
     expect(elementSize(P.brickSettings, 'wall')).toBe(1.25);
-    expect($('brickSizePreset_one_quarter1').classList.contains('active')).toBe(true);
-    expect(marked()).toEqual(['brickQuick_size_one_quarter1', 'brickSizePreset_one_quarter1'].sort()); // editor (Wall) + sidebar (Wall)
+    expect($('brickSizeSelect').value).toBe('one_quarter1');
+    expect($('brickSizeSelect').selectedOptions[0].textContent).toBe('1¼″' + PATTERN_DEFAULT_MARK.suffix);
+    expect(marked()).toEqual(['brickQuickSelect_size', 'brickSizeSelect']); // editor (Wall) + sidebar (Wall)
     for (const r of ELEMENT_LOOK_RESETS) {
       expect($(r.id).className, r.id).toBe('tweak-reset'); // the tweak rows' own ↺ icon, its tooltip
       expect($(r.id).title).toBe(LOOK_RESET_TITLE);
@@ -125,10 +127,11 @@ describe('Size & joint: each element on its pattern\u2019s defaults unless overr
 
   it('a size pick is the active element\u2019s override: its ↺ shows; the ↺ puts it back on the pattern default', () => {
     setup();
-    $('brickSizePreset_three').click();
+    pickSize('brickSizeSelect', 'three');
     expect(P.brickSettings.sizeByElement).toEqual({ wall: 3, frame: null, brush: null }); // the Wall only
     expect(resetShown('brickLookReset_size')).toBe(true);
-    expect($('brickSizePreset_one_quarter1').classList.contains(PATTERN_DEFAULT_MARK.cls)).toBe(true); // the default stays marked
+    expect(marked()).toEqual([]); // the current size is not the default
+    expect($('brickSizeSelect').querySelector('option[value=one_quarter1]').textContent).toBe('1¼″' + PATTERN_DEFAULT_MARK.suffix); // the list still says it
     $('brickLookReset_size').click();
     expect(P.brickSettings.sizeByElement.wall).toBeNull();
     expect(elementSize(P.brickSettings, 'wall')).toBe(1.25);
@@ -162,10 +165,19 @@ describe('Size & joint: each element on its pattern\u2019s defaults unless overr
 
   it('the sidebar quick Size row sets the WALL\u2019s size (Fred 2026-10-11)', () => {
     setup();
-    const quick = $('brickQuick_size_half1');
-    quick.disabled = false; // the fixture board has no laid bricks (the quick settings grey); the gating is not under test
-    quick.click();
+    pickSize('brickQuickSelect_size', 'half1');
     expect(P.brickSettings.sizeByElement).toEqual({ wall: 1.5, frame: null, brush: null });
+  });
+
+  it('a TYPED size equal to the default is marked too; any other typed size is not (Fred 2026-10-14)', () => {
+    setup();
+    const type = (v) => { $('brickQuickSize').value = String(v); $('brickQuickSize').dispatchEvent(new Event('change')); };
+    type(1.3);
+    expect(P.brickSettings.sizeByElement.wall).toBe(1.3);
+    expect(marked()).toEqual([]);
+    expect($('brickQuickSelect_size').value).toBe('custom');
+    type(1.25);
+    expect(marked()).toEqual(['brickQuickSelect_size', 'brickSizeSelect']);
   });
 
   it('the retired Best-size hint and [Use it] are gone', () => {

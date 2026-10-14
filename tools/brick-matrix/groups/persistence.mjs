@@ -18,7 +18,7 @@ export const PATTERN_PARAM_PERSIST = { pattern: 'brickPattern_octagon_square', c
 
 export const PERSIST_BOARD = {
   setup: [
-    { tool: 'wall' }, decl.click('brickPattern_fieldstone'), decl.click('brickSizePreset_quarter3'),
+    { tool: 'wall' }, decl.click('brickPattern_fieldstone'), decl.set('brickSizeSelect', 'quarter3'),
     decl.set('brickLevel_wall', 0.0625), decl.click('brickGenerate'),
     { tool: 'frame' }, decl.click('brickFramePreset_three_band'), decl.click('brickGenerate'),
     { tool: 'brush' }, { stroke: [[0.3, 0.45], [0.7, 0.45]] },

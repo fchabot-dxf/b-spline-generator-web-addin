@@ -267,40 +267,89 @@ export function selectSet(setId, commit = 'generate', kinds = [_setKind()], { st
  *  5 values that actually span the control's own min/max, matching the measured resolution grid's
  *  own columns (shots/seatC/resolution_scale_grid.png) -- "Life size" is a real US brick's own
  *  actual length (8in x 2.25in). */
-const BRICK_SIZE_PRESETS = [
+export const BRICK_SIZE_PRESETS = [
   { id: 'eighth3', label: '⅜″', lengthIn: 0.375 },
+  { id: 'half', label: '½″', lengthIn: 0.5 }, // Fred 2026-10-14: more precision (+ ½, 1¾, 2)
   { id: 'quarter3', label: '¾″', lengthIn: 0.75 },
   { id: 'one', label: '1″', lengthIn: 1 },
   { id: 'one_quarter1', label: '1¼″', lengthIn: 1.25 }, // Fred (2026-10-05): the new-board default, so it shows as picked
   { id: 'half1', label: '1½″', lengthIn: 1.5 },
+  { id: 'three_quarter1', label: '1¾″', lengthIn: 1.75 },
+  { id: 'two', label: '2″', lengthIn: 2 },
   { id: 'three', label: '3″', lengthIn: 3 },
   { id: 'life', label: 'Life 8″', lengthIn: 8 },
 ];
-const BRICK_SIZE_MIN_IN = 0.375;
-const BRICK_SIZE_MAX_IN = 8;
+/** Fred 2026-10-14: any size can be typed. The field's range is the one the size control has always clamped to (the
+ *  engine itself declares no limit on brickLengthIn); the step is the stepper's, a typed value is kept as typed. */
+export const BRICK_SIZE_FIELD = Object.freeze({ minIn: 0.375, maxIn: 8, stepIn: 0.025 });
+const BRICK_SIZE_MIN_IN = BRICK_SIZE_FIELD.minIn;
+const BRICK_SIZE_MAX_IN = BRICK_SIZE_FIELD.maxIn;
 
 /** Fred 2026-10-11 (per-pattern defaults): every pattern declares its default size and joint (core/bricks/library.js
  *  patternDefaultsOf; a frame preset's bestSize is its default size) and an element lays at them unless the user overrides
- *  a value in its Size & joint section. The Size chip equal to the element's default carries a mark (a dot,
- *  CSS .pattern-default) wherever the chips are -- the editor's for the active element, the sidebar quick row's for the
- *  Wall (QUICK_SIZE_ELEMENT). The old Best-size hint and its [Use it] are retired: a default applies itself. */
-export const PATTERN_DEFAULT_MARK = Object.freeze({ cls: 'pattern-default', title: "This element's pattern default" });
+ *  a value in its Size & joint section. The old Best-size hint and its [Use it] are retired: a default applies itself.
+ *  Fred 2026-10-14: the size is a DROPDOWN (a <select> showing the current size, the presets + Custom…) with a typed
+ *  field beside it, in the editor's Size & joint (the active element) and the sidebar quick row (the Wall,
+ *  QUICK_SIZE_ELEMENT). The element's default is said in the list ("1¼″ · default") and marked on the select (a dot,
+ *  CSS .pattern-default) whenever the current size equals it -- picked or typed. */
+export const PATTERN_DEFAULT_MARK = Object.freeze({ cls: 'pattern-default', title: "This element's pattern default", suffix: ' · default' });
 export const QUICK_SIZE_ELEMENT = 'wall'; // Fred 2026-10-11: the sidebar quick Size row sets the Wall's size
-const SIZE_CHIP_HOSTS = Object.freeze([
-  { idOf: (chip) => `brickSizePreset_${chip.id}`, kind: () => _jointKind() }, // the Brick editor (renderBrickSizePresetList)
-  { idOf: (chip) => `brickQuick_size_${chip.id}`, kind: () => QUICK_SIZE_ELEMENT }, // the sidebar quick settings
+/** The list's last entry: picking it focuses the typed field; it reads the current size when that is no preset. */
+export const BRICK_SIZE_CUSTOM = Object.freeze({ id: 'custom', label: 'Custom…' });
+export const SIZE_SELECT_HOSTS = Object.freeze([
+  { selectId: 'brickSizeSelect', numberId: 'brickSize', kind: () => _jointKind() }, // the Brick editor (renderBrickSizePresetList)
+  { selectId: 'brickQuickSelect_size', numberId: 'brickQuickSize', kind: () => QUICK_SIZE_ELEMENT }, // the sidebar quick settings
 ]);
-function syncPatternDefaultChips() {
-  for (const host of SIZE_CHIP_HOSTS) {
-    const def = elementPatternDefaults(P.brickSettings, host.kind()).sizeIn;
-    for (const chip of BRICK_SIZE_PRESETS) {
-      const el = document.getElementById(host.idOf(chip));
-      if (!el) continue;
-      const on = chip.lengthIn === def;
-      el.classList.toggle(PATTERN_DEFAULT_MARK.cls, on);
-      if (on) el.title = PATTERN_DEFAULT_MARK.title;
-      else if (el.title === PATTERN_DEFAULT_MARK.title) el.removeAttribute('title');
+const _inches = (v) => `${+Number(v).toFixed(3)}″`;
+/** A size <select>: one option per preset (its value the preset's id) + Custom…; synced by syncSizeSelects. */
+function _buildSizeSelect(id) {
+  const sel = document.createElement('select');
+  sel.id = id;
+  sel.className = 'brick-size-select';
+  for (const c of [...BRICK_SIZE_PRESETS, BRICK_SIZE_CUSTOM]) {
+    const o = document.createElement('option');
+    o.value = c.id;
+    o.textContent = c.label;
+    sel.appendChild(o);
+  }
+  return sel;
+}
+/** A typed size field carries the declared range (BRICK_SIZE_FIELD). */
+function _applySizeField(input) {
+  if (!input) return;
+  input.min = String(BRICK_SIZE_FIELD.minIn);
+  input.max = String(BRICK_SIZE_FIELD.maxIn);
+  input.step = String(BRICK_SIZE_FIELD.stepIn);
+}
+/** The picked preset of a size <select> (Custom… = null: the typed field takes it). */
+function _sizeSelectPick(sel, host) {
+  const preset = BRICK_SIZE_PRESETS.find((c) => c.id === sel.value);
+  if (preset) return preset;
+  const field = document.getElementById(host.numberId);
+  syncSizeSelects(); // the select keeps showing the current size
+  field?.focus();
+  field?.select?.();
+  return null;
+}
+function syncSizeSelects() {
+  for (const host of SIZE_SELECT_HOSTS) {
+    const sel = document.getElementById(host.selectId);
+    if (!sel) continue;
+    const kind = host.kind();
+    const size = elementSize(P.brickSettings, kind), def = elementPatternDefaults(P.brickSettings, kind).sizeIn;
+    const cur = BRICK_SIZE_PRESETS.find((c) => c.lengthIn === size);
+    for (const o of sel.options) {
+      const c = BRICK_SIZE_PRESETS.find((p) => p.id === o.value);
+      const lengthIn = c ? c.lengthIn : (cur ? null : size); // Custom… reads the current size when that is no preset
+      const label = c ? c.label : (cur ? BRICK_SIZE_CUSTOM.label : _inches(size));
+      o.textContent = label + (lengthIn === def ? PATTERN_DEFAULT_MARK.suffix : '');
     }
+    sel.value = cur ? cur.id : BRICK_SIZE_CUSTOM.id;
+    const on = size === def;
+    sel.classList.toggle(PATTERN_DEFAULT_MARK.cls, on);
+    sel.title = on ? PATTERN_DEFAULT_MARK.title : '';
+    const field = document.getElementById(host.numberId);
+    if (field && document.activeElement !== field) field.value = String(size);
   }
 }
 /** The Size & joint section's resets (Fred: an icon only, the tweak rows' own ↺): each shown only while the active
@@ -379,23 +428,15 @@ export function sliderPosToBrickSize(pos) {
 function renderBrickSizePresetList(container) {
   if (!container) return;
   container.innerHTML = '';
-  for (const preset of BRICK_SIZE_PRESETS) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'cad-btn';
-    btn.id = `brickSizePreset_${preset.id}`;
-    btn.textContent = preset.label;
-    btn.addEventListener('click', () => setBrickSize(preset.lengthIn));
-    container.appendChild(btn);
-  }
+  const host = SIZE_SELECT_HOSTS[0];
+  const sel = _buildSizeSelect(host.selectId);
+  sel.addEventListener('change', () => { const c = _sizeSelectPick(sel, host); if (c) setBrickSize(c.lengthIn); });
+  container.appendChild(sel);
+  _applySizeField(document.getElementById(host.numberId));
 }
 
 function syncBrickSizePresetButtons() {
-  const size = elementSize(P.brickSettings, _jointKind());
-  for (const preset of BRICK_SIZE_PRESETS) {
-    document.getElementById(`brickSizePreset_${preset.id}`)?.classList.toggle('active', preset.lengthIn === size);
-  }
-  syncQuickSettings();
+  syncQuickSettings(); // ends with syncSizeSelects (both dropdowns)
 }
 
 /** An element's size (Fred 2026-10-11: per element, its override; `kind` the active element unless given). */
@@ -1746,7 +1787,7 @@ function syncControlRequires() {
     whys.add(rule.why);
     const met = requirementMet(rule.requires, document.getElementById(rule.requires.control), ctx);
     const own = [...rule.controls.map((id) => document.getElementById(id)),
-      ...(rule.within || []).flatMap((id) => [...(document.getElementById(id)?.querySelectorAll('button, input') || [])])];
+      ...(rule.within || []).flatMap((id) => [...(document.getElementById(id)?.querySelectorAll('button, input, select') || [])])]; // + the size dropdown (2026-10-14)
     // A2 (3D-panel audit): a number field's -/+ stepper (ui-bindings.js attachNumberSteppers, buttons with no ids) is
     // part of that control -- greyed with it, or + still changed a greyed Grout depth (0.05 -> 0.055, no effect)
     const els = own.flatMap((el) => [el, ...(el && el.closest ? el.closest('.cad-stepper')?.querySelectorAll('button') || [] : [])]);
@@ -2117,6 +2158,7 @@ function bindBrickSizeControls(commit = 'generate') {
     if (slider) slider.value = String(brickSizeToSliderPos(clamped));
     if (number) number.value = String(clamped);
     _setElementLook('size', clamped);
+    syncSizeSelects(); // the dropdown follows a typed / dragged size (Custom… or the preset it equals)
     return true;
   };
   const drag = (v) => { if (apply(v)) commitBrickSetting(commit, 'onDrag'); };
@@ -3250,7 +3292,7 @@ export const BRICK_QUICK_SETTINGS = [
     mixed: { label: 'Mixed', title: 'The elements use different sets (picked per element in the Brick tab); a pick here applies to every element',
       when: () => new Set(SET_KINDS().map((k) => elementSetId(P.brickSettings, k))).size > 1 },
     isCurrent: (c) => SET_KINDS().every((k) => elementSetId(P.brickSettings, k) === c.id), apply: (c) => selectSet(c.id, 'auto', SET_KINDS(), { strokes: true }) }, // A6: applies to every element, strokes too
-  { id: 'size', label: 'Brick size', stage: 'bricks', choices: () => BRICK_SIZE_PRESETS,
+  { id: 'size', label: 'Brick size', stage: 'bricks', choices: () => BRICK_SIZE_PRESETS, select: SIZE_SELECT_HOSTS[1], // a dropdown + typed field
     isCurrent: (c) => c.lengthIn === elementSize(P.brickSettings, QUICK_SIZE_ELEMENT), apply: (c) => setBrickSize(c.lengthIn, 'auto', QUICK_SIZE_ELEMENT) },
   { id: 'pattern', label: 'Wall pattern', stage: 'bricks', choices: () => WALL_PATTERN_LIST, iconFor: (c) => wallPatternTileSvg(c.id, PICKER_ICON_PX), picker: true,
     isCurrent: (c) => c.id === P.brickSettings.pattern, apply: (c) => setWallPattern(c.id, 'auto') },
@@ -3293,6 +3335,19 @@ function renderQuickSettings(container) {
     list.style.cssText = 'display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; align-items:center;';
     // item 71: one global undo step per pick (core/history.js recordBoardStep: the settings AND the laid bricks)
     const pick = (choice) => withLoadingStageShownFirst(row.stage, () => recordBoardStep(`Bricks: ${row.label}`, () => { if (row.lays) requestLay(row.lays); row.apply(choice); }));
+    if (row.select) { // Fred 2026-10-14: the size dropdown + its typed field (SIZE_SELECT_HOSTS)
+      const sel = _buildSizeSelect(row.select.selectId);
+      sel.addEventListener('change', () => { const c = _sizeSelectPick(sel, row.select); if (c) pick(c); });
+      const field = document.createElement('input');
+      field.type = 'number';
+      field.id = row.select.numberId;
+      field.style.width = '64px';
+      _applySizeField(field);
+      field.addEventListener('change', () => { const v = parseFloat(field.value); if (Number.isFinite(v)) pick({ id: BRICK_SIZE_CUSTOM.id, lengthIn: v }); });
+      list.append(sel, field);
+      container.appendChild(list);
+      continue;
+    }
     if (row.picker) {
       // the shared picker over a <select>; its grid items keep the chip ids (brickQuick_<row>_<choice>: the matrix, the
       // control-requires greying and the active sync address them), a pick of the current one still applies (a lay)
@@ -3349,7 +3404,7 @@ function syncQuickSettings() {
     const mixed = row.mixed ? document.getElementById(quickMixedId(row)) : null;
     if (mixed) mixed.style.display = !any && row.mixed.when() ? '' : 'none';
   }
-  syncPatternDefaultChips(); // both chip sets' default marks (every size or pattern sync ends here)
+  syncSizeSelects(); // both size dropdowns: the current size, the default said and marked (every size or pattern sync ends here)
 }
 
 /** T86 item 7: labels for core/bricks/library.js's own declared BRUSH_PRESETS keys (the 3

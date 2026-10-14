@@ -62,10 +62,10 @@ export const rows = [
   { name: 'Pattern builder base Custom (blank grid)', kind: 'editor', tool: 'wall', do: click('brickBuilderBase_custom'), expect: { ...LAYOUT, threeD: null }, introducedBy: '1f7e9d3' },
   { name: 'Pattern builder: offset course 1', kind: 'editor', tool: 'wall', do: click('brickBuilderOffset_0_right'), expect: LAYOUT, introducedBy: '1f7e9d3' },
   { name: 'Wall pattern: Stretcher (drops the custom bond)', kind: 'editor', tool: 'wall', do: click('brickPattern_stretcher'), expect: LAYOUT, introducedBy: '1f7e9d3' },
-  { name: 'Brick size preset 1-1/2', kind: 'editor', tool: 'wall', do: click('brickSizePreset_half1'), expect: LAYOUT },
+  { name: 'Brick size preset 1-1/2', kind: 'editor', tool: 'wall', do: set('brickSizeSelect', 'half1'), expect: LAYOUT },
   { name: 'Brick size stepper 1.0', kind: 'editor', tool: 'wall', do: set('brickSize', 1), expect: LAYOUT },
   { name: 'Brick size slider (log 500)', kind: 'editor', tool: 'wall', do: set('brickSizeSlider', 500), expect: LAYOUT },
-  { name: 'Brick size preset 3/4', kind: 'editor', tool: 'wall', do: click('brickSizePreset_quarter3'), expect: LAYOUT },
+  { name: 'Brick size preset 3/4', kind: 'editor', tool: 'wall', do: set('brickSizeSelect', 'quarter3'), expect: LAYOUT },
   { name: 'Grout width 0.08', kind: 'editor', tool: 'wall', do: set('brickGroutWidth', 0.08, 'input'), expect: LAYOUT },
   // F35 item 55 (seat E): the grout PAINT -- the canvas changes (the grout node's d / fill), the 3D heights must NOT (paint only)
   { name: 'Grout edge 0.03 (paint only)', kind: 'editor', tool: 'wall', do: set('brickGroutEdge', 0.03), expect: { ...E(false, true, false), ...AT_ONCE }, introducedBy: '3a10b65' },

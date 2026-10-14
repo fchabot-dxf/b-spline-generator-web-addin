@@ -1480,7 +1480,12 @@ header {
 }
 
 /* Fred 2026-10-11 (per-pattern defaults): the Size chip equal to the element's pattern default -- a dot in its corner
-   (main/brick-panel.js PATTERN_DEFAULT_MARK, syncPatternDefaultChips) */
+   (main/brick-panel.js PATTERN_DEFAULT_MARK); 2026-10-14 the size is a dropdown: its dot is a green left edge
+   (a <select> cannot hold ::after), shown while the current size is the default (syncSizeSelects) */
+select.brick-size-select { min-width: 96px; } /* room for "Life 8″ · default" / "1.375″" */
+#brickSizePresetList select.brick-size-select { width: 100%; }
+#brickQuickRow_size select.brick-size-select { width: auto; flex: 0 0 auto; } /* the typed field stays beside it */
+select.brick-size-select.pattern-default { box-shadow: inset 4px 0 0 #2e9b4f; }
 .cad-btn.pattern-default {
     position: relative;
     overflow: visible;
