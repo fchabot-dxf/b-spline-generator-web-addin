@@ -341,6 +341,32 @@ export function isSimplePolygon(poly) {
   return true;
 }
 
+/** A polygon whose outline crosses itself in a MICRO loop (seat E 2026-10-14, MEASURED T8 9x12 1.25 in corbelled_cornice:
+ *  a motif row's start cut meeting the corner fan left a 0.02 in bow tie on a band piece's end): at each crossing whose
+ *  smaller side holds no more than `maxLoopArea`, that side is cut off at the crossing point. A simple polygon, or a crossing
+ *  whose both sides are larger (a real fold, not a fleck), is returned as given. */
+export function untangleMicroLoops(poly, maxLoopArea) {
+  let p = poly;
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  for (let pass = 0; pass < poly.length; pass++) {
+    const n = p.length;
+    let cut = null;
+    for (let i = 0; i < n && !cut; i++) for (let j = i + 2; j < n && !cut; j++) {
+      if (i === 0 && j === n - 1) continue; // adjacent through the wrap
+      const a = p[i], b = p[(i + 1) % n], c = p[j], d = p[(j + 1) % n];
+      const d1 = cross(c, d, a), d2 = cross(c, d, b), d3 = cross(a, b, c), d4 = cross(a, b, d);
+      if (!((d1 > 0) !== (d2 > 0) && (d3 > 0) !== (d4 > 0))) continue;
+      const t = d1 / (d1 - d2), X = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      const inner = [X, ...p.slice(i + 1, j + 1)], outer = [X, ...p.slice(j + 1), ...p.slice(0, i + 1)];
+      const ai = Math.abs(signedArea(inner)), ao = Math.abs(signedArea(outer));
+      if (Math.min(ai, ao) <= maxLoopArea) cut = ai <= ao ? outer : inner;
+    }
+    if (!cut) return p;
+    p = cut;
+  }
+  return p;
+}
+
 /** Standard convexity test for a simple polygon: every consecutive turn has the same cross-product
  *  sign (collinear/near-zero turns are ignored). Works regardless of winding direction. */
 export function isConvex(poly) {
