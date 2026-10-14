@@ -156,10 +156,11 @@ export function initSvgSource(ctx, layerModule) {
         // `.svg`, so the old code passed undefined and reopened blank (RO1).
         const targetSvg = editorRestoreSvg();
         const currentSvg = typeof window.svgEditor.save === 'function' ? window.svgEditor.save() : null;
-        if (!currentSvg || currentSvg !== targetSvg || !window.svgEditor._undoStack?.length) {
+        if (!currentSvg || currentSvg !== targetSvg || !window.svgEditor._undoStack?.length || window.svgEditor._mW !== P.widthIn || window.svgEditor._mH !== P.heightIn) {
           window.svgEditor.open(targetSvg, P.widthIn, P.heightIn);
         } else {
           window.svgEditor.sync3DBackground?.();
+          window.svgEditor.fitView?.();
           window.svgEditor.updateHistoryButtons?.();
         }
       }

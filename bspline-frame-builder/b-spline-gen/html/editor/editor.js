@@ -662,15 +662,14 @@ export class VectorEditor {
     setModelMetrics(w, h) {
         if (!this._draw) return;
         this._mW = w; this._mH = h;
-        // SE2: resets _view to fit the (possibly new) board size and pushes
-        // it to the live viewbox — no other code should call
-        // this._draw.viewbox(...) as a setter directly.
-        _fitView(this);
         // SE6: board size changed -> redraw the grid at the new extent.
         applyGrid(this);
         this._bgLayer.clear();
         // Remove the grey viewbox background rectangle so the preview is not clipped by it.
         this.sync3DBackground();
+        // SE2: resets _view to fit the (possibly new) board size and pushes
+        // it to the live viewbox — after sync3DBackground so frameProfile is established.
+        _fitView(this);
         refreshGuides(this); // BOUNDARY-GUIDE: the box is sized from the board
     }
 
