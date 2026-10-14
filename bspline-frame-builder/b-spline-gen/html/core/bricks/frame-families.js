@@ -47,6 +47,38 @@ export const WOOD_FRAME_FAMILIES = Object.freeze({
     ]),
     defaultPreset: 'soldier_stretcher',
   }),
+  family_2_arched: Object.freeze({
+    id: 'family_2_arched',
+    label: 'Arched Head & Vaulted Frames',
+    templates: Object.freeze([
+      'template_10',
+      'template_16',
+      'template_18',
+      'template_19',
+    ]),
+    segmentTypes: Object.freeze({
+      top: 'arched',
+      bottom: 'straight',
+      corners: 'arch_shoulders_and_square_base',
+      sides: 'flank_or_hourglass',
+    }),
+    conformingPresetIds: Object.freeze([
+      'none',
+      'arch_keystone',
+      'single_soldier',
+      'soldier_stretcher',
+      'three_band',
+      'double_soldier',
+      'header_band',
+      'mixed_bands',
+      'craftsman_apron',
+      'corbelled_cornice',
+      'flemish_architrave',
+      'zigzag_band',
+      'double_course',
+    ]),
+    defaultPreset: 'arch_keystone',
+  }),
 });
 
 /** Find the declared wood frame family for a template ID. */
